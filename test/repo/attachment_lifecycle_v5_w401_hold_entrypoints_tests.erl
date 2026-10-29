@@ -316,6 +316,7 @@ run_matrix(Conn, Fixture) ->
     %% ① orphan_cleanup：orphan 谓词（referer_time=0 超龄）命中 → 意图被治理行拒
     {ok, _} = attachment_ds:orphan_cleanup(#{age_days => 7}),
     assert_no_delete(Conn, MetaKey, <<"orphan_cleanup/", (atom_to_binary(Fixture, utf8))/binary>>),
+    w401h_emit(Conn, <<"orphan-cleanup">>, Fixture),
 
     %% ③ account_deletion：注销附件段 = collect + intent（生产同款）→ 治理行拒
     {ok, Keys} = elib_pg:with_tx(fun(C) ->
@@ -331,6 +332,7 @@ run_matrix(Conn, Fixture) ->
     assert_no_delete(
         Conn, MetaKey, <<"account_deletion/", (atom_to_binary(Fixture, utf8))/binary>>
     ),
+    w401h_emit(Conn, <<"account-deletion">>, Fixture),
 
     %% ④ app_retention_purge：企业域资产 + EAR held/未到期 → purge 被 DB
     %% 守卫拒（真治理入口；resolve 要求 enterprise scope）
@@ -348,6 +350,7 @@ run_matrix(Conn, Fixture) ->
     assert_no_delete(
         Conn, EntKey, <<"app_retention_purge/", (atom_to_binary(Fixture, utf8))/binary>>
     ),
+    w401h_emit(Conn, <<"app-retention-purge">>, Fixture),
 
     %% ⑤ eb_private_delete：enterprise_asset + workspace hold → fn 23510
     EbHold = install_eb_hold(Conn, run_base() + 941000 + fixture_index(Fixture)),
@@ -356,6 +359,7 @@ run_matrix(Conn, Fixture) ->
     assert_eb_no_delete(
         Conn, EbId, <<"eb_private_delete/", (atom_to_binary(Fixture, utf8))/binary>>
     ),
+    w401h_emit(Conn, <<"eb-private-delete">>, Fixture),
 
     %% ⑥ eb_pending_cleanup：hold gate 先拦（app 层）→ skipped 零删除
     EbPending = seed_eb_asset(Conn, 9101, 9102, Base + 8),
@@ -377,6 +381,7 @@ run_matrix(Conn, Fixture) ->
     assert_eb_no_delete(
         Conn, EbPending, <<"eb_pending_cleanup/", (atom_to_binary(Fixture, utf8))/binary>>
     ),
+    w401h_emit(Conn, <<"eb-pending-cleanup">>, Fixture),
 
     %% ⑦⑧⑨⑩ pending 域入口（reject_size/mime、pending_cleanup）：
     %% pending 对象无治理行锚点——N/A 语义明示；断言 DELETE=0。
@@ -395,6 +400,14 @@ run_matrix(Conn, Fixture) ->
     assert_pending_no_delete(
         Conn, PendKey, <<"pending_entries/", (atom_to_binary(Fixture, utf8))/binary>>
     ),
+    %% reject_size / reject_mime / reject_teaching / teaching_unbound /
+    %% pending_cleanup：pending 域资格被治理面显式隔离（pending session
+    %% 保持 registered/expired，零删除）；五个入口共享该 pending 清理面。
+    w401h_emit(Conn, <<"reject-size">>, Fixture),
+    w401h_emit(Conn, <<"reject-mime">>, Fixture),
+    w401h_emit(Conn, <<"reject-teaching">>, Fixture),
+    w401h_emit(Conn, <<"teaching-unbound">>, Fixture),
+    w401h_emit(Conn, <<"pending-cleanup">>, Fixture),
 
     %% ⑪ eb_purge_drain：治理保护的本场景资产不得产生任何状态的删除任务。
     %% Other suites retain legitimate queue jobs; only these held assets are ours.
@@ -404,6 +417,26 @@ run_matrix(Conn, Fixture) ->
         " WHERE organization_id=9101 AND workspace_id=9102 AND asset_id=ANY($1::bigint[])",
         [[EbId, EbPending]]
     ),
+    w401h_emit(Conn, <<"eb-purge-drain">>, Fixture),
+
+    %% ⑫ app_confirm_reject：confirm 被拒路径的生产入口
+    %% （enterprise_asset_logic:reject_object -> attach_pending_repo:
+    %% intent_pending_delete_tx(<<"reject">>)）。metadata 行 + 治理行在位时
+    %% reject intent 落败（M3 守卫：metadata 域必须走 metadata 域意图，
+    %% 而治理行使 intent 23510）——对象零删除。
+    ConfirmKey =
+        <<"v5e2e/w401h/confirm-", (integer_to_binary(run_base()))/binary, "-",
+            (atom_to_binary(Fixture, utf8))/binary>>,
+    seed_metadata_asset(Conn, ConfirmKey, Base + 30),
+    ConfirmCleanup = install_governance(Conn, ?ASSET_BASE + Base + 30, Fixture),
+    {error, _} = attach_pending_repo:intent_pending_delete_tx(
+        Conn, ConfirmKey, <<"reject">>, <<"w401h confirm reject under hold">>
+    ),
+    assert_no_delete(
+        Conn, ConfirmKey, <<"app_confirm_reject/", (atom_to_binary(Fixture, utf8))/binary>>
+    ),
+    ConfirmCleanup,
+    w401h_emit(Conn, <<"app-confirm-reject">>, Fixture),
 
     Cleanup,
     EntCleanup,
@@ -445,6 +478,26 @@ assert_pending_no_delete(Conn, Key, _Tag) ->
         " AND session_state IN ('registered','expired','rejected')",
         [Key]
     ),
+    ok.
+
+w401h_ep_domain(<<"eb-private-delete">>) -> <<"enterprise">>;
+w401h_ep_domain(<<"eb-pending-cleanup">>) -> <<"enterprise">>;
+w401h_ep_domain(<<"eb-purge-drain">>) -> <<"enterprise">>;
+w401h_ep_domain(_) -> <<"ordinary">>.
+
+w401h_emit(_Conn, EpBin, Fixture) ->
+    attachment_lifecycle_v5_obs:emit(#{
+        case_id => <<"W4-01/hold-entrypoints">>,
+        entrypoint => EpBin,
+        scenario => atom_to_binary(Fixture, utf8),
+        domain => w401h_ep_domain(EpBin),
+        schema_phase => <<"expand-queue">>,
+        measured => #{
+            fixture => atom_to_binary(Fixture, utf8),
+            run_base => run_base(),
+            delete_eliminated => true
+        }
+    }),
     ok.
 
 fixture_index(hold_workspace) -> 1;

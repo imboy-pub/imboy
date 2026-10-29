@@ -13,6 +13,7 @@
     put_snapshot/4,
     read_snapshot/1,
     delete_snapshot/1,
+    head_snapshot/1,
     presign_snapshot/2
 ]).
 
@@ -365,6 +366,57 @@ delete_snapshot(I) ->
         {ok, {{_, Status, _}, _, _}} -> {error, {storage_status, Status}};
         {error, R} -> {error, R}
     end.
+
+%% @doc O(1) 元数据 stat（W2-02 confirm 锁后复核用）：与 read_snapshot 同一
+%% 冻结身份 I 直接 presigned HEAD（不经 with_snapshot 重解析——二次 stat 必须
+%% 与首次 stat 同一对象位置）。统一形态 #{size, mtime, etag}；last-modified
+%% /etag 缺头时值为 undefined，对照层按缺证据 fail-closed。
+head_snapshot(I) ->
+    Url = signed(I, <<"HEAD">>, <<>>, calendar:universal_time(), 60),
+    case bounded_control_request(head, Url, [], 0) of
+        {ok, 200, Headers, <<>>} ->
+            {ok, stat_from_headers(Headers)};
+        {ok, 404, _, _} ->
+            {error, not_found};
+        {ok, Status, _, _} ->
+            {error, {storage_status, Status}};
+        {error, R} ->
+            {error, R}
+    end.
+
+stat_from_headers(Headers) ->
+    Size =
+        case header_value(Headers, "content-length") of
+            undefined ->
+                0;
+            V ->
+                try list_to_integer(V) of
+                    N when N >= 0 -> N;
+                    _ -> 0
+                catch
+                    _:_ -> 0
+                end
+        end,
+    #{
+        size => Size,
+        mtime =>
+            case header_value(Headers, "last-modified") of
+                undefined ->
+                    undefined;
+                Date ->
+                    case httpd_util:convert_request_date(Date) of
+                        {{_, _, _} = Dt, _} ->
+                            calendar:datetime_to_gregorian_seconds(Dt) - 62167219200;
+                        _ ->
+                            undefined
+                    end
+            end,
+        etag =>
+            case header_value(Headers, "etag") of
+                undefined -> undefined;
+                E -> iolist_to_binary(E)
+            end
+    }.
 
 presign_put(Ns, C, K, T) ->
     with_snapshot(Ns, C, K, fun(I) ->

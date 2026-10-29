@@ -30,6 +30,9 @@
 %%   %% 可选 migration_target => 正整数：fresh 库 goto 指定版本；不得与 reuse 联用。
 
 -export([provision/1, release/1, safe_connect/1, migration_head/0, schema_mode/1]).
+-ifdef(TEST).
+-export([await_connect/4]).
+-endif.
 
 -define(EXTENSIONS, [
     <<"pgcrypto">>,
@@ -50,6 +53,8 @@
     #{conn := pid(), maint_conn := pid(), db := binary(), server := map()}.
 provision(Opts) when is_map(Opts) ->
     _ = schema_mode(Opts),
+    ok = validate_connect_extra(maps:get(connect_extra, Opts, #{})),
+    ok = require_authorized_marker_fixture(maps:get(env_prefix, Opts, <<"INTTEST">>)),
     case {maps:get(reuse, Opts, false), maps:find(migration_target, Opts)} of
         {true, {ok, _}} ->
             erlang:error(marker_db_migration_target_cannot_reuse);
@@ -60,6 +65,72 @@ provision(Opts) when is_map(Opts) ->
         {false, _} ->
             provision_fresh(Opts)
     end.
+
+%% V5 random marker databases are outside the receipt; bind identity and slot first.
+require_authorized_marker_fixture(<<"V5_INTTEST", _/binary>> = Prefix) ->
+    case bound_v5_database(Prefix) of
+        {ok, _Db} -> ok;
+        error -> error({contract_conflict, marker_db_identity_and_slot_unverified})
+    end;
+require_authorized_marker_fixture(_) ->
+    case os:getenv("V5_RUN_DIR") of
+        false -> ok;
+        "" -> ok;
+        _ -> error({contract_conflict, marker_db_identity_and_slot_unverified})
+    end.
+
+%% A V5 fixture database is "bound" when the gate executor pins its exact
+%% receipt-shaped name via <PREFIX>_DB and the name belongs to this slot's
+%% authorization. Random marker names stay outside the receipt and are
+%% refused by the guard clause above.
+bound_v5_database(Prefix) ->
+    case env_or(<<Prefix/binary, "_DB">>, undefined) of
+        undefined ->
+            error;
+        Name0 when is_list(Name0) ->
+            bound_named_database(unicode:characters_to_binary(Name0));
+        Name0 when is_binary(Name0) ->
+            bound_named_database(Name0);
+        _ ->
+            error
+    end.
+
+bound_named_database(Name) ->
+    case bound_slot_name(Name) of
+        ok -> {ok, Name};
+        error -> error
+    end.
+
+bound_slot_name(<<"attv5_", _/binary>> = Name) ->
+    case os:getenv("V5_RUN_DIR") of
+        Env when Env =/= false andalso Env =/= "" ->
+            case os:getenv("V5_SLOT") of
+                false ->
+                    error;
+                Slot when is_list(Slot) ->
+                    Pattern = "^attv5_" ++ Slot ++ "_[a-z0-9_]+$",
+                    case re:run(Name, Pattern, [{capture, none}]) of
+                        match -> ok;
+                        _ -> error
+                    end;
+                _ ->
+                    error
+            end;
+        _ ->
+            error
+    end;
+bound_slot_name(_) ->
+    error.
+
+validate_connect_extra(Extra) when is_map(Extra) ->
+    case
+        lists:sort([K || K <- [host, port, username, password, database], maps:is_key(K, Extra)])
+    of
+        [] -> ok;
+        Keys -> error({marker_db_forbidden_connect_override, Keys})
+    end;
+validate_connect_extra(_) ->
+    error(marker_db_invalid_connect_extra).
 
 %% Explicit empty schema is only for fixtures applying their own reviewed DDL.
 %% Normal callers retain the strict complete migration chain. Empty still installs
@@ -84,13 +155,25 @@ provision_fresh(Opts) when is_map(Opts) ->
     _ = code:add_patha("deps/erlang_migrate/ebin"),
     Server = resolve_server(Prefix, ConnectExtra),
     MaintConn = connect_server(Server, maint_db(Prefix)),
-    DbName = marker_db_name(Prefix),
+    {DbName, Prebuilt} =
+        case bound_v5_database(Prefix) of
+            {ok, Bound} -> {Bound, true};
+            error -> {marker_db_name(Prefix), false}
+        end,
     try
-        ok = create_db_retry(MaintConn, DbName),
-        ok = ensure_extensions(Server, DbName),
-        case schema_mode(Opts) of
-            full -> ok = migrate_result(migrate_fresh_db(Server, DbName, Opts));
-            empty -> ok
+        case Prebuilt of
+            true ->
+                %% Bound databases are created, migrated and owned by the
+                %% gate executor under the authorized scratch receipt; the
+                %% fixture only connects.
+                ok;
+            false ->
+                ok = create_db_retry(MaintConn, DbName),
+                ok = ensure_extensions(Server, DbName),
+                case schema_mode(Opts) of
+                    full -> ok = migrate_result(migrate_fresh_db(Server, DbName, Opts));
+                    empty -> ok
+                end
         end,
         %% A1c：marker 库自身连接同样走重试（原先裸 safe_connect 一次失败即
         %% 整个 provision 报废），与 connect_server 同预算。
@@ -99,7 +182,10 @@ provision_fresh(Opts) when is_map(Opts) ->
     catch
         Class:Reason:Stack ->
             close_quiet(MaintConn),
-            try_drop_db(Server, DbName),
+            case Prebuilt of
+                true -> ok;
+                false -> try_drop_db(Server, DbName)
+            end,
             erlang:raise(Class, {marker_db_provision_failed, DbName, Reason}, Stack)
     end.
 
@@ -112,8 +198,13 @@ release(#{conn := Conn, maint_conn := MaintConn, db := DbName, server := Server}
 release_fresh(#{conn := Conn, maint_conn := MaintConn, db := DbName, server := Server}) ->
     close_quiet(Conn),
     close_quiet(MaintConn),
-    try_drop_db(Server, DbName),
-    ok.
+    case DbName of
+        <<"inttest_", _/binary>> ->
+            try_drop_db(Server, DbName);
+        _ ->
+            %% Receipt-shaped (gate-owned) databases are never dropped here.
+            ok
+    end.
 
 %% ===================================================================
 %% VM 级 marker 库复用（A1c，provision/1 传 reuse => true 时启用）
@@ -392,9 +483,19 @@ env_int(Name, Default) ->
 %% ===================================================================
 -spec safe_connect(map()) -> {ok, epgsql:connection()} | {error, term()}.
 safe_connect(Opts) ->
+    %% V5 connections must not bypass the unbound fixture through this public
+    %% entry: receipt-shaped and V5 marker targets are legal only when bound
+    %% to this slot's fixture inside a run; inside a V5 run every other target
+    %% except the maintenance database is refused too.
+    DbIdentity =
+        case maps:find(database, Opts) of
+            error -> maps:get(username, Opts, undefined);
+            {ok, Db} -> Db
+        end,
+    ok = authorize_connection_target(DbIdentity),
     Parent = self(),
-    Worker =
-        spawn(fun() ->
+    {Worker, Monitor} =
+        spawn_monitor(fun() ->
             process_flag(trap_exit, true),
             Result =
                 try epgsql:connect(Opts) of
@@ -411,14 +512,49 @@ safe_connect(Opts) ->
                 end,
             Parent ! {safe_connect_result, self(), Result}
         end),
+    await_connect(Worker, Monitor, 120000, maps:get(host, Opts, undefined)).
+
+await_connect(Worker, Monitor, Timeout, Host) ->
     receive
         {safe_connect_result, Worker, {safe_connect_raise, Class, R, S}} ->
+            erlang:demonitor(Monitor, [flush]),
             erlang:raise(Class, R, S);
         {safe_connect_result, Worker, Result} ->
-            Result
-    after 120000 ->
-        %% epgsql connect 自带 timeout；此处仅兜底防 worker 意外挂死
-        erlang:error({safe_connect_worker_timeout, maps:get(host, Opts, undefined)})
+            erlang:demonitor(Monitor, [flush]),
+            Result;
+        {'DOWN', Monitor, process, Worker, Reason} ->
+            {error, {safe_connect_worker_down, Reason}}
+    after Timeout ->
+        exit(Worker, kill),
+        receive
+            {'DOWN', Monitor, process, Worker, _} -> ok
+        end,
+        %% A successful connection racing the timeout must not be orphaned.
+        receive
+            {safe_connect_result, Worker, {ok, Conn}} -> close_quiet(Conn);
+            {safe_connect_result, Worker, _} -> ok
+        after 0 -> ok
+        end,
+        erlang:error({safe_connect_worker_timeout, Host})
+    end.
+
+authorize_connection_target(Db) when is_list(Db) ->
+    authorize_connection_target(unicode:characters_to_binary(Db));
+authorize_connection_target(<<"attv5_", _/binary>> = Name) ->
+    case bound_slot_name(Name) of
+        ok -> ok;
+        error -> error({contract_conflict, marker_db_identity_and_slot_unverified})
+    end;
+authorize_connection_target(<<"inttest_v5_inttest", _/binary>>) ->
+    error({contract_conflict, marker_db_identity_and_slot_unverified});
+authorize_connection_target(<<"postgres">>) ->
+    %% Maintenance database used by provisioning connections only.
+    ok;
+authorize_connection_target(_) ->
+    case os:getenv("V5_RUN_DIR") of
+        false -> ok;
+        "" -> ok;
+        _ -> error({contract_conflict, marker_db_identity_and_slot_unverified})
     end.
 
 flush_sock_exit() ->

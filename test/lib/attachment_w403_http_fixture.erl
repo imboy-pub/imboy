@@ -19,7 +19,12 @@
     inflight_overlap/3,
     request/6,
     success/1,
-    max_bytes/1
+    max_bytes/1,
+    %% W6-01 C 组拆分（attachment_w403_http_fixture_w601）所需的内部入口：
+    %% 只增导出，上方导出与实现保持 W4-03 验收原样。
+    payload/1,
+    seat_path/2,
+    widget_path/2
 ]).
 -include_lib("eunit/include/eunit.hrl").
 -define(LISTENER, attachment_w403_http).

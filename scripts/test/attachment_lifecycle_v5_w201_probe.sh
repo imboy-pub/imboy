@@ -9,13 +9,57 @@ DB="$1"; SECTION="$2"; OUT="$3"
 RUN_DIR="${V5_RUN_DIR:?explicit run required}"
 SLOT="${V5_SLOT:?explicit fixture slot required}"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PG_RESOURCE="$(python3 "$SCRIPT_DIR/attachment_lifecycle_v5_pg_guard.py" "$RUN_DIR" "$SLOT")" || exit 20
-IFS=$'\t' read -r PG_CONTAINER PG_HOST PG_PORT <<< "$PG_RESOURCE"
 valid_db() { [[ "$1" =~ ^attv5_${SLOT}_[a-z0-9_]+$ ]]; }
 valid_db "$DB" || exit 20
 for target in "${V5_EXPAND_DB:-attv5_${SLOT}_w102_expand}" "${V5_GUARDS_DB:-$DB}"; do
   valid_db "$target" || exit 20
 done
+# Never inherit a caller-selected SQL target; this probe stays on $DB only.
+unset PROBE_DB
+# Allowlist preflight before Docker: the exact databases this probe touches
+# (main, plus any explicitly overridden guards target) must already be
+# authorized in the run receipt.
+DB_CHECKS=("$DB")
+[ -z "${V5_GUARDS_DB:-}" ] || DB_CHECKS+=("$V5_GUARDS_DB")
+python3 - "$SCRIPT_DIR" "$RUN_DIR" "$SLOT" "${DB_CHECKS[@]}" <<'PYDB' || exit 20
+import hashlib
+import json
+from pathlib import Path
+import sys
+
+sys.path.insert(0, sys.argv[1])
+from attachment_lifecycle_v5_pg_guard import authorized_database
+
+try:
+    root = Path(sys.argv[2]).resolve()
+    state = json.loads((root / "state.json").read_text())
+    resource = json.loads((root / "resources/postgres.json").read_text())
+    raw = Path(state["authorization_path"]).read_bytes()
+    if hashlib.sha256(raw).hexdigest() != state["authorization_sha256"]:
+        raise ValueError("authorization changed")
+    allowlist = json.loads(raw)["resource_allowlist"]
+    for database in sys.argv[4:]:
+        authorized_database(allowlist, resource["allowed_slots"], sys.argv[3], database)
+except (OSError, ValueError, KeyError, TypeError):
+    print("CONTRACT_CONFLICT: W2-01 databases not explicitly authorized", file=sys.stderr)
+    sys.exit(20)
+PYDB
+PG_RESOURCE="$(python3 "$SCRIPT_DIR/attachment_lifecycle_v5_pg_guard.py" "$RUN_DIR" "$SLOT" "$DB")" || exit 20
+IFS=$'\t' read -r PG_CONTAINER PG_HOST PG_PORT <<< "$PG_RESOURCE"
+# Bind the audited connection identity before any exec: the loopback endpoint
+# must actually be live, otherwise the probe refuses to touch the container.
+python3 - "$PG_HOST" "$PG_PORT" <<'PYTCP' || exit 20
+import socket, sys
+s = socket.socket()
+s.settimeout(5)
+try:
+    s.connect((sys.argv[1], int(sys.argv[2])))
+except OSError:
+    print("BLOCKED_EXTERNAL: isolated PostgreSQL endpoint is not reachable", file=sys.stderr)
+    sys.exit(20)
+finally:
+    s.close()
+PYTCP
 PROBE_TMP="$(mktemp -d "$RUN_DIR/resources/w201-probe.XXXXXX")" || exit 20
 trap 'rm -f "$PROBE_TMP/out.txt" "$PROBE_TMP/err.txt"; rmdir "$PROBE_TMP"' EXIT
 PASS="$(cat "$RUN_DIR/resources/pg-attv5.password")" || exit 20
@@ -24,37 +68,56 @@ PSQL() { docker exec -i -e PGPASSWORD="$PASS" "$PG_CONTAINER" psql -X -U imboy_u
 : > "$OUT"
 ok=0; bad=0
 
-# name entrypoint scenario ac expected(0=fail-any|value) sql
+# name entrypoint scenario ac expected(fail|value) sql
 probe() {
   local name="$1" ep="$2" sc="$3" ac="$4" expected="$5" sql="$6" rc val
-  echo "$sql" | PSQL -tAq > "$PROBE_TMP/out.txt" 2>"$PROBE_TMP/err.txt"
+  local state_sql="" before="" after="" state_rc=1 expected_code="" expected_message=""
+  if [ "$expected" = fail ]; then
+    case "$name" in
+      failclosed_insert_error) expected_code=23514; expected_message='v5 register requires deadline and expiry<=deadline'; state_sql="SELECT EXISTS(SELECT 1 FROM \"user\" WHERE id=101) AND NOT EXISTS(SELECT 1 FROM attach_pending WHERE object_key='$KEY')" ;;
+      failclosed_bad_subject) expected_code=23514; expected_message='v5 register requires deadline and expiry<=deadline'; state_sql="SELECT EXISTS(SELECT 1 FROM organization WHERE id=98000101) AND NOT EXISTS(SELECT 1 FROM attach_pending WHERE object_key='$KEY2')" ;;
+      failclosed_snapshot_conflict)
+        expected_code=23510; expected_message='v5 registration snapshot mismatch on retry'; state_sql="SELECT 't|'||md5(to_jsonb(p)::text) FROM attach_pending p WHERE object_key='$KEY' AND client_upload_id='$CID'::uuid AND upload_registration='$REG'::jsonb" ;;
+      eb_register_requires_row|w_register_requires_row)
+        expected_code=P0002; expected_message='v5 eb register requires pre-created pending asset row'
+        local missing=919999999; [ "$name" = w_register_requires_row ] && missing=919999998
+        state_sql="SELECT EXISTS(SELECT 1 FROM workspace WHERE organization_id=98000101 AND id=97000101) AND NOT EXISTS(SELECT 1 FROM enterprise_asset WHERE id=$missing)" ;;
+      eb_identity_reassignment|w_identity_reassignment|ebw_race|ebw_swap)
+        expected_code=23510
+        expected_message='v5 eb registration snapshot mismatch'
+        case "$name" in *identity_reassignment) expected_message='v5 eb identity reassignment forbidden' ;; esac
+        local asset=910000201 cid="$CID3"; [ "$name" != eb_identity_reassignment ] && asset=910000202 && cid="$CID4"
+        state_sql="SELECT 't|'||md5(to_jsonb(a)::text) FROM enterprise_asset a WHERE id=$asset AND client_upload_id='$cid'::uuid" ;;
+      pin_different_rejected|pin_shape_swap_rejected)
+        expected_code=23510; expected_message='v5 upload receipt or declaration mismatch'; state_sql="SELECT 't|'||md5(to_jsonb(p)::text) FROM attach_pending p WHERE object_key='$KEY' AND upload_content='$CONTENT'::jsonb" ;;
+      pin_i_race|pin_i_swap)
+        expected_code=23510; expected_message='v5 upload receipt or declaration mismatch'; state_sql="SELECT 't|'||md5(to_jsonb(p)::text) FROM attach_pending p WHERE object_key='$KEY_I' AND upload_content='$CONTENT_I'::jsonb" ;;
+      ebp_race|ebp_swap)
+        expected_code=23510; expected_message='v5 upload enterprise receipt or declaration mismatch'; state_sql="SELECT 't|'||md5(to_jsonb(a)::text) FROM enterprise_asset a WHERE id=910000203 AND upload_content='$EB_CONTENT'::jsonb" ;;
+    esac
+    if [ "$name" = failclosed_snapshot_conflict ] && [ "$ep" = internal ]; then
+      state_sql="SELECT 't|'||md5(to_jsonb(p)::text) FROM attach_pending p WHERE object_key='$KEY2' AND client_upload_id='$CID2'::uuid AND upload_registration='$REG_APP'::jsonb"
+    fi
+    if [ -n "$state_sql" ]; then
+      before="$(echo "$state_sql" | PSQL -tAq 2>"$PROBE_TMP/err.txt")"; state_rc=$?
+    fi
+  fi
+  echo "$sql" | PSQL -v VERBOSITY=verbose -tAq > "$PROBE_TMP/out.txt" 2>"$PROBE_TMP/err.txt"
   rc=$?
   val="$(tail -1 "$PROBE_TMP/out.txt")"
   local pass=false
   if [ "$expected" = "fail" ]; then
-    [ $rc -ne 0 ] && pass=true
+    if [ "$state_rc" -eq 0 ] && [ -n "$expected_code" ] && [ $rc -ne 0 ] \
+       && grep -Fxq "ERROR:  $expected_code: $expected_message" "$PROBE_TMP/err.txt"; then
+      after="$(echo "$state_sql" | PSQL -tAq 2>/dev/null)" && \
+        [[ "$before" = t || "$before" = t\|* ]] && [ "$before" = "$after" ] && pass=true
+    fi
   elif [ $rc -eq 0 ] && [ "$val" = "$expected" ]; then
     pass=true
   fi
-  # entrypoint provenance: the protocol surface this probe exercises, keyed
-  # to the handler that owns the entrypoint in imboy_router.erl.
-  local route method handler
-  case "$ep" in
-    ordinary)        route="/api/v1/attachment/presign?operation=register"; method="GET"; handler="attach_handler" ;;
-    internal)        route="/api/internal/enterprise/asset/upload-register"; method="POST"; handler="enterprise_internal_idempotency" ;;
-    enterprise_seat) route="/api/v1/enterprise/actions/asset.upload.register"; method="POST"; handler="eb_tenant_handler" ;;
-    cs_widget)       route="/api/v1/cs/widget/asset.upload.register"; method="POST"; handler="cs_widget_handler" ;;
-    multipart)       route="/api/v1/attachment/upload"; method="POST"; handler="attach_handler" ;;
-    *)               route="/api/v1/attachment/presign"; method="GET"; handler="attach_handler" ;;
-  esac
-  local prov="{\"route\":\"$route\",\"method\":\"$method\",\"handler\":\"$handler\",\"request_id\":\"w201-${ep}-${name}\"}"
-  if $pass; then
-    ok=$((ok+1))
-    echo "{\"name\":\"$name\",\"entrypoint\":\"$ep\",\"scenario\":\"$sc\",\"ac\":\"$ac\",\"pass\":true,\"entrypoint_provenance\":$prov}" >> "$OUT"
-  else
-    bad=$((bad+1))
-    echo "{\"name\":\"$name\",\"entrypoint\":\"$ep\",\"scenario\":\"$sc\",\"ac\":\"$ac\",\"pass\":false,\"detail\":\"rc=$rc val=$val want=$expected $(head -c100 "$PROBE_TMP/err.txt" | tr -d '\n')\",\"entrypoint_provenance\":$prov}" >> "$OUT"
-  fi
+  # A SQL observation cannot establish the claimed HTTP handler or request.
+  bad=$((bad+1))
+  echo "{\"name\":\"$name\",\"entrypoint\":\"$ep\",\"scenario\":\"$sc\",\"ac\":\"$ac\",\"pass\":false,\"sql_pass\":$pass,\"detail\":\"real entrypoint evidence required\"}" >> "$OUT"
 }
 
 seed() {
@@ -277,7 +340,7 @@ probe pin_no_url_columns ordinary new_url_cannot_bypass_gateway AC01 "0" \
 # frozen internal signature expiry is enforced by elib_s3_sign ctx;
 # the gate executor runs that eunit suite first and passes W201_S3SIGN_OK.
 if [ "${W201_S3SIGN_OK:-0}" = "1" ]; then
-  ok=$((ok+1)); echo "{\"name\":\"pin_frozen_signature_expiry\",\"entrypoint\":\"ordinary\",\"scenario\":\"frozen_internal_signature_expiry\",\"ac\":\"AC01\",\"pass\":true}" >> "$OUT"
+  bad=$((bad+1)); echo "{\"name\":\"pin_frozen_signature_expiry\",\"entrypoint\":\"ordinary\",\"scenario\":\"frozen_internal_signature_expiry\",\"ac\":\"AC01\",\"pass\":false,\"detail\":\"real entrypoint evidence required\"}" >> "$OUT"
 else
   bad=$((bad+1)); echo "{\"name\":\"pin_frozen_signature_expiry\",\"entrypoint\":\"ordinary\",\"scenario\":\"frozen_internal_signature_expiry\",\"ac\":\"AC01\",\"pass\":false,\"detail\":\"gate must run elib_s3_sign_tests and set W201_S3SIGN_OK=1\"}" >> "$OUT"
 fi
@@ -594,4 +657,7 @@ case "$SECTION" in
 esac
 
 echo "{\"phase\":\"$SECTION\",\"ok\":$ok,\"bad\":$bad}" >> "$OUT"
-[ "$bad" -eq 0 ]
+if [ "$bad" -ne 0 ]; then
+  echo "probe failures: $bad" >&2
+  exit 20
+fi

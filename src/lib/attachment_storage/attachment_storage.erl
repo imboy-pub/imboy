@@ -21,6 +21,7 @@
     session_location/1,
     frozen_location/2,
     delete_snapshot/1,
+    head_snapshot/1,
     registration_location/3,
     resolve/1,
     canonical_namespace/1,
@@ -44,12 +45,98 @@ registry() ->
 %% @doc 启动期校验：roots 为空意味着所有新上传都会被拒绝（presign 503
 %% upload_root_unavailable）。fail-closed 本身是设计，但原因必须在启动日志里
 %% 一眼可见，而不是等用户上传失败才发现（F13：全新部署的默认形态就是空根）。
--spec validate_registry() -> ok | {error, empty_roots}.
+%%
+%% 非空 registry 还必须是可执行的（namespace_contract：alias 归 canonical、
+%% 同一物理 locator 只能有一个锁域、driver 必须已实现）：
+%%   * 缺 driver/namespace/endpoint/container → {incomplete_root, RootId}
+%%   * driver 不在 garage|disk → {unsupported_driver, RootId}
+%%   * 同一 namespace/alias 出现在两个声明 → {ambiguous_namespace, Ns}
+%%   * 两个根共享同一物理 locator {driver, endpoint, container} →
+%%     {duplicate_physical_root, [RootId...]}（同一物理对象两个 digest = 两个锁域）
+-spec validate_registry() -> ok | {error, term()}.
 validate_registry() ->
-    case maps:size(maps:get(roots, registry(), #{})) of
+    Roots = maps:get(roots, registry(), #{}),
+    case maps:size(Roots) of
         0 -> {error, empty_roots};
-        _ -> ok
+        _ -> validate_roots(maps:to_list(Roots))
     end.
+
+validate_roots(Roots) ->
+    case [{Id, R} || {Id, R} <- Roots, not valid_root_record(R)] of
+        [{Id, _} | _] ->
+            {error, {incomplete_root, Id}};
+        [] ->
+            validate_roots_drivers(Roots)
+    end.
+
+validate_roots_drivers(Roots) ->
+    case
+        [
+            Id
+         || {Id, R} <- Roots,
+            maps:get(driver, R) =/= <<"garage">>,
+            maps:get(driver, R) =/= <<"disk">>
+        ]
+    of
+        [Id | _] ->
+            {error, {unsupported_driver, Id}};
+        [] ->
+            case ambiguous_namespace(Roots) of
+                {error, _} = E ->
+                    E;
+                ok ->
+                    validate_physical_roots(Roots)
+            end
+    end.
+
+validate_physical_roots(Roots) ->
+    Physical = [{physical_locator(R), Id} || {Id, R} <- Roots],
+    case duplicate_pairs(Physical) of
+        [] -> ok;
+        [Ids | _] -> {error, {duplicate_physical_root, Ids}}
+    end.
+
+physical_locator(R) ->
+    {maps:get(driver, R), maps:get(endpoint, R), maps:get(container, R)}.
+
+duplicate_pairs(Physical) ->
+    Groups = lists:foldl(
+        fun({Loc, Id}, Acc) ->
+            maps:update_with(Loc, fun(Ids) -> [Id | Ids] end, [Id], Acc)
+        end,
+        #{},
+        Physical
+    ),
+    [lists:sort(Ids) || {_Loc, Ids} <- maps:to_list(Groups), length(Ids) > 1].
+
+%% 同一 namespace/alias 只能属于一个根；重复声明 = 未证明的分离。
+ambiguous_namespace(Roots) ->
+    Declared = [{Name, Id} || {Id, R} <- Roots, Name <- root_names(R)],
+    Counts = lists:foldl(
+        fun({Name, _Id}, Acc) ->
+            maps:update_with(Name, fun(N) -> N + 1 end, 1, Acc)
+        end,
+        #{},
+        Declared
+    ),
+    case [Name || {Name, N} <- maps:to_list(Counts), N > 1] of
+        [Name | _] -> {error, {ambiguous_namespace, Name}};
+        [] -> ok
+    end.
+
+root_names(R) ->
+    [maps:get(namespace, R) | maps:get(aliases, R, [])].
+
+valid_root_record(R) when is_map(R) ->
+    is_binary(maps:get(driver, R, undefined)) andalso
+        non_empty_binary(maps:get(namespace, R, undefined)) andalso
+        non_empty_binary(maps:get(endpoint, R, undefined)) andalso
+        non_empty_binary(maps:get(container, R, undefined)) andalso
+        lists:all(fun non_empty_binary/1, maps:get(aliases, R, []));
+valid_root_record(_) ->
+    false.
+
+non_empty_binary(B) -> is_binary(B) andalso byte_size(B) > 0.
 
 %% @doc namespace（storage_namespace）→ root 记录。别名一律归 canonical
 %% root（返回记录含 canonical 标识）；未知 namespace → {error, unknown}。
@@ -272,3 +359,14 @@ frozen_location(Key, Row) -> location_row(Key, Row).
 delete_snapshot(#{driver := disk} = I) -> attachment_storage_disk:delete_snapshot(I);
 delete_snapshot(#{driver := garage} = I) -> attachment_storage_garage:delete_snapshot(I);
 delete_snapshot(_) -> {error, location_unverified}.
+
+%% @doc O(1) 元数据 stat（W2-02 confirm 锁后复核用）：对已校验冻结身份做
+%% 二次 head，返回统一形态 #{size, mtime, etag}（mtime/etag 取不到时值为
+%% undefined，对照层按缺证据 fail-closed）。与 delete_snapshot 同一分发
+%% 形态：driver 自行用 HEAD/read_link_info，不经 with_snapshot 重解析。
+-spec head_snapshot(map()) ->
+    {ok, #{size := non_neg_integer(), mtime => integer() | undefined, etag => binary() | undefined}}
+    | {error, not_found | term()}.
+head_snapshot(#{driver := disk} = I) -> attachment_storage_disk:head_snapshot(I);
+head_snapshot(#{driver := garage} = I) -> attachment_storage_garage:head_snapshot(I);
+head_snapshot(_) -> {error, location_unverified}.

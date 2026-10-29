@@ -123,7 +123,7 @@ get_post_any(PostId) ->
 delete_post(AuthorUid, PostId) ->
     case
         elib_pg:with_tx(fun(Conn) ->
-            case moment_post_repo:soft_delete(PostId, AuthorUid) of
+            case moment_post_repo:soft_delete(Conn, PostId, AuthorUid) of
                 {ok, Count} when Count > 0 ->
                     case moment_timeline_repo:hide_by_post(Conn, PostId) of
                         {ok, _} ->
@@ -148,7 +148,7 @@ delete_post(AuthorUid, PostId) ->
 delete_post_by_admin(PostId) ->
     case
         elib_pg:with_tx(fun(Conn) ->
-            case moment_post_repo:soft_delete_by_admin(PostId) of
+            case moment_post_repo:soft_delete_by_admin(Conn, PostId) of
                 {ok, Count} when Count > 0 ->
                     case moment_timeline_repo:hide_by_post(Conn, PostId) of
                         {ok, _} ->

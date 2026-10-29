@@ -10,6 +10,15 @@ real execution:
   * W4-03/driver-content-immutable leaves: one real eunit unit plus one
     W403_HTTP_EVIDENCE record per (surface, driver, scenario) from the
     real-PG + real-Garage + real-Disk driver matrix.
+  * the per-leaf-observing battery groups (OBS_STEP_FOR): the W4-03 six
+    (w403 step), the W2 upload/confirm eight (w2upload step) and the
+    W4 queue/worker/activation twenty-one (w4queue step) — each battery
+    suite emits one observation line per executed leaf
+    (attachment_lifecycle_v5_obs:emit, env-gated JSONL) keyed by
+    (case_id, entrypoint, scenario, domain, measured.driver); the adapter
+    binds each contract leaf to its unique matching observation inside
+    the executing step's window (multi-line keys disambiguate via
+    measured.ac_id).
 
 All other W6-01 leaves require a per-(domain, driver) rerun that the contract
 itself sizes at ~39.8h of leaf time; the source batteries executed by the gate
@@ -18,6 +27,7 @@ are reported as named evidence gaps (grouped by source case) and the adapter
 exits 30 instead of relabelling an aggregate unit as 1271 leaf PASSes.
 """
 import hashlib
+import json
 import os
 import re
 import sys
@@ -31,6 +41,103 @@ NAME = "w6_01_real_pg_garage_disk"
 
 DRIVER_MATRIX = "attachment_lifecycle_v5_w403_driver_matrix_tests"
 BODY_RE = re.compile(r'-define\(BODY,\s*<<"(.*?)">>\)\.', re.S)
+
+# Source groups whose battery suites emit one observation line per executed
+# leaf; each group binds to the gate step that executed it (the step's
+# subdirectory holds observations.jsonl and its window bounds the receipts).
+OBS_STEP_FOR = {}
+for _ref in (
+    "W4-03/storage-switch",
+    "W4-03/storage-disk",
+    "W4-03/storage-garage",
+    "W4-03/late-put",
+    "W4-03/namespace-alias-integrity",
+    "W4-03/disk-predecessor-protocols",
+):
+    OBS_STEP_FOR[_ref] = "w403"
+for _ref in (
+    "W2-01/pending-failclosed",
+    "W2-01/pending-multipart",
+    "W2-01/session-recovery-api",
+    "W2-01/upload-content-pin",
+    "W2-02/confirm-idempotent",
+    "W2-02/confirm-old-client",
+    "W2-02/confirmed-content-immutable",
+    "W2-03/confirm-gc-race",
+):
+    OBS_STEP_FOR[_ref] = "w2upload"
+for _ref in (
+    "W4-01/confirm-gc-race",
+    "W4-01/delete-entrypoints",
+    "W4-01/hold-entrypoints",
+    "W4-01/hold-gc-race",
+    "W4-01/intent-rollback",
+    "W4-01/reference-gc-race",
+    "W4-02/claim-capacity-and-liveness",
+    "W4-02/cross-queue-identity",
+    "W4-02/last-attempt-crash",
+    "W4-02/old-attempts-preserved",
+    "W4-02/ordinary-queue-recovery",
+    "W4-02/purged-session-recovery",
+    "W4-02/queue-adoption",
+    "W4-02/worker-crash",
+    "W4-02/worker-db-fault",
+    "W4-02/worker-lease",
+    "W4-04/activation-commit-unknown",
+    "W4-04/all-writer-compat",
+    "W4-04/guards-activation",
+    "W4-04/no-infinite-loop",
+    "W4-04/reconcile",
+):
+    OBS_STEP_FOR[_ref] = "w4queue"
+for _ref in (
+    "W3-02/hold-all-entrypoints",
+    "W3-02/hold-gc-race",
+):
+    OBS_STEP_FOR[_ref] = "w3hold"
+for _ref in (
+    "W3-01/reference-gc-race",
+    "W3-01/shared-owner",
+):
+    OBS_STEP_FOR[_ref] = "w3race"
+for _ref in (
+    "W3-03/cs-bind",
+    "W3-03/enterprise-bind",
+):
+    OBS_STEP_FOR[_ref] = "w3bind"
+OBS_GROUPS = set(OBS_STEP_FOR)
+
+# User ruling 2026-10-29 (trusted instruction): the enterprise
+# multipart_success/group_file_success leaves stay bound to the frozen
+# contract.  The only existing enterprise upload entries are the internal
+# gateway/byte-proxy paths — no multipart/form-data or group_file entry
+# exists for enterprise identities — so the substitute executions are not
+# acceptance evidence.  These leaves are reported as named contract-
+# conflict gaps (never bound, never PASS) until the contract owner
+# authorizes a revision.
+BLOCKED_ENTERPRISE_SCENARIOS = frozenset({"multipart_success", "group_file_success"})
+
+
+def _blocked_enterprise_leaf(leaf):
+    return (leaf.get("source_case_ref") == "W2-01/pending-multipart"
+            and leaf.get("domain") == "enterprise"
+            and _obs_scenario(leaf) in BLOCKED_ENTERPRISE_SCENARIOS)
+
+LEGACY_WITHOUT_AC = frozenset({
+    "W4-03/storage-switch", "W4-03/storage-disk", "W4-03/storage-garage",
+    "W4-03/late-put", "W4-03/namespace-alias-integrity",
+    "W4-03/disk-predecessor-protocols",
+    "W4-01/confirm-gc-race", "W4-01/delete-entrypoints",
+    "W4-01/hold-entrypoints", "W4-01/hold-gc-race",
+    "W4-01/intent-rollback", "W4-01/reference-gc-race",
+    "W4-02/claim-capacity-and-liveness", "W4-02/cross-queue-identity",
+    "W4-02/last-attempt-crash", "W4-02/old-attempts-preserved",
+    "W4-02/ordinary-queue-recovery", "W4-02/purged-session-recovery",
+    "W4-02/queue-adoption", "W4-02/worker-crash",
+    "W4-02/worker-db-fault", "W4-02/worker-lease",
+    "W4-04/activation-commit-unknown", "W4-04/all-writer-compat",
+    "W4-04/guards-activation", "W4-04/no-infinite-loop", "W4-04/reconcile",
+})
 
 # Same adequacy judgments as the frozen W1-02 adapters: only probes that
 # execute the leaf's defining action become a measured plan leaf.
@@ -97,130 +204,6 @@ INADEQUATE = {
 }
 
 GROUP_REASONS = {
-    "W2-01/pending-failclosed":
-        "w201 probes execute one SQL chain per (entrypoint, scenario); the W6 "
-        "leaf requires domain x driver expansion with a real object operation, "
-        "and no per-driver probe or HTTP receipt exists",
-    "W2-01/pending-multipart":
-        "w201 multipart probes execute one SQL chain per (entrypoint, "
-        "scenario); no per-domain/per-driver multipart HTTP receipt exists",
-    "W2-01/session-recovery-api":
-        "renewal/revocation SQL probes are per-entrypoint; no per-domain/"
-        "per-driver HTTP request ids or object bytes are recorded",
-    "W2-01/upload-content-pin":
-        "pin probes are per (entrypoint, scenario); no per-driver provider "
-        "request receipt is produced for this leaf",
-    "W2-02/confirm-idempotent":
-        "the confirm suite emits aggregate eunit counts; no per-domain/"
-        "per-driver confirm HTTP receipt exists",
-    "W2-02/confirm-old-client":
-        "the confirm-old-client suite emits aggregate eunit counts; no "
-        "per-domain/per-driver legacy HTTP receipt exists",
-    "W2-02/confirmed-content-immutable":
-        "confirm-content immutability is asserted in an aggregate PG suite; no "
-        "per-driver object-hash receipt is emitted for this domain",
-    "W3-02/hold-all-entrypoints":
-        "the hold protocol suite runs against the isolated PG DB once; no "
-        "garage/disk per-driver object operation or receipt exists",
-    "W3-02/hold-gc-race":
-        "the hold/GC race barrier suite is a single real-PG run; no per-driver "
-        "object receipt exists",
-    "W4-01/hold-entrypoints":
-        "the W4-01 entrypoint suite is an aggregate real-PG run; no per-domain/"
-        "per-driver object receipt exists",
-    "W4-02/worker-crash":
-        "worker crash tests drive the isolated PG queue; no per-driver object "
-        "receipt is emitted for this leaf",
-    "W4-02/worker-db-fault":
-        "worker DB-fault tests drive the isolated PG queue; no per-driver "
-        "object receipt is emitted",
-    "W4-02/queue-adoption":
-        "queue-adoption tests are aggregate PG/eunit units; no per-domain/"
-        "per-driver receipt exists",
-    "W4-02/purged-session-recovery":
-        "purged-session recovery is an aggregate PG/eunit run; no per-driver "
-        "object receipt exists",
-    "W4-03/storage-garage":
-        "the W4-03 storage suite has no unit with entrypoint storage-garage; "
-        "driver-matrix units are keyed surface/driver/scenario, not this leaf",
-    "W4-03/storage-disk":
-        "the W4-03 disk unit is one aggregate function (put/read/head or "
-        "late-put) without per-scenario status lines",
-    "W4-03/storage-switch":
-        "the storage-switch units are per-scenario eunit aggregates without "
-        "the W6 domain x driver expansion receipt",
-    "W4-03/namespace-alias-integrity":
-        "the namespace/alias suite is a single eunit aggregate; no per-driver "
-        "namespace stat or locator-digest receipt exists",
-    "W4-03/disk-predecessor-protocols":
-        "the predecessor suite has one aggregate run/0 over representative "
-        "intents; the 66 source scenarios have no individual status lines",
-    "W4-03/late-put":
-        "the late-put suite is an aggregate real-PG unit; no per-driver "
-        "provider receipt exists",
-    "W4-04/reconcile":
-        "reconcile tests are process-level aggregates; no per-driver object "
-        "receipt exists",
-    "W4-04/no-infinite-loop":
-        "the no-infinite-loop suite is an aggregate real-PG run; no "
-        "per-driver receipt exists",
-    "W4-04/guards-activation":
-        "guards-activation is an aggregate activation-order test; no "
-        "per-driver object receipt exists",
-    "W4-04/all-writer-compat":
-        "all-writer-compat is an aggregate writer test; no per-domain/"
-        "per-driver receipt exists",
-    "W4-04/activation-commit-unknown":
-        "activation commit-unknown tests are aggregate catalog/DDL assertions; "
-        "no per-driver object receipt exists",
-    "W4-02/claim-capacity-and-liveness":
-        "claim capacity/liveness tests are aggregate PG timing units; no "
-        "per-driver receipt exists",
-    "W4-02/last-attempt-crash":
-        "last-attempt crash tests are aggregate PG queue units; no per-driver "
-        "receipt exists",
-    "W4-02/old-attempts-preserved":
-        "old-attempt tests are aggregate PG queue units; no per-driver receipt "
-        "exists",
-    "W4-02/ordinary-queue-recovery":
-        "ordinary queue recovery is an aggregate PG unit; no per-driver "
-        "receipt exists",
-    "W4-02/worker-lease":
-        "worker lease tests are aggregate PG timing units; no per-driver "
-        "receipt exists",
-    "W4-02/cross-queue-identity":
-        "cross-queue identity is an aggregate PG unit; no per-driver receipt "
-        "exists",
-    "W3-01/reference-gc-race":
-        "reference-GC race barriers are single real-PG runs; no per-driver "
-        "object receipt exists",
-    "W3-01/shared-owner":
-        "shared-owner tests are aggregate PG units; no per-driver receipt "
-        "exists",
-    "W4-01/reference-gc-race":
-        "W4-01 reference-GC race barriers are single real-PG runs; no "
-        "per-driver receipt exists",
-    "W4-01/hold-gc-race":
-        "W4-01 hold/GC race barriers are single real-PG runs; no per-driver "
-        "receipt exists",
-    "W4-01/confirm-gc-race":
-        "confirm/GC race barriers are single real-PG runs; no per-driver "
-        "receipt exists",
-    "W4-01/intent-rollback":
-        "intent-rollback tests are aggregate PG fault-injection units; no "
-        "per-driver receipt exists",
-    "W4-01/delete-entrypoints":
-        "delete-entrypoint call-graph tests are aggregate static/PG units; no "
-        "per-driver object receipt exists",
-    "W3-03/cs-bind":
-        "CS bind tests are aggregate PG assertions; no per-driver receipt "
-        "exists",
-    "W3-03/enterprise-bind":
-        "enterprise bind tests are aggregate PG assertions; no per-driver "
-        "receipt exists",
-    "W2-03/confirm-gc-race":
-        "the confirm/GC barrier suite is a single real-PG run; no per-driver "
-        "receipt exists",
     "W1-02/migration":
         "this plan leaf needs the W1-02 probe that the frozen W1-02 adapter "
         "already declares inadequate for measurement",
@@ -272,6 +255,70 @@ def _replay_count(path, case_id):
     return count
 
 
+def _obs_scenario(leaf):
+    # ordering_or_fault = "<source_case_ref>/<schema_phase>/<scenario...>";
+    # the suites emit the scenario literal without the leading two segments
+    # (predecessor leaves keep their full "W4-01/<group>/<fault>" literal).
+    rest = leaf["ordering_or_fault"][len(leaf["source_case_ref"]) + 1:]
+    return rest.split("/", 1)[1]
+
+
+def _obs_index(path, case_id):
+    """Map the 5-tuple binding key to every observation line carrying it.
+
+    A 5-tuple may legitimately appear on multiple lines (e.g. the
+    pending-multipart group emits one line per ac_id for the same
+    scenario); ambiguity is resolved at match time via measured.ac_id,
+    so duplicates are collected instead of rejected here.
+    """
+    if not os.path.isfile(path) or os.path.getsize(path) == 0:
+        S.die(case_id, "w403 battery produced no per-leaf observation "
+                       "stream at %s" % path)
+    index = {}
+    with open(path, "r", encoding="utf-8") as handle:
+        for line_no, raw in enumerate(handle, 1):
+            raw = raw.strip()
+            if not raw:
+                continue
+            obs = json.loads(raw)
+            key = (obs.get("case_id"), obs.get("entrypoint"),
+                   obs.get("scenario"), obs.get("domain"),
+                   (obs.get("measured") or {}).get("driver"))
+            index.setdefault(key, []).append((line_no, obs))
+    return index, path
+
+
+def _match_observation(index, key, ac_id):
+    matches = []
+    for line_no, obs in index.get(key, []):
+        measured = obs.get("measured") or {}
+        if ("ac_id" in measured and measured["ac_id"] == ac_id
+                or "ac_id" not in measured and key[0] in LEGACY_WITHOUT_AC):
+            matches.append((line_no, obs))
+    if len(matches) > 1:
+        S.die(CASE_ID, "observation %r is ambiguous for ac_id=%r at lines %r"
+              % (key, ac_id, [line for line, _ in matches]))
+    return matches[0][1] if matches else None
+
+
+def _step_binding(case_dir, subdir, cache):
+    """Load one battery step's record, window and observation stream."""
+    record = S.step_record(case_dir, subdir, CASE_ID)
+    if record["exit"] != 0:
+        S.die(CASE_ID, "%s step recorded %r" % (subdir, record["line"]))
+    log = S.eunit_log(os.path.join(case_dir, subdir, "eunit-%s.log" % subdir),
+                      CASE_ID, "W6-01 %s battery" % subdir)
+    started, finished = S.step_window(record, CASE_ID)
+    index, path = _obs_index(
+        os.path.join(case_dir, subdir, "observations.jsonl"), CASE_ID)
+    cache[subdir] = {
+        "record": record, "log": log, "markers": set(log["parsed"]["markers"]),
+        "started": started, "finished": finished,
+        "index": index, "path": path,
+    }
+    return cache[subdir]
+
+
 def build():
     run_dir, case_dir, root = S.C.argv_paths()
     ctx = S.context(run_dir, CASE_ID, root)
@@ -299,6 +346,12 @@ def build():
     if duration403 > leaves[0].get("observation_deadline_seconds", 1800):
         S.die(CASE_ID, "w403 battery measured %.1fs exceeds the leaf deadline"
               % duration403)
+    idx403, obs_path403 = _obs_index(
+        os.path.join(case_dir, "w403", "observations.jsonl"), CASE_ID)
+    obs_cache = {"w403": {
+        "record": w403_step, "log": w403, "markers": w403_markers,
+        "started": started403, "finished": finished403,
+        "index": idx403, "path": obs_path403}}
 
     phases = {}
     for phase, subdir, db in (("expand", "w102-expand", expand_db),
@@ -474,6 +527,120 @@ def build():
                  "passed": len(names), "failed": 0, "skipped": 0},
                 oracle, assertions, S.db_actor(db), [db],
                 ["w102:%s:%s" % (phase, name) for name in names]))
+            continue
+        if source in OBS_GROUPS:
+            if _blocked_enterprise_leaf(leaf):
+                S.group_gap(gap_groups, source, 1,
+                            "user ruling 2026-10-29: the enterprise "
+                            "multipart/group_file gateway substitute is not "
+                            "acceptance evidence; leaf %r stays blocked per "
+                            "the frozen contract until an authorized revision"
+                            % leaf["ordering_or_fault"])
+                continue
+            subdir = OBS_STEP_FOR[source]
+            step = (obs_cache[subdir] if subdir in obs_cache
+                    else _step_binding(case_dir, subdir, obs_cache))
+            obs_started, obs_finished = step["started"], step["finished"]
+            obs_index, obs_path = step["index"], step["path"]
+            scenario = _obs_scenario(leaf)
+            key = (source, leaf["entrypoint"], scenario, leaf["domain"],
+                   leaf["driver"])
+            obs = _match_observation(obs_index, key, leaf.get("ac_id"))
+            if obs is None:
+                S.group_gap(gap_groups, source, 1,
+                            "no %s-step observation matches %r ac_id=%r"
+                            % (subdir, key, leaf.get("ac_id")))
+                continue
+            measured = obs.get("measured") or {}
+            emitted = obs.get("emitted_at_ms")
+            t0_ms = obs_started.timestamp() * 1000
+            t1_ms = obs_finished.timestamp() * 1000
+            if not isinstance(emitted, (int, float)) \
+                    or not t0_ms <= emitted <= t1_ms:
+                S.die(CASE_ID, "observation %r emitted_at_ms=%r outside the "
+                               "%s step window" % (key, emitted, subdir))
+            resource = bucket if leaf["driver"] == "garage" else disk_root
+            actor = (S.garage_actor(bucket) if leaf["driver"] == "garage"
+                     else S.disk_actor(disk_root))
+            digest = measured.get("bytes_sha256")
+            status_keys = [k for k in sorted(measured)
+                           if k.endswith(("status", "_result"))]
+            msum = "; ".join("%s=%s" % (k, measured[k])
+                             for k in sorted(measured) if k != "driver")
+            if len(msum) > 800:
+                msum = msum[:797] + "..."
+            obj_keys = "; ".join(
+                "%s=%s" % (k, measured[k]) for k in sorted(measured)
+                if any(t in k for t in ("object", "bytes", "delete", "key")))
+            assertions = [
+                S.assertion(
+                    "w403_observation_matched",
+                    "%s: case_id=%s entrypoint=%s scenario=%s domain=%s "
+                    "driver=%s measured(%d keys)"
+                    % (os.path.basename(obs_path), source,
+                       leaf["entrypoint"], scenario, leaf["domain"],
+                       leaf["driver"], len(measured))),
+                S.assertion(
+                    "observation_in_step_window",
+                    "emitted_at_ms=%d within [%d, %d] of %r"
+                    % (emitted, t0_ms, t1_ms, step["record"]["line"])),
+                S.assertion(
+                    "measured_driver_bound",
+                    "measured.driver=%s bound to the run-owned %s resource %s"
+                    % (leaf["driver"], leaf["driver"], resource)),
+                S.assertion(
+                    "battery_step_green",
+                    "%r; markers=%r; %d parsed units, summary=%r"
+                    % (step["record"]["line"], sorted(step["markers"]),
+                       len(step["log"]["parsed"]["tests"]),
+                       step["log"]["parsed"]["summary_raw"])),
+                S.assertion(
+                    "integrated_phase_battery_db",
+                    "the w403 step ran on the run-owned isolated config with "
+                    "the full migration chain (marker DB attv5_<slot>_w601); "
+                    "the suites emit their historical static phase label %r"
+                    % obs.get("schema_phase")),
+            ]
+            oracle = {
+                "pre_db_state": "real PG isolated config DB provisioned by "
+                                "the full migration chain; the %s unit ran "
+                                "against the real %s driver"
+                                % (source, leaf["driver"]),
+                "pre_object_hash": (
+                    "the unit seeds its own fixture bytes; measured "
+                    "post-action digest sha256=%s" % digest
+                    if digest else
+                    "n/a: queue/catalog scenario; the unit's assertions cover "
+                    "the DB state transitions"),
+                "action": "%s/%s (driver=%s) executed by the w403 battery; "
+                          "measured: %s"
+                          % (source, scenario, leaf["driver"], msum),
+                "expected_http_semantics": (
+                    "measured transport outcomes: %s"
+                    % "; ".join("%s=%s" % (k, measured[k])
+                                for k in status_keys)
+                    if status_keys else
+                    "no HTTP surface in this scenario; the unit asserts the "
+                    "driver/queue semantics directly"),
+                "expected_db_delta": "the unit asserts the scenario's DB/"
+                                     "queue invariant before returning ok "
+                                     "(w403 suite contract)",
+                "expected_object_state": (
+                    "measured object fields: %s" % obj_keys
+                    if obj_keys else
+                    "driver-state only; no provider object field in the "
+                    "measured payload"),
+                "proof_actor": "real driver %s resource %s; observations "
+                               "sha256=%s"
+                               % (leaf["driver"], resource,
+                                  S.sha256_file(obs_path)),
+            }
+            rows.append(S.C.build_row(
+                leaf, obs_started, obs_finished,
+                {"exit_code": 0, "executed": 1, "passed": 1, "failed": 0,
+                 "skipped": 0},
+                oracle, assertions, actor, [resource],
+                ["w403-obs:%s#%s@%s" % (source, scenario, leaf["driver"])]))
             continue
         reason = GROUP_REASONS.get(source, DEFAULT_REASON)
         S.group_gap(

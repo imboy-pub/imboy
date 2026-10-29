@@ -5,6 +5,7 @@
 #     [--scenario SCENARIO] --run-dir ABS --slot SLOT_ID [--schema-phase base|expand-queue|guards-contract|integrated]
 # Exit: 0 pass, 2 usage, 20 CONTRACT_CONFLICT, 30 NO_GO, 75 BLOCKED_EXTERNAL.
 set -u
+V5_ORIGINAL_ARGS=("$@")
 printf -v V5_GATE_COMMAND '%q ' bash "$0" "$@"
 V5_GATE_COMMAND="${V5_GATE_COMMAND% }"
 export V5_GATE_COMMAND
@@ -39,6 +40,34 @@ esac
 [ -d "$RUN_DIR" ] || { echo "run dir not found: $RUN_DIR" >&2; exit 2; }
 STATE="$RUN_DIR/state.json"
 [ -f "$STATE" ] || { echo "run not admitted (state.json missing)" >&2; exit 20; }
+if [ -z "${V5_SLOT_LOCK_FD:-}" ]; then
+  exec python3 "$SCRIPT_DIR/attachment_lifecycle_v5_slot_supervisor.py" \
+    --run-dir "$RUN_DIR" --slot "$SLOT" -- bash "$0" "${V5_ORIGINAL_ARGS[@]}"
+fi
+# Slot mutual exclusion is proven by the exec chain: the supervisor acquires
+# the flock and only closes it after the gate exits. --verify-fd and
+# --require-exclusive are deliberately fail-closed refusals in the supervisor
+# (pinned by its self-test); the gate must not gate on them.
+# Admission preflight: a run whose live admission state is gone must not
+# produce any gate output at all (not even a log line or evidence dir).
+python3 -c '
+import json, os, sys, time
+state = json.load(open(sys.argv[1]))
+run_id = os.path.basename(os.path.normpath(sys.argv[2]))
+def blocked(msg):
+    print("BLOCKED_EXTERNAL: %s" % msg, file=sys.stderr)
+    raise SystemExit(75)
+if not isinstance(state, dict):
+    blocked("run state snapshot is not an object")
+if state.get("mode") != "IMPLEMENTATION" or state.get("run_id") != run_id:
+    blocked("run %s is not live in IMPLEMENTATION mode" % run_id)
+lease = state.get("lease_until")
+if not isinstance(lease, (int, float)) or isinstance(lease, bool) or lease <= time.time():
+    blocked("run lease expired; re-admit the run before gating")
+auth_path = state.get("authorization_path")
+if not isinstance(auth_path, str) or not auth_path or not os.path.isfile(auth_path):
+    blocked("authorization artifact missing")
+' "$STATE" "$RUN_DIR" || exit $?
 
 PLAN_DIR="$(python3 -c "import json;print(json.load(open('$STATE'))['plan_dir'])")"
 
@@ -48,7 +77,7 @@ pyval() { python3 -c "
 import json, sys
 c = json.load(open(sys.argv[1]))
 task = sys.argv[2]; key = sys.argv[3]
-for t in c['tasks']:
+for t in (c.get('tasks') or []):
     if t['task_id'] == task:
         if key == 'exists':
             print('yes')
@@ -65,7 +94,7 @@ print('no' if key == 'exists' else '[]')
 TASK_OK="$(pyval exists)"
 CASES_JSON="$(pyval cases)"
 PHASES_JSON="$(pyval phases)"
-[ "$TASK_OK" = "yes" ] || { echo "task $TASK not in frozen contract" >&2; exit 20; }
+[ "$TASK_OK" = "yes" ] || { echo "BLOCKED_EXTERNAL: task $TASK not in frozen contract" >&2; exit 75; }
 if [ -n "$CASE" ]; then
   echo "$CASES_JSON" | grep -q "\"$TASK/$CASE\"" || { echo "case $CASE not registered under $TASK" >&2; exit 2; }
 fi
@@ -78,6 +107,32 @@ fi
 
 EVID="$RUN_DIR/evidence/$TASK"
 mkdir -p "$EVID" "$RUN_DIR/logs"
+# Output-path safety: the gate must never write through a symbolic link that
+# already exists inside the evidence tree it is about to own.
+python3 -c '
+import os, sys
+def blocked(path):
+    print("BLOCKED_EXTERNAL: evidence path %s is a symbolic link" % path, file=sys.stderr)
+    raise SystemExit(75)
+def scan(path):
+    parts = []
+    head = os.path.normpath(path)
+    while head and head != os.sep:
+        parts.append(head)
+        head = os.path.dirname(head)
+    for p in reversed(parts):
+        if os.path.islink(p):
+            blocked(p)
+scan(sys.argv[1])
+if len(sys.argv) > 2 and sys.argv[2]:
+    target = os.path.join(sys.argv[1], sys.argv[2])
+    scan(target)
+    if os.path.isdir(target):
+        for name in sorted(os.listdir(target)):
+            child = os.path.join(target, name)
+            if os.path.islink(child):
+                blocked(child)
+' "$EVID" "$CASE" || exit $?
 # seal.sh requires an explicit absolute V5_RUN_DIR; export it once here so
 # cases that skip ensure_pg (e.g. W0-01) still seal.
 export V5_RUN_DIR="$RUN_DIR"
@@ -86,9 +141,23 @@ exec > >(tee -a "$LOG") 2>&1
 
 PG_READY=0
 PG_CONFIG_READY=0
+PG_CONFIG_DIR=""
+V5_ALIAS_ROOT=""
+cleanup_gate() {
+  if [ -n "$PG_CONFIG_DIR" ]; then
+    rm -f "$PG_CONFIG_DIR/isolated.config"
+    rmdir "$PG_CONFIG_DIR"
+  fi
+  if [ -n "$V5_ALIAS_ROOT" ]; then
+    rm -f "$V5_ALIAS_ROOT/imboy"
+    rmdir "$V5_ALIAS_ROOT"
+  fi
+}
+trap cleanup_gate EXIT
 ensure_pg() {
   if [ "$PG_READY" -eq 0 ]; then
-    PG_RESOURCE="$(python3 "$SCRIPT_DIR/attachment_lifecycle_v5_pg_guard.py" "$RUN_DIR" "$SLOT")" || return 20
+    PG_RESOURCE="$(python3 "$SCRIPT_DIR/attachment_lifecycle_v5_pg_guard.py" \
+      "$RUN_DIR" "$SLOT" "attv5_${SLOT}_pool")" || return 20
     IFS=$'\t' read -r PG_CONTAINER V5_PG_HOST V5_PG_PORT <<< "$PG_RESOURCE"
     export PG_CONTAINER V5_PG_HOST V5_PG_PORT V5_RUN_DIR="$RUN_DIR" V5_SLOT="$SLOT"
     PG_PASSWORD_FILE="$RUN_DIR/resources/pg-attv5.password"
@@ -104,9 +173,8 @@ ensure_pg() {
   [ "$PG_CONFIG_READY" -eq 0 ] || return 0
   CONFIG_SOURCE="${EUNIT_CONFIG:-$ROOT/config/sys.local}.config"
   [ -f "$CONFIG_SOURCE" ] || { echo "BLOCKED_EXTERNAL: explicit EUNIT_CONFIG required" >&2; return 75; }
-  POOL_DB="$(w201_db_setup "$RUN_DIR/resources/${SLOT}-pool" pool)" || return $?
+  POOL_DB="$(w201_db_setup "$RUN_DIR/resources/${SLOT}-pool" pool)"
   PG_CONFIG_DIR="$(mktemp -d "$RUN_DIR/resources/${SLOT}-config.XXXXXX")" || return 20
-  trap 'rm -f "$PG_CONFIG_DIR/isolated.config"; rmdir "$PG_CONFIG_DIR"' EXIT
   escript "$SCRIPT_DIR/attachment_lifecycle_v5_pg_config.escript" \
     "$CONFIG_SOURCE" "$PG_CONFIG_DIR/isolated.config" \
     "$PG_PASSWORD_FILE" "$V5_PG_HOST" "$V5_PG_PORT" "$POOL_DB" || return 20
@@ -115,12 +183,16 @@ ensure_pg() {
 }
 
 # ---------------- case executors ----------------
+authorize_fixture_database() { # $1 database — full audit chain via the guard CLI (bare discovery stays refused by contract)
+  python3 "$SCRIPT_DIR/attachment_lifecycle_v5_pg_guard.py" "$RUN_DIR" "$SLOT" "$1" >/dev/null
+}
 # ---------------- W2-01 executors ----------------
 w201_db_setup() { # $1 cdir [$2 db-suffix] -> echoes DB name; replay full chain once
   local cdir="$1" SUF="${2:-w201}"
   mkdir -p "$cdir"
   local PGPASSWORD; PGPASSWORD=$(cat "$RUN_DIR/resources/pg-attv5.password")
   local DB="attv5_${SLOT}_${SUF}"
+  authorize_fixture_database "$DB" || return 20
   docker exec -i "$PG_CONTAINER" psql -X -U imboy_user -d postgres \
     -c "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = '$DB' AND pid <> pg_backend_pid()" \
     -c "DROP DATABASE IF EXISTS $DB" -c "CREATE DATABASE $DB OWNER imboy_user" > "$cdir/db.log" 2>&1 || return 75
@@ -205,6 +277,7 @@ w102_phase_run() { # $1 cdir $2 phase
   [ -f "$PGPASSWORD_FILE" ] || { echo "pg password file missing" >&2; return 75; }
   local PGPASSWORD; PGPASSWORD=$(cat "$PGPASSWORD_FILE")
   local DB="attv5_${SLOT}_w102_${phase}"
+  authorize_fixture_database "$DB" || return 20
   docker exec -i "$PG_CONTAINER" psql -X -U imboy_user -d postgres \
     -c "DROP DATABASE IF EXISTS $DB" -c "CREATE DATABASE $DB OWNER imboy_user" > "$cdir/db.log" 2>&1 || return 75
   for E in pg_jieba postgis postgis_raster timescaledb pgcrypto "uuid-ossp" pg_trgm btree_gin btree_gist unaccent pg_stat_statements; do
@@ -225,6 +298,7 @@ w102_phase_run() { # $1 cdir $2 phase
       V5_RUN_DIR="$RUN_DIR" bash "$ROOT/scripts/test/attachment_lifecycle_v5_w102_probe.sh" "$DB" guards "$cdir/probes.jsonl" >> "$cdir/raw.log" 2>&1
   else
     # cross-phase leaves need the guards DB too: build it alongside
+    authorize_fixture_database "$GUARDS_DB" || return 20
     docker exec -i "$PG_CONTAINER" psql -X -U imboy_user -d postgres \
       -c "DROP DATABASE IF EXISTS $GUARDS_DB" -c "CREATE DATABASE $GUARDS_DB OWNER imboy_user" >> "$cdir/db.log" 2>&1 || return 75
     for E in pg_jieba postgis postgis_raster timescaledb pgcrypto "uuid-ossp" pg_trgm btree_gin btree_gist unaccent pg_stat_statements; do
@@ -252,6 +326,7 @@ bootstrap_w002_schema() {
   local cdir="$1" PGPASSWORD_FILE="$RUN_DIR/resources/pg-attv5.password" DB="attv5_${SLOT}_raw"
   [ -f "$PGPASSWORD_FILE" ] || { echo "pg password file missing" >&2; return 75; }
   local PGPASSWORD; PGPASSWORD=$(cat "$PGPASSWORD_FILE")
+  authorize_fixture_database "$DB" || return 20
   docker exec -i "$PG_CONTAINER" psql -X -U imboy_user -d postgres \
     -c "DROP DATABASE IF EXISTS $DB" -c "CREATE DATABASE $DB OWNER imboy_user" > "$cdir/db.log" 2>&1 || return 75
   for E in pg_jieba postgis postgis_raster timescaledb pgcrypto "uuid-ossp" pg_trgm btree_gin btree_gist unaccent pg_stat_statements; do
@@ -272,6 +347,7 @@ bootstrap_w002_history() {
   local cdir="$1" PGPASSWORD_FILE="$RUN_DIR/resources/pg-attv5.password" DB="attv5_${SLOT}_raw2"
   [ -f "$PGPASSWORD_FILE" ] || { echo "pg password file missing" >&2; return 75; }
   local PGPASSWORD; PGPASSWORD=$(cat "$PGPASSWORD_FILE")
+  authorize_fixture_database "$DB" || return 20
   docker exec -i "$PG_CONTAINER" psql -X -U imboy_user -d postgres \
     -c "DROP DATABASE IF EXISTS $DB" -c "CREATE DATABASE $DB OWNER imboy_user" > "$cdir/db.log" 2>&1 || return 75
   for E in pg_jieba postgis postgis_raster timescaledb pgcrypto "uuid-ossp" pg_trgm btree_gin btree_gist unaccent pg_stat_statements; do
@@ -439,6 +515,277 @@ w601_step() { # $1 cdir $2 label $3 fn $4 subdir
 w601_w102_expand() { w102_phase_run "$1" expand; }
 w601_w102_guards() { w102_phase_run "$1" guards; }
 
+w601_w2upload() { # $1 cdir — W2 upload/confirm battery on the w403 scratch DB
+  local cdir="$1" try rc
+  mkdir -p "$cdir"
+  rm -f "$cdir/observations.jsonl"
+  export V5_OBSERVATIONS_FILE="$cdir/observations.jsonl"
+  # Runs after w403 in w601_case: reuse the run-owned scratch chain DB
+  # (attv5_<slot>_w601) under the same manifest + isolated-config gate.
+  if [ "${W403S_PG_OK:-}" != 1 ]; then
+    echo "NO_GO: w2upload requires the w403 battery to have completed" >&2
+    return 30
+  fi
+  local W403_DB="attv5_${SLOT}_w601"
+  local W403_MANIFEST="$RUN_DIR/resources/w403-resource-manifest.json"
+  local W403_OWNED_CONFIG="${PG_CONFIG_DIR:-}/isolated.config"
+  if [ "${PG_CONFIG_READY:-0}" != 1 ] || [ "${EUNIT_CONFIG:-}" != "${PG_CONFIG_DIR:-}/isolated" ] \
+      || [ ! -f "$W403_OWNED_CONFIG" ]; then
+    echo "CONTRACT_CONFLICT: W6-01 W2 upload requires the run-owned isolated config" >&2
+    return 20
+  fi
+  if [ -n "${W403_RESOURCE_MANIFEST:-}" ] && [ "$W403_RESOURCE_MANIFEST" != "$W403_MANIFEST" ]; then
+    echo "CONTRACT_CONFLICT: W403 manifest must be the run-owned manifest" >&2
+    return 20
+  fi
+  python3 - "$W403_MANIFEST" "$W403_DB" <<'PYW403C' || return 20
+import json, sys
+try:
+    with open(sys.argv[1], encoding="utf-8") as fh:
+        data = json.load(fh)
+    if not isinstance(data, dict) or data.get("database") != sys.argv[2]:
+        raise ValueError("unexpected database")
+except (OSError, ValueError, TypeError):
+    print("CONTRACT_CONFLICT: W403 manifest database mismatch", file=sys.stderr)
+    sys.exit(20)
+PYW403C
+  authorize_fixture_database "$W403_DB" || return 20
+  export W403_RESOURCE_MANIFEST="$W403_MANIFEST"
+  export V5_INTTEST_W403P_DB="$W403_DB"
+  export W403_CONFIG_PATH="$W403_OWNED_CONFIG"
+  if [ -f "$RUN_DIR/resources/garage-w202.env" ]; then
+    . "$RUN_DIR/resources/garage-w202.env"
+    export W202_GARAGE_ENDPOINT W202_GARAGE_BUCKET W202_GARAGE_ACCESS_KEY W202_GARAGE_SECRET_KEY
+  fi
+  ensure_disk_root || return $?
+  local PZ="" d
+  for d in deps/*/ebin; do [ -d "$d" ] && PZ="$PZ -pz $PWD/$d"; done
+  sed -e "s/{http_port, 9800}/{http_port, ${EUNIT_HTTP_PORT:-19980}}/" \
+      -e "s/{http_port_adm, 9706}/{http_port_adm, ${EUNIT_HTTP_ADM_PORT:-19970}}/" \
+      "${EUNIT_CONFIG:-config/sys.local}.config" > "$cdir/w2upload-direct.config"
+  for try in 1 2 3; do
+    rm -f "$cdir/observations.jsonl"
+    EUNIT_USE_RELAY=0 erl -noinput -boot no_dot_erlang +P 1048576 +Q 1024 \
+      -config "$cdir/w2upload-direct.config" -pa "$V5_ALIAS_ROOT/imboy/ebin" -pa ebin -pa test $PZ \
+      -eval 'CoverSetup = fun() -> ok end, CoverExport = fun(_) -> ok end, CoverSetup(),
+        Mods = [attachment_lifecycle_v5_w601_w2_upload_tests,
+                attachment_lifecycle_v5_w601_w2_confirm_tests,
+                attachment_lifecycle_v5_w601_w2_pending_tests],
+        case eunit:test(Mods, [verbose]) of
+          ok -> io:format("W601_W2UPLOAD_OK~n");
+          error -> halt(2)
+        end,
+        halt()' > "$cdir/eunit-w2upload.log" 2>&1
+    rc=$?
+    [ $rc -eq 0 ] && break
+    [ $try -lt 3 ] && sleep 5
+  done
+  [ $rc -eq 0 ] && grep -q "W601_W2UPLOAD_OK" "$cdir/eunit-w2upload.log" || return 30
+  export V5_RUN_DIR="$RUN_DIR"
+  return 0
+}
+
+w601_w4queue() { # $1 cdir — W4 queue/worker/activation battery (marker-bound)
+  local cdir="$1" try rc PFX
+  mkdir -p "$cdir"
+  rm -f "$cdir/observations.jsonl"
+  export V5_OBSERVATIONS_FILE="$cdir/observations.jsonl"
+  # Every w601-w4 marker prefix binds to the run-owned scratch chain DB
+  # provisioned by the w403 step (bound mode never invents random names).
+  local PGPASSWORD; PGPASSWORD=$(cat "$RUN_DIR/resources/pg-attv5.password")
+  for PFX in V5_INTTEST_W601W4ACT V5_INTTEST_W601W4HOLD V5_INTTEST_W601W4INT \
+             V5_INTTEST_W601W4PRG V5_INTTEST_W601W4QUEUE V5_INTTEST_W601W4RACE \
+             V5_INTTEST_W601W4WORK; do
+    export "${PFX}_DB=attv5_${SLOT}_w601" \
+      "${PFX}_PG_HOST=${V5_PG_HOST:-127.0.0.1}" "${PFX}_PG_PORT=${V5_PG_PORT:-65072}" \
+      "${PFX}_PG_USER=imboy_user" "${PFX}_PG_PASSWORD=$PGPASSWORD" \
+      "${PFX}_MAINT_DB=postgres"
+  done
+  ensure_disk_root || return $?
+  if [ -f "$RUN_DIR/resources/garage-w202.env" ]; then
+    . "$RUN_DIR/resources/garage-w202.env"
+    export W202_GARAGE_ENDPOINT W202_GARAGE_BUCKET W202_GARAGE_ACCESS_KEY W202_GARAGE_SECRET_KEY
+  fi
+  local PZ="" d
+  for d in deps/*/ebin; do [ -d "$d" ] && PZ="$PZ -pz $PWD/$d"; done
+  sed -e "s/{http_port, 9800}/{http_port, ${EUNIT_HTTP_PORT:-19980}}/" \
+      -e "s/{http_port_adm, 9706}/{http_port_adm, ${EUNIT_HTTP_ADM_PORT:-19970}}/" \
+      "${EUNIT_CONFIG:-config/sys.local}.config" > "$cdir/w4queue-direct.config"
+  for try in 1 2 3; do
+    rm -f "$cdir/observations.jsonl"
+    EUNIT_USE_RELAY=0 erl -noinput -boot no_dot_erlang +P 1048576 +Q 1024 \
+      -config "$cdir/w4queue-direct.config" -pa "$V5_ALIAS_ROOT/imboy/ebin" -pa ebin -pa test $PZ \
+      -eval 'CoverSetup = fun() -> ok end, CoverExport = fun(_) -> ok end, CoverSetup(),
+        Mods = [attachment_lifecycle_v5_w601_w4_hold_tests,
+                attachment_lifecycle_v5_w601_w4_intent_tests,
+                attachment_lifecycle_v5_w601_w4_race_tests,
+                attachment_lifecycle_v5_w601_w4_worker_tests,
+                attachment_lifecycle_v5_w601_w4_queue_tests,
+                attachment_lifecycle_v5_w601_w4_purged_tests,
+                attachment_lifecycle_v5_w601_w4_activation_tests],
+        case eunit:test(Mods, [verbose]) of
+          ok -> io:format("W601_W4QUEUE_OK~n");
+          error -> halt(2)
+        end,
+        halt()' > "$cdir/eunit-w4queue.log" 2>&1
+    rc=$?
+    [ $rc -eq 0 ] && break
+    [ $try -lt 3 ] && sleep 5
+  done
+  [ $rc -eq 0 ] && grep -q "W601_W4QUEUE_OK" "$cdir/eunit-w4queue.log" || return 30
+  export V5_RUN_DIR="$RUN_DIR"
+  return 0
+}
+
+w601_w3_common_env() { # $1 cdir $2 label — garage/disk env + erl path preamble
+  ensure_disk_root || return $?
+  if [ -f "$RUN_DIR/resources/garage-w202.env" ]; then
+    . "$RUN_DIR/resources/garage-w202.env"
+    export W202_GARAGE_ENDPOINT W202_GARAGE_BUCKET W202_GARAGE_ACCESS_KEY W202_GARAGE_SECRET_KEY
+  fi
+  local PZ="" d
+  for d in deps/*/ebin; do [ -d "$d" ] && PZ="$PZ -pz $PWD/$d"; done
+  sed -e "s/{http_port, 9800}/{http_port, ${EUNIT_HTTP_PORT:-19980}}/" \
+      -e "s/{http_port_adm, 9706}/{http_port_adm, ${EUNIT_HTTP_ADM_PORT:-19970}}/" \
+      "${EUNIT_CONFIG:-config/sys.local}.config" > "$1/$2-direct.config"
+  return 0
+}
+
+w601_w3hold() { # $1 cdir — W3 hold battery, garage/disk dual run on the w601h chain DB
+  local cdir="$1" try rc drv
+  mkdir -p "$cdir"
+  rm -f "$cdir/observations.jsonl"
+  export V5_OBSERVATIONS_FILE="$cdir/observations.jsonl"
+  bound_marker_dbs w201 w601h || return $?
+  export V5_INTTEST_W601H_DB="attv5_${SLOT}_w601h"
+  local PGPASSWORD; PGPASSWORD=$(cat "$RUN_DIR/resources/pg-attv5.password")
+  export V5_INTTEST_W601H_PG_HOST="${V5_PG_HOST:-127.0.0.1}" \
+    V5_INTTEST_W601H_PG_PORT="${V5_PG_PORT:-65072}" \
+    V5_INTTEST_W601H_PG_USER=imboy_user V5_INTTEST_W601H_PG_PASSWORD="$PGPASSWORD" \
+    V5_INTTEST_W601H_MAINT_DB=postgres
+  w601_w3_common_env "$cdir" w3hold || return $?
+  for try in 1 2 3; do
+    rm -f "$cdir/observations.jsonl"; : > "$cdir/eunit-w3hold.log"; rc=0
+    for drv in garage disk; do
+      EUNIT_USE_RELAY=0 V5_PROBE_DRIVER=$drv \
+        erl -noinput -boot no_dot_erlang +P 1048576 +Q 1024 \
+        -config "$cdir/w3hold-direct.config" -pa "$V5_ALIAS_ROOT/imboy/ebin" -pa ebin -pa test $PZ \
+        -eval 'CoverSetup = fun() -> ok end, CoverExport = fun(_) -> ok end, CoverSetup(),
+          Mods = [attachment_lifecycle_v5_w601_w3_hold_tests],
+          case eunit:test(Mods, [verbose]) of
+            ok -> io:format("W601_W3HOLD_OK~n");
+            error -> halt(2)
+          end,
+          halt()' >> "$cdir/eunit-w3hold.log" 2>&1
+      rc=$?
+      [ $rc -eq 0 ] || break
+    done
+    { [ $rc -eq 0 ] && grep -q "W601_W3HOLD_OK" "$cdir/eunit-w3hold.log"; } && break
+    [ $try -lt 3 ] && sleep 5
+  done
+  { [ $rc -eq 0 ] && grep -q "W601_W3HOLD_OK" "$cdir/eunit-w3hold.log"; } || return 30
+  export V5_RUN_DIR="$RUN_DIR"
+  return 0
+}
+
+w601_w3race() { # $1 cdir — W3 race/shared-owner battery, dual run on the w601r chain DB
+  local cdir="$1" try rc drv
+  mkdir -p "$cdir"
+  rm -f "$cdir/observations.jsonl"
+  export V5_OBSERVATIONS_FILE="$cdir/observations.jsonl"
+  bound_marker_dbs w201 w601r || return $?
+  export V5_INTTEST_W601R_DB="attv5_${SLOT}_w601r"
+  local PGPASSWORD; PGPASSWORD=$(cat "$RUN_DIR/resources/pg-attv5.password")
+  export V5_INTTEST_W601R_PG_HOST="${V5_PG_HOST:-127.0.0.1}" \
+    V5_INTTEST_W601R_PG_PORT="${V5_PG_PORT:-65072}" \
+    V5_INTTEST_W601R_PG_USER=imboy_user V5_INTTEST_W601R_PG_PASSWORD="$PGPASSWORD" \
+    V5_INTTEST_W601R_MAINT_DB=postgres
+  w601_w3_common_env "$cdir" w3race || return $?
+  for try in 1 2 3; do
+    rm -f "$cdir/observations.jsonl"; : > "$cdir/eunit-w3race.log"; rc=0
+    for drv in garage disk; do
+      EUNIT_USE_RELAY=0 V5_PROBE_DRIVER=$drv \
+        erl -noinput -boot no_dot_erlang +P 1048576 +Q 1024 \
+        -config "$cdir/w3race-direct.config" -pa "$V5_ALIAS_ROOT/imboy/ebin" -pa ebin -pa test $PZ \
+        -eval 'CoverSetup = fun() -> ok end, CoverExport = fun(_) -> ok end, CoverSetup(),
+          Mods = [attachment_lifecycle_v5_w601_w3_race_tests],
+          case eunit:test(Mods, [verbose]) of
+            ok -> io:format("W601_W3RACE_OK~n");
+            error -> halt(2)
+          end,
+          halt()' >> "$cdir/eunit-w3race.log" 2>&1
+      rc=$?
+      [ $rc -eq 0 ] || break
+    done
+    { [ $rc -eq 0 ] && grep -q "W601_W3RACE_OK" "$cdir/eunit-w3race.log"; } && break
+    [ $try -lt 3 ] && sleep 5
+  done
+  { [ $rc -eq 0 ] && grep -q "W601_W3RACE_OK" "$cdir/eunit-w3race.log"; } || return 30
+  export V5_RUN_DIR="$RUN_DIR"
+  return 0
+}
+
+w601_w3bind() { # $1 cdir — CS/enterprise bind battery on the w403 isolated-config DB
+  local cdir="$1" try rc drv
+  mkdir -p "$cdir"
+  rm -f "$cdir/observations.jsonl"
+  export V5_OBSERVATIONS_FILE="$cdir/observations.jsonl"
+  if [ "${W403S_PG_OK:-}" != 1 ]; then
+    echo "NO_GO: w3bind requires the w403 battery to have completed" >&2
+    return 30
+  fi
+  local W403_DB="attv5_${SLOT}_w601"
+  local W403_MANIFEST="$RUN_DIR/resources/w403-resource-manifest.json"
+  local W403_OWNED_CONFIG="${PG_CONFIG_DIR:-}/isolated.config"
+  if [ "${PG_CONFIG_READY:-0}" != 1 ] || [ "${EUNIT_CONFIG:-}" != "${PG_CONFIG_DIR:-}/isolated" ] \
+      || [ ! -f "$W403_OWNED_CONFIG" ]; then
+    echo "CONTRACT_CONFLICT: W6-01 W3 bind requires the run-owned isolated config" >&2
+    return 20
+  fi
+  if [ -n "${W403_RESOURCE_MANIFEST:-}" ] && [ "$W403_RESOURCE_MANIFEST" != "$W403_MANIFEST" ]; then
+    echo "CONTRACT_CONFLICT: W403 manifest must be the run-owned manifest" >&2
+    return 20
+  fi
+  python3 - "$W403_MANIFEST" "$W403_DB" <<'PYW403B' || return 20
+import json, sys
+try:
+    with open(sys.argv[1], encoding="utf-8") as fh:
+        data = json.load(fh)
+    if not isinstance(data, dict) or data.get("database") != sys.argv[2]:
+        raise ValueError("unexpected database")
+except (OSError, ValueError, TypeError):
+    print("CONTRACT_CONFLICT: W403 manifest database mismatch", file=sys.stderr)
+    sys.exit(20)
+PYW403B
+  authorize_fixture_database "$W403_DB" || return 20
+  export W403_RESOURCE_MANIFEST="$W403_MANIFEST"
+  export V5_INTTEST_W404_DB="$W403_DB"
+  export W403_CONFIG_PATH="$W403_OWNED_CONFIG"
+  w601_w3_common_env "$cdir" w3bind || return $?
+  for try in 1 2 3; do
+    rm -f "$cdir/observations.jsonl"; : > "$cdir/eunit-w3bind.log"; rc=0
+    for drv in garage disk; do
+      EUNIT_USE_RELAY=0 V5_PROBE_DRIVER=$drv \
+        erl -noinput -boot no_dot_erlang +P 1048576 +Q 1024 \
+        -config "$cdir/w3bind-direct.config" -pa "$V5_ALIAS_ROOT/imboy/ebin" -pa ebin -pa test $PZ \
+        -eval 'CoverSetup = fun() -> ok end, CoverExport = fun(_) -> ok end, CoverSetup(),
+          Mods = [attachment_lifecycle_v5_w601_w3_bind_tests],
+          case eunit:test(Mods, [verbose]) of
+            ok -> io:format("W601_W3BIND_OK~n");
+            error -> halt(2)
+          end,
+          halt()' >> "$cdir/eunit-w3bind.log" 2>&1
+      rc=$?
+      [ $rc -eq 0 ] || break
+    done
+    { [ $rc -eq 0 ] && grep -q "W601_W3BIND_OK" "$cdir/eunit-w3bind.log"; } && break
+    [ $try -lt 3 ] && sleep 5
+  done
+  { [ $rc -eq 0 ] && grep -q "W601_W3BIND_OK" "$cdir/eunit-w3bind.log"; } || return 30
+  export V5_RUN_DIR="$RUN_DIR"
+  return 0
+}
+
 w601_case() { # $1 cdir
   local cdir="$1" rc=0
   mkdir -p "$cdir"
@@ -457,6 +804,11 @@ w601_case() { # $1 cdir
   w601_step "$cdir" w402 w402_case "$cdir/w402" || rc=30
   w601_step "$cdir" w403 w403_case "$cdir/w403" || rc=30
   w601_step "$cdir" w404 w404_case "$cdir/w404" || rc=30
+  w601_step "$cdir" w2upload w601_w2upload "$cdir/w2upload" || rc=30
+  w601_step "$cdir" w4queue w601_w4queue "$cdir/w4queue" || rc=30
+  w601_step "$cdir" w3hold w601_w3hold "$cdir/w3hold" || rc=30
+  w601_step "$cdir" w3race w601_w3race "$cdir/w3race" || rc=30
+  w601_step "$cdir" w3bind w601_w3bind "$cdir/w3bind" || rc=30
   return $rc
 }
 
@@ -551,15 +903,11 @@ PYC
 
 w602_run_flutter() { # $1 app $2 cdir $3 driver $4 device
   local app="$1" cdir="$2" driver="$3" device="$4" pid rc dpid=""
+  rm -f "$cdir/device-provenance.json"
   ( cd "$app" && V5_E2E_DRIVER="$driver" flutter test \
       integration_test/attachment_lifecycle_v5_test.dart -d "$device" --reporter json ) \
     > "$cdir/flutter-integration-$driver.jsonl" 2> "$cdir/flutter-integration-$driver.err" &
   pid=$!
-  # Host driver process is alive at capture; overwritten by the device-side
-  # app PID as soon as adb can observe it during the run.
-  kill -0 "$pid" 2>/dev/null && \
-    w602_write_provenance "$cdir/device-provenance.json" physical "$device" "$pid" \
-      "host flutter test driver process, alive at run start"
   while kill -0 "$pid" 2>/dev/null; do
     if [ -z "$dpid" ]; then
       dpid="$(w602_device_pid "$device")"
@@ -572,7 +920,11 @@ w602_run_flutter() { # $1 app $2 cdir $3 driver $4 device
   done
   wait "$pid"
   rc=$?
-  echo "W6-02 CMD[flutter-$driver] cwd=$app device=$device exit=$rc device_pid=${dpid:-host:$pid}" >> "$cdir/raw.log"
+  echo "W6-02 CMD[flutter-$driver] cwd=$app device=$device exit=$rc device_pid=${dpid:-unobserved}" >> "$cdir/raw.log"
+  if [ -z "$dpid" ]; then
+    echo "BLOCKED_EXTERNAL: device-side application process not observed" >&2
+    return 75
+  fi
   return $rc
 }
 
@@ -592,13 +944,11 @@ w602_chromium_child() { # $1 parent pid -> deepest live Chromium descendant
 
 w602_run_admin() { # $1 admin $2 cdir $3 driver
   local admin="$1" cdir="$2" driver="$3" pid rc cpid=""
+  rm -f "$cdir/browser-provenance.json"
   ( cd "$admin" && V5_E2E_DRIVER="$driver" ./node_modules/.bin/playwright test \
       tests/e2e/attachment-lifecycle-v5.spec.ts --reporter=json ) \
     > "$cdir/admin-playwright-$driver.json" 2> "$cdir/admin-playwright-$driver.err" &
   pid=$!
-  kill -0 "$pid" 2>/dev/null && \
-    w602_write_provenance "$cdir/browser-provenance.json" real-browser \
-      playwright-chromium "$pid" "host Playwright runner process, alive at run start"
   while kill -0 "$pid" 2>/dev/null; do
     if [ -z "$cpid" ]; then
       cpid="$(w602_chromium_child "$pid" || true)"
@@ -611,19 +961,35 @@ w602_run_admin() { # $1 admin $2 cdir $3 driver
   done
   wait "$pid"
   rc=$?
-  echo "W6-02 CMD[playwright-$driver] cwd=$admin exit=$rc browser_pid=${cpid:-host:$pid}" >> "$cdir/raw.log"
+  echo "W6-02 CMD[playwright-$driver] cwd=$admin exit=$rc browser_pid=${cpid:-unobserved}" >> "$cdir/raw.log"
+  if [ -z "$cpid" ]; then
+    echo "BLOCKED_EXTERNAL: Chromium process not observed" >&2
+    return 75
+  fi
   return $rc
 }
 
 w602_case() { # $1 case_id $2 cdir
+  # shortcut: session/driver provenance and backend ownership are not bound;
+  # remove only after both are verified before any external request.
+  echo "BLOCKED_EXTERNAL: W6-02 backend ownership and per-driver session provenance are unverified" >&2
+  return 75
   local cid="$1" cdir="$2" app admin device="" devices_json browser=0 version=""
   local backend="${W602_BACKEND_URL:-}" need_flutter=0 need_admin=0 rc=0
   app="$(worktree_sibling imboyapp)" || return $?
   admin="$(worktree_sibling imboyadmin)" || return $?
   mkdir -p "$cdir"
-  command -v flutter >/dev/null 2>&1 || {
-    echo "BLOCKED_EXTERNAL: flutter SDK not on PATH" >&2; return 75; }
-  devices_json="$(cd "$app" && flutter devices --machine 2>/dev/null || true)"
+  case "$cid" in
+    W6-02/flutter-recovery-real|W6-02/ac08) need_flutter=1 ;;
+    W6-02/admin-recovery-real) need_admin=1 ;;
+    W6-02/e2e-compat) need_flutter=1; need_admin=1 ;;
+  esac
+  devices_json="[]"
+  if [ "$need_flutter" -eq 1 ]; then
+    command -v flutter >/dev/null 2>&1 || {
+      echo "BLOCKED_EXTERNAL: flutter SDK not on PATH" >&2; return 75; }
+    devices_json="$(cd "$app" && flutter devices --machine 2>/dev/null || true)"
+  fi
   local id
   for id in XWE6R19916004085 00008140-000E30561E32801C; do
     if printf '%s' "$devices_json" | grep -Eq "\"id\"[[:space:]]*:[[:space:]]*\"$id\""; then
@@ -638,11 +1004,6 @@ w602_case() { # $1 case_id $2 cdir
   local admin_spec="$admin/tests/e2e/attachment-lifecycle-v5.spec.ts"
   w602_preflight_write "$cdir/w602-preflight.json" "$cid" "$device" \
     "$devices_json" "$browser" "$version" "$flutter_spec" "$admin_spec" "$backend"
-  case "$cid" in
-    W6-02/flutter-recovery-real|W6-02/ac08) need_flutter=1 ;;
-    W6-02/admin-recovery-real) need_admin=1 ;;
-    W6-02/e2e-compat) need_flutter=1; need_admin=1 ;;
-  esac
   if [ $need_flutter -eq 1 ] && [ ! -f "$flutter_spec" ]; then
     echo "NO_GO: required Flutter integration suite missing: $flutter_spec" >&2
     return 30
@@ -651,10 +1012,10 @@ w602_case() { # $1 case_id $2 cdir
     echo "NO_GO: required Admin Playwright suite missing: $admin_spec" >&2
     return 30
   fi
-  [ -n "$device" ] || {
+  [ "$need_flutter" -eq 0 ] || [ -n "$device" ] || {
     echo "BLOCKED_EXTERNAL: no allowlisted physical device (XWE6R19916004085 / 00008140-000E30561E32801C)" >&2
     return 75; }
-  [ $browser -eq 1 ] || {
+  [ "$need_admin" -eq 0 ] || [ $browser -eq 1 ] || {
     echo "BLOCKED_EXTERNAL: playwright-chromium unavailable in $admin" >&2
     return 75; }
   [ -n "$backend" ] || {
@@ -666,10 +1027,10 @@ w602_case() { # $1 case_id $2 cdir
   local driver
   for driver in garage disk; do
     if [ $need_flutter -eq 1 ]; then
-      w602_run_flutter "$app" "$cdir" "$driver" "$device" || rc=30
+      w602_run_flutter "$app" "$cdir" "$driver" "$device" || { rc=$?; return "$rc"; }
     fi
     if [ $need_admin -eq 1 ]; then
-      w602_run_admin "$admin" "$cdir" "$driver" || rc=30
+      w602_run_admin "$admin" "$cdir" "$driver" || { rc=$?; return "$rc"; }
     fi
   done
   return $rc
@@ -758,18 +1119,34 @@ w603_ledger_verify() { # $1 cdir
 
 # ---------------- W2-03 executor ----------------
 # ---------------- W3-01 executor ----------------
+# Bound fixture databases for the marker-db suites: provision receipt-shaped
+# names (idempotent drop + full migration replay) and pin them via <PREFIX>_DB
+# so inttest_marker_db binds identity+slot instead of refusing V5 prefixes.
+bound_marker_dbs() { # $@ suffixes; exports the matching _DB variables
+  local SUF DB PRE
+  for SUF in "$@"; do
+    DB="$(w201_db_setup "$RUN_DIR/resources/${SLOT}-pool" "$SUF")" || return $?
+  done
+  export V5_INTTEST_DB="attv5_${SLOT}_w201" V5_INTTEST_W203_DB="attv5_${SLOT}_raw" \
+    V5_INTTEST_W301_DB="attv5_${SLOT}_raw2" V5_INTTEST_W302_DB="attv5_${SLOT}_strict" \
+    V5_INTTEST_W401_DB="attv5_${SLOT}_w201" V5_INTTEST_W402_DB="attv5_${SLOT}_w201" \
+    V5_INTTEST_W402P_DB="attv5_${SLOT}_w201" V5_INTTEST_W404_DB="attv5_${SLOT}_w601"
+}
+
 w301_case() { # $1 cdir — 与 w203_case 同一直连 erl 模式，套件含 W3-01 电池
+  bound_marker_dbs w201 raw raw2 || return $?
   local cdir="$1" RC=0
   mkdir -p "$cdir"
+  rm -f "$cdir/observations.jsonl"
+  export V5_OBSERVATIONS_FILE="$cdir/observations.jsonl"
   local PZ="" d
   for d in deps/*/ebin; do [ -d "$d" ] && PZ="$PZ -pz $PWD/$d"; done
-  ln -sfn . imboy
   sed -e "s/{http_port, 9800}/{http_port, ${EUNIT_HTTP_PORT:-19980}}/" \
       -e "s/{http_port_adm, 9706}/{http_port_adm, ${EUNIT_HTTP_ADM_PORT:-19970}}/" \
       "${EUNIT_CONFIG:-config/sys.local}.config" > "$cdir/w301-direct.config"
   EUNIT_USE_RELAY=0 erl -noinput -boot no_dot_erlang +P 1048576 +Q 1024 \
     -kernel logger_level none \
-    -config "$cdir/w301-direct.config" -pa imboy/ebin -pa ebin -pa test $PZ \
+    -config "$cdir/w301-direct.config" -pa "$V5_ALIAS_ROOT/imboy/ebin" -pa ebin -pa test $PZ \
     -eval 'CoverSetup = fun() -> ok end, CoverExport = fun(_) -> ok end, CoverSetup(),
       case eunit:test([attachment_lifecycle_v5_pg_tests], [verbose]) of
         ok -> io:format("W301_DIRECT_OK~n");
@@ -777,7 +1154,6 @@ w301_case() { # $1 cdir — 与 w203_case 同一直连 erl 模式，套件含 W3
       end,
       halt()' > "$cdir/eunit-w203.log" 2>&1
   local rc=$?
-  rm -f imboy
   if [ $rc -eq 0 ] && grep -q "tests passed" "$cdir/eunit-w203.log"; then
     W203_PG_OK=1
   else
@@ -790,16 +1166,19 @@ w301_case() { # $1 cdir — 与 w203_case 同一直连 erl 模式，套件含 W3
 
 # ---------------- W3-02 executor ----------------
 w302_case() { # $1 cdir — 与 w301_case 同一直连 erl 模式，套件含 W3-02 电池
+  bound_marker_dbs strict || return $?
   local cdir="$1" RC=0
   mkdir -p "$cdir"
+  rm -f "$cdir/observations.jsonl"
+  export V5_OBSERVATIONS_FILE="$cdir/observations.jsonl"
   local PZ="" d
   for d in deps/*/ebin; do [ -d "$d" ] && PZ="$PZ -pz $PWD/$d"; done
-  ln -sfn . imboy
   sed -e "s/{http_port, 9800}/{http_port, ${EUNIT_HTTP_PORT:-19980}}/" \
       -e "s/{http_port_adm, 9706}/{http_port_adm, ${EUNIT_HTTP_ADM_PORT:-19970}}/" \
       "${EUNIT_CONFIG:-config/sys.local}.config" > "$cdir/w302-direct.config"
   EUNIT_USE_RELAY=0 erl -noinput -boot no_dot_erlang +P 1048576 +Q 1024 \
-    -config "$cdir/w302-direct.config" -pa imboy/ebin -pa ebin -pa test $PZ \
+    -kernel logger_level none \
+    -config "$cdir/w302-direct.config" -pa "$V5_ALIAS_ROOT/imboy/ebin" -pa ebin -pa test $PZ \
     -eval 'CoverSetup = fun() -> ok end, CoverExport = fun(_) -> ok end, CoverSetup(),
       case eunit:test([attachment_lifecycle_v5_hold_protocol_tests], [verbose]) of
         ok -> io:format("W302_DIRECT_OK~n");
@@ -807,7 +1186,6 @@ w302_case() { # $1 cdir — 与 w301_case 同一直连 erl 模式，套件含 W3
       end,
       halt()' > "$cdir/eunit-w302.log" 2>&1
   local rc=$?
-  rm -f imboy
   if [ $rc -eq 0 ] && grep -q "W302_DIRECT_OK" "$cdir/eunit-w302.log"; then
     W302_PG_OK=1
   else
@@ -822,14 +1200,16 @@ w302_case() { # $1 cdir — 与 w301_case 同一直连 erl 模式，套件含 W3
 w303_case() { # $1 cdir — 与 w302_case 同一直连 erl 模式（投影+绑定套件）
   local cdir="$1" RC=0
   mkdir -p "$cdir"
+  rm -f "$cdir/observations.jsonl"
+  export V5_OBSERVATIONS_FILE="$cdir/observations.jsonl"
   local PZ="" d
   for d in deps/*/ebin; do [ -d "$d" ] && PZ="$PZ -pz $PWD/$d"; done
-  ln -sfn . imboy
   sed -e "s/{http_port, 9800}/{http_port, ${EUNIT_HTTP_PORT:-19980}}/" \
       -e "s/{http_port_adm, 9706}/{http_port_adm, ${EUNIT_HTTP_ADM_PORT:-19970}}/" \
       "${EUNIT_CONFIG:-config/sys.local}.config" > "$cdir/w303-direct.config"
   EUNIT_USE_RELAY=0 erl -noinput -boot no_dot_erlang +P 1048576 +Q 1024 \
-    -config "$cdir/w303-direct.config" -pa imboy/ebin -pa ebin -pa test $PZ \
+    -kernel logger_level none \
+    -config "$cdir/w303-direct.config" -pa "$V5_ALIAS_ROOT/imboy/ebin" -pa ebin -pa test $PZ \
     -eval 'CoverSetup = fun() -> ok end, CoverExport = fun(_) -> ok end, CoverSetup(),
       case eunit:test([eb_message_assets_projection_tests], [verbose]) of
         ok -> io:format("W303_DIRECT_OK~n");
@@ -837,7 +1217,6 @@ w303_case() { # $1 cdir — 与 w302_case 同一直连 erl 模式（投影+绑�
       end,
       halt()' > "$cdir/eunit-w303.log" 2>&1
   local rc=$?
-  rm -f imboy
   if [ $rc -eq 0 ] && grep -q "W303_DIRECT_OK" "$cdir/eunit-w303.log"; then
     W303_PG_OK=1
   else
@@ -852,17 +1231,25 @@ w303_case() { # $1 cdir — 与 w302_case 同一直连 erl 模式（投影+绑�
 # 六 case 共用一组真库套件（行为矩阵/静态门/故障注入/治理拦截）+ 竞态
 # 屏障套件在 W4-01 代码头重跑（confirm-gc/reference-gc/hold-gc 的协议
 # 在 fn 层，W4-01 实现即入口统一走 fn；静态门证明无绕过）。
-w401_case() { # $1 cdir
+w401_case() { # $1 cdir — 同 W3 executor：观测流 + 日志静默 + bound marker DB
+  bound_marker_dbs w201 raw raw2 strict || return $?
   local cdir="$1" RC=0
   mkdir -p "$cdir"
+  rm -f "$cdir/observations.jsonl"
+  export V5_OBSERVATIONS_FILE="$cdir/observations.jsonl"
+  # intent-rollback 的真实 Garage 探针（W202 桶；缺 env 时套件显式失败）
+  if [ -f "$RUN_DIR/resources/garage-w202.env" ]; then
+    . "$RUN_DIR/resources/garage-w202.env"
+    export W202_GARAGE_ENDPOINT W202_GARAGE_BUCKET W202_GARAGE_ACCESS_KEY W202_GARAGE_SECRET_KEY
+  fi
   local PZ="" d
   for d in deps/*/ebin; do [ -d "$d" ] && PZ="$PZ -pz $PWD/$d"; done
-  ln -sfn . imboy
   sed -e "s/{http_port, 9800}/{http_port, ${EUNIT_HTTP_PORT:-19980}}/" \
       -e "s/{http_port_adm, 9706}/{http_port_adm, ${EUNIT_HTTP_ADM_PORT:-19970}}/" \
       "${EUNIT_CONFIG:-config/sys.local}.config" > "$cdir/w401-direct.config"
   EUNIT_USE_RELAY=0 erl -noinput -boot no_dot_erlang +P 1048576 +Q 1024 \
-    -config "$cdir/w401-direct.config" -pa imboy/ebin -pa ebin -pa test $PZ \
+    -kernel logger_level none \
+    -config "$cdir/w401-direct.config" -pa "$V5_ALIAS_ROOT/imboy/ebin" -pa ebin -pa test $PZ \
     -eval 'CoverSetup = fun() -> ok end, CoverExport = fun(_) -> ok end, CoverSetup(),
       Mods = [attachment_lifecycle_v5_pg_tests,
               attachment_lifecycle_v5_hold_protocol_tests,
@@ -875,7 +1262,6 @@ w401_case() { # $1 cdir
       end,
       halt()' > "$cdir/eunit-w401.log" 2>&1
   local rc=$?
-  rm -f imboy
   if [ $rc -eq 0 ] && grep -q "W401_DIRECT_OK" "$cdir/eunit-w401.log"; then
     W401_PG_OK=1
   else
@@ -889,16 +1275,22 @@ w401_case() { # $1 cdir
 # ---------------- W4-02 executor ----------------
 w402_case() { # $1 cdir — worker 协议 + purged-recovery + 队列 fn 重跑
   local cdir="$1" RC=0 try rc
+  bound_marker_dbs w201 || return $?
+  if [ -f "$RUN_DIR/resources/garage-w202.env" ]; then
+    . "$RUN_DIR/resources/garage-w202.env"
+    export W202_GARAGE_ENDPOINT W202_GARAGE_BUCKET W202_GARAGE_ACCESS_KEY W202_GARAGE_SECRET_KEY
+  fi
   mkdir -p "$cdir"
+  rm -f "$cdir/observations.jsonl"
+  export V5_OBSERVATIONS_FILE="$cdir/observations.jsonl"
   local PZ="" d
   for d in deps/*/ebin; do [ -d "$d" ] && PZ="$PZ -pz $PWD/$d"; done
-  ln -sfn . imboy
   sed -e "s/{http_port, 9800}/{http_port, ${EUNIT_HTTP_PORT:-19980}}/" \
       -e "s/{http_port_adm, 9706}/{http_port_adm, ${EUNIT_HTTP_ADM_PORT:-19970}}/" \
       "${EUNIT_CONFIG:-config/sys.local}.config" > "$cdir/w402-direct.config"
   for try in 1 2 3; do
     EUNIT_USE_RELAY=0 erl -noinput -boot no_dot_erlang +P 1048576 +Q 1024 \
-      -config "$cdir/w402-direct.config" -pa imboy/ebin -pa ebin -pa test $PZ \
+      -config "$cdir/w402-direct.config" -pa "$V5_ALIAS_ROOT/imboy/ebin" -pa ebin -pa test $PZ \
       -eval 'CoverSetup = fun() -> ok end, CoverExport = fun(_) -> ok end, CoverSetup(),
         Mods = [attachment_lifecycle_v5_w402_worker_tests,
                 attachment_lifecycle_v5_w402_purged_recovery_tests],
@@ -911,7 +1303,6 @@ w402_case() { # $1 cdir — worker 协议 + purged-recovery + 队列 fn 重跑
     [ $rc -eq 0 ] && break
     [ $try -lt 3 ] && sleep 5
   done
-  rm -f imboy
   if [ $rc -eq 0 ] && grep -q "W402_DIRECT_OK" "$cdir/eunit-w402.log"; then
     W402_PG_OK=1
   else
@@ -925,21 +1316,57 @@ w402_case() { # $1 cdir — worker 协议 + purged-recovery + 队列 fn 重跑
 # ---------------- W4-03 executor ----------------
 # 七 case 共用 storage 三件套（registry/driver 矩阵/predecessor 重放）+
 # 核心套件；storage-garage 需 W202_GARAGE_* env（套件内 fail-safe skip）。
+ensure_disk_root() {
+  export V5_DISK_ROOT="${V5_DISK_ROOT:-$RUN_DIR/resources/disk-roots}"
+  V5_DISK_ROOT="$(python3 - "$SCRIPT_DIR" "$RUN_DIR" <<'PYDISK'
+import sys
+sys.path.insert(0, sys.argv[1])
+import attachment_lifecycle_v5_adapter_w4_support as support
+print(support.resolve_disk_root(support.context(sys.argv[2], "W4-03"), "W4-03"))
+PYDISK
+  )" || return 20
+  export V5_DISK_ROOT
+}
 w403_case() { # $1 cdir
   local cdir="$1" RC=0 try rc
   mkdir -p "$cdir"
-  # Disk fixtures must live inside the run-owned root registered at admission,
-  # never in a shared /tmp tree; the suites read V5_DISK_ROOT for their root.
-  export V5_DISK_ROOT="${V5_DISK_ROOT:-$RUN_DIR/resources/disk-roots}"
-  mkdir -p "$V5_DISK_ROOT" || return 75
-  # The driver-matrix and gateway-protocol suites require a run-owned
-  # attv5_chain_* database named by W403_RESOURCE_MANIFEST, plus the isolated
-  # config and real Garage credentials. Create the chain DB with the full
-  # migration chain so every storage leaf runs against freshly replayed schema.
-  local W403_DB="attv5_chain_${SLOT}_w403"
+  rm -f "$cdir/observations.jsonl"
+  export V5_OBSERVATIONS_FILE="$cdir/observations.jsonl"
+  ensure_disk_root || return $?
+  # The driver-matrix and gateway-protocol suites run against the run-owned
+  # isolated config; the predecessor suite binds its marker DB inside the
+  # authorization allowlist (attv5_<slot>_w601 — chain_* names are outside
+  # the frozen authorization, so the manifest pins the allowlisted name).
+  local W403_DB="attv5_${SLOT}_w601"
   local W403_MANIFEST="$RUN_DIR/resources/w403-resource-manifest.json"
+  local W403_OWNED_CONFIG="${PG_CONFIG_DIR:-}/isolated.config"
+  if [ "${PG_CONFIG_READY:-0}" != 1 ] || [ "${EUNIT_CONFIG:-}" != "${PG_CONFIG_DIR:-}/isolated" ] \
+      || [ ! -f "$W403_OWNED_CONFIG" ] \
+      || { [ -n "${W403_CONFIG_PATH:-}" ] && [ "$W403_CONFIG_PATH" != "$W403_OWNED_CONFIG" ]; }; then
+    echo "CONTRACT_CONFLICT: W403 requires the run-owned isolated config" >&2
+    return 20
+  fi
+  if [ -n "${W403_RESOURCE_MANIFEST:-}" ] && [ "$W403_RESOURCE_MANIFEST" != "$W403_MANIFEST" ]; then
+    echo "CONTRACT_CONFLICT: W403 manifest must be the run-owned manifest" >&2
+    return 20
+  fi
+  if [ -n "${W403_SKIP_DB_SETUP:-}" ]; then
+    python3 - "$W403_MANIFEST" "$W403_DB" <<'PYW403' || return 20
+import json, sys
+try:
+    with open(sys.argv[1], encoding="utf-8") as fh:
+        data = json.load(fh)
+    if not isinstance(data, dict) or data.get("database") != sys.argv[2]:
+        raise ValueError("unexpected database")
+except (OSError, ValueError, TypeError):
+    print("CONTRACT_CONFLICT: W403 manifest database mismatch", file=sys.stderr)
+    sys.exit(20)
+PYW403
+    authorize_fixture_database "$W403_DB" || return 20
+  fi
   if [ -z "${W403_SKIP_DB_SETUP:-}" ]; then
     local PGPASSWORD; PGPASSWORD=$(cat "$RUN_DIR/resources/pg-attv5.password")
+    authorize_fixture_database "$W403_DB" || return 20
     docker exec -i "$PG_CONTAINER" psql -X -U imboy_user -d postgres \
       -c "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = '$W403_DB' AND pid <> pg_backend_pid()" \
       -c "DROP DATABASE IF EXISTS $W403_DB" -c "CREATE DATABASE $W403_DB OWNER imboy_user" \
@@ -961,21 +1388,21 @@ json.dump({"database": sys.argv[2], "owner": "att-v5-closeout",
           open(sys.argv[1], "w"), indent=1)
 PYM
   fi
-  export W403_RESOURCE_MANIFEST="${W403_RESOURCE_MANIFEST:-$W403_MANIFEST}"
-  export W403_CONFIG_PATH="${W403_CONFIG_PATH:-${EUNIT_CONFIG:-config/sys.local}.config}"
+  export W403_RESOURCE_MANIFEST="$W403_MANIFEST"
+  export V5_INTTEST_W403P_DB="$W403_DB"
+  export W403_CONFIG_PATH="$W403_OWNED_CONFIG"
   if [ -f "$RUN_DIR/resources/garage-w202.env" ]; then
     . "$RUN_DIR/resources/garage-w202.env"
     export W202_GARAGE_ENDPOINT W202_GARAGE_BUCKET W202_GARAGE_ACCESS_KEY W202_GARAGE_SECRET_KEY
   fi
   local PZ="" d
   for d in deps/*/ebin; do [ -d "$d" ] && PZ="$PZ -pz $PWD/$d"; done
-  ln -sfn . imboy
   sed -e "s/{http_port, 9800}/{http_port, ${EUNIT_HTTP_PORT:-19980}}/" \
       -e "s/{http_port_adm, 9706}/{http_port_adm, ${EUNIT_HTTP_ADM_PORT:-19970}}/" \
       "${EUNIT_CONFIG:-config/sys.local}.config" > "$cdir/w403-direct.config"
   for try in 1 2 3; do
     EUNIT_USE_RELAY=0 erl -noinput -boot no_dot_erlang +P 1048576 +Q 1024 \
-      -config "$cdir/w403-direct.config" -pa imboy/ebin -pa ebin -pa test $PZ \
+      -config "$cdir/w403-direct.config" -pa "$V5_ALIAS_ROOT/imboy/ebin" -pa ebin -pa test $PZ \
       -eval 'CoverSetup = fun() -> ok end, CoverExport = fun(_) -> ok end, CoverSetup(),
         Mods = [attachment_lifecycle_v5_w403_storage_tests,
                 attachment_lifecycle_v5_w403_driver_matrix_tests,
@@ -989,7 +1416,6 @@ PYM
     [ $rc -eq 0 ] && break
     [ $try -lt 3 ] && sleep 5
   done
-  rm -f imboy
   if [ $rc -eq 0 ] && grep -q "W403_DIRECT_OK" "$cdir/eunit-w403.log"; then
     W403S_PG_OK=1
   else
@@ -1002,17 +1428,23 @@ PYM
 
 # ---------------- W4-04 executor ----------------
 w404_case() { # $1 cdir
+  bound_marker_dbs w201 || return $?
   local cdir="$1" RC=0 try rc
   mkdir -p "$cdir"
+  rm -f "$cdir/observations.jsonl"
+  export V5_OBSERVATIONS_FILE="$cdir/observations.jsonl"
+  ensure_disk_root || return $?
   local PZ="" d
   for d in deps/*/ebin; do [ -d "$d" ] && PZ="$PZ -pz $PWD/$d"; done
-  ln -sfn . imboy
   sed -e "s/{http_port, 9800}/{http_port, ${EUNIT_HTTP_PORT:-19980}}/" \
       -e "s/{http_port_adm, 9706}/{http_port_adm, ${EUNIT_HTTP_ADM_PORT:-19970}}/" \
       "${EUNIT_CONFIG:-config/sys.local}.config" > "$cdir/w404-direct.config"
   for try in 1 2 3; do
+    # Each retry restarts the observation stream: a failed attempt must not
+    # leave rows that the adapter would see as duplicate measurements.
+    rm -f "$cdir/observations.jsonl"
     EUNIT_USE_RELAY=0 erl -noinput -boot no_dot_erlang +P 1048576 +Q 1024 \
-      -config "$cdir/w404-direct.config" -pa imboy/ebin -pa ebin -pa test $PZ \
+      -config "$cdir/w404-direct.config" -pa "$V5_ALIAS_ROOT/imboy/ebin" -pa ebin -pa test $PZ \
       -eval 'CoverSetup = fun() -> ok end, CoverExport = fun(_) -> ok end, CoverSetup(),
         Mods = [attachment_lifecycle_v5_w404_activation_tests],
         case eunit:test(Mods, [verbose]) of
@@ -1024,7 +1456,6 @@ w404_case() { # $1 cdir
     [ $rc -eq 0 ] && break
     [ $try -lt 3 ] && sleep 5
   done
-  rm -f imboy
   if [ $rc -eq 0 ] && grep -q "W404_DIRECT_OK" "$cdir/eunit-w404.log"; then
     W404S_PG_OK=1
   else
@@ -1036,6 +1467,7 @@ w404_case() { # $1 cdir
 }
 
 w203_case() { # $1 cdir
+  bound_marker_dbs w201 raw raw2 || return $?
   local cdir="$1" RC=0
   mkdir -p "$cdir"
   # 屏障套件（真实双连接，inttest_marker_db 自管供给库）；直连 erl 复用
@@ -1043,13 +1475,12 @@ w203_case() { # $1 cdir
   # 构建已由 test-build 预热时直连运行更稳）。
   local PZ="" d
   for d in deps/*/ebin; do [ -d "$d" ] && PZ="$PZ -pz $PWD/$d"; done
-  ln -sfn . imboy
   sed -e "s/{http_port, 9800}/{http_port, ${EUNIT_HTTP_PORT:-19980}}/" \
       -e "s/{http_port_adm, 9706}/{http_port_adm, ${EUNIT_HTTP_ADM_PORT:-19970}}/" \
       "${EUNIT_CONFIG:-config/sys.local}.config" > "$cdir/w203-direct.config"
   EUNIT_USE_RELAY=0 erl -noinput -boot no_dot_erlang +P 1048576 +Q 1024 \
     -kernel logger_level none \
-    -config "$cdir/w203-direct.config" -pa imboy/ebin -pa ebin -pa test $PZ \
+    -config "$cdir/w203-direct.config" -pa "$V5_ALIAS_ROOT/imboy/ebin" -pa ebin -pa test $PZ \
     -eval 'CoverSetup = fun() -> ok end, CoverExport = fun(_) -> ok end, CoverSetup(),
       case eunit:test([attachment_lifecycle_v5_pg_tests], [verbose]) of
         ok -> io:format("W203_DIRECT_OK~n");
@@ -1057,7 +1488,6 @@ w203_case() { # $1 cdir
       end,
       halt()' > "$cdir/eunit-w203.log" 2>&1
   local rc=$?
-  rm -f imboy
   if [ $rc -eq 0 ] && grep -q "tests passed" "$cdir/eunit-w203.log"; then
     W203_PG_OK=1
   else
@@ -1273,6 +1703,7 @@ strict_ledger_case() {
   [ -f "$PGPASSWORD_FILE" ] || { echo "pg password file missing" >&2; return 75; }
   local PGPASSWORD; PGPASSWORD=$(cat "$PGPASSWORD_FILE")
   local DB="attv5_${SLOT}_strict"
+  authorize_fixture_database "$DB" || return 20
   docker exec -i "$PG_CONTAINER" psql -X -U imboy_user -d postgres \
     -c "DROP DATABASE IF EXISTS $DB" -c "CREATE DATABASE $DB OWNER imboy_user" > "$cdir/db-create.log" 2>&1 || return 75
   for E in pg_jieba postgis postgis_raster timescaledb pgcrypto "uuid-ossp" pg_trgm btree_gin btree_gist unaccent pg_stat_statements; do
@@ -1304,10 +1735,30 @@ seal_leafs() {
 }
 
 # ---------------- dispatch ----------------
+V5_ALIAS_ROOT="$(mktemp -d "${TMPDIR:-/tmp}/imboy-v5-gate.XXXXXXXX")" || exit 20
+ln -s "$ROOT" "$V5_ALIAS_ROOT/imboy" || exit 20
 produce_measured() {  # $1 case_id $2 case_dir — adapter -> producer -> measured-receipts.json
   local cid="$1" cdir="$2" adapter
   adapter="$SCRIPT_DIR/attachment_lifecycle_v5_adapter_$(echo "$cid" | tr '/-' '__' | tr 'A-Z' 'a-z').py"
   [ -f "$adapter" ] || { echo "no measured adapter for case $cid (evidence cannot be sealed)" >&2; return 30; }
+  # A failed earlier attempt of an unsealed case leaves a measured-receipts
+  # bound to a different candidate; the no-replace publish cannot reconcile
+  # across candidates.  Sealed cases are never touched.
+  python3 - "$RUN_DIR" "$cid" "$cdir" <<'PYC'
+import json, os, shutil, sys
+run_dir, cid, cdir = sys.argv[1:4]
+state = json.load(open(os.path.join(run_dir, "state.json")))
+if cid in (state.get("case_manifest_digests") or {}):
+    raise SystemExit(0)
+for name in ("measured-receipts.json", "observations.json"):
+    path = os.path.join(cdir, name)
+    if os.path.isfile(path):
+        os.unlink(path)
+if os.path.isdir(cdir):
+    for name in os.listdir(cdir):
+        if name.startswith("producer-attempt-"):
+            shutil.rmtree(os.path.join(cdir, name), ignore_errors=True)
+PYC
   python3 "$adapter" "$RUN_DIR" "$cdir" "$ROOT" >> "$cdir/adapter.log" 2>&1 || { echo "ADAPTER_FAIL $cid" >> "$cdir/adapter.log"; return 30; }
   python3 "$ROOT/scripts/attachment_lifecycle_v5_producer.py" produce \
     --run-dir "$RUN_DIR" --task-id "${cid%%/*}" --case-id "$cid" --case-dir "$cdir" \

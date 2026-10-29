@@ -209,7 +209,8 @@ presign_recovery_tx(Conn, Ctx, Cached) ->
     OrgId = maps:get(organization_id, Ctx),
     AppId = maps:get(application_id, Ctx),
     case is_binary(Key) andalso enterprise_asset_repo:owned_key(Key, OrgId, AppId) of
-        false -> {error, {<<"resource_not_found">>, session_not_found}};
+        false ->
+            {error, {<<"resource_not_found">>, session_not_found}};
         true ->
             case enterprise_asset_repo:recovery_session_tx(Conn, Key) of
                 {ok, Row} -> recover_session(Ctx, Cached, Row);
@@ -221,15 +222,22 @@ presign_recovery_tx(Conn, Ctx, Cached) ->
 recover_session(Ctx, Cached, Row) ->
     OrgId = maps:get(organization_id, Ctx),
     AppId = maps:get(application_id, Ctx),
-    ExpectedSubject = #{<<"kind">> => <<"application">>,
-        <<"principal">> => integer_to_binary(AppId), <<"org_id">> => integer_to_binary(OrgId)},
+    ExpectedSubject = #{
+        <<"kind">> => <<"application">>,
+        <<"principal">> => integer_to_binary(AppId),
+        <<"org_id">> => integer_to_binary(OrgId)
+    },
     Registration = maps:get(<<"upload_registration">>, Row, #{}),
-    Subject = case Registration of
-        #{<<"subject">> := S} -> S;
-        _ -> undefined
-    end,
-    case Subject =:= ExpectedSubject andalso maps:get(<<"scope">>, Row, undefined) =:= <<"enterprise">>
-        andalso maps:get(<<"client_upload_id">>, Row, undefined) =:= maps:get(<<"client_upload_id">>, Cached)
+    Subject =
+        case Registration of
+            #{<<"subject">> := S} -> S;
+            _ -> undefined
+        end,
+    case
+        Subject =:= ExpectedSubject andalso
+            maps:get(<<"scope">>, Row, undefined) =:= <<"enterprise">> andalso
+            maps:get(<<"client_upload_id">>, Row, undefined) =:=
+                maps:get(<<"client_upload_id">>, Cached)
     of
         false -> {error, {<<"resource_not_found">>, session_not_found}};
         true -> recover_session_state(Ctx, Cached, Row)
@@ -241,39 +249,50 @@ recover_session_state(Ctx, Cached, #{<<"session_state">> := <<"confirmed">>} = R
     %% 复用确认结果及普通恢复字段；已回收 metadata 保留原 ID，并返回真实生命周期。
     Id = maps:get(<<"confirmed_attachment_id">>, Row, null),
     Life = maps:get(<<"asset_lifecycle_state">>, Row, null),
-    ScopeRef = enterprise_asset_repo:scope_ref(maps:get(organization_id, Ctx), maps:get(application_id, Ctx)),
-    case is_integer(Id) andalso Id =:= maps:get(<<"asset_id">>, Row, null)
-        andalso maps:get(<<"asset_scope">>, Row, null) =:= <<"enterprise">>
-        andalso maps:get(<<"asset_scope_ref">>, Row, null) =:= ScopeRef
-        andalso lists:member(Life, [<<"live">>, <<"delete_intent">>, <<"deleted">>])
+    ScopeRef = enterprise_asset_repo:scope_ref(
+        maps:get(organization_id, Ctx), maps:get(application_id, Ctx)
+    ),
+    case
+        is_integer(Id) andalso Id =:= maps:get(<<"asset_id">>, Row, null) andalso
+            maps:get(<<"asset_scope">>, Row, null) =:= <<"enterprise">> andalso
+            maps:get(<<"asset_scope_ref">>, Row, null) =:= ScopeRef andalso
+            lists:member(Life, [<<"live">>, <<"delete_intent">>, <<"deleted">>])
     of
-        true -> {ok, #{
-            <<"file_id">> => Id, <<"object_key">> => maps:get(<<"object_key">>, Cached),
-            <<"size">> => maps:get(<<"asset_size">>, Row),
-            <<"mime_type">> => maps:get(<<"asset_mime_type">>, Row),
-            <<"client_upload_id">> => maps:get(<<"client_upload_id">>, Row),
-            <<"session_state">> => <<"confirmed">>, <<"lifecycle_state">> => Life,
-            <<"session_deadline">> => maps:get(<<"deadline">>, Row),
-            <<"upload_expires_at">> => maps:get(<<"expires_at">>, Row),
-            <<"can_resume">> => false, <<"retry_action">> => <<"none">>
-        }};
-        false -> {error, {<<"security_gate_closed">>, confirmation_unavailable}}
+        true ->
+            {ok, #{
+                <<"file_id">> => Id,
+                <<"object_key">> => maps:get(<<"object_key">>, Cached),
+                <<"size">> => maps:get(<<"asset_size">>, Row),
+                <<"mime_type">> => maps:get(<<"asset_mime_type">>, Row),
+                <<"client_upload_id">> => maps:get(<<"client_upload_id">>, Row),
+                <<"session_state">> => <<"confirmed">>,
+                <<"lifecycle_state">> => Life,
+                <<"session_deadline">> => maps:get(<<"deadline">>, Row),
+                <<"upload_expires_at">> => maps:get(<<"expires_at">>, Row),
+                <<"can_resume">> => false,
+                <<"retry_action">> => <<"none">>
+            }};
+        false ->
+            {error, {<<"security_gate_closed">>, confirmation_unavailable}}
     end;
 recover_session_state(_Ctx, Cached, #{<<"session_state">> := <<"registered">>} = Row) ->
     Expiry = maps:get(<<"expires_at">>, Row, null),
     Deadline = maps:get(<<"deadline">>, Row, null),
     Now = erlang:system_time(second),
     case maps:get(<<"deletion_pending">>, Row, true) of
-        true -> {error, {<<"resource_conflict">>, session_not_renewable}};
+        true ->
+            {error, {<<"resource_conflict">>, session_not_renewable}};
         false when is_integer(Expiry), is_integer(Deadline), Expiry > Now, Deadline > Now ->
             recover_registered(Cached, Row, Expiry, Deadline);
         false when is_integer(Expiry), is_integer(Deadline) ->
             {error, {<<"gone">>, session_expired}};
-        _ -> {error, {<<"security_gate_closed">>, recovery_unavailable}}
+        _ ->
+            {error, {<<"security_gate_closed">>, recovery_unavailable}}
     end;
 recover_session_state(_Ctx, _Cached, #{<<"session_state">> := State}) when
     State =:= <<"rejected">>; State =:= <<"delete_intent">>; State =:= <<"deleted">>
--> {error, {<<"resource_conflict">>, session_not_renewable}};
+->
+    {error, {<<"resource_conflict">>, session_not_renewable}};
 recover_session_state(_Ctx, _Cached, #{<<"session_state">> := <<"expired">>}) ->
     {error, {<<"gone">>, session_expired}};
 recover_session_state(_Ctx, _Cached, _Row) ->
@@ -284,17 +303,22 @@ recover_registered(Cached, Row, Expiry, Deadline) ->
     case attachment_storage:frozen_location(Key, Row) of
         {ok, Snapshot} when is_map(Snapshot) ->
             Stable = #{
-                <<"object_key">> => Key, <<"bucket">> => maps:get(<<"bucket">>, Row),
-                <<"mime_type">> => declared_mime(Row), <<"session_state">> => <<"registered">>,
+                <<"object_key">> => Key,
+                <<"bucket">> => maps:get(<<"bucket">>, Row),
+                <<"mime_type">> => declared_mime(Row),
+                <<"session_state">> => <<"registered">>,
                 <<"client_upload_id">> => maps:get(<<"client_upload_id">>, Row),
-                <<"session_deadline">> => Deadline, <<"expires_at">> => Expiry
+                <<"session_deadline">> => Deadline,
+                <<"expires_at">> => Expiry
             },
             case maps:get(<<"renew">>, Cached, false) of
                 true -> {ok, Stable#{<<"renew">> => true, <<"deadline">> => Deadline}};
                 false -> {ok, Stable}
             end;
-        {ok, legacy_unknown} -> {error, {<<"resource_conflict">>, recovery_unverified}};
-        {error, _} -> {error, {<<"security_gate_closed">>, recovery_unavailable}}
+        {ok, legacy_unknown} ->
+            {error, {<<"resource_conflict">>, recovery_unverified}};
+        {error, _} ->
+            {error, {<<"security_gate_closed">>, recovery_unavailable}}
     end.
 
 id_or_key(Input) ->
@@ -453,41 +477,58 @@ pending_v5(#{<<"client_upload_id">> := Cid}) when Cid =/= null -> true;
 pending_v5(_) -> false.
 
 %% V5 confirm：HEAD 仅作 MIME/策略预检，字节裁决以 GET 真实读流为准
-%% （02 §4「HEAD 本身不充分」）；超限/类型拒绝不删对象——pin 保留供同
-%% receipt 重试，物理回收归 W4 GC。
+%% （02 §4「HEAD 本身不充足」）；读字节前先取 O(1) 首 stat 基线随 StatCtx
+%% 下传，confirm_v5_link_tx 锁行后复核同一对象 stat（防 stat-confirm 窗口
+%% 覆写）；超限/类型/stat 漂移拒绝不删对象——pin 保留供同 receipt 重试，
+%% 物理回收归 W4 GC。
 confirm_head_v5(Conn, Ctx, ObjectKey, Hash, Pending) ->
     case attachment_storage:frozen_location(ObjectKey, Pending) of
         {ok, legacy_unknown} ->
             {error, {<<"conflict">>, historical_location_unverified}};
         {ok, #{driver := Driver, mime := RealType} = Snapshot} ->
-            BytesResult =
-                case Driver of
-                    garage -> attachment_storage_garage:read_snapshot(Snapshot);
-                    disk -> attachment_storage_disk:read_snapshot(Snapshot)
-                end,
-            case BytesResult of
-                {ok, Bytes} ->
-                    Sha256 = binary:encode_hex(crypto:hash(sha256, Bytes), lowercase),
-                    ByteSize = byte_size(Bytes),
-                    case enterprise_asset_retention_logic:content_policy_tx(Conn, Ctx, #{}) of
-                        {ok, Policy} ->
-                            MaxBytes = enterprise_asset_retention_logic:effective_max_bytes(
-                                Policy, ByteSize
-                            ),
-                            confirm_policy_v5(
-                                Conn,
-                                Ctx,
-                                ObjectKey,
-                                Hash,
-                                ByteSize,
-                                RealType,
-                                Policy,
-                                MaxBytes,
-                                Pending,
-                                Sha256
-                            );
-                        {error, _} = Err ->
-                            Err
+            %% 首 stat 先于读字节建立基线：[S1, read] 覆写由哈希-pin 对照兜住，
+            %% [read, 提交] 覆写由锁后 S2 不一致拒绝。S1 not_found 与读路径
+            %% not_found 同形状（现有 object_not_found 语义不变）。
+            case attachment_storage:head_snapshot(Snapshot) of
+                {ok, FirstStat} ->
+                    StatCtx = #{snapshot => Snapshot, first_stat => FirstStat},
+                    BytesResult =
+                        case Driver of
+                            garage -> attachment_storage_garage:read_snapshot(Snapshot);
+                            disk -> attachment_storage_disk:read_snapshot(Snapshot)
+                        end,
+                    case BytesResult of
+                        {ok, Bytes} ->
+                            Sha256 = binary:encode_hex(crypto:hash(sha256, Bytes), lowercase),
+                            ByteSize = byte_size(Bytes),
+                            case
+                                enterprise_asset_retention_logic:content_policy_tx(Conn, Ctx, #{})
+                            of
+                                {ok, Policy} ->
+                                    MaxBytes =
+                                        enterprise_asset_retention_logic:effective_max_bytes(
+                                            Policy, ByteSize
+                                        ),
+                                    confirm_policy_v5(
+                                        Conn,
+                                        Ctx,
+                                        ObjectKey,
+                                        Hash,
+                                        ByteSize,
+                                        RealType,
+                                        Policy,
+                                        MaxBytes,
+                                        Pending,
+                                        Sha256,
+                                        StatCtx
+                                    );
+                                {error, _} = Err ->
+                                    Err
+                            end;
+                        {error, not_found} ->
+                            {error, {<<"invalid_request">>, object_not_found}};
+                        {error, Reason} ->
+                            {error, {<<"internal_error">>, Reason}}
                     end;
                 {error, not_found} ->
                     {error, {<<"invalid_request">>, object_not_found}};
@@ -499,7 +540,7 @@ confirm_head_v5(Conn, Ctx, ObjectKey, Hash, Pending) ->
     end.
 
 confirm_policy_v5(
-    Conn, Ctx, ObjectKey, Hash, RealSize, RealType, Policy, MaxBytes, Pending, Sha256
+    Conn, Ctx, ObjectKey, Hash, RealSize, RealType, Policy, MaxBytes, Pending, Sha256, StatCtx
 ) ->
     MimeOk = enterprise_asset_retention_logic:mime_allowed(Policy, RealType),
     case RealSize > MaxBytes of
@@ -511,12 +552,12 @@ confirm_policy_v5(
                     {error, {<<"invalid_request">>, invalid_file_type}};
                 true ->
                     save_confirmed_v5(
-                        Conn, Ctx, ObjectKey, Hash, RealSize, RealType, Pending, Sha256
+                        Conn, Ctx, ObjectKey, Hash, RealSize, RealType, Pending, Sha256, StatCtx
                     )
             end
     end.
 
-save_confirmed_v5(Conn, Ctx, ObjectKey, _Hash, RealSize, RealType, Pending, Sha256) ->
+save_confirmed_v5(Conn, Ctx, ObjectKey, _Hash, RealSize, RealType, Pending, Sha256, StatCtx) ->
     OrgId = maps:get(organization_id, Ctx),
     AppId = maps:get(application_id, Ctx),
     ScopeRef = enterprise_asset_repo:scope_ref(OrgId, AppId),
@@ -533,8 +574,9 @@ save_confirmed_v5(Conn, Ctx, ObjectKey, _Hash, RealSize, RealType, Pending, Sha2
     },
     case enterprise_asset_repo:confirm_save_tx(Conn, ObjectKey, RealType, RealSize, InfoMap) of
         {ok, AttId, First} ->
-            %% 持锁重查 pin（锁前读数不构成授权，02 §4）后原子确认
-            case confirm_v5_link_tx(Conn, ObjectKey, AttId, Sha256, RealSize) of
+            %% 持锁重查 pin（锁前读数不构成授权，02 §4）+ 锁后对象 stat 复核
+            %% 后原子确认
+            case confirm_v5_link_tx(Conn, ObjectKey, AttId, Sha256, RealSize, StatCtx) of
                 ok ->
                     case First of
                         true ->
@@ -575,10 +617,10 @@ save_confirmed_v5(Conn, Ctx, ObjectKey, _Hash, RealSize, RealType, Pending, Sha2
             {error, {<<"internal_error">>, Reason}}
     end.
 
-%% confirm 线性化（02 §4）：锁 pending 行重查 pin → fn_v5_confirm_pending
-%% registered→confirmed（同 id 重放幂等）。失败按企业稳定码返回，
-%% with_idempotency 对 {error, {Code, _}} 统一回滚（插入行一并撤销）。
-confirm_v5_link_tx(Conn, ObjectKey, AttId, Sha256, RealSize) ->
+%% confirm 线性化（02 §4）：锁 pending 行重查 pin → 锁后对象 stat 复核 →
+%% fn_v5_confirm_pending registered→confirmed（同 id 重放幂等）。失败按企业
+%% 稳定码返回，with_idempotency 对 {error, {Code, _}} 统一回滚（插入行一并撤销）。
+confirm_v5_link_tx(Conn, ObjectKey, AttId, Sha256, RealSize, StatCtx) ->
     case attach_pending_repo:lock_session_tx(Conn, ObjectKey) of
         {ok, not_found} ->
             {error, {<<"resource_not_found">>, session_vanished}};
@@ -587,15 +629,30 @@ confirm_v5_link_tx(Conn, ObjectKey, AttId, Sha256, RealSize) ->
                 #{<<"sha256">> := PinSha, <<"size_bytes">> := PinSize} ->
                     case PinSha =:= Sha256 andalso ec_cnv:to_integer(PinSize) =:= RealSize of
                         true ->
-                            case attach_pending_repo:confirm_session_tx(Conn, ObjectKey, AttId) of
-                                {ok, AttId} ->
-                                    ok;
-                                {ok, _OtherId} ->
-                                    {error, {<<"resource_conflict">>, confirm_id_mismatch}};
-                                {error, confirm_conflict} ->
-                                    {error, {<<"resource_conflict">>, confirm_conflict}};
-                                {error, Reason} ->
-                                    {error, {<<"internal_error">>, Reason}}
+                            %% 锁后二次 stat 复核（W2-02）：首 stat（读字节前
+                            %% head）与此刻不一致即对象在 GET 与提交之间被覆写/
+                            %% 删除——复用现有 content_hash_mismatch 拒绝形状
+                            %% （with_idempotency 回滚），不留成功口。stat 不可得
+                            %% 同样拒绝（fail-closed）；对象删后 tombstone 语义
+                            %% 不变：入口 not_found 仍在 confirm_head_v5 返回。
+                            case storage_stat_unchanged(StatCtx) of
+                                true ->
+                                    case
+                                        attach_pending_repo:confirm_session_tx(
+                                            Conn, ObjectKey, AttId
+                                        )
+                                    of
+                                        {ok, AttId} ->
+                                            ok;
+                                        {ok, _OtherId} ->
+                                            {error, {<<"resource_conflict">>, confirm_id_mismatch}};
+                                        {error, confirm_conflict} ->
+                                            {error, {<<"resource_conflict">>, confirm_conflict}};
+                                        {error, Reason} ->
+                                            {error, {<<"internal_error">>, Reason}}
+                                    end;
+                                false ->
+                                    {error, {<<"invalid_request">>, content_hash_mismatch}}
                             end;
                         false ->
                             {error, {<<"invalid_request">>, content_hash_mismatch}}
@@ -606,6 +663,21 @@ confirm_v5_link_tx(Conn, ObjectKey, AttId, Sha256, RealSize) ->
         {error, Reason} ->
             {error, {<<"internal_error">>, Reason}}
     end.
+
+%% 锁后二次 stat：与首 stat（读字节前 head）对照同一冻结 snapshot I。
+%% 任何非「完全一致」结果（覆写、删除、stat 不可得、键证据漂移）一律
+%% false——调用方按 content_hash_mismatch 拒绝（fail-closed，不留成功口）。
+storage_stat_unchanged(#{snapshot := Snapshot, first_stat := FirstStat}) ->
+    case attachment_storage:head_snapshot(Snapshot) of
+        {ok, SecondStat} -> stat_equal(FirstStat, SecondStat);
+        {error, _} -> false
+    end.
+
+%% 键集并集逐键对照：任一键一边缺证据（undefined）一边有值即不一致
+%% （缺证据退化仅发生在双方同缺——此时判据退化为 size，如实作为遗留风险上报）。
+stat_equal(A, B) ->
+    Keys = lists:usort(maps:keys(A) ++ maps:keys(B)),
+    lists:all(fun(K) -> maps:get(K, A, undefined) =:= maps:get(K, B, undefined) end, Keys).
 
 pin_of_session(#{<<"upload_content">> := Content}) when is_map(Content) -> Content;
 pin_of_session(_) -> #{}.

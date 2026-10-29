@@ -17,26 +17,11 @@
 -export([find_msg_def/1, fetch_msg_def/1]).
 -export([find_enum_def/1, fetch_enum_def/1]).
 -export([enum_symbol_by_value/2, enum_value_by_symbol/2]).
--export([
-    'enum_symbol_by_value_imboy.textguard.v1.Scene'/1,
-    'enum_value_by_symbol_imboy.textguard.v1.Scene'/1
-]).
--export([
-    'enum_symbol_by_value_imboy.textguard.v1.Decision'/1,
-    'enum_value_by_symbol_imboy.textguard.v1.Decision'/1
-]).
--export([
-    'enum_symbol_by_value_imboy.textguard.v1.Severity'/1,
-    'enum_value_by_symbol_imboy.textguard.v1.Severity'/1
-]).
--export([
-    'enum_symbol_by_value_imboy.textguard.v1.MatchMethod'/1,
-    'enum_value_by_symbol_imboy.textguard.v1.MatchMethod'/1
-]).
--export([
-    'enum_symbol_by_value_imboy.textguard.v1.VariantType'/1,
-    'enum_value_by_symbol_imboy.textguard.v1.VariantType'/1
-]).
+-export(['enum_symbol_by_value_imboy.textguard.v1.Scene'/1, 'enum_value_by_symbol_imboy.textguard.v1.Scene'/1]).
+-export(['enum_symbol_by_value_imboy.textguard.v1.Decision'/1, 'enum_value_by_symbol_imboy.textguard.v1.Decision'/1]).
+-export(['enum_symbol_by_value_imboy.textguard.v1.Severity'/1, 'enum_value_by_symbol_imboy.textguard.v1.Severity'/1]).
+-export(['enum_symbol_by_value_imboy.textguard.v1.MatchMethod'/1, 'enum_value_by_symbol_imboy.textguard.v1.MatchMethod'/1]).
+-export(['enum_symbol_by_value_imboy.textguard.v1.VariantType'/1, 'enum_value_by_symbol_imboy.textguard.v1.VariantType'/1]).
 -export([get_service_names/0]).
 -export([get_service_def/1]).
 -export([get_rpc_names/1]).
@@ -66,170 +51,80 @@
 -export([gpb_version_as_string/0, gpb_version_as_list/0]).
 -export([gpb_version_source/0]).
 
+
 %% enumerated types
--type 'imboy.textguard.v1.Scene'() ::
-    'SCENE_UNSPECIFIED' | 'CHANNEL_MESSAGE' | 'MOMENT_POST' | 'PROFILE_FIELD'.
+-type 'imboy.textguard.v1.Scene'() :: 'SCENE_UNSPECIFIED' | 'CHANNEL_MESSAGE' | 'MOMENT_POST' | 'PROFILE_FIELD'.
 -type 'imboy.textguard.v1.Decision'() :: 'DECISION_UNSPECIFIED' | 'ALLOW' | 'REVIEW' | 'BLOCK'.
 -type 'imboy.textguard.v1.Severity'() :: 'SEVERITY_UNSPECIFIED' | 'LOW' | 'MEDIUM' | 'HIGH'.
--type 'imboy.textguard.v1.MatchMethod'() ::
-    'METHOD_UNSPECIFIED' | 'LITERAL' | 'T2S' | 'GAP' | 'ALIAS' | 'REGEX'.
--type 'imboy.textguard.v1.VariantType'() ::
-    'VARIANT_UNSPECIFIED'
-    | 'CANONICAL'
-    | 'PINYIN'
-    | 'HOMOPHONE'
-    | 'LOOKALIKE'
-    | 'DECOMPOSED'
-    | 'REGEX_RULE'.
--export_type([
-    'imboy.textguard.v1.Scene'/0,
-    'imboy.textguard.v1.Decision'/0,
-    'imboy.textguard.v1.Severity'/0,
-    'imboy.textguard.v1.MatchMethod'/0,
-    'imboy.textguard.v1.VariantType'/0
-]).
+-type 'imboy.textguard.v1.MatchMethod'() :: 'METHOD_UNSPECIFIED' | 'LITERAL' | 'T2S' | 'GAP' | 'ALIAS' | 'REGEX'.
+-type 'imboy.textguard.v1.VariantType'() :: 'VARIANT_UNSPECIFIED' | 'CANONICAL' | 'PINYIN' | 'HOMOPHONE' | 'LOOKALIKE' | 'DECOMPOSED' | 'REGEX_RULE'.
+-export_type(['imboy.textguard.v1.Scene'/0, 'imboy.textguard.v1.Decision'/0, 'imboy.textguard.v1.Severity'/0, 'imboy.textguard.v1.MatchMethod'/0, 'imboy.textguard.v1.VariantType'/0]).
 
 %% message types
 -type 'imboy.textguard.v1.TextField'() ::
-    % = 1, optional
-    #{
-        field_id => unicode:chardata(),
-        % = 2, optional
-        text => unicode:chardata()
-    }.
+      #{field_id                => unicode:chardata(), % = 1, optional
+        text                    => unicode:chardata() % = 2, optional
+       }.
 
 -type 'imboy.textguard.v1.CheckTextRequest'() ::
-    % = 1, optional
-    #{
-        request_id => unicode:chardata(),
-        % = 2, optional, enum imboy.textguard.v1.Scene
-        scene =>
-            'SCENE_UNSPECIFIED' | 'CHANNEL_MESSAGE' | 'MOMENT_POST' | 'PROFILE_FIELD' | integer(),
-        % = 3, repeated
-        fields => ['imboy.textguard.v1.TextField'()]
-    }.
+      #{request_id              => unicode:chardata(), % = 1, optional
+        scene                   => 'SCENE_UNSPECIFIED' | 'CHANNEL_MESSAGE' | 'MOMENT_POST' | 'PROFILE_FIELD' | integer(), % = 2, optional, enum imboy.textguard.v1.Scene
+        fields                  => ['imboy.textguard.v1.TextField'()] % = 3, repeated
+       }.
 
 -type 'imboy.textguard.v1.Hit'() ::
-    % = 1, optional
-    #{
-        field_id => unicode:chardata(),
-        % = 2, optional
-        rule_id => unicode:chardata(),
-        % = 3, optional
-        variant_id => unicode:chardata(),
-        % = 4, optional, enum imboy.textguard.v1.VariantType
-        variant_type =>
-            'VARIANT_UNSPECIFIED'
-            | 'CANONICAL'
-            | 'PINYIN'
-            | 'HOMOPHONE'
-            | 'LOOKALIKE'
-            | 'DECOMPOSED'
-            | 'REGEX_RULE'
-            | integer(),
-        % = 5, optional
-        word => unicode:chardata(),
-        % = 6, optional
-        category => unicode:chardata(),
-        % = 7, optional, enum imboy.textguard.v1.Severity
-        severity => 'SEVERITY_UNSPECIFIED' | 'LOW' | 'MEDIUM' | 'HIGH' | integer(),
-        % = 8, optional, enum imboy.textguard.v1.Decision
-        effective_action => 'DECISION_UNSPECIFIED' | 'ALLOW' | 'REVIEW' | 'BLOCK' | integer(),
-        % = 9, optional, 32 bits
-        start_byte => non_neg_integer(),
-        % = 10, optional, 32 bits
-        end_byte => non_neg_integer(),
-        % = 11, repeated, enum imboy.textguard.v1.MatchMethod
-        match_methods => [
-            'METHOD_UNSPECIFIED' | 'LITERAL' | 'T2S' | 'GAP' | 'ALIAS' | 'REGEX' | integer()
-        ]
-    }.
+      #{field_id                => unicode:chardata(), % = 1, optional
+        rule_id                 => unicode:chardata(), % = 2, optional
+        variant_id              => unicode:chardata(), % = 3, optional
+        variant_type            => 'VARIANT_UNSPECIFIED' | 'CANONICAL' | 'PINYIN' | 'HOMOPHONE' | 'LOOKALIKE' | 'DECOMPOSED' | 'REGEX_RULE' | integer(), % = 4, optional, enum imboy.textguard.v1.VariantType
+        word                    => unicode:chardata(), % = 5, optional
+        category                => unicode:chardata(), % = 6, optional
+        severity                => 'SEVERITY_UNSPECIFIED' | 'LOW' | 'MEDIUM' | 'HIGH' | integer(), % = 7, optional, enum imboy.textguard.v1.Severity
+        effective_action        => 'DECISION_UNSPECIFIED' | 'ALLOW' | 'REVIEW' | 'BLOCK' | integer(), % = 8, optional, enum imboy.textguard.v1.Decision
+        start_byte              => non_neg_integer(), % = 9, optional, 32 bits
+        end_byte                => non_neg_integer(), % = 10, optional, 32 bits
+        match_methods           => ['METHOD_UNSPECIFIED' | 'LITERAL' | 'T2S' | 'GAP' | 'ALIAS' | 'REGEX' | integer()] % = 11, repeated, enum imboy.textguard.v1.MatchMethod
+       }.
 
 -type 'imboy.textguard.v1.CheckTextResponse'() ::
-    % = 1, optional
-    #{
-        request_id => unicode:chardata(),
-        % = 2, optional
-        ruleset_revision => unicode:chardata(),
-        % = 3, optional
-        generation => unicode:chardata(),
-        % = 4, optional
-        normalization_id => unicode:chardata(),
-        % = 5, optional
-        t2s_table_id => unicode:chardata(),
-        % = 6, optional
-        semantics_id => unicode:chardata(),
-        % = 7, optional
-        base_rules_digest => unicode:chardata(),
-        % = 8, optional, enum imboy.textguard.v1.Decision
-        decision => 'DECISION_UNSPECIFIED' | 'ALLOW' | 'REVIEW' | 'BLOCK' | integer(),
-        % = 9, optional
-        scan_complete => boolean() | 0 | 1,
-        % = 10, optional
-        hits_truncated => boolean() | 0 | 1,
-        % = 11, repeated
-        hits => ['imboy.textguard.v1.Hit'()],
-        % = 12, optional, 32 bits
-        fields_checked => non_neg_integer(),
-        % = 13, optional
-        hit_semantics => unicode:chardata(),
-        % = 14, optional
-        build_id => unicode:chardata()
-    }.
+      #{request_id              => unicode:chardata(), % = 1, optional
+        ruleset_revision        => unicode:chardata(), % = 2, optional
+        generation              => unicode:chardata(), % = 3, optional
+        normalization_id        => unicode:chardata(), % = 4, optional
+        t2s_table_id            => unicode:chardata(), % = 5, optional
+        semantics_id            => unicode:chardata(), % = 6, optional
+        base_rules_digest       => unicode:chardata(), % = 7, optional
+        decision                => 'DECISION_UNSPECIFIED' | 'ALLOW' | 'REVIEW' | 'BLOCK' | integer(), % = 8, optional, enum imboy.textguard.v1.Decision
+        scan_complete           => boolean() | 0 | 1, % = 9, optional
+        hits_truncated          => boolean() | 0 | 1, % = 10, optional
+        hits                    => ['imboy.textguard.v1.Hit'()], % = 11, repeated
+        fields_checked          => non_neg_integer(), % = 12, optional, 32 bits
+        hit_semantics           => unicode:chardata(), % = 13, optional
+        build_id                => unicode:chardata() % = 14, optional
+       }.
 
 -type 'imboy.textguard.v1.GetInfoRequest'() ::
-    #{}.
+      #{
+       }.
 
 -type 'imboy.textguard.v1.GetInfoResponse'() ::
-    % = 1, optional
-    #{
-        instance_id => unicode:chardata(),
-        % = 2, optional
-        ready => boolean() | 0 | 1,
-        % = 3, optional
-        build_id => unicode:chardata(),
-        % = 4, optional
-        ruleset_revision => unicode:chardata(),
-        % = 5, optional
-        generation => unicode:chardata(),
-        % = 6, optional
-        normalization_id => unicode:chardata(),
-        % = 7, optional
-        t2s_table_id => unicode:chardata(),
-        % = 8, optional
-        base_rules_digest => unicode:chardata(),
-        % = 9, optional, 32 bits
-        canonical_count => non_neg_integer(),
-        % = 10, optional, 32 bits
-        alias_count => non_neg_integer(),
-        % = 11, optional, 32 bits
-        regex_count => non_neg_integer(),
-        % = 12, repeated
-        supported_semantics => [unicode:chardata()]
-    }.
+      #{instance_id             => unicode:chardata(), % = 1, optional
+        ready                   => boolean() | 0 | 1, % = 2, optional
+        build_id                => unicode:chardata(), % = 3, optional
+        ruleset_revision        => unicode:chardata(), % = 4, optional
+        generation              => unicode:chardata(), % = 5, optional
+        normalization_id        => unicode:chardata(), % = 6, optional
+        t2s_table_id            => unicode:chardata(), % = 7, optional
+        base_rules_digest       => unicode:chardata(), % = 8, optional
+        canonical_count         => non_neg_integer(), % = 9, optional, 32 bits
+        alias_count             => non_neg_integer(), % = 10, optional, 32 bits
+        regex_count             => non_neg_integer(), % = 11, optional, 32 bits
+        supported_semantics     => [unicode:chardata()] % = 12, repeated
+       }.
 
--export_type([
-    'imboy.textguard.v1.TextField'/0,
-    'imboy.textguard.v1.CheckTextRequest'/0,
-    'imboy.textguard.v1.Hit'/0,
-    'imboy.textguard.v1.CheckTextResponse'/0,
-    'imboy.textguard.v1.GetInfoRequest'/0,
-    'imboy.textguard.v1.GetInfoResponse'/0
-]).
--type '$msg_name'() ::
-    'imboy.textguard.v1.TextField'
-    | 'imboy.textguard.v1.CheckTextRequest'
-    | 'imboy.textguard.v1.Hit'
-    | 'imboy.textguard.v1.CheckTextResponse'
-    | 'imboy.textguard.v1.GetInfoRequest'
-    | 'imboy.textguard.v1.GetInfoResponse'.
--type '$msg'() ::
-    'imboy.textguard.v1.TextField'()
-    | 'imboy.textguard.v1.CheckTextRequest'()
-    | 'imboy.textguard.v1.Hit'()
-    | 'imboy.textguard.v1.CheckTextResponse'()
-    | 'imboy.textguard.v1.GetInfoRequest'()
-    | 'imboy.textguard.v1.GetInfoResponse'().
+-export_type(['imboy.textguard.v1.TextField'/0, 'imboy.textguard.v1.CheckTextRequest'/0, 'imboy.textguard.v1.Hit'/0, 'imboy.textguard.v1.CheckTextResponse'/0, 'imboy.textguard.v1.GetInfoRequest'/0, 'imboy.textguard.v1.GetInfoResponse'/0]).
+-type '$msg_name'() :: 'imboy.textguard.v1.TextField' | 'imboy.textguard.v1.CheckTextRequest' | 'imboy.textguard.v1.Hit' | 'imboy.textguard.v1.CheckTextResponse' | 'imboy.textguard.v1.GetInfoRequest' | 'imboy.textguard.v1.GetInfoResponse'.
+-type '$msg'() :: 'imboy.textguard.v1.TextField'() | 'imboy.textguard.v1.CheckTextRequest'() | 'imboy.textguard.v1.Hit'() | 'imboy.textguard.v1.CheckTextResponse'() | 'imboy.textguard.v1.GetInfoRequest'() | 'imboy.textguard.v1.GetInfoResponse'().
 -export_type(['$msg_name'/0, '$msg'/0]).
 
 -if(?OTP_RELEASE >= 24).
@@ -249,470 +144,224 @@ encode_msg(Msg, MsgName, Opts) ->
     end,
     TrUserData = proplists:get_value(user_data, Opts),
     case MsgName of
-        'imboy.textguard.v1.TextField' ->
-            'encode_msg_imboy.textguard.v1.TextField'(id(Msg, TrUserData), TrUserData);
-        'imboy.textguard.v1.CheckTextRequest' ->
-            'encode_msg_imboy.textguard.v1.CheckTextRequest'(id(Msg, TrUserData), TrUserData);
-        'imboy.textguard.v1.Hit' ->
-            'encode_msg_imboy.textguard.v1.Hit'(id(Msg, TrUserData), TrUserData);
-        'imboy.textguard.v1.CheckTextResponse' ->
-            'encode_msg_imboy.textguard.v1.CheckTextResponse'(id(Msg, TrUserData), TrUserData);
-        'imboy.textguard.v1.GetInfoRequest' ->
-            'encode_msg_imboy.textguard.v1.GetInfoRequest'(id(Msg, TrUserData), TrUserData);
-        'imboy.textguard.v1.GetInfoResponse' ->
-            'encode_msg_imboy.textguard.v1.GetInfoResponse'(id(Msg, TrUserData), TrUserData)
+        'imboy.textguard.v1.TextField' -> 'encode_msg_imboy.textguard.v1.TextField'(id(Msg, TrUserData), TrUserData);
+        'imboy.textguard.v1.CheckTextRequest' -> 'encode_msg_imboy.textguard.v1.CheckTextRequest'(id(Msg, TrUserData), TrUserData);
+        'imboy.textguard.v1.Hit' -> 'encode_msg_imboy.textguard.v1.Hit'(id(Msg, TrUserData), TrUserData);
+        'imboy.textguard.v1.CheckTextResponse' -> 'encode_msg_imboy.textguard.v1.CheckTextResponse'(id(Msg, TrUserData), TrUserData);
+        'imboy.textguard.v1.GetInfoRequest' -> 'encode_msg_imboy.textguard.v1.GetInfoRequest'(id(Msg, TrUserData), TrUserData);
+        'imboy.textguard.v1.GetInfoResponse' -> 'encode_msg_imboy.textguard.v1.GetInfoResponse'(id(Msg, TrUserData), TrUserData)
     end.
 
-'encode_msg_imboy.textguard.v1.TextField'(Msg, TrUserData) ->
-    'encode_msg_imboy.textguard.v1.TextField'(Msg, <<>>, TrUserData).
+
+'encode_msg_imboy.textguard.v1.TextField'(Msg, TrUserData) -> 'encode_msg_imboy.textguard.v1.TextField'(Msg, <<>>, TrUserData).
+
 
 'encode_msg_imboy.textguard.v1.TextField'(#{} = M, Bin, TrUserData) ->
-    B1 =
-        case M of
-            #{field_id := F1} ->
-                begin
-                    TrF1 = id(F1, TrUserData),
-                    e_type_string(TrF1, <<Bin/binary, 10>>, TrUserData)
-                end;
-            _ ->
-                Bin
-        end,
+    B1 = case M of
+             #{field_id := F1} -> begin TrF1 = id(F1, TrUserData), e_type_string(TrF1, <<Bin/binary, 10>>, TrUserData) end;
+             _ -> Bin
+         end,
     case M of
-        #{text := F2} ->
-            begin
-                TrF2 = id(F2, TrUserData),
-                e_type_string(TrF2, <<B1/binary, 18>>, TrUserData)
-            end;
-        _ ->
-            B1
+        #{text := F2} -> begin TrF2 = id(F2, TrUserData), e_type_string(TrF2, <<B1/binary, 18>>, TrUserData) end;
+        _ -> B1
     end.
 
-'encode_msg_imboy.textguard.v1.CheckTextRequest'(Msg, TrUserData) ->
-    'encode_msg_imboy.textguard.v1.CheckTextRequest'(Msg, <<>>, TrUserData).
+'encode_msg_imboy.textguard.v1.CheckTextRequest'(Msg, TrUserData) -> 'encode_msg_imboy.textguard.v1.CheckTextRequest'(Msg, <<>>, TrUserData).
+
 
 'encode_msg_imboy.textguard.v1.CheckTextRequest'(#{} = M, Bin, TrUserData) ->
-    B1 =
-        case M of
-            #{request_id := F1} ->
-                begin
-                    TrF1 = id(F1, TrUserData),
-                    e_type_string(TrF1, <<Bin/binary, 10>>, TrUserData)
-                end;
-            _ ->
-                Bin
-        end,
-    B2 =
-        case M of
-            #{scene := F2} ->
-                begin
-                    TrF2 = id(F2, TrUserData),
-                    'e_enum_imboy.textguard.v1.Scene'(TrF2, <<B1/binary, 16>>, TrUserData)
-                end;
-            _ ->
-                B1
-        end,
+    B1 = case M of
+             #{request_id := F1} -> begin TrF1 = id(F1, TrUserData), e_type_string(TrF1, <<Bin/binary, 10>>, TrUserData) end;
+             _ -> Bin
+         end,
+    B2 = case M of
+             #{scene := F2} -> begin TrF2 = id(F2, TrUserData), 'e_enum_imboy.textguard.v1.Scene'(TrF2, <<B1/binary, 16>>, TrUserData) end;
+             _ -> B1
+         end,
     case M of
         #{fields := F3} ->
             TrF3 = id(F3, TrUserData),
-            if
-                TrF3 == [] -> B2;
-                true -> 'e_field_imboy.textguard.v1.CheckTextRequest_fields'(TrF3, B2, TrUserData)
+            if TrF3 == [] -> B2;
+               true -> 'e_field_imboy.textguard.v1.CheckTextRequest_fields'(TrF3, B2, TrUserData)
             end;
-        _ ->
-            B2
+        _ -> B2
     end.
 
-'encode_msg_imboy.textguard.v1.Hit'(Msg, TrUserData) ->
-    'encode_msg_imboy.textguard.v1.Hit'(Msg, <<>>, TrUserData).
+'encode_msg_imboy.textguard.v1.Hit'(Msg, TrUserData) -> 'encode_msg_imboy.textguard.v1.Hit'(Msg, <<>>, TrUserData).
+
 
 'encode_msg_imboy.textguard.v1.Hit'(#{} = M, Bin, TrUserData) ->
-    B1 =
-        case M of
-            #{field_id := F1} ->
-                begin
-                    TrF1 = id(F1, TrUserData),
-                    e_type_string(TrF1, <<Bin/binary, 10>>, TrUserData)
-                end;
-            _ ->
-                Bin
-        end,
-    B2 =
-        case M of
-            #{rule_id := F2} ->
-                begin
-                    TrF2 = id(F2, TrUserData),
-                    e_type_string(TrF2, <<B1/binary, 18>>, TrUserData)
-                end;
-            _ ->
-                B1
-        end,
-    B3 =
-        case M of
-            #{variant_id := F3} ->
-                begin
-                    TrF3 = id(F3, TrUserData),
-                    e_type_string(TrF3, <<B2/binary, 26>>, TrUserData)
-                end;
-            _ ->
-                B2
-        end,
-    B4 =
-        case M of
-            #{variant_type := F4} ->
-                begin
-                    TrF4 = id(F4, TrUserData),
-                    'e_enum_imboy.textguard.v1.VariantType'(TrF4, <<B3/binary, 32>>, TrUserData)
-                end;
-            _ ->
-                B3
-        end,
-    B5 =
-        case M of
-            #{word := F5} ->
-                begin
-                    TrF5 = id(F5, TrUserData),
-                    e_type_string(TrF5, <<B4/binary, 42>>, TrUserData)
-                end;
-            _ ->
-                B4
-        end,
-    B6 =
-        case M of
-            #{category := F6} ->
-                begin
-                    TrF6 = id(F6, TrUserData),
-                    e_type_string(TrF6, <<B5/binary, 50>>, TrUserData)
-                end;
-            _ ->
-                B5
-        end,
-    B7 =
-        case M of
-            #{severity := F7} ->
-                begin
-                    TrF7 = id(F7, TrUserData),
-                    'e_enum_imboy.textguard.v1.Severity'(TrF7, <<B6/binary, 56>>, TrUserData)
-                end;
-            _ ->
-                B6
-        end,
-    B8 =
-        case M of
-            #{effective_action := F8} ->
-                begin
-                    TrF8 = id(F8, TrUserData),
-                    'e_enum_imboy.textguard.v1.Decision'(TrF8, <<B7/binary, 64>>, TrUserData)
-                end;
-            _ ->
-                B7
-        end,
-    B9 =
-        case M of
-            #{start_byte := F9} ->
-                begin
-                    TrF9 = id(F9, TrUserData),
-                    e_varint(TrF9, <<B8/binary, 72>>, TrUserData)
-                end;
-            _ ->
-                B8
-        end,
-    B10 =
-        case M of
-            #{end_byte := F10} ->
-                begin
-                    TrF10 = id(F10, TrUserData),
-                    e_varint(TrF10, <<B9/binary, 80>>, TrUserData)
-                end;
-            _ ->
-                B9
-        end,
+    B1 = case M of
+             #{field_id := F1} -> begin TrF1 = id(F1, TrUserData), e_type_string(TrF1, <<Bin/binary, 10>>, TrUserData) end;
+             _ -> Bin
+         end,
+    B2 = case M of
+             #{rule_id := F2} -> begin TrF2 = id(F2, TrUserData), e_type_string(TrF2, <<B1/binary, 18>>, TrUserData) end;
+             _ -> B1
+         end,
+    B3 = case M of
+             #{variant_id := F3} -> begin TrF3 = id(F3, TrUserData), e_type_string(TrF3, <<B2/binary, 26>>, TrUserData) end;
+             _ -> B2
+         end,
+    B4 = case M of
+             #{variant_type := F4} -> begin TrF4 = id(F4, TrUserData), 'e_enum_imboy.textguard.v1.VariantType'(TrF4, <<B3/binary, 32>>, TrUserData) end;
+             _ -> B3
+         end,
+    B5 = case M of
+             #{word := F5} -> begin TrF5 = id(F5, TrUserData), e_type_string(TrF5, <<B4/binary, 42>>, TrUserData) end;
+             _ -> B4
+         end,
+    B6 = case M of
+             #{category := F6} -> begin TrF6 = id(F6, TrUserData), e_type_string(TrF6, <<B5/binary, 50>>, TrUserData) end;
+             _ -> B5
+         end,
+    B7 = case M of
+             #{severity := F7} -> begin TrF7 = id(F7, TrUserData), 'e_enum_imboy.textguard.v1.Severity'(TrF7, <<B6/binary, 56>>, TrUserData) end;
+             _ -> B6
+         end,
+    B8 = case M of
+             #{effective_action := F8} -> begin TrF8 = id(F8, TrUserData), 'e_enum_imboy.textguard.v1.Decision'(TrF8, <<B7/binary, 64>>, TrUserData) end;
+             _ -> B7
+         end,
+    B9 = case M of
+             #{start_byte := F9} -> begin TrF9 = id(F9, TrUserData), e_varint(TrF9, <<B8/binary, 72>>, TrUserData) end;
+             _ -> B8
+         end,
+    B10 = case M of
+              #{end_byte := F10} -> begin TrF10 = id(F10, TrUserData), e_varint(TrF10, <<B9/binary, 80>>, TrUserData) end;
+              _ -> B9
+          end,
     case M of
         #{match_methods := F11} ->
             TrF11 = id(F11, TrUserData),
-            if
-                TrF11 == [] -> B10;
-                true -> 'e_field_imboy.textguard.v1.Hit_match_methods'(TrF11, B10, TrUserData)
+            if TrF11 == [] -> B10;
+               true -> 'e_field_imboy.textguard.v1.Hit_match_methods'(TrF11, B10, TrUserData)
             end;
-        _ ->
-            B10
+        _ -> B10
     end.
 
-'encode_msg_imboy.textguard.v1.CheckTextResponse'(Msg, TrUserData) ->
-    'encode_msg_imboy.textguard.v1.CheckTextResponse'(Msg, <<>>, TrUserData).
+'encode_msg_imboy.textguard.v1.CheckTextResponse'(Msg, TrUserData) -> 'encode_msg_imboy.textguard.v1.CheckTextResponse'(Msg, <<>>, TrUserData).
+
 
 'encode_msg_imboy.textguard.v1.CheckTextResponse'(#{} = M, Bin, TrUserData) ->
-    B1 =
-        case M of
-            #{request_id := F1} ->
-                begin
-                    TrF1 = id(F1, TrUserData),
-                    e_type_string(TrF1, <<Bin/binary, 10>>, TrUserData)
-                end;
-            _ ->
-                Bin
-        end,
-    B2 =
-        case M of
-            #{ruleset_revision := F2} ->
-                begin
-                    TrF2 = id(F2, TrUserData),
-                    e_type_string(TrF2, <<B1/binary, 18>>, TrUserData)
-                end;
-            _ ->
-                B1
-        end,
-    B3 =
-        case M of
-            #{generation := F3} ->
-                begin
-                    TrF3 = id(F3, TrUserData),
-                    e_type_string(TrF3, <<B2/binary, 26>>, TrUserData)
-                end;
-            _ ->
-                B2
-        end,
-    B4 =
-        case M of
-            #{normalization_id := F4} ->
-                begin
-                    TrF4 = id(F4, TrUserData),
-                    e_type_string(TrF4, <<B3/binary, 34>>, TrUserData)
-                end;
-            _ ->
-                B3
-        end,
-    B5 =
-        case M of
-            #{t2s_table_id := F5} ->
-                begin
-                    TrF5 = id(F5, TrUserData),
-                    e_type_string(TrF5, <<B4/binary, 42>>, TrUserData)
-                end;
-            _ ->
-                B4
-        end,
-    B6 =
-        case M of
-            #{semantics_id := F6} ->
-                begin
-                    TrF6 = id(F6, TrUserData),
-                    e_type_string(TrF6, <<B5/binary, 50>>, TrUserData)
-                end;
-            _ ->
-                B5
-        end,
-    B7 =
-        case M of
-            #{base_rules_digest := F7} ->
-                begin
-                    TrF7 = id(F7, TrUserData),
-                    e_type_string(TrF7, <<B6/binary, 58>>, TrUserData)
-                end;
-            _ ->
-                B6
-        end,
-    B8 =
-        case M of
-            #{decision := F8} ->
-                begin
-                    TrF8 = id(F8, TrUserData),
-                    'e_enum_imboy.textguard.v1.Decision'(TrF8, <<B7/binary, 64>>, TrUserData)
-                end;
-            _ ->
-                B7
-        end,
-    B9 =
-        case M of
-            #{scan_complete := F9} ->
-                begin
-                    TrF9 = id(F9, TrUserData),
-                    e_type_bool(TrF9, <<B8/binary, 72>>, TrUserData)
-                end;
-            _ ->
-                B8
-        end,
-    B10 =
-        case M of
-            #{hits_truncated := F10} ->
-                begin
-                    TrF10 = id(F10, TrUserData),
-                    e_type_bool(TrF10, <<B9/binary, 80>>, TrUserData)
-                end;
-            _ ->
-                B9
-        end,
-    B11 =
-        case M of
-            #{hits := F11} ->
-                TrF11 = id(F11, TrUserData),
-                if
-                    TrF11 == [] ->
-                        B10;
-                    true ->
-                        'e_field_imboy.textguard.v1.CheckTextResponse_hits'(TrF11, B10, TrUserData)
-                end;
-            _ ->
-                B10
-        end,
-    B12 =
-        case M of
-            #{fields_checked := F12} ->
-                begin
-                    TrF12 = id(F12, TrUserData),
-                    e_varint(TrF12, <<B11/binary, 96>>, TrUserData)
-                end;
-            _ ->
-                B11
-        end,
-    B13 =
-        case M of
-            #{hit_semantics := F13} ->
-                begin
-                    TrF13 = id(F13, TrUserData),
-                    e_type_string(TrF13, <<B12/binary, 106>>, TrUserData)
-                end;
-            _ ->
-                B12
-        end,
+    B1 = case M of
+             #{request_id := F1} -> begin TrF1 = id(F1, TrUserData), e_type_string(TrF1, <<Bin/binary, 10>>, TrUserData) end;
+             _ -> Bin
+         end,
+    B2 = case M of
+             #{ruleset_revision := F2} -> begin TrF2 = id(F2, TrUserData), e_type_string(TrF2, <<B1/binary, 18>>, TrUserData) end;
+             _ -> B1
+         end,
+    B3 = case M of
+             #{generation := F3} -> begin TrF3 = id(F3, TrUserData), e_type_string(TrF3, <<B2/binary, 26>>, TrUserData) end;
+             _ -> B2
+         end,
+    B4 = case M of
+             #{normalization_id := F4} -> begin TrF4 = id(F4, TrUserData), e_type_string(TrF4, <<B3/binary, 34>>, TrUserData) end;
+             _ -> B3
+         end,
+    B5 = case M of
+             #{t2s_table_id := F5} -> begin TrF5 = id(F5, TrUserData), e_type_string(TrF5, <<B4/binary, 42>>, TrUserData) end;
+             _ -> B4
+         end,
+    B6 = case M of
+             #{semantics_id := F6} -> begin TrF6 = id(F6, TrUserData), e_type_string(TrF6, <<B5/binary, 50>>, TrUserData) end;
+             _ -> B5
+         end,
+    B7 = case M of
+             #{base_rules_digest := F7} -> begin TrF7 = id(F7, TrUserData), e_type_string(TrF7, <<B6/binary, 58>>, TrUserData) end;
+             _ -> B6
+         end,
+    B8 = case M of
+             #{decision := F8} -> begin TrF8 = id(F8, TrUserData), 'e_enum_imboy.textguard.v1.Decision'(TrF8, <<B7/binary, 64>>, TrUserData) end;
+             _ -> B7
+         end,
+    B9 = case M of
+             #{scan_complete := F9} -> begin TrF9 = id(F9, TrUserData), e_type_bool(TrF9, <<B8/binary, 72>>, TrUserData) end;
+             _ -> B8
+         end,
+    B10 = case M of
+              #{hits_truncated := F10} -> begin TrF10 = id(F10, TrUserData), e_type_bool(TrF10, <<B9/binary, 80>>, TrUserData) end;
+              _ -> B9
+          end,
+    B11 = case M of
+              #{hits := F11} ->
+                  TrF11 = id(F11, TrUserData),
+                  if TrF11 == [] -> B10;
+                     true -> 'e_field_imboy.textguard.v1.CheckTextResponse_hits'(TrF11, B10, TrUserData)
+                  end;
+              _ -> B10
+          end,
+    B12 = case M of
+              #{fields_checked := F12} -> begin TrF12 = id(F12, TrUserData), e_varint(TrF12, <<B11/binary, 96>>, TrUserData) end;
+              _ -> B11
+          end,
+    B13 = case M of
+              #{hit_semantics := F13} -> begin TrF13 = id(F13, TrUserData), e_type_string(TrF13, <<B12/binary, 106>>, TrUserData) end;
+              _ -> B12
+          end,
     case M of
-        #{build_id := F14} ->
-            begin
-                TrF14 = id(F14, TrUserData),
-                e_type_string(TrF14, <<B13/binary, 114>>, TrUserData)
-            end;
-        _ ->
-            B13
+        #{build_id := F14} -> begin TrF14 = id(F14, TrUserData), e_type_string(TrF14, <<B13/binary, 114>>, TrUserData) end;
+        _ -> B13
     end.
 
 'encode_msg_imboy.textguard.v1.GetInfoRequest'(_Msg, _TrUserData) -> <<>>.
 
-'encode_msg_imboy.textguard.v1.GetInfoResponse'(Msg, TrUserData) ->
-    'encode_msg_imboy.textguard.v1.GetInfoResponse'(Msg, <<>>, TrUserData).
+'encode_msg_imboy.textguard.v1.GetInfoResponse'(Msg, TrUserData) -> 'encode_msg_imboy.textguard.v1.GetInfoResponse'(Msg, <<>>, TrUserData).
+
 
 'encode_msg_imboy.textguard.v1.GetInfoResponse'(#{} = M, Bin, TrUserData) ->
-    B1 =
-        case M of
-            #{instance_id := F1} ->
-                begin
-                    TrF1 = id(F1, TrUserData),
-                    e_type_string(TrF1, <<Bin/binary, 10>>, TrUserData)
-                end;
-            _ ->
-                Bin
-        end,
-    B2 =
-        case M of
-            #{ready := F2} ->
-                begin
-                    TrF2 = id(F2, TrUserData),
-                    e_type_bool(TrF2, <<B1/binary, 16>>, TrUserData)
-                end;
-            _ ->
-                B1
-        end,
-    B3 =
-        case M of
-            #{build_id := F3} ->
-                begin
-                    TrF3 = id(F3, TrUserData),
-                    e_type_string(TrF3, <<B2/binary, 26>>, TrUserData)
-                end;
-            _ ->
-                B2
-        end,
-    B4 =
-        case M of
-            #{ruleset_revision := F4} ->
-                begin
-                    TrF4 = id(F4, TrUserData),
-                    e_type_string(TrF4, <<B3/binary, 34>>, TrUserData)
-                end;
-            _ ->
-                B3
-        end,
-    B5 =
-        case M of
-            #{generation := F5} ->
-                begin
-                    TrF5 = id(F5, TrUserData),
-                    e_type_string(TrF5, <<B4/binary, 42>>, TrUserData)
-                end;
-            _ ->
-                B4
-        end,
-    B6 =
-        case M of
-            #{normalization_id := F6} ->
-                begin
-                    TrF6 = id(F6, TrUserData),
-                    e_type_string(TrF6, <<B5/binary, 50>>, TrUserData)
-                end;
-            _ ->
-                B5
-        end,
-    B7 =
-        case M of
-            #{t2s_table_id := F7} ->
-                begin
-                    TrF7 = id(F7, TrUserData),
-                    e_type_string(TrF7, <<B6/binary, 58>>, TrUserData)
-                end;
-            _ ->
-                B6
-        end,
-    B8 =
-        case M of
-            #{base_rules_digest := F8} ->
-                begin
-                    TrF8 = id(F8, TrUserData),
-                    e_type_string(TrF8, <<B7/binary, 66>>, TrUserData)
-                end;
-            _ ->
-                B7
-        end,
-    B9 =
-        case M of
-            #{canonical_count := F9} ->
-                begin
-                    TrF9 = id(F9, TrUserData),
-                    e_varint(TrF9, <<B8/binary, 72>>, TrUserData)
-                end;
-            _ ->
-                B8
-        end,
-    B10 =
-        case M of
-            #{alias_count := F10} ->
-                begin
-                    TrF10 = id(F10, TrUserData),
-                    e_varint(TrF10, <<B9/binary, 80>>, TrUserData)
-                end;
-            _ ->
-                B9
-        end,
-    B11 =
-        case M of
-            #{regex_count := F11} ->
-                begin
-                    TrF11 = id(F11, TrUserData),
-                    e_varint(TrF11, <<B10/binary, 88>>, TrUserData)
-                end;
-            _ ->
-                B10
-        end,
+    B1 = case M of
+             #{instance_id := F1} -> begin TrF1 = id(F1, TrUserData), e_type_string(TrF1, <<Bin/binary, 10>>, TrUserData) end;
+             _ -> Bin
+         end,
+    B2 = case M of
+             #{ready := F2} -> begin TrF2 = id(F2, TrUserData), e_type_bool(TrF2, <<B1/binary, 16>>, TrUserData) end;
+             _ -> B1
+         end,
+    B3 = case M of
+             #{build_id := F3} -> begin TrF3 = id(F3, TrUserData), e_type_string(TrF3, <<B2/binary, 26>>, TrUserData) end;
+             _ -> B2
+         end,
+    B4 = case M of
+             #{ruleset_revision := F4} -> begin TrF4 = id(F4, TrUserData), e_type_string(TrF4, <<B3/binary, 34>>, TrUserData) end;
+             _ -> B3
+         end,
+    B5 = case M of
+             #{generation := F5} -> begin TrF5 = id(F5, TrUserData), e_type_string(TrF5, <<B4/binary, 42>>, TrUserData) end;
+             _ -> B4
+         end,
+    B6 = case M of
+             #{normalization_id := F6} -> begin TrF6 = id(F6, TrUserData), e_type_string(TrF6, <<B5/binary, 50>>, TrUserData) end;
+             _ -> B5
+         end,
+    B7 = case M of
+             #{t2s_table_id := F7} -> begin TrF7 = id(F7, TrUserData), e_type_string(TrF7, <<B6/binary, 58>>, TrUserData) end;
+             _ -> B6
+         end,
+    B8 = case M of
+             #{base_rules_digest := F8} -> begin TrF8 = id(F8, TrUserData), e_type_string(TrF8, <<B7/binary, 66>>, TrUserData) end;
+             _ -> B7
+         end,
+    B9 = case M of
+             #{canonical_count := F9} -> begin TrF9 = id(F9, TrUserData), e_varint(TrF9, <<B8/binary, 72>>, TrUserData) end;
+             _ -> B8
+         end,
+    B10 = case M of
+              #{alias_count := F10} -> begin TrF10 = id(F10, TrUserData), e_varint(TrF10, <<B9/binary, 80>>, TrUserData) end;
+              _ -> B9
+          end,
+    B11 = case M of
+              #{regex_count := F11} -> begin TrF11 = id(F11, TrUserData), e_varint(TrF11, <<B10/binary, 88>>, TrUserData) end;
+              _ -> B10
+          end,
     case M of
         #{supported_semantics := F12} ->
             TrF12 = id(F12, TrUserData),
-            if
-                TrF12 == [] ->
-                    B11;
-                true ->
-                    'e_field_imboy.textguard.v1.GetInfoResponse_supported_semantics'(
-                        TrF12, B11, TrUserData
-                    )
+            if TrF12 == [] -> B11;
+               true -> 'e_field_imboy.textguard.v1.GetInfoResponse_supported_semantics'(TrF12, B11, TrUserData)
             end;
-        _ ->
-            B11
+        _ -> B11
     end.
 
 'e_mfield_imboy.textguard.v1.CheckTextRequest_fields'(Msg, Bin, TrUserData) ->
@@ -722,26 +371,21 @@ encode_msg(Msg, MsgName, Opts) ->
 
 'e_field_imboy.textguard.v1.CheckTextRequest_fields'([Elem | Rest], Bin, TrUserData) ->
     Bin2 = <<Bin/binary, 26>>,
-    Bin3 = 'e_mfield_imboy.textguard.v1.CheckTextRequest_fields'(
-        id(Elem, TrUserData), Bin2, TrUserData
-    ),
+    Bin3 = 'e_mfield_imboy.textguard.v1.CheckTextRequest_fields'(id(Elem, TrUserData), Bin2, TrUserData),
     'e_field_imboy.textguard.v1.CheckTextRequest_fields'(Rest, Bin3, TrUserData);
-'e_field_imboy.textguard.v1.CheckTextRequest_fields'([], Bin, _TrUserData) ->
-    Bin.
+'e_field_imboy.textguard.v1.CheckTextRequest_fields'([], Bin, _TrUserData) -> Bin.
 
 'e_field_imboy.textguard.v1.Hit_match_methods'(Elems, Bin, TrUserData) when Elems =/= [] ->
     SubBin = 'e_pfield_imboy.textguard.v1.Hit_match_methods'(Elems, <<>>, TrUserData),
     Bin2 = <<Bin/binary, 90>>,
     Bin3 = e_varint(byte_size(SubBin), Bin2),
     <<Bin3/binary, SubBin/binary>>;
-'e_field_imboy.textguard.v1.Hit_match_methods'([], Bin, _TrUserData) ->
-    Bin.
+'e_field_imboy.textguard.v1.Hit_match_methods'([], Bin, _TrUserData) -> Bin.
 
 'e_pfield_imboy.textguard.v1.Hit_match_methods'([Value | Rest], Bin, TrUserData) ->
     Bin2 = 'e_enum_imboy.textguard.v1.MatchMethod'(id(Value, TrUserData), Bin, TrUserData),
     'e_pfield_imboy.textguard.v1.Hit_match_methods'(Rest, Bin2, TrUserData);
-'e_pfield_imboy.textguard.v1.Hit_match_methods'([], Bin, _TrUserData) ->
-    Bin.
+'e_pfield_imboy.textguard.v1.Hit_match_methods'([], Bin, _TrUserData) -> Bin.
 
 'e_mfield_imboy.textguard.v1.CheckTextResponse_hits'(Msg, Bin, TrUserData) ->
     SubBin = 'encode_msg_imboy.textguard.v1.Hit'(Msg, <<>>, TrUserData),
@@ -750,19 +394,15 @@ encode_msg(Msg, MsgName, Opts) ->
 
 'e_field_imboy.textguard.v1.CheckTextResponse_hits'([Elem | Rest], Bin, TrUserData) ->
     Bin2 = <<Bin/binary, 90>>,
-    Bin3 = 'e_mfield_imboy.textguard.v1.CheckTextResponse_hits'(
-        id(Elem, TrUserData), Bin2, TrUserData
-    ),
+    Bin3 = 'e_mfield_imboy.textguard.v1.CheckTextResponse_hits'(id(Elem, TrUserData), Bin2, TrUserData),
     'e_field_imboy.textguard.v1.CheckTextResponse_hits'(Rest, Bin3, TrUserData);
-'e_field_imboy.textguard.v1.CheckTextResponse_hits'([], Bin, _TrUserData) ->
-    Bin.
+'e_field_imboy.textguard.v1.CheckTextResponse_hits'([], Bin, _TrUserData) -> Bin.
 
 'e_field_imboy.textguard.v1.GetInfoResponse_supported_semantics'([Elem | Rest], Bin, TrUserData) ->
     Bin2 = <<Bin/binary, 98>>,
     Bin3 = e_type_string(id(Elem, TrUserData), Bin2, TrUserData),
     'e_field_imboy.textguard.v1.GetInfoResponse_supported_semantics'(Rest, Bin3, TrUserData);
-'e_field_imboy.textguard.v1.GetInfoResponse_supported_semantics'([], Bin, _TrUserData) ->
-    Bin.
+'e_field_imboy.textguard.v1.GetInfoResponse_supported_semantics'([], Bin, _TrUserData) -> Bin.
 
 'e_enum_imboy.textguard.v1.Scene'('SCENE_UNSPECIFIED', Bin, _TrUserData) -> <<Bin/binary, 0>>;
 'e_enum_imboy.textguard.v1.Scene'('CHANNEL_MESSAGE', Bin, _TrUserData) -> <<Bin/binary, 1>>;
@@ -770,89 +410,64 @@ encode_msg(Msg, MsgName, Opts) ->
 'e_enum_imboy.textguard.v1.Scene'('PROFILE_FIELD', Bin, _TrUserData) -> <<Bin/binary, 3>>;
 'e_enum_imboy.textguard.v1.Scene'(V, Bin, _TrUserData) -> e_varint(V, Bin).
 
-'e_enum_imboy.textguard.v1.Decision'('DECISION_UNSPECIFIED', Bin, _TrUserData) ->
-    <<Bin/binary, 0>>;
-'e_enum_imboy.textguard.v1.Decision'('ALLOW', Bin, _TrUserData) ->
-    <<Bin/binary, 1>>;
-'e_enum_imboy.textguard.v1.Decision'('REVIEW', Bin, _TrUserData) ->
-    <<Bin/binary, 2>>;
-'e_enum_imboy.textguard.v1.Decision'('BLOCK', Bin, _TrUserData) ->
-    <<Bin/binary, 3>>;
-'e_enum_imboy.textguard.v1.Decision'(V, Bin, _TrUserData) ->
-    e_varint(V, Bin).
+'e_enum_imboy.textguard.v1.Decision'('DECISION_UNSPECIFIED', Bin, _TrUserData) -> <<Bin/binary, 0>>;
+'e_enum_imboy.textguard.v1.Decision'('ALLOW', Bin, _TrUserData) -> <<Bin/binary, 1>>;
+'e_enum_imboy.textguard.v1.Decision'('REVIEW', Bin, _TrUserData) -> <<Bin/binary, 2>>;
+'e_enum_imboy.textguard.v1.Decision'('BLOCK', Bin, _TrUserData) -> <<Bin/binary, 3>>;
+'e_enum_imboy.textguard.v1.Decision'(V, Bin, _TrUserData) -> e_varint(V, Bin).
 
-'e_enum_imboy.textguard.v1.Severity'('SEVERITY_UNSPECIFIED', Bin, _TrUserData) ->
-    <<Bin/binary, 0>>;
-'e_enum_imboy.textguard.v1.Severity'('LOW', Bin, _TrUserData) ->
-    <<Bin/binary, 1>>;
-'e_enum_imboy.textguard.v1.Severity'('MEDIUM', Bin, _TrUserData) ->
-    <<Bin/binary, 2>>;
-'e_enum_imboy.textguard.v1.Severity'('HIGH', Bin, _TrUserData) ->
-    <<Bin/binary, 3>>;
-'e_enum_imboy.textguard.v1.Severity'(V, Bin, _TrUserData) ->
-    e_varint(V, Bin).
+'e_enum_imboy.textguard.v1.Severity'('SEVERITY_UNSPECIFIED', Bin, _TrUserData) -> <<Bin/binary, 0>>;
+'e_enum_imboy.textguard.v1.Severity'('LOW', Bin, _TrUserData) -> <<Bin/binary, 1>>;
+'e_enum_imboy.textguard.v1.Severity'('MEDIUM', Bin, _TrUserData) -> <<Bin/binary, 2>>;
+'e_enum_imboy.textguard.v1.Severity'('HIGH', Bin, _TrUserData) -> <<Bin/binary, 3>>;
+'e_enum_imboy.textguard.v1.Severity'(V, Bin, _TrUserData) -> e_varint(V, Bin).
 
-'e_enum_imboy.textguard.v1.MatchMethod'('METHOD_UNSPECIFIED', Bin, _TrUserData) ->
-    <<Bin/binary, 0>>;
-'e_enum_imboy.textguard.v1.MatchMethod'('LITERAL', Bin, _TrUserData) ->
-    <<Bin/binary, 1>>;
-'e_enum_imboy.textguard.v1.MatchMethod'('T2S', Bin, _TrUserData) ->
-    <<Bin/binary, 2>>;
-'e_enum_imboy.textguard.v1.MatchMethod'('GAP', Bin, _TrUserData) ->
-    <<Bin/binary, 3>>;
-'e_enum_imboy.textguard.v1.MatchMethod'('ALIAS', Bin, _TrUserData) ->
-    <<Bin/binary, 4>>;
-'e_enum_imboy.textguard.v1.MatchMethod'('REGEX', Bin, _TrUserData) ->
-    <<Bin/binary, 5>>;
-'e_enum_imboy.textguard.v1.MatchMethod'(V, Bin, _TrUserData) ->
-    e_varint(V, Bin).
+'e_enum_imboy.textguard.v1.MatchMethod'('METHOD_UNSPECIFIED', Bin, _TrUserData) -> <<Bin/binary, 0>>;
+'e_enum_imboy.textguard.v1.MatchMethod'('LITERAL', Bin, _TrUserData) -> <<Bin/binary, 1>>;
+'e_enum_imboy.textguard.v1.MatchMethod'('T2S', Bin, _TrUserData) -> <<Bin/binary, 2>>;
+'e_enum_imboy.textguard.v1.MatchMethod'('GAP', Bin, _TrUserData) -> <<Bin/binary, 3>>;
+'e_enum_imboy.textguard.v1.MatchMethod'('ALIAS', Bin, _TrUserData) -> <<Bin/binary, 4>>;
+'e_enum_imboy.textguard.v1.MatchMethod'('REGEX', Bin, _TrUserData) -> <<Bin/binary, 5>>;
+'e_enum_imboy.textguard.v1.MatchMethod'(V, Bin, _TrUserData) -> e_varint(V, Bin).
 
-'e_enum_imboy.textguard.v1.VariantType'('VARIANT_UNSPECIFIED', Bin, _TrUserData) ->
-    <<Bin/binary, 0>>;
-'e_enum_imboy.textguard.v1.VariantType'('CANONICAL', Bin, _TrUserData) ->
-    <<Bin/binary, 1>>;
-'e_enum_imboy.textguard.v1.VariantType'('PINYIN', Bin, _TrUserData) ->
-    <<Bin/binary, 2>>;
-'e_enum_imboy.textguard.v1.VariantType'('HOMOPHONE', Bin, _TrUserData) ->
-    <<Bin/binary, 3>>;
-'e_enum_imboy.textguard.v1.VariantType'('LOOKALIKE', Bin, _TrUserData) ->
-    <<Bin/binary, 4>>;
-'e_enum_imboy.textguard.v1.VariantType'('DECOMPOSED', Bin, _TrUserData) ->
-    <<Bin/binary, 5>>;
-'e_enum_imboy.textguard.v1.VariantType'('REGEX_RULE', Bin, _TrUserData) ->
-    <<Bin/binary, 6>>;
-'e_enum_imboy.textguard.v1.VariantType'(V, Bin, _TrUserData) ->
-    e_varint(V, Bin).
+'e_enum_imboy.textguard.v1.VariantType'('VARIANT_UNSPECIFIED', Bin, _TrUserData) -> <<Bin/binary, 0>>;
+'e_enum_imboy.textguard.v1.VariantType'('CANONICAL', Bin, _TrUserData) -> <<Bin/binary, 1>>;
+'e_enum_imboy.textguard.v1.VariantType'('PINYIN', Bin, _TrUserData) -> <<Bin/binary, 2>>;
+'e_enum_imboy.textguard.v1.VariantType'('HOMOPHONE', Bin, _TrUserData) -> <<Bin/binary, 3>>;
+'e_enum_imboy.textguard.v1.VariantType'('LOOKALIKE', Bin, _TrUserData) -> <<Bin/binary, 4>>;
+'e_enum_imboy.textguard.v1.VariantType'('DECOMPOSED', Bin, _TrUserData) -> <<Bin/binary, 5>>;
+'e_enum_imboy.textguard.v1.VariantType'('REGEX_RULE', Bin, _TrUserData) -> <<Bin/binary, 6>>;
+'e_enum_imboy.textguard.v1.VariantType'(V, Bin, _TrUserData) -> e_varint(V, Bin).
 
--compile({nowarn_unused_function, e_type_sint/3}).
+-compile({nowarn_unused_function,e_type_sint/3}).
 e_type_sint(Value, Bin, _TrUserData) when Value >= 0 -> e_varint(Value * 2, Bin);
 e_type_sint(Value, Bin, _TrUserData) -> e_varint(Value * -2 - 1, Bin).
 
--compile({nowarn_unused_function, e_type_int32/3}).
+-compile({nowarn_unused_function,e_type_int32/3}).
 e_type_int32(Value, Bin, _TrUserData) when 0 =< Value, Value =< 127 -> <<Bin/binary, Value>>;
 e_type_int32(Value, Bin, _TrUserData) ->
     <<N:64/unsigned-native>> = <<Value:64/signed-native>>,
     e_varint(N, Bin).
 
--compile({nowarn_unused_function, e_type_int64/3}).
+-compile({nowarn_unused_function,e_type_int64/3}).
 e_type_int64(Value, Bin, _TrUserData) when 0 =< Value, Value =< 127 -> <<Bin/binary, Value>>;
 e_type_int64(Value, Bin, _TrUserData) ->
     <<N:64/unsigned-native>> = <<Value:64/signed-native>>,
     e_varint(N, Bin).
 
--compile({nowarn_unused_function, e_type_bool/3}).
+-compile({nowarn_unused_function,e_type_bool/3}).
 e_type_bool(true, Bin, _TrUserData) -> <<Bin/binary, 1>>;
 e_type_bool(false, Bin, _TrUserData) -> <<Bin/binary, 0>>;
 e_type_bool(1, Bin, _TrUserData) -> <<Bin/binary, 1>>;
 e_type_bool(0, Bin, _TrUserData) -> <<Bin/binary, 0>>.
 
--compile({nowarn_unused_function, e_type_string/3}).
+-compile({nowarn_unused_function,e_type_string/3}).
 e_type_string(S, Bin, _TrUserData) ->
     Utf8 = unicode:characters_to_binary(S),
     Bin2 = e_varint(byte_size(Utf8), Bin),
     <<Bin2/binary, Utf8/binary>>.
 
--compile({nowarn_unused_function, e_type_bytes/3}).
+-compile({nowarn_unused_function,e_type_bytes/3}).
 e_type_bytes(Bytes, Bin, _TrUserData) when is_binary(Bytes) ->
     Bin2 = e_varint(byte_size(Bytes), Bin),
     <<Bin2/binary, Bytes/binary>>;
@@ -861,64 +476,63 @@ e_type_bytes(Bytes, Bin, _TrUserData) when is_list(Bytes) ->
     Bin2 = e_varint(byte_size(BytesBin), Bin),
     <<Bin2/binary, BytesBin/binary>>.
 
--compile({nowarn_unused_function, e_type_fixed32/3}).
+-compile({nowarn_unused_function,e_type_fixed32/3}).
 e_type_fixed32(Value, Bin, _TrUserData) -> <<Bin/binary, Value:32/little>>.
 
--compile({nowarn_unused_function, e_type_sfixed32/3}).
+-compile({nowarn_unused_function,e_type_sfixed32/3}).
 e_type_sfixed32(Value, Bin, _TrUserData) -> <<Bin/binary, Value:32/little-signed>>.
 
--compile({nowarn_unused_function, e_type_fixed64/3}).
+-compile({nowarn_unused_function,e_type_fixed64/3}).
 e_type_fixed64(Value, Bin, _TrUserData) -> <<Bin/binary, Value:64/little>>.
 
--compile({nowarn_unused_function, e_type_sfixed64/3}).
+-compile({nowarn_unused_function,e_type_sfixed64/3}).
 e_type_sfixed64(Value, Bin, _TrUserData) -> <<Bin/binary, Value:64/little-signed>>.
 
--compile({nowarn_unused_function, e_type_float/3}).
+-compile({nowarn_unused_function,e_type_float/3}).
 e_type_float(V, Bin, _) when is_number(V) -> <<Bin/binary, V:32/little-float>>;
 e_type_float(infinity, Bin, _) -> <<Bin/binary, 0:16, 128, 127>>;
 e_type_float('-infinity', Bin, _) -> <<Bin/binary, 0:16, 128, 255>>;
 e_type_float(nan, Bin, _) -> <<Bin/binary, 0:16, 192, 127>>.
 
--compile({nowarn_unused_function, e_type_double/3}).
+-compile({nowarn_unused_function,e_type_double/3}).
 e_type_double(V, Bin, _) when is_number(V) -> <<Bin/binary, V:64/little-float>>;
 e_type_double(infinity, Bin, _) -> <<Bin/binary, 0:48, 240, 127>>;
 e_type_double('-infinity', Bin, _) -> <<Bin/binary, 0:48, 240, 255>>;
 e_type_double(nan, Bin, _) -> <<Bin/binary, 0:48, 248, 127>>.
 
--compile({nowarn_unused_function, e_unknown_elems/2}).
+-compile({nowarn_unused_function,e_unknown_elems/2}).
 e_unknown_elems([Elem | Rest], Bin) ->
-    BinR =
-        case Elem of
-            {varint, FNum, N} ->
-                BinF = e_varint(FNum bsl 3, Bin),
-                e_varint(N, BinF);
-            {length_delimited, FNum, Data} ->
-                BinF = e_varint(FNum bsl 3 bor 2, Bin),
-                BinL = e_varint(byte_size(Data), BinF),
-                <<BinL/binary, Data/binary>>;
-            {group, FNum, GroupFields} ->
-                Bin1 = e_varint(FNum bsl 3 bor 3, Bin),
-                Bin2 = e_unknown_elems(GroupFields, Bin1),
-                e_varint(FNum bsl 3 bor 4, Bin2);
-            {fixed32, FNum, V} ->
-                BinF = e_varint(FNum bsl 3 bor 5, Bin),
-                <<BinF/binary, V:32/little>>;
-            {fixed64, FNum, V} ->
-                BinF = e_varint(FNum bsl 3 bor 1, Bin),
-                <<BinF/binary, V:64/little>>
-        end,
+    BinR = case Elem of
+               {varint, FNum, N} ->
+                   BinF = e_varint(FNum bsl 3, Bin),
+                   e_varint(N, BinF);
+               {length_delimited, FNum, Data} ->
+                   BinF = e_varint(FNum bsl 3 bor 2, Bin),
+                   BinL = e_varint(byte_size(Data), BinF),
+                   <<BinL/binary, Data/binary>>;
+               {group, FNum, GroupFields} ->
+                   Bin1 = e_varint(FNum bsl 3 bor 3, Bin),
+                   Bin2 = e_unknown_elems(GroupFields, Bin1),
+                   e_varint(FNum bsl 3 bor 4, Bin2);
+               {fixed32, FNum, V} ->
+                   BinF = e_varint(FNum bsl 3 bor 5, Bin),
+                   <<BinF/binary, V:32/little>>;
+               {fixed64, FNum, V} ->
+                   BinF = e_varint(FNum bsl 3 bor 1, Bin),
+                   <<BinF/binary, V:64/little>>
+           end,
     e_unknown_elems(Rest, BinR);
-e_unknown_elems([], Bin) ->
-    Bin.
+e_unknown_elems([], Bin) -> Bin.
 
--compile({nowarn_unused_function, e_varint/3}).
+-compile({nowarn_unused_function,e_varint/3}).
 e_varint(N, Bin, _TrUserData) -> e_varint(N, Bin).
 
--compile({nowarn_unused_function, e_varint/2}).
+-compile({nowarn_unused_function,e_varint/2}).
 e_varint(N, Bin) when N =< 127 -> <<Bin/binary, N>>;
 e_varint(N, Bin) ->
     Bin2 = <<Bin/binary, (N band 127 bor 128)>>,
     e_varint(N bsr 7, Bin2).
+
 
 decode_msg(Bin, MsgName) when is_binary(Bin) -> decode_msg(Bin, MsgName, []).
 
@@ -926,159 +540,80 @@ decode_msg(Bin, MsgName, Opts) when is_binary(Bin) ->
     TrUserData = proplists:get_value(user_data, Opts),
     decode_msg_1_catch(Bin, MsgName, TrUserData).
 
+
 decode_msg_1_catch(Bin, MsgName, TrUserData) ->
-    try
-        decode_msg_2_doit(MsgName, Bin, TrUserData)
+    try decode_msg_2_doit(MsgName, Bin, TrUserData)
     catch
-        error:{gpb_error, _} = Reason:StackTrace ->
+        error:{gpb_error,_}=Reason:StackTrace ->
             erlang:raise(error, Reason, StackTrace);
         Class:Reason:StackTrace ->
-            error({gpb_error, {decoding_failure, {Bin, MsgName, {Class, Reason, StackTrace}}}})
+            error({gpb_error,
+                   {decoding_failure,
+                    {Bin, MsgName, {Class, Reason, StackTrace}}}})
     end.
 
-decode_msg_2_doit('imboy.textguard.v1.TextField', Bin, TrUserData) ->
-    id('decode_msg_imboy.textguard.v1.TextField'(Bin, TrUserData), TrUserData);
-decode_msg_2_doit('imboy.textguard.v1.CheckTextRequest', Bin, TrUserData) ->
-    id('decode_msg_imboy.textguard.v1.CheckTextRequest'(Bin, TrUserData), TrUserData);
-decode_msg_2_doit('imboy.textguard.v1.Hit', Bin, TrUserData) ->
-    id('decode_msg_imboy.textguard.v1.Hit'(Bin, TrUserData), TrUserData);
-decode_msg_2_doit('imboy.textguard.v1.CheckTextResponse', Bin, TrUserData) ->
-    id('decode_msg_imboy.textguard.v1.CheckTextResponse'(Bin, TrUserData), TrUserData);
-decode_msg_2_doit('imboy.textguard.v1.GetInfoRequest', Bin, TrUserData) ->
-    id('decode_msg_imboy.textguard.v1.GetInfoRequest'(Bin, TrUserData), TrUserData);
-decode_msg_2_doit('imboy.textguard.v1.GetInfoResponse', Bin, TrUserData) ->
-    id('decode_msg_imboy.textguard.v1.GetInfoResponse'(Bin, TrUserData), TrUserData).
+decode_msg_2_doit('imboy.textguard.v1.TextField', Bin, TrUserData) -> id('decode_msg_imboy.textguard.v1.TextField'(Bin, TrUserData), TrUserData);
+decode_msg_2_doit('imboy.textguard.v1.CheckTextRequest', Bin, TrUserData) -> id('decode_msg_imboy.textguard.v1.CheckTextRequest'(Bin, TrUserData), TrUserData);
+decode_msg_2_doit('imboy.textguard.v1.Hit', Bin, TrUserData) -> id('decode_msg_imboy.textguard.v1.Hit'(Bin, TrUserData), TrUserData);
+decode_msg_2_doit('imboy.textguard.v1.CheckTextResponse', Bin, TrUserData) -> id('decode_msg_imboy.textguard.v1.CheckTextResponse'(Bin, TrUserData), TrUserData);
+decode_msg_2_doit('imboy.textguard.v1.GetInfoRequest', Bin, TrUserData) -> id('decode_msg_imboy.textguard.v1.GetInfoRequest'(Bin, TrUserData), TrUserData);
+decode_msg_2_doit('imboy.textguard.v1.GetInfoResponse', Bin, TrUserData) -> id('decode_msg_imboy.textguard.v1.GetInfoResponse'(Bin, TrUserData), TrUserData).
 
-'decode_msg_imboy.textguard.v1.TextField'(Bin, TrUserData) ->
-    'dfp_read_field_def_imboy.textguard.v1.TextField'(
-        Bin, 0, 0, 0, id('$undef', TrUserData), id('$undef', TrUserData), TrUserData
-    ).
 
-'dfp_read_field_def_imboy.textguard.v1.TextField'(
-    <<10, Rest/binary>>, Z1, Z2, F, F@_1, F@_2, TrUserData
-) ->
-    'd_field_imboy.textguard.v1.TextField_field_id'(Rest, Z1, Z2, F, F@_1, F@_2, TrUserData);
-'dfp_read_field_def_imboy.textguard.v1.TextField'(
-    <<18, Rest/binary>>, Z1, Z2, F, F@_1, F@_2, TrUserData
-) ->
-    'd_field_imboy.textguard.v1.TextField_text'(Rest, Z1, Z2, F, F@_1, F@_2, TrUserData);
+
+'decode_msg_imboy.textguard.v1.TextField'(Bin, TrUserData) -> 'dfp_read_field_def_imboy.textguard.v1.TextField'(Bin, 0, 0, 0, id('$undef', TrUserData), id('$undef', TrUserData), TrUserData).
+
+'dfp_read_field_def_imboy.textguard.v1.TextField'(<<10, Rest/binary>>, Z1, Z2, F, F@_1, F@_2, TrUserData) -> 'd_field_imboy.textguard.v1.TextField_field_id'(Rest, Z1, Z2, F, F@_1, F@_2, TrUserData);
+'dfp_read_field_def_imboy.textguard.v1.TextField'(<<18, Rest/binary>>, Z1, Z2, F, F@_1, F@_2, TrUserData) -> 'd_field_imboy.textguard.v1.TextField_text'(Rest, Z1, Z2, F, F@_1, F@_2, TrUserData);
 'dfp_read_field_def_imboy.textguard.v1.TextField'(<<>>, 0, 0, _, F@_1, F@_2, _) ->
     S1 = #{},
-    S2 =
-        if
-            F@_1 == '$undef' -> S1;
+    S2 = if F@_1 == '$undef' -> S1;
             true -> S1#{field_id => F@_1}
-        end,
-    if
-        F@_2 == '$undef' -> S2;
-        true -> S2#{text => F@_2}
+         end,
+    if F@_2 == '$undef' -> S2;
+       true -> S2#{text => F@_2}
     end;
-'dfp_read_field_def_imboy.textguard.v1.TextField'(Other, Z1, Z2, F, F@_1, F@_2, TrUserData) ->
-    'dg_read_field_def_imboy.textguard.v1.TextField'(Other, Z1, Z2, F, F@_1, F@_2, TrUserData).
+'dfp_read_field_def_imboy.textguard.v1.TextField'(Other, Z1, Z2, F, F@_1, F@_2, TrUserData) -> 'dg_read_field_def_imboy.textguard.v1.TextField'(Other, Z1, Z2, F, F@_1, F@_2, TrUserData).
 
-'dg_read_field_def_imboy.textguard.v1.TextField'(
-    <<1:1, X:7, Rest/binary>>, N, Acc, F, F@_1, F@_2, TrUserData
-) when N < 32 - 7 ->
-    'dg_read_field_def_imboy.textguard.v1.TextField'(
-        Rest, N + 7, X bsl N + Acc, F, F@_1, F@_2, TrUserData
-    );
-'dg_read_field_def_imboy.textguard.v1.TextField'(
-    <<0:1, X:7, Rest/binary>>, N, Acc, _, F@_1, F@_2, TrUserData
-) ->
+'dg_read_field_def_imboy.textguard.v1.TextField'(<<1:1, X:7, Rest/binary>>, N, Acc, F, F@_1, F@_2, TrUserData) when N < 32 - 7 -> 'dg_read_field_def_imboy.textguard.v1.TextField'(Rest, N + 7, X bsl N + Acc, F, F@_1, F@_2, TrUserData);
+'dg_read_field_def_imboy.textguard.v1.TextField'(<<0:1, X:7, Rest/binary>>, N, Acc, _, F@_1, F@_2, TrUserData) ->
     Key = X bsl N + Acc,
     case Key of
-        10 ->
-            'd_field_imboy.textguard.v1.TextField_field_id'(Rest, 0, 0, 0, F@_1, F@_2, TrUserData);
-        18 ->
-            'd_field_imboy.textguard.v1.TextField_text'(Rest, 0, 0, 0, F@_1, F@_2, TrUserData);
+        10 -> 'd_field_imboy.textguard.v1.TextField_field_id'(Rest, 0, 0, 0, F@_1, F@_2, TrUserData);
+        18 -> 'd_field_imboy.textguard.v1.TextField_text'(Rest, 0, 0, 0, F@_1, F@_2, TrUserData);
         _ ->
             case Key band 7 of
-                0 ->
-                    'skip_varint_imboy.textguard.v1.TextField'(
-                        Rest, 0, 0, Key bsr 3, F@_1, F@_2, TrUserData
-                    );
-                1 ->
-                    'skip_64_imboy.textguard.v1.TextField'(
-                        Rest, 0, 0, Key bsr 3, F@_1, F@_2, TrUserData
-                    );
-                2 ->
-                    'skip_length_delimited_imboy.textguard.v1.TextField'(
-                        Rest, 0, 0, Key bsr 3, F@_1, F@_2, TrUserData
-                    );
-                3 ->
-                    'skip_group_imboy.textguard.v1.TextField'(
-                        Rest, 0, 0, Key bsr 3, F@_1, F@_2, TrUserData
-                    );
-                5 ->
-                    'skip_32_imboy.textguard.v1.TextField'(
-                        Rest, 0, 0, Key bsr 3, F@_1, F@_2, TrUserData
-                    )
+                0 -> 'skip_varint_imboy.textguard.v1.TextField'(Rest, 0, 0, Key bsr 3, F@_1, F@_2, TrUserData);
+                1 -> 'skip_64_imboy.textguard.v1.TextField'(Rest, 0, 0, Key bsr 3, F@_1, F@_2, TrUserData);
+                2 -> 'skip_length_delimited_imboy.textguard.v1.TextField'(Rest, 0, 0, Key bsr 3, F@_1, F@_2, TrUserData);
+                3 -> 'skip_group_imboy.textguard.v1.TextField'(Rest, 0, 0, Key bsr 3, F@_1, F@_2, TrUserData);
+                5 -> 'skip_32_imboy.textguard.v1.TextField'(Rest, 0, 0, Key bsr 3, F@_1, F@_2, TrUserData)
             end
     end;
 'dg_read_field_def_imboy.textguard.v1.TextField'(<<>>, 0, 0, _, F@_1, F@_2, _) ->
     S1 = #{},
-    S2 =
-        if
-            F@_1 == '$undef' -> S1;
+    S2 = if F@_1 == '$undef' -> S1;
             true -> S1#{field_id => F@_1}
-        end,
-    if
-        F@_2 == '$undef' -> S2;
-        true -> S2#{text => F@_2}
+         end,
+    if F@_2 == '$undef' -> S2;
+       true -> S2#{text => F@_2}
     end.
 
-'d_field_imboy.textguard.v1.TextField_field_id'(
-    <<1:1, X:7, Rest/binary>>, N, Acc, F, F@_1, F@_2, TrUserData
-) when N < 57 ->
-    'd_field_imboy.textguard.v1.TextField_field_id'(
-        Rest, N + 7, X bsl N + Acc, F, F@_1, F@_2, TrUserData
-    );
-'d_field_imboy.textguard.v1.TextField_field_id'(
-    <<0:1, X:7, Rest/binary>>, N, Acc, F, _, F@_2, TrUserData
-) ->
-    {NewFValue, RestF} = begin
-        Len = X bsl N + Acc,
-        <<Bytes:Len/binary, Rest2/binary>> = Rest,
-        Bytes2 = binary:copy(Bytes),
-        {id(Bytes2, TrUserData), Rest2}
-    end,
+'d_field_imboy.textguard.v1.TextField_field_id'(<<1:1, X:7, Rest/binary>>, N, Acc, F, F@_1, F@_2, TrUserData) when N < 57 -> 'd_field_imboy.textguard.v1.TextField_field_id'(Rest, N + 7, X bsl N + Acc, F, F@_1, F@_2, TrUserData);
+'d_field_imboy.textguard.v1.TextField_field_id'(<<0:1, X:7, Rest/binary>>, N, Acc, F, _, F@_2, TrUserData) ->
+    {NewFValue, RestF} = begin Len = X bsl N + Acc, <<Bytes:Len/binary, Rest2/binary>> = Rest, Bytes2 = binary:copy(Bytes), {id(Bytes2, TrUserData), Rest2} end,
     'dfp_read_field_def_imboy.textguard.v1.TextField'(RestF, 0, 0, F, NewFValue, F@_2, TrUserData).
 
-'d_field_imboy.textguard.v1.TextField_text'(
-    <<1:1, X:7, Rest/binary>>, N, Acc, F, F@_1, F@_2, TrUserData
-) when N < 57 ->
-    'd_field_imboy.textguard.v1.TextField_text'(
-        Rest, N + 7, X bsl N + Acc, F, F@_1, F@_2, TrUserData
-    );
-'d_field_imboy.textguard.v1.TextField_text'(
-    <<0:1, X:7, Rest/binary>>, N, Acc, F, F@_1, _, TrUserData
-) ->
-    {NewFValue, RestF} = begin
-        Len = X bsl N + Acc,
-        <<Bytes:Len/binary, Rest2/binary>> = Rest,
-        Bytes2 = binary:copy(Bytes),
-        {id(Bytes2, TrUserData), Rest2}
-    end,
+'d_field_imboy.textguard.v1.TextField_text'(<<1:1, X:7, Rest/binary>>, N, Acc, F, F@_1, F@_2, TrUserData) when N < 57 -> 'd_field_imboy.textguard.v1.TextField_text'(Rest, N + 7, X bsl N + Acc, F, F@_1, F@_2, TrUserData);
+'d_field_imboy.textguard.v1.TextField_text'(<<0:1, X:7, Rest/binary>>, N, Acc, F, F@_1, _, TrUserData) ->
+    {NewFValue, RestF} = begin Len = X bsl N + Acc, <<Bytes:Len/binary, Rest2/binary>> = Rest, Bytes2 = binary:copy(Bytes), {id(Bytes2, TrUserData), Rest2} end,
     'dfp_read_field_def_imboy.textguard.v1.TextField'(RestF, 0, 0, F, F@_1, NewFValue, TrUserData).
 
-'skip_varint_imboy.textguard.v1.TextField'(
-    <<1:1, _:7, Rest/binary>>, Z1, Z2, F, F@_1, F@_2, TrUserData
-) ->
-    'skip_varint_imboy.textguard.v1.TextField'(Rest, Z1, Z2, F, F@_1, F@_2, TrUserData);
-'skip_varint_imboy.textguard.v1.TextField'(
-    <<0:1, _:7, Rest/binary>>, Z1, Z2, F, F@_1, F@_2, TrUserData
-) ->
-    'dfp_read_field_def_imboy.textguard.v1.TextField'(Rest, Z1, Z2, F, F@_1, F@_2, TrUserData).
+'skip_varint_imboy.textguard.v1.TextField'(<<1:1, _:7, Rest/binary>>, Z1, Z2, F, F@_1, F@_2, TrUserData) -> 'skip_varint_imboy.textguard.v1.TextField'(Rest, Z1, Z2, F, F@_1, F@_2, TrUserData);
+'skip_varint_imboy.textguard.v1.TextField'(<<0:1, _:7, Rest/binary>>, Z1, Z2, F, F@_1, F@_2, TrUserData) -> 'dfp_read_field_def_imboy.textguard.v1.TextField'(Rest, Z1, Z2, F, F@_1, F@_2, TrUserData).
 
-'skip_length_delimited_imboy.textguard.v1.TextField'(
-    <<1:1, X:7, Rest/binary>>, N, Acc, F, F@_1, F@_2, TrUserData
-) when N < 57 ->
-    'skip_length_delimited_imboy.textguard.v1.TextField'(
-        Rest, N + 7, X bsl N + Acc, F, F@_1, F@_2, TrUserData
-    );
-'skip_length_delimited_imboy.textguard.v1.TextField'(
-    <<0:1, X:7, Rest/binary>>, N, Acc, F, F@_1, F@_2, TrUserData
-) ->
+'skip_length_delimited_imboy.textguard.v1.TextField'(<<1:1, X:7, Rest/binary>>, N, Acc, F, F@_1, F@_2, TrUserData) when N < 57 -> 'skip_length_delimited_imboy.textguard.v1.TextField'(Rest, N + 7, X bsl N + Acc, F, F@_1, F@_2, TrUserData);
+'skip_length_delimited_imboy.textguard.v1.TextField'(<<0:1, X:7, Rest/binary>>, N, Acc, F, F@_1, F@_2, TrUserData) ->
     Length = X bsl N + Acc,
     <<_:Length/binary, Rest2/binary>> = Rest,
     'dfp_read_field_def_imboy.textguard.v1.TextField'(Rest2, 0, 0, F, F@_1, F@_2, TrUserData).
@@ -1087,5361 +622,626 @@ decode_msg_2_doit('imboy.textguard.v1.GetInfoResponse', Bin, TrUserData) ->
     {_, Rest} = read_group(Bin, FNum),
     'dfp_read_field_def_imboy.textguard.v1.TextField'(Rest, 0, Z2, FNum, F@_1, F@_2, TrUserData).
 
-'skip_32_imboy.textguard.v1.TextField'(<<_:32, Rest/binary>>, Z1, Z2, F, F@_1, F@_2, TrUserData) ->
-    'dfp_read_field_def_imboy.textguard.v1.TextField'(Rest, Z1, Z2, F, F@_1, F@_2, TrUserData).
+'skip_32_imboy.textguard.v1.TextField'(<<_:32, Rest/binary>>, Z1, Z2, F, F@_1, F@_2, TrUserData) -> 'dfp_read_field_def_imboy.textguard.v1.TextField'(Rest, Z1, Z2, F, F@_1, F@_2, TrUserData).
 
-'skip_64_imboy.textguard.v1.TextField'(<<_:64, Rest/binary>>, Z1, Z2, F, F@_1, F@_2, TrUserData) ->
-    'dfp_read_field_def_imboy.textguard.v1.TextField'(Rest, Z1, Z2, F, F@_1, F@_2, TrUserData).
+'skip_64_imboy.textguard.v1.TextField'(<<_:64, Rest/binary>>, Z1, Z2, F, F@_1, F@_2, TrUserData) -> 'dfp_read_field_def_imboy.textguard.v1.TextField'(Rest, Z1, Z2, F, F@_1, F@_2, TrUserData).
 
-'decode_msg_imboy.textguard.v1.CheckTextRequest'(Bin, TrUserData) ->
-    'dfp_read_field_def_imboy.textguard.v1.CheckTextRequest'(
-        Bin,
-        0,
-        0,
-        0,
-        id('$undef', TrUserData),
-        id('$undef', TrUserData),
-        id([], TrUserData),
-        TrUserData
-    ).
+'decode_msg_imboy.textguard.v1.CheckTextRequest'(Bin, TrUserData) -> 'dfp_read_field_def_imboy.textguard.v1.CheckTextRequest'(Bin, 0, 0, 0, id('$undef', TrUserData), id('$undef', TrUserData), id([], TrUserData), TrUserData).
 
-'dfp_read_field_def_imboy.textguard.v1.CheckTextRequest'(
-    <<10, Rest/binary>>, Z1, Z2, F, F@_1, F@_2, F@_3, TrUserData
-) ->
-    'd_field_imboy.textguard.v1.CheckTextRequest_request_id'(
-        Rest, Z1, Z2, F, F@_1, F@_2, F@_3, TrUserData
-    );
-'dfp_read_field_def_imboy.textguard.v1.CheckTextRequest'(
-    <<16, Rest/binary>>, Z1, Z2, F, F@_1, F@_2, F@_3, TrUserData
-) ->
-    'd_field_imboy.textguard.v1.CheckTextRequest_scene'(
-        Rest, Z1, Z2, F, F@_1, F@_2, F@_3, TrUserData
-    );
-'dfp_read_field_def_imboy.textguard.v1.CheckTextRequest'(
-    <<26, Rest/binary>>, Z1, Z2, F, F@_1, F@_2, F@_3, TrUserData
-) ->
-    'd_field_imboy.textguard.v1.CheckTextRequest_fields'(
-        Rest, Z1, Z2, F, F@_1, F@_2, F@_3, TrUserData
-    );
+'dfp_read_field_def_imboy.textguard.v1.CheckTextRequest'(<<10, Rest/binary>>, Z1, Z2, F, F@_1, F@_2, F@_3, TrUserData) -> 'd_field_imboy.textguard.v1.CheckTextRequest_request_id'(Rest, Z1, Z2, F, F@_1, F@_2, F@_3, TrUserData);
+'dfp_read_field_def_imboy.textguard.v1.CheckTextRequest'(<<16, Rest/binary>>, Z1, Z2, F, F@_1, F@_2, F@_3, TrUserData) -> 'd_field_imboy.textguard.v1.CheckTextRequest_scene'(Rest, Z1, Z2, F, F@_1, F@_2, F@_3, TrUserData);
+'dfp_read_field_def_imboy.textguard.v1.CheckTextRequest'(<<26, Rest/binary>>, Z1, Z2, F, F@_1, F@_2, F@_3, TrUserData) -> 'd_field_imboy.textguard.v1.CheckTextRequest_fields'(Rest, Z1, Z2, F, F@_1, F@_2, F@_3, TrUserData);
 'dfp_read_field_def_imboy.textguard.v1.CheckTextRequest'(<<>>, 0, 0, _, F@_1, F@_2, R1, TrUserData) ->
     S1 = #{},
-    S2 =
-        if
-            F@_1 == '$undef' -> S1;
+    S2 = if F@_1 == '$undef' -> S1;
             true -> S1#{request_id => F@_1}
-        end,
-    S3 =
-        if
-            F@_2 == '$undef' -> S2;
+         end,
+    S3 = if F@_2 == '$undef' -> S2;
             true -> S2#{scene => F@_2}
-        end,
-    if
-        R1 == '$undef' -> S3;
-        true -> S3#{fields => lists_reverse(R1, TrUserData)}
+         end,
+    if R1 == '$undef' -> S3;
+       true -> S3#{fields => lists_reverse(R1, TrUserData)}
     end;
-'dfp_read_field_def_imboy.textguard.v1.CheckTextRequest'(
-    Other, Z1, Z2, F, F@_1, F@_2, F@_3, TrUserData
-) ->
-    'dg_read_field_def_imboy.textguard.v1.CheckTextRequest'(
-        Other, Z1, Z2, F, F@_1, F@_2, F@_3, TrUserData
-    ).
+'dfp_read_field_def_imboy.textguard.v1.CheckTextRequest'(Other, Z1, Z2, F, F@_1, F@_2, F@_3, TrUserData) -> 'dg_read_field_def_imboy.textguard.v1.CheckTextRequest'(Other, Z1, Z2, F, F@_1, F@_2, F@_3, TrUserData).
 
-'dg_read_field_def_imboy.textguard.v1.CheckTextRequest'(
-    <<1:1, X:7, Rest/binary>>, N, Acc, F, F@_1, F@_2, F@_3, TrUserData
-) when N < 32 - 7 ->
-    'dg_read_field_def_imboy.textguard.v1.CheckTextRequest'(
-        Rest, N + 7, X bsl N + Acc, F, F@_1, F@_2, F@_3, TrUserData
-    );
-'dg_read_field_def_imboy.textguard.v1.CheckTextRequest'(
-    <<0:1, X:7, Rest/binary>>, N, Acc, _, F@_1, F@_2, F@_3, TrUserData
-) ->
+'dg_read_field_def_imboy.textguard.v1.CheckTextRequest'(<<1:1, X:7, Rest/binary>>, N, Acc, F, F@_1, F@_2, F@_3, TrUserData) when N < 32 - 7 ->
+    'dg_read_field_def_imboy.textguard.v1.CheckTextRequest'(Rest, N + 7, X bsl N + Acc, F, F@_1, F@_2, F@_3, TrUserData);
+'dg_read_field_def_imboy.textguard.v1.CheckTextRequest'(<<0:1, X:7, Rest/binary>>, N, Acc, _, F@_1, F@_2, F@_3, TrUserData) ->
     Key = X bsl N + Acc,
     case Key of
-        10 ->
-            'd_field_imboy.textguard.v1.CheckTextRequest_request_id'(
-                Rest, 0, 0, 0, F@_1, F@_2, F@_3, TrUserData
-            );
-        16 ->
-            'd_field_imboy.textguard.v1.CheckTextRequest_scene'(
-                Rest, 0, 0, 0, F@_1, F@_2, F@_3, TrUserData
-            );
-        26 ->
-            'd_field_imboy.textguard.v1.CheckTextRequest_fields'(
-                Rest, 0, 0, 0, F@_1, F@_2, F@_3, TrUserData
-            );
+        10 -> 'd_field_imboy.textguard.v1.CheckTextRequest_request_id'(Rest, 0, 0, 0, F@_1, F@_2, F@_3, TrUserData);
+        16 -> 'd_field_imboy.textguard.v1.CheckTextRequest_scene'(Rest, 0, 0, 0, F@_1, F@_2, F@_3, TrUserData);
+        26 -> 'd_field_imboy.textguard.v1.CheckTextRequest_fields'(Rest, 0, 0, 0, F@_1, F@_2, F@_3, TrUserData);
         _ ->
             case Key band 7 of
-                0 ->
-                    'skip_varint_imboy.textguard.v1.CheckTextRequest'(
-                        Rest, 0, 0, Key bsr 3, F@_1, F@_2, F@_3, TrUserData
-                    );
-                1 ->
-                    'skip_64_imboy.textguard.v1.CheckTextRequest'(
-                        Rest, 0, 0, Key bsr 3, F@_1, F@_2, F@_3, TrUserData
-                    );
-                2 ->
-                    'skip_length_delimited_imboy.textguard.v1.CheckTextRequest'(
-                        Rest, 0, 0, Key bsr 3, F@_1, F@_2, F@_3, TrUserData
-                    );
-                3 ->
-                    'skip_group_imboy.textguard.v1.CheckTextRequest'(
-                        Rest, 0, 0, Key bsr 3, F@_1, F@_2, F@_3, TrUserData
-                    );
-                5 ->
-                    'skip_32_imboy.textguard.v1.CheckTextRequest'(
-                        Rest, 0, 0, Key bsr 3, F@_1, F@_2, F@_3, TrUserData
-                    )
+                0 -> 'skip_varint_imboy.textguard.v1.CheckTextRequest'(Rest, 0, 0, Key bsr 3, F@_1, F@_2, F@_3, TrUserData);
+                1 -> 'skip_64_imboy.textguard.v1.CheckTextRequest'(Rest, 0, 0, Key bsr 3, F@_1, F@_2, F@_3, TrUserData);
+                2 -> 'skip_length_delimited_imboy.textguard.v1.CheckTextRequest'(Rest, 0, 0, Key bsr 3, F@_1, F@_2, F@_3, TrUserData);
+                3 -> 'skip_group_imboy.textguard.v1.CheckTextRequest'(Rest, 0, 0, Key bsr 3, F@_1, F@_2, F@_3, TrUserData);
+                5 -> 'skip_32_imboy.textguard.v1.CheckTextRequest'(Rest, 0, 0, Key bsr 3, F@_1, F@_2, F@_3, TrUserData)
             end
     end;
 'dg_read_field_def_imboy.textguard.v1.CheckTextRequest'(<<>>, 0, 0, _, F@_1, F@_2, R1, TrUserData) ->
     S1 = #{},
-    S2 =
-        if
-            F@_1 == '$undef' -> S1;
+    S2 = if F@_1 == '$undef' -> S1;
             true -> S1#{request_id => F@_1}
-        end,
-    S3 =
-        if
-            F@_2 == '$undef' -> S2;
+         end,
+    S3 = if F@_2 == '$undef' -> S2;
             true -> S2#{scene => F@_2}
-        end,
-    if
-        R1 == '$undef' -> S3;
-        true -> S3#{fields => lists_reverse(R1, TrUserData)}
+         end,
+    if R1 == '$undef' -> S3;
+       true -> S3#{fields => lists_reverse(R1, TrUserData)}
     end.
 
-'d_field_imboy.textguard.v1.CheckTextRequest_request_id'(
-    <<1:1, X:7, Rest/binary>>, N, Acc, F, F@_1, F@_2, F@_3, TrUserData
-) when N < 57 ->
-    'd_field_imboy.textguard.v1.CheckTextRequest_request_id'(
-        Rest, N + 7, X bsl N + Acc, F, F@_1, F@_2, F@_3, TrUserData
-    );
-'d_field_imboy.textguard.v1.CheckTextRequest_request_id'(
-    <<0:1, X:7, Rest/binary>>, N, Acc, F, _, F@_2, F@_3, TrUserData
-) ->
-    {NewFValue, RestF} = begin
-        Len = X bsl N + Acc,
-        <<Bytes:Len/binary, Rest2/binary>> = Rest,
-        Bytes2 = binary:copy(Bytes),
-        {id(Bytes2, TrUserData), Rest2}
-    end,
-    'dfp_read_field_def_imboy.textguard.v1.CheckTextRequest'(
-        RestF, 0, 0, F, NewFValue, F@_2, F@_3, TrUserData
-    ).
+'d_field_imboy.textguard.v1.CheckTextRequest_request_id'(<<1:1, X:7, Rest/binary>>, N, Acc, F, F@_1, F@_2, F@_3, TrUserData) when N < 57 ->
+    'd_field_imboy.textguard.v1.CheckTextRequest_request_id'(Rest, N + 7, X bsl N + Acc, F, F@_1, F@_2, F@_3, TrUserData);
+'d_field_imboy.textguard.v1.CheckTextRequest_request_id'(<<0:1, X:7, Rest/binary>>, N, Acc, F, _, F@_2, F@_3, TrUserData) ->
+    {NewFValue, RestF} = begin Len = X bsl N + Acc, <<Bytes:Len/binary, Rest2/binary>> = Rest, Bytes2 = binary:copy(Bytes), {id(Bytes2, TrUserData), Rest2} end,
+    'dfp_read_field_def_imboy.textguard.v1.CheckTextRequest'(RestF, 0, 0, F, NewFValue, F@_2, F@_3, TrUserData).
 
-'d_field_imboy.textguard.v1.CheckTextRequest_scene'(
-    <<1:1, X:7, Rest/binary>>, N, Acc, F, F@_1, F@_2, F@_3, TrUserData
-) when N < 57 ->
-    'd_field_imboy.textguard.v1.CheckTextRequest_scene'(
-        Rest, N + 7, X bsl N + Acc, F, F@_1, F@_2, F@_3, TrUserData
-    );
-'d_field_imboy.textguard.v1.CheckTextRequest_scene'(
-    <<0:1, X:7, Rest/binary>>, N, Acc, F, F@_1, _, F@_3, TrUserData
-) ->
-    {NewFValue, RestF} = {
-        id(
-            'd_enum_imboy.textguard.v1.Scene'(begin
-                <<Res:32/signed-native>> = <<(X bsl N + Acc):32/unsigned-native>>,
-                id(Res, TrUserData)
-            end),
-            TrUserData
-        ),
-        Rest
-    },
-    'dfp_read_field_def_imboy.textguard.v1.CheckTextRequest'(
-        RestF, 0, 0, F, F@_1, NewFValue, F@_3, TrUserData
-    ).
+'d_field_imboy.textguard.v1.CheckTextRequest_scene'(<<1:1, X:7, Rest/binary>>, N, Acc, F, F@_1, F@_2, F@_3, TrUserData) when N < 57 -> 'd_field_imboy.textguard.v1.CheckTextRequest_scene'(Rest, N + 7, X bsl N + Acc, F, F@_1, F@_2, F@_3, TrUserData);
+'d_field_imboy.textguard.v1.CheckTextRequest_scene'(<<0:1, X:7, Rest/binary>>, N, Acc, F, F@_1, _, F@_3, TrUserData) ->
+    {NewFValue, RestF} = {id('d_enum_imboy.textguard.v1.Scene'(begin <<Res:32/signed-native>> = <<(X bsl N + Acc):32/unsigned-native>>, id(Res, TrUserData) end), TrUserData), Rest},
+    'dfp_read_field_def_imboy.textguard.v1.CheckTextRequest'(RestF, 0, 0, F, F@_1, NewFValue, F@_3, TrUserData).
 
-'d_field_imboy.textguard.v1.CheckTextRequest_fields'(
-    <<1:1, X:7, Rest/binary>>, N, Acc, F, F@_1, F@_2, F@_3, TrUserData
-) when N < 57 ->
-    'd_field_imboy.textguard.v1.CheckTextRequest_fields'(
-        Rest, N + 7, X bsl N + Acc, F, F@_1, F@_2, F@_3, TrUserData
-    );
-'d_field_imboy.textguard.v1.CheckTextRequest_fields'(
-    <<0:1, X:7, Rest/binary>>, N, Acc, F, F@_1, F@_2, Prev, TrUserData
-) ->
-    {NewFValue, RestF} = begin
-        Len = X bsl N + Acc,
-        <<Bs:Len/binary, Rest2/binary>> = Rest,
-        {id('decode_msg_imboy.textguard.v1.TextField'(Bs, TrUserData), TrUserData), Rest2}
-    end,
-    'dfp_read_field_def_imboy.textguard.v1.CheckTextRequest'(
-        RestF, 0, 0, F, F@_1, F@_2, cons(NewFValue, Prev, TrUserData), TrUserData
-    ).
+'d_field_imboy.textguard.v1.CheckTextRequest_fields'(<<1:1, X:7, Rest/binary>>, N, Acc, F, F@_1, F@_2, F@_3, TrUserData) when N < 57 -> 'd_field_imboy.textguard.v1.CheckTextRequest_fields'(Rest, N + 7, X bsl N + Acc, F, F@_1, F@_2, F@_3, TrUserData);
+'d_field_imboy.textguard.v1.CheckTextRequest_fields'(<<0:1, X:7, Rest/binary>>, N, Acc, F, F@_1, F@_2, Prev, TrUserData) ->
+    {NewFValue, RestF} = begin Len = X bsl N + Acc, <<Bs:Len/binary, Rest2/binary>> = Rest, {id('decode_msg_imboy.textguard.v1.TextField'(Bs, TrUserData), TrUserData), Rest2} end,
+    'dfp_read_field_def_imboy.textguard.v1.CheckTextRequest'(RestF, 0, 0, F, F@_1, F@_2, cons(NewFValue, Prev, TrUserData), TrUserData).
 
-'skip_varint_imboy.textguard.v1.CheckTextRequest'(
-    <<1:1, _:7, Rest/binary>>, Z1, Z2, F, F@_1, F@_2, F@_3, TrUserData
-) ->
-    'skip_varint_imboy.textguard.v1.CheckTextRequest'(
-        Rest, Z1, Z2, F, F@_1, F@_2, F@_3, TrUserData
-    );
-'skip_varint_imboy.textguard.v1.CheckTextRequest'(
-    <<0:1, _:7, Rest/binary>>, Z1, Z2, F, F@_1, F@_2, F@_3, TrUserData
-) ->
-    'dfp_read_field_def_imboy.textguard.v1.CheckTextRequest'(
-        Rest, Z1, Z2, F, F@_1, F@_2, F@_3, TrUserData
-    ).
+'skip_varint_imboy.textguard.v1.CheckTextRequest'(<<1:1, _:7, Rest/binary>>, Z1, Z2, F, F@_1, F@_2, F@_3, TrUserData) -> 'skip_varint_imboy.textguard.v1.CheckTextRequest'(Rest, Z1, Z2, F, F@_1, F@_2, F@_3, TrUserData);
+'skip_varint_imboy.textguard.v1.CheckTextRequest'(<<0:1, _:7, Rest/binary>>, Z1, Z2, F, F@_1, F@_2, F@_3, TrUserData) -> 'dfp_read_field_def_imboy.textguard.v1.CheckTextRequest'(Rest, Z1, Z2, F, F@_1, F@_2, F@_3, TrUserData).
 
-'skip_length_delimited_imboy.textguard.v1.CheckTextRequest'(
-    <<1:1, X:7, Rest/binary>>, N, Acc, F, F@_1, F@_2, F@_3, TrUserData
-) when N < 57 ->
-    'skip_length_delimited_imboy.textguard.v1.CheckTextRequest'(
-        Rest, N + 7, X bsl N + Acc, F, F@_1, F@_2, F@_3, TrUserData
-    );
-'skip_length_delimited_imboy.textguard.v1.CheckTextRequest'(
-    <<0:1, X:7, Rest/binary>>, N, Acc, F, F@_1, F@_2, F@_3, TrUserData
-) ->
+'skip_length_delimited_imboy.textguard.v1.CheckTextRequest'(<<1:1, X:7, Rest/binary>>, N, Acc, F, F@_1, F@_2, F@_3, TrUserData) when N < 57 ->
+    'skip_length_delimited_imboy.textguard.v1.CheckTextRequest'(Rest, N + 7, X bsl N + Acc, F, F@_1, F@_2, F@_3, TrUserData);
+'skip_length_delimited_imboy.textguard.v1.CheckTextRequest'(<<0:1, X:7, Rest/binary>>, N, Acc, F, F@_1, F@_2, F@_3, TrUserData) ->
     Length = X bsl N + Acc,
     <<_:Length/binary, Rest2/binary>> = Rest,
-    'dfp_read_field_def_imboy.textguard.v1.CheckTextRequest'(
-        Rest2, 0, 0, F, F@_1, F@_2, F@_3, TrUserData
-    ).
+    'dfp_read_field_def_imboy.textguard.v1.CheckTextRequest'(Rest2, 0, 0, F, F@_1, F@_2, F@_3, TrUserData).
 
 'skip_group_imboy.textguard.v1.CheckTextRequest'(Bin, _, Z2, FNum, F@_1, F@_2, F@_3, TrUserData) ->
     {_, Rest} = read_group(Bin, FNum),
-    'dfp_read_field_def_imboy.textguard.v1.CheckTextRequest'(
-        Rest, 0, Z2, FNum, F@_1, F@_2, F@_3, TrUserData
-    ).
+    'dfp_read_field_def_imboy.textguard.v1.CheckTextRequest'(Rest, 0, Z2, FNum, F@_1, F@_2, F@_3, TrUserData).
 
-'skip_32_imboy.textguard.v1.CheckTextRequest'(
-    <<_:32, Rest/binary>>, Z1, Z2, F, F@_1, F@_2, F@_3, TrUserData
-) ->
-    'dfp_read_field_def_imboy.textguard.v1.CheckTextRequest'(
-        Rest, Z1, Z2, F, F@_1, F@_2, F@_3, TrUserData
-    ).
+'skip_32_imboy.textguard.v1.CheckTextRequest'(<<_:32, Rest/binary>>, Z1, Z2, F, F@_1, F@_2, F@_3, TrUserData) -> 'dfp_read_field_def_imboy.textguard.v1.CheckTextRequest'(Rest, Z1, Z2, F, F@_1, F@_2, F@_3, TrUserData).
 
-'skip_64_imboy.textguard.v1.CheckTextRequest'(
-    <<_:64, Rest/binary>>, Z1, Z2, F, F@_1, F@_2, F@_3, TrUserData
-) ->
-    'dfp_read_field_def_imboy.textguard.v1.CheckTextRequest'(
-        Rest, Z1, Z2, F, F@_1, F@_2, F@_3, TrUserData
-    ).
+'skip_64_imboy.textguard.v1.CheckTextRequest'(<<_:64, Rest/binary>>, Z1, Z2, F, F@_1, F@_2, F@_3, TrUserData) -> 'dfp_read_field_def_imboy.textguard.v1.CheckTextRequest'(Rest, Z1, Z2, F, F@_1, F@_2, F@_3, TrUserData).
 
 'decode_msg_imboy.textguard.v1.Hit'(Bin, TrUserData) ->
-    'dfp_read_field_def_imboy.textguard.v1.Hit'(
-        Bin,
-        0,
-        0,
-        0,
-        id('$undef', TrUserData),
-        id('$undef', TrUserData),
-        id('$undef', TrUserData),
-        id('$undef', TrUserData),
-        id('$undef', TrUserData),
-        id('$undef', TrUserData),
-        id('$undef', TrUserData),
-        id('$undef', TrUserData),
-        id('$undef', TrUserData),
-        id('$undef', TrUserData),
-        id([], TrUserData),
-        TrUserData
-    ).
+    'dfp_read_field_def_imboy.textguard.v1.Hit'(Bin,
+                                                0,
+                                                0,
+                                                0,
+                                                id('$undef', TrUserData),
+                                                id('$undef', TrUserData),
+                                                id('$undef', TrUserData),
+                                                id('$undef', TrUserData),
+                                                id('$undef', TrUserData),
+                                                id('$undef', TrUserData),
+                                                id('$undef', TrUserData),
+                                                id('$undef', TrUserData),
+                                                id('$undef', TrUserData),
+                                                id('$undef', TrUserData),
+                                                id([], TrUserData),
+                                                TrUserData).
 
-'dfp_read_field_def_imboy.textguard.v1.Hit'(
-    <<10, Rest/binary>>,
-    Z1,
-    Z2,
-    F,
-    F@_1,
-    F@_2,
-    F@_3,
-    F@_4,
-    F@_5,
-    F@_6,
-    F@_7,
-    F@_8,
-    F@_9,
-    F@_10,
-    F@_11,
-    TrUserData
-) ->
-    'd_field_imboy.textguard.v1.Hit_field_id'(
-        Rest,
-        Z1,
-        Z2,
-        F,
-        F@_1,
-        F@_2,
-        F@_3,
-        F@_4,
-        F@_5,
-        F@_6,
-        F@_7,
-        F@_8,
-        F@_9,
-        F@_10,
-        F@_11,
-        TrUserData
-    );
-'dfp_read_field_def_imboy.textguard.v1.Hit'(
-    <<18, Rest/binary>>,
-    Z1,
-    Z2,
-    F,
-    F@_1,
-    F@_2,
-    F@_3,
-    F@_4,
-    F@_5,
-    F@_6,
-    F@_7,
-    F@_8,
-    F@_9,
-    F@_10,
-    F@_11,
-    TrUserData
-) ->
-    'd_field_imboy.textguard.v1.Hit_rule_id'(
-        Rest,
-        Z1,
-        Z2,
-        F,
-        F@_1,
-        F@_2,
-        F@_3,
-        F@_4,
-        F@_5,
-        F@_6,
-        F@_7,
-        F@_8,
-        F@_9,
-        F@_10,
-        F@_11,
-        TrUserData
-    );
-'dfp_read_field_def_imboy.textguard.v1.Hit'(
-    <<26, Rest/binary>>,
-    Z1,
-    Z2,
-    F,
-    F@_1,
-    F@_2,
-    F@_3,
-    F@_4,
-    F@_5,
-    F@_6,
-    F@_7,
-    F@_8,
-    F@_9,
-    F@_10,
-    F@_11,
-    TrUserData
-) ->
-    'd_field_imboy.textguard.v1.Hit_variant_id'(
-        Rest,
-        Z1,
-        Z2,
-        F,
-        F@_1,
-        F@_2,
-        F@_3,
-        F@_4,
-        F@_5,
-        F@_6,
-        F@_7,
-        F@_8,
-        F@_9,
-        F@_10,
-        F@_11,
-        TrUserData
-    );
-'dfp_read_field_def_imboy.textguard.v1.Hit'(
-    <<32, Rest/binary>>,
-    Z1,
-    Z2,
-    F,
-    F@_1,
-    F@_2,
-    F@_3,
-    F@_4,
-    F@_5,
-    F@_6,
-    F@_7,
-    F@_8,
-    F@_9,
-    F@_10,
-    F@_11,
-    TrUserData
-) ->
-    'd_field_imboy.textguard.v1.Hit_variant_type'(
-        Rest,
-        Z1,
-        Z2,
-        F,
-        F@_1,
-        F@_2,
-        F@_3,
-        F@_4,
-        F@_5,
-        F@_6,
-        F@_7,
-        F@_8,
-        F@_9,
-        F@_10,
-        F@_11,
-        TrUserData
-    );
-'dfp_read_field_def_imboy.textguard.v1.Hit'(
-    <<42, Rest/binary>>,
-    Z1,
-    Z2,
-    F,
-    F@_1,
-    F@_2,
-    F@_3,
-    F@_4,
-    F@_5,
-    F@_6,
-    F@_7,
-    F@_8,
-    F@_9,
-    F@_10,
-    F@_11,
-    TrUserData
-) ->
-    'd_field_imboy.textguard.v1.Hit_word'(
-        Rest,
-        Z1,
-        Z2,
-        F,
-        F@_1,
-        F@_2,
-        F@_3,
-        F@_4,
-        F@_5,
-        F@_6,
-        F@_7,
-        F@_8,
-        F@_9,
-        F@_10,
-        F@_11,
-        TrUserData
-    );
-'dfp_read_field_def_imboy.textguard.v1.Hit'(
-    <<50, Rest/binary>>,
-    Z1,
-    Z2,
-    F,
-    F@_1,
-    F@_2,
-    F@_3,
-    F@_4,
-    F@_5,
-    F@_6,
-    F@_7,
-    F@_8,
-    F@_9,
-    F@_10,
-    F@_11,
-    TrUserData
-) ->
-    'd_field_imboy.textguard.v1.Hit_category'(
-        Rest,
-        Z1,
-        Z2,
-        F,
-        F@_1,
-        F@_2,
-        F@_3,
-        F@_4,
-        F@_5,
-        F@_6,
-        F@_7,
-        F@_8,
-        F@_9,
-        F@_10,
-        F@_11,
-        TrUserData
-    );
-'dfp_read_field_def_imboy.textguard.v1.Hit'(
-    <<56, Rest/binary>>,
-    Z1,
-    Z2,
-    F,
-    F@_1,
-    F@_2,
-    F@_3,
-    F@_4,
-    F@_5,
-    F@_6,
-    F@_7,
-    F@_8,
-    F@_9,
-    F@_10,
-    F@_11,
-    TrUserData
-) ->
-    'd_field_imboy.textguard.v1.Hit_severity'(
-        Rest,
-        Z1,
-        Z2,
-        F,
-        F@_1,
-        F@_2,
-        F@_3,
-        F@_4,
-        F@_5,
-        F@_6,
-        F@_7,
-        F@_8,
-        F@_9,
-        F@_10,
-        F@_11,
-        TrUserData
-    );
-'dfp_read_field_def_imboy.textguard.v1.Hit'(
-    <<64, Rest/binary>>,
-    Z1,
-    Z2,
-    F,
-    F@_1,
-    F@_2,
-    F@_3,
-    F@_4,
-    F@_5,
-    F@_6,
-    F@_7,
-    F@_8,
-    F@_9,
-    F@_10,
-    F@_11,
-    TrUserData
-) ->
-    'd_field_imboy.textguard.v1.Hit_effective_action'(
-        Rest,
-        Z1,
-        Z2,
-        F,
-        F@_1,
-        F@_2,
-        F@_3,
-        F@_4,
-        F@_5,
-        F@_6,
-        F@_7,
-        F@_8,
-        F@_9,
-        F@_10,
-        F@_11,
-        TrUserData
-    );
-'dfp_read_field_def_imboy.textguard.v1.Hit'(
-    <<72, Rest/binary>>,
-    Z1,
-    Z2,
-    F,
-    F@_1,
-    F@_2,
-    F@_3,
-    F@_4,
-    F@_5,
-    F@_6,
-    F@_7,
-    F@_8,
-    F@_9,
-    F@_10,
-    F@_11,
-    TrUserData
-) ->
-    'd_field_imboy.textguard.v1.Hit_start_byte'(
-        Rest,
-        Z1,
-        Z2,
-        F,
-        F@_1,
-        F@_2,
-        F@_3,
-        F@_4,
-        F@_5,
-        F@_6,
-        F@_7,
-        F@_8,
-        F@_9,
-        F@_10,
-        F@_11,
-        TrUserData
-    );
-'dfp_read_field_def_imboy.textguard.v1.Hit'(
-    <<80, Rest/binary>>,
-    Z1,
-    Z2,
-    F,
-    F@_1,
-    F@_2,
-    F@_3,
-    F@_4,
-    F@_5,
-    F@_6,
-    F@_7,
-    F@_8,
-    F@_9,
-    F@_10,
-    F@_11,
-    TrUserData
-) ->
-    'd_field_imboy.textguard.v1.Hit_end_byte'(
-        Rest,
-        Z1,
-        Z2,
-        F,
-        F@_1,
-        F@_2,
-        F@_3,
-        F@_4,
-        F@_5,
-        F@_6,
-        F@_7,
-        F@_8,
-        F@_9,
-        F@_10,
-        F@_11,
-        TrUserData
-    );
-'dfp_read_field_def_imboy.textguard.v1.Hit'(
-    <<90, Rest/binary>>,
-    Z1,
-    Z2,
-    F,
-    F@_1,
-    F@_2,
-    F@_3,
-    F@_4,
-    F@_5,
-    F@_6,
-    F@_7,
-    F@_8,
-    F@_9,
-    F@_10,
-    F@_11,
-    TrUserData
-) ->
-    'd_pfield_imboy.textguard.v1.Hit_match_methods'(
-        Rest,
-        Z1,
-        Z2,
-        F,
-        F@_1,
-        F@_2,
-        F@_3,
-        F@_4,
-        F@_5,
-        F@_6,
-        F@_7,
-        F@_8,
-        F@_9,
-        F@_10,
-        F@_11,
-        TrUserData
-    );
-'dfp_read_field_def_imboy.textguard.v1.Hit'(
-    <<88, Rest/binary>>,
-    Z1,
-    Z2,
-    F,
-    F@_1,
-    F@_2,
-    F@_3,
-    F@_4,
-    F@_5,
-    F@_6,
-    F@_7,
-    F@_8,
-    F@_9,
-    F@_10,
-    F@_11,
-    TrUserData
-) ->
-    'd_field_imboy.textguard.v1.Hit_match_methods'(
-        Rest,
-        Z1,
-        Z2,
-        F,
-        F@_1,
-        F@_2,
-        F@_3,
-        F@_4,
-        F@_5,
-        F@_6,
-        F@_7,
-        F@_8,
-        F@_9,
-        F@_10,
-        F@_11,
-        TrUserData
-    );
-'dfp_read_field_def_imboy.textguard.v1.Hit'(
-    <<>>, 0, 0, _, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, R1, TrUserData
-) ->
+'dfp_read_field_def_imboy.textguard.v1.Hit'(<<10, Rest/binary>>, Z1, Z2, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, TrUserData) ->
+    'd_field_imboy.textguard.v1.Hit_field_id'(Rest, Z1, Z2, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, TrUserData);
+'dfp_read_field_def_imboy.textguard.v1.Hit'(<<18, Rest/binary>>, Z1, Z2, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, TrUserData) ->
+    'd_field_imboy.textguard.v1.Hit_rule_id'(Rest, Z1, Z2, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, TrUserData);
+'dfp_read_field_def_imboy.textguard.v1.Hit'(<<26, Rest/binary>>, Z1, Z2, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, TrUserData) ->
+    'd_field_imboy.textguard.v1.Hit_variant_id'(Rest, Z1, Z2, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, TrUserData);
+'dfp_read_field_def_imboy.textguard.v1.Hit'(<<32, Rest/binary>>, Z1, Z2, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, TrUserData) ->
+    'd_field_imboy.textguard.v1.Hit_variant_type'(Rest, Z1, Z2, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, TrUserData);
+'dfp_read_field_def_imboy.textguard.v1.Hit'(<<42, Rest/binary>>, Z1, Z2, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, TrUserData) ->
+    'd_field_imboy.textguard.v1.Hit_word'(Rest, Z1, Z2, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, TrUserData);
+'dfp_read_field_def_imboy.textguard.v1.Hit'(<<50, Rest/binary>>, Z1, Z2, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, TrUserData) ->
+    'd_field_imboy.textguard.v1.Hit_category'(Rest, Z1, Z2, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, TrUserData);
+'dfp_read_field_def_imboy.textguard.v1.Hit'(<<56, Rest/binary>>, Z1, Z2, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, TrUserData) ->
+    'd_field_imboy.textguard.v1.Hit_severity'(Rest, Z1, Z2, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, TrUserData);
+'dfp_read_field_def_imboy.textguard.v1.Hit'(<<64, Rest/binary>>, Z1, Z2, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, TrUserData) ->
+    'd_field_imboy.textguard.v1.Hit_effective_action'(Rest, Z1, Z2, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, TrUserData);
+'dfp_read_field_def_imboy.textguard.v1.Hit'(<<72, Rest/binary>>, Z1, Z2, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, TrUserData) ->
+    'd_field_imboy.textguard.v1.Hit_start_byte'(Rest, Z1, Z2, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, TrUserData);
+'dfp_read_field_def_imboy.textguard.v1.Hit'(<<80, Rest/binary>>, Z1, Z2, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, TrUserData) ->
+    'd_field_imboy.textguard.v1.Hit_end_byte'(Rest, Z1, Z2, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, TrUserData);
+'dfp_read_field_def_imboy.textguard.v1.Hit'(<<90, Rest/binary>>, Z1, Z2, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, TrUserData) ->
+    'd_pfield_imboy.textguard.v1.Hit_match_methods'(Rest, Z1, Z2, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, TrUserData);
+'dfp_read_field_def_imboy.textguard.v1.Hit'(<<88, Rest/binary>>, Z1, Z2, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, TrUserData) ->
+    'd_field_imboy.textguard.v1.Hit_match_methods'(Rest, Z1, Z2, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, TrUserData);
+'dfp_read_field_def_imboy.textguard.v1.Hit'(<<>>, 0, 0, _, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, R1, TrUserData) ->
     S1 = #{match_methods => lists_reverse(R1, TrUserData)},
-    S2 =
-        if
-            F@_1 == '$undef' -> S1;
+    S2 = if F@_1 == '$undef' -> S1;
             true -> S1#{field_id => F@_1}
-        end,
-    S3 =
-        if
-            F@_2 == '$undef' -> S2;
+         end,
+    S3 = if F@_2 == '$undef' -> S2;
             true -> S2#{rule_id => F@_2}
-        end,
-    S4 =
-        if
-            F@_3 == '$undef' -> S3;
+         end,
+    S4 = if F@_3 == '$undef' -> S3;
             true -> S3#{variant_id => F@_3}
-        end,
-    S5 =
-        if
-            F@_4 == '$undef' -> S4;
+         end,
+    S5 = if F@_4 == '$undef' -> S4;
             true -> S4#{variant_type => F@_4}
-        end,
-    S6 =
-        if
-            F@_5 == '$undef' -> S5;
+         end,
+    S6 = if F@_5 == '$undef' -> S5;
             true -> S5#{word => F@_5}
-        end,
-    S7 =
-        if
-            F@_6 == '$undef' -> S6;
+         end,
+    S7 = if F@_6 == '$undef' -> S6;
             true -> S6#{category => F@_6}
-        end,
-    S8 =
-        if
-            F@_7 == '$undef' -> S7;
+         end,
+    S8 = if F@_7 == '$undef' -> S7;
             true -> S7#{severity => F@_7}
-        end,
-    S9 =
-        if
-            F@_8 == '$undef' -> S8;
+         end,
+    S9 = if F@_8 == '$undef' -> S8;
             true -> S8#{effective_action => F@_8}
-        end,
-    S10 =
-        if
-            F@_9 == '$undef' -> S9;
-            true -> S9#{start_byte => F@_9}
-        end,
-    if
-        F@_10 == '$undef' -> S10;
-        true -> S10#{end_byte => F@_10}
+         end,
+    S10 = if F@_9 == '$undef' -> S9;
+             true -> S9#{start_byte => F@_9}
+          end,
+    if F@_10 == '$undef' -> S10;
+       true -> S10#{end_byte => F@_10}
     end;
-'dfp_read_field_def_imboy.textguard.v1.Hit'(
-    Other, Z1, Z2, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, TrUserData
-) ->
-    'dg_read_field_def_imboy.textguard.v1.Hit'(
-        Other,
-        Z1,
-        Z2,
-        F,
-        F@_1,
-        F@_2,
-        F@_3,
-        F@_4,
-        F@_5,
-        F@_6,
-        F@_7,
-        F@_8,
-        F@_9,
-        F@_10,
-        F@_11,
-        TrUserData
-    ).
+'dfp_read_field_def_imboy.textguard.v1.Hit'(Other, Z1, Z2, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, TrUserData) ->
+    'dg_read_field_def_imboy.textguard.v1.Hit'(Other, Z1, Z2, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, TrUserData).
 
-'dg_read_field_def_imboy.textguard.v1.Hit'(
-    <<1:1, X:7, Rest/binary>>,
-    N,
-    Acc,
-    F,
-    F@_1,
-    F@_2,
-    F@_3,
-    F@_4,
-    F@_5,
-    F@_6,
-    F@_7,
-    F@_8,
-    F@_9,
-    F@_10,
-    F@_11,
-    TrUserData
-) when N < 32 - 7 ->
-    'dg_read_field_def_imboy.textguard.v1.Hit'(
-        Rest,
-        N + 7,
-        X bsl N + Acc,
-        F,
-        F@_1,
-        F@_2,
-        F@_3,
-        F@_4,
-        F@_5,
-        F@_6,
-        F@_7,
-        F@_8,
-        F@_9,
-        F@_10,
-        F@_11,
-        TrUserData
-    );
-'dg_read_field_def_imboy.textguard.v1.Hit'(
-    <<0:1, X:7, Rest/binary>>,
-    N,
-    Acc,
-    _,
-    F@_1,
-    F@_2,
-    F@_3,
-    F@_4,
-    F@_5,
-    F@_6,
-    F@_7,
-    F@_8,
-    F@_9,
-    F@_10,
-    F@_11,
-    TrUserData
-) ->
+'dg_read_field_def_imboy.textguard.v1.Hit'(<<1:1, X:7, Rest/binary>>, N, Acc, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, TrUserData) when N < 32 - 7 ->
+    'dg_read_field_def_imboy.textguard.v1.Hit'(Rest, N + 7, X bsl N + Acc, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, TrUserData);
+'dg_read_field_def_imboy.textguard.v1.Hit'(<<0:1, X:7, Rest/binary>>, N, Acc, _, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, TrUserData) ->
     Key = X bsl N + Acc,
     case Key of
-        10 ->
-            'd_field_imboy.textguard.v1.Hit_field_id'(
-                Rest,
-                0,
-                0,
-                0,
-                F@_1,
-                F@_2,
-                F@_3,
-                F@_4,
-                F@_5,
-                F@_6,
-                F@_7,
-                F@_8,
-                F@_9,
-                F@_10,
-                F@_11,
-                TrUserData
-            );
-        18 ->
-            'd_field_imboy.textguard.v1.Hit_rule_id'(
-                Rest,
-                0,
-                0,
-                0,
-                F@_1,
-                F@_2,
-                F@_3,
-                F@_4,
-                F@_5,
-                F@_6,
-                F@_7,
-                F@_8,
-                F@_9,
-                F@_10,
-                F@_11,
-                TrUserData
-            );
-        26 ->
-            'd_field_imboy.textguard.v1.Hit_variant_id'(
-                Rest,
-                0,
-                0,
-                0,
-                F@_1,
-                F@_2,
-                F@_3,
-                F@_4,
-                F@_5,
-                F@_6,
-                F@_7,
-                F@_8,
-                F@_9,
-                F@_10,
-                F@_11,
-                TrUserData
-            );
-        32 ->
-            'd_field_imboy.textguard.v1.Hit_variant_type'(
-                Rest,
-                0,
-                0,
-                0,
-                F@_1,
-                F@_2,
-                F@_3,
-                F@_4,
-                F@_5,
-                F@_6,
-                F@_7,
-                F@_8,
-                F@_9,
-                F@_10,
-                F@_11,
-                TrUserData
-            );
-        42 ->
-            'd_field_imboy.textguard.v1.Hit_word'(
-                Rest,
-                0,
-                0,
-                0,
-                F@_1,
-                F@_2,
-                F@_3,
-                F@_4,
-                F@_5,
-                F@_6,
-                F@_7,
-                F@_8,
-                F@_9,
-                F@_10,
-                F@_11,
-                TrUserData
-            );
-        50 ->
-            'd_field_imboy.textguard.v1.Hit_category'(
-                Rest,
-                0,
-                0,
-                0,
-                F@_1,
-                F@_2,
-                F@_3,
-                F@_4,
-                F@_5,
-                F@_6,
-                F@_7,
-                F@_8,
-                F@_9,
-                F@_10,
-                F@_11,
-                TrUserData
-            );
-        56 ->
-            'd_field_imboy.textguard.v1.Hit_severity'(
-                Rest,
-                0,
-                0,
-                0,
-                F@_1,
-                F@_2,
-                F@_3,
-                F@_4,
-                F@_5,
-                F@_6,
-                F@_7,
-                F@_8,
-                F@_9,
-                F@_10,
-                F@_11,
-                TrUserData
-            );
-        64 ->
-            'd_field_imboy.textguard.v1.Hit_effective_action'(
-                Rest,
-                0,
-                0,
-                0,
-                F@_1,
-                F@_2,
-                F@_3,
-                F@_4,
-                F@_5,
-                F@_6,
-                F@_7,
-                F@_8,
-                F@_9,
-                F@_10,
-                F@_11,
-                TrUserData
-            );
-        72 ->
-            'd_field_imboy.textguard.v1.Hit_start_byte'(
-                Rest,
-                0,
-                0,
-                0,
-                F@_1,
-                F@_2,
-                F@_3,
-                F@_4,
-                F@_5,
-                F@_6,
-                F@_7,
-                F@_8,
-                F@_9,
-                F@_10,
-                F@_11,
-                TrUserData
-            );
-        80 ->
-            'd_field_imboy.textguard.v1.Hit_end_byte'(
-                Rest,
-                0,
-                0,
-                0,
-                F@_1,
-                F@_2,
-                F@_3,
-                F@_4,
-                F@_5,
-                F@_6,
-                F@_7,
-                F@_8,
-                F@_9,
-                F@_10,
-                F@_11,
-                TrUserData
-            );
-        90 ->
-            'd_pfield_imboy.textguard.v1.Hit_match_methods'(
-                Rest,
-                0,
-                0,
-                0,
-                F@_1,
-                F@_2,
-                F@_3,
-                F@_4,
-                F@_5,
-                F@_6,
-                F@_7,
-                F@_8,
-                F@_9,
-                F@_10,
-                F@_11,
-                TrUserData
-            );
-        88 ->
-            'd_field_imboy.textguard.v1.Hit_match_methods'(
-                Rest,
-                0,
-                0,
-                0,
-                F@_1,
-                F@_2,
-                F@_3,
-                F@_4,
-                F@_5,
-                F@_6,
-                F@_7,
-                F@_8,
-                F@_9,
-                F@_10,
-                F@_11,
-                TrUserData
-            );
+        10 -> 'd_field_imboy.textguard.v1.Hit_field_id'(Rest, 0, 0, 0, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, TrUserData);
+        18 -> 'd_field_imboy.textguard.v1.Hit_rule_id'(Rest, 0, 0, 0, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, TrUserData);
+        26 -> 'd_field_imboy.textguard.v1.Hit_variant_id'(Rest, 0, 0, 0, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, TrUserData);
+        32 -> 'd_field_imboy.textguard.v1.Hit_variant_type'(Rest, 0, 0, 0, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, TrUserData);
+        42 -> 'd_field_imboy.textguard.v1.Hit_word'(Rest, 0, 0, 0, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, TrUserData);
+        50 -> 'd_field_imboy.textguard.v1.Hit_category'(Rest, 0, 0, 0, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, TrUserData);
+        56 -> 'd_field_imboy.textguard.v1.Hit_severity'(Rest, 0, 0, 0, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, TrUserData);
+        64 -> 'd_field_imboy.textguard.v1.Hit_effective_action'(Rest, 0, 0, 0, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, TrUserData);
+        72 -> 'd_field_imboy.textguard.v1.Hit_start_byte'(Rest, 0, 0, 0, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, TrUserData);
+        80 -> 'd_field_imboy.textguard.v1.Hit_end_byte'(Rest, 0, 0, 0, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, TrUserData);
+        90 -> 'd_pfield_imboy.textguard.v1.Hit_match_methods'(Rest, 0, 0, 0, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, TrUserData);
+        88 -> 'd_field_imboy.textguard.v1.Hit_match_methods'(Rest, 0, 0, 0, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, TrUserData);
         _ ->
             case Key band 7 of
-                0 ->
-                    'skip_varint_imboy.textguard.v1.Hit'(
-                        Rest,
-                        0,
-                        0,
-                        Key bsr 3,
-                        F@_1,
-                        F@_2,
-                        F@_3,
-                        F@_4,
-                        F@_5,
-                        F@_6,
-                        F@_7,
-                        F@_8,
-                        F@_9,
-                        F@_10,
-                        F@_11,
-                        TrUserData
-                    );
-                1 ->
-                    'skip_64_imboy.textguard.v1.Hit'(
-                        Rest,
-                        0,
-                        0,
-                        Key bsr 3,
-                        F@_1,
-                        F@_2,
-                        F@_3,
-                        F@_4,
-                        F@_5,
-                        F@_6,
-                        F@_7,
-                        F@_8,
-                        F@_9,
-                        F@_10,
-                        F@_11,
-                        TrUserData
-                    );
-                2 ->
-                    'skip_length_delimited_imboy.textguard.v1.Hit'(
-                        Rest,
-                        0,
-                        0,
-                        Key bsr 3,
-                        F@_1,
-                        F@_2,
-                        F@_3,
-                        F@_4,
-                        F@_5,
-                        F@_6,
-                        F@_7,
-                        F@_8,
-                        F@_9,
-                        F@_10,
-                        F@_11,
-                        TrUserData
-                    );
-                3 ->
-                    'skip_group_imboy.textguard.v1.Hit'(
-                        Rest,
-                        0,
-                        0,
-                        Key bsr 3,
-                        F@_1,
-                        F@_2,
-                        F@_3,
-                        F@_4,
-                        F@_5,
-                        F@_6,
-                        F@_7,
-                        F@_8,
-                        F@_9,
-                        F@_10,
-                        F@_11,
-                        TrUserData
-                    );
-                5 ->
-                    'skip_32_imboy.textguard.v1.Hit'(
-                        Rest,
-                        0,
-                        0,
-                        Key bsr 3,
-                        F@_1,
-                        F@_2,
-                        F@_3,
-                        F@_4,
-                        F@_5,
-                        F@_6,
-                        F@_7,
-                        F@_8,
-                        F@_9,
-                        F@_10,
-                        F@_11,
-                        TrUserData
-                    )
+                0 -> 'skip_varint_imboy.textguard.v1.Hit'(Rest, 0, 0, Key bsr 3, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, TrUserData);
+                1 -> 'skip_64_imboy.textguard.v1.Hit'(Rest, 0, 0, Key bsr 3, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, TrUserData);
+                2 -> 'skip_length_delimited_imboy.textguard.v1.Hit'(Rest, 0, 0, Key bsr 3, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, TrUserData);
+                3 -> 'skip_group_imboy.textguard.v1.Hit'(Rest, 0, 0, Key bsr 3, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, TrUserData);
+                5 -> 'skip_32_imboy.textguard.v1.Hit'(Rest, 0, 0, Key bsr 3, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, TrUserData)
             end
     end;
-'dg_read_field_def_imboy.textguard.v1.Hit'(
-    <<>>, 0, 0, _, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, R1, TrUserData
-) ->
+'dg_read_field_def_imboy.textguard.v1.Hit'(<<>>, 0, 0, _, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, R1, TrUserData) ->
     S1 = #{match_methods => lists_reverse(R1, TrUserData)},
-    S2 =
-        if
-            F@_1 == '$undef' -> S1;
+    S2 = if F@_1 == '$undef' -> S1;
             true -> S1#{field_id => F@_1}
-        end,
-    S3 =
-        if
-            F@_2 == '$undef' -> S2;
+         end,
+    S3 = if F@_2 == '$undef' -> S2;
             true -> S2#{rule_id => F@_2}
-        end,
-    S4 =
-        if
-            F@_3 == '$undef' -> S3;
+         end,
+    S4 = if F@_3 == '$undef' -> S3;
             true -> S3#{variant_id => F@_3}
-        end,
-    S5 =
-        if
-            F@_4 == '$undef' -> S4;
+         end,
+    S5 = if F@_4 == '$undef' -> S4;
             true -> S4#{variant_type => F@_4}
-        end,
-    S6 =
-        if
-            F@_5 == '$undef' -> S5;
+         end,
+    S6 = if F@_5 == '$undef' -> S5;
             true -> S5#{word => F@_5}
-        end,
-    S7 =
-        if
-            F@_6 == '$undef' -> S6;
+         end,
+    S7 = if F@_6 == '$undef' -> S6;
             true -> S6#{category => F@_6}
-        end,
-    S8 =
-        if
-            F@_7 == '$undef' -> S7;
+         end,
+    S8 = if F@_7 == '$undef' -> S7;
             true -> S7#{severity => F@_7}
-        end,
-    S9 =
-        if
-            F@_8 == '$undef' -> S8;
+         end,
+    S9 = if F@_8 == '$undef' -> S8;
             true -> S8#{effective_action => F@_8}
-        end,
-    S10 =
-        if
-            F@_9 == '$undef' -> S9;
-            true -> S9#{start_byte => F@_9}
-        end,
-    if
-        F@_10 == '$undef' -> S10;
-        true -> S10#{end_byte => F@_10}
+         end,
+    S10 = if F@_9 == '$undef' -> S9;
+             true -> S9#{start_byte => F@_9}
+          end,
+    if F@_10 == '$undef' -> S10;
+       true -> S10#{end_byte => F@_10}
     end.
 
-'d_field_imboy.textguard.v1.Hit_field_id'(
-    <<1:1, X:7, Rest/binary>>,
-    N,
-    Acc,
-    F,
-    F@_1,
-    F@_2,
-    F@_3,
-    F@_4,
-    F@_5,
-    F@_6,
-    F@_7,
-    F@_8,
-    F@_9,
-    F@_10,
-    F@_11,
-    TrUserData
-) when N < 57 ->
-    'd_field_imboy.textguard.v1.Hit_field_id'(
-        Rest,
-        N + 7,
-        X bsl N + Acc,
-        F,
-        F@_1,
-        F@_2,
-        F@_3,
-        F@_4,
-        F@_5,
-        F@_6,
-        F@_7,
-        F@_8,
-        F@_9,
-        F@_10,
-        F@_11,
-        TrUserData
-    );
-'d_field_imboy.textguard.v1.Hit_field_id'(
-    <<0:1, X:7, Rest/binary>>,
-    N,
-    Acc,
-    F,
-    _,
-    F@_2,
-    F@_3,
-    F@_4,
-    F@_5,
-    F@_6,
-    F@_7,
-    F@_8,
-    F@_9,
-    F@_10,
-    F@_11,
-    TrUserData
-) ->
-    {NewFValue, RestF} = begin
-        Len = X bsl N + Acc,
-        <<Bytes:Len/binary, Rest2/binary>> = Rest,
-        Bytes2 = binary:copy(Bytes),
-        {id(Bytes2, TrUserData), Rest2}
-    end,
-    'dfp_read_field_def_imboy.textguard.v1.Hit'(
-        RestF,
-        0,
-        0,
-        F,
-        NewFValue,
-        F@_2,
-        F@_3,
-        F@_4,
-        F@_5,
-        F@_6,
-        F@_7,
-        F@_8,
-        F@_9,
-        F@_10,
-        F@_11,
-        TrUserData
-    ).
+'d_field_imboy.textguard.v1.Hit_field_id'(<<1:1, X:7, Rest/binary>>, N, Acc, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, TrUserData) when N < 57 ->
+    'd_field_imboy.textguard.v1.Hit_field_id'(Rest, N + 7, X bsl N + Acc, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, TrUserData);
+'d_field_imboy.textguard.v1.Hit_field_id'(<<0:1, X:7, Rest/binary>>, N, Acc, F, _, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, TrUserData) ->
+    {NewFValue, RestF} = begin Len = X bsl N + Acc, <<Bytes:Len/binary, Rest2/binary>> = Rest, Bytes2 = binary:copy(Bytes), {id(Bytes2, TrUserData), Rest2} end,
+    'dfp_read_field_def_imboy.textguard.v1.Hit'(RestF, 0, 0, F, NewFValue, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, TrUserData).
 
-'d_field_imboy.textguard.v1.Hit_rule_id'(
-    <<1:1, X:7, Rest/binary>>,
-    N,
-    Acc,
-    F,
-    F@_1,
-    F@_2,
-    F@_3,
-    F@_4,
-    F@_5,
-    F@_6,
-    F@_7,
-    F@_8,
-    F@_9,
-    F@_10,
-    F@_11,
-    TrUserData
-) when N < 57 ->
-    'd_field_imboy.textguard.v1.Hit_rule_id'(
-        Rest,
-        N + 7,
-        X bsl N + Acc,
-        F,
-        F@_1,
-        F@_2,
-        F@_3,
-        F@_4,
-        F@_5,
-        F@_6,
-        F@_7,
-        F@_8,
-        F@_9,
-        F@_10,
-        F@_11,
-        TrUserData
-    );
-'d_field_imboy.textguard.v1.Hit_rule_id'(
-    <<0:1, X:7, Rest/binary>>,
-    N,
-    Acc,
-    F,
-    F@_1,
-    _,
-    F@_3,
-    F@_4,
-    F@_5,
-    F@_6,
-    F@_7,
-    F@_8,
-    F@_9,
-    F@_10,
-    F@_11,
-    TrUserData
-) ->
-    {NewFValue, RestF} = begin
-        Len = X bsl N + Acc,
-        <<Bytes:Len/binary, Rest2/binary>> = Rest,
-        Bytes2 = binary:copy(Bytes),
-        {id(Bytes2, TrUserData), Rest2}
-    end,
-    'dfp_read_field_def_imboy.textguard.v1.Hit'(
-        RestF,
-        0,
-        0,
-        F,
-        F@_1,
-        NewFValue,
-        F@_3,
-        F@_4,
-        F@_5,
-        F@_6,
-        F@_7,
-        F@_8,
-        F@_9,
-        F@_10,
-        F@_11,
-        TrUserData
-    ).
+'d_field_imboy.textguard.v1.Hit_rule_id'(<<1:1, X:7, Rest/binary>>, N, Acc, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, TrUserData) when N < 57 ->
+    'd_field_imboy.textguard.v1.Hit_rule_id'(Rest, N + 7, X bsl N + Acc, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, TrUserData);
+'d_field_imboy.textguard.v1.Hit_rule_id'(<<0:1, X:7, Rest/binary>>, N, Acc, F, F@_1, _, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, TrUserData) ->
+    {NewFValue, RestF} = begin Len = X bsl N + Acc, <<Bytes:Len/binary, Rest2/binary>> = Rest, Bytes2 = binary:copy(Bytes), {id(Bytes2, TrUserData), Rest2} end,
+    'dfp_read_field_def_imboy.textguard.v1.Hit'(RestF, 0, 0, F, F@_1, NewFValue, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, TrUserData).
 
-'d_field_imboy.textguard.v1.Hit_variant_id'(
-    <<1:1, X:7, Rest/binary>>,
-    N,
-    Acc,
-    F,
-    F@_1,
-    F@_2,
-    F@_3,
-    F@_4,
-    F@_5,
-    F@_6,
-    F@_7,
-    F@_8,
-    F@_9,
-    F@_10,
-    F@_11,
-    TrUserData
-) when N < 57 ->
-    'd_field_imboy.textguard.v1.Hit_variant_id'(
-        Rest,
-        N + 7,
-        X bsl N + Acc,
-        F,
-        F@_1,
-        F@_2,
-        F@_3,
-        F@_4,
-        F@_5,
-        F@_6,
-        F@_7,
-        F@_8,
-        F@_9,
-        F@_10,
-        F@_11,
-        TrUserData
-    );
-'d_field_imboy.textguard.v1.Hit_variant_id'(
-    <<0:1, X:7, Rest/binary>>,
-    N,
-    Acc,
-    F,
-    F@_1,
-    F@_2,
-    _,
-    F@_4,
-    F@_5,
-    F@_6,
-    F@_7,
-    F@_8,
-    F@_9,
-    F@_10,
-    F@_11,
-    TrUserData
-) ->
-    {NewFValue, RestF} = begin
-        Len = X bsl N + Acc,
-        <<Bytes:Len/binary, Rest2/binary>> = Rest,
-        Bytes2 = binary:copy(Bytes),
-        {id(Bytes2, TrUserData), Rest2}
-    end,
-    'dfp_read_field_def_imboy.textguard.v1.Hit'(
-        RestF,
-        0,
-        0,
-        F,
-        F@_1,
-        F@_2,
-        NewFValue,
-        F@_4,
-        F@_5,
-        F@_6,
-        F@_7,
-        F@_8,
-        F@_9,
-        F@_10,
-        F@_11,
-        TrUserData
-    ).
+'d_field_imboy.textguard.v1.Hit_variant_id'(<<1:1, X:7, Rest/binary>>, N, Acc, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, TrUserData) when N < 57 ->
+    'd_field_imboy.textguard.v1.Hit_variant_id'(Rest, N + 7, X bsl N + Acc, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, TrUserData);
+'d_field_imboy.textguard.v1.Hit_variant_id'(<<0:1, X:7, Rest/binary>>, N, Acc, F, F@_1, F@_2, _, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, TrUserData) ->
+    {NewFValue, RestF} = begin Len = X bsl N + Acc, <<Bytes:Len/binary, Rest2/binary>> = Rest, Bytes2 = binary:copy(Bytes), {id(Bytes2, TrUserData), Rest2} end,
+    'dfp_read_field_def_imboy.textguard.v1.Hit'(RestF, 0, 0, F, F@_1, F@_2, NewFValue, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, TrUserData).
 
-'d_field_imboy.textguard.v1.Hit_variant_type'(
-    <<1:1, X:7, Rest/binary>>,
-    N,
-    Acc,
-    F,
-    F@_1,
-    F@_2,
-    F@_3,
-    F@_4,
-    F@_5,
-    F@_6,
-    F@_7,
-    F@_8,
-    F@_9,
-    F@_10,
-    F@_11,
-    TrUserData
-) when N < 57 ->
-    'd_field_imboy.textguard.v1.Hit_variant_type'(
-        Rest,
-        N + 7,
-        X bsl N + Acc,
-        F,
-        F@_1,
-        F@_2,
-        F@_3,
-        F@_4,
-        F@_5,
-        F@_6,
-        F@_7,
-        F@_8,
-        F@_9,
-        F@_10,
-        F@_11,
-        TrUserData
-    );
-'d_field_imboy.textguard.v1.Hit_variant_type'(
-    <<0:1, X:7, Rest/binary>>,
-    N,
-    Acc,
-    F,
-    F@_1,
-    F@_2,
-    F@_3,
-    _,
-    F@_5,
-    F@_6,
-    F@_7,
-    F@_8,
-    F@_9,
-    F@_10,
-    F@_11,
-    TrUserData
-) ->
-    {NewFValue, RestF} = {
-        id(
-            'd_enum_imboy.textguard.v1.VariantType'(begin
-                <<Res:32/signed-native>> = <<(X bsl N + Acc):32/unsigned-native>>,
-                id(Res, TrUserData)
-            end),
-            TrUserData
-        ),
-        Rest
-    },
-    'dfp_read_field_def_imboy.textguard.v1.Hit'(
-        RestF,
-        0,
-        0,
-        F,
-        F@_1,
-        F@_2,
-        F@_3,
-        NewFValue,
-        F@_5,
-        F@_6,
-        F@_7,
-        F@_8,
-        F@_9,
-        F@_10,
-        F@_11,
-        TrUserData
-    ).
+'d_field_imboy.textguard.v1.Hit_variant_type'(<<1:1, X:7, Rest/binary>>, N, Acc, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, TrUserData) when N < 57 ->
+    'd_field_imboy.textguard.v1.Hit_variant_type'(Rest, N + 7, X bsl N + Acc, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, TrUserData);
+'d_field_imboy.textguard.v1.Hit_variant_type'(<<0:1, X:7, Rest/binary>>, N, Acc, F, F@_1, F@_2, F@_3, _, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, TrUserData) ->
+    {NewFValue, RestF} = {id('d_enum_imboy.textguard.v1.VariantType'(begin <<Res:32/signed-native>> = <<(X bsl N + Acc):32/unsigned-native>>, id(Res, TrUserData) end), TrUserData), Rest},
+    'dfp_read_field_def_imboy.textguard.v1.Hit'(RestF, 0, 0, F, F@_1, F@_2, F@_3, NewFValue, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, TrUserData).
 
-'d_field_imboy.textguard.v1.Hit_word'(
-    <<1:1, X:7, Rest/binary>>,
-    N,
-    Acc,
-    F,
-    F@_1,
-    F@_2,
-    F@_3,
-    F@_4,
-    F@_5,
-    F@_6,
-    F@_7,
-    F@_8,
-    F@_9,
-    F@_10,
-    F@_11,
-    TrUserData
-) when N < 57 ->
-    'd_field_imboy.textguard.v1.Hit_word'(
-        Rest,
-        N + 7,
-        X bsl N + Acc,
-        F,
-        F@_1,
-        F@_2,
-        F@_3,
-        F@_4,
-        F@_5,
-        F@_6,
-        F@_7,
-        F@_8,
-        F@_9,
-        F@_10,
-        F@_11,
-        TrUserData
-    );
-'d_field_imboy.textguard.v1.Hit_word'(
-    <<0:1, X:7, Rest/binary>>,
-    N,
-    Acc,
-    F,
-    F@_1,
-    F@_2,
-    F@_3,
-    F@_4,
-    _,
-    F@_6,
-    F@_7,
-    F@_8,
-    F@_9,
-    F@_10,
-    F@_11,
-    TrUserData
-) ->
-    {NewFValue, RestF} = begin
-        Len = X bsl N + Acc,
-        <<Bytes:Len/binary, Rest2/binary>> = Rest,
-        Bytes2 = binary:copy(Bytes),
-        {id(Bytes2, TrUserData), Rest2}
-    end,
-    'dfp_read_field_def_imboy.textguard.v1.Hit'(
-        RestF,
-        0,
-        0,
-        F,
-        F@_1,
-        F@_2,
-        F@_3,
-        F@_4,
-        NewFValue,
-        F@_6,
-        F@_7,
-        F@_8,
-        F@_9,
-        F@_10,
-        F@_11,
-        TrUserData
-    ).
+'d_field_imboy.textguard.v1.Hit_word'(<<1:1, X:7, Rest/binary>>, N, Acc, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, TrUserData) when N < 57 ->
+    'd_field_imboy.textguard.v1.Hit_word'(Rest, N + 7, X bsl N + Acc, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, TrUserData);
+'d_field_imboy.textguard.v1.Hit_word'(<<0:1, X:7, Rest/binary>>, N, Acc, F, F@_1, F@_2, F@_3, F@_4, _, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, TrUserData) ->
+    {NewFValue, RestF} = begin Len = X bsl N + Acc, <<Bytes:Len/binary, Rest2/binary>> = Rest, Bytes2 = binary:copy(Bytes), {id(Bytes2, TrUserData), Rest2} end,
+    'dfp_read_field_def_imboy.textguard.v1.Hit'(RestF, 0, 0, F, F@_1, F@_2, F@_3, F@_4, NewFValue, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, TrUserData).
 
-'d_field_imboy.textguard.v1.Hit_category'(
-    <<1:1, X:7, Rest/binary>>,
-    N,
-    Acc,
-    F,
-    F@_1,
-    F@_2,
-    F@_3,
-    F@_4,
-    F@_5,
-    F@_6,
-    F@_7,
-    F@_8,
-    F@_9,
-    F@_10,
-    F@_11,
-    TrUserData
-) when N < 57 ->
-    'd_field_imboy.textguard.v1.Hit_category'(
-        Rest,
-        N + 7,
-        X bsl N + Acc,
-        F,
-        F@_1,
-        F@_2,
-        F@_3,
-        F@_4,
-        F@_5,
-        F@_6,
-        F@_7,
-        F@_8,
-        F@_9,
-        F@_10,
-        F@_11,
-        TrUserData
-    );
-'d_field_imboy.textguard.v1.Hit_category'(
-    <<0:1, X:7, Rest/binary>>,
-    N,
-    Acc,
-    F,
-    F@_1,
-    F@_2,
-    F@_3,
-    F@_4,
-    F@_5,
-    _,
-    F@_7,
-    F@_8,
-    F@_9,
-    F@_10,
-    F@_11,
-    TrUserData
-) ->
-    {NewFValue, RestF} = begin
-        Len = X bsl N + Acc,
-        <<Bytes:Len/binary, Rest2/binary>> = Rest,
-        Bytes2 = binary:copy(Bytes),
-        {id(Bytes2, TrUserData), Rest2}
-    end,
-    'dfp_read_field_def_imboy.textguard.v1.Hit'(
-        RestF,
-        0,
-        0,
-        F,
-        F@_1,
-        F@_2,
-        F@_3,
-        F@_4,
-        F@_5,
-        NewFValue,
-        F@_7,
-        F@_8,
-        F@_9,
-        F@_10,
-        F@_11,
-        TrUserData
-    ).
+'d_field_imboy.textguard.v1.Hit_category'(<<1:1, X:7, Rest/binary>>, N, Acc, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, TrUserData) when N < 57 ->
+    'd_field_imboy.textguard.v1.Hit_category'(Rest, N + 7, X bsl N + Acc, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, TrUserData);
+'d_field_imboy.textguard.v1.Hit_category'(<<0:1, X:7, Rest/binary>>, N, Acc, F, F@_1, F@_2, F@_3, F@_4, F@_5, _, F@_7, F@_8, F@_9, F@_10, F@_11, TrUserData) ->
+    {NewFValue, RestF} = begin Len = X bsl N + Acc, <<Bytes:Len/binary, Rest2/binary>> = Rest, Bytes2 = binary:copy(Bytes), {id(Bytes2, TrUserData), Rest2} end,
+    'dfp_read_field_def_imboy.textguard.v1.Hit'(RestF, 0, 0, F, F@_1, F@_2, F@_3, F@_4, F@_5, NewFValue, F@_7, F@_8, F@_9, F@_10, F@_11, TrUserData).
 
-'d_field_imboy.textguard.v1.Hit_severity'(
-    <<1:1, X:7, Rest/binary>>,
-    N,
-    Acc,
-    F,
-    F@_1,
-    F@_2,
-    F@_3,
-    F@_4,
-    F@_5,
-    F@_6,
-    F@_7,
-    F@_8,
-    F@_9,
-    F@_10,
-    F@_11,
-    TrUserData
-) when N < 57 ->
-    'd_field_imboy.textguard.v1.Hit_severity'(
-        Rest,
-        N + 7,
-        X bsl N + Acc,
-        F,
-        F@_1,
-        F@_2,
-        F@_3,
-        F@_4,
-        F@_5,
-        F@_6,
-        F@_7,
-        F@_8,
-        F@_9,
-        F@_10,
-        F@_11,
-        TrUserData
-    );
-'d_field_imboy.textguard.v1.Hit_severity'(
-    <<0:1, X:7, Rest/binary>>,
-    N,
-    Acc,
-    F,
-    F@_1,
-    F@_2,
-    F@_3,
-    F@_4,
-    F@_5,
-    F@_6,
-    _,
-    F@_8,
-    F@_9,
-    F@_10,
-    F@_11,
-    TrUserData
-) ->
-    {NewFValue, RestF} = {
-        id(
-            'd_enum_imboy.textguard.v1.Severity'(begin
-                <<Res:32/signed-native>> = <<(X bsl N + Acc):32/unsigned-native>>,
-                id(Res, TrUserData)
-            end),
-            TrUserData
-        ),
-        Rest
-    },
-    'dfp_read_field_def_imboy.textguard.v1.Hit'(
-        RestF,
-        0,
-        0,
-        F,
-        F@_1,
-        F@_2,
-        F@_3,
-        F@_4,
-        F@_5,
-        F@_6,
-        NewFValue,
-        F@_8,
-        F@_9,
-        F@_10,
-        F@_11,
-        TrUserData
-    ).
+'d_field_imboy.textguard.v1.Hit_severity'(<<1:1, X:7, Rest/binary>>, N, Acc, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, TrUserData) when N < 57 ->
+    'd_field_imboy.textguard.v1.Hit_severity'(Rest, N + 7, X bsl N + Acc, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, TrUserData);
+'d_field_imboy.textguard.v1.Hit_severity'(<<0:1, X:7, Rest/binary>>, N, Acc, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, _, F@_8, F@_9, F@_10, F@_11, TrUserData) ->
+    {NewFValue, RestF} = {id('d_enum_imboy.textguard.v1.Severity'(begin <<Res:32/signed-native>> = <<(X bsl N + Acc):32/unsigned-native>>, id(Res, TrUserData) end), TrUserData), Rest},
+    'dfp_read_field_def_imboy.textguard.v1.Hit'(RestF, 0, 0, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, NewFValue, F@_8, F@_9, F@_10, F@_11, TrUserData).
 
-'d_field_imboy.textguard.v1.Hit_effective_action'(
-    <<1:1, X:7, Rest/binary>>,
-    N,
-    Acc,
-    F,
-    F@_1,
-    F@_2,
-    F@_3,
-    F@_4,
-    F@_5,
-    F@_6,
-    F@_7,
-    F@_8,
-    F@_9,
-    F@_10,
-    F@_11,
-    TrUserData
-) when N < 57 ->
-    'd_field_imboy.textguard.v1.Hit_effective_action'(
-        Rest,
-        N + 7,
-        X bsl N + Acc,
-        F,
-        F@_1,
-        F@_2,
-        F@_3,
-        F@_4,
-        F@_5,
-        F@_6,
-        F@_7,
-        F@_8,
-        F@_9,
-        F@_10,
-        F@_11,
-        TrUserData
-    );
-'d_field_imboy.textguard.v1.Hit_effective_action'(
-    <<0:1, X:7, Rest/binary>>,
-    N,
-    Acc,
-    F,
-    F@_1,
-    F@_2,
-    F@_3,
-    F@_4,
-    F@_5,
-    F@_6,
-    F@_7,
-    _,
-    F@_9,
-    F@_10,
-    F@_11,
-    TrUserData
-) ->
-    {NewFValue, RestF} = {
-        id(
-            'd_enum_imboy.textguard.v1.Decision'(begin
-                <<Res:32/signed-native>> = <<(X bsl N + Acc):32/unsigned-native>>,
-                id(Res, TrUserData)
-            end),
-            TrUserData
-        ),
-        Rest
-    },
-    'dfp_read_field_def_imboy.textguard.v1.Hit'(
-        RestF,
-        0,
-        0,
-        F,
-        F@_1,
-        F@_2,
-        F@_3,
-        F@_4,
-        F@_5,
-        F@_6,
-        F@_7,
-        NewFValue,
-        F@_9,
-        F@_10,
-        F@_11,
-        TrUserData
-    ).
+'d_field_imboy.textguard.v1.Hit_effective_action'(<<1:1, X:7, Rest/binary>>, N, Acc, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, TrUserData) when N < 57 ->
+    'd_field_imboy.textguard.v1.Hit_effective_action'(Rest, N + 7, X bsl N + Acc, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, TrUserData);
+'d_field_imboy.textguard.v1.Hit_effective_action'(<<0:1, X:7, Rest/binary>>, N, Acc, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, _, F@_9, F@_10, F@_11, TrUserData) ->
+    {NewFValue, RestF} = {id('d_enum_imboy.textguard.v1.Decision'(begin <<Res:32/signed-native>> = <<(X bsl N + Acc):32/unsigned-native>>, id(Res, TrUserData) end), TrUserData), Rest},
+    'dfp_read_field_def_imboy.textguard.v1.Hit'(RestF, 0, 0, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, NewFValue, F@_9, F@_10, F@_11, TrUserData).
 
-'d_field_imboy.textguard.v1.Hit_start_byte'(
-    <<1:1, X:7, Rest/binary>>,
-    N,
-    Acc,
-    F,
-    F@_1,
-    F@_2,
-    F@_3,
-    F@_4,
-    F@_5,
-    F@_6,
-    F@_7,
-    F@_8,
-    F@_9,
-    F@_10,
-    F@_11,
-    TrUserData
-) when N < 57 ->
-    'd_field_imboy.textguard.v1.Hit_start_byte'(
-        Rest,
-        N + 7,
-        X bsl N + Acc,
-        F,
-        F@_1,
-        F@_2,
-        F@_3,
-        F@_4,
-        F@_5,
-        F@_6,
-        F@_7,
-        F@_8,
-        F@_9,
-        F@_10,
-        F@_11,
-        TrUserData
-    );
-'d_field_imboy.textguard.v1.Hit_start_byte'(
-    <<0:1, X:7, Rest/binary>>,
-    N,
-    Acc,
-    F,
-    F@_1,
-    F@_2,
-    F@_3,
-    F@_4,
-    F@_5,
-    F@_6,
-    F@_7,
-    F@_8,
-    _,
-    F@_10,
-    F@_11,
-    TrUserData
-) ->
+'d_field_imboy.textguard.v1.Hit_start_byte'(<<1:1, X:7, Rest/binary>>, N, Acc, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, TrUserData) when N < 57 ->
+    'd_field_imboy.textguard.v1.Hit_start_byte'(Rest, N + 7, X bsl N + Acc, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, TrUserData);
+'d_field_imboy.textguard.v1.Hit_start_byte'(<<0:1, X:7, Rest/binary>>, N, Acc, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, _, F@_10, F@_11, TrUserData) ->
     {NewFValue, RestF} = {id((X bsl N + Acc) band 4294967295, TrUserData), Rest},
-    'dfp_read_field_def_imboy.textguard.v1.Hit'(
-        RestF,
-        0,
-        0,
-        F,
-        F@_1,
-        F@_2,
-        F@_3,
-        F@_4,
-        F@_5,
-        F@_6,
-        F@_7,
-        F@_8,
-        NewFValue,
-        F@_10,
-        F@_11,
-        TrUserData
-    ).
+    'dfp_read_field_def_imboy.textguard.v1.Hit'(RestF, 0, 0, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, NewFValue, F@_10, F@_11, TrUserData).
 
-'d_field_imboy.textguard.v1.Hit_end_byte'(
-    <<1:1, X:7, Rest/binary>>,
-    N,
-    Acc,
-    F,
-    F@_1,
-    F@_2,
-    F@_3,
-    F@_4,
-    F@_5,
-    F@_6,
-    F@_7,
-    F@_8,
-    F@_9,
-    F@_10,
-    F@_11,
-    TrUserData
-) when N < 57 ->
-    'd_field_imboy.textguard.v1.Hit_end_byte'(
-        Rest,
-        N + 7,
-        X bsl N + Acc,
-        F,
-        F@_1,
-        F@_2,
-        F@_3,
-        F@_4,
-        F@_5,
-        F@_6,
-        F@_7,
-        F@_8,
-        F@_9,
-        F@_10,
-        F@_11,
-        TrUserData
-    );
-'d_field_imboy.textguard.v1.Hit_end_byte'(
-    <<0:1, X:7, Rest/binary>>,
-    N,
-    Acc,
-    F,
-    F@_1,
-    F@_2,
-    F@_3,
-    F@_4,
-    F@_5,
-    F@_6,
-    F@_7,
-    F@_8,
-    F@_9,
-    _,
-    F@_11,
-    TrUserData
-) ->
+'d_field_imboy.textguard.v1.Hit_end_byte'(<<1:1, X:7, Rest/binary>>, N, Acc, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, TrUserData) when N < 57 ->
+    'd_field_imboy.textguard.v1.Hit_end_byte'(Rest, N + 7, X bsl N + Acc, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, TrUserData);
+'d_field_imboy.textguard.v1.Hit_end_byte'(<<0:1, X:7, Rest/binary>>, N, Acc, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, _, F@_11, TrUserData) ->
     {NewFValue, RestF} = {id((X bsl N + Acc) band 4294967295, TrUserData), Rest},
-    'dfp_read_field_def_imboy.textguard.v1.Hit'(
-        RestF,
-        0,
-        0,
-        F,
-        F@_1,
-        F@_2,
-        F@_3,
-        F@_4,
-        F@_5,
-        F@_6,
-        F@_7,
-        F@_8,
-        F@_9,
-        NewFValue,
-        F@_11,
-        TrUserData
-    ).
+    'dfp_read_field_def_imboy.textguard.v1.Hit'(RestF, 0, 0, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, NewFValue, F@_11, TrUserData).
 
-'d_field_imboy.textguard.v1.Hit_match_methods'(
-    <<1:1, X:7, Rest/binary>>,
-    N,
-    Acc,
-    F,
-    F@_1,
-    F@_2,
-    F@_3,
-    F@_4,
-    F@_5,
-    F@_6,
-    F@_7,
-    F@_8,
-    F@_9,
-    F@_10,
-    F@_11,
-    TrUserData
-) when N < 57 ->
-    'd_field_imboy.textguard.v1.Hit_match_methods'(
-        Rest,
-        N + 7,
-        X bsl N + Acc,
-        F,
-        F@_1,
-        F@_2,
-        F@_3,
-        F@_4,
-        F@_5,
-        F@_6,
-        F@_7,
-        F@_8,
-        F@_9,
-        F@_10,
-        F@_11,
-        TrUserData
-    );
-'d_field_imboy.textguard.v1.Hit_match_methods'(
-    <<0:1, X:7, Rest/binary>>,
-    N,
-    Acc,
-    F,
-    F@_1,
-    F@_2,
-    F@_3,
-    F@_4,
-    F@_5,
-    F@_6,
-    F@_7,
-    F@_8,
-    F@_9,
-    F@_10,
-    Prev,
-    TrUserData
-) ->
-    {NewFValue, RestF} = {
-        id(
-            'd_enum_imboy.textguard.v1.MatchMethod'(begin
-                <<Res:32/signed-native>> = <<(X bsl N + Acc):32/unsigned-native>>,
-                id(Res, TrUserData)
-            end),
-            TrUserData
-        ),
-        Rest
-    },
-    'dfp_read_field_def_imboy.textguard.v1.Hit'(
-        RestF,
-        0,
-        0,
-        F,
-        F@_1,
-        F@_2,
-        F@_3,
-        F@_4,
-        F@_5,
-        F@_6,
-        F@_7,
-        F@_8,
-        F@_9,
-        F@_10,
-        cons(NewFValue, Prev, TrUserData),
-        TrUserData
-    ).
+'d_field_imboy.textguard.v1.Hit_match_methods'(<<1:1, X:7, Rest/binary>>, N, Acc, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, TrUserData) when N < 57 ->
+    'd_field_imboy.textguard.v1.Hit_match_methods'(Rest, N + 7, X bsl N + Acc, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, TrUserData);
+'d_field_imboy.textguard.v1.Hit_match_methods'(<<0:1, X:7, Rest/binary>>, N, Acc, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, Prev, TrUserData) ->
+    {NewFValue, RestF} = {id('d_enum_imboy.textguard.v1.MatchMethod'(begin <<Res:32/signed-native>> = <<(X bsl N + Acc):32/unsigned-native>>, id(Res, TrUserData) end), TrUserData), Rest},
+    'dfp_read_field_def_imboy.textguard.v1.Hit'(RestF, 0, 0, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, cons(NewFValue, Prev, TrUserData), TrUserData).
 
-'d_pfield_imboy.textguard.v1.Hit_match_methods'(
-    <<1:1, X:7, Rest/binary>>,
-    N,
-    Acc,
-    F,
-    F@_1,
-    F@_2,
-    F@_3,
-    F@_4,
-    F@_5,
-    F@_6,
-    F@_7,
-    F@_8,
-    F@_9,
-    F@_10,
-    F@_11,
-    TrUserData
-) when N < 57 ->
-    'd_pfield_imboy.textguard.v1.Hit_match_methods'(
-        Rest,
-        N + 7,
-        X bsl N + Acc,
-        F,
-        F@_1,
-        F@_2,
-        F@_3,
-        F@_4,
-        F@_5,
-        F@_6,
-        F@_7,
-        F@_8,
-        F@_9,
-        F@_10,
-        F@_11,
-        TrUserData
-    );
-'d_pfield_imboy.textguard.v1.Hit_match_methods'(
-    <<0:1, X:7, Rest/binary>>,
-    N,
-    Acc,
-    F,
-    F@_1,
-    F@_2,
-    F@_3,
-    F@_4,
-    F@_5,
-    F@_6,
-    F@_7,
-    F@_8,
-    F@_9,
-    F@_10,
-    E,
-    TrUserData
-) ->
+'d_pfield_imboy.textguard.v1.Hit_match_methods'(<<1:1, X:7, Rest/binary>>, N, Acc, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, TrUserData) when N < 57 ->
+    'd_pfield_imboy.textguard.v1.Hit_match_methods'(Rest, N + 7, X bsl N + Acc, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, TrUserData);
+'d_pfield_imboy.textguard.v1.Hit_match_methods'(<<0:1, X:7, Rest/binary>>, N, Acc, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, E, TrUserData) ->
     Len = X bsl N + Acc,
     <<PackedBytes:Len/binary, Rest2/binary>> = Rest,
-    NewSeq = 'd_packed_field_imboy.textguard.v1.Hit_match_methods'(
-        PackedBytes, 0, 0, F, E, TrUserData
-    ),
-    'dfp_read_field_def_imboy.textguard.v1.Hit'(
-        Rest2,
-        0,
-        0,
-        F,
-        F@_1,
-        F@_2,
-        F@_3,
-        F@_4,
-        F@_5,
-        F@_6,
-        F@_7,
-        F@_8,
-        F@_9,
-        F@_10,
-        NewSeq,
-        TrUserData
-    ).
+    NewSeq = 'd_packed_field_imboy.textguard.v1.Hit_match_methods'(PackedBytes, 0, 0, F, E, TrUserData),
+    'dfp_read_field_def_imboy.textguard.v1.Hit'(Rest2, 0, 0, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, NewSeq, TrUserData).
 
-'d_packed_field_imboy.textguard.v1.Hit_match_methods'(
-    <<1:1, X:7, Rest/binary>>, N, Acc, F, AccSeq, TrUserData
-) when N < 57 ->
-    'd_packed_field_imboy.textguard.v1.Hit_match_methods'(
-        Rest, N + 7, X bsl N + Acc, F, AccSeq, TrUserData
-    );
-'d_packed_field_imboy.textguard.v1.Hit_match_methods'(
-    <<0:1, X:7, Rest/binary>>, N, Acc, F, AccSeq, TrUserData
-) ->
-    {NewFValue, RestF} = {
-        id(
-            'd_enum_imboy.textguard.v1.MatchMethod'(begin
-                <<Res:32/signed-native>> = <<(X bsl N + Acc):32/unsigned-native>>,
-                id(Res, TrUserData)
-            end),
-            TrUserData
-        ),
-        Rest
-    },
-    'd_packed_field_imboy.textguard.v1.Hit_match_methods'(
-        RestF, 0, 0, F, [NewFValue | AccSeq], TrUserData
-    );
-'d_packed_field_imboy.textguard.v1.Hit_match_methods'(<<>>, 0, 0, _, AccSeq, _) ->
-    AccSeq.
+'d_packed_field_imboy.textguard.v1.Hit_match_methods'(<<1:1, X:7, Rest/binary>>, N, Acc, F, AccSeq, TrUserData) when N < 57 -> 'd_packed_field_imboy.textguard.v1.Hit_match_methods'(Rest, N + 7, X bsl N + Acc, F, AccSeq, TrUserData);
+'d_packed_field_imboy.textguard.v1.Hit_match_methods'(<<0:1, X:7, Rest/binary>>, N, Acc, F, AccSeq, TrUserData) ->
+    {NewFValue, RestF} = {id('d_enum_imboy.textguard.v1.MatchMethod'(begin <<Res:32/signed-native>> = <<(X bsl N + Acc):32/unsigned-native>>, id(Res, TrUserData) end), TrUserData), Rest},
+    'd_packed_field_imboy.textguard.v1.Hit_match_methods'(RestF, 0, 0, F, [NewFValue | AccSeq], TrUserData);
+'d_packed_field_imboy.textguard.v1.Hit_match_methods'(<<>>, 0, 0, _, AccSeq, _) -> AccSeq.
 
-'skip_varint_imboy.textguard.v1.Hit'(
-    <<1:1, _:7, Rest/binary>>,
-    Z1,
-    Z2,
-    F,
-    F@_1,
-    F@_2,
-    F@_3,
-    F@_4,
-    F@_5,
-    F@_6,
-    F@_7,
-    F@_8,
-    F@_9,
-    F@_10,
-    F@_11,
-    TrUserData
-) ->
-    'skip_varint_imboy.textguard.v1.Hit'(
-        Rest,
-        Z1,
-        Z2,
-        F,
-        F@_1,
-        F@_2,
-        F@_3,
-        F@_4,
-        F@_5,
-        F@_6,
-        F@_7,
-        F@_8,
-        F@_9,
-        F@_10,
-        F@_11,
-        TrUserData
-    );
-'skip_varint_imboy.textguard.v1.Hit'(
-    <<0:1, _:7, Rest/binary>>,
-    Z1,
-    Z2,
-    F,
-    F@_1,
-    F@_2,
-    F@_3,
-    F@_4,
-    F@_5,
-    F@_6,
-    F@_7,
-    F@_8,
-    F@_9,
-    F@_10,
-    F@_11,
-    TrUserData
-) ->
-    'dfp_read_field_def_imboy.textguard.v1.Hit'(
-        Rest,
-        Z1,
-        Z2,
-        F,
-        F@_1,
-        F@_2,
-        F@_3,
-        F@_4,
-        F@_5,
-        F@_6,
-        F@_7,
-        F@_8,
-        F@_9,
-        F@_10,
-        F@_11,
-        TrUserData
-    ).
+'skip_varint_imboy.textguard.v1.Hit'(<<1:1, _:7, Rest/binary>>, Z1, Z2, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, TrUserData) ->
+    'skip_varint_imboy.textguard.v1.Hit'(Rest, Z1, Z2, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, TrUserData);
+'skip_varint_imboy.textguard.v1.Hit'(<<0:1, _:7, Rest/binary>>, Z1, Z2, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, TrUserData) ->
+    'dfp_read_field_def_imboy.textguard.v1.Hit'(Rest, Z1, Z2, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, TrUserData).
 
-'skip_length_delimited_imboy.textguard.v1.Hit'(
-    <<1:1, X:7, Rest/binary>>,
-    N,
-    Acc,
-    F,
-    F@_1,
-    F@_2,
-    F@_3,
-    F@_4,
-    F@_5,
-    F@_6,
-    F@_7,
-    F@_8,
-    F@_9,
-    F@_10,
-    F@_11,
-    TrUserData
-) when N < 57 ->
-    'skip_length_delimited_imboy.textguard.v1.Hit'(
-        Rest,
-        N + 7,
-        X bsl N + Acc,
-        F,
-        F@_1,
-        F@_2,
-        F@_3,
-        F@_4,
-        F@_5,
-        F@_6,
-        F@_7,
-        F@_8,
-        F@_9,
-        F@_10,
-        F@_11,
-        TrUserData
-    );
-'skip_length_delimited_imboy.textguard.v1.Hit'(
-    <<0:1, X:7, Rest/binary>>,
-    N,
-    Acc,
-    F,
-    F@_1,
-    F@_2,
-    F@_3,
-    F@_4,
-    F@_5,
-    F@_6,
-    F@_7,
-    F@_8,
-    F@_9,
-    F@_10,
-    F@_11,
-    TrUserData
-) ->
+'skip_length_delimited_imboy.textguard.v1.Hit'(<<1:1, X:7, Rest/binary>>, N, Acc, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, TrUserData) when N < 57 ->
+    'skip_length_delimited_imboy.textguard.v1.Hit'(Rest, N + 7, X bsl N + Acc, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, TrUserData);
+'skip_length_delimited_imboy.textguard.v1.Hit'(<<0:1, X:7, Rest/binary>>, N, Acc, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, TrUserData) ->
     Length = X bsl N + Acc,
     <<_:Length/binary, Rest2/binary>> = Rest,
-    'dfp_read_field_def_imboy.textguard.v1.Hit'(
-        Rest2,
-        0,
-        0,
-        F,
-        F@_1,
-        F@_2,
-        F@_3,
-        F@_4,
-        F@_5,
-        F@_6,
-        F@_7,
-        F@_8,
-        F@_9,
-        F@_10,
-        F@_11,
-        TrUserData
-    ).
+    'dfp_read_field_def_imboy.textguard.v1.Hit'(Rest2, 0, 0, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, TrUserData).
 
-'skip_group_imboy.textguard.v1.Hit'(
-    Bin, _, Z2, FNum, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, TrUserData
-) ->
+'skip_group_imboy.textguard.v1.Hit'(Bin, _, Z2, FNum, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, TrUserData) ->
     {_, Rest} = read_group(Bin, FNum),
-    'dfp_read_field_def_imboy.textguard.v1.Hit'(
-        Rest,
-        0,
-        Z2,
-        FNum,
-        F@_1,
-        F@_2,
-        F@_3,
-        F@_4,
-        F@_5,
-        F@_6,
-        F@_7,
-        F@_8,
-        F@_9,
-        F@_10,
-        F@_11,
-        TrUserData
-    ).
+    'dfp_read_field_def_imboy.textguard.v1.Hit'(Rest, 0, Z2, FNum, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, TrUserData).
 
-'skip_32_imboy.textguard.v1.Hit'(
-    <<_:32, Rest/binary>>,
-    Z1,
-    Z2,
-    F,
-    F@_1,
-    F@_2,
-    F@_3,
-    F@_4,
-    F@_5,
-    F@_6,
-    F@_7,
-    F@_8,
-    F@_9,
-    F@_10,
-    F@_11,
-    TrUserData
-) ->
-    'dfp_read_field_def_imboy.textguard.v1.Hit'(
-        Rest,
-        Z1,
-        Z2,
-        F,
-        F@_1,
-        F@_2,
-        F@_3,
-        F@_4,
-        F@_5,
-        F@_6,
-        F@_7,
-        F@_8,
-        F@_9,
-        F@_10,
-        F@_11,
-        TrUserData
-    ).
+'skip_32_imboy.textguard.v1.Hit'(<<_:32, Rest/binary>>, Z1, Z2, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, TrUserData) ->
+    'dfp_read_field_def_imboy.textguard.v1.Hit'(Rest, Z1, Z2, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, TrUserData).
 
-'skip_64_imboy.textguard.v1.Hit'(
-    <<_:64, Rest/binary>>,
-    Z1,
-    Z2,
-    F,
-    F@_1,
-    F@_2,
-    F@_3,
-    F@_4,
-    F@_5,
-    F@_6,
-    F@_7,
-    F@_8,
-    F@_9,
-    F@_10,
-    F@_11,
-    TrUserData
-) ->
-    'dfp_read_field_def_imboy.textguard.v1.Hit'(
-        Rest,
-        Z1,
-        Z2,
-        F,
-        F@_1,
-        F@_2,
-        F@_3,
-        F@_4,
-        F@_5,
-        F@_6,
-        F@_7,
-        F@_8,
-        F@_9,
-        F@_10,
-        F@_11,
-        TrUserData
-    ).
+'skip_64_imboy.textguard.v1.Hit'(<<_:64, Rest/binary>>, Z1, Z2, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, TrUserData) ->
+    'dfp_read_field_def_imboy.textguard.v1.Hit'(Rest, Z1, Z2, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, TrUserData).
 
 'decode_msg_imboy.textguard.v1.CheckTextResponse'(Bin, TrUserData) ->
-    'dfp_read_field_def_imboy.textguard.v1.CheckTextResponse'(
-        Bin,
-        0,
-        0,
-        0,
-        id('$undef', TrUserData),
-        id('$undef', TrUserData),
-        id('$undef', TrUserData),
-        id('$undef', TrUserData),
-        id('$undef', TrUserData),
-        id('$undef', TrUserData),
-        id('$undef', TrUserData),
-        id('$undef', TrUserData),
-        id('$undef', TrUserData),
-        id('$undef', TrUserData),
-        id([], TrUserData),
-        id('$undef', TrUserData),
-        id('$undef', TrUserData),
-        id('$undef', TrUserData),
-        TrUserData
-    ).
+    'dfp_read_field_def_imboy.textguard.v1.CheckTextResponse'(Bin,
+                                                              0,
+                                                              0,
+                                                              0,
+                                                              id('$undef', TrUserData),
+                                                              id('$undef', TrUserData),
+                                                              id('$undef', TrUserData),
+                                                              id('$undef', TrUserData),
+                                                              id('$undef', TrUserData),
+                                                              id('$undef', TrUserData),
+                                                              id('$undef', TrUserData),
+                                                              id('$undef', TrUserData),
+                                                              id('$undef', TrUserData),
+                                                              id('$undef', TrUserData),
+                                                              id([], TrUserData),
+                                                              id('$undef', TrUserData),
+                                                              id('$undef', TrUserData),
+                                                              id('$undef', TrUserData),
+                                                              TrUserData).
 
-'dfp_read_field_def_imboy.textguard.v1.CheckTextResponse'(
-    <<10, Rest/binary>>,
-    Z1,
-    Z2,
-    F,
-    F@_1,
-    F@_2,
-    F@_3,
-    F@_4,
-    F@_5,
-    F@_6,
-    F@_7,
-    F@_8,
-    F@_9,
-    F@_10,
-    F@_11,
-    F@_12,
-    F@_13,
-    F@_14,
-    TrUserData
-) ->
-    'd_field_imboy.textguard.v1.CheckTextResponse_request_id'(
-        Rest,
-        Z1,
-        Z2,
-        F,
-        F@_1,
-        F@_2,
-        F@_3,
-        F@_4,
-        F@_5,
-        F@_6,
-        F@_7,
-        F@_8,
-        F@_9,
-        F@_10,
-        F@_11,
-        F@_12,
-        F@_13,
-        F@_14,
-        TrUserData
-    );
-'dfp_read_field_def_imboy.textguard.v1.CheckTextResponse'(
-    <<18, Rest/binary>>,
-    Z1,
-    Z2,
-    F,
-    F@_1,
-    F@_2,
-    F@_3,
-    F@_4,
-    F@_5,
-    F@_6,
-    F@_7,
-    F@_8,
-    F@_9,
-    F@_10,
-    F@_11,
-    F@_12,
-    F@_13,
-    F@_14,
-    TrUserData
-) ->
-    'd_field_imboy.textguard.v1.CheckTextResponse_ruleset_revision'(
-        Rest,
-        Z1,
-        Z2,
-        F,
-        F@_1,
-        F@_2,
-        F@_3,
-        F@_4,
-        F@_5,
-        F@_6,
-        F@_7,
-        F@_8,
-        F@_9,
-        F@_10,
-        F@_11,
-        F@_12,
-        F@_13,
-        F@_14,
-        TrUserData
-    );
-'dfp_read_field_def_imboy.textguard.v1.CheckTextResponse'(
-    <<26, Rest/binary>>,
-    Z1,
-    Z2,
-    F,
-    F@_1,
-    F@_2,
-    F@_3,
-    F@_4,
-    F@_5,
-    F@_6,
-    F@_7,
-    F@_8,
-    F@_9,
-    F@_10,
-    F@_11,
-    F@_12,
-    F@_13,
-    F@_14,
-    TrUserData
-) ->
-    'd_field_imboy.textguard.v1.CheckTextResponse_generation'(
-        Rest,
-        Z1,
-        Z2,
-        F,
-        F@_1,
-        F@_2,
-        F@_3,
-        F@_4,
-        F@_5,
-        F@_6,
-        F@_7,
-        F@_8,
-        F@_9,
-        F@_10,
-        F@_11,
-        F@_12,
-        F@_13,
-        F@_14,
-        TrUserData
-    );
-'dfp_read_field_def_imboy.textguard.v1.CheckTextResponse'(
-    <<34, Rest/binary>>,
-    Z1,
-    Z2,
-    F,
-    F@_1,
-    F@_2,
-    F@_3,
-    F@_4,
-    F@_5,
-    F@_6,
-    F@_7,
-    F@_8,
-    F@_9,
-    F@_10,
-    F@_11,
-    F@_12,
-    F@_13,
-    F@_14,
-    TrUserData
-) ->
-    'd_field_imboy.textguard.v1.CheckTextResponse_normalization_id'(
-        Rest,
-        Z1,
-        Z2,
-        F,
-        F@_1,
-        F@_2,
-        F@_3,
-        F@_4,
-        F@_5,
-        F@_6,
-        F@_7,
-        F@_8,
-        F@_9,
-        F@_10,
-        F@_11,
-        F@_12,
-        F@_13,
-        F@_14,
-        TrUserData
-    );
-'dfp_read_field_def_imboy.textguard.v1.CheckTextResponse'(
-    <<42, Rest/binary>>,
-    Z1,
-    Z2,
-    F,
-    F@_1,
-    F@_2,
-    F@_3,
-    F@_4,
-    F@_5,
-    F@_6,
-    F@_7,
-    F@_8,
-    F@_9,
-    F@_10,
-    F@_11,
-    F@_12,
-    F@_13,
-    F@_14,
-    TrUserData
-) ->
-    'd_field_imboy.textguard.v1.CheckTextResponse_t2s_table_id'(
-        Rest,
-        Z1,
-        Z2,
-        F,
-        F@_1,
-        F@_2,
-        F@_3,
-        F@_4,
-        F@_5,
-        F@_6,
-        F@_7,
-        F@_8,
-        F@_9,
-        F@_10,
-        F@_11,
-        F@_12,
-        F@_13,
-        F@_14,
-        TrUserData
-    );
-'dfp_read_field_def_imboy.textguard.v1.CheckTextResponse'(
-    <<50, Rest/binary>>,
-    Z1,
-    Z2,
-    F,
-    F@_1,
-    F@_2,
-    F@_3,
-    F@_4,
-    F@_5,
-    F@_6,
-    F@_7,
-    F@_8,
-    F@_9,
-    F@_10,
-    F@_11,
-    F@_12,
-    F@_13,
-    F@_14,
-    TrUserData
-) ->
-    'd_field_imboy.textguard.v1.CheckTextResponse_semantics_id'(
-        Rest,
-        Z1,
-        Z2,
-        F,
-        F@_1,
-        F@_2,
-        F@_3,
-        F@_4,
-        F@_5,
-        F@_6,
-        F@_7,
-        F@_8,
-        F@_9,
-        F@_10,
-        F@_11,
-        F@_12,
-        F@_13,
-        F@_14,
-        TrUserData
-    );
-'dfp_read_field_def_imboy.textguard.v1.CheckTextResponse'(
-    <<58, Rest/binary>>,
-    Z1,
-    Z2,
-    F,
-    F@_1,
-    F@_2,
-    F@_3,
-    F@_4,
-    F@_5,
-    F@_6,
-    F@_7,
-    F@_8,
-    F@_9,
-    F@_10,
-    F@_11,
-    F@_12,
-    F@_13,
-    F@_14,
-    TrUserData
-) ->
-    'd_field_imboy.textguard.v1.CheckTextResponse_base_rules_digest'(
-        Rest,
-        Z1,
-        Z2,
-        F,
-        F@_1,
-        F@_2,
-        F@_3,
-        F@_4,
-        F@_5,
-        F@_6,
-        F@_7,
-        F@_8,
-        F@_9,
-        F@_10,
-        F@_11,
-        F@_12,
-        F@_13,
-        F@_14,
-        TrUserData
-    );
-'dfp_read_field_def_imboy.textguard.v1.CheckTextResponse'(
-    <<64, Rest/binary>>,
-    Z1,
-    Z2,
-    F,
-    F@_1,
-    F@_2,
-    F@_3,
-    F@_4,
-    F@_5,
-    F@_6,
-    F@_7,
-    F@_8,
-    F@_9,
-    F@_10,
-    F@_11,
-    F@_12,
-    F@_13,
-    F@_14,
-    TrUserData
-) ->
-    'd_field_imboy.textguard.v1.CheckTextResponse_decision'(
-        Rest,
-        Z1,
-        Z2,
-        F,
-        F@_1,
-        F@_2,
-        F@_3,
-        F@_4,
-        F@_5,
-        F@_6,
-        F@_7,
-        F@_8,
-        F@_9,
-        F@_10,
-        F@_11,
-        F@_12,
-        F@_13,
-        F@_14,
-        TrUserData
-    );
-'dfp_read_field_def_imboy.textguard.v1.CheckTextResponse'(
-    <<72, Rest/binary>>,
-    Z1,
-    Z2,
-    F,
-    F@_1,
-    F@_2,
-    F@_3,
-    F@_4,
-    F@_5,
-    F@_6,
-    F@_7,
-    F@_8,
-    F@_9,
-    F@_10,
-    F@_11,
-    F@_12,
-    F@_13,
-    F@_14,
-    TrUserData
-) ->
-    'd_field_imboy.textguard.v1.CheckTextResponse_scan_complete'(
-        Rest,
-        Z1,
-        Z2,
-        F,
-        F@_1,
-        F@_2,
-        F@_3,
-        F@_4,
-        F@_5,
-        F@_6,
-        F@_7,
-        F@_8,
-        F@_9,
-        F@_10,
-        F@_11,
-        F@_12,
-        F@_13,
-        F@_14,
-        TrUserData
-    );
-'dfp_read_field_def_imboy.textguard.v1.CheckTextResponse'(
-    <<80, Rest/binary>>,
-    Z1,
-    Z2,
-    F,
-    F@_1,
-    F@_2,
-    F@_3,
-    F@_4,
-    F@_5,
-    F@_6,
-    F@_7,
-    F@_8,
-    F@_9,
-    F@_10,
-    F@_11,
-    F@_12,
-    F@_13,
-    F@_14,
-    TrUserData
-) ->
-    'd_field_imboy.textguard.v1.CheckTextResponse_hits_truncated'(
-        Rest,
-        Z1,
-        Z2,
-        F,
-        F@_1,
-        F@_2,
-        F@_3,
-        F@_4,
-        F@_5,
-        F@_6,
-        F@_7,
-        F@_8,
-        F@_9,
-        F@_10,
-        F@_11,
-        F@_12,
-        F@_13,
-        F@_14,
-        TrUserData
-    );
-'dfp_read_field_def_imboy.textguard.v1.CheckTextResponse'(
-    <<90, Rest/binary>>,
-    Z1,
-    Z2,
-    F,
-    F@_1,
-    F@_2,
-    F@_3,
-    F@_4,
-    F@_5,
-    F@_6,
-    F@_7,
-    F@_8,
-    F@_9,
-    F@_10,
-    F@_11,
-    F@_12,
-    F@_13,
-    F@_14,
-    TrUserData
-) ->
-    'd_field_imboy.textguard.v1.CheckTextResponse_hits'(
-        Rest,
-        Z1,
-        Z2,
-        F,
-        F@_1,
-        F@_2,
-        F@_3,
-        F@_4,
-        F@_5,
-        F@_6,
-        F@_7,
-        F@_8,
-        F@_9,
-        F@_10,
-        F@_11,
-        F@_12,
-        F@_13,
-        F@_14,
-        TrUserData
-    );
-'dfp_read_field_def_imboy.textguard.v1.CheckTextResponse'(
-    <<96, Rest/binary>>,
-    Z1,
-    Z2,
-    F,
-    F@_1,
-    F@_2,
-    F@_3,
-    F@_4,
-    F@_5,
-    F@_6,
-    F@_7,
-    F@_8,
-    F@_9,
-    F@_10,
-    F@_11,
-    F@_12,
-    F@_13,
-    F@_14,
-    TrUserData
-) ->
-    'd_field_imboy.textguard.v1.CheckTextResponse_fields_checked'(
-        Rest,
-        Z1,
-        Z2,
-        F,
-        F@_1,
-        F@_2,
-        F@_3,
-        F@_4,
-        F@_5,
-        F@_6,
-        F@_7,
-        F@_8,
-        F@_9,
-        F@_10,
-        F@_11,
-        F@_12,
-        F@_13,
-        F@_14,
-        TrUserData
-    );
-'dfp_read_field_def_imboy.textguard.v1.CheckTextResponse'(
-    <<106, Rest/binary>>,
-    Z1,
-    Z2,
-    F,
-    F@_1,
-    F@_2,
-    F@_3,
-    F@_4,
-    F@_5,
-    F@_6,
-    F@_7,
-    F@_8,
-    F@_9,
-    F@_10,
-    F@_11,
-    F@_12,
-    F@_13,
-    F@_14,
-    TrUserData
-) ->
-    'd_field_imboy.textguard.v1.CheckTextResponse_hit_semantics'(
-        Rest,
-        Z1,
-        Z2,
-        F,
-        F@_1,
-        F@_2,
-        F@_3,
-        F@_4,
-        F@_5,
-        F@_6,
-        F@_7,
-        F@_8,
-        F@_9,
-        F@_10,
-        F@_11,
-        F@_12,
-        F@_13,
-        F@_14,
-        TrUserData
-    );
-'dfp_read_field_def_imboy.textguard.v1.CheckTextResponse'(
-    <<114, Rest/binary>>,
-    Z1,
-    Z2,
-    F,
-    F@_1,
-    F@_2,
-    F@_3,
-    F@_4,
-    F@_5,
-    F@_6,
-    F@_7,
-    F@_8,
-    F@_9,
-    F@_10,
-    F@_11,
-    F@_12,
-    F@_13,
-    F@_14,
-    TrUserData
-) ->
-    'd_field_imboy.textguard.v1.CheckTextResponse_build_id'(
-        Rest,
-        Z1,
-        Z2,
-        F,
-        F@_1,
-        F@_2,
-        F@_3,
-        F@_4,
-        F@_5,
-        F@_6,
-        F@_7,
-        F@_8,
-        F@_9,
-        F@_10,
-        F@_11,
-        F@_12,
-        F@_13,
-        F@_14,
-        TrUserData
-    );
-'dfp_read_field_def_imboy.textguard.v1.CheckTextResponse'(
-    <<>>,
-    0,
-    0,
-    _,
-    F@_1,
-    F@_2,
-    F@_3,
-    F@_4,
-    F@_5,
-    F@_6,
-    F@_7,
-    F@_8,
-    F@_9,
-    F@_10,
-    R1,
-    F@_12,
-    F@_13,
-    F@_14,
-    TrUserData
-) ->
+'dfp_read_field_def_imboy.textguard.v1.CheckTextResponse'(<<10, Rest/binary>>, Z1, Z2, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, F@_12, F@_13, F@_14, TrUserData) ->
+    'd_field_imboy.textguard.v1.CheckTextResponse_request_id'(Rest, Z1, Z2, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, F@_12, F@_13, F@_14, TrUserData);
+'dfp_read_field_def_imboy.textguard.v1.CheckTextResponse'(<<18, Rest/binary>>, Z1, Z2, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, F@_12, F@_13, F@_14, TrUserData) ->
+    'd_field_imboy.textguard.v1.CheckTextResponse_ruleset_revision'(Rest, Z1, Z2, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, F@_12, F@_13, F@_14, TrUserData);
+'dfp_read_field_def_imboy.textguard.v1.CheckTextResponse'(<<26, Rest/binary>>, Z1, Z2, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, F@_12, F@_13, F@_14, TrUserData) ->
+    'd_field_imboy.textguard.v1.CheckTextResponse_generation'(Rest, Z1, Z2, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, F@_12, F@_13, F@_14, TrUserData);
+'dfp_read_field_def_imboy.textguard.v1.CheckTextResponse'(<<34, Rest/binary>>, Z1, Z2, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, F@_12, F@_13, F@_14, TrUserData) ->
+    'd_field_imboy.textguard.v1.CheckTextResponse_normalization_id'(Rest, Z1, Z2, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, F@_12, F@_13, F@_14, TrUserData);
+'dfp_read_field_def_imboy.textguard.v1.CheckTextResponse'(<<42, Rest/binary>>, Z1, Z2, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, F@_12, F@_13, F@_14, TrUserData) ->
+    'd_field_imboy.textguard.v1.CheckTextResponse_t2s_table_id'(Rest, Z1, Z2, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, F@_12, F@_13, F@_14, TrUserData);
+'dfp_read_field_def_imboy.textguard.v1.CheckTextResponse'(<<50, Rest/binary>>, Z1, Z2, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, F@_12, F@_13, F@_14, TrUserData) ->
+    'd_field_imboy.textguard.v1.CheckTextResponse_semantics_id'(Rest, Z1, Z2, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, F@_12, F@_13, F@_14, TrUserData);
+'dfp_read_field_def_imboy.textguard.v1.CheckTextResponse'(<<58, Rest/binary>>, Z1, Z2, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, F@_12, F@_13, F@_14, TrUserData) ->
+    'd_field_imboy.textguard.v1.CheckTextResponse_base_rules_digest'(Rest, Z1, Z2, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, F@_12, F@_13, F@_14, TrUserData);
+'dfp_read_field_def_imboy.textguard.v1.CheckTextResponse'(<<64, Rest/binary>>, Z1, Z2, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, F@_12, F@_13, F@_14, TrUserData) ->
+    'd_field_imboy.textguard.v1.CheckTextResponse_decision'(Rest, Z1, Z2, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, F@_12, F@_13, F@_14, TrUserData);
+'dfp_read_field_def_imboy.textguard.v1.CheckTextResponse'(<<72, Rest/binary>>, Z1, Z2, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, F@_12, F@_13, F@_14, TrUserData) ->
+    'd_field_imboy.textguard.v1.CheckTextResponse_scan_complete'(Rest, Z1, Z2, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, F@_12, F@_13, F@_14, TrUserData);
+'dfp_read_field_def_imboy.textguard.v1.CheckTextResponse'(<<80, Rest/binary>>, Z1, Z2, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, F@_12, F@_13, F@_14, TrUserData) ->
+    'd_field_imboy.textguard.v1.CheckTextResponse_hits_truncated'(Rest, Z1, Z2, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, F@_12, F@_13, F@_14, TrUserData);
+'dfp_read_field_def_imboy.textguard.v1.CheckTextResponse'(<<90, Rest/binary>>, Z1, Z2, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, F@_12, F@_13, F@_14, TrUserData) ->
+    'd_field_imboy.textguard.v1.CheckTextResponse_hits'(Rest, Z1, Z2, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, F@_12, F@_13, F@_14, TrUserData);
+'dfp_read_field_def_imboy.textguard.v1.CheckTextResponse'(<<96, Rest/binary>>, Z1, Z2, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, F@_12, F@_13, F@_14, TrUserData) ->
+    'd_field_imboy.textguard.v1.CheckTextResponse_fields_checked'(Rest, Z1, Z2, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, F@_12, F@_13, F@_14, TrUserData);
+'dfp_read_field_def_imboy.textguard.v1.CheckTextResponse'(<<106, Rest/binary>>, Z1, Z2, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, F@_12, F@_13, F@_14, TrUserData) ->
+    'd_field_imboy.textguard.v1.CheckTextResponse_hit_semantics'(Rest, Z1, Z2, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, F@_12, F@_13, F@_14, TrUserData);
+'dfp_read_field_def_imboy.textguard.v1.CheckTextResponse'(<<114, Rest/binary>>, Z1, Z2, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, F@_12, F@_13, F@_14, TrUserData) ->
+    'd_field_imboy.textguard.v1.CheckTextResponse_build_id'(Rest, Z1, Z2, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, F@_12, F@_13, F@_14, TrUserData);
+'dfp_read_field_def_imboy.textguard.v1.CheckTextResponse'(<<>>, 0, 0, _, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, R1, F@_12, F@_13, F@_14, TrUserData) ->
     S1 = #{},
-    S2 =
-        if
-            F@_1 == '$undef' -> S1;
+    S2 = if F@_1 == '$undef' -> S1;
             true -> S1#{request_id => F@_1}
-        end,
-    S3 =
-        if
-            F@_2 == '$undef' -> S2;
+         end,
+    S3 = if F@_2 == '$undef' -> S2;
             true -> S2#{ruleset_revision => F@_2}
-        end,
-    S4 =
-        if
-            F@_3 == '$undef' -> S3;
+         end,
+    S4 = if F@_3 == '$undef' -> S3;
             true -> S3#{generation => F@_3}
-        end,
-    S5 =
-        if
-            F@_4 == '$undef' -> S4;
+         end,
+    S5 = if F@_4 == '$undef' -> S4;
             true -> S4#{normalization_id => F@_4}
-        end,
-    S6 =
-        if
-            F@_5 == '$undef' -> S5;
+         end,
+    S6 = if F@_5 == '$undef' -> S5;
             true -> S5#{t2s_table_id => F@_5}
-        end,
-    S7 =
-        if
-            F@_6 == '$undef' -> S6;
+         end,
+    S7 = if F@_6 == '$undef' -> S6;
             true -> S6#{semantics_id => F@_6}
-        end,
-    S8 =
-        if
-            F@_7 == '$undef' -> S7;
+         end,
+    S8 = if F@_7 == '$undef' -> S7;
             true -> S7#{base_rules_digest => F@_7}
-        end,
-    S9 =
-        if
-            F@_8 == '$undef' -> S8;
+         end,
+    S9 = if F@_8 == '$undef' -> S8;
             true -> S8#{decision => F@_8}
-        end,
-    S10 =
-        if
-            F@_9 == '$undef' -> S9;
-            true -> S9#{scan_complete => F@_9}
-        end,
-    S11 =
-        if
-            F@_10 == '$undef' -> S10;
-            true -> S10#{hits_truncated => F@_10}
-        end,
-    S12 =
-        if
-            R1 == '$undef' -> S11;
-            true -> S11#{hits => lists_reverse(R1, TrUserData)}
-        end,
-    S13 =
-        if
-            F@_12 == '$undef' -> S12;
-            true -> S12#{fields_checked => F@_12}
-        end,
-    S14 =
-        if
-            F@_13 == '$undef' -> S13;
-            true -> S13#{hit_semantics => F@_13}
-        end,
-    if
-        F@_14 == '$undef' -> S14;
-        true -> S14#{build_id => F@_14}
+         end,
+    S10 = if F@_9 == '$undef' -> S9;
+             true -> S9#{scan_complete => F@_9}
+          end,
+    S11 = if F@_10 == '$undef' -> S10;
+             true -> S10#{hits_truncated => F@_10}
+          end,
+    S12 = if R1 == '$undef' -> S11;
+             true -> S11#{hits => lists_reverse(R1, TrUserData)}
+          end,
+    S13 = if F@_12 == '$undef' -> S12;
+             true -> S12#{fields_checked => F@_12}
+          end,
+    S14 = if F@_13 == '$undef' -> S13;
+             true -> S13#{hit_semantics => F@_13}
+          end,
+    if F@_14 == '$undef' -> S14;
+       true -> S14#{build_id => F@_14}
     end;
-'dfp_read_field_def_imboy.textguard.v1.CheckTextResponse'(
-    Other,
-    Z1,
-    Z2,
-    F,
-    F@_1,
-    F@_2,
-    F@_3,
-    F@_4,
-    F@_5,
-    F@_6,
-    F@_7,
-    F@_8,
-    F@_9,
-    F@_10,
-    F@_11,
-    F@_12,
-    F@_13,
-    F@_14,
-    TrUserData
-) ->
-    'dg_read_field_def_imboy.textguard.v1.CheckTextResponse'(
-        Other,
-        Z1,
-        Z2,
-        F,
-        F@_1,
-        F@_2,
-        F@_3,
-        F@_4,
-        F@_5,
-        F@_6,
-        F@_7,
-        F@_8,
-        F@_9,
-        F@_10,
-        F@_11,
-        F@_12,
-        F@_13,
-        F@_14,
-        TrUserData
-    ).
+'dfp_read_field_def_imboy.textguard.v1.CheckTextResponse'(Other, Z1, Z2, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, F@_12, F@_13, F@_14, TrUserData) ->
+    'dg_read_field_def_imboy.textguard.v1.CheckTextResponse'(Other, Z1, Z2, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, F@_12, F@_13, F@_14, TrUserData).
 
-'dg_read_field_def_imboy.textguard.v1.CheckTextResponse'(
-    <<1:1, X:7, Rest/binary>>,
-    N,
-    Acc,
-    F,
-    F@_1,
-    F@_2,
-    F@_3,
-    F@_4,
-    F@_5,
-    F@_6,
-    F@_7,
-    F@_8,
-    F@_9,
-    F@_10,
-    F@_11,
-    F@_12,
-    F@_13,
-    F@_14,
-    TrUserData
-) when N < 32 - 7 ->
-    'dg_read_field_def_imboy.textguard.v1.CheckTextResponse'(
-        Rest,
-        N + 7,
-        X bsl N + Acc,
-        F,
-        F@_1,
-        F@_2,
-        F@_3,
-        F@_4,
-        F@_5,
-        F@_6,
-        F@_7,
-        F@_8,
-        F@_9,
-        F@_10,
-        F@_11,
-        F@_12,
-        F@_13,
-        F@_14,
-        TrUserData
-    );
-'dg_read_field_def_imboy.textguard.v1.CheckTextResponse'(
-    <<0:1, X:7, Rest/binary>>,
-    N,
-    Acc,
-    _,
-    F@_1,
-    F@_2,
-    F@_3,
-    F@_4,
-    F@_5,
-    F@_6,
-    F@_7,
-    F@_8,
-    F@_9,
-    F@_10,
-    F@_11,
-    F@_12,
-    F@_13,
-    F@_14,
-    TrUserData
-) ->
+'dg_read_field_def_imboy.textguard.v1.CheckTextResponse'(<<1:1, X:7, Rest/binary>>, N, Acc, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, F@_12, F@_13, F@_14, TrUserData) when N < 32 - 7 ->
+    'dg_read_field_def_imboy.textguard.v1.CheckTextResponse'(Rest, N + 7, X bsl N + Acc, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, F@_12, F@_13, F@_14, TrUserData);
+'dg_read_field_def_imboy.textguard.v1.CheckTextResponse'(<<0:1, X:7, Rest/binary>>, N, Acc, _, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, F@_12, F@_13, F@_14, TrUserData) ->
     Key = X bsl N + Acc,
     case Key of
-        10 ->
-            'd_field_imboy.textguard.v1.CheckTextResponse_request_id'(
-                Rest,
-                0,
-                0,
-                0,
-                F@_1,
-                F@_2,
-                F@_3,
-                F@_4,
-                F@_5,
-                F@_6,
-                F@_7,
-                F@_8,
-                F@_9,
-                F@_10,
-                F@_11,
-                F@_12,
-                F@_13,
-                F@_14,
-                TrUserData
-            );
-        18 ->
-            'd_field_imboy.textguard.v1.CheckTextResponse_ruleset_revision'(
-                Rest,
-                0,
-                0,
-                0,
-                F@_1,
-                F@_2,
-                F@_3,
-                F@_4,
-                F@_5,
-                F@_6,
-                F@_7,
-                F@_8,
-                F@_9,
-                F@_10,
-                F@_11,
-                F@_12,
-                F@_13,
-                F@_14,
-                TrUserData
-            );
-        26 ->
-            'd_field_imboy.textguard.v1.CheckTextResponse_generation'(
-                Rest,
-                0,
-                0,
-                0,
-                F@_1,
-                F@_2,
-                F@_3,
-                F@_4,
-                F@_5,
-                F@_6,
-                F@_7,
-                F@_8,
-                F@_9,
-                F@_10,
-                F@_11,
-                F@_12,
-                F@_13,
-                F@_14,
-                TrUserData
-            );
-        34 ->
-            'd_field_imboy.textguard.v1.CheckTextResponse_normalization_id'(
-                Rest,
-                0,
-                0,
-                0,
-                F@_1,
-                F@_2,
-                F@_3,
-                F@_4,
-                F@_5,
-                F@_6,
-                F@_7,
-                F@_8,
-                F@_9,
-                F@_10,
-                F@_11,
-                F@_12,
-                F@_13,
-                F@_14,
-                TrUserData
-            );
-        42 ->
-            'd_field_imboy.textguard.v1.CheckTextResponse_t2s_table_id'(
-                Rest,
-                0,
-                0,
-                0,
-                F@_1,
-                F@_2,
-                F@_3,
-                F@_4,
-                F@_5,
-                F@_6,
-                F@_7,
-                F@_8,
-                F@_9,
-                F@_10,
-                F@_11,
-                F@_12,
-                F@_13,
-                F@_14,
-                TrUserData
-            );
-        50 ->
-            'd_field_imboy.textguard.v1.CheckTextResponse_semantics_id'(
-                Rest,
-                0,
-                0,
-                0,
-                F@_1,
-                F@_2,
-                F@_3,
-                F@_4,
-                F@_5,
-                F@_6,
-                F@_7,
-                F@_8,
-                F@_9,
-                F@_10,
-                F@_11,
-                F@_12,
-                F@_13,
-                F@_14,
-                TrUserData
-            );
-        58 ->
-            'd_field_imboy.textguard.v1.CheckTextResponse_base_rules_digest'(
-                Rest,
-                0,
-                0,
-                0,
-                F@_1,
-                F@_2,
-                F@_3,
-                F@_4,
-                F@_5,
-                F@_6,
-                F@_7,
-                F@_8,
-                F@_9,
-                F@_10,
-                F@_11,
-                F@_12,
-                F@_13,
-                F@_14,
-                TrUserData
-            );
-        64 ->
-            'd_field_imboy.textguard.v1.CheckTextResponse_decision'(
-                Rest,
-                0,
-                0,
-                0,
-                F@_1,
-                F@_2,
-                F@_3,
-                F@_4,
-                F@_5,
-                F@_6,
-                F@_7,
-                F@_8,
-                F@_9,
-                F@_10,
-                F@_11,
-                F@_12,
-                F@_13,
-                F@_14,
-                TrUserData
-            );
-        72 ->
-            'd_field_imboy.textguard.v1.CheckTextResponse_scan_complete'(
-                Rest,
-                0,
-                0,
-                0,
-                F@_1,
-                F@_2,
-                F@_3,
-                F@_4,
-                F@_5,
-                F@_6,
-                F@_7,
-                F@_8,
-                F@_9,
-                F@_10,
-                F@_11,
-                F@_12,
-                F@_13,
-                F@_14,
-                TrUserData
-            );
-        80 ->
-            'd_field_imboy.textguard.v1.CheckTextResponse_hits_truncated'(
-                Rest,
-                0,
-                0,
-                0,
-                F@_1,
-                F@_2,
-                F@_3,
-                F@_4,
-                F@_5,
-                F@_6,
-                F@_7,
-                F@_8,
-                F@_9,
-                F@_10,
-                F@_11,
-                F@_12,
-                F@_13,
-                F@_14,
-                TrUserData
-            );
-        90 ->
-            'd_field_imboy.textguard.v1.CheckTextResponse_hits'(
-                Rest,
-                0,
-                0,
-                0,
-                F@_1,
-                F@_2,
-                F@_3,
-                F@_4,
-                F@_5,
-                F@_6,
-                F@_7,
-                F@_8,
-                F@_9,
-                F@_10,
-                F@_11,
-                F@_12,
-                F@_13,
-                F@_14,
-                TrUserData
-            );
-        96 ->
-            'd_field_imboy.textguard.v1.CheckTextResponse_fields_checked'(
-                Rest,
-                0,
-                0,
-                0,
-                F@_1,
-                F@_2,
-                F@_3,
-                F@_4,
-                F@_5,
-                F@_6,
-                F@_7,
-                F@_8,
-                F@_9,
-                F@_10,
-                F@_11,
-                F@_12,
-                F@_13,
-                F@_14,
-                TrUserData
-            );
-        106 ->
-            'd_field_imboy.textguard.v1.CheckTextResponse_hit_semantics'(
-                Rest,
-                0,
-                0,
-                0,
-                F@_1,
-                F@_2,
-                F@_3,
-                F@_4,
-                F@_5,
-                F@_6,
-                F@_7,
-                F@_8,
-                F@_9,
-                F@_10,
-                F@_11,
-                F@_12,
-                F@_13,
-                F@_14,
-                TrUserData
-            );
-        114 ->
-            'd_field_imboy.textguard.v1.CheckTextResponse_build_id'(
-                Rest,
-                0,
-                0,
-                0,
-                F@_1,
-                F@_2,
-                F@_3,
-                F@_4,
-                F@_5,
-                F@_6,
-                F@_7,
-                F@_8,
-                F@_9,
-                F@_10,
-                F@_11,
-                F@_12,
-                F@_13,
-                F@_14,
-                TrUserData
-            );
+        10 -> 'd_field_imboy.textguard.v1.CheckTextResponse_request_id'(Rest, 0, 0, 0, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, F@_12, F@_13, F@_14, TrUserData);
+        18 -> 'd_field_imboy.textguard.v1.CheckTextResponse_ruleset_revision'(Rest, 0, 0, 0, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, F@_12, F@_13, F@_14, TrUserData);
+        26 -> 'd_field_imboy.textguard.v1.CheckTextResponse_generation'(Rest, 0, 0, 0, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, F@_12, F@_13, F@_14, TrUserData);
+        34 -> 'd_field_imboy.textguard.v1.CheckTextResponse_normalization_id'(Rest, 0, 0, 0, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, F@_12, F@_13, F@_14, TrUserData);
+        42 -> 'd_field_imboy.textguard.v1.CheckTextResponse_t2s_table_id'(Rest, 0, 0, 0, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, F@_12, F@_13, F@_14, TrUserData);
+        50 -> 'd_field_imboy.textguard.v1.CheckTextResponse_semantics_id'(Rest, 0, 0, 0, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, F@_12, F@_13, F@_14, TrUserData);
+        58 -> 'd_field_imboy.textguard.v1.CheckTextResponse_base_rules_digest'(Rest, 0, 0, 0, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, F@_12, F@_13, F@_14, TrUserData);
+        64 -> 'd_field_imboy.textguard.v1.CheckTextResponse_decision'(Rest, 0, 0, 0, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, F@_12, F@_13, F@_14, TrUserData);
+        72 -> 'd_field_imboy.textguard.v1.CheckTextResponse_scan_complete'(Rest, 0, 0, 0, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, F@_12, F@_13, F@_14, TrUserData);
+        80 -> 'd_field_imboy.textguard.v1.CheckTextResponse_hits_truncated'(Rest, 0, 0, 0, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, F@_12, F@_13, F@_14, TrUserData);
+        90 -> 'd_field_imboy.textguard.v1.CheckTextResponse_hits'(Rest, 0, 0, 0, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, F@_12, F@_13, F@_14, TrUserData);
+        96 -> 'd_field_imboy.textguard.v1.CheckTextResponse_fields_checked'(Rest, 0, 0, 0, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, F@_12, F@_13, F@_14, TrUserData);
+        106 -> 'd_field_imboy.textguard.v1.CheckTextResponse_hit_semantics'(Rest, 0, 0, 0, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, F@_12, F@_13, F@_14, TrUserData);
+        114 -> 'd_field_imboy.textguard.v1.CheckTextResponse_build_id'(Rest, 0, 0, 0, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, F@_12, F@_13, F@_14, TrUserData);
         _ ->
             case Key band 7 of
-                0 ->
-                    'skip_varint_imboy.textguard.v1.CheckTextResponse'(
-                        Rest,
-                        0,
-                        0,
-                        Key bsr 3,
-                        F@_1,
-                        F@_2,
-                        F@_3,
-                        F@_4,
-                        F@_5,
-                        F@_6,
-                        F@_7,
-                        F@_8,
-                        F@_9,
-                        F@_10,
-                        F@_11,
-                        F@_12,
-                        F@_13,
-                        F@_14,
-                        TrUserData
-                    );
-                1 ->
-                    'skip_64_imboy.textguard.v1.CheckTextResponse'(
-                        Rest,
-                        0,
-                        0,
-                        Key bsr 3,
-                        F@_1,
-                        F@_2,
-                        F@_3,
-                        F@_4,
-                        F@_5,
-                        F@_6,
-                        F@_7,
-                        F@_8,
-                        F@_9,
-                        F@_10,
-                        F@_11,
-                        F@_12,
-                        F@_13,
-                        F@_14,
-                        TrUserData
-                    );
-                2 ->
-                    'skip_length_delimited_imboy.textguard.v1.CheckTextResponse'(
-                        Rest,
-                        0,
-                        0,
-                        Key bsr 3,
-                        F@_1,
-                        F@_2,
-                        F@_3,
-                        F@_4,
-                        F@_5,
-                        F@_6,
-                        F@_7,
-                        F@_8,
-                        F@_9,
-                        F@_10,
-                        F@_11,
-                        F@_12,
-                        F@_13,
-                        F@_14,
-                        TrUserData
-                    );
-                3 ->
-                    'skip_group_imboy.textguard.v1.CheckTextResponse'(
-                        Rest,
-                        0,
-                        0,
-                        Key bsr 3,
-                        F@_1,
-                        F@_2,
-                        F@_3,
-                        F@_4,
-                        F@_5,
-                        F@_6,
-                        F@_7,
-                        F@_8,
-                        F@_9,
-                        F@_10,
-                        F@_11,
-                        F@_12,
-                        F@_13,
-                        F@_14,
-                        TrUserData
-                    );
-                5 ->
-                    'skip_32_imboy.textguard.v1.CheckTextResponse'(
-                        Rest,
-                        0,
-                        0,
-                        Key bsr 3,
-                        F@_1,
-                        F@_2,
-                        F@_3,
-                        F@_4,
-                        F@_5,
-                        F@_6,
-                        F@_7,
-                        F@_8,
-                        F@_9,
-                        F@_10,
-                        F@_11,
-                        F@_12,
-                        F@_13,
-                        F@_14,
-                        TrUserData
-                    )
+                0 -> 'skip_varint_imboy.textguard.v1.CheckTextResponse'(Rest, 0, 0, Key bsr 3, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, F@_12, F@_13, F@_14, TrUserData);
+                1 -> 'skip_64_imboy.textguard.v1.CheckTextResponse'(Rest, 0, 0, Key bsr 3, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, F@_12, F@_13, F@_14, TrUserData);
+                2 -> 'skip_length_delimited_imboy.textguard.v1.CheckTextResponse'(Rest, 0, 0, Key bsr 3, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, F@_12, F@_13, F@_14, TrUserData);
+                3 -> 'skip_group_imboy.textguard.v1.CheckTextResponse'(Rest, 0, 0, Key bsr 3, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, F@_12, F@_13, F@_14, TrUserData);
+                5 -> 'skip_32_imboy.textguard.v1.CheckTextResponse'(Rest, 0, 0, Key bsr 3, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, F@_12, F@_13, F@_14, TrUserData)
             end
     end;
-'dg_read_field_def_imboy.textguard.v1.CheckTextResponse'(
-    <<>>,
-    0,
-    0,
-    _,
-    F@_1,
-    F@_2,
-    F@_3,
-    F@_4,
-    F@_5,
-    F@_6,
-    F@_7,
-    F@_8,
-    F@_9,
-    F@_10,
-    R1,
-    F@_12,
-    F@_13,
-    F@_14,
-    TrUserData
-) ->
+'dg_read_field_def_imboy.textguard.v1.CheckTextResponse'(<<>>, 0, 0, _, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, R1, F@_12, F@_13, F@_14, TrUserData) ->
     S1 = #{},
-    S2 =
-        if
-            F@_1 == '$undef' -> S1;
+    S2 = if F@_1 == '$undef' -> S1;
             true -> S1#{request_id => F@_1}
-        end,
-    S3 =
-        if
-            F@_2 == '$undef' -> S2;
+         end,
+    S3 = if F@_2 == '$undef' -> S2;
             true -> S2#{ruleset_revision => F@_2}
-        end,
-    S4 =
-        if
-            F@_3 == '$undef' -> S3;
+         end,
+    S4 = if F@_3 == '$undef' -> S3;
             true -> S3#{generation => F@_3}
-        end,
-    S5 =
-        if
-            F@_4 == '$undef' -> S4;
+         end,
+    S5 = if F@_4 == '$undef' -> S4;
             true -> S4#{normalization_id => F@_4}
-        end,
-    S6 =
-        if
-            F@_5 == '$undef' -> S5;
+         end,
+    S6 = if F@_5 == '$undef' -> S5;
             true -> S5#{t2s_table_id => F@_5}
-        end,
-    S7 =
-        if
-            F@_6 == '$undef' -> S6;
+         end,
+    S7 = if F@_6 == '$undef' -> S6;
             true -> S6#{semantics_id => F@_6}
-        end,
-    S8 =
-        if
-            F@_7 == '$undef' -> S7;
+         end,
+    S8 = if F@_7 == '$undef' -> S7;
             true -> S7#{base_rules_digest => F@_7}
-        end,
-    S9 =
-        if
-            F@_8 == '$undef' -> S8;
+         end,
+    S9 = if F@_8 == '$undef' -> S8;
             true -> S8#{decision => F@_8}
-        end,
-    S10 =
-        if
-            F@_9 == '$undef' -> S9;
-            true -> S9#{scan_complete => F@_9}
-        end,
-    S11 =
-        if
-            F@_10 == '$undef' -> S10;
-            true -> S10#{hits_truncated => F@_10}
-        end,
-    S12 =
-        if
-            R1 == '$undef' -> S11;
-            true -> S11#{hits => lists_reverse(R1, TrUserData)}
-        end,
-    S13 =
-        if
-            F@_12 == '$undef' -> S12;
-            true -> S12#{fields_checked => F@_12}
-        end,
-    S14 =
-        if
-            F@_13 == '$undef' -> S13;
-            true -> S13#{hit_semantics => F@_13}
-        end,
-    if
-        F@_14 == '$undef' -> S14;
-        true -> S14#{build_id => F@_14}
+         end,
+    S10 = if F@_9 == '$undef' -> S9;
+             true -> S9#{scan_complete => F@_9}
+          end,
+    S11 = if F@_10 == '$undef' -> S10;
+             true -> S10#{hits_truncated => F@_10}
+          end,
+    S12 = if R1 == '$undef' -> S11;
+             true -> S11#{hits => lists_reverse(R1, TrUserData)}
+          end,
+    S13 = if F@_12 == '$undef' -> S12;
+             true -> S12#{fields_checked => F@_12}
+          end,
+    S14 = if F@_13 == '$undef' -> S13;
+             true -> S13#{hit_semantics => F@_13}
+          end,
+    if F@_14 == '$undef' -> S14;
+       true -> S14#{build_id => F@_14}
     end.
 
-'d_field_imboy.textguard.v1.CheckTextResponse_request_id'(
-    <<1:1, X:7, Rest/binary>>,
-    N,
-    Acc,
-    F,
-    F@_1,
-    F@_2,
-    F@_3,
-    F@_4,
-    F@_5,
-    F@_6,
-    F@_7,
-    F@_8,
-    F@_9,
-    F@_10,
-    F@_11,
-    F@_12,
-    F@_13,
-    F@_14,
-    TrUserData
-) when N < 57 ->
-    'd_field_imboy.textguard.v1.CheckTextResponse_request_id'(
-        Rest,
-        N + 7,
-        X bsl N + Acc,
-        F,
-        F@_1,
-        F@_2,
-        F@_3,
-        F@_4,
-        F@_5,
-        F@_6,
-        F@_7,
-        F@_8,
-        F@_9,
-        F@_10,
-        F@_11,
-        F@_12,
-        F@_13,
-        F@_14,
-        TrUserData
-    );
-'d_field_imboy.textguard.v1.CheckTextResponse_request_id'(
-    <<0:1, X:7, Rest/binary>>,
-    N,
-    Acc,
-    F,
-    _,
-    F@_2,
-    F@_3,
-    F@_4,
-    F@_5,
-    F@_6,
-    F@_7,
-    F@_8,
-    F@_9,
-    F@_10,
-    F@_11,
-    F@_12,
-    F@_13,
-    F@_14,
-    TrUserData
-) ->
-    {NewFValue, RestF} = begin
-        Len = X bsl N + Acc,
-        <<Bytes:Len/binary, Rest2/binary>> = Rest,
-        Bytes2 = binary:copy(Bytes),
-        {id(Bytes2, TrUserData), Rest2}
-    end,
-    'dfp_read_field_def_imboy.textguard.v1.CheckTextResponse'(
-        RestF,
-        0,
-        0,
-        F,
-        NewFValue,
-        F@_2,
-        F@_3,
-        F@_4,
-        F@_5,
-        F@_6,
-        F@_7,
-        F@_8,
-        F@_9,
-        F@_10,
-        F@_11,
-        F@_12,
-        F@_13,
-        F@_14,
-        TrUserData
-    ).
+'d_field_imboy.textguard.v1.CheckTextResponse_request_id'(<<1:1, X:7, Rest/binary>>, N, Acc, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, F@_12, F@_13, F@_14, TrUserData) when N < 57 ->
+    'd_field_imboy.textguard.v1.CheckTextResponse_request_id'(Rest, N + 7, X bsl N + Acc, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, F@_12, F@_13, F@_14, TrUserData);
+'d_field_imboy.textguard.v1.CheckTextResponse_request_id'(<<0:1, X:7, Rest/binary>>, N, Acc, F, _, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, F@_12, F@_13, F@_14, TrUserData) ->
+    {NewFValue, RestF} = begin Len = X bsl N + Acc, <<Bytes:Len/binary, Rest2/binary>> = Rest, Bytes2 = binary:copy(Bytes), {id(Bytes2, TrUserData), Rest2} end,
+    'dfp_read_field_def_imboy.textguard.v1.CheckTextResponse'(RestF, 0, 0, F, NewFValue, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, F@_12, F@_13, F@_14, TrUserData).
 
-'d_field_imboy.textguard.v1.CheckTextResponse_ruleset_revision'(
-    <<1:1, X:7, Rest/binary>>,
-    N,
-    Acc,
-    F,
-    F@_1,
-    F@_2,
-    F@_3,
-    F@_4,
-    F@_5,
-    F@_6,
-    F@_7,
-    F@_8,
-    F@_9,
-    F@_10,
-    F@_11,
-    F@_12,
-    F@_13,
-    F@_14,
-    TrUserData
-) when N < 57 ->
-    'd_field_imboy.textguard.v1.CheckTextResponse_ruleset_revision'(
-        Rest,
-        N + 7,
-        X bsl N + Acc,
-        F,
-        F@_1,
-        F@_2,
-        F@_3,
-        F@_4,
-        F@_5,
-        F@_6,
-        F@_7,
-        F@_8,
-        F@_9,
-        F@_10,
-        F@_11,
-        F@_12,
-        F@_13,
-        F@_14,
-        TrUserData
-    );
-'d_field_imboy.textguard.v1.CheckTextResponse_ruleset_revision'(
-    <<0:1, X:7, Rest/binary>>,
-    N,
-    Acc,
-    F,
-    F@_1,
-    _,
-    F@_3,
-    F@_4,
-    F@_5,
-    F@_6,
-    F@_7,
-    F@_8,
-    F@_9,
-    F@_10,
-    F@_11,
-    F@_12,
-    F@_13,
-    F@_14,
-    TrUserData
-) ->
-    {NewFValue, RestF} = begin
-        Len = X bsl N + Acc,
-        <<Bytes:Len/binary, Rest2/binary>> = Rest,
-        Bytes2 = binary:copy(Bytes),
-        {id(Bytes2, TrUserData), Rest2}
-    end,
-    'dfp_read_field_def_imboy.textguard.v1.CheckTextResponse'(
-        RestF,
-        0,
-        0,
-        F,
-        F@_1,
-        NewFValue,
-        F@_3,
-        F@_4,
-        F@_5,
-        F@_6,
-        F@_7,
-        F@_8,
-        F@_9,
-        F@_10,
-        F@_11,
-        F@_12,
-        F@_13,
-        F@_14,
-        TrUserData
-    ).
+'d_field_imboy.textguard.v1.CheckTextResponse_ruleset_revision'(<<1:1, X:7, Rest/binary>>, N, Acc, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, F@_12, F@_13, F@_14, TrUserData) when N < 57 ->
+    'd_field_imboy.textguard.v1.CheckTextResponse_ruleset_revision'(Rest, N + 7, X bsl N + Acc, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, F@_12, F@_13, F@_14, TrUserData);
+'d_field_imboy.textguard.v1.CheckTextResponse_ruleset_revision'(<<0:1, X:7, Rest/binary>>, N, Acc, F, F@_1, _, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, F@_12, F@_13, F@_14, TrUserData) ->
+    {NewFValue, RestF} = begin Len = X bsl N + Acc, <<Bytes:Len/binary, Rest2/binary>> = Rest, Bytes2 = binary:copy(Bytes), {id(Bytes2, TrUserData), Rest2} end,
+    'dfp_read_field_def_imboy.textguard.v1.CheckTextResponse'(RestF, 0, 0, F, F@_1, NewFValue, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, F@_12, F@_13, F@_14, TrUserData).
 
-'d_field_imboy.textguard.v1.CheckTextResponse_generation'(
-    <<1:1, X:7, Rest/binary>>,
-    N,
-    Acc,
-    F,
-    F@_1,
-    F@_2,
-    F@_3,
-    F@_4,
-    F@_5,
-    F@_6,
-    F@_7,
-    F@_8,
-    F@_9,
-    F@_10,
-    F@_11,
-    F@_12,
-    F@_13,
-    F@_14,
-    TrUserData
-) when N < 57 ->
-    'd_field_imboy.textguard.v1.CheckTextResponse_generation'(
-        Rest,
-        N + 7,
-        X bsl N + Acc,
-        F,
-        F@_1,
-        F@_2,
-        F@_3,
-        F@_4,
-        F@_5,
-        F@_6,
-        F@_7,
-        F@_8,
-        F@_9,
-        F@_10,
-        F@_11,
-        F@_12,
-        F@_13,
-        F@_14,
-        TrUserData
-    );
-'d_field_imboy.textguard.v1.CheckTextResponse_generation'(
-    <<0:1, X:7, Rest/binary>>,
-    N,
-    Acc,
-    F,
-    F@_1,
-    F@_2,
-    _,
-    F@_4,
-    F@_5,
-    F@_6,
-    F@_7,
-    F@_8,
-    F@_9,
-    F@_10,
-    F@_11,
-    F@_12,
-    F@_13,
-    F@_14,
-    TrUserData
-) ->
-    {NewFValue, RestF} = begin
-        Len = X bsl N + Acc,
-        <<Bytes:Len/binary, Rest2/binary>> = Rest,
-        Bytes2 = binary:copy(Bytes),
-        {id(Bytes2, TrUserData), Rest2}
-    end,
-    'dfp_read_field_def_imboy.textguard.v1.CheckTextResponse'(
-        RestF,
-        0,
-        0,
-        F,
-        F@_1,
-        F@_2,
-        NewFValue,
-        F@_4,
-        F@_5,
-        F@_6,
-        F@_7,
-        F@_8,
-        F@_9,
-        F@_10,
-        F@_11,
-        F@_12,
-        F@_13,
-        F@_14,
-        TrUserData
-    ).
+'d_field_imboy.textguard.v1.CheckTextResponse_generation'(<<1:1, X:7, Rest/binary>>, N, Acc, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, F@_12, F@_13, F@_14, TrUserData) when N < 57 ->
+    'd_field_imboy.textguard.v1.CheckTextResponse_generation'(Rest, N + 7, X bsl N + Acc, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, F@_12, F@_13, F@_14, TrUserData);
+'d_field_imboy.textguard.v1.CheckTextResponse_generation'(<<0:1, X:7, Rest/binary>>, N, Acc, F, F@_1, F@_2, _, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, F@_12, F@_13, F@_14, TrUserData) ->
+    {NewFValue, RestF} = begin Len = X bsl N + Acc, <<Bytes:Len/binary, Rest2/binary>> = Rest, Bytes2 = binary:copy(Bytes), {id(Bytes2, TrUserData), Rest2} end,
+    'dfp_read_field_def_imboy.textguard.v1.CheckTextResponse'(RestF, 0, 0, F, F@_1, F@_2, NewFValue, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, F@_12, F@_13, F@_14, TrUserData).
 
-'d_field_imboy.textguard.v1.CheckTextResponse_normalization_id'(
-    <<1:1, X:7, Rest/binary>>,
-    N,
-    Acc,
-    F,
-    F@_1,
-    F@_2,
-    F@_3,
-    F@_4,
-    F@_5,
-    F@_6,
-    F@_7,
-    F@_8,
-    F@_9,
-    F@_10,
-    F@_11,
-    F@_12,
-    F@_13,
-    F@_14,
-    TrUserData
-) when N < 57 ->
-    'd_field_imboy.textguard.v1.CheckTextResponse_normalization_id'(
-        Rest,
-        N + 7,
-        X bsl N + Acc,
-        F,
-        F@_1,
-        F@_2,
-        F@_3,
-        F@_4,
-        F@_5,
-        F@_6,
-        F@_7,
-        F@_8,
-        F@_9,
-        F@_10,
-        F@_11,
-        F@_12,
-        F@_13,
-        F@_14,
-        TrUserData
-    );
-'d_field_imboy.textguard.v1.CheckTextResponse_normalization_id'(
-    <<0:1, X:7, Rest/binary>>,
-    N,
-    Acc,
-    F,
-    F@_1,
-    F@_2,
-    F@_3,
-    _,
-    F@_5,
-    F@_6,
-    F@_7,
-    F@_8,
-    F@_9,
-    F@_10,
-    F@_11,
-    F@_12,
-    F@_13,
-    F@_14,
-    TrUserData
-) ->
-    {NewFValue, RestF} = begin
-        Len = X bsl N + Acc,
-        <<Bytes:Len/binary, Rest2/binary>> = Rest,
-        Bytes2 = binary:copy(Bytes),
-        {id(Bytes2, TrUserData), Rest2}
-    end,
-    'dfp_read_field_def_imboy.textguard.v1.CheckTextResponse'(
-        RestF,
-        0,
-        0,
-        F,
-        F@_1,
-        F@_2,
-        F@_3,
-        NewFValue,
-        F@_5,
-        F@_6,
-        F@_7,
-        F@_8,
-        F@_9,
-        F@_10,
-        F@_11,
-        F@_12,
-        F@_13,
-        F@_14,
-        TrUserData
-    ).
+'d_field_imboy.textguard.v1.CheckTextResponse_normalization_id'(<<1:1, X:7, Rest/binary>>, N, Acc, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, F@_12, F@_13, F@_14, TrUserData) when N < 57 ->
+    'd_field_imboy.textguard.v1.CheckTextResponse_normalization_id'(Rest, N + 7, X bsl N + Acc, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, F@_12, F@_13, F@_14, TrUserData);
+'d_field_imboy.textguard.v1.CheckTextResponse_normalization_id'(<<0:1, X:7, Rest/binary>>, N, Acc, F, F@_1, F@_2, F@_3, _, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, F@_12, F@_13, F@_14, TrUserData) ->
+    {NewFValue, RestF} = begin Len = X bsl N + Acc, <<Bytes:Len/binary, Rest2/binary>> = Rest, Bytes2 = binary:copy(Bytes), {id(Bytes2, TrUserData), Rest2} end,
+    'dfp_read_field_def_imboy.textguard.v1.CheckTextResponse'(RestF, 0, 0, F, F@_1, F@_2, F@_3, NewFValue, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, F@_12, F@_13, F@_14, TrUserData).
 
-'d_field_imboy.textguard.v1.CheckTextResponse_t2s_table_id'(
-    <<1:1, X:7, Rest/binary>>,
-    N,
-    Acc,
-    F,
-    F@_1,
-    F@_2,
-    F@_3,
-    F@_4,
-    F@_5,
-    F@_6,
-    F@_7,
-    F@_8,
-    F@_9,
-    F@_10,
-    F@_11,
-    F@_12,
-    F@_13,
-    F@_14,
-    TrUserData
-) when N < 57 ->
-    'd_field_imboy.textguard.v1.CheckTextResponse_t2s_table_id'(
-        Rest,
-        N + 7,
-        X bsl N + Acc,
-        F,
-        F@_1,
-        F@_2,
-        F@_3,
-        F@_4,
-        F@_5,
-        F@_6,
-        F@_7,
-        F@_8,
-        F@_9,
-        F@_10,
-        F@_11,
-        F@_12,
-        F@_13,
-        F@_14,
-        TrUserData
-    );
-'d_field_imboy.textguard.v1.CheckTextResponse_t2s_table_id'(
-    <<0:1, X:7, Rest/binary>>,
-    N,
-    Acc,
-    F,
-    F@_1,
-    F@_2,
-    F@_3,
-    F@_4,
-    _,
-    F@_6,
-    F@_7,
-    F@_8,
-    F@_9,
-    F@_10,
-    F@_11,
-    F@_12,
-    F@_13,
-    F@_14,
-    TrUserData
-) ->
-    {NewFValue, RestF} = begin
-        Len = X bsl N + Acc,
-        <<Bytes:Len/binary, Rest2/binary>> = Rest,
-        Bytes2 = binary:copy(Bytes),
-        {id(Bytes2, TrUserData), Rest2}
-    end,
-    'dfp_read_field_def_imboy.textguard.v1.CheckTextResponse'(
-        RestF,
-        0,
-        0,
-        F,
-        F@_1,
-        F@_2,
-        F@_3,
-        F@_4,
-        NewFValue,
-        F@_6,
-        F@_7,
-        F@_8,
-        F@_9,
-        F@_10,
-        F@_11,
-        F@_12,
-        F@_13,
-        F@_14,
-        TrUserData
-    ).
+'d_field_imboy.textguard.v1.CheckTextResponse_t2s_table_id'(<<1:1, X:7, Rest/binary>>, N, Acc, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, F@_12, F@_13, F@_14, TrUserData) when N < 57 ->
+    'd_field_imboy.textguard.v1.CheckTextResponse_t2s_table_id'(Rest, N + 7, X bsl N + Acc, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, F@_12, F@_13, F@_14, TrUserData);
+'d_field_imboy.textguard.v1.CheckTextResponse_t2s_table_id'(<<0:1, X:7, Rest/binary>>, N, Acc, F, F@_1, F@_2, F@_3, F@_4, _, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, F@_12, F@_13, F@_14, TrUserData) ->
+    {NewFValue, RestF} = begin Len = X bsl N + Acc, <<Bytes:Len/binary, Rest2/binary>> = Rest, Bytes2 = binary:copy(Bytes), {id(Bytes2, TrUserData), Rest2} end,
+    'dfp_read_field_def_imboy.textguard.v1.CheckTextResponse'(RestF, 0, 0, F, F@_1, F@_2, F@_3, F@_4, NewFValue, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, F@_12, F@_13, F@_14, TrUserData).
 
-'d_field_imboy.textguard.v1.CheckTextResponse_semantics_id'(
-    <<1:1, X:7, Rest/binary>>,
-    N,
-    Acc,
-    F,
-    F@_1,
-    F@_2,
-    F@_3,
-    F@_4,
-    F@_5,
-    F@_6,
-    F@_7,
-    F@_8,
-    F@_9,
-    F@_10,
-    F@_11,
-    F@_12,
-    F@_13,
-    F@_14,
-    TrUserData
-) when N < 57 ->
-    'd_field_imboy.textguard.v1.CheckTextResponse_semantics_id'(
-        Rest,
-        N + 7,
-        X bsl N + Acc,
-        F,
-        F@_1,
-        F@_2,
-        F@_3,
-        F@_4,
-        F@_5,
-        F@_6,
-        F@_7,
-        F@_8,
-        F@_9,
-        F@_10,
-        F@_11,
-        F@_12,
-        F@_13,
-        F@_14,
-        TrUserData
-    );
-'d_field_imboy.textguard.v1.CheckTextResponse_semantics_id'(
-    <<0:1, X:7, Rest/binary>>,
-    N,
-    Acc,
-    F,
-    F@_1,
-    F@_2,
-    F@_3,
-    F@_4,
-    F@_5,
-    _,
-    F@_7,
-    F@_8,
-    F@_9,
-    F@_10,
-    F@_11,
-    F@_12,
-    F@_13,
-    F@_14,
-    TrUserData
-) ->
-    {NewFValue, RestF} = begin
-        Len = X bsl N + Acc,
-        <<Bytes:Len/binary, Rest2/binary>> = Rest,
-        Bytes2 = binary:copy(Bytes),
-        {id(Bytes2, TrUserData), Rest2}
-    end,
-    'dfp_read_field_def_imboy.textguard.v1.CheckTextResponse'(
-        RestF,
-        0,
-        0,
-        F,
-        F@_1,
-        F@_2,
-        F@_3,
-        F@_4,
-        F@_5,
-        NewFValue,
-        F@_7,
-        F@_8,
-        F@_9,
-        F@_10,
-        F@_11,
-        F@_12,
-        F@_13,
-        F@_14,
-        TrUserData
-    ).
+'d_field_imboy.textguard.v1.CheckTextResponse_semantics_id'(<<1:1, X:7, Rest/binary>>, N, Acc, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, F@_12, F@_13, F@_14, TrUserData) when N < 57 ->
+    'd_field_imboy.textguard.v1.CheckTextResponse_semantics_id'(Rest, N + 7, X bsl N + Acc, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, F@_12, F@_13, F@_14, TrUserData);
+'d_field_imboy.textguard.v1.CheckTextResponse_semantics_id'(<<0:1, X:7, Rest/binary>>, N, Acc, F, F@_1, F@_2, F@_3, F@_4, F@_5, _, F@_7, F@_8, F@_9, F@_10, F@_11, F@_12, F@_13, F@_14, TrUserData) ->
+    {NewFValue, RestF} = begin Len = X bsl N + Acc, <<Bytes:Len/binary, Rest2/binary>> = Rest, Bytes2 = binary:copy(Bytes), {id(Bytes2, TrUserData), Rest2} end,
+    'dfp_read_field_def_imboy.textguard.v1.CheckTextResponse'(RestF, 0, 0, F, F@_1, F@_2, F@_3, F@_4, F@_5, NewFValue, F@_7, F@_8, F@_9, F@_10, F@_11, F@_12, F@_13, F@_14, TrUserData).
 
-'d_field_imboy.textguard.v1.CheckTextResponse_base_rules_digest'(
-    <<1:1, X:7, Rest/binary>>,
-    N,
-    Acc,
-    F,
-    F@_1,
-    F@_2,
-    F@_3,
-    F@_4,
-    F@_5,
-    F@_6,
-    F@_7,
-    F@_8,
-    F@_9,
-    F@_10,
-    F@_11,
-    F@_12,
-    F@_13,
-    F@_14,
-    TrUserData
-) when N < 57 ->
-    'd_field_imboy.textguard.v1.CheckTextResponse_base_rules_digest'(
-        Rest,
-        N + 7,
-        X bsl N + Acc,
-        F,
-        F@_1,
-        F@_2,
-        F@_3,
-        F@_4,
-        F@_5,
-        F@_6,
-        F@_7,
-        F@_8,
-        F@_9,
-        F@_10,
-        F@_11,
-        F@_12,
-        F@_13,
-        F@_14,
-        TrUserData
-    );
-'d_field_imboy.textguard.v1.CheckTextResponse_base_rules_digest'(
-    <<0:1, X:7, Rest/binary>>,
-    N,
-    Acc,
-    F,
-    F@_1,
-    F@_2,
-    F@_3,
-    F@_4,
-    F@_5,
-    F@_6,
-    _,
-    F@_8,
-    F@_9,
-    F@_10,
-    F@_11,
-    F@_12,
-    F@_13,
-    F@_14,
-    TrUserData
-) ->
-    {NewFValue, RestF} = begin
-        Len = X bsl N + Acc,
-        <<Bytes:Len/binary, Rest2/binary>> = Rest,
-        Bytes2 = binary:copy(Bytes),
-        {id(Bytes2, TrUserData), Rest2}
-    end,
-    'dfp_read_field_def_imboy.textguard.v1.CheckTextResponse'(
-        RestF,
-        0,
-        0,
-        F,
-        F@_1,
-        F@_2,
-        F@_3,
-        F@_4,
-        F@_5,
-        F@_6,
-        NewFValue,
-        F@_8,
-        F@_9,
-        F@_10,
-        F@_11,
-        F@_12,
-        F@_13,
-        F@_14,
-        TrUserData
-    ).
+'d_field_imboy.textguard.v1.CheckTextResponse_base_rules_digest'(<<1:1, X:7, Rest/binary>>, N, Acc, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, F@_12, F@_13, F@_14, TrUserData) when N < 57 ->
+    'd_field_imboy.textguard.v1.CheckTextResponse_base_rules_digest'(Rest, N + 7, X bsl N + Acc, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, F@_12, F@_13, F@_14, TrUserData);
+'d_field_imboy.textguard.v1.CheckTextResponse_base_rules_digest'(<<0:1, X:7, Rest/binary>>, N, Acc, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, _, F@_8, F@_9, F@_10, F@_11, F@_12, F@_13, F@_14, TrUserData) ->
+    {NewFValue, RestF} = begin Len = X bsl N + Acc, <<Bytes:Len/binary, Rest2/binary>> = Rest, Bytes2 = binary:copy(Bytes), {id(Bytes2, TrUserData), Rest2} end,
+    'dfp_read_field_def_imboy.textguard.v1.CheckTextResponse'(RestF, 0, 0, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, NewFValue, F@_8, F@_9, F@_10, F@_11, F@_12, F@_13, F@_14, TrUserData).
 
-'d_field_imboy.textguard.v1.CheckTextResponse_decision'(
-    <<1:1, X:7, Rest/binary>>,
-    N,
-    Acc,
-    F,
-    F@_1,
-    F@_2,
-    F@_3,
-    F@_4,
-    F@_5,
-    F@_6,
-    F@_7,
-    F@_8,
-    F@_9,
-    F@_10,
-    F@_11,
-    F@_12,
-    F@_13,
-    F@_14,
-    TrUserData
-) when N < 57 ->
-    'd_field_imboy.textguard.v1.CheckTextResponse_decision'(
-        Rest,
-        N + 7,
-        X bsl N + Acc,
-        F,
-        F@_1,
-        F@_2,
-        F@_3,
-        F@_4,
-        F@_5,
-        F@_6,
-        F@_7,
-        F@_8,
-        F@_9,
-        F@_10,
-        F@_11,
-        F@_12,
-        F@_13,
-        F@_14,
-        TrUserData
-    );
-'d_field_imboy.textguard.v1.CheckTextResponse_decision'(
-    <<0:1, X:7, Rest/binary>>,
-    N,
-    Acc,
-    F,
-    F@_1,
-    F@_2,
-    F@_3,
-    F@_4,
-    F@_5,
-    F@_6,
-    F@_7,
-    _,
-    F@_9,
-    F@_10,
-    F@_11,
-    F@_12,
-    F@_13,
-    F@_14,
-    TrUserData
-) ->
-    {NewFValue, RestF} = {
-        id(
-            'd_enum_imboy.textguard.v1.Decision'(begin
-                <<Res:32/signed-native>> = <<(X bsl N + Acc):32/unsigned-native>>,
-                id(Res, TrUserData)
-            end),
-            TrUserData
-        ),
-        Rest
-    },
-    'dfp_read_field_def_imboy.textguard.v1.CheckTextResponse'(
-        RestF,
-        0,
-        0,
-        F,
-        F@_1,
-        F@_2,
-        F@_3,
-        F@_4,
-        F@_5,
-        F@_6,
-        F@_7,
-        NewFValue,
-        F@_9,
-        F@_10,
-        F@_11,
-        F@_12,
-        F@_13,
-        F@_14,
-        TrUserData
-    ).
+'d_field_imboy.textguard.v1.CheckTextResponse_decision'(<<1:1, X:7, Rest/binary>>, N, Acc, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, F@_12, F@_13, F@_14, TrUserData) when N < 57 ->
+    'd_field_imboy.textguard.v1.CheckTextResponse_decision'(Rest, N + 7, X bsl N + Acc, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, F@_12, F@_13, F@_14, TrUserData);
+'d_field_imboy.textguard.v1.CheckTextResponse_decision'(<<0:1, X:7, Rest/binary>>, N, Acc, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, _, F@_9, F@_10, F@_11, F@_12, F@_13, F@_14, TrUserData) ->
+    {NewFValue, RestF} = {id('d_enum_imboy.textguard.v1.Decision'(begin <<Res:32/signed-native>> = <<(X bsl N + Acc):32/unsigned-native>>, id(Res, TrUserData) end), TrUserData), Rest},
+    'dfp_read_field_def_imboy.textguard.v1.CheckTextResponse'(RestF, 0, 0, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, NewFValue, F@_9, F@_10, F@_11, F@_12, F@_13, F@_14, TrUserData).
 
-'d_field_imboy.textguard.v1.CheckTextResponse_scan_complete'(
-    <<1:1, X:7, Rest/binary>>,
-    N,
-    Acc,
-    F,
-    F@_1,
-    F@_2,
-    F@_3,
-    F@_4,
-    F@_5,
-    F@_6,
-    F@_7,
-    F@_8,
-    F@_9,
-    F@_10,
-    F@_11,
-    F@_12,
-    F@_13,
-    F@_14,
-    TrUserData
-) when N < 57 ->
-    'd_field_imboy.textguard.v1.CheckTextResponse_scan_complete'(
-        Rest,
-        N + 7,
-        X bsl N + Acc,
-        F,
-        F@_1,
-        F@_2,
-        F@_3,
-        F@_4,
-        F@_5,
-        F@_6,
-        F@_7,
-        F@_8,
-        F@_9,
-        F@_10,
-        F@_11,
-        F@_12,
-        F@_13,
-        F@_14,
-        TrUserData
-    );
-'d_field_imboy.textguard.v1.CheckTextResponse_scan_complete'(
-    <<0:1, X:7, Rest/binary>>,
-    N,
-    Acc,
-    F,
-    F@_1,
-    F@_2,
-    F@_3,
-    F@_4,
-    F@_5,
-    F@_6,
-    F@_7,
-    F@_8,
-    _,
-    F@_10,
-    F@_11,
-    F@_12,
-    F@_13,
-    F@_14,
-    TrUserData
-) ->
+'d_field_imboy.textguard.v1.CheckTextResponse_scan_complete'(<<1:1, X:7, Rest/binary>>, N, Acc, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, F@_12, F@_13, F@_14, TrUserData) when N < 57 ->
+    'd_field_imboy.textguard.v1.CheckTextResponse_scan_complete'(Rest, N + 7, X bsl N + Acc, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, F@_12, F@_13, F@_14, TrUserData);
+'d_field_imboy.textguard.v1.CheckTextResponse_scan_complete'(<<0:1, X:7, Rest/binary>>, N, Acc, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, _, F@_10, F@_11, F@_12, F@_13, F@_14, TrUserData) ->
     {NewFValue, RestF} = {id(X bsl N + Acc =/= 0, TrUserData), Rest},
-    'dfp_read_field_def_imboy.textguard.v1.CheckTextResponse'(
-        RestF,
-        0,
-        0,
-        F,
-        F@_1,
-        F@_2,
-        F@_3,
-        F@_4,
-        F@_5,
-        F@_6,
-        F@_7,
-        F@_8,
-        NewFValue,
-        F@_10,
-        F@_11,
-        F@_12,
-        F@_13,
-        F@_14,
-        TrUserData
-    ).
+    'dfp_read_field_def_imboy.textguard.v1.CheckTextResponse'(RestF, 0, 0, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, NewFValue, F@_10, F@_11, F@_12, F@_13, F@_14, TrUserData).
 
-'d_field_imboy.textguard.v1.CheckTextResponse_hits_truncated'(
-    <<1:1, X:7, Rest/binary>>,
-    N,
-    Acc,
-    F,
-    F@_1,
-    F@_2,
-    F@_3,
-    F@_4,
-    F@_5,
-    F@_6,
-    F@_7,
-    F@_8,
-    F@_9,
-    F@_10,
-    F@_11,
-    F@_12,
-    F@_13,
-    F@_14,
-    TrUserData
-) when N < 57 ->
-    'd_field_imboy.textguard.v1.CheckTextResponse_hits_truncated'(
-        Rest,
-        N + 7,
-        X bsl N + Acc,
-        F,
-        F@_1,
-        F@_2,
-        F@_3,
-        F@_4,
-        F@_5,
-        F@_6,
-        F@_7,
-        F@_8,
-        F@_9,
-        F@_10,
-        F@_11,
-        F@_12,
-        F@_13,
-        F@_14,
-        TrUserData
-    );
-'d_field_imboy.textguard.v1.CheckTextResponse_hits_truncated'(
-    <<0:1, X:7, Rest/binary>>,
-    N,
-    Acc,
-    F,
-    F@_1,
-    F@_2,
-    F@_3,
-    F@_4,
-    F@_5,
-    F@_6,
-    F@_7,
-    F@_8,
-    F@_9,
-    _,
-    F@_11,
-    F@_12,
-    F@_13,
-    F@_14,
-    TrUserData
-) ->
+'d_field_imboy.textguard.v1.CheckTextResponse_hits_truncated'(<<1:1, X:7, Rest/binary>>, N, Acc, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, F@_12, F@_13, F@_14, TrUserData) when N < 57 ->
+    'd_field_imboy.textguard.v1.CheckTextResponse_hits_truncated'(Rest, N + 7, X bsl N + Acc, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, F@_12, F@_13, F@_14, TrUserData);
+'d_field_imboy.textguard.v1.CheckTextResponse_hits_truncated'(<<0:1, X:7, Rest/binary>>, N, Acc, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, _, F@_11, F@_12, F@_13, F@_14, TrUserData) ->
     {NewFValue, RestF} = {id(X bsl N + Acc =/= 0, TrUserData), Rest},
-    'dfp_read_field_def_imboy.textguard.v1.CheckTextResponse'(
-        RestF,
-        0,
-        0,
-        F,
-        F@_1,
-        F@_2,
-        F@_3,
-        F@_4,
-        F@_5,
-        F@_6,
-        F@_7,
-        F@_8,
-        F@_9,
-        NewFValue,
-        F@_11,
-        F@_12,
-        F@_13,
-        F@_14,
-        TrUserData
-    ).
+    'dfp_read_field_def_imboy.textguard.v1.CheckTextResponse'(RestF, 0, 0, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, NewFValue, F@_11, F@_12, F@_13, F@_14, TrUserData).
 
-'d_field_imboy.textguard.v1.CheckTextResponse_hits'(
-    <<1:1, X:7, Rest/binary>>,
-    N,
-    Acc,
-    F,
-    F@_1,
-    F@_2,
-    F@_3,
-    F@_4,
-    F@_5,
-    F@_6,
-    F@_7,
-    F@_8,
-    F@_9,
-    F@_10,
-    F@_11,
-    F@_12,
-    F@_13,
-    F@_14,
-    TrUserData
-) when N < 57 ->
-    'd_field_imboy.textguard.v1.CheckTextResponse_hits'(
-        Rest,
-        N + 7,
-        X bsl N + Acc,
-        F,
-        F@_1,
-        F@_2,
-        F@_3,
-        F@_4,
-        F@_5,
-        F@_6,
-        F@_7,
-        F@_8,
-        F@_9,
-        F@_10,
-        F@_11,
-        F@_12,
-        F@_13,
-        F@_14,
-        TrUserData
-    );
-'d_field_imboy.textguard.v1.CheckTextResponse_hits'(
-    <<0:1, X:7, Rest/binary>>,
-    N,
-    Acc,
-    F,
-    F@_1,
-    F@_2,
-    F@_3,
-    F@_4,
-    F@_5,
-    F@_6,
-    F@_7,
-    F@_8,
-    F@_9,
-    F@_10,
-    Prev,
-    F@_12,
-    F@_13,
-    F@_14,
-    TrUserData
-) ->
-    {NewFValue, RestF} = begin
-        Len = X bsl N + Acc,
-        <<Bs:Len/binary, Rest2/binary>> = Rest,
-        {id('decode_msg_imboy.textguard.v1.Hit'(Bs, TrUserData), TrUserData), Rest2}
-    end,
-    'dfp_read_field_def_imboy.textguard.v1.CheckTextResponse'(
-        RestF,
-        0,
-        0,
-        F,
-        F@_1,
-        F@_2,
-        F@_3,
-        F@_4,
-        F@_5,
-        F@_6,
-        F@_7,
-        F@_8,
-        F@_9,
-        F@_10,
-        cons(NewFValue, Prev, TrUserData),
-        F@_12,
-        F@_13,
-        F@_14,
-        TrUserData
-    ).
+'d_field_imboy.textguard.v1.CheckTextResponse_hits'(<<1:1, X:7, Rest/binary>>, N, Acc, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, F@_12, F@_13, F@_14, TrUserData) when N < 57 ->
+    'd_field_imboy.textguard.v1.CheckTextResponse_hits'(Rest, N + 7, X bsl N + Acc, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, F@_12, F@_13, F@_14, TrUserData);
+'d_field_imboy.textguard.v1.CheckTextResponse_hits'(<<0:1, X:7, Rest/binary>>, N, Acc, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, Prev, F@_12, F@_13, F@_14, TrUserData) ->
+    {NewFValue, RestF} = begin Len = X bsl N + Acc, <<Bs:Len/binary, Rest2/binary>> = Rest, {id('decode_msg_imboy.textguard.v1.Hit'(Bs, TrUserData), TrUserData), Rest2} end,
+    'dfp_read_field_def_imboy.textguard.v1.CheckTextResponse'(RestF, 0, 0, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, cons(NewFValue, Prev, TrUserData), F@_12, F@_13, F@_14, TrUserData).
 
-'d_field_imboy.textguard.v1.CheckTextResponse_fields_checked'(
-    <<1:1, X:7, Rest/binary>>,
-    N,
-    Acc,
-    F,
-    F@_1,
-    F@_2,
-    F@_3,
-    F@_4,
-    F@_5,
-    F@_6,
-    F@_7,
-    F@_8,
-    F@_9,
-    F@_10,
-    F@_11,
-    F@_12,
-    F@_13,
-    F@_14,
-    TrUserData
-) when N < 57 ->
-    'd_field_imboy.textguard.v1.CheckTextResponse_fields_checked'(
-        Rest,
-        N + 7,
-        X bsl N + Acc,
-        F,
-        F@_1,
-        F@_2,
-        F@_3,
-        F@_4,
-        F@_5,
-        F@_6,
-        F@_7,
-        F@_8,
-        F@_9,
-        F@_10,
-        F@_11,
-        F@_12,
-        F@_13,
-        F@_14,
-        TrUserData
-    );
-'d_field_imboy.textguard.v1.CheckTextResponse_fields_checked'(
-    <<0:1, X:7, Rest/binary>>,
-    N,
-    Acc,
-    F,
-    F@_1,
-    F@_2,
-    F@_3,
-    F@_4,
-    F@_5,
-    F@_6,
-    F@_7,
-    F@_8,
-    F@_9,
-    F@_10,
-    F@_11,
-    _,
-    F@_13,
-    F@_14,
-    TrUserData
-) ->
+'d_field_imboy.textguard.v1.CheckTextResponse_fields_checked'(<<1:1, X:7, Rest/binary>>, N, Acc, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, F@_12, F@_13, F@_14, TrUserData) when N < 57 ->
+    'd_field_imboy.textguard.v1.CheckTextResponse_fields_checked'(Rest, N + 7, X bsl N + Acc, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, F@_12, F@_13, F@_14, TrUserData);
+'d_field_imboy.textguard.v1.CheckTextResponse_fields_checked'(<<0:1, X:7, Rest/binary>>, N, Acc, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, _, F@_13, F@_14, TrUserData) ->
     {NewFValue, RestF} = {id((X bsl N + Acc) band 4294967295, TrUserData), Rest},
-    'dfp_read_field_def_imboy.textguard.v1.CheckTextResponse'(
-        RestF,
-        0,
-        0,
-        F,
-        F@_1,
-        F@_2,
-        F@_3,
-        F@_4,
-        F@_5,
-        F@_6,
-        F@_7,
-        F@_8,
-        F@_9,
-        F@_10,
-        F@_11,
-        NewFValue,
-        F@_13,
-        F@_14,
-        TrUserData
-    ).
+    'dfp_read_field_def_imboy.textguard.v1.CheckTextResponse'(RestF, 0, 0, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, NewFValue, F@_13, F@_14, TrUserData).
 
-'d_field_imboy.textguard.v1.CheckTextResponse_hit_semantics'(
-    <<1:1, X:7, Rest/binary>>,
-    N,
-    Acc,
-    F,
-    F@_1,
-    F@_2,
-    F@_3,
-    F@_4,
-    F@_5,
-    F@_6,
-    F@_7,
-    F@_8,
-    F@_9,
-    F@_10,
-    F@_11,
-    F@_12,
-    F@_13,
-    F@_14,
-    TrUserData
-) when N < 57 ->
-    'd_field_imboy.textguard.v1.CheckTextResponse_hit_semantics'(
-        Rest,
-        N + 7,
-        X bsl N + Acc,
-        F,
-        F@_1,
-        F@_2,
-        F@_3,
-        F@_4,
-        F@_5,
-        F@_6,
-        F@_7,
-        F@_8,
-        F@_9,
-        F@_10,
-        F@_11,
-        F@_12,
-        F@_13,
-        F@_14,
-        TrUserData
-    );
-'d_field_imboy.textguard.v1.CheckTextResponse_hit_semantics'(
-    <<0:1, X:7, Rest/binary>>,
-    N,
-    Acc,
-    F,
-    F@_1,
-    F@_2,
-    F@_3,
-    F@_4,
-    F@_5,
-    F@_6,
-    F@_7,
-    F@_8,
-    F@_9,
-    F@_10,
-    F@_11,
-    F@_12,
-    _,
-    F@_14,
-    TrUserData
-) ->
-    {NewFValue, RestF} = begin
-        Len = X bsl N + Acc,
-        <<Bytes:Len/binary, Rest2/binary>> = Rest,
-        Bytes2 = binary:copy(Bytes),
-        {id(Bytes2, TrUserData), Rest2}
-    end,
-    'dfp_read_field_def_imboy.textguard.v1.CheckTextResponse'(
-        RestF,
-        0,
-        0,
-        F,
-        F@_1,
-        F@_2,
-        F@_3,
-        F@_4,
-        F@_5,
-        F@_6,
-        F@_7,
-        F@_8,
-        F@_9,
-        F@_10,
-        F@_11,
-        F@_12,
-        NewFValue,
-        F@_14,
-        TrUserData
-    ).
+'d_field_imboy.textguard.v1.CheckTextResponse_hit_semantics'(<<1:1, X:7, Rest/binary>>, N, Acc, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, F@_12, F@_13, F@_14, TrUserData) when N < 57 ->
+    'd_field_imboy.textguard.v1.CheckTextResponse_hit_semantics'(Rest, N + 7, X bsl N + Acc, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, F@_12, F@_13, F@_14, TrUserData);
+'d_field_imboy.textguard.v1.CheckTextResponse_hit_semantics'(<<0:1, X:7, Rest/binary>>, N, Acc, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, F@_12, _, F@_14, TrUserData) ->
+    {NewFValue, RestF} = begin Len = X bsl N + Acc, <<Bytes:Len/binary, Rest2/binary>> = Rest, Bytes2 = binary:copy(Bytes), {id(Bytes2, TrUserData), Rest2} end,
+    'dfp_read_field_def_imboy.textguard.v1.CheckTextResponse'(RestF, 0, 0, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, F@_12, NewFValue, F@_14, TrUserData).
 
-'d_field_imboy.textguard.v1.CheckTextResponse_build_id'(
-    <<1:1, X:7, Rest/binary>>,
-    N,
-    Acc,
-    F,
-    F@_1,
-    F@_2,
-    F@_3,
-    F@_4,
-    F@_5,
-    F@_6,
-    F@_7,
-    F@_8,
-    F@_9,
-    F@_10,
-    F@_11,
-    F@_12,
-    F@_13,
-    F@_14,
-    TrUserData
-) when N < 57 ->
-    'd_field_imboy.textguard.v1.CheckTextResponse_build_id'(
-        Rest,
-        N + 7,
-        X bsl N + Acc,
-        F,
-        F@_1,
-        F@_2,
-        F@_3,
-        F@_4,
-        F@_5,
-        F@_6,
-        F@_7,
-        F@_8,
-        F@_9,
-        F@_10,
-        F@_11,
-        F@_12,
-        F@_13,
-        F@_14,
-        TrUserData
-    );
-'d_field_imboy.textguard.v1.CheckTextResponse_build_id'(
-    <<0:1, X:7, Rest/binary>>,
-    N,
-    Acc,
-    F,
-    F@_1,
-    F@_2,
-    F@_3,
-    F@_4,
-    F@_5,
-    F@_6,
-    F@_7,
-    F@_8,
-    F@_9,
-    F@_10,
-    F@_11,
-    F@_12,
-    F@_13,
-    _,
-    TrUserData
-) ->
-    {NewFValue, RestF} = begin
-        Len = X bsl N + Acc,
-        <<Bytes:Len/binary, Rest2/binary>> = Rest,
-        Bytes2 = binary:copy(Bytes),
-        {id(Bytes2, TrUserData), Rest2}
-    end,
-    'dfp_read_field_def_imboy.textguard.v1.CheckTextResponse'(
-        RestF,
-        0,
-        0,
-        F,
-        F@_1,
-        F@_2,
-        F@_3,
-        F@_4,
-        F@_5,
-        F@_6,
-        F@_7,
-        F@_8,
-        F@_9,
-        F@_10,
-        F@_11,
-        F@_12,
-        F@_13,
-        NewFValue,
-        TrUserData
-    ).
+'d_field_imboy.textguard.v1.CheckTextResponse_build_id'(<<1:1, X:7, Rest/binary>>, N, Acc, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, F@_12, F@_13, F@_14, TrUserData) when N < 57 ->
+    'd_field_imboy.textguard.v1.CheckTextResponse_build_id'(Rest, N + 7, X bsl N + Acc, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, F@_12, F@_13, F@_14, TrUserData);
+'d_field_imboy.textguard.v1.CheckTextResponse_build_id'(<<0:1, X:7, Rest/binary>>, N, Acc, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, F@_12, F@_13, _, TrUserData) ->
+    {NewFValue, RestF} = begin Len = X bsl N + Acc, <<Bytes:Len/binary, Rest2/binary>> = Rest, Bytes2 = binary:copy(Bytes), {id(Bytes2, TrUserData), Rest2} end,
+    'dfp_read_field_def_imboy.textguard.v1.CheckTextResponse'(RestF, 0, 0, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, F@_12, F@_13, NewFValue, TrUserData).
 
-'skip_varint_imboy.textguard.v1.CheckTextResponse'(
-    <<1:1, _:7, Rest/binary>>,
-    Z1,
-    Z2,
-    F,
-    F@_1,
-    F@_2,
-    F@_3,
-    F@_4,
-    F@_5,
-    F@_6,
-    F@_7,
-    F@_8,
-    F@_9,
-    F@_10,
-    F@_11,
-    F@_12,
-    F@_13,
-    F@_14,
-    TrUserData
-) ->
-    'skip_varint_imboy.textguard.v1.CheckTextResponse'(
-        Rest,
-        Z1,
-        Z2,
-        F,
-        F@_1,
-        F@_2,
-        F@_3,
-        F@_4,
-        F@_5,
-        F@_6,
-        F@_7,
-        F@_8,
-        F@_9,
-        F@_10,
-        F@_11,
-        F@_12,
-        F@_13,
-        F@_14,
-        TrUserData
-    );
-'skip_varint_imboy.textguard.v1.CheckTextResponse'(
-    <<0:1, _:7, Rest/binary>>,
-    Z1,
-    Z2,
-    F,
-    F@_1,
-    F@_2,
-    F@_3,
-    F@_4,
-    F@_5,
-    F@_6,
-    F@_7,
-    F@_8,
-    F@_9,
-    F@_10,
-    F@_11,
-    F@_12,
-    F@_13,
-    F@_14,
-    TrUserData
-) ->
-    'dfp_read_field_def_imboy.textguard.v1.CheckTextResponse'(
-        Rest,
-        Z1,
-        Z2,
-        F,
-        F@_1,
-        F@_2,
-        F@_3,
-        F@_4,
-        F@_5,
-        F@_6,
-        F@_7,
-        F@_8,
-        F@_9,
-        F@_10,
-        F@_11,
-        F@_12,
-        F@_13,
-        F@_14,
-        TrUserData
-    ).
+'skip_varint_imboy.textguard.v1.CheckTextResponse'(<<1:1, _:7, Rest/binary>>, Z1, Z2, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, F@_12, F@_13, F@_14, TrUserData) ->
+    'skip_varint_imboy.textguard.v1.CheckTextResponse'(Rest, Z1, Z2, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, F@_12, F@_13, F@_14, TrUserData);
+'skip_varint_imboy.textguard.v1.CheckTextResponse'(<<0:1, _:7, Rest/binary>>, Z1, Z2, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, F@_12, F@_13, F@_14, TrUserData) ->
+    'dfp_read_field_def_imboy.textguard.v1.CheckTextResponse'(Rest, Z1, Z2, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, F@_12, F@_13, F@_14, TrUserData).
 
-'skip_length_delimited_imboy.textguard.v1.CheckTextResponse'(
-    <<1:1, X:7, Rest/binary>>,
-    N,
-    Acc,
-    F,
-    F@_1,
-    F@_2,
-    F@_3,
-    F@_4,
-    F@_5,
-    F@_6,
-    F@_7,
-    F@_8,
-    F@_9,
-    F@_10,
-    F@_11,
-    F@_12,
-    F@_13,
-    F@_14,
-    TrUserData
-) when N < 57 ->
-    'skip_length_delimited_imboy.textguard.v1.CheckTextResponse'(
-        Rest,
-        N + 7,
-        X bsl N + Acc,
-        F,
-        F@_1,
-        F@_2,
-        F@_3,
-        F@_4,
-        F@_5,
-        F@_6,
-        F@_7,
-        F@_8,
-        F@_9,
-        F@_10,
-        F@_11,
-        F@_12,
-        F@_13,
-        F@_14,
-        TrUserData
-    );
-'skip_length_delimited_imboy.textguard.v1.CheckTextResponse'(
-    <<0:1, X:7, Rest/binary>>,
-    N,
-    Acc,
-    F,
-    F@_1,
-    F@_2,
-    F@_3,
-    F@_4,
-    F@_5,
-    F@_6,
-    F@_7,
-    F@_8,
-    F@_9,
-    F@_10,
-    F@_11,
-    F@_12,
-    F@_13,
-    F@_14,
-    TrUserData
-) ->
+'skip_length_delimited_imboy.textguard.v1.CheckTextResponse'(<<1:1, X:7, Rest/binary>>, N, Acc, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, F@_12, F@_13, F@_14, TrUserData) when N < 57 ->
+    'skip_length_delimited_imboy.textguard.v1.CheckTextResponse'(Rest, N + 7, X bsl N + Acc, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, F@_12, F@_13, F@_14, TrUserData);
+'skip_length_delimited_imboy.textguard.v1.CheckTextResponse'(<<0:1, X:7, Rest/binary>>, N, Acc, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, F@_12, F@_13, F@_14, TrUserData) ->
     Length = X bsl N + Acc,
     <<_:Length/binary, Rest2/binary>> = Rest,
-    'dfp_read_field_def_imboy.textguard.v1.CheckTextResponse'(
-        Rest2,
-        0,
-        0,
-        F,
-        F@_1,
-        F@_2,
-        F@_3,
-        F@_4,
-        F@_5,
-        F@_6,
-        F@_7,
-        F@_8,
-        F@_9,
-        F@_10,
-        F@_11,
-        F@_12,
-        F@_13,
-        F@_14,
-        TrUserData
-    ).
+    'dfp_read_field_def_imboy.textguard.v1.CheckTextResponse'(Rest2, 0, 0, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, F@_12, F@_13, F@_14, TrUserData).
 
-'skip_group_imboy.textguard.v1.CheckTextResponse'(
-    Bin,
-    _,
-    Z2,
-    FNum,
-    F@_1,
-    F@_2,
-    F@_3,
-    F@_4,
-    F@_5,
-    F@_6,
-    F@_7,
-    F@_8,
-    F@_9,
-    F@_10,
-    F@_11,
-    F@_12,
-    F@_13,
-    F@_14,
-    TrUserData
-) ->
+'skip_group_imboy.textguard.v1.CheckTextResponse'(Bin, _, Z2, FNum, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, F@_12, F@_13, F@_14, TrUserData) ->
     {_, Rest} = read_group(Bin, FNum),
-    'dfp_read_field_def_imboy.textguard.v1.CheckTextResponse'(
-        Rest,
-        0,
-        Z2,
-        FNum,
-        F@_1,
-        F@_2,
-        F@_3,
-        F@_4,
-        F@_5,
-        F@_6,
-        F@_7,
-        F@_8,
-        F@_9,
-        F@_10,
-        F@_11,
-        F@_12,
-        F@_13,
-        F@_14,
-        TrUserData
-    ).
+    'dfp_read_field_def_imboy.textguard.v1.CheckTextResponse'(Rest, 0, Z2, FNum, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, F@_12, F@_13, F@_14, TrUserData).
 
-'skip_32_imboy.textguard.v1.CheckTextResponse'(
-    <<_:32, Rest/binary>>,
-    Z1,
-    Z2,
-    F,
-    F@_1,
-    F@_2,
-    F@_3,
-    F@_4,
-    F@_5,
-    F@_6,
-    F@_7,
-    F@_8,
-    F@_9,
-    F@_10,
-    F@_11,
-    F@_12,
-    F@_13,
-    F@_14,
-    TrUserData
-) ->
-    'dfp_read_field_def_imboy.textguard.v1.CheckTextResponse'(
-        Rest,
-        Z1,
-        Z2,
-        F,
-        F@_1,
-        F@_2,
-        F@_3,
-        F@_4,
-        F@_5,
-        F@_6,
-        F@_7,
-        F@_8,
-        F@_9,
-        F@_10,
-        F@_11,
-        F@_12,
-        F@_13,
-        F@_14,
-        TrUserData
-    ).
+'skip_32_imboy.textguard.v1.CheckTextResponse'(<<_:32, Rest/binary>>, Z1, Z2, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, F@_12, F@_13, F@_14, TrUserData) ->
+    'dfp_read_field_def_imboy.textguard.v1.CheckTextResponse'(Rest, Z1, Z2, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, F@_12, F@_13, F@_14, TrUserData).
 
-'skip_64_imboy.textguard.v1.CheckTextResponse'(
-    <<_:64, Rest/binary>>,
-    Z1,
-    Z2,
-    F,
-    F@_1,
-    F@_2,
-    F@_3,
-    F@_4,
-    F@_5,
-    F@_6,
-    F@_7,
-    F@_8,
-    F@_9,
-    F@_10,
-    F@_11,
-    F@_12,
-    F@_13,
-    F@_14,
-    TrUserData
-) ->
-    'dfp_read_field_def_imboy.textguard.v1.CheckTextResponse'(
-        Rest,
-        Z1,
-        Z2,
-        F,
-        F@_1,
-        F@_2,
-        F@_3,
-        F@_4,
-        F@_5,
-        F@_6,
-        F@_7,
-        F@_8,
-        F@_9,
-        F@_10,
-        F@_11,
-        F@_12,
-        F@_13,
-        F@_14,
-        TrUserData
-    ).
+'skip_64_imboy.textguard.v1.CheckTextResponse'(<<_:64, Rest/binary>>, Z1, Z2, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, F@_12, F@_13, F@_14, TrUserData) ->
+    'dfp_read_field_def_imboy.textguard.v1.CheckTextResponse'(Rest, Z1, Z2, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, F@_12, F@_13, F@_14, TrUserData).
 
-'decode_msg_imboy.textguard.v1.GetInfoRequest'(Bin, TrUserData) ->
-    'dfp_read_field_def_imboy.textguard.v1.GetInfoRequest'(Bin, 0, 0, 0, TrUserData).
+'decode_msg_imboy.textguard.v1.GetInfoRequest'(Bin, TrUserData) -> 'dfp_read_field_def_imboy.textguard.v1.GetInfoRequest'(Bin, 0, 0, 0, TrUserData).
 
-'dfp_read_field_def_imboy.textguard.v1.GetInfoRequest'(<<>>, 0, 0, _, _) ->
-    #{};
-'dfp_read_field_def_imboy.textguard.v1.GetInfoRequest'(Other, Z1, Z2, F, TrUserData) ->
-    'dg_read_field_def_imboy.textguard.v1.GetInfoRequest'(Other, Z1, Z2, F, TrUserData).
+'dfp_read_field_def_imboy.textguard.v1.GetInfoRequest'(<<>>, 0, 0, _, _) -> #{};
+'dfp_read_field_def_imboy.textguard.v1.GetInfoRequest'(Other, Z1, Z2, F, TrUserData) -> 'dg_read_field_def_imboy.textguard.v1.GetInfoRequest'(Other, Z1, Z2, F, TrUserData).
 
-'dg_read_field_def_imboy.textguard.v1.GetInfoRequest'(
-    <<1:1, X:7, Rest/binary>>, N, Acc, F, TrUserData
-) when N < 32 - 7 ->
-    'dg_read_field_def_imboy.textguard.v1.GetInfoRequest'(
-        Rest, N + 7, X bsl N + Acc, F, TrUserData
-    );
-'dg_read_field_def_imboy.textguard.v1.GetInfoRequest'(
-    <<0:1, X:7, Rest/binary>>, N, Acc, _, TrUserData
-) ->
+'dg_read_field_def_imboy.textguard.v1.GetInfoRequest'(<<1:1, X:7, Rest/binary>>, N, Acc, F, TrUserData) when N < 32 - 7 -> 'dg_read_field_def_imboy.textguard.v1.GetInfoRequest'(Rest, N + 7, X bsl N + Acc, F, TrUserData);
+'dg_read_field_def_imboy.textguard.v1.GetInfoRequest'(<<0:1, X:7, Rest/binary>>, N, Acc, _, TrUserData) ->
     Key = X bsl N + Acc,
     case Key band 7 of
-        0 ->
-            'skip_varint_imboy.textguard.v1.GetInfoRequest'(Rest, 0, 0, Key bsr 3, TrUserData);
-        1 ->
-            'skip_64_imboy.textguard.v1.GetInfoRequest'(Rest, 0, 0, Key bsr 3, TrUserData);
-        2 ->
-            'skip_length_delimited_imboy.textguard.v1.GetInfoRequest'(
-                Rest, 0, 0, Key bsr 3, TrUserData
-            );
-        3 ->
-            'skip_group_imboy.textguard.v1.GetInfoRequest'(Rest, 0, 0, Key bsr 3, TrUserData);
-        5 ->
-            'skip_32_imboy.textguard.v1.GetInfoRequest'(Rest, 0, 0, Key bsr 3, TrUserData)
+        0 -> 'skip_varint_imboy.textguard.v1.GetInfoRequest'(Rest, 0, 0, Key bsr 3, TrUserData);
+        1 -> 'skip_64_imboy.textguard.v1.GetInfoRequest'(Rest, 0, 0, Key bsr 3, TrUserData);
+        2 -> 'skip_length_delimited_imboy.textguard.v1.GetInfoRequest'(Rest, 0, 0, Key bsr 3, TrUserData);
+        3 -> 'skip_group_imboy.textguard.v1.GetInfoRequest'(Rest, 0, 0, Key bsr 3, TrUserData);
+        5 -> 'skip_32_imboy.textguard.v1.GetInfoRequest'(Rest, 0, 0, Key bsr 3, TrUserData)
     end;
-'dg_read_field_def_imboy.textguard.v1.GetInfoRequest'(<<>>, 0, 0, _, _) ->
-    #{}.
+'dg_read_field_def_imboy.textguard.v1.GetInfoRequest'(<<>>, 0, 0, _, _) -> #{}.
 
-'skip_varint_imboy.textguard.v1.GetInfoRequest'(<<1:1, _:7, Rest/binary>>, Z1, Z2, F, TrUserData) ->
-    'skip_varint_imboy.textguard.v1.GetInfoRequest'(Rest, Z1, Z2, F, TrUserData);
-'skip_varint_imboy.textguard.v1.GetInfoRequest'(<<0:1, _:7, Rest/binary>>, Z1, Z2, F, TrUserData) ->
-    'dfp_read_field_def_imboy.textguard.v1.GetInfoRequest'(Rest, Z1, Z2, F, TrUserData).
+'skip_varint_imboy.textguard.v1.GetInfoRequest'(<<1:1, _:7, Rest/binary>>, Z1, Z2, F, TrUserData) -> 'skip_varint_imboy.textguard.v1.GetInfoRequest'(Rest, Z1, Z2, F, TrUserData);
+'skip_varint_imboy.textguard.v1.GetInfoRequest'(<<0:1, _:7, Rest/binary>>, Z1, Z2, F, TrUserData) -> 'dfp_read_field_def_imboy.textguard.v1.GetInfoRequest'(Rest, Z1, Z2, F, TrUserData).
 
-'skip_length_delimited_imboy.textguard.v1.GetInfoRequest'(
-    <<1:1, X:7, Rest/binary>>, N, Acc, F, TrUserData
-) when N < 57 ->
-    'skip_length_delimited_imboy.textguard.v1.GetInfoRequest'(
-        Rest, N + 7, X bsl N + Acc, F, TrUserData
-    );
-'skip_length_delimited_imboy.textguard.v1.GetInfoRequest'(
-    <<0:1, X:7, Rest/binary>>, N, Acc, F, TrUserData
-) ->
+'skip_length_delimited_imboy.textguard.v1.GetInfoRequest'(<<1:1, X:7, Rest/binary>>, N, Acc, F, TrUserData) when N < 57 -> 'skip_length_delimited_imboy.textguard.v1.GetInfoRequest'(Rest, N + 7, X bsl N + Acc, F, TrUserData);
+'skip_length_delimited_imboy.textguard.v1.GetInfoRequest'(<<0:1, X:7, Rest/binary>>, N, Acc, F, TrUserData) ->
     Length = X bsl N + Acc,
     <<_:Length/binary, Rest2/binary>> = Rest,
     'dfp_read_field_def_imboy.textguard.v1.GetInfoRequest'(Rest2, 0, 0, F, TrUserData).
@@ -6450,2329 +1250,246 @@ decode_msg_2_doit('imboy.textguard.v1.GetInfoResponse', Bin, TrUserData) ->
     {_, Rest} = read_group(Bin, FNum),
     'dfp_read_field_def_imboy.textguard.v1.GetInfoRequest'(Rest, 0, Z2, FNum, TrUserData).
 
-'skip_32_imboy.textguard.v1.GetInfoRequest'(<<_:32, Rest/binary>>, Z1, Z2, F, TrUserData) ->
-    'dfp_read_field_def_imboy.textguard.v1.GetInfoRequest'(Rest, Z1, Z2, F, TrUserData).
+'skip_32_imboy.textguard.v1.GetInfoRequest'(<<_:32, Rest/binary>>, Z1, Z2, F, TrUserData) -> 'dfp_read_field_def_imboy.textguard.v1.GetInfoRequest'(Rest, Z1, Z2, F, TrUserData).
 
-'skip_64_imboy.textguard.v1.GetInfoRequest'(<<_:64, Rest/binary>>, Z1, Z2, F, TrUserData) ->
-    'dfp_read_field_def_imboy.textguard.v1.GetInfoRequest'(Rest, Z1, Z2, F, TrUserData).
+'skip_64_imboy.textguard.v1.GetInfoRequest'(<<_:64, Rest/binary>>, Z1, Z2, F, TrUserData) -> 'dfp_read_field_def_imboy.textguard.v1.GetInfoRequest'(Rest, Z1, Z2, F, TrUserData).
 
 'decode_msg_imboy.textguard.v1.GetInfoResponse'(Bin, TrUserData) ->
-    'dfp_read_field_def_imboy.textguard.v1.GetInfoResponse'(
-        Bin,
-        0,
-        0,
-        0,
-        id('$undef', TrUserData),
-        id('$undef', TrUserData),
-        id('$undef', TrUserData),
-        id('$undef', TrUserData),
-        id('$undef', TrUserData),
-        id('$undef', TrUserData),
-        id('$undef', TrUserData),
-        id('$undef', TrUserData),
-        id('$undef', TrUserData),
-        id('$undef', TrUserData),
-        id('$undef', TrUserData),
-        id([], TrUserData),
-        TrUserData
-    ).
+    'dfp_read_field_def_imboy.textguard.v1.GetInfoResponse'(Bin,
+                                                            0,
+                                                            0,
+                                                            0,
+                                                            id('$undef', TrUserData),
+                                                            id('$undef', TrUserData),
+                                                            id('$undef', TrUserData),
+                                                            id('$undef', TrUserData),
+                                                            id('$undef', TrUserData),
+                                                            id('$undef', TrUserData),
+                                                            id('$undef', TrUserData),
+                                                            id('$undef', TrUserData),
+                                                            id('$undef', TrUserData),
+                                                            id('$undef', TrUserData),
+                                                            id('$undef', TrUserData),
+                                                            id([], TrUserData),
+                                                            TrUserData).
 
-'dfp_read_field_def_imboy.textguard.v1.GetInfoResponse'(
-    <<10, Rest/binary>>,
-    Z1,
-    Z2,
-    F,
-    F@_1,
-    F@_2,
-    F@_3,
-    F@_4,
-    F@_5,
-    F@_6,
-    F@_7,
-    F@_8,
-    F@_9,
-    F@_10,
-    F@_11,
-    F@_12,
-    TrUserData
-) ->
-    'd_field_imboy.textguard.v1.GetInfoResponse_instance_id'(
-        Rest,
-        Z1,
-        Z2,
-        F,
-        F@_1,
-        F@_2,
-        F@_3,
-        F@_4,
-        F@_5,
-        F@_6,
-        F@_7,
-        F@_8,
-        F@_9,
-        F@_10,
-        F@_11,
-        F@_12,
-        TrUserData
-    );
-'dfp_read_field_def_imboy.textguard.v1.GetInfoResponse'(
-    <<16, Rest/binary>>,
-    Z1,
-    Z2,
-    F,
-    F@_1,
-    F@_2,
-    F@_3,
-    F@_4,
-    F@_5,
-    F@_6,
-    F@_7,
-    F@_8,
-    F@_9,
-    F@_10,
-    F@_11,
-    F@_12,
-    TrUserData
-) ->
-    'd_field_imboy.textguard.v1.GetInfoResponse_ready'(
-        Rest,
-        Z1,
-        Z2,
-        F,
-        F@_1,
-        F@_2,
-        F@_3,
-        F@_4,
-        F@_5,
-        F@_6,
-        F@_7,
-        F@_8,
-        F@_9,
-        F@_10,
-        F@_11,
-        F@_12,
-        TrUserData
-    );
-'dfp_read_field_def_imboy.textguard.v1.GetInfoResponse'(
-    <<26, Rest/binary>>,
-    Z1,
-    Z2,
-    F,
-    F@_1,
-    F@_2,
-    F@_3,
-    F@_4,
-    F@_5,
-    F@_6,
-    F@_7,
-    F@_8,
-    F@_9,
-    F@_10,
-    F@_11,
-    F@_12,
-    TrUserData
-) ->
-    'd_field_imboy.textguard.v1.GetInfoResponse_build_id'(
-        Rest,
-        Z1,
-        Z2,
-        F,
-        F@_1,
-        F@_2,
-        F@_3,
-        F@_4,
-        F@_5,
-        F@_6,
-        F@_7,
-        F@_8,
-        F@_9,
-        F@_10,
-        F@_11,
-        F@_12,
-        TrUserData
-    );
-'dfp_read_field_def_imboy.textguard.v1.GetInfoResponse'(
-    <<34, Rest/binary>>,
-    Z1,
-    Z2,
-    F,
-    F@_1,
-    F@_2,
-    F@_3,
-    F@_4,
-    F@_5,
-    F@_6,
-    F@_7,
-    F@_8,
-    F@_9,
-    F@_10,
-    F@_11,
-    F@_12,
-    TrUserData
-) ->
-    'd_field_imboy.textguard.v1.GetInfoResponse_ruleset_revision'(
-        Rest,
-        Z1,
-        Z2,
-        F,
-        F@_1,
-        F@_2,
-        F@_3,
-        F@_4,
-        F@_5,
-        F@_6,
-        F@_7,
-        F@_8,
-        F@_9,
-        F@_10,
-        F@_11,
-        F@_12,
-        TrUserData
-    );
-'dfp_read_field_def_imboy.textguard.v1.GetInfoResponse'(
-    <<42, Rest/binary>>,
-    Z1,
-    Z2,
-    F,
-    F@_1,
-    F@_2,
-    F@_3,
-    F@_4,
-    F@_5,
-    F@_6,
-    F@_7,
-    F@_8,
-    F@_9,
-    F@_10,
-    F@_11,
-    F@_12,
-    TrUserData
-) ->
-    'd_field_imboy.textguard.v1.GetInfoResponse_generation'(
-        Rest,
-        Z1,
-        Z2,
-        F,
-        F@_1,
-        F@_2,
-        F@_3,
-        F@_4,
-        F@_5,
-        F@_6,
-        F@_7,
-        F@_8,
-        F@_9,
-        F@_10,
-        F@_11,
-        F@_12,
-        TrUserData
-    );
-'dfp_read_field_def_imboy.textguard.v1.GetInfoResponse'(
-    <<50, Rest/binary>>,
-    Z1,
-    Z2,
-    F,
-    F@_1,
-    F@_2,
-    F@_3,
-    F@_4,
-    F@_5,
-    F@_6,
-    F@_7,
-    F@_8,
-    F@_9,
-    F@_10,
-    F@_11,
-    F@_12,
-    TrUserData
-) ->
-    'd_field_imboy.textguard.v1.GetInfoResponse_normalization_id'(
-        Rest,
-        Z1,
-        Z2,
-        F,
-        F@_1,
-        F@_2,
-        F@_3,
-        F@_4,
-        F@_5,
-        F@_6,
-        F@_7,
-        F@_8,
-        F@_9,
-        F@_10,
-        F@_11,
-        F@_12,
-        TrUserData
-    );
-'dfp_read_field_def_imboy.textguard.v1.GetInfoResponse'(
-    <<58, Rest/binary>>,
-    Z1,
-    Z2,
-    F,
-    F@_1,
-    F@_2,
-    F@_3,
-    F@_4,
-    F@_5,
-    F@_6,
-    F@_7,
-    F@_8,
-    F@_9,
-    F@_10,
-    F@_11,
-    F@_12,
-    TrUserData
-) ->
-    'd_field_imboy.textguard.v1.GetInfoResponse_t2s_table_id'(
-        Rest,
-        Z1,
-        Z2,
-        F,
-        F@_1,
-        F@_2,
-        F@_3,
-        F@_4,
-        F@_5,
-        F@_6,
-        F@_7,
-        F@_8,
-        F@_9,
-        F@_10,
-        F@_11,
-        F@_12,
-        TrUserData
-    );
-'dfp_read_field_def_imboy.textguard.v1.GetInfoResponse'(
-    <<66, Rest/binary>>,
-    Z1,
-    Z2,
-    F,
-    F@_1,
-    F@_2,
-    F@_3,
-    F@_4,
-    F@_5,
-    F@_6,
-    F@_7,
-    F@_8,
-    F@_9,
-    F@_10,
-    F@_11,
-    F@_12,
-    TrUserData
-) ->
-    'd_field_imboy.textguard.v1.GetInfoResponse_base_rules_digest'(
-        Rest,
-        Z1,
-        Z2,
-        F,
-        F@_1,
-        F@_2,
-        F@_3,
-        F@_4,
-        F@_5,
-        F@_6,
-        F@_7,
-        F@_8,
-        F@_9,
-        F@_10,
-        F@_11,
-        F@_12,
-        TrUserData
-    );
-'dfp_read_field_def_imboy.textguard.v1.GetInfoResponse'(
-    <<72, Rest/binary>>,
-    Z1,
-    Z2,
-    F,
-    F@_1,
-    F@_2,
-    F@_3,
-    F@_4,
-    F@_5,
-    F@_6,
-    F@_7,
-    F@_8,
-    F@_9,
-    F@_10,
-    F@_11,
-    F@_12,
-    TrUserData
-) ->
-    'd_field_imboy.textguard.v1.GetInfoResponse_canonical_count'(
-        Rest,
-        Z1,
-        Z2,
-        F,
-        F@_1,
-        F@_2,
-        F@_3,
-        F@_4,
-        F@_5,
-        F@_6,
-        F@_7,
-        F@_8,
-        F@_9,
-        F@_10,
-        F@_11,
-        F@_12,
-        TrUserData
-    );
-'dfp_read_field_def_imboy.textguard.v1.GetInfoResponse'(
-    <<80, Rest/binary>>,
-    Z1,
-    Z2,
-    F,
-    F@_1,
-    F@_2,
-    F@_3,
-    F@_4,
-    F@_5,
-    F@_6,
-    F@_7,
-    F@_8,
-    F@_9,
-    F@_10,
-    F@_11,
-    F@_12,
-    TrUserData
-) ->
-    'd_field_imboy.textguard.v1.GetInfoResponse_alias_count'(
-        Rest,
-        Z1,
-        Z2,
-        F,
-        F@_1,
-        F@_2,
-        F@_3,
-        F@_4,
-        F@_5,
-        F@_6,
-        F@_7,
-        F@_8,
-        F@_9,
-        F@_10,
-        F@_11,
-        F@_12,
-        TrUserData
-    );
-'dfp_read_field_def_imboy.textguard.v1.GetInfoResponse'(
-    <<88, Rest/binary>>,
-    Z1,
-    Z2,
-    F,
-    F@_1,
-    F@_2,
-    F@_3,
-    F@_4,
-    F@_5,
-    F@_6,
-    F@_7,
-    F@_8,
-    F@_9,
-    F@_10,
-    F@_11,
-    F@_12,
-    TrUserData
-) ->
-    'd_field_imboy.textguard.v1.GetInfoResponse_regex_count'(
-        Rest,
-        Z1,
-        Z2,
-        F,
-        F@_1,
-        F@_2,
-        F@_3,
-        F@_4,
-        F@_5,
-        F@_6,
-        F@_7,
-        F@_8,
-        F@_9,
-        F@_10,
-        F@_11,
-        F@_12,
-        TrUserData
-    );
-'dfp_read_field_def_imboy.textguard.v1.GetInfoResponse'(
-    <<98, Rest/binary>>,
-    Z1,
-    Z2,
-    F,
-    F@_1,
-    F@_2,
-    F@_3,
-    F@_4,
-    F@_5,
-    F@_6,
-    F@_7,
-    F@_8,
-    F@_9,
-    F@_10,
-    F@_11,
-    F@_12,
-    TrUserData
-) ->
-    'd_field_imboy.textguard.v1.GetInfoResponse_supported_semantics'(
-        Rest,
-        Z1,
-        Z2,
-        F,
-        F@_1,
-        F@_2,
-        F@_3,
-        F@_4,
-        F@_5,
-        F@_6,
-        F@_7,
-        F@_8,
-        F@_9,
-        F@_10,
-        F@_11,
-        F@_12,
-        TrUserData
-    );
-'dfp_read_field_def_imboy.textguard.v1.GetInfoResponse'(
-    <<>>,
-    0,
-    0,
-    _,
-    F@_1,
-    F@_2,
-    F@_3,
-    F@_4,
-    F@_5,
-    F@_6,
-    F@_7,
-    F@_8,
-    F@_9,
-    F@_10,
-    F@_11,
-    R1,
-    TrUserData
-) ->
+'dfp_read_field_def_imboy.textguard.v1.GetInfoResponse'(<<10, Rest/binary>>, Z1, Z2, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, F@_12, TrUserData) ->
+    'd_field_imboy.textguard.v1.GetInfoResponse_instance_id'(Rest, Z1, Z2, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, F@_12, TrUserData);
+'dfp_read_field_def_imboy.textguard.v1.GetInfoResponse'(<<16, Rest/binary>>, Z1, Z2, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, F@_12, TrUserData) ->
+    'd_field_imboy.textguard.v1.GetInfoResponse_ready'(Rest, Z1, Z2, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, F@_12, TrUserData);
+'dfp_read_field_def_imboy.textguard.v1.GetInfoResponse'(<<26, Rest/binary>>, Z1, Z2, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, F@_12, TrUserData) ->
+    'd_field_imboy.textguard.v1.GetInfoResponse_build_id'(Rest, Z1, Z2, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, F@_12, TrUserData);
+'dfp_read_field_def_imboy.textguard.v1.GetInfoResponse'(<<34, Rest/binary>>, Z1, Z2, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, F@_12, TrUserData) ->
+    'd_field_imboy.textguard.v1.GetInfoResponse_ruleset_revision'(Rest, Z1, Z2, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, F@_12, TrUserData);
+'dfp_read_field_def_imboy.textguard.v1.GetInfoResponse'(<<42, Rest/binary>>, Z1, Z2, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, F@_12, TrUserData) ->
+    'd_field_imboy.textguard.v1.GetInfoResponse_generation'(Rest, Z1, Z2, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, F@_12, TrUserData);
+'dfp_read_field_def_imboy.textguard.v1.GetInfoResponse'(<<50, Rest/binary>>, Z1, Z2, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, F@_12, TrUserData) ->
+    'd_field_imboy.textguard.v1.GetInfoResponse_normalization_id'(Rest, Z1, Z2, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, F@_12, TrUserData);
+'dfp_read_field_def_imboy.textguard.v1.GetInfoResponse'(<<58, Rest/binary>>, Z1, Z2, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, F@_12, TrUserData) ->
+    'd_field_imboy.textguard.v1.GetInfoResponse_t2s_table_id'(Rest, Z1, Z2, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, F@_12, TrUserData);
+'dfp_read_field_def_imboy.textguard.v1.GetInfoResponse'(<<66, Rest/binary>>, Z1, Z2, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, F@_12, TrUserData) ->
+    'd_field_imboy.textguard.v1.GetInfoResponse_base_rules_digest'(Rest, Z1, Z2, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, F@_12, TrUserData);
+'dfp_read_field_def_imboy.textguard.v1.GetInfoResponse'(<<72, Rest/binary>>, Z1, Z2, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, F@_12, TrUserData) ->
+    'd_field_imboy.textguard.v1.GetInfoResponse_canonical_count'(Rest, Z1, Z2, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, F@_12, TrUserData);
+'dfp_read_field_def_imboy.textguard.v1.GetInfoResponse'(<<80, Rest/binary>>, Z1, Z2, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, F@_12, TrUserData) ->
+    'd_field_imboy.textguard.v1.GetInfoResponse_alias_count'(Rest, Z1, Z2, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, F@_12, TrUserData);
+'dfp_read_field_def_imboy.textguard.v1.GetInfoResponse'(<<88, Rest/binary>>, Z1, Z2, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, F@_12, TrUserData) ->
+    'd_field_imboy.textguard.v1.GetInfoResponse_regex_count'(Rest, Z1, Z2, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, F@_12, TrUserData);
+'dfp_read_field_def_imboy.textguard.v1.GetInfoResponse'(<<98, Rest/binary>>, Z1, Z2, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, F@_12, TrUserData) ->
+    'd_field_imboy.textguard.v1.GetInfoResponse_supported_semantics'(Rest, Z1, Z2, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, F@_12, TrUserData);
+'dfp_read_field_def_imboy.textguard.v1.GetInfoResponse'(<<>>, 0, 0, _, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, R1, TrUserData) ->
     S1 = #{supported_semantics => lists_reverse(R1, TrUserData)},
-    S2 =
-        if
-            F@_1 == '$undef' -> S1;
+    S2 = if F@_1 == '$undef' -> S1;
             true -> S1#{instance_id => F@_1}
-        end,
-    S3 =
-        if
-            F@_2 == '$undef' -> S2;
+         end,
+    S3 = if F@_2 == '$undef' -> S2;
             true -> S2#{ready => F@_2}
-        end,
-    S4 =
-        if
-            F@_3 == '$undef' -> S3;
+         end,
+    S4 = if F@_3 == '$undef' -> S3;
             true -> S3#{build_id => F@_3}
-        end,
-    S5 =
-        if
-            F@_4 == '$undef' -> S4;
+         end,
+    S5 = if F@_4 == '$undef' -> S4;
             true -> S4#{ruleset_revision => F@_4}
-        end,
-    S6 =
-        if
-            F@_5 == '$undef' -> S5;
+         end,
+    S6 = if F@_5 == '$undef' -> S5;
             true -> S5#{generation => F@_5}
-        end,
-    S7 =
-        if
-            F@_6 == '$undef' -> S6;
+         end,
+    S7 = if F@_6 == '$undef' -> S6;
             true -> S6#{normalization_id => F@_6}
-        end,
-    S8 =
-        if
-            F@_7 == '$undef' -> S7;
+         end,
+    S8 = if F@_7 == '$undef' -> S7;
             true -> S7#{t2s_table_id => F@_7}
-        end,
-    S9 =
-        if
-            F@_8 == '$undef' -> S8;
+         end,
+    S9 = if F@_8 == '$undef' -> S8;
             true -> S8#{base_rules_digest => F@_8}
-        end,
-    S10 =
-        if
-            F@_9 == '$undef' -> S9;
-            true -> S9#{canonical_count => F@_9}
-        end,
-    S11 =
-        if
-            F@_10 == '$undef' -> S10;
-            true -> S10#{alias_count => F@_10}
-        end,
-    if
-        F@_11 == '$undef' -> S11;
-        true -> S11#{regex_count => F@_11}
+         end,
+    S10 = if F@_9 == '$undef' -> S9;
+             true -> S9#{canonical_count => F@_9}
+          end,
+    S11 = if F@_10 == '$undef' -> S10;
+             true -> S10#{alias_count => F@_10}
+          end,
+    if F@_11 == '$undef' -> S11;
+       true -> S11#{regex_count => F@_11}
     end;
-'dfp_read_field_def_imboy.textguard.v1.GetInfoResponse'(
-    Other,
-    Z1,
-    Z2,
-    F,
-    F@_1,
-    F@_2,
-    F@_3,
-    F@_4,
-    F@_5,
-    F@_6,
-    F@_7,
-    F@_8,
-    F@_9,
-    F@_10,
-    F@_11,
-    F@_12,
-    TrUserData
-) ->
-    'dg_read_field_def_imboy.textguard.v1.GetInfoResponse'(
-        Other,
-        Z1,
-        Z2,
-        F,
-        F@_1,
-        F@_2,
-        F@_3,
-        F@_4,
-        F@_5,
-        F@_6,
-        F@_7,
-        F@_8,
-        F@_9,
-        F@_10,
-        F@_11,
-        F@_12,
-        TrUserData
-    ).
+'dfp_read_field_def_imboy.textguard.v1.GetInfoResponse'(Other, Z1, Z2, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, F@_12, TrUserData) ->
+    'dg_read_field_def_imboy.textguard.v1.GetInfoResponse'(Other, Z1, Z2, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, F@_12, TrUserData).
 
-'dg_read_field_def_imboy.textguard.v1.GetInfoResponse'(
-    <<1:1, X:7, Rest/binary>>,
-    N,
-    Acc,
-    F,
-    F@_1,
-    F@_2,
-    F@_3,
-    F@_4,
-    F@_5,
-    F@_6,
-    F@_7,
-    F@_8,
-    F@_9,
-    F@_10,
-    F@_11,
-    F@_12,
-    TrUserData
-) when N < 32 - 7 ->
-    'dg_read_field_def_imboy.textguard.v1.GetInfoResponse'(
-        Rest,
-        N + 7,
-        X bsl N + Acc,
-        F,
-        F@_1,
-        F@_2,
-        F@_3,
-        F@_4,
-        F@_5,
-        F@_6,
-        F@_7,
-        F@_8,
-        F@_9,
-        F@_10,
-        F@_11,
-        F@_12,
-        TrUserData
-    );
-'dg_read_field_def_imboy.textguard.v1.GetInfoResponse'(
-    <<0:1, X:7, Rest/binary>>,
-    N,
-    Acc,
-    _,
-    F@_1,
-    F@_2,
-    F@_3,
-    F@_4,
-    F@_5,
-    F@_6,
-    F@_7,
-    F@_8,
-    F@_9,
-    F@_10,
-    F@_11,
-    F@_12,
-    TrUserData
-) ->
+'dg_read_field_def_imboy.textguard.v1.GetInfoResponse'(<<1:1, X:7, Rest/binary>>, N, Acc, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, F@_12, TrUserData) when N < 32 - 7 ->
+    'dg_read_field_def_imboy.textguard.v1.GetInfoResponse'(Rest, N + 7, X bsl N + Acc, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, F@_12, TrUserData);
+'dg_read_field_def_imboy.textguard.v1.GetInfoResponse'(<<0:1, X:7, Rest/binary>>, N, Acc, _, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, F@_12, TrUserData) ->
     Key = X bsl N + Acc,
     case Key of
-        10 ->
-            'd_field_imboy.textguard.v1.GetInfoResponse_instance_id'(
-                Rest,
-                0,
-                0,
-                0,
-                F@_1,
-                F@_2,
-                F@_3,
-                F@_4,
-                F@_5,
-                F@_6,
-                F@_7,
-                F@_8,
-                F@_9,
-                F@_10,
-                F@_11,
-                F@_12,
-                TrUserData
-            );
-        16 ->
-            'd_field_imboy.textguard.v1.GetInfoResponse_ready'(
-                Rest,
-                0,
-                0,
-                0,
-                F@_1,
-                F@_2,
-                F@_3,
-                F@_4,
-                F@_5,
-                F@_6,
-                F@_7,
-                F@_8,
-                F@_9,
-                F@_10,
-                F@_11,
-                F@_12,
-                TrUserData
-            );
-        26 ->
-            'd_field_imboy.textguard.v1.GetInfoResponse_build_id'(
-                Rest,
-                0,
-                0,
-                0,
-                F@_1,
-                F@_2,
-                F@_3,
-                F@_4,
-                F@_5,
-                F@_6,
-                F@_7,
-                F@_8,
-                F@_9,
-                F@_10,
-                F@_11,
-                F@_12,
-                TrUserData
-            );
-        34 ->
-            'd_field_imboy.textguard.v1.GetInfoResponse_ruleset_revision'(
-                Rest,
-                0,
-                0,
-                0,
-                F@_1,
-                F@_2,
-                F@_3,
-                F@_4,
-                F@_5,
-                F@_6,
-                F@_7,
-                F@_8,
-                F@_9,
-                F@_10,
-                F@_11,
-                F@_12,
-                TrUserData
-            );
-        42 ->
-            'd_field_imboy.textguard.v1.GetInfoResponse_generation'(
-                Rest,
-                0,
-                0,
-                0,
-                F@_1,
-                F@_2,
-                F@_3,
-                F@_4,
-                F@_5,
-                F@_6,
-                F@_7,
-                F@_8,
-                F@_9,
-                F@_10,
-                F@_11,
-                F@_12,
-                TrUserData
-            );
-        50 ->
-            'd_field_imboy.textguard.v1.GetInfoResponse_normalization_id'(
-                Rest,
-                0,
-                0,
-                0,
-                F@_1,
-                F@_2,
-                F@_3,
-                F@_4,
-                F@_5,
-                F@_6,
-                F@_7,
-                F@_8,
-                F@_9,
-                F@_10,
-                F@_11,
-                F@_12,
-                TrUserData
-            );
-        58 ->
-            'd_field_imboy.textguard.v1.GetInfoResponse_t2s_table_id'(
-                Rest,
-                0,
-                0,
-                0,
-                F@_1,
-                F@_2,
-                F@_3,
-                F@_4,
-                F@_5,
-                F@_6,
-                F@_7,
-                F@_8,
-                F@_9,
-                F@_10,
-                F@_11,
-                F@_12,
-                TrUserData
-            );
-        66 ->
-            'd_field_imboy.textguard.v1.GetInfoResponse_base_rules_digest'(
-                Rest,
-                0,
-                0,
-                0,
-                F@_1,
-                F@_2,
-                F@_3,
-                F@_4,
-                F@_5,
-                F@_6,
-                F@_7,
-                F@_8,
-                F@_9,
-                F@_10,
-                F@_11,
-                F@_12,
-                TrUserData
-            );
-        72 ->
-            'd_field_imboy.textguard.v1.GetInfoResponse_canonical_count'(
-                Rest,
-                0,
-                0,
-                0,
-                F@_1,
-                F@_2,
-                F@_3,
-                F@_4,
-                F@_5,
-                F@_6,
-                F@_7,
-                F@_8,
-                F@_9,
-                F@_10,
-                F@_11,
-                F@_12,
-                TrUserData
-            );
-        80 ->
-            'd_field_imboy.textguard.v1.GetInfoResponse_alias_count'(
-                Rest,
-                0,
-                0,
-                0,
-                F@_1,
-                F@_2,
-                F@_3,
-                F@_4,
-                F@_5,
-                F@_6,
-                F@_7,
-                F@_8,
-                F@_9,
-                F@_10,
-                F@_11,
-                F@_12,
-                TrUserData
-            );
-        88 ->
-            'd_field_imboy.textguard.v1.GetInfoResponse_regex_count'(
-                Rest,
-                0,
-                0,
-                0,
-                F@_1,
-                F@_2,
-                F@_3,
-                F@_4,
-                F@_5,
-                F@_6,
-                F@_7,
-                F@_8,
-                F@_9,
-                F@_10,
-                F@_11,
-                F@_12,
-                TrUserData
-            );
-        98 ->
-            'd_field_imboy.textguard.v1.GetInfoResponse_supported_semantics'(
-                Rest,
-                0,
-                0,
-                0,
-                F@_1,
-                F@_2,
-                F@_3,
-                F@_4,
-                F@_5,
-                F@_6,
-                F@_7,
-                F@_8,
-                F@_9,
-                F@_10,
-                F@_11,
-                F@_12,
-                TrUserData
-            );
+        10 -> 'd_field_imboy.textguard.v1.GetInfoResponse_instance_id'(Rest, 0, 0, 0, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, F@_12, TrUserData);
+        16 -> 'd_field_imboy.textguard.v1.GetInfoResponse_ready'(Rest, 0, 0, 0, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, F@_12, TrUserData);
+        26 -> 'd_field_imboy.textguard.v1.GetInfoResponse_build_id'(Rest, 0, 0, 0, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, F@_12, TrUserData);
+        34 -> 'd_field_imboy.textguard.v1.GetInfoResponse_ruleset_revision'(Rest, 0, 0, 0, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, F@_12, TrUserData);
+        42 -> 'd_field_imboy.textguard.v1.GetInfoResponse_generation'(Rest, 0, 0, 0, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, F@_12, TrUserData);
+        50 -> 'd_field_imboy.textguard.v1.GetInfoResponse_normalization_id'(Rest, 0, 0, 0, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, F@_12, TrUserData);
+        58 -> 'd_field_imboy.textguard.v1.GetInfoResponse_t2s_table_id'(Rest, 0, 0, 0, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, F@_12, TrUserData);
+        66 -> 'd_field_imboy.textguard.v1.GetInfoResponse_base_rules_digest'(Rest, 0, 0, 0, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, F@_12, TrUserData);
+        72 -> 'd_field_imboy.textguard.v1.GetInfoResponse_canonical_count'(Rest, 0, 0, 0, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, F@_12, TrUserData);
+        80 -> 'd_field_imboy.textguard.v1.GetInfoResponse_alias_count'(Rest, 0, 0, 0, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, F@_12, TrUserData);
+        88 -> 'd_field_imboy.textguard.v1.GetInfoResponse_regex_count'(Rest, 0, 0, 0, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, F@_12, TrUserData);
+        98 -> 'd_field_imboy.textguard.v1.GetInfoResponse_supported_semantics'(Rest, 0, 0, 0, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, F@_12, TrUserData);
         _ ->
             case Key band 7 of
-                0 ->
-                    'skip_varint_imboy.textguard.v1.GetInfoResponse'(
-                        Rest,
-                        0,
-                        0,
-                        Key bsr 3,
-                        F@_1,
-                        F@_2,
-                        F@_3,
-                        F@_4,
-                        F@_5,
-                        F@_6,
-                        F@_7,
-                        F@_8,
-                        F@_9,
-                        F@_10,
-                        F@_11,
-                        F@_12,
-                        TrUserData
-                    );
-                1 ->
-                    'skip_64_imboy.textguard.v1.GetInfoResponse'(
-                        Rest,
-                        0,
-                        0,
-                        Key bsr 3,
-                        F@_1,
-                        F@_2,
-                        F@_3,
-                        F@_4,
-                        F@_5,
-                        F@_6,
-                        F@_7,
-                        F@_8,
-                        F@_9,
-                        F@_10,
-                        F@_11,
-                        F@_12,
-                        TrUserData
-                    );
-                2 ->
-                    'skip_length_delimited_imboy.textguard.v1.GetInfoResponse'(
-                        Rest,
-                        0,
-                        0,
-                        Key bsr 3,
-                        F@_1,
-                        F@_2,
-                        F@_3,
-                        F@_4,
-                        F@_5,
-                        F@_6,
-                        F@_7,
-                        F@_8,
-                        F@_9,
-                        F@_10,
-                        F@_11,
-                        F@_12,
-                        TrUserData
-                    );
-                3 ->
-                    'skip_group_imboy.textguard.v1.GetInfoResponse'(
-                        Rest,
-                        0,
-                        0,
-                        Key bsr 3,
-                        F@_1,
-                        F@_2,
-                        F@_3,
-                        F@_4,
-                        F@_5,
-                        F@_6,
-                        F@_7,
-                        F@_8,
-                        F@_9,
-                        F@_10,
-                        F@_11,
-                        F@_12,
-                        TrUserData
-                    );
-                5 ->
-                    'skip_32_imboy.textguard.v1.GetInfoResponse'(
-                        Rest,
-                        0,
-                        0,
-                        Key bsr 3,
-                        F@_1,
-                        F@_2,
-                        F@_3,
-                        F@_4,
-                        F@_5,
-                        F@_6,
-                        F@_7,
-                        F@_8,
-                        F@_9,
-                        F@_10,
-                        F@_11,
-                        F@_12,
-                        TrUserData
-                    )
+                0 -> 'skip_varint_imboy.textguard.v1.GetInfoResponse'(Rest, 0, 0, Key bsr 3, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, F@_12, TrUserData);
+                1 -> 'skip_64_imboy.textguard.v1.GetInfoResponse'(Rest, 0, 0, Key bsr 3, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, F@_12, TrUserData);
+                2 -> 'skip_length_delimited_imboy.textguard.v1.GetInfoResponse'(Rest, 0, 0, Key bsr 3, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, F@_12, TrUserData);
+                3 -> 'skip_group_imboy.textguard.v1.GetInfoResponse'(Rest, 0, 0, Key bsr 3, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, F@_12, TrUserData);
+                5 -> 'skip_32_imboy.textguard.v1.GetInfoResponse'(Rest, 0, 0, Key bsr 3, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, F@_12, TrUserData)
             end
     end;
-'dg_read_field_def_imboy.textguard.v1.GetInfoResponse'(
-    <<>>,
-    0,
-    0,
-    _,
-    F@_1,
-    F@_2,
-    F@_3,
-    F@_4,
-    F@_5,
-    F@_6,
-    F@_7,
-    F@_8,
-    F@_9,
-    F@_10,
-    F@_11,
-    R1,
-    TrUserData
-) ->
+'dg_read_field_def_imboy.textguard.v1.GetInfoResponse'(<<>>, 0, 0, _, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, R1, TrUserData) ->
     S1 = #{supported_semantics => lists_reverse(R1, TrUserData)},
-    S2 =
-        if
-            F@_1 == '$undef' -> S1;
+    S2 = if F@_1 == '$undef' -> S1;
             true -> S1#{instance_id => F@_1}
-        end,
-    S3 =
-        if
-            F@_2 == '$undef' -> S2;
+         end,
+    S3 = if F@_2 == '$undef' -> S2;
             true -> S2#{ready => F@_2}
-        end,
-    S4 =
-        if
-            F@_3 == '$undef' -> S3;
+         end,
+    S4 = if F@_3 == '$undef' -> S3;
             true -> S3#{build_id => F@_3}
-        end,
-    S5 =
-        if
-            F@_4 == '$undef' -> S4;
+         end,
+    S5 = if F@_4 == '$undef' -> S4;
             true -> S4#{ruleset_revision => F@_4}
-        end,
-    S6 =
-        if
-            F@_5 == '$undef' -> S5;
+         end,
+    S6 = if F@_5 == '$undef' -> S5;
             true -> S5#{generation => F@_5}
-        end,
-    S7 =
-        if
-            F@_6 == '$undef' -> S6;
+         end,
+    S7 = if F@_6 == '$undef' -> S6;
             true -> S6#{normalization_id => F@_6}
-        end,
-    S8 =
-        if
-            F@_7 == '$undef' -> S7;
+         end,
+    S8 = if F@_7 == '$undef' -> S7;
             true -> S7#{t2s_table_id => F@_7}
-        end,
-    S9 =
-        if
-            F@_8 == '$undef' -> S8;
+         end,
+    S9 = if F@_8 == '$undef' -> S8;
             true -> S8#{base_rules_digest => F@_8}
-        end,
-    S10 =
-        if
-            F@_9 == '$undef' -> S9;
-            true -> S9#{canonical_count => F@_9}
-        end,
-    S11 =
-        if
-            F@_10 == '$undef' -> S10;
-            true -> S10#{alias_count => F@_10}
-        end,
-    if
-        F@_11 == '$undef' -> S11;
-        true -> S11#{regex_count => F@_11}
+         end,
+    S10 = if F@_9 == '$undef' -> S9;
+             true -> S9#{canonical_count => F@_9}
+          end,
+    S11 = if F@_10 == '$undef' -> S10;
+             true -> S10#{alias_count => F@_10}
+          end,
+    if F@_11 == '$undef' -> S11;
+       true -> S11#{regex_count => F@_11}
     end.
 
-'d_field_imboy.textguard.v1.GetInfoResponse_instance_id'(
-    <<1:1, X:7, Rest/binary>>,
-    N,
-    Acc,
-    F,
-    F@_1,
-    F@_2,
-    F@_3,
-    F@_4,
-    F@_5,
-    F@_6,
-    F@_7,
-    F@_8,
-    F@_9,
-    F@_10,
-    F@_11,
-    F@_12,
-    TrUserData
-) when N < 57 ->
-    'd_field_imboy.textguard.v1.GetInfoResponse_instance_id'(
-        Rest,
-        N + 7,
-        X bsl N + Acc,
-        F,
-        F@_1,
-        F@_2,
-        F@_3,
-        F@_4,
-        F@_5,
-        F@_6,
-        F@_7,
-        F@_8,
-        F@_9,
-        F@_10,
-        F@_11,
-        F@_12,
-        TrUserData
-    );
-'d_field_imboy.textguard.v1.GetInfoResponse_instance_id'(
-    <<0:1, X:7, Rest/binary>>,
-    N,
-    Acc,
-    F,
-    _,
-    F@_2,
-    F@_3,
-    F@_4,
-    F@_5,
-    F@_6,
-    F@_7,
-    F@_8,
-    F@_9,
-    F@_10,
-    F@_11,
-    F@_12,
-    TrUserData
-) ->
-    {NewFValue, RestF} = begin
-        Len = X bsl N + Acc,
-        <<Bytes:Len/binary, Rest2/binary>> = Rest,
-        Bytes2 = binary:copy(Bytes),
-        {id(Bytes2, TrUserData), Rest2}
-    end,
-    'dfp_read_field_def_imboy.textguard.v1.GetInfoResponse'(
-        RestF,
-        0,
-        0,
-        F,
-        NewFValue,
-        F@_2,
-        F@_3,
-        F@_4,
-        F@_5,
-        F@_6,
-        F@_7,
-        F@_8,
-        F@_9,
-        F@_10,
-        F@_11,
-        F@_12,
-        TrUserData
-    ).
+'d_field_imboy.textguard.v1.GetInfoResponse_instance_id'(<<1:1, X:7, Rest/binary>>, N, Acc, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, F@_12, TrUserData) when N < 57 ->
+    'd_field_imboy.textguard.v1.GetInfoResponse_instance_id'(Rest, N + 7, X bsl N + Acc, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, F@_12, TrUserData);
+'d_field_imboy.textguard.v1.GetInfoResponse_instance_id'(<<0:1, X:7, Rest/binary>>, N, Acc, F, _, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, F@_12, TrUserData) ->
+    {NewFValue, RestF} = begin Len = X bsl N + Acc, <<Bytes:Len/binary, Rest2/binary>> = Rest, Bytes2 = binary:copy(Bytes), {id(Bytes2, TrUserData), Rest2} end,
+    'dfp_read_field_def_imboy.textguard.v1.GetInfoResponse'(RestF, 0, 0, F, NewFValue, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, F@_12, TrUserData).
 
-'d_field_imboy.textguard.v1.GetInfoResponse_ready'(
-    <<1:1, X:7, Rest/binary>>,
-    N,
-    Acc,
-    F,
-    F@_1,
-    F@_2,
-    F@_3,
-    F@_4,
-    F@_5,
-    F@_6,
-    F@_7,
-    F@_8,
-    F@_9,
-    F@_10,
-    F@_11,
-    F@_12,
-    TrUserData
-) when N < 57 ->
-    'd_field_imboy.textguard.v1.GetInfoResponse_ready'(
-        Rest,
-        N + 7,
-        X bsl N + Acc,
-        F,
-        F@_1,
-        F@_2,
-        F@_3,
-        F@_4,
-        F@_5,
-        F@_6,
-        F@_7,
-        F@_8,
-        F@_9,
-        F@_10,
-        F@_11,
-        F@_12,
-        TrUserData
-    );
-'d_field_imboy.textguard.v1.GetInfoResponse_ready'(
-    <<0:1, X:7, Rest/binary>>,
-    N,
-    Acc,
-    F,
-    F@_1,
-    _,
-    F@_3,
-    F@_4,
-    F@_5,
-    F@_6,
-    F@_7,
-    F@_8,
-    F@_9,
-    F@_10,
-    F@_11,
-    F@_12,
-    TrUserData
-) ->
+'d_field_imboy.textguard.v1.GetInfoResponse_ready'(<<1:1, X:7, Rest/binary>>, N, Acc, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, F@_12, TrUserData) when N < 57 ->
+    'd_field_imboy.textguard.v1.GetInfoResponse_ready'(Rest, N + 7, X bsl N + Acc, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, F@_12, TrUserData);
+'d_field_imboy.textguard.v1.GetInfoResponse_ready'(<<0:1, X:7, Rest/binary>>, N, Acc, F, F@_1, _, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, F@_12, TrUserData) ->
     {NewFValue, RestF} = {id(X bsl N + Acc =/= 0, TrUserData), Rest},
-    'dfp_read_field_def_imboy.textguard.v1.GetInfoResponse'(
-        RestF,
-        0,
-        0,
-        F,
-        F@_1,
-        NewFValue,
-        F@_3,
-        F@_4,
-        F@_5,
-        F@_6,
-        F@_7,
-        F@_8,
-        F@_9,
-        F@_10,
-        F@_11,
-        F@_12,
-        TrUserData
-    ).
+    'dfp_read_field_def_imboy.textguard.v1.GetInfoResponse'(RestF, 0, 0, F, F@_1, NewFValue, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, F@_12, TrUserData).
 
-'d_field_imboy.textguard.v1.GetInfoResponse_build_id'(
-    <<1:1, X:7, Rest/binary>>,
-    N,
-    Acc,
-    F,
-    F@_1,
-    F@_2,
-    F@_3,
-    F@_4,
-    F@_5,
-    F@_6,
-    F@_7,
-    F@_8,
-    F@_9,
-    F@_10,
-    F@_11,
-    F@_12,
-    TrUserData
-) when N < 57 ->
-    'd_field_imboy.textguard.v1.GetInfoResponse_build_id'(
-        Rest,
-        N + 7,
-        X bsl N + Acc,
-        F,
-        F@_1,
-        F@_2,
-        F@_3,
-        F@_4,
-        F@_5,
-        F@_6,
-        F@_7,
-        F@_8,
-        F@_9,
-        F@_10,
-        F@_11,
-        F@_12,
-        TrUserData
-    );
-'d_field_imboy.textguard.v1.GetInfoResponse_build_id'(
-    <<0:1, X:7, Rest/binary>>,
-    N,
-    Acc,
-    F,
-    F@_1,
-    F@_2,
-    _,
-    F@_4,
-    F@_5,
-    F@_6,
-    F@_7,
-    F@_8,
-    F@_9,
-    F@_10,
-    F@_11,
-    F@_12,
-    TrUserData
-) ->
-    {NewFValue, RestF} = begin
-        Len = X bsl N + Acc,
-        <<Bytes:Len/binary, Rest2/binary>> = Rest,
-        Bytes2 = binary:copy(Bytes),
-        {id(Bytes2, TrUserData), Rest2}
-    end,
-    'dfp_read_field_def_imboy.textguard.v1.GetInfoResponse'(
-        RestF,
-        0,
-        0,
-        F,
-        F@_1,
-        F@_2,
-        NewFValue,
-        F@_4,
-        F@_5,
-        F@_6,
-        F@_7,
-        F@_8,
-        F@_9,
-        F@_10,
-        F@_11,
-        F@_12,
-        TrUserData
-    ).
+'d_field_imboy.textguard.v1.GetInfoResponse_build_id'(<<1:1, X:7, Rest/binary>>, N, Acc, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, F@_12, TrUserData) when N < 57 ->
+    'd_field_imboy.textguard.v1.GetInfoResponse_build_id'(Rest, N + 7, X bsl N + Acc, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, F@_12, TrUserData);
+'d_field_imboy.textguard.v1.GetInfoResponse_build_id'(<<0:1, X:7, Rest/binary>>, N, Acc, F, F@_1, F@_2, _, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, F@_12, TrUserData) ->
+    {NewFValue, RestF} = begin Len = X bsl N + Acc, <<Bytes:Len/binary, Rest2/binary>> = Rest, Bytes2 = binary:copy(Bytes), {id(Bytes2, TrUserData), Rest2} end,
+    'dfp_read_field_def_imboy.textguard.v1.GetInfoResponse'(RestF, 0, 0, F, F@_1, F@_2, NewFValue, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, F@_12, TrUserData).
 
-'d_field_imboy.textguard.v1.GetInfoResponse_ruleset_revision'(
-    <<1:1, X:7, Rest/binary>>,
-    N,
-    Acc,
-    F,
-    F@_1,
-    F@_2,
-    F@_3,
-    F@_4,
-    F@_5,
-    F@_6,
-    F@_7,
-    F@_8,
-    F@_9,
-    F@_10,
-    F@_11,
-    F@_12,
-    TrUserData
-) when N < 57 ->
-    'd_field_imboy.textguard.v1.GetInfoResponse_ruleset_revision'(
-        Rest,
-        N + 7,
-        X bsl N + Acc,
-        F,
-        F@_1,
-        F@_2,
-        F@_3,
-        F@_4,
-        F@_5,
-        F@_6,
-        F@_7,
-        F@_8,
-        F@_9,
-        F@_10,
-        F@_11,
-        F@_12,
-        TrUserData
-    );
-'d_field_imboy.textguard.v1.GetInfoResponse_ruleset_revision'(
-    <<0:1, X:7, Rest/binary>>,
-    N,
-    Acc,
-    F,
-    F@_1,
-    F@_2,
-    F@_3,
-    _,
-    F@_5,
-    F@_6,
-    F@_7,
-    F@_8,
-    F@_9,
-    F@_10,
-    F@_11,
-    F@_12,
-    TrUserData
-) ->
-    {NewFValue, RestF} = begin
-        Len = X bsl N + Acc,
-        <<Bytes:Len/binary, Rest2/binary>> = Rest,
-        Bytes2 = binary:copy(Bytes),
-        {id(Bytes2, TrUserData), Rest2}
-    end,
-    'dfp_read_field_def_imboy.textguard.v1.GetInfoResponse'(
-        RestF,
-        0,
-        0,
-        F,
-        F@_1,
-        F@_2,
-        F@_3,
-        NewFValue,
-        F@_5,
-        F@_6,
-        F@_7,
-        F@_8,
-        F@_9,
-        F@_10,
-        F@_11,
-        F@_12,
-        TrUserData
-    ).
+'d_field_imboy.textguard.v1.GetInfoResponse_ruleset_revision'(<<1:1, X:7, Rest/binary>>, N, Acc, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, F@_12, TrUserData) when N < 57 ->
+    'd_field_imboy.textguard.v1.GetInfoResponse_ruleset_revision'(Rest, N + 7, X bsl N + Acc, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, F@_12, TrUserData);
+'d_field_imboy.textguard.v1.GetInfoResponse_ruleset_revision'(<<0:1, X:7, Rest/binary>>, N, Acc, F, F@_1, F@_2, F@_3, _, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, F@_12, TrUserData) ->
+    {NewFValue, RestF} = begin Len = X bsl N + Acc, <<Bytes:Len/binary, Rest2/binary>> = Rest, Bytes2 = binary:copy(Bytes), {id(Bytes2, TrUserData), Rest2} end,
+    'dfp_read_field_def_imboy.textguard.v1.GetInfoResponse'(RestF, 0, 0, F, F@_1, F@_2, F@_3, NewFValue, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, F@_12, TrUserData).
 
-'d_field_imboy.textguard.v1.GetInfoResponse_generation'(
-    <<1:1, X:7, Rest/binary>>,
-    N,
-    Acc,
-    F,
-    F@_1,
-    F@_2,
-    F@_3,
-    F@_4,
-    F@_5,
-    F@_6,
-    F@_7,
-    F@_8,
-    F@_9,
-    F@_10,
-    F@_11,
-    F@_12,
-    TrUserData
-) when N < 57 ->
-    'd_field_imboy.textguard.v1.GetInfoResponse_generation'(
-        Rest,
-        N + 7,
-        X bsl N + Acc,
-        F,
-        F@_1,
-        F@_2,
-        F@_3,
-        F@_4,
-        F@_5,
-        F@_6,
-        F@_7,
-        F@_8,
-        F@_9,
-        F@_10,
-        F@_11,
-        F@_12,
-        TrUserData
-    );
-'d_field_imboy.textguard.v1.GetInfoResponse_generation'(
-    <<0:1, X:7, Rest/binary>>,
-    N,
-    Acc,
-    F,
-    F@_1,
-    F@_2,
-    F@_3,
-    F@_4,
-    _,
-    F@_6,
-    F@_7,
-    F@_8,
-    F@_9,
-    F@_10,
-    F@_11,
-    F@_12,
-    TrUserData
-) ->
-    {NewFValue, RestF} = begin
-        Len = X bsl N + Acc,
-        <<Bytes:Len/binary, Rest2/binary>> = Rest,
-        Bytes2 = binary:copy(Bytes),
-        {id(Bytes2, TrUserData), Rest2}
-    end,
-    'dfp_read_field_def_imboy.textguard.v1.GetInfoResponse'(
-        RestF,
-        0,
-        0,
-        F,
-        F@_1,
-        F@_2,
-        F@_3,
-        F@_4,
-        NewFValue,
-        F@_6,
-        F@_7,
-        F@_8,
-        F@_9,
-        F@_10,
-        F@_11,
-        F@_12,
-        TrUserData
-    ).
+'d_field_imboy.textguard.v1.GetInfoResponse_generation'(<<1:1, X:7, Rest/binary>>, N, Acc, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, F@_12, TrUserData) when N < 57 ->
+    'd_field_imboy.textguard.v1.GetInfoResponse_generation'(Rest, N + 7, X bsl N + Acc, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, F@_12, TrUserData);
+'d_field_imboy.textguard.v1.GetInfoResponse_generation'(<<0:1, X:7, Rest/binary>>, N, Acc, F, F@_1, F@_2, F@_3, F@_4, _, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, F@_12, TrUserData) ->
+    {NewFValue, RestF} = begin Len = X bsl N + Acc, <<Bytes:Len/binary, Rest2/binary>> = Rest, Bytes2 = binary:copy(Bytes), {id(Bytes2, TrUserData), Rest2} end,
+    'dfp_read_field_def_imboy.textguard.v1.GetInfoResponse'(RestF, 0, 0, F, F@_1, F@_2, F@_3, F@_4, NewFValue, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, F@_12, TrUserData).
 
-'d_field_imboy.textguard.v1.GetInfoResponse_normalization_id'(
-    <<1:1, X:7, Rest/binary>>,
-    N,
-    Acc,
-    F,
-    F@_1,
-    F@_2,
-    F@_3,
-    F@_4,
-    F@_5,
-    F@_6,
-    F@_7,
-    F@_8,
-    F@_9,
-    F@_10,
-    F@_11,
-    F@_12,
-    TrUserData
-) when N < 57 ->
-    'd_field_imboy.textguard.v1.GetInfoResponse_normalization_id'(
-        Rest,
-        N + 7,
-        X bsl N + Acc,
-        F,
-        F@_1,
-        F@_2,
-        F@_3,
-        F@_4,
-        F@_5,
-        F@_6,
-        F@_7,
-        F@_8,
-        F@_9,
-        F@_10,
-        F@_11,
-        F@_12,
-        TrUserData
-    );
-'d_field_imboy.textguard.v1.GetInfoResponse_normalization_id'(
-    <<0:1, X:7, Rest/binary>>,
-    N,
-    Acc,
-    F,
-    F@_1,
-    F@_2,
-    F@_3,
-    F@_4,
-    F@_5,
-    _,
-    F@_7,
-    F@_8,
-    F@_9,
-    F@_10,
-    F@_11,
-    F@_12,
-    TrUserData
-) ->
-    {NewFValue, RestF} = begin
-        Len = X bsl N + Acc,
-        <<Bytes:Len/binary, Rest2/binary>> = Rest,
-        Bytes2 = binary:copy(Bytes),
-        {id(Bytes2, TrUserData), Rest2}
-    end,
-    'dfp_read_field_def_imboy.textguard.v1.GetInfoResponse'(
-        RestF,
-        0,
-        0,
-        F,
-        F@_1,
-        F@_2,
-        F@_3,
-        F@_4,
-        F@_5,
-        NewFValue,
-        F@_7,
-        F@_8,
-        F@_9,
-        F@_10,
-        F@_11,
-        F@_12,
-        TrUserData
-    ).
+'d_field_imboy.textguard.v1.GetInfoResponse_normalization_id'(<<1:1, X:7, Rest/binary>>, N, Acc, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, F@_12, TrUserData) when N < 57 ->
+    'd_field_imboy.textguard.v1.GetInfoResponse_normalization_id'(Rest, N + 7, X bsl N + Acc, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, F@_12, TrUserData);
+'d_field_imboy.textguard.v1.GetInfoResponse_normalization_id'(<<0:1, X:7, Rest/binary>>, N, Acc, F, F@_1, F@_2, F@_3, F@_4, F@_5, _, F@_7, F@_8, F@_9, F@_10, F@_11, F@_12, TrUserData) ->
+    {NewFValue, RestF} = begin Len = X bsl N + Acc, <<Bytes:Len/binary, Rest2/binary>> = Rest, Bytes2 = binary:copy(Bytes), {id(Bytes2, TrUserData), Rest2} end,
+    'dfp_read_field_def_imboy.textguard.v1.GetInfoResponse'(RestF, 0, 0, F, F@_1, F@_2, F@_3, F@_4, F@_5, NewFValue, F@_7, F@_8, F@_9, F@_10, F@_11, F@_12, TrUserData).
 
-'d_field_imboy.textguard.v1.GetInfoResponse_t2s_table_id'(
-    <<1:1, X:7, Rest/binary>>,
-    N,
-    Acc,
-    F,
-    F@_1,
-    F@_2,
-    F@_3,
-    F@_4,
-    F@_5,
-    F@_6,
-    F@_7,
-    F@_8,
-    F@_9,
-    F@_10,
-    F@_11,
-    F@_12,
-    TrUserData
-) when N < 57 ->
-    'd_field_imboy.textguard.v1.GetInfoResponse_t2s_table_id'(
-        Rest,
-        N + 7,
-        X bsl N + Acc,
-        F,
-        F@_1,
-        F@_2,
-        F@_3,
-        F@_4,
-        F@_5,
-        F@_6,
-        F@_7,
-        F@_8,
-        F@_9,
-        F@_10,
-        F@_11,
-        F@_12,
-        TrUserData
-    );
-'d_field_imboy.textguard.v1.GetInfoResponse_t2s_table_id'(
-    <<0:1, X:7, Rest/binary>>,
-    N,
-    Acc,
-    F,
-    F@_1,
-    F@_2,
-    F@_3,
-    F@_4,
-    F@_5,
-    F@_6,
-    _,
-    F@_8,
-    F@_9,
-    F@_10,
-    F@_11,
-    F@_12,
-    TrUserData
-) ->
-    {NewFValue, RestF} = begin
-        Len = X bsl N + Acc,
-        <<Bytes:Len/binary, Rest2/binary>> = Rest,
-        Bytes2 = binary:copy(Bytes),
-        {id(Bytes2, TrUserData), Rest2}
-    end,
-    'dfp_read_field_def_imboy.textguard.v1.GetInfoResponse'(
-        RestF,
-        0,
-        0,
-        F,
-        F@_1,
-        F@_2,
-        F@_3,
-        F@_4,
-        F@_5,
-        F@_6,
-        NewFValue,
-        F@_8,
-        F@_9,
-        F@_10,
-        F@_11,
-        F@_12,
-        TrUserData
-    ).
+'d_field_imboy.textguard.v1.GetInfoResponse_t2s_table_id'(<<1:1, X:7, Rest/binary>>, N, Acc, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, F@_12, TrUserData) when N < 57 ->
+    'd_field_imboy.textguard.v1.GetInfoResponse_t2s_table_id'(Rest, N + 7, X bsl N + Acc, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, F@_12, TrUserData);
+'d_field_imboy.textguard.v1.GetInfoResponse_t2s_table_id'(<<0:1, X:7, Rest/binary>>, N, Acc, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, _, F@_8, F@_9, F@_10, F@_11, F@_12, TrUserData) ->
+    {NewFValue, RestF} = begin Len = X bsl N + Acc, <<Bytes:Len/binary, Rest2/binary>> = Rest, Bytes2 = binary:copy(Bytes), {id(Bytes2, TrUserData), Rest2} end,
+    'dfp_read_field_def_imboy.textguard.v1.GetInfoResponse'(RestF, 0, 0, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, NewFValue, F@_8, F@_9, F@_10, F@_11, F@_12, TrUserData).
 
-'d_field_imboy.textguard.v1.GetInfoResponse_base_rules_digest'(
-    <<1:1, X:7, Rest/binary>>,
-    N,
-    Acc,
-    F,
-    F@_1,
-    F@_2,
-    F@_3,
-    F@_4,
-    F@_5,
-    F@_6,
-    F@_7,
-    F@_8,
-    F@_9,
-    F@_10,
-    F@_11,
-    F@_12,
-    TrUserData
-) when N < 57 ->
-    'd_field_imboy.textguard.v1.GetInfoResponse_base_rules_digest'(
-        Rest,
-        N + 7,
-        X bsl N + Acc,
-        F,
-        F@_1,
-        F@_2,
-        F@_3,
-        F@_4,
-        F@_5,
-        F@_6,
-        F@_7,
-        F@_8,
-        F@_9,
-        F@_10,
-        F@_11,
-        F@_12,
-        TrUserData
-    );
-'d_field_imboy.textguard.v1.GetInfoResponse_base_rules_digest'(
-    <<0:1, X:7, Rest/binary>>,
-    N,
-    Acc,
-    F,
-    F@_1,
-    F@_2,
-    F@_3,
-    F@_4,
-    F@_5,
-    F@_6,
-    F@_7,
-    _,
-    F@_9,
-    F@_10,
-    F@_11,
-    F@_12,
-    TrUserData
-) ->
-    {NewFValue, RestF} = begin
-        Len = X bsl N + Acc,
-        <<Bytes:Len/binary, Rest2/binary>> = Rest,
-        Bytes2 = binary:copy(Bytes),
-        {id(Bytes2, TrUserData), Rest2}
-    end,
-    'dfp_read_field_def_imboy.textguard.v1.GetInfoResponse'(
-        RestF,
-        0,
-        0,
-        F,
-        F@_1,
-        F@_2,
-        F@_3,
-        F@_4,
-        F@_5,
-        F@_6,
-        F@_7,
-        NewFValue,
-        F@_9,
-        F@_10,
-        F@_11,
-        F@_12,
-        TrUserData
-    ).
+'d_field_imboy.textguard.v1.GetInfoResponse_base_rules_digest'(<<1:1, X:7, Rest/binary>>, N, Acc, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, F@_12, TrUserData) when N < 57 ->
+    'd_field_imboy.textguard.v1.GetInfoResponse_base_rules_digest'(Rest, N + 7, X bsl N + Acc, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, F@_12, TrUserData);
+'d_field_imboy.textguard.v1.GetInfoResponse_base_rules_digest'(<<0:1, X:7, Rest/binary>>, N, Acc, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, _, F@_9, F@_10, F@_11, F@_12, TrUserData) ->
+    {NewFValue, RestF} = begin Len = X bsl N + Acc, <<Bytes:Len/binary, Rest2/binary>> = Rest, Bytes2 = binary:copy(Bytes), {id(Bytes2, TrUserData), Rest2} end,
+    'dfp_read_field_def_imboy.textguard.v1.GetInfoResponse'(RestF, 0, 0, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, NewFValue, F@_9, F@_10, F@_11, F@_12, TrUserData).
 
-'d_field_imboy.textguard.v1.GetInfoResponse_canonical_count'(
-    <<1:1, X:7, Rest/binary>>,
-    N,
-    Acc,
-    F,
-    F@_1,
-    F@_2,
-    F@_3,
-    F@_4,
-    F@_5,
-    F@_6,
-    F@_7,
-    F@_8,
-    F@_9,
-    F@_10,
-    F@_11,
-    F@_12,
-    TrUserData
-) when N < 57 ->
-    'd_field_imboy.textguard.v1.GetInfoResponse_canonical_count'(
-        Rest,
-        N + 7,
-        X bsl N + Acc,
-        F,
-        F@_1,
-        F@_2,
-        F@_3,
-        F@_4,
-        F@_5,
-        F@_6,
-        F@_7,
-        F@_8,
-        F@_9,
-        F@_10,
-        F@_11,
-        F@_12,
-        TrUserData
-    );
-'d_field_imboy.textguard.v1.GetInfoResponse_canonical_count'(
-    <<0:1, X:7, Rest/binary>>,
-    N,
-    Acc,
-    F,
-    F@_1,
-    F@_2,
-    F@_3,
-    F@_4,
-    F@_5,
-    F@_6,
-    F@_7,
-    F@_8,
-    _,
-    F@_10,
-    F@_11,
-    F@_12,
-    TrUserData
-) ->
+'d_field_imboy.textguard.v1.GetInfoResponse_canonical_count'(<<1:1, X:7, Rest/binary>>, N, Acc, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, F@_12, TrUserData) when N < 57 ->
+    'd_field_imboy.textguard.v1.GetInfoResponse_canonical_count'(Rest, N + 7, X bsl N + Acc, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, F@_12, TrUserData);
+'d_field_imboy.textguard.v1.GetInfoResponse_canonical_count'(<<0:1, X:7, Rest/binary>>, N, Acc, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, _, F@_10, F@_11, F@_12, TrUserData) ->
     {NewFValue, RestF} = {id((X bsl N + Acc) band 4294967295, TrUserData), Rest},
-    'dfp_read_field_def_imboy.textguard.v1.GetInfoResponse'(
-        RestF,
-        0,
-        0,
-        F,
-        F@_1,
-        F@_2,
-        F@_3,
-        F@_4,
-        F@_5,
-        F@_6,
-        F@_7,
-        F@_8,
-        NewFValue,
-        F@_10,
-        F@_11,
-        F@_12,
-        TrUserData
-    ).
+    'dfp_read_field_def_imboy.textguard.v1.GetInfoResponse'(RestF, 0, 0, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, NewFValue, F@_10, F@_11, F@_12, TrUserData).
 
-'d_field_imboy.textguard.v1.GetInfoResponse_alias_count'(
-    <<1:1, X:7, Rest/binary>>,
-    N,
-    Acc,
-    F,
-    F@_1,
-    F@_2,
-    F@_3,
-    F@_4,
-    F@_5,
-    F@_6,
-    F@_7,
-    F@_8,
-    F@_9,
-    F@_10,
-    F@_11,
-    F@_12,
-    TrUserData
-) when N < 57 ->
-    'd_field_imboy.textguard.v1.GetInfoResponse_alias_count'(
-        Rest,
-        N + 7,
-        X bsl N + Acc,
-        F,
-        F@_1,
-        F@_2,
-        F@_3,
-        F@_4,
-        F@_5,
-        F@_6,
-        F@_7,
-        F@_8,
-        F@_9,
-        F@_10,
-        F@_11,
-        F@_12,
-        TrUserData
-    );
-'d_field_imboy.textguard.v1.GetInfoResponse_alias_count'(
-    <<0:1, X:7, Rest/binary>>,
-    N,
-    Acc,
-    F,
-    F@_1,
-    F@_2,
-    F@_3,
-    F@_4,
-    F@_5,
-    F@_6,
-    F@_7,
-    F@_8,
-    F@_9,
-    _,
-    F@_11,
-    F@_12,
-    TrUserData
-) ->
+'d_field_imboy.textguard.v1.GetInfoResponse_alias_count'(<<1:1, X:7, Rest/binary>>, N, Acc, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, F@_12, TrUserData) when N < 57 ->
+    'd_field_imboy.textguard.v1.GetInfoResponse_alias_count'(Rest, N + 7, X bsl N + Acc, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, F@_12, TrUserData);
+'d_field_imboy.textguard.v1.GetInfoResponse_alias_count'(<<0:1, X:7, Rest/binary>>, N, Acc, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, _, F@_11, F@_12, TrUserData) ->
     {NewFValue, RestF} = {id((X bsl N + Acc) band 4294967295, TrUserData), Rest},
-    'dfp_read_field_def_imboy.textguard.v1.GetInfoResponse'(
-        RestF,
-        0,
-        0,
-        F,
-        F@_1,
-        F@_2,
-        F@_3,
-        F@_4,
-        F@_5,
-        F@_6,
-        F@_7,
-        F@_8,
-        F@_9,
-        NewFValue,
-        F@_11,
-        F@_12,
-        TrUserData
-    ).
+    'dfp_read_field_def_imboy.textguard.v1.GetInfoResponse'(RestF, 0, 0, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, NewFValue, F@_11, F@_12, TrUserData).
 
-'d_field_imboy.textguard.v1.GetInfoResponse_regex_count'(
-    <<1:1, X:7, Rest/binary>>,
-    N,
-    Acc,
-    F,
-    F@_1,
-    F@_2,
-    F@_3,
-    F@_4,
-    F@_5,
-    F@_6,
-    F@_7,
-    F@_8,
-    F@_9,
-    F@_10,
-    F@_11,
-    F@_12,
-    TrUserData
-) when N < 57 ->
-    'd_field_imboy.textguard.v1.GetInfoResponse_regex_count'(
-        Rest,
-        N + 7,
-        X bsl N + Acc,
-        F,
-        F@_1,
-        F@_2,
-        F@_3,
-        F@_4,
-        F@_5,
-        F@_6,
-        F@_7,
-        F@_8,
-        F@_9,
-        F@_10,
-        F@_11,
-        F@_12,
-        TrUserData
-    );
-'d_field_imboy.textguard.v1.GetInfoResponse_regex_count'(
-    <<0:1, X:7, Rest/binary>>,
-    N,
-    Acc,
-    F,
-    F@_1,
-    F@_2,
-    F@_3,
-    F@_4,
-    F@_5,
-    F@_6,
-    F@_7,
-    F@_8,
-    F@_9,
-    F@_10,
-    _,
-    F@_12,
-    TrUserData
-) ->
+'d_field_imboy.textguard.v1.GetInfoResponse_regex_count'(<<1:1, X:7, Rest/binary>>, N, Acc, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, F@_12, TrUserData) when N < 57 ->
+    'd_field_imboy.textguard.v1.GetInfoResponse_regex_count'(Rest, N + 7, X bsl N + Acc, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, F@_12, TrUserData);
+'d_field_imboy.textguard.v1.GetInfoResponse_regex_count'(<<0:1, X:7, Rest/binary>>, N, Acc, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, _, F@_12, TrUserData) ->
     {NewFValue, RestF} = {id((X bsl N + Acc) band 4294967295, TrUserData), Rest},
-    'dfp_read_field_def_imboy.textguard.v1.GetInfoResponse'(
-        RestF,
-        0,
-        0,
-        F,
-        F@_1,
-        F@_2,
-        F@_3,
-        F@_4,
-        F@_5,
-        F@_6,
-        F@_7,
-        F@_8,
-        F@_9,
-        F@_10,
-        NewFValue,
-        F@_12,
-        TrUserData
-    ).
+    'dfp_read_field_def_imboy.textguard.v1.GetInfoResponse'(RestF, 0, 0, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, NewFValue, F@_12, TrUserData).
 
-'d_field_imboy.textguard.v1.GetInfoResponse_supported_semantics'(
-    <<1:1, X:7, Rest/binary>>,
-    N,
-    Acc,
-    F,
-    F@_1,
-    F@_2,
-    F@_3,
-    F@_4,
-    F@_5,
-    F@_6,
-    F@_7,
-    F@_8,
-    F@_9,
-    F@_10,
-    F@_11,
-    F@_12,
-    TrUserData
-) when N < 57 ->
-    'd_field_imboy.textguard.v1.GetInfoResponse_supported_semantics'(
-        Rest,
-        N + 7,
-        X bsl N + Acc,
-        F,
-        F@_1,
-        F@_2,
-        F@_3,
-        F@_4,
-        F@_5,
-        F@_6,
-        F@_7,
-        F@_8,
-        F@_9,
-        F@_10,
-        F@_11,
-        F@_12,
-        TrUserData
-    );
-'d_field_imboy.textguard.v1.GetInfoResponse_supported_semantics'(
-    <<0:1, X:7, Rest/binary>>,
-    N,
-    Acc,
-    F,
-    F@_1,
-    F@_2,
-    F@_3,
-    F@_4,
-    F@_5,
-    F@_6,
-    F@_7,
-    F@_8,
-    F@_9,
-    F@_10,
-    F@_11,
-    Prev,
-    TrUserData
-) ->
-    {NewFValue, RestF} = begin
-        Len = X bsl N + Acc,
-        <<Bytes:Len/binary, Rest2/binary>> = Rest,
-        Bytes2 = binary:copy(Bytes),
-        {id(Bytes2, TrUserData), Rest2}
-    end,
-    'dfp_read_field_def_imboy.textguard.v1.GetInfoResponse'(
-        RestF,
-        0,
-        0,
-        F,
-        F@_1,
-        F@_2,
-        F@_3,
-        F@_4,
-        F@_5,
-        F@_6,
-        F@_7,
-        F@_8,
-        F@_9,
-        F@_10,
-        F@_11,
-        cons(NewFValue, Prev, TrUserData),
-        TrUserData
-    ).
+'d_field_imboy.textguard.v1.GetInfoResponse_supported_semantics'(<<1:1, X:7, Rest/binary>>, N, Acc, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, F@_12, TrUserData) when N < 57 ->
+    'd_field_imboy.textguard.v1.GetInfoResponse_supported_semantics'(Rest, N + 7, X bsl N + Acc, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, F@_12, TrUserData);
+'d_field_imboy.textguard.v1.GetInfoResponse_supported_semantics'(<<0:1, X:7, Rest/binary>>, N, Acc, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, Prev, TrUserData) ->
+    {NewFValue, RestF} = begin Len = X bsl N + Acc, <<Bytes:Len/binary, Rest2/binary>> = Rest, Bytes2 = binary:copy(Bytes), {id(Bytes2, TrUserData), Rest2} end,
+    'dfp_read_field_def_imboy.textguard.v1.GetInfoResponse'(RestF, 0, 0, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, cons(NewFValue, Prev, TrUserData), TrUserData).
 
-'skip_varint_imboy.textguard.v1.GetInfoResponse'(
-    <<1:1, _:7, Rest/binary>>,
-    Z1,
-    Z2,
-    F,
-    F@_1,
-    F@_2,
-    F@_3,
-    F@_4,
-    F@_5,
-    F@_6,
-    F@_7,
-    F@_8,
-    F@_9,
-    F@_10,
-    F@_11,
-    F@_12,
-    TrUserData
-) ->
-    'skip_varint_imboy.textguard.v1.GetInfoResponse'(
-        Rest,
-        Z1,
-        Z2,
-        F,
-        F@_1,
-        F@_2,
-        F@_3,
-        F@_4,
-        F@_5,
-        F@_6,
-        F@_7,
-        F@_8,
-        F@_9,
-        F@_10,
-        F@_11,
-        F@_12,
-        TrUserData
-    );
-'skip_varint_imboy.textguard.v1.GetInfoResponse'(
-    <<0:1, _:7, Rest/binary>>,
-    Z1,
-    Z2,
-    F,
-    F@_1,
-    F@_2,
-    F@_3,
-    F@_4,
-    F@_5,
-    F@_6,
-    F@_7,
-    F@_8,
-    F@_9,
-    F@_10,
-    F@_11,
-    F@_12,
-    TrUserData
-) ->
-    'dfp_read_field_def_imboy.textguard.v1.GetInfoResponse'(
-        Rest,
-        Z1,
-        Z2,
-        F,
-        F@_1,
-        F@_2,
-        F@_3,
-        F@_4,
-        F@_5,
-        F@_6,
-        F@_7,
-        F@_8,
-        F@_9,
-        F@_10,
-        F@_11,
-        F@_12,
-        TrUserData
-    ).
+'skip_varint_imboy.textguard.v1.GetInfoResponse'(<<1:1, _:7, Rest/binary>>, Z1, Z2, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, F@_12, TrUserData) ->
+    'skip_varint_imboy.textguard.v1.GetInfoResponse'(Rest, Z1, Z2, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, F@_12, TrUserData);
+'skip_varint_imboy.textguard.v1.GetInfoResponse'(<<0:1, _:7, Rest/binary>>, Z1, Z2, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, F@_12, TrUserData) ->
+    'dfp_read_field_def_imboy.textguard.v1.GetInfoResponse'(Rest, Z1, Z2, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, F@_12, TrUserData).
 
-'skip_length_delimited_imboy.textguard.v1.GetInfoResponse'(
-    <<1:1, X:7, Rest/binary>>,
-    N,
-    Acc,
-    F,
-    F@_1,
-    F@_2,
-    F@_3,
-    F@_4,
-    F@_5,
-    F@_6,
-    F@_7,
-    F@_8,
-    F@_9,
-    F@_10,
-    F@_11,
-    F@_12,
-    TrUserData
-) when N < 57 ->
-    'skip_length_delimited_imboy.textguard.v1.GetInfoResponse'(
-        Rest,
-        N + 7,
-        X bsl N + Acc,
-        F,
-        F@_1,
-        F@_2,
-        F@_3,
-        F@_4,
-        F@_5,
-        F@_6,
-        F@_7,
-        F@_8,
-        F@_9,
-        F@_10,
-        F@_11,
-        F@_12,
-        TrUserData
-    );
-'skip_length_delimited_imboy.textguard.v1.GetInfoResponse'(
-    <<0:1, X:7, Rest/binary>>,
-    N,
-    Acc,
-    F,
-    F@_1,
-    F@_2,
-    F@_3,
-    F@_4,
-    F@_5,
-    F@_6,
-    F@_7,
-    F@_8,
-    F@_9,
-    F@_10,
-    F@_11,
-    F@_12,
-    TrUserData
-) ->
+'skip_length_delimited_imboy.textguard.v1.GetInfoResponse'(<<1:1, X:7, Rest/binary>>, N, Acc, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, F@_12, TrUserData) when N < 57 ->
+    'skip_length_delimited_imboy.textguard.v1.GetInfoResponse'(Rest, N + 7, X bsl N + Acc, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, F@_12, TrUserData);
+'skip_length_delimited_imboy.textguard.v1.GetInfoResponse'(<<0:1, X:7, Rest/binary>>, N, Acc, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, F@_12, TrUserData) ->
     Length = X bsl N + Acc,
     <<_:Length/binary, Rest2/binary>> = Rest,
-    'dfp_read_field_def_imboy.textguard.v1.GetInfoResponse'(
-        Rest2,
-        0,
-        0,
-        F,
-        F@_1,
-        F@_2,
-        F@_3,
-        F@_4,
-        F@_5,
-        F@_6,
-        F@_7,
-        F@_8,
-        F@_9,
-        F@_10,
-        F@_11,
-        F@_12,
-        TrUserData
-    ).
+    'dfp_read_field_def_imboy.textguard.v1.GetInfoResponse'(Rest2, 0, 0, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, F@_12, TrUserData).
 
-'skip_group_imboy.textguard.v1.GetInfoResponse'(
-    Bin,
-    _,
-    Z2,
-    FNum,
-    F@_1,
-    F@_2,
-    F@_3,
-    F@_4,
-    F@_5,
-    F@_6,
-    F@_7,
-    F@_8,
-    F@_9,
-    F@_10,
-    F@_11,
-    F@_12,
-    TrUserData
-) ->
+'skip_group_imboy.textguard.v1.GetInfoResponse'(Bin, _, Z2, FNum, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, F@_12, TrUserData) ->
     {_, Rest} = read_group(Bin, FNum),
-    'dfp_read_field_def_imboy.textguard.v1.GetInfoResponse'(
-        Rest,
-        0,
-        Z2,
-        FNum,
-        F@_1,
-        F@_2,
-        F@_3,
-        F@_4,
-        F@_5,
-        F@_6,
-        F@_7,
-        F@_8,
-        F@_9,
-        F@_10,
-        F@_11,
-        F@_12,
-        TrUserData
-    ).
+    'dfp_read_field_def_imboy.textguard.v1.GetInfoResponse'(Rest, 0, Z2, FNum, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, F@_12, TrUserData).
 
-'skip_32_imboy.textguard.v1.GetInfoResponse'(
-    <<_:32, Rest/binary>>,
-    Z1,
-    Z2,
-    F,
-    F@_1,
-    F@_2,
-    F@_3,
-    F@_4,
-    F@_5,
-    F@_6,
-    F@_7,
-    F@_8,
-    F@_9,
-    F@_10,
-    F@_11,
-    F@_12,
-    TrUserData
-) ->
-    'dfp_read_field_def_imboy.textguard.v1.GetInfoResponse'(
-        Rest,
-        Z1,
-        Z2,
-        F,
-        F@_1,
-        F@_2,
-        F@_3,
-        F@_4,
-        F@_5,
-        F@_6,
-        F@_7,
-        F@_8,
-        F@_9,
-        F@_10,
-        F@_11,
-        F@_12,
-        TrUserData
-    ).
+'skip_32_imboy.textguard.v1.GetInfoResponse'(<<_:32, Rest/binary>>, Z1, Z2, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, F@_12, TrUserData) ->
+    'dfp_read_field_def_imboy.textguard.v1.GetInfoResponse'(Rest, Z1, Z2, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, F@_12, TrUserData).
 
-'skip_64_imboy.textguard.v1.GetInfoResponse'(
-    <<_:64, Rest/binary>>,
-    Z1,
-    Z2,
-    F,
-    F@_1,
-    F@_2,
-    F@_3,
-    F@_4,
-    F@_5,
-    F@_6,
-    F@_7,
-    F@_8,
-    F@_9,
-    F@_10,
-    F@_11,
-    F@_12,
-    TrUserData
-) ->
-    'dfp_read_field_def_imboy.textguard.v1.GetInfoResponse'(
-        Rest,
-        Z1,
-        Z2,
-        F,
-        F@_1,
-        F@_2,
-        F@_3,
-        F@_4,
-        F@_5,
-        F@_6,
-        F@_7,
-        F@_8,
-        F@_9,
-        F@_10,
-        F@_11,
-        F@_12,
-        TrUserData
-    ).
+'skip_64_imboy.textguard.v1.GetInfoResponse'(<<_:64, Rest/binary>>, Z1, Z2, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, F@_12, TrUserData) ->
+    'dfp_read_field_def_imboy.textguard.v1.GetInfoResponse'(Rest, Z1, Z2, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, F@_12, TrUserData).
 
 'd_enum_imboy.textguard.v1.Scene'(0) -> 'SCENE_UNSPECIFIED';
 'd_enum_imboy.textguard.v1.Scene'(1) -> 'CHANNEL_MESSAGE';
@@ -8826,57 +1543,41 @@ read_group(Bin, FieldNum) ->
 %% (The only time the same group field number could occur would
 %% be in a nested sub message, but then it would be inside a
 %% length-delimited entry, which we skip-read by length.)
-read_gr_b(<<1:1, X:7, Tl/binary>>, N, Acc, NumBytes, TagLen, FieldNum) when
-    N < (32 - 7)
-->
-    read_gr_b(Tl, N + 7, X bsl N + Acc, NumBytes, TagLen + 1, FieldNum);
-read_gr_b(
-    <<0:1, X:7, Tl/binary>>,
-    N,
-    Acc,
-    NumBytes,
-    TagLen,
-    FieldNum
-) ->
+read_gr_b(<<1:1, X:7, Tl/binary>>, N, Acc, NumBytes, TagLen, FieldNum)
+  when N < (32-7) ->
+    read_gr_b(Tl, N+7, X bsl N + Acc, NumBytes, TagLen+1, FieldNum);
+read_gr_b(<<0:1, X:7, Tl/binary>>, N, Acc, NumBytes, TagLen,
+          FieldNum) ->
     Key = X bsl N + Acc,
     TagLen1 = TagLen + 1,
     case {Key bsr 3, Key band 7} of
-        % 4 = group_end
-        {FieldNum, 4} ->
+        {FieldNum, 4} -> % 4 = group_end
             {NumBytes, TagLen1};
-        % 0 = varint
-        {_, 0} ->
+        {_, 0} -> % 0 = varint
             read_gr_vi(Tl, 0, NumBytes + TagLen1, FieldNum);
-        % 1 = bits64
-        {_, 1} ->
+        {_, 1} -> % 1 = bits64
             <<_:64, Tl2/binary>> = Tl,
             read_gr_b(Tl2, 0, 0, NumBytes + TagLen1 + 8, 0, FieldNum);
-        % 2 = length_delimited
-        {_, 2} ->
+        {_, 2} -> % 2 = length_delimited
             read_gr_ld(Tl, 0, 0, NumBytes + TagLen1, FieldNum);
-        % 3 = group_start
-        {_, 3} ->
+        {_, 3} -> % 3 = group_start
             read_gr_b(Tl, 0, 0, NumBytes + TagLen1, 0, FieldNum);
-        % 4 = group_end
-        {_, 4} ->
+        {_, 4} -> % 4 = group_end
             read_gr_b(Tl, 0, 0, NumBytes + TagLen1, 0, FieldNum);
-        % 5 = bits32
-        {_, 5} ->
+        {_, 5} -> % 5 = bits32
             <<_:32, Tl2/binary>> = Tl,
             read_gr_b(Tl2, 0, 0, NumBytes + TagLen1 + 4, 0, FieldNum)
     end.
 
-read_gr_vi(<<1:1, _:7, Tl/binary>>, N, NumBytes, FieldNum) when
-    N < (64 - 7)
-->
-    read_gr_vi(Tl, N + 7, NumBytes + 1, FieldNum);
+read_gr_vi(<<1:1, _:7, Tl/binary>>, N, NumBytes, FieldNum)
+  when N < (64-7) ->
+    read_gr_vi(Tl, N+7, NumBytes+1, FieldNum);
 read_gr_vi(<<0:1, _:7, Tl/binary>>, _, NumBytes, FieldNum) ->
-    read_gr_b(Tl, 0, 0, NumBytes + 1, 0, FieldNum).
+    read_gr_b(Tl, 0, 0, NumBytes+1, 0, FieldNum).
 
-read_gr_ld(<<1:1, X:7, Tl/binary>>, N, Acc, NumBytes, FieldNum) when
-    N < (64 - 7)
-->
-    read_gr_ld(Tl, N + 7, X bsl N + Acc, NumBytes + 1, FieldNum);
+read_gr_ld(<<1:1, X:7, Tl/binary>>, N, Acc, NumBytes, FieldNum)
+  when N < (64-7) ->
+    read_gr_ld(Tl, N+7, X bsl N + Acc, NumBytes+1, FieldNum);
 read_gr_ld(<<0:1, X:7, Tl/binary>>, N, Acc, NumBytes, FieldNum) ->
     Len = X bsl N + Acc,
     NumBytes1 = NumBytes + 1,
@@ -8888,368 +1589,273 @@ merge_msgs(Prev, New, MsgName) when is_atom(MsgName) -> merge_msgs(Prev, New, Ms
 merge_msgs(Prev, New, MsgName, Opts) ->
     TrUserData = proplists:get_value(user_data, Opts),
     case MsgName of
-        'imboy.textguard.v1.TextField' ->
-            'merge_msg_imboy.textguard.v1.TextField'(Prev, New, TrUserData);
-        'imboy.textguard.v1.CheckTextRequest' ->
-            'merge_msg_imboy.textguard.v1.CheckTextRequest'(Prev, New, TrUserData);
-        'imboy.textguard.v1.Hit' ->
-            'merge_msg_imboy.textguard.v1.Hit'(Prev, New, TrUserData);
-        'imboy.textguard.v1.CheckTextResponse' ->
-            'merge_msg_imboy.textguard.v1.CheckTextResponse'(Prev, New, TrUserData);
-        'imboy.textguard.v1.GetInfoRequest' ->
-            'merge_msg_imboy.textguard.v1.GetInfoRequest'(Prev, New, TrUserData);
-        'imboy.textguard.v1.GetInfoResponse' ->
-            'merge_msg_imboy.textguard.v1.GetInfoResponse'(Prev, New, TrUserData)
+        'imboy.textguard.v1.TextField' -> 'merge_msg_imboy.textguard.v1.TextField'(Prev, New, TrUserData);
+        'imboy.textguard.v1.CheckTextRequest' -> 'merge_msg_imboy.textguard.v1.CheckTextRequest'(Prev, New, TrUserData);
+        'imboy.textguard.v1.Hit' -> 'merge_msg_imboy.textguard.v1.Hit'(Prev, New, TrUserData);
+        'imboy.textguard.v1.CheckTextResponse' -> 'merge_msg_imboy.textguard.v1.CheckTextResponse'(Prev, New, TrUserData);
+        'imboy.textguard.v1.GetInfoRequest' -> 'merge_msg_imboy.textguard.v1.GetInfoRequest'(Prev, New, TrUserData);
+        'imboy.textguard.v1.GetInfoResponse' -> 'merge_msg_imboy.textguard.v1.GetInfoResponse'(Prev, New, TrUserData)
     end.
 
--compile({nowarn_unused_function, 'merge_msg_imboy.textguard.v1.TextField'/3}).
+-compile({nowarn_unused_function,'merge_msg_imboy.textguard.v1.TextField'/3}).
 'merge_msg_imboy.textguard.v1.TextField'(PMsg, NMsg, _) ->
     S1 = #{},
-    S2 =
-        case {PMsg, NMsg} of
-            {_, #{field_id := NFfield_id}} -> S1#{field_id => NFfield_id};
-            {#{field_id := PFfield_id}, _} -> S1#{field_id => PFfield_id};
-            _ -> S1
-        end,
+    S2 = case {PMsg, NMsg} of
+             {_, #{field_id := NFfield_id}} -> S1#{field_id => NFfield_id};
+             {#{field_id := PFfield_id}, _} -> S1#{field_id => PFfield_id};
+             _ -> S1
+         end,
     case {PMsg, NMsg} of
         {_, #{text := NFtext}} -> S2#{text => NFtext};
         {#{text := PFtext}, _} -> S2#{text => PFtext};
         _ -> S2
     end.
 
--compile({nowarn_unused_function, 'merge_msg_imboy.textguard.v1.CheckTextRequest'/3}).
+-compile({nowarn_unused_function,'merge_msg_imboy.textguard.v1.CheckTextRequest'/3}).
 'merge_msg_imboy.textguard.v1.CheckTextRequest'(PMsg, NMsg, TrUserData) ->
     S1 = #{},
-    S2 =
-        case {PMsg, NMsg} of
-            {_, #{request_id := NFrequest_id}} -> S1#{request_id => NFrequest_id};
-            {#{request_id := PFrequest_id}, _} -> S1#{request_id => PFrequest_id};
-            _ -> S1
-        end,
-    S3 =
-        case {PMsg, NMsg} of
-            {_, #{scene := NFscene}} -> S2#{scene => NFscene};
-            {#{scene := PFscene}, _} -> S2#{scene => PFscene};
-            _ -> S2
-        end,
+    S2 = case {PMsg, NMsg} of
+             {_, #{request_id := NFrequest_id}} -> S1#{request_id => NFrequest_id};
+             {#{request_id := PFrequest_id}, _} -> S1#{request_id => PFrequest_id};
+             _ -> S1
+         end,
+    S3 = case {PMsg, NMsg} of
+             {_, #{scene := NFscene}} -> S2#{scene => NFscene};
+             {#{scene := PFscene}, _} -> S2#{scene => PFscene};
+             _ -> S2
+         end,
     case {PMsg, NMsg} of
-        {#{fields := PFfields}, #{fields := NFfields}} ->
-            S3#{fields => 'erlang_++'(PFfields, NFfields, TrUserData)};
-        {_, #{fields := NFfields}} ->
-            S3#{fields => NFfields};
-        {#{fields := PFfields}, _} ->
-            S3#{fields => PFfields};
-        {_, _} ->
-            S3
+        {#{fields := PFfields}, #{fields := NFfields}} -> S3#{fields => 'erlang_++'(PFfields, NFfields, TrUserData)};
+        {_, #{fields := NFfields}} -> S3#{fields => NFfields};
+        {#{fields := PFfields}, _} -> S3#{fields => PFfields};
+        {_, _} -> S3
     end.
 
--compile({nowarn_unused_function, 'merge_msg_imboy.textguard.v1.Hit'/3}).
+-compile({nowarn_unused_function,'merge_msg_imboy.textguard.v1.Hit'/3}).
 'merge_msg_imboy.textguard.v1.Hit'(PMsg, NMsg, TrUserData) ->
     S1 = #{},
-    S2 =
-        case {PMsg, NMsg} of
-            {_, #{field_id := NFfield_id}} -> S1#{field_id => NFfield_id};
-            {#{field_id := PFfield_id}, _} -> S1#{field_id => PFfield_id};
-            _ -> S1
-        end,
-    S3 =
-        case {PMsg, NMsg} of
-            {_, #{rule_id := NFrule_id}} -> S2#{rule_id => NFrule_id};
-            {#{rule_id := PFrule_id}, _} -> S2#{rule_id => PFrule_id};
-            _ -> S2
-        end,
-    S4 =
-        case {PMsg, NMsg} of
-            {_, #{variant_id := NFvariant_id}} -> S3#{variant_id => NFvariant_id};
-            {#{variant_id := PFvariant_id}, _} -> S3#{variant_id => PFvariant_id};
-            _ -> S3
-        end,
-    S5 =
-        case {PMsg, NMsg} of
-            {_, #{variant_type := NFvariant_type}} -> S4#{variant_type => NFvariant_type};
-            {#{variant_type := PFvariant_type}, _} -> S4#{variant_type => PFvariant_type};
-            _ -> S4
-        end,
-    S6 =
-        case {PMsg, NMsg} of
-            {_, #{word := NFword}} -> S5#{word => NFword};
-            {#{word := PFword}, _} -> S5#{word => PFword};
-            _ -> S5
-        end,
-    S7 =
-        case {PMsg, NMsg} of
-            {_, #{category := NFcategory}} -> S6#{category => NFcategory};
-            {#{category := PFcategory}, _} -> S6#{category => PFcategory};
-            _ -> S6
-        end,
-    S8 =
-        case {PMsg, NMsg} of
-            {_, #{severity := NFseverity}} -> S7#{severity => NFseverity};
-            {#{severity := PFseverity}, _} -> S7#{severity => PFseverity};
-            _ -> S7
-        end,
-    S9 =
-        case {PMsg, NMsg} of
-            {_, #{effective_action := NFeffective_action}} ->
-                S8#{effective_action => NFeffective_action};
-            {#{effective_action := PFeffective_action}, _} ->
-                S8#{effective_action => PFeffective_action};
-            _ ->
-                S8
-        end,
-    S10 =
-        case {PMsg, NMsg} of
-            {_, #{start_byte := NFstart_byte}} -> S9#{start_byte => NFstart_byte};
-            {#{start_byte := PFstart_byte}, _} -> S9#{start_byte => PFstart_byte};
-            _ -> S9
-        end,
-    S11 =
-        case {PMsg, NMsg} of
-            {_, #{end_byte := NFend_byte}} -> S10#{end_byte => NFend_byte};
-            {#{end_byte := PFend_byte}, _} -> S10#{end_byte => PFend_byte};
-            _ -> S10
-        end,
+    S2 = case {PMsg, NMsg} of
+             {_, #{field_id := NFfield_id}} -> S1#{field_id => NFfield_id};
+             {#{field_id := PFfield_id}, _} -> S1#{field_id => PFfield_id};
+             _ -> S1
+         end,
+    S3 = case {PMsg, NMsg} of
+             {_, #{rule_id := NFrule_id}} -> S2#{rule_id => NFrule_id};
+             {#{rule_id := PFrule_id}, _} -> S2#{rule_id => PFrule_id};
+             _ -> S2
+         end,
+    S4 = case {PMsg, NMsg} of
+             {_, #{variant_id := NFvariant_id}} -> S3#{variant_id => NFvariant_id};
+             {#{variant_id := PFvariant_id}, _} -> S3#{variant_id => PFvariant_id};
+             _ -> S3
+         end,
+    S5 = case {PMsg, NMsg} of
+             {_, #{variant_type := NFvariant_type}} -> S4#{variant_type => NFvariant_type};
+             {#{variant_type := PFvariant_type}, _} -> S4#{variant_type => PFvariant_type};
+             _ -> S4
+         end,
+    S6 = case {PMsg, NMsg} of
+             {_, #{word := NFword}} -> S5#{word => NFword};
+             {#{word := PFword}, _} -> S5#{word => PFword};
+             _ -> S5
+         end,
+    S7 = case {PMsg, NMsg} of
+             {_, #{category := NFcategory}} -> S6#{category => NFcategory};
+             {#{category := PFcategory}, _} -> S6#{category => PFcategory};
+             _ -> S6
+         end,
+    S8 = case {PMsg, NMsg} of
+             {_, #{severity := NFseverity}} -> S7#{severity => NFseverity};
+             {#{severity := PFseverity}, _} -> S7#{severity => PFseverity};
+             _ -> S7
+         end,
+    S9 = case {PMsg, NMsg} of
+             {_, #{effective_action := NFeffective_action}} -> S8#{effective_action => NFeffective_action};
+             {#{effective_action := PFeffective_action}, _} -> S8#{effective_action => PFeffective_action};
+             _ -> S8
+         end,
+    S10 = case {PMsg, NMsg} of
+              {_, #{start_byte := NFstart_byte}} -> S9#{start_byte => NFstart_byte};
+              {#{start_byte := PFstart_byte}, _} -> S9#{start_byte => PFstart_byte};
+              _ -> S9
+          end,
+    S11 = case {PMsg, NMsg} of
+              {_, #{end_byte := NFend_byte}} -> S10#{end_byte => NFend_byte};
+              {#{end_byte := PFend_byte}, _} -> S10#{end_byte => PFend_byte};
+              _ -> S10
+          end,
     case {PMsg, NMsg} of
-        {#{match_methods := PFmatch_methods}, #{match_methods := NFmatch_methods}} ->
-            S11#{match_methods => 'erlang_++'(PFmatch_methods, NFmatch_methods, TrUserData)};
-        {_, #{match_methods := NFmatch_methods}} ->
-            S11#{match_methods => NFmatch_methods};
-        {#{match_methods := PFmatch_methods}, _} ->
-            S11#{match_methods => PFmatch_methods};
-        {_, _} ->
-            S11
+        {#{match_methods := PFmatch_methods}, #{match_methods := NFmatch_methods}} -> S11#{match_methods => 'erlang_++'(PFmatch_methods, NFmatch_methods, TrUserData)};
+        {_, #{match_methods := NFmatch_methods}} -> S11#{match_methods => NFmatch_methods};
+        {#{match_methods := PFmatch_methods}, _} -> S11#{match_methods => PFmatch_methods};
+        {_, _} -> S11
     end.
 
--compile({nowarn_unused_function, 'merge_msg_imboy.textguard.v1.CheckTextResponse'/3}).
+-compile({nowarn_unused_function,'merge_msg_imboy.textguard.v1.CheckTextResponse'/3}).
 'merge_msg_imboy.textguard.v1.CheckTextResponse'(PMsg, NMsg, TrUserData) ->
     S1 = #{},
-    S2 =
-        case {PMsg, NMsg} of
-            {_, #{request_id := NFrequest_id}} -> S1#{request_id => NFrequest_id};
-            {#{request_id := PFrequest_id}, _} -> S1#{request_id => PFrequest_id};
-            _ -> S1
-        end,
-    S3 =
-        case {PMsg, NMsg} of
-            {_, #{ruleset_revision := NFruleset_revision}} ->
-                S2#{ruleset_revision => NFruleset_revision};
-            {#{ruleset_revision := PFruleset_revision}, _} ->
-                S2#{ruleset_revision => PFruleset_revision};
-            _ ->
-                S2
-        end,
-    S4 =
-        case {PMsg, NMsg} of
-            {_, #{generation := NFgeneration}} -> S3#{generation => NFgeneration};
-            {#{generation := PFgeneration}, _} -> S3#{generation => PFgeneration};
-            _ -> S3
-        end,
-    S5 =
-        case {PMsg, NMsg} of
-            {_, #{normalization_id := NFnormalization_id}} ->
-                S4#{normalization_id => NFnormalization_id};
-            {#{normalization_id := PFnormalization_id}, _} ->
-                S4#{normalization_id => PFnormalization_id};
-            _ ->
-                S4
-        end,
-    S6 =
-        case {PMsg, NMsg} of
-            {_, #{t2s_table_id := NFt2s_table_id}} -> S5#{t2s_table_id => NFt2s_table_id};
-            {#{t2s_table_id := PFt2s_table_id}, _} -> S5#{t2s_table_id => PFt2s_table_id};
-            _ -> S5
-        end,
-    S7 =
-        case {PMsg, NMsg} of
-            {_, #{semantics_id := NFsemantics_id}} -> S6#{semantics_id => NFsemantics_id};
-            {#{semantics_id := PFsemantics_id}, _} -> S6#{semantics_id => PFsemantics_id};
-            _ -> S6
-        end,
-    S8 =
-        case {PMsg, NMsg} of
-            {_, #{base_rules_digest := NFbase_rules_digest}} ->
-                S7#{base_rules_digest => NFbase_rules_digest};
-            {#{base_rules_digest := PFbase_rules_digest}, _} ->
-                S7#{base_rules_digest => PFbase_rules_digest};
-            _ ->
-                S7
-        end,
-    S9 =
-        case {PMsg, NMsg} of
-            {_, #{decision := NFdecision}} -> S8#{decision => NFdecision};
-            {#{decision := PFdecision}, _} -> S8#{decision => PFdecision};
-            _ -> S8
-        end,
-    S10 =
-        case {PMsg, NMsg} of
-            {_, #{scan_complete := NFscan_complete}} -> S9#{scan_complete => NFscan_complete};
-            {#{scan_complete := PFscan_complete}, _} -> S9#{scan_complete => PFscan_complete};
-            _ -> S9
-        end,
-    S11 =
-        case {PMsg, NMsg} of
-            {_, #{hits_truncated := NFhits_truncated}} -> S10#{hits_truncated => NFhits_truncated};
-            {#{hits_truncated := PFhits_truncated}, _} -> S10#{hits_truncated => PFhits_truncated};
-            _ -> S10
-        end,
-    S12 =
-        case {PMsg, NMsg} of
-            {#{hits := PFhits}, #{hits := NFhits}} ->
-                S11#{hits => 'erlang_++'(PFhits, NFhits, TrUserData)};
-            {_, #{hits := NFhits}} ->
-                S11#{hits => NFhits};
-            {#{hits := PFhits}, _} ->
-                S11#{hits => PFhits};
-            {_, _} ->
-                S11
-        end,
-    S13 =
-        case {PMsg, NMsg} of
-            {_, #{fields_checked := NFfields_checked}} -> S12#{fields_checked => NFfields_checked};
-            {#{fields_checked := PFfields_checked}, _} -> S12#{fields_checked => PFfields_checked};
-            _ -> S12
-        end,
-    S14 =
-        case {PMsg, NMsg} of
-            {_, #{hit_semantics := NFhit_semantics}} -> S13#{hit_semantics => NFhit_semantics};
-            {#{hit_semantics := PFhit_semantics}, _} -> S13#{hit_semantics => PFhit_semantics};
-            _ -> S13
-        end,
+    S2 = case {PMsg, NMsg} of
+             {_, #{request_id := NFrequest_id}} -> S1#{request_id => NFrequest_id};
+             {#{request_id := PFrequest_id}, _} -> S1#{request_id => PFrequest_id};
+             _ -> S1
+         end,
+    S3 = case {PMsg, NMsg} of
+             {_, #{ruleset_revision := NFruleset_revision}} -> S2#{ruleset_revision => NFruleset_revision};
+             {#{ruleset_revision := PFruleset_revision}, _} -> S2#{ruleset_revision => PFruleset_revision};
+             _ -> S2
+         end,
+    S4 = case {PMsg, NMsg} of
+             {_, #{generation := NFgeneration}} -> S3#{generation => NFgeneration};
+             {#{generation := PFgeneration}, _} -> S3#{generation => PFgeneration};
+             _ -> S3
+         end,
+    S5 = case {PMsg, NMsg} of
+             {_, #{normalization_id := NFnormalization_id}} -> S4#{normalization_id => NFnormalization_id};
+             {#{normalization_id := PFnormalization_id}, _} -> S4#{normalization_id => PFnormalization_id};
+             _ -> S4
+         end,
+    S6 = case {PMsg, NMsg} of
+             {_, #{t2s_table_id := NFt2s_table_id}} -> S5#{t2s_table_id => NFt2s_table_id};
+             {#{t2s_table_id := PFt2s_table_id}, _} -> S5#{t2s_table_id => PFt2s_table_id};
+             _ -> S5
+         end,
+    S7 = case {PMsg, NMsg} of
+             {_, #{semantics_id := NFsemantics_id}} -> S6#{semantics_id => NFsemantics_id};
+             {#{semantics_id := PFsemantics_id}, _} -> S6#{semantics_id => PFsemantics_id};
+             _ -> S6
+         end,
+    S8 = case {PMsg, NMsg} of
+             {_, #{base_rules_digest := NFbase_rules_digest}} -> S7#{base_rules_digest => NFbase_rules_digest};
+             {#{base_rules_digest := PFbase_rules_digest}, _} -> S7#{base_rules_digest => PFbase_rules_digest};
+             _ -> S7
+         end,
+    S9 = case {PMsg, NMsg} of
+             {_, #{decision := NFdecision}} -> S8#{decision => NFdecision};
+             {#{decision := PFdecision}, _} -> S8#{decision => PFdecision};
+             _ -> S8
+         end,
+    S10 = case {PMsg, NMsg} of
+              {_, #{scan_complete := NFscan_complete}} -> S9#{scan_complete => NFscan_complete};
+              {#{scan_complete := PFscan_complete}, _} -> S9#{scan_complete => PFscan_complete};
+              _ -> S9
+          end,
+    S11 = case {PMsg, NMsg} of
+              {_, #{hits_truncated := NFhits_truncated}} -> S10#{hits_truncated => NFhits_truncated};
+              {#{hits_truncated := PFhits_truncated}, _} -> S10#{hits_truncated => PFhits_truncated};
+              _ -> S10
+          end,
+    S12 = case {PMsg, NMsg} of
+              {#{hits := PFhits}, #{hits := NFhits}} -> S11#{hits => 'erlang_++'(PFhits, NFhits, TrUserData)};
+              {_, #{hits := NFhits}} -> S11#{hits => NFhits};
+              {#{hits := PFhits}, _} -> S11#{hits => PFhits};
+              {_, _} -> S11
+          end,
+    S13 = case {PMsg, NMsg} of
+              {_, #{fields_checked := NFfields_checked}} -> S12#{fields_checked => NFfields_checked};
+              {#{fields_checked := PFfields_checked}, _} -> S12#{fields_checked => PFfields_checked};
+              _ -> S12
+          end,
+    S14 = case {PMsg, NMsg} of
+              {_, #{hit_semantics := NFhit_semantics}} -> S13#{hit_semantics => NFhit_semantics};
+              {#{hit_semantics := PFhit_semantics}, _} -> S13#{hit_semantics => PFhit_semantics};
+              _ -> S13
+          end,
     case {PMsg, NMsg} of
         {_, #{build_id := NFbuild_id}} -> S14#{build_id => NFbuild_id};
         {#{build_id := PFbuild_id}, _} -> S14#{build_id => PFbuild_id};
         _ -> S14
     end.
 
--compile({nowarn_unused_function, 'merge_msg_imboy.textguard.v1.GetInfoRequest'/3}).
+-compile({nowarn_unused_function,'merge_msg_imboy.textguard.v1.GetInfoRequest'/3}).
 'merge_msg_imboy.textguard.v1.GetInfoRequest'(_Prev, New, _TrUserData) -> New.
 
--compile({nowarn_unused_function, 'merge_msg_imboy.textguard.v1.GetInfoResponse'/3}).
+-compile({nowarn_unused_function,'merge_msg_imboy.textguard.v1.GetInfoResponse'/3}).
 'merge_msg_imboy.textguard.v1.GetInfoResponse'(PMsg, NMsg, TrUserData) ->
     S1 = #{},
-    S2 =
-        case {PMsg, NMsg} of
-            {_, #{instance_id := NFinstance_id}} -> S1#{instance_id => NFinstance_id};
-            {#{instance_id := PFinstance_id}, _} -> S1#{instance_id => PFinstance_id};
-            _ -> S1
-        end,
-    S3 =
-        case {PMsg, NMsg} of
-            {_, #{ready := NFready}} -> S2#{ready => NFready};
-            {#{ready := PFready}, _} -> S2#{ready => PFready};
-            _ -> S2
-        end,
-    S4 =
-        case {PMsg, NMsg} of
-            {_, #{build_id := NFbuild_id}} -> S3#{build_id => NFbuild_id};
-            {#{build_id := PFbuild_id}, _} -> S3#{build_id => PFbuild_id};
-            _ -> S3
-        end,
-    S5 =
-        case {PMsg, NMsg} of
-            {_, #{ruleset_revision := NFruleset_revision}} ->
-                S4#{ruleset_revision => NFruleset_revision};
-            {#{ruleset_revision := PFruleset_revision}, _} ->
-                S4#{ruleset_revision => PFruleset_revision};
-            _ ->
-                S4
-        end,
-    S6 =
-        case {PMsg, NMsg} of
-            {_, #{generation := NFgeneration}} -> S5#{generation => NFgeneration};
-            {#{generation := PFgeneration}, _} -> S5#{generation => PFgeneration};
-            _ -> S5
-        end,
-    S7 =
-        case {PMsg, NMsg} of
-            {_, #{normalization_id := NFnormalization_id}} ->
-                S6#{normalization_id => NFnormalization_id};
-            {#{normalization_id := PFnormalization_id}, _} ->
-                S6#{normalization_id => PFnormalization_id};
-            _ ->
-                S6
-        end,
-    S8 =
-        case {PMsg, NMsg} of
-            {_, #{t2s_table_id := NFt2s_table_id}} -> S7#{t2s_table_id => NFt2s_table_id};
-            {#{t2s_table_id := PFt2s_table_id}, _} -> S7#{t2s_table_id => PFt2s_table_id};
-            _ -> S7
-        end,
-    S9 =
-        case {PMsg, NMsg} of
-            {_, #{base_rules_digest := NFbase_rules_digest}} ->
-                S8#{base_rules_digest => NFbase_rules_digest};
-            {#{base_rules_digest := PFbase_rules_digest}, _} ->
-                S8#{base_rules_digest => PFbase_rules_digest};
-            _ ->
-                S8
-        end,
-    S10 =
-        case {PMsg, NMsg} of
-            {_, #{canonical_count := NFcanonical_count}} ->
-                S9#{canonical_count => NFcanonical_count};
-            {#{canonical_count := PFcanonical_count}, _} ->
-                S9#{canonical_count => PFcanonical_count};
-            _ ->
-                S9
-        end,
-    S11 =
-        case {PMsg, NMsg} of
-            {_, #{alias_count := NFalias_count}} -> S10#{alias_count => NFalias_count};
-            {#{alias_count := PFalias_count}, _} -> S10#{alias_count => PFalias_count};
-            _ -> S10
-        end,
-    S12 =
-        case {PMsg, NMsg} of
-            {_, #{regex_count := NFregex_count}} -> S11#{regex_count => NFregex_count};
-            {#{regex_count := PFregex_count}, _} -> S11#{regex_count => PFregex_count};
-            _ -> S11
-        end,
+    S2 = case {PMsg, NMsg} of
+             {_, #{instance_id := NFinstance_id}} -> S1#{instance_id => NFinstance_id};
+             {#{instance_id := PFinstance_id}, _} -> S1#{instance_id => PFinstance_id};
+             _ -> S1
+         end,
+    S3 = case {PMsg, NMsg} of
+             {_, #{ready := NFready}} -> S2#{ready => NFready};
+             {#{ready := PFready}, _} -> S2#{ready => PFready};
+             _ -> S2
+         end,
+    S4 = case {PMsg, NMsg} of
+             {_, #{build_id := NFbuild_id}} -> S3#{build_id => NFbuild_id};
+             {#{build_id := PFbuild_id}, _} -> S3#{build_id => PFbuild_id};
+             _ -> S3
+         end,
+    S5 = case {PMsg, NMsg} of
+             {_, #{ruleset_revision := NFruleset_revision}} -> S4#{ruleset_revision => NFruleset_revision};
+             {#{ruleset_revision := PFruleset_revision}, _} -> S4#{ruleset_revision => PFruleset_revision};
+             _ -> S4
+         end,
+    S6 = case {PMsg, NMsg} of
+             {_, #{generation := NFgeneration}} -> S5#{generation => NFgeneration};
+             {#{generation := PFgeneration}, _} -> S5#{generation => PFgeneration};
+             _ -> S5
+         end,
+    S7 = case {PMsg, NMsg} of
+             {_, #{normalization_id := NFnormalization_id}} -> S6#{normalization_id => NFnormalization_id};
+             {#{normalization_id := PFnormalization_id}, _} -> S6#{normalization_id => PFnormalization_id};
+             _ -> S6
+         end,
+    S8 = case {PMsg, NMsg} of
+             {_, #{t2s_table_id := NFt2s_table_id}} -> S7#{t2s_table_id => NFt2s_table_id};
+             {#{t2s_table_id := PFt2s_table_id}, _} -> S7#{t2s_table_id => PFt2s_table_id};
+             _ -> S7
+         end,
+    S9 = case {PMsg, NMsg} of
+             {_, #{base_rules_digest := NFbase_rules_digest}} -> S8#{base_rules_digest => NFbase_rules_digest};
+             {#{base_rules_digest := PFbase_rules_digest}, _} -> S8#{base_rules_digest => PFbase_rules_digest};
+             _ -> S8
+         end,
+    S10 = case {PMsg, NMsg} of
+              {_, #{canonical_count := NFcanonical_count}} -> S9#{canonical_count => NFcanonical_count};
+              {#{canonical_count := PFcanonical_count}, _} -> S9#{canonical_count => PFcanonical_count};
+              _ -> S9
+          end,
+    S11 = case {PMsg, NMsg} of
+              {_, #{alias_count := NFalias_count}} -> S10#{alias_count => NFalias_count};
+              {#{alias_count := PFalias_count}, _} -> S10#{alias_count => PFalias_count};
+              _ -> S10
+          end,
+    S12 = case {PMsg, NMsg} of
+              {_, #{regex_count := NFregex_count}} -> S11#{regex_count => NFregex_count};
+              {#{regex_count := PFregex_count}, _} -> S11#{regex_count => PFregex_count};
+              _ -> S11
+          end,
     case {PMsg, NMsg} of
-        {#{supported_semantics := PFsupported_semantics}, #{
-            supported_semantics := NFsupported_semantics
-        }} ->
-            S12#{
-                supported_semantics => 'erlang_++'(
-                    PFsupported_semantics, NFsupported_semantics, TrUserData
-                )
-            };
-        {_, #{supported_semantics := NFsupported_semantics}} ->
-            S12#{supported_semantics => NFsupported_semantics};
-        {#{supported_semantics := PFsupported_semantics}, _} ->
-            S12#{supported_semantics => PFsupported_semantics};
-        {_, _} ->
-            S12
+        {#{supported_semantics := PFsupported_semantics}, #{supported_semantics := NFsupported_semantics}} -> S12#{supported_semantics => 'erlang_++'(PFsupported_semantics, NFsupported_semantics, TrUserData)};
+        {_, #{supported_semantics := NFsupported_semantics}} -> S12#{supported_semantics => NFsupported_semantics};
+        {#{supported_semantics := PFsupported_semantics}, _} -> S12#{supported_semantics => PFsupported_semantics};
+        {_, _} -> S12
     end.
+
 
 verify_msg(Msg, MsgName) when is_atom(MsgName) -> verify_msg(Msg, MsgName, []).
 
 verify_msg(Msg, MsgName, Opts) ->
     TrUserData = proplists:get_value(user_data, Opts),
     case MsgName of
-        'imboy.textguard.v1.TextField' ->
-            'v_msg_imboy.textguard.v1.TextField'(Msg, [MsgName], TrUserData);
-        'imboy.textguard.v1.CheckTextRequest' ->
-            'v_msg_imboy.textguard.v1.CheckTextRequest'(Msg, [MsgName], TrUserData);
-        'imboy.textguard.v1.Hit' ->
-            'v_msg_imboy.textguard.v1.Hit'(Msg, [MsgName], TrUserData);
-        'imboy.textguard.v1.CheckTextResponse' ->
-            'v_msg_imboy.textguard.v1.CheckTextResponse'(Msg, [MsgName], TrUserData);
-        'imboy.textguard.v1.GetInfoRequest' ->
-            'v_msg_imboy.textguard.v1.GetInfoRequest'(Msg, [MsgName], TrUserData);
-        'imboy.textguard.v1.GetInfoResponse' ->
-            'v_msg_imboy.textguard.v1.GetInfoResponse'(Msg, [MsgName], TrUserData);
-        _ ->
-            mk_type_error(not_a_known_message, Msg, [])
+        'imboy.textguard.v1.TextField' -> 'v_msg_imboy.textguard.v1.TextField'(Msg, [MsgName], TrUserData);
+        'imboy.textguard.v1.CheckTextRequest' -> 'v_msg_imboy.textguard.v1.CheckTextRequest'(Msg, [MsgName], TrUserData);
+        'imboy.textguard.v1.Hit' -> 'v_msg_imboy.textguard.v1.Hit'(Msg, [MsgName], TrUserData);
+        'imboy.textguard.v1.CheckTextResponse' -> 'v_msg_imboy.textguard.v1.CheckTextResponse'(Msg, [MsgName], TrUserData);
+        'imboy.textguard.v1.GetInfoRequest' -> 'v_msg_imboy.textguard.v1.GetInfoRequest'(Msg, [MsgName], TrUserData);
+        'imboy.textguard.v1.GetInfoResponse' -> 'v_msg_imboy.textguard.v1.GetInfoResponse'(Msg, [MsgName], TrUserData);
+        _ -> mk_type_error(not_a_known_message, Msg, [])
     end.
 
--compile({nowarn_unused_function, 'v_submsg_imboy.textguard.v1.TextField'/3}).
--dialyzer({nowarn_function, 'v_submsg_imboy.textguard.v1.TextField'/3}).
-'v_submsg_imboy.textguard.v1.TextField'(Msg, Path, TrUserData) ->
-    'v_msg_imboy.textguard.v1.TextField'(Msg, Path, TrUserData).
 
--compile({nowarn_unused_function, 'v_msg_imboy.textguard.v1.TextField'/3}).
--dialyzer({nowarn_function, 'v_msg_imboy.textguard.v1.TextField'/3}).
+-compile({nowarn_unused_function,'v_submsg_imboy.textguard.v1.TextField'/3}).
+-dialyzer({nowarn_function,'v_submsg_imboy.textguard.v1.TextField'/3}).
+'v_submsg_imboy.textguard.v1.TextField'(Msg, Path, TrUserData) -> 'v_msg_imboy.textguard.v1.TextField'(Msg, Path, TrUserData).
+
+-compile({nowarn_unused_function,'v_msg_imboy.textguard.v1.TextField'/3}).
+-dialyzer({nowarn_function,'v_msg_imboy.textguard.v1.TextField'/3}).
 'v_msg_imboy.textguard.v1.TextField'(#{} = M, Path, TrUserData) ->
     case M of
         #{field_id := F1} -> v_type_string(F1, [field_id | Path], TrUserData);
@@ -9259,22 +1865,17 @@ verify_msg(Msg, MsgName, Opts) ->
         #{text := F2} -> v_type_string(F2, [text | Path], TrUserData);
         _ -> ok
     end,
-    lists:foreach(
-        fun
-            (text) -> ok;
-            (field_id) -> ok;
-            (OtherKey) -> mk_type_error({extraneous_key, OtherKey}, M, Path)
-        end,
-        maps:keys(M)
-    ),
+    lists:foreach(fun (text) -> ok;
+                      (field_id) -> ok;
+                      (OtherKey) -> mk_type_error({extraneous_key, OtherKey}, M, Path)
+                  end,
+                  maps:keys(M)),
     ok;
-'v_msg_imboy.textguard.v1.TextField'(M, Path, _TrUserData) when is_map(M) ->
-    mk_type_error({missing_fields, [] -- maps:keys(M), 'imboy.textguard.v1.TextField'}, M, Path);
-'v_msg_imboy.textguard.v1.TextField'(X, Path, _TrUserData) ->
-    mk_type_error({expected_msg, 'imboy.textguard.v1.TextField'}, X, Path).
+'v_msg_imboy.textguard.v1.TextField'(M, Path, _TrUserData) when is_map(M) -> mk_type_error({missing_fields, [] -- maps:keys(M), 'imboy.textguard.v1.TextField'}, M, Path);
+'v_msg_imboy.textguard.v1.TextField'(X, Path, _TrUserData) -> mk_type_error({expected_msg, 'imboy.textguard.v1.TextField'}, X, Path).
 
--compile({nowarn_unused_function, 'v_msg_imboy.textguard.v1.CheckTextRequest'/3}).
--dialyzer({nowarn_function, 'v_msg_imboy.textguard.v1.CheckTextRequest'/3}).
+-compile({nowarn_unused_function,'v_msg_imboy.textguard.v1.CheckTextRequest'/3}).
+-dialyzer({nowarn_function,'v_msg_imboy.textguard.v1.CheckTextRequest'/3}).
 'v_msg_imboy.textguard.v1.CheckTextRequest'(#{} = M, Path, TrUserData) ->
     case M of
         #{request_id := F1} -> v_type_string(F1, [request_id | Path], TrUserData);
@@ -9286,45 +1887,29 @@ verify_msg(Msg, MsgName, Opts) ->
     end,
     case M of
         #{fields := F3} ->
-            if
-                is_list(F3) ->
-                    _ = [
-                        'v_submsg_imboy.textguard.v1.TextField'(Elem, [fields | Path], TrUserData)
-                     || Elem <- F3
-                    ],
-                    ok;
-                true ->
-                    mk_type_error({invalid_list_of, {msg, 'imboy.textguard.v1.TextField'}}, F3, [
-                        fields | Path
-                    ])
+            if is_list(F3) ->
+                   _ = ['v_submsg_imboy.textguard.v1.TextField'(Elem, [fields | Path], TrUserData) || Elem <- F3],
+                   ok;
+               true -> mk_type_error({invalid_list_of, {msg, 'imboy.textguard.v1.TextField'}}, F3, [fields | Path])
             end;
-        _ ->
-            ok
+        _ -> ok
     end,
-    lists:foreach(
-        fun
-            (fields) -> ok;
-            (scene) -> ok;
-            (request_id) -> ok;
-            (OtherKey) -> mk_type_error({extraneous_key, OtherKey}, M, Path)
-        end,
-        maps:keys(M)
-    ),
+    lists:foreach(fun (fields) -> ok;
+                      (scene) -> ok;
+                      (request_id) -> ok;
+                      (OtherKey) -> mk_type_error({extraneous_key, OtherKey}, M, Path)
+                  end,
+                  maps:keys(M)),
     ok;
-'v_msg_imboy.textguard.v1.CheckTextRequest'(M, Path, _TrUserData) when is_map(M) ->
-    mk_type_error(
-        {missing_fields, [] -- maps:keys(M), 'imboy.textguard.v1.CheckTextRequest'}, M, Path
-    );
-'v_msg_imboy.textguard.v1.CheckTextRequest'(X, Path, _TrUserData) ->
-    mk_type_error({expected_msg, 'imboy.textguard.v1.CheckTextRequest'}, X, Path).
+'v_msg_imboy.textguard.v1.CheckTextRequest'(M, Path, _TrUserData) when is_map(M) -> mk_type_error({missing_fields, [] -- maps:keys(M), 'imboy.textguard.v1.CheckTextRequest'}, M, Path);
+'v_msg_imboy.textguard.v1.CheckTextRequest'(X, Path, _TrUserData) -> mk_type_error({expected_msg, 'imboy.textguard.v1.CheckTextRequest'}, X, Path).
 
--compile({nowarn_unused_function, 'v_submsg_imboy.textguard.v1.Hit'/3}).
--dialyzer({nowarn_function, 'v_submsg_imboy.textguard.v1.Hit'/3}).
-'v_submsg_imboy.textguard.v1.Hit'(Msg, Path, TrUserData) ->
-    'v_msg_imboy.textguard.v1.Hit'(Msg, Path, TrUserData).
+-compile({nowarn_unused_function,'v_submsg_imboy.textguard.v1.Hit'/3}).
+-dialyzer({nowarn_function,'v_submsg_imboy.textguard.v1.Hit'/3}).
+'v_submsg_imboy.textguard.v1.Hit'(Msg, Path, TrUserData) -> 'v_msg_imboy.textguard.v1.Hit'(Msg, Path, TrUserData).
 
--compile({nowarn_unused_function, 'v_msg_imboy.textguard.v1.Hit'/3}).
--dialyzer({nowarn_function, 'v_msg_imboy.textguard.v1.Hit'/3}).
+-compile({nowarn_unused_function,'v_msg_imboy.textguard.v1.Hit'/3}).
+-dialyzer({nowarn_function,'v_msg_imboy.textguard.v1.Hit'/3}).
 'v_msg_imboy.textguard.v1.Hit'(#{} = M, Path, TrUserData) ->
     case M of
         #{field_id := F1} -> v_type_string(F1, [field_id | Path], TrUserData);
@@ -9339,10 +1924,8 @@ verify_msg(Msg, MsgName, Opts) ->
         _ -> ok
     end,
     case M of
-        #{variant_type := F4} ->
-            'v_enum_imboy.textguard.v1.VariantType'(F4, [variant_type | Path], TrUserData);
-        _ ->
-            ok
+        #{variant_type := F4} -> 'v_enum_imboy.textguard.v1.VariantType'(F4, [variant_type | Path], TrUserData);
+        _ -> ok
     end,
     case M of
         #{word := F5} -> v_type_string(F5, [word | Path], TrUserData);
@@ -9353,16 +1936,12 @@ verify_msg(Msg, MsgName, Opts) ->
         _ -> ok
     end,
     case M of
-        #{severity := F7} ->
-            'v_enum_imboy.textguard.v1.Severity'(F7, [severity | Path], TrUserData);
-        _ ->
-            ok
+        #{severity := F7} -> 'v_enum_imboy.textguard.v1.Severity'(F7, [severity | Path], TrUserData);
+        _ -> ok
     end,
     case M of
-        #{effective_action := F8} ->
-            'v_enum_imboy.textguard.v1.Decision'(F8, [effective_action | Path], TrUserData);
-        _ ->
-            ok
+        #{effective_action := F8} -> 'v_enum_imboy.textguard.v1.Decision'(F8, [effective_action | Path], TrUserData);
+        _ -> ok
     end,
     case M of
         #{start_byte := F9} -> v_type_uint32(F9, [start_byte | Path], TrUserData);
@@ -9374,50 +1953,33 @@ verify_msg(Msg, MsgName, Opts) ->
     end,
     case M of
         #{match_methods := F11} ->
-            if
-                is_list(F11) ->
-                    _ = [
-                        'v_enum_imboy.textguard.v1.MatchMethod'(
-                            Elem, [match_methods | Path], TrUserData
-                        )
-                     || Elem <- F11
-                    ],
-                    ok;
-                true ->
-                    mk_type_error(
-                        {invalid_list_of, {enum, 'imboy.textguard.v1.MatchMethod'}}, F11, [
-                            match_methods | Path
-                        ]
-                    )
+            if is_list(F11) ->
+                   _ = ['v_enum_imboy.textguard.v1.MatchMethod'(Elem, [match_methods | Path], TrUserData) || Elem <- F11],
+                   ok;
+               true -> mk_type_error({invalid_list_of, {enum, 'imboy.textguard.v1.MatchMethod'}}, F11, [match_methods | Path])
             end;
-        _ ->
-            ok
+        _ -> ok
     end,
-    lists:foreach(
-        fun
-            (match_methods) -> ok;
-            (end_byte) -> ok;
-            (start_byte) -> ok;
-            (effective_action) -> ok;
-            (severity) -> ok;
-            (category) -> ok;
-            (word) -> ok;
-            (variant_type) -> ok;
-            (variant_id) -> ok;
-            (rule_id) -> ok;
-            (field_id) -> ok;
-            (OtherKey) -> mk_type_error({extraneous_key, OtherKey}, M, Path)
-        end,
-        maps:keys(M)
-    ),
+    lists:foreach(fun (match_methods) -> ok;
+                      (end_byte) -> ok;
+                      (start_byte) -> ok;
+                      (effective_action) -> ok;
+                      (severity) -> ok;
+                      (category) -> ok;
+                      (word) -> ok;
+                      (variant_type) -> ok;
+                      (variant_id) -> ok;
+                      (rule_id) -> ok;
+                      (field_id) -> ok;
+                      (OtherKey) -> mk_type_error({extraneous_key, OtherKey}, M, Path)
+                  end,
+                  maps:keys(M)),
     ok;
-'v_msg_imboy.textguard.v1.Hit'(M, Path, _TrUserData) when is_map(M) ->
-    mk_type_error({missing_fields, [] -- maps:keys(M), 'imboy.textguard.v1.Hit'}, M, Path);
-'v_msg_imboy.textguard.v1.Hit'(X, Path, _TrUserData) ->
-    mk_type_error({expected_msg, 'imboy.textguard.v1.Hit'}, X, Path).
+'v_msg_imboy.textguard.v1.Hit'(M, Path, _TrUserData) when is_map(M) -> mk_type_error({missing_fields, [] -- maps:keys(M), 'imboy.textguard.v1.Hit'}, M, Path);
+'v_msg_imboy.textguard.v1.Hit'(X, Path, _TrUserData) -> mk_type_error({expected_msg, 'imboy.textguard.v1.Hit'}, X, Path).
 
--compile({nowarn_unused_function, 'v_msg_imboy.textguard.v1.CheckTextResponse'/3}).
--dialyzer({nowarn_function, 'v_msg_imboy.textguard.v1.CheckTextResponse'/3}).
+-compile({nowarn_unused_function,'v_msg_imboy.textguard.v1.CheckTextResponse'/3}).
+-dialyzer({nowarn_function,'v_msg_imboy.textguard.v1.CheckTextResponse'/3}).
 'v_msg_imboy.textguard.v1.CheckTextResponse'(#{} = M, Path, TrUserData) ->
     case M of
         #{request_id := F1} -> v_type_string(F1, [request_id | Path], TrUserData);
@@ -9448,10 +2010,8 @@ verify_msg(Msg, MsgName, Opts) ->
         _ -> ok
     end,
     case M of
-        #{decision := F8} ->
-            'v_enum_imboy.textguard.v1.Decision'(F8, [decision | Path], TrUserData);
-        _ ->
-            ok
+        #{decision := F8} -> 'v_enum_imboy.textguard.v1.Decision'(F8, [decision | Path], TrUserData);
+        _ -> ok
     end,
     case M of
         #{scan_complete := F9} -> v_type_bool(F9, [scan_complete | Path], TrUserData);
@@ -9463,20 +2023,12 @@ verify_msg(Msg, MsgName, Opts) ->
     end,
     case M of
         #{hits := F11} ->
-            if
-                is_list(F11) ->
-                    _ = [
-                        'v_submsg_imboy.textguard.v1.Hit'(Elem, [hits | Path], TrUserData)
-                     || Elem <- F11
-                    ],
-                    ok;
-                true ->
-                    mk_type_error({invalid_list_of, {msg, 'imboy.textguard.v1.Hit'}}, F11, [
-                        hits | Path
-                    ])
+            if is_list(F11) ->
+                   _ = ['v_submsg_imboy.textguard.v1.Hit'(Elem, [hits | Path], TrUserData) || Elem <- F11],
+                   ok;
+               true -> mk_type_error({invalid_list_of, {msg, 'imboy.textguard.v1.Hit'}}, F11, [hits | Path])
             end;
-        _ ->
-            ok
+        _ -> ok
     end,
     case M of
         #{fields_checked := F12} -> v_type_uint32(F12, [fields_checked | Path], TrUserData);
@@ -9490,50 +2042,37 @@ verify_msg(Msg, MsgName, Opts) ->
         #{build_id := F14} -> v_type_string(F14, [build_id | Path], TrUserData);
         _ -> ok
     end,
-    lists:foreach(
-        fun
-            (build_id) -> ok;
-            (hit_semantics) -> ok;
-            (fields_checked) -> ok;
-            (hits) -> ok;
-            (hits_truncated) -> ok;
-            (scan_complete) -> ok;
-            (decision) -> ok;
-            (base_rules_digest) -> ok;
-            (semantics_id) -> ok;
-            (t2s_table_id) -> ok;
-            (normalization_id) -> ok;
-            (generation) -> ok;
-            (ruleset_revision) -> ok;
-            (request_id) -> ok;
-            (OtherKey) -> mk_type_error({extraneous_key, OtherKey}, M, Path)
-        end,
-        maps:keys(M)
-    ),
+    lists:foreach(fun (build_id) -> ok;
+                      (hit_semantics) -> ok;
+                      (fields_checked) -> ok;
+                      (hits) -> ok;
+                      (hits_truncated) -> ok;
+                      (scan_complete) -> ok;
+                      (decision) -> ok;
+                      (base_rules_digest) -> ok;
+                      (semantics_id) -> ok;
+                      (t2s_table_id) -> ok;
+                      (normalization_id) -> ok;
+                      (generation) -> ok;
+                      (ruleset_revision) -> ok;
+                      (request_id) -> ok;
+                      (OtherKey) -> mk_type_error({extraneous_key, OtherKey}, M, Path)
+                  end,
+                  maps:keys(M)),
     ok;
-'v_msg_imboy.textguard.v1.CheckTextResponse'(M, Path, _TrUserData) when is_map(M) ->
-    mk_type_error(
-        {missing_fields, [] -- maps:keys(M), 'imboy.textguard.v1.CheckTextResponse'}, M, Path
-    );
-'v_msg_imboy.textguard.v1.CheckTextResponse'(X, Path, _TrUserData) ->
-    mk_type_error({expected_msg, 'imboy.textguard.v1.CheckTextResponse'}, X, Path).
+'v_msg_imboy.textguard.v1.CheckTextResponse'(M, Path, _TrUserData) when is_map(M) -> mk_type_error({missing_fields, [] -- maps:keys(M), 'imboy.textguard.v1.CheckTextResponse'}, M, Path);
+'v_msg_imboy.textguard.v1.CheckTextResponse'(X, Path, _TrUserData) -> mk_type_error({expected_msg, 'imboy.textguard.v1.CheckTextResponse'}, X, Path).
 
--compile({nowarn_unused_function, 'v_msg_imboy.textguard.v1.GetInfoRequest'/3}).
--dialyzer({nowarn_function, 'v_msg_imboy.textguard.v1.GetInfoRequest'/3}).
+-compile({nowarn_unused_function,'v_msg_imboy.textguard.v1.GetInfoRequest'/3}).
+-dialyzer({nowarn_function,'v_msg_imboy.textguard.v1.GetInfoRequest'/3}).
 'v_msg_imboy.textguard.v1.GetInfoRequest'(#{} = M, Path, _) ->
-    lists:foreach(
-        fun(OtherKey) -> mk_type_error({extraneous_key, OtherKey}, M, Path) end, maps:keys(M)
-    ),
+    lists:foreach(fun (OtherKey) -> mk_type_error({extraneous_key, OtherKey}, M, Path) end, maps:keys(M)),
     ok;
-'v_msg_imboy.textguard.v1.GetInfoRequest'(M, Path, _TrUserData) when is_map(M) ->
-    mk_type_error(
-        {missing_fields, [] -- maps:keys(M), 'imboy.textguard.v1.GetInfoRequest'}, M, Path
-    );
-'v_msg_imboy.textguard.v1.GetInfoRequest'(X, Path, _TrUserData) ->
-    mk_type_error({expected_msg, 'imboy.textguard.v1.GetInfoRequest'}, X, Path).
+'v_msg_imboy.textguard.v1.GetInfoRequest'(M, Path, _TrUserData) when is_map(M) -> mk_type_error({missing_fields, [] -- maps:keys(M), 'imboy.textguard.v1.GetInfoRequest'}, M, Path);
+'v_msg_imboy.textguard.v1.GetInfoRequest'(X, Path, _TrUserData) -> mk_type_error({expected_msg, 'imboy.textguard.v1.GetInfoRequest'}, X, Path).
 
--compile({nowarn_unused_function, 'v_msg_imboy.textguard.v1.GetInfoResponse'/3}).
--dialyzer({nowarn_function, 'v_msg_imboy.textguard.v1.GetInfoResponse'/3}).
+-compile({nowarn_unused_function,'v_msg_imboy.textguard.v1.GetInfoResponse'/3}).
+-dialyzer({nowarn_function,'v_msg_imboy.textguard.v1.GetInfoResponse'/3}).
 'v_msg_imboy.textguard.v1.GetInfoResponse'(#{} = M, Path, TrUserData) ->
     case M of
         #{instance_id := F1} -> v_type_string(F1, [instance_id | Path], TrUserData);
@@ -9581,158 +2120,98 @@ verify_msg(Msg, MsgName, Opts) ->
     end,
     case M of
         #{supported_semantics := F12} ->
-            if
-                is_list(F12) ->
-                    _ = [
-                        v_type_string(Elem, [supported_semantics | Path], TrUserData)
-                     || Elem <- F12
-                    ],
-                    ok;
-                true ->
-                    mk_type_error({invalid_list_of, string}, F12, [supported_semantics | Path])
+            if is_list(F12) ->
+                   _ = [v_type_string(Elem, [supported_semantics | Path], TrUserData) || Elem <- F12],
+                   ok;
+               true -> mk_type_error({invalid_list_of, string}, F12, [supported_semantics | Path])
             end;
-        _ ->
-            ok
+        _ -> ok
     end,
-    lists:foreach(
-        fun
-            (supported_semantics) -> ok;
-            (regex_count) -> ok;
-            (alias_count) -> ok;
-            (canonical_count) -> ok;
-            (base_rules_digest) -> ok;
-            (t2s_table_id) -> ok;
-            (normalization_id) -> ok;
-            (generation) -> ok;
-            (ruleset_revision) -> ok;
-            (build_id) -> ok;
-            (ready) -> ok;
-            (instance_id) -> ok;
-            (OtherKey) -> mk_type_error({extraneous_key, OtherKey}, M, Path)
-        end,
-        maps:keys(M)
-    ),
+    lists:foreach(fun (supported_semantics) -> ok;
+                      (regex_count) -> ok;
+                      (alias_count) -> ok;
+                      (canonical_count) -> ok;
+                      (base_rules_digest) -> ok;
+                      (t2s_table_id) -> ok;
+                      (normalization_id) -> ok;
+                      (generation) -> ok;
+                      (ruleset_revision) -> ok;
+                      (build_id) -> ok;
+                      (ready) -> ok;
+                      (instance_id) -> ok;
+                      (OtherKey) -> mk_type_error({extraneous_key, OtherKey}, M, Path)
+                  end,
+                  maps:keys(M)),
     ok;
-'v_msg_imboy.textguard.v1.GetInfoResponse'(M, Path, _TrUserData) when is_map(M) ->
-    mk_type_error(
-        {missing_fields, [] -- maps:keys(M), 'imboy.textguard.v1.GetInfoResponse'}, M, Path
-    );
-'v_msg_imboy.textguard.v1.GetInfoResponse'(X, Path, _TrUserData) ->
-    mk_type_error({expected_msg, 'imboy.textguard.v1.GetInfoResponse'}, X, Path).
+'v_msg_imboy.textguard.v1.GetInfoResponse'(M, Path, _TrUserData) when is_map(M) -> mk_type_error({missing_fields, [] -- maps:keys(M), 'imboy.textguard.v1.GetInfoResponse'}, M, Path);
+'v_msg_imboy.textguard.v1.GetInfoResponse'(X, Path, _TrUserData) -> mk_type_error({expected_msg, 'imboy.textguard.v1.GetInfoResponse'}, X, Path).
 
--compile({nowarn_unused_function, 'v_enum_imboy.textguard.v1.Scene'/3}).
--dialyzer({nowarn_function, 'v_enum_imboy.textguard.v1.Scene'/3}).
-'v_enum_imboy.textguard.v1.Scene'('SCENE_UNSPECIFIED', _Path, _TrUserData) ->
-    ok;
-'v_enum_imboy.textguard.v1.Scene'('CHANNEL_MESSAGE', _Path, _TrUserData) ->
-    ok;
-'v_enum_imboy.textguard.v1.Scene'('MOMENT_POST', _Path, _TrUserData) ->
-    ok;
-'v_enum_imboy.textguard.v1.Scene'('PROFILE_FIELD', _Path, _TrUserData) ->
-    ok;
-'v_enum_imboy.textguard.v1.Scene'(V, _Path, _TrUserData) when
-    -2147483648 =< V, V =< 2147483647, is_integer(V)
-->
-    ok;
-'v_enum_imboy.textguard.v1.Scene'(X, Path, _TrUserData) ->
-    mk_type_error({invalid_enum, 'imboy.textguard.v1.Scene'}, X, Path).
+-compile({nowarn_unused_function,'v_enum_imboy.textguard.v1.Scene'/3}).
+-dialyzer({nowarn_function,'v_enum_imboy.textguard.v1.Scene'/3}).
+'v_enum_imboy.textguard.v1.Scene'('SCENE_UNSPECIFIED', _Path, _TrUserData) -> ok;
+'v_enum_imboy.textguard.v1.Scene'('CHANNEL_MESSAGE', _Path, _TrUserData) -> ok;
+'v_enum_imboy.textguard.v1.Scene'('MOMENT_POST', _Path, _TrUserData) -> ok;
+'v_enum_imboy.textguard.v1.Scene'('PROFILE_FIELD', _Path, _TrUserData) -> ok;
+'v_enum_imboy.textguard.v1.Scene'(V, _Path, _TrUserData) when -2147483648 =< V, V =< 2147483647, is_integer(V) -> ok;
+'v_enum_imboy.textguard.v1.Scene'(X, Path, _TrUserData) -> mk_type_error({invalid_enum, 'imboy.textguard.v1.Scene'}, X, Path).
 
--compile({nowarn_unused_function, 'v_enum_imboy.textguard.v1.Decision'/3}).
--dialyzer({nowarn_function, 'v_enum_imboy.textguard.v1.Decision'/3}).
-'v_enum_imboy.textguard.v1.Decision'('DECISION_UNSPECIFIED', _Path, _TrUserData) ->
-    ok;
-'v_enum_imboy.textguard.v1.Decision'('ALLOW', _Path, _TrUserData) ->
-    ok;
-'v_enum_imboy.textguard.v1.Decision'('REVIEW', _Path, _TrUserData) ->
-    ok;
-'v_enum_imboy.textguard.v1.Decision'('BLOCK', _Path, _TrUserData) ->
-    ok;
-'v_enum_imboy.textguard.v1.Decision'(V, _Path, _TrUserData) when
-    -2147483648 =< V, V =< 2147483647, is_integer(V)
-->
-    ok;
-'v_enum_imboy.textguard.v1.Decision'(X, Path, _TrUserData) ->
-    mk_type_error({invalid_enum, 'imboy.textguard.v1.Decision'}, X, Path).
+-compile({nowarn_unused_function,'v_enum_imboy.textguard.v1.Decision'/3}).
+-dialyzer({nowarn_function,'v_enum_imboy.textguard.v1.Decision'/3}).
+'v_enum_imboy.textguard.v1.Decision'('DECISION_UNSPECIFIED', _Path, _TrUserData) -> ok;
+'v_enum_imboy.textguard.v1.Decision'('ALLOW', _Path, _TrUserData) -> ok;
+'v_enum_imboy.textguard.v1.Decision'('REVIEW', _Path, _TrUserData) -> ok;
+'v_enum_imboy.textguard.v1.Decision'('BLOCK', _Path, _TrUserData) -> ok;
+'v_enum_imboy.textguard.v1.Decision'(V, _Path, _TrUserData) when -2147483648 =< V, V =< 2147483647, is_integer(V) -> ok;
+'v_enum_imboy.textguard.v1.Decision'(X, Path, _TrUserData) -> mk_type_error({invalid_enum, 'imboy.textguard.v1.Decision'}, X, Path).
 
--compile({nowarn_unused_function, 'v_enum_imboy.textguard.v1.Severity'/3}).
--dialyzer({nowarn_function, 'v_enum_imboy.textguard.v1.Severity'/3}).
-'v_enum_imboy.textguard.v1.Severity'('SEVERITY_UNSPECIFIED', _Path, _TrUserData) ->
-    ok;
-'v_enum_imboy.textguard.v1.Severity'('LOW', _Path, _TrUserData) ->
-    ok;
-'v_enum_imboy.textguard.v1.Severity'('MEDIUM', _Path, _TrUserData) ->
-    ok;
-'v_enum_imboy.textguard.v1.Severity'('HIGH', _Path, _TrUserData) ->
-    ok;
-'v_enum_imboy.textguard.v1.Severity'(V, _Path, _TrUserData) when
-    -2147483648 =< V, V =< 2147483647, is_integer(V)
-->
-    ok;
-'v_enum_imboy.textguard.v1.Severity'(X, Path, _TrUserData) ->
-    mk_type_error({invalid_enum, 'imboy.textguard.v1.Severity'}, X, Path).
+-compile({nowarn_unused_function,'v_enum_imboy.textguard.v1.Severity'/3}).
+-dialyzer({nowarn_function,'v_enum_imboy.textguard.v1.Severity'/3}).
+'v_enum_imboy.textguard.v1.Severity'('SEVERITY_UNSPECIFIED', _Path, _TrUserData) -> ok;
+'v_enum_imboy.textguard.v1.Severity'('LOW', _Path, _TrUserData) -> ok;
+'v_enum_imboy.textguard.v1.Severity'('MEDIUM', _Path, _TrUserData) -> ok;
+'v_enum_imboy.textguard.v1.Severity'('HIGH', _Path, _TrUserData) -> ok;
+'v_enum_imboy.textguard.v1.Severity'(V, _Path, _TrUserData) when -2147483648 =< V, V =< 2147483647, is_integer(V) -> ok;
+'v_enum_imboy.textguard.v1.Severity'(X, Path, _TrUserData) -> mk_type_error({invalid_enum, 'imboy.textguard.v1.Severity'}, X, Path).
 
--compile({nowarn_unused_function, 'v_enum_imboy.textguard.v1.MatchMethod'/3}).
--dialyzer({nowarn_function, 'v_enum_imboy.textguard.v1.MatchMethod'/3}).
-'v_enum_imboy.textguard.v1.MatchMethod'('METHOD_UNSPECIFIED', _Path, _TrUserData) ->
-    ok;
-'v_enum_imboy.textguard.v1.MatchMethod'('LITERAL', _Path, _TrUserData) ->
-    ok;
-'v_enum_imboy.textguard.v1.MatchMethod'('T2S', _Path, _TrUserData) ->
-    ok;
-'v_enum_imboy.textguard.v1.MatchMethod'('GAP', _Path, _TrUserData) ->
-    ok;
-'v_enum_imboy.textguard.v1.MatchMethod'('ALIAS', _Path, _TrUserData) ->
-    ok;
-'v_enum_imboy.textguard.v1.MatchMethod'('REGEX', _Path, _TrUserData) ->
-    ok;
-'v_enum_imboy.textguard.v1.MatchMethod'(V, _Path, _TrUserData) when
-    -2147483648 =< V, V =< 2147483647, is_integer(V)
-->
-    ok;
-'v_enum_imboy.textguard.v1.MatchMethod'(X, Path, _TrUserData) ->
-    mk_type_error({invalid_enum, 'imboy.textguard.v1.MatchMethod'}, X, Path).
+-compile({nowarn_unused_function,'v_enum_imboy.textguard.v1.MatchMethod'/3}).
+-dialyzer({nowarn_function,'v_enum_imboy.textguard.v1.MatchMethod'/3}).
+'v_enum_imboy.textguard.v1.MatchMethod'('METHOD_UNSPECIFIED', _Path, _TrUserData) -> ok;
+'v_enum_imboy.textguard.v1.MatchMethod'('LITERAL', _Path, _TrUserData) -> ok;
+'v_enum_imboy.textguard.v1.MatchMethod'('T2S', _Path, _TrUserData) -> ok;
+'v_enum_imboy.textguard.v1.MatchMethod'('GAP', _Path, _TrUserData) -> ok;
+'v_enum_imboy.textguard.v1.MatchMethod'('ALIAS', _Path, _TrUserData) -> ok;
+'v_enum_imboy.textguard.v1.MatchMethod'('REGEX', _Path, _TrUserData) -> ok;
+'v_enum_imboy.textguard.v1.MatchMethod'(V, _Path, _TrUserData) when -2147483648 =< V, V =< 2147483647, is_integer(V) -> ok;
+'v_enum_imboy.textguard.v1.MatchMethod'(X, Path, _TrUserData) -> mk_type_error({invalid_enum, 'imboy.textguard.v1.MatchMethod'}, X, Path).
 
--compile({nowarn_unused_function, 'v_enum_imboy.textguard.v1.VariantType'/3}).
--dialyzer({nowarn_function, 'v_enum_imboy.textguard.v1.VariantType'/3}).
-'v_enum_imboy.textguard.v1.VariantType'('VARIANT_UNSPECIFIED', _Path, _TrUserData) ->
-    ok;
-'v_enum_imboy.textguard.v1.VariantType'('CANONICAL', _Path, _TrUserData) ->
-    ok;
-'v_enum_imboy.textguard.v1.VariantType'('PINYIN', _Path, _TrUserData) ->
-    ok;
-'v_enum_imboy.textguard.v1.VariantType'('HOMOPHONE', _Path, _TrUserData) ->
-    ok;
-'v_enum_imboy.textguard.v1.VariantType'('LOOKALIKE', _Path, _TrUserData) ->
-    ok;
-'v_enum_imboy.textguard.v1.VariantType'('DECOMPOSED', _Path, _TrUserData) ->
-    ok;
-'v_enum_imboy.textguard.v1.VariantType'('REGEX_RULE', _Path, _TrUserData) ->
-    ok;
-'v_enum_imboy.textguard.v1.VariantType'(V, _Path, _TrUserData) when
-    -2147483648 =< V, V =< 2147483647, is_integer(V)
-->
-    ok;
-'v_enum_imboy.textguard.v1.VariantType'(X, Path, _TrUserData) ->
-    mk_type_error({invalid_enum, 'imboy.textguard.v1.VariantType'}, X, Path).
+-compile({nowarn_unused_function,'v_enum_imboy.textguard.v1.VariantType'/3}).
+-dialyzer({nowarn_function,'v_enum_imboy.textguard.v1.VariantType'/3}).
+'v_enum_imboy.textguard.v1.VariantType'('VARIANT_UNSPECIFIED', _Path, _TrUserData) -> ok;
+'v_enum_imboy.textguard.v1.VariantType'('CANONICAL', _Path, _TrUserData) -> ok;
+'v_enum_imboy.textguard.v1.VariantType'('PINYIN', _Path, _TrUserData) -> ok;
+'v_enum_imboy.textguard.v1.VariantType'('HOMOPHONE', _Path, _TrUserData) -> ok;
+'v_enum_imboy.textguard.v1.VariantType'('LOOKALIKE', _Path, _TrUserData) -> ok;
+'v_enum_imboy.textguard.v1.VariantType'('DECOMPOSED', _Path, _TrUserData) -> ok;
+'v_enum_imboy.textguard.v1.VariantType'('REGEX_RULE', _Path, _TrUserData) -> ok;
+'v_enum_imboy.textguard.v1.VariantType'(V, _Path, _TrUserData) when -2147483648 =< V, V =< 2147483647, is_integer(V) -> ok;
+'v_enum_imboy.textguard.v1.VariantType'(X, Path, _TrUserData) -> mk_type_error({invalid_enum, 'imboy.textguard.v1.VariantType'}, X, Path).
 
--compile({nowarn_unused_function, v_type_uint32/3}).
--dialyzer({nowarn_function, v_type_uint32/3}).
+-compile({nowarn_unused_function,v_type_uint32/3}).
+-dialyzer({nowarn_function,v_type_uint32/3}).
 v_type_uint32(N, _Path, _TrUserData) when is_integer(N), 0 =< N, N =< 4294967295 -> ok;
-v_type_uint32(N, Path, _TrUserData) when is_integer(N) ->
-    mk_type_error({value_out_of_range, uint32, unsigned, 32}, N, Path);
-v_type_uint32(X, Path, _TrUserData) ->
-    mk_type_error({bad_integer, uint32, unsigned, 32}, X, Path).
+v_type_uint32(N, Path, _TrUserData) when is_integer(N) -> mk_type_error({value_out_of_range, uint32, unsigned, 32}, N, Path);
+v_type_uint32(X, Path, _TrUserData) -> mk_type_error({bad_integer, uint32, unsigned, 32}, X, Path).
 
--compile({nowarn_unused_function, v_type_bool/3}).
--dialyzer({nowarn_function, v_type_bool/3}).
+-compile({nowarn_unused_function,v_type_bool/3}).
+-dialyzer({nowarn_function,v_type_bool/3}).
 v_type_bool(false, _Path, _TrUserData) -> ok;
 v_type_bool(true, _Path, _TrUserData) -> ok;
 v_type_bool(0, _Path, _TrUserData) -> ok;
 v_type_bool(1, _Path, _TrUserData) -> ok;
 v_type_bool(X, Path, _TrUserData) -> mk_type_error(bad_boolean_value, X, Path).
 
--compile({nowarn_unused_function, v_type_string/3}).
--dialyzer({nowarn_function, v_type_string/3}).
+-compile({nowarn_unused_function,v_type_string/3}).
+-dialyzer({nowarn_function,v_type_string/3}).
 v_type_string(S, Path, _TrUserData) when is_list(S); is_binary(S) ->
     try unicode:characters_to_binary(S) of
         B when is_binary(B) -> ok;
@@ -9740,455 +2219,110 @@ v_type_string(S, Path, _TrUserData) when is_list(S); is_binary(S) ->
     catch
         error:badarg -> mk_type_error(bad_unicode_string, S, Path)
     end;
-v_type_string(X, Path, _TrUserData) ->
-    mk_type_error(bad_unicode_string, X, Path).
+v_type_string(X, Path, _TrUserData) -> mk_type_error(bad_unicode_string, X, Path).
 
--compile({nowarn_unused_function, mk_type_error/3}).
+-compile({nowarn_unused_function,mk_type_error/3}).
 -spec mk_type_error(_, _, list()) -> no_return().
 mk_type_error(Error, ValueSeen, Path) ->
     Path2 = prettify_path(Path),
     erlang:error({gpb_type_error, {Error, [{value, ValueSeen}, {path, Path2}]}}).
 
--compile({nowarn_unused_function, prettify_path/1}).
--dialyzer({nowarn_function, prettify_path/1}).
-prettify_path([]) ->
-    top_level;
-prettify_path(PathR) ->
-    lists:append(lists:join(".", lists:map(fun atom_to_list/1, lists:reverse(PathR)))).
 
--compile({nowarn_unused_function, id/2}).
--compile({inline, id/2}).
+-compile({nowarn_unused_function,prettify_path/1}).
+-dialyzer({nowarn_function,prettify_path/1}).
+prettify_path([]) -> top_level;
+prettify_path(PathR) -> lists:append(lists:join(".", lists:map(fun atom_to_list/1, lists:reverse(PathR)))).
+
+
+-compile({nowarn_unused_function,id/2}).
+-compile({inline,id/2}).
 id(X, _TrUserData) -> X.
 
--compile({nowarn_unused_function, v_ok/3}).
--compile({inline, v_ok/3}).
+-compile({nowarn_unused_function,v_ok/3}).
+-compile({inline,v_ok/3}).
 v_ok(_Value, _Path, _TrUserData) -> ok.
 
--compile({nowarn_unused_function, m_overwrite/3}).
--compile({inline, m_overwrite/3}).
+-compile({nowarn_unused_function,m_overwrite/3}).
+-compile({inline,m_overwrite/3}).
 m_overwrite(_Prev, New, _TrUserData) -> New.
 
--compile({nowarn_unused_function, cons/3}).
--compile({inline, cons/3}).
+-compile({nowarn_unused_function,cons/3}).
+-compile({inline,cons/3}).
 cons(Elem, Acc, _TrUserData) -> [Elem | Acc].
 
--compile({nowarn_unused_function, lists_reverse/2}).
--compile({inline, lists_reverse/2}).
+-compile({nowarn_unused_function,lists_reverse/2}).
+-compile({inline,lists_reverse/2}).
 'lists_reverse'(L, _TrUserData) -> lists:reverse(L).
--compile({nowarn_unused_function, 'erlang_++'/3}).
--compile({inline, 'erlang_++'/3}).
+-compile({nowarn_unused_function,'erlang_++'/3}).
+-compile({inline,'erlang_++'/3}).
 'erlang_++'(A, B, _TrUserData) -> A ++ B.
 
-get_msg_defs() ->
-    [
-        {{enum, 'imboy.textguard.v1.Scene'}, [
-            {'SCENE_UNSPECIFIED', 0, []},
-            {'CHANNEL_MESSAGE', 1, []},
-            {'MOMENT_POST', 2, []},
-            {'PROFILE_FIELD', 3, []}
-        ]},
-        {{enum, 'imboy.textguard.v1.Decision'}, [
-            {'DECISION_UNSPECIFIED', 0, []}, {'ALLOW', 1, []}, {'REVIEW', 2, []}, {'BLOCK', 3, []}
-        ]},
-        {{enum, 'imboy.textguard.v1.Severity'}, [
-            {'SEVERITY_UNSPECIFIED', 0, []}, {'LOW', 1, []}, {'MEDIUM', 2, []}, {'HIGH', 3, []}
-        ]},
-        {{enum, 'imboy.textguard.v1.MatchMethod'}, [
-            {'METHOD_UNSPECIFIED', 0, []},
-            {'LITERAL', 1, []},
-            {'T2S', 2, []},
-            {'GAP', 3, []},
-            {'ALIAS', 4, []},
-            {'REGEX', 5, []}
-        ]},
-        {{enum, 'imboy.textguard.v1.VariantType'}, [
-            {'VARIANT_UNSPECIFIED', 0, []},
-            {'CANONICAL', 1, []},
-            {'PINYIN', 2, []},
-            {'HOMOPHONE', 3, []},
-            {'LOOKALIKE', 4, []},
-            {'DECOMPOSED', 5, []},
-            {'REGEX_RULE', 6, []}
-        ]},
-        {{msg, 'imboy.textguard.v1.TextField'}, [
-            #{
-                name => field_id,
-                fnum => 1,
-                rnum => 2,
-                type => string,
-                occurrence => optional,
-                opts => []
-            },
-            #{
-                name => text,
-                fnum => 2,
-                rnum => 3,
-                type => string,
-                occurrence => optional,
-                opts => []
-            }
-        ]},
-        {{msg, 'imboy.textguard.v1.CheckTextRequest'}, [
-            #{
-                name => request_id,
-                fnum => 1,
-                rnum => 2,
-                type => string,
-                occurrence => optional,
-                opts => []
-            },
-            #{
-                name => scene,
-                fnum => 2,
-                rnum => 3,
-                type => {enum, 'imboy.textguard.v1.Scene'},
-                occurrence => optional,
-                opts => []
-            },
-            #{
-                name => fields,
-                fnum => 3,
-                rnum => 4,
-                type => {msg, 'imboy.textguard.v1.TextField'},
-                occurrence => repeated,
-                opts => []
-            }
-        ]},
-        {{msg, 'imboy.textguard.v1.Hit'}, [
-            #{
-                name => field_id,
-                fnum => 1,
-                rnum => 2,
-                type => string,
-                occurrence => optional,
-                opts => []
-            },
-            #{
-                name => rule_id,
-                fnum => 2,
-                rnum => 3,
-                type => string,
-                occurrence => optional,
-                opts => []
-            },
-            #{
-                name => variant_id,
-                fnum => 3,
-                rnum => 4,
-                type => string,
-                occurrence => optional,
-                opts => []
-            },
-            #{
-                name => variant_type,
-                fnum => 4,
-                rnum => 5,
-                type => {enum, 'imboy.textguard.v1.VariantType'},
-                occurrence => optional,
-                opts => []
-            },
-            #{
-                name => word,
-                fnum => 5,
-                rnum => 6,
-                type => string,
-                occurrence => optional,
-                opts => []
-            },
-            #{
-                name => category,
-                fnum => 6,
-                rnum => 7,
-                type => string,
-                occurrence => optional,
-                opts => []
-            },
-            #{
-                name => severity,
-                fnum => 7,
-                rnum => 8,
-                type => {enum, 'imboy.textguard.v1.Severity'},
-                occurrence => optional,
-                opts => []
-            },
-            #{
-                name => effective_action,
-                fnum => 8,
-                rnum => 9,
-                type => {enum, 'imboy.textguard.v1.Decision'},
-                occurrence => optional,
-                opts => []
-            },
-            #{
-                name => start_byte,
-                fnum => 9,
-                rnum => 10,
-                type => uint32,
-                occurrence => optional,
-                opts => []
-            },
-            #{
-                name => end_byte,
-                fnum => 10,
-                rnum => 11,
-                type => uint32,
-                occurrence => optional,
-                opts => []
-            },
-            #{
-                name => match_methods,
-                fnum => 11,
-                rnum => 12,
-                type => {enum, 'imboy.textguard.v1.MatchMethod'},
-                occurrence => repeated,
-                opts => [packed]
-            }
-        ]},
-        {{msg, 'imboy.textguard.v1.CheckTextResponse'}, [
-            #{
-                name => request_id,
-                fnum => 1,
-                rnum => 2,
-                type => string,
-                occurrence => optional,
-                opts => []
-            },
-            #{
-                name => ruleset_revision,
-                fnum => 2,
-                rnum => 3,
-                type => string,
-                occurrence => optional,
-                opts => []
-            },
-            #{
-                name => generation,
-                fnum => 3,
-                rnum => 4,
-                type => string,
-                occurrence => optional,
-                opts => []
-            },
-            #{
-                name => normalization_id,
-                fnum => 4,
-                rnum => 5,
-                type => string,
-                occurrence => optional,
-                opts => []
-            },
-            #{
-                name => t2s_table_id,
-                fnum => 5,
-                rnum => 6,
-                type => string,
-                occurrence => optional,
-                opts => []
-            },
-            #{
-                name => semantics_id,
-                fnum => 6,
-                rnum => 7,
-                type => string,
-                occurrence => optional,
-                opts => []
-            },
-            #{
-                name => base_rules_digest,
-                fnum => 7,
-                rnum => 8,
-                type => string,
-                occurrence => optional,
-                opts => []
-            },
-            #{
-                name => decision,
-                fnum => 8,
-                rnum => 9,
-                type => {enum, 'imboy.textguard.v1.Decision'},
-                occurrence => optional,
-                opts => []
-            },
-            #{
-                name => scan_complete,
-                fnum => 9,
-                rnum => 10,
-                type => bool,
-                occurrence => optional,
-                opts => []
-            },
-            #{
-                name => hits_truncated,
-                fnum => 10,
-                rnum => 11,
-                type => bool,
-                occurrence => optional,
-                opts => []
-            },
-            #{
-                name => hits,
-                fnum => 11,
-                rnum => 12,
-                type => {msg, 'imboy.textguard.v1.Hit'},
-                occurrence => repeated,
-                opts => []
-            },
-            #{
-                name => fields_checked,
-                fnum => 12,
-                rnum => 13,
-                type => uint32,
-                occurrence => optional,
-                opts => []
-            },
-            #{
-                name => hit_semantics,
-                fnum => 13,
-                rnum => 14,
-                type => string,
-                occurrence => optional,
-                opts => []
-            },
-            #{
-                name => build_id,
-                fnum => 14,
-                rnum => 15,
-                type => string,
-                occurrence => optional,
-                opts => []
-            }
-        ]},
-        {{msg, 'imboy.textguard.v1.GetInfoRequest'}, []},
-        {{msg, 'imboy.textguard.v1.GetInfoResponse'}, [
-            #{
-                name => instance_id,
-                fnum => 1,
-                rnum => 2,
-                type => string,
-                occurrence => optional,
-                opts => []
-            },
-            #{
-                name => ready,
-                fnum => 2,
-                rnum => 3,
-                type => bool,
-                occurrence => optional,
-                opts => []
-            },
-            #{
-                name => build_id,
-                fnum => 3,
-                rnum => 4,
-                type => string,
-                occurrence => optional,
-                opts => []
-            },
-            #{
-                name => ruleset_revision,
-                fnum => 4,
-                rnum => 5,
-                type => string,
-                occurrence => optional,
-                opts => []
-            },
-            #{
-                name => generation,
-                fnum => 5,
-                rnum => 6,
-                type => string,
-                occurrence => optional,
-                opts => []
-            },
-            #{
-                name => normalization_id,
-                fnum => 6,
-                rnum => 7,
-                type => string,
-                occurrence => optional,
-                opts => []
-            },
-            #{
-                name => t2s_table_id,
-                fnum => 7,
-                rnum => 8,
-                type => string,
-                occurrence => optional,
-                opts => []
-            },
-            #{
-                name => base_rules_digest,
-                fnum => 8,
-                rnum => 9,
-                type => string,
-                occurrence => optional,
-                opts => []
-            },
-            #{
-                name => canonical_count,
-                fnum => 9,
-                rnum => 10,
-                type => uint32,
-                occurrence => optional,
-                opts => []
-            },
-            #{
-                name => alias_count,
-                fnum => 10,
-                rnum => 11,
-                type => uint32,
-                occurrence => optional,
-                opts => []
-            },
-            #{
-                name => regex_count,
-                fnum => 11,
-                rnum => 12,
-                type => uint32,
-                occurrence => optional,
-                opts => []
-            },
-            #{
-                name => supported_semantics,
-                fnum => 12,
-                rnum => 13,
-                type => string,
-                occurrence => repeated,
-                opts => []
-            }
-        ]}
-    ].
 
-get_msg_names() ->
-    [
-        'imboy.textguard.v1.TextField',
-        'imboy.textguard.v1.CheckTextRequest',
-        'imboy.textguard.v1.Hit',
-        'imboy.textguard.v1.CheckTextResponse',
-        'imboy.textguard.v1.GetInfoRequest',
-        'imboy.textguard.v1.GetInfoResponse'
-    ].
+get_msg_defs() ->
+    [{{enum, 'imboy.textguard.v1.Scene'}, [{'SCENE_UNSPECIFIED', 0, []}, {'CHANNEL_MESSAGE', 1, []}, {'MOMENT_POST', 2, []}, {'PROFILE_FIELD', 3, []}]},
+     {{enum, 'imboy.textguard.v1.Decision'}, [{'DECISION_UNSPECIFIED', 0, []}, {'ALLOW', 1, []}, {'REVIEW', 2, []}, {'BLOCK', 3, []}]},
+     {{enum, 'imboy.textguard.v1.Severity'}, [{'SEVERITY_UNSPECIFIED', 0, []}, {'LOW', 1, []}, {'MEDIUM', 2, []}, {'HIGH', 3, []}]},
+     {{enum, 'imboy.textguard.v1.MatchMethod'}, [{'METHOD_UNSPECIFIED', 0, []}, {'LITERAL', 1, []}, {'T2S', 2, []}, {'GAP', 3, []}, {'ALIAS', 4, []}, {'REGEX', 5, []}]},
+     {{enum, 'imboy.textguard.v1.VariantType'}, [{'VARIANT_UNSPECIFIED', 0, []}, {'CANONICAL', 1, []}, {'PINYIN', 2, []}, {'HOMOPHONE', 3, []}, {'LOOKALIKE', 4, []}, {'DECOMPOSED', 5, []}, {'REGEX_RULE', 6, []}]},
+     {{msg, 'imboy.textguard.v1.TextField'}, [#{name => field_id, fnum => 1, rnum => 2, type => string, occurrence => optional, opts => []}, #{name => text, fnum => 2, rnum => 3, type => string, occurrence => optional, opts => []}]},
+     {{msg, 'imboy.textguard.v1.CheckTextRequest'},
+      [#{name => request_id, fnum => 1, rnum => 2, type => string, occurrence => optional, opts => []},
+       #{name => scene, fnum => 2, rnum => 3, type => {enum, 'imboy.textguard.v1.Scene'}, occurrence => optional, opts => []},
+       #{name => fields, fnum => 3, rnum => 4, type => {msg, 'imboy.textguard.v1.TextField'}, occurrence => repeated, opts => []}]},
+     {{msg, 'imboy.textguard.v1.Hit'},
+      [#{name => field_id, fnum => 1, rnum => 2, type => string, occurrence => optional, opts => []},
+       #{name => rule_id, fnum => 2, rnum => 3, type => string, occurrence => optional, opts => []},
+       #{name => variant_id, fnum => 3, rnum => 4, type => string, occurrence => optional, opts => []},
+       #{name => variant_type, fnum => 4, rnum => 5, type => {enum, 'imboy.textguard.v1.VariantType'}, occurrence => optional, opts => []},
+       #{name => word, fnum => 5, rnum => 6, type => string, occurrence => optional, opts => []},
+       #{name => category, fnum => 6, rnum => 7, type => string, occurrence => optional, opts => []},
+       #{name => severity, fnum => 7, rnum => 8, type => {enum, 'imboy.textguard.v1.Severity'}, occurrence => optional, opts => []},
+       #{name => effective_action, fnum => 8, rnum => 9, type => {enum, 'imboy.textguard.v1.Decision'}, occurrence => optional, opts => []},
+       #{name => start_byte, fnum => 9, rnum => 10, type => uint32, occurrence => optional, opts => []},
+       #{name => end_byte, fnum => 10, rnum => 11, type => uint32, occurrence => optional, opts => []},
+       #{name => match_methods, fnum => 11, rnum => 12, type => {enum, 'imboy.textguard.v1.MatchMethod'}, occurrence => repeated, opts => [packed]}]},
+     {{msg, 'imboy.textguard.v1.CheckTextResponse'},
+      [#{name => request_id, fnum => 1, rnum => 2, type => string, occurrence => optional, opts => []},
+       #{name => ruleset_revision, fnum => 2, rnum => 3, type => string, occurrence => optional, opts => []},
+       #{name => generation, fnum => 3, rnum => 4, type => string, occurrence => optional, opts => []},
+       #{name => normalization_id, fnum => 4, rnum => 5, type => string, occurrence => optional, opts => []},
+       #{name => t2s_table_id, fnum => 5, rnum => 6, type => string, occurrence => optional, opts => []},
+       #{name => semantics_id, fnum => 6, rnum => 7, type => string, occurrence => optional, opts => []},
+       #{name => base_rules_digest, fnum => 7, rnum => 8, type => string, occurrence => optional, opts => []},
+       #{name => decision, fnum => 8, rnum => 9, type => {enum, 'imboy.textguard.v1.Decision'}, occurrence => optional, opts => []},
+       #{name => scan_complete, fnum => 9, rnum => 10, type => bool, occurrence => optional, opts => []},
+       #{name => hits_truncated, fnum => 10, rnum => 11, type => bool, occurrence => optional, opts => []},
+       #{name => hits, fnum => 11, rnum => 12, type => {msg, 'imboy.textguard.v1.Hit'}, occurrence => repeated, opts => []},
+       #{name => fields_checked, fnum => 12, rnum => 13, type => uint32, occurrence => optional, opts => []},
+       #{name => hit_semantics, fnum => 13, rnum => 14, type => string, occurrence => optional, opts => []},
+       #{name => build_id, fnum => 14, rnum => 15, type => string, occurrence => optional, opts => []}]},
+     {{msg, 'imboy.textguard.v1.GetInfoRequest'}, []},
+     {{msg, 'imboy.textguard.v1.GetInfoResponse'},
+      [#{name => instance_id, fnum => 1, rnum => 2, type => string, occurrence => optional, opts => []},
+       #{name => ready, fnum => 2, rnum => 3, type => bool, occurrence => optional, opts => []},
+       #{name => build_id, fnum => 3, rnum => 4, type => string, occurrence => optional, opts => []},
+       #{name => ruleset_revision, fnum => 4, rnum => 5, type => string, occurrence => optional, opts => []},
+       #{name => generation, fnum => 5, rnum => 6, type => string, occurrence => optional, opts => []},
+       #{name => normalization_id, fnum => 6, rnum => 7, type => string, occurrence => optional, opts => []},
+       #{name => t2s_table_id, fnum => 7, rnum => 8, type => string, occurrence => optional, opts => []},
+       #{name => base_rules_digest, fnum => 8, rnum => 9, type => string, occurrence => optional, opts => []},
+       #{name => canonical_count, fnum => 9, rnum => 10, type => uint32, occurrence => optional, opts => []},
+       #{name => alias_count, fnum => 10, rnum => 11, type => uint32, occurrence => optional, opts => []},
+       #{name => regex_count, fnum => 11, rnum => 12, type => uint32, occurrence => optional, opts => []},
+       #{name => supported_semantics, fnum => 12, rnum => 13, type => string, occurrence => repeated, opts => []}]}].
+
+
+get_msg_names() -> ['imboy.textguard.v1.TextField', 'imboy.textguard.v1.CheckTextRequest', 'imboy.textguard.v1.Hit', 'imboy.textguard.v1.CheckTextResponse', 'imboy.textguard.v1.GetInfoRequest', 'imboy.textguard.v1.GetInfoResponse'].
+
 
 get_group_names() -> [].
 
-get_msg_or_group_names() ->
-    [
-        'imboy.textguard.v1.TextField',
-        'imboy.textguard.v1.CheckTextRequest',
-        'imboy.textguard.v1.Hit',
-        'imboy.textguard.v1.CheckTextResponse',
-        'imboy.textguard.v1.GetInfoRequest',
-        'imboy.textguard.v1.GetInfoResponse'
-    ].
 
-get_enum_names() ->
-    [
-        'imboy.textguard.v1.Scene',
-        'imboy.textguard.v1.Decision',
-        'imboy.textguard.v1.Severity',
-        'imboy.textguard.v1.MatchMethod',
-        'imboy.textguard.v1.VariantType'
-    ].
+get_msg_or_group_names() -> ['imboy.textguard.v1.TextField', 'imboy.textguard.v1.CheckTextRequest', 'imboy.textguard.v1.Hit', 'imboy.textguard.v1.CheckTextResponse', 'imboy.textguard.v1.GetInfoRequest', 'imboy.textguard.v1.GetInfoResponse'].
+
+
+get_enum_names() -> ['imboy.textguard.v1.Scene', 'imboy.textguard.v1.Decision', 'imboy.textguard.v1.Severity', 'imboy.textguard.v1.MatchMethod', 'imboy.textguard.v1.VariantType'].
+
 
 fetch_msg_def(MsgName) ->
     case find_msg_def(MsgName) of
@@ -10196,406 +2330,90 @@ fetch_msg_def(MsgName) ->
         error -> erlang:error({no_such_msg, MsgName})
     end.
 
+
 fetch_enum_def(EnumName) ->
     case find_enum_def(EnumName) of
         Es when is_list(Es) -> Es;
         error -> erlang:error({no_such_enum, EnumName})
     end.
 
-find_msg_def('imboy.textguard.v1.TextField') ->
-    [
-        #{
-            name => field_id,
-            fnum => 1,
-            rnum => 2,
-            type => string,
-            occurrence => optional,
-            opts => []
-        },
-        #{name => text, fnum => 2, rnum => 3, type => string, occurrence => optional, opts => []}
-    ];
+
+find_msg_def('imboy.textguard.v1.TextField') -> [#{name => field_id, fnum => 1, rnum => 2, type => string, occurrence => optional, opts => []}, #{name => text, fnum => 2, rnum => 3, type => string, occurrence => optional, opts => []}];
 find_msg_def('imboy.textguard.v1.CheckTextRequest') ->
-    [
-        #{
-            name => request_id,
-            fnum => 1,
-            rnum => 2,
-            type => string,
-            occurrence => optional,
-            opts => []
-        },
-        #{
-            name => scene,
-            fnum => 2,
-            rnum => 3,
-            type => {enum, 'imboy.textguard.v1.Scene'},
-            occurrence => optional,
-            opts => []
-        },
-        #{
-            name => fields,
-            fnum => 3,
-            rnum => 4,
-            type => {msg, 'imboy.textguard.v1.TextField'},
-            occurrence => repeated,
-            opts => []
-        }
-    ];
+    [#{name => request_id, fnum => 1, rnum => 2, type => string, occurrence => optional, opts => []},
+     #{name => scene, fnum => 2, rnum => 3, type => {enum, 'imboy.textguard.v1.Scene'}, occurrence => optional, opts => []},
+     #{name => fields, fnum => 3, rnum => 4, type => {msg, 'imboy.textguard.v1.TextField'}, occurrence => repeated, opts => []}];
 find_msg_def('imboy.textguard.v1.Hit') ->
-    [
-        #{
-            name => field_id,
-            fnum => 1,
-            rnum => 2,
-            type => string,
-            occurrence => optional,
-            opts => []
-        },
-        #{
-            name => rule_id,
-            fnum => 2,
-            rnum => 3,
-            type => string,
-            occurrence => optional,
-            opts => []
-        },
-        #{
-            name => variant_id,
-            fnum => 3,
-            rnum => 4,
-            type => string,
-            occurrence => optional,
-            opts => []
-        },
-        #{
-            name => variant_type,
-            fnum => 4,
-            rnum => 5,
-            type => {enum, 'imboy.textguard.v1.VariantType'},
-            occurrence => optional,
-            opts => []
-        },
-        #{name => word, fnum => 5, rnum => 6, type => string, occurrence => optional, opts => []},
-        #{
-            name => category,
-            fnum => 6,
-            rnum => 7,
-            type => string,
-            occurrence => optional,
-            opts => []
-        },
-        #{
-            name => severity,
-            fnum => 7,
-            rnum => 8,
-            type => {enum, 'imboy.textguard.v1.Severity'},
-            occurrence => optional,
-            opts => []
-        },
-        #{
-            name => effective_action,
-            fnum => 8,
-            rnum => 9,
-            type => {enum, 'imboy.textguard.v1.Decision'},
-            occurrence => optional,
-            opts => []
-        },
-        #{
-            name => start_byte,
-            fnum => 9,
-            rnum => 10,
-            type => uint32,
-            occurrence => optional,
-            opts => []
-        },
-        #{
-            name => end_byte,
-            fnum => 10,
-            rnum => 11,
-            type => uint32,
-            occurrence => optional,
-            opts => []
-        },
-        #{
-            name => match_methods,
-            fnum => 11,
-            rnum => 12,
-            type => {enum, 'imboy.textguard.v1.MatchMethod'},
-            occurrence => repeated,
-            opts => [packed]
-        }
-    ];
+    [#{name => field_id, fnum => 1, rnum => 2, type => string, occurrence => optional, opts => []},
+     #{name => rule_id, fnum => 2, rnum => 3, type => string, occurrence => optional, opts => []},
+     #{name => variant_id, fnum => 3, rnum => 4, type => string, occurrence => optional, opts => []},
+     #{name => variant_type, fnum => 4, rnum => 5, type => {enum, 'imboy.textguard.v1.VariantType'}, occurrence => optional, opts => []},
+     #{name => word, fnum => 5, rnum => 6, type => string, occurrence => optional, opts => []},
+     #{name => category, fnum => 6, rnum => 7, type => string, occurrence => optional, opts => []},
+     #{name => severity, fnum => 7, rnum => 8, type => {enum, 'imboy.textguard.v1.Severity'}, occurrence => optional, opts => []},
+     #{name => effective_action, fnum => 8, rnum => 9, type => {enum, 'imboy.textguard.v1.Decision'}, occurrence => optional, opts => []},
+     #{name => start_byte, fnum => 9, rnum => 10, type => uint32, occurrence => optional, opts => []},
+     #{name => end_byte, fnum => 10, rnum => 11, type => uint32, occurrence => optional, opts => []},
+     #{name => match_methods, fnum => 11, rnum => 12, type => {enum, 'imboy.textguard.v1.MatchMethod'}, occurrence => repeated, opts => [packed]}];
 find_msg_def('imboy.textguard.v1.CheckTextResponse') ->
-    [
-        #{
-            name => request_id,
-            fnum => 1,
-            rnum => 2,
-            type => string,
-            occurrence => optional,
-            opts => []
-        },
-        #{
-            name => ruleset_revision,
-            fnum => 2,
-            rnum => 3,
-            type => string,
-            occurrence => optional,
-            opts => []
-        },
-        #{
-            name => generation,
-            fnum => 3,
-            rnum => 4,
-            type => string,
-            occurrence => optional,
-            opts => []
-        },
-        #{
-            name => normalization_id,
-            fnum => 4,
-            rnum => 5,
-            type => string,
-            occurrence => optional,
-            opts => []
-        },
-        #{
-            name => t2s_table_id,
-            fnum => 5,
-            rnum => 6,
-            type => string,
-            occurrence => optional,
-            opts => []
-        },
-        #{
-            name => semantics_id,
-            fnum => 6,
-            rnum => 7,
-            type => string,
-            occurrence => optional,
-            opts => []
-        },
-        #{
-            name => base_rules_digest,
-            fnum => 7,
-            rnum => 8,
-            type => string,
-            occurrence => optional,
-            opts => []
-        },
-        #{
-            name => decision,
-            fnum => 8,
-            rnum => 9,
-            type => {enum, 'imboy.textguard.v1.Decision'},
-            occurrence => optional,
-            opts => []
-        },
-        #{
-            name => scan_complete,
-            fnum => 9,
-            rnum => 10,
-            type => bool,
-            occurrence => optional,
-            opts => []
-        },
-        #{
-            name => hits_truncated,
-            fnum => 10,
-            rnum => 11,
-            type => bool,
-            occurrence => optional,
-            opts => []
-        },
-        #{
-            name => hits,
-            fnum => 11,
-            rnum => 12,
-            type => {msg, 'imboy.textguard.v1.Hit'},
-            occurrence => repeated,
-            opts => []
-        },
-        #{
-            name => fields_checked,
-            fnum => 12,
-            rnum => 13,
-            type => uint32,
-            occurrence => optional,
-            opts => []
-        },
-        #{
-            name => hit_semantics,
-            fnum => 13,
-            rnum => 14,
-            type => string,
-            occurrence => optional,
-            opts => []
-        },
-        #{
-            name => build_id,
-            fnum => 14,
-            rnum => 15,
-            type => string,
-            occurrence => optional,
-            opts => []
-        }
-    ];
-find_msg_def('imboy.textguard.v1.GetInfoRequest') ->
-    [];
+    [#{name => request_id, fnum => 1, rnum => 2, type => string, occurrence => optional, opts => []},
+     #{name => ruleset_revision, fnum => 2, rnum => 3, type => string, occurrence => optional, opts => []},
+     #{name => generation, fnum => 3, rnum => 4, type => string, occurrence => optional, opts => []},
+     #{name => normalization_id, fnum => 4, rnum => 5, type => string, occurrence => optional, opts => []},
+     #{name => t2s_table_id, fnum => 5, rnum => 6, type => string, occurrence => optional, opts => []},
+     #{name => semantics_id, fnum => 6, rnum => 7, type => string, occurrence => optional, opts => []},
+     #{name => base_rules_digest, fnum => 7, rnum => 8, type => string, occurrence => optional, opts => []},
+     #{name => decision, fnum => 8, rnum => 9, type => {enum, 'imboy.textguard.v1.Decision'}, occurrence => optional, opts => []},
+     #{name => scan_complete, fnum => 9, rnum => 10, type => bool, occurrence => optional, opts => []},
+     #{name => hits_truncated, fnum => 10, rnum => 11, type => bool, occurrence => optional, opts => []},
+     #{name => hits, fnum => 11, rnum => 12, type => {msg, 'imboy.textguard.v1.Hit'}, occurrence => repeated, opts => []},
+     #{name => fields_checked, fnum => 12, rnum => 13, type => uint32, occurrence => optional, opts => []},
+     #{name => hit_semantics, fnum => 13, rnum => 14, type => string, occurrence => optional, opts => []},
+     #{name => build_id, fnum => 14, rnum => 15, type => string, occurrence => optional, opts => []}];
+find_msg_def('imboy.textguard.v1.GetInfoRequest') -> [];
 find_msg_def('imboy.textguard.v1.GetInfoResponse') ->
-    [
-        #{
-            name => instance_id,
-            fnum => 1,
-            rnum => 2,
-            type => string,
-            occurrence => optional,
-            opts => []
-        },
-        #{name => ready, fnum => 2, rnum => 3, type => bool, occurrence => optional, opts => []},
-        #{
-            name => build_id,
-            fnum => 3,
-            rnum => 4,
-            type => string,
-            occurrence => optional,
-            opts => []
-        },
-        #{
-            name => ruleset_revision,
-            fnum => 4,
-            rnum => 5,
-            type => string,
-            occurrence => optional,
-            opts => []
-        },
-        #{
-            name => generation,
-            fnum => 5,
-            rnum => 6,
-            type => string,
-            occurrence => optional,
-            opts => []
-        },
-        #{
-            name => normalization_id,
-            fnum => 6,
-            rnum => 7,
-            type => string,
-            occurrence => optional,
-            opts => []
-        },
-        #{
-            name => t2s_table_id,
-            fnum => 7,
-            rnum => 8,
-            type => string,
-            occurrence => optional,
-            opts => []
-        },
-        #{
-            name => base_rules_digest,
-            fnum => 8,
-            rnum => 9,
-            type => string,
-            occurrence => optional,
-            opts => []
-        },
-        #{
-            name => canonical_count,
-            fnum => 9,
-            rnum => 10,
-            type => uint32,
-            occurrence => optional,
-            opts => []
-        },
-        #{
-            name => alias_count,
-            fnum => 10,
-            rnum => 11,
-            type => uint32,
-            occurrence => optional,
-            opts => []
-        },
-        #{
-            name => regex_count,
-            fnum => 11,
-            rnum => 12,
-            type => uint32,
-            occurrence => optional,
-            opts => []
-        },
-        #{
-            name => supported_semantics,
-            fnum => 12,
-            rnum => 13,
-            type => string,
-            occurrence => repeated,
-            opts => []
-        }
-    ];
-find_msg_def(_) ->
-    error.
+    [#{name => instance_id, fnum => 1, rnum => 2, type => string, occurrence => optional, opts => []},
+     #{name => ready, fnum => 2, rnum => 3, type => bool, occurrence => optional, opts => []},
+     #{name => build_id, fnum => 3, rnum => 4, type => string, occurrence => optional, opts => []},
+     #{name => ruleset_revision, fnum => 4, rnum => 5, type => string, occurrence => optional, opts => []},
+     #{name => generation, fnum => 5, rnum => 6, type => string, occurrence => optional, opts => []},
+     #{name => normalization_id, fnum => 6, rnum => 7, type => string, occurrence => optional, opts => []},
+     #{name => t2s_table_id, fnum => 7, rnum => 8, type => string, occurrence => optional, opts => []},
+     #{name => base_rules_digest, fnum => 8, rnum => 9, type => string, occurrence => optional, opts => []},
+     #{name => canonical_count, fnum => 9, rnum => 10, type => uint32, occurrence => optional, opts => []},
+     #{name => alias_count, fnum => 10, rnum => 11, type => uint32, occurrence => optional, opts => []},
+     #{name => regex_count, fnum => 11, rnum => 12, type => uint32, occurrence => optional, opts => []},
+     #{name => supported_semantics, fnum => 12, rnum => 13, type => string, occurrence => repeated, opts => []}];
+find_msg_def(_) -> error.
 
-find_enum_def('imboy.textguard.v1.Scene') ->
-    [
-        {'SCENE_UNSPECIFIED', 0, []},
-        {'CHANNEL_MESSAGE', 1, []},
-        {'MOMENT_POST', 2, []},
-        {'PROFILE_FIELD', 3, []}
-    ];
-find_enum_def('imboy.textguard.v1.Decision') ->
-    [{'DECISION_UNSPECIFIED', 0, []}, {'ALLOW', 1, []}, {'REVIEW', 2, []}, {'BLOCK', 3, []}];
-find_enum_def('imboy.textguard.v1.Severity') ->
-    [{'SEVERITY_UNSPECIFIED', 0, []}, {'LOW', 1, []}, {'MEDIUM', 2, []}, {'HIGH', 3, []}];
-find_enum_def('imboy.textguard.v1.MatchMethod') ->
-    [
-        {'METHOD_UNSPECIFIED', 0, []},
-        {'LITERAL', 1, []},
-        {'T2S', 2, []},
-        {'GAP', 3, []},
-        {'ALIAS', 4, []},
-        {'REGEX', 5, []}
-    ];
-find_enum_def('imboy.textguard.v1.VariantType') ->
-    [
-        {'VARIANT_UNSPECIFIED', 0, []},
-        {'CANONICAL', 1, []},
-        {'PINYIN', 2, []},
-        {'HOMOPHONE', 3, []},
-        {'LOOKALIKE', 4, []},
-        {'DECOMPOSED', 5, []},
-        {'REGEX_RULE', 6, []}
-    ];
-find_enum_def(_) ->
-    error.
 
-enum_symbol_by_value('imboy.textguard.v1.Scene', Value) ->
-    'enum_symbol_by_value_imboy.textguard.v1.Scene'(Value);
-enum_symbol_by_value('imboy.textguard.v1.Decision', Value) ->
-    'enum_symbol_by_value_imboy.textguard.v1.Decision'(Value);
-enum_symbol_by_value('imboy.textguard.v1.Severity', Value) ->
-    'enum_symbol_by_value_imboy.textguard.v1.Severity'(Value);
-enum_symbol_by_value('imboy.textguard.v1.MatchMethod', Value) ->
-    'enum_symbol_by_value_imboy.textguard.v1.MatchMethod'(Value);
-enum_symbol_by_value('imboy.textguard.v1.VariantType', Value) ->
-    'enum_symbol_by_value_imboy.textguard.v1.VariantType'(Value).
+find_enum_def('imboy.textguard.v1.Scene') -> [{'SCENE_UNSPECIFIED', 0, []}, {'CHANNEL_MESSAGE', 1, []}, {'MOMENT_POST', 2, []}, {'PROFILE_FIELD', 3, []}];
+find_enum_def('imboy.textguard.v1.Decision') -> [{'DECISION_UNSPECIFIED', 0, []}, {'ALLOW', 1, []}, {'REVIEW', 2, []}, {'BLOCK', 3, []}];
+find_enum_def('imboy.textguard.v1.Severity') -> [{'SEVERITY_UNSPECIFIED', 0, []}, {'LOW', 1, []}, {'MEDIUM', 2, []}, {'HIGH', 3, []}];
+find_enum_def('imboy.textguard.v1.MatchMethod') -> [{'METHOD_UNSPECIFIED', 0, []}, {'LITERAL', 1, []}, {'T2S', 2, []}, {'GAP', 3, []}, {'ALIAS', 4, []}, {'REGEX', 5, []}];
+find_enum_def('imboy.textguard.v1.VariantType') -> [{'VARIANT_UNSPECIFIED', 0, []}, {'CANONICAL', 1, []}, {'PINYIN', 2, []}, {'HOMOPHONE', 3, []}, {'LOOKALIKE', 4, []}, {'DECOMPOSED', 5, []}, {'REGEX_RULE', 6, []}];
+find_enum_def(_) -> error.
 
-enum_value_by_symbol('imboy.textguard.v1.Scene', Sym) ->
-    'enum_value_by_symbol_imboy.textguard.v1.Scene'(Sym);
-enum_value_by_symbol('imboy.textguard.v1.Decision', Sym) ->
-    'enum_value_by_symbol_imboy.textguard.v1.Decision'(Sym);
-enum_value_by_symbol('imboy.textguard.v1.Severity', Sym) ->
-    'enum_value_by_symbol_imboy.textguard.v1.Severity'(Sym);
-enum_value_by_symbol('imboy.textguard.v1.MatchMethod', Sym) ->
-    'enum_value_by_symbol_imboy.textguard.v1.MatchMethod'(Sym);
-enum_value_by_symbol('imboy.textguard.v1.VariantType', Sym) ->
-    'enum_value_by_symbol_imboy.textguard.v1.VariantType'(Sym).
+
+enum_symbol_by_value('imboy.textguard.v1.Scene', Value) -> 'enum_symbol_by_value_imboy.textguard.v1.Scene'(Value);
+enum_symbol_by_value('imboy.textguard.v1.Decision', Value) -> 'enum_symbol_by_value_imboy.textguard.v1.Decision'(Value);
+enum_symbol_by_value('imboy.textguard.v1.Severity', Value) -> 'enum_symbol_by_value_imboy.textguard.v1.Severity'(Value);
+enum_symbol_by_value('imboy.textguard.v1.MatchMethod', Value) -> 'enum_symbol_by_value_imboy.textguard.v1.MatchMethod'(Value);
+enum_symbol_by_value('imboy.textguard.v1.VariantType', Value) -> 'enum_symbol_by_value_imboy.textguard.v1.VariantType'(Value).
+
+
+enum_value_by_symbol('imboy.textguard.v1.Scene', Sym) -> 'enum_value_by_symbol_imboy.textguard.v1.Scene'(Sym);
+enum_value_by_symbol('imboy.textguard.v1.Decision', Sym) -> 'enum_value_by_symbol_imboy.textguard.v1.Decision'(Sym);
+enum_value_by_symbol('imboy.textguard.v1.Severity', Sym) -> 'enum_value_by_symbol_imboy.textguard.v1.Severity'(Sym);
+enum_value_by_symbol('imboy.textguard.v1.MatchMethod', Sym) -> 'enum_value_by_symbol_imboy.textguard.v1.MatchMethod'(Sym);
+enum_value_by_symbol('imboy.textguard.v1.VariantType', Sym) -> 'enum_value_by_symbol_imboy.textguard.v1.VariantType'(Sym).
+
 
 'enum_symbol_by_value_imboy.textguard.v1.Scene'(0) -> 'SCENE_UNSPECIFIED';
 'enum_symbol_by_value_imboy.textguard.v1.Scene'(1) -> 'CHANNEL_MESSAGE';
 'enum_symbol_by_value_imboy.textguard.v1.Scene'(2) -> 'MOMENT_POST';
 'enum_symbol_by_value_imboy.textguard.v1.Scene'(3) -> 'PROFILE_FIELD'.
+
 
 'enum_value_by_symbol_imboy.textguard.v1.Scene'('SCENE_UNSPECIFIED') -> 0;
 'enum_value_by_symbol_imboy.textguard.v1.Scene'('CHANNEL_MESSAGE') -> 1;
@@ -10607,6 +2425,7 @@ enum_value_by_symbol('imboy.textguard.v1.VariantType', Sym) ->
 'enum_symbol_by_value_imboy.textguard.v1.Decision'(2) -> 'REVIEW';
 'enum_symbol_by_value_imboy.textguard.v1.Decision'(3) -> 'BLOCK'.
 
+
 'enum_value_by_symbol_imboy.textguard.v1.Decision'('DECISION_UNSPECIFIED') -> 0;
 'enum_value_by_symbol_imboy.textguard.v1.Decision'('ALLOW') -> 1;
 'enum_value_by_symbol_imboy.textguard.v1.Decision'('REVIEW') -> 2;
@@ -10616,6 +2435,7 @@ enum_value_by_symbol('imboy.textguard.v1.VariantType', Sym) ->
 'enum_symbol_by_value_imboy.textguard.v1.Severity'(1) -> 'LOW';
 'enum_symbol_by_value_imboy.textguard.v1.Severity'(2) -> 'MEDIUM';
 'enum_symbol_by_value_imboy.textguard.v1.Severity'(3) -> 'HIGH'.
+
 
 'enum_value_by_symbol_imboy.textguard.v1.Severity'('SEVERITY_UNSPECIFIED') -> 0;
 'enum_value_by_symbol_imboy.textguard.v1.Severity'('LOW') -> 1;
@@ -10628,6 +2448,7 @@ enum_value_by_symbol('imboy.textguard.v1.VariantType', Sym) ->
 'enum_symbol_by_value_imboy.textguard.v1.MatchMethod'(3) -> 'GAP';
 'enum_symbol_by_value_imboy.textguard.v1.MatchMethod'(4) -> 'ALIAS';
 'enum_symbol_by_value_imboy.textguard.v1.MatchMethod'(5) -> 'REGEX'.
+
 
 'enum_value_by_symbol_imboy.textguard.v1.MatchMethod'('METHOD_UNSPECIFIED') -> 0;
 'enum_value_by_symbol_imboy.textguard.v1.MatchMethod'('LITERAL') -> 1;
@@ -10644,6 +2465,7 @@ enum_value_by_symbol('imboy.textguard.v1.VariantType', Sym) ->
 'enum_symbol_by_value_imboy.textguard.v1.VariantType'(5) -> 'DECOMPOSED';
 'enum_symbol_by_value_imboy.textguard.v1.VariantType'(6) -> 'REGEX_RULE'.
 
+
 'enum_value_by_symbol_imboy.textguard.v1.VariantType'('VARIANT_UNSPECIFIED') -> 0;
 'enum_value_by_symbol_imboy.textguard.v1.VariantType'('CANONICAL') -> 1;
 'enum_value_by_symbol_imboy.textguard.v1.VariantType'('PINYIN') -> 2;
@@ -10652,58 +2474,29 @@ enum_value_by_symbol('imboy.textguard.v1.VariantType', Sym) ->
 'enum_value_by_symbol_imboy.textguard.v1.VariantType'('DECOMPOSED') -> 5;
 'enum_value_by_symbol_imboy.textguard.v1.VariantType'('REGEX_RULE') -> 6.
 
+
 get_service_names() -> ['imboy.textguard.v1.TextGuard'].
 
+
 get_service_def('imboy.textguard.v1.TextGuard') ->
-    {{service, 'imboy.textguard.v1.TextGuard'}, [
-        #{
-            name => 'CheckText',
-            input => 'imboy.textguard.v1.CheckTextRequest',
-            output => 'imboy.textguard.v1.CheckTextResponse',
-            input_stream => false,
-            output_stream => false,
-            opts => []
-        },
-        #{
-            name => 'GetInfo',
-            input => 'imboy.textguard.v1.GetInfoRequest',
-            output => 'imboy.textguard.v1.GetInfoResponse',
-            input_stream => false,
-            output_stream => false,
-            opts => []
-        }
-    ]};
-get_service_def(_) ->
-    error.
+    {{service, 'imboy.textguard.v1.TextGuard'},
+     [#{name => 'CheckText', input => 'imboy.textguard.v1.CheckTextRequest', output => 'imboy.textguard.v1.CheckTextResponse', input_stream => false, output_stream => false, opts => []},
+      #{name => 'GetInfo', input => 'imboy.textguard.v1.GetInfoRequest', output => 'imboy.textguard.v1.GetInfoResponse', input_stream => false, output_stream => false, opts => []}]};
+get_service_def(_) -> error.
+
 
 get_rpc_names('imboy.textguard.v1.TextGuard') -> ['CheckText', 'GetInfo'];
 get_rpc_names(_) -> error.
 
-find_rpc_def('imboy.textguard.v1.TextGuard', RpcName) ->
-    'find_rpc_def_imboy.textguard.v1.TextGuard'(RpcName);
-find_rpc_def(_, _) ->
-    error.
 
-'find_rpc_def_imboy.textguard.v1.TextGuard'('CheckText') ->
-    #{
-        name => 'CheckText',
-        input => 'imboy.textguard.v1.CheckTextRequest',
-        output => 'imboy.textguard.v1.CheckTextResponse',
-        input_stream => false,
-        output_stream => false,
-        opts => []
-    };
-'find_rpc_def_imboy.textguard.v1.TextGuard'('GetInfo') ->
-    #{
-        name => 'GetInfo',
-        input => 'imboy.textguard.v1.GetInfoRequest',
-        output => 'imboy.textguard.v1.GetInfoResponse',
-        input_stream => false,
-        output_stream => false,
-        opts => []
-    };
-'find_rpc_def_imboy.textguard.v1.TextGuard'(_) ->
-    error.
+find_rpc_def('imboy.textguard.v1.TextGuard', RpcName) -> 'find_rpc_def_imboy.textguard.v1.TextGuard'(RpcName);
+find_rpc_def(_, _) -> error.
+
+
+'find_rpc_def_imboy.textguard.v1.TextGuard'('CheckText') -> #{name => 'CheckText', input => 'imboy.textguard.v1.CheckTextRequest', output => 'imboy.textguard.v1.CheckTextResponse', input_stream => false, output_stream => false, opts => []};
+'find_rpc_def_imboy.textguard.v1.TextGuard'('GetInfo') -> #{name => 'GetInfo', input => 'imboy.textguard.v1.GetInfoRequest', output => 'imboy.textguard.v1.GetInfoResponse', input_stream => false, output_stream => false, opts => []};
+'find_rpc_def_imboy.textguard.v1.TextGuard'(_) -> error.
+
 
 fetch_rpc_def(ServiceName, RpcName) ->
     case find_rpc_def(ServiceName, RpcName) of
@@ -10711,65 +2504,52 @@ fetch_rpc_def(ServiceName, RpcName) ->
         error -> erlang:error({no_such_rpc, ServiceName, RpcName})
     end.
 
+
 %% Convert a a fully qualified (ie with package name) service name
 %% as a binary to a service name as an atom.
 fqbin_to_service_name(<<"imboy.textguard.v1.TextGuard">>) -> 'imboy.textguard.v1.TextGuard';
 fqbin_to_service_name(X) -> error({gpb_error, {badservice, X}}).
+
 
 %% Convert a service name as an atom to a fully qualified
 %% (ie with package name) name as a binary.
 service_name_to_fqbin('imboy.textguard.v1.TextGuard') -> <<"imboy.textguard.v1.TextGuard">>;
 service_name_to_fqbin(X) -> error({gpb_error, {badservice, X}}).
 
+
 %% Convert a a fully qualified (ie with package name) service name
 %% and an rpc name, both as binaries to a service name and an rpc
 %% name, as atoms.
-fqbins_to_service_and_rpc_name(<<"imboy.textguard.v1.TextGuard">>, <<"CheckText">>) ->
-    {'imboy.textguard.v1.TextGuard', 'CheckText'};
-fqbins_to_service_and_rpc_name(<<"imboy.textguard.v1.TextGuard">>, <<"GetInfo">>) ->
-    {'imboy.textguard.v1.TextGuard', 'GetInfo'};
-fqbins_to_service_and_rpc_name(S, R) ->
-    error({gpb_error, {badservice_or_rpc, {S, R}}}).
+fqbins_to_service_and_rpc_name(<<"imboy.textguard.v1.TextGuard">>, <<"CheckText">>) -> {'imboy.textguard.v1.TextGuard', 'CheckText'};
+fqbins_to_service_and_rpc_name(<<"imboy.textguard.v1.TextGuard">>, <<"GetInfo">>) -> {'imboy.textguard.v1.TextGuard', 'GetInfo'};
+fqbins_to_service_and_rpc_name(S, R) -> error({gpb_error, {badservice_or_rpc, {S, R}}}).
+
 
 %% Convert a service name and an rpc name, both as atoms,
 %% to a fully qualified (ie with package name) service name and
 %% an rpc name as binaries.
-service_and_rpc_name_to_fqbins('imboy.textguard.v1.TextGuard', 'CheckText') ->
-    {<<"imboy.textguard.v1.TextGuard">>, <<"CheckText">>};
-service_and_rpc_name_to_fqbins('imboy.textguard.v1.TextGuard', 'GetInfo') ->
-    {<<"imboy.textguard.v1.TextGuard">>, <<"GetInfo">>};
-service_and_rpc_name_to_fqbins(S, R) ->
-    error({gpb_error, {badservice_or_rpc, {S, R}}}).
+service_and_rpc_name_to_fqbins('imboy.textguard.v1.TextGuard', 'CheckText') -> {<<"imboy.textguard.v1.TextGuard">>, <<"CheckText">>};
+service_and_rpc_name_to_fqbins('imboy.textguard.v1.TextGuard', 'GetInfo') -> {<<"imboy.textguard.v1.TextGuard">>, <<"GetInfo">>};
+service_and_rpc_name_to_fqbins(S, R) -> error({gpb_error, {badservice_or_rpc, {S, R}}}).
 
-fqbin_to_msg_name(<<"imboy.textguard.v1.TextField">>) ->
-    'imboy.textguard.v1.TextField';
-fqbin_to_msg_name(<<"imboy.textguard.v1.CheckTextRequest">>) ->
-    'imboy.textguard.v1.CheckTextRequest';
-fqbin_to_msg_name(<<"imboy.textguard.v1.Hit">>) ->
-    'imboy.textguard.v1.Hit';
-fqbin_to_msg_name(<<"imboy.textguard.v1.CheckTextResponse">>) ->
-    'imboy.textguard.v1.CheckTextResponse';
-fqbin_to_msg_name(<<"imboy.textguard.v1.GetInfoRequest">>) ->
-    'imboy.textguard.v1.GetInfoRequest';
-fqbin_to_msg_name(<<"imboy.textguard.v1.GetInfoResponse">>) ->
-    'imboy.textguard.v1.GetInfoResponse';
-fqbin_to_msg_name(E) ->
-    error({gpb_error, {badmsg, E}}).
 
-msg_name_to_fqbin('imboy.textguard.v1.TextField') ->
-    <<"imboy.textguard.v1.TextField">>;
-msg_name_to_fqbin('imboy.textguard.v1.CheckTextRequest') ->
-    <<"imboy.textguard.v1.CheckTextRequest">>;
-msg_name_to_fqbin('imboy.textguard.v1.Hit') ->
-    <<"imboy.textguard.v1.Hit">>;
-msg_name_to_fqbin('imboy.textguard.v1.CheckTextResponse') ->
-    <<"imboy.textguard.v1.CheckTextResponse">>;
-msg_name_to_fqbin('imboy.textguard.v1.GetInfoRequest') ->
-    <<"imboy.textguard.v1.GetInfoRequest">>;
-msg_name_to_fqbin('imboy.textguard.v1.GetInfoResponse') ->
-    <<"imboy.textguard.v1.GetInfoResponse">>;
-msg_name_to_fqbin(E) ->
-    error({gpb_error, {badmsg, E}}).
+fqbin_to_msg_name(<<"imboy.textguard.v1.TextField">>) -> 'imboy.textguard.v1.TextField';
+fqbin_to_msg_name(<<"imboy.textguard.v1.CheckTextRequest">>) -> 'imboy.textguard.v1.CheckTextRequest';
+fqbin_to_msg_name(<<"imboy.textguard.v1.Hit">>) -> 'imboy.textguard.v1.Hit';
+fqbin_to_msg_name(<<"imboy.textguard.v1.CheckTextResponse">>) -> 'imboy.textguard.v1.CheckTextResponse';
+fqbin_to_msg_name(<<"imboy.textguard.v1.GetInfoRequest">>) -> 'imboy.textguard.v1.GetInfoRequest';
+fqbin_to_msg_name(<<"imboy.textguard.v1.GetInfoResponse">>) -> 'imboy.textguard.v1.GetInfoResponse';
+fqbin_to_msg_name(E) -> error({gpb_error, {badmsg, E}}).
+
+
+msg_name_to_fqbin('imboy.textguard.v1.TextField') -> <<"imboy.textguard.v1.TextField">>;
+msg_name_to_fqbin('imboy.textguard.v1.CheckTextRequest') -> <<"imboy.textguard.v1.CheckTextRequest">>;
+msg_name_to_fqbin('imboy.textguard.v1.Hit') -> <<"imboy.textguard.v1.Hit">>;
+msg_name_to_fqbin('imboy.textguard.v1.CheckTextResponse') -> <<"imboy.textguard.v1.CheckTextResponse">>;
+msg_name_to_fqbin('imboy.textguard.v1.GetInfoRequest') -> <<"imboy.textguard.v1.GetInfoRequest">>;
+msg_name_to_fqbin('imboy.textguard.v1.GetInfoResponse') -> <<"imboy.textguard.v1.GetInfoResponse">>;
+msg_name_to_fqbin(E) -> error({gpb_error, {badmsg, E}}).
+
 
 fqbin_to_enum_name(<<"imboy.textguard.v1.Scene">>) -> 'imboy.textguard.v1.Scene';
 fqbin_to_enum_name(<<"imboy.textguard.v1.Decision">>) -> 'imboy.textguard.v1.Decision';
@@ -10778,6 +2558,7 @@ fqbin_to_enum_name(<<"imboy.textguard.v1.MatchMethod">>) -> 'imboy.textguard.v1.
 fqbin_to_enum_name(<<"imboy.textguard.v1.VariantType">>) -> 'imboy.textguard.v1.VariantType';
 fqbin_to_enum_name(E) -> error({gpb_error, {badenum, E}}).
 
+
 enum_name_to_fqbin('imboy.textguard.v1.Scene') -> <<"imboy.textguard.v1.Scene">>;
 enum_name_to_fqbin('imboy.textguard.v1.Decision') -> <<"imboy.textguard.v1.Decision">>;
 enum_name_to_fqbin('imboy.textguard.v1.Severity') -> <<"imboy.textguard.v1.Severity">>;
@@ -10785,13 +2566,17 @@ enum_name_to_fqbin('imboy.textguard.v1.MatchMethod') -> <<"imboy.textguard.v1.Ma
 enum_name_to_fqbin('imboy.textguard.v1.VariantType') -> <<"imboy.textguard.v1.VariantType">>;
 enum_name_to_fqbin(E) -> error({gpb_error, {badenum, E}}).
 
+
 get_package_name() -> 'imboy.textguard.v1'.
+
 
 %% Whether or not the message names
 %% are prepended with package name or not.
 uses_packages() -> true.
 
+
 source_basename() -> "textguard.proto".
+
 
 %% Retrieve all proto file names, also imported ones.
 %% The order is top-down. The first element is always the main
@@ -10800,6 +2585,7 @@ source_basename() -> "textguard.proto".
 %% the basenames sans extension
 get_all_source_basenames() -> ["textguard.proto"].
 
+
 %% Retrieve all proto file names, also imported ones.
 %% The order is top-down. The first element is always the main
 %% source file. The files are returned sans .proto extension,
@@ -10807,39 +2593,26 @@ get_all_source_basenames() -> ["textguard.proto"].
 %% functions.
 get_all_proto_names() -> ["textguard"].
 
-get_msg_containment("textguard") ->
-    [
-        'imboy.textguard.v1.CheckTextRequest',
-        'imboy.textguard.v1.CheckTextResponse',
-        'imboy.textguard.v1.GetInfoRequest',
-        'imboy.textguard.v1.GetInfoResponse',
-        'imboy.textguard.v1.Hit',
-        'imboy.textguard.v1.TextField'
-    ];
-get_msg_containment(P) ->
-    error({gpb_error, {badproto, P}}).
+
+get_msg_containment("textguard") -> ['imboy.textguard.v1.CheckTextRequest', 'imboy.textguard.v1.CheckTextResponse', 'imboy.textguard.v1.GetInfoRequest', 'imboy.textguard.v1.GetInfoResponse', 'imboy.textguard.v1.Hit', 'imboy.textguard.v1.TextField'];
+get_msg_containment(P) -> error({gpb_error, {badproto, P}}).
+
 
 get_pkg_containment("textguard") -> 'imboy.textguard.v1';
 get_pkg_containment(P) -> error({gpb_error, {badproto, P}}).
 
+
 get_service_containment("textguard") -> ['imboy.textguard.v1.TextGuard'];
 get_service_containment(P) -> error({gpb_error, {badproto, P}}).
 
-get_rpc_containment("textguard") ->
-    [{'imboy.textguard.v1.TextGuard', 'CheckText'}, {'imboy.textguard.v1.TextGuard', 'GetInfo'}];
-get_rpc_containment(P) ->
-    error({gpb_error, {badproto, P}}).
 
-get_enum_containment("textguard") ->
-    [
-        'imboy.textguard.v1.Decision',
-        'imboy.textguard.v1.MatchMethod',
-        'imboy.textguard.v1.Scene',
-        'imboy.textguard.v1.Severity',
-        'imboy.textguard.v1.VariantType'
-    ];
-get_enum_containment(P) ->
-    error({gpb_error, {badproto, P}}).
+get_rpc_containment("textguard") -> [{'imboy.textguard.v1.TextGuard', 'CheckText'}, {'imboy.textguard.v1.TextGuard', 'GetInfo'}];
+get_rpc_containment(P) -> error({gpb_error, {badproto, P}}).
+
+
+get_enum_containment("textguard") -> ['imboy.textguard.v1.Decision', 'imboy.textguard.v1.MatchMethod', 'imboy.textguard.v1.Scene', 'imboy.textguard.v1.Severity', 'imboy.textguard.v1.VariantType'];
+get_enum_containment(P) -> error({gpb_error, {badproto, P}}).
+
 
 get_proto_by_msg_name_as_fqbin(<<"imboy.textguard.v1.CheckTextRequest">>) -> "textguard";
 get_proto_by_msg_name_as_fqbin(<<"imboy.textguard.v1.CheckTextResponse">>) -> "textguard";
@@ -10849,8 +2622,10 @@ get_proto_by_msg_name_as_fqbin(<<"imboy.textguard.v1.Hit">>) -> "textguard";
 get_proto_by_msg_name_as_fqbin(<<"imboy.textguard.v1.TextField">>) -> "textguard";
 get_proto_by_msg_name_as_fqbin(E) -> error({gpb_error, {badmsg, E}}).
 
+
 get_proto_by_service_name_as_fqbin(<<"imboy.textguard.v1.TextGuard">>) -> "textguard";
 get_proto_by_service_name_as_fqbin(E) -> error({gpb_error, {badservice, E}}).
+
 
 get_proto_by_enum_name_as_fqbin(<<"imboy.textguard.v1.Decision">>) -> "textguard";
 get_proto_by_enum_name_as_fqbin(<<"imboy.textguard.v1.MatchMethod">>) -> "textguard";
@@ -10859,14 +2634,17 @@ get_proto_by_enum_name_as_fqbin(<<"imboy.textguard.v1.Severity">>) -> "textguard
 get_proto_by_enum_name_as_fqbin(<<"imboy.textguard.v1.VariantType">>) -> "textguard";
 get_proto_by_enum_name_as_fqbin(E) -> error({gpb_error, {badenum, E}}).
 
+
 get_protos_by_pkg_name_as_fqbin(<<"imboy.textguard.v1">>) -> ["textguard"];
 get_protos_by_pkg_name_as_fqbin(E) -> error({gpb_error, {badpkg, E}}).
+
+
 
 gpb_version_as_string() ->
     "5.0.0".
 
 gpb_version_as_list() ->
-    [5, 0, 0].
+    [5,0,0].
 
 gpb_version_source() ->
     "git".

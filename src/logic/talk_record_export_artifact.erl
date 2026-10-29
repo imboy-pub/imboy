@@ -90,8 +90,19 @@ sweep_due() ->
 sweep_records([], N) ->
     {ok, N};
 sweep_records([#{<<"record_id">> := Rid} | Rest], N) ->
-    case elib_pg:with_tx(fun(C) -> expire_record_tx(C, Rid) end, [{reraise, false}]) of
+    case
+        elib_pg:with_tx(
+            fun(C) ->
+                case expire_record_tx(C, Rid) of
+                    {error, Reason} -> throw({abort_tx, Reason});
+                    Result -> Result
+                end
+            end,
+            [{reraise, false}]
+        )
+    of
         {ok, Count} -> sweep_records(Rest, N + Count);
+        {rollback, {abort_tx, Reason}} -> {error, Reason};
         Error -> Error
     end.
 
@@ -112,6 +123,8 @@ expire_record_tx(Conn, Rid) ->
                 {ok, _} -> {ok, 0};
                 Error -> Error
             end;
+        {ok, []} ->
+            {ok, 0};
         Error ->
             Error
     end.

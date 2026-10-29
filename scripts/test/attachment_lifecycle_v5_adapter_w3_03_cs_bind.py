@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
-"""W3-03/cs-bind measured leaves.
+"""W3-03/cs-bind adapter: emits measured leaves for sealing.
 
-Each leaf is bound to the named real-PG eunit test that exercises it in
-eb_message_assets_projection_tests (gate w303_case, eunit-w303.log).
-wrong_org and wrong_workspace are asserted inside one joint named test;
-the adapter emits two separate leaves and discloses that runtime
-granularity instead of pretending they were reported independently.
+Evidence chain per leaf: suite observation stream event (real measured
+values emitted after each leg's asserts), parsed eunit named-test line,
+suite summary, suite source emit check, real scratch pool target.  The
+wrong_org / wrong_workspace leaves come from one eunit test but are proven
+independently: the test emits one observation per leg between its own
+asserts, so each leaf has its own measured values.
 """
-import json
 import os
 import sys
 
@@ -24,76 +24,102 @@ SRC_REL = ("test/features/enterprise_business/application/message/"
 SCENARIOS = {
     "same_message_replay": {
         "test": "post_replay_echoes_same_assets",
-        "joint": False,
-        "source_tokens": [
-            "client_msg_id => <<\"csbe01-replay-1\">>",
-            "sender_type => contact",
-            "maps:get(replayed, Replay)",
-            "maps:get(assets, maps:get(message, First))",
-        ],
         "oracle": {
-            "pre_db_state": "enterprise_asset U1 active+unbound in the owned org/workspace/conversation fixture; no enterprise_message row for client_msg_id csbe01-replay-1",
-            "pre_object_hash": "n/a: eb_message_assets_projection_tests seeds database rows only; this case has no storage object bytes",
-            "action": "eb_message_app:append_message/2 called twice with identical client_msg_id, sender_type=contact, contact_id and asset_ids=[U1]",
-            "expected_http_semantics": "in-process canonical append: first {ok, replayed=false}; retry {ok, replayed=true} (no HTTP endpoint in this suite)",
-            "expected_db_delta": "executed-once canonical transaction creates one message and one reference; retry creates zero extra messages and zero extra asset references",
-            "expected_object_state": "retry echoes the same asset ids and frozen projection values; no second message/reference",
-            "proof_actor": "targeted-contract: real scratch PostgreSQL via eb_pg_test_fixture; named eunit test post_replay_echoes_same_assets",
+            "pre_db_state": "isolated scratch PostgreSQL app pool "
+                            "attv5_<slot>_pool; eb_pg_test_fixture random-TSID "
+                            "tenant isolated per scenario; asset seeded "
+                            "unbound (message_id NULL)",
+            "pre_object_hash": "n/a (message/asset projection leaf; no object "
+                               "bytes stored — frozen whitelist projection "
+                               "{id,mime,size_bytes,file_name,status})",
+            "action": "direct erl eunit:test([eb_message_assets_projection_tests],"
+                      "[verbose]) -> post_replay_echoes_same_assets: "
+                      "eb_message_app:append_message twice with the same "
+                      "client_msg_id (sender_type=contact), then per-scenario "
+                      "measured values emitted to the observation stream",
+            "expected_http_semantics": "no HTTP surface; cs message projection "
+                                       "frozen five-key assets whitelist; "
+                                       "replay returns the same message_id "
+                                       "and identical assets",
+            "expected_db_delta": "first append binds the asset (version+1, "
+                                 "message_id set); replay appends zero rows — "
+                                 "same message echoed, unbound stays 0",
+            "expected_object_state": "no object state change; projection "
+                                     "assets identical between first and "
+                                     "replay",
+            "proof_actor": "epgsql app-pool connection on attv5_<slot>_pool "
+                           "via eb_pg_test_fixture; contact sender",
         },
     },
     "wrong_org": {
         "test": "cross_org_and_workspace_bind_rejected",
-        "joint": True,
-        "source_tokens": [
-            "OtherOrg",
-            "Foreign1",
-            "csbe03-xorg-1",
-            "unbound_count(OtherOrg, OtherWs, Foreign1)",
-        ],
         "oracle": {
-            "pre_db_state": "Foreign1 enterprise_asset active+unbound in OtherOrg/OtherWs, outside the caller org; caller org conversation fixture exists",
-            "pre_object_hash": "n/a: database row fixture only; this case has no storage object bytes",
-            "action": "append_with_assets(caller Scope, [Foreign1])",
-            "expected_http_semantics": "{error,_} with the not_found-shaped refusal; no asset storage details returned",
-            "expected_db_delta": "zero enterprise_message rows; Foreign1 unbound_count(OtherOrg,OtherWs)=1; no binding",
-            "expected_object_state": "foreign asset untouched (no message_id); zero side effects",
-            "proof_actor": "targeted-contract: real scratch PostgreSQL via eb_pg_test_fixture; joint named eunit test cross_org_and_workspace_bind_rejected (wrong_org leg)",
+            "pre_db_state": "isolated scratch PostgreSQL app pool; two "
+                            "random-TSID tenants: the caller's tenant and "
+                            "another organization owning the foreign unbound "
+                            "asset",
+            "pre_object_hash": "n/a (bind-eligibility protocol leaf; no "
+                               "object bytes stored)",
+            "action": "direct erl eunit -> cross_org_and_workspace_bind_rejected "
+                      "(org leg): append_with_assets referencing another "
+                      "organization's asset id, measured values emitted from "
+                      "inside the test after the org-leg asserts",
+            "expected_http_semantics": "no HTTP surface; cross-organization "
+                                       "reference rejected with the same "
+                                       "not_found error shape as absent assets",
+            "expected_db_delta": "zero side effects: no message row for the "
+                                 "caller, foreign asset stays unbound with "
+                                 "unchanged version",
+            "expected_object_state": "no object state change; foreign asset "
+                                     "never gains a reference",
+            "proof_actor": "epgsql app-pool connection on attv5_<slot>_pool "
+                           "via eb_pg_test_fixture; contact sender",
         },
     },
     "wrong_workspace": {
         "test": "cross_org_and_workspace_bind_rejected",
-        "joint": True,
-        "source_tokens": [
-            "workspace_id => OtherWs",
-            "csbe03-xws-1",
-            "message_count(Org, OtherWs",
-        ],
         "oracle": {
-            "pre_db_state": "workspace OtherWs belongs to a different org; caller org/conversation fixture and Foreign1 asset exist",
-            "pre_object_hash": "n/a: database row fixture only; this case has no storage object bytes",
-            "action": "eb_message_app:append_message(Org, #{workspace_id => OtherWs, conversation_id => own conv, client_msg_id => csbe03-xws-1, asset_ids => [Foreign1]})",
-            "expected_http_semantics": "{error,_} from the tenant gate before touching the database",
-            "expected_db_delta": "message_count(Org, OtherWs, csbe03-xws-1)=0; no message, no binding",
-            "expected_object_state": "no asset mutation and no storage detail leak",
-            "proof_actor": "targeted-contract: real scratch PostgreSQL via eb_pg_test_fixture; joint named eunit test cross_org_and_workspace_bind_rejected (wrong_workspace leg)",
+            "pre_db_state": "isolated scratch PostgreSQL app pool; caller "
+                            "tenant plus a workspace belonging to another "
+                            "organization holding the foreign unbound asset",
+            "pre_object_hash": "n/a (bind-eligibility protocol leaf; no "
+                               "object bytes stored)",
+            "action": "direct erl eunit -> cross_org_and_workspace_bind_rejected "
+                      "(workspace leg): eb_message_app:append_message with a "
+                      "workspace from another organization, measured values "
+                      "emitted from inside the test after the ws-leg asserts",
+            "expected_http_semantics": "no HTTP surface; tenant ownership gate "
+                                       "rejects before any database write",
+            "expected_db_delta": "zero side effects: no message row in the "
+                                 "foreign workspace, foreign asset stays "
+                                 "unbound with unchanged version",
+            "expected_object_state": "no object state change; foreign asset "
+                                     "never gains a reference",
+            "proof_actor": "epgsql app-pool connection on attv5_<slot>_pool "
+                           "via eb_pg_test_fixture; contact sender",
         },
     },
     "wrong_owner": {
-        "test": "wrong_owner_bind_rejected",
-        "joint": False,
-        "source_tokens": [
-            "uploader => Peer",
-            "csbe03-owner-1",
-            "unbound_count(Org, maps:get(workspace_id, Scope), U1)",
-        ],
+        "test": "cs_wrong_owner_bind_rejected",
         "oracle": {
-            "pre_db_state": "U1 enterprise_asset active+unbound uploaded by Peer (not the acting user); business_identity sender fixture",
-            "pre_object_hash": "n/a: database row fixture only; this case has no storage object bytes",
-            "action": "eb_message_app:append_message(Org, #{sender_type => business_identity, actor_user_id => Actor, asset_ids => [U1]})",
-            "expected_http_semantics": "{error,_}; refusal shape is indistinguishable from not_found and exposes no storage details",
-            "expected_db_delta": "no enterprise_message row; unbound_count(Org,Ws,U1)=1 (no binding)",
-            "expected_object_state": "asset untouched; no message_id",
-            "proof_actor": "targeted-contract: real scratch PostgreSQL via eb_pg_test_fixture; named eunit test wrong_owner_bind_rejected",
+            "pre_db_state": "isolated scratch PostgreSQL app pool; caller "
+                            "tenant with an unbound asset uploaded by another "
+                            "user (peer)",
+            "pre_object_hash": "n/a (bind-eligibility protocol leaf; no "
+                               "object bytes stored)",
+            "action": "direct erl eunit -> cs_wrong_owner_bind_rejected: "
+                      "append_with_assets referencing a peer-uploaded asset, "
+                      "measured values emitted from inside the test",
+            "expected_http_semantics": "no HTTP surface; cs member message "
+                                       "may only bind assets the sender "
+                                       "uploaded; rejected with the same "
+                                       "not_found error shape as absent assets",
+            "expected_db_delta": "zero side effects: no message row, asset "
+                                 "stays unbound with unchanged version",
+            "expected_object_state": "no object state change; peer-owned "
+                                     "asset never gains a reference",
+            "proof_actor": "epgsql app-pool connection on attv5_<slot>_pool "
+                           "via eb_pg_test_fixture; contact sender",
         },
     },
 }
@@ -103,14 +129,11 @@ def main():
     run_dir, case_dir, root = (os.path.abspath(arg) for arg in sys.argv[1:4])
     ctx = support.context(run_dir, CASE)
     leaves = support.leaves(ctx, CASE)
-    resource_id, container_id = support.pool_resource(ctx, CASE)
     evidence = support.read_evidence(case_dir, LOG_NAMES, CASE)
     parsed = support.parse_eunit(evidence["text"], CASE)
     support.require_clean_suite(parsed, MARKER, CASE, MODULE)
     source_path, source = support.erl_source(root, SRC_REL, CASE)
-    started, finished = support.measurement_window(evidence, parsed, CASE)
-    probes = support.probe_entries(case_dir)
-
+    entries = support.read_observations(case_dir, CASE)
     rows = []
     for leaf in leaves:
         scenario = SCENARIOS.get(leaf["ordering_or_fault"])
@@ -119,56 +142,16 @@ def main():
                         % leaf["ordering_or_fault"])
         test = support.named_test(parsed, scenario["test"], CASE)
         if test["module"] != MODULE:
-            support.die(CASE, "named test ran in %r, expected %r"
-                        % (test["module"], MODULE))
-        block = support.erl_function_block(source, scenario["test"], CASE, source_path)
-        missing = [token for token in scenario["source_tokens"] if token not in block["text"]]
-        if missing:
-            support.die(CASE, "suite source %s lacks scenario assertions %r"
-                        % (scenario["test"], missing))
-        joint_note = ("; joint runtime unit: one named eunit test covers both "
-                      "wrong_org and wrong_workspace and reports one status"
-                      if scenario["joint"] else "")
-        assertions = [
-            support.assertion(
-                "contract_leaf_identity",
-                json.dumps({field: leaf[field] for field in support.LEAF_FIELDS},
-                           sort_keys=True)),
-            support.assertion(
-                "eunit_named_test_%s_ok" % scenario["test"],
-                "%s line %d: %s; parsed duration=%ss%s"
-                % (evidence["name"], test["line"], test["raw"],
-                   test["duration"], joint_note)),
-            support.assertion(
-                "eunit_suite_summary_%d_passed" % parsed["summary_count"],
-                "parsed summary=%r; parsed tests=%d; failure_markers=%d; marker=%s"
-                % (parsed["summary_raw"], len(parsed["tests"]),
-                   len(parsed["failures"]), MARKER)),
-            support.assertion(
-                "scenario_source_assertions_present",
-                "%s:%d-%d contains %s"
-                % (SRC_REL, block["start"], block["end"], scenario["source_tokens"])),
-            support.assertion(
-                "evidence_log_sha256_recomputed",
-                "%s sha256=%s size=%d mtime_window=%s..%s"
-                % (evidence["name"], evidence["sha256"], evidence["size"],
-                   started, finished)),
-        ]
-        probe = support.matching_probe(probes, leaf)
-        if probe:
-            assertions.append(support.assertion(
-                "probe_%s_pass" % str(probe.get("name", "probe")),
-                "probes.jsonl entry=%s" % json.dumps(probe, sort_keys=True)))
-        rows.append(support.build_observation(
-            leaf=leaf,
-            assertions=assertions,
-            oracle=scenario["oracle"],
-            actor_provenance=support.actor(resource_id),
-            resource_ids=[resource_id] + ([container_id] if container_id else []),
-            request_ids=[support.request_id(CASE, evidence, leaf)],
-            started_at=started,
-            finished_at=finished,
-        ))
+            support.die(CASE, "named test ran in %r, expected %r" % (test["module"], MODULE))
+        obs = support.matching_observation(entries, leaf, CASE)
+        oracle = dict(scenario["oracle"])
+        pool = support.pool_resource(ctx, CASE)[0]
+        oracle = {key: value.replace("attv5_<slot>_pool", pool)
+                  for key, value in oracle.items()}
+        rows.append(support.leaf_observation_row(
+            leaf, obs=obs, test=test, evidence=evidence, parsed=parsed,
+            ctx=ctx, oracle=oracle, scenario_test=scenario["test"],
+            source_path=source_path, source=source, case_id=CASE))
     support.write_observations(case_dir, rows, leaves, CASE)
 
 

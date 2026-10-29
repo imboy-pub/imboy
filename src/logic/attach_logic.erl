@@ -314,15 +314,20 @@ v5_session(ObjectKey) ->
 %% W2-02 V5 confirm：真实字节校验（02 §4「HEAD 本身不充分」）+ 原子会话确认。
 %% 与 legacy 的差异：GET 全量字节算 SHA256/size 对照登记会话的 pin 快照；
 %% confirm 事务内持锁重查 upload_content（锁前读数不构成授权）；
-%% 失败不删对象——pin 保留供同 receipt 重试，物理回收归 W4 GC。
+%% 读字节前先取 O(1) 首 stat 基线，锁后复核同一对象 stat（防 stat-confirm
+%% 窗口覆写）；失败不删对象——pin 保留供同 receipt 重试，物理回收归 W4 GC。
 -spec verify_and_save_v5(integer(), binary(), binary(), binary() | undefined, map()) ->
     {ok, map()} | {error, term()}.
 verify_and_save_v5(Uid, ObjectKey, Scope, ScopeRef, Meta) ->
     case v5_object_bytes(ObjectKey, Scope) of
-        {ok, Sha256, RealSize, RealType} ->
+        {ok, Sha256, RealSize, RealType, StatCtx} ->
             case v5_meta_guard(Scope, RealType, RealSize, Meta) of
-                ok -> do_save_v5(Uid, ObjectKey, Scope, ScopeRef, Meta, RealSize, RealType, Sha256);
-                {error, _} = E -> E
+                ok ->
+                    do_save_v5(
+                        Uid, ObjectKey, Scope, ScopeRef, Meta, RealSize, RealType, Sha256, StatCtx
+                    );
+                {error, _} = E ->
+                    E
             end;
         {error, not_found} ->
             {error, object_not_found};
@@ -330,30 +335,39 @@ verify_and_save_v5(Uid, ObjectKey, Scope, ScopeRef, Meta) ->
             E
     end.
 
+%% 读字节前先 head 建首 stat 基线（StatCtx 传 confirm 锁后复核）：
+%% [S1, read] 覆写由哈希-pin 对照兜住，[read, 提交] 覆写由 S1/S2 不一致拒绝
+%% ——两次 stat 夹逼不留成功口。S1 not_found 与读路径 not_found 同形状
+%% （现有 object_not_found 语义不变，仅新增「两次 stat 不一致」拒绝原因）。
 v5_object_bytes(Key, _Scope) ->
     case attachment_storage:session_location(Key) of
         {ok, legacy_unknown} ->
             {error, historical_location_unverified};
         {ok, #{driver := garage, mime := Mime} = I} ->
-            case attachment_storage_garage:read_snapshot(I) of
-                {ok, Bytes} ->
-                    {ok, binary:encode_hex(crypto:hash(sha256, Bytes), lowercase), byte_size(Bytes),
-                        Mime};
-                {error, _} = E ->
-                    E
-            end;
+            v5_bytes_with_stat(attachment_storage_garage, I, Mime);
         {ok, #{driver := disk, mime := Mime} = I} ->
-            case attachment_storage_disk:read_snapshot(I) of
-                {ok, Bytes} ->
-                    {ok, binary:encode_hex(crypto:hash(sha256, Bytes), lowercase), byte_size(Bytes),
-                        Mime};
-                {error, _} = E ->
-                    E
-            end;
+            v5_bytes_with_stat(attachment_storage_disk, I, Mime);
         {error, _} = E ->
             E;
         _ ->
             {error, unsupported_driver}
+    end.
+
+v5_bytes_with_stat(DriverMod, I, Mime) ->
+    case attachment_storage:head_snapshot(I) of
+        {ok, FirstStat} ->
+            case DriverMod:read_snapshot(I) of
+                {ok, Bytes} ->
+                    StatCtx = #{snapshot => I, first_stat => FirstStat},
+                    {ok, binary:encode_hex(crypto:hash(sha256, Bytes), lowercase), byte_size(Bytes),
+                        Mime, StatCtx};
+                {error, _} = E ->
+                    E
+            end;
+        {error, not_found} ->
+            {error, not_found};
+        {error, _} = E ->
+            E
     end.
 
 %% 与 legacy verify_and_save 同口径的白名单/上限/教学复核；V5 失败不删对象。
@@ -378,10 +392,11 @@ v5_meta_guard(_Scope, RealType, RealSize, _Meta) ->
     map(),
     non_neg_integer(),
     binary(),
-    binary()
+    binary(),
+    map()
 ) ->
     {ok, map()} | {error, term()}.
-do_save_v5(Uid, ObjectKey, Scope, ScopeRef, Meta, RealSize, RealType, Sha256) ->
+do_save_v5(Uid, ObjectKey, Scope, ScopeRef, Meta, RealSize, RealType, Sha256, StatCtx) ->
     case group_anchor_msg_id(Scope, Meta) of
         {error, attachment_anchor_required} = E ->
             E;
@@ -400,13 +415,24 @@ do_save_v5(Uid, ObjectKey, Scope, ScopeRef, Meta, RealSize, RealType, Sha256) ->
                         RealType,
                         Cipher,
                         AnchorMsgId,
-                        Sha256
+                        Sha256,
+                        StatCtx
                     )
             end
     end.
 
 do_save_v5_1(
-    Uid, ObjectKey, Scope, ScopeRef, _Meta, RealSize, RealType, Cipher, AnchorMsgId, Sha256
+    Uid,
+    ObjectKey,
+    Scope,
+    ScopeRef,
+    _Meta,
+    RealSize,
+    RealType,
+    Cipher,
+    AnchorMsgId,
+    Sha256,
+    StatCtx
 ) ->
     Attach = confirm_attach_map(
         ObjectKey, Scope, ScopeRef, RealSize, RealType, Cipher, AnchorMsgId, Sha256
@@ -415,7 +441,7 @@ do_save_v5_1(
     try
         case
             elib_pg:with_tx(fun(Conn) ->
-                confirm_v5_tx(Conn, ObjectKey, Scope, Cipher, Now, Uid, Attach)
+                confirm_v5_tx(Conn, ObjectKey, Scope, Cipher, Now, Uid, Attach, StatCtx)
             end)
         of
             ok ->
@@ -447,8 +473,9 @@ confirm_attach_map(ObjectKey, Scope, ScopeRef, RealSize, RealType, Cipher, Ancho
     }.
 
 %% confirm 线性化事务（02 §4）：workspace 资格 → 锁 pending 行重查 pin 与
-%% scope → metadata insert-if-absent → fn_v5_confirm_pending registered→confirmed。
-confirm_v5_tx(Conn, ObjectKey, Scope, _Cipher, Now, Uid, Attach) ->
+%% scope → 锁后复核对象 stat（stat-confirm 窗口覆写不可放过）→
+%% metadata insert-if-absent → fn_v5_confirm_pending registered→confirmed。
+confirm_v5_tx(Conn, ObjectKey, Scope, _Cipher, Now, Uid, Attach, StatCtx) ->
     case attach_scope_target(Scope, maps:get(<<"scope_ref">>, Attach, undefined)) of
         {ok, Target} ->
             ok = workspace_guard:abort_on_error(
@@ -482,6 +509,16 @@ confirm_v5_tx(Conn, ObjectKey, Scope, _Cipher, Now, Uid, Attach) ->
                     end;
                 _ ->
                     throw({abort_tx, content_not_pinned})
+            end,
+            %% 锁后二次 stat 复核（W2-02）：首 stat（读字节前）与此刻 head 不
+            %% 一致即视为对象在 GET 与提交之间被覆写/删除——按现有
+            %% content_hash_mismatch 路径拒绝，不留成功口。stat 不可得
+            %% （网络/5xx）同样拒绝（fail-closed）；同 receipt 重试由 pin
+            %% 保留语义承接。对象删后 tombstone 语义不变：入口 not_found
+            %% 仍在 v5_object_bytes 按既有 object_not_found 返回。
+            case storage_stat_unchanged(StatCtx) of
+                true -> ok;
+                false -> throw({abort_tx, content_hash_mismatch})
             end,
             case maps:get(<<"scope">>, Session, null) of
                 PendingScope when PendingScope =/= null, PendingScope =/= Scope ->
@@ -520,6 +557,21 @@ confirm_v5_tx(Conn, ObjectKey, Scope, _Cipher, Now, Uid, Attach) ->
 
 pin_of(#{<<"upload_content">> := Content}) when is_map(Content) -> Content;
 pin_of(_) -> #{}.
+
+%% 锁后二次 stat：与首 stat（读字节前 head）对照同一冻结 snapshot I。
+%% 任何非「完全一致」结果（覆写、删除、stat 不可得、键证据漂移）一律
+%% false——调用方按 content_hash_mismatch 拒绝（fail-closed，不留成功口）。
+storage_stat_unchanged(#{snapshot := Snapshot, first_stat := FirstStat}) ->
+    case attachment_storage:head_snapshot(Snapshot) of
+        {ok, SecondStat} -> stat_equal(FirstStat, SecondStat);
+        {error, _} -> false
+    end.
+
+%% 键集并集逐键对照：任一键一边缺证据（undefined）一边有值即不一致
+%% （缺证据退化仅发生在双方同缺——此时判据退化为 size，如实作为遗留风险上报）。
+stat_equal(A, B) ->
+    Keys = lists:usort(maps:keys(A) ++ maps:keys(B)),
+    lists:all(fun(K) -> maps:get(K, A, undefined) =:= maps:get(K, B, undefined) end, Keys).
 
 %% @doc 服务端 HEAD 核实真实性后落库（真实值覆盖客户端自报值）
 -spec verify_and_save(integer(), binary(), binary(), binary() | undefined, map()) ->

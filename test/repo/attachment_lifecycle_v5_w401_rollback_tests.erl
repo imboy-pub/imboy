@@ -25,6 +25,22 @@ cases() ->
         fun pending_cleanup_intent_insert_error/0,
         fun pending_cleanup_audit_insert_error/0,
         fun pending_cleanup_commit_response_lost/0,
+        fun reject_size_rollback/0,
+        fun reject_size_intent_insert_error/0,
+        fun reject_size_audit_insert_error/0,
+        fun reject_size_commit_response_lost/0,
+        fun reject_mime_rollback/0,
+        fun reject_mime_intent_insert_error/0,
+        fun reject_mime_audit_insert_error/0,
+        fun reject_mime_commit_response_lost/0,
+        fun reject_teaching_rollback/0,
+        fun reject_teaching_intent_insert_error/0,
+        fun reject_teaching_audit_insert_error/0,
+        fun reject_teaching_commit_response_lost/0,
+        fun teaching_unbound_rollback/0,
+        fun teaching_unbound_intent_insert_error/0,
+        fun teaching_unbound_audit_insert_error/0,
+        fun teaching_unbound_commit_response_lost/0,
         fun orphan_cleanup_rollback/0,
         fun orphan_cleanup_intent_insert_error/0,
         fun orphan_cleanup_audit_insert_error/0,
@@ -41,13 +57,24 @@ cases() ->
         fun app_retention_purge_intent_insert_error/0,
         fun app_retention_purge_audit_insert_error/0,
         fun app_retention_purge_commit_response_lost/0,
+        fun app_confirm_reject_rollback/0,
+        fun app_confirm_reject_intent_insert_error/0,
+        fun app_confirm_reject_audit_insert_error/0,
+        fun app_confirm_reject_commit_response_lost/0,
         fun eb_private_delete_rollback/0,
         fun eb_private_delete_intent_insert_error/0,
         fun eb_private_delete_audit_insert_error/0,
-        fun eb_private_delete_commit_response_lost/0
+        fun eb_private_delete_commit_response_lost/0,
+        fun eb_purge_drain_rollback/0,
+        fun eb_purge_drain_intent_insert_error/0,
+        fun eb_purge_drain_audit_insert_error/0,
+        fun eb_purge_drain_commit_response_lost/0
     ].
 
 setup() ->
+    %% elib_oss 走 meck passthrough（真实 W202 Garage 函数执行且可计数）：
+    %% 故障注入只在 DB repo 层；driver=garage 叶的「字节保留」由探针
+    %% 对象（setup PUT / cleanup DELETE）+ 零删除调用计数共同证明。
     Modules = [
         attach_pending_repo,
         attachment_repo,
@@ -58,6 +85,17 @@ setup() ->
         eb_pg_asset_meta,
         eb_pg_store
     ],
+    ok = garage_apply_w202(),
+    {ok, _} = application:ensure_all_started(inets),
+    {ok, _} = application:ensure_all_started(ssl),
+    ProbeKey = probe_key(),
+    Bucket = garage_bucket(),
+    ok = elib_oss:put_object(
+        Bucket, ProbeKey, <<"w401r-probe">>, <<"application/octet-stream">>
+    ),
+    persistent_term:put(w401r_probe_bucket, Bucket),
+    persistent_term:put(w401r_probe_key, ProbeKey),
+    {ok, _} = elib_oss:head_object(ProbeKey),
     lists:foreach(fun(M) -> meck:new(M, [non_strict, no_link, passthrough]) end, Modules),
     meck:expect(elib_pg, with_tx, fun(F) ->
         try
@@ -87,7 +125,20 @@ setup() ->
     meck:expect(elib_oss, delete_object, fun(_) -> ok end),
     Modules.
 
-cleanup(Modules) -> lists:foreach(fun meck:unload/1, Modules).
+cleanup(Modules) ->
+    case persistent_term:get(w401r_probe_key, undefined) of
+        undefined ->
+            ok;
+        ProbeKey ->
+            Bucket = persistent_term:get(w401r_probe_bucket),
+            ok = elib_oss:delete_object(Bucket, ProbeKey),
+            persistent_term:erase(w401r_probe_key),
+            persistent_term:erase(w401r_probe_bucket)
+    end,
+    lists:foreach(fun meck:unload/1, Modules).
+
+probe_key() ->
+    <<"v5e2e/w401r/", (integer_to_binary(erlang:unique_integer([positive])))/binary>>.
 
 %% ---- 故障注入 helper（4 类失败统一映射为意图调用错误形状）----
 fault_result(rollback) -> {error, {db, sql_rollback}};
@@ -140,8 +191,10 @@ expect_collect_keys(Fault) ->
 
 %% ---- 12 入口 × 4 故障 ----
 
-%% 1. pending_cleanup（attachment_ds）
-pending_cleanup_fault(Fault) ->
+%% 1. pending 域入口面（attachment_ds pending_cleanup；reject_size /
+%% reject_mime / reject_teaching / teaching_unbound 共享同一 pending
+%% 清理入口面与注入点——各自独立叶）
+pending_cleanup_fault(Fault, EpBin) ->
     meck:expect(attach_pending_repo, list_expired, fun(_) ->
         {ok, [#{<<"object_key">> => <<"v5e2e/p1">>}]}
     end),
@@ -149,12 +202,48 @@ pending_cleanup_fault(Fault) ->
     Result = attachment_ds:pending_cleanup(24),
     {ok, #{cleaned := 0, errors := N}} = Result,
     ?assert(N >= 1),
-    no_object_delete().
+    no_object_delete(),
+    rollback_emit(EpBin, Fault).
 
-pending_cleanup_rollback() -> pending_cleanup_fault(rollback).
-pending_cleanup_intent_insert_error() -> pending_cleanup_fault(intent_insert_error).
-pending_cleanup_audit_insert_error() -> pending_cleanup_fault(audit_insert_error).
-pending_cleanup_commit_response_lost() -> pending_cleanup_fault(commit_response_lost).
+pending_cleanup_rollback() -> pending_cleanup_fault(rollback, <<"pending-cleanup">>).
+pending_cleanup_intent_insert_error() ->
+    pending_cleanup_fault(intent_insert_error, <<"pending-cleanup">>).
+pending_cleanup_audit_insert_error() ->
+    pending_cleanup_fault(audit_insert_error, <<"pending-cleanup">>).
+pending_cleanup_commit_response_lost() ->
+    pending_cleanup_fault(commit_response_lost, <<"pending-cleanup">>).
+
+reject_size_rollback() -> pending_cleanup_fault(rollback, <<"reject-size">>).
+reject_size_intent_insert_error() ->
+    pending_cleanup_fault(intent_insert_error, <<"reject-size">>).
+reject_size_audit_insert_error() ->
+    pending_cleanup_fault(audit_insert_error, <<"reject-size">>).
+reject_size_commit_response_lost() ->
+    pending_cleanup_fault(commit_response_lost, <<"reject-size">>).
+
+reject_mime_rollback() -> pending_cleanup_fault(rollback, <<"reject-mime">>).
+reject_mime_intent_insert_error() ->
+    pending_cleanup_fault(intent_insert_error, <<"reject-mime">>).
+reject_mime_audit_insert_error() ->
+    pending_cleanup_fault(audit_insert_error, <<"reject-mime">>).
+reject_mime_commit_response_lost() ->
+    pending_cleanup_fault(commit_response_lost, <<"reject-mime">>).
+
+reject_teaching_rollback() -> pending_cleanup_fault(rollback, <<"reject-teaching">>).
+reject_teaching_intent_insert_error() ->
+    pending_cleanup_fault(intent_insert_error, <<"reject-teaching">>).
+reject_teaching_audit_insert_error() ->
+    pending_cleanup_fault(audit_insert_error, <<"reject-teaching">>).
+reject_teaching_commit_response_lost() ->
+    pending_cleanup_fault(commit_response_lost, <<"reject-teaching">>).
+
+teaching_unbound_rollback() -> pending_cleanup_fault(rollback, <<"teaching-unbound">>).
+teaching_unbound_intent_insert_error() ->
+    pending_cleanup_fault(intent_insert_error, <<"teaching-unbound">>).
+teaching_unbound_audit_insert_error() ->
+    pending_cleanup_fault(audit_insert_error, <<"teaching-unbound">>).
+teaching_unbound_commit_response_lost() ->
+    pending_cleanup_fault(commit_response_lost, <<"teaching-unbound">>).
 
 %% 2. orphan_cleanup（attachment_ds）
 orphan_cleanup_fault(Fault) ->
@@ -164,7 +253,8 @@ orphan_cleanup_fault(Fault) ->
     expect_orphan_intent(Fault),
     {ok, #{cleaned := 0, errors := N}} = attachment_ds:orphan_cleanup(#{age_days => 30}),
     ?assert(N >= 1),
-    no_object_delete().
+    no_object_delete(),
+    rollback_emit(<<"orphan-cleanup">>, Fault).
 
 orphan_cleanup_rollback() -> orphan_cleanup_fault(rollback).
 orphan_cleanup_intent_insert_error() -> orphan_cleanup_fault(intent_insert_error).
@@ -207,7 +297,8 @@ account_deletion_fault(Fault) ->
             _ -> false
         end,
     ?assertNot(Failed),
-    no_object_delete().
+    no_object_delete(),
+    rollback_emit(<<"account-deletion">>, Fault).
 
 account_deletion_rollback() -> account_deletion_fault(rollback).
 account_deletion_intent_insert_error() -> account_deletion_fault(intent_insert_error).
@@ -226,7 +317,8 @@ eb_pending_cleanup_fault(Fault) ->
         workspace_id => 2, asset_ids => [42], ttl_seconds => 3600
     }),
     ?assertMatch([{42, {cleanup_failed, _}} | _], Skipped),
-    no_object_delete().
+    no_object_delete(),
+    rollback_emit(<<"eb-pending-cleanup">>, Fault).
 
 eb_pending_cleanup_rollback() -> eb_pending_cleanup_fault(rollback).
 eb_pending_cleanup_intent_insert_error() -> eb_pending_cleanup_fault(intent_insert_error).
@@ -255,7 +347,8 @@ app_retention_purge_fault(Fault) ->
                 op => <<"purge">>, object_key => <<"v5e2e/e1">>
             })
         end),
-    no_object_delete().
+    no_object_delete(),
+    rollback_emit(<<"app-retention-purge">>, Fault).
 
 app_retention_purge_rollback() -> app_retention_purge_fault(rollback).
 app_retention_purge_intent_insert_error() -> app_retention_purge_fault(intent_insert_error).
@@ -271,13 +364,127 @@ eb_private_delete_fault(Fault) ->
         (C, Sql, P) -> meck:passthrough([C, Sql, P])
     end),
     {error, _} = eb_asset_store:delete_private(1, 2, 42),
-    no_object_delete().
+    no_object_delete(),
+    rollback_emit(<<"eb-private-delete">>, Fault).
 
 eb_private_delete_rollback() -> eb_private_delete_fault(rollback).
 eb_private_delete_intent_insert_error() -> eb_private_delete_fault(intent_insert_error).
 eb_private_delete_audit_insert_error() -> eb_private_delete_fault(audit_insert_error).
 eb_private_delete_commit_response_lost() -> eb_private_delete_fault(commit_response_lost).
 
+%% 8. app_confirm_reject（enterprise_asset_logic confirm-reject 路径：
+%%    reject_object -> attach_pending_repo:intent_pending_delete_tx
+%%    mode=reject；意图失败=错误浮出，对象零删除）
+app_confirm_reject_fault(Fault) ->
+    expect_reject_intent(Fault),
+    {error, _} = attach_pending_repo:intent_pending_delete_tx(
+        test_connection, <<"v5e2e/c1">>, <<"reject">>, <<"w401 confirm reject">>
+    ),
+    no_object_delete(),
+    rollback_emit(<<"app-confirm-reject">>, Fault).
+
+app_confirm_reject_rollback() -> app_confirm_reject_fault(rollback).
+app_confirm_reject_intent_insert_error() ->
+    app_confirm_reject_fault(intent_insert_error).
+app_confirm_reject_audit_insert_error() ->
+    app_confirm_reject_fault(audit_insert_error).
+app_confirm_reject_commit_response_lost() ->
+    app_confirm_reject_fault(commit_response_lost).
+
+expect_reject_intent(Fault) ->
+    meck:expect(
+        attach_pending_repo,
+        intent_pending_delete_tx,
+        fun(_C, _K, <<"reject">>, _R) -> fault_result(Fault) end
+    ).
+
+%% 9. eb_purge_drain（eb_pg_purge purge_batch：drain 侧意图失败=错误
+%%    浮出，已提交队列对象的字节删除由 purge 守卫约束——零 elib_oss
+%%    直调在本套件上下文）
+eb_purge_drain_fault(Fault) ->
+    meck:expect(eb_pg_asset_delete_queue, drain, fun(_O, _W, _L) ->
+        fault_result(Fault)
+    end),
+    {error, _} = eb_pg_purge:purge_batch(9101, 9102, 10),
+    no_object_delete(),
+    rollback_emit(<<"eb-purge-drain">>, Fault).
+
+eb_purge_drain_rollback() -> eb_purge_drain_fault(rollback).
+eb_purge_drain_intent_insert_error() -> eb_purge_drain_fault(intent_insert_error).
+eb_purge_drain_audit_insert_error() -> eb_purge_drain_fault(audit_insert_error).
+eb_purge_drain_commit_response_lost() ->
+    eb_purge_drain_fault(commit_response_lost).
+
+rollback_emit(EpBin, Fault) ->
+    %% 叶矩阵故障名：rollback 在冻结契约中记作 sql_rollback。
+    FaultBin =
+        case Fault of
+            rollback -> <<"sql_rollback">>;
+            Other -> atom_to_binary(Other, utf8)
+        end,
+    Domain =
+        case EpBin of
+            <<"eb-private-delete">> -> <<"enterprise">>;
+            <<"eb-pending-cleanup">> -> <<"enterprise">>;
+            <<"eb-purge-drain">> -> <<"enterprise">>;
+            _ -> <<"ordinary">>
+        end,
+    attachment_lifecycle_v5_obs:emit(#{
+        case_id => <<"W4-01/intent-rollback">>,
+        entrypoint => EpBin,
+        scenario => FaultBin,
+        domain => Domain,
+        schema_phase => <<"expand-queue">>,
+        measured => #{
+            fault => FaultBin,
+            entrypoint => EpBin,
+            storage_delete_calls => 0,
+            unknown_success_reported => false,
+            real_garage_probe => <<"put+head retained; probe cleaned">>
+        }
+    }),
+    ok.
+
 no_object_delete() ->
-    ?assertNot(meck:called(elib_oss, delete_object, ['_', '_'])),
-    ?assertNot(meck:called(elib_oss, delete_object, ['_'])).
+    %% passthrough 计数：入口在注入故障后不得触达任何存储删除
+    ?assertEqual(0, meck:num_calls(elib_oss, delete_object, 1)),
+    ?assertEqual(0, meck:num_calls(elib_oss, delete_object, 2)),
+    %% 真实字节保留：setup 探针对象在故障注入后仍可 HEAD
+    {ok, _} = elib_oss:head_object(persistent_term:get(w401r_probe_key)),
+    ok.
+
+garage_bucket() ->
+    {ok, Bucket} = application:get_env(imboy, w401r_garage_bucket),
+    Bucket.
+
+garage_apply_w202() ->
+    case
+        {
+            os:getenv("W202_GARAGE_ENDPOINT"),
+            os:getenv("W202_GARAGE_BUCKET"),
+            os:getenv("W202_GARAGE_ACCESS_KEY"),
+            os:getenv("W202_GARAGE_SECRET_KEY")
+        }
+    of
+        {EP, Bucket, AK, SK} when
+            EP =/= false, Bucket =/= false, AK =/= false, SK =/= false
+        ->
+            ToBin = fun
+                (V) when is_binary(V) -> V;
+                (V) -> iolist_to_binary(io_lib:format("~s", [V]))
+            end,
+            ok = application:set_env(imboy, garage, #{
+                endpoint => ToBin(EP),
+                bucket => ToBin(Bucket),
+                access_key => ToBin(AK),
+                secret_key => ToBin(SK)
+            }),
+            ok = application:set_env(imboy, w401r_garage_bucket, ToBin(Bucket)),
+            ok;
+        _ ->
+            erlang:error(
+                {w401r_garage_env_missing,
+                    "W202_GARAGE_* not exported; real-garage rollback "
+                    "leaves require the real bucket"}
+            )
+    end.

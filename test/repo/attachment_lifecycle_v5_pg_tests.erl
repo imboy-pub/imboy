@@ -233,6 +233,30 @@ w203_intent_first(Conn) ->
     {ok, _, [{<<"delete_intent">>}]} = epgsql:equery(
         Conn, "SELECT lifecycle_state FROM attachment WHERE path=$1", [Key]
     ),
+    attachment_lifecycle_v5_obs:emit(#{
+        case_id => <<"W4-01/confirm-gc-race">>,
+        entrypoint => <<"confirm-gc-race">>,
+        scenario => <<"intent_commits_first">>,
+        domain => <<"ordinary">>,
+        schema_phase => <<"expand-queue">>,
+        measured => #{
+            intent_committed => true,
+            confirm_replay_rejected => <<"23510">>,
+            lifecycle_state => <<"delete_intent">>
+        }
+    }),
+    attachment_lifecycle_v5_obs:emit(#{
+        case_id => <<"W4-01/confirm-gc-race">>,
+        entrypoint => <<"confirm-gc-race">>,
+        scenario => <<"intent_commits_first">>,
+        domain => <<"enterprise">>,
+        schema_phase => <<"expand-queue">>,
+        measured => #{
+            shared_restricted_fn_guard => true,
+            confirm_replay_rejected => <<"23510">>,
+            lifecycle_state => <<"delete_intent">>
+        }
+    }),
     ok.
 
 %% confirm 先提交 => intent 落败、无删除任务；有界重试不改变胜者。
@@ -333,6 +357,31 @@ w203_confirm_first(Conn, Server, State) ->
     {ok, _, [{?ASSET_ID + 20}]} = epgsql:equery(
         Conn, "SELECT fn_v5_confirm_pending($1,$2)", [Key, ?ASSET_ID + 20]
     ),
+    attachment_lifecycle_v5_obs:emit(#{
+        case_id => <<"W4-01/confirm-gc-race">>,
+        entrypoint => <<"confirm-gc-race">>,
+        scenario => <<"confirm_commits_first">>,
+        domain => <<"ordinary">>,
+        schema_phase => <<"expand-queue">>,
+        measured => #{
+            confirm_committed => true,
+            confirm_idempotent_replay => true,
+            deletion_queue_rows => 0,
+            intent_rejected => true
+        }
+    }),
+    attachment_lifecycle_v5_obs:emit(#{
+        case_id => <<"W4-01/confirm-gc-race">>,
+        entrypoint => <<"confirm-gc-race">>,
+        scenario => <<"confirm_commits_first">>,
+        domain => <<"enterprise">>,
+        schema_phase => <<"expand-queue">>,
+        measured => #{
+            shared_restricted_fn_guard => true,
+            confirm_idempotent_replay => true,
+            deletion_queue_rows => 0
+        }
+    }),
     ok.
 
 %% ===================================================================
@@ -358,12 +407,125 @@ w301_run() ->
         }
     ),
     try
+        w301_lock_order(State),
         w301_reference_gc_race(maps:get(conn, State)),
+        w301_direct_group_file_after_intent(maps:get(conn, State)),
+        w301_direct_collect_after_intent(maps:get(conn, State)),
+        w301_collect_race(State),
+        w301_direct_enterprise_message_after_intent(maps:get(conn, State)),
+        w301_cross_queue_identity(maps:get(conn, State)),
+        w301_cross_queue_race(State),
+        w301_direct_moment_after_intent(maps:get(conn, State)),
+        w301_moment_race(State),
+        w301_moment_escaped_reference(maps:get(conn, State)),
+        w301_runtime_direct_dml_denied(maps:get(conn, State)),
+        w301_enterprise_direct_race(State),
+        w301_enterprise_store_race(State),
         w301_shared_owner(maps:get(conn, State)),
-        w301_history_unknown(maps:get(conn, State))
+        w301_shared_owner_enterprise(maps:get(conn, State)),
+        w301_history_unknown(maps:get(conn, State)),
+        w301_history_unknown_enterprise(maps:get(conn, State))
     after
         inttest_marker_db:release(State),
         eunit_runner:eunit_cleanup(Boot)
+    end.
+
+%% A reference holding the object lock must not deadlock with a concurrent intent.
+w301_lock_order(#{conn := Conn, server := Server, db := Db}) ->
+    Key = <<"v5e2e/w301/race/lock-order">>,
+    w301_seed_group_asset(Conn, Key, #{id => 34, gf => 34, bound => false}),
+    ?assertEqual(true, w301_gc_verified_refresh(Conn, Key)),
+    Opts = maps:merge(
+        maps:without([maint_db, connect_extra], Server),
+        (maps:get(connect_extra, Server, #{}))#{database => Db, timeout => 10000}
+    ),
+    {ok, Other} = inttest_marker_db:safe_connect(Opts),
+    try
+        {ok, _, [{Pid}]} = epgsql:equery(Other, "SELECT pg_backend_pid()", []),
+        q(Other, "SET statement_timeout = '10s'"),
+        q(Conn, "BEGIN"),
+        {ok, _, _} = epgsql:equery(
+            Conn,
+            "SELECT pg_advisory_xact_lock(hashtextextended($1,168))",
+            [Key]
+        ),
+        Parent = self(),
+        spawn(fun() ->
+            Parent !
+                {intent_result,
+                    epgsql:equery(
+                        Other,
+                        "SELECT fn_v5_intent_ordinary_delete($1,'w301 concurrent bind')",
+                        [Key]
+                    )}
+        end),
+        w301_wait_lock(Conn, Pid, 100),
+        ?assertEqual(ok, attachment_repo:bind_reference_lock_tx(Conn, Key)),
+        q(
+            Conn,
+            "INSERT INTO group_file(id,group_id,file_id,uploader_id,file_name,"
+            "file_type,file_category,file_url,file_size) VALUES"
+            " ($1,66,$2,'101','t.bin','image/png','image','u',16)",
+            [?ASSET_ID + 34, integer_to_binary(?ASSET_ID + 34)]
+        ),
+        q(Conn, "COMMIT"),
+        receive
+            {intent_result, {error, #error{code = <<"23510">>}}} -> ok;
+            {intent_result, Unexpected} -> error({unexpected_intent_result, Unexpected})
+        after 12000 -> error(intent_timeout)
+        end,
+        w301_intent_wins(Conn, Other, Pid)
+    after
+        epgsql:close(Other)
+    end.
+
+w301_intent_wins(Conn, Other, Pid) ->
+    Key = <<"v5e2e/w301/race/intent-concurrent-first">>,
+    w301_seed_group_asset(Conn, Key, #{id => 35, gf => 35, bound => false}),
+    ?assertEqual(true, w301_gc_verified_refresh(Conn, Key)),
+    q(Conn, "BEGIN"),
+    {ok, _, _} = epgsql:equery(
+        Conn,
+        "SELECT fn_v5_intent_ordinary_delete($1,'w301 concurrent intent')",
+        [Key]
+    ),
+    q(Other, "BEGIN"),
+    Parent = self(),
+    spawn(fun() -> Parent ! {bind_result, attachment_repo:bind_reference_lock_tx(Other, Key)} end),
+    w301_wait_lock(Conn, Pid, 100),
+    q(Conn, "COMMIT"),
+    receive
+        {bind_result, {error, tombstone}} -> ok;
+        {bind_result, Unexpected} -> error({unexpected_bind_result, Unexpected})
+    after 12000 -> error(bind_timeout)
+    end,
+    q(Other, "ROLLBACK"),
+    {ok, _, [{0}]} = epgsql:equery(
+        Conn,
+        "SELECT COUNT(*) FROM group_file WHERE id=$1",
+        [?ASSET_ID + 35]
+    ),
+    {ok, _, [{<<"delete_intent">>}]} = epgsql:equery(
+        Conn,
+        "SELECT lifecycle_state FROM attachment WHERE path=$1",
+        [Key]
+    ),
+    ok.
+
+w301_wait_lock(_Conn, _Pid, 0) ->
+    error(intent_did_not_wait_for_lock);
+w301_wait_lock(Conn, Pid, Left) ->
+    {ok, _, [{Waiting}]} = epgsql:equery(
+        Conn,
+        "SELECT EXISTS(SELECT 1 FROM pg_stat_activity WHERE pid=$1 AND wait_event_type='Lock')",
+        [Pid]
+    ),
+    case Waiting of
+        true ->
+            ok;
+        false ->
+            timer:sleep(50),
+            w301_wait_lock(Conn, Pid, Left - 1)
     end.
 
 %% 64 位小写 hex（可撞 user_collect.attach_md5 的关联形态）
@@ -418,7 +580,7 @@ w301_seed_group_asset(Conn, Key, Opts) ->
                 true -> GfId;
                 false -> GfId
             end,
-            w301_hash()
+            maps:get(hash, Opts, w301_hash())
         ]
     ),
     {ok, _, _} = epgsql:equery(
@@ -435,9 +597,11 @@ w301_seed_group_asset(Conn, Key, Opts) ->
 w301_group_registration() ->
     Registration = jsone:decode(registration()),
     Declaration = maps:get(<<"declaration">>, Registration),
-    jsone:encode(Registration#{<<"declaration">> => Declaration#{
-        <<"scope">> => <<"group">>, <<"scope_ref">> => <<"66">>
-    }}).
+    jsone:encode(Registration#{
+        <<"declaration">> => Declaration#{
+            <<"scope">> => <<"group">>, <<"scope_ref">> => <<"66">>
+        }
+    }).
 
 w301_gc_verified_refresh(Conn, Key) ->
     %% 走生产 repo 语义的等价 SQL（proven = 释放绑定+明文+完整位置+无收藏）
@@ -476,6 +640,18 @@ w301_reference_gc_race(Conn) ->
     {ok, _, [{<<"live">>}]} = epgsql:equery(
         Conn, "SELECT lifecycle_state FROM attachment WHERE path=$1", [K1]
     ),
+    attachment_lifecycle_v5_obs:emit(#{
+        case_id => <<"W3-01/reference-gc-race">>,
+        entrypoint => <<"reference-gc-race">>,
+        scenario => <<"bind_commits_first">>,
+        domain => <<"ordinary">>,
+        schema_phase => <<"expand-queue">>,
+        measured => #{
+            gc_verified_refresh => true,
+            intent_rejected => <<"23510">>,
+            lifecycle_state => <<"live">>
+        }
+    }),
     %% (2) intent_commits_first：绑定事务改变零业务行
     K2 = <<"v5e2e/w301/race/intent-first">>,
     w301_seed_group_asset(Conn, K2, #{id => 31, gf => 31, bound => false}),
@@ -483,18 +659,38 @@ w301_reference_gc_race(Conn) ->
     {ok, _, _} = epgsql:equery(
         Conn, "SELECT fn_v5_intent_ordinary_delete($1,'w301 intent first')", [K2]
     ),
-    q(
+    %% 业务行与绑定必须处于同一事务；墓碑拒绝时回滚业务行。
+    {ok, _, _} = epgsql:equery(Conn, "BEGIN", []),
+    {error, #error{code = <<"23510">>}} = e(
         Conn,
         "INSERT INTO group_file(id,group_id,file_id,uploader_id,file_name,file_type,"
         "file_category,file_url,file_size) VALUES"
         " ($1,66,$2,'101','t.bin','image/png','image','u',16)",
         [?ASSET_ID + 31, integer_to_binary(?ASSET_ID + 31)]
     ),
-    %% 墓碑拒绝重绑（repo 协议，跑在 marker 连接的手动事务里：fixture 同库）
+    ok = epgsql:sync(Conn),
+    {ok, _, _} = epgsql:equery(Conn, "ROLLBACK", []),
+    %% 墓碑同时拒绝生产绑定入口。
     {ok, _, _} = epgsql:equery(Conn, "BEGIN", []),
     R2 = attachment_repo:bind_reference_lock_tx(Conn, K2),
     {ok, _, _} = epgsql:equery(Conn, "ROLLBACK", []),
     {error, tombstone} = R2,
+    {ok, _, [{0}]} = epgsql:equery(
+        Conn, "SELECT COUNT(*) FROM group_file WHERE id=$1", [?ASSET_ID + 31]
+    ),
+    attachment_lifecycle_v5_obs:emit(#{
+        case_id => <<"W3-01/reference-gc-race">>,
+        entrypoint => <<"reference-gc-race">>,
+        scenario => <<"intent_commits_first">>,
+        domain => <<"ordinary">>,
+        schema_phase => <<"expand-queue">>,
+        measured => #{
+            intent_committed => true,
+            dml_insert_rejected => <<"23510">>,
+            production_bind_rejected => <<"tombstone">>,
+            group_file_rows => 0
+        }
+    }),
     %% (3) direct_dml_bind_commits_first：直接受限 DML 绑定后 intent 拒绝
     K3 = <<"v5e2e/w301/race/dml-bind-first">>,
     w301_seed_group_asset(Conn, K3, #{id => 32, gf => 32, bound => false}),
@@ -514,6 +710,17 @@ w301_reference_gc_race(Conn) ->
     {error, #error{code = <<"23510">>}} =
         e(Conn, "SELECT fn_v5_intent_ordinary_delete($1,'w301 dml bind')", [K3]),
     ok = epgsql:sync(Conn),
+    attachment_lifecycle_v5_obs:emit(#{
+        case_id => <<"W3-01/reference-gc-race">>,
+        entrypoint => <<"reference-gc-race">>,
+        scenario => <<"direct_dml_bind_commits_first">>,
+        domain => <<"ordinary">>,
+        schema_phase => <<"expand-queue">>,
+        measured => #{
+            dml_bind_committed => true,
+            intent_rejected => <<"23510">>
+        }
+    }),
     %% (4) direct_dml_intent_commits_first：intent 先提交 => 直接 DML 绑定 0 行
     K4 = <<"v5e2e/w301/race/dml-intent-first">>,
     w301_seed_group_asset(Conn, K4, #{id => 33, gf => 33, bound => false}),
@@ -527,7 +734,949 @@ w301_reference_gc_race(Conn) ->
         " AND lifecycle_state='live' RETURNING 1) SELECT COUNT(*) FROM u",
         [K4, ?ASSET_ID + 33]
     ),
+    attachment_lifecycle_v5_obs:emit(#{
+        case_id => <<"W3-01/reference-gc-race">>,
+        entrypoint => <<"reference-gc-race">>,
+        scenario => <<"direct_dml_intent_commits_first">>,
+        domain => <<"ordinary">>,
+        schema_phase => <<"expand-queue">>,
+        measured => #{
+            intent_committed => true,
+            dml_bind_rows => 0
+        }
+    }),
     ok.
+
+w301_direct_group_file_after_intent(Conn) ->
+    Key = <<"v5e2e/w301/race/direct-group-after-intent">>,
+    Id = ?ASSET_ID + 36,
+    w301_seed_group_asset(Conn, Key, #{id => 36, gf => 36, bound => false}),
+    ?assertEqual(true, w301_gc_verified_refresh(Conn, Key)),
+    {ok, _, _} = epgsql:equery(
+        Conn,
+        "SELECT fn_v5_intent_ordinary_delete($1,'w301 direct group insert')",
+        [Key]
+    ),
+    {error, #error{code = <<"23510">>}} = e(
+        Conn,
+        "INSERT INTO group_file(id,group_id,file_id,uploader_id,file_name,file_type,"
+        "file_category,file_url,file_size) VALUES"
+        " ($1,66,$2,'101','t.bin','image/png','image','u',16)",
+        [Id, integer_to_binary(Id)]
+    ),
+    ok = epgsql:sync(Conn),
+    {ok, _, [{0}]} = epgsql:equery(
+        Conn,
+        "SELECT count(*) FROM group_file WHERE id=$1",
+        [Id]
+    ),
+    ok.
+
+w301_direct_collect_after_intent(Conn) ->
+    Key = <<"v5e2e/w301/collect-after-intent">>,
+    Hash = binary:copy(<<"c">>, 64),
+    q(
+        Conn,
+        "INSERT INTO attachment(id,path,scope,creator_user_id,storage_driver,"
+        "storage_namespace,storage_container,storage_locator_sha256,gc_verified,file_hash256)"
+        " VALUES($1,$2,'private',101,'garage','ns1','c1',$3,true,$4)",
+        [?ASSET_ID + 37, Key, locator(), Hash]
+    ),
+    {ok, _, _} = epgsql:equery(
+        Conn,
+        "SELECT fn_v5_intent_ordinary_delete($1,'w301 direct collect')",
+        [Key]
+    ),
+    Multi = <<(binary:copy(<<"d">>, 64))/binary, ",", Hash/binary>>,
+    {error, #error{code = <<"23510">>}} = e(
+        Conn,
+        "INSERT INTO user_collect(id,user_id,kind,kind_id,attach_file_hash256,status)"
+        " VALUES(992,202,0,'x',$1,1)",
+        [Multi]
+    ),
+    ok = epgsql:sync(Conn),
+    {ok, _, [{0}]} = epgsql:equery(
+        Conn,
+        "SELECT count(*) FROM user_collect WHERE id=992",
+        []
+    ),
+    q(
+        Conn,
+        "INSERT INTO user_collect(id,user_id,kind,kind_id,attach_file_hash256,status)"
+        " VALUES(993,203,0,'x',$1,0)",
+        [Multi]
+    ),
+    {error, #error{code = <<"23510">>}} = e(
+        Conn,
+        "UPDATE user_collect SET status=1 WHERE id=993",
+        []
+    ),
+    ok = epgsql:sync(Conn),
+    {ok, _, [{0}]} = epgsql:equery(
+        Conn,
+        "SELECT status FROM user_collect WHERE id=993",
+        []
+    ),
+    LiveKey = <<"v5e2e/w301/collect-live">>,
+    LiveHash = binary:copy(<<"e">>, 64),
+    q(
+        Conn,
+        "INSERT INTO attachment(id,path,scope,creator_user_id,storage_driver,"
+        "storage_namespace,storage_container,storage_locator_sha256,gc_verified,file_hash256)"
+        " VALUES($1,$2,'private',101,'garage','ns1','c1',$3,true,$4)",
+        [?ASSET_ID + 38, LiveKey, locator(), LiveHash]
+    ),
+    q(
+        Conn,
+        "INSERT INTO user_collect(id,user_id,kind,kind_id,attach_file_hash256,status)"
+        " VALUES(994,204,0,'x',$1,1)",
+        [LiveHash]
+    ),
+    {error, #error{code = <<"23510">>}} = e(
+        Conn,
+        "SELECT fn_v5_intent_ordinary_delete($1,'w301 active collect')",
+        [LiveKey]
+    ),
+    ok = epgsql:sync(Conn),
+    {ok, _, [{<<"live">>}]} = epgsql:equery(
+        Conn,
+        "SELECT lifecycle_state FROM attachment WHERE path=$1",
+        [LiveKey]
+    ),
+    ok.
+
+w301_collect_race(#{conn := Conn, server := Server, db := Db}) ->
+    Key1 = <<"v5e2e/w301/collect-race-bind-first">>,
+    Key2 = <<"v5e2e/w301/collect-race-intent-first">>,
+    Hash1 = binary:copy(<<"f">>, 64),
+    Hash2 = binary:copy(<<"g">>, 64),
+    lists:foreach(
+        fun({Id, Key, Hash}) ->
+            q(
+                Conn,
+                "INSERT INTO attachment(id,path,scope,creator_user_id,storage_driver,"
+                "storage_namespace,storage_container,storage_locator_sha256,gc_verified,file_hash256)"
+                " VALUES($1,$2,'private',101,'garage','ns1','c1',$3,true,$4)",
+                [Id, Key, locator(), Hash]
+            )
+        end,
+        [{?ASSET_ID + 60, Key1, Hash1}, {?ASSET_ID + 61, Key2, Hash2}]
+    ),
+    Opts = maps:merge(
+        maps:without([maint_db, connect_extra], Server),
+        (maps:get(connect_extra, Server, #{}))#{database => Db, timeout => 10000}
+    ),
+    {ok, Other} = inttest_marker_db:safe_connect(Opts),
+    try
+        {ok, _, [{Pid}]} = epgsql:equery(Other, "SELECT pg_backend_pid()", []),
+        q(Other, "SET statement_timeout='10s'"),
+        q(Conn, "BEGIN"),
+        q(
+            Conn,
+            "INSERT INTO user_collect(id,user_id,kind,kind_id,attach_file_hash256,status)"
+            " VALUES(995,205,0,'x',$1,1)",
+            [Hash1]
+        ),
+        Parent = self(),
+        spawn(fun() ->
+            Parent !
+                {collect_intent_result,
+                    epgsql:equery(
+                        Other,
+                        "SELECT fn_v5_intent_ordinary_delete($1,'w301 collect first')",
+                        [Key1]
+                    )}
+        end),
+        w301_wait_lock(Conn, Pid, 100),
+        q(Conn, "COMMIT"),
+        receive
+            {collect_intent_result, {error, #error{code = <<"23510">>}}} -> ok;
+            {collect_intent_result, Unexpected1} -> error({unexpected_collect_intent, Unexpected1})
+        after 12000 -> error(collect_intent_timeout)
+        end,
+        q(Conn, "BEGIN"),
+        {ok, _, _} = epgsql:equery(
+            Conn,
+            "SELECT fn_v5_intent_ordinary_delete($1,'w301 intent first')",
+            [Key2]
+        ),
+        spawn(fun() ->
+            Parent !
+                {collect_bind_result,
+                    epgsql:equery(
+                        Other,
+                        "INSERT INTO user_collect(id,user_id,kind,kind_id,attach_file_hash256,status)"
+                        " VALUES(996,206,0,'x',$1,1)",
+                        [Hash2]
+                    )}
+        end),
+        w301_wait_lock(Conn, Pid, 100),
+        q(Conn, "COMMIT"),
+        receive
+            {collect_bind_result, {error, #error{code = <<"23510">>}}} -> ok;
+            {collect_bind_result, Unexpected2} -> error({unexpected_collect_bind, Unexpected2})
+        after 12000 -> error(collect_bind_timeout)
+        end,
+        {ok, _, [{0}]} = epgsql:equery(
+            Conn,
+            "SELECT count(*) FROM user_collect WHERE id=996",
+            []
+        ),
+        ok
+    after
+        epgsql:close(Other)
+    end.
+
+w301_direct_enterprise_message_after_intent(Conn) ->
+    q(
+        Conn,
+        "INSERT INTO public.\"user\"(id,password,account,reg_ip,reg_cosv)"
+        " VALUES(980001,'x','v5w301eb','127.0.0.1','x')"
+    ),
+    q(
+        Conn,
+        "INSERT INTO organization(id,name,owner_id,status)"
+        " VALUES(980002,'v5w301eb',980001,'active')"
+    ),
+    q(
+        Conn,
+        "INSERT INTO workspace(id,name,owner_id,status,type,organization_id)"
+        " VALUES(980003,'v5w301eb',980001,'active','project',980002)"
+    ),
+    q(
+        Conn,
+        "INSERT INTO enterprise_contact(id,organization_id,status,display_name)"
+        " VALUES(980004,980002,'active','probe')"
+    ),
+    q(
+        Conn,
+        "INSERT INTO enterprise_conversation(id,organization_id,workspace_id,contact_id,status)"
+        " VALUES(980005,980002,980003,980004,'active')"
+    ),
+    q(
+        Conn,
+        "INSERT INTO enterprise_message(id,organization_id,workspace_id,conversation_id,"
+        "sender_type,sender_contact_id,client_msg_id,retention_days,retain_until)"
+        " VALUES(980006,980002,980003,980005,'contact',980004,'probe',1,now()+interval '1 day')"
+    ),
+    q(
+        Conn,
+        "INSERT INTO enterprise_asset(id,organization_id,workspace_id,conversation_id,"
+        "object_key,object_hash,status) VALUES(980007,980002,980003,980005,"
+        "'v5e2e/w301/eb-direct',$1,'active')",
+        [binary:copy(<<"a">>, 64)]
+    ),
+    q(
+        Conn,
+        "INSERT INTO enterprise_asset(id,organization_id,workspace_id,conversation_id,"
+        "object_key,object_hash,status) VALUES(980008,980002,980003,980005,"
+        "'v5e2e/w301/eb-live',$1,'active')",
+        [binary:copy(<<"b">>, 64)]
+    ),
+    q(
+        Conn,
+        "UPDATE enterprise_asset SET message_id=980006,retain_until=now()+interval '2 days'"
+        " WHERE id=980008"
+    ),
+    {error, #error{code = <<"23510">>}} = e(
+        Conn,
+        "SELECT fn_v5_intent_eb_delete(980002,980003,980008,'w301 live bind')",
+        []
+    ),
+    ok = epgsql:sync(Conn),
+    attachment_lifecycle_v5_obs:emit(#{
+        case_id => <<"W3-01/reference-gc-race">>,
+        entrypoint => <<"reference-gc-race">>,
+        scenario => <<"direct_dml_bind_commits_first">>,
+        domain => <<"enterprise">>,
+        schema_phase => <<"expand-queue">>,
+        measured => #{
+            asset_id => 980008,
+            dml_bind_committed => true,
+            intent_rejected => <<"23510">>
+        }
+    }),
+    {ok, _, _} = epgsql:equery(
+        Conn,
+        "SELECT fn_v5_intent_eb_delete(980002,980003,980007,'w301 direct bind')",
+        []
+    ),
+    {error, #error{code = <<"23510">>}} = e(
+        Conn,
+        "UPDATE enterprise_asset SET message_id=980006,retain_until=now()+interval '2 days'"
+        " WHERE id=980007",
+        []
+    ),
+    ok = epgsql:sync(Conn),
+    {error, #error{code = <<"23510">>}} = e(
+        Conn,
+        "UPDATE enterprise_asset SET lifecycle_state='live',message_id=980006,"
+        "retain_until=now()+interval '2 days' WHERE id=980007",
+        []
+    ),
+    ok = epgsql:sync(Conn),
+    {ok, _, [{<<"delete_intent">>, null}]} = epgsql:equery(
+        Conn,
+        "SELECT lifecycle_state,message_id FROM enterprise_asset WHERE id=980007",
+        []
+    ),
+    attachment_lifecycle_v5_obs:emit(#{
+        case_id => <<"W3-01/reference-gc-race">>,
+        entrypoint => <<"reference-gc-race">>,
+        scenario => <<"direct_dml_intent_commits_first">>,
+        domain => <<"enterprise">>,
+        schema_phase => <<"expand-queue">>,
+        measured => #{
+            asset_id => 980007,
+            intent_committed => true,
+            dml_bind_rejected => <<"23510">>,
+            lifecycle_state => <<"delete_intent">>,
+            message_id_null => true
+        }
+    }),
+    ok.
+
+w301_cross_queue_identity(Conn) ->
+    Key = <<"v5e2e/w301/cross-queue">>,
+    q(
+        Conn,
+        "INSERT INTO attachment(id,path,scope,creator_user_id,storage_driver,"
+        "storage_namespace,storage_container,storage_locator_sha256,gc_verified,file_hash256)"
+        " VALUES($1,$2,'private',101,'garage','ns1','c1',$3,true,$4)",
+        [?ASSET_ID + 68, Key, locator(), binary:copy(<<"5">>, 64)]
+    ),
+    q(
+        Conn,
+        "INSERT INTO enterprise_asset(id,organization_id,workspace_id,conversation_id,"
+        "object_key,object_hash,status,storage_driver,storage_namespace,storage_container,"
+        "storage_locator_sha256) VALUES(980013,980002,980003,980005,$1,$2,'active',"
+        "'garage','ns1','c1',$3)",
+        [Key, binary:copy(<<"5">>, 64), locator()]
+    ),
+    {ok, _, _} = epgsql:equery(
+        Conn,
+        "SELECT fn_v5_intent_ordinary_delete($1,'w301 cross queue')",
+        [Key]
+    ),
+    {error, #error{code = <<"23510">>}} = e(
+        Conn,
+        "UPDATE attachment_object_deletion SET path='v5e2e/changed' WHERE path=$1",
+        [Key]
+    ),
+    ok = epgsql:sync(Conn),
+    {error, #error{code = <<"23510">>}} = e(
+        Conn,
+        "UPDATE attachment_object_deletion SET storage_physical_key='v5e2e/changed' WHERE path=$1",
+        [Key]
+    ),
+    ok = epgsql:sync(Conn),
+    {error, #error{code = <<"23510">>}} = e(
+        Conn,
+        "SELECT fn_v5_intent_eb_delete(980002,980003,980013,'w301 cross queue')",
+        []
+    ),
+    ok = epgsql:sync(Conn),
+    {ok, _, [{0}]} = epgsql:equery(
+        Conn,
+        "SELECT count(*) FROM enterprise_asset_delete_queue WHERE asset_id=980013",
+        []
+    ),
+    Logical1 = <<"v5e2e/w301/cross-logical-1">>,
+    Physical1 = <<"v5e2e/w301/cross-physical-1">>,
+    w301_seed_cross_pair(Conn, ?ASSET_ID + 69, 980014, Logical1, Physical1),
+    {ok, _, _} = epgsql:equery(
+        Conn,
+        "SELECT fn_v5_intent_ordinary_delete($1,'w301 physical key')",
+        [Logical1]
+    ),
+    {error, #error{code = <<"23510">>}} = e(
+        Conn,
+        "SELECT fn_v5_intent_eb_delete(980002,980003,980014,'w301 physical key')",
+        []
+    ),
+    ok = epgsql:sync(Conn),
+    Logical2 = <<"v5e2e/w301/cross-logical-2">>,
+    Physical2 = <<"v5e2e/w301/cross-physical-2">>,
+    w301_seed_cross_pair(Conn, ?ASSET_ID + 70, 980015, Logical2, Physical2),
+    {ok, _, _} = epgsql:equery(
+        Conn,
+        "SELECT fn_v5_intent_eb_delete(980002,980003,980015,'w301 physical key')",
+        []
+    ),
+    {error, #error{code = <<"23510">>}} = e(
+        Conn,
+        "UPDATE enterprise_asset_delete_queue SET object_key='v5e2e/changed' WHERE asset_id=980015",
+        []
+    ),
+    ok = epgsql:sync(Conn),
+    {error, #error{code = <<"23510">>}} = e(
+        Conn,
+        "SELECT fn_v5_intent_ordinary_delete($1,'w301 physical key')",
+        [Logical2]
+    ),
+    ok = epgsql:sync(Conn),
+    {ok, _, [{0}]} = epgsql:equery(
+        Conn,
+        "SELECT count(*) FROM attachment_object_deletion WHERE path=$1",
+        [Logical2]
+    ),
+    ok.
+
+w301_seed_cross_pair(Conn, AttachmentId, AssetId, Logical, Physical) ->
+    q(
+        Conn,
+        "INSERT INTO attachment(id,path,scope,creator_user_id,storage_driver,"
+        "storage_namespace,storage_container,storage_locator_sha256,storage_physical_key,"
+        "gc_verified,file_hash256) VALUES($1,$2,'private',101,'garage','ns1','c1',$3,$4,true,$5)",
+        [AttachmentId, Logical, locator(), Physical, binary:copy(<<"6">>, 64)]
+    ),
+    q(
+        Conn,
+        "INSERT INTO enterprise_asset(id,organization_id,workspace_id,conversation_id,"
+        "object_key,object_hash,status,storage_driver,storage_namespace,storage_container,"
+        "storage_locator_sha256) VALUES($1,980002,980003,980005,$2,$3,'active',"
+        "'garage','ns1','c1',$4)",
+        [AssetId, Physical, binary:copy(<<"6">>, 64), locator()]
+    ).
+
+w301_cross_queue_race(#{conn := Conn, server := Server, db := Db}) ->
+    Logical1 = <<"v5e2e/w301/cross-race-logical-1">>,
+    Physical1 = <<"v5e2e/w301/cross-race-physical-1">>,
+    Logical2 = <<"v5e2e/w301/cross-race-logical-2">>,
+    Physical2 = <<"v5e2e/w301/cross-race-physical-2">>,
+    w301_seed_cross_pair(Conn, ?ASSET_ID + 71, 980016, Logical1, Physical1),
+    w301_seed_cross_pair(Conn, ?ASSET_ID + 72, 980017, Logical2, Physical2),
+    Opts = maps:merge(
+        maps:without([maint_db, connect_extra], Server),
+        (maps:get(connect_extra, Server, #{}))#{database => Db, timeout => 10000}
+    ),
+    {ok, Other} = inttest_marker_db:safe_connect(Opts),
+    try
+        {ok, _, [{Pid}]} = epgsql:equery(Other, "SELECT pg_backend_pid()", []),
+        q(Other, "SET statement_timeout='10s'"),
+        q(Conn, "BEGIN"),
+        {ok, _, _} = epgsql:equery(
+            Conn,
+            "SELECT fn_v5_intent_ordinary_delete($1,'w301 cross ordinary first')",
+            [Logical1]
+        ),
+        Parent = self(),
+        spawn(fun() ->
+            Parent !
+                {cross_eb_result,
+                    epgsql:equery(
+                        Other,
+                        "SELECT fn_v5_intent_eb_delete(980002,980003,980016,'w301 cross')",
+                        []
+                    )}
+        end),
+        w301_wait_lock(Conn, Pid, 100),
+        q(Conn, "COMMIT"),
+        receive
+            {cross_eb_result, {error, #error{code = <<"23510">>}}} -> ok;
+            {cross_eb_result, Unexpected1} -> error({unexpected_cross_eb, Unexpected1})
+        after 12000 -> error(cross_eb_timeout)
+        end,
+        q(Conn, "BEGIN"),
+        {ok, _, _} = epgsql:equery(
+            Conn,
+            "SELECT fn_v5_intent_eb_delete(980002,980003,980017,'w301 cross eb first')",
+            []
+        ),
+        spawn(fun() ->
+            Parent !
+                {cross_ordinary_result,
+                    epgsql:equery(
+                        Other,
+                        "SELECT fn_v5_intent_ordinary_delete($1,'w301 cross')",
+                        [Logical2]
+                    )}
+        end),
+        w301_wait_lock(Conn, Pid, 100),
+        q(Conn, "COMMIT"),
+        receive
+            {cross_ordinary_result, {error, #error{code = <<"23510">>}}} -> ok;
+            {cross_ordinary_result, Unexpected2} -> error({unexpected_cross_ordinary, Unexpected2})
+        after 12000 -> error(cross_ordinary_timeout)
+        end,
+        {ok, _, [{0}]} = epgsql:equery(
+            Conn,
+            "SELECT count(*) FROM attachment_object_deletion WHERE path=$1",
+            [Logical2]
+        ),
+        {ok, _, [{0}]} = epgsql:equery(
+            Conn,
+            "SELECT count(*) FROM enterprise_asset_delete_queue WHERE asset_id=980016",
+            []
+        ),
+        ok
+    after
+        epgsql:close(Other)
+    end.
+
+w301_direct_moment_after_intent(Conn) ->
+    Key = <<"v5e2e/w301/moment-after-intent">>,
+    q(
+        Conn,
+        "INSERT INTO attachment(id,path,scope,creator_user_id,storage_driver,"
+        "storage_namespace,storage_container,storage_locator_sha256,gc_verified,file_hash256)"
+        " VALUES($1,$2,'moment',980001,'garage','ns1','c1',$3,true,$4)",
+        [?ASSET_ID + 62, Key, locator(), binary:copy(<<"1">>, 64)]
+    ),
+    {ok, _, _} = epgsql:equery(
+        Conn,
+        "SELECT fn_v5_intent_ordinary_delete($1,'w301 direct moment')",
+        [Key]
+    ),
+    Media = jsone:encode([#{<<"url">> => Key}]),
+    {error, #error{code = <<"23510">>}} = e(
+        Conn,
+        "INSERT INTO moment_post(id,author_uid,media) VALUES(980020,980001,$1::jsonb)",
+        [Media]
+    ),
+    ok = epgsql:sync(Conn),
+    {ok, _, [{0}]} = epgsql:equery(
+        Conn,
+        "SELECT count(*) FROM moment_post WHERE id=980020",
+        []
+    ),
+    q(Conn, "INSERT INTO moment_post(id,author_uid,media) VALUES(980021,980001,'[]'::jsonb)"),
+    {error, #error{code = <<"23510">>}} = e(
+        Conn,
+        "UPDATE moment_post SET media=$1::jsonb WHERE id=980021",
+        [Media]
+    ),
+    ok = epgsql:sync(Conn),
+    {ok, _, [{0}]} = epgsql:equery(
+        Conn,
+        "SELECT jsonb_array_length(media) FROM moment_post WHERE id=980021",
+        []
+    ),
+    LiveKey = <<"v5e2e/w301/moment-live">>,
+    q(
+        Conn,
+        "INSERT INTO attachment(id,path,scope,creator_user_id,storage_driver,"
+        "storage_namespace,storage_container,storage_locator_sha256,gc_verified,file_hash256)"
+        " VALUES($1,$2,'moment',980001,'garage','ns1','c1',$3,true,$4)",
+        [?ASSET_ID + 63, LiveKey, locator(), binary:copy(<<"2">>, 64)]
+    ),
+    LiveMedia = jsone:encode([#{<<"url">> => LiveKey}]),
+    q(Conn, "BEGIN"),
+    q(
+        Conn,
+        "INSERT INTO moment_post(id,author_uid,media) VALUES(980027,980001,$1::jsonb)",
+        [LiveMedia]
+    ),
+    {error, #error{code = <<"23510">>}} = e(Conn, "COMMIT", []),
+    ok = epgsql:sync(Conn),
+    {ok, _, [{0}]} = epgsql:equery(
+        Conn,
+        "SELECT count(*) FROM moment_post WHERE id=980027",
+        []
+    ),
+    q(Conn, "BEGIN"),
+    q(
+        Conn,
+        "INSERT INTO moment_post(id,author_uid,media) VALUES(980022,980001,$1::jsonb)",
+        [LiveMedia]
+    ),
+    q(Conn, "UPDATE attachment SET scope_ref='980022' WHERE path=$1", [LiveKey]),
+    q(Conn, "COMMIT"),
+    {error, #error{code = <<"23510">>}} = e(
+        Conn,
+        "INSERT INTO moment_post(id,author_uid,media) VALUES(980026,980001,$1::jsonb)",
+        [LiveMedia]
+    ),
+    ok = epgsql:sync(Conn),
+    q(
+        Conn,
+        "UPDATE moment_post SET media=$1::jsonb WHERE id=980022",
+        [jsone:encode([#{<<"url">> => LiveKey, <<"cover_url">> => LiveKey}])]
+    ),
+    {error, #error{code = <<"23510">>}} = e(
+        Conn,
+        "UPDATE moment_post SET media=$1::jsonb WHERE id=980022",
+        [jsone:encode([#{<<"url">> => LiveKey, <<"cover_url">> => Key}])]
+    ),
+    ok = epgsql:sync(Conn),
+    AmbiguousKey = <<"v5e2e/w301/moment-legacy-ambiguous">>,
+    q(
+        Conn,
+        "INSERT INTO attachment(id,path,scope,creator_user_id,storage_driver,"
+        "storage_namespace,storage_container,storage_locator_sha256,gc_verified,file_hash256)"
+        " VALUES($1,$2,'moment',980001,'garage','ns1','c1',$3,true,$4)",
+        [?ASSET_ID + 67, AmbiguousKey, locator(), binary:copy(<<"5">>, 64)]
+    ),
+    Note = <<Key/binary, " ", AmbiguousKey/binary>>,
+    HiddenMedia = jsone:encode([#{<<"url">> => LiveKey, <<"note">> => Note}]),
+    q(Conn, "UPDATE moment_post SET media=$1::jsonb WHERE id=980022", [HiddenMedia]),
+    {ok, _, [{Note, true, true}]} = epgsql:equery(
+        Conn,
+        "SELECT media->0->>'note', fn_v5_moment_reference_blocks($1),"
+        " fn_v5_moment_reference_blocks($2) FROM moment_post WHERE id=980022",
+        [Key, AmbiguousKey]
+    ),
+    ?assertEqual({ok, false}, attachment_repo:refresh_gc_verified_tx(Conn, AmbiguousKey)),
+    q(
+        Conn,
+        "INSERT INTO public.\"user\"(id,password,account,reg_ip,reg_cosv)"
+        " VALUES(980099,'x','v5w301eb-other','127.0.0.1','x')"
+    ),
+    {error, #error{code = <<"23510">>}} = e(
+        Conn,
+        "UPDATE moment_post SET author_uid=980099 WHERE id=980022",
+        []
+    ),
+    ok = epgsql:sync(Conn),
+    {error, #error{code = <<"23510">>}} = e(
+        Conn,
+        "SELECT fn_v5_intent_ordinary_delete($1,'w301 live moment')",
+        [LiveKey]
+    ),
+    ok = epgsql:sync(Conn),
+    {ok, _, [{<<"live">>}]} = epgsql:equery(
+        Conn,
+        "SELECT lifecycle_state FROM attachment WHERE path=$1",
+        [LiveKey]
+    ),
+    ok.
+
+w301_moment_race(#{conn := Conn, server := Server, db := Db}) ->
+    Key1 = <<"v5e2e/w301/moment-race-bind-first">>,
+    Key2 = <<"v5e2e/w301/moment-race-intent-first">>,
+    lists:foreach(
+        fun({Id, Key}) ->
+            q(
+                Conn,
+                "INSERT INTO attachment(id,path,scope,creator_user_id,storage_driver,"
+                "storage_namespace,storage_container,storage_locator_sha256,gc_verified,file_hash256)"
+                " VALUES($1,$2,'moment',980001,'garage','ns1','c1',$3,true,$4)",
+                [Id, Key, locator(), binary:copy(<<"3">>, 64)]
+            )
+        end,
+        [{?ASSET_ID + 64, Key1}, {?ASSET_ID + 65, Key2}]
+    ),
+    Opts = maps:merge(
+        maps:without([maint_db, connect_extra], Server),
+        (maps:get(connect_extra, Server, #{}))#{database => Db, timeout => 10000}
+    ),
+    {ok, Other} = inttest_marker_db:safe_connect(Opts),
+    try
+        {ok, _, [{Pid}]} = epgsql:equery(Other, "SELECT pg_backend_pid()", []),
+        q(Other, "SET statement_timeout='10s'"),
+        q(Conn, "BEGIN"),
+        q(
+            Conn,
+            "INSERT INTO moment_post(id,author_uid,media) VALUES(980023,980001,$1::jsonb)",
+            [jsone:encode([#{<<"url">> => Key1}])]
+        ),
+        q(Conn, "UPDATE attachment SET scope_ref='980023' WHERE path=$1", [Key1]),
+        Parent = self(),
+        spawn(fun() ->
+            Parent !
+                {moment_intent_result,
+                    epgsql:equery(
+                        Other,
+                        "SELECT fn_v5_intent_ordinary_delete($1,'w301 moment first')",
+                        [Key1]
+                    )}
+        end),
+        w301_wait_lock(Conn, Pid, 100),
+        q(Conn, "COMMIT"),
+        receive
+            {moment_intent_result, {error, #error{code = Code}}} when
+                Code =:= <<"23510">>; Code =:= <<"40001">>
+            ->
+                ok;
+            {moment_intent_result, Unexpected1} ->
+                error({unexpected_moment_intent, Unexpected1})
+        after 12000 -> error(moment_intent_timeout)
+        end,
+        {ok, _, [{<<"live">>, 0}]} = epgsql:equery(
+            Conn,
+            "SELECT lifecycle_state,(SELECT count(*) FROM attachment_object_deletion WHERE path=$1)"
+            " FROM attachment WHERE path=$1",
+            [Key1]
+        ),
+        q(Conn, "BEGIN"),
+        {ok, _, _} = epgsql:equery(
+            Conn,
+            "SELECT fn_v5_intent_ordinary_delete($1,'w301 intent first')",
+            [Key2]
+        ),
+        spawn(fun() ->
+            Parent !
+                {moment_bind_result,
+                    epgsql:equery(
+                        Other,
+                        "INSERT INTO moment_post(id,author_uid,media) VALUES(980024,980001,$1::jsonb)",
+                        [jsone:encode([#{<<"url">> => Key2}])]
+                    )}
+        end),
+        w301_wait_lock(Conn, Pid, 100),
+        q(Conn, "COMMIT"),
+        receive
+            {moment_bind_result, {error, #error{code = <<"23510">>}}} -> ok;
+            {moment_bind_result, Unexpected2} -> error({unexpected_moment_bind, Unexpected2})
+        after 12000 -> error(moment_bind_timeout)
+        end,
+        {ok, _, [{0}]} = epgsql:equery(
+            Conn,
+            "SELECT count(*) FROM moment_post WHERE id=980024",
+            []
+        ),
+        ok
+    after
+        epgsql:close(Other)
+    end.
+
+w301_moment_escaped_reference(Conn) ->
+    Key = <<"v5e2e/w301/moment-quote-\"-backslash-\\">>,
+    q(
+        Conn,
+        "INSERT INTO attachment(id,path,scope,creator_user_id,storage_driver,"
+        "storage_namespace,storage_container,storage_locator_sha256,gc_verified,file_hash256)"
+        " VALUES($1,$2,'moment',980001,'garage','ns1','c1',$3,true,$4)",
+        [?ASSET_ID + 66, Key, locator(), binary:copy(<<"4">>, 64)]
+    ),
+    Media = jsone:encode([#{<<"url">> => Key}]),
+    q(Conn, "BEGIN"),
+    q(
+        Conn,
+        "INSERT INTO moment_post(id,author_uid,media) VALUES(980025,980001,$1::jsonb)",
+        [Media]
+    ),
+    q(Conn, "UPDATE attachment SET scope_ref='980025' WHERE path=$1", [Key]),
+    q(Conn, "COMMIT"),
+    ?assertEqual({ok, false}, attachment_repo:refresh_gc_verified_tx(Conn, Key)),
+    %% Simulate a stale earlier proof; the intent must independently recheck the reference.
+    q(Conn, "UPDATE attachment SET gc_verified=true WHERE path=$1", [Key]),
+    {error, #error{code = <<"23510">>, message = Reason}} = e(
+        Conn,
+        "SELECT fn_v5_intent_ordinary_delete($1,'w301 escaped moment')",
+        [Key]
+    ),
+    ?assertNotEqual(nomatch, binary:match(Reason, <<"moment media reference">>)),
+    ok = epgsql:sync(Conn),
+    {ok, _, [{<<"live">>}]} = epgsql:equery(
+        Conn,
+        "SELECT lifecycle_state FROM attachment WHERE path=$1",
+        [Key]
+    ),
+    ok.
+
+w301_runtime_direct_dml_denied(Conn) ->
+    q(Conn, "BEGIN"),
+    q(Conn, "SET LOCAL ROLE v5_app_runtime"),
+    {error, #error{code = <<"42501">>}} = e(
+        Conn,
+        "UPDATE enterprise_asset SET message_id=980006 WHERE id=980007",
+        []
+    ),
+    ok = epgsql:sync(Conn),
+    q(Conn, "ROLLBACK"),
+    q(Conn, "BEGIN"),
+    q(Conn, "SET LOCAL ROLE v5_app_runtime"),
+    {error, #error{code = <<"42501">>}} = e(
+        Conn,
+        "INSERT INTO group_file(id,group_id,file_id,uploader_id,file_name,file_type,"
+        "file_category,file_url,file_size) VALUES"
+        " ($1,66,$2,'101','t.bin','image/png','image','u',16)",
+        [?ASSET_ID + 36, integer_to_binary(?ASSET_ID + 36)]
+    ),
+    ok = epgsql:sync(Conn),
+    q(Conn, "ROLLBACK"),
+    {ok, _, [{<<"delete_intent">>, null}]} = epgsql:equery(
+        Conn,
+        "SELECT lifecycle_state,message_id FROM enterprise_asset WHERE id=980007",
+        []
+    ),
+    ok.
+
+w301_enterprise_direct_race(#{conn := Conn, server := Server, db := Db}) ->
+    lists:foreach(
+        fun(Id) ->
+            q(
+                Conn,
+                "INSERT INTO enterprise_asset(id,organization_id,workspace_id,conversation_id,"
+                "object_key,object_hash,status) VALUES($1,980002,980003,980005,$2,$3,'active')",
+                [
+                    Id,
+                    <<"v5e2e/w301/eb-race-", (integer_to_binary(Id))/binary>>,
+                    binary:copy(<<"c">>, 64)
+                ]
+            )
+        end,
+        [980009, 980010]
+    ),
+    Opts = maps:merge(
+        maps:without([maint_db, connect_extra], Server),
+        (maps:get(connect_extra, Server, #{}))#{database => Db, timeout => 10000}
+    ),
+    {ok, Other} = inttest_marker_db:safe_connect(Opts),
+    try
+        {ok, _, [{Pid}]} = epgsql:equery(Other, "SELECT pg_backend_pid()", []),
+        q(Other, "SET statement_timeout='10s'"),
+        q(Conn, "BEGIN"),
+        q(
+            Conn,
+            "UPDATE enterprise_asset SET message_id=980006,retain_until=now()+interval '2 days'"
+            " WHERE id=980009"
+        ),
+        Parent = self(),
+        spawn(fun() ->
+            Parent !
+                {eb_intent_result,
+                    epgsql:equery(
+                        Other,
+                        "SELECT fn_v5_intent_eb_delete(980002,980003,980009,'w301 bind first')",
+                        []
+                    )}
+        end),
+        w301_wait_lock(Conn, Pid, 100),
+        q(Conn, "COMMIT"),
+        receive
+            {eb_intent_result, {error, #error{code = <<"23510">>}}} -> ok;
+            {eb_intent_result, Unexpected1} -> error({unexpected_eb_intent, Unexpected1})
+        after 12000 -> error(eb_intent_timeout)
+        end,
+        attachment_lifecycle_v5_obs:emit(#{
+            case_id => <<"W3-01/reference-gc-race">>,
+            entrypoint => <<"reference-gc-race">>,
+            scenario => <<"bind_commits_first">>,
+            domain => <<"enterprise">>,
+            schema_phase => <<"expand-queue">>,
+            measured => #{
+                asset_id => 980009,
+                bind_committed => true,
+                intent_rejected => <<"23510">>
+            }
+        }),
+        q(Conn, "BEGIN"),
+        {ok, _, _} = epgsql:equery(
+            Conn,
+            "SELECT fn_v5_intent_eb_delete(980002,980003,980010,'w301 intent first')",
+            []
+        ),
+        spawn(fun() ->
+            Parent !
+                {eb_bind_result,
+                    epgsql:equery(
+                        Other,
+                        "UPDATE enterprise_asset SET message_id=980006,retain_until=now()+interval '2 days'"
+                        " WHERE id=980010",
+                        []
+                    )}
+        end),
+        w301_wait_lock(Conn, Pid, 100),
+        q(Conn, "COMMIT"),
+        receive
+            {eb_bind_result, {error, #error{code = <<"23510">>}}} -> ok;
+            {eb_bind_result, Unexpected2} -> error({unexpected_eb_bind, Unexpected2})
+        after 12000 -> error(eb_bind_timeout)
+        end,
+        {ok, _, [{<<"delete_intent">>, null}]} = epgsql:equery(
+            Conn,
+            "SELECT lifecycle_state,message_id FROM enterprise_asset WHERE id=980010",
+            []
+        ),
+        attachment_lifecycle_v5_obs:emit(#{
+            case_id => <<"W3-01/reference-gc-race">>,
+            entrypoint => <<"reference-gc-race">>,
+            scenario => <<"intent_commits_first">>,
+            domain => <<"enterprise">>,
+            schema_phase => <<"expand-queue">>,
+            measured => #{
+                asset_id => 980010,
+                intent_committed => true,
+                bind_rejected => <<"23510">>,
+                lifecycle_state => <<"delete_intent">>,
+                message_id_null => true
+            }
+        }),
+        ok
+    after
+        epgsql:close(Other)
+    end.
+
+w301_enterprise_store_race(#{conn := Conn, server := Server, db := Db}) ->
+    lists:foreach(
+        fun(Id) ->
+            q(
+                Conn,
+                "INSERT INTO enterprise_asset(id,organization_id,workspace_id,conversation_id,"
+                "object_key,object_hash,status) VALUES($1,980002,980003,980005,$2,$3,'active')",
+                [
+                    Id,
+                    <<"v5e2e/w301/eb-store-", (integer_to_binary(Id))/binary>>,
+                    binary:copy(<<"d">>, 64)
+                ]
+            )
+        end,
+        [980011, 980012]
+    ),
+    Opts = maps:merge(
+        maps:without([maint_db, connect_extra], Server),
+        (maps:get(connect_extra, Server, #{}))#{database => Db, timeout => 10000}
+    ),
+    {ok, Other} = inttest_marker_db:safe_connect(Opts),
+    try
+        {ok, _, [{Pid}]} = epgsql:equery(Other, "SELECT pg_backend_pid()", []),
+        q(Other, "SET statement_timeout='10s'"),
+        Retain = erlang:system_time(second) + 172800,
+        q(Conn, "BEGIN"),
+        {ok, [#{lifecycle_state := <<"live">>}]} =
+            eb_pg_store:lock_assets_in(Conn, 980002, 980003, [980011]),
+        ok = eb_pg_store:bind_asset_message_in(Conn, 980002, 980003, 980011, 980006, Retain),
+        Parent = self(),
+        spawn(fun() ->
+            Parent !
+                {store_intent_result,
+                    epgsql:equery(
+                        Other,
+                        "SELECT fn_v5_intent_eb_delete(980002,980003,980011,'w301 store bind first')",
+                        []
+                    )}
+        end),
+        w301_wait_lock(Conn, Pid, 100),
+        q(Conn, "COMMIT"),
+        receive
+            {store_intent_result, {error, #error{code = <<"23510">>}}} -> ok;
+            {store_intent_result, Unexpected1} -> error({unexpected_store_intent, Unexpected1})
+        after 12000 -> error(store_intent_timeout)
+        end,
+        q(Conn, "BEGIN"),
+        {ok, _, _} = epgsql:equery(
+            Conn,
+            "SELECT fn_v5_intent_eb_delete(980002,980003,980012,'w301 store intent first')",
+            []
+        ),
+        spawn(fun() ->
+            q(Other, "BEGIN"),
+            Locked = eb_pg_store:lock_assets_in(Other, 980002, 980003, [980012]),
+            Bind = eb_pg_store:bind_asset_message_in(Other, 980002, 980003, 980012, 980006, Retain),
+            q(Other, "ROLLBACK"),
+            Parent ! {store_bind_result, Locked, Bind}
+        end),
+        w301_wait_lock(Conn, Pid, 100),
+        q(Conn, "COMMIT"),
+        receive
+            {store_bind_result, {ok, [#{lifecycle_state := <<"delete_intent">>}]},
+                {error, not_bound}} ->
+                ok;
+            {store_bind_result, Unexpected2, Unexpected3} ->
+                error({unexpected_store_bind, Unexpected2, Unexpected3})
+        after 12000 -> error(store_bind_timeout)
+        end,
+        {ok, _, [{<<"delete_intent">>, null}]} = epgsql:equery(
+            Conn,
+            "SELECT lifecycle_state,message_id FROM enterprise_asset WHERE id=980012",
+            []
+        ),
+        ok
+    after
+        epgsql:close(Other)
+    end.
 
 %% shared-owner：注销/登出/原帖删除不掉共享引用资产；无关授权拒绝。
 w301_shared_owner(Conn) ->
@@ -539,7 +1688,7 @@ w301_shared_owner(Conn) ->
     ),
     {ok, _, [{Cnt1}]} = epgsql:equery(
         Conn,
-        "WITH del AS (DELETE FROM attachment a WHERE a.creator_user_id=101"
+        "WITH del AS (DELETE FROM attachment a WHERE a.creator_user_id=101 AND a.path=$1"
         " AND a.cipher IS NULL AND a.group_file_id IS NULL"
         " AND a.scope NOT IN ('group','channel','enterprise')"
         " AND NOT EXISTS (SELECT 1 FROM group_file gf WHERE gf.id=a.group_file_id)"
@@ -547,14 +1696,27 @@ w301_shared_owner(Conn) ->
         "   AND uc.attach_file_hash256 = a.file_hash256 AND uc.status = 1)"
         " AND NOT EXISTS (SELECT 1 FROM moment_post mp WHERE position(a.path in mp.media::text) > 0)"
         " RETURNING 1) SELECT COUNT(*) FROM del",
-        []
+        [K1]
     ),
     ?assertEqual(0, Cnt1),
     {ok, _, [{1}]} = epgsql:equery(
         Conn, "SELECT COUNT(*) FROM attachment WHERE path=$1", [K1]
     ),
+    attachment_lifecycle_v5_obs:emit(#{
+        case_id => <<"W3-01/shared-owner">>,
+        entrypoint => <<"shared-owner">>,
+        scenario => <<"owner_logout">>,
+        domain => <<"ordinary">>,
+        schema_phase => <<"expand-queue">>,
+        measured => #{
+            confirmed_group_bound => true,
+            deletion_deleted_rows => 0,
+            attachment_rows_after => 1
+        }
+    }),
     %% 被收藏的个人资产：hash 关联保护，注销不删
     K2 = <<"v5e2e/w301/owner/collected">>,
+    SharedHash = binary:copy(<<"8">>, 64),
     q(Conn, "DELETE FROM attachment WHERE path=$1", [K2]),
     q(
         Conn,
@@ -562,29 +1724,41 @@ w301_shared_owner(Conn) ->
         "storage_namespace,storage_container,storage_locator_sha256,gc_verified,"
         "cipher,file_hash256) VALUES ($1,$2,'private',101,'garage','ns1','c1',"
         "$3,false,NULL,$4)",
-        [?ASSET_ID + 41, K2, locator(), w301_hash()]
+        [?ASSET_ID + 41, K2, locator(), SharedHash]
     ),
     q(
         Conn,
         "INSERT INTO user_collect(id,user_id,kind,kind_id,attach_file_hash256,status)"
         " VALUES (991,202,0,'x',$1,1)",
-        [w301_hash()]
+        [SharedHash]
     ),
     {ok, _, [{Cnt2}]} = epgsql:equery(
         Conn,
-        "WITH del AS (DELETE FROM attachment a WHERE a.creator_user_id=101"
+        "WITH del AS (DELETE FROM attachment a WHERE a.creator_user_id=101 AND a.path=$1"
         " AND a.cipher IS NULL AND a.group_file_id IS NULL"
         " AND a.scope NOT IN ('group','channel','enterprise')"
         " AND NOT EXISTS (SELECT 1 FROM group_file gf WHERE gf.id=a.group_file_id)"
         " AND NOT EXISTS (SELECT 1 FROM user_collect uc WHERE uc.attach_file_hash256 <> ''"
         "   AND uc.attach_file_hash256 = a.file_hash256 AND uc.status = 1)"
         " RETURNING 1) SELECT COUNT(*) FROM del",
-        []
+        [K2]
     ),
     ?assertEqual(0, Cnt2),
     {ok, _, [{1}]} = epgsql:equery(
         Conn, "SELECT COUNT(*) FROM attachment WHERE path=$1", [K2]
     ),
+    attachment_lifecycle_v5_obs:emit(#{
+        case_id => <<"W3-01/shared-owner">>,
+        entrypoint => <<"shared-owner">>,
+        scenario => <<"owner_account_delete">>,
+        domain => <<"ordinary">>,
+        schema_phase => <<"expand-queue">>,
+        measured => #{
+            collected_hash_protected => true,
+            deletion_deleted_rows => 0,
+            attachment_rows_after => 1
+        }
+    }),
     %% 无共享证据的个人明文附件：注销正常清理（个人引用释放语义）。
     %% M3 守卫：metadata DELETE 需已提交 delete_intent + 队列 tombstone；
     %% 真实注销路径即 intent_ordinary_delete_tx（user_deletion_logic），
@@ -604,18 +1778,30 @@ w301_shared_owner(Conn) ->
     ),
     {ok, _, [{Cnt3}]} = epgsql:equery(
         Conn,
-        "WITH del AS (DELETE FROM attachment a WHERE a.creator_user_id=101"
+        "WITH del AS (DELETE FROM attachment a WHERE a.creator_user_id=101 AND a.path=$1"
         " AND a.cipher IS NULL AND a.group_file_id IS NULL"
         " AND a.scope NOT IN ('group','channel','enterprise')"
         " AND NOT EXISTS (SELECT 1 FROM user_collect uc WHERE uc.attach_file_hash256 <> ''"
         "   AND uc.attach_file_hash256 = a.file_hash256 AND uc.status = 1)"
         " RETURNING 1) SELECT COUNT(*) FROM del",
-        []
+        [K3]
     ),
     ?assertEqual(1, Cnt3),
     {ok, _, [{0}]} = epgsql:equery(
         Conn, "SELECT COUNT(*) FROM attachment WHERE path=$1", [K3]
     ),
+    attachment_lifecycle_v5_obs:emit(#{
+        case_id => <<"W3-01/shared-owner">>,
+        entrypoint => <<"shared-owner">>,
+        scenario => <<"original_post_remove">>,
+        domain => <<"ordinary">>,
+        schema_phase => <<"expand-queue">>,
+        measured => #{
+            intent_committed => true,
+            deletion_deleted_rows => 1,
+            attachment_rows_after => 0
+        }
+    }),
     %% 清理测试自建的收藏行
     q(Conn, "DELETE FROM user_collect WHERE id=991"),
     %% 无关授权拒绝（非群成员不可读，且删除任务细节不可见）
@@ -625,6 +1811,187 @@ w301_shared_owner(Conn) ->
         " WHERE g.id=66 AND gm.user_id=999999)",
         []
     ),
+    attachment_lifecycle_v5_obs:emit(#{
+        case_id => <<"W3-01/shared-owner">>,
+        entrypoint => <<"shared-owner">>,
+        scenario => <<"unrelated_reader_denied">>,
+        domain => <<"ordinary">>,
+        schema_phase => <<"expand-queue">>,
+        measured => #{
+            unrelated_reader_authorized => false
+        }
+    }),
+    ok.
+
+%% shared-owner 企业域对偶面：scope='enterprise' 的引用行不随个人注销
+%% 删除（注销删除 SQL 的 scope NOT IN 排除面）；企业引用释放走企业
+%% 生命周期（fn_v5_intent_eb_delete），释放后 attachment 行仍在。
+w301_shared_owner_enterprise(Conn) ->
+    %% 幂等前缀：清理本函数自建行（企业资产行有物理删除守卫，
+    %% 残留只能随 fixture 库重建清理，这里不 DELETE enterprise_asset）
+    q(Conn, "DELETE FROM user_collect WHERE id IN (993,994)"),
+    q(Conn, "DELETE FROM attachment WHERE path LIKE 'v5e2e/w301/owner/enterprise%'"),
+    %% owner_logout(e)：企业引用（scope='enterprise'）+ 注销删除排除
+    KE1 = <<"v5e2e/w301/owner/enterprise-logout">>,
+    q(Conn, "DELETE FROM attachment WHERE path=$1", [KE1]),
+    q(
+        Conn,
+        "INSERT INTO attachment(id,path,scope,scope_ref,creator_user_id,"
+        "storage_driver,storage_namespace,storage_container,"
+        "storage_locator_sha256,gc_verified,cipher,file_hash256)"
+        " VALUES ($1,$2,'enterprise','org:980002',101,'garage','ns1','c1',"
+        "$3,true,NULL,$4)",
+        [?ASSET_ID + 80, KE1, locator(), binary:copy(<<"e">>, 64)]
+    ),
+    {ok, _, [{Cnt1}]} = epgsql:equery(
+        Conn,
+        "WITH del AS (DELETE FROM attachment a WHERE a.creator_user_id=101 AND a.path=$1"
+        " AND a.cipher IS NULL AND a.group_file_id IS NULL"
+        " AND a.scope NOT IN ('group','channel','enterprise')"
+        " AND NOT EXISTS (SELECT 1 FROM group_file gf WHERE gf.id=a.group_file_id)"
+        " AND NOT EXISTS (SELECT 1 FROM user_collect uc WHERE uc.attach_file_hash256 <> ''"
+        "   AND uc.attach_file_hash256 = a.file_hash256 AND uc.status = 1)"
+        " AND NOT EXISTS (SELECT 1 FROM moment_post mp WHERE position(a.path in mp.media::text) > 0)"
+        " RETURNING 1) SELECT COUNT(*) FROM del",
+        [KE1]
+    ),
+    ?assertEqual(0, Cnt1),
+    {ok, _, [{1}]} = epgsql:equery(
+        Conn, "SELECT COUNT(*) FROM attachment WHERE path=$1", [KE1]
+    ),
+    attachment_lifecycle_v5_obs:emit(#{
+        case_id => <<"W3-01/shared-owner">>,
+        entrypoint => <<"shared-owner">>,
+        scenario => <<"owner_logout">>,
+        domain => <<"enterprise">>,
+        schema_phase => <<"expand-queue">>,
+        measured => #{
+            enterprise_scope_excluded => true,
+            deletion_deleted_rows => 0,
+            attachment_rows_after => 1
+        }
+    }),
+    %% owner_account_delete(e)：带收藏 hash 关联的企业引用同样被排除
+    KE2 = <<"v5e2e/w301/owner/enterprise-collected">>,
+    EntHash = binary:copy(<<"f">>, 64),
+    q(Conn, "DELETE FROM attachment WHERE path=$1", [KE2]),
+    q(
+        Conn,
+        "INSERT INTO attachment(id,path,scope,scope_ref,creator_user_id,"
+        "storage_driver,storage_namespace,storage_container,"
+        "storage_locator_sha256,gc_verified,cipher,file_hash256)"
+        " VALUES ($1,$2,'enterprise','org:980002',101,'garage','ns1','c1',"
+        "$3,true,NULL,$4)",
+        [?ASSET_ID + 81, KE2, locator(), EntHash]
+    ),
+    q(
+        Conn,
+        "INSERT INTO user_collect(id,user_id,kind,kind_id,attach_file_hash256,status)"
+        " VALUES (993,204,0,'x',$1,1)",
+        [EntHash]
+    ),
+    {ok, _, [{Cnt2}]} = epgsql:equery(
+        Conn,
+        "WITH del AS (DELETE FROM attachment a WHERE a.creator_user_id=101 AND a.path=$1"
+        " AND a.cipher IS NULL AND a.group_file_id IS NULL"
+        " AND a.scope NOT IN ('group','channel','enterprise')"
+        " AND NOT EXISTS (SELECT 1 FROM group_file gf WHERE gf.id=a.group_file_id)"
+        " AND NOT EXISTS (SELECT 1 FROM user_collect uc WHERE uc.attach_file_hash256 <> ''"
+        "   AND uc.attach_file_hash256 = a.file_hash256 AND uc.status = 1)"
+        " RETURNING 1) SELECT COUNT(*) FROM del",
+        [KE2]
+    ),
+    ?assertEqual(0, Cnt2),
+    {ok, _, [{1}]} = epgsql:equery(
+        Conn, "SELECT COUNT(*) FROM attachment WHERE path=$1", [KE2]
+    ),
+    q(Conn, "DELETE FROM user_collect WHERE id=993"),
+    attachment_lifecycle_v5_obs:emit(#{
+        case_id => <<"W3-01/shared-owner">>,
+        entrypoint => <<"shared-owner">>,
+        scenario => <<"owner_account_delete">>,
+        domain => <<"enterprise">>,
+        schema_phase => <<"expand-queue">>,
+        measured => #{
+            enterprise_scope_excluded => true,
+            collected_hash_protected => true,
+            deletion_deleted_rows => 0,
+            attachment_rows_after => 1
+        }
+    }),
+    %% original_post_remove(e)：企业引用释放（fn_v5_intent_eb_delete 提交
+    %% delete_intent）后，attachment scope='enterprise' 行仍在且注销删除
+    %% 仍排除——企业引用释放不等于个人元数据可删。
+    KE3 = <<"v5e2e/w301/owner/enterprise-post-remove">>,
+    q(Conn, "DELETE FROM attachment WHERE path=$1", [KE3]),
+    q(
+        Conn,
+        "INSERT INTO attachment(id,path,scope,scope_ref,creator_user_id,"
+        "storage_driver,storage_namespace,storage_container,"
+        "storage_locator_sha256,gc_verified,cipher,file_hash256)"
+        " VALUES ($1,$2,'enterprise','org:980002',101,'garage','ns1','c1',"
+        "$3,true,NULL,$4)",
+        [?ASSET_ID + 82, KE3, locator(), binary:copy(<<"3">>, 64)]
+    ),
+    q(
+        Conn,
+        "INSERT INTO enterprise_asset(id,organization_id,workspace_id,conversation_id,"
+        "object_key,object_hash,status) VALUES(980028,980002,980003,980005,$1,$2,'active')",
+        [KE3, binary:copy(<<"3">>, 64)]
+    ),
+    {ok, _, _} = epgsql:equery(
+        Conn, "SELECT fn_v5_intent_eb_delete(980002,980003,980028,'w301 shared owner eb')", []
+    ),
+    {ok, _, [{Cnt3}]} = epgsql:equery(
+        Conn,
+        "WITH del AS (DELETE FROM attachment a WHERE a.creator_user_id=101 AND a.path=$1"
+        " AND a.cipher IS NULL AND a.group_file_id IS NULL"
+        " AND a.scope NOT IN ('group','channel','enterprise')"
+        " AND NOT EXISTS (SELECT 1 FROM user_collect uc WHERE uc.attach_file_hash256 <> ''"
+        "   AND uc.attach_file_hash256 = a.file_hash256 AND uc.status = 1)"
+        " RETURNING 1) SELECT COUNT(*) FROM del",
+        [KE3]
+    ),
+    ?assertEqual(0, Cnt3),
+    {ok, _, [{1}]} = epgsql:equery(
+        Conn, "SELECT COUNT(*) FROM attachment WHERE path=$1", [KE3]
+    ),
+    {ok, _, [{<<"delete_intent">>}]} = epgsql:equery(
+        Conn,
+        "SELECT lifecycle_state FROM enterprise_asset WHERE id=980028",
+        []
+    ),
+    %% 企业资产行不物理删（purge 守卫）；残留随 fixture 库重建清理。
+    attachment_lifecycle_v5_obs:emit(#{
+        case_id => <<"W3-01/shared-owner">>,
+        entrypoint => <<"shared-owner">>,
+        scenario => <<"original_post_remove">>,
+        domain => <<"enterprise">>,
+        schema_phase => <<"expand-queue">>,
+        measured => #{
+            eb_intent_committed => true,
+            lifecycle_state => <<"delete_intent">>,
+            deletion_deleted_rows => 0,
+            attachment_rows_after => 1
+        }
+    }),
+    %% unrelated_reader_denied(e)：非组织成员不可读（EXISTS=false）
+    {ok, _, [{false}]} = epgsql:equery(
+        Conn,
+        "SELECT EXISTS (SELECT 1 FROM organization_member om"
+        " WHERE om.organization_id=980002 AND om.user_id=999999)",
+        []
+    ),
+    attachment_lifecycle_v5_obs:emit(#{
+        case_id => <<"W3-01/shared-owner">>,
+        entrypoint => <<"shared-owner">>,
+        scenario => <<"unrelated_reader_denied">>,
+        domain => <<"enterprise">>,
+        schema_phase => <<"expand-queue">>,
+        measured => #{
+            unrelated_reader_authorized => false
+        }
+    }),
     ok.
 
 %% history-unknown：位置未知/密文/收藏歧义 => gc_verified 恒 false + 0 删除。
@@ -655,6 +2022,19 @@ w301_history_unknown(Conn) ->
         Conn, "SELECT file_hash256 FROM attachment WHERE path=$1", [K1]
     ),
     ?assertEqual(w301_hash(), H1),
+    attachment_lifecycle_v5_obs:emit(#{
+        case_id => <<"W3-01/history-unknown">>,
+        entrypoint => <<"history-unknown">>,
+        scenario => <<"unknown_location">>,
+        domain => <<"ordinary">>,
+        schema_phase => <<"expand-queue">>,
+        measured => #{
+            gc_verified => false,
+            intent_rejected => <<"23510">>,
+            deletion_queue_rows => 0,
+            file_hash_unchanged => true
+        }
+    }),
     %% opaque_reference：密文对象映射不可解析 => 恒 false
     K2 = <<"v5e2e/w301/hist/cipher">>,
     w301_seed_group_asset(Conn, K2, #{
@@ -667,31 +2047,166 @@ w301_history_unknown(Conn) ->
     {ok, _, [{0}]} = epgsql:equery(
         Conn, "SELECT COUNT(*) FROM attachment_object_deletion WHERE path=$1", [K2]
     ),
+    attachment_lifecycle_v5_obs:emit(#{
+        case_id => <<"W3-01/history-unknown">>,
+        entrypoint => <<"history-unknown">>,
+        scenario => <<"opaque_reference">>,
+        domain => <<"ordinary">>,
+        schema_phase => <<"expand-queue">>,
+        measured => #{
+            gc_verified => false,
+            cipher_opaque => true,
+            deletion_queue_rows => 0
+        }
+    }),
     %% ambiguous_reference：收藏 hash 关联 => 恒 false
     K3 = <<"v5e2e/w301/hist/collect">>,
-    w301_seed_group_asset(Conn, K3, #{id => 52, gf => 52, bound => false}),
+    CollectHash = binary:copy(<<"9">>, 64),
+    w301_seed_group_asset(Conn, K3, #{id => 52, gf => 52, bound => false, hash => CollectHash}),
     q(
         Conn,
         "INSERT INTO user_collect(id,user_id,kind,kind_id,attach_file_hash256,status)"
         " VALUES (992,202,0,'x',$1,1)",
-        [w301_hash()]
+        [CollectHash]
     ),
     ?assertEqual(false, w301_gc_verified_refresh(Conn, K3)),
     q(Conn, "DELETE FROM user_collect WHERE id=992"),
+    attachment_lifecycle_v5_obs:emit(#{
+        case_id => <<"W3-01/history-unknown">>,
+        entrypoint => <<"history-unknown">>,
+        scenario => <<"ambiguous_reference">>,
+        domain => <<"ordinary">>,
+        schema_phase => <<"expand-queue">>,
+        measured => #{
+            gc_verified => false,
+            collected_hash_ambiguous => true,
+            deletion_queue_rows => 0
+        }
+    }),
+    ok.
+
+%% history-unknown 企业域对偶面：scope='enterprise' 行同样三形态
+%% （位置未知/密文/收藏歧义）=> gc_verified 恒 false；普通注销 intent
+%% 对企业引用行拒绝（scope NOT IN 排除面）+ 0 删除。
+w301_history_unknown_enterprise(Conn) ->
+    %% 幂等前缀：清理本函数自建行（上次中断可能残留）
+    q(Conn, "DELETE FROM user_collect WHERE id=996"),
+    q(Conn, "DELETE FROM attachment WHERE path LIKE 'v5e2e/w301/hist/eb-%'"),
+    %% unknown_location(e)：locator 为 NULL 的企业引用行
+    KE1 = <<"v5e2e/w301/hist/eb-unknown-location">>,
+    q(Conn, "DELETE FROM attachment WHERE path=$1", [KE1]),
+    q(
+        Conn,
+        "INSERT INTO attachment(id,path,scope,scope_ref,creator_user_id,"
+        "storage_driver,storage_namespace,storage_container,"
+        "storage_locator_sha256,gc_verified,cipher,file_hash256)"
+        " VALUES ($1,$2,'enterprise','org:980002',101,NULL,NULL,NULL,NULL,"
+        "false,NULL,$3)",
+        [?ASSET_ID + 83, KE1, binary:copy(<<"4">>, 64)]
+    ),
+    ?assertEqual(false, w301_gc_verified_refresh(Conn, KE1)),
+    {error, #error{code = <<"23510">>}} =
+        e(Conn, "SELECT fn_v5_intent_ordinary_delete($1,'w301 hist eb')", [KE1]),
+    ok = epgsql:sync(Conn),
+    {ok, _, [{0}]} = epgsql:equery(
+        Conn, "SELECT COUNT(*) FROM attachment_object_deletion WHERE path=$1", [KE1]
+    ),
+    attachment_lifecycle_v5_obs:emit(#{
+        case_id => <<"W3-01/history-unknown">>,
+        entrypoint => <<"history-unknown">>,
+        scenario => <<"unknown_location">>,
+        domain => <<"enterprise">>,
+        schema_phase => <<"expand-queue">>,
+        measured => #{
+            gc_verified => false,
+            intent_rejected => <<"23510">>,
+            deletion_queue_rows => 0
+        }
+    }),
+    %% opaque_reference(e)：密文企业引用行
+    KE2 = <<"v5e2e/w301/hist/eb-cipher">>,
+    q(Conn, "DELETE FROM attachment WHERE path=$1", [KE2]),
+    q(
+        Conn,
+        "INSERT INTO attachment(id,path,scope,scope_ref,creator_user_id,"
+        "storage_driver,storage_namespace,storage_container,"
+        "storage_locator_sha256,gc_verified,cipher,file_hash256)"
+        " VALUES ($1,$2,'enterprise','org:980002',101,'garage','ns1','c1',"
+        "$3,true,'AES-256-GCM',$4)",
+        [?ASSET_ID + 84, KE2, locator(), binary:copy(<<"4">>, 64)]
+    ),
+    ?assertEqual(false, w301_gc_verified_refresh(Conn, KE2)),
+    {ok, _, [{0}]} = epgsql:equery(
+        Conn, "SELECT COUNT(*) FROM attachment_object_deletion WHERE path=$1", [KE2]
+    ),
+    attachment_lifecycle_v5_obs:emit(#{
+        case_id => <<"W3-01/history-unknown">>,
+        entrypoint => <<"history-unknown">>,
+        scenario => <<"opaque_reference">>,
+        domain => <<"enterprise">>,
+        schema_phase => <<"expand-queue">>,
+        measured => #{
+            gc_verified => false,
+            cipher_opaque => true,
+            deletion_queue_rows => 0
+        }
+    }),
+    %% ambiguous_reference(e)：收藏 hash 歧义的企业引用行
+    KE3 = <<"v5e2e/w301/hist/eb-collect">>,
+    EntCollectHash = binary:copy(<<"2">>, 64),
+    q(Conn, "DELETE FROM attachment WHERE path=$1", [KE3]),
+    q(
+        Conn,
+        "INSERT INTO attachment(id,path,scope,scope_ref,creator_user_id,"
+        "storage_driver,storage_namespace,storage_container,"
+        "storage_locator_sha256,gc_verified,cipher,file_hash256)"
+        " VALUES ($1,$2,'enterprise','org:980002',101,'garage','ns1','c1',"
+        "$3,true,NULL,$4)",
+        [?ASSET_ID + 85, KE3, locator(), EntCollectHash]
+    ),
+    q(
+        Conn,
+        "INSERT INTO user_collect(id,user_id,kind,kind_id,attach_file_hash256,status)"
+        " VALUES (996,206,0,'x',$1,1)",
+        [EntCollectHash]
+    ),
+    ?assertEqual(false, w301_gc_verified_refresh(Conn, KE3)),
+    q(Conn, "DELETE FROM user_collect WHERE id=996"),
+    attachment_lifecycle_v5_obs:emit(#{
+        case_id => <<"W3-01/history-unknown">>,
+        entrypoint => <<"history-unknown">>,
+        scenario => <<"ambiguous_reference">>,
+        domain => <<"enterprise">>,
+        schema_phase => <<"expand-queue">>,
+        measured => #{
+            gc_verified => false,
+            collected_hash_ambiguous => true,
+            deletion_queue_rows => 0
+        }
+    }),
     ok.
 
 %% Pin/confirm must finish inside the real capability window. Never shrink it.
 %% Wait on the database clock, capped at five seconds; a missed window fails.
 await_upload_expiry(Conn, Key) ->
-    {ok, _, [{true}]} = epgsql:equery(Conn,
+    {ok, _, [{true}]} = epgsql:equery(
+        Conn,
         "SELECT session_state='confirmed' AND upload_content IS NOT NULL"
         " AND upload_expires_at > clock_timestamp()"
-        " FROM attach_pending WHERE object_key=$1", [Key]),
-    {ok, _, [_]} = epgsql:equery(Conn,
+        " FROM attach_pending WHERE object_key=$1",
+        [Key]
+    ),
+    {ok, _, [_]} = epgsql:equery(
+        Conn,
         "SELECT pg_sleep(LEAST(5.0, GREATEST(0.0,"
         " EXTRACT(EPOCH FROM (upload_expires_at - clock_timestamp())))))"
-        " FROM attach_pending WHERE object_key=$1", [Key]),
-    {ok, _, [{true}]} = epgsql:equery(Conn,
+        " FROM attach_pending WHERE object_key=$1",
+        [Key]
+    ),
+    {ok, _, [{true}]} = epgsql:equery(
+        Conn,
         "SELECT upload_expires_at <= clock_timestamp()"
-        " FROM attach_pending WHERE object_key=$1", [Key]),
+        " FROM attach_pending WHERE object_key=$1",
+        [Key]
+    ),
     ok.

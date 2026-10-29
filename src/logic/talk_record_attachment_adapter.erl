@@ -457,9 +457,16 @@ request_record_cleanup_tx(Conn, RecordId) ->
     case evaluate_release_blockers_tx(Conn, RecordId) of
         {ok, none} ->
             {ok, Attachments} = cleanup_attachments_tx(Conn, RecordId),
-            {ok, Released} = talk_record_attachment_ref_repo:release_record_tx(Conn, RecordId),
-            Outcomes = [cleanup_one_tx(Conn, Path) || #{<<"path">> := Path} <- Attachments],
-            {ok, #{released => Released, outcomes => Outcomes}};
+            case lock_cleanup_attachments_tx(Conn, Attachments) of
+                ok ->
+                    {ok, Released} = talk_record_attachment_ref_repo:release_record_tx(
+                        Conn, RecordId
+                    ),
+                    Outcomes = [cleanup_one_tx(Conn, Path) || #{<<"path">> := Path} <- Attachments],
+                    {ok, #{released => Released, outcomes => Outcomes}};
+                {error, _} = Error ->
+                    Error
+            end;
         {ok, Blocker} ->
             {ok, #{blocked => Blocker, outcomes => []}};
         {error, R} ->
@@ -469,15 +476,24 @@ request_record_cleanup_tx(Conn, RecordId) ->
 cleanup_attachments_tx(Conn, RecordId) ->
     Sql =
         <<
-            "SELECT DISTINCT a.path FROM attachment a"
-            " JOIN talk_record_attachment_ref trar ON trar.attachment_id = a.id"
-            " WHERE trar.record_id = $1"
-            " UNION SELECT a.path FROM attachment a JOIN attachment_derived_write w ON w.attachment_id=a.id"
-            " JOIN talk_record_job j ON j.id=w.source_job_id WHERE j.record_id=$1"
+            "SELECT a.path FROM attachment a WHERE a.id IN ("
+            " SELECT attachment_id FROM talk_record_attachment_ref WHERE record_id=$1"
+            " UNION SELECT w.attachment_id FROM attachment_derived_write w"
+            " JOIN talk_record_job j ON j.id=w.source_job_id WHERE j.record_id=$1)"
+            " ORDER BY a.storage_driver NULLS FIRST, a.storage_namespace NULLS FIRST,"
+            " a.storage_container NULLS FIRST, a.path"
         >>,
     case elib_pg:query(Conn, Sql, [RecordId]) of
         {ok, Rows} -> {ok, Rows};
         {error, R} -> {error, R}
+    end.
+
+lock_cleanup_attachments_tx(_Conn, []) ->
+    ok;
+lock_cleanup_attachments_tx(Conn, [#{<<"path">> := Path} | Rest]) ->
+    case elib_pg:query(Conn, <<"SELECT fn_v5_lock_ordinary_upload($1)">>, [Path]) of
+        {ok, _} -> lock_cleanup_attachments_tx(Conn, Rest);
+        {error, _} = Error -> Error
     end.
 
 cleanup_one_tx(Conn, Path) ->

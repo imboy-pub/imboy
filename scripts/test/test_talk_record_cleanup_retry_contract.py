@@ -57,7 +57,7 @@ class CleanupRetryContractTests(unittest.TestCase):
 
     def test_route_and_request(self):
         doc=(ROOT/'api/paths/api/v1/talk-records/cleanup_retry.yaml').read_text()
-        self.assertIn('required: [cleanup_generation]',doc)
+        self.assertRegex(doc, r'(?m)^\s*required:\s*(?:\[cleanup_generation\]|\n\s*-\s*cleanup_generation\s*$)')
         self.assertIn('minimum: 1',doc)
         self.assertIn("'202':",doc)
         self.assertIn('additionalProperties: false',doc)

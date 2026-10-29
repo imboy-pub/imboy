@@ -248,38 +248,11 @@ def w201_migration_count(case_dir):
 
 
 def load_probe_section(case_dir, section):
-    """Parse one w201 probe section.
-
-    Returns (lines, summary, path); lines carry an internal _line key so
-    assertion details can cite the exact artifact line.
-    """
-    path = os.path.join(case_dir, section + ".jsonl")
-    text = read_text(path, "w201 %s probe output" % section)
-    lines = []
-    summary = None
-    for number, raw in enumerate(text.splitlines(), 1):
-        if not raw.strip():
-            continue
-        try:
-            obj = json.loads(raw)
-        except ValueError as exc:
-            gap("unparsable JSON in %s:%d (%s)" % (path, number, exc))
-        if not isinstance(obj, dict):
-            gap("non-object probe line in %s:%d" % (path, number))
-        obj["_line"] = number
-        if obj.get("phase") == section:
-            summary = obj
-        else:
-            lines.append(obj)
-    if summary is None:
-        gap("missing %s probe summary line in %s" % (section, path))
-    if summary.get("bad") != 0:
-        gap("%s probe section reports bad=%r in %s"
-            % (section, summary.get("bad"), path))
-    ok = summary.get("ok")
-    if type(ok) is not int or ok < 1:
-        gap("%s probe section reports ok=%r in %s" % (section, ok, path))
-    return lines, summary, path
+    """Reject SQL-only W2-01 output as HTTP acceptance evidence."""
+    # shortcut: SQL probe logs cannot prove HTTP calls; replace when real
+    # request and response observations are bound to the candidate.
+    gap("W2-01 %s SQL probe artifacts in %s cannot establish real HTTP entrypoint evidence"
+        % (section, case_dir))
 
 
 def try_section(case_dir, section, gaps):

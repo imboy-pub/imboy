@@ -54,8 +54,7 @@ collect_attachment_keys_tx(Conn, Uid) ->
             "     WHERE uc.attach_file_hash256 <> ''"
             "       AND a.file_hash256 = ANY(string_to_array(uc.attach_file_hash256, ','))"
             "       AND uc.status = 1)"
-            " AND NOT EXISTS (SELECT 1 FROM public.moment_post mp"
-            "     WHERE position(a.path in mp.media::text) > 0)"
+            " AND NOT public.fn_v5_moment_reference_blocks(a.path)"
         >>,
     case
         elib_pg:query(
