@@ -417,13 +417,14 @@ writer_scenario(_St, Conn, <<"supported_schema_writer">>, ?ORD, Key, Triple, _N)
         Conn,
         "SELECT * FROM fn_v5_register_pending($1,'b','private',101,"
         "gen_random_uuid(),$2::jsonb,now()+interval '2 hours',"
-        "now()+interval '1 hour',$3,$4,$5)",
+        "now()+interval '1 hour',$3,$4,$5,$6)",
         [
             Key,
             jsone:encode(#{
                 <<"subject">> => #{<<"kind">> => <<"user">>, <<"principal">> => <<"101">>},
                 <<"declaration">> => #{<<"mime">> => <<"image/png">>}
             }),
+            maps:get(driver, Triple),
             maps:get(namespace, Triple),
             maps:get(container, Triple),
             maps:get(locator, Triple)
