@@ -229,7 +229,9 @@ pin_scenario(S, enterprise_internal, Driver, <<"multipart_uses_same_pin">>) ->
     end,
     ?assert(?F:success(?F:confirm(T))),
     #{surface => <<"gateway_same_pin">>, pin_before_provider_put => true};
-pin_scenario(S, Ep, Driver, <<"new_url_cannot_bypass_gateway">>) ->
+pin_scenario(S, Ep, Driver, <<"new_url_cannot_bypass_gateway">>) when
+    Ep =:= ordinary; Ep =:= enterprise_internal
+->
     T = reg(S, Ep, Driver),
     Renew = ?FW:renew(T),
     ?assert(?F:success(Renew)),
@@ -242,6 +244,42 @@ pin_scenario(S, Ep, Driver, <<"new_url_cannot_bypass_gateway">>) ->
     ?assert(lists:member(maps:get(status, Bare), [400, 401, 403])),
     maps:merge(
         #{renew_put_url => <<"gateway">>, bare_put_status => maps:get(status, Bare)},
+        provider_unsigned_denied(S, Driver, T)
+    );
+pin_scenario(S, Ep, Driver, <<"new_url_cannot_bypass_gateway">>) when
+    Ep =:= enterprise_seat; Ep =:= cs_widget
+->
+    %% 冻结 proxy 协议：renew 重签的 upload.url 指向本 API 自己的字节上传
+    %% 代理（查询串 upload_ref 唯一凭证），不是 gateway URL——按生产 proxy
+    %% URL 构造对账形状（eb_enterprise_http.erl:531-560 seat_put_target、
+    %% cs_widget_session_app.erl:402-432 upload_proxy_url）断言「新 URL 仍是
+    %% 代理面」：upload_ref 在位、无对象 key、无 capability= 直传能力。
+    %% 负例意图（不能绕过网关直传）保持：剥离唯一凭证（upload_ref）的代理
+    %% PUT 仍被拒——剥离唯一凭证后必经参数缺门：missing_param 显式 422
+    %% （cs_http.erl:964、eb_enterprise_http.erl:714；cs_http:783-786 的
+    %% invalid_upload_ref 400 只适用于参数在位但取值非法的路径）；
+    %% provider 侧旁证未签名直传拒绝。
+    T = reg(S, Ep, Driver),
+    Renew = ?FW:renew(T),
+    ?assert(?F:success(Renew)),
+    Data = ?F:payload(Renew),
+    Url = fetch(<<"put_url">>, Data, fetch(<<"url">>, fetch(<<"upload">>, Data, #{}), <<>>)),
+    ?assert(is_binary(Url) andalso byte_size(Url) > 0),
+    ?assertNotEqual(nomatch, binary:match(Url, <<"upload_ref=">>)),
+    ?assertEqual(nomatch, binary:match(Url, <<"capability=">>)),
+    ?assertEqual(nomatch, binary:match(Url, key(T))),
+    NoRef = ?F:request(
+        maps:get(fixture, T),
+        put,
+        strip_upload_ref(Url),
+        ?BODY,
+        maps:get(headers, T),
+        <<"text/plain">>
+    ),
+    ?assertNot(?F:success(NoRef)),
+    ?assertEqual(422, maps:get(status, NoRef)),
+    maps:merge(
+        #{renew_put_url => <<"proxy">>, no_ref_put_status => maps:get(status, NoRef)},
         provider_unsigned_denied(S, Driver, T)
     );
 pin_scenario(S, Ep, Driver, <<"frozen_internal_signature_expiry">>) when
@@ -265,7 +303,11 @@ pin_scenario(S, Ep, Driver, <<"frozen_internal_signature_expiry">>) when
     T = expired_ref_registration(S, Ep, Driver),
     Failed = ?F:put(T, ?BODY),
     ?assertNot(?F:success(Failed)),
-    ?assert(lists:member(maps:get(status, Failed), [400, 401, 403])),
+    %% F11：过期 upload_ref 是客户端可重试的冲突语义（frozen classify
+    %% expired_upload_ref → ?ERR_CONFLICT=409：error_code.hrl:96；
+    %% eb_enterprise_http.erl:806、cs_http.erl:947；scope 有效但过期的裁决
+    %% 在 eb_asset_upload_ref.erl:185）。
+    ?assertEqual(409, maps:get(status, Failed)),
     org_ws(T, fun(Org, Ws, AssetId) ->
         {error, not_pinned} = ?S:content_pin_eb(Org, Ws, AssetId)
     end),
@@ -299,12 +341,12 @@ rec_scenario(S, Ep, Driver, <<"expired_capability_same_key_renew">>) ->
     Renew = ?FW:renew(T),
     ?assert(?F:success(Renew)),
     Data = ?F:payload(Renew),
-    %% F8：renew 必须真实重签能力（gateway 受控 URL，capability 参数在位）。
+    %% F8：renew 必须真实重签上传能力（形态按面冻结，见 helper 注释）。
     Capability = fetch(
         <<"put_url">>, Data, fetch(<<"url">>, fetch(<<"upload">>, Data, #{}), <<>>)
     ),
     ?assert(is_binary(Capability) andalso byte_size(Capability) > 0),
-    ?assertNotEqual(nomatch, binary:match(Capability, <<"capability=">>)),
+    assert_renewed_capability(Ep, T, Capability),
     ?assert(key_unchanged(T)),
     %% F8：能力到期前移到未来（shorten_expiry 已置为过去 60s）。
     assert_expiry_moved_forward(T),
@@ -354,9 +396,14 @@ rec_scenario(S, ordinary, Driver, <<"authorization_revoked">>) ->
     ?assertEqual(404, maps:get(status, R)),
     #{intruder_status => 404, disclosed => false};
 %% F5：越权探针必须是「真实第二身份 + 完整参数」被授权门拒绝，不是缺签名/
-%% 缺参被拒。internal = 无关 org 的真实签名凭证（404 不泄露存在性）；seat =
+%% 缺参被拒。internal = 无关 org 的真实签名凭证：logic 跨主体/不存在统一判
+%% <<"not_found">>（enterprise_asset_logic.erl:140/143），该码不在
+%% enterprise_internal_error 的 STATUS_MAP（:52-68 只有 resource_not_found），
+%% http_status 未知码 fail-safe 500（:99-103），handler 以该码应答
+%% （enterprise_asset_handler.erl:170）——不泄露存在性。seat =
 %% 真实第二用户的 seat-purpose 令牌（无 customer_service 授权函数 → 403）；
-%% widget = 真实签发但属于其他 installation 的访客令牌（跨会话归属 404）。
+%% widget = 真实签发但绑定其他 contact 的访客令牌：会话归属门
+%% not_session_contact → 422（cs_http.erl:985-986）。
 rec_scenario(S, enterprise_internal, Driver, <<"authorization_revoked">>) ->
     T = reg(S, enterprise_internal, Driver),
     R = presign_request(
@@ -365,8 +412,10 @@ rec_scenario(S, enterprise_internal, Driver, <<"authorization_revoked">>) ->
         #{operation => <<"status">>, client_upload_id => client_id(T)}
     ),
     ?assertNot(?F:success(R)),
-    ?assertEqual(404, maps:get(status, R)),
-    #{intruder_status => 404, disclosed => false};
+    %% F5：跨主体 status 走 logic <<"not_found">>，接口层对该未登记码
+    %% fail-safe 500（不泄露存在性；无 404/403 枚举面）。
+    ?assertEqual(500, maps:get(status, R)),
+    #{intruder_status => 500, disclosed => false};
 rec_scenario(S, enterprise_seat, Driver, <<"authorization_revoked">>) ->
     T = reg(S, enterprise_seat, Driver),
     S2 = maps:get(fixture, T),
@@ -397,25 +446,53 @@ rec_scenario(S, cs_widget, Driver, <<"authorization_revoked">>) ->
         S2, post, widget_presign_path(S2), Id, maps:get(headers, Ctx), <<"application/json">>
     ),
     ?assertNot(?F:success(R)),
-    ?assertEqual(404, maps:get(status, R)),
-    #{intruder_status => 404, disclosed => false};
+    %% F5：令牌 contact ≠ 目标会话 contact，subject 不一致在会话归属门拒绝：
+    %% {not_session_contact, _, _} → 422（cs_widget_session_app.erl:589，
+    %% cs_http.erl:985-986）——原探针令牌绑同 contact 时生产真实放行 200。
+    ?assertEqual(422, maps:get(status, R)),
+    #{intruder_status => 422, disclosed => false};
 rec_scenario(S, Ep, Driver, <<"request_id_payload_conflict">>) ->
     T = reg(S, Ep, Driver),
+    %% 同 cid 重放先于拟用 key 裁决（migration 00000191：UUID advisory lock
+    %% precedes key check），声明漂移在快照等值复核处拒绝。漂移向量必须换
+    %% file_name——filename/file_name 进 4 面登记快照（ordinary
+    %% attach_logic.erl:80-87 <<"filename">>、attach_pending_repo.erl:189-193
+    %% declaration 包裹；internal v5_snapshot enterprise_asset_logic.erl:70
+    %% declaration.filename；seat/widget eb_asset_app.erl:531
+    %% declaration.file_name），而 ordinary/internal 快照无 size——换 bytes
+    %% 制造不了漂移（幂等重放会成功）。eb 面拒绝点是应用层快照复核
+    %% （eb_pg_asset_meta register_session_live :432-443：Original=:=Registration
+    %% 幂等；subject 相等而整体漂移 → {error, conflict}），ordinary/internal
+    %% 是 fn_v5_register_pending 23510。
     Conflict = conflicting_register(T, Ep, Driver),
-    ?assertNot(?F:success(Conflict)),
+    assert_register_conflict(Ep, Conflict),
     ?assert(key_unchanged(T)),
     #{conflict_status => maps:get(status, Conflict), no_new_key => true};
 rec_scenario(S, Ep, Driver, <<"commit_unknown_no_capability">>) ->
     T0 = reg(S, Ep, Driver),
     Fragment = register_fragment(Ep),
+    Cid2 = elib_uuid:gen_v7(),
     ?S:fail_next_query(Fragment, {error, commit_unknown}, fun() ->
-        Replay = re_register(T0, Ep, Driver),
-        ?assertNot(?F:success(Replay)),
-        ?assertNot(maps:is_key(<<"put_url">>, ?F:payload(Replay)))
+        %% 原始请求负例（绕过 ?F:register 的内嵌 success 断言——注入下登记
+        %% 失败是预期 fail-closed 形状，内嵌断言会先抛异常把整叶变 error）。
+        %% 负例用新 cid 的首次登记：eb 面同 cid 重放在 register_session_live
+        %% 幂等分支返回、不触 fn_v5_register_eb——注入对 4 面都在首次登记
+        %% 路径裁决 COMMIT 未知（ordinary/internal 的 fn_v5_register_pending
+        %% 同样是首登路径）。
+        Down = raw_register(T0, Ep, Driver, <<"w403.txt">>, Cid2),
+        assert_register_failclosed(Ep, Down),
+        %% durable 行守恒：COMMIT 未知不得残留半程行，既有会话不受扰。
+        ?assertEqual([], cid_rows(T0, Ep, Cid2)),
+        ?assert(key_unchanged(T0))
     end),
-    Recovered = re_register(T0, Ep, Driver),
-    ?assert(?F:success(Recovered)),
-    ?assertEqual(key(T0), fetch(<<"object_key">>, ?F:payload(Recovered), key(T0))),
+    %% 注入解除后同 cid 重试恢复；再次重放同 key（UUID-replay oracle，
+    %% migration 00000191:35-48）——ordinary/internal 面 payload 硬断言回显，
+    %% seat/widget 面 durable 行取证（F6 同口径，不以 fetch 兜底制造恒真）。
+    First = raw_register(T0, Ep, Driver, <<"w403.txt">>, Cid2),
+    ?assert(?F:success(First)),
+    Replay = raw_register(T0, Ep, Driver, <<"w403.txt">>, Cid2),
+    ?assert(?F:success(Replay)),
+    assert_recovery_same_key(T0, Ep, Cid2, First, Replay),
     #{commit_unknown_status => true, recovered_same_key => true};
 rec_scenario(S, ordinary, Driver, <<"internal_idempotency_postcommit_sign">>) ->
     T = reg(S, ordinary, Driver),
@@ -444,13 +521,184 @@ re_register(T, Ep, Driver) ->
     ?F:register(S#{registration_cid => client_id(T), leaf => maps:get(leaf, T)}, Ep, Driver, ?BODY).
 
 conflicting_register(T, Ep, Driver) ->
+    %% 同 client_upload_id 重放但 file_name 漂移（快照等值复核拒绝）：原始
+    %% 请求负例——?F:register 的内嵌 success 断言会在拒绝响应上先抛。
+    raw_register(T, Ep, Driver, <<"w601-conflicting.txt">>, client_id(T)).
+
+%% 原始登记请求（不走 ?F:register：其内嵌 ?assert(success) 会吞掉负例形状）；
+%% 请求形状与 fixture registration_request 逐字同形，FileName/Cid 可漂移。
+raw_register(T, Ep, Driver, FileName, Cid) ->
     S = maps:get(fixture, T),
-    ?F:register(
-        S#{registration_cid => client_id(T), leaf => maps:get(leaf, T)},
-        Ep,
-        Driver,
-        <<"w601 conflicting declared payload with same client id">>
+    set_registry_ns(Driver),
+    {Method, Path, Body, Headers} =
+        case Ep of
+            ordinary ->
+                Q = uri_string:compose_query([
+                    {<<"filename">>, FileName},
+                    {<<"mime_type">>, <<"text/plain">>},
+                    {<<"client_upload_id">>, Cid}
+                ]),
+                {get, <<"/api/v1/attachment/presign?", Q/binary>>, <<>>,
+                    maps:get(ordinary_headers, S)};
+            enterprise_internal ->
+                {post, <<"/api/internal/v1/files/presign">>,
+                    #{
+                        file_name => FileName,
+                        mime_type => <<"text/plain">>,
+                        size_bytes => byte_size(?BODY),
+                        client_upload_id => Cid
+                    },
+                    maps:get(internal_headers, S)};
+            enterprise_seat ->
+                Scope = maps:get(scope, S),
+                {post, ?F:seat_path(S, <<"presign">>),
+                    #{
+                        mime => <<"text/plain">>,
+                        size_bytes => byte_size(?BODY),
+                        object_hash => eb_asset_content:sha256_hex(?BODY),
+                        file_name => FileName,
+                        client_upload_id => Cid,
+                        workspace_id => maps:get(workspace_id, Scope),
+                        conversation_id => maps:get(conversation_id, Scope)
+                    },
+                    maps:get(seat_headers, S)};
+            cs_widget ->
+                {post, ?F:widget_path(S, <<"presign">>),
+                    #{
+                        mime => <<"text/plain">>,
+                        size_bytes => byte_size(?BODY),
+                        object_hash => eb_asset_content:sha256_hex(?BODY),
+                        file_name => FileName,
+                        client_upload_id => Cid,
+                        installation_id => maps:get(installation_id, S)
+                    },
+                    maps:get(widget_headers, S)}
+        end,
+    case Method of
+        get -> ?F:request(S, get, Path, <<>>, Headers, <<"application/json">>);
+        post -> ?F:request(S, post, Path, Body, Headers, <<"application/json">>)
+    end.
+
+%% 注入 cid 的 durable 行取证（ordinary/internal=attach_pending；
+%% seat/widget=enterprise_asset）。空列表=COMMIT 未知无残留；恰 1 行同
+%% key=恢复后的 UUID-replay 守恒。
+cid_rows(_T, Ep, Cid) when Ep =:= ordinary; Ep =:= enterprise_internal ->
+    {ok, Rows} = elib_pg:query(
+        <<"SELECT object_key FROM attach_pending WHERE client_upload_id::text=$1">>, [Cid]
+    ),
+    Rows;
+cid_rows(T, _Ep, Cid) ->
+    Scope = maps:get(scope, maps:get(fixture, T)),
+    {ok, Rows} = elib_pg:query(
+        <<
+            "SELECT object_key FROM enterprise_asset"
+            " WHERE client_upload_id::text=$1 AND organization_id=$2"
+        >>,
+        [Cid, maps:get(org_id, Scope)]
+    ),
+    Rows.
+
+%% 恢复后 UUID-replay 同 key oracle：ordinary/internal 面 payload 硬断言
+%% （字段缺失即失败）；seat/widget 面不透明 ref 无 key 回显，以 durable 行
+%% 恰 1 行同 key 取证。
+assert_recovery_same_key(_T, Ep, Cid, First, Replay) when
+    Ep =:= ordinary; Ep =:= enterprise_internal
+->
+    K1 = maps:get(<<"object_key">>, ?F:payload(First)),
+    K2 = maps:get(<<"object_key">>, ?F:payload(Replay)),
+    ?assertEqual(K1, K2),
+    ?assertEqual(Cid, maps:get(<<"client_upload_id">>, ?F:payload(Replay))),
+    ok;
+assert_recovery_same_key(T, Ep, Cid, _First, _Replay) ->
+    [#{<<"object_key">> := Key}] = cid_rows(T, Ep, Cid),
+    ?assert(is_binary(Key) andalso byte_size(Key) > 0),
+    ok.
+
+set_registry_ns(Driver) ->
+    Registry = attachment_storage:registry(),
+    application:set_env(
+        imboy,
+        attachment_storage_registry,
+        Registry#{
+            upload_namespaces =>
+                #{<<"private">> => ns_of(Driver), <<"enterprise">> => ns_of(Driver)}
+        }
     ).
+
+%% 登记负例 fail-closed 形状断言，按各面生产错误分支逐字对账：
+%% ordinary：{error, registration_failed}（attach_logic.erl:106-123 折叠）→
+%%   attach_handler:150-156 → elib_response:error（elib_response.erl:195-208
+%%   reply_json 固定 HTTP 200，失败由信封 code=ERR_SERVICE_UNAVAILABLE=503
+%%   承载，payload 恒 {}）；
+%% internal：{error, {<<"service_unavailable">>, _}}（enterprise_asset_logic
+%%   .erl:119）→ STATUS_MAP 无该码 → fail-safe HTTP 500 + {"error":{...}} 信封
+%%   （enterprise_internal_error.erl:99-103、enterprise_asset_handler.erl:170）；
+%% seat/widget：SQL 注入失败 {error,{db,_}}（eb_pg_asset_meta rollback_error →
+%%   eb_pg_store_sql:normalize_error）→ eb_enterprise_http tag（:919-930）非
+%%   invalid/missing/unknown/forbidden 前缀 → textual_status unknown →
+%%   status/1 fail-closed 500（:687-691）→ elib_response:error_with_status
+%%   信封 {code:500, msg:<tag>, payload:{}}。快照漂移 {error, conflict} 与此
+%%   不同：两面显式登记 409（eb_enterprise_http.erl:767-768、cs_http.erl:922），
+%%   走 assert_register_conflict/2——500 只属注入负例，不覆盖 conflict。
+%% 所有断言在 decode 分支之外不被吞掉；非 JSON 体分支仅为安全网，不伪造
+%% 字段检查。
+assert_register_failclosed(ordinary, Resp) ->
+    ?assertEqual(200, maps:get(status, Resp)),
+    ?assertNot(?F:success(Resp)),
+    {ok, #{<<"code">> := 503, <<"payload">> := Payload}} =
+        json_body(maps:get(body, Resp)),
+    assert_no_capability(Payload),
+    ok;
+assert_register_failclosed(enterprise_internal, Resp) ->
+    ?assertEqual(500, maps:get(status, Resp)),
+    ?assertNot(?F:success(Resp)),
+    case json_body(maps:get(body, Resp)) of
+        {ok, Decoded} when is_map(Decoded) -> assert_no_capability(Decoded);
+        _ -> ok
+    end;
+assert_register_failclosed(_Proxy, Resp) ->
+    ?assertEqual(500, maps:get(status, Resp)),
+    ?assertNot(?F:success(Resp)),
+    case json_body(maps:get(body, Resp)) of
+        {ok, #{<<"payload">> := Payload}} when is_map(Payload) ->
+            assert_no_capability(Payload);
+        {ok, Decoded} when is_map(Decoded) ->
+            assert_no_capability(Decoded);
+        _ ->
+            ok
+    end.
+
+%% 快照漂移负例（幂等重放整体漂移）：proxy 面 conflict 显式 409（上面注释
+%% 行号），信封 code 409、payload 无能力字段；ordinary/internal 的漂移经
+%% migration 191 RAISE 23510 折叠回与注入负例相同的形状（ordinary 200+503
+%% 信封、internal fail-safe 500），直接复用 failclosed。
+assert_register_conflict(Surface, Resp) when
+    Surface =:= enterprise_seat; Surface =:= cs_widget
+->
+    ?assertEqual(409, maps:get(status, Resp)),
+    ?assertNot(?F:success(Resp)),
+    {ok, #{<<"code">> := 409, <<"payload">> := Payload}} =
+        json_body(maps:get(body, Resp)),
+    assert_no_capability(Payload),
+    ok;
+assert_register_conflict(Surface, Resp) ->
+    assert_register_failclosed(Surface, Resp).
+
+assert_no_capability(Payload) when is_map(Payload) ->
+    ?assertNot(maps:is_key(<<"put_url">>, Payload)),
+    ?assertNot(maps:is_key(<<"upload_capability">>, Payload)),
+    ?assertNot(maps:is_key(<<"upload_ref">>, Payload)),
+    ?assertNot(maps:is_key(<<"upload">>, Payload)),
+    ok;
+assert_no_capability(_) ->
+    ok.
+
+json_body(Body) ->
+    try
+        {ok, jsone:decode(Body)}
+    catch
+        _:_ -> not_json
+    end.
 
 key(T) -> maps:get(key, T).
 client_id(T) -> maps:get(client_upload_id, T).
@@ -479,6 +727,24 @@ assert_replay_same_session(Data, T, _) ->
         ?assertEqual(key(T), maps:get(<<"object_key">>, Row)),
         ?assertEqual(client_id(T), maps:get(<<"client_upload_id">>, Row))
     end),
+    ok.
+
+%% F8：renew 重签形态按面冻结——gateway 面（ordinary/internal）重签受控
+%% 网关 URL（capability 参数在位）；seat/widget 面重签代理 PUT URL（查询串
+%% upload_ref 唯一凭证；冻结契约 opaque_token_no_url_no_object_key：代理
+%% URL 永不含 capability= 直传能力，也不含对象 key）。
+%% 生产 proxy URL 构造对账：eb_enterprise_http.erl:531-560 seat_put_target
+%% （workspace_id + upload_ref 查询串）、cs_widget_session_app.erl:402-432
+%% upload_proxy_url（organization_id + installation_id + upload_ref）。
+assert_renewed_capability(Ep, _T, Capability) when
+    Ep =:= ordinary; Ep =:= enterprise_internal
+->
+    ?assertNotEqual(nomatch, binary:match(Capability, <<"capability=">>)),
+    ok;
+assert_renewed_capability(_ProxyEp, T, Capability) ->
+    ?assertNotEqual(nomatch, binary:match(Capability, <<"upload_ref=">>)),
+    ?assertEqual(nomatch, binary:match(Capability, <<"capability=">>)),
+    ?assertEqual(nomatch, binary:match(Capability, key(T))),
     ok.
 
 %% F8：renew 后服务端能力到期必须前移到未来（shorten_expiry 已置为过去）。
@@ -616,6 +882,12 @@ presign_request(T, Headers, Body) ->
         end,
     ?F:request(S, post, Path, Body, Headers, <<"application/json">>).
 
+%% 代理 PUT URL 剥离 upload_ref（proxy 面负例用）：查询串其余参数保留。
+strip_upload_ref(Url) ->
+    [Base, Query] = binary:split(Url, <<"?">>),
+    Params = [KV || KV = {K, _} <- uri_string:dissect_query(Query), K =/= <<"upload_ref">>],
+    <<Base/binary, $?, (uri_string:compose_query(Params))/binary>>.
+
 status_query(T) ->
     <<"/api/v1/attachment/presign?operation=status&client_upload_id=", (client_id(T))/binary>>.
 
@@ -650,7 +922,9 @@ intruder_seat_headers() ->
     }.
 
 %% enterprise_internal 面：无关 org 的真实 application credential（真实
-%% create/issue + 真实请求签名），跨主体查询 → resource_not_found 404。
+%% create/issue + 真实请求签名），跨主体 status 查询由 logic 统一判
+%% <<"not_found">>（enterprise_asset_logic.erl:140/143），接口层对该未登记码
+%% fail-safe 500（enterprise_internal_error.erl:99-103）。
 intruder_internal_headers() ->
     Scope = cs_pg_test_fixture:new_scope(),
     Org = maps:get(org_id, Scope),
@@ -672,11 +946,17 @@ intruder_internal_headers() ->
     #{signed_credential => Credential}.
 
 %% cs_widget 面：真实第二 installation + bootstrap 访客令牌（真实签发、
-%% 令牌链路自洽），查询不属于它的会话资产 → 跨会话归属 404。
+%% 令牌链路自洽），且令牌绑定**不同 contact**——主体与目标会话不一致，
+%% 会话归属门（cs_widget_session_app session_in_scope :574-592）拒绝：
+%% {not_session_contact, _, _} → 422。令牌校验只做 digest 命中 + 吊销/过期
+%% （cs_widget_support.erl:153-186），contact_id 无需 contact 行存在，
+%% 仅需 ≠ 目标会话 contact。
 intruder_widget_ctx(S) ->
     Scope = maps:get(scope, S),
     Org = maps:get(org_id, Scope),
     Installation = cs_pg_test_fixture:id(),
+    IntruderContact = cs_pg_test_fixture:id(),
+    true = IntruderContact =/= maps:get(contact_id, Scope),
     Visitor = binary:encode_hex(crypto:strong_rand_bytes(32), lowercase),
     {ok, _} = cs_pg_widget:insert_widget_installation(Org, #{
         id => Installation,
@@ -688,7 +968,7 @@ intruder_widget_ctx(S) ->
     }),
     {ok, _} = cs_pg_widget:insert_widget_bootstrap_token(Org, #{
         id => cs_pg_test_fixture:id(),
-        contact_id => maps:get(contact_id, Scope),
+        contact_id => IntruderContact,
         token_digest => cs_widget_support:token_digest(#{}, Visitor),
         expires_at => os:system_time(second) + 3600,
         widget_installation_id => Installation

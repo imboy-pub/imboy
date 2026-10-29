@@ -219,6 +219,9 @@ idem_scenario(S, Ep, Driver, <<"sequential_100_replays">>) ->
     First = ?F:confirm(T),
     ?assert(?F:success(First)),
     Id0 = confirm_id(First, Ep),
+    %% F7：审计基线在重放前取证——enterprise 域 REQUIRED_AUDIT 首确认恰
+    %% 1 行 file.confirmed 审计；ordinary 域无审计写入恒 0 行。
+    AuditBefore = audit_rows(Id0),
     [
         begin
             Replay = ?F:confirm(T),
@@ -229,14 +232,16 @@ idem_scenario(S, Ep, Driver, <<"sequential_100_replays">>) ->
     ],
     ?assertEqual(1, ?S:attach_count(key(T))),
     %% F7：幂等 oracle 的两个 SQL 级子句（重放不递增 referer——旧 save/4
-    %% 路径 DO UPDATE 会累加 referer_time；治理审计只在首行——private/
-    %% enterprise 域确认无 group/channel 治理审计，重放亦不得误写）。
-    assert_replay_oracle(key(T), Id0),
+    %% 路径 DO UPDATE 会累加 referer_time；治理审计按域冻结：enterprise 域
+    %% 首确认写 1 行、重放不增——private 域恒 0 行，任何重放路径误写在此红）。
+    assert_replay_oracle(key(T), Id0, Ep),
+    %% F7：重放前后审计行数相等（幂等的审计面表达，两域同口径）。
+    ?assertEqual(AuditBefore, audit_rows(Id0)),
     #{
         replays => 100,
         single_attachment_id => true,
         referer_unchanged => 1,
-        confirm_audit_rows => 0
+        confirm_audit_rows => audit_expected(Ep)
     };
 idem_scenario(S, Ep, Driver, <<"concurrent_two_confirms">>) ->
     T = reg(S, Ep, Driver),
@@ -255,7 +260,9 @@ idem_scenario(S, Ep, Driver, <<"concurrent_two_confirms">>) ->
         ?assertEqual(Id1, confirm_id(R2, Ep))
     end),
     ?assertEqual(1, ?S:attach_count(key(T))),
-    assert_replay_oracle(key(T), confirm_id_of_key(key(T))),
+    %% F7：两路线性化后审计仍按域冻结（enterprise 域恰 1 行——只有线性化的
+    %% 首路写审计；ordinary 域恒 0 行）。
+    assert_replay_oracle(key(T), confirm_id_of_key(key(T)), Ep),
     #{concurrent_winer_ids => <<"identical">>, single_row => true}.
 
 %% ------------------------------------------------------ confirm-old-client
@@ -330,14 +337,24 @@ confirm_id_of_key(Key) ->
 
 %% F7：幂等 oracle 服务端取证——referer_time 恒 1（confirm 重放复用既有
 %% 行、不递增引用计数；旧 save/4 路径的 DO UPDATE 递增会在此红灯）；
-%% 治理审计零行（本 oracle 两域 scope 均为 private/enterprise，无
-%% group/channel 首确认治理审计，任何重放路径误写审计都不得出现）。
-assert_replay_oracle(Key, AttachmentId) ->
+%% 治理审计按域冻结：enterprise 域 INT-08 REQUIRED_AUDIT 首确认在同事务写
+%% 恰 1 行 file.confirmed 审计（enterprise_asset_logic.erl:786-791
+%% audit_mutation → enterprise_audit_event_repo:append_tx，:589 v5 路径同；
+%% 重放 First=false 分支 :771-777 不再写）；ordinary 域（attach_logic/
+%% attach_pending_repo）无审计写入，恒 0 行。任何域的重放误写审计都不得
+%% 出现（sequential 场景另以「重放前后行数相等」表达幂等）。
+assert_replay_oracle(Key, AttachmentId, Domain) ->
     {ok, [#{<<"referer_time">> := Referer}]} = elib_pg:query(
         <<"SELECT referer_time FROM attachment WHERE path=$1">>, [Key]
     ),
     ?assertEqual(1, Referer),
-    {ok, [#{<<"n">> := AuditN}]} = elib_pg:query(
+    ?assertEqual(audit_expected(Domain), audit_rows(AttachmentId)),
+    ok.
+
+%% F7：file.confirmed 审计行数取证（enterprise_audit_event：
+%% resource_type='attachment'，resource_id=file_id，action='file.confirmed'）。
+audit_rows(AttachmentId) ->
+    {ok, [#{<<"n">> := N}]} = elib_pg:query(
         <<
             "SELECT count(*)::bigint AS n FROM enterprise_audit_event"
             " WHERE resource_type='attachment' AND resource_id=$1"
@@ -345,8 +362,11 @@ assert_replay_oracle(Key, AttachmentId) ->
         >>,
         [AttachmentId]
     ),
-    ?assertEqual(0, AuditN),
-    ok.
+    N.
+
+%% F7：审计行数的域冻结期望（与生产 REQUIRED_AUDIT 政策逐字对齐）。
+audit_expected(enterprise_internal) -> 1;
+audit_expected(ordinary) -> 0.
 
 int(I) when is_integer(I) -> I;
 int(B) when is_binary(B) -> binary_to_integer(B).
