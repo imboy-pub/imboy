@@ -42,7 +42,16 @@ presign_op(_S0, T, Op, Extra) ->
                 {post, <<"/api/internal/v1/files/presign">>,
                     merge(maps:with([operation, client_upload_id], Id), Extra)};
             enterprise_seat ->
-                {post, ?F:seat_path(S, <<"presign">>), merge(Id, Extra)};
+                %% seat 面会话定位（eb_asset_app locate_session/with_authorized_
+                %% session 经 eb_tenant_handler:90 → eb_enterprise_http:workspace_id）
+                %% 必须有 workspace_id：缺参 422 missing_workspace_id（第二跑
+                %% 实证 seat 面 status/renew 全败）——与 register 的
+                %% registration_request seat 分支同源取值。
+                {post, ?F:seat_path(S, <<"presign">>),
+                    merge(
+                        Id#{workspace_id => maps:get(workspace_id, maps:get(scope, S))},
+                        Extra
+                    )};
             cs_widget ->
                 {post, ?F:widget_path(S, <<"presign">>),
                     merge(Id#{installation_id => maps:get(installation_id, S)}, Extra)}
@@ -238,9 +247,10 @@ absolute_request(S, Method, Url, Body, Headers0, Mime) ->
 
 %% multipart 直传必须落在本 fixture 拥有的 loopback listener 上（presign 以
 %% 请求 Host 派生上传 URL）。非 loopback host（如对外网关域名）或非绝对 URL
-%% 一律失败——旁路目标不得进入证据。
+%% 一律失败——旁路目标不得进入证据。uri_string:parse/1 直接返回 map
+%% （非 {ok, Map}——第二跑实证 badmatch 值为 map 本体）。
 assert_loopback_url(Url) ->
-    {ok, #{host := Host}} = uri_string:parse(Url),
+    #{host := Host} = uri_string:parse(Url),
     true = lists:member(Host, [<<"127.0.0.1">>, <<"localhost">>]),
     ok.
 

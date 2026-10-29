@@ -653,6 +653,8 @@ w601_w3_common_env() { # $1 cdir $2 label — garage/disk env + erl path preambl
 
 w601_w3hold() { # $1 cdir — W3 hold battery, garage/disk dual run on the w601 chain DB
   local cdir="$1" try rc drv
+  local PZ="" d
+  for d in deps/*/ebin; do [ -d "$d" ] && PZ="$PZ -pz $PWD/$d"; done
   mkdir -p "$cdir"
   rm -f "$cdir/observations.jsonl"
   export V5_OBSERVATIONS_FILE="$cdir/observations.jsonl"
@@ -693,6 +695,8 @@ w601_w3hold() { # $1 cdir — W3 hold battery, garage/disk dual run on the w601 
 
 w601_w3race() { # $1 cdir — W3 race/shared-owner battery, dual run on the w601 chain DB
   local cdir="$1" try rc drv
+  local PZ="" d
+  for d in deps/*/ebin; do [ -d "$d" ] && PZ="$PZ -pz $PWD/$d"; done
   mkdir -p "$cdir"
   rm -f "$cdir/observations.jsonl"
   export V5_OBSERVATIONS_FILE="$cdir/observations.jsonl"
@@ -733,6 +737,8 @@ w601_w3race() { # $1 cdir — W3 race/shared-owner battery, dual run on the w601
 
 w601_w3bind() { # $1 cdir — CS/enterprise bind battery on the w403 isolated-config DB
   local cdir="$1" try rc drv
+  local PZ="" d
+  for d in deps/*/ebin; do [ -d "$d" ] && PZ="$PZ -pz $PWD/$d"; done
   mkdir -p "$cdir"
   rm -f "$cdir/observations.jsonl"
   export V5_OBSERVATIONS_FILE="$cdir/observations.jsonl"

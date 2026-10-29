@@ -30,6 +30,7 @@
     release/2,
     cleanup_jobs/0,
     pending_row/1,
+    eb_row/3,
     eb_row/4,
     row_content/1,
     content_pin/1,
@@ -41,6 +42,8 @@
     update_pending_deadline/2,
     update_eb_expiry/4,
     update_eb_deadline/4,
+    register_expired_pending/2,
+    content_pin_any/2,
     unregister_meck/1
 ]).
 
@@ -96,7 +99,9 @@ with_put_barrier(T, Fun) ->
         meck:unload(Mod)
     end.
 
-%% 暂停匹配 SQL 片段的第一条真实查询（elib_pg:query/2 与 /3）。
+%% 暂停匹配 SQL 片段的第一条真实查询（elib_pg:query/2 与 /3；以及
+%% elib_pg:execute/2——eb 面写路径经 eb_pg_exec:execute_returning 落在
+%% execute/2（eb_pg_exec.erl:64），只 mock query 会漏拦 renew 等 UPDATE）。
 with_sql_barrier(Fragments, Fun) ->
     {Parent, Barrier, Gate} = barrier_ctx(),
     meck:new(elib_pg, [passthrough, no_link]),
@@ -108,6 +113,10 @@ with_sql_barrier(Fragments, Fun) ->
         meck:expect(elib_pg, query, fun(Conn, Sql, Args) ->
             sql_pause(Sql, Fragments, Parent, Barrier, Gate),
             meck:passthrough([Conn, Sql, Args])
+        end),
+        meck:expect(elib_pg, execute, fun(Sql, Args) ->
+            sql_pause(Sql, Fragments, Parent, Barrier, Gate),
+            meck:passthrough([Sql, Args])
         end),
         Fun(Barrier)
     after
@@ -429,3 +438,89 @@ update_eb_deadline(Org, Ws, AssetId, SecsFromNow) ->
             [Org, Ws, AssetId, SecsFromNow]
         ),
     ok.
+
+%% ------------------------------------------------ 过期前提的合法构造（F8）
+
+%% 显式登记已到期会话：经生产登记函数 fn_v5_register_pending 以原登记行的
+%% 冻结快照（bucket/scope/creator/registration/location 逐字复制）造
+%% "新 key + 新 cid" 的已到期行，返回 {ok, NewKey, NewCid}。UPDATE 路径被
+%% fn_v5_pending_session_guard 冻结语义拒绝（23510：v5 upload expiry cannot
+%% shrink / v5 session deadline immutable，迁移 00000190 激活）；登记路径无
+%% "不得过去"下界（pg fn 源码 :12-14 仅要求非空且 expiry<=deadline，
+%% 2026-10-30 在 run 的 slot1_w102_expand 实库实证过期登记成功）。
+register_expired_pending(Key, Mode) ->
+    {ok, Row} = pending_row(Key),
+    {ok, [#{<<"bucket">> := Bucket, <<"scope">> := Scope, <<"creator">> := Creator}]} =
+        elib_pg:query(
+            <<
+                "SELECT bucket, scope, creator_user_id AS creator"
+                " FROM attach_pending WHERE object_key=$1"
+            >>,
+            [Key]
+        ),
+    #{
+        <<"storage_driver">> := Drv,
+        <<"storage_namespace">> := Ns,
+        <<"storage_container">> := Ctr,
+        <<"storage_locator_sha256">> := Loc,
+        <<"upload_registration">> := Registration
+    } = Row,
+    Cid2 = elib_uuid:gen_v7(),
+    Key2 = iolist_to_binary([<<"v601-exp/">>, elib_uuid:gen_v7()]),
+    Now = os:system_time(second),
+    {Deadline, Expiry} =
+        case Mode of
+            %% 能力过期（session 未到期）→ renew 同 key 重签语义的前提
+            expiry -> {Now + 3600, Now - 60};
+            %% 绝对 deadline 过期 → renew fail-closed 语义的前提
+            deadline -> {Now - 300, Now - 301}
+        end,
+    {ok, [_]} =
+        elib_pg:query(
+            <<
+                "SELECT out_object_key FROM fn_v5_register_pending("
+                "$1,$2,$3,$4,$5::uuid,$6::jsonb,"
+                "$7::timestamptz,$8::timestamptz,$9,$10,$11,$12)"
+            >>,
+            [
+                Key2,
+                Bucket,
+                Scope,
+                Creator,
+                Cid2,
+                jsone:encode(Registration),
+                iso8601_ts(Deadline),
+                iso8601_ts(Expiry),
+                Drv,
+                Ns,
+                Ctr,
+                Loc
+            ]
+        ),
+    {ok, Key2, Cid2}.
+
+iso8601_ts(Secs) ->
+    iolist_to_binary(
+        calendar:system_time_to_rfc3339(Secs, [{unit, second}, {offset, "Z"}])
+    ).
+
+%% pin 快照按面取证：ordinary/internal 在 attach_pending.upload_content；
+%% seat/widget（eb 面）在 enterprise_asset.upload_content。
+content_pin_any(Ep, T) when Ep =:= ordinary; Ep =:= enterprise_internal ->
+    content_pin(maps:get(key, T));
+content_pin_any(_ProxyEp, T) ->
+    org_ws_of(T, fun(Org, Ws, AssetId) -> content_pin_eb(Org, Ws, AssetId) end).
+
+org_ws_of(T, Fun) ->
+    S = maps:get(fixture, T),
+    Scope = maps:get(scope, S),
+    AssetId =
+        case maps:get(asset_id, maps:get(confirm_body, T), undefined) of
+            I when is_integer(I) -> I;
+            B when is_binary(B) -> binary_to_integer(B);
+            undefined -> int_of(maps:get(<<"asset_id">>, maps:get(registration, T)))
+        end,
+    Fun(maps:get(org_id, Scope), maps:get(workspace_id, Scope), AssetId).
+
+int_of(I) when is_integer(I) -> I;
+int_of(B) when is_binary(B) -> binary_to_integer(B).

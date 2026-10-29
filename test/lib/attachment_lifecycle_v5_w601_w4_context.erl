@@ -190,8 +190,14 @@ temp_parent() ->
     end.
 
 registry(Base, Garage) ->
-    %% w403p-* 两根专供 w403_predecessor_support 的 ns()/container()（intent
-    %% 回放复用其封印形态）；其余套件走 w601-w4-* 根。
+    %% w403p-* namespace（w403_predecessor_support 的 ns()/container()，intent
+    %% 回放复用其封印形态）声明为同物理根的 **aliases**：生产冻结校验
+    %% attachment_storage:validate_registry（duplicate_physical_root，
+    %% src/lib/attachment_storage/attachment_storage.erl:92-97）拒绝两个 root
+    %% 共享同一物理 locator {driver, endpoint, container}——此前 w403p-* 作为
+    %% 独立 root 指向同一 garage endpoint+bucket，setup 直接被拒
+    %% （w601_registry_not_executable）。alias 归 canonical root
+    %% （resolve/1 namespace_matches），identity/frozen_location 照常解析。
     %% 生产 attachment_storage:registry/0 只认 version=1 信封（缺 version 的
     %% 值一律替换为空 registry → validate_registry 报 empty_roots），故按
     %% imboy_env 的构造形状包装（对照 w403_storage_tests 的 registry 信封）。
@@ -201,28 +207,14 @@ registry(Base, Garage) ->
             <<"w601-disk-root">> => #{
                 driver => <<"disk">>,
                 namespace => ?NS_DISK,
-                aliases => [],
+                aliases => [<<"w403p-disk">>],
                 endpoint => list_to_binary("file://" ++ Base),
                 container => ?CONTAINER_DISK
             },
             <<"w601-garage-root">> => #{
                 driver => <<"garage">>,
                 namespace => ?NS_GARAGE,
-                aliases => [],
-                endpoint => maps:get(endpoint, Garage),
-                container => maps:get(bucket, Garage)
-            },
-            <<"w601-w403p-disk-root">> => #{
-                driver => <<"disk">>,
-                namespace => <<"w403p-disk">>,
-                aliases => [],
-                endpoint => list_to_binary("file://" ++ Base),
-                container => <<"c">>
-            },
-            <<"w601-w403p-garage-root">> => #{
-                driver => <<"garage">>,
-                namespace => <<"w403p-garage">>,
-                aliases => [],
+                aliases => [<<"w403p-garage">>],
                 endpoint => maps:get(endpoint, Garage),
                 container => maps:get(bucket, Garage)
             }

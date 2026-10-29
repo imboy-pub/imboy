@@ -112,7 +112,10 @@ scenario(S, {?C_REC, Ep, Driver, Sc, _, _}) -> rec_scenario(S, Ep, Driver, Sc).
 pin_scenario(S, Ep, Driver, <<"first_content_pin">>) ->
     T = reg(S, Ep, Driver),
     ?assert(?F:success(?F:put(T, ?BODY))),
-    {ok, Pin} = ?S:content_pin(key(T)),
+    %% pin 快照按面取证：ordinary/internal 在 attach_pending.upload_content；
+    %% seat/widget（eb 面）在 enterprise_asset.upload_content——eb 面查
+    %% attach_pending 恒 {error, not_found}（第二跑实证 badmatch）。
+    {ok, Pin} = ?S:content_pin_any(Ep, T),
     ?assertEqual(?S:sha(?BODY), maps:get(<<"sha256">>, Pin)),
     ?assertEqual(?F:success(?F:confirm(T)), true),
     ?assertEqual({ok, ?BODY}, ?F:read(T)),
@@ -178,9 +181,17 @@ pin_scenario(S, Ep, Driver, <<"pin_commit_recovered_same_hash">>) ->
     #{recovered_same_hash => true, provider_puts_after_recovery => 1};
 pin_scenario(S, Ep, Driver, <<"body_path_swap_rejected">>) ->
     T = reg(S, Ep, Driver),
-    %% put_calls 必须在 with_put_barrier 的 passthrough mock 作用域内读取：
-    %% 未 mock 的模块上 meck:num_calls 恒 {not_mocked}，断言必错（F1）。
-    ?S:with_put_barrier(T, fun(_Barrier) ->
+    %% put_calls 必须在 passthrough mock 作用域内读取：未 mock 的模块上
+    %% meck:num_calls 恒 {not_mocked}，断言必错（F1）。本场景只计数不暂停：
+    %% with_put_barrier 会对本 key 的首个 put 阻塞 30s（第二跑实证
+    %% w601_barrier_timeout → HTTP 5xx → success=false），故与
+    %% pin_commit_recovered_same_hash 同构地内联无暂停 mock。
+    Mod = ?S:driver_mod(Driver),
+    meck:new(Mod, [passthrough, no_link]),
+    try
+        ok = meck:expect(Mod, put_snapshot, fun(I, A, B, C) ->
+            meck:passthrough([I, A, B, C])
+        end),
         ?assert(?F:success(?F:put(T, ?BODY))),
         Swap = ?F:put(T, ?OTHER),
         ?assertNot(?F:success(Swap)),
@@ -188,7 +199,9 @@ pin_scenario(S, Ep, Driver, <<"body_path_swap_rejected">>) ->
         ?assertEqual(1, ?S:put_calls(?S:driver_mod(Driver))),
         ?assertEqual({ok, ?BODY}, ?F:read(T)),
         #{swapped_body_status => maps:get(status, Swap), provider_puts => 1}
-    end);
+    after
+        meck:unload(Mod)
+    end;
 pin_scenario(S, Ep, Driver, <<"old_client_bare_put_gateway">>) ->
     T = reg(S, Ep, Driver),
     Url = upload_url(T),
@@ -317,8 +330,11 @@ pin_scenario(S, Ep, Driver, <<"frozen_internal_signature_expiry">>) when
 rec_scenario(S, Ep, Driver, <<"presign_response_lost">>) ->
     T = reg(S, Ep, Driver),
     Replay = re_register(T, Ep, Driver),
-    ?assert(?F:success(Replay)),
-    Data = ?F:payload(Replay),
+    %% register/4 返回会话 map（内嵌 ?assert(success(Registered)) 已硬断言
+    %% 幂等重放成功）；登记响应 payload 在 registration 字段——对会话 map
+    %% 断言 success/payload 恒错（第二跑实证）。
+    ?assertMatch(#{key := K} when is_binary(K), Replay),
+    Data = maps:get(registration, Replay),
     %% F6：幂等重放响应必须真实回显同 key/同 id（字段缺失即失败，不用兜底
     %% 期望值制造恒真）；seat/widget 无该字段的面以服务端行取证同 key。
     assert_replay_same_session(Data, T, Ep),
@@ -336,8 +352,8 @@ rec_scenario(S, Ep, Driver, <<"restart_before_put">>) ->
     ?assert(is_map_key(<<"session_state">>, Data)),
     #{status_capability => <<"none">>, can_resume => maps:get(<<"can_resume">>, Data)};
 rec_scenario(S, Ep, Driver, <<"expired_capability_same_key_renew">>) ->
-    T = reg(S, Ep, Driver),
-    shorten_expiry(T),
+    T0 = reg(S, Ep, Driver),
+    T = shorten_expiry(T0),
     Renew = ?FW:renew(T),
     ?assert(?F:success(Renew)),
     Data = ?F:payload(Renew),
@@ -352,16 +368,16 @@ rec_scenario(S, Ep, Driver, <<"expired_capability_same_key_renew">>) ->
     assert_expiry_moved_forward(T),
     #{renewed => true, same_key => true, expires_at_moved_forward => true};
 rec_scenario(S, Ep, Driver, <<"absolute_deadline_reupload_required">>) ->
-    T = reg(S, Ep, Driver),
-    expire_deadline(T),
+    T0 = reg(S, Ep, Driver),
+    T = expire_deadline(T0),
     Renew = ?FW:renew(T),
     ?assertNot(?F:success(Renew)),
     ?assertNot(maps:is_key(<<"put_url">>, ?F:payload(Renew))),
     ?assert(key_unchanged(T)),
     #{renew_status => maps:get(status, Renew), no_new_key => true};
 rec_scenario(S, Ep, Driver, <<"renew_races_intent">>) ->
-    T = reg(S, Ep, Driver),
-    shorten_expiry(T),
+    T0 = reg(S, Ep, Driver),
+    T = shorten_expiry(T0),
     Fragment = renew_fragment(Ep),
     ?S:with_sql_barrier([Fragment], fun(Barrier) ->
         RenewJob = ?S:start_job(fun() -> ?FW:renew(T) end),
@@ -392,8 +408,13 @@ rec_scenario(S, ordinary, Driver, <<"authorization_revoked">>) ->
     R = ?F:request(
         maps:get(fixture, T), get, status_query(T), <<>>, Intruder, <<"application/json">>
     ),
-    ?assertNot(?F:success(R)),
-    ?assertEqual(404, maps:get(status, R)),
+    %% F5：跨主体 status 走 logic <<"not_found">> → attach_handler:70-72
+    %% elib_response:error(Req0, <<"not found">>, ?ERR_NOT_FOUND)。本面错误
+    %% 信封固定 HTTP 200、语义由信封 code 承载（elib_response.erl:195-208
+    %% reply_json；探针自注 :630-632 同口径）——拒绝证据是信封 code=404
+    %% 且无任何能力字段，不以 HTTP 状态码断言（恒错，第二跑实证 200）。
+    {ok, #{<<"code">> := 404, <<"payload">> := Payload}} = json_body(maps:get(body, R)),
+    assert_no_capability(Payload),
     #{intruder_status => 404, disclosed => false};
 %% F5：越权探针必须是「真实第二身份 + 完整参数」被授权门拒绝，不是缺签名/
 %% 缺参被拒。internal = 无关 org 的真实签名凭证：logic 跨主体/不存在统一判
@@ -497,15 +518,17 @@ rec_scenario(S, Ep, Driver, <<"commit_unknown_no_capability">>) ->
 rec_scenario(S, ordinary, Driver, <<"internal_idempotency_postcommit_sign">>) ->
     T = reg(S, ordinary, Driver),
     Replay = re_register(T, ordinary, Driver),
-    ?assert(?F:success(Replay)),
-    Data = ?F:payload(Replay),
+    %% 会话 map 形状 + registration payload（register 内嵌 success 断言已证
+    %% 重放成功；对会话 map 断言 success/payload 恒错，第二跑实证）。
+    ?assertMatch(#{key := K} when is_binary(K), Replay),
+    Data = maps:get(registration, Replay),
     ?assertNotEqual(nomatch, binary:match(fetch(<<"put_url">>, Data, <<>>), <<"gateway">>)),
     #{replayed => true, postcommit_signed => true};
 rec_scenario(S, Ep, Driver, <<"internal_idempotency_postcommit_sign">>) ->
     T = reg(S, Ep, Driver),
     Replay = re_register(T, Ep, Driver),
-    ?assert(?F:success(Replay)),
-    Data = ?F:payload(Replay),
+    ?assertMatch(#{key := K} when is_binary(K), Replay),
+    Data = maps:get(registration, Replay),
     %% F6 同口径：重放同 key/同 id 用服务端取证（payload 有回显即硬断言，
     %% seat/widget 不透明面查 durable 行），不以恒真形态放行。
     assert_replay_same_session(Data, T, Ep),
@@ -813,16 +836,33 @@ asset_id_of(T) ->
 int(I) when is_integer(I) -> I;
 int(B) when is_binary(B) -> binary_to_integer(B).
 
+%% F8：能力窗耗尽 / deadline 过期前提的构造，返回驱动目标 T2。
+%% pending 面（ordinary/internal）：生产守卫 fn_v5_pending_session_guard
+%% （迁移 00000190 激活）禁 UPDATE shrink（23510 "v5 upload expiry cannot
+%% shrink"）且 session_deadline immutable（"v5 session deadline immutable"），
+%% 旧直改实现必然被拒；改经生产登记函数 fn_v5_register_pending 显式登记
+%% 已到期会话（该函数只要求非空且 expiry<=deadline，无"不得过去"下界，
+%% 2026-10-30 在 run 的 slot1_w102_expand 实库实证）——返回指向新行的 T2。
+%% eb 面：enterprise_asset 的 expiry/deadline UPDATE 不受该守卫拦截
+%% （第二跑实证 seat 面无 23510），原位改后返回 T。
 shorten_expiry(T) ->
     case ?S:pending_row(key(T)) of
-        {ok, _} -> ?S:update_pending_expiry(key(T), -60);
-        _ -> org_ws(T, fun(Org, Ws, Id) -> ?S:update_eb_expiry(Org, Ws, Id, -60) end)
+        {ok, _} ->
+            {ok, Key2, Cid2} = ?S:register_expired_pending(key(T), expiry),
+            T#{key => Key2, client_upload_id => Cid2};
+        _ ->
+            org_ws(T, fun(Org, Ws, Id) -> ?S:update_eb_expiry(Org, Ws, Id, -60) end),
+            T
     end.
 
 expire_deadline(T) ->
     case ?S:pending_row(key(T)) of
-        {ok, _} -> ?S:update_pending_deadline(key(T), -300);
-        _ -> org_ws(T, fun(Org, Ws, Id) -> ?S:update_eb_deadline(Org, Ws, Id, -300) end)
+        {ok, _} ->
+            {ok, Key2, Cid2} = ?S:register_expired_pending(key(T), deadline),
+            T#{key => Key2, client_upload_id => Cid2};
+        _ ->
+            org_ws(T, fun(Org, Ws, Id) -> ?S:update_eb_deadline(Org, Ws, Id, -300) end),
+            T
     end.
 
 renew_fragment(ordinary) -> <<"UPDATE attach_pending SET upload_expires_at">>;
@@ -958,6 +998,17 @@ intruder_widget_ctx(S) ->
     IntruderContact = cs_pg_test_fixture:id(),
     true = IntruderContact =/= maps:get(contact_id, Scope),
     Visitor = binary:encode_hex(crypto:strong_rand_bytes(32), lowercase),
+    %% bootstrap token 表的复合 FK fk_csvt_contact（迁移 00000125:127）要求
+    %% contact 行真实存在（(organization_id, contact_id) → enterprise_contact），
+    %% 否则 insert_widget_bootstrap_token 23503（第二跑实证）——插真实行，
+    %% 插入先例对照 w4_race_tests:93-96。
+    {ok, _} = elib_pg:query(
+        <<
+            "INSERT INTO enterprise_contact(id, organization_id, status, display_name)"
+            " VALUES($1,$2,'active','w601-intruder') ON CONFLICT (id) DO NOTHING"
+        >>,
+        [IntruderContact, Org]
+    ),
     {ok, _} = cs_pg_widget:insert_widget_installation(Org, #{
         id => Installation,
         public_widget_id => integer_to_binary(Installation),

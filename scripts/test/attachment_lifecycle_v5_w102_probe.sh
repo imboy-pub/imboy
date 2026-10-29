@@ -1570,7 +1570,15 @@ delta="$(comm -13 <(tr ',' '\n' <<< "$base" | sort) <(tr ',' '\n' <<< "${hidden_
 delta="${delta% }"
 # step 2: real activation replay against the hidden function (refused at the
 # first trigger whose function is missing; disconnect rolls the hide back).
-{ printf "BEGIN;\nALTER FUNCTION %s() RENAME TO %s;\n" "$GDIF_FN" "$GDIF_HIDDEN"; cat "$GUARDS_SQL"; } | ONDB "$EXPAND_DB" -q >"$PROBE_TMP/out.txt" 2>"$PROBE_TMP/err.txt"
+# 00000190 (M3-guards activation, W4-04) is a verbatim copy of
+# guards-contract.sql and replays on EVERY phase database — the expand DB
+# already carries all nine triggers, so a raw replay now dies on
+# "trigger ... already exists" instead of the missing function.  Detach the
+# three attach-surface triggers inside the same transaction first (the replay
+# then genuinely fails at trg_v5_attachment_first_bind's missing function and
+# the rollback restores the baseline trigger set — verified 2026-10-30 against
+# the run's slot1_w102_expand live DB: rc=3, error text matches, 16/1 restored).
+{ printf "BEGIN;\nDROP TRIGGER IF EXISTS trg_v5_attachment_location_immutable ON attachment;\nDROP TRIGGER IF EXISTS trg_v5_attachment_identity_immutable ON attachment;\nDROP TRIGGER IF EXISTS trg_v5_attachment_first_bind ON attachment;\nALTER FUNCTION %s() RENAME TO %s;\n" "$GDIF_FN" "$GDIF_HIDDEN"; cat "$GUARDS_SQL"; } | ONDB "$EXPAND_DB" -q >"$PROBE_TMP/out.txt" 2>"$PROBE_TMP/err.txt"
 gdif_replay_rc=$?
 restored="$(ONDB "$EXPAND_DB" -tAq -c "SELECT count(*) FROM pg_proc WHERE pronamespace='public'::regnamespace AND proname='$GDIF_FN'" 2>/dev/null)"
 base_after="$(ONDB "$EXPAND_DB" -tAq -c "$MISS_SQL" 2>/dev/null)"
