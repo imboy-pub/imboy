@@ -42,32 +42,32 @@ w404_activation_test_() ->
 specs() ->
     lists:append([
         case_specs(?C_RECONCILE, <<"reconcile">>, [
-            <<"W4-04/reconcile/integrated/startup_ready">>,
-            <<"W4-04/reconcile/integrated/periodic_retry">>,
-            <<"W4-04/reconcile/integrated/restart_expired_lease">>,
-            <<"W4-04/reconcile/integrated/nonowner_discrepancy_only">>
+            <<"startup_ready">>,
+            <<"periodic_retry">>,
+            <<"restart_expired_lease">>,
+            <<"nonowner_discrepancy_only">>
         ]),
         case_specs(?C_LOOP, <<"no-infinite-loop">>, [
-            <<"W4-04/no-infinite-loop/integrated/task_attempt5_restart">>,
-            <<"W4-04/no-infinite-loop/integrated/claim_attempt8_restart">>,
-            <<"W4-04/no-infinite-loop/integrated/blocked_no_poll">>,
-            <<"W4-04/no-infinite-loop/integrated/db_outage_bounded_wakeup">>
+            <<"task_attempt5_restart">>,
+            <<"claim_attempt8_restart">>,
+            <<"blocked_no_poll">>,
+            <<"db_outage_bounded_wakeup">>
         ]),
         case_specs(?C_GUARDS, <<"guards-activation">>, [
-            <<"W4-04/guards-activation/integrated/all_prerequisites_present">>,
-            <<"W4-04/guards-activation/integrated/producer_missing">>,
-            <<"W4-04/guards-activation/integrated/old_worker_running">>,
-            <<"W4-04/guards-activation/integrated/guard_missing">>
+            <<"all_prerequisites_present">>,
+            <<"producer_missing">>,
+            <<"old_worker_running">>,
+            <<"guard_missing">>
         ]),
         case_specs(?C_WRITER, <<"all-writer-compat">>, [
-            <<"W4-04/all-writer-compat/integrated/supported_schema_writer">>,
-            <<"W4-04/all-writer-compat/integrated/old_writer_incomplete_identity">>
+            <<"supported_schema_writer">>,
+            <<"old_writer_incomplete_identity">>
         ]),
         case_specs(?C_ACT, <<"activation-commit-unknown">>, [
-            <<"W4-04/activation-commit-unknown/integrated/ddl_committed_checkpoint_lost">>,
-            <<"W4-04/activation-commit-unknown/integrated/proven_rollback">>,
-            <<"W4-04/activation-commit-unknown/integrated/partial_catalog_conflict">>,
-            <<"W4-04/activation-commit-unknown/integrated/guard_failure_worker_off">>
+            <<"ddl_committed_checkpoint_lost">>,
+            <<"proven_rollback">>,
+            <<"partial_catalog_conflict">>,
+            <<"guard_failure_worker_off">>
         ])
     ]).
 
@@ -122,7 +122,7 @@ scenario(St, {?C_ACT, _, _, Scenario, Domain}) ->
     ).
 
 short_scenario(Scenario) ->
-    [Last] = lists:reverse(binary:split(Scenario, <<"/">>, [global])),
+    [Last | _] = lists:reverse(binary:split(Scenario, <<"/">>, [global])),
     Last.
 
 %% ---------------------------------------------------------------- setup
@@ -373,7 +373,7 @@ retry_cycle(?ENT, #{conn := Conn, storage := Storage}, Label) ->
     ok = seed_eb_asset(Conn, Storage, AssetId, Key, <<"live">>, true),
     ok = enqueue_eb(Conn, AssetId),
     {ok, #{token := T1}} = claim_eb_for(Conn, AssetId),
-    ok = ack_eb(Conn, AssetId, T1, false),
+    {ok, _} = ack_eb(Conn, AssetId, T1, false),
     q(
         Conn,
         "UPDATE enterprise_asset_delete_queue SET next_retry_at = now() - interval '1 s'"
@@ -381,7 +381,7 @@ retry_cycle(?ENT, #{conn := Conn, storage := Storage}, Label) ->
         [?ORG, ?WS, AssetId]
     ),
     {ok, #{attempts := Attempts, token := T2}} = claim_eb_for(Conn, AssetId),
-    ok = ack_eb(Conn, AssetId, T2, true),
+    {ok, _} = ack_eb(Conn, AssetId, T2, true),
     {ok, _, [{<<"done">>}]} = eb_state(Conn, AssetId),
     #{
         consumed => 1,
@@ -493,7 +493,7 @@ attempt_kept(?ENT, #{conn := Conn, storage := Storage}, Attempts) ->
     ok = seed_eb_asset(Conn, Storage, AssetId, Key, <<"live">>, true),
     ok = enqueue_eb(Conn, AssetId),
     {ok, #{token := T1}} = claim_eb_for(Conn, AssetId),
-    ok = ack_eb(Conn, AssetId, T1, false),
+    {ok, _} = ack_eb(Conn, AssetId, T1, false),
     set_eb_attempts(Conn, AssetId, Attempts),
     {ok, _, [{Kept}]} = e(
         Conn,
@@ -532,7 +532,7 @@ attempt8_rejected(?ENT, #{conn := Conn, storage := Storage}) ->
     ok = seed_eb_asset(Conn, Storage, AssetId, Key, <<"live">>, true),
     ok = enqueue_eb(Conn, AssetId),
     {ok, #{token := T1}} = claim_eb_for(Conn, AssetId),
-    ok = ack_eb(Conn, AssetId, T1, false),
+    {ok, _} = ack_eb(Conn, AssetId, T1, false),
     set_eb_attempts(Conn, AssetId, 8),
     q(
         Conn,
@@ -580,7 +580,7 @@ blocked_skipped(?ENT, #{conn := Conn, storage := Storage}) ->
     ok = seed_eb_asset(Conn, Storage, AssetId, Key, <<"live">>, true),
     ok = enqueue_eb(Conn, AssetId),
     {ok, #{token := T1}} = claim_eb_for(Conn, AssetId),
-    ok = ack_eb(Conn, AssetId, T1, false),
+    {ok, _} = ack_eb(Conn, AssetId, T1, false),
     set_eb_attempts(Conn, AssetId, 8),
     q(
         Conn,
@@ -604,31 +604,49 @@ blocked_skipped(?ENT, #{conn := Conn, storage := Storage}) ->
 %% DB 断连：claim 失败即止（有界失败，不无限快轮询）。
 outage_bounded(?ORD, #{conn := Conn}) ->
     Closed = closed_connection(Conn),
-    Result = attachment_delete_worker:run_batch(Closed, fun(_, _, _, _) -> ok end),
-    {error, _} = Result,
-    #{outage_result => <<"error">>, bounded => true, queue => <<"ordinary">>};
+    Result = guard_outage(fun() ->
+        attachment_delete_worker:run_batch(Closed, fun(_, _, _, _) -> ok end)
+    end),
+    ok = assert_bounded_outage(Result),
+    #{outage_result => outcome_tag(Result), bounded => true, queue => <<"ordinary">>};
 outage_bounded(?ENT, #{conn := Conn}) ->
     Closed = closed_connection(Conn),
-    Result = claim_eb(Closed),
-    ?assert(Result =:= empty orelse element(1, Result) =:= error),
-    #{outage_result => <<"error">>, bounded => true, queue => <<"enterprise">>}.
+    Result = guard_outage(fun() -> claim_eb(Closed) end),
+    ok = assert_bounded_outage(Result),
+    #{outage_result => outcome_tag(Result), bounded => true, queue => <<"enterprise">>}.
 
-closed_connection(Conn) ->
-    #{database := Db} = epgsql:get_parameters(Conn),
+guard_outage(Fun) ->
+    try
+        Fun()
+    catch
+        Class:Reason -> {'EXIT', {Class, Reason}}
+    end.
+
+assert_bounded_outage({'EXIT', _}) -> ok;
+assert_bounded_outage({error, _}) -> ok;
+assert_bounded_outage(empty) -> ok;
+assert_bounded_outage(Other) -> erlang:error({w404_outage_not_bounded, Other}).
+
+outcome_tag({'EXIT', _}) -> <<"exit">>;
+outcome_tag({error, _}) -> <<"error">>;
+outcome_tag(_) -> <<"other">>.
+
+closed_connection(_Conn) ->
     {ok, C2} = epgsql:connect(#{
-        host => "127.0.0.1",
-        port => pg_port(),
-        username => pg_user(),
-        password => pg_password(),
-        database => Db
+        host => w404_env("PG_HOST", "127.0.0.1"),
+        port => list_to_integer(w404_env("PG_PORT", "5432")),
+        username => w404_env("PG_USER", "imboy_user"),
+        password => list_to_binary(w404_env("PG_PASSWORD", "")),
+        database => w404_env("DB", "postgres")
     }),
     ok = epgsql:close(C2),
     C2.
 
-pg_port() ->
-    list_to_integer(os:getenv("V5_INTTEST_PG_PORT", os:getenv("PGPORT", "5432"))).
-pg_user() -> os:getenv("V5_INTTEST_PG_USER", os:getenv("PGUSER", "imboy_user")).
-pg_password() -> list_to_binary(os:getenv("V5_INTTEST_PG_PASSWORD", os:getenv("PGPASSWORD", ""))).
+w404_env(Suffix, Default) ->
+    case os:getenv("V5_INTTEST_W404_" ++ Suffix) of
+        Value when is_list(Value), Value =/= "" -> Value;
+        _ -> Default
+    end.
 
 %% ------------------------------------------------------------------ helpers
 
@@ -675,8 +693,14 @@ enqueue_eb(Conn, AssetId) ->
 claim_eb(Conn) ->
     T = uuid_text(),
     case e(Conn, "SELECT * FROM fn_v5_claim_eb($1)", [T]) of
-        {ok, _, [{_Org, _Ws, _Asset, _Key, _D, _N, _C, _L, _P, Attempts}]} ->
-            {ok, #{token => T, attempts => Attempts}};
+        {ok, _, [{Org, Ws, Asset, _Key, _D, _N, _C, _L, _P, Attempts}]} ->
+            {ok, #{
+                token => T,
+                attempts => Attempts,
+                org => Org,
+                ws => Ws,
+                asset_id => Asset
+            }};
         {ok, _, []} ->
             empty;
         {error, _} = Error ->
@@ -685,17 +709,22 @@ claim_eb(Conn) ->
             erlang:error({w404_claim_eb_failed, Other})
     end.
 
+%% 队列里可能有其他叶/上次重试的 ready 行：领到非目标行就先 ack 收回。
 claim_eb_for(Conn, AssetId) ->
-    T = uuid_text(),
-    case e(Conn, "SELECT * FROM fn_v5_claim_eb($1)", [T]) of
-        {ok, _, [{_Org, _Ws, AssetId, _Key, _D, _N, _C, _L, _P, Attempts}]} ->
-            {ok, #{token => T, attempts => Attempts}};
-        {ok, _, [_Other]} ->
-            erlang:error({w404_wrong_eb_job, AssetId});
-        {ok, _, []} ->
+    case claim_eb(Conn) of
+        {ok, #{asset_id := AssetId} = Row} ->
+            {ok, Row};
+        {ok, #{org := Org, ws := Ws, asset_id := Other, token := T}} ->
+            {ok, _, _} = e(
+                Conn,
+                "SELECT fn_v5_ack_eb($1,$2,$3,$4,true)",
+                [Org, Ws, Other, T]
+            ),
+            claim_eb_for(Conn, AssetId);
+        empty ->
             erlang:error({w404_target_eb_job_not_claimed, AssetId});
-        Other ->
-            erlang:error({w404_claim_eb_failed, Other})
+        {error, _} = Error ->
+            Error
     end.
 
 claim_eb_retry_for(Conn, AssetId) ->
