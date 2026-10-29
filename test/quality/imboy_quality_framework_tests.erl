@@ -474,7 +474,10 @@ full_long_root_hints_test() ->
 %% 有序亲和：回读根必须移到写入根同组紧随其后；同组逆序时调整；任一端缺席不动。
 full_ordered_affinity_test() ->
     ?assertEqual(
-        [{ac04_e2ee_off_archive_db_tests, ac04_s5_readback_tests}],
+        [
+            {ac04_e2ee_off_archive_db_tests, ac04_s5_readback_tests},
+            {enterprise_oa_login_http_tests, enterprise_oa_context_binding_tests}
+        ],
         imboy_quality_full:ordered_affinity()
     ),
     Mk = fun(M) -> #{id => M, test_mod => M, resources => [], estimated_ms => 1} end,

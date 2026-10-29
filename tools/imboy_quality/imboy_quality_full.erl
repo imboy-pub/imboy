@@ -61,12 +61,15 @@ excluded() -> ?EXCL.
 
 long_root_hints() -> ?LONG_ROOT_HINTS.
 
-%% 跨根有序亲和：{写入根, 回读根}。回读根（ac04_s5_readback_tests）读写入根落盘的
-%% /tmp manifest 并在同一数据库回读历史；legacy 单 VM 单库按字母序天然满足，分片后
-%% 必须显式放同一 worker（同克隆库）且写入在前。写入根不在本次根集时不干预，回读根
-%% 按其自身规则如实失败（不伪造数据）。
+%% 跨根有序亲和：{先决根, 依赖根}。
+%% 1) ac04_s5_readback_tests 读写入根落盘的 /tmp manifest 并在同一数据库回读历史；
+%% 2) enterprise_oa_context_binding_tests 自身不 init elib_tsid，依赖同 VM 前序根
+%%    （intbe02 setup_all 首行幂等 elib_tsid:init）先行——2026-10-29 分片扫描实证
+%%    其单独前置即挂 {elib_tsid_not_initialized}，legacy 单 VM 字母序天然满足。
+%% 依赖根不在本次根集时不干预；先决根缺席时依赖根按自身规则如实失败（不伪造）。
 -define(ORDERED_AFFINITY, [
-    {ac04_e2ee_off_archive_db_tests, ac04_s5_readback_tests}
+    {ac04_e2ee_off_archive_db_tests, ac04_s5_readback_tests},
+    {enterprise_oa_login_http_tests, enterprise_oa_context_binding_tests}
 ]).
 
 ordered_affinity() -> ?ORDERED_AFFINITY.
