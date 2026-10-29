@@ -5,8 +5,8 @@ Binds the widget/seat status-sync leaves to the real Bun JUnit testcases from
 the gate's Admin battery.  The W5-02 files are unit / mocked-transport / JSDOM
 suites; their own describe blocks state they are not browser/API/SQL
 acceptance.  This adapter therefore only claims a leaf when an executed test
-asserts exactly that scenario's recovery/identity behaviour, and reports the
-remaining scenarios as named evidence gaps (no suite flag is used as a leaf).
+asserts exactly that scenario's recovery/identity behaviour; every one of the
+20 leaves binds to executed testcases (no suite flag is used as a leaf).
 """
 import os
 import sys
@@ -22,12 +22,6 @@ REVOCATION = "src/modules/customer_service/seat/workbench/seatSend.revocation.te
 WORKBENCH_API = "src/modules/customer_service/seat/workbench/workbenchApi.test.ts"
 WIDGET_API = "src/widget/customer_service/app/widgetApi.test.ts"
 UPLOADER = "src/widget/customer_service/app/uploader.test.ts"
-
-WIDGET_GAP = (
-    "the W5-02 widget suites are unit/mock tests: %s exists for status/renew "
-    "identity and %s exists for presign 422/PUT failure+retry, but neither "
-    "asserts this scenario's timeout/restart/journal behaviour"
-    % (WIDGET_API, UPLOADER))
 
 MAPPING = {
     "refresh": {
@@ -84,68 +78,195 @@ MAPPING = {
         "db": "the registered recovery task keeps its original content identity",
         "object": "the originally registered bytes remain the only object",
     },
+    "widget_timeout": {
+        "tests": [(UPLOADER,
+                   "widget_timeout: hung presign times out and stops without "
+                   "retry storm")],
+        "http": "a hung presign is aborted by the transport timeout; exactly "
+                "one presign request is issued and the pipeline stops without "
+                "any PUT or confirm retry storm",
+        "db": "the durable journal records the final failed state; no "
+              "duplicate upload intent is written",
+        "object": "no object PUT is issued after the timeout",
+    },
+    "widget_presign_response_lost": {
+        "tests": [(UPLOADER,
+                   "widget_presign_response_lost: persisted intent resumes "
+                   "with status/renew only, never re-presigns")],
+        "http": "after the presign response is lost, resume issues only "
+                "status then renew (never a re-presign) reusing the persisted "
+                "client_upload_id",
+        "db": "the journal keeps the phase='intent' row with the original "
+              "UUID and is cleared after successful linking",
+        "object": "the object identity (assetId) is preserved; no second "
+                  "registration is created",
+    },
+    "widget_restart_before_put": {
+        "tests": [(UPLOADER,
+                   "widget_restart_before_put: page killed mid-PUT resumes "
+                   "the persisted capability without re-presign")],
+        "http": "restart resumes the persisted capability with status+renew "
+                "only; the PUT goes to the renewed URL and confirm keeps the "
+                "original asset_id",
+        "db": "the journal's phase='registered' checkpoint with the persisted "
+              "assetId survives the restart",
+        "object": "the originally registered object identity is reused; no "
+                  "re-presign is issued",
+    },
+    "widget_expired_capability_resume": {
+        "tests": [(UPLOADER,
+                   "widget_expired_capability_resume: expired PUT capability "
+                   "renews with fresh URL, same object identity")],
+        "http": "the expired capability is renewed to a fresh URL; PUT only "
+                "hits the new URL and confirm/message carry the original "
+                "assetId",
+        "db": "the journal retains the original identities across the renewal",
+        "object": "same object identity: new signed URL, unchanged asset",
+    },
+    "widget_account_switch_late_callback": {
+        "tests": [(UPLOADER,
+                   "widget_account_switch_late_callback: late PUT callback "
+                   "after account switch is refused by journal principal "
+                   "isolation")],
+        "http": "the late PUT callback after a principal switch is refused; "
+                "the new principal registers with a fresh client_upload_id",
+        "db": "journal principal isolation: the old principal's journal stays "
+              "at 'registered' and the new principal's scope has no residue "
+              "of the old upload",
+        "object": "the old principal's draft is retained; no object write "
+                  "advances under the old principal",
+    },
+    "widget_workspace_switch_late_callback": {
+        "tests": [(UPLOADER,
+                   "widget_workspace_switch_late_callback: late PUT callback "
+                   "after workspace switch is refused by journal scope "
+                   "isolation")],
+        "http": "the late PUT callback after a workspace (installation) "
+                "switch is refused; the new workspace registers with a fresh "
+                "client_upload_id and installation_id",
+        "db": "journal scope isolation: the old installation's journal stays "
+              "at 'registered'; the two scopes' journals are invisible to "
+              "each other",
+        "object": "no object write advances in either scope from the late "
+                  "callback",
+    },
+    "widget_authorization_revoked": {
+        "tests": [(UPLOADER,
+                   "widget_authorization_revoked: 403 keeps the draft and "
+                   "refuses upload replay")],
+        "http": "confirm 403 triggers credential-refused handling; replay "
+                "issues only a single status query (403) reusing the original "
+                "client_upload_id — no register/renew/PUT/confirm",
+        "db": "the uploaded-phase draft is retained and no success is recorded",
+        "object": "no object write after revocation; the draft bytes are not "
+                  "re-uploaded",
+    },
+    "widget_durable_checkpoint_failure": {
+        "tests": [(UPLOADER,
+                   "widget_durable_checkpoint_failure: checkpoint write "
+                   "failure stops before PUT and keeps the intent")],
+        "http": "a durable checkpoint write failure stops the pipeline before "
+                "any PUT; only the single register call reaches the network",
+        "db": "the journal keeps the phase='intent' first-write record and "
+              "no registered checkpoint is written",
+        "object": "no object upload is attempted after the checkpoint failure",
+    },
+    "widget_reselected_different_bytes_rejected": {
+        "tests": [(UPLOADER,
+                   "widget_reselected_different_bytes_rejected: different "
+                   "bytes cannot replace the registered task")],
+        "http": "re-selecting different bytes issues zero network calls (no "
+                "new upload capability and no query of the original task)",
+        "db": "the journal row keeps its original objectHash/sizeBytes/mime/"
+              "clientUploadId unchanged",
+        "object": "the originally registered bytes remain the only registered "
+                  "content",
+    },
+    "seat_timeout": {
+        "tests": [(WORKBENCH_API,
+                   "seat_timeout: hung presign/result-query transports "
+                   "classify as network and abort with a single request, no "
+                   "retry storm")],
+        "http": "a hung presign or result-query transport rejects as "
+                "kind='network' with exactly one request; the client performs "
+                "no internal retry",
+        "db": "no journal mutation: the failure happens before any checkpoint "
+              "write is issued",
+        "object": "no object PUT or confirm is issued after the timeout",
+    },
+    "seat_presign_response_lost": {
+        "tests": [(RECOVERY,
+                   "seat_presign_response_lost: lost presign response "
+                   "persists intent and resume only queries the original task "
+                   "without re-presign")],
+        "http": "resume after a lost presign response only queries the "
+                "original task (status, renew); register is issued exactly "
+                "once at the start and never re-presigned",
+        "db": "the journal persists the intent checkpoint (UUID / seat-web-* "
+              "message identity) across the restart and is cleared after "
+              "completion",
+        "object": "the same upload UUID and message identity are reused; no "
+                  "duplicate object registration",
+    },
+    "seat_restart_before_put": {
+        "tests": [(RECOVERY,
+                   "seat_restart_before_put: restart between presign and PUT "
+                   "reuses the persisted registration without a second "
+                   "presign")],
+        "http": "restart between presign and PUT reuses the persisted "
+                "registration (status+renew only, no second presign); PUT "
+                "succeeds exactly once after the restart",
+        "db": "the journal stays at phase='registered' with a non-empty "
+              "assetId across the restart; confirm/send use the original "
+              "message identity",
+        "object": "the registered object is uploaded once and confirmed with "
+                  "the original asset",
+    },
+    "seat_expired_capability_resume": {
+        "tests": [(RECOVERY,
+                   "seat_expired_capability_resume: expired capability "
+                   "resumes with a fresh presign keeping the same upload UUID "
+                   "and content hash")],
+        "http": "with the server session gone (status 404+intent), resume "
+                "re-registers with the SAME client_upload_id and identical "
+                "object_hash/size/mime, then confirms and sends with the "
+                "original clientMsgId",
+        "db": "the intent checkpoint survives and the re-registration reuses "
+              "the original content identity",
+        "object": "same content identity: fresh presign, unchanged upload "
+                  "UUID and content hash",
+    },
+    "seat_account_switch_late_callback": {
+        "tests": [(REVOCATION,
+                   "seat_account_switch_late_callback: late send callback "
+                   "after account switch is refused by journal account "
+                   "isolation")],
+        "http": "the late send success callback after an account switch is "
+                "refused and no second send is issued",
+        "db": "journal account isolation ([seat, userId, ...] scope): the old "
+              "account keeps dispatch_intent and the new account scope has "
+              "zero rows and zero writes",
+        "object": "no object action advances under the old account",
+    },
+    "seat_workspace_switch_late_callback": {
+        "tests": [(REVOCATION,
+                   "seat_workspace_switch_late_callback: late send callback "
+                   "after workspace switch is refused by journal scope "
+                   "isolation")],
+        "http": "the late callback after a workspace switch is refused by "
+                "scope isolation; no second send and no error pollution in "
+                "the new scope",
+        "db": "the old workspace's dispatch_intent entry is preserved and the "
+              "new workspace scope stays empty",
+        "object": "no object action is issued from either scope after the "
+                  "switch",
+    },
 }
 
-GAPS = {
-    "widget_timeout": "no executed widget test induces a timeout; the widget "
-                      "suites resolve stubs immediately and only the seat "
-                      "recovery suite has response-loss cases",
-    "seat_timeout": "no executed seat test induces an HTTP timeout; %s covers "
-                    "explicit 4xx rejections and unknown message results but "
-                    "not a socket/query timeout" % RECOVERY,
-    "widget_presign_response_lost": "no executed widget test drops the presign "
-                                    "response; %s covers presign 422/PUT "
-                                    "failure+retry, not response loss" % UPLOADER,
-    "widget_restart_before_put": "no executed widget test restarts after "
-                                 "presign and before PUT; the widget uploader "
-                                 "suite is single-process",
-    "widget_expired_capability_resume": "no executed widget test expires a "
-                                        "capability and resumes; %s only "
-                                        "asserts status/renew retain the "
-                                        "installation and UUID" % WIDGET_API,
-    "widget_account_switch_late_callback": "no executed widget test switches "
-                                           "accounts and delivers a late "
-                                           "callback; the widget subject is an "
-                                           "installation/session, and no test "
-                                           "asserts journal isolation",
-    "widget_workspace_switch_late_callback": "no executed widget test switches "
-                                             "workspace and delivers a late "
-                                             "callback; the seat revocation "
-                                             "suite covers scope cancellation, "
-                                             "not widget journal writes",
-    "widget_authorization_revoked": "no executed widget test revokes the "
-                                    "authorization/capability mid-upload; the "
-                                    "only revocation tests are seat-side (%s)"
-                                    % REVOCATION,
-    "widget_durable_checkpoint_failure": "no executed widget test fails a "
-                                         "durable checkpoint; only the seat "
-                                         "suite asserts checkpoint denial (%s)"
-                                         % RECOVERY,
-    "seat_presign_response_lost": "no executed seat test drops a presign "
-                                  "response; %s covers confirm/message-result "
-                                  "loss only" % RECOVERY,
-    "seat_restart_before_put": "no executed seat test restarts between presign "
-                               "and PUT; %s restarts around confirmed "
-                               "message dispatch" % RECOVERY,
-    "seat_expired_capability_resume": "no executed seat test expires a presign "
-                                      "capability and resumes; %s only asserts "
-                                      "the authenticated presign route and "
-                                      "stable UUID" % WORKBENCH_API,
-    "seat_account_switch_late_callback": "no executed seat test switches "
-                                         "account and delivers a late "
-                                         "callback; %s covers re-auth/SSE "
-                                         "revocation isolation, not journal "
-                                         "account isolation" % REVOCATION,
-    "seat_workspace_switch_late_callback": "no executed seat test asserts that "
-                                           "a late callback for a switched "
-                                           "workspace is refused; %s covers "
-                                           "scope cancellation and draft "
-                                           "cleanup" % REVOCATION,
-    "widget_reselected_different_bytes_rejected": "no executed widget test "
-                                                  "re-selects different bytes; "
-                                                  "only the seat variant is "
-                                                  "implemented (%s)" % RECOVERY,
-}
+# Every status-sync scenario binds to executed bun testcases above; GAPS is
+# kept as an empty fallback so an unmatched future scenario still fails
+# closed with a named reason instead of being silently dropped.
+GAPS = {}
 
 
 def build():

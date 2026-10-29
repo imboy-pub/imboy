@@ -6,10 +6,11 @@ JUnit reporter in the run-owned imboyadmin worktree.  This adapter binds the
 governance leaves to the real `StorageOverviewPage.test.tsx` testcases that
 assert logical vs physical lifecycle display and unknown-state preservation.
 
-`authorized_pagination_entityid` has no executed unit: the page sends page/size
-and renders an EntityId fixture, but no test asserts pagination or EntityId
-behaviour.  It is reported as an evidence gap instead of being inferred from
-the table-render test.
+All three leaves bind to executed `StorageOverviewPage.test.tsx` testcases:
+the physical-state matrix for logical/physical display, and a dedicated
+authorized_pagination_entityid testcase asserting that pagination params
+reach GET /storage/index and that a big EntityId id round-trips as a string
+through render → dialog → POST body (with a numeric-precision sentinel).
 """
 import os
 import sys
@@ -36,11 +37,18 @@ MAPPING = {
         "object": "no storage mutation; only the governance label is rendered",
     },
     "authorized_pagination_entityid": {
-        "gap": "no executed testcase asserts pagination (page/pageSize change) "
-               "or EntityId round-tripping; %s:%d declares the query params and "
-               "%s:%d seeds id '8100000000000000001', but no assertion in the "
-               "captured JUnit report covers either behaviour"
-               % (PAGE, 61, PAGE_TEST, 73),
+        "tests": [(PAGE_TEST,
+                   "authorized_pagination_entityid: pagination params reach "
+                   "GET /storage/index and big EntityId id round-trips as "
+                   "string")],
+        "action": "drive the real page: initial page=1/size=10 request "
+                  "params, next-page page=2, page-size 50 with page reset to "
+                  "1, and the EntityId '8100000000000000001' round-tripping "
+                  "from the list render through the disable dialog into the "
+                  "POST /storage/disable body as a string",
+        "db": "no DB mutation: the governance page projects the mocked list "
+              "payload and the disable action targets the stub client",
+        "object": "no storage mutation; only governance actions are exercised",
     },
     "unknown_state_preserved": {
         "tests": [(PAGE_TEST,
