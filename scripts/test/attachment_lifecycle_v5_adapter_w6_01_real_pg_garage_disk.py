@@ -90,6 +90,21 @@ for _ref in (
     "W4-04/reconcile",
 ):
     OBS_STEP_FOR[_ref] = "w4queue"
+for _ref in (
+    "W3-02/hold-all-entrypoints",
+    "W3-02/hold-gc-race",
+):
+    OBS_STEP_FOR[_ref] = "w3hold"
+for _ref in (
+    "W3-01/reference-gc-race",
+    "W3-01/shared-owner",
+):
+    OBS_STEP_FOR[_ref] = "w3race"
+for _ref in (
+    "W3-03/cs-bind",
+    "W3-03/enterprise-bind",
+):
+    OBS_STEP_FOR[_ref] = "w3bind"
 OBS_GROUPS = set(OBS_STEP_FOR)
 
 # User ruling 2026-10-29 (trusted instruction): the enterprise
@@ -189,24 +204,6 @@ INADEQUATE = {
 }
 
 GROUP_REASONS = {
-    "W3-02/hold-all-entrypoints":
-        "the W3 hold/bind battery is under construction (group D): no "
-        "per-entrypoint x governance-fixture x driver observation exists yet",
-    "W3-02/hold-gc-race":
-        "the W3 hold/bind battery is under construction (group D): no "
-        "per-scenario x domain x driver observation exists yet",
-    "W3-01/reference-gc-race":
-        "the W3 hold/bind battery is under construction (group D): no "
-        "per-scenario x domain x driver observation exists yet",
-    "W3-01/shared-owner":
-        "the W3 hold/bind battery is under construction (group D): no "
-        "per-scenario x domain x driver observation exists yet",
-    "W3-03/cs-bind":
-        "the W3 hold/bind battery is under construction (group D): no "
-        "per-scenario x driver observation exists yet",
-    "W3-03/enterprise-bind":
-        "the W3 hold/bind battery is under construction (group D): no "
-        "per-scenario x driver observation exists yet",
     "W1-02/migration":
         "this plan leaf needs the W1-02 probe that the frozen W1-02 adapter "
         "already declares inadequate for measurement",
