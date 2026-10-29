@@ -52,7 +52,7 @@ setup() ->
 setup_owned() ->
     {ok, ManifestBytes} = file:read_file(required("W403_RESOURCE_MANIFEST")),
     #{<<"database">> := Db} = jsone:decode(ManifestBytes),
-    <<"attv5_chain_", _/binary>> = Db,
+    <<"attv5_", _/binary>> = Db,
     %% elib_pg uses the global pgsql name. Reuse only the exact manifest DB;
     %% never redirect, remove or replace a pre-existing pool.
     case whereis(pgsql) of

@@ -1054,12 +1054,14 @@ PYDISK
 w403_case() { # $1 cdir
   local cdir="$1" RC=0 try rc
   mkdir -p "$cdir"
+  rm -f "$cdir/observations.jsonl"
+  export V5_OBSERVATIONS_FILE="$cdir/observations.jsonl"
   ensure_disk_root || return $?
-  # The driver-matrix and gateway-protocol suites require a run-owned
-  # attv5_chain_* database named by W403_RESOURCE_MANIFEST, plus the isolated
-  # config and real Garage credentials. Create the chain DB with the full
-  # migration chain so every storage leaf runs against freshly replayed schema.
-  local W403_DB="attv5_chain_${SLOT}_w403"
+  # The driver-matrix and gateway-protocol suites run against the run-owned
+  # isolated config; the predecessor suite binds its marker DB inside the
+  # authorization allowlist (attv5_<slot>_w601 — chain_* names are outside
+  # the frozen authorization, so the manifest pins the allowlisted name).
+  local W403_DB="attv5_${SLOT}_w601"
   local W403_MANIFEST="$RUN_DIR/resources/w403-resource-manifest.json"
   local W403_OWNED_CONFIG="${PG_CONFIG_DIR:-}/isolated.config"
   if [ "${PG_CONFIG_READY:-0}" != 1 ] || [ "${EUNIT_CONFIG:-}" != "${PG_CONFIG_DIR:-}/isolated" ] \
@@ -1111,6 +1113,7 @@ json.dump({"database": sys.argv[2], "owner": "att-v5-closeout",
 PYM
   fi
   export W403_RESOURCE_MANIFEST="$W403_MANIFEST"
+  export V5_INTTEST_W403P_DB="$W403_DB"
   export W403_CONFIG_PATH="$W403_OWNED_CONFIG"
   if [ -f "$RUN_DIR/resources/garage-w202.env" ]; then
     . "$RUN_DIR/resources/garage-w202.env"

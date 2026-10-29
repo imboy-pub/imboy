@@ -117,11 +117,32 @@ run_leaf(S0, Surface, Driver, Scenario) ->
     >>,
     S = S0#{leaf => Leaf},
     try
-        scenario(S, Surface, Driver, Scenario)
+        scenario(S, Surface, Driver, Scenario),
+        w403dm_emit(Surface, Driver, Scenario)
     after
         cleanup_jobs(),
         report_evidence(Leaf)
     end.
+
+%% 逐叶观测：64 cell（surface × driver × scenario）断言全过后落盘。
+%% domain 按契约矩阵：enterprise_seat/cs_widget 为 enterprise 面，其余 ordinary。
+w403dm_emit(Surface, Driver, Scenario) ->
+    attachment_lifecycle_v5_obs:emit(#{
+        case_id => <<"W4-03/driver-content-immutable">>,
+        entrypoint => atom_to_binary(Surface, utf8),
+        scenario => atom_to_binary(Scenario, utf8),
+        domain => w403dm_domain(Surface),
+        schema_phase => <<"expand-queue">>,
+        measured => #{
+            driver => atom_to_binary(Driver, utf8),
+            entrypoint_case => atom_to_binary(Scenario, utf8)
+        }
+    }),
+    ok.
+
+w403dm_domain(enterprise_seat) -> <<"enterprise">>;
+w403dm_domain(cs_widget) -> <<"enterprise">>;
+w403dm_domain(_) -> <<"ordinary">>.
 
 scenario(S, Surface, Driver, confirm_old_put_different_bytes) ->
     T = ?F:register(S, Surface, Driver, ?BODY),
@@ -550,12 +571,16 @@ bypass_denied(#{driver := garage, location := I} = T) ->
     bypass_evidence(T, #{provider_http_status => Code});
 bypass_denied(#{driver := disk, location := I} = T) ->
     %% Same-UID filesystem writers are explicitly outside the isolation boundary.
-    %% Prove rejection by a genuinely different OS principal instead.
-    Exe =
-        case os:find_executable("runuser") of
-            false -> erlang:error({no_go, unprivileged_writer_tool_missing, runuser});
-            Found -> Found
-        end,
+    %% Prove rejection by a genuinely different OS principal instead: Linux has
+    %% runuser; macOS has no unprivileged su tool, so a disposable container
+    %% running as nobody(65534) mounts the same physical storage root and
+    %% attempts the identical write against the real object path.
+    case os:find_executable("runuser") of
+        false -> bypass_denied_container(T, I);
+        Exe -> bypass_denied_runuser(T, I, Exe)
+    end.
+
+bypass_denied_runuser(T, I, Exe) ->
     Id =
         case os:find_executable("id") of
             false -> erlang:error({no_go, unprivileged_writer_tool_missing, id});
@@ -594,6 +619,71 @@ bypass_denied(#{driver := disk, location := I} = T) ->
         owner_uid => Owner,
         writer_uid => Writer
     }).
+
+bypass_denied_container(T, I) ->
+    Docker =
+        case os:find_executable("docker") of
+            false -> erlang:error({no_go, unprivileged_writer_tool_missing, docker});
+            D -> D
+        end,
+    Image = bypass_container_image(Docker),
+    <<"file://", Root/binary>> = maps:get(endpoint, I),
+    RootStr = binary_to_list(Root),
+    ContainerRel = filename:join([
+        binary_to_list(maps:get(container, I)),
+        binary_to_list(maps:get(key, I))
+    ]),
+    {_, WriterText} = command(Docker, [
+        "run",
+        "--rm",
+        "--user",
+        "65534:65534",
+        "-v",
+        RootStr ++ ":/w",
+        Image,
+        "id",
+        "-u"
+    ]),
+    Writer = binary_to_integer(string:trim(WriterText)),
+    ?assert(Writer > 0),
+    {Code, Output} = command(Docker, [
+        "run",
+        "--rm",
+        "--user",
+        "65534:65534",
+        "-v",
+        RootStr ++ ":/w",
+        Image,
+        "sh",
+        "-c",
+        "printf '%s' \"$1\" > \"$2\"",
+        "w403",
+        "unprivileged bypass writer",
+        "/w/" ++ ContainerRel
+    ]),
+    ?assert(Code =/= 0),
+    ?assertNotEqual(nomatch, binary:match(Output, <<"Permission denied">>)),
+    bypass_evidence(T, #{
+        unprivileged_writer_exit => Code,
+        owner_uid => 65534,
+        writer_uid => Writer,
+        isolation => <<"container nobody over the same storage root">>
+    }).
+
+bypass_container_image(Docker) ->
+    Candidates = [<<"redis:7-alpine">>, <<"alpine:3.19">>],
+    case
+        lists:search(
+            fun(Image) ->
+                {Rc, _} = command(Docker, ["image", "inspect", binary_to_list(Image)]),
+                Rc =:= 0
+            end,
+            Candidates
+        )
+    of
+        {value, Image} -> binary_to_list(Image);
+        false -> erlang:error({no_go, unprivileged_writer_image_missing})
+    end.
 bypass_evidence(T, Detail) ->
     io:format(user, "W403_PROVIDER_BYPASS ~s~n", [jsone:encode(Detail#{leaf => maps:get(leaf, T)})]).
 command(Exe, Args) ->
