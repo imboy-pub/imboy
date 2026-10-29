@@ -50,8 +50,10 @@ friend_delete_pending_error_does_not_invalidate() ->
     ?assertError(friend_write_failed, friend_ds:delete_pending(1, 2)),
     not_invalidated().
 dnd_save_error_does_not_invalidate() ->
-    ?assertError(
-        dnd_write_failed,
+    %% save/1 已收敛为值语义 {ok} | {error, term()}（raise 只剩 delete_by_uid）；
+    %% DB 失败经 repo 透传 {error, unavailable}，写失败仍不得失效缓存。
+    ?assertMatch(
+        {error, _},
         user_dnd_rule_ds:save(#{
             <<"user_id">> => 1, <<"start_min">> => 60, <<"end_min">> => 120, <<"status">> => 1
         })
@@ -111,5 +113,12 @@ successful_writes_invalidate() ->
     ).
 
 conversation_direct_caller_propagates_error() ->
-    ?assertError(conversation_restore_failed, conversation_logic:restore(1, 2, <<"c2c">>)),
+    %% W09.c 后 restore/3 走 with_tx + restore_conversation_tx，错误为值语义
+    %% {error, binary()}（不再 raise conversation_restore_failed）；setup 只 mock
+    %% 2 元 elib_pg，事务体会 passthrough 真连库并 DELETE 0 行返回 ok。注入
+    %% 事务失败：with_tx/1 返回 {error, _} 属 elib_pg 公开契约，restore 的
+    %% {error, Reason} 分支归一为 {error, <<"恢复会话失败">>}，且该路径不触达
+    %% imboy_cache:invalidate——"错误传播且不失效缓存"意图保持等价。
+    meck:expect(elib_pg, with_tx, fun(_TxFun) -> {error, unavailable} end),
+    ?assertMatch({error, _}, conversation_logic:restore(1, 2, <<"c2c">>)),
     not_invalidated().

@@ -19,7 +19,10 @@ case_test(Write, Archive, Mark) ->
             pure_mock_fixture:with_mocks(
                 [
                     {msg_c2c_ds, [
-                        {write_msg, 9, fun(_, _, _, _, _, _, _, _, _) ->
+                        %% ba106bc0 起 write_msg 增加 accepted_at/expire_at 两参（/11），
+                        %% 与产品调用点 src/ds/msg_store_worker.erl do_write(c2c, Row)
+                        %% 的 11 参保持一致；桩只关心调用事件与返回值，不读参数。
+                        {write_msg, 11, fun(_, _, _, _, _, _, _, _, _, _, _) ->
                             event(write),
                             Write
                         end}

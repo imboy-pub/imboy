@@ -71,10 +71,15 @@ setup_conn(MigrationOptions) ->
     catch
         _:_ -> ok
     end,
-    inttest_marker_db:provision(maps:merge(#{
-        env_prefix => <<"FULL06_INTTEST">>,
-        connect_extra => #{codecs => [{epgsql_codec_rfc3339_bin, []}]}
-    }, MigrationOptions)).
+    inttest_marker_db:provision(
+        maps:merge(
+            #{
+                env_prefix => <<"FULL06_INTTEST">>,
+                connect_extra => #{codecs => [{epgsql_codec_rfc3339_bin, []}]}
+            },
+            MigrationOptions
+        )
+    ).
 
 close_conn(State) ->
     inttest_marker_db:release(State),
@@ -93,8 +98,15 @@ install_pool_shim(Conn) ->
     end),
     %% list_page/2 走 elib_pg:one/2（单行投影）——池化入口一并 shim 到真连接，
     %% 否则 Admin 投影用例会掉进无 pooler 的 {noproc, {gen_server,call,[pgsql ...]}}。
+    %% 内层与 elib_pg:one/2（= one/3 默认 #{}）语义对齐：单行取首行、空结果
+    %% {ok, #{}}、错误原样透传——elib_pg 无 one(Conn,Sql,Params) 连接版，
+    %% 旧 shim 三参内层在 passthrough 下误入 one/3，连接 pid 被当 SQL → badarg。
     meck:expect(elib_pg, one, 2, fun(Sql, Params) ->
-        elib_pg:one(Conn, Sql, Params)
+        case elib_pg:query(Conn, Sql, Params) of
+            {ok, [Row | _]} -> {ok, Row};
+            {ok, []} -> {ok, #{}};
+            Error -> Error
+        end
     end),
     ok.
 
@@ -120,9 +132,12 @@ prepare_case(Conn) ->
         self()
     end),
     %% 免打扰判定（G1 接线后离线分支必经）：eunit VM 无 depcache，
-    %% 桩为「不在免打扰时段」以保持离线推送语义不变
+    %% 桩为「不在免打扰时段」以保持离线推送语义不变。
+    %% 93cf7ab4（D02）后 dnd_muted/1 走 is_dnd_now/1（push_notification_logic:180），
+    %% 不桩则 passthrough 穿透真实现 → depcache（eunit VM 无）→ badarg
     meck:new(user_dnd_rule_ds, [passthrough, no_link]),
     meck:expect(user_dnd_rule_ds, is_dnd_at, fun(_Uid, _NowMin) -> false end),
+    meck:expect(user_dnd_rule_ds, is_dnd_now, fun(_Uid) -> false end),
     ok.
 
 capture_provider_ok() ->
@@ -800,8 +815,12 @@ upgrade_compat_test(HeadState) ->
         Conn = maps:get(conn, State),
         try
             MigConfig = #{conn => Conn, dir => "priv/migrations", strict => true},
-            ?assertEqual({ok, migration_head(), false}, erlang_migrate:version(
-                MigConfig#{conn => maps:get(conn, HeadState)})),
+            ?assertEqual(
+                {ok, migration_head(), false},
+                erlang_migrate:version(
+                    MigConfig#{conn => maps:get(conn, HeadState)}
+                )
+            ),
             ?assertEqual({ok, 142, false}, erlang_migrate:version(MigConfig)),
 
             %% 退到 141：索引不存在 → 可造重复活跃行（GZ 期形态）
