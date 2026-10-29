@@ -434,42 +434,113 @@ worker_main(TestMod) ->
 worker_main(TestMod, SpecWrapper) ->
     Parent = self(),
     Ref = make_ref(),
-    Collector = spawn(fun() -> collect(Parent, Ref, []) end),
-    Spec =
-        case SpecWrapper of
-            undefined -> TestMod;
-            {M, F} -> M:F(TestMod)
-        end,
-    EunitReturn = eunit:test(
-        [Spec],
-        %% 超时回收由 runner 级 peer deadline 权威执行（RUN05）
-        [
-            {timeout, infinity},
-            {report, {imboy_quality_listener, [{collector, Collector}]}}
-        ]
-    ),
-    Collector ! {stop, Parent, Ref},
-    {Counts, Events} =
-        receive
-            {collected, Ref, C, E} -> {C, E}
-        after 10000 -> {zero_counts(), []}
-        end,
-    {EunitReturn, Counts, Events}.
-
-collect(Parent, Ref, Acc) ->
-    receive
-        {stop, Parent, Ref} ->
-            Parent ! {collected, Ref, counts(Acc, zero_counts()), lists:reverse(Acc)};
-        %% listener 事件先入 Acc（否则滞留 mailbox 导致计数恒零）
-        Msg ->
-            collect(Parent, Ref, [Msg | Acc])
-    after 30000 ->
-        Parent ! {collected, Ref, counts(Acc, zero_counts()), lists:reverse(Acc)}
+    {Collector, Monitor} = spawn_monitor(fun() ->
+        ParentMonitor = monitor(process, Parent),
+        collect(Parent, Ref, {[], false, false, ParentMonitor})
+    end),
+    try
+        Spec =
+            case SpecWrapper of
+                undefined -> TestMod;
+                {M, F} -> M:F(TestMod)
+            end,
+        EunitReturn = eunit:test(
+            [Spec],
+            %% 超时回收由 runner 级 peer deadline 权威执行（RUN05）
+            [
+                {timeout, infinity},
+                {report, {imboy_quality_listener, [{collector, Collector}]}}
+            ]
+        ),
+        Collector ! {stop, Parent, Ref},
+        case await_collector(Collector, Monitor, Ref, 10000) of
+            {ok, Counts, Events} ->
+                Ret = case validate_events(Events, Counts) of
+                    ok when EunitReturn =:= ok ->
+                        case maps:get(fail, Counts) + maps:get(cancel, Counts) of
+                            0 -> ok;
+                            _ -> {error, inconsistent_eunit_return}
+                        end;
+                    ok -> EunitReturn;
+                    {error, Reason} -> {error, {invalid_listener_events, Reason}}
+                end,
+                {Ret, Counts, Events};
+            {error, Reason} ->
+                {{error, Reason}, zero_counts(), []}
+        end
+    after
+        exit(Collector, kill),
+        demonitor(Monitor, [flush])
     end.
+
+%% stop 和 listener 终结来自不同进程，不能假定它们到达 collector 的顺序。
+collect(Parent, Ref, Acc) when is_list(Acc) ->
+    collect(Parent, Ref, {Acc, false, false, undefined});
+collect(Parent, Ref, {Acc, Stopped, Terminal, ParentMonitor}) ->
+    receive
+        {'DOWN', ParentMonitor, process, Parent, _} when is_reference(ParentMonitor) ->
+            ok;
+        {stop, Parent, Ref} ->
+            collect_or_reply(Parent, Ref, Acc, true, Terminal, ParentMonitor);
+        {result, _} = Msg ->
+            collect_or_reply(Parent, Ref, [Msg | Acc], Stopped, true, ParentMonitor);
+        Msg ->
+            collect_or_reply(Parent, Ref, [Msg | Acc], Stopped, Terminal, ParentMonitor)
+    end.
+
+collect_or_reply(Parent, Ref, Acc, true, true, _ParentMonitor) ->
+    Parent ! {collected, Ref, counts(Acc, zero_counts()), lists:reverse(Acc)};
+collect_or_reply(Parent, Ref, Acc, Stopped, Terminal, ParentMonitor) ->
+    collect(Parent, Ref, {Acc, Stopped, Terminal, ParentMonitor}).
+
+await_collector(Collector, Monitor, Ref, Timeout) ->
+    receive
+        {collected, Ref, Counts, Events} -> {ok, Counts, Events};
+        {'DOWN', Monitor, process, Collector, Reason} -> {error, {collector_down, Reason}}
+    after Timeout ->
+        {error, collector_missing_terminal}
+    end.
+
+%% EUnit listener 最终汇总是事件完整性合同；允许真实的零叶辅助根。
+validate_events(Events, Counts) ->
+    try
+        {Open, _Seen, Root, Result} = lists:foldl(
+            fun validate_event/2, {#{}, #{}, open, none}, Events
+        ),
+        true = map_size(Open) =:= 0,
+        true = Root =:= closed,
+        {ok, Summary} = Result,
+        true = lists:sort(proplists:get_keys(Summary)) =:= lists:sort(maps:keys(Counts)),
+        true = lists:all(fun({K, V}) -> maps:get(K, Counts) =:= V end, Summary),
+        ok
+    catch
+        _:_ -> {error, incomplete_or_inconsistent}
+    end.
+
+validate_event({test_begin, Id}, {Open, Seen, open, none}) ->
+    false = maps:is_key(Id, Seen),
+    {Open#{Id => true}, Seen#{Id => true}, open, none};
+validate_event({test_end, Id, _, _}, {Open, Seen, open, none}) ->
+    true = maps:is_key(Id, Open),
+    {maps:remove(Id, Open), Seen, open, none};
+validate_event({test_cancel, test, Id, _}, {Open, Seen, open, none}) ->
+    true = maps:is_key(Id, Open),
+    {maps:remove(Id, Open), Seen, open, none};
+validate_event({test_cancel, group, [], _}, {Open, Seen, open, none}) ->
+    {Open, Seen, closed, none};
+validate_event({test_cancel, group, _, _}, {Open, Seen, open, none}) ->
+    {Open, Seen, open, none};
+validate_event({group_end, [], _}, {Open, Seen, open, none}) ->
+    {Open, Seen, closed, none};
+validate_event({group_end, _, _}, {Open, Seen, open, none}) ->
+    {Open, Seen, open, none};
+validate_event({result, {ok, Summary}}, {Open, Seen, closed, none}) when is_list(Summary) ->
+    {Open, Seen, closed, {ok, Summary}}.
 
 counts([E | Rest], C) ->
     case E of
         {test_end, _, ok, _} -> counts(Rest, C#{pass => maps:get(pass, C) + 1});
+        {test_end, _, {skipped, _}, _} -> counts(Rest, C#{skip => maps:get(skip, C) + 1});
         {test_end, _, _, _} -> counts(Rest, C#{fail => maps:get(fail, C) + 1});
         {test_cancel, _, _, _} -> counts(Rest, C#{cancel => maps:get(cancel, C) + 1});
         _ -> counts(Rest, C)
