@@ -1734,6 +1734,10 @@ def cmd_verify(args, held_lock=False):
                     if _ev.get("kind") == "task_artifacts_accepted":
                         accepted_candidates[_ev["payload"].get("task")] = \
                             _ev["payload"].get("candidate")
+        # Each case is sealed against the candidate its seal event bound; a
+        # later task advancing the candidate must not invalidate it.  This is
+        # the same per-case semantics accept-task applies via _task_artifacts.
+        seeded_candidates = _case_bound_candidates(run_dir)
         auth_path = state.get("authorization_path", "")
         if not os.path.isfile(auth_path) or sha256_file(auth_path) != state.get("authorization_sha256"):
             fails.append("authorization original missing or hash mismatch; recovery admission required")
@@ -1762,8 +1766,10 @@ def cmd_verify(args, held_lock=False):
                             if identity not in by_id:
                                 fails.append(cid + ": unexpected leaf " + fn)
                                 continue
+                            bound = seeded_candidates.get(
+                                cid, accepted_candidates.get(tid, candidate))
                             issues = receipt_errors(leaf, by_id[identity], tid, cid,
-                                                    accepted_candidates.get(tid, candidate),
+                                                    bound,
                                                     run_dir, state.get("resource_allowlist", {}), contract,
                                                     state.get("tasks", {}).get(tid, {}).get("attempt"),
                                                     legacy=cid in legacy_case_ids)
