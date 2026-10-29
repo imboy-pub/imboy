@@ -1164,6 +1164,9 @@ w404_case() { # $1 cdir
       -e "s/{http_port_adm, 9706}/{http_port_adm, ${EUNIT_HTTP_ADM_PORT:-19970}}/" \
       "${EUNIT_CONFIG:-config/sys.local}.config" > "$cdir/w404-direct.config"
   for try in 1 2 3; do
+    # Each retry restarts the observation stream: a failed attempt must not
+    # leave rows that the adapter would see as duplicate measurements.
+    rm -f "$cdir/observations.jsonl"
     EUNIT_USE_RELAY=0 erl -noinput -boot no_dot_erlang +P 1048576 +Q 1024 \
       -config "$cdir/w404-direct.config" -pa "$V5_ALIAS_ROOT/imboy/ebin" -pa ebin -pa test $PZ \
       -eval 'CoverSetup = fun() -> ok end, CoverExport = fun(_) -> ok end, CoverSetup(),
