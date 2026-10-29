@@ -710,8 +710,10 @@ ear_hold(Conn, AttId, Reason) ->
 %% refresh_gc_verified 前提因此失效（已知限制，如实记录，不放宽断言）。
 %% 同类限制：WAR 三治理行（hold_workspace/hold_conversation/
 %% permanent_workspace_retention）不可删且 FK RESTRICT 钉住 attachment 行，
-%% 同库重跑时旧行令 refresh 判 false（机制不同、后果相同）。gate 侧每 run
-%% 重建 w601h/w601r 库（w201_db_setup DROP+CREATE），以上仅影响同库手动重跑。
+%% 同库重跑时旧行令 refresh 判 false（机制不同、后果相同）。gate 侧每步
+%% 重建 w601 库（w201_db_setup DROP+CREATE；hold/race 共用该授权名、各自
+%% 步内新建，race 步的新建同时清掉 hold 步的治理残留），以上仅影响同库
+%% 手动重跑。
 ear_release_and_purge(Conn, AttId) ->
     q(
         Conn,

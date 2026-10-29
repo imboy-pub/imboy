@@ -651,13 +651,16 @@ w601_w3_common_env() { # $1 cdir $2 label — garage/disk env + erl path preambl
   return 0
 }
 
-w601_w3hold() { # $1 cdir — W3 hold battery, garage/disk dual run on the w601h chain DB
+w601_w3hold() { # $1 cdir — W3 hold battery, garage/disk dual run on the w601 chain DB
   local cdir="$1" try rc drv
   mkdir -p "$cdir"
   rm -f "$cdir/observations.jsonl"
   export V5_OBSERVATIONS_FILE="$cdir/observations.jsonl"
-  bound_marker_dbs w201 w601h || return $?
-  export V5_INTTEST_W601H_DB="attv5_${SLOT}_w601h"
+  # attv5_<slot>_w601 comes from the frozen authorization allowlist; per-step
+  # w201_db_setup drops and recreates it, so the hold suite never sees another
+  # step's state (unauthorized w601h/w601r names were refused by the pg guard).
+  bound_marker_dbs w201 w601 || return $?
+  export V5_INTTEST_W601H_DB="attv5_${SLOT}_w601"
   local PGPASSWORD; PGPASSWORD=$(cat "$RUN_DIR/resources/pg-attv5.password")
   export V5_INTTEST_W601H_PG_HOST="${V5_PG_HOST:-127.0.0.1}" \
     V5_INTTEST_W601H_PG_PORT="${V5_PG_PORT:-65072}" \
@@ -688,13 +691,16 @@ w601_w3hold() { # $1 cdir — W3 hold battery, garage/disk dual run on the w601h
   return 0
 }
 
-w601_w3race() { # $1 cdir — W3 race/shared-owner battery, dual run on the w601r chain DB
+w601_w3race() { # $1 cdir — W3 race/shared-owner battery, dual run on the w601 chain DB
   local cdir="$1" try rc drv
   mkdir -p "$cdir"
   rm -f "$cdir/observations.jsonl"
   export V5_OBSERVATIONS_FILE="$cdir/observations.jsonl"
-  bound_marker_dbs w201 w601r || return $?
-  export V5_INTTEST_W601R_DB="attv5_${SLOT}_w601r"
+  # Same authorized w601 name as w3hold (allowlist constraint); the fresh
+  # drop/create here also clears any hold-suite governance residue, which is
+  # exactly why the race suite can assert refresh preconditions on it.
+  bound_marker_dbs w201 w601 || return $?
+  export V5_INTTEST_W601R_DB="attv5_${SLOT}_w601"
   local PGPASSWORD; PGPASSWORD=$(cat "$RUN_DIR/resources/pg-attv5.password")
   export V5_INTTEST_W601R_PG_HOST="${V5_PG_HOST:-127.0.0.1}" \
     V5_INTTEST_W601R_PG_PORT="${V5_PG_PORT:-65072}" \
