@@ -21,6 +21,7 @@ SHORT = {
     "W4-03/storage-switch": "storage-switch",
     "W4-03/late-put": "late-put",
     "W4-03/namespace-alias-integrity": "namespace-alias-integrity",
+    "W4-03/disk-predecessor-protocols": "disk-predecessor-protocols",
 }
 
 STORAGE_SRC = "test/lib/attachment_lifecycle_v5_w403_storage_tests.erl"
@@ -180,7 +181,7 @@ def measured_detail(obs):
 
 
 def bind(case_id, *, run_dir, case_dir, root, log_names, marker, modules,
-         module, oracle_fn):
+         module, oracle_fn, source_rel=STORAGE_SRC):
     ctx = W4.context(run_dir, case_id)
     leaves = W4.leaves(ctx, case_id)
     evidence = W4.read_log(case_dir, log_names, case_id)
@@ -188,7 +189,7 @@ def bind(case_id, *, run_dir, case_dir, root, log_names, marker, modules,
         die(case_id, "missing case log (%s)" % ", ".join(log_names))
     parsed = W4.parse_verbose(evidence["text"])
     suite_health(evidence, parsed, marker, modules, log_names, case_id)
-    source_path, source = W4.source(root, STORAGE_SRC, case_id)
+    source_path, source = W4.source(root, source_rel, case_id)
     pool = W4.resolve_pool(ctx, case_id)
     started, finished = W4.measurement_window(evidence, parsed, case_id)
     bucket, endpoint = W4.resolve_garage(ctx, case_id, require_env=False)
