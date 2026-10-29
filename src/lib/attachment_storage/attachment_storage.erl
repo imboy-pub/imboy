@@ -21,6 +21,7 @@
     session_location/1,
     frozen_location/2,
     delete_snapshot/1,
+    head_snapshot/1,
     registration_location/3,
     resolve/1,
     canonical_namespace/1,
@@ -358,3 +359,14 @@ frozen_location(Key, Row) -> location_row(Key, Row).
 delete_snapshot(#{driver := disk} = I) -> attachment_storage_disk:delete_snapshot(I);
 delete_snapshot(#{driver := garage} = I) -> attachment_storage_garage:delete_snapshot(I);
 delete_snapshot(_) -> {error, location_unverified}.
+
+%% @doc O(1) 元数据 stat（W2-02 confirm 锁后复核用）：对已校验冻结身份做
+%% 二次 head，返回统一形态 #{size, mtime, etag}（mtime/etag 取不到时值为
+%% undefined，对照层按缺证据 fail-closed）。与 delete_snapshot 同一分发
+%% 形态：driver 自行用 HEAD/read_link_info，不经 with_snapshot 重解析。
+-spec head_snapshot(map()) ->
+    {ok, #{size := non_neg_integer(), mtime => integer() | undefined, etag => binary() | undefined}}
+    | {error, not_found | term()}.
+head_snapshot(#{driver := disk} = I) -> attachment_storage_disk:head_snapshot(I);
+head_snapshot(#{driver := garage} = I) -> attachment_storage_garage:head_snapshot(I);
+head_snapshot(_) -> {error, location_unverified}.

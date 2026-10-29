@@ -14,6 +14,7 @@
     put_snapshot/3,
     put_snapshot/4,
     read_snapshot/1,
+    head_snapshot/1,
     fold_snapshot/3,
     fold_range_snapshot/6,
     delete_snapshot/1
@@ -93,6 +94,31 @@ read_snapshot(I) ->
         case file:read_file(Path) of
             {error, enoent} -> {error, not_found};
             E -> E
+        end
+    end).
+%% O(1) 元数据 stat（W2-02 confirm 锁后复核用）：与 read_snapshot 同一冻结
+%% 身份 I（with_snapshot_path 含 no_symlinks 复验）。不进 OS 锁——调用方
+%% confirm 已持 DB pin 行锁，OS 锁会形成 DB→OS 嵌套，与 put_snapshot 的
+%% recheck 路径（OS 锁内开短事务）构成潜在死锁对；read_link_info 单次读
+%% inode 元数据无撕裂，威胁模型与 read_snapshot 一致。read_link_info 不
+%% 跟随符号链接——与既有 head/3 同语义（等价 read_file_info 且更严）；
+%% mtime 取 posix 秒与 garage HEAD 的 last-modified 同刻度。disk 无 etag
+%% 概念，恒 undefined，对照层按 size+mtime 判据执行。
+head_snapshot(I) ->
+    with_snapshot_path(I, fun(_, Path) ->
+        case file:read_link_info(Path, [{time, posix}]) of
+            {ok, #file_info{type = regular, size = Size, mtime = Mtime}} when
+                is_integer(Size), Size >= 0, is_integer(Mtime)
+            ->
+                {ok, #{size => Size, mtime => Mtime, etag => undefined}};
+            {ok, #file_info{}} ->
+                {error, path_escape};
+            {error, enoent} ->
+                {error, not_found};
+            {error, R} ->
+                {error, R};
+            _ ->
+                {error, path_escape}
         end
     end).
 %% Read one already-verified physical inode in bounded chunks under its storage lock.
