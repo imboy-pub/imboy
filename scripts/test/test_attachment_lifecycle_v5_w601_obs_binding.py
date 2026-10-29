@@ -41,6 +41,60 @@ class ObservationBindingTests(unittest.TestCase):
                     adapter._match_observation({key: [(1, no_ac), (2, {"measured": {"ac_id": "AC01"}})]}, key, "AC01")
         self.assertIsNone(adapter._match_observation({self.key: [(1, {"measured": {}})]}, self.key, "AC01"))
 
+    def test_blocked_enterprise_multipart_leaves_stay_gaps(self):
+        blocked = {"source_case_ref": "W2-01/pending-multipart", "entrypoint": "pending-multipart", "driver": "disk", "domain": "enterprise", "ordering_or_fault": "W2-01/pending-multipart/expand-queue/multipart_success", "ac_id": "AC01"}
+        ordinary = {"source_case_ref": "W2-01/pending-multipart", "entrypoint": "pending-multipart", "driver": "disk", "domain": "ordinary", "ordering_or_fault": "W2-01/pending-multipart/expand-queue/multipart_success", "ac_id": "AC01"}
+        start = datetime(2026, 1, 1, tzinfo=timezone.utc)
+        window = (start, start + timedelta(seconds=10))
+        log = {"parsed": {"markers": ["W403_DIRECT_OK"], "tests": [1], "summary_raw": "ok"}, "path": "log", "sha256": "digest"}
+
+        def step(name):
+            ref = "W2-01/pending-multipart"
+            key = (ref, "pending-multipart", "multipart_success", "ordinary", "disk")
+            obs = {"measured": {"driver": "disk", "ac_id": "AC01"}, "emitted_at_ms": int((start + timedelta(seconds=1)).timestamp() * 1000)}
+            return {"started": window[0], "finished": window[1], "index": {key: [(1, obs)]}, "path": name, "record": {"line": name}, "log": log, "markers": set()}
+
+        with ExitStack() as stack:
+            gaps = stack.enter_context(patch.object(adapter.S, "group_gap"))
+            gaps.side_effect = lambda gap_groups, *args: gap_groups.setdefault("gap", []).append(args)
+            report = stack.enter_context(patch.object(adapter.S, "report_gaps", side_effect=lambda *args: (_ for _ in ()).throw(SystemExit(30))))
+            build_row = stack.enter_context(patch.object(adapter.S.C, "build_row", side_effect=lambda leaf, a, b, *args: {"source": leaf["source_case_ref"], "domain": leaf["domain"]}))
+            for item in (
+                patch.object(adapter.S.C, "argv_paths", return_value=("run", "case", "root")),
+                patch.object(adapter.S, "context", return_value={"allowlist": {}}),
+                patch.object(adapter.S.C, "resolve_slot", return_value="slot1"),
+                patch.object(adapter.S.C, "db_resource", return_value="db"),
+                patch.object(adapter.S.C, "garage_bucket", return_value="bucket"),
+                patch.object(adapter.W4, "resolve_disk_root", return_value="diskroot"),
+                patch.object(adapter, "_body_sha256", return_value=("sha", 1, "file")),
+                patch.object(adapter.S, "step_record", side_effect=lambda _, name, __: {"exit": 0, "line": name}),
+                patch.object(adapter.S, "eunit_log", return_value=log),
+                patch.object(adapter.S, "step_window", side_effect=lambda rec, _: window),
+                patch.object(adapter, "_obs_index", return_value=({}, "obs403")),
+                patch.object(adapter.S, "probe_file", return_value={}),
+                patch.object(adapter, "_replay_count", return_value=1),
+                patch.object(adapter.S.C, "assert_leaf_set"),
+                patch.object(adapter.S, "sha256_file", return_value="sha"),
+                patch.object(adapter, "_step_binding", side_effect=lambda _, name, cache: step(name)),
+            ):
+                stack.enter_context(item)
+            leaf_mock = stack.enter_context(patch.object(adapter.S, "leaves"))
+            # The blocked enterprise leaf must be reported as a named gap,
+            # never reach build_row, and fail the case with exit 30.
+            leaf_mock.return_value = [blocked]
+            with self.assertRaises(SystemExit) as caught:
+                adapter.build()
+            self.assertEqual(30, caught.exception.code)
+            self.assertTrue(gaps.called)
+            self.assertIn("user ruling", gaps.call_args[0][3])
+            self.assertFalse(build_row.called)
+            # …while the ordinary-domain twin of the same scenario binds
+            # without raising a new gap.
+            gaps_count_after_blocked = gaps.call_count
+            leaf_mock.return_value = [ordinary]
+            self.assertEqual([{"source": ordinary["source_case_ref"], "domain": "ordinary"}], adapter.build()[1])
+            self.assertEqual(gaps_count_after_blocked, gaps.call_count)
+
     def test_step_windows_are_independent_of_leaf_order(self):
         start = datetime(2026, 1, 1, tzinfo=timezone.utc)
         windows = {name: (start + timedelta(seconds=n), start + timedelta(seconds=n + 10))
