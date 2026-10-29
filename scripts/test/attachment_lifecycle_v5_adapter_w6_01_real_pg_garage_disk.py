@@ -91,6 +91,23 @@ for _ref in (
 ):
     OBS_STEP_FOR[_ref] = "w4queue"
 OBS_GROUPS = set(OBS_STEP_FOR)
+
+# User ruling 2026-10-29 (trusted instruction): the enterprise
+# multipart_success/group_file_success leaves stay bound to the frozen
+# contract.  The only existing enterprise upload entries are the internal
+# gateway/byte-proxy paths — no multipart/form-data or group_file entry
+# exists for enterprise identities — so the substitute executions are not
+# acceptance evidence.  These leaves are reported as named contract-
+# conflict gaps (never bound, never PASS) until the contract owner
+# authorizes a revision.
+BLOCKED_ENTERPRISE_SCENARIOS = frozenset({"multipart_success", "group_file_success"})
+
+
+def _blocked_enterprise_leaf(leaf):
+    return (leaf.get("source_case_ref") == "W2-01/pending-multipart"
+            and leaf.get("domain") == "enterprise"
+            and _obs_scenario(leaf) in BLOCKED_ENTERPRISE_SCENARIOS)
+
 LEGACY_WITHOUT_AC = frozenset({
     "W4-03/storage-switch", "W4-03/storage-disk", "W4-03/storage-garage",
     "W4-03/late-put", "W4-03/namespace-alias-integrity",
@@ -515,6 +532,14 @@ def build():
                 ["w102:%s:%s" % (phase, name) for name in names]))
             continue
         if source in OBS_GROUPS:
+            if _blocked_enterprise_leaf(leaf):
+                S.group_gap(gap_groups, source, 1,
+                            "user ruling 2026-10-29: the enterprise "
+                            "multipart/group_file gateway substitute is not "
+                            "acceptance evidence; leaf %r stays blocked per "
+                            "the frozen contract until an authorized revision"
+                            % leaf["ordering_or_fault"])
+                continue
             subdir = OBS_STEP_FOR[source]
             step = (obs_cache[subdir] if subdir in obs_cache
                     else _step_binding(case_dir, subdir, obs_cache))
