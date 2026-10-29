@@ -3,7 +3,10 @@
 %% 以模块原子为根（EUnit 自动带入 M_tests 伴随），按 LPT 分到有界 peer 组，
 %% 每组一 VM 顺序执行，结果按根落盘。独占根（Excl 清单）作为 U 成员单列。
 -module(imboy_quality_full).
--export([inventory/1, run/3, root_identity_set/1, excluded/0, run_group_rotating/6]).
+-export([
+    inventory/1, run/3, root_identity_set/1, excluded/0, long_root_hints/0, run_group_rotating/6,
+    ordered_affinity/0, apply_ordered_affinity/2
+]).
 
 -define(EXCL, [
     elib_tsid,
@@ -31,10 +34,81 @@
     enterprise_asset_driver_pg_tests,
     attachment_pending_location_pg_tests,
     message_result_pg_tests,
-    group_schedule_remind_pg_tests
+    group_schedule_remind_pg_tests,
+    %% 顺序依赖根（opt-run5~8 实证：独立执行即过，共享 VM/库中被前序根污染——
+    %% throttle 的 limiter 迁移态、oa_direct 的 intbe02 默认池快照前置）。
+    %% EUNIT_120S §3.2：全局状态敏感的根在独立 VM 串行；各自 fresh VM + fresh 克隆库。
+    throttle_middleware,
+    oa_direct_cloud_retention_pg_tests,
+    %% 2026-10-29 二分实证：与 intbe02 快照根（workspace_unread / enterprise_internal_wiring）
+    %% 同 VM 共跑时，后两者 setup 的 snapshot_default_pool 断言（池状态 vs imboy.pg_conf env）
+    %% badmatch 2/2 复现，异 VM 不复现；本根自身 mock 大量全局模块。同 §3.2：全局状态
+    %% 敏感根独立 VM 串行。
+    adm_group_handler
 ]).
 
 excluded() -> ?EXCL.
+
+%% 真实时钟等待的根：talk_record_gateway_http_tests:await_upload_expiry/2 等待 PG 时钟
+%% 走过上传能力过期（断言 remaining ≤ 3605s，合同 §3.6 禁止改生产 TTL 缩短）；
+%% client_audio 经 available_source/2 复用同一流程。它们在 legacy 从未真正执行，上一轮
+%% wall_ms 只有缺资源时的 2s，LPT 据此会把它们排到尾部拖长 makespan；给出保守下界让
+%% 它们最先启动、各占一个 worker。
+-define(LONG_ROOT_HINTS, #{
+    talk_record_gateway_http_tests => 3700000,
+    talk_record_client_audio_http_pg_tests => 3700000
+}).
+
+long_root_hints() -> ?LONG_ROOT_HINTS.
+
+%% 跨根有序亲和：{写入根, 回读根}。回读根（ac04_s5_readback_tests）读写入根落盘的
+%% /tmp manifest 并在同一数据库回读历史；legacy 单 VM 单库按字母序天然满足，分片后
+%% 必须显式放同一 worker（同克隆库）且写入在前。写入根不在本次根集时不干预，回读根
+%% 按其自身规则如实失败（不伪造数据）。
+-define(ORDERED_AFFINITY, [
+    {ac04_e2ee_off_archive_db_tests, ac04_s5_readback_tests}
+]).
+
+ordered_affinity() -> ?ORDERED_AFFINITY.
+
+%% 在 pool:schedule 之后施加：把回读根移到写入根所在组、紧随其后；同组但顺序颠倒
+%% 时也调整。只移动元素不改内容，LPT 均衡偏差以回读根自身 estimated_ms 为界。
+apply_ordered_affinity(Groups, Pairs) ->
+    lists:foldl(fun({W, R}, Gs) -> place_after(Gs, W, R) end, Groups, Pairs).
+
+place_after(Groups, W, R) ->
+    case {group_index(Groups, W), group_index(Groups, R)} of
+        {undefined, _} ->
+            Groups;
+        {_, undefined} ->
+            Groups;
+        {Wi, Ri} ->
+            Gr = lists:nth(Ri, Groups),
+            [RRoot] = [Rt || Rt <- Gr, maps:get(test_mod, Rt) =:= R],
+            Groups1 = set_nth(Ri, [Rt || Rt <- Gr, maps:get(test_mod, Rt) =/= R], Groups),
+            Gw = lists:nth(Wi, Groups1),
+            set_nth(Wi, insert_after(Gw, W, RRoot), Groups1)
+    end.
+
+group_index(Groups, M) -> group_index(Groups, M, 1).
+
+group_index([], _M, _I) ->
+    undefined;
+group_index([G | Rest], M, I) ->
+    case lists:any(fun(Rt) -> maps:get(test_mod, Rt) =:= M end, G) of
+        true -> I;
+        false -> group_index(Rest, M, I + 1)
+    end.
+
+insert_after([Rt | Rest], W, RRoot) ->
+    case maps:get(test_mod, Rt) =:= W of
+        true -> [Rt, RRoot | Rest];
+        false -> [Rt | insert_after(Rest, W, RRoot)]
+    end.
+
+set_nth(I, V, L) ->
+    {A, [_ | B]} = lists:split(I - 1, L),
+    A ++ [V | B].
 
 %% ---- U 盘点（与 P1-02 口径一致，运行时重算） ----
 
@@ -79,11 +153,12 @@ run_locked(Roots0, Opts, RunId, Repo, OutDir, T0, Est) ->
             id => M,
             test_mod => M,
             resources => [],
-            estimated_ms => maps:get(M, Est, 3000)
+            estimated_ms => max(maps:get(M, Est, 3000), maps:get(M, ?LONG_ROOT_HINTS, 0))
         }
      || M <- Roots0
     ],
-    {ok, Groups} = imboy_quality_pool:schedule(Roots, maps:get(worker_count, Opts, 2)),
+    {ok, Groups0} = imboy_quality_pool:schedule(Roots, maps:get(worker_count, Opts, 2)),
+    Groups = apply_ordered_affinity(Groups0, ?ORDERED_AFFINITY),
     Paths = code_paths(Repo),
     Parent = self(),
     Ref = make_ref(),
@@ -174,9 +249,16 @@ run_exclusive([M | Rest], Opts, Paths, CfgFn, Acc) ->
             undefined -> [];
             Fn -> Fn(M)
         end,
+    %% 按根配置：需要 app 启动即连到专属库的根（attv5 清单库、顺序依赖根的 fresh 克隆）
+    %% 由 exclusive_config_fn 提供私有 -config；其余沿用 worker 0 配置。
+    Config =
+        case maps:get(exclusive_config_fn, Opts, undefined) of
+            undefined -> CfgFn(0);
+            CFn -> CFn(M)
+        end,
     WOpts = Opts#{
         schedulers => maps:get(schedulers, Opts, 2),
-        config => CfgFn(0),
+        config => Config,
         env => maps:get(env, Opts, []) ++ Overlay
     },
     Deadline = maps:get(exclusive_deadline_ms, Opts, 900000),

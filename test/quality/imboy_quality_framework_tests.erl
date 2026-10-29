@@ -304,7 +304,220 @@ listener_adapter_test() ->
             is_integer(erlang:system_info(otp_release))
     ).
 
+%% ---------- 资源准备纯逻辑（候选模板 / 私有 Garage / HIRD / 归属前缀 / 独占集） ----------
+
+resources_parse_garage_outputs_test() ->
+    Out = <<"Key name: imboy-quality-1\nKey ID: GK0123456789abcdef\nSecret key: s3cr3tvalue\n">>,
+    ?assertEqual(
+        #{key_id => "GK0123456789abcdef", secret => "s3cr3tvalue"},
+        imboy_quality_resources:parse_key_output(Out)
+    ),
+    ?assertError(
+        {garage_key_output_unparsed, _}, imboy_quality_resources:parse_key_output(<<"nope">>)
+    ),
+    ?assertEqual(
+        "4a5b6c7d8e9f0a1b2c3d4e5f60718293",
+        imboy_quality_resources:parse_node_id(
+            <<"4a5b6c7d8e9f0a1b2c3d4e5f60718293@127.0.0.1:3901\n">>
+        )
+    ),
+    ?assertError({garage_node_id_unparsed, _}, imboy_quality_resources:parse_node_id(<<"no id">>)).
+
+resources_garage_toml_test() ->
+    Toml = iolist_to_binary(
+        imboy_quality_resources:garage_toml(#{
+            dir => "/tmp/g",
+            s3_port => 39001,
+            rpc_port => 39002,
+            admin_port => 39003,
+            rpc_secret => "ab",
+            admin_token => "cd"
+        })
+    ),
+    [
+        ?assert(binary:match(Toml, S) =/= nomatch)
+     || S <- [
+            <<"db_engine = \"lmdb\"">>,
+            <<"replication_factor = 1">>,
+            <<"api_bind_addr = \"127.0.0.1:39001\"">>,
+            <<"rpc_bind_addr = \"127.0.0.1:39002\"">>,
+            <<"api_bind_addr = \"127.0.0.1:39003\"">>,
+            <<"s3_region = \"garage\"">>,
+            <<"metadata_dir = \"/tmp/g/meta\"">>
+        ]
+    ],
+    P = imboy_quality_resources:free_port(),
+    ?assert(is_integer(P) andalso P > 1024).
+
+%% 并行诊断控制器各自 worker 0 不能同绑 19980/19970：IMBOY_QUALITY_PORT_BASE 调基址，
+%% adm 恒为基址-10；默认不变；非法值（非整数/特权端口）硬错不静默回退。
+resources_port_base_test() ->
+    Repo = scratch_dir("portbase"),
+    ok = filelib:ensure_dir(filename:join([Repo, "config", "x"])),
+    ok = file:write_file(
+        filename:join(Repo, "sys.base.config"),
+        <<
+            "[{imboy, [{http_port, 9800}, {http_port_adm, 9706}]},\n"
+            " {pg, #{database => \"imboy_test_v1\"}}].\n"
+        >>
+    ),
+    Saved = os:getenv("IMBOY_QUALITY_PORT_BASE"),
+    Has = fun(Bin, S) -> ?assertNotEqual(nomatch, binary:match(Bin, S)) end,
+    try
+        true = os:unsetenv("IMBOY_QUALITY_PORT_BASE"),
+        ?assertEqual(19980, imboy_quality_resources:port_base()),
+        P0 = imboy_quality_resources:write_config(
+            Repo, "sys.base", "t0", 1, {"imboy_test_v1", "clone1"}
+        ),
+        {ok, B0} = file:read_file(P0 ++ ".config"),
+        Has(B0, <<"{http_port, 19981}">>),
+        Has(B0, <<"{http_port_adm, 19971}">>),
+        Has(B0, <<"database => \"clone1\"">>),
+        true = os:putenv("IMBOY_QUALITY_PORT_BASE", "21980"),
+        ?assertEqual(21980, imboy_quality_resources:port_base()),
+        P1 = imboy_quality_resources:write_config(
+            Repo, "sys.base", "t1", 2, {"imboy_test_v1", "clone2"}
+        ),
+        {ok, B1} = file:read_file(P1 ++ ".config"),
+        Has(B1, <<"{http_port, 21982}">>),
+        Has(B1, <<"{http_port_adm, 21972}">>),
+        Has(B1, <<"database => \"clone2\"">>),
+        true = os:putenv("IMBOY_QUALITY_PORT_BASE", "abc"),
+        ?assertError({bad_port_base, _}, imboy_quality_resources:port_base()),
+        true = os:putenv("IMBOY_QUALITY_PORT_BASE", "80"),
+        ?assertError({bad_port_base, _}, imboy_quality_resources:port_base())
+    after
+        case Saved of
+            false -> os:unsetenv("IMBOY_QUALITY_PORT_BASE");
+            V -> os:putenv("IMBOY_QUALITY_PORT_BASE", V)
+        end,
+        file:del_dir_r(Repo)
+    end.
+
+resources_template_digest_test() ->
+    Repo = scratch_dir("tpl"),
+    Mig = filename:join(Repo, "priv/migrations"),
+    ok = filelib:ensure_dir(filename:join(Mig, "x")),
+    ok = file:write_file(filename:join(Mig, "00000001_a.up.sql"), <<"-- a\n">>),
+    ok = file:write_file(filename:join(Mig, "00000001_a.down.sql"), <<"-- a down\n">>),
+    ok = file:write_file(filename:join(Mig, "00000002_b.up.sql"), <<"-- b\n">>),
+    try
+        ?assertEqual(2, imboy_quality_resources:migration_head(Repo)),
+        D1 = imboy_quality_resources:template_digest(Repo, "180001"),
+        ?assertEqual(12, length(D1)),
+        ?assert(lists:all(fun(C) -> lists:member(C, "0123456789abcdef") end, D1)),
+        %% 迁移内容或 PG 版本变化都必须改变键（§3.5：模板键含迁移 hash 与 PG 版本）
+        ok = file:write_file(filename:join(Mig, "00000002_b.up.sql"), <<"-- b2\n">>),
+        ?assertNotEqual(D1, imboy_quality_resources:template_digest(Repo, "180001")),
+        ?assertNotEqual(D1, imboy_quality_resources:template_digest(Repo, "170001"))
+    after
+        file:del_dir_r(Repo)
+    end,
+    Empty = scratch_dir("empty"),
+    try
+        ?assertError({no_migration_files, _}, imboy_quality_resources:migration_head(Empty))
+    after
+        file:del_dir_r(Empty)
+    end.
+
+resources_hird_bin_test() ->
+    Root = scratch_dir("hird"),
+    Bin = filename:join([Root, "hird", "target", "release", "hird"]),
+    ok = filelib:ensure_dir(Bin),
+    ok = file:write_file(Bin, <<"#!/bin/sh\n">>),
+    Repo = filename:join([Root, "imboy", "worktree"]),
+    ok = filelib:ensure_dir(filename:join(Repo, "x")),
+    Prev = os:getenv("IMBOY_QUALITY_HIRD_BIN"),
+    try
+        os:unsetenv("IMBOY_QUALITY_HIRD_BIN"),
+        %% 祖先目录定位：<root>/hird/target/release/hird
+        ?assertEqual({ok, Bin}, imboy_quality_resources:hird_bin(Repo)),
+        %% 显式覆盖优先，且只接受存在的常规文件
+        Override = filename:join(Root, "custom-hird"),
+        ok = file:write_file(Override, <<"x">>),
+        os:putenv("IMBOY_QUALITY_HIRD_BIN", Override),
+        ?assertEqual({ok, Override}, imboy_quality_resources:hird_bin(Repo)),
+        os:putenv("IMBOY_QUALITY_HIRD_BIN", filename:join(Root, "missing")),
+        ?assertEqual({ok, Bin}, imboy_quality_resources:hird_bin(Repo))
+    after
+        case Prev of
+            false -> os:unsetenv("IMBOY_QUALITY_HIRD_BIN");
+            V -> os:putenv("IMBOY_QUALITY_HIRD_BIN", V)
+        end,
+        file:del_dir_r(Root)
+    end.
+
+fixture_owned_name_test() ->
+    ?assert(imboy_quality_fixture:is_owned_name("imboy_quality_w0_1")),
+    ?assert(imboy_quality_fixture:is_owned_name(<<"imboy_quality_tpl_abc">>)),
+    ?assert(imboy_quality_fixture:is_owned_name("attv5_chain_imboy_quality_x_1")),
+    ?assertNot(imboy_quality_fixture:is_owned_name("attv5_chain_other")),
+    ?assertNot(imboy_quality_fixture:is_owned_name("imboy_test_v1")),
+    ?assertNot(imboy_quality_fixture:is_owned_name("postgres")),
+    ?assertNot(imboy_quality_fixture:is_owned_name(undefined)).
+
+full_isolated_roots_excluded_test() ->
+    Excl = imboy_quality_full:excluded(),
+    [
+        ?assert(lists:member(M, Excl))
+     || M <- [throttle_middleware, oa_direct_cloud_retention_pg_tests]
+    ].
+
+%% 真实时钟等待根的 LPT 下界必须覆盖其 ≤3605s 的过期等待（见 ?LONG_ROOT_HINTS 注释）。
+full_long_root_hints_test() ->
+    Hints = imboy_quality_full:long_root_hints(),
+    [
+        ?assert(maps:get(M, Hints) >= 3605000)
+     || M <- [talk_record_gateway_http_tests, talk_record_client_audio_http_pg_tests]
+    ].
+
+%% 有序亲和：回读根必须移到写入根同组紧随其后；同组逆序时调整；任一端缺席不动。
+full_ordered_affinity_test() ->
+    ?assertEqual(
+        [{ac04_e2ee_off_archive_db_tests, ac04_s5_readback_tests}],
+        imboy_quality_full:ordered_affinity()
+    ),
+    Mk = fun(M) -> #{id => M, test_mod => M, resources => [], estimated_ms => 1} end,
+    %% 跨组：R 从 G2 移入 G1 紧随 W。
+    Gs0 = [[Mk(w0a), Mk(writer)], [Mk(reader), Mk(g2b)]],
+    Gs1 = imboy_quality_full:apply_ordered_affinity(Gs0, [{writer, reader}]),
+    Mods = fun(G) -> [maps:get(test_mod, X) || X <- G] end,
+    ?assertEqual([w0a, writer, reader], Mods(lists:nth(1, Gs1))),
+    ?assertEqual([g2b], Mods(lists:nth(2, Gs1))),
+    %% 同组逆序：R 移到 W 之后。
+    Gs2 = [[Mk(reader), Mk(x), Mk(writer)]],
+    ?assertEqual(
+        [[x, writer, reader]], [
+            Mods(G)
+         || G <- imboy_quality_full:apply_ordered_affinity(Gs2, [{writer, reader}])
+        ]
+    ),
+    %% 任一端缺席：原样返回。
+    ?assertEqual(Gs0, imboy_quality_full:apply_ordered_affinity(Gs0, [{ghost, reader}])),
+    ?assertEqual(Gs0, imboy_quality_full:apply_ordered_affinity(Gs0, [{writer, ghost}])).
+
+%% 所有计划库名 ≤ 63 字符（PG NAMEDATALEN-1；超长名被 CREATE DATABASE 静默截断，
+%% 清单/配置仍写全名 → W403 assert_database 失败，2026-10-29 实证）。
+env_planned_db_names_fit_pg_limit_test() ->
+    Names = imboy_quality_env:planned_db_names(8, "99999"),
+    ?assert(length(Names) >= 17),
+    [?assert(length(N) =< 63) || N <- Names],
+    [?assert(imboy_quality_fixture:is_owned_name(N)) || N <- Names],
+    ?assertEqual(
+        "attv5_chain_imboy_quality_w403gw_123",
+        imboy_quality_env:attv5_db_name("w403gw", "123")
+    ).
+
 %% ---------- 辅助 ----------
+
+scratch_dir(Tag) ->
+    D = filename:join(
+        "/private/tmp",
+        "imboy-quality-selftest-" ++ Tag ++ "-" ++
+            integer_to_list(erlang:unique_integer([positive]))
+    ),
+    ok = filelib:ensure_dir(filename:join(D, "x")),
+    D.
 
 tmp_dir() ->
     %% macOS /tmp 是 symlink 到 /private/tmp；safe_parent 保守拒绝 symlink 父链（PAR03），
