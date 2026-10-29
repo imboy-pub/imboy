@@ -12,7 +12,11 @@ validate_test_() ->
         fun missing_registry_is_empty/0,
         fun empty_roots_is_empty/0,
         fun wrong_version_is_treated_as_empty/0,
-        fun any_root_is_ok/0
+        fun any_root_is_ok/0,
+        fun duplicate_namespace_is_ambiguous/0,
+        fun duplicate_physical_root_is_rejected/0,
+        fun unsupported_driver_is_rejected/0,
+        fun incomplete_root_is_rejected/0
     ]}.
 
 setup() ->
@@ -50,3 +54,58 @@ any_root_is_ok() ->
         }
     }),
     ?assertEqual(ok, attachment_storage:validate_registry()).
+
+root(Driver, Ns, Endpoint, Container) ->
+    #{driver => Driver, namespace => Ns, endpoint => Endpoint, container => Container}.
+
+%% 同一 namespace/alias 属于两个根 = 未证明分离（namespace_contract）。
+duplicate_namespace_is_ambiguous() ->
+    application:set_env(imboy, attachment_storage_registry, #{
+        version => 1,
+        roots => #{
+            <<"a">> => root(<<"disk">>, <<"shared">>, <<"file:///tmp/a">>, <<"c">>),
+            <<"b">> => (root(<<"disk">>, <<"other">>, <<"file:///tmp/b">>, <<"c">>))#{
+                aliases => [<<"shared">>]
+            }
+        }
+    }),
+    ?assertEqual(
+        {error, {ambiguous_namespace, <<"shared">>}},
+        attachment_storage:validate_registry()
+    ).
+
+%% 两个根指向同一物理 locator = 同一对象两个 digest/锁域。
+duplicate_physical_root_is_rejected() ->
+    application:set_env(imboy, attachment_storage_registry, #{
+        version => 1,
+        roots => #{
+            <<"a">> => root(<<"garage">>, <<"ns-a">>, <<"http://garage:3900">>, <<"imboy">>),
+            <<"b">> => root(<<"garage">>, <<"ns-b">>, <<"http://garage:3900">>, <<"imboy">>)
+        }
+    }),
+    ?assertEqual(
+        {error, {duplicate_physical_root, [<<"a">>, <<"b">>]}},
+        attachment_storage:validate_registry()
+    ).
+
+unsupported_driver_is_rejected() ->
+    application:set_env(imboy, attachment_storage_registry, #{
+        version => 1,
+        roots => #{
+            <<"cos-root">> => root(<<"cos">>, <<"ns">>, <<"https://cos">>, <<"b">>)
+        }
+    }),
+    ?assertEqual(
+        {error, {unsupported_driver, <<"cos-root">>}},
+        attachment_storage:validate_registry()
+    ).
+
+incomplete_root_is_rejected() ->
+    application:set_env(imboy, attachment_storage_registry, #{
+        version => 1,
+        roots => #{<<"half">> => #{driver => <<"disk">>, namespace => <<"ns">>}}
+    }),
+    ?assertEqual(
+        {error, {incomplete_root, <<"half">>}},
+        attachment_storage:validate_registry()
+    ).

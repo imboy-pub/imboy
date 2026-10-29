@@ -177,7 +177,8 @@ p_intent_rollback_disk(Conn, DiskRoot) ->
 %%    消费语义标记（本测试直接驱动 disk driver 删除——与生产 worker 的
 %%    delete_queued/elib_oss 调用同构，registry disk env 下走同一入口）
 p_worker_disk_delete_done(Conn, DiskRoot) ->
-    Key = <<"v5e2e/w403p/done">>,
+    %% done 墓碑不可复活：重试（eunit 3 次共享库）必须用新键重种
+    Key = w403p_unique_key(<<"v5e2e/w403p/done">>),
     ok = put_disk_file(DiskRoot, Key, <<"done-bytes">>),
     L = locator(Key),
     q(
@@ -185,7 +186,9 @@ p_worker_disk_delete_done(Conn, DiskRoot) ->
         "INSERT INTO attachment_object_deletion"
         " (path,bucket,storage_driver,storage_namespace,storage_container,"
         "  storage_locator_sha256,job_state,next_retry_at,attempts,last_error_code)"
-        " VALUES ($1,'b','disk','" ++ binary_to_list(?NS) ++ "','c',$2,'ready',now(),0,NULL)",
+        " VALUES ($1,'b','disk','" ++ binary_to_list(?NS) ++
+            "','c',$2,'ready',now(),0,NULL)"
+            " ON CONFLICT (path) DO NOTHING",
         [Key, L]
     ),
     T = uuid_text(),
@@ -216,7 +219,7 @@ uuid_text() ->
 
 %% ③ worker crash → reap → 重试（disk 文件仍在，无丢任务）
 p_worker_crash_reap_disk(Conn, DiskRoot) ->
-    Key = <<"v5e2e/w403p/crash">>,
+    Key = w403p_unique_key(<<"v5e2e/w403p/crash">>),
     ok = put_disk_file(DiskRoot, Key, <<"crash-bytes">>),
     L = locator(Key),
     q(
@@ -224,7 +227,9 @@ p_worker_crash_reap_disk(Conn, DiskRoot) ->
         "INSERT INTO attachment_object_deletion"
         " (path,bucket,storage_driver,storage_namespace,storage_container,"
         "  storage_locator_sha256,job_state,next_retry_at,attempts,last_error_code)"
-        " VALUES ($1,'b','disk','" ++ binary_to_list(?NS) ++ "','c',$2,'ready',now(),0,NULL)",
+        " VALUES ($1,'b','disk','" ++ binary_to_list(?NS) ++
+            "','c',$2,'ready',now(),0,NULL)"
+            " ON CONFLICT (path) DO NOTHING",
         [Key, L]
     ),
     T = uuid_text(),
@@ -259,15 +264,17 @@ p_worker_crash_reap_disk(Conn, DiskRoot) ->
 %%    not found 形状）
 p_entrypoint_intents_disk_env(Conn) ->
     %% orphan：种孤儿形态 metadata 行（明文+完整位置+无绑定+gc_verified）
-    OKey = <<"v5e2e/w403p/orphan">>,
+    %% attachment 主键 + path 在重试间唯一（metadata 守卫禁删，重跑必须新键）
+    OKey = w403p_unique_key(<<"v5e2e/w403p/orphan">>),
+    Oid = 945000000000 + erlang:unique_integer([positive]) rem 100000000,
     q(
         Conn,
         "INSERT INTO attachment(id,path,scope,creator_user_id,storage_driver,"
         "storage_namespace,storage_container,storage_locator_sha256,gc_verified,"
         "cipher,group_file_id,file_hash256,referer_time)"
-        " VALUES (945001,$1,'private',101,'disk','" ++ binary_to_list(?NS) ++
+        " VALUES ($4,$1,'private',101,'disk','" ++ binary_to_list(?NS) ++
             "','c',$2,true,NULL,NULL,$3,0)",
-        [OKey, locator(OKey), hex64(crypto:hash(sha256, OKey))]
+        [OKey, locator(OKey), hex64(crypto:hash(sha256, OKey)), Oid]
     ),
     {ok, _, _} = e(
         Conn, "SELECT fn_v5_intent_ordinary_delete($1,'w403p orphan disk')", [OKey]
@@ -276,7 +283,7 @@ p_entrypoint_intents_disk_env(Conn) ->
         Conn, "SELECT lifecycle_state FROM attachment WHERE path=$1", [OKey]
     ),
     %% pending sweep：registered 超龄（能力窗耗尽）→ delete_intent
-    PKey = <<"v5e2e/w403p/pend">>,
+    PKey = w403p_unique_key(<<"v5e2e/w403p/pend">>),
     q(
         Conn,
         "SELECT * FROM fn_v5_register_pending($1,'b','private',101,"
@@ -303,6 +310,9 @@ p_entrypoint_intents_disk_env(Conn) ->
     {ok, _, [{<<"delete_intent">>}]} = e(
         Conn, "SELECT session_state FROM attach_pending WHERE object_key=$1", [PKey]
     ),
+    %% 消费本段产生的 ready 行（eunit 重试共享同一 fixture 库：不留 due 残留，
+    %% 否则同库 driver-matrix 的 deletion_intent 前置检查会撞别人的 due 行）。
+    consume_ready_until(Conn, PKey, 10),
     %% 注销 collect：无个人附件（disk env 不影响协议）→ 空 keys
     {ok, Keys} = elib_pg:with_tx(fun(C) ->
         user_deletion_executor:collect_attachment_keys_tx(C, 101)
@@ -317,3 +327,31 @@ p_entrypoint_intents_disk_env(Conn) ->
         )
     end),
     ok.
+
+%% 循环 claim 直到拿到目标 ready 行并 ack done（无关 ready 行顺带消化，
+%% 语义=正常消费；库内不留跨 try 的 due 残留）。
+consume_ready_until(_Conn, _Key, 0) ->
+    erlang:error({w403p_target_job_not_claimed, _Key});
+consume_ready_until(Conn, Key, N) ->
+    T = uuid_text(),
+    case
+        e(
+            Conn,
+            "SELECT out_path FROM fn_v5_claim_ordinary($1)",
+            [T]
+        )
+    of
+        {ok, _, [{Key}]} ->
+            ok = attachment_gc_repo:v5_ack(Conn, Key, T, true),
+            ok;
+        {ok, _, [{Other}]} ->
+            ok = attachment_gc_repo:v5_ack(Conn, Other, T, true),
+            consume_ready_until(Conn, Key, N - 1);
+        {error, empty} ->
+            consume_ready_until(Conn, Key, N - 1);
+        Other ->
+            erlang:error({w403p_claim_failed, Other})
+    end.
+
+w403p_unique_key(Prefix) ->
+    <<Prefix/binary, "-", (binary:encode_hex(crypto:strong_rand_bytes(8), lowercase))/binary>>.

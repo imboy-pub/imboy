@@ -416,8 +416,29 @@ validate_attachment_registry() ->
             strict_or_warn(Strict, Msg, [], attachment_registry_empty);
         false ->
             ok = validate_registry_endpoint_consistency(Roots, Strict),
+            ok = validate_registry_executable(Roots, Strict),
             log_registry_summary(Registry),
             ok
+    end.
+
+%% namespace_contract：alias 归 canonical、同一物理 locator 只有一个锁域、
+%% driver 必须已实现。未证明分离的 registry 不能进入可执行状态（strict 拒启，
+%% 非 strict 记录原因并让新上传按既有 fail-closed 路径拒绝）。
+validate_registry_executable(_Roots, Strict) ->
+    case attachment_storage:validate_registry() of
+        ok ->
+            ok;
+        {error, empty_roots} ->
+            ok;
+        {error, Reason} ->
+            strict_or_warn(
+                Strict,
+                "attachment_storage_registry is not executable (~p): a namespace/"
+                "alias is declared twice, two roots share one physical locator, a "
+                "root is incomplete or its driver is not implemented.",
+                [Reason],
+                {attachment_registry_not_executable, Reason}
+            )
     end.
 
 %% 显式豁免：确无附件需求的部署（attachment_registry_optional=true）空根可启动。
