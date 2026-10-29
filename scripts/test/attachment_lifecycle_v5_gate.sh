@@ -637,6 +637,155 @@ w601_w4queue() { # $1 cdir — W4 queue/worker/activation battery (marker-bound)
   return 0
 }
 
+w601_w3_common_env() { # $1 cdir $2 label — garage/disk env + erl path preamble
+  ensure_disk_root || return $?
+  if [ -f "$RUN_DIR/resources/garage-w202.env" ]; then
+    . "$RUN_DIR/resources/garage-w202.env"
+    export W202_GARAGE_ENDPOINT W202_GARAGE_BUCKET W202_GARAGE_ACCESS_KEY W202_GARAGE_SECRET_KEY
+  fi
+  local PZ="" d
+  for d in deps/*/ebin; do [ -d "$d" ] && PZ="$PZ -pz $PWD/$d"; done
+  sed -e "s/{http_port, 9800}/{http_port, ${EUNIT_HTTP_PORT:-19980}}/" \
+      -e "s/{http_port_adm, 9706}/{http_port_adm, ${EUNIT_HTTP_ADM_PORT:-19970}}/" \
+      "${EUNIT_CONFIG:-config/sys.local}.config" > "$1/$2-direct.config"
+  return 0
+}
+
+w601_w3hold() { # $1 cdir — W3 hold battery, garage/disk dual run on the w601h chain DB
+  local cdir="$1" try rc drv
+  mkdir -p "$cdir"
+  rm -f "$cdir/observations.jsonl"
+  export V5_OBSERVATIONS_FILE="$cdir/observations.jsonl"
+  bound_marker_dbs w201 w601h || return $?
+  export V5_INTTEST_W601H_DB="attv5_${SLOT}_w601h"
+  local PGPASSWORD; PGPASSWORD=$(cat "$RUN_DIR/resources/pg-attv5.password")
+  export V5_INTTEST_W601H_PG_HOST="${V5_PG_HOST:-127.0.0.1}" \
+    V5_INTTEST_W601H_PG_PORT="${V5_PG_PORT:-65072}" \
+    V5_INTTEST_W601H_PG_USER=imboy_user V5_INTTEST_W601H_PG_PASSWORD="$PGPASSWORD" \
+    V5_INTTEST_W601H_MAINT_DB=postgres
+  w601_w3_common_env "$cdir" w3hold || return $?
+  for try in 1 2 3; do
+    rm -f "$cdir/observations.jsonl"; : > "$cdir/eunit-w3hold.log"; rc=0
+    for drv in garage disk; do
+      EUNIT_USE_RELAY=0 V5_PROBE_DRIVER=$drv \
+        erl -noinput -boot no_dot_erlang +P 1048576 +Q 1024 \
+        -config "$cdir/w3hold-direct.config" -pa "$V5_ALIAS_ROOT/imboy/ebin" -pa ebin -pa test $PZ \
+        -eval 'CoverSetup = fun() -> ok end, CoverExport = fun(_) -> ok end, CoverSetup(),
+          Mods = [attachment_lifecycle_v5_w601_w3_hold_tests],
+          case eunit:test(Mods, [verbose]) of
+            ok -> io:format("W601_W3HOLD_OK~n");
+            error -> halt(2)
+          end,
+          halt()' >> "$cdir/eunit-w3hold.log" 2>&1
+      rc=$?
+      [ $rc -eq 0 ] || break
+    done
+    { [ $rc -eq 0 ] && grep -q "W601_W3HOLD_OK" "$cdir/eunit-w3hold.log"; } && break
+    [ $try -lt 3 ] && sleep 5
+  done
+  { [ $rc -eq 0 ] && grep -q "W601_W3HOLD_OK" "$cdir/eunit-w3hold.log"; } || return 30
+  export V5_RUN_DIR="$RUN_DIR"
+  return 0
+}
+
+w601_w3race() { # $1 cdir — W3 race/shared-owner battery, dual run on the w601r chain DB
+  local cdir="$1" try rc drv
+  mkdir -p "$cdir"
+  rm -f "$cdir/observations.jsonl"
+  export V5_OBSERVATIONS_FILE="$cdir/observations.jsonl"
+  bound_marker_dbs w201 w601r || return $?
+  export V5_INTTEST_W601R_DB="attv5_${SLOT}_w601r"
+  local PGPASSWORD; PGPASSWORD=$(cat "$RUN_DIR/resources/pg-attv5.password")
+  export V5_INTTEST_W601R_PG_HOST="${V5_PG_HOST:-127.0.0.1}" \
+    V5_INTTEST_W601R_PG_PORT="${V5_PG_PORT:-65072}" \
+    V5_INTTEST_W601R_PG_USER=imboy_user V5_INTTEST_W601R_PG_PASSWORD="$PGPASSWORD" \
+    V5_INTTEST_W601R_MAINT_DB=postgres
+  w601_w3_common_env "$cdir" w3race || return $?
+  for try in 1 2 3; do
+    rm -f "$cdir/observations.jsonl"; : > "$cdir/eunit-w3race.log"; rc=0
+    for drv in garage disk; do
+      EUNIT_USE_RELAY=0 V5_PROBE_DRIVER=$drv \
+        erl -noinput -boot no_dot_erlang +P 1048576 +Q 1024 \
+        -config "$cdir/w3race-direct.config" -pa "$V5_ALIAS_ROOT/imboy/ebin" -pa ebin -pa test $PZ \
+        -eval 'CoverSetup = fun() -> ok end, CoverExport = fun(_) -> ok end, CoverSetup(),
+          Mods = [attachment_lifecycle_v5_w601_w3_race_tests],
+          case eunit:test(Mods, [verbose]) of
+            ok -> io:format("W601_W3RACE_OK~n");
+            error -> halt(2)
+          end,
+          halt()' >> "$cdir/eunit-w3race.log" 2>&1
+      rc=$?
+      [ $rc -eq 0 ] || break
+    done
+    { [ $rc -eq 0 ] && grep -q "W601_W3RACE_OK" "$cdir/eunit-w3race.log"; } && break
+    [ $try -lt 3 ] && sleep 5
+  done
+  { [ $rc -eq 0 ] && grep -q "W601_W3RACE_OK" "$cdir/eunit-w3race.log"; } || return 30
+  export V5_RUN_DIR="$RUN_DIR"
+  return 0
+}
+
+w601_w3bind() { # $1 cdir — CS/enterprise bind battery on the w403 isolated-config DB
+  local cdir="$1" try rc drv
+  mkdir -p "$cdir"
+  rm -f "$cdir/observations.jsonl"
+  export V5_OBSERVATIONS_FILE="$cdir/observations.jsonl"
+  if [ "${W403S_PG_OK:-}" != 1 ]; then
+    echo "NO_GO: w3bind requires the w403 battery to have completed" >&2
+    return 30
+  fi
+  local W403_DB="attv5_${SLOT}_w601"
+  local W403_MANIFEST="$RUN_DIR/resources/w403-resource-manifest.json"
+  local W403_OWNED_CONFIG="${PG_CONFIG_DIR:-}/isolated.config"
+  if [ "${PG_CONFIG_READY:-0}" != 1 ] || [ "${EUNIT_CONFIG:-}" != "${PG_CONFIG_DIR:-}/isolated" ] \
+      || [ ! -f "$W403_OWNED_CONFIG" ]; then
+    echo "CONTRACT_CONFLICT: W6-01 W3 bind requires the run-owned isolated config" >&2
+    return 20
+  fi
+  if [ -n "${W403_RESOURCE_MANIFEST:-}" ] && [ "$W403_RESOURCE_MANIFEST" != "$W403_MANIFEST" ]; then
+    echo "CONTRACT_CONFLICT: W403 manifest must be the run-owned manifest" >&2
+    return 20
+  fi
+  python3 - "$W403_MANIFEST" "$W403_DB" <<'PYW403B' || return 20
+import json, sys
+try:
+    with open(sys.argv[1], encoding="utf-8") as fh:
+        data = json.load(fh)
+    if not isinstance(data, dict) or data.get("database") != sys.argv[2]:
+        raise ValueError("unexpected database")
+except (OSError, ValueError, TypeError):
+    print("CONTRACT_CONFLICT: W403 manifest database mismatch", file=sys.stderr)
+    sys.exit(20)
+PYW403B
+  authorize_fixture_database "$W403_DB" || return 20
+  export W403_RESOURCE_MANIFEST="$W403_MANIFEST"
+  export V5_INTTEST_W404_DB="$W403_DB"
+  export W403_CONFIG_PATH="$W403_OWNED_CONFIG"
+  w601_w3_common_env "$cdir" w3bind || return $?
+  for try in 1 2 3; do
+    rm -f "$cdir/observations.jsonl"; : > "$cdir/eunit-w3bind.log"; rc=0
+    for drv in garage disk; do
+      EUNIT_USE_RELAY=0 V5_PROBE_DRIVER=$drv \
+        erl -noinput -boot no_dot_erlang +P 1048576 +Q 1024 \
+        -config "$cdir/w3bind-direct.config" -pa "$V5_ALIAS_ROOT/imboy/ebin" -pa ebin -pa test $PZ \
+        -eval 'CoverSetup = fun() -> ok end, CoverExport = fun(_) -> ok end, CoverSetup(),
+          Mods = [attachment_lifecycle_v5_w601_w3_bind_tests],
+          case eunit:test(Mods, [verbose]) of
+            ok -> io:format("W601_W3BIND_OK~n");
+            error -> halt(2)
+          end,
+          halt()' >> "$cdir/eunit-w3bind.log" 2>&1
+      rc=$?
+      [ $rc -eq 0 ] || break
+    done
+    { [ $rc -eq 0 ] && grep -q "W601_W3BIND_OK" "$cdir/eunit-w3bind.log"; } && break
+    [ $try -lt 3 ] && sleep 5
+  done
+  { [ $rc -eq 0 ] && grep -q "W601_W3BIND_OK" "$cdir/eunit-w3bind.log"; } || return 30
+  export V5_RUN_DIR="$RUN_DIR"
+  return 0
+}
+
 w601_case() { # $1 cdir
   local cdir="$1" rc=0
   mkdir -p "$cdir"
@@ -657,6 +806,9 @@ w601_case() { # $1 cdir
   w601_step "$cdir" w404 w404_case "$cdir/w404" || rc=30
   w601_step "$cdir" w2upload w601_w2upload "$cdir/w2upload" || rc=30
   w601_step "$cdir" w4queue w601_w4queue "$cdir/w4queue" || rc=30
+  w601_step "$cdir" w3hold w601_w3hold "$cdir/w3hold" || rc=30
+  w601_step "$cdir" w3race w601_w3race "$cdir/w3race" || rc=30
+  w601_step "$cdir" w3bind w601_w3bind "$cdir/w3bind" || rc=30
   return $rc
 }
 
