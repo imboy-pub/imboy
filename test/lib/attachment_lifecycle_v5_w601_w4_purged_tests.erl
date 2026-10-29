@@ -107,11 +107,12 @@ register(Conn, Key, Uuid, Decl, Triple, Locator) ->
     ?X:e(
         Conn,
         "SELECT * FROM fn_v5_register_pending($1,'b','private',101,$2::uuid,"
-        "$3::jsonb,now(),now() - interval '2 hours',$4,$5,$6)",
+        "$3::jsonb,now(),now() - interval '2 hours',$4,$5,$6,$7)",
         [
             Key,
             Uuid,
             Decl,
+            maps:get(driver, Triple),
             maps:get(namespace, Triple),
             maps:get(container, Triple),
             Locator

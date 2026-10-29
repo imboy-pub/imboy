@@ -392,17 +392,20 @@ receipt_fixture(N) ->
 
 %% confirmed 元数据资产（W4-01 hold/delete/race 面）：注册（driver 三元组 +
 %% scope）+ pin + attachment 行（同三元组）+ confirm + 能力窗自然耗尽。
+%% fn_v5_register_pending 为 12 参（00000191 定稿）：location 四元组
+%% (driver, namespace, container, locator) 必须逐位对齐。
 seed_scoped_asset(State, Conn, Key, Id, Driver, Scope, ScopeRef) ->
     Triple = triple(State, Driver, Key),
     q(
         Conn,
         "SELECT * FROM fn_v5_register_pending($1,'b',$2,101,"
         "gen_random_uuid(),$3::jsonb,now() + interval '2 hours',"
-        "now() + interval '3 seconds',$4,$5,$6)",
+        "now() + interval '3 seconds',$4,$5,$6,$7)",
         [
             Key,
             Scope,
             registration_fixture(Scope, ScopeRef),
+            maps:get(driver, Triple),
             maps:get(namespace, Triple),
             maps:get(container, Triple),
             maps:get(locator, Triple)
@@ -460,13 +463,14 @@ seed_pending_session(State, Conn, Key, Driver) ->
     q(
         Conn,
         "SELECT * FROM fn_v5_register_pending($1,'b','private',101,"
-        "gen_random_uuid(),$2::jsonb,now(),now() - interval '2 hours',$3,$4,$5)",
+        "gen_random_uuid(),$2::jsonb,now(),now() - interval '2 hours',$3,$4,$5,$6)",
         [
             Key,
             jsone:encode(#{
                 <<"subject">> => #{<<"kind">> => <<"user">>, <<"principal">> => <<"101">>},
                 <<"declaration">> => #{<<"mime">> => <<"image/png">>}
             }),
+            maps:get(driver, Triple),
             maps:get(namespace, Triple),
             maps:get(container, Triple),
             maps:get(locator, Triple)

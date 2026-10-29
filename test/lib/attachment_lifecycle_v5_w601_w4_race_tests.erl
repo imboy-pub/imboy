@@ -19,6 +19,8 @@
 -define(X, attachment_lifecycle_v5_w601_w4_context).
 -define(ORD, <<"ordinary">>).
 -define(ENT, <<"enterprise">>).
+-define(ENT_ORG, 9101).
+-define(ENT_WS, 9102).
 -define(REF_SCENARIOS, [
     <<"bind_commits_first">>,
     <<"direct_dml_bind_commits_first">>,
@@ -470,14 +472,15 @@ hold_ent_step(Conn, <<"workspace_hold_exclusion_receipt">>, Key, Id, Ctx) ->
 
 %% ----------------------------------------------------- confirm-gc-race
 
-%% 域面：ordinary 真实执行；enterprise 共享同一受限 confirm fn 协议面
-%% （同 W4-01/W4-02 封印先例如实披露 shared_protocol_face）。
+%% 域面：ordinary 真实执行；enterprise 走企业原生 pending-cleanup CAS ×
+%% 真实企业确认（eb_pg_asset_meta），不得借用 ordinary fn_v5_confirm_pending
+%% 贴 shared_protocol_face 标签。
 confirm_race(St, Scn, ?ORD, Drv) ->
     Measured = confirm_face(St, Scn, Drv),
     Measured#{domain_face => ?ORD};
 confirm_race(St, Scn, ?ENT, Drv) ->
-    Measured = confirm_face(St, Scn, Drv),
-    Measured#{domain_face => ?ENT, shared_protocol_face => true}.
+    Measured = confirm_face_ent(St, Scn, Drv),
+    Measured#{domain_face => ?ENT}.
 
 confirm_face(St, <<"intent_commits_first">>, Drv) ->
     #{conn := Conn} = St,
@@ -542,6 +545,7 @@ seed_confirm_asset(St, Conn, Key, Id, Drv, Window) ->
 
 %% expired_window：注册即能力窗已耗尽；open_window：窗口未过（confirm 先提
 %% 交的唯一合法起点）。M3 守卫禁 UPDATE 扩窗，窗口只能注册时一次定死。
+%% fn_v5_register_pending 为 12 参（00000191 定稿），location 四元组逐位对齐。
 register_confirm_session(Conn, Key, Id, Triple, Window) ->
     {DeadlineSql, ExpirySql} =
         case Window of
@@ -553,13 +557,14 @@ register_confirm_session(Conn, Key, Id, Triple, Window) ->
     ?X:q(
         Conn,
         "SELECT * FROM fn_v5_register_pending($1,'b','private',101,"
-        "gen_random_uuid(),$2::jsonb," ++ DeadlineSql ++ "," ++ ExpirySql ++ ",$3,$4,$5)",
+        "gen_random_uuid(),$2::jsonb," ++ DeadlineSql ++ "," ++ ExpirySql ++ ",$3,$4,$5,$6)",
         [
             Key,
             jsone:encode(#{
                 <<"subject">> => #{<<"kind">> => <<"user">>, <<"principal">> => <<"101">>},
                 <<"declaration">> => #{<<"mime">> => <<"image/png">>}
             }),
+            maps:get(driver, Triple),
             maps:get(namespace, Triple),
             maps:get(container, Triple),
             maps:get(locator, Triple)
@@ -625,6 +630,255 @@ confirm_barrier(St, Conn, Key, Id) ->
     after 8000 -> erlang:error(w601_holder_join_timeout)
     end,
     ok.
+
+%% ------------------------------------------- confirm-gc-race（企业原生面）
+
+%% 企业叶：真实 pending-cleanup CAS 竞争——eb_pg_asset_meta:claim_pending_
+%% cleanup/5（src/features/enterprise_business/infrastructure/
+%% eb_pg_asset_meta.erl:645-682，原子 CAS：仅 pending_confirm、未绑消息、
+%% 年龄/保留/hold 条件，成功写 status='deleted'+pending_object_delete）×
+%% 真实企业确认 eb_pg_asset_meta:confirm_asset/3（pending_confirm→active）。
+%% confirm-first：企业确认（生产 CAS 语句逐字）先提交 active → cleanup CAS
+%% 不符资格 {error, not_eligible}、零队列行、pending_object_delete=false、
+%% 字节保留；cleanup-first：清理（生产 claim CAS 语句逐字）先提交 deleted →
+%% 确认 CAS 0 行失败 {error, conflict}。两序均为双连接真实屏障：先提交方
+%% 在 A 连接未提交事务中持 enterprise_asset 行锁，落败方真实生产函数经
+%% elib_pg 转发在 B 连接异步执行，空闲连接证明 pg_blocking_pids(B) 含 A 且
+%% pg_locks 存在未授予锁后 A COMMIT，B 的 CAS 复核落败。
+confirm_face_ent(St, <<"confirm_commits_first">>, Drv) ->
+    #{conn := Conn} = St,
+    N = leaf_base() + ?X:leaf_id(conf),
+    Key = <<"v5e2e/w601r/ent-cfm-", (integer_to_binary(N))/binary>>,
+    Id = 947100000 + N,
+    ok = seed_ent_confirm_asset(St, Conn, Key, Id, Drv),
+    Bytes = probe_bytes(Key),
+    ok = ?X:put_probe(St, Drv, Key, Bytes),
+    LockType =
+        ent_cas_race(
+            St,
+            Key,
+            ent_confirm_cas_sql(Id),
+            fun() ->
+                eb_pg_asset_meta:claim_pending_cleanup(
+                    ?ENT_ORG, ?ENT_WS, Id, now_unix(), 3600
+                )
+            end,
+            {error, not_eligible}
+        ),
+    {ok, _, [{<<"active">>, false}]} = ?X:e(
+        Conn,
+        "SELECT status, pending_object_delete FROM enterprise_asset WHERE id=$1",
+        [Id]
+    ),
+    {ok, _, [{0}]} = ?X:e(
+        Conn, "SELECT COUNT(*) FROM enterprise_asset_delete_queue WHERE asset_id=$1", [Id]
+    ),
+    ok = ?X:assert_probe_intact(St, Drv, Key, Bytes),
+    #{
+        order => confirm_first,
+        confirm_committed => true,
+        cleanup_cas_rejected => not_eligible,
+        intent_generated => false,
+        pending_object_delete => false,
+        lock_wait_proven => true,
+        lock_type => LockType,
+        object_key => Key
+    };
+confirm_face_ent(St, <<"intent_commits_first">>, Drv) ->
+    #{conn := Conn} = St,
+    N = leaf_base() + ?X:leaf_id(conf),
+    Key = <<"v5e2e/w601r/ent-cln-", (integer_to_binary(N))/binary>>,
+    Id = 947100000 + N,
+    ok = seed_ent_confirm_asset(St, Conn, Key, Id, Drv),
+    Bytes = probe_bytes(Key),
+    ok = ?X:put_probe(St, Drv, Key, Bytes),
+    LockType =
+        ent_cas_race(
+            St,
+            Key,
+            ent_cleanup_cas_sql(Id, 3600),
+            fun() -> eb_pg_asset_meta:confirm_asset(?ENT_ORG, ?ENT_WS, Id) end,
+            {error, conflict}
+        ),
+    {ok, _, [{<<"deleted">>, true}]} = ?X:e(
+        Conn,
+        "SELECT status, pending_object_delete FROM enterprise_asset WHERE id=$1",
+        [Id]
+    ),
+    {ok, _, [{0}]} = ?X:e(
+        Conn, "SELECT COUNT(*) FROM enterprise_asset_delete_queue WHERE asset_id=$1", [Id]
+    ),
+    ok = ?X:assert_probe_intact(St, Drv, Key, Bytes),
+    #{
+        order => cleanup_first,
+        cleanup_committed => true,
+        pending_object_delete => true,
+        confirm_cas_rejected => conflict,
+        lock_wait_proven => true,
+        lock_type => LockType,
+        object_key => Key
+    }.
+
+%% 企业原生 pending_confirm 种子（镜像 hold_tests eb-pending-cleanup 先例）：
+%% status='pending_confirm'、未绑消息、created_at 早于 TTL、retain_until
+%% NULL、live；身份三元组指向该叶 driver 的真实 registry 根。
+seed_ent_confirm_asset(St, Conn, Key, Id, Drv) ->
+    Triple = ?X:triple(St, Drv, Key),
+    ok = ?X:seed_eb_asset_row(Conn, Key, Id, Triple, <<"pending_confirm">>, false, <<"live">>),
+    ?X:q(
+        Conn,
+        "UPDATE enterprise_asset SET created_at = now() - interval '2 hours',"
+        " message_id = NULL, retain_until = NULL WHERE id=$1",
+        [Id]
+    ),
+    ok.
+
+%% 生产确认 CAS 语句（eb_pg_asset_meta ?SQL_CONFIRM_ASSET 逐字，租户键内联）。
+ent_confirm_cas_sql(Id) ->
+    io_lib:format(
+        "UPDATE enterprise_asset SET status = 'active', version = version + 1,"
+        " updated_at = now()"
+        " WHERE organization_id = 9101 AND workspace_id = 9102 AND id = ~B"
+        " AND status = 'pending_confirm' AND lifecycle_state = 'live' RETURNING id",
+        [Id]
+    ).
+
+%% 生产 pending-cleanup claim CAS 语句（claim_pending_in 逐字；本套件无
+%% conversation/message 作用域 hold，workspace 级 NOT EXISTS 为其生效投影）。
+ent_cleanup_cas_sql(Id, Ttl) ->
+    io_lib:format(
+        "UPDATE enterprise_asset SET status = 'deleted',"
+        " pending_object_delete = true, deleted_at = now(), updated_at = now(),"
+        " version = version + 1"
+        " WHERE organization_id = 9101 AND workspace_id = 9102 AND id = ~B"
+        " AND status = 'pending_confirm' AND message_id IS NULL"
+        " AND created_at <= to_timestamp(~B - ~B)"
+        " AND (retain_until IS NULL OR retain_until <= to_timestamp(~B))"
+        " AND NOT EXISTS (SELECT 1 FROM enterprise_retention_hold h"
+        " WHERE h.organization_id = 9101 AND h.workspace_id = 9102"
+        " AND h.released_at IS NULL)"
+        " RETURNING object_key",
+        [Id, now_unix(), Ttl, now_unix()]
+    ).
+
+%% 双连接真实屏障：A BEGIN + 先提交方生产 CAS 语句（持行锁未提交）；B 上
+%% 落败方真实生产函数异步执行并真实阻塞；空闲连接证明 pg_blocking_pids(B)
+%% 包含 A 且 pg_locks 中 B 有未授予锁（不许只看 wait_event_type）→
+%% A COMMIT → B 的 CAS 复核落败（期望损失形态由调用方断言）。异步结果以
+%% 唯一引用收集，超时即失败；清理路径 unload meck、关闭三连接。
+ent_cas_race(St, Key, WinnerSql, LoserFun, ExpectedLoss) ->
+    #{conn := Conn} = St,
+    A = ?X:barrier_connect(St),
+    B = ?X:barrier_connect(St),
+    Chk = ?X:barrier_connect(St),
+    try
+        ok = ent_pool_install(Conn),
+        {ok, _, [{APid}]} = ?X:e(A, "SELECT pg_backend_pid()", []),
+        {ok, _, [{BPid}]} = ?X:e(B, "SELECT pg_backend_pid()", []),
+        ok = ?X:q(A, "BEGIN"),
+        _WinnerRow =
+            case ?X:e(A, WinnerSql) of
+                {ok, _, [Row]} -> Row;
+                {ok, _, []} -> erlang:error({w601_ent_winner_no_row, Key});
+                {error, Reason} -> erlang:error({w601_ent_winner_failed, Key, Reason})
+            end,
+        Ref = make_ref(),
+        Parent = self(),
+        spawn(fun() ->
+            put(w601_ent_pool_conn, B),
+            Parent !
+                {Ref,
+                    try
+                        LoserFun()
+                    catch
+                        C:R -> {crash, C, R}
+                    end}
+        end),
+        LockType = ent_wait_blocked(Chk, APid, BPid, 200),
+        ok = ?X:q(A, "COMMIT"),
+        LossResult =
+            receive
+                {Ref, R} -> R
+            after 20000 -> erlang:error(w601_ent_cas_timeout)
+            end,
+        ExpectedLoss = LossResult,
+        LockType
+    after
+        ent_pool_unload(),
+        ok = epgsql:close(A),
+        ok = epgsql:close(B),
+        ok = epgsql:close(Chk)
+    end.
+
+ent_wait_blocked(_Chk, _APid, _BPid, 0) ->
+    erlang:error(w601_ent_cas_block_unproven);
+ent_wait_blocked(Chk, APid, BPid, Left) ->
+    {ok, _, [{Blocked, LockType}]} = ?X:e(
+        Chk,
+        "SELECT $1 = ANY(pg_blocking_pids($2)),"
+        " (SELECT locktype::text FROM pg_locks WHERE pid = $2 AND NOT granted LIMIT 1)",
+        [APid, BPid]
+    ),
+    case Blocked of
+        true ->
+            LockType;
+        false ->
+            timer:sleep(50),
+            ent_wait_blocked(Chk, APid, BPid, Left - 1)
+    end.
+
+%% elib_pg 池转发（按封印 W4-03 predecessor 先例，hold_tests 同型）：真实
+%% 生产函数的 with_tx/query/execute 落到本套件连接；调用进程可用 pdict 键
+%% w601_ent_pool_conn 覆盖（竞态落败方绑定独立屏障连接 B）。with_tx 以真实
+%% BEGIN/COMMIT/ROLLBACK 包装，{rollback,_}/{abort_tx,_} throw 语义与
+%% elib_pg:with_tx 一致。
+ent_pool_install(DefaultConn) ->
+    ok = meck:new(elib_pg, [non_strict, no_link, passthrough]),
+    ok = meck:expect(elib_pg, with_tx, fun(F) ->
+        C = ent_pool_conn(DefaultConn),
+        {ok, _, _} = epgsql:equery(C, "BEGIN", []),
+        try
+            R = F(C),
+            {ok, _, _} = epgsql:equery(C, "COMMIT", []),
+            R
+        catch
+            throw:{rollback, Reason} ->
+                _ = epgsql:equery(C, "ROLLBACK", []),
+                {rollback, Reason};
+            throw:{abort_tx, Reason} ->
+                _ = epgsql:equery(C, "ROLLBACK", []),
+                {error, Reason}
+        end
+    end),
+    ok = meck:expect(elib_pg, query, 2, fun(Sql, Params) ->
+        meck:passthrough([ent_pool_conn(DefaultConn), Sql, Params])
+    end),
+    ok = meck:expect(elib_pg, query, 3, fun(C, Sql, Params) ->
+        meck:passthrough([C, Sql, Params])
+    end),
+    ok = meck:expect(elib_pg, execute, 2, fun(Sql, Params) ->
+        meck:passthrough([ent_pool_conn(DefaultConn), Sql, Params])
+    end),
+    ok = meck:expect(elib_pg, execute, 3, fun(C, Sql, Params) ->
+        meck:passthrough([C, Sql, Params])
+    end),
+    ok.
+
+ent_pool_conn(Default) ->
+    case get(w601_ent_pool_conn) of
+        undefined -> Default;
+        C -> C
+    end.
+
+ent_pool_unload() ->
+    try
+        meck:unload(elib_pg),
+        ok
+    catch
+        _:_ -> ok
+    end.
+
+now_unix() -> os:system_time(second).
 
 %% ------------------------------------------------------------- helpers
 
