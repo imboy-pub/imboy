@@ -1000,6 +1000,10 @@ w401_case() { # $1 cdir — 同 W3 executor：观测流 + 日志静默 + bound m
 w402_case() { # $1 cdir — worker 协议 + purged-recovery + 队列 fn 重跑
   local cdir="$1" RC=0 try rc
   bound_marker_dbs w201 || return $?
+  if [ -f "$RUN_DIR/resources/garage-w202.env" ]; then
+    . "$RUN_DIR/resources/garage-w202.env"
+    export W202_GARAGE_ENDPOINT W202_GARAGE_BUCKET W202_GARAGE_ACCESS_KEY W202_GARAGE_SECRET_KEY
+  fi
   mkdir -p "$cdir"
   rm -f "$cdir/observations.jsonl"
   export V5_OBSERVATIONS_FILE="$cdir/observations.jsonl"

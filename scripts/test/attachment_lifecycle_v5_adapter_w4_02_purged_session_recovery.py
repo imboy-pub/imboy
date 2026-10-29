@@ -42,10 +42,17 @@ def main():
         obs = support.matching_observation(entries, leaf, CASE)
         oracle = {key: value.replace("attv5_<slot>_w201", pool)
                   for key, value in scenario.items()}
-        rows.append(support.leaf_observation_row(
+        row = support.leaf_observation_row(
             leaf, obs=obs, test=test, evidence=evidence, parsed=parsed,
             ctx=ctx, oracle=oracle, scenario_test=SCENARIO_TEST,
-            source_path=source_path, source=source, case_id=CASE))
+            source_path=source_path, source=source, case_id=CASE)
+        if leaf["driver"] == "garage":
+            bucket = support.C.garage_bucket(run_dir, ctx["allowlist"])
+            row["actor"] = {"kind": "real", "driver": "garage",
+                            "resource_kind": "garage_bucket",
+                            "resource_id": bucket}
+            row["resource_ids"] = [bucket]
+        rows.append(row)
     support.write_observations(case_dir, rows, leaves, CASE)
 
 

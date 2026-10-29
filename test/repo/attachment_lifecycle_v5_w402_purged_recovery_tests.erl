@@ -35,6 +35,9 @@ run() ->
         }
     ),
     Conn = maps:get(conn, State),
+    %% driver=garage 叶的真实 provenance：真实 W202 Garage 探针对象
+    %% （setup PUT / teardown HEAD-仍在 + DELETE），elib_oss 不打桩。
+    _GarageProbe = w402p_garage_probe_setup(),
     try
         seed_tenants(Conn),
         w402p_confirmed_purge_register_same_uuid(Conn),
@@ -48,8 +51,68 @@ run() ->
         w402p_deleted_parent_authorization_denied(Conn),
         w402p_purge_visitor_read_cascade_compatible(Conn)
     after
+        w402p_garage_probe_teardown(),
         inttest_marker_db:release(State),
         eunit_runner:eunit_cleanup(Boot)
+    end.
+
+%% driver=garage 叶的 provenance 探针：真实 W202 bucket 往返（无打桩）。
+w402p_garage_probe_setup() ->
+    case
+        {
+            os:getenv("W202_GARAGE_ENDPOINT"),
+            os:getenv("W202_GARAGE_BUCKET"),
+            os:getenv("W202_GARAGE_ACCESS_KEY"),
+            os:getenv("W202_GARAGE_SECRET_KEY")
+        }
+    of
+        {EP, Bucket, AK, SK} when
+            EP =/= false, Bucket =/= false, AK =/= false, SK =/= false
+        ->
+            ToBin = fun
+                (V) when is_binary(V) -> V;
+                (V) -> iolist_to_binary(io_lib:format("~s", [V]))
+            end,
+            ok = application:set_env(imboy, garage, #{
+                endpoint => ToBin(EP),
+                bucket => ToBin(Bucket),
+                access_key => ToBin(AK),
+                secret_key => ToBin(SK)
+            }),
+            {ok, _} = application:ensure_all_started(inets),
+            {ok, _} = application:ensure_all_started(ssl),
+            ProbeKey =
+                <<"v5e2e/w402p/probe-",
+                    (integer_to_binary(erlang:unique_integer([positive])))/binary>>,
+            ok = elib_oss:put_object(
+                ToBin(Bucket),
+                ProbeKey,
+                <<"w402p-probe">>,
+                <<"application/octet-stream">>
+            ),
+            {ok, _} = elib_oss:head_object(ProbeKey),
+            persistent_term:put(w402p_probe_bucket, ToBin(Bucket)),
+            persistent_term:put(w402p_probe_key, ProbeKey),
+            #{bucket => ToBin(Bucket), key => ProbeKey};
+        _ ->
+            erlang:error(
+                {w402p_garage_env_missing,
+                    "W202_GARAGE_* not exported; driver=garage leaves "
+                    "require the real bucket"}
+            )
+    end.
+
+w402p_garage_probe_teardown() ->
+    case persistent_term:get(w402p_probe_key, undefined) of
+        undefined ->
+            ok;
+        ProbeKey ->
+            Bucket = persistent_term:get(w402p_probe_bucket),
+            {ok, _} = elib_oss:head_object(ProbeKey),
+            ok = elib_oss:delete_object(Bucket, ProbeKey),
+            persistent_term:erase(w402p_probe_key),
+            persistent_term:erase(w402p_probe_bucket),
+            ok
     end.
 
 q(Conn, Sql) -> q(Conn, Sql, []).
