@@ -570,15 +570,74 @@ bypass_denied(#{driver := garage, location := I} = T) ->
     ?assert(lists:member(Code, [401, 403])),
     bypass_evidence(T, #{provider_http_status => Code});
 bypass_denied(#{driver := disk, location := I} = T) ->
-    %% Same-UID filesystem writers are explicitly outside the isolation boundary.
-    %% Prove rejection by a genuinely different OS principal instead: Linux has
-    %% runuser; macOS has no unprivileged su tool, so a disposable container
-    %% running as nobody(65534) mounts the same physical storage root and
-    %% attempts the identical write against the real object path.
-    case os:find_executable("runuser") of
-        false -> bypass_denied_container(T, I);
-        Exe -> bypass_denied_runuser(T, I, Exe)
+    %% Same-UID filesystem writers are explicitly outside the isolation boundary
+    %% (src/lib/attachment_storage/attachment_storage_disk.erl:179-180: the root
+    %% must belong to a dedicated service UID). Prove rejection by a genuinely
+    %% different OS principal instead:
+    %%   * Linux: runuser -u nobody;
+    %%   * host with passwordless sudo: sudo -n -u nobody (opt-in, probed);
+    %%   * otherwise a disposable container as nobody(65534) against the same
+    %%     physical root (on VirtioFS bind mounts the kernel ignores the host
+    %%     POSIX mode, so this path cannot prove denial and fails closed).
+    case unprivileged_writer_mode() of
+        runuser -> bypass_denied_runuser(T, I, os:find_executable("runuser"));
+        sudo -> bypass_denied_sudo(T, I);
+        container -> bypass_denied_container(T, I)
     end.
+
+unprivileged_writer_mode() ->
+    case os:find_executable("runuser") of
+        false ->
+            case os:find_executable("sudo") of
+                false ->
+                    container;
+                Sudo ->
+                    case command(Sudo, ["-n", "-u", "nobody", "--", "/usr/bin/id", "-u"]) of
+                        {0, _} -> sudo;
+                        _ -> container
+                    end
+            end;
+        _ ->
+            runuser
+    end.
+
+bypass_denied_sudo(T, I) ->
+    Sudo = os:find_executable("sudo"),
+    {0, WriterText} = command(Sudo, ["-n", "-u", "nobody", "--", "/usr/bin/id", "-u"]),
+    Writer = binary_to_integer(string:trim(WriterText)),
+    {0, OwnerText} = command(os:find_executable("id"), ["-u"]),
+    Owner = binary_to_integer(string:trim(OwnerText)),
+    ?assert(Writer > 0),
+    ?assertNotEqual(Owner, Writer),
+    <<"file://", Root/binary>> = maps:get(endpoint, I),
+    Path = filename:join([
+        binary_to_list(Root),
+        binary_to_list(maps:get(container, I)),
+        binary_to_list(maps:get(key, I))
+    ]),
+    {Code, Output} = command(Sudo, [
+        "-n",
+        "-u",
+        "nobody",
+        "--",
+        "/bin/sh",
+        "-c",
+        "printf '%s' \"$1\" > \"$2\"",
+        "w403",
+        "unprivileged bypass writer",
+        Path
+    ]),
+    ?assert(Code =/= 0),
+    ?assert(match_permission_denied(Output)),
+    bypass_evidence(T, #{
+        unprivileged_writer_exit => Code,
+        owner_uid => Owner,
+        writer_uid => Writer
+    }).
+
+match_permission_denied(Output) ->
+    binary:match(Output, <<"Permission denied">>) =/= nomatch orelse
+        binary:match(Output, <<"Operation not permitted">>) =/= nomatch.
 
 bypass_denied_runuser(T, I, Exe) ->
     Id =
