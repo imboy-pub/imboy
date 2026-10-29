@@ -99,28 +99,35 @@ old_worker(Domain, #{conn := Conn}) ->
 %% 守卫未挂：临时禁用 metadata delete guard → 检查报 triggers_already_attached=false。
 guard_missing(Domain, #{conn := Conn}) ->
     Trigger = <<"trg_v5_metadata_delete_guard">>,
-    ok = ?C:q(Conn, "ALTER TABLE attachment DISABLE TRIGGER " ++ binary_to_list(Trigger)),
-    try
-        Report =
-            case attachment_guards_activation_check:check(#{conn => Conn}) of
-                {ok, R} -> R;
-                {error, R} -> R
-            end,
-        ?assertEqual(false, maps:get(triggers_already_attached, Report)),
-        #{
-            check_result => <<"not_attached_reported">>,
-            triggers_already_attached => false,
-            missing_functions => length(maps:get(missing_functions, Report)),
-            domain => Domain
-        }
-    after
-        ok = ?C:q(Conn, "ALTER TABLE attachment ENABLE TRIGGER " ++ binary_to_list(Trigger)),
-        {ok, _, [{1}]} = ?C:e(
-            Conn,
-            "SELECT COUNT(*) FROM pg_trigger WHERE tgname=$1 AND tgenabled <> 'D'",
-            [Trigger]
-        )
-    end.
+    ok = ?C:q(Conn, "BEGIN"),
+    Result =
+        try
+            %% 真实 DROP（事务内），检查必须报告守卫未挂；ROLLBACK 复原。
+            ok = ?C:q(
+                Conn,
+                "DROP TRIGGER " ++ binary_to_list(Trigger) ++ " ON attachment"
+            ),
+            Report =
+                case attachment_guards_activation_check:check(#{conn => Conn}) of
+                    {ok, R} -> R;
+                    {error, R} -> R
+                end,
+            ?assertEqual(false, maps:get(triggers_already_attached, Report)),
+            #{
+                check_result => <<"not_attached_reported">>,
+                triggers_already_attached => false,
+                missing_functions => length(maps:get(missing_functions, Report)),
+                domain => Domain
+            }
+        after
+            ok = ?C:q(Conn, "ROLLBACK")
+        end,
+    {ok, _, [{1}]} = ?C:e(
+        Conn,
+        "SELECT COUNT(*) FROM pg_trigger WHERE tgname=$1 AND NOT tgisinternal",
+        [Trigger]
+    ),
+    Result.
 
 %% ------------------------------------------------------------ writer 4
 
