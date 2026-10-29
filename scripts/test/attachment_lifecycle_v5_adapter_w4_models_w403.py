@@ -515,7 +515,12 @@ def _provenance(f):
 
 
 def _producer_carries_provenance(root):
-    """True only if the frozen producer copies entrypoint_provenance into receipts."""
+    """True only if the frozen producer copies entrypoint_provenance into receipts.
+
+    The provenance copy is a loop *after* the `receipt = {...}` literal, so the
+    check looks at the whole receipt-construction region (literal + the
+    LEAF_FIELDS/provenance loops) up to the append that publishes the row.
+    """
     path = os.path.join(root, "scripts", "attachment_lifecycle_v5_producer.py")
     try:
         with open(path, "r", encoding="utf-8", errors="replace") as handle:
@@ -525,7 +530,7 @@ def _producer_carries_provenance(root):
     start = text.find("receipt = {")
     if start < 0:
         return "entrypoint_provenance" in text
-    end = text.find("}", start)
+    end = text.find("receipts.append(receipt)", start)
     block = text[start:end if end > start else len(text)]
     return "entrypoint_provenance" in block
 
