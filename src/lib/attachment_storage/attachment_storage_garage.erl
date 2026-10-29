@@ -405,7 +405,7 @@ stat_from_headers(Headers) ->
                     undefined;
                 Date ->
                     case httpd_util:convert_request_date(Date) of
-                        {{_, _, _} = Dt, _} ->
+                        {{_, _, _}, {_, _, _}} = Dt ->
                             calendar:datetime_to_gregorian_seconds(Dt) - 62167219200;
                         _ ->
                             undefined
