@@ -152,7 +152,7 @@
 -export([create_channel/5]).
 -export([update_channel_checked/3]).
 -export([list_workspace_channels/2]).
--export([list_workspace_channels/3, workspace_channel_page/4]).
+-export([list_workspace_channels/3, workspace_channel_page/4, workspace_channel_page/5]).
 
 %% W04.c（channel-group-ux v2.2 §6.4 C1）：带受理回执的频道创建/重放。
 -export([create_channel_with_receipt/7]).
