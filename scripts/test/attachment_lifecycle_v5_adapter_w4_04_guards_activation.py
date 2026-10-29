@@ -9,9 +9,9 @@ import os
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-import attachment_lifecycle_v5_adapter_w4_models as models  # noqa: E402
+import attachment_lifecycle_v5_adapter_w4_04_support as S  # noqa: E402
 
 CASE = "W4-04/guards-activation"
 
 if __name__ == "__main__":
-    models.run(CASE)
+    S.run(CASE)

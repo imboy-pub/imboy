@@ -22,6 +22,11 @@ SHORT = {
     "W4-03/late-put": "late-put",
     "W4-03/namespace-alias-integrity": "namespace-alias-integrity",
     "W4-03/disk-predecessor-protocols": "disk-predecessor-protocols",
+    "W4-04/reconcile": "reconcile",
+    "W4-04/no-infinite-loop": "no-infinite-loop",
+    "W4-04/guards-activation": "guards-activation",
+    "W4-04/all-writer-compat": "all-writer-compat",
+    "W4-04/activation-commit-unknown": "activation-commit-unknown",
 }
 
 STORAGE_SRC = "test/lib/attachment_lifecycle_v5_w403_storage_tests.erl"
@@ -211,6 +216,14 @@ def bind(case_id, *, run_dir, case_dir, root, log_names, marker, modules,
         if leaf["driver"] == "garage":
             actor = W4.garage_actor(bucket)
             resource_ids = [bucket, pool]
+        elif leaf["driver"] == "none":
+            actor = {
+                "kind": "real",
+                "driver": "none",
+                "resource_kind": "scratch_postgres",
+                "resource_id": pool,
+            }
+            resource_ids = [pool]
         else:
             actor = W4.disk_actor(disk_root)
             resource_ids = [disk_root, pool]

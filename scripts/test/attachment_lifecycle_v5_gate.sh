@@ -854,7 +854,7 @@ bound_marker_dbs() { # $@ suffixes; exports the matching _DB variables
   export V5_INTTEST_DB="attv5_${SLOT}_w201" V5_INTTEST_W203_DB="attv5_${SLOT}_raw" \
     V5_INTTEST_W301_DB="attv5_${SLOT}_raw2" V5_INTTEST_W302_DB="attv5_${SLOT}_strict" \
     V5_INTTEST_W401_DB="attv5_${SLOT}_w201" V5_INTTEST_W402_DB="attv5_${SLOT}_w201" \
-    V5_INTTEST_W402P_DB="attv5_${SLOT}_w201"
+    V5_INTTEST_W402P_DB="attv5_${SLOT}_w201" V5_INTTEST_W404_DB="attv5_${SLOT}_w601"
 }
 
 w301_case() { # $1 cdir — 与 w203_case 同一直连 erl 模式，套件含 W3-01 电池
@@ -1152,8 +1152,11 @@ PYM
 
 # ---------------- W4-04 executor ----------------
 w404_case() { # $1 cdir
+  bound_marker_dbs w201 || return $?
   local cdir="$1" RC=0 try rc
   mkdir -p "$cdir"
+  rm -f "$cdir/observations.jsonl"
+  export V5_OBSERVATIONS_FILE="$cdir/observations.jsonl"
   ensure_disk_root || return $?
   local PZ="" d
   for d in deps/*/ebin; do [ -d "$d" ] && PZ="$PZ -pz $PWD/$d"; done
