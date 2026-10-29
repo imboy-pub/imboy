@@ -186,6 +186,11 @@ archive() ->
         <<"created_at">> => <<"2026-10-16T00:00:00Z">>,
         <<"server_ts">> => <<"2026-10-16T00:00:00Z">>
     }),
+    %% 复刻 worker 归档契约：正式表写入同一事务内即把 staging 行标记终态
+    %% （msg_store_worker 归档后调 mark_processed/3 置 processed_at）。seed 若
+    %% 漏掉这步，D05 clamp_head 的安全推进边界会被本行非终态 staging 钳住
+    %% （staging_min=Seq → SafeHead=Seq-1），history 的 next_seq 恒为 0。
+    {ok, 1} = msg_store_repo:mark_processed(<<"c2c">>, ?MSG),
     Seq.
 
 assert_workspace(H, W, Headers) ->

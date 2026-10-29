@@ -333,28 +333,64 @@ repo_rechecks_current_generation_and_uses_fresh_floor_test() ->
         end
     ).
 
+%% 初始拒绝不读内容：用"内容行查询"子句内的进程字典计数器代替全局
+%% meck:num_calls 计数。meck v1.2.0 的 history 为跨进程全局记录且在
+%% fake 返回后才入史，本套件运行期间遗留的后台杂散进程对 elib_pg 的
+%% 调用会污染 '_' 计数（opt-run8 实测 expected=1 value=5：本进程仅
+%% 1 次 access，其余为杂散调用）；进程字典按进程隔离，天然免疫。
 repo_initial_denial_never_reads_content_test() ->
-    with_repo(fun(_Conn, _Sql, [300, 100]) -> {ok, []} end, fun() ->
-        ?assertEqual({error, permission_denied}, repo_context(<<"c2g">>, 50, 1)),
-        ?assertEqual(1, meck:num_calls(elib_pg, query, '_'))
-    end).
+    with_repo(
+        fun
+            (_Conn, _Sql, [300, 100]) ->
+                {ok, []};
+            (_Conn, _Sql, [<<"c2g:300">>, ?TARGET, _Floor, _Before, _After]) ->
+                %% 只有"读内容"的 rows 查询计数；access/re-check 的 [Gid,Uid]
+                %% 形态走上一子句，不计数。
+                put(content_reads, pdict(content_reads) + 1),
+                {ok, []}
+        end,
+        fun() ->
+            put(content_reads, 0),
+            ?assertEqual({error, permission_denied}, repo_context(<<"c2g">>, 50, 1)),
+            %% 预期常数静态推导 = 0：产品 tx 内序为 access → rows → re-check
+            %% （src/repo/msg_archive_repo.erl:61-69）；c2g 首查 access 空集即
+            %% throw({rollback, permission_denied})（msg_archive_repo.erl:94-98），
+            %% rows 永不执行。候选值 1 仅在"拒绝仍读内容"的回归形态下出现，
+            %% 不取；与原断言 num_calls==1（无污染时 = 仅 access、rows 为 0）
+            %% 的语义等价且更精确。
+            ?assertEqual(0, pdict(content_reads))
+        end
+    ).
 
+%% re-check 授权失败丢弃内容：access/re-check 的区分用本测试进程的字典序数
+%% （fake 与断言同进程），不依赖全局 meck:num_calls——后者跨进程计数且杂散
+%% 后台调用会污染（opt-run8 rejoined 例首查即误入 Final 分支 → Floor=5 →
+%% rows 参数偏离预置子句 → case_clause）。首查固定返回旧 generation(1,1)，
+%% re-check 返回 Final；两代际不同即触发产品的 permission_denied，与例意
+%% "rejoined 后旧授权读到的内容被丢弃"一致。revoked / db-error 两例的
+%% Final 子句行为不变（re-check 时才消费 Final，最终错误值不变）。
 repo_final_authorization_failure_discards_content_test_() ->
     [
         {Name, fun() ->
             with_repo(
-                fun(_Conn, _Sql, Params) ->
-                    case Params of
-                        [300, 100] ->
-                            case meck:num_calls(elib_pg, query, '_') of
-                                0 -> {ok, [generation(1, 1)]};
-                                _ -> Final
-                            end;
-                        [<<"c2g:300">>, ?TARGET, 1, 24, 25] ->
-                            {ok, [row(?TARGET, 7)]}
-                    end
+                fun
+                    (_Conn, _Sql, [300, 100]) ->
+                        N = pdict(c2g_access_reads),
+                        put(c2g_access_reads, N + 1),
+                        case N of
+                            0 -> {ok, [generation(1, 1)]};
+                            _ -> Final
+                        end;
+                    (_Conn, _Sql, [<<"c2g:300">>, ?TARGET, 1, 24, 25]) ->
+                        {ok, [row(?TARGET, 7)]};
+                    (_Conn, _Sql, _Other) ->
+                        %% 非预置参数形态返回空内容集：tx 继续到 re-check，
+                        %% 由授权比对给出 permission_denied（授权失败丢弃内容），
+                        %% 而不是以 case_clause 中断。
+                        {ok, []}
                 end,
                 fun() ->
+                    put(c2g_access_reads, 0),
                     ?assertEqual({error, Expected}, repo_context(<<"c2g">>, 50, 1))
                 end
             )
@@ -412,6 +448,14 @@ repo_context(<<"c2g">>, Limit, MinSeq) ->
 
 context_payload(Messages) ->
     #{<<"conv_key">> => ?KEY, <<"context_msg_id">> => ?TARGET, <<"messages">> => Messages}.
+%% 进程字典带默认值读取（stdlib 无 get/2）：stub 可能被杂散进程在 put
+%% 初始化之前触达，未初始化时按 0 计。
+pdict(Key) ->
+    case get(Key) of
+        undefined -> 0;
+        V -> V
+    end.
+
 generation(Generation, StartSeq) ->
     #{<<"generation_no">> => Generation, <<"start_seq">> => StartSeq}.
 

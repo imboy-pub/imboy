@@ -1745,7 +1745,25 @@ init_schedule_cancel_success_writes_audit_test_() ->
                 ]},
                 %% T7 归档写守卫收口适配：personal 直通 + with_tx 直跑
                 {workspace_resolver, [{'resolve_workspace', 1, fun(_) -> personal end}]},
-                {elib_pg, [{'with_tx', 1, fun(TxFun) -> TxFun(fake_conn) end}]},
+                {elib_pg, [
+                    {'with_tx', 1, fun(TxFun) -> TxFun(fake_conn) end},
+                    %% 事务内 lock_schedule_by_id_tx 的 FOR UPDATE 锁行
+                    %% （SELECT id, schedule_id, status WHERE id = $1）；
+                    %% 消费点 group_schedule_ds:update_status/2 只匹配
+                    %% <<"schedule_id">>，status=1 表示未取消可 cancel
+                    {'query', 3, fun(_Conn, _Sql, _Params) ->
+                        {ok, [
+                            #{
+                                <<"id">> => 77,
+                                <<"schedule_id">> => <<"sched_abc">>,
+                                <<"status">> => 1
+                            }
+                        ]}
+                    end},
+                    %% 事务内 cancel_pending_reminds_tx 作废待发提醒（UPDATE 计数，
+                    %% cancel_schedule_tx 对其值取 `_ =` 忽略，{ok, 0} 即可走通）
+                    {'execute_count', 3, fun(_Conn, _Sql, _Params) -> {ok, 0} end}
+                ]},
                 {elib_response, [
                     {'success', 3, fun(Req, Payload, Msg) ->
                         Req#{response_status => 200, payload => Payload, msg => Msg}
