@@ -66,12 +66,16 @@
     " WHERE a.organization_id = $1 AND a.workspace_id = $2 AND a.id = $3"
 >>).
 
-%% CAS：只有 pending_confirm 能确认（重放不算成功：状态机跃迁必须可审计）。
+%% CAS：只有 pending_confirm 且 lifecycle_state='live' 能确认（重放不算成功：
+%% 状态机跃迁必须可审计）。lifecycle_state 原子条件堵 intent-first 竞态：
+%% 企业删除意图已把资产置为 delete_intent 后，并发 confirm 不得再把 status
+%% 推进为 active（与 renew_v5 的同条件先例对齐）；0 行沿 transition 的
+%% fetch→{error, conflict} 形态返回，调用方零改动。
 -define(SQL_CONFIRM_ASSET, <<
     "UPDATE enterprise_asset a"
     "   SET status = 'active', version = a.version + 1, updated_at = now()"
     " WHERE a.organization_id = $1 AND a.workspace_id = $2 AND a.id = $3"
-    "   AND a.status = 'pending_confirm'"
+    "   AND a.status = 'pending_confirm' AND a.lifecycle_state = 'live'"
     " RETURNING a.id"
 >>).
 
