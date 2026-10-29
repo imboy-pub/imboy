@@ -81,7 +81,7 @@ def oracle(leaf, obs, ctx, pool, bucket, disk_root, endpoint):
     """Measured oracle row for one W4-04 driver=none leaf."""
     measured = obs.get("measured") or {}
     scenario = leaf["ordering_or_fault"].rsplit("/", 1)[-1]
-    case = leaf["case_id"]
+    case = leaf["_case"]
     detail = S.measured_detail(obs)
 
     if case.startswith("W4-04/reconcile"):
