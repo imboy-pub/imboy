@@ -21,13 +21,18 @@
     system_identifier/1,
     clone_live/4,
     drop_owned/3,
-    comment_database/3
+    comment_database/3,
+    ensure_marker/1,
+    is_owned_name/1
 ]).
 
 -define(MARKER_SCHEMA, "imboy_quality_meta").
 -define(MARKER_TABLE, "imboy_quality_ownership").
 -define(MARKER_FQN, ?MARKER_SCHEMA ++ "." ++ ?MARKER_TABLE).
 -define(OWNED_PREFIX, "imboy_quality_").
+%% attv5/W403 套件要求清单库名以 attv5_chain_ 开头（test/lib/attachment_lifecycle_v5_*）；
+%% 我方克隆以 attv5_chain_imboy_quality_ 命名，归属纪律（前缀 + marker）不变。
+-define(OWNED_PREFIXES, [?OWNED_PREFIX, "attv5_chain_" ++ ?OWNED_PREFIX]).
 
 %% ---- 实时库克隆（组间 DB 隔离：每 worker 私有克隆库；P1-07 池式使用的正式接线） ----
 %% 两个 worker 共用 imboy_test_v1 会产生交叉干扰（opt-run5：throttle limiter 迁移态、
@@ -35,6 +40,9 @@
 %% 写归属 marker 表，供 drop_owned/3 回收（仅 OWNED_PREFIX 前缀）。
 clone_live(Conn, Args, Source, Target) ->
     true = is_owned_name(Target),
+    %% PG NAMEDATALEN-1 = 63：更长的库名会被 CREATE DATABASE 静默截断，而配置/清单仍写
+    %% 全名 → 套件连到截断名库、current_database() 对不上（2026-10-29 W403 实证）。
+    length(Target) =< 63 orelse error({database_name_too_long, Target, length(Target)}),
     q(Conn, ["CREATE DATABASE \"", Target, "\" TEMPLATE \"", Source, "\""]),
     connect_db(Args, Target, fun(C) -> ensure_marker(C) end),
     ok.
@@ -253,7 +261,7 @@ active_connections(Conn, Db) ->
 
 is_owned_name(N) when is_list(N); is_binary(N) ->
     S = unicode:characters_to_list(N),
-    lists:prefix("imboy_quality_", S);
+    lists:any(fun(P) -> lists:prefix(P, S) end, ?OWNED_PREFIXES);
 is_owned_name(_) ->
     false.
 

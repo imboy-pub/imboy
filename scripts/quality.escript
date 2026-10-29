@@ -200,41 +200,25 @@ dispatch(eunit_full, _Ctx, Ctrl) ->
     %% P1-10/P1-12 真实接线：分片执行完整 U（普通根 + 独占车道）。G-HEAVY 已由
     %% enforce 校验。环境：IMBOY_QUALITY_WORKERS（默认 2）、EUNIT_CONFIG
     %% （默认 config/sys.local）。每 worker 独立 http 端口副本（19980+K / 19970+K）。
-    %% 资源准备（TALK_OWNED 维护库等）在整条命令计时之内（EUNIT_120S §2）。
+    %% 资源准备（模板/克隆/独占资源/Garage 等）在整条命令计时之内（EUNIT_120S §2）。
     {ok, Repo} = file:get_cwd(),
     require_test_build(Repo),
     RunId = run_id(),
     Workers = env_int("IMBOY_QUALITY_WORKERS", 2),
     #{ordinary := Ordinary, excluded := Excl} = imboy_quality_full:inventory(Repo),
     Est = load_estimates(Ctrl),
-    Prepared = prepare_resources(Repo, Ctrl, Workers),
-    Opts = #{
-        repo => Repo,
-        ctrl => Ctrl,
-        worker_count => Workers,
-        schedulers => 2,
-        deadline_ms => 3000000,
-        process_limit => 32768,
-        estimates => Est,
-        env => full_env(Repo) ++ maps:get(env, Prepared),
-        spec_wrapper => spec_wrapper(Repo),
-        exclusive_roots => Excl,
-        exclusive_env_fn => fun(M) -> maps:get(M, maps:get(exclusive_env, Prepared), []) end,
-        worker_config_fn => fun(K) -> config_for_worker(Repo, K, Prepared) end
-    },
-    try
+    Prepared = imboy_quality_env:prepare(Repo, Ctrl, Workers),
+    Opts = run_opts(Repo, Ctrl, Workers, Prepared, Excl, #{estimates => Est}),
+    with_resources(Repo, Prepared, fun() ->
         {Result0, OutDir} = imboy_quality_full:run(Ordinary, Opts, RunId),
-        Cleanup = release_resources(Prepared),
+        Cleanup = imboy_quality_env:release(Prepared),
         Result = Result0#{
             <<"resources">> => maps:get(report, Prepared),
             <<"cleanup">> => Cleanup
         },
         {ok, _} = imboy_report_write(filename:join(OutDir, "result.json"), Result),
         {Result, OutDir}
-    after
-        cleanup_worker_configs(Repo),
-        release_resources_once(Prepared)
-    end;
+    end);
 dispatch({eunit_group, ModsStr}, _Ctx, Ctrl) ->
     %% P1-10 诊断入口（FRAMEWORK_DESIGN §2：--group 仅诊断，报告标 PARTIAL，
     %% 不产生 full PASS）。普通根在单 worker 单 VM 顺序执行；独占根走独占车道
@@ -248,26 +232,15 @@ dispatch({eunit_group, ModsStr}, _Ctx, Ctrl) ->
         [] -> ok;
         _ -> erlang:error({roots_not_in_u, Unknown})
     end,
-    Prepared = prepare_resources(Repo, Ctrl, 1),
-    Opts = #{
-        repo => Repo,
-        ctrl => Ctrl,
-        worker_count => 1,
-        schedulers => 2,
-        deadline_ms => 3000000,
-        process_limit => 32768,
-        estimates => #{},
-        out_prefix => "group-",
-        env => full_env(Repo) ++ maps:get(env, Prepared),
-        spec_wrapper => spec_wrapper(Repo),
-        exclusive_roots => [M || M <- Mods, lists:member(M, Excl)],
-        exclusive_env_fn => fun(M) -> maps:get(M, maps:get(exclusive_env, Prepared), []) end,
-        worker_config_fn => fun(K) -> config_for_worker(Repo, K, Prepared) end
-    },
+    Workers = env_int("IMBOY_QUALITY_WORKERS", 1),
+    Prepared = imboy_quality_env:prepare(Repo, Ctrl, Workers),
+    Opts = run_opts(Repo, Ctrl, Workers, Prepared, [M || M <- Mods, lists:member(M, Excl)], #{
+        estimates => load_estimates(Ctrl), out_prefix => "group-"
+    }),
     OrdPart = [M || M <- Mods, lists:member(M, Ordinary)],
-    try
+    with_resources(Repo, Prepared, fun() ->
         {Result0, OutDir} = imboy_quality_full:run(OrdPart, Opts, run_id()),
-        Cleanup = release_resources(Prepared),
+        Cleanup = imboy_quality_env:release(Prepared),
         Result = Result0#{
             <<"scope">> => <<"PARTIAL">>,
             <<"op">> => <<"eunit_group">>,
@@ -276,195 +249,52 @@ dispatch({eunit_group, ModsStr}, _Ctx, Ctrl) ->
         },
         {ok, _} = imboy_report_write(filename:join(OutDir, "result.json"), Result),
         {Result, OutDir}
-    after
-        cleanup_worker_configs(Repo),
-        release_resources_once(Prepared)
-    end;
+    end);
 dispatch(eunit_group, _Ctx, _Ctrl) ->
     erlang:error(eunit_group_requires_modlist).
 
-%% ---- 资源准备（纯 OTP + epgsql，直连项目配置的真实 PG） ----
-
-%% TALK_OWNED 合同（test/common/talk_record_owned_eunit_fixture.erl）：维护库的
-%% database COMMENT 为 marker、PG system_identifier 与 env 一致、RUN_ROOT 位于
-%% SCRATCH_ROOT 之下且全链无 symlink。legacy 入口从不提供这些变量（26 个 budgets
-%% 根在 legacy 中只能 owned_talk_missing_env 失败）；本入口在计时内自动准备，
-%% 使这些义务真实执行。失败 fail-closed（不以空环境假绿）。
-prepare_resources(Repo, Ctrl, Workers) ->
-    true = code:add_patha(filename:join(Repo, "deps/epgsql/ebin")),
-    {ok, _} = application:ensure_all_started(epgsql),
-    Base =
-        case os:getenv("EUNIT_CONFIG") of
-            false -> "config/sys.local";
-            B -> B
-        end,
-    Args = imboy_quality_fixture:pg_args_from_config(filename:join(Repo, Base ++ ".config")),
-    Maint = "imboy_quality_talk_owned_maint",
-    Marker = "IMBOY_ERLANG_QUALITY:talk_owned:maint",
-    {ok, C} = imboy_quality_fixture:connect(Args#{database => "postgres"}),
+%% 资源生命周期包裹：正常/异常路径的 after 回收 + SIGTERM 信号路径回收（被 TERM 的控制器
+%% 不会执行 after，2026-10-29 实证遗留 16 库/10 配置/1 Garage 守护进程）。
+with_resources(Repo, Prepared, Fun) ->
+    ok = imboy_quality_signal:install(fun() ->
+        imboy_quality_env:cleanup_configs(Repo),
+        imboy_quality_env:release_once(Prepared)
+    end),
     try
-        ok = imboy_quality_fixture:ensure_marked_database(C, Maint, Marker),
-        SysId = imboy_quality_fixture:system_identifier(C),
-        Scratch = filename:join(Ctrl, "runtime/talk_owned"),
-        Run = filename:join(Scratch, "run"),
-        ok = filelib:ensure_dir(filename:join(Run, "x")),
-        %% 每 worker 私有克隆库（组间 DB 隔离；opt-run5 共用库交叉干扰的修复）：
-        %% 从已迁移到 head 的配置库 TEMPLATE 克隆，结束后 release_resources 回收。
-        SrcDb = maps:get(database, Args),
-        Clones = maps:from_list([
-            begin
-                Name = lists:flatten(io_lib:format("imboy_quality_w~p_~s", [K, os:getpid()])),
-                ok = imboy_quality_fixture:clone_live(C, Args, SrcDb, Name),
-                {K, Name}
-            end
-         || K <- lists:seq(0, Workers - 1)
-        ]),
-        %% 独占车道按根资源（仅注入对应根的 fresh VM，见 imboy_quality_full:run_exclusive）：
-        %%  - group_schedule_remind_pg_tests：独占库（从已迁移源库克隆）+ 合同 COMMENT
-        %%    'imboy-delivery-v3.2 merge schedule%exclusive%' + PG*/IMBOY_TEST_* 变量；
-        %%  - AG31（agent_grant_pg / agent_run_pg / agent_recovery_pg_tests /
-        %%    agent_tool_authorizer_pg_tests）：各一个一次性隔离库（迁移头 >= 00000132）
-        %%    + AG31_PG_* 变量。attv5/W403 清单与 T20 冻结注册表属专用控制器，不在此伪造。
-        Pid = os:getpid(),
-        GsDb = "imboy_quality_gsremind_" ++ Pid,
-        ok = imboy_quality_fixture:clone_live(C, Args, SrcDb, GsDb),
-        ok = imboy_quality_fixture:comment_database(
-            C, GsDb, "imboy-delivery-v3.2 merge schedule IMBOY_ERLANG_QUALITY exclusive " ++ Pid
-        ),
-        Ag31 = [
-            {R, "imboy_quality_ag31_" ++ Tag ++ "_" ++ Pid}
-         || {R, Tag} <- [
-                {agent_grant_pg, "grant"},
-                {agent_run_pg, "run"},
-                {agent_recovery_pg_tests, "recovery"},
-                {agent_tool_authorizer_pg_tests, "toolauth"}
-            ]
-        ],
-        [ok = imboy_quality_fixture:clone_live(C, Args, SrcDb, N) || {_, N} <- Ag31],
-        Host = maps:get(host, Args),
-        PortS = integer_to_list(maps:get(port, Args)),
-        User = maps:get(username, Args),
-        Pass = maps:get(password, Args),
-        ExclusiveEnv = maps:from_list(
-            [
-                {group_schedule_remind_pg_tests, [
-                    {"PGHOST", Host},
-                    {"PGPORT", PortS},
-                    {"PGUSER", User},
-                    {"PGPASSWORD", Pass},
-                    {"PGDATABASE", GsDb},
-                    {"IMBOY_TEST_EXCLUSIVE_DATABASE", GsDb},
-                    {"IMBOY_TEST_PG_SYSTEM_ID", SysId}
-                ]}
-            ] ++
-                [
-                    {R, [
-                        {"AG31_PG_HOST", Host},
-                        {"AG31_PG_PORT", PortS},
-                        {"AG31_PG_USER", User},
-                        {"AG31_PG_PASSWORD", Pass},
-                        {"AG31_PG_DB", N}
-                    ]}
-                 || {R, N} <- Ag31
-                ]
-        ),
-        DropDbs = [GsDb | [N || {_, N} <- Ag31]],
-        Env = [
-            {"TALK_OWNED_PG_HOST", maps:get(host, Args)},
-            {"TALK_OWNED_PG_PORT", integer_to_list(maps:get(port, Args))},
-            {"TALK_OWNED_PG_USER", maps:get(username, Args)},
-            {"TALK_OWNED_PG_PASSWORD", maps:get(password, Args)},
-            {"TALK_OWNED_MAINT_DB", Maint},
-            {"TALK_OWNED_PG_MARKER", Marker},
-            {"TALK_OWNED_PG_SYSTEM_ID", SysId},
-            {"TALK_OWNED_RUN_ROOT", Run},
-            {"TALK_OWNED_SCRATCH_ROOT", Scratch}
-        ],
-        Report = #{
-            <<"talk_owned">> => #{
-                <<"maint_db">> => list_to_binary(Maint),
-                <<"marker">> => list_to_binary(Marker),
-                <<"pg">> => list_to_binary(
-                    maps:get(host, Args) ++ ":" ++ integer_to_list(maps:get(port, Args))
-                ),
-                <<"system_id">> => list_to_binary(SysId),
-                <<"run_root">> => list_to_binary(Run)
-            },
-            <<"worker_db_clones">> => #{
-                <<"source">> => list_to_binary(SrcDb),
-                <<"clones">> => [list_to_binary(N) || {_, N} <- lists:sort(maps:to_list(Clones))]
-            },
-            <<"exclusive_resources">> => #{
-                <<"group_schedule_remind_pg_tests">> => list_to_binary(GsDb),
-                <<"ag31">> => [list_to_binary(N) || {_, N} <- Ag31]
-            }
+        Fun()
+    after
+        imboy_quality_env:cleanup_configs(Repo),
+        imboy_quality_env:release_once(Prepared),
+        imboy_quality_signal:uninstall()
+    end.
+
+%% full/group 共用执行选项：独占根按根 env 与按根 -config（无专属配置则沿用 worker 0）。
+%% deadline：普通组默认 90 分钟——talk_record 网关根真实等待 ~1h 的上传能力过期
+%% （imboy_quality_full ?LONG_ROOT_HINTS）；独占根默认 30 分钟。均可由环境变量覆盖。
+run_opts(Repo, Ctrl, Workers, Prepared, Excl, Extra) ->
+    maps:merge(
+        #{
+            repo => Repo,
+            ctrl => Ctrl,
+            worker_count => Workers,
+            schedulers => 2,
+            deadline_ms => env_int("IMBOY_QUALITY_DEADLINE_MS", 5400000),
+            exclusive_deadline_ms => env_int("IMBOY_QUALITY_EXCLUSIVE_DEADLINE_MS", 1800000),
+            process_limit => 32768,
+            env => full_env(Repo) ++ maps:get(env, Prepared),
+            spec_wrapper => spec_wrapper(Repo),
+            exclusive_roots => Excl,
+            exclusive_env_fn => fun(M) -> maps:get(M, maps:get(exclusive_env, Prepared), []) end,
+            exclusive_config_fn => fun(M) ->
+                case maps:find(M, maps:get(exclusive_config, Prepared, #{})) of
+                    {ok, Path} -> Path;
+                    error -> imboy_quality_env:worker_config(Repo, 0, Prepared)
+                end
+            end,
+            worker_config_fn => fun(K) -> imboy_quality_env:worker_config(Repo, K, Prepared) end
         },
-        #{
-            env => Env,
-            report => Report,
-            pg_args => Args,
-            source_db => SrcDb,
-            clones => Clones,
-            exclusive_env => ExclusiveEnv,
-            drop_dbs => DropDbs
-        }
-    after
-        try
-            epgsql:close(C)
-        catch
-            _:_ -> ok
-        end
-    end.
-
-%% 回收每 worker 克隆库（worker VM 已退出，后端断开有界等待）。回收失败不掩盖：
-%% 记入结果并由退出码体现（FRAMEWORK_DESIGN §5：无法证明回收成功则本轮非通过）。
-release_resources(#{pg_args := Args, clones := Clones} = Prepared) ->
-    put(resources_released, true),
-    {ok, C} = imboy_quality_fixture:connect(Args#{database => "postgres"}),
-    try
-        Names =
-            [N || {_, N} <- lists:sort(maps:to_list(Clones))] ++ maps:get(drop_dbs, Prepared, []),
-        Results = [
-            {Name,
-                try imboy_quality_fixture:drop_owned(C, Args, Name) of
-                    ok -> ok
-                catch
-                    Class:Reason -> {Class, Reason}
-                end}
-         || Name <- Names
-        ],
-        Failed = [
-            iolist_to_binary(io_lib:format("~s: ~0p", [N, R]))
-         || {N, R} <- Results, R =/= ok
-        ],
-        #{
-            <<"clones_dropped">> => [list_to_binary(N) || {N, ok} <- Results],
-            <<"clone_drop_failed">> => Failed,
-            <<"ok">> => Failed =:= []
-        }
-    after
-        try
-            epgsql:close(C)
-        catch
-            _:_ -> ok
-        end
-    end;
-release_resources(_) ->
-    #{<<"clones_dropped">> => [], <<"clone_drop_failed">> => [], <<"ok">> => true}.
-
-%% after 子句的兜底回收：正常路径已回收则跳过；异常路径尽力回收不再抛错。
-release_resources_once(Prepared) ->
-    case get(resources_released) of
-        true ->
-            ok;
-        _ ->
-            try
-                _ = release_resources(Prepared),
-                ok
-            catch
-                _:_ -> ok
-            end
-    end.
+        Extra
+    ).
 
 %% ---- full/group 辅助 ----
 
@@ -599,56 +429,6 @@ env_int(Name, Default) ->
         false -> Default;
         V -> list_to_integer(V)
     end.
-
-%% 与 Makefile eunit-local 相同口径：私有 http 端口替换副本，按调用唯一命名，
-%% PG 直连（EUNIT_USE_RELAY=0 语义），不写 git。
-%% 每 worker K（0 起）一份独立配置副本：http 19980+K / adm 19970+K，
-%% 文件名含 worker 索引与 pid，防并发覆写（与 eunit-local relay 同口径，直连 PG）。
-config_for_worker(Repo, K, Prepared) ->
-    Base =
-        case os:getenv("EUNIT_CONFIG") of
-            false -> "config/sys.local";
-            B -> B
-        end,
-    {ok, Bin} = file:read_file(filename:join(Repo, Base ++ ".config")),
-    Sub = fun(Bin0, From, To) -> binary:replace(Bin0, From, To, [global]) end,
-    Out0 = Sub(
-        Bin,
-        <<"{http_port, 9800}">>,
-        list_to_binary(io_lib:format("{http_port, ~p}", [19980 + K]))
-    ),
-    Out1 = Sub(
-        Out0,
-        <<"{http_port_adm, 9706}">>,
-        list_to_binary(io_lib:format("{http_port_adm, ~p}", [19970 + K]))
-    ),
-    %% 每 worker 私有克隆库：配置里所有 database => "<源库>" 指向本 worker 克隆
-    Out =
-        case Prepared of
-            #{source_db := Src, clones := Clones} when is_map_key(K, Clones) ->
-                Sub(
-                    Out1,
-                    list_to_binary("database => \"" ++ Src ++ "\""),
-                    list_to_binary("database => \"" ++ maps:get(K, Clones) ++ "\"")
-                );
-            _ ->
-                Out1
-        end,
-    Path = filename:join(
-        Repo,
-        "config/sys.quality." ++ os:getpid() ++ "." ++
-            integer_to_list(K)
-    ),
-    ok = file:write_file(Path ++ ".config", Out),
-    Path.
-
-cleanup_worker_configs(Repo) ->
-    %% glob 绝对化（cwd 无关）；异常路径（含被杀进程遗留）一并回收
-    [
-        file:delete(filename:join([Repo, "config", F]))
-     || F <- filelib:wildcard(filename:join(Repo, "config/sys.quality.*"))
-    ],
-    ok.
 
 load_estimates(Ctrl) ->
     %% 优先读取上一次分片 per_root.term 的实测 wall_ms 作为 LPT 估计（无则保守 3000ms）
