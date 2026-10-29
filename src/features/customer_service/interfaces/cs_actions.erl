@@ -866,7 +866,12 @@ table(widget) ->
                             %% asset_id 为 status/renew 会话定位。
                             {operation, binary, optional},
                             {client_upload_id, binary, optional},
-                            {asset_id, tsid, optional}
+                            {asset_id, tsid, optional},
+                            %% upload_ttl_seconds（int，可选）：桥接
+                            %% eb_request_presign 的登记 TTL（0/负值 = 立即
+                            %% 过期，eb_asset_app.erl:624-630 冻结语义）——
+                            %% 缺收会被投影静默丢弃，"签发即过期"不可达。
+                            {upload_ttl_seconds, int, optional}
                         ],
                         [{id, session_id}]}
                 ]

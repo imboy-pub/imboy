@@ -354,7 +354,10 @@ asset_presign(OrgId, Params) when is_map(Params) ->
         {error, _} = Err ->
             Err;
         {ok, #{workspace_id := WorkspaceId, contact_id := ContactId, session := Session}} ->
-            EbParams = cs_widget_support:eb_params(
+            %% upload_ttl_seconds（登记 TTL，0/负值 = 立即过期）仅在参数在位时
+            %% 透传：显式塞 undefined 会让 eb_asset_app:upload_ttl/1 的
+            %% is_integer 分支失败（invalid_upload_ttl），破坏缺省路径。
+            EbParams0 = cs_widget_support:eb_params(
                 Params,
                 #{
                     workspace_id => WorkspaceId,
@@ -375,6 +378,11 @@ asset_presign(OrgId, Params) when is_map(Params) ->
                     visitor_session_id => maps:get(id, Session)
                 }
             ),
+            EbParams =
+                case maps:get(upload_ttl_seconds, Params, undefined) of
+                    undefined -> EbParams0;
+                    Ttl -> EbParams0#{upload_ttl_seconds => Ttl}
+                end,
             case cs_widget_support:eb_request_presign(OrgId, EbParams) of
                 {ok, View} ->
                     {ok, with_upload_url(OrgId, Params, Session, View)};

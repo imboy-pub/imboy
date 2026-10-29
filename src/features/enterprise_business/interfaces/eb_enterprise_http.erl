@@ -805,6 +805,12 @@ classify({multiple_active_user_function, _}) ->
 %% F-LAY-02：上传引用过期是客户端可重试的冲突语义（此前 500）。
 classify(expired_upload_ref) ->
     ?ERR_CONFLICT;
+%% F-LAY-02 同族（F11）：换体 PUT 在 pin/hash 裁决处被拒（eb_asset_app
+%% put_verify:741 {hash_mismatch, Expected, Actual}）是客户端可重试的冲突
+%% 语义——ordinary 面（gateway pin 裁决）同业务动作即为 409，此前未登记
+%% 落 500 兜底，跨面语义不一致。
+classify({hash_mismatch, _, _}) ->
+    ?ERR_CONFLICT;
 %% F-SEC-01：发送者归属权威校验失败——认证事实与请求声明不一致。
 classify({sender_identity_unauthorized, _, _}) ->
     ?ERR_FORBIDDEN;

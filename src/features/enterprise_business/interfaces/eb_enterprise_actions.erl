@@ -339,7 +339,14 @@ table(tenant) ->
                             %% 进投影表，不得被动作表丢弃）。
                             {operation, binary, optional},
                             {client_upload_id, binary, optional},
-                            {asset_id, tsid, optional}
+                            {asset_id, tsid, optional},
+                            %% upload_ttl_seconds（int，可选）是 eb_asset_app
+                            %% presign_mint/upload_ttl 的公开登记参数（0/负值 =
+                            %% 立即过期，fail-closed；eb_asset_app.erl:624-630
+                            %% 冻结语义，eb_asset_tests:unit_upload_ref_expiry_is_
+                            %% enforced 先例）——动作表此前漏收导致该参数被投影
+                            %% 静默丢弃，"签发即过期"在租户面不可达。
+                            {upload_ttl_seconds, int, optional}
                         ],
                         []},
                     {<<"PUT">>, put_object, [{upload_ref, binary, required}], []}
