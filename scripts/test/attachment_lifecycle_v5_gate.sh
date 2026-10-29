@@ -515,6 +515,128 @@ w601_step() { # $1 cdir $2 label $3 fn $4 subdir
 w601_w102_expand() { w102_phase_run "$1" expand; }
 w601_w102_guards() { w102_phase_run "$1" guards; }
 
+w601_w2upload() { # $1 cdir — W2 upload/confirm battery on the w403 scratch DB
+  local cdir="$1" try rc
+  mkdir -p "$cdir"
+  rm -f "$cdir/observations.jsonl"
+  export V5_OBSERVATIONS_FILE="$cdir/observations.jsonl"
+  # Runs after w403 in w601_case: reuse the run-owned scratch chain DB
+  # (attv5_<slot>_w601) under the same manifest + isolated-config gate.
+  if [ "${W403S_PG_OK:-}" != 1 ]; then
+    echo "NO_GO: w2upload requires the w403 battery to have completed" >&2
+    return 30
+  fi
+  local W403_DB="attv5_${SLOT}_w601"
+  local W403_MANIFEST="$RUN_DIR/resources/w403-resource-manifest.json"
+  local W403_OWNED_CONFIG="${PG_CONFIG_DIR:-}/isolated.config"
+  if [ "${PG_CONFIG_READY:-0}" != 1 ] || [ "${EUNIT_CONFIG:-}" != "${PG_CONFIG_DIR:-}/isolated" ] \
+      || [ ! -f "$W403_OWNED_CONFIG" ]; then
+    echo "CONTRACT_CONFLICT: W6-01 W2 upload requires the run-owned isolated config" >&2
+    return 20
+  fi
+  if [ -n "${W403_RESOURCE_MANIFEST:-}" ] && [ "$W403_RESOURCE_MANIFEST" != "$W403_MANIFEST" ]; then
+    echo "CONTRACT_CONFLICT: W403 manifest must be the run-owned manifest" >&2
+    return 20
+  fi
+  python3 - "$W403_MANIFEST" "$W403_DB" <<'PYW403C' || return 20
+import json, sys
+try:
+    with open(sys.argv[1], encoding="utf-8") as fh:
+        data = json.load(fh)
+    if not isinstance(data, dict) or data.get("database") != sys.argv[2]:
+        raise ValueError("unexpected database")
+except (OSError, ValueError, TypeError):
+    print("CONTRACT_CONFLICT: W403 manifest database mismatch", file=sys.stderr)
+    sys.exit(20)
+PYW403C
+  authorize_fixture_database "$W403_DB" || return 20
+  export W403_RESOURCE_MANIFEST="$W403_MANIFEST"
+  export V5_INTTEST_W403P_DB="$W403_DB"
+  export W403_CONFIG_PATH="$W403_OWNED_CONFIG"
+  if [ -f "$RUN_DIR/resources/garage-w202.env" ]; then
+    . "$RUN_DIR/resources/garage-w202.env"
+    export W202_GARAGE_ENDPOINT W202_GARAGE_BUCKET W202_GARAGE_ACCESS_KEY W202_GARAGE_SECRET_KEY
+  fi
+  ensure_disk_root || return $?
+  local PZ="" d
+  for d in deps/*/ebin; do [ -d "$d" ] && PZ="$PZ -pz $PWD/$d"; done
+  sed -e "s/{http_port, 9800}/{http_port, ${EUNIT_HTTP_PORT:-19980}}/" \
+      -e "s/{http_port_adm, 9706}/{http_port_adm, ${EUNIT_HTTP_ADM_PORT:-19970}}/" \
+      "${EUNIT_CONFIG:-config/sys.local}.config" > "$cdir/w2upload-direct.config"
+  for try in 1 2 3; do
+    rm -f "$cdir/observations.jsonl"
+    EUNIT_USE_RELAY=0 erl -noinput -boot no_dot_erlang +P 1048576 +Q 1024 \
+      -config "$cdir/w2upload-direct.config" -pa "$V5_ALIAS_ROOT/imboy/ebin" -pa ebin -pa test $PZ \
+      -eval 'CoverSetup = fun() -> ok end, CoverExport = fun(_) -> ok end, CoverSetup(),
+        Mods = [attachment_lifecycle_v5_w601_w2_upload_tests,
+                attachment_lifecycle_v5_w601_w2_confirm_tests,
+                attachment_lifecycle_v5_w601_w2_pending_tests],
+        case eunit:test(Mods, [verbose]) of
+          ok -> io:format("W601_W2UPLOAD_OK~n");
+          error -> halt(2)
+        end,
+        halt()' > "$cdir/eunit-w2upload.log" 2>&1
+    rc=$?
+    [ $rc -eq 0 ] && break
+    [ $try -lt 3 ] && sleep 5
+  done
+  [ $rc -eq 0 ] && grep -q "W601_W2UPLOAD_OK" "$cdir/eunit-w2upload.log" || return 30
+  export V5_RUN_DIR="$RUN_DIR"
+  return 0
+}
+
+w601_w4queue() { # $1 cdir — W4 queue/worker/activation battery (marker-bound)
+  local cdir="$1" try rc PFX
+  mkdir -p "$cdir"
+  rm -f "$cdir/observations.jsonl"
+  export V5_OBSERVATIONS_FILE="$cdir/observations.jsonl"
+  # Every w601-w4 marker prefix binds to the run-owned scratch chain DB
+  # provisioned by the w403 step (bound mode never invents random names).
+  local PGPASSWORD; PGPASSWORD=$(cat "$RUN_DIR/resources/pg-attv5.password")
+  for PFX in V5_INTTEST_W601W4ACT V5_INTTEST_W601W4HOLD V5_INTTEST_W601W4INT \
+             V5_INTTEST_W601W4PRG V5_INTTEST_W601W4QUEUE V5_INTTEST_W601W4RACE \
+             V5_INTTEST_W601W4WORK; do
+    export "${PFX}_DB=attv5_${SLOT}_w601" \
+      "${PFX}_PG_HOST=${V5_PG_HOST:-127.0.0.1}" "${PFX}_PG_PORT=${V5_PG_PORT:-65072}" \
+      "${PFX}_PG_USER=imboy_user" "${PFX}_PG_PASSWORD=$PGPASSWORD" \
+      "${PFX}_MAINT_DB=postgres"
+  done
+  ensure_disk_root || return $?
+  if [ -f "$RUN_DIR/resources/garage-w202.env" ]; then
+    . "$RUN_DIR/resources/garage-w202.env"
+    export W202_GARAGE_ENDPOINT W202_GARAGE_BUCKET W202_GARAGE_ACCESS_KEY W202_GARAGE_SECRET_KEY
+  fi
+  local PZ="" d
+  for d in deps/*/ebin; do [ -d "$d" ] && PZ="$PZ -pz $PWD/$d"; done
+  sed -e "s/{http_port, 9800}/{http_port, ${EUNIT_HTTP_PORT:-19980}}/" \
+      -e "s/{http_port_adm, 9706}/{http_port_adm, ${EUNIT_HTTP_ADM_PORT:-19970}}/" \
+      "${EUNIT_CONFIG:-config/sys.local}.config" > "$cdir/w4queue-direct.config"
+  for try in 1 2 3; do
+    rm -f "$cdir/observations.jsonl"
+    EUNIT_USE_RELAY=0 erl -noinput -boot no_dot_erlang +P 1048576 +Q 1024 \
+      -config "$cdir/w4queue-direct.config" -pa "$V5_ALIAS_ROOT/imboy/ebin" -pa ebin -pa test $PZ \
+      -eval 'CoverSetup = fun() -> ok end, CoverExport = fun(_) -> ok end, CoverSetup(),
+        Mods = [attachment_lifecycle_v5_w601_w4_hold_tests,
+                attachment_lifecycle_v5_w601_w4_intent_tests,
+                attachment_lifecycle_v5_w601_w4_race_tests,
+                attachment_lifecycle_v5_w601_w4_worker_tests,
+                attachment_lifecycle_v5_w601_w4_queue_tests,
+                attachment_lifecycle_v5_w601_w4_purged_tests,
+                attachment_lifecycle_v5_w601_w4_activation_tests],
+        case eunit:test(Mods, [verbose]) of
+          ok -> io:format("W601_W4QUEUE_OK~n");
+          error -> halt(2)
+        end,
+        halt()' > "$cdir/eunit-w4queue.log" 2>&1
+    rc=$?
+    [ $rc -eq 0 ] && break
+    [ $try -lt 3 ] && sleep 5
+  done
+  [ $rc -eq 0 ] && grep -q "W601_W4QUEUE_OK" "$cdir/eunit-w4queue.log" || return 30
+  export V5_RUN_DIR="$RUN_DIR"
+  return 0
+}
+
 w601_case() { # $1 cdir
   local cdir="$1" rc=0
   mkdir -p "$cdir"
@@ -533,6 +655,8 @@ w601_case() { # $1 cdir
   w601_step "$cdir" w402 w402_case "$cdir/w402" || rc=30
   w601_step "$cdir" w403 w403_case "$cdir/w403" || rc=30
   w601_step "$cdir" w404 w404_case "$cdir/w404" || rc=30
+  w601_step "$cdir" w2upload w601_w2upload "$cdir/w2upload" || rc=30
+  w601_step "$cdir" w4queue w601_w4queue "$cdir/w4queue" || rc=30
   return $rc
 }
 

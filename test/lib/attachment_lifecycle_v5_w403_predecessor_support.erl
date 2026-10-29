@@ -2,6 +2,14 @@
 %%%
 %%% 66 叶全部落在同一真实 disk root（registry 由套件 setup 注册）与同一
 %%% marker DB 上；本模块只提供可复用的 SQL/文件原语，不含任何叶语义。
+%%%
+%%% W6-01 E 组（2026-10-29）additive 扩展：storage driver 可选分支。
+%%% 默认 driver 恒为 disk——不调用 set_driver/1 时 ns/0、container/0、
+%%% put_disk_file/3、disk_listing/1、assert_disk_intact/3 的行为与原实现
+%%% 逐字节一致（W4-03 已封印证据依赖此不变量）。garage 分支把"探针对象"
+%%% 放进真实 Garage（W202_GARAGE_* 环境），disk_listing/1 退化为对已跟踪
+%%% 探针对象的真实 HEAD 快照（Before/After 相等 = 探针集合与字节规模
+%%% 未被入口触碰；整桶列举在共享测试桶上既不可行也不必要）。
 -module(attachment_lifecycle_v5_w403_predecessor_support).
 
 -export([
@@ -23,7 +31,10 @@
     seed_ordinary_job/5,
     seed_pending/5,
     seed_orphan/4,
-    consume_ready_until/4
+    consume_ready_until/4,
+    set_driver/1,
+    reset_driver/0,
+    current_driver/0
 ]).
 
 q(Conn, Sql) -> q(Conn, Sql, []).
@@ -40,21 +51,111 @@ e(Conn, Sql, Params) -> epgsql:equery(Conn, Sql, Params).
 hex64(Bin) ->
     iolist_to_binary([io_lib:format("~2.16.0b", [B]) || B <- binary_to_list(Bin)]).
 
-ns() -> <<"w403p-disk">>.
-container() -> <<"c">>.
+%% ---- driver 上下文（pdict；每叶测试进程独立，缺省恒 disk） ----
 
-disk_file(Root, Key) ->
-    filename:join([Root, binary_to_list(container()), binary_to_list(Key)]).
+-define(DRIVER_KEY, w403p_storage_driver).
+-define(GARAGE_OBJECTS_KEY, w403p_garage_objects).
 
-%% 真实 disk driver 写入（同 registry 派发路径，含 OS 锁与原子写）。
-put_disk_file(Root, Key, Body) ->
-    ok = attachment_storage_disk:put(ns(), container(), Key, Body),
-    {ok, Body} = file:read_file(disk_file(Root, Key)),
+set_driver(disk) ->
+    put(?DRIVER_KEY, disk),
+    ok;
+set_driver(garage) ->
+    put(?DRIVER_KEY, garage),
+    ok;
+set_driver(Other) ->
+    erlang:error({w403p_unknown_driver, Other}).
+
+reset_driver() ->
+    erase(?DRIVER_KEY),
+    erase(?GARAGE_OBJECTS_KEY),
     ok.
 
+current_driver() ->
+    case get(?DRIVER_KEY) of
+        undefined -> disk;
+        Driver -> Driver
+    end.
+
+garage_env() ->
+    case application:get_env(imboy, garage) of
+        {ok, #{bucket := Bucket} = Garage} when is_binary(Bucket), Bucket =/= <<>> ->
+            Garage;
+        _ ->
+            erlang:error(
+                {w403p_garage_env_missing,
+                    "imboy garage env not set; garage leaves require W202_GARAGE_*"}
+            )
+    end.
+
+ns() ->
+    case current_driver() of
+        garage -> <<"w403p-garage">>;
+        disk -> <<"w403p-disk">>
+    end.
+
+container() ->
+    case current_driver() of
+        garage -> maps:get(bucket, garage_env());
+        disk -> <<"c">>
+    end.
+
+disk_file(Root, Key) ->
+    case current_driver() of
+        garage -> erlang:error({w403p_garage_has_no_local_file, Key});
+        disk -> filename:join([Root, binary_to_list(container()), binary_to_list(Key)])
+    end.
+
+%% 真实 driver 写入（disk 同 registry 派发路径含 OS 锁与原子写；garage 走
+%% 真实 Garage PUT + 读回校验，并登记探针对象供 disk_listing 快照）。
+put_disk_file(Root, Key, Body) ->
+    case current_driver() of
+        garage ->
+            Garage = garage_env(),
+            Ns = ns(),
+            Container = maps:get(bucket, Garage),
+            ok = attachment_storage_garage:put(Ns, Container, Key, Body),
+            {ok, Body} = attachment_storage_garage:read(Ns, Container, Key),
+            track_garage_object(Key, byte_size(Body)),
+            ok;
+        disk ->
+            ok = attachment_storage_disk:put(ns(), container(), Key, Body),
+            {ok, Body} = file:read_file(disk_file(Root, Key)),
+            ok
+    end.
+
+track_garage_object(Key, Size) ->
+    Tracked = get(?GARAGE_OBJECTS_KEY),
+    Merged =
+        case lists:keytake(Key, 1, Tracked) of
+            {value, {Key, _}, Rest} -> [{Key, Size} | Rest];
+            false -> [{Key, Size} | Tracked]
+        end,
+    put(?GARAGE_OBJECTS_KEY, Merged),
+    ok.
+
+%% garage 分支：对已登记探针对象逐个真实 HEAD，返回现存对象的 {Key, Size}
+%% 快照（对象消失/改写 => Before ≠ After => intent:run 断言失败）。
 %% 递归文件清单（相对路径 + 字节数）；用于证明入口失败时零删除/零新增。
 disk_listing(Root) ->
-    lists:sort(collect_files(Root, "")).
+    case current_driver() of
+        garage ->
+            Garage = garage_env(),
+            Ns = ns(),
+            Container = maps:get(bucket, Garage),
+            Tracked =
+                case get(?GARAGE_OBJECTS_KEY) of
+                    undefined -> [];
+                    Keys -> lists:reverse(Keys)
+                end,
+            lists:sort([
+                {Key, Size}
+             || {Key, _TrackedSize} <- Tracked,
+                {ok, #{size := Size}} <-
+                    [attachment_storage_garage:head_bounded(Ns, Container, Key)]
+            ]);
+        disk ->
+            lists:sort(collect_files(Root, ""))
+    end.
 
 collect_files(Dir, Prefix) ->
     case file:list_dir(Dir) of
@@ -75,6 +176,12 @@ collect_files(Dir, Prefix) ->
     end.
 
 assert_disk_intact(Root, Key, Body) ->
+    case current_driver() of
+        garage -> assert_garage_object_intact(Key, Body);
+        disk -> assert_disk_object_intact(Root, Key, Body)
+    end.
+
+assert_disk_object_intact(Root, Key, Body) ->
     Path = disk_file(Root, Key),
     case file:read_file(Path) of
         {ok, Body} -> ok;
@@ -83,6 +190,19 @@ assert_disk_intact(Root, Key, Body) ->
     case attachment_storage_disk:head(ns(), container(), Key) of
         {ok, #{size := Size}} when Size =:= byte_size(Body) -> ok;
         Other2 -> erlang:error({w403p_disk_head_mismatch, Path, Other2})
+    end.
+
+assert_garage_object_intact(Key, Body) ->
+    Garage = garage_env(),
+    Ns = ns(),
+    Container = maps:get(bucket, Garage),
+    case attachment_storage_garage:head_bounded(Ns, Container, Key) of
+        {ok, #{size := Size}} when Size =:= byte_size(Body) -> ok;
+        Other -> erlang:error({w403p_garage_head_mismatch, Key, Other})
+    end,
+    case attachment_storage_garage:read(Ns, Container, Key) of
+        {ok, Body} -> ok;
+        Other2 -> erlang:error({w403p_garage_bytes_changed, Key, Other2})
     end.
 
 assert_no_queue_row(Conn, Key, Label) ->
