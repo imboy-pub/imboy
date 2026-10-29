@@ -91,6 +91,21 @@ for _ref in (
 ):
     OBS_STEP_FOR[_ref] = "w4queue"
 OBS_GROUPS = set(OBS_STEP_FOR)
+LEGACY_WITHOUT_AC = frozenset({
+    "W4-03/storage-switch", "W4-03/storage-disk", "W4-03/storage-garage",
+    "W4-03/late-put", "W4-03/namespace-alias-integrity",
+    "W4-03/disk-predecessor-protocols",
+    "W4-01/confirm-gc-race", "W4-01/delete-entrypoints",
+    "W4-01/hold-entrypoints", "W4-01/hold-gc-race",
+    "W4-01/intent-rollback", "W4-01/reference-gc-race",
+    "W4-02/claim-capacity-and-liveness", "W4-02/cross-queue-identity",
+    "W4-02/last-attempt-crash", "W4-02/old-attempts-preserved",
+    "W4-02/ordinary-queue-recovery", "W4-02/purged-session-recovery",
+    "W4-02/queue-adoption", "W4-02/worker-crash",
+    "W4-02/worker-db-fault", "W4-02/worker-lease",
+    "W4-04/activation-commit-unknown", "W4-04/all-writer-compat",
+    "W4-04/guards-activation", "W4-04/no-infinite-loop", "W4-04/reconcile",
+})
 
 # Same adequacy judgments as the frozen W1-02 adapters: only probes that
 # execute the leaf's defining action become a measured plan leaf.
@@ -257,6 +272,19 @@ def _obs_index(path, case_id):
                    (obs.get("measured") or {}).get("driver"))
             index.setdefault(key, []).append((line_no, obs))
     return index, path
+
+
+def _match_observation(index, key, ac_id):
+    matches = []
+    for line_no, obs in index.get(key, []):
+        measured = obs.get("measured") or {}
+        if ("ac_id" in measured and measured["ac_id"] == ac_id
+                or "ac_id" not in measured and key[0] in LEGACY_WITHOUT_AC):
+            matches.append((line_no, obs))
+    if len(matches) > 1:
+        S.die(CASE_ID, "observation %r is ambiguous for ac_id=%r at lines %r"
+              % (key, ac_id, [line for line, _ in matches]))
+    return matches[0][1] if matches else None
 
 
 def _step_binding(case_dir, subdir, cache):
@@ -490,32 +518,21 @@ def build():
             subdir = OBS_STEP_FOR[source]
             step = (obs_cache[subdir] if subdir in obs_cache
                     else _step_binding(case_dir, subdir, obs_cache))
-            started403, finished403 = step["started"], step["finished"]
-            obs_index, obs_path403 = step["index"], step["path"]
+            obs_started, obs_finished = step["started"], step["finished"]
+            obs_index, obs_path = step["index"], step["path"]
             scenario = _obs_scenario(leaf)
             key = (source, leaf["entrypoint"], scenario, leaf["domain"],
                    leaf["driver"])
-            obs = None
-            candidates = obs_index.get(key) or []
-            if len(candidates) > 1:
-                ac = leaf.get("ac_id")
-                candidates = [entry for entry in candidates
-                              if (entry[1].get("measured") or {}).get("ac_id")
-                              == ac]
-            if len(candidates) == 1:
-                obs = candidates[0][1]
-            elif candidates:
-                S.die(CASE_ID, "observation %r is ambiguous after ac_id=%r "
-                               "filter" % (key, leaf.get("ac_id")))
+            obs = _match_observation(obs_index, key, leaf.get("ac_id"))
             if obs is None:
                 S.group_gap(gap_groups, source, 1,
-                            "no %s-step observation matches %r"
-                            % (subdir, key))
+                            "no %s-step observation matches %r ac_id=%r"
+                            % (subdir, key, leaf.get("ac_id")))
                 continue
             measured = obs.get("measured") or {}
             emitted = obs.get("emitted_at_ms")
-            t0_ms = started403.timestamp() * 1000
-            t1_ms = finished403.timestamp() * 1000
+            t0_ms = obs_started.timestamp() * 1000
+            t1_ms = obs_finished.timestamp() * 1000
             if not isinstance(emitted, (int, float)) \
                     or not t0_ms <= emitted <= t1_ms:
                 S.die(CASE_ID, "observation %r emitted_at_ms=%r outside the "
@@ -538,7 +555,7 @@ def build():
                     "w403_observation_matched",
                     "%s: case_id=%s entrypoint=%s scenario=%s domain=%s "
                     "driver=%s measured(%d keys)"
-                    % (os.path.basename(obs_path403), source,
+                    % (os.path.basename(obs_path), source,
                        leaf["entrypoint"], scenario, leaf["domain"],
                        leaf["driver"], len(measured))),
                 S.assertion(
@@ -594,10 +611,10 @@ def build():
                 "proof_actor": "real driver %s resource %s; observations "
                                "sha256=%s"
                                % (leaf["driver"], resource,
-                                  S.sha256_file(obs_path403)),
+                                  S.sha256_file(obs_path)),
             }
             rows.append(S.C.build_row(
-                leaf, started403, finished403,
+                leaf, obs_started, obs_finished,
                 {"exit_code": 0, "executed": 1, "passed": 1, "failed": 0,
                  "skipped": 0},
                 oracle, assertions, actor, [resource],
