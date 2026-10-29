@@ -20,6 +20,7 @@
 
 -define(S, attachment_lifecycle_v5_w601_w2_support).
 -define(F, attachment_w403_http_fixture).
+-define(FW, attachment_w403_http_fixture_w601).
 -define(C_IMM, <<"W2-02/confirmed-content-immutable">>).
 -define(C_IDEM, <<"W2-02/confirm-idempotent">>).
 -define(C_OLD, <<"W2-02/confirm-old-client">>).
@@ -117,14 +118,20 @@ scenario(S, {?C_OLD, _, Driver, Sc, <<"enterprise">>, _}) ->
 
 imm_scenario(S, Ep, Driver, <<"put_A_confirm_old_capability_put_B">>) ->
     T = reg(S, Ep, Driver),
-    ?assert(?F:success(?F:put(T, ?BODY))),
-    First = ?F:confirm(T),
-    ?assert(?F:success(First)),
-    Old = ?F:put(T, ?OTHER),
-    ?assertNot(?F:success(Old)),
-    ?assertEqual(0, ?S:put_calls(?S:driver_mod(Driver)) - 1),
-    ?assertEqual({ok, ?BODY}, ?F:read(T)),
-    #{old_capability_put_status => maps:get(status, Old), bytes_unchanged => true};
+    %% put_calls 必须在 with_put_barrier 的 passthrough mock 作用域内读取：
+    %% 未 mock 的模块上 meck:num_calls 恒 {not_mocked}，断言必错（F3）。
+    ?S:with_put_barrier(T, fun(_Barrier) ->
+        ?assert(?F:success(?F:put(T, ?BODY))),
+        First = ?F:confirm(T),
+        ?assert(?F:success(First)),
+        Old = ?F:put(T, ?OTHER),
+        ?assertNot(?F:success(Old)),
+        %% 首 PUT 一次 provider 写；已确认会话的旧能力 PUT 在 pin 裁决处
+        %% 被拒，不得产生第二次 provider 写。
+        ?assertEqual(0, ?S:put_calls(?S:driver_mod(Driver)) - 1),
+        ?assertEqual({ok, ?BODY}, ?F:read(T)),
+        #{old_capability_put_status => maps:get(status, Old), bytes_unchanged => true}
+    end);
 imm_scenario(S, Ep, Driver, <<"overwrite_between_stat_and_confirm">>) ->
     T = reg(S, Ep, Driver),
     ?assert(?F:success(?F:put(T, ?BODY))),
@@ -168,7 +175,7 @@ imm_scenario(S, ordinary, Driver, <<"ciphertext_only_no_plaintext_hash">>) ->
     Cipher = <<"w601 ciphertext-only bytes (client encrypted)">>,
     T = reg(S, ordinary, Driver),
     ?assert(?F:success(?F:put(T, Cipher))),
-    Ok = ?F:confirm_with(maps:get(fixture, T), T, #{cipher => <<"AES-256-GCM">>}),
+    Ok = ?FW:confirm_with(maps:get(fixture, T), T, #{cipher => <<"AES-256-GCM">>}),
     ?assert(?F:success(Ok)),
     {ok, [#{<<"cipher">> := StoredCipher, <<"file_hash256">> := StoredHash}]} =
         elib_pg:query(
@@ -179,7 +186,7 @@ imm_scenario(S, ordinary, Driver, <<"ciphertext_only_no_plaintext_hash">>) ->
     %% 未知套件 fail-closed：宁可拒绝 confirm 也不把密文对象标成明文。
     T2 = reg(S, ordinary, Driver),
     ?assert(?F:success(?F:put(T2, Cipher))),
-    Bad = ?F:confirm_with(maps:get(fixture, T2), T2, #{cipher => <<"ROT13">>}),
+    Bad = ?FW:confirm_with(maps:get(fixture, T2), T2, #{cipher => <<"ROT13">>}),
     ?assertNot(?F:success(Bad)),
     ?assertEqual(0, ?S:attach_count(key(T2))),
     #{cipher_stored => <<"AES-256-GCM">>, plaintext_hash_absent => true};
@@ -221,7 +228,16 @@ idem_scenario(S, Ep, Driver, <<"sequential_100_replays">>) ->
      || _ <- lists:seq(1, 100)
     ],
     ?assertEqual(1, ?S:attach_count(key(T))),
-    #{replays => 100, single_attachment_id => true};
+    %% F7：幂等 oracle 的两个 SQL 级子句（重放不递增 referer——旧 save/4
+    %% 路径 DO UPDATE 会累加 referer_time；治理审计只在首行——private/
+    %% enterprise 域确认无 group/channel 治理审计，重放亦不得误写）。
+    assert_replay_oracle(key(T), Id0),
+    #{
+        replays => 100,
+        single_attachment_id => true,
+        referer_unchanged => 1,
+        confirm_audit_rows => 0
+    };
 idem_scenario(S, Ep, Driver, <<"concurrent_two_confirms">>) ->
     T = reg(S, Ep, Driver),
     ?assert(?F:success(?F:put(T, ?BODY))),
@@ -239,6 +255,7 @@ idem_scenario(S, Ep, Driver, <<"concurrent_two_confirms">>) ->
         ?assertEqual(Id1, confirm_id(R2, Ep))
     end),
     ?assertEqual(1, ?S:attach_count(key(T))),
+    assert_replay_oracle(key(T), confirm_id_of_key(key(T))),
     #{concurrent_winer_ids => <<"identical">>, single_row => true}.
 
 %% ------------------------------------------------------ confirm-old-client
@@ -249,7 +266,7 @@ old_scenario(S, Ep, Driver, <<"confirmed_legacy_request">>) ->
     First = ?F:confirm(T),
     ?assert(?F:success(First)),
     Id0 = confirm_id(First, Ep),
-    Legacy = ?F:confirm_legacy(T),
+    Legacy = ?FW:confirm_legacy(T),
     ?assert(?F:success(Legacy)),
     ?assertEqual(Id0, confirm_id(Legacy, Ep)),
     ?assertEqual(1, ?S:attach_count(key(T))),
@@ -260,7 +277,7 @@ old_scenario(S, ordinary, Driver, <<"unknown_legacy_pending">>) ->
     GhostKey = elib_oss:build_object_key(Uid, <<"private">>, undefined, <<"w601-ghost.txt">>),
     Bucket = elib_oss:get_bucket(<<"private">>),
     ok = attach_pending_repo:add(GhostKey, Bucket, <<"private">>, Uid),
-    Legacy = ?F:confirm_with(
+    Legacy = ?FW:confirm_with(
         maps:get(fixture, T),
         T#{key => GhostKey, confirm_body => #{object_key => GhostKey, scope => <<"private">>}},
         #{file_hash256 => ?S:sha(?BODY), md5 => <<>>}
@@ -279,15 +296,22 @@ old_scenario(S, enterprise_internal, Driver, <<"unknown_legacy_pending">>) ->
     GhostKey = enterprise_asset_repo:build_object_key(
         Org, maps:get(service_identity_id, Scope), <<"w601-ghost.bin">>
     ),
-    Ghost = ?F:confirm_with(
+    %% F9：enterprise internal V5 pending 与 ordinary 同在 attach_pending
+    %% （confirm 的 pending_find_locked_tx 即查此表）——先真实登记受保护
+    %% ghost，再证 legacy confirm 拒绝后该行存活、metadata 绝不产生。
+    ok = attach_pending_repo:add(
+        GhostKey, elib_oss:get_bucket(<<"private">>), <<"private">>, owner_uid(T)
+    ),
+    Ghost = ?FW:confirm_with(
         S2, T#{key => GhostKey, confirm_body => #{object_key => GhostKey}}, #{}
     ),
     ?assertNot(?F:success(Ghost)),
-    {ok, [#{<<"n">> := 0}]} = elib_pg:query(
-        <<"SELECT count(*)::bigint AS n FROM enterprise_asset WHERE object_key=$1">>,
+    {ok, [#{<<"n">> := 1}]} = elib_pg:query(
+        <<"SELECT count(*)::bigint AS n FROM attach_pending WHERE object_key=$1">>,
         [GhostKey]
     ),
-    #{ghost_status => maps:get(status, Ghost), row_created => false}.
+    ?assertEqual(0, ?S:attach_count(GhostKey)),
+    #{ghost_status => maps:get(status, Ghost), pending_protected => true, row_created => false}.
 
 %% ---------------------------------------------------------------- helpers
 
@@ -297,6 +321,32 @@ key(T) -> maps:get(key, T).
 
 confirm_id(Resp, ordinary) -> int(maps:get(<<"attachment_id">>, ?F:payload(Resp)));
 confirm_id(Resp, _) -> int(maps:get(<<"file_id">>, ?F:payload(Resp))).
+
+confirm_id_of_key(Key) ->
+    {ok, [#{<<"id">> := Id}]} = elib_pg:query(
+        <<"SELECT id FROM attachment WHERE path=$1">>, [Key]
+    ),
+    Id.
+
+%% F7：幂等 oracle 服务端取证——referer_time 恒 1（confirm 重放复用既有
+%% 行、不递增引用计数；旧 save/4 路径的 DO UPDATE 递增会在此红灯）；
+%% 治理审计零行（本 oracle 两域 scope 均为 private/enterprise，无
+%% group/channel 首确认治理审计，任何重放路径误写审计都不得出现）。
+assert_replay_oracle(Key, AttachmentId) ->
+    {ok, [#{<<"referer_time">> := Referer}]} = elib_pg:query(
+        <<"SELECT referer_time FROM attachment WHERE path=$1">>, [Key]
+    ),
+    ?assertEqual(1, Referer),
+    {ok, [#{<<"n">> := AuditN}]} = elib_pg:query(
+        <<
+            "SELECT count(*)::bigint AS n FROM enterprise_audit_event"
+            " WHERE resource_type='attachment' AND resource_id=$1"
+            " AND action='file.confirmed'"
+        >>,
+        [AttachmentId]
+    ),
+    ?assertEqual(0, AuditN),
+    ok.
 
 int(I) when is_integer(I) -> I;
 int(B) when is_binary(B) -> binary_to_integer(B).

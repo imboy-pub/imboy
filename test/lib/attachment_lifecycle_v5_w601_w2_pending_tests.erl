@@ -21,6 +21,7 @@
 
 -define(S, attachment_lifecycle_v5_w601_w2_support).
 -define(F, attachment_w403_http_fixture).
+-define(FW, attachment_w403_http_fixture_w601).
 -define(C_MP, <<"W2-01/pending-multipart">>).
 -define(C_FC, <<"W2-01/pending-failclosed">>).
 -define(C_RACE, <<"W2-03/confirm-gc-race">>).
@@ -110,7 +111,7 @@ scenario(S, {?C_RACE, _, Driver, Sc, Domain, _Ac}) ->
 
 mp_scenario(S, Driver, <<"multipart_success">>, <<"ordinary">>) ->
     M = multipart_register(S, Driver, #{<<"method">> => <<"multipart">>}),
-    Uploaded = ?F:multipart_put(S, M, ?BODY),
+    Uploaded = ?FW:multipart_put(S, M, ?BODY),
     ?assert(?F:success(Uploaded)),
     {ok, Pin} = ?S:content_pin(key(M)),
     ?assertEqual(?S:sha(?BODY), maps:get(<<"sha256">>, Pin)),
@@ -124,11 +125,11 @@ mp_scenario(S, Driver, <<"group_file_success">>, <<"ordinary">>) ->
         <<"scope">> => <<"group">>,
         <<"scope_ref">> => integer_to_binary(Gid)
     }),
-    Uploaded = ?F:multipart_put(S, M, ?BODY),
+    Uploaded = ?FW:multipart_put(S, M, ?BODY),
     ?assert(?F:success(Uploaded)),
     {ok, Pin} = ?S:content_pin(key(M)),
     ?assertEqual(?S:sha(?BODY), maps:get(<<"sha256">>, Pin)),
-    Confirm = ?F:confirm_with(
+    Confirm = ?FW:confirm_with(
         maps:get(fixture, M),
         M#{confirm_body => #{object_key => key(M), scope => <<"group">>}},
         #{anchor_msg_id => <<"w601-anchor-", (elib_uuid:gen_v7())/binary>>}
@@ -162,7 +163,7 @@ mp_scenario(S, Driver, <<"database_unavailable">>, <<"ordinary">>) ->
         <<"SELECT object_key, bucket, scope, creator_user_id, session_state">>,
         {error, db_down},
         fun() ->
-            Down = ?F:multipart_put(S, M, ?BODY),
+            Down = ?FW:multipart_put(S, M, ?BODY),
             ?assertNot(?F:success(Down)),
             ?assertEqual(500, maps:get(status, Down))
         end
@@ -283,7 +284,12 @@ race_scenario(S, Driver, <<"confirm_commits_first">>, Domain) ->
     ?assertEqual(0, deletion_jobs(T, Domain)),
     #{intent_rejected => true, bytes_retained => true, deletion_jobs => 0};
 %% intent 先提交（能力窗耗尽后 sweep）：confirm 被拒且 metadata 不重建；
-%% 回收 job ready 且 attempts<8，worker 侧执行与确认侧线性化不变。
+%% 回收 job ready 且 attempts<8；W2-03 第三子句——bounded retry 不改变赢家：
+%% 以真实 fn_v5_claim_* / fn_v5_ack_(failed) 协议把 job 打到上限（×8），
+%% 第三种结局 = fn 裁决 blocked 终态（last_error_code=max_attempts），此后
+%% confirm 依旧被拒、metadata 不重建、字节保留挂起（绝不静默丢弃），
+%% blocked+attempts=8 双谓词使其永不再被 fn_v5_claim（claim 条件为冻结
+%% 迁移文本：attempts<8 AND job_state IN ('ready','retry_wait')）。
 race_scenario(S, Driver, <<"intent_commits_first">>, Domain) ->
     Surface = surface_of(Domain),
     T = reg(S, Surface, Driver),
@@ -294,7 +300,19 @@ race_scenario(S, Driver, <<"intent_commits_first">>, Domain) ->
     ?assertNot(?F:success(Late)),
     ?assertEqual(0, ?S:attach_count(key(T))),
     ?assert(deletion_jobs(T, Domain) >= 1),
-    #{intent_won => true, confirm_rejected => true, metadata_not_recreated => true}.
+    assert_job_bounded(T, Domain),
+    exhaust_deletion_job(T, Domain),
+    assert_job_blocked(T, Domain),
+    ?assertNot(?F:success(?F:confirm(T))),
+    ?assertEqual(0, ?S:attach_count(key(T))),
+    ?assertEqual({ok, ?BODY}, ?F:read(T)),
+    #{
+        intent_won => true,
+        confirm_rejected => true,
+        metadata_not_recreated => true,
+        retry_window_attempts => <<"<8">>,
+        retry_exhausted_state => <<"blocked">>
+    }.
 
 %% ---------------------------------------------------------------- helpers
 
@@ -467,6 +485,153 @@ deletion_jobs(T, _) ->
             [Org, Ws, Id]
         ),
         N
+    end).
+
+%% ------------------------------------------------- W2-03 第三结局探针
+%% 删除队列在本套件环境无常驻 worker（attachment_delete_worker_enabled 默认
+%% false），claim/ack 全部由本探针以 fn 原文协议直接驱动；跳过退避等待仅
+%% 推进 next_retry_at，claim/ack 裁决本身全真。
+
+assert_job_bounded(T, <<"ordinary">>) ->
+    {ok, [#{<<"job_state">> := <<"ready">>, <<"attempts">> := Attempts}]} =
+        elib_pg:query(
+            <<"SELECT job_state, attempts FROM attachment_object_deletion WHERE path=$1">>,
+            [key(T)]
+        ),
+    ?assert(Attempts < 8),
+    ok;
+assert_job_bounded(T, _) ->
+    org_ws(T, fun(Org, Ws, Id) ->
+        {ok, [#{<<"job_state">> := <<"ready">>, <<"attempts">> := Attempts}]} =
+            elib_pg:query(
+                <<
+                    "SELECT job_state, attempts FROM enterprise_asset_delete_queue"
+                    " WHERE organization_id=$1 AND workspace_id=$2 AND asset_id=$3"
+                >>,
+                [Org, Ws, Id]
+            ),
+        ?assert(Attempts < 8)
+    end).
+
+exhaust_deletion_job(T, <<"ordinary">>) ->
+    exhaust_ordinary(key(T), 0);
+exhaust_deletion_job(T, _) ->
+    org_ws(T, fun(Org, Ws, Id) -> exhaust_eb(Org, Ws, Id, 0) end).
+
+exhaust_ordinary(Key, Depth) when Depth < 24 ->
+    {ok, _} = elib_pg:query(
+        <<
+            "UPDATE attachment_object_deletion SET next_retry_at=now()"
+            " WHERE path=$1 AND completed_at IS NULL"
+        >>,
+        [Key]
+    ),
+    Token = elib_uuid:gen_v7(),
+    case elib_pg:query(<<"SELECT * FROM fn_v5_claim_ordinary($1)">>, [Token]) of
+        {ok, [#{<<"out_path">> := Key, <<"out_attempts">> := Attempts}]} ->
+            {ok, [#{<<"fn_v5_ack_ordinary">> := State}]} =
+                elib_pg:query(<<"SELECT fn_v5_ack_ordinary($1,$2,false)">>, [Key, Token]),
+            case State of
+                <<"blocked">> ->
+                    ?assert(Attempts >= 8),
+                    ok;
+                <<"retry_wait">> ->
+                    ?assert(Attempts < 8),
+                    exhaust_ordinary(Key, Depth + 1);
+                Other ->
+                    erlang:error({w601_unexpected_ack_state, Other})
+            end;
+        {ok, [#{<<"out_path">> := OtherPath}]} ->
+            %% claim 到同 run 更早叶遗留 job：按真实失败语义退避（推入
+            %% 未来重试），不污染本叶目标行，下轮继续认领目标。
+            {ok, [_]} = elib_pg:query(
+                <<"SELECT fn_v5_ack_ordinary($1,$2,false)">>, [OtherPath, Token]
+            ),
+            exhaust_ordinary(Key, Depth + 1)
+    end;
+exhaust_ordinary(_Key, _Depth) ->
+    erlang:error(w601_delete_job_not_exhausted).
+
+exhaust_eb(Org, Ws, Id, Depth) when Depth < 24 ->
+    {ok, _} = elib_pg:query(
+        <<
+            "UPDATE enterprise_asset_delete_queue SET next_retry_at=now()"
+            " WHERE organization_id=$1 AND workspace_id=$2 AND asset_id=$3"
+            " AND completed_at IS NULL"
+        >>,
+        [Org, Ws, Id]
+    ),
+    Token = elib_uuid:gen_v7(),
+    case elib_pg:query(<<"SELECT * FROM fn_v5_claim_eb($1)">>, [Token]) of
+        {ok, [
+            #{
+                <<"out_organization_id">> := Org,
+                <<"out_workspace_id">> := Ws,
+                <<"out_asset_id">> := Id,
+                <<"out_attempts">> := Attempts
+            }
+        ]} ->
+            {ok, [#{<<"fn_v5_ack_eb">> := State}]} =
+                elib_pg:query(<<"SELECT fn_v5_ack_eb($1,$2,$3,$4,false)">>, [Org, Ws, Id, Token]),
+            case State of
+                <<"blocked">> ->
+                    ?assert(Attempts >= 8),
+                    ok;
+                <<"retry_wait">> ->
+                    ?assert(Attempts < 8),
+                    exhaust_eb(Org, Ws, Id, Depth + 1);
+                Other ->
+                    erlang:error({w601_unexpected_ack_state, Other})
+            end;
+        {ok, [
+            #{
+                <<"out_organization_id">> := OtherOrg,
+                <<"out_workspace_id">> := OtherWs,
+                <<"out_asset_id">> := OtherAsset
+            }
+        ]} ->
+            {ok, [_]} = elib_pg:query(
+                <<"SELECT fn_v5_ack_eb($1,$2,$3,$4,false)">>,
+                [OtherOrg, OtherWs, OtherAsset, Token]
+            ),
+            exhaust_eb(Org, Ws, Id, Depth + 1)
+    end;
+exhaust_eb(_Org, _Ws, _Id, _Depth) ->
+    erlang:error(w601_delete_job_not_exhausted).
+
+assert_job_blocked(T, <<"ordinary">>) ->
+    {ok, [
+        #{
+            <<"job_state">> := <<"blocked">>,
+            <<"attempts">> := 8,
+            <<"last_error_code">> := <<"max_attempts">>
+        }
+    ]} =
+        elib_pg:query(
+            <<
+                "SELECT job_state, attempts, last_error_code FROM attachment_object_deletion"
+                " WHERE path=$1"
+            >>,
+            [key(T)]
+        ),
+    ok;
+assert_job_blocked(T, _) ->
+    org_ws(T, fun(Org, Ws, Id) ->
+        {ok, [
+            #{
+                <<"job_state">> := <<"blocked">>,
+                <<"attempts">> := 8,
+                <<"last_error_code">> := <<"max_attempts">>
+            }
+        ]} =
+            elib_pg:query(
+                <<
+                    "SELECT job_state, attempts, last_error_code"
+                    " FROM enterprise_asset_delete_queue"
+                    " WHERE organization_id=$1 AND workspace_id=$2 AND asset_id=$3"
+                >>,
+                [Org, Ws, Id]
+            )
     end).
 
 %% 真实 fn_v5_register_pending 契约探针：deadline < expiry => 23514。
