@@ -83,7 +83,7 @@ cleanup() {
   [ -n "$WRITER_JOB" ] && kill "$WRITER_JOB" 2>/dev/null
   docker exec -i -e PGPASSWORD="$PASS" "$PG_CONTAINER" psql -X -U imboy_user -d postgres \
     -q -c "DROP DATABASE IF EXISTS \"$CYCLE_DB\"" >/dev/null 2>&1
-  rm -f "$PROBE_TMP/out.txt" "$PROBE_TMP/err.txt" "$PROBE_TMP/writer.log"
+  rm -f "$PROBE_TMP/out.txt" "$PROBE_TMP/err.txt" "$PROBE_TMP/writer.log" "$PROBE_TMP/seed-err.txt"
   rmdir "$PROBE_TMP" 2>/dev/null
 }
 PASS="$(cat "$RUN_DIR/resources/pg-attv5.password")" || exit 20
@@ -193,9 +193,9 @@ COMMIT;
 SQL
 }
 seed_enterprise_extras() {
-PSQL -q > /dev/null 2>&1 <<SQL
+PSQL -q > /dev/null 2>"$PROBE_TMP/seed-err.txt" <<SQL
 INSERT INTO enterprise_asset(id,organization_id,workspace_id,object_key,object_hash,status,storage_driver,storage_namespace,storage_container,storage_locator_sha256)
-SELECT 910000102,98000101,97000101,'v5e/sub1','v5hash','pending_confirm',101
+SELECT 910000102,98000101,97000101,'v5e/sub1','v5hash','pending_confirm','$ST_DRV','$ST_NS','$ST_CT','$ST_LOC'
 WHERE NOT EXISTS (SELECT 1 FROM enterprise_asset WHERE id=910000102);
 INSERT INTO enterprise_asset(id,organization_id,workspace_id,object_key,object_hash,status,storage_driver,storage_namespace,storage_container,storage_locator_sha256)
 SELECT 910000103,98000101,97000101,'v5e/auth','v5hash','active','$ST_DRV','$ST_NS','$ST_CT','$ST_LOC'
@@ -214,7 +214,7 @@ SQL
   # per-run EB fixtures (disjoint 910xxx band): never touched by the EB
   # registration guard's immutable registration columns, so no reset UPDATE
   # is needed before fn_v5_register_eb.
-  PSQL -q > /dev/null 2>&1 <<SQL
+  PSQL -q > /dev/null 2>>"$PROBE_TMP/seed-err.txt" <<SQL
 INSERT INTO enterprise_asset(id,organization_id,workspace_id,object_key,object_hash,status)
 SELECT $EA_REG,98000101,97000101,'v5e/reg1-$RUN_TAG','v5hash','pending_confirm'
 WHERE NOT EXISTS (SELECT 1 FROM enterprise_asset WHERE id=$EA_REG);
@@ -368,7 +368,9 @@ LOAD_ROWS="$(sqlval "SELECT count(*) FROM attachment_object_deletion WHERE path 
 (
   i=0
   while [ $i -lt 90 ]; do
-    res="$(printf "UPDATE attachment_object_deletion SET retry_generation=retry_generation WHERE path='v5p/bulk/0000001'" | PSQL -tAq 2>/dev/null | tail -1)"
+    # No -q here: quiet mode suppresses the UPDATE n command tag that the
+    # writer.log evidence chain (writes/minrows) is built from.
+    res="$(printf "UPDATE attachment_object_deletion SET retry_generation=retry_generation WHERE path='v5p/bulk/0000001'" | PSQL -tA 2>/dev/null | tail -1)"
     case "$res" in
       "UPDATE "*) printf '%s %s\n' "$(now_ms)" "${res#UPDATE }" >> "$PROBE_TMP/writer.log" ;;
     esac
@@ -479,10 +481,26 @@ SELECT CASE WHEN (SELECT count(*) FROM attachment WHERE path='v5p/oldwriter' AND
 # and the tombstone copy persists UUID+snapshot into the queue row.  A bare
 # rc=0 no longer counts: every step's value is asserted.
 required_functions_probe() {
-  local n=0 fails="" out
-  step() { # name expected sql
-    out="$(printf '%s\n' "$3" | PSQL -tAq 2>>"$PROBE_TMP/err.txt")" || { fails="$fails $1(rc)"; return; }
-    if [ "$out" = "$2" ]; then n=$((n+1)); else fails="$fails $1(=$out)"; fi
+  local n=0 fails="" got
+  # Two independent snapshots per step: the action statement runs first and
+  # commits (statement autocommit), then the verification statement runs in a
+  # separate psql invocation under a fresh snapshot that sees every row the
+  # volatile definer function wrote.  A single SELECT combining the call with
+  # the persisted-count subqueries evaluates those counts against the
+  # statement-start snapshot and never sees the function's own INSERT/UPDATE.
+  # verify_sql empty => single-statement mode (xact-scoped checks such as the
+  # advisory lock must share the transaction with the call).  A non-empty
+  # action output is joined with the verification output using [sep]; DO-block
+  # actions produce no output, so the verification alone is compared.  Every
+  # expected literal is unchanged from the single-statement revision.
+  step() { # name expected action_sql verify_sql [sep]
+    local aout=""
+    aout="$(printf '%s\n' "$3" | PSQL -tAq 2>>"$PROBE_TMP/err.txt")" || { fails="$fails $1(rc)"; return; }
+    if [ -z "${4:-}" ]; then got="$aout"; else
+      got="$(printf '%s\n' "$4" | PSQL -tAq 2>>"$PROBE_TMP/err.txt")" || { fails="$fails $1(rc)"; return; }
+      [ -z "$aout" ] || got="$aout${5-}$got"
+    fi
+    if [ "$got" = "$2" ]; then n=$((n+1)); else fails="$fails $1(=$got)"; fi
   }
   # Per-invocation fixtures: guards DBs persist across manual runs and V5
   # tombstone/session guards make DELETE cleanup impossible, so a reused
@@ -519,107 +537,121 @@ SELECT $REAP_ASSET,98000101,97000101,'$REAPKEY','v5hash','active'
 WHERE NOT EXISTS (SELECT 1 FROM enterprise_asset WHERE id=$REAP_ASSET);
 SQL
   # 1 lock_identity: the advisory xact lock is really taken by this backend.
+  # Single-statement mode: the pg_locks check is xact-scoped and must share
+  # the transaction with the lock call, so it is not split.
   step lock_identity "locked" "SET ROLE v5_app_runtime;
 WITH l AS (SELECT fn_v5_lock_identity('$ST_DRV','$ST_NS','$ST_CT','v5p/fn-lock-$RUN_TAG'))
 SELECT CASE WHEN EXISTS (SELECT 1 FROM pg_locks WHERE locktype='advisory' AND pid=pg_backend_pid())
-       THEN 'locked' ELSE 'no-lock' END FROM l"
+       THEN 'locked' ELSE 'no-lock' END FROM l" ""
   # 2 register_pending: returns the frozen identity session and persists it.
+  # Action commits the call and its returned identity is the action output;
+  # the persisted row is counted under a fresh snapshot (the same-statement
+  # count never sees the function's own INSERT).  Expected literal unchanged.
   step register_pending "$RKEY:registered:$RUUID|1" "SET ROLE v5_app_runtime;
-SELECT f.out_object_key||':'||f.out_session_state||':'||f.out_client_upload_id::text||'|'||
-  (SELECT count(*)::text FROM attach_pending p WHERE p.object_key=f.out_object_key
+SELECT f.out_object_key||':'||f.out_session_state||':'||f.out_client_upload_id::text
+FROM fn_v5_register_pending('$RKEY','b','private',101,'$RUUID','$REG'::jsonb,
+  now()+interval '2 hours',now()+interval '1 hour','$ST_DRV','$ST_NS','$ST_CT','$ST_LOC') f" "SELECT (SELECT count(*)::text FROM attach_pending p WHERE p.object_key='$RKEY'
      AND p.session_state='registered' AND p.storage_driver='$ST_DRV'
      AND p.storage_namespace='$ST_NS' AND p.storage_container='$ST_CT'
-     AND p.storage_locator_sha256='$ST_LOC')
-FROM fn_v5_register_pending('$RKEY','b','private',101,'$RUUID','$REG'::jsonb,
-  now()+interval '2 hours',now()+interval '1 hour','$ST_DRV','$ST_NS','$ST_CT','$ST_LOC') f"
+     AND p.storage_locator_sha256='$ST_LOC')" "|"
   # 3 register_eb: returns registered + persists the snapshot on the asset row.
   step register_eb "registered:$REBUUID|1" "SET ROLE v5_app_runtime;
-SELECT f.out_session_state||':'||f.out_client_upload_id::text||'|'||
-  (SELECT count(*)::text FROM enterprise_asset a WHERE a.id=$RASSET
-     AND a.client_upload_id=f.out_client_upload_id AND a.upload_registration IS NOT NULL)
+SELECT f.out_session_state||':'||f.out_client_upload_id::text
 FROM fn_v5_register_eb(98000101,97000101,$RASSET,'v5e/sub1-$RUN_TAG','$REBUUID','$REG'::jsonb,'user',
-  now()+interval '2 hours',now()+interval '1 hour') f"
-  # 4 pin_pending_content: TRUE exactly once + receipt persisted.
+  now()+interval '2 hours',now()+interval '1 hour') f" "SELECT (SELECT count(*)::text FROM enterprise_asset a WHERE a.id=$RASSET
+     AND a.client_upload_id='$REBUUID'::uuid AND a.upload_registration IS NOT NULL)" "|"
+  # 4 pin_pending_content: TRUE exactly once + receipt persisted.  (boolean
+  # ::text renders 't' but the frozen expected literal demands 'true', so the
+  # identical boolean result is projected through CASE.)
   step pin_pending_content "true|1" "SET ROLE v5_app_runtime;
-SELECT fn_v5_pin_pending_content('$RKEY','$CONTENT'::jsonb)::text||'|'||
-  (SELECT count(*)::text FROM attach_pending WHERE object_key='$RKEY' AND upload_content='$CONTENT'::jsonb)"
+SELECT CASE WHEN fn_v5_pin_pending_content('$RKEY','$CONTENT'::jsonb) THEN 'true' ELSE 'false' END" "SELECT (SELECT count(*)::text FROM attach_pending WHERE object_key='$RKEY' AND upload_content='$CONTENT'::jsonb)" "|"
   # 5 confirm_pending: returns the linked attachment id + confirmed session.
   step confirm_pending "$RID1|confirmed:$RID1" "SET ROLE v5_app_runtime;
-SELECT fn_v5_confirm_pending('$RKEY',$RID1)::text||'|'||
-  (SELECT session_state||':'||coalesce(confirmed_attachment_id::text,'NULL') FROM attach_pending WHERE object_key='$RKEY')"
+SELECT fn_v5_confirm_pending('$RKEY',$RID1)::text" "SELECT (SELECT session_state||':'||coalesce(confirmed_attachment_id::text,'NULL') FROM attach_pending WHERE object_key='$RKEY')" "|"
   # 6 intent_ordinary_delete: delete_intent + ready job with frozen identity + audit.
   step intent_ordinary_delete "delete_intent:1:1" "SET ROLE v5_app_runtime;
-WITH i AS (SELECT fn_v5_intent_ordinary_delete('$RINTENT','probe'))
-SELECT (SELECT lifecycle_state FROM attachment WHERE id=$RID2)||':'||
+DO \$fn_intent\$
+BEGIN
+  PERFORM fn_v5_intent_ordinary_delete('$RINTENT','probe');
+END
+\$fn_intent\$;" "SELECT (SELECT lifecycle_state FROM attachment WHERE id=$RID2)||':'||
   (SELECT count(*)::text FROM attachment_object_deletion WHERE path='$RINTENT' AND job_state='ready'
      AND storage_driver='$ST_DRV' AND storage_locator_sha256='$ST_LOC')||':'||
-  (SELECT count(*)::text FROM attachment_lifecycle_v5_audit WHERE object_key='$RINTENT' AND action='delete_intent')
-FROM i"
+  (SELECT count(*)::text FROM attachment_lifecycle_v5_audit WHERE object_key='$RINTENT' AND action='delete_intent')"
   # 7 intent_eb_delete: delete_intent + ready enterprise job with identity.
   step intent_eb_delete "delete_intent:1" "SET ROLE v5_app_runtime;
-WITH i AS (SELECT fn_v5_intent_eb_delete(98000101,97000101,$RASSET2,'probe'))
-SELECT (SELECT lifecycle_state FROM enterprise_asset WHERE id=$RASSET2)||':'||
+DO \$fn_intent_eb\$
+BEGIN
+  PERFORM fn_v5_intent_eb_delete(98000101,97000101,$RASSET2,'probe');
+END
+\$fn_intent_eb\$;" "SELECT (SELECT lifecycle_state FROM enterprise_asset WHERE id=$RASSET2)||':'||
   (SELECT count(*)::text FROM enterprise_asset_delete_queue WHERE asset_id=$RASSET2 AND job_state='ready'
-     AND storage_driver='$ST_DRV' AND storage_locator_sha256='$ST_LOC')
-FROM i"
+     AND storage_driver='$ST_DRV' AND storage_locator_sha256='$ST_LOC')"
   # 8 claim_ordinary: leases exactly one real job under the worker token.
+  # The lease count the function returned is the action output; the persisted
+  # lease (the function stamps the same worker token on the row it returns) is
+  # verified under a fresh snapshot keyed on that token.
   step claim_ordinary "1:1" "SET ROLE v5_worker;
-WITH c AS (SELECT * FROM fn_v5_claim_ordinary('$RTOKEN'::uuid))
-SELECT (SELECT count(*)::text FROM c)||':'||
-  (SELECT count(*)::text FROM attachment_object_deletion q JOIN c ON q.path=c.out_path
-     WHERE q.job_state='leased' AND q.lease_token='$RTOKEN'::uuid AND q.attempts>=1
-       AND q.storage_driver='$ST_DRV')"
+SELECT count(*)::text FROM fn_v5_claim_ordinary('$RTOKEN'::uuid)" "SELECT (SELECT count(*)::text FROM attachment_object_deletion q
+     WHERE q.lease_token='$RTOKEN'::uuid AND q.job_state='leased' AND q.attempts>=1
+       AND q.storage_driver='$ST_DRV')" ":"
   # 9 ack_ordinary: 'done' + completed_at persisted on the leased job.
+  # ack clears lease_token, so the leased path is captured before the action;
+  # the ack return value is the action output and the persisted done row is
+  # verified under a fresh snapshot keyed on that path.
+  local ACK_PATH
+  ACK_PATH="$(sqlval "SELECT path FROM attachment_object_deletion WHERE lease_token='$RTOKEN'::uuid AND job_state='leased' LIMIT 1")"
   step ack_ordinary "done:1" "SET ROLE v5_worker;
-WITH j AS (SELECT path FROM attachment_object_deletion WHERE lease_token='$RTOKEN'::uuid AND job_state='leased' LIMIT 1),
-     a AS (SELECT fn_v5_ack_ordinary(j.path,'$RTOKEN'::uuid,true) AS r FROM j)
-SELECT (SELECT r FROM a)||':'||
-  (SELECT count(*)::text FROM attachment_object_deletion q JOIN j ON q.path=j.path
-     WHERE q.job_state='done' AND q.completed_at IS NOT NULL AND q.lease_token IS NULL)"
+SELECT fn_v5_ack_ordinary('$ACK_PATH','$RTOKEN'::uuid,true)" "SELECT (SELECT count(*)::text FROM attachment_object_deletion WHERE path='$ACK_PATH'
+   AND job_state='done' AND completed_at IS NOT NULL AND lease_token IS NULL)" ":"
   # reaper fixture: a really expired lease under a dedicated path.
   PSQL -q > /dev/null 2>&1 -c "INSERT INTO attachment_object_deletion(path,bucket,storage_driver,storage_namespace,storage_container,storage_locator_sha256,job_state,lease_token,lease_until,next_retry_at,attempts) SELECT '$RREAP','b','$ST_DRV','$ST_NS','$ST_CT','$ST_LOC','leased','$RRETOKEN'::uuid,now()-interval '1 second',now(),0 WHERE NOT EXISTS (SELECT 1 FROM attachment_object_deletion WHERE path='$RREAP')"
-  # 10 reaper_ordinary: returns >=1 and flips the expired lease.
+  # 10 reaper_ordinary: returns >=1 and flips the expired lease.  (integer
+  # comparison ::text renders 't' but the frozen expected literal demands
+  # 'true', so the identical >=1 condition is projected through CASE.)
   step reaper_ordinary "true:retry_wait:lease_expired" "SET ROLE v5_worker;
-SELECT (fn_v5_reaper_ordinary(5)>=1)::text||':'||
-  (SELECT job_state||':'||coalesce(last_error_code,'-') FROM attachment_object_deletion WHERE path='$RREAP')"
+SELECT CASE WHEN fn_v5_reaper_ordinary(5)>=1 THEN 'true' ELSE 'false' END" "SELECT job_state||':'||coalesce(last_error_code,'-') FROM attachment_object_deletion WHERE path='$RREAP'" ":"
   # 11 claim_eb: leases exactly one real enterprise job under the token.
   step claim_eb "1:1" "SET ROLE v5_worker;
-WITH c AS (SELECT * FROM fn_v5_claim_eb('$RETOKEN'::uuid))
-SELECT (SELECT count(*)::text FROM c)||':'||
-  (SELECT count(*)::text FROM enterprise_asset_delete_queue q
-     JOIN c ON (q.organization_id,q.workspace_id,q.asset_id)=(c.out_organization_id,c.out_workspace_id,c.out_asset_id)
-     WHERE q.job_state='leased' AND q.lease_token='$RETOKEN'::uuid AND q.attempts>=1
-       AND q.storage_driver='$ST_DRV')"
+SELECT count(*)::text FROM fn_v5_claim_eb('$RETOKEN'::uuid)" "SELECT (SELECT count(*)::text FROM enterprise_asset_delete_queue q
+     WHERE q.lease_token='$RETOKEN'::uuid AND q.job_state='leased' AND q.attempts>=1
+       AND q.storage_driver='$ST_DRV')" ":"
   # 12 ack_eb: 'done' + completed_at persisted on the leased enterprise job.
+  # ack clears lease_token, so the leased (org,ws,asset) is captured first;
+  # the ack return value is the action output and the persisted done row is
+  # verified under a fresh snapshot keyed on that identity triple.
+  local ACK_EB ACK_EB_ORG ACK_EB_WS ACK_EB_ASSET
+  ACK_EB="$(sqlval "SELECT organization_id||'|'||workspace_id||'|'||asset_id FROM enterprise_asset_delete_queue WHERE lease_token='$RETOKEN'::uuid AND job_state='leased' LIMIT 1")"
+  IFS='|' read -r ACK_EB_ORG ACK_EB_WS ACK_EB_ASSET <<< "$ACK_EB"
   step ack_eb "done:1" "SET ROLE v5_worker;
-WITH j AS (SELECT organization_id,workspace_id,asset_id FROM enterprise_asset_delete_queue WHERE lease_token='$RETOKEN'::uuid AND job_state='leased' LIMIT 1),
-     a AS (SELECT fn_v5_ack_eb(j.organization_id,j.workspace_id,j.asset_id,'$RETOKEN'::uuid,true) AS r FROM j)
-SELECT (SELECT r FROM a)||':'||
-  (SELECT count(*)::text FROM enterprise_asset_delete_queue q
-     JOIN j ON (q.organization_id,q.workspace_id,q.asset_id)=(j.organization_id,j.workspace_id,j.asset_id)
-     WHERE q.job_state='done' AND q.completed_at IS NOT NULL AND q.lease_token IS NULL)"
+SELECT fn_v5_ack_eb($ACK_EB_ORG,$ACK_EB_WS,$ACK_EB_ASSET,'$RETOKEN'::uuid,true)" "SELECT (SELECT count(*)::text FROM enterprise_asset_delete_queue
+   WHERE (organization_id,workspace_id,asset_id)=($ACK_EB_ORG,$ACK_EB_WS,$ACK_EB_ASSET)
+     AND job_state='done' AND completed_at IS NOT NULL AND lease_token IS NULL)" ":"
   # reaper fixture (enterprise): a really expired lease on a dedicated asset.
   PSQL -q > /dev/null 2>&1 -c "INSERT INTO enterprise_asset_delete_queue(organization_id,workspace_id,asset_id,object_key,storage_driver,storage_namespace,storage_container,storage_locator_sha256,job_state,lease_token,lease_until,next_retry_at,attempts) SELECT 98000101,97000101,$REAP_ASSET,'$REAPKEY','$ST_DRV','$ST_NS','$ST_CT','$ST_LOC','leased','$RERETOKEN'::uuid,now()-interval '1 second',now(),0 WHERE NOT EXISTS (SELECT 1 FROM enterprise_asset_delete_queue WHERE asset_id=$REAP_ASSET)"
   # 13 reaper_eb: returns >=1 and flips the expired enterprise lease.
   step reaper_eb "true:retry_wait:lease_expired" "SET ROLE v5_worker;
-SELECT (fn_v5_reaper_eb(5)>=1)::text||':'||
-  (SELECT job_state||':'||coalesce(last_error_code,'-') FROM enterprise_asset_delete_queue WHERE asset_id=$REAP_ASSET)"
+SELECT CASE WHEN fn_v5_reaper_eb(5)>=1 THEN 'true' ELSE 'false' END" "SELECT job_state||':'||coalesce(last_error_code,'-') FROM enterprise_asset_delete_queue WHERE asset_id=$REAP_ASSET" ":"
   # proof fixture: fresh blocked job (attempts=0, legacy_location_unverified).
   PSQL -q > /dev/null 2>&1 -c "INSERT INTO attachment_object_deletion(path,bucket) SELECT '$RPROOF','b' WHERE NOT EXISTS (SELECT 1 FROM attachment_object_deletion WHERE path='$RPROOF')"
   # 14 proof_activate_ordinary: fills NULL location once and flips to ready.
   step proof_activate_ordinary "ready:-:$ST_DRV:1" "SET ROLE v5_proof;
-WITH p AS (SELECT fn_v5_proof_activate_ordinary('$RPROOF','$ST_DRV','$ST_NS','$ST_CT','$ST_LOC'))
-SELECT (SELECT job_state||':'||coalesce(last_error_code,'-')||':'||coalesce(storage_driver,'-') FROM attachment_object_deletion WHERE path='$RPROOF')||':'||
-  (SELECT count(*)::text FROM attachment_lifecycle_v5_audit WHERE object_key='$RPROOF' AND action='proof_activate')
-FROM p"
+DO \$fn_proof\$
+BEGIN
+  PERFORM fn_v5_proof_activate_ordinary('$RPROOF','$ST_DRV','$ST_NS','$ST_CT','$ST_LOC');
+END
+\$fn_proof\$;" "SELECT (SELECT job_state||':'||coalesce(last_error_code,'-')||':'||coalesce(storage_driver,'-') FROM attachment_object_deletion WHERE path='$RPROOF')||':'||
+  (SELECT count(*)::text FROM attachment_lifecycle_v5_audit WHERE object_key='$RPROOF' AND action='proof_activate')"
   # tombstone-copy fixture: register the dedicated asset, then copy.
   PSQL -q > /dev/null 2>>"$PROBE_TMP/err.txt" -c "SET ROLE v5_app_runtime; SELECT fn_v5_register_eb(98000101,97000101,$COPY_ASSET,'$COPYKEY','$RCOPYUUID','$REG'::jsonb,'user',now()+interval '2 hours',now()+interval '1 hour')" || fails="$fails register_eb_copy_fixture"
   # 15 copy_eb_recovery_tombstone: UUID+registration persisted into the queue row.
   step copy_eb_recovery_tombstone "$RCOPYUUID:true" "SET ROLE v5_app_runtime;
-WITH c AS (SELECT fn_v5_copy_eb_recovery_tombstone(98000101,97000101,$COPY_ASSET))
-SELECT (SELECT coalesce(client_upload_id::text,'-') FROM enterprise_asset_delete_queue WHERE asset_id=$COPY_ASSET)||':'||
-  (SELECT (upload_registration IS NOT NULL)::text FROM enterprise_asset_delete_queue WHERE asset_id=$COPY_ASSET)
-FROM c"
+DO \$fn_copy\$
+BEGIN
+  PERFORM fn_v5_copy_eb_recovery_tombstone(98000101,97000101,$COPY_ASSET);
+END
+\$fn_copy\$;" "SELECT (SELECT coalesce(client_upload_id::text,'-') FROM enterprise_asset_delete_queue WHERE asset_id=$COPY_ASSET)||':'||
+  (SELECT (upload_registration IS NOT NULL)::text FROM enterprise_asset_delete_queue WHERE asset_id=$COPY_ASSET)"
   # count DISTINCT proname with SECURITY DEFINER enforced: migration 00000193
   # legitimately overloads fn_v5_claim_eb with a second scoped signature owned
   # by the same role; prosecdef=true is now part of the frozen inventory.
@@ -689,7 +721,7 @@ SQL
                 storage_locator_sha256='$(printf 'd%.0s' {1..64})'
             FROM batch b WHERE p.object_key=b.object_key RETURNING p.object_key),
   cur AS (UPDATE v5_probe_bf_cursor
-             SET last_key=(SELECT max(object_key) FROM upd),
+             SET last_key=coalesce((SELECT max(object_key) FROM upd), last_key),
                  committed_rows=committed_rows+(SELECT count(*) FROM upd)
            WHERE id=1 AND version=1 RETURNING committed_rows)
   SELECT committed_rows FROM cur"
@@ -704,7 +736,7 @@ SQL
                   storage_locator_sha256='$(printf 'd%.0s' {1..64})'
               FROM batch b WHERE p.object_key=b.object_key RETURNING p.object_key),
     cur AS (UPDATE v5_probe_bf_cursor
-               SET last_key=(SELECT max(object_key) FROM upd),
+               SET last_key=coalesce((SELECT max(object_key) FROM upd), last_key),
                    committed_rows=committed_rows+(SELECT count(*) FROM upd)
              WHERE id=1 AND version=1 RETURNING committed_rows)
     SELECT committed_rows INTO n FROM cur;
@@ -885,13 +917,15 @@ DO \$i\$ BEGIN
   END;
 END \$i\$;
 SELECT CASE WHEN group_file_id=7001 THEN 'first-bind:once' ELSE 'rebound' END FROM attachment WHERE id=$BIND_ID"
-BIND_SNAP1="$(sqlval "SELECT md5(to_jsonb(a)::text) FROM attachment a WHERE id=$BIND_ID")"
+BIND_SNAP1="$(sqlval "SELECT md5((to_jsonb(a) - 'updated_at')::text) FROM attachment a WHERE id=$BIND_ID")"
 # --- group: immutable occurrence of same_value_replay (the registration group
 # carries its own occurrence below; consumers distinguish by group order).
 # Replaying the identical bind value must keep the WHOLE persisted row
-# unchanged (persistent to_jsonb snapshot comparison).
+# unchanged (persistent to_jsonb snapshot comparison).  The base touch trigger
+# moves updated_at on every UPDATE, so that volatile column is excluded from
+# the snapshot; every other column must still be byte-identical.
 probe same_value_replay "replay:idempotent" "UPDATE attachment SET group_file_id=7001 WHERE id=$BIND_ID;
-SELECT CASE WHEN group_file_id=7001 AND md5(to_jsonb(a)::text)='$BIND_SNAP1' THEN 'replay:idempotent' ELSE 'changed' END FROM attachment a WHERE id=$BIND_ID"
+SELECT CASE WHEN group_file_id=7001 AND md5((to_jsonb(a) - 'updated_at')::text)='$BIND_SNAP1' THEN 'replay:idempotent' ELSE 'changed' END FROM attachment a WHERE id=$BIND_ID"
 }
 
 # ============ session-link-integrity (guards only) ============
