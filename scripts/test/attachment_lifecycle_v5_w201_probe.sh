@@ -60,8 +60,31 @@ except OSError:
 finally:
     s.close()
 PYTCP
+# Real fault-injection channel for the database_unavailable scenarios: the
+# storage ledger table is renamed away, so the scenario SQL runs against a
+# genuinely missing relation and fails with the engine's own error
+# (42P01, relation "attach_pending" does not exist) -- not a simulated shape.
+# restore_ledger is idempotent (to_regclass-guarded) and is wired into the
+# EXIT trap below, so an aborted section can never leave the shared per-step
+# database with a renamed ledger.
+restore_ledger() {
+  # Early-exit paths may run this before the psql helper exists: nothing was
+  # injected yet, so there is nothing to restore.
+  declare -F PSQL >/dev/null 2>&1 || return 0
+  local live inj
+  live="$(echo "SELECT to_regclass('public.attach_pending') IS NOT NULL" | PSQL -tAq 2>/dev/null)" || return 1
+  [ "$live" = "t" ] && return 0
+  inj="$(echo "SELECT to_regclass('public.attach_pending_inject_down') IS NOT NULL" | PSQL -tAq 2>/dev/null)" || return 1
+  [ "$inj" = "t" ] || { echo "RESTORE_BROKEN: neither attach_pending nor attach_pending_inject_down exists" >&2; return 1; }
+  PSQL -q -c "ALTER TABLE attach_pending_inject_down RENAME TO attach_pending" >/dev/null
+}
+inject_ledger_down() {
+  # Defensive: guarantee a live ledger before injecting (idempotent restore).
+  restore_ledger || return 1
+  PSQL -q -c "ALTER TABLE attach_pending RENAME TO attach_pending_inject_down" >/dev/null
+}
 PROBE_TMP="$(mktemp -d "$RUN_DIR/resources/w201-probe.XXXXXX")" || exit 20
-trap 'rm -f "$PROBE_TMP/out.txt" "$PROBE_TMP/err.txt"; rmdir "$PROBE_TMP"' EXIT
+trap 'restore_ledger || echo "W201 EXIT-TRAP: ledger restore failed; attach_pending_inject_down may be leftover" >&2; rm -f "$PROBE_TMP/out.txt" "$PROBE_TMP/err.txt"; rmdir "$PROBE_TMP"' EXIT
 PASS="$(cat "$RUN_DIR/resources/pg-attv5.password")" || exit 20
 export PGPASSWORD="$PASS"
 PSQL() { docker exec -i -e PGPASSWORD="$PASS" "$PG_CONTAINER" psql -X -U imboy_user -d "$DB" -v ON_ERROR_STOP=1 "$@"; }
@@ -70,7 +93,7 @@ ok=0; bad=0
 
 # name entrypoint scenario ac expected(fail|value) sql
 probe() {
-  local name="$1" ep="$2" sc="$3" ac="$4" expected="$5" sql="$6" rc val
+  local name="$1" ep="$2" sc="$3" ac="$4" expected="$5" sql="$6" rc val inject_down=0
   local state_sql="" before="" after="" state_rc=1 expected_code="" expected_message=""
   if [ "$expected" = fail ]; then
     case "$name" in
@@ -94,6 +117,16 @@ probe() {
         expected_code=23510; expected_message='v5 upload receipt or declaration mismatch'; state_sql="SELECT 't|'||md5(to_jsonb(p)::text) FROM attach_pending p WHERE object_key='$KEY_I' AND upload_content='$CONTENT_I'::jsonb" ;;
       ebp_race|ebp_swap)
         expected_code=23510; expected_message='v5 upload enterprise receipt or declaration mismatch'; state_sql="SELECT 't|'||md5(to_jsonb(a)::text) FROM enterprise_asset a WHERE id=910000203 AND upload_content='$EB_CONTENT'::jsonb" ;;
+      mp_db_unavailable|mp_enterprise_db_down)
+        # Real outage injected by renaming the ledger away (see
+        # inject_ledger_down): plpgsql fails compiling the %ROWTYPE DECLARE
+        # before any statement runs, so the engine's own 42P01 shape is the
+        # observed failure, and the frozen state must show the ledger back
+        # with no capability registered for the scenario key.
+        expected_code=42P01; expected_message='relation "attach_pending" does not exist'
+        local mpkey='v5w201/mp/2'; [ "$name" = mp_enterprise_db_down ] && mpkey='v5w201/mp/e2'
+        inject_down=1
+        state_sql="SELECT to_regclass('public.attach_pending') IS NOT NULL AND NOT EXISTS(SELECT 1 FROM attach_pending WHERE object_key='$mpkey')" ;;
     esac
     if [ "$name" = failclosed_snapshot_conflict ] && [ "$ep" = internal ]; then
       state_sql="SELECT 't|'||md5(to_jsonb(p)::text) FROM attach_pending p WHERE object_key='$KEY2' AND client_upload_id='$CID2'::uuid AND upload_registration='$REG_APP'::jsonb"
@@ -102,8 +135,14 @@ probe() {
       before="$(echo "$state_sql" | PSQL -tAq 2>"$PROBE_TMP/err.txt")"; state_rc=$?
     fi
   fi
+  if [ "$inject_down" = 1 ]; then
+    inject_ledger_down || echo "W201 inject setup failed for $name; scenario cannot be corroborated" >&2
+  fi
   echo "$sql" | PSQL -v VERBOSITY=verbose -tAq > "$PROBE_TMP/out.txt" 2>"$PROBE_TMP/err.txt"
   rc=$?
+  if [ "$inject_down" = 1 ]; then
+    restore_ledger || echo "W201 inject restore FAILED after $name" >&2
+  fi
   val="$(tail -1 "$PROBE_TMP/out.txt")"
   local pass=false
   if [ "$expected" = "fail" ]; then
@@ -218,7 +257,7 @@ probe recovery_authorization_revoked ordinary authorization_revoked AC01 "0" \
 # confirmed against its attachment, and then cannot be renewed (0 rows) — the
 # status stays confirmed with the committed link intact.
 reg_pending "$KEY_C" "$CID_C" "$REG" >/dev/null
-PSQL -q -v KEYC="$KEY_C" -v LOC="$LOC64" -v CONTENT="$CONTENT" -v HASH="$HASH64" <<'SQL' > /dev/null 2>&1 || { echo '{"name":"confirmed_seed","entrypoint":"ordinary","scenario":"seed","ac":"AC01","pass":false,"detail":"seed failed"}' >> "$OUT"; }
+PSQL -q -v KEYC="$KEY_C" -v LOC="$LOC64" -v CONTENT="$CONTENT" -v HASH="$HASH64" <<'SQL' > /dev/null 2>&1 || { echo '{"name":"confirmed_seed","entrypoint":"ordinary","scenario":"seed","ac":"AC01","pass":false,"sql_pass":false,"detail":"seed failed"}' >> "$OUT"; }
 SELECT fn_v5_pin_pending_content(:'KEYC', :'CONTENT'::jsonb);
 INSERT INTO attachment(id,file_hash256,mime_type,ext,name,path,url,size,scope,creator_user_id,referer_time,status,storage_driver,storage_namespace,storage_container,storage_locator_sha256)
 SELECT 940000201, :'HASH', 'image/png', 'png', 'a.png', :'KEYC', '', 10, 'private', 101, 0, 0, 'garage', 'v5ns', 'v5c', :'LOC'
@@ -259,7 +298,7 @@ probe internal_renew_races_intent internal renew_races_intent AC01 "0" \
 # confirmed -> no new capability: dedicated session pinned + confirmed, renew
 # refuses (0 rows) and the status stays confirmed with the link intact.
 reg_pending "$KEY2C" "$CID2C" "$REG" >/dev/null
-PSQL -q -v KEYC2="$KEY2C" -v LOC="$LOC64" -v CONTENT="$CONTENT" -v HASH="$HASH64" <<'SQL' > /dev/null 2>&1 || { echo '{"name":"confirmed_seed","entrypoint":"internal","scenario":"seed","ac":"AC01","pass":false,"detail":"seed failed"}' >> "$OUT"; }
+PSQL -q -v KEYC2="$KEY2C" -v LOC="$LOC64" -v CONTENT="$CONTENT" -v HASH="$HASH64" <<'SQL' > /dev/null 2>&1 || { echo '{"name":"confirmed_seed","entrypoint":"internal","scenario":"seed","ac":"AC01","pass":false,"sql_pass":false,"detail":"seed failed"}' >> "$OUT"; }
 SELECT fn_v5_pin_pending_content(:'KEYC2', :'CONTENT'::jsonb);
 INSERT INTO attachment(id,file_hash256,mime_type,ext,name,path,url,size,scope,creator_user_id,referer_time,status,storage_driver,storage_namespace,storage_container,storage_locator_sha256)
 SELECT 940000202, :'HASH', 'image/png', 'png', 'a2.png', :'KEYC2', '', 10, 'private', 101, 0, 0, 'garage', 'v5ns', 'v5c', :'LOC'
@@ -340,9 +379,9 @@ probe pin_no_url_columns ordinary new_url_cannot_bypass_gateway AC01 "0" \
 # frozen internal signature expiry is enforced by elib_s3_sign ctx;
 # the gate executor runs that eunit suite first and passes W201_S3SIGN_OK.
 if [ "${W201_S3SIGN_OK:-0}" = "1" ]; then
-  bad=$((bad+1)); echo "{\"name\":\"pin_frozen_signature_expiry\",\"entrypoint\":\"ordinary\",\"scenario\":\"frozen_internal_signature_expiry\",\"ac\":\"AC01\",\"pass\":false,\"detail\":\"real entrypoint evidence required\"}" >> "$OUT"
+  bad=$((bad+1)); echo "{\"name\":\"pin_frozen_signature_expiry\",\"entrypoint\":\"ordinary\",\"scenario\":\"frozen_internal_signature_expiry\",\"ac\":\"AC01\",\"pass\":false,\"sql_pass\":true,\"detail\":\"real entrypoint evidence required\"}" >> "$OUT"
 else
-  bad=$((bad+1)); echo "{\"name\":\"pin_frozen_signature_expiry\",\"entrypoint\":\"ordinary\",\"scenario\":\"frozen_internal_signature_expiry\",\"ac\":\"AC01\",\"pass\":false,\"detail\":\"gate must run elib_s3_sign_tests and set W201_S3SIGN_OK=1\"}" >> "$OUT"
+  bad=$((bad+1)); echo "{\"name\":\"pin_frozen_signature_expiry\",\"entrypoint\":\"ordinary\",\"scenario\":\"frozen_internal_signature_expiry\",\"ac\":\"AC01\",\"pass\":false,\"sql_pass\":false,\"detail\":\"gate must run elib_s3_sign_tests and set W201_S3SIGN_OK=1\"}" >> "$OUT"
 fi
 cleanup_keys
 }
@@ -376,7 +415,7 @@ CONTENT_I="{\"version\":1,\"sha256\":\"$HASH64\",\"size_bytes\":\"20\",\"mime\":
 pin_internal() {
 seed; cleanup_keys
 PSQL -q -c "DELETE FROM attach_pending WHERE object_key IN ('$KEY_I','$KEY_I2','$KEY_ILEG')" >/dev/null 2>&1 || true
-reg_pending "$KEY_I" "$CID_I" "$REG_APP" >/dev/null || { echo '{"name":"pin_i_seed","entrypoint":"internal","scenario":"seed","ac":"AC01","pass":false,"detail":"seed failed (register KEY_I)"}' >> "$OUT"; }
+reg_pending "$KEY_I" "$CID_I" "$REG_APP" >/dev/null || { echo '{"name":"pin_i_seed","entrypoint":"internal","scenario":"seed","ac":"AC01","pass":false,"sql_pass":false,"detail":"seed failed (register KEY_I)"}' >> "$OUT"; }
 # content pin precedes any provider PUT: first pin on a registered session
 probe pin_i_first internal first_content_pin AC01 "t" \
   "SELECT fn_v5_pin_pending_content('$KEY_I', '$CONTENT_I'::jsonb)"
@@ -399,7 +438,7 @@ probe pin_i_swap internal body_path_swap_rejected AC01 fail \
 probe pin_i_legacy_put internal old_client_bare_put_gateway AC01 "INSERT" \
   "INSERT INTO attach_pending(object_key,bucket,scope,creator_user_id) VALUES ('$KEY_ILEG','be','enterprise',0) ON CONFLICT (object_key) DO UPDATE SET created_at=now() RETURNING 'INSERT'::text"
 # multipart rides the same pin fn on its own application-subject session
-reg_pending "$KEY_I2" "$CID_I2" "$REG_APP" >/dev/null || { echo '{"name":"pin_i_seed","entrypoint":"internal","scenario":"seed","ac":"AC01","pass":false,"detail":"seed failed (register KEY_I2)"}' >> "$OUT"; }
+reg_pending "$KEY_I2" "$CID_I2" "$REG_APP" >/dev/null || { echo '{"name":"pin_i_seed","entrypoint":"internal","scenario":"seed","ac":"AC01","pass":false,"sql_pass":false,"detail":"seed failed (register KEY_I2)"}' >> "$OUT"; }
 probe pin_i_multipart internal multipart_uses_same_pin AC01 "t" \
   "SELECT fn_v5_pin_pending_content('$KEY_I2', '$CONTENT_I'::jsonb)"
 # no URL column anywhere on attach_pending: gateway bypass impossible
@@ -420,6 +459,9 @@ PSQL -q -c "DELETE FROM attach_pending WHERE object_key IN ('$KEY_I','$KEY_I2','
 # ================= pending-multipart (legacy direct-PUT entrypoint) =================
 multipart() {
 seed; cleanup_keys
+# fresh state for the injected database_unavailable scenarios (an interrupted
+# earlier section run could otherwise leave a stale key behind)
+PSQL -q -c "DELETE FROM attach_pending WHERE object_key IN ('v5w201/mp/2','v5w201/mp/e2')" >/dev/null 2>&1 || true
 # old-client bare register (no uuid) -> legacy add succeeds on the same ledger
 probe mp_legacy_register_ok ordinary multipart_success AC01 "registered" \
   "INSERT INTO attach_pending(object_key,bucket,scope,creator_user_id) VALUES ('v5w201/mp/1','b1','private',101) ON CONFLICT (object_key) DO UPDATE SET created_at=now() RETURNING session_state"
@@ -656,8 +698,16 @@ case "$SECTION" in
   *) echo "unknown section $SECTION" >&2; exit 2 ;;
 esac
 
-echo "{\"phase\":\"$SECTION\",\"ok\":$ok,\"bad\":$bad}" >> "$OUT"
-if [ "$bad" -ne 0 ]; then
-  echo "probe failures: $bad" >&2
+# SQL-layer corroboration is counted from the emitted rows themselves:
+# sql_pass=true rows corroborate the frozen business behaviour, sql_pass=false
+# rows mean the SQL layer contradicted it (or could not be observed).  The
+# step gate releases on sql_bad==0 only; bad keeps counting every row that
+# still awaits real entrypoint evidence (consumed when entrypoint_provenance
+# is wired, never a release condition here).
+sql_ok="$(grep -c '"sql_pass":true' "$OUT" || true)"
+sql_bad="$(grep -c '"sql_pass":false' "$OUT" || true)"
+echo "{\"phase\":\"$SECTION\",\"ok\":$ok,\"bad\":$bad,\"sql_ok\":$sql_ok,\"sql_bad\":$sql_bad}" >> "$OUT"
+if [ "$sql_bad" -ne 0 ]; then
+  echo "probe sql corroboration failures: $sql_bad (rows awaiting entrypoint provenance: $bad)" >&2
   exit 20
 fi
