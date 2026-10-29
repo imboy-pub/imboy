@@ -192,35 +192,42 @@ temp_parent() ->
 registry(Base, Garage) ->
     %% w403p-* 两根专供 w403_predecessor_support 的 ns()/container()（intent
     %% 回放复用其封印形态）；其余套件走 w601-w4-* 根。
+    %% 生产 attachment_storage:registry/0 只认 version=1 信封（缺 version 的
+    %% 值一律替换为空 registry → validate_registry 报 empty_roots），故按
+    %% imboy_env 的构造形状包装（对照 w403_storage_tests 的 registry 信封）。
     #{
-        <<"w601-disk-root">> => #{
-            driver => <<"disk">>,
-            namespace => ?NS_DISK,
-            aliases => [],
-            endpoint => list_to_binary("file://" ++ Base),
-            container => ?CONTAINER_DISK
+        version => 1,
+        roots => #{
+            <<"w601-disk-root">> => #{
+                driver => <<"disk">>,
+                namespace => ?NS_DISK,
+                aliases => [],
+                endpoint => list_to_binary("file://" ++ Base),
+                container => ?CONTAINER_DISK
+            },
+            <<"w601-garage-root">> => #{
+                driver => <<"garage">>,
+                namespace => ?NS_GARAGE,
+                aliases => [],
+                endpoint => maps:get(endpoint, Garage),
+                container => maps:get(bucket, Garage)
+            },
+            <<"w601-w403p-disk-root">> => #{
+                driver => <<"disk">>,
+                namespace => <<"w403p-disk">>,
+                aliases => [],
+                endpoint => list_to_binary("file://" ++ Base),
+                container => <<"c">>
+            },
+            <<"w601-w403p-garage-root">> => #{
+                driver => <<"garage">>,
+                namespace => <<"w403p-garage">>,
+                aliases => [],
+                endpoint => maps:get(endpoint, Garage),
+                container => maps:get(bucket, Garage)
+            }
         },
-        <<"w601-garage-root">> => #{
-            driver => <<"garage">>,
-            namespace => ?NS_GARAGE,
-            aliases => [],
-            endpoint => maps:get(endpoint, Garage),
-            container => maps:get(bucket, Garage)
-        },
-        <<"w601-w403p-disk-root">> => #{
-            driver => <<"disk">>,
-            namespace => <<"w403p-disk">>,
-            aliases => [],
-            endpoint => list_to_binary("file://" ++ Base),
-            container => <<"c">>
-        },
-        <<"w601-w403p-garage-root">> => #{
-            driver => <<"garage">>,
-            namespace => <<"w403p-garage">>,
-            aliases => [],
-            endpoint => maps:get(endpoint, Garage),
-            container => maps:get(bucket, Garage)
-        }
+        upload_namespaces => #{}
     }.
 
 %% ------------------------------------------------------- identity / probe

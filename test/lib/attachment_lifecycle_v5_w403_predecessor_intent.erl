@@ -208,6 +208,10 @@ execute(<<"eb-private-delete">>, Fault, _Conn, _Key) ->
     {error, _} = eb_asset_store:delete_private(9101, 9102, 42),
     #{reported_errors => 1, entry_point_call => <<"eb_asset_store:delete_private/3">>};
 execute(<<"eb-pending-cleanup">>, Fault, _Conn, _Key) ->
+    %% 生产 cleanup_hold_gate 在 claim 之前查 Store:list_active_holds；
+    %% 不隔离会让真实 hold 覆盖判定以 active_hold 抢先跳过、探不到本叶本意
+    %% 的 claim 失败路径（active_hold 跳过面由其他叶真实覆盖，非放宽断言）。
+    ok = meck:expect(eb_pg_store, list_active_holds, fun(_O, _W) -> {ok, []} end),
     ok = meck:expect(eb_pg_asset_meta, fetch_asset, fun(_O, _W, _A) ->
         {ok, #{status => pending_confirm, created_at => 1, conversation_id => undefined}}
     end),
