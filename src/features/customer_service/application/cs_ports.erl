@@ -117,6 +117,9 @@ contracts() ->
             {list_sessions_page, 5},
             %% CS-BE-07：按需统计（窗口聚合 + 当前 status 计数；现算零缓存）
             {session_stats, 4},
+            %% D03（dcc10eea）：zone 自然日窗口——cs_store_port 已声明 zone_day_window/2
+            %% 且 cs_pg_store/cs_pg_session 已实现，冻结契约表补同步（closure 测试锁定两源一致）。
+            {zone_day_window, 2},
             {seat_session_page, 5},
             {seat_session_page, 6},
             %% CSB-02R：摘要搜索阶段 A 锚点（跨 workspace 批次，org+scope 过滤）
