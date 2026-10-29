@@ -3,13 +3,19 @@
 %%% W2-01/pending-multipart（32）：multipart 与 group_file 签发同守登记
 %%%   owner/location 与事务边界；mismatch / DB 故障无签名能力。ordinary 域
 %%%   走 /api/v1/attachment/presign?method=multipart + POST /upload 真实
-%%%   multipart/form-data 入口；enterprise 域无 multipart/form-data 端点，
-%%%   以受控网关链路验证同一 oracle（registered owner/location + pin 事务
-%%%   边界 + fail-closed），AC01/AC02 双验收叶复用同一次真实执行（合同将
-%%%   同一场景复制到两个 AC，先例为既有 w2_01_pending_multipart adapter）；
+%%%   multipart/form-data 入口；enterprise 域按 upload_surface_contract
+%%%   （bare PUT gateway/multipart 仅 ordinary/internal；EB/widget 用其已有
+%%%   proxy PUT 协议，不伪造 multipart 或 E2EE）经 enterprise_seat 真实链路
+%%%   度量：seat presign → eb_asset_app → fn_v5_register_eb（enterprise_asset
+%%%   账本）→ 同端点 proxy PUT → confirm，不伪造 multipart。同一 oracle
+%%%   语义：同账本登记（owner/location 冻结）、pin 事务边界、fail-closed。
+%%%   AC01/AC02 双验收叶复用同一次真实执行（合同将同一场景复制到两个 AC，
+%%%   先例为既有 w2_01_pending_multipart adapter）；
 %%% W2-01/pending-failclosed（12）：INSERT error/exception / COMMIT 未知 =>
 %%%   503 无签名能力、无 durable 行；同 client_upload_id 重试恢复同 key
-%%%   （HTTP 层 fail-closed + fn_v5_register_pending 真实 SQL 契约双证据）；
+%%%   （HTTP 层 fail-closed + fn_v5_register_pending 真实 SQL 契约双证据；
+%%%   503 为冻结 oracle 措辞，生产形状见 fc_scenario/assert_register_failclosed
+%%%   注释——ordinary 信封 code 503 + HTTP 200，internal fail-safe 500）；
 %%% W2-03/confirm-gc-race（8）：两种 barrier 顺序——confirm 先提交则 intent
 %%%   被拒、字节保留；intent 先提交则 confirm 被拒、metadata 不重建；
 %%%   bounded retry 队列 attempts<8 不改变赢家。
@@ -170,59 +176,112 @@ mp_scenario(S, Driver, <<"database_unavailable">>, <<"ordinary">>) ->
     ),
     {error, not_pinned} = ?S:content_pin(key(M)),
     #{db_outage_status => 500, no_capability => true};
-%% enterprise 域：无 multipart/form-data 端点；同一 oracle 以受控网关链路
-%% 证明（共享 pending 账本、pin 事务边界、fail-closed 一致）。
+%% enterprise 域：按 upload_surface_contract 经 seat proxy PUT 协议度量
+%% （不伪造 multipart），同一 oracle：同账本、同 pin 事务边界、fail-closed。
 mp_scenario(S, Driver, <<"multipart_success">>, <<"enterprise">>) ->
-    T = reg(S, enterprise_internal, Driver),
+    T = reg(S, enterprise_seat, Driver),
     Mod = ?S:driver_mod(Driver),
     meck:new(Mod, [passthrough, no_link]),
     try
         ok = meck:expect(Mod, put_snapshot, fun(I, A, B, C) ->
-            {ok, _} = ?S:content_pin(maps:get(key, I)),
+            case maps:get(key, I) =:= key(T) of
+                true ->
+                    %% pin 先于 provider put：seat 登记链在 PUT 准入事务
+                    %% （fn_v5_pin_eb_content）落 pin 后才进 provider 写。
+                    org_ws(T, fun(Org, Ws, Id) ->
+                        {ok, Pin} = ?S:content_pin_eb(Org, Ws, Id),
+                        ?assertEqual(?S:sha(?BODY), maps:get(<<"sha256">>, Pin))
+                    end);
+                false ->
+                    ok
+            end,
             meck:passthrough([I, A, B, C])
         end),
         ?assert(?F:success(?F:put(T, ?BODY)))
     after
         meck:unload(Mod)
     end,
+    org_ws(T, fun(Org, Ws, Id) ->
+        {ok, Pin} = ?S:content_pin_eb(Org, Ws, Id),
+        ?assertEqual(?S:sha(?BODY), maps:get(<<"sha256">>, Pin))
+    end),
     ?assert(?F:success(?F:confirm(T))),
-    #{entrypoint => <<"gateway_same_boundary">>, pin_before_provider_put => true};
+    #{entrypoint => <<"seat_proxy_put_same_boundary">>, pin_before_provider_put => true};
 mp_scenario(S, Driver, <<"group_file_success">>, <<"enterprise">>) ->
-    T = reg(S, enterprise_internal, Driver),
+    T = reg(S, enterprise_seat, Driver),
     ?assert(?F:success(?F:put(T, ?BODY))),
-    ?assert(?F:success(?F:confirm(T))),
     org_ws(T, fun(Org, Ws, Id) ->
         {ok, Row} = ?S:eb_row(Org, Ws, Id),
         #{<<"upload_registration">> := Reg} = Row,
-        ?assertEqual(<<"enterprise">>, fetch_in(<<"scope">>, Reg)),
+        Subject = fetch_in(<<"subject">>, Reg),
+        %% seat 登记即 enterprise 账本（enterprise_asset）上的同 owner/location
+        %% 会话：主体 kind='seat'（fn_v5_register_eb 企业主体白名单）、org
+        %% 绑定登记组织、key 与冻结 storage_driver 为登记时冻结值（快照
+        %% 等值复核/重指派拒绝与 attach_pending 登记同协议）。
+        ?assertEqual(<<"seat">>, fetch_in(<<"kind">>, Subject)),
+        ?assertEqual(integer_to_binary(Org), fetch_in(<<"org_id">>, Subject)),
+        ?assertEqual(<<"pending_confirm">>, maps:get(<<"status">>, Row)),
+        ?assertEqual(key(T), maps:get(<<"object_key">>, Row)),
         ?assertEqual(atom_to_binary(Driver, utf8), maps:get(<<"storage_driver">>, Row))
     end),
+    ?assert(?F:success(?F:confirm(T))),
     #{declaration_scope_frozen => true, frozen_driver => atom_to_binary(Driver, utf8)};
 mp_scenario(S, Driver, <<"identity_mismatch">>, <<"enterprise">>) ->
-    T = reg(S, enterprise_internal, Driver),
+    T = reg(S, enterprise_seat, Driver),
     S2 = maps:get(fixture, T),
+    Id = #{
+        operation => <<"status">>,
+        client_upload_id => client_id(T),
+        upload_ref => upload_ref_of(T),
+        asset_id => asset_id_of(T)
+    },
+    %% 真实第二身份 + 完整参数：真实签发的 seat-purpose 令牌，该用户未被
+    %% 授予 customer_service 授权函数 → 路由级授权门 403（先例为 upload
+    %% F5）；gate 在资源定位前拒绝，不泄露会话存在性。
     Stolen =
         ?F:request(
             S2,
             post,
-            <<"/api/internal/v1/files/presign">>,
-            #{operation => <<"status">>, client_upload_id => client_id(T)},
-            tampered_internal_headers(S2),
+            ?F:seat_path(S2, <<"presign">>),
+            Id,
+            intruder_seat_headers(),
             <<"application/json">>
         ),
     ?assertNot(?F:success(Stolen)),
-    #{intruder_status => maps:get(status, Stolen), disclosed => false};
+    ?assertEqual(403, maps:get(status, Stolen)),
+    #{intruder_status => 403, disclosed => false};
 mp_scenario(S, Driver, <<"database_unavailable">>, <<"enterprise">>) ->
-    ?S:fail_next_query(<<"fn_v5_register_pending(">>, {error, db_down}, fun() ->
-        T = reg(S, enterprise_internal, Driver),
-        ?assertNot(?F:success(re_register(T, enterprise_internal, Driver)))
+    %% seat 登记事务的真实 fn 是 fn_v5_register_eb（eb_asset_app →
+    %% eb_pg_asset_meta:register_session_v5 事务内调用；与 internal 链的
+    %% fn_v5_register_pending 不同源）。DB 故障注入在登记 fn 调用点：
+    %% 整个 with_tx 回滚——无 enterprise_asset 行、响应无任何能力；注入
+    %% 未解除前同 client_upload_id 重试同样无能力（负例经原始请求取响应，
+    %% 因 ?F:register 内嵌成功断言）。
+    ?S:fail_next_query(<<"fn_v5_register_eb(">>, {error, db_down}, fun() ->
+        Cid = elib_uuid:gen_v7(),
+        Down = seat_register(S, Driver, Cid),
+        ?assertNot(?F:success(Down)),
+        ?assertNot(maps:is_key(<<"upload_ref">>, ?F:payload(Down))),
+        ?assertNot(maps:is_key(<<"upload">>, ?F:payload(Down))),
+        ?assertEqual(0, eb_cid_rows(Cid)),
+        Retry = seat_register(S, Driver, Cid),
+        ?assertNot(?F:success(Retry)),
+        ?assertNot(maps:is_key(<<"upload_ref">>, ?F:payload(Retry))),
+        ?assertEqual(0, eb_cid_rows(Cid))
     end),
     #{presign_failclosed => true, no_capability => true}.
 
 %% ------------------------------------------------------ pending-failclosed
 
-%% insert_error：真实 DB 函数契约（非法窗口 23514，无 durable 行）+ HTTP 层
-%% 单点注入证明 handler fail-closed（503 无签名能力）。
+%% 负例一律经原始登记请求直接取响应（?F:register/4 内嵌 ?assert(success(...))
+%% 成功断言，fail-closed 形状必须按叶 oracle 显式断言而非靠 fixture 抛异常）。
+%% 注入保持 DB 层错误：fc 两面（ordinary/internal）登记链的真实 fn 同为
+%% fn_v5_register_pending（attach_logic:presign → attach_pending_repo:register_v5；
+%% enterprise_asset_logic:presign_register_v5_tx → register_v5_tx）。
+%% 错误形状按各面生产错误分支逐字对账（详见 assert_register_failclosed/2
+%% 注释）：ordinary = HTTP 200 信封错误形状（code=ERR_SERVICE_UNAVAILABLE
+%% 503、payload 无能力字段）；internal = HTTP 500（service_unavailable 落
+%% internal_error fail-safe 信封；raise 路径经 run_with_conn 归一后同一信封）。
 fc_scenario(S, Driver, <<"insert_error">>, Domain) ->
     Surface = surface_of(Domain),
     Bad = bad_window_sql(),
@@ -233,40 +292,58 @@ fc_scenario(S, Driver, <<"insert_error">>, Domain) ->
     ),
     ?assertMatch({ok, [#{<<"n">> := 0}]}, NoRow),
     ?S:fail_next_query(<<"fn_v5_register_pending(">>, {error, insert_failed}, fun() ->
-        Injected = reg(S, Surface, Driver),
-        ?assertNot(?F:success(re_register(Injected, Surface, Driver)))
+        Cid = elib_uuid:gen_v7(),
+        Down = raw_register(S, Surface, Driver, Cid, <<"w403.txt">>),
+        assert_register_failclosed(Surface, Down),
+        ?assertEqual(0, pending_cid_rows(Cid)),
+        Retry = raw_register(S, Surface, Driver, Cid, <<"w403.txt">>),
+        assert_register_failclosed(Surface, Retry),
+        ?assertEqual(0, pending_cid_rows(Cid))
     end),
     #{sql_code => <<"23514">>, http_failclosed => true};
-%% insert_exception：登记路径异常同样不签发（handler 捕获为 503）；
-%% 同 UUID 不同快照的真实 23510 冲突作为 DB 侧异常证据。
+%% insert_exception：登记路径异常同样不签发（ordinary 异常被 attach_logic
+%% try 捕获归一 registration_failed → 信封 code 503、HTTP 200 错误形状；
+%% internal 异常经 epgsql with_transaction 回滚 + elib_pg run_with_conn 归一
+%% {error,{db_exception,...}} → internal_error 500 信封，无 durable 行）；
+%% 注入未解除前同 UUID 重试同样无能力。
+%% 同 UUID 不同声明快照的真实 23510 冲突作为 DB 侧异常证据：迁移 191 的
+%% fn_v5_register_pending UUID replay 以快照等值复核拒绝漂移（filename 进
+%% ordinary/internal 两面快照，换名即真实快照漂移；同 cid 重放先于拟用 key，
+%% 故换名不改 23510 语义）。
 fc_scenario(S, Driver, <<"insert_exception">>, Domain) ->
     Surface = surface_of(Domain),
     ?S:fail_next_query(<<"fn_v5_register_pending(">>, {raise, error, injected}, fun() ->
-        T = reg(S, Surface, Driver),
-        ?assertNot(?F:success(re_register(T, Surface, Driver)))
+        Cid = elib_uuid:gen_v7(),
+        Raised = raw_register(S, Surface, Driver, Cid, <<"w403.txt">>),
+        assert_register_failclosed(Surface, Raised),
+        ?assertEqual(0, pending_cid_rows(Cid)),
+        Retry = raw_register(S, Surface, Driver, Cid, <<"w403.txt">>),
+        assert_register_failclosed(Surface, Retry),
+        ?assertEqual(0, pending_cid_rows(Cid))
     end),
     T2 = reg(S, Surface, Driver),
-    Conflict = ?F:register(
-        (maps:get(fixture, T2))#{registration_cid => client_id(T2)},
-        Surface,
-        Driver,
-        <<"w601 different declared payload same uuid">>
-    ),
+    Conflict = raw_register(S, Surface, Driver, client_id(T2), <<"w403-conflict.txt">>),
     ?assertNot(?F:success(Conflict)),
+    assert_register_failclosed(Surface, Conflict),
+    ?assertEqual(1, pending_cid_rows(client_id(T2))),
     #{http_failclosed => true, snapshot_conflict_rejected => true};
-%% commit_unknown：COMMIT 结果未知 => 503 无能力；同 client_upload_id 重试
-%% 解析回同一 durable key，绝不产生新 key。
+%% commit_unknown：COMMIT 结果未知 => ordinary 信封 code 503 / internal
+%% fail-safe 500，无能力、durable 行保持 T0 原状（不新建不漂移）；同
+%% client_upload_id 重试解析回同一 durable key（迁移 191 UUID replay 返回
+%% 原 object_key，绝不采用重试方拟用的新 key），register_count 恒 1。
 fc_scenario(S, Driver, <<"commit_unknown">>, Domain) ->
     Surface = surface_of(Domain),
     T0 = reg(S, Surface, Driver),
     ?S:fail_next_query(<<"fn_v5_register_pending(">>, {error, commit_unknown}, fun() ->
-        Replay = re_register(T0, Surface, Driver),
+        Replay = raw_register(S, Surface, Driver, client_id(T0), <<"w403.txt">>),
         ?assertNot(?F:success(Replay)),
-        ?assertNot(maps:is_key(<<"put_url">>, ?F:payload(Replay)))
+        assert_register_failclosed(Surface, Replay),
+        ?assertEqual(1, pending_cid_rows(client_id(T0)))
     end),
     Recovered = re_register(T0, Surface, Driver),
     ?assert(?F:success(Recovered)),
-    ?assertEqual(key(T0), fetch(<<"object_key">>, ?F:payload(Recovered), key(T0))),
+    #{<<"object_key">> := RecoveredKey} = ?F:payload(Recovered),
+    ?assertEqual(key(T0), RecoveredKey),
     ?assertEqual(1, ?S:register_count(key(T0))),
     #{commit_unknown_failclosed => true, recovered_same_key => true}.
 
@@ -408,7 +485,7 @@ new_group(S) ->
     {ok, Gid} = group_logic:add(0, Uid, 1, []),
     Gid.
 
-intruder_headers() ->
+new_intruder_uid() ->
     Uid = 8000000000000 + binary:decode_unsigned(crypto:strong_rand_bytes(5)),
     {ok, _} = elib_pg:query(
         <<
@@ -419,10 +496,20 @@ intruder_headers() ->
     ),
     Did = <<"w601-device-", (integer_to_binary(Uid))/binary>>,
     ok = qr_login_logic:log_device_login(Uid, Did, <<"w601">>, <<"web">>),
+    {Uid, Did}.
+
+intruder_headers() ->
+    {Uid, _Did} = new_intruder_uid(),
     #{<<"authorization">> => <<"Bearer ", (token_ds:encrypt_token(Uid))/binary>>}.
 
-tampered_internal_headers(S) ->
-    maps:get(internal_headers, S).
+%% seat 面：真实第二用户的 seat-purpose 令牌（真实签发；该用户未被授予
+%% customer_service 授权函数 → 路由级授权门拒绝，先例为 upload F5）。
+intruder_seat_headers() ->
+    {Uid, Did} = new_intruder_uid(),
+    #{
+        <<"authorization">> =>
+            <<"Bearer ", (token_ds:encrypt_seat_token(Uid, Did))/binary>>
+    }.
 
 org_ws(T, Fun) ->
     S = maps:get(fixture, T),
@@ -430,12 +517,147 @@ org_ws(T, Fun) ->
     AssetId = asset_id_of(T),
     Fun(maps:get(org_id, Scope), maps:get(workspace_id, Scope), AssetId).
 
+upload_ref_of(T) ->
+    maps:get(upload_ref, maps:get(confirm_body, T), undefined).
+
 asset_id_of(T) ->
     case maps:get(asset_id, maps:get(confirm_body, T), undefined) of
         I when is_integer(I) -> I;
         B when is_binary(B) -> binary_to_integer(B);
         undefined -> int(maps:get(<<"asset_id">>, maps:get(registration, T)))
     end.
+
+%% seat presign 原始请求（DB 故障负例的响应形状断言用；?F:register 内嵌
+%% 成功断言，失败形状必须直接取响应）。参数构造与 ?F:register 的 seat
+%% 分支一致，全部生产入口。
+seat_register(S, Driver, Cid) ->
+    set_registry_ns(Driver),
+    Scope = maps:get(scope, S),
+    ?F:request(
+        S,
+        post,
+        ?F:seat_path(S, <<"presign">>),
+        #{
+            mime => <<"text/plain">>,
+            size_bytes => byte_size(?BODY),
+            object_hash => ?S:sha(?BODY),
+            file_name => <<"w403.txt">>,
+            client_upload_id => Cid,
+            workspace_id => maps:get(workspace_id, Scope),
+            conversation_id => maps:get(conversation_id, Scope)
+        },
+        maps:get(seat_headers, S),
+        <<"application/json">>
+    ).
+
+%% fc 两面（ordinary/internal）登记原始请求（负例形状断言用）。参数构造与
+%% ?F:registration_request 的 ordinary/enterprise_internal 分支逐字对齐，全部
+%% 生产入口；FileName 覆盖用于构造真实声明快照漂移（fn_v5_register_pending
+%% 迁移 191 UUID replay 的快照等值复核 → 23510）。
+raw_register(S, ordinary, Driver, Cid, FileName) ->
+    set_registry_ns(Driver),
+    Q = uri_string:compose_query([
+        {<<"filename">>, FileName},
+        {<<"mime_type">>, <<"text/plain">>},
+        {<<"client_upload_id">>, Cid}
+    ]),
+    ?F:request(
+        S,
+        get,
+        <<"/api/v1/attachment/presign?", Q/binary>>,
+        <<>>,
+        maps:get(ordinary_headers, S),
+        <<"application/json">>
+    );
+raw_register(S, enterprise_internal, Driver, Cid, FileName) ->
+    set_registry_ns(Driver),
+    ?F:request(
+        S,
+        post,
+        <<"/api/internal/v1/files/presign">>,
+        #{
+            file_name => FileName,
+            mime_type => <<"text/plain">>,
+            size_bytes => byte_size(?BODY),
+            client_upload_id => Cid
+        },
+        maps:get(internal_headers, S),
+        <<"application/json">>
+    ).
+
+set_registry_ns(Driver) ->
+    Registry = attachment_storage:registry(),
+    Ns = ns_of(Driver),
+    application:set_env(
+        imboy,
+        attachment_storage_registry,
+        Registry#{upload_namespaces => #{<<"private">> => Ns, <<"enterprise">> => Ns}}
+    ).
+
+%% fc 负例 fail-closed 形状断言，按各面生产错误分支逐字对账：
+%% ordinary 登记失败/异常 → {error, registration_failed} → elib_response:error
+%% （reply_json 固定 HTTP 200，失败由信封 code=ERR_SERVICE_UNAVAILABLE=503
+%% 承载，payload 恒 {}；attach_handler:150-156、elib_response.erl:195-208）；
+%% internal 登记 {error, Reason} → {<<"service_unavailable">>, Reason}，该码
+%% 不在 enterprise_internal_error 的 STATUS_MAP/STABLE_CODES → fail-safe
+%% HTTP 500 + {"error":{...}} 信封；internal raise 路径经 epgsql
+%% with_transaction 回滚 + elib_pg run_with_conn 归一 {error,{db_exception,
+%% ...}}（elib_pg.erl:147-162）→ 同一 internal_error 500 信封。所有断言在
+%% decode 分支之外，不被本助手吞掉；非 JSON 体分支仅为安全网，不伪造字段
+%% 检查。
+assert_register_failclosed(ordinary, Resp) ->
+    ?assertEqual(200, maps:get(status, Resp)),
+    ?assertNot(?F:success(Resp)),
+    {ok, #{<<"code">> := 503, <<"payload">> := Payload}} =
+        json_body(maps:get(body, Resp)),
+    ?assertNot(maps:is_key(<<"put_url">>, Payload)),
+    ?assertNot(maps:is_key(<<"upload_capability">>, Payload)),
+    ?assertNot(maps:is_key(<<"upload_ref">>, Payload)),
+    ?assertNot(maps:is_key(<<"upload">>, Payload)),
+    ok;
+assert_register_failclosed(enterprise_internal, Resp) ->
+    ?assertEqual(500, maps:get(status, Resp)),
+    ?assertNot(?F:success(Resp)),
+    case json_body(maps:get(body, Resp)) of
+        {ok, Decoded} when is_map(Decoded) ->
+            ?assertNot(maps:is_key(<<"put_url">>, Decoded)),
+            ?assertNot(maps:is_key(<<"upload_capability">>, Decoded)),
+            ?assertNot(maps:is_key(<<"upload_ref">>, Decoded)),
+            ?assertNot(maps:is_key(<<"upload">>, Decoded)),
+            ok;
+        _ ->
+            ok
+    end.
+
+json_body(Body) ->
+    try
+        {ok, jsone:decode(Body)}
+    catch
+        _:_ -> not_json
+    end.
+
+%% fc 负例 durable 行检查：登记失败后 attach_pending 不得残留同
+%% client_upload_id 的行（成功登记的重放守恒为 1，不新建不漂移）。
+pending_cid_rows(Cid) ->
+    {ok, [#{<<"n">> := N}]} =
+        elib_pg:query(
+            <<"SELECT count(*)::bigint AS n FROM attach_pending WHERE client_upload_id=$1::uuid">>,
+            [Cid]
+        ),
+    N.
+
+%% seat 登记失败的 durable 行检查：整个 with_tx 回滚后 enterprise_asset
+%% 不得残留同 client_upload_id 的行。
+eb_cid_rows(Cid) ->
+    {ok, [#{<<"n">> := N}]} =
+        elib_pg:query(
+            <<
+                "SELECT count(*)::bigint AS n FROM enterprise_asset"
+                " WHERE client_upload_id=$1::uuid"
+            >>,
+            [Cid]
+        ),
+    N.
 
 int(I) when is_integer(I) -> I;
 int(B) when is_binary(B) -> binary_to_integer(B).
