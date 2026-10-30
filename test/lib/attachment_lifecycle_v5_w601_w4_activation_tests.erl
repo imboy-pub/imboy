@@ -115,7 +115,11 @@ reap_cycle(_St, Conn, ?ORD, Key, Triple, _N, _Label) ->
     seed_job(Conn, Key, Triple, 0, ready),
     %% Keep the real global claim protocol, but select this fixture's target.
     %% 保留真实全局 claim 协议，仅将本夹具目标置为最先到期。
-    ?X:q(Conn, "UPDATE attachment_object_deletion SET next_retry_at='-infinity'::timestamptz WHERE path=$1", [Key]),
+    ?X:q(
+        Conn,
+        "UPDATE attachment_object_deletion SET next_retry_at='-infinity'::timestamptz WHERE path=$1",
+        [Key]
+    ),
     {ok, #{<<"out_path">> := Key}} = ?QP:claim_ordinary(Conn, ?X:token()),
     ?QP:expire_ordinary(Conn, Key),
     {ok, Reaped} = attachment_delete_worker:reconcile(Conn),

@@ -541,7 +541,8 @@ seed_confirm_asset(St, Conn, Key, Id, Drv, Window) ->
         expired_window ->
             {ok, _, [{Id}]} = ?X:e(Conn, "SELECT fn_v5_confirm_pending($1,$2)", [Key, Id]),
             ?X:await_upload_expiry(Conn, Key);
-        open_window -> ok
+        open_window ->
+            ok
     end,
     {ok, Bytes}.
 
