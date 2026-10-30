@@ -41,6 +41,7 @@
     e/2,
     e/3,
     lenient_q/3,
+    purge_attachment_metadata/2,
     await_upload_expiry/2,
     hex64/1,
     loc/1,
@@ -431,6 +432,38 @@ lenient_q(Conn, Sql, Params) ->
         {error, Reason} -> erlang:error({w601_w3_sql_failed, Reason, Sql})
     end.
 
+%% 幂等清理 attachment 元数据行：fn_v5_metadata_delete_guard（迁移 190）
+%% 要求 DELETE 前 lifecycle_state='delete_intent' 且 tombstone 在位，故在
+%% 单事务内按守卫协议构造：intent 转移 → tombstone 补齐 → 删除 →（提交后）
+%% 清 tombstone。DELETE 被治理行 FK 钉住（23503）时整体回滚、行保持原状供
+%% seed 的 INSERT ON CONFLICT 复用；其余失败回滚后照抛。
+purge_attachment_metadata(Conn, Key) ->
+    q(Conn, "BEGIN", []),
+    [Intent, Tombstone, Deleted] =
+        [epgsql:equery(Conn, Sql, [Key]) || Sql <- purge_sqls()],
+    case {Intent, Tombstone, Deleted} of
+        {{ok, _}, {ok, _}, {ok, _}} ->
+            q(Conn, "DELETE FROM attachment_object_deletion WHERE path=$1", [Key]),
+            q(Conn, "COMMIT", []),
+            ok;
+        {_, _, {error, #error{code = <<"23503">>}}} ->
+            %% 治理行 FK 钉住的不可销毁残留：回滚保持原状，复用既有行
+            q(Conn, "ROLLBACK", []),
+            ok;
+        {_, _, _} ->
+            q(Conn, "ROLLBACK", []),
+            Failed = [R || {error, _} = R <- [Intent, Tombstone, Deleted]],
+            erlang:error({w601_w3_sql_failed, Failed, purge_sqls()})
+    end.
+
+purge_sqls() ->
+    [
+        "UPDATE attachment SET lifecycle_state='delete_intent' WHERE path=$1",
+        "INSERT INTO attachment_object_deletion(path,bucket) VALUES ($1,'b')"
+        " ON CONFLICT (path) DO NOTHING",
+        "DELETE FROM attachment WHERE path=$1"
+    ].
+
 e(Conn, Sql) -> e(Conn, Sql, []).
 
 e(Conn, Sql, Params) -> epgsql:equery(Conn, Sql, Params).
@@ -519,8 +552,7 @@ seed_confirmed(Conn, Key, Id, GfIdOrNull, Quad, Scope, ScopeRef, Cipher) ->
     Container = maps:get(<<"storage_container">>, Quad),
     Digest = maps:get(<<"storage_locator_sha256">>, Quad),
     q(Conn, "DELETE FROM attach_pending WHERE object_key=$1", [Key]),
-    lenient_q(Conn, "DELETE FROM attachment WHERE path=$1", [Key]),
-    q(Conn, "DELETE FROM attachment_object_deletion WHERE path=$1", [Key]),
+    purge_attachment_metadata(Conn, Key),
     q(
         Conn,
         "SELECT * FROM fn_v5_register_pending($1,'b',$2,101,"
@@ -586,8 +618,7 @@ seed_plain_row(Conn, Key, Id, Quad, Scope, ScopeRef, GcVerified, Hash) ->
     Container = maps:get(<<"storage_container">>, Quad),
     Digest = maps:get(<<"storage_locator_sha256">>, Quad),
     q(Conn, "DELETE FROM attach_pending WHERE object_key=$1", [Key]),
-    lenient_q(Conn, "DELETE FROM attachment WHERE path=$1", [Key]),
-    q(Conn, "DELETE FROM attachment_object_deletion WHERE path=$1", [Key]),
+    purge_attachment_metadata(Conn, Key),
     q(
         Conn,
         "INSERT INTO attachment(id,path,scope,scope_ref,creator_user_id,"

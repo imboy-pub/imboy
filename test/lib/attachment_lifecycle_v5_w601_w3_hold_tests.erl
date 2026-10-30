@@ -921,8 +921,7 @@ sweep(S, {?C_HR, _Entry, Driver, ScBin, DomBin, _Ac, Idx, _Scope, _EP}) ->
 
 sweep_asset(Conn, Key, Id, EbId) ->
     ?SUP:lenient_q(Conn, "DELETE FROM attach_pending WHERE object_key=$1", [Key]),
-    ?SUP:lenient_q(Conn, "DELETE FROM attachment WHERE path=$1", [Key]),
-    ?SUP:lenient_q(Conn, "DELETE FROM attachment_object_deletion WHERE path=$1", [Key]),
+    ?SUP:purge_attachment_metadata(Conn, Key),
     ok = ?SUP:ear_release_and_purge(Conn, Id),
     ?SUP:lenient_q(Conn, "DELETE FROM group_file WHERE id=$1", [Id]),
     ?SUP:lenient_q(Conn, "DELETE FROM enterprise_asset WHERE id=$1", [EbId]),
