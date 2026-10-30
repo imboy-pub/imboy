@@ -39,32 +39,92 @@
     with_hold_count/2
 ]).
 
-%% V1 企业附件 MIME 白名单：只放开可**按魔数复核**的少数类型。
+%% 企业附件 MIME 白名单：只放开可**按魔数复核**的类型。
 %% 刻意不含 `application/octet-stream` —— 那会让 mime 校验变成恒真。
 %% 扩表纪律：每个 MIME 必须在 `has_magic/2` 有对应可机械判定规则，
-%% 两者同步演进（见各子句注释）。
+%% 两者同步演进（见各子句注释），且 `eb_asset_content_tests` 里必须有
+%% 「真魔数正例 + 错配负例」两条腿。
+%%
+%% 2026-10-30 大幅扩表：座席/客服场景的真实诉求是「常见文件都能发」，
+%% 原先 21 项的窄表把 WAV/MKV/AVI/XLS/PPT/RAR/TAR/JSON 等全部挡在
+%% presign（422 invalid_mime），而客户端又给出「重试」入口 —— 同一份
+%% 字节重试必然再败，用户看到的是死循环。这里按「家庭」成组放开，
+%% 同族别名（`audio/x-wav` 与 `audio/wav` 这类浏览器/Dart 各自叫法）
+%% 一并收下，否则同一份文件换个端就 422。
 -define(ALLOWED_MIMES, [
+    %% —— 静态图 ——
     <<"image/png">>,
     <<"image/jpeg">>,
     <<"image/gif">>,
     <<"image/webp">>,
     <<"image/bmp">>,
     <<"image/svg+xml">>,
+    <<"image/tiff">>,
+    <<"image/avif">>,
+    <<"image/x-icon">>,
+    <<"image/heic">>,
+    <<"image/heif">>,
+    <<"image/vnd.adobe.photoshop">>,
+    <<"image/vnd.dwg">>,
+    %% —— 视频 ——
+    <<"video/mp4">>,
+    <<"video/webm">>,
+    <<"video/quicktime">>,
+    <<"video/x-matroska">>,
+    <<"video/x-msvideo">>,
+    <<"video/mpeg">>,
+    <<"video/x-ms-wmv">>,
+    <<"video/x-flv">>,
+    <<"video/3gpp">>,
+    <<"video/x-m4v">>,
+    %% —— 音频 ——
+    <<"audio/mpeg">>,
+    <<"audio/mp4">>,
+    <<"audio/aac">>,
+    <<"audio/wav">>,
+    <<"audio/x-wav">>,
+    <<"audio/ogg">>,
+    <<"audio/flac">>,
+    <<"audio/x-flac">>,
+    %% —— 文档 ——
     <<"application/pdf">>,
     <<"text/plain">>,
     <<"text/markdown">>,
     <<"text/csv">>,
-    <<"application/zip">>,
-    <<"application/x-7z-compressed">>,
-    <<"application/gzip">>,
+    <<"application/json">>,
+    <<"application/xml">>,
+    <<"text/xml">>,
     <<"application/msword">>,
+    <<"application/vnd.ms-excel">>,
+    <<"application/vnd.ms-powerpoint">>,
     <<"application/vnd.openxmlformats-officedocument.wordprocessingml.document">>,
     <<"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet">>,
     <<"application/vnd.openxmlformats-officedocument.presentationml.presentation">>,
-    <<"video/mp4">>,
-    <<"video/webm">>,
-    <<"audio/mpeg">>
+    <<"application/vnd.oasis.opendocument.text">>,
+    <<"application/vnd.oasis.opendocument.spreadsheet">>,
+    <<"application/vnd.oasis.opendocument.presentation">>,
+    <<"application/epub+zip">>,
+    <<"application/rtf">>,
+    <<"text/rtf">>,
+    %% —— 压缩包 ——
+    <<"application/zip">>,
+    <<"application/x-zip-compressed">>,
+    <<"application/x-7z-compressed">>,
+    <<"application/gzip">>,
+    <<"application/x-rar-compressed">>,
+    <<"application/vnd.rar">>,
+    <<"application/x-tar">>,
+    <<"application/x-bzip2">>,
+    <<"application/x-xz">>
 ]).
+
+%% 刻意**不**收的常见类型及原因（写在这里，避免下次又被当成漏配）：
+%%   * `text/html` —— 内容端点若按声明 mime 回显，等于把附件变成同源页面，
+%%     与 `x-content-type-options: nosniff` 之外没有第二道闸；聊天附件里
+%%     .html 也不是高频需求，故继续拒绝。
+%%   * `application/vnd.android.package-archive`（.apk）与各类可执行体 ——
+%%     通过 IM 派发安装包是明确的滥用面，不进白名单。
+%%   * `application/octet-stream` —— 见上，会让整层校验恒真。
 
 %% 企业附件单文件上限（25 MiB）。超过即拒，不进入对象存储。
 -define(MAX_SIZE_BYTES, 25 * 1024 * 1024).
@@ -172,22 +232,21 @@ has_magic(<<"text/markdown">>, Bytes) ->
 has_magic(<<"text/csv">>, Bytes) ->
     text_plain_ok(Bytes);
 has_magic(<<"application/zip">>, Bytes) ->
-    prefix(<<80, 75, 3, 4>>, Bytes);
+    zip_magic(Bytes);
 has_magic(<<"application/x-7z-compressed">>, Bytes) ->
     prefix(<<55, 122, 188, 175, 39, 28>>, Bytes);
 has_magic(<<"application/gzip">>, Bytes) ->
     prefix(<<16#1F, 16#8B>>, Bytes);
 has_magic(<<"application/msword">>, Bytes) ->
-    %% OLE2 复合文档（.doc/.xls/.ppt 老格式）
-    prefix(<<16#D0, 16#CF, 16#11, 16#E0, 16#A1, 16#B1, 16#1A, 16#E1>>, Bytes);
+    ole2(Bytes);
 %% OOXML（.docx/.xlsx/.pptx）本质是 zip 容器：魔数只复核到 PK 前缀
 %%（弱校验——容器内条目形状由消费方按声明 mime 解释；V1 接受此粒度）
 has_magic(<<"application/vnd.openxmlformats-officedocument.wordprocessingml.document">>, Bytes) ->
-    prefix(<<80, 75, 3, 4>>, Bytes);
+    zip_magic(Bytes);
 has_magic(<<"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet">>, Bytes) ->
-    prefix(<<80, 75, 3, 4>>, Bytes);
+    zip_magic(Bytes);
 has_magic(<<"application/vnd.openxmlformats-officedocument.presentationml.presentation">>, Bytes) ->
-    prefix(<<80, 75, 3, 4>>, Bytes);
+    zip_magic(Bytes);
 has_magic(<<"video/mp4">>, Bytes) ->
     %% ISO BMFF：偏移 4..8 为 ftyp
     byte_size(Bytes) >= 12 andalso binary:part(Bytes, 4, 4) =:= <<"ftyp">>;
@@ -195,8 +254,200 @@ has_magic(<<"video/webm">>, Bytes) ->
     prefix(<<16#1A, 16#45, 16#DF, 16#A3>>, Bytes);
 has_magic(<<"audio/mpeg">>, Bytes) ->
     prefix(<<"ID3">>, Bytes) orelse mpeg_frame_sync(Bytes);
+%% HEIC / HEIF：ISO BMFF 容器，`ftyp` 后 4 字节为主品牌。品牌表取
+%% ISO/IEC 23008-12（heic/heix/hevc/hevx/heim/heis）与 MIAF 通用 HEIF
+%% （mif1/msf1）。刻意**不**复用 video/mp4 的「任意 ftyp」规则——那会让
+%% 任何容器都被认成静态图，校验退化为恒真。
+has_magic(<<"image/heic">>, Bytes) ->
+    heif_brand(Bytes);
+has_magic(<<"image/heif">>, Bytes) ->
+    heif_brand(Bytes);
+%% QuickTime（.mov）有两种形态：
+%%   ① 新版带 `ftyp`，主品牌为 `qt  `（含尾随两空格）；
+%%   ② 旧版无 `ftyp`，文件首原子直接是 moov/mdat/wide/free/skip，
+%%      此时偏移 4..8 即原子类型。
+%% 与 OOXML 的 PK 前缀同级——弱校验，容器内条目形状由消费方按声明 mime 解释。
+has_magic(<<"video/quicktime">>, Bytes) ->
+    iso_bmff_brand(Bytes, [<<"qt  ">>]) orelse qt_legacy_atom(Bytes);
+%% ————————————————————— 2026-10-30 扩表：静态图 —————————————————————
+has_magic(<<"image/tiff">>, Bytes) ->
+    %% 小端 `II*\0` / 大端 `MM\0*`
+    prefix(<<16#49, 16#49, 16#2A, 16#00>>, Bytes) orelse
+        prefix(<<16#4D, 16#4D, 16#00, 16#2A>>, Bytes);
+has_magic(<<"image/avif">>, Bytes) ->
+    iso_bmff_brand(Bytes, [<<"avif">>, <<"avis">>]);
+has_magic(<<"image/x-icon">>, Bytes) ->
+    prefix(<<0, 0, 1, 0>>, Bytes);
+has_magic(<<"image/vnd.adobe.photoshop">>, Bytes) ->
+    prefix(<<"8BPS">>, Bytes);
+has_magic(<<"image/vnd.dwg">>, Bytes) ->
+    %% AutoCAD R13 起每个版本以 "AC10xx" 开头；与 PK 同级弱校验
+    prefix(<<"AC10">>, Bytes);
+%% ————————————————————— 视频 —————————————————————
+has_magic(<<"video/x-matroska">>, Bytes) ->
+    %% .mkv 与 .webm 同为 EBML 容器，魔数层不可区分：两者都放行，
+    %% 差异（VP8/VP9/H.264 等）由消费方按声明 mime 解释。
+    prefix(<<16#1A, 16#45, 16#DF, 16#A3>>, Bytes);
+has_magic(<<"video/x-msvideo">>, Bytes) ->
+    riff_type(Bytes, <<"AVI ">>);
+has_magic(<<"video/mpeg">>, Bytes) ->
+    %% MPEG-PS pack start code；0xB3 为 sequence header 起始
+    prefix(<<0, 0, 1, 16#BA>>, Bytes) orelse prefix(<<0, 0, 1, 16#B3>>, Bytes);
+has_magic(<<"video/x-ms-wmv">>, Bytes) ->
+    %% ASF 容器头 GUID
+    prefix(
+        <<16#30, 16#26, 16#B2, 16#75, 16#8E, 16#66, 16#CF, 16#11, 16#A6, 16#D9, 16#00, 16#AA, 16#00,
+            16#62, 16#CE, 16#6C>>,
+        Bytes
+    );
+has_magic(<<"video/x-flv">>, Bytes) ->
+    prefix(<<16#46, 16#4C, 16#56, 1>>, Bytes);
+has_magic(<<"video/3gpp">>, Bytes) ->
+    %% 3gp/3g2 家族主品牌一律以 "3g" 起头（3gp4/3gp5/3g2a…）
+    iso_bmff_brand_prefix(Bytes, <<"3g">>);
+has_magic(<<"video/x-m4v">>, Bytes) ->
+    iso_bmff_brand_prefix(Bytes, <<"M4V">>);
+%% ————————————————————— 音频 —————————————————————
+has_magic(<<"audio/mp4">>, Bytes) ->
+    %% .m4a/.m4b/.m4p 都是 ISO BMFF；部分编码器主品牌写 mp42/isom
+    iso_bmff_brand(Bytes, [
+        <<"M4A ">>, <<"M4B ">>, <<"M4P ">>, <<"mp42">>, <<"isom">>, <<"iso2">>
+    ]);
+has_magic(<<"audio/aac">>, Bytes) ->
+    %% ADTS 帧同步：FF F1（MPEG-4）/ FF F9（MPEG-2）
+    prefix(<<16#FF, 16#F1>>, Bytes) orelse prefix(<<16#FF, 16#F9>>, Bytes);
+has_magic(<<"audio/wav">>, Bytes) ->
+    riff_type(Bytes, <<"WAVE">>);
+has_magic(<<"audio/x-wav">>, Bytes) ->
+    riff_type(Bytes, <<"WAVE">>);
+has_magic(<<"audio/ogg">>, Bytes) ->
+    prefix(<<"OggS">>, Bytes);
+has_magic(<<"audio/flac">>, Bytes) ->
+    prefix(<<"fLaC">>, Bytes);
+has_magic(<<"audio/x-flac">>, Bytes) ->
+    prefix(<<"fLaC">>, Bytes);
+%% ————————————————————— 文档 —————————————————————
+has_magic(<<"application/json">>, Bytes) ->
+    text_plain_ok(Bytes) andalso json_head(Bytes);
+has_magic(<<"application/xml">>, Bytes) ->
+    text_plain_ok(Bytes) andalso xml_head(Bytes);
+has_magic(<<"text/xml">>, Bytes) ->
+    text_plain_ok(Bytes) andalso xml_head(Bytes);
+has_magic(<<"application/vnd.ms-excel">>, Bytes) ->
+    ole2(Bytes);
+has_magic(<<"application/vnd.ms-powerpoint">>, Bytes) ->
+    ole2(Bytes);
+has_magic(<<"application/vnd.oasis.opendocument.text">>, Bytes) ->
+    zip_magic(Bytes);
+has_magic(<<"application/vnd.oasis.opendocument.spreadsheet">>, Bytes) ->
+    zip_magic(Bytes);
+has_magic(<<"application/vnd.oasis.opendocument.presentation">>, Bytes) ->
+    zip_magic(Bytes);
+has_magic(<<"application/epub+zip">>, Bytes) ->
+    zip_magic(Bytes);
+has_magic(<<"application/rtf">>, Bytes) ->
+    prefix(<<"{\\rtf">>, Bytes);
+has_magic(<<"text/rtf">>, Bytes) ->
+    prefix(<<"{\\rtf">>, Bytes);
+%% ————————————————————— 压缩包 —————————————————————
+has_magic(<<"application/x-zip-compressed">>, Bytes) ->
+    zip_magic(Bytes);
+has_magic(<<"application/x-rar-compressed">>, Bytes) ->
+    rar_magic(Bytes);
+has_magic(<<"application/vnd.rar">>, Bytes) ->
+    rar_magic(Bytes);
+has_magic(<<"application/x-tar">>, Bytes) ->
+    %% POSIX tar：偏移 257 起为 "ustar"（前 257 字节是文件名/权限等头字段）
+    byte_size(Bytes) >= 262 andalso binary:part(Bytes, 257, 5) =:= <<"ustar">>;
+has_magic(<<"application/x-bzip2">>, Bytes) ->
+    %% "BZh" + 块大小等级（'1'..'9'），只复核到 3 字节前缀即够
+    prefix(<<"BZh">>, Bytes);
+has_magic(<<"application/x-xz">>, Bytes) ->
+    prefix(<<16#FD, 16#37, 16#7A, 16#58, 16#5A, 16#00>>, Bytes);
 has_magic(_Other, _Bytes) ->
     false.
+
+%% OLE2 复合文档（.doc/.xls/.ppt/.msg 老格式共用同一容器头）
+ole2(Bytes) ->
+    prefix(<<16#D0, 16#CF, 16#11, 16#E0, 16#A1, 16#B1, 16#1A, 16#E1>>, Bytes).
+
+%% zip 容器（.zip/.docx/.xlsx/.pptx/.odt/.ods/.odp/.epub）：只复核 PK 前缀
+zip_magic(Bytes) ->
+    prefix(<<80, 75, 3, 4>>, Bytes).
+
+%% RAR：4.x 为 `Rar!\x1A\x07\x00`，5.x 为 `Rar!\x1A\x07\x01\x00`，前缀到 6 字节即可
+rar_magic(Bytes) ->
+    prefix(<<"Rar!", 16#1A, 16#07>>, Bytes).
+
+%% RIFF 容器（.webp/.wav/.avi/.cda…）：前 4 字节 RIFF + 偏移 8..12 为具体类型
+riff_type(Bytes, Type) ->
+    byte_size(Bytes) >= 12 andalso
+        binary:part(Bytes, 0, 4) =:= <<"RIFF">> andalso
+        binary:part(Bytes, 8, 4) =:= Type.
+
+%% HEIF 家族主品牌（图片侧）。image/heic 与 image/heif 共用同一品牌集：
+%% 二者在容器层不可靠区分（同一颗照片可能主品牌 `heic`、兼容品牌 `mif1`），
+%% 强行细分只会造成「同一条字节换扩展名就 422」的假拒。
+heif_brand(Bytes) ->
+    iso_bmff_brand(Bytes, [
+        <<"heic">>,
+        <<"heix">>,
+        <<"hevc">>,
+        <<"hevx">>,
+        <<"heim">>,
+        <<"heis">>,
+        <<"mif1">>,
+        <<"msf1">>
+    ]).
+
+%% ISO BMFF：偏移 4..8 为 `ftyp`，偏移 8..12 为主品牌且须在给定集合内。
+iso_bmff_brand(Bytes, Brands) ->
+    byte_size(Bytes) >= 12 andalso
+        binary:part(Bytes, 4, 4) =:= <<"ftyp">> andalso
+        lists:member(binary:part(Bytes, 8, 4), Brands).
+
+%% 无 ftyp 的旧版 QuickTime：首原子类型落在已知顶层原子集合内。
+qt_legacy_atom(Bytes) ->
+    byte_size(Bytes) >= 8 andalso
+        lists:member(
+            binary:part(Bytes, 4, 4),
+            [<<"moov">>, <<"mdat">>, <<"wide">>, <<"free">>, <<"skip">>, <<"pnot">>]
+        ).
+
+%% ISO BMFF 的「品牌前缀」变体：3GPP 与 M4V 家族的主品牌有多个版本号
+%% （3gp4/3gp5/3gp6、M4V /M4VH/M4VP），按前缀比对避免逐个登记。
+iso_bmff_brand_prefix(Bytes, Prefix) ->
+    byte_size(Bytes) >= 12 andalso
+        binary:part(Bytes, 4, 4) =:= <<"ftyp">> andalso
+        prefix(Prefix, binary:part(Bytes, 8, byte_size(Prefix))).
+
+%% JSON：纯文本且首个非空白字节是对象/数组/字符串起始。
+%% 只判「非空文本」会让任意 .txt 都能冒充 .json，收敛一个字节即可区分。
+json_head(Bytes) ->
+    %% 34 = `"`（Erlang 里 $"; 这里写数字以免与列表分隔符混淆）
+    lists:member(first_significant(Bytes), [${, $[, 34]).
+
+%% XML：纯文本且（前 2KB 里有 `<?xml` 声明 或 首个非空白字节是 `<`）。
+%% 允许 UTF-8 BOM：命中声明分支时 BOM 不影响判定。
+xml_head(Bytes) ->
+    Head = head_bytes(Bytes, 2048),
+    case binary:match(Head, <<"<?xml">>) of
+        nomatch -> first_significant(Head) =:= $<;
+        _ -> true
+    end.
+
+%% 跳过 ASCII 空白后的首个字节；全空白返回 `none`。
+first_significant(<<C, Rest/binary>>) when C =:= 32; C =:= 9; C =:= 10; C =:= 13 ->
+    first_significant(Rest);
+first_significant(<<C, _/binary>>) ->
+    C;
+first_significant(<<>>) ->
+    none.
+
+head_bytes(Bytes, Limit) when byte_size(Bytes) > Limit ->
+    binary:part(Bytes, 0, Limit);
+head_bytes(Bytes, _Limit) ->
+    Bytes.
 
 %% text/plain：不得含 NUL 或非法 UTF-8 控制字节（避免把二进制伪装成文本）
 text_plain_ok(Bytes) ->
@@ -220,10 +471,12 @@ mpeg_frame_sync(_Bytes) ->
 
 %% 同一字节规则，直接遍历 binary，避免最大文本体膨胀为逐字节 cons 列表。
 %% Preserve the byte predicate without expanding large bodies into cons lists.
-no_control_noise(<<>>) -> true;
+no_control_noise(<<>>) ->
+    true;
 no_control_noise(<<B, Rest/binary>>) when B >= 32; B =:= 9; B =:= 10; B =:= 13 ->
     no_control_noise(Rest);
-no_control_noise(_) -> false.
+no_control_noise(_) ->
+    false.
 
 prefix(Prefix, Bytes) when byte_size(Bytes) >= byte_size(Prefix) ->
     binary:part(Bytes, 0, byte_size(Prefix)) =:= Prefix;

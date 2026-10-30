@@ -23,6 +23,15 @@ sample(<<"application/gzip">>) -> <<16#1F, 16#8B, 1, 2>>;
 sample(<<"application/msword">>) -> <<16#D0, 16#CF, 16#11, 16#E0, 16#A1, 16#B1, 16#1A, 16#E1>>;
 sample(<<"video/mp4">>) -> <<0, 0, 0, 24, "ftyp", "isom", 0, 0>>;
 sample(<<"video/webm">>) -> <<16#1A, 16#45, 16#DF, 16#A3, 1, 2, 3>>;
+sample(<<"image/heic">>) -> <<0, 0, 0, 24, "ftyp", "heic", 0, 0>>;
+sample(<<"image/heif">>) -> <<0, 0, 0, 24, "ftyp", "mif1", 0, 0>>;
+sample(<<"video/quicktime">>) -> <<0, 0, 0, 20, "ftyp", "qt  ", 0, 0>>;
+%% 2026-10-30 扩表家族的代表样本（EBML/RIFF/ASF/rar/tar 前缀都在探测块内）
+sample(<<"video/x-matroska">>) -> <<16#1A, 16#45, 16#DF, 16#A3, 1, 2>>;
+sample(<<"audio/x-wav">>) -> <<"RIFF", 0, 0, 0, 0, "WAVE", 1>>;
+sample(<<"video/x-msvideo">>) -> <<"RIFF", 0, 0, 0, 0, "AVI ", "LIST", 1>>;
+sample(<<"application/x-rar-compressed">>) -> <<"Rar!", 16#1A, 16#07, 1, 0>>;
+sample(<<"application/x-tar">>) -> <<0:(257 * 8), "ustar", 0, 1>>;
 sample(<<"audio/mpeg">>) -> <<"ID3", 4, 4, 4>>;
 sample(<<"text/plain">>) -> <<"hello clean text", 10>>;
 sample(<<"text_bad_nul">>) -> <<"bad", 0, "text">>;
@@ -45,6 +54,14 @@ rule_equivalence_test_() ->
         <<"application/msword">>,
         <<"video/mp4">>,
         <<"video/webm">>,
+        <<"image/heic">>,
+        <<"image/heif">>,
+        <<"video/quicktime">>,
+        <<"video/x-matroska">>,
+        <<"audio/x-wav">>,
+        <<"video/x-msvideo">>,
+        <<"application/x-rar-compressed">>,
+        <<"application/x-tar">>,
         <<"audio/mpeg">>,
         <<"text/plain">>
     ],
