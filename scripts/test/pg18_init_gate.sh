@@ -43,12 +43,26 @@ for round in 1 2 3; do
     echo 'TCP probe accepted the temporary init server' >&2; exit 1
   fi
   wait_tcp
+  package_version=$(docker exec "$name" printenv POSTGIS_VERSION)
+  postgis_version=${package_version%%+*}
+  for ext in postgis postgis_topology postgis_tiger_geocoder; do
+    test "$(psql_db imboy_v1 "SELECT extversion FROM pg_extension WHERE extname='$ext'")" = "$postgis_version"
+    test "$(psql_db imboy_v1 "SELECT default_version FROM pg_available_extensions WHERE name='$ext'")" = "$postgis_version"
+  done
+  test "$(psql_db imboy_v1 'SELECT postgis_lib_version()')" = "$postgis_version"
+  psql_db imboy_v1 'SELECT postgis_full_version();'
   test "$(psql_db imboy_v1 "SELECT count(*) FROM pg_extension WHERE extname IN ('timescaledb','postgis','pg_jieba')")" = 3
   # Repeat every extension required by the migration workflow on both the
   # initialized application DB and a genuinely empty additional database.
   docker exec "$name" createdb -U imboy_user init_empty
   for db in imboy_v1 init_empty; do
     for pass in 1 2; do
+      echo "Extension creation/update: round=$round db=$db pass=$pass"
+      psql_db "$db" 'CREATE EXTENSION IF NOT EXISTS fuzzystrmatch;'
+      for ext in postgis postgis_topology postgis_tiger_geocoder; do
+        psql_db "$db" "CREATE EXTENSION IF NOT EXISTS $ext VERSION '$postgis_version'; ALTER EXTENSION $ext UPDATE TO '$postgis_version';"
+        test "$(psql_db "$db" "SELECT extversion FROM pg_extension WHERE extname='$ext'")" = "$postgis_version"
+      done
       for ext in timescaledb postgis pg_jieba pgcrypto pg_trgm vector citext \
                  btree_gin btree_gist '"uuid-ossp"' hstore unaccent; do
         psql_db "$db" "CREATE EXTENSION IF NOT EXISTS $ext;"
