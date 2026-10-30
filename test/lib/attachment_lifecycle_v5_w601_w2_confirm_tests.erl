@@ -102,7 +102,7 @@ leaf_name(Case, Ep, Driver, Sc, Dom) ->
     <<
         Short/binary,
         "/",
-        (ep_bin(Ep))/binary,
+        (ep_name(Ep))/binary,
         "/",
         (atom_to_binary(Driver, utf8))/binary,
         "/",
@@ -111,8 +111,9 @@ leaf_name(Case, Ep, Driver, Sc, Dom) ->
         Sc/binary
     >>.
 
-ep_bin(Ep) when is_atom(Ep) -> atom_to_binary(Ep, utf8);
-ep_bin(Ep) when is_binary(Ep) -> Ep.
+%% imm 组的 Ep 是 ?EP4 原子；idem/old 组是域级 case 显示名（binary 字面量）。
+ep_name(E) when is_atom(E) -> atom_to_binary(E, utf8);
+ep_name(E) when is_binary(E) -> E.
 
 %% Construct the entire matrix before touching PG/HTTP. Binary entrypoint
 %% names and the two domains must produce 58 distinct runnable descriptors.
@@ -123,7 +124,6 @@ confirm_matrix_instantiation_test() ->
     ?assertEqual(58, length(Units)),
     Names = [Name || {Name, {timeout, 240, Fun}} <- Units, is_function(Fun, 0)],
     ?assertEqual(58, length(lists:usort(Names))).
-
 %% -------------------------------------------------------- scenario dispatch
 
 scenario(S, {?C_IMM, Ep, Driver, Sc, _, _}) ->

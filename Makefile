@@ -252,6 +252,7 @@ $(IMBOY_QUALITY_TEST_EBIN)/%.beam: tools/imboy_quality/%.erl Makefile
 # 测试模块输出名独立；编译最多并行四批，设为 1 可恢复串行诊断。
 TEST_COMPILE_JOBS ?= 4
 define compile_test_erl
+	$(if $(filter 3.%,$(MAKE_VERSION)),$(error GNU Make 4+ required for test compilation: make $(MAKE_VERSION) drops $$file and would compile a stale file list; use gmake))
 	$(if $(and $(filter 1,$(words $(TEST_COMPILE_JOBS))),$(filter 1 2 3 4,$(TEST_COMPILE_JOBS))),,$(error TEST_COMPILE_JOBS must be one of 1 2 3 4))
 	$(file >$(ERLANG_MK_TMP)/$(PROJECT).test-compile-files,$1)
 	$(verbose) xargs -n 64 -s 32768 -P $(TEST_COMPILE_JOBS) erlc -v $(TEST_ERLC_OPTS) -o $(TEST_DIR) \
