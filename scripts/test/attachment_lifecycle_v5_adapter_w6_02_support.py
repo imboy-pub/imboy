@@ -207,7 +207,7 @@ def producer_drops(producer_path, fields, case_id):
     try:
         with tempfile.TemporaryDirectory(prefix="v5-producer-probe-") as tmp:
             plan = os.path.join(tmp, "plan")
-            case = os.path.join(tmp, "evidence", "W6-02", "probe")
+            case = os.path.join(tmp, "evidence", "W6-02", "probe", "attempt-1")
             os.mkdir(plan)
             os.makedirs(case)
             def write(name, data):

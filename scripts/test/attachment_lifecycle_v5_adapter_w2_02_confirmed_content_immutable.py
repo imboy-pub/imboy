@@ -70,25 +70,14 @@ OBJECT = {
 
 
 def _provenance_summary(gaps, case_dir, leaves):
-    missing = []
-    proofs = {}
-    for leaf in leaves:
-        collector = C.Gaps()
-        proof = C.find_entrypoint_provenance(
-            case_dir, leaf["entrypoint"], leaf["ordering_or_fault"], collector,
-            "confirmed-content-immutable")
-        key = (leaf["entrypoint"], leaf["ordering_or_fault"])
-        if proof is None:
-            missing.append("%s/%s" % key)
-        else:
-            proofs[key] = proof
-    if missing:
-        gaps.add("entrypoint_provenance.route/method/handler/request_id absent "
-                 "for %d/%d leaves (%s); eunit-confirm.log has no HTTP "
-                 "route/handler/request_id record and no ENTRYPOINT_PROVENANCE "
-                 "marker"
-                 % (len(missing), len(leaves), ", ".join(missing[:6])))
-    return proofs
+    # These suites call production logic directly. An arbitrary sidecar or
+    # text marker cannot establish that any corresponding HTTP request ran.
+    # Real per-leaf HTTP observations and their binding to the scenario must
+    # be implemented before this required surface case can be sealed.
+    gaps.add("confirmed-content-immutable lacks authenticated per-leaf HTTP "
+             "observations: direct logic EUnit and metadata sidecars do not "
+             "prove the required request entrypoint")
+    return {}
 
 
 def build():

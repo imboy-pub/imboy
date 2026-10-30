@@ -47,23 +47,23 @@ def _die(code, msg):
     sys.exit(code)
 
 
-def _open_case_dir(run_dir, task_id, case_id, case_dir):
-    # Match the runner's canonical layout (evidence/<task>/<case>, flat —
-    # the same path _measured_case_rows and the gate use) and refuse
-    # symlinked path components.  Publish atomicity is carried by the
-    # private producer-attempt-<uuid> directory below, not by an extra
-    # attempt-N layer.
+def _open_case_dir(run_dir, task_id, case_id, case_dir, attempt):
+    # New evidence is scoped to the persisted task attempt. Historical flat
+    # cases are read only by the runner; they are never producer destinations.
     parts = case_id.split("/")
     if len(parts) != 2 or parts[0] != task_id or any(
             not p or p in (".", "..") for p in parts):
         raise ValueError("invalid case identity")
-    expected = os.path.abspath(os.path.join(run_dir, "evidence", *parts))
+    if type(attempt) is not int or attempt < 1:
+        raise ValueError("invalid task attempt")
+    components = ("evidence", *parts, "attempt-%d" % attempt)
+    expected = os.path.abspath(os.path.join(run_dir, *components))
     if case_dir != expected:
         raise ValueError("case directory does not match case identity")
     flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW
     fd = os.open(os.path.abspath(run_dir), flags)
     try:
-        for part in ("evidence", *parts):
+        for part in components:
             child = os.open(part, flags, dir_fd=fd)
             os.close(fd)
             fd = child
@@ -190,7 +190,7 @@ def main():
                       if isinstance(vs, list) for v in vs}
     # A failed attempt is left isolated for diagnosis; it is never published.
     try:
-        case_fd = _open_case_dir(args.run_dir, args.task_id, args.case_id, case_dir)
+        case_fd = _open_case_dir(args.run_dir, args.task_id, args.case_id, case_dir, attempt)
         attempt_name = "producer-attempt-" + uuid.uuid4().hex
         os.mkdir(attempt_name, 0o700, dir_fd=case_fd)
         attempt_fd = os.open(attempt_name, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW,

@@ -269,7 +269,7 @@ class PgGuardTests(unittest.TestCase):
         result = subprocess.run(["bash", "-c", script], env=env, capture_output=True, text=True, timeout=10)
         self.assertEqual(30, result.returncode, result.stderr)
         self.assertFalse(list(case_dir.glob("leaf-*.json")))
-        self.assertIn("All 10 tests passed", (self.root / "evidence/W2-02-shared/eunit-confirm.log").read_text())
+        self.assertIn("All 10 tests passed", (case_dir / "suite/eunit-confirm.log").read_text())
 
     def test_modified_authorization_is_rejected(self):
         self.auth.write_text("{}")
