@@ -1,3 +1,8 @@
+#if defined(__linux__) && !defined(_POSIX_C_SOURCE)
+/* erlang.mk uses strict C99; expose O_NOFOLLOW/O_CLOEXEC and lstat. */
+#define _POSIX_C_SOURCE 200809L
+#endif
+
 #include "erl_nif.h"
 #include "erl_driver.h"
 #include <sys/types.h>
