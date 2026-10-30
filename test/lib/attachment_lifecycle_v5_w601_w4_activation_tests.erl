@@ -133,6 +133,12 @@ reap_cycle(_St, Conn, ?ORD, Key, Triple, _N, _Label) ->
         queue => <<"ordinary">>
     };
 reap_cycle(_St, Conn, ?ENT, Key, Triple, N, _Label) ->
+    %% 企业队列无 path 条件，claim 取最旧活跃行；组内共享同库时前序场景遗留
+    %% 的 retry_wait（本场景收尾态）会被 target_claim 优先取走并报
+    %% not_claimed，掩盖本叶首错（run2: A3 遗留 → A4 起连环 11 失败）。
+    %% claim 前按 job guard 合法 UPDATE 把遗留活跃行收敛到 done
+    %% （queueproto settle_active 先例），require_empty 保留隔离断言。
+    ?QP:drain_eb(Conn),
     AssetId = 952000000000 + N,
     ok = ?X:seed_eb_asset_row(Conn, Key, AssetId, Triple, <<"deleted">>, true, <<"live">>),
     ok = ?QP:enqueue_eb(Conn, ?ORG, 9102, AssetId, <<"w601a startup">>),
@@ -171,6 +177,8 @@ retry_cycle(_St, Conn, ?ORD, Key, Triple, _N) ->
         queue => <<"ordinary">>
     };
 retry_cycle(_St, Conn, ?ENT, Key, Triple, N) ->
+    %% claim 前收敛前序场景遗留活跃行（见 reap_cycle ?ENT 注释）。
+    ?QP:drain_eb(Conn),
     AssetId = 952000000000 + N,
     ok = ?X:seed_eb_asset_row(Conn, Key, AssetId, Triple, <<"deleted">>, true, <<"live">>),
     ok = ?QP:enqueue_eb(Conn, ?ORG, 9102, AssetId, <<"w601a periodic">>),
@@ -197,6 +205,8 @@ restart_cycle(_St, Conn, ?ORD, Key, Triple, _N) ->
         ?QP:claim_ordinary(Conn, ?X:token()),
     #{reaped => 1, attempts_after => 2, queue => <<"ordinary">>};
 restart_cycle(_St, Conn, ?ENT, Key, Triple, N) ->
+    %% claim 前收敛前序场景遗留活跃行（见 reap_cycle ?ENT 注释）。
+    ?QP:drain_eb(Conn),
     AssetId = 952000000000 + N,
     ok = ?X:seed_eb_asset_row(Conn, Key, AssetId, Triple, <<"deleted">>, true, <<"live">>),
     ok = ?QP:enqueue_eb(Conn, ?ORG, 9102, AssetId, <<"w601a restart">>),
@@ -269,6 +279,8 @@ attempts_kept(_St, Conn, ?ORD, Key, Triple, _N, Attempts) ->
         queue => <<"ordinary">>
     };
 attempts_kept(_St, Conn, ?ENT, Key, Triple, N, Attempts) ->
+    %% claim 前收敛前序场景遗留活跃行（见 reap_cycle ?ENT 注释）。
+    ?QP:drain_eb(Conn),
     AssetId = 952000000000 + N,
     ok = ?X:seed_eb_asset_row(Conn, Key, AssetId, Triple, <<"deleted">>, true, <<"live">>),
     ok = ?QP:enqueue_eb(Conn, ?ORG, 9102, AssetId, <<"w601a nl5">>),
@@ -304,6 +316,9 @@ attempt8_rejected(_St, Conn, ?ORD, Key, Triple, _N) ->
         queue => <<"ordinary">>
     };
 attempt8_rejected(_St, Conn, ?ENT, Key, Triple, N) ->
+    %% claim 前收敛前序场景遗留活跃行（见 reap_cycle ?ENT 注释）；场景中段的
+    %% drain_eb 保留——负向 claim 前的隔离断言。
+    ?QP:drain_eb(Conn),
     AssetId = 952000000000 + N,
     ok = ?X:seed_eb_asset_row(Conn, Key, AssetId, Triple, <<"deleted">>, true, <<"live">>),
     ok = ?QP:enqueue_eb(Conn, ?ORG, 9102, AssetId, <<"w601a nl8">>),
@@ -349,6 +364,9 @@ blocked_skipped(_St, Conn, ?ORD, Key, Triple, _N) ->
         queue => <<"ordinary">>
     };
 blocked_skipped(_St, Conn, ?ENT, Key, Triple, N) ->
+    %% claim 前收敛前序场景遗留活跃行（见 reap_cycle ?ENT 注释）；场景中段的
+    %% drain_eb 保留——负向 claim 前的隔离断言。
+    ?QP:drain_eb(Conn),
     AssetId = 952000000000 + N,
     ok = ?X:seed_eb_asset_row(Conn, Key, AssetId, Triple, <<"deleted">>, true, <<"live">>),
     ok = ?QP:enqueue_eb(Conn, ?ORG, 9102, AssetId, <<"w601a blocked">>),
