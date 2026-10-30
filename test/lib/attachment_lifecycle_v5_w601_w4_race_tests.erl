@@ -113,6 +113,14 @@ seed_eb_fixtures(Conn) ->
 %% ------------------------------------------------------------- 分发
 
 scenario(St, {C, _E, Drv, Scn, Dom}) ->
+    #{conn := Conn} = St,
+    %% 场景失败可能把共享连接留在未提交/aborted 事务（lock_race、
+    %% intent_commits_first 的 BEGIN、with_tx_bind）：run2 实测 25P02×26 级联，
+    %% 首错（ref-gc-race 的 badmatch）由失败叶自身抛出，后续叶种子撞
+    %% in_failed_sql_transaction 全灭。叶首句 ROLLBACK 兜底（484362542
+    %% w3_support sweep 同款先例）：无事务时 PG 仅回 WARNING（幂等安全），
+    %% 有事务时复原连接，让本叶种子在干净连接上执行、首错不再被掩盖。
+    ?X:q(Conn, "ROLLBACK", []),
     case C of
         ?C_REF -> reference_race(St, Scn, Dom, Drv);
         ?C_HOLD -> hold_race(St, Scn, Dom, Drv);
