@@ -1,0 +1,56 @@
+parameters:
+- name: id
+  in: path
+  required: true
+  schema: { type: string, pattern: '^[1-9][0-9]*$' }
+- name: seq
+  in: path
+  required: true
+  schema: { type: integer, minimum: 0 }
+- name: ticket
+  in: query
+  required: true
+  schema: { type: string }
+- name: Range
+  in: header
+  required: false
+  schema: { type: string }
+- $ref: ../../../../components/parameters/talk-record/DeviceVsn.yaml
+- $ref: ../../../../components/parameters/talk-record/DevicePkg.yaml
+- $ref: ../../../../components/parameters/talk-record/DeviceDid.yaml
+- $ref: ../../../../components/parameters/talk-record/DeviceCos.yaml
+- $ref: ../../../../components/parameters/talk-record/DeviceMethod.yaml
+- $ref: ../../../../components/parameters/talk-record/DeviceSign.yaml
+- $ref: ../../../../components/parameters/talk-record/DeviceSk.yaml
+get:
+  tags: [talk-record]
+  summary: Read one confirmed audio part
+  operationId: talkRecordPlaybackPartGet
+  security:
+  - bearerAuth: []
+  x-device-signature-required: true
+  x-handler: talk_record_playback_parts_handler
+  description: Single byte range only. Source bytes are integrity-checked before release and authorization is rechecked for every response block.
+  responses:
+    '200': { description: Full audio part }
+    '206': { description: Partial audio part }
+    '403': { description: Invalid or expired ticket }
+    '404': { description: Record unavailable or access revoked }
+    '409': { description: Source unavailable }
+    '416': { description: Unsatisfiable range }
+    '429': { description: Source playback capacity is busy; retry after the Retry-After delay }
+head:
+  tags: [talk-record]
+  summary: Inspect one confirmed audio part
+  operationId: talkRecordPlaybackPartHead
+  security:
+  - bearerAuth: []
+  x-device-signature-required: true
+  x-handler: talk_record_playback_parts_handler
+  responses:
+    '200': { description: Audio part metadata }
+    '206': { description: Audio part range metadata }
+    '403': { description: Invalid or expired ticket }
+    '404': { description: Record unavailable or access revoked }
+    '409': { description: Source unavailable }
+    '416': { description: Unsatisfiable range }

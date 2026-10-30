@@ -1,0 +1,51 @@
+post:
+  tags: [talk-record]
+  summary: Open confirmed source parts for playback
+  operationId: talkRecordPlaybackPartsPost
+  security:
+  - bearerAuth: []
+  x-device-signature-required: true
+  x-handler: talk_record_playback_parts_handler
+  description: Returns ordered short-lived same-origin source-part URLs for a completed capture with a verified frozen manifest. Each part request rechecks the actor, record, ACL revision, manifest and source binding. Playback is unavailable when any part is missing or not confirmed.
+  parameters:
+  - name: id
+    in: path
+    required: true
+    schema: { type: string, pattern: '^[1-9][0-9]*$' }
+  - $ref: ../../../../components/parameters/talk-record/DeviceVsn.yaml
+  - $ref: ../../../../components/parameters/talk-record/DevicePkg.yaml
+  - $ref: ../../../../components/parameters/talk-record/DeviceDid.yaml
+  - $ref: ../../../../components/parameters/talk-record/DeviceCos.yaml
+  - $ref: ../../../../components/parameters/talk-record/DeviceMethod.yaml
+  - $ref: ../../../../components/parameters/talk-record/DeviceSign.yaml
+  - $ref: ../../../../components/parameters/talk-record/DeviceSk.yaml
+  responses:
+    '200':
+      description: Check the envelope code before using payload.
+      content:
+        application/json:
+          schema:
+            type: object
+            required: [code, payload]
+            properties:
+              code: { type: integer }
+              payload:
+                type: object
+                required: [record_id, expiry, expires_at, parts]
+                properties:
+                  record_id: { type: string }
+                  expiry: { type: integer, description: Unix seconds }
+                  expires_at: { type: string, format: date-time }
+                  parts:
+                    type: array
+                    items:
+                      type: object
+                      required: [seq, offset_ms, duration_ms, url]
+                      properties:
+                        seq: { type: integer, minimum: 0 }
+                        offset_ms: { type: integer, minimum: 0 }
+                        duration_ms: { type: integer, minimum: 1 }
+                        url: { type: string, description: Same-origin URL containing a short-lived ticket }
+    '401': { description: Authentication failed }
+    '404': { description: Record unavailable or access revoked }
+    '409': { description: Source parts unavailable }

@@ -124,6 +124,12 @@ routes() ->
         {"/api/v1/talk-records/:id/participants", talk_record_participant_handler, #{}},
         {"/api/v1/talk-records/:id/attachments/:attachment_id/governance",
             talk_record_governance_handler, #{}},
+        {"/api/v1/talk-records/:id/playback/parts/:seq", talk_record_playback_parts_handler, #{
+            action => part
+        }},
+        {"/api/v1/talk-records/:id/playback/parts", talk_record_playback_parts_handler, #{
+            action => list
+        }},
         {"/api/v1/talk-records/:id/playback/stream", talk_record_playback_handler, #{}},
         {"/api/v1/talk-records/:id/playback", talk_record_handler, #{
             action => playback

@@ -831,6 +831,10 @@ paths:
     $ref: './paths/api/v1/talk-records/governance.yaml'
   /api/v1/talk-records/{id}/playback/stream:
     $ref: './paths/api/v1/talk-records/stream.yaml'
+  /api/v1/talk-records/{id}/playback/parts:
+    $ref: './paths/api/v1/talk-records/playback_parts.yaml'
+  /api/v1/talk-records/{id}/playback/parts/{seq}:
+    $ref: './paths/api/v1/talk-records/playback_part_stream.yaml'
   /api/v1/talk-records/{id}/playback:
     $ref: './paths/api/v1/talk-records/playback.yaml'
   /api/v1/talk-records/{id}/exports:
