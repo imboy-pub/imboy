@@ -23,6 +23,10 @@ class SealingTests(unittest.TestCase):
         # Raw snapshot rewrites break the ledger binding (_require_state
         # rejects them); transitions must go through StateStore.write_snapshot.
         self.f.state = runner.StateStore(str(self.f.run)).write_snapshot(self.f.state)
+        # Evidence layout isolates each attempt under case_dir/attempt-N; the
+        # verifier fixture builds the case root, so descend one level here.
+        self.f.case_dir = self.f.case_dir / "attempt-1"
+        self.f.case_dir.mkdir()
         self.input = self.f.case_dir / "measured-receipts.json"
         self.args = types.SimpleNamespace(run_dir=str(self.f.run), task_id="W4-02",
             case_id="W4-02/worker", case_dir=str(self.f.case_dir),
@@ -106,7 +110,8 @@ class SealingTests(unittest.TestCase):
         script = 'run_case() { return 0; }\nproduce_measured() { return 0; }\n' + function + '\nexecute_case "$CASE_ID"'
         before = self.f.raw.read_bytes()
         env = dict(os.environ, ROOT=str(ROOT), SCRIPT_DIR=str(ROOT / "scripts/test"),
-            V5_RUN_DIR=str(self.f.run), EVID=str(self.f.case_dir.parent),
+            RUN_DIR=str(self.f.run), V5_RUN_DIR=str(self.f.run),
+            EVID=str(self.f.case_dir.parent.parent), V5_TASK_ATTEMPT="1",
             CASE_ID=self.args.case_id, V5_GATE_COMMAND=self.row["command"])
         result = subprocess.run(["bash", "-c", script], env=env, capture_output=True, timeout=10)
         self.assertEqual(0, result.returncode, result.stderr.decode())
@@ -137,12 +142,12 @@ class SealingTests(unittest.TestCase):
         moved = self.f.case_dir.with_name("moved-original")
         foreign = self.f.case_dir.with_name("foreign-case")
         foreign.mkdir()
-        replace = runner.os.replace
-        def swap(*args, **kwargs):
+        publish = runner.case_store.publish
+        def swap(fd, rows):
             self.f.case_dir.rename(moved)
             self.f.case_dir.symlink_to(foreign, target_is_directory=True)
-            return replace(*args, **kwargs)
-        with mock.patch.object(runner.os, "replace", side_effect=swap):
+            return publish(fd, rows)
+        with mock.patch.object(runner.case_store, "publish", side_effect=swap):
             self.assertNotEqual(0, self.seal([self.row]))
         self.assertFalse(list(foreign.glob("sealed-*/leaf-*.json")))
         self.assertEqual(1, len(list(moved.glob("sealed-*/leaf-*.json"))))
