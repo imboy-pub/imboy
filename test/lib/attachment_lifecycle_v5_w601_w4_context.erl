@@ -332,14 +332,35 @@ hex64(Bin) ->
 loc(N) -> hex64(crypto:hash(sha256, integer_to_binary(N))).
 
 %% 组内叶序号（进程字典自增）：同组内每叶 key/id 空间隔离。
+%% 计数从 per-VM 随机残段（attempt_salt，0..79999）起步而非 1：gate 的
+%% w601_w4queue 步 try 1..3 重试共用同一 bound 库（attv5_<slot>_w601，
+%% 步内不重建），各模块确定性 id（94x000000000 + (base rem N)*1000 + 序号）
+%% 跨 try 重算必撞主键——三跑实证 eunit-w4queue.log:433 起全部种子组
+%% unique_violation（首叶即撞，attempt 1 已落行）。盐只平移带内子段：
+%% 残段上限 79999 + 叶数（<200）使各模块带内位移 <8.1e7 < 带宽 1e8，
+%% 不越界到相邻模块带（941→9419→944→946→…→952），单 attempt 内单调
+%% 自增性质不变。对照 w3_support:fresh_hold_id 的键隔离先例；
+%% 断言全部经变量引用 id，无字面值断言（不放宽任何断言）。
 leaf_id(Tag) ->
     N =
         case get({w601_leaf_seq, Tag}) of
-            undefined -> 1;
+            undefined -> attempt_salt() + 1;
             K -> K + 1
         end,
     put({w601_leaf_seq, Tag}, N),
     N.
+
+%% per-VM 随机残段（同一次 eunit VM = gate 步的一次 try）：取一次缓存于
+%% persistent_term，全模块共享；crypto 随机保证跨 try 不重复。
+attempt_salt() ->
+    case persistent_term:get({?MODULE, w601_attempt_salt}, undefined) of
+        undefined ->
+            Salt = binary:decode_unsigned(crypto:strong_rand_bytes(3)) rem 80000,
+            persistent_term:put({?MODULE, w601_attempt_salt}, Salt),
+            Salt;
+        S ->
+            S
+    end.
 
 %% ---------------------------------------------------------------- 种子
 

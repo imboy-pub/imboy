@@ -16,11 +16,15 @@
 
 -export([
     emit/2,
+    emit/3,
     surface_domain/1,
     driver_mod/1,
     put_calls/1,
     sha/1,
     with_put_barrier/2,
+    with_put_expiry_barrier/2,
+    await_put_context/1,
+    await_put_result/1,
     with_read_barrier/2,
     with_sql_barrier/2,
     fail_next_query/3,
@@ -63,6 +67,10 @@ emit({Case, Entry, Driver, Scenario, Domain, Ac}, Measured) ->
     }),
     ok.
 
+emit(Spec, Measured, Leaf) ->
+    Requests = attachment_w403_http_fixture:evidence(Leaf),
+    emit(Spec, Measured#{http_requests => Requests}).
+
 %% 契约域映射：ordinary/enterprise_internal 面 = ordinary 域；
 %% enterprise_seat/cs_widget 面 = enterprise 域。
 surface_domain(ordinary) -> <<"ordinary">>;
@@ -97,6 +105,44 @@ with_put_barrier(T, Fun) ->
         release_all(Barrier, Gate),
         cleanup_jobs(),
         meck:unload(Mod)
+    end.
+
+%% The production driver still executes; only this object's PUT is delayed.
+with_put_expiry_barrier(T, Fun) ->
+    Mod = driver_mod(maps:get(driver, T)),
+    Key = maps:get(key, T),
+    {Parent, Barrier, Gate} = barrier_ctx(),
+    meck:new(Mod, [passthrough, no_link]),
+    try
+        meck:expect(Mod, put_snapshot, fun(I, A, B, C) ->
+            case maps:get(key, I) =:= Key of
+                true ->
+                    Parent ! {w601_put_context, Barrier, B, C},
+                    pause_once(Parent, Barrier, Gate),
+                    Result = meck:passthrough([I, A, B, C]),
+                    Parent ! {w601_put_result, Barrier, Result},
+                    Result;
+                false ->
+                    meck:passthrough([I, A, B, C])
+            end
+        end),
+        Fun(Barrier)
+    after
+        release_all(Barrier, Gate),
+        cleanup_jobs(),
+        meck:unload(Mod)
+    end.
+
+await_put_context(Barrier) ->
+    receive
+        {w601_put_context, Barrier, B, C} -> {B, C}
+    after 10000 -> erlang:error(w601_put_context_missing)
+    end.
+
+await_put_result(Barrier) ->
+    receive
+        {w601_put_result, Barrier, Result} -> Result
+    after 10000 -> erlang:error(w601_put_result_missing)
     end.
 
 %% 暂停匹配 SQL 片段的第一条真实查询（elib_pg:query/2 与 /3；以及
@@ -405,11 +451,16 @@ update_pending_expiry(Key, SecsFromNow) ->
     ok.
 
 update_pending_deadline(Key, SecsFromNow) ->
+    %% 两列必须取**同一**时间基准：分开内联 clock_timestamp() 会取到两次
+    %% 评估值（微秒级递增），upload_expires_at > session_deadline 触发
+    %% ck_v5_pending_times 23514（三跑 cs_widget/enterprise_internal 实证
+    %% 同族 ck_v5_eb_times），故以子查询单次求值共享同一 t。
     {ok, _} =
         elib_pg:query(
             <<
-                "UPDATE attach_pending SET session_deadline = clock_timestamp() + ($2 * INTERVAL '1 second'),"
-                " upload_expires_at = clock_timestamp() + ($2 * INTERVAL '1 second')"
+                "UPDATE attach_pending SET session_deadline = t,"
+                " upload_expires_at = t"
+                " FROM (SELECT clock_timestamp() + ($2 * INTERVAL '1 second') AS t) s"
                 " WHERE object_key=$1"
             >>,
             [Key, SecsFromNow]
@@ -428,11 +479,14 @@ update_eb_expiry(Org, Ws, AssetId, SecsFromNow) ->
     ok.
 
 update_eb_deadline(Org, Ws, AssetId, SecsFromNow) ->
+    %% 同 update_pending_deadline：单次 clock_timestamp() 求值共享同一 t，
+    %% 避免 ck_v5_eb_times（upload_expires_at <= session_deadline）因两次
+    %% 评估微秒差而 23514（三跑 cs_widget/disk 实证）。
     {ok, _} =
         elib_pg:query(
             <<
-                "UPDATE enterprise_asset SET session_deadline = clock_timestamp() + ($4 * INTERVAL '1 second'),"
-                " upload_expires_at = clock_timestamp() + ($4 * INTERVAL '1 second')"
+                "UPDATE enterprise_asset SET session_deadline = t, upload_expires_at = t"
+                " FROM (SELECT clock_timestamp() + ($4 * INTERVAL '1 second') AS t) s"
                 " WHERE organization_id=$1 AND workspace_id=$2 AND id=$3"
             >>,
             [Org, Ws, AssetId, SecsFromNow]
@@ -441,7 +495,7 @@ update_eb_deadline(Org, Ws, AssetId, SecsFromNow) ->
 
 %% ------------------------------------------------ 过期前提的合法构造（F8）
 
-%% 显式登记已到期会话：经生产登记函数 fn_v5_register_pending 以原登记行的
+%% 显式登记过期或短有效期测试会话：经生产登记函数 fn_v5_register_pending 以原登记行的
 %% 冻结快照（bucket/scope/creator/registration/location 逐字复制）造
 %% "新 key + 新 cid" 的已到期行，返回 {ok, NewKey, NewCid}。UPDATE 路径被
 %% fn_v5_pending_session_guard 冻结语义拒绝（23510：v5 upload expiry cannot
@@ -471,9 +525,13 @@ register_expired_pending(Key, Mode) ->
     {Deadline, Expiry} =
         case Mode of
             %% 能力过期（session 未到期）→ renew 同 key 重签语义的前提
-            expiry -> {Now + 3600, Now - 60};
+            expiry ->
+                {Now + 3600, Now - 60};
             %% 绝对 deadline 过期 → renew fail-closed 语义的前提
-            deadline -> {Now - 300, Now - 301}
+            deadline ->
+                {Now - 300, Now - 301};
+            {short, Seconds} when is_integer(Seconds), Seconds > 0 ->
+                {Now + 3600, Now + Seconds}
         end,
     {ok, [_]} =
         elib_pg:query(

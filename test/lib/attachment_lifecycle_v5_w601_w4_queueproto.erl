@@ -29,42 +29,25 @@
 claim_ordinary(Conn, Token) ->
     attachment_gc_repo:v5_claim(Conn, Token).
 
-%% 目标行不在队首时先消化无关 ready 行（普通 claim 无 path 过滤）。
-claim_ordinary_until(_Conn, _Key, 0, _Tag) ->
-    erlang:error({w601_target_job_not_claimed, _Tag});
-claim_ordinary_until(Conn, Key, N, Tag) ->
-    T = ?X:token(),
-    case claim_ordinary(Conn, T) of
-        {ok, #{<<"out_path">> := Key} = Row} ->
-            {ok, Row};
-        {ok, #{<<"out_path">> := Other}} ->
-            ok = attachment_gc_repo:v5_ack(Conn, Other, T, true),
-            claim_ordinary_until(Conn, Key, N - 1, Tag);
-        {error, empty} ->
-            claim_ordinary_until(Conn, Key, N - 1, Tag);
-        Other ->
-            erlang:error({w601_claim_failed, Tag, Other})
-    end.
+%% 全局 claim 未提供 path 条件；发现非目标时必须回滚 claim，不能 ACK
+%% 其他任务。调用方须使用本测试独占连接，不能在已有事务中调用。
+claim_ordinary_until(_Conn, _Key, N, Tag) when N =< 0 ->
+    erlang:error({w601_target_job_not_claimed, Tag});
+claim_ordinary_until(Conn, Key, _N, Tag) ->
+    target_claim(
+        Conn,
+        fun() -> claim_ordinary(Conn, ?X:token()) end,
+        fun
+            ({ok, #{<<"out_path">> := Path}}) -> Path =:= Key;
+            (_) -> false
+        end,
+        Tag
+    ).
 
 drain_ordinary(Conn) ->
-    T = ?X:token(),
-    case claim_ordinary(Conn, T) of
-        {ok, #{<<"out_path">> := P}} ->
-            ok = attachment_gc_repo:v5_ack(Conn, P, T, true),
-            drain_ordinary(Conn);
-        {error, empty} ->
-            ok;
-        {error, _} ->
-            ok
-    end.
+    require_empty(Conn, "attachment_object_deletion").
 
 reset_ordinary(Conn) ->
-    ?X:q(
-        Conn,
-        "UPDATE attachment_object_deletion SET lease_until = now() - interval '1 s'"
-        " WHERE job_state='leased'"
-    ),
-    _ = attachment_gc_repo:v5_reap(Conn, 100),
     drain_ordinary(Conn).
 
 expire_ordinary(Conn, Key) ->
@@ -106,15 +89,17 @@ claim_eb(Conn) ->
     end.
 
 claim_eb_for(Conn, Org, Ws, AssetId) ->
-    case claim_eb(Conn) of
-        {ok, #{org := Org, ws := Ws, asset_id := AssetId} = Row} ->
-            {ok, Row};
-        {ok, #{org := O, ws := W, asset_id := Other, token := T}} ->
-            {ok, _, _} = ?X:e(Conn, "SELECT fn_v5_ack_eb($1,$2,$3,$4,true)", [O, W, Other, T]),
-            claim_eb_for(Conn, Org, Ws, AssetId);
-        empty ->
-            erlang:error({w601_target_eb_job_not_claimed, AssetId})
-    end.
+    target_claim(
+        Conn,
+        fun() -> claim_eb(Conn) end,
+        fun
+            ({ok, #{org := O, ws := W, asset_id := A}}) ->
+                O =:= Org andalso W =:= Ws andalso A =:= AssetId;
+            (_) ->
+                false
+        end,
+        {enterprise, Org, Ws, AssetId}
+    ).
 
 ack_eb(Conn, Org, Ws, AssetId, Token) ->
     ack_eb_ok(Conn, Org, Ws, AssetId, Token, true).
@@ -148,25 +133,37 @@ eb_state(Conn, Org, AssetId) ->
     ).
 
 drain_eb(Conn) ->
-    case claim_eb(Conn) of
-        {ok, #{org := O, ws := W, asset_id := A, token := T}} ->
-            {ok, _, _} = ?X:e(Conn, "SELECT fn_v5_ack_eb($1,$2,$3,$4,true)", [O, W, A, T]),
-            drain_eb(Conn);
-        empty ->
-            ok;
-        {error, _} ->
-            ok
-    end.
+    require_empty(Conn, "enterprise_asset_delete_queue").
 
 reset_eb(Conn) ->
-    ?X:q(
-        Conn,
-        "UPDATE enterprise_asset_delete_queue SET lease_until = now() - interval '1 s'"
-        " WHERE job_state='leased'"
-    ),
-    _ = ?X:e(Conn, "SELECT fn_v5_reaper_eb(200)", []),
-    drain_eb(Conn),
-    ok.
+    drain_eb(Conn).
+
+require_empty(Conn, Table) ->
+    Sql =
+        "SELECT EXISTS (SELECT 1 FROM " ++ Table ++
+            " WHERE job_state IN ('ready','retry_wait','leased'))",
+    case ?X:e(Conn, Sql) of
+        {ok, _, [{false}]} -> ok;
+        {ok, _, [{true}]} -> erlang:error({w601_queue_not_isolated, Table});
+        Other -> erlang:error({w601_queue_check_failed, Table, Other})
+    end.
+
+target_claim(Conn, Claim, Matches, Tag) ->
+    ok = ?X:q(Conn, "BEGIN"),
+    try
+        Result = Claim(),
+        case Matches(Result) of
+            true ->
+                ok = ?X:q(Conn, "COMMIT"),
+                Result;
+            false ->
+                erlang:error({w601_target_job_not_claimed, Tag, Result})
+        end
+    catch
+        Class:Reason:Stack ->
+            ok = ?X:q(Conn, "ROLLBACK"),
+            erlang:raise(Class, Reason, Stack)
+    end.
 
 %% 企业队列行的冻结位置快照。
 frozen_eb(Conn, Org, AssetId) ->

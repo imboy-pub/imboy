@@ -31,7 +31,7 @@
 
 -export([provision/1, release/1, safe_connect/1, migration_head/0, schema_mode/1]).
 -ifdef(TEST).
--export([await_connect/4]).
+-export([await_connect/4, v5_tls_extra/2]).
 -endif.
 
 -define(EXTENSIONS, [
@@ -324,6 +324,11 @@ reuse_loop() ->
 
 resolve_server(Prefix, ConnectExtra) ->
     Defaults = config_pg_conn(),
+    SecuredExtra =
+        case Prefix of
+            <<"V5_INTTEST", _/binary>> -> v5_tls_extra(Defaults, ConnectExtra);
+            _ -> ConnectExtra
+        end,
     User = env_or(<<Prefix/binary, "_PG_USER">>, maps:get(username, Defaults, undefined)),
     Pass = env_or(<<Prefix/binary, "_PG_PASSWORD">>, maps:get(password, Defaults, undefined)),
     case {User, Pass} of
@@ -342,8 +347,46 @@ resolve_server(Prefix, ConnectExtra) ->
         username => User,
         password => Pass,
         maint_db => maint_db(Prefix),
-        connect_extra => ConnectExtra
+        connect_extra => SecuredExtra
     }.
+
+%% Preserve only explicitly supplied CA bytes and construct the verification
+%% policy ourselves. This is not resource authorization; safe_connect still
+%% refuses V5 until its peer and slot identities are bound to the connection.
+v5_tls_extra(Defaults, Extra) when is_map(Defaults), is_map(Extra) ->
+    case [K || K <- [ssl, ssl_opts], maps:is_key(K, Extra)] of
+        [] -> ok;
+        Keys -> error({marker_db_forbidden_tls_override, Keys})
+    end,
+    SslOpts = maps:get(ssl_opts, Defaults, []),
+    case {maps:get(ssl, Defaults, undefined), is_list(SslOpts)} of
+        {required, true} -> ok;
+        _ -> error({contract_conflict, marker_db_tls_config_unverified})
+    end,
+    case
+        {
+            proplists:get_all_values(verify, SslOpts),
+            proplists:get_all_values(cacerts, SslOpts),
+            proplists:get_all_values(server_name_indication, SslOpts)
+        }
+    of
+        {[verify_peer], [[Der]], ["localhost"]} when is_binary(Der), byte_size(Der) > 0 ->
+            Extra#{
+                ssl => required,
+                ssl_opts => [
+                    {verify, verify_peer},
+                    {cacerts, [Der]},
+                    {server_name_indication, "localhost"},
+                    {customize_hostname_check, [
+                        {match_fun, public_key:pkix_verify_hostname_match_fun(https)}
+                    ]}
+                ]
+            };
+        _ ->
+            error({contract_conflict, marker_db_tls_config_unverified})
+    end;
+v5_tls_extra(_, _) ->
+    error({contract_conflict, marker_db_tls_config_unverified}).
 
 env_name(Prefix, Suffix) -> <<Prefix/binary, "_", (list_to_binary(Suffix))/binary>>.
 
@@ -493,6 +536,7 @@ safe_connect(Opts) ->
             {ok, Db} -> Db
         end,
     ok = authorize_connection_target(DbIdentity),
+    ok = require_connection_identity(DbIdentity),
     Parent = self(),
     {Worker, Monitor} =
         spawn_monitor(fun() ->
@@ -513,6 +557,21 @@ safe_connect(Opts) ->
             Parent ! {safe_connect_result, self(), Result}
         end),
     await_connect(Worker, Monitor, 120000, maps:get(host, Opts, undefined)).
+
+%% A slot-shaped name and a local receipt are insufficient to authorize the
+%% actual connection. Fail before opening a socket until peer/slot proof exists.
+require_connection_identity(Db) when is_list(Db) ->
+    require_connection_identity(unicode:characters_to_binary(Db));
+require_connection_identity(<<"attv5_", _/binary>>) ->
+    error({contract_conflict, marker_db_identity_and_slot_unverified});
+require_connection_identity(<<"inttest_v5_inttest", _/binary>>) ->
+    error({contract_conflict, marker_db_identity_and_slot_unverified});
+require_connection_identity(_) ->
+    case os:getenv("V5_RUN_DIR") of
+        false -> ok;
+        "" -> ok;
+        _ -> error({contract_conflict, marker_db_identity_and_slot_unverified})
+    end.
 
 await_connect(Worker, Monitor, Timeout, Host) ->
     receive

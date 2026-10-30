@@ -191,21 +191,28 @@ registry(Base, Garage) ->
     %%（{error, unknown} → badmatch，6 叶全崩）。registry 根键名保留 bind
     %% 标记，endpoint 仍指向 bind 自有目录；bind 与 race/hold 各用独立步级
     %% 库，同 namespace 不同 root 不构成跨套件冲突。
+    %% 生产 attachment_storage:registry/0 只认 version=1 信封（缺 version
+    %% 一律替换为空 registry → validate_registry 报 empty_roots），按
+    %% w601_w4_context:registry/2 同款形状包装（套件无裸读 roots 路径）。
     #{
-        <<"w601-w3-bind-disk-root">> => #{
-            driver => <<"disk">>,
-            namespace => ?NS_DISK,
-            aliases => [],
-            endpoint => list_to_binary("file://" ++ Base),
-            container => ?CONTAINER_DISK
+        version => 1,
+        roots => #{
+            <<"w601-w3-bind-disk-root">> => #{
+                driver => <<"disk">>,
+                namespace => ?NS_DISK,
+                aliases => [],
+                endpoint => list_to_binary("file://" ++ Base),
+                container => ?CONTAINER_DISK
+            },
+            <<"w601-w3-bind-garage-root">> => #{
+                driver => <<"garage">>,
+                namespace => ?NS_GARAGE,
+                aliases => [],
+                endpoint => maps:get(endpoint, Garage),
+                container => maps:get(bucket, Garage)
+            }
         },
-        <<"w601-w3-bind-garage-root">> => #{
-            driver => <<"garage">>,
-            namespace => ?NS_GARAGE,
-            aliases => [],
-            endpoint => maps:get(endpoint, Garage),
-            container => maps:get(bucket, Garage)
-        }
+        upload_namespaces => #{}
     }.
 
 %% ------------------------------------------------------------ leaf matrix

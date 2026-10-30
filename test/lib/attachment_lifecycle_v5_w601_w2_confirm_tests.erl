@@ -15,6 +15,9 @@
 -module(attachment_lifecycle_v5_w601_w2_confirm_tests).
 
 -export([specs/0]).
+-ifdef(TEST).
+-export([imm_scenario/4]).
+-endif.
 
 -include_lib("eunit/include/eunit.hrl").
 
@@ -85,21 +88,29 @@ leaf_unit(S, {Case, Ep, Driver, Sc, _Dom, _Ac} = Spec) ->
         binary_to_list(Leaf),
         {timeout, 240, fun() ->
             Measured = scenario(S#{leaf => Leaf}, Spec),
-            ?S:emit(Spec, Measured)
+            ?S:emit(Spec, Measured, Leaf)
         end}
     }.
 
 leaf_name(Case, Ep, Driver, Sc) ->
     [_, Short] = binary:split(Case, <<"/">>),
+    %% Ep 对域级 case（confirm-idempotent / confirm-old-client）是二进制
+    %% entrypoint 组名（idem_specs/old_specs 直传 <<"confirm-idempotent">>），
+    %% 对 surface 级 case 是原子（ordinary 等）——atom_to_binary 对二进制
+    %% 必 badarg（三跑实证：实例化即崩、全模块取消、夹具 cleanup 未跑且
+    %% 证据表泄漏，pending 模块 setup 连带 badmatch）。
     <<
         Short/binary,
         "/",
-        (atom_to_binary(Ep, utf8))/binary,
+        (ep_bin(Ep))/binary,
         "/",
         (atom_to_binary(Driver, utf8))/binary,
         "/",
         Sc/binary
     >>.
+
+ep_bin(Ep) when is_atom(Ep) -> atom_to_binary(Ep, utf8);
+ep_bin(Ep) when is_binary(Ep) -> Ep.
 
 %% -------------------------------------------------------- scenario dispatch
 
@@ -118,19 +129,38 @@ scenario(S, {?C_OLD, _, Driver, Sc, <<"enterprise">>, _}) ->
 
 imm_scenario(S, Ep, Driver, <<"put_A_confirm_old_capability_put_B">>) ->
     T = reg(S, Ep, Driver),
-    %% put_calls 必须在 with_put_barrier 的 passthrough mock 作用域内读取：
-    %% 未 mock 的模块上 meck:num_calls 恒 {not_mocked}，断言必错（F3）。
-    ?S:with_put_barrier(T, fun(_Barrier) ->
-        ?assert(?F:success(?F:put(T, ?BODY))),
-        First = ?F:confirm(T),
-        ?assert(?F:success(First)),
-        Old = ?F:put(T, ?OTHER),
-        ?assertNot(?F:success(Old)),
-        %% 首 PUT 一次 provider 写；已确认会话的旧能力 PUT 在 pin 裁决处
-        %% 被拒，不得产生第二次 provider 写。
-        ?assertEqual(0, ?S:put_calls(?S:driver_mod(Driver)) - 1),
-        ?assertEqual({ok, ?BODY}, ?F:read(T)),
-        #{old_capability_put_status => maps:get(status, Old), bytes_unchanged => true}
+    %% First write and confirmation complete before arming the provider barrier.
+    FirstPut = ?F:put(T, ?BODY),
+    ?assert(?F:success(FirstPut)),
+    {ok, Pin} = ?S:content_pin_any(Ep, T),
+    ?assertEqual(?S:sha(?BODY), maps:get(<<"sha256">>, Pin)),
+    First = ?F:confirm(T),
+    ok = ?F:bind_request(maps:get(fixture, T), First, key(T), confirm),
+    ?assert(?F:success(First)),
+    DbBefore = confirmed_snapshot(Ep, T),
+    ?S:with_put_barrier(T, fun(Barrier) ->
+        Job = ?S:start_job(fun() -> ?F:put(T, ?OTHER) end),
+        Old = await_rejected_put(Barrier, Job),
+        ?assertEqual(409, maps:get(status, Old)),
+        ?assertEqual(0, ?S:put_calls(?S:driver_mod(Driver))),
+        ?assertEqual(DbBefore, confirmed_snapshot(Ep, T)),
+        {ok, PinAfter} = ?S:content_pin_any(Ep, T),
+        ?assertEqual(Pin, PinAfter),
+        {ok, ObservedBytes} = ?F:read(T),
+        ?assertEqual(?BODY, ObservedBytes),
+        #{
+            object_key => key(T),
+            client_upload_id => maps:get(client_upload_id, T),
+            presign_request_id => maps:get(registration_request_id, T),
+            put_request_id => maps:get(request_id, FirstPut),
+            confirm_request_id => maps:get(request_id, First),
+            old_put_request_id => maps:get(request_id, Old),
+            confirmed_db_state => DbBefore,
+            pin_sha256 => maps:get(<<"sha256">>, Pin),
+            object_sha256_after => ?S:sha(ObservedBytes),
+            old_capability_put_status => maps:get(status, Old),
+            bytes_unchanged => true
+        }
     end);
 imm_scenario(S, Ep, Driver, <<"overwrite_between_stat_and_confirm">>) ->
     T = reg(S, Ep, Driver),
@@ -193,23 +223,132 @@ imm_scenario(S, ordinary, Driver, <<"ciphertext_only_no_plaintext_hash">>) ->
 imm_scenario(S, Ep, Driver, <<"crash_after_pin_before_put_resume">>) ->
     T = reg(S, Ep, Driver),
     Mod = ?S:driver_mod(Driver),
+    Key = key(T),
+    Parent = self(),
+    FaultRef = make_ref(),
     meck:new(Mod, [passthrough, no_link]),
     try
-        ok = meck:expect(Mod, put_snapshot, fun(_, _, _, _) ->
-            erlang:error(pin_committed_then_crash)
+        ok = meck:expect(Mod, put_snapshot, fun(I, A, B, C) ->
+            case maps:get(key, I, undefined) of
+                Key ->
+                    Parent ! {w601_put_fault, FaultRef, Key},
+                    erlang:error(pin_committed_then_crash);
+                _ ->
+                    meck:passthrough([I, A, B, C])
+            end
         end),
-        ?assertNot(?F:success(?F:put(T, ?BODY)))
+        ?assertNot(?F:success(?F:put(T, ?BODY))),
+        receive
+            {w601_put_fault, FaultRef, Key} -> ok
+        after 1000 ->
+            erlang:error(expected_provider_fault_not_observed)
+        end
     after
         meck:unload(Mod)
     end,
-    {ok, Pin} = ?S:content_pin(key(T)),
+    {ok, Pin} = ?S:content_pin_any(Ep, T),
     ?assertEqual(?S:sha(?BODY), maps:get(<<"sha256">>, Pin)),
+    ?assertEqual({error, not_found}, ?F:read(T)),
+    Before = unconfirmed_snapshot(Ep, T),
+    Missing = ?F:confirm(T),
+    assert_missing_confirm(Ep, Missing),
+    ?assertEqual(Before, unconfirmed_snapshot(Ep, T)),
+    {ok, PinBeforeResume} = ?S:content_pin_any(Ep, T),
+    ?assertEqual(Pin, PinBeforeResume),
     ?assert(?F:success(?F:put(T, ?BODY))),
-    ?assert(?F:success(?F:confirm(T))),
+    First = ?F:confirm(T),
+    ?assert(?F:success(First)),
+    Id = confirm_id(First, Ep),
+    _ = confirmed_snapshot(Ep, T),
+    ReceiptBefore = resume_receipt(Ep, T, Id),
+    Replay = ?F:confirm(T),
+    ?assert(?F:success(Replay)),
+    ?assertEqual(Id, confirm_id(Replay, Ep)),
+    ?assertEqual(ReceiptBefore, resume_receipt(Ep, T, Id)),
+    {ok, ?BODY} = ?F:read(T),
+    {ok, PinAfter} = ?S:content_pin_any(Ep, T),
+    ?assertEqual(Pin, PinAfter),
+    Stored = confirmed_hash(Ep, T),
+    ?assertEqual(?S:sha(?BODY), Stored),
+    #{
+        resumed_same_receipt => true,
+        fault_kind => <<"provider_exception">>,
+        stored_hash => Stored,
+        object_key => key(T),
+        object_sha256_after => ?S:sha(?BODY)
+    }.
+
+resume_receipt(Ep, T, Id) when Ep =:= ordinary; Ep =:= enterprise_internal ->
+    {ok, [#{<<"id">> := Id, <<"referer_time">> := 1} = Row]} = elib_pg:query(
+        <<"SELECT id, referer_time FROM attachment WHERE path=$1">>, [key(T)]
+    ),
+    Row;
+resume_receipt(_, T, Id) ->
+    Scope = maps:get(scope, maps:get(fixture, T)),
+    Id = int(maps:get(<<"asset_id">>, maps:get(registration, T))),
+    {ok, [#{<<"id">> := Id} = Row]} = elib_pg:query(
+        <<
+            "SELECT id, conversation_id, message_id FROM enterprise_asset"
+            " WHERE organization_id=$1 AND workspace_id=$2 AND object_key=$3"
+        >>,
+        [maps:get(org_id, Scope), maps:get(workspace_id, Scope), key(T)]
+    ),
+    ?assertEqual(0, ?S:attach_count(key(T))),
+    Row.
+
+unconfirmed_snapshot(Ep, T) when Ep =:= ordinary; Ep =:= enterprise_internal ->
+    {ok, #{<<"session_state">> := <<"registered">>} = Row} = ?S:pending_row(key(T)),
+    ?assertEqual(0, ?S:attach_count(key(T))),
+    #{session_state => <<"registered">>, storage_identity => storage_identity(Row)};
+unconfirmed_snapshot(_, T) ->
+    Scope = maps:get(scope, maps:get(fixture, T)),
+    AssetId = int(maps:get(<<"asset_id">>, maps:get(registration, T))),
+    {ok, #{<<"status">> := <<"pending_confirm">>} = Row} = ?S:eb_row(
+        maps:get(org_id, Scope), maps:get(workspace_id, Scope), AssetId
+    ),
+    {ok, [#{<<"message_id">> := null}]} = elib_pg:query(
+        <<
+            "SELECT message_id FROM enterprise_asset WHERE organization_id=$1"
+            " AND workspace_id=$2 AND id=$3"
+        >>,
+        [maps:get(org_id, Scope), maps:get(workspace_id, Scope), AssetId]
+    ),
+    ?assertEqual(0, ?S:attach_count(key(T))),
+    #{
+        asset_id => AssetId,
+        status => <<"pending_confirm">>,
+        message_id => null,
+        storage_identity => storage_identity(Row)
+    }.
+
+assert_missing_confirm(ordinary, #{status := 200, body := Body}) ->
+    #{<<"code">> := 400, <<"msg">> := <<"对象不存在或未完成上传"/utf8>>} = jsone:decode(Body),
+    ok;
+assert_missing_confirm(enterprise_internal, #{status := 400, body := Body}) ->
+    #{<<"error">> := #{<<"code">> := <<"invalid_request">>}} = jsone:decode(Body),
+    ok;
+assert_missing_confirm(Ep, #{status := 500, body := Body}) when
+    Ep =:= enterprise_seat; Ep =:= cs_widget
+->
+    #{<<"code">> := 500, <<"msg">> := <<"object_unreadable.object_store.not_found">>} =
+        jsone:decode(Body),
+    ok.
+
+confirmed_hash(Ep, T) when Ep =:= ordinary; Ep =:= enterprise_internal ->
     {ok, [#{<<"file_hash256">> := Stored}]} =
         elib_pg:query(<<"SELECT file_hash256 FROM attachment WHERE path=$1">>, [key(T)]),
-    ?assertEqual(?S:sha(?BODY), Stored),
-    #{resumed_same_receipt => true, stored_hash => <<"real_object_hash">>}.
+    Stored;
+confirmed_hash(_, T) ->
+    Scope = maps:get(scope, maps:get(fixture, T)),
+    AssetId = int(maps:get(<<"asset_id">>, maps:get(registration, T))),
+    {ok, [#{<<"object_hash">> := Stored}]} = elib_pg:query(
+        <<
+            "SELECT object_hash FROM enterprise_asset WHERE organization_id=$1"
+            " AND workspace_id=$2 AND id=$3 AND object_key=$4"
+        >>,
+        [maps:get(org_id, Scope), maps:get(workspace_id, Scope), AssetId, key(T)]
+    ),
+    Stored.
 
 %% ------------------------------------------------------- confirm-idempotent
 
@@ -326,8 +465,68 @@ reg(S, Ep, Driver) -> ?F:register(S, Ep, Driver, ?BODY).
 
 key(T) -> maps:get(key, T).
 
-confirm_id(Resp, ordinary) -> int(maps:get(<<"attachment_id">>, ?F:payload(Resp)));
-confirm_id(Resp, _) -> int(maps:get(<<"file_id">>, ?F:payload(Resp))).
+%% A rejected old capability must not reach the provider. If it does, release
+%% the real worker before failing so the fixture does not strand a request.
+await_rejected_put(Barrier, {_, Monitor, Ref} = Job) ->
+    receive
+        {w601_barrier, Barrier, Worker} ->
+            ok = ?S:release(Barrier, Worker),
+            _ =
+                try
+                    ?S:finish_job(Job)
+                catch
+                    _:_ -> ignored
+                end,
+            erlang:error(old_capability_reached_provider);
+        {w601_result, Ref, Result} ->
+            erlang:demonitor(Monitor, [flush]),
+            put(w601_jobs, lists:delete(Job, get(w601_jobs))),
+            case Result of
+                {ok, Value} -> Value;
+                {error, Class, Reason, Stack} -> erlang:raise(Class, Reason, Stack)
+            end
+    after 10000 ->
+        erlang:error(old_capability_response_timeout)
+    end.
+
+confirmed_snapshot(Ep, T) when Ep =:= ordinary; Ep =:= enterprise_internal ->
+    {ok, #{<<"session_state">> := State} = Row} = ?S:pending_row(key(T)),
+    ?assertEqual(<<"confirmed">>, State),
+    ?assertEqual(1, ?S:attach_count(key(T))),
+    #{session_state => State, attachment_count => 1, storage_identity => storage_identity(Row)};
+confirmed_snapshot(_, T) ->
+    Scope = maps:get(scope, maps:get(fixture, T)),
+    AssetId = int(maps:get(<<"asset_id">>, maps:get(registration, T))),
+    {ok, #{<<"status">> := State} = Row} = ?S:eb_row(
+        maps:get(org_id, Scope), maps:get(workspace_id, Scope), AssetId
+    ),
+    ?assertEqual(<<"active">>, State),
+    #{asset_id => AssetId, status => State, storage_identity => storage_identity(Row)}.
+
+storage_identity(Row) ->
+    Keys = [
+        <<"object_key">>,
+        <<"storage_driver">>,
+        <<"storage_namespace">>,
+        <<"storage_container">>,
+        <<"storage_locator_sha256">>
+    ],
+    Values = maps:with(Keys, Row),
+    ?assertEqual(length(Keys), map_size(Values)),
+    ?assert(
+        lists:all(
+            fun(V) -> is_binary(V) andalso byte_size(V) > 0 end,
+            maps:values(Values)
+        )
+    ),
+    Values.
+
+confirm_id(Resp, ordinary) ->
+    int(maps:get(<<"attachment_id">>, ?F:payload(Resp)));
+confirm_id(Resp, enterprise_internal) ->
+    int(maps:get(<<"file_id">>, ?F:payload(Resp)));
+confirm_id(Resp, Ep) when Ep =:= enterprise_seat; Ep =:= cs_widget ->
+    int(maps:get(<<"asset_id">>, ?F:payload(Resp))).
 
 confirm_id_of_key(Key) ->
     {ok, [#{<<"id">> := Id}]} = elib_pg:query(

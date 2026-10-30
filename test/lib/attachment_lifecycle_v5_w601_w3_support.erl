@@ -267,22 +267,33 @@ temp_parent() ->
         {error, einval} -> "/tmp"
     end.
 
+%% 生产 attachment_storage:registry/0 只认 version=1 信封（缺 version 的
+%% 值一律替换为空 registry → validate_registry 报 empty_roots，见
+%% src/lib/attachment_storage/attachment_storage.erl registry/0），故按
+%% imboy_env 的构造形状包装（对照 w601_w4_context:registry/2 与
+%% w403_storage_tests 的 registry 信封先例）。三套件经
+%% attachment_storage:resolve/identity/frozen_location 生产访问器消费，
+%% 无裸读 roots 的路径。
 registry(Base, Garage) ->
     #{
-        <<"w601-w3-disk-root">> => #{
-            driver => <<"disk">>,
-            namespace => ?NS_DISK,
-            aliases => [],
-            endpoint => list_to_binary("file://" ++ Base),
-            container => ?CONTAINER_DISK
+        version => 1,
+        roots => #{
+            <<"w601-w3-disk-root">> => #{
+                driver => <<"disk">>,
+                namespace => ?NS_DISK,
+                aliases => [],
+                endpoint => list_to_binary("file://" ++ Base),
+                container => ?CONTAINER_DISK
+            },
+            <<"w601-w3-garage-root">> => #{
+                driver => <<"garage">>,
+                namespace => ?NS_GARAGE,
+                aliases => [],
+                endpoint => maps:get(endpoint, Garage),
+                container => maps:get(bucket, Garage)
+            }
         },
-        <<"w601-w3-garage-root">> => #{
-            driver => <<"garage">>,
-            namespace => ?NS_GARAGE,
-            aliases => [],
-            endpoint => maps:get(endpoint, Garage),
-            container => maps:get(bucket, Garage)
-        }
+        upload_namespaces => #{}
     }.
 
 %% ------------------------------------------------------------ leaf / emit

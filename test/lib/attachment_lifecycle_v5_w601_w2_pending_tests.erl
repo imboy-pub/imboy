@@ -82,10 +82,42 @@ leaf_unit(S, {Case, _Ep, Driver, Sc, Domain, Ac} = Spec) ->
     {
         binary_to_list(Leaf),
         {timeout, 240, fun() ->
-            Measured = scenario(S#{leaf => Leaf}, Spec),
-            ?S:emit(Spec, Measured)
+            scenario_guard(Case, fun() ->
+                Measured = scenario(S#{leaf => Leaf}, Spec),
+                ?S:emit(Spec, Measured, Leaf)
+            end)
         end}
     }.
+
+%% Serial calls and queue retries are not evidence of PG transaction races.
+%% Block before running the scenario or emitting a successful observation.
+scenario_guard(?C_RACE, _Fun) ->
+    erlang:error({unverified, w203_concurrent_transactions_and_deadlock_retry});
+scenario_guard(_Case, Fun) ->
+    Fun().
+
+-ifdef(TEST).
+race_guard_test_() ->
+    [
+        ?_test(begin
+            put(w601_guard_emit, false),
+            try
+                ?assertError(
+                    {unverified, w203_concurrent_transactions_and_deadlock_retry},
+                    scenario_guard(Case, fun() -> put(w601_guard_emit, true) end)
+                ),
+                ?assertEqual(false, get(w601_guard_emit))
+            after
+                erase(w601_guard_emit)
+            end
+        end)
+     || {Case, _, _, _, _, _} <- race_specs()
+    ] ++
+        [
+            ?_test(?assertEqual(executed, scenario_guard(Case, fun() -> executed end)))
+         || {Case, _, _, _, _, _} <- mp_specs() ++ fc_specs()
+        ].
+-endif.
 
 leaf_name(Case, Sc, Domain, Driver, Ac) ->
     [_, Short] = binary:split(Case, <<"/">>),

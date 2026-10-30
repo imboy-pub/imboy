@@ -15,6 +15,7 @@
     read/1,
     roundtrip/3,
     evidence/1,
+    bind_request/4,
     overlap/3,
     inflight_overlap/3,
     request/6,
@@ -26,6 +27,9 @@
     seat_path/2,
     widget_path/2
 ]).
+-ifdef(TEST).
+-export([register_observed/2, cancel_observation/1]).
+-endif.
 -include_lib("eunit/include/eunit.hrl").
 -define(LISTENER, attachment_w403_http).
 -define(TABLE, attachment_w403_http_evidence).
@@ -387,6 +391,7 @@ register(S0, Surface, Driver, Bytes) ->
         end,
     ?assertEqual(Driver, maps:get(driver, I)),
     true = ets:insert(?TABLE, {{object, Key}, I}),
+    ok = bind_request(S, Registered, Key, presign),
     #{
         fixture => S,
         leaf => Leaf,
@@ -398,6 +403,7 @@ register(S0, Surface, Driver, Bytes) ->
         headers => Headers,
         confirm_body => ConfirmBody,
         registration => Data,
+        registration_request_id => maps:get(request_id, Registered),
         client_upload_id => Cid
     }.
 
@@ -445,7 +451,9 @@ put(#{fixture := S, surface := Surface, upload_url := Url} = Session, Bytes) ->
             enterprise_seat -> maps:get(headers, Session);
             _ -> #{}
         end,
-    request(S, put, Url, Bytes, Headers, <<"text/plain">>).
+    Response = request(S, put, Url, Bytes, Headers, <<"text/plain">>),
+    ok = bind_request(S, Response, maps:get(key, Session), put),
+    Response.
 
 confirm(#{fixture := S, surface := Surface, confirm_body := Body, headers := Headers}) ->
     Path =
@@ -477,18 +485,19 @@ roundtrip(S, Surface, Driver) ->
 execute(Req, Env) ->
     case cowboy_req:header(<<"x-w403-request-id">>, Req) of
         <<"w403-", _/binary>> = Id ->
-            true = ets:insert(
-                ?TABLE,
-                {{observed, Id}, #{
-                    request_id => Id,
-                    route => cowboy_req:path(Req),
-                    method => cowboy_req:method(Req),
-                    handler => atom_to_binary(maps:get(handler, Env)),
-                    server_process => list_to_binary(pid_to_list(self())),
-                    connection_id => list_to_binary(pid_to_list(maps:get(pid, Req))),
-                    observed_at_us => erlang:monotonic_time(microsecond)
-                }}
-            );
+            %% Trace only this routed request process. The returned location
+            %% comes from production storage resolution, not client labels.
+            {ok, Tracer} = attachment_w403_server_trace:start(self()),
+            register_observed(Id, #{
+                request_id => Id,
+                route => cowboy_req:path(Req),
+                method => cowboy_req:method(Req),
+                handler => atom_to_binary(maps:get(handler, Env)),
+                server_process => list_to_binary(pid_to_list(self())),
+                connection_id => list_to_binary(pid_to_list(maps:get(pid, Req))),
+                observed_at_us => erlang:monotonic_time(microsecond),
+                trace_process => Tracer
+            });
         _ ->
             ok
     end,
@@ -530,15 +539,43 @@ request(S, Method, Target, Body0, Headers0, Mime) ->
             _ -> {Url, H, binary_to_list(Mime), Body}
         end,
     Started = erlang:monotonic_time(millisecond),
-    {ok, {{_, Status, _}, _ResponseHeaders, ResponseBody}} = isolated_request(Method, Req),
-    [{{observed, Id}, Observed}] = ets:lookup(?TABLE, {observed, Id}),
-    true = ets:insert(
-        ?TABLE,
-        {{request, maps:get(leaf, S), Id}, Observed#{
-            status => Status, elapsed_ms => erlang:monotonic_time(millisecond) - Started
-        }}
-    ),
-    #{status => Status, body => ResponseBody, request_id => Id}.
+    try
+        {ok, {{_, Status, _}, _ResponseHeaders, ResponseBody}} = isolated_request(Method, Req),
+        [{{observed, Id}, Observed}] = ets:lookup(?TABLE, {observed, Id}),
+        {ok, Locations} = attachment_w403_server_trace:collect(maps:get(trace_process, Observed)),
+        true = ets:insert(
+            ?TABLE,
+            {{request, maps:get(leaf, S), Id}, (maps:remove(trace_process, Observed))#{
+                status => Status,
+                elapsed_ms => erlang:monotonic_time(millisecond) - Started,
+                diagnostic_untrusted_locations => Locations
+            }}
+        ),
+        #{status => Status, body => ResponseBody, request_id => Id}
+    after
+        cancel_observation(Id)
+    end.
+
+%% The cancellation marker closes the race where the client fails before
+%% Cowboy publishes its tracer. It remains until the run-owned table dies.
+register_observed(Id, Observed) ->
+    true = ets:insert(?TABLE, {{observed, Id}, Observed}),
+    case ets:member(?TABLE, {cancelled, Id}) of
+        true -> discard_observation(Id);
+        false -> ok
+    end.
+
+cancel_observation(Id) ->
+    true = ets:insert(?TABLE, {{cancelled, Id}, true}),
+    discard_observation(Id).
+
+discard_observation(Id) ->
+    case ets:take(?TABLE, {observed, Id}) of
+        [{{observed, Id}, #{trace_process := Tracer}}] ->
+            attachment_w403_server_trace:stop(Tracer);
+        [] ->
+            ok
+    end.
 
 %% OTP's default keep-alive profile queues concurrent requests on one socket.
 %% Each application request therefore owns a standalone profile and connection.
@@ -652,6 +689,13 @@ payload(#{body := Body}) ->
         M -> M
     end.
 evidence(Leaf) -> [R || {{request, L, _}, R} <- ets:tab2list(?TABLE), L =:= Leaf].
+bind_request(S, #{request_id := Id}, Key, Action) when is_binary(Key) ->
+    Entry = {request, maps:get(leaf, S), Id},
+    [{Entry, Observed}] = ets:lookup(?TABLE, Entry),
+    false = maps:is_key(object_key, Observed),
+    false = maps:is_key(action, Observed),
+    true = ets:insert(?TABLE, {Entry, Observed#{object_key => Key, action => Action}}),
+    ok.
 max_bytes(ordinary) -> elib_oss:max_file_size();
 max_bytes(enterprise_internal) -> elib_oss:max_file_size();
 max_bytes(_) -> eb_asset_content:max_size_bytes().
