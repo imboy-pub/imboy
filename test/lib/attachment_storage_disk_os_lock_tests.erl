@@ -4,8 +4,20 @@
 
 kernel_lock_test_() -> {timeout, 30, fun kernel_lock/0}.
 kernel_lock() ->
-    Root = filename:join(temp_dir(), "attv5-oslock-" ++
-        binary_to_list(binary:encode_hex(crypto:strong_rand_bytes(12), lowercase))),
+    %% NIF 自足：attachment_disk_lock_nif 的 -on_load 只在模块首次加载时执行一次，
+    %% 彼时若 imboy app 尚未 load 则 code:priv_dir 失败、NIF 加载失败且无人重试——
+    %% 测试绿否取决于同 VM 是否先跑过 boot app 的根（隐式分片顺序依赖）。显式
+    %% 确保加载前提：load app（幂等）后重载 NIF 模块；仍失败则硬错（不 skip）。
+    case application:load(imboy) of
+        ok -> ok;
+        {error, {already_loaded, imboy}} -> ok
+    end,
+    {module, attachment_disk_lock_nif} = code:load_file(attachment_disk_lock_nif),
+    Root = filename:join(
+        temp_dir(),
+        "attv5-oslock-" ++
+            binary_to_list(binary:encode_hex(crypto:strong_rand_bytes(12), lowercase))
+    ),
     ok = file:make_dir(Root),
     Prior = application:get_env(imboy, attachment_storage_registry),
     Registry = #{
@@ -30,11 +42,16 @@ kernel_lock() ->
         ok = attachment_storage_disk:put(<<"n">>, <<"c">>, <<"owned">>, <<"BEFORE">>),
         %% Preserve old stat evidence: replacement must still be detected.
         %% 固定旧大小和 mtime，仍须识别真实原子替换。
-        ok = file:write_file_info(filename:join([Root, "c", "owned"]),
-            #file_info{mtime = maps:get(mtime, Before)}, [{time, posix}]),
+        ok = file:write_file_info(
+            filename:join([Root, "c", "owned"]),
+            #file_info{mtime = maps:get(mtime, Before)},
+            [{time, posix}]
+        ),
         {ok, After} = attachment_storage_disk:head_snapshot(Identity),
-        ?assertEqual(maps:with([size, mtime, etag], Before),
-            maps:with([size, mtime, etag], After)),
+        ?assertEqual(
+            maps:with([size, mtime, etag], Before),
+            maps:with([size, mtime, etag], After)
+        ),
         ?assertNotEqual(Before, After),
         ok = attachment_storage_disk:put(<<"n">>, <<"c">>, <<"owned">>, <<"before">>),
         Holder = start_holder(Root),
@@ -96,11 +113,14 @@ locked_symlink_race(Root) ->
     Old = Dir ++ "-original",
     Outside = filename:join(Root, "outside-owned"),
     try
-        erlang:trace_pattern({attachment_storage_disk, hold_lock, 3}, true, [local]),
+        %% d4bef2e9e 重构删除了 hold_lock/3 且未同步本测试；Holder 先持锁时
+        %% worker 的 put 阻塞在等锁循环——屏障语义 = "writer 已进入等锁窗口"，
+        %% 锚 wait_lock/4（with_os_lock → acquire eagain → wait_lock）。
+        erlang:trace_pattern({attachment_storage_disk, wait_lock, 4}, true, [local]),
         erlang:trace(Worker, true, [call, {tracer, Parent}]),
         Worker ! start,
         receive
-            {trace, Worker, call, {attachment_storage_disk, hold_lock, _}} -> ok
+            {trace, Worker, call, {attachment_storage_disk, wait_lock, _}} -> ok
         after 2000 -> erlang:error(lock_barrier_missing)
         end,
         ok = file:make_dir(Outside),
@@ -117,9 +137,11 @@ locked_symlink_race(Root) ->
         ok = file:rename(Old, Dir)
     after
         %% A failed barrier/assertion must not leave a writer or lock owner alive.
-        try stop_worker(Worker, Monitor)
+        try
+            stop_worker(Worker, Monitor)
         after
-            try kill_holder(Holder)
+            try
+                kill_holder(Holder)
             after
                 erlang:trace_pattern({attachment_storage_disk, hold_lock, 3}, false, [local])
             end
@@ -142,10 +164,13 @@ stop_worker(Worker, Monitor) ->
 
 start_holder(Root) ->
     %% 测试子 VM 单独加载 export_all binary，以便在真实内核锁内确定性暂停；不修改生产 beam。
+    %% 子 VM 无 app boot，code:priv_dir(imboy) 恒 bad_name → NIF 的 -on_load 需
+    %% init/0 的 beam 位置推导 fallback（attachment_disk_lock_nif 侧修复）才能挂上；
+    %% erlang:load_nif 不能从模块外调用（bad_lib），故此处不做额外动作。
     Source = filename:absname("src/lib/attachment_storage/attachment_storage_disk.erl"),
     Eval = lists:flatten(
         io_lib:format(
-            "application:ensure_all_started(crypto), {ok,M,B}=compile:file(~p,[binary,export_all,nowarn_export_all]), {module,M}=code:load_binary(M,~p,B), attachment_storage_disk:with_os_lock(~p,<<\"c\">>,<<\"owned\">>,fun()->io:format(\"LOCK_HELD~n\"),receive after infinity->ok end end),halt().",
+            "application:ensure_all_started(crypto), {ok,M,B}=compile:file(~p,[binary,export_all,nowarn_export_all]), {module,M}=code:load_binary(M,~p,B), attachment_storage_disk:with_os_lock(~p,<<\"c\">>,<<\"owned\">>,fun(_Lock)->io:format(\"LOCK_HELD~n\"),receive after infinity->ok end end),halt().",
             [Source, Source, Root]
         )
     ),
