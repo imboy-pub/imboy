@@ -56,7 +56,7 @@ RUN set -ex \
         # PostgreSQL 扩展依赖
         postgresql-${PG_MAJOR}-pgvector \
         postgresql-${PG_MAJOR}-postgis-${POSTGIS_MAJOR}=${POSTGIS_VERSION} \
-        postgresql-${PG_MAJOR}-postgis-${POSTGIS_MAJOR}-scripts \
+        postgresql-${PG_MAJOR}-postgis-${POSTGIS_MAJOR}-scripts=${POSTGIS_VERSION} \
     && rm -rf /var/lib/apt/lists/*
 
 # 编译步骤保持: TimescaleDB, pg_roaringbitmap, pg_jieba, pgRouting
@@ -119,7 +119,7 @@ RUN set -ex \
         # PostGIS / pgVector (Runtime)
         postgresql-${PG_MAJOR}-pgvector \
         postgresql-${PG_MAJOR}-postgis-${POSTGIS_MAJOR}=${POSTGIS_VERSION} \
-        postgresql-${PG_MAJOR}-postgis-${POSTGIS_MAJOR}-scripts \
+        postgresql-${PG_MAJOR}-postgis-${POSTGIS_MAJOR}-scripts=${POSTGIS_VERSION} \
         # ICU 运行时库 (pg_jieba 依赖)
         libicu${ICU_VER} \
         # Boost 运行时动态库 (大幅减小体积!)
@@ -139,6 +139,11 @@ COPY --from=builder /usr/lib/postgresql/${PG_MAJOR}/lib/ /usr/lib/postgresql/${P
 COPY --from=builder /usr/share/postgresql/${PG_MAJOR}/extension/ /usr/share/postgresql/${PG_MAJOR}/extension/
 # 3. [修正] 复制 pg_jieba 的基础词典数据 (重要!)
 COPY --from=builder /usr/share/postgresql/${PG_MAJOR}/tsearch_data/ /usr/share/postgresql/${PG_MAJOR}/tsearch_data/
+
+# Validate the final merged filesystem, including files copied from builder.
+# Fail during build rather than on the first production/CI database startup.
+COPY ./docker/check-postgis.sh /usr/local/bin/check-postgis.sh
+RUN bash /usr/local/bin/check-postgis.sh "${PG_MAJOR}" "${POSTGIS_VERSION}"
 
 # ---------- 配置用户自定义文件 ----------
 COPY ./docker/pg_jieba_userdict.txt.big /usr/share/postgresql/${PG_MAJOR}/tsearch_data/jieba_user.dict
