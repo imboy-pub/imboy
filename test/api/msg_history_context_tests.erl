@@ -273,12 +273,16 @@ legacy_history_keeps_safe_head_and_cursor_semantics_test() ->
         ?assertNot(meck:called(msg_archive_ds, history_context, '_'))
     end).
 
+%% 单条 SQL 边界计数用本测试进程的进程字典（fake 与断言同进程），
+%% 不依赖全局 meck:num_calls——后者跨进程计数，本套件运行期间遗留的
+%% 后台杂散调用会污染 '_' 口径（历史实测 expected=1 value=5 偶发误红）。
 repo_bounded_single_statement_test_() ->
     [
         {integer_to_list(Limit), fun() ->
             with_repo(
                 fun(_Conn, Sql, Params) ->
                     ?assertEqual([?KEY, ?TARGET, 0, Before, After], Params),
+                    put(repo_queries, pdict(repo_queries) + 1),
                     lists:foreach(
                         fun(Fragment) ->
                             ?assertNotEqual(nomatch, binary:match(Sql, Fragment))
@@ -298,8 +302,9 @@ repo_bounded_single_statement_test_() ->
                     {ok, [row(?TARGET, 7)]}
                 end,
                 fun() ->
+                    put(repo_queries, 0),
                     ?assertMatch({ok, [_]}, repo_context(<<"c2c">>, Limit, 0)),
-                    ?assertEqual(1, meck:num_calls(elib_pg, query, '_'))
+                    ?assertEqual(1, pdict(repo_queries))
                 end
             )
         end}

@@ -431,21 +431,58 @@ env_int(Name, Default) ->
     end.
 
 load_estimates(Ctrl) ->
-    %% 优先读取上一次分片 per_root.term 的实测 wall_ms 作为 LPT 估计（无则保守 3000ms）
-    case filelib:wildcard(filename:join([Ctrl, "evidence", "full-*", "per_root.term"])) of
-        [] ->
+    %% 优先读取上一次分片流（group_*.stream，ETF）的实测 wall_ms 作为 LPT 估计
+    %% （无则保守 3000ms）。2026-10-30 修复：曾读 per_root.term，但其为
+    %% pretty-print map（含 pid 字面量），file:consult 恒失败 → 估计静默退化
+    %% 为平坦 3000ms；改读权威 ETF 流（imboy_quality_runner:stream_read 自带
+    %% 长度前缀解析、容忍尾部截断），取 {done, M, Res} 的 wall_ms。独占根不经
+    %% 流写盘（run_exclusive 无 stream 键），但其逐根独占执行、不参与普通道
+    %% LPT 打包，估计只需覆盖普通根。
+    Dirs = lists:sort(
+        [D
+         || D <- filelib:wildcard(filename:join([Ctrl, "evidence", "full-*"])),
+            filelib:is_dir(D)]
+    ),
+    Streams =
+        case Dirs of
+            [] ->
+                [];
+            _ ->
+                filelib:wildcard(filename:join([lists:last(Dirs), "group_*.stream"]))
+        end,
+    Est = load_estimates_from_streams(Streams, #{}),
+    case map_size(Est) of
+        0 ->
+            io:format(
+                "WARNING: no per-root wall_ms recovered from prior run; "
+                "LPT degrades to flat 3000ms estimates~n"
+            ),
             #{};
-        Files ->
-            Latest = lists:last(lists:sort(Files)),
-            case file:consult(Latest) of
-                {ok, [PerRoot]} when is_map(PerRoot) ->
-                    maps:from_list([
-                        {M, max(500, maps:get(wall_ms, R, 3000))}
-                     || {M, R} <- maps:to_list(PerRoot), is_atom(M), is_map(R)
-                    ]);
-                _ ->
-                    #{}
-            end
+        _ ->
+            Est
+    end.
+
+load_estimates_from_streams([], Acc) ->
+    Acc;
+load_estimates_from_streams([S | Rest], Acc) ->
+    case imboy_quality_runner:stream_read(S) of
+        {ok, Events} ->
+            load_estimates_from_streams(
+                Rest,
+                lists:foldl(
+                    fun
+                        ({done, M, #{wall_ms := Ms}}, A) when is_atom(M), is_integer(Ms) ->
+                            A#{M => max(500, Ms)};
+                        (_, A) ->
+                            A
+                    end,
+                    Acc,
+                    Events
+                )
+            );
+        _ ->
+            io:format("WARNING: unreadable stream ~ts; estimates may be partial~n", [S]),
+            load_estimates_from_streams(Rest, Acc)
     end.
 
 %% ---- 合成自测 ----

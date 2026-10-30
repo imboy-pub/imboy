@@ -164,8 +164,15 @@ EDOC_OPTS = {doclet, edown_doclet}
 # 需专用控制器/独占资源，全量轨道不可满足——
 #   * talk_record_cleanup_retry_pg_checks / talk_record_delete_tests：T20 控制器
 #     注册表合同（T20_CASE_REGISTRY(+SHA)/T20_CASE_REPO/T20_PG_*，控制器冻结
-#     八项 claim/expiry/reaper 观察与专属空案例库；本 run 无冻结注册表，no-skip
-#     铁律下必红 42 项 cancel）——覆盖由控制器专项运行承载（C26 余额登记）。
+#     八项 claim/expiry/reaper 观察与专属空案例库；r2 当时的 run 无冻结注册表，
+#     no-skip 铁律下必红 42 项 cancel）。
+#     2026-10-30 更新：覆盖承载已改由 IMBOY_ERLANG_QUALITY 全量工具独占车道——
+#     两根在 tools/imboy_quality/imboy_quality_full.erl ?EXCL 经 run_exclusive
+#     逐根 fresh VM 真实执行（当期 per_root.term 实证 lane => exclusive），
+#     注册表激活由模块自行 talk_record_t20_case_registry:activate/1 承载
+#     （cleanup_retry_pg_checks 无独立 EUnit 用例面，经 delete_tests 续跑 case
+#     调 run_registered/0 自激活），不再按 C26 余额登记口径由控制器专项运行
+#     代替；T20_* env 冻结注册表合同仍适用于其控制器级用例。
 #   * attachment_lifecycle_v5_w403_gateway_protocol_tests：setup_owned 断言全局
 #     pgsql 池须指向其 manifest 的 attv5_chain_* 库且「绝不重定向既有池」——与
 #     全量轨道任何先行建池套件互斥（r5-r7/r1 均 12 cancel；设计性独占）——
