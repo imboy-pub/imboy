@@ -22,6 +22,7 @@ tools_test_() ->
         {"get_contacts: 强制用调用者uid(忽略Args自报)", fun t_contacts_forces_caller/0},
         {"search_messages: 强制调用者uid做权限过滤", fun t_search_forces_caller/0},
         {"search_messages: 空keyword被拒", fun t_search_empty_kw/0},
+        {"search_messages: 搜索失败返回错误", fun t_search_failure/0},
         {"list_group_members: 群成员成功", fun t_members_ok/0},
         {"list_group_members: 非成员被拒", fun t_members_denied/0},
         {"list_conversations: 强制调用者uid", fun t_conversations_ok/0},
@@ -170,6 +171,15 @@ t_search_empty_kw() ->
     R = call(<<"search_messages">>, #{<<"keyword">> => <<>>}, 42),
     ?assertEqual(true, is_error(R)).
 
+t_search_failure() ->
+    meck:expect(fts_logic, search_msg, fun(_, _, _, _, _) -> {error, database_unavailable} end),
+    R = call(<<"search_messages">>, #{<<"keyword">> => <<"hi">>}, 42),
+    ?assertEqual(true, is_error(R)),
+    ?assertNot(maps:is_key(<<"structuredContent">>, R)),
+    ?assertNotEqual(
+        nomatch, binary:match(iolist_to_binary(json:encode(R)), <<"search unavailable">>)
+    ).
+
 %%%===================================================================
 %%% list_group_members：仅群成员可列
 %%%===================================================================
@@ -228,11 +238,20 @@ t_send_ok() ->
     meck:expect(msg_c2c_logic, c2c, fun(_MsgId, 42, <<"7">>, _Payload) -> ok end),
     R = call(<<"send_message">>, #{<<"to">> => 7, <<"body">> => <<"hi">>, <<"from">> => 999}, 42),
     ?assertNot(is_error(R)),
-    ?assertMatch(#{<<"status">> := <<"sent">>,
-        <<"msg_id">> := <<"018f0000-0000-7000-8000-000123456789">>},
-        maps:get(<<"structuredContent">>, R)),
-    ?assert(meck:called(msg_c2c_logic, c2c,
-        [<<"018f0000-0000-7000-8000-000123456789">>, 42, <<"7">>, '_'])).
+    ?assertMatch(
+        #{
+            <<"status">> := <<"sent">>,
+            <<"msg_id">> := <<"018f0000-0000-7000-8000-000123456789">>
+        },
+        maps:get(<<"structuredContent">>, R)
+    ),
+    ?assert(
+        meck:called(
+            msg_c2c_logic,
+            c2c,
+            [<<"018f0000-0000-7000-8000-000123456789">>, 42, <<"7">>, '_']
+        )
+    ).
 
 t_send_rejected() ->
     meck:expect(msg_c2c_logic, c2c, fun(_M, 42, <<"7">>, _P) ->

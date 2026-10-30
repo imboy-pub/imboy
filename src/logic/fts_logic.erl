@@ -164,7 +164,8 @@ recently_user_page(Uid, Page, Size, Keyword) ->
 %% @param Type 消息类型：C2C（私聊）或 C2G（群聊）
 %% @return map() 包含 total、page、size、list 的搜索结果
 %% @end
--spec search_msg(integer(), integer(), integer(), binary(), binary()) -> map().
+-spec search_msg(integer(), integer(), integer(), binary(), binary()) ->
+    map() | {error, search_unavailable}.
 search_msg(Uid, Page, Size, Keyword, Type) ->
     search_msg(Uid, Page, Size, Keyword, Type, #{}).
 
@@ -184,70 +185,27 @@ search_msg(Uid, Page, Size, Keyword, Type) ->
 %%   - sort_by: 排序方式 (binary: <<"relevance">> | <<"time">>)
 %% @return map() 包含 total、page、size、list、filters 的搜索结果
 %% @end
--spec search_msg(integer(), integer(), integer(), binary(), binary(), map()) -> map().
+-spec search_msg(integer(), integer(), integer(), binary(), binary(), map()) ->
+    map() | {error, search_unavailable}.
 search_msg(Uid, Page, Size, Keyword, Type, Options) ->
     Offset = (Page - 1) * Size,
-    TypeBin = unicode:characters_to_binary(string:uppercase(unicode:characters_to_list(Type))),
-
-    % 判断是否使用增强搜索
-    HasOptions = map_size(Options) > 0,
-
+    TypeBin = unicode:characters_to_binary(string:lowercase(unicode:characters_to_list(Type))),
     case TypeBin of
-        <<"C2C">> when HasOptions ->
-            Total = fts_user_ds:search_c2c_msg_count_with_options(Keyword, Options),
-            case fts_user_ds:search_c2c_msg_with_options(Keyword, Size, Offset, Options) of
-                {ok, []} ->
-                    #{total => Total, page => Page, size => Size, list => [], filters => Options};
-                {ok, Items} ->
-                    Items2 = [format_c2c_msg_item(Msg) || Msg <- Items],
-                    #{
-                        total => Total,
-                        page => Page,
-                        size => Size,
-                        list => Items2,
-                        filters => Options
-                    };
+        T when T =:= <<"c2c">>; T =:= <<"c2g">> ->
+            case fts_user_ds:search_authorized_page(Uid, Keyword, Size, Offset, T, Options) of
+                {ok, Total, Items} ->
+                    Formatted =
+                        case T of
+                            <<"c2c">> -> [format_c2c_msg_item(Msg) || Msg <- Items];
+                            <<"c2g">> -> [format_c2g_msg_item(Msg) || Msg <- Items]
+                        end,
+                    Base = #{total => Total, page => Page, size => Size, list => Formatted},
+                    case map_size(Options) of
+                        0 -> Base;
+                        _ -> Base#{filters => Options}
+                    end;
                 {error, _} ->
-                    #{total => Total, page => Page, size => Size, list => [], filters => Options}
-            end;
-        <<"C2C">> ->
-            Total = fts_user_ds:search_c2c_msg_count(Keyword),
-            case fts_user_ds:search_c2c_msg(Keyword, Size, Offset, Uid) of
-                {ok, []} ->
-                    #{total => Total, page => Page, size => Size, list => []};
-                {ok, Items} ->
-                    Items2 = [format_c2c_msg_item(Msg) || Msg <- Items],
-                    #{total => Total, page => Page, size => Size, list => Items2};
-                {error, _} ->
-                    #{total => Total, page => Page, size => Size, list => []}
-            end;
-        <<"C2G">> when HasOptions ->
-            Total = fts_user_ds:search_c2g_msg_count_with_options(Keyword, Options),
-            case fts_user_ds:search_c2g_msg_with_options(Keyword, Size, Offset, Options) of
-                {ok, []} ->
-                    #{total => Total, page => Page, size => Size, list => [], filters => Options};
-                {ok, Items} ->
-                    Items2 = [format_c2g_msg_item(Msg) || Msg <- Items],
-                    #{
-                        total => Total,
-                        page => Page,
-                        size => Size,
-                        list => Items2,
-                        filters => Options
-                    };
-                {error, _} ->
-                    #{total => Total, page => Page, size => Size, list => [], filters => Options}
-            end;
-        <<"C2G">> ->
-            Total = fts_user_ds:search_c2g_msg_count(Keyword),
-            case fts_user_ds:search_c2g_msg(Keyword, Size, Offset, Uid) of
-                {ok, []} ->
-                    #{total => Total, page => Page, size => Size, list => []};
-                {ok, Items} ->
-                    Items2 = [format_c2g_msg_item(Msg) || Msg <- Items],
-                    #{total => Total, page => Page, size => Size, list => Items2};
-                {error, _} ->
-                    #{total => Total, page => Page, size => Size, list => []}
+                    {error, search_unavailable}
             end;
         _ ->
             #{total => 0, page => Page, size => Size, list => []}
@@ -260,7 +218,7 @@ search_msg(Uid, Page, Size, Keyword, Type, Options) ->
 -spec format_c2c_msg_item(map()) -> map().
 format_c2c_msg_item(Msg) ->
     BaseMap = #{
-        <<"message_id">> => maps:get(<<"id">>, Msg),
+        <<"message_id">> => maps:get(<<"msg_id">>, Msg),
         <<"msg_type">> => maps:get(<<"msg_type">>, Msg),
         <<"payload">> => maps:get(<<"payload">>, Msg),
         <<"created_at">> => maps:get(<<"created_at">>, Msg),
@@ -284,7 +242,7 @@ format_c2c_msg_item(Msg) ->
 -spec format_c2g_msg_item(map()) -> map().
 format_c2g_msg_item(Msg) ->
     BaseMap = #{
-        <<"message_id">> => maps:get(<<"id">>, Msg),
+        <<"message_id">> => maps:get(<<"msg_id">>, Msg),
         <<"msg_type">> => maps:get(<<"msg_type">>, Msg),
         <<"payload">> => maps:get(<<"payload">>, Msg),
         <<"created_at">> => maps:get(<<"created_at">>, Msg),

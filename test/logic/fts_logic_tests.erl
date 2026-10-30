@@ -236,15 +236,13 @@ user_search_with_long_keyword_test_() ->
 
 search_msg_with_start_date_test_() ->
     ?WITH_MECK(
-        fts_user_repo,
+        fts_user_ds,
         [
-            {'search_c2c_msg_count_with_options', 2, fun(_Keyword, _Options) ->
-                5
-            end},
-            {'search_c2c_msg_with_options', 4, fun(_Keyword, _Limit, _Offset, _Options) ->
-                {ok, [
+            {search_authorized_page, 6, fun(_Uid, _Keyword, _Limit, _Offset, _Type, _Options) ->
+                {ok, 5, [
                     #{
                         <<"id">> => 1,
+                        <<"msg_id">> => <<"message-1">>,
                         <<"from_id">> => 100,
                         <<"to_id">> => 200,
                         <<"msg_type">> => <<"text">>,
@@ -263,21 +261,19 @@ search_msg_with_start_date_test_() ->
             Type = <<"C2C">>,
             Options = #{<<"start_date">> => <<"2026-02-01">>},
             Result = fts_logic:search_msg(Uid, Page, Size, Keyword, Type, Options),
-            ?assertMatch(#{total := 5, list := [_]}, Result)
+            ?assertMatch(#{total := 5, list := [#{<<"message_id">> := <<"message-1">>}]}, Result)
         end
     ).
 
 search_msg_with_end_date_test_() ->
     ?WITH_MECK(
-        fts_user_repo,
+        fts_user_ds,
         [
-            {'search_c2c_msg_count_with_options', 2, fun(_Keyword, _Options) ->
-                3
-            end},
-            {'search_c2c_msg_with_options', 4, fun(_Keyword, _Limit, _Offset, _Options) ->
-                {ok, [
+            {search_authorized_page, 6, fun(_Uid, _Keyword, _Limit, _Offset, _Type, _Options) ->
+                {ok, 3, [
                     #{
                         <<"id">> => 2,
+                        <<"msg_id">> => <<"message-2">>,
                         <<"from_id">> => 100,
                         <<"to_id">> => 200,
                         <<"msg_type">> => <<"text">>,
@@ -302,15 +298,13 @@ search_msg_with_end_date_test_() ->
 
 search_msg_with_date_range_test_() ->
     ?WITH_MECK(
-        fts_user_repo,
+        fts_user_ds,
         [
-            {'search_c2c_msg_count_with_options', 2, fun(_Keyword, _Options) ->
-                10
-            end},
-            {'search_c2c_msg_with_options', 4, fun(_Keyword, _Limit, _Offset, _Options) ->
-                {ok, [
+            {search_authorized_page, 6, fun(_Uid, _Keyword, _Limit, _Offset, _Type, _Options) ->
+                {ok, 10, [
                     #{
                         <<"id">> => 3,
+                        <<"msg_id">> => <<"message-3">>,
                         <<"from_id">> => 100,
                         <<"to_id">> => 200,
                         <<"msg_type">> => <<"text">>,
@@ -342,15 +336,13 @@ search_msg_with_date_range_test_() ->
 
 search_msg_with_msg_type_text_test_() ->
     ?WITH_MECK(
-        fts_user_repo,
+        fts_user_ds,
         [
-            {'search_c2c_msg_count_with_options', 2, fun(_Keyword, _Options) ->
-                8
-            end},
-            {'search_c2c_msg_with_options', 4, fun(_Keyword, _Limit, _Offset, _Options) ->
-                {ok, [
+            {search_authorized_page, 6, fun(_Uid, _Keyword, _Limit, _Offset, _Type, _Options) ->
+                {ok, 8, [
                     #{
                         <<"id">> => 4,
+                        <<"msg_id">> => <<"message-4">>,
                         <<"from_id">> => 100,
                         <<"to_id">> => 200,
                         <<"msg_type">> => <<"text">>,
@@ -375,15 +367,13 @@ search_msg_with_msg_type_text_test_() ->
 
 search_msg_with_msg_type_image_test_() ->
     ?WITH_MECK(
-        fts_user_repo,
+        fts_user_ds,
         [
-            {'search_c2c_msg_count_with_options', 2, fun(_Keyword, _Options) ->
-                2
-            end},
-            {'search_c2c_msg_with_options', 4, fun(_Keyword, _Limit, _Offset, _Options) ->
-                {ok, [
+            {search_authorized_page, 6, fun(_Uid, _Keyword, _Limit, _Offset, _Type, _Options) ->
+                {ok, 2, [
                     #{
                         <<"id">> => 5,
+                        <<"msg_id">> => <<"message-5">>,
                         <<"from_id">> => 100,
                         <<"to_id">> => 200,
                         <<"msg_type">> => <<"image">>,
@@ -412,15 +402,13 @@ search_msg_with_msg_type_image_test_() ->
 
 search_msg_with_from_uid_test_() ->
     ?WITH_MECK(
-        fts_user_repo,
+        fts_user_ds,
         [
-            {'search_c2c_msg_count_with_options', 2, fun(_Keyword, _Options) ->
-                6
-            end},
-            {'search_c2c_msg_with_options', 4, fun(_Keyword, _Limit, _Offset, _Options) ->
-                {ok, [
+            {search_authorized_page, 6, fun(_Uid, _Keyword, _Limit, _Offset, _Type, _Options) ->
+                {ok, 6, [
                     #{
                         <<"id">> => 6,
+                        <<"msg_id">> => <<"message-6">>,
                         <<"from_id">> => 300,
                         <<"to_id">> => 100,
                         <<"msg_type">> => <<"text">>,
@@ -449,15 +437,13 @@ search_msg_with_from_uid_test_() ->
 
 search_msg_with_conversation_id_c2c_test_() ->
     ?WITH_MECK(
-        fts_user_repo,
+        fts_user_ds,
         [
-            {'search_c2c_msg_count_with_options', 2, fun(_Keyword, _Options) ->
-                7
-            end},
-            {'search_c2c_msg_with_options', 4, fun(_Keyword, _Limit, _Offset, _Options) ->
-                {ok, [
+            {search_authorized_page, 6, fun(_Uid, _Keyword, _Limit, _Offset, _Type, _Options) ->
+                {ok, 7, [
                     #{
                         <<"id">> => 7,
+                        <<"msg_id">> => <<"message-7">>,
                         <<"from_id">> => 100,
                         <<"to_id">> => 200,
                         <<"msg_type">> => <<"text">>,
@@ -482,15 +468,13 @@ search_msg_with_conversation_id_c2c_test_() ->
 
 search_msg_with_conversation_id_c2g_test_() ->
     ?WITH_MECK(
-        fts_user_repo,
+        fts_user_ds,
         [
-            {'search_c2g_msg_count_with_options', 2, fun(_Keyword, _Options) ->
-                15
-            end},
-            {'search_c2g_msg_with_options', 4, fun(_Keyword, _Limit, _Offset, _Options) ->
-                {ok, [
+            {search_authorized_page, 6, fun(_Uid, _Keyword, _Limit, _Offset, _Type, _Options) ->
+                {ok, 15, [
                     #{
                         <<"id">> => 8,
+                        <<"msg_id">> => <<"message-8">>,
                         <<"from_id">> => 100,
                         <<"group_id">> => 500,
                         <<"msg_type">> => <<"text">>,
@@ -509,7 +493,7 @@ search_msg_with_conversation_id_c2g_test_() ->
             Type = <<"C2G">>,
             Options = #{<<"conversation_id">> => 500},
             Result = fts_logic:search_msg(Uid, Page, Size, Keyword, Type, Options),
-            ?assertMatch(#{total := 15, list := [_]}, Result)
+            ?assertMatch(#{total := 15, list := [#{<<"message_id">> := <<"message-8">>}]}, Result)
         end
     ).
 
@@ -519,15 +503,13 @@ search_msg_with_conversation_id_c2g_test_() ->
 
 search_msg_sort_by_relevance_test_() ->
     ?WITH_MECK(
-        fts_user_repo,
+        fts_user_ds,
         [
-            {'search_c2c_msg_count_with_options', 2, fun(_Keyword, _Options) ->
-                10
-            end},
-            {'search_c2c_msg_with_options', 4, fun(_Keyword, _Limit, _Offset, _Options) ->
-                {ok, [
+            {search_authorized_page, 6, fun(_Uid, _Keyword, _Limit, _Offset, _Type, _Options) ->
+                {ok, 10, [
                     #{
                         <<"id">> => 9,
+                        <<"msg_id">> => <<"message-9">>,
                         <<"from_id">> => 100,
                         <<"to_id">> => 200,
                         <<"msg_type">> => <<"text">>,
@@ -537,6 +519,7 @@ search_msg_sort_by_relevance_test_() ->
                     },
                     #{
                         <<"id">> => 10,
+                        <<"msg_id">> => <<"message-10">>,
                         <<"from_id">> => 100,
                         <<"to_id">> => 200,
                         <<"msg_type">> => <<"text">>,
@@ -561,15 +544,13 @@ search_msg_sort_by_relevance_test_() ->
 
 search_msg_sort_by_time_test_() ->
     ?WITH_MECK(
-        fts_user_repo,
+        fts_user_ds,
         [
-            {'search_c2c_msg_count_with_options', 2, fun(_Keyword, _Options) ->
-                10
-            end},
-            {'search_c2c_msg_with_options', 4, fun(_Keyword, _Limit, _Offset, _Options) ->
-                {ok, [
+            {search_authorized_page, 6, fun(_Uid, _Keyword, _Limit, _Offset, _Type, _Options) ->
+                {ok, 10, [
                     #{
                         <<"id">> => 11,
+                        <<"msg_id">> => <<"message-11">>,
                         <<"from_id">> => 100,
                         <<"to_id">> => 200,
                         <<"msg_type">> => <<"text">>,
@@ -579,6 +560,7 @@ search_msg_sort_by_time_test_() ->
                     },
                     #{
                         <<"id">> => 12,
+                        <<"msg_id">> => <<"message-12">>,
                         <<"from_id">> => 100,
                         <<"to_id">> => 200,
                         <<"msg_type">> => <<"text">>,
@@ -607,15 +589,13 @@ search_msg_sort_by_time_test_() ->
 
 search_msg_with_combined_filters_test_() ->
     ?WITH_MECK(
-        fts_user_repo,
+        fts_user_ds,
         [
-            {'search_c2c_msg_count_with_options', 2, fun(_Keyword, _Options) ->
-                3
-            end},
-            {'search_c2c_msg_with_options', 4, fun(_Keyword, _Limit, _Offset, _Options) ->
-                {ok, [
+            {search_authorized_page, 6, fun(_Uid, _Keyword, _Limit, _Offset, _Type, _Options) ->
+                {ok, 3, [
                     #{
                         <<"id">> => 13,
+                        <<"msg_id">> => <<"message-13">>,
                         <<"from_id">> => 300,
                         <<"to_id">> => 100,
                         <<"msg_type">> => <<"text">>,
@@ -651,15 +631,13 @@ search_msg_with_combined_filters_test_() ->
 
 search_msg_with_empty_options_test_() ->
     ?WITH_MECK(
-        fts_user_repo,
+        fts_user_ds,
         [
-            {'search_c2c_msg_count', 1, fun(_Keyword) ->
-                5
-            end},
-            {'search_c2c_msg', 4, fun(_Keyword, _Limit, _Offset, _Uid) ->
-                {ok, [
+            {search_authorized_page, 6, fun(_Uid, _Keyword, _Limit, _Offset, _Type, _Options) ->
+                {ok, 5, [
                     #{
                         <<"id">> => 14,
+                        <<"msg_id">> => <<"message-14">>,
                         <<"from_id">> => 100,
                         <<"to_id">> => 200,
                         <<"msg_type">> => <<"text">>,
@@ -684,13 +662,10 @@ search_msg_with_empty_options_test_() ->
 
 search_msg_with_invalid_date_format_test_() ->
     ?WITH_MECK(
-        fts_user_repo,
+        fts_user_ds,
         [
-            {'search_c2c_msg_count_with_options', 2, fun(_Keyword, _Options) ->
-                0
-            end},
-            {'search_c2c_msg_with_options', 4, fun(_Keyword, _Limit, _Offset, _Options) ->
-                {ok, []}
+            {search_authorized_page, 6, fun(_Uid, _Keyword, _Limit, _Offset, _Type, _Options) ->
+                {error, search_unavailable}
             end}
         ],
         fun() ->
@@ -701,7 +676,80 @@ search_msg_with_invalid_date_format_test_() ->
             Type = <<"C2C">>,
             Options = #{<<"start_date">> => <<"invalid-date">>},
             Result = fts_logic:search_msg(Uid, Page, Size, Keyword, Type, Options),
-            % 无效日期应该被忽略或返回空结果
-            ?assertMatch(#{total := 0, list := []}, Result)
+            ?assertEqual({error, search_unavailable}, Result)
+        end
+    ).
+
+search_msg_returns_message_xid_test_() ->
+    ?WITH_MECK(
+        fts_user_ds,
+        [
+            {search_authorized_page, 6, fun
+                (100, _, _, _, <<"c2c">>, _) ->
+                    {ok, 1, [
+                        #{
+                            <<"id">> => 123,
+                            <<"msg_id">> => <<"c2c-xid">>,
+                            <<"from_id">> => 100,
+                            <<"to_id">> => 200,
+                            <<"msg_type">> => <<"text">>,
+                            <<"payload">> => <<"hello">>,
+                            <<"created_at">> => 1700000000
+                        }
+                    ]};
+                (100, _, _, _, <<"c2g">>, _) ->
+                    {ok, 1, [
+                        #{
+                            <<"id">> => 456,
+                            <<"msg_id">> => <<"c2g-xid">>,
+                            <<"from_id">> => 100,
+                            <<"group_id">> => 300,
+                            <<"msg_type">> => <<"text">>,
+                            <<"payload">> => <<"hello">>,
+                            <<"created_at">> => 1700000000
+                        }
+                    ]}
+            end}
+        ],
+        fun() ->
+            ?assertMatch(
+                #{list := [#{<<"message_id">> := <<"c2c-xid">>}]},
+                fts_logic:search_msg(100, 1, 10, <<"hello">>, <<"C2C">>)
+            ),
+            ?assertMatch(
+                #{list := [#{<<"message_id">> := <<"c2g-xid">>}]},
+                fts_logic:search_msg(100, 1, 10, <<"hello">>, <<"C2G">>)
+            )
+        end
+    ).
+
+search_msg_missing_xid_does_not_use_row_id_test_() ->
+    ?WITH_MECK(
+        fts_user_ds,
+        [
+            {search_authorized_page, 6, fun(_, _, _, _, _, _) -> {ok, 1, [#{<<"id">> => 123}]} end}
+        ],
+        fun() ->
+            ?assertError(
+                {badkey, <<"msg_id">>},
+                fts_logic:search_msg(100, 1, 10, <<"hello">>, <<"C2C">>)
+            )
+        end
+    ).
+
+search_msg_propagates_identity_and_failure_test_() ->
+    ?WITH_MECK(
+        fts_user_ds,
+        [
+            {search_authorized_page, 6, fun(123, <<"term">>, 7, 7, <<"c2g">>, Options) ->
+                ?assertEqual(#{<<"from_uid">> => 42}, Options),
+                {error, search_unavailable}
+            end}
+        ],
+        fun() ->
+            ?assertEqual(
+                {error, search_unavailable},
+                fts_logic:search_msg(123, 2, 7, <<"term">>, <<"C2G">>, #{<<"from_uid">> => 42})
+            )
         end
     ).

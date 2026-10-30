@@ -86,28 +86,51 @@ parse_search_options(QueryList) ->
                 end
         end,
 
-    % 解析会话ID（需要解码）
-    Options5 =
-        case proplists:get_value(<<"conversation_id">>, QueryList, undefined) of
-            undefined ->
-                Options4;
-            ConversationId ->
-                case ec_cnv:to_integer(ConversationId) of
-                    ConversationIdInt when is_integer(ConversationIdInt), ConversationIdInt > 0 ->
-                        maps:put(<<"conversation_id">>, ConversationIdInt, Options4);
-                    _ ->
-                        Options4
-                end
-        end,
-
     % 解析排序方式
     Options6 =
         case proplists:get_value(<<"sort_by">>, QueryList, undefined) of
-            undefined -> Options5;
-            SortBy -> maps:put(<<"sort_by">>, SortBy, Options5)
+            undefined -> Options4;
+            SortBy -> maps:put(<<"sort_by">>, SortBy, Options4)
         end,
 
     Options6.
+
+conversation_scope(QueryList, Type, Uid) ->
+    case proplists:get_all_values(<<"conversation_id">>, QueryList) of
+        [] -> {ok, undefined};
+        [Value] -> decode_scope(Value, string:lowercase(Type), Uid);
+        _ -> error
+    end.
+
+decode_scope(Value, Type, Uid) when is_binary(Value) ->
+    case binary:split(Value, <<":">>, [global]) of
+        [Id] when Type =:= <<"c2c">>; Type =:= <<"c2g">> -> positive_id(Id);
+        [<<"c2g">>, Id] when Type =:= <<"c2g">> -> positive_id(Id);
+        [<<"c2c">>, A, B] when Type =:= <<"c2c">> ->
+            case {positive_id(A), positive_id(B)} of
+                {{ok, X}, {ok, Y}} when X =< Y, Uid =:= X -> {ok, Y};
+                {{ok, X}, {ok, Y}} when X =< Y, Uid =:= Y -> {ok, X};
+                _ -> error
+            end;
+        _ ->
+            error
+    end;
+decode_scope(_, _, _) ->
+    error.
+
+positive_id(Id) when byte_size(Id) > 0, byte_size(Id) =< 19 ->
+    case re:run(Id, <<"^[0-9]+$">>, [{capture, none}]) of
+        match ->
+            N = binary_to_integer(Id),
+            case N > 0 andalso N =< 9223372036854775807 of
+                true -> {ok, N};
+                false -> error
+            end;
+        nomatch ->
+            error
+    end;
+positive_id(_) ->
+    error.
 
 %% @doc 搜索用户
 %% 搜索允许被搜索的用户
@@ -165,12 +188,50 @@ msg(Req0, State) ->
             Type = proplists:get_value(<<"type">>, Qs1, <<"C2C">>),
 
             % 解析增强搜索选项
-            Options = parse_search_options(Qs1),
-
-            Payload = fts_logic:search_msg(CurrentUid, Page, Size, Keyword, Type, Options),
-            elib_response:success(Req0, Payload)
+            case conversation_scope(Qs1, Type, CurrentUid) of
+                error ->
+                    elib_response:error(Req0, <<"invalid conversation_id">>, ?ERR_INVALID_PARAM);
+                {ok, Scope} ->
+                    Options0 = parse_search_options(Qs1),
+                    Options =
+                        case Scope of
+                            undefined -> Options0;
+                            _ -> maps:put(<<"conversation_id">>, Scope, Options0)
+                        end,
+                    case fts_logic:search_msg(CurrentUid, Page, Size, Keyword, Type, Options) of
+                        {error, _} ->
+                            elib_response:error(
+                                Req0, <<"search unavailable">>, ?ERR_SERVICE_UNAVAILABLE
+                            );
+                        Payload ->
+                            elib_response:success(Req0, Payload)
+                    end
+            end
     end.
 
 %% ===================================================================
 %% EUnit tests.
 %% ===================================================================
+
+conversation_scope_test() ->
+    Scope = fun(V, T) -> conversation_scope([{<<"conversation_id">>, V}], T, 42) end,
+    ?assertEqual({ok, 17}, Scope(<<"17">>, <<"C2C">>)),
+    ?assertEqual({ok, 17}, Scope(<<"c2c:17:42">>, <<"C2C">>)),
+    ?assertEqual({ok, 42}, Scope(<<"c2c:42:42">>, <<"C2C">>)),
+    ?assertEqual({ok, 9007199254740993}, Scope(<<"c2g:9007199254740993">>, <<"C2G">>)),
+    ?assertEqual(error, Scope(<<"c2c:17:18">>, <<"C2C">>)),
+    ?assertEqual(error, Scope(<<"c2c:42:17">>, <<"C2C">>)),
+    ?assertEqual(error, Scope(<<"c2g:17">>, <<"C2C">>)),
+    ?assertEqual(error, Scope(<<"9223372036854775808">>, <<"C2C">>)),
+    ?assertEqual(error, Scope(<<"17x">>, <<"C2C">>)),
+    ?assertEqual(
+        error,
+        conversation_scope(
+            [
+                {<<"conversation_id">>, <<"17">>},
+                {<<"conversation_id">>, <<"18">>}
+            ],
+            <<"C2C">>,
+            42
+        )
+    ).

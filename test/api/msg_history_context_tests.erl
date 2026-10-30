@@ -358,8 +358,32 @@ repo_initial_denial_never_reads_content_test() ->
             %% rows 永不执行。候选值 1 仅在"拒绝仍读内容"的回归形态下出现，
             %% 不取；与原断言 num_calls==1（无污染时 = 仅 access、rows 为 0）
             %% 的语义等价且更精确。
-            ?assertEqual(0, pdict(content_reads))
+            ?assertEqual(0, pdict(content_reads)),
+            ?assertNot(
+                content_read([Entry || {Pid, _, _} = Entry <- meck:history(elib_pg), Pid =:= self()])
+            )
         end
+    ).
+
+content_read_detection_test() ->
+    Sql = <<"SELECT * FROM public.msg_store">>,
+    ?assert(content_read([{self(), {elib_pg, query, [other_connection, Sql, []]}, ok}])),
+    ?assert(content_read([{self(), {elib_pg, query, [Sql, []]}, ok}])),
+    ?assertNot(
+        content_read([{self(), {elib_pg, query, [other_connection, <<"SELECT 1">>, []]}, ok}])
+    ).
+
+content_read(History) ->
+    lists:any(
+        fun
+            ({_, {elib_pg, query, [_, Sql, _]}, _}) when is_binary(Sql) ->
+                binary:match(Sql, <<"msg_store">>) =/= nomatch;
+            ({_, {elib_pg, query, [Sql, _]}, _}) when is_binary(Sql) ->
+                binary:match(Sql, <<"msg_store">>) =/= nomatch;
+            (_) ->
+                false
+        end,
+        History
     ).
 
 %% re-check 授权失败丢弃内容：access/re-check 的区分用本测试进程的字典序数
