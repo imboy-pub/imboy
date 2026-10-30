@@ -423,6 +423,10 @@ worker_env() ->
         product_terminology_beam => code:which(product_terminology),
         spec_wrapper_beam => code:which(talk_record_owned_eunit_fixture),
         imboyenv => os:getenv("IMBOYENV"),
+        %% V5 合约取证：attv5 车道注入的 V5_SLOT/V5_RUN_DIR/<PREFIX>_DB 是否到达本 VM
+        v5_slot => os:getenv("V5_SLOT"),
+        v5_run_dir => os:getenv("V5_RUN_DIR"),
+        v5_inttest_db => os:getenv("V5_INTTEST_DB"),
         erl_libs => os:getenv("ERL_LIBS"),
         code_path_head => lists:sublist(code:get_path(), 6)
     }.

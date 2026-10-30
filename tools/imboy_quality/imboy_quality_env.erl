@@ -30,6 +30,9 @@
 %% W403_RESOURCE_MANIFEST/W403_CONFIG_PATH + W202_GARAGE_*（test/lib/attachment_lifecycle_v5_*）。
 %% 第二元为库名短标签：PG 标识符上限 63 字符（NAMEDATALEN-1），全名会被 CREATE DATABASE
 %% 静默截断，而清单仍写全名 → 套件 assert_database 失败（2026-10-29 group 实证）。
+%% attv5 库名的 slot 段：与 inttest_marker_db 的 ^attv5_<V5_SLOT>_[a-z0-9_]+$ 正则
+%% 及车道自测（planned_db_names）共同引用，单一事实源（须先定义后使用）。
+-define(ATTV5_SLOT, "chain_imboy_quality").
 -define(W403_ROOTS, [
     {attachment_lifecycle_v5_w403_gateway_protocol_tests, "w403gw"},
     {attachment_lifecycle_v5_w403_driver_matrix_tests, "w403dm"},
@@ -119,7 +122,7 @@ prepare(Repo, Ctrl, Workers) ->
         Hird = hird(Repo, Ctrl, Args, Clone, Pid),
         Garage = garage(Ctrl, Pid),
         Aac = imboy_quality_resources:ensure_aac_fixture(Ctrl),
-        Attv5 = attv5(Repo, Base, Ctrl, Garage, Clone, SrcLiteral, Pid),
+        Attv5 = attv5(Repo, Base, Ctrl, Garage, Clone, SrcLiteral, Pid, Args),
         Iso = isolated(Repo, Base, Clone, SrcLiteral, Pid),
         ExclusiveEnv = maps:merge(
             maps:merge(
@@ -286,7 +289,7 @@ aac_report({error, Reason}) -> #{<<"error">> => fmt(Reason)}.
 
 %% attv5/W403（5 根）与 ATTACHMENT_REVIEW（2 根）：每根专属 attv5_chain_* 克隆 + 清单 JSON
 %% + 私有 -config（app 启动即以清单库为 pgsql 池，套件 assert_database 才成立）+ W202 Garage。
-attv5(Repo, Base, Ctrl, Garage, Clone, SrcLiteral, Pid) ->
+attv5(Repo, Base, Ctrl, Garage, Clone, SrcLiteral, Pid, Args) ->
     Dir = filename:join([Ctrl, "runtime", "attv5", Pid]),
     GarageEnv =
         case Garage of
@@ -300,6 +303,14 @@ attv5(Repo, Base, Ctrl, Garage, Clone, SrcLiteral, Pid) ->
             {error, _} ->
                 []
         end,
+    %% V5 marker 合约（inttest_marker_db:require_authorized_marker_fixture）：V5_INTTEST*
+    %% 前缀的 provision 必须绑定 <PREFIX>_DB（receipt-shaped 库名匹配
+    %% ^attv5_<V5_SLOT>_[a-z0-9_]+$），否则 fail-closed。closeout 696c8ad5e 起合约
+    %% 收紧，车道根一律走 prebuilt 分支（库由车道预建迁移、release 永不 DROP），
+    %% 因此每根注入 V5_SLOT/V5_RUN_DIR + 全部实际使用的 V5_INTTEST 前缀的
+    %% <PREFIX>_DB 与 PG 连接覆盖（resolve_server 强制 User/Pass）。VM 隔离下
+    %% 前缀全集注入为超集，未用到的键是死 env，不产生串库（各绑各的克隆库）。
+    V5Prefixes = v5_scan_prefixes(Repo),
     All = ?W403_ROOTS ++ ?REVIEW_ROOTS,
     Prepared = [
         begin
@@ -315,7 +326,7 @@ attv5(Repo, Base, Ctrl, Garage, Clone, SrcLiteral, Pid) ->
                     {"W403_CONFIG_PATH", ConfigFile},
                     {"ATTACHMENT_REVIEW_MANIFEST", Manifest},
                     {"ATTACHMENT_REVIEW_CONFIG", ConfigFile}
-                ] ++ GarageEnv,
+                ] ++ v5_bind_env(?ATTV5_SLOT, Dir, Args, Db, V5Prefixes) ++ GarageEnv,
             {R, Db, Config, Env}
         end
      || {K, {R, Short}} <- lists:zip(lists:seq(20, 20 + length(All) - 1), All)
@@ -345,7 +356,49 @@ isolated(Repo, Base, Clone, SrcLiteral, Pid) ->
         report => #{<<"databases">> => [list_to_binary(Db) || {_, Db, _} <- Prepared]}
     }.
 
-attv5_db_name(Short, Pid) -> "attv5_chain_imboy_quality_" ++ Short ++ "_" ++ Pid.
+attv5_db_name(Short, Pid) -> "attv5_" ++ ?ATTV5_SLOT ++ "_" ++ Short ++ "_" ++ Pid.
+
+%% 扫 test/**/*.erl 中全部 <<"V5_INTTEST...">> 前缀字面量（含 support/context
+%% 间接传入的主前缀来源文件），自动跟随测试演进；prefix/1 权威表的值都在这些
+%% 字面量中，无需重复维护映射。
+v5_scan_prefixes(Repo) ->
+    {ok, Re} = re:compile("<<\"(V5_INTTEST[A-Z0-9_]*)\">>"),
+    lists:usort(lists:append([
+        case re:run(Bin, Re, [{capture, [1], binary}, global]) of
+            %% global 捕获形态：每个匹配是 [CapturedBin]（列表），元组模式会静默全跳
+            {match, Ms} -> [P || [P] <- Ms];
+            nomatch -> []
+        end
+     || Path <- filelib:wildcard(filename:join(Repo, "test/**/*.erl")),
+        {ok, Bin} <- [file:read_file(Path)]
+    ])).
+
+%% V5 合约绑定 env：全局 V5_SLOT/V5_RUN_DIR + 每个前缀的 <PREFIX>_DB（receipt 库）
+%% 与 PG 连接覆盖（inttest_marker_db:resolve_server 对 User/Pass 缺失直接 fail）。
+%% 连接参数与车道克隆库同实例（Args 即候选库实例），v5_tls_extra 走 eunit VM
+%% 配置默认，不受影响。
+v5_bind_env(Slot, RunDir, Args, Db, Prefixes) ->
+    Base = [
+        {"V5_SLOT", Slot},
+        {"V5_RUN_DIR", RunDir}
+    ],
+    PerPrefix = [
+        [
+            {binary_to_list(P) ++ "_DB", Db},
+            {binary_to_list(P) ++ "_PG_HOST", v5_val(maps:get(host, Args))},
+            {binary_to_list(P) ++ "_PG_PORT", v5_val(maps:get(port, Args))},
+            {binary_to_list(P) ++ "_PG_USER", v5_val(maps:get(username, Args))},
+            {binary_to_list(P) ++ "_PG_PASSWORD", v5_val(maps:get(password, Args))},
+            {binary_to_list(P) ++ "_MAINT_DB", "postgres"}
+        ]
+     || P <- Prefixes
+    ],
+    Base ++ lists:append(PerPrefix).
+
+v5_val(V) when is_integer(V) -> integer_to_list(V);
+v5_val(V) when is_atom(V) -> atom_to_list(V);
+v5_val(V) when is_binary(V) -> unicode:characters_to_list(V);
+v5_val(V) when is_list(V) -> V.
 
 iso_db_name(Root, Pid) -> "imboy_quality_iso_" ++ atom_to_list(Root) ++ "_" ++ Pid.
 
