@@ -28,6 +28,7 @@
 -export([delete_msg/1]).
 -export([update_pinned/3]).
 -export([update_payload_by_msg_id/2]).
+-export([accept_action/6, consume_action/6]).
 -export([delete_by_msg_ids_and_to_id/2]).
 -export([count_unread_since/2, count_unread_since/3]).
 -export([set_expire_at/2]).
@@ -683,6 +684,30 @@ update_pinned(MsgId, ToUid, Pinned) ->
 -spec update_payload_by_msg_id(binary(), binary()) -> {ok, non_neg_integer()} | {error, term()}.
 update_payload_by_msg_id(MsgId, PayloadJson) ->
     msg_c2c_repo:update_payload_by_msg_id(MsgId, PayloadJson).
+
+-spec accept_action(binary(), binary(), integer(), integer(), binary(), binary() | null) ->
+    ok | {error, term()}.
+accept_action(RequestId, OriginalMsgId, ActorUid, PeerUid, Action, ContentHash) ->
+    case
+        c2c_action_receipt_repo:accept(
+            RequestId, OriginalMsgId, ActorUid, PeerUid, Action, ContentHash
+        )
+    of
+        {ok, _} -> ok;
+        {error, _} = Error -> Error
+    end.
+
+-spec consume_action(binary(), binary(), integer(), binary(), binary() | null, map()) ->
+    ok | {error, term()}.
+consume_action(RequestId, OriginalMsgId, AckUid, Action, ContentHash, Payload) ->
+    c2c_action_receipt_repo:consume(
+        RequestId,
+        OriginalMsgId,
+        AckUid,
+        Action,
+        ContentHash,
+        imboy_message_helper:encode_json(Payload)
+    ).
 
 %% G3: messaging_logic wrapper
 -spec delete_by_msg_ids_and_to_id(list(binary()), integer()) -> {ok, integer()} | {error, any()}.

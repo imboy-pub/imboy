@@ -1266,7 +1266,11 @@ c2c_edit_allowed_when_window_disabled_test_() ->
         end
     ).
 
-c2c_revoke_ack_persists_action_payload_test_() ->
+%% 机制演进出处：受理事实从原消息 payload 内嵌标记（1e7fd736c 的
+%% accepted_revoke/accepted_edit）演进为专属表 c2c_action_receipt（本批 WIP）。
+%% C2S *_ack 现走 msg_c2c_ds:consume_action/6 原子消费受理事实，不再经
+%% msg_c2c_repo:update_payload_by_msg_id 覆写原行 payload。
+c2c_revoke_ack_persists_action_receipt_test_() ->
     ?WITH_MECKS(
         [
             {elib_log, [
@@ -1280,25 +1284,15 @@ c2c_revoke_ack_persists_action_payload_test_() ->
                 {'encode_json', 1, fun(_Map) -> <<"{\"action\":\"message_revoke_ack\"}">> end}
             ]},
             {msg_c2c_ds, [
-                {'find_msg_by_id', 1, fun(<<"orig_c2c_revoke_003">>) ->
-                    {ok, #{
-                        <<"from_id">> => 123,
-                        %% 服务端受理事实：c2c_revoke 受理时写入原行 payload
-                        <<"payload">> => #{
-                            <<"accepted_revoke">> => #{
-                                <<"request_id">> => <<"c2c_revoke_ack_003">>,
-                                <<"uid">> => <<"123">>,
-                                <<"accepted_at">> => 1700000090000
-                            }
-                        }
-                    }}
+                {'consume_action', 6, fun(MsgId, OriginalMsgId, AckUid, Action, ContentHash, _P) ->
+                    erlang:put(consume_action_args, [
+                        MsgId, OriginalMsgId, AckUid, Action, ContentHash
+                    ]),
+                    ok
                 end}
             ]},
             {msg_c2c_repo, [
-                {'update_payload_by_msg_id', 2, fun(<<"orig_c2c_revoke_003">>, PayloadJson) ->
-                    ?assert(is_binary(PayloadJson)),
-                    {ok, 1}
-                end}
+                {'update_payload_by_msg_id', 2, fun(_, _) -> {ok, 1} end}
             ]}
         ],
         fun() ->
@@ -1310,7 +1304,20 @@ c2c_revoke_ack_persists_action_payload_test_() ->
 
             Result = msg_c2c_logic:c2c_revoke_ack(<<"c2c_revoke_ack_003">>, 123, Data),
             ?assertEqual(ok, Result),
-            ?assertEqual(1, meck:num_calls(msg_c2c_repo, update_payload_by_msg_id, 2))
+            %% 恰好一次受理事实原子消费，参数与受理契约一致
+            ?assertEqual(1, meck:num_calls(msg_c2c_ds, consume_action, 6)),
+            ?assertEqual(
+                [
+                    <<"c2c_revoke_ack_003">>,
+                    <<"orig_c2c_revoke_003">>,
+                    123,
+                    <<"revoke">>,
+                    null
+                ],
+                erlang:get(consume_action_args)
+            ),
+            %% 旧 payload 内嵌标记覆写路径必须保持下线（防回归）
+            ?assertEqual(0, meck:num_calls(msg_c2c_repo, update_payload_by_msg_id, 2))
         end
     ).
 
@@ -1457,7 +1464,9 @@ c2c_action_ack_with_invalid_payload_must_not_write_test_() ->
         end
     ).
 
-c2c_edit_ack_persists_action_payload_test_() ->
+%% 机制演进出处同 revoke 用例：payload 内嵌标记（1e7fd736c）→ c2c_action_receipt
+%% 表（本批 WIP）；edit 另验受理时的内容 sha256 绑定（明文编辑绑定编辑后明文）。
+c2c_edit_ack_persists_action_receipt_test_() ->
     ?WITH_MECKS(
         [
             {elib_log, [
@@ -1471,29 +1480,15 @@ c2c_edit_ack_persists_action_payload_test_() ->
                 {'encode_json', 1, fun(_Map) -> <<"{\"action\":\"message_edit_ack\"}">> end}
             ]},
             {msg_c2c_ds, [
-                {'find_msg_by_id', 1, fun(<<"orig_c2c_edit_003">>) ->
-                    {ok, #{
-                        <<"from_id">> => 123,
-                        %% 服务端受理事实（含内容哈希绑定）
-                        <<"payload">> => #{
-                            <<"accepted_edit">> => #{
-                                <<"request_id">> => <<"c2c_edit_ack_003">>,
-                                <<"uid">> => <<"123">>,
-                                <<"accepted_at">> => 1700000095000,
-                                <<"content_hash">> =>
-                                    binary:encode_hex(
-                                        crypto:hash(sha256, <<"edited-content">>), lowercase
-                                    )
-                            }
-                        }
-                    }}
+                {'consume_action', 6, fun(MsgId, OriginalMsgId, AckUid, Action, ContentHash, _P) ->
+                    erlang:put(consume_action_args, [
+                        MsgId, OriginalMsgId, AckUid, Action, ContentHash
+                    ]),
+                    ok
                 end}
             ]},
             {msg_c2c_repo, [
-                {'update_payload_by_msg_id', 2, fun(<<"orig_c2c_edit_003">>, PayloadJson) ->
-                    ?assert(is_binary(PayloadJson)),
-                    {ok, 1}
-                end}
+                {'update_payload_by_msg_id', 2, fun(_, _) -> {ok, 1} end}
             ]}
         ],
         fun() ->
@@ -1507,7 +1502,20 @@ c2c_edit_ack_persists_action_payload_test_() ->
 
             Result = msg_c2c_logic:c2c_edit_ack(<<"c2c_edit_ack_003">>, 123, Data),
             ?assertEqual(ok, Result),
-            ?assertEqual(1, meck:num_calls(msg_c2c_repo, update_payload_by_msg_id, 2))
+            %% 恰好一次受理事实原子消费；内容绑定 = 受理时编辑后内容的 sha256
+            ?assertEqual(1, meck:num_calls(msg_c2c_ds, consume_action, 6)),
+            ?assertEqual(
+                [
+                    <<"c2c_edit_ack_003">>,
+                    <<"orig_c2c_edit_003">>,
+                    123,
+                    <<"edit">>,
+                    binary:encode_hex(crypto:hash(sha256, <<"edited-content">>), lowercase)
+                ],
+                erlang:get(consume_action_args)
+            ),
+            %% 旧 payload 内嵌标记覆写路径必须保持下线（防回归）
+            ?assertEqual(0, meck:num_calls(msg_c2c_repo, update_payload_by_msg_id, 2))
         end
     ).
 

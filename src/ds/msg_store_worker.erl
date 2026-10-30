@@ -242,6 +242,15 @@ complete_staged(Row) ->
             {error, Reason} -> throw({rollback, {mark_processed_failed, Reason}})
         end,
         case Type of
+            <<"c2c">> ->
+                case c2c_action_receipt_repo:reconcile_consumed_tx(Conn, MsgId) of
+                    ok -> ok;
+                    {error, Reason2} -> throw({rollback, {action_reconcile_failed, Reason2}})
+                end;
+            _ ->
+                ok
+        end,
+        case Type of
             K when K =:= <<"c2c">>; K =:= <<"s2c">> ->
                 msg_delivery_repo:delete_delivered_batch(
                     Conn,
@@ -280,8 +289,9 @@ safe_write(Type, Row) ->
             {error, {invalid_staging_payload, missing_field, Key}};
         error:{badmap, _} ->
             {error, {invalid_staging_payload, expected_object}};
-        Class:_ ->
-            {error, {write_exception, Class}}
+        %% 保留原始 Reason（此前仅留 Class，写失败只剩 write_exception 无从排障）
+        Class:Reason0 ->
+            {error, {write_exception, Class, Reason0}}
     end.
 
 -spec terminal_write_reason(term()) -> boolean().
