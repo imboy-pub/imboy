@@ -97,13 +97,12 @@ setup() ->
     persistent_term:put(w401r_probe_key, ProbeKey),
     {ok, _} = elib_oss:head_object(ProbeKey),
     lists:foreach(fun(M) -> meck:new(M, [non_strict, no_link, passthrough]) end, Modules),
-    meck:expect(elib_pg, with_tx, fun(F) ->
-        try
-            F(test_connection)
-        catch
-            throw:{abort_tx, Reason} -> {error, Reason}
-        end
-    end),
+    %% with_tx 与 with_deadlock_retry_tx（d4bef2e9e 起 queue_pending 改用
+    %% 后者）同合同：替身连接执行 F，abort_tx 抛出映射为 {error, Reason}。
+    %% 不替身 with_deadlock_retry_tx 会 passthrough 到真实现，测试 VM 无
+    %% pooler（sql_driver 亦未配置）而报 take_member noproc。
+    meck:expect(elib_pg, with_tx, fun run_tx/1),
+    meck:expect(elib_pg, with_deadlock_retry_tx, fun run_tx/1),
     meck:expect(elib_pg, query, fun(_C, _Sql, _P) -> {ok, []} end),
     meck:expect(enterprise_asset_repo, find_confirmed_tx, fun(_C, _O, _A, _K) ->
         {ok, #{
@@ -139,6 +138,15 @@ cleanup(Modules) ->
 
 probe_key() ->
     <<"v5e2e/w401r/", (integer_to_binary(erlang:unique_integer([positive])))/binary>>.
+
+%% 单元事务替身：与真实 with_tx / with_deadlock_retry_tx 同合同——
+%% 以替身连接执行 F，{abort_tx, Reason} 抛出映射为 {error, Reason}。
+run_tx(F) ->
+    try
+        F(test_connection)
+    catch
+        throw:{abort_tx, Reason} -> {error, Reason}
+    end.
 
 %% ---- 故障注入 helper（4 类失败统一映射为意图调用错误形状）----
 fault_result(rollback) -> {error, {db, sql_rollback}};
