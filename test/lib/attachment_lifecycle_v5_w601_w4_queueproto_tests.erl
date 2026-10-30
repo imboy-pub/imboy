@@ -35,7 +35,12 @@ refuse_nonempty_queues() ->
         {w601_queue_not_isolated, "enterprise_asset_delete_queue"},
         ?P:reset_eb(conn)
     ),
-    ?assertEqual(0, meck:num_calls(?X, q, '_')),
+    %% 484362542 起 reset=settle_active+require_empty：隔离断言失败前
+    %% 允许对两队列各发一次收敛 UPDATE；事务协议语句与 ACK 仍禁止
+    %% （原"不得启动协议/不得误 ACK"语义不变，只是 UPDATE 放行）。
+    ?assertEqual(0, meck:num_calls(?X, q, [conn, "BEGIN"])),
+    ?assertEqual(0, meck:num_calls(?X, q, [conn, "COMMIT"])),
+    ?assertEqual(0, meck:num_calls(?X, q, [conn, "ROLLBACK"])),
     ?assertEqual(0, meck:num_calls(attachment_gc_repo, v5_ack, '_')),
     ok = meck:expect(?X, e, fun(_, _) -> {ok, [], [{false}]} end),
     ?assertEqual(ok, ?P:drain_ordinary(conn)),

@@ -4,8 +4,11 @@
 
 kernel_lock_test_() -> {timeout, 30, fun kernel_lock/0}.
 kernel_lock() ->
-    Root = filename:join(temp_dir(), "attv5-oslock-" ++
-        binary_to_list(binary:encode_hex(crypto:strong_rand_bytes(12), lowercase))),
+    Root = filename:join(
+        temp_dir(),
+        "attv5-oslock-" ++
+            binary_to_list(binary:encode_hex(crypto:strong_rand_bytes(12), lowercase))
+    ),
     ok = file:make_dir(Root),
     Prior = application:get_env(imboy, attachment_storage_registry),
     Registry = #{
@@ -30,11 +33,16 @@ kernel_lock() ->
         ok = attachment_storage_disk:put(<<"n">>, <<"c">>, <<"owned">>, <<"BEFORE">>),
         %% Preserve old stat evidence: replacement must still be detected.
         %% 固定旧大小和 mtime，仍须识别真实原子替换。
-        ok = file:write_file_info(filename:join([Root, "c", "owned"]),
-            #file_info{mtime = maps:get(mtime, Before)}, [{time, posix}]),
+        ok = file:write_file_info(
+            filename:join([Root, "c", "owned"]),
+            #file_info{mtime = maps:get(mtime, Before)},
+            [{time, posix}]
+        ),
         {ok, After} = attachment_storage_disk:head_snapshot(Identity),
-        ?assertEqual(maps:with([size, mtime, etag], Before),
-            maps:with([size, mtime, etag], After)),
+        ?assertEqual(
+            maps:with([size, mtime, etag], Before),
+            maps:with([size, mtime, etag], After)
+        ),
         ?assertNotEqual(Before, After),
         ok = attachment_storage_disk:put(<<"n">>, <<"c">>, <<"owned">>, <<"before">>),
         Holder = start_holder(Root),
@@ -96,11 +104,14 @@ locked_symlink_race(Root) ->
     Old = Dir ++ "-original",
     Outside = filename:join(Root, "outside-owned"),
     try
-        erlang:trace_pattern({attachment_storage_disk, hold_lock, 3}, true, [local]),
+        %% NIF 世界无 hold_lock/3：worker 进入锁竞争等待的必经点是
+        %% wait_lock/4（首次 acquire eagain 后的 local 轮询入口），
+        %% 作为"worker 已在等锁、holder 仍持锁"的确定性 barrier。
+        erlang:trace_pattern({attachment_storage_disk, wait_lock, 4}, true, [local]),
         erlang:trace(Worker, true, [call, {tracer, Parent}]),
         Worker ! start,
         receive
-            {trace, Worker, call, {attachment_storage_disk, hold_lock, _}} -> ok
+            {trace, Worker, call, {attachment_storage_disk, wait_lock, _}} -> ok
         after 2000 -> erlang:error(lock_barrier_missing)
         end,
         ok = file:make_dir(Outside),
@@ -117,11 +128,13 @@ locked_symlink_race(Root) ->
         ok = file:rename(Old, Dir)
     after
         %% A failed barrier/assertion must not leave a writer or lock owner alive.
-        try stop_worker(Worker, Monitor)
+        try
+            stop_worker(Worker, Monitor)
         after
-            try kill_holder(Holder)
+            try
+                kill_holder(Holder)
             after
-                erlang:trace_pattern({attachment_storage_disk, hold_lock, 3}, false, [local])
+                erlang:trace_pattern({attachment_storage_disk, wait_lock, 4}, false, [local])
             end
         end
     end.
@@ -142,10 +155,12 @@ stop_worker(Worker, Monitor) ->
 
 start_holder(Root) ->
     %% 测试子 VM 单独加载 export_all binary，以便在真实内核锁内确定性暂停；不修改生产 beam。
+    %% with_os_lock 的回调契约是 fun(Lock)（1 参，d4bef2e9e NIF 化起）：
+    %% 0 参 fun 会让 acquire_lock 的 Fun(Lock) 以 badarity 崩掉 holder 子 VM。
     Source = filename:absname("src/lib/attachment_storage/attachment_storage_disk.erl"),
     Eval = lists:flatten(
         io_lib:format(
-            "application:ensure_all_started(crypto), {ok,M,B}=compile:file(~p,[binary,export_all,nowarn_export_all]), {module,M}=code:load_binary(M,~p,B), attachment_storage_disk:with_os_lock(~p,<<\"c\">>,<<\"owned\">>,fun()->io:format(\"LOCK_HELD~n\"),receive after infinity->ok end end),halt().",
+            "application:ensure_all_started(crypto), {ok,M,B}=compile:file(~p,[binary,export_all,nowarn_export_all]), {module,M}=code:load_binary(M,~p,B), attachment_storage_disk:with_os_lock(~p,<<\"c\">>,<<\"owned\">>,fun(_Lock)->io:format(\"LOCK_HELD~n\"),receive after infinity->ok end end),halt().",
             [Source, Source, Root]
         )
     ),
