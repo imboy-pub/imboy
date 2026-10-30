@@ -444,15 +444,51 @@ lenient_q(Conn, Sql, Params) ->
         {error, Reason} -> erlang:error({w601_w3_sql_failed, Reason, Sql})
     end.
 
-%% 幂等清理 attachment 元数据行：fn_v5_metadata_delete_guard（迁移 190）
-%% 要求 DELETE 前 lifecycle_state='delete_intent' 且 tombstone 在位，故在
-%% 单事务内按守卫协议构造：intent 转移 → tombstone 补齐 → 删除 →（提交后）
-%% tombstone 收敛为 done（迁移 179:1026 "v5 job rows are permanent
-%% tombstones (no DELETE)"——队列行是永久墓碑，只能按 job guard 的合法
-%% UPDATE 路径收敛，同 w601_w4_queueproto:settle_active 先例）。DELETE 被
-%% 治理行 FK 钉住（23503）时整体回滚、行保持原状供 seed 的 INSERT ON
-%% CONFLICT 复用；其余失败回滚后照抛。
+%% 幂等清理 attachment 元数据行，两段式：
+%%   1) attachment 行不存在（干净 key）时为 no-op，绝不触碰
+%%      attachment_object_deletion：守卫协议第二步会 INSERT 永久 tombstone
+%%      （迁移 179:1026 "v5 job rows are permanent tombstones (no DELETE)"），
+%%      而 fn_v5_register_pending（迁移 191）见同 path tombstone 即以 23505
+%%      "v5 key tombstoned" 拒绝重注册——seed 先 purge 后 register 的顺序会
+%%      给干净 key 自造挡路墓碑（run-five hold/race 全叶 23505 的根因）。
+%%   2) 行存在（sweep 兜底删除/残留行复用）才走守卫协议：
+%%      fn_v5_metadata_delete_guard（迁移 190）要求 DELETE 前
+%%      lifecycle_state='delete_intent' 且 tombstone 在位，故在单事务内
+%%      intent 转移 → tombstone 补齐 → 删除 →（提交后）tombstone 收敛为
+%%      done（只能按 job guard 的合法 UPDATE 路径收敛，同
+%%      w601_w4_queueproto:settle_active 先例）。DELETE 被治理行 FK 钉住
+%%      （23503）时整体回滚、行保持原状供 seed 的 INSERT ON CONFLICT 复用；
+%%      其余失败回滚后照抛。
 purge_attachment_metadata(Conn, Key) ->
+    Probe = "SELECT 1 FROM attachment WHERE path=$1 LIMIT 1",
+    case e(Conn, Probe, [Key]) of
+        {ok, _, []} ->
+            ok;
+        {ok, _, [_]} ->
+            case eb_queue_holds_key(Conn, Key) of
+                true -> ok;
+                false -> purge_attachment_metadata_guarded(Conn, Key)
+            end;
+        {error, Reason} ->
+            erlang:error({w601_w3_sql_failed, Reason, Probe})
+    end.
+
+%% EB 域删除 job 在位时 ordinary 守卫协议不可用：迁移 237
+%% fn_v5_cross_queue_guard 规定同一物理 key 只允许一个域持有删除 job
+%%（23510 "v5 cross-domain physical deletion conflict"），而队列行是
+%% 永久墓碑（迁移 179，无合法 DELETE），故 aod tombstone 对该 key 永不可
+%% 合法写入——兜底 no-op，attachment 行留步级一次性库（同 WAR 残留语义）。
+eb_queue_holds_key(Conn, Key) ->
+    Sql =
+        "SELECT 1 FROM enterprise_asset_delete_queue"
+        " WHERE coalesce(storage_physical_key, object_key)=$1 LIMIT 1",
+    case e(Conn, Sql, [Key]) of
+        {ok, _, []} -> false;
+        {ok, _, [_]} -> true;
+        {error, Reason} -> erlang:error({w601_w3_sql_failed, Reason, Sql})
+    end.
+
+purge_attachment_metadata_guarded(Conn, Key) ->
     q(Conn, "BEGIN", []),
     [Intent, Tombstone, Deleted] =
         [epgsql:equery(Conn, Sql, [Key]) || Sql <- purge_sqls()],
@@ -467,8 +503,11 @@ purge_attachment_metadata(Conn, Key) ->
             ),
             q(Conn, "COMMIT", []),
             ok;
-        {_, _, {error, #error{code = <<"23503">>}}} ->
-            %% 治理行 FK 钉住的不可销毁残留：回滚保持原状，复用既有行
+        {_, _, {error, #error{code = Code}}} when Code =:= <<"23001">>; Code =:= <<"23503">> ->
+            %% 治理行 FK 钉住的不可销毁残留：回滚保持原状，复用既有行。
+            %% RESTRICT 违反报 23001（如迁移 168 WAR "ON DELETE RESTRICT"，
+            %% ri_ReportViolation 走 restrict_violation），NO ACTION 报 23503，
+            %% 两者同为 FK 拒绝，语义相同必须同容。
             q(Conn, "ROLLBACK", []),
             ok;
         {_, _, _} ->
