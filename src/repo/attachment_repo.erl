@@ -60,7 +60,11 @@
 -export([authorize_group_access/2]).
 -export([authorize_channel_scope/2, channel_scope_access_sql/0]).
 -export([authorize_group_scope/2]).
--export([lock_upload_organization_tx/3, authorize_upload_scope_tx/4]).
+-export([
+    lock_upload_organization_tx/3,
+    authorize_upload_scope_tx/4,
+    authorize_upload_scope_tx_retryable/4
+]).
 %% 真库回归直接执行生产 SQL，避免用 mock/字符串包含断言替代 PostgreSQL 语义。
 -export([group_access_sql/1]).
 
@@ -714,6 +718,14 @@ lock_upload_member_tx(Conn, OrgId, Uid) ->
 %% 在 Workspace 锁后锁工作区成员，阻止移除的最终 UPDATE 越过当前附件提交。
 -spec authorize_upload_scope_tx(any(), group | channel, integer(), integer()) -> boolean().
 authorize_upload_scope_tx(Conn, Kind, Id, Uid) ->
+    authorize_upload_scope_tx(Conn, Kind, Id, Uid, false).
+
+-spec authorize_upload_scope_tx_retryable(any(), group | channel, integer(), integer()) ->
+    boolean() | {error, term()}.
+authorize_upload_scope_tx_retryable(Conn, Kind, Id, Uid) ->
+    authorize_upload_scope_tx(Conn, Kind, Id, Uid, true).
+
+authorize_upload_scope_tx(Conn, Kind, Id, Uid, Retryable) ->
     Table = scope_table(Kind),
     LockSql =
         <<"SELECT wm.status FROM public.workspace_member wm ",
@@ -723,8 +735,10 @@ authorize_upload_scope_tx(Conn, Kind, Id, Uid) ->
         {ok, _} ->
             case elib_pg:query(Conn, scope_access_sql(Kind), [Id, Uid]) of
                 {ok, [#{<<"allowed">> := true}]} -> true;
+                {error, #error{code = <<"40P01">>} = Reason} when Retryable -> {error, Reason};
                 _ -> false
             end;
+        {error, #error{code = <<"40P01">>} = Reason} when Retryable -> {error, Reason};
         _ ->
             false
     end.

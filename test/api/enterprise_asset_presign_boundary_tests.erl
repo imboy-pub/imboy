@@ -12,6 +12,9 @@ postcommit_test_() ->
         fun fresh_registration/0,
         fun governance_null_times/0,
         fun governance_pg_times/0,
+        fun purge_uses_retry_transaction/0,
+        fun hold_keeps_ordinary_transaction/0,
+        fun purge_digest_conflict_preserves_response/0,
         fun transaction_failure/0,
         fun confirmed_no_capability/0,
         fun terminal_conflict/0,
@@ -166,6 +169,37 @@ governance_pg_times() ->
     ?assertEqual(<<"2026-10-23T01:02:03.250Z">>, maps:get(<<"purged_at">>, Result)),
     ?assertEqual(<<"2026-10-23T01:02:03.250Z">>, maps:get(<<"extended_until">>, Result)),
     ?assertEqual(<<"2026-10-24T00:00:00Z">>, maps:get(<<"retention_until">>, Result)).
+
+purge_uses_retry_transaction() ->
+    meck:expect(elib_param, post, fun(_) -> #{<<"op">> => <<"purge">>} end),
+    meck:expect(elib_pg, with_deadlock_retry_tx, fun(F) -> F(fixture_conn) end),
+    _ = governance_response(null, null, null),
+    ?assertEqual(1, meck:num_calls(elib_pg, with_deadlock_retry_tx, '_')),
+    ?assertEqual(0, meck:num_calls(elib_pg, with_tx, '_')),
+    ?assertEqual(1, meck:num_calls(enterprise_internal_boundary, enforce, '_')),
+    ?assertEqual(1, meck:num_calls(enterprise_internal_idempotency, must_complete_tx, '_')).
+
+hold_keeps_ordinary_transaction() ->
+    meck:expect(elib_param, post, fun(_) -> #{<<"op">> => <<"hold">>} end),
+    _ = governance_response(null, null, null),
+    ?assertEqual(1, meck:num_calls(elib_pg, with_tx, '_')),
+    ?assertEqual(0, meck:num_calls(elib_pg, with_deadlock_retry_tx, '_')).
+
+purge_digest_conflict_preserves_response() ->
+    meck:expect(elib_param, post, fun(_) -> #{<<"op">> => <<"purge">>} end),
+    meck:expect(elib_pg, with_deadlock_retry_tx, fun(F) -> F(fixture_conn) end),
+    meck:expect(enterprise_internal_idempotency, begin_tx, fun(_, _, _, _, _) ->
+        {error, digest_conflict}
+    end),
+    meck:expect(enterprise_internal_idempotency, conflict_code, fun() ->
+        <<"idempotency_conflict">>
+    end),
+    {ok, R, _} = enterprise_asset_handler:init(
+        #{}, #{action => governance, enterprise_internal => #{}}
+    ),
+    assert_error(409, <<"idempotency_conflict">>, R),
+    ?assertEqual(0, meck:num_calls(enterprise_asset_retention_logic, governance_tx, '_')),
+    ?assertEqual(0, meck:num_calls(enterprise_internal_idempotency, must_complete_tx, '_')).
 
 governance_response(PurgedAt, ExtendedUntil, RetentionUntil) ->
     inserted(),

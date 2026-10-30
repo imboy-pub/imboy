@@ -1,5 +1,8 @@
 .DS_Store
 *.beam
+/c_src/attachment_disk_lock_nif.o
+/c_src/env.mk
+/priv/attachment_disk_lock_nif.so
 _rel
 *.log
 _build

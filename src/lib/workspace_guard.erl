@@ -39,12 +39,14 @@
 -export([archived_error_code/0]).
 -export([ensure_writable/1]).
 -export([ensure_writable_tx/2]).
+-export([ensure_writable_tx_retryable/2]).
 -export([abort_on_error/1]).
 -export([is_archived_error/1]).
 -export([write_tx/2]).
 -export([write_tx_or_skip/2]).
 
 -include("error_code.hrl").
+-include_lib("epgsql/include/epgsql.hrl").
 -include("log.hrl").
 
 %% ===================================================================
@@ -113,7 +115,17 @@ ensure_writable(Target) ->
 -spec ensure_writable_tx(any(), {atom(), integer() | binary()}) ->
     ok | {error, {integer(), binary()}}.
 ensure_writable_tx(Conn, Target) ->
-    try workspace_resolver:resolve_workspace(Target) of
+    ensure_writable_tx(Conn, Target, false).
+
+%% Attachment transactions can retry a deadlock only after the transaction
+%% boundary confirms rollback. Other callers retain the original 503 contract.
+-spec ensure_writable_tx_retryable(any(), {atom(), integer() | binary()}) ->
+    ok | {error, term()}.
+ensure_writable_tx_retryable(Conn, Target) ->
+    ensure_writable_tx(Conn, Target, true).
+
+ensure_writable_tx(Conn, Target, Retryable) ->
+    try resolve_tx(Conn, Target, Retryable) of
         {ok, WsId} ->
             Sql = <<"SELECT status FROM workspace WHERE id = $1 FOR UPDATE">>,
             case elib_pg:query(Conn, Sql, [WsId]) of
@@ -121,6 +133,8 @@ ensure_writable_tx(Conn, Target) ->
                     archived_error();
                 {ok, _} ->
                     ok;
+                {error, #error{code = <<"40P01">>} = Reason} when Retryable ->
+                    {error, Reason};
                 {error, Reason} ->
                     %% 行锁查询失败按 fail-closed 拒绝（不静默放行）
                     _ = ?ERROR_LOG([workspace_guard_lock_failed, WsId, Reason]),
@@ -136,12 +150,17 @@ ensure_writable_tx(Conn, Target) ->
         %% 无 catch-all 臂：同 ensure_writable/1（resolver 形态由 spec 穷尽 +
         %% dialyzer 基线门守卫，DB 异常走 catch 承接）
     catch
+        error:{resolver_db_error, #error{code = <<"40P01">>} = Reason} when Retryable ->
+            {error, Reason};
         error:{resolver_db_error, Reason} ->
             %% 归属解析 DB 异常同样 fail-closed（abort_tx 由 with_tx 归一
             %% 回 {error, {503, Msg}}，保持事务版不抛异常的契约）
             _ = ?ERROR_LOG([workspace_guard_resolve_failed, Target, Reason]),
             {error, {503, <<"工作区状态检查失败，请稍后重试"/utf8>>}}
     end.
+
+resolve_tx(Conn, Target, true) -> workspace_resolver:resolve_workspace_tx(Conn, Target);
+resolve_tx(_Conn, Target, false) -> workspace_resolver:resolve_workspace(Target).
 
 %% @doc with_tx 内零样板：ok 原样返回；{error, Reason} → throw({abort_tx, Reason})
 %% （elib_pg:with_tx 会 ROLLBACK 并归一返回 {error, Reason}）

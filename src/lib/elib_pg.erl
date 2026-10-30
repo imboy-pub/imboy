@@ -29,6 +29,7 @@
     abort/1,
     with_tx/1,
     with_tx/2,
+    with_deadlock_retry_tx/1,
     after_commit/3,
 
     execute/2,
@@ -93,8 +94,12 @@ with_conn(Fun) ->
 when
     R :: term().
 with_conn(Fun, Timeout) ->
-    % Driver = config_ds:env(sql_driver),
-    with_conn(pgsql, Fun, 3, Timeout).
+    %% A retryable transaction must use its supplied connection. An implicit
+    %% checkout here could commit separately and survive an outer rollback.
+    case get(elib_pg_retry_tx_active) of
+        true -> throw({abort_tx, nested_connection_unsupported});
+        _ -> with_conn(pgsql, Fun, 3, Timeout)
+    end.
 
 %% Fun    : (Conn -> Result)
 %% Retries: 最大重试次数
@@ -238,6 +243,12 @@ with_tx(F, Opts0) ->
     non_neg_integer()
 ) -> R | {error, term()} | {rollback, term()} when R :: term().
 with_tx(F, Opts0, RetriesLeft, Delay) ->
+    case get(elib_pg_retry_tx_active) of
+        true -> {error, nested_transaction_unsupported};
+        _ -> with_tx_unchecked(F, Opts0, RetriesLeft, Delay)
+    end.
+
+with_tx_unchecked(F, Opts0, RetriesLeft, Delay) ->
     Driver = config_ds:env(sql_driver),
     Tag = make_ref(),
     case
@@ -250,6 +261,114 @@ with_tx(F, Opts0, RetriesLeft, Delay) ->
     of
         {Tag, Result, Actions} -> run_commit_actions(Result, Actions);
         Other -> Other
+    end.
+
+%% Retry only an actual PostgreSQL deadlock after this connection confirms
+%% ROLLBACK. COMMIT failure is deliberately never eligible for a retry.
+-spec with_deadlock_retry_tx(fun((pid()) -> term())) -> term().
+with_deadlock_retry_tx(F) ->
+    case get(elib_pg_commit_actions) of
+        undefined -> deadlock_retry_tx(F, 2);
+        _ -> {error, nested_transaction_unsupported}
+    end.
+
+deadlock_retry_tx(F, Retries) ->
+    Driver = config_ds:env(sql_driver),
+    case pooler:take_member(Driver, ?DEFAULT_TIMEOUT) of
+        error_no_members ->
+            {error, no_connection};
+        Conn when is_pid(Conn) ->
+            {Disposition, Outcome} =
+                try
+                    retry_tx_attempt(Conn, F)
+                catch
+                    Class:BoundaryReason ->
+                        {discard,
+                            {finished,
+                                {error, {transaction_boundary_exception, Class, BoundaryReason}}}}
+                end,
+            case Disposition of
+                reusable -> pooler:return_member(Driver, Conn);
+                discard -> pooler:return_member(Driver, Conn, fail)
+            end,
+            case Outcome of
+                {retry_deadlock, _} when Retries > 0 -> deadlock_retry_tx(F, Retries - 1);
+                {retry_deadlock, Reason} -> {error, Reason};
+                {committed, Result, Actions} -> run_commit_actions(Result, Actions);
+                {finished, Result} -> Result
+            end
+    end.
+
+retry_tx_attempt(Conn, F) ->
+    Previous = get(elib_pg_commit_actions),
+    PreviousRetry = get(elib_pg_retry_tx_active),
+    put(elib_pg_commit_actions, {Conn, #{}}),
+    put(elib_pg_retry_tx_active, true),
+    try
+        case retry_tx_command(Conn, <<"BEGIN">>, 'begin') of
+            ok -> retry_tx_body(Conn, F);
+            {error, Reason} -> {discard, {finished, {error, {begin_not_confirmed, Reason}}}}
+        end
+    after
+        case Previous of
+            undefined -> erase(elib_pg_commit_actions);
+            _ -> put(elib_pg_commit_actions, Previous)
+        end,
+        case PreviousRetry of
+            undefined -> erase(elib_pg_retry_tx_active);
+            _ -> put(elib_pg_retry_tx_active, PreviousRetry)
+        end
+    end.
+
+retry_tx_body(Conn, F) ->
+    Body =
+        try F(Conn) of
+            {error, Reason} -> {abort, {error, Reason}, Reason};
+            {rollback, Reason} -> {abort, {rollback, Reason}, Reason};
+            Result -> {success, Result}
+        catch
+            throw:{abort_tx, Reason} -> {abort, {error, Reason}, Reason};
+            throw:{rollback, Reason} -> {abort, {rollback, Reason}, Reason};
+            Class:Reason -> {abort, {error, {db_exception, Class, Reason}}, undefined}
+        end,
+    case Body of
+        {abort, Failure, AbortReason} -> retry_tx_rollback(Conn, Failure, AbortReason);
+        {success, Value} -> retry_tx_commit(Conn, Value)
+    end.
+
+retry_tx_rollback(Conn, Failure, Reason) ->
+    case retry_tx_command(Conn, <<"ROLLBACK">>, rollback) of
+        ok ->
+            case Reason of
+                #error{code = <<"40P01">>} -> {reusable, {retry_deadlock, Reason}};
+                _ -> {reusable, {finished, Failure}}
+            end;
+        {error, RollbackError} ->
+            {discard, {finished, {error, {rollback_not_confirmed, Failure, RollbackError}}}}
+    end.
+
+retry_tx_commit(Conn, Value) ->
+    case retry_tx_command(Conn, <<"COMMIT">>, commit) of
+        ok ->
+            {Conn, Actions} = get(elib_pg_commit_actions),
+            {reusable, {committed, Value, Actions}};
+        {error, Reason} ->
+            {discard, {finished, {error, {commit_not_confirmed, Reason}}}}
+    end.
+
+retry_tx_command(Conn, Sql, Expected) ->
+    try
+        case epgsql:squery(Conn, Sql) of
+            {ok, [], []} ->
+                case epgsql:get_cmd_status(Conn) of
+                    {ok, Expected} -> ok;
+                    Other -> {error, {unexpected_status, Other}}
+                end;
+            Other ->
+                {error, {unexpected_response, Other}}
+        end
+    catch
+        Class:Reason -> {error, {Class, Reason}}
     end.
 
 %% @doc 登记当前连接事务的提交后动作；同 Id 去重，动作须返回 ok。
@@ -352,25 +471,29 @@ execute(Sql, Params) ->
 execute(Conn, Sql, Params) ->
     ?DEBUG_LOG("sql: ~s", [Sql]),
     %% 关键改动：消除 badmatch 异常传播。任何驱动异常/异常形态都收敛为 {error, Reason}。
-    try
-        case epgsql:parse(Conn, Sql) of
-            {ok, Stmt} ->
-                case epgsql:execute_batch(Conn, [{Stmt, Params}]) of
-                    [Res2] ->
-                        Res2;
-                    [] ->
-                        {error, {epgsql, empty_batch_result}};
-                    Other2 ->
-                        {error, {epgsql, unexpected_batch_result, Other2}}
-                end;
-            {error, Reason} ->
-                {error, Reason}
-        end
-    catch
-        Class:CatchReason:Stacktrace ->
-            _ = ?ERROR_LOG("DB execute failed: ~p:~p stack=~p~n", [Class, CatchReason, Stacktrace]),
-            {error, {Class, CatchReason, Stacktrace}}
-    end.
+    Result =
+        try
+            case epgsql:parse(Conn, Sql) of
+                {ok, Stmt} ->
+                    case epgsql:execute_batch(Conn, [{Stmt, Params}]) of
+                        [Res2] ->
+                            Res2;
+                        [] ->
+                            {error, {epgsql, empty_batch_result}};
+                        Other2 ->
+                            {error, {epgsql, unexpected_batch_result, Other2}}
+                    end;
+                {error, Reason} ->
+                    {error, Reason}
+            end
+        catch
+            Class:CatchReason:Stacktrace ->
+                _ = ?ERROR_LOG("DB execute failed: ~p:~p stack=~p~n", [
+                    Class, CatchReason, Stacktrace
+                ]),
+                {error, {Class, CatchReason, Stacktrace}}
+        end,
+    retry_deadlock_result(Conn, Result).
 % {ok, 1} | {ok, 1, {ReturningField}} | {ok,1,[{5}]}
 % 没有 RETURNING 子句：返回 {ok, 1} （二元组）
 % 有 RETURNING 子句：返回 {ok, 1, Result} （三元组），其中 Result 可能是 {Id} 或 [{Id}]
@@ -418,18 +541,30 @@ query(Sql, Params) ->
     {ok, [map()]} | {error, term()}.
 query(C, Sql, Params) ->
     % ?INFO_LOG(["query ", iolist_to_binary(Sql), Params, epgsql:equery(C, iolist_to_binary(Sql), Params)]),
-    case epgsql:equery(C, iolist_to_binary(Sql), Params) of
-        {ok, Cols, Rows} ->
-            {ok, rows_to_maps(Cols, Rows)};
-        {ok, _Count, Cols, Rows} ->
-            {ok, rows_to_maps(Cols, Rows)};
-        {ok, _Count} ->
-            %% 非 SELECT 语句经 query 执行属调用方误用：equery 返回影响行数。
-            %% 按公开契约 {ok, [map()]} 收敛为空结果集，不向调用方泄漏计数形态。
-            {ok, []};
-        Error ->
-            Error
-    end.
+    Result =
+        case epgsql:equery(C, iolist_to_binary(Sql), Params) of
+            {ok, Cols, Rows} ->
+                {ok, rows_to_maps(Cols, Rows)};
+            {ok, _Count, Cols, Rows} ->
+                {ok, rows_to_maps(Cols, Rows)};
+            {ok, _Count} ->
+                %% 非 SELECT 语句经 query 执行属调用方误用：equery 返回影响行数。
+                %% 按公开契约 {ok, [map()]} 收敛为空结果集，不向调用方泄漏计数形态。
+                {ok, []};
+            Error ->
+                Error
+        end,
+    retry_deadlock_result(C, Result).
+
+%% Only the active retry transaction's own connection can abort the entire
+%% transaction on a PostgreSQL deadlock. Other modes retain their old result.
+retry_deadlock_result(Conn, {error, #error{code = <<"40P01">>} = Reason} = Result) ->
+    case {get(elib_pg_retry_tx_active), get(elib_pg_commit_actions)} of
+        {true, {Conn, _}} -> throw({abort_tx, Reason});
+        _ -> Result
+    end;
+retry_deadlock_result(_, Result) ->
+    Result.
 
 %%--------------------------------------------------------------------
 %% @doc

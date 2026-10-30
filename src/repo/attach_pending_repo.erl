@@ -505,7 +505,7 @@ release_pending_intent(Conn, Savepoint, Result) ->
 
 -spec intent_pending_delete(binary(), binary(), binary()) -> ok | {error, term()}.
 intent_pending_delete(ObjectKey, Mode, Reason) ->
-    elib_pg:with_tx(fun(Conn) ->
+    elib_pg:with_deadlock_retry_tx(fun(Conn) ->
         intent_pending_delete_tx(Conn, ObjectKey, Mode, Reason)
     end).
 

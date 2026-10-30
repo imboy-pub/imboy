@@ -95,13 +95,20 @@ governance(<<"POST">>, Req0, State) ->
     of
         {ok, Digest} ->
             with_idempotency(
-                Req0, Ctx, <<"enterprise_asset_governance">>, IdemKey, Digest, fun(Conn) ->
+                Req0,
+                Ctx,
+                <<"enterprise_asset_governance">>,
+                IdemKey,
+                Digest,
+                fun(Conn) ->
                     with_boundary(Conn, Ctx, <<"INT-22">>, undefined, fun() ->
                         enterprise_asset_retention_logic:governance_tx(
                             Conn, Ctx, params_to_input(Params)
                         )
                     end)
-                end
+                end,
+                undefined,
+                governance_tx_mode(Params)
             );
         {error, non_canonical} ->
             enterprise_internal_error:reply(Req0, <<"invalid_request">>)
@@ -131,8 +138,14 @@ with_idempotency(Req0, Ctx, ResourceType, IdemKey, Digest, LogicFun) ->
 %% 成功提交（含幂等重放）后执行，签名类能力只在这里产生。DB 异常/回滚
 %% 永远到不了签名分支（503 无能力）。
 with_idempotency(Req0, Ctx, ResourceType, IdemKey, Digest, LogicFun, PostCommitFun) ->
+    with_idempotency(Req0, Ctx, ResourceType, IdemKey, Digest, LogicFun, PostCommitFun, ordinary).
+
+governance_tx_mode(#{<<"op">> := <<"purge">>}) -> deadlock_retry;
+governance_tx_mode(_) -> ordinary.
+
+with_idempotency(Req0, Ctx, ResourceType, IdemKey, Digest, LogicFun, PostCommitFun, Mode) ->
     TxResult =
-        elib_pg:with_tx(fun(Conn) ->
+        run_governance_transaction(Mode, fun(Conn) ->
             case
                 enterprise_internal_idempotency:begin_tx(Conn, Ctx, ResourceType, IdemKey, Digest)
             of
@@ -181,6 +194,9 @@ with_idempotency(Req0, Ctx, ResourceType, IdemKey, Digest, LogicFun, PostCommitF
             ?ERROR_LOG("enterprise_asset_handler idempotency error: ~p~n", [Reason]),
             enterprise_internal_error:reply(Req0, <<"internal_error">>)
     end.
+
+run_governance_transaction(deadlock_retry, Fun) -> elib_pg:with_deadlock_retry_tx(Fun);
+run_governance_transaction(ordinary, Fun) -> elib_pg:with_tx(Fun).
 
 post_commit_reply(Req0, undefined, Body, Kind) ->
     case Kind of
