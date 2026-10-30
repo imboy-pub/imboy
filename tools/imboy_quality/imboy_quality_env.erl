@@ -72,6 +72,18 @@
     {message_result_pg_tests, "msgres"},
     {attachment_pending_location_pg_tests, "pendloc"}
 ]).
+%% textguard 三根：isolated_pg_fixture 车道的官方资源合同
+%% （test/support/textguard_suite_fixture:setup 与 scripts/ci/native-eunit-run.sh:135-140
+%% 同口径）。TG16 前缀由 inttest_marker_db:provision 在测试内自建一次性库
+%% （integration=full 迁移、business/shadow=empty），车道只注入服务器连接与只读资源；
+%% TEXTGUARD_TEST_BINARY 为 pinned Rust 源构建产物（textguard_bin 定位，缺失 fail-closed）。
+%% 每根独立 TG19_EVIDENCE 目录：case-results.jsonl 为 append 写（textguard_business_tests:
+%% receipt/4、integration/shadow 同名收据），目录独立使收据不交错。
+-define(TEXTGUARD_ROOTS, [
+    textguard_business_tests,
+    textguard_integration_tests,
+    textguard_shadow_tests
+]).
 %% 顺序依赖根：独占车道 fresh VM + 本根专属克隆（imboy_quality_full ?EXCL 同列）。
 %% msg_safe：共享 UID 对 920001/920002 的姊妹根直插残留抬高 observed_head（2026-10-30
 %% probe2 seq 审计实证），独占克隆库消除跨根残留，详见 ?EXCL 注释。
@@ -124,6 +136,7 @@ prepare(Repo, Ctrl, Workers) ->
         Aac = imboy_quality_resources:ensure_aac_fixture(Ctrl),
         Attv5 = attv5(Repo, Base, Ctrl, Garage, Clone, SrcLiteral, Pid, Args),
         Iso = isolated(Repo, Base, Clone, SrcLiteral, Pid),
+        Textguard = textguard(Repo, Ctrl, Args, Pid),
         ExclusiveEnv = maps:merge(
             maps:merge(
                 #{
@@ -148,7 +161,10 @@ prepare(Repo, Ctrl, Workers) ->
                  || {R, N} <- Ag31
                 ])
             ),
-            maps:merge(maps:get(env, Hird), maps:get(env, Attv5))
+            maps:merge(
+                maps:merge(maps:get(env, Hird), maps:get(env, Attv5)),
+                maps:get(env, Textguard)
+            )
         ),
         #{
             env => maps:get(env, Talk) ++ talk_garage_env(Ctrl, Garage, Aac, Pid),
@@ -175,7 +191,8 @@ prepare(Repo, Ctrl, Workers) ->
                     <<"garage">> => garage_report(Garage),
                     <<"aac_fixture">> => aac_report(Aac),
                     <<"attv5">> => maps:get(report, Attv5),
-                    <<"isolated">> => maps:get(report, Iso)
+                    <<"isolated">> => maps:get(report, Iso),
+                    <<"textguard">> => maps:get(report, Textguard)
                 }
             },
             pg_args => Args,
@@ -191,7 +208,7 @@ prepare(Repo, Ctrl, Workers) ->
             ctrl => Ctrl,
             runtime_dirs => [
                 filename:join([Ctrl, "runtime", D, Pid])
-             || D <- ["attv5", "hird"]
+             || D <- ["attv5", "hird", "textguard"]
             ]
         }
     after
@@ -363,15 +380,17 @@ attv5_db_name(Short, Pid) -> "attv5_" ++ ?ATTV5_SLOT ++ "_" ++ Short ++ "_" ++ P
 %% 字面量中，无需重复维护映射。
 v5_scan_prefixes(Repo) ->
     {ok, Re} = re:compile("<<\"(V5_INTTEST[A-Z0-9_]*)\">>"),
-    lists:usort(lists:append([
-        case re:run(Bin, Re, [{capture, [1], binary}, global]) of
-            %% global 捕获形态：每个匹配是 [CapturedBin]（列表），元组模式会静默全跳
-            {match, Ms} -> [P || [P] <- Ms];
-            nomatch -> []
-        end
-     || Path <- filelib:wildcard(filename:join(Repo, "test/**/*.erl")),
-        {ok, Bin} <- [file:read_file(Path)]
-    ])).
+    lists:usort(
+        lists:append([
+            case re:run(Bin, Re, [{capture, [1], binary}, global]) of
+                %% global 捕获形态：每个匹配是 [CapturedBin]（列表），元组模式会静默全跳
+                {match, Ms} -> [P || [P] <- Ms];
+                nomatch -> []
+            end
+         || Path <- filelib:wildcard(filename:join(Repo, "test/**/*.erl")),
+            {ok, Bin} <- [file:read_file(Path)]
+        ])
+    ).
 
 %% V5 合约绑定 env：全局 V5_SLOT/V5_RUN_DIR + 每个前缀的 <PREFIX>_DB（receipt 库）
 %% 与 PG 连接覆盖（inttest_marker_db:resolve_server 对 User/Pass 缺失直接 fail）。
@@ -401,6 +420,99 @@ v5_val(V) when is_binary(V) -> unicode:characters_to_list(V);
 v5_val(V) when is_list(V) -> V.
 
 iso_db_name(Root, Pid) -> "imboy_quality_iso_" ++ atom_to_list(Root) ++ "_" ++ Pid.
+
+%% ---- textguard 资源（?TEXTGUARD_ROOTS，独占车道按根 env overlay） ----
+
+%% 与 scripts/ci/native-eunit-run.sh prepare_database 的 textguard 段同口径：
+%% 每根独立 0700 evidence 目录 + 0600 随机密钥文件 + schema 子集 + migration 路径 +
+%% 服务器连接（TG16 前缀由 inttest_marker_db:provision 自建一次性库，车道不预建）。
+textguard(Repo, Ctrl, Args, Pid) ->
+    case imboy_quality_resources:textguard_bin(Repo) of
+        {ok, Bin} ->
+            PgEnv = pg_env(Args),
+            Root = filename:join([Ctrl, "runtime", "textguard", Pid]),
+            ok = filelib:ensure_dir(filename:join(Root, "x")),
+            ok = file:change_mode(Root, 8#700),
+            Env = maps:from_list([
+                begin
+                    Dir = filename:join(Root, atom_to_list(R)),
+                    ok = filelib:ensure_dir(filename:join(Dir, "x")),
+                    ok = file:change_mode(Dir, 8#700),
+                    {R, [
+                        {"TG16_PG_HOST", maps:get(host, PgEnv)},
+                        {"TG16_PG_PORT", maps:get(port, PgEnv)},
+                        {"TG16_PG_USER", maps:get(user, PgEnv)},
+                        {"TG16_PG_PASSWORD", maps:get(pass, PgEnv)},
+                        {"TG19_EVIDENCE", Dir},
+                        {"TEXTGUARD_T2S_TABLE_ID", "test-t2s-v1"},
+                        {"TEXTGUARD_TEST_BINARY", Bin}
+                        | textguard_files(Repo, Dir)
+                    ]}
+                end
+             || R <- ?TEXTGUARD_ROOTS
+            ]),
+            #{
+                env => Env,
+                drop_dbs => [],
+                report => #{
+                    <<"binary">> => list_to_binary(Bin),
+                    <<"evidence_root">> => list_to_binary(Root)
+                }
+            };
+        {error, Reason} ->
+            %% fail-closed：不注入 env，三根 setup 以 textguard_missing_env /
+            %% textguard_binary_unavailable 硬失败（与 HIRD 缺编译器同口径）。
+            #{env => #{}, drop_dbs => [], report => #{<<"error">> => fmt(Reason)}}
+    end.
+
+%% native 门 importlib 调用 scripts/verify_textguard_business.py:schema_subset 生成
+%% business-schema-subset.sql（从 priv/migrations 抽取生产 DDL）；这里保持单一事实源。
+textguard_files(Repo, Dir) ->
+    Migrations = filename:join(Repo, "priv/migrations"),
+    Up = filename:join(Migrations, "00000197_textguard_review_metadata.up.sql"),
+    Down = filename:join(Migrations, "00000197_textguard_review_metadata.down.sql"),
+    true = filelib:is_regular(Up) orelse erlang:error({textguard_migration_missing, Up}),
+    true = filelib:is_regular(Down) orelse erlang:error({textguard_migration_missing, Down}),
+    Schema = filename:join(Dir, "business-schema-subset.sql"),
+    ok = textguard_schema_subset(Repo, Dir),
+    true = filelib:is_regular(Schema) orelse erlang:error(textguard_schema_subset_failed),
+    Secrets = [
+        begin
+            Path = filename:join(Dir, Base),
+            ok = file:write_file(Path, secret_token()),
+            ok = file:change_mode(Path, 8#600),
+            {Name, Path}
+        end
+     || {Name, Base} <- [
+            {"TEXTGUARD_CHECK_SECRET_FILE", "check.secret"},
+            {"TEXTGUARD_PUBLISH_SECRET_FILE", "publish.secret"}
+        ]
+    ],
+    [
+        {"TG20_SCHEMA_FILE", Schema},
+        {"TG20_MIGRATION_UP", Up},
+        {"TG20_MIGRATION_DOWN", Down}
+        | Secrets
+    ].
+
+textguard_schema_subset(Repo, Dir) ->
+    Code =
+        "import importlib.util,pathlib,sys; repo,out=sys.argv[1],sys.argv[2];"
+        " spec=importlib.util.spec_from_file_location('tgb_schema',"
+        "repo+'/scripts/verify_textguard_business.py');"
+        " m=importlib.util.module_from_spec(spec); spec.loader.exec_module(m);"
+        " m.schema_subset(pathlib.Path(repo),pathlib.Path(out),lambda p,v:None)",
+    true =
+        string:str(Repo, "\"") =:= 0 andalso string:str(Dir, "\"") =:= 0,
+    Output = os:cmd("python3 -c \"" ++ Code ++ "\" " ++ Repo ++ " " ++ Dir ++ " 2>&1"),
+    case filelib:is_regular(filename:join(Dir, "business-schema-subset.sql")) of
+        true -> ok;
+        false -> erlang:error({textguard_schema_subset_failed, string:trim(Output, both)})
+    end.
+
+secret_token() ->
+    %% secrets.token_urlsafe(48) 等价：64 字符 base64url 无填充。
+    base64:encode(crypto:strong_rand_bytes(48), #{mode => urlsafe, padding => false}).
 
 %% 本轮将创建的全部库名（自测用：每个都必须 ≤ 63 字符，PG 会静默截断更长的标识符）。
 planned_db_names(Workers, Pid) ->
@@ -461,7 +573,7 @@ reap_orphans(C, Args, Repo, Ctrl) ->
     [reap_garage(Ctrl, P) || P <- GarageDirs],
     ScratchDirs = [
         filename:join([Ctrl, "runtime", D, P])
-     || D <- ["attv5", "hird"], P <- dead_pid_dirs(filename:join([Ctrl, "runtime", D]))
+     || D <- ["attv5", "hird", "textguard"], P <- dead_pid_dirs(filename:join([Ctrl, "runtime", D]))
     ],
     [_ = file:del_dir_r(Dir) || Dir <- ScratchDirs],
     Configs = [
