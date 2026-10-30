@@ -83,7 +83,7 @@ cleanup() {
   [ -n "$WRITER_JOB" ] && kill "$WRITER_JOB" 2>/dev/null
   docker exec -i -e PGPASSWORD="$PASS" "$PG_CONTAINER" psql -X -U imboy_user -d postgres \
     -q -c "DROP DATABASE IF EXISTS \"$CYCLE_DB\"" >/dev/null 2>&1
-  rm -f "$PROBE_TMP/out.txt" "$PROBE_TMP/err.txt" "$PROBE_TMP/writer.log"
+  rm -f "$PROBE_TMP/out.txt" "$PROBE_TMP/err.txt" "$PROBE_TMP/writer.log" "$PROBE_TMP/seed-err.txt"
   rmdir "$PROBE_TMP" 2>/dev/null
 }
 PASS="$(cat "$RUN_DIR/resources/pg-attv5.password")" || exit 20
@@ -91,7 +91,7 @@ export PGPASSWORD="$PASS"
 trap cleanup EXIT
 PSQL() { docker exec -i -e PGPASSWORD="$PASS" "$PG_CONTAINER" psql -X -U imboy_user -d "${PROBE_DB:-$DB}" -v ON_ERROR_STOP=1 "$@"; }
 ONDB() { local db="$1"; shift; docker exec -i -e PGPASSWORD="$PASS" "$PG_CONTAINER" psql -X -U imboy_user -d "$db" -v ON_ERROR_STOP=1 "$@"; }
-PSQL_RAW() { docker exec -i -e PGPASSWORD="$PASS" "$PG_CONTAINER" psql -X -U imboy_user -d "${PROBE_DB:-$DB}" -v ON_ERROR_STOP=1 "$@"; }
+PSQL_RAW() { docker exec -i -e PGPASSWORD="$PASS" "$PG_CONTAINER" psql -X -U imboy_user -d "${PROBE_DB:-$DB}" -v ON_ERROR_STOP=1 -v VERBOSITY=verbose "$@"; }
 : > "$OUT"
 
 ok=0; bad=0
@@ -115,7 +115,7 @@ probe() { # name expected(fail=unverified / err:<fragment> / else must-equal-val
       if [ $rc -ne 0 ] && grep -qF -- "$frag" "$PROBE_TMP/err.txt"; then
         ok=$((ok+1)); echo "{\"name\":\"$name\",\"pass\":true,\"driver\":\"${V5_PROBE_DRIVER:-}\"}" >> "$OUT"
       else
-        bad=$((bad+1)); echo "{\"name\":\"$name\",\"pass\":false,\"detail\":\"want error containing [$frag] rc=$rc got $(sanitize "$(tail -2 "$PROBE_TMP/err.txt" | tr '\n' ' ')")\",\"driver\":\"${V5_PROBE_DRIVER:-}\"}" >> "$OUT"
+        bad=$((bad+1)); echo "{\"name\":\"$name\",\"pass\":false,\"detail\":\"want error containing [$frag] rc=$rc got $(sanitize "$(grep -m1 '^ERROR' "$PROBE_TMP/err.txt" | tr '\n' ' ')")\",\"driver\":\"${V5_PROBE_DRIVER:-}\"}" >> "$OUT"
       fi
       return ;;
   esac
@@ -193,9 +193,9 @@ COMMIT;
 SQL
 }
 seed_enterprise_extras() {
-PSQL -q > /dev/null 2>&1 <<SQL
+PSQL -q > /dev/null 2>"$PROBE_TMP/seed-err.txt" <<SQL
 INSERT INTO enterprise_asset(id,organization_id,workspace_id,object_key,object_hash,status,storage_driver,storage_namespace,storage_container,storage_locator_sha256)
-SELECT 910000102,98000101,97000101,'v5e/sub1','v5hash','pending_confirm',101
+SELECT 910000102,98000101,97000101,'v5e/sub1','v5hash','pending_confirm','$ST_DRV','$ST_NS','$ST_CT','$ST_LOC'
 WHERE NOT EXISTS (SELECT 1 FROM enterprise_asset WHERE id=910000102);
 INSERT INTO enterprise_asset(id,organization_id,workspace_id,object_key,object_hash,status,storage_driver,storage_namespace,storage_container,storage_locator_sha256)
 SELECT 910000103,98000101,97000101,'v5e/auth','v5hash','active','$ST_DRV','$ST_NS','$ST_CT','$ST_LOC'
@@ -207,14 +207,18 @@ FROM (VALUES (910000104,'v5e/liveref'),(910000105,'v5e/hold'),(910000106,'v5e/re
              (910000110,'v5e/sub3'),(910000111,'v5e/sub4'),(910000112,'v5e/legacy'))
      AS v(id,key)
 WHERE NOT EXISTS (SELECT 1 FROM enterprise_asset e WHERE e.id=v.id);
+-- widget fixture must carry the same per-run id the registration probes use
+-- (EA_WIDGET=910000999+EA_OFF): a fixed 910000999 row is never addressed by
+-- fn_v5_register_eb and the denial probe would hit P0002 instead of the frozen
+-- registration-snapshot rejection.
 INSERT INTO enterprise_asset(id,organization_id,workspace_id,object_key,object_hash,status)
-SELECT 910000999,98000101,97000101,'v5e/widget','v5hash','pending_confirm'
-WHERE NOT EXISTS (SELECT 1 FROM enterprise_asset WHERE id=910000999);
+SELECT $EA_WIDGET,98000101,97000101,'v5e/widget-$RUN_TAG','v5hash','pending_confirm'
+WHERE NOT EXISTS (SELECT 1 FROM enterprise_asset WHERE id=$EA_WIDGET);
 SQL
   # per-run EB fixtures (disjoint 910xxx band): never touched by the EB
   # registration guard's immutable registration columns, so no reset UPDATE
   # is needed before fn_v5_register_eb.
-  PSQL -q > /dev/null 2>&1 <<SQL
+  PSQL -q > /dev/null 2>>"$PROBE_TMP/seed-err.txt" <<SQL
 INSERT INTO enterprise_asset(id,organization_id,workspace_id,object_key,object_hash,status)
 SELECT $EA_REG,98000101,97000101,'v5e/reg1-$RUN_TAG','v5hash','pending_confirm'
 WHERE NOT EXISTS (SELECT 1 FROM enterprise_asset WHERE id=$EA_REG);
@@ -303,11 +307,26 @@ seed_enterprise_extras
 probe base_read_compat "4|3" "SELECT (SELECT count(*) FROM information_schema.columns WHERE table_name='attach_pending' AND column_name IN ('client_upload_id','upload_registration','upload_content','session_state'))::text||'|'||(SELECT count(*) FROM information_schema.columns WHERE table_name='attachment_object_deletion' AND column_name IN ('job_state','lease_token','storage_driver'))::text"
 probe pk_fk_attempts_preserved "t" "SELECT convalidated FROM pg_constraint WHERE conname='attachment_object_deletion_pkey'"
 probe pk_fk_attempts_preserved2 "0" "SELECT count(*) FROM pg_constraint WHERE conname IN ('workspace_attachment_retention_attachment_id_fkey','enterprise_asset_delete_queue_org_ws_asset_pkey') AND NOT convalidated"
-probe ddl_rollback "fail" "DO \$\$ BEGIN ALTER TABLE attach_pending ADD COLUMN v5_probe_col int; RAISE EXCEPTION 'injected ddl fault'; END \$\$"
+probe ddl_rollback "err:P0001: injected ddl fault" "DO \$\$ BEGIN ALTER TABLE attach_pending ADD COLUMN v5_probe_col int; RAISE EXCEPTION 'injected ddl fault'; END \$\$"
 probe ddl_rollback2 "0" "SELECT count(*) FROM information_schema.columns WHERE table_name='attach_pending' AND column_name='v5_probe_col'"
-probe partial_location_null_rejected "fail" "INSERT INTO attachment(id,path,scope,creator_user_id,storage_driver,storage_namespace) VALUES (900000102,'v5p/x1','private',101,'garage','ns1')"
-probe recovery_id_unique_owner_conflict "fail" "INSERT INTO attach_pending(object_key,bucket,scope,creator_user_id,client_upload_id) VALUES ('v5p/u2','b','private',202,'11111111-1111-1111-1111-111111111111'); INSERT INTO attach_pending(object_key,bucket,scope,creator_user_id,client_upload_id) VALUES ('v5p/u3','b','private',303,'11111111-1111-1111-1111-111111111111')"
-probe renew_expiry_monotonic_and_deadline_fixed "fail" "INSERT INTO attach_pending(object_key,bucket,scope,creator_user_id,client_upload_id,upload_registration,session_deadline,upload_expires_at) VALUES ('v5p/u4','b','private',202,'22222222-2222-2222-2222-222222222222','$REG',now()+interval '1 hour',now()+interval '2 hours')"
+probe partial_location_null_rejected "err:23514: new row for relation \"attachment\" violates check constraint \"ck_v5_attachment_location\"" "INSERT INTO attachment(id,path,scope,creator_user_id,storage_driver,storage_namespace) VALUES (900000102,'v5p/x1','private',101,'garage','ns1')"
+probe recovery_id_unique_owner_conflict "ok:owner-conflict-atomic" "DO \$rc\$
+DECLARE v_state text; v_msg text; BEGIN
+  BEGIN
+    INSERT INTO attach_pending(object_key,bucket,scope,creator_user_id,client_upload_id) VALUES ('v5p/u2-$RUN_TAG','b','private',202,'11111111-1111-4111-8111-$(printf '%012d' $((10#$RUN_TAG % 10**12)))');
+    INSERT INTO attach_pending(object_key,bucket,scope,creator_user_id,client_upload_id) VALUES ('v5p/u3-$RUN_TAG','b','private',303,'11111111-1111-4111-8111-$(printf '%012d' $((10#$RUN_TAG % 10**12)))');
+    RAISE EXCEPTION 'duplicate recovery id unexpectedly accepted' USING ERRCODE = 'P0001';
+  EXCEPTION WHEN OTHERS THEN
+    GET STACKED DIAGNOSTICS v_state = RETURNED_SQLSTATE, v_msg = MESSAGE_TEXT;
+    IF v_state <> '23505' OR v_msg NOT LIKE '%uq_v5_pending_client_upload%' THEN
+      RAISE EXCEPTION 'unexpected rejection: state=% msg=%', v_state, v_msg USING ERRCODE = 'P0001';
+    END IF;
+  END;
+END \$rc\$;
+SELECT CASE WHEN (SELECT count(*) FROM attach_pending WHERE client_upload_id='11111111-1111-4111-8111-$(printf '%012d' $((10#$RUN_TAG % 10**12)))' AND creator_user_id=303)=0
+        AND (SELECT count(*) FROM attach_pending WHERE object_key IN ('v5p/u2-$RUN_TAG','v5p/u3-$RUN_TAG'))=0
+       THEN 'ok:owner-conflict-atomic' ELSE 'state-drifted' END"
+probe renew_expiry_monotonic_and_deadline_fixed "err:23514: new row for relation \"attach_pending\" violates check constraint \"ck_v5_pending_times\"" "INSERT INTO attach_pending(object_key,bucket,scope,creator_user_id,client_upload_id,upload_registration,session_deadline,upload_expires_at) VALUES ('v5p/u4','b','private',202,'22222222-2222-2222-2222-222222222222','$REG',now()+interval '1 hour',now()+interval '2 hours')"
 
 # --- real: protected legacy NULL session.  A legacy writer creates a row with
 # no V5 identity/location; every V5 entry point must refuse to attach a
@@ -358,17 +377,31 @@ fi
 # WAIT; this does not claim a strict 5-second write freeze of the table.
 LOAD_STATE="$(sqlval "SELECT count(*) FROM attachment_object_deletion")"
 if [ "$LOAD_STATE" = "0" ]; then
-  PSQL -q >>"$PROBE_TMP/out.txt" 2>>"$PROBE_TMP/err.txt" <<'SQL'
+  # The cross-queue guard takes an advisory transaction lock per row, so a
+  # single-transaction million-row load exceeds max_locks_per_transaction
+  # (out of shared memory). Load in 5000-row autocommitted batches - locks
+  # release per commit - and skip rows that already landed on a partial run.
+  bulk_count() { sqlval "SELECT count(*) FROM attachment_object_deletion WHERE path LIKE 'v5p/bulk/%'"; }
+  batch=0
+  while [ "$(bulk_count)" -lt 1000000 ] && [ "$batch" -lt 220 ]; do
+    bstart=$((batch * 5000 + 1)); bend=$(((batch + 1) * 5000))
+    PSQL -q >>"$PROBE_TMP/out.txt" 2>>"$PROBE_TMP/err.txt" <<SQL
 INSERT INTO attachment_object_deletion(path,bucket)
-SELECT 'v5p/bulk/'||lpad(g::text,7,'0'), 'b' FROM generate_series(1,1000000) g;
+SELECT 'v5p/bulk/'||lpad(g::text,7,'0'), 'b' FROM generate_series($bstart,$bend) g
+WHERE NOT EXISTS (SELECT 1 FROM attachment_object_deletion
+                  WHERE path = 'v5p/bulk/'||lpad(g::text,7,'0'));
 SQL
+    batch=$((batch + 1))
+  done
 fi
 LOAD_ROWS="$(sqlval "SELECT count(*) FROM attachment_object_deletion WHERE path LIKE 'v5p/bulk/%'")"
 : > "$PROBE_TMP/writer.log"
 (
   i=0
   while [ $i -lt 90 ]; do
-    res="$(printf "UPDATE attachment_object_deletion SET retry_generation=retry_generation WHERE path='v5p/bulk/0000001'" | PSQL -tAq 2>/dev/null | tail -1)"
+    # No -q here: quiet mode suppresses the UPDATE n command tag that the
+    # writer.log evidence chain (writes/minrows) is built from.
+    res="$(printf "UPDATE attachment_object_deletion SET retry_generation=retry_generation WHERE path='v5p/bulk/0000001'" | PSQL -tA 2>/dev/null | tail -1)"
     case "$res" in
       "UPDATE "*) printf '%s %s\n' "$(now_ms)" "${res#UPDATE }" >> "$PROBE_TMP/writer.log" ;;
     esac
@@ -479,10 +512,26 @@ SELECT CASE WHEN (SELECT count(*) FROM attachment WHERE path='v5p/oldwriter' AND
 # and the tombstone copy persists UUID+snapshot into the queue row.  A bare
 # rc=0 no longer counts: every step's value is asserted.
 required_functions_probe() {
-  local n=0 fails="" out
-  step() { # name expected sql
-    out="$(printf '%s\n' "$3" | PSQL -tAq 2>>"$PROBE_TMP/err.txt")" || { fails="$fails $1(rc)"; return; }
-    if [ "$out" = "$2" ]; then n=$((n+1)); else fails="$fails $1(=$out)"; fi
+  local n=0 fails="" got
+  # Two independent snapshots per step: the action statement runs first and
+  # commits (statement autocommit), then the verification statement runs in a
+  # separate psql invocation under a fresh snapshot that sees every row the
+  # volatile definer function wrote.  A single SELECT combining the call with
+  # the persisted-count subqueries evaluates those counts against the
+  # statement-start snapshot and never sees the function's own INSERT/UPDATE.
+  # verify_sql empty => single-statement mode (xact-scoped checks such as the
+  # advisory lock must share the transaction with the call).  A non-empty
+  # action output is joined with the verification output using [sep]; DO-block
+  # actions produce no output, so the verification alone is compared.  Every
+  # expected literal is unchanged from the single-statement revision.
+  step() { # name expected action_sql verify_sql [sep]
+    local aout=""
+    aout="$(printf '%s\n' "$3" | PSQL -tAq 2>>"$PROBE_TMP/err.txt")" || { fails="$fails $1(rc)"; return; }
+    if [ -z "${4:-}" ]; then got="$aout"; else
+      got="$(printf '%s\n' "$4" | PSQL -tAq 2>>"$PROBE_TMP/err.txt")" || { fails="$fails $1(rc)"; return; }
+      [ -z "$aout" ] || got="$aout${5-}$got"
+    fi
+    if [ "$got" = "$2" ]; then n=$((n+1)); else fails="$fails $1(=$got)"; fi
   }
   # Per-invocation fixtures: guards DBs persist across manual runs and V5
   # tombstone/session guards make DELETE cleanup impossible, so a reused
@@ -519,107 +568,121 @@ SELECT $REAP_ASSET,98000101,97000101,'$REAPKEY','v5hash','active'
 WHERE NOT EXISTS (SELECT 1 FROM enterprise_asset WHERE id=$REAP_ASSET);
 SQL
   # 1 lock_identity: the advisory xact lock is really taken by this backend.
+  # Single-statement mode: the pg_locks check is xact-scoped and must share
+  # the transaction with the lock call, so it is not split.
   step lock_identity "locked" "SET ROLE v5_app_runtime;
 WITH l AS (SELECT fn_v5_lock_identity('$ST_DRV','$ST_NS','$ST_CT','v5p/fn-lock-$RUN_TAG'))
 SELECT CASE WHEN EXISTS (SELECT 1 FROM pg_locks WHERE locktype='advisory' AND pid=pg_backend_pid())
-       THEN 'locked' ELSE 'no-lock' END FROM l"
+       THEN 'locked' ELSE 'no-lock' END FROM l" ""
   # 2 register_pending: returns the frozen identity session and persists it.
+  # Action commits the call and its returned identity is the action output;
+  # the persisted row is counted under a fresh snapshot (the same-statement
+  # count never sees the function's own INSERT).  Expected literal unchanged.
   step register_pending "$RKEY:registered:$RUUID|1" "SET ROLE v5_app_runtime;
-SELECT f.out_object_key||':'||f.out_session_state||':'||f.out_client_upload_id::text||'|'||
-  (SELECT count(*)::text FROM attach_pending p WHERE p.object_key=f.out_object_key
+SELECT f.out_object_key||':'||f.out_session_state||':'||f.out_client_upload_id::text
+FROM fn_v5_register_pending('$RKEY','b','private',101,'$RUUID','$REG'::jsonb,
+  now()+interval '2 hours',now()+interval '1 hour','$ST_DRV','$ST_NS','$ST_CT','$ST_LOC') f" "SELECT (SELECT count(*)::text FROM attach_pending p WHERE p.object_key='$RKEY'
      AND p.session_state='registered' AND p.storage_driver='$ST_DRV'
      AND p.storage_namespace='$ST_NS' AND p.storage_container='$ST_CT'
-     AND p.storage_locator_sha256='$ST_LOC')
-FROM fn_v5_register_pending('$RKEY','b','private',101,'$RUUID','$REG'::jsonb,
-  now()+interval '2 hours',now()+interval '1 hour','$ST_DRV','$ST_NS','$ST_CT','$ST_LOC') f"
+     AND p.storage_locator_sha256='$ST_LOC')" "|"
   # 3 register_eb: returns registered + persists the snapshot on the asset row.
   step register_eb "registered:$REBUUID|1" "SET ROLE v5_app_runtime;
-SELECT f.out_session_state||':'||f.out_client_upload_id::text||'|'||
-  (SELECT count(*)::text FROM enterprise_asset a WHERE a.id=$RASSET
-     AND a.client_upload_id=f.out_client_upload_id AND a.upload_registration IS NOT NULL)
+SELECT f.out_session_state||':'||f.out_client_upload_id::text
 FROM fn_v5_register_eb(98000101,97000101,$RASSET,'v5e/sub1-$RUN_TAG','$REBUUID','$REG'::jsonb,'user',
-  now()+interval '2 hours',now()+interval '1 hour') f"
-  # 4 pin_pending_content: TRUE exactly once + receipt persisted.
+  now()+interval '2 hours',now()+interval '1 hour') f" "SELECT (SELECT count(*)::text FROM enterprise_asset a WHERE a.id=$RASSET
+     AND a.client_upload_id='$REBUUID'::uuid AND a.upload_registration IS NOT NULL)" "|"
+  # 4 pin_pending_content: TRUE exactly once + receipt persisted.  (boolean
+  # ::text renders 't' but the frozen expected literal demands 'true', so the
+  # identical boolean result is projected through CASE.)
   step pin_pending_content "true|1" "SET ROLE v5_app_runtime;
-SELECT fn_v5_pin_pending_content('$RKEY','$CONTENT'::jsonb)::text||'|'||
-  (SELECT count(*)::text FROM attach_pending WHERE object_key='$RKEY' AND upload_content='$CONTENT'::jsonb)"
+SELECT CASE WHEN fn_v5_pin_pending_content('$RKEY','$CONTENT'::jsonb) THEN 'true' ELSE 'false' END" "SELECT (SELECT count(*)::text FROM attach_pending WHERE object_key='$RKEY' AND upload_content='$CONTENT'::jsonb)" "|"
   # 5 confirm_pending: returns the linked attachment id + confirmed session.
   step confirm_pending "$RID1|confirmed:$RID1" "SET ROLE v5_app_runtime;
-SELECT fn_v5_confirm_pending('$RKEY',$RID1)::text||'|'||
-  (SELECT session_state||':'||coalesce(confirmed_attachment_id::text,'NULL') FROM attach_pending WHERE object_key='$RKEY')"
+SELECT fn_v5_confirm_pending('$RKEY',$RID1)::text" "SELECT (SELECT session_state||':'||coalesce(confirmed_attachment_id::text,'NULL') FROM attach_pending WHERE object_key='$RKEY')" "|"
   # 6 intent_ordinary_delete: delete_intent + ready job with frozen identity + audit.
   step intent_ordinary_delete "delete_intent:1:1" "SET ROLE v5_app_runtime;
-WITH i AS (SELECT fn_v5_intent_ordinary_delete('$RINTENT','probe'))
-SELECT (SELECT lifecycle_state FROM attachment WHERE id=$RID2)||':'||
+DO \$fn_intent\$
+BEGIN
+  PERFORM fn_v5_intent_ordinary_delete('$RINTENT','probe');
+END
+\$fn_intent\$;" "SELECT (SELECT lifecycle_state FROM attachment WHERE id=$RID2)||':'||
   (SELECT count(*)::text FROM attachment_object_deletion WHERE path='$RINTENT' AND job_state='ready'
      AND storage_driver='$ST_DRV' AND storage_locator_sha256='$ST_LOC')||':'||
-  (SELECT count(*)::text FROM attachment_lifecycle_v5_audit WHERE object_key='$RINTENT' AND action='delete_intent')
-FROM i"
+  (SELECT count(*)::text FROM attachment_lifecycle_v5_audit WHERE object_key='$RINTENT' AND action='delete_intent')"
   # 7 intent_eb_delete: delete_intent + ready enterprise job with identity.
   step intent_eb_delete "delete_intent:1" "SET ROLE v5_app_runtime;
-WITH i AS (SELECT fn_v5_intent_eb_delete(98000101,97000101,$RASSET2,'probe'))
-SELECT (SELECT lifecycle_state FROM enterprise_asset WHERE id=$RASSET2)||':'||
+DO \$fn_intent_eb\$
+BEGIN
+  PERFORM fn_v5_intent_eb_delete(98000101,97000101,$RASSET2,'probe');
+END
+\$fn_intent_eb\$;" "SELECT (SELECT lifecycle_state FROM enterprise_asset WHERE id=$RASSET2)||':'||
   (SELECT count(*)::text FROM enterprise_asset_delete_queue WHERE asset_id=$RASSET2 AND job_state='ready'
-     AND storage_driver='$ST_DRV' AND storage_locator_sha256='$ST_LOC')
-FROM i"
+     AND storage_driver='$ST_DRV' AND storage_locator_sha256='$ST_LOC')"
   # 8 claim_ordinary: leases exactly one real job under the worker token.
+  # The lease count the function returned is the action output; the persisted
+  # lease (the function stamps the same worker token on the row it returns) is
+  # verified under a fresh snapshot keyed on that token.
   step claim_ordinary "1:1" "SET ROLE v5_worker;
-WITH c AS (SELECT * FROM fn_v5_claim_ordinary('$RTOKEN'::uuid))
-SELECT (SELECT count(*)::text FROM c)||':'||
-  (SELECT count(*)::text FROM attachment_object_deletion q JOIN c ON q.path=c.out_path
-     WHERE q.job_state='leased' AND q.lease_token='$RTOKEN'::uuid AND q.attempts>=1
-       AND q.storage_driver='$ST_DRV')"
+SELECT count(*)::text FROM fn_v5_claim_ordinary('$RTOKEN'::uuid)" "SELECT (SELECT count(*)::text FROM attachment_object_deletion q
+     WHERE q.lease_token='$RTOKEN'::uuid AND q.job_state='leased' AND q.attempts>=1
+       AND q.storage_driver='$ST_DRV')" ":"
   # 9 ack_ordinary: 'done' + completed_at persisted on the leased job.
+  # ack clears lease_token, so the leased path is captured before the action;
+  # the ack return value is the action output and the persisted done row is
+  # verified under a fresh snapshot keyed on that path.
+  local ACK_PATH
+  ACK_PATH="$(sqlval "SELECT path FROM attachment_object_deletion WHERE lease_token='$RTOKEN'::uuid AND job_state='leased' LIMIT 1")"
   step ack_ordinary "done:1" "SET ROLE v5_worker;
-WITH j AS (SELECT path FROM attachment_object_deletion WHERE lease_token='$RTOKEN'::uuid AND job_state='leased' LIMIT 1),
-     a AS (SELECT fn_v5_ack_ordinary(j.path,'$RTOKEN'::uuid,true) AS r FROM j)
-SELECT (SELECT r FROM a)||':'||
-  (SELECT count(*)::text FROM attachment_object_deletion q JOIN j ON q.path=j.path
-     WHERE q.job_state='done' AND q.completed_at IS NOT NULL AND q.lease_token IS NULL)"
+SELECT fn_v5_ack_ordinary('$ACK_PATH','$RTOKEN'::uuid,true)" "SELECT (SELECT count(*)::text FROM attachment_object_deletion WHERE path='$ACK_PATH'
+   AND job_state='done' AND completed_at IS NOT NULL AND lease_token IS NULL)" ":"
   # reaper fixture: a really expired lease under a dedicated path.
   PSQL -q > /dev/null 2>&1 -c "INSERT INTO attachment_object_deletion(path,bucket,storage_driver,storage_namespace,storage_container,storage_locator_sha256,job_state,lease_token,lease_until,next_retry_at,attempts) SELECT '$RREAP','b','$ST_DRV','$ST_NS','$ST_CT','$ST_LOC','leased','$RRETOKEN'::uuid,now()-interval '1 second',now(),0 WHERE NOT EXISTS (SELECT 1 FROM attachment_object_deletion WHERE path='$RREAP')"
-  # 10 reaper_ordinary: returns >=1 and flips the expired lease.
+  # 10 reaper_ordinary: returns >=1 and flips the expired lease.  (integer
+  # comparison ::text renders 't' but the frozen expected literal demands
+  # 'true', so the identical >=1 condition is projected through CASE.)
   step reaper_ordinary "true:retry_wait:lease_expired" "SET ROLE v5_worker;
-SELECT (fn_v5_reaper_ordinary(5)>=1)::text||':'||
-  (SELECT job_state||':'||coalesce(last_error_code,'-') FROM attachment_object_deletion WHERE path='$RREAP')"
+SELECT CASE WHEN fn_v5_reaper_ordinary(5)>=1 THEN 'true' ELSE 'false' END" "SELECT job_state||':'||coalesce(last_error_code,'-') FROM attachment_object_deletion WHERE path='$RREAP'" ":"
   # 11 claim_eb: leases exactly one real enterprise job under the token.
   step claim_eb "1:1" "SET ROLE v5_worker;
-WITH c AS (SELECT * FROM fn_v5_claim_eb('$RETOKEN'::uuid))
-SELECT (SELECT count(*)::text FROM c)||':'||
-  (SELECT count(*)::text FROM enterprise_asset_delete_queue q
-     JOIN c ON (q.organization_id,q.workspace_id,q.asset_id)=(c.out_organization_id,c.out_workspace_id,c.out_asset_id)
-     WHERE q.job_state='leased' AND q.lease_token='$RETOKEN'::uuid AND q.attempts>=1
-       AND q.storage_driver='$ST_DRV')"
+SELECT count(*)::text FROM fn_v5_claim_eb('$RETOKEN'::uuid)" "SELECT (SELECT count(*)::text FROM enterprise_asset_delete_queue q
+     WHERE q.lease_token='$RETOKEN'::uuid AND q.job_state='leased' AND q.attempts>=1
+       AND q.storage_driver='$ST_DRV')" ":"
   # 12 ack_eb: 'done' + completed_at persisted on the leased enterprise job.
+  # ack clears lease_token, so the leased (org,ws,asset) is captured first;
+  # the ack return value is the action output and the persisted done row is
+  # verified under a fresh snapshot keyed on that identity triple.
+  local ACK_EB ACK_EB_ORG ACK_EB_WS ACK_EB_ASSET
+  ACK_EB="$(sqlval "SELECT organization_id||'|'||workspace_id||'|'||asset_id FROM enterprise_asset_delete_queue WHERE lease_token='$RETOKEN'::uuid AND job_state='leased' LIMIT 1")"
+  IFS='|' read -r ACK_EB_ORG ACK_EB_WS ACK_EB_ASSET <<< "$ACK_EB"
   step ack_eb "done:1" "SET ROLE v5_worker;
-WITH j AS (SELECT organization_id,workspace_id,asset_id FROM enterprise_asset_delete_queue WHERE lease_token='$RETOKEN'::uuid AND job_state='leased' LIMIT 1),
-     a AS (SELECT fn_v5_ack_eb(j.organization_id,j.workspace_id,j.asset_id,'$RETOKEN'::uuid,true) AS r FROM j)
-SELECT (SELECT r FROM a)||':'||
-  (SELECT count(*)::text FROM enterprise_asset_delete_queue q
-     JOIN j ON (q.organization_id,q.workspace_id,q.asset_id)=(j.organization_id,j.workspace_id,j.asset_id)
-     WHERE q.job_state='done' AND q.completed_at IS NOT NULL AND q.lease_token IS NULL)"
+SELECT fn_v5_ack_eb($ACK_EB_ORG,$ACK_EB_WS,$ACK_EB_ASSET,'$RETOKEN'::uuid,true)" "SELECT (SELECT count(*)::text FROM enterprise_asset_delete_queue
+   WHERE (organization_id,workspace_id,asset_id)=($ACK_EB_ORG,$ACK_EB_WS,$ACK_EB_ASSET)
+     AND job_state='done' AND completed_at IS NOT NULL AND lease_token IS NULL)" ":"
   # reaper fixture (enterprise): a really expired lease on a dedicated asset.
   PSQL -q > /dev/null 2>&1 -c "INSERT INTO enterprise_asset_delete_queue(organization_id,workspace_id,asset_id,object_key,storage_driver,storage_namespace,storage_container,storage_locator_sha256,job_state,lease_token,lease_until,next_retry_at,attempts) SELECT 98000101,97000101,$REAP_ASSET,'$REAPKEY','$ST_DRV','$ST_NS','$ST_CT','$ST_LOC','leased','$RERETOKEN'::uuid,now()-interval '1 second',now(),0 WHERE NOT EXISTS (SELECT 1 FROM enterprise_asset_delete_queue WHERE asset_id=$REAP_ASSET)"
   # 13 reaper_eb: returns >=1 and flips the expired enterprise lease.
   step reaper_eb "true:retry_wait:lease_expired" "SET ROLE v5_worker;
-SELECT (fn_v5_reaper_eb(5)>=1)::text||':'||
-  (SELECT job_state||':'||coalesce(last_error_code,'-') FROM enterprise_asset_delete_queue WHERE asset_id=$REAP_ASSET)"
+SELECT CASE WHEN fn_v5_reaper_eb(5)>=1 THEN 'true' ELSE 'false' END" "SELECT job_state||':'||coalesce(last_error_code,'-') FROM enterprise_asset_delete_queue WHERE asset_id=$REAP_ASSET" ":"
   # proof fixture: fresh blocked job (attempts=0, legacy_location_unverified).
   PSQL -q > /dev/null 2>&1 -c "INSERT INTO attachment_object_deletion(path,bucket) SELECT '$RPROOF','b' WHERE NOT EXISTS (SELECT 1 FROM attachment_object_deletion WHERE path='$RPROOF')"
   # 14 proof_activate_ordinary: fills NULL location once and flips to ready.
   step proof_activate_ordinary "ready:-:$ST_DRV:1" "SET ROLE v5_proof;
-WITH p AS (SELECT fn_v5_proof_activate_ordinary('$RPROOF','$ST_DRV','$ST_NS','$ST_CT','$ST_LOC'))
-SELECT (SELECT job_state||':'||coalesce(last_error_code,'-')||':'||coalesce(storage_driver,'-') FROM attachment_object_deletion WHERE path='$RPROOF')||':'||
-  (SELECT count(*)::text FROM attachment_lifecycle_v5_audit WHERE object_key='$RPROOF' AND action='proof_activate')
-FROM p"
+DO \$fn_proof\$
+BEGIN
+  PERFORM fn_v5_proof_activate_ordinary('$RPROOF','$ST_DRV','$ST_NS','$ST_CT','$ST_LOC');
+END
+\$fn_proof\$;" "SELECT (SELECT job_state||':'||coalesce(last_error_code,'-')||':'||coalesce(storage_driver,'-') FROM attachment_object_deletion WHERE path='$RPROOF')||':'||
+  (SELECT count(*)::text FROM attachment_lifecycle_v5_audit WHERE object_key='$RPROOF' AND action='proof_activate')"
   # tombstone-copy fixture: register the dedicated asset, then copy.
   PSQL -q > /dev/null 2>>"$PROBE_TMP/err.txt" -c "SET ROLE v5_app_runtime; SELECT fn_v5_register_eb(98000101,97000101,$COPY_ASSET,'$COPYKEY','$RCOPYUUID','$REG'::jsonb,'user',now()+interval '2 hours',now()+interval '1 hour')" || fails="$fails register_eb_copy_fixture"
   # 15 copy_eb_recovery_tombstone: UUID+registration persisted into the queue row.
   step copy_eb_recovery_tombstone "$RCOPYUUID:true" "SET ROLE v5_app_runtime;
-WITH c AS (SELECT fn_v5_copy_eb_recovery_tombstone(98000101,97000101,$COPY_ASSET))
-SELECT (SELECT coalesce(client_upload_id::text,'-') FROM enterprise_asset_delete_queue WHERE asset_id=$COPY_ASSET)||':'||
-  (SELECT (upload_registration IS NOT NULL)::text FROM enterprise_asset_delete_queue WHERE asset_id=$COPY_ASSET)
-FROM c"
+DO \$fn_copy\$
+BEGIN
+  PERFORM fn_v5_copy_eb_recovery_tombstone(98000101,97000101,$COPY_ASSET);
+END
+\$fn_copy\$;" "SELECT (SELECT coalesce(client_upload_id::text,'-') FROM enterprise_asset_delete_queue WHERE asset_id=$COPY_ASSET)||':'||
+  (SELECT (upload_registration IS NOT NULL)::text FROM enterprise_asset_delete_queue WHERE asset_id=$COPY_ASSET)"
   # count DISTINCT proname with SECURITY DEFINER enforced: migration 00000193
   # legitimately overloads fn_v5_claim_eb with a second scoped signature owned
   # by the same role; prosecdef=true is now part of the frozen inventory.
@@ -662,7 +725,20 @@ SQL
 }
 confirmed_gc_link_probe
 
-if [ "$PHASE" = "guards" ]; then probe confirmed_to_registered "fail" "UPDATE attach_pending SET session_state='rejected' WHERE object_key='v5p/seed/1' AND session_state='registered'; UPDATE attach_pending SET session_state='registered' WHERE object_key='v5p/seed/1'"; else probe confirmed_to_registered "fail" "INSERT INTO attach_pending(object_key,bucket,scope,creator_user_id,session_state) VALUES ('v5p/c2r','b','private',101,'bogus_state')"; fi
+if [ "$PHASE" = "guards" ]; then probe confirmed_to_registered "ok:session-state-frozen" "DO \$c2r\$
+DECLARE v_state text; v_msg text; BEGIN
+  BEGIN
+    UPDATE attach_pending SET session_state='rejected' WHERE object_key='v5p/seed/1' AND session_state='registered';
+    UPDATE attach_pending SET session_state='registered' WHERE object_key='v5p/seed/1';
+    RAISE EXCEPTION 'session downgrade unexpectedly accepted' USING ERRCODE = 'P0001';
+  EXCEPTION WHEN OTHERS THEN
+    GET STACKED DIAGNOSTICS v_state = RETURNED_SQLSTATE, v_msg = MESSAGE_TEXT;
+    IF v_state <> '23510' OR v_msg NOT LIKE '%v5 illegal session transition%' THEN
+      RAISE EXCEPTION 'unexpected rejection: state=% msg=%', v_state, v_msg USING ERRCODE = 'P0001';
+    END IF;
+  END;
+END \$c2r\$;
+SELECT CASE WHEN session_state='registered' THEN 'ok:session-state-frozen' ELSE 'state-drifted' END FROM attach_pending WHERE object_key='v5p/seed/1'"; else probe confirmed_to_registered "err:23510: v5 new sessions start registered" "INSERT INTO attach_pending(object_key,bucket,scope,creator_user_id,session_state) VALUES ('v5p/c2r','b','private',101,'bogus_state')"; fi
 
 # --- real: keyset<=500 backfill with committed cursor, injected interruption
 # and resume on the same evidence version.  Run against enterprise_asset because
@@ -689,7 +765,7 @@ SQL
                 storage_locator_sha256='$(printf 'd%.0s' {1..64})'
             FROM batch b WHERE p.object_key=b.object_key RETURNING p.object_key),
   cur AS (UPDATE v5_probe_bf_cursor
-             SET last_key=(SELECT max(object_key) FROM upd),
+             SET last_key=coalesce((SELECT max(object_key) FROM upd), last_key),
                  committed_rows=committed_rows+(SELECT count(*) FROM upd)
            WHERE id=1 AND version=1 RETURNING committed_rows)
   SELECT committed_rows FROM cur"
@@ -704,7 +780,7 @@ SQL
                   storage_locator_sha256='$(printf 'd%.0s' {1..64})'
               FROM batch b WHERE p.object_key=b.object_key RETURNING p.object_key),
     cur AS (UPDATE v5_probe_bf_cursor
-               SET last_key=(SELECT max(object_key) FROM upd),
+               SET last_key=coalesce((SELECT max(object_key) FROM upd), last_key),
                    committed_rows=committed_rows+(SELECT count(*) FROM upd)
              WHERE id=1 AND version=1 RETURNING committed_rows)
     SELECT committed_rows INTO n FROM cur;
@@ -851,16 +927,121 @@ seed
 PSQL -q > /dev/null 2>&1 <<SQL
 UPDATE attachment SET storage_driver='$ST_DRV',storage_namespace='ns1',storage_container='c1',storage_locator_sha256='$ST_LOC',gc_verified=true WHERE id=900000101;
 SQL
-probe mutate_driver "fail" "UPDATE attachment SET storage_namespace='ns2' WHERE id=900000101"
-probe mutate_namespace "fail" "UPDATE attachment SET storage_namespace='ns9' WHERE id=900000101"
-probe mutate_container "fail" "UPDATE attachment SET storage_container='c9' WHERE id=900000101"
-probe mutate_key "fail" "UPDATE attachment SET path='v5p/mutated' WHERE id=900000101"
-probe mutate_owner "fail" "UPDATE attachment SET creator_user_id=202 WHERE id=900000101"
-probe mutate_scope "fail" "UPDATE attachment SET scope='public' WHERE id=900000101"
-probe mutate_cipher "fail" "UPDATE attachment SET cipher='x'||coalesce(cipher,'') WHERE id=900000101"
-probe mutate_locator_digest "fail" "UPDATE attachment SET storage_locator_sha256='$(printf 'c%.0s' {1..64})' WHERE id=900000101"
-probe forge_gc_verified "fail" "UPDATE attachment SET gc_verified=true WHERE id=900000101 AND storage_driver IS NULL"
-probe tombstone_recreation "fail" "INSERT INTO attach_pending(object_key,bucket,scope,creator_user_id) VALUES ('v5p/deleted-key','b','private',101); UPDATE attach_pending SET object_key='v5p/gone' WHERE object_key='v5p/deleted-key'"
+ATT_SNAP="$(sqlval "SELECT md5((to_jsonb(a) - 'updated_at')::text) FROM attachment a WHERE id=900000101")"
+# The identity/location mutation family: each refusal must carry the exact
+# SQLSTATE and message of its guard, and the WHOLE persisted row (to_jsonb,
+# volatile updated_at excluded) must stay byte-identical to ATT_SNAP.
+probe mutate_driver "ok:row-frozen" "DO \$m\$
+DECLARE v_state text; v_msg text; BEGIN
+  BEGIN UPDATE attachment SET storage_namespace='ns2' WHERE id=900000101;
+  EXCEPTION WHEN OTHERS THEN GET STACKED DIAGNOSTICS v_state = RETURNED_SQLSTATE, v_msg = MESSAGE_TEXT;
+    IF v_state <> '23510' OR v_msg NOT LIKE '%v5 attachment location immutable after fill%' THEN
+      RAISE EXCEPTION 'unexpected rejection: state=% msg=%', v_state, v_msg USING ERRCODE = 'P0001';
+    END IF;
+    RETURN;
+  END;
+  RAISE EXCEPTION 'identity mutation unexpectedly accepted' USING ERRCODE = 'P0001';
+END \$m\$;
+SELECT CASE WHEN md5((to_jsonb(a) - 'updated_at')::text) = '$ATT_SNAP' THEN 'ok:row-frozen' ELSE 'state-drifted' END FROM attachment a WHERE id=900000101"
+probe mutate_namespace "ok:row-frozen" "DO \$m\$
+DECLARE v_state text; v_msg text; BEGIN
+  BEGIN UPDATE attachment SET storage_namespace='ns9' WHERE id=900000101;
+  EXCEPTION WHEN OTHERS THEN GET STACKED DIAGNOSTICS v_state = RETURNED_SQLSTATE, v_msg = MESSAGE_TEXT;
+    IF v_state <> '23510' OR v_msg NOT LIKE '%v5 attachment location immutable after fill%' THEN
+      RAISE EXCEPTION 'unexpected rejection: state=% msg=%', v_state, v_msg USING ERRCODE = 'P0001';
+    END IF;
+    RETURN;
+  END;
+  RAISE EXCEPTION 'identity mutation unexpectedly accepted' USING ERRCODE = 'P0001';
+END \$m\$;
+SELECT CASE WHEN md5((to_jsonb(a) - 'updated_at')::text) = '$ATT_SNAP' THEN 'ok:row-frozen' ELSE 'state-drifted' END FROM attachment a WHERE id=900000101"
+probe mutate_container "ok:row-frozen" "DO \$m\$
+DECLARE v_state text; v_msg text; BEGIN
+  BEGIN UPDATE attachment SET storage_container='c9' WHERE id=900000101;
+  EXCEPTION WHEN OTHERS THEN GET STACKED DIAGNOSTICS v_state = RETURNED_SQLSTATE, v_msg = MESSAGE_TEXT;
+    IF v_state <> '23510' OR v_msg NOT LIKE '%v5 attachment location immutable after fill%' THEN
+      RAISE EXCEPTION 'unexpected rejection: state=% msg=%', v_state, v_msg USING ERRCODE = 'P0001';
+    END IF;
+    RETURN;
+  END;
+  RAISE EXCEPTION 'identity mutation unexpectedly accepted' USING ERRCODE = 'P0001';
+END \$m\$;
+SELECT CASE WHEN md5((to_jsonb(a) - 'updated_at')::text) = '$ATT_SNAP' THEN 'ok:row-frozen' ELSE 'state-drifted' END FROM attachment a WHERE id=900000101"
+probe mutate_key "ok:row-frozen" "DO \$m\$
+DECLARE v_state text; v_msg text; BEGIN
+  BEGIN UPDATE attachment SET path='v5p/mutated' WHERE id=900000101;
+  EXCEPTION WHEN OTHERS THEN GET STACKED DIAGNOSTICS v_state = RETURNED_SQLSTATE, v_msg = MESSAGE_TEXT;
+    IF v_state <> '23510' OR v_msg NOT LIKE '%v5 attachment identity/owner/scope/cipher immutable%' THEN
+      RAISE EXCEPTION 'unexpected rejection: state=% msg=%', v_state, v_msg USING ERRCODE = 'P0001';
+    END IF;
+    RETURN;
+  END;
+  RAISE EXCEPTION 'identity mutation unexpectedly accepted' USING ERRCODE = 'P0001';
+END \$m\$;
+SELECT CASE WHEN md5((to_jsonb(a) - 'updated_at')::text) = '$ATT_SNAP' THEN 'ok:row-frozen' ELSE 'state-drifted' END FROM attachment a WHERE id=900000101"
+probe mutate_owner "ok:row-frozen" "DO \$m\$
+DECLARE v_state text; v_msg text; BEGIN
+  BEGIN UPDATE attachment SET creator_user_id=202 WHERE id=900000101;
+  EXCEPTION WHEN OTHERS THEN GET STACKED DIAGNOSTICS v_state = RETURNED_SQLSTATE, v_msg = MESSAGE_TEXT;
+    IF v_state <> '23510' OR v_msg NOT LIKE '%v5 attachment identity/owner/scope/cipher immutable%' THEN
+      RAISE EXCEPTION 'unexpected rejection: state=% msg=%', v_state, v_msg USING ERRCODE = 'P0001';
+    END IF;
+    RETURN;
+  END;
+  RAISE EXCEPTION 'identity mutation unexpectedly accepted' USING ERRCODE = 'P0001';
+END \$m\$;
+SELECT CASE WHEN md5((to_jsonb(a) - 'updated_at')::text) = '$ATT_SNAP' THEN 'ok:row-frozen' ELSE 'state-drifted' END FROM attachment a WHERE id=900000101"
+probe mutate_scope "ok:row-frozen" "DO \$m\$
+DECLARE v_state text; v_msg text; BEGIN
+  BEGIN UPDATE attachment SET scope='public' WHERE id=900000101;
+  EXCEPTION WHEN OTHERS THEN GET STACKED DIAGNOSTICS v_state = RETURNED_SQLSTATE, v_msg = MESSAGE_TEXT;
+    IF v_state <> '23510' OR v_msg NOT LIKE '%v5 attachment identity/owner/scope/cipher immutable%' THEN
+      RAISE EXCEPTION 'unexpected rejection: state=% msg=%', v_state, v_msg USING ERRCODE = 'P0001';
+    END IF;
+    RETURN;
+  END;
+  RAISE EXCEPTION 'identity mutation unexpectedly accepted' USING ERRCODE = 'P0001';
+END \$m\$;
+SELECT CASE WHEN md5((to_jsonb(a) - 'updated_at')::text) = '$ATT_SNAP' THEN 'ok:row-frozen' ELSE 'state-drifted' END FROM attachment a WHERE id=900000101"
+probe mutate_cipher "ok:row-frozen" "DO \$m\$
+DECLARE v_state text; v_msg text; BEGIN
+  BEGIN UPDATE attachment SET cipher='x'||coalesce(cipher,'') WHERE id=900000101;
+  EXCEPTION WHEN OTHERS THEN GET STACKED DIAGNOSTICS v_state = RETURNED_SQLSTATE, v_msg = MESSAGE_TEXT;
+    IF v_state <> '23510' OR v_msg NOT LIKE '%v5 attachment identity/owner/scope/cipher immutable%' THEN
+      RAISE EXCEPTION 'unexpected rejection: state=% msg=%', v_state, v_msg USING ERRCODE = 'P0001';
+    END IF;
+    RETURN;
+  END;
+  RAISE EXCEPTION 'identity mutation unexpectedly accepted' USING ERRCODE = 'P0001';
+END \$m\$;
+SELECT CASE WHEN md5((to_jsonb(a) - 'updated_at')::text) = '$ATT_SNAP' THEN 'ok:row-frozen' ELSE 'state-drifted' END FROM attachment a WHERE id=900000101"
+probe mutate_locator_digest "ok:row-frozen" "DO \$m\$
+DECLARE v_state text; v_msg text; BEGIN
+  BEGIN UPDATE attachment SET storage_locator_sha256='$(printf 'c%.0s' {1..64})' WHERE id=900000101;
+  EXCEPTION WHEN OTHERS THEN GET STACKED DIAGNOSTICS v_state = RETURNED_SQLSTATE, v_msg = MESSAGE_TEXT;
+    IF v_state <> '23510' OR v_msg NOT LIKE '%v5 attachment location immutable after fill%' THEN
+      RAISE EXCEPTION 'unexpected rejection: state=% msg=%', v_state, v_msg USING ERRCODE = 'P0001';
+    END IF;
+    RETURN;
+  END;
+  RAISE EXCEPTION 'identity mutation unexpectedly accepted' USING ERRCODE = 'P0001';
+END \$m\$;
+SELECT CASE WHEN md5((to_jsonb(a) - 'updated_at')::text) = '$ATT_SNAP' THEN 'ok:row-frozen' ELSE 'state-drifted' END FROM attachment a WHERE id=900000101"
+probe forge_gc_verified "err:23514: v5 gc_verified requires complete location" "UPDATE attachment SET gc_verified=true WHERE id=900000101 AND storage_driver IS NULL"
+probe tombstone_recreation "ok:key-not-reassigned" "DO \$tr\$
+DECLARE v_state text; v_msg text; BEGIN
+  BEGIN
+    INSERT INTO attach_pending(object_key,bucket,scope,creator_user_id) VALUES ('v5p/deleted-key-$RUN_TAG','b','private',101);
+    UPDATE attach_pending SET object_key='v5p/gone-$RUN_TAG' WHERE object_key='v5p/deleted-key-$RUN_TAG';
+    RAISE EXCEPTION 'tombstone key reassignment unexpectedly accepted' USING ERRCODE = 'P0001';
+  EXCEPTION WHEN OTHERS THEN
+    GET STACKED DIAGNOSTICS v_state = RETURNED_SQLSTATE, v_msg = MESSAGE_TEXT;
+    IF v_state <> '23510' OR v_msg NOT LIKE '%v5 session object_key immutable%' THEN
+      RAISE EXCEPTION 'unexpected rejection: state=% msg=%', v_state, v_msg USING ERRCODE = 'P0001';
+    END IF;
+  END;
+END \$tr\$;
+SELECT CASE WHEN (SELECT count(*) FROM attach_pending WHERE object_key='v5p/gone-$RUN_TAG')=0 THEN 'ok:key-not-reassigned' ELSE 'state-drifted' END"
 # --- group: immutable.  first-bind/replay of the group_file_id capability.
 # The bind target is a dedicated PER-RUN live attachment row, so the starting
 # point can never be a leftover binding from an earlier invocation on a
@@ -885,13 +1066,15 @@ DO \$i\$ BEGIN
   END;
 END \$i\$;
 SELECT CASE WHEN group_file_id=7001 THEN 'first-bind:once' ELSE 'rebound' END FROM attachment WHERE id=$BIND_ID"
-BIND_SNAP1="$(sqlval "SELECT md5(to_jsonb(a)::text) FROM attachment a WHERE id=$BIND_ID")"
+BIND_SNAP1="$(sqlval "SELECT md5((to_jsonb(a) - 'updated_at')::text) FROM attachment a WHERE id=$BIND_ID")"
 # --- group: immutable occurrence of same_value_replay (the registration group
 # carries its own occurrence below; consumers distinguish by group order).
 # Replaying the identical bind value must keep the WHOLE persisted row
-# unchanged (persistent to_jsonb snapshot comparison).
+# unchanged (persistent to_jsonb snapshot comparison).  The base touch trigger
+# moves updated_at on every UPDATE, so that volatile column is excluded from
+# the snapshot; every other column must still be byte-identical.
 probe same_value_replay "replay:idempotent" "UPDATE attachment SET group_file_id=7001 WHERE id=$BIND_ID;
-SELECT CASE WHEN group_file_id=7001 AND md5(to_jsonb(a)::text)='$BIND_SNAP1' THEN 'replay:idempotent' ELSE 'changed' END FROM attachment a WHERE id=$BIND_ID"
+SELECT CASE WHEN group_file_id=7001 AND md5((to_jsonb(a) - 'updated_at')::text)='$BIND_SNAP1' THEN 'replay:idempotent' ELSE 'changed' END FROM attachment a WHERE id=$BIND_ID"
 }
 
 # ============ session-link-integrity (guards only) ============
@@ -909,8 +1092,8 @@ INSERT INTO attachment(id,path,scope,creator_user_id,storage_driver,storage_name
 VALUES ($LID1,'$LKEY1','private',101,'$ST_DRV','$ST_NS','$ST_CT','$ST_LOC');
 COMMIT;
 SQL
-probe confirmed_null "fail" "UPDATE attach_pending SET session_state='confirmed' WHERE object_key='$LKEY1'"
-probe registered_link_nonnull "fail" "UPDATE attach_pending SET confirmed_attachment_id=$LID1 WHERE object_key='$LKEY1'"
+probe confirmed_null "err:23510: v5 confirm unknown asset" "UPDATE attach_pending SET session_state='confirmed' WHERE object_key='$LKEY1'"
+probe registered_link_nonnull "err:23514: v5 confirmed iff linked" "UPDATE attach_pending SET confirmed_attachment_id=$LID1 WHERE object_key='$LKEY1'"
 # legal FK (existing attachment row) but every non-matching dimension.
 PSQL -q > /dev/null 2>&1 <<SQL
 BEGIN;
@@ -970,9 +1153,22 @@ SELECT fn_v5_pin_pending_content('$LKEY1', '$CONTENT'::jsonb);
 COMMIT;
 SQL
 probe confirm_ok_returns_id "$LID1" "SET ROLE v5_app_runtime; SELECT fn_v5_confirm_pending('$LKEY1', $LID1)"
-probe confirmed_rebind "fail" "SELECT fn_v5_confirm_pending('$LKEY1', $LID1); SELECT fn_v5_confirm_pending('$LKEY1', $LID2)"
+probe confirmed_rebind "ok:link-frozen" "DO \$cr\$
+DECLARE v_state text; v_msg text; BEGIN
+  BEGIN
+    PERFORM fn_v5_confirm_pending('$LKEY1', $LID1);
+    PERFORM fn_v5_confirm_pending('$LKEY1', $LID2);
+    RAISE EXCEPTION 'confirmed rebind unexpectedly accepted' USING ERRCODE = 'P0001';
+  EXCEPTION WHEN OTHERS THEN
+    GET STACKED DIAGNOSTICS v_state = RETURNED_SQLSTATE, v_msg = MESSAGE_TEXT;
+    IF v_state <> '23510' OR v_msg NOT LIKE '%v5 confirmed link immutable%' THEN
+      RAISE EXCEPTION 'unexpected rejection: state=% msg=%', v_state, v_msg USING ERRCODE = 'P0001';
+    END IF;
+  END;
+END \$cr\$;
+SELECT CASE WHEN confirmed_attachment_id=$LID1 THEN 'ok:link-frozen' ELSE 'state-drifted' END FROM attach_pending WHERE object_key='$LKEY1'"
 probe lawful_repeat "$LID1" "SET ROLE v5_app_runtime; SELECT fn_v5_confirm_pending('$LKEY1', $LID1)"
-probe confirmed_session_cannot_intent "fail" "UPDATE attach_pending SET session_state='delete_intent' WHERE object_key='$LKEY1'"
+probe confirmed_session_cannot_intent "err:23510: v5 illegal session transition confirmed -> delete_intent" "UPDATE attach_pending SET session_state='delete_intent' WHERE object_key='$LKEY1'"
 # the legacy read-only invariant is kept (separate occurrence) alongside the
 # executed GC action recorded in migration_probes.
 probe confirmed_gc_preserves_session_link "preserved" "SELECT CASE WHEN (SELECT count(*) FROM attach_pending WHERE session_state='confirmed' AND confirmed_attachment_id IS NULL)=0 THEN 'preserved' ELSE 'leaked' END"
@@ -988,13 +1184,13 @@ DO $$ BEGIN
   GRANT v5_app_runtime TO v5_probe_runtime;
 END $$;
 SQL
-probe queue_insert_ready "fail" "SET ROLE v5_app_runtime; INSERT INTO attachment_object_deletion(path,bucket,job_state,next_retry_at) VALUES ('v5p/auth1','b','ready',now())"
-probe queue_insert_leased "fail" "SET ROLE v5_app_runtime; INSERT INTO attachment_object_deletion(path,bucket,job_state,lease_token,lease_until) VALUES ('v5p/auth2','b','leased',gen_random_uuid(),now())"
-probe queue_insert_retry_wait "fail" "SET ROLE v5_app_runtime; INSERT INTO attachment_object_deletion(path,bucket,job_state,next_retry_at) VALUES ('v5p/auth3','b','retry_wait',now())"
-probe queue_insert_done "fail" "SET ROLE v5_app_runtime; INSERT INTO attachment_object_deletion(path,bucket,job_state,completed_at) VALUES ('v5p/auth4','b','done',now())"
-probe activate_legacy_without_proof "fail" "SET ROLE v5_app_runtime; SELECT fn_v5_proof_activate_ordinary('v5p/x','garage','ns','c','$(printf 'd%.0s' {1..64})')"
-probe forge_gc_verified "fail" "SET ROLE v5_app_runtime; UPDATE attachment SET gc_verified=true WHERE id=900000101"
-probe forge_gc_verified_on_insert "fail" "SET ROLE v5_app_runtime; INSERT INTO attach_pending(object_key,bucket,scope,creator_user_id,gc_verified,session_state,client_upload_id,upload_registration) VALUES ('v5p/forge','b','private',101,true,'confirmed','44444444-4444-4444-4444-444444444444','{}')"
+probe queue_insert_ready "err:42501: permission denied for table attachment_object_deletion" "SET ROLE v5_app_runtime; INSERT INTO attachment_object_deletion(path,bucket,job_state,next_retry_at) VALUES ('v5p/auth1','b','ready',now())"
+probe queue_insert_leased "err:42501: permission denied for table attachment_object_deletion" "SET ROLE v5_app_runtime; INSERT INTO attachment_object_deletion(path,bucket,job_state,lease_token,lease_until) VALUES ('v5p/auth2','b','leased',gen_random_uuid(),now())"
+probe queue_insert_retry_wait "err:42501: permission denied for table attachment_object_deletion" "SET ROLE v5_app_runtime; INSERT INTO attachment_object_deletion(path,bucket,job_state,next_retry_at) VALUES ('v5p/auth3','b','retry_wait',now())"
+probe queue_insert_done "err:42501: permission denied for table attachment_object_deletion" "SET ROLE v5_app_runtime; INSERT INTO attachment_object_deletion(path,bucket,job_state,completed_at) VALUES ('v5p/auth4','b','done',now())"
+probe activate_legacy_without_proof "err:42501: permission denied for function fn_v5_proof_activate_ordinary" "SET ROLE v5_app_runtime; SELECT fn_v5_proof_activate_ordinary('v5p/x','garage','ns','c','$(printf 'd%.0s' {1..64})')"
+probe forge_gc_verified "err:42501: permission denied for table attachment" "SET ROLE v5_app_runtime; UPDATE attachment SET gc_verified=true WHERE id=900000101"
+probe forge_gc_verified_on_insert "err:42501: permission denied for table attach_pending" "SET ROLE v5_app_runtime; INSERT INTO attach_pending(object_key,bucket,scope,creator_user_id,gc_verified,session_state,client_upload_id,upload_registration) VALUES ('v5p/forge','b','private',101,true,'confirmed','44444444-4444-4444-4444-444444444444','{}')"
 # live reference: a real live group_file binding blocks the intent.
 PSQL -q > /dev/null 2>&1 <<SQL
 INSERT INTO group_file(id,group_id,file_id,file_name,file_size,file_type,file_category,file_url,uploader_id)
@@ -1061,22 +1257,22 @@ probe intent_missing_metadata_transition_rollback "live:no-queue:no-audit" "SELE
    AND (SELECT count(*) FROM attachment_object_deletion WHERE path='v5p/metafail')=0
    AND (SELECT count(*) FROM attachment_lifecycle_v5_audit WHERE object_key='v5p/metafail')=0
   THEN 'live:no-queue:no-audit' ELSE 'partial-write' END"
-probe direct_session_intent "fail" "SET ROLE v5_app_runtime; UPDATE attach_pending SET session_state='delete_intent' WHERE object_key='v5p/seed/1'"
-probe direct_metadata_intent "fail" "SET ROLE v5_app_runtime; UPDATE attachment SET lifecycle_state='delete_intent' WHERE path='v5p/seed/1'"
-probe queue_direct_update_state "fail" "SET ROLE v5_app_runtime; UPDATE attachment_object_deletion SET job_state='ready' WHERE path='v5p/seed/1'"
-probe queue_direct_delete_row "fail" "SET ROLE v5_app_runtime; DELETE FROM attachment_object_deletion WHERE path='v5p/seed/1'"
-probe queue_direct_update_state_g "fail" "SET ROLE v5_app_runtime; UPDATE enterprise_asset_delete_queue SET job_state='ready' WHERE true"
-probe queue_direct_delete_row_g "fail" "SET ROLE v5_app_runtime; DELETE FROM enterprise_asset_delete_queue WHERE true"
-probe eb_forge_tombstone_direct "fail" "SET ROLE v5_app_runtime; UPDATE enterprise_asset_delete_queue SET client_upload_id='55555555-5555-5555-5555-555555555555', upload_registration='{}'::jsonb WHERE true"
+probe direct_session_intent "err:42501: permission denied for table attach_pending" "SET ROLE v5_app_runtime; UPDATE attach_pending SET session_state='delete_intent' WHERE object_key='v5p/seed/1'"
+probe direct_metadata_intent "err:42501: permission denied for table attachment" "SET ROLE v5_app_runtime; UPDATE attachment SET lifecycle_state='delete_intent' WHERE path='v5p/seed/1'"
+probe queue_direct_update_state "err:42501: permission denied for table attachment_object_deletion" "SET ROLE v5_app_runtime; UPDATE attachment_object_deletion SET job_state='ready' WHERE path='v5p/seed/1'"
+probe queue_direct_delete_row "err:42501: permission denied for table attachment_object_deletion" "SET ROLE v5_app_runtime; DELETE FROM attachment_object_deletion WHERE path='v5p/seed/1'"
+probe queue_direct_update_state_g "err:42501: permission denied for table enterprise_asset_delete_queue" "SET ROLE v5_app_runtime; UPDATE enterprise_asset_delete_queue SET job_state='ready' WHERE true"
+probe queue_direct_delete_row_g "err:42501: permission denied for table enterprise_asset_delete_queue" "SET ROLE v5_app_runtime; DELETE FROM enterprise_asset_delete_queue WHERE true"
+probe eb_forge_tombstone_direct "err:42501: permission denied for table enterprise_asset_delete_queue" "SET ROLE v5_app_runtime; UPDATE enterprise_asset_delete_queue SET client_upload_id='55555555-5555-5555-5555-555555555555', upload_registration='{}'::jsonb WHERE true"
 if docker exec -i -e PGPASSWORD=v5_probe_runtime_pw "$PG_CONTAINER" psql -X -U v5_probe_runtime -h 127.0.0.1 -d "$DB" -tAc "SET ROLE v5_proof" > /dev/null 2>&1; then
   bad=$((bad+1)); echo "{\"name\":\"proof_role_not_setroleable\",\"pass\":false,\"detail\":\"runtime role escalated to proof\",\"driver\":\"$V5_PROBE_DRIVER\"}" >> "$OUT"
 else
   ok=$((ok+1)); echo "{\"name\":\"proof_role_not_setroleable\",\"pass\":true,\"driver\":\"$V5_PROBE_DRIVER\"}" >> "$OUT"
 fi
-probe worker_claim_no_intent_grant "fail" "SET ROLE v5_worker; SELECT fn_v5_intent_eb_delete(98000101,97000101,1,'x')"
-probe audit_direct_write "fail" "SET ROLE v5_app_runtime; INSERT INTO attachment_lifecycle_v5_audit(queue_domain,object_key,action,actor) VALUES ('ordinary','x','delete_intent','forged')"
-probe done_cannot_revive "fail" "SET ROLE v5_app_runtime; UPDATE attachment_object_deletion SET job_state='ready' WHERE completed_at IS NOT NULL"
-probe attempts_cannot_reset "fail" "UPDATE attachment_object_deletion SET attempts=0 WHERE attempts>0"
+probe worker_claim_no_intent_grant "err:42501: permission denied for function fn_v5_intent_eb_delete" "SET ROLE v5_worker; SELECT fn_v5_intent_eb_delete(98000101,97000101,1,'x')"
+probe audit_direct_write "err:42501: permission denied for table attachment_lifecycle_v5_audit" "SET ROLE v5_app_runtime; INSERT INTO attachment_lifecycle_v5_audit(queue_domain,object_key,action,actor) VALUES ('ordinary','x','delete_intent','forged')"
+probe done_cannot_revive "err:42501: permission denied for table attachment_object_deletion" "SET ROLE v5_app_runtime; UPDATE attachment_object_deletion SET job_state='ready' WHERE completed_at IS NOT NULL"
+probe attempts_cannot_reset "err:23510: v5 attempts cannot reset" "UPDATE attachment_object_deletion SET attempts=0 WHERE attempts>0"
 # dedicated blocked legacy row (order-independent fixture: the shared
 # v5e/liveref row below is seeded later in this group)
 PSQL -q > /dev/null 2>&1 <<SQL
@@ -1095,11 +1291,11 @@ if [ $QII_RC -ne 0 ]; then
 else
   emit eb_queue_identity_immutable 0 "rc=0 rows=$(sqlval "SELECT count(*) FROM enterprise_asset_delete_queue WHERE asset_id=$((910000170 + EA_OFF))") drv=$(sqlval "SELECT coalesce(storage_driver,'NULL') FROM enterprise_asset_delete_queue WHERE asset_id=$((910000170 + EA_OFF))") err=$(sanitize "$(head -c200 "$PROBE_TMP/err.txt")")"
 fi
-probe legacy_activate_criteria "fail" "SELECT fn_v5_proof_activate_ordinary('v5p/nonexistent','garage','ns','c','$(printf 'e%.0s' {1..64})')"
-probe metadata_direct_delete "fail" "DELETE FROM attachment WHERE id=900000101"
+probe legacy_activate_criteria "err:P0002: v5 proof unknown job" "SELECT fn_v5_proof_activate_ordinary('v5p/nonexistent','garage','ns','c','$(printf 'e%.0s' {1..64})')"
+probe metadata_direct_delete "err:23510: v5 metadata delete requires committed delete_intent" "DELETE FROM attachment WHERE id=900000101"
 probe worker_select_queue_ok "1" "SET ROLE v5_worker; SELECT 1"
-probe claim_requires_worker_role "fail" "SET ROLE v5_app_runtime; SELECT * FROM fn_v5_claim_ordinary(gen_random_uuid())"
-probe reaper_requires_worker_role "fail" "SET ROLE v5_app_runtime; SELECT fn_v5_reaper_ordinary(10)"
+probe claim_requires_worker_role "err:42501: permission denied for function fn_v5_claim_ordinary" "SET ROLE v5_app_runtime; SELECT * FROM fn_v5_claim_ordinary(gen_random_uuid())"
+probe reaper_requires_worker_role "err:42501: permission denied for function fn_v5_reaper_ordinary" "SET ROLE v5_app_runtime; SELECT fn_v5_reaper_ordinary(10)"
 if docker exec -i -e PGPASSWORD=v5_probe_runtime_pw "$PG_CONTAINER" psql -X -U v5_probe_runtime -h 127.0.0.1 -d "$DB" -tAc "SET ROLE v5_fn_owner" > /dev/null 2>&1; then
   bad=$((bad+1)); echo "{\"name\":\"runtime_set_role_owner\",\"pass\":false,\"detail\":\"runtime escalated to owner\",\"driver\":\"$V5_PROBE_DRIVER\"}" >> "$OUT"
 else
@@ -1108,12 +1304,12 @@ fi
 probe pg_canonical_json_digest_vector "ok" "SELECT CASE WHEN jsonb_build_object('a',1,'b',2)=jsonb_build_object('b',2,'a',1) AND jsonb_build_object('a',1)<>jsonb_build_object('a',2) THEN 'ok' ELSE 'fail' END"
 
 # ---------------- enterprise queue (enterprise_asset_delete_queue) ----------------
-probe worker_arbitrary_enqueue "fail" "SET ROLE v5_worker; SELECT fn_v5_intent_ordinary_delete('v5p/seed/1','probe')"
-probe worker_arbitrary_enqueue_eb "fail" "SET ROLE v5_worker; INSERT INTO enterprise_asset_delete_queue(organization_id,workspace_id,asset_id,object_key,job_state) VALUES (98000101,97000101,$((910000180 + EA_OFF)),'v5e/we-$RUN_TAG','ready')"
-probe worker_cannot_register "fail" "SET ROLE v5_worker; SELECT fn_v5_register_pending('v5p/w1','b','private',101,gen_random_uuid(),'$REG'::jsonb,now()+interval '2 hours',now()+interval '1 hour',NULL,NULL,NULL,NULL)"
-probe proof_cannot_intent "fail" "SET ROLE v5_proof; SELECT fn_v5_intent_ordinary_delete('v5p/seed/1','probe')"
-probe worker_delete_queue_row "fail" "SET ROLE v5_worker; DELETE FROM attachment_object_deletion WHERE path='v5p/seed/1'"
-probe worker_update_attempts "fail" "SET ROLE v5_worker; UPDATE attachment_object_deletion SET attempts=99 WHERE path='v5p/seed/1'"
+probe worker_arbitrary_enqueue "err:42501: permission denied for function fn_v5_intent_ordinary_delete" "SET ROLE v5_worker; SELECT fn_v5_intent_ordinary_delete('v5p/seed/1','probe')"
+probe worker_arbitrary_enqueue_eb "err:42501: permission denied for table enterprise_asset_delete_queue" "SET ROLE v5_worker; INSERT INTO enterprise_asset_delete_queue(organization_id,workspace_id,asset_id,object_key,job_state) VALUES (98000101,97000101,$((910000180 + EA_OFF)),'v5e/we-$RUN_TAG','ready')"
+probe worker_cannot_register "err:42501: permission denied for function fn_v5_register_pending" "SET ROLE v5_worker; SELECT fn_v5_register_pending('v5p/w1','b','private',101,gen_random_uuid(),'$REG'::jsonb,now()+interval '2 hours',now()+interval '1 hour',NULL,NULL,NULL,NULL)"
+probe proof_cannot_intent "err:42501: permission denied for function fn_v5_intent_ordinary_delete" "SET ROLE v5_proof; SELECT fn_v5_intent_ordinary_delete('v5p/seed/1','probe')"
+probe worker_delete_queue_row "err:42501: permission denied for table attachment_object_deletion" "SET ROLE v5_worker; DELETE FROM attachment_object_deletion WHERE path='v5p/seed/1'"
+probe worker_update_attempts "err:42501: permission denied for table attachment_object_deletion" "SET ROLE v5_worker; UPDATE attachment_object_deletion SET attempts=99 WHERE path='v5p/seed/1'"
 probe eb_queue_insert_ready "err:permission denied for table enterprise_asset_delete_queue" "SET ROLE v5_app_runtime; INSERT INTO enterprise_asset_delete_queue(organization_id,workspace_id,asset_id,object_key,job_state,next_retry_at) VALUES (98000101,97000101,910000104,'v5e/liveref','ready',now())"
 probe eb_queue_insert_leased "err:permission denied for table enterprise_asset_delete_queue" "SET ROLE v5_app_runtime; INSERT INTO enterprise_asset_delete_queue(organization_id,workspace_id,asset_id,object_key,job_state,lease_token,lease_until) VALUES (98000101,97000101,910000104,'v5e/liveref','leased',gen_random_uuid(),now())"
 probe eb_queue_insert_retry_wait "err:permission denied for table enterprise_asset_delete_queue" "SET ROLE v5_app_runtime; INSERT INTO enterprise_asset_delete_queue(organization_id,workspace_id,asset_id,object_key,job_state,next_retry_at) VALUES (98000101,97000101,910000104,'v5e/liveref','retry_wait',now())"
@@ -1168,7 +1364,7 @@ probe eb_intent_missing_metadata_transition_rollback "live:no-queue:no-audit" "S
   THEN 'live:no-queue:no-audit' ELSE 'partial-write' END"
 probe eb_direct_metadata_intent "err:permission denied for table enterprise_asset" "SET ROLE v5_app_runtime; UPDATE enterprise_asset SET lifecycle_state='delete_intent' WHERE id=910000105"
 probe eb_direct_session_intent "err:permission denied for table enterprise_asset" "SET ROLE v5_app_runtime; UPDATE enterprise_asset SET upload_registration='{\"x\":1}'::jsonb WHERE id=910000105"
-probe eb_forge_lifecycle_on_insert "fail" "SET ROLE v5_app_runtime; INSERT INTO enterprise_asset(id,organization_id,workspace_id,object_key,object_hash,lifecycle_state) VALUES ($((910000160 + EA_OFF)),98000101,97000101,'v5e/forge-intent-$RUN_TAG','h','delete_intent')"
+probe eb_forge_lifecycle_on_insert "err:23510: v5 eb asset must start live" "SET ROLE v5_app_runtime; INSERT INTO enterprise_asset(id,organization_id,workspace_id,object_key,object_hash,lifecycle_state) VALUES ($((910000160 + EA_OFF)),98000101,97000101,'v5e/forge-intent-$RUN_TAG','h','delete_intent')"
 probe eb_authorized_intent_atomic "intent:ready" "SET ROLE v5_app_runtime; SELECT fn_v5_intent_eb_delete(98000101,97000101,$EA_AUTH,'probe');
 RESET ROLE;
 SELECT CASE WHEN (SELECT job_state FROM enterprise_asset_delete_queue WHERE asset_id=$EA_AUTH)='ready'
@@ -1204,8 +1400,21 @@ if [ $ANON_RC -eq 0 ] && [ "$ANON_STATE" = "NULL|v5e/anon-$RUN_TAG|active|live|-
 else
   emit fk_user_delete_sets_audit_null 0 "rc=$ANON_RC state=$ANON_STATE err=$(sanitize "$(head -c160 "$PROBE_TMP/err.txt")")"
 fi
-probe direct_actor_substitution_denied "fail" "SET ROLE v5_app_runtime; UPDATE enterprise_asset SET uploaded_by_user_id=99000999 WHERE id=$ANON_ASSET"
-probe direct_actor_null_with_live_user_denied "fail" "UPDATE enterprise_asset SET uploaded_by_user_id=101 WHERE id=$ANON_ASSET; UPDATE enterprise_asset SET uploaded_by_user_id=NULL WHERE id=$ANON_ASSET"
+probe direct_actor_substitution_denied "err:42501: permission denied for table enterprise_asset" "SET ROLE v5_app_runtime; UPDATE enterprise_asset SET uploaded_by_user_id=99000999 WHERE id=$ANON_ASSET"
+probe direct_actor_null_with_live_user_denied "ok:anon-actor-frozen" "DO \$an\$
+DECLARE v_state text; v_msg text; BEGIN
+  BEGIN
+    UPDATE enterprise_asset SET uploaded_by_user_id=101 WHERE id=$ANON_ASSET;
+    UPDATE enterprise_asset SET uploaded_by_user_id=NULL WHERE id=$ANON_ASSET;
+    RAISE EXCEPTION 'audit actor substitution unexpectedly accepted' USING ERRCODE = 'P0001';
+  EXCEPTION WHEN OTHERS THEN
+    GET STACKED DIAGNOSTICS v_state = RETURNED_SQLSTATE, v_msg = MESSAGE_TEXT;
+    IF v_state <> '23510' OR v_msg NOT LIKE '%v5 audit actor substitution forbidden%' THEN
+      RAISE EXCEPTION 'unexpected rejection: state=% msg=%', v_state, v_msg USING ERRCODE = 'P0001';
+    END IF;
+  END;
+END \$an\$;
+SELECT CASE WHEN coalesce(uploaded_by_user_id::text,'NULL')='NULL' THEN 'ok:anon-actor-frozen' ELSE 'state-drifted' END FROM enterprise_asset WHERE id=$ANON_ASSET"
 }
 
 # ============ registration-integrity (guards only) ============
@@ -1219,9 +1428,9 @@ BEGIN;
 SELECT fn_v5_register_pending('$RKEY','b1','private',101,'$RU1','$REG'::jsonb,now()+interval '2 hours',now()+interval '1 hour',NULL,NULL,NULL,NULL);
 COMMIT;
 SQL
-probe original_mime_conflict_after_restart "fail" "SELECT fn_v5_register_pending('$RKEY','b1','private',101,'$RU1','{\"subject\":{\"kind\":\"user\",\"principal\":\"101\"},\"declaration\":{\"filename\":\"a.png\",\"mime\":\"image/jpeg\",\"size_bytes\":\"10\",\"scope\":\"private\"}}'::jsonb,now()+interval '2 hours',now()+interval '1 hour',NULL,NULL,NULL,NULL)"
-probe original_filename_conflict_after_restart "fail" "SELECT fn_v5_register_pending('$RKEY','b1','private',101,'$RU1','{\"subject\":{\"kind\":\"user\",\"principal\":\"101\"},\"declaration\":{\"filename\":\"b.png\",\"mime\":\"image/png\",\"size_bytes\":\"10\",\"scope\":\"private\"}}'::jsonb,now()+interval '2 hours',now()+interval '1 hour',NULL,NULL,NULL,NULL)"
-probe snapshot_direct_dml_rejected "fail" "UPDATE attach_pending SET upload_registration='{\"x\":1}'::jsonb WHERE object_key='$RKEY'"
+probe original_mime_conflict_after_restart "err:23510: v5 registration snapshot mismatch on retry" "SELECT fn_v5_register_pending('$RKEY','b1','private',101,'$RU1','{\"subject\":{\"kind\":\"user\",\"principal\":\"101\"},\"declaration\":{\"filename\":\"a.png\",\"mime\":\"image/jpeg\",\"size_bytes\":\"10\",\"scope\":\"private\"}}'::jsonb,now()+interval '2 hours',now()+interval '1 hour',NULL,NULL,NULL,NULL)"
+probe original_filename_conflict_after_restart "err:23510: v5 registration snapshot mismatch on retry" "SELECT fn_v5_register_pending('$RKEY','b1','private',101,'$RU1','{\"subject\":{\"kind\":\"user\",\"principal\":\"101\"},\"declaration\":{\"filename\":\"b.png\",\"mime\":\"image/png\",\"size_bytes\":\"10\",\"scope\":\"private\"}}'::jsonb,now()+interval '2 hours',now()+interval '1 hour',NULL,NULL,NULL,NULL)"
+probe snapshot_direct_dml_rejected "err:23510: v5 registration snapshot immutable" "UPDATE attach_pending SET upload_registration='{\"x\":1}'::jsonb WHERE object_key='$RKEY'"
 # ordinary "audit null does not grant resume": a session whose subject user is
 # gone still refuses a changed resume (snapshot is authoritative).
 PSQL -q > /dev/null 2>&1 <<SQL
@@ -1230,9 +1439,9 @@ SELECT 99000103,'v5resumeuser','x','127.0.0.1','probe' WHERE NOT EXISTS (SELECT 
 SELECT fn_v5_register_pending('$RRESUME','b1','private',99000103,'$RUR','{"subject":{"kind":"user","principal":"99000103"},"declaration":{"filename":"r.png","mime":"image/png","size_bytes":"10","scope":"private"}}'::jsonb,now()+interval '2 hours',now()+interval '1 hour',NULL,NULL,NULL,NULL);
 DELETE FROM "user" WHERE id=99000103;
 SQL
-probe audit_null_does_not_grant_resume "fail" "SELECT fn_v5_register_pending('$RRESUME','b1','private',99000103,'$RUR','{\"subject\":{\"kind\":\"user\",\"principal\":\"99000103\"},\"declaration\":{\"filename\":\"r2.png\",\"mime\":\"image/png\",\"size_bytes\":\"10\",\"scope\":\"private\"}}'::jsonb,now()+interval '2 hours',now()+interval '1 hour',NULL,NULL,NULL,NULL)"
-probe legacy_null_not_fabricated "fail" "UPDATE attach_pending SET client_upload_id=gen_random_uuid() WHERE object_key='v5p/seed/1'"
-probe registration_immutable_update "fail" "UPDATE attach_pending SET upload_registration=upload_registration||'{\"k\":1}'::jsonb WHERE object_key='$RKEY'"
+probe audit_null_does_not_grant_resume "err:23510: v5 registration snapshot mismatch on retry" "SELECT fn_v5_register_pending('$RRESUME','b1','private',99000103,'$RUR','{\"subject\":{\"kind\":\"user\",\"principal\":\"99000103\"},\"declaration\":{\"filename\":\"r2.png\",\"mime\":\"image/png\",\"size_bytes\":\"10\",\"scope\":\"private\"}}'::jsonb,now()+interval '2 hours',now()+interval '1 hour',NULL,NULL,NULL,NULL)"
+probe legacy_null_not_fabricated "err:23510: v5 client_upload_id immutable" "UPDATE attach_pending SET client_upload_id=gen_random_uuid() WHERE object_key='v5p/seed/1'"
+probe registration_immutable_update "err:23510: v5 registration snapshot immutable" "UPDATE attach_pending SET upload_registration=upload_registration||'{\"k\":1}'::jsonb WHERE object_key='$RKEY'"
 # --- group: registration occurrence of same_value_replay (the immutable group
 # carries its own occurrence above; consumers distinguish by group order).
 # Replaying fn_v5_register_pending with byte-identical arguments must return
@@ -1243,13 +1452,13 @@ probe same_value_replay "replay:idempotent" "SELECT CASE WHEN f.out_object_key='
    AND (SELECT coalesce(client_upload_id::text,'-')||'|'||coalesce(storage_driver,'-')||'|'||coalesce(storage_namespace,'-')||'|'||coalesce(storage_container,'-')||'|'||coalesce(storage_locator_sha256,'-')||'|'||md5(coalesce(upload_registration::text,'-')) FROM attach_pending WHERE object_key='$RKEY')='$REG_SNAP1'
   THEN 'replay:idempotent' ELSE 'mismatch' END
  FROM fn_v5_register_pending('$RKEY','b1','private',101,'$RU1','$REG'::jsonb,now()+interval '2 hours',now()+interval '1 hour',NULL,NULL,NULL,NULL) f"
-probe cross_subject_uuid_conflict "fail" "SELECT fn_v5_register_pending('$RKEY2','b1','private',202,'$RU1','$REG'::jsonb,now()+interval '2 hours',now()+interval '1 hour',NULL,NULL,NULL,NULL)"
-probe key_reassignment_forbidden "fail" "SELECT fn_v5_register_pending('$RKEY','b1','private',101,'77777777-7777-7777-7777-777777777777','$REG'::jsonb,now()+interval '2 hours',now()+interval '1 hour',NULL,NULL,NULL,NULL)"
-probe eb_uuid_joint_unique "fail" "SET ROLE v5_app_runtime; INSERT INTO enterprise_asset_delete_queue(organization_id,workspace_id,asset_id,object_key,client_upload_id,upload_registration,job_state,next_retry_at) VALUES (98000101,97000101,910000101,'v5e/reg','$RU1','$REG','blocked',now())"
-probe register_requires_deadline "fail" "SELECT fn_v5_register_pending('$RKEY3','b1','private',101,gen_random_uuid(),'$REG'::jsonb,NULL,NULL,NULL,NULL,NULL,NULL)"
-probe register_requires_expiry_le_deadline "fail" "SELECT fn_v5_register_pending('$RKEY3','b1','private',101,gen_random_uuid(),'$REG'::jsonb,now()+interval '1 hour',now()+interval '2 hours',NULL,NULL,NULL,NULL)"
-probe register_partial_location "fail" "SELECT fn_v5_register_pending('$RKEY3','b1','private',101,gen_random_uuid(),'$REG'::jsonb,now()+interval '2 hours',now()+interval '1 hour','garage',NULL,NULL,NULL)"
-probe register_bad_shape "fail" "SELECT fn_v5_register_pending('$RKEY3','b1','private',101,gen_random_uuid(),'{\"x\":1}'::jsonb,now()+interval '2 hours',now()+interval '1 hour',NULL,NULL,NULL,NULL)"
+probe cross_subject_uuid_conflict "err:23510: v5 registration snapshot mismatch on retry" "SELECT fn_v5_register_pending('$RKEY2','b1','private',202,'$RU1','$REG'::jsonb,now()+interval '2 hours',now()+interval '1 hour',NULL,NULL,NULL,NULL)"
+probe key_reassignment_forbidden "err:23510: v5 key reassignment forbidden" "SELECT fn_v5_register_pending('$RKEY','b1','private',101,'77777777-7777-7777-7777-777777777777','$REG'::jsonb,now()+interval '2 hours',now()+interval '1 hour',NULL,NULL,NULL,NULL)"
+probe eb_uuid_joint_unique "err:42501: permission denied for table enterprise_asset_delete_queue" "SET ROLE v5_app_runtime; INSERT INTO enterprise_asset_delete_queue(organization_id,workspace_id,asset_id,object_key,client_upload_id,upload_registration,job_state,next_retry_at) VALUES (98000101,97000101,910000101,'v5e/reg','$RU1','$REG','blocked',now())"
+probe register_requires_deadline "err:23514: v5 register requires deadline and expiry<=deadline" "SELECT fn_v5_register_pending('$RKEY3','b1','private',101,gen_random_uuid(),'$REG'::jsonb,NULL,NULL,NULL,NULL,NULL,NULL)"
+probe register_requires_expiry_le_deadline "err:23514: v5 register requires deadline and expiry<=deadline" "SELECT fn_v5_register_pending('$RKEY3','b1','private',101,gen_random_uuid(),'$REG'::jsonb,now()+interval '1 hour',now()+interval '2 hours',NULL,NULL,NULL,NULL)"
+probe register_partial_location "err:23514: v5 register location must be all-NULL or complete" "SELECT fn_v5_register_pending('$RKEY3','b1','private',101,gen_random_uuid(),'$REG'::jsonb,now()+interval '2 hours',now()+interval '1 hour','garage',NULL,NULL,NULL)"
+probe register_bad_shape "err:23514: v5 register requires subject+declaration snapshot" "SELECT fn_v5_register_pending('$RKEY3','b1','private',101,gen_random_uuid(),'{\"x\":1}'::jsonb,now()+interval '2 hours',now()+interval '1 hour',NULL,NULL,NULL,NULL)"
 
 # ---------------- enterprise registration (fn_v5_register_eb) ----------------
 # Per-run EB assets (EA_* band) carry no registration yet, so no reset UPDATE
@@ -1261,12 +1470,12 @@ SELECT fn_v5_register_eb(98000101,97000101,$EA_SUB2,'v5e/sub2-$RUN_TAG','a7${RUN
 SELECT fn_v5_register_eb(98000101,97000101,$EA_SUB4,'v5e/sub4-$RUN_TAG','a8${RUN_TAG:0:6}-a8a8-4a8a-8a8a-a8a8a8a8a8a8','$REG'::jsonb,'user',now()+interval '2 hours',now()+interval '1 hour');
 SELECT fn_v5_register_eb(98000101,97000101,$EA_WIDGET,'v5e/widget-$RUN_TAG','a9${RUN_TAG:0:6}-a9a9-4a9a-8a9a-a9a9a9a9a9a9','{"subject":{"kind":"visitor_session","principal":"sess-a","visitor_session_id":"sess-a"},"declaration":{"filename":"a.png","mime":"image/png","size_bytes":"10","scope":"private"}}'::jsonb,'visitor_session',now()+interval '2 hours',now()+interval '1 hour');
 SQL
-probe eb_original_mime_conflict_after_restart "fail" "SELECT fn_v5_register_eb(98000101,97000101,$EA_SUB1,'v5e/sub1-$RUN_TAG','a6${RUN_TAG:0:6}-a6a6-4a6a-8a6a-a6a6a6a6a6a6','{\"subject\":{\"kind\":\"user\",\"principal\":\"101\"},\"declaration\":{\"filename\":\"a.png\",\"mime\":\"image/jpeg\",\"size_bytes\":\"10\",\"scope\":\"private\"}}'::jsonb,'user',now()+interval '2 hours',now()+interval '1 hour')"
-probe eb_original_filename_conflict_after_restart "fail" "SELECT fn_v5_register_eb(98000101,97000101,$EA_SUB2,'v5e/sub2-$RUN_TAG','a7${RUN_TAG:0:6}-a7a7-4a7a-8a7a-a7a7a7a7a7a7','{\"subject\":{\"kind\":\"user\",\"principal\":\"101\"},\"declaration\":{\"filename\":\"b.png\",\"mime\":\"image/png\",\"size_bytes\":\"10\",\"scope\":\"private\"}}'::jsonb,'user',now()+interval '2 hours',now()+interval '1 hour')"
-probe eb_widget_other_visitor_session_denied "fail" "SELECT fn_v5_register_eb(98000101,97000101,$EA_WIDGET,'v5e/widget-$RUN_TAG','a9${RUN_TAG:0:6}-a9a9-4a9a-8a9a-a9a9a9a9a9a9','{\"subject\":{\"kind\":\"visitor_session\",\"principal\":\"other-session\",\"visitor_session_id\":\"other-session\"},\"declaration\":{\"filename\":\"a.png\",\"mime\":\"image/png\",\"size_bytes\":\"10\",\"scope\":\"private\"}}'::jsonb,'visitor_session',now()+interval '2 hours',now()+interval '1 hour')"
-probe eb_seat_contact_subject_kind_conflict "fail" "SELECT fn_v5_register_eb(98000101,97000101,$EA_SUB3,'v5e/sub3-$RUN_TAG','b1${RUN_TAG:0:6}-b1b1-4b1b-8b1b-b1b1b1b1b1b1','{\"subject\":{\"kind\":\"contact\",\"principal\":\"101\"},\"declaration\":{\"filename\":\"a.png\",\"mime\":\"image/png\",\"size_bytes\":\"10\",\"scope\":\"private\"}}'::jsonb,'seat',now()+interval '2 hours',now()+interval '1 hour')"
+probe eb_original_mime_conflict_after_restart "err:23510: v5 eb registration snapshot mismatch" "SELECT fn_v5_register_eb(98000101,97000101,$EA_SUB1,'v5e/sub1-$RUN_TAG','a6${RUN_TAG:0:6}-a6a6-4a6a-8a6a-a6a6a6a6a6a6','{\"subject\":{\"kind\":\"user\",\"principal\":\"101\"},\"declaration\":{\"filename\":\"a.png\",\"mime\":\"image/jpeg\",\"size_bytes\":\"10\",\"scope\":\"private\"}}'::jsonb,'user',now()+interval '2 hours',now()+interval '1 hour')"
+probe eb_original_filename_conflict_after_restart "err:23510: v5 eb registration snapshot mismatch" "SELECT fn_v5_register_eb(98000101,97000101,$EA_SUB2,'v5e/sub2-$RUN_TAG','a7${RUN_TAG:0:6}-a7a7-4a7a-8a7a-a7a7a7a7a7a7','{\"subject\":{\"kind\":\"user\",\"principal\":\"101\"},\"declaration\":{\"filename\":\"b.png\",\"mime\":\"image/png\",\"size_bytes\":\"10\",\"scope\":\"private\"}}'::jsonb,'user',now()+interval '2 hours',now()+interval '1 hour')"
+probe eb_widget_other_visitor_session_denied "err:23510: v5 eb registration snapshot mismatch" "SELECT fn_v5_register_eb(98000101,97000101,$EA_WIDGET,'v5e/widget-$RUN_TAG','a9${RUN_TAG:0:6}-a9a9-4a9a-8a9a-a9a9a9a9a9a9','{\"subject\":{\"kind\":\"visitor_session\",\"principal\":\"other-session\",\"visitor_session_id\":\"other-session\"},\"declaration\":{\"filename\":\"a.png\",\"mime\":\"image/png\",\"size_bytes\":\"10\",\"scope\":\"private\"}}'::jsonb,'visitor_session',now()+interval '2 hours',now()+interval '1 hour')"
+probe eb_seat_contact_subject_kind_conflict "err:23510: v5 eb registration subject kind conflict" "SELECT fn_v5_register_eb(98000101,97000101,$EA_SUB3,'v5e/sub3-$RUN_TAG','b1${RUN_TAG:0:6}-b1b1-4b1b-8b1b-b1b1b1b1b1b1','{\"subject\":{\"kind\":\"contact\",\"principal\":\"101\"},\"declaration\":{\"filename\":\"a.png\",\"mime\":\"image/png\",\"size_bytes\":\"10\",\"scope\":\"private\"}}'::jsonb,'seat',now()+interval '2 hours',now()+interval '1 hour')"
 probe eb_snapshot_direct_dml_rejected "err:permission denied for table enterprise_asset" "SET ROLE v5_app_runtime; UPDATE enterprise_asset SET upload_registration=upload_registration||'{\"k\":1}'::jsonb WHERE id=$EA_SUB1"
-probe eb_audit_null_does_not_grant_resume "fail" "DELETE FROM \"user\" WHERE id=99000102; SELECT fn_v5_register_eb(98000101,97000101,$EA_SUB4,'v5e/sub4-$RUN_TAG','a8${RUN_TAG:0:6}-a8a8-4a8a-8a8a-a8a8a8a8a8a8','{\"subject\":{\"kind\":\"user\",\"principal\":\"101\"},\"declaration\":{\"filename\":\"r2.png\",\"mime\":\"image/png\",\"size_bytes\":\"10\",\"scope\":\"private\"}}'::jsonb,'user',now()+interval '2 hours',now()+interval '1 hour')"
+probe eb_audit_null_does_not_grant_resume "err:23510: v5 eb registration snapshot mismatch" "DELETE FROM \"user\" WHERE id=99000102; SELECT fn_v5_register_eb(98000101,97000101,$EA_SUB4,'v5e/sub4-$RUN_TAG','a8${RUN_TAG:0:6}-a8a8-4a8a-8a8a-a8a8a8a8a8a8','{\"subject\":{\"kind\":\"user\",\"principal\":\"101\"},\"declaration\":{\"filename\":\"r2.png\",\"mime\":\"image/png\",\"size_bytes\":\"10\",\"scope\":\"private\"}}'::jsonb,'user',now()+interval '2 hours',now()+interval '1 hour')"
 probe eb_legacy_null_not_fabricated "err:permission denied for table enterprise_asset" "SET ROLE v5_app_runtime; UPDATE enterprise_asset SET client_upload_id=gen_random_uuid() WHERE id=$EA_LEGACY"
 }
 
@@ -1289,10 +1498,10 @@ WHERE NOT EXISTS (SELECT 1 FROM enterprise_asset_delete_queue WHERE asset_id=910
 COMMIT;
 SQL
 probe copy_uuid_snapshot_before_metadata_delete "88888888-8888-8888-8888-888888888888" "SELECT fn_v5_copy_eb_recovery_tombstone(98000101,97000101,910000201); SELECT client_upload_id FROM enterprise_asset_delete_queue WHERE asset_id=910000201"
-probe missing_snapshot_rollback "fail" "SELECT fn_v5_copy_eb_recovery_tombstone(98000101,97000101,999999999)"
-probe cross_table_duplicate_uuid_rejected "fail" "SELECT fn_v5_register_pending('v5p/tomb1','b','private',101,'88888888-8888-8888-8888-888888888888','$REG'::jsonb,now()+interval '2 hours',now()+interval '1 hour',NULL,NULL,NULL,NULL)"
-probe direct_dml_resurrection_denied "fail" "SET ROLE v5_app_runtime; UPDATE enterprise_asset_delete_queue SET client_upload_id='99999999-9999-9999-9999-999999999999' WHERE asset_id=910000201"
-probe tombstone_update_delete_denied "fail" "DELETE FROM enterprise_asset_delete_queue WHERE asset_id=910000201"
+probe missing_snapshot_rollback "err:P0002: v5 tombstone source asset missing" "SELECT fn_v5_copy_eb_recovery_tombstone(98000101,97000101,999999999)"
+probe cross_table_duplicate_uuid_rejected "err:23505: v5 client_upload_id tombstoned in enterprise queue" "SELECT fn_v5_register_pending('v5p/tomb1','b','private',101,'88888888-8888-8888-8888-888888888888','$REG'::jsonb,now()+interval '2 hours',now()+interval '1 hour',NULL,NULL,NULL,NULL)"
+probe direct_dml_resurrection_denied "err:42501: permission denied for table enterprise_asset_delete_queue" "SET ROLE v5_app_runtime; UPDATE enterprise_asset_delete_queue SET client_upload_id='99999999-9999-9999-9999-999999999999' WHERE asset_id=910000201"
+probe tombstone_update_delete_denied "err:23510: v5 job rows are permanent tombstones (no DELETE)" "DELETE FROM enterprise_asset_delete_queue WHERE asset_id=910000201"
 probe legacy_null_preserved "NULL" "SELECT fn_v5_copy_eb_recovery_tombstone(98000101,97000101,910000202); SELECT coalesce(client_upload_id::text,'NULL') FROM enterprise_asset_delete_queue WHERE asset_id=910000202"
 # real down with a recovery tombstone: copy the live UUID+snapshot into the
 # queue through the restricted function, then replay the real 00000179 down.
@@ -1352,7 +1561,7 @@ case "$base" in *"fn_v5_first_bind_guard/0"*) base_clean=0 ;; esac
 trig_before="$(ONDB "$EXPAND_DB" -tAq -c "SELECT count(*) FROM pg_trigger WHERE tgname='$GDIF_TRG' AND NOT tgisinternal" 2>/dev/null)"
 # step 1: transactional hide + in-transaction precondition report + no
 # duplicate under the original name while hidden.
-{ printf "BEGIN;\nSET ROLE v5_fn_owner;\nALTER FUNCTION %s() RENAME TO %s;\nRESET ROLE;\nSELECT 'hidden_missing='||(%s);\nSELECT 'original_present='||(SELECT count(*) FROM pg_proc WHERE pronamespace='public'::regnamespace AND proname='%s');\nROLLBACK;\n" "$GDIF_FN" "$GDIF_HIDDEN" "$MISS_SQL" "$GDIF_FN"
+{ printf "BEGIN;\nALTER FUNCTION %s() RENAME TO %s;\nSELECT 'hidden_missing='||(%s);\nSELECT 'original_present='||(SELECT count(*) FROM pg_proc WHERE pronamespace='public'::regnamespace AND proname='%s');\nROLLBACK;\n" "$GDIF_FN" "$GDIF_HIDDEN" "$MISS_SQL" "$GDIF_FN"
 } | ONDB "$EXPAND_DB" -tAq > "$PROBE_TMP/out.txt" 2>>"$PROBE_TMP/err.txt"
 hidden_line="$(grep -o 'hidden_missing=.*' "$PROBE_TMP/out.txt" | head -1)"
 orig_line="$(grep -o 'original_present=[0-9]*' "$PROBE_TMP/out.txt" | head -1)"
@@ -1361,7 +1570,15 @@ delta="$(comm -13 <(tr ',' '\n' <<< "$base" | sort) <(tr ',' '\n' <<< "${hidden_
 delta="${delta% }"
 # step 2: real activation replay against the hidden function (refused at the
 # first trigger whose function is missing; disconnect rolls the hide back).
-{ printf "BEGIN;\nSET ROLE v5_fn_owner;\nALTER FUNCTION %s() RENAME TO %s;\nRESET ROLE;\n" "$GDIF_FN" "$GDIF_HIDDEN"; cat "$GUARDS_SQL"; } | ONDB "$EXPAND_DB" -q >"$PROBE_TMP/out.txt" 2>"$PROBE_TMP/err.txt"
+# 00000190 (M3-guards activation, W4-04) is a verbatim copy of
+# guards-contract.sql and replays on EVERY phase database — the expand DB
+# already carries all nine triggers, so a raw replay now dies on
+# "trigger ... already exists" instead of the missing function.  Detach the
+# three attach-surface triggers inside the same transaction first (the replay
+# then genuinely fails at trg_v5_attachment_first_bind's missing function and
+# the rollback restores the baseline trigger set — verified 2026-10-30 against
+# the run's slot1_w102_expand live DB: rc=3, error text matches, 16/1 restored).
+{ printf "BEGIN;\nDROP TRIGGER IF EXISTS trg_v5_attachment_location_immutable ON attachment;\nDROP TRIGGER IF EXISTS trg_v5_attachment_identity_immutable ON attachment;\nDROP TRIGGER IF EXISTS trg_v5_attachment_first_bind ON attachment;\nALTER FUNCTION %s() RENAME TO %s;\n" "$GDIF_FN" "$GDIF_HIDDEN"; cat "$GUARDS_SQL"; } | ONDB "$EXPAND_DB" -q >"$PROBE_TMP/out.txt" 2>"$PROBE_TMP/err.txt"
 gdif_replay_rc=$?
 restored="$(ONDB "$EXPAND_DB" -tAq -c "SELECT count(*) FROM pg_proc WHERE pronamespace='public'::regnamespace AND proname='$GDIF_FN'" 2>/dev/null)"
 base_after="$(ONDB "$EXPAND_DB" -tAq -c "$MISS_SQL" 2>/dev/null)"

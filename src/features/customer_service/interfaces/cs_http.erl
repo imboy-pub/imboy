@@ -946,6 +946,11 @@ classify(already_rated) ->
 %% 引用过期是客户端可重试的冲突语义，此前 widget 面未登记恒 500）。
 classify(expired_upload_ref) ->
     ?ERR_CONFLICT;
+%% F-LAY-02 同族：换体 PUT 的 hash 裁决失败（eb_asset_app put_verify
+%% {hash_mismatch, _, _}，PUT 链路复用 eb_asset_app:put_object）与 EB 面
+%% 同口径 409，此前未登记恒 500。
+classify({hash_mismatch, _, _}) ->
+    ?ERR_CONFLICT;
 classify({rating_requires_closed, _}) ->
     ?ERR_CONFLICT;
 classify(no_seat_available) ->

@@ -81,13 +81,16 @@ class ObservationBindingTests(unittest.TestCase):
             leaf_mock = stack.enter_context(patch.object(adapter.S, "leaves"))
             # The blocked enterprise leaf must be reported as a named gap,
             # never reach build_row, and fail the case with exit 30.
-            leaf_mock.return_value = [blocked]
-            with self.assertRaises(SystemExit) as caught:
-                adapter.build()
-            self.assertEqual(30, caught.exception.code)
-            self.assertTrue(gaps.called)
-            self.assertIn("user ruling", gaps.call_args[0][3])
-            self.assertFalse(build_row.called)
+            for scenario in ("multipart_success", "group_file_success"):
+                leaf_mock.return_value = [{**blocked, "ordering_or_fault":
+                    "W2-01/pending-multipart/expand-queue/" + scenario}]
+                with self.subTest(scenario=scenario):
+                    with self.assertRaises(SystemExit) as caught:
+                        adapter.build()
+                    self.assertEqual(30, caught.exception.code)
+                    self.assertTrue(gaps.called)
+                    self.assertIn("user ruling", gaps.call_args[0][3])
+                    self.assertFalse(build_row.called)
             # …while the ordinary-domain twin of the same scenario binds
             # without raising a new gap.
             gaps_count_after_blocked = gaps.call_count

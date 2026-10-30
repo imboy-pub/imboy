@@ -107,14 +107,9 @@ for _ref in (
     OBS_STEP_FOR[_ref] = "w3bind"
 OBS_GROUPS = set(OBS_STEP_FOR)
 
-# User ruling 2026-10-29 (trusted instruction): the enterprise
-# multipart_success/group_file_success leaves stay bound to the frozen
-# contract.  The only existing enterprise upload entries are the internal
-# gateway/byte-proxy paths — no multipart/form-data or group_file entry
-# exists for enterprise identities — so the substitute executions are not
-# acceptance evidence.  These leaves are reported as named contract-
-# conflict gaps (never bound, never PASS) until the contract owner
-# authorizes a revision.
+# The frozen enterprise multipart/group_file leaves cannot be proven by
+# enterprise seat proxy PUT. Keep them blocked until the contract owner
+# authorizes a revision or the required entrypoints can be exercised.
 BLOCKED_ENTERPRISE_SCENARIOS = frozenset({"multipart_success", "group_file_success"})
 
 
@@ -122,6 +117,7 @@ def _blocked_enterprise_leaf(leaf):
     return (leaf.get("source_case_ref") == "W2-01/pending-multipart"
             and leaf.get("domain") == "enterprise"
             and _obs_scenario(leaf) in BLOCKED_ENTERPRISE_SCENARIOS)
+
 
 LEGACY_WITHOUT_AC = frozenset({
     "W4-03/storage-switch", "W4-03/storage-disk", "W4-03/storage-garage",
