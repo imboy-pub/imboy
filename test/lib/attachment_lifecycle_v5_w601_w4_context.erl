@@ -442,6 +442,10 @@ seed_scoped_asset(State, Conn, Key, Id, Driver, Scope, ScopeRef) ->
 %% 能力窗已过 => gc 资格可证明。
 seed_group_asset(State, Conn, Key, Id, GfId, Driver, Bound) ->
     Asset = seed_scoped_asset(State, Conn, Key, Id, Driver, <<"group">>, <<"66">>),
+    %% Preserve the historical binding ID even when its group_file row is absent.
+    %% The live row's presence then distinguishes bound from released fixtures.
+    %% 即便 group_file 行已释放也保留历史绑定 ID，以行是否存在区分绑定/已释放。
+    q(Conn, "UPDATE attachment SET group_file_id=$2 WHERE id=$1", [Id, GfId]),
     case Bound of
         true ->
             q(
@@ -574,9 +578,7 @@ install_governance(Conn, AttId, hold_workspace) ->
         " ON CONFLICT (attachment_id) DO UPDATE SET scope='group', scope_ref='66'",
         [AttId]
     ),
-    fun() ->
-        q(Conn, "DELETE FROM workspace_attachment_retention WHERE attachment_id=$1", [AttId])
-    end;
+    retain_for_database_cleanup(Conn, <<"workspace_attachment_retention">>, AttId);
 install_governance(Conn, AttId, hold_conversation) ->
     q(
         Conn,
@@ -585,9 +587,7 @@ install_governance(Conn, AttId, hold_conversation) ->
         " ON CONFLICT (attachment_id) DO UPDATE SET scope='channel', scope_ref='66'",
         [AttId]
     ),
-    fun() ->
-        q(Conn, "DELETE FROM workspace_attachment_retention WHERE attachment_id=$1", [AttId])
-    end;
+    retain_for_database_cleanup(Conn, <<"workspace_attachment_retention">>, AttId);
 install_governance(Conn, AttId, hold_message) ->
     q(
         Conn,
@@ -633,14 +633,7 @@ install_governance(Conn, AttId, future_retention) ->
         " ON CONFLICT (attachment_id) DO UPDATE SET retention_until=now()+ interval '50 years'",
         [AttId]
     ),
-    fun() ->
-        q(
-            Conn,
-            "UPDATE enterprise_attachment_retention SET retention_until=now()"
-            " WHERE attachment_id=$1",
-            [AttId]
-        )
-    end;
+    retain_for_database_cleanup(Conn, <<"enterprise_attachment_retention">>, AttId);
 install_governance(Conn, AttId, permanent_workspace_retention) ->
     q(
         Conn,
@@ -649,9 +642,15 @@ install_governance(Conn, AttId, permanent_workspace_retention) ->
         " ON CONFLICT (attachment_id) DO UPDATE SET scope='group', scope_ref='66-permanent'",
         [AttId]
     ),
-    fun() ->
-        q(Conn, "DELETE FROM workspace_attachment_retention WHERE attachment_id=$1", [AttId])
-    end.
+    retain_for_database_cleanup(Conn, <<"workspace_attachment_retention">>, AttId).
+
+%% Immutable retention belongs to the owned database lifetime. Verify that
+%% the case preserved it; the controller later drops the entire owned database.
+%% 不可变保留记录归自有数据库生命周期；验证本案例未修改，最终由控制器销毁整库。
+retain_for_database_cleanup(Conn, Table, AttId) ->
+    Sql = <<"SELECT * FROM ", Table/binary, " WHERE attachment_id=$1">>,
+    {ok, _, [_]} = Snapshot = epgsql:equery(Conn, Sql, [AttId]),
+    fun() -> ?assertEqual(Snapshot, epgsql:equery(Conn, Sql, [AttId])) end.
 
 %% 企业 workspace hold（append-only：清理走 release 一次性写入）。
 install_eb_hold(Conn, HoldId) ->

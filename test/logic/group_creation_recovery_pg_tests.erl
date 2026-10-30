@@ -8,8 +8,8 @@
 %%% `group_logic:workspace_add_tx/4` 在初始成员入群失败时整体回滚。
 %%%
 %%% mock 套件（group_logic_tests / group_scope_tests）已覆盖
-%%% join_group 返回 {error,_} → join_initial_member throw({abort_tx,_}) 的
-%%% 映射；本套件在真实 PG 上证明同一事务语义：DS 层
+%%% 业务中止及异常返回引发 badmatch 时，事务包装均回滚并返回错误；
+%%% 本套件在真实 PG 上证明同一事务语义：DS 层
 %%% ensure_workspace_membership 对非 active workspace_member 抛
 %%% {abort_tx, workspace_membership_required} 后，已插入的群行随事务回滚，
 %%% 不留半成品群；对照组（成员资格存在）正常落库。

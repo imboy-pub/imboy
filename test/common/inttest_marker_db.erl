@@ -68,6 +68,10 @@ provision(Opts) when is_map(Opts) ->
 
 %% V5 random marker databases are outside the receipt; bind identity and slot first.
 require_authorized_marker_fixture(<<"V5_INTTEST", _/binary>> = Prefix) ->
+    case native_v5_fixture:enabled() of
+        true -> ok = native_v5_fixture:configure(Prefix);
+        false -> ok
+    end,
     case bound_v5_database(Prefix) of
         {ok, _Db} -> ok;
         error -> error({contract_conflict, marker_db_identity_and_slot_unverified})
@@ -541,6 +545,10 @@ await_connect(Worker, Monitor, Timeout, Host) ->
 authorize_connection_target(Db) when is_list(Db) ->
     authorize_connection_target(unicode:characters_to_binary(Db));
 authorize_connection_target(<<"attv5_", _/binary>> = Name) ->
+    case native_v5_fixture:enabled() of
+        true -> ok = native_v5_fixture:assert_database(Name);
+        false -> ok
+    end,
     case bound_slot_name(Name) of
         ok -> ok;
         error -> error({contract_conflict, marker_db_identity_and_slot_unverified})

@@ -105,13 +105,18 @@ hold_all_entrypoint(S, ScBin, Idx, ScopeVal, EP) ->
     CtrlKey = he_ctrl_key(Key),
     CtrlId = Id + 1,
     Quad = ?SUP:seed_identity(S, Driver, Key),
-    ok = ?SUP:seed_confirmed(
+    ok = ?SUP:seed_confirmed_live(
         Conn, Key, Id, null, Quad, ScopeVal, scope_ref_fixture(ScopeVal), null
     ),
     CtrlQuad = ?SUP:seed_identity(S, Driver, CtrlKey),
-    ok = ?SUP:seed_confirmed(
+    ok = ?SUP:seed_confirmed_live(
         Conn, CtrlKey, CtrlId, null, CtrlQuad, ScopeVal, scope_ref_fixture(ScopeVal), null
     ),
+    %% Independent primary/control windows overlap; governance still runs serially
+    %% only after BOTH original three-second windows have naturally elapsed.
+    %% 主/对照资产独立能力窗重叠；两者原三秒均自然到期后才顺序执行治理断言。
+    ok = ?SUP:await_upload_expiry(Conn, Key),
+    ok = ?SUP:await_upload_expiry(Conn, CtrlKey),
     Probe = ?SUP:probe_io(Key, Quad),
     CtrlProbe = ?SUP:probe_io(CtrlKey, CtrlQuad),
     %% 明文真值前提：gc_verified 引用零证明为真（排除 gc=false 混淆变量）。
@@ -220,9 +225,9 @@ entry_call(account_deletion, S, Key, _Id, _Quad) ->
     true = lists:member(Key, Keys),
     ?assertMatch(
         {error, intent_conflict},
-        attachment_repo:intent_ordinary_delete_tx(
+        in_fixture_tx(Conn, fun() -> attachment_repo:intent_ordinary_delete_tx(
             Conn, Key, <<"w601w3 hold account deletion">>
-        )
+        ) end)
     ),
     {ok, _, [{1}]} = ?SUP:e(Conn, "SELECT COUNT(*) FROM attachment WHERE path=$1", [Key]),
     #{
@@ -240,9 +245,9 @@ entry_call(app_confirm_reject, S, Key, _Id, _Quad) ->
     #{conn := Conn} = S,
     ?assertMatch(
         {error, intent_conflict},
-        attach_pending_repo:intent_pending_delete_tx(
+        in_fixture_tx(Conn, fun() -> attach_pending_repo:intent_pending_delete_tx(
             Conn, Key, <<"reject">>, <<"w601w3 confirm reject under hold">>
-        )
+        ) end)
     ),
     {ok, _, [{1}]} = ?SUP:e(Conn, "SELECT COUNT(*) FROM attachment WHERE path=$1", [Key]),
     #{
@@ -461,7 +466,7 @@ hr_step(S, <<"hold_commits_first">>, <<"enterprise">>, _Key, Id) ->
     Other = ?SUP:barrier_connect(S),
     {Blocked, Hold} =
         try
-            ?SUP:with_row_lock_barrier(Conn, Other, ?SUP:eb_row_lock(EbId), fun(Pids) ->
+            ?SUP:with_row_lock_barrier(Conn, Other, ?SUP:eb_workspace_lock(9101, 9102), fun(Pids) ->
                 Ref = ?SUP:start_step(fun() ->
                     ?SUP:e(
                         Other,
@@ -705,7 +710,7 @@ hr_step(S, <<"intent_before_retention_extension">>, <<"enterprise">>, Key, Id) -
     {ok, _} = enterprise_asset_retention_logic:governance_tx(Conn, ?SUP:governance_ctx(), #{
         object_key => Key,
         op => <<"set_retention">>,
-        retention_days => 90
+        retention_days => 3650
     }),
     {ok, _, [{<<"delete_intent">>}]} = ?SUP:e(
         Conn, "SELECT lifecycle_state FROM enterprise_asset WHERE id=$1", [EbId]
@@ -792,7 +797,7 @@ hr_step(S, <<"workspace_hold_exclusion_receipt">>, <<"enterprise">>, _Key, Id) -
     Other = ?SUP:barrier_connect(S),
     {Blocked, Hold} =
         try
-            ?SUP:with_row_lock_barrier(Conn, Other, ?SUP:eb_row_lock(EbId), fun(Pids) ->
+            ?SUP:with_row_lock_barrier(Conn, Other, ?SUP:eb_workspace_lock(9101, 9102), fun(Pids) ->
                 Ref = ?SUP:start_step(fun() ->
                     ?SUP:e(
                         Other,
@@ -921,13 +926,19 @@ sweep(S, {?C_HR, _Entry, Driver, ScBin, DomBin, _Ac, Idx, _Scope, _EP}) ->
 
 sweep_asset(Conn, Key, Id, EbId) ->
     ?SUP:lenient_q(Conn, "DELETE FROM attach_pending WHERE object_key=$1", [Key]),
-    ?SUP:lenient_q(Conn, "DELETE FROM attachment WHERE path=$1", [Key]),
-    ?SUP:lenient_q(Conn, "DELETE FROM attachment_object_deletion WHERE path=$1", [Key]),
+    ?SUP:cleanup_attachment(Conn, Key),
+    ?SUP:cleanup_tombstone(Conn, Key),
     ok = ?SUP:ear_release_and_purge(Conn, Id),
     ?SUP:lenient_q(Conn, "DELETE FROM group_file WHERE id=$1", [Id]),
-    ?SUP:lenient_q(Conn, "DELETE FROM enterprise_asset WHERE id=$1", [EbId]),
-    ?SUP:lenient_q(Conn, "DELETE FROM enterprise_asset_delete_queue WHERE asset_id=$1", [EbId]),
+    ?SUP:cleanup_enterprise_asset(Conn, EbId),
+    ?SUP:cleanup_enterprise_queue(Conn, EbId),
     ?SUP:release_workspace_holds(Conn).
+
+%% _tx APIs require a real outer transaction for their savepoints.
+%% _tx 接口要求真实外层事务以承载 savepoint；断言后回滚自有夹具事务。
+in_fixture_tx(Conn, Fun) ->
+    ok = ?SUP:q(Conn, "BEGIN"),
+    try Fun() after ok = ?SUP:q(Conn, "ROLLBACK") end.
 
 indexed(List) ->
     lists:zip(lists:seq(1, length(List)), List).

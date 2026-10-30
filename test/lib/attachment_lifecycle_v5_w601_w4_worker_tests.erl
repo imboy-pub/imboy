@@ -189,7 +189,9 @@ queue_quota(_St, Conn, Key, Triple) ->
     ?QP:reset_ordinary(Conn),
     seed_job(Conn, Key, Triple, 0, ready),
     EbId = 948000000000 + eb_leaf_id(),
-    {ok, _, _} = ?X:e(
+    EbKey = ?X:unique_key(<<"enterprise/9101/9102/quota">>),
+    ok = ?X:seed_eb_asset_row(Conn, EbKey, EbId, Triple, <<"deleted">>, true, <<"live">>),
+    {ok, 1} = ?X:e(
         Conn,
         "INSERT INTO enterprise_asset_delete_queue"
         " (organization_id,workspace_id,asset_id,object_key,storage_driver,"
@@ -199,7 +201,7 @@ queue_quota(_St, Conn, Key, Triple) ->
         " ON CONFLICT (organization_id,workspace_id,asset_id) DO NOTHING",
         [
             EbId,
-            <<"enterprise/9101/9102/quota">>,
+            EbKey,
             maps:get(driver, Triple),
             maps:get(namespace, Triple),
             maps:get(container, Triple),

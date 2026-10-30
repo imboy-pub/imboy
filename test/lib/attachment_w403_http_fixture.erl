@@ -20,6 +20,7 @@
     request/6,
     success/1,
     max_bytes/1,
+    user_headers/3,
     %% W6-01 C 组拆分（attachment_w403_http_fixture_w601）所需的内部入口：
     %% 只增导出，上方导出与实现保持 W4-03 验收原样。
     payload/1,
@@ -400,6 +401,19 @@ register(S0, Surface, Driver, Bytes) ->
         registration => Data,
         client_upload_id => Cid
     }.
+
+%% A second principal must pass the same real client-signature gate, otherwise
+%% an authorization probe merely measures a missing-signature rejection.
+%% 第二主体也须通过真实客户端签名门，避免越权探针只测到缺签名拒绝。
+user_headers(S, Uid, Did) ->
+    H = maps:get(ordinary_headers, S),
+    Vsn = maps:get(<<"vsn">>, H),
+    Cos = maps:get(<<"cos">>, H),
+    Pkg = maps:get(<<"pkg">>, H),
+    Key = app_version_ds:sign_key(Cos, maps:get(<<"sk">>, H), Pkg),
+    Plain = <<Did/binary, "|", Vsn/binary, "|", Cos/binary, "|", Pkg/binary>>,
+    H#{<<"did">> => Did, <<"sign">> => elib_hasher:hmac_sha256(Plain, Key),
+        <<"authorization">> => <<"Bearer ", (token_ds:encrypt_token(Uid))/binary>>}.
 
 registration_request(S, ordinary, _Bytes, Cid) ->
     Q = uri_string:compose_query([

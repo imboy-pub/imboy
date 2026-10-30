@@ -10,7 +10,9 @@
     connect/1,
     connect_db/3,
     ensure_template/2,
+    ensure_template/3,
     clone/3,
+    clone/4,
     drop_owned/2,
     active_connections/2,
     marker_ok/2,
@@ -190,9 +192,11 @@ q(C, Sql) ->
 %% ---- 模板 ----
 
 ensure_template(Conn, Name) ->
+    ensure_template(Conn, Name, conn_args_of(Conn)).
+
+ensure_template(Conn, Name, Args) ->
     true = is_owned_name(Name),
     ensure(Conn, Name),
-    Args = conn_args_of(Conn),
     connect_db(Args, Name, fun(C) -> ensure_marker(C) end),
     q(Conn, ["ALTER DATABASE \"", Name, "\" IS_TEMPLATE true"]),
     #{name => Name, digest => template_digest()}.
@@ -227,14 +231,16 @@ template_digest() ->
 %% ---- 克隆（DB01/DB03） ----
 
 clone(Conn, Template, Target) ->
+    clone(Conn, Template, Target, conn_args_of(Conn)).
+
+clone(Conn, Template, Target, Args) ->
     true = is_owned_name(Target),
     %% DB03：克隆前模板无活动连接
     [] = active_connections(Conn, Template),
     q(Conn, ["CREATE DATABASE \"", Target, "\" TEMPLATE \"", Template, "\""]),
-    clone_equivalence(Conn, Template, Target).
+    clone_equivalence(Args, Template, Target).
 
-clone_equivalence(Conn, A, B) ->
-    Args = conn_args_of(Conn),
+clone_equivalence(Args, A, B) ->
     Ca = connect_db(Args, A, fun table_set/1),
     Cb = connect_db(Args, B, fun table_set/1),
     case Ca =:= Cb of
@@ -293,12 +299,12 @@ with_template_pool(Conn, Template, Args, Fun) ->
     Target =
         "imboy_quality_clone_" ++
             integer_to_list(erlang:unique_integer([positive]) band 16#FFFFFF),
-    clone(Conn, Template, Target),
+    clone(Conn, Template, Target, Args),
     try
         Fun(Args#{database := Target})
     after
         try
-            drop_owned(Conn, Target)
+            drop_owned(Conn, Args, Target)
         catch
             _:_ -> ok
         end

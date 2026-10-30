@@ -102,23 +102,25 @@ read_snapshot(I) ->
 %% recheck 路径（OS 锁内开短事务）构成潜在死锁对；read_link_info 单次读
 %% inode 元数据无撕裂，威胁模型与 read_snapshot 一致。read_link_info 不
 %% 跟随符号链接——与既有 head/3 同语义（等价 read_file_info 且更严）；
-%% mtime 取 posix 秒与 garage HEAD 的 last-modified 同刻度。disk 无 etag
-%% 概念，恒 undefined，对照层按 size+mtime 判据执行。
+%% Atomic replacement can retain both size and second-resolution mtime. Include
+%% device/inode identity so confirm detects replacement without another full read.
+%% 原子替换可能保持大小和秒级 mtime；设备/inode 身份使确认无需重读整对象
+%% 即可识别替换。disk 无 etag，仍返回 undefined。
 head_snapshot(I) ->
     with_snapshot_path(I, fun(_, Path) ->
         case file:read_link_info(Path, [{time, posix}]) of
-            {ok, #file_info{type = regular, size = Size, mtime = Mtime}} when
+            {ok, #file_info{type = regular, size = Size, mtime = Mtime,
+                major_device = Major, minor_device = Minor, inode = Inode}} when
                 is_integer(Size), Size >= 0, is_integer(Mtime)
             ->
-                {ok, #{size => Size, mtime => Mtime, etag => undefined}};
+                {ok, #{size => Size, mtime => Mtime, etag => undefined,
+                    identity => {Major, Minor, Inode}}};
             {ok, #file_info{}} ->
                 {error, path_escape};
             {error, enoent} ->
                 {error, not_found};
             {error, R} ->
-                {error, R};
-            _ ->
-                {error, path_escape}
+                {error, R}
         end
     end).
 %% Read one already-verified physical inode in bounded chunks under its storage lock.

@@ -4,39 +4,50 @@
 -include("error_code.hrl").
 
 photo_id_boundary_test_() ->
+    Values = [
+        42,
+        <<"42">>,
+        9007199254740993,
+        <<"9007199254740993">>,
+        9223372036854775807,
+        <<"9223372036854775807">>,
+        <<>>,
+        <<"bad">>,
+        undefined,
+        null,
+        0,
+        -1,
+        1.5,
+        <<"-1">>,
+        <<"+42">>,
+        <<"42.0">>,
+        <<" 42">>,
+        9223372036854775808,
+        <<"9223372036854775808">>,
+        #{},
+        []
+    ],
+    %% An action keeps exactly the same exported mock functions for all values.
+    %% Each original leaf replaces every expectation and resets every history.
     [
-        ?_test(photo_id_boundary_case(Action, Value))
+        {setup,
+            fun() ->
+                Modules = [cowboy_req, elib_req, elib_response, group_album_logic],
+                lists:foreach(fun(Module) -> meck:new(Module, [non_strict]) end, Modules),
+                Modules
+            end,
+            fun(Modules) -> lists:foreach(fun meck:unload/1, Modules) end,
+            fun(_) ->
+                [?_test(photo_id_boundary_case(Action, Value)) || Value <- Values]
+            end}
      || Action <- [
             photo_detail, delete_photo, like_photo, unlike_photo, add_comment, list_comments
-        ],
-        Value <- [
-            42,
-            <<"42">>,
-            9007199254740993,
-            <<"9007199254740993">>,
-            9223372036854775807,
-            <<"9223372036854775807">>,
-            <<>>,
-            <<"bad">>,
-            undefined,
-            null,
-            0,
-            -1,
-            1.5,
-            <<"-1">>,
-            <<"+42">>,
-            <<"42.0">>,
-            <<" 42">>,
-            9223372036854775808,
-            <<"9223372036854775808">>,
-            #{},
-            []
         ]
     ].
 
 photo_id_boundary_case(Action, Value) ->
     Modules = [cowboy_req, elib_req, elib_response, group_album_logic],
-    lists:foreach(fun(Module) -> meck:new(Module, [non_strict]) end, Modules),
+    lists:foreach(fun meck:reset/1, Modules),
     try
         Body = #{<<"photo_id">> => Value, <<"content">> => <<"comment">>},
         meck:expect(cowboy_req, parse_qs, fun(_) -> maps:to_list(Body) end),
@@ -61,7 +72,7 @@ photo_id_boundary_case(Action, Value) ->
                 ?assertEqual(success, Actual)
         end
     after
-        lists:foreach(fun meck:unload/1, Modules)
+        lists:foreach(fun meck:reset/1, Modules)
     end.
 
 setup_photo_action(photo_detail, Expected) ->

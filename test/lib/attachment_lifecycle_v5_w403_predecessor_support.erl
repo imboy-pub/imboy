@@ -66,6 +66,15 @@ set_driver(Other) ->
     erlang:error({w403p_unknown_driver, Other}).
 
 reset_driver() ->
+    case {current_driver(), get(?GARAGE_OBJECTS_KEY)} of
+        {garage, Objects} when is_list(Objects) ->
+            Bucket = maps:get(bucket, garage_env()),
+            lists:foreach(fun({Key, _}) ->
+                ok = attachment_storage_garage:delete(ns(), Bucket, Key),
+                {error, not_found} = attachment_storage_garage:head_bounded(ns(), Bucket, Key)
+            end, Objects);
+        _ -> ok
+    end,
     erase(?DRIVER_KEY),
     erase(?GARAGE_OBJECTS_KEY),
     ok.
@@ -124,7 +133,7 @@ put_disk_file(Root, Key, Body) ->
     end.
 
 track_garage_object(Key, Size) ->
-    Tracked = get(?GARAGE_OBJECTS_KEY),
+    Tracked = case get(?GARAGE_OBJECTS_KEY) of undefined -> []; Items -> Items end,
     Merged =
         case lists:keytake(Key, 1, Tracked) of
             {value, {Key, _}, Rest} -> [{Key, Size} | Rest];

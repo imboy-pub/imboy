@@ -192,6 +192,7 @@ registry(Base, Garage) ->
     %% 标记，endpoint 仍指向 bind 自有目录；bind 与 race/hold 各用独立步级
     %% 库，同 namespace 不同 root 不构成跨套件冲突。
     #{
+        version => 1, roots => #{
         <<"w601-w3-bind-disk-root">> => #{
             driver => <<"disk">>,
             namespace => ?NS_DISK,
@@ -206,7 +207,7 @@ registry(Base, Garage) ->
             endpoint => maps:get(endpoint, Garage),
             container => maps:get(bucket, Garage)
         }
-    }.
+    }}.
 
 %% ------------------------------------------------------------ leaf matrix
 
@@ -278,6 +279,7 @@ open_cs_session(Scope, Opts) ->
 %% cs 域 contact 消息 append 参数（sender_shape 经 session contact 裁决）。
 cs_append_params(Session, Scope, ClientMsgId, AssetIds) ->
     #{
+        workspace_id => maps:get(workspace_id, Scope),
         session_id => maps:get(id, Session),
         contact_id => maps:get(contact_id, Scope),
         client_msg_id => ClientMsgId,
@@ -298,7 +300,7 @@ cs_replay(S, Driver) ->
         U1 = ?FIX:id(),
         Key = object_key(Org, Ws, U1),
         Quad = ?SUP:seed_identity(S, Driver, Key),
-        ok = seed_unbound_asset(S, Org, Ws, Conv, U1, <<"重放.doc">>, null, Quad),
+        ok = seed_unbound_asset(S, Org, Ws, Conv, U1, <<"重放.doc"/utf8>>, null, Quad),
         Probe = ?SUP:probe_io(Key, Quad),
         {ok, Session} = open_cs_session(Scope, #{}),
         Params = cs_append_params(Session, Scope, <<"w601w3-cs-replay-1">>, [U1]),
@@ -356,7 +358,7 @@ cs_wrong_org(S, Driver) ->
             null,
             Foreign,
             null,
-            #{file_name => <<"他org.png">>},
+            #{file_name => <<"他org.png"/utf8>>},
             Quad
         ),
         Probe = ?SUP:probe_io(ForeignKey, Quad),
@@ -407,7 +409,7 @@ cs_wrong_workspace(S, Driver) ->
             null,
             Foreign,
             null,
-            #{file_name => <<"跨ws.png">>},
+            #{file_name => <<"跨ws.png"/utf8>>},
             Quad
         ),
         Probe = ?SUP:probe_io(ForeignKey, Quad),
@@ -548,8 +550,8 @@ ent_rollback(S, Driver) ->
         K2 = object_key(Org, Ws, U2),
         Quad1 = ?SUP:seed_identity(S, Driver, K1),
         Quad2 = ?SUP:seed_identity(S, Driver, K2),
-        ok = seed_unbound_asset(S, Org, Ws, Conv, U1, <<"好资产.png">>, Actor, Quad1),
-        ok = seed_unbound_asset(S, Org, Ws, Conv, U2, <<"墓碑资产.png">>, Actor, Quad2),
+        ok = seed_unbound_asset(S, Org, Ws, Conv, U1, <<"好资产.png"/utf8>>, Actor, Quad1),
+        ok = seed_unbound_asset(S, Org, Ws, Conv, U2, <<"墓碑资产.png"/utf8>>, Actor, Quad2),
         Probe1 = ?SUP:probe_io(K1, Quad1),
         Probe2 = ?SUP:probe_io(K2, Quad2),
         %% U2 已进删除意图：02 §5「删除意图先提交 → 不再允许新增引用」
@@ -643,17 +645,17 @@ seed_asset_row(
     _S, Org, Ws, Conv, MsgId, AssetId, RetainMs, Opts, Quad
 ) ->
     FileName = maps:get(file_name, Opts, null),
-    ?FIX:exec(
+    ok = ?FIX:exec(
         <<
             "INSERT INTO enterprise_asset"
             " (id, organization_id, workspace_id, conversation_id, message_id,"
             "  uploaded_by_user_id, object_key, object_hash, mime, size_bytes, status,"
             "  file_name, retain_until, version,"
             "  storage_driver, storage_namespace, storage_container, storage_locator_sha256)"
-            " VALUES ($1,$2,$3,$4,$5,$13,$6,$7,$8,$9,'active',$11,"
-            "         CASE WHEN $12::bigint IS NULL THEN NULL"
-            "              ELSE to_timestamp($12::bigint/1000) END,"
-            "         1,$14,$15,$16,$17)"
+            " VALUES ($1,$2,$3,$4,$5,$12,$6,$7,$8,$9,'active',$10,"
+            "         CASE WHEN $11::bigint IS NULL THEN NULL"
+            "              ELSE to_timestamp($11::bigint/1000) END,"
+            "         1,$13,$14,$15,$16)"
             " ON CONFLICT (id) DO NOTHING"
         >>,
         [
@@ -666,7 +668,6 @@ seed_asset_row(
             eb_asset_content:sha256_hex(<<"w601w3-fixture">>),
             <<"image/png">>,
             2048,
-            0,
             FileName,
             RetainMs,
             maps:get(uploader, Opts, null),

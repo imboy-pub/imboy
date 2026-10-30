@@ -1,7 +1,8 @@
 %%% 真 PG + loopback HTTP gateway + 两真实 driver；不是四业务入口64叶的替代品。
 -module(attachment_lifecycle_v5_w403_gateway_protocol_tests).
--export([setup/0, cleanup/1]).
+-export([setup/0, cleanup/1, assert_fixture_database/4, assert_chain_fixture_database/4]).
 -include_lib("eunit/include/eunit.hrl").
+-include_lib("kernel/include/file.hrl").
 
 protocol_test_() ->
     {setup, fun setup/0, fun cleanup/1, fun(S) ->
@@ -51,16 +52,16 @@ setup() ->
 
 setup_owned() ->
     {ok, ManifestBytes} = file:read_file(required("W403_RESOURCE_MANIFEST")),
-    #{<<"database">> := Db} = jsone:decode(ManifestBytes),
-    <<"attv5_", _/binary>> = Db,
+    #{<<"database">> := Db} = Manifest = jsone:decode(ManifestBytes),
+    {ok, [Config]} = file:consult(required("W403_CONFIG_PATH")),
+    Env = proplists:get_value(imboy, Config),
+    ok = assert_fixture_database(Db, Manifest, Env, required("W403_RESOURCE_MANIFEST")),
     %% elib_pg uses the global pgsql name. Reuse only the exact manifest DB;
     %% never redirect, remove or replace a pre-existing pool.
     case whereis(pgsql) of
         undefined -> ok;
         _ -> assert_database(Db)
     end,
-    {ok, [Config]} = file:consult(required("W403_CONFIG_PATH")),
-    Env = proplists:get_value(imboy, Config),
     [application:set_env(imboy, K, V) || {K, V} <- Env],
     {ok, Pg0} = application:get_env(imboy, pg_conf),
     {epgsql, connect, [Connect0]} = maps:get(start_mfa, Pg0),
@@ -192,6 +193,49 @@ ensure_started(App) ->
     S = erlang:get(w403_gateway_setup),
     %% ensure_all_started returns dependency-first order; stop dependents first.
     own_resource(owned_apps, lists:reverse(Started) ++ maps:get(owned_apps, S)).
+
+%% Ordinary native-CI bases have their own namespace. Unlike legacy V5 review
+%% manifests, they require private provenance and a live read-only identity check.
+%% 原生 CI 普通主库使用独立命名空间；必须先核私有清单与实时身份，不只认前缀。
+assert_chain_fixture_database(<<"attv5_chain_", _/binary>>, _, _, _) -> ok;
+assert_chain_fixture_database(<<"imboy_chain_ci_", _/binary>> = Db, Manifest, Env, Path) ->
+    assert_fixture_database(Db, Manifest, Env, Path);
+assert_chain_fixture_database(_, _, _, _) -> error({no_go, w403_chain_database_unverified}).
+
+assert_fixture_database(<<"attv5_", _/binary>>, _Manifest, _Env, _Path) -> ok;
+assert_fixture_database(<<"imboy_chain_ci_", _/binary>> = Db, Manifest, Env, Path) ->
+    {match, _} = re:run(Db, "^imboy_chain_ci_[0-9]+_[0-9]+_(uid|full)$"),
+    absolute = filename:pathtype(Path),
+    {ok, #file_info{type = regular, mode = Mode, uid = Owner}} = file:read_link_info(Path),
+    {ok, #file_info{type = directory, mode = ParentMode, uid = Owner}} =
+        file:read_link_info(filename:dirname(Path)),
+    8#600 = Mode band 8#777,
+    8#700 = ParentMode band 8#777,
+    #{<<"pg_system_identifier">> := SystemId, <<"owner_marker">> := Marker} = Manifest,
+    {match, _} = re:run(SystemId, "^[0-9]+$"),
+    Marker = <<"imboy-native-eunit:ordinary-base:", Db/binary>>,
+    Pg = proplists:get_value(pg_conf, Env),
+    {epgsql, connect, [#{host := "127.0.0.1", port := 55432,
+        username := "imboy_ci", password := ""} = Opts]} = maps:get(start_mfa, Pg),
+    Db = iolist_to_binary(maps:get(database, Opts)),
+    {ok, Started} = application:ensure_all_started(epgsql),
+    try
+        {ok, Conn} = epgsql:connect(Opts),
+        try
+            Expected = {Db, <<"imboy_ci">>, SystemId, Marker},
+            {ok, _, [Expected]} = epgsql:equery(Conn,
+                "SELECT current_database(),current_user,system_identifier::text,"
+                "shobj_description(d.oid,'pg_database') FROM pg_control_system(),pg_database d"
+                " WHERE d.datname=current_database()", []),
+            ok
+        after
+            epgsql:close(Conn)
+        end
+    after
+        lists:foreach(fun application:stop/1, lists:reverse(Started))
+    end;
+assert_fixture_database(_, _, _, _) -> error({no_go, w403_fixture_database_unverified}).
+
 assert_database(Expected) ->
     case elib_pg:query(<<"SELECT current_database() AS db">>, []) of
         {ok, [#{<<"db">> := Expected}]} -> ok;

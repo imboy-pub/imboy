@@ -79,8 +79,8 @@ old_specs() ->
         Sc <- [<<"confirmed_legacy_request">>, <<"unknown_legacy_pending">>]
     ].
 
-leaf_unit(S, {Case, Ep, Driver, Sc, _Dom, _Ac} = Spec) ->
-    Leaf = leaf_name(Case, Ep, Driver, Sc),
+leaf_unit(S, {Case, Ep, Driver, Sc, Dom, _Ac} = Spec) ->
+    Leaf = leaf_name(Case, Ep, Driver, Sc, Dom),
     {
         binary_to_list(Leaf),
         {timeout, 240, fun() ->
@@ -89,17 +89,29 @@ leaf_unit(S, {Case, Ep, Driver, Sc, _Dom, _Ac} = Spec) ->
         end}
     }.
 
-leaf_name(Case, Ep, Driver, Sc) ->
+leaf_name(Case, Ep, Driver, Sc, Dom) ->
     [_, Short] = binary:split(Case, <<"/">>),
     <<
         Short/binary,
         "/",
-        (atom_to_binary(Ep, utf8))/binary,
+        (ec_cnv:to_binary(Ep))/binary,
         "/",
         (atom_to_binary(Driver, utf8))/binary,
         "/",
+        Dom/binary,
+        "/",
         Sc/binary
     >>.
+
+%% Construct the entire matrix before touching PG/HTTP. Binary entrypoint
+%% names and the two domains must produce 58 distinct runnable descriptors.
+%% 建立完整矩阵无需 PG/HTTP；二进制入口和两个域须生成 58 个不同描述符。
+confirm_matrix_instantiation_test() ->
+    {setup, _, _, Instantiate} = w601_w2_confirm_test_(),
+    Units = Instantiate(#{}),
+    ?assertEqual(58, length(Units)),
+    Names = [Name || {Name, {timeout, 240, Fun}} <- Units, is_function(Fun, 0)],
+    ?assertEqual(58, length(lists:usort(Names))).
 
 %% -------------------------------------------------------- scenario dispatch
 
@@ -118,9 +130,11 @@ scenario(S, {?C_OLD, _, Driver, Sc, <<"enterprise">>, _}) ->
 
 imm_scenario(S, Ep, Driver, <<"put_A_confirm_old_capability_put_B">>) ->
     T = reg(S, Ep, Driver),
-    %% put_calls 必须在 with_put_barrier 的 passthrough mock 作用域内读取：
-    %% 未 mock 的模块上 meck:num_calls 恒 {not_mocked}，断言必错（F3）。
-    ?S:with_put_barrier(T, fun(_Barrier) ->
+    %% Count real provider writes without pausing the synchronous first PUT.
+    %% 仅计数真实 provider 写入；不得暂停同步首 PUT 等待自身释放屏障。
+    Mod = ?S:driver_mod(Driver),
+    meck:new(Mod, [passthrough, no_link]),
+    try
         ?assert(?F:success(?F:put(T, ?BODY))),
         First = ?F:confirm(T),
         ?assert(?F:success(First)),
@@ -131,7 +145,9 @@ imm_scenario(S, Ep, Driver, <<"put_A_confirm_old_capability_put_B">>) ->
         ?assertEqual(0, ?S:put_calls(?S:driver_mod(Driver)) - 1),
         ?assertEqual({ok, ?BODY}, ?F:read(T)),
         #{old_capability_put_status => maps:get(status, Old), bytes_unchanged => true}
-    end);
+    after
+        meck:unload(Mod)
+    end;
 imm_scenario(S, Ep, Driver, <<"overwrite_between_stat_and_confirm">>) ->
     T = reg(S, Ep, Driver),
     ?assert(?F:success(?F:put(T, ?BODY))),
@@ -202,12 +218,17 @@ imm_scenario(S, Ep, Driver, <<"crash_after_pin_before_put_resume">>) ->
     after
         meck:unload(Mod)
     end,
-    {ok, Pin} = ?S:content_pin(key(T)),
+    {ok, Pin} = ?S:content_pin_any(Ep, T),
     ?assertEqual(?S:sha(?BODY), maps:get(<<"sha256">>, Pin)),
     ?assert(?F:success(?F:put(T, ?BODY))),
     ?assert(?F:success(?F:confirm(T))),
-    {ok, [#{<<"file_hash256">> := Stored}]} =
-        elib_pg:query(<<"SELECT file_hash256 FROM attachment WHERE path=$1">>, [key(T)]),
+    HashSql = case Ep of
+        ordinary -> <<"SELECT file_hash256 FROM attachment WHERE path=$1">>;
+        enterprise_internal -> <<"SELECT file_hash256 FROM attachment WHERE path=$1">>;
+        _ -> <<"SELECT object_hash AS file_hash256 FROM enterprise_asset "
+            "WHERE object_key=$1 AND status='active'">>
+    end,
+    {ok, [#{<<"file_hash256">> := Stored}]} = elib_pg:query(HashSql, [key(T)]),
     ?assertEqual(?S:sha(?BODY), Stored),
     #{resumed_same_receipt => true, stored_hash => <<"real_object_hash">>}.
 

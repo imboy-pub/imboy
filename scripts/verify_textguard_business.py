@@ -67,7 +67,7 @@ def schema_subset(snapshot, output, save):
                                          r"\s+ADD CONSTRAINT [^;]+;", text))
             statements.extend(re.findall(r"CREATE (?:UNIQUE )?INDEX [^;]+ ON public\." +
                                          escaped + r"\s+[^;]+;", text))
-    for number in [22, 34, 39, 59, 63, 72, 197]:
+    for number in [22, 34, 39, 59, 63, 72, 197, 230, 233]:
         paths = sorted(migrations.glob(f"{number:08d}_*.up.sql"))
         if len(paths) != 1:
             raise RuntimeError("ambiguous required migration " + str(number))

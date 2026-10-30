@@ -37,9 +37,10 @@ setup() ->
 
 setup_owned(RootPath) ->
     {ok, B} = file:read_file(os:getenv("W403_RESOURCE_MANIFEST")),
-    #{<<"database">> := Db} = jsone:decode(B),
-    <<"attv5_chain_", _/binary>> = Db,
+    #{<<"database">> := Db} = Identity = jsone:decode(B),
     {ok, [Config]} = file:consult(os:getenv("W403_CONFIG_PATH")),
+    ok = attachment_lifecycle_v5_w403_gateway_protocol_tests:assert_chain_fixture_database(
+        Db, Identity, proplists:get_value(imboy, Config), os:getenv("W403_RESOURCE_MANIFEST")),
     [application:set_env(imboy, K, V) || {K, V} <- proplists:get_value(imboy, Config)],
     {ok, Pg} = application:get_env(imboy, pg_conf),
     {epgsql, connect, [C]} = maps:get(start_mfa, Pg),

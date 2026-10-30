@@ -114,6 +114,10 @@ hex64(Base) ->
 
 %% 单入口 fixture：confirmed 资产（绑定释放形态 => 引用零可证明）+ 能力窗已过
 seed(Conn, Key, ScopeVal, Cipher, N) ->
+    seed_live(Conn, Key, ScopeVal, Cipher, N),
+    await_upload_expiry(Conn, Key).
+
+seed_live(Conn, Key, ScopeVal, Cipher, N) ->
     ScopeRef = scope_ref_fixture(ScopeVal),
     q(Conn, "DELETE FROM attach_pending WHERE object_key=$1", [Key]),
     q(Conn, "DELETE FROM attachment WHERE path=$1", [Key]),
@@ -148,7 +152,7 @@ seed(Conn, Key, ScopeVal, Cipher, N) ->
     {ok, _, _} = epgsql:equery(
         Conn, "SELECT fn_v5_confirm_pending($1,$2)", [Key, ?ASSET_BASE + N]
     ),
-    await_upload_expiry(Conn, Key),
+    assert_live_window(Conn, Key),
     ok.
 
 registration_fixture(Scope, ScopeRef) ->
@@ -275,18 +279,25 @@ install_governance(Conn, AttId, permanent_workspace_retention) ->
     end.
 
 w302_entrypoint_matrix(Conn, Ep, ScopeVal, Cipher, N) ->
-    %% 6 治理 fixture：WAR/EAR 行不可变（迁移触发器）——每个 fixture 用全新
-    %% 资产（无复用、无清理），安装后 intent 必须 23510（资格协议拒绝）。
+    %% Prepare independent assets before waiting. Each keeps its original three-
+    %% second capability window and proves live pin/confirm before that expiry.
+    %% 先准备独立资产再等待；每个保留原三秒能力窗，并证明窗内 pin/confirm。
+    Cases = lists:zip(lists:seq(1, 6), [
+            hold_workspace,
+            hold_conversation,
+            hold_message,
+            hold_attachment,
+            future_retention,
+            permanent_workspace_retention
+        ]),
+    lists:foreach(fun({Idx, _}) ->
+        seed_live(Conn, hold_case_key(Ep, Idx), ScopeVal, Cipher, N * 10 + Idx)
+    end, Cases),
     lists:foreach(
         fun({Idx, Scope}) ->
-            Key = [
-                "v5e2e/w302/",
-                atom_to_binary(Ep, utf8),
-                "/",
-                integer_to_binary(Idx)
-            ],
+            Key = hold_case_key(Ep, Idx),
             N2 = N * 10 + Idx,
-            seed(Conn, Key, ScopeVal, Cipher, N2),
+            await_upload_expiry(Conn, Key),
             AttId = ?ASSET_BASE + N2,
             %% 明文先证明可清理，避免 gc_verified=false 掩盖真正的 hold 拒绝。
             %% Make plaintext otherwise eligible before installing its hold.
@@ -318,16 +329,12 @@ w302_entrypoint_matrix(Conn, Ep, ScopeVal, Cipher, N) ->
                 }
             })
         end,
-        lists:zip(lists:seq(1, 6), [
-            hold_workspace,
-            hold_conversation,
-            hold_message,
-            hold_attachment,
-            future_retention,
-            permanent_workspace_retention
-        ])
+        Cases
     ),
     ok.
+
+hold_case_key(Ep, Idx) ->
+    ["v5e2e/w302/", atom_to_binary(Ep, utf8), "/", integer_to_binary(Idx)].
 
 %% hold-gc-race：hold 先提交 => intent 拒绝；intent 先提交 => 治理
 %% already_deleting（生产入口 governance_tx）+ 治理不复活已删对象。
@@ -621,7 +628,7 @@ w302_hold_gc_race(Conn) ->
 
 %% Pin/confirm must finish inside the real capability window. Never shrink it.
 %% Wait on the database clock, capped at five seconds; a missed window fails.
-await_upload_expiry(Conn, Key) ->
+assert_live_window(Conn, Key) ->
     {ok, _, [{true}]} = epgsql:equery(
         Conn,
         "SELECT session_state='confirmed' AND upload_content IS NOT NULL"
@@ -629,6 +636,9 @@ await_upload_expiry(Conn, Key) ->
         " FROM attach_pending WHERE object_key=$1",
         [Key]
     ),
+    ok.
+
+await_upload_expiry(Conn, Key) ->
     {ok, _, [_]} = epgsql:equery(
         Conn,
         "SELECT pg_sleep(LEAST(5.0, GREATEST(0.0,"
@@ -638,7 +648,8 @@ await_upload_expiry(Conn, Key) ->
     ),
     {ok, _, [{true}]} = epgsql:equery(
         Conn,
-        "SELECT upload_expires_at <= clock_timestamp()"
+        "SELECT session_state='confirmed' AND upload_content IS NOT NULL"
+        " AND upload_expires_at <= clock_timestamp()"
         " FROM attach_pending WHERE object_key=$1",
         [Key]
     ),

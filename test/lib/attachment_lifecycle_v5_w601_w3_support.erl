@@ -41,6 +41,10 @@
     e/2,
     e/3,
     lenient_q/3,
+    cleanup_attachment/2,
+    cleanup_tombstone/2,
+    cleanup_enterprise_asset/2,
+    cleanup_enterprise_queue/2,
     await_upload_expiry/2,
     hex64/1,
     loc/1,
@@ -48,6 +52,7 @@
     registration_fixture/2,
     receipt_fixture/1,
     seed_confirmed/8,
+    seed_confirmed_live/8,
     bind_group_file/2,
     unbind_group_file/2,
     seed_plain_row/8,
@@ -268,7 +273,7 @@ temp_parent() ->
     end.
 
 registry(Base, Garage) ->
-    #{
+    #{version => 1, roots => #{
         <<"w601-w3-disk-root">> => #{
             driver => <<"disk">>,
             namespace => ?NS_DISK,
@@ -283,7 +288,7 @@ registry(Base, Garage) ->
             endpoint => maps:get(endpoint, Garage),
             container => maps:get(bucket, Garage)
         }
-    }.
+    }}.
 
 %% ------------------------------------------------------------ leaf / emit
 
@@ -361,15 +366,17 @@ probe_io(Key, Quad) ->
     ProbeKey = <<Key/binary, "/.w601w3-probe">>,
     Body = <<"w601w3-probe:", Key/binary, ":", (hex64(crypto:strong_rand_bytes(16)))/binary>>,
     Digest = hex64(crypto:hash(sha256, Body)),
-    {ok, _} = Mod:put(Ns, Container, ProbeKey, Body),
-    {ok, Body} = Mod:read(Ns, Container, ProbeKey),
-    true = hex64(crypto:hash(sha256, Body)) =:= Digest,
     %% 同一叶可多次 probe_io（hold-all-entrypoints 主/对照资产、enterprise-bind
     %% 双资产叶）：清理 fun 以列表累积，probe_cleanup_after 全部执行——单键
     %% put 会覆盖前者，使主资产探针对象永不删除。
     put(w601w3_probe_cleanup, [
         fun() -> probe_delete(Mod, Ns, Container, ProbeKey) end | probe_cleanups()
     ]),
+    %% Both sanctioned drivers complete PUT with ok; readback proves the bytes.
+    %% 两个正式驱动 PUT 成功均返回 ok；后续读回及摘要校验真实字节。
+    ok = Mod:put(Ns, Container, ProbeKey, Body),
+    {ok, Body} = Mod:read(Ns, Container, ProbeKey),
+    true = hex64(crypto:hash(sha256, Body)) =:= Digest,
     #{
         probe_sha256 => Digest,
         probe_readback_ok => true
@@ -420,11 +427,63 @@ lenient_q(Conn, Sql, Params) ->
         {error, Reason} -> erlang:error({w601_w3_sql_failed, Reason, Sql})
     end.
 
+%% A held/live metadata row cannot be physically deleted. Keep the guard and
+%% prove its rejected DELETE left the row unchanged; the owned DB is dropped
+%% by the controller. Other SQL failures remain failures.
+%% 受保护元数据不能物理删除；验证拒删后行完整保留，最终由控制器销毁自有库。
+cleanup_attachment(Conn, Key) ->
+    Select = "SELECT * FROM attachment WHERE path=$1",
+    {ok, _, _} = Before = e(Conn, Select, [Key]),
+    case e(Conn, "DELETE FROM attachment WHERE path=$1", [Key]) of
+        {ok, _} -> ok;
+        {error, #error{code = <<"23510">>, message = Message}} when
+            Message =:= <<"v5 metadata delete requires committed delete_intent">>;
+            Message =:= <<"v5 metadata delete requires queue tombstone">> ->
+            ?assertEqual(Before, e(Conn, Select, [Key]));
+        {error, #error{code = <<"23503">>}} ->
+            ?assertEqual(Before, e(Conn, Select, [Key]));
+        {error, #error{code = <<"23001">>, extra = Extra}} ->
+            ?assertEqual(<<"fk_ear_attachment">>, proplists:get_value(constraint_name, Extra)),
+            ?assertEqual(Before, e(Conn, Select, [Key]));
+        Other -> error({w601_w3_attachment_cleanup_failed, Other})
+    end.
+
+cleanup_tombstone(Conn, Key) ->
+    cleanup_guarded(Conn, <<"attachment_object_deletion">>, <<"path">>, Key).
+cleanup_enterprise_asset(Conn, Id) ->
+    cleanup_guarded(Conn, <<"enterprise_asset">>, <<"id">>, Id).
+cleanup_enterprise_queue(Conn, Id) ->
+    cleanup_guarded(Conn, <<"enterprise_asset_delete_queue">>, <<"asset_id">>, Id).
+
+%% Permanent queue tombstones and protected enterprise rows belong to the
+%% owned database lifetime. Assert rejection and unchanged bytes, never bypass.
+%% 永久墓碑及企业保护行归自有库生命周期；校验拒删与行不变，不旁路守卫。
+cleanup_guarded(Conn, Table, Column, Value) ->
+    Select = <<"SELECT * FROM ",Table/binary," WHERE ",Column/binary,"=$1">>,
+    {ok, _, _} = Before = e(Conn, Select, [Value]),
+    Delete = <<"DELETE FROM ",Table/binary," WHERE ",Column/binary,"=$1">>,
+    case e(Conn, Delete, [Value]) of
+        {ok, _} -> ok;
+        {error, Error = #error{}} ->
+            case cleanup_guard_matches(Table, Error) of
+                true -> ?assertEqual(Before, e(Conn, Select, [Value]));
+                false -> error({w601_w3_protected_cleanup_failed, Table, Error})
+            end
+    end.
+
+cleanup_guard_matches(Table, #error{code = <<"23510">>,
+    message = <<"v5 job rows are permanent tombstones (no DELETE)">>}) when
+    Table =:= <<"attachment_object_deletion">>;
+    Table =:= <<"enterprise_asset_delete_queue">> -> true;
+cleanup_guard_matches(<<"enterprise_asset">>, #error{code = <<"23514">>, extra = Extra}) ->
+    proplists:get_value(constraint_name, Extra) =:= <<"trg_enterprise_asset_purge_guard">>;
+cleanup_guard_matches(_, _) -> false.
+
 e(Conn, Sql) -> e(Conn, Sql, []).
 
 e(Conn, Sql, Params) -> epgsql:equery(Conn, Sql, Params).
 
-await_upload_expiry(Conn, Key) ->
+assert_live_upload(Conn, Key) ->
     {ok, _, [{true}]} = e(
         Conn,
         "SELECT session_state='confirmed' AND upload_content IS NOT NULL"
@@ -432,6 +491,9 @@ await_upload_expiry(Conn, Key) ->
         " FROM attach_pending WHERE object_key=$1",
         [Key]
     ),
+    ok.
+
+await_upload_expiry(Conn, Key) ->
     {ok, _, [_]} = e(
         Conn,
         "SELECT pg_sleep(LEAST(5.0, GREATEST(0.0,"
@@ -441,7 +503,8 @@ await_upload_expiry(Conn, Key) ->
     ),
     {ok, _, [{true}]} = e(
         Conn,
-        "SELECT upload_expires_at <= clock_timestamp()"
+        "SELECT session_state='confirmed' AND upload_content IS NOT NULL"
+        " AND upload_expires_at <= clock_timestamp()"
         " FROM attach_pending WHERE object_key=$1",
         [Key]
     ),
@@ -503,6 +566,12 @@ receipt_fixture(N) ->
 %% attach_pending/队列 DELETE + attachment 前置 DELETE 容忍治理 FK 残留 +
 %% INSERT ON CONFLICT (id) DO NOTHING（重跑复用既有行）。
 seed_confirmed(Conn, Key, Id, GfIdOrNull, Quad, Scope, ScopeRef, Cipher) ->
+    ok = seed_confirmed_live(Conn, Key, Id, GfIdOrNull, Quad, Scope, ScopeRef, Cipher),
+    await_upload_expiry(Conn, Key).
+
+%% Prepare only this independent asset, proving pin/confirm within its real3s window.
+%% 仅准备本独立资产，并证明 pin/confirm 在原三秒能力窗内完成。
+seed_confirmed_live(Conn, Key, Id, GfIdOrNull, Quad, Scope, ScopeRef, Cipher) ->
     Driver = maps:get(<<"storage_driver">>, Quad),
     Ns = maps:get(<<"storage_namespace">>, Quad),
     Container = maps:get(<<"storage_container">>, Quad),
@@ -548,8 +617,7 @@ seed_confirmed(Conn, Key, Id, GfIdOrNull, Quad, Scope, ScopeRef, Cipher) ->
         ]
     ),
     q(Conn, "SELECT fn_v5_confirm_pending($1,$2)", [Key, Id]),
-    await_upload_expiry(Conn, Key),
-    ok.
+    assert_live_upload(Conn, Key).
 
 %% group_file 绑定行重挂/释放（reference 绑定语义的唯一写面）。
 bind_group_file(Conn, GfId) ->

@@ -477,14 +477,14 @@ private_message(Type) ->
     meck:expect(group_ds, is_member, fun(_, _) -> true end),
     meck:expect(group_ds, e2ee_mode, fun(_) -> {ok, 1} end),
     meck:expect(msg_store_ds, stage_with_sequence, fun(
-        <<"c2c">>, _, <<"text">>, <<>>, Envelope, Payload, _, _, _, _, _
+        <<"c2c">>, _, <<"text">>, <<>>, Envelope, Payload, _, _, _, _, _, _, _
     ) ->
         ?assert(imboy_policy:encrypted_message_body(<<"text">>, Envelope, Payload)),
         tick(private_stage),
         {ok, duplicate, 1}
     end),
     meck:expect(msg_store_ds, stage, fun(
-        <<"c2g">>, _, <<"text">>, <<>>, Envelope, Payload, _, _, _, _, _, _
+        <<"c2g">>, _, <<"text">>, <<>>, Envelope, Payload, _, _, _, _, _, _, _
     ) ->
         ?assert(imboy_policy:encrypted_message_body(<<"text">>, Envelope, Payload)),
         tick(private_stage),

@@ -225,6 +225,18 @@ beam-presence-guard:
 
 include erlang.mk
 
+# The quality framework's EUnit suites call its tools directly. Keep those
+# test-support beams outside the application and outside EUNIT_MODS.
+IMBOY_QUALITY_TEST_EBIN = $(ERLANG_MK_TMP)/quality-test-ebin
+IMBOY_QUALITY_TEST_BEAMS = $(patsubst tools/imboy_quality/%.erl,$(IMBOY_QUALITY_TEST_EBIN)/%.beam,$(wildcard tools/imboy_quality/*.erl))
+override EUNIT_ERL_OPTS += -pa $(IMBOY_QUALITY_TEST_EBIN)
+.PHONY: quality-test-support
+test-build:: quality-test-support
+quality-test-support: $(IMBOY_QUALITY_TEST_BEAMS)
+$(IMBOY_QUALITY_TEST_EBIN)/%.beam: tools/imboy_quality/%.erl Makefile
+	$(verbose) mkdir -p $(IMBOY_QUALITY_TEST_EBIN)
+	$(verbose) erlc $(TEST_ERLC_OPTS) -o $(IMBOY_QUALITY_TEST_EBIN) $<
+
 # Linux limits each exec argument (including /bin/sh -c's command) to 128 KiB.
 # Keep the complete test source list out of that command and compile bounded
 # batches with the original options. xargs failure prevents the build stamp.

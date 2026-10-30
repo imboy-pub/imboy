@@ -78,6 +78,16 @@ make_route(Plugin, N) ->
 single_lookup_latency_test_() ->
     {setup, fun setup/0, fun cleanup/1, fun(_Pid) ->
         ?_test(begin
+            %% Keep every raw sample outside the process heap: retaining the
+            %% growing result list otherwise makes lookup GC copy the sampler's
+            %% own history. Buffer writes remain outside the timed interval.
+            %% 全部原始样本保存在堆外，避免采样历史参与被测 lookup 的 GC。
+            Samples = atomics:new(?BENCH_RUNS, [{signed, false}]),
+            Sentinel = 18446744073709551615,
+            lists:foreach(
+                fun(I) -> atomics:put(Samples, I, Sentinel) end,
+                lists:seq(1, ?BENCH_RUNS)
+            ),
             lists:foreach(
                 fun(_) ->
                     imboy_router_registry:plugin_routes(channel)
@@ -85,15 +95,10 @@ single_lookup_latency_test_() ->
                 lists:seq(1, ?WARMUP_RUNS)
             ),
 
-            Times = [
-                begin
-                    T1 = erlang:monotonic_time(nanosecond),
-                    _ = imboy_router_registry:plugin_routes(channel),
-                    T2 = erlang:monotonic_time(nanosecond),
-                    T2 - T1
-                end
-             || _ <- lists:seq(1, ?BENCH_RUNS)
-            ],
+            collect_lookup_samples(Samples, 1),
+            Times = [atomics:get(Samples, I) || I <- lists:seq(1, ?BENCH_RUNS)],
+            ?assertEqual(?BENCH_RUNS, length(Times)),
+            ?assertNot(lists:member(Sentinel, Times)),
 
             Sorted = lists:sort(Times),
             P99 = lists:nth(round(0.99 * ?BENCH_RUNS), Sorted),
@@ -104,6 +109,15 @@ single_lookup_latency_test_() ->
             )
         end)
     end}.
+
+collect_lookup_samples(_Samples, I) when I > ?BENCH_RUNS ->
+    ok;
+collect_lookup_samples(Samples, I) ->
+    T1 = erlang:monotonic_time(nanosecond),
+    _ = imboy_router_registry:plugin_routes(channel),
+    T2 = erlang:monotonic_time(nanosecond),
+    atomics:put(Samples, I, T2 - T1),
+    collect_lookup_samples(Samples, I + 1).
 
 %% ===================================================================
 %% 2. all_routes/0 全扫描正确

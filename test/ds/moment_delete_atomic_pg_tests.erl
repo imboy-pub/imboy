@@ -51,9 +51,18 @@ run() ->
     end.
 
 require_authorized_fixture() ->
-    error({contract_conflict, marker_db_not_allowlisted_and_connection_identity_unverified}).
+    case native_v5_fixture:enabled() of
+        true -> native_v5_fixture:configure(<<"V5_INTTEST_MOMENT">>);
+        false -> error({contract_conflict, marker_db_not_allowlisted_and_connection_identity_unverified})
+    end.
 
 configure_owned_postgres() ->
+    case native_v5_fixture:enabled() of
+        true -> native_v5_fixture:configure(<<"V5_INTTEST_MOMENT">>);
+        false -> configure_legacy_postgres()
+    end.
+
+configure_legacy_postgres() ->
     Run = os:getenv("V5_RUN_DIR"),
     Slot = os:getenv("V5_SLOT"),
     true = is_list(Run) andalso filename:pathtype(Run) =:= absolute,

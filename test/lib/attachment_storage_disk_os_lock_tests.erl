@@ -1,5 +1,6 @@
 -module(attachment_storage_disk_os_lock_tests).
 -include_lib("eunit/include/eunit.hrl").
+-include_lib("kernel/include/file.hrl").
 
 kernel_lock_test_() -> {timeout, 30, fun kernel_lock/0}.
 kernel_lock() ->
@@ -22,6 +23,19 @@ kernel_lock() ->
     try
         ok = file:change_mode(Root, 8#700),
         application:set_env(imboy, attachment_storage_registry, Registry),
+        ok = attachment_storage_disk:put(<<"n">>, <<"c">>, <<"owned">>, <<"before">>),
+        {ok, Identity0} = attachment_storage:identity(<<"n">>, <<"c">>, <<"owned">>),
+        Identity = Identity0#{endpoint => list_to_binary("file://" ++ Root)},
+        {ok, Before} = attachment_storage_disk:head_snapshot(Identity),
+        ok = attachment_storage_disk:put(<<"n">>, <<"c">>, <<"owned">>, <<"BEFORE">>),
+        %% Preserve old stat evidence: replacement must still be detected.
+        %% 固定旧大小和 mtime，仍须识别真实原子替换。
+        ok = file:write_file_info(filename:join([Root, "c", "owned"]),
+            #file_info{mtime = maps:get(mtime, Before)}, [{time, posix}]),
+        {ok, After} = attachment_storage_disk:head_snapshot(Identity),
+        ?assertEqual(maps:with([size, mtime, etag], Before),
+            maps:with([size, mtime, etag], After)),
+        ?assertNotEqual(Before, After),
         ok = attachment_storage_disk:put(<<"n">>, <<"c">>, <<"owned">>, <<"before">>),
         Holder = start_holder(Root),
         try

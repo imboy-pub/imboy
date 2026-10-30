@@ -78,7 +78,7 @@ guard_all() ->
         {ok, []} = imboy_quality_guard:check(Repo, Ignored, Removed),
         ok = file:write_file(filename:join(Repo, "renamed"), <<>>),
         git(Repo, ["add", "renamed"]),
-        git(Repo, ["commit", "-q", "-m", "add placeholder"]),
+        _ = commit(Repo, "add placeholder"),
         git(Repo, ["mv", "renamed", ".eqwalizer"]),
         Renamed = commit(Repo, "rename to ignore"),
         ?assertMatch(

@@ -51,10 +51,20 @@ add_scope_validation_test_() ->
             ]},
             {elib_pg, [
                 {'with_tx', 1, fun(Fun) ->
-                    try
-                        Fun(fake_conn)
+                    %% Match production rollback handling for both business
+                    %% aborts and runtime errors; no fake connection reaches PG.
+                    %% 同生产事务包装一样处理业务中止和运行时异常。
+                    try Fun(fake_conn) of
+                        Result ->
+                            put(t_gs_tx_outcome, committed),
+                            Result
                     catch
-                        throw:{abort_tx, Reason} -> {error, Reason}
+                        throw:{abort_tx, Reason} ->
+                            put(t_gs_tx_outcome, rolled_back),
+                            {error, Reason};
+                        Class:Reason ->
+                            put(t_gs_tx_outcome, rolled_back),
+                            {error, {db_exception, Class, Reason}}
                     end
                 end},
                 %% workspace_guard:ensure_writable_tx 依赖（原 mock 缺失会
@@ -110,7 +120,10 @@ add_scope_validation_body() ->
             erase(t_gs_scoped_created),
             "scoped group not created"
         ),
-        %% A returned error must abort rather than commit a partial group.
+        ?assertEqual(committed, erase(t_gs_tx_outcome)),
+        %% An invalid returned result raises badmatch inside the transaction;
+        %% the real wrapper catches runtime errors and rolls back as well.
+        %% 非法返回值触发事务内 badmatch；真实包装同样捕获并回滚。
         meck(group_member_ds, [
             {'join_group', 5, fun(_, _, _, _, _) -> {error, simulated_member_failure} end}
         ]),
@@ -118,6 +131,7 @@ add_scope_validation_body() ->
             {error, _},
             group_logic:add(0, ?UID, 2, [<<"900009">>], {<<"workspace">>, ?WS_ID})
         ),
+        ?assertEqual(rolled_back, erase(t_gs_tx_outcome)),
         %% workspace group create blocked by membership subset rolls back
         meck(group_member_ds, [
             {'join_group', 5, fun(_, _, _, _, _) ->
@@ -128,6 +142,7 @@ add_scope_validation_body() ->
             {error, {409, _}},
             group_logic:add(0, ?UID, 2, [<<"900009">>], {<<"workspace">>, ?WS_ID})
         ),
+        ?assertEqual(rolled_back, erase(t_gs_tx_outcome)),
         %% personal scope delegates to legacy add/4 (zero change)
         %% 段内哨兵先清零（先前段遗留 put 会使反向断言误报）
         erase(t_gs_ensure_create),

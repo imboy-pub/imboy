@@ -278,8 +278,20 @@ read_frozen(Row) ->
     case location(Row) of
         {ok, #{driver := Driver} = I} ->
             Mod = attachment_storage:driver_module(atom_to_binary(Driver)),
-            case Mod:read_snapshot(I) of
-                {ok, B} -> {ok, #{bytes => B}};
+            %% Verify the physical revision around GET, including same-size
+            %% replacements. Confirm must not accept bytes from a stale read.
+            %% GET 前后核对物理版本（含同大小替换），确认不得接受过时读取。
+            case attachment_storage:head_snapshot(I) of
+                {ok, Before} ->
+                    case Mod:read_snapshot(I) of
+                        {ok, B} ->
+                            case attachment_storage:head_snapshot(I) of
+                                {ok, Before} -> {ok, #{bytes => B}};
+                                {ok, _Changed} -> {error, object_changed_during_read};
+                                Error -> Error
+                            end;
+                        Error -> Error
+                    end;
                 Error -> Error
             end;
         {ok, legacy_unknown} ->

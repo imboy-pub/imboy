@@ -162,7 +162,7 @@ pin_scenario(S, Ep, Driver, <<"pin_commit_unknown_no_put">>) ->
         Failed = ?F:put(T, ?BODY),
         ?assertNot(?F:success(Failed)),
         %% pin 已 COMMIT、provider 无字节：同 receipt 重试是唯一合法恢复。
-        {ok, Pin} = ?S:content_pin(key(T)),
+        {ok, Pin} = ?S:content_pin_any(Ep, T),
         ?assertEqual(?S:sha(?BODY), maps:get(<<"sha256">>, Pin)),
         ?assertEqual({error, not_found}, ?F:read(T))
     after
@@ -419,7 +419,7 @@ rec_scenario(S, Ep, Driver, <<"confirmed_no_new_capability">>) ->
     #{terminal_renew_status => maps:get(status, Renew), status_state => <<"confirmed">>};
 rec_scenario(S, ordinary, Driver, <<"authorization_revoked">>) ->
     T = reg(S, ordinary, Driver),
-    Intruder = intruder_headers(),
+    Intruder = intruder_headers(maps:get(fixture, T)),
     R = ?F:request(
         maps:get(fixture, T), get, status_query(T), <<>>, Intruder, <<"application/json">>
     ),
@@ -963,9 +963,9 @@ new_intruder_uid() ->
     {Uid, Did}.
 
 %% ordinary 域：真实第二用户 bearer token（查他人 pending → 404）。
-intruder_headers() ->
-    {Uid, _Did} = new_intruder_uid(),
-    #{<<"authorization">> => <<"Bearer ", (token_ds:encrypt_token(Uid))/binary>>}.
+intruder_headers(S) ->
+    {Uid, Did} = new_intruder_uid(),
+    ?F:user_headers(S, Uid, Did).
 
 %% seat 面：真实第二用户的 seat-purpose 令牌（真实签发；该用户未被授予
 %% customer_service 授权函数 → 路由级授权门 403）。
