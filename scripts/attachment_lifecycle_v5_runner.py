@@ -2519,12 +2519,31 @@ def _scenario_selftests(base_tmp):
         os.makedirs(run, exist_ok=True)
         return run
 
+    plan_dir = os.path.join(os.path.dirname(os.path.dirname(
+        os.path.abspath(__file__))),
+        "docs/architecture/attachment-lifecycle-v5")
+    manifest_sha = sha256_file(os.path.join(plan_dir, "manifest.sha256"))
+    _now = time.time()
+    _auth = {"receipt_id": "selftest-synthetic", "synthetic": True,
+             "plan_manifest_sha256": manifest_sha,
+             "allowed_tasks": sorted(t["task_id"] for t in load_contract(plan_dir)["tasks"]),
+             "implementation_allowed": True, "local_commit_allowed": True,
+             "issued_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(_now - 60)),
+             "expires_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(_now + 6 * 86400))}
+    auth_path = os.path.join(base_tmp, "selftest-authorization.json")
+    with open(auth_path, "w") as fh:
+        json.dump(_auth, fh)
+    auth_sha = sha256_file(auth_path)
+
     def mini_state(run, task_state="READY", attempt=1, deadline=None, extra=None):
         state = {"run_id": os.path.basename(run), "revision": 1,
-                 "plan_dir": os.path.join(os.path.dirname(os.path.dirname(
-                     os.path.abspath(__file__))),
-                     "docs/architecture/attachment-lifecycle-v5"),
-                 "tasks": {"W0-03": {"state": task_state, "attempt": attempt,
+                 "plan_dir": plan_dir,
+                 "plan_manifest_sha256": manifest_sha,
+                 "authorization_path": auth_path,
+                 "authorization_sha256": auth_sha,
+                 "tasks": {"W0-01": {"state": "PASS", "attempt": 1},
+                           "W0-02": {"state": "PASS", "attempt": 1},
+                           "W0-03": {"state": task_state, "attempt": attempt,
                                      "task_started_at": time.time() - 5,
                                      "task_deadline": deadline if deadline is not None
                                      else time.time() + 3600}},
@@ -2842,12 +2861,10 @@ def _scenario_selftests(base_tmp):
         import io as _io
         run = fresh("partial_commit")
         state = {"run_id": os.path.basename(run), "revision": 1,
-                 "plan_dir": os.path.join(os.path.dirname(os.path.dirname(
-                     os.path.abspath(__file__))),
-                     "docs/architecture/attachment-lifecycle-v5"),
-                 "plan_manifest_sha256": sha256_file(os.path.join(
-                     os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-                     "docs/architecture/attachment-lifecycle-v5", "manifest.sha256")),
+                 "plan_dir": plan_dir,
+                 "plan_manifest_sha256": manifest_sha,
+                 "authorization_path": auth_path,
+                 "authorization_sha256": auth_sha,
                  "tasks": {"W0-01": {"state": "PASS", "attempt": 1},
                            "W0-02": {"state": "COMMITTING", "attempt": 1,
                                      "commit_vector": {"imboy": {"commit": "1" * 40}},
@@ -2865,6 +2882,9 @@ def _scenario_selftests(base_tmp):
                rc == 0 and rec.get("vector") == {"imboy": {"commit": "1" * 40}}
                and report.get("tasks_pass") == ["W0-01"],
                "resume rc=%s reconciles COMMITTING vector, PASS intact" % rc)
+    except SystemExit as exc:
+        record("parallel_partial_commit_recovery", False,
+               "unexpected exit %s" % (exc.code,))
     except Exception as exc:  # noqa: BLE001
         record("parallel_partial_commit_recovery", False, "exception %s" % exc)
 

@@ -373,7 +373,8 @@ probe_io(Key, Quad) ->
     ProbeKey = <<Key/binary, "/.w601w3-probe">>,
     Body = <<"w601w3-probe:", Key/binary, ":", (hex64(crypto:strong_rand_bytes(16)))/binary>>,
     Digest = hex64(crypto:hash(sha256, Body)),
-    {ok, _} = Mod:put(Ns, Container, ProbeKey, Body),
+    %% 两驱动 put/4 均返回 ok（disk:atomic_write/file 写链、garage:put_snapshot）。
+    ok = Mod:put(Ns, Container, ProbeKey, Body),
     {ok, Body} = Mod:read(Ns, Container, ProbeKey),
     true = hex64(crypto:hash(sha256, Body)) =:= Digest,
     %% 同一叶可多次 probe_io（hold-all-entrypoints 主/对照资产、enterprise-bind
@@ -438,15 +439,24 @@ lenient_q(Conn, Sql, Params) ->
 %% 幂等清理 attachment 元数据行：fn_v5_metadata_delete_guard（迁移 190）
 %% 要求 DELETE 前 lifecycle_state='delete_intent' 且 tombstone 在位，故在
 %% 单事务内按守卫协议构造：intent 转移 → tombstone 补齐 → 删除 →（提交后）
-%% 清 tombstone。DELETE 被治理行 FK 钉住（23503）时整体回滚、行保持原状供
-%% seed 的 INSERT ON CONFLICT 复用；其余失败回滚后照抛。
+%% tombstone 收敛为 done（迁移 179:1026 "v5 job rows are permanent
+%% tombstones (no DELETE)"——队列行是永久墓碑，只能按 job guard 的合法
+%% UPDATE 路径收敛，同 w601_w4_queueproto:settle_active 先例）。DELETE 被
+%% 治理行 FK 钉住（23503）时整体回滚、行保持原状供 seed 的 INSERT ON
+%% CONFLICT 复用；其余失败回滚后照抛。
 purge_attachment_metadata(Conn, Key) ->
     q(Conn, "BEGIN", []),
     [Intent, Tombstone, Deleted] =
         [epgsql:equery(Conn, Sql, [Key]) || Sql <- purge_sqls()],
     case {Intent, Tombstone, Deleted} of
         {{ok, _}, {ok, _}, {ok, _}} ->
-            q(Conn, "DELETE FROM attachment_object_deletion WHERE path=$1", [Key]),
+            q(
+                Conn,
+                "UPDATE attachment_object_deletion SET job_state='done',"
+                " completed_at=now(), lease_token=NULL, lease_until=NULL"
+                " WHERE path=$1 AND job_state IN ('ready','retry_wait','leased')",
+                [Key]
+            ),
             q(Conn, "COMMIT", []),
             ok;
         {_, _, {error, #error{code = <<"23503">>}}} ->
@@ -660,10 +670,17 @@ seed_eb_row(Conn, Key, Id, Quad) ->
     ),
     ok.
 
-%% 同库残留清理（双跑幂等）：intent 前清本 key 的 tombstone 与企业队列行。
-%% attach_pending/attachment 的前置 DELETE 在各 seed 助手内完成。
+%% 同库残留清理（双跑幂等）：intent 前收敛本 key 的 tombstone（迁移 179
+%% 永久墓碑不可 DELETE，走 job guard 合法 UPDATE 到 done）与企业队列行。
+%% attach_pending/attachment 的前置清理在各 seed 助手内完成。
 clear_intents(Conn, Key, Quad) ->
-    q(Conn, "DELETE FROM attachment_object_deletion WHERE path=$1", [Key]),
+    q(
+        Conn,
+        "UPDATE attachment_object_deletion SET job_state='done',"
+        " completed_at=now(), lease_token=NULL, lease_until=NULL"
+        " WHERE path=$1 AND job_state IN ('ready','retry_wait','leased')",
+        [Key]
+    ),
     case maps:get(<<"storage_namespace">>, Quad, undefined) of
         undefined ->
             ok;
