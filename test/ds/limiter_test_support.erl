@@ -80,7 +80,7 @@ restart_owner() ->
                 erlang:error(limiter_owner_kill_timeout)
             end
     end,
-    await_owner(Old, 300),
+    await_owner(Old, 600),
     ok = login_attempt_ds:activate_empty(whereis(login_attempt_ds)),
     true = login_attempt_ds:ready(),
     ok.
@@ -109,7 +109,7 @@ attach_owner() ->
     case whereis(login_attempt_ds) of
         undefined ->
             {ok, _} = supervisor:restart_child(imboy_sup, login_attempt_ds),
-            await_owner(undefined, 300),
+            await_owner(undefined, 600),
             ok = login_attempt_ds:activate_empty(whereis(login_attempt_ds)),
             true = login_attempt_ds:ready();
         _ ->
@@ -118,6 +118,12 @@ attach_owner() ->
     ok.
 
 %% @private 轮询等待注册名出现且异于 OldPid。
+%% 预算 600×10ms=6s：全量并发形态下 imboy_sup 是 one_for_one 串行监督者，
+%% 同刻可能在处理其他 child 的 restart 风暴（imboy_sup 注释：~80ms/次的
+%% 连杀、intensity 50/60s 放宽），login_attempt_ds 的重启排队可能超过
+%% 原 3s 预算（full-20261030T175015Z login_ip_atomic_tests
+%% {limiter_owner_not_restarted,<0.40788.0>}；同根单跑 2.6s / 全量 15.5s
+%% 的负载差实证）。仅放宽等待预算，监督重启合同与失败语义不变。
 await_owner(OldPid, 0) ->
     erlang:error({limiter_owner_not_restarted, OldPid});
 await_owner(OldPid, N) ->

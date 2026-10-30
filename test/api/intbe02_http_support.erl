@@ -315,12 +315,33 @@ snapshot_default_pool(State) ->
             State#{prior_default_pool => #{absent => true, config => Conf}};
         Pid ->
             Dump = gen_server:call(Pid, dump_pool),
-            true = maps:with(maps:keys(Conf), Dump) =:= Conf,
+            true = pool_shape_matches(Conf, Dump),
             Pid = whereis(pgsql),
             Sup = whereis(pooler_pgsql_pool_sup),
             true = lists:member({pooler, Pid, worker, [pooler]}, supervisor:which_children(Sup)),
             State#{prior_default_pool => #{pid => Pid, supervisor => Sup, config => Conf}}
     end.
+
+%% 默认 pgsql 池存在两种合法创建形态（全量并发形态修复，见 full-
+%% 20261030T175015Z 七根 snapshot_default_pool L318 {badmatch,false} 与
+%% group-20261030T195423Z 复现）：
+%%   A. imboy_sup:init（imboy boot）→ configure_pg_pool/1 把 start_mfa 从
+%%      {epgsql, connect, Args} 换成 {imboy_pg_connection, connect, Args}
+%%      （epgsql:connect 同参包装 + statement_timeout，见
+%%      src/lib/imboy_pg_connection.erl），但不回写 application env；
+%%   B. eunit_runner:ensure_default_pool/0 / 本模块 restore_default_pool/1
+%%      → 按当前 env 原样建池（epgsql 形态）。
+%% 全量形态下 boot 与重建的先后不可控，快照/挂起/恢复的比对必须接受两种
+%% 形态；除 start_mfa 包装模块外的一切键（name/init_count/max_count/连接
+%% 参数）仍然逐字段强校验，配置漂移检测不被削弱。
+pool_shape_matches(Conf, Dump) ->
+    Filtered = maps:with(maps:keys(Conf), Dump),
+    Filtered =:= Conf orelse Filtered =:= sup_shape(Conf).
+
+sup_shape(#{start_mfa := {epgsql, connect, Args}} = Conf) ->
+    Conf#{start_mfa := {imboy_pg_connection, connect, Args}};
+sup_shape(Conf) ->
+    Conf.
 
 suspend_default_pool(State) ->
     case maps:get(prior_default_pool, State) of
@@ -329,7 +350,7 @@ suspend_default_pool(State) ->
         #{pid := Pid, supervisor := Sup, config := Conf} ->
             Pid = whereis(pgsql),
             Sup = whereis(pooler_pgsql_pool_sup),
-            true = maps:with(maps:keys(Conf), gen_server:call(Pid, dump_pool)) =:= Conf,
+            true = pool_shape_matches(Conf, gen_server:call(Pid, dump_pool)),
             ok = pooler:rm_pool(pgsql)
     end,
     State.
@@ -382,11 +403,10 @@ restore_default_pool(State) ->
                     ok;
                 PriorPid ->
                     PriorSup = whereis(pooler_pgsql_pool_sup),
-                    true =
-                        maps:with(
-                            maps:keys(Conf),
-                            gen_server:call(PriorPid, dump_pool)
-                        ) =:= Conf,
+                    true = pool_shape_matches(
+                        Conf,
+                        gen_server:call(PriorPid, dump_pool)
+                    ),
                     ok;
                 _ ->
                     error(foreign_pool_blocks_default_restore)
@@ -503,6 +523,19 @@ ensure_limiter_owner() ->
                 ok = login_attempt_ds:activate_empty(Owner),
                 unlink(Owner),
                 Owner
+            catch
+                %% start_link 成功但 activate_empty 等后续步骤失败：此刻
+                %% 异常尚未交回 setup_with_limiter 的 catch（LimiterOwner 未
+                %% 绑定），若不自停，这个无监督 owner（imboy app 未 boot 时
+                %% start_link 直启、不挂 imboy_sup）将带着注册名泄漏到后续
+                %% 根——limiter_test_support:restart_owner 杀掉它后无人重启，
+                %% 即 {limiter_owner_not_restarted, Pid} 的另一条来源。
+                Class:Reason:Stack ->
+                    case whereis(login_attempt_ds) of
+                        undefined -> ok;
+                        Leaked -> catch gen_server:stop(Leaked)
+                    end,
+                    erlang:raise(Class, Reason, Stack)
             after
                 case PreviousRates of
                     undefined -> application:unset_env(imboy, limiter_ip_rates);
