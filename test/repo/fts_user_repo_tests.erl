@@ -269,3 +269,91 @@ invalid_conversation_option_fails_closed_test() ->
             42, <<"hello">>, 10, 0, <<"c2c">>, #{<<"conversation_id">> => <<"broken">>}
         )
     ).
+
+%%% 真 PG 行为验证：认证搜索的 expire_at 过滤谓词（dadc6aaf9 语义——
+%%% 普通行（expire_at NULL）命中；服务端已到期的阅后即焚行排除；
+%%% 未到期 burn 行按当前设计命中）。SQL 形状断言仅证明谓词存在，
+%%% 本用例用三行不同 expire_at 状态的夹具证明谓词的真实过滤行为。
+fts_expire_at_filter_two_states_pg_test_() ->
+    ?TEST_WITH_DB_TIMEOUT(30, fun() -> fts_expire_at_filter_body() end).
+
+fts_expire_at_filter_body() ->
+    A = elib_tsid:generate(user),
+    B = elib_tsid:generate(user),
+    Uid = integer_to_binary(A),
+    KwPlain = <<"v22ftsplainq", Uid/binary>>,
+    KwFuture = <<"v22ftsfutureq", Uid/binary>>,
+    KwPast = <<"v22ftspastq", Uid/binary>>,
+    MsgIds = [
+        fts_expire_at_fixture(A, B, plain, KwPlain),
+        fts_expire_at_fixture(A, B, future, KwFuture),
+        fts_expire_at_fixture(A, B, past, KwPast)
+    ],
+    ConvKey = msg_archive_repo:conv_key(<<"c2c">>, A, B),
+    try
+        %% 普通行（expire_at NULL）必须命中且仅命中自身
+        ?assertMatch(
+            {ok, 1, [_]}, fts_user_repo:search_authorized_page(A, KwPlain, 50, 0, <<"c2c">>, #{})
+        ),
+        {ok, 1, [PlainRow]} = fts_user_repo:search_authorized_page(
+            A, KwPlain, 50, 0, <<"c2c">>, #{}
+        ),
+        ?assertEqual(lists:nth(1, MsgIds), maps:get(<<"msg_id">>, PlainRow)),
+        %% 未到期 burn 行按当前设计（dadc6aaf9）仍然可搜
+        ?assertMatch(
+            {ok, 1, [_]}, fts_user_repo:search_authorized_page(A, KwFuture, 50, 0, <<"c2c">>, #{})
+        ),
+        {ok, 1, [FutureRow]} = fts_user_repo:search_authorized_page(
+            A, KwFuture, 50, 0, <<"c2c">>, #{}
+        ),
+        ?assertEqual(lists:nth(2, MsgIds), maps:get(<<"msg_id">>, FutureRow)),
+        %% 已到期 burn 行必须被排除（服务端过期内容不再可搜）
+        ?assertEqual(
+            {ok, 0, []}, fts_user_repo:search_authorized_page(A, KwPast, 50, 0, <<"c2c">>, #{})
+        )
+    after
+        lists:foreach(
+            fun(Table) ->
+                {ok, _} = elib_pg:execute(
+                    <<"DELETE FROM public.", Table/binary, " WHERE msg_id = ANY($1)">>,
+                    [MsgIds]
+                )
+            end,
+            [<<"msg_c2c">>]
+        ),
+        {ok, _} = elib_pg:execute(
+            <<"DELETE FROM public.msg_store_seq WHERE conv_key=$1">>, [ConvKey]
+        )
+    end.
+
+%% 直插 msg_c2c 夹具：State = plain（expire_at NULL）/ future（未到期）/ past（已到期）。
+%% conv_seq 由 execute_formal 事务内分配（追加为最后一个参数）。
+fts_expire_at_fixture(A, B, State, Kw) ->
+    MsgId = iolist_to_binary([
+        <<"v22fts-">>, atom_to_list(State), $-, integer_to_binary(A)
+    ]),
+    ExpireFragment =
+        case State of
+            plain -> <<"NULL">>;
+            future -> <<"now() + interval '1 hour'">>;
+            past -> <<"now() - interval '1 hour'">>
+        end,
+    Sql = iolist_to_binary([
+        <<
+            "INSERT INTO msg_c2c (id, from_id, to_id, msg_id, msg_type, payload, "
+            "created_at, e2ee, expire_at, conv_seq) VALUES ($1, $2, $3, $4, 'text', $5, "
+            "now(), NULL, "
+        >>,
+        ExpireFragment,
+        <<", $6)">>
+    ]),
+    {ok, 1} = personal_message_order_repo:execute_formal(
+        A, B, MsgId, Sql, [
+            elib_tsid:generate(msg_store),
+            A,
+            B,
+            MsgId,
+            jsone:encode(#{<<"text">> => Kw})
+        ]
+    ),
+    MsgId.
