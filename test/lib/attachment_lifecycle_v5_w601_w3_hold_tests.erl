@@ -920,6 +920,11 @@ sweep(S, {?C_HR, _Entry, Driver, ScBin, DomBin, _Ac, Idx, _Scope, _EP}) ->
     ok.
 
 sweep_asset(Conn, Key, Id, EbId) ->
+    %% scenario 失败可能把共享连接留在 aborted 事务（原始错误由主体抛出，
+    %% sweep 首句若直接撞 25P02 会把它掩盖）。开头 ROLLBACK 兜底：无事务时
+    %% PG 仅回 WARNING（幂等安全），有事务时复原连接让下方真实清理继续、
+    %% 让 attempt-5 报告呈现 scenario 的原始错误。
+    ?SUP:q(Conn, "ROLLBACK", []),
     ?SUP:lenient_q(Conn, "DELETE FROM attach_pending WHERE object_key=$1", [Key]),
     ?SUP:purge_attachment_metadata(Conn, Key),
     ok = ?SUP:ear_release_and_purge(Conn, Id),

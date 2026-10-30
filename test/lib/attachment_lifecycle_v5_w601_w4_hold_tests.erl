@@ -317,7 +317,10 @@ hold_eb_drain(St, Driver, Fixture) ->
     Triple = ?X:triple(St, Driver, Key),
     ok = ?X:seed_eb_asset_row(Conn, Key, Id, Triple, <<"active">>, false, <<"live">>),
     Key2 = ?X:unique_key(<<"v5e2e/w601h/eb-drain2">>),
-    ok = ?X:seed_eb_asset_row(Conn, Key2, Id2, Triple, <<"active">>, true, <<"live">>),
+    %% 迁移 162 CHECK：pending_object_delete=true 仅许 status='deleted'。
+    %% 此处为合法生产语义——对象已删、待清理资产；本场景 oracle 仍断言
+    %% eb-hold 下删除队列零任务（与 Key 行 active/live 混布覆盖两形态）。
+    ok = ?X:seed_eb_asset_row(Conn, Key2, Id2, Triple, <<"deleted">>, true, <<"live">>),
     Bytes = probe_bytes(Driver, Key, atom_to_binary(Fixture, utf8)),
     ok = ?X:put_probe(St, Driver, Key, Bytes),
     HoldCleanup = ?X:install_eb_hold(Conn, hold_id(Seq)),

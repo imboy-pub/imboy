@@ -612,13 +612,20 @@ claim_profile([Slot | Rest]) ->
 %% actual Cowboy dispatch, and the competing response has already completed.
 overlap(Leaf, Paused, #{request_id := CompetingId}) ->
     ?assert(is_process_alive(Paused)),
+    %% 已完成竞争请求的 {observed, Id} 短记录在 request() 返回时即被
+    %% cancel_observation 取走；其常驻镜像存于 {request, Leaf, Id}（同一份
+    %% server_process / connection_id / observed_at_us，仅去 trace_process、
+    %% 附 status 等）。Second 从常驻镜像读取；First 为在途 Paused，其
+    %% observed 记录仍在，照旧直读。
     PausedId = list_to_binary(pid_to_list(Paused)),
     [First] = [
         R
      || {{observed, _}, #{server_process := P} = R} <- ets:tab2list(?TABLE),
         P =:= PausedId
     ],
-    [{{observed, CompetingId}, Second}] = ets:lookup(?TABLE, {observed, CompetingId}),
+    [{{request, Leaf, CompetingId}, Second}] = ets:lookup(
+        ?TABLE, {request, Leaf, CompetingId}
+    ),
     ?assertNotEqual(maps:get(connection_id, First), maps:get(connection_id, Second)),
     ?assert(maps:get(observed_at_us, Second) >= maps:get(observed_at_us, First)),
     ?assert(is_process_alive(Paused)),

@@ -124,7 +124,14 @@ put_disk_file(Root, Key, Body) ->
     end.
 
 track_garage_object(Key, Size) ->
-    Tracked = get(?GARAGE_OBJECTS_KEY),
+    %% 登记簿存于进程字典，仅 w403 电池 setup 初始化；被 w4 等其它电池复用
+    %% 时未初始化（get -> undefined）。与 disk_listing 的容忍同法：视作空
+    %% 登记簿（未跟踪对象），不影响 intent:run 的 Before/After 断言语义。
+    Tracked =
+        case get(?GARAGE_OBJECTS_KEY) of
+            undefined -> [];
+            List when is_list(List) -> List
+        end,
     Merged =
         case lists:keytake(Key, 1, Tracked) of
             {value, {Key, _}, Rest} -> [{Key, Size} | Rest];

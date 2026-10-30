@@ -422,13 +422,16 @@ q(Conn, Sql, Params) ->
         {error, Reason} -> erlang:error({w601_w3_sql_failed, Reason, Sql})
     end.
 
-%% 受限容错写：仅容忍 FK RESTRICT（23503，治理行引用的不可销毁残留），
-%% 其余错误照抛——P2 幂等：重跑同库时不可变治理行挡住的前置 DELETE 跳过。
+%% 受限容错写：仅容忍两类不可销毁残留跳过——
+%% 23503 FK RESTRICT（治理行引用的残留行钉住前置 DELETE）、
+%% 23514 CHECK 触发（迁移 168 不可变守卫挡住 WAR 行的前置清理），
+%% 其余错误照抛——P2 幂等：重跑同库时治理行挡住的前置 DELETE 跳过。
 lenient_q(Conn, Sql, Params) ->
     case epgsql:equery(Conn, Sql, Params) of
         {ok, _} -> ok;
         {ok, _, _} -> ok;
         {error, #error{code = <<"23503">>}} -> ok;
+        {error, #error{code = <<"23514">>}} -> ok;
         {error, Reason} -> erlang:error({w601_w3_sql_failed, Reason, Sql})
     end.
 

@@ -543,6 +543,9 @@ seed_eb_asset_row(Conn, Key, Id, Triple, Status, PendingFlag, Lifecycle) ->
     ok.
 
 seed_ordinary_job_row(Conn, Key, Triple, Attempts, State, LastError) ->
+    %% 同库跨驱动重跑时残留行可能处于 leased（lease_token/lease_until 非
+    %% NULL）；upsert 改写 job_state 的同时必须清空 lease 双字段，否则违反
+    %% 迁移 179 ck_v5_aod_lease（非 leased 态要求 lease 双字段为 NULL）。
     q(
         Conn,
         "INSERT INTO attachment_object_deletion"
@@ -554,7 +557,8 @@ seed_ordinary_job_row(Conn, Key, Triple, Attempts, State, LastError) ->
         " storage_container=EXCLUDED.storage_container,"
         " storage_locator_sha256=EXCLUDED.storage_locator_sha256,"
         " job_state=EXCLUDED.job_state, attempts=EXCLUDED.attempts,"
-        " next_retry_at=now(), last_error_code=EXCLUDED.last_error_code",
+        " next_retry_at=now(), last_error_code=EXCLUDED.last_error_code,"
+        " lease_token=NULL, lease_until=NULL",
         [
             Key,
             maps:get(driver, Triple),
@@ -654,24 +658,25 @@ install_governance(Conn, AttId, future_retention) ->
         [AttId]
     ),
     fun() ->
-        q(
-            Conn,
-            "UPDATE enterprise_attachment_retention SET retention_until=now()"
-            " WHERE attachment_id=$1",
-            [AttId]
-        )
+        %% 迁移 220 守卫：enterprise_attachment_retention.retention_until
+        %% 只可延长（NEW < OLD 即 RAISE），now() 短于已写入的 +50y 截止期，
+        %% 收缩清理不可行——行保留至测试库销毁，Cleanup 为 no-op。
+        ok
     end;
 install_governance(Conn, AttId, permanent_workspace_retention) ->
+    %% workspace_attachment_retention 行受迁移 168 不可变守卫保护（BEFORE
+    %% UPDATE OR DELETE 一律 23514），与 hold_workspace/hold_conversation
+    %% 分支同法：只做一次性 INSERT，同库跨驱动重跑时行已在（DO NOTHING
+    %% 跳过，scope 已是 'group'/'66-permanent' 不需改写）；Cleanup 为
+    %% no-op——行不可删。
     q(
         Conn,
         "INSERT INTO workspace_attachment_retention(attachment_id,organization_id,"
         "workspace_id,scope,scope_ref) VALUES ($1,9101,9102,'group','66-permanent')"
-        " ON CONFLICT (attachment_id) DO UPDATE SET scope='group', scope_ref='66-permanent'",
+        " ON CONFLICT (attachment_id) DO NOTHING",
         [AttId]
     ),
-    fun() ->
-        q(Conn, "DELETE FROM workspace_attachment_retention WHERE attachment_id=$1", [AttId])
-    end.
+    fun() -> ok end.
 
 %% 企业 workspace hold（append-only：清理走 release 一次性写入）。
 install_eb_hold(Conn, HoldId) ->

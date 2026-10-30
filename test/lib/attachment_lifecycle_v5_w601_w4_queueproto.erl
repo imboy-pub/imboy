@@ -45,10 +45,25 @@ claim_ordinary_until(Conn, Key, _N, Tag) ->
     ).
 
 drain_ordinary(Conn) ->
+    settle_active(Conn, "attachment_object_deletion"),
     require_empty(Conn, "attachment_object_deletion").
 
 reset_ordinary(Conn) ->
     drain_ordinary(Conn).
+
+%% 队列行受迁移 179/190 冻结守卫：DELETE 一律 23510（permanent tombstones），
+%% UPDATE 受 identity 不可变 / done 需 completed_at / done 不可复活 / attempts
+%% 不回退约束。组间共享同库时前序组可能残留活跃行，隔离断言前按守卫协议把
+%% 残留活跃行收敛到 done（completed_at=now()、lease 双字段清空以过
+%% ck_v5_*_lease）；require_empty 断言保留——收敛后仍有活跃行照样报错。
+settle_active(Conn, Table) ->
+    ?X:q(
+        Conn,
+        "UPDATE " ++ Table ++
+            " SET job_state='done', completed_at=now(), lease_token=NULL,"
+            " lease_until=NULL WHERE job_state IN ('ready','retry_wait','leased')"
+    ),
+    ok.
 
 expire_ordinary(Conn, Key) ->
     ?X:q(
@@ -133,6 +148,7 @@ eb_state(Conn, Org, AssetId) ->
     ).
 
 drain_eb(Conn) ->
+    settle_active(Conn, "enterprise_asset_delete_queue"),
     require_empty(Conn, "enterprise_asset_delete_queue").
 
 reset_eb(Conn) ->

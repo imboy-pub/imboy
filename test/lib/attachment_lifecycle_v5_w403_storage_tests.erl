@@ -874,7 +874,11 @@ l_disk(S, Domain, <<"unbounded_drain_blocks">>) ->
     Bytes = <<"w403 unbounded drain ", Domain/binary>>,
     ok = attachment_storage_disk:put(Ns, Container, Key, Bytes),
     {Port, Release} = hold_lock(Root, Container, Key),
-    ?assertEqual({error, os_lock_failed}, attachment_storage_disk:delete(Ns, Container, Key)),
+    %% DELETE 与外部占用的 OS 锁互斥：锁被持有期间 DELETE 限时失败、对象
+    %% 不被回收。NIF 锁对外部占用轮询至 5s 上限后报 os_lock_timeout
+    %% （os_lock_failed 仅保留给打开/校验类硬失败），与 held_put_finishes_
+    %% after_delete_attempt 同语义。
+    ?assertEqual({error, os_lock_timeout}, attachment_storage_disk:delete(Ns, Container, Key)),
     {ok, Bytes} = attachment_storage_disk:read(Ns, Container, Key),
     Release(),
     close_lock(Port),
