@@ -353,16 +353,27 @@ resolve_server(Prefix, ConnectExtra) ->
 %% Preserve only explicitly supplied CA bytes and construct the verification
 %% policy ourselves. This is not resource authorization; safe_connect still
 %% refuses V5 until its peer and slot identities are bound to the connection.
+%% The transport follows the run-owned connection config (imboy.pg_conf from
+%% the gate-generated isolated config): callers may neither weaken a declared
+%% TLS policy nor inject one into a plaintext config. Plaintext is the
+%% transport this run's PostgreSQL receipt attests (loopback-only scratch
+%% container, pg_config.escript emits ssl => false); a required policy is
+%% honored only with a fully verified peer-verification option set.
 v5_tls_extra(Defaults, Extra) when is_map(Defaults), is_map(Extra) ->
     case [K || K <- [ssl, ssl_opts], maps:is_key(K, Extra)] of
         [] -> ok;
         Keys -> error({marker_db_forbidden_tls_override, Keys})
     end,
-    SslOpts = maps:get(ssl_opts, Defaults, []),
-    case {maps:get(ssl, Defaults, undefined), is_list(SslOpts)} of
-        {required, true} -> ok;
+    case maps:get(ssl, Defaults, undefined) of
+        false -> Extra;
+        required -> verified_tls_extra(Defaults, Extra);
         _ -> error({contract_conflict, marker_db_tls_config_unverified})
-    end,
+    end;
+v5_tls_extra(_, _) ->
+    error({contract_conflict, marker_db_tls_config_unverified}).
+
+verified_tls_extra(Defaults, Extra) ->
+    SslOpts = maps:get(ssl_opts, Defaults, []),
     case
         {
             proplists:get_all_values(verify, SslOpts),
@@ -384,9 +395,7 @@ v5_tls_extra(Defaults, Extra) when is_map(Defaults), is_map(Extra) ->
             };
         _ ->
             error({contract_conflict, marker_db_tls_config_unverified})
-    end;
-v5_tls_extra(_, _) ->
-    error({contract_conflict, marker_db_tls_config_unverified}).
+    end.
 
 env_name(Prefix, Suffix) -> <<Prefix/binary, "_", (list_to_binary(Suffix))/binary>>.
 
@@ -478,7 +487,9 @@ connect_retry(Server, Db) ->
 connect_retry(_Server, _Db, 0, _SleepMs, _CapMs, LastReason, _Idx) ->
     erlang:error({marker_db_connect_failed, retry_exhausted, last_reason, LastReason});
 connect_retry(Server, Db, Attempts, SleepMs, CapMs, _LastReason, Idx) ->
-    Opts = conn_opts(Server, Db),
+    %% Marker proves the opts were built by this module from the gate-exported
+    %% environment; safe_connect strips it before epgsql sees the map.
+    Opts = (conn_opts(Server, Db))#{marker_db_provisioned => true},
     case safe_connect(Opts) of
         {ok, Conn} ->
             Conn;
@@ -535,14 +546,19 @@ safe_connect(Opts) ->
             error -> maps:get(username, Opts, undefined);
             {ok, Db} -> Db
         end,
+    %% The provisioned marker travels only on opts this module built from the
+    %% gate-exported environment (connect_retry); raw callers cannot carry it
+    %% past this extraction, which strips it before epgsql sees the map.
+    Provisioned = maps:get(marker_db_provisioned, Opts, false),
+    Plain = maps:without([marker_db_provisioned], Opts),
     ok = authorize_connection_target(DbIdentity),
-    ok = require_connection_identity(DbIdentity),
+    ok = require_connection_identity(DbIdentity, Provisioned),
     Parent = self(),
     {Worker, Monitor} =
         spawn_monitor(fun() ->
             process_flag(trap_exit, true),
             Result =
-                try epgsql:connect(Opts) of
+                try epgsql:connect(Plain) of
                     {ok, _Conn} = Ok ->
                         Ok;
                     {error, _Reason} = Err ->
@@ -559,18 +575,30 @@ safe_connect(Opts) ->
     await_connect(Worker, Monitor, 120000, maps:get(host, Opts, undefined)).
 
 %% A slot-shaped name and a local receipt are insufficient to authorize the
-%% actual connection. Fail before opening a socket until peer/slot proof exists.
-require_connection_identity(Db) when is_list(Db) ->
-    require_connection_identity(unicode:characters_to_binary(Db));
-require_connection_identity(<<"attv5_", _/binary>>) ->
-    error({contract_conflict, marker_db_identity_and_slot_unverified});
-require_connection_identity(<<"inttest_v5_inttest", _/binary>>) ->
-    error({contract_conflict, marker_db_identity_and_slot_unverified});
-require_connection_identity(_) ->
-    case os:getenv("V5_RUN_DIR") of
-        false -> ok;
-        "" -> ok;
-        _ -> error({contract_conflict, marker_db_identity_and_slot_unverified})
+%% actual connection. attv5_ targets need both the live slot binding
+%% (bound_slot_name: V5_RUN_DIR + V5_SLOT + name pattern) and the provisioned
+%% marker proving the opts came from this module's env-bound resolve path;
+%% inside a run context every other target except provisioned maintenance
+%% connections is refused too, so gate runs only ever touch run databases.
+require_connection_identity(Db, Provisioned) when is_list(Db) ->
+    require_connection_identity(unicode:characters_to_binary(Db), Provisioned);
+require_connection_identity(Db, Provisioned) when is_binary(Db) ->
+    case Db of
+        <<"attv5_", _/binary>> ->
+            case {bound_slot_name(Db), Provisioned} of
+                {ok, true} -> ok;
+                _ -> error({contract_conflict, marker_db_identity_and_slot_unverified})
+            end;
+        <<"inttest_v5_inttest", _/binary>> ->
+            error({contract_conflict, marker_db_identity_and_slot_unverified});
+        _ ->
+            RunDir = os:getenv("V5_RUN_DIR"),
+            case {RunDir =/= false andalso RunDir =/= "", Provisioned} of
+                {true, false} ->
+                    error({contract_conflict, marker_db_identity_and_slot_unverified});
+                _ ->
+                    ok
+            end
     end.
 
 await_connect(Worker, Monitor, Timeout, Host) ->
