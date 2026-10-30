@@ -22,6 +22,94 @@
 ).
 -define(MOCK_TSID, {elib_tsid, [{'generate', 1, fun(_Table) -> 123456789 end}]}).
 
+revoke_offline_atomic_update_error_rolls_back_test_() ->
+    ?WITH_MECKS(
+        [
+            ?MOCK_ENV,
+            ?MOCK_TSID,
+            {personal_message_order_repo, [
+                {'execute_formal_tx', 6, fun(conn, 1, 2, <<"request">>, _, _) -> {ok, 1} end}
+            ]},
+            {elib_pg, [
+                {'with_tx', 1, fun(Fun) ->
+                    try
+                        Fun(conn)
+                    catch
+                        throw:{rollback, Reason} -> {rollback, Reason}
+                    end
+                end},
+                {'execute', 3, fun(conn, Sql, [<<"{}">>, <<"original">>, 1, 2]) ->
+                    Query = iolist_to_binary(Sql),
+                    ?assertNotEqual(
+                        nomatch, binary:match(Query, <<"from_id = $3 AND to_id = $4">>)
+                    ),
+                    ?assertNotEqual(
+                        nomatch, binary:match(Query, <<"expire_at > CURRENT_TIMESTAMP">>)
+                    ),
+                    {error, unavailable}
+                end}
+            ]}
+        ],
+        fun() ->
+            ?assertEqual(
+                {error, unavailable},
+                msg_c2c_repo:revoke_offline_atomic(
+                    <<"2026-01-01T00:00:00Z">>,
+                    <<"request">>,
+                    <<"original">>,
+                    <<"{}">>,
+                    1,
+                    2,
+                    <<"2026-01-01T00:00:00Z">>,
+                    <<"custom">>,
+                    null
+                )
+            ),
+            ?assertEqual(1, meck:num_calls(personal_message_order_repo, execute_formal_tx, 6)),
+            ?assertEqual(1, meck:num_calls(elib_pg, execute, 3))
+        end
+    ).
+
+revoke_offline_atomic_insert_failure_does_not_update_test_() ->
+    ?WITH_MECKS(
+        [
+            ?MOCK_ENV,
+            ?MOCK_TSID,
+            {personal_message_order_repo, [
+                {'execute_formal_tx', 6, fun(_, _, _, _, _, _) ->
+                    throw({rollback, formal_no_insert})
+                end}
+            ]},
+            {elib_pg, [
+                {'with_tx', 1, fun(Fun) ->
+                    try
+                        Fun(conn)
+                    catch
+                        throw:{rollback, Reason} -> {rollback, Reason}
+                    end
+                end},
+                {'execute', 3, fun(_, _, _) -> {ok, 1} end}
+            ]}
+        ],
+        fun() ->
+            ?assertEqual(
+                {error, conflict_no_insert},
+                msg_c2c_repo:revoke_offline_atomic(
+                    <<"2026-01-01T00:00:00Z">>,
+                    <<"request">>,
+                    <<"original">>,
+                    <<"{}">>,
+                    1,
+                    2,
+                    <<"2026-01-01T00:00:00Z">>,
+                    <<"custom">>,
+                    null
+                )
+            ),
+            ?assertEqual(0, meck:num_calls(elib_pg, execute, 3))
+        end
+    ).
+
 %% ===================================================================
 %% tablename/0 测试
 %% ===================================================================

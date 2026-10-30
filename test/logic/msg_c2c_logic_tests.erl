@@ -613,7 +613,9 @@ c2c_edit_plaintext_blocked_when_encryption_required_test_() ->
             ]},
             {msg_c2c_ds, [
                 {'find_msg_by_id', 1, fun(<<"orig_c2c_edit_001">>) ->
-                    {ok, #{<<"from_id">> => 123, <<"created_at">> => 1700000000000}}
+                    {ok, #{
+                        <<"from_id">> => 123, <<"to_id">> => 456, <<"created_at">> => 1700000000000
+                    }}
                 end},
                 {'edit_offline_msg', 5, fun(_, _, _, _, _) -> ok end}
             ]},
@@ -647,6 +649,193 @@ c2c_edit_plaintext_blocked_when_encryption_required_test_() ->
         end
     ).
 
+%% v2.0 信封：msg_type/action 在顶层，payload 仅 original_msg_id/content，
+%% e2ee 为空串。回归：do_c2c_edit_plain 曾 maps:get(<<"msg_type">>, Payload)
+%% 无缺省，对 v2.0 客户端直接 badkey 崩溃，客户端只收到 invalid_json
+%% （J18.d 真机复现）。
+c2c_edit_plain_v2_envelope_reads_top_level_msg_type_test_() ->
+    ?WITH_MECKS(
+        [
+            {elib_log, [
+                {'internal_log', 4, fun(_, _, _, _) -> ok end},
+                {'internal_log', 5, fun(_, _, _, _, _) -> ok end}
+            ]},
+            {imboy_policy, [
+                {'validate_message_write', 5, fun(
+                    <<"C2C">>, <<"text">>, <<"message_edit">>, _, _
+                ) ->
+                    ok
+                end}
+            ]},
+            {user_logic, [
+                {'is_online', 1, fun(456) -> true end}
+            ]},
+            {msg_c2c_ds, [
+                {'find_msg_by_id', 1, fun(<<"orig_c2c_edit_v2_001">>) ->
+                    {ok, #{
+                        <<"from_id">> => 123, <<"to_id">> => 456, <<"created_at">> => 1700000000000
+                    }}
+                end},
+                {'edit_offline_msg', 5, fun(_, _, _, _, _) -> ok end}
+            ]},
+            {imboy_message_helper, [
+                {'encode_and_send', 4, fun(_, _, _, _) -> ok end}
+            ]},
+            {elib_dt, [
+                {'rfc3339_to', 2, fun(_, millisecond) -> 1700000000000 end},
+                {'millisecond', 0, fun() -> 1700000060000 end},
+                {'now', 0, fun() -> <<"2026-02-28T12:00:00Z">> end}
+            ]}
+        ],
+        fun() ->
+            MsgId = <<"msg_c2c_edit_v2_001">>,
+            Data = #{
+                <<"to">> => <<"456">>,
+                <<"from">> => <<"123">>,
+                <<"msg_type">> => <<"text">>,
+                <<"action">> => <<"message_edit">>,
+                <<"payload">> => #{
+                    <<"original_msg_id">> => <<"orig_c2c_edit_v2_001">>,
+                    <<"content">> => <<"new content v2">>
+                },
+                <<"e2ee">> => <<>>
+            },
+
+            {reply, Ack} = msg_c2c_logic:c2c_edit(MsgId, 123, Data),
+            ?assertEqual(<<"message_edit_ack">>, maps:get(<<"action">>, Ack)),
+            ?assertEqual(<<"text">>, maps:get(<<"msg_type">>, Ack)),
+            ?assertEqual(
+                <<"new content v2">>,
+                maps:get(<<"content">>, maps:get(<<"payload">>, Ack))
+            ),
+            ?assertEqual(0, meck:num_calls(msg_c2c_ds, edit_offline_msg, 5))
+        end
+    ).
+
+c2c_edit_plain_offline_preserves_payload_and_rejects_test_() ->
+    ?WITH_MECKS(
+        [
+            {msg_c2c_ds, [
+                {'find_msg_by_id', 1, fun(_) ->
+                    {ok, #{
+                        <<"from_id">> => 123,
+                        <<"to_id">> => 456,
+                        <<"created_at">> => 1700000000000,
+                        <<"payload">> => <<"{\"text\":\"old\",\"reply_to\":\"other\"}">>
+                    }}
+                end},
+                {'edit_offline_msg', 5, fun(_, _, _, _, _) -> {error, unavailable} end}
+            ]},
+            {elib_dt, [
+                {'millisecond', 0, fun() -> 1700000060000 end},
+                {'now', 0, fun() -> <<"2026-02-28T12:00:00Z">> end}
+            ]},
+            {user_logic, [{'is_online', 1, fun(_) -> false end}]},
+            {message_ds, [{'assemble_s2c', 3, fun(_, Code, _) -> #{error => Code} end}]}
+        ],
+        fun() ->
+            Data = #{
+                <<"to">> => <<"456">>,
+                <<"from">> => <<"123">>,
+                <<"payload">> => #{
+                    <<"original_msg_id">> => <<"original">>,
+                    <<"content">> => <<"edited">>,
+                    <<"msg_type">> => <<"text">>
+                }
+            },
+            {reply, Denied} = msg_c2c_logic:c2c_edit(<<"edit">>, 123, Data#{<<"to">> => <<"789">>}),
+            ?assertEqual(<<"permission_denied">>, maps:get(error, Denied)),
+            ?assertEqual(0, meck:num_calls(msg_c2c_ds, edit_offline_msg, 5)),
+            {reply, Failed} = msg_c2c_logic:c2c_edit(<<"edit">>, 123, Data),
+            ?assertEqual(<<"internal_error">>, maps:get(error, Failed)),
+            ?assertEqual(0, meck:num_calls(msg_c2c_ds, edit_offline_msg, 5))
+        end
+    ).
+
+c2c_edit_plain_staging_and_lookup_failures_test_() ->
+    ?WITH_MECKS(
+        [
+            {msg_c2c_ds, [
+                {'find_msg_by_id', 1, fun(_) -> {error, not_found} end},
+                {'edit_offline_msg', 5, fun(_, _, _, _, _) -> ok end}
+            ]},
+            {msg_store_ds, [
+                {'find_staged', 2, fun(_, _) ->
+                    {ok, #{
+                        <<"from_id">> => 123,
+                        <<"to_id">> => 456,
+                        <<"created_at">> => 1700000000000
+                    }}
+                end}
+            ]},
+            {elib_dt, [{'millisecond', 0, fun() -> 1700000060000 end}]},
+            {user_logic, [{'is_online', 1, fun(_) -> false end}]},
+            {message_ds, [{'assemble_s2c', 3, fun(_, Code, _) -> #{error => Code} end}]}
+        ],
+        fun() ->
+            Data = #{
+                <<"to">> => <<"456">>,
+                <<"from">> => <<"123">>,
+                <<"payload">> => #{
+                    <<"original_msg_id">> => <<"original">>,
+                    <<"content">> => <<"edited">>,
+                    <<"msg_type">> => <<"text">>
+                }
+            },
+            {reply, Staged} = msg_c2c_logic:c2c_edit(<<"edit">>, 123, Data),
+            ?assertEqual(<<"internal_error">>, maps:get(error, Staged)),
+            ?assertEqual(0, meck:num_calls(msg_c2c_ds, edit_offline_msg, 5)),
+            meck:expect(msg_store_ds, find_staged, fun(_, _) -> {error, not_found} end),
+            {reply, Missing} = msg_c2c_logic:c2c_edit(<<"edit">>, 123, Data),
+            ?assertEqual(<<"msg_not_found">>, maps:get(error, Missing)),
+            meck:expect(msg_store_ds, find_staged, fun(_, _) -> {error, unavailable} end),
+            {reply, StageFailure} = msg_c2c_logic:c2c_edit(<<"edit">>, 123, Data),
+            ?assertEqual(<<"internal_error">>, maps:get(error, StageFailure)),
+            meck:expect(msg_c2c_ds, find_msg_by_id, fun(_) -> {error, unavailable} end),
+            {reply, LookupFailure} = msg_c2c_logic:c2c_edit(<<"edit">>, 123, Data),
+            ?assertEqual(<<"internal_error">>, maps:get(error, LookupFailure)),
+            ?assertEqual(0, meck:num_calls(msg_c2c_ds, edit_offline_msg, 5))
+        end
+    ).
+
+c2c_edit_e2ee_rejects_other_recipient_test_() ->
+    ?WITH_MECKS(
+        [
+            {msg_c2c_ds, [
+                {'find_msg_by_id', 1, fun(_) ->
+                    {ok, #{
+                        <<"from_id">> => 123,
+                        <<"to_id">> => 456,
+                        <<"accepted_at">> => 1700000000000
+                    }}
+                end}
+            ]},
+            {msg_store_ds, [
+                {'find_staged', 2, fun(_, _) ->
+                    {ok, #{<<"from_id">> => 123, <<"to_id">> => 456}}
+                end}
+            ]},
+            {message_ds, [
+                {'assemble_s2c', 3, fun(_, Code, _) -> #{error => Code} end}
+            ]},
+            {imboy_message_helper, [{'encode_and_send', 4, fun(_, _, _, _) -> ok end}]}
+        ],
+        fun() ->
+            Data = #{
+                <<"to">> => <<"789">>,
+                <<"from">> => <<"123">>,
+                <<"payload">> => <<"ciphertext">>,
+                <<"e2ee">> => #{<<"edit_of">> => <<"original">>}
+            },
+            {reply, Reply} = msg_c2c_logic:c2c_edit(<<"edit">>, 123, Data),
+            ?assertEqual(<<"permission_denied">>, maps:get(error, Reply)),
+            meck:expect(msg_c2c_ds, find_msg_by_id, fun(_) -> {error, not_found} end),
+            {reply, StagedReply} = msg_c2c_logic:c2c_edit(<<"edit">>, 123, Data),
+            ?assertEqual(<<"permission_denied">>, maps:get(error, StagedReply)),
+            ?assertEqual(0, meck:num_calls(imboy_message_helper, encode_and_send, 4))
+        end
+    ).
+
 c2c_edit_e2ee_payload_is_opaque_and_relayed_test_() ->
     ?WITH_MECKS(
         [
@@ -657,7 +846,9 @@ c2c_edit_e2ee_payload_is_opaque_and_relayed_test_() ->
             ]},
             {msg_c2c_ds, [
                 {'find_msg_by_id', 1, fun(<<"orig_c2c_edit_e2ee_001">>) ->
-                    {ok, #{<<"from_id">> => 123, <<"created_at">> => 1700000000000}}
+                    {ok, #{
+                        <<"from_id">> => 123, <<"to_id">> => 456, <<"created_at">> => 1700000000000
+                    }}
                 end}
             ]},
             {imboy_policy, [
@@ -667,7 +858,11 @@ c2c_edit_e2ee_payload_is_opaque_and_relayed_test_() ->
                 {'is_online', 1, fun(456) -> true end}
             ]},
             {imboy_message_helper, [
-                {'encode_and_send', 4, fun(456, <<"c2c_edit_e2ee_001">>, _Msg, <<"c2s">>) -> ok end}
+                {'encode_and_send', 4, fun(456, <<"c2c_edit_e2ee_001">>, Msg, <<"c2s">>) ->
+                    ?assertEqual(<<"did-sender">>, maps:get(<<"sender_did">>, Msg)),
+                    ?assertEqual(<<"android">>, maps:get(<<"sender_dtype">>, Msg)),
+                    ok
+                end}
             ]}
         ],
         fun() ->
@@ -677,6 +872,8 @@ c2c_edit_e2ee_payload_is_opaque_and_relayed_test_() ->
                 <<"from">> => <<"123">>,
                 <<"payload">> => OpaquePayload,
                 <<"msg_type">> => <<"text">>,
+                <<"sender_did">> => <<"did-sender">>,
+                <<"sender_dtype">> => <<"android">>,
                 <<"e2ee">> => #{
                     <<"meta_version">> => 3,
                     <<"edit_of">> => <<"orig_c2c_edit_e2ee_001">>,
@@ -687,6 +884,7 @@ c2c_edit_e2ee_payload_is_opaque_and_relayed_test_() ->
             {reply, Reply} = msg_c2c_logic:c2c_edit(<<"c2c_edit_e2ee_001">>, 123, Data),
             ?assertEqual(<<"message_edit">>, maps:get(<<"action">>, Reply)),
             ?assertEqual(OpaquePayload, maps:get(<<"payload">>, Reply)),
+            ?assertEqual(<<"did-sender">>, maps:get(<<"sender_did">>, Reply)),
             ?assertEqual(1, meck:num_calls(imboy_message_helper, encode_and_send, 4))
         end
     ).
@@ -698,6 +896,7 @@ c2c_revoke_success_online_sends_revoke_ack_test_() ->
                 {'find_msg_by_id', 1, fun(<<"orig_c2c_revoke_001">>) ->
                     {ok, #{
                         <<"from_id">> => 123,
+                        <<"to_id">> => 456,
                         <<"created_at">> => 1700000000000
                     }}
                 end},
@@ -730,6 +929,71 @@ c2c_revoke_success_online_sends_revoke_ack_test_() ->
             ?assertEqual(<<"custom">>, maps:get(<<"msg_type">>, Reply)),
             ?assertEqual(1, meck:num_calls(imboy_message_helper, encode_and_send, 4)),
             ?assertEqual(0, meck:num_calls(msg_c2c_ds, revoke_offline_msg, 9))
+        end
+    ).
+
+c2c_revoke_offline_failure_is_not_ack_test_() ->
+    ?WITH_MECKS(
+        [
+            {ec_cnv, [{'to_integer', 1, fun erlang:binary_to_integer/1}]},
+            {msg_c2c_ds, [
+                {'find_msg_by_id', 1, fun(_) ->
+                    {ok, #{<<"from_id">> => 123, <<"to_id">> => 456}}
+                end},
+                {'revoke_offline_msg', 9, fun(_, _, _, _, _, _, _, _, _) ->
+                    {error, unavailable}
+                end}
+            ]},
+            {elib_dt, [
+                {'millisecond', 0, fun() -> 1700000000000 end},
+                {'now', 0, fun() -> <<"2026-01-01T00:00:00Z">> end}
+            ]},
+            {msg_store_repo, [
+                {'resolve_accepted_ms', 1, fun(_) -> {ok, 1700000000000, trusted} end}
+            ]},
+            {user_device_logic, [{'online_dids', 1, fun(_) -> [] end}]},
+            {user_logic, [{'is_online', 1, fun(_) -> false end}]},
+            {message_ds, [
+                {'assemble_s2c', 3, fun(_, Action, _) -> #{<<"action">> => Action} end}
+            ]}
+        ],
+        fun() ->
+            Data = #{
+                <<"to">> => <<"456">>,
+                <<"from">> => <<"123">>,
+                <<"payload">> => #{<<"original_msg_id">> => <<"original">>}
+            },
+            {reply, Reply} = msg_c2c_logic:c2c_revoke(<<"revoke">>, 123, Data),
+            ?assertEqual(<<"internal_error">>, maps:get(<<"action">>, Reply))
+        end
+    ).
+
+c2c_revoke_wrong_recipient_and_lookup_failure_test_() ->
+    ?WITH_MECKS(
+        [
+            {ec_cnv, [{'to_integer', 1, fun erlang:binary_to_integer/1}]},
+            {msg_c2c_ds, [
+                {'find_msg_by_id', 1, fun(_) ->
+                    {ok, #{<<"from_id">> => 123, <<"to_id">> => 456}}
+                end}
+            ]},
+            {msg_store_ds, [{'find_staged', 2, fun(_, _) -> {error, not_found} end}]},
+            {message_ds, [
+                {'assemble_s2c', 3, fun(_, Action, _) -> #{<<"action">> => Action} end}
+            ]}
+        ],
+        fun() ->
+            Data = #{
+                <<"to">> => <<"789">>,
+                <<"from">> => <<"123">>,
+                <<"payload">> => #{<<"original_msg_id">> => <<"original">>}
+            },
+            {reply, Denied} = msg_c2c_logic:c2c_revoke(<<"revoke">>, 123, Data),
+            ?assertEqual(<<"permission_denied">>, maps:get(<<"action">>, Denied)),
+            meck:expect(msg_c2c_ds, find_msg_by_id, fun(_) -> {error, unavailable} end),
+            {reply, Failed} = msg_c2c_logic:c2c_revoke(<<"revoke">>, 123, Data),
+            ?assertEqual(<<"internal_error">>, maps:get(<<"action">>, Failed)),
+            ?assertEqual(0, meck:num_calls(msg_store_ds, find_staged, 2))
         end
     ).
 
@@ -773,7 +1037,9 @@ c2c_edit_success_online_sends_edit_ack_test_() ->
             ]},
             {msg_c2c_ds, [
                 {'find_msg_by_id', 1, fun(<<"orig_c2c_edit_001">>) ->
-                    {ok, #{<<"from_id">> => 123, <<"created_at">> => 1700000000000}}
+                    {ok, #{
+                        <<"from_id">> => 123, <<"to_id">> => 456, <<"created_at">> => 1700000000000
+                    }}
                 end}
             ]},
             {user_logic, [
@@ -814,7 +1080,9 @@ c2c_edit_e2ee_offline_is_idempotent_and_keeps_sender_did_test_() ->
             ]},
             {msg_c2c_ds, [
                 {'find_msg_by_id', 1, fun(<<"orig_c2c_edit_e2ee_offline_001">>) ->
-                    {ok, #{<<"from_id">> => 123, <<"created_at">> => 1700000000000}}
+                    {ok, #{
+                        <<"from_id">> => 123, <<"to_id">> => 456, <<"created_at">> => 1700000000000
+                    }}
                 end},
                 {'write_msg_if_absent_with_sender', 9, fun(
                     <<"2026-02-28T12:00:00Z">>,
@@ -832,6 +1100,11 @@ c2c_edit_e2ee_offline_is_idempotent_and_keeps_sender_did_test_() ->
             ]},
             {imboy_policy, [
                 {'validate_message_write', 5, fun(_, _, _, _, _) -> ok end}
+            ]},
+            {message_ds, [
+                {'assemble_s2c', 3, fun(Id, Error, To) ->
+                    #{<<"id">> => Id, error => Error, <<"to">> => To}
+                end}
             ]},
             {user_logic, [
                 {'is_online', 1, fun(456) -> false end}
@@ -856,7 +1129,22 @@ c2c_edit_e2ee_offline_is_idempotent_and_keeps_sender_did_test_() ->
             ),
             ?assertEqual(<<"message_edit">>, maps:get(<<"action">>, Reply)),
             ?assertEqual(<<"opaque-edit-ciphertext">>, maps:get(<<"payload">>, Reply)),
-            ?assertEqual(1, meck:num_calls(msg_c2c_ds, write_msg_if_absent_with_sender, 9))
+            ?assertEqual(<<"did-sender">>, maps:get(<<"sender_did">>, Reply)),
+            ?assertEqual(1, meck:num_calls(msg_c2c_ds, write_msg_if_absent_with_sender, 9)),
+            lists:foreach(
+                fun(Reason) ->
+                    meck:expect(msg_c2c_ds, write_msg_if_absent_with_sender, fun(
+                        _, _, _, _, _, _, _, _, _
+                    ) ->
+                        {error, Reason}
+                    end),
+                    {reply, Failed} = msg_c2c_logic:c2c_edit(
+                        <<"c2c_edit_e2ee_offline_001">>, 123, Data
+                    ),
+                    ?assertEqual(<<"internal_error">>, maps:get(error, Failed))
+                end,
+                [unavailable, conflict_no_insert]
+            )
         end
     ).
 
@@ -896,7 +1184,9 @@ c2c_edit_rejected_when_window_expired_test_() ->
         [
             {msg_c2c_ds, [
                 {'find_msg_by_id', 1, fun(<<"orig_c2c_edit_expired_001">>) ->
-                    {ok, #{<<"from_id">> => 123, <<"created_at">> => 1700000000000}}
+                    {ok, #{
+                        <<"from_id">> => 123, <<"to_id">> => 456, <<"created_at">> => 1700000000000
+                    }}
                 end}
             ]},
             {elib_dt, [
@@ -935,7 +1225,9 @@ c2c_edit_allowed_when_window_disabled_test_() ->
             ]},
             {msg_c2c_ds, [
                 {'find_msg_by_id', 1, fun(<<"orig_c2c_edit_nowin_001">>) ->
-                    {ok, #{<<"from_id">> => 123, <<"created_at">> => 1700000000000}}
+                    {ok, #{
+                        <<"from_id">> => 123, <<"to_id">> => 456, <<"created_at">> => 1700000000000
+                    }}
                 end}
             ]},
             {elib_dt, [
@@ -987,6 +1279,21 @@ c2c_revoke_ack_persists_action_payload_test_() ->
             {imboy_message_helper, [
                 {'encode_json', 1, fun(_Map) -> <<"{\"action\":\"message_revoke_ack\"}">> end}
             ]},
+            {msg_c2c_ds, [
+                {'find_msg_by_id', 1, fun(<<"orig_c2c_revoke_003">>) ->
+                    {ok, #{
+                        <<"from_id">> => 123,
+                        %% 服务端受理事实：c2c_revoke 受理时写入原行 payload
+                        <<"payload">> => #{
+                            <<"accepted_revoke">> => #{
+                                <<"request_id">> => <<"c2c_revoke_ack_003">>,
+                                <<"uid">> => <<"123">>,
+                                <<"accepted_at">> => 1700000090000
+                            }
+                        }
+                    }}
+                end}
+            ]},
             {msg_c2c_repo, [
                 {'update_payload_by_msg_id', 2, fun(<<"orig_c2c_revoke_003">>, PayloadJson) ->
                     ?assert(is_binary(PayloadJson)),
@@ -1007,6 +1314,149 @@ c2c_revoke_ack_persists_action_payload_test_() ->
         end
     ).
 
+c2c_revoke_ack_without_accepted_revoke_must_not_overwrite_original_test_() ->
+    ?WITH_MECKS(
+        [
+            {elib_log, [
+                {'internal_log', 4, fun(_, _, _, _) -> ok end},
+                {'internal_log', 5, fun(_, _, _, _, _) -> ok end}
+            ]},
+            {elib_dt, [
+                {'millisecond', 0, fun() -> 1700000095000 end}
+            ]},
+            {imboy_message_helper, [
+                {'encode_json', 1, fun(_Map) -> <<"forged payload">> end}
+            ]},
+            {msg_c2c_repo, [
+                {'update_payload_by_msg_id', 2, fun(_, _) -> {ok, 1} end}
+            ]}
+        ],
+        fun() ->
+            Data = #{
+                <<"from">> => <<"999">>,
+                <<"to">> => <<"123">>,
+                <<"payload">> => #{
+                    <<"original_msg_id">> => <<"orig_c2c_revoke_003">>
+                }
+            },
+            _ = msg_c2c_logic:c2c_revoke_ack(<<"unknown_revoke_request">>, 999, Data),
+            ?assertEqual(0, meck:num_calls(msg_c2c_repo, update_payload_by_msg_id, 2))
+        end
+    ).
+
+c2c_edit_ack_without_accepted_edit_must_not_overwrite_original_test_() ->
+    ?WITH_MECKS(
+        [
+            {elib_log, [
+                {'internal_log', 4, fun(_, _, _, _) -> ok end},
+                {'internal_log', 5, fun(_, _, _, _, _) -> ok end}
+            ]},
+            {elib_dt, [
+                {'millisecond', 0, fun() -> 1700000095000 end}
+            ]},
+            {imboy_message_helper, [
+                {'encode_json', 1, fun(_Map) -> <<"forged payload">> end}
+            ]},
+            {msg_c2c_repo, [
+                {'update_payload_by_msg_id', 2, fun(_, _) -> {ok, 1} end}
+            ]}
+        ],
+        fun() ->
+            Data = #{
+                <<"from">> => <<"999">>,
+                <<"to">> => <<"123">>,
+                <<"payload">> => #{
+                    <<"original_msg_id">> => <<"orig_c2c_edit_003">>,
+                    <<"content">> => <<"forged-content">>,
+                    <<"edited_at">> => 1700000095000
+                }
+            },
+            _ = msg_c2c_logic:c2c_edit_ack(<<"unknown_edit_request">>, 999, Data),
+            ?assertEqual(0, meck:num_calls(msg_c2c_repo, update_payload_by_msg_id, 2))
+        end
+    ).
+
+c2c_routed_forged_revoke_ack_must_not_write_test_() ->
+    routed_forged_ack_test(<<"message_revoke_ack">>).
+
+c2c_routed_forged_edit_ack_must_not_write_test_() ->
+    routed_forged_ack_test(<<"message_edit_ack">>).
+
+routed_forged_ack_test(Action) ->
+    ?WITH_MECKS(
+        [
+            {elib_log, [
+                {'internal_log', 4, fun(_, _, _, _) -> ok end},
+                {'internal_log', 5, fun(_, _, _, _, _) -> ok end}
+            ]},
+            {elib_dt, [
+                {'millisecond', 0, fun() -> 1700000095000 end}
+            ]},
+            {imboy_message_helper, [
+                {'encode_json', 1, fun(_Map) -> <<"forged payload">> end}
+            ]},
+            {msg_c2c_repo, [
+                {'update_payload_by_msg_id', 2, fun(_, _) -> {ok, 1} end}
+            ]}
+        ],
+        fun() ->
+            Data = #{
+                <<"action">> => Action,
+                <<"from">> => <<"999">>,
+                <<"to">> => <<"123">>,
+                <<"payload">> => #{
+                    <<"original_msg_id">> => <<"original">>,
+                    <<"content">> => <<"forged-content">>,
+                    <<"edited_at">> => 1700000095000
+                }
+            },
+            _ = message_router_logic:route(<<"unknown_request">>, 999, Data, <<"C2C">>, <<"{}">>),
+            ?assertEqual(0, meck:num_calls(msg_c2c_repo, update_payload_by_msg_id, 2))
+        end
+    ).
+
+c2c_action_ack_with_invalid_payload_must_not_write_test_() ->
+    ?WITH_MECKS(
+        [
+            {elib_log, [
+                {'internal_log', 4, fun(_, _, _, _) -> ok end},
+                {'internal_log', 5, fun(_, _, _, _, _) -> ok end}
+            ]},
+            {elib_dt, [
+                {'millisecond', 0, fun() -> 1700000095000 end}
+            ]},
+            {imboy_message_helper, [
+                {'encode_json', 1, fun(_Map) -> <<"unexpected payload">> end}
+            ]},
+            {msg_c2c_repo, [
+                {'update_payload_by_msg_id', 2, fun(_, _) -> {ok, 1} end}
+            ]}
+        ],
+        fun() ->
+            InvalidInputs = [
+                #{},
+                #{<<"payload">> => null},
+                #{<<"payload">> => #{<<"original_msg_id">> => 123}}
+            ],
+            lists:foreach(
+                fun(Data) ->
+                    ?assertEqual(ok, msg_c2c_logic:c2c_revoke_ack(<<"request">>, 999, Data)),
+                    ?assertEqual(ok, msg_c2c_logic:c2c_edit_ack(<<"request">>, 999, Data))
+                end,
+                InvalidInputs
+            ),
+            ?assertEqual(
+                ok,
+                msg_c2c_logic:c2c_edit_ack(
+                    <<"request">>, 999, #{
+                        <<"payload">> => #{<<"original_msg_id">> => <<"original">>}
+                    }
+                )
+            ),
+            ?assertEqual(0, meck:num_calls(msg_c2c_repo, update_payload_by_msg_id, 2))
+        end
+    ).
+
 c2c_edit_ack_persists_action_payload_test_() ->
     ?WITH_MECKS(
         [
@@ -1019,6 +1469,25 @@ c2c_edit_ack_persists_action_payload_test_() ->
             ]},
             {imboy_message_helper, [
                 {'encode_json', 1, fun(_Map) -> <<"{\"action\":\"message_edit_ack\"}">> end}
+            ]},
+            {msg_c2c_ds, [
+                {'find_msg_by_id', 1, fun(<<"orig_c2c_edit_003">>) ->
+                    {ok, #{
+                        <<"from_id">> => 123,
+                        %% 服务端受理事实（含内容哈希绑定）
+                        <<"payload">> => #{
+                            <<"accepted_edit">> => #{
+                                <<"request_id">> => <<"c2c_edit_ack_003">>,
+                                <<"uid">> => <<"123">>,
+                                <<"accepted_at">> => 1700000095000,
+                                <<"content_hash">> =>
+                                    binary:encode_hex(
+                                        crypto:hash(sha256, <<"edited-content">>), lowercase
+                                    )
+                            }
+                        }
+                    }}
+                end}
             ]},
             {msg_c2c_repo, [
                 {'update_payload_by_msg_id', 2, fun(<<"orig_c2c_edit_003">>, PayloadJson) ->
@@ -1310,7 +1779,9 @@ c2c_revoke_not_blocked_when_e2ee_required_test_() ->
             policy_config_meck(#{e2ee_mode => required}),
             {msg_c2c_ds, [
                 {'find_msg_by_id', 1, fun(<<"orig_revoke_gate_001">>) ->
-                    {ok, #{<<"from_id">> => 123, <<"created_at">> => 1700000000000}}
+                    {ok, #{
+                        <<"from_id">> => 123, <<"to_id">> => 456, <<"created_at">> => 1700000000000
+                    }}
                 end},
                 {'revoke_offline_msg', 9, fun(_, _, _, _, _, _, _, _, _) -> ok end}
             ]},
@@ -1549,6 +2020,7 @@ r04_1_revoke_window_boundaries_test_() ->
                     {'find_msg_by_id', 1, fun(_) ->
                         {ok, #{
                             <<"from_id">> => 123,
+                            <<"to_id">> => 456,
                             <<"accepted_at">> => ?R04_ACCEPTED_RFC,
                             <<"created_at">> => ?R04_ACCEPTED_RFC
                         }}
@@ -1576,6 +2048,7 @@ r04_1_revoke_window_boundaries_test_() ->
                     {'find_msg_by_id', 1, fun(_) ->
                         {ok, #{
                             <<"from_id">> => 123,
+                            <<"to_id">> => 456,
                             <<"accepted_at">> => ?R04_ACCEPTED_RFC,
                             <<"created_at">> => ?R04_ACCEPTED_RFC
                         }}
@@ -1603,6 +2076,7 @@ r04_1_revoke_window_boundaries_test_() ->
                     {'find_msg_by_id', 1, fun(_) ->
                         {ok, #{
                             <<"from_id">> => 123,
+                            <<"to_id">> => 456,
                             <<"accepted_at">> => ?R04_ACCEPTED_RFC,
                             <<"created_at">> => ?R04_ACCEPTED_RFC
                         }}
@@ -1645,12 +2119,19 @@ r04_2_client_created_at_irrelevant_test_() ->
                         {'find_msg_by_id', 1, fun(_) ->
                             {ok, #{
                                 <<"from_id">> => 123,
+                                <<"to_id">> => 456,
                                 <<"accepted_at">> => ?R04_ACCEPTED_RFC,
                                 <<"created_at">> => ClientCreatedAt
                             }}
                         end}
                     ]},
-                    {elib_dt, [{'millisecond', 0, fun() -> ?R04_ACCEPTED_MS + 60000 end}]}
+                    {elib_dt, [{'millisecond', 0, fun() -> ?R04_ACCEPTED_MS + 60000 end}]},
+                    %% 窗口判定通过后的投递链（受理事实写为尽力而为，passthrough
+                    %% 落到真实 DS 的更新失败仅告警，不影响本用例断言）
+                    {user_logic, [{'is_online', 1, fun(456) -> true end}]},
+                    {imboy_message_helper, [
+                        {'encode_and_send', 4, fun(_, _, _, _) -> ok end}
+                    ]}
                 ],
                 fun() ->
                     %% 接受后 60s（< 2 分钟窗口）→ 无论客户端 created_at 多离谱都允许
@@ -1678,11 +2159,14 @@ r04_3_first_edit_does_not_reset_deadline_test_() ->
                     %% 编辑#1 与编辑#2 看到同一原消息行：accepted_at 不随编辑变化
                     {ok, #{
                         <<"from_id">> => 123,
+                        <<"to_id">> => 456,
                         <<"accepted_at">> => ?R04_ACCEPTED_RFC,
                         <<"created_at">> => ?R04_ACCEPTED_RFC
                     }}
                 end},
-                {'update_payload_by_msg_id', 2, fun(_, _) -> ok end}
+                %% update 契约值 {ok, Count}：persist_action_accept 按
+                %% {ok,_}/{error,_} 分派，裸 ok 会 case_clause（R04-3 曾实证）
+                {'update_payload_by_msg_id', 2, fun(_, _) -> {ok, 1} end}
             ]},
             {elib_dt, [
                 %% 编辑#1 时刻：接受后 1 小时（默认 24h 窗口内）
@@ -1736,6 +2220,7 @@ r04_4_legacy_fallback_and_fail_closed_test_() ->
                     {'find_msg_by_id', 1, fun(_) ->
                         {ok, #{
                             <<"from_id">> => 123,
+                            <<"to_id">> => 456,
                             <<"accepted_at">> => null,
                             <<"server_ts">> => ?R04_ACCEPTED_RFC,
                             <<"created_at">> => null
@@ -1757,7 +2242,7 @@ r04_4_legacy_fallback_and_fail_closed_test_() ->
             [
                 {msg_c2c_ds, [
                     {'find_msg_by_id', 1, fun(_) ->
-                        {ok, #{<<"from_id">> => 123}}
+                        {ok, #{<<"from_id">> => 123, <<"to_id">> => 456}}
                     end}
                 ]},
                 {elib_dt, [{'millisecond', 0, fun() -> ?R04_ACCEPTED_MS + 1000 end}]}
@@ -1779,6 +2264,7 @@ r04_4_legacy_fallback_and_fail_closed_test_() ->
                     {'find_msg_by_id', 1, fun(_) ->
                         {ok, #{
                             <<"from_id">> => 123,
+                            <<"to_id">> => 456,
                             <<"accepted_at">> => <<>>,
                             <<"server_ts">> => <<"garbage">>,
                             <<"created_at">> => null
@@ -1802,7 +2288,7 @@ r04_4_legacy_fallback_and_fail_closed_test_() ->
             [
                 {msg_c2c_ds, [
                     {'find_msg_by_id', 1, fun(_) ->
-                        {ok, #{<<"from_id">> => 123}}
+                        {ok, #{<<"from_id">> => 123, <<"to_id">> => 456}}
                     end}
                 ]},
                 {elib_dt, [{'millisecond', 0, fun() -> ?R04_ACCEPTED_MS + 1000 end}]}

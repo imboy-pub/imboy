@@ -758,7 +758,11 @@ c2g_edit(MsgId, CurrentUid, Data) ->
             Payload = maps:get(<<"payload">>, Data),
             OriginalMsgId = maps:get(<<"original_msg_id">>, Payload),
             NewContent = maps:get(<<"content">>, Payload),
-            MsgType = maps:get(<<"msg_type">>, Payload),
+            MsgType =
+                case maps:find(<<"msg_type">>, Data) of
+                    {ok, Type} -> Type;
+                    error -> maps:get(<<"msg_type">>, Payload)
+                end,
             %% v2.0: msg_type 和 action 提升到顶层
             EditPayload = #{
                 <<"content">> => NewContent,
@@ -790,11 +794,7 @@ handle_encrypted_group_edit(MsgId, CurrentUid, Data, OriginalMsgId) ->
     PayloadBin = encrypted_payload_binary(Payload),
     case {CurrentUid =:= FromId, group_ds:is_member(CurrentUid, ToGID)} of
         {true, true} ->
-            FindResult =
-                case msg_c2g_ds:find_msg_by_id(OriginalMsgId) of
-                    {ok, Found} -> {ok, Found};
-                    _ -> msg_store_ds:find_staged(<<"c2g">>, OriginalMsgId)
-                end,
+            FindResult = find_group_action_original(OriginalMsgId),
             case FindResult of
                 {ok, #{<<"from_id">> := FromId, <<"to_id">> := ToGID} = MsgData} ->
                     %% R04（IMBOY-TIMEZONE-REPAIR-V1）：编辑窗口基准改为可信接受时间
@@ -866,8 +866,10 @@ handle_encrypted_group_edit(MsgId, CurrentUid, Data, OriginalMsgId) ->
                     end;
                 {ok, _} ->
                     {reply, message_ds:assemble_s2c(MsgId, <<"permission_denied">>, To)};
-                _ ->
-                    {reply, message_ds:assemble_s2c(MsgId, <<"msg_not_found">>, To)}
+                {error, not_found} ->
+                    {reply, message_ds:assemble_s2c(MsgId, <<"msg_not_found">>, To)};
+                {error, _} ->
+                    {reply, message_ds:assemble_s2c(MsgId, <<"internal_error">>, To)}
             end;
         {false, _} ->
             {reply, message_ds:assemble_s2c(MsgId, <<"permission_denied">>, To)};
@@ -893,6 +895,12 @@ encrypted_edit_target(Data) ->
             {ok, OriginalMsgId};
         _ ->
             error
+    end.
+
+find_group_action_original(MsgId) ->
+    case msg_c2g_ds:find_msg_by_id(MsgId) of
+        {error, not_found} -> msg_store_ds:find_staged(<<"c2g">>, MsgId);
+        Result -> Result
     end.
 
 -spec encrypted_payload_binary(term()) -> binary().
@@ -930,11 +938,7 @@ handle_group_action(MsgId, CurrentUid, Data, ActionPayload, ActionMsgExtra, Acti
                 end,
 
             %% 正式表查不到时兜底查 staging（秒撤竞态：消息仍在异步管道内）
-            FindResult =
-                case msg_c2g_ds:find_msg_by_id(OriginalMsgId) of
-                    {ok, Found} -> {ok, Found};
-                    _ -> msg_store_ds:find_staged(<<"c2g">>, OriginalMsgId)
-                end,
+            FindResult = find_group_action_original(OriginalMsgId),
             case FindResult of
                 {ok, MsgData} ->
                     %% 检查消息的发送者是否为当前用户
@@ -1046,9 +1050,12 @@ handle_group_action(MsgId, CurrentUid, Data, ActionPayload, ActionMsgExtra, Acti
                             ErrorMsg = message_ds:assemble_s2c(MsgId, <<"permission_denied">>, To),
                             {reply, ErrorMsg}
                     end;
-                _ ->
+                {error, not_found} ->
                     %% 消息不存在或格式错误
                     ErrorMsg = message_ds:assemble_s2c(MsgId, <<"msg_not_found">>, To),
+                    {reply, ErrorMsg};
+                {error, _} ->
+                    ErrorMsg = message_ds:assemble_s2c(MsgId, <<"internal_error">>, To),
                     {reply, ErrorMsg}
             end;
         {false, _} ->

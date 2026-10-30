@@ -15,6 +15,7 @@
 -export([write_msg_with_sender/10]).
 -export([write_msg_with_sender/11]).
 -export([write_msg_if_absent/8]).
+-export([revoke_offline_atomic/9]).
 -export([write_msg_if_absent_with_sender/9]).
 -export([write_msg_with_reply/11]).
 -export([write_msg_with_reply/12]).
@@ -302,6 +303,63 @@ write_msg_if_absent(CreatedAt, Id, Payload, FromId, ToId, ServerTS, MsgType, E2E
         {ok, 0} -> {error, conflict_no_insert};
         {ok, _Count, _Returning} -> ok;
         {error, Reason} -> {error, Reason}
+    end.
+
+-spec revoke_offline_atomic(
+    binary(), binary(), binary(), binary(), integer(), integer(), binary(), binary(), map() | null
+) -> ok | {error, term()}.
+revoke_offline_atomic(CreatedAt, Id, OriginalId, Payload, FromId, ToId, ServerTS, MsgType, E2EE) ->
+    Table = tablename(),
+    E2EEValue =
+        case E2EE of
+            null -> null;
+            <<>> -> null;
+            Map when is_map(Map) -> jsone:encode(Map, [native_utf8]);
+            Bin when is_binary(Bin) -> Bin;
+            _ -> null
+        end,
+    Insert = [
+        <<"INSERT INTO ">>,
+        Table,
+        <<" (id, payload, from_id, to_id, created_at, server_ts, msg_id, msg_type, e2ee, conv_seq)">>,
+        <<" SELECT $1, $2, $3, $4, $5, $6, $7::varchar(40), $8, $9, $10">>,
+        <<" WHERE NOT EXISTS (SELECT 1 FROM ">>,
+        Table,
+        <<" WHERE msg_id = $7 AND to_id = $4) ON CONFLICT (msg_id, created_at) DO NOTHING">>
+    ],
+    Update = [
+        <<"UPDATE ">>,
+        Table,
+        <<" SET payload = $1, server_ts = CURRENT_TIMESTAMP ">>,
+        <<"WHERE msg_id = $2 AND from_id = $3 AND to_id = $4 ">>,
+        <<"AND (expire_at IS NULL OR expire_at > CURRENT_TIMESTAMP)">>
+    ],
+    Params = [
+        elib_tsid:generate(msg_c2c),
+        Payload,
+        FromId,
+        ToId,
+        CreatedAt,
+        ServerTS,
+        Id,
+        MsgType,
+        E2EEValue
+    ],
+    case
+        elib_pg:with_tx(fun(Conn) ->
+            {ok, _} = personal_message_order_repo:execute_formal_tx(
+                Conn, FromId, ToId, Id, Insert, Params
+            ),
+            case elib_pg:execute(Conn, Update, [Payload, OriginalId, FromId, ToId]) of
+                {ok, _} -> ok;
+                {ok, _, _} -> ok;
+                {error, Reason} -> throw({rollback, Reason})
+            end
+        end)
+    of
+        {rollback, formal_no_insert} -> {error, conflict_no_insert};
+        {rollback, Reason} -> {error, Reason};
+        Result -> Result
     end.
 
 %% @doc 写入带发送设备标识的 C2C 离线消息，并按 (msg_id, to_id) 判重。
