@@ -355,6 +355,22 @@ is_subscribed_returns_false_when_subscription_missing_test_() ->
         end
     ).
 
+subscription_status_distinguishes_missing_from_failure_test_() ->
+    [
+        ?WITH_MECKS(
+            [{elib_pg, [{'one', 2, fun(_, _) -> Response end}]}],
+            fun() ->
+                ?assertEqual(Expected, channel_subscription_repo:subscription_status(11, 1001))
+            end
+        )
+     || {Response, Expected} <- [
+            {{ok, #{<<"exists">> => 1}}, {ok, true}},
+            {{ok, #{}}, {ok, false}},
+            {{error, connection_closed}, {error, connection_closed}},
+            {{ok, invalid}, {error, invalid_subscription_result}}
+        ]
+    ].
+
 %% P0-1: 验证 clear_unread/2 包含 user_id 维度，仅清除指定用户的未读
 clear_unread_with_uid_includes_user_in_where_clause_test_() ->
     ?WITH_MECKS(

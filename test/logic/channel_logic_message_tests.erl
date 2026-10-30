@@ -22,6 +22,31 @@ purchase_query_error_never_enters_channel_json_test_() ->
         end
     ).
 
+subscription_query_error_never_enters_channel_json_test_() ->
+    ?WITH_MECKS(
+        [
+            {channel_ds, [
+                {find_by_id_with_price, 1, fun(_) -> #{<<"id">> => 42} end},
+                {find_by_custom_id, 1, fun(_) -> #{<<"id">> => 42} end},
+                {find_by_id, 2, fun(_, _) -> #{<<"id">> => 42} end}
+            ]},
+            {channel_admin_ds, [{get_role, 2, fun(_, _) -> 0 end}]},
+            {channel_subscription_ds, [
+                {subscription_status, 2, fun(_, _) -> {error, connection_closed} end}
+            ]}
+        ],
+        fun() ->
+            ?assertEqual(
+                {error, {503, <<"subscription_unavailable">>}},
+                channel_logic_message:get_channel(<<"42">>, 1001)
+            ),
+            ?assertEqual(
+                {error, {503, <<"subscription_unavailable">>}},
+                channel_logic_message:get_channel_by_custom_id(<<"test">>, 1001)
+            )
+        end
+    ).
+
 purchase_query_error_blocks_message_read_and_ack_test_() ->
     [
         ?WITH_MECKS(
@@ -89,7 +114,7 @@ get_channel_editor_unsubscribed_returns_false_test_() ->
                 {'get_role', 2, fun(_ChannelId, _Uid) -> 1 end}
             ]},
             {channel_subscription_ds, [
-                {'is_subscribed', 2, fun(_ChannelId, _Uid) -> false end}
+                {'subscription_status', 2, fun(_ChannelId, _Uid) -> {ok, false} end}
             ]}
         ],
         fun() ->
@@ -114,7 +139,7 @@ get_channel_creator_always_subscribed_test_() ->
                 {'get_role', 2, fun(_ChannelId, _Uid) -> 3 end}
             ]},
             {channel_subscription_ds, [
-                {'is_subscribed', 2, fun(_ChannelId, _Uid) -> false end}
+                {'subscription_status', 2, fun(_ChannelId, _Uid) -> {ok, false} end}
             ]}
         ],
         fun() ->
@@ -142,7 +167,7 @@ get_channel_role_zero_queries_subscription_test_() ->
                 {'get_role', 2, fun(_ChannelId, _Uid) -> 0 end}
             ]},
             {channel_subscription_ds, [
-                {'is_subscribed', 2, fun(_ChannelId, _Uid) -> true end}
+                {'subscription_status', 2, fun(_ChannelId, _Uid) -> {ok, true} end}
             ]}
         ],
         fun() ->
@@ -175,7 +200,7 @@ get_paid_channel_returns_purchase_state_test_() ->
                 {'get_role', 2, fun(_ChannelId, _Uid) -> 0 end}
             ]},
             {channel_subscription_ds, [
-                {'is_subscribed', 2, fun(_ChannelId, _Uid) -> true end}
+                {'subscription_status', 2, fun(_ChannelId, _Uid) -> {ok, true} end}
             ]},
             {channel_order_ds, [
                 {'has_purchased', 2, fun(_ChannelId, _Uid) -> false end}
@@ -203,7 +228,7 @@ get_paid_channel_returns_true_for_purchased_user_test_() ->
                 {'get_role', 2, fun(_ChannelId, _Uid) -> 0 end}
             ]},
             {channel_subscription_ds, [
-                {'is_subscribed', 2, fun(_ChannelId, _Uid) -> false end}
+                {'subscription_status', 2, fun(_ChannelId, _Uid) -> {ok, false} end}
             ]},
             {channel_order_ds, [
                 {'has_purchased', 2, fun(_ChannelId, _Uid) -> true end}
@@ -233,7 +258,7 @@ get_paid_custom_channel_includes_price_and_purchase_state_test_() ->
                 {'get_role', 2, fun(42, 1001) -> 0 end}
             ]},
             {channel_subscription_ds, [
-                {'is_subscribed', 2, fun(42, 1001) -> true end}
+                {'subscription_status', 2, fun(42, 1001) -> {ok, true} end}
             ]},
             {channel_order_ds, [
                 {'has_purchased', 2, fun(42, 1001) -> false end}
@@ -421,7 +446,7 @@ get_channel_by_custom_id_editor_unsubscribed_returns_false_test_() ->
                 {'get_role', 2, fun(_ChannelId, _Uid) -> 1 end}
             ]},
             {channel_subscription_ds, [
-                {'is_subscribed', 2, fun(_ChannelId, _Uid) -> false end}
+                {'subscription_status', 2, fun(_ChannelId, _Uid) -> {ok, false} end}
             ]}
         ],
         fun() ->

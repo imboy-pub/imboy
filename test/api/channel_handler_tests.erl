@@ -204,6 +204,37 @@ by_custom_id_uses_current_uid_for_role_test_() ->
         end
     ).
 
+detail_subscription_failure_preserves_unavailable_code_test_() ->
+    ?WITH_MECKS(
+        [
+            {workspace_resolver, [
+                {guard_channel_custom_id, 2, fun(_, _) -> ok end}
+            ]},
+            {cowboy_req, [
+                {binding, 2, fun(_, _) -> <<"42">> end}
+            ]},
+            {channel_logic, [
+                {get_channel, 2, fun(_, _) -> {error, {503, <<"subscription_unavailable">>}} end},
+                {get_channel_by_custom_id, 2, fun(_, _) ->
+                    {error, {503, <<"subscription_unavailable">>}}
+                end}
+            ]},
+            {elib_response, [
+                {error, 3, fun(_, Msg, Code) -> {error_resp, Code, Msg} end}
+            ]}
+        ],
+        fun() ->
+            Expected = {error_resp, 503, <<"subscription_unavailable">>},
+            ?assertEqual(
+                Expected, channel_handler:handle_action(show, req_mock(), #{current_uid => 1001})
+            ),
+            ?assertEqual(
+                Expected,
+                channel_handler:handle_action(by_custom_id, req_mock(), #{current_uid => 1001})
+            )
+        end
+    ).
+
 mark_read_uses_path_channel_id_test_() ->
     ?WITH_MECKS(
         [
@@ -2217,6 +2248,33 @@ qrcode_returns_channel_card_test_() ->
             ?assertMatch(
                 {ok_resp, #{<<"type">> := <<"channel">>, <<"name">> := <<"名片频道"/utf8>>}},
                 Result
+            )
+        end
+    ).
+
+qrcode_subscription_failure_preserves_unavailable_code_test_() ->
+    Key = <<"eunit_qrcode_key">>,
+    Exp = <<"4102444800000">>,
+    ValidTk = elib_hasher:md5(<<Exp/binary, "_", Key/binary>>),
+    ?WITH_MECKS(
+        [
+            {cowboy_req, [
+                {parse_qs, 1, fun(_) ->
+                    [{<<"id">>, <<"ch_card_1">>}, {<<"exp">>, Exp}, {<<"tk">>, ValidTk}]
+                end}
+            ]},
+            {config_ds, [{env, 1, fun(solidified_key) -> Key end}]},
+            {channel_logic, [
+                {get_channel, 2, fun(<<"ch_card_1">>, 1001) ->
+                    {error, {503, <<"subscription_unavailable">>}}
+                end}
+            ]},
+            {elib_response, [{error, 3, fun(_, Msg, Code) -> {error_resp, Code, Msg} end}]}
+        ],
+        fun() ->
+            ?assertEqual(
+                {error_resp, 503, <<"subscription_unavailable">>},
+                channel_handler:handle_action(qrcode, req_mock(), #{current_uid => 1001})
             )
         end
     ).

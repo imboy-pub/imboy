@@ -28,6 +28,7 @@
 -export([list_unread_by_uid/1]).
 -export([list_unread_counts_by_channel/1]).
 -export([is_subscribed/2]).
+-export([subscription_status/2]).
 
 -ifdef(EUNIT).
 -include_lib("eunit/include/eunit.hrl").
@@ -365,6 +366,21 @@ list_unread_counts_by_channel(ChannelId) ->
 %% @doc 检查用户是否订阅了频道
 -spec is_subscribed(integer(), integer()) -> boolean().
 is_subscribed(ChannelId, Uid) ->
+    case subscription_status(ChannelId, Uid) of
+        {ok, Result} -> Result;
+        {error, _} -> false
+    end.
+
+%% 防御性子句说明：elib_pg:one/2 当前 spec 使 {ok, 非map} 不可达（no-row
+%% 缺省为 #{}），但该缺省属上游契约，历史上即发生过变化；一旦上游漂移，
+%% 这里宁可显式 {error, invalid_subscription_result} 也不得把订阅状态
+%% 谎报为 false（严格读取语义，见 strict-read WIP）。行为由
+%% subscription_status_distinguishes_missing_from_failure_test_ 钉死，
+%% 故对该函数做定点 dialyzer 抑制而非删除子句。
+-dialyzer({nowarn_function, subscription_status/2}).
+
+-spec subscription_status(integer(), integer()) -> {ok, boolean()} | {error, term()}.
+subscription_status(ChannelId, Uid) ->
     Tb = tablename(),
     Sql =
         <<"SELECT 1 FROM ", Tb/binary,
@@ -372,8 +388,9 @@ is_subscribed(ChannelId, Uid) ->
     %% elib_pg:one/2 uses #{} as its no-row default.  Treating every
     %% {ok, _} as a hit turns a missing subscription into true.
     case elib_pg:one(Sql, [ChannelId, Uid]) of
-        {ok, Row} when is_map(Row), map_size(Row) > 0 -> true;
-        _ -> false
+        {ok, Row} when is_map(Row) -> {ok, map_size(Row) > 0};
+        {error, _} = Error -> Error;
+        _ -> {error, invalid_subscription_result}
     end.
 
 %% ===================================================================
