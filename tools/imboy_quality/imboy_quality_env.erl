@@ -42,8 +42,14 @@
     {message_result_pg_tests, "msgres"},
     {attachment_pending_location_pg_tests, "pendloc"}
 ]).
-%% 顺序依赖根：独占车道 fresh VM + 本根专属克隆（imboy_quality_full ?EXCL 同列）
--define(ISOLATED_ROOTS, [throttle_middleware, oa_direct_cloud_retention_pg_tests]).
+%% 顺序依赖根：独占车道 fresh VM + 本根专属克隆（imboy_quality_full ?EXCL 同列）。
+%% msg_safe：共享 UID 对 920001/920002 的姊妹根直插残留抬高 observed_head（2026-10-30
+%% probe2 seq 审计实证），独占克隆库消除跨根残留，详见 ?EXCL 注释。
+-define(ISOLATED_ROOTS, [
+    throttle_middleware,
+    oa_direct_cloud_retention_pg_tests,
+    msg_safe_boundary_pg_tests
+]).
 
 %% ---- 准备 ----
 
@@ -150,7 +156,7 @@ prepare(Repo, Ctrl, Workers) ->
             exclusive_config => maps:merge(maps:get(config, Attv5), maps:get(config, Iso)),
             drop_dbs =>
                 [GsDb | [N || {_, N} <- Ag31]] ++ maps:get(drop_dbs, Hird) ++
-                    maps:get(drop_dbs, Attv5) ++ maps:get(drop_dbs, Iso),
+                maps:get(drop_dbs, Attv5) ++ maps:get(drop_dbs, Iso),
             garage => Garage,
             ctrl => Ctrl,
             runtime_dirs => [
@@ -318,7 +324,10 @@ iso_db_name(Root, Pid) -> "imboy_quality_iso_" ++ atom_to_list(Root) ++ "_" ++ P
 
 %% 本轮将创建的全部库名（自测用：每个都必须 ≤ 63 字符，PG 会静默截断更长的标识符）。
 planned_db_names(Workers, Pid) ->
-    [lists:flatten(io_lib:format("imboy_quality_w~p_~s", [K, Pid])) || K <- lists:seq(0, Workers - 1)] ++
+    [
+        lists:flatten(io_lib:format("imboy_quality_w~p_~s", [K, Pid]))
+     || K <- lists:seq(0, Workers - 1)
+    ] ++
         ["imboy_quality_gsremind_" ++ Pid, "imboy_quality_hirdpoc_" ++ Pid] ++
         ["imboy_quality_ag31_" ++ T ++ "_" ++ Pid || T <- ["grant", "run", "recovery", "toolauth"]] ++
         [attv5_db_name(S, Pid) || {_, S} <- ?W403_ROOTS ++ ?REVIEW_ROOTS] ++
@@ -326,14 +335,20 @@ planned_db_names(Workers, Pid) ->
 
 %% talk_record 网关根（普通车道）：TALK_RECORD_PRIVATE_GARAGE_CONFIG 要求桶名恒为
 %% talk-record-relay、endpoint 为 http://127.0.0.1:*；TALK_HTTP_AAC_FIXTURE 为合成 AAC。
+%% JSON 键集 = 全部消费者读取的并集：网关根读连接 5 键，
+%% private_garage 根另读 spool_dir（attachment_gateway_tmp_dir），缺键即 setup badkey。
 talk_garage_env(Ctrl, {ok, G}, Aac, Pid) ->
-    Path = filename:join([Ctrl, "runtime", "talk_owned", "garage_" ++ Pid ++ ".json"]),
+    Scratch = filename:join([Ctrl, "runtime", "talk_owned"]),
+    Path = filename:join(Scratch, "garage_" ++ Pid ++ ".json"),
+    Spool = filename:join(Scratch, "spool_" ++ Pid),
+    ok = filelib:ensure_dir(filename:join(Spool, "x")),
     ok = imboy_quality_resources:write_json(Path, #{
         endpoint => list_to_binary(maps:get(endpoint, G)),
         bucket => <<"talk-record-relay">>,
         region => list_to_binary(maps:get(region, G)),
         access_key => list_to_binary(maps:get(access_key, G)),
-        secret_key => list_to_binary(maps:get(secret_key, G))
+        secret_key => list_to_binary(maps:get(secret_key, G)),
+        spool_dir => list_to_binary(Spool)
     }),
     [{"TALK_RECORD_PRIVATE_GARAGE_CONFIG", Path} | aac_env(Aac)];
 talk_garage_env(_Ctrl, {error, _}, Aac, _Pid) ->
@@ -429,7 +444,11 @@ trailing_pid(Name) ->
 
 %% config/sys.quality.<pid>.<tag>.config
 config_pid(Path) ->
-    case re:run(filename:basename(Path), "^sys\\.quality\\.(\\d+)\\.", [{capture, all_but_first, list}]) of
+    case
+        re:run(filename:basename(Path), "^sys\\.quality\\.(\\d+)\\.", [
+            {capture, all_but_first, list}
+        ])
+    of
         {match, [P]} -> list_to_integer(P);
         nomatch -> undefined
     end.
