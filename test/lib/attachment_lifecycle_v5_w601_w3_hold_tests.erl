@@ -162,7 +162,10 @@ hold_all_entrypoint(S, ScBin, Idx, ScopeVal, EP) ->
     ).
 
 he_key(Driver, Idx) ->
-    <<"v5e2e/w601/", Driver/binary, "/he/", (integer_to_binary(Idx))/binary>>.
+    %% run 级 nonce：迁移 191 规定墓碑 key 永久烧毁（见 ?SUP:run_nonce/0 注），
+    %% 跨 run 不再复用已烧毁 key；VM 内 memo 保证叶主体与 sweep 同 key。
+    Nonce = ?SUP:run_nonce(),
+    <<"v5e2e/w601/", Driver/binary, "/he/", Nonce/binary, "/", (integer_to_binary(Idx))/binary>>.
 
 he_ctrl_key(Key) -> <<Key/binary, "/ctrl">>.
 
@@ -413,7 +416,8 @@ hold_gc_race(S, Driver, ScBin, DomBin, Idx, Scope) ->
     ).
 
 hr_key(Driver, ScBin, DomBin) ->
-    <<"v5e2e/w601/", Driver/binary, "/hr/", ScBin/binary, "/", DomBin/binary>>.
+    Nonce = ?SUP:run_nonce(),
+    <<"v5e2e/w601/", Driver/binary, "/hr/", Nonce/binary, "/", ScBin/binary, "/", DomBin/binary>>.
 
 hr_eb_id(Id) -> Id + 100000.
 

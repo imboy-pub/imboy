@@ -29,6 +29,7 @@
     driver/0,
     other_driver/1,
     driver_index/1,
+    run_nonce/0,
     setup/1,
     cleanup/1,
     emit/2,
@@ -97,6 +98,31 @@ other_driver(<<"disk">>) -> <<"garage">>.
 %% id 空间分段：同库双 driver 遍互不撞主键（garage 低半段 / disk 高半段）。
 driver_index(<<"garage">>) -> 0;
 driver_index(<<"disk">>) -> 10.
+
+%% attv5 库跨 run 持久，且迁移 191 冻结语义规定：path 一旦留下
+%% attachment_object_deletion 墓碑行即永久烧毁（fn_v5_register_pending 对
+%% 任何墓碑按 path 抛 23505 'v5 key tombstoned'，无复活路径）。he/hr/rr/so
+%% 的 key 叶内唯一但跨 run 恒定，上一 run 遗留的墓碑会烧掉本 run 的 seed
+%% 注册（run3 实测 w3hold 80F / w3race 15F 全部 23505）。key 构造统一拼接
+%% 本 run 级 nonce：跨 run 不再触碰任何已烧毁 key；同一次电池 VM 内 memo
+%% 一次，保证叶主体与 sweep 对同一叶派生出同一个 key；叶内唯一性仍由
+%% Idx/Sc/Dom 保证，path 列为 text 无长度约束。
+run_nonce() ->
+    Key = {?MODULE, w601_run_nonce},
+    case persistent_term:get(Key, undefined) of
+        undefined ->
+            Nonce = iolist_to_binary(
+                [
+                    integer_to_binary(os:system_time(millisecond)),
+                    $x,
+                    integer_to_binary(erlang:unique_integer([positive]))
+                ]
+            ),
+            persistent_term:put(Key, Nonce),
+            Nonce;
+        Nonce ->
+            Nonce
+    end.
 
 %% ------------------------------------------------------------------ setup
 
