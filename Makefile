@@ -228,8 +228,12 @@ include erlang.mk
 # Linux limits each exec argument (including /bin/sh -c's command) to 128 KiB.
 # Keep the complete test source list out of that command and compile bounded
 # batches with the original options. xargs failure prevents the build stamp.
-# 清单由 make 直接写入文件，完整保留测试集合；分批失败仍使构建失败。
+# 清单由 make $(file) 直接写入文件，完整保留测试集合；分批失败仍使构建失败。
+# $(file) 是 GNU Make 4.0+ 才有的函数：3.81 把未知函数静默展开为空，清单
+# 停留在旧内容——新改的测试源永不重编、eunit 加载陈旧 beam。因此 3.x 下
+# 必须在写清单前硬错，而不是静默用陈旧清单编译。
 define compile_test_erl
+	$(if $(filter 3.%,$(MAKE_VERSION)),$(error GNU Make 4+ required for test compilation: make $(MAKE_VERSION) drops $$file and would compile a stale file list; use gmake))
 	$(file >$(ERLANG_MK_TMP)/$(PROJECT).test-compile-files,$1)
 	$(verbose) xargs -n 64 -s 32768 erlc -v $(TEST_ERLC_OPTS) -o $(TEST_DIR) \
 		-pa ebin/ -I include/ < $(ERLANG_MK_TMP)/$(PROJECT).test-compile-files
