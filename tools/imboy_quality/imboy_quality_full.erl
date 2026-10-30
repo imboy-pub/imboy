@@ -4,8 +4,14 @@
 %% 每组一 VM 顺序执行，结果按根落盘。独占根（Excl 清单）作为 U 成员单列。
 -module(imboy_quality_full).
 -export([
-    inventory/1, run/3, root_identity_set/1, excluded/0, long_root_hints/0, run_group_rotating/6,
-    ordered_affinity/0, apply_ordered_affinity/2
+    inventory/1,
+    run/3,
+    root_identity_set/1,
+    excluded/0,
+    long_root_hints/0,
+    run_group_rotating/6,
+    ordered_affinity/0,
+    apply_ordered_affinity/2
 ]).
 
 -define(EXCL, [
@@ -44,7 +50,12 @@
     %% 同 VM 共跑时，后两者 setup 的 snapshot_default_pool 断言（池状态 vs imboy.pg_conf env）
     %% badmatch 2/2 复现，异 VM 不复现；本根自身 mock 大量全局模块。同 §3.2：全局状态
     %% 敏感根独立 VM 串行。
-    adm_group_handler
+    adm_group_handler,
+    %% 2026-10-30 二分实证（probe2 库 seq 审计）：与 msg_expire_read_filter_pg_tests
+    %% 共享 UID 对 920001/920002；后者直插 msg_c2c 残留（tzd01x_% 行，conv_seq 1..3）
+    %% 抬高 observed_head，本根 r02 断言 accept=1 实测得 4。字母序同库必复发；
+    %% 独占车道专属克隆库无残留，断言恢复成立。
+    msg_safe_boundary_pg_tests
 ]).
 
 excluded() -> ?EXCL.

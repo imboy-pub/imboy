@@ -42,8 +42,14 @@
     {message_result_pg_tests, "msgres"},
     {attachment_pending_location_pg_tests, "pendloc"}
 ]).
-%% 顺序依赖根：独占车道 fresh VM + 本根专属克隆（imboy_quality_full ?EXCL 同列）
--define(ISOLATED_ROOTS, [throttle_middleware, oa_direct_cloud_retention_pg_tests]).
+%% 顺序依赖根：独占车道 fresh VM + 本根专属克隆（imboy_quality_full ?EXCL 同列）。
+%% msg_safe：共享 UID 对 920001/920002 的姊妹根直插残留抬高 observed_head（2026-10-30
+%% probe2 seq 审计实证），独占克隆库消除跨根残留，详见 ?EXCL 注释。
+-define(ISOLATED_ROOTS, [
+    throttle_middleware,
+    oa_direct_cloud_retention_pg_tests,
+    msg_safe_boundary_pg_tests
+]).
 
 %% ---- 准备 ----
 
@@ -150,7 +156,7 @@ prepare(Repo, Ctrl, Workers) ->
             exclusive_config => maps:merge(maps:get(config, Attv5), maps:get(config, Iso)),
             drop_dbs =>
                 [GsDb | [N || {_, N} <- Ag31]] ++ maps:get(drop_dbs, Hird) ++
-                    maps:get(drop_dbs, Attv5) ++ maps:get(drop_dbs, Iso),
+                maps:get(drop_dbs, Attv5) ++ maps:get(drop_dbs, Iso),
             garage => Garage,
             ctrl => Ctrl,
             runtime_dirs => [
@@ -318,7 +324,10 @@ iso_db_name(Root, Pid) -> "imboy_quality_iso_" ++ atom_to_list(Root) ++ "_" ++ P
 
 %% 本轮将创建的全部库名（自测用：每个都必须 ≤ 63 字符，PG 会静默截断更长的标识符）。
 planned_db_names(Workers, Pid) ->
-    [lists:flatten(io_lib:format("imboy_quality_w~p_~s", [K, Pid])) || K <- lists:seq(0, Workers - 1)] ++
+    [
+        lists:flatten(io_lib:format("imboy_quality_w~p_~s", [K, Pid]))
+     || K <- lists:seq(0, Workers - 1)
+    ] ++
         ["imboy_quality_gsremind_" ++ Pid, "imboy_quality_hirdpoc_" ++ Pid] ++
         ["imboy_quality_ag31_" ++ T ++ "_" ++ Pid || T <- ["grant", "run", "recovery", "toolauth"]] ++
         [attv5_db_name(S, Pid) || {_, S} <- ?W403_ROOTS ++ ?REVIEW_ROOTS] ++
@@ -429,7 +438,11 @@ trailing_pid(Name) ->
 
 %% config/sys.quality.<pid>.<tag>.config
 config_pid(Path) ->
-    case re:run(filename:basename(Path), "^sys\\.quality\\.(\\d+)\\.", [{capture, all_but_first, list}]) of
+    case
+        re:run(filename:basename(Path), "^sys\\.quality\\.(\\d+)\\.", [
+            {capture, all_but_first, list}
+        ])
+    of
         {match, [P]} -> list_to_integer(P);
         nomatch -> undefined
     end.
