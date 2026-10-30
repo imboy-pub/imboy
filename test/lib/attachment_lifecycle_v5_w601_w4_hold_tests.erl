@@ -154,7 +154,7 @@ hold_metadata_entry(St, Driver, Fixture, Kind) ->
     #{id := Id} = ?X:seed_scoped_asset(St, Conn, Key, Id, Driver, <<"group">>, <<"66">>),
     Bytes = probe_bytes(Driver, Key, atom_to_binary(Fixture, utf8)),
     ok = ?X:put_probe(St, Driver, Key, Bytes),
-    Cleanup = ?X:install_governance(Conn, Id, Fixture),
+    VerifyRetention = ?X:install_governance(Conn, Id, Fixture),
     case Kind of
         orphan_cleanup ->
             {ok, #{cleaned := _}} = attachment_ds:orphan_cleanup(#{age_days => 7});
@@ -169,7 +169,7 @@ hold_metadata_entry(St, Driver, Fixture, Kind) ->
     end,
     assert_metadata_no_delete(Conn, Key),
     ok = ?X:assert_probe_intact(St, Driver, Key, Bytes),
-    Cleanup(),
+    VerifyRetention(),
     base_measured(atom_to_binary(Fixture, utf8), Driver, Key, ?X:triple(St, Driver, Key), Id).
 
 %% app-retention-purge：企业 scope 资产 + 治理行 → purge 被 DB 守卫拒。
@@ -188,7 +188,7 @@ hold_purge_entry(St, Driver, Fixture) ->
         " AND scope_ref='org:9101/app:9103'",
         [Key]
     ),
-    Cleanup = ?X:install_governance(Conn, Id, Fixture),
+    VerifyRetention = ?X:install_governance(Conn, Id, Fixture),
     {error, {<<"invalid_request">>, _}} = elib_pg:with_tx(fun(C) ->
         enterprise_asset_retention_logic:governance_tx(
             C,
@@ -201,7 +201,7 @@ hold_purge_entry(St, Driver, Fixture) ->
     end),
     assert_metadata_no_delete(Conn, Key),
     ok = ?X:assert_probe_intact(St, Driver, Key, Bytes),
-    Cleanup(),
+    VerifyRetention(),
     base_measured(atom_to_binary(Fixture, utf8), Driver, Key, ?X:triple(St, Driver, Key), Id).
 
 %% app-confirm-reject：confirm 拒绝路径的生产入口在治理行下落败，零删除。
@@ -213,13 +213,13 @@ hold_confirm_reject(St, Driver, Fixture) ->
     #{id := Id} = ?X:seed_scoped_asset(St, Conn, Key, Id, Driver, <<"group">>, <<"66">>),
     Bytes = probe_bytes(Driver, Key, atom_to_binary(Fixture, utf8)),
     ok = ?X:put_probe(St, Driver, Key, Bytes),
-    Cleanup = ?X:install_governance(Conn, Id, Fixture),
+    VerifyRetention = ?X:install_governance(Conn, Id, Fixture),
     {error, _} = attach_pending_repo:intent_pending_delete_tx(
         Conn, Key, <<"reject">>, <<"w601 confirm reject under hold">>
     ),
     assert_metadata_no_delete(Conn, Key),
     ok = ?X:assert_probe_intact(St, Driver, Key, Bytes),
-    Cleanup(),
+    VerifyRetention(),
     base_measured(atom_to_binary(Fixture, utf8), Driver, Key, ?X:triple(St, Driver, Key), Id).
 
 %% pending 域入口（reject-* / teaching-unbound / pending-cleanup）：pending
@@ -307,7 +307,7 @@ hold_eb_drain(St, Driver, Fixture) ->
     Triple = ?X:triple(St, Driver, Key),
     ok = ?X:seed_eb_asset_row(Conn, Key, Id, Triple, <<"active">>, false, <<"live">>),
     Key2 = ?X:unique_key(<<"v5e2e/w601h/eb-drain2">>),
-    ok = ?X:seed_eb_asset_row(Conn, Key2, Id2, Triple, <<"active">>, true, <<"live">>),
+    ok = ?X:seed_eb_asset_row(Conn, Key2, Id2, Triple, <<"deleted">>, true, <<"live">>),
     Bytes = probe_bytes(Driver, Key, atom_to_binary(Fixture, utf8)),
     ok = ?X:put_probe(St, Driver, Key, Bytes),
     HoldCleanup = ?X:install_eb_hold(Conn, hold_id(Seq)),

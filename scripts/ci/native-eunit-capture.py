@@ -67,10 +67,13 @@ def main():
         def chunks():
             with child.stdout:
                 while True:
-                    chunk = child.stdout.read(65536)
+                    # read() waits for a full buffer or EOF and hides progress
+                    # from long-lived, low-output test processes.
+                    chunk = child.stdout.read1(65536)
                     if not chunk:
                         break
                     raw.write(chunk)
+                    raw.flush()
                     yield chunk
         for safe in redact_chunks(chunks(), secrets):
             public.write(safe)

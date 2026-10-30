@@ -117,7 +117,8 @@ class NativePlanTests(unittest.TestCase):
             subprocess.run(['bash', '-n', str(path)], check=True)
         pins = json.loads((HERE / 'native-eunit-pins.json').read_text())
         self.assertEqual(len(pins['extensions']), 12)
-        self.assertEqual(len(pins['excluded_module_entries']), 9)
+        excluded = re.search(r'Excl = \[(.*?)\]', (ROOT / 'Makefile').read_text()).group(1)
+        self.assertEqual(pins['excluded_module_entries'], excluded.split(', '))
         for source in pins['sources'] + pins['rust'] + [pins['garage']]:
             key = 'commit' if source.get('kind') == 'git' else 'sha256'
             self.assertRegex(source[key], r'^[a-f0-9]{%d}$' % (40 if key == 'commit' else 64))

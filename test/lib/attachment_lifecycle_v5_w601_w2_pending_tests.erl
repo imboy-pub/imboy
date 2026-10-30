@@ -24,6 +24,7 @@
 -export([specs/0]).
 
 -include_lib("eunit/include/eunit.hrl").
+-include_lib("epgsql/include/epgsql.hrl").
 
 -define(S, attachment_lifecycle_v5_w601_w2_support).
 -define(F, attachment_w403_http_fixture).
@@ -138,14 +139,15 @@ mp_scenario(S, Driver, <<"group_file_success">>, <<"ordinary">>) ->
     Confirm = ?FW:confirm_with(
         maps:get(fixture, M),
         M#{confirm_body => #{object_key => key(M), scope => <<"group">>}},
-        #{anchor_msg_id => <<"w601-anchor-", (elib_uuid:gen_v7())/binary>>}
+        #{scope_ref => integer_to_binary(Gid),
+            anchor_msg_id => <<"w601-anchor-", (elib_uuid:gen_v7())/binary>>}
     ),
     ?assert(?F:success(Confirm)),
     ?assertEqual(1, ?S:attach_count(key(M))),
     #{scope => <<"group">>, group_id => Gid, anchored => true};
 mp_scenario(S, Driver, <<"identity_mismatch">>, <<"ordinary">>) ->
     T = reg(S, ordinary, Driver),
-    Intruder = intruder_headers(),
+    Intruder = intruder_headers(maps:get(fixture, T)),
     S2 = maps:get(fixture, T),
     Q = uri_string:compose_query([
         {<<"object_key">>, key(T)},
@@ -171,11 +173,17 @@ mp_scenario(S, Driver, <<"database_unavailable">>, <<"ordinary">>) ->
         fun() ->
             Down = ?FW:multipart_put(S, M, ?BODY),
             ?assertNot(?F:success(Down)),
-            ?assertEqual(500, maps:get(status, Down))
+            %% Ordinary business failures retain HTTP200 and their error envelope.
+            %% 普通业务失败保留 HTTP200，精确校验信封错误及不含上传能力。
+            ?assertEqual(200, maps:get(status, Down)),
+            #{<<"code">> := 500, <<"payload">> := Payload} =
+                jsone:decode(maps:get(body, Down)),
+            ?assertEqual(#{}, Payload)
         end
     ),
     {error, not_pinned} = ?S:content_pin(key(M)),
-    #{db_outage_status => 500, no_capability => true};
+    {error, not_found} = ?F:read(M),
+    #{db_outage_http_status => 200, db_outage_envelope_code => 500, no_capability => true};
 %% enterprise 域：按 upload_surface_contract 经 seat proxy PUT 协议度量
 %% （不伪造 multipart），同一 oracle：同账本、同 pin 事务边界、fail-closed。
 mp_scenario(S, Driver, <<"multipart_success">>, <<"enterprise">>) ->
@@ -285,7 +293,7 @@ mp_scenario(S, Driver, <<"database_unavailable">>, <<"enterprise">>) ->
 fc_scenario(S, Driver, <<"insert_error">>, Domain) ->
     Surface = surface_of(Domain),
     Bad = bad_window_sql(),
-    {error, #{code := <<"23514">>}} = elib_pg:query(Bad, []),
+    {error, #error{code = <<"23514">>}} = elib_pg:query(Bad, []),
     NoRow = elib_pg:query(
         <<"SELECT count(*)::bigint AS n FROM attach_pending WHERE client_upload_id::text=$1">>,
         [bad_window_cid()]
@@ -352,7 +360,7 @@ fc_scenario(S, Driver, <<"commit_unknown">>, Domain) ->
 %% confirm 先提交：intent sweep 被拒（confirmed/metadata-backed 双守卫），
 %% 字节保留、无回收 job；bounded retry 不改变赢家。
 race_scenario(S, Driver, <<"confirm_commits_first">>, Domain) ->
-    Surface = surface_of(Domain),
+    Surface = race_surface_of(Domain),
     T = reg(S, Surface, Driver),
     ?assert(?F:success(?F:put(T, ?BODY))),
     ?assert(?F:success(?F:confirm(T))),
@@ -368,20 +376,20 @@ race_scenario(S, Driver, <<"confirm_commits_first">>, Domain) ->
 %% blocked+attempts=8 双谓词使其永不再被 fn_v5_claim（claim 条件为冻结
 %% 迁移文本：attempts<8 AND job_state IN ('ready','retry_wait')）。
 race_scenario(S, Driver, <<"intent_commits_first">>, Domain) ->
-    Surface = surface_of(Domain),
-    T = reg(S, Surface, Driver),
-    ?assert(?F:success(?F:put(T, ?BODY))),
-    shorten_expiry(T),
+    Surface = race_surface_of(Domain),
+    T0 = reg(S, Surface, Driver),
+    ?assert(?F:success(?F:put(T0, ?BODY))),
+    T = shorten_expiry(T0),
     ?assertEqual(ok, intent(T, <<"w601 race before confirm">>)),
     Late = ?F:confirm(T),
     ?assertNot(?F:success(Late)),
-    ?assertEqual(0, ?S:attach_count(key(T))),
+    ?assertEqual(0, confirmed_metadata_count(T)),
     ?assert(deletion_jobs(T, Domain) >= 1),
     assert_job_bounded(T, Domain),
     exhaust_deletion_job(T, Domain),
     assert_job_blocked(T, Domain),
     ?assertNot(?F:success(?F:confirm(T))),
-    ?assertEqual(0, ?S:attach_count(key(T))),
+    ?assertEqual(0, confirmed_metadata_count(T)),
     ?assertEqual({ok, ?BODY}, ?F:read(T)),
     #{
         intent_won => true,
@@ -396,12 +404,7 @@ race_scenario(S, Driver, <<"intent_commits_first">>, Domain) ->
 reg(S, Ep, Driver) -> ?F:register(S, Ep, Driver, ?BODY).
 
 re_register(T, Ep, Driver) ->
-    ?F:register(
-        (maps:get(fixture, T))#{registration_cid => client_id(T), leaf => maps:get(leaf, T)},
-        Ep,
-        Driver,
-        ?BODY
-    ).
+    raw_register(maps:get(fixture, T), Ep, Driver, client_id(T), <<"w403.txt">>).
 
 key(T) -> maps:get(key, T).
 client_id(T) -> maps:get(client_upload_id, T).
@@ -414,6 +417,11 @@ fetch_in(_, _) -> undefined.
 surface_of(<<"ordinary">>) -> ordinary;
 surface_of(<<"enterprise">>) -> enterprise_internal.
 
+%% Enterprise race receipts belong to enterprise_asset, as do their GC queue.
+%% 企业竞态及 GC 队列归 enterprise_asset，必须走 seat 面真实企业账本。
+race_surface_of(<<"ordinary">>) -> ordinary;
+race_surface_of(<<"enterprise">>) -> enterprise_seat.
+
 %% ordinary multipart/group 登记入口（GET presign + method=multipart）。
 multipart_register(S, Driver, Extra) ->
     Cid = elib_uuid:gen_v7(),
@@ -422,7 +430,8 @@ multipart_register(S, Driver, Extra) ->
     application:set_env(
         imboy,
         attachment_storage_registry,
-        Registry#{upload_namespaces => #{<<"private">> => Ns, <<"enterprise">> => Ns}}
+        Registry#{upload_namespaces => #{<<"private">> => Ns, <<"enterprise">> => Ns,
+            <<"group">> => Ns}}
     ),
     Q = uri_string:compose_query(
         [
@@ -498,9 +507,9 @@ new_intruder_uid() ->
     ok = qr_login_logic:log_device_login(Uid, Did, <<"w601">>, <<"web">>),
     {Uid, Did}.
 
-intruder_headers() ->
-    {Uid, _Did} = new_intruder_uid(),
-    #{<<"authorization">> => <<"Bearer ", (token_ds:encrypt_token(Uid))/binary>>}.
+intruder_headers(S) ->
+    {Uid, Did} = new_intruder_uid(),
+    ?F:user_headers(S, Uid, Did).
 
 %% seat 面：真实第二用户的 seat-purpose 令牌（真实签发；该用户未被授予
 %% customer_service 授权函数 → 路由级授权门拒绝，先例为 upload F5）。
@@ -664,8 +673,15 @@ int(B) when is_binary(B) -> binary_to_integer(B).
 
 shorten_expiry(T) ->
     case ?S:pending_row(key(T)) of
-        {ok, _} -> ?S:update_pending_expiry(key(T), -60);
-        _ -> org_ws(T, fun(Org, Ws, Id) -> ?S:update_eb_expiry(Org, Ws, Id, -60) end)
+        {ok, _} -> ?S:expired_pending_copy(T);
+        _ ->
+            org_ws(T, fun(Org, Ws, Id) ->
+                ?S:update_eb_expiry(Org, Ws, Id, -60),
+                {ok, 1} = elib_pg:execute(<<"UPDATE enterprise_asset "
+                    "SET created_at=statement_timestamp()-interval '60 seconds' "
+                    "WHERE organization_id=$1 AND workspace_id=$2 AND id=$3">>, [Org, Ws, Id])
+            end),
+            T
     end.
 
 %% intent 提交：ordinary 走 repo（错误归一 intent_conflict/not_found）；
@@ -676,19 +692,27 @@ intent(T, Reason) ->
             attach_pending_repo:intent_pending_delete(key(T), <<"sweep">>, Reason);
         _ ->
             org_ws(T, fun(Org, Ws, Id) ->
-                case
-                    elib_pg:query(
-                        <<"SELECT fn_v5_intent_eb_delete($1,$2,$3,$4)">>,
-                        [Org, Ws, Id, Reason]
-                    )
-                of
-                    {ok, _} -> ok;
-                    {error, #{code := <<"23510">>}} -> {error, intent_conflict};
-                    {error, #{code := <<"23505">>}} -> {error, tombstone};
-                    {error, #{code := <<"P0002">>}} -> {error, not_found};
-                    {error, Reason2} -> {error, Reason2}
+                %% Exercise the pending-GC entrypoint, including its eligibility
+                %% CAS; the low-level intent also serves legitimate active deletes.
+                %% 走 pending GC 真实入口及资格 CAS；底层 intent 也服务合法主动删除。
+                case eb_asset_store:cleanup_pending_private(Org, Ws, Id,
+                    os:system_time(second), 0) of
+                    ok -> ok;
+                    {error, not_eligible} -> {error, intent_conflict};
+                    {error, _} = Error -> Error
                 end
             end)
+    end.
+
+confirmed_metadata_count(T) ->
+    case ?S:pending_row(key(T)) of
+        {ok, _} -> ?S:attach_count(key(T));
+        _ ->
+            {ok, [#{<<"n">> := N}]} = elib_pg:query(<<
+                "SELECT count(*)::bigint AS n FROM enterprise_asset "
+                "WHERE object_key=$1 AND status='active'"
+            >>, [key(T)]),
+            N
     end.
 
 deletion_jobs(T, <<"ordinary">>) ->
@@ -741,9 +765,12 @@ exhaust_deletion_job(T, _) ->
     org_ws(T, fun(Org, Ws, Id) -> exhaust_eb(Org, Ws, Id, 0) end).
 
 exhaust_ordinary(Key, Depth) when Depth < 24 ->
+    %% Select this owned target deterministically without draining other cases;
+    %% the real claim/ack protocol and all eight attempts remain unchanged.
+    %% 确定性选中本叶自有目标，不排空其他案例；真实 claim/ack 和八次尝试不变。
     {ok, _} = elib_pg:query(
         <<
-            "UPDATE attachment_object_deletion SET next_retry_at=now()"
+            "UPDATE attachment_object_deletion SET next_retry_at='-infinity'::timestamptz"
             " WHERE path=$1 AND completed_at IS NULL"
         >>,
         [Key]
@@ -777,7 +804,7 @@ exhaust_ordinary(_Key, _Depth) ->
 exhaust_eb(Org, Ws, Id, Depth) when Depth < 24 ->
     {ok, _} = elib_pg:query(
         <<
-            "UPDATE enterprise_asset_delete_queue SET next_retry_at=now()"
+            "UPDATE enterprise_asset_delete_queue SET next_retry_at='-infinity'::timestamptz"
             " WHERE organization_id=$1 AND workspace_id=$2 AND asset_id=$3"
             " AND completed_at IS NULL"
         >>,

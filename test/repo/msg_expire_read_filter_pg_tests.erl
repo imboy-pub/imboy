@@ -166,7 +166,7 @@ msg_ids(Rows) -> [maps:get(<<"msg_id">>, R) || R <- Rows].
 %%% R05B-2a：C2C 离线三读（无游标 / DID 按设备 / 会话列表）
 %%%-------------------------------------------------------------------
 r05b_2a_c2c_offline_reads_filter_expired_test_() ->
-    ?TEST_WITH_DB_TIMEOUT(60, fun() ->
+    with_fixture(fun() ->
         seed_all_tables(),
         Expected = [<<"tzd01x_c2c_future">>, <<"tzd01x_c2c_null">>],
 
@@ -187,7 +187,7 @@ r05b_2a_c2c_offline_reads_filter_expired_test_() ->
 %%% R05B-2b：history（safe_history）过滤 + safe_head 不受影响
 %%%-------------------------------------------------------------------
 r05b_2b_history_filters_expired_test_() ->
-    ?TEST_WITH_DB_TIMEOUT(60, fun() ->
+    with_fixture(fun() ->
         seed_all_tables(),
         {ok, Rows, SafeHead, _Gaps} =
             msg_archive_repo:safe_history(?CONV_KEY, 0, 100, <<"c2c">>, ?ST_UID_A, ?ST_UID_B),
@@ -208,7 +208,7 @@ r05b_2b_history_filters_expired_test_() ->
 %%% R05B-2c：history_backfill 过滤 + NextSeq 推进不空转
 %%%-------------------------------------------------------------------
 r05b_2c_backfill_filters_expired_test_() ->
-    ?TEST_WITH_DB_TIMEOUT(60, fun() ->
+    with_fixture(fun() ->
         seed_all_tables(),
         {ok, Rows, NextSeq, HasMore} =
             msg_archive_repo:backfill(?CONV_KEY, 0, 100, <<"c2c">>, ?ST_UID_A, ?ST_UID_B),
@@ -229,7 +229,7 @@ r05b_2c_backfill_filters_expired_test_() ->
 %%% R05B-2d：C2G 离线（时间线→正文装载）过滤已到期正文
 %%%-------------------------------------------------------------------
 r05b_2d_c2g_offline_filters_expired_test_() ->
-    ?TEST_WITH_DB_TIMEOUT(60, fun() ->
+    with_fixture(fun() ->
         seed_all_tables(),
         Rows = msg_c2g_ds:read_msg(?UID_B, 10, undefined),
         Ids = lists:sort(msg_ids(Rows)),
@@ -240,7 +240,7 @@ r05b_2d_c2g_offline_filters_expired_test_() ->
 %%% R05-7：旧 NULL 行三路径全部返回（不被过滤/伪造）
 %%%-------------------------------------------------------------------
 r05_7_null_rows_never_filtered_test_() ->
-    ?TEST_WITH_DB_TIMEOUT(60, fun() ->
+    with_fixture(fun() ->
         seed_all_tables(),
         ?assert(lists:member(<<"tzd01x_c2c_null">>, msg_ids(msg_c2c_ds:read_msg(?UID_B, 10)))),
         {ok, StoreRows, _, _} =
@@ -258,4 +258,11 @@ r05_7_null_rows_never_filtered_test_() ->
             [?PREFIX]
         ),
         ?assertEqual(1, NullCount)
+    end).
+
+%% Release owned rows even when an assertion fails; later roots share this DB.
+%% 断言失败也清理自有数据，避免污染共库的后续测试。
+with_fixture(Test) ->
+    ?TEST_WITH_DB_TIMEOUT(60, fun() ->
+        try Test() after cleanup_test_rows() end
     end).

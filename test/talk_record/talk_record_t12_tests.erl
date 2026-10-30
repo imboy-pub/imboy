@@ -470,7 +470,7 @@ worker_assemble_success_full_chain_test_() ->
     end).
 
 manifest_build_pure_test_() ->
-    with_db(fun(_State) ->
+    ?_test(begin
         Sha = talk_record_t12_support:sha(0),
         Parts = [
             #{

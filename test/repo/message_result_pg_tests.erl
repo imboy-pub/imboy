@@ -9,10 +9,11 @@ message_result_fixture() ->
 
 setup() ->
     {ok, Manifest} = file:read_file(required("ATTACHMENT_REVIEW_MANIFEST")),
-    #{<<"database">> := Db} = jsone:decode(Manifest),
-    <<"attv5_chain_", _/binary>> = Db,
+    #{<<"database">> := Db} = Identity = jsone:decode(Manifest),
     {ok, [Config]} = file:consult(required("ATTACHMENT_REVIEW_CONFIG")),
     Env = proplists:get_value(imboy, Config),
+    ok = attachment_lifecycle_v5_w403_gateway_protocol_tests:assert_chain_fixture_database(
+        Db, Identity, Env, required("ATTACHMENT_REVIEW_MANIFEST")),
     Pg = proplists:get_value(pg_conf, Env),
     {epgsql, connect, [Connect0]} = maps:get(start_mfa, Pg),
     Host = maps:get(host, Connect0),

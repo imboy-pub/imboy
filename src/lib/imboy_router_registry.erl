@@ -78,10 +78,9 @@ unregister(PluginName) when is_atom(PluginName) ->
 %% @doc 查询插件 routes（O(1) ETS 读，无 gen_server hop）。
 -spec plugin_routes(plugin_name()) -> [route_spec()].
 plugin_routes(PluginName) when is_atom(PluginName) ->
-    case ets:lookup(?TAB, PluginName) of
-        [{_, Routes}] -> Routes;
-        [] -> []
-    end.
+    %% Copy only the route value, retaining [] for an unregistered plugin.
+    %% 仅复制路由值；未注册插件仍返回空列表。
+    ets:lookup_element(?TAB, PluginName, 2, []).
 
 %% @doc 列出所有已注册的 (plugin_name, route) 对，扁平化。
 -spec all_routes() -> [{plugin_name(), route_spec()}].

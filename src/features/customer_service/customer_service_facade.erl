@@ -770,18 +770,31 @@ widget_asset_upload(
     #{
         installation_id := InstallationId,
         secret := Secret,
-        session_id := SessionId,
-        mime := Mime,
-        size_bytes := SizeBytes
+        session_id := SessionId
     } = Params
 ) when
     is_integer(InstallationId),
     is_binary(Secret),
     is_integer(SessionId),
-    is_binary(Mime),
-    is_integer(SizeBytes),
     is_map(Params)
 ->
+    %% Status/renew locate an existing session; registration declarations are
+    %% required only for register. Authentication and visitor scoping stay shared.
+    %% status/renew 定位既有会话，仅 register 必须携带登记声明；共用鉴权归属门。
+    case {maps:get(operation, Params, <<"register">>),
+        maps:get(mime, Params, undefined), maps:get(size_bytes, Params, undefined)} of
+        {<<"status">>, _, _} -> widget_asset_upload_scoped(Params);
+        {<<"renew">>, _, _} -> widget_asset_upload_scoped(Params);
+        {_, Mime, Size} when is_binary(Mime), is_integer(Size) ->
+            widget_asset_upload_scoped(Params);
+        _ -> {error, {invalid_argument, widget_asset_upload}}
+    end;
+widget_asset_upload(_OrgId, Params) when is_map(Params) ->
+    {error, {invalid_argument, widget_asset_upload}};
+widget_asset_upload(OrgId, _Params) ->
+    {error, {invalid_argument, {organization_id, OrgId}}}.
+
+widget_asset_upload_scoped(Params) ->
     case cs_widget_support:derive_org_by_token(Params) of
         {error, _} = Err ->
             Err;
@@ -790,11 +803,7 @@ widget_asset_upload(
                 {ok, Merged} -> cs_widget_session_app:asset_presign(OrgId, Merged);
                 {error, _} = Err2 -> Err2
             end
-    end;
-widget_asset_upload(_OrgId, Params) when is_map(Params) ->
-    {error, {invalid_argument, widget_asset_upload}};
-widget_asset_upload(OrgId, _Params) ->
-    {error, {invalid_argument, {organization_id, OrgId}}}.
+    end.
 
 -spec widget_asset_confirm(integer(), map()) -> term().
 widget_asset_confirm(

@@ -103,7 +103,10 @@ garage bucket allow "$W202_GARAGE_BUCKET" --read --write --key native-ci-rw > "$
 export IMBOY_TEST_ENDPOINT="$W202_GARAGE_ENDPOINT" IMBOY_TEST_ACCESS="$W202_GARAGE_ACCESS_KEY" IMBOY_TEST_SECRET="$W202_GARAGE_SECRET_KEY"
 
 prepare_database() {
-  export PGDATABASE="attv5_chain_ci_${GITHUB_RUN_ID}_${GITHUB_RUN_ATTEMPT}_$1"
+  # Ordinary app fixtures are not V5-admitted slot databases. Keep the V5
+  # namespace reserved so safe_connect never mistakes these bases for a slot.
+  # 普通应用夹具不是 V5 准入槽库；保留 V5 命名空间，避免误触连接守卫。
+  export PGDATABASE="imboy_chain_ci_${GITHUB_RUN_ID}_${GITHUB_RUN_ATTEMPT}_$1"
   createdb -T template0 --encoding=UTF8 --locale=C.UTF-8 "$PGDATABASE"
   for ext in pgcrypto pg_jieba timescaledb vector postgis pg_trgm btree_gin btree_gist citext unaccent intarray pg_stat_statements; do
     psql -X -v ON_ERROR_STOP=1 -q -c "CREATE EXTENSION $ext"
@@ -111,13 +114,19 @@ prepare_database() {
   scripts/drill_migrate.escript up > "$PRIVATE/migrate-$1.log" 2>&1
   export W403_CONFIG_PATH="$PRIVATE/sys-$1.config" W403_RESOURCE_MANIFEST="$PRIVATE/manifest-$1.json"
   python3 - "$REPO" <<'PY'
-import json,os,pathlib,sys
+import json,os,pathlib,subprocess,sys
 root=pathlib.Path(sys.argv[1]); text=(root/'config/sys.config.example').read_text()
 for original, count in [('username => "imboy_user"',2),('password => "abc54321"',2),('database => "imboy_v1"',2),('port => 4323',2)]:
  assert text.count(original)==count, 'Configuration shape changed: '+original
 text=text.replace('username => "imboy_user"','username => "imboy_ci"').replace('password => "abc54321"','password => ""').replace('database => "imboy_v1"','database => '+json.dumps(os.environ['PGDATABASE'])).replace('port => 4323','port => 55432')
 pathlib.Path(os.environ['W403_CONFIG_PATH']).write_text(text)
-pathlib.Path(os.environ['W403_RESOURCE_MANIFEST']).write_text(json.dumps({'database':os.environ['PGDATABASE']})+'\n')
+db=os.environ['PGDATABASE']; marker='imboy-native-eunit:ordinary-base:'+db
+subprocess.run(['psql','-X','-v','ON_ERROR_STOP=1','-q','-c',
+                'COMMENT ON DATABASE "'+db+'" IS '+"'"+marker+"'"],check=True)
+identity=subprocess.check_output(['psql','-X','-At','-v','ON_ERROR_STOP=1','-c',
+                                  'SELECT system_identifier FROM pg_control_system()'],text=True).strip()
+pathlib.Path(os.environ['W403_RESOURCE_MANIFEST']).write_text(json.dumps({
+    'database':db,'pg_system_identifier':identity,'owner_marker':marker})+'\n')
 PY
   export ATTACHMENT_REVIEW_CONFIG="$W403_CONFIG_PATH" ATTACHMENT_REVIEW_MANIFEST="$W403_RESOURCE_MANIFEST"
   export EUNIT_CONFIG="${W403_CONFIG_PATH%.config}" EUNIT_USE_RELAY=0 EUNIT_RELAY_TARGET=55432 EUNIT_OPTS=verbose

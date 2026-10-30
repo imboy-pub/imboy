@@ -427,9 +427,10 @@ resources_hird_bin_test() ->
     ok = file:write_file(Bin, <<"#!/bin/sh\n">>),
     Repo = filename:join([Root, "imboy", "worktree"]),
     ok = filelib:ensure_dir(filename:join(Repo, "x")),
-    Prev = os:getenv("IMBOY_QUALITY_HIRD_BIN"),
+    Keys = ["IMBOY_QUALITY_HIRD_BIN", "IMBOY_HIRD_BIN"],
+    Prev = [{K, os:getenv(K)} || K <- Keys],
     try
-        os:unsetenv("IMBOY_QUALITY_HIRD_BIN"),
+        lists:foreach(fun os:unsetenv/1, Keys),
         %% 祖先目录定位：<root>/hird/target/release/hird
         ?assertEqual({ok, Bin}, imboy_quality_resources:hird_bin(Repo)),
         %% 显式覆盖优先，且只接受存在的常规文件
@@ -438,12 +439,18 @@ resources_hird_bin_test() ->
         os:putenv("IMBOY_QUALITY_HIRD_BIN", Override),
         ?assertEqual({ok, Override}, imboy_quality_resources:hird_bin(Repo)),
         os:putenv("IMBOY_QUALITY_HIRD_BIN", filename:join(Root, "missing")),
+        ?assertEqual({ok, Bin}, imboy_quality_resources:hird_bin(Repo)),
+        %% The secondary override is independent of the primary override.
+        %% 二级覆盖独立于一级覆盖，必须隔离并验证优先级。
+        os:putenv("IMBOY_HIRD_BIN", Override),
+        ?assertEqual({ok, Override}, imboy_quality_resources:hird_bin(Repo)),
+        os:putenv("IMBOY_QUALITY_HIRD_BIN", Bin),
         ?assertEqual({ok, Bin}, imboy_quality_resources:hird_bin(Repo))
     after
-        case Prev of
-            false -> os:unsetenv("IMBOY_QUALITY_HIRD_BIN");
-            V -> os:putenv("IMBOY_QUALITY_HIRD_BIN", V)
-        end,
+        lists:foreach(fun
+            ({K, false}) -> os:unsetenv(K);
+            ({K, V}) -> os:putenv(K, V)
+        end, Prev),
         file:del_dir_r(Root)
     end.
 

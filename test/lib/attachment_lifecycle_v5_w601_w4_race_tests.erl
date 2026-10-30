@@ -538,7 +538,9 @@ seed_confirm_asset(St, Conn, Key, Id, Drv, Window) ->
     Bytes = probe_bytes(Key),
     ok = ?X:put_probe(St, Drv, Key, Bytes),
     case Window of
-        expired_window -> ?X:await_upload_expiry(Conn, Key);
+        expired_window ->
+            {ok, _, [{Id}]} = ?X:e(Conn, "SELECT fn_v5_confirm_pending($1,$2)", [Key, Id]),
+            ?X:await_upload_expiry(Conn, Key);
         open_window -> ok
     end,
     {ok, Bytes}.
@@ -560,10 +562,7 @@ register_confirm_session(Conn, Key, Id, Triple, Window) ->
         "gen_random_uuid(),$2::jsonb," ++ DeadlineSql ++ "," ++ ExpirySql ++ ",$3,$4,$5,$6)",
         [
             Key,
-            jsone:encode(#{
-                <<"subject">> => #{<<"kind">> => <<"user">>, <<"principal">> => <<"101">>},
-                <<"declaration">> => #{<<"mime">> => <<"image/png">>}
-            }),
+            ?X:registration_fixture(<<"private">>, null),
             maps:get(driver, Triple),
             maps:get(namespace, Triple),
             maps:get(container, Triple),
@@ -597,7 +596,7 @@ confirm_barrier(St, Conn, Key, Id) ->
         spawn_link(fun() ->
             R =
                 try
-                    {ok, HConn} = ?X:barrier_connect(St),
+                    HConn = ?X:barrier_connect(St),
                     try
                         _ = epgsql:equery(HConn, "BEGIN", []),
                         {ok, _, _} = epgsql:equery(
@@ -778,6 +777,7 @@ ent_cas_race(St, Key, WinnerSql, LoserFun, ExpectedLoss) ->
         ok = ?X:q(A, "BEGIN"),
         _WinnerRow =
             case ?X:e(A, WinnerSql) of
+                {ok, 1, _, [Row]} -> Row;
                 {ok, _, [Row]} -> Row;
                 {ok, _, []} -> erlang:error({w601_ent_winner_no_row, Key});
                 {error, Reason} -> erlang:error({w601_ent_winner_failed, Key, Reason})

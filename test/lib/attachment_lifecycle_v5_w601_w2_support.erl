@@ -44,6 +44,7 @@
     update_eb_deadline/4,
     register_expired_pending/2,
     content_pin_any/2,
+    expired_pending_copy/1,
     unregister_meck/1
 ]).
 
@@ -322,7 +323,7 @@ pending_row(Key) ->
     {ok, Rows} =
         elib_pg:query(
             <<
-                "SELECT object_key, session_state, client_upload_id, upload_content,"
+                "SELECT object_key, session_state, client_upload_id, creator_user_id, upload_content,"
                 " upload_registration, storage_driver, storage_namespace, storage_container,"
                 " storage_locator_sha256, extract(epoch from upload_expires_at)::bigint AS expires_at,"
                 " extract(epoch from session_deadline)::bigint AS deadline"
@@ -431,8 +432,8 @@ update_eb_deadline(Org, Ws, AssetId, SecsFromNow) ->
     {ok, _} =
         elib_pg:query(
             <<
-                "UPDATE enterprise_asset SET session_deadline = clock_timestamp() + ($4 * INTERVAL '1 second'),"
-                " upload_expires_at = clock_timestamp() + ($4 * INTERVAL '1 second')"
+                "UPDATE enterprise_asset SET session_deadline = statement_timestamp() + ($4 * INTERVAL '1 second'),"
+                " upload_expires_at = statement_timestamp() + ($4 * INTERVAL '1 second')"
                 " WHERE organization_id=$1 AND workspace_id=$2 AND id=$3"
             >>,
             [Org, Ws, AssetId, SecsFromNow]
@@ -466,7 +467,7 @@ register_expired_pending(Key, Mode) ->
         <<"upload_registration">> := Registration
     } = Row,
     Cid2 = elib_uuid:gen_v7(),
-    Key2 = iolist_to_binary([<<"v601-exp/">>, elib_uuid:gen_v7()]),
+    Key2 = iolist_to_binary([Key, <<"-expired-">>, elib_uuid:gen_v7()]),
     Now = os:system_time(second),
     {Deadline, Expiry} =
         case Mode of
@@ -524,3 +525,26 @@ org_ws_of(T, Fun) ->
 
 int_of(I) when is_integer(I) -> I;
 int_of(B) when is_binary(B) -> binary_to_integer(B).
+
+%% Build a separate, already-expired fixture from a real registered/pinned PUT.
+%% INSERT still runs every production guard; never shrink an immutable session.
+%% 从真实登记、已 pin 的 PUT 建立独立已过期夹具；INSERT 保留全部生产守卫，
+%% 不缩短既有不可变会话。新对象也登记到拥有者的清理账本。
+expired_pending_copy(T) ->
+    Key = maps:get(key, T),
+    NewKey = <<Key/binary, "-expired-", (elib_uuid:gen_v7())/binary>>,
+    Cid = elib_uuid:gen_v7(),
+    {ok, Bytes} = attachment_w403_http_fixture:read(T),
+    {ok, 1} = elib_pg:execute(<<
+        "INSERT INTO attach_pending SELECT (jsonb_populate_record(NULL::attach_pending, "
+        "to_jsonb(p) || jsonb_build_object('object_key',$2::text, "
+        "'client_upload_id',$3::uuid,'upload_expires_at',"
+        "statement_timestamp()-interval '60 seconds'))).* "
+        "FROM attach_pending p WHERE object_key=$1 AND session_state='registered'"
+    >>, [Key, NewKey, Cid]),
+    I = (maps:get(location, T))#{key => NewKey},
+    Mod = driver_mod(maps:get(driver, T)),
+    ok = Mod:put(maps:get(namespace, I), maps:get(container, I), NewKey, Bytes),
+    true = ets:insert(attachment_w403_http_evidence, {{object, NewKey}, I}),
+    Body = (maps:get(confirm_body, T))#{object_key => NewKey},
+    T#{key => NewKey, client_upload_id => Cid, location => I, confirm_body => Body}.

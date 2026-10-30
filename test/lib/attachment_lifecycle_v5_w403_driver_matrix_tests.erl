@@ -744,7 +744,9 @@ bypass_container_image(Docker) ->
         false -> erlang:error({no_go, unprivileged_writer_image_missing})
     end.
 bypass_evidence(T, Detail) ->
-    io:format(user, "W403_PROVIDER_BYPASS ~s~n", [jsone:encode(Detail#{leaf => maps:get(leaf, T)})]).
+    %% EUnit's group leader owns the per-case output consumed by the native
+    %% Surefire proof validator. The user device bypasses that capture.
+    io:format("W403_PROVIDER_BYPASS ~s~n", [jsone:encode(Detail#{leaf => maps:get(leaf, T)})]).
 command(Exe, Args) ->
     Port = open_port({spawn_executable, Exe}, [
         binary,
