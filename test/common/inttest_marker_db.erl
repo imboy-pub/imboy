@@ -549,10 +549,9 @@ safe_connect(Opts) ->
     %% The provisioned marker travels only on opts this module built from the
     %% gate-exported environment (connect_retry); raw callers cannot carry it
     %% past this extraction, which strips it before epgsql sees the map.
-    Provisioned = maps:get(marker_db_provisioned, Opts, false),
     Plain = maps:without([marker_db_provisioned], Opts),
     ok = authorize_connection_target(DbIdentity),
-    ok = require_connection_identity(DbIdentity, Provisioned),
+    ok = require_connection_identity(DbIdentity, Opts),
     Parent = self(),
     {Worker, Monitor} =
         spawn_monitor(fun() ->
@@ -575,17 +574,20 @@ safe_connect(Opts) ->
     await_connect(Worker, Monitor, 120000, maps:get(host, Opts, undefined)).
 
 %% A slot-shaped name and a local receipt are insufficient to authorize the
-%% actual connection. attv5_ targets need both the live slot binding
-%% (bound_slot_name: V5_RUN_DIR + V5_SLOT + name pattern) and the provisioned
-%% marker proving the opts came from this module's env-bound resolve path;
-%% inside a run context every other target except provisioned maintenance
-%% connections is refused too, so gate runs only ever touch run databases.
-require_connection_identity(Db, Provisioned) when is_list(Db) ->
-    require_connection_identity(unicode:characters_to_binary(Db), Provisioned);
-require_connection_identity(Db, Provisioned) when is_binary(Db) ->
+%% actual connection. attv5_ targets need the live slot binding
+%% (bound_slot_name: V5_RUN_DIR + V5_SLOT + name pattern) plus either the
+%% provisioned marker proving the opts came from this module's env-bound
+%% resolve path, or a connection tuple identical to the gate-exported slot
+%% endpoint (V5_INTTEST_PG_HOST/PORT/USER — the same tuple ensure_pg audits
+%% and exports for every prefix). Inside a run context every other target
+%% except provisioned maintenance connections is refused too.
+require_connection_identity(Db, Opts) when is_list(Db) ->
+    require_connection_identity(unicode:characters_to_binary(Db), Opts);
+require_connection_identity(Db, Opts) when is_binary(Db) ->
+    Provisioned = maps:get(marker_db_provisioned, Opts, false),
     case Db of
         <<"attv5_", _/binary>> ->
-            case {bound_slot_name(Db), Provisioned} of
+            case {bound_slot_name(Db), Provisioned orelse env_bound_connection(Opts)} of
                 {ok, true} -> ok;
                 _ -> error({contract_conflict, marker_db_identity_and_slot_unverified})
             end;
@@ -600,6 +602,39 @@ require_connection_identity(Db, Provisioned) when is_binary(Db) ->
                     ok
             end
     end.
+
+env_bound_connection(Opts) ->
+    case
+        {
+            os:getenv("V5_INTTEST_PG_USER"),
+            os:getenv("V5_INTTEST_PG_HOST"),
+            os:getenv("V5_INTTEST_PG_PORT")
+        }
+    of
+        {RefUser, RefHost, RefPort} when
+            is_list(RefUser),
+            RefUser =/= "",
+            is_list(RefHost),
+            is_list(RefPort)
+        ->
+            same_text(RefUser, maps:get(username, Opts, undefined)) andalso
+                same_text(RefHost, maps:get(host, Opts, undefined)) andalso
+                same_port(RefPort, maps:get(port, Opts, undefined));
+        _ ->
+            false
+    end.
+
+same_text(Ref, Value) when is_list(Ref), is_binary(Value) ->
+    Value =:= list_to_binary(Ref);
+same_text(Ref, Value) when is_list(Ref) ->
+    Value =:= Ref;
+same_text(_, _) ->
+    false.
+
+same_port(Ref, Port) when is_list(Ref), is_integer(Port) ->
+    Port =:= list_to_integer(Ref);
+same_port(_, _) ->
+    false.
 
 await_connect(Worker, Monitor, Timeout, Host) ->
     receive

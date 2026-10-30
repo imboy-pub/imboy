@@ -587,28 +587,27 @@ fixture_index(hold_attachment) -> 4;
 fixture_index(future_retention) -> 5;
 fixture_index(permanent_workspace_retention) -> 6.
 
+%% workspace_attachment_retention 行受迁移 168 不可变守卫保护（BEFORE
+%% UPDATE OR DELETE 一律 23514），故只做一次性 INSERT；同库跨驱动重跑时
+%% 行已在（DO NOTHING 跳过），治理前提不变。Cleanup 为 no-op——行不可删。
 install_governance(Conn, AttId, hold_workspace) ->
     q(
         Conn,
         "INSERT INTO workspace_attachment_retention(attachment_id,organization_id,"
         "workspace_id,scope,scope_ref) VALUES ($1,9101,9102,'group','66')"
-        " ON CONFLICT (attachment_id) DO UPDATE SET scope='group', scope_ref='66'",
+        " ON CONFLICT (attachment_id) DO NOTHING",
         [AttId]
     ),
-    fun() ->
-        q(Conn, "DELETE FROM workspace_attachment_retention WHERE attachment_id=$1", [AttId])
-    end;
+    fun() -> ok end;
 install_governance(Conn, AttId, hold_conversation) ->
     q(
         Conn,
         "INSERT INTO workspace_attachment_retention(attachment_id,organization_id,"
         "workspace_id,scope,scope_ref) VALUES ($1,9101,9102,'channel','66')"
-        " ON CONFLICT (attachment_id) DO UPDATE SET scope='channel', scope_ref='66'",
+        " ON CONFLICT (attachment_id) DO NOTHING",
         [AttId]
     ),
-    fun() ->
-        q(Conn, "DELETE FROM workspace_attachment_retention WHERE attachment_id=$1", [AttId])
-    end;
+    fun() -> ok end;
 install_governance(Conn, AttId, hold_message) ->
     q(
         Conn,
