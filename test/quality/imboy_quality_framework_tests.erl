@@ -460,7 +460,12 @@ full_isolated_roots_excluded_test() ->
     Excl = imboy_quality_full:excluded(),
     [
         ?assert(lists:member(M, Excl))
-     || M <- [throttle_middleware, oa_direct_cloud_retention_pg_tests]
+     || M <-
+            [
+                throttle_middleware,
+                oa_direct_cloud_retention_pg_tests,
+                msg_safe_boundary_pg_tests
+            ]
     ].
 
 %% 真实时钟等待根的 LPT 下界必须覆盖其 ≤3605s 的过期等待（见 ?LONG_ROOT_HINTS 注释）。
