@@ -211,9 +211,14 @@ forward_c2g_to_c2c_with_valid_data_succeeds_test_() ->
                 end}
             ]},
             {msg_c2g_ds, [
-                {'timeline_find_by_msg_id', 1, fun(_MsgId) ->
+                {'timeline_find_body_by_msg_id', 1, fun(_MsgId) ->
                     {ok, [
-                        #{<<"from_id">> => 123, <<"to_gid">> => 1001, <<"msg_type">> => <<"text">>}
+                        #{
+                            <<"from_id">> => 123,
+                            <<"to_gid">> => 1001,
+                            <<"msg_type">> => <<"text">>,
+                            <<"payload">> => #{<<"text">> => <<"group hi"/utf8>>}
+                        }
                     ]}
                 end}
             ]},
@@ -254,7 +259,7 @@ forward_c2g_to_c2c_without_group_membership_fails_test_() ->
                 end}
             ]},
             {msg_c2g_ds, [
-                {'timeline_find_by_msg_id', 1, fun(_MsgId) ->
+                {'timeline_find_body_by_msg_id', 1, fun(_MsgId) ->
                     {ok, [
                         #{<<"from_id">> => 999, <<"to_gid">> => 1001, <<"msg_type">> => <<"text">>}
                     ]}
@@ -295,9 +300,14 @@ forward_c2g_to_c2g_with_valid_data_succeeds_test_() ->
                 end}
             ]},
             {msg_c2g_ds, [
-                {'timeline_find_by_msg_id', 1, fun(_MsgId) ->
+                {'timeline_find_body_by_msg_id', 1, fun(_MsgId) ->
                     {ok, [
-                        #{<<"from_id">> => 123, <<"to_gid">> => 1001, <<"msg_type">> => <<"text">>}
+                        #{
+                            <<"from_id">> => 123,
+                            <<"to_gid">> => 1001,
+                            <<"msg_type">> => <<"text">>,
+                            <<"payload">> => #{<<"text">> => <<"group hi"/utf8>>}
+                        }
                     ]}
                 end}
             ]},
@@ -399,7 +409,7 @@ forward_msg_not_found_fails_test_() ->
                 end}
             ]},
             {msg_c2g_ds, [
-                {'timeline_find_by_msg_id', 1, fun(_MsgId) ->
+                {'timeline_find_body_by_msg_id', 1, fun(_MsgId) ->
                     {ok, []}
                 end}
             ]},
@@ -590,7 +600,7 @@ forward_partial_success_test_() ->
                 end}
             ]},
             {msg_c2g_ds, [
-                {'timeline_find_by_msg_id', 1, fun(<<"msg_124">>) -> {ok, []} end}
+                {'timeline_find_body_by_msg_id', 1, fun(<<"msg_124">>) -> {ok, []} end}
             ]},
             {msg_c2c_logic, [
                 {'c2c', 3, fun(_MsgId, _FromUid, _Data) -> ok end}
@@ -698,6 +708,145 @@ forward_rejects_e2ee_message_test_() ->
         ],
         fun() ->
             %% 密文只对原会话密钥有效：复制给第三方等于投递一条永远解不开的消息
+            Result = msg_forward_logic:forward([<<"msg_123">>], 123, 789, <<"c2c">>),
+            ?assertMatch({error, {invalid_param, _}}, Result)
+        end
+    ).
+
+%% 媒体消息复刻 payload 也「没用」：附件读取授权绑在原会话（attach_logic:authorize/3
+%% 对 scope=c2c 判 c2c_members(scope_ref)），新接收方拿不到 view_url 的签发，
+%% 结果是「看得见、点开打不开」。与其投递一条坏消息，不如明确拒绝。
+forward_rejects_media_message_test_() ->
+    ?WITH_MECKS(
+        [
+            {msg_c2c_ds, [
+                {'find_msg_by_id', 1, fun(_MsgId) ->
+                    {ok, #{
+                        <<"from_id">> => 123,
+                        <<"to_id">> => 456,
+                        <<"msg_type">> => <<"image">>,
+                        <<"payload">> => #{
+                            <<"uri">> => <<"u4/c2c/20261008/a/b.png">>,
+                            <<"name">> => <<"b.png"/utf8>>
+                        },
+                        <<"e2ee">> => null
+                    }}
+                end}
+            ]},
+            {msg_c2c_logic, [
+                {'c2c', 3, fun(_MsgId, _FromUid, _Data) -> ok end}
+            ]},
+            {friend_ds, [
+                {'check_relationship', 2, fun(_ToId, _FromUid) -> {true, false} end}
+            ]},
+            {elib_uuid, [{'gen_v7', 0, fun() -> <<"018f0000-0000-7000-8000-000987654321">> end}]},
+            {elib_dt, [
+                {'millisecond', 0, fun() -> 1700000000000 end}
+            ]}
+        ],
+        fun() ->
+            Result = msg_forward_logic:forward([<<"msg_123">>], 123, 789, <<"c2c">>),
+            ?assertMatch({error, {invalid_param, _}}, Result)
+        end
+    ).
+
+%% payload 里出现 uri/thumb/url 即使类型没登记在媒体集合里也要拒（location 用
+%% thumb、expression 用 url，都是对象存储引用）
+forward_rejects_payload_with_object_reference_test_() ->
+    ?WITH_MECKS(
+        [
+            {msg_c2c_ds, [
+                {'find_msg_by_id', 1, fun(_MsgId) ->
+                    {ok, #{
+                        <<"from_id">> => 123,
+                        <<"to_id">> => 456,
+                        <<"msg_type">> => <<"card">>,
+                        <<"payload">> => #{<<"thumb">> => <<"u50/c2c/x/y.png">>},
+                        <<"e2ee">> => null
+                    }}
+                end}
+            ]},
+            {msg_c2c_logic, [
+                {'c2c', 3, fun(_MsgId, _FromUid, _Data) -> ok end}
+            ]},
+            {friend_ds, [
+                {'check_relationship', 2, fun(_ToId, _FromUid) -> {true, false} end}
+            ]},
+            {elib_uuid, [{'gen_v7', 0, fun() -> <<"018f0000-0000-7000-8000-000987654321">> end}]},
+            {elib_dt, [
+                {'millisecond', 0, fun() -> 1700000000000 end}
+            ]}
+        ],
+        fun() ->
+            Result = msg_forward_logic:forward([<<"msg_123">>], 123, 789, <<"c2c">>),
+            ?assertMatch({error, {invalid_param, _}}, Result)
+        end
+    ).
+
+%% 历史 forward 空壳（payload 只有 original_msg_id/original_type）不再被复制成
+%% 一个空气泡：类型回落 text 但没有 text 正文 ⇒ 拒绝
+forward_rejects_empty_shell_test_() ->
+    ?WITH_MECKS(
+        [
+            {msg_c2c_ds, [
+                {'find_msg_by_id', 1, fun(_MsgId) ->
+                    {ok, #{
+                        <<"from_id">> => 123,
+                        <<"to_id">> => 456,
+                        <<"msg_type">> => <<"forward">>,
+                        <<"payload">> => #{
+                            <<"original_msg_id">> => <<"msg_old">>,
+                            <<"original_type">> => <<"c2c">>
+                        },
+                        <<"e2ee">> => null
+                    }}
+                end}
+            ]},
+            {msg_c2c_logic, [
+                {'c2c', 3, fun(_MsgId, _FromUid, _Data) -> ok end}
+            ]},
+            {friend_ds, [
+                {'check_relationship', 2, fun(_ToId, _FromUid) -> {true, false} end}
+            ]},
+            {elib_uuid, [{'gen_v7', 0, fun() -> <<"018f0000-0000-7000-8000-000987654321">> end}]},
+            {elib_dt, [
+                {'millisecond', 0, fun() -> 1700000000000 end}
+            ]}
+        ],
+        fun() ->
+            Result = msg_forward_logic:forward([<<"msg_123">>], 123, 789, <<"c2c">>),
+            ?assertMatch({error, {invalid_param, _}}, Result)
+        end
+    ).
+
+%% Megolm 群会话密钥帧不是用户内容：库里确实存在这种行（msg_c2g e2ee_room_key），
+%% 若不拦，转发会把密钥材料搬进另一个会话
+forward_rejects_room_key_frame_test_() ->
+    ?WITH_MECKS(
+        [
+            {msg_c2c_ds, [
+                {'find_msg_by_id', 1, fun(_MsgId) ->
+                    {ok, #{
+                        <<"from_id">> => 123,
+                        <<"to_id">> => 456,
+                        <<"msg_type">> => <<"e2ee_room_key">>,
+                        <<"payload">> => #{<<"gid">> => 1001, <<"keys">> => []},
+                        <<"e2ee">> => null
+                    }}
+                end}
+            ]},
+            {msg_c2c_logic, [
+                {'c2c', 3, fun(_MsgId, _FromUid, _Data) -> ok end}
+            ]},
+            {friend_ds, [
+                {'check_relationship', 2, fun(_ToId, _FromUid) -> {true, false} end}
+            ]},
+            {elib_uuid, [{'gen_v7', 0, fun() -> <<"018f0000-0000-7000-8000-000987654321">> end}]},
+            {elib_dt, [
+                {'millisecond', 0, fun() -> 1700000000000 end}
+            ]}
+        ],
+        fun() ->
             Result = msg_forward_logic:forward([<<"msg_123">>], 123, 789, <<"c2c">>),
             ?assertMatch({error, {invalid_param, _}}, Result)
         end

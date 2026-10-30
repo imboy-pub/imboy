@@ -13,6 +13,7 @@
 -export([find_msg_by_id/1]).
 -export([delete_msg/1]).
 -export([timeline_find_by_msg_id/1]).
+-export([timeline_find_body_by_msg_id/1]).
 -export([update_pinned/3]).
 -export([count_read/1]).
 -export([update_payload_by_msg_id/2]).
@@ -477,6 +478,13 @@ write_msg_with_reply(
 -spec timeline_find_by_msg_id(binary()) -> {ok, [map()]} | {error, term()}.
 timeline_find_by_msg_id(MsgId) ->
     msg_c2g_timeline_repo:find_by_msg_id(MsgId).
+
+%% G3: 转发链路专用——timeline 行 + 消息本体（msg_type/payload/e2ee）。
+%% 与 timeline_find_by_msg_id 分开：后者是 read_stats 的「消息存在」判据，
+%% 不能因为正文行缺失而变更语义。
+-spec timeline_find_body_by_msg_id(binary()) -> {ok, [map()]} | {error, term()}.
+timeline_find_body_by_msg_id(MsgId) ->
+    msg_c2g_timeline_repo:find_body_by_msg_id(MsgId).
 
 %% G3: msg_reaction_logic / msg_pinned_logic 不应直调 msg_c2g_repo
 -spec update_pinned(binary(), integer(), boolean()) -> {ok, non_neg_integer()} | {error, term()}.

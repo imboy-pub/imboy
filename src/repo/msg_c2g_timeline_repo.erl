@@ -20,6 +20,7 @@
 -export([delete_overflow_timeline/2]).
 -export([delete_by_msg_ids_and_to_id/2]).
 -export([find_by_msg_id/1]).
+-export([find_body_by_msg_id/1]).
 
 %% ===================================================================
 %% API
@@ -291,9 +292,26 @@ delete_by_msg_ids_and_to_id([], _ToUid) ->
 -spec find_by_msg_id(binary()) -> {ok, list(map())} | {error, any()}.
 find_by_msg_id(MsgId) ->
     Tb = tablename(),
-    %% 转发链路需要消息本体（msg_type/payload/e2ee）才能复刻内容：timeline 只有
-    %% to_gid，单查它会让转发方只能凭空造一个类型。join 条件与 group_repo 的
-    %% 会话最新消息查询保持一致（msg_id + created_at + to_id）。
+    Sql = <<"SELECT to_gid FROM ", Tb/binary, " WHERE msg_id = $1 LIMIT 1">>,
+    case elib_pg:query(Sql, [MsgId]) of
+        {ok, Rows} -> {ok, Rows};
+        {error, Reason} -> {error, Reason}
+    end.
+
+%% @doc 根据消息ID查询群消息时间线 + 消息本体
+%%
+%% 转发链路需要消息本体（msg_type/payload/e2ee）才能复刻内容；timeline 只有
+%% to_gid，单查它会让转发方只能凭空造一个类型。
+%%
+%% ⚠ 不要把它塞进 find_by_msg_id：那条查询被 read_stats/2 用作「消息是否存在」
+%% 的判据，改成 INNER JOIN 相当于额外要求「正文行也在」——实测本地库 10505 条
+%% timeline 行里有 3 条没有对应正文（历史脏数据/测试夹具），这些消息的已读统计
+%% 会从「有数据」变成 not_found。故本体查询单开一条，只给转发用。
+%%
+%% join 条件与 group_repo 的会话最新消息查询保持一致（msg_id + created_at + to_id）。
+-spec find_body_by_msg_id(binary()) -> {ok, list(map())} | {error, any()}.
+find_body_by_msg_id(MsgId) ->
+    Tb = tablename(),
     BodyTb = elib_pg_sql:public_tablename(<<"msg_c2g">>),
     Sql = <<
         "SELECT tl.to_gid, m.from_id, m.msg_type, m.payload, m.e2ee "
@@ -308,7 +326,3 @@ find_by_msg_id(MsgId) ->
         {ok, Rows} -> {ok, Rows};
         {error, Reason} -> {error, Reason}
     end.
-
-%% ===================================================================
-%% Internal Function Definitions
-%% ===================================================================

@@ -150,8 +150,9 @@ get_original_message(MsgId) ->
         {ok, Msg} ->
             {ok, Msg, <<"c2c">>};
         {error, not_found} ->
-            % 从 C2G 消息表查找
-            case msg_c2g_ds:timeline_find_by_msg_id(MsgId) of
+            % 从 C2G 消息表查找：需要本体（msg_type/payload/e2ee）才能复刻内容，
+            % 故走 timeline_find_body_by_msg_id 而不是只取 to_gid 的那条查询。
+            case msg_c2g_ds:timeline_find_body_by_msg_id(MsgId) of
                 {ok, [Msg]} ->
                     {ok, Msg, <<"c2g">>};
                 {ok, []} ->
@@ -254,10 +255,71 @@ build_forward_content(OriginalMsg) ->
         true ->
             {error, {invalid_param, <<"加密消息暂不支持转发"/utf8>>}};
         false ->
-            MsgType = forwardable_msg_type(maps:get(<<"msg_type">>, OriginalMsg, <<>>)),
-            Payload = decode_forward_payload(maps:get(<<"payload">>, OriginalMsg, #{})),
-            {ok, MsgType, Payload}
+            RawType = maps:get(<<"msg_type">>, OriginalMsg, <<>>),
+            case RawType of
+                <<"forward">> ->
+                    %% 历史实现写下的自指类型：payload 只有 original_msg_id/
+                    %% original_type，没有正文，复刻出来就是一个空气泡。直接拒绝，
+                    %% 让发送方去转发真正的原消息。
+                    {error, {invalid_param, <<"历史转发消息缺少原内容，无法再次转发"/utf8>>}};
+                <<"e2ee_room_key">> ->
+                    %% Megolm 群会话密钥分发帧：不是用户内容，且密钥材料不应跨会话
+                    %% 搬运（服务端库里确有该类行，见 msg_c2g e2ee_room_key）。
+                    {error, {invalid_param, <<"群会话密钥帧不可转发"/utf8>>}};
+                _ ->
+                    MsgType = forwardable_msg_type(RawType),
+                    Payload = decode_forward_payload(maps:get(<<"payload">>, OriginalMsg, #{})),
+                    case forwardable_assets(MsgType, Payload) of
+                        true -> {ok, MsgType, Payload};
+                        false -> {error, {invalid_param, <<"含附件/媒体的消息暂不支持转发"/utf8>>}}
+                    end
+            end
     end.
+
+%% @doc 该消息是否只依赖「内容自包含」的信息（不含对象存储引用）
+%%
+%% 附件读取授权绑在**原会话**上：`attach_logic:authorize/3` 对 scope=c2c 判
+%% `Uid ∈ c2c_members(scope_ref)`、对 scope=group 判 `attachment_ds:authorize_group_access/2`。
+%% 转发复刻的是 payload 里的 object_key（image 的 uri、location 的 thumb、
+%% expression 的 url 等），新接收方既不在原会话里，也拿不到 `view_url` 的签发
+%% —— 结果是「消息看起来正常、点开图片/附件一律打不开」，比原来的空壳更难排查。
+%% 因此带对象引用的消息直接拒绝，由调用方给出可读原因；
+%% 要放开必须先给附件授权模型加「跨会话共享」能力（或转发时复制对象并重建归属），
+%% 不能只改这条判断。
+-spec forwardable_assets(binary(), map()) -> boolean().
+forwardable_assets(MsgType, Payload) ->
+    not has_object_reference(MsgType, Payload).
+
+%% 媒体/附件类消息类型（即使 payload 暂时缺 uri 也不能当作纯文本转发）
+-spec asset_msg_type(binary()) -> boolean().
+asset_msg_type(<<"image">>) -> true;
+asset_msg_type(<<"imageMulti">>) -> true;
+asset_msg_type(<<"video">>) -> true;
+asset_msg_type(<<"voice">>) -> true;
+asset_msg_type(<<"audio">>) -> true;
+asset_msg_type(<<"file">>) -> true;
+asset_msg_type(<<"location">>) -> true;
+asset_msg_type(<<"expression">>) -> true;
+asset_msg_type(_) -> false.
+
+%% payload 里出现对象引用键（uri/thumb/url）即视为依赖受控附件
+%%
+%% 绝对 http(s) 地址不算——那是公开外链（贴纸/外链缩略图），换个会话照样能打开；
+%% 只有形如 `u4/c2c/...` 的 object_key 才依赖原会话的读取授权。
+-spec has_object_reference(binary(), map()) -> boolean().
+has_object_reference(MsgType, Payload) ->
+    asset_msg_type(MsgType) orelse
+        lists:any(
+            fun(Key) -> is_object_key_ref(maps:get(Key, Payload, undefined)) end,
+            [<<"uri">>, <<"thumb">>, <<"url">>]
+        ).
+
+-spec is_object_key_ref(term()) -> boolean().
+is_object_key_ref(<<"http://", _/binary>>) -> false;
+is_object_key_ref(<<"https://", _/binary>>) -> false;
+is_object_key_ref(<<>>) -> false;
+is_object_key_ref(V) when is_binary(V) -> true;
+is_object_key_ref(_) -> false.
 
 %% @doc 原消息是否带 E2EE 元数据（密文无法跨会话解密，不能原样转发）
 -spec is_encrypted_message(map()) -> boolean().
@@ -272,11 +334,10 @@ is_encrypted_message(OriginalMsg) ->
 
 %% @doc 转发时沿用的消息类型
 %%
-%% 空值与历史脏值 `forward` 都回落 `text`：前者无从判断，后者是旧实现写下的
-%% 自指类型，继续传播只会让收端再次落到未知类型。
+%% 空值回落 `text`：无从判断类型时至少保证内容可见（`forward` 已在
+%% build_forward_content/1 里直接拒绝，不会走到这里）。
 -spec forwardable_msg_type(binary()) -> binary().
 forwardable_msg_type(<<>>) -> <<"text">>;
-forwardable_msg_type(<<"forward">>) -> <<"text">>;
 forwardable_msg_type(MsgType) when is_binary(MsgType) -> MsgType;
 forwardable_msg_type(_) -> <<"text">>.
 
