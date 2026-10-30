@@ -1,5 +1,6 @@
 """The real verify command must reject fabricated or stale leaf receipts."""
 import contextlib
+import builtins
 import copy
 import datetime
 import importlib.util
@@ -99,6 +100,42 @@ class VerificationTests(unittest.TestCase):
                             raw_output_path=str(self.raw),
                             raw_output_sha256=runner.sha256_file(self.raw))
 
+    def prepare_synthetic_launch(self, task_id="W4-02", case_id="W4-02/worker"):
+        # Isolated fixture reproduces the controller's durable launch intent.
+        now = time.time()
+        budgets = self.state.setdefault("time_budgets", {"run": None, "waves": {}})
+        if budgets.get("run") is None:
+            budgets["run"] = {"started_at": now, "deadline": now + 604800}
+        budgets.setdefault("waves", {}).setdefault(task_id[:2],
+            {"started_at": now, "deadline": now + 86400})
+        self.state["clock_anchor"] = {"boot": runner._boot_id(), "wall": now,
+                                      "monotonic": time.clock_gettime(time.CLOCK_MONOTONIC)}
+        launch = {"task_id": task_id, "case_id": case_id, "attempt": self.state["tasks"][task_id]["attempt"],
+                  "candidate_digest": runner.sha256_bytes(runner.canonical_json(self.candidate).encode()),
+                  "command_started_at": now, "command_deadline": now + 60}
+        self.state["active_launch"] = dict(launch, status="PREPARED")
+        self.state = runner.StateStore(str(self.run)).write_snapshot(self.state, "launch_intent", {"launch": launch})
+        return launch
+
+    def seal_as_controller(self, args, launch, guard=lambda: None):
+        lock = runner.RunLock(str(self.run))
+        self.assertTrue(lock.acquire_nb())
+        try:
+            return runner.cmd_seal_case(args, held_lock=True, deadline_guard=guard, launch_binding=launch)
+        finally:
+            lock.release()
+
+    def synthetic_legacy_anchor(self):
+        # Test-only anchor, computed after the synthetic historical event exists.
+        # It is deliberately not written to the frozen contract or authorization.
+        event = list(runner.StateStore(str(self.run)).iter_events())[-1]
+        original = runner._load_bound_contract
+        def load(state):
+            contract = copy.deepcopy(original(state))
+            contract["legacy_case_event_hashes"] = {event["payload"]["case_id"]: event["entry_hash"]}
+            return contract
+        return mock.patch.object(runner, "_load_bound_contract", side_effect=load)
+
     def prepare_case(self, receipt=None):
         (self.case_dir / "case-commit.json").unlink(missing_ok=True)
         fd = os.open(str(self.case_dir), os.O_RDONLY | os.O_DIRECTORY)
@@ -113,6 +150,119 @@ class VerificationTests(unittest.TestCase):
             self.prepare_case(receipt)
         with contextlib.redirect_stdout(io.StringIO()):
             return runner.cmd_verify(types.SimpleNamespace(run_dir=str(self.run), gate="G4"))
+
+    def test_inspect_phase_rechecks_deadlines_after_candidate_hashing(self):
+        now = time.time()
+        self.state["tasks"]["W4-02"] = {
+            "state": "RUNNING", "attempt": 1, "task_deadline": now + 5}
+        self.state["time_budgets"] = {"run": None, "waves": {}}
+        clock = [now]
+        calls = []
+
+        def hashing(_candidate):
+            calls.append(True)
+            if len(calls) == 2:
+                clock[0] = now + 6
+            return []
+
+        args = types.SimpleNamespace(run_dir=str(self.run), task_id="W4-02", case_id=None)
+        output = io.StringIO()
+        with mock.patch.object(runner, "_require_state", return_value=self.state), \
+             mock.patch.object(runner, "candidate_errors", side_effect=hashing), \
+             mock.patch.object(runner.time, "time", side_effect=lambda: clock[0]), \
+             contextlib.redirect_stdout(output), contextlib.redirect_stderr(io.StringIO()), \
+             self.assertRaises(SystemExit) as exc:
+            runner.cmd_inspect_phase(args)
+        self.assertEqual(2, len(calls))
+        self.assertEqual(runner.EXIT_NOGO, exc.exception.code)
+        self.assertEqual("", output.getvalue())
+
+    def test_inspect_phase_rechecks_authorization_after_candidate_hashing(self):
+        self.state["tasks"]["W4-02"] = {
+            "state": "RUNNING", "attempt": 1, "task_deadline": time.time() + 120}
+        self.state["time_budgets"] = {"run": None, "waves": {}}
+        calls = []
+        auth = Path(self.state["authorization_path"])
+
+        def hashing(_candidate):
+            calls.append(True)
+            if len(calls) == 2:
+                auth.write_text(auth.read_text() + " ")
+            return []
+
+        args = types.SimpleNamespace(run_dir=str(self.run), task_id="W4-02", case_id=None)
+        output = io.StringIO()
+        with mock.patch.object(runner, "_require_state", return_value=self.state), \
+             mock.patch.object(runner, "candidate_errors", side_effect=hashing), \
+             contextlib.redirect_stdout(output), contextlib.redirect_stderr(io.StringIO()), \
+             self.assertRaises(SystemExit) as exc:
+            runner.cmd_inspect_phase(args)
+        self.assertEqual(2, len(calls))
+        self.assertEqual(runner.EXIT_CONTRACT, exc.exception.code)
+        self.assertEqual("", output.getvalue())
+
+    def test_inspect_phase_rejects_clock_or_boot_change_during_hashing(self):
+        now = time.time()
+        self.state["tasks"]["W4-02"] = {
+            "state": "RUNNING", "attempt": 1, "task_deadline": now + 120}
+        self.state["time_budgets"] = {"run": None, "waves": {}}
+        self.state["clock_anchor"] = {"boot": "boot-a", "wall": now - 1, "monotonic": 100}
+        args = types.SimpleNamespace(run_dir=str(self.run), task_id="W4-02", case_id=None)
+        for failure in ("rollback", "reboot"):
+            with self.subTest(failure=failure):
+                clock = {"wall": now, "mono": 101, "boot": "boot-a", "calls": 0}
+
+                def hashing(_candidate):
+                    clock["calls"] += 1
+                    if clock["calls"] == 2:
+                        clock["mono"] = 102
+                        if failure == "rollback":
+                            clock["wall"] = now - 5
+                        else:
+                            clock["boot"] = "boot-b"
+                    return []
+
+                output = io.StringIO()
+                with mock.patch.object(runner, "_require_state", return_value=self.state), \
+                     mock.patch.object(runner, "candidate_errors", side_effect=hashing), \
+                     mock.patch.object(runner, "_boot_id", side_effect=lambda: clock["boot"]), \
+                     mock.patch.object(runner.time, "time", side_effect=lambda: clock["wall"]), \
+                     mock.patch.object(runner.time, "clock_gettime", side_effect=lambda _kind: clock["mono"]), \
+                     contextlib.redirect_stdout(output), contextlib.redirect_stderr(io.StringIO()), \
+                     self.assertRaises(SystemExit) as exc:
+                    runner.cmd_inspect_phase(args)
+                self.assertEqual(2, clock["calls"])
+                self.assertEqual(runner.EXIT_BLOCKED, exc.exception.code)
+                self.assertEqual("", output.getvalue())
+
+    def test_inspect_phase_rejects_transient_contract_substitution(self):
+        self.state["tasks"]["W4-02"] = {
+            "state": "RUNNING", "attempt": 1, "task_deadline": time.time() + 120}
+        self.state["time_budgets"] = {"run": None, "waves": {}}
+        original_open = builtins.open
+        contract_path = self.plan / "execution-contract.json"
+        altered = copy.deepcopy(self.contract)
+        altered["expected_leaf_matrix"]["W4-02/worker"][0]["schema_phase"] = "base"
+        substituted = json.dumps(altered).encode()
+        substituted_reads = []
+
+        def open_once(path, mode="r", *args, **kwargs):
+            if Path(path) == contract_path and mode == "rb" and not substituted_reads:
+                substituted_reads.append(True)
+                return io.BytesIO(substituted)
+            return original_open(path, mode, *args, **kwargs)
+
+        args = types.SimpleNamespace(run_dir=str(self.run), task_id="W4-02", case_id=None)
+        output = io.StringIO()
+        with mock.patch.object(runner, "_require_state", return_value=self.state), \
+             mock.patch("builtins.open", side_effect=open_once), \
+             contextlib.redirect_stdout(output), contextlib.redirect_stderr(io.StringIO()), \
+             self.assertRaises(SystemExit) as exc:
+            runner.cmd_inspect_phase(args)
+        self.assertEqual([True], substituted_reads)
+        self.assertEqual(runner.EXIT_CONTRACT, exc.exception.code)
+        self.assertEqual("", output.getvalue())
+        self.assertEqual(self.contract, json.loads(contract_path.read_text()))
 
     def freeze_fixture(self):
         self.state.pop("verification_candidate")
@@ -256,6 +406,27 @@ class VerificationTests(unittest.TestCase):
     def test_duplicate_identity_is_not_exact_set(self):
         self.assertFalse(runner.v_leaf_set(["one"], ["one", "one"])[0])
 
+    def test_w403_self_asserted_http_provenance_cannot_pass_verifier(self):
+        row = self.bound_receipt()
+        row.update(task_id="W6-01", case_id="W6-01/real-pg-garage-disk",
+                   entrypoint_provenance={"entrypoint": self.leaf["entrypoint"],
+                                          "route": "/invented", "method": "GET",
+                                          "handler": "fake", "request_id": "synthetic-request"})
+        expected = dict(self.leaf, source_case_ref="W4-03/driver-content-immutable")
+        for legacy in (False, True):
+            errors = runner.receipt_errors(row, expected, "W6-01", "W6-01/real-pg-garage-disk",
+                                           self.candidate, str(self.run), self.state["resource_allowlist"],
+                                           self.contract, 1, legacy=legacy)
+            self.assertIn("W4-03 HTTP and object provenance is not independently bound to the server", errors)
+            w602 = runner.receipt_errors(row, self.leaf, "W6-02", "W6-02/e2e-compat",
+                                         self.candidate, str(self.run), self.state["resource_allowlist"],
+                                         self.contract, 1, legacy=legacy)
+            self.assertIn("W6-02 provenance is not bound to its driver session and owned backend", w602)
+            mismatch = runner.receipt_errors(row, expected, "W4-03", "W6-01/real-pg-garage-disk",
+                                            self.candidate, str(self.run), self.state["resource_allowlist"],
+                                            self.contract, 1, legacy=legacy)
+            self.assertEqual(["case does not belong to task"], mismatch)
+
     def test_counts_reject_boolean_and_fraction(self):
         for value in (True, 1.0, "1", -1):
             row = dict(self.receipt, executed=value, passed=value)
@@ -330,6 +501,9 @@ class VerificationTests(unittest.TestCase):
                 store.write_snapshot(new, "case_manifest_bound", {
                     "case_id": "W4-02/worker", "manifest_sha256": digest,
                     "candidate": self.candidate})
+        anchor = self.synthetic_legacy_anchor()
+        anchor.start()
+        self.addCleanup(anchor.stop)
         snapshot_before = self.state_file.read_bytes()
         events_before = (self.run / "events.jsonl").read_bytes()
         with mock.patch.object(runner.time, "time", return_value=deadline + 1):
@@ -357,6 +531,242 @@ class VerificationTests(unittest.TestCase):
         recovered = json.loads(self.state_file.read_text())
         self.assertEqual(digest, recovered["case_manifest_digests"]["W4-02/worker"])
         self.assertEqual(1, recovered["tasks"]["W4-02"]["attempt"])
+
+    def test_seal_binds_attempt_and_never_falls_back_to_legacy_directory(self):
+        row = self.bound_receipt()
+        self.state["tasks"]["W4-02"] = {"state": "RUNNING", "attempt": 1,
+                                          "task_deadline": time.time() + 120}
+        self.state = runner.StateStore(str(self.run)).write_snapshot(self.state)
+        case_dir = self.case_dir / "attempt-1"
+        case_dir.mkdir()
+        raw = case_dir / "raw.json"
+        raw.write_bytes(self.raw.read_bytes())
+        row["raw_output_path"] = str(raw)
+        row["raw_output_sha256"] = runner.sha256_file(raw)
+        receipts = case_dir / "measured-receipts.json"
+        receipts.write_text(json.dumps([row]))
+        args = types.SimpleNamespace(run_dir=str(self.run), task_id="W4-02", case_id="W4-02/worker",
+                                     case_dir=str(case_dir), receipts=str(receipts), command=row["command"])
+        launch = self.prepare_synthetic_launch()
+        def reject_deadline():
+            raise RuntimeError("command deadline")
+        with self.assertRaisesRegex(RuntimeError, "command deadline"):
+            self.seal_as_controller(args, launch, reject_deadline)
+        self.assertFalse((case_dir / "case-commit.json").exists())
+        calls = []
+        def expire_before_binding():
+            calls.append(1)
+            if len(calls) == 2:
+                raise RuntimeError("command deadline")
+        with self.assertRaisesRegex(RuntimeError, "command deadline"):
+            self.seal_as_controller(args, launch, expire_before_binding)
+        self.assertTrue((case_dir / "case-commit.json").exists())
+        self.assertNotIn("W4-02/worker", json.loads(self.state_file.read_text()).get("case_manifest_digests", {}))
+        with contextlib.redirect_stdout(io.StringIO()):
+            self.assertEqual(runner.EXIT_OK, self.seal_as_controller(args, launch))
+        state = json.loads(self.state_file.read_text())
+        self.assertEqual(1, state["case_manifest_attempts"]["W4-02/worker"])
+        self.assertEqual(str(case_dir), runner._bound_case_dir(str(self.run), state, "W4-02", "W4-02/worker"))
+        state["case_manifest_attempts"]["W4-02/worker"] = 2
+        missing = runner._bound_case_dir(str(self.run), state, "W4-02", "W4-02/worker")
+        with self.assertRaises(OSError):
+            runner._read_case_rows(str(self.run), missing, state["case_manifest_digests"]["W4-02/worker"])
+
+    def test_attempt_case_binding_recovers_after_snapshot_crash(self):
+        row = self.bound_receipt()
+        now = time.time()
+        self.state["tasks"]["W4-02"] = {"state": "RUNNING", "attempt": 1, "task_deadline": now + 120}
+        self.state["time_budgets"] = {"run": {"started_at": now, "deadline": now + 604800},
+                                      "waves": {"W4": {"started_at": now, "deadline": now + 86400}}}
+        self.state["run_id"] = self.run.name
+        store = runner.StateStore(str(self.run))
+        self.state = store.write_snapshot(self.state)
+        case_dir = self.case_dir / "attempt-1"
+        case_dir.mkdir()
+        fd = os.open(str(case_dir), os.O_RDONLY | os.O_DIRECTORY)
+        try:
+            runner.case_store.publish(fd, [row])
+            digest = runner.case_store.manifest_digest(fd)
+        finally:
+            os.close(fd)
+        new = copy.deepcopy(self.state)
+        new["case_manifest_digests"] = {"W4-02/worker": digest}
+        new["case_manifest_attempts"] = {"W4-02/worker": 1}
+        with mock.patch.object(runner.StateStore, "persist_snapshot", side_effect=OSError("crash")):
+            with self.assertRaises(OSError):
+                store.write_snapshot(new, "case_manifest_bound", {
+                    "case_id": "W4-02/worker", "manifest_sha256": digest,
+                    "attempt": 1, "candidate": self.candidate})
+        # Without an authorized historical anchor the real validator must fail closed.
+        with contextlib.redirect_stderr(io.StringIO()), self.assertRaises(SystemExit) as exc:
+            runner.cmd_resume(types.SimpleNamespace(run_dir=str(self.run)))
+        self.assertEqual(runner.EXIT_BLOCKED, exc.exception.code)
+        anchor = self.synthetic_legacy_anchor()
+        anchor.start()
+        self.addCleanup(anchor.stop)
+        with contextlib.redirect_stdout(io.StringIO()):
+            self.assertEqual(runner.EXIT_OK, runner.cmd_resume(types.SimpleNamespace(run_dir=str(self.run))))
+        state = json.loads(self.state_file.read_text())
+        self.assertEqual(1, state["case_manifest_attempts"]["W4-02/worker"])
+        self.assertEqual(digest, state["case_manifest_digests"]["W4-02/worker"])
+
+    def test_launch_intent_recovers_without_starting_worker_or_resetting_budget(self):
+        now = time.time()
+        self.state["tasks"]["W4-02"] = {"state": "RUNNING", "attempt": 1, "task_deadline": now + 120}
+        self.state["time_budgets"] = {"run": {"started_at": now, "deadline": now + 604800},
+                                      "waves": {"W4": {"started_at": now, "deadline": now + 86400}}}
+        self.state["run_id"] = self.run.name
+        store = runner.StateStore(str(self.run))
+        self.state = store.write_snapshot(self.state)
+        launch = {"launch_id": str(__import__("uuid").uuid4()), "task_id": "W4-02", "attempt": 1,
+                  "candidate_digest": runner.sha256_bytes(runner.canonical_json(self.candidate).encode()),
+                  "command_digest": "a" * 64, "prior_revision": self.state["revision"],
+                  "owner_token": str(__import__("uuid").uuid4()),
+                  "controller_boot": self.state["clock_anchor"]["boot"], "controller_pid": os.getpid(),
+                  "controller_start": "synthetic", "status": "INTENT"}
+        new = copy.deepcopy(self.state)
+        new["active_launch"] = launch
+        with mock.patch.object(runner.StateStore, "persist_snapshot", side_effect=OSError("crash")):
+            with self.assertRaises(OSError):
+                store.write_snapshot(new, "launch_intent", {"launch": launch})
+        state = runner._resume_state(str(self.run))
+        self.assertEqual(launch, state["active_launch"])
+        self.assertEqual(self.state["time_budgets"], state["time_budgets"])
+        self.assertEqual([], runner._compute_ready(state, self.contract))
+        report = io.StringIO()
+        with contextlib.redirect_stdout(report):
+            self.assertEqual(runner.EXIT_BLOCKED, runner.cmd_resume(types.SimpleNamespace(run_dir=str(self.run))))
+        self.assertEqual("BLOCKED_EXTERNAL", json.loads(report.getvalue())["result"])
+        self.assertEqual(launch["launch_id"], json.loads(report.getvalue())["active_launch"]["launch_id"])
+        next_report = io.StringIO()
+        with contextlib.redirect_stdout(next_report):
+            self.assertEqual(runner.EXIT_BLOCKED, runner.cmd_next(types.SimpleNamespace(run_dir=str(self.run))))
+        self.assertEqual(launch["launch_id"], json.loads(next_report.getvalue())["active_launch"]["launch_id"])
+        before = self.state_file.read_bytes()
+        with contextlib.redirect_stderr(io.StringIO()), self.assertRaises(SystemExit) as blocked:
+            runner.cmd_task(types.SimpleNamespace(run_dir=str(self.run), task_id="W4-02", to="RETRYABLE"))
+        self.assertEqual(runner.EXIT_BLOCKED, blocked.exception.code)
+        self.assertEqual(before, self.state_file.read_bytes())
+        for operation, args in (
+                (runner.cmd_accept_gate, types.SimpleNamespace(run_dir=str(self.run), gate="G4")),
+                (runner.cmd_accept_task, types.SimpleNamespace(run_dir=str(self.run), task_id="W4-02")),
+                (runner.cmd_seal_case, types.SimpleNamespace(run_dir=str(self.run), task_id="W4-02"))):
+            with self.subTest(operation=operation.__name__):
+                with contextlib.redirect_stderr(io.StringIO()), self.assertRaises(SystemExit) as exc:
+                    operation(args)
+                self.assertEqual(runner.EXIT_BLOCKED, exc.exception.code)
+                self.assertEqual(before, self.state_file.read_bytes())
+        for field, value in (("attempt", 2), ("status", "FINISHED"),
+                             ("candidate_digest", "b" * 64), ("controller_pid", 0)):
+            bad = dict(launch, **{field: value})
+            altered = copy.deepcopy(new)
+            altered["revision"] = self.state["revision"] + 1
+            altered["active_launch"] = bad
+            event = {"payload": {"launch": bad}, "ts": time.time(), "entry_hash": "f" * 64}
+            with contextlib.redirect_stderr(io.StringIO()), self.assertRaises(SystemExit):
+                runner._resume_launch_intent(str(self.run), store, self.state, altered, event)
+        changed = copy.deepcopy(state)
+        changed["tasks"]["W4-02"]["state"] = "RETRYABLE"
+        with mock.patch.object(runner.StateStore, "persist_snapshot", side_effect=OSError("crash")):
+            with self.assertRaises(OSError):
+                store.write_snapshot(changed, "task_state", {"task": "W4-02", "to": "RETRYABLE", "attempt": 1})
+        state_before = self.state_file.read_bytes()
+        events_before = (self.run / "events.jsonl").read_bytes()
+        with contextlib.redirect_stderr(io.StringIO()), self.assertRaises(SystemExit) as exc:
+            runner._resume_state(str(self.run))
+        self.assertEqual(runner.EXIT_BLOCKED, exc.exception.code)
+        self.assertEqual(state_before, self.state_file.read_bytes())
+        self.assertEqual(events_before, (self.run / "events.jsonl").read_bytes())
+
+    def test_launch_intent_command_deadline_is_bound_to_persisted_budgets(self):
+        now = time.time()
+        self.state["tasks"]["W4-02"] = {"state": "RUNNING", "attempt": 1, "task_deadline": now + 120}
+        self.state["time_budgets"] = {"run": {"started_at": now, "deadline": now + 604800},
+                                      "waves": {"W4": {"started_at": now, "deadline": now + 86400}}}
+        store = runner.StateStore(str(self.run))
+        old = store.write_snapshot(self.state)
+        launch = {"launch_id": str(__import__("uuid").uuid4()), "task_id": "W4-02", "attempt": 1,
+                  "candidate_digest": runner.sha256_bytes(runner.canonical_json(self.candidate).encode()),
+                  "command_digest": "a" * 64, "prior_revision": old["revision"],
+                  "owner_token": str(__import__("uuid").uuid4()), "controller_boot": old["clock_anchor"]["boot"],
+                  "controller_pid": os.getpid(), "controller_start": "synthetic", "status": "INTENT",
+                  "case_id": "W4-02/worker", "command_started_at": now, "command_deadline": now + 60}
+        new = copy.deepcopy(old)
+        new["active_launch"] = launch
+        with mock.patch.object(runner.StateStore, "persist_snapshot", side_effect=OSError("crash")):
+            with self.assertRaises(OSError):
+                store.write_snapshot(new, "launch_intent", {"launch": launch})
+        state = runner._resume_state(str(self.run))
+        self.assertEqual(launch, state["active_launch"])
+        self.assertEqual(old["time_budgets"], state["time_budgets"])
+        for field, bad in (("command_deadline", now + 121), ("command_deadline", float("nan")),
+                           ("case_id", "W4-02/other")):
+            invalid = dict(launch, **{field: bad})
+            changed = copy.deepcopy(new)
+            changed.update(revision=old["revision"] + 1, active_launch=invalid)
+            event = {"payload": {"launch": invalid}, "ts": time.time(), "entry_hash": "f" * 64}
+            with contextlib.redirect_stderr(io.StringIO()), self.assertRaises(SystemExit):
+                runner._resume_launch_intent(str(self.run), store, old, changed, event)
+        partial = dict(launch)
+        partial.pop("command_deadline")
+        changed = copy.deepcopy(new)
+        changed.update(revision=old["revision"] + 1, active_launch=partial)
+        with contextlib.redirect_stderr(io.StringIO()), self.assertRaises(SystemExit):
+            runner._resume_launch_intent(str(self.run), store, old, changed,
+                                         {"payload": {"launch": partial}, "ts": time.time(), "entry_hash": "f" * 64})
+
+    def test_verify_sealed_case_uses_bound_attempt_and_rejects_tampering(self):
+        row = self.bound_receipt()
+        self.state["tasks"]["W4-02"] = {"state": "RUNNING", "attempt": 1,
+                                          "task_deadline": time.time() + 120}
+        self.state = runner.StateStore(str(self.run)).write_snapshot(self.state)
+        case_dir = self.case_dir / "attempt-1"
+        case_dir.mkdir()
+        raw = case_dir / "raw.json"
+        raw.write_bytes(self.raw.read_bytes())
+        row["raw_output_path"] = str(raw)
+        row["raw_output_sha256"] = runner.sha256_file(raw)
+        receipts = case_dir / "measured-receipts.json"
+        receipts.write_text(json.dumps([row]))
+        args = types.SimpleNamespace(run_dir=str(self.run), task_id="W4-02", case_id="W4-02/worker",
+                                     case_dir=str(case_dir), receipts=str(receipts), command=row["command"])
+        launch = self.prepare_synthetic_launch()
+        with contextlib.redirect_stdout(io.StringIO()):
+            self.assertEqual(runner.EXIT_OK, self.seal_as_controller(args, launch))
+        # The controller launch reconciles (releases its active entry) before
+        # the timed case becomes verifiable.
+        sealed_state = json.loads(self.state_file.read_text())
+        sealed_state.pop("active_launch", None)
+        self.state = runner.StateStore(str(self.run)).write_snapshot(
+            sealed_state, "launch_finished", {"launch": launch})
+        state = json.loads(self.state_file.read_text())
+        state["tasks"]["W4-02"]["attempt"] = 2
+        runner.StateStore(str(self.run)).write_snapshot(state)
+        check = types.SimpleNamespace(run_dir=str(self.run), task_id="W4-02", case_id="W4-02/worker")
+        before_state = self.state_file.read_bytes()
+        before_events = (self.run / "events.jsonl").read_bytes()
+        with contextlib.redirect_stdout(io.StringIO()):
+            self.assertEqual(runner.EXIT_OK, runner.cmd_verify_case(check))
+        self.assertEqual(before_state, self.state_file.read_bytes())
+        self.assertEqual(before_events, (self.run / "events.jsonl").read_bytes())
+        event = runner._sealed_case_binding(str(self.run), "W4-02/worker")
+        for bad in (dict(event, attempt=2), dict(event, candidate={}),
+                    dict(event, manifest_sha256="0" * 64), None):
+            with mock.patch.object(runner, "_sealed_case_binding", return_value=bad), \
+                 contextlib.redirect_stdout(io.StringIO()):
+                self.assertEqual(runner.EXIT_CONTRACT, runner.cmd_verify_case(check))
+        with mock.patch.object(runner, "candidate_errors", return_value=["candidate drift"]), \
+             contextlib.redirect_stdout(io.StringIO()):
+            self.assertEqual(runner.EXIT_CONTRACT, runner.cmd_verify_case(check))
+        with mock.patch.object(runner.time, "time", return_value=state["tasks"]["W4-02"]["task_deadline"] + 1), \
+             contextlib.redirect_stderr(io.StringIO()), self.assertRaises(SystemExit) as exc:
+            runner.cmd_verify_case(check)
+        self.assertEqual(runner.EXIT_NOGO, exc.exception.code)
+        raw.write_text("tampered")
+        with contextlib.redirect_stdout(io.StringIO()):
+            self.assertEqual(runner.EXIT_CONTRACT, runner.cmd_verify_case(check))
+        self.assertEqual(before_state, self.state_file.read_bytes())
+        self.assertEqual(before_events, (self.run / "events.jsonl").read_bytes())
 
     def test_required_and_unstructured_observations_fail_closed(self):
         row = self.bound_receipt()
@@ -450,7 +860,7 @@ class VerificationTests(unittest.TestCase):
         self.state["resource_allowlist"] = {"garage_bucket": ["synthetic-bucket"],
             "device_provenance": ["synthetic-device"], "browser_provenance": ["playwright-chromium"]}
         self.state = runner.StateStore(str(self.run)).write_snapshot(self.state)
-        case_dir = self.run / "evidence/W6-02/e2e-compat"
+        case_dir = self.run / "evidence/W6-02/e2e-compat/attempt-1"
         case_dir.mkdir(parents=True)
         observations = {name: "synthetic" for name in (
             "pre_db_state", "pre_object_hash", "action", "expected_http_semantics",
@@ -505,10 +915,11 @@ class VerificationTests(unittest.TestCase):
         path.write_text(json.dumps({"leaves": [row]}))
         args = types.SimpleNamespace(run_dir=str(self.run), task_id="W6-02", case_id=cid,
             case_dir=str(case_dir), receipts=str(receipts), command=command)
+        launch = self.prepare_synthetic_launch("W6-02", cid)
         stale = json.loads(json.dumps(self.state))
         stale["tasks"]["W6-02"]["attempt"] = 2
         _, stale_errors, _, _ = runner._measured_case_rows(args, stale, self.contract, str(self.run))
-        self.assertIn("task attempt binding mismatch", stale_errors)
+        self.assertIn("case directory does not match task/case", stale_errors)
         original_state = self.state_file.read_bytes()
         self.state_file.write_text(json.dumps(stale))
         stale_retry = subprocess.run(producer_args, capture_output=True, text=True, timeout=5)
@@ -518,7 +929,7 @@ class VerificationTests(unittest.TestCase):
         before = self.state_file.read_bytes()
         output = io.StringIO()
         with contextlib.redirect_stdout(output):
-            self.assertEqual(runner.EXIT_CONTRACT, runner.cmd_seal_case(args))
+            self.assertEqual(runner.EXIT_CONTRACT, self.seal_as_controller(args, launch))
         self.assertEqual(["W6-02 provenance is not bound to its driver session and owned backend"],
                          json.loads(output.getvalue())["errors"])
         self.assertFalse((case_dir / "leaf-001.json").exists())
@@ -531,9 +942,10 @@ class VerificationTests(unittest.TestCase):
                        {"attempt": 6, "task_deadline": time.time() + 120}):
             self.state["tasks"]["W4-02"] = dict(state="RUNNING", **fields)
             self.state = runner.StateStore(str(self.run)).write_snapshot(self.state)
+            launch = self.prepare_synthetic_launch()
             before = self.state_file.read_bytes()
             with contextlib.redirect_stderr(io.StringIO()), self.assertRaises(SystemExit) as exc:
-                runner.cmd_seal_case(args)
+                self.seal_as_controller(args, launch)
             self.assertEqual(runner.EXIT_NOGO, exc.exception.code)
             self.assertEqual(before, self.state_file.read_bytes())
             self.assertFalse((self.case_dir / "manifest.json").exists())
@@ -544,10 +956,11 @@ class VerificationTests(unittest.TestCase):
         self.state["time_budgets"] = {"run": {"started_at": now - 100, "deadline": now - 100 + 604800},
                                      "waves": {"W4": {"started_at": now - 86401, "deadline": now - 1}}}
         self.state = runner.StateStore(str(self.run)).write_snapshot(self.state)
+        launch = self.prepare_synthetic_launch()
         before = self.state_file.read_bytes()
         args = types.SimpleNamespace(run_dir=str(self.run), task_id="W4-02", case_id="W4-02/worker")
         with contextlib.redirect_stderr(io.StringIO()), self.assertRaises(SystemExit) as exc:
-            runner.cmd_seal_case(args)
+            self.seal_as_controller(args, launch)
         self.assertEqual(runner.EXIT_NOGO, exc.exception.code)
         self.assertEqual(before, self.state_file.read_bytes())
 
@@ -633,6 +1046,57 @@ class VerificationTests(unittest.TestCase):
         with contextlib.redirect_stdout(io.StringIO()):
             self.assertEqual(0, runner.cmd_accept_task(args))
         self.assertEqual("PASS", json.loads(self.state_file.read_text())["tasks"]["W4-02"]["state"])
+
+
+    def test_readmission_rejects_tampered_snapshot(self):
+        run = self.run / "readmission"
+        run.mkdir()
+        args = types.SimpleNamespace(plan_dir=str(self.plan), run_dir=str(run),
+                                     authorization=str(self.run / "authorization.json"))
+        with contextlib.redirect_stdout(io.StringIO()):
+            self.assertEqual(0, runner.cmd_admit(args))
+            self.assertEqual(0, runner.cmd_admit(args))
+            store = runner.StateStore(str(run))
+            state = store.load_state()
+            event = store.append_event("plain", {})
+            store.persist_snapshot(state, event["entry_hash"])
+            self.assertEqual(0, runner.cmd_admit(args))
+        state_file = run / "state.json"
+        state = json.loads(state_file.read_text())
+        state["tasks"]["W4-02"]["state"] = "PASS"
+        state_file.write_text(json.dumps(state))
+        events_before = (run / "events.jsonl").read_bytes()
+        with contextlib.redirect_stderr(io.StringIO()), self.assertRaises(SystemExit) as result:
+            runner.cmd_admit(args)
+        self.assertEqual(runner.EXIT_CONTRACT, result.exception.code)
+        self.assertEqual(events_before, (run / "events.jsonl").read_bytes())
+        self.assertEqual("PASS", json.loads(state_file.read_text())["tasks"]["W4-02"]["state"])
+
+    def test_streamed_chain_preserves_binding_and_detects_corruption(self):
+        run = self.run / "streamed"
+        run.mkdir()
+        store = runner.StateStore(str(run))
+        self.assertEqual(0, store.scan_chain()["count"])
+        store.append_event("admit", {})
+        first_state = store.write_snapshot({"revision": 0, "tasks": {}})
+        store.append_event("plain", {})
+        scan = store.scan_chain()
+        self.assertTrue(scan["ok"])
+        self.assertTrue(store.snapshot_bound(first_state, [scan["bound"]]))
+        self.assertEqual(scan["bound"], scan["previous_bound"])
+        second_state = store.write_snapshot(first_state)
+        scan = store.scan_chain()
+        self.assertTrue(store.snapshot_bound(second_state, [scan["bound"]]))
+        self.assertTrue(store.snapshot_bound(first_state, [scan["previous_bound"]]))
+        events = (run / "events.jsonl").read_text().splitlines()
+        altered = json.loads(events[1])
+        altered["payload"]["state_digest"] = "0" * 64
+        events[1] = json.dumps(altered)
+        (run / "events.jsonl").write_text("\n".join(events) + "\n")
+        self.assertFalse(store.scan_chain()["ok"])
+        (run / "events.jsonl").write_text("{broken\n")
+        with self.assertRaises(ValueError):
+            store.scan_chain()
 
 
 if __name__ == "__main__":

@@ -127,6 +127,84 @@ v5_implicit_database_rejected_before_network_test() ->
         end
     end.
 
+v5_tls_policy_rejects_downgrades_test() ->
+    Defaults = #{
+        ssl => required,
+        ssl_opts => [
+            {verify, verify_peer}, {cacerts, [<<1, 2, 3>>]}, {server_name_indication, "localhost"}
+        ]
+    },
+    Secure = inttest_marker_db:v5_tls_extra(Defaults, #{codecs => []}),
+    ?assertEqual(required, maps:get(ssl, Secure)),
+    ?assertEqual(verify_peer, proplists:get_value(verify, maps:get(ssl_opts, Secure))),
+    ?assertEqual([<<1, 2, 3>>], proplists:get_value(cacerts, maps:get(ssl_opts, Secure))),
+    lists:foreach(
+        fun(Key) ->
+            ?assertError(
+                {marker_db_forbidden_tls_override, [Key]},
+                inttest_marker_db:v5_tls_extra(Defaults, #{Key => false})
+            )
+        end,
+        [ssl, ssl_opts]
+    ),
+    lists:foreach(
+        fun(Bad) ->
+            ?assertError(
+                {contract_conflict, marker_db_tls_config_unverified},
+                inttest_marker_db:v5_tls_extra(Bad, #{})
+            )
+        end,
+        [
+            #{},
+            Defaults#{ssl => true},
+            Defaults#{
+                ssl_opts => [
+                    {verify, verify_none},
+                    {cacerts, [<<1>>]},
+                    {server_name_indication, "localhost"}
+                ]
+            },
+            Defaults#{
+                ssl_opts => [
+                    {verify, verify_peer},
+                    {verify, verify_none},
+                    {cacerts, [<<1>>]},
+                    {server_name_indication, "localhost"}
+                ]
+            },
+            Defaults#{
+                ssl_opts => [
+                    {verify, verify_peer},
+                    {cacerts, []},
+                    {server_name_indication, "localhost"}
+                ]
+            }
+        ]
+    ).
+
+v5_slot_shaped_and_maintenance_targets_rejected_before_network_test() ->
+    PreviousRun = os:getenv("V5_RUN_DIR"),
+    PreviousSlot = os:getenv("V5_SLOT"),
+    try
+        true = os:putenv("V5_RUN_DIR", "/isolated/v5/run"),
+        true = os:putenv("V5_SLOT", "slot1"),
+        lists:foreach(
+            fun(Db) ->
+                ?assertError(
+                    {contract_conflict, marker_db_identity_and_slot_unverified},
+                    inttest_marker_db:safe_connect(#{database => Db, host => "127.0.0.1"})
+                )
+            end,
+            [<<"attv5_slot1_pool">>, <<"postgres">>]
+        )
+    after
+        restore_env("V5_RUN_DIR", PreviousRun),
+        restore_env("V5_SLOT", PreviousSlot)
+    end.
+
+restore_env(Key, false) -> os:unsetenv(Key);
+restore_env(Key, Value) -> os:putenv(Key, Value).
+
 connect_worker_timeout_stops_worker_test() ->
     {Worker, Monitor} = spawn_monitor(fun() ->
         receive

@@ -225,9 +225,11 @@ entry_call(account_deletion, S, Key, _Id, _Quad) ->
     true = lists:member(Key, Keys),
     ?assertMatch(
         {error, intent_conflict},
-        in_fixture_tx(Conn, fun() -> attachment_repo:intent_ordinary_delete_tx(
-            Conn, Key, <<"w601w3 hold account deletion">>
-        ) end)
+        in_fixture_tx(Conn, fun() ->
+            attachment_repo:intent_ordinary_delete_tx(
+                Conn, Key, <<"w601w3 hold account deletion">>
+            )
+        end)
     ),
     {ok, _, [{1}]} = ?SUP:e(Conn, "SELECT COUNT(*) FROM attachment WHERE path=$1", [Key]),
     #{
@@ -245,9 +247,11 @@ entry_call(app_confirm_reject, S, Key, _Id, _Quad) ->
     #{conn := Conn} = S,
     ?assertMatch(
         {error, intent_conflict},
-        in_fixture_tx(Conn, fun() -> attach_pending_repo:intent_pending_delete_tx(
-            Conn, Key, <<"reject">>, <<"w601w3 confirm reject under hold">>
-        ) end)
+        in_fixture_tx(Conn, fun() ->
+            attach_pending_repo:intent_pending_delete_tx(
+                Conn, Key, <<"reject">>, <<"w601w3 confirm reject under hold">>
+            )
+        end)
     ),
     {ok, _, [{1}]} = ?SUP:e(Conn, "SELECT COUNT(*) FROM attachment WHERE path=$1", [Key]),
     #{
@@ -925,9 +929,13 @@ sweep(S, {?C_HR, _Entry, Driver, ScBin, DomBin, _Ac, Idx, _Scope, _EP}) ->
     ok.
 
 sweep_asset(Conn, Key, Id, EbId) ->
+    %% scenario 失败可能把共享连接留在 aborted 事务（原始错误由主体抛出，
+    %% sweep 首句若直接撞 25P02 会把它掩盖）。开头 ROLLBACK 兜底：无事务时
+    %% PG 仅回 WARNING（幂等安全），有事务时复原连接让下方真实清理继续、
+    %% 让 attempt-5 报告呈现 scenario 的原始错误。
+    ?SUP:q(Conn, "ROLLBACK", []),
     ?SUP:lenient_q(Conn, "DELETE FROM attach_pending WHERE object_key=$1", [Key]),
-    ?SUP:cleanup_attachment(Conn, Key),
-    ?SUP:cleanup_tombstone(Conn, Key),
+    ?SUP:purge_attachment_metadata(Conn, Key),
     ok = ?SUP:ear_release_and_purge(Conn, Id),
     ?SUP:lenient_q(Conn, "DELETE FROM group_file WHERE id=$1", [Id]),
     ?SUP:cleanup_enterprise_asset(Conn, EbId),
@@ -938,7 +946,11 @@ sweep_asset(Conn, Key, Id, EbId) ->
 %% _tx 接口要求真实外层事务以承载 savepoint；断言后回滚自有夹具事务。
 in_fixture_tx(Conn, Fun) ->
     ok = ?SUP:q(Conn, "BEGIN"),
-    try Fun() after ok = ?SUP:q(Conn, "ROLLBACK") end.
+    try
+        Fun()
+    after
+        ok = ?SUP:q(Conn, "ROLLBACK")
+    end.
 
 indexed(List) ->
     lists:zip(lists:seq(1, length(List)), List).

@@ -21,7 +21,7 @@
 
 -ifdef(TEST).
 %% 纯函数，导出仅为可直接验收「不做套件协商」这一 fail-closed 语义
--export([normalize_cipher/1]).
+-export([normalize_cipher/1, confirm_v5_tx/8]).
 -endif.
 
 -include("log.hrl").
@@ -440,7 +440,7 @@ do_save_v5_1(
     Now = elib_dt:now(),
     try
         case
-            elib_pg:with_tx(fun(Conn) ->
+            elib_pg:with_deadlock_retry_tx(fun(Conn) ->
                 confirm_v5_tx(Conn, ObjectKey, Scope, Cipher, Now, Uid, Attach, StatCtx)
             end)
         of
@@ -479,7 +479,7 @@ confirm_v5_tx(Conn, ObjectKey, Scope, _Cipher, Now, Uid, Attach, StatCtx) ->
     case attach_scope_target(Scope, maps:get(<<"scope_ref">>, Attach, undefined)) of
         {ok, Target} ->
             ok = workspace_guard:abort_on_error(
-                attachment_ds:ensure_upload_scope_tx(Conn, Target, Uid)
+                attachment_ds:ensure_upload_scope_tx_retryable(Conn, Target, Uid)
             );
         passthrough ->
             ok
@@ -487,6 +487,8 @@ confirm_v5_tx(Conn, ObjectKey, Scope, _Cipher, Now, Uid, Attach, StatCtx) ->
     case attach_pending_repo:lock_session_tx(Conn, ObjectKey) of
         {ok, not_found} ->
             throw({abort_tx, session_vanished});
+        {error, LockReason} ->
+            throw({abort_tx, LockReason});
         {ok, Session} ->
             case
                 session_request_matches(
@@ -537,7 +539,9 @@ confirm_v5_tx(Conn, ObjectKey, Scope, _Cipher, Now, Uid, Attach, StatCtx) ->
                 ],
                 Session
             ),
-            ok = attachment_ds:save_confirmed_tx(Conn, Now, Uid, [maps:merge(Attach, Location)]),
+            ok = attachment_ds:save_confirmed_tx_retryable(Conn, Now, Uid, [
+                maps:merge(Attach, Location)
+            ]),
             case attachment_repo:confirmation_row_tx(Conn, ObjectKey) of
                 {ok, #{<<"id">> := Id}} ->
                     case attach_pending_repo:confirm_session_tx(Conn, ObjectKey, Id) of

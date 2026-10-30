@@ -332,14 +332,35 @@ hex64(Bin) ->
 loc(N) -> hex64(crypto:hash(sha256, integer_to_binary(N))).
 
 %% 组内叶序号（进程字典自增）：同组内每叶 key/id 空间隔离。
+%% 计数从 per-VM 随机残段（attempt_salt，0..79999）起步而非 1：gate 的
+%% w601_w4queue 步 try 1..3 重试共用同一 bound 库（attv5_<slot>_w601，
+%% 步内不重建），各模块确定性 id（94x000000000 + (base rem N)*1000 + 序号）
+%% 跨 try 重算必撞主键——三跑实证 eunit-w4queue.log:433 起全部种子组
+%% unique_violation（首叶即撞，attempt 1 已落行）。盐只平移带内子段：
+%% 残段上限 79999 + 叶数（<200）使各模块带内位移 <8.1e7 < 带宽 1e8，
+%% 不越界到相邻模块带（941→9419→944→946→…→952），单 attempt 内单调
+%% 自增性质不变。对照 w3_support:fresh_hold_id 的键隔离先例；
+%% 断言全部经变量引用 id，无字面值断言（不放宽任何断言）。
 leaf_id(Tag) ->
     N =
         case get({w601_leaf_seq, Tag}) of
-            undefined -> 1;
+            undefined -> attempt_salt() + 1;
             K -> K + 1
         end,
     put({w601_leaf_seq, Tag}, N),
     N.
+
+%% per-VM 随机残段（同一次 eunit VM = gate 步的一次 try）：取一次缓存于
+%% persistent_term，全模块共享；crypto 随机保证跨 try 不重复。
+attempt_salt() ->
+    case persistent_term:get({?MODULE, w601_attempt_salt}, undefined) of
+        undefined ->
+            Salt = binary:decode_unsigned(crypto:strong_rand_bytes(3)) rem 80000,
+            persistent_term:put({?MODULE, w601_attempt_salt}, Salt),
+            Salt;
+        S ->
+            S
+    end.
 
 %% ---------------------------------------------------------------- 种子
 
@@ -526,6 +547,9 @@ seed_eb_asset_row(Conn, Key, Id, Triple, Status, PendingFlag, Lifecycle) ->
     ok.
 
 seed_ordinary_job_row(Conn, Key, Triple, Attempts, State, LastError) ->
+    %% 同库跨驱动重跑时残留行可能处于 leased（lease_token/lease_until 非
+    %% NULL）；upsert 改写 job_state 的同时必须清空 lease 双字段，否则违反
+    %% 迁移 179 ck_v5_aod_lease（非 leased 态要求 lease 双字段为 NULL）。
     q(
         Conn,
         "INSERT INTO attachment_object_deletion"
@@ -537,7 +561,8 @@ seed_ordinary_job_row(Conn, Key, Triple, Attempts, State, LastError) ->
         " storage_container=EXCLUDED.storage_container,"
         " storage_locator_sha256=EXCLUDED.storage_locator_sha256,"
         " job_state=EXCLUDED.job_state, attempts=EXCLUDED.attempts,"
-        " next_retry_at=now(), last_error_code=EXCLUDED.last_error_code",
+        " next_retry_at=now(), last_error_code=EXCLUDED.last_error_code,"
+        " lease_token=NULL, lease_until=NULL",
         [
             Key,
             maps:get(driver, Triple),
@@ -570,12 +595,15 @@ fixture_index(hold_attachment) -> 4;
 fixture_index(future_retention) -> 5;
 fixture_index(permanent_workspace_retention) -> 6.
 
+%% workspace_attachment_retention 行受迁移 168 不可变守卫保护（BEFORE
+%% UPDATE OR DELETE 一律 23514），故只做一次性 INSERT；同库跨驱动重跑时
+%% 行已在（DO NOTHING 跳过），治理前提不变。Cleanup 为 no-op——行不可删。
 install_governance(Conn, AttId, hold_workspace) ->
     q(
         Conn,
         "INSERT INTO workspace_attachment_retention(attachment_id,organization_id,"
         "workspace_id,scope,scope_ref) VALUES ($1,9101,9102,'group','66')"
-        " ON CONFLICT (attachment_id) DO UPDATE SET scope='group', scope_ref='66'",
+        " ON CONFLICT (attachment_id) DO NOTHING",
         [AttId]
     ),
     retain_for_database_cleanup(Conn, <<"workspace_attachment_retention">>, AttId);
@@ -584,7 +612,7 @@ install_governance(Conn, AttId, hold_conversation) ->
         Conn,
         "INSERT INTO workspace_attachment_retention(attachment_id,organization_id,"
         "workspace_id,scope,scope_ref) VALUES ($1,9101,9102,'channel','66')"
-        " ON CONFLICT (attachment_id) DO UPDATE SET scope='channel', scope_ref='66'",
+        " ON CONFLICT (attachment_id) DO NOTHING",
         [AttId]
     ),
     retain_for_database_cleanup(Conn, <<"workspace_attachment_retention">>, AttId);
@@ -635,11 +663,16 @@ install_governance(Conn, AttId, future_retention) ->
     ),
     retain_for_database_cleanup(Conn, <<"enterprise_attachment_retention">>, AttId);
 install_governance(Conn, AttId, permanent_workspace_retention) ->
+    %% workspace_attachment_retention 行受迁移 168 不可变守卫保护（BEFORE
+    %% UPDATE OR DELETE 一律 23514），与 hold_workspace/hold_conversation
+    %% 分支同法：只做一次性 INSERT，同库跨驱动重跑时行已在（DO NOTHING
+    %% 跳过，scope 已是 'group'/'66-permanent' 不需改写）；Cleanup 为
+    %% no-op——行不可删。
     q(
         Conn,
         "INSERT INTO workspace_attachment_retention(attachment_id,organization_id,"
         "workspace_id,scope,scope_ref) VALUES ($1,9101,9102,'group','66-permanent')"
-        " ON CONFLICT (attachment_id) DO UPDATE SET scope='group', scope_ref='66-permanent'",
+        " ON CONFLICT (attachment_id) DO NOTHING",
         [AttId]
     ),
     retain_for_database_cleanup(Conn, <<"workspace_attachment_retention">>, AttId).

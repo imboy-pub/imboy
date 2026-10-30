@@ -223,6 +223,12 @@ beam-presence-guard:
 	  done; \
 	fi
 
+# erlang.mk builds c_src as part of app/test-build and relx-rel depends on app.
+# Match the runtime NIF loader's name; do not modify vendored erlang.mk.
+C_SRC_OUTPUT := $(CURDIR)/priv/attachment_disk_lock_nif
+ifeq ($(shell uname -s),Darwin)
+LDFLAGS += -undefined dynamic_lookup
+endif
 include erlang.mk
 
 # The quality framework's EUnit suites call its tools directly. Keep those

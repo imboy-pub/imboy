@@ -97,9 +97,12 @@ sweep(S, Case, Driver, Sc, Dom, Idx) ->
         end,
     Id = leaf_id(Driver, Idx),
     EbId = eb_asset_id(Id),
+    %% scenario 失败可能把共享连接留在 aborted 事务（原始错误由主体抛出，
+    %% sweep 首句撞 25P02 会把它掩盖）。开头 ROLLBACK 兜底：无事务时 PG 仅
+    %% 回 WARNING（幂等安全），有事务时复原连接让下方真实清理继续。
+    ?SUP:q(Conn, "ROLLBACK", []),
     ?SUP:lenient_q(Conn, "DELETE FROM attach_pending WHERE object_key=$1", [Key]),
-    ?SUP:cleanup_attachment(Conn, Key),
-    ?SUP:cleanup_tombstone(Conn, Key),
+    ?SUP:purge_attachment_metadata(Conn, Key),
     ?SUP:lenient_q(Conn, "DELETE FROM group_file WHERE id=$1", [Id]),
     ?SUP:lenient_q(Conn, "DELETE FROM user_collect WHERE id=$1", [collect_id(Id)]),
     ?SUP:cleanup_enterprise_asset(Conn, EbId),
@@ -223,9 +226,12 @@ rr_step(S, <<"bind_commits_first">>, <<"enterprise">>, _Key, Id) ->
                     {ok, [#{lifecycle_state := <<"live">>}]} = eb_pg_store:lock_assets_in(
                         Conn, 9101, 9102, [Id]
                     ),
-                    {ok, _, [{Retain}]} = ?SUP:e(Conn,
+                    {ok, _, [{Retain}]} = ?SUP:e(
+                        Conn,
                         "SELECT ceil(extract(epoch from retain_until))::bigint"
-                        " FROM enterprise_message WHERE id=$1", [MsgId]),
+                        " FROM enterprise_message WHERE id=$1",
+                        [MsgId]
+                    ),
                     ok = eb_pg_store:bind_asset_message_in(Conn, 9101, 9102, Id, MsgId, Retain),
                     ?SUP:q(Conn, "COMMIT"),
                     ?assertMatch(
@@ -507,14 +513,24 @@ rr_step(S, <<"direct_dml_intent_commits_first">>, <<"enterprise">>, _Key, Id) ->
 %% The production bind FK requires a real scoped canonical message target.
 %% 生产绑定外键要求真实且同作用域的消息；不能用不存在的随机消息 ID。
 seed_binding_message(Conn, MsgId) ->
-    ?SUP:q(Conn, "INSERT INTO enterprise_contact(id,organization_id,status,display_name)"
-        " VALUES(9104,9101,'active','w601w3') ON CONFLICT(id) DO NOTHING"),
-    ?SUP:q(Conn, "INSERT INTO enterprise_conversation(id,organization_id,workspace_id,"
-        "contact_id,status) VALUES(9105,9101,9102,9104,'active') ON CONFLICT(id) DO NOTHING"),
-    ?SUP:q(Conn, "INSERT INTO enterprise_message(id,organization_id,workspace_id,"
+    ?SUP:q(
+        Conn,
+        "INSERT INTO enterprise_contact(id,organization_id,status,display_name)"
+        " VALUES(9104,9101,'active','w601w3') ON CONFLICT(id) DO NOTHING"
+    ),
+    ?SUP:q(
+        Conn,
+        "INSERT INTO enterprise_conversation(id,organization_id,workspace_id,"
+        "contact_id,status) VALUES(9105,9101,9102,9104,'active') ON CONFLICT(id) DO NOTHING"
+    ),
+    ?SUP:q(
+        Conn,
+        "INSERT INTO enterprise_message(id,organization_id,workspace_id,"
         "conversation_id,sender_type,sender_contact_id,client_msg_id,retention_days,retain_until)"
         " VALUES($1,9101,9102,9105,'contact',9104,$2,2,now()+interval '2 days')"
-        " ON CONFLICT(id) DO NOTHING", [MsgId, integer_to_binary(MsgId)]).
+        " ON CONFLICT(id) DO NOTHING",
+        [MsgId, integer_to_binary(MsgId)]
+    ).
 
 message_id_of(Id) -> ?ASSET_BASE + 100000 + Id rem 100000.
 

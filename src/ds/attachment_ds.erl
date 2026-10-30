@@ -7,11 +7,12 @@
 
 -include("log.hrl").
 -include("common.hrl").
+-include_lib("epgsql/include/epgsql.hrl").
 
 %% ==================== API ====================
 
 -export([tablename/0]).
--export([save/4, save_confirmed_tx/4]).
+-export([save/4, save_confirmed_tx/4, save_confirmed_tx_retryable/4]).
 -export([stats/0]).
 -export([page/3]).
 -export([disable/1, enable/1, soft_delete/1]).
@@ -28,6 +29,7 @@
 -export([authorize_channel_scope/2]).
 -export([authorize_group_scope/2]).
 -export([ensure_upload_scope_tx/3]).
+-export([ensure_upload_scope_tx_retryable/3]).
 
 %% ===================================================================
 %% API Functions
@@ -53,9 +55,16 @@ save(Conn, CreatedAt, Uid, Attach) ->
 %% Human group/channel confirmations audit only the first durable metadata row.
 %% Scope qualification is locked by the caller; audit failure aborts that same transaction.
 -spec save_confirmed_tx(pid(), binary() | calendar:datetime(), integer(), [map()]) -> ok.
-save_confirmed_tx(_Conn, _CreatedAt, _Uid, []) ->
+save_confirmed_tx(Conn, CreatedAt, Uid, Attachments) ->
+    save_confirmed_tx(Conn, CreatedAt, Uid, Attachments, false).
+
+-spec save_confirmed_tx_retryable(pid(), binary() | calendar:datetime(), integer(), [map()]) -> ok.
+save_confirmed_tx_retryable(Conn, CreatedAt, Uid, Attachments) ->
+    save_confirmed_tx(Conn, CreatedAt, Uid, Attachments, true).
+
+save_confirmed_tx(_Conn, _CreatedAt, _Uid, [], _Retryable) ->
     ok;
-save_confirmed_tx(Conn, CreatedAt, Uid, [Attach | Tail]) ->
+save_confirmed_tx(Conn, CreatedAt, Uid, [Attach | Tail], Retryable) ->
     Path = maps:get(<<"path">>, Attach),
     {ok, Before} = confirmation_result(attachment_repo:confirmation_row_tx(Conn, Path)),
     ok = ensure_confirmed_scope(Before, Uid, Attach),
@@ -82,7 +91,7 @@ save_confirmed_tx(Conn, CreatedAt, Uid, [Attach | Tail]) ->
                     ok;
                 Kind ->
                     Ref = elib_cnv:safe_to_integer(maps:get(<<"scope_ref">>, Row)),
-                    ok = workspace_guard:abort_on_error(
+                    ok = audit_abort_on_error(
                         enterprise_audit_event_repo:append_scope_file_tx(
                             Conn,
                             {Kind, Ref},
@@ -92,13 +101,19 @@ save_confirmed_tx(Conn, CreatedAt, Uid, [Attach | Tail]) ->
                                 resource_id => maps:get(<<"id">>, Row),
                                 action => <<"file.confirmed">>
                             }
-                        )
+                        ),
+                        Retryable
                     )
             end;
         _ ->
             ok
     end,
-    save_confirmed_tx(Conn, CreatedAt, Uid, Tail).
+    save_confirmed_tx(Conn, CreatedAt, Uid, Tail, Retryable).
+
+audit_abort_on_error({error, {audit_failed, #error{code = <<"40P01">>} = Reason}}, true) ->
+    throw({abort_tx, Reason});
+audit_abort_on_error(Result, _) ->
+    workspace_guard:abort_on_error(Result).
 
 ensure_confirmed_scope(not_found, _Uid, _Attach) ->
     ok;
@@ -272,7 +287,7 @@ pending_cleanup(AgeHours) ->
     end.
 
 queue_pending(Key, _AgeHours) ->
-    elib_pg:with_tx(fun(Conn) ->
+    elib_pg:with_deadlock_retry_tx(fun(Conn) ->
         case
             attach_pending_repo:intent_pending_delete_tx(
                 Conn, Key, <<"sweep">>, <<"pending cleanup">>
@@ -326,15 +341,38 @@ authorize_channel_scope(ChannelId, Uid) ->
 -spec ensure_upload_scope_tx(any(), {group | channel, integer() | binary()}, integer()) ->
     ok | {error, term()}.
 ensure_upload_scope_tx(Conn, {Kind, Ref}, Uid) ->
+    ensure_upload_scope_tx(Conn, {Kind, Ref}, Uid, false).
+
+-spec ensure_upload_scope_tx_retryable(any(), {group | channel, integer() | binary()}, integer()) ->
+    ok | {error, term()}.
+ensure_upload_scope_tx_retryable(Conn, {Kind, Ref}, Uid) ->
+    ensure_upload_scope_tx(Conn, {Kind, Ref}, Uid, true).
+
+ensure_upload_scope_tx(Conn, {Kind, Ref}, Uid, Retryable) ->
     Id = elib_cnv:safe_to_integer(Ref),
     Target = {Kind, Id},
     case attachment_repo:lock_upload_organization_tx(Conn, Target, Uid) of
         ok ->
-            case workspace_guard:ensure_writable_tx(Conn, Target) of
+            Guard =
+                case Retryable of
+                    true -> workspace_guard:ensure_writable_tx_retryable(Conn, Target);
+                    false -> workspace_guard:ensure_writable_tx(Conn, Target)
+                end,
+            case Guard of
                 ok ->
-                    case attachment_repo:authorize_upload_scope_tx(Conn, Kind, Id, Uid) of
+                    Authorized =
+                        case Retryable of
+                            true ->
+                                attachment_repo:authorize_upload_scope_tx_retryable(
+                                    Conn, Kind, Id, Uid
+                                );
+                            false ->
+                                attachment_repo:authorize_upload_scope_tx(Conn, Kind, Id, Uid)
+                        end,
+                    case Authorized of
                         true -> ok;
-                        false -> {error, forbidden}
+                        false -> {error, forbidden};
+                        {error, _} = E -> E
                     end;
                 {error, _} = E ->
                     E

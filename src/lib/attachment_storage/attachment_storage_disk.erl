@@ -28,8 +28,8 @@ put_ctx(Ns, Container, Key, Body, Expiry) ->
     Check = fun() -> write_window(Expiry, Deadline) end,
     attachment_upload_spool:with_source(Body, fun(Source) ->
         with_path(Ns, Container, Key, fun(Root, Path) ->
-            with_locked_action(Root, Container, Key, Path, fun() ->
-                atomic_write(Path, Source, Check)
+            with_locked_action(Root, Container, Key, Path, fun(Lock) ->
+                atomic_write(Lock, Path, Source, Check)
             end)
         end)
     end).
@@ -47,20 +47,22 @@ put_snapshot(#{container := C, key := K} = I, Body, Expiry, Recheck) when
     Check = fun() -> write_window(Expiry, Deadline) end,
     attachment_upload_spool:with_source(Body, fun(Source) ->
         with_snapshot_path(I, fun(Root, Path) ->
-            with_locked_action(Root, C, K, Path, fun() ->
-                rechecked_write(Path, Source, Check, Recheck)
+            with_locked_action(Root, C, K, Path, fun(Lock) ->
+                rechecked_write(Lock, Path, Source, Check, Recheck)
             end)
         end)
     end).
 
 with_locked_action(Root, Container, Key, Path, Fun) ->
-    with_os_lock(Root, Container, Key, fun() -> locked_action(Root, Path, Fun) end).
+    with_os_lock(Root, Container, Key, fun(Lock) ->
+        locked_action(Root, Path, fun() -> Fun(Lock) end)
+    end).
 
-rechecked_write(Path, Source, Check, Recheck) ->
+rechecked_write(Lock, Path, Source, Check, Recheck) ->
     case Check() of
         ok ->
             case Recheck() of
-                ok -> atomic_write(Path, Source, Check);
+                ok -> atomic_write(Lock, Path, Source, Check);
                 Error -> Error
             end;
         Error ->
@@ -80,9 +82,9 @@ write_window(Expiry, Deadline) ->
 
 delete_snapshot(#{container := C, key := K} = I) ->
     with_snapshot_path(I, fun(Root, Path) ->
-        with_os_lock(Root, C, K, fun() ->
+        with_os_lock(Root, C, K, fun(Lock) ->
             locked_action(Root, Path, fun() ->
-                case file:delete(Path) of
+                case attachment_disk_lock_nif:unlink(Lock, list_to_binary(Path)) of
                     {error, enoent} -> {error, not_found};
                     E -> E
                 end
@@ -109,12 +111,22 @@ read_snapshot(I) ->
 head_snapshot(I) ->
     with_snapshot_path(I, fun(_, Path) ->
         case file:read_link_info(Path, [{time, posix}]) of
-            {ok, #file_info{type = regular, size = Size, mtime = Mtime,
-                major_device = Major, minor_device = Minor, inode = Inode}} when
+            {ok, #file_info{
+                type = regular,
+                size = Size,
+                mtime = Mtime,
+                major_device = Major,
+                minor_device = Minor,
+                inode = Inode
+            }} when
                 is_integer(Size), Size >= 0, is_integer(Mtime)
             ->
-                {ok, #{size => Size, mtime => Mtime, etag => undefined,
-                    identity => {Major, Minor, Inode}}};
+                {ok, #{
+                    size => Size,
+                    mtime => Mtime,
+                    etag => undefined,
+                    identity => {Major, Minor, Inode}
+                }};
             {ok, #file_info{}} ->
                 {error, path_escape};
             {error, enoent} ->
@@ -126,7 +138,7 @@ head_snapshot(I) ->
 %% Read one already-verified physical inode in bounded chunks under its storage lock.
 fold_snapshot(#{container := C, key := K} = I, Fun, Acc) ->
     with_snapshot_path(I, fun(Root, Path) ->
-        with_locked_action(Root, C, K, Path, fun() ->
+        with_locked_action(Root, C, K, Path, fun(_Lock) ->
             case file:open(Path, [read, raw, binary]) of
                 {ok, Fh} ->
                     try
@@ -143,7 +155,7 @@ fold_snapshot(#{container := C, key := K} = I, Fun, Acc) ->
     end).
 fold_range_snapshot(#{container := C, key := K} = I, Offset, Length, ExpectedSize, Fun, Acc) ->
     with_snapshot_path(I, fun(Root, Path) ->
-        with_locked_action(Root, C, K, Path, fun() ->
+        with_locked_action(Root, C, K, Path, fun(_Lock) ->
             case file:open(Path, [read, raw, binary]) of
                 {ok, Fh} ->
                     try
@@ -231,13 +243,13 @@ check_directory_permissions(Root, Path) ->
             {error, insecure_directory}
     end.
 
-atomic_write(Path, Source, Check) ->
+atomic_write(Lock, Path, Source, Check) ->
     case Check() of
-        ok -> atomic_write_open(Path, Source, Check);
+        ok -> atomic_write_open(Lock, Path, Source, Check);
         Error -> Error
     end.
 
-atomic_write_open(Path, Source, Check) ->
+atomic_write_open(Lock, Path, Source, Check) ->
     ok = filelib:ensure_dir(Path),
     Tmp = Path ++ ".v5tmp." ++ binary_to_list(binary:encode_hex(crypto:strong_rand_bytes(12))),
     case file:open(Tmp, [write, exclusive, raw, binary]) of
@@ -256,8 +268,12 @@ atomic_write_open(Path, Source, Check) ->
                 case Result of
                     ok ->
                         case Check() of
-                            ok -> file:rename(Tmp, Path);
-                            Error2 -> Error2
+                            ok ->
+                                attachment_disk_lock_nif:rename(
+                                    Lock, list_to_binary(Tmp), list_to_binary(Path)
+                                );
+                            Error2 ->
+                                Error2
                         end;
                     Error2 ->
                         Error2
@@ -290,29 +306,69 @@ head_bounded(Ns, Container, Key) ->
 copy_dispatch(Ns, Container, SourceKey, TargetKey) ->
     with_path(Ns, Container, TargetKey, fun(Root, TargetPath) ->
         with_path(Ns, Container, SourceKey, fun(_, SourcePath) ->
-            with_os_lock(Root, Container, TargetKey, fun() ->
-                case file:read_file_info(SourcePath) of
-                    {ok, #file_info{type = regular}} ->
-                        case filelib:ensure_dir(TargetPath) of
-                            ok ->
-                                %% 返回形态对齐 driver callback（{ok, map()}）
-                                case file:copy(SourcePath, TargetPath) of
-                                    {ok, N} -> {ok, #{bytes_copied => N}};
-                                    {error, R} -> {error, R}
-                                end;
-                            {error, R} ->
-                                {error, R}
-                        end;
-                    {error, enoent} ->
-                        {error, not_found};
-                    {error, R} ->
-                        {error, R};
-                    _ ->
-                        {error, path_escape}
-                end
+            with_os_lock(Root, Container, TargetKey, fun(Lock) ->
+                locked_action(Root, TargetPath, fun() ->
+                    case file:read_link_info(SourcePath) of
+                        {ok, #file_info{type = regular}} ->
+                            case filelib:ensure_dir(TargetPath) of
+                                ok ->
+                                    copy_locked(Lock, SourcePath, TargetPath);
+                                {error, R} ->
+                                    {error, R}
+                            end;
+                        {error, enoent} ->
+                            {error, not_found};
+                        {error, R} ->
+                            {error, R};
+                        _ ->
+                            {error, path_escape}
+                    end
+                end)
             end)
         end)
     end).
+
+copy_locked(Lock, SourcePath, TargetPath) ->
+    Tmp =
+        TargetPath ++ ".v5tmp." ++ binary_to_list(binary:encode_hex(crypto:strong_rand_bytes(12))),
+    try
+        case copy_to_temp(SourcePath, Tmp) of
+            {ok, N} ->
+                case
+                    attachment_disk_lock_nif:rename(
+                        Lock, list_to_binary(Tmp), list_to_binary(TargetPath)
+                    )
+                of
+                    ok -> {ok, #{bytes_copied => N}};
+                    Error -> Error
+                end;
+            Error ->
+                Error
+        end
+    after
+        file:delete(Tmp)
+    end.
+
+copy_to_temp(SourcePath, Tmp) ->
+    case file:open(Tmp, [write, exclusive, raw, binary]) of
+        {ok, Fh} ->
+            try
+                ok = file:change_mode(Tmp, 8#600),
+                case file:copy(SourcePath, Fh) of
+                    {ok, N} ->
+                        case file:sync(Fh) of
+                            ok -> {ok, N};
+                            Error -> Error
+                        end;
+                    Error ->
+                        Error
+                end
+            after
+                file:close(Fh)
+            end;
+        Error ->
+            Error
+    end.
 
 read(Ns, Container, Key) ->
     with_path(Ns, Container, Key, fun(_, Path) ->
@@ -323,9 +379,9 @@ read(Ns, Container, Key) ->
     end).
 delete(Ns, Container, Key) ->
     with_path(Ns, Container, Key, fun(Root, Path) ->
-        with_os_lock(Root, Container, Key, fun() ->
+        with_os_lock(Root, Container, Key, fun(Lock) ->
             locked_action(Root, Path, fun() ->
-                case file:delete(Path) of
+                case attachment_disk_lock_nif:unlink(Lock, list_to_binary(Path)) of
                     {error, enoent} -> {error, not_found};
                     E -> E
                 end
@@ -386,68 +442,47 @@ check_parts([Part | Rest], Prefix) ->
         {error, R} -> {error, R}
     end.
 
-%% 锁文件不删除；端口 stdin EOF（包含 BEAM 崩溃）使固定 read 命令退出释放内核锁。
+%% 锁资源和最终 rename/unlink 由同一 BEAM 原生资源持有。
 with_os_lock(Root, Container, Key, Fun) ->
     LockDir = filename:join(Root, ".v5-locks"),
     Digest = binary_to_list(
         binary:encode_hex(crypto:hash(sha256, term_to_binary({Container, Key})), lowercase)
     ),
     Lock = filename:join(LockDir, Digest),
+    Target = filename:join([Root, binary_to_list(Container), binary_to_list(Key)]),
     case no_symlinks(Lock) of
         ok ->
             ok = filelib:ensure_dir(Lock),
             ok = file:change_mode(LockDir, 8#700),
-            case lock_command(Lock) of
-                {ok, Exe, Args} -> hold_lock(Exe, Args, Fun);
-                E -> E
-            end;
+            acquire_lock(Lock, Target, Fun, erlang:monotonic_time(millisecond) + 5000);
         E ->
             E
     end.
-lock_command(Lock) ->
-    Script = "printf 'V5_LOCK_READY\\n'; IFS= read -r release",
-    case os:find_executable("lockf") of
-        false ->
-            case os:find_executable("flock") of
-                false -> {error, os_lock_unavailable};
-                Exe -> {ok, Exe, ["-x", "-w", "5", Lock, "/bin/sh", "-c", Script]}
-            end;
-        Exe ->
-            {ok, Exe, ["-k", "-t", "5", Lock, "/bin/sh", "-c", Script]}
-    end.
-hold_lock(Exe, Args, Fun) ->
-    Port = open_port({spawn_executable, Exe}, [
-        binary, exit_status, use_stdio, stderr_to_stdout, {line, 1024}, {args, Args}
-    ]),
-    receive
-        {Port, {data, {eol, <<"V5_LOCK_READY">>}}} ->
+
+acquire_lock(Path, Target, Fun, Deadline) ->
+    try attachment_disk_lock_nif:acquire(list_to_binary(Path), list_to_binary(Target)) of
+        {ok, Lock} ->
             try
-                Fun()
+                Fun(Lock)
             after
-                release_lock(Port)
+                attachment_disk_lock_nif:release(Lock)
             end;
-        {Port, {exit_status, _}} ->
-            {error, os_lock_failed};
-        {Port, {data, _}} ->
-            port_close(Port),
+        {error, eagain} ->
+            wait_lock(Path, Target, Fun, Deadline);
+        {error, ewouldblock} ->
+            wait_lock(Path, Target, Fun, Deadline);
+        {error, _} ->
             {error, os_lock_failed}
-    after 7000 ->
-        port_close(Port),
-        {error, os_lock_timeout}
-    end.
-release_lock(Port) ->
-    try
-        port_command(Port, <<"release\n">>)
     catch
-        error:badarg -> ok
-    end,
-    receive
-        {Port, {exit_status, _}} -> ok
-    after 2000 ->
-        try
-            port_close(Port)
-        catch
-            error:badarg -> ok
-        end,
-        ok
+        error:undef -> {error, os_lock_unavailable};
+        error:nif_not_loaded -> {error, os_lock_unavailable}
+    end.
+
+wait_lock(Path, Target, Fun, Deadline) ->
+    case erlang:monotonic_time(millisecond) >= Deadline of
+        true ->
+            {error, os_lock_timeout};
+        false ->
+            timer:sleep(20),
+            acquire_lock(Path, Target, Fun, Deadline)
     end.

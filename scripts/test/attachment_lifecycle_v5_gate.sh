@@ -12,6 +12,7 @@ export V5_GATE_COMMAND
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 RUNNER="$ROOT/scripts/attachment_lifecycle_v5_runner.py"
+source "$SCRIPT_DIR/attachment_lifecycle_v5_flutter_command.sh"
 
 usage() { grep '^#' "$0" | sed '1,6d' | head -4; exit 2; }
 
@@ -105,7 +106,78 @@ if [ -n "$SCENARIO" ] && [ -z "$CASE" ]; then
   echo "--scenario requires --case" >&2; exit 2
 fi
 
+# The shared W2-W4 fixture currently replays the full migration chain (M3
+# included). It cannot attest an earlier or independent guards-contract phase. Consult the frozen leaf
+# matrix, not a caller-supplied phase, before creating evidence or a fixture.
+inspect_task_phase() { # task_id [case_id]
+  if [ -n "${2:-}" ]; then
+    python3 "$RUNNER" inspect-phase --run-dir "$RUN_DIR" --task-id "$1" --case-id "$2"
+  else
+    python3 "$RUNNER" inspect-phase --run-dir "$RUN_DIR" --task-id "$1"
+  fi
+}
+require_replay_phase_support() { # task_id case_id
+  local result
+  result="$(inspect_task_phase "$1" "$2")" || return $?
+  python3 - "$result" <<'PYC'
+import json, sys
+try:
+    data = json.loads(sys.argv[1])
+    cases = data["cases"]
+    if not isinstance(cases, list) or len(cases) != 1 or cases[0].get("integrated_only") is not True:
+        raise ValueError("required pre-integrated fixture is not attested: full replay activates M3")
+except (ValueError, KeyError, TypeError, AttributeError) as exc:
+    print("CONTRACT_CONFLICT: " + str(exc), file=sys.stderr)
+    raise SystemExit(20)
+PYC
+}
+# Verify previously sealed cases before deciding whether an unsealed case
+# needs an unavailable phase. Inspection is from the runner under its lock.
+phase_dispatch_preflight() { # task_id [case_id]
+  local task="$1" selected="${2:-}" inspected cases cid status
+  local -a sealed_cases=() unsealed_cases=()
+  inspected="$(inspect_task_phase "$task" "$selected")" || return $?
+  cases="$(python3 - "$inspected" <<'PYC'
+import json, sys
+try:
+    data = json.loads(sys.argv[1])
+    cases = data["cases"]
+    if not isinstance(cases, list) or not cases:
+        raise ValueError("invalid inspected cases")
+    for case in cases:
+        if not isinstance(case, dict) or type(case.get("sealed")) is not bool:
+            raise ValueError("invalid inspected case")
+        print(("sealed" if case["sealed"] else "unsealed") + "\t" + case["case_id"])
+except (ValueError, KeyError, TypeError, AttributeError) as exc:
+    print("CONTRACT_CONFLICT: " + str(exc), file=sys.stderr)
+    raise SystemExit(20)
+PYC
+  )" || return 20
+  while IFS=$'\t' read -r status cid; do
+    if [ "$status" = sealed ]; then
+      sealed_cases+=("$cid")
+    elif [ "$status" = unsealed ]; then
+      unsealed_cases+=("$cid")
+    else
+      echo "CONTRACT_CONFLICT: invalid inspected case status" >&2
+      return 20
+    fi
+  done <<< "$cases"
+  for cid in ${sealed_cases[@]+"${sealed_cases[@]}"}; do
+    python3 "$RUNNER" verify-case --run-dir "$RUN_DIR" --task-id "$task" --case-id "$cid" || return $?
+  done
+  for cid in ${unsealed_cases[@]+"${unsealed_cases[@]}"}; do
+    require_replay_phase_support "$task" "$cid" || return $?
+  done
+}
+
+case "$TASK" in
+  W2-*|W3-*|W4-*) phase_dispatch_preflight "$TASK" "${CASE:+$TASK/$CASE}" || exit $? ;;
+esac
+
 EVID="$RUN_DIR/evidence/$TASK"
+V5_TASK_ATTEMPT="$(python3 -c 'import json,sys; s=json.load(open(sys.argv[1])); t=s.get("tasks",{}).get(sys.argv[2],{}); a=t.get("attempt"); print(a if type(a) is int and a > 0 and t.get("state") in ("RUNNING", "VERIFYING") else "")' "$STATE" "$TASK")"
+[ -n "$V5_TASK_ATTEMPT" ] || { echo "CONTRACT_CONFLICT: task is not in an active attempt" >&2; exit 20; }
 mkdir -p "$EVID" "$RUN_DIR/logs"
 # Output-path safety: the gate must never write through a symbolic link that
 # already exists inside the evidence tree it is about to own.
@@ -244,6 +316,14 @@ seal_w201_leafs() {
 w201_case() { # $1 cdir
   local cdir="$1"
   local DB
+  # W2-01 requires expand-queue. The existing setup replays every migration,
+  # including M3 guards, so it cannot provide evidence for that earlier phase
+  # (evidence_contract.schema_phase_rule forbids composite pseudo-phases).
+  # A future isolated fixture must attest its exact phase before this can run.
+  if [ "$TASK" = W2-01 ]; then
+    echo "CONTRACT_CONFLICT: W2-01 requires an attested expand-queue fixture; full migration replay is integrated" >&2
+    return 20
+  fi
   # pre-warm the TEST-mode beam cache once so per-case eunit stays inside
   # its deadline even in a full --task sweep (cold compile blew it twice)
   make -C "$ROOT" test-build >> /dev/null 2>&1 || true
@@ -916,8 +996,7 @@ PYC
 w602_run_flutter() { # $1 app $2 cdir $3 driver $4 device
   local app="$1" cdir="$2" driver="$3" device="$4" pid rc dpid=""
   rm -f "$cdir/device-provenance.json"
-  ( cd "$app" && V5_E2E_DRIVER="$driver" flutter test \
-      integration_test/attachment_lifecycle_v5_test.dart -d "$device" --reporter json ) \
+  ( cd "$app" && v5_w602_flutter_command "$driver" "$device" ) \
     > "$cdir/flutter-integration-$driver.jsonl" 2> "$cdir/flutter-integration-$driver.err" &
   pid=$!
   while kill -0 "$pid" 2>/dev/null; do
@@ -1412,7 +1491,7 @@ PYM
   sed -e "s/{http_port, 9800}/{http_port, ${EUNIT_HTTP_PORT:-19980}}/" \
       -e "s/{http_port_adm, 9706}/{http_port_adm, ${EUNIT_HTTP_ADM_PORT:-19970}}/" \
       "${EUNIT_CONFIG:-config/sys.local}.config" > "$cdir/w403-direct.config"
-  for try in 1 2 3; do
+  for try in 1; do
     EUNIT_USE_RELAY=0 erl -noinput -boot no_dot_erlang +P 1048576 +Q 1024 \
       -config "$cdir/w403-direct.config" -pa "$V5_ALIAS_ROOT/imboy/ebin" -pa ebin -pa test $PZ \
       -eval 'CoverSetup = fun() -> ok end, CoverExport = fun(_) -> ok end, CoverSetup(),
@@ -1426,7 +1505,6 @@ PYM
         halt()' > "$cdir/eunit-w403.log" 2>&1
     rc=$?
     [ $rc -eq 0 ] && break
-    [ $try -lt 3 ] && sleep 5
   done
   if [ $rc -eq 0 ] && grep -q "W403_DIRECT_OK" "$cdir/eunit-w403.log"; then
     W403S_PG_OK=1
@@ -1451,7 +1529,7 @@ w404_case() { # $1 cdir
   sed -e "s/{http_port, 9800}/{http_port, ${EUNIT_HTTP_PORT:-19980}}/" \
       -e "s/{http_port_adm, 9706}/{http_port_adm, ${EUNIT_HTTP_ADM_PORT:-19970}}/" \
       "${EUNIT_CONFIG:-config/sys.local}.config" > "$cdir/w404-direct.config"
-  for try in 1 2 3; do
+  for try in 1; do
     # Each retry restarts the observation stream: a failed attempt must not
     # leave rows that the adapter would see as duplicate measurements.
     rm -f "$cdir/observations.jsonl"
@@ -1466,7 +1544,6 @@ w404_case() { # $1 cdir
         halt()' > "$cdir/eunit-w404.log" 2>&1
     rc=$?
     [ $rc -eq 0 ] && break
-    [ $try -lt 3 ] && sleep 5
   done
   if [ $rc -eq 0 ] && grep -q "W404_DIRECT_OK" "$cdir/eunit-w404.log"; then
     W404S_PG_OK=1
@@ -1512,8 +1589,8 @@ w203_case() { # $1 cdir
 
 w202_case() { # $1 cdir
   local cdir="$1" RC=0
-  # 证据在任务内共享：三个 case 复用同一套套件日志（各 case 的差异只在封叶矩阵）
-  local SH="$EVID/W2-02-shared"
+  # Keep raw suite logs inside this case attempt; never overwrite another case.
+  local SH="$cdir/suite"
   mkdir -p "$SH" "$cdir"
   # 真 Garage 凭证（confirm_pg 套件按 W202_GARAGE_* 做真实字节往返）
   if [ -f "$RUN_DIR/resources/garage-w202.env" ]; then
@@ -1543,41 +1620,7 @@ w202_case() { # $1 cdir
   for flag in W202_CONFIRM_PG_OK W202_EB_ASSET_OK W202_GATEWAY_OK W202_ATTACH_LOGIC_OK; do
     [ "${!flag}" -eq 1 ] || return 30
   done
-  # 每叶 entrypoint provenance：21 行静态清单编译进 gate。叶集合 = 冻结契约
-  # expected_leaf_matrix[W2-02/confirmed-content-immutable] 全部叶；
-  # entrypoint/scenario 与契约逐字一致（support 的 _provenance_from_object
-  # 对带 entrypoint/scenario 键的对象做严格匹配，不匹配即跳过该候选，
-  # w202 行不能有别名或简写）。route/method/handler 取 imboy_router.erl
-  # 实际注册面（全部 POST）：ordinary=/api/v1/attachment/confirm ->
-  # attach_handler:confirm；enterprise_internal=/api/internal/v1/files/
-  # confirm -> enterprise_asset_handler:confirm；enterprise_seat=
-  # /api/v1/enterprise/organizations/:org_id/assets/confirm ->
-  # eb_tenant_handler:handle(confirm_asset)；cs_widget=/api/v1/cs/widget/
-  # sessions/:id/assets/confirm -> cs_widget_handler:handle
-  # (widget_asset_confirm)。
-  cat > "$cdir/entrypoint_provenance.jsonl" <<'W202_PROVENANCE'
-{"entrypoint":"ordinary","scenario":"put_A_confirm_old_capability_put_B","route":"/api/v1/attachment/confirm","method":"POST","handler":"attach_handler:confirm","request_id":"w202-ordinary-put_A_confirm_old_capability_put_B"}
-{"entrypoint":"ordinary","scenario":"overwrite_between_stat_and_confirm","route":"/api/v1/attachment/confirm","method":"POST","handler":"attach_handler:confirm","request_id":"w202-ordinary-overwrite_between_stat_and_confirm"}
-{"entrypoint":"ordinary","scenario":"inflight_same_content_after_confirm","route":"/api/v1/attachment/confirm","method":"POST","handler":"attach_handler:confirm","request_id":"w202-ordinary-inflight_same_content_after_confirm"}
-{"entrypoint":"ordinary","scenario":"hash_mismatch_no_confirm","route":"/api/v1/attachment/confirm","method":"POST","handler":"attach_handler:confirm","request_id":"w202-ordinary-hash_mismatch_no_confirm"}
-{"entrypoint":"ordinary","scenario":"ciphertext_only_no_plaintext_hash","route":"/api/v1/attachment/confirm","method":"POST","handler":"attach_handler:confirm","request_id":"w202-ordinary-ciphertext_only_no_plaintext_hash"}
-{"entrypoint":"ordinary","scenario":"crash_after_pin_before_put_resume","route":"/api/v1/attachment/confirm","method":"POST","handler":"attach_handler:confirm","request_id":"w202-ordinary-crash_after_pin_before_put_resume"}
-{"entrypoint":"enterprise_internal","scenario":"put_A_confirm_old_capability_put_B","route":"/api/internal/v1/files/confirm","method":"POST","handler":"enterprise_asset_handler:confirm","request_id":"w202-enterprise_internal-put_A_confirm_old_capability_put_B"}
-{"entrypoint":"enterprise_internal","scenario":"overwrite_between_stat_and_confirm","route":"/api/internal/v1/files/confirm","method":"POST","handler":"enterprise_asset_handler:confirm","request_id":"w202-enterprise_internal-overwrite_between_stat_and_confirm"}
-{"entrypoint":"enterprise_internal","scenario":"inflight_same_content_after_confirm","route":"/api/internal/v1/files/confirm","method":"POST","handler":"enterprise_asset_handler:confirm","request_id":"w202-enterprise_internal-inflight_same_content_after_confirm"}
-{"entrypoint":"enterprise_internal","scenario":"hash_mismatch_no_confirm","route":"/api/internal/v1/files/confirm","method":"POST","handler":"enterprise_asset_handler:confirm","request_id":"w202-enterprise_internal-hash_mismatch_no_confirm"}
-{"entrypoint":"enterprise_internal","scenario":"crash_after_pin_before_put_resume","route":"/api/internal/v1/files/confirm","method":"POST","handler":"enterprise_asset_handler:confirm","request_id":"w202-enterprise_internal-crash_after_pin_before_put_resume"}
-{"entrypoint":"enterprise_seat","scenario":"put_A_confirm_old_capability_put_B","route":"/api/v1/enterprise/organizations/:org_id/assets/confirm","method":"POST","handler":"eb_tenant_handler:handle(confirm_asset)","request_id":"w202-enterprise_seat-put_A_confirm_old_capability_put_B"}
-{"entrypoint":"enterprise_seat","scenario":"overwrite_between_stat_and_confirm","route":"/api/v1/enterprise/organizations/:org_id/assets/confirm","method":"POST","handler":"eb_tenant_handler:handle(confirm_asset)","request_id":"w202-enterprise_seat-overwrite_between_stat_and_confirm"}
-{"entrypoint":"enterprise_seat","scenario":"inflight_same_content_after_confirm","route":"/api/v1/enterprise/organizations/:org_id/assets/confirm","method":"POST","handler":"eb_tenant_handler:handle(confirm_asset)","request_id":"w202-enterprise_seat-inflight_same_content_after_confirm"}
-{"entrypoint":"enterprise_seat","scenario":"hash_mismatch_no_confirm","route":"/api/v1/enterprise/organizations/:org_id/assets/confirm","method":"POST","handler":"eb_tenant_handler:handle(confirm_asset)","request_id":"w202-enterprise_seat-hash_mismatch_no_confirm"}
-{"entrypoint":"enterprise_seat","scenario":"crash_after_pin_before_put_resume","route":"/api/v1/enterprise/organizations/:org_id/assets/confirm","method":"POST","handler":"eb_tenant_handler:handle(confirm_asset)","request_id":"w202-enterprise_seat-crash_after_pin_before_put_resume"}
-{"entrypoint":"cs_widget","scenario":"put_A_confirm_old_capability_put_B","route":"/api/v1/cs/widget/sessions/:id/assets/confirm","method":"POST","handler":"cs_widget_handler:handle(widget_asset_confirm)","request_id":"w202-cs_widget-put_A_confirm_old_capability_put_B"}
-{"entrypoint":"cs_widget","scenario":"overwrite_between_stat_and_confirm","route":"/api/v1/cs/widget/sessions/:id/assets/confirm","method":"POST","handler":"cs_widget_handler:handle(widget_asset_confirm)","request_id":"w202-cs_widget-overwrite_between_stat_and_confirm"}
-{"entrypoint":"cs_widget","scenario":"inflight_same_content_after_confirm","route":"/api/v1/cs/widget/sessions/:id/assets/confirm","method":"POST","handler":"cs_widget_handler:handle(widget_asset_confirm)","request_id":"w202-cs_widget-inflight_same_content_after_confirm"}
-{"entrypoint":"cs_widget","scenario":"hash_mismatch_no_confirm","route":"/api/v1/cs/widget/sessions/:id/assets/confirm","method":"POST","handler":"cs_widget_handler:handle(widget_asset_confirm)","request_id":"w202-cs_widget-hash_mismatch_no_confirm"}
-{"entrypoint":"cs_widget","scenario":"crash_after_pin_before_put_resume","route":"/api/v1/cs/widget/sessions/:id/assets/confirm","method":"POST","handler":"cs_widget_handler:handle(widget_asset_confirm)","request_id":"w202-cs_widget-crash_after_pin_before_put_resume"}
-W202_PROVENANCE
+  # HTTP provenance must be observed from the real request, never synthesized.
   echo "w202 flags: CONFIRM=$W202_CONFIRM_PG_OK EB=$W202_EB_ASSET_OK GW=$W202_GATEWAY_OK AL=$W202_ATTACH_LOGIC_OK (SH=$SH)" >> "$cdir/raw.log"
   export W202_GARAGE_ENDPOINT="${W202_GARAGE_ENDPOINT:-}" V5_RUN_DIR="$RUN_DIR"
   return $RC
@@ -1585,7 +1628,10 @@ W202_PROVENANCE
 
 run_case() {  # $1 case_id
   local cid="$1"
-  local cdir="$EVID/${cid#*/}"
+  case "$cid" in
+    W2-*/*|W3-*/*|W4-*/*) require_replay_phase_support "${cid%%/*}" "$cid" || return $? ;;
+  esac
+  local cdir="$EVID/${cid#*/}/attempt-$V5_TASK_ATTEMPT"
   mkdir -p "$cdir"
   case "$cid" in
     W0-02/*|W0-03/strict-ledger-bootstrap|W1-02/*) ensure_pg sql || return $? ;;
@@ -1753,23 +1799,24 @@ produce_measured() {  # $1 case_id $2 case_dir — adapter -> producer -> measur
   local cid="$1" cdir="$2" adapter
   adapter="$SCRIPT_DIR/attachment_lifecycle_v5_adapter_$(echo "$cid" | tr '/-' '__' | tr 'A-Z' 'a-z').py"
   [ -f "$adapter" ] || { echo "no measured adapter for case $cid (evidence cannot be sealed)" >&2; return 30; }
-  # A failed earlier attempt of an unsealed case leaves a measured-receipts
-  # bound to a different candidate; the no-replace publish cannot reconcile
-  # across candidates.  Sealed cases are never touched.
-  python3 - "$RUN_DIR" "$cid" "$cdir" <<'PYC'
-import json, os, shutil, sys
+  # Never overwrite or remove evidence from an earlier invocation. Until
+  # attempt-specific case directories are supported, stop for reconciliation.
+  python3 - "$RUN_DIR" "$cid" "$cdir" <<'PYC' || return 30
+import json, os, sys
 run_dir, cid, cdir = sys.argv[1:4]
 state = json.load(open(os.path.join(run_dir, "state.json")))
 if cid in (state.get("case_manifest_digests") or {}):
-    raise SystemExit(0)
+    print("case already sealed; refusing to overwrite evidence", file=sys.stderr)
+    raise SystemExit(30)
 for name in ("measured-receipts.json", "observations.json"):
-    path = os.path.join(cdir, name)
-    if os.path.isfile(path):
-        os.unlink(path)
+    if os.path.lexists(os.path.join(cdir, name)):
+        print("prior case evidence requires attempt isolation", file=sys.stderr)
+        raise SystemExit(30)
 if os.path.isdir(cdir):
     for name in os.listdir(cdir):
         if name.startswith("producer-attempt-"):
-            shutil.rmtree(os.path.join(cdir, name), ignore_errors=True)
+            print("prior producer attempt requires reconciliation", file=sys.stderr)
+            raise SystemExit(30)
 PYC
   python3 "$adapter" "$RUN_DIR" "$cdir" "$ROOT" >> "$cdir/adapter.log" 2>&1 || { echo "ADAPTER_FAIL $cid" >> "$cdir/adapter.log"; return 30; }
   python3 "$ROOT/scripts/attachment_lifecycle_v5_producer.py" produce \
@@ -1778,9 +1825,40 @@ PYC
     --observations "$cdir/observations.json" >> "$cdir/adapter.log" 2>&1 || return 30
 }
 execute_case() {
+  # The case itself writes raw logs before the adapter runs. Refuse to start
+  # if an earlier invocation left any files in its case directory.
+  local case_action
+  case_action="$(python3 - "$RUN_DIR" "$1" "$EVID/${1#*/}/attempt-$V5_TASK_ATTEMPT" <<'PYC'
+import json, os, sys
+run_dir, cid, path = sys.argv[1:]
+with open(os.path.join(run_dir, "state.json")) as stream:
+    state = json.load(stream)
+if cid in (state.get("case_manifest_digests") or {}):
+    print("verify-sealed")
+    raise SystemExit(0)
+receipt = os.path.join(path, "measured-receipts.json")
+if os.path.isdir(path) and not os.path.islink(path) and os.path.isfile(receipt) and not os.path.islink(receipt):
+    print("seal-only")
+    raise SystemExit(0)
+if os.path.lexists(path) and (os.path.islink(path) or not os.path.isdir(path) or os.listdir(path)):
+    print("prior case artifacts require attempt isolation", file=sys.stderr)
+    raise SystemExit(30)
+print("execute")
+PYC
+  )" || return 30
+  if [ "$case_action" = "verify-sealed" ]; then
+    # The runner checks the complete manifest, bound attempt and current
+    # candidate under its state lock. Never rerun an already sealed case.
+    python3 "$RUNNER" verify-case --run-dir "$RUN_DIR" --task-id "${1%%/*}" --case-id "$1"
+    return $?
+  fi
+  if [ "$case_action" = "seal-only" ]; then
+    bash "$SCRIPT_DIR/attachment_lifecycle_v5_seal.sh" "$ROOT" "$1" "$EVID/${1#*/}/attempt-$V5_TASK_ATTEMPT" "$V5_GATE_COMMAND"
+    return $?
+  fi
   run_case "$1" || return $?
-  produce_measured "$1" "$EVID/${1#*/}" || return $?
-  bash "$SCRIPT_DIR/attachment_lifecycle_v5_seal.sh" "$ROOT" "$1" "$EVID/${1#*/}" "$V5_GATE_COMMAND"
+  produce_measured "$1" "$EVID/${1#*/}/attempt-$V5_TASK_ATTEMPT" || return $?
+  bash "$SCRIPT_DIR/attachment_lifecycle_v5_seal.sh" "$ROOT" "$1" "$EVID/${1#*/}/attempt-$V5_TASK_ATTEMPT" "$V5_GATE_COMMAND"
 }
 RC=0
 if [ -n "$CASE" ]; then

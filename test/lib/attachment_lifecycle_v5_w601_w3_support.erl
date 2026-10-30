@@ -41,8 +41,7 @@
     e/2,
     e/3,
     lenient_q/3,
-    cleanup_attachment/2,
-    cleanup_tombstone/2,
+    purge_attachment_metadata/2,
     cleanup_enterprise_asset/2,
     cleanup_enterprise_queue/2,
     await_upload_expiry/2,
@@ -272,23 +271,34 @@ temp_parent() ->
         {error, einval} -> "/tmp"
     end.
 
+%% 生产 attachment_storage:registry/0 只认 version=1 信封（缺 version 的
+%% 值一律替换为空 registry → validate_registry 报 empty_roots，见
+%% src/lib/attachment_storage/attachment_storage.erl registry/0），故按
+%% imboy_env 的构造形状包装（对照 w601_w4_context:registry/2 与
+%% w403_storage_tests 的 registry 信封先例）。三套件经
+%% attachment_storage:resolve/identity/frozen_location 生产访问器消费，
+%% 无裸读 roots 的路径。
 registry(Base, Garage) ->
-    #{version => 1, roots => #{
-        <<"w601-w3-disk-root">> => #{
-            driver => <<"disk">>,
-            namespace => ?NS_DISK,
-            aliases => [],
-            endpoint => list_to_binary("file://" ++ Base),
-            container => ?CONTAINER_DISK
+    #{
+        version => 1,
+        roots => #{
+            <<"w601-w3-disk-root">> => #{
+                driver => <<"disk">>,
+                namespace => ?NS_DISK,
+                aliases => [],
+                endpoint => list_to_binary("file://" ++ Base),
+                container => ?CONTAINER_DISK
+            },
+            <<"w601-w3-garage-root">> => #{
+                driver => <<"garage">>,
+                namespace => ?NS_GARAGE,
+                aliases => [],
+                endpoint => maps:get(endpoint, Garage),
+                container => maps:get(bucket, Garage)
+            }
         },
-        <<"w601-w3-garage-root">> => #{
-            driver => <<"garage">>,
-            namespace => ?NS_GARAGE,
-            aliases => [],
-            endpoint => maps:get(endpoint, Garage),
-            container => maps:get(bucket, Garage)
-        }
-    }}.
+        upload_namespaces => #{}
+    }.
 
 %% ------------------------------------------------------------ leaf / emit
 
@@ -366,6 +376,10 @@ probe_io(Key, Quad) ->
     ProbeKey = <<Key/binary, "/.w601w3-probe">>,
     Body = <<"w601w3-probe:", Key/binary, ":", (hex64(crypto:strong_rand_bytes(16)))/binary>>,
     Digest = hex64(crypto:hash(sha256, Body)),
+    %% 两驱动 put/4 均返回 ok（disk:atomic_write/file 写链、garage:put_snapshot）。
+    ok = Mod:put(Ns, Container, ProbeKey, Body),
+    {ok, Body} = Mod:read(Ns, Container, ProbeKey),
+    true = hex64(crypto:hash(sha256, Body)) =:= Digest,
     %% 同一叶可多次 probe_io（hold-all-entrypoints 主/对照资产、enterprise-bind
     %% 双资产叶）：清理 fun 以列表累积，probe_cleanup_after 全部执行——单键
     %% put 会覆盖前者，使主资产探针对象永不删除。
@@ -417,53 +431,74 @@ q(Conn, Sql, Params) ->
         {error, Reason} -> erlang:error({w601_w3_sql_failed, Reason, Sql})
     end.
 
-%% 受限容错写：仅容忍 FK RESTRICT（23503，治理行引用的不可销毁残留），
-%% 其余错误照抛——P2 幂等：重跑同库时不可变治理行挡住的前置 DELETE 跳过。
+%% 受限容错写：仅容忍两类不可销毁残留跳过——
+%% 23503 FK RESTRICT（治理行引用的残留行钉住前置 DELETE）、
+%% 23514 CHECK 触发（迁移 168 不可变守卫挡住 WAR 行的前置清理），
+%% 其余错误照抛——P2 幂等：重跑同库时治理行挡住的前置 DELETE 跳过。
 lenient_q(Conn, Sql, Params) ->
     case epgsql:equery(Conn, Sql, Params) of
         {ok, _} -> ok;
         {ok, _, _} -> ok;
         {error, #error{code = <<"23503">>}} -> ok;
+        {error, #error{code = <<"23514">>}} -> ok;
         {error, Reason} -> erlang:error({w601_w3_sql_failed, Reason, Sql})
     end.
 
-%% A held/live metadata row cannot be physically deleted. Keep the guard and
-%% prove its rejected DELETE left the row unchanged; the owned DB is dropped
-%% by the controller. Other SQL failures remain failures.
-%% 受保护元数据不能物理删除；验证拒删后行完整保留，最终由控制器销毁自有库。
-cleanup_attachment(Conn, Key) ->
-    Select = "SELECT * FROM attachment WHERE path=$1",
-    {ok, _, _} = Before = e(Conn, Select, [Key]),
-    case e(Conn, "DELETE FROM attachment WHERE path=$1", [Key]) of
-        {ok, _} -> ok;
-        {error, #error{code = <<"23510">>, message = Message}} when
-            Message =:= <<"v5 metadata delete requires committed delete_intent">>;
-            Message =:= <<"v5 metadata delete requires queue tombstone">> ->
-            ?assertEqual(Before, e(Conn, Select, [Key]));
-        {error, #error{code = <<"23503">>}} ->
-            ?assertEqual(Before, e(Conn, Select, [Key]));
-        {error, #error{code = <<"23001">>, extra = Extra}} ->
-            ?assertEqual(<<"fk_ear_attachment">>, proplists:get_value(constraint_name, Extra)),
-            ?assertEqual(Before, e(Conn, Select, [Key]));
-        Other -> error({w601_w3_attachment_cleanup_failed, Other})
+%% 幂等清理 attachment 元数据行：fn_v5_metadata_delete_guard（迁移 190）
+%% 要求 DELETE 前 lifecycle_state='delete_intent' 且 tombstone 在位，故在
+%% 单事务内按守卫协议构造：intent 转移 → tombstone 补齐 → 删除 →（提交后）
+%% tombstone 收敛为 done（迁移 179:1026 "v5 job rows are permanent
+%% tombstones (no DELETE)"——队列行是永久墓碑，只能按 job guard 的合法
+%% UPDATE 路径收敛，同 w601_w4_queueproto:settle_active 先例）。DELETE 被
+%% 治理行 FK 钉住（23503）时整体回滚、行保持原状供 seed 的 INSERT ON
+%% CONFLICT 复用；其余失败回滚后照抛。
+purge_attachment_metadata(Conn, Key) ->
+    q(Conn, "BEGIN", []),
+    [Intent, Tombstone, Deleted] =
+        [epgsql:equery(Conn, Sql, [Key]) || Sql <- purge_sqls()],
+    case {Intent, Tombstone, Deleted} of
+        {{ok, _}, {ok, _}, {ok, _}} ->
+            q(
+                Conn,
+                "UPDATE attachment_object_deletion SET job_state='done',"
+                " completed_at=now(), lease_token=NULL, lease_until=NULL"
+                " WHERE path=$1 AND job_state IN ('ready','retry_wait','leased')",
+                [Key]
+            ),
+            q(Conn, "COMMIT", []),
+            ok;
+        {_, _, {error, #error{code = <<"23503">>}}} ->
+            %% 治理行 FK 钉住的不可销毁残留：回滚保持原状，复用既有行
+            q(Conn, "ROLLBACK", []),
+            ok;
+        {_, _, _} ->
+            q(Conn, "ROLLBACK", []),
+            Failed = [R || {error, _} = R <- [Intent, Tombstone, Deleted]],
+            erlang:error({w601_w3_sql_failed, Failed, purge_sqls()})
     end.
 
-cleanup_tombstone(Conn, Key) ->
-    cleanup_guarded(Conn, <<"attachment_object_deletion">>, <<"path">>, Key).
+purge_sqls() ->
+    [
+        "UPDATE attachment SET lifecycle_state='delete_intent' WHERE path=$1",
+        "INSERT INTO attachment_object_deletion(path,bucket) VALUES ($1,'b')"
+        " ON CONFLICT (path) DO NOTHING",
+        "DELETE FROM attachment WHERE path=$1"
+    ].
+
 cleanup_enterprise_asset(Conn, Id) ->
     cleanup_guarded(Conn, <<"enterprise_asset">>, <<"id">>, Id).
 cleanup_enterprise_queue(Conn, Id) ->
     cleanup_guarded(Conn, <<"enterprise_asset_delete_queue">>, <<"asset_id">>, Id).
 
-%% Permanent queue tombstones and protected enterprise rows belong to the
-%% owned database lifetime. Assert rejection and unchanged bytes, never bypass.
-%% 永久墓碑及企业保护行归自有库生命周期；校验拒删与行不变，不旁路守卫。
+%% Protected enterprise rows belong to the owned database lifetime.
+%% 企业保护行归自有数据库生命周期；校验拒删与行不变，不旁路守卫。
 cleanup_guarded(Conn, Table, Column, Value) ->
-    Select = <<"SELECT * FROM ",Table/binary," WHERE ",Column/binary,"=$1">>,
+    Select = <<"SELECT * FROM ", Table/binary, " WHERE ", Column/binary, "=$1">>,
     {ok, _, _} = Before = e(Conn, Select, [Value]),
-    Delete = <<"DELETE FROM ",Table/binary," WHERE ",Column/binary,"=$1">>,
+    Delete = <<"DELETE FROM ", Table/binary, " WHERE ", Column/binary, "=$1">>,
     case e(Conn, Delete, [Value]) of
-        {ok, _} -> ok;
+        {ok, _} ->
+            ok;
         {error, Error = #error{}} ->
             case cleanup_guard_matches(Table, Error) of
                 true -> ?assertEqual(Before, e(Conn, Select, [Value]));
@@ -471,13 +506,14 @@ cleanup_guarded(Conn, Table, Column, Value) ->
             end
     end.
 
-cleanup_guard_matches(Table, #error{code = <<"23510">>,
-    message = <<"v5 job rows are permanent tombstones (no DELETE)">>}) when
-    Table =:= <<"attachment_object_deletion">>;
-    Table =:= <<"enterprise_asset_delete_queue">> -> true;
+cleanup_guard_matches(<<"enterprise_asset_delete_queue">>, #error{
+    code = <<"23510">>, message = <<"v5 job rows are permanent tombstones (no DELETE)">>
+}) ->
+    true;
 cleanup_guard_matches(<<"enterprise_asset">>, #error{code = <<"23514">>, extra = Extra}) ->
     proplists:get_value(constraint_name, Extra) =:= <<"trg_enterprise_asset_purge_guard">>;
-cleanup_guard_matches(_, _) -> false.
+cleanup_guard_matches(_, _) ->
+    false.
 
 e(Conn, Sql) -> e(Conn, Sql, []).
 
@@ -577,8 +613,7 @@ seed_confirmed_live(Conn, Key, Id, GfIdOrNull, Quad, Scope, ScopeRef, Cipher) ->
     Container = maps:get(<<"storage_container">>, Quad),
     Digest = maps:get(<<"storage_locator_sha256">>, Quad),
     q(Conn, "DELETE FROM attach_pending WHERE object_key=$1", [Key]),
-    lenient_q(Conn, "DELETE FROM attachment WHERE path=$1", [Key]),
-    q(Conn, "DELETE FROM attachment_object_deletion WHERE path=$1", [Key]),
+    purge_attachment_metadata(Conn, Key),
     q(
         Conn,
         "SELECT * FROM fn_v5_register_pending($1,'b',$2,101,"
@@ -643,8 +678,7 @@ seed_plain_row(Conn, Key, Id, Quad, Scope, ScopeRef, GcVerified, Hash) ->
     Container = maps:get(<<"storage_container">>, Quad),
     Digest = maps:get(<<"storage_locator_sha256">>, Quad),
     q(Conn, "DELETE FROM attach_pending WHERE object_key=$1", [Key]),
-    lenient_q(Conn, "DELETE FROM attachment WHERE path=$1", [Key]),
-    q(Conn, "DELETE FROM attachment_object_deletion WHERE path=$1", [Key]),
+    purge_attachment_metadata(Conn, Key),
     q(
         Conn,
         "INSERT INTO attachment(id,path,scope,scope_ref,creator_user_id,"
@@ -683,10 +717,17 @@ seed_eb_row(Conn, Key, Id, Quad) ->
     ),
     ok.
 
-%% 同库残留清理（双跑幂等）：intent 前清本 key 的 tombstone 与企业队列行。
-%% attach_pending/attachment 的前置 DELETE 在各 seed 助手内完成。
+%% 同库残留清理（双跑幂等）：intent 前收敛本 key 的 tombstone（迁移 179
+%% 永久墓碑不可 DELETE，走 job guard 合法 UPDATE 到 done）与企业队列行。
+%% attach_pending/attachment 的前置清理在各 seed 助手内完成。
 clear_intents(Conn, Key, Quad) ->
-    q(Conn, "DELETE FROM attachment_object_deletion WHERE path=$1", [Key]),
+    q(
+        Conn,
+        "UPDATE attachment_object_deletion SET job_state='done',"
+        " completed_at=now(), lease_token=NULL, lease_until=NULL"
+        " WHERE path=$1 AND job_state IN ('ready','retry_wait','leased')",
+        [Key]
+    ),
     case maps:get(<<"storage_namespace">>, Quad, undefined) of
         undefined ->
             ok;

@@ -13,6 +13,10 @@ ebin/
 *.d
 # 散落本机产物（src/test/仓根均出现过）：同 .beam 理由全局排除
 *.beam
+# The builder must compile its own NIF for the target OS and architecture.
+c_src/attachment_disk_lock_nif.o
+c_src/env.mk
+priv/attachment_disk_lock_nif.so
 recompile.log
 # 本机 Erlang LS 配置（含宿主路径），容器构建不消费
 erlang_ls.config

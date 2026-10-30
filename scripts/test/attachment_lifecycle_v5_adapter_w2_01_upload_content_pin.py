@@ -97,26 +97,15 @@ def _s3sign_expected(repo_root):
 
 
 def _provenance_summary(gaps, case_dir, leaves):
-    """Collect provenance failures and return (entrypoint, scenario) proofs."""
-    missing = []
-    proofs = {}
-    for leaf in leaves:
-        collector = C.Gaps()
-        proof = C.find_entrypoint_provenance(
-            case_dir, leaf["entrypoint"], leaf["ordering_or_fault"], collector,
-            "upload-content-pin")
-        key = (leaf["entrypoint"], leaf["ordering_or_fault"])
-        if proof is None:
-            missing.append("%s/%s" % key)
-        else:
-            proofs[key] = proof
-    if missing:
-        gaps.add("entrypoint_provenance.route/method/handler/request_id absent "
-                 "for %d/%d leaves (%s); CASE_DIR probe jsonl lines carry only "
-                 "name/entrypoint/scenario/ac/pass and no log line carries an "
-                 "ENTRYPOINT_PROVENANCE record"
-                 % (len(missing), len(leaves), ", ".join(missing[:6])))
-    return proofs
+    # The current case executor measures SQL probes, not actual HTTP
+    # requests. Metadata in a sidecar or log cannot establish the request
+    # happened or bind it to the measured pin operation. Require a real
+    # per-leaf HTTP fixture and an independently bound observation before
+    # this required upload-surface case is eligible for sealing.
+    gaps.add("upload-content-pin lacks authenticated per-leaf HTTP "
+             "observations: SQL probes and metadata sidecars do not prove "
+             "the required request entrypoint")
+    return {}
 
 
 def build():

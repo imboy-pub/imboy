@@ -2,12 +2,81 @@
 """Hold a cooperative per-run slot lock for a gate and its inheriting children."""
 import argparse
 import fcntl
+import json
 import os
 from pathlib import Path
 import re
 import stat
 import subprocess
 import sys
+
+
+class ResourceUnavailable(Exception):
+    """The supervisor cannot establish a resource identity for this run."""
+
+
+def acquire_resource(container_id, lock_root=None):
+    """Serialize cooperating runs that name the same physical PG container.
+
+    This lock is not proof of the TCP peer, authorization, or child lifetime.
+    The database guard must remain closed until those checks are implemented.
+    """
+    if not isinstance(container_id, str) or not re.fullmatch(r"[0-9a-f]{64}", container_id):
+        raise ValueError("invalid resource identity")
+    parent = Path("/tmp").resolve() if lock_root is None else Path(lock_root)
+    if not parent.is_absolute() or parent.resolve() != parent or not parent.is_dir():
+        raise ValueError("invalid resource lock parent")
+    lock_dir = parent / ("imboy-v5-pg-locks-%d" % os.getuid())
+    lock_dir.mkdir(mode=0o700, exist_ok=True)
+    info = lock_dir.lstat()
+    if not stat.S_ISDIR(info.st_mode) or info.st_uid != os.getuid() or info.st_mode & 0o077:
+        raise ValueError("resource lock directory not private")
+    directory = os.open(lock_dir, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+    try:
+        opened_dir = os.fstat(directory)
+        if (opened_dir.st_dev, opened_dir.st_ino) != (info.st_dev, info.st_ino):
+            raise ValueError("resource lock directory changed")
+        name = container_id + ".lock"
+        fd = os.open(name, os.O_RDWR | os.O_CREAT | os.O_NOFOLLOW, 0o600, dir_fd=directory)
+        try:
+            held = os.fstat(fd)
+            found = os.stat(name, dir_fd=directory, follow_symlinks=False)
+            if (not stat.S_ISREG(held.st_mode) or held.st_uid != os.getuid()
+                    or held.st_nlink != 1 or held.st_mode & 0o077
+                    or (held.st_dev, held.st_ino) != (found.st_dev, found.st_ino)):
+                raise ValueError("resource lock identity invalid")
+            fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            found = os.stat(name, dir_fd=directory, follow_symlinks=False)
+            current_dir = lock_dir.lstat()
+            if ((held.st_dev, held.st_ino) != (found.st_dev, found.st_ino)
+                    or (opened_dir.st_dev, opened_dir.st_ino) != (current_dir.st_dev, current_dir.st_ino)):
+                raise ValueError("resource lock identity changed while acquiring")
+            return fd
+        except BaseException:
+            os.close(fd)
+            raise
+    finally:
+        os.close(directory)
+
+
+def receipt_container_id(run_dir):
+    """Read the existing receipt without following a final-component symlink."""
+    path = Path(run_dir) / "resources" / "postgres.json"
+    try:
+        fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW)
+    except FileNotFoundError as exc:
+        raise ResourceUnavailable("PostgreSQL resource receipt missing") from exc
+    with os.fdopen(fd, "rb") as stream:
+        if not stat.S_ISREG(os.fstat(stream.fileno()).st_mode):
+            raise ValueError("resource receipt is not a regular file")
+        raw = stream.read(65537)
+    if len(raw) > 65536:
+        raise ValueError("resource receipt too large")
+    receipt = json.loads(raw)
+    container_id = receipt.get("container_id") if isinstance(receipt, dict) else None
+    if not isinstance(container_id, str) or not re.fullmatch(r"[0-9a-f]{64}", container_id):
+        raise ValueError("resource receipt container identity invalid")
+    return container_id
 
 
 def acquire(run_dir, slot):
@@ -92,20 +161,38 @@ def main():
             return 20
     if not command:
         return 2
+    fd = resource_fd = None
     try:
         fd = acquire(args.run_dir, args.slot)
+        container_id = receipt_container_id(args.run_dir)
+        resource_fd = acquire_resource(container_id)
+    except ResourceUnavailable as exc:
+        if fd is not None:
+            os.close(fd)
+        print("BLOCKED_EXTERNAL: %s" % exc, file=sys.stderr)
+        return 75
     except BlockingIOError:
+        if fd is not None:
+            os.close(fd)
         print("BLOCKED_EXTERNAL: slot already in use", file=sys.stderr)
         return 75
     except (OSError, ValueError) as exc:
+        if fd is not None:
+            os.close(fd)
         print("CONTRACT_CONFLICT: %s" % exc, file=sys.stderr)
         return 20
     try:
         env = dict(os.environ, V5_SLOT_LOCK_FD=str(fd))
-        return subprocess.call(command, env=env, pass_fds=(fd,))
+        descriptors = [fd]
+        if resource_fd is not None:
+            env["V5_RESOURCE_LOCK_FD"] = str(resource_fd)
+            descriptors.append(resource_fd)
+        return subprocess.call(command, env=env, pass_fds=tuple(descriptors))
     finally:
         # Closing rather than LOCK_UN preserves the lock in inheriting children.
         os.close(fd)
+        if resource_fd is not None:
+            os.close(resource_fd)
 
 
 if __name__ == "__main__":

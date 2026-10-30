@@ -15,12 +15,13 @@ receipts, that:
 Missing sealed receipts are a hard evidence gap: a structural plan check never
 stands in for the runtime AC01..AC07 receipts.
 """
-import json
 import os
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import attachment_lifecycle_v5_adapter_w6_support as S  # noqa: E402
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+import attachment_lifecycle_v5_runner as runner  # noqa: E402
 
 CASE_ID = "W6-01/all-ac01-ac07"
 NAME = "w6_01_all_ac01_ac07"
@@ -79,24 +80,23 @@ def build():
                     "final_ac_oracle_refs (e.g. %r)"
                     % (len(extra_pairs), sorted(extra_pairs)[:3]))
 
-    sealed_dir = os.path.join(run_dir, "evidence", "W6-01",
-                              SOURCE_CASE.split("/", 1)[1])
+    state = ctx["state"]
     sealed = {}
-    if os.path.isdir(sealed_dir):
-        for name in sorted(os.listdir(sealed_dir)):
-            if not (name.startswith("leaf-") and name.endswith(".json")):
-                continue
-            try:
-                with open(os.path.join(sealed_dir, name), "r",
-                          encoding="utf-8") as handle:
-                    sealed[name] = json.load(handle)
-            except (OSError, ValueError) as exc:
-                gaps.append("unreadable sealed receipt %s (%s)" % (name, exc))
+    try:
+        sealed_dir = runner._bound_case_dir(run_dir, state, "W6-01", SOURCE_CASE)
+        digest = state.get("case_manifest_digests", {}).get(SOURCE_CASE)
+        sealed = dict(runner._read_case_rows(run_dir, sealed_dir, digest))
+        bound_attempt = state.get("case_manifest_attempts", {}).get(SOURCE_CASE)
+    except (OSError, ValueError, TypeError, AttributeError) as exc:
+        sealed_dir = SOURCE_CASE
+        gaps.append("unbound or corrupt source case %s (%s)" % (SOURCE_CASE, exc))
     if not sealed:
         gaps.append("no sealed measured receipts under %s; the runtime "
                     "AC01..AC07 union is unmeasured" % sealed_dir)
     else:
         by_id = {S.identity(row): row for row in sealed.values()}
+        if len(by_id) != len(sealed):
+            gaps.append("duplicate sealed leaf identities")
         missing = [item for item in identities if item not in by_id]
         extra = [key for key in by_id if key not in set(identities)]
         if missing or extra:
@@ -104,6 +104,17 @@ def build():
                         % (len(missing), len(extra)))
         bad = []
         for name, row in sealed.items():
+            candidate = state.get("verification_candidate") or {}
+            if (row.get("candidate_heads") != candidate.get("heads")
+                    or row.get("owned_tree_digest") != candidate.get("owned_tree_digest")
+                    or row.get("plan_manifest_sha256") != candidate.get("plan_manifest_sha256")
+                    or row.get("migration_digest") != candidate.get("migration_digest")):
+                bad.append("%s candidate binding mismatch" % name)
+                continue
+            if (bound_attempt is not None and (type(row.get("task_attempt")) is not int
+                                               or row.get("task_attempt") != bound_attempt)):
+                bad.append("%s task attempt binding mismatch" % name)
+                continue
             if row.get("oracle_result") != "PASS":
                 bad.append("%s oracle_result=%r"
                            % (name, row.get("oracle_result")))

@@ -27,28 +27,51 @@ set_garage_env() ->
 %% 逻辑边界不增加查找、重试或异常转换，精确传递原始 receipt 和冻结身份。
 recheck_content_pin_delegates_unchanged_test() ->
     Key = <<"u9/file/frozen.txt">>,
-    Receipt = #{<<"version">> => 1, <<"sha256">> => binary:copy(<<"a">>, 64),
-        <<"size_bytes">> => <<"7">>, <<"mime">> => <<"text/plain">>},
-    Identity = #{driver => disk, namespace => <<"frozen-ns">>, container => <<"bucket">>,
-        key => Key, locator_digest => binary:copy(<<"b">>, 64)},
+    Receipt = #{
+        <<"version">> => 1,
+        <<"sha256">> => binary:copy(<<"a">>, 64),
+        <<"size_bytes">> => <<"7">>,
+        <<"mime">> => <<"text/plain">>
+    },
+    Identity = #{
+        driver => disk,
+        namespace => <<"frozen-ns">>,
+        container => <<"bucket">>,
+        key => Key,
+        locator_digest => binary:copy(<<"b">>, 64)
+    },
     ok = meck:new(attach_pending_repo, [no_link]),
     try
-        lists:foreach(fun(Result) ->
-            meck:expect(attach_pending_repo, recheck_content_pin, fun(K, R, I) ->
-                ?assertEqual({Key, Receipt, Identity}, {K, R, I}),
-                Result
-            end),
-            Before = meck:num_calls(attach_pending_repo, recheck_content_pin, '_'),
-            ?assertEqual(Result, attach_logic:recheck_content_pin(Key, Receipt, Identity)),
-            ?assertEqual(Before + 1, meck:num_calls(attach_pending_repo, recheck_content_pin, '_'))
-        end, [ok, {error, content_mismatch}, {error, session_not_renewable},
-            {error, tombstone}, {error, location_changed}, {error, not_found},
-            {error, {database, closed}}]),
+        lists:foreach(
+            fun(Result) ->
+                meck:expect(attach_pending_repo, recheck_content_pin, fun(K, R, I) ->
+                    ?assertEqual({Key, Receipt, Identity}, {K, R, I}),
+                    Result
+                end),
+                Before = meck:num_calls(attach_pending_repo, recheck_content_pin, '_'),
+                ?assertEqual(Result, attach_logic:recheck_content_pin(Key, Receipt, Identity)),
+                ?assertEqual(
+                    Before + 1, meck:num_calls(attach_pending_repo, recheck_content_pin, '_')
+                )
+            end,
+            [
+                ok,
+                {error, content_mismatch},
+                {error, session_not_renewable},
+                {error, tombstone},
+                {error, location_changed},
+                {error, not_found},
+                {error, {database, closed}}
+            ]
+        ),
         meck:expect(attach_pending_repo, recheck_content_pin, fun(_, _, _) ->
             erlang:error(recheck_failed)
         end),
-        ?assertException(error, recheck_failed,
-            attach_logic:recheck_content_pin(Key, Receipt, Identity))
+        ?assertException(
+            error,
+            recheck_failed,
+            attach_logic:recheck_content_pin(Key, Receipt, Identity)
+        )
     after
         meck:unload(attach_pending_repo)
     end.
@@ -269,25 +292,34 @@ presign_paid_channel_subscription_without_purchase_forbidden_test_() ->
 %% moment 上传设计上放行（scope_ref 发帖时未知，可见性在读时按帖子 ACL 卡）
 presign_moment_ok_test_() ->
     ?WITH_MECKS(
-        [{attach_pending_repo, [
-            {register_v5, 6, fun(Key, Bucket, Scope, Uid, ClientId, Registration) ->
-                ?assertMatch(<<"u1/moment/", _/binary>>, Key),
-                ?assertEqual(<<"imboy">>, Bucket),
-                ?assertEqual(<<"moment">>, Scope),
-                ?assertEqual(1, Uid),
-                ?assertEqual(undefined, ClientId),
-                ?assertEqual(#{<<"filename">> => <<"a.png">>,
-                    <<"mime">> => <<"image/png">>, <<"scope">> => <<"moment">>,
-                    <<"scope_ref">> => null}, Registration),
-                {ok, #{session_state => <<"registered">>, client_upload_id => undefined}}
-            end}
-        ]}],
+        [
+            {attach_pending_repo, [
+                {register_v5, 6, fun(Key, Bucket, Scope, Uid, ClientId, Registration) ->
+                    ?assertMatch(<<"u1/moment/", _/binary>>, Key),
+                    ?assertEqual(<<"imboy">>, Bucket),
+                    ?assertEqual(<<"moment">>, Scope),
+                    ?assertEqual(1, Uid),
+                    ?assertEqual(undefined, ClientId),
+                    ?assertEqual(
+                        #{
+                            <<"filename">> => <<"a.png">>,
+                            <<"mime">> => <<"image/png">>,
+                            <<"scope">> => <<"moment">>,
+                            <<"scope_ref">> => null
+                        },
+                        Registration
+                    ),
+                    {ok, #{session_state => <<"registered">>, client_upload_id => undefined}}
+                end}
+            ]}
+        ],
         fun() ->
             Prior = application:get_env(imboy, garage),
             try
                 set_garage_env(),
                 {ok, Data} = attach_logic:presign(
-                    1, <<"a.png">>, <<"image/png">>, <<"moment">>, undefined),
+                    1, <<"a.png">>, <<"image/png">>, <<"moment">>, undefined
+                ),
                 ?assertMatch(<<"u1/moment/", _/binary>>, maps:get(<<"object_key">>, Data)),
                 ?assertEqual(1, meck:num_calls(attach_pending_repo, register_v5, 6))
             after
@@ -370,6 +402,9 @@ confirm_group_requires_anchor_message_id_test_() ->
                     {ok, #{size => 1, content_type => <<"image/png">>}}
                 end}
             ]},
+            {attach_pending_repo, [
+                {'status_lookup', 1, fun(_K) -> {error, not_found} end}
+            ]},
             {attachment_ds, [{'save', 4, fun(_, _, _, _) -> ok end}]}
         ],
         fun() ->
@@ -395,10 +430,17 @@ confirm_group_persists_anchor_message_id_test_() ->
             {workspace_guard, [
                 {'abort_on_error', 1, fun(ok) -> ok end}
             ]},
-            {elib_pg, [{'with_tx', 1, fun(F) -> F(fake_conn) end}]},
+            {elib_pg, [
+                {'with_tx', 1, fun(F) -> F(fake_conn) end},
+                {'with_deadlock_retry_tx', 1, fun(F) -> F(fake_conn) end}
+            ]},
             {attachment_ds, [
                 {'ensure_upload_scope_tx', 3, fun(fake_conn, {group, <<"66">>}, 1) -> ok end},
+                {'ensure_upload_scope_tx_retryable', 3, fun(fake_conn, {group, <<"66">>}, 1) ->
+                    ok
+                end},
                 {'save_confirmed_tx', 4, fun(_, _, _, _) -> ok end},
+                {'save_confirmed_tx_retryable', 4, fun(_, _, _, _) -> ok end},
                 {'pending_remove', 1, fun(_) -> ok end},
                 {'find_by_path', 1, fun(_) -> {error, not_found} end}
             ]},
@@ -436,7 +478,10 @@ confirm_rejects_missing_object_test_() ->
     ?WITH_MECKS(
         [
             {elib_oss, [{'head_object', 2, fun(_B, _K) -> {error, not_found} end}]},
-            {elib_pg, [{'with_tx', 1, fun(F) -> F(fake_conn) end}]},
+            {elib_pg, [
+                {'with_tx', 1, fun(F) -> F(fake_conn) end},
+                {'with_deadlock_retry_tx', 1, fun(F) -> F(fake_conn) end}
+            ]},
             {attach_pending_repo, [
                 {'status_lookup', 1, fun(_K) -> {error, not_found} end}
             ]},
@@ -469,19 +514,26 @@ confirm_rejects_oversize_object_test_() ->
             ]},
             {elib_pg, [
                 {'with_tx', 1, fun(F) -> F(fake_conn) end},
+                {'with_deadlock_retry_tx', 1, fun(F) -> F(fake_conn) end},
                 {'query', 3, fun
-                    (fake_conn, [<<"SAVEPOINT ">>, <<"v5_pending_intent_", _/binary>>], []) -> {ok, []};
-                    (fake_conn, [<<"RELEASE SAVEPOINT ">>, <<"v5_pending_intent_", _/binary>>], []) -> {ok, []};
-                    (fake_conn,
-                    <<"SELECT fn_v5_intent_pending_delete($1, $2, $3)">>,
-                    [
-                        <<"u789/file/20260620/file_x/big.png">>,
-                        <<"confirm reject file_too_large">>,
-                        <<"reject">>
-                    ]
-                ) ->
-                    {ok, []}
+                    (fake_conn, [<<"SAVEPOINT ">>, <<"v5_pending_intent_", _/binary>>], []) ->
+                        {ok, []};
+                    (fake_conn, [<<"RELEASE SAVEPOINT ">>, <<"v5_pending_intent_", _/binary>>], []) ->
+                        {ok, []};
+                    (
+                        fake_conn,
+                        <<"SELECT fn_v5_intent_pending_delete($1, $2, $3)">>,
+                        [
+                            <<"u789/file/20260620/file_x/big.png">>,
+                            <<"confirm reject file_too_large">>,
+                            <<"reject">>
+                        ]
+                    ) ->
+                        {ok, []}
                 end}
+            ]},
+            {attach_pending_repo, [
+                {'status_lookup', 1, fun(_K) -> {error, not_found} end}
             ]},
             {attachment_ds, [{'save', 4, fun(_, _, _, _) -> ok end}]}
         ],
@@ -509,19 +561,26 @@ confirm_rejects_invalid_type_object_test_() ->
             ]},
             {elib_pg, [
                 {'with_tx', 1, fun(F) -> F(fake_conn) end},
+                {'with_deadlock_retry_tx', 1, fun(F) -> F(fake_conn) end},
                 {'query', 3, fun
-                    (fake_conn, [<<"SAVEPOINT ">>, <<"v5_pending_intent_", _/binary>>], []) -> {ok, []};
-                    (fake_conn, [<<"RELEASE SAVEPOINT ">>, <<"v5_pending_intent_", _/binary>>], []) -> {ok, []};
-                    (fake_conn,
-                    <<"SELECT fn_v5_intent_pending_delete($1, $2, $3)">>,
-                    [
-                        <<"u789/file/20260620/file_x/evil.png">>,
-                        <<"confirm reject invalid_file_type">>,
-                        <<"reject">>
-                    ]
-                ) ->
-                    {ok, []}
+                    (fake_conn, [<<"SAVEPOINT ">>, <<"v5_pending_intent_", _/binary>>], []) ->
+                        {ok, []};
+                    (fake_conn, [<<"RELEASE SAVEPOINT ">>, <<"v5_pending_intent_", _/binary>>], []) ->
+                        {ok, []};
+                    (
+                        fake_conn,
+                        <<"SELECT fn_v5_intent_pending_delete($1, $2, $3)">>,
+                        [
+                            <<"u789/file/20260620/file_x/evil.png">>,
+                            <<"confirm reject invalid_file_type">>,
+                            <<"reject">>
+                        ]
+                    ) ->
+                        {ok, []}
                 end}
+            ]},
+            {attach_pending_repo, [
+                {'status_lookup', 1, fun(_K) -> {error, not_found} end}
             ]},
             {attachment_ds, [{'save', 4, fun(_, _, _, _) -> ok end}]}
         ],
@@ -539,12 +598,20 @@ confirm_rejects_invalid_type_object_test_() ->
     ).
 
 assert_pending_intent_queries(Key) ->
-    Calls = [Args || {_, {elib_pg, query, Args}, _} <- meck:history(elib_pg),
-                     length(Args) =:= 3],
-    [[fake_conn, [<<"SAVEPOINT ">>, Savepoint], []],
-     [fake_conn, <<"SELECT fn_v5_intent_pending_delete($1, $2, $3)">>,
-        [Key, Reason, <<"reject">>]],
-     [fake_conn, [<<"RELEASE SAVEPOINT ">>, Savepoint], []]] = Calls,
+    Calls = [
+        Args
+     || {_, {elib_pg, query, Args}, _} <- meck:history(elib_pg),
+        length(Args) =:= 3
+    ],
+    [
+        [fake_conn, [<<"SAVEPOINT ">>, Savepoint], []],
+        [
+            fake_conn,
+            <<"SELECT fn_v5_intent_pending_delete($1, $2, $3)">>,
+            [Key, Reason, <<"reject">>]
+        ],
+        [fake_conn, [<<"RELEASE SAVEPOINT ">>, Savepoint], []]
+    ] = Calls,
     ?assertMatch(<<"v5_pending_intent_", _/binary>>, Savepoint),
     ?assertMatch(<<"confirm reject ", _/binary>>, Reason),
     ?assertEqual(3, length(Calls)).
@@ -558,7 +625,10 @@ confirm_persists_real_metadata_and_scope_test_() ->
                     {ok, #{size => 2048, content_type => <<"image/png">>}}
                 end}
             ]},
-            {elib_pg, [{'with_tx', 1, fun(F) -> F(fake_conn) end}]},
+            {elib_pg, [
+                {'with_tx', 1, fun(F) -> F(fake_conn) end},
+                {'with_deadlock_retry_tx', 1, fun(F) -> F(fake_conn) end}
+            ]},
             {attach_pending_repo, [
                 {'status_lookup', 1, fun(_K) -> {error, not_found} end}
             ]},
@@ -604,7 +674,10 @@ confirm_public_returns_public_url_test_() ->
                     {ok, #{size => 100, content_type => <<"image/jpeg">>}}
                 end}
             ]},
-            {elib_pg, [{'with_tx', 1, fun(F) -> F(fake_conn) end}]},
+            {elib_pg, [
+                {'with_tx', 1, fun(F) -> F(fake_conn) end},
+                {'with_deadlock_retry_tx', 1, fun(F) -> F(fake_conn) end}
+            ]},
             {attach_pending_repo, [
                 {'status_lookup', 1, fun(_K) -> {error, not_found} end}
             ]},

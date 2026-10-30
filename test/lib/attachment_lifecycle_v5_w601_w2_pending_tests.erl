@@ -83,10 +83,42 @@ leaf_unit(S, {Case, _Ep, Driver, Sc, Domain, Ac} = Spec) ->
     {
         binary_to_list(Leaf),
         {timeout, 240, fun() ->
-            Measured = scenario(S#{leaf => Leaf}, Spec),
-            ?S:emit(Spec, Measured)
+            scenario_guard(Case, fun() ->
+                Measured = scenario(S#{leaf => Leaf}, Spec),
+                ?S:emit(Spec, Measured, Leaf)
+            end)
         end}
     }.
+
+%% Serial calls and queue retries are not evidence of PG transaction races.
+%% Block before running the scenario or emitting a successful observation.
+scenario_guard(?C_RACE, _Fun) ->
+    erlang:error({unverified, w203_concurrent_transactions_and_deadlock_retry});
+scenario_guard(_Case, Fun) ->
+    Fun().
+
+-ifdef(TEST).
+race_guard_test_() ->
+    [
+        ?_test(begin
+            put(w601_guard_emit, false),
+            try
+                ?assertError(
+                    {unverified, w203_concurrent_transactions_and_deadlock_retry},
+                    scenario_guard(Case, fun() -> put(w601_guard_emit, true) end)
+                ),
+                ?assertEqual(false, get(w601_guard_emit))
+            after
+                erase(w601_guard_emit)
+            end
+        end)
+     || {Case, _, _, _, _, _} <- race_specs()
+    ] ++
+        [
+            ?_test(?assertEqual(executed, scenario_guard(Case, fun() -> executed end)))
+         || {Case, _, _, _, _, _} <- mp_specs() ++ fc_specs()
+        ].
+-endif.
 
 leaf_name(Case, Sc, Domain, Driver, Ac) ->
     [_, Short] = binary:split(Case, <<"/">>),
@@ -139,8 +171,10 @@ mp_scenario(S, Driver, <<"group_file_success">>, <<"ordinary">>) ->
     Confirm = ?FW:confirm_with(
         maps:get(fixture, M),
         M#{confirm_body => #{object_key => key(M), scope => <<"group">>}},
-        #{scope_ref => integer_to_binary(Gid),
-            anchor_msg_id => <<"w601-anchor-", (elib_uuid:gen_v7())/binary>>}
+        #{
+            scope_ref => integer_to_binary(Gid),
+            anchor_msg_id => <<"w601-anchor-", (elib_uuid:gen_v7())/binary>>
+        }
     ),
     ?assert(?F:success(Confirm)),
     ?assertEqual(1, ?S:attach_count(key(M))),
@@ -430,8 +464,13 @@ multipart_register(S, Driver, Extra) ->
     application:set_env(
         imboy,
         attachment_storage_registry,
-        Registry#{upload_namespaces => #{<<"private">> => Ns, <<"enterprise">> => Ns,
-            <<"group">> => Ns}}
+        Registry#{
+            upload_namespaces => #{
+                <<"private">> => Ns,
+                <<"enterprise">> => Ns,
+                <<"group">> => Ns
+            }
+        }
     ),
     Q = uri_string:compose_query(
         [
@@ -673,13 +712,19 @@ int(B) when is_binary(B) -> binary_to_integer(B).
 
 shorten_expiry(T) ->
     case ?S:pending_row(key(T)) of
-        {ok, _} -> ?S:expired_pending_copy(T);
+        {ok, _} ->
+            ?S:expired_pending_copy(T);
         _ ->
             org_ws(T, fun(Org, Ws, Id) ->
                 ?S:update_eb_expiry(Org, Ws, Id, -60),
-                {ok, 1} = elib_pg:execute(<<"UPDATE enterprise_asset "
-                    "SET created_at=statement_timestamp()-interval '60 seconds' "
-                    "WHERE organization_id=$1 AND workspace_id=$2 AND id=$3">>, [Org, Ws, Id])
+                {ok, 1} = elib_pg:execute(
+                    <<
+                        "UPDATE enterprise_asset "
+                        "SET created_at=statement_timestamp()-interval '60 seconds' "
+                        "WHERE organization_id=$1 AND workspace_id=$2 AND id=$3"
+                    >>,
+                    [Org, Ws, Id]
+                )
             end),
             T
     end.
@@ -695,8 +740,15 @@ intent(T, Reason) ->
                 %% Exercise the pending-GC entrypoint, including its eligibility
                 %% CAS; the low-level intent also serves legitimate active deletes.
                 %% 走 pending GC 真实入口及资格 CAS；底层 intent 也服务合法主动删除。
-                case eb_asset_store:cleanup_pending_private(Org, Ws, Id,
-                    os:system_time(second), 0) of
+                case
+                    eb_asset_store:cleanup_pending_private(
+                        Org,
+                        Ws,
+                        Id,
+                        os:system_time(second),
+                        0
+                    )
+                of
                     ok -> ok;
                     {error, not_eligible} -> {error, intent_conflict};
                     {error, _} = Error -> Error
@@ -706,12 +758,16 @@ intent(T, Reason) ->
 
 confirmed_metadata_count(T) ->
     case ?S:pending_row(key(T)) of
-        {ok, _} -> ?S:attach_count(key(T));
+        {ok, _} ->
+            ?S:attach_count(key(T));
         _ ->
-            {ok, [#{<<"n">> := N}]} = elib_pg:query(<<
-                "SELECT count(*)::bigint AS n FROM enterprise_asset "
-                "WHERE object_key=$1 AND status='active'"
-            >>, [key(T)]),
+            {ok, [#{<<"n">> := N}]} = elib_pg:query(
+                <<
+                    "SELECT count(*)::bigint AS n FROM enterprise_asset "
+                    "WHERE object_key=$1 AND status='active'"
+                >>,
+                [key(T)]
+            ),
             N
     end.
 

@@ -7,9 +7,12 @@ real execution:
   * W1-02 plan leaves: the two real schema-phase SQL probe runs
     (w102-expand / w102-guards), using exactly the probe adequacy rules that the
     frozen W1-02 adapters apply (placeholder probes stay gaps).
-  * W4-03/driver-content-immutable leaves: one real eunit unit plus one
-    W403_HTTP_EVIDENCE record per (surface, driver, scenario) from the
-    real-PG + real-Garage + real-Disk driver matrix.
+  * W4-03/driver-content-immutable leaves are admitted only when their w403
+    driver-matrix observation carries the server-observed request records
+    independently bound to the object identity (route/method/handler/status,
+    fixture-bound object_key/action, and the request process's production
+    storage resolution of the same object); anything short of that stays a
+    named evidence gap.
   * the per-leaf-observing battery groups (OBS_STEP_FOR): the W4-03 six
     (w403 step), the W2 upload/confirm eight (w2upload step) and the
     W4 queue/worker/activation twenty-one (w4queue step) — each battery
@@ -41,6 +44,56 @@ NAME = "w6_01_real_pg_garage_disk"
 
 DRIVER_MATRIX = "attachment_lifecycle_v5_w403_driver_matrix_tests"
 BODY_RE = re.compile(r'-define\(BODY,\s*<<"(.*?)">>\)\.', re.S)
+
+
+# Production storage-resolution entry points the per-request server trace
+# records (attachment_w403_server_trace:start/1); the trace tuples stay
+# diagnostic_untrusted, so they only corroborate the independently bound
+# object identity written by the fixture after the real response.
+STORAGE_TRACE_SOURCES = frozenset({
+    "attachment_storage:session_location/1",
+    "attachment_storage:frozen_location/2",
+})
+
+# Presign (method, route, presign handler, PUT handler) per upload surface.
+SURFACE_ROUTES = {
+    "ordinary": ("GET", r"/api/v1/attachment/presign", "attach_handler", "attachment_storage_gateway_handler"),
+    "enterprise_internal": ("POST", r"/api/internal/v1/files/presign", "enterprise_asset_handler", "attachment_storage_gateway_handler"),
+    "enterprise_seat": ("POST", r"/api/v1/seat/enterprise/organizations/[0-9]+/assets/presign", "eb_tenant_handler", "eb_tenant_handler"),
+    "cs_widget": ("POST", r"/api/v1/cs/widget/sessions/[0-9]+/assets/presign", "cs_widget_handler", "cs_widget_handler"),
+}
+
+
+def _untrusted_location_recorded(log, leaf):
+    """Diagnostics only: a recorded trace is not independently authenticated."""
+    parts = [leaf.get("entrypoint"), leaf.get("driver"), leaf.get("source_scenario")]
+    if any(not isinstance(part, str) or not part for part in parts):
+        return False
+    entry = S.http_evidence(log, "/".join(parts))
+    if not isinstance(entry, dict):
+        return False
+    payload = entry.get("payload")
+    if not isinstance(payload, dict):
+        return False
+    requests = payload.get("requests")
+    if not isinstance(requests, list):
+        return False
+    for request in requests:
+        if not isinstance(request, dict):
+            continue
+        locations = request.get("diagnostic_untrusted_locations")
+        if not isinstance(locations, list):
+            continue
+        for item in locations:
+            if (not isinstance(item, dict) or item.get("trust") != "diagnostic_untrusted"
+                    or item.get("source") not in STORAGE_TRACE_SOURCES):
+                continue
+            identity = item.get("identity")
+            if (isinstance(identity, dict) and identity.get("driver") == leaf["driver"]
+                    and all(isinstance(identity.get(k), str) and identity[k]
+                            for k in ("namespace", "container", "key", "locator_digest"))):
+                return True
+    return False
 
 # Source groups whose battery suites emit one observation line per executed
 # leaf; each group binds to the gate step that executed it (the step's
@@ -106,6 +159,139 @@ for _ref in (
 ):
     OBS_STEP_FOR[_ref] = "w3bind"
 OBS_GROUPS = set(OBS_STEP_FOR)
+
+
+def _expiry_proof(measured, entrypoint):
+    """Bind the successful registration and failed PUT to this exact leaf."""
+    if (entrypoint in ("enterprise_seat", "cs_widget") and isinstance(measured, dict)
+            and measured.get("registration_preseeded_fixture") is True):
+        raise ValueError("enterprise preseeded registration is not established as equivalent to initial HTTP registration")
+    routes = SURFACE_ROUTES
+    if entrypoint not in routes or not isinstance(measured, dict):
+        raise ValueError("unknown upload surface")
+    requests = measured.get("http_requests")
+    presign_id, put_id = measured.get("presign_request_id"), measured.get("put_request_id")
+    if (not isinstance(requests, list) or not isinstance(presign_id, str)
+            or not isinstance(put_id, str) or not presign_id or not put_id or presign_id == put_id):
+        raise ValueError("missing distinct real request identities")
+    def by_id(identity):
+        matches = [r for r in requests if isinstance(r, dict) and r.get("request_id") == identity]
+        if len(matches) != 1:
+            raise ValueError("request identity missing or duplicated")
+        request = matches[0]
+        if (not all(isinstance(request.get(k), str) and request[k]
+                    for k in ("method", "route", "handler", "server_process", "connection_id"))
+                or type(request.get("status")) is not int):
+            raise ValueError("incomplete observed HTTP request")
+        return request
+    presign, put = by_id(presign_id), by_id(put_id)
+    method, route, presign_handler, put_handler = routes[entrypoint]
+    if (presign["method"] != method or not re.fullmatch(route, presign["route"])
+            or presign["handler"] != presign_handler or presign.get("action") != "presign"
+            or not 200 <= presign["status"] < 300 or put["method"] != "PUT"
+            or put["handler"] != put_handler or put.get("action") != "put"
+            or not 400 <= put["status"] < 600
+            or measured.get("put_status") != put["status"]):
+        raise ValueError("observed request does not match registration or PUT")
+    if (not isinstance(measured.get("object_key"), str) or not measured["object_key"]
+            or not re.fullmatch(r"[0-9a-f]{64}", measured.get("pin_sha256", ""))
+            or measured.get("driver_window_expired") is not True
+            or measured.get("provider_bytes_absent") is not True):
+        raise ValueError("missing measured object and pin evidence")
+    if presign.get("object_key") != measured["object_key"] or put.get("object_key") != measured["object_key"]:
+        raise ValueError("requests are not bound to the observed object")
+    if entrypoint in ("ordinary", "enterprise_internal"):
+        cid = measured.get("client_upload_id")
+        if not isinstance(cid, str) or not re.fullmatch(r"[0-9a-fA-F-]{36}", cid):
+            raise ValueError("invalid upload session identity")
+        put_route = "/api/v1/attachment/gateway/" + cid
+    elif entrypoint == "enterprise_seat":
+        put_route = presign["route"]
+    else:
+        put_route = presign["route"][:-len("presign")] + "upload"
+    if put["route"] != put_route:
+        raise ValueError("PUT route differs from registered upload session")
+    return presign, put
+
+
+def _server_location_bound(request, object_key, driver):
+    """The request process resolved this object's location in production storage.
+
+    attachment_w403_server_trace stays diagnostic_untrusted (any local process
+    can forge trace tuples), so this only corroborates the object_key/action
+    the fixture independently bound to the request after the real response.
+    """
+    locations = request.get("diagnostic_untrusted_locations")
+    if not isinstance(locations, list):
+        return False
+    for item in locations:
+        if (not isinstance(item, dict) or item.get("trust") != "diagnostic_untrusted"
+                or item.get("source") not in STORAGE_TRACE_SOURCES):
+            continue
+        identity = item.get("identity")
+        if (isinstance(identity, dict) and identity.get("key") == object_key
+                and identity.get("driver") == driver
+                and all(isinstance(identity.get(k), str) and identity[k]
+                        for k in ("namespace", "container", "locator_digest"))):
+            return True
+    return False
+
+
+def _immutability_proof(measured, entrypoint):
+    """Bind this leaf's server-observed requests to its object identity.
+
+    Same shape as _expiry_proof: unique real request identities, the surface's
+    expected route/method/handler, and a three-way object_key binding (request
+    record / measured object / production storage resolution inside the same
+    server request process). PUT statuses stay scenario-owned: this proof binds
+    provenance, not a fixed outcome sequence.
+    """
+    if entrypoint not in SURFACE_ROUTES or not isinstance(measured, dict):
+        raise ValueError("unknown upload surface")
+    requests = measured.get("http_requests")
+    object_key = measured.get("object_key")
+    if (not isinstance(requests, list) or not requests
+            or any(not isinstance(request, dict) for request in requests)
+            or not isinstance(object_key, str) or not object_key):
+        raise ValueError("missing server-bound request evidence")
+    ids = [request.get("request_id") for request in requests]
+    if (any(not isinstance(identity, str) or not identity for identity in ids)
+            or len(set(ids)) != len(ids)):
+        raise ValueError("request identities missing or duplicated")
+    def complete(request):
+        return (all(isinstance(request.get(k), str) and request[k]
+                    for k in ("method", "route", "handler", "server_process", "connection_id"))
+                and type(request.get("status")) is int)
+    if not all(complete(request) for request in requests):
+        raise ValueError("incomplete observed HTTP request")
+    method, route, presign_handler, put_handler = SURFACE_ROUTES[entrypoint]
+    presigns = [request for request in requests
+                if request.get("action") == "presign" and 200 <= request["status"] < 300]
+    if len(presigns) != 1:
+        raise ValueError("expected exactly one admitted presign request")
+    presign = presigns[0]
+    if (presign["method"] != method or not re.fullmatch(route, presign["route"])
+            or presign["handler"] != presign_handler
+            or presign.get("object_key") != object_key
+            or not _server_location_bound(presign, object_key, measured.get("driver"))):
+        raise ValueError("presign request is not bound to this leaf's object at the server")
+    puts = [request for request in requests if request.get("action") == "put"]
+    if not puts:
+        raise ValueError("no real PUT request observed for this leaf")
+    if entrypoint in ("ordinary", "enterprise_internal"):
+        put_route_re = re.compile(r"/api/v1/attachment/gateway/[0-9a-fA-F-]{36}")
+        put_route = None
+    elif entrypoint == "enterprise_seat":
+        put_route_re, put_route = None, presign["route"]
+    else:
+        put_route_re, put_route = None, presign["route"][:-len("presign")] + "upload"
+    for put in puts:
+        route_ok = (put_route_re.fullmatch(put["route"]) if put_route_re is not None
+                    else put["route"] == put_route)
+        if (put["method"] != "PUT" or put["handler"] != put_handler
+                or put.get("object_key") != object_key or not route_ok):
+            raise ValueError("PUT request is not bound to this leaf's object at the server")
+    return presign, puts
 
 # The frozen enterprise multipart/group_file leaves cannot be proven by
 # enterprise seat proxy PUT. Keep them blocked until the contract owner
@@ -328,7 +514,6 @@ def build():
     except S.C.AdapterGap as exc:
         S.die(CASE_ID, str(exc))
     disk_root = W4.resolve_disk_root(ctx, CASE_ID)
-    body_sha, body_line, body_path = _body_sha256(root, CASE_ID)
 
     w403_step = S.step_record(case_dir, "w403", CASE_ID)
     w403 = S.eunit_log(os.path.join(case_dir, "w403", "eunit-w403.log"),
@@ -369,92 +554,119 @@ def build():
     gap_groups = {}
     for leaf in leaves:
         source = leaf.get("source_case_ref") or leaf["entrypoint"]
-        if (source == "W4-03/driver-content-immutable"
-                and leaf["driver"] in ("garage", "disk")):
-            desc = "%s/%s/%s" % (leaf["entrypoint"], leaf["driver"],
-                                 leaf["ordering_or_fault"].split("/")[-1])
-            unit = S.find_eunit_unit(w403, DRIVER_MATRIX, desc)
-            if unit is None:
+        if source == "W4-03/driver-content-immutable":
+            # The w403 driver-matrix battery emits one observation per executed
+            # leaf; admitting a row requires the server-observed HTTP requests
+            # and the object identity to be independently bound to the server
+            # (fixture request records + bind_request + in-process storage
+            # resolution). Anything short of that stays a named gap.
+            scenario = leaf.get("source_scenario")
+            key = (source, leaf.get("entrypoint"), scenario, leaf.get("domain"),
+                   leaf.get("driver"))
+            obs = _match_observation(idx403, key, leaf.get("ac_id"))
+            if obs is None:
                 S.group_gap(gap_groups, source, 1,
-                            "driver-matrix unit %r parsed missing" % desc)
+                            "no w403-step observation matches %r ac_id=%r"
+                            % (key, leaf.get("ac_id")))
                 continue
-            entry = S.http_evidence(w403, desc)
-            ids, statuses, requests = S.validate_requests(entry, CASE_ID, desc)
-            scenario = leaf["ordering_or_fault"].split("/")[-1]
-            scenario_line, scenario_path = _scenario_line(
-                root, scenario, leaf["driver"], CASE_ID)
+            measured = obs.get("measured") or {}
+            try:
+                presign, puts = _immutability_proof(measured, leaf["entrypoint"])
+            except (ValueError, TypeError) as exc:
+                S.group_gap(gap_groups, source, 1,
+                            "server-observed request/object binding rejected: %s"
+                            % exc)
+                continue
+            emitted = obs.get("emitted_at_ms")
+            t0_ms = started403.timestamp() * 1000
+            t1_ms = finished403.timestamp() * 1000
+            if not isinstance(emitted, (int, float)) \
+                    or not t0_ms <= emitted <= t1_ms:
+                S.die(CASE_ID, "observation %r emitted_at_ms=%r outside the "
+                               "w403 step window" % (key, emitted))
             resource = bucket if leaf["driver"] == "garage" else disk_root
             actor = (S.garage_actor(bucket) if leaf["driver"] == "garage"
                      else S.disk_actor(disk_root))
-            chain = "; ".join("%s %s -> %s" % (
-                request.get("method"), request.get("route"),
-                request.get("status")) for request in requests)
+            request_ids = [presign["request_id"]] + [
+                put["request_id"] for put in puts]
+            put_statuses = [put["status"] for put in puts]
             assertions = [
                 S.assertion(
-                    "driver_matrix_unit_passed",
-                    "%s:%s desc=%r [%.3fs] ok"
-                    % (DRIVER_MATRIX, unit["func"], desc,
-                       unit["duration"] or 0.0)),
+                    "w403_observation_matched",
+                    "%s: case_id=%s entrypoint=%s scenario=%s domain=%s "
+                    "driver=%s measured(%d keys)"
+                    % (os.path.basename(obs_path403), source,
+                       leaf["entrypoint"], scenario, leaf["domain"],
+                       leaf["driver"], len(measured))),
                 S.assertion(
-                    "http_evidence_requests",
-                    "%s: %d request(s) request_ids=%r statuses=%r"
-                    % (os.path.basename(w403["path"]), len(requests), ids,
-                       statuses)),
+                    "observation_in_step_window",
+                    "emitted_at_ms=%d within [%d, %d] of %r"
+                    % (emitted, t0_ms, t1_ms, w403_step["line"])),
                 S.assertion(
-                    "scenario_source_line",
-                    "%s:%d declares scenario %r for driver=%s"
-                    % (os.path.basename(scenario_path), scenario_line,
-                       scenario, leaf["driver"])),
+                    "immutability_provenance_bound",
+                    "presign %s (status %s) and %d PUT request(s) %s each "
+                    "carry the server-recorded route/method/handler/status "
+                    "and the fixture-bound object_key; the presign request "
+                    "process resolved the same object through production "
+                    "storage"
+                    % (presign["request_id"], presign["status"], len(puts),
+                       [put["request_id"] for put in puts])),
                 S.assertion(
-                    "entrypoint_provenance_bound",
-                    "entrypoint=%s request_id=%s route=%s method=%s handler=%s"
-                    % (leaf["entrypoint"], requests[0].get("request_id"),
-                       requests[0].get("route"), requests[0].get("method"),
-                       requests[0].get("handler"))),
-                S.assertion(
-                    "w403_battery_green",
-                    "%r; W403_DIRECT_OK; %d parsed units, summary=%r"
-                    % (w403_step["line"], len(w403["parsed"]["tests"]),
+                    "battery_step_green",
+                    "%r; markers=%r; %d parsed units, summary=%r"
+                    % (w403_step["line"], sorted(w403_markers),
+                       len(w403["parsed"]["tests"]),
                        w403["parsed"]["summary_raw"])),
             ]
             oracle = {
-                "pre_db_state": "real PG isolated config DB with the full "
-                                "migration chain; driver-matrix unit %r ran "
-                                "through the real HTTP fixture (%s)"
-                                % (desc, w403["path"]),
-                "pre_object_hash": "fixture body sha256=%s from ?BODY at %s:%d"
-                                   % (body_sha, os.path.basename(body_path),
-                                      body_line),
-                "action": "%s (driver-matrix %s:%s); HTTP sequence: %s"
-                          % (desc, DRIVER_MATRIX, unit["func"], chain),
-                "expected_http_semantics": "the leaf's real HTTP requests "
-                                           "returned %r (at least one 2xx)"
-                                           % statuses,
-                "expected_db_delta": "the unit asserts the scenario's DB/"
-                                     "visibility invariant before returning ok",
-                "expected_object_state": "the unit asserts the %s driver's "
-                                         "object state for this scenario"
-                                         % leaf["driver"],
-                "proof_actor": "real driver %s resource %s; W403 log sha256=%s;"
-                               " request ids %r"
-                               % (leaf["driver"], resource, w403["sha256"], ids),
+                "pre_db_state": "real PG isolated config DB provisioned by "
+                                "the full migration chain; the w403 driver "
+                                "matrix ran %s/%s against the real %s driver"
+                                % (leaf["entrypoint"], scenario, leaf["driver"]),
+                "pre_object_hash": "the unit registers its own fixture bytes "
+                                   "and asserts the object absent before PUT",
+                "action": "%s/%s (driver=%s) executed by the w403 driver "
+                          "matrix; presign %s then %d real PUT attempt(s) "
+                          "(statuses %s) on the server-bound object"
+                          % (source, scenario, leaf["driver"],
+                             presign["request_id"], len(puts), put_statuses),
+                "expected_http_semantics": "the scenario's own assertions "
+                                           "govern each PUT outcome; the "
+                                           "server-observed PUT statuses are "
+                                           "%s" % put_statuses,
+                "expected_db_delta": "the scenario asserts its immutable-"
+                                     "content invariant before returning ok "
+                                     "(w403 suite contract)",
+                "expected_object_state": "object_key bound to every presign/"
+                                         "PUT request record and to the "
+                                         "in-process storage resolution; "
+                                         "content immutability asserted by "
+                                         "the unit",
+                "proof_actor": "real driver %s resource %s; observations "
+                               "sha256=%s"
+                               % (leaf["driver"], resource,
+                                  S.sha256_file(obs_path403)),
             }
             row = S.C.build_row(
                 leaf, started403, finished403,
                 {"exit_code": 0, "executed": 1, "passed": 1, "failed": 0,
                  "skipped": 0},
-                oracle, assertions, actor, [resource],
-                ids or ["w403:%s" % desc])
-            # driver-content-immutable is a frozen upload-surface case: the
-            # receipt must carry the real route/method/handler/request_id of
-            # the leaf's own entrypoint (never another surface's receipt).
-            first = requests[0]
+                oracle, assertions, actor, [resource], request_ids)
             row["entrypoint_provenance"] = {
-                "entrypoint": leaf["entrypoint"],
-                "route": first.get("route"),
-                "method": first.get("method"),
-                "handler": first.get("handler"),
-                "request_id": first.get("request_id"),
+                "entrypoint": leaf["entrypoint"], "route": presign["route"],
+                "method": presign["method"], "handler": presign["handler"],
+                "request_id": presign["request_id"]}
+            row["server_request_provenance"] = {
+                "object_key": measured["object_key"],
+                "presign_request_id": presign["request_id"],
+                "requests": [
+                    {"request_id": request["request_id"],
+                     "action": request.get("action"),
+                     "method": request["method"], "route": request["route"],
+                     "handler": request["handler"], "status": request["status"],
+                     "object_key": request.get("object_key")}
+                    for request in measured["http_requests"]
+                    if isinstance(request, dict)],
             }
             rows.append(row)
             continue
@@ -548,6 +760,24 @@ def build():
                             % (subdir, key, leaf.get("ac_id")))
                 continue
             measured = obs.get("measured") or {}
+            surface_cases = ctx["contract"].get("upload_surface_contract", {}).get("cases", [])
+            expiry_leaf = (source == "W2-01/upload-content-pin"
+                           and scenario == "frozen_internal_signature_expiry")
+            proof = None
+            if source.startswith("W2-") and not expiry_leaf:
+                S.group_gap(gap_groups, source, 1,
+                            "scenario-specific HTTP request identity and outcome not yet verified")
+                continue
+            if source in surface_cases:
+                if not expiry_leaf:
+                    S.group_gap(gap_groups, source, 1,
+                                "real request provenance not yet bound for this surface")
+                    continue
+                try:
+                    proof = _expiry_proof(measured, leaf["entrypoint"])
+                except (ValueError, TypeError) as exc:
+                    S.group_gap(gap_groups, source, 1, str(exc))
+                    continue
             emitted = obs.get("emitted_at_ms")
             t0_ms = obs_started.timestamp() * 1000
             t1_ms = obs_finished.timestamp() * 1000
@@ -631,12 +861,29 @@ def build():
                                % (leaf["driver"], resource,
                                   S.sha256_file(obs_path)),
             }
-            rows.append(S.C.build_row(
+            if proof:
+                presign, put = proof
+                oracle.update(
+                    pre_object_hash="object absent before PUT, as asserted by the real driver read",
+                    action="real PUT %s reached the driver and was rejected after frozen expiry" % put["request_id"],
+                    expected_http_semantics="presign %s status %s; PUT %s status %s" % (
+                        presign["request_id"], presign["status"], put["request_id"], put["status"]),
+                    expected_db_delta="content pin sha256=%s committed before expired driver write" % measured["pin_sha256"],
+                    expected_object_state="object %s absent after failed PUT" % measured["object_key"])
+            row = S.C.build_row(
                 leaf, obs_started, obs_finished,
                 {"exit_code": 0, "executed": 1, "passed": 1, "failed": 0,
                  "skipped": 0},
                 oracle, assertions, actor, [resource],
-                ["w403-obs:%s#%s@%s" % (source, scenario, leaf["driver"])]))
+                [proof[0]["request_id"], proof[1]["request_id"]] if proof
+                else ["w403-obs:%s#%s@%s" % (source, scenario, leaf["driver"])])
+            if proof:
+                presign, _ = proof
+                row["entrypoint_provenance"] = {
+                    "entrypoint": leaf["entrypoint"], "route": presign["route"],
+                    "method": presign["method"], "handler": presign["handler"],
+                    "request_id": presign["request_id"]}
+            rows.append(row)
             continue
         reason = GROUP_REASONS.get(source, DEFAULT_REASON)
         S.group_gap(

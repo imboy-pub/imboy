@@ -15,7 +15,9 @@ import datetime
 import fcntl
 import hashlib
 import json
+import math
 import os
+import re
 import stat
 import subprocess
 import sys
@@ -179,36 +181,67 @@ class RunLock:
 
     def __init__(self, run_dir, wait_budget=2.0):
         self.path = os.path.join(run_dir, ".runner.lock")
-        self.fh = None
+        self.fd = None
         self.wait_budget = wait_budget
         self.token = str(uuid.uuid4())
 
     def acquire_nb(self):
         deadline = time.monotonic() + self.wait_budget
-        self.fh = open(self.path, "a+")
+        try:
+            self.fd = os.open(self.path, os.O_RDWR | os.O_CREAT | os.O_NOFOLLOW | os.O_NONBLOCK, 0o600)
+            held = os.fstat(self.fd)
+            named = os.stat(self.path, follow_symlinks=False)
+            if (not stat.S_ISREG(held.st_mode) or held.st_uid != os.geteuid()
+                    or held.st_nlink != 1 or held.st_mode & 0o022
+                    or (held.st_dev, held.st_ino) != (named.st_dev, named.st_ino)):
+                fd = self.fd
+                self.fd = None
+                os.close(fd)
+                return False
+        except OSError:
+            if self.fd is not None:
+                fd = self.fd
+                self.fd = None
+                try:
+                    os.close(fd)
+                except OSError:
+                    pass
+            return False
         while True:
             try:
-                fcntl.flock(self.fh.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
-                self.fh.seek(0)
-                self.fh.truncate()
-                self.fh.write(self.token + "\n")
-                self.fh.flush()
-                os.fsync(self.fh.fileno())
+                fcntl.flock(self.fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                named = os.stat(self.path, follow_symlinks=False)
+                current = os.fstat(self.fd)
+                if ((current.st_dev, current.st_ino) != (named.st_dev, named.st_ino)
+                        or current.st_nlink != 1 or not stat.S_ISREG(named.st_mode)):
+                    self.release()
+                    return False
+                os.lseek(self.fd, 0, os.SEEK_SET)
+                os.ftruncate(self.fd, 0)
+                data = (self.token + "\n").encode("ascii")
+                if os.write(self.fd, data) != len(data):
+                    raise OSError("short lock token write")
+                os.fsync(self.fd)
                 return True
-            except OSError:
+            except (BlockingIOError, InterruptedError):
                 if time.monotonic() >= deadline:
-                    self.fh.close()
-                    self.fh = None
+                    fd = self.fd
+                    self.fd = None
+                    os.close(fd)
                     return False
                 time.sleep(0.1)
+            except OSError:
+                self.release()
+                return False
 
     def release(self):
-        if self.fh:
+        if self.fd is not None:
+            fd = self.fd
+            self.fd = None
             try:
-                fcntl.flock(self.fh.fileno(), fcntl.LOCK_UN)
+                fcntl.flock(fd, fcntl.LOCK_UN)
             finally:
-                self.fh.close()
-                self.fh = None
+                os.close(fd)
 
 
 # ---------------------------------------------------------------- state
@@ -303,16 +336,50 @@ class StateStore:
                     out.append(json.loads(line))
         return out
 
+    def iter_events(self):
+        """Read the event chain incrementally without retaining event payloads."""
+        with open(self.events_path, encoding="utf-8") as stream:
+            for line in stream:
+                if line.strip():
+                    yield json.loads(line)
+
     def verify_chain(self):
+        scan = self.scan_chain()
+        return scan["ok"], scan["reason"]
+
+    def scan_chain(self):
+        """Verify sequentially while retaining only events needed for recovery."""
         prev = "0" * 64
-        for i, ev in enumerate(self.load_events(), 1):
-            if ev["seq"] != i or ev["prev_hash"] != prev:
-                return False, "event %d breaks seq/hash chain" % i
-            body = {k: ev[k] for k in ("seq", "ts", "prev_hash", "kind", "payload")}
-            if sha256_bytes(canonical_json(body).encode()) != ev["entry_hash"]:
-                return False, "event %d entry_hash mismatch" % i
-            prev = ev["entry_hash"]
-        return True, "chain ok (%d events)" % i if self.load_events() else "empty"
+        result = {"ok": True, "reason": "empty", "count": 0, "first": None,
+                  "last": None, "previous": None, "bound": None, "previous_bound": None}
+        if not os.path.exists(self.events_path):
+            return result
+        with open(self.events_path) as fh:
+            for line in fh:
+                if not line.strip():
+                    continue
+                ev = json.loads(line)
+                i = result["count"] + 1
+                if ev["seq"] != i or ev["prev_hash"] != prev:
+                    result.update(ok=False, reason="event %d breaks seq/hash chain" % i)
+                    return result
+                body = {k: ev[k] for k in ("seq", "ts", "prev_hash", "kind", "payload")}
+                if sha256_bytes(canonical_json(body).encode()) != ev["entry_hash"]:
+                    result.update(ok=False, reason="event %d entry_hash mismatch" % i)
+                    return result
+                if result["first"] is None:
+                    result["first"] = ev
+                result["previous"] = result["last"]
+                result["previous_bound"] = result["bound"]
+                result["last"] = ev
+                payload = ev.get("payload")
+                if isinstance(payload, dict) and isinstance(payload.get("state_payload"), dict):
+                    result["bound"] = ev
+                result["count"] = i
+                prev = ev["entry_hash"]
+        if result["count"]:
+            result["reason"] = "chain ok (%d events)" % result["count"]
+        return result
 
     def snapshot_bound(self, state, events):
         if not isinstance(state, dict) or not events:
@@ -755,6 +822,35 @@ def load_contract(plan_dir):
         return json.load(fh)
 
 
+def _load_bound_contract(state):
+    """Parse only the exact contract bytes committed by the frozen manifest."""
+    try:
+        plan = state["plan_dir"]
+        with open(os.path.join(plan, "manifest.sha256"), "rb") as fh:
+            manifest = fh.read()
+        if sha256_bytes(manifest) != state.get("plan_manifest_sha256"):
+            raise ValueError("manifest digest changed")
+        entries = []
+        for line in manifest.decode("utf-8").splitlines():
+            if not line.strip():
+                continue
+            digest, name = line.strip().split(None, 1)
+            if name.strip() == "execution-contract.json":
+                entries.append(digest)
+        if len(entries) != 1 or not _valid_digest(entries[0]):
+            raise ValueError("contract manifest entry invalid")
+        with open(os.path.join(plan, "execution-contract.json"), "rb") as fh:
+            raw = fh.read()
+        if sha256_bytes(raw) != entries[0]:
+            raise ValueError("contract bytes differ from frozen manifest")
+        contract = json.loads(raw)
+        if not isinstance(contract, dict):
+            raise ValueError("contract is not an object")
+        return contract
+    except (OSError, ValueError, KeyError, TypeError, UnicodeError):
+        die(EXIT_CONTRACT, "frozen contract binding invalid")
+
+
 def verify_plan_manifest(plan_dir):
     manifest = os.path.join(plan_dir, "manifest.sha256")
     ok = True
@@ -879,18 +975,15 @@ def cmd_admit(args):
                           "plan_manifest_sha256": manifest_sha,
                           "tasks": len(state["tasks"])}))
     else:
+        if existing.get("active_launch"):
+            lock.release()
+            die(EXIT_BLOCKED, "active launch requires reconciliation before readmission")
         try:
-            events = store.load_events()
-            chain_ok, _ = store.verify_chain()
-            first = events[0] if events else {}
-            # snapshot_bound is deliberately not checked here: accept-task /
-            # accept-gate rebind the snapshot via persist_snapshot without a
-            # state_payload event, so a healthy post-accept state never
-            # matches the last state-carrying event. Tamper detection is
-            # carried by the hash chain plus the admit anchor below, and the
-            # re-admit write_snapshot restores the payload binding.
-            ledger_ok = (bool(events) and chain_ok
-                         and existing.get("events_head_hash") == store.head_hash()
+            scan = store.scan_chain()
+            first = scan["first"] or {}
+            ledger_ok = (scan["count"] and scan["ok"]
+                         and existing.get("events_head_hash") == scan["last"]["entry_hash"]
+                         and store.snapshot_bound(existing, [scan["bound"]])
                          and first.get("kind") == "admit"
                          and first.get("payload", {}).get("plan_manifest_sha256") == manifest_sha
                          and first.get("payload", {}).get("authorization_sha256") == auth_digest)
@@ -944,6 +1037,8 @@ def cmd_admit(args):
 
 
 def _compute_ready(state, contract):
+    if state.get("active_launch"):
+        return []
     run_budget = state.get('time_budgets', {}).get('run')
     if run_budget and time.time() >= run_budget['deadline']:
         return []
@@ -981,6 +1076,15 @@ def cmd_next(args):
         candidate = state.get("verification_candidate")
         if candidate and candidate_errors(candidate):
             die(EXIT_CONTRACT, "candidate drift; no tasks ready")
+        active = state.get("active_launch")
+        if active:
+            if not isinstance(active, dict):
+                die(EXIT_CONTRACT, "invalid active launch")
+            print(json.dumps({"result": "BLOCKED_EXTERNAL", "ready": [], "count": 0,
+                              "active_launch": {"launch_id": active.get("launch_id"),
+                                                "status": active.get("status"),
+                                                "next_action": "reconcile process identity and external effects"}}))
+            return EXIT_BLOCKED
         ready = _compute_ready(state, contract)
         print(json.dumps({"ready": ready, "count": len(ready)}, ensure_ascii=False, indent=1))
         return EXIT_OK
@@ -1032,22 +1136,108 @@ def _require_state(run_dir, allow_expired=False):
     store = StateStore(run_dir)
     try:
         state = store.load_state()
-        events = store.load_events()
-        ok, why = store.verify_chain()
+        scan = store.scan_chain()
     except (OSError, ValueError, KeyError, TypeError, AttributeError):
         die(EXIT_CONTRACT, "state or event chain invalid; reconciliation required")
     if not isinstance(state, dict):
         die(20, "run not admitted; run admit first")
-    if not events or not ok:
-        die(20, "event chain corrupt: %s" % why)
-    if state.get("events_head_hash") != events[-1].get("entry_hash"):
+    if not scan["count"] or not scan["ok"]:
+        die(20, "event chain corrupt: %s" % scan["reason"])
+    if state.get("events_head_hash") != scan["last"].get("entry_hash"):
         die(EXIT_CONTRACT, "snapshot is behind or diverges from event chain; reconciliation required")
-    if not store.snapshot_bound(state, events):
+    if not store.snapshot_bound(state, [scan["bound"]]):
         die(EXIT_CONTRACT, "snapshot payload or digest is not bound to event chain")
+    try:
+        contract = _load_bound_contract(state)
+        _validate_timed_case_events(store.iter_events(), contract.get("legacy_case_event_hashes"))
+    except LegacyCaseUnverified:
+        die(EXIT_BLOCKED, "legacy case has no trusted upgrade anchor; revalidation required")
+    except (ValueError, KeyError, TypeError, AttributeError):
+        die(EXIT_CONTRACT, "invalid timed case binding; reconciliation required")
     contract = _require_admission(state)
     _clock_check(state.get('clock_anchor'))
     _budget_check(state, contract, enforce=not allow_expired)
     return state
+
+
+class LegacyCaseUnverified(ValueError):
+    """A prior binding has no explicit trusted upgrade anchor."""
+
+
+def _validate_timed_case_events(events, legacy_case_event_hashes=None):
+    """Require a post-fsync, pre-deadline observation for controller seals."""
+    legacy = legacy_case_event_hashes if legacy_case_event_hashes is not None else {}
+    if (not isinstance(legacy, dict) or any(not isinstance(k, str) or not _valid_digest(v)
+                                            for k, v in legacy.items())):
+        raise ValueError("invalid authorized legacy case list")
+    previous = None
+    intent = None
+    for event in events:
+        pending = previous or {}
+        previous = event
+        if event.get("kind") == "launch_intent":
+            intent = event.get("payload", {}).get("launch")
+        if event.get("kind") != "case_manifest_bound":
+            continue
+        payload = event.get("payload", {})
+        state = payload.get("state_payload", {})
+        active = state.get("active_launch")
+        if "pending_hash" not in payload:
+            if isinstance(active, dict) and "command_deadline" in active:
+                raise ValueError("timed launch missing binding proof")
+            # Direct gate-driven seals are contract-legal (runner_cli_contract);
+            # the frozen manifest only constrains them when it explicitly
+            # declares a legacy anchor map (pre-run bindings to grandfather).
+            if legacy_case_event_hashes is not None and \
+                    legacy.get(payload.get("case_id")) != event.get("entry_hash"):
+                raise LegacyCaseUnverified("case binding lacks authorized legacy boundary")
+            continue
+        pp = pending.get("payload", {})
+        launch = payload.get("launch")
+        observed = payload.get("persisted_observed_clock")
+        pending_state = pp.get("state_payload", {})
+        pending_active = pending_state.get("active_launch")
+        if (pending.get("kind") != "case_manifest_pending" or event.get("prev_hash") != pending.get("entry_hash")
+                or launch != pp.get("launch") or launch != intent
+                or not isinstance(pending_active, dict)
+                or any(pending_active.get(k) != v for k, v in launch.items() if k != "status")
+                or pending_active.get("status") != "PREPARED"
+                or any(pp.get(k) != payload.get(k) for k in ("case_id", "manifest_sha256", "attempt", "candidate"))
+                or launch.get("case_id") != payload.get("case_id")
+                or launch.get("attempt") != payload.get("attempt")
+                or launch.get("task_id") != payload.get("case_id", "").split("/", 1)[0]
+                or launch.get("candidate_digest") != sha256_bytes(canonical_json(payload.get("candidate")).encode())
+                or payload.get("candidate") != pending_state.get("verification_candidate")
+                or payload.get("case_id") in pending_state.get("case_manifest_digests", {})
+                or state.get("case_manifest_digests", {}).get(payload.get("case_id")) != payload.get("manifest_sha256")
+                or state.get("case_manifest_attempts", {}).get(payload.get("case_id")) != payload.get("attempt")
+                or not isinstance(observed, dict)):
+            raise ValueError("invalid pending case proof")
+        anchor = pending_state.get("clock_anchor", {})
+        start, deadline, wall = launch.get("command_started_at"), launch.get("command_deadline"), observed.get("wall")
+        if (any(type(v) not in (int, float) or not math.isfinite(v) for v in (start, deadline, wall))
+                or not start <= pending.get("ts", 0) <= wall < deadline <= start + 1800
+                or observed.get("boot") != anchor.get("boot")
+                or type(observed.get("monotonic")) not in (int, float)
+                or not math.isfinite(observed["monotonic"])
+                or observed["monotonic"] < anchor.get("monotonic", float("inf"))):
+            raise ValueError("invalid case persistence clock")
+        task = pending_state.get("tasks", {}).get(launch["task_id"], {})
+        budgets = pending_state.get("time_budgets", {})
+        waves = budgets.get("waves", {})
+        wave = launch["task_id"].split("-", 1)[0]
+        bounds = [task.get("task_deadline"), (budgets.get("run") or {}).get("deadline"),
+                  (waves.get(wave) or {}).get("deadline")]
+        if (task.get("attempt") != launch["attempt"] or any(
+                type(v) not in (int, float) or not math.isfinite(v) or deadline > v for v in bounds)):
+            raise ValueError("invalid case persistence budgets")
+        contract = _load_bound_contract(pending_state)
+        maximum = contract.get("timeouts", {}).get("command_seconds", 1800)
+        if (type(maximum) not in (int, float) or not 0 < maximum <= 1800
+                or deadline > start + maximum
+                or payload["case_id"] not in (task_case_ids(contract, launch["task_id"]) or [])):
+            raise ValueError("invalid command contract")
+        _clock_transition(anchor, observed)
 
 
 def _task_transition_allowed(task, target):
@@ -1086,8 +1276,17 @@ def _task_prerequisites(state, contract, task_id):
     if len(gates) != 1:
         return False
     previous = gates[0].get("previous_gate")
-    return (bool(previous) and state.get("gates", {}).get(previous) == "PASS"
-            and state.get("gate_candidates", {}).get(previous) == candidate)
+    if not (bool(previous) and state.get("gates", {}).get(previous) == "PASS"):
+        return False
+    if wave == "W6":
+        # Candidate progression contract: an authorized readmission advances
+        # the candidate without invalidating predecessor gate receipts (each
+        # stays bound to its era via candidate_readmitted events); the W6
+        # wave is what binds the FINAL candidate, so its entry requires the
+        # predecessor gate PASS plus the current error-free candidate rather
+        # than equality with the G5-era snapshot.
+        return True
+    return state.get("gate_candidates", {}).get(previous) == candidate
 
 
 def _resume_case_manifest(run_dir, store, old, new, event):
@@ -1101,16 +1300,28 @@ def _resume_case_manifest(run_dir, store, old, new, event):
         die(EXIT_CONTRACT, "invalid case binding path")
     old_bindings = old.get("case_manifest_digests", {})
     new_bindings = new.get("case_manifest_digests")
+    attempt = payload.get("attempt")
+    old_attempts = old.get("case_manifest_attempts", {})
+    new_attempts = new.get("case_manifest_attempts", {})
+    if attempt is not None:
+        if (type(attempt) is not int or attempt < 1
+                or attempt != old.get("tasks", {}).get(task_id, {}).get("attempt")
+                or not isinstance(old_attempts, dict) or not isinstance(new_attempts, dict)
+                or case_id in old_attempts or new_attempts != dict(old_attempts, **{case_id: attempt})):
+            die(EXIT_CONTRACT, "case attempt binding invalid")
+    elif old_attempts != new_attempts:
+        die(EXIT_CONTRACT, "legacy binding changed case attempts")
     if (not isinstance(old_bindings, dict) or not isinstance(new_bindings, dict)
             or case_id in old_bindings or new_bindings != dict(old_bindings, **{case_id: digest})
             or payload.get("candidate") != old.get("verification_candidate")):
         die(EXIT_CONTRACT, "case binding event changed other bindings")
-    excluded = ("revision", "events_head_hash", "clock_anchor", "case_manifest_digests")
+    excluded = ("revision", "events_head_hash", "clock_anchor", "case_manifest_digests", "case_manifest_attempts")
     if (type(old.get("revision")) is not int or new.get("revision") != old["revision"] + 1
             or canonical_json({k: v for k, v in old.items() if k not in excluded})
             != canonical_json({k: v for k, v in new.items() if k not in excluded})):
         die(EXIT_CONTRACT, "case binding event changed unrelated state")
-    contract = _require_admission(old)
+    _require_admission(old)
+    contract = _load_bound_contract(old)
     _task_attempt_check(old, contract, task_id)
     _clock_check(old.get("clock_anchor"))
     _clock_check(new.get("clock_anchor"))
@@ -1125,6 +1336,8 @@ def _resume_case_manifest(run_dir, store, old, new, event):
     if not isinstance(expected, list) or not expected:
         die(EXIT_CONTRACT, "case binding leaf contract missing")
     case_dir = os.path.join(run_dir, "evidence", task_id, case_name)
+    if attempt is not None:
+        case_dir = os.path.join(case_dir, "attempt-%d" % attempt)
     rows = [row for _, row in _read_case_rows(run_dir, case_dir, digest)]
     identity = lambda row: "|".join(str(row.get(k)) for k in LEAF_FIELDS)
     index = {identity(row): row for row in expected}
@@ -1140,33 +1353,124 @@ def _resume_case_manifest(run_dir, store, old, new, event):
     return store.persist_snapshot(new, event["entry_hash"])
 
 
+def _resume_launch_intent(run_dir, store, old, new, event):
+    """Recover an intent snapshot only; never launch or infer worker results."""
+    launch = event.get("payload", {}).get("launch")
+    fields = {"launch_id", "task_id", "attempt", "candidate_digest", "command_digest",
+              "prior_revision", "owner_token", "controller_boot", "controller_pid",
+              "controller_start", "status"}
+    command_fields = {"case_id", "command_started_at", "command_deadline"}
+    if (not isinstance(launch, dict) or set(launch) not in (fields, fields | command_fields)
+            or launch != new.get("active_launch") or old.get("active_launch") is not None
+            or launch.get("status") != "INTENT" or launch.get("prior_revision") != old.get("revision")
+            or type(old.get("revision")) is not int or new.get("revision") != old["revision"] + 1):
+        die(EXIT_CONTRACT, "invalid launch intent transition")
+    for name in ("launch_id", "owner_token"):
+        try:
+            value = launch[name]
+            parsed = uuid.UUID(value)
+            if parsed.version != 4 or str(parsed) != value:
+                raise ValueError("invalid UUID")
+        except (ValueError, TypeError, AttributeError):
+            die(EXIT_CONTRACT, "invalid launch identity")
+    if (type(launch.get("controller_pid")) is not int or launch["controller_pid"] <= 0
+            or not isinstance(launch.get("controller_start"), str) or not launch["controller_start"]
+            or launch.get("controller_boot") != old.get("clock_anchor", {}).get("boot")
+            or not _valid_digest(launch.get("candidate_digest"))
+            or not _valid_digest(launch.get("command_digest"))):
+        die(EXIT_CONTRACT, "invalid launch process or digest")
+    task_id = launch.get("task_id")
+    task = old.get("tasks", {}).get(task_id, {})
+    candidate = old.get("verification_candidate")
+    if (not isinstance(candidate, dict) or task.get("state") not in ("RUNNING", "VERIFYING")
+            or type(launch.get("attempt")) is not int or launch["attempt"] != task.get("attempt")
+            or launch["candidate_digest"] != sha256_bytes(canonical_json(candidate).encode())):
+        die(EXIT_CONTRACT, "launch candidate or attempt mismatch")
+    excluded = {"revision", "events_head_hash", "clock_anchor", "active_launch"}
+    if canonical_json({k: v for k, v in old.items() if k not in excluded}) != canonical_json(
+            {k: v for k, v in new.items() if k not in excluded}):
+        die(EXIT_CONTRACT, "launch intent changed unrelated state")
+    _require_admission(old)
+    contract = _load_bound_contract(old)
+    if command_fields <= set(launch):
+        started, deadline = launch["command_started_at"], launch["command_deadline"]
+        cases = task_case_ids(contract, task_id) or []
+        task_specs = [item for item in contract.get("tasks", []) if item.get("task_id") == task_id]
+        if (launch["case_id"] not in cases or len(task_specs) != 1
+                or type(started) not in (int, float) or type(deadline) not in (int, float)
+                or type(event.get("ts")) not in (int, float)
+                or not 0 < started <= event["ts"] < float("inf")):
+            die(EXIT_CONTRACT, "invalid command launch deadline")
+        budgets = old.get("time_budgets", {})
+        run = budgets.get("run") or {}
+        wave = budgets.get("waves", {}).get(task_specs[0].get("wave")) or {}
+        limit = contract.get("timeouts", {}).get("command_seconds", 1800)
+        ends = (limit, task.get("task_deadline"), run.get("deadline"), wave.get("deadline"))
+        if (any(type(value) not in (int, float) or not 0 < value < float("inf") for value in ends)
+                or not started < deadline <= min(started + limit, *ends[1:]) or event["ts"] >= deadline):
+            die(EXIT_CONTRACT, "command launch deadline exceeds its persisted budget")
+    _clock_check(old.get("clock_anchor"))
+    start_clock = _clock_check(new.get("clock_anchor"))
+    _clock_transition(old["clock_anchor"], new["clock_anchor"])
+    _budget_check(old, contract, task_id, at=event.get("ts"))
+    _budget_check(old, contract, task_id)
+    _task_attempt_check(old, contract, task_id)
+    if candidate_errors(candidate):
+        die(EXIT_CONTRACT, "candidate drift prevents launch recovery")
+    _require_admission(old)
+    end_clock = _clock_check(start_clock)
+    _clock_transition(start_clock, end_clock)
+    _budget_check(old, contract, task_id)
+    _task_attempt_check(old, contract, task_id)
+    return store.persist_snapshot(new, event["entry_hash"])
+
+
 def _resume_state(run_dir):
     """Reconcile one durable task transition while the caller holds RunLock."""
     store = StateStore(run_dir)
     try:
         old = store.load_state()
-        events = store.load_events()
-        valid, _ = store.verify_chain()
-        if not isinstance(old, dict) or not valid or not events:
+        scan = store.scan_chain()
+        if not isinstance(old, dict) or not scan["ok"] or not scan["count"]:
             die(EXIT_CONTRACT, "invalid run state or event chain")
-        if old.get("events_head_hash") == events[-1].get("entry_hash"):
+        try:
+            contract = _load_bound_contract(old)
+            # Crash recovery sees bindings whose snapshot never persisted, so
+            # an unanchored direct seal stays fail-closed here (unlike the
+            # steady-state read path, where a contract without an anchor map
+            # simply allows contract-legal direct seals).
+            _validate_timed_case_events(store.iter_events(), contract.get("legacy_case_event_hashes", {}))
+        except LegacyCaseUnverified:
+            die(EXIT_BLOCKED, "legacy case has no trusted upgrade anchor; revalidation required")
+        except (ValueError, KeyError, TypeError, AttributeError):
+            die(EXIT_CONTRACT, "invalid timed case binding; reconciliation required")
+        if scan["last"].get("kind") == "case_manifest_pending":
+            die(EXIT_BLOCKED, "uncommitted case pending requires external reconciliation; no replay")
+        if old.get("events_head_hash") == scan["last"].get("entry_hash"):
             return _require_state(run_dir, allow_expired=True)
-        if len(events) < 2:
+        if scan["count"] < 2:
             die(EXIT_CONTRACT, "snapshot cannot be reconciled without prior event")
-        if old.get("events_head_hash") != events[-2].get("entry_hash") or not store.snapshot_bound(old, events[:-1]):
+        if (old.get("events_head_hash") != scan["previous"].get("entry_hash")
+                or not store.snapshot_bound(old, [scan["previous_bound"]])):
             die(EXIT_CONTRACT, "snapshot cannot be reconciled with a single event")
-        event = events[-1]
+        event = scan["last"]
         payload = event.get("payload", {})
         new = payload.get("state_payload") if isinstance(payload, dict) else None
         if not isinstance(new, dict):
             die(EXIT_CONTRACT, "event lacks a recoverable task state")
         reconstructed = dict(new, events_head_hash=event["entry_hash"])
-        if not store.snapshot_bound(reconstructed, events):
+        if not store.snapshot_bound(reconstructed, [scan["bound"]]):
             die(EXIT_CONTRACT, "event state digest mismatch")
+        if event.get("kind") == "launch_intent":
+            return _resume_launch_intent(run_dir, store, old, new, event)
         if event.get("kind") == "case_manifest_bound":
             return _resume_case_manifest(run_dir, store, old, new, event)
+        if event.get("kind") in ("launch_prepared", "launch_finished"):
+            die(EXIT_BLOCKED, "launch process and external effects require reconciliation")
         if event.get("kind") != "task_state":
             die(EXIT_CONTRACT, "event lacks a recoverable task state")
+        if old.get("active_launch"):
+            die(EXIT_BLOCKED, "active launch prevents task transition recovery")
         task_id = payload.get("task")
         old_tasks, new_tasks = old.get("tasks"), new.get("tasks")
         if not isinstance(old_tasks, dict) or not isinstance(new_tasks, dict) or task_id not in old_tasks or task_id not in new_tasks:
@@ -1253,12 +1557,14 @@ def cmd_resume(args):
         candidate = state.get("verification_candidate")
         if candidate and candidate_errors(candidate):
             die(EXIT_CONTRACT, "candidate drift; resume cannot release tasks")
-        events = store.load_events()
+        scan = store.scan_chain()
+        if not scan["ok"]:
+            die(EXIT_CONTRACT, "event chain changed during resume")
         committed = {tid: s for tid, s in state["tasks"].items() if s.get("state") == "PASS"}
         report = {
             "run_id": state["run_id"],
             "revision": state["revision"],
-            "events": len(events),
+            "events": scan["count"],
             "chain": "ok",
             "tasks_pass": sorted(committed),
             "gates": state["gates"],
@@ -1268,6 +1574,17 @@ def cmd_resume(args):
                       "next_action": s.get("next_action")}
                 for tid, s in state["tasks"].items() if s.get("state") == "COMMITTING"},
         }
+        active = state.get("active_launch")
+        if active:
+            if not isinstance(active, dict):
+                die(EXIT_CONTRACT, "invalid active launch")
+            report["result"] = "BLOCKED_EXTERNAL"
+            report["active_launch"] = {"launch_id": active.get("launch_id"),
+                                       "status": active.get("status"),
+                                       "next_action": "reconcile process identity and external effects"}
+            report["ready"] = []
+            print(json.dumps(report, ensure_ascii=False, indent=1))
+            return EXIT_BLOCKED
         print(json.dumps(report, ensure_ascii=False, indent=1))
         return EXIT_OK
     finally:
@@ -1458,20 +1775,36 @@ _ATTEMPT_NOT_GIVEN = object()
 
 def receipt_errors(leaf, expected_leaf, task_id, case_id, candidate, run_dir, allowlist,
                    contract=None, expected_attempt=_ATTEMPT_NOT_GIVEN, legacy=False):
+    if (not isinstance(task_id, str) or not isinstance(case_id, str)
+            or not case_id.startswith(task_id + "/")):
+        return ["case does not belong to task"]
+    # Final-gate provenance requirements cannot be downgraded by marking an
+    # input as historical. The missing proofs apply to every W6 invocation.
+    mandatory_errors = []
+    if task_id == "W6-02" or (isinstance(case_id, str) and case_id.startswith("W6-02/")):
+        mandatory_errors.append("W6-02 provenance is not bound to its driver session and owned backend")
+    if (task_id == "W6-01" and isinstance(expected_leaf, dict)
+            and expected_leaf.get("source_case_ref") == "W4-03/driver-content-immutable"):
+        # The adapter proves the binding before admitting the row (unique
+        # request identities, surface route/method/handler, three-way
+        # object_key binding, in-process storage resolution); the runner only
+        # requires that proof to be present on the measured receipt.
+        proof = leaf.get("server_request_provenance") if isinstance(leaf, dict) else None
+        requests = proof.get("requests") if isinstance(proof, dict) else None
+        if (not isinstance(proof, dict) or not isinstance(proof.get("object_key"), str)
+                or not proof.get("object_key") or not isinstance(requests, list)
+                or not requests):
+            mandatory_errors.append("W4-03 HTTP and object provenance is not independently bound to the server")
     if legacy:
         # Historical cases were sealed under the standard frozen at their
         # admission time (their PASS is anchored in the accepted event
         # chain); the runtime structured-observation upgrade only binds
         # cases sealed after it.
-        return receipt_errors_legacy(leaf, expected_leaf, task_id, case_id,
-                                    candidate, run_dir, allowlist, contract)
-    errors = []
+        return mandatory_errors + receipt_errors_legacy(leaf, expected_leaf, task_id, case_id,
+                                                        candidate, run_dir, allowlist, contract)
+    errors = mandatory_errors
     if not isinstance(leaf, dict):
         return ["leaf receipt must be an object"]
-    # shortcut: W6-02 lacks session-bound device/browser and backend proof;
-    # remove when the runner verifies per-driver provenance independently.
-    if task_id == "W6-02" or (isinstance(case_id, str) and case_id.startswith("W6-02/")):
-        errors.append("W6-02 provenance is not bound to its driver session and owned backend")
     if leaf.get("required") is not True:
         errors.append("required must be boolean true")
     if leaf.get("task_id") != task_id or leaf.get("case_id") != case_id:
@@ -1707,6 +2040,11 @@ def cmd_verify(args, held_lock=False):
         gate = args.gate
         if gate not in contract["wave_gates"]:
             die(EXIT_USAGE, "unknown gate %r (G0..G6)" % gate)
+        if gate == "G6":
+            # A file or self-declared reviewer cannot establish independent
+            # provenance and candidate-bound review. Do not accept G6 until a
+            # trusted review attestation is implemented and verified here.
+            die(EXIT_BLOCKED, "G6 independent reviewer provenance is unverified")
         fails = []
         manifest_ok, manifest_hash = verify_plan_manifest(state["plan_dir"])
         if not manifest_ok or manifest_hash != state.get("plan_manifest_sha256"):
@@ -1757,9 +2095,9 @@ def cmd_verify(args, held_lock=False):
                 for cid in task_case_ids(contract, tid) or []:
                     expected = contract["expected_leaf_matrix"][cid]
                     by_id = {tuple(leaf.get(k) for k in LEAF_FIELDS): leaf for leaf in expected}
-                    case_dir = os.path.join(run_dir, "evidence", tid, cid.split("/", 1)[1])
                     actual = []
                     try:
+                        case_dir = _bound_case_dir(run_dir, state, tid, cid)
                         for fn, leaf in _read_case_rows(run_dir, case_dir, state.get("case_manifest_digests", {}).get(cid)):
                             identity = tuple(leaf.get(k) for k in LEAF_FIELDS)
                             actual.append("|".join(map(str, identity)))
@@ -1771,7 +2109,8 @@ def cmd_verify(args, held_lock=False):
                             issues = receipt_errors(leaf, by_id[identity], tid, cid,
                                                     bound,
                                                     run_dir, state.get("resource_allowlist", {}), contract,
-                                                    state.get("tasks", {}).get(tid, {}).get("attempt"),
+                                                    state.get("case_manifest_attempts", {}).get(
+                                                        cid, state.get("tasks", {}).get(tid, {}).get("attempt")),
                                                     legacy=cid in legacy_case_ids)
                             fails.extend(cid + " " + fn + ": " + why for why in issues)
                     except (OSError, ValueError, TypeError, AttributeError) as exc:
@@ -1792,8 +2131,11 @@ def cmd_verify(args, held_lock=False):
 
 def _measured_case_rows(args, state, contract, run_dir):
     case_dir = os.path.realpath(args.case_dir)
+    attempt = state.get("tasks", {}).get(args.task_id, {}).get("attempt")
+    if type(attempt) is not int or attempt < 1:
+        return [], ["invalid task attempt"], case_dir, None
     expected_dir = os.path.abspath(os.path.join(
-        run_dir, "evidence", args.task_id, args.case_id.split("/", 1)[-1]))
+        run_dir, "evidence", args.task_id, args.case_id.split("/", 1)[-1], "attempt-%d" % attempt))
     if case_dir != expected_dir or os.path.commonpath([run_dir, case_dir]) != run_dir:
         return [], ["case directory does not match task/case"], case_dir, None
     try:
@@ -1881,15 +2223,20 @@ def _read_case_rows(run_dir, case_dir, expected_digest=None):
         os.close(fd)
 
 
-def cmd_seal_case(args):
+def cmd_seal_case(args, held_lock=False, deadline_guard=None, launch_binding=None):
     """Seal measured leaves only; suite-level success never supplies an oracle."""
     run_dir = os.path.realpath(_run_dir_from(args))
     lock = RunLock(run_dir)
-    if not lock.acquire_nb():
+    if not held_lock and not lock.acquire_nb():
         die(EXIT_BLOCKED, "seal-case cannot acquire run lock")
     try:
         state = _require_state(run_dir)
-        contract = load_contract(state["plan_dir"])
+        # Direct gate-driven sealing stays available per runner_cli_contract;
+        # only an unreconciled controller launch blocks it (two paths must
+        # never race on the same case).
+        if state.get("active_launch") and launch_binding is None:
+            die(EXIT_BLOCKED, "active launch requires controller reconciliation")
+        contract = _load_bound_contract(state)
         _budget_check(state, contract, args.task_id)
         _task_attempt_check(state, contract, args.task_id)
         ok, digest = verify_plan_manifest(state["plan_dir"])
@@ -1907,6 +2254,8 @@ def cmd_seal_case(args):
         if errors:
             print(json.dumps({"result": "FAIL", "errors": errors[:20]}))
             return EXIT_CONTRACT
+        if deadline_guard is not None:
+            deadline_guard()
         if not _write_case_rows(run_dir, case_dir, rows, directory_id):
             print(json.dumps({"result": "FAIL", "errors": ["case directory changed while sealing"]}))
             return EXIT_CONTRACT
@@ -1920,18 +2269,48 @@ def cmd_seal_case(args):
             os.close(fd)
         bindings = state.setdefault("case_manifest_digests", {})
         previous = bindings.get(args.case_id)
+        attempt = state["tasks"][args.task_id]["attempt"]
+        attempts = state.setdefault("case_manifest_attempts", {})
+        if not isinstance(attempts, dict) or (previous and attempts.get(args.case_id) != attempt):
+            print(json.dumps({"result": "FAIL", "errors": ["case attempt binding conflict"]}))
+            return EXIT_CONTRACT
         if previous and previous != manifest_digest:
             print(json.dumps({"result": "FAIL", "errors": ["case binding conflict"]}))
             return EXIT_CONTRACT
         if not previous:
+            if deadline_guard is not None:
+                deadline_guard()
+            proof = {}
+            if launch_binding is not None:
+                if deadline_guard is None or not held_lock:
+                    die(EXIT_CONTRACT, "launch binding requires controller guard")
+                st = StateStore(run_dir)
+                pending_state = st.write_snapshot(state, "case_manifest_pending", {
+                    "case_id": args.case_id, "manifest_sha256": manifest_digest,
+                    "attempt": attempt, "candidate": state.get("verification_candidate"),
+                    "launch": launch_binding})
+                pending_hash = pending_state["events_head_hash"]
+                deadline_guard()
+                observed = _clock_check(pending_state.get("clock_anchor"))
+                _clock_transition(pending_state["clock_anchor"], observed)
+                if observed["wall"] >= launch_binding.get("command_deadline", 0):
+                    die(EXIT_CONTRACT, "case pending persisted after command deadline")
+                state = pending_state
+                bindings = state.setdefault("case_manifest_digests", {})
+                attempts = state.setdefault("case_manifest_attempts", {})
+                proof = {"pending_hash": pending_hash, "launch": launch_binding,
+                         "persisted_observed_clock": observed}
             bindings[args.case_id] = manifest_digest
+            attempts[args.case_id] = attempt
             StateStore(run_dir).write_snapshot(state, "case_manifest_bound", {
                 "case_id": args.case_id, "manifest_sha256": manifest_digest,
-                "candidate": state.get("verification_candidate")})
+                "attempt": attempt,
+                "candidate": state.get("verification_candidate"), **proof})
         print(json.dumps({"result": "SEALED", "leaves": len(rows), "state_updated": not bool(previous)}))
         return EXIT_OK
     finally:
-        lock.release()
+        if not held_lock:
+            lock.release()
 
 
 def cmd_accept_gate(args):
@@ -1940,6 +2319,8 @@ def cmd_accept_gate(args):
     if not lock.acquire_nb():
         die(EXIT_BLOCKED, "accept-gate cannot acquire run lock")
     try:
+        if _require_state(run_dir).get("active_launch"):
+            die(EXIT_BLOCKED, "active launch requires reconciliation before gate acceptance")
         result = cmd_verify(args, held_lock=True)
         if result != EXIT_OK:
             return result
@@ -2138,12 +2519,31 @@ def _scenario_selftests(base_tmp):
         os.makedirs(run, exist_ok=True)
         return run
 
+    plan_dir = os.path.join(os.path.dirname(os.path.dirname(
+        os.path.abspath(__file__))),
+        "docs/architecture/attachment-lifecycle-v5")
+    manifest_sha = sha256_file(os.path.join(plan_dir, "manifest.sha256"))
+    _now = time.time()
+    _auth = {"receipt_id": "selftest-synthetic", "synthetic": True,
+             "plan_manifest_sha256": manifest_sha,
+             "allowed_tasks": sorted(t["task_id"] for t in load_contract(plan_dir)["tasks"]),
+             "implementation_allowed": True, "local_commit_allowed": True,
+             "issued_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(_now - 60)),
+             "expires_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(_now + 6 * 86400))}
+    auth_path = os.path.join(base_tmp, "selftest-authorization.json")
+    with open(auth_path, "w") as fh:
+        json.dump(_auth, fh)
+    auth_sha = sha256_file(auth_path)
+
     def mini_state(run, task_state="READY", attempt=1, deadline=None, extra=None):
         state = {"run_id": os.path.basename(run), "revision": 1,
-                 "plan_dir": os.path.join(os.path.dirname(os.path.dirname(
-                     os.path.abspath(__file__))),
-                     "docs/architecture/attachment-lifecycle-v5"),
-                 "tasks": {"W0-03": {"state": task_state, "attempt": attempt,
+                 "plan_dir": plan_dir,
+                 "plan_manifest_sha256": manifest_sha,
+                 "authorization_path": auth_path,
+                 "authorization_sha256": auth_sha,
+                 "tasks": {"W0-01": {"state": "PASS", "attempt": 1},
+                           "W0-02": {"state": "PASS", "attempt": 1},
+                           "W0-03": {"state": task_state, "attempt": attempt,
                                      "task_started_at": time.time() - 5,
                                      "task_deadline": deadline if deadline is not None
                                      else time.time() + 3600}},
@@ -2461,12 +2861,10 @@ def _scenario_selftests(base_tmp):
         import io as _io
         run = fresh("partial_commit")
         state = {"run_id": os.path.basename(run), "revision": 1,
-                 "plan_dir": os.path.join(os.path.dirname(os.path.dirname(
-                     os.path.abspath(__file__))),
-                     "docs/architecture/attachment-lifecycle-v5"),
-                 "plan_manifest_sha256": sha256_file(os.path.join(
-                     os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-                     "docs/architecture/attachment-lifecycle-v5", "manifest.sha256")),
+                 "plan_dir": plan_dir,
+                 "plan_manifest_sha256": manifest_sha,
+                 "authorization_path": auth_path,
+                 "authorization_sha256": auth_sha,
                  "tasks": {"W0-01": {"state": "PASS", "attempt": 1},
                            "W0-02": {"state": "COMMITTING", "attempt": 1,
                                      "commit_vector": {"imboy": {"commit": "1" * 40}},
@@ -2484,6 +2882,9 @@ def _scenario_selftests(base_tmp):
                rc == 0 and rec.get("vector") == {"imboy": {"commit": "1" * 40}}
                and report.get("tasks_pass") == ["W0-01"],
                "resume rc=%s reconciles COMMITTING vector, PASS intact" % rc)
+    except SystemExit as exc:
+        record("parallel_partial_commit_recovery", False,
+               "unexpected exit %s" % (exc.code,))
     except Exception as exc:  # noqa: BLE001
         record("parallel_partial_commit_recovery", False, "exception %s" % exc)
 
@@ -2576,6 +2977,8 @@ def cmd_task(args):
         die(75, "BLOCKED_EXTERNAL: cannot mutate task state without lock")
     try:
         state = _require_state(run_dir, allow_expired=args.to in ('NO_GO', 'BLOCKED_EXTERNAL'))
+        if state.get("active_launch"):
+            die(EXIT_BLOCKED, "active launch requires reconciliation before task transition")
         contract = load_contract(state["plan_dir"])
         if args.task_id not in state["tasks"]:
             die(2, "unknown task %r" % args.task_id)
@@ -2667,6 +3070,173 @@ def _case_bound_candidates(run_dir):
     return bound
 
 
+def _bound_case_dir(run_dir, state, task_id, case_id):
+    """Resolve an explicitly bound attempt, or a pre-upgrade flat binding."""
+    base = os.path.join(run_dir, "evidence", task_id, case_id.split("/", 1)[1])
+    attempts = state.get("case_manifest_attempts", {})
+    if not isinstance(attempts, dict):
+        raise ValueError("invalid case attempt bindings")
+    if case_id not in attempts:
+        return base
+    attempt = attempts[case_id]
+    if type(attempt) is not int or attempt < 1:
+        raise ValueError("invalid bound attempt")
+    return os.path.join(base, "attempt-%d" % attempt)
+
+
+def _sealed_case_binding(run_dir, case_id):
+    """Find the case's immutable sealing event after the chain was verified."""
+    found = None
+    with open(os.path.join(run_dir, "events.jsonl"), encoding="utf-8") as stream:
+        for line in stream:
+            if not line.strip():
+                continue
+            event = json.loads(line)
+            payload = event.get("payload")
+            if (event.get("kind") == "case_manifest_bound" and isinstance(payload, dict)
+                    and payload.get("case_id") == case_id):
+                if found is not None:
+                    raise ValueError("ambiguous case sealing events")
+                found = payload
+    return found
+
+
+def cmd_verify_case(args, held_lock=False):
+    """Verify one sealed case before a task resumes; never mutate evidence."""
+    run_dir = _run_dir_from(args)
+    lock = RunLock(run_dir)
+    if not held_lock and not lock.acquire_nb():
+        die(EXIT_BLOCKED, "verify-case cannot acquire run lock")
+    try:
+        state = _require_state(run_dir)
+        contract = _load_bound_contract(state)
+        task = state.get("tasks", {}).get(args.task_id, {})
+        if task.get("state") not in ("RUNNING", "VERIFYING"):
+            die(EXIT_CONTRACT, "verify-case requires an active task")
+        _budget_check(state, contract, args.task_id)
+        _task_attempt_check(state, contract, args.task_id)
+        if args.case_id not in (task_case_ids(contract, args.task_id) or []):
+            die(EXIT_CONTRACT, "case is not declared by task")
+        candidate = state.get("verification_candidate")
+        errors = candidate_errors(candidate)
+        if not isinstance(candidate, dict) or candidate.get("plan_manifest_sha256") != state.get("plan_manifest_sha256"):
+            errors.append("candidate plan binding mismatch")
+        digest = state.get("case_manifest_digests", {}).get(args.case_id)
+        binding = _sealed_case_binding(run_dir, args.case_id)
+        if isinstance(binding, dict) and "pending_hash" in binding and state.get("active_launch"):
+            # A controller-timed case verifies only after its launch reconciled
+            # (no active launch remains); otherwise two paths race one case.
+            die(EXIT_BLOCKED, "timed case requires verified command exit; reconciliation required")
+        attempts = state.get("case_manifest_attempts", {})
+        if not isinstance(attempts, dict):
+            die(EXIT_CONTRACT, "invalid case attempt bindings")
+        bound_attempt = attempts.get(args.case_id)
+        if (not _valid_digest(digest) or not isinstance(binding, dict)
+                or binding.get("manifest_sha256") != digest
+                or binding.get("candidate") != candidate
+                or binding.get("attempt") != bound_attempt
+                or (bound_attempt is not None and
+                    (type(bound_attempt) is not int or bound_attempt < 1
+                     or bound_attempt > task["attempt"]))):
+            errors.append("case sealing event, candidate or attempt mismatch")
+        expected = contract.get("expected_leaf_matrix", {}).get(args.case_id)
+        if not isinstance(expected, list) or not expected:
+            die(EXIT_CONTRACT, "case leaf contract missing")
+        index = {tuple(leaf.get(k) for k in LEAF_FIELDS): leaf for leaf in expected}
+        if len(index) != len(expected):
+            errors.append("duplicate contract leaf identity")
+        actual = []
+        try:
+            case_dir = _bound_case_dir(run_dir, state, args.task_id, args.case_id)
+            for _, row in _read_case_rows(run_dir, case_dir, digest):
+                identity = tuple(row.get(k) for k in LEAF_FIELDS)
+                actual.append("|".join(map(str, identity)))
+                if identity not in index:
+                    errors.append("unexpected leaf")
+                    continue
+                errors.extend(receipt_errors(
+                    row, index[identity], args.task_id, args.case_id, candidate,
+                    run_dir, state.get("resource_allowlist", {}), contract,
+                    bound_attempt if bound_attempt is not None else task.get("attempt"),
+                    legacy=args.case_id in state.get("legacy_case_ids", [])))
+        except (OSError, ValueError, TypeError, AttributeError):
+            errors.append("case manifest or evidence invalid")
+        ok, why = v_leaf_set(leaf_ids_for_case(contract, args.case_id), actual)
+        if not ok:
+            errors.append(why)
+        errors.extend(candidate_errors(candidate))
+        _budget_check(state, contract, args.task_id)
+        _task_attempt_check(state, contract, args.task_id)
+        print(json.dumps({"result": "FAIL" if errors else "PASS", "case_id": args.case_id,
+                          "errors": errors[:20]}))
+        return EXIT_CONTRACT if errors else EXIT_OK
+    finally:
+        if not held_lock:
+            lock.release()
+
+
+def cmd_inspect_phase(args, held_lock=False):
+    """Inspect case phases only after validating admission and current candidate."""
+    run_dir = _run_dir_from(args)
+    lock = RunLock(run_dir)
+    if not held_lock and not lock.acquire_nb():
+        die(EXIT_BLOCKED, "inspect-phase cannot acquire run lock")
+    try:
+        state = _require_state(run_dir)
+        contract = _load_bound_contract(state)
+        task = state.get("tasks", {}).get(args.task_id, {})
+        if task.get("state") not in ("RUNNING", "VERIFYING"):
+            die(EXIT_CONTRACT, "inspect-phase requires an active task")
+        _budget_check(state, contract, args.task_id)
+        _task_attempt_check(state, contract, args.task_id)
+        start_clock = _clock_check(state.get("clock_anchor"))
+        _clock_transition(state["clock_anchor"], start_clock)
+        candidate = state.get("verification_candidate")
+        errors = candidate_errors(candidate)
+        if (not isinstance(candidate, dict)
+                or candidate.get("plan_manifest_sha256") != state.get("plan_manifest_sha256")):
+            errors.append("candidate plan binding mismatch")
+        cases = task_case_ids(contract, args.task_id)
+        if (not isinstance(cases, list) or not cases
+                or any(not isinstance(cid, str) or not re.fullmatch(
+                    re.escape(args.task_id) + r"/[A-Za-z0-9][A-Za-z0-9_-]*", cid) for cid in cases)
+                or len(cases) != len(set(cases))):
+            die(EXIT_CONTRACT, "invalid task case registry")
+        if args.case_id:
+            if args.case_id not in cases:
+                die(EXIT_CONTRACT, "case is not declared by task")
+            cases = [args.case_id]
+        bindings = state.get("case_manifest_digests", {})
+        if not isinstance(bindings, dict):
+            die(EXIT_CONTRACT, "invalid case bindings")
+        result = []
+        for cid in cases:
+            leaves = contract.get("expected_leaf_matrix", {}).get(cid)
+            if (not isinstance(leaves, list) or not leaves
+                    or any(not isinstance(leaf, dict) or leaf.get("schema_phase") not in
+                           ("base", "expand-queue", "guards-contract", "integrated") for leaf in leaves)):
+                die(EXIT_CONTRACT, "invalid case phase matrix")
+            if cid in bindings:
+                _sealed_case_binding(run_dir, cid)
+            result.append({"case_id": cid, "sealed": cid in bindings,
+                           "integrated_only": all(leaf["schema_phase"] == "integrated" for leaf in leaves)})
+        errors.extend(candidate_errors(candidate))
+        if errors:
+            die(EXIT_CONTRACT, "inspect-phase candidate invalid: " + "; ".join(errors[:5]))
+        # Candidate hashing may be expensive. Revalidate authorization and
+        # the frozen plan, then persistent deadlines before returning.
+        _require_admission(state)
+        end_clock = _clock_check(start_clock)
+        _clock_transition(start_clock, end_clock)
+        _budget_check(state, contract, args.task_id)
+        _task_attempt_check(state, contract, args.task_id)
+        print(json.dumps({"cases": result}))
+        return EXIT_OK
+    finally:
+        if not held_lock:
+            lock.release()
+
+
 def _task_artifacts(state, contract, task_id, run_dir):
     candidate = state.get("verification_candidate", {})
     errors = candidate_errors(candidate) if candidate else ["current candidate missing"]
@@ -2675,13 +3245,15 @@ def _task_artifacts(state, contract, task_id, run_dir):
     for cid in task_case_ids(contract, task_id) or []:
         expected = contract["expected_leaf_matrix"][cid]
         index = {tuple(v[k] for k in LEAF_FIELDS): v for v in expected}
-        case_dir = os.path.join(run_dir, "evidence", task_id, cid.split("/", 1)[1])
         actual = []
         total = dict(executed=0, passed=0, failed=0, skipped=0, exit_code=0)
         # The leaves were sealed against the candidate recorded by their
         # case_manifest_bound event; fall back to the current candidate.
         case_candidate = sealed_candidates.get(cid) or candidate
+        if case_candidate != candidate:
+            errors.append(cid + ": sealed evidence is bound to a different candidate")
         try:
+            case_dir = _bound_case_dir(run_dir, state, task_id, cid)
             for name, row in _read_case_rows(run_dir, case_dir, state.get("case_manifest_digests", {}).get(cid)):
                 identity = tuple(row.get(k) for k in LEAF_FIELDS)
                 actual.append("|".join(map(str, identity)))
@@ -2690,7 +3262,8 @@ def _task_artifacts(state, contract, task_id, run_dir):
                     continue
                 errors.extend(receipt_errors(row, index[identity], task_id, cid,
                                              case_candidate, run_dir, state.get("resource_allowlist", {}), contract,
-                                             state.get("tasks", {}).get(task_id, {}).get("attempt")))
+                                             state.get("case_manifest_attempts", {}).get(
+                                                 cid, state.get("tasks", {}).get(task_id, {}).get("attempt"))))
                 for field in ("executed", "passed", "failed", "skipped"):
                     if type(row.get(field)) is int:
                         total[field] += row[field]
@@ -2740,9 +3313,15 @@ def cmd_accept_task(args):
         die(EXIT_BLOCKED, "accept-task cannot acquire run lock")
     try:
         state = _require_state(run_dir)
+        if state.get("active_launch"):
+            die(EXIT_BLOCKED, "active launch requires reconciliation before task acceptance")
         cur = state["tasks"].get(args.task_id, {})
         if cur.get("state") != "COMMITTING":
             die(EXIT_CONTRACT, "accept-task requires COMMITTING")
+        if args.task_id == "W6-03":
+            # Keep task acceptance fenced even if independently supplied leaf
+            # receipts and a self-described review claim to be successful.
+            die(EXIT_BLOCKED, "W6-03 independent reviewer provenance is unverified")
         contract = load_contract(state["plan_dir"])
         _budget_check(state, contract, args.task_id)
         deadline = cur.get("task_deadline")
@@ -2807,6 +3386,16 @@ def main(argv):
     vf.add_argument("--run-dir")
     vf.add_argument("--gate", required=True)
     vf.set_defaults(func=cmd_verify)
+    vc = sub.add_parser("verify-case")
+    vc.add_argument("--run-dir", required=True)
+    vc.add_argument("--task-id", required=True)
+    vc.add_argument("--case-id", required=True)
+    vc.set_defaults(func=cmd_verify_case)
+    ip = sub.add_parser("inspect-phase")
+    ip.add_argument("--run-dir", required=True)
+    ip.add_argument("--task-id", required=True)
+    ip.add_argument("--case-id")
+    ip.set_defaults(func=cmd_inspect_phase)
     ag = sub.add_parser("accept-gate")
     ag.add_argument("--run-dir", required=True)
     ag.add_argument("--gate", required=True)

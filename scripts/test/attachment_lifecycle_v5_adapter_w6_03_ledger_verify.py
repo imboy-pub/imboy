@@ -37,6 +37,50 @@ FINAL_REGRESSION = "W6-03/final-regression"
 REQUIRED_CANDIDATE = ("heads", "owned_tree_digest", "plan_manifest_sha256",
                       "migration_digest")
 REVIEW_ARTIFACT = os.path.join("resources", "independent-review.json")
+PARALLEL_REQUIRED = frozenset((
+    "second-writer-refused", "worker-out-of-bounds-detected",
+    "partial-vector-fails", "crash-committing-reconciles",
+))
+
+
+def _parallel_selftest_errors(parallel):
+    if (not isinstance(parallel, dict) or set(parallel) != PARALLEL_REQUIRED
+            or any(value is not True for value in parallel.values())):
+        return ["parallel self-tests must contain exactly the four required passing results"]
+    return []
+
+
+def _prior_task_errors(contract, state):
+    tasks = contract.get("tasks")
+    states = state.get("tasks")
+    if not isinstance(tasks, list) or not isinstance(states, dict):
+        return ["contract task list or state task mapping missing"]
+    ids = [task.get("task_id") for task in tasks if isinstance(task, dict)]
+    if (len(ids) != len(tasks) or any(not isinstance(tid, str) or not tid for tid in ids)
+            or len(set(ids)) != len(ids) or "W6-03" not in ids
+            or set(states) != set(ids)
+            or any(not isinstance(item, dict) for item in states.values())):
+        return ["task state set does not exactly match the contract"]
+    pending = [tid for tid in ids if tid != "W6-03"
+               and (not isinstance(states[tid], dict)
+                    or states[tid].get("state") != "PASS")]
+    return ["prior tasks not PASS: %r" % pending] if pending else []
+
+
+def _independent_review_errors(review_path):
+    # A JSON file cannot establish its author's independent context, nor bind
+    # the review to the exact candidate/plan/receipts. The frozen contract has
+    # no verifiable review attestation protocol; fail closed until one exists.
+    if not os.path.isfile(review_path):
+        return ["independent review artifact missing"]
+    try:
+        with open(review_path, encoding="utf-8") as fh:
+            review = json.load(fh)
+    except (OSError, ValueError):
+        return ["independent review artifact is unreadable or invalid JSON"]
+    if not isinstance(review, dict) or not review:
+        return ["independent review artifact is empty or invalid"]
+    return ["independent reviewer provenance and candidate/plan/receipt binding unverified"]
 
 
 def _gate_results(case_dir, case_id):
@@ -59,10 +103,14 @@ def _sealed_receipts(run_dir, case_id, contract):
         for cid in task.get("case_ids", []):
             if cid == OWN_CASE or (tid == "W6-03" and cid != FINAL_REGRESSION):
                 continue
-            directory = os.path.join(run_dir, "evidence", tid, cid.split("/", 1)[1])
             try:
+                directory = runner._bound_case_dir(run_dir, state, tid, cid)
                 rows = runner._read_case_rows(run_dir, directory,
                     state.get("case_manifest_digests", {}).get(cid))
+                attempt = state.get("case_manifest_attempts", {}).get(cid)
+                if attempt is not None and any(type(row.get("task_attempt")) is not int
+                                               or row.get("task_attempt") != attempt for _, row in rows):
+                    raise ValueError("receipt task attempt differs from binding")
             except (OSError, ValueError, TypeError, AttributeError) as exc:
                 S6.die(case_id, "unbound or corrupt case %s (%s)" % (cid, exc))
             sealed[cid] = [(name, row, directory) for name, row in rows]
@@ -266,14 +314,16 @@ def build():
     if total != expected_mutations or rejected != total:
         gaps.append("mutation battery %r/%r rejected, contract declares %d"
                     % (rejected, total, expected_mutations))
-    if not parallel or not all(value is True for value in parallel.values()):
-        gaps.append("parallel self-tests not all true: %r" % parallel)
+    gaps.extend(_parallel_selftest_errors(parallel))
     if holder.get("passed") is not True:
         gaps.append("holder hang bounded refusal not proven: %r" % holder)
     checks["mutation_battery"] = {"total": total, "rejected": rejected,
                                   "expected": expected_mutations,
                                   "parallel": parallel, "holder": holder}
 
+    gaps.extend(_prior_task_errors(contract, state))
+    review_path = os.path.join(run_dir, REVIEW_ARTIFACT)
+    gaps.extend(_independent_review_errors(review_path))
     if gaps:
         S6.report_gaps(CASE_ID, 0, {CASE_ID: (len(leaves), gaps)})
 
@@ -347,13 +397,11 @@ def build():
     S6.C.assert_leaf_set(leaves, rows)
 
     # ---- guarded W6-03 task output -----------------------------------------
-    review_path = os.path.join(run_dir, REVIEW_ARTIFACT)
     task_states = {tid: item.get("state")
                    for tid, item in (state.get("tasks") or {}).items()}
-    prior_ok = all(value == "PASS" for tid, value in task_states.items()
-                   if tid != "W6-03")
+    prior_ok = not _prior_task_errors(contract, state)
     gates_ok = all(gates[gate].get("result") == "PASS" for gate in GATES)
-    if prior_ok and gates_ok and os.path.isfile(review_path):
+    if prior_ok and gates_ok and not _independent_review_errors(review_path):
         summary = {
             "generated_at": datetime.datetime.now(
                 datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),

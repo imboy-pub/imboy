@@ -95,7 +95,7 @@ leaf_unit(S, {Case, Ep, Driver, Sc, _Dom, _Ac} = Spec) ->
     {Desc,
         {timeout, 240, fun() ->
             Measured = scenario(S#{leaf => Leaf}, Spec),
-            ?S:emit(Spec, Measured)
+            ?S:emit(Spec, Measured, Leaf)
         end}}.
 
 leaf_name(Case, Ep, Driver, Sc) ->
@@ -162,6 +162,9 @@ pin_scenario(S, Ep, Driver, <<"pin_commit_unknown_no_put">>) ->
         Failed = ?F:put(T, ?BODY),
         ?assertNot(?F:success(Failed)),
         %% pin 已 COMMIT、provider 无字节：同 receipt 重试是唯一合法恢复。
+        %% pin 快照按面取证（first_content_pin 同口径）：seat/widget（eb 面）
+        %% 在 enterprise_asset.upload_content——查 attach_pending 恒
+        %% {error, not_found}（三跑实证 badmatch）。
         {ok, Pin} = ?S:content_pin_any(Ep, T),
         ?assertEqual(?S:sha(?BODY), maps:get(<<"sha256">>, Pin)),
         ?assertEqual({error, not_found}, ?F:read(T))
@@ -313,34 +316,131 @@ pin_scenario(S, Ep, Driver, <<"frozen_internal_signature_expiry">>) when
     ?assert(lists:member(maps:get(status, Failed), [400, 401, 403])),
     {error, not_pinned} = ?S:content_pin(key(T)),
     ?assertEqual({error, not_found}, ?F:read(T)),
-    #{expired_capability => true, expired_status => maps:get(status, Failed), pinned => false};
+    DriverEvidence = frozen_driver_expiry(S, Ep, Driver),
+    DriverEvidence#{expired_capability => true, expired_status => maps:get(status, Failed)};
 pin_scenario(S, Ep, Driver, <<"frozen_internal_signature_expiry">>) when
     Ep =:= enterprise_seat; Ep =:= cs_widget
 ->
-    %% 使用服务端正常 TTL 签发，随后仅将服务端时钟推至能力到期时刻；
-    %% 不向客户端暴露 TTL，也不伪造 upload_ref。
-    T = reg(S, Ep, Driver),
-    ExpiresAt = int(maps:get(<<"expires_at">>, maps:get(registration, T))),
-    ?assert(ExpiresAt > erlang:system_time(second)),
-    meck:new(eb_system_clock, [passthrough, no_link]),
-    Failed =
-        try
-            ok = meck:expect(eb_system_clock, now, fun() -> ExpiresAt end),
-            ?F:put(T, ?BODY)
-        after
-            meck:unload(eb_system_clock)
-        end,
+    %% 先在独占测试库以生产登记函数构造短窗，再经真实 HTTP 重放签发。
+    %% 短 TTL 仅作为服务端 fixture 前置；客户端请求不携带 TTL。
+    T = seeded_eb_http_session(S, Ep, Driver, 8),
+    timer:sleep(9100),
+    Failed = ?F:put(T, ?BODY),
+
     ?assertNot(?F:success(Failed)),
-    %% F11：过期 upload_ref 是客户端可重试的冲突语义（frozen classify
-    %% expired_upload_ref → ?ERR_CONFLICT=409：error_code.hrl:96；
-    %% eb_enterprise_http.erl:806、cs_http.erl:947；scope 有效但过期的裁决
-    %% 在 eb_asset_upload_ref.erl:185）。
     ?assertEqual(409, maps:get(status, Failed)),
     org_ws(T, fun(Org, Ws, AssetId) ->
         {error, not_pinned} = ?S:content_pin_eb(Org, Ws, AssetId)
     end),
     ?assertEqual({error, not_found}, ?F:read(T)),
-    #{expired_upload_ref => true, expired_status => maps:get(status, Failed), pinned => false}.
+    Gone = expired_window_presign_rejected(S, Ep, Driver),
+    ?assertNot(?F:success(Gone)),
+    ?assertEqual(410, maps:get(status, Gone)),
+    DriverEvidence = frozen_driver_expiry(S, Ep, Driver),
+    DriverEvidence#{
+        expired_upload_ref => true,
+        expired_status => maps:get(status, Failed),
+        presign_expired_window_rejected => true,
+        presign_expired_status => maps:get(status, Gone),
+        pinned => false
+    }.
+
+%% A valid request reaches the real driver, then its frozen window expires
+%% while held at that boundary. No fake clock or substituted driver result.
+frozen_driver_expiry(S, Ep, Driver) ->
+    Control = reg(S, Ep, Driver),
+    ?assert(?F:success(?F:put(Control, ?BODY))),
+    ?assertEqual({ok, ?BODY}, ?F:read(Control)),
+    {T, Issued, Expiry} = short_lived_session(S, Ep, Driver),
+    ?assertEqual({error, not_found}, ?F:read(T)),
+    {Failed, PinSha} = ?S:with_put_expiry_barrier(T, fun(Barrier) ->
+        Job = ?S:start_job(fun() -> ?F:put(T, ?BODY) end),
+        {B, C} = ?S:await_put_context(Barrier),
+        Worker = ?S:await_barrier(Barrier),
+        assert_frozen_context(Driver, B, C, Issued, Expiry),
+        {ok, Pin} = ?S:content_pin_any(Ep, T),
+        ?assertEqual(?S:sha(?BODY), maps:get(<<"sha256">>, Pin)),
+        Wait = (Expiry - erlang:system_time(second)) * 1000 + 1100,
+        ?assert(Wait > 0 andalso Wait < 25000),
+        timer:sleep(Wait),
+        ?S:release(Barrier, Worker),
+        ?assertEqual({error, invalid_signature_context}, ?S:await_put_result(Barrier)),
+        Response = ?S:finish_job(Job),
+        ?assertNot(?F:success(Response)),
+        ?assertEqual({error, not_found}, ?F:read(T)),
+        {Response, maps:get(<<"sha256">>, Pin)}
+    end),
+    #{
+        driver_window_expired => true,
+        frozen_expiry => Expiry,
+        provider_bytes_absent => true,
+        control_put_succeeded => true,
+        registration_preseeded_fixture => true,
+        object_key => key(T),
+        pin_sha256 => PinSha,
+        client_upload_id => maps:get(client_upload_id, T),
+        presign_request_id => maps:get(registration_request_id, T),
+        put_request_id => maps:get(request_id, Failed),
+        put_status => maps:get(status, Failed)
+    }.
+
+short_lived_session(S, Ep, Driver) when Ep =:= ordinary; Ep =:= enterprise_internal ->
+    Original = reg(S, Ep, Driver),
+    %% Register a fresh run-owned short session through the production DB
+    %% function, then obtain its capability from the real HTTP presign path.
+    %% Existing session expiry and deadline remain immutable.
+    {ok, Key, Cid} = ?S:register_expired_pending(key(Original), {short, 20}),
+    Start = erlang:system_time(second),
+    T = ?F:register(
+        S#{registration_cid => Cid, leaf => maps:get(leaf, Original)},
+        Ep,
+        Driver,
+        ?BODY
+    ),
+    ?assertEqual(Key, key(T)),
+    {ok, #{<<"expires_at">> := Expiry}} = ?S:pending_row(Key),
+    Registration = maps:get(registration, T),
+    Token = maps:get(<<"upload_capability">>, Registration),
+    {ok, #{<<"exp">> := Expiry}} = imboy_jwt:verify_upload_capability(Token),
+    ?assertEqual(Expiry, maps:get(<<"expires_at">>, Registration)),
+    ?assertNotEqual(nomatch, binary:match(maps:get(upload_url, T), Token)),
+    {T, {gateway, Start}, Expiry};
+short_lived_session(S, Ep, Driver) ->
+    T = seeded_eb_http_session(S, Ep, Driver, 20),
+    Claims = org_ws(T, fun(Org, Ws, AssetId) ->
+        Token = maps:get(<<"upload_ref">>, maps:get(registration, T)),
+        {ok, Crypto} = eb_infra_ports:resolve(crypto),
+        KeyRef = eb_env_keyring:resolve_key_ref(undefined),
+        {ok, #{claims := C}} = eb_asset_upload_ref:open(
+            Token, Org, Ws, Crypto, KeyRef, erlang:system_time(second)
+        ),
+        {ok, #{<<"expires_at">> := DbExpiry}} = ?S:eb_row(Org, Ws, AssetId),
+        ?assertEqual(DbExpiry, maps:get(expires_at, C)),
+        C
+    end),
+    {T, maps:get(issued_at, Claims), maps:get(expires_at, Claims)}.
+
+assert_frozen_context(disk, Expiry, _Recheck, _Issued, Expiry) ->
+    ok;
+assert_frozen_context(
+    garage,
+    _Mime,
+    #{issued_at := Issued, expires_at := Expiry},
+    ExpectedIssued,
+    ExpectedExpiry
+) ->
+    IssuedSec = calendar:datetime_to_gregorian_seconds(Issued) - 62167219200,
+    ExpirySec = calendar:datetime_to_gregorian_seconds(Expiry) - 62167219200,
+    ?assertEqual(ExpectedExpiry, ExpirySec),
+    case ExpectedIssued of
+        {gateway, Start} ->
+            ?assert(
+                IssuedSec >= Start andalso IssuedSec =< erlang:system_time(second) andalso
+                    IssuedSec < ExpirySec
+            );
+        _ ->
+            ?assertEqual(ExpectedIssued, IssuedSec)
+    end.
 
 rec_scenario(S, Ep, Driver, <<"presign_response_lost">>) ->
     T = reg(S, Ep, Driver),
@@ -1052,3 +1152,57 @@ seat_presign_path(S) ->
 widget_presign_path(S) ->
     <<"/api/v1/cs/widget/sessions/", (integer_to_binary(maps:get(session_id, S)))/binary,
         "/assets/presign">>.
+
+%% 构造测试专属的已登记短窗，使用真实存储端口和登记函数；随后请求
+%% 走同一用户的真实 HTTP replay，而非向客户端接口开放 TTL。
+seeded_eb_session(S, Ep, Driver, Ttl) ->
+    Source = reg(S, Ep, Driver),
+    Cid = elib_uuid:gen_v7(),
+    Now = erlang:system_time(second),
+    Id = eb_tsid:new_id(enterprise_asset),
+    org_ws(Source, fun(Org, Ws, SourceId) ->
+        {ok, Snapshot} = ?S:eb_row(Org, Ws, SourceId),
+        {ok, Asset} = eb_pg_asset_meta:fetch_asset(Org, Ws, SourceId),
+        Registration = maps:get(<<"upload_registration">>, Snapshot),
+        Declaration = maps:get(<<"declaration">>, Registration),
+        Retain =
+            case maps:get(<<"retain_until">>, Declaration, null) of
+                Seconds when is_integer(Seconds) -> Seconds * 1000;
+                _ -> undefined
+            end,
+        Descriptor = #{
+            id => Id,
+            conversation_id => maps:get(conversation_id, Asset),
+            message_id => maps:get(message_id, Asset, undefined),
+            business_identity_id => maps:get(business_identity_id, Asset, undefined),
+            uploaded_by_user_id => maps:get(uploaded_by_user_id, Asset, undefined),
+            object_hash => maps:get(object_hash, Asset),
+            mime => maps:get(mime, Asset),
+            size_bytes => maps:get(size_bytes, Asset),
+            file_name => maps:get(file_name, Asset, undefined),
+            retain_until => Retain
+        },
+        {ok, Id} = eb_pg_asset_meta:register_session_v5(
+            Org, Ws, Descriptor, Cid, Registration, {Now + 3600, Now + Ttl}
+        ),
+        {ok, #{<<"expires_at">> := Expiry}} = ?S:eb_row(Org, Ws, Id),
+        ?assertEqual(Now + Ttl, Expiry)
+    end),
+    {Source, Cid, Id}.
+
+seeded_eb_http_session(S, Ep, Driver, Ttl) ->
+    {Source, Cid, ExpectedId} = seeded_eb_session(S, Ep, Driver, Ttl),
+    Context = maps:get(fixture, Source),
+    T = ?F:register(
+        Context#{registration_cid => Cid, leaf => maps:get(leaf, Source)},
+        Ep,
+        Driver,
+        ?BODY
+    ),
+    ?assertEqual(ExpectedId, asset_id_of(T)),
+    T.
+
+%% 对已过期的服务端 fixture 发真实 HTTP replay，断言 410 且不签发能力。
+expired_window_presign_rejected(S, Ep, Driver) ->
+    {Source, Cid, _Id} = seeded_eb_session(S, Ep, Driver, -1),
+    raw_register(Source, Ep, Driver, <<"w403.txt">>, Cid).

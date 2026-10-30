@@ -72,6 +72,7 @@
 %%%
 
 -export([resolve_workspace/1]).
+-export([resolve_workspace_tx/2]).
 -export([ensure_channel_member_access/2]).
 -export([ensure_group_member_access/2]).
 -export([guard_channel_binding/2]).
@@ -81,6 +82,36 @@
 
 -include("error_code.hrl").
 -include("log.hrl").
+
+%% Attachment V5 only: resolve the two supported scopes on its transaction
+%% connection, so a database error belongs to the same rollback boundary.
+-spec resolve_workspace_tx(any(), {group | channel, integer() | binary()}) ->
+    {ok, integer()} | personal | {error, not_found}.
+resolve_workspace_tx(Conn, {Kind, Id}) when Kind =:= group; Kind =:= channel ->
+    Id2 = elib_cnv:safe_to_integer(Id),
+    case Id2 > 0 of
+        false ->
+            {error, not_found};
+        true ->
+            Table =
+                case Kind of
+                    group -> <<"\"group\"">>;
+                    channel -> <<"channel">>
+                end,
+            Sql = <<"SELECT scope, workspace_id FROM ", Table/binary, " WHERE id = $1">>,
+            case elib_pg:query(Conn, Sql, [Id2]) of
+                {ok, [Row = #{<<"scope">> := Scope} | _]} ->
+                    WsId = maps:get(<<"workspace_id">>, Row, undefined),
+                    case {Scope, WsId} of
+                        {<<"workspace">>, W} when W =/= null -> {ok, W};
+                        _ -> personal
+                    end;
+                {ok, _} ->
+                    {error, not_found};
+                {error, Reason} ->
+                    erlang:error({resolver_db_error, Reason})
+            end
+    end.
 
 %% ===================================================================
 %% 1. 统一资源归属解析

@@ -15,7 +15,7 @@
 %%% hold_entrypoints_tests 逐字一致（fixture 安装、入口调用、no-delete 断言）。
 -module(attachment_lifecycle_v5_w601_w4_hold_tests).
 
--export([hold_specs/0, delete_specs/0]).
+-export([hold_specs/0, delete_specs/0, marker_with_tx/2]).
 
 -include_lib("eunit/include/eunit.hrl").
 
@@ -32,20 +32,14 @@ w601_w4_hold_test_() ->
 %% 生产入口（attachment_ds:*_cleanup / eb_asset_store / eb_asset_app /
 %% user_deletion_executor / attachment_repo 无 Conn 形态）经 elib_pg 池取连；
 %% 本套件断言连接是独立 marker 库，因此按封印的 W4-03 predecessor 先例把
-%% elib_pg:with_tx/query 转发到 marker 连接（query 经 passthrough 保留真实
-%% rows_to_maps 语义——套件 oracle 依赖真实查询结果）。
+%% elib_pg:with_tx/query 转发到 marker 连接；事务使用 epgsql 真正执行
+%% BEGIN/COMMIT/ROLLBACK。这个 seam 不证明生产池与 after_commit 机制。
 setup() ->
     St = ?X:setup(<<"V5_INTTEST_W601W4HOLD">>),
     Conn = maps:get(conn, St),
     try
         ok = meck:new(elib_pg, [non_strict, no_link, passthrough]),
-        ok = meck:expect(elib_pg, with_tx, fun(F) ->
-            try
-                F(Conn)
-            catch
-                throw:{abort_tx, Reason} -> {error, Reason}
-            end
-        end),
+        ok = meck:expect(elib_pg, with_tx, fun(F) -> marker_with_tx(Conn, F) end),
         ok = meck:expect(elib_pg, query, 2, fun(Sql, Params) ->
             meck:passthrough([Conn, Sql, Params])
         end),
@@ -57,6 +51,22 @@ setup() ->
         Class:Reason:Stack ->
             ?X:cleanup(St),
             erlang:raise(Class, Reason, Stack)
+    end.
+
+%% The marker connection must be exclusive and outside any existing
+%% transaction. Unknown COMMIT outcomes fail closed, as in elib_pg.
+marker_with_tx(Conn, F) ->
+    try epgsql:with_transaction(Conn, F, [{reraise, true}]) of
+        Result ->
+            case {epgsql:get_cmd_status(Conn), Result} of
+                {{ok, commit}, _} -> Result;
+                {{ok, rollback}, {error, _}} -> Result;
+                {Status, _} -> {error, {commit_not_confirmed, Result, Status}}
+            end
+    catch
+        throw:{abort_tx, Reason} -> {error, Reason};
+        throw:{rollback, Reason} -> {rollback, Reason};
+        Class:Reason -> {error, {db_exception, Class, Reason}}
     end.
 
 cleanup(St) ->
@@ -307,6 +317,9 @@ hold_eb_drain(St, Driver, Fixture) ->
     Triple = ?X:triple(St, Driver, Key),
     ok = ?X:seed_eb_asset_row(Conn, Key, Id, Triple, <<"active">>, false, <<"live">>),
     Key2 = ?X:unique_key(<<"v5e2e/w601h/eb-drain2">>),
+    %% 迁移 162 CHECK：pending_object_delete=true 仅许 status='deleted'。
+    %% 此处为合法生产语义——对象已删、待清理资产；本场景 oracle 仍断言
+    %% eb-hold 下删除队列零任务（与 Key 行 active/live 混布覆盖两形态）。
     ok = ?X:seed_eb_asset_row(Conn, Key2, Id2, Triple, <<"deleted">>, true, <<"live">>),
     Bytes = probe_bytes(Driver, Key, atom_to_binary(Fixture, utf8)),
     ok = ?X:put_probe(St, Driver, Key, Bytes),
