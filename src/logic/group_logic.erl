@@ -163,12 +163,10 @@ add(_, Uid, Type, MemberUids) ->
     end).
 
 join_initial_member(Conn, JoinMode, Uid, Gid) ->
-    %% Both returned and thrown failures must abort the creation transaction.
-    %% 返回或抛出的失败均须中止建群事务。
-    case group_member_logic:join_group(Conn, JoinMode, Uid, Gid, #{}) of
-        {ok, _} -> ok;
-        {error, Reason} -> throw({abort_tx, Reason})
-    end.
+    %% join_group/5 失败路径在事务内 throw({abort_tx, _})，成功恒 {ok, _}；
+    %% 异常形状由 with_tx 回滚兜底。
+    {ok, _} = group_member_logic:join_group(Conn, JoinMode, Uid, Gid, #{}),
+    ok.
 
 %% @doc 解散群组
 %% 解散指定群组，通知所有成员并清理相关数据

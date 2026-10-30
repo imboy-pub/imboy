@@ -120,9 +120,7 @@ head_snapshot(I) ->
             {error, enoent} ->
                 {error, not_found};
             {error, R} ->
-                {error, R};
-            _ ->
-                {error, path_escape}
+                {error, R}
         end
     end).
 %% Read one already-verified physical inode in bounded chunks under its storage lock.
