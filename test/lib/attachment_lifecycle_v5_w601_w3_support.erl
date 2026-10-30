@@ -506,7 +506,14 @@ purge_attachment_metadata(Conn, Key) ->
 purge_sqls() ->
     [
         "UPDATE attachment SET lifecycle_state='delete_intent' WHERE path=$1",
-        "INSERT INTO attachment_object_deletion(path,bucket) VALUES ($1,'b')"
+        %% 墓碑只在真有待删 attachment 行时前置（190 删除守卫要求
+        %% intent+tombstone）：全新 key 无残留行时不得落墓碑——
+        %% fn_v5_register_pending 对任何墓碑按 path 抛 23505
+        %% 'v5 key tombstoned'（191 冻结语义无复活路径），无条件
+        %% INSERT 会把本叶尚未注册的 key 提前烧毁（run3/run4 的
+        %% w3hold 80F、w3race 注册族失败均源于此）。
+        "INSERT INTO attachment_object_deletion(path,bucket)"
+        " SELECT $1,'b' WHERE EXISTS (SELECT 1 FROM attachment WHERE path=$1)"
         " ON CONFLICT (path) DO NOTHING",
         "DELETE FROM attachment WHERE path=$1"
     ].

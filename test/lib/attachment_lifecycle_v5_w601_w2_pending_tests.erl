@@ -170,7 +170,11 @@ teardown_probe() ->
 %% helper 先持行 2，主事务持行 1 后争行 2（阻塞点），helper 延迟争行 1 成环；
 %% 40P01 归属由 PG 裁决，双方各自捕获自身收到的真实死锁错误并重试到提交。
 run_concurrent_deadlock() ->
-    Helper = spawn(fun w203_helper_run/1),
+    %% spawn/1 只接受 0 元 fun：直接传 arity-1 的 local fun 会让 helper 进程
+    %% 出生即 badarity 死亡（run4 w2upload 实测），主进程只能在 receive 处
+    %% 等满超时。必须经闭包把 Parent 绑定进 0 元 fun。
+    Parent = self(),
+    Helper = spawn(fun() -> w203_helper_run(Parent) end),
     receive
         {w203_helper_locked, Helper} -> ok
     after ?W203_HELPER_TIMEOUT ->
