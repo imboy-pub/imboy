@@ -610,7 +610,11 @@ process_row_success_is_scoped_to_claimed_type_test_() ->
             {msg_archive_repo, [{'archive', 1, fun(_) -> ok end}]},
             {elib_pg, [{with_tx, 1, fun(F) -> F(self()) end}]},
             {msg_delivery_repo, [{delete_delivered_batch, 5, fun(_, _, _, _, _) -> ok end}]},
-            {msg_store_repo, [{mark_processed, 3, fun(_, _, _) -> {ok, 1} end}]}
+            {msg_store_repo, [{mark_processed, 3, fun(_, _, _) -> {ok, 1} end}]},
+            %% 05b3adba0 起 complete_staged 的 c2c 分支在完成事务内追加
+            %% reconcile_consumed_tx；不声明则 passthrough 守卫抛
+            %% undeclared_mock_call 并污染 cleanup 断言。
+            {c2c_action_receipt_repo, [{reconcile_consumed_tx, 2, fun(_, _) -> ok end}]}
         ],
         fun() ->
             MsgId = <<"historical-collision">>,

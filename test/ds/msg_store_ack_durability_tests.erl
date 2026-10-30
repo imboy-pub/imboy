@@ -49,6 +49,16 @@ case_test(Write, Archive, Mark) ->
                             ok
                         end}
                     ]},
+                    %% 05b3adba0 起 complete_staged 在 c2c 完成事务内调用
+                    %% reconcile_consumed_tx 回填已消费 ACK 的结果载荷；
+                    %% 桩记事件以断言：完成路径必经 reconcile、
+                    %% mark_processed/archive 失败的回滚路径不经 reconcile。
+                    {c2c_action_receipt_repo, [
+                        {reconcile_consumed_tx, 2, fun(_, _) ->
+                            event(reconciled),
+                            ok
+                        end}
+                    ]},
                     {msg_delivery_repo, [
                         {delete_delivered_batch, 5, fun(
                             _, <<"c2c">>, [<<"ack-durability">>], 9, 30
@@ -81,8 +91,10 @@ case_test(Write, Archive, Mark) ->
                         case {Write, Archive, Mark} of
                             {{error, timeout}, _, _} -> [write, retry];
                             {_, {error, timeout}, _} -> [write, archive, retry];
+                            %% mark_processed 失败在 reconcile 之前抛回滚，
+                            %% 该路径不经 reconcile（回滚不触碰 ACK 事实表）。
                             {_, _, {error, timeout}} -> [write, archive, processed, retry];
-                            _ -> [write, archive, processed, clean]
+                            _ -> [write, archive, processed, reconciled, clean]
                         end,
                     ?assertEqual(Expected, lists:reverse(get(events)))
                 end
