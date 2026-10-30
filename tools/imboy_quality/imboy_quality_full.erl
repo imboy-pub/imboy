@@ -55,7 +55,33 @@
     %% 共享 UID 对 920001/920002；后者直插 msg_c2c 残留（tzd01x_% 行，conv_seq 1..3）
     %% 抬高 observed_head，本根 r02 断言 accept=1 实测得 4。字母序同库必复发；
     %% 独占车道专属克隆库无残留，断言恢复成立。
-    msg_safe_boundary_pg_tests
+    msg_safe_boundary_pg_tests,
+    %% 2026-10-30 att-v5 集成接入：与 imboy_quality_env ?W403_ROOTS 同名追加
+    %% （EXCL 缺→落普通车道拿不到 W403/garage 资源 env；清单缺→env overlay 为空
+    %% 且回退共享库，均静默错配）。含 W6-01 W2/W3/W4 电池、w403_storage/
+    %% w401_rollback（garage no_go）与 V5 marker provision 面 7 根。
+    attachment_lifecycle_v5_w601_w2_confirm_tests,
+    attachment_lifecycle_v5_w601_w2_pending_tests,
+    attachment_lifecycle_v5_w601_w2_upload_tests,
+    attachment_lifecycle_v5_w601_w3_bind_tests,
+    attachment_lifecycle_v5_w601_w3_hold_tests,
+    attachment_lifecycle_v5_w601_w3_race_tests,
+    attachment_lifecycle_v5_w601_w4_activation_tests,
+    attachment_lifecycle_v5_w601_w4_hold_tests,
+    attachment_lifecycle_v5_w601_w4_intent_tests,
+    attachment_lifecycle_v5_w601_w4_purged_tests,
+    attachment_lifecycle_v5_w601_w4_queue_tests,
+    attachment_lifecycle_v5_w601_w4_race_tests,
+    attachment_lifecycle_v5_w601_w4_worker_tests,
+    attachment_lifecycle_v5_w403_storage_tests,
+    attachment_lifecycle_v5_w401_rollback_tests,
+    attachment_lifecycle_v5_w401_entrypoints_tests,
+    attachment_lifecycle_v5_w402_purged_recovery_tests,
+    attachment_lifecycle_v5_w402_worker_tests,
+    attachment_lifecycle_v5_w403_predecessor_tests,
+    attachment_lifecycle_v5_hold_protocol_tests,
+    attachment_lifecycle_v5_pg_tests,
+    attachment_lifecycle_v5_w404_activation_tests
 ]).
 
 excluded() -> ?EXCL.

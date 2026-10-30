@@ -35,7 +35,34 @@
     {attachment_lifecycle_v5_w403_driver_matrix_tests, "w403dm"},
     {attachment_ordinary_http_protocol_tests, "w403ord"},
     {eb_asset_frozen_storage_protocol_tests, "w403eb"},
-    {enterprise_asset_driver_pg_tests, "w403ead"}
+    {enterprise_asset_driver_pg_tests, "w403ead"},
+    %% 2026-10-30 接入（att-v5 集成后落入普通车道缺 W202_GARAGE_*/W403 资源的根）：
+    %% W6-01 W2/W3/W4 电池组（HTTP 面走 attachment_w403_http_fixture）与
+    %% w403_storage/w401_rollback（显式 no_go garage_env_missing）。
+    {attachment_lifecycle_v5_w601_w2_confirm_tests, "w601w2c"},
+    {attachment_lifecycle_v5_w601_w2_pending_tests, "w601w2p"},
+    {attachment_lifecycle_v5_w601_w2_upload_tests, "w601w2u"},
+    {attachment_lifecycle_v5_w601_w3_bind_tests, "w601w3b"},
+    {attachment_lifecycle_v5_w601_w3_hold_tests, "w601w3h"},
+    {attachment_lifecycle_v5_w601_w3_race_tests, "w601w3r"},
+    {attachment_lifecycle_v5_w601_w4_activation_tests, "w601w4a"},
+    {attachment_lifecycle_v5_w601_w4_hold_tests, "w601w4h"},
+    {attachment_lifecycle_v5_w601_w4_intent_tests, "w601w4i"},
+    {attachment_lifecycle_v5_w601_w4_purged_tests, "w601w4p"},
+    {attachment_lifecycle_v5_w601_w4_queue_tests, "w601w4q"},
+    {attachment_lifecycle_v5_w601_w4_race_tests, "w601w4r"},
+    {attachment_lifecycle_v5_w601_w4_worker_tests, "w601w4w"},
+    {attachment_lifecycle_v5_w403_storage_tests, "w403st"},
+    {attachment_lifecycle_v5_w401_rollback_tests, "w401rb"},
+    %% V5 marker provision 面（inttest_marker_db:provision(V5_INTTEST_*)）：
+    %% V5_RUN_DIR/V5_SLOT/<PREFIX>_DB 由 attv5/7 统一注入（见下）。
+    {attachment_lifecycle_v5_w401_entrypoints_tests, "w401ep"},
+    {attachment_lifecycle_v5_w402_purged_recovery_tests, "w402pr"},
+    {attachment_lifecycle_v5_w402_worker_tests, "w402wk"},
+    {attachment_lifecycle_v5_w403_predecessor_tests, "w403pd"},
+    {attachment_lifecycle_v5_hold_protocol_tests, "holdpt"},
+    {attachment_lifecycle_v5_pg_tests, "v5pg"},
+    {attachment_lifecycle_v5_w404_activation_tests, "w404ac"}
 ]).
 %% ATTACHMENT_REVIEW_MANIFEST/ATTACHMENT_REVIEW_CONFIG（test/repo/message_result_pg_tests 等）
 -define(REVIEW_ROOTS, [
