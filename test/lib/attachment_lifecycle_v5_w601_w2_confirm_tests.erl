@@ -94,12 +94,16 @@ leaf_name(Case, Ep, Driver, Sc) ->
     <<
         Short/binary,
         "/",
-        (atom_to_binary(Ep, utf8))/binary,
+        (ep_name(Ep))/binary,
         "/",
         (atom_to_binary(Driver, utf8))/binary,
         "/",
         Sc/binary
     >>.
+
+%% imm 组的 Ep 是 ?EP4 原子；idem/old 组是域级 case 显示名（binary 字面量）。
+ep_name(E) when is_atom(E) -> atom_to_binary(E, utf8);
+ep_name(E) when is_binary(E) -> E.
 
 %% -------------------------------------------------------- scenario dispatch
 
