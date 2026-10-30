@@ -32,12 +32,12 @@ jobs:
     name: Compile Gate (OTP ${{ matrix.otp }})
     runs-on: ubuntu-latest
     timeout-minutes: 20
-    # OTP 28 为权威版本（与 README 一致、本地开发环境一致）；
+    # OTP 29 与 OTP 28 均为阻塞编译门；缓存按 OTP 版本隔离。
     # 27.3 作为向后兼容观察项，不阻塞（experimental）。
     strategy:
       fail-fast: false
       matrix:
-        otp: ["28"]
+        otp: ["29", "28"]
         include:
           - otp: "27.3"
             experimental: true
@@ -415,7 +415,8 @@ jobs:
           for ext in timescaledb postgis pg_jieba pgcrypto pg_trgm vector citext btree_gin btree_gist hstore unaccent; do
             docker exec imboy_pg_eunit psql -U imboy_user -d schedule_remind_ci -v ON_ERROR_STOP=1 -c "CREATE EXTENSION IF NOT EXISTS $ext"
           done
-          export IMBOY_TEST_PG_SYSTEM_ID=$(docker exec imboy_pg_eunit psql -U imboy_user -d schedule_remind_ci -At -c 'select system_identifier from pg_control_system()')
+          IMBOY_TEST_PG_SYSTEM_ID=$(docker exec imboy_pg_eunit psql -U imboy_user -d schedule_remind_ci -At -c 'select system_identifier from pg_control_system()')
+          export IMBOY_TEST_PG_SYSTEM_ID
           ./scripts/drill_migrate.escript up
           bash scripts/test/group_schedule_remind_pg_gate.sh
 

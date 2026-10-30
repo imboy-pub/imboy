@@ -49,12 +49,16 @@ concurrency:
 jobs:
   # ----------------------------------------------------------------
   # Compile — nightly 基座（Gate Matrix nightly 列 Compile ✅）
-  # 只跑 OTP 28 权威版（PR 侧 27.3 兼容观察不在此重复消耗 runner）。
+  # OTP 29/28 均为阻塞编译门（PR 侧 27.3 兼容观察不在此重复消耗 runner）。
   # ----------------------------------------------------------------
   compile:
-    name: Compile Gate (OTP 28)
+    name: Compile Gate (OTP ${{ matrix.otp }})
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        otp: ["29", "28"]
 
     steps:
       - name: Checkout
@@ -63,7 +67,7 @@ jobs:
       - name: Setup Erlang/OTP toolchain
         uses: erlef/setup-beam@v1
         with:
-          otp-version: "28"
+          otp-version: ${{ matrix.otp }}
           rebar3-version: '3.27'
 
       - name: Cache dependencies and build artifacts
@@ -75,7 +79,7 @@ jobs:
             .erlang.mk
             .imboy.plt
             ~/.cache/rebar3
-          key: ${{ runner.os }}-otp28-beam-${{ hashFiles('Makefile', 'include/deps.mk') }}
+          key: ${{ runner.os }}-otp${{ matrix.otp }}-beam-${{ hashFiles('Makefile', 'include/deps.mk') }}
 
       - name: Compile
         run: IMBOYENV=local make test-build
