@@ -30,7 +30,7 @@ with_mocks(Configs, TestFun) ->
             fun({M, Expectations}) ->
                 {module, M} = code:ensure_loaded(M),
                 Exports = M:module_info(exports),
-                ok = meck:new(M, [non_strict, no_link]),
+                ok = meck:new(M, mock_options(M, Exports, Expectations)),
                 %% Undef can be caught without a meck history entry. Export explicit
                 %% throwing guards so cleanup detects even swallowed undeclared calls.
                 lists:foreach(
@@ -67,6 +67,29 @@ with_mocks(Configs, TestFun) ->
         erlang:apply(TestFun, [])
     after
         cleanup(All, Env)
+    end.
+
+%% Strict passthrough mocks already export every original function, so meck can
+%% update expectations without recompiling the mock on each guard installation.
+%% Every passthrough is replaced below before TestFun runs; no original function
+%% becomes callable. Keep the old path for dynamic exports or missing debug info.
+%% 严格模式复用完整导出表，逐个安装同样的拒绝规则时无需反复编译；
+%% 测试体运行前全部透传均被覆盖。动态导出或缺调试信息时保留原路径。
+mock_options(Module, Exports, Expectations) ->
+    DeclaredExports = lists:all(
+        fun({Function, Arity, _}) -> lists:member({Function, Arity}, Exports) end,
+        Expectations
+    ),
+    case DeclaredExports andalso not code:is_sticky(Module) of
+        true ->
+            case beam_lib:chunks(code:which(Module), [abstract_code]) of
+                {ok, {Module, [{abstract_code, {raw_abstract_v1, _}}]}} ->
+                    [passthrough, no_link];
+                _ ->
+                    [non_strict, no_link]
+            end;
+        false ->
+            [non_strict, no_link]
     end.
 
 cleanup(Configs, Env) ->
