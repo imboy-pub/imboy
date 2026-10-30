@@ -51,8 +51,10 @@ find_msg_by_id(MsgId) ->
     Tb = tablename(),
     %% R04：accepted_at/server_ts 供撤回/编辑窗口的可信时间基准解析
     %% （msg_store_repo:resolve_accepted_ms/1）；created_at 保留为低可信回退。
+    %% msg_type/e2ee 供转发链路复制原消息的渲染类型与加密标记：
+    %% 只取 payload 的旧列集合会让转发方无从判断「这条能不能原样复刻」。
     Sql = <<
-        "SELECT from_id, to_id, created_at, server_ts, accepted_at, payload "
+        "SELECT from_id, to_id, created_at, server_ts, accepted_at, msg_type, payload, e2ee "
         "FROM ",
         Tb/binary,
         " WHERE msg_id = $1 LIMIT 1"

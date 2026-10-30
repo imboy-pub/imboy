@@ -189,46 +189,121 @@ validate_forward_permission(Msg, CurrentUid) ->
     end.
 
 %% @doc 创建转发消息
+%%
+%% 转发语义 = **把原消息的内容复刻到目标会话**。历史实现只发
+%% `msg_type=forward` + `{original_msg_id, original_type}`：
+%%   1) 客户端从未注册 `forward` 渲染器 —— 收端只能看到
+%%      「不支持的消息类型 (forward)」；
+%%   2) payload 里没有任何正文/媒体引用 —— 即便认识类型也无内容可显示；
+%%   3) 额外写了 `action=forward`，客户端 action 分发走 default 分支后
+%%      整条消息被静默丢弃（不落库、不渲染），连「不支持」都看不到。
+%% 现在改为保留原 `msg_type` 与 `payload`，仅附加 `forwarded` 标记；不再写
+%% `action`（转发是内容消息，不是控制帧）。
+%%
+%% 加密消息（E2EE）不在此复刻：密文只对原会话密钥有效，复制给第三方等于
+%% 投递一条永远解不开的消息，因此按参数错误拒收，由发送方给出明确提示。
 -spec create_forward_message(map(), binary(), binary(), integer(), integer(), binary()) ->
     {ok, binary()} | {error, term()}.
 create_forward_message(OriginalMsg, OriginalType, OriginalMsgId, CurrentUid, ToId, ToType) ->
     NowMs = elib_dt:millisecond(),
+    case build_forward_content(OriginalMsg) of
+        {ok, MsgType, OriginalPayload} ->
+            % 构建转发消息数据（复用现有 c2c/c2g 的输入结构）
+            To = ToId,
+            ForwardData = #{
+                <<"to">> => To,
+                <<"payload">> => OriginalPayload#{
+                    <<"forwarded">> => true,
+                    <<"original_msg_id">> => OriginalMsgId,
+                    <<"original_type">> => OriginalType
+                },
+                <<"msg_type">> => MsgType,
+                <<"e2ee">> => null,
+                <<"created_at">> => NowMs
+            },
+            OriginalFromId = maps:get(<<"from_id">>, OriginalMsg, 0),
+            OriginalToId = resolve_original_to_id(OriginalMsg),
 
-    % 构建转发消息数据（复用现有 c2c/c2g 的输入结构）
-    To = ToId,
-    ForwardData = #{
-        <<"to">> => To,
-        <<"payload">> => #{
-            <<"original_msg_id">> => OriginalMsgId,
-            <<"original_type">> => OriginalType
-        },
-        <<"msg_type">> => <<"forward">>,
-        <<"action">> => <<"forward">>,
-        <<"e2ee">> => null,
-        <<"created_at">> => NowMs
-    },
-    OriginalFromId = maps:get(<<"from_id">>, OriginalMsg, 0),
-    OriginalToId = resolve_original_to_id(OriginalMsg),
-
-    % 先发送，成功后才落转发记录：避免"库里有记录但根本没进投递管道"。
-    % 新转发消息使用独立 UUIDv7；原消息 ID 只作引用，不能重用为新消息 ID。
-    % A forwarded message gets a new UUIDv7; retain the source ID only as a reference.
-    case send_forward_message(ToType, CurrentUid, ForwardData) of
-        {ok, ForwardMsgId} ->
-            ok = msg_forward_ds:save_forward_record(
-                OriginalMsgId,
-                OriginalFromId,
-                OriginalToId,
-                OriginalType,
-                ForwardMsgId,
-                CurrentUid,
-                ToId,
-                ToType
-            ),
-            {ok, ForwardMsgId};
+            % 先发送，成功后才落转发记录：避免"库里有记录但根本没进投递管道"。
+            % 新转发消息使用独立 UUIDv7；原消息 ID 只作引用，不能重用为新消息 ID。
+            % A forwarded message gets a new UUIDv7; retain the source ID only as a reference.
+            case send_forward_message(ToType, CurrentUid, ForwardData) of
+                {ok, ForwardMsgId} ->
+                    ok = msg_forward_ds:save_forward_record(
+                        OriginalMsgId,
+                        OriginalFromId,
+                        OriginalToId,
+                        OriginalType,
+                        ForwardMsgId,
+                        CurrentUid,
+                        ToId,
+                        ToType
+                    ),
+                    {ok, ForwardMsgId};
+                {error, Reason} ->
+                    {error, Reason}
+            end;
         {error, Reason} ->
             {error, Reason}
     end.
+
+%% @doc 提取可复刻的消息类型与内容
+-spec build_forward_content(map()) -> {ok, binary(), map()} | {error, term()}.
+build_forward_content(OriginalMsg) ->
+    case is_encrypted_message(OriginalMsg) of
+        true ->
+            {error, {invalid_param, <<"加密消息暂不支持转发"/utf8>>}};
+        false ->
+            MsgType = forwardable_msg_type(maps:get(<<"msg_type">>, OriginalMsg, <<>>)),
+            Payload = decode_forward_payload(maps:get(<<"payload">>, OriginalMsg, #{})),
+            {ok, MsgType, Payload}
+    end.
+
+%% @doc 原消息是否带 E2EE 元数据（密文无法跨会话解密，不能原样转发）
+-spec is_encrypted_message(map()) -> boolean().
+is_encrypted_message(OriginalMsg) ->
+    case maps:get(<<"e2ee">>, OriginalMsg, null) of
+        null -> false;
+        undefined -> false;
+        E2EE when is_map(E2EE) -> map_size(E2EE) > 0;
+        E2EE when is_binary(E2EE) -> E2EE =/= <<>>;
+        _ -> false
+    end.
+
+%% @doc 转发时沿用的消息类型
+%%
+%% 空值与历史脏值 `forward` 都回落 `text`：前者无从判断，后者是旧实现写下的
+%% 自指类型，继续传播只会让收端再次落到未知类型。
+-spec forwardable_msg_type(binary()) -> binary().
+forwardable_msg_type(<<>>) -> <<"text">>;
+forwardable_msg_type(<<"forward">>) -> <<"text">>;
+forwardable_msg_type(MsgType) when is_binary(MsgType) -> MsgType;
+forwardable_msg_type(_) -> <<"text">>.
+
+%% @doc 还原原消息 payload
+%%
+%% epgsql 读 jsonb 得到的是原文 binary，历史脏数据还可能是裸文本（既非对象
+%% 也非合法 JSON）——统一收敛成 map，裸文本按正文包装，保证内容不丢。
+-spec decode_forward_payload(term()) -> map().
+decode_forward_payload(Payload) when is_map(Payload) ->
+    unwrap_message_envelope(Payload);
+decode_forward_payload(Payload) when is_binary(Payload), Payload =/= <<>> ->
+    try jsone:decode(Payload, [{object_format, map}]) of
+        Decoded when is_map(Decoded) -> unwrap_message_envelope(Decoded);
+        _ -> #{<<"text">> => Payload}
+    catch
+        _:_ -> #{<<"text">> => Payload}
+    end;
+decode_forward_payload(_Payload) ->
+    #{}.
+
+%% @doc 旧转发/部分链路把整帧（含 msg_type、payload）写进了 payload 列，
+%% 解包一层取出真正的消息体，避免转发时把信封当正文再套一层。
+-spec unwrap_message_envelope(map()) -> map().
+unwrap_message_envelope(#{<<"msg_type">> := _Type, <<"payload">> := Inner}) when is_map(Inner) ->
+    Inner;
+unwrap_message_envelope(Envelope) ->
+    Envelope.
 
 %% @doc 发送转发消息并归一化返回值
 %%

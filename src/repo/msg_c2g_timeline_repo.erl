@@ -291,7 +291,19 @@ delete_by_msg_ids_and_to_id([], _ToUid) ->
 -spec find_by_msg_id(binary()) -> {ok, list(map())} | {error, any()}.
 find_by_msg_id(MsgId) ->
     Tb = tablename(),
-    Sql = <<"SELECT to_gid FROM ", Tb/binary, " WHERE msg_id = $1 LIMIT 1">>,
+    %% 转发链路需要消息本体（msg_type/payload/e2ee）才能复刻内容：timeline 只有
+    %% to_gid，单查它会让转发方只能凭空造一个类型。join 条件与 group_repo 的
+    %% 会话最新消息查询保持一致（msg_id + created_at + to_id）。
+    BodyTb = elib_pg_sql:public_tablename(<<"msg_c2g">>),
+    Sql = <<
+        "SELECT tl.to_gid, m.from_id, m.msg_type, m.payload, m.e2ee "
+        "FROM ",
+        Tb/binary,
+        " tl JOIN ",
+        BodyTb/binary,
+        " m ON m.msg_id = tl.msg_id AND m.created_at = tl.created_at AND m.to_id = tl.to_gid "
+        "WHERE tl.msg_id = $1 LIMIT 1"
+    >>,
     case elib_pg:query(Sql, [MsgId]) of
         {ok, Rows} -> {ok, Rows};
         {error, Reason} -> {error, Reason}

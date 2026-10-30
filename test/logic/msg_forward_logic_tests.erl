@@ -620,3 +620,85 @@ forward_partial_success_test_() ->
             )
         end
     ).
+
+%% ===================================================================
+%% 转发内容复刻（回归：旧实现丢正文 + 写未知类型 + 写控制 action）
+%% ===================================================================
+
+forward_copies_original_content_and_drops_control_action_test_() ->
+    ?WITH_MECKS(
+        [
+            {msg_c2c_ds, [
+                {'find_msg_by_id', 1, fun(_MsgId) ->
+                    {ok, #{
+                        <<"from_id">> => 123,
+                        <<"to_id">> => 456,
+                        <<"msg_type">> => <<"text">>,
+                        %% epgsql 读 jsonb 得到的是原文 binary
+                        <<"payload">> => <<"{\"text\":\"hello\"}">>,
+                        <<"e2ee">> => null
+                    }}
+                end}
+            ]},
+            {msg_c2c_logic, [
+                {'c2c', 3, fun(_MsgId, _FromUid, Data) ->
+                    %% 类型必须是原类型：`forward` 在客户端没有注册渲染器
+                    ?assertEqual(<<"text">>, maps:get(<<"msg_type">>, Data)),
+                    %% 转发是内容消息，不是控制帧：带 action 会被客户端 action
+                    %% 分发吞掉（不落库、不渲染）
+                    ?assertNot(maps:is_key(<<"action">>, Data)),
+                    Payload = maps:get(<<"payload">>, Data),
+                    ?assertEqual(<<"hello">>, maps:get(<<"text">>, Payload)),
+                    ?assertEqual(true, maps:get(<<"forwarded">>, Payload)),
+                    ?assertEqual(<<"msg_123">>, maps:get(<<"original_msg_id">>, Payload)),
+                    ok
+                end}
+            ]},
+            {friend_ds, [
+                {'check_relationship', 2, fun(_ToId, _FromUid) -> {true, false} end}
+            ]},
+            {elib_uuid, [{'gen_v7', 0, fun() -> <<"018f0000-0000-7000-8000-000987654321">> end}]},
+            {elib_dt, [
+                {'millisecond', 0, fun() -> 1700000000000 end}
+            ]},
+            {msg_forward_ds, [
+                {'save_forward_record', 8, fun(_, _, _, _, _, _, _, _) -> ok end}
+            ]}
+        ],
+        fun() ->
+            Result = msg_forward_logic:forward([<<"msg_123">>], 123, 789, <<"c2c">>),
+            ?assertMatch({ok, [_]}, Result)
+        end
+    ).
+
+forward_rejects_e2ee_message_test_() ->
+    ?WITH_MECKS(
+        [
+            {msg_c2c_ds, [
+                {'find_msg_by_id', 1, fun(_MsgId) ->
+                    {ok, #{
+                        <<"from_id">> => 123,
+                        <<"to_id">> => 456,
+                        <<"msg_type">> => <<"text">>,
+                        <<"payload">> => #{},
+                        <<"e2ee">> => #{<<"alg">> => <<"m.olm.v1">>}
+                    }}
+                end}
+            ]},
+            {msg_c2c_logic, [
+                {'c2c', 3, fun(_MsgId, _FromUid, _Data) -> ok end}
+            ]},
+            {friend_ds, [
+                {'check_relationship', 2, fun(_ToId, _FromUid) -> {true, false} end}
+            ]},
+            {elib_uuid, [{'gen_v7', 0, fun() -> <<"018f0000-0000-7000-8000-000987654321">> end}]},
+            {elib_dt, [
+                {'millisecond', 0, fun() -> 1700000000000 end}
+            ]}
+        ],
+        fun() ->
+            %% 密文只对原会话密钥有效：复制给第三方等于投递一条永远解不开的消息
+            Result = msg_forward_logic:forward([<<"msg_123">>], 123, 789, <<"c2c">>),
+            ?assertMatch({error, {invalid_param, _}}, Result)
+        end
+    ).
