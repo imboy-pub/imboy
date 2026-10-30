@@ -122,9 +122,6 @@ contracts() ->
             {zone_day_window, 2},
             {seat_session_page, 5},
             {seat_session_page, 6},
-            %% dcc10eea：zone_day_window/2 端口回调欠登记补录（冻结契约表与
-            %% behaviour_info 漂移，cs_closure 端口合同核对重新入榜暴露）
-            {zone_day_window, 2},
             %% CSB-02R：摘要搜索阶段 A 锚点（跨 workspace 批次，org+scope 过滤）
             {seat_session_search_anchors, 3},
             %% CS-BE-03（CS-DEC-01）：客户上下文只读事实（会话锚定事实行 /
