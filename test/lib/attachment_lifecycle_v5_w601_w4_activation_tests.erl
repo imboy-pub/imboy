@@ -115,7 +115,11 @@ reap_cycle(_St, Conn, ?ORD, Key, Triple, _N, _Label) ->
     seed_job(Conn, Key, Triple, 0, ready),
     %% Keep the real global claim protocol, but select this fixture's target.
     %% 保留真实全局 claim 协议，仅将本夹具目标置为最先到期。
-    ?X:q(Conn, "UPDATE attachment_object_deletion SET next_retry_at='-infinity'::timestamptz WHERE path=$1", [Key]),
+    ?X:q(
+        Conn,
+        "UPDATE attachment_object_deletion SET next_retry_at='-infinity'::timestamptz WHERE path=$1",
+        [Key]
+    ),
     {ok, #{<<"out_path">> := Key}} = ?QP:claim_ordinary(Conn, ?X:token()),
     ?QP:expire_ordinary(Conn, Key),
     {ok, Reaped} = attachment_delete_worker:reconcile(Conn),
@@ -132,6 +136,7 @@ reap_cycle(_St, Conn, ?ENT, Key, Triple, N, _Label) ->
     AssetId = 952000000000 + N,
     ok = ?X:seed_eb_asset_row(Conn, Key, AssetId, Triple, <<"deleted">>, true, <<"live">>),
     ok = ?QP:enqueue_eb(Conn, ?ORG, 9102, AssetId, <<"w601a startup">>),
+    ok = target_first(Conn, AssetId),
     {ok, _} = ?QP:claim_eb_for(Conn, ?ORG, 9102, AssetId),
     ?QP:expire_eb(Conn, ?ORG, AssetId),
     {ok, _, [{Reaped}]} = ?X:e(Conn, "SELECT fn_v5_reaper_eb(100)", []),
@@ -170,6 +175,7 @@ retry_cycle(_St, Conn, ?ENT, Key, Triple, N) ->
     AssetId = 952000000000 + N,
     ok = ?X:seed_eb_asset_row(Conn, Key, AssetId, Triple, <<"deleted">>, true, <<"live">>),
     ok = ?QP:enqueue_eb(Conn, ?ORG, 9102, AssetId, <<"w601a periodic">>),
+    ok = target_first(Conn, AssetId),
     {ok, #{token := T1}} = ?QP:claim_eb_for(Conn, ?ORG, 9102, AssetId),
     {ok, _} = ?QP:ack_eb_ok(Conn, ?ORG, 9102, AssetId, T1, false),
     {ok, #{token := T2, attempts := Attempts}} = claim_eb_retry(Conn, AssetId),
@@ -196,6 +202,7 @@ restart_cycle(_St, Conn, ?ENT, Key, Triple, N) ->
     AssetId = 952000000000 + N,
     ok = ?X:seed_eb_asset_row(Conn, Key, AssetId, Triple, <<"deleted">>, true, <<"live">>),
     ok = ?QP:enqueue_eb(Conn, ?ORG, 9102, AssetId, <<"w601a restart">>),
+    ok = target_first(Conn, AssetId),
     {ok, _} = ?QP:claim_eb_for(Conn, ?ORG, 9102, AssetId),
     ?QP:expire_eb(Conn, ?ORG, AssetId),
     {ok, _, [{1}]} = ?X:e(Conn, "SELECT fn_v5_reaper_eb(100)", []),
@@ -268,6 +275,7 @@ attempts_kept(_St, Conn, ?ENT, Key, Triple, N, Attempts) ->
     AssetId = 952000000000 + N,
     ok = ?X:seed_eb_asset_row(Conn, Key, AssetId, Triple, <<"deleted">>, true, <<"live">>),
     ok = ?QP:enqueue_eb(Conn, ?ORG, 9102, AssetId, <<"w601a nl5">>),
+    ok = target_first(Conn, AssetId),
     {ok, #{token := T1}} = ?QP:claim_eb_for(Conn, ?ORG, 9102, AssetId),
     {ok, _} = ?QP:ack_eb_ok(Conn, ?ORG, 9102, AssetId, T1, false),
     set_eb_attempts(Conn, AssetId, Attempts),
@@ -303,6 +311,7 @@ attempt8_rejected(_St, Conn, ?ENT, Key, Triple, N) ->
     AssetId = 952000000000 + N,
     ok = ?X:seed_eb_asset_row(Conn, Key, AssetId, Triple, <<"deleted">>, true, <<"live">>),
     ok = ?QP:enqueue_eb(Conn, ?ORG, 9102, AssetId, <<"w601a nl8">>),
+    ok = target_first(Conn, AssetId),
     {ok, #{token := T1}} = ?QP:claim_eb_for(Conn, ?ORG, 9102, AssetId),
     {ok, _} = ?QP:ack_eb_ok(Conn, ?ORG, 9102, AssetId, T1, false),
     set_eb_attempts(Conn, AssetId, 8),
@@ -348,6 +357,7 @@ blocked_skipped(_St, Conn, ?ENT, Key, Triple, N) ->
     AssetId = 952000000000 + N,
     ok = ?X:seed_eb_asset_row(Conn, Key, AssetId, Triple, <<"deleted">>, true, <<"live">>),
     ok = ?QP:enqueue_eb(Conn, ?ORG, 9102, AssetId, <<"w601a blocked">>),
+    ok = target_first(Conn, AssetId),
     {ok, #{token := T1}} = ?QP:claim_eb_for(Conn, ?ORG, 9102, AssetId),
     {ok, _} = ?QP:ack_eb_ok(Conn, ?ORG, 9102, AssetId, T1, false),
     set_eb_attempts(Conn, AssetId, 8),
@@ -520,10 +530,30 @@ set_eb_attempts(Conn, AssetId, Attempts) ->
     ),
     ok.
 
-claim_eb_retry(Conn, AssetId) ->
+%% 与 ORD 分支既有防护同构（reap_cycle ORD 的 next_retry_at='-infinity'）：
+%% 保留真实全局 claim 协议，仅将本夹具目标置为最先到期。fn_v5_claim_eb 按
+%% ORDER BY next_retry_at 全局取最早行，而 fn_v5_reaper_eb 把过期租约收敛为
+%% retry_wait(next_retry_at=now())——前序叶（如 startup/reap_cycle）留下的
+%% retry_wait 行会先于本叶 enqueue 的 ready 行被选中，且失败叶 target_claim
+%% 回滚后残留行原样保留，会持续劫持本组后续所有 ENT claim 叶。目标行置
+%% '-infinity' 后 claim 必然先选它；迁移 190 守卫只锁 identity/done/attempts，
+%% next_retry_at 的 UPDATE 合法。
+target_first(Conn, AssetId) ->
     ?X:q(
         Conn,
-        "UPDATE enterprise_asset_delete_queue SET next_retry_at = now() - interval '1 s'"
+        "UPDATE enterprise_asset_delete_queue SET next_retry_at='-infinity'::timestamptz"
+        " WHERE organization_id=9101 AND workspace_id=9102 AND asset_id=$1",
+        [AssetId]
+    ),
+    ok.
+
+claim_eb_retry(Conn, AssetId) ->
+    %% 置 '-infinity' 而非 now()-1s：库内残留 retry_wait 行的 next_retry_at
+    %% （前序叶 reaper 收敛时刻）可能晚于也可能早于 now()-1s，只有 -infinity
+    %% 才保证目标严格先于任何残留行被 fn_v5_claim_eb 选中。
+    ?X:q(
+        Conn,
+        "UPDATE enterprise_asset_delete_queue SET next_retry_at='-infinity'::timestamptz"
         " WHERE organization_id=9101 AND workspace_id=9102 AND asset_id=$1"
         " AND job_state='retry_wait'",
         [AssetId]
