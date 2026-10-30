@@ -123,114 +123,149 @@ count_for_user_search_page_empty_test_() ->
         ?assertEqual(0, Result)
     end).
 
-%%%===================================================================
-%%% E2EE 密文排除测试：消息搜索 SQL 必须含 e2ee IS NULL 过滤
-%%%===================================================================
+%%% 认证搜索：查询和计数共享授权范围并排除密文及过期消息。
+authorized_search_filters_and_scope_test_() ->
+    [
+        authorized_search_case(Type, Options)
+     || Type <- [<<"c2c">>, <<"c2g">>],
+        Options <- [#{}, #{<<"sort_by">> => <<"time">>}]
+    ].
 
-%% C2C 消息搜索 SQL 必须排除 E2EE 密文
-search_c2c_msg_excludes_e2ee_test_() ->
-    ?WITH_MECK(
-        elib_pg,
+authorized_search_case(Type, Options) ->
+    ?WITH_MECKS(
         [
-            {'query', 2, fun(Sql, _Params) ->
-                case binary:match(Sql, <<"as keyword">>) of
-                    nomatch ->
-                        ?assertNotEqual(nomatch, binary:match(Sql, <<"m.e2ee is null">>)),
-                        {ok, []};
-                    _ ->
-                        {ok, [#{<<"keyword">> => <<"你好"/utf8>>}]}
-                end
-            end}
+            {elib_pg, [
+                {with_tx, 2, fun(F, _) -> F(test_connection) end},
+                {query, 3, fun(_, Sql, Params) ->
+                    case
+                        {binary:match(Sql, <<"as keyword">>), binary:match(Sql, <<"FOR SHARE">>)}
+                    of
+                        {{_, _}, _} ->
+                            {ok, [#{<<"keyword">> => <<"hello">>}]};
+                        {nomatch, {_, _}} ->
+                            {ok, []};
+                        {nomatch, nomatch} ->
+                            ?assert(lists:member(42, Params)),
+                            ?assertNotEqual(nomatch, binary:match(Sql, <<"m.e2ee IS NULL">>)),
+                            ?assertNotEqual(
+                                nomatch,
+                                binary:match(Sql, <<"m.expire_at IS NULL OR m.expire_at > NOW()">>)
+                            ),
+                            ?assertNotEqual(
+                                nomatch, binary:match(Sql, <<"count(*) AS search_total">>)
+                            ),
+                            case Type of
+                                <<"c2c">> ->
+                                    ?assertNotEqual(
+                                        nomatch, binary:match(Sql, <<"m.from_id=$2 OR m.to_id=$2">>)
+                                    );
+                                <<"c2g">> ->
+                                    ?assertNotEqual(
+                                        nomatch, binary:match(Sql, <<"group_member_generation">>)
+                                    ),
+                                    ?assertNotEqual(
+                                        nomatch, binary:match(Sql, <<"msg_c2g_recipient_snapshot">>)
+                                    ),
+                                    ?assertNotEqual(
+                                        nomatch, binary:match(Sql, <<"search_missing">>)
+                                    )
+                            end,
+                            {ok, [
+                                #{
+                                    <<"search_missing">> => false,
+                                    <<"search_total">> => 0,
+                                    <<"msg_id">> => null
+                                }
+                            ]}
+                    end
+                end}
+            ]},
+            {micro_community_access_repo, [
+                {predicate_sql, 2, fun(_, _) -> <<"true">> end}
+            ]}
         ],
         fun() ->
-            ?assertMatch({ok, _}, fts_user_repo:search_c2c_msg(<<"你好"/utf8>>, 10, 0, 1))
-        end
-    ).
-
-%% C2G 消息搜索 SQL 必须排除 E2EE 密文
-search_c2g_msg_excludes_e2ee_test_() ->
-    ?WITH_MECK(
-        elib_pg,
-        [
-            {'query', 2, fun(Sql, _Params) ->
-                case binary:match(Sql, <<"as keyword">>) of
-                    nomatch ->
-                        ?assertNotEqual(nomatch, binary:match(Sql, <<"m.e2ee is null">>)),
-                        {ok, []};
-                    _ ->
-                        {ok, [#{<<"keyword">> => <<"开会"/utf8>>}]}
-                end
-            end}
-        ],
-        fun() ->
-            ?assertMatch({ok, _}, fts_user_repo:search_c2g_msg(<<"开会"/utf8>>, 10, 0, 1))
-        end
-    ).
-
-%% C2C/C2G 计数 SQL 必须排除 E2EE 密文
-search_msg_count_excludes_e2ee_test_() ->
-    ?WITH_MECK(
-        elib_pg,
-        [
-            {'one', 2, fun(Sql, _Params) ->
-                case binary:match(Sql, <<"as keyword">>) of
-                    nomatch ->
-                        ?assertNotEqual(nomatch, binary:match(Sql, <<"AND e2ee IS NULL">>)),
-                        {ok, #{<<"count">> => 0}};
-                    _ ->
-                        {ok, #{<<"keyword">> => <<"你好"/utf8>>}}
-                end
-            end}
-        ],
-        fun() ->
-            ?assertEqual(0, fts_user_repo:search_c2c_msg_count(<<"你好"/utf8>>)),
-            ?assertEqual(0, fts_user_repo:search_c2g_msg_count(<<"你好"/utf8>>))
-        end
-    ).
-
-%% 高级搜索（with_options）SQL 必须排除 E2EE 密文
-search_msg_with_options_excludes_e2ee_test_() ->
-    ?WITH_MECK(
-        elib_pg,
-        [
-            {'query', 2, fun(Sql, _Params) ->
-                case binary:match(Sql, <<"as keyword">>) of
-                    nomatch ->
-                        ?assertNotEqual(nomatch, binary:match(Sql, <<"AND m.e2ee IS NULL">>)),
-                        {ok, []};
-                    _ ->
-                        {ok, [#{<<"keyword">> => <<"你好"/utf8>>}]}
-                end
-            end}
-        ],
-        fun() ->
-            ?assertMatch(
-                {ok, _}, fts_user_repo:search_c2c_msg_with_options(<<"你好"/utf8>>, 10, 0, #{})
-            ),
-            ?assertMatch(
-                {ok, _}, fts_user_repo:search_c2g_msg_with_options(<<"你好"/utf8>>, 10, 0, #{})
+            ?assertEqual(
+                {ok, 0, []},
+                fts_user_repo:search_authorized_page(42, <<"hello">>, 10, 0, Type, Options)
             )
         end
     ).
 
-%% 高级搜索计数 SQL 必须排除 E2EE 密文且 FROM 带别名 m
-search_msg_count_with_options_excludes_e2ee_test_() ->
-    ?WITH_MECK(
-        elib_pg,
+authorized_search_missing_snapshot_fails_test_() ->
+    ?WITH_MECKS(
         [
-            {'one', 2, fun(Sql, _Params) ->
-                case binary:match(Sql, <<"as keyword">>) of
-                    nomatch ->
-                        ?assertNotEqual(nomatch, binary:match(Sql, <<"AND m.e2ee IS NULL">>)),
-                        ?assertNotEqual(nomatch, binary:match(Sql, <<" m WHERE ">>)),
-                        {ok, #{<<"count">> => 0}};
-                    _ ->
-                        {ok, #{<<"keyword">> => <<"你好"/utf8>>}}
-                end
-            end}
+            {elib_pg, [
+                {with_tx, 2, fun(F, _) -> F(test_connection) end},
+                {query, 3, fun(_, Sql, _) ->
+                    case
+                        {binary:match(Sql, <<"as keyword">>), binary:match(Sql, <<"FOR SHARE">>)}
+                    of
+                        {{_, _}, _} ->
+                            {ok, [#{<<"keyword">> => <<"hello">>}]};
+                        {nomatch, {_, _}} ->
+                            {ok, []};
+                        {nomatch, nomatch} ->
+                            {ok, [#{<<"search_missing">> => true, <<"search_total">> => 0}]}
+                    end
+                end}
+            ]},
+            {micro_community_access_repo, [{predicate_sql, 2, fun(_, _) -> <<"true">> end}]}
         ],
         fun() ->
-            ?assertEqual(0, fts_user_repo:search_c2c_msg_count_with_options(<<"你好"/utf8>>, #{})),
-            ?assertEqual(0, fts_user_repo:search_c2g_msg_count_with_options(<<"你好"/utf8>>, #{}))
+            ?assertEqual(
+                {error, search_unavailable},
+                fts_user_repo:search_authorized_page(42, <<"hello">>, 10, 0, <<"c2g">>, #{})
+            )
         end
+    ).
+
+authorized_search_c2c_pair_scope_test_() ->
+    [pair_scope_case(Peer) || Peer <- [17, 42]].
+
+pair_scope_case(Peer) ->
+    ?WITH_MECKS(
+        [
+            {elib_pg, [
+                {with_tx, 2, fun(F, _) -> F(test_connection) end},
+                {query, 3, fun(_, Sql, Params) ->
+                    case binary:match(Sql, <<"as keyword">>) of
+                        {_, _} ->
+                            {ok, [#{<<"keyword">> => <<"hello">>}]};
+                        nomatch ->
+                            ?assertEqual([<<"hello">>, Peer, 42, 10, 0], Params),
+                            ?assertNotEqual(
+                                nomatch,
+                                binary:match(
+                                    Sql,
+                                    <<"((m.from_id=$3 AND m.to_id=$2) OR (m.from_id=$2 AND m.to_id=$3))">>
+                                )
+                            ),
+                            {ok, [
+                                #{
+                                    <<"search_missing">> => false,
+                                    <<"search_total">> => 0,
+                                    <<"msg_id">> => null
+                                }
+                            ]}
+                    end
+                end}
+            ]}
+        ],
+        fun() ->
+            ?assertEqual(
+                {ok, 0, []},
+                fts_user_repo:search_authorized_page(
+                    42, <<"hello">>, 10, 0, <<"c2c">>, #{<<"conversation_id">> => Peer}
+                )
+            )
+        end
+    ).
+
+invalid_conversation_option_fails_closed_test() ->
+    ?assertEqual(
+        {error, search_unavailable},
+        fts_user_repo:search_authorized_page(
+            42, <<"hello">>, 10, 0, <<"c2c">>, #{<<"conversation_id">> => <<"broken">>}
+        )
     ).

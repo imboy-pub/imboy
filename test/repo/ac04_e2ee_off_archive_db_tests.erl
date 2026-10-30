@@ -426,7 +426,7 @@ s3_fts_jieba_hit_c2c_and_c2g_test_() ->
         ),
         flush_staging(C2CMsgId),
         %% C2C：发送方视角检索命中（且仅命中）
-        {ok, C2CHits} = fts_user_repo:search_c2c_msg(Kw, 10, 0, A),
+        {ok, _, C2CHits} = fts_user_repo:search_authorized_page(A, Kw, 10, 0, <<"c2c">>, #{}),
         HitIds = msg_ids_of(C2CHits),
         ?assert(lists:member(C2CMsgId, HitIds)),
         lists:foreach(
@@ -465,7 +465,7 @@ s3_fts_jieba_hit_c2c_and_c2g_test_() ->
             <<>>
         ),
         flush_staging(C2GMsgId),
-        {ok, C2GHits} = fts_user_repo:search_c2g_msg(Kw, 10, 0, A),
+        {ok, _, C2GHits} = fts_user_repo:search_authorized_page(A, Kw, 10, 0, <<"c2g">>, #{}),
         C2GHitIds = msg_ids_of(C2GHits),
         ?assert(lists:member(C2GMsgId, C2GHitIds))
     end).
@@ -568,7 +568,7 @@ s7_legacy_ciphertext_not_degraded_test_() ->
             ?assert(lists:member(CipherMsgId, msg_ids_of(C2CList))),
 
             %% FTS：含关键词的密文行绝不出现（e2ee IS NULL 谓词生效直接证据）
-            {ok, Hits} = fts_user_repo:search_c2c_msg(Kw, 50, 0, A),
+            {ok, _, Hits} = fts_user_repo:search_authorized_page(A, Kw, 50, 0, <<"c2c">>, #{}),
             ?assertNot(lists:member(CipherMsgId, msg_ids_of(Hits))),
 
             %% 新写入（同会话明文消息）不得触碰旧行

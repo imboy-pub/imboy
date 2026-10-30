@@ -319,6 +319,52 @@ find_msg_by_id_non_existent_msg_test_() ->
 %% revoke_offline_msg/5 测试
 %% ===================================================================
 
+revoke_offline_msg_v2_write_results_test_() ->
+    ?WITH_MECKS(
+        [
+            {elib_dt, [{'to_rfc3339', 1, fun(_) -> <<"2026-01-01T00:00:00Z">> end}]},
+            {imboy_message_helper, [{'encode_json', 1, fun(_) -> <<"{}">> end}]},
+            {msg_c2c_repo, [
+                {'revoke_offline_atomic', 9, fun(_, _, _, _, _, _, _, _, _) ->
+                    {error, unavailable}
+                end}
+            ]}
+        ],
+        fun() ->
+            Call = fun() ->
+                msg_c2c_ds:revoke_offline_msg(
+                    #{},
+                    1,
+                    <<"request">>,
+                    <<"original">>,
+                    1,
+                    2,
+                    <<"custom">>,
+                    <<"message_revoke_ack">>,
+                    null
+                )
+            end,
+            ?assertEqual({error, unavailable}, Call()),
+            ?assert(
+                meck:called(msg_c2c_repo, revoke_offline_atomic, [
+                    <<"2026-01-01T00:00:00Z">>,
+                    <<"request">>,
+                    <<"original">>,
+                    <<"{}">>,
+                    1,
+                    2,
+                    <<"2026-01-01T00:00:00Z">>,
+                    <<"custom">>,
+                    null
+                ])
+            ),
+            meck:expect(msg_c2c_repo, revoke_offline_atomic, fun(_, _, _, _, _, _, _, _, _) ->
+                ok
+            end),
+            ?assertEqual(ok, Call())
+        end
+    ).
+
 revoke_offline_msg_success_test_() ->
     NowTs = 1707686743435,
     FromUid = 1,

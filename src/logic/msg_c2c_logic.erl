@@ -537,7 +537,8 @@ c2c_revoke(MsgId, CurrentUid, Data) ->
             FindResult =
                 case msg_c2c_ds:find_msg_by_id(OriginalMsgId) of
                     {ok, Found} -> {ok, Found};
-                    _ -> msg_store_ds:find_staged(<<"c2c">>, OriginalMsgId)
+                    {error, not_found} -> msg_store_ds:find_staged(<<"c2c">>, OriginalMsgId);
+                    {error, _} = FindError -> FindError
                 end,
             case FindResult of
                 {ok, MsgData} ->
@@ -545,7 +546,7 @@ c2c_revoke(MsgId, CurrentUid, Data) ->
                     %% 用 CurrentUid（鉴权得到）而非客户端自报的 FromId 做归属比对，
                     %% 消除"影子信任"：即便未来误删了外层等值校验，这里仍然安全
                     case MsgData of
-                        #{<<"from_id">> := CurrentUid} ->
+                        #{<<"from_id">> := CurrentUid, <<"to_id">> := ToId} ->
                             %% R04（IMBOY-TIMEZONE-REPAIR-V1）：撤回窗口改用可信时间
                             %% 基准——首次服务端接受时间 accepted_at（D04）vs 服务端
                             %% 当前时刻；旧行 accepted_at NULL 由 resolve_accepted_ms
@@ -597,13 +598,6 @@ c2c_revoke(MsgId, CurrentUid, Data) ->
                                     NowTs = elib_dt:now(),
                                     NowMs = elib_dt:millisecond(),
 
-                                    % 取消原消息在接收方各在线设备上的投递重试定时器，
-                                    % 避免撤回后重试窗口内原文仍被再投递一次
-                                    _ = [
-                                        websocket_logic:cancel_timer(ToId, DID, OriginalMsgId)
-                                     || DID <- user_device_logic:online_dids(ToId)
-                                    ],
-
                                     % 构建撤销确认消息（v2.0 格式）
                                     %% msg_type 和 action 在顶层，不在 payload 中
                                     RevokePayload = #{
@@ -629,7 +623,22 @@ c2c_revoke(MsgId, CurrentUid, Data) ->
                                             imboy_message_helper:encode_and_send(
                                                 ToId, MsgId, RevokeMsg, <<"c2s">>
                                             ),
-                                            ok;
+                                            %% 受理事实落原行 payload（失败仅告警，
+                                            %% fail-closed）：此后客户端 message_revoke_ack
+                                            %% 仅在事实匹配时才允许覆写原消息
+                                            persist_action_accept(
+                                                OriginalMsgId,
+                                                MsgId,
+                                                CurrentUid,
+                                                <<"accepted_revoke">>,
+                                                #{}
+                                            ),
+                                            %% 撤回提交成功后才取消接收方投递定时器；
+                                            %% 提交失败时保留定时器，避免原文从此不再被投递
+                                            cancel_revoke_delivery_timers(
+                                                ToId, OriginalMsgId
+                                            ),
+                                            {reply, RevokeMsg};
                                         % 对端离线处理
                                         false ->
                                             % v2.0: 使用 revoke_offline_msg/9 显式传递 msg_type 和 action
@@ -646,21 +655,37 @@ c2c_revoke(MsgId, CurrentUid, Data) ->
                                                     null
                                                 )
                                             of
-                                                ok -> ok;
-                                                {error, _} -> ok
+                                                ok ->
+                                                    persist_action_accept(
+                                                        OriginalMsgId,
+                                                        MsgId,
+                                                        CurrentUid,
+                                                        <<"accepted_revoke">>,
+                                                        #{}
+                                                    ),
+                                                    cancel_revoke_delivery_timers(
+                                                        ToId, OriginalMsgId
+                                                    ),
+                                                    {reply, RevokeMsg};
+                                                {error, _} ->
+                                                    {reply,
+                                                        message_ds:assemble_s2c(
+                                                            MsgId, <<"internal_error">>, To
+                                                        )}
                                             end
-                                    end,
-                                    {reply, RevokeMsg}
+                                    end
                             end;
-                        #{<<"from_id">> := _OtherId} ->
+                        _ ->
                             %% 消息不属于当前用户
                             ErrorMsg = message_ds:assemble_s2c(MsgId, <<"permission_denied">>, To),
                             {reply, ErrorMsg}
                     end;
-                _ ->
+                {error, not_found} ->
                     %% 消息不存在或格式错误
                     ErrorMsg = message_ds:assemble_s2c(MsgId, <<"msg_not_found">>, To),
-                    {reply, ErrorMsg}
+                    {reply, ErrorMsg};
+                {error, _} ->
+                    {reply, message_ds:assemble_s2c(MsgId, <<"internal_error">>, To)}
             end;
         false ->
             % 权限不足，返回错误
@@ -669,17 +694,32 @@ c2c_revoke(MsgId, CurrentUid, Data) ->
     end.
 %% 客户端撤回消息确认 for c2c
 -spec c2c_revoke_ack(binary(), integer(), Data :: map()) -> ok.
-c2c_revoke_ack(MsgId, CurrentUid, Data) ->
-    Payload = maps:get(<<"payload">>, Data),
-    OriginalMsgId = maps:get(<<"original_msg_id">>, Payload, <<>>),
-    ok = ?DEBUG_LOG([MsgId, CurrentUid, OriginalMsgId]),
-    AckPayload = Payload#{
-        <<"action">> => <<"message_revoke_ack">>,
-        <<"ack_msg_id">> => MsgId,
-        <<"ack_uid">> => CurrentUid,
-        <<"ack_at">> => elib_dt:millisecond()
-    },
-    persist_action_payload(OriginalMsgId, AckPayload),
+c2c_revoke_ack(MsgId, CurrentUid, #{
+    <<"payload">> := #{<<"original_msg_id">> := OriginalMsgId} = Payload
+}) when is_binary(OriginalMsgId), OriginalMsgId =/= <<>> ->
+    case
+        action_accept_marker_matches(
+            OriginalMsgId, CurrentUid, MsgId, <<"accepted_revoke">>, Payload
+        )
+    of
+        true ->
+            ok = ?DEBUG_LOG([MsgId, CurrentUid, OriginalMsgId]),
+            AckPayload = Payload#{
+                <<"action">> => <<"message_revoke_ack">>,
+                <<"ack_msg_id">> => MsgId,
+                <<"ack_uid">> => CurrentUid,
+                <<"ack_at">> => elib_dt:millisecond()
+            },
+            persist_action_payload(OriginalMsgId, AckPayload),
+            ok;
+        false ->
+            %% 无服务端受理事实（伪造/未知/重放请求）：绝不覆写原消息
+            _ = ?WARN_LOG(
+                {unaccepted_action_ack_dropped, revoke, MsgId, CurrentUid, OriginalMsgId}
+            ),
+            ok
+    end;
+c2c_revoke_ack(_MsgId, _CurrentUid, _Data) ->
     ok.
 
 %% 客户端编辑消息 for c2c
@@ -702,7 +742,8 @@ c2c_edit(MsgId, CurrentUid, Data) ->
     case CurrentUid =:= FromId of
         true ->
             %% 【新增】编辑时间窗校验（MIRROR c2c_revoke 的查找与时限路径）
-            case c2c_edit_window_check(OriginalMsgId, CurrentUid) of
+            Recipient = ec_cnv:to_integer(To),
+            case c2c_edit_window_check(OriginalMsgId, CurrentUid, Recipient) of
                 ok ->
                     do_c2c_edit(MsgId, CurrentUid, Data);
                 {expired, NowMs} ->
@@ -744,7 +785,9 @@ c2c_edit(MsgId, CurrentUid, Data) ->
                 permission_denied ->
                     {reply, message_ds:assemble_s2c(MsgId, <<"permission_denied">>, To)};
                 not_found ->
-                    {reply, message_ds:assemble_s2c(MsgId, <<"msg_not_found">>, To)}
+                    {reply, message_ds:assemble_s2c(MsgId, <<"msg_not_found">>, To)};
+                {error, _} ->
+                    {reply, message_ds:assemble_s2c(MsgId, <<"internal_error">>, To)}
             end;
         false ->
             % 权限不足，返回错误
@@ -770,12 +813,15 @@ do_c2c_edit_plain(MsgId, CurrentUid, Data) ->
     Payload = maps:get(<<"payload">>, Data),
     OriginalMsgId = maps:get(<<"original_msg_id">>, Payload, <<>>),
     NewContent = maps:get(<<"content">>, Payload),
-    MsgType = maps:get(<<"msg_type">>, Payload),
+    %% v2.0 信封把 msg_type 提升到顶层（payload 仅 original_msg_id/content），
+    %% 与 do_c2c_encrypted_edit 同源；旧明文协议仍从 payload 读，缺省 text。
+    MsgType = maps:get(
+        <<"msg_type">>, Data, maps:get(<<"msg_type">>, Payload, <<"text">>)
+    ),
     E2EE = maps:get(<<"e2ee">>, Data, null),
     ToId = ec_cnv:to_integer(To),
     %% 安全审计 P2-1：Data 含明文消息体，已注释。默认日志级别已改为 info。
     % ok = ?DEBUG_LOG([From, To, ToId, CurrentUid, Data]),
-    NowTs = elib_dt:now(),
     NowMS = elib_dt:millisecond(),
 
     % 构建编辑确认消息（v2.0 格式）
@@ -805,28 +851,26 @@ do_c2c_edit_plain(MsgId, CurrentUid, Data) ->
             case user_logic:is_online(ToId) of
                 true ->
                     imboy_message_helper:encode_and_send(ToId, MsgId, EditMsg, <<"c2s">>),
-                    ok;
-                % 对端离线处理
+                    %% 受理事实（含内容哈希绑定）：此后 message_edit_ack 仅在
+                    %% 事实与内容都匹配时才允许覆写原消息
+                    persist_action_accept(
+                        OriginalMsgId,
+                        MsgId,
+                        CurrentUid,
+                        <<"accepted_edit">>,
+                        #{<<"content_hash">> => content_sha256(NewContent)}
+                    ),
+                    {reply, EditMsg};
                 false ->
-                    case
-                        msg_c2c_ds:edit_offline_msg(
-                            EditPayloadJson, NowTs, MsgId, CurrentUid, ToId
-                        )
-                    of
-                        ok ->
-                            ok;
-                        {error, _Reason} ->
-                            ok
-                    end
-            end,
-            {reply, EditMsg};
+                    {reply, message_ds:assemble_s2c(MsgId, <<"internal_error">>, To)}
+            end;
         {error, Reason} ->
             policy_violation_reply(MsgId, Reason)
     end.
 
 %% @private E2EE 编辑：服务端只验证 edit_of 的归属/时间窗并原样转发密文。
 -spec do_c2c_encrypted_edit(binary(), integer(), map(), binary()) -> ok | {reply, Msg :: map()}.
-do_c2c_encrypted_edit(MsgId, CurrentUid, Data, _OriginalMsgId) ->
+do_c2c_encrypted_edit(MsgId, CurrentUid, Data, OriginalMsgId) ->
     To = maps:get(<<"to">>, Data),
     From = maps:get(<<"from">>, Data),
     MsgType = maps:get(<<"msg_type">>, Data, <<"text">>),
@@ -842,35 +886,64 @@ do_c2c_encrypted_edit(MsgId, CurrentUid, Data, _OriginalMsgId) ->
         )
     of
         ok ->
-            EditMsg = #{
-                <<"id">> => MsgId,
-                <<"type">> => <<"C2C">>,
-                <<"from">> => From,
-                <<"to">> => To,
-                <<"msg_type">> => MsgType,
-                %% 保持 message_edit，与 PFv3 protected_header.action 一致。
-                <<"action">> => <<"message_edit">>,
-                <<"e2ee">> => E2EE,
-                <<"payload">> => Payload,
-                <<"server_ts">> => NowMS
-            },
+            EditMsg = message_ds:with_sender_device(
+                #{
+                    <<"id">> => MsgId,
+                    <<"type">> => <<"C2C">>,
+                    <<"from">> => From,
+                    <<"to">> => To,
+                    <<"msg_type">> => MsgType,
+                    %% 保持 message_edit，与 PFv3 protected_header.action 一致。
+                    <<"action">> => <<"message_edit">>,
+                    <<"e2ee">> => E2EE,
+                    <<"payload">> => Payload,
+                    <<"server_ts">> => NowMS
+                },
+                Data
+            ),
             case user_logic:is_online(ToId) of
                 true ->
-                    imboy_message_helper:encode_and_send(ToId, MsgId, EditMsg, <<"c2s">>);
-                false ->
-                    _ = msg_c2c_ds:write_msg_if_absent_with_sender(
-                        NowTs,
+                    imboy_message_helper:encode_and_send(ToId, MsgId, EditMsg, <<"c2s">>),
+                    %% 受理事实（密文哈希绑定）：E2EE 正文服务端不可见，
+                    %% 以密文哈希把 ack 绑定到本次受理
+                    persist_action_accept(
+                        OriginalMsgId,
                         MsgId,
-                        PayloadBin,
                         CurrentUid,
-                        ToId,
-                        NowTs,
-                        MsgType,
-                        E2EE,
-                        maps:get(<<"sender_did">>, Data, <<>>)
-                    )
-            end,
-            {reply, EditMsg};
+                        <<"accepted_edit">>,
+                        #{<<"content_hash">> => content_sha256(encrypted_payload_binary(Payload))}
+                    ),
+                    {reply, EditMsg};
+                false ->
+                    case
+                        msg_c2c_ds:write_msg_if_absent_with_sender(
+                            NowTs,
+                            MsgId,
+                            PayloadBin,
+                            CurrentUid,
+                            ToId,
+                            NowTs,
+                            MsgType,
+                            E2EE,
+                            maps:get(<<"sender_did">>, Data, <<>>)
+                        )
+                    of
+                        ok ->
+                            persist_action_accept(
+                                OriginalMsgId,
+                                MsgId,
+                                CurrentUid,
+                                <<"accepted_edit">>,
+                                #{
+                                    <<"content_hash">> =>
+                                        content_sha256(encrypted_payload_binary(Payload))
+                                }
+                            ),
+                            {reply, EditMsg};
+                        {error, _} ->
+                            {reply, message_ds:assemble_s2c(MsgId, <<"internal_error">>, To)}
+                    end
+            end;
         {error, Reason} ->
             policy_violation_reply(MsgId, Reason)
     end.
@@ -898,26 +971,30 @@ encrypted_payload_binary(_) ->
 %% R04（IMBOY-TIMEZONE-REPAIR-V1）：窗口基准改为可信接受时间 accepted_at
 %% （旧行 NULL 回退 server_ts/created_at 低可信）；全部时间源缺失/非法返回
 %% {no_time_source, NowMs} 由调用方明确拒绝（fail-closed）。
--spec c2c_edit_window_check(binary(), integer()) ->
+-spec c2c_edit_window_check(binary(), integer(), integer()) ->
     ok
     | {expired, integer()}
     | {no_time_source, integer()}
     | permission_denied
-    | not_found.
-c2c_edit_window_check(OriginalMsgId, CurrentUid) ->
+    | not_found
+    | {error, term()}.
+c2c_edit_window_check(OriginalMsgId, CurrentUid, Recipient) ->
     %% 正式表查不到时兜底查 staging（消息仍在异步管道内）
     FindResult =
         case msg_c2c_ds:find_msg_by_id(OriginalMsgId) of
             {ok, Found} -> {ok, Found};
-            _ -> msg_store_ds:find_staged(<<"c2c">>, OriginalMsgId)
+            {error, not_found} -> msg_store_ds:find_staged(<<"c2c">>, OriginalMsgId);
+            {error, _} = FindError -> FindError
         end,
     case FindResult of
-        {ok, #{<<"from_id">> := CurrentUid} = MsgData} ->
+        {ok, #{<<"from_id">> := CurrentUid, <<"to_id">> := Recipient} = MsgData} ->
             trusted_window_decision(MsgData, msg_edit_window_ms());
         {ok, _} ->
             permission_denied;
-        _ ->
-            not_found
+        {error, not_found} ->
+            not_found;
+        {error, _} = Error ->
+            Error
     end.
 
 %% @private R04（IMBOY-TIMEZONE-REPAIR-V1）：可信时间窗决策。
@@ -952,20 +1029,37 @@ msg_edit_window_ms() ->
 
 %% 客户端编辑消息确认 for c2c
 -spec c2c_edit_ack(binary(), integer(), Data :: map()) -> ok.
-c2c_edit_ack(MsgId, CurrentUid, Data) ->
-    Payload = maps:get(<<"payload">>, Data),
-    OriginalMsgId = maps:get(<<"original_msg_id">>, Payload, <<>>),
-    _NewContent = maps:get(<<"content">>, Payload),
-    _EditedAt = maps:get(<<"edited_at">>, Payload),
-    %% 安全审计 P2-1：NewContent 含编辑后明文，已注释。
-    % ok = ?DEBUG_LOG([MsgId, CurrentUid, OriginalMsgId, NewContent, EditedAt]),
-    AckPayload = Payload#{
-        <<"action">> => <<"message_edit_ack">>,
-        <<"ack_msg_id">> => MsgId,
-        <<"ack_uid">> => CurrentUid,
-        <<"ack_at">> => elib_dt:millisecond()
-    },
-    persist_action_payload(OriginalMsgId, AckPayload),
+c2c_edit_ack(MsgId, CurrentUid, #{
+    <<"payload">> := #{
+        <<"original_msg_id">> := OriginalMsgId,
+        <<"content">> := _NewContent,
+        <<"edited_at">> := _EditedAt
+    } = Payload
+}) when is_binary(OriginalMsgId), OriginalMsgId =/= <<>> ->
+    case
+        action_accept_marker_matches(
+            OriginalMsgId, CurrentUid, MsgId, <<"accepted_edit">>, Payload
+        )
+    of
+        true ->
+            %% 安全审计 P2-1：NewContent 含编辑后明文，已注释。
+            % ok = ?DEBUG_LOG([MsgId, CurrentUid, OriginalMsgId, NewContent, EditedAt]),
+            AckPayload = Payload#{
+                <<"action">> => <<"message_edit_ack">>,
+                <<"ack_msg_id">> => MsgId,
+                <<"ack_uid">> => CurrentUid,
+                <<"ack_at">> => elib_dt:millisecond()
+            },
+            persist_action_payload(OriginalMsgId, AckPayload),
+            ok;
+        false ->
+            %% 无服务端受理事实或内容绑定不符：绝不覆写原消息
+            _ = ?WARN_LOG(
+                {unaccepted_action_ack_dropped, edit, MsgId, CurrentUid, OriginalMsgId}
+            ),
+            ok
+    end;
+c2c_edit_ack(_MsgId, _CurrentUid, _Data) ->
     ok.
 
 %% ===================================================================
@@ -1266,6 +1360,92 @@ persist_action_payload(OriginalMsgId, Payload) when is_binary(OriginalMsgId), is
             _ = ?WARN_LOG({persist_action_payload_failed, OriginalMsgId, Reason}),
             ok
     end.
+
+%% @doc 把 action 受理事实合入原消息 payload（读-改-写；失败仅告警不阻断
+%% 主流程）。事实把本次受理与（请求 id、发起者、时刻[、内容哈希]）绑定，
+%% 落库即重启可查；此后对应 C2S *_ack 仅在事实匹配时才允许覆写原消息。
+-spec persist_action_accept(binary(), binary(), integer(), binary(), map()) -> ok.
+persist_action_accept(OriginalMsgId, RequestId, RequestUid, Kind, Extra) ->
+    Base =
+        case msg_c2c_ds:find_msg_by_id(OriginalMsgId) of
+            {ok, MsgData} -> action_payload_map(MsgData);
+            _ -> #{}
+        end,
+    Marker = maps:merge(
+        #{
+            <<"request_id">> => RequestId,
+            <<"uid">> => ec_cnv:to_binary(RequestUid),
+            <<"accepted_at">> => elib_dt:millisecond()
+        },
+        Extra
+    ),
+    PayloadJson = imboy_message_helper:encode_json(Base#{Kind => Marker}),
+    case msg_c2c_ds:update_payload_by_msg_id(OriginalMsgId, PayloadJson) of
+        {ok, _} ->
+            ok;
+        {error, Reason} ->
+            _ = ?WARN_LOG({persist_action_accept_failed, OriginalMsgId, Kind, Reason}),
+            ok
+    end.
+
+%% @private 校验原消息上的受理事实：Kind 标记存在且 request_id/uid 匹配；
+%% 标记带 content_hash 时额外校验来帧内容绑定（缺失视为旧格式放行）。
+-spec action_accept_marker_matches(binary(), integer(), binary(), binary(), map()) ->
+    boolean().
+action_accept_marker_matches(OriginalMsgId, CurrentUid, MsgId, Kind, IncomingPayload) ->
+    case msg_c2c_ds:find_msg_by_id(OriginalMsgId) of
+        {ok, MsgData} ->
+            case maps:get(Kind, action_payload_map(MsgData), undefined) of
+                #{<<"request_id">> := RequestId, <<"uid">> := MarkerUid} = Marker ->
+                    RequestId =:= MsgId andalso
+                        MarkerUid =:= ec_cnv:to_binary(CurrentUid) andalso
+                        content_hash_matches(Marker, IncomingPayload);
+                _ ->
+                    false
+            end;
+        _ ->
+            false
+    end.
+
+content_hash_matches(Marker, IncomingPayload) ->
+    case maps:get(<<"content_hash">>, Marker, none) of
+        none ->
+            true;
+        Hash ->
+            Hash =:= content_sha256(maps:get(<<"content">>, IncomingPayload, <<>>))
+    end.
+
+content_sha256(Content) when is_binary(Content) ->
+    binary:encode_hex(crypto:hash(sha256, Content), lowercase);
+content_sha256(Other) ->
+    binary:encode_hex(crypto:hash(sha256, jsone:encode(Other)), lowercase).
+
+%% @private 提取原消息 payload 为 map（兼容已解码 map / JSON binary / 缺失）。
+action_payload_map(MsgData) when is_map(MsgData) ->
+    case maps:get(<<"payload">>, MsgData, #{}) of
+        Payload when is_map(Payload) ->
+            Payload;
+        Bin when is_binary(Bin) ->
+            try jsone:decode(Bin) of
+                Map when is_map(Map) -> Map;
+                _ -> #{}
+            catch
+                _:_ -> #{}
+            end;
+        _ ->
+            #{}
+    end;
+action_payload_map(_) ->
+    #{}.
+
+%% @private 撤回提交成功后取消接收方在线设备的投递重试定时器，避免撤回后
+%% 重试窗口内原文仍被再投递一次；仅在提交成功后调用（副作用后置）。
+cancel_revoke_delivery_timers(ToId, OriginalMsgId) ->
+    _ = [
+        websocket_logic:cancel_timer(ToId, DID, OriginalMsgId)
+     || DID <- user_device_logic:online_dids(ToId)
+    ],
+    ok.
 
 %% @doc 若接收方是 Bot，异步推送消息到其 webhook URL
 %% fire-and-forget，不阻塞主路径；推送失败仅记日志

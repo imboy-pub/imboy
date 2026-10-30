@@ -345,18 +345,10 @@ revoke_offline_msg(Payload, NowTs, MsgId, OriginalMsgId, FromId, ToId, MsgType, 
     % 将 Action 包含在 Payload 中（因为 write_msg/8 不支持单独的 Action 参数）
     PayloadWithAction = Payload#{<<"action">> => Action},
     PayloadBin = imboy_message_helper:encode_json(PayloadWithAction),
-    % 存储撤回通知消息（v2.0）
-    % 【MSG-P2-2】旁路写点绕开 staging 幂等层，重试时 created_at 不同会绕过
-    % (msg_id, created_at) 约束落重复行，改用 (msg_id, to_id) 判重写入
-    _ = write_msg_once(NowTs, MsgId, PayloadBin, FromId, ToId, NowTs, MsgType, E2EE),
-    % 覆盖离线队列中原消息 payload，避免离线接收方上线仍收到完整原文
-    %% update_payload_by_msg_id 恒返 {ok, AffectedRows}；本函数 spec 承诺
-    %% ok | {error, _}，调用方 msg_c2c_logic:c2c_revoke 亦只匹配这两者，
-    %% 故此处归一化，避免 {ok, N} 触发 case_clause 崩溃离线撤回路径。
-    case msg_c2c_repo:update_payload_by_msg_id(OriginalMsgId, PayloadBin) of
-        {ok, _} -> ok;
-        {error, _} = Err -> Err
-    end.
+    Timestamp = elib_dt:to_rfc3339(NowTs),
+    msg_c2c_repo:revoke_offline_atomic(
+        Timestamp, MsgId, OriginalMsgId, PayloadBin, FromId, ToId, Timestamp, MsgType, E2EE
+    ).
 
 %% @doc 编辑离线消息
 %% @returns ok | {error, Reason}

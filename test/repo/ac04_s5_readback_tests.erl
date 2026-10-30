@@ -60,7 +60,7 @@ s5_readback_body() ->
                 lists:sort(lists:filter(fun(Id) -> lists:member(Id, MsgIds) end, ReadBackIds))
             ),
             %% 回读二：FTS 命中同一集合
-            {ok, Hits} = fts_user_repo:search_c2c_msg(Kw, 50, 0, A),
+            {ok, _, Hits} = fts_user_repo:search_authorized_page(A, Kw, 50, 0, <<"c2c">>, #{}),
             HitIds = [maps:get(<<"msg_id">>, M) || M <- Hits],
             lists:foreach(
                 fun(Id) -> ?assert(lists:member(Id, HitIds)) end,

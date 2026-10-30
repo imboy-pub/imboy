@@ -957,7 +957,107 @@ c2g_edit_stages_with_committed_snapshot_test_() ->
             ?assertEqual(2, meck:num_calls(message_ds, send_next, 4)),
             ?assertEqual(1, meck:num_calls(msg_store_ds, stage_action, 13)),
             ?assertEqual(1, meck:num_calls(msg_store_ds, enqueue, 3)),
-            ?assertEqual(0, meck:num_calls(group_ds, member_uids, 1))
+            ?assertEqual(0, meck:num_calls(group_ds, member_uids, 1)),
+            ModernData = Data#{
+                <<"msg_type">> => <<"text">>,
+                <<"payload">> => maps:remove(<<"msg_type">>, maps:get(<<"payload">>, Data))
+            },
+            {reply, ModernReply} = msg_c2g_logic:c2g_edit(
+                <<"c2g_edit_001">>, 1001, ModernData
+            ),
+            ?assertEqual(<<"message_edit_ack">>, maps:get(<<"action">>, ModernReply)),
+            ?assertEqual(<<"text">>, maps:get(<<"msg_type">>, ModernReply)),
+            ConflictData = Data#{
+                <<"msg_type">> => <<"text">>,
+                <<"payload">> =>
+                    (maps:get(<<"payload">>, Data))#{<<"msg_type">> => <<"image">>}
+            },
+            {reply, ConflictReply} = msg_c2g_logic:c2g_edit(
+                <<"c2g_edit_001">>, 1001, ConflictData
+            ),
+            ?assertEqual(<<"text">>, maps:get(<<"msg_type">>, ConflictReply)),
+            meck:expect(msg_c2g_ds, find_msg_by_id, fun(_) -> {error, not_found} end),
+            meck:expect(msg_store_ds, find_staged, fun(<<"c2g">>, <<"orig_c2g_edit_001">>) ->
+                {ok, #{
+                    <<"from_id">> => 1001,
+                    <<"to_id">> => 88,
+                    <<"created_at">> => 1700000000000
+                }}
+            end),
+            {reply, StagedReply} = msg_c2g_logic:c2g_edit(
+                <<"c2g_edit_001">>, 1001, ModernData
+            ),
+            ?assertEqual(<<"message_edit_ack">>, maps:get(<<"action">>, StagedReply)),
+            ?assertEqual(1, meck:num_calls(msg_store_ds, find_staged, 2))
+        end
+    ).
+
+c2g_action_lookup_errors_are_not_missing_test_() ->
+    ?WITH_MECKS(
+        [
+            {group_ds, [{'is_member', 2, fun(1001, 88) -> true end}]},
+            {msg_c2g_ds, [{'find_msg_by_id', 1, fun(_) -> {error, unavailable} end}]},
+            {msg_store_ds, [
+                {'find_staged', 2, fun(_, _) -> {error, unavailable} end},
+                {'stage_action', 13, fun(_, _, _, _, _, _, _, _, _, _, _, _, _) ->
+                    erlang:error(unexpected_stage)
+                end},
+                {'enqueue', 3, fun(_, _, _) -> erlang:error(unexpected_enqueue) end}
+            ]},
+            {message_ds, [
+                {'assemble_s2c', 3, fun(_, Reason, _) -> #{<<"error">> => Reason} end},
+                {'send_next', 4, fun(_, _, _, _) -> erlang:error(unexpected_delivery) end}
+            ]},
+            {elib_log, [
+                {'internal_log', 4, fun(_, _, _, _) -> ok end},
+                {'internal_log', 5, fun(_, _, _, _, _) -> ok end}
+            ]}
+        ],
+        fun() ->
+            Plain = #{
+                <<"from">> => <<"1001">>,
+                <<"to">> => <<"88">>,
+                <<"msg_type">> => <<"text">>,
+                <<"payload">> => #{<<"original_msg_id">> => <<"orig">>, <<"content">> => <<"new">>}
+            },
+            Encrypted = Plain#{
+                <<"payload">> => <<"ciphertext">>,
+                <<"e2ee">> => #{<<"edit_of">> => <<"orig">>}
+            },
+            Actions = [
+                fun() -> msg_c2g_logic:c2g_edit(<<"edit">>, 1001, Plain) end,
+                fun() -> msg_c2g_logic:c2g_edit(<<"edit">>, 1001, Encrypted) end,
+                fun() -> msg_c2g_logic:c2g_revoke(<<"revoke">>, 1001, Plain) end
+            ],
+            lists:foreach(
+                fun(Action) ->
+                    {reply, Reply} = Action(),
+                    ?assertEqual(<<"internal_error">>, maps:get(<<"error">>, Reply))
+                end,
+                Actions
+            ),
+            ?assertEqual(0, meck:num_calls(msg_store_ds, find_staged, 2)),
+            meck:expect(msg_c2g_ds, find_msg_by_id, fun(_) -> {error, not_found} end),
+            lists:foreach(
+                fun(Action) ->
+                    {reply, Reply} = Action(),
+                    ?assertEqual(<<"internal_error">>, maps:get(<<"error">>, Reply))
+                end,
+                Actions
+            ),
+            ?assertEqual(3, meck:num_calls(msg_store_ds, find_staged, 2)),
+            meck:expect(msg_store_ds, find_staged, fun(_, _) -> {error, not_found} end),
+            lists:foreach(
+                fun(Action) ->
+                    {reply, Reply} = Action(),
+                    ?assertEqual(<<"msg_not_found">>, maps:get(<<"error">>, Reply))
+                end,
+                Actions
+            ),
+            ?assertEqual(6, meck:num_calls(msg_store_ds, find_staged, 2)),
+            ?assertEqual(0, meck:num_calls(msg_store_ds, stage_action, 13)),
+            ?assertEqual(0, meck:num_calls(msg_store_ds, enqueue, 3)),
+            ?assertEqual(0, meck:num_calls(message_ds, send_next, 4))
         end
     ).
 

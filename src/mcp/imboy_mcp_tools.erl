@@ -207,7 +207,10 @@ search_messages(Args, Ctx) ->
             true ->
                 {Page, Size} = page_size(Args),
                 Type = maps:get(<<"type">>, Args, <<"C2C">>),
-                {structured, fts_logic:search_msg(Caller, Page, Size, Kw, Type)}
+                case fts_logic:search_msg(Caller, Page, Size, Kw, Type) of
+                    {error, _} -> tool_error(<<"search unavailable">>);
+                    Result -> {structured, Result}
+                end
         end
     end).
 

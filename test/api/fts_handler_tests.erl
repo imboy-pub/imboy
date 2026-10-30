@@ -501,3 +501,35 @@ msg_search_enabled_test_() ->
             meck_helper:verify_called(fts_logic, search_msg, 6)
         end
     ).
+
+msg_search_invalid_scope_rejected_test_() ->
+    ?WITH_MECKS(
+        [
+            {cowboy_req, [
+                {parse_qs, 1, fun(_) ->
+                    [
+                        {<<"keyword">>, <<"hello">>},
+                        {<<"type">>, <<"C2C">>},
+                        {<<"conversation_id">>, <<"c2c:10:11">>}
+                    ]
+                end}
+            ]},
+            {auth_ds, [{current_uid, 1, fun(_) -> 42 end}]},
+            {elib_param, [{page, 1, fun(_) -> {1, 20} end}]},
+            {imboy_policy, [{message_search_enabled, 0, fun() -> true end}]},
+            {fts_logic, [
+                {search_msg, 6, fun(_, _, _, _, _, _) -> erlang:error(unexpected_search) end}
+            ]},
+            {elib_response, [
+                {error, 3, fun(Req, Msg, Code) ->
+                    Req#{error_msg => Msg, error_code => Code}
+                end}
+            ]}
+        ],
+        fun() ->
+            {ok, Req, _} = fts_handler:init(#{}, #{action => msg}),
+            ?assertEqual(?ERR_INVALID_PARAM, maps:get(error_code, Req)),
+            ?assertEqual(<<"invalid conversation_id">>, maps:get(error_msg, Req)),
+            ?assertEqual(0, meck:num_calls(fts_logic, search_msg, 6))
+        end
+    ).
