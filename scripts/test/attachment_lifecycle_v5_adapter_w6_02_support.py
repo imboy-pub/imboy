@@ -65,8 +65,7 @@ def flutter_suite(case_dir, filename, case_id, role):
 def find_flutter_test(suite, scenario):
     hits = [test for test in suite["tests"]
             if test["name"] == scenario
-            or test["name"].startswith(scenario + ":")
-            or scenario in test["name"]]
+            or test["name"].startswith(scenario + ": ")]
     return hits
 
 
@@ -97,6 +96,7 @@ def playwright_report(case_dir, filename, case_id, role):
                 tests.append({
                     "name": " > ".join([item for item in (chain, names[0])
                                         if item]),
+                    "scenario_title": names[0],
                     "status": test.get("status"),
                     "results": [result.get("status") for result in results],
                     "duration_ms": sum(result.get("duration") or 0
@@ -112,6 +112,7 @@ def playwright_report(case_dir, filename, case_id, role):
                % (role, path))
     bad = [test for test in tests
            if test["status"] != "expected"
+           or not test["results"]
            or any(status != "passed" for status in test["results"])]
     if bad:
         S6.die(case_id, "%s reports non-passing tests: %r"
@@ -130,7 +131,9 @@ def playwright_report(case_dir, filename, case_id, role):
 
 
 def find_playwright_test(suite, scenario):
-    return [test for test in suite["tests"] if scenario in test["name"]]
+    return [test for test in suite["tests"]
+            if test["scenario_title"] == scenario
+            or test["scenario_title"].startswith(scenario + ": ")]
 
 
 def actor_for(driver, bucket, disk_root, case_id):
@@ -244,6 +247,7 @@ def rows_for(ctx, case_id, leaves, case_dir, suites, mapping, device, browser,
     """
     gaps = []
     rows = []
+    used_tests = set()
     for leaf in leaves:
         scenario = leaf["ordering_or_fault"].split("/")[-1]
         kind, reason = mapping.get(scenario, ("any", None))
@@ -262,11 +266,18 @@ def rows_for(ctx, case_id, leaves, case_dir, suites, mapping, device, browser,
                 candidates.extend((("playwright", suite, test)
                                    for test in find_playwright_test(suite,
                                                                     scenario)))
-        if not candidates:
-            gaps.append("%s (driver=%s): no executed %s test carries this "
-                        "scenario token" % (scenario, leaf["driver"], kind))
+        if len(candidates) != 1:
+            gaps.append("%s (driver=%s): expected exactly one executed %s "
+                        "test with this scenario title, found %d"
+                        % (scenario, leaf["driver"], kind, len(candidates)))
             continue
         suite_kind, suite, test = candidates[0]
+        test_key = (suite_kind, os.path.realpath(suite["path"]), test["name"])
+        if test_key in used_tests:
+            gaps.append("%s (driver=%s): test is already bound to another leaf"
+                        % (scenario, leaf["driver"]))
+            continue
+        used_tests.add(test_key)
         started, finished = S5.window(suite["path"], suite["duration_s"])
         actor, resource = actor_lookup(leaf)
         assertions = [
