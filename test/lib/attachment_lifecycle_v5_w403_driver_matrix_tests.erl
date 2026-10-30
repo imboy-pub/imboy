@@ -118,7 +118,7 @@ run_leaf(S0, Surface, Driver, Scenario) ->
     S = S0#{leaf => Leaf},
     try
         scenario(S, Surface, Driver, Scenario),
-        w403dm_emit(Surface, Driver, Scenario)
+        w403dm_emit(Surface, Driver, Scenario, Leaf)
     after
         cleanup_jobs(),
         report_evidence(Leaf)
@@ -126,7 +126,13 @@ run_leaf(S0, Surface, Driver, Scenario) ->
 
 %% 逐叶观测：64 cell（surface × driver × scenario）断言全过后落盘。
 %% domain 按契约矩阵：enterprise_seat/cs_widget 为 enterprise 面，其余 ordinary。
-w403dm_emit(Surface, Driver, Scenario) ->
+%% measured 携带服务器侧绑定证据：evidence(Leaf) 的每条真实请求
+%% （request_id/route/method/handler/status 与 bind_request 绑定的
+%% object_key/action），以及该请求进程内 server_trace 收集的生产存储
+%% 解析记录（trust 标记如实为 diagnostic_untrusted）。adapter 侧据此
+%% 完成 HTTP 与对象来源对服务器的独立绑定校验；此处不放宽任何语义。
+w403dm_emit(Surface, Driver, Scenario, Leaf) ->
+    Requests = attachment_w403_http_fixture:evidence(Leaf),
     attachment_lifecycle_v5_obs:emit(#{
         case_id => <<"W4-03/driver-content-immutable">>,
         entrypoint => atom_to_binary(Surface, utf8),
@@ -135,10 +141,17 @@ w403dm_emit(Surface, Driver, Scenario) ->
         schema_phase => <<"expand-queue">>,
         measured => #{
             driver => atom_to_binary(Driver, utf8),
-            entrypoint_case => atom_to_binary(Scenario, utf8)
+            entrypoint_case => atom_to_binary(Scenario, utf8),
+            ac_id => <<"AC03">>,
+            object_key => w403dm_object_key(Requests),
+            http_requests => Requests
         }
     }),
     ok.
+
+w403dm_object_key([]) -> <<>>;
+w403dm_object_key([#{object_key := Key} | _]) -> Key;
+w403dm_object_key([_ | Rest]) -> w403dm_object_key(Rest).
 
 w403dm_domain(enterprise_seat) -> <<"enterprise">>;
 w403dm_domain(cs_widget) -> <<"enterprise">>;

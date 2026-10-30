@@ -1785,7 +1785,16 @@ def receipt_errors(leaf, expected_leaf, task_id, case_id, candidate, run_dir, al
         mandatory_errors.append("W6-02 provenance is not bound to its driver session and owned backend")
     if (task_id == "W6-01" and isinstance(expected_leaf, dict)
             and expected_leaf.get("source_case_ref") == "W4-03/driver-content-immutable"):
-        mandatory_errors.append("W4-03 HTTP and object provenance is not independently bound to the server")
+        # The adapter proves the binding before admitting the row (unique
+        # request identities, surface route/method/handler, three-way
+        # object_key binding, in-process storage resolution); the runner only
+        # requires that proof to be present on the measured receipt.
+        proof = leaf.get("server_request_provenance") if isinstance(leaf, dict) else None
+        requests = proof.get("requests") if isinstance(proof, dict) else None
+        if (not isinstance(proof, dict) or not isinstance(proof.get("object_key"), str)
+                or not proof.get("object_key") or not isinstance(requests, list)
+                or not requests):
+            mandatory_errors.append("W4-03 HTTP and object provenance is not independently bound to the server")
     if legacy:
         # Historical cases were sealed under the standard frozen at their
         # admission time (their PASS is anchored in the accepted event
