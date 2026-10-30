@@ -335,14 +335,20 @@ planned_db_names(Workers, Pid) ->
 
 %% talk_record 网关根（普通车道）：TALK_RECORD_PRIVATE_GARAGE_CONFIG 要求桶名恒为
 %% talk-record-relay、endpoint 为 http://127.0.0.1:*；TALK_HTTP_AAC_FIXTURE 为合成 AAC。
+%% JSON 键集 = 全部消费者读取的并集：网关根读连接 5 键，
+%% private_garage 根另读 spool_dir（attachment_gateway_tmp_dir），缺键即 setup badkey。
 talk_garage_env(Ctrl, {ok, G}, Aac, Pid) ->
-    Path = filename:join([Ctrl, "runtime", "talk_owned", "garage_" ++ Pid ++ ".json"]),
+    Scratch = filename:join([Ctrl, "runtime", "talk_owned"]),
+    Path = filename:join(Scratch, "garage_" ++ Pid ++ ".json"),
+    Spool = filename:join(Scratch, "spool_" ++ Pid),
+    ok = filelib:ensure_dir(filename:join(Spool, "x")),
     ok = imboy_quality_resources:write_json(Path, #{
         endpoint => list_to_binary(maps:get(endpoint, G)),
         bucket => <<"talk-record-relay">>,
         region => list_to_binary(maps:get(region, G)),
         access_key => list_to_binary(maps:get(access_key, G)),
-        secret_key => list_to_binary(maps:get(secret_key, G))
+        secret_key => list_to_binary(maps:get(secret_key, G)),
+        spool_dir => list_to_binary(Spool)
     }),
     [{"TALK_RECORD_PRIVATE_GARAGE_CONFIG", Path} | aac_env(Aac)];
 talk_garage_env(_Ctrl, {error, _}, Aac, _Pid) ->
