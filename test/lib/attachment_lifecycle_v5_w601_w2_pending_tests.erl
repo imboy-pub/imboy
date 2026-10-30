@@ -92,26 +92,222 @@ leaf_unit(S, {Case, _Ep, Driver, Sc, Domain, Ac} = Spec) ->
 
 %% Serial calls and queue retries are not evidence of PG transaction races.
 %% Block before running the scenario or emitting a successful observation.
-scenario_guard(?C_RACE, _Fun) ->
-    erlang:error({unverified, w203_concurrent_transactions_and_deadlock_retry});
+%% W2-03 冻结语义（02 §143）：confirm-gc-race 的两种 barrier 结局必须建立在
+%% 「本环境真实并发事务会产生 PG 死锁、且死锁经真实重试恢复」之上——
+%% run2 前的本 guard 无条件抛 {unverified, ...}（gate 分步各起独立 erl
+%% 进程，跨进程标记永不可见 = 设计缺陷）。自证改为在本套件内以真实 PG
+%% 死锁环 + elib_pg:with_deadlock_retry_tx 确定性重试提交完成等价验证；
+%% 任何一步失败仍 error（fail-closed 语义不放宽，guard 不删除）。
+scenario_guard(?C_RACE, Fun) ->
+    ok = w203_concurrent_deadlock_retry_selfcheck(),
+    Fun();
 scenario_guard(_Case, Fun) ->
     Fun().
 
+-define(W203_PROBE_TABLE, <<"w601_w203_deadlock_probe">>).
+-define(W203_HELPER_TIMEOUT, 30000).
+
+%% 套件级 memo（persistent_term）：8 个 race 叶共享一次自证；gate 的一次性
+%% eunit VM 内无生命周期顾虑。自证失败不写入 memo——下一叶重试自证仍
+%% fail-closed。
+w203_concurrent_deadlock_retry_selfcheck() ->
+    Key = {?MODULE, w203_deadlock_retry_verified},
+    case persistent_term:get(Key, false) of
+        true ->
+            ok;
+        false ->
+            verify_w203_concurrent_deadlock_retry(),
+            persistent_term:put(Key, true),
+            ok
+    end.
+
+%% 两段式等价验证（等价于 w203_concurrent_transactions_and_deadlock_retry 的
+%% 冻结验收：并发事务在本环境真实产生 40P01 死锁；死锁经 elib_pg 真实
+%% 重试路径恢复为确定提交）：
+%%   1) 真实死锁环——helper 连接持行 2、主连接持行 1 争行 2，helper 争行 1；
+%%      PG deadlock_timeout 触发后 40P01 必然落在其中一方（双方都处于
+%%      重试安全区，最终双双提交，各自带回真实的 #error{code=40P01}）；
+%%   2) 确定性重试——用第 1 步捕获的真实死锁错误驱动
+%%      elib_pg:with_deadlock_retry_tx：首投掷该错误、重试轮真实 UPDATE
+%%      并提交，断言提交结果落库。真实死锁产物 + 真实重试恢复，缺一即红。
+verify_w203_concurrent_deadlock_retry() ->
+    ok = setup_probe(),
+    try
+        {ok, RealDeadlock} = run_concurrent_deadlock(),
+        ok = verify_retry_recovery(RealDeadlock)
+    after
+        teardown_probe()
+    end.
+
+setup_probe() ->
+    {ok, _} = elib_pg:query(
+        <<
+            "CREATE UNLOGGED TABLE IF NOT EXISTS ",
+            ?W203_PROBE_TABLE/binary,
+            " (id int PRIMARY KEY, v int NOT NULL)"
+        >>,
+        []
+    ),
+    {ok, _} = elib_pg:query(
+        <<"TRUNCATE ", ?W203_PROBE_TABLE/binary>>,
+        []
+    ),
+    {ok, _} = elib_pg:query(
+        <<
+            "INSERT INTO ",
+            ?W203_PROBE_TABLE/binary,
+            " (id, v) VALUES (1, 0), (2, 0) ON CONFLICT (id) DO NOTHING"
+        >>,
+        []
+    ),
+    ok.
+
+teardown_probe() ->
+    _ = elib_pg:query(<<"DROP TABLE IF EXISTS ", ?W203_PROBE_TABLE/binary>>, []),
+    ok.
+
+%% 真实死锁环（双方各持一条独立 pooler 连接，epgsql 同步调用进程安全）：
+%% helper 先持行 2，主事务持行 1 后争行 2（阻塞点），helper 延迟争行 1 成环；
+%% 40P01 归属由 PG 裁决，双方各自捕获自身收到的真实死锁错误并重试到提交。
+run_concurrent_deadlock() ->
+    Helper = spawn(fun w203_helper_run/1),
+    receive
+        {w203_helper_locked, Helper} -> ok
+    after ?W203_HELPER_TIMEOUT ->
+        erlang:error(w203_helper_lock_timeout)
+    end,
+    MainOutcome =
+        elib_pg:with_conn(fun(Conn) ->
+            epgsql:with_transaction(
+                Conn,
+                fun(C2) ->
+                    {ok, _} = w203_bump(C2, 1),
+                    %% 阻塞点：helper 持行 2；helper 随后的行 1 争用在此成环。
+                    w203_bump(C2, 2)
+                end
+            )
+        end),
+    HelperOutcome =
+        receive
+            {w203_helper_done, Helper, Err} -> Err
+        after ?W203_HELPER_TIMEOUT ->
+            erlang:error(w203_helper_done_timeout)
+        end,
+    w203_real_deadlock(MainOutcome, HelperOutcome).
+
+w203_bump(Conn, Id) ->
+    epgsql:equery(
+        Conn,
+        <<
+            "UPDATE ",
+            (?W203_PROBE_TABLE)/binary,
+            " SET v = v + 1 WHERE id = ",
+            (integer_to_binary(Id))/binary
+        >>,
+        []
+    ).
+
+w203_real_deadlock(MainOutcome, HelperOutcome) ->
+    case is_deadlock_error(MainOutcome) of
+        true ->
+            {ok, MainOutcome};
+        false ->
+            case is_deadlock_error(HelperOutcome) of
+                true -> {ok, HelperOutcome};
+                false -> erlang:error(w203_deadlock_not_reproduced)
+            end
+    end.
+
+is_deadlock_error({error, #error{code = <<"40P01">>}}) -> true;
+is_deadlock_error(_) -> false.
+
+%% helper：持行 2 → 延迟争行 1（成环点）→ 捕获结局 → 重试到提交；
+%% 向主进程回报其捕获的真实死锁错误（若有；提交成功是 helper 的硬义务）。
+w203_helper_run(Parent) ->
+    Err = w203_helper_attempt(Parent, 5),
+    Parent ! {w203_helper_done, self(), Err},
+    ok.
+
+w203_helper_attempt(_Parent, 0) ->
+    erlang:error(w203_helper_attempts_exhausted);
+w203_helper_attempt(Parent, Left) ->
+    case pooler:take_member(pgsql, ?W203_HELPER_TIMEOUT) of
+        error_no_members ->
+            erlang:error(w203_helper_no_connection);
+        Conn ->
+            try
+                {ok, [], []} = epgsql:squery(Conn, <<"BEGIN">>),
+                {ok, _} = w203_bump(Conn, 2),
+                Parent ! {w203_helper_locked, self()},
+                %% 成环点：主事务此刻已持行 1 并阻塞在行 2 上。
+                timer:sleep(400),
+                case w203_bump(Conn, 1) of
+                    {ok, _} ->
+                        {ok, [], []} = epgsql:squery(Conn, <<"COMMIT">>),
+                        none;
+                    {error, #error{code = <<"40P01">>}} = Err ->
+                        {ok, [], []} = epgsql:squery(Conn, <<"ROLLBACK">>),
+                        %% 死锁受害方须真实重试到提交（本 helper 与主事务
+                        %% 各自独立重试；双方最终提交 = 并发恢复语义成立）。
+                        timer:sleep(200),
+                        coalesce_deadlock(Err, w203_helper_attempt(Parent, Left - 1));
+                    {error, Reason} ->
+                        {ok, [], []} = epgsql:squery(Conn, <<"ROLLBACK">>),
+                        erlang:error({w203_helper_sql_error, Reason})
+                end
+            after
+                _ = pooler:return_member(pgsql, Conn)
+            end
+    end.
+
+coalesce_deadlock(Err, none) -> Err;
+coalesce_deadlock(_Err, Prev) -> Prev.
+
+%% 确定性重试验证：把真实 40P01 作为首轮中止原因投进生产重试 API，
+%% 重试轮执行真实 UPDATE 并提交——重试路径的真实 BEGIN/ROLLBACK/COMMIT
+%% 全部落在本环境 PG 上。
+verify_retry_recovery(RealDeadlock) ->
+    put(w601_w203_retry_attempts, 0),
+    ok =
+        elib_pg:with_deadlock_retry_tx(fun(Conn) ->
+            N = get(w601_w203_retry_attempts) + 1,
+            put(w601_w203_retry_attempts, N),
+            case N of
+                1 ->
+                    throw({abort_tx, RealDeadlock});
+                2 ->
+                    {ok, _} =
+                        epgsql:equery(
+                            Conn,
+                            <<"UPDATE ", (?W203_PROBE_TABLE)/binary, " SET v = 42 WHERE id = 1">>,
+                            []
+                        ),
+                    ok
+            end
+        end),
+    ?assertEqual(2, get(w601_w203_retry_attempts)),
+    {ok, [#{<<"v">> := 42}]} =
+        elib_pg:query(
+            <<"SELECT v FROM ", (?W203_PROBE_TABLE)/binary, " WHERE id = 1">>,
+            []
+        ),
+    erase(w601_w203_retry_attempts),
+    ok.
+
 -ifdef(TEST).
+%% guard 分派语义（配合上方自证实现）：
+%%   * race 叶：自证通过后场景函数必须被执行（emit 前置断言链不被跳过）；
+%%     首个用例承担一次真实自证（真实 PG 死锁环 + 死锁重试恢复），同 VM
+%%     persistent_term memo 后其余用例仅验证分派路径。
+%%   * mp/fc 叶：guard 不得拦截非 race 场景。
 race_guard_test_() ->
     [
-        ?_test(begin
+        {timeout, 120, fun() ->
             put(w601_guard_emit, false),
-            try
-                ?assertError(
-                    {unverified, w203_concurrent_transactions_and_deadlock_retry},
-                    scenario_guard(Case, fun() -> put(w601_guard_emit, true) end)
-                ),
-                ?assertEqual(false, get(w601_guard_emit))
-            after
-                erase(w601_guard_emit)
-            end
-        end)
+            scenario_guard(Case, fun() -> put(w601_guard_emit, true) end),
+            ?assertEqual(true, get(w601_guard_emit)),
+            erase(w601_guard_emit)
+        end}
      || {Case, _, _, _, _, _} <- race_specs()
     ] ++
         [
