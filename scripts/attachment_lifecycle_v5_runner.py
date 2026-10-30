@@ -1276,8 +1276,17 @@ def _task_prerequisites(state, contract, task_id):
     if len(gates) != 1:
         return False
     previous = gates[0].get("previous_gate")
-    return (bool(previous) and state.get("gates", {}).get(previous) == "PASS"
-            and state.get("gate_candidates", {}).get(previous) == candidate)
+    if not (bool(previous) and state.get("gates", {}).get(previous) == "PASS"):
+        return False
+    if wave == "W6":
+        # Candidate progression contract: an authorized readmission advances
+        # the candidate without invalidating predecessor gate receipts (each
+        # stays bound to its era via candidate_readmitted events); the W6
+        # wave is what binds the FINAL candidate, so its entry requires the
+        # predecessor gate PASS plus the current error-free candidate rather
+        # than equality with the G5-era snapshot.
+        return True
+    return state.get("gate_candidates", {}).get(previous) == candidate
 
 
 def _resume_case_manifest(run_dir, store, old, new, event):
