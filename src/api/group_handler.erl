@@ -1000,12 +1000,11 @@ respond_cursor_page(Req0, Uid, Kind, Ctx, BeforeId, Limit) ->
             elib_response:error(Req0, <<"查询失败，请稍后重试"/utf8>>)
     end.
 
-%% 末页 next_cursor 为空串（JSON null 语义由响应编码决定）；非终止页必须
-%% 前进：以本页末行 id 为上界签发下一页游标。
+%% 末页 next_cursor 为 JSON null；非终止页以本页末行 id 为上界签发游标。
 -spec next_cursor_for(boolean(), integer(), binary(), map(), integer()) ->
-    {ok, binary()} | {error, integer(), binary()}.
+    {ok, binary() | null} | {error, integer(), binary()}.
 next_cursor_for(false, _Uid, _Kind, _Ctx, _Upper) ->
-    {ok, <<>>};
+    {ok, null};
 next_cursor_for(true, Uid, Kind, Ctx, Upper) ->
     case list_cursor:issue(Uid, Kind, Ctx#{upper => Upper}, os:system_time(second)) of
         {ok, Token} ->
