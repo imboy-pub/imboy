@@ -578,8 +578,13 @@ def build():
                             % exc)
                 continue
             emitted = obs.get("emitted_at_ms")
+            # STEP lines record epoch SECONDS (date +%s, taken after the
+            # eunit process exited): the finish second's tail is inside the
+            # step, so the right edge extends to the end of that second
+            # (run9: an observation emitted 345ms into the finish second died
+            # against a t1_ms truncated to the second's first millisecond).
             t0_ms = started403.timestamp() * 1000
-            t1_ms = finished403.timestamp() * 1000
+            t1_ms = finished403.timestamp() * 1000 + 999
             if not isinstance(emitted, (int, float)) \
                     or not t0_ms <= emitted <= t1_ms:
                 S.die(CASE_ID, "observation %r emitted_at_ms=%r outside the "
@@ -779,8 +784,10 @@ def build():
                     S.group_gap(gap_groups, source, 1, str(exc))
                     continue
             emitted = obs.get("emitted_at_ms")
+            # Same second-granularity right edge as the w403 window above:
+            # the finish second's tail belongs to the step (run9 345ms case).
             t0_ms = obs_started.timestamp() * 1000
-            t1_ms = obs_finished.timestamp() * 1000
+            t1_ms = obs_finished.timestamp() * 1000 + 999
             if not isinstance(emitted, (int, float)) \
                     or not t0_ms <= emitted <= t1_ms:
                 S.die(CASE_ID, "observation %r emitted_at_ms=%r outside the "
