@@ -489,8 +489,8 @@ tg16_server_env(PgEnv) ->
         {"TG16_PG_PASSWORD", maps:get(pass, PgEnv)}
     ].
 
-%% native 门 importlib 调用 scripts/verify_textguard_business.py:schema_subset 生成
-%% business-schema-subset.sql（从 priv/migrations 抽取生产 DDL）；这里保持单一事实源。
+%% 从生产迁移抽取 DDL；顺序/正则与原 schema_subset 基准保持字节等价。
+%% 正式准备仅使用 OTP，不调用旧 Python 启动器，也不生成其 proof JSON。
 textguard_files(Repo, Dir) ->
     Migrations = filename:join(Repo, "priv/migrations"),
     Up = filename:join(Migrations, "00000197_textguard_review_metadata.up.sql"),
@@ -498,7 +498,7 @@ textguard_files(Repo, Dir) ->
     true = filelib:is_regular(Up) orelse erlang:error({textguard_migration_missing, Up}),
     true = filelib:is_regular(Down) orelse erlang:error({textguard_migration_missing, Down}),
     Schema = filename:join(Dir, "business-schema-subset.sql"),
-    ok = textguard_schema_subset(Repo, Dir),
+    ok = imboy_quality_textguard_schema:textguard_schema_subset(Repo, Dir),
     true = filelib:is_regular(Schema) orelse erlang:error(textguard_schema_subset_failed),
     Secrets = [
         begin
@@ -518,21 +518,6 @@ textguard_files(Repo, Dir) ->
         {"TG20_MIGRATION_DOWN", Down}
         | Secrets
     ].
-
-textguard_schema_subset(Repo, Dir) ->
-    Code =
-        "import importlib.util,pathlib,sys; repo,out=sys.argv[1],sys.argv[2];"
-        " spec=importlib.util.spec_from_file_location('tgb_schema',"
-        "repo+'/scripts/verify_textguard_business.py');"
-        " m=importlib.util.module_from_spec(spec); spec.loader.exec_module(m);"
-        " m.schema_subset(pathlib.Path(repo),pathlib.Path(out),lambda p,v:None)",
-    true =
-        string:str(Repo, "\"") =:= 0 andalso string:str(Dir, "\"") =:= 0,
-    Output = os:cmd("python3 -c \"" ++ Code ++ "\" " ++ Repo ++ " " ++ Dir ++ " 2>&1"),
-    case filelib:is_regular(filename:join(Dir, "business-schema-subset.sql")) of
-        true -> ok;
-        false -> erlang:error({textguard_schema_subset_failed, string:trim(Output, both)})
-    end.
 
 secret_token() ->
     %% secrets.token_urlsafe(48) 等价：64 字符 base64url 无填充。
