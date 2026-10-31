@@ -370,12 +370,25 @@ w102_phase_run() { # $1 cdir $2 phase
   done
   echo "replayed $(ls "$ROOT/priv/migrations/"*.up.sql | wc -l | tr -d ' ') up files" >> "$cdir/raw.log"
   local GUARDS_DB="attv5_${SLOT}_w102_guards"
+  # W102DM dual-driver expansion (W102DM-BLUEPRINT segment 2): the probe
+  # suite is fully V5_PROBE_DRIVER-parameterized (seed quadruple + per-row
+  # driver key + per-run RUN_TAG idempotency), so both storage drivers run
+  # the same phase probes into their own probes-<drv>.jsonl; the merged
+  # probes.jsonl keeps the (name, driver) pair per row for the adapter.
+  local drv PROBE_OUT
   if [ "$phase" = "guards" ]; then
     guards_contract_stream | docker exec -i "$PG_CONTAINER" psql -X -U imboy_user -d "$DB" -v ON_ERROR_STOP=1 --single-transaction -f - \
       >> "$cdir/raw.log" 2>&1 \
       || { echo "GUARDS_FAIL" >> "$cdir/raw.log"; return 30; }
-    V5_EXPAND_DB="${V5_EXPAND_DB:-attv5_${SLOT}_w102_expand}" V5_GUARDS_DB="$DB" \
-      V5_RUN_DIR="$RUN_DIR" bash "$ROOT/scripts/test/attachment_lifecycle_v5_w102_probe.sh" "$DB" guards "$cdir/probes.jsonl" >> "$cdir/raw.log" 2>&1
+    for drv in garage disk; do
+      PROBE_OUT="$cdir/probes-$drv.jsonl"
+      : > "$PROBE_OUT"
+      V5_EXPAND_DB="${V5_EXPAND_DB:-attv5_${SLOT}_w102_expand}" V5_GUARDS_DB="$DB" \
+        V5_PROBE_DRIVER="$drv" V5_RUN_DIR="$RUN_DIR" \
+        bash "$ROOT/scripts/test/attachment_lifecycle_v5_w102_probe.sh" "$DB" guards "$PROBE_OUT" >> "$cdir/raw.log" 2>&1 \
+        || { echo "PROBE_FAIL guards $drv" >> "$cdir/raw.log"; return 30; }
+    done
+    cat "$cdir/probes-garage.jsonl" "$cdir/probes-disk.jsonl" > "$cdir/probes.jsonl"
   else
     # cross-phase leaves need the guards DB too: build it alongside
     authorize_fixture_database "$GUARDS_DB" || return 20
@@ -391,8 +404,15 @@ w102_phase_run() { # $1 cdir $2 phase
     guards_contract_stream | docker exec -i "$PG_CONTAINER" psql -X -U imboy_user -d "$GUARDS_DB" -v ON_ERROR_STOP=1 --single-transaction -f - \
       >> "$cdir/raw.log" 2>&1 \
       || { echo "GUARDS_FAIL" >> "$cdir/raw.log"; return 30; }
-    V5_EXPAND_DB="$DB" V5_GUARDS_DB="$GUARDS_DB" \
-      V5_RUN_DIR="$RUN_DIR" bash "$ROOT/scripts/test/attachment_lifecycle_v5_w102_probe.sh" "$DB" expand "$cdir/probes.jsonl" >> "$cdir/raw.log" 2>&1
+    for drv in garage disk; do
+      PROBE_OUT="$cdir/probes-$drv.jsonl"
+      : > "$PROBE_OUT"
+      V5_EXPAND_DB="$DB" V5_GUARDS_DB="$GUARDS_DB" \
+        V5_PROBE_DRIVER="$drv" V5_RUN_DIR="$RUN_DIR" \
+        bash "$ROOT/scripts/test/attachment_lifecycle_v5_w102_probe.sh" "$DB" expand "$PROBE_OUT" >> "$cdir/raw.log" 2>&1 \
+        || { echo "PROBE_FAIL expand $drv" >> "$cdir/raw.log"; return 30; }
+    done
+    cat "$cdir/probes-garage.jsonl" "$cdir/probes-disk.jsonl" > "$cdir/probes.jsonl"
   fi
   return $?
 }

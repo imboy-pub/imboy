@@ -160,6 +160,16 @@ for _ref in (
     OBS_STEP_FOR[_ref] = "w3bind"
 OBS_GROUPS = set(OBS_STEP_FOR)
 
+# W102DM dual-driver leaves: the five W1-02 governance sources whose
+# contract leaves are the case scenarios x {garage, disk} (the case
+# matrices themselves are driver=none; measured per driver from the
+# merged dual-driver probes.jsonl).
+W102DM_DUAL_SOURCES = frozenset({
+    "W1-02/audit-actor-anonymization", "W1-02/intent-authority",
+    "W1-02/recovery-tombstone-integrity", "W1-02/registration-integrity",
+    "W1-02/session-link-integrity",
+})
+
 
 def _expiry_proof(measured, entrypoint):
     """Bind the successful registration and failed PUT to this exact leaf."""
@@ -515,6 +525,62 @@ ADEQUATE = {
             "mutate_key", "mutate_owner", "mutate_scope", "mutate_cipher",
             "mutate_locator_digest", "tombstone_recreation",
             "first_bind_once", "same_value_replay")
+    },
+    ("W1-02/audit-actor-anonymization", "guards-contract"): {
+        "direct_actor_null_with_live_user_denied": ["direct_actor_null_with_live_user_denied"],
+        "direct_actor_substitution_denied": ["direct_actor_substitution_denied"],
+        "fk_user_delete_sets_audit_null": ["fk_user_delete_sets_audit_null"],
+    },
+    ("W1-02/intent-authority", "guards-contract"): {
+        "activate_legacy_without_proof": ["activate_legacy_without_proof"],
+        "authorized_intent_atomic": ["authorized_intent_atomic"],
+        "direct_metadata_intent": ["direct_metadata_intent"],
+        "direct_session_intent": ["direct_session_intent"],
+        "forge_gc_verified": ["forge_gc_verified"],
+        "forge_gc_verified_on_insert": ["forge_gc_verified_on_insert"],
+        "intent_future_retention": ["intent_future_retention"],
+        "intent_missing_audit": ["intent_missing_audit"],
+        "intent_missing_metadata_transition": ["intent_missing_metadata_transition"],
+        "intent_under_hold": ["intent_under_hold"],
+        "intent_with_live_reference": ["intent_with_live_reference"],
+        "queue_insert_done": ["queue_insert_done"],
+        "queue_insert_leased": ["queue_insert_leased"],
+        "queue_insert_ready": ["queue_insert_ready"],
+        "queue_insert_retry_wait": ["queue_insert_retry_wait"],
+        "runtime_set_role_owner": ["runtime_set_role_owner"],
+        "worker_arbitrary_enqueue": ["worker_arbitrary_enqueue"],
+    },
+    ("W1-02/recovery-tombstone-integrity", "guards-contract"): {
+        "copy_uuid_snapshot_before_metadata_delete": ["copy_uuid_snapshot_before_metadata_delete"],
+        "cross_table_duplicate_uuid_rejected": ["cross_table_duplicate_uuid_rejected"],
+        "direct_dml_resurrection_denied": ["direct_dml_resurrection_denied"],
+        "down_with_recovery_tombstone_refused": ["down_with_recovery_tombstone_refused"],
+        "legacy_null_preserved": ["legacy_null_preserved"],
+        "missing_snapshot_rollback": ["missing_snapshot_rollback"],
+        "tombstone_update_delete_denied": ["tombstone_update_delete_denied"],
+    },
+    ("W1-02/registration-integrity", "guards-contract"): {
+        "audit_null_does_not_grant_resume": ["audit_null_does_not_grant_resume"],
+        "legacy_null_not_fabricated": ["legacy_null_not_fabricated"],
+        "original_filename_conflict_after_restart": ["original_filename_conflict_after_restart"],
+        "original_mime_conflict_after_restart": ["original_mime_conflict_after_restart"],
+        "pg_canonical_json_digest_vector": ["pg_canonical_json_digest_vector"],
+        "seat_contact_subject_kind_conflict": ["eb_seat_contact_subject_kind_conflict"],
+        "snapshot_direct_dml_rejected": ["snapshot_direct_dml_rejected"],
+        "widget_other_visitor_session_denied": ["eb_widget_other_visitor_session_denied"],
+    },
+    ("W1-02/session-link-integrity", "guards-contract"): {
+        "confirmed_gc_preserves_session_link": ["confirmed_gc_preserves_session_link"],
+        "confirmed_null": ["confirmed_null"],
+        "confirmed_rebind": ["confirmed_rebind"],
+        "confirmed_to_registered": ["confirmed_to_registered"],
+        "lawful_repeat": ["lawful_repeat"],
+        "legal_fk_wrong_cipher": ["legal_fk_wrong_cipher"],
+        "legal_fk_wrong_key": ["legal_fk_wrong_key"],
+        "legal_fk_wrong_location": ["legal_fk_wrong_location"],
+        "legal_fk_wrong_owner": ["legal_fk_wrong_owner"],
+        "legal_fk_wrong_scope": ["legal_fk_wrong_scope"],
+        "registered_link_nonnull": ["registered_link_nonnull"],
     },
 }
 
@@ -911,6 +977,70 @@ def build():
                  "passed": len(names), "failed": 0, "skipped": 0},
                 oracle, assertions, S.db_actor(db), [db],
                 ["w102:%s:%s" % (phase, name) for name in names]))
+            continue
+        if source in W102DM_DUAL_SOURCES:
+            # W102DM dual-driver leaves (W102DM-BLUEPRINT segment 2): the
+            # same scenario/probe set as the (plan, none) migration leaves,
+            # measured per storage driver — the merged probes.jsonl carries
+            # both drivers' rows (V5_PROBE_DRIVER-parameterized probe run),
+            # and a leaf is measured only by its OWN driver's probe rows.
+            phase = S.PHASE_MAP.get(leaf.get("source_schema_phase"))
+            scenario = leaf.get("source_scenario")
+            driver = leaf.get("driver")
+            if (phase not in ("expand", "guards") or not scenario
+                    or driver not in ("garage", "disk")):
+                S.group_gap(gap_groups, source, 1,
+                            "leaf has no resolvable phase/scenario/driver "
+                            "(phase=%r scenario=%r driver=%r)"
+                            % (leaf.get("source_schema_phase"), scenario,
+                               driver))
+                continue
+            names = ADEQUATE.get((source, leaf.get("source_schema_phase")),
+                                 {}).get(scenario)
+            if not names:
+                S.group_gap(gap_groups, source, 1,
+                            "no adequate W1-02 probe is declared for this "
+                            "scenario in phase %s" % phase)
+                continue
+            probes = phases[phase]["probes"]
+            lines = [S.require_probe_driver(probes, name, driver, CASE_ID)
+                     for name in names]
+            assertions = [S.assertion(
+                "probe_%s_passed" % name,
+                "%s:%d name=%s driver=%s pass=true"
+                % (os.path.basename(probes["path"]), line_no, name, driver))
+                for name, line_no in zip(names, lines)]
+            resource = bucket if driver == "garage" else disk_root
+            actor = (S.garage_actor(bucket) if driver == "garage"
+                     else S.disk_actor(disk_root))
+            db = phases[phase]["db"]
+            oracle = {
+                "pre_db_state": "fresh %s with %d replayed up migrations in "
+                                "the %s schema phase, storage fixtures "
+                                "seeded with the %s driver quadruple"
+                                % (db, phases[phase]["replay"], phase, driver),
+                "pre_object_hash": "n/a: this plan leaf is a DB/governance "
+                                   "probe; no provider object exists",
+                "action": "psql probes %r on %s (driver=%s)"
+                          % (names, db, driver),
+                "expected_http_semantics": "no HTTP call: the leaf's stated "
+                                           "property is a database/"
+                                           "governance assertion",
+                "expected_db_delta": "the named probe's expected value is "
+                                     "asserted by the real psql run",
+                "expected_object_state": "guards reject the mutation; the "
+                                         "row's storage identity stays "
+                                         "bound to the %s driver" % driver,
+                "proof_actor": "psql imboy_user on %s; probe artifact "
+                               "sha256=%s; driver=%s"
+                               % (db, probes["sha256"], driver),
+            }
+            rows.append(S.C.build_row(
+                leaf, phases[phase]["window"][0], phases[phase]["window"][1],
+                {"exit_code": 0, "executed": len(names),
+                 "passed": len(names), "failed": 0, "skipped": 0},
+                oracle, assertions, actor, [resource],
+                ["w102dm:%s:%s:%s" % (phase, driver, name) for name in names]))
             continue
         if source in OBS_GROUPS:
             if _blocked_enterprise_leaf(leaf):

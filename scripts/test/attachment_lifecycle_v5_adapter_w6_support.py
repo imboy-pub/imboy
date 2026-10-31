@@ -287,6 +287,26 @@ def require_probe(probes, name, case_id):
     return hits[0][0]
 
 
+def require_probe_driver(probes, name, driver, case_id):
+    """(name, driver)-exact probe requirement for W102DM dual-driver leaves.
+
+    The merged probes.jsonl carries both storage drivers' rows per probe
+    name; a dual-driver leaf is measured only by its OWN driver's rows.
+    """
+    hits = [(number, obj)
+            for number, obj in probes["by_name"].get(name, [])
+            if obj.get("driver") == driver]
+    if not hits:
+        die(case_id, "probe %r (driver %r) missing from %s"
+            % (name, driver, probes["path"]))
+    for number, obj in hits:
+        if obj.get("pass") is not True:
+            die(case_id, "probe %r line %d (driver %r) reports pass=%r "
+                "detail=%r" % (name, number, driver, obj.get("pass"),
+                               obj.get("detail", "")))
+    return hits[0][0]
+
+
 def device_provenance(case_dir, allowlist, case_id):
     path = os.path.join(case_dir, "device-provenance.json")
     doc = read_json(path, case_id, "physical device provenance")
