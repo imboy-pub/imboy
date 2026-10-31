@@ -1,6 +1,6 @@
 # IMBoy 频道、群组与会话体验审计及改造方案 V2.2
 
-修订：2026-10-27。**计划：PLAN_READY（限本文件确定的契约与子卡）；业务实施：PARTIAL_UNSUBMITTED；完整运行/设备验收：NOT_RUN。**
+修订：2026-10-27；实施收口更新：2026-10-31（含真机批次）。**计划：PLAN_READY（限本文件确定的契约与子卡）；业务实施：已提交（Backend 8 笔 / App 17 笔，见 §11.1）；完整运行/设备验收：部分闭合（J18.a/c/d/e、J19.a/b/c 共 7 子项真机 PASS，J18.f 进行中，11 子项资源 BLOCKED，其余 NOT_RUN 待证据，见 §9 状态列与 §11.1 真机批次节）。**
 
 本轮仅修订计划、当前入口与静态证据，不修改业务代码、不执行写接口/迁移、不 commit/push。上一轮已在隔离 worktree 开始 W03；现存代码与测试 WIP 原样保留，不因本轮文档修订变成 PASS。V2.2 是唯一当前规范；[V1](./plan-v1.md)、[V2/V2.1 历史稿](./plan-v2.md) 保留取证，不作为另一套现行计划。保留 F01–F22、C1–C5、D1–D7、W00–W13、J01–J29；子编号只细化原义务。视觉真源仍是 App DESIGN.md。
 
@@ -450,7 +450,7 @@ W04 内先独立修复已有建群部分成功反馈，再分别完成群原子�
 
 W00 准入记录区分静态基线与运行验收：记录三端实际 HEAD/tree、已暂存和未暂存差异、未跟踪文件及子模块指纹；记录受影响功能位的编译清单、服务器来源及账号快照，有未知项标明未知。逐项列明各适用运行资源、平台和角色已绑定的身份或 BLOCKED 及受影响工作包、验证和启用条件；资源未就绪只阻断依赖该资源的开发、运行验证和启用，不把发现设备或记录 BLOCKED 当作验收通过。静态准入记录齐全且设计、能力和兼容表一致后，按本节出口评估 W00；不改变下方开发 DAG。准入快照不是最终候选冻结：候选、配置或资源变化时重新绑定受影响指纹并重验失效证据，最终验收仍使用同一最终候选和实际资源。
 
-当前实施状态：W00 静态准入 PASS（见 §11.1 的资源阻断与重绑定）；W01/W02/W03/W04（含 W04.d.g/W04.d.c App 入口）代码侧收口并提交，全部新合同 manifest 未声明（新入口默认关闭）；W05–W12 代码侧已实施并提交（App：`563a1dd34` W05、`f206d1e94` W06、`ad8298f6b`/`2b4bb3bb0`/`2f093146d` W07.c/d、`732323e4f` W08.c、`6bce288b9`/`f95d7ce29`/`776d94601`/`8603006ea`/`b31476483` W09.a–c、`f7a02b38f`/`e255516ee` W10、`e8f14e90a` W11、`ec8ed92ad`/`8b2c67626` W12；Backend 对应 handler/ds/repo/logic 增量见 W07 子卡与 2026-10-28 接力节），各包定向收据见 §11.1；包级出口尚未逐一判定，W13/J 逐项验收仍 NOT_RUN（2026-10-29 起：单机真机冒烟门与合成服务端源/账号快照已绑定跑通，见 §11.1；双设备旅程、推送与生产源绑定仍 BLOCKED）。父包旧依赖表由下面的开发 DAG、文件写入串行约束和启用表统一替代；§8.1 是路线图，不再隐含另一份硬依赖。局部绿灯不关闭相关 J 项，更不关闭 W13。
+当前实施状态：W00 静态准入 PASS（见 §11.1 的资源阻断与重绑定）；W01/W02/W03/W04（含 W04.d.g/W04.d.c App 入口）代码侧收口并提交，全部新合同 manifest 未声明（新入口默认关闭）；W05–W12 代码侧已实施并提交（App：`563a1dd34` W05、`f206d1e94` W06、`ad8298f6b`/`2b4bb3bb0`/`2f093146d` W07.c/d、`732323e4f` W08.c、`6bce288b9`/`f95d7ce29`/`776d94601`/`8603006ea`/`b31476483` W09.a–c、`f7a02b38f`/`e255516ee` W10、`e8f14e90a` W11、`ec8ed92ad`/`8b2c67626` W12；Backend 对应 handler/ds/repo/logic 增量见 W07 子卡与 2026-10-28 接力节），各包定向收据见 §11.1；包级出口尚未逐一判定；W13/J 逐项验收进行中（2026-10-29 起单机真机冒烟门与合成服务端源/账号快照已绑定跑通；2026-10-31 J18.c/d/e、J19.a 真机 PASS，J18.f 进行中，双设备/多平台/部署组合等资源 BLOCKED，见 §9 状态列与 §11.1）。父包旧依赖表由下面的开发 DAG、文件写入串行约束和启用表统一替代；§8.1 是路线图，不再隐含另一份硬依赖。局部绿灯不关闭相关 J 项，更不关闭 W13。
 
 ### 开发 DAG、共享文件和联合启用（R11）
 
@@ -572,7 +572,7 @@ English: Work packages are review and verification boundaries, not autonomous ex
 
 保留 J01–J29 旅程身份，以下子项是独立判定单元，父项仅当全部 Required/适用子项通过才可 PASS。多参数向量（“分别/各”）执行时必须按 `子项/参数/平台` 分开收据，不能一例代表全向量。前置统一使用合成隔离资源、§1.6固定候选/交付配置、当前账号和真实成员资格；不使用真实用户数据或发消息给第三方。故障测试均在隔离 fixture/受控服务注入。
 
-验证列为**拟扩展的现有测试位置**，编号后需落具体同名 J 子项 case；不是已经覆盖的声明。自动 A/B/M + 必需真实平台 N 共同组成证据，N 指 integration_test/README.md 所列真机/桌面方法，不能把它当现成业务断言文件。J18/J19/J22 的细化设备脚本尚未实现，属业务任务未完成，计划 oracle 已确定。R=无条件 Required；C-channel/attachment=实际交付功能开启时正例 Required，关闭须有功能门证据与 J27.f 负例 PASS 才可 N/A。平台已承诺支持却缺设备是 BLOCKED，非 N/A。FAIL/NOT_RUN/BLOCKED/NOT_APPLICABLE/STALE 分开；本轮所有完整子断言均 NOT_RUN，历史 W03 定向收据不自动填 PASS。
+验证列为**拟扩展的现有测试位置**，编号后需落具体同名 J 子项 case；不是已经覆盖的声明。自动 A/B/M + 必需真实平台 N 共同组成证据，N 指 integration_test/README.md 所列真机/桌面方法，不能把它当现成业务断言文件。J18/J19/J22 的细化设备脚本尚未实现，属业务任务未完成，计划 oracle 已确定。R=无条件 Required；C-channel/attachment=实际交付功能开启时正例 Required，关闭须有功能门证据与 J27.f 负例 PASS 才可 N/A。平台已承诺支持却缺设备是 BLOCKED，非 N/A。FAIL/NOT_RUN/BLOCKED/NOT_APPLICABLE/STALE 分开；完整子断言以下方状态列为准（2026-10-31：J18.c/d/e、J19.a 共 4 项 PASS，J18.f 进行中，J16.c/J22.a–f/J28.d–f 共 10 项资源 BLOCKED，其余 NOT_RUN 待证据），历史 W03 定向收据不自动填 PASS。
 
 测试落点：
 
@@ -632,21 +632,21 @@ English: Work packages are review and verification boundaries, not autonomous ex
 | J15.b | C2C、C2G；移动/桌面壳分别 | 点整行并返回 | 正确chat type/对象与宿主目的地 | AP | R | NOT_RUN / — |
 | J16.a | 无消息C2C/已有行/群KV/频道订阅分别 | 设mute=true，重开读取 | 按对象真源可回读，首消息不丢偏好；不制造可见空会话 | AC,AM,AN | R | NOT_RUN / — |
 | J16.b | 原状态false | 注入持久化失败/切账号/连续点击分别 | 状态不假成功，目标不取反，账号隔离且可重试 | AM,AC | R | NOT_RUN / — |
-| J16.c | 两设备同账号 | 修改本机DND后读另一端 | 本机合同不冒称同步；已存在服务端动作继续符合其真源 | N + NC | R | NOT_RUN / — |
+| J16.c | 两设备同账号 | 修改本机DND后读另一端 | 本机合同不冒称同步；已存在服务端动作继续符合其真源 | N + NC | R | BLOCKED（需两台真机组成双设备同账号向量，本环境仅绑定单台 Android 真机；缺设备证据保留 BLOCKED，W13 不发总 PASS，见 §11.1 资源阻断盘点 2026-10-31）/ — |
 | J17.a | 个人/工作区当前成员分别 | 明确pin=true/false | 原服务端真源回读/排序正确，失败不假成功 | AC,BP | R | NOT_RUN / — |
 | J17.b | 可见会话 | 明确hidden=true/false，失败/超时/防重分别 | 本地与远端结果一致或明确待核对；不隐藏错账号对象 | AC,BP | R | NOT_RUN / — |
 | J17.c | 有真实未读、manual_pending独立 | 标已读及设待处理分别 | 水位单调，人工标记不写unread=1，彼此不清除 | AC,AV | R | NOT_RUN / — |
 | J17.d | 两个端读同version | A写后B旧version写；回读再重试原目标 | 冲突可见，保留desired_value，不无限覆盖/重复取反 | AC,BP | R | NOT_RUN / — |
 | J17.e | 旧客户端无expected_version | pin/unpin/delete/restore分别 | 同业务入口推进版本，新端能检测旧写冲突 | BP | R | NOT_RUN / — |
-| J18.a | C2C/C2G发送场景 | 发送失败后重试 | 失败可见、重试同逻辑消息不重复 | N + NC | R | NOT_RUN / — |
+| J18.a | C2C/C2G发送场景 | 发送失败后重试 | 失败可见、重试同逻辑消息不重复 | N + NC | R | PASS（Android 真机 2026-10-31，C2C/C2G 双分支各自独立脚本：断连发送失败可见（不进正向态）→ WS 恢复自动补发（无手动重试按钮，产品走离线队列）→ server_ack 清重试队列 → 恰好一条气泡+终态稳定；C2G 后端复核 msg_c2g 恰好 1 条 + msg_c2g_timeline fan-out 恰好 3 条（三成员同 msg_id），脚本 `j18a_send_retry_test.dart`/`j18a_c2g_send_retry_test.dart`，见 §11.1 真机批次节）/ — |
 | J18.b | 合成附件上传 | 断网/恢复/重试 | 保留任务、附件归属与重试状态，不重复业务消息 | N + NC | C-attachment | NOT_RUN / — |
 | J18.c | 本人消息 | 允许/过期撤回分别 | 时限真实，撤回失败保留合法状态 | N + NC | R | PASS（Android 真机 2026-10-31 重验，允许+过期两分支，当前候选含 c2c_action_receipt，见 §11.1 wave2/3 节）/ — |
 | J18.d | 本人可编辑消息 | 编辑成功/拒绝分别 | 编辑态/已编辑/失败恢复准确 | N + NC | R | PASS（Android 真机 2026-10-31，成功+拒绝双分支；客户端 message_edit_error 闭环 App `d63d9128b`，failToastSeen=true、重试终态断言过，见 §11.1 wave2/3 节）/ — |
 | J18.e | 引用目标已加载 | 点击引用 | 滚动/高亮目标或给出可行动失败 | N + NC | R | PASS（Android 真机 2026-10-31；暴露并修复「发送后不回底」App `017441f2b`（插件 fling 无法覆盖长列表）+ oracle 视口化，见 §11.1 wave2/3 节）/ — |
 | J18.f | 未加载、过期、无权、缺钥目标分别 | 完整历史定位 | 有权按历史边界拉上下文定位；其余各有说明，不绕过E2EE/成员边界 | N + NC | R | NOT_RUN（2026-10-31 authorized 尝试：产品路径 fixture 形状正确、引用条可渲染可点击，但「目标未加载」前置与归档异步回填存在不可稳定取胜的竞态——合成库全量回填秒级到达目标行；隔离归档/账号 fixture 未具备，expired/missing_key 另需服务端到期证据与真实 E2EE 密文，见 §11.1 wave2/3 节）/ — |
 | J19.a | 普通群成员 | 取消/确认退出分别 | 取消无副作用；退出清当前资格且返回正确 | NC,BG | R | PASS（Android 真机 2026-10-31；暴露并修复退群后会话滞留缺陷 App `9e6254c9c`（uk3 前缀大小写不一致 + 消费端缺移除分支），见 §11.1 wave2/3 节）/ — |
-| J19.b | 群主且有可转让成员 | 转让后退出 | 转让/退出分步结果准确，不默认解散 | NC,BG | R | NOT_RUN / — |
-| J19.c | 群主 | 单独解散确认/取消 | 后果说明清楚；取消无副作用，成功不留旧资格 | NC,BG | R | NOT_RUN / — |
+| J19.b | 群主且有可转让成员 | 转让后退出 | 转让/退出分步结果准确，不默认解散 | NC,BG | R | PASS（Android 真机 2026-10-31 r3 EXIT=0：确认弹层后果说明→接任人单选（排除自己）→确认→「操作成功」→双层返回且本端会话消失；SQL 五位一体复核 owner_uid→bob、群 status=1 未解散（不默认解散成立）、alice member 行删除、世代 end_seq=1 关闭、会话资格移除机制自洽，脚本 `j19b_transfer_leave_test.dart`，见 §11.1 真机批次节）/ — |
+| J19.c | 群主 | 单独解散确认/取消 | 后果说明清楚；取消无副作用，成功不留旧资格 | NC,BG | R | PASS（Android 真机 2026-10-31 r1 EXIT=0 双分支：取消分支弹层双行后果说明→取消→仍停群设置页无副作用；确认分支→「操作成功」→双层返回→本端会话消失；SQL 终态复核 group 行物理删除、group_member 清空、世代三行关闭 end_seq=2 close_reason='dissolve'——成功不留旧资格成立，残留会话行经资格谓词失效与 J19.b 同源自洽，脚本 `j19c_dissolve_test.dart`，见 §11.1 真机批次节）/ — |
 | J19.d | 本机有群历史 | 仅清空本机记录 | 入口仍在，不误隐藏/退群 | N + NC | R | NOT_RUN / — |
 | J19.e | 本机可见会话 | 仅从列表移除 | 只隐藏不清记录/退群，复现遵既有消息合同 | N + NC | R | NOT_RUN / — |
 | J20.a | 群/订阅/管理/工作区目录各>1页 | 搜索尾页私有合法对象 | 服务端全范围交集可找到，不靠当前页/公域发现 | AG,AQ,BS | R | NOT_RUN / — |
@@ -654,12 +654,12 @@ English: Work packages are review and verification boundaries, not autonomous ex
 | J20.c | 固定未变集合 | 逐页到末页，注入重复cursor/矛盾元数据分别 | 稳定排序无漏重；错误停止加载且可重试 | AQ,BS | R | NOT_RUN / — |
 | J20.d | 扫描并发新增/重激活/移除分别 | 继续扫描与刷新 | 旧上界不误纳入/误删，新扫描收敛，每页实时授权 | AQ,BS | R | NOT_RUN / — |
 | J21.a | workspace/频道已归档、来源托管群分别 | 打开/尝试写/查看恢复动作 | 按真实对象只读/拒写；仅真实支持且有权限才可恢复 | AW,BS,MV,MC | R | NOT_RUN / — |
-| J22.a | 320/360窄屏各主题 | 布局主操作 | 无overflow，主按钮可达，标注实际平台 | N + NC | R | NOT_RUN / — |
-| J22.b | 横屏/低高窗口分别 | 滚动操作 | 内容/危险动作可达，无裁剪 | N + NC | R | NOT_RUN / — |
-| J22.c | 键盘弹出 | 编辑/搜索/发送 | 输入/提交/取消不被遮挡 | N + NC | R | NOT_RUN / — |
-| J22.d | 大字与长名，中英文分别 | 放大布局 | 文字自然增高/语义完整，不关闭TextScaler | N + NC | R | NOT_RUN / — |
-| J22.e | 明暗主题各状态 | 测颜色/命中区 | 正文≥4.5:1、动作≥3:1，命中区≥既有44pt规范（原V1.1要求48时取48） | N + NC | R | NOT_RUN / — |
-| J22.f | 读屏/桌面键盘各交付平台 | 聚焦/执行菜单与危险动作 | 焦点顺序、标签、忙态/禁用语义完整，各平台独立证据 | N + NC | R | NOT_RUN / — |
+| J22.a | 320/360窄屏各主题 | 布局主操作 | 无overflow，主按钮可达，标注实际平台 | N + NC | R | BLOCKED（多平台证据需 iOS/Android 双平台真机独立收据，本环境仅单台 Android 已绑定；缺平台证据保留 BLOCKED，W13 不发总 PASS，见 §11.1 资源阻断盘点 2026-10-31）/ — |
+| J22.b | 横屏/低高窗口分别 | 滚动操作 | 内容/危险动作可达，无裁剪 | N + NC | R | BLOCKED（多平台证据需 iOS/Android 双平台真机独立收据，本环境仅单台 Android 已绑定；缺平台证据保留 BLOCKED，W13 不发总 PASS，见 §11.1 资源阻断盘点 2026-10-31）/ — |
+| J22.c | 键盘弹出 | 编辑/搜索/发送 | 输入/提交/取消不被遮挡 | N + NC | R | BLOCKED（多平台证据需 iOS/Android 双平台真机独立收据，本环境仅单台 Android 已绑定；缺平台证据保留 BLOCKED，W13 不发总 PASS，见 §11.1 资源阻断盘点 2026-10-31）/ — |
+| J22.d | 大字与长名，中英文分别 | 放大布局 | 文字自然增高/语义完整，不关闭TextScaler | N + NC | R | BLOCKED（多平台证据需 iOS/Android 双平台真机独立收据，本环境仅单台 Android 已绑定；缺平台证据保留 BLOCKED，W13 不发总 PASS，见 §11.1 资源阻断盘点 2026-10-31）/ — |
+| J22.e | 明暗主题各状态 | 测颜色/命中区 | 正文≥4.5:1、动作≥3:1，命中区≥既有44pt规范（原V1.1要求48时取48） | N + NC | R | BLOCKED（多平台证据需 iOS/Android 双平台真机独立收据，本环境仅单台 Android 已绑定；缺平台证据保留 BLOCKED，W13 不发总 PASS，见 §11.1 资源阻断盘点 2026-10-31）/ — |
+| J22.f | 读屏/桌面键盘各交付平台 | 聚焦/执行菜单与危险动作 | 焦点顺序、标签、忙态/禁用语义完整，各平台独立证据 | N + NC | R | BLOCKED（多平台证据需 iOS/Android 双平台真机独立收据，本环境仅单台 Android 已绑定；缺平台证据保留 BLOCKED，W13 不发总 PASS，见 §11.1 资源阻断盘点 2026-10-31）/ — |
 | J23.a | 群/频道受理事务分别 | 提交前崩溃或成员/receipt入队失败 | 资源/成员/receipt/逻辑通知全回滚，同键可首次受理 | BG,BS | R | NOT_RUN / — |
 | J23.b | 已提交未响应 | 崩溃、并发/重启重放 | 同资源/规范载荷/初始名，只有一个逻辑受理结果 | BG,BS | R | NOT_RUN / — |
 | J23.c | 通知持久入队已发送未确认 | 崩溃恢复重投 | 固定effect/message身份，一份邀请/成员副作用 | BG,BS | R | NOT_RUN / — |
@@ -681,9 +681,9 @@ English: Work packages are review and verification boundaries, not autonomous ex
 | J28.a | 旧SQLite/PG合成库 | 升级/重复启动/失败恢复 | 最小增量可重入，manual默认false，旧unread不反推 | AC,BP | R | NOT_RUN / — |
 | J28.b | 一账号两端旧/新客户端 | 同目标重试/旧写/版本冲突 | 旧写参与版本，新端期望冲突与回读成立 | AC,BP | R | NOT_RUN / — |
 | J28.c | 退出再加入workspace群 | 旧generation偏好/水位/内容回填 | 只当前generation生效；旧数据保留却不恢复旧资格 | AV,BR | R | NOT_RUN / — |
-| J28.d | 旧App/Admin+新Backend、新App+旧Backend分别 | 读/写/恢复 | 按§10.4允许组合兼容，禁用项可解释且无无键新建 | AF,BM,MW | R | NOT_RUN / — |
-| J28.e | 新旧Backend同来源节点 | 采样manifest后请求落旧节点 | 部署被禁止/不启新合同；不能以某次200通过 | BM | R | NOT_RUN / — |
-| J28.f | 已产生receipt/游标/偏好新数据 | 兼容Backend/App回退 | 排空与admission关闭，原意图/列/数据保留，不down、不猜cursor | AF,BM,BP | R | NOT_RUN / — |
+| J28.d | 旧App/Admin+新Backend、新App+旧Backend分别 | 读/写/恢复 | 按§10.4允许组合兼容，禁用项可解释且无无键新建 | AF,BM,MW | R | BLOCKED（需旧App/Admin+新Backend、新App+旧Backend 多套部署组合环境，本环境仅单套本地合成部署；缺档位/组合证据保留 BLOCKED，W13 不发总 PASS，见 §11.1 资源阻断盘点 2026-10-31）/ — |
+| J28.e | 新旧Backend同来源节点 | 采样manifest后请求落旧节点 | 部署被禁止/不启新合同；不能以某次200通过 | BM | R | BLOCKED（需新旧 Backend 同来源多节点负载均衡部署，本环境仅单节点合成部署；缺组合证据保留 BLOCKED，W13 不发总 PASS，见 §11.1 资源阻断盘点 2026-10-31）/ — |
+| J28.f | 已产生receipt/游标/偏好新数据 | 兼容Backend/App回退 | 排空与admission关闭，原意图/列/数据保留，不down、不猜cursor | AF,BM,BP | R | BLOCKED（需可回退的多套部署组合与回退授权，本环境未具备；缺回退证据保留 BLOCKED，新合同启用与 W13 不发总 PASS，见 §11.1 资源阻断盘点 2026-10-31）/ — |
 | J29.a | 当前K有效，单调t0 | 19.999/20s推进 | 20s开始静默校验，内容不整页清屏 | AA,AV | R | NOT_RUN / — |
 | J29.b | 校验pending/失败 | 29.999/30s推进 | 30s硬截止撤展示与写入口，失败不延期 | AA,AV | R | NOT_RUN / — |
 | J29.c | 续验有效成功或旧代次迟到分别 | 完成响应与旧截止回调 | 只有当前K内容资格更新deadline，旧响应/旧timer无效 | AA,AE | R | NOT_RUN / — |
@@ -767,9 +767,9 @@ RFC 8259 §6 说明常见双精度解析器的整数互操作边界（[原文](h
 
 PLAN_READY 表示：三端基线与 WIP 分开；16 项建议逐条有裁决；22 F 有复核记录；C/D 合同无相互冲突的窗口/水位/真源；子卡、直接消费者、自动覆盖和依赖校验完整；缺运行资源不伪装 PASS。它不表示所有实现细节、所有平台或生产环境已验证。下面列出的实施阻塞只阻断相应运行/启用，不用文档完善销账。
 
-- 整体业务仍 PARTIAL_UNSUBMITTED，W00/W03 未最终验收；其余 W01/W02/W04–W13 没有完整退出证据。
+- 业务实施已提交（2026-10-31：Backend 8 笔、App 17 笔，见 §11.1）；W00 静态准入 PASS，W01–W12 代码侧收口并提交、包级出口未逐一判定；W13 集成验收未启动。
 - 未取得本候选独占 Backend PG/附件/通知隔离资源及授权合成账号；没有启动服务/写接口/迁移。后续真实副作用验证只允许合成隔离环境，不得打扰第三方。
-- iOS/Android 真机、macOS 与 Flutter Web 实际解码/读屏验收资源待绑定；缺设备是 BLOCKED，不能 N/A 或用 widget 替代。规划必需断言已固定，不等设备到了才发明标准。
+- 真机/多平台验收资源：单台 Android 真机已绑定并跑通冒烟门与 J18.c/d/e、J19.a（见 §9/§11.1）；iOS 真机、第二台设备、macOS 与 Flutter Web 实际解码/读屏验收资源仍待绑定；缺设备是 BLOCKED，不能 N/A 或用 widget 替代。规划必需断言已固定，不等设备到了才发明标准。
 - origin 之后若变化，或选择合入 Backend 本地 7fbf3a1a，应显式更新执行候选和受影响证据；本轮没有重基线现有 worktree。
 - 无任何新能力已经声明上线；W04/W07/W08/W09 的数据库兼容、崩溃/时钟/竞争断言均待执行。混部禁用规则先满足，才能启用新合同。
 
@@ -1001,4 +1001,35 @@ W00 静态准入出口（2026-10-27T18:54:58+08:00）：按 §8.2，三端 HEAD/
 - **后端全量门（wave3 后，2026-10-31）**：EXIT=2，**Failed 38 / Passed 13993 / Skipped 0**（日志 `/tmp/v22-eunit-full-w3.log`）——较 sweep 前 51 败净减 13，与 wave3 修复一一对应；残余 38 全部为需独占 PG env 的设计性 no-skip（talk_record 26、isolated_pg 3、attachment v5 家族 7、msg_offline_progress 1、directory_sync 1），**代码级失败清零**。
 - **App 全量门（最终候选，2026-10-31）**：EXIT=1，**11402 过/316 跳/9 败**（日志 `/tmp/w3-app-full.log`）——与基线归因清单完全一致（7 预存复现 + golden 预存 + olm_pfs 环境门），最终候选提交零新增失败。
 - **待产品裁决**：服务端 FTS 现行为=阅后即焚**未到期可搜、到期即不可搜**（dadc6aaf9 明示设计，已钉行为测试 169560382）；若期望「未到期也不可搜」属语义变更，另行处置。**长期/BLOCKED 不变**：burn-FTS 远端回退语义、存量残留 v38 rebuild 收敛、v38 注册前置（recursive_triggers + 真机二进制）、双设备/推送/生产源/E2EE 组合授权。
-- **未纳入提交**：`src/imboy_pb.erl`/`src/textguard_pb.erl` gpb 重生成噪声（沿用既有决策：不提交、不回滚、已记录）。本节为登记与定向验证收口，不关闭 W11/W13；J18.f 与其余资源受限项保持原状态。
+- **pb 生成物漂移处置（2026-10-31 收口更新）**：`src/imboy_pb.erl`/`src/textguard_pb.erl` gpb 重生成漂移（紧凑排版版）已还原至 HEAD 版（`6988248c3` git-sourced gpb 一致性）；还原前经实验证明与 dialyzer 11 NEW/GONE 无关（见下节），漂移版备份于仓外 `/tmp/pb-drift-backup-1031/`。本节为登记与定向验证收口，不关闭 W11/W13；J18.f 与其余资源受限项保持原状态。
+
+#### 2026-10-31 资源阻断盘点（无法在本环境执行的验收项）
+
+按 §8.1 S5 出口口径：缺设备/身份/档位证据保留 NOT_EXECUTED/BLOCKED，不发总 PASS。下表成体系汇总当前仍无法在本环境执行、依赖外部资源的验收项；资源到位后按 §8.4 重绑定候选并重验受影响证据。本表只记录资源状态与出口影响，不判定任何 J 通过。
+
+| 阻断资源 | 涉及验收项 | 状态与理由 | 验收出口影响 |
+|---|---|---|---|
+| 第二台真机（双设备组合） | J16.c；W09.c 两设备 CAS 竞争向量 | BLOCKED——需两台真机同账号双端操作，本环境仅绑定单台 Android 真机（MRD AL00） | J16.c 保持 BLOCKED，W13 不发总 PASS |
+| iOS/Android 双平台真机 | J22.a–f | BLOCKED——各交付平台须独立收据，本环境仅单台 Android 已绑定，iOS 验收身份未绑定 | J22.a–f 保持 BLOCKED，W13 不发总 PASS |
+| 多套部署环境 | J28.d/e/f | BLOCKED——需旧App/Admin+新Backend、新App+旧Backend、新旧 Backend 同源多节点与兼容回退部署组合，本环境仅单套本地合成部署 | J28.d/e/f 保持 BLOCKED，新合同启用与 W13 不发总 PASS |
+| v38 注册前置资源 | v38 FTS 迁移注册、依赖它的直写索引用例与阅后即焚三层验收 | BLOCKED——生产连接未证明 recursive_triggers、真机 SQLCipher/二进制未验，且本地时效/远端回退/展示期到期三问题未解决 | v38 保持未注册、相关用例维持 skip，W13 不发总 PASS |
+| 生产数据源 | 生产源绑定、账号功能快照与档位证据 | BLOCKED——验收按 §9 仅允许合成隔离源，生产源未授权且不复制真实用户数据 | 依赖生产源的启用与档位证据保持 BLOCKED，W13 不发总 PASS |
+
+J18.f 另因隔离归档/账号 fixture 未具备与合成库全量回填竞态保持 NOT_RUN，详见 §9 J 清单该行与上节 2026-10-31 wave2/wave3 记录，不在此重复。
+
+#### 2026-10-31 实施收口与门禁复验（wave4 阶段）
+
+- **App 分支预存失败清零**：基线 9 败全部闭环——uiux/p1 岛产品缺陷修复（WorkspaceAccessNotifier「排队 refresh 被陈旧在途请求挡死」：`_pendingRefresh` 排队补刷 + `_active` 默认激活，App `a12f1a6c7`）+ p1 harness 经真实 access fence（`95b90af51`）+ 78 金像漂移重生成（纯 HEAD 对照证明漂移早于本轮改动，`887a19f46`；p1 目录 46/46 绿、golden 120 配置绿）；olm_pfs 环境门修复（sqlite 测试缝 `setDbUnavailableForTest` 注入受控 fail-closed 语义，`68b1f78d0`；E2EE-030 9/9 绿——宿主无 sqflite_sqlcipher 通道，不再以 MissingPluginException 意外包装通过）。主集成者 HEAD 终验 p1 目录 46/46 通过。
+- **Backend eunit 全量复验（独立一路）**：13993 过 / 38 env-gated no-skip / 0 跳（log `/tmp/v22-eunit-full-reverify.log`，约 32.6 分钟）——计数与 wave3 基准零差异；仅 1 处时序敏感用例对称翻转（`msg_offline_progress_pg_tests:369` 翻绿、`imboy_quality_wait_tests:36` 翻红，后者为 spawn+exit 先天竞态用例），非业务回归。
+- **dialyzer 门复验与基线重盘**：复验报 11 NEW/11 GONE；三步实验（还原 pb 源 → 重编 beam → 删除 beam）证明与 pb 生成物漂移无关，真根因=baseline（`532c17c83`，10-28）落后 main 侧三次 merge 三天——11 NEW 全部为 enterprise_*/cs_pg_ai/group_logic 域 main 集成存量（本轮 v2.2 提交未触碰这些模块），11 GONE 为演进修复（含本轮 `05b3adba0` 重构 msg_c2c_logic 消除的指纹）。`src/imboy_pb.erl`/`src/textguard_pb.erl` 漂移已还原至 HEAD 版（备份仓外 `/tmp/pb-drift-backup-1031/`），基线经 `check_dialyzer_baseline.sh --update` 重盘（176 指纹）并提交 `78d8f6646`，门 GREEN 无新增；11 条收录告警留待后续 review（main 集成域，超出本计划范围）。
+- **38 env-gated no-skip 自服务跑绿（wave4，2026-10-31）**：36 case 口径（36 模块）**34 绿 / 2 未决**，零代码改动，全部经 env 契约 + 合成容器 imboy-v22-pg-6b2199c0 throwaway 专库自服务达成（专库 v22_wave4_* / attv5_v22wave4_* 保留供审计；env 契约清单 TALK_OWNED 9 项、TG16/TG19/TG20 全套、V5 slot 族、DIRECTORY_SYNC、W202 Garage、TALK_HTTP_AAC_FIXTURE）。24 个 talk_record owned entry 由独立 g1-runner 跑绿（log `/tmp/rv4b_full.log`，含 T20 冻结注册表合同 pass=4）；10 模块由 wave4 runner 补绿（log `/tmp/v22-wave4/logs/`）：msg_offline_progress 13/13（wave3 失败 case r08_p2b 本轮绿，确认时序 flaky 非代码缺陷）、enterprise_directory_sync 1/1、attachment_lifecycle_v5 三失败 case（r20/w203/w301）复验绿 + hold/w401/w402/w402p 辅助全绿（真实 Garage S3 PUT/HEAD/DELETE 探针）、textguard business/integration/shadow 213/119/61 fail=0。**未决 2 项**：talk_record_gateway_http_tests、talk_record_client_audio_http_pg_tests——fixture 授权层（provision/身份/marker 校验）已全通，套件体内死等（子 VM 0% CPU、epgsql idle、httpc 无超时形态，看门狗杀）；官方运行环境为 IMBOY_ERLANG_QUALITY 的 talk_record 网关根车道（`tools/imboy_quality/imboy_quality_env.erl` 独立隔离库/网关根/spool 资源管理），按 §8.1「缺资源保留 BLOCKED、采用对应既有脚本/独立入口」口径维持 no-skip 待该车道收口。期间暴露并修复工作树 deps/cf 传递依赖缺失（erlang_migrate 传递依赖，经协调者同意自主树整目录复制补齐构建环境，未改任何受跟踪文件）。
+
+#### 2026-10-31 真机验收批次（J18.a / J19.b / J19.c，单台 Android 授权）
+
+设备：MRD-AL00（Android 真机，id XWE6R19916004085，用户已授权真机验收）；后端：本地合成部署（127.0.0.1:9800，合成容器 imboy-v22-pg-6b2199c0 库 imboy_v22_synthetic）；账号 demo_alice（uid 120619870873454592）。fixture 全部为合成数据（无真实用户数据）。脚本一脚本一用例（仓库惯例）。
+
+- **J18.a C2C 分支 PASS**（`j18a_send_retry_test.dart`）：多轮运行以最终 EXIT=0 收据计（flaky teardown 先例口径同 j18c）。断连注入法=测试内 `WebSocketService.closeSocket(permanent:true)` + `openSocket`，不依赖宿主 adb reverse 时序。断连发送不进正向态（失败可见）；恢复后无手动重试按钮（`retry-button-in-menu=false`，产品走离线队列自动补发，RETRY_QUEUE reason=server_ack 清除）→ 恰好一条气泡 + 稳定 id + 10s 再观察无重复。
+- **J18.a C2G 分支 PASS**（`j18a_c2g_send_retry_test.dart` r2 EXIT=0）：群 C fixture（120619900000000003 'J19C_DISSOLVE_GROUP'）四层齐备（群/成员/世代/timeline 种子）。断连发送不进正向态→重连自动补发→C2G_SERVER_ACK→status=11。后端 SQL 复核：`msg_c2g` 恰好 1 条（msg_id dbik1vgq8908a6cg28p0，与 WS 日志一致）+ `msg_c2g_timeline` fan-out 恰好 3 条（alice/bob/carol 三成员同 msg_id、conv_seq=2）——重试复用同一条消息、无重复写放大。
+- **J19.b 转让后退出 PASS**（`j19b_transfer_leave_test.dart` r3 EXIT=0）：fixture 群 120619900000000002 'J19B_OWNER_GROUP'（alice 群主/bob 成员）。UI：确认弹层后果说明→TransferOwnerPage 接任人单选（排除自己）→「操作成功」→双层返回→本端会话消失。SQL 五位一体：owner_uid→bob、群 status=1 未解散（不默认解散成立）、alice member 行删除、group_member_generation end_seq=1 世代关闭、会话列表资格移除机制自洽（四重 JOIN 含世代谓词）。
+- **方法论沉淀**：①合成库会话列表=消息聚合派生（`conversation_logic:list`→`msg_c2g_timeline_repo:list_by_uid`，四重 JOIN 要求 `group_member_generation` 世代行有效）——裸插 conversation 行无效，fixture 必须四层齐备；②WS 断/恢复注入在 integration test 内完成，无宿主时序依赖；③失败诊断先行（会话列表全项 dump 打印）。
+- **J19.c 解散双分支 PASS**（`j19c_dissolve_test.dart` r1 EXIT=0 + successToast=true）：取消分支（弹层双行后果说明「确定要解散本群吗？/确定删除群的聊天记录吗？」→取消→仍停群设置页、弹层关闭无副作用）+ 确认分支（解散→「操作成功」→双层返回→本端会话从列表消失）。SQL 终态复核（测试外主集成者执行）：`group` 行**物理删除**（解散为硬删除而非 status 置位）、`group_member` 清空（0 行）、`group_member_generation` 三行全部关闭 end_seq=2、close_reason='dissolve'——「成功不留旧资格」成立；alice 侧 conversation 行残留 1 条但经会话聚合资格谓词（世代 end_seq IS NULL）失效，与 J19.b 机制自洽。

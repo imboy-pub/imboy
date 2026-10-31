@@ -1347,8 +1347,8 @@
         "NC"
       ],
       "applicability": "R",
-      "status": "NOT_RUN",
-      "evidence": null
+      "status": "PASS",
+      "evidence": "Android 真机 2026-10-31 C2C/C2G 双分支独立脚本 EXIT=0：WS 断连发送失败可见（不进正向态）→恢复自动补发（离线队列，server_ack 清重试队列）→恰好一条气泡+终态稳定；C2G 后端复核 msg_c2g 恰好 1 条 + msg_c2g_timeline fan-out 恰好 3 条（三成员同 msg_id）；脚本 j18a_send_retry_test.dart / j18a_c2g_send_retry_test.dart"
     },
     {
       "id": "J18.b",
@@ -1367,8 +1367,8 @@
         "NC"
       ],
       "applicability": "R",
-      "status": "NOT_RUN",
-      "evidence": null
+      "status": "PASS",
+      "evidence": "Android 真机 2026-10-31 允许+过期双分支（含 c2c_action_receipt 客户端闭环 App d63d9128b），见 §11.1 wave2/3 节"
     },
     {
       "id": "J18.d",
@@ -1377,8 +1377,8 @@
         "NC"
       ],
       "applicability": "R",
-      "status": "NOT_RUN",
-      "evidence": null
+      "status": "PASS",
+      "evidence": "Android 真机 2026-10-31 成功+拒绝双分支（客户端 message_edit_error 闭环 App d63d9128b），见 §11.1 wave2/3 节"
     },
     {
       "id": "J18.e",
@@ -1387,8 +1387,8 @@
         "NC"
       ],
       "applicability": "R",
-      "status": "NOT_RUN",
-      "evidence": null
+      "status": "PASS",
+      "evidence": "Android 真机 2026-10-31（暴露并修复「发送后不回底」App 017441f2b + oracle 视口化），见 §11.1 wave2/3 节"
     },
     {
       "id": "J18.f",
@@ -1408,8 +1408,8 @@
         "BG"
       ],
       "applicability": "R",
-      "status": "NOT_RUN",
-      "evidence": null
+      "status": "PASS",
+      "evidence": "Android 真机 2026-10-31（暴露并修复退群后会话滞留 App 9e6254c9c），见 §11.1 wave2/3 节"
     },
     {
       "id": "J19.b",
@@ -1419,8 +1419,8 @@
         "BG"
       ],
       "applicability": "R",
-      "status": "NOT_RUN",
-      "evidence": null
+      "status": "PASS",
+      "evidence": "Android 真机 2026-10-31 r3 EXIT=0：转让后退出不默认解散；SQL 五位一体（owner_uid→bob、群 status=1 未解散、alice member 删、世代 end_seq=1、会话资格移除自洽）；脚本 j19b_transfer_leave_test.dart"
     },
     {
       "id": "J19.c",
@@ -1430,8 +1430,8 @@
         "BG"
       ],
       "applicability": "R",
-      "status": "NOT_RUN",
-      "evidence": null
+      "status": "PASS",
+      "evidence": "Android 真机 2026-10-31 r1 EXIT=0 双分支：取消无副作用；确认解散后 SQL 终态 group 行物理删除、group_member 清空、世代 end_seq=2 close_reason=dissolve（成功不留旧资格）；脚本 j19c_dissolve_test.dart"
     },
     {
       "id": "J19.d",
@@ -1920,7 +1920,7 @@
       "evidence": null
     }
   ],
-  "plan_sha256": "1952124ce7d7375a64121de78effc49a48e7ad72d4bee9b99aa9d057635f2ccd",
+  "plan_sha256": "4858d89691a0f882af3997feb334697d64fde03a27e482e934e826fb709c79b1",
   "source_attachment_sha256": "964b99c4cadec1c802707cd5773b2a88e0a2c1a0e78ea54e896ccc2472ee0f8b",
   "history_document_sha256": {
     "plan-v1.md": "0d929642c5030bb557b48ae94e89e679eada64c6e4d407d1ca4b5fb7a1501f67",
