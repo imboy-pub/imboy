@@ -568,10 +568,13 @@ def _group_file_proof(measured, scenario, domain):
     if measured.get("bind_status") != 200 or measured["bind_status"] != bind["status"]:
         raise ValueError("bind outcome marker does not match the observed request")
     file_id = measured.get("group_file_id")
-    if isinstance(file_id, str) and file_id.isdigit():
-        file_id = int(file_id)
-    if not isinstance(file_id, int) or file_id <= 0:
-        raise ValueError("missing bound group_file_id fact")
+    # The real bind_file row id is elib_oss:generate_file_id() — the exact
+    # shape elib_oss:validate_file_id/1 accepts in production. An integer
+    # is never a production group-file id.
+    if not isinstance(file_id, str) or not re.fullmatch(
+            r"file_[0-9]+_[0-9]+", file_id):
+        raise ValueError("missing bound group_file_id fact (not a "
+                         "production file_<ts>_<rand> row id)")
     return upload, bind
 
 

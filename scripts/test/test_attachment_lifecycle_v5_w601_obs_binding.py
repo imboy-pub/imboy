@@ -67,7 +67,7 @@ class ObservationBindingTests(unittest.TestCase):
                 m["bind_route"] = "/api/v1/group/file/bind"
                 m["bind_request_id"] = "w403-bind"
                 m["bind_status"] = 200
-                m["group_file_id"] = 1001
+                m["group_file_id"] = "file_1793452084668_254671"
             else:
                 m["entrypoint_face"] = "group_file_multipart_upload"
             if domain == "enterprise":
