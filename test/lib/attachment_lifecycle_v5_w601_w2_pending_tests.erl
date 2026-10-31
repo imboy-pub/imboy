@@ -713,7 +713,7 @@ new_enterprise_group(S) ->
     Uid = maps:get(uid, S),
     Org = maps:get(org_id, Scope),
     Ws = maps:get(workspace_id, Scope),
-    ok = seed_workspace_member(Ws, Uid),
+    ok = seed_enterprise_membership(Org, Ws, Uid),
     Ext = <<"w601-ent-", (integer_to_binary(Uid))/binary>>,
     %% org 头是 internal 面组织边界的签名输入（缺失 =
     %% organization_boundary_violation 403）；仓库既有 internal 测试同款。
@@ -783,9 +783,21 @@ new_enterprise_group(S) ->
     },
     {Gid, Origin}.
 
-%% workspace_member 是企业建群的生产硬前提（幂等种子：fixture 的
-%% scope 在整套件共享，同一 (workspace,user) 只入册一次）。
-seed_workspace_member(Ws, Uid) ->
+%% 上传者（uid）的企业域入册：INT-02 的 classify_target 要求
+%% organization_member（org 边界），create_in_workspace 的
+%% non_ws_member_uids_tx 要求 workspace_member（workspace 边界）——
+%% w403 setup 的 uid 是独立 fixture 用户（非 scope Actor），须自行入册。
+%% 幂等种子：fixture 的 scope 在整套件共享，同一 (org,user)/(ws,user)
+%% 只入册一次。
+seed_enterprise_membership(Org, Ws, Uid) ->
+    {ok, _} = elib_pg:query(
+        <<
+            "INSERT INTO organization_member(organization_id,user_id,role,status)"
+            " VALUES ($1,$2,'member','active')"
+            " ON CONFLICT (organization_id,user_id) DO NOTHING"
+        >>,
+        [Org, Uid]
+    ),
     {ok, _} = elib_pg:query(
         <<
             "INSERT INTO workspace_member(workspace_id,user_id,role,status)"
