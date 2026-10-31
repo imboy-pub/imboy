@@ -17,17 +17,27 @@ msg_forward_test_() ->
     application:set_env(imboy, env, test),
     case eunit_runner:eunit_try_db() of
         {ok, _Driver, _Conn} ->
+            %% 组级预算 30s（rv8 全量实证）：staging→正式表转正走异步 kick
+            %%（tick=0 纯 kick 驱动是白盒断言的既定取舍），全量负载峰值下
+            %% 单条转正可被压到秒级——轮询自有预算（100×50ms 睡眠+成对
+            %% 查询 ≈5.1-6.5s）恒大于 eunit 默认 5s 单测超时，eunit 必先开
+            %% 枪（rv8 的 5001ms 精确命中）。放宽预算不弱化断言：等待语义
+            %% 仍是"源消息必须出现在正式表"，超预算仍失败并给出
+            %% source_message_not_ready 明确诊断；仓内既有惯例同款
+            %% （talk_record_grant_tests {timeout,120,...}）。
             {foreach, fun setup/0, fun cleanup/1, [
-                {"单聊消息转发到单聊", fun test_c2c_to_c2c_forward/0},
-                {"单聊消息转发到群聊", fun test_c2c_to_c2g_forward/0},
-                {"群聊消息转发到单聊", fun test_c2g_to_c2c_forward/0},
-                {"群聊消息转发到群聊", fun test_c2g_to_c2g_forward/0},
-                {"批量转发消息", fun test_batch_forward/0},
-                {"转发记录溯源", fun test_forward_trace/0},
-                {"非好友转发失败", fun test_forward_to_non_friend/0},
-                {"非群成员转发失败", fun test_forward_to_non_group_member/0},
-                {"转发不存在消息失败", fun test_forward_nonexistent_message/0},
-                {"批量转发数量限制", fun test_batch_forward_limit/0}
+                {timeout, 30, [
+                    {"单聊消息转发到单聊", fun test_c2c_to_c2c_forward/0},
+                    {"单聊消息转发到群聊", fun test_c2c_to_c2g_forward/0},
+                    {"群聊消息转发到单聊", fun test_c2g_to_c2c_forward/0},
+                    {"群聊消息转发到群聊", fun test_c2g_to_c2g_forward/0},
+                    {"批量转发消息", fun test_batch_forward/0},
+                    {"转发记录溯源", fun test_forward_trace/0},
+                    {"非好友转发失败", fun test_forward_to_non_friend/0},
+                    {"非群成员转发失败", fun test_forward_to_non_group_member/0},
+                    {"转发不存在消息失败", fun test_forward_nonexistent_message/0},
+                    {"批量转发数量限制", fun test_batch_forward_limit/0}
+                ]}
             ]};
         {error, _Reason} ->
             {"Database not available", fun() -> {skip, "Database not available"} end}

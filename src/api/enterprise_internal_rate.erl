@@ -68,9 +68,24 @@ check(Bucket, Key) ->
                 {limit_exceeded, _Remaining, RetryAfter} ->
                     {limited, RetryAfter};
                 rate_not_set ->
-                    %% setup 之后仍 rate_not_set（throttle 应用未运行等）：
-                    %% fail-closed，绝不放行
-                    {error, rate_not_configured}
+                    %% 备忘与实际脱节自愈（rv8 全量实证）：throttle 应用中途
+                    %% 死亡后被 ensure_all_started 空重启时，persistent_term
+                    %% 备忘（跨应用重启存活）仍声称已 setup → ensure_setup
+                    %% 跳过 → scope 子进程缺失 → rate_not_set。强制重建
+                    %% scope 并重试一次；仍失败照旧 fail-closed，绝不放行。
+                    case rebuild_scope(Bucket, N) of
+                        ok ->
+                            case throttle:check(Bucket, Key) of
+                                {ok, Remaining2, _} ->
+                                    {ok, Remaining2};
+                                {limit_exceeded, _, RetryAfter2} ->
+                                    {limited, RetryAfter2};
+                                _ ->
+                                    {error, rate_not_configured}
+                            end;
+                        _ ->
+                            {error, rate_not_configured}
+                    end
             end
     end.
 
@@ -98,4 +113,32 @@ ensure_setup(Bucket, N) ->
             ok = throttle:setup(Bucket, N, per_minute),
             persistent_term:put(?PT_KEY(Bucket), N),
             ok
+    end.
+
+%% 备忘脱节自愈（rv8 全量实证）：throttle 应用重启后 scope 子进程缺失而
+%% persistent_term 备忘声称已配置。supervisor:start_child 对「spec 存在且
+%% 进程在」返回 {error,{already_started,_}}（scope 已在，等同成功），对
+%% 「spec 存在但进程不在」返回 {error,already_present}（spec 在，无害），
+%% 仅在真正补建成功时才视作自愈成功并记一条 WARN 留痕。失败返回 error，
+%% 调用方照旧 fail-closed。
+-spec rebuild_scope(internal_read | internal_write | internal_sso, pos_integer()) ->
+    ok | error.
+rebuild_scope(Bucket, N) ->
+    logger:warning(
+        "[enterprise_internal_rate] rate scope ~p missing despite memo (stale "
+        "persistent_term across throttle restart); rebuilding",
+        [Bucket]
+    ),
+    case throttle:setup(Bucket, N, per_minute) of
+        {ok, _Pid} ->
+            persistent_term:put(?PT_KEY(Bucket), N),
+            ok;
+        {error, {already_started, _}} ->
+            persistent_term:put(?PT_KEY(Bucket), N),
+            ok;
+        {error, already_present} ->
+            persistent_term:put(?PT_KEY(Bucket), N),
+            ok;
+        _Other ->
+            error
     end.
