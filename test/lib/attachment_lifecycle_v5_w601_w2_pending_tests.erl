@@ -1,16 +1,20 @@
 %%% W6-01 C 组 pending + race 面（52 合同叶）。
 %%%
 %%% W2-01/pending-multipart（32）：multipart 与 group_file 签发同守登记
-%%%   owner/location 与事务边界；mismatch / DB 故障无签名能力。ordinary 域
-%%%   走 /api/v1/attachment/presign?method=multipart + POST /upload 真实
-%%%   multipart/form-data 入口；enterprise 域按 upload_surface_contract
-%%%   （bare PUT gateway/multipart 仅 ordinary/internal；EB/widget 用其已有
-%%%   proxy PUT 协议，不伪造 multipart 或 E2EE）经 enterprise_seat 真实链路
-%%%   度量：seat presign → eb_asset_app → fn_v5_register_eb（enterprise_asset
-%%%   账本）→ 同端点 proxy PUT → confirm，不伪造 multipart。同一 oracle
-%%%   语义：同账本登记（owner/location 冻结）、pin 事务边界、fail-closed。
-%%%   AC01/AC02 双验收叶复用同一次真实执行（合同将同一场景复制到两个 AC，
-%%%   先例为既有 w2_01_pending_multipart adapter）；
+%%%   owner/location 与事务边界；mismatch / DB 故障无签名能力。ordinary
+%%%   multipart_success 走 /api/v1/attachment/presign?method=multipart +
+%%%   POST /upload 真实 multipart/form-data 入口；ordinary group_file_success
+%%%   与 enterprise 两个成功场景走真实 group-file 生产链
+%%%   /api/v1/group/file/upload（multipart/form-data：gid/file_name/file/
+%%%   file_type → group_file_logic:upload → group_file_ds:upload_file 的
+%%%   V5 链：presign scope=group → attachment_upload_logic pin-before-PUT
+%%%   → 会话锁内同事务确认；group_file_success 再 POST /api/v1/group/file/bind
+%%%   = group_file_ds:bind_file/7 确认引用绑定；enterprise 面无 multipart
+%%%   生产入口，seat proxy PUT 已被 2026-10-29 裁决禁作证据——由
+%%%   enterprise fixture 组织上下文 + 其用户 JWT 驱动同一路由）。
+%%%   同一 oracle 语义：同账本登记（owner/location 冻结）、pin 事务边界、
+%%%   fail-closed。AC01/AC02 双验收叶复用同一次真实执行（合同将同一场景
+%%%   复制到两个 AC，先例为既有 w2_01_pending_multipart adapter）；
 %%% W2-01/pending-failclosed（12）：INSERT error/exception / COMMIT 未知 =>
 %%%   503 无签名能力、无 durable 行；同 client_upload_id 重试恢复同 key
 %%%   （HTTP 层 fail-closed + fn_v5_register_pending 真实 SQL 契约双证据；
@@ -360,28 +364,19 @@ mp_scenario(S, Driver, <<"multipart_success">>, <<"ordinary">>) ->
     ?assert(?F:success(?F:confirm(M))),
     ?assertEqual({ok, ?BODY}, ?F:read(M)),
     #{entrypoint => <<"multipart">>, pin_sha256 => maps:get(<<"sha256">>, Pin)};
+%% group_file_success（ordinary）：真实 group-file 生产链 + 确认引用绑定
+%% （attachment multipart/anchor 替代已被 obs_binding 负例钉死禁用）。
 mp_scenario(S, Driver, <<"group_file_success">>, <<"ordinary">>) ->
+    Uid = maps:get(uid, S),
     Gid = new_group(S),
-    M = multipart_register(S, Driver, #{
-        <<"method">> => <<"multipart">>,
-        <<"scope">> => <<"group">>,
-        <<"scope_ref">> => integer_to_binary(Gid)
-    }),
-    Uploaded = ?FW:multipart_put(S, M, ?BODY),
-    ?assert(?F:success(Uploaded)),
-    {ok, Pin} = ?S:content_pin(key(M)),
+    {Key, Upload} = group_file_upload(S, Driver, Gid),
+    {ok, Pin} = ?S:content_pin(Key),
     ?assertEqual(?S:sha(?BODY), maps:get(<<"sha256">>, Pin)),
-    Confirm = ?FW:confirm_with(
-        maps:get(fixture, M),
-        M#{confirm_body => #{object_key => key(M), scope => <<"group">>}},
-        #{
-            scope_ref => integer_to_binary(Gid),
-            anchor_msg_id => <<"w601-anchor-", (elib_uuid:gen_v7())/binary>>
-        }
-    ),
-    ?assert(?F:success(Confirm)),
-    ?assertEqual(1, ?S:attach_count(key(M))),
-    #{scope => <<"group">>, group_id => Gid, anchored => true};
+    ?assertEqual(1, ?S:attach_count(Key)),
+    Bind = group_file_bind(S, Gid, Key),
+    #{<<"file_id">> := FileId} = ?F:payload(Bind),
+    ok = assert_group_file_bound(Gid, Uid, Key, FileId),
+    group_file_bind_measured(Upload, Key, Bind, FileId);
 mp_scenario(S, Driver, <<"identity_mismatch">>, <<"ordinary">>) ->
     T = reg(S, ordinary, Driver),
     Intruder = intruder_headers(maps:get(fixture, T)),
@@ -421,56 +416,39 @@ mp_scenario(S, Driver, <<"database_unavailable">>, <<"ordinary">>) ->
     {error, not_pinned} = ?S:content_pin(key(M)),
     {error, not_found} = ?F:read(M),
     #{db_outage_http_status => 200, db_outage_envelope_code => 500, no_capability => true};
-%% enterprise 域：按 upload_surface_contract 经 seat proxy PUT 协议度量
-%% （不伪造 multipart），同一 oracle：同账本、同 pin 事务边界、fail-closed。
+%% enterprise 域两个成功场景（2026-10-31 attempt-6 决议）：seat/widget 面
+%% 无任何 multipart 生产入口，seat proxy PUT 已被 2026-10-29 裁决禁作这
+%% 8 个 enterprise 叶的证据——改由 enterprise fixture 的组织上下文
+%% （org_id/workspace_id）+ 其用户 JWT 驱动真实 group-file 生产链
+%% /api/v1/group/file/upload（multipart_success 面无 bind 链请求）。
 mp_scenario(S, Driver, <<"multipart_success">>, <<"enterprise">>) ->
-    T = reg(S, enterprise_seat, Driver),
-    Mod = ?S:driver_mod(Driver),
-    meck:new(Mod, [passthrough, no_link]),
-    try
-        ok = meck:expect(Mod, put_snapshot, fun(I, A, B, C) ->
-            case maps:get(key, I) =:= key(T) of
-                true ->
-                    %% pin 先于 provider put：seat 登记链在 PUT 准入事务
-                    %% （fn_v5_pin_eb_content）落 pin 后才进 provider 写。
-                    org_ws(T, fun(Org, Ws, Id) ->
-                        {ok, Pin} = ?S:content_pin_eb(Org, Ws, Id),
-                        ?assertEqual(?S:sha(?BODY), maps:get(<<"sha256">>, Pin))
-                    end);
-                false ->
-                    ok
-            end,
-            meck:passthrough([I, A, B, C])
-        end),
-        ?assert(?F:success(?F:put(T, ?BODY)))
-    after
-        meck:unload(Mod)
-    end,
-    org_ws(T, fun(Org, Ws, Id) ->
-        {ok, Pin} = ?S:content_pin_eb(Org, Ws, Id),
-        ?assertEqual(?S:sha(?BODY), maps:get(<<"sha256">>, Pin))
-    end),
-    ?assert(?F:success(?F:confirm(T))),
-    #{entrypoint => <<"seat_proxy_put_same_boundary">>, pin_before_provider_put => true};
+    Scope = maps:get(scope, S),
+    Gid = new_group(S),
+    {Key, Upload} = group_file_upload(S, Driver, Gid),
+    {ok, Pin} = ?S:content_pin(Key),
+    ?assertEqual(?S:sha(?BODY), maps:get(<<"sha256">>, Pin)),
+    ?assertEqual(1, ?S:attach_count(Key)),
+    M = group_file_upload_measured(Upload, Key, <<"group_file_multipart_upload">>),
+    M#{
+        org_id => maps:get(org_id, Scope),
+        workspace_id => maps:get(workspace_id, Scope)
+    };
 mp_scenario(S, Driver, <<"group_file_success">>, <<"enterprise">>) ->
-    T = reg(S, enterprise_seat, Driver),
-    ?assert(?F:success(?F:put(T, ?BODY))),
-    org_ws(T, fun(Org, Ws, Id) ->
-        {ok, Row} = ?S:eb_row(Org, Ws, Id),
-        #{<<"upload_registration">> := Reg} = Row,
-        Subject = fetch_in(<<"subject">>, Reg),
-        %% seat 登记即 enterprise 账本（enterprise_asset）上的同 owner/location
-        %% 会话：主体 kind='seat'（fn_v5_register_eb 企业主体白名单）、org
-        %% 绑定登记组织、key 与冻结 storage_driver 为登记时冻结值（快照
-        %% 等值复核/重指派拒绝与 attach_pending 登记同协议）。
-        ?assertEqual(<<"seat">>, fetch_in(<<"kind">>, Subject)),
-        ?assertEqual(integer_to_binary(Org), fetch_in(<<"org_id">>, Subject)),
-        ?assertEqual(<<"pending_confirm">>, maps:get(<<"status">>, Row)),
-        ?assertEqual(key(T), maps:get(<<"object_key">>, Row)),
-        ?assertEqual(atom_to_binary(Driver, utf8), maps:get(<<"storage_driver">>, Row))
-    end),
-    ?assert(?F:success(?F:confirm(T))),
-    #{declaration_scope_frozen => true, frozen_driver => atom_to_binary(Driver, utf8)};
+    Scope = maps:get(scope, S),
+    Uid = maps:get(uid, S),
+    Gid = new_group(S),
+    {Key, Upload} = group_file_upload(S, Driver, Gid),
+    {ok, Pin} = ?S:content_pin(Key),
+    ?assertEqual(?S:sha(?BODY), maps:get(<<"sha256">>, Pin)),
+    ?assertEqual(1, ?S:attach_count(Key)),
+    Bind = group_file_bind(S, Gid, Key),
+    #{<<"file_id">> := FileId} = ?F:payload(Bind),
+    ok = assert_group_file_bound(Gid, Uid, Key, FileId),
+    M = group_file_bind_measured(Upload, Key, Bind, FileId),
+    M#{
+        org_id => maps:get(org_id, Scope),
+        workspace_id => maps:get(workspace_id, Scope)
+    };
 mp_scenario(S, Driver, <<"identity_mismatch">>, <<"enterprise">>) ->
     T = reg(S, enterprise_seat, Driver),
     S2 = maps:get(fixture, T),
@@ -648,9 +626,6 @@ client_id(T) -> maps:get(client_upload_id, T).
 
 fetch(K, Map, Default) -> maps:get(K, Map, Default).
 
-fetch_in(Key, Map) when is_map(Map) -> maps:get(Key, Map, undefined);
-fetch_in(_, _) -> undefined.
-
 surface_of(<<"ordinary">>) -> ordinary;
 surface_of(<<"enterprise">>) -> enterprise_internal.
 
@@ -662,19 +637,7 @@ race_surface_of(<<"enterprise">>) -> enterprise_seat.
 %% ordinary multipart/group 登记入口（GET presign + method=multipart）。
 multipart_register(S, Driver, Extra) ->
     Cid = elib_uuid:gen_v7(),
-    Registry = attachment_storage:registry(),
-    Ns = ns_of(Driver),
-    application:set_env(
-        imboy,
-        attachment_storage_registry,
-        Registry#{
-            upload_namespaces => #{
-                <<"private">> => Ns,
-                <<"enterprise">> => Ns,
-                <<"group">> => Ns
-            }
-        }
-    ),
+    set_group_registry_ns(Driver),
     Q = uri_string:compose_query(
         [
             {<<"filename">>, <<"w403.txt">>},
@@ -735,6 +698,175 @@ new_group(S) ->
     Uid = maps:get(uid, S),
     {ok, Gid} = group_logic:add(0, Uid, 1, []),
     Gid.
+
+%% -------------------------------------------------- group-file 生产链
+%%
+%% 真实 group-file 链（ordinary group_file_success 与 enterprise 两个成功
+%% 场景共享）：POST /api/v1/group/file/upload（multipart/form-data：
+%% gid/file_name/file/file_type）→ group_file_logic:upload →
+%% group_file_ds:upload_file：attach_logic:presign scope=group
+%% （fn_v5_register_pending 真实登记 + 会话冻结位置）→
+%% attachment_upload_logic:upload_binary（真实字节 receipt 先 pin，pin 先于
+%% provider PUT）→ prepare_group_file_confirmation（真实字节 sha256 裁决）
+%% → 会话锁内同事务确认（group_file 行 + scope=group 附件补写行，T7 守卫）。
+%% 拦截点与既有 seat 场景同款：mock driver put_snapshot 在 passthrough 前
+%% 断言 pin 已为真实上传字节（断言在 HTTP 请求进程内失败即整链失败，
+%% fail-closed）。
+group_file_upload(S, Driver, Gid) ->
+    set_group_registry_ns(Driver),
+    Mod = ?S:driver_mod(Driver),
+    meck:new(Mod, [passthrough, no_link]),
+    try
+        ok = meck:expect(Mod, put_snapshot, fun(I, A, B, C) ->
+            PinKey = maps:get(key, I),
+            {ok, Pin} = ?S:content_pin(PinKey),
+            ?assertEqual(?S:sha(?BODY), maps:get(<<"sha256">>, Pin)),
+            ?assertEqual(<<"text/plain">>, maps:get(<<"mime">>, Pin)),
+            meck:passthrough([I, A, B, C])
+        end),
+        Boundary = <<"w601gfile7f3a">>,
+        Upload = ?F:request(
+            S,
+            post,
+            <<"/api/v1/group/file/upload">>,
+            group_file_form(Boundary, Gid),
+            maps:get(ordinary_headers, S),
+            <<"multipart/form-data; boundary=", Boundary/binary>>
+        ),
+        ?assertEqual(200, maps:get(status, Upload)),
+        ?assert(?F:success(Upload)),
+        Key = group_file_object_key(S, Gid),
+        ?assertEqual(1, ?S:attach_count(Key)),
+        ok = ?F:bind_request(S, Upload, Key, upload),
+        {Key, Upload}
+    after
+        meck:unload(Mod)
+    end.
+
+%% multipart 表单体：生产 handler 的四个表单字段（gid/file_name/file_type/file）。
+group_file_form(Boundary, Gid) ->
+    Field =
+        fun(Name, Value) ->
+            <<
+                "--",
+                Boundary/binary,
+                "\r\n",
+                "Content-Disposition: form-data; name=\"",
+                Name/binary,
+                "\"\r\n\r\n",
+                Value/binary,
+                "\r\n"
+            >>
+        end,
+    <<
+        (Field(<<"gid">>, integer_to_binary(Gid)))/binary,
+        (Field(<<"file_name">>, <<"w403.txt">>))/binary,
+        (Field(<<"file_type">>, <<"text/plain">>))/binary,
+        "--",
+        Boundary/binary,
+        "\r\n",
+        "Content-Disposition: form-data; name=\"file\"; filename=\"w403.txt\"\r\n",
+        "Content-Type: text/plain\r\n\r\n",
+        ?BODY/binary,
+        "\r\n--",
+        Boundary/binary,
+        "--\r\n"
+    >>.
+
+%% upload 响应不含服务端生成的 object_key；同事务确认后的 attachment 行
+%% （scope=group、scope_ref=Gid、creator=上传者）是真源，唯一新群保证唯一行。
+group_file_object_key(S, Gid) ->
+    Uid = maps:get(uid, S),
+    {ok, [#{<<"path">> := Key}]} =
+        elib_pg:query(
+            <<
+                "SELECT path FROM attachment"
+                " WHERE scope='group' AND scope_ref=$1 AND creator_user_id=$2"
+            >>,
+            [integer_to_binary(Gid), Uid]
+        ),
+    Key.
+
+%% 确认引用绑定：JSON bind（gid/file_name/file_type/object_key/file_size；
+%% file_md5 不提交——确认行存 SHA-256，客户端自报 MD5 无法被认证，服务端
+%% 拒绝任何非空值）→ group_file_ds:bind_file（T27 资格硬校验 + 幂等回填）。
+group_file_bind(S, Gid, Key) ->
+    Bind = ?F:request(
+        S,
+        post,
+        <<"/api/v1/group/file/bind">>,
+        #{
+            gid => Gid,
+            file_name => <<"w403.txt">>,
+            file_type => <<"text/plain">>,
+            object_key => Key,
+            file_size => byte_size(?BODY)
+        },
+        maps:get(ordinary_headers, S),
+        <<"application/json">>
+    ),
+    ?assertEqual(200, maps:get(status, Bind)),
+    ?assert(?F:success(Bind)),
+    ok = ?F:bind_request(S, Bind, Key, bind),
+    Bind.
+
+%% bind 后 durable 断言：group_file 行（上传者归属）与 attachment 行的
+%% group_file_id 回填互为同值（group_file_ds:bind_locked 的双写一致性）。
+assert_group_file_bound(Gid, Uid, Key, FileId) ->
+    {ok, [#{<<"id">> := RowId, <<"file_id">> := FileId, <<"uploader_id">> := Uid}]} =
+        elib_pg:query(
+            <<
+                "SELECT id, file_id, uploader_id FROM group_file"
+                " WHERE group_id=$1 AND file_id=$2"
+            >>,
+            [Gid, FileId]
+        ),
+    {ok, [#{<<"group_file_id">> := RowId}]} =
+        elib_pg:query(
+            <<"SELECT group_file_id FROM attachment WHERE path=$1">>, [Key]
+        ),
+    ok.
+
+%% measured 绑定面：adapter 专用 oracle 按 route/handler/entrypoint_face/
+%% status/request_id + pin 事实严格核对（缺任一即 gap，fail-closed）。
+group_file_upload_measured(Upload, Key, Face) ->
+    #{
+        route => <<"/api/v1/group/file/upload">>,
+        handler => <<"group_file_handler">>,
+        request_id => maps:get(request_id, Upload),
+        entrypoint_face => Face,
+        status => maps:get(status, Upload),
+        object_key => Key,
+        pin_sha256 => ?S:sha(?BODY),
+        pin_before_put => true
+    }.
+
+group_file_bind_measured(Upload, Key, Bind, FileId) ->
+    Base = group_file_upload_measured(Upload, Key, <<"group_file_bind">>),
+    Base#{
+        bind_route => <<"/api/v1/group/file/bind">>,
+        bind_request_id => maps:get(request_id, Bind),
+        bind_status => maps:get(status, Bind),
+        group_file_id => FileId
+    }.
+
+%% group namespace 的 upload 根映射：group-file 链按 scope 选根
+%% （attachment_storage:registration_location 读 Mapping[<<"group">>]），
+%% 与 multipart_register 同源。
+set_group_registry_ns(Driver) ->
+    Registry = attachment_storage:registry(),
+    Ns = ns_of(Driver),
+    application:set_env(
+        imboy,
+        attachment_storage_registry,
+        Registry#{
+            upload_namespaces => #{
+                <<"private">> => Ns,
+                <<"enterprise">> => Ns,
+                <<"group">> => Ns
+            }
+        }
+    ).
 
 new_intruder_uid() ->
     Uid = 8000000000000 + binary:decode_unsigned(crypto:strong_rand_bytes(5)),

@@ -41,18 +41,52 @@ class ObservationBindingTests(unittest.TestCase):
                     adapter._match_observation({key: [(1, no_ac), (2, {"measured": {"ac_id": "AC01"}})]}, key, "AC01")
         self.assertIsNone(adapter._match_observation({self.key: [(1, {"measured": {}})]}, self.key, "AC01"))
 
-    def test_blocked_enterprise_multipart_leaves_stay_gaps(self):
-        blocked = {"source_case_ref": "W2-01/pending-multipart", "entrypoint": "pending-multipart", "driver": "disk", "domain": "enterprise", "ordering_or_fault": "W2-01/pending-multipart/expand-queue/multipart_success", "ac_id": "AC01"}
-        ordinary = {"source_case_ref": "W2-01/pending-multipart", "entrypoint": "pending-multipart", "driver": "disk", "domain": "ordinary", "ordering_or_fault": "W2-01/pending-multipart/expand-queue/multipart_success", "ac_id": "AC01"}
+    def test_group_file_entrypoints_bind_strictly(self):
+        """The 12 unlocked leaves bind only to real group-file chain evidence.
+
+        Positive: the enterprise multipart/group_file scenarios and the
+        ordinary group_file scenario bind when the observation carries the
+        production markers (entrypoint_face, /api/v1/group/file/upload route
+        + handler, pin facts, bind request, in-request storage binding,
+        enterprise workspace facts). Negative: any missing or substituted
+        marker — including the forbidden attachment-multipart substitute for
+        the ordinary leaf — stays a named gap and never publishes a row.
+        """
         start = datetime(2026, 1, 1, tzinfo=timezone.utc)
         window = (start, start + timedelta(seconds=10))
         log = {"parsed": {"markers": ["W403_DIRECT_OK"], "tests": [1], "summary_raw": "ok"}, "path": "log", "sha256": "digest"}
+        object_key = "u9/g55/20261031/att_1/w403.txt"
+        upload = {"request_id": "w403-upload", "action": "upload", "method": "POST", "route": "/api/v1/group/file/upload", "handler": "group_file_handler", "status": 200, "object_key": object_key, "server_process": "<1.2.3>", "connection_id": "<1.2.4>", "diagnostic_untrusted_locations": [{"trust": "diagnostic_untrusted", "source": "attachment_storage:frozen_location/2", "identity": {"key": object_key, "driver": "disk", "namespace": "ns", "container": "container", "locator_digest": "digest"}}]}
+        bind = {"request_id": "w403-bind", "action": "bind", "method": "POST", "route": "/api/v1/group/file/bind", "handler": "group_file_handler", "status": 200, "object_key": object_key, "server_process": "<1.2.5>", "connection_id": "<1.2.6>"}
+
+        def measured(scenario, domain, mutate=lambda m: None):
+            m = {"driver": "disk", "ac_id": "AC01", "route": "/api/v1/group/file/upload", "handler": "group_file_handler", "status": 200, "request_id": "w403-upload", "object_key": object_key, "pin_sha256": "a" * 64, "pin_before_put": True, "http_requests": [dict(upload)]}
+            if scenario == "group_file_success":
+                m["entrypoint_face"] = "group_file_bind"
+                m["http_requests"].append(dict(bind))
+                m["bind_route"] = "/api/v1/group/file/bind"
+                m["bind_request_id"] = "w403-bind"
+                m["bind_status"] = 200
+                m["group_file_id"] = 1001
+            else:
+                m["entrypoint_face"] = "group_file_multipart_upload"
+            if domain == "enterprise":
+                m["org_id"] = 42
+                m["workspace_id"] = 7
+            mutate(m)
+            return m
+
+        def index_for(scenario, domain, m, driver="disk", ac="AC01"):
+            key = ("W2-01/pending-multipart", "pending-multipart", scenario, domain, driver)
+            return {key: [(1, {"measured": m, "emitted_at_ms": int((start + timedelta(seconds=1)).timestamp() * 1000)})]}
+
+        def leaf_for(scenario, domain, driver="disk", ac="AC01"):
+            return {"source_case_ref": "W2-01/pending-multipart", "entrypoint": "pending-multipart", "driver": driver, "domain": domain, "ordering_or_fault": "W2-01/pending-multipart/expand-queue/" + scenario, "ac_id": ac}
+
+        state = {"index": {}}
 
         def step(name):
-            ref = "W2-01/pending-multipart"
-            key = (ref, "pending-multipart", "multipart_success", "ordinary", "disk")
-            obs = {"measured": {"driver": "disk", "ac_id": "AC01"}, "emitted_at_ms": int((start + timedelta(seconds=1)).timestamp() * 1000)}
-            return {"started": window[0], "finished": window[1], "index": {key: [(1, obs)]}, "path": name, "record": {"line": name}, "log": log, "markers": set()}
+            return {"started": window[0], "finished": window[1], "index": state["index"], "path": name, "record": {"line": name}, "log": log, "markers": set()}
 
         with ExitStack() as stack:
             gaps = stack.enter_context(patch.object(adapter.S, "group_gap"))
@@ -79,35 +113,120 @@ class ObservationBindingTests(unittest.TestCase):
             ):
                 stack.enter_context(item)
             leaf_mock = stack.enter_context(patch.object(adapter.S, "leaves"))
-            # The blocked enterprise leaf must be reported as a named gap,
-            # never reach build_row, and fail the case with exit 30.
-            for scenario in ("multipart_success", "group_file_success"):
-                leaf_mock.return_value = [{**blocked, "ordering_or_fault":
-                    "W2-01/pending-multipart/expand-queue/" + scenario}]
-                with self.subTest(scenario=scenario):
+
+            # Positive: real-chain observations bind for all three shapes.
+            for scenario, domain in (
+                ("multipart_success", "enterprise"),
+                ("group_file_success", "enterprise"),
+                ("group_file_success", "ordinary"),
+            ):
+                state["index"] = index_for(scenario, domain, measured(scenario, domain))
+                leaf_mock.return_value = [leaf_for(scenario, domain)]
+                rows = adapter.build()
+                self.assertFalse(gaps.called)
+                self.assertTrue(build_row.called)
+                self.assertEqual(1, len(rows[1]))
+                self.assertEqual("W2-01/pending-multipart", rows[1][0]["source"])
+                self.assertEqual(domain, rows[1][0]["domain"])
+                # The row carries the real entrypoint provenance, not a proxy.
+                self.assertEqual(
+                    "/api/v1/group/file/upload", rows[1][0]["entrypoint_provenance"]["route"])
+                self.assertEqual(
+                    "group_file_handler", rows[1][0]["entrypoint_provenance"]["handler"])
+                gaps.reset_mock()
+                build_row.reset_mock()
+
+            # Negative: any substituted or missing marker stays a named gap.
+            def wrong_face(m):
+                m["entrypoint_face"] = "group_file_bind"
+
+            def multipart_face_on_bind_leaf(m):
+                m["entrypoint_face"] = "group_file_multipart_upload"
+
+            def wrong_object_key(m):
+                m["object_key"] = ""
+
+            def substitute_route(m):
+                m["route"] = "/api/v1/attachment/upload"
+
+            def substitute_handler(m):
+                m["handler"] = "attach_handler"
+
+            def not_ok(m):
+                m["status"] = 500
+
+            def no_pin_hash(m):
+                m["pin_sha256"] = "not-hex"
+
+            def no_pin_order(m):
+                m["pin_before_put"] = False
+
+            def no_storage(m):
+                del m["http_requests"][0]["diagnostic_untrusted_locations"]
+
+            def no_bind(m):
+                m["bind_request_id"] = ""
+
+            def substitute_bind(m):
+                m["http_requests"][1]["route"] = "/api/v1/attachment/confirm"
+
+            def no_workspace(m):
+                del m["org_id"]
+
+            def bind_on_multipart_face(m):
+                m["http_requests"].append(dict(bind))
+
+            cases = [
+                ("multipart_success", "enterprise", wrong_face),
+                ("multipart_success", "enterprise", wrong_object_key),
+                ("multipart_success", "enterprise", no_workspace),
+                ("multipart_success", "enterprise", bind_on_multipart_face),
+                ("group_file_success", "ordinary", multipart_face_on_bind_leaf),
+                ("group_file_success", "ordinary", substitute_route),
+                ("group_file_success", "ordinary", substitute_handler),
+                ("group_file_success", "ordinary", not_ok),
+                ("group_file_success", "ordinary", no_pin_hash),
+                ("group_file_success", "ordinary", no_pin_order),
+                ("group_file_success", "ordinary", no_storage),
+                ("group_file_success", "ordinary", no_bind),
+                ("group_file_success", "ordinary", substitute_bind),
+                ("group_file_success", "enterprise", no_workspace),
+            ]
+            for scenario, domain, mutate in cases:
+                with self.subTest(scenario=scenario, domain=domain, mutate=mutate.__name__):
+                    state["index"] = index_for(scenario, domain, measured(scenario, domain, mutate))
+                    leaf_mock.return_value = [leaf_for(scenario, domain)]
                     with self.assertRaises(SystemExit) as caught:
                         adapter.build()
                     self.assertEqual(30, caught.exception.code)
                     self.assertTrue(gaps.called)
-                    self.assertIn("user ruling", gaps.call_args[0][3])
+                    self.assertIn("/api/v1/group/file/upload", gaps.call_args[0][3])
                     self.assertFalse(build_row.called)
+                gaps.reset_mock()
+                build_row.reset_mock()
+
             # An ordinary group-scope attachment is not a group-file upload.
-            # No driver or AC can publish a row from that substitute evidence.
+            # No driver or AC can publish a row from that substitute evidence
+            # (the observation carries no group-file chain markers at all).
             for driver, ac in itertools.product(("disk", "garage"), ("AC01", "AC02")):
-                leaf_mock.return_value = [{**ordinary, "driver": driver, "ac_id": ac,
-                    "ordering_or_fault": "W2-01/pending-multipart/expand-queue/group_file_success"}]
+                state["index"] = index_for("group_file_success", "ordinary", {"driver": driver, "ac_id": ac, "http_requests": []}, driver=driver, ac=ac)
+                leaf_mock.return_value = [leaf_for("group_file_success", "ordinary", driver=driver, ac=ac)]
                 with self.subTest(domain="ordinary", driver=driver, ac=ac):
                     with self.assertRaises(SystemExit) as caught:
                         adapter.build()
                     self.assertEqual(30, caught.exception.code)
                     self.assertIn("/api/v1/group/file/upload", gaps.call_args[0][3])
                     self.assertFalse(build_row.called)
-            # …while the ordinary-domain twin of the same scenario binds
-            # without raising a new gap.
-            gaps_count_after_blocked = gaps.call_count
-            leaf_mock.return_value = [ordinary]
-            self.assertEqual([{"source": ordinary["source_case_ref"], "domain": "ordinary"}], adapter.build()[1])
-            self.assertEqual(gaps_count_after_blocked, gaps.call_count)
+                gaps.reset_mock()
+                build_row.reset_mock()
+
+            # …while the ordinary-domain multipart_success twin of the same
+            # case still binds through the pre-existing evidence path.
+            state["index"] = index_for("multipart_success", "ordinary", {"driver": "disk", "ac_id": "AC01"})
+            leaf_mock.return_value = [leaf_for("multipart_success", "ordinary")]
+            rows = adapter.build()
+            self.assertFalse(gaps.called)
+            self.assertEqual([{"source": "W2-01/pending-multipart", "domain": "ordinary"}], rows[1])
 
     def test_step_windows_are_independent_of_leaf_order(self):
         start = datetime(2026, 1, 1, tzinfo=timezone.utc)

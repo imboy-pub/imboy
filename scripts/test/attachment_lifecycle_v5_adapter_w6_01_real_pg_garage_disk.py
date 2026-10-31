@@ -447,22 +447,132 @@ def _put_route_ok(surface, presign, put):
         return False
     return put["route"] == rule
 
-# The frozen enterprise multipart/group_file leaves cannot be proven by
-# enterprise seat proxy PUT. Keep them blocked until the contract owner
-# authorizes a revision or the required entrypoints can be exercised.
-BLOCKED_ENTERPRISE_SCENARIOS = frozenset({"multipart_success", "group_file_success"})
+# 2026-10-31 attempt-6 unlock: the frozen 12 leaves (enterprise
+# multipart_success/group_file_success x garage/disk x AC01/AC02 + ordinary
+# group_file_success x garage/disk x AC01/AC02) measure through the REAL
+# production group-file entrypoints: POST /api/v1/group/file/upload
+# (multipart form-data -> group_file_logic:upload -> group_file_ds V5 chain:
+# presign scope=group, pin before the provider PUT, same-transaction
+# confirmation) plus, on the bind face, POST /api/v1/group/file/bind
+# (group_file_ds:bind_file).  The prior substitutes are forbidden evidence:
+# enterprise seat proxy PUT (2026-10-29 ruling) and the ordinary
+# attachment-multipart + message-anchor route (obs_binding negative).
+GROUP_FILE_FACE = {
+    ("multipart_success", "enterprise"): "group_file_multipart_upload",
+    ("group_file_success", "enterprise"): "group_file_bind",
+    ("group_file_success", "ordinary"): "group_file_bind",
+}
+GROUP_FILE_UPLOAD_ROUTE = "/api/v1/group/file/upload"
+GROUP_FILE_BIND_ROUTE = "/api/v1/group/file/bind"
+GROUP_FILE_HANDLER = "group_file_handler"
 
 
-def _blocked_enterprise_leaf(leaf):
-    return (leaf.get("source_case_ref") == "W2-01/pending-multipart"
-            and leaf.get("domain") == "enterprise"
-            and _obs_scenario(leaf) in BLOCKED_ENTERPRISE_SCENARIOS)
+def _is_group_file_leaf(scenario, domain):
+    return (scenario, domain) in GROUP_FILE_FACE
 
 
-def _blocked_ordinary_group_file_leaf(leaf):
-    return (leaf.get("source_case_ref") == "W2-01/pending-multipart"
-            and leaf.get("domain") == "ordinary"
-            and _obs_scenario(leaf) == "group_file_success")
+def _complete_requests(measured):
+    """Shared completeness gate for the observed request records."""
+    requests = measured.get("http_requests")
+    object_key = measured.get("object_key")
+    if (not isinstance(requests, list) or not requests
+            or any(not isinstance(request, dict) for request in requests)
+            or not isinstance(object_key, str) or not object_key):
+        raise ValueError("missing server-bound request evidence")
+    ids = [request.get("request_id") for request in requests]
+    if (any(not isinstance(identity, str) or not identity for identity in ids)
+            or len(set(ids)) != len(ids)):
+        raise ValueError("request identities missing or duplicated")
+
+    def complete(request):
+        return (all(isinstance(request.get(k), str) and request[k]
+                    for k in ("method", "route", "handler", "server_process",
+                              "connection_id"))
+                and type(request.get("status")) is int)
+
+    if not all(complete(request) for request in requests):
+        raise ValueError("incomplete observed HTTP request")
+    return requests, object_key
+
+
+def _unique_request(requests, request_id, label):
+    if not isinstance(request_id, str) or not request_id:
+        raise ValueError("missing %s request identity" % label)
+    matches = [r for r in requests if r.get("request_id") == request_id]
+    if len(matches) != 1:
+        raise ValueError("%s request identity missing or duplicated" % label)
+    return matches[0]
+
+
+def _group_file_proof(measured, scenario, domain):
+    """Bind the unlocked 12 leaves to the real group-file production chain.
+
+    Strict and fail-closed: the measured payload must carry the
+    entrypoint_face/route/handler/status markers, the server-observed upload
+    request record (POST /api/v1/group/file/upload, group_file_handler, 2xx,
+    fixture-bound object_key + the request process's production storage
+    resolution), the content-pin facts (64-hex sha256, pin-before-provider-PUT)
+    and the enterprise workspace context; the bind face additionally requires
+    the real /api/v1/group/file/bind request with its group_file_id.  Any
+    missing or mismatching marker raises (the leaf stays a named gap).
+    """
+    face = GROUP_FILE_FACE[(scenario, domain)]
+    if not isinstance(measured, dict):
+        raise ValueError("measured is not a dict")
+    if measured.get("entrypoint_face") != face:
+        raise ValueError(
+            "entrypoint_face %r does not name the real group-file chain "
+            "(expected %s)" % (measured.get("entrypoint_face"), face))
+    if (measured.get("route") != GROUP_FILE_UPLOAD_ROUTE
+            or measured.get("handler") != GROUP_FILE_HANDLER):
+        raise ValueError("measured route/handler marker is not the real "
+                         "%s production entrypoint" % GROUP_FILE_UPLOAD_ROUTE)
+    if measured.get("status") != 200:
+        raise ValueError("upload outcome marker is not HTTP 200")
+    requests, object_key = _complete_requests(measured)
+    if not re.fullmatch(r"[0-9a-f]{64}", measured.get("pin_sha256", "")):
+        raise ValueError("missing pinned content sha256")
+    if measured.get("pin_before_put") is not True:
+        raise ValueError("pin-before-provider-PUT fact not asserted")
+    upload = _unique_request(requests, measured.get("request_id"), "upload")
+    if (upload["method"] != "POST"
+            or upload["route"] != GROUP_FILE_UPLOAD_ROUTE
+            or upload["handler"] != GROUP_FILE_HANDLER
+            or not 200 <= upload["status"] < 300
+            or upload.get("action") != "upload"
+            or upload.get("object_key") != object_key):
+        raise ValueError("server-observed upload request is not bound to this "
+                         "leaf's object at the real group-file route")
+    if not _server_location_bound(upload, object_key, measured.get("driver")):
+        raise ValueError("the upload request process did not resolve this "
+                         "object's location in production storage")
+    if domain == "enterprise":
+        for marker in ("org_id", "workspace_id"):
+            if measured.get(marker) in (None, "", 0):
+                raise ValueError("missing enterprise %s fact" % marker)
+    if scenario == "multipart_success":
+        if any(r.get("route") == GROUP_FILE_BIND_ROUTE for r in requests):
+            raise ValueError("multipart face must not carry bind-chain requests")
+        return upload, upload
+    bind = _unique_request(requests, measured.get("bind_request_id"), "bind")
+    if bind["request_id"] == upload["request_id"]:
+        raise ValueError("bind identity equals the upload identity")
+    if (bind["method"] != "POST"
+            or bind["route"] != GROUP_FILE_BIND_ROUTE
+            or bind["handler"] != GROUP_FILE_HANDLER
+            or not 200 <= bind["status"] < 300
+            or bind.get("action") != "bind"
+            or bind.get("object_key") != object_key):
+        raise ValueError("server-observed bind request is not bound to this "
+                         "leaf's object at the real bind route")
+    if measured.get("bind_status") != 200 or measured["bind_status"] != bind["status"]:
+        raise ValueError("bind outcome marker does not match the observed request")
+    file_id = measured.get("group_file_id")
+    if isinstance(file_id, str) and file_id.isdigit():
+        file_id = int(file_id)
+    if not isinstance(file_id, int) or file_id <= 0:
+        raise ValueError("missing bound group_file_id fact")
+    return upload, bind
 
 
 LEGACY_WITHOUT_AC = frozenset({
@@ -1058,21 +1168,6 @@ def build():
                 ["w102dm:%s:%s:%s" % (phase, driver, name) for name in names]))
             continue
         if source in OBS_GROUPS:
-            if _blocked_enterprise_leaf(leaf):
-                S.group_gap(gap_groups, source, 1,
-                            "user ruling 2026-10-29: the enterprise "
-                            "multipart/group_file gateway substitute is not "
-                            "acceptance evidence; leaf %r stays blocked per "
-                            "the frozen contract until an authorized revision"
-                            % leaf["ordering_or_fault"])
-                continue
-            if _blocked_ordinary_group_file_leaf(leaf):
-                S.group_gap(gap_groups, source, 1,
-                            "ordinary group_file_success uses attachment "
-                            "multipart and message-anchor confirmation, not "
-                            "the required /api/v1/group/file/upload entrypoint; "
-                            "real group-file evidence is missing")
-                continue
             subdir = OBS_STEP_FOR[source]
             step = (obs_cache[subdir] if subdir in obs_cache
                     else _step_binding(case_dir, subdir, obs_cache))
@@ -1093,7 +1188,22 @@ def build():
                            and scenario == "frozen_internal_signature_expiry")
             proof = None
             proof_kind = None
-            if source.startswith("W2-") and not expiry_leaf:
+            if source == "W2-01/pending-multipart" and _is_group_file_leaf(
+                    scenario, leaf["domain"]):
+                # 2026-10-31 attempt-6 unlock: these leaves carry the real
+                # group-file chain's server-observed evidence (upload route
+                # markers, pin facts, bind request).  Strict binding: every
+                # check below is required; any mismatch stays a named gap.
+                try:
+                    proof = _group_file_proof(measured, scenario, leaf["domain"])
+                    proof_kind = "group_file"
+                except (ValueError, TypeError) as exc:
+                    S.group_gap(gap_groups, source, 1,
+                                "group-file production entrypoint binding "
+                                "rejected at /api/v1/group/file/upload: %s"
+                                % exc)
+                    continue
+            elif source.startswith("W2-") and not expiry_leaf:
                 # 2026-10-31 unlock: the w2upload battery now emits the same
                 # server-bound HTTP evidence as the w403dm battery (every
                 # observation carries http_requests; every admitted PUT is
@@ -1285,12 +1395,38 @@ def build():
                             presign["request_id"], presign["status"], put["request_id"], put["status"]),
                         expected_db_delta="content pin sha256=%s committed before expired driver write" % measured["pin_sha256"],
                         expected_object_state="object %s absent after failed PUT" % measured["object_key"])
+            elif proof_kind == "group_file":
+                upload, tail = proof
+                bound = tail["request_id"] != upload["request_id"]
+                oracle.update(
+                    pre_object_hash="the unit pins the real upload bytes "
+                                    "(sha256=%s) before the provider PUT"
+                                    % measured["pin_sha256"],
+                    action="real group-file upload %s on %s%s carried the "
+                           "leaf's object through the production "
+                           "group_file_handler chain (measured: %s)"
+                           % (upload["request_id"], upload["route"],
+                              " then bind %s" % tail["request_id"] if bound else "",
+                              msum),
+                    expected_http_semantics="upload %s status %s%s" % (
+                        upload["request_id"], upload["status"],
+                        "; bind %s status %s" % (tail["request_id"], tail["status"])
+                        if bound else ""),
+                    expected_db_delta="the unit asserts the group_file/"
+                                      "attachment confirmation invariant "
+                                      "before returning ok (w2upload suite "
+                                      "contract)",
+                    expected_object_state="object %s pinned and confirmed in "
+                                          "the same transaction as the "
+                                          "group_file row" % measured["object_key"],
+                )
             row = S.C.build_row(
                 leaf, obs_started, obs_finished,
                 {"exit_code": 0, "executed": 1, "passed": 1, "failed": 0,
                  "skipped": 0},
                 oracle, assertions, actor, [resource],
-                [proof[0]["request_id"], proof[1]["request_id"]] if proof
+                list(dict.fromkeys([proof[0]["request_id"], proof[1]["request_id"]]))
+                if proof
                 else ["w403-obs:%s#%s@%s" % (source, scenario, leaf["driver"])])
             if proof:
                 presign, _ = proof
