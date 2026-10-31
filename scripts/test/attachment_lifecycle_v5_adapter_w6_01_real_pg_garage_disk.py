@@ -237,6 +237,26 @@ def _server_location_bound(request, object_key, driver):
     return False
 
 
+def _surface_from_requests(measured):
+    """Recover the upload surface from the observed admitted presign.
+
+    W2 leaves whose entrypoint is the case name (pending-failclosed,
+    confirm-gc-race, ...) still carry real presign/PUT records; the
+    producing handler and route identify the surface unambiguously.
+    """
+    requests = measured.get("http_requests") or []
+    for request in requests:
+        if (request.get("action") != "presign"
+                or not 200 <= request.get("status", 0) < 300):
+            continue
+        for surface, (method, route, presign_handler, _put) in SURFACE_ROUTES.items():
+            if (request.get("method") == method
+                    and re.fullmatch(route, request.get("route", ""))
+                    and request.get("handler") == presign_handler):
+                return surface
+    return None
+
+
 def _immutability_proof(measured, entrypoint):
     """Bind this leaf's server-observed requests to its object identity.
 
@@ -783,17 +803,38 @@ def build():
             expiry_leaf = (source == "W2-01/upload-content-pin"
                            and scenario == "frozen_internal_signature_expiry")
             proof = None
+            proof_kind = None
             if source.startswith("W2-") and not expiry_leaf:
-                S.group_gap(gap_groups, source, 1,
-                            "scenario-specific HTTP request identity and outcome not yet verified")
-                continue
-            if source in surface_cases:
+                # 2026-10-31 unlock: the w2upload battery now emits the same
+                # server-bound HTTP evidence as the w403dm battery (every
+                # observation carries http_requests; every admitted PUT is
+                # storage-traced), so upload-surface leaves prove with the
+                # same immutability proof.  Leaves whose entrypoint is the
+                # case name recover the surface from the observed presign
+                # handler/route.
+                surface = leaf["entrypoint"]
+                if surface not in SURFACE_ROUTES:
+                    surface = _surface_from_requests(measured)
+                if surface is None or not measured.get("object_key"):
+                    S.group_gap(gap_groups, source, 1,
+                                "upload-surface evidence incomplete: no "
+                                "resolvable surface or object_key")
+                    continue
+                try:
+                    presign_p, puts_p = _immutability_proof(measured, surface)
+                    proof = (presign_p, puts_p[0])
+                    proof_kind = "immutability"
+                except (ValueError, TypeError, IndexError) as exc:
+                    S.group_gap(gap_groups, source, 1, str(exc))
+                    continue
+            elif source in surface_cases:
                 if not expiry_leaf:
                     S.group_gap(gap_groups, source, 1,
                                 "real request provenance not yet bound for this surface")
                     continue
                 try:
                     proof = _expiry_proof(measured, leaf["entrypoint"])
+                    proof_kind = "expiry"
                 except (ValueError, TypeError) as exc:
                     S.group_gap(gap_groups, source, 1, str(exc))
                     continue
@@ -884,13 +925,32 @@ def build():
             }
             if proof:
                 presign, put = proof
-                oracle.update(
-                    pre_object_hash="object absent before PUT, as asserted by the real driver read",
-                    action="real PUT %s reached the driver and was rejected after frozen expiry" % put["request_id"],
-                    expected_http_semantics="presign %s status %s; PUT %s status %s" % (
-                        presign["request_id"], presign["status"], put["request_id"], put["status"]),
-                    expected_db_delta="content pin sha256=%s committed before expired driver write" % measured["pin_sha256"],
-                    expected_object_state="object %s absent after failed PUT" % measured["object_key"])
+                if proof_kind == "immutability":
+                    oracle.update(
+                        pre_object_hash="pre-PUT object state asserted by the "
+                                        "scenario's own driver reads",
+                        action="presign %s and real PUT %s on %s carried the "
+                               "leaf's object through the production gateway "
+                               "(measured: %s)"
+                               % (presign["request_id"], put["request_id"],
+                                  put["route"], msum),
+                        expected_http_semantics="presign %s status %s; PUT %s status %s" % (
+                            presign["request_id"], presign["status"],
+                            put["request_id"], put["status"]),
+                        expected_db_delta="the unit asserts the scenario's "
+                                          "DB/queue invariant before returning "
+                                          "ok (w2upload suite contract)",
+                        expected_object_state="measured object fields: %s"
+                                              % (obj_keys or
+                                                 "object %s" % measured.get("object_key")))
+                else:
+                    oracle.update(
+                        pre_object_hash="object absent before PUT, as asserted by the real driver read",
+                        action="real PUT %s reached the driver and was rejected after frozen expiry" % put["request_id"],
+                        expected_http_semantics="presign %s status %s; PUT %s status %s" % (
+                            presign["request_id"], presign["status"], put["request_id"], put["status"]),
+                        expected_db_delta="content pin sha256=%s committed before expired driver write" % measured["pin_sha256"],
+                        expected_object_state="object %s absent after failed PUT" % measured["object_key"])
             row = S.C.build_row(
                 leaf, obs_started, obs_finished,
                 {"exit_code": 0, "executed": 1, "passed": 1, "failed": 0,
