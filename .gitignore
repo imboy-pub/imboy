@@ -256,3 +256,6 @@ config/sys.cs-ai-accept.config
 # 的 eunit 配置（从 sys.local.config 派生、pg_conf/super_account 指向 run 库；
 # 与 sys.local.config 同类非产品配置，untracked by design）
 /config/sys.tzv1.config
+
+# IMBOY_ERLANG_QUALITY 任务运行的外部时钟记录（prep/timer.escript 产物）
+prep/timer-*.term
