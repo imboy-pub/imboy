@@ -235,6 +235,11 @@ with_rollback(Conn, Fun) ->
     try
         Fun(Conn)
     after
+        %% parse 段错误会把连接置为粘性 sync_required（epgsql_cmd_parse.erl
+        %% L76-78；epgsql_sock.erl L375-380），不显式 sync 则此处 ROLLBACK
+        %% 必得 {sql_error, sync_required} 并掩盖测试体原始错误（rv7 全量
+        %% 实证）。epgsql:sync/1 即该场景官方复位 API（epgsql_cmd_sync.erl）。
+        _ = (catch epgsql:sync(Conn)),
         ok = squery(Conn, <<"ROLLBACK">>)
     end.
 
@@ -343,6 +348,9 @@ assert_owner_guard(Conn) ->
 assert_rejected_write(Conn, Fun) ->
     ok = squery(Conn, <<"SAVEPOINT organization_owner_guard">>),
     ?assertMatch({error, _}, Fun()),
+    %% 拒绝若走 parse 段（elib_pg:execute 吞错路径）连接即粘性毒化，复位后
+    %% 才能继续 SAVEPOINT 操作；对干净拒绝是无害 no-op（rv7 实证形态）。
+    _ = (catch epgsql:sync(Conn)),
     ok = squery(Conn, <<"ROLLBACK TO SAVEPOINT organization_owner_guard">>),
     ok = squery(Conn, <<"RELEASE SAVEPOINT organization_owner_guard">>).
 

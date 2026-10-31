@@ -157,6 +157,10 @@ setup_all(LimiterOwner) ->
         _:_ -> ok
     end,
     %% throttle rates 必须在 ensure_all_started 之前注入（throttle_app:start 读 env 初始化桶）。
+    %% 夹具卫生（rv7 全量实证）：注入前保存、teardown 复原——共享 VM 内
+    %% 不向后续根泄漏覆写后的 rates（app boot 启动校验按 -config 真值判
+    %% 旧/新混跑，残留注入会连环拒启）。
+    PreviousRates = application:get_env(throttle, rates),
     application:set_env(throttle, rates, [
         {api_per_user, 100000, per_minute},
         {api_per_user_burst, 100000, per_second}
@@ -177,34 +181,40 @@ setup_all(LimiterOwner) ->
         env_prefix => <<"INTBE02_INTTEST">>,
         connect_extra => #{codecs => [{epgsql_codec_rfc3339_bin, []}]}
     }),
-    setup_stages(State#{limiter_owner => LimiterOwner}, [
-        fun snapshot_default_pool/1,
-        fun suspend_default_pool/1,
-        fun(S) ->
-            Pid = ensure_pool(S),
-            S#{owned_pool_pid => Pid}
-        end,
-        fun setup_seed/1,
-        fun(S) ->
-            %% Never adopt or clear a table from a different fixture.
-            undefined = ets:whereis(?COVERED_TAB),
-            ?COVERED_TAB = ets:new(?COVERED_TAB, [named_table, public, set]),
-            S#{owned_covered_tid => ets:whereis(?COVERED_TAB)}
-        end,
-        fun(S) ->
-            {ok, _} = application:ensure_all_started(cowboy),
-            {ok, _} = application:ensure_all_started(ranch),
-            Dispatch = cowboy_router:compile(imboy_router:get_routes()),
-            %% already_started is a refusal, never permission to adopt.
-            {ok, Pid} = cowboy:start_clear(
-                ?LISTENER,
-                [{ip, {127, 0, 0, 1}}, {port, 0}],
-                #{env => #{dispatch => Dispatch}, middlewares => ?MIDDLEWARES}
-            ),
-            S#{owned_listener_pid => Pid}
-        end,
-        fun setup_result/1
-    ]).
+    setup_stages(
+        State#{
+            limiter_owner => LimiterOwner,
+            previous_throttle_rates => PreviousRates
+        },
+        [
+            fun snapshot_default_pool/1,
+            fun suspend_default_pool/1,
+            fun(S) ->
+                Pid = ensure_pool(S),
+                S#{owned_pool_pid => Pid}
+            end,
+            fun setup_seed/1,
+            fun(S) ->
+                %% Never adopt or clear a table from a different fixture.
+                undefined = ets:whereis(?COVERED_TAB),
+                ?COVERED_TAB = ets:new(?COVERED_TAB, [named_table, public, set]),
+                S#{owned_covered_tid => ets:whereis(?COVERED_TAB)}
+            end,
+            fun(S) ->
+                {ok, _} = application:ensure_all_started(cowboy),
+                {ok, _} = application:ensure_all_started(ranch),
+                Dispatch = cowboy_router:compile(imboy_router:get_routes()),
+                %% already_started is a refusal, never permission to adopt.
+                {ok, Pid} = cowboy:start_clear(
+                    ?LISTENER,
+                    [{ip, {127, 0, 0, 1}}, {port, 0}],
+                    #{env => #{dispatch => Dispatch}, middlewares => ?MIDDLEWARES}
+                ),
+                S#{owned_listener_pid => Pid}
+            end,
+            fun setup_result/1
+        ]
+    ).
 
 setup_stages(State, []) ->
     State;
@@ -450,6 +460,13 @@ teardown_existing(State) ->
             fun() -> stop_limiter_owner(maps:get(limiter_owner, State, undefined)) end,
             fun() -> application:unset_env(imboy, enterprise_internal_cursor_signing_key) end,
             fun() -> application:unset_env(imboy, enterprise_internal_rate_limits) end,
+            fun() ->
+                case maps:get(previous_throttle_rates, State, missing) of
+                    missing -> ok;
+                    {ok, PreviousRates} -> application:set_env(throttle, rates, PreviousRates);
+                    undefined -> application:unset_env(throttle, rates)
+                end
+            end,
             fun() -> release_owned_pool(State) end
         ]
     ],

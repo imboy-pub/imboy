@@ -14,7 +14,8 @@
     ensure_named_server/1,
     ensure_boot_coordinator/0,
     ensure_default_pool/0,
-    ensure_cache/0
+    ensure_cache/0,
+    ensure_limiter_ip_authority/1
 ]).
 
 -ifdef(TEST).
@@ -97,6 +98,14 @@ eunit_setup() ->
         _ -> ok
     end,
 
+    %% limiter-v1 L3 顺序依赖消毒（rv7 全量 94 红实证）：共享 VM 里先行的
+    %% 独立 HTTP 链夹具（orgdir/org-invite/intbe02 同款）会向 {throttle,
+    %% rates} 注入 api_per_ip 且不恢复；imboy_app 的启动校验读到「旧
+    %% throttle + 新 owner」混跑 rates 即拒启（max_boot_attempts 连环失败，
+    %% 该 VM 后续所有 app 根全灭）。boot 前一律清掉运行时注入，交由下方
+    %% load_test_config 按 -config 真值回填——补缺不覆写语义下必须先 unset
+    %% 才能覆写。启动结果自此与根调度顺序解耦。
+    application:unset_env(throttle, rates),
     load_test_config(),
     enforce_pool_capacity(),
     application:set_env(imboy, sql_driver, pgsql),
@@ -930,6 +939,50 @@ ensure_default_pool() ->
             end;
         _ ->
             error
+    end.
+
+%% @doc limiter-v1 L3 owner 就绪（rv7 全量 94 红实证的另一半）：独立 HTTP
+%% 链夹具（intbe02/orgdir/org-invite/oa-workbench 同款）不起 imboy app，
+%% throttle_middleware 未认证分支委托的 login_attempt_ds 缺席时 admit 恒
+%% unavailable → 503——历史上只在「同 VM 先行 app boot 残留 DS」时侥幸
+%% 通过，与根调度顺序耦合。缺席才就地补齐：start_link + set_ip_rates +
+%% activate_empty（空态批准与 imboy_app:maybe_activate_limiter 同一 seam，
+%% 本模块 eunit_setup 已置 limiter_allow_empty_start=true）；已存在则原样
+%% 复用（含 degraded 等真实状态，不掩盖）。RatesOverride 按 scope 覆写
+%% 默认三联（夹具放大配额防自限流），其余键保持生产默认。
+-spec ensure_limiter_ip_authority(#{atom() => {pos_integer(), pos_integer()}}) -> ok.
+ensure_limiter_ip_authority(RatesOverride) ->
+    case whereis(login_attempt_ds) of
+        undefined ->
+            Rates = maps:merge(
+                #{
+                    passport_per_ip => {10, 60000},
+                    api_per_ip => {60, 60000},
+                    oidc_request => {100, 3600000}
+                },
+                RatesOverride
+            ),
+            {ok, Owner} = login_attempt_ds:start_link(),
+            try
+                ok = login_attempt_ds:set_ip_rates(Rates),
+                ok = login_attempt_ds:activate_empty(Owner),
+                %% unlink：owner 与调用套件进程解耦，跨套件存活（与
+                %% intbe02_http_support:ensure_limiter_owner 同语义）；无监督
+                %% 直启（imboy app 未 boot 时没有 imboy_sup 可挂）。
+                unlink(Owner),
+                ok
+            catch
+                %% start_link 成功但后续失败：无监督 owner 若不自停会带着
+                %% 注册名泄漏到后续根（intbe02 同款防线）。
+                Class:Reason:Stack ->
+                    case whereis(login_attempt_ds) of
+                        undefined -> ok;
+                        Leaked -> catch gen_server:stop(Leaked)
+                    end,
+                    erlang:raise(Class, Reason, Stack)
+            end;
+        _ ->
+            ok
     end.
 
 test_http_port() ->

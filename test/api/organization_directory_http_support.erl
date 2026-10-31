@@ -59,6 +59,11 @@ setup_all() ->
     catch
         _:_ -> ok
     end,
+    %% 夹具卫生（rv7 全量实证）：rates 注入必须可恢复——本套件把
+    %% {throttle, rates} 覆写成含 api_per_ip 的链内口径且共享 VM 不随
+    %% teardown 复原，会让本 VM 其后的 app boot 启动校验连环拒启。
+    %% 保存必须在注入**之前**（存注入后的值等于没保存——评审必改项）。
+    PreviousRates = application:get_env(throttle, rates),
     %% throttle rates 在 ensure_all_started 之前注入（成功路径会穿过
     %% throttle_middleware 的 api_per_ip；放大上限避免套件被限流误伤）。
     application:set_env(throttle, rates, [
@@ -73,6 +78,11 @@ setup_all() ->
     %% WH-05：本链不起 imboy app，config_ds:set/get 依赖的 imboy_cache
     %% 实例须显式拉起（详见 eunit_runner:ensure_cache/0 头注）。
     ok = eunit_runner:ensure_cache(),
+    %% limiter-v1 L3（rv7 全量实证）：本链未认证请求穿过 throttle_middleware
+    %% 的 api_per_ip 分支，owner login_attempt_ds 须就绪（缺席时 503，不
+    %% fail-open）——不再依赖「同 VM 先行 app boot 的残留 DS」这种与调度
+    %% 顺序耦合的侥幸路径。
+    ok = eunit_runner:ensure_limiter_ip_authority(#{api_per_ip => {100000, 60000}}),
     Previous = [
         {K, application:get_env(imboy, K)}
      || K <-
@@ -82,7 +92,8 @@ setup_all() ->
         env_prefix => <<"INTBE04_INTTEST">>,
         connect_extra => #{codecs => [{epgsql_codec_rfc3339_bin, []}]}
     }))#{
-        previous_env => Previous
+        previous_env => Previous,
+        previous_throttle_rates => PreviousRates
     },
     try
         initialize(State)
@@ -132,6 +143,12 @@ teardown_all(State) ->
     end,
     release_pool(),
     _ = inttest_marker_db:release(State),
+    %% rates 注入复原（与 setup_all 的保存配对；缺省形态逐一还原）。
+    case maps:get(previous_throttle_rates, State, missing) of
+        missing -> ok;
+        {ok, RatesValue} -> application:set_env(throttle, rates, RatesValue);
+        undefined -> application:unset_env(throttle, rates)
+    end,
     lists:foreach(
         fun
             ({K, {ok, Value}}) -> application:set_env(imboy, K, Value);
