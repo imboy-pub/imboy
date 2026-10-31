@@ -237,6 +237,17 @@ def _server_location_bound(request, object_key, driver):
     return False
 
 
+def _has_upload_action(measured):
+    """True when the observation carries any presign/put action request.
+
+    DB-layer fail-closed leaves carry only health/collection requests
+    (GET/POST with action=None); their acceptance evidence is the generic
+    no-HTTP oracle, not an upload-surface proof.
+    """
+    requests = measured.get("http_requests") or []
+    return any(request.get("action") in ("presign", "put") for request in requests)
+
+
 def _surface_from_requests(measured):
     """Recover the upload surface from the observed admitted presign.
 
@@ -909,10 +920,18 @@ def build():
                 if surface not in SURFACE_ROUTES:
                     surface = _surface_from_requests(measured)
                 if surface is None or not measured.get("object_key"):
-                    S.group_gap(gap_groups, source, 1,
-                                "upload-surface evidence incomplete: no "
-                                "resolvable surface or object_key")
-                    continue
+                    if not _has_upload_action(measured):
+                        # DB-layer fail-closed leaf (registration refused
+                        # before any upload chain opened): the observation
+                        # carries no presign/put action by design, and the
+                        # generic no-HTTP oracle below is its acceptance
+                        # evidence.
+                        pass
+                    else:
+                        S.group_gap(gap_groups, source, 1,
+                                    "upload-surface evidence incomplete: no "
+                                    "resolvable surface or object_key")
+                        continue
                 try:
                     presign_p, puts_p = _immutability_proof(measured, surface)
                     proof = (presign_p, puts_p[0])
