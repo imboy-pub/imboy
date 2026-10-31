@@ -68,7 +68,11 @@ hr_specs(Driver) ->
     ].
 
 %% 双跑幂等 id：driver 分段（garage 低半段 / disk 高半段）+ 叶序 * 20。
-leaf_id(Driver, Idx) -> ?ASSET_BASE + (Idx - 1) * 20 + ?SUP:driver_index(Driver).
+%% 基底再叠加 run 级偏移（?SUP:leaf_id_offset/0）：attachment.id 段与同库
+%% 其他套件共享，外来残留行会让 ON CONFLICT (id) DO NOTHING 保住旧 path、
+%% confirm 抛 'v5 confirm key mismatch'（run5 实测）。
+leaf_id(Driver, Idx) ->
+    ?ASSET_BASE + ?SUP:leaf_id_offset() + (Idx - 1) * 20 + ?SUP:driver_index(Driver).
 
 leaf_unit(S, {Case, Entry, Driver, Sc, Dom, Ac, _Idx, _Scope, _EP} = Spec) ->
     Desc = binary_to_list(

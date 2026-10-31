@@ -30,6 +30,7 @@
     other_driver/1,
     driver_index/1,
     run_nonce/0,
+    leaf_id_offset/0,
     setup/1,
     cleanup/1,
     emit/2,
@@ -122,6 +123,26 @@ run_nonce() ->
             Nonce;
         Nonce ->
             Nonce
+    end.
+
+%% he/hr/rr/so 的合成 asset id 段被同一 attv5 库上的多套件共享，且失败叶的
+%% attachment 行可能跨轮/跨 run 残留（行内 path 是外来 key）：固定基底时
+%% seed 的 INSERT ON CONFLICT (id) DO NOTHING 会原样保住外来行，随后
+%% fn_v5_confirm_pending 因 v_a.path ≠ v_p.object_key 抛
+%% 'v5 confirm key mismatch'（run5 w3hold 78F 实测；干净库手工复现全链
+%% 通过，证明是环境态而非冻结链问题）。id 基底按 run nonce 每 VM 偏移
+%% 1..400 × 1e6：与本 run 其他套件的基底网格（偏移 0）绝不相交，且
+%% 951000000 + 4e8 + 叶跨度仍远低于 w4queue 的 952000000000 段。
+leaf_id_offset() ->
+    Key = {?MODULE, w601_leaf_id_offset},
+    case persistent_term:get(Key, undefined) of
+        undefined ->
+            <<H:32/unsigned, _/binary>> = crypto:hash(sha, run_nonce()),
+            Offset = (1 + H rem 400) * 1000000,
+            persistent_term:put(Key, Offset),
+            Offset;
+        Offset ->
+            Offset
     end.
 
 %% ------------------------------------------------------------------ setup

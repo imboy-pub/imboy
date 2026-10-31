@@ -64,7 +64,10 @@ so_specs(Driver) ->
      || {Idx, {ScBin, DomBin}} <- indexed(so_units())
     ].
 
-leaf_id(Driver, Idx) -> ?ASSET_BASE + (Idx - 1) * 20 + ?SUP:driver_index(Driver).
+%% 基底叠加 run 级偏移（见 hold 测试 leaf_id/2 注释）：防同库共享 id 段的
+%% 外来残留行让 confirm 撞 'v5 confirm key mismatch'。
+leaf_id(Driver, Idx) ->
+    ?ASSET_BASE + ?SUP:leaf_id_offset() + (Idx - 1) * 20 + ?SUP:driver_index(Driver).
 
 leaf_unit(S, {Case, Sc, Driver, Dom, Ac, Idx} = Spec) ->
     Desc = binary_to_list(

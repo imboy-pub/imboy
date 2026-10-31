@@ -269,8 +269,11 @@ coalesce_deadlock(_Err, Prev) -> Prev.
 
 %% 确定性重试验证：把真实 40P01 作为首轮中止原因投进生产重试 API，
 %% 重试轮执行真实 UPDATE 并提交——重试路径的真实 BEGIN/ROLLBACK/COMMIT
-%% 全部落在本环境 PG 上。
-verify_retry_recovery(RealDeadlock) ->
+%% 全部落在本环境 PG 上。elib_pg:retry_tx_rollback 只把**裸 #error{}**
+%% （code=40P01）识别为可重试死锁——必须解包 outcome，投包裹形状
+%% {error, #error{}} 会被判非死锁、原样返回不重试（run5 w2upload
+%% 8×badmatch 实测）。
+verify_retry_recovery({error, #error{} = DeadlockError}) ->
     put(w601_w203_retry_attempts, 0),
     ok =
         elib_pg:with_deadlock_retry_tx(fun(Conn) ->
@@ -278,7 +281,7 @@ verify_retry_recovery(RealDeadlock) ->
             put(w601_w203_retry_attempts, N),
             case N of
                 1 ->
-                    throw({abort_tx, RealDeadlock});
+                    throw({abort_tx, DeadlockError});
                 2 ->
                     {ok, _} =
                         epgsql:equery(
