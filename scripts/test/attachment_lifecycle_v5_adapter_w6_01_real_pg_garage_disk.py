@@ -465,6 +465,8 @@ GROUP_FILE_FACE = {
 GROUP_FILE_UPLOAD_ROUTE = "/api/v1/group/file/upload"
 GROUP_FILE_BIND_ROUTE = "/api/v1/group/file/bind"
 GROUP_FILE_HANDLER = "group_file_handler"
+GROUP_FILE_CREATE_ROUTE = "/api/internal/v1/groups"
+GROUP_FILE_CREATE_HANDLER = "enterprise_group_handler"
 
 
 def _is_group_file_leaf(scenario, domain):
@@ -504,18 +506,54 @@ def _unique_request(requests, request_id, label):
     return matches[0]
 
 
+def _enterprise_origin_proof(measured, requests):
+    """Bind enterprise leaves to the real production enterprise-group domain.
+
+    The measured domain facts must be the server-written production rows
+    (the enterprise_group_origin origin row and the workspace-scoped group
+    row) with the leaf's own server-observed internal group creation in the
+    request evidence.  Fixture-supplied org/workspace labels were rejected
+    by the 1d1a42a23 review and stay inadmissible.
+    """
+    gid = measured.get("gid")
+    origin = measured.get("origin")
+    ws = measured.get("workspace_id")
+    org = measured.get("org_id")
+    if (type(gid) is not int or gid <= 0
+            or measured.get("group_scope") != "workspace"
+            or measured.get("group_workspace_id") != ws
+            or type(measured.get("actor_uid")) is not int
+            or measured.get("actor_uid") <= 0
+            or not isinstance(origin, dict)
+            or set(origin) != {"organization_id", "application_id", "workspace_id"}
+            or any(type(origin[key]) is not int or origin[key] <= 0
+                   for key in origin)
+            or origin["workspace_id"] != ws or origin["organization_id"] != org):
+        raise ValueError("enterprise measured facts are not the server-resolved "
+                         "production origin (enterprise_group_origin row + "
+                         "workspace-scoped group); fixture labels are not evidence")
+    creates = [r for r in requests if r.get("route") == GROUP_FILE_CREATE_ROUTE]
+    if (len(creates) != 1
+            or creates[0].get("method") != "POST"
+            or creates[0].get("handler") != GROUP_FILE_CREATE_HANDLER
+            or not 200 <= creates[0]["status"] < 300
+            or measured.get("create_request_id") != creates[0].get("request_id")
+            or measured.get("create_status") != creates[0]["status"]):
+        raise ValueError("the leaf evidence carries no server-observed "
+                         "enterprise group creation at the real %s route"
+                         % GROUP_FILE_CREATE_ROUTE)
+    return gid
+
+
 def _group_file_proof(measured, scenario, domain):
-    """Bind ordinary group-file leaves to their real production chain.
+    """Bind group-file leaves to their real production chain.
 
     Require the upload route, handler, object, pin and storage-resolution
-    evidence plus the real bind request and business file id. Enterprise
-    leaves remain gaps until their own production-domain proof exists.
+    evidence plus the real bind request and business file id.  Enterprise
+    leaves additionally require their own production-domain proof: the
+    server-resolved enterprise_group_origin facts and the leaf's observed
+    internal group creation (2026-11-01 applicability revision).
     """
-    # Ordinary JWT group uploads do not prove the enterprise asset domain.
-    # Fixture-supplied org/workspace labels cannot establish that binding.
-    if domain == "enterprise":
-        raise ValueError("enterprise multipart/group-file production provenance "
-                         "is unverified; ordinary group uploads are not evidence")
     face = GROUP_FILE_FACE[(scenario, domain)]
     if not isinstance(measured, dict):
         raise ValueError("measured is not a dict")
@@ -547,9 +585,7 @@ def _group_file_proof(measured, scenario, domain):
         raise ValueError("the upload request process did not resolve this "
                          "object's location in production storage")
     if domain == "enterprise":
-        for marker in ("org_id", "workspace_id"):
-            if measured.get(marker) in (None, "", 0):
-                raise ValueError("missing enterprise %s fact" % marker)
+        _enterprise_origin_proof(measured, requests)
     if scenario == "multipart_success":
         if any(r.get("route") == GROUP_FILE_BIND_ROUTE for r in requests):
             raise ValueError("multipart face must not carry bind-chain requests")

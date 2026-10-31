@@ -42,10 +42,13 @@ class ObservationBindingTests(unittest.TestCase):
         self.assertIsNone(adapter._match_observation({self.key: [(1, {"measured": {}})]}, self.key, "AC01"))
 
     def test_group_file_entrypoints_bind_strictly(self):
-        """Ordinary group files bind to their real production entrypoint.
+        """Ordinary and enterprise group files bind to their real production chain.
 
-        Enterprise labels cannot turn ordinary JWT uploads into enterprise
-        evidence. Missing or substituted ordinary markers also stay gaps.
+        Enterprise leaves additionally require the server-resolved production
+        origin (enterprise_group_origin row facts + workspace-scoped group +
+        the leaf's own observed internal group creation); invented labels
+        cannot turn ordinary JWT uploads into enterprise evidence. Missing or
+        substituted markers on either domain stay gaps.
         """
         start = datetime(2026, 1, 1, tzinfo=timezone.utc)
         window = (start, start + timedelta(seconds=10))
@@ -53,6 +56,22 @@ class ObservationBindingTests(unittest.TestCase):
         object_key = "u9/g55/20261031/att_1/w403.txt"
         upload = {"request_id": "w403-upload", "action": "upload", "method": "POST", "route": "/api/v1/group/file/upload", "handler": "group_file_handler", "status": 200, "object_key": object_key, "server_process": "<1.2.3>", "connection_id": "<1.2.4>", "diagnostic_untrusted_locations": [{"trust": "diagnostic_untrusted", "source": "attachment_storage:frozen_location/2", "identity": {"key": object_key, "driver": "disk", "namespace": "ns", "container": "container", "locator_digest": "digest"}}]}
         bind = {"request_id": "w403-bind", "action": "bind", "method": "POST", "route": "/api/v1/group/file/bind", "handler": "group_file_handler", "status": 200, "object_key": object_key, "server_process": "<1.2.5>", "connection_id": "<1.2.6>"}
+        create = {"request_id": "w403-create", "action": "create", "method": "POST", "route": "/api/internal/v1/groups", "handler": "enterprise_group_handler", "status": 200, "server_process": "<1.2.7>", "connection_id": "<1.2.8>"}
+
+        def enterprise_facts():
+            return {
+                "org_id": 42,
+                "workspace_id": 7,
+                "gid": 123456789,
+                "group_scope": "workspace",
+                "group_workspace_id": 7,
+                "actor_uid": 999,
+                "origin": {"organization_id": 42, "application_id": 11, "workspace_id": 7},
+                "create_request_id": "w403-create",
+                "create_route": "/api/internal/v1/groups",
+                "create_handler": "enterprise_group_handler",
+                "create_status": 200,
+            }
 
         def measured(scenario, domain, mutate=lambda m: None):
             m = {"driver": "disk", "ac_id": "AC01", "route": "/api/v1/group/file/upload", "handler": "group_file_handler", "status": 200, "request_id": "w403-upload", "object_key": object_key, "pin_sha256": "a" * 64, "pin_before_put": True, "http_requests": [dict(upload)]}
@@ -66,8 +85,8 @@ class ObservationBindingTests(unittest.TestCase):
             else:
                 m["entrypoint_face"] = "group_file_multipart_upload"
             if domain == "enterprise":
-                m["org_id"] = 42
-                m["workspace_id"] = 7
+                m.update(enterprise_facts())
+                m["http_requests"] = [dict(create)] + m["http_requests"]
             mutate(m)
             return m
 
@@ -109,9 +128,13 @@ class ObservationBindingTests(unittest.TestCase):
                 stack.enter_context(item)
             leaf_mock = stack.enter_context(patch.object(adapter.S, "leaves"))
 
-            # Only the ordinary domain is proven by this production chain.
+            # Both domains are proven by this production chain: ordinary JWT
+            # uploads for ordinary leaves, and enterprise leaves carrying the
+            # server-resolved enterprise-group origin facts.
             for scenario, domain in (
                 ("group_file_success", "ordinary"),
+                ("group_file_success", "enterprise"),
+                ("multipart_success", "enterprise"),
             ):
                 state["index"] = index_for(scenario, domain, measured(scenario, domain))
                 leaf_mock.return_value = [leaf_for(scenario, domain)]
@@ -133,8 +156,9 @@ class ObservationBindingTests(unittest.TestCase):
                 gaps.reset_mock()
                 build_row.reset_mock()
 
-            # Complete ordinary request evidence plus invented enterprise
-            # labels must still fail for every driver and acceptance leaf.
+            # Complete chain evidence plus invented enterprise labels (org/ws
+            # overrides that contradict the origin facts) must still fail for
+            # every driver and acceptance leaf.
             for scenario, driver, ac in itertools.product(
                     ("multipart_success", "group_file_success"),
                     ("disk", "garage"), ("AC01", "AC02")):
@@ -147,8 +171,13 @@ class ObservationBindingTests(unittest.TestCase):
                         adapter.build()
                     self.assertEqual(30, caught.exception.code)
                     self.assertFalse(build_row.called)
-                    self.assertIn("ordinary group uploads are not evidence",
+                    self.assertIn("group-file production entrypoint binding rejected",
                                   gaps.call_args[0][3])
+                    if driver == "disk":
+                        # The origin cross-check is reached only when the
+                        # storage-location binding (disk fixture) passes first.
+                        self.assertIn("fixture labels are not evidence",
+                                      gaps.call_args[0][3])
                 gaps.reset_mock()
                 build_row.reset_mock()
 
@@ -189,6 +218,39 @@ class ObservationBindingTests(unittest.TestCase):
             def no_workspace(m):
                 del m["org_id"]
 
+            def no_origin(m):
+                del m["origin"]
+
+            def personal_scope(m):
+                m["group_scope"] = "personal"
+
+            def ws_mismatch(m):
+                m["origin"] = dict(m["origin"])
+                m["origin"]["workspace_id"] = 8
+
+            def no_actor(m):
+                del m["actor_uid"]
+
+            def no_gid(m):
+                del m["gid"]
+
+            def no_create_record(m):
+                m["http_requests"] = [r for r in m["http_requests"]
+                                      if r["route"] != "/api/internal/v1/groups"]
+
+            def substitute_create(m):
+                for r in m["http_requests"]:
+                    if r["route"] == "/api/internal/v1/groups":
+                        r["route"] = "/api/internal/v1/other"
+
+            def create_not_ok(m):
+                for r in m["http_requests"]:
+                    if r["route"] == "/api/internal/v1/groups":
+                        r["status"] = 500
+
+            def create_id_mismatch(m):
+                m["create_request_id"] = "w403-other"
+
             def numeric_business_id(m):
                 m["group_file_id"] = 1001
 
@@ -203,6 +265,15 @@ class ObservationBindingTests(unittest.TestCase):
                 ("multipart_success", "enterprise", wrong_object_key),
                 ("multipart_success", "enterprise", no_workspace),
                 ("multipart_success", "enterprise", bind_on_multipart_face),
+                ("multipart_success", "enterprise", no_origin),
+                ("multipart_success", "enterprise", personal_scope),
+                ("multipart_success", "enterprise", ws_mismatch),
+                ("multipart_success", "enterprise", no_actor),
+                ("multipart_success", "enterprise", no_gid),
+                ("multipart_success", "enterprise", no_create_record),
+                ("multipart_success", "enterprise", substitute_create),
+                ("multipart_success", "enterprise", create_not_ok),
+                ("multipart_success", "enterprise", create_id_mismatch),
                 ("group_file_success", "ordinary", multipart_face_on_bind_leaf),
                 ("group_file_success", "ordinary", substitute_route),
                 ("group_file_success", "ordinary", substitute_handler),
@@ -215,6 +286,15 @@ class ObservationBindingTests(unittest.TestCase):
                 ("group_file_success", "ordinary", numeric_business_id),
                 ("group_file_success", "ordinary", invalid_business_id),
                 ("group_file_success", "enterprise", no_workspace),
+                ("group_file_success", "enterprise", no_origin),
+                ("group_file_success", "enterprise", personal_scope),
+                ("group_file_success", "enterprise", ws_mismatch),
+                ("group_file_success", "enterprise", no_actor),
+                ("group_file_success", "enterprise", no_gid),
+                ("group_file_success", "enterprise", no_create_record),
+                ("group_file_success", "enterprise", substitute_create),
+                ("group_file_success", "enterprise", create_not_ok),
+                ("group_file_success", "enterprise", create_id_mismatch),
             ]
             for scenario, domain, mutate in cases:
                 with self.subTest(scenario=scenario, domain=domain, mutate=mutate.__name__):

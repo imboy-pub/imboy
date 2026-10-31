@@ -10,8 +10,12 @@
 %%%   V5 链：presign scope=group → attachment_upload_logic pin-before-PUT
 %%%   → 会话锁内同事务确认；group_file_success 再 POST /api/v1/group/file/bind
 %%%   = group_file_ds:bind_file/7 确认引用绑定；enterprise 面无 multipart
-%%%   生产入口，seat proxy PUT 已被 2026-10-29 裁决禁作证据——由
-%%%   enterprise fixture 组织上下文 + 其用户 JWT 驱动同一路由）。
+%%%   生产入口，seat proxy PUT 已被 2026-10-29 裁决禁作证据——由真实
+%%%   企业域驱动同一路由：企业群经生产 internal API 建群
+%%%   （POST /api/internal/v1/groups，enterprise_group_origin 同事务归属
+%%%   + scope='workspace'，INT-02 生产映射 + workspace_member 边界），
+%%%   measured 域事实读回生产行（2026-11-01 production-domain 修订，
+%%%   fixture 标签被 1d1a42a23 复审拒绝））。
 %%%   同一 oracle 语义：同账本登记（owner/location 冻结）、pin 事务边界、
 %%%   fail-closed。AC01/AC02 双验收叶复用同一次真实执行（合同将同一场景
 %%%   复制到两个 AC，先例为既有 w2_01_pending_multipart adapter）；
@@ -416,27 +420,25 @@ mp_scenario(S, Driver, <<"database_unavailable">>, <<"ordinary">>) ->
     {error, not_pinned} = ?S:content_pin(key(M)),
     {error, not_found} = ?F:read(M),
     #{db_outage_http_status => 200, db_outage_envelope_code => 500, no_capability => true};
-%% enterprise 域两个成功场景（2026-10-31 attempt-6 决议）：seat/widget 面
-%% 无任何 multipart 生产入口，seat proxy PUT 已被 2026-10-29 裁决禁作这
-%% 8 个 enterprise 叶的证据——改由 enterprise fixture 的组织上下文
-%% （org_id/workspace_id）+ 其用户 JWT 驱动真实 group-file 生产链
-%% /api/v1/group/file/upload（multipart_success 面无 bind 链请求）。
+%% enterprise 域两个成功场景（2026-10-31 attempt-6 决议 + 2026-11-01
+%% production-domain 修订）：seat/widget 面无任何 multipart 生产入口，
+%% seat proxy PUT 已被 2026-10-29 裁决禁作这 8 个 enterprise 叶的证据——
+%% 由 enterprise fixture 的真实企业域 + 其用户 JWT 驱动真实 group-file
+%% 生产链 /api/v1/group/file/upload（multipart_success 面无 bind 链请求）。
+%% 企业群经生产 internal API 建群（enterprise_group_origin 同事务归属 +
+%% scope='workspace'），measured 的域事实读回服务端写入的生产行——
+%% 1d1a42a23 复审已拒绝 fixture 标签充当域证明。
 mp_scenario(S, Driver, <<"multipart_success">>, <<"enterprise">>) ->
-    Scope = maps:get(scope, S),
-    Gid = new_group(S),
+    {Gid, Origin} = new_enterprise_group(S),
     {Key, Upload} = group_file_upload(S, Driver, Gid),
     {ok, Pin} = ?S:content_pin(Key),
     ?assertEqual(?S:sha(?BODY), maps:get(<<"sha256">>, Pin)),
     ?assertEqual(1, ?S:attach_count(Key)),
     M = group_file_upload_measured(Upload, Key, <<"group_file_multipart_upload">>),
-    M#{
-        org_id => maps:get(org_id, Scope),
-        workspace_id => maps:get(workspace_id, Scope)
-    };
+    enterprise_measured(M, S, Gid, Origin, Upload);
 mp_scenario(S, Driver, <<"group_file_success">>, <<"enterprise">>) ->
-    Scope = maps:get(scope, S),
     Uid = maps:get(uid, S),
-    Gid = new_group(S),
+    {Gid, Origin} = new_enterprise_group(S),
     {Key, Upload} = group_file_upload(S, Driver, Gid),
     {ok, Pin} = ?S:content_pin(Key),
     ?assertEqual(?S:sha(?BODY), maps:get(<<"sha256">>, Pin)),
@@ -445,10 +447,7 @@ mp_scenario(S, Driver, <<"group_file_success">>, <<"enterprise">>) ->
     #{<<"file_id">> := FileId} = ?F:payload(Bind),
     ok = assert_group_file_bound(Gid, Uid, Key, FileId),
     M = group_file_bind_measured(Upload, Key, Bind, FileId),
-    M#{
-        org_id => maps:get(org_id, Scope),
-        workspace_id => maps:get(workspace_id, Scope)
-    };
+    enterprise_measured(M, S, Gid, Origin, Upload);
 mp_scenario(S, Driver, <<"identity_mismatch">>, <<"enterprise">>) ->
     T = reg(S, enterprise_seat, Driver),
     S2 = maps:get(fixture, T),
@@ -698,6 +697,117 @@ new_group(S) ->
     Uid = maps:get(uid, S),
     {ok, Gid} = group_logic:add(0, Uid, 1, []),
     Gid.
+
+%% 真实企业域群（enterprise 两个成功场景的生产域锚点）：群经生产 internal
+%% API（INT-04 POST /api/internal/v1/groups）建在 enterprise fixture 的
+%% workspace 内——create_group_tx 同事务写 enterprise_group_origin 归属行
+%% （migration 00000140 触发守卫）与 group.created 审计，group 行
+%% scope='workspace'；操作者经生产映射 API（INT-02 PUT
+%% /api/internal/v1/identity-mappings）与 workspace_member 边界表入册
+%% （create_in_workspace 的 non_ws_member_uids_tx 硬前提）。group_file 链
+%% 的服务端授权（group_ds:is_member + workspace_guard）在该真实域上运行
+%% ——上传 200 即域与成员校验通过的生产行为。返回的 Origin 读自服务端
+%% 写入的归属行，是 1d1a42a23 复审要求的生产域证明（fixture 标签被拒）。
+new_enterprise_group(S) ->
+    Scope = maps:get(scope, S),
+    Uid = maps:get(uid, S),
+    Org = maps:get(org_id, Scope),
+    Ws = maps:get(workspace_id, Scope),
+    ok = seed_workspace_member(Ws, Uid),
+    Ext = <<"w601-ent-", (integer_to_binary(Uid))/binary>>,
+    Identity = ?F:request(
+        S,
+        put,
+        <<"/api/internal/v1/identity-mappings">>,
+        #{<<"external_user_id">> => Ext, <<"user_id">> => Uid},
+        maps:get(internal_headers, S),
+        <<"application/json">>
+    ),
+    ?assertEqual(200, maps:get(status, Identity)),
+    ?assert(?F:success(Identity)),
+    Create = ?F:request(
+        S,
+        post,
+        <<"/api/internal/v1/groups">>,
+        #{
+            <<"workspace_id">> => Ws,
+            <<"title">> => <<"w601-ent-group">>,
+            <<"introduction">> => <<"w601 enterprise group-file leaf">>,
+            <<"members">> => [Ext],
+            <<"owner_external_user_id">> => Ext
+        },
+        maps:get(internal_headers, S),
+        <<"application/json">>
+    ),
+    ?assertEqual(200, maps:get(status, Create)),
+    ?assert(?F:success(Create)),
+    #{<<"group_id">> := Gid} = ?F:payload(Create),
+    {ok, [
+        #{
+            <<"organization_id">> := Org2,
+            <<"application_id">> := AppId,
+            <<"workspace_id">> := Ws2,
+            <<"status">> := <<"active">>
+        }
+    ]} =
+        elib_pg:query(
+            <<
+                "SELECT organization_id, application_id, workspace_id, status"
+                " FROM enterprise_group_origin WHERE group_id=$1"
+            >>,
+            [Gid]
+        ),
+    {ok, [#{<<"scope">> := <<"workspace">>, <<"workspace_id">> := Ws2}]} =
+        elib_pg:query(
+            <<"SELECT scope, workspace_id FROM \"group\" WHERE id=$1">>, [Gid]
+        ),
+    {ok, [#{<<"user_id">> := Uid}]} =
+        elib_pg:query(
+            <<
+                "SELECT user_id FROM group_member WHERE group_id=$1 AND user_id=$2"
+                " AND status=1"
+            >>,
+            [Gid, Uid]
+        ),
+    Origin = #{
+        organization_id => Org2,
+        application_id => AppId,
+        workspace_id => Ws2
+    },
+    {Gid, Origin}.
+
+%% workspace_member 是企业建群的生产硬前提（幂等种子：fixture 的
+%% scope 在整套件共享，同一 (workspace,user) 只入册一次）。
+seed_workspace_member(Ws, Uid) ->
+    {ok, _} = elib_pg:query(
+        <<
+            "INSERT INTO workspace_member(workspace_id,user_id,role,status)"
+            " VALUES ($1,$2,'member','active')"
+            " ON CONFLICT (workspace_id,user_id) DO NOTHING"
+        >>,
+        [Ws, Uid]
+    ),
+    ok.
+
+%% enterprise measured 的域事实块：org/workspace/app/scope 全部来自
+%% 服务端写入的 enterprise_group_origin 行与 workspace 群行（Origin 读回
+%% 值），create 面绑定该叶自己的 internal 建群请求（request record 由
+%% obs 中间件自动捕获进 http_requests）。
+enterprise_measured(M, S, Gid, Origin, Create) ->
+    Uid = maps:get(uid, S),
+    M#{
+        org_id => maps:get(organization_id, Origin),
+        workspace_id => maps:get(workspace_id, Origin),
+        gid => Gid,
+        group_scope => <<"workspace">>,
+        group_workspace_id => maps:get(workspace_id, Origin),
+        actor_uid => Uid,
+        origin => Origin,
+        create_request_id => maps:get(request_id, Create),
+        create_route => <<"/api/internal/v1/groups">>,
+        create_handler => <<"enterprise_group_handler">>,
+        create_status => maps:get(status, Create)
+    }.
 
 %% -------------------------------------------------- group-file 生产链
 %%
