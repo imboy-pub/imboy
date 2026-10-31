@@ -108,22 +108,138 @@ def _budget_start(state, contract, task_id, started):
     return budget
 
 
+def _verify_reviewed_readmission(state, contract):
+    # Integration must verify the signed-off user/reviewer sources and ledger.
+    # A state or contract marker alone is never authorization.
+    return False
+
+
+def _verify_readmission_transition(old, new, evidence, at):
+    # Future integration must independently verify immutable archives,
+    # authorized user input, reviewer provenance and receipt expiry.
+    return False
+
+
+def _check_readmission_transition(old, new, evidence, at):
+    if not isinstance(old, dict) or not isinstance(new, dict) or not isinstance(evidence, dict):
+        die(EXIT_CONTRACT, 'invalid readmission transition')
+    required = {'old_manifest_sha256', 'new_manifest_sha256', 'old_receipt_sha256',
+                'new_receipt_sha256', 'review_sha256', 'old_archive_path',
+                'new_archive_path', 'review_path'}
+    if (set(evidence) != required
+            or any(not _valid_digest(evidence[key]) for key in required if key.endswith('_sha256'))
+            or any(not isinstance(evidence[key], str) or not os.path.isabs(evidence[key])
+                   for key in ('old_archive_path', 'new_archive_path', 'review_path'))
+            or type(at) not in (int, float) or not 0 < at < float('inf')
+            or old.get('active_launch') is not None or old.get('reviewed_readmission') is not None
+            or old.get('tasks', {}).get('W6-01', {}).get('state') != 'RUNNING'
+            or old.get('tasks', {}).get('W6-01', {}).get('attempt') != 5
+            or evidence['old_manifest_sha256'] != old.get('plan_manifest_sha256')
+            or old.get('verification_candidate', {}).get('plan_manifest_sha256') != old.get('plan_manifest_sha256')
+            or evidence['new_manifest_sha256'] != new.get('plan_manifest_sha256')
+            or evidence['old_receipt_sha256'] != old.get('authorization_sha256')
+            or evidence['new_receipt_sha256'] != new.get('authorization_sha256')
+            or new.get('reviewed_readmission') != evidence['new_receipt_sha256']
+            or not isinstance(new.get('plan_dir'), str) or not os.path.isabs(new['plan_dir'])
+            or not isinstance(new.get('authorization_path'), str) or not os.path.isabs(new['authorization_path'])
+            or new['plan_dir'] == old.get('plan_dir')
+            or new['authorization_path'] == old.get('authorization_path')):
+        die(EXIT_CONTRACT, 'invalid readmission bindings')
+    try:
+        expected = copy.deepcopy(old)
+        for key in ('plan_dir', 'plan_manifest_sha256', 'authorization_path',
+                    'authorization_sha256', 'reviewed_readmission'):
+            expected[key] = new[key]
+        expected['verification_candidate']['plan_manifest_sha256'] = new['plan_manifest_sha256']
+        expected['tasks']['W6-01']['task_deadline'] = new['tasks']['W6-01']['task_deadline']
+        expected['time_budgets']['run']['deadline'] = new['time_budgets']['run']['deadline']
+        expected['time_budgets']['waves']['W6']['deadline'] = new['time_budgets']['waves']['W6']['deadline']
+        old_deadlines = (old['tasks']['W6-01']['task_deadline'], old['time_budgets']['waves']['W6']['deadline'],
+                         old['time_budgets']['run']['deadline'])
+        deadlines = (new['tasks']['W6-01']['task_deadline'], new['time_budgets']['waves']['W6']['deadline'],
+                     new['time_budgets']['run']['deadline'])
+        if (any(type(v) not in (int, float) or not 0 < v < float('inf') for v in (*old_deadlines, *deadlines))
+                or any(n <= max(o, at) for o, n in zip(old_deadlines, deadlines))
+                or not deadlines[0] <= deadlines[1] <= deadlines[2]):
+            raise ValueError('invalid deadlines')
+        for key in ('revision', 'events_head_hash', 'clock_anchor'):
+            expected.pop(key, None)
+        comparable = {k: v for k, v in new.items() if k not in ('revision', 'events_head_hash', 'clock_anchor')}
+        if expected != comparable:
+            raise ValueError('unrelated state changed')
+    except (KeyError, TypeError, ValueError):
+        die(EXIT_CONTRACT, 'invalid readmission state delta')
+    if not _verify_readmission_transition(old, new, evidence, at):
+        die(EXIT_BLOCKED, 'readmission user and reviewer provenance is not verified')
+
+
+def _reviewed_budget_policy(state, contract):
+    policy = contract.get('reviewed_readmission')
+    marker = state.get('reviewed_readmission')
+    overrides = contract.get('retry_policy', {}).get('task_attempts_overrides')
+    if policy is None and marker is None and overrides is None:
+        return None
+    if not _verify_reviewed_readmission(state, contract):
+        die(EXIT_BLOCKED, 'reviewed readmission provenance is not verified')
+    if (not isinstance(policy, dict) or set(policy) != {'task_id', 'attempt_limit', 'deadlines'}
+            or policy['task_id'] != 'W6-01' or policy['attempt_limit'] != 8
+            or type(policy['attempt_limit']) is not int
+            or contract.get('retry_policy', {}).get('task_attempts_total_max') != 5
+            or overrides != {'W6-01': 8} or not _valid_digest(marker)):
+        die(EXIT_CONTRACT, 'invalid reviewed readmission policy')
+    deadlines = policy['deadlines']
+    if (not isinstance(deadlines, dict) or set(deadlines) != {'task', 'wave', 'run'}
+            or any(type(v) not in (int, float) or not 0 < v < float('inf')
+                   for v in deadlines.values())
+            or not deadlines['task'] <= deadlines['wave'] <= deadlines['run']):
+        die(EXIT_CONTRACT, 'invalid reviewed readmission deadlines')
+    task = state.get('tasks', {}).get('W6-01', {})
+    budget = state.get('time_budgets', {})
+    run = budget.get('run') if isinstance(budget, dict) else None
+    waves = budget.get('waves', {}) if isinstance(budget, dict) else {}
+    wave = waves.get('W6') if isinstance(waves, dict) else None
+    if (not isinstance(task, dict) or task.get('task_deadline') != deadlines['task']
+            or not isinstance(run, dict) or run.get('deadline') != deadlines['run']
+            or not isinstance(wave, dict) or wave.get('deadline') != deadlines['wave']):
+        die(EXIT_CONTRACT, 'reviewed deadlines differ from persistent state')
+    started = task.get('task_started_at')
+    timeouts = contract.get('timeouts', {})
+    seconds = timeouts.get('task_overrides', {}).get('W6-01', timeouts.get('task_seconds', 28800))
+    if (any(type(v) not in (int, float) or not 0 < v < float('inf') for v in (started, seconds))
+            or deadlines['task'] <= started + seconds):
+        die(EXIT_CONTRACT, 'invalid reviewed task deadline')
+    return policy
+
+
+def _task_attempt_limit(state, contract, task_id):
+    policy = _reviewed_budget_policy(state, contract)
+    if policy is not None and task_id == policy['task_id']:
+        return policy['attempt_limit']
+    return contract.get('retry_policy', {}).get('task_attempts_total_max', 5)
+
+
 def _budget_check(state, contract, task_id=None, enforce=True, at=None):
     budget = state.get('time_budgets')
     if not isinstance(budget, dict) or set(budget) != {'run', 'waves'} or not isinstance(budget['waves'], dict):
         die(EXIT_CONTRACT, 'missing persistent run/wave budgets; reviewed reconciliation required')
+    policy = _reviewed_budget_policy(state, contract)
     entries = []
     if budget['run'] is not None:
-        entries.append((budget['run'], contract.get('timeouts', {}).get('run_seconds', 604800)))
+        entries.append((budget['run'], contract.get('timeouts', {}).get('run_seconds', 604800), 'run'))
     for wave, entry in budget['waves'].items():
         seconds = contract.get('timeouts', {}).get('wave_overrides', {}).get(wave, contract.get('timeouts', {}).get('wave_seconds', 86400))
-        entries.append((entry, seconds))
+        entries.append((entry, seconds, 'wave' if wave == 'W6' else None))
     if budget['waves'] and budget['run'] is None:
         die(EXIT_CONTRACT, 'wave budget without run budget')
-    for entry, seconds in entries:
+    for entry, seconds, kind in entries:
         if (not isinstance(entry, dict) or set(entry) != {'started_at', 'deadline'}
-                or any(type(v) not in (int, float) or not 0 < v < float('inf') for v in (entry['started_at'], entry['deadline'], seconds))
-                or entry['deadline'] != entry['started_at'] + seconds):
+                or any(type(v) not in (int, float) or not 0 < v < float('inf') for v in (entry['started_at'], entry['deadline'], seconds))):
+            die(EXIT_CONTRACT, 'invalid persistent run/wave budget')
+        original = entry['started_at'] + seconds
+        if policy is not None and kind is not None:
+            if entry['deadline'] != policy['deadlines'][kind] or entry['deadline'] <= original:
+                die(EXIT_CONTRACT, 'invalid reviewed run/wave deadline')
+        elif entry['deadline'] != original:
             die(EXIT_CONTRACT, 'invalid persistent run/wave budget')
     now = time.time() if at is None else at
     if enforce and budget['run'] and now >= budget['run']['deadline']:
@@ -139,7 +255,7 @@ def _task_attempt_check(state, contract, task_id):
     task = state.get('tasks', {}).get(task_id, {})
     deadline = task.get('task_deadline')
     attempt = task.get('attempt')
-    limit = contract.get('retry_policy', {}).get('task_attempts_total_max', 5)
+    limit = _task_attempt_limit(state, contract, task_id)
     if (type(deadline) not in (int, float) or not 0 < deadline < float('inf')
             or time.time() >= deadline):
         die(EXIT_NOGO, 'persisted task deadline missing or exhausted')
@@ -1425,6 +1541,48 @@ def _resume_launch_intent(run_dir, store, old, new, event):
     return store.persist_snapshot(new, event["entry_hash"])
 
 
+def _write_reviewed_readmission(run_dir, proposed, evidence):
+    """Append one reviewed transition; provenance remains fail-closed until integrated."""
+    lock = RunLock(run_dir)
+    if not lock.acquire_nb():
+        die(EXIT_BLOCKED, 'cannot acquire readmission lock')
+    try:
+        store = StateStore(run_dir)
+        old = store.load_state()
+        scan = store.scan_chain()
+        if (not isinstance(old, dict) or not scan['ok'] or not scan['count']
+                or old.get('events_head_hash') != scan['last']['entry_hash']
+                or not store.snapshot_bound(old, [scan['bound']])):
+            die(EXIT_CONTRACT, 'readmission requires a consistent snapshot and ledger')
+        contract = _load_bound_contract(old)
+        _validate_timed_case_events(store.iter_events(), contract.get('legacy_case_event_hashes', {}))
+        _clock_check(old.get('clock_anchor'))
+        _budget_check(old, contract, enforce=False)
+        if (type(old.get('revision')) is not int
+                or any(key not in old or key not in proposed or proposed[key] != old[key]
+                       for key in ('revision', 'events_head_hash', 'clock_anchor'))):
+            die(EXIT_CONTRACT, 'readmission snapshot anchors changed')
+        _check_readmission_transition(old, proposed, evidence, time.time())
+        if candidate_errors(proposed.get('verification_candidate', {})):
+            die(EXIT_CONTRACT, 'candidate drift prevents readmission')
+        return store.write_snapshot(proposed, 'reviewed_readmission', {'evidence': evidence})
+    finally:
+        lock.release()
+
+
+def _resume_reviewed_readmission(store, old, new, event):
+    if (type(old.get('revision')) is not int or type(new.get('revision')) is not int
+            or new['revision'] != old['revision'] + 1 or 'events_head_hash' in new):
+        die(EXIT_CONTRACT, 'invalid readmission revision')
+    _clock_check(old.get('clock_anchor'))
+    _clock_check(new.get('clock_anchor'))
+    _clock_transition(old['clock_anchor'], new['clock_anchor'])
+    _check_readmission_transition(old, new, event['payload'].get('evidence'), event.get('ts'))
+    if candidate_errors(new.get('verification_candidate', {})):
+        die(EXIT_CONTRACT, 'candidate drift prevents readmission recovery')
+    return store.persist_snapshot(new, event['entry_hash'])
+
+
 def _resume_state(run_dir):
     """Reconcile one durable task transition while the caller holds RunLock."""
     store = StateStore(run_dir)
@@ -1461,6 +1619,8 @@ def _resume_state(run_dir):
         reconstructed = dict(new, events_head_hash=event["entry_hash"])
         if not store.snapshot_bound(reconstructed, [scan["bound"]]):
             die(EXIT_CONTRACT, "event state digest mismatch")
+        if event.get("kind") == "reviewed_readmission":
+            return _resume_reviewed_readmission(store, old, new, event)
         if event.get("kind") == "launch_intent":
             return _resume_launch_intent(run_dir, store, old, new, event)
         if event.get("kind") == "case_manifest_bound":
@@ -1520,7 +1680,7 @@ def _resume_state(run_dir):
             started, deadline = new_task.get("task_started_at"), new_task.get("task_deadline")
             timeouts = contract.get("timeouts", {})
             seconds = timeouts.get("task_overrides", {}).get(task_id, timeouts.get("task_seconds", 28800))
-            limit = contract.get("retry_policy", {}).get("task_attempts_total_max", 5)
+            limit = _task_attempt_limit(old, contract, task_id)
             if (type(started) not in (int, float) or type(deadline) not in (int, float)
                     or not 0 < started <= deadline < float("inf")
                     or type(limit) is not int or not 1 <= new_attempt <= limit
@@ -2993,7 +3153,7 @@ def cmd_task(args):
         now = time.time()
         _budget_check(state, contract, args.task_id, enforce=to not in ('NO_GO', 'BLOCKED_EXTERNAL'))
         if to == "RUNNING":
-            limit = contract.get("retry_policy", {}).get("task_attempts_total_max", 5)
+            limit = _task_attempt_limit(state, contract, args.task_id)
             attempts = cur.get("attempt", 0)
             if type(limit) is not int or limit <= 0 or type(attempts) is not int or attempts < 0:
                 die(EXIT_CONTRACT, "invalid task attempt budget")
@@ -3326,7 +3486,7 @@ def cmd_accept_task(args):
         _budget_check(state, contract, args.task_id)
         deadline = cur.get("task_deadline")
         attempt = cur.get("attempt")
-        limit = contract.get("retry_policy", {}).get("task_attempts_total_max", 5)
+        limit = _task_attempt_limit(state, contract, args.task_id)
         if (type(deadline) not in (int, float) or not 0 < deadline < float("inf")
                 or time.time() >= deadline):
             die(EXIT_NOGO, "persisted task deadline missing or exhausted")
