@@ -196,12 +196,14 @@ def _verify_readmission_review(review_bytes, receipt_bytes):
     scope = receipt.get("readmission")
     if not isinstance(scope, dict):
         return False
+    # The review binds the receipt identity and the reviewed plan pair;
+    # the receipt in turn binds the exact review bytes via
+    # readmission.review_sha256, so no self-referential digest is needed.
     required = [
         "READMISSION-REVIEW-VERDICT: APPROVED",
         "receipt_id: " + str(receipt.get("receipt_id")),
         "old_manifest_sha256: " + str(scope.get("old_manifest_sha256")),
         "new_manifest_sha256: " + str(scope.get("new_manifest_sha256")),
-        "new_receipt_sha256: " + sha256_bytes(receipt_bytes),
     ]
     text = review_bytes.decode("utf-8", errors="replace")
     return all(line in text for line in required)
