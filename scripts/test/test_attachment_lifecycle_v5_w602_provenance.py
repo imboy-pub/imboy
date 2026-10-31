@@ -12,7 +12,8 @@ ROOT = Path(__file__).resolve().parents[2]
 
 class W602ProvenanceTest(unittest.TestCase):
     def test_producer_copies_real_fields_and_missing_producer_fails_closed(self):
-        fields = ["device_provenance", "browser_provenance"]
+        fields = ["entrypoint_provenance", "device_provenance",
+                  "browser_provenance", "backend_provenance"]
         producer = ROOT / "scripts/attachment_lifecycle_v5_producer.py"
         self.assertEqual([], support.producer_drops(str(producer), fields, "W6-02/probe"))
         gaps = support.provenance_pipeline_gaps(str(ROOT), "W6-02/probe", True, True)

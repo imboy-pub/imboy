@@ -191,6 +191,27 @@ def read_provenance(case_dir, ctx, case_id, need_device, need_browser):
 PRODUCER = "attachment_lifecycle_v5_producer.py"
 
 
+def backend_provenance_for(case_dir, case_id):
+    """Read the gate-written owned-backend proof from the case dir.
+
+    Absence is honest (rows simply carry no backend proof; the per-driver
+    session/time gap fence still rejects everything). A present file that is
+    unparsable or not a JSON object fails closed. The object is attached
+    verbatim; reading it proves transport only, never authenticity.
+    """
+    path = os.path.join(case_dir, "backend-provenance.json")
+    if not os.path.isfile(path):
+        return None
+    try:
+        with open(path, "r", encoding="utf-8") as handle:
+            proof = json.load(handle)
+    except (OSError, ValueError) as exc:
+        S6.die(case_id, "unparsable backend-provenance.json %s: %s" % (path, exc))
+    if not isinstance(proof, dict):
+        S6.die(case_id, "backend-provenance.json must be a JSON object: %s" % path)
+    return proof
+
+
 def producer_drops(producer_path, fields, case_id):
     """Exercise the producer with isolated synthetic data, never acceptance evidence."""
     leaf = dict(ac_id="probe", domain="probe", driver="disk", entrypoint="probe",
@@ -248,6 +269,7 @@ def rows_for(ctx, case_id, leaves, case_dir, suites, mapping, device, browser,
     gaps = []
     rows = []
     used_tests = set()
+    backend = backend_provenance_for(case_dir, case_id)
     for leaf in leaves:
         scenario = leaf["ordering_or_fault"].split("/")[-1]
         kind, reason = mapping.get(scenario, ("any", None))
@@ -315,6 +337,8 @@ def rows_for(ctx, case_id, leaves, case_dir, suites, mapping, device, browser,
             row["device_provenance"] = device
         if browser:
             row["browser_provenance"] = browser
+        if backend is not None:
+            row["backend_provenance"] = backend
         rows.append(row)
     if gaps:
         S6.report_gaps(case_id, len(rows), {case_id: (len(gaps), gaps)})
