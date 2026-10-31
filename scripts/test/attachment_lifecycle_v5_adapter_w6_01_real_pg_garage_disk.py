@@ -272,8 +272,7 @@ def _immutability_proof(measured, entrypoint):
     presign = presigns[0]
     if (presign["method"] != method or not re.fullmatch(route, presign["route"])
             or presign["handler"] != presign_handler
-            or presign.get("object_key") != object_key
-            or not _server_location_bound(presign, object_key, measured.get("driver"))):
+            or presign.get("object_key") != object_key):
         raise ValueError("presign request is not bound to this leaf's object at the server")
     puts = [request for request in requests if request.get("action") == "put"]
     if not puts:
@@ -285,12 +284,27 @@ def _immutability_proof(measured, entrypoint):
         put_route_re, put_route = None, presign["route"]
     else:
         put_route_re, put_route = None, presign["route"][:-len("presign")] + "upload"
+    # Production storage resolution happens on the WRITE path, not the
+    # signing path: only the gateway/seat presign handler of
+    # enterprise_internal calls session_location/frozen_location during
+    # presign (run9 battery: 16/16 enterprise_internal presigns carry a
+    # storage trace, 0/48 for the other three surfaces), while EVERY
+    # admitted (2xx) PUT resolves the object's location in production
+    # storage (run9: 60/60).  So the three-way binding's location leg is
+    # proven on at least one admitted PUT of this leaf; rejected replays
+    # (409, often before the storage layer) keep the identity bindings.
+    admitted_put_bound = False
     for put in puts:
         route_ok = (put_route_re.fullmatch(put["route"]) if put_route_re is not None
                     else put["route"] == put_route)
         if (put["method"] != "PUT" or put["handler"] != put_handler
                 or put.get("object_key") != object_key or not route_ok):
             raise ValueError("PUT request is not bound to this leaf's object at the server")
+        if 200 <= put["status"] < 300 and _server_location_bound(
+                put, object_key, measured.get("driver")):
+            admitted_put_bound = True
+    if not admitted_put_bound:
+        raise ValueError("no admitted PUT resolved this leaf's object in production storage")
     return presign, puts
 
 # The frozen enterprise multipart/group_file leaves cannot be proven by
