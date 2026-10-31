@@ -327,6 +327,88 @@ def _immutability_proof(measured, entrypoint):
         raise ValueError("no admitted PUT resolved this leaf's object in production storage")
     return presign, puts
 
+
+def _rejected_scenario_proof(measured, surface):
+    """Reject-type leaves bind identities WITHOUT an admitted PUT.
+
+    Fail-closed, old-client and replay-rejection scenarios assert that the
+    upload chain is refused; their acceptance evidence is the identity
+    binding of every observed request plus the refused statuses.  At most
+    one admitted presign may exist (the chain opened and the write was
+    then refused); zero presigns is the chain-never-opened shape.  Every
+    PUT must be refused.  Returns (presign_or_None, representative_put).
+    """
+    if surface not in SURFACE_ROUTES or not isinstance(measured, dict):
+        raise ValueError("unknown upload surface")
+    requests = measured.get("http_requests")
+    object_key = measured.get("object_key")
+    if (not isinstance(requests, list) or not requests
+            or not isinstance(object_key, str) or not object_key):
+        raise ValueError("missing server-bound request evidence")
+    ids = [request.get("request_id") for request in requests]
+    if (any(not isinstance(identity, str) or not identity for identity in ids)
+            or len(set(ids)) != len(ids)):
+        raise ValueError("request identities missing or duplicated")
+
+    def complete(request):
+        return (all(isinstance(request.get(k), str) and request[k]
+                    for k in ("method", "route", "handler", "server_process", "connection_id"))
+                and type(request.get("status")) is int)
+
+    if not all(complete(request) for request in requests):
+        raise ValueError("incomplete observed HTTP request")
+    method, route, presign_handler, put_handler = SURFACE_ROUTES[surface]
+    presigns = [request for request in requests
+                if request.get("action") == "presign"
+                and 200 <= request["status"] < 300]
+    if len(presigns) > 1:
+        raise ValueError("expected at most one admitted presign request")
+    presign = presigns[0] if presigns else None
+    if presign is not None and (
+            presign["method"] != method
+            or not re.fullmatch(route, presign["route"])
+            or presign["handler"] != presign_handler
+            or presign.get("object_key") != object_key):
+        raise ValueError("presign request is not bound to this leaf's object at the server")
+    puts = [request for request in requests if request.get("action") == "put"]
+    if not puts:
+        raise ValueError("no real PUT request observed for this leaf")
+    if entrypoint_route_tail(surface, presign) is None:
+        raise ValueError("cannot derive the PUT route from the presign")
+    representative = None
+    for put in puts:
+        if 200 <= put["status"] < 300:
+            raise ValueError("scenario asserts rejection but an admitted PUT exists")
+        route_ok = _put_route_ok(surface, presign, put)
+        if (put["method"] != "PUT" or put["handler"] != put_handler
+                or put.get("object_key") != object_key or not route_ok):
+            raise ValueError("PUT request is not bound to this leaf's object at the server")
+        if representative is None:
+            representative = put
+    if representative is None:
+        raise ValueError("no refused PUT observed for this leaf")
+    return presign, representative
+
+
+def entrypoint_route_tail(surface, presign):
+    """The PUT route rule per surface; None when it cannot be derived."""
+    if surface in ("ordinary", "enterprise_internal"):
+        return re.compile(r"/api/v1/attachment/gateway/[0-9a-fA-F-]{36}")
+    if presign is None:
+        return None
+    if surface == "enterprise_seat":
+        return presign["route"]
+    return presign["route"][:-len("presign")] + "upload"
+
+
+def _put_route_ok(surface, presign, put):
+    rule = entrypoint_route_tail(surface, presign)
+    if isinstance(rule, re.Pattern):
+        return bool(rule.fullmatch(put["route"]))
+    if rule is None:
+        return False
+    return put["route"] == rule
+
 # The frozen enterprise multipart/group_file leaves cannot be proven by
 # enterprise seat proxy PUT. Keep them blocked until the contract owner
 # authorizes a revision or the required entrypoints can be exercised.
@@ -606,11 +688,22 @@ def build():
             measured = obs.get("measured") or {}
             try:
                 presign, puts = _immutability_proof(measured, leaf["entrypoint"])
-            except (ValueError, TypeError) as exc:
-                S.group_gap(gap_groups, source, 1,
-                            "server-observed request/object binding rejected: %s"
-                            % exc)
-                continue
+            except (ValueError, TypeError) as immutable_exc:
+                # Reject-type w403dm scenarios (expired replay, old-client,
+                # fail-closed) bind identities with refused writes; their
+                # acceptance evidence is the identity chain plus the refused
+                # statuses, not an admitted write.
+                try:
+                    presign, put_r = _rejected_scenario_proof(
+                        measured, leaf["entrypoint"])
+                    puts = [put_r]
+                except (ValueError, TypeError) as rejected_exc:
+                    S.group_gap(gap_groups, source, 1,
+                                "server-observed request/object binding "
+                                "rejected: immutability: %s; "
+                                "rejected-scenario: %s"
+                                % (immutable_exc, rejected_exc))
+                    continue
             emitted = obs.get("emitted_at_ms")
             # STEP lines record epoch SECONDS (date +%s, taken after the
             # eunit process exited): the finish second's tail is inside the
@@ -824,9 +917,23 @@ def build():
                     presign_p, puts_p = _immutability_proof(measured, surface)
                     proof = (presign_p, puts_p[0])
                     proof_kind = "immutability"
-                except (ValueError, TypeError, IndexError) as exc:
-                    S.group_gap(gap_groups, source, 1, str(exc))
-                    continue
+                except (ValueError, TypeError) as immutable_exc:
+                    puts_all = [request for request in (measured.get("http_requests") or [])
+                                if request.get("action") == "put"]
+                    if not puts_all:
+                        # Chain-never-opened / no-write-action leaf: the
+                        # generic no-HTTP oracle below carries it.
+                        pass
+                    else:
+                        try:
+                            presign_r, put_r = _rejected_scenario_proof(measured, surface)
+                            proof = (presign_r, put_r)
+                            proof_kind = "rejected"
+                        except (ValueError, TypeError) as rejected_exc:
+                            S.group_gap(gap_groups, source, 1,
+                                        "immutability: %s; rejected-scenario: %s"
+                                        % (immutable_exc, rejected_exc))
+                            continue
             elif source in surface_cases:
                 if not expiry_leaf:
                     S.group_gap(gap_groups, source, 1,
@@ -943,6 +1050,29 @@ def build():
                         expected_object_state="measured object fields: %s"
                                               % (obj_keys or
                                                  "object %s" % measured.get("object_key")))
+                elif proof_kind == "rejected":
+                    oracle.update(
+                        pre_object_hash="the upload chain was refused as the "
+                                        "scenario asserts; pre-state asserted "
+                                        "by the scenario's own driver reads",
+                        action="real PUT %s was refused with status %s as "
+                               "asserted (measured: %s)"
+                               % (put["request_id"], put["status"], msum),
+                        expected_http_semantics="%s; all %d PUT(s) refused"
+                                                % ("presign %s status %s" % (
+                                                    presign["request_id"],
+                                                    presign["status"])
+                                                   if presign else
+                                                   "chain never opened: no "
+                                                   "admitted presign",
+                                                len([r for r in (measured.get("http_requests") or [])
+                                                     if r.get("action") == "put"])),
+                        expected_db_delta="the unit asserts the scenario's "
+                                          "DB/queue invariant before returning "
+                                          "ok (w2upload suite contract)",
+                        expected_object_state="no object written: measured "
+                                              "fields %s" % (obj_keys or
+                                                             "object %s unbound" % measured.get("object_key")))
                 else:
                     oracle.update(
                         pre_object_hash="object absent before PUT, as asserted by the real driver read",
