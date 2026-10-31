@@ -11,6 +11,208 @@
 -define(WS_ID, 800001).
 -define(CID, 666001).
 
+%% J27.a/c/f: real handler + response encoder + cursor signing; synthetic DS only.
+j27_a_legacy_channel_lists_are_not_truncated_test_() ->
+    j27_channel_fixture(fun() ->
+        Rows = [#{<<"id">> => I} || I <- lists:seq(1, 61)],
+        put(j27_channel_rows, Rows),
+        Sub = j27_channel_request(
+            subscribed,
+            [{<<"cursor">>, <<"7">>}, {<<"limit">>, <<"2">>}]
+        ),
+        ?assertEqual(0, maps:get(<<"code">>, Sub)),
+        ?assertEqual(
+            #{<<"list">> => Rows, <<"cursor">> => 7, <<"limit">> => 2},
+            maps:get(<<"payload">>, Sub)
+        ),
+        Managed = j27_channel_request(managed, []),
+        ?assertEqual(#{<<"list">> => Rows}, maps:get(<<"payload">>, Managed)),
+        ?assertEqual(0, meck:num_calls(channel_ds, list_subscribed_keyset, '_')),
+        ?assertEqual(0, meck:num_calls(channel_ds, list_managed_keyset, '_'))
+    end).
+
+j27_c_channel_cursor_progress_and_foreign_rejection_test_() ->
+    j27_channel_fixture(fun() ->
+        lists:foreach(
+            fun({Action, Kind}) ->
+                put(j27_channel_rows, [
+                    #{<<"id">> => I, <<"cursor_id">> => I}
+                 || I <- [30, 20, 10]
+                ]),
+                Qs = [
+                    {<<"pagination">>, <<"cursor">>},
+                    {<<"limit">>, <<"2">>},
+                    {<<"q">>, <<"needle">>}
+                ],
+                Page = maps:get(<<"payload">>, j27_channel_request(Action, Qs)),
+                ?assertEqual(true, maps:get(<<"has_more">>, Page)),
+                ?assertEqual([30, 20], [
+                    maps:get(<<"id">>, R)
+                 || R <- maps:get(<<"list">>, Page)
+                ]),
+                Token = maps:get(<<"next_cursor">>, Page),
+                Ctx = #{scope => <<"personal">>, workspace_id => 0, q => <<"needle">>},
+                ?assertEqual({ok, 20}, list_cursor:resolve(Token, ?UID, Kind, Ctx)),
+                put(j27_channel_rows, [#{<<"id">> => 10, <<"cursor_id">> => 10}]),
+                _ = j27_channel_request(Action, [{<<"cursor">>, Token} | Qs]),
+                ?assertEqual({?UID, 20, 3, <<"needle">>}, get(j27_channel_keyset)),
+                lists:foreach(
+                    fun(ForeignCtx) ->
+                        {ok, Foreign} = list_cursor:issue(
+                            ?UID,
+                            Kind,
+                            ForeignCtx#{upper => 20},
+                            os:system_time(second)
+                        ),
+                        erase(j27_channel_keyset),
+                        Error = j27_channel_request(Action, [{<<"cursor">>, Foreign} | Qs]),
+                        ?assertEqual(400, maps:get(<<"code">>, Error)),
+                        ?assertEqual(undefined, get(j27_channel_keyset))
+                    end,
+                    [
+                        Ctx#{scope => <<"workspace">>, workspace_id => ?WS_ID},
+                        Ctx#{q => <<"different">>}
+                    ]
+                )
+            end,
+            [{subscribed, <<"channel_subscribed">>}, {managed, <<"channel_managed">>}]
+        )
+    end).
+
+j27_c_channel_terminal_cursor_is_json_null_test_() ->
+    j27_channel_fixture(fun() ->
+        put(j27_channel_rows, [#{<<"id">> => 10, <<"cursor_id">> => 10}]),
+        lists:foreach(
+            fun(Action) ->
+                Page = maps:get(
+                    <<"payload">>,
+                    j27_channel_request(
+                        Action,
+                        [{<<"pagination">>, <<"cursor">>}, {<<"limit">>, <<"2">>}]
+                    )
+                ),
+                ?assertEqual(false, maps:get(<<"has_more">>, Page)),
+                %% Plan J27.c oracle: empty string is NOT JSON null.
+                ?assertEqual(null, maps:get(<<"next_cursor">>, Page))
+            end,
+            [subscribed, managed]
+        )
+    end).
+
+%% Handler legacy reads use synthetic DS rows; contract gating belongs to the App.
+j27_f_channel_enabled_nonempty_legacy_handler_reads_test_() ->
+    j27_channel_fixture(fun() ->
+        {ok, _} = meck_helper:setup_mock(list_cursor, [passthrough, no_link], []),
+        try
+            put(j27_channel_enabled, true),
+            Rows = [#{<<"id">> => ?CID, <<"name">> => <<"synthetic-channel">>}],
+            put(j27_channel_rows, Rows),
+            ?assertEqual(true, maps:get(channel, imboy_policy:effective_features())),
+            Sub = j27_channel_request(
+                subscribed,
+                [{<<"cursor">>, <<"7">>}, {<<"limit">>, <<"2">>}]
+            ),
+            ?assertEqual(0, maps:get(<<"code">>, Sub)),
+            ?assertEqual(
+                #{<<"list">> => Rows, <<"cursor">> => 7, <<"limit">> => 2},
+                maps:get(<<"payload">>, Sub)
+            ),
+            Managed = j27_channel_request(managed, []),
+            ?assertEqual(0, maps:get(<<"code">>, Managed)),
+            ?assertEqual(#{<<"list">> => Rows}, maps:get(<<"payload">>, Managed)),
+            ?assertEqual(1, meck:num_calls(channel_ds, list_subscribed, '_')),
+            ?assertEqual(1, meck:num_calls(channel_ds, list_managed, '_')),
+            ?assertEqual(0, meck:num_calls(channel_ds, list_subscribed_keyset, '_')),
+            ?assertEqual(0, meck:num_calls(channel_ds, list_managed_keyset, '_')),
+            ?assertEqual(0, meck:num_calls(list_cursor, issue, '_')),
+            ?assertEqual(0, meck:num_calls(list_cursor, resolve, '_'))
+        after
+            meck_helper:cleanup_mock(list_cursor)
+        end
+    end).
+
+j27_f_channel_disabled_blocks_direct_reads_and_writes_test_() ->
+    j27_channel_fixture(fun() ->
+        put(j27_channel_enabled, false),
+        lists:foreach(
+            fun(Action) ->
+                Response = j27_channel_request(Action, []),
+                ?assertEqual(5190, maps:get(<<"code">>, Response))
+            end,
+            [create, show, subscribed]
+        ),
+        ?assertEqual(0, meck:num_calls(workspace_resolver, guard_channel_binding, '_')),
+        ?assertEqual(0, meck:num_calls(channel_ds, list_subscribed, '_'))
+    end).
+
+j27_channel_fixture(Test) ->
+    Mocks = [
+        {cowboy_req, [
+            {parse_qs, 1, fun(Req) -> maps:get(qs, Req, []) end},
+            {read_body, 2, fun(Req, _Opts) ->
+                {ok, maps:get(body, Req), Req}
+            end},
+            {reply, 4, fun(Status, _Headers, Body, Req) ->
+                Req#{status => Status, response => jsone:decode(Body)}
+            end}
+        ]},
+        {workspace_resolver, [{guard_channel_binding, 2, fun(_, _) -> ok end}]},
+        {imboy_policy, [
+            {effective_features, 0, fun() ->
+                #{channel => get(j27_channel_enabled) =/= false}
+            end}
+        ]},
+        {config_ds, [
+            {env, 3, fun(imboy, list_cursor_signing_key, _) ->
+                <<"j27-synthetic-signing-key-32-bytes-only">>
+            end}
+        ]},
+        {channel_logic_common, [{channel_transfer, 1, fun(Row) -> Row end}]},
+        {channel_ds, [
+            {list_subscribed, 3, fun(?UID, _, <<>>) ->
+                {ok, get(j27_channel_rows)}
+            end},
+            {list_managed, 2, fun(?UID, <<>>) -> {ok, get(j27_channel_rows)} end},
+            {list_subscribed_keyset, 4, fun j27_channel_keyset/4},
+            {list_managed_keyset, 4, fun j27_channel_keyset/4}
+        ]}
+    ],
+    {setup,
+        fun() ->
+            lists:foreach(
+                fun({Mod, Exp}) ->
+                    {ok, _} = meck_helper:setup_mock(Mod, Exp)
+                end,
+                Mocks
+            )
+        end,
+        fun(_) ->
+            meck_helper:cleanup_mocks([Mod || {Mod, _} <- Mocks])
+        end,
+        fun(_) -> ?_test(Test()) end}.
+
+j27_channel_keyset(Uid, Before, Limit, Q) ->
+    put(j27_channel_keyset, {Uid, Before, Limit, Q}),
+    {ok, get(j27_channel_rows)}.
+
+j27_channel_request(Action, Qs) ->
+    erase({elib_param, post_vals}),
+    Request = #{
+        qs => Qs,
+        headers => #{<<"content-type">> => <<"application/json">>},
+        body => <<"{\"name\":\"j27-synthetic-channel\"}">>
+    },
+    try
+        {ok, Req, _} = channel_handler:init(
+            Request,
+            #{action => Action, current_uid => ?UID}
+        ),
+        ?assertEqual(200, maps:get(status, Req)),
+        maps:get(response, Req)
+    after
+        erase({elib_param, post_vals})
+    end.
+
 create_scope_validation_test_() ->
     %% ⚠️ TestFun 须单表达式直接断言：{Desc, fun} 列表会被 ?_test 吞掉
     %% 静默空转；哨兵经进程字典传递（generator 与执行异进程，Self 收不到）

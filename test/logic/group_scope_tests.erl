@@ -11,6 +11,169 @@
 -define(WS_ID, 800001).
 -define(GID, 777001).
 
+j27_a_legacy_group_page_envelopes_test_() ->
+    j27_group_fixture(fun() ->
+        lists:foreach(
+            fun(Attr) ->
+                erase(j27_group_cursor_fetch),
+                Qs = [{<<"attr">>, Attr}, {<<"page">>, <<"2">>}, {<<"size">>, <<"7">>}],
+                Response = j27_group_request(Qs),
+                ?assertEqual(0, maps:get(<<"code">>, Response)),
+                ?assertEqual(
+                    #{
+                        <<"total">> => 61,
+                        <<"page">> => 2,
+                        <<"size">> => 7,
+                        <<"list">> => [#{<<"id">> => ?GID}]
+                    },
+                    maps:get(<<"payload">>, Response)
+                ),
+                ?assertEqual({?UID, 2, 7, <<>>}, get(j27_group_legacy_fetch)),
+                ?assertEqual(undefined, get(j27_group_cursor_fetch))
+            end,
+            [<<"owner">>, <<"join">>, <<"manager">>]
+        )
+    end).
+
+j27_c_group_cursor_binding_and_progress_test_() ->
+    j27_group_fixture(fun() ->
+        lists:foreach(
+            fun({Attr, Kind}) ->
+                put(j27_group_more, true),
+                Qs = [
+                    {<<"pagination">>, <<"cursor">>},
+                    {<<"attr">>, Attr},
+                    {<<"limit">>, <<"2">>},
+                    {<<"q">>, <<"needle">>}
+                ],
+                Page = maps:get(<<"payload">>, j27_group_request(Qs)),
+                ?assertEqual(true, maps:get(<<"has_more">>, Page)),
+                ?assertEqual(
+                    [#{<<"id">> => 30}, #{<<"id">> => 20}],
+                    maps:get(<<"list">>, Page)
+                ),
+                Token = maps:get(<<"next_cursor">>, Page),
+                Ctx = #{scope => <<"personal">>, workspace_id => 0, q => <<"needle">>},
+                ?assertEqual({ok, 20}, list_cursor:resolve(Token, ?UID, Kind, Ctx)),
+                put(j27_group_more, false),
+                _ = j27_group_request([{<<"cursor">>, Token} | Qs]),
+                ?assertEqual({?UID, 20, 2, <<"needle">>}, get(j27_group_cursor_fetch)),
+                lists:foreach(
+                    fun(ForeignCtx) ->
+                        {ok, Foreign} = list_cursor:issue(
+                            ?UID,
+                            Kind,
+                            ForeignCtx#{upper => 20},
+                            os:system_time(second)
+                        ),
+                        erase(j27_group_cursor_fetch),
+                        erase(j27_group_legacy_fetch),
+                        Error = j27_group_request([{<<"cursor">>, Foreign} | Qs]),
+                        ?assertEqual(400, maps:get(<<"code">>, Error)),
+                        ?assertEqual(undefined, get(j27_group_cursor_fetch)),
+                        ?assertEqual(undefined, get(j27_group_legacy_fetch))
+                    end,
+                    [
+                        Ctx#{scope => <<"workspace">>, workspace_id => ?WS_ID},
+                        Ctx#{q => <<"different">>}
+                    ]
+                )
+            end,
+            [
+                {<<"owner">>, <<"group_owned">>},
+                {<<"join">>, <<"group_joined">>},
+                {<<"manager">>, <<"group_managed">>}
+            ]
+        )
+    end).
+
+j27_c_group_terminal_cursor_is_json_null_test_() ->
+    j27_group_fixture(fun() ->
+        put(j27_group_more, false),
+        lists:foreach(
+            fun(Attr) ->
+                Page = maps:get(
+                    <<"payload">>,
+                    j27_group_request([
+                        {<<"pagination">>, <<"cursor">>}, {<<"attr">>, Attr}
+                    ])
+                ),
+                ?assertEqual(false, maps:get(<<"has_more">>, Page)),
+                ?assertEqual(null, maps:get(<<"next_cursor">>, Page))
+            end,
+            [<<"owner">>, <<"join">>, <<"manager">>]
+        )
+    end).
+
+j27_group_fixture(Test) ->
+    Mocks = [
+        {cowboy_req, [
+            {method, 1, fun(_) -> <<"GET">> end},
+            {parse_qs, 1, fun(Req) -> maps:get(qs, Req, []) end},
+            {reply, 4, fun(Status, _Headers, Body, Req) ->
+                Req#{status => Status, response => jsone:decode(Body)}
+            end}
+        ]},
+        {auth_ds, [{current_uid, 1, fun(#{current_uid := Uid}) -> Uid end}]},
+        {config_ds, [
+            {env, 3, fun(imboy, list_cursor_signing_key, _) ->
+                <<"j27-synthetic-signing-key-32-bytes-only">>
+            end}
+        ]},
+        {group_logic, [
+            {group_transfer, 1, fun(Row) -> Row end},
+            {page_by_owner, 4, fun j27_group_legacy_fetch/4},
+            {page_joined, 4, fun j27_group_legacy_fetch/4},
+            {page_managed, 4, fun j27_group_legacy_fetch/4},
+            {page_by_owner_cursor, 4, fun j27_group_cursor_fetch/4},
+            {page_joined_cursor, 4, fun j27_group_cursor_fetch/4},
+            {page_managed_cursor, 4, fun j27_group_cursor_fetch/4}
+        ]}
+    ],
+    {setup,
+        fun() ->
+            lists:foreach(
+                fun({Mod, Exp}) ->
+                    {ok, _} = meck_helper:setup_mock(Mod, Exp)
+                end,
+                Mocks
+            )
+        end,
+        fun(_) ->
+            meck_helper:cleanup_mocks([Mod || {Mod, _} <- Mocks])
+        end,
+        fun(_) -> ?_test(Test()) end}.
+
+j27_group_legacy_fetch(Uid, Page, Size, Q) ->
+    put(j27_group_legacy_fetch, {Uid, Page, Size, Q}),
+    {ok, #{total => 61, list => [#{<<"id">> => ?GID}]}}.
+
+j27_group_cursor_fetch(Uid, Before, Limit, Q) ->
+    put(j27_group_cursor_fetch, {Uid, Before, Limit, Q}),
+    More = get(j27_group_more) =:= true,
+    Rows =
+        case More of
+            true -> [#{<<"id">> => 30}, #{<<"id">> => 20}];
+            false -> [#{<<"id">> => 10}]
+        end,
+    {ok, #{
+        list => Rows,
+        has_more => More,
+        upper =>
+            case More of
+                true -> 20;
+                false -> 0
+            end
+    }}.
+
+j27_group_request(Qs) ->
+    {ok, Req, _} = group_handler:init(
+        #{qs => Qs},
+        #{action => page, current_uid => ?UID}
+    ),
+    ?assertEqual(200, maps:get(status, Req)),
+    maps:get(response, Req).
+
 add_scope_validation_test_() ->
     %% ⚠️ TestFun 须单表达式直接断言：{Desc, fun} 列表会被 ?_test 吞掉
     %% 静默空转；哨兵经进程字典传递（generator 与执行异进程，Self 收不到）
