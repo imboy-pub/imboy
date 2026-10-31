@@ -650,7 +650,7 @@ English: Work packages are review and verification boundaries, not autonomous ex
 | J19.d | 本机有群历史 | 仅清空本机记录 | 入口仍在，不误隐藏/退群 | N + NC | R | PASS（Android 真机 2026-10-31 r1 EXIT=0 双分支：取消无副作用；确认「操作成功！」后双层返回，会话入口仍在（不误隐藏）且重进聊天页本机 [J19D-SEED] 记录已清空；SQL 复核群行在/status=1/member 3 人/世代未关/服务端消息 2 条未删——清空只清本机不退群成立，脚本 `j19d_clear_messages_test.dart`，见 §11.1 真机批次节）/ — |
 | J19.e | 本机可见会话 | 仅从列表移除 | 只隐藏不清记录/退群，复现遵既有消息合同 | N + NC | R | PASS（Android 真机 2026-10-31 r4 EXIT=0：侧滑删除→隐藏稳定窗 30s 无回弹（设备 sqlite 行级诊断 is_show=0）→宿主注入新消息→按既有消息合同复现（is_show=1）→历史完整+新消息已收；SQL 复核群行在/member 3 人/世代开放/服务端消息完整。**暴露并修复「删除回弹」缺陷** App `22f64df37`（message_read_sync→markAsRead 经 findByPeerId 读出 is_show=0 隐藏行 replace 回内存 map 致 UI 数秒复活；修复后跳过隐藏条目 replace；r1-r3 三跑复现、定向回归 chat+conversation 745/745 绿），脚本 `j19e_remove_conv_test.dart`，见 §11.1 真机批次节）/ — |
 | J20.a | 群/订阅/管理/工作区目录各>1页 | 搜索尾页私有合法对象 | 服务端全范围交集可找到，不靠当前页/公域发现 | AG,AQ,BS | R | NOT_RUN / — |
-| J20.b | 关键词q1请求未完成 | 改q2并晚到q1 | 废弃旧cursor/代次，不污染q2 | AS,AQ | R | NOT_RUN / — |
+| J20.b | 关键词q1请求未完成 | 改q2并晚到q1 | 废弃旧cursor/代次，不污染q2 | AS,AQ | R | PASS（App 单测 AQ `channel_list_state_sync_test.dart` J20.b 命名 case 全绿（App `64d106e8f`，11 case 全绿）：新代次刷新落 [12]+cursor=c2 后，晚到的旧 cursor loadMore 响应（[13]+stale-cursor）被 _subscribedGeneration 代次防护废弃——不 append、不污染游标；q1/q2 请求隔离由同一代次合同承担。AS 侧 copyWith cursor/clearCursor 纯状态合同 23 case 全绿（既有）/ — |
 | J20.c | 固定未变集合 | 逐页到末页，注入重复cursor/矛盾元数据分别 | 稳定排序无漏重；错误停止加载且可重试 | AQ,BS | R | NOT_RUN / — |
 | J20.d | 扫描并发新增/重激活/移除分别 | 继续扫描与刷新 | 旧上界不误纳入/误删，新扫描收敛，每页实时授权 | AQ,BS | R | NOT_RUN / — |
 | J21.a | workspace/频道已归档、来源托管群分别 | 打开/尝试写/查看恢复动作 | 按真实对象只读/拒写；仅真实支持且有权限才可恢复 | AW,BS,MV,MC | R | NOT_RUN / — |
@@ -663,7 +663,7 @@ English: Work packages are review and verification boundaries, not autonomous ex
 | J23.a | 群/频道受理事务分别 | 提交前崩溃或成员/receipt入队失败 | 资源/成员/receipt/逻辑通知全回滚，同键可首次受理 | BG,BS | R | NOT_RUN / — |
 | J23.b | 已提交未响应 | 崩溃、并发/重启重放 | 同资源/规范载荷/初始名，只有一个逻辑受理结果 | BG,BS | R | NOT_RUN / — |
 | J23.c | 通知持久入队已发送未确认 | 崩溃恢复重投 | 固定effect/message身份，一份邀请/成员副作用 | BG,BS | R | NOT_RUN / — |
-| J24.a | 未知意图，client年龄23:59:59.999/24h/时钟倒退分别 | 恢复/重启 | 24h内原键；边界或时间不可信后仅recover_only，不剥键 | AG,AA,AF | R | NOT_RUN / — |
+| J24.a | 未知意图，client年龄23:59:59.999/24h/时钟倒退分别 | 恢复/重启 | 24h内原键；边界或时间不可信后仅recover_only，不剥键 | AG,AA,AF | R | PASS（App 单测 `creation_receipt_contract_test.dart` 27 case 全绿（2026-10-31 跑绿）：decideCreationDispatch J24.a 时钟向量——窗口内 23:59:59.999 仍可原键创建；24h 精确边界（含）→仅 recover_only 不剥键；时钟倒退→仅 recover_only 且 clockUntrusted；recover_only 载荷契约（标志携带/缺省不发送）同文件覆盖）/ — |
 | J24.b | server受理6d23:59:59.999/7d，及7天内删除/撤权分别 | 原键恢复 | 正常有权时7天内保留结果；删除/撤权不泄露内容；过7d只元信息/expired；receipt仍阻止重建，两个时钟独立 | BG,BS | R | NOT_RUN / — |
 | J24.c | 同键改名/成员顺序/重复成员/workspace；只查未见受理后旧POST迟到 | 重放请求或尝试新键重建 | 规范等价重放、实际载荷变化冲突；旧请求可能在途时禁止换键，超时/断连/单次只查/用户确认不构成终止证据；迟到的同原键请求最多受理一次 | BG,BS,AG | R | NOT_RUN / — |
 | J25.a | 已创建后撤权/删除资源分别 | 同键重放或只查 | 不返回无权内容、不复活、不重建，最小受理事实保留 | BG,BS | R | NOT_RUN / — |
