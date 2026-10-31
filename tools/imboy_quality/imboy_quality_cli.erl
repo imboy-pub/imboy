@@ -32,7 +32,9 @@ perf_verdict(WallMs, TargetMs) when
     }.
 
 %% Operation 分级（FRAMEWORK_DESIGN §2）：
-%%  - 任何模式：inspect, report, selftest(合成)
+%%  - 任何模式：inspect, report, selftest(合成), build_check/build_seal
+%%    （P1-05 BUILD01：合成构建操作——只读项目产物 + 写任务收据，不跑业务
+%%    测试、不起重资源，与 synthetic_selftest 同级）
 %%  - LIMITED_PARALLEL：admission_check_only, prepare_selftest
 %%  - INTEGRATED_EXECUTION：guard；eunit_group/eunit_full/baseline 另需 G-HEAVY
 %%  - goal 含 P2 才有：pbt, ct, replay, certify（goal=PHASE1_COMPLETE 一律拒绝）
@@ -58,6 +60,10 @@ permit_mode(limited_parallel, _, _, report) ->
     ok;
 permit_mode(limited_parallel, _, _, synthetic_selftest) ->
     ok;
+permit_mode(limited_parallel, _, _, build_check) ->
+    ok;
+permit_mode(limited_parallel, _, _, build_seal) ->
+    ok;
 permit_mode(limited_parallel, _, _, admission_check_only) ->
     ok;
 permit_mode(limited_parallel, _, {prepare_selftest, Manifest}, prepare_selftest) ->
@@ -68,6 +74,10 @@ permit_mode(limited_parallel, _, {prepare_selftest, Manifest}, prepare_selftest)
 permit_mode(limited_parallel, _, _, _) ->
     {error, operation_not_admitted_in_limited_parallel};
 permit_mode(integrated_execution, _, _, synthetic_selftest) ->
+    ok;
+permit_mode(integrated_execution, _, _, build_check) ->
+    ok;
+permit_mode(integrated_execution, _, _, build_seal) ->
     ok;
 permit_mode(integrated_execution, _, _, inspect) ->
     ok;

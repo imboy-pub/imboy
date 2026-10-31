@@ -83,7 +83,13 @@ http_entries() ->
     meck:expect(throttle, check, fun(_Scope, _Key) -> {ok, 999999, 0} end),
     meck:expect(auth_ds, verify_sign, fun(Req, Env) -> {ok, Req, Env} end),
     meck:expect(auth_ds, condition, fun(_Opt, _Open, _Auth, Req, Env) ->
-        {ok, Req, Env}
+        %% 复刻真实 auth_ds:do_authorization/5 的副作用（src/ds/auth_ds.erl
+        %% L254-259）：注入 current_uid 到 Env.handler_opts。缺失时
+        %% throttle_middleware:get_current_uid/1 读 0 走未认证分支，直呼真实
+        %% login_attempt_ds:admit——裸 VM/未 boot 时必 503（rv7 全量实证，
+        %% 该套件历史上只靠同 VM 残留 DS 侥幸通过）。
+        HOpts = maps:get(handler_opts, Env, #{}),
+        {ok, Req, Env#{handler_opts => HOpts#{current_uid => ?TEST_UID}}}
     end),
     meck:expect(auth_ds, current_uid, fun(_State) -> ?TEST_UID end),
     meck:expect(enterprise_oa_sso_logic, entries, fun(?TEST_UID) ->

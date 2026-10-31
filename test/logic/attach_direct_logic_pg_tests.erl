@@ -184,28 +184,48 @@ happy_path_confirm_physical_key() ->
     ?assertEqual(<<"confirmed">>, maps:get(<<"session_state">>, Row)),
     ok.
 
+%% 独立 _test（不经 foreach 夹具，无 setup/cleanup 保护）。garage_apply 会改写
+%% 共享的 imboy garage / attachment_storage_registry env（含 upload_namespaces
+%% 的 private 映射），必须在测试内自持 save/restore——否则注册表残留到同 VM
+%% 的下一个根：attach_direct_avatar_tests 的 private register 会命中本套件的
+%% root（container=dv1-test-bucket ≠ 其 Bucket）→ {error, location_changed}
+%% （full-20261030T175015Z 与 group 组合复现实证）。
 declare_size_cap_test() ->
-    garage_apply(),
-    {ok, #{object_key := Key}} = attach_direct_logic:register(
-        ?UID,
-        <<"private">>,
-        undefined,
-        undefined,
-        <<"big.bin">>
-    ),
-    %% T08：普通上限 104857600+1 在声明点硬拒（无上传残留）
-    ?assertEqual(
-        {error, size_limit_exceeded},
-        attach_direct_logic:declare(
-            Key, hex64(16#CC), 104857600 + 1, <<"application/octet-stream">>
-        )
-    ),
-    %% 负数声明同样拒绝
-    ?assertEqual(
-        {error, size_limit_exceeded},
-        attach_direct_logic:declare(Key, hex64(16#CD), -1, <<"application/octet-stream">>)
-    ),
-    ok.
+    Before = [
+        {K, application:get_env(imboy, K)}
+     || K <- [garage, attachment_storage_registry]
+    ],
+    try
+        garage_apply(),
+        {ok, #{object_key := Key}} = attach_direct_logic:register(
+            ?UID,
+            <<"private">>,
+            undefined,
+            undefined,
+            <<"big.bin">>
+        ),
+        %% T08：普通上限 104857600+1 在声明点硬拒（无上传残留）
+        ?assertEqual(
+            {error, size_limit_exceeded},
+            attach_direct_logic:declare(
+                Key, hex64(16#CC), 104857600 + 1, <<"application/octet-stream">>
+            )
+        ),
+        %% 负数声明同样拒绝
+        ?assertEqual(
+            {error, size_limit_exceeded},
+            attach_direct_logic:declare(Key, hex64(16#CD), -1, <<"application/octet-stream">>)
+        ),
+        ok
+    after
+        [
+            case Value of
+                undefined -> application:unset_env(imboy, K);
+                {ok, V} -> application:set_env(imboy, K, V)
+            end
+         || {K, Value} <- Before
+        ]
+    end.
 
 unknown_no_promotion_and_no_redispatch() ->
     Sha = hex64(16#BB),

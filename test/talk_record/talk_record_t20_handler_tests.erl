@@ -9,16 +9,18 @@
 
 -define(REC(N), <<"31000000-0000-0000-0000-0000000000", (integer_to_binary(N))/binary>>).
 
-setup(Case) ->
+%% The frozen T20 case registry has no supplier in the owned marker lane;
+%% each generator runs against the shared migrated marker DB like T15/T17/T19.
+setup(_Case) ->
     undefined = get({?MODULE, setup_mock_owners}),
     lists:foreach(
         fun(M) -> undefined = whereis(mock_name(M)) end,
         [elib_response, elib_param, cowboy_req]
     ),
-    State = talk_record_t20_support:setup_all({?MODULE, Case}),
+    State = talk_record_t12_support:setup_all(),
     put({?MODULE, setup_mock_owners}, #{}),
     try
-        talk_record_t20_support:seed(State),
+        talk_record_t12_support:seed(State),
         ok = setup_mocks(),
         State#{handler_mock_owners => get({?MODULE, setup_mock_owners})}
     catch
@@ -83,7 +85,7 @@ cleanup(State) ->
             maps:get(handler_mock_owners, State, #{})
         )
     after
-        talk_record_t20_support:teardown_all(State)
+        talk_record_t12_support:teardown_all(State)
     end.
 
 req(Opts) ->
@@ -188,7 +190,7 @@ delete_handler_error_codes_test_() ->
         ),
         ?assertEqual(412, maps:get(response_status, R3)),
         %% 403：viewer（可见非 owner）
-        talk_record_t20_support:sql(C, [
+        talk_record_t12_support:sql(C, [
             "INSERT INTO talk_record_grant(id, record_id, grantee_user_id, role, granted_by)"
             " VALUES (",
             integer_to_binary(Rid + 910000),
@@ -226,7 +228,7 @@ get_after_delete_whitelist_test_() ->
         U2 = maps:get(u2, Ids),
         {Rid, _} = ready(State, 63),
         %% 删除前 U2 是 viewer 可读（404 对比前置）
-        talk_record_t20_support:sql(maps:get(conn, State), [
+        talk_record_t12_support:sql(maps:get(conn, State), [
             "INSERT INTO talk_record_grant(id, record_id, grantee_user_id, role, granted_by)"
             " VALUES (",
             integer_to_binary(Rid + 920000),

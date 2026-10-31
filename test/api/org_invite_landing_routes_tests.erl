@@ -46,6 +46,13 @@ start_listener() ->
     %% intbe02_http_support:setup_all 的注入口径），避免 rate_not_set
     %% 或测试期限流引入噪声；本套件只发个位数请求。
     {ok, _} = application:ensure_all_started(throttle),
+    %% limiter-v1 L3（rv7 全量实证）：未认证落地页请求的 api_per_ip 分支
+    %% 委托 login_attempt_ds（缺席 503 不 fail-open）；本套件不起 imboy
+    %% app，就绪 owner 不得依赖「同 VM 先行 app boot 残留」的调度运气。
+    ok = eunit_runner:ensure_limiter_ip_authority(#{api_per_ip => {100000, 60000}}),
+    %% 夹具卫生（rv7 全量实证）：rates 注入入进程字典，stop_listener 复原，
+    %% 不向共享 VM 泄漏含 api_per_ip 的混跑口径（app boot 启动校验会拒启）。
+    put(org_invite_prev_throttle_rates, application:get_env(throttle, rates)),
     application:set_env(throttle, rates, [{api_per_ip, 100000, per_minute}]),
     catch throttle:setup(api_per_ip, 100000, per_minute),
     Dispatch = cowboy_router:compile(imboy_router:get_routes()),
@@ -57,7 +64,14 @@ start_listener() ->
     ranch:get_port(?LISTENER).
 
 stop_listener(_Port) ->
-    ok = cowboy:stop_listener(?LISTENER).
+    ok = cowboy:stop_listener(?LISTENER),
+    %% 与 start_listener 的保存配对（eunit 语义：Setup 抛错时 Cleanup 不会被
+    %% 调用，故 erase 必命中 put 存过的值；undefined 分支仅防 put 存 undefined）。
+    case erase(org_invite_prev_throttle_rates) of
+        {ok, PreviousRates} -> application:set_env(throttle, rates, PreviousRates);
+        undefined -> application:unset_env(throttle, rates);
+        false -> ok
+    end.
 
 matrix(Port) ->
     Base = "http://127.0.0.1:" ++ integer_to_list(Port),

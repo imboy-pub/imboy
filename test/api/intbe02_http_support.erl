@@ -157,6 +157,10 @@ setup_all(LimiterOwner) ->
         _:_ -> ok
     end,
     %% throttle rates 必须在 ensure_all_started 之前注入（throttle_app:start 读 env 初始化桶）。
+    %% 夹具卫生（rv7 全量实证）：注入前保存、teardown 复原——共享 VM 内
+    %% 不向后续根泄漏覆写后的 rates（app boot 启动校验按 -config 真值判
+    %% 旧/新混跑，残留注入会连环拒启）。
+    PreviousRates = application:get_env(throttle, rates),
     application:set_env(throttle, rates, [
         {api_per_user, 100000, per_minute},
         {api_per_user_burst, 100000, per_second}
@@ -177,34 +181,40 @@ setup_all(LimiterOwner) ->
         env_prefix => <<"INTBE02_INTTEST">>,
         connect_extra => #{codecs => [{epgsql_codec_rfc3339_bin, []}]}
     }),
-    setup_stages(State#{limiter_owner => LimiterOwner}, [
-        fun snapshot_default_pool/1,
-        fun suspend_default_pool/1,
-        fun(S) ->
-            Pid = ensure_pool(S),
-            S#{owned_pool_pid => Pid}
-        end,
-        fun setup_seed/1,
-        fun(S) ->
-            %% Never adopt or clear a table from a different fixture.
-            undefined = ets:whereis(?COVERED_TAB),
-            ?COVERED_TAB = ets:new(?COVERED_TAB, [named_table, public, set]),
-            S#{owned_covered_tid => ets:whereis(?COVERED_TAB)}
-        end,
-        fun(S) ->
-            {ok, _} = application:ensure_all_started(cowboy),
-            {ok, _} = application:ensure_all_started(ranch),
-            Dispatch = cowboy_router:compile(imboy_router:get_routes()),
-            %% already_started is a refusal, never permission to adopt.
-            {ok, Pid} = cowboy:start_clear(
-                ?LISTENER,
-                [{ip, {127, 0, 0, 1}}, {port, 0}],
-                #{env => #{dispatch => Dispatch}, middlewares => ?MIDDLEWARES}
-            ),
-            S#{owned_listener_pid => Pid}
-        end,
-        fun setup_result/1
-    ]).
+    setup_stages(
+        State#{
+            limiter_owner => LimiterOwner,
+            previous_throttle_rates => PreviousRates
+        },
+        [
+            fun snapshot_default_pool/1,
+            fun suspend_default_pool/1,
+            fun(S) ->
+                Pid = ensure_pool(S),
+                S#{owned_pool_pid => Pid}
+            end,
+            fun setup_seed/1,
+            fun(S) ->
+                %% Never adopt or clear a table from a different fixture.
+                undefined = ets:whereis(?COVERED_TAB),
+                ?COVERED_TAB = ets:new(?COVERED_TAB, [named_table, public, set]),
+                S#{owned_covered_tid => ets:whereis(?COVERED_TAB)}
+            end,
+            fun(S) ->
+                {ok, _} = application:ensure_all_started(cowboy),
+                {ok, _} = application:ensure_all_started(ranch),
+                Dispatch = cowboy_router:compile(imboy_router:get_routes()),
+                %% already_started is a refusal, never permission to adopt.
+                {ok, Pid} = cowboy:start_clear(
+                    ?LISTENER,
+                    [{ip, {127, 0, 0, 1}}, {port, 0}],
+                    #{env => #{dispatch => Dispatch}, middlewares => ?MIDDLEWARES}
+                ),
+                S#{owned_listener_pid => Pid}
+            end,
+            fun setup_result/1
+        ]
+    ).
 
 setup_stages(State, []) ->
     State;
@@ -315,12 +325,47 @@ snapshot_default_pool(State) ->
             State#{prior_default_pool => #{absent => true, config => Conf}};
         Pid ->
             Dump = gen_server:call(Pid, dump_pool),
-            true = maps:with(maps:keys(Conf), Dump) =:= Conf,
+            %% mismatch 必须可诊断：裸 badmatch,false 无法区分第三形态来源
+            %% （start_mfa 二次包装 / 异代 init_count / 异库连接参数）。
+            case pool_shape_matches(Conf, Dump) of
+                true ->
+                    ok;
+                false ->
+                    erlang:error(
+                        {pool_shape_mismatch, #{
+                            conf => Conf,
+                            dump_filtered => maps:with(maps:keys(Conf), Dump),
+                            dump_extra_keys => maps:keys(maps:without(maps:keys(Conf), Dump)),
+                            pool_pid => Pid
+                        }}
+                    )
+            end,
             Pid = whereis(pgsql),
             Sup = whereis(pooler_pgsql_pool_sup),
             true = lists:member({pooler, Pid, worker, [pooler]}, supervisor:which_children(Sup)),
             State#{prior_default_pool => #{pid => Pid, supervisor => Sup, config => Conf}}
     end.
+
+%% 默认 pgsql 池存在两种合法创建形态（全量并发形态修复，见 full-
+%% 20261030T175015Z 七根 snapshot_default_pool L318 {badmatch,false} 与
+%% group-20261030T195423Z 复现）：
+%%   A. imboy_sup:init（imboy boot）→ configure_pg_pool/1 把 start_mfa 从
+%%      {epgsql, connect, Args} 换成 {imboy_pg_connection, connect, Args}
+%%      （epgsql:connect 同参包装 + statement_timeout，见
+%%      src/lib/imboy_pg_connection.erl），但不回写 application env；
+%%   B. eunit_runner:ensure_default_pool/0 / 本模块 restore_default_pool/1
+%%      → 按当前 env 原样建池（epgsql 形态）。
+%% 全量形态下 boot 与重建的先后不可控，快照/挂起/恢复的比对必须接受两种
+%% 形态；除 start_mfa 包装模块外的一切键（name/init_count/max_count/连接
+%% 参数）仍然逐字段强校验，配置漂移检测不被削弱。
+pool_shape_matches(Conf, Dump) ->
+    Filtered = maps:with(maps:keys(Conf), Dump),
+    Filtered =:= Conf orelse Filtered =:= sup_shape(Conf).
+
+sup_shape(#{start_mfa := {epgsql, connect, Args}} = Conf) ->
+    Conf#{start_mfa := {imboy_pg_connection, connect, Args}};
+sup_shape(Conf) ->
+    Conf.
 
 suspend_default_pool(State) ->
     case maps:get(prior_default_pool, State) of
@@ -329,7 +374,7 @@ suspend_default_pool(State) ->
         #{pid := Pid, supervisor := Sup, config := Conf} ->
             Pid = whereis(pgsql),
             Sup = whereis(pooler_pgsql_pool_sup),
-            true = maps:with(maps:keys(Conf), gen_server:call(Pid, dump_pool)) =:= Conf,
+            true = pool_shape_matches(Conf, gen_server:call(Pid, dump_pool)),
             ok = pooler:rm_pool(pgsql)
     end,
     State.
@@ -382,11 +427,10 @@ restore_default_pool(State) ->
                     ok;
                 PriorPid ->
                     PriorSup = whereis(pooler_pgsql_pool_sup),
-                    true =
-                        maps:with(
-                            maps:keys(Conf),
-                            gen_server:call(PriorPid, dump_pool)
-                        ) =:= Conf,
+                    true = pool_shape_matches(
+                        Conf,
+                        gen_server:call(PriorPid, dump_pool)
+                    ),
                     ok;
                 _ ->
                     error(foreign_pool_blocks_default_restore)
@@ -416,6 +460,13 @@ teardown_existing(State) ->
             fun() -> stop_limiter_owner(maps:get(limiter_owner, State, undefined)) end,
             fun() -> application:unset_env(imboy, enterprise_internal_cursor_signing_key) end,
             fun() -> application:unset_env(imboy, enterprise_internal_rate_limits) end,
+            fun() ->
+                case maps:get(previous_throttle_rates, State, missing) of
+                    missing -> ok;
+                    {ok, PreviousRates} -> application:set_env(throttle, rates, PreviousRates);
+                    undefined -> application:unset_env(throttle, rates)
+                end
+            end,
             fun() -> release_owned_pool(State) end
         ]
     ],
@@ -503,6 +554,19 @@ ensure_limiter_owner() ->
                 ok = login_attempt_ds:activate_empty(Owner),
                 unlink(Owner),
                 Owner
+            catch
+                %% start_link 成功但 activate_empty 等后续步骤失败：此刻
+                %% 异常尚未交回 setup_with_limiter 的 catch（LimiterOwner 未
+                %% 绑定），若不自停，这个无监督 owner（imboy app 未 boot 时
+                %% start_link 直启、不挂 imboy_sup）将带着注册名泄漏到后续
+                %% 根——limiter_test_support:restart_owner 杀掉它后无人重启，
+                %% 即 {limiter_owner_not_restarted, Pid} 的另一条来源。
+                Class:Reason:Stack ->
+                    case whereis(login_attempt_ds) of
+                        undefined -> ok;
+                        Leaked -> catch gen_server:stop(Leaked)
+                    end,
+                    erlang:raise(Class, Reason, Stack)
             after
                 case PreviousRates of
                     undefined -> application:unset_env(imboy, limiter_ip_rates);

@@ -14,11 +14,12 @@
     ensure_named_server/1,
     ensure_boot_coordinator/0,
     ensure_default_pool/0,
-    ensure_cache/0
+    ensure_cache/0,
+    ensure_limiter_ip_authority/1
 ]).
 
 -ifdef(TEST).
--export([boot_retry_remaining/3]).
+-export([boot_retry_remaining/3, project_root_dir/1, test_config_path/0]).
 -endif.
 
 %%%===================================================================
@@ -97,6 +98,14 @@ eunit_setup() ->
         _ -> ok
     end,
 
+    %% limiter-v1 L3 顺序依赖消毒（rv7 全量 94 红实证）：共享 VM 里先行的
+    %% 独立 HTTP 链夹具（orgdir/org-invite/intbe02 同款）会向 {throttle,
+    %% rates} 注入 api_per_ip 且不恢复；imboy_app 的启动校验读到「旧
+    %% throttle + 新 owner」混跑 rates 即拒启（max_boot_attempts 连环失败，
+    %% 该 VM 后续所有 app 根全灭）。boot 前一律清掉运行时注入，交由下方
+    %% load_test_config 按 -config 真值回填——补缺不覆写语义下必须先 unset
+    %% 才能覆写。启动结果自此与根调度顺序解耦。
+    application:unset_env(throttle, rates),
     load_test_config(),
     enforce_pool_capacity(),
     application:set_env(imboy, sql_driver, pgsql),
@@ -861,7 +870,7 @@ enforce_pool_capacity() ->
             Init = maps:get(init_count, PgConf, 0),
             case Init >= ?MIN_POOL_INIT_COUNT of
                 true ->
-                    ok;
+                    realign_default_pool(PgConf);
                 false ->
                     Max = maps:get(max_count, PgConf, 0),
                     NewMax = erlang:max(Max, ?MIN_POOL_INIT_COUNT + 8),
@@ -869,10 +878,45 @@ enforce_pool_capacity() ->
                         imboy,
                         pg_conf,
                         PgConf#{init_count := ?MIN_POOL_INIT_COUNT, max_count := NewMax}
+                    ),
+                    realign_default_pool(
+                        PgConf#{init_count := ?MIN_POOL_INIT_COUNT, max_count := NewMax}
                     )
             end;
         _ ->
             ok
+    end.
+
+%% 容量代际对齐（rv4 full-20261030T225326Z 根A snapshot_default_pool L318
+%% 第三形态实证，group-20261031T015444Z 复现：conf_init=40 vs dump_init=5，
+%% 连接参数与 start_mfa 完全同代）：默认池可能由前序套件的恢复路径
+%% （intbe02/organization_directory restore 的 absent 分支、eunit_try_db
+%% 自愈）按**钉容量之前**的 env（init_count=5）建出；随后本函数把 env 钉成
+%% init_count=40，而 imboy_sup boot 对已存在池的 pooler:new_pool 是 no-op
+%% ——env(40) 与池(5) 永久失配，下一个形状快照校验即 badmatch。此处发现
+%% 池容量与钉后 env 不一致时 rm+按当前 env 重建（与 ensure_default_pool
+%% 同语义）。name/start_mfa/连接参数**不在此判定**——跨套件配置漂移仍由
+%% 各 fixture 快照逐字段把关，此处只收敛本函数自己制造的容量代际差。
+realign_default_pool(PgConf) ->
+    case whereis(pgsql) of
+        undefined ->
+            ok;
+        Pid ->
+            case catch gen_server:call(Pid, dump_pool, 5000) of
+                #{init_count := IC, max_count := MC} when is_integer(IC), is_integer(MC) ->
+                    case
+                        IC =:= maps:get(init_count, PgConf, IC) andalso
+                            MC =:= maps:get(max_count, PgConf, MC)
+                    of
+                        true ->
+                            ok;
+                        false ->
+                            _ = ensure_default_pool(),
+                            ok
+                    end;
+                _ ->
+                    ok
+            end
     end.
 
 %% @doc 按当前 pg_conf 重建默认共享池（pgsql）。
@@ -895,6 +939,50 @@ ensure_default_pool() ->
             end;
         _ ->
             error
+    end.
+
+%% @doc limiter-v1 L3 owner 就绪（rv7 全量 94 红实证的另一半）：独立 HTTP
+%% 链夹具（intbe02/orgdir/org-invite/oa-workbench 同款）不起 imboy app，
+%% throttle_middleware 未认证分支委托的 login_attempt_ds 缺席时 admit 恒
+%% unavailable → 503——历史上只在「同 VM 先行 app boot 残留 DS」时侥幸
+%% 通过，与根调度顺序耦合。缺席才就地补齐：start_link + set_ip_rates +
+%% activate_empty（空态批准与 imboy_app:maybe_activate_limiter 同一 seam，
+%% 本模块 eunit_setup 已置 limiter_allow_empty_start=true）；已存在则原样
+%% 复用（含 degraded 等真实状态，不掩盖）。RatesOverride 按 scope 覆写
+%% 默认三联（夹具放大配额防自限流），其余键保持生产默认。
+-spec ensure_limiter_ip_authority(#{atom() => {pos_integer(), pos_integer()}}) -> ok.
+ensure_limiter_ip_authority(RatesOverride) ->
+    case whereis(login_attempt_ds) of
+        undefined ->
+            Rates = maps:merge(
+                #{
+                    passport_per_ip => {10, 60000},
+                    api_per_ip => {60, 60000},
+                    oidc_request => {100, 3600000}
+                },
+                RatesOverride
+            ),
+            {ok, Owner} = login_attempt_ds:start_link(),
+            try
+                ok = login_attempt_ds:set_ip_rates(Rates),
+                ok = login_attempt_ds:activate_empty(Owner),
+                %% unlink：owner 与调用套件进程解耦，跨套件存活（与
+                %% intbe02_http_support:ensure_limiter_owner 同语义）；无监督
+                %% 直启（imboy app 未 boot 时没有 imboy_sup 可挂）。
+                unlink(Owner),
+                ok
+            catch
+                %% start_link 成功但后续失败：无监督 owner 若不自停会带着
+                %% 注册名泄漏到后续根（intbe02 同款防线）。
+                Class:Reason:Stack ->
+                    case whereis(login_attempt_ds) of
+                        undefined -> ok;
+                        Leaked -> catch gen_server:stop(Leaked)
+                    end,
+                    erlang:raise(Class, Reason, Stack)
+            end;
+        _ ->
+            ok
     end.
 
 test_http_port() ->
@@ -928,9 +1016,10 @@ project_root_dir(StartDir) ->
 find_project_root(Dir, 0) ->
     Dir;
 find_project_root(Dir, N) ->
-    ConfigPath = filename:join([Dir, "config", "sys.config"]),
+    %% sys.config 是可选本地配置，不能用其存在性跨越 worktree 边界找主仓。
+    AppPath = filename:join([Dir, "src", "imboy_app.erl"]),
     MakefilePath = filename:join([Dir, "Makefile"]),
-    case filelib:is_regular(ConfigPath) andalso filelib:is_regular(MakefilePath) of
+    case filelib:is_regular(AppPath) andalso filelib:is_regular(MakefilePath) of
         true ->
             Dir;
         false ->

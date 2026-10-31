@@ -18,6 +18,7 @@ main(Args) ->
                 {module, _} = code:ensure_loaded(M)
             end
          || M <- [
+                imboy_quality_build,
                 imboy_quality_cli,
                 imboy_quality_runner,
                 imboy_quality_listener,
@@ -93,6 +94,8 @@ mode_atom(Other) -> Other.
 
 parse(["inspect"]) -> inspect;
 parse(["selftest"]) -> selftest;
+parse(["build-check"]) -> build_check;
+parse(["build-seal"]) -> build_seal;
 parse(["admission", "--check-only"]) -> admission_check_only;
 parse(["guard"]) -> guard;
 parse(["eunit", "--full" | _]) -> eunit_full;
@@ -146,6 +149,57 @@ dispatch(selftest, _Ctx, Ctrl) ->
     Out = filename:join(Ctrl, "evidence/selftest-latest.json"),
     {ok, _} = imboy_report_write(Out, Result),
     {Result, Out};
+dispatch(build_check, _Ctx, _Ctrl) ->
+    %% P1-05 BUILD01 hit/miss 判定：计算内容键 → 收据匹配 + 完整性校验
+    %% （逐 BEAM SHA256 重算）。hit 退出码 0（Make 跳过硬复位，仅增量
+    %% test-build）；miss 退出码 1（Make 走 A1c 硬复位 + 全量重编 + seal）。
+    {ok, Repo} = file:get_cwd(),
+    #{key := Key} = imboy_quality_build:build_key(Repo, build_profile()),
+    case imboy_quality_build:receipt_verify(receipt_path(), Repo, Key) of
+        {hit, Key} ->
+            io:format("== quality-test-build HIT key=~s ==~n", [hex(Key)]),
+            {#{op => build_check, verdict => hit, key => hex(Key)}, undefined};
+        {miss, Reason} ->
+            io:format("== quality-test-build MISS: ~tp ==~n", [Reason]),
+            {
+                #{op => build_check, verdict => miss, key => hex(Key), reason =>
+                    list_to_binary(io_lib:format("~tp", [Reason]))},
+                undefined
+            }
+    end;
+dispatch(build_seal, _Ctx, _Ctrl) ->
+    %% P1-05 BUILD01：miss 路径在 test-build 成功后调用。采集输出目录快照
+    %% （输出路径 / 模块集 / 各 BEAM SHA256 / .app modules）并原子写收据。
+    {ok, Repo} = file:get_cwd(),
+    Project = project_name(),
+    OutDir = "ebin",
+    AppFile = filename:join(OutDir, Project ++ ".app"),
+    %% 收据按仓库相对路径登记（见 imboy_quality_build:receipt_collect 文档）；
+    %% escript 由 Make 配方在仓库根调用，相对路径即解析到 Repo。
+    case imboy_quality_build:receipt_collect(OutDir, AppFile) of
+        {ok, Collect} ->
+            #{key := Key} = imboy_quality_build:build_key(Repo, build_profile()),
+            Receipt = Collect#{key => Key},
+            Path = receipt_path(),
+            ok = imboy_quality_build:write_receipt(Path, Receipt),
+            io:format(
+                "== quality-test-build SEALED key=~s modules=~p app_modules=~p -> ~ts ==~n",
+                [hex(Key), length(maps:get(modules, Collect)),
+                 length(maps:get(app_modules, Collect)), Path]
+            ),
+            {
+                #{
+                    op => build_seal,
+                    ok => true,
+                    key => hex(Key),
+                    modules => length(maps:get(modules, Collect)),
+                    app_modules => length(maps:get(app_modules, Collect))
+                },
+                undefined
+            };
+        {error, Reason} ->
+            erlang:error({receipt_collect_failed, Reason})
+    end;
 dispatch(admission_check_only, _Ctx, Ctrl) ->
     StatePath = filename:join(Ctrl, "STATE.json"),
     {ok, State, Sha} = imboy_state_read(StatePath),
@@ -430,6 +484,35 @@ env_int(Name, Default) ->
         V -> list_to_integer(V)
     end.
 
+%% ---- build-check / build-seal 辅助（P1-05 BUILD01） ----
+%% Make→escript 的键输入通道全部走环境变量（Makefile export 直传，不经 shell
+%% 引号折叠——ERLC_COMPILE_OPTS 内含单引号，命令行拼接会破引号）。
+
+project_name() -> os:getenv("IMBOY_QUALITY_PROJECT", "imboy").
+
+receipt_path() ->
+    case os:getenv("IMBOY_QUALITY_BUILD_RECEIPT") of
+        P when is_list(P), P =/= [] -> P;
+        _ ->
+            filename:join(
+                ".erlang.mk", project_name() ++ ".quality-test-build.receipt"
+            )
+    end.
+
+build_profile() ->
+    #{
+        compiler_opts => split_opts(os:getenv("IMBOY_QUALITY_TEST_ERLC_OPTS")),
+        erlc_opts => split_opts(os:getenv("IMBOY_QUALITY_ERLC_OPTS")),
+        features => split_opts(os:getenv("IMBOY_QUALITY_FEATURES")),
+        test_mode => true
+    }.
+
+split_opts(false) -> [];
+split_opts(S) when is_list(S) ->
+    [P || P <- string:split(S, " ", all), P =/= []].
+
+hex(Bin) when is_binary(Bin) -> binary_to_list(binary:encode_hex(Bin)).
+
 load_estimates(Ctrl) ->
     %% 优先读取上一次分片流（group_*.stream，ETF）的实测 wall_ms 作为 LPT 估计
     %% （无则保守 3000ms）。2026-10-30 修复：曾读 per_root.term，但其为
@@ -664,6 +747,13 @@ exit_code(#{<<"op">> := <<"guard">>, <<"verdict">> := <<"clean">>}, _) ->
     0;
 exit_code(#{<<"op">> := <<"guard">>, <<"verdict">> := <<"violations">>}, _) ->
     1;
+%% P1-05 BUILD01：hit=0（Make 跳过硬复位）；miss=1（触发重建路径）；
+%% seal 成功=0；异常路径经 main 的 catch → halt(2)。
+%% 本组 dispatch 结果为原子键（仅打印，不落盘，与 admission/report 同风格）。
+exit_code(#{op := build_check, verdict := hit}, _) -> 0;
+exit_code(#{op := build_check, verdict := miss}, _) -> 1;
+exit_code(#{op := build_seal, ok := true}, _) -> 0;
+exit_code(#{op := build_seal}, _) -> 2;
 %% full：资源回收失败 → 2（协议/资源异常，优先于测试结果）；根缺失 → 3；
 %% 测试失败/取消 → 1；全绿 → 0
 exit_code(#{<<"run_id">> := _, <<"cleanup">> := #{<<"ok">> := false}}, _) ->

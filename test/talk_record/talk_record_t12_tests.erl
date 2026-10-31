@@ -74,7 +74,11 @@ rec_uuid(N) ->
     <<"00000040-0000-0000-0000-", Pad/binary, Hex/binary>>.
 
 with_db(TestFun) ->
-    {timeout, 120,
+    %% 300s：全量并发形态下同机 4 worker + 重夹具邻居抢占，重 case（内含
+    %% 10s/30s 级同步等待）在 120s 预算内被拖爆（rv5 full-20261031T022808Z
+    %% isolated summary {pass,28},{cancel,2}；fresh VM 单跑 30/30 绿）。
+    %% 仅放宽 eunit case 超时，断言与内部等待不变。
+    {timeout, 300,
         {setup, fun setup/0, fun cleanup/1, fun(State) ->
             ?_test(TestFun(State))
         end}}.

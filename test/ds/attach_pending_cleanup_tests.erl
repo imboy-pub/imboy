@@ -31,7 +31,11 @@ setup() ->
         elib_oss
     ],
     lists:foreach(fun(M) -> meck:new(M, [non_strict, no_link]) end, Modules),
+    %% with_tx 与 with_deadlock_retry_tx（d4bef2e9e 起 queue_pending 改用
+    %% 后者）同合同，均用 transaction/1 替身；不替身后者会在 mock 模块上
+    %% 抛 undef（46932c1c5 同型修复）。
     meck:expect(elib_pg, with_tx, fun transaction/1),
+    meck:expect(elib_pg, with_deadlock_retry_tx, fun transaction/1),
     meck:expect(attach_pending_repo, list_expired, fun(_) -> {ok, []} end),
     meck:expect(attachment_repo, orphan_list_for_delete, fun(_) -> {ok, []} end),
     Modules.

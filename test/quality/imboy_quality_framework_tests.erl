@@ -213,6 +213,83 @@ runner_cancel() ->
     ?assertEqual(test_failed, maps:get(exit, R)),
     ?assert(maps:get(cancel, maps:get(counts, R)) >= 1).
 
+%% 配置探针只读取合成 application env，不启动 imboy 或数据库。
+worker_config_same_source_test_() ->
+    {timeout, 60, fun worker_config_same_source/0}.
+
+worker_config_same_source() ->
+    Dir = scratch_dir("worker-config"),
+    Saved = os:getenv("IMBOY_TEST_CONFIG"),
+    try
+        true = os:putenv("IMBOY_TEST_CONFIG", "controller-stale.config"),
+        compile_config_probe(Dir),
+        lists:foreach(
+            fun(Lane) -> check_worker_config(Lane, Dir) end,
+            [single, ordinary, exclusive, standalone]
+        ),
+        ?assertEqual("controller-stale.config", os:getenv("IMBOY_TEST_CONFIG"))
+    after
+        case Saved of
+            false -> os:unsetenv("IMBOY_TEST_CONFIG");
+            Value -> os:putenv("IMBOY_TEST_CONFIG", Value)
+        end,
+        file:del_dir_r(Dir)
+    end.
+
+check_worker_config(Lane, Dir) ->
+    Base = filename:join(Dir, atom_to_list(Lane)),
+    File = Base ++ ".config",
+    ok = file:write_file(
+        File,
+        io_lib:format(
+            "[{quality_config_probe, [{marker, ~p}]}].~n", [Lane]
+        )
+    ),
+    %% 同时覆盖无后缀与带后缀输入；显式冲突和父进程继承均不得抢占。
+    Config =
+        case Lane of
+            exclusive -> File;
+            _ -> Base
+        end,
+    Env = [
+        {"QUALITY_CONFIG_SENTINEL", "preserved"}
+        | [{"IMBOY_TEST_CONFIG", "explicit-stale.config"} || Lane =/= ordinary]
+    ],
+    Opts = #{config => Config, env => Env, schedulers => 2, code_path => Dir},
+    Mod = quality_config_probe_tests,
+    R =
+        case Lane of
+            single ->
+                imboy_quality_runner:run_in_worker(Mod, Opts, 10000);
+            standalone ->
+                imboy_quality_runner:run_standalone(Mod, Opts, [Dir], Dir, 10000);
+            _ ->
+                Group = imboy_quality_runner:run_group_in_worker([Mod], Opts, 10000, [Dir]),
+                ?assertEqual(ok, maps:get(exit, Group)),
+                maps:get(Mod, maps:get(per_root, Group))
+        end,
+    ?assertEqual(ok, maps:get(exit, R)),
+    ?assertEqual(1, maps:get(pass, maps:get(counts, R))).
+
+compile_config_probe(Dir) ->
+    Src = filename:join(Dir, "quality_config_probe_tests.erl"),
+    ok = file:write_file(Src, <<
+        "-module(quality_config_probe_tests).\n"
+        "-include_lib(\"eunit/include/eunit.hrl\").\n"
+        "config_test() ->\n"
+        "    File = os:getenv(\"IMBOY_TEST_CONFIG\"),\n"
+        "    ?assertEqual(absolute, filename:pathtype(File)),\n"
+        "    ?assertEqual(\".config\", filename:extension(File)),\n"
+        "    ?assertEqual({ok, [[File]]}, init:get_argument(config)),\n"
+        "    {ok, [[{quality_config_probe, [{marker, Marker}]}]]} = file:consult(File),\n"
+        "    ok = application:load({application, quality_config_probe, [\n"
+        "        {vsn, \"1\"}, {modules, []}, {applications, [kernel, stdlib]}, {env, []}]}),\n"
+        "    ?assertEqual({ok, Marker}, application:get_env(quality_config_probe, marker)),\n"
+        "    ?assertEqual(\"preserved\", os:getenv(\"QUALITY_CONFIG_SENTINEL\")).\n"
+    >>),
+    {ok, quality_config_probe_tests} = compile:file(Src, [{outdir, Dir}, return_errors]),
+    ok.
+
 %% ---------- 组模式流式落盘与有界 VM 轮换（SCHED05/SCHED08） ----------
 
 %% 流文件尾部截断（VM 死亡时最后一条不完整）必须被容忍：只返回完整事件。

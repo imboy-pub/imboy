@@ -35,7 +35,11 @@ refuse_nonempty_queues() ->
         {w601_queue_not_isolated, "enterprise_asset_delete_queue"},
         ?P:reset_eb(conn)
     ),
-    ?assertEqual(0, meck:num_calls(?X, q, '_')),
+    %% refuse 路径不再是"零 q 调用"：settle_active 的守卫 UPDATE（drain 每表
+    %% 一次，见 queueproto:settle_active/2）是合法写；本组断言保护的真实语义
+    %% 是不提交/不回滚事务、不 ACK——清空动作在队列未隔离时全被拒绝。
+    ?assertEqual(0, meck:num_calls(?X, q, [conn, "COMMIT"])),
+    ?assertEqual(0, meck:num_calls(?X, q, [conn, "ROLLBACK"])),
     ?assertEqual(0, meck:num_calls(attachment_gc_repo, v5_ack, '_')),
     ok = meck:expect(?X, e, fun(_, _) -> {ok, [], [{false}]} end),
     ?assertEqual(ok, ?P:drain_ordinary(conn)),

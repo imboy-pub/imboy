@@ -230,6 +230,35 @@ beam-presence-guard:
 	  done; \
 	fi
 
+# ==================== eunit 入口路由（P1-05/PLAN311，解析期纯 Make） ====================
+# 权威判定表：tools/imboy_quality/imboy_quality_build.erl entry_route/1（纯 Erlang，
+# 全分支 EUnit 覆盖于 test/quality/imboy_quality_build_tests.erl）；本块是其纯
+# Make 投影——只用 $(origin ...)/$(if ...)，零 shell/escript、零额外开销，两处
+# 注释互指，改判定顺序必须两侧同改。
+#   IMBOY_EUNIT_INNER 非空                              → native（erlang.mk 原生；
+#     eunit-local-legacy 内层 $(MAKE) eunit IMBOY_EUNIT_INNER=1 即此形态，现状）
+#   t / EUNIT_CONFIG / EUNIT_MODS / EUNIT_USE_RELAY 任一 origin≠undefined → legacy
+#     （旧路径；CI 显式参数调用即此形态：backend-ci.yml:154 与 nightly.yml:197 的
+#      `make eunit-local EUNIT_CONFIG=...` 逐字节走旧 eunit-local-legacy 配方）
+#   其余（裸 `make eunit` 与裸 `make eunit-local`）      → quality_full
+# eunit-legacy 目标不参与本判定：下方接线在 quality_full/legacy 两分支都令其落
+# eunit-local-legacy（强制 legacy，无需读 MAKECMDGOALS）。
+# 位置约束：必须先于 include erlang.mk——erlang.mk 会对 EUNIT_MODS 赋值
+# （origin 变 file，晚于此判定会把一切调用误判为 legacy）；也必须先于下方
+# `EUNIT_CONFIG ?=` 默认化，理由相同。
+IMBOY_EUNIT_ROUTE := quality_full
+ifneq ($(IMBOY_EUNIT_INNER),)
+IMBOY_EUNIT_ROUTE := native
+else ifneq ($(origin t),undefined)
+IMBOY_EUNIT_ROUTE := legacy
+else ifneq ($(origin EUNIT_CONFIG),undefined)
+IMBOY_EUNIT_ROUTE := legacy
+else ifneq ($(origin EUNIT_MODS),undefined)
+IMBOY_EUNIT_ROUTE := legacy
+else ifneq ($(origin EUNIT_USE_RELAY),undefined)
+IMBOY_EUNIT_ROUTE := legacy
+endif
+
 # erlang.mk builds c_src as part of app/test-build and relx-rel depends on app.
 # Match the runtime NIF loader's name; do not modify vendored erlang.mk.
 C_SRC_OUTPUT := $(CURDIR)/priv/attachment_disk_lock_nif
@@ -630,13 +659,19 @@ docs-stop:
 # 让 ?TEST_WITH_APP / ?TEST_WITH_DB 类用例真连本地 imboy_v1 跑；否则纯 make eunit
 # 无 -config 时 eunit_runner:ensure_config_loaded/0 硬失败 {missing_config, pg_conf}，
 # 一大批 ?TEST_WITH_APP setup 被 cancelled。
-# 用法: make eunit-local                    # 全量
+# 用法: make eunit-local                    # 全量（旧口径：CI 与诊断显式调用）
 #       make eunit-local t=elib_uri_tests   # 单模块
+# （2026-10-31 P1-12 入口切换起，日常默认入口为 `make eunit` → quality-full，
+#  见下方 IMBOY_ERLANG_QUALITY 段；本目标保留为旧口径诊断/CI 路径，
+#  CI 显式 EUNIT_CONFIG/EUNIT_USE_RELAY 参数不受影响。2026-11-01 P1-05/PLAN311
+#  路由接入：本配方本体改名 eunit-local-legacy（逐字节未动），`make eunit-local`
+#  变为路由入口——裸调用（IMBOYENV=local 且无 t=/EUNIT_* ）委派 quality-full；
+#  显式参数调用按 IMBOY_EUNIT_ROUTE 落到本配方，CI 行为保持。）
 # 前置: 本地 imboy_v1 schema 须已应用到最新迁移，否则 imboy_app:start/2 的
 #       imboy_migrate:migrate/0 会 {out_of_order, ...} 使 app 启动失败。
 # OTP requires a code path under a directory named imboy; use a private alias outside
 # the worktree so existing files named imboy are never replaced or removed.
-.PHONY: eunit-local
+.PHONY: eunit-local eunit-local-legacy
 # EUNIT_CONFIG 可覆盖配置文件（默认 config/sys.local）：CI 无 sys.local.config，
 # 物化 sys.config 后以 EUNIT_CONFIG=config/sys 传同口径全量（见 backend-ci.yml）。
 EUNIT_CONFIG ?= config/sys.local
@@ -648,7 +683,7 @@ EUNIT_CONFIG ?= config/sys.local
 EUNIT_RELAY_CONF := config/sys.eunit-relay.$$$$
 EUNIT_PROCESS_LIMIT ?= 32768
 EUNIT_ERL ?= erl -noinput -boot no_dot_erlang +P $(EUNIT_PROCESS_LIMIT) +Q 1024
-eunit-local:
+eunit-local-legacy:
 	@# A1c：erlang.mk beam-cache 防失步（CP-TD-A02）。L3 门顺序是 make compile →
 	@# eunit-local：当 .erlang.mk/imboy.test 标记与 ebin 内 beam 的 TEST/非TEST 模式
 	@# 失步时（历史运行中断/缓存残留），test-build 因 ebin/imboy.app 比 src 新
@@ -735,43 +770,114 @@ EUNIT_HTTP_PORT ?= 19980
 EUNIT_HTTP_ADM_PORT ?= 19970
 
 # WH-03（2026-09-28）：plain `IMBOYENV=local make eunit` 与 eunit-local 同轨。
-# 现状（2026-09-28 final4 全量实证）：plain eunit 走 erlang.mk 原生路径，
+# 历史（2026-09-28 final4 全量实证）：plain eunit 走 erlang.mk 原生路径，
 # EUNIT_ERL_OPTS 无 -config；且 erlang.mk 的 `-pa test -pa ebin` 因 -pa 后者优先，
 # ebin 的 src/lib/eunit_runner.beam 压过 test/common 同名模块，其 eunit_setup
 # 内部 ensure_config_loaded/0 在 pg_conf 缺失时硬失败 → 68 个 DB 测试文件、
 # 551 处 missing_config、586 个 context setup failed 全量 cancel——这正是原始
-# 报障「大面积 cancel」的主体。eunit-local 已备齐全部解法（-config 注入 +
-# PG 中继 + 私有 HTTP 端口 + A1c/WH-01T/WH-02 确定性重建），此处把用户习惯
-# 命令直接委派给它：单冒号规则在本文件（include erlang.mk 之后）后定义即覆盖
-# erlang.mk 的 eunit（前置并集、配方取后定义），仅 IMBOYENV=local 且非
-# eunit-local 内层调用时生效；eunit-local 的内层 $(MAKE) eunit 已带
-# IMBOY_EUNIT_INNER=1 防递归。非 local 环境（CI 显式构造的调用）不受影响。
+# 报障「大面积 cancel」的主体。eunit-local 备齐了旧解法（-config 注入 +
+# PG 中继 + 私有 HTTP 端口 + A1c/WH-01T/WH-02 确定性重建）。
+# P1-12 入口切换（2026-10-31，evidence/P1-12.json 复评）：等价门遗留差异根
+# （throttle_middleware、oa_direct_cloud_retention_pg_tests）在 rv6 全量
+# （full-20261031T040531Z，HEAD 174d24f4d）逐根 exit=ok，完整 U 1862/1862 全绿，
+# 日常 `make eunit`（IMBOYENV=local 且非内层）自此委派质量新入口 quality-full；
+# 旧路径显式保留为诊断别名 `make eunit-legacy`（同轨 eunit-local；CI 显式
+# EUNIT_CONFIG/EUNIT_USE_RELAY 调用不受影响），不作默认。单冒号规则在本文件
+# （include erlang.mk 之后）后定义即覆盖 erlang.mk 的 eunit（前置并集、配方取
+# 后定义）；eunit-local 的内层 $(MAKE) eunit 已带 IMBOY_EUNIT_INNER=1 防递归，
+# eunit-legacy 落到同一配方故同理。非 local 环境（CI 显式构造的调用）不受影响。
+# P1-05/PLAN311 入口路由（见上方 IMBOY_EUNIT_ROUTE 块）：在 P1-12 基础上补齐——
+# native：erlang.mk 原生定义生效（本块整体不生效，现状内层形态）。
+# quality_full：裸 `make eunit` 与裸 `make eunit-local` 都委派 quality-full；
+#   `eunit-legacy` 两分支都落 eunit-local-legacy —— 强制 legacy 旧路径。
+# legacy（t= 或 EUNIT_* 显式传入，CI 即此）：`eunit` 不在此覆写 → 落 erlang.mk
+#   原生定义（t= 单跑路径恢复直通，不再被 quality-full 吞掉）；`eunit-local` /
+#   `eunit-legacy` 落旧配方 eunit-local-legacy —— CI 的
+#   `make eunit-local EUNIT_CONFIG=...`（backend-ci.yml:154、nightly.yml:197）
+#   执行序列逐字节保持（配方本体未改，仅目标改名后经前置进入）。
 ifeq ($(IMBOYENV),local)
-ifeq ($(IMBOY_EUNIT_INNER),)
-eunit: eunit-local
+ifneq ($(IMBOY_EUNIT_INNER),)
+# native：erlang.mk 原生（现状；eunit-local-legacy 内层 $(MAKE) eunit 即此形态）
+else ifeq ($(IMBOY_EUNIT_ROUTE),quality_full)
+eunit: quality-full
+	$(verbose) :
+eunit-local: quality-full
+	$(verbose) :
+eunit-legacy: eunit-local-legacy
+	$(verbose) :
+else
+eunit-local: eunit-local-legacy
+	$(verbose) :
+eunit-legacy: eunit-local-legacy
 	$(verbose) :
 endif
+else
+# 非 local 环境：`make eunit` 走 erlang.mk 原生（现状）；`make eunit-local`
+# 保持旧路径（该配方自身对内层强制 IMBOYENV=local，行为与本路由前一致）。
+eunit-local: eunit-local-legacy
+	$(verbose) :
 endif
 
 # ==================== IMBOY_ERLANG_QUALITY：纯 Erlang 质量入口薄别名 ====================
 # FRAMEWORK_DESIGN §2 / RUN12：仅调用 Erlang 入口的最小接线，无递归 double-run——
-# 前置只做 eunit-local 同款 TEST 构建硬复位 + test-build（不执行老 eunit）。
-# 日常 `make eunit` / `eunit-local` 暂不委派新入口：等价门仍有可解释差异且完整 U
-# 业务未全绿（见 evidence/P1-12.json）；达标后再切换，老路径届时显式保留为诊断。
-# 硬复位（A1c）导致每次全量 TEST 重编；P1-05 内容指纹（imboy_quality_build）
-# 替代硬复位属后续优化，不在本别名内伪装为已完成。
-.PHONY: quality-selftest quality-test-build eunit-all quality-group
+# 前置只做 TEST 构建硬复位 + test-build（不执行老 eunit）。
+# P1-12 入口切换（2026-10-31，evidence/P1-12.json 复评）：原切换前置（等价门
+# 通过 + 完整 U 业务全绿）已由 rv6 满足（full-20261031T040531Z，HEAD 174d24f4d，
+# 1862/1862、fail=0 cancel=0 missing=0 vm_killer=[]），日常 `make eunit` 委派
+# quality-full；旧路径显式保留为 eunit-legacy / eunit-local（诊断与 CI 显式
+# 口径），不作默认。
+# 硬复位（A1c）导致每次全量 TEST 重编；P1-05 BUILD01 起由内容指纹收据
+# （imboy_quality_build:build_key + receipt_*）承接防失步：quality-test-build
+# 改为 hit/miss（见下方目标），hit 时不再硬复位。
+#
+# 构建键输入的 Make→escript 通道：经 export 直传子进程环境，不走 shell 拼接
+# （ERLC_COMPILE_OPTS 内含单引号，命令行/赋值拼接会破引号）。展开时机为配方
+# 执行期（递归变量），因此捕获的是 erlang.mk 补齐后的最终 ERLC_OPTS /
+# TEST_ERLC_OPTS（含 +'{parse_transform, lager_transform}' / -I src/lib /
+# -DTEST=1）。features 取 ERLC_EXCLUDE（BUILD-00R 特性裁剪清单，profile 切换
+# 即变键）。收据路径在 .erlang.mk 顶层：硬复位只清 beam-cache/$(PROJECT) 子目录，
+# 收据跨轮存活，由键与完整性校验裁决新旧。
+export IMBOY_QUALITY_PROJECT = $(PROJECT)
+export IMBOY_QUALITY_ERLC_OPTS = $(ERLC_OPTS)
+export IMBOY_QUALITY_TEST_ERLC_OPTS = $(TEST_ERLC_OPTS)
+export IMBOY_QUALITY_FEATURES = $(ERLC_EXCLUDE)
+IMBOY_QUALITY_BUILD_RECEIPT = $(ERLANG_MK_TMP)/$(PROJECT).quality-test-build.receipt
+export IMBOY_QUALITY_BUILD_RECEIPT
+
+.PHONY: quality-selftest quality-test-build quality-full eunit-all quality-group eunit-legacy
 quality-selftest:
 	escript scripts/quality.escript selftest
 
+# P1-05 BUILD01 hit/miss：hit = 内容键相同且收据完整性通过（逐 BEAM SHA256
+# 重算，见 imboy_quality_build:receipt_verify）→ 跳过构建，本分支不做任何
+# make（quality-full worker 加载 prep/build 框架产物 + ebin/test/
+# feature-test-ebin，不依赖 .erlang.mk/quality-test-ebin——后者仅服务
+# erlang.mk 原生 eunit 的 legacy 路径）。miss（首跑/键变/收据缺失或损坏/
+# BEAM 缺失或漂移/模块集或 .app modules 变化）→ 原 A1c 硬复位 + 全量 TEST
+# 重编，成功后 build-seal 原子写收据。build-check/seal 经 quality.escript
+# 同一许可门（合成构建操作，PAR24 语义不变）。
 quality-test-build:
-	@rm -f .erlang.mk/$(PROJECT).test
-	@rm -rf .erlang.mk/beam-cache/$(PROJECT)
-	@rm -f ebin/imboy.app
-	IMBOYENV=local $(MAKE) test-build
+	@if escript scripts/quality.escript build-check; then \
+		: ; \
+	else \
+		echo "== quality-test-build: MISS -> A1c 硬复位 + 全量 TEST 重编 + seal =="; \
+		rm -f .erlang.mk/$(PROJECT).test; \
+		rm -rf .erlang.mk/beam-cache/$(PROJECT); \
+		rm -f ebin/imboy.app; \
+		IMBOYENV=local $(MAKE) test-build || exit 1; \
+		escript scripts/quality.escript build-seal || exit 1; \
+	fi
 
-eunit-all: quality-test-build
-	escript scripts/quality.escript eunit --full
+# rv6 绿基线 worker 数（full-20261031T040531Z 以 IMBOY_QUALITY_WORKERS=4 取证；
+# escript 内建默认 2）。命令行可覆写：make eunit IMBOY_QUALITY_WORKERS=2。
+IMBOY_QUALITY_WORKERS ?= 4
+
+# 新日常入口（P1-12 切换后 `make eunit` 的落点）。单模块/分组诊断：
+# make quality-group g=mod1,mod2（旧口径可用 make eunit-local t=<模块>）。
+quality-full: quality-test-build
+	IMBOY_QUALITY_WORKERS=$(IMBOY_QUALITY_WORKERS) escript scripts/quality.escript eunit --full
+
+eunit-all: quality-full
 
 # 诊断：make quality-group g=mod1,mod2（报告标 PARTIAL，不产生 full PASS）
 quality-group: quality-test-build

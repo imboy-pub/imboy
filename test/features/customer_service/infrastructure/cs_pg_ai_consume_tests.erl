@@ -84,7 +84,7 @@ a1_a2_late_commit_not_skipped() ->
         %% 「先消费 E2 再提交 E1」下会永久跳过 E1；xmin 闸门下水位从未
         %% 越过 E1 的 xid ⇒ E1 提交后必被选中。
         ok = sql(C1, <<"COMMIT">>),
-        {ok, S2} = cs_ai_consume_app:consume_batch(org(Scope), ws(Scope), #{}),
+        S2 = consume_until(org(Scope), ws(Scope), 2),
         ?assertEqual(2, maps:get(applied, S2)),
         %% 两事件齐全（eligible=2 语义，A-2）：seen 全覆盖 + 各恰一条 job。
         ?assertEqual(
@@ -113,7 +113,7 @@ a3_rescan_is_idempotent() ->
     try
         Seed = seed_session(Scope),
         [_Ev] = seed_visitor_event(Scope, Seed),
-        {ok, S1} = cs_ai_consume_app:consume_batch(org(Scope), ws(Scope), #{}),
+        S1 = consume_until(org(Scope), ws(Scope), 1),
         ?assertEqual(1, maps:get(applied, S1)),
         {ok, S2} = cs_ai_consume_app:consume_batch(org(Scope), ws(Scope), #{}),
         {ok, S3} = cs_ai_consume_app:consume_batch(org(Scope), ws(Scope), #{}),
@@ -164,7 +164,7 @@ a5_sweep_repairs_manual_seen_hole() ->
     try
         Seed = seed_session(Scope),
         [_Ev] = seed_visitor_event(Scope, Seed),
-        {ok, _} = cs_ai_consume_app:consume_batch(org(Scope), ws(Scope), #{}),
+        consume_until(org(Scope), ws(Scope), 1),
         ?assertEqual(1, seen_count(Scope)),
         %% 人为挖洞：seen 表无 append-only 守卫，直接 DELETE。
         ok = ?FIX:exec(
@@ -214,7 +214,7 @@ i1_i2_full_coverage_and_unique_effects() ->
         seed_visitor_events(Scope, Seed, 3),
         seed_seat_message_event(Scope, Seed),
         seed_opened_event(Scope, Seed),
-        {ok, S1} = cs_ai_consume_app:consume_batch(org(Scope), ws(Scope), #{}),
+        S1 = consume_until(org(Scope), ws(Scope), 5),
         %% 全部 5 条都被消费（I1：seen 是消费证明），其中 3 条产生 job。
         ?assertEqual(5, maps:get(applied, S1)),
         ?assertEqual(5, seen_count(Scope)),
@@ -238,7 +238,7 @@ apply_event_filters_non_visitor_and_bad_shapes() ->
         %% 跳过建 job（ok），seen 仍记录。
         Ev = ev_id(),
         insert_event(?FIX, Scope, Seed, Ev, <<"visitor">>, <<"message.appended">>, #{}),
-        {ok, S1} = cs_ai_consume_app:consume_batch(org(Scope), ws(Scope), #{}),
+        S1 = consume_until(org(Scope), ws(Scope), 1),
         ?assertEqual(1, maps:get(applied, S1)),
         ?assertEqual(1, seen_count(Scope)),
         ?assertEqual(0, job_count(Scope))
@@ -257,7 +257,7 @@ apply_failure_rolls_back_whole_batch() ->
         [_Ev] = seed_visitor_event(Scope, Seed),
         %% 注入恒败 apply：模拟业务副作用故障。
         Bad = fun(_Conn, _Event) -> {error, injected_failure} end,
-        Result = cs_pg_ai:consume_batch(org(Scope), ws(Scope), ?CONSUMER, Bad, #{}),
+        Result = rollback_until(org(Scope), ws(Scope), Bad),
         %% elib_pg:with_tx(reraise=false) 把 throw 收敛为 {rollback, Reason}；
         %% 「整批回滚」的实质由下方 seen/job/cursor 三断言验证。
         ?assertMatch({rollback, {apply_event_failed, injected_failure}}, Result),
@@ -267,6 +267,55 @@ apply_failure_rolls_back_whole_batch() ->
         {error, not_found} = cs_pg_ai:fetch_consume_cursor(org(Scope), ws(Scope), ?CONSUMER)
     after
         cleanup_scope(Scope)
+    end.
+
+%% ===================================================================
+%% 消费轮询（全量并发下的集群级 xmin 压低容忍）
+%% ===================================================================
+
+%% gate.horizon = pg_snapshot_xmin(pg_current_snapshot()) 是 **PG 集群级**
+%% 最小活跃 xid：同实例其他库（全量下其他 quality worker 的 clone 库）的
+%% 运行中事务会把 horizon 压到本库插入事务 xid 之下 ⇒ 刚提交的事件按
+%% 「宁可延迟不可跳过」合同（A-2）当轮不挑，单次 consume 空批
+%% （rv4 full-20261030T225326Z [1,1,7] applied=0 / [1,1,8] 空批 ok 实证）。
+%%
+%% 测试侧对策：轮询至目标 applied（生产语义不变）。收敛性：cursor 的
+%% GREATEST 只升不降；某轮 horizon 仍 < 事件 xid 时仅推进 cursor 到该
+%% horizon（< xid，不会越过未消费事件），压低窗口结束的下一轮 horizon
+%% > 事件 xid ⇒ 该轮 `xmin >= HorizonLo ∧ xmin < horizon` 必选中。
+%% [1,1,8] 的 rollback 路径整批回滚（seen/cursor 无痕），可安全重试。
+-define(CONSUME_POLL_TRIES, 100).
+-define(CONSUME_POLL_INTERVAL_MS, 200).
+
+consume_until(OrgId, WsId, Target) ->
+    consume_until(OrgId, WsId, Target, ?CONSUME_POLL_TRIES).
+
+consume_until(OrgId, WsId, Target, 0) ->
+    %% 轮询耗尽：返回末轮状态交由既有断言给出 got 诊断。
+    {ok, S} = cs_ai_consume_app:consume_batch(OrgId, WsId, #{}),
+    S;
+consume_until(OrgId, WsId, Target, N) ->
+    {ok, S} = cs_ai_consume_app:consume_batch(OrgId, WsId, #{}),
+    case maps:get(applied, S) >= Target of
+        true ->
+            S;
+        false ->
+            timer:sleep(?CONSUME_POLL_INTERVAL_MS),
+            consume_until(OrgId, WsId, Target, N - 1)
+    end.
+
+rollback_until(OrgId, WsId, ApplyEvent) ->
+    rollback_until(OrgId, WsId, ApplyEvent, ?CONSUME_POLL_TRIES).
+
+rollback_until(OrgId, WsId, ApplyEvent, 0) ->
+    cs_pg_ai:consume_batch(OrgId, WsId, ?CONSUMER, ApplyEvent, #{});
+rollback_until(OrgId, WsId, ApplyEvent, N) ->
+    case cs_pg_ai:consume_batch(OrgId, WsId, ?CONSUMER, ApplyEvent, #{}) of
+        {rollback, _} = R ->
+            R;
+        {ok, _} ->
+            timer:sleep(?CONSUME_POLL_INTERVAL_MS),
+            rollback_until(OrgId, WsId, ApplyEvent, N - 1)
     end.
 
 %% ===================================================================

@@ -81,8 +81,39 @@
     attachment_lifecycle_v5_w403_predecessor_tests,
     attachment_lifecycle_v5_hold_protocol_tests,
     attachment_lifecycle_v5_pg_tests,
-    attachment_lifecycle_v5_w404_activation_tests
+    attachment_lifecycle_v5_w404_activation_tests,
+    %% 2026-10-31 textguard 三根接入（att-v5 同口径）：isolated_pg_fixture 车道需要
+    %% TG16/TG19/TG20/TEXTGUARD_* 专属资源 env（marker 服务器连接、密钥文件、schema
+    %% 子集、服务二进制、每根独立 evidence 目录）；普通车道无 per-root env overlay，
+    %% 不注入即 setup fail-closed（textguard_missing_env → cancel，2026-10-30 两轮
+    %% full/group 实证）。exclusive_env_fn 按 root 注入后根照常在独占车道真实执行，
+    %% 失败归 exclusive_failed_roots——根集合与 roots_total 不变，不缩分母。
+    textguard_business_tests,
+    textguard_integration_tests,
+    textguard_shadow_tests,
+    %% 2026-10-31 textguard_export 接入（同上口径的第四根）：src/moderation/
+    %% textguard_export.erl 的 src 伴随根，inventory/1 下根名不带 _tests（Companions
+    %% 剔除 test/lib/textguard_export_tests.erl，保留 src 根）——与三根的 _tests
+    %% 形态不同，EXCL/TEXTGUARD_ROOTS 必须用同名 `textguard_export`。full 轮
+    %% rv4（full-20261030T225326Z）实证普通车道共 VM 失败：isolated 内部 8 pass
+    %% 2 cancel（第 9、10 case），机制为长跑共享 VM 对本地 PG 的新建 TCP 连接被
+    %% macOS Docker 端口转发层瞬态 econnrefused（inttest_marker_db A1c 口径）——
+    %% 并发快照用例的 writer 经 safe_connect 直连不重试，连接失败 → writer
+    %% badmatch 死亡 → spawn_link EXIT 杀死 eunit Runner → 该 case 及后续 case
+    %% cancel（单跑 fresh VM 十 case 全过，evidence/group-20261031T002355Z）。
+    %% 独占车道 fresh VM 消除瞬态窗口；资源面按根差异化（env.erl textguard/4）。
+    textguard_export
 ]).
+
+%% 已知与 peer 宿主不兼容的根：直接走独立非 peer VM（imboy_quality_runner:run_standalone）。
+%% isolated_pg_fixture(_tests) 在 worker peer VM 内 meck(peer) 会关停宿主 VM（opt-run5
+%% 实证；2026-10-31 诊断复现：run_group_in_worker 单根 360-395ms 内 peer 控制进程终止、
+%% worker_crashed）。legacy 全量在非 peer 顶层 VM 执行同一用例（EUnit 伴随语义：
+%% eunit:test(isolated_pg_fixture) 自动附带 isolated_pg_fixture_tests）不受影响；
+%% standalone 车道同为非 peer VM，等价复刻 legacy 执行形态。根仍入 roots_total 并在
+%% standalone 车道真实执行、结果如实归属（不缩分母）；不预标 vm_killer_in_peer——
+%% 该标记保留给 peer 侧意外致死的历史证据（run_standalone_fallback 仍兜底）。
+-define(STANDALONE_ROOTS, [isolated_pg_fixture, isolated_pg_fixture_tests]).
 
 excluded() -> ?EXCL.
 
@@ -195,7 +226,7 @@ run_locked(Roots0, Opts, RunId, Repo, OutDir, T0, Est) ->
             resources => [],
             estimated_ms => max(maps:get(M, Est, 3000), maps:get(M, ?LONG_ROOT_HINTS, 0))
         }
-     || M <- Roots0
+     || M <- Roots0, not lists:member(M, ?STANDALONE_ROOTS)
     ],
     {ok, Groups0} = imboy_quality_pool:schedule(Roots, maps:get(worker_count, Opts, 2)),
     Groups = apply_ordered_affinity(Groups0, ?ORDERED_AFFINITY),
@@ -223,7 +254,18 @@ run_locked(Roots0, Opts, RunId, Repo, OutDir, T0, Est) ->
     %% 合同在 fresh VM 内天然成立）；缺资源按各套件 no-skip 铁律硬失败，
     %% 失败原因进入事件记录（可归属），不再以"排除理由"替代执行。
     Excl = maps:get(exclusive_roots, Opts, []),
-    PerRoot = run_exclusive(Excl, Opts, Paths, CfgFn, PerRoot0),
+    %% 已知与 peer 宿主不兼容的根（?STANDALONE_ROOTS）在普通分片前预分流：
+    %% 不进 peer worker，直接独立非 peer VM 执行一次（legacy 同形态），避免
+    %% 先两轮致死后才由 run_standalone_fallback 兜底的浪费与 vm_killer 误记。
+    PerRoot1 = run_standalone_direct(
+        [M || M <- Roots0, lists:member(M, ?STANDALONE_ROOTS)],
+        Opts,
+        Paths,
+        CfgFn,
+        OutDir,
+        PerRoot0
+    ),
+    PerRoot = run_exclusive(Excl, Opts, Paths, CfgFn, PerRoot1),
     Wall = erlang:monotonic_time(millisecond) - T0,
     AllRoots = Roots0 ++ Excl,
     Summary = summarize(PerRoot, AllRoots),
@@ -279,6 +321,16 @@ run_standalone_fallback(PerRoot, Opts, Paths, CfgFn, OutDir) ->
         PerRoot,
         Killers
     ).
+
+%% ?STANDALONE_ROOTS 预分流：根从未进入 peer worker，直接非 peer VM 执行一次。
+%% 与 run_standalone_fallback 的差异仅在不标 vm_killer_in_peer（无 peer 侧历史）。
+run_standalone_direct([], _Opts, _Paths, _CfgFn, _OutDir, Acc) ->
+    Acc;
+run_standalone_direct([M | Rest], Opts, Paths, CfgFn, OutDir, Acc) ->
+    WOpts = Opts#{schedulers => maps:get(schedulers, Opts, 2), config => CfgFn(0)},
+    Deadline = maps:get(exclusive_deadline_ms, Opts, 900000),
+    R = imboy_quality_runner:run_standalone(M, WOpts, Paths, OutDir, Deadline),
+    run_standalone_direct(Rest, Opts, Paths, CfgFn, OutDir, Acc#{M => R#{lane => standalone}}).
 
 run_exclusive([], _Opts, _Paths, _CfgFn, Acc) ->
     Acc;

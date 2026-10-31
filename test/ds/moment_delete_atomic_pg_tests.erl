@@ -11,7 +11,7 @@ run() ->
     application:load(imboy),
     application:set_env(imboy, sql_driver, pgsql),
     State = inttest_marker_db:provision(#{
-        env_prefix => <<"V5_INTTEST_MOMENT">>,
+        env_prefix => marker_prefix(),
         connect_extra => #{codecs => [{epgsql_codec_rfc3339_bin, []}]}
     }),
     Conn = maps:get(conn, State),
@@ -50,16 +50,40 @@ run() ->
         inttest_marker_db:release(State)
     end.
 
+%% 资源授权形态（no-skip 铁律不变，任一环节失败显式 error）：
+%% - native：回执车道，configure 验证回执并注入 <PREFIX>_DB（绑定库形态）。
+%% - v5_run：attv5 legacy 车道（V5_RUN_DIR），guard 脚本验证连接身份后仍走
+%%   V5 前缀绑定合约（inttest_marker_db fail-closed，缺绑定即显式 error）。
+%% - ordinary：quality 普通车道，前两者皆无。原 require_authorized_fixture
+%%   把"无回执"一律判 contract_conflict 属误设：inttest_marker_db 的真实合约
+%%   并不要求回执，非 V5 前缀走其标准一次性 marker 库形态（自建库 + 12 扩展
+%%   + 全链 strict 迁移，release 时 DROP）；连接身份取 -config 注入的
+%%   imboy.pg_conf（quality 车道为控制器生成的 worker 私有克隆库 config，
+%%   user/pass 缺失由 resolve_server fail-closed），delete 原子性断言不变。
+form() ->
+    case {native_v5_fixture:enabled(), os:getenv("V5_RUN_DIR")} of
+        {true, _} -> native;
+        {false, Run} when is_list(Run), Run =/= "" -> v5_run;
+        {false, _} -> ordinary
+    end.
+
+marker_prefix() ->
+    case form() of
+        ordinary -> <<"IMBOY_INTTEST_MOMENT">>;
+        _ -> <<"V5_INTTEST_MOMENT">>
+    end.
+
 require_authorized_fixture() ->
-    case native_v5_fixture:enabled() of
-        true -> native_v5_fixture:configure(<<"V5_INTTEST_MOMENT">>);
-        false -> error({contract_conflict, marker_db_not_allowlisted_and_connection_identity_unverified})
+    case form() of
+        native -> native_v5_fixture:configure(<<"V5_INTTEST_MOMENT">>);
+        _ -> ok
     end.
 
 configure_owned_postgres() ->
-    case native_v5_fixture:enabled() of
-        true -> native_v5_fixture:configure(<<"V5_INTTEST_MOMENT">>);
-        false -> configure_legacy_postgres()
+    case form() of
+        native -> native_v5_fixture:configure(<<"V5_INTTEST_MOMENT">>);
+        v5_run -> configure_legacy_postgres();
+        ordinary -> ok
     end.
 
 configure_legacy_postgres() ->

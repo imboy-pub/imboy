@@ -79,14 +79,24 @@ token_mock() ->
     ]}.
 
 env_setup() ->
+    %% 先加载启动配置，避免首次 boot 的 application:load 覆盖夹具凭据。
+    _ = application:load(imboy),
+    Previous = save_credentials(),
     application:set_env(imboy, alipay_app_id, <<"2021004142626807">>),
     application:set_env(imboy, alipay_private_key, <<"dummy-priv">>),
-    ok.
+    Previous.
 
-env_cleanup(_) ->
-    application:unset_env(imboy, alipay_app_id),
-    application:unset_env(imboy, alipay_private_key),
-    ok.
+env_cleanup(Previous) ->
+    lists:foreach(
+        fun
+            ({Key, undefined}) -> application:unset_env(imboy, Key);
+            ({Key, {ok, Value}}) -> application:set_env(imboy, Key, Value)
+        end,
+        Previous
+    ).
+
+save_credentials() ->
+    [{Key, application:get_env(imboy, Key)} || Key <- [alipay_app_id, alipay_private_key]].
 
 %%%===================================================================
 %%% 老用户直登
@@ -428,7 +438,32 @@ provision_conflict_rebind_test_() ->
 %%%===================================================================
 
 no_credential_test() ->
-    application:unset_env(imboy, alipay_app_id),
-    application:unset_env(imboy, alipay_private_key),
-    {error, Msg} = passport_logic:alipay_login(<<"authcode123">>, #{}),
-    ?assertEqual(<<"支付宝登录未配置凭据"/utf8>>, Msg).
+    Previous = save_credentials(),
+    try
+        application:unset_env(imboy, alipay_app_id),
+        application:unset_env(imboy, alipay_private_key),
+        {error, Msg} = passport_logic:alipay_login(<<"authcode123">>, #{}),
+        ?assertEqual(<<"支付宝登录未配置凭据"/utf8>>, Msg)
+    after
+        env_cleanup(Previous)
+    end.
+
+credential_fixture_restores_env_test() ->
+    _ = application:load(imboy),
+    Previous = save_credentials(),
+    try
+        lists:foreach(
+            fun(Value) ->
+                Expected = [{Key, Value} || {Key, _} <- Previous],
+                env_cleanup(Expected),
+                Saved = env_setup(),
+                env_cleanup(Saved),
+                ?assertEqual(Expected, save_credentials()),
+                no_credential_test(),
+                ?assertEqual(Expected, save_credentials())
+            end,
+            [undefined, {ok, <<>>}, {ok, <<"existing-credential">>}]
+        )
+    after
+        env_cleanup(Previous)
+    end.

@@ -22,6 +22,7 @@
     parse_node_id/1,
     free_port/0,
     hird_bin/1,
+    textguard_bin/1,
     ensure_aac_fixture/1,
     write_json/2,
     write_config/5,
@@ -111,7 +112,11 @@ template_valid(Args, Name, Digest, Head) ->
     try
         imboy_quality_fixture:connect_db(Args, Name, fun(C) ->
             {ok, _, Rows} = q(C, [
-                "SELECT 1 FROM ", ?TEMPLATE_TABLE, " WHERE digest = '", Digest, "' AND head = ",
+                "SELECT 1 FROM ",
+                ?TEMPLATE_TABLE,
+                " WHERE digest = '",
+                Digest,
+                "' AND head = ",
                 integer_to_list(Head)
             ]),
             {ok, _, [{V}]} = q(C, "SELECT version::text FROM schema_migrations LIMIT 1"),
@@ -149,7 +154,9 @@ migration_head(Repo) ->
         list_to_integer(V)
      || F <- Files,
         {match, [V]} <- [
-            re:run(filename:basename(F), "^(\\d{8})_.*\\.up\\.sql$", [{capture, all_but_first, list}])
+            re:run(filename:basename(F), "^(\\d{8})_.*\\.up\\.sql$", [
+                {capture, all_but_first, list}
+            ])
         ]
     ],
     case Versions of
@@ -397,6 +404,25 @@ hird_bin(Repo) ->
         [] -> {error, hird_binary_missing}
     end.
 
+%% ---- TextGuard 服务二进制（pinned Rust 源构建，scripts/ci/native-eunit-bootstrap.sh:92） ----
+
+%% 与 hird_bin/1 同构：IMBOY_QUALITY_TEXTGUARD_BIN > TEXTGUARD_TEST_BINARY >
+%% 工作区祖先目录的 imboy-textguard/target/release/imboy-textguard > PATH 上的
+%% imboy-textguard。只返回存在的常规文件；缺失 fail-closed（textguard 三根 setup
+%% 的 service owner 必须真实启动本机服务，不以占位二进制假绿）。
+textguard_bin(Repo) ->
+    Env = [os:getenv(K) || K <- ["IMBOY_QUALITY_TEXTGUARD_BIN", "TEXTGUARD_TEST_BINARY"]],
+    Ancestors = [
+        filename:join([A, "imboy-textguard", "target", "release", "imboy-textguard"])
+     || A <- ancestors(Repo, 8)
+    ],
+    Path = [os:find_executable("imboy-textguard")],
+    Cands = [C || C <- Env ++ Ancestors ++ Path, is_list(C), filelib:is_regular(C)],
+    case Cands of
+        [C | _] -> {ok, C};
+        [] -> {error, textguard_binary_missing}
+    end.
+
 ancestors(_Dir, 0) ->
     [];
 ancestors(Dir, N) ->
@@ -428,11 +454,28 @@ ensure_aac_fixture(Ctrl) ->
                         {spawn_executable, Exe},
                         [
                             {args, [
-                                "-nostdin", "-y", "-v", "error",
-                                "-f", "lavfi", "-i", "sine=frequency=440:duration=1",
-                                "-ac", "1", "-ar", "16000", "-c:a", "aac", "-f", "adts", Path
+                                "-nostdin",
+                                "-y",
+                                "-v",
+                                "error",
+                                "-f",
+                                "lavfi",
+                                "-i",
+                                "sine=frequency=440:duration=1",
+                                "-ac",
+                                "1",
+                                "-ar",
+                                "16000",
+                                "-c:a",
+                                "aac",
+                                "-f",
+                                "adts",
+                                Path
                             ]},
-                            exit_status, use_stdio, stderr_to_stdout, binary
+                            exit_status,
+                            use_stdio,
+                            stderr_to_stdout,
+                            binary
                         ]
                     ),
                     case cli_collect(Port, []) of
@@ -484,8 +527,10 @@ write_config(Repo, Base, Tag, PortIndex, {SrcLiteral, Db}) ->
 %% IMBOY_QUALITY_PORT_BASE 调 http 基址，adm 基址恒为其 -10（默认 19980/19970 不变）。
 port_base() ->
     case os:getenv("IMBOY_QUALITY_PORT_BASE") of
-        false -> 19980;
-        "" -> 19980;
+        false ->
+            19980;
+        "" ->
+            19980;
         S ->
             case string:to_integer(string:trim(S)) of
                 {N, ""} when N > 1024, N < 65000 -> N;

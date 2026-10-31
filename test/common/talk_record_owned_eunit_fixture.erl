@@ -14,8 +14,11 @@
 -export([start/1, init/1, handle_begin/3, handle_end/3, handle_cancel/3, terminate/2]).
 
 %% Full-suite mapping preserves order and duplicates. Original generators/bodies
-%% execute unmodified in a fresh VM. T20 retains its frozen per-case registry;
-%% other mapped modules use a fully migrated, single-module marker DB.
+%% execute unmodified in a fresh VM. Every mapped module — including both
+%% former T20 registry roots — runs on the fully migrated, single-module
+%% marker DB: the frozen T20 registry lane has no supplier in this repo
+%% (no compiled pin, no T20_* controller assets), so its two roots execute
+%% their real journeys on the owned marker lane like the rest of the family.
 entry(Module) ->
     case lists:keyfind(Module, 1, budgets()) of
         false ->
@@ -45,6 +48,7 @@ budgets() ->
         {talk_record_capture_tests, 4740},
         {talk_record_content_tests, 3420},
         {talk_record_departure_tests, 3780},
+        {talk_record_delete_tests, 2700},
         {talk_record_ds_pg_tests, 2340},
         {talk_record_ds_split_tests, 1620},
         {talk_record_export_relay_tests, 1140},
@@ -69,14 +73,9 @@ budgets() ->
         {talk_record_client_audio_http_pg_tests, 9300}
     ].
 
-%% T20 owns 25 frozen registry resources. Never provision or rebind a marker DB
-%% here: each original generator activates and tears down its registered case.
-run_module(talk_record_t20_handler_tests = Module) ->
-    false = lists:keymember(imboy, 1, application:which_applications()),
-    undefined = whereis(pgsql),
-    undefined = whereis(pooler_pgsql_pool_sup),
-    undefined = whereis(elib_tsid_meck),
-    run_original(Module);
+%% The two former T20 registry roots execute on the same owned marker DB as
+%% every other mapped module; their fixtures no longer activate the frozen
+%% per-case registry (no controller assets exist for it in this lane).
 run_module(Module) ->
     false = lists:keymember(imboy, 1, application:which_applications()),
     undefined = whereis(pgsql),

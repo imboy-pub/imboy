@@ -92,26 +92,25 @@ leaf_unit(S, {Case, _Ep, Driver, Sc, Domain, Ac} = Spec) ->
 
 %% Serial calls and queue retries are not evidence of PG transaction races.
 %% Block before running the scenario or emitting a successful observation.
-scenario_guard(?C_RACE, _Fun) ->
-    erlang:error({unverified, w203_concurrent_transactions_and_deadlock_retry});
+%% W2-03 冻结 oracle 第三句（bounded deadlock retry cannot change winner）要求
+%% race 叶建立在本环境真实并发事务会产生 PG 死锁、且死锁经真实重试恢复之上。
+%% 旧版无条件 raise 使 8 个 race 叶永远不可执行（假红），本守卫改为 fail-closed
+%% 自证：在真实 slot 库上确定性制造双连接死锁环（UNLOGGED 探针表，不碰业务
+%% 表），断言至少一方收到真实 40P01、赢家与重试后的败者双双真实 COMMIT、行值
+%% 守恒；再用捕获的真实 40P01 驱动生产 elib_pg:with_deadlock_retry_tx 完成一轮
+%% 真实 ROLLBACK+重试+COMMIT 并读回提交值。任一步失败仍 error（守卫语义不放宽、
+%% 不删除）；persistent_term 在本 VM memo 一次，自证失败不写 memo（下一叶重试）。
+scenario_guard(?C_RACE, Fun) ->
+    ok = w203_concurrent_deadlock_retry_selfcheck(),
+    Fun();
 scenario_guard(_Case, Fun) ->
     Fun().
 
 -ifdef(TEST).
 race_guard_test_() ->
     [
-        ?_test(begin
-            put(w601_guard_emit, false),
-            try
-                ?assertError(
-                    {unverified, w203_concurrent_transactions_and_deadlock_retry},
-                    scenario_guard(Case, fun() -> put(w601_guard_emit, true) end)
-                ),
-                ?assertEqual(false, get(w601_guard_emit))
-            after
-                erase(w601_guard_emit)
-            end
-        end)
+        %% 自证通过后 race 场景 fun 必须真实执行（守卫只拦"未验证"，不拦真验证）。
+        ?_test(?assertEqual(executed, scenario_guard(Case, fun() -> executed end)))
      || {Case, _, _, _, _, _} <- race_specs()
     ] ++
         [
@@ -432,6 +431,238 @@ race_scenario(S, Driver, <<"intent_commits_first">>, Domain) ->
         retry_window_attempts => <<"<8">>,
         retry_exhausted_state => <<"blocked">>
     }.
+
+%% --------------------------------------- W2-03 死锁重试前提（fail-closed 自证）
+
+-define(W203_PROBE_TABLE, <<"w601_w203_deadlock_probe">>).
+-define(W203_SIG_TIMEOUT, 30000).
+
+w203_concurrent_deadlock_retry_selfcheck() ->
+    Key = {?MODULE, w203_deadlock_retry_verified},
+    case persistent_term:get(Key, false) of
+        true ->
+            ok;
+        false ->
+            verify_w203_concurrent_deadlock_retry(),
+            persistent_term:put(Key, true),
+            ok
+    end.
+
+verify_w203_concurrent_deadlock_retry() ->
+    ok = w203_setup_probe(),
+    try
+        {RealDeadlock, _Winner} = w203_run_concurrent_deadlock(),
+        %% 赢家首投 + 败者重试各 +1/+2 后两行守恒：双方都真实 COMMIT 过。
+        {ok, [#{<<"v">> := 2}, #{<<"v">> := 2}]} = elib_pg:query(
+            <<"SELECT v FROM ", ?W203_PROBE_TABLE/binary, " ORDER BY id">>,
+            []
+        ),
+        %% 捕获的真实 40P01 驱动生产重试路径：首轮 ROLLBACK、重试轮真实提交。
+        ok = w203_verify_retry_recovery(RealDeadlock)
+    after
+        w203_teardown_probe()
+    end.
+
+w203_setup_probe() ->
+    {ok, _} = elib_pg:query(
+        <<
+            "CREATE UNLOGGED TABLE IF NOT EXISTS ",
+            ?W203_PROBE_TABLE/binary,
+            " (id int PRIMARY KEY, v int NOT NULL)"
+        >>,
+        []
+    ),
+    {ok, _} = elib_pg:query(<<"TRUNCATE ", ?W203_PROBE_TABLE/binary>>, []),
+    {ok, _} = elib_pg:query(
+        <<
+            "INSERT INTO ",
+            ?W203_PROBE_TABLE/binary,
+            " (id, v) VALUES (1, 0), (2, 0) ON CONFLICT (id) DO NOTHING"
+        >>,
+        []
+    ),
+    ok.
+
+w203_teardown_probe() ->
+    _ = elib_pg:query(<<"DROP TABLE IF EXISTS ", ?W203_PROBE_TABLE/binary>>, []),
+    ok.
+
+%% 第二连接参数：与 elib_pg 全局池同源（pg_conf start_mfa），database 以
+%% W403_RESOURCE_MANIFEST 为准；连上后显式对账 current_database（错库即
+%% no_go），并设 statement_timeout 兜底（防死锁检测失效时无限挂起）。
+w203_connect() ->
+    {ok, ManifestBytes} = file:read_file(w203_required("W403_RESOURCE_MANIFEST")),
+    #{<<"database">> := DbBin} = jsone:decode(ManifestBytes),
+    Db = binary_to_list(DbBin),
+    {ok, Pg} = application:get_env(imboy, pg_conf),
+    {epgsql, connect, [Connect0]} = maps:get(start_mfa, Pg),
+    {ok, Conn} = epgsql:connect(Connect0#{database => Db, timeout => 15000}),
+    %% epgsql 原生 equery 行形状（非 elib_pg map 行）；错库即 badmatch no-go。
+    {ok, _, [{CurrentDb}]} = epgsql:equery(Conn, <<"SELECT current_database()">>, []),
+    CurrentDb = DbBin,
+    {ok, _, _} = epgsql:equery(Conn, <<"SET statement_timeout = '20s'">>, []),
+    Conn.
+
+w203_required(Name) ->
+    case os:getenv(Name) of
+        false -> erlang:error({no_go, {w203_required_resource_missing, Name}});
+        "" -> erlang:error({no_go, {w203_required_resource_missing, Name}});
+        V -> V
+    end.
+
+%% 真实死锁环（双连接、同步 epgsql、信号驱动，不 sleep 猜时序）：
+%% helper 持行 2 → main 持行 1 后争行 2（阻塞）→ helper 争行 1 成环。
+%% PG deadlock detector（默认 1s）裁决归 abort 一方：两分支都显式处理——
+%% 败者收到真实 40P01 后确认 ROLLBACK 并重试到真实 COMMIT；赢家先真实 COMMIT。
+%% 返回 {RealDeadlock, Winner}，RealDeadlock 是本环境捕获的 40P01 #error{} 记录。
+w203_run_concurrent_deadlock() ->
+    Main = w203_connect(),
+    try
+        MainSelf = self(),
+        HelperPid = spawn(fun() -> w203_helper_run(MainSelf) end),
+        ok = w203_wait_locked(),
+        {ok, _, _} = epgsql:equery(Main, <<"BEGIN">>, []),
+        {ok, _} =
+            epgsql:equery(
+                Main, <<"UPDATE ", ?W203_PROBE_TABLE/binary, " SET v=v+1 WHERE id=1">>, []
+            ),
+        HelperPid ! {w203_main_go, self()},
+        MainRow2 =
+            epgsql:equery(
+                Main, <<"UPDATE ", ?W203_PROBE_TABLE/binary, " SET v=v+1 WHERE id=2">>, []
+            ),
+        case MainRow2 of
+            {error, Err = #error{code = <<"40P01">>}} ->
+                %% main 败：确认 ROLLBACK 释放行 1，等 helper（赢家）提交后重试。
+                {ok, _, _} = epgsql:equery(Main, <<"ROLLBACK">>, []),
+                ok = w203_wait_committed(),
+                ok = w203_retry_commit(Main),
+                w203_wait_helper_done(),
+                {Err, main};
+            {ok, _} ->
+                %% helper 败：等其 ROLLBACK 后的真实 40P01，main（赢家）提交。
+                Err = w203_wait_deadlock(),
+                {ok, _, _} = epgsql:equery(Main, <<"COMMIT">>, []),
+                w203_wait_helper_done(),
+                {Err, helper};
+            Other ->
+                erlang:error({w203_unexpected_main_row2, Other})
+        end
+    after
+        _ = epgsql:close(Main)
+    end.
+
+%% 每个信号独立等待函数：crash 消息即时上抛（不留残留、不占超时），
+%% 变量绑定封闭在各自函数作用域（避免跨 receive 同名绑定 unsafe）。
+w203_wait_locked() ->
+    receive
+        w203_helper_locked -> ok;
+        {w203_helper_crash, C, R, St} -> erlang:raise(C, R, St)
+    after ?W203_SIG_TIMEOUT -> erlang:error(w203_helper_locked_timeout)
+    end.
+
+w203_wait_committed() ->
+    receive
+        w203_helper_committed -> ok;
+        {w203_helper_crash, C, R, St} -> erlang:raise(C, R, St)
+    after ?W203_SIG_TIMEOUT -> erlang:error(w203_helper_commit_timeout)
+    end.
+
+w203_wait_deadlock() ->
+    receive
+        {w203_helper_deadlock, Err} -> Err;
+        {w203_helper_crash, C, R, St} -> erlang:raise(C, R, St)
+    after ?W203_SIG_TIMEOUT -> erlang:error(w203_helper_deadlock_timeout)
+    end.
+
+w203_helper_run(Parent) ->
+    Conn = w203_connect(),
+    try
+        {ok, _, _} = epgsql:equery(Conn, <<"BEGIN">>, []),
+        {ok, _} =
+            epgsql:equery(
+                Conn, <<"UPDATE ", ?W203_PROBE_TABLE/binary, " SET v=v+1 WHERE id=2">>, []
+            ),
+        Parent ! w203_helper_locked,
+        receive
+            {w203_main_go, Parent} -> ok
+        after ?W203_SIG_TIMEOUT -> erlang:error(w203_go_timeout)
+        end,
+        case
+            epgsql:equery(
+                Conn, <<"UPDATE ", ?W203_PROBE_TABLE/binary, " SET v=v+1 WHERE id=1">>, []
+            )
+        of
+            {error, Err = #error{code = <<"40P01">>}} ->
+                {ok, _, _} = epgsql:equery(Conn, <<"ROLLBACK">>, []),
+                Parent ! {w203_helper_deadlock, Err},
+                %% 败者重试：UPDATE id=2 单向等 main COMMIT，无环。
+                ok = w203_retry_commit(Conn),
+                Parent ! w203_helper_done;
+            {ok, _} ->
+                %% main 已 ROLLBACK（main 败分支）：先提交，再放行 main 重试。
+                {ok, _, _} = epgsql:equery(Conn, <<"COMMIT">>, []),
+                Parent ! w203_helper_committed,
+                Parent ! w203_helper_done;
+            Other ->
+                erlang:error({w203_unexpected_helper_row1, Other})
+        end
+    catch
+        Class:Reason:Stack ->
+            Parent ! {w203_helper_crash, Class, Reason, Stack},
+            exit(normal)
+    after
+        _ = epgsql:close(Conn)
+    end.
+
+w203_wait_helper_done() ->
+    receive
+        w203_helper_done -> ok;
+        {w203_helper_crash, Class, Reason, Stack} -> erlang:raise(Class, Reason, Stack)
+    after ?W203_SIG_TIMEOUT -> erlang:error(w203_helper_done_timeout)
+    end.
+
+w203_retry_commit(Conn) ->
+    {ok, _, _} = epgsql:equery(Conn, <<"BEGIN">>, []),
+    {ok, _} =
+        epgsql:equery(Conn, <<"UPDATE ", ?W203_PROBE_TABLE/binary, " SET v=v+1 WHERE id=1">>, []),
+    {ok, _} =
+        epgsql:equery(Conn, <<"UPDATE ", ?W203_PROBE_TABLE/binary, " SET v=v+1 WHERE id=2">>, []),
+    {ok, _, _} = epgsql:equery(Conn, <<"COMMIT">>, []),
+    ok.
+
+%% 用第 1 步捕获的真实 40P01 驱动生产 elib_pg:with_deadlock_retry_tx：
+%% 首轮把该错误作为事务体结果返回（生产路径确认 ROLLBACK），重试轮真实
+%% UPDATE 并 COMMIT，恰好一轮重试，提交值落库读回——死锁错误是真实的、
+%% 生产重试路径是真实工作的，缺一即红。
+w203_verify_retry_recovery(RealDeadlock) ->
+    put(w203_retry_round, 0),
+    try
+        Committed = elib_pg:with_deadlock_retry_tx(fun(Conn) ->
+            Round = get(w203_retry_round),
+            put(w203_retry_round, Round + 1),
+            case Round of
+                0 ->
+                    {error, RealDeadlock};
+                1 ->
+                    {ok, _} = epgsql:equery(
+                        Conn,
+                        <<"UPDATE ", ?W203_PROBE_TABLE/binary, " SET v=42 WHERE id=1">>,
+                        []
+                    ),
+                    committed_after_real_retry
+            end
+        end),
+        ?assertEqual(committed_after_real_retry, Committed),
+        ?assertEqual(2, get(w203_retry_round)),
+        {ok, [#{<<"v">> := 42}]} = elib_pg:query(
+            <<"SELECT v FROM ", ?W203_PROBE_TABLE/binary, " WHERE id = 1">>,
+            []
+        ),
+        ok
+    after
+        erase(w203_retry_round)
+    end.
 
 %% ---------------------------------------------------------------- helpers
 
