@@ -630,8 +630,11 @@ docs-stop:
 # 让 ?TEST_WITH_APP / ?TEST_WITH_DB 类用例真连本地 imboy_v1 跑；否则纯 make eunit
 # 无 -config 时 eunit_runner:ensure_config_loaded/0 硬失败 {missing_config, pg_conf}，
 # 一大批 ?TEST_WITH_APP setup 被 cancelled。
-# 用法: make eunit-local                    # 全量
+# 用法: make eunit-local                    # 全量（旧口径：CI 与诊断显式调用）
 #       make eunit-local t=elib_uri_tests   # 单模块
+# （2026-10-31 P1-12 入口切换起，日常默认入口为 `make eunit` → quality-full，
+#  见下方 IMBOY_ERLANG_QUALITY 段；本目标保留为旧口径诊断/CI 路径，
+#  CI 显式 EUNIT_CONFIG/EUNIT_USE_RELAY 参数不受影响。）
 # 前置: 本地 imboy_v1 schema 须已应用到最新迁移，否则 imboy_app:start/2 的
 #       imboy_migrate:migrate/0 会 {out_of_order, ...} 使 app 启动失败。
 # OTP requires a code path under a directory named imboy; use a private alias outside
@@ -735,32 +738,42 @@ EUNIT_HTTP_PORT ?= 19980
 EUNIT_HTTP_ADM_PORT ?= 19970
 
 # WH-03（2026-09-28）：plain `IMBOYENV=local make eunit` 与 eunit-local 同轨。
-# 现状（2026-09-28 final4 全量实证）：plain eunit 走 erlang.mk 原生路径，
+# 历史（2026-09-28 final4 全量实证）：plain eunit 走 erlang.mk 原生路径，
 # EUNIT_ERL_OPTS 无 -config；且 erlang.mk 的 `-pa test -pa ebin` 因 -pa 后者优先，
 # ebin 的 src/lib/eunit_runner.beam 压过 test/common 同名模块，其 eunit_setup
 # 内部 ensure_config_loaded/0 在 pg_conf 缺失时硬失败 → 68 个 DB 测试文件、
 # 551 处 missing_config、586 个 context setup failed 全量 cancel——这正是原始
-# 报障「大面积 cancel」的主体。eunit-local 已备齐全部解法（-config 注入 +
-# PG 中继 + 私有 HTTP 端口 + A1c/WH-01T/WH-02 确定性重建），此处把用户习惯
-# 命令直接委派给它：单冒号规则在本文件（include erlang.mk 之后）后定义即覆盖
-# erlang.mk 的 eunit（前置并集、配方取后定义），仅 IMBOYENV=local 且非
-# eunit-local 内层调用时生效；eunit-local 的内层 $(MAKE) eunit 已带
-# IMBOY_EUNIT_INNER=1 防递归。非 local 环境（CI 显式构造的调用）不受影响。
+# 报障「大面积 cancel」的主体。eunit-local 备齐了旧解法（-config 注入 +
+# PG 中继 + 私有 HTTP 端口 + A1c/WH-01T/WH-02 确定性重建）。
+# P1-12 入口切换（2026-10-31，evidence/P1-12.json 复评）：等价门遗留差异根
+# （throttle_middleware、oa_direct_cloud_retention_pg_tests）在 rv6 全量
+# （full-20261031T040531Z，HEAD 174d24f4d）逐根 exit=ok，完整 U 1862/1862 全绿，
+# 日常 `make eunit`（IMBOYENV=local 且非内层）自此委派质量新入口 quality-full；
+# 旧路径显式保留为诊断别名 `make eunit-legacy`（同轨 eunit-local；CI 显式
+# EUNIT_CONFIG/EUNIT_USE_RELAY 调用不受影响），不作默认。单冒号规则在本文件
+# （include erlang.mk 之后）后定义即覆盖 erlang.mk 的 eunit（前置并集、配方取
+# 后定义）；eunit-local 的内层 $(MAKE) eunit 已带 IMBOY_EUNIT_INNER=1 防递归，
+# eunit-legacy 落到同一配方故同理。非 local 环境（CI 显式构造的调用）不受影响。
 ifeq ($(IMBOYENV),local)
 ifeq ($(IMBOY_EUNIT_INNER),)
-eunit: eunit-local
+eunit: quality-full
+	$(verbose) :
+eunit-legacy: eunit-local
 	$(verbose) :
 endif
 endif
 
 # ==================== IMBOY_ERLANG_QUALITY：纯 Erlang 质量入口薄别名 ====================
 # FRAMEWORK_DESIGN §2 / RUN12：仅调用 Erlang 入口的最小接线，无递归 double-run——
-# 前置只做 eunit-local 同款 TEST 构建硬复位 + test-build（不执行老 eunit）。
-# 日常 `make eunit` / `eunit-local` 暂不委派新入口：等价门仍有可解释差异且完整 U
-# 业务未全绿（见 evidence/P1-12.json）；达标后再切换，老路径届时显式保留为诊断。
+# 前置只做 TEST 构建硬复位 + test-build（不执行老 eunit）。
+# P1-12 入口切换（2026-10-31，evidence/P1-12.json 复评）：原切换前置（等价门
+# 通过 + 完整 U 业务全绿）已由 rv6 满足（full-20261031T040531Z，HEAD 174d24f4d，
+# 1862/1862、fail=0 cancel=0 missing=0 vm_killer=[]），日常 `make eunit` 委派
+# quality-full；旧路径显式保留为 eunit-legacy / eunit-local（诊断与 CI 显式
+# 口径），不作默认。
 # 硬复位（A1c）导致每次全量 TEST 重编；P1-05 内容指纹（imboy_quality_build）
-# 替代硬复位属后续优化，不在本别名内伪装为已完成。
-.PHONY: quality-selftest quality-test-build eunit-all quality-group
+# 替代硬复位属后续优化（P2），不在本别名内伪装为已完成。
+.PHONY: quality-selftest quality-test-build quality-full eunit-all quality-group eunit-legacy
 quality-selftest:
 	escript scripts/quality.escript selftest
 
@@ -770,8 +783,16 @@ quality-test-build:
 	@rm -f ebin/imboy.app
 	IMBOYENV=local $(MAKE) test-build
 
-eunit-all: quality-test-build
-	escript scripts/quality.escript eunit --full
+# rv6 绿基线 worker 数（full-20261031T040531Z 以 IMBOY_QUALITY_WORKERS=4 取证；
+# escript 内建默认 2）。命令行可覆写：make eunit IMBOY_QUALITY_WORKERS=2。
+IMBOY_QUALITY_WORKERS ?= 4
+
+# 新日常入口（P1-12 切换后 `make eunit` 的落点）。单模块/分组诊断：
+# make quality-group g=mod1,mod2（旧口径可用 make eunit-local t=<模块>）。
+quality-full: quality-test-build
+	IMBOY_QUALITY_WORKERS=$(IMBOY_QUALITY_WORKERS) escript scripts/quality.escript eunit --full
+
+eunit-all: quality-full
 
 # 诊断：make quality-group g=mod1,mod2（报告标 PARTIAL，不产生 full PASS）
 quality-group: quality-test-build
