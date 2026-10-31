@@ -184,13 +184,17 @@ def parse_verbose(text):
             "test": pending["func"], "line": pending["line"],
             "detail": "test line never reached an ok/failure terminator",
         })
+    # Dual-driver battery logs carry two EUnit summaries in one file
+    # (e.g. "All 16 tests passed." twice); accumulate so the count matches
+    # the total parsed test lines (run8 ADAPTER_FAIL: assignment overwrote,
+    # 16 != 32 on a 2x16-log).  A "Test passed." line counts as 1.
     summary_count = 0
     summary_raw = ""
     for line in text.splitlines():
         match = SUMMARY_RE.match(line)
         if match:
             count = match.group(1) or match.group(2)
-            summary_count = int(count) if count else 1
+            summary_count += int(count) if count else 1
             summary_raw = line.strip()
     done = None
     for match in DONE_RE.finditer(text):
