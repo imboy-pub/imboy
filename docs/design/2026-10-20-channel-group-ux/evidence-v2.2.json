@@ -1316,8 +1316,8 @@
         "AV"
       ],
       "applicability": "R",
-      "status": "NOT_RUN",
-      "evidence": null
+      "status": "FAIL",
+      "evidence": "Android 真机 2026-10-31 r1-r5：r1 曾走通①未读到达②标已读归零③设待处理不写 unread；r2-r5 复现缺陷 F——在线直推消息落库成功但 unread_num 停留 0（ui/db 双值诊断），疑似在线/离线写路径增量不一致，开放追踪（见 §11.1 批次四）；脚本 j17c_markread_pending_test.dart"
     },
     {
       "id": "J17.d",
@@ -1920,7 +1920,7 @@
       "evidence": null
     }
   ],
-  "plan_sha256": "0a27b817ce5057a9148ea89a354f4836f240ba82f018148017b91b0bb73a1b59",
+  "plan_sha256": "3e9d46e19f847b1cd07c38e7c350d3741806335b4bfc474b305acb57c2c3181f",
   "source_attachment_sha256": "964b99c4cadec1c802707cd5773b2a88e0a2c1a0e78ea54e896ccc2472ee0f8b",
   "history_document_sha256": {
     "plan-v1.md": "0d929642c5030bb557b48ae94e89e679eada64c6e4d407d1ca4b5fb7a1501f67",

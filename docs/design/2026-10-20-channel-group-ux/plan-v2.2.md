@@ -635,7 +635,7 @@ English: Work packages are review and verification boundaries, not autonomous ex
 | J16.c | 两设备同账号 | 修改本机DND后读另一端 | 本机合同不冒称同步；已存在服务端动作继续符合其真源 | N + NC | R | BLOCKED（需两台真机组成双设备同账号向量，本环境仅绑定单台 Android 真机；缺设备证据保留 BLOCKED，W13 不发总 PASS，见 §11.1 资源阻断盘点 2026-10-31）/ — |
 | J17.a | 个人/工作区当前成员分别 | 明确pin=true/false | 原服务端真源回读/排序正确，失败不假成功 | AC,BP | R | NOT_RUN / — |
 | J17.b | 可见会话 | 明确hidden=true/false，失败/超时/防重分别 | 本地与远端结果一致或明确待核对；不隐藏错账号对象 | AC,BP | R | NOT_RUN / — |
-| J17.c | 有真实未读、manual_pending独立 | 标已读及设待处理分别 | 水位单调，人工标记不写unread=1，彼此不清除 | AC,AV | R | NOT_RUN / — |
+| J17.c | 有真实未读、manual_pending独立 | 标已读及设待处理分别 | 水位单调，人工标记不写unread=1，彼此不清除 | AC,AV | R | FAIL（缺陷 F 开放；Android 真机 2026-10-31 r1-r5：r1 曾走通①未读到达→②标已读归零→③设待处理不写 unread（截图收据），r2-r5 复现失败——在线直推消息落库成功（isNewRow=true/后台处理完成）但 conversation.unread_num 停留 0（ui/db 双值诊断），疑似在线/离线两条写路径的未读增量行为不一致，需专项取证修复后重验；脚本 `j17c_markread_pending_test.dart`（带双值诊断），诊断与已证伪清单见 §11.1 批次四）/ — |
 | J17.d | 两个端读同version | A写后B旧version写；回读再重试原目标 | 冲突可见，保留desired_value，不无限覆盖/重复取反 | AC,BP | R | NOT_RUN / — |
 | J17.e | 旧客户端无expected_version | pin/unpin/delete/restore分别 | 同业务入口推进版本，新端能检测旧写冲突 | BP | R | NOT_RUN / — |
 | J18.a | C2C/C2G发送场景 | 发送失败后重试 | 失败可见、重试同逻辑消息不重复 | N + NC | R | PASS（Android 真机 2026-10-31，C2C/C2G 双分支各自独立脚本：断连发送失败可见（不进正向态）→ WS 恢复自动补发（无手动重试按钮，产品走离线队列）→ server_ack 清重试队列 → 恰好一条气泡+终态稳定；C2G 后端复核 msg_c2g 恰好 1 条 + msg_c2g_timeline fan-out 恰好 3 条（三成员同 msg_id），脚本 `j18a_send_retry_test.dart`/`j18a_c2g_send_retry_test.dart`，见 §11.1 真机批次节）/ — |
@@ -1057,3 +1057,12 @@ J18.f 另因隔离归档/账号 fixture 未具备与合成库全量回填竞态�
 - **缺陷 B（insert 丢 is_muted 列）修复 App `f27ca2915`**：ConversationRepo.insert 列清单缺 is_muted——占位/新建行 DND 偏好落库即丢（列默认 0）。补列映射（列自 v17-v24 迁移既存）。r6 行级诊断 dbRow isMuted=1 验证。
 - **占位行向量 FAIL 如实留档（开放追踪）**：合成库清理 alice-carol 服务端历史后占位行（is_show=0/is_muted=1）在登录后保持隐藏 ✓（权威同步不再复活），但注入首消息后 upsert 未恢复占位行 isShow、列表不现（r4-r6 三跑一致；r20 双修复后未再单测该向量——已让位于主合同收口）。排障中证伪：非权威同步复活（服务端历史已清）、非双行、非 hide 未落库；候选根因=消息链 findByPeerId 与占位行 peer_id 表示形态未命中（需 peerInfo 形态取证）。
 - **方法论沉淀（批次三）**：①设置页断言不得在 settle 后立即取 switch 值（异步回填假阴性），须轮询等待回填；②晚到弹窗（E2EE 恢复指南/升级弹窗）遮罩会静默吞 tap——点击前调 dismiss* helper 三件套兜底；③忙态（_mutePending）吞点击是合同内行为，harness 以带退避重试点击应对并如实打印 taps；④journey 前置锚点用 DB 真源而非上轮 UI 残留（DB 锚点自洽，脚本不依赖运行顺序）。
+
+#### 2026-10-31 真机验收批次四（J17.c，缺陷 F 开放留档）
+
+设备与部署同前。fixture：alice-bob C2C；未读消息经 RPC `msg_c2c_logic:c2c/3` 注入（仓外 /tmp/j17_seed.erl，SEED_MSG_ID 区分）。
+
+- **J17.c 标已读/设待处理 FAIL（缺陷 F 开放）**：journey=注入未读→标已读→设待处理→再注入→彼此不清除。r1 曾走通前三步（j17c_01/02 截图收据：角标≥1→标已读归 0→设待处理后 DB unread 仍 0——「人工标记不写 unread=1」已证）；④「第二条未读到达」起 r2-r5 四跑复现失败：**在线直推消息落库成功（isNewRow=true、后台处理完成、CLIENT_ACK 正常）但 conversation.unread_num 停留 0**（ui/db 双值诊断每 15 轮打印，全程 0）。
+- **已证伪清单**：非消息链失败（落库/ACK/后台处理全成功）；非去重吞没（isNewRow=true）；非服务端 frame created_at 形态（在线直推透传发送者毫秒数字）；非「标已读水位遮蔽」（r5 清基线后未执行标已读仍复现）；非收面板误点聊天页（改右滑收回面板仍复现）；非权威同步覆盖（候选未排除：applyConversationSnapshot 乱序旧快照覆盖/在线与离线两条写路径的增量行为不一致）。
+- **修复方向（开放）**：定位在线直推路径 unread 增量失效点（message.dart 事务 incrementUnread 上下游），专项取证后修复重验；J17.d CAS 冲突向量依赖同一未读/待处理链路，随缺陷 F 一并重验。
+- **收口说明**：脚本与诊断已提交（App 仓 integration_test/chat/j17c_markread_pending_test.dart），J17.c 不计 PASS；批次三的 11 子项真机 PASS 状态不变。
