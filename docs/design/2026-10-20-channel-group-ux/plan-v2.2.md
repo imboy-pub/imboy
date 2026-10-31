@@ -1014,6 +1014,7 @@ W00 静态准入出口（2026-10-27T18:54:58+08:00）：按 §8.2，三端 HEAD/
 | 多套部署环境 | J28.d/e/f | BLOCKED——需旧App/Admin+新Backend、新App+旧Backend、新旧 Backend 同源多节点与兼容回退部署组合，本环境仅单套本地合成部署 | J28.d/e/f 保持 BLOCKED，新合同启用与 W13 不发总 PASS |
 | v38 注册前置资源 | v38 FTS 迁移注册、依赖它的直写索引用例与阅后即焚三层验收 | BLOCKED——生产连接未证明 recursive_triggers、真机 SQLCipher/二进制未验，且本地时效/远端回退/展示期到期三问题未解决 | v38 保持未注册、相关用例维持 skip，W13 不发总 PASS |
 | 生产数据源 | 生产源绑定、账号功能快照与档位证据 | BLOCKED——验收按 §9 仅允许合成隔离源，生产源未授权且不复制真实用户数据 | 依赖生产源的启用与档位证据保持 BLOCKED，W13 不发总 PASS |
+| macOS 桌面签名资源 | macOS app 替代平台面（用户裁决探索项） | BLOCKED——macos/ 平台目录与 darwin-arm64 设备均在（flutter devices 识别），但 `flutter build macos --debug` 被「No profiles for 'pub.imboy.app'」阻断（CODE_SIGNING_ALLOWED=NO 环境变量不绕过）；绕过需用户在 Xcode 登录 Apple ID 启用自动签名（外向授权）或改 macos/ 签名配置（保护区禁改） | macOS 面构建/运行证据保持 BLOCKED，W13 不发总 PASS |
 
 J18.f 另因隔离归档/账号 fixture 未具备与合成库全量回填竞态保持 NOT_RUN，详见 §9 J 清单该行与上节 2026-10-31 wave2/wave3 记录，不在此重复。
 
