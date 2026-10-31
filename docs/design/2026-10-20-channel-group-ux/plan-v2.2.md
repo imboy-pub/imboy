@@ -1,6 +1,6 @@
 # IMBoy 频道、群组与会话体验审计及改造方案 V2.2
 
-修订：2026-10-27；实施收口更新：2026-10-31（含真机批次）。**计划：PLAN_READY（限本文件确定的契约与子卡）；业务实施：已提交（Backend 8 笔 / App 17 笔，见 §11.1）；完整运行/设备验收：部分闭合（J18.a/c/d/e、J19.a/b/c 共 7 子项真机 PASS，J18.f 进行中，11 子项资源 BLOCKED，其余 NOT_RUN 待证据，见 §9 状态列与 §11.1 真机批次节）。**
+修订：2026-10-27；实施收口更新：2026-10-31（含真机批次）。**计划：PLAN_READY（限本文件确定的契约与子卡）；业务实施：已提交（Backend 8 笔 / App 17 笔，见 §11.1）；完整运行/设备验收：部分闭合（J18.a/c/d/e、J19.a/b/c/d/e 共 9 子项真机 PASS，J18.f 进行中，11 子项资源 BLOCKED（用户裁决 2026-10-31：仅单台 Android，无新增资源），其余 NOT_RUN 待证据，见 §9 状态列与 §11.1 真机批次节）。**
 
 本轮仅修订计划、当前入口与静态证据，不修改业务代码、不执行写接口/迁移、不 commit/push。上一轮已在隔离 worktree 开始 W03；现存代码与测试 WIP 原样保留，不因本轮文档修订变成 PASS。V2.2 是唯一当前规范；[V1](./plan-v1.md)、[V2/V2.1 历史稿](./plan-v2.md) 保留取证，不作为另一套现行计划。保留 F01–F22、C1–C5、D1–D7、W00–W13、J01–J29；子编号只细化原义务。视觉真源仍是 App DESIGN.md。
 
@@ -647,8 +647,8 @@ English: Work packages are review and verification boundaries, not autonomous ex
 | J19.a | 普通群成员 | 取消/确认退出分别 | 取消无副作用；退出清当前资格且返回正确 | NC,BG | R | PASS（Android 真机 2026-10-31；暴露并修复退群后会话滞留缺陷 App `9e6254c9c`（uk3 前缀大小写不一致 + 消费端缺移除分支），见 §11.1 wave2/3 节）/ — |
 | J19.b | 群主且有可转让成员 | 转让后退出 | 转让/退出分步结果准确，不默认解散 | NC,BG | R | PASS（Android 真机 2026-10-31 r3 EXIT=0：确认弹层后果说明→接任人单选（排除自己）→确认→「操作成功」→双层返回且本端会话消失；SQL 五位一体复核 owner_uid→bob、群 status=1 未解散（不默认解散成立）、alice member 行删除、世代 end_seq=1 关闭、会话资格移除机制自洽，脚本 `j19b_transfer_leave_test.dart`，见 §11.1 真机批次节）/ — |
 | J19.c | 群主 | 单独解散确认/取消 | 后果说明清楚；取消无副作用，成功不留旧资格 | NC,BG | R | PASS（Android 真机 2026-10-31 r1 EXIT=0 双分支：取消分支弹层双行后果说明→取消→仍停群设置页无副作用；确认分支→「操作成功」→双层返回→本端会话消失；SQL 终态复核 group 行物理删除、group_member 清空、世代三行关闭 end_seq=2 close_reason='dissolve'——成功不留旧资格成立，残留会话行经资格谓词失效与 J19.b 同源自洽，脚本 `j19c_dissolve_test.dart`，见 §11.1 真机批次节）/ — |
-| J19.d | 本机有群历史 | 仅清空本机记录 | 入口仍在，不误隐藏/退群 | N + NC | R | NOT_RUN / — |
-| J19.e | 本机可见会话 | 仅从列表移除 | 只隐藏不清记录/退群，复现遵既有消息合同 | N + NC | R | NOT_RUN / — |
+| J19.d | 本机有群历史 | 仅清空本机记录 | 入口仍在，不误隐藏/退群 | N + NC | R | PASS（Android 真机 2026-10-31 r1 EXIT=0 双分支：取消无副作用；确认「操作成功！」后双层返回，会话入口仍在（不误隐藏）且重进聊天页本机 [J19D-SEED] 记录已清空；SQL 复核群行在/status=1/member 3 人/世代未关/服务端消息 2 条未删——清空只清本机不退群成立，脚本 `j19d_clear_messages_test.dart`，见 §11.1 真机批次节）/ — |
+| J19.e | 本机可见会话 | 仅从列表移除 | 只隐藏不清记录/退群，复现遵既有消息合同 | N + NC | R | PASS（Android 真机 2026-10-31 r4 EXIT=0：侧滑删除→隐藏稳定窗 30s 无回弹（设备 sqlite 行级诊断 is_show=0）→宿主注入新消息→按既有消息合同复现（is_show=1）→历史完整+新消息已收；SQL 复核群行在/member 3 人/世代开放/服务端消息完整。**暴露并修复「删除回弹」缺陷** App `22f64df37`（message_read_sync→markAsRead 经 findByPeerId 读出 is_show=0 隐藏行 replace 回内存 map 致 UI 数秒复活；修复后跳过隐藏条目 replace；r1-r3 三跑复现、定向回归 chat+conversation 745/745 绿），脚本 `j19e_remove_conv_test.dart`，见 §11.1 真机批次节）/ — |
 | J20.a | 群/订阅/管理/工作区目录各>1页 | 搜索尾页私有合法对象 | 服务端全范围交集可找到，不靠当前页/公域发现 | AG,AQ,BS | R | NOT_RUN / — |
 | J20.b | 关键词q1请求未完成 | 改q2并晚到q1 | 废弃旧cursor/代次，不污染q2 | AS,AQ | R | NOT_RUN / — |
 | J20.c | 固定未变集合 | 逐页到末页，注入重复cursor/矛盾元数据分别 | 稳定排序无漏重；错误停止加载且可重试 | AQ,BS | R | NOT_RUN / — |
@@ -1033,3 +1033,16 @@ J18.f 另因隔离归档/账号 fixture 未具备与合成库全量回填竞态�
 - **J19.b 转让后退出 PASS**（`j19b_transfer_leave_test.dart` r3 EXIT=0）：fixture 群 120619900000000002 'J19B_OWNER_GROUP'（alice 群主/bob 成员）。UI：确认弹层后果说明→TransferOwnerPage 接任人单选（排除自己）→「操作成功」→双层返回→本端会话消失。SQL 五位一体：owner_uid→bob、群 status=1 未解散（不默认解散成立）、alice member 行删除、group_member_generation end_seq=1 世代关闭、会话列表资格移除机制自洽（四重 JOIN 含世代谓词）。
 - **方法论沉淀**：①合成库会话列表=消息聚合派生（`conversation_logic:list`→`msg_c2g_timeline_repo:list_by_uid`，四重 JOIN 要求 `group_member_generation` 世代行有效）——裸插 conversation 行无效，fixture 必须四层齐备；②WS 断/恢复注入在 integration test 内完成，无宿主时序依赖；③失败诊断先行（会话列表全项 dump 打印）。
 - **J19.c 解散双分支 PASS**（`j19c_dissolve_test.dart` r1 EXIT=0 + successToast=true）：取消分支（弹层双行后果说明「确定要解散本群吗？/确定删除群的聊天记录吗？」→取消→仍停群设置页、弹层关闭无副作用）+ 确认分支（解散→「操作成功」→双层返回→本端会话从列表消失）。SQL 终态复核（测试外主集成者执行）：`group` 行**物理删除**（解散为硬删除而非 status 置位）、`group_member` 清空（0 行）、`group_member_generation` 三行全部关闭 end_seq=2、close_reason='dissolve'——「成功不留旧资格」成立；alice 侧 conversation 行残留 1 条但经会话聚合资格谓词（世代 end_seq IS NULL）失效，与 J19.b 机制自洽。
+
+#### 2026-10-31 真机验收批次二（J19.d / J19.e，含「删除回弹」缺陷发现与修复）
+
+设备与部署同批次一。fixture：群 4 'J19D_CLEAR_GROUP'、群 5 'J19E_REMOVE_GROUP'（alice role=4 群主 + bob/carol role=1 + 世代行 + 各 2 条 bob 发送的 [J19D-SEED]/[J19E-SEED] 种子消息，经 RPC `msg_c2g_logic:c2g/3` 注入，仓外临时脚本 /tmp/j19de_seed.erl）。
+
+- **J19.d 清空本机记录 PASS**（`j19d_clear_messages_test.dart` r1 EXIT=0）：取消分支（「警告:/确定删除聊天记录吗？」弹层→取消→仍停群设置页无副作用）+ 确认分支（「操作成功！」→双层返回→该群会话入口仍在（清空≠隐藏）→重进聊天页本机 [J19D-SEED] 记录已清空）。SQL 五证：群行在 status=1、member 3 人 is_join、世代 3 行 end_seq 全 NULL（未关）、服务端 msg_c2g 2 条未删——清空只清本机、不误隐藏、不退群全部成立。
+- **J19.e 从列表移除：三跑定位缺陷 + 修复 + r4 重验 PASS**：
+  - r1 EXIT=1（复现段）：删除/只隐藏段过（条目消失+设备 sqlite 本机行 2 条），但复现断言败——**回弹早于注入**：旧种子消息经服务端离线重放（timeline client_ack=false pending 重投）落库即置 is_show=1，复现非注入驱动。
+  - r2 EXIT=1（删除段）：backlog 消耗后仍回弹（删除后数秒条目重现身），稳定窗假设被打破。
+  - r3 EXIT=1（决定性诊断）：群 5 timeline pending 全部 client_ack=t（无重放源）后稳定窗 1s 内即回弹，行级诊断 `conv rows=[{is_show: 0}]`——**DB 隐藏正确落库、UI 无任何消息/重建流量仍复活**=内存态复活缺陷。根因链：`message_read_sync` S2C（r3 日志 3 条 peer=群5）→ `chatProvider.markAsRead` → `findByPeerId`（无 isShow 过滤）读出隐藏行 → `replace()` 无条件写回 conversationMap（100ms 批量定时器无 isShow 校验）。
+  - **修复 App `22f64df37`**：markAsRead 对 `is_show=0` 会话跳过 replace（隐藏条目不因已读同步复活；未读/水位/回执链路不变）。
+  - r4 EXIT=0：稳定窗 30s 安静 → 宿主注入 [J19E-REAPPEAR]（msg j19ereappear0000002，RPC 注入 fan-out 3 行）→ 会话按既有消息合同复现（行级诊断 is_show=1）→ 重开聊天页历史完整 + 新消息已收。SQL 六证：群行在 status=1、member 3 人、世代 3 行开放、服务端消息 4 条完整、新消息 alice 已 ACK——只隐藏不清记录/不退群、复现遵既有消息合同全部成立。定向回归 chat+conversation 目录 745/745 绿。
+- **方法论沉淀（增量）**：①「复现必须消息驱动」的断言须先证明隐藏稳定性（稳定窗 + pending 队列 client_ack 排空 + DB 行级诊断三件套），否则离线重放/内存复活会污染归因；②RPC `msg_c2g_logic:c2g/3` 可作宿主侧确定性消息注入器（同族种子/复现触发两用）。

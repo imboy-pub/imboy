@@ -1440,8 +1440,8 @@
         "NC"
       ],
       "applicability": "R",
-      "status": "NOT_RUN",
-      "evidence": null
+      "status": "PASS",
+      "evidence": "Android 真机 2026-10-31 r1 EXIT=0 双分支：取消无副作用；确认后入口仍在（清空≠隐藏）且本机记录已清空；SQL 五证（群行在 status=1、member 3 人、世代未关、服务端消息未删）——只清本机不退群成立；脚本 j19d_clear_messages_test.dart"
     },
     {
       "id": "J19.e",
@@ -1450,8 +1450,8 @@
         "NC"
       ],
       "applicability": "R",
-      "status": "NOT_RUN",
-      "evidence": null
+      "status": "PASS",
+      "evidence": "Android 真机 2026-10-31 r4 EXIT=0：侧滑删除→隐藏稳定窗 30s 无回弹（设备 sqlite is_show=0 行级诊断）→注入新消息→按既有合同复现（is_show=1）→历史完整；SQL 六证（群行在/member 3/世代开放/服务端消息完整）。暴露并修复「删除回弹」缺陷 App 22f64df37（read_sync→markAsRead 复活隐藏行；r1-r3 三跑定位，chat+conversation 745/745 回归绿）；脚本 j19e_remove_conv_test.dart"
     },
     {
       "id": "J20.a",
@@ -1920,7 +1920,7 @@
       "evidence": null
     }
   ],
-  "plan_sha256": "4858d89691a0f882af3997feb334697d64fde03a27e482e934e826fb709c79b1",
+  "plan_sha256": "993b6e2428e401526ffb5246f36c1baebde6c02e7a6a889a19b7a7bd0ed3f3c6",
   "source_attachment_sha256": "964b99c4cadec1c802707cd5773b2a88e0a2c1a0e78ea54e896ccc2472ee0f8b",
   "history_document_sha256": {
     "plan-v1.md": "0d929642c5030bb557b48ae94e89e679eada64c6e4d407d1ca4b5fb7a1501f67",
