@@ -42,15 +42,10 @@ class ObservationBindingTests(unittest.TestCase):
         self.assertIsNone(adapter._match_observation({self.key: [(1, {"measured": {}})]}, self.key, "AC01"))
 
     def test_group_file_entrypoints_bind_strictly(self):
-        """The 12 unlocked leaves bind only to real group-file chain evidence.
+        """Ordinary group files bind to their real production entrypoint.
 
-        Positive: the enterprise multipart/group_file scenarios and the
-        ordinary group_file scenario bind when the observation carries the
-        production markers (entrypoint_face, /api/v1/group/file/upload route
-        + handler, pin facts, bind request, in-request storage binding,
-        enterprise workspace facts). Negative: any missing or substituted
-        marker — including the forbidden attachment-multipart substitute for
-        the ordinary leaf — stays a named gap and never publishes a row.
+        Enterprise labels cannot turn ordinary JWT uploads into enterprise
+        evidence. Missing or substituted ordinary markers also stay gaps.
         """
         start = datetime(2026, 1, 1, tzinfo=timezone.utc)
         window = (start, start + timedelta(seconds=10))
@@ -114,10 +109,8 @@ class ObservationBindingTests(unittest.TestCase):
                 stack.enter_context(item)
             leaf_mock = stack.enter_context(patch.object(adapter.S, "leaves"))
 
-            # Positive: real-chain observations bind for all three shapes.
+            # Only the ordinary domain is proven by this production chain.
             for scenario, domain in (
-                ("multipart_success", "enterprise"),
-                ("group_file_success", "enterprise"),
                 ("group_file_success", "ordinary"),
             ):
                 state["index"] = index_for(scenario, domain, measured(scenario, domain))
@@ -133,6 +126,29 @@ class ObservationBindingTests(unittest.TestCase):
                     "/api/v1/group/file/upload", rows[1][0]["entrypoint_provenance"]["route"])
                 self.assertEqual(
                     "group_file_handler", rows[1][0]["entrypoint_provenance"]["handler"])
+                oracle = build_row.call_args.args[4]
+                self.assertIn("real group-file upload", oracle["action"])
+                self.assertIn("pinned and confirmed", oracle["expected_object_state"])
+                self.assertNotIn("absent after failed PUT", oracle["expected_object_state"])
+                gaps.reset_mock()
+                build_row.reset_mock()
+
+            # Complete ordinary request evidence plus invented enterprise
+            # labels must still fail for every driver and acceptance leaf.
+            for scenario, driver, ac in itertools.product(
+                    ("multipart_success", "group_file_success"),
+                    ("disk", "garage"), ("AC01", "AC02")):
+                m = measured(scenario, "enterprise")
+                m.update(driver=driver, ac_id=ac, org_id=999999, workspace_id=888888)
+                state["index"] = index_for(scenario, "enterprise", m, driver, ac)
+                leaf_mock.return_value = [leaf_for(scenario, "enterprise", driver, ac)]
+                with self.subTest(scenario=scenario, driver=driver, ac=ac):
+                    with self.assertRaises(SystemExit) as caught:
+                        adapter.build()
+                    self.assertEqual(30, caught.exception.code)
+                    self.assertFalse(build_row.called)
+                    self.assertIn("ordinary group uploads are not evidence",
+                                  gaps.call_args[0][3])
                 gaps.reset_mock()
                 build_row.reset_mock()
 
@@ -173,6 +189,12 @@ class ObservationBindingTests(unittest.TestCase):
             def no_workspace(m):
                 del m["org_id"]
 
+            def numeric_business_id(m):
+                m["group_file_id"] = 1001
+
+            def invalid_business_id(m):
+                m["group_file_id"] = "not-a-file-id"
+
             def bind_on_multipart_face(m):
                 m["http_requests"].append(dict(bind))
 
@@ -190,6 +212,8 @@ class ObservationBindingTests(unittest.TestCase):
                 ("group_file_success", "ordinary", no_storage),
                 ("group_file_success", "ordinary", no_bind),
                 ("group_file_success", "ordinary", substitute_bind),
+                ("group_file_success", "ordinary", numeric_business_id),
+                ("group_file_success", "ordinary", invalid_business_id),
                 ("group_file_success", "enterprise", no_workspace),
             ]
             for scenario, domain, mutate in cases:

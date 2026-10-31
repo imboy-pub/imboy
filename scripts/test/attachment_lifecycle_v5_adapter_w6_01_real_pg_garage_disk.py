@@ -505,17 +505,17 @@ def _unique_request(requests, request_id, label):
 
 
 def _group_file_proof(measured, scenario, domain):
-    """Bind the unlocked 12 leaves to the real group-file production chain.
+    """Bind ordinary group-file leaves to their real production chain.
 
-    Strict and fail-closed: the measured payload must carry the
-    entrypoint_face/route/handler/status markers, the server-observed upload
-    request record (POST /api/v1/group/file/upload, group_file_handler, 2xx,
-    fixture-bound object_key + the request process's production storage
-    resolution), the content-pin facts (64-hex sha256, pin-before-provider-PUT)
-    and the enterprise workspace context; the bind face additionally requires
-    the real /api/v1/group/file/bind request with its group_file_id.  Any
-    missing or mismatching marker raises (the leaf stays a named gap).
+    Require the upload route, handler, object, pin and storage-resolution
+    evidence plus the real bind request and business file id. Enterprise
+    leaves remain gaps until their own production-domain proof exists.
     """
+    # Ordinary JWT group uploads do not prove the enterprise asset domain.
+    # Fixture-supplied org/workspace labels cannot establish that binding.
+    if domain == "enterprise":
+        raise ValueError("enterprise multipart/group-file production provenance "
+                         "is unverified; ordinary group uploads are not evidence")
     face = GROUP_FILE_FACE[(scenario, domain)]
     if not isinstance(measured, dict):
         raise ValueError("measured is not a dict")
@@ -568,9 +568,9 @@ def _group_file_proof(measured, scenario, domain):
     if measured.get("bind_status") != 200 or measured["bind_status"] != bind["status"]:
         raise ValueError("bind outcome marker does not match the observed request")
     file_id = measured.get("group_file_id")
-    # The real bind_file row id is elib_oss:generate_file_id() — the exact
-    # shape elib_oss:validate_file_id/1 accepts in production. An integer
-    # is never a production group-file id.
+    # bind_file returns the business file_id from elib_oss:generate_file_id(),
+    # not the numeric group_file.id referenced by attachment.group_file_id.
+    # Match the production elib_oss:validate_file_id/1 format.
     if not isinstance(file_id, str) or not re.fullmatch(
             r"file_[0-9]+_[0-9]+", file_id):
         raise ValueError("missing bound group_file_id fact (not a "
@@ -1347,7 +1347,7 @@ def build():
                                % (leaf["driver"], resource,
                                   S.sha256_file(obs_path)),
             }
-            if proof:
+            if proof and proof_kind != "group_file":
                 presign, put = proof
                 if proof_kind == "immutability":
                     oracle.update(
