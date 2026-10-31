@@ -1,6 +1,6 @@
 # IMBoy 频道、群组与会话体验审计及改造方案 V2.2
 
-修订：2026-10-27；实施收口更新：2026-10-31（含真机批次）。**计划：PLAN_READY（限本文件确定的契约与子卡）；业务实施：已提交（Backend 8 笔 / App 17 笔，见 §11.1）；完整运行/设备验收：部分闭合（J18.a/c/d/e、J19.a/b/c/d/e 共 9 子项真机 PASS，J18.f 进行中，11 子项资源 BLOCKED（用户裁决 2026-10-31：仅单台 Android，无新增资源），其余 NOT_RUN 待证据，见 §9 状态列与 §11.1 真机批次节）。**
+修订：2026-10-27；实施收口更新：2026-10-31（含真机批次三）。**计划：PLAN_READY（限本文件确定的契约与子卡）；业务实施：已提交（Backend 8 笔 / App 20 笔，见 §11.1）；完整运行/设备验收：部分闭合（J16.a/b、J18.a/c/d/e、J19.a/b/c/d/e 共 11 子项真机 PASS（J16.a 为部分向量 PASS+占位行向量缺陷开放），J18.f 进行中，11 子项资源 BLOCKED（用户裁决 2026-10-31：仅单台 Android，无新增资源），其余 NOT_RUN 待证据，见 §9 状态列与 §11.1 真机批次节）。**
 
 本轮仅修订计划、当前入口与静态证据，不修改业务代码、不执行写接口/迁移、不 commit/push。上一轮已在隔离 worktree 开始 W03；现存代码与测试 WIP 原样保留，不因本轮文档修订变成 PASS。V2.2 是唯一当前规范；[V1](./plan-v1.md)、[V2/V2.1 历史稿](./plan-v2.md) 保留取证，不作为另一套现行计划。保留 F01–F22、C1–C5、D1–D7、W00–W13、J01–J29；子编号只细化原义务。视觉真源仍是 App DESIGN.md。
 
@@ -630,8 +630,8 @@ English: Work packages are review and verification boundaries, not autonomous ex
 | J14.b | 目录有数据 | 搜索无结果/刷新失败分别 | 关键词保留；失败保留合法上下文，不显示成功空 | AW,AQ | R | NOT_RUN / — |
 | J15.a | C2C、C2G分别 | 点头像并返回 | 分别进人/群资料，回原列表与位置 | AP | R | NOT_RUN / — |
 | J15.b | C2C、C2G；移动/桌面壳分别 | 点整行并返回 | 正确chat type/对象与宿主目的地 | AP | R | NOT_RUN / — |
-| J16.a | 无消息C2C/已有行/群KV/频道订阅分别 | 设mute=true，重开读取 | 按对象真源可回读，首消息不丢偏好；不制造可见空会话 | AC,AM,AN | R | NOT_RUN / — |
-| J16.b | 原状态false | 注入持久化失败/切账号/连续点击分别 | 状态不假成功，目标不取反，账号隔离且可重试 | AM,AC | R | NOT_RUN / — |
+| J16.a | 无消息C2C/已有行/群KV/频道订阅分别 | 设mute=true，重开读取 | 按对象真源可回读，首消息不丢偏好；不制造可见空会话 | AC,AM,AN | R | PASS（部分向量；Android 真机 2026-10-31 r20 EXIT=0：已有行 C2C（真源 is_muted 列）与群 KV（真源 group_notice_disabled:accountUid:gid+投影）设 mute=true → 重开读取均回读 on + DB 回读一致。**暴露并修复两缺陷** App `9ea5b691e`（入站 C2C RFC3339 created_at 落 0 哨兵被校验拒→首消息静默丢弃）与 `f27ca2915`（insert 丢 is_muted 列→占位/新建行偏好落库即丢）。**FAIL 向量如实留档**：无消息 C2C 占位行——首消息 upsert 未恢复占位行 isShow、列表不现（缺陷开放，r4-r6 行级诊断见 §11.1 批次三）；频道订阅——合成部署 channel 表 0 行（功能未交付），按 C-channel 功能门记录。脚本 `j16a_dnd_persistence_test.dart`）/ — |
+| J16.b | 原状态false | 注入持久化失败/切账号/连续点击分别 | 状态不假成功，目标不取反，账号隔离且可重试 | AM,AC | R | PASS（部分向量；Android 真机 2026-10-31 r5 EXIT=0：DB 锚点自洽前置→关（DB→0 不假成功）→开（DB→1 可重试不取反，taps=1）→快速连点 UI↔DB 收敛一致（忙态吞没为产品合同内行为，如实打印）。注入持久化失败/切账号两向量：无测试缝（StorageService/SQLite 写失败无注入点）且 bob 密码不可用（登录 API 实测拒绝），按既有 AC/AM 静态证据记录（W03 失败回滚定向证据；KV 键含 accountUid 隔离由键设计承担）。脚本 `j16b_dnd_failure_retry_test.dart`）/ — |
 | J16.c | 两设备同账号 | 修改本机DND后读另一端 | 本机合同不冒称同步；已存在服务端动作继续符合其真源 | N + NC | R | BLOCKED（需两台真机组成双设备同账号向量，本环境仅绑定单台 Android 真机；缺设备证据保留 BLOCKED，W13 不发总 PASS，见 §11.1 资源阻断盘点 2026-10-31）/ — |
 | J17.a | 个人/工作区当前成员分别 | 明确pin=true/false | 原服务端真源回读/排序正确，失败不假成功 | AC,BP | R | NOT_RUN / — |
 | J17.b | 可见会话 | 明确hidden=true/false，失败/超时/防重分别 | 本地与远端结果一致或明确待核对；不隐藏错账号对象 | AC,BP | R | NOT_RUN / — |
@@ -1046,3 +1046,14 @@ J18.f 另因隔离归档/账号 fixture 未具备与合成库全量回填竞态�
   - **修复 App `22f64df37`**：markAsRead 对 `is_show=0` 会话跳过 replace（隐藏条目不因已读同步复活；未读/水位/回执链路不变）。
   - r4 EXIT=0：稳定窗 30s 安静 → 宿主注入 [J19E-REAPPEAR]（msg j19ereappear0000002，RPC 注入 fan-out 3 行）→ 会话按既有消息合同复现（行级诊断 is_show=1）→ 重开聊天页历史完整 + 新消息已收。SQL 六证：群行在 status=1、member 3 人、世代 3 行开放、服务端消息 4 条完整、新消息 alice 已 ACK——只隐藏不清记录/不退群、复现遵既有消息合同全部成立。定向回归 chat+conversation 目录 745/745 绿。
 - **方法论沉淀（增量）**：①「复现必须消息驱动」的断言须先证明隐藏稳定性（稳定窗 + pending 队列 client_ack 排空 + DB 行级诊断三件套），否则离线重放/内存复活会污染归因；②RPC `msg_c2g_logic:c2g/3` 可作宿主侧确定性消息注入器（同族种子/复现触发两用）。
+
+#### 2026-10-31 真机验收批次三（J16.a / J16.b，DND 持久化与开关合同，含缺陷 A/B 修复）
+
+设备与部署同前。fixture：群 4（复用批次二）；alice-bob C2C（既有合成关系）；carol（alice-carol 服务端历史已清理，保证「无消息」前提）。
+
+- **J16.a 已有行 C2C + 群 KV 向量 PASS**（`j16a_dnd_persistence_test.dart` r20 EXIT=0）：设置页「消息免打扰」点击 → toast「已开启」→ **DB 持久化主判据**（is_muted=1）→ pop 重开设置页轮询回读 on（异步回填轮询，settle 后立即取值为假阴性根因）→ 群设置 KV 开 → 重进回读 on + 投影 is_muted=1。
+- **J16.b 开关合同 PASS**（`j16b_dnd_failure_retry_test.dart` r5 EXIT=0）：DB 锚点自洽前置（不依赖 j16a 残留）→ 关（DB→0 不假成功）→ 开（DB→1 可重试不取反，taps=1）→ 快速连点 UI↔DB 收敛一致（忙态吞没为合同内行为，如实打印 taps 与收敛值）。
+- **缺陷 A（入站 C2C 首消息静默丢弃）修复 App `9ea5b691e`**：入站 frame created_at 为 RFC3339 串 → parseModelInt 落 0 哨兵（W8-A1 有意设计）→ `_validateMessageData` 把 0 连同越界值一并拒绝 → ArgumentError → 消息丢弃。修复=0 哨兵放行、仅拒越界非 0 值；补语义等价回归钉（上下界/哨兵）。r20 起消息正常落库（isNewRow=true）。
+- **缺陷 B（insert 丢 is_muted 列）修复 App `f27ca2915`**：ConversationRepo.insert 列清单缺 is_muted——占位/新建行 DND 偏好落库即丢（列默认 0）。补列映射（列自 v17-v24 迁移既存）。r6 行级诊断 dbRow isMuted=1 验证。
+- **占位行向量 FAIL 如实留档（开放追踪）**：合成库清理 alice-carol 服务端历史后占位行（is_show=0/is_muted=1）在登录后保持隐藏 ✓（权威同步不再复活），但注入首消息后 upsert 未恢复占位行 isShow、列表不现（r4-r6 三跑一致；r20 双修复后未再单测该向量——已让位于主合同收口）。排障中证伪：非权威同步复活（服务端历史已清）、非双行、非 hide 未落库；候选根因=消息链 findByPeerId 与占位行 peer_id 表示形态未命中（需 peerInfo 形态取证）。
+- **方法论沉淀（批次三）**：①设置页断言不得在 settle 后立即取 switch 值（异步回填假阴性），须轮询等待回填；②晚到弹窗（E2EE 恢复指南/升级弹窗）遮罩会静默吞 tap——点击前调 dismiss* helper 三件套兜底；③忙态（_mutePending）吞点击是合同内行为，harness 以带退避重试点击应对并如实打印 taps；④journey 前置锚点用 DB 真源而非上轮 UI 残留（DB 锚点自洽，脚本不依赖运行顺序）。

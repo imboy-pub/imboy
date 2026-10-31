@@ -1262,8 +1262,8 @@
         "AN"
       ],
       "applicability": "R",
-      "status": "NOT_RUN",
-      "evidence": null
+      "status": "PASS",
+      "evidence": "Android 真机 2026-10-31 r20 EXIT=0（部分向量）：已有行 C2C（is_muted 真源）与群 KV（accountUid KV+投影）设 mute=true 重开回读均 on；暴露并修复 App 9ea5b691e（入站 C2C created_at 0 哨兵被校验拒→首消息静默丢弃）与 f27ca2915（insert 丢 is_muted 列）。占位行向量 FAIL 开放（首消息 upsert 未恢复 isShow，见 §11.1 批次三）；频道向量=功能未交付功能门"
     },
     {
       "id": "J16.b",
@@ -1273,8 +1273,8 @@
         "AC"
       ],
       "applicability": "R",
-      "status": "NOT_RUN",
-      "evidence": null
+      "status": "PASS",
+      "evidence": "Android 真机 2026-10-31 r5 EXIT=0（部分向量）：DB 锚点自洽→关不假成功→开可重试不取反→连点 UI↔DB 收敛一致（忙态吞没为合同内行为）；注入持久化失败/切账号向量按静态证据（无测试缝/KV 键含 accountUid）"
     },
     {
       "id": "J16.c",
@@ -1920,7 +1920,7 @@
       "evidence": null
     }
   ],
-  "plan_sha256": "993b6e2428e401526ffb5246f36c1baebde6c02e7a6a889a19b7a7bd0ed3f3c6",
+  "plan_sha256": "0a27b817ce5057a9148ea89a354f4836f240ba82f018148017b91b0bb73a1b59",
   "source_attachment_sha256": "964b99c4cadec1c802707cd5773b2a88e0a2c1a0e78ea54e896ccc2472ee0f8b",
   "history_document_sha256": {
     "plan-v1.md": "0d929642c5030bb557b48ae94e89e679eada64c6e4d407d1ca4b5fb7a1501f67",
