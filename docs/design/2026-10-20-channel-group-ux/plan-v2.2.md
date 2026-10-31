@@ -635,7 +635,7 @@ English: Work packages are review and verification boundaries, not autonomous ex
 | J16.c | 两设备同账号 | 修改本机DND后读另一端 | 本机合同不冒称同步；已存在服务端动作继续符合其真源 | N + NC | R | BLOCKED（需两台真机组成双设备同账号向量，本环境仅绑定单台 Android 真机；缺设备证据保留 BLOCKED，W13 不发总 PASS，见 §11.1 资源阻断盘点 2026-10-31）/ — |
 | J17.a | 个人/工作区当前成员分别 | 明确pin=true/false | 原服务端真源回读/排序正确，失败不假成功 | AC,BP | R | NOT_RUN / — |
 | J17.b | 可见会话 | 明确hidden=true/false，失败/超时/防重分别 | 本地与远端结果一致或明确待核对；不隐藏错账号对象 | AC,BP | R | NOT_RUN / — |
-| J17.c | 有真实未读、manual_pending独立 | 标已读及设待处理分别 | 水位单调，人工标记不写unread=1，彼此不清除 | AC,AV | R | FAIL（缺陷 F 开放；Android 真机 2026-10-31 r1-r5：r1 曾走通①未读到达→②标已读归零→③设待处理不写 unread（截图收据），r2-r5 复现失败——在线直推消息落库成功（isNewRow=true/后台处理完成）但 conversation.unread_num 停留 0（ui/db 双值诊断），疑似在线/离线两条写路径的未读增量行为不一致，需专项取证修复后重验；脚本 `j17c_markread_pending_test.dart`（带双值诊断），诊断与已证伪清单见 §11.1 批次四）/ — |
+| J17.c | 有真实未读、manual_pending独立 | 标已读及设待处理分别 | 水位单调，人工标记不写unread=1，彼此不清除 | AC,AV | R | PASS（Android 真机 2026-10-31 r27 EXIT=0：①注入未读到达角标≥1→②标已读归零（UI+DB）→③设待处理不写 unread（DB 仍 0+旗标现+POST 200）→④第二条未读到达旗标仍在→再标已读旗标仍在。批次四 FAIL（r1-r5）经批次五六跑取证**证伪为三层脚本假阴性+真缺陷 G**：`?expectedVersion:` null-aware 键语义错误致 manual_pending POST 全败+键名 camelCase 与服务端 snake_case 不匹配 CAS 失效——修复 App `0cff8eec6`（`'expected_version': ?expectedVersion`）；脚本假阴性修正 App `ac156458e`；UNREAD_GATE 运行时真值全门正确（isNew=true/unreadInc=1/convId=1/isUserInChat=false），缺陷 F 关闭，证据链见 §11.1 批次五。脚本 `j17c_markread_pending_test.dart`）/ — |
 | J17.d | 两个端读同version | A写后B旧version写；回读再重试原目标 | 冲突可见，保留desired_value，不无限覆盖/重复取反 | AC,BP | R | NOT_RUN / — |
 | J17.e | 旧客户端无expected_version | pin/unpin/delete/restore分别 | 同业务入口推进版本，新端能检测旧写冲突 | BP | R | NOT_RUN / — |
 | J18.a | C2C/C2G发送场景 | 发送失败后重试 | 失败可见、重试同逻辑消息不重复 | N + NC | R | PASS（Android 真机 2026-10-31，C2C/C2G 双分支各自独立脚本：断连发送失败可见（不进正向态）→ WS 恢复自动补发（无手动重试按钮，产品走离线队列）→ server_ack 清重试队列 → 恰好一条气泡+终态稳定；C2G 后端复核 msg_c2g 恰好 1 条 + msg_c2g_timeline fan-out 恰好 3 条（三成员同 msg_id），脚本 `j18a_send_retry_test.dart`/`j18a_c2g_send_retry_test.dart`，见 §11.1 真机批次节）/ — |
@@ -1067,3 +1067,14 @@ J18.f 另因隔离归档/账号 fixture 未具备与合成库全量回填竞态�
 - **已证伪清单**：非消息链失败（落库/ACK/后台处理全成功）；非去重吞没（isNewRow=true）；非服务端 frame created_at 形态（在线直推透传发送者毫秒数字）；非「标已读水位遮蔽」（r5 清基线后未执行标已读仍复现）；非收面板误点聊天页（改右滑收回面板仍复现）；非权威同步覆盖（候选未排除：applyConversationSnapshot 乱序旧快照覆盖/在线与离线两条写路径的增量行为不一致）。
 - **修复方向（开放）**：定位在线直推路径 unread 增量失效点（message.dart 事务 incrementUnread 上下游），专项取证后修复重验；J17.d CAS 冲突向量依赖同一未读/待处理链路，随缺陷 F 一并重验。
 - **收口说明**：脚本与诊断已提交（App 仓 integration_test/chat/j17c_markread_pending_test.dart），J17.c 不计 PASS；批次三的 11 子项真机 PASS 状态不变。
+
+#### 2026-10-31 真机验收批次五（J17.c 修复重验 PASS，缺陷 F 证伪关闭，缺陷 G 修复）
+
+设备与部署同批次四；注入器 /tmp/j17_seed.erl 因磁盘清理删除后按同模板重建（`msg_c2c_logic:c2c/3` 直调，SEED_MSG_ID 区分轮次）；新增仓外编排驱动脚本（启动测试后在「J17C ready」/「J17C base settled」两宿主握手点自动注入，消除 r21 的外部轮询注入时序脱节）。
+
+- **J17.c 标已读/设待处理 PASS（r27 EXIT=0，全四段）**：①注入未读到达角标≥1 → ②标已读归零（UI+DB 双 0）→ ③设待处理不写 unread（DB unread 仍 0 + 旗标现 + POST 200）→ ④第二条未读到达旗标仍在 → 再标已读旗标仍在（彼此不清除）。脚本 `j17c_markread_pending_test.dart`（App `ac156458e`：侧滑 drag→find 重试 3 次+诊断、清基线取消待处理循环验证翻面、旗标判定 find.descendant(byIcon(flag_fill))）。
+- **缺陷 F 证伪关闭（「在线直推消息落库成功但 unread 不增」不存在）**：message.dart 事务内临时 UNREAD_GATE 诊断（r22-r27 六跑）门条件运行时真值全部正确——首条与第二条均为 isNew=true / unreadInc=1 / convId=1 / isUserInChat=false / isFromCurrentUser=false，unread 正常递增（诊断打印在证伪后已移除，message.dart 回到已提交态）。批次四 r2-r5 的失败实为**三层脚本假阴性**：①侧滑面板打开被忙态吞手势且无重试（③段一次 miss 即 FAIL 连锁，④段从未真正执行）；②清基线「取消待处理」只点不验——POST 全败（缺陷 G）致 pending 服务端残留 on，③段侧滑标签显示「取消待处理」，find「标记未读」全 miss；③待处理旗标渲染为 Icon(flag_fill)+semanticLabel、页面无 Text('待处理')，find.text 断言永远假阴。
+- **缺陷 G（真实产品缺陷，修复 App `0cff8eec6`）**：`ConversationApi.setManualPending` 请求体 `?expectedVersion: expectedVersion` 是 Dart null-aware **键**语义（键表达式的值作键）——expectedVersion 非 null 时 entry 变成 `{1: 1}`，int 键令 jsonEncode 抛「Converting object to an encodable object failed: _Map len:3」→ Dio 包成 unknown →「标记未读/取消待处理」POST 全链失败（服务端值永不翻转，user_setting.manual_pending 残留 on，即批次四观测到的「残留」）。修复为 value 位置 null-aware `'expected_version': ?expectedVersion`；同时修复键名 camelCase `expectedVersion` 与服务端 `<<"expected_version">>`（snake_case）不匹配——CAS 原本永不生效（W09.c J17.d 前置）。取证增强保留：SafeHttpLogInterceptor.onError 对 unknown 类型补打 err.error/message/stack 摘要（同 commit）。
+- **修复验证（r26/r27）**：POST manual_pending 全部 200；清基线「取消待处理」第一次点击即翻面（服务端 value 翻 false）；③段「标记未读」attempt0 点上（服务端 true + version 推进）；④⑤彼此不清除全过。后端 handler/user_setting_ds 无改动（缺陷全在客户端请求体构造层）。
+- **方法论沉淀（批次五）**：①宿主注入类 journey 必须把「等握手→注入」编排进同一 shell（外部轮询注入必脱节，r21 教训）；②`?expr: value` 是 null-aware 键不是「null 时省略」——请求体构造一律用 `'key': ?value` 或 if-collection；③UI 断言先查实现的渲染形态（Icon+semanticLabel ≠ Text）；④侧滑/手势类交互断言必须带重试与失败诊断（打印可见文本）。
+- **收口说明**：J17.c 计 PASS；缺陷 F 从开放清单关闭（证伪）；缺陷 G 修复随 fix `0cff8eec6`；批次三的 11 子项与批次四 J19.d/J19.e PASS 状态不变。J17.d（CAS 冲突向量）依赖的链路已随缺陷 G 修复恢复可用，可继续按计划推进。
