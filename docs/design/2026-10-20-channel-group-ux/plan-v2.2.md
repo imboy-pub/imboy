@@ -684,13 +684,13 @@ English: Work packages are review and verification boundaries, not autonomous ex
 | J28.d | 旧App/Admin+新Backend、新App+旧Backend分别 | 读/写/恢复 | 按§10.4允许组合兼容，禁用项可解释且无无键新建 | AF,BM,MW | R | BLOCKED（需旧App/Admin+新Backend、新App+旧Backend 多套部署组合环境，本环境仅单套本地合成部署；缺档位/组合证据保留 BLOCKED，W13 不发总 PASS，见 §11.1 资源阻断盘点 2026-10-31）/ — |
 | J28.e | 新旧Backend同来源节点 | 采样manifest后请求落旧节点 | 部署被禁止/不启新合同；不能以某次200通过 | BM | R | BLOCKED（需新旧 Backend 同来源多节点负载均衡部署，本环境仅单节点合成部署；缺组合证据保留 BLOCKED，W13 不发总 PASS，见 §11.1 资源阻断盘点 2026-10-31）/ — |
 | J28.f | 已产生receipt/游标/偏好新数据 | 兼容Backend/App回退 | 排空与admission关闭，原意图/列/数据保留，不down、不猜cursor | AF,BM,BP | R | BLOCKED（需可回退的多套部署组合与回退授权，本环境未具备；缺回退证据保留 BLOCKED，新合同启用与 W13 不发总 PASS，见 §11.1 资源阻断盘点 2026-10-31）/ — |
-| J29.a | 当前K有效，单调t0 | 19.999/20s推进 | 20s开始静默校验，内容不整页清屏 | AA,AV | R | NOT_RUN / — |
-| J29.b | 校验pending/失败 | 29.999/30s推进 | 30s硬截止撤展示与写入口，失败不延期 | AA,AV | R | NOT_RUN / — |
-| J29.c | 续验有效成功或旧代次迟到分别 | 完成响应与旧截止回调 | 只有当前K内容资格更新deadline，旧响应/旧timer无效 | AA,AE | R | NOT_RUN / — |
-| J29.d | 目录/统计/缓存/不匹配账号或世代各响应 | 响应成功 | 均不能续内容预算 | AA,AV | R | NOT_RUN / — |
-| J29.e | 已知断网/后台/返回/重连分别 | 状态切换并推进时钟 | 立即撤保护展示，恢复前重授权；无失败缓存回填 | AE,AV | R | NOT_RUN / — |
-| J29.f | 明确403/撤权事件 | 处理事件当回合 | 渲染/内存同状态失效，持久内容不可冷恢复，个人E2EE不批删 | AE,BR | R | NOT_RUN / — |
-| J29.g | 消息expire_at到期，资格仍有效 | 推进内容TTL | 仅该摘要隐藏/重取；不退成员、不用TTL延资格 | AV,BR | R | NOT_RUN / — |
+| J29.a | 当前K有效，单调t0 | 19.999/20s推进 | 20s开始静默校验，内容不整页清屏 | AA,AV | R | PASS（App 单测 `workspace_access_budget_test.dart` J29.a/b 命名 case 全绿（App `2a31d9c31`，26 case 全绿）：19.999/20/29.999/30s 精确判定 pending/failed recheck；20s 静默校验不清内容、30s 撤文本与语义（guard keeps actions/removes text）；对齐 a12f1a6c7 时序（初始自检索引平移+drain 补喂））/ — |
+| J29.b | 校验pending/失败 | 29.999/30s推进 | 30s硬截止撤展示与写入口，失败不延期 | AA,AV | R | PASS（同上 J29.a/b 命名 case+「initial and retry requests cannot remain pending indefinitely」case：30s 硬截止撤展示与 TextButton 写入口、失败 recheck 不延期）/ — |
+| J29.c | 续验有效成功或旧代次迟到分别 | 完成响应与旧截止回调 | 只有当前K内容资格更新deadline，旧响应/旧timer无效 | AA,AE | R | PASS（App 单测 AA/AE+budget：J29.c 命名 case「arrival defines t0; renewal keeps rows and defeats old deadline」「monotonic cutoff wins even before its timer callback runs」「stale success and stale 403 cannot alter a new membership generation」全绿（App `2a31d9c31`））/ — |
+| J29.d | 目录/统计/缓存/不匹配账号或世代各响应 | 响应成功 | 均不能续内容预算 | AA,AV | R | PASS（App 单测 budget J29.d 命名 case 全绿（App `2a31d9c31`）：workspace/resource、directory、statistics、cache 互不能续；channel details alone/disabled features/channel workspace mismatch/malformed content/origin change 全部 fail-closed）/ — |
+| J29.e | 已知断网/后台/返回/重连分别 | 状态切换并推进时钟 | 立即撤保护展示，恢复前重授权；无失败缓存回填 | AE,AV | R | PASS（App 单测 budget+AE J29.e 命名 case 全绿（App `2a31d9c31`，对齐 a12f1a6c7 后）：unknown 初始自检（盾牌不渲染）→offline/error 立即撤展示与语义→恢复 online 前不展示、重授权 accept 后渲染；inactive tab/covered route/背景与 WS 重连 fence 旧响应；旧 widget disposal 不能挂起新页（旧 owner suspend 被忽略，drain 补刷响应恢复）/ — |
+| J29.f | 明确403/撤权事件 | 处理事件当回合 | 渲染/内存同状态失效，持久内容不可冷恢复，个人E2EE不批删 | AE,BR | R | PASS（App 单测 budget+AE J29.f 命名 case 全绿（App `2a31d9c31`）：403/stale 403 不改新成员代次；仅本成员+群撤权撤会话内容；channel page gates cold entry/removes actions/preserves personal scope；disposal microtask 容忍已释放 autoDispose notifier）/ — |
+| J29.g | 消息expire_at到期，资格仍有效 | 推进内容TTL | 仅该摘要隐藏/重取；不退成员、不用TTL延资格 | AV,BR | R | PASS（App 单测 budget J29.g 命名 case 全绿（App `2a31d9c31`）：expire_at 到期（wallTime 推进 2s）仅隐藏该 ttl preview 摘要（可重取），资格 deadline 不变、成员不退、unread/代次保留）/ — |
 
 ## 10. 计划采用的设计与兼容默认值
 
@@ -1095,3 +1095,4 @@ J18.f 另因隔离归档/账号 fixture 未具备与合成库全量回填竞态�
 - **J17.a/J17.b PASS**（AC 命名 case，App `2536b0560`）；**J20.b PASS**（AQ 命名 case，App `64d106e8f`）；**J24.a PASS**（creation_receipt_contract 27 case 全绿，J24.a 时钟向量原已命名覆盖）。
 - **J21.a 留档（功能门）**：产品无频道/workspace 归档状态机（C-channel 功能未交付，同 J16.a 频道订阅向量），无法构造「已归档对象」向量；待 C-channel 交付后补。
 - **J29.a-f/g 测试对齐进行中（未计 PASS）**：workspace_access_budget_test 21 失败根因=a12f1a6c7（`_active` 默认 true+pendingRefresh 补刷）改变 guard 初始化时序——build 尾 `Future.microtask(refresh)` 使 fakeAsync 同步块的 accept(0) 早于请求挂载（RangeError），resume(owner) 由「同步 refresh」变「早退+microtask」。已对齐 15 处（flushMicrotasks 插位：resume 后/build 后/多 provider 连续 resume 后/notifier(_channelTarget).resume 后），21→6；剩余 6 失败为 resume(owner) 挂起/激活语义级断言（markEnvironmentSuspended 的 _visibleOwner 匹配在新时序下的忽略路径）——**该域是 a12f1a6c7 作者（另一会话）的进行中工作，为避免撞车保留在工作树不提交**，待其对齐完成或明确移交后收 J29.a-f/g。
+- **批次七补记（J29.a-g PASS）**：workspace 两红文件对齐 a12f1a6c7 时序后全绿（App `2a31d9c31`：budget 26 case/AV 5 case；全局回归 workspace+channel+conversation+api+creation_receipt+app_core 825+165 skip 全绿）。对齐三类：①flushMicrotasks 插位（resume/构造后、多 provider 连续 resume 后、消费 details 前；widget 用例 pump 冲刷）；②初始自检索引平移（_pump 后 accept(0) 消费自检，online 重授权 accept(1)，recheck 断言顺延）；③drain 补喂（旧 owner suspend 被忽略后 accept(1) 响应按代次丢弃并自动 drain 补刷，补喂 accept(2) 恢复——合同不变，恢复路径多一跳）。J29.a/b/c/d/e/f/g 七子项计 PASS（原 NOT_RUN 行更新，含 budget 内 J29.g 命名 case——此前误判 J29.g 产品面待查，实为 budget 内既有命名 case 随 21 败一并修复）。
