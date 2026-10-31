@@ -370,24 +370,23 @@ w102_phase_run() { # $1 cdir $2 phase
   done
   echo "replayed $(ls "$ROOT/priv/migrations/"*.up.sql | wc -l | tr -d ' ') up files" >> "$cdir/raw.log"
   local GUARDS_DB="attv5_${SLOT}_w102_guards"
-  # W102DM dual-driver expansion (W102DM-BLUEPRINT segment 2): the probe
-  # suite is fully V5_PROBE_DRIVER-parameterized (seed quadruple + per-row
-  # driver key + per-run RUN_TAG idempotency), so both storage drivers run
-  # the same phase probes into their own probes-<drv>.jsonl; the merged
+  # W102DM dual-driver expansion (W102DM-BLUEPRINT segment 2, final shape):
+  # - the expand phase stays single-driver (garage): no contract leaf
+  #   consumes expand-phase probes per driver (all dual-driver leaves are
+  #   guards-contract), and the expand probes include the DDL-cycle
+  #   down-block which needs the fourth (CYCLE) database name the
+  #   authorization allowlist does not have.
+  # - the guards phase runs the full probe suite twice (garage, disk) in
+  #   the SAME phase database.  Cross-driver claim isolation is provided
+  #   by the probe suite itself: each guards session starts by settling
+  #   leftover `ready` job rows to `retry_wait` (a legal job_state
+  #   convergence UPDATE, migration-179 shape), so a session only ever
+  #   claims jobs it seeded itself — cross-session non-claiming is the
+  #   production lease semantics (run11 exposed the shared-ready-pool
+  #   flaw: the disk pass leased the garage pass leftovers, 1:0).
+  # Each probes-<drv>.jsonl rows carry the driver key; the merged
   # probes.jsonl keeps the (name, driver) pair per row for the adapter.
-  # EACH DRIVER GETS ITS OWN DATABASE: the claim/lease probes lease any
-  # ready job regardless of driver, so a shared database would let the
-  # disk pass lease the garage pass's leftover jobs (run11: claim_ordinary/
-  # claim_eb verified 1:0 because the leased rows carried the garage
-  # quadruple).  The disk pass reuses the allowlisted idle name
-  # attv5_<slot>_w102_queue as its database (authorization.json pins the
-  # database names; a _disk suffix would fail the pg_guard allowlist), and
-  # the expand phase's disk pass reads the garage guards database for its
-  # cross-phase assertions (the guards stream installs functions/triggers —
-  # storage-driver-independent content).
-  local drv PROBE_OUT DB_DRV GUARDS_DRV
-  DB_DRV="attv5_${SLOT}_w102_queue"
-  GUARDS_DRV="$GUARDS_DB"
+  local drv PROBE_OUT
   if [ "$phase" = "guards" ]; then
     guards_contract_stream | docker exec -i "$PG_CONTAINER" psql -X -U imboy_user -d "$DB" -v ON_ERROR_STOP=1 --single-transaction -f - \
       >> "$cdir/raw.log" 2>&1 \
@@ -395,31 +394,14 @@ w102_phase_run() { # $1 cdir $2 phase
     for drv in garage disk; do
       PROBE_OUT="$cdir/probes-$drv.jsonl"
       : > "$PROBE_OUT"
-      if [ "$drv" = "disk" ]; then
-        DB_DRV="attv5_${SLOT}_w102_queue"
-        authorize_fixture_database "$DB_DRV" || return 20
-        docker exec -i "$PG_CONTAINER" psql -X -U imboy_user -d postgres \
-          -c "DROP DATABASE IF EXISTS $DB_DRV" -c "CREATE DATABASE $DB_DRV OWNER imboy_user" >> "$cdir/db.log" 2>&1 || return 75
-        for E in pg_jieba postgis postgis_raster timescaledb pgcrypto "uuid-ossp" pg_trgm btree_gin btree_gist unaccent pg_stat_statements; do
-          docker exec -i "$PG_CONTAINER" psql -X -U imboy_user -d "$DB_DRV" -c "CREATE EXTENSION IF NOT EXISTS \"$E\"" >> "$cdir/db.log" 2>&1 || return 75
-        done
-        for f in $(ls "$ROOT/priv/migrations/"*.up.sql | sed 's|.*/||' | sort); do
-          docker exec -i "$PG_CONTAINER" psql -X -U imboy_user -d "$DB_DRV" -v ON_ERROR_STOP=1 --single-transaction -f - \
-            < "$ROOT/priv/migrations/$f" >> "$cdir/raw.log" 2>&1 || { echo "REPLAY_FAIL disk $f" >> "$cdir/raw.log"; return 30; }
-        done
-        guards_contract_stream | docker exec -i "$PG_CONTAINER" psql -X -U imboy_user -d "$DB_DRV" -v ON_ERROR_STOP=1 --single-transaction -f - \
-          >> "$cdir/raw.log" 2>&1 \
-          || { echo "GUARDS_FAIL disk" >> "$cdir/raw.log"; return 30; }
-      fi
-      V5_EXPAND_DB="${V5_EXPAND_DB:-attv5_${SLOT}_w102_expand}" V5_GUARDS_DB="$DB_DRV" \
+      V5_EXPAND_DB="${V5_EXPAND_DB:-attv5_${SLOT}_w102_expand}" V5_GUARDS_DB="$DB" \
         V5_PROBE_DRIVER="$drv" V5_RUN_DIR="$RUN_DIR" \
-        bash "$ROOT/scripts/test/attachment_lifecycle_v5_w102_probe.sh" "$DB_DRV" guards "$PROBE_OUT" >> "$cdir/raw.log" 2>&1 \
+        bash "$ROOT/scripts/test/attachment_lifecycle_v5_w102_probe.sh" "$DB" guards "$PROBE_OUT" >> "$cdir/raw.log" 2>&1 \
         || { echo "PROBE_FAIL guards $drv" >> "$cdir/raw.log"; return 30; }
     done
     cat "$cdir/probes-garage.jsonl" "$cdir/probes-disk.jsonl" > "$cdir/probes.jsonl"
   else
-    # cross-phase leaves need the guards DB too: build it alongside (garage
-    # pair), then build the disk pair for the disk probe pass.
+    # cross-phase leaves need the guards DB too: build it alongside
     authorize_fixture_database "$GUARDS_DB" || return 20
     docker exec -i "$PG_CONTAINER" psql -X -U imboy_user -d postgres \
       -c "DROP DATABASE IF EXISTS $GUARDS_DB" -c "CREATE DATABASE $GUARDS_DB OWNER imboy_user" >> "$cdir/db.log" 2>&1 || return 75
@@ -437,29 +419,8 @@ w102_phase_run() { # $1 cdir $2 phase
     : > "$PROBE_OUT"
     V5_EXPAND_DB="$DB" V5_GUARDS_DB="$GUARDS_DB" \
       V5_PROBE_DRIVER=garage V5_RUN_DIR="$RUN_DIR" \
-      bash "$ROOT/scripts/test/attachment_lifecycle_v5_w102_probe.sh" "$DB" expand "$PROBE_OUT" >> "$cdir/raw.log" 2>&1 \
-      || { echo "PROBE_FAIL expand garage" >> "$cdir/raw.log"; return 30; }
-    # Disk pass: dedicated databases (guards_disk for the cross-phase reads,
-    # expand_disk for the probes) with the same replay pipeline.
-    DB_DRV="attv5_${SLOT}_w102_queue"
-    GUARDS_DRV="$GUARDS_DB"
-    authorize_fixture_database "$DB_DRV" || return 20
-    docker exec -i "$PG_CONTAINER" psql -X -U imboy_user -d postgres \
-      -c "DROP DATABASE IF EXISTS $DB_DRV" -c "CREATE DATABASE $DB_DRV OWNER imboy_user" >> "$cdir/db.log" 2>&1 || return 75
-    for E in pg_jieba postgis postgis_raster timescaledb pgcrypto "uuid-ossp" pg_trgm btree_gin btree_gist unaccent pg_stat_statements; do
-      docker exec -i "$PG_CONTAINER" psql -X -U imboy_user -d "$DB_DRV" -c "CREATE EXTENSION IF NOT EXISTS \"$E\"" >> "$cdir/db.log" 2>&1 || return 75
-    done
-    for f in $(ls "$ROOT/priv/migrations/"*.up.sql | sed 's|.*/||' | sort); do
-      docker exec -i "$PG_CONTAINER" psql -X -U imboy_user -d "$DB_DRV" -v ON_ERROR_STOP=1 --single-transaction -f - \
-        < "$ROOT/priv/migrations/$f" >> "$cdir/raw.log" 2>&1 || { echo "REPLAY_FAIL disk $f" >> "$cdir/raw.log"; return 30; }
-    done
-    PROBE_OUT="$cdir/probes-disk.jsonl"
-    : > "$PROBE_OUT"
-    V5_EXPAND_DB="$DB_DRV" V5_GUARDS_DB="$GUARDS_DRV" \
-      V5_PROBE_DRIVER=disk V5_RUN_DIR="$RUN_DIR" \
-      bash "$ROOT/scripts/test/attachment_lifecycle_v5_w102_probe.sh" "$DB_DRV" expand "$PROBE_OUT" >> "$cdir/raw.log" 2>&1 \
-      || { echo "PROBE_FAIL expand disk" >> "$cdir/raw.log"; return 30; }
-    cat "$cdir/probes-garage.jsonl" "$cdir/probes-disk.jsonl" > "$cdir/probes.jsonl"
+      bash "$ROOT/scripts/test/attachment_lifecycle_v5_w102_probe.sh" "$DB" expand "$PROBE_OUT" >> "$cdir/raw.log" 2>&1
+    cat "$cdir/probes-garage.jsonl" > "$cdir/probes.jsonl"
   fi
   return $?
 }

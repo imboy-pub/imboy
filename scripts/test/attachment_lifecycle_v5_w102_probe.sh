@@ -1612,7 +1612,17 @@ if [ -n "${V5_PROBE_ONLY:-}" ]; then
 else
 case "$PHASE" in
   expand) migration_probes; down_block_probes; cross_phase_probes ;;
-  guards) migration_probes; down_block_probes; immutable_probes; session_link_probes
+  guards)
+          # W102DM cross-driver session isolation: a shared phase database
+          # may hold leftover `ready` job rows from the previous driver's
+          # session; settling them to `retry_wait` (the legal job_state
+          # convergence UPDATE, migration-179 shape) means this session
+          # only claims jobs it seeded itself — cross-session
+          # non-claiming is the production lease semantics (run11: the
+          # disk pass leased the garage pass leftovers, 1:0).
+          sqlval "UPDATE attachment_object_deletion SET job_state='retry_wait', next_retry_at=now()+interval '1 hour' WHERE job_state='ready'" >/dev/null
+          sqlval "UPDATE enterprise_asset_delete_queue SET job_state='retry_wait', next_retry_at=now()+interval '1 hour' WHERE job_state='ready'" >/dev/null
+          migration_probes; down_block_probes; immutable_probes; session_link_probes
           intent_authority_probes; audit_actor_probes; tombstone_probes; registration_probes
           cross_phase_probes ;;
   *) echo "bad phase" >&2; exit 2 ;;
