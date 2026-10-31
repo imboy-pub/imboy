@@ -1622,6 +1622,16 @@ case "$PHASE" in
           # disk pass leased the garage pass leftovers, 1:0).
           sqlval "UPDATE attachment_object_deletion SET job_state='retry_wait', next_retry_at=now()+interval '1 hour' WHERE job_state='ready'" >/dev/null
           sqlval "UPDATE enterprise_asset_delete_queue SET job_state='retry_wait', next_retry_at=now()+interval '1 hour' WHERE job_state='ready'" >/dev/null
+          # The claim pool is ready + DUE retry_wait (fn_v5_claim_*: job_state
+          # IN ('ready','retry_wait') AND next_retry_at <= now(), ORDER BY
+          # next_retry_at).  A previous driver session's reaper flips its
+          # expired leases to retry_wait with next_retry_at=now(), so the
+          # next session's claim would lease THAT row (run13: 1:0 — the
+          # fresh-token snapshot filtered on the disk quadruple found 0).
+          # Push due leftovers out of the claim horizon; next_retry_at is
+          # not part of ck_v5_aod_identity, so the UPDATE stays legal.
+          sqlval "UPDATE attachment_object_deletion SET next_retry_at = now() + interval '2 hours' WHERE job_state='retry_wait' AND next_retry_at <= clock_timestamp() + interval '90 minutes'" >/dev/null
+          sqlval "UPDATE enterprise_asset_delete_queue SET next_retry_at = now() + interval '2 hours' WHERE job_state='retry_wait' AND next_retry_at <= clock_timestamp() + interval '90 minutes'" >/dev/null
           migration_probes; down_block_probes; immutable_probes; session_link_probes
           intent_authority_probes; audit_actor_probes; tombstone_probes; registration_probes
           cross_phase_probes ;;
