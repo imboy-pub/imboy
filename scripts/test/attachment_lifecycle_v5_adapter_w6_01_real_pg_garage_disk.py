@@ -458,6 +458,14 @@ LEGACY_WITHOUT_AC = frozenset({
 
 # Same adequacy judgments as the frozen W1-02 adapters: only probes that
 # execute the leaf's defining action become a measured plan leaf.
+# 2026-10-31: the eight scenarios below were moved out of the stale
+# INADEQUATE snapshot — w102_probe.sh has carried their behavior-level
+# implementations for several candidates now (legacy-NULL backfill,
+# 1,000,000-row load with lock-wait evidence, keyset-batch interrupt/resume,
+# real old-writer GC-intent refusal, real function invocations with ACL
+# callability, M3 function inventory parity, first-bind + second-bind
+# refusal, attachment-binding same-value replay with to_jsonb snapshot),
+# which is exactly what the frozen W1-02 adapters already accept.
 ADEQUATE = {
     ("W1-02/migration", "expand-queue"): {
         "base_read_compat": ["base_read_compat", "base_read_compat2"],
@@ -471,6 +479,14 @@ ADEQUATE = {
             "renew_expiry_monotonic_and_deadline_fixed"],
         "function_digest_same_across_phases": [
             "function_digest_same_across_phases"],
+        "old_null_session_protected": ["old_null_session_protected"],
+        "large_table_write_block_bound": ["large_table_write_block_bound"],
+        "backfill_interrupt_resume": ["backfill_interrupt_resume"],
+        "rolling_old_writer_no_gc": ["rolling_old_writer_no_gc"],
+        "expand_required_functions_callable": [
+            "expand_required_functions_callable"],
+        "guards_do_not_install_missing_functions": [
+            "guards_do_not_install_missing_functions"],
     },
     ("W1-02/migration", "guards-contract"): {
         "base_read_compat": ["base_read_compat", "base_read_compat2"],
@@ -484,12 +500,21 @@ ADEQUATE = {
             "renew_expiry_monotonic_and_deadline_fixed"],
         "function_digest_same_across_phases": [
             "function_digest_same_across_phases"],
+        "old_null_session_protected": ["old_null_session_protected"],
+        "large_table_write_block_bound": ["large_table_write_block_bound"],
+        "backfill_interrupt_resume": ["backfill_interrupt_resume"],
+        "rolling_old_writer_no_gc": ["rolling_old_writer_no_gc"],
+        "expand_required_functions_callable": [
+            "expand_required_functions_callable"],
+        "guards_do_not_install_missing_functions": [
+            "guards_do_not_install_missing_functions"],
     },
     ("W1-02/immutable", "guards-contract"): {
         name: [name] for name in (
             "mutate_driver", "mutate_namespace", "mutate_container",
             "mutate_key", "mutate_owner", "mutate_scope", "mutate_cipher",
-            "mutate_locator_digest", "tombstone_recreation")
+            "mutate_locator_digest", "tombstone_recreation",
+            "first_bind_once", "same_value_replay")
     },
 }
 
