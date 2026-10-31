@@ -715,12 +715,19 @@ new_enterprise_group(S) ->
     Ws = maps:get(workspace_id, Scope),
     ok = seed_workspace_member(Ws, Uid),
     Ext = <<"w601-ent-", (integer_to_binary(Uid))/binary>>,
+    %% org 头是 internal 面组织边界的签名输入（缺失 =
+    %% organization_boundary_violation 403）；仓库既有 internal 测试同款。
+    InternalHeaders =
+        (maps:get(internal_headers, S))#{
+            <<"x-imboy-organization">> =>
+                integer_to_binary(Org)
+        },
     Identity = ?F:request(
         S,
         put,
         <<"/api/internal/v1/identity-mappings">>,
         #{<<"external_user_id">> => Ext, <<"user_id">> => Uid},
-        maps:get(internal_headers, S),
+        InternalHeaders,
         <<"application/json">>
     ),
     ?assertEqual(200, maps:get(status, Identity)),
@@ -736,7 +743,7 @@ new_enterprise_group(S) ->
             <<"members">> => [Ext],
             <<"owner_external_user_id">> => Ext
         },
-        maps:get(internal_headers, S),
+        InternalHeaders,
         <<"application/json">>
     ),
     ?assertEqual(200, maps:get(status, Create)),
