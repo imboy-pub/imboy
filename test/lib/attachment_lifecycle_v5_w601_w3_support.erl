@@ -501,7 +501,13 @@ lenient_q(Conn, Sql, Params) ->
 %% （如 workspace_attachment → 迁移 168 冻结其行不可变的 WAR）抛的是
 %% **23001 restrict_violation**，非 RESTRICT 的 FK 抛 23503——两种都属
 %% "治理行钉住的合法不可销毁残留"，同样容忍（run6 w3hold 76F 实测只
-%% 认 23503 漏了 23001，把已成功的场景整叶拉红）。其余失败回滚后照抛。
+%% 认 23503 漏了 23001，把已成功的场景整叶拉红）。**23510** 同属此族：
+%% 迁移 237 fn_v5_cross_queue_guard 在向 attachment_object_deletion 写
+%% physical key 前若发现同 key 已在 enterprise_asset_delete_queue
+%% （enterprise 场景 intent 注册的队列行），抛 23510 'v5 cross-domain
+%% physical deletion conflict'（run7 w3hold 2F/78P 实测，失败落在
+%% Tombstone 位——第 2 条 SQL——故须扫任一位置而非只看第 3 位）。
+%% 其余失败回滚后照抛。
 purge_attachment_metadata(Conn, Key) ->
     q(Conn, "BEGIN", []),
     [Intent, Tombstone, Deleted] =
@@ -517,19 +523,30 @@ purge_attachment_metadata(Conn, Key) ->
             ),
             q(Conn, "COMMIT", []),
             ok;
-        {_, _, {error, #error{code = <<"23503">>}}} ->
-            %% 治理行 FK 钉住的不可销毁残留：回滚保持原状，复用既有行
-            q(Conn, "ROLLBACK", []),
-            ok;
-        {_, _, {error, #error{code = <<"23001">>}}} ->
-            %% 同上：RESTRICT FK 的 restrict_violation 形状（run6 实测）
-            q(Conn, "ROLLBACK", []),
-            ok;
-        {_, _, _} ->
+        _ ->
             q(Conn, "ROLLBACK", []),
             Failed = [R || {error, _} = R <- [Intent, Tombstone, Deleted]],
-            erlang:error({w601_w3_sql_failed, Failed, purge_sqls()})
+            case
+                [
+                    C
+                 || {error, #error{code = C}} <- Failed,
+                    lists:member(C, tolerable_purge_codes())
+                ]
+            of
+                [] ->
+                    erlang:error({w601_w3_sql_failed, Failed, purge_sqls()});
+                _ ->
+                    %% 治理守卫/FK 钉住的不可销毁残留：回滚保持原状，
+                    %% 复用既有行；path 带 per-run nonce，跨 run 无污染
+                    ok
+            end
     end.
+
+%% purge 语境下"治理钉住"错误码族：23503/23001=FK 钉住（RESTRICT 与否），
+%% 23510=迁移 237 跨队列物理删除守卫。25P02 不入集——它只是事务已中止
+%% 的连锁症状，不是根因。
+tolerable_purge_codes() ->
+    [<<"23503">>, <<"23001">>, <<"23510">>].
 
 purge_sqls() ->
     [
