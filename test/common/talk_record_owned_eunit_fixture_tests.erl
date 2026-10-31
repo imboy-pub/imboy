@@ -7,6 +7,7 @@ mapping_test() ->
         talk_record_capture_tests,
         talk_record_content_tests,
         talk_record_departure_tests,
+        talk_record_delete_tests,
         talk_record_ds_pg_tests,
         talk_record_ds_split_tests,
         talk_record_export_relay_tests,
