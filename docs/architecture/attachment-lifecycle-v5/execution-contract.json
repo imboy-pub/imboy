@@ -1,4 +1,5 @@
 {
+  "reviewed_readmission": {"task_id": "W6-01", "attempt_limit": 8, "deadlines": {"task": 1793701563, "wave": 1793960763, "run": 1794047163}},
   "contract_version": "5.5",
   "mode": "DESIGN_ONLY",
   "implementation_authorized": false,
@@ -152,6 +153,7 @@
     "infrastructure_retries": 2,
     "code_repair_rounds": 2,
     "task_attempts_total_max": 5,
+    "task_attempts_overrides": {"W6-01": 8},
     "backoff_seconds": [
       30,
       120
@@ -31914,7 +31916,7 @@
       "W2-02/confirmed-content-immutable",
       "W4-03/driver-content-immutable"
     ],
-    "applicability": "bare PUT gateway/multipart仅ordinary/internal；ciphertext-only仅ordinary；其余按exact叶四入口。EB/widget使用其已有proxy PUT协议，不伪造multipart或E2EE。W6分别重跑Garage/Disk。",
+    "applicability": "bare PUT gateway/multipart仅ordinary/internal；ciphertext-only仅ordinary；其余按exact叶四入口。EB/widget使用其已有proxy PUT协议，不伪造multipart或E2EE。W6分别重跑Garage/Disk。仅W6-01现有8个缺失叶允许使用真实enterprise multipart/group_file生产入口，不得用gateway、SQL、mock或替代入口冒充。",
     "receipt": "matched entrypoint + route/method + server handler/callchain ID + request_id + exact fixture actor; four entrypoints cannot share substituted receipt."
   },
   "runner_cli_contract": {
