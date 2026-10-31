@@ -90,7 +90,19 @@
     %% 失败归 exclusive_failed_roots——根集合与 roots_total 不变，不缩分母。
     textguard_business_tests,
     textguard_integration_tests,
-    textguard_shadow_tests
+    textguard_shadow_tests,
+    %% 2026-10-31 textguard_export 接入（同上口径的第四根）：src/moderation/
+    %% textguard_export.erl 的 src 伴随根，inventory/1 下根名不带 _tests（Companions
+    %% 剔除 test/lib/textguard_export_tests.erl，保留 src 根）——与三根的 _tests
+    %% 形态不同，EXCL/TEXTGUARD_ROOTS 必须用同名 `textguard_export`。full 轮
+    %% rv4（full-20261030T225326Z）实证普通车道共 VM 失败：isolated 内部 8 pass
+    %% 2 cancel（第 9、10 case），机制为长跑共享 VM 对本地 PG 的新建 TCP 连接被
+    %% macOS Docker 端口转发层瞬态 econnrefused（inttest_marker_db A1c 口径）——
+    %% 并发快照用例的 writer 经 safe_connect 直连不重试，连接失败 → writer
+    %% badmatch 死亡 → spawn_link EXIT 杀死 eunit Runner → 该 case 及后续 case
+    %% cancel（单跑 fresh VM 十 case 全过，evidence/group-20261031T002355Z）。
+    %% 独占车道 fresh VM 消除瞬态窗口；资源面按根差异化（env.erl textguard/4）。
+    textguard_export
 ]).
 
 %% 已知与 peer 宿主不兼容的根：直接走独立非 peer VM（imboy_quality_runner:run_standalone）。

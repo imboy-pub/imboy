@@ -82,7 +82,15 @@
 -define(TEXTGUARD_ROOTS, [
     textguard_business_tests,
     textguard_integration_tests,
-    textguard_shadow_tests
+    textguard_shadow_tests,
+    %% 2026-10-31 第四根（src 伴随根，根名不带 _tests，imboy_quality_full ?EXCL
+    %% 同名追加）。资源面与三根不同：textguard_export_tests 的 isolated 夹具
+    %% owned_pg_setup → inttest_marker_db:provision(env_prefix TG16) 只读
+    %% TG16_PG_HOST/_PG_PORT/_PG_USER/_PG_PASSWORD（TG16_MAINT_DB 缺省 postgres），
+    %% 不消费 TG19/TG20/TEXTGUARD_* 与服务二进制，textguard/4 对其按根差异化
+    %% 仅注入 TG16 服务器连接（最小资源面）；缺连接参数仍 fail-closed
+    %% （marker_db_missing_pg_user/password，eunit no-skip 铁律不变）。
+    textguard_export
 ]).
 %% 顺序依赖根：独占车道 fresh VM + 本根专属克隆（imboy_quality_full ?EXCL 同列）。
 %% msg_safe：共享 UID 对 920001/920002 的姊妹根直插残留抬高 observed_head（2026-10-30
@@ -430,24 +438,29 @@ textguard(Repo, Ctrl, Args, Pid) ->
     case imboy_quality_resources:textguard_bin(Repo) of
         {ok, Bin} ->
             PgEnv = pg_env(Args),
+            Tg16 = tg16_server_env(PgEnv),
             Root = filename:join([Ctrl, "runtime", "textguard", Pid]),
             ok = filelib:ensure_dir(filename:join(Root, "x")),
             ok = file:change_mode(Root, 8#700),
             Env = maps:from_list([
                 begin
-                    Dir = filename:join(Root, atom_to_list(R)),
-                    ok = filelib:ensure_dir(filename:join(Dir, "x")),
-                    ok = file:change_mode(Dir, 8#700),
-                    {R, [
-                        {"TG16_PG_HOST", maps:get(host, PgEnv)},
-                        {"TG16_PG_PORT", maps:get(port, PgEnv)},
-                        {"TG16_PG_USER", maps:get(user, PgEnv)},
-                        {"TG16_PG_PASSWORD", maps:get(pass, PgEnv)},
-                        {"TG19_EVIDENCE", Dir},
-                        {"TEXTGUARD_T2S_TABLE_ID", "test-t2s-v1"},
-                        {"TEXTGUARD_TEST_BINARY", Bin}
-                        | textguard_files(Repo, Dir)
-                    ]}
+                    case R of
+                        textguard_export ->
+                            %% 最小资源面：provision 自建一次性 marker 库，只吃
+                            %% 服务器连接；无 evidence 目录/密钥/二进制消费面。
+                            {R, Tg16};
+                        _ ->
+                            Dir = filename:join(Root, atom_to_list(R)),
+                            ok = filelib:ensure_dir(filename:join(Dir, "x")),
+                            ok = file:change_mode(Dir, 8#700),
+                            {R,
+                                Tg16 ++
+                                    [
+                                        {"TG19_EVIDENCE", Dir},
+                                        {"TEXTGUARD_T2S_TABLE_ID", "test-t2s-v1"},
+                                        {"TEXTGUARD_TEST_BINARY", Bin}
+                                    ] ++ textguard_files(Repo, Dir)}
+                    end
                 end
              || R <- ?TEXTGUARD_ROOTS
             ]),
@@ -460,10 +473,21 @@ textguard(Repo, Ctrl, Args, Pid) ->
                 }
             };
         {error, Reason} ->
-            %% fail-closed：不注入 env，三根 setup 以 textguard_missing_env /
-            %% textguard_binary_unavailable 硬失败（与 HIRD 缺编译器同口径）。
+            %% fail-closed：不注入 env，车道内全部根（含 textguard_export）setup
+            %% 以 textguard_missing_env / textguard_binary_unavailable 硬失败
+            %% （与 HIRD 缺编译器同口径：车道资源整体缺失即整体 fail-closed）。
             #{env => #{}, drop_dbs => [], report => #{<<"error">> => fmt(Reason)}}
     end.
+
+%% TG16 marker 服务器连接（resolve_server 必需的 User/Pass 双键 + 可缺省的 Host/Port）。
+%% textguard_export 根的唯一资源面；三根在此基础上叠加 evidence/密钥/二进制。
+tg16_server_env(PgEnv) ->
+    [
+        {"TG16_PG_HOST", maps:get(host, PgEnv)},
+        {"TG16_PG_PORT", maps:get(port, PgEnv)},
+        {"TG16_PG_USER", maps:get(user, PgEnv)},
+        {"TG16_PG_PASSWORD", maps:get(pass, PgEnv)}
+    ].
 
 %% native 门 importlib 调用 scripts/verify_textguard_business.py:schema_subset 生成
 %% business-schema-subset.sql（从 priv/migrations 抽取生产 DDL）；这里保持单一事实源。
