@@ -298,14 +298,22 @@ def _immutability_proof(measured, entrypoint):
     method, route, presign_handler, put_handler = SURFACE_ROUTES[entrypoint]
     presigns = [request for request in requests
                 if request.get("action") == "presign" and 200 <= request["status"] < 300]
-    if len(presigns) != 1:
-        raise ValueError("expected exactly one admitted presign request")
-    presign = presigns[0]
+    # Multi-session scenarios carry several presign/PUT rounds in one
+    # observation; this leaf's chain is the one whose presign carries THIS
+    # leaf's object_key (object identity selects the session — precise,
+    # not permissive).
+    bound_presigns = [request for request in presigns
+                      if request.get("object_key") == object_key]
+    if len(bound_presigns) != 1:
+        raise ValueError("expected exactly one admitted presign request bound to this leaf's object")
+    presign = bound_presigns[0]
     if (presign["method"] != method or not re.fullmatch(route, presign["route"])
             or presign["handler"] != presign_handler
             or presign.get("object_key") != object_key):
         raise ValueError("presign request is not bound to this leaf's object at the server")
-    puts = [request for request in requests if request.get("action") == "put"]
+    puts = [request for request in requests
+            if request.get("action") == "put"
+            and request.get("object_key") == object_key]
     if not puts:
         raise ValueError("no real PUT request observed for this leaf")
     if entrypoint in ("ordinary", "enterprise_internal"):
