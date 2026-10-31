@@ -1665,7 +1665,10 @@ def _write_reviewed_readmission(run_dir, proposed, evidence):
                 or not store.snapshot_bound(old, [scan['bound']])):
             die(EXIT_CONTRACT, 'readmission requires a consistent snapshot and ledger')
         contract = _load_bound_contract(old)
-        _validate_timed_case_events(store.iter_events(), contract.get('legacy_case_event_hashes', {}))
+        # Steady-state semantics (mirroring the seal read path): a contract
+        # without an anchor map allows contract-legal direct seals; the
+        # chain consistency was just verified above via scan_chain.
+        _validate_timed_case_events(store.iter_events(), contract.get("legacy_case_event_hashes"))
         _clock_check(old.get('clock_anchor'))
         _budget_check(old, contract, enforce=False)
         if (type(old.get('revision')) is not int
