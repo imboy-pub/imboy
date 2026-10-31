@@ -497,8 +497,11 @@ lenient_q(Conn, Sql, Params) ->
 %% tombstone 收敛为 done（迁移 179:1026 "v5 job rows are permanent
 %% tombstones (no DELETE)"——队列行是永久墓碑，只能按 job guard 的合法
 %% UPDATE 路径收敛，同 w601_w4_queueproto:settle_active 先例）。DELETE 被
-%% 治理行 FK 钉住（23503）时整体回滚、行保持原状供 seed 的 INSERT ON
-%% CONFLICT 复用；其余失败回滚后照抛。
+%% 治理行 FK 钉住时整体回滚、行保持原状：FK 声明为 RESTRICT 的约束
+%% （如 workspace_attachment → 迁移 168 冻结其行不可变的 WAR）抛的是
+%% **23001 restrict_violation**，非 RESTRICT 的 FK 抛 23503——两种都属
+%% "治理行钉住的合法不可销毁残留"，同样容忍（run6 w3hold 76F 实测只
+%% 认 23503 漏了 23001，把已成功的场景整叶拉红）。其余失败回滚后照抛。
 purge_attachment_metadata(Conn, Key) ->
     q(Conn, "BEGIN", []),
     [Intent, Tombstone, Deleted] =
@@ -516,6 +519,10 @@ purge_attachment_metadata(Conn, Key) ->
             ok;
         {_, _, {error, #error{code = <<"23503">>}}} ->
             %% 治理行 FK 钉住的不可销毁残留：回滚保持原状，复用既有行
+            q(Conn, "ROLLBACK", []),
+            ok;
+        {_, _, {error, #error{code = <<"23001">>}}} ->
+            %% 同上：RESTRICT FK 的 restrict_violation 形状（run6 实测）
             q(Conn, "ROLLBACK", []),
             ok;
         {_, _, _} ->
