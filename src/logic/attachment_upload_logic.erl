@@ -17,7 +17,7 @@
 % Actual bytes are pinned before I/O; hashing and the provider share one private inode.
 %%%
 
--export([upload_multipart/5]).
+-export([upload_multipart/5, upload_binary/4]).
 
 -spec upload_multipart(
     integer(), binary(), binary(), file:filename_all(), non_neg_integer()
@@ -34,6 +34,13 @@
         | {storage_error, term()}
         | term()}.
 upload_multipart(Uid, ObjectKey, MimeType, FilePath, Size) ->
+    upload_registered(Uid, ObjectKey, MimeType, {file, FilePath}, Size).
+
+-spec upload_binary(integer(), binary(), binary(), binary()) -> {ok, map()} | {error, term()}.
+upload_binary(Uid, ObjectKey, MimeType, Bytes) ->
+    upload_registered(Uid, ObjectKey, MimeType, Bytes, byte_size(Bytes)).
+
+upload_registered(Uid, ObjectKey, MimeType, Source, Size) ->
     case elib_oss:owner_of_key(ObjectKey) of
         {ok, Uid} ->
             case attach_pending_repo:status_lookup(ObjectKey) of
@@ -43,7 +50,7 @@ upload_multipart(Uid, ObjectKey, MimeType, FilePath, Size) ->
                         <<"creator_user_id">> := Uid,
                         <<"scope">> := Scope
                     } = Row} ->
-                    guard_and_put(Uid, ObjectKey, MimeType, FilePath, Size, Scope, Row);
+                    guard_and_put(Uid, ObjectKey, MimeType, Source, Size, Scope, Row);
                 {ok, #{<<"creator_user_id">> := _OtherUid}} ->
                     {error, forbidden_key};
                 {ok, _} ->
@@ -64,22 +71,28 @@ upload_multipart(Uid, ObjectKey, MimeType, FilePath, Size) ->
 
 %% MIME/会话守卫 → 冻结位置 → 私有 spool → 原子 pin → 受控 provider PUT。
 -spec guard_and_put(
-    integer(), binary(), binary(), file:filename_all(), non_neg_integer(), binary(), map()
+    integer(),
+    binary(),
+    binary(),
+    binary() | {file, file:filename_all()},
+    non_neg_integer(),
+    binary(),
+    map()
 ) -> {ok, map()} | {error, term()}.
-guard_and_put(Uid, ObjectKey, MimeType, FilePath, Size, Scope, Row) ->
+guard_and_put(Uid, ObjectKey, MimeType, Source, Size, Scope, Row) ->
     case mime_guard(Scope, MimeType) of
         ok ->
             case Size > elib_oss:max_file_size() of
                 true ->
                     {error, file_too_large};
                 false ->
-                    prepare_upload(Uid, ObjectKey, MimeType, FilePath, Scope, Row)
+                    prepare_upload(Uid, ObjectKey, MimeType, Source, Scope, Row)
             end;
         {error, _} = E ->
             E
     end.
 
-prepare_upload(Uid, Key, Mime, Path, Scope, Row) ->
+prepare_upload(Uid, Key, Mime, Source, Scope, Row) ->
     case attachment_storage:frozen_location(Key, Row) of
         {ok, legacy_unknown} ->
             %% 历史未知位置不能用当前默认桶重新解释，须创建新上传会话。
@@ -87,7 +100,7 @@ prepare_upload(Uid, Key, Mime, Path, Scope, Row) ->
         {ok, Identity} ->
             case session_context(Uid, Mime, Scope, Row) of
                 {ok, Expiry} ->
-                    upload_from_path(Key, Mime, Path, Identity, Expiry);
+                    upload_from_source(Key, Mime, Source, Identity, Expiry);
                 {error, _} = Error ->
                     Error
             end;
@@ -95,9 +108,9 @@ prepare_upload(Uid, Key, Mime, Path, Scope, Row) ->
             Error
     end.
 
-upload_from_path(Key, Mime, Path, Identity, Expiry) ->
+upload_from_source(Key, Mime, SourceSpec, Identity, Expiry) ->
     case
-        attachment_upload_spool:with_source({file, Path}, fun(Source) ->
+        attachment_upload_spool:with_source(SourceSpec, fun(Source) ->
             %% Tag callback results separately from local spool failures.
             {upload_result, pin_and_put(Key, Mime, Source, Identity, Expiry)}
         end)

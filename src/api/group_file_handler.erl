@@ -36,6 +36,7 @@ init(Req0, State0) ->
 %% @doc Action 分发处理
 -spec handle_action(atom() | false, cowboy_req:req(), map()) -> cowboy_req:req().
 handle_action(upload, Req, State) -> upload(Req, State);
+handle_action(bind, Req, State) -> bind(Req, State);
 handle_action(download, Req, State) -> download(Req, State);
 handle_action(list, Req, State) -> list(Req, State);
 handle_action(delete, Req, State) -> delete(Req, State);

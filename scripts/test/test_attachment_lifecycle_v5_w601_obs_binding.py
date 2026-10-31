@@ -61,7 +61,7 @@ class ObservationBindingTests(unittest.TestCase):
             build_row = stack.enter_context(patch.object(adapter.S.C, "build_row", side_effect=lambda leaf, a, b, *args: {"source": leaf["source_case_ref"], "domain": leaf["domain"]}))
             for item in (
                 patch.object(adapter.S.C, "argv_paths", return_value=("run", "case", "root")),
-                patch.object(adapter.S, "context", return_value={"allowlist": {}}),
+                patch.object(adapter.S, "context", return_value={"allowlist": {}, "contract": {}}),
                 patch.object(adapter.S.C, "resolve_slot", return_value="slot1"),
                 patch.object(adapter.S.C, "db_resource", return_value="db"),
                 patch.object(adapter.S.C, "garage_bucket", return_value="bucket"),
@@ -91,6 +91,17 @@ class ObservationBindingTests(unittest.TestCase):
                     self.assertTrue(gaps.called)
                     self.assertIn("user ruling", gaps.call_args[0][3])
                     self.assertFalse(build_row.called)
+            # An ordinary group-scope attachment is not a group-file upload.
+            # No driver or AC can publish a row from that substitute evidence.
+            for driver, ac in itertools.product(("disk", "garage"), ("AC01", "AC02")):
+                leaf_mock.return_value = [{**ordinary, "driver": driver, "ac_id": ac,
+                    "ordering_or_fault": "W2-01/pending-multipart/expand-queue/group_file_success"}]
+                with self.subTest(domain="ordinary", driver=driver, ac=ac):
+                    with self.assertRaises(SystemExit) as caught:
+                        adapter.build()
+                    self.assertEqual(30, caught.exception.code)
+                    self.assertIn("/api/v1/group/file/upload", gaps.call_args[0][3])
+                    self.assertFalse(build_row.called)
             # …while the ordinary-domain twin of the same scenario binds
             # without raising a new gap.
             gaps_count_after_blocked = gaps.call_count
@@ -102,12 +113,28 @@ class ObservationBindingTests(unittest.TestCase):
         start = datetime(2026, 1, 1, tzinfo=timezone.utc)
         windows = {name: (start + timedelta(seconds=n), start + timedelta(seconds=n + 10))
                    for name, n in (("w403", 0), ("w2upload", 20), ("w4queue", 40))}
-        matrix_leaf = {"source_case_ref": "W4-03/driver-content-immutable", "entrypoint": "surface", "driver": "disk", "domain": "ordinary", "ordering_or_fault": "scenario", "ac_id": "AC02"}
+        matrix_leaf = {"source_case_ref": "W4-03/driver-content-immutable", "entrypoint": "ordinary", "driver": "disk", "domain": "ordinary", "ordering_or_fault": "scenario", "source_scenario": "scenario", "ac_id": "AC02"}
         obs_leaves = [
             {"source_case_ref": ref, "entrypoint": "entry", "driver": "disk", "domain": "ordinary", "ordering_or_fault": ref + "/expand-queue/scenario", "ac_id": "AC01"}
             for ref in ("W2-01/session-recovery-api", "W4-01/delete-entrypoints")]
-        ctx = {"allowlist": {}}
+        ctx = {"allowlist": {}, "contract": {}}
         log = {"parsed": {"markers": ["W403_DIRECT_OK"], "tests": [1], "summary_raw": "ok"}, "path": "log", "sha256": "digest"}
+        key = (matrix_leaf["source_case_ref"], "ordinary", "scenario", "ordinary", "disk")
+        common = {"object_key": "owned/key", "server_process": "<1.2.3>",
+                  "connection_id": "<1.2.4>", "status": 200}
+        presign = {**common, "request_id": "presign", "action": "presign",
+                   "method": "GET", "route": "/api/v1/attachment/presign",
+                   "handler": "attach_handler"}
+        put = {**common, "request_id": "put", "action": "put", "method": "PUT",
+               "route": "/api/v1/attachment/gateway/12345678-1234-1234-1234-123456789abc",
+               "handler": "attachment_storage_gateway_handler",
+               "diagnostic_untrusted_locations": [{
+                   "trust": "diagnostic_untrusted", "source": "attachment_storage:session_location/1",
+                   "identity": {"key": "owned/key", "driver": "disk", "namespace": "ns",
+                                "container": "container", "locator_digest": "digest"}}]}
+        matrix_obs = {"measured": {"driver": "disk", "ac_id": "AC02", "object_key": "owned/key",
+                                   "http_requests": [presign, put]},
+                      "emitted_at_ms": int((start + timedelta(seconds=1)).timestamp() * 1000)}
 
         def step(name):
             first, last = windows[name]
@@ -127,7 +154,7 @@ class ObservationBindingTests(unittest.TestCase):
             patch.object(adapter.S, "step_record", side_effect=lambda _, name, __: {"exit": 0, "line": name}),
             patch.object(adapter.S, "eunit_log", return_value=log),
             patch.object(adapter.S, "step_window", side_effect=lambda rec, _: windows.get(rec["line"], windows["w403"])),
-            patch.object(adapter, "_obs_index", return_value=({}, "obs403")),
+            patch.object(adapter, "_obs_index", return_value=({key: [(1, matrix_obs)]}, "obs403")),
             patch.object(adapter.S, "probe_file", return_value={}),
             patch.object(adapter, "_replay_count", return_value=1),
             patch.object(adapter.S, "find_eunit_unit", return_value={"func": "f", "duration": 0.1}),

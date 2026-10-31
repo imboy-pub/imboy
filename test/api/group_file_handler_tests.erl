@@ -8,7 +8,7 @@
 %%% group_file_handler 模块的 EUnit 测试
 %%%
 %%% 覆盖 action:
-%%% - upload/download/list/delete/search/categories
+%%% - upload/bind/download/list/delete/search/categories
 %%%===================================================================
 
 %% 模拟 cowboy 流式 multipart 协议：read_part 每次返回一个 part 的
@@ -103,6 +103,50 @@ upload_success_returns_success_test_() ->
             Result = group_file_handler:handle_action(upload, req_mock(), #{current_uid => 100}),
             ?assertEqual(req_ok, Result),
             ?assertMatch(#{<<"file_id">> := <<"f_1">>}, receive_resp_data())
+        end
+    ).
+
+bind_success_dispatches_existing_handler_test_() ->
+    ?WITH_MECKS(
+        [
+            {elib_req, [
+                {'body', 2, fun(_Req, _Opts) ->
+                    {ok,
+                        #{
+                            <<"gid">> => 7,
+                            <<"file_name">> => <<"a.txt">>,
+                            <<"file_type">> => <<"text/plain">>,
+                            <<"object_key">> => <<"u100/g7/a.txt">>,
+                            <<"file_size">> => 5,
+                            <<"file_md5">> => <<"abc">>
+                        },
+                        req_after_body}
+                end}
+            ]},
+            {group_file_ds, [
+                {'bind_file', 7, fun(
+                    7,
+                    100,
+                    <<"a.txt">>,
+                    <<"text/plain">>,
+                    <<"u100/g7/a.txt">>,
+                    5,
+                    <<"abc">>
+                ) ->
+                    {ok, <<"f_7">>}
+                end}
+            ]},
+            {elib_response, [
+                {'success', 2, fun(_Req, Data) ->
+                    self() ! {resp_data, Data},
+                    req_ok
+                end}
+            ]}
+        ],
+        fun() ->
+            Result = group_file_handler:handle_action(bind, req_mock(), #{current_uid => 100}),
+            ?assertEqual(req_ok, Result),
+            ?assertEqual(#{<<"file_id">> => <<"f_7">>}, receive_resp_data())
         end
     ).
 

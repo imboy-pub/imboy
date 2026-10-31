@@ -17,6 +17,7 @@
 
 -export([presign/5, presign/6, confirm/5, view_url/2, download/1]).
 -export([reauthorize_upload_session/2, recheck_content_pin/3]).
+-export([prepare_group_file_confirmation/1, confirm_group_file_tx/6]).
 -export([authorize/2]).
 
 -ifdef(TEST).
@@ -334,6 +335,30 @@ verify_and_save_v5(Uid, ObjectKey, Scope, ScopeRef, Meta) ->
         {error, _} = E ->
             E
     end.
+
+%% Group files must use the same provider-byte and locked confirmation checks.
+-spec prepare_group_file_confirmation(binary()) -> {ok, map()} | {error, term()}.
+prepare_group_file_confirmation(ObjectKey) ->
+    case v5_object_bytes(ObjectKey, <<"group">>) of
+        {ok, Sha256, Size, Mime, StatCtx} ->
+            case v5_meta_guard(<<"group">>, Mime, Size, #{}) of
+                ok -> {ok, #{sha256 => Sha256, size => Size, mime => Mime, stat => StatCtx}};
+                {error, _} = Error -> Error
+            end;
+        {error, not_found} ->
+            {error, object_not_found};
+        {error, _} = Error ->
+            Error
+    end.
+
+-spec confirm_group_file_tx(any(), binary(), integer(), integer(), integer(), map()) -> ok.
+confirm_group_file_tx(Conn, ObjectKey, Gid, Uid, GroupFileId, Proof) ->
+    #{sha256 := Sha256, size := Size, mime := Mime, stat := StatCtx} = Proof,
+    Attach0 = confirm_attach_map(
+        ObjectKey, <<"group">>, integer_to_binary(Gid), Size, Mime, null, null, Sha256
+    ),
+    Attach = Attach0#{<<"group_file_id">> => GroupFileId},
+    confirm_v5_tx(Conn, ObjectKey, <<"group">>, null, elib_dt:now(), Uid, Attach, StatCtx).
 
 %% 读字节前先 head 建首 stat 基线（StatCtx 传 confirm 锁后复核）：
 %% [S1, read] 覆写由哈希-pin 对照兜住，[read, 提交] 覆写由 S1/S2 不一致拒绝

@@ -459,6 +459,12 @@ def _blocked_enterprise_leaf(leaf):
             and _obs_scenario(leaf) in BLOCKED_ENTERPRISE_SCENARIOS)
 
 
+def _blocked_ordinary_group_file_leaf(leaf):
+    return (leaf.get("source_case_ref") == "W2-01/pending-multipart"
+            and leaf.get("domain") == "ordinary"
+            and _obs_scenario(leaf) == "group_file_success")
+
+
 LEGACY_WITHOUT_AC = frozenset({
     "W4-03/storage-switch", "W4-03/storage-disk", "W4-03/storage-garage",
     "W4-03/late-put", "W4-03/namespace-alias-integrity",
@@ -1059,6 +1065,13 @@ def build():
                             "acceptance evidence; leaf %r stays blocked per "
                             "the frozen contract until an authorized revision"
                             % leaf["ordering_or_fault"])
+                continue
+            if _blocked_ordinary_group_file_leaf(leaf):
+                S.group_gap(gap_groups, source, 1,
+                            "ordinary group_file_success uses attachment "
+                            "multipart and message-anchor confirmation, not "
+                            "the required /api/v1/group/file/upload entrypoint; "
+                            "real group-file evidence is missing")
                 continue
             subdir = OBS_STEP_FOR[source]
             step = (obs_cache[subdir] if subdir in obs_cache

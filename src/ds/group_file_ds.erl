@@ -28,6 +28,9 @@
 -export([search_by_name/4]).
 -export([list_by_category/4]).
 -export([list_by_group/4]).
+-ifdef(TEST).
+-export([location_columns/1]).
+-endif.
 
 -include("cache.hrl").
 -include("log.hrl").
@@ -70,7 +73,7 @@ upload_file(Gid, UploaderId, FileName, FileBinary, FileType) ->
             end
     end.
 
-%% @doc 上传前登记真实对象路径；PUT 或元数据事务失败时由 pending 清理器回收。
+%% @doc 复用附件 V5 会话登记和统一 Storage Driver；失败会话由 pending 清理器回收。
 -spec do_upload_file(integer(), integer(), binary(), binary(), binary()) ->
     {ok, binary()} | {error, term()}.
 do_upload_file(Gid, UploaderId, FileName, FileBinary, FileType) ->
@@ -78,17 +81,38 @@ do_upload_file(Gid, UploaderId, FileName, FileBinary, FileType) ->
         true ->
             {error, file_too_large};
         false ->
-            ObjectKey = elib_oss:build_object_key(
-                UploaderId, <<"group">>, integer_to_binary(Gid), FileName
-            ),
-            Bucket = elib_oss:get_bucket(<<"group">>),
-            case attachment_ds:pending_add(ObjectKey, Bucket, <<"group">>, UploaderId) of
-                ok ->
-                    case elib_oss:put_object(Bucket, ObjectKey, FileBinary, FileType) of
-                        ok ->
-                            save_uploaded_file(
-                                Gid, UploaderId, FileName, FileBinary, FileType, ObjectKey
-                            );
+            Cid = elib_uuid:gen_v7(),
+            case
+                attach_logic:presign(
+                    UploaderId,
+                    FileName,
+                    FileType,
+                    <<"group">>,
+                    integer_to_binary(Gid),
+                    Cid
+                )
+            of
+                {ok, #{<<"object_key">> := ObjectKey}} ->
+                    case
+                        attachment_upload_logic:upload_binary(
+                            UploaderId, ObjectKey, FileType, FileBinary
+                        )
+                    of
+                        {ok, _} ->
+                            case attach_logic:prepare_group_file_confirmation(ObjectKey) of
+                                {ok, Proof} ->
+                                    save_uploaded_file(
+                                        Gid,
+                                        UploaderId,
+                                        FileName,
+                                        FileBinary,
+                                        FileType,
+                                        ObjectKey,
+                                        Proof
+                                    );
+                                {error, _} = Error ->
+                                    Error
+                            end;
                         {error, _} = Error ->
                             Error
                     end;
@@ -97,8 +121,25 @@ do_upload_file(Gid, UploaderId, FileName, FileBinary, FileType) ->
             end
     end.
 
-save_uploaded_file(Gid, UploaderId, FileName, FileBinary, FileType, ObjectKey) ->
-    {ok, FileUrl} = elib_oss:get_url(ObjectKey),
+save_uploaded_file(Gid, UploaderId, FileName, FileBinary, FileType, ObjectKey, Proof) ->
+    case group_file_url(ObjectKey, Proof) of
+        {ok, FileUrl} ->
+            save_uploaded_file_tx(
+                Gid, UploaderId, FileName, FileBinary, FileType, ObjectKey, Proof, FileUrl
+            );
+        {error, _} = Error ->
+            Error
+    end.
+
+group_file_url(ObjectKey, #{stat := #{snapshot := #{driver := garage, container := Bucket}}}) when
+    is_binary(Bucket), Bucket =/= <<>>
+->
+    Endpoint = elib_oss:public_endpoint(),
+    {ok, <<Endpoint/binary, "/", Bucket/binary, "/", ObjectKey/binary>>};
+group_file_url(ObjectKey, #{stat := #{snapshot := #{driver := disk}}}) ->
+    {ok, ObjectKey}.
+
+save_uploaded_file_tx(Gid, UploaderId, FileName, FileBinary, FileType, ObjectKey, Proof, FileUrl) ->
     FileId = elib_oss:generate_file_id(),
     Now = elib_dt:now(),
     Data = #{
@@ -117,32 +158,32 @@ save_uploaded_file(Gid, UploaderId, FileName, FileBinary, FileType, ObjectKey) -
         updated_at => Now
     },
     %% 群文件与附件授权记录必须一起提交；任一失败保留 pending。
-    Result = elib_pg:with_tx(fun(Conn) ->
+    elib_pg:with_deadlock_retry_tx(fun(Conn) ->
         ok = workspace_guard:abort_on_error(
-            attachment_ds:ensure_upload_scope_tx(Conn, {group, Gid}, UploaderId)
+            attachment_ds:ensure_upload_scope_tx_retryable(Conn, {group, Gid}, UploaderId)
         ),
+        case attach_pending_repo:lock_session_tx(Conn, ObjectKey) of
+            {ok, not_found} -> throw({abort_tx, session_vanished});
+            {ok, _} -> ok;
+            {error, LockReason} -> throw({abort_tx, LockReason})
+        end,
+        case attachment_repo:confirmation_row_tx(Conn, ObjectKey) of
+            {ok, not_found} -> ok;
+            {ok, _} -> throw({abort_tx, attachment_already_confirmed});
+            {error, RowReason} -> throw({abort_tx, RowReason})
+        end,
         case group_file_repo:insert_tx(Conn, Data) of
             {ok, GroupFileId} ->
-                ok = write_attachment_tx(Conn, Data, GroupFileId, ObjectKey),
+                ok = attach_logic:confirm_group_file_tx(
+                    Conn, ObjectKey, Gid, UploaderId, GroupFileId, Proof
+                ),
+                {ok, _} = attachment_repo:refresh_gc_verified_tx(Conn, ObjectKey),
                 ok = audit_file_tx(Conn, Gid, UploaderId, GroupFileId, <<"file.uploaded">>),
                 {ok, FileId};
             {error, Reason} ->
                 throw({abort_tx, Reason})
         end
-    end),
-    finish_upload(Result, ObjectKey).
-
-finish_upload({ok, _} = Result, ObjectKey) ->
-    %% 销账失败不回滚已提交文件；清理器 NOT EXISTS attachment 防止误删。
-    try attachment_ds:pending_remove(ObjectKey) of
-        ok -> ok;
-        Reason -> ?ERROR_LOG(["group file pending_remove failed: ", Reason])
-    catch
-        Class:Reason -> ?ERROR_LOG(["group file pending_remove failed: ", Class, Reason])
-    end,
-    Result;
-finish_upload(Result, _ObjectKey) ->
-    Result.
+    end).
 
 %% ===================================================================
 %% direct-v1 确认引用绑定（step-11，协议 §2/§6）：正文经 direct-v1 已
@@ -183,31 +224,29 @@ bind_file(Gid, UploaderId, FileName, FileType, ObjectKey, FileSize, FileHashHex)
                         {error, Reason} ->
                             {error, Reason};
                         ok ->
-                            case ensure_bindable_reference(ObjectKey, UploaderId, Gid) of
-                                ok ->
-                                    do_bind_file(
-                                        Gid,
-                                        UploaderId,
-                                        FileName,
-                                        FileType,
-                                        ObjectKey,
-                                        FileSize,
-                                        FileHashHex
-                                    );
-                                {error, _} = BindErr ->
-                                    BindErr
-                            end
+                            do_bind_file(
+                                Gid,
+                                UploaderId,
+                                FileName,
+                                FileType,
+                                ObjectKey,
+                                FileSize,
+                                FileHashHex
+                            )
                     end
             end
     end.
 
 %% 资格硬校验：direct confirm 后的 attachment 行是唯一资格来源。
-ensure_bindable_reference(ObjectKey, UploaderId, Gid) ->
+ensure_bindable_reference(Conn, ObjectKey, UploaderId, Gid) ->
     case
         elib_pg:query(
+            Conn,
             <<
-                "SELECT creator_user_id, scope, scope_ref, lifecycle_state FROM attachment"
-                " WHERE path = $1 AND status >= 0 LIMIT 1"
+                "SELECT creator_user_id, scope, scope_ref, lifecycle_state,"
+                " anchor_msg_id, anchor_conv_seq, group_file_id, size, mime_type, file_hash256"
+                " FROM attachment"
+                " WHERE path = $1 AND status >= 0 FOR UPDATE"
             >>,
             [ObjectKey]
         )
@@ -221,7 +260,7 @@ ensure_bindable_reference(ObjectKey, UploaderId, Gid) ->
                             maps:get(<<"scope">>, Row) =:= <<"group">> andalso
                             maps:get(<<"scope_ref">>, Row) =:= integer_to_binary(Gid)
                     of
-                        true -> ok;
+                        true -> {ok, Row};
                         false -> {error, cross_subject}
                     end;
                 _ ->
@@ -237,62 +276,145 @@ ensure_bindable_reference(ObjectKey, UploaderId, Gid) ->
     end.
 
 do_bind_file(Gid, UploaderId, FileName, FileType, ObjectKey, FileSize, FileHashHex) ->
-    %% 幂等：同 ObjectKey 已绑定 → 返回既有业务 file_id（重复调用不重复
-    %% 引用；返回形态必须与首绑一致——调用方拿到的是 group_file.file_id）
+    elib_pg:with_deadlock_retry_tx(fun(Conn) ->
+        ok = workspace_guard:abort_on_error(
+            attachment_ds:ensure_upload_scope_tx_retryable(Conn, {group, Gid}, UploaderId)
+        ),
+        ok = workspace_guard:abort_on_error(
+            attachment_repo:bind_reference_lock_tx(Conn, ObjectKey)
+        ),
+        case ensure_bindable_reference(Conn, ObjectKey, UploaderId, Gid) of
+            {ok, Row} ->
+                ok = validate_bind_metadata(Row, FileType, FileSize, FileHashHex),
+                bind_locked(
+                    Conn,
+                    Row,
+                    Gid,
+                    UploaderId,
+                    FileName,
+                    FileType,
+                    ObjectKey,
+                    FileSize,
+                    <<>>
+                );
+            {error, Reason} ->
+                throw({abort_tx, Reason})
+        end
+    end).
+
+%% The confirmed attachment stores SHA-256, not the legacy group-file MD5.
+%% A submitted MD5 cannot be authenticated from that digest.
+validate_bind_metadata(Row, FileType, FileSize, FileMd5) ->
     case
-        elib_pg:one(
-            <<
-                "SELECT gf.file_id FROM attachment a"
-                " JOIN group_file gf ON gf.id = a.group_file_id"
-                " WHERE a.path=$1 AND a.group_file_id IS NOT NULL LIMIT 1"
-            >>,
-            [ObjectKey]
-        )
+        is_integer(FileSize) andalso FileSize >= 0 andalso
+            FileSize =:= confirmed_size(maps:get(<<"size">>, Row, undefined))
     of
-        {ok, #{<<"file_id">> := ExistingBizId}} ->
+        true -> ok;
+        false -> throw({abort_tx, file_size_mismatch})
+    end,
+    case maps:get(<<"mime_type">>, Row, undefined) of
+        FileType -> ok;
+        _ -> throw({abort_tx, file_type_mismatch})
+    end,
+    case FileMd5 of
+        <<>> -> ok;
+        _ -> throw({abort_tx, unverifiable_file_md5})
+    end.
+
+confirmed_size(Size) when is_integer(Size), Size >= 0 -> Size;
+confirmed_size(Size) when is_binary(Size) ->
+    try
+        binary_to_integer(Size)
+    catch
+        error:badarg -> invalid
+    end;
+confirmed_size(_) ->
+    invalid.
+
+bind_locked(
+    Conn,
+    #{<<"group_file_id">> := ExistingId},
+    _Gid,
+    _Uid,
+    _Name,
+    _Type,
+    _Key,
+    _Size,
+    _Hash
+) when ExistingId =/= null ->
+    case elib_pg:query(Conn, <<"SELECT file_id FROM group_file WHERE id=$1">>, [ExistingId]) of
+        {ok, [#{<<"file_id">> := ExistingBizId}]} ->
             {ok, ExistingBizId};
-        _ ->
-            Data = #{
-                group_id => Gid,
-                file_id => elib_oss:generate_file_id(),
-                file_name => FileName,
-                file_size => FileSize,
-                file_type => FileType,
-                file_category => atom_to_binary(elib_oss:get_file_category(FileType), utf8),
-                file_url => ObjectKey,
-                file_hash => FileHashHex,
-                uploader_id => UploaderId,
-                download_count => 0,
-                status => 1,
-                created_at => elib_dt:now(),
-                updated_at => elib_dt:now()
-            },
-            Result = elib_pg:with_tx(fun(Conn) ->
-                ok = workspace_guard:abort_on_error(
-                    attachment_ds:ensure_upload_scope_tx(Conn, {group, Gid}, UploaderId)
-                ),
-                case group_file_repo:insert_tx(Conn, Data) of
-                    {ok, GroupFileId} ->
-                        ok = write_attachment_tx(Conn, Data, GroupFileId, ObjectKey),
-                        %% direct 行在 confirm 时已存在：save 的 ON CONFLICT
-                        %% 刻意不覆盖既有列（收藏幂等语义）——bind 的本质是
-                        %% 引用回填，这里显式补 group_file_id（幂等：仅 NULL 时）。
-                        {ok, _} = elib_pg:query(
-                            Conn,
-                            <<
-                                "UPDATE attachment SET group_file_id = $2"
-                                " WHERE path = $1 AND group_file_id IS NULL"
-                            >>,
-                            [ObjectKey, GroupFileId]
-                        ),
-                        ok = audit_file_tx(Conn, Gid, UploaderId, GroupFileId, <<"file.uploaded">>),
-                        {ok, maps:get(file_id, Data)};
-                    {error, Reason} ->
-                        throw({abort_tx, Reason})
-                end
-            end),
-            %% bind 路径无 pending 销账（对象已 confirm 落位）
-            Result
+        {ok, []} ->
+            throw({abort_tx, group_file_binding_missing});
+        {error, Reason} ->
+            throw({abort_tx, Reason})
+    end;
+bind_locked(
+    _Conn,
+    #{<<"anchor_msg_id">> := Anchor},
+    _Gid,
+    _Uid,
+    _Name,
+    _Type,
+    _Key,
+    _Size,
+    _Hash
+) when Anchor =/= null ->
+    throw({abort_tx, attachment_anchor_conflict});
+bind_locked(
+    _Conn,
+    #{<<"anchor_conv_seq">> := Anchor},
+    _Gid,
+    _Uid,
+    _Name,
+    _Type,
+    _Key,
+    _Size,
+    _Hash
+) when Anchor =/= null ->
+    throw({abort_tx, attachment_anchor_conflict});
+bind_locked(Conn, _Row, Gid, UploaderId, FileName, FileType, ObjectKey, FileSize, FileHashHex) ->
+    Data = #{
+        group_id => Gid,
+        file_id => elib_oss:generate_file_id(),
+        file_name => FileName,
+        file_size => FileSize,
+        file_type => FileType,
+        file_category => atom_to_binary(elib_oss:get_file_category(FileType), utf8),
+        file_url => ObjectKey,
+        file_hash => FileHashHex,
+        uploader_id => UploaderId,
+        download_count => 0,
+        status => 1,
+        created_at => elib_dt:now(),
+        updated_at => elib_dt:now()
+    },
+    case group_file_repo:insert_tx(Conn, Data) of
+        {ok, GroupFileId} ->
+            ok = write_attachment_tx(Conn, Data, GroupFileId, ObjectKey),
+            %% direct 行在 confirm 时已存在：save 的 ON CONFLICT
+            %% 刻意不覆盖既有列（收藏幂等语义）——bind 的本质是
+            %% 引用回填，这里显式补 group_file_id（幂等：仅 NULL 时）。
+            case
+                elib_pg:query(
+                    Conn,
+                    <<
+                        "UPDATE attachment SET group_file_id = $2"
+                        " WHERE path = $1 AND group_file_id IS NULL RETURNING id"
+                    >>,
+                    [ObjectKey, GroupFileId]
+                )
+            of
+                {ok, [_]} -> ok;
+                {ok, []} -> throw({abort_tx, group_file_binding_conflict});
+                {error, UpdateReason} -> throw({abort_tx, UpdateReason})
+            end,
+            {ok, _} = attachment_repo:refresh_gc_verified_tx(Conn, ObjectKey),
+            ok = audit_file_tx(Conn, Gid, UploaderId, GroupFileId, <<"file.uploaded">>),
+            {ok, maps:get(file_id, Data)};
+        {error, Reason} ->
+            throw({abort_tx, Reason})
     end.
 
 %% @doc 下载文件
@@ -442,6 +564,10 @@ authorize_delete(Uid, UploaderId, Gid) ->
 
 %% @doc 同事务写入群文件的真实存储路径（含命名空间前缀），不由业务 ID 重建。
 -spec write_attachment_tx(any(), map(), integer(), binary()) -> ok.
+write_attachment_tx(Conn, Data, GroupFileId, ObjectKey) ->
+    write_attachment_tx(Conn, Data, GroupFileId, ObjectKey, #{}).
+
+-spec write_attachment_tx(any(), map(), integer(), binary(), map()) -> ok.
 write_attachment_tx(
     Conn,
     #{
@@ -454,26 +580,58 @@ write_attachment_tx(
         file_hash := FileHashHex
     },
     GroupFileId,
-    ObjectKey
+    ObjectKey,
+    Location
 ) ->
     SafeName = filename:basename(FileName),
-    Attach = #{
-        <<"file_hash256">> => FileHashHex,
-        <<"mime_type">> => FileType,
-        <<"name">> => SafeName,
-        <<"path">> => ObjectKey,
-        <<"url">> => FileUrl,
-        <<"size">> => FileSize,
-        <<"scope">> => <<"group">>,
-        <<"scope_ref">> => integer_to_binary(Gid),
-        <<"group_file_id">> => GroupFileId
-    },
+    Attach = maps:merge(
+        #{
+            <<"file_hash256">> => FileHashHex,
+            <<"mime_type">> => FileType,
+            <<"name">> => SafeName,
+            <<"path">> => ObjectKey,
+            <<"url">> => FileUrl,
+            <<"size">> => FileSize,
+            <<"scope">> => <<"group">>,
+            <<"scope_ref">> => integer_to_binary(Gid),
+            <<"group_file_id">> => GroupFileId
+        },
+        location_columns(Location)
+    ),
     %% W3-01：首绑与 intent/GC 同对象锁（§4 锁序），锁内复核非墓碑后落绑
     ok = attachment_repo:bind_reference_lock_tx(Conn, ObjectKey),
     attachment_ds:save(Conn, elib_dt:now(), UploaderId, [Attach]),
     %% gc_verified 覆盖证明：仅群唯一绑定+明文+完整位置的可证明新对象
     {ok, _} = attachment_repo:refresh_gc_verified_tx(Conn, ObjectKey),
     ok.
+
+location_columns(Location) ->
+    case Location of
+        #{
+            driver := Driver,
+            namespace := Namespace,
+            container := Container,
+            locator_digest := Digest
+        } when
+            (Driver =:= disk orelse Driver =:= garage),
+            is_binary(Namespace),
+            byte_size(Namespace) > 0,
+            is_binary(Container),
+            byte_size(Container) > 0,
+            is_binary(Digest),
+            byte_size(Digest) > 0
+        ->
+            #{
+                <<"storage_driver">> => atom_to_binary(Driver),
+                <<"storage_namespace">> => Namespace,
+                <<"storage_container">> => Container,
+                <<"storage_locator_sha256">> => Digest
+            };
+        Empty when is_map(Empty), map_size(Empty) =:= 0 ->
+            #{};
+        _ ->
+            throw({abort_tx, incomplete_storage_identity})
+    end.
 
 audit_file_tx(Conn, Gid, Uid, FileId, Action) ->
     workspace_guard:abort_on_error(
