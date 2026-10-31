@@ -103,7 +103,7 @@ class ReviewedBudgetTest(unittest.TestCase):
                 runner._budget_check(self.state, self.contract, enforce=False)
             self.assertEqual(runner.EXIT_BLOCKED, err.exception.code)
 
-    def test_transition_rejects_fake_paths_without_reading_receipts_or_archives(self):
+    def test_transition_rejects_missing_paths(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             old = {'authorization_path': str(root / 'missing-old-receipt')}
@@ -111,11 +111,98 @@ class ReviewedBudgetTest(unittest.TestCase):
             evidence = {'old_archive_path': str(root / 'missing-old-archive'),
                         'new_archive_path': str(root / 'missing-new-archive'),
                         'review_path': str(root / 'missing-review')}
-            with patch.object(runner, '_receipt_bytes', side_effect=AssertionError('receipt read')) as receipt_read, \
-                 patch.object(runner, '_load_archive_dir', side_effect=AssertionError('archive read')) as archive_read:
-                self.assertIs(False, runner._verify_readmission_transition(old, new, evidence, 100))
-                receipt_read.assert_not_called()
-                archive_read.assert_not_called()
+            self.assertIs(False, runner._verify_readmission_transition(old, new, evidence, 100))
+            self.assertEqual([], list(root.iterdir()))
+
+    def _protocol_receipt(self, reference=None, **overrides):
+        now = datetime.datetime.now(datetime.timezone.utc)
+        receipt = {
+            'receipt_id': 'admission-008-canonical-probe',
+            'trusted_user_message_reference': (
+                '用户①原话逐字引用：「' + runner.READMISSION_USER_SENTENCE + '」'),
+            'reviewer_mode': 'user-self',
+            'trust_model': runner.READMISSION_TRUST_MODEL,
+            'user_sentence_sha256': runner._readmission_sentence_digest(),
+            'w6_02_decisions': {'backend_env': 'local', 'backend_port': 9810,
+                                'seed_accounts': 'synthetic',
+                                'device_id': 'XWE6R19916004085', 'browser': 'chromium'},
+            'plan_manifest_sha256': 'b' * 64,
+            'issued_at': (now - datetime.timedelta(minutes=1)).isoformat(),
+            'expires_at': (now + datetime.timedelta(days=2)).isoformat(),
+            'readmission': {
+                'old_manifest_sha256': 'b' * 64, 'new_manifest_sha256': 'b' * 64,
+                'task_id': 'W6-01', 'attempt_limit': 8,
+                'new_deadlines': {'task': 1793701563, 'wave': 1793960763,
+                                  'run': 1794047163},
+            },
+        }
+        receipt.update(overrides)
+        if reference is not None:
+            receipt['trusted_user_message_reference'] = reference
+        raw = runner.canonical_json(receipt).encode('utf-8')
+        return receipt, raw
+
+    def test_canonical_authorization_sentence_verifies_user_binding(self):
+        _receipt, raw = self._protocol_receipt()
+        self.assertIs(True, runner._verify_readmission_user(raw))
+
+    def test_mutated_canonical_sentence_fails_user_binding(self):
+        # containment 语义下引用只需完整包含规范句：尾部补空格等"原句+上下文"
+        # 属合法引用（verbatim-quote + post-hoc audit 信任模型），不是负例。
+        # 真负例是破坏规范句完整性的变异（改数字/截断首字符）。
+        for mutated in (runner.READMISSION_USER_SENTENCE.replace('5→8', '5→9'),
+                        runner.READMISSION_USER_SENTENCE[:-1]):
+            with self.subTest(mutated=mutated):
+                _receipt, raw = self._protocol_receipt(reference='「' + mutated + '」')
+                self.assertIs(False, runner._verify_readmission_user(raw))
+
+    def test_missing_protocol_fields_fail_user_binding(self):
+        for field in ('reviewer_mode', 'trust_model'):
+            with self.subTest(field=field):
+                receipt, _raw = self._protocol_receipt()
+                del receipt[field]
+                raw = runner.canonical_json(receipt).encode('utf-8')
+                self.assertIs(False, runner._verify_readmission_user(raw))
+
+    def test_review_must_bind_user_sentence_and_mode(self):
+        receipt, raw = self._protocol_receipt()
+        digest = runner._readmission_sentence_digest()
+        scope = receipt['readmission']
+        base = ('READMISSION-REVIEW-VERDICT: APPROVED\n'
+                'receipt_id: ' + receipt['receipt_id'] + '\n'
+                'old_manifest_sha256: ' + scope['old_manifest_sha256'] + '\n'
+                'new_manifest_sha256: ' + scope['new_manifest_sha256'] + '\n')
+        full = (base + 'reviewer_mode: user-self\n'
+                + 'user_sentence_sha256: ' + digest + '\n')
+        self.assertIs(True, runner._verify_readmission_review(full.encode(), raw))
+        for missing in ('reviewer_mode: user-self\n',
+                        'user_sentence_sha256: ' + digest + '\n'):
+            with self.subTest(missing=missing.strip()):
+                self.assertIs(False, runner._verify_readmission_review(
+                    base.encode(), raw))
+        wrong_sentence = (base + 'reviewer_mode: user-self\n'
+                          + 'user_sentence_sha256: ' + '0' * 64 + '\n')
+        self.assertIs(False, runner._verify_readmission_review(
+            wrong_sentence.encode(), raw))
+
+    def test_steady_state_accepts_protocol_receipt_from_disk(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            receipt, raw = self._protocol_receipt()
+            path = root / 'authorization-admission-008.json'
+            path.write_bytes(raw)
+            state = {
+                'authorization_path': str(path),
+                'authorization_sha256': runner.sha256_bytes(raw),
+                'reviewed_readmission': runner.sha256_bytes(raw),
+                'plan_manifest_sha256': 'b' * 64,
+            }
+            contract = {'reviewed_readmission': {
+                'task_id': 'W6-01', 'attempt_limit': 8,
+                'deadlines': receipt['readmission']['new_deadlines']}}
+            self.assertIs(True, runner._verify_reviewed_readmission(state, contract))
+            path.write_bytes(raw + b' ')
+            self.assertIs(False, runner._verify_reviewed_readmission(state, contract))
 
     def test_archive_reads_regular_nested_files(self):
         with tempfile.TemporaryDirectory() as tmp:

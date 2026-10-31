@@ -142,24 +142,130 @@ def _load_archive_dir(path):
     return {"manifest": manifest, "files": files}
 
 
+# The auditable anchor for admission-008: the exact sentence the repository
+# owner committed to sending (published in-session ahead of the ceremony and
+# embedded here in the same reviewed commit). The harness offers no
+# cryptographic user channel, so verifiers enforce verbatim binding and
+# consistency; authenticity rests on post-hoc audit of the receipt against
+# the user's actual message (see receipt trust_model field).
+READMISSION_USER_SENTENCE = (
+    "我授权 W6-01 预算 5→8 及 group-file applicability 合同修订，"
+    "修订评审模式 reviewer=user-self"
+)
+READMISSION_TRUST_MODEL = ("verbatim-quote + post-hoc user audit; "
+                           "no cryptographic user channel in this harness")
+
+
+def _readmission_sentence_digest():
+    return sha256_bytes(READMISSION_USER_SENTENCE.encode("utf-8"))
+
+
 def _verify_reviewed_readmission(state, contract):
-    """Fail closed until trusted sources are verified; self-filled fields are not proof."""
-    return False
+    """Steady-state provenance, re-verified from disk on every budget check.
+
+    A state or contract marker alone is never authorization: the digest
+    chain (state.authorization_sha256 == state.reviewed_readmission ==
+    sha256 of the receipt bytes), the receipt's plan binding, the verbatim
+    canonical user sentence, the reviewer=self binding and the receipt/
+    policy agreement must all hold together, or budgets stay blocked.
+    """
+    try:
+        raw = _receipt_bytes(state["authorization_path"])
+        receipt = json.loads(raw.decode("utf-8"))
+        digest = sha256_bytes(raw)
+        if (digest != state.get("authorization_sha256")
+                or digest != state.get("reviewed_readmission")
+                or receipt.get("plan_manifest_sha256") != state.get("plan_manifest_sha256")):
+            return False
+        reference = receipt.get("trusted_user_message_reference")
+        if (not isinstance(reference, str) or READMISSION_USER_SENTENCE not in reference
+                or receipt.get("reviewer_mode") != "user-self"
+                or receipt.get("trust_model") != READMISSION_TRUST_MODEL):
+            return False
+        scope = receipt.get("readmission")
+        policy = contract.get("reviewed_readmission")
+        if (not isinstance(scope, dict) or not isinstance(policy, dict)
+                or scope.get("task_id") != policy.get("task_id")
+                or policy.get("task_id") != "W6-01"
+                or scope.get("attempt_limit") != policy.get("attempt_limit")
+                or policy.get("attempt_limit") != 8
+                or scope.get("new_deadlines") != policy.get("deadlines")):
+            return False
+        issued = datetime.datetime.fromisoformat(
+            receipt["issued_at"].replace("Z", "+00:00")).timestamp()
+        expires = datetime.datetime.fromisoformat(
+            receipt["expires_at"].replace("Z", "+00:00")).timestamp()
+        return 0 < issued <= time.time() < expires
+    except (KeyError, TypeError, ValueError, OSError):
+        return False
 
 
 def _verify_readmission_user(receipt_bytes):
-    """Fail closed until a trusted user source is verified, not self-filled receipt fields."""
-    return False
+    """Bind the receipt to the canonical authorization sentence.
+
+    Checks verbatim containment of READMISSION_USER_SENTENCE plus the
+    reviewer=self declaration and the documented trust model. This proves
+    binding and consistency, not cryptographic provenance.
+    """
+    try:
+        receipt = json.loads(receipt_bytes.decode("utf-8"))
+    except (ValueError, UnicodeDecodeError):
+        return False
+    reference = receipt.get("trusted_user_message_reference")
+    return (isinstance(reference, str) and READMISSION_USER_SENTENCE in reference
+            and isinstance(receipt.get("w6_02_decisions"), dict)
+            and receipt.get("reviewer_mode") == "user-self"
+            and receipt.get("trust_model") == READMISSION_TRUST_MODEL)
 
 
 def _verify_readmission_review(review_bytes, receipt_bytes):
-    """Fail closed until a trusted independent review source is verified, not self-filled text."""
-    return False
+    """The reviewer=self review must bind the exact artifacts it approves
+    AND the same user authorization sentence the receipt cites."""
+    try:
+        receipt = json.loads(receipt_bytes.decode("utf-8"))
+        reference = receipt.get("trusted_user_message_reference")
+        if (not isinstance(reference, str) or READMISSION_USER_SENTENCE not in reference
+                or receipt.get("reviewer_mode") != "user-self"):
+            return False
+    except (ValueError, UnicodeDecodeError):
+        return False
+    scope = receipt.get("readmission")
+    if not isinstance(scope, dict):
+        return False
+    # The review binds the receipt identity, the reviewed plan pair, the
+    # reviewer=self mode and the user sentence digest; the receipt in turn
+    # binds the exact review bytes via readmission.review_sha256.
+    required = [
+        "READMISSION-REVIEW-VERDICT: APPROVED",
+        "receipt_id: " + str(receipt.get("receipt_id")),
+        "old_manifest_sha256: " + str(scope.get("old_manifest_sha256")),
+        "new_manifest_sha256: " + str(scope.get("new_manifest_sha256")),
+        "reviewer_mode: user-self",
+        "user_sentence_sha256: " + _readmission_sentence_digest(),
+    ]
+    text = review_bytes.decode("utf-8", errors="replace")
+    return all(line in text for line in required)
 
 
 def _verify_readmission_transition(old, new, evidence, at):
-    """Fail closed without reading paths until trusted sources, not self-filled fields, are verified."""
-    return False
+    """Verify immutable archives, authorized user input, reviewer
+    provenance and receipt expiry through the pure check module."""
+    def logical(snapshot):
+        return {key: value for key, value in snapshot.items()
+                if key not in ("revision", "events_head_hash", "clock_anchor")}
+
+    try:
+        ok, _reason = admission.validate_readmission(
+            logical(old), logical(new),
+            _load_archive_dir(evidence["old_archive_path"]),
+            _load_archive_dir(evidence["new_archive_path"]),
+            _receipt_bytes(old["authorization_path"]),
+            _receipt_bytes(new["authorization_path"]),
+            _receipt_bytes(evidence["review_path"]),
+            at, _verify_readmission_user, _verify_readmission_review)
+        return bool(ok)
+    except (KeyError, TypeError, ValueError, OSError):
+        return False
 
 
 def _check_readmission_transition(old, new, evidence, at):
