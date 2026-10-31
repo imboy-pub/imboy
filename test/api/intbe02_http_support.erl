@@ -315,7 +315,21 @@ snapshot_default_pool(State) ->
             State#{prior_default_pool => #{absent => true, config => Conf}};
         Pid ->
             Dump = gen_server:call(Pid, dump_pool),
-            true = pool_shape_matches(Conf, Dump),
+            %% mismatch 必须可诊断：裸 badmatch,false 无法区分第三形态来源
+            %% （start_mfa 二次包装 / 异代 init_count / 异库连接参数）。
+            case pool_shape_matches(Conf, Dump) of
+                true ->
+                    ok;
+                false ->
+                    erlang:error(
+                        {pool_shape_mismatch, #{
+                            conf => Conf,
+                            dump_filtered => maps:with(maps:keys(Conf), Dump),
+                            dump_extra_keys => maps:keys(maps:without(maps:keys(Conf), Dump)),
+                            pool_pid => Pid
+                        }}
+                    )
+            end,
             Pid = whereis(pgsql),
             Sup = whereis(pooler_pgsql_pool_sup),
             true = lists:member({pooler, Pid, worker, [pooler]}, supervisor:which_children(Sup)),

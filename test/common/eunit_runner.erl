@@ -861,7 +861,7 @@ enforce_pool_capacity() ->
             Init = maps:get(init_count, PgConf, 0),
             case Init >= ?MIN_POOL_INIT_COUNT of
                 true ->
-                    ok;
+                    realign_default_pool(PgConf);
                 false ->
                     Max = maps:get(max_count, PgConf, 0),
                     NewMax = erlang:max(Max, ?MIN_POOL_INIT_COUNT + 8),
@@ -869,10 +869,45 @@ enforce_pool_capacity() ->
                         imboy,
                         pg_conf,
                         PgConf#{init_count := ?MIN_POOL_INIT_COUNT, max_count := NewMax}
+                    ),
+                    realign_default_pool(
+                        PgConf#{init_count := ?MIN_POOL_INIT_COUNT, max_count := NewMax}
                     )
             end;
         _ ->
             ok
+    end.
+
+%% 容量代际对齐（rv4 full-20261030T225326Z 根A snapshot_default_pool L318
+%% 第三形态实证，group-20261031T015444Z 复现：conf_init=40 vs dump_init=5，
+%% 连接参数与 start_mfa 完全同代）：默认池可能由前序套件的恢复路径
+%% （intbe02/organization_directory restore 的 absent 分支、eunit_try_db
+%% 自愈）按**钉容量之前**的 env（init_count=5）建出；随后本函数把 env 钉成
+%% init_count=40，而 imboy_sup boot 对已存在池的 pooler:new_pool 是 no-op
+%% ——env(40) 与池(5) 永久失配，下一个形状快照校验即 badmatch。此处发现
+%% 池容量与钉后 env 不一致时 rm+按当前 env 重建（与 ensure_default_pool
+%% 同语义）。name/start_mfa/连接参数**不在此判定**——跨套件配置漂移仍由
+%% 各 fixture 快照逐字段把关，此处只收敛本函数自己制造的容量代际差。
+realign_default_pool(PgConf) ->
+    case whereis(pgsql) of
+        undefined ->
+            ok;
+        Pid ->
+            case catch gen_server:call(Pid, dump_pool, 5000) of
+                #{init_count := IC, max_count := MC} when is_integer(IC), is_integer(MC) ->
+                    case
+                        IC =:= maps:get(init_count, PgConf, IC) andalso
+                            MC =:= maps:get(max_count, PgConf, MC)
+                    of
+                        true ->
+                            ok;
+                        false ->
+                            _ = ensure_default_pool(),
+                            ok
+                    end;
+                _ ->
+                    ok
+            end
     end.
 
 %% @doc 按当前 pg_conf 重建默认共享池（pgsql）。
