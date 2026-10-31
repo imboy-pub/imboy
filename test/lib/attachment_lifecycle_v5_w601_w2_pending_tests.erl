@@ -429,16 +429,16 @@ mp_scenario(S, Driver, <<"database_unavailable">>, <<"ordinary">>) ->
 %% scope='workspace'），measured 的域事实读回服务端写入的生产行——
 %% 1d1a42a23 复审已拒绝 fixture 标签充当域证明。
 mp_scenario(S, Driver, <<"multipart_success">>, <<"enterprise">>) ->
-    {Gid, Origin} = new_enterprise_group(S),
+    {Gid, Origin, Create} = new_enterprise_group(S),
     {Key, Upload} = group_file_upload(S, Driver, Gid),
     {ok, Pin} = ?S:content_pin(Key),
     ?assertEqual(?S:sha(?BODY), maps:get(<<"sha256">>, Pin)),
     ?assertEqual(1, ?S:attach_count(Key)),
     M = group_file_upload_measured(Upload, Key, <<"group_file_multipart_upload">>),
-    enterprise_measured(M, S, Gid, Origin, Upload);
+    enterprise_measured(M, S, Gid, Origin, Create);
 mp_scenario(S, Driver, <<"group_file_success">>, <<"enterprise">>) ->
     Uid = maps:get(uid, S),
-    {Gid, Origin} = new_enterprise_group(S),
+    {Gid, Origin, Create} = new_enterprise_group(S),
     {Key, Upload} = group_file_upload(S, Driver, Gid),
     {ok, Pin} = ?S:content_pin(Key),
     ?assertEqual(?S:sha(?BODY), maps:get(<<"sha256">>, Pin)),
@@ -447,7 +447,7 @@ mp_scenario(S, Driver, <<"group_file_success">>, <<"enterprise">>) ->
     #{<<"file_id">> := FileId} = ?F:payload(Bind),
     ok = assert_group_file_bound(Gid, Uid, Key, FileId),
     M = group_file_bind_measured(Upload, Key, Bind, FileId),
-    enterprise_measured(M, S, Gid, Origin, Upload);
+    enterprise_measured(M, S, Gid, Origin, Create);
 mp_scenario(S, Driver, <<"identity_mismatch">>, <<"enterprise">>) ->
     T = reg(S, enterprise_seat, Driver),
     S2 = maps:get(fixture, T),
@@ -781,7 +781,7 @@ new_enterprise_group(S) ->
         application_id => AppId,
         workspace_id => Ws2
     },
-    {Gid, Origin}.
+    {Gid, Origin, Create}.
 
 %% 上传者（uid）的企业域入册：INT-02 的 classify_target 要求
 %% organization_member（org 边界），create_in_workspace 的
