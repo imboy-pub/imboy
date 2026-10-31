@@ -7,12 +7,17 @@ kernel_lock() ->
     %% NIF 自足：attachment_disk_lock_nif 的 -on_load 只在模块首次加载时执行一次，
     %% 彼时若 imboy app 尚未 load 则 code:priv_dir 失败、NIF 加载失败且无人重试——
     %% 测试绿否取决于同 VM 是否先跑过 boot app 的根（隐式分片顺序依赖）。显式
-    %% 确保加载前提：load app（幂等）后重载 NIF 模块；仍失败则硬错（不 skip）。
+    %% 确保加载前提：load app（幂等）后确保 NIF 模块已加载；仍失败则硬错（不 skip）。
+    %% 必须用 ensure_loaded 而非 load_file：C 库未定义 upgrade 回调，模块已被同
+    %% VM 先前根（inventory 的同名 src 冒烟根经 EUnit 隐式自动加载）加载时，
+    %% load_file 强制重载走 upgrade 路径必失败 {error,{upgrade,_}} → on_load_failure
+    %% （full-20261030T225326Z group_2 全量红根因，单跑 fresh VM 无此依赖）；
+    %% ensure_loaded 对已加载模块零重载（on_load 不重跑），首次加载路径零变化。
     case application:load(imboy) of
         ok -> ok;
         {error, {already_loaded, imboy}} -> ok
     end,
-    {module, attachment_disk_lock_nif} = code:load_file(attachment_disk_lock_nif),
+    {module, attachment_disk_lock_nif} = code:ensure_loaded(attachment_disk_lock_nif),
     Root = filename:join(
         temp_dir(),
         "attv5-oslock-" ++
@@ -143,7 +148,7 @@ locked_symlink_race(Root) ->
             try
                 kill_holder(Holder)
             after
-                erlang:trace_pattern({attachment_storage_disk, hold_lock, 3}, false, [local])
+                erlang:trace_pattern({attachment_storage_disk, wait_lock, 4}, false, [local])
             end
         end
     end.
