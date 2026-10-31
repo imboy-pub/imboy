@@ -19,7 +19,7 @@
 ]).
 
 -ifdef(TEST).
--export([boot_retry_remaining/3]).
+-export([boot_retry_remaining/3, project_root_dir/1, test_config_path/0]).
 -endif.
 
 %%%===================================================================
@@ -1016,9 +1016,10 @@ project_root_dir(StartDir) ->
 find_project_root(Dir, 0) ->
     Dir;
 find_project_root(Dir, N) ->
-    ConfigPath = filename:join([Dir, "config", "sys.config"]),
+    %% sys.config 是可选本地配置，不能用其存在性跨越 worktree 边界找主仓。
+    AppPath = filename:join([Dir, "src", "imboy_app.erl"]),
     MakefilePath = filename:join([Dir, "Makefile"]),
-    case filelib:is_regular(ConfigPath) andalso filelib:is_regular(MakefilePath) of
+    case filelib:is_regular(AppPath) andalso filelib:is_regular(MakefilePath) of
         true ->
             Dir;
         false ->

@@ -39,8 +39,10 @@ run_in_worker(TestMod, Opts, DeadlineMs) ->
             Beam when is_list(Beam) -> filename:dirname(Beam);
             _ -> erlang:error(runner_not_file_loaded)
         end,
+    {ConfigArgs, EnvArgs} = worker_config(Opts),
     T0 = erlang:monotonic_time(millisecond),
     {ok, Peer, _WorkerNode} = peer:start_link(#{
+        env => EnvArgs,
         %% loopback TCP，无需 distribution/epmd
         connection => {{127, 0, 0, 1}, 0},
         args => [
@@ -54,7 +56,7 @@ run_in_worker(TestMod, Opts, DeadlineMs) ->
             CodePath,
             "-pa",
             FrameworkPath
-        ]
+        ] ++ ConfigArgs
     }),
     try
         Node = peer:call(Peer, erlang, node, [], 5000),
@@ -125,20 +127,17 @@ run_group_in_worker(TestMods, Opts, DeadlineMs, ExtraPaths) ->
             _ -> erlang:error(runner_not_file_loaded)
         end,
     T0 = erlang:monotonic_time(millisecond),
-    %% 业务 worker 需要 sys config（-config <path 无 .config 后缀>）与进程上限；
+    %% 业务 worker 需要 sys config（支持有/无 .config 后缀）与进程上限；
     %% 由 Opts 注入，纯合成自测不传。
+    {ConfigArgs, EnvArgs} = worker_config(Opts),
     ExtraArgs =
-        case maps:get(config, Opts, undefined) of
-            undefined -> [];
-            Cfg -> ["-config", Cfg]
-        end ++
+        ConfigArgs ++
             case maps:get(process_limit, Opts, undefined) of
                 undefined -> [];
                 PL -> ["+P", integer_to_list(PL)]
             end,
     %% env 覆盖项（如 ERL_LIBS=deps——legacy 由 erlang.mk export，此处显式传入；
     %% deps 以 ERL_LIBS 进路径与 legacy 同优先级：低于全部 -pa 目录）。
-    EnvArgs = maps:get(env, Opts, []),
     %% -pa 后者优先（后出现的旗标排路径最前）。ExtraPaths 按升优先级排列：
     %% [imboy/ebin, ebin, test, feature-test-ebin]，FrameworkPath 垫底
     %% （imboy_quality_* 命名无冲突，仅兜底加载）。
@@ -275,11 +274,7 @@ run_standalone(TestMod, Opts, ExtraPaths, OutDir, DeadlineMs) ->
             [TestMod, maps:get(spec_wrapper, Opts, undefined), OutFile]
         )
     ),
-    Cfg =
-        case maps:get(config, Opts, undefined) of
-            undefined -> [];
-            C -> ["-config", C]
-        end,
+    {Cfg, EnvArgs} = worker_config(Opts),
     PL =
         case maps:get(process_limit, Opts, undefined) of
             undefined -> [];
@@ -300,7 +295,7 @@ run_standalone(TestMod, Opts, ExtraPaths, OutDir, DeadlineMs) ->
     T0 = erlang:monotonic_time(millisecond),
     Port = open_port({spawn_executable, Erl}, [
         {args, Args},
-        {env, maps:get(env, Opts, [])},
+        {env, EnvArgs},
         exit_status,
         stream,
         stderr_to_stdout,
@@ -371,6 +366,26 @@ standalone_main(TestMod, SpecWrapper, OutFile) ->
         end,
     ok = file:write_file(OutFile, term_to_binary(R)),
     erlang:halt(0).
+
+%% 普通组、独占根与 standalone 的配置必须同源：测试夹具通过环境变量
+%% consult 的文件与 VM 启动加载的文件一致，不能继承控制器的其他库配置。
+worker_config(Opts) ->
+    Env = maps:get(env, Opts, []),
+    case maps:get(config, Opts, undefined) of
+        undefined ->
+            {[], Env};
+        Config ->
+            Path = filename:absname(Config),
+            File =
+                case filename:extension(Path) of
+                    ".config" -> Path;
+                    _ -> Path ++ ".config"
+                end,
+            {["-config", File], [
+                {"IMBOY_TEST_CONFIG", File}
+                | [E || {Key, _} = E <- Env, Key =/= "IMBOY_TEST_CONFIG"]
+            ]}
+    end.
 
 framework_path() ->
     case code:which(?MODULE) of
@@ -459,15 +474,18 @@ worker_main(TestMod, SpecWrapper) ->
         Collector ! {stop, Parent, Ref},
         case await_collector(Collector, Monitor, Ref, 10000) of
             {ok, Counts, Events} ->
-                Ret = case validate_events(Events, Counts) of
-                    ok when EunitReturn =:= ok ->
-                        case maps:get(fail, Counts) + maps:get(cancel, Counts) of
-                            0 -> ok;
-                            _ -> {error, inconsistent_eunit_return}
-                        end;
-                    ok -> EunitReturn;
-                    {error, Reason} -> {error, {invalid_listener_events, Reason}}
-                end,
+                Ret =
+                    case validate_events(Events, Counts) of
+                        ok when EunitReturn =:= ok ->
+                            case maps:get(fail, Counts) + maps:get(cancel, Counts) of
+                                0 -> ok;
+                                _ -> {error, inconsistent_eunit_return}
+                            end;
+                        ok ->
+                            EunitReturn;
+                        {error, Reason} ->
+                            {error, {invalid_listener_events, Reason}}
+                    end,
                 {Ret, Counts, Events};
             {error, Reason} ->
                 {{error, Reason}, zero_counts(), []}
