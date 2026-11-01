@@ -94,7 +94,7 @@
     },
     {
       "path": "docs/design/2026-10-07-phase1-delivery-quality-plan.md",
-      "sha256": "3afaebe7c47b0a8aabc2391f187255dfbe8a02c80123b9ad4280368bebad0e8a",
+      "sha256": "096e7a2030977ee7e5ea5e4cfda526972889e324f0dff0fa064ab22b9dbf6a26",
       "source_contract": "docs/design/2026-10-11-unified-delivery-closeout/plan-v1.md",
       "purpose": "Delivery source contract or reproducible execution handoff"
     },

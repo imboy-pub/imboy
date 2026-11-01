@@ -2,7 +2,7 @@
 
 > **状态**：长期协议契约文档 · **版本**：v1.0 · **最后更新**：2026-10-26（IMBOY-TIMEZONE-REPAIR-V1 / R22-B 登记）
 >
-> **定位**：本文件是三端时间字段的**权威登记表**。它登记的是**已实现事实**（每条声明均附代码位置，见 §7 抽查记录），不发明新合同。与 [api-format.md](./api-format.md)（响应格式）、[message_api_contract.md](../api-contracts/message_api_contract.md)（消息 API 字段级合同）、[CONVENTIONS.md](../CONVENTIONS.md) §2 互为引用；冲突时以本文件与代码为准并回改文档。
+> **定位**：本文件是三端时间字段的**权威登记表**。它登记的是**已实现事实**（每条声明均附代码位置，见 §7 抽查记录），不发明新合同。与 [api-format.md](./api-format.md)（响应格式）、`docs/api-contracts/message_api_contract.md`（消息 API 字段级合同，未纳入 docs-site 内容同步）、[CONVENTIONS.md](../CONVENTIONS.md) §2 互为引用；冲突时以本文件与代码为准并回改文档。
 >
 > **背景**：IMBOY-TIMEZONE-REPAIR-V1 勘察确认存在两类时间污染：客户端直传时间进入服务端字段（`msg_c2g.server_ts` 被 staging 的客户端 `created_at` 污染，`msg_c2g_repo.erl:218-236`；`msg_c2c.created_at` 为客户端直传，`msg_c2c_logic.erl:192-193`）与文档声明（"全部 ISO-8601 字符串"）与生产 wire（毫秒 int 信封）不符。修复决策 D04（不可变服务端首次接受时间 `accepted_at`）与 D05（安全推进边界 `safe_head`）已冻结并实现；本文件把单位合同与恢复/回滚语义登记为长期文档。
 

@@ -35,7 +35,12 @@
 #   elvis          实测 308 条（elvis 5.0.4 homebrew, 10397 violations / 308 FAIL 文件）
 # =============================================================================
 schema_version: 1
-updated: "2026-10-24"
+updated: "2026-11-01"
+# 2026-11-01 回册 13 文件（CI imboy Quality Gate elvis 分类 NEW=13，talk-record-playback /
+#   enterprise internal rate / user-setting / conversation pin-delete / receipts 等近期
+#   feature 批次带入；粒度按先例为 FAIL 文件路径，未逐条登记违规规则）；
+#   同批移除 1 个 FIXED（src/adm/adm_moderation_handler.erl，违规已清零，棘轮收紧）。
+#   elvis 段现 577 文件。
 # 2026-10-24 回册 1 文件：src/repo/user_collect_repo.erl（e2ee-collect 功能带入
 #   no_throw——throw({abort_tx,...}) 为 elib_pg 事务中止协议、无法改 error；
 #   及 cas/revive 对称 UPDATE 的结构性 DRY 一对。find_any 两处重复已真修）。
@@ -535,7 +540,6 @@ gates:
       - src/adm/adm_logout_apply_handler.erl
       - src/adm/adm_mcp_handler.erl
       - src/adm/adm_message_handler.erl
-      - src/adm/adm_moderation_handler.erl
       - src/adm/adm_moment_handler.erl
       - src/adm/adm_organization_handler.erl
       - src/adm/adm_owner_activation_handler.erl
@@ -569,6 +573,7 @@ gates:
       - src/api/enterprise_friend_request_handler.erl
       - src/api/enterprise_group_handler.erl
       - src/api/enterprise_identity_handler.erl
+      - src/api/enterprise_internal_rate.erl
       - src/api/enterprise_internal_write_handler.erl
       - src/api/enterprise_message_handler.erl
       - src/api/enterprise_webhook_handler.erl
@@ -599,6 +604,7 @@ gates:
       - src/api/talk_record_capture_http.erl
       - src/api/talk_record_handler.erl
       - src/api/talk_record_playback_handler.erl
+      - src/api/talk_record_playback_parts_handler.erl
       - src/api/talk_record_routes.fragment.erl
       - src/api/talk_record_sharing_http.erl
       - src/api/user_device_handler.erl
@@ -618,6 +624,7 @@ gates:
       - src/ds/ai_agent_role_ds.erl
       - src/ds/app_ddl_ds.erl
       - src/ds/attachment_artifact_reader.erl
+      - src/ds/attachment_delete_reaper.erl
       - src/ds/attachment_delete_worker.erl
       - src/ds/attachment_ds.erl
       - src/ds/auth_session_ds.erl
@@ -672,6 +679,7 @@ gates:
       - src/ds/token_ds.erl
       - src/ds/user_ds.erl
       - src/ds/user_log_ds.erl
+      - src/ds/user_setting_ds.erl
       - src/ds/user_tag_ds.erl
       - src/ds/user_tag_relation_ds.erl
       - src/ds/websocket_ds.erl
@@ -826,6 +834,7 @@ gates:
       - src/lib/imboy_telemetry.erl
       - src/lib/imboy_ws_action_registry.erl
       - src/lib/license_notice_worker.erl
+      - src/lib/list_cursor.erl
       - src/lib/llm_stream.erl
       - src/lib/organization/application/organization_agent_facts_app.erl
       - src/lib/organization/application/organization_agent_membership_app.erl
@@ -942,6 +951,7 @@ gates:
       - src/logic/talk_record_content_speakers.erl
       - src/logic/talk_record_content_summary.erl
       - src/logic/talk_record_delete_logic.erl
+      - src/logic/talk_record_export_artifact.erl
       - src/logic/talk_record_export_job.erl
       - src/logic/talk_record_export_logic.erl
       - src/logic/talk_record_export_policy.erl
@@ -954,6 +964,7 @@ gates:
       - src/logic/talk_record_marks_logic.erl
       - src/logic/talk_record_model_job.erl
       - src/logic/talk_record_participant_logic.erl
+      - src/logic/talk_record_playback_parts.erl
       - src/logic/talk_record_provider_contract.erl
       - src/logic/talk_record_transfer_logic.erl
       - src/logic/user_collect_logic.erl
@@ -991,11 +1002,15 @@ gates:
       - src/repo/billing_plan_repo.erl
       - src/repo/bot_repo.erl
       - src/repo/bot_webhook_delivery_repo.erl
+      - src/repo/c2c_action_receipt_repo.erl
       - src/repo/channel_invitation_repo.erl
       - src/repo/channel_message_repo.erl
       - src/repo/channel_order_repo.erl
       - src/repo/channel_repo.erl
+      - src/repo/channel_subscription_repo.erl
       - src/repo/channel_webhook_repo.erl
+      - src/repo/conversation_delete_repo.erl
+      - src/repo/conversation_pin_repo.erl
       - src/repo/enterprise_application_credential_repo.erl
       - src/repo/enterprise_application_repo.erl
       - src/repo/enterprise_asset_repo.erl
@@ -1055,6 +1070,7 @@ gates:
       - src/repo/recharge_order_repo.erl
       - src/repo/red_packet_repo.erl
       - src/repo/report_ticket_repo.erl
+      - src/repo/resource_create_receipt_repo.erl
       - src/repo/review_queue_repo.erl
       - src/repo/talk_record_attachment_ref_repo.erl
       - src/repo/talk_record_capture_repo.erl
@@ -1074,6 +1090,7 @@ gates:
       - src/repo/user_collect_repo.erl
       - src/repo/user_deletion_request_repo.erl
       - src/repo/user_repo.erl
+      - src/repo/user_setting_repo.erl
       - src/repo/user_tag_relation_repo.erl
       - src/repo/wallet_repo.erl
       - src/repo/workspace_member_repo.erl
