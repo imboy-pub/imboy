@@ -107,20 +107,33 @@ ensure_configured() ->
 -spec ensure_setup(atom(), pos_integer()) -> ok.
 ensure_setup(Bucket, N) ->
     case persistent_term:get(?PT_KEY(Bucket), undefined) of
-        N ->
+        %% memo 比较必须走 guard：裸 N 模式是变量模式恒匹配（连 undefined
+        %% 都命中），setup 将永不被执行——首流量会一直依赖 rebuild_scope
+        %% 的 rate_not_set 自愈兜底才能建 scope。
+        V when V =:= N ->
             ok;
         _ ->
-            ok = throttle:setup(Bucket, N, per_minute),
-            persistent_term:put(?PT_KEY(Bucket), N),
-            ok
+            try throttle:setup(Bucket, N, per_minute) of
+                ok ->
+                    persistent_term:put(?PT_KEY(Bucket), N),
+                    ok
+            catch
+                %% simple_one_for_one 同参子进程已在：setup 以 badmatch 崩，
+                %% 语义等同成功（进程在），与 rebuild_scope 同构。
+                error:{badmatch, {error, {already_started, _Pid}}} ->
+                    persistent_term:put(?PT_KEY(Bucket), N),
+                    ok
+            end
     end.
 
 %% 备忘脱节自愈（rv8 全量实证）：throttle 应用重启后 scope 子进程缺失而
-%% persistent_term 备忘声称已配置。supervisor:start_child 对「spec 存在且
-%% 进程在」返回 {error,{already_started,_}}（scope 已在，等同成功），对
-%% 「spec 存在但进程不在」返回 {error,already_present}（spec 在，无害），
-%% 仅在真正补建成功时才视作自愈成功并记一条 WARN 留痕。失败返回 error，
-%% 调用方照旧 fail-closed。
+%% persistent_term 备忘声称已配置。throttle:setup/3 的真实契约
+%% （deps/throttle）：{ok,_Pid} = supervisor:start_child(...) 后返回 ok；
+%% throttle_sup 为 simple_one_for_one，同参子进程已在时 start_child 返回
+%% {error,{already_started,Pid}}，setup 以 badmatch 崩溃而非返回 error 元组
+%% （already_present 仅标准 supervisor 产生，此形态不存在）。自愈语义 =
+%% 「进程在即等同成功」，故捕获该 badmatch 视作自愈成功并记 WARN 留痕；
+%% 其余异常照旧传播，返回 error，调用方 fail-closed。
 -spec rebuild_scope(internal_read | internal_write | internal_sso, pos_integer()) ->
     ok | error.
 rebuild_scope(Bucket, N) ->
@@ -129,16 +142,16 @@ rebuild_scope(Bucket, N) ->
         "persistent_term across throttle restart); rebuilding",
         [Bucket]
     ),
-    case throttle:setup(Bucket, N, per_minute) of
-        {ok, _Pid} ->
+    try throttle:setup(Bucket, N, per_minute) of
+        ok ->
+            persistent_term:put(?PT_KEY(Bucket), N),
+            ok
+    catch
+        error:{badmatch, {error, {already_started, _Pid}}} ->
             persistent_term:put(?PT_KEY(Bucket), N),
             ok;
-        {error, {already_started, _}} ->
-            persistent_term:put(?PT_KEY(Bucket), N),
-            ok;
-        {error, already_present} ->
-            persistent_term:put(?PT_KEY(Bucket), N),
-            ok;
-        _Other ->
+        %% 其余任何失败一律 error：调用方按「自愈失败照旧 fail-closed，
+        %% 绝不放行」收敛，异常不得穿透本函数。
+        _:_ ->
             error
     end.
