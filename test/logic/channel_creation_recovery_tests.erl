@@ -16,7 +16,9 @@
 %%%     迟到仍可首次受理一次（§6.4 恢复状态表）；
 %%%   - 删除例外：delete_channel 同事务置位 resource_deleted，重放/只查
 %%%     不复活、不泄露（J24.b）；7d 服务端年龄独立判定 expired；
-%%%   - workspace scope 资格路径（ensure_can_create_resource）。
+%%%   - workspace scope 资格路径（ensure_can_create_resource）；
+%%%   - J23.a 提交前配额中止（占位后中止）→ receipt 全回滚、同键可
+%%%     首次受理（v2.2 验收命名 case）。
 %%%
 %%% 注意：中文字符串字面量必须带 /utf8 —— 无标注的 binary 字面量会按
 %%% 低字节截断（如 <<"频道">> 落成非法 UTF-8），DB 报 22021
@@ -179,6 +181,63 @@ canonical_channel_digest_properties_test_() ->
                 scope => <<"workspace">>, workspace_id => 8
             })
         )
+    end).
+
+%% J23.a（提交前失败）：receipt 占位已在事务内插入后，配额守卫中止
+%% （创建者仅剩 1 个名额且已被占用 → create_channel_tx 内
+%% {abort_tx, channel_creation_limit}）→ 频道/订阅/管理员/receipt 占位
+%% 全部随事务回滚；同键随后以放宽限额可首次受理。
+j23a_channel_precommit_failure_rolls_back_receipt_test_() ->
+    ?TEST_WITH_DB_TIMEOUT(60, fun() ->
+        cleanup_test_rows(),
+        try
+            seed_test_rows(),
+            Opts = #{},
+            %% 先占满仅有的 1 个名额
+            {ok, _First, accepted} = channel_logic:create_channel_with_receipt(
+                ?CREATOR_UID,
+                <<"占额频道"/utf8>>,
+                Opts,
+                1,
+                {<<"personal">>, 0},
+                <<"req-ch-j23a-first">>,
+                false
+            ),
+            ?assertEqual(1, channel_count()),
+            ?assertEqual(1, receipt_count()),
+
+            %% 同额度下新键受理：占位 → 资源创建前配额中止 → 全回滚
+            ?assertEqual(
+                {error, <<"已达频道创建上限"/utf8>>},
+                channel_logic:create_channel_with_receipt(
+                    ?CREATOR_UID,
+                    <<"超限频道"/utf8>>,
+                    Opts,
+                    1,
+                    {<<"personal">>, 0},
+                    <<"req-ch-j23a-over">>,
+                    false
+                )
+            ),
+            %% 全回滚：无新频道、无新 receipt（占位行随事务消失）
+            ?assertEqual(1, channel_count()),
+            ?assertEqual(1, receipt_count()),
+
+            %% 同键（req-ch-j23a-over）放宽限额后可首次受理
+            {ok, _Channel, accepted} = channel_logic:create_channel_with_receipt(
+                ?CREATOR_UID,
+                <<"超限频道"/utf8>>,
+                Opts,
+                ?MAX_CHANNELS,
+                {<<"personal">>, 0},
+                <<"req-ch-j23a-over">>,
+                false
+            ),
+            ?assertEqual(2, channel_count()),
+            ?assertEqual(2, receipt_count())
+        after
+            cleanup_test_rows()
+        end
     end).
 
 %% J23.b / J24.c：首受理（personal）→ 重放同 ID 同载荷零新资源；名称
