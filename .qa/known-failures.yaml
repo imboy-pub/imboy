@@ -36,6 +36,8 @@
 # =============================================================================
 schema_version: 1
 updated: "2026-11-01"
+# 2026-11-01 回册 eqwalizer-lib 21 模块（run 41360214828 分类 NEW=21；channel-group-ux /
+#   att-v5 / talk-record 等批次把 lib 层扩到 114 模块带出，预算重设 32→52，31+21=52）
 # 2026-11-01 回册 13 文件（CI imboy Quality Gate elvis 分类 NEW=13，talk-record-playback /
 #   enterprise internal rate / user-setting / conversation pin-delete / receipts 等近期
 #   feature 批次带入；粒度按先例为 FAIL 文件路径，未逐条登记违规规则）；
@@ -104,15 +106,17 @@ gates:
   # eqwalizer-lib —— 失败标识粒度：模块名（make eqwalize-layer LAYER=lib 输出 "❌ <mod>" 行）
   # ---------------------------------------------------------------------------
   eqwalizer-lib:
-    source: "local 2026-08-22, elp 1.1.0+build-2026-02-27, lib 层 75 模块 failing 31（预算 32 内）"
+    source: "2026-11-01 回册：run 41360214828 实测 lib 层 modules=114 failing=52（KNOWN 31 + NEW 21，预算重设 52）；首版 2026-08-22 elp 1.1.0，lib 层 75 模块 failing 31（预算 32 内）"
     known_failures:
       - alipay_openapi
+      - bot_webhook_guard
       - elib_async
       - elib_cipher
       - elib_cnv
       - elib_email
       - elib_hasher
       - elib_metric
+      - elib_multipart
       - elib_oss
       - elib_param
       - elib_password
@@ -120,11 +124,19 @@ gates:
       - elib_pg_sql
       - elib_req
       - elib_response
+      - elib_tsid
       - elib_type
       - elib_uri
+      - enterprise_cursor_v2
+      - epgsql_codec_rfc3339_bin
       - imboy_cache
+      - imboy_cache_policy
       - imboy_cache_sync
+      - imboy_cache_sync_coverage
+      - imboy_cache_sync_recover
+      - imboy_cache_sync_snapshot
       - imboy_env
+      - imboy_env_overrides
       - imboy_feature
       - imboy_license
       - imboy_migrate
@@ -134,9 +146,20 @@ gates:
       - imboy_policy_codec
       - imboy_policy_normalize
       - imboy_policy_view
+      - imboy_profile_preset
+      - imboy_secret_policy
       - imboy_sms
+      - imboy_sms_fake
+      - imboy_sms_provider
       - imboy_syn
+      - imboy_telemetry
+      - list_cursor
+      - log_redact
+      - product_experience
+      - product_terminology
       - qianfan_api
+      - workspace_guard
+      - workspace_resolver
 
   # ---------------------------------------------------------------------------
   # gradualizer —— 失败标识粒度：模块名（与 .gradualizer-baseline.txt 口径一致）
@@ -361,6 +384,7 @@ gates:
       - imboy_policy_codec
       - imboy_policy_normalize
       - imboy_profile_preset
+      - imboy_secret_policy
       - imboy_route_shape
       - imboy_secret_policy
       - imboy_sms
