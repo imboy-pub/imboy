@@ -15,12 +15,17 @@ v5_w602_flutter_command() { # driver device [phase] [scenario]
     return 75
   fi
   # Each define is one argv item; do not print argv or identity values to logs.
-  # An empty phase keeps the frozen seven-define invocation unchanged; the
-  # two-phase orchestration passes put|restore as the eighth define. The
-  # scenario suite appends V5_E2E_SCENARIO=<contract leaf name> as the ninth;
-  # the kill_after_put leaf keeps the frozen no-scenario argv (its protocol is
-  # the empty-scenario two-phase flow registered as 'kill_after_put').
-  set -- test integration_test/attachment_lifecycle_v5_test.dart -d "$device" --reporter json \
+  # --flavor standard is mandatory: the app declares a brand flavor dimension
+  # (imboyapp/android/app/build.gradle.kts) and only the standard variant keeps
+  # applicationId=pub.imboy.app; without it the installed build drifts off the
+  # QA package id and the executor's `adb shell pidof pub.imboy.app` liveness
+  # observation can never succeed.  The two-phase orchestration passes
+  # put|restore and the scenario suite appends V5_E2E_SCENARIO=<contract leaf
+  # name> as additional defines; the kill_after_put leaf keeps the frozen
+  # no-scenario argv (its protocol is the empty-scenario two-phase flow
+  # registered as 'kill_after_put').
+  set -- test integration_test/attachment_lifecycle_v5_test.dart -d "$device" \
+    --flavor standard --reporter json \
     --dart-define=APP_ENV=local \
     --dart-define=V5_E2E_OPT_IN=true \
     "--dart-define=API_BASE_URL_OVERRIDE=$endpoint" \

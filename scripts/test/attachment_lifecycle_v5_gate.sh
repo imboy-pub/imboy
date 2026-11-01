@@ -1223,6 +1223,20 @@ w602_flutter_two_phase() { # $1 app $2 cdir $3 driver $4 device $5 run $6 task $
 # reports are merged (transport-level id renumbering only; measured events
 # stay verbatim) into flutter-integration-<driver>.jsonl, the artifact name
 # consumed by the measured adapter and the W6-02 receipt raw evidence.
+#
+# The same mechanism wires W6-02/ac08 and W6-02/e2e-compat, whose adapter
+# MAPPINGs otherwise match 0 executed tests (their scenarios would never
+# appear in a frozen empty-scenario run):
+#   - W6-02/ac08 runs its three contract leaf scenarios per leaf:
+#     legacy_acl_cipher_bytes and unknown_history_retained single-run,
+#     physical_device_restart through the two-phase restart protocol.
+#   - W6-02/e2e-compat keeps the frozen empty-scenario two-phase flow for its
+#     any-kind scenarios (kill_after_put tag, no V5_E2E_SCENARIO define —
+#     the measured protocol is unchanged) and additionally runs the
+#     physical_device leaf under its own scenario name.
+# The dart suite must register every injected leaf name (an unknown scenario
+# is a red test by design); a leaf name absent there is an imboyapp-side
+# deliverable gap, never a gate-side skip.
 w602_scenario_define() { # $1 leaf -> stdout: V5_E2E_SCENARIO value ("" = frozen argv)
   case "$1" in
     kill_after_put|'') printf '' ;;
@@ -1234,16 +1248,23 @@ w602_scenario_two_phase() { # $1 leaf -> 0 when the leaf runs put/restore phases
   case "$1" in
     kill_after_registered|kill_after_put|kill_after_confirm|\
 presign_response_lost|expired_capability_resume|authorization_revoked|\
-restart_before_put|same_key_same_ciphertext_after_restart) return 0 ;;
+restart_before_put|same_key_same_ciphertext_after_restart|\
+physical_device_restart) return 0 ;;
     *) return 1 ;;
   esac
 }
 
-w602_flutter_scenario_suite() { # $1 app $2 cdir $3 driver $4 device $5 run $6 task
+w602_run_scenario_leaves() { # $1 app $2 cdir $3 driver $4 device $5 run $6 task $7... leaf tags
+  # One measured run per contract leaf under its own name (the dart suite
+  # registers testWidgets after the injected V5_E2E_SCENARIO leaf), then a
+  # transport-level merge of the leaf-named reports into the per-driver
+  # artifact the measured adapter binds.  kill_after_put keeps the frozen
+  # empty-scenario argv via w602_scenario_define; two-phase leaves run the
+  # put/kill/restore protocol, single-run leaves one invocation.
   local app="$1" cdir="$2" driver="$3" device="$4" run="$5" task="$6"
+  shift 6
   local scenario tags=""
-  # Frozen contract leaf order (expected_leaf_matrix["W6-02/flutter-recovery-real"]).
-  while IFS= read -r scenario; do
+  for scenario in "$@"; do
     [ -n "$scenario" ] || continue
     tags="$tags $scenario"
     if w602_scenario_two_phase "$scenario"; then
@@ -1252,6 +1273,18 @@ w602_flutter_scenario_suite() { # $1 app $2 cdir $3 driver $4 device $5 run $6 t
     else
       w602_run_flutter "$app" "$cdir" "$driver" "$device" "" "$scenario" || return $?
     fi
+  done
+  # shellcheck disable=SC2086
+  w602_merge_flutter_reports "$cdir" "$driver" $tags || return 30
+}
+
+w602_flutter_scenario_suite() { # $1 app $2 cdir $3 driver $4 device $5 run $6 task
+  local app="$1" cdir="$2" driver="$3" device="$4" run="$5" task="$6"
+  local scenario leaves=""
+  # Frozen contract leaf order (expected_leaf_matrix["W6-02/flutter-recovery-real"]).
+  while IFS= read -r scenario; do
+    [ -n "$scenario" ] || continue
+    leaves="$leaves $scenario"
   done <<'W602_SCENARIO_LEAVES'
 kill_after_registered
 kill_after_put
@@ -1269,7 +1302,7 @@ same_key_same_ciphertext_after_restart
 lost_cipher_material_requires_new_task
 W602_SCENARIO_LEAVES
   # shellcheck disable=SC2086
-  w602_merge_flutter_reports "$cdir" "$driver" $tags || return 30
+  w602_run_scenario_leaves "$app" "$cdir" "$driver" "$device" "$run" "$task" $leaves
 }
 
 w602_merge_flutter_reports() { # $1 cdir $2 driver $3... leaf tags (contract order)
@@ -1489,8 +1522,22 @@ w602_case_impl() { # $1 case_id $2 cdir
   local driver
   for driver in garage disk; do
     if [ $need_flutter -eq 1 ]; then
+      # Per-case contract leaf scenarios (see the leaf-scenario wiring comment
+      # above): flutter-recovery-real owns the frozen 14-leaf suite; ac08 runs
+      # its three scenarios; e2e-compat keeps the frozen empty-scenario
+      # two-phase flow (any-kind scenarios) plus its physical_device leaf.
+      local case_leaves=""
+      case "$cid" in
+        W6-02/ac08)
+          case_leaves="legacy_acl_cipher_bytes unknown_history_retained physical_device_restart" ;;
+        W6-02/e2e-compat)
+          case_leaves="kill_after_put physical_device" ;;
+      esac
       if [ "$cid" = "W6-02/flutter-recovery-real" ]; then
         w602_flutter_scenario_suite "$app" "$cdir" "$driver" "$device" "$phase_run" "$phase_task" || { rc=$?; return "$rc"; }
+      elif [ -n "$case_leaves" ]; then
+        # shellcheck disable=SC2086
+        w602_run_scenario_leaves "$app" "$cdir" "$driver" "$device" "$phase_run" "$phase_task" $case_leaves || { rc=$?; return "$rc"; }
       else
         w602_flutter_two_phase "$app" "$cdir" "$driver" "$device" "$phase_run" "$phase_task" || { rc=$?; return "$rc"; }
       fi

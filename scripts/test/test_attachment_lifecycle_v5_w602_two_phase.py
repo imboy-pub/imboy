@@ -292,6 +292,72 @@ class W602TwoPhaseTest(unittest.TestCase):
         self.assertFalse(
             (self.cdir / "flutter-integration-disk.jsonl").exists())
 
+    # ---------------- ac08 / e2e-compat scenario wiring ---------------------
+
+    def test_scenario_classification_covers_ac08_and_e2e_compat_leaves(self):
+        script = self.script_base + (
+            '\nfor leaf in physical_device_restart legacy_acl_cipher_bytes '
+            'unknown_history_retained physical_device kill_after_put; do '
+            'w602_scenario_two_phase "$leaf" && printf "two:%s " "$leaf" '
+            '|| printf "single:%s " "$leaf"; done; printf "\\n"\n')
+        result = subprocess.run(["bash", "-c", script], env=self.env,
+                                capture_output=True, text=True, timeout=15)
+        self.assertEqual(0, result.returncode, result.stderr)
+        self.assertEqual(
+            "two:physical_device_restart single:legacy_acl_cipher_bytes "
+            "single:unknown_history_retained single:physical_device "
+            "two:kill_after_put \n",
+            result.stdout)
+
+    def test_run_scenario_leaves_merges_e2e_compat_case_list(self):
+        # e2e-compat's frozen list: the empty-scenario two-phase flow
+        # (kill_after_put tag) plus its own physical_device leaf; after the
+        # merge, the adapter-visible per-driver artifact binds each scenario
+        # name exactly once.
+        script = self.script_base + (
+            '\nw602_run_scenario_leaves "%s" "%s" garage stub-device '
+            '"$W602_E2E_RUN_ID" "$W602_E2E_UPLOAD_ID" kill_after_put '
+            'physical_device; rc=$?\nexit "$rc"\n' % (ROOT, self.cdir))
+        result = subprocess.run(["bash", "-c", script], env=self.env,
+                                capture_output=True, text=True, timeout=120)
+        self.assertEqual(0, result.returncode, result.stderr)
+        sys.path.insert(0, str(ROOT / "scripts" / "test"))
+        import attachment_lifecycle_v5_adapter_w6_02_support as S2
+        suite = S2.flutter_suite(str(self.cdir),
+                                 "flutter-integration-garage.jsonl",
+                                 "W6-02/e2e-compat", "probe")
+        names = sorted(test["name"] for test in suite["tests"])
+        self.assertEqual(["kill_after_put", "physical_device"], names)
+        for leaf in ("kill_after_put", "physical_device"):
+            self.assertEqual(1, len(S2.find_flutter_test(suite, leaf)), leaf)
+        raw_log = (self.cdir / "raw.log").read_text()
+        self.assertIn("CMD[flutter-garage-kill_after_put-put]", raw_log)
+        self.assertIn("CMD[flutter-garage-physical_device]", raw_log)
+
+    def test_flutter_command_pins_standard_flavor(self):
+        # The app declares a brand flavor dimension; only --flavor standard
+        # keeps applicationId=pub.imboy.app so the executor's
+        # `adb shell pidof pub.imboy.app` liveness observation can succeed.
+        root = Path(self.temp.name)
+        fl_bin = root / "fl-bin"
+        fl_bin.mkdir()
+        flutter = fl_bin / "flutter"
+        flutter.write_text('#!/bin/sh\nprintf "%s\\n" "$@" > "$ARGV_FILE"\n')
+        flutter.chmod(0o755)
+        env = dict(self.env, PATH=f"{fl_bin}:{self.env['PATH']}",
+                   ARGV_FILE=str(root / "argv.txt"))
+        script = ('set -u\nsource "%s"\nv5_w602_flutter_command garage '
+                  'stub-device\n'
+                  % (ROOT / "scripts/test/attachment_lifecycle_v5_flutter_command.sh"))
+        result = subprocess.run(["bash", "-c", script], env=env,
+                                capture_output=True, text=True, timeout=15)
+        self.assertEqual(0, result.returncode, result.stderr)
+        argv = (root / "argv.txt").read_text().splitlines()
+        self.assertIn("--flavor", argv)
+        self.assertEqual("standard", argv[argv.index("--flavor") + 1])
+        self.assertIn("--dart-define=V5_E2E_DRIVER=garage", argv)
+        self.assertNotIn("--dart-define=V5_E2E_SCENARIO=", argv)
+
 
 
 class W602BackendProvenanceWindowTest(unittest.TestCase):
