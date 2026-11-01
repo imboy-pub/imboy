@@ -107,6 +107,13 @@ tables:
     mechanism: delete rows by user ownership column
     review: self-evident
     retention: n/a
+  c2c_action_receipt:
+    action: delete
+    owner: messages
+    reason: C2C 编辑/撤回 ACK 受理事实（关联用户消息，随消息删除）
+    mechanism: delete rows by actor/peer uid
+    review: self-evident
+    retention: n/a
   channel:
     action: delete
     owner: channels

@@ -431,7 +431,8 @@ channel_view(Channel, ChannelId, Uid) ->
     end.
 
 %% @doc 详情接口返回与当前用户有关的频道状态；付费频道的内容权益只认购买订单。
--spec add_user_channel_state(map(), integer(), integer()) -> map() | {error, binary()}.
+-spec add_user_channel_state(map(), integer(), integer()) ->
+    map() | {error, binary() | {integer(), binary()}}.
 add_user_channel_state(Channel, ChannelId, Uid) ->
     case has_purchased(Channel, ChannelId, Uid) of
         {error, Reason} ->
@@ -441,14 +442,19 @@ add_user_channel_state(Channel, ChannelId, Uid) ->
             IsSubscribed =
                 case UserRole of
                     % 创建者恒订阅
-                    3 -> true;
-                    _ -> channel_subscription_ds:is_subscribed(ChannelId, Uid)
+                    3 -> {ok, true};
+                    _ -> channel_subscription_ds:subscription_status(ChannelId, Uid)
                 end,
-            Channel#{
-                user_role => UserRole,
-                is_subscribed => IsSubscribed,
-                has_purchased => HasPurchased
-            }
+            case IsSubscribed of
+                {ok, Subscribed} when is_boolean(Subscribed) ->
+                    Channel#{
+                        user_role => UserRole,
+                        is_subscribed => Subscribed,
+                        has_purchased => HasPurchased
+                    };
+                _ ->
+                    {error, {503, <<"subscription_unavailable">>}}
+            end
     end.
 
 -spec has_purchased(map(), integer(), integer()) -> boolean() | {error, term()}.

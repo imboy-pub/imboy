@@ -620,25 +620,30 @@ c2c_revoke(MsgId, CurrentUid, Data) ->
                                     % 判断对方是否在线
                                     case user_logic:is_online(ToId) of
                                         true ->
-                                            imboy_message_helper:encode_and_send(
-                                                ToId, MsgId, RevokeMsg, <<"c2s">>
-                                            ),
-                                            %% 受理事实落原行 payload（失败仅告警，
-                                            %% fail-closed）：此后客户端 message_revoke_ack
-                                            %% 仅在事实匹配时才允许覆写原消息
-                                            persist_action_accept(
-                                                OriginalMsgId,
-                                                MsgId,
-                                                CurrentUid,
-                                                <<"accepted_revoke">>,
-                                                #{}
-                                            ),
-                                            %% 撤回提交成功后才取消接收方投递定时器；
-                                            %% 提交失败时保留定时器，避免原文从此不再被投递
-                                            cancel_revoke_delivery_timers(
-                                                ToId, OriginalMsgId
-                                            ),
-                                            {reply, RevokeMsg};
+                                            case
+                                                persist_action_accept(
+                                                    OriginalMsgId,
+                                                    MsgId,
+                                                    CurrentUid,
+                                                    ToId,
+                                                    <<"revoke">>,
+                                                    null
+                                                )
+                                            of
+                                                ok ->
+                                                    imboy_message_helper:encode_and_send(
+                                                        ToId, MsgId, RevokeMsg, <<"c2s">>
+                                                    ),
+                                                    cancel_revoke_delivery_timers(
+                                                        ToId, OriginalMsgId
+                                                    ),
+                                                    {reply, RevokeMsg};
+                                                {error, _} ->
+                                                    {reply,
+                                                        message_ds:assemble_s2c(
+                                                            MsgId, <<"internal_error">>, To
+                                                        )}
+                                            end;
                                         % 对端离线处理
                                         false ->
                                             % v2.0: 使用 revoke_offline_msg/9 显式传递 msg_type 和 action
@@ -656,17 +661,27 @@ c2c_revoke(MsgId, CurrentUid, Data) ->
                                                 )
                                             of
                                                 ok ->
-                                                    persist_action_accept(
-                                                        OriginalMsgId,
-                                                        MsgId,
-                                                        CurrentUid,
-                                                        <<"accepted_revoke">>,
-                                                        #{}
-                                                    ),
-                                                    cancel_revoke_delivery_timers(
-                                                        ToId, OriginalMsgId
-                                                    ),
-                                                    {reply, RevokeMsg};
+                                                    case
+                                                        persist_action_accept(
+                                                            OriginalMsgId,
+                                                            MsgId,
+                                                            CurrentUid,
+                                                            ToId,
+                                                            <<"revoke">>,
+                                                            null
+                                                        )
+                                                    of
+                                                        ok ->
+                                                            cancel_revoke_delivery_timers(
+                                                                ToId, OriginalMsgId
+                                                            ),
+                                                            {reply, RevokeMsg};
+                                                        {error, _} ->
+                                                            {reply,
+                                                                message_ds:assemble_s2c(
+                                                                    MsgId, <<"internal_error">>, To
+                                                                )}
+                                                    end;
                                                 {error, _} ->
                                                     {reply,
                                                         message_ds:assemble_s2c(
@@ -697,25 +712,23 @@ c2c_revoke(MsgId, CurrentUid, Data) ->
 c2c_revoke_ack(MsgId, CurrentUid, #{
     <<"payload">> := #{<<"original_msg_id">> := OriginalMsgId} = Payload
 }) when is_binary(OriginalMsgId), OriginalMsgId =/= <<>> ->
+    AckPayload = Payload#{
+        <<"action">> => <<"message_revoke_ack">>,
+        <<"ack_msg_id">> => MsgId,
+        <<"ack_uid">> => CurrentUid,
+        <<"ack_at">> => elib_dt:millisecond()
+    },
     case
-        action_accept_marker_matches(
-            OriginalMsgId, CurrentUid, MsgId, <<"accepted_revoke">>, Payload
+        msg_c2c_ds:consume_action(
+            MsgId, OriginalMsgId, CurrentUid, <<"revoke">>, null, AckPayload
         )
     of
-        true ->
+        ok ->
             ok = ?DEBUG_LOG([MsgId, CurrentUid, OriginalMsgId]),
-            AckPayload = Payload#{
-                <<"action">> => <<"message_revoke_ack">>,
-                <<"ack_msg_id">> => MsgId,
-                <<"ack_uid">> => CurrentUid,
-                <<"ack_at">> => elib_dt:millisecond()
-            },
-            persist_action_payload(OriginalMsgId, AckPayload),
             ok;
-        false ->
-            %% 无服务端受理事实（伪造/未知/重放请求）：绝不覆写原消息
+        {error, Reason} ->
             _ = ?WARN_LOG(
-                {unaccepted_action_ack_dropped, revoke, MsgId, CurrentUid, OriginalMsgId}
+                {unaccepted_action_ack_dropped, revoke, MsgId, CurrentUid, OriginalMsgId, Reason}
             ),
             ok
     end;
@@ -850,17 +863,24 @@ do_c2c_edit_plain(MsgId, CurrentUid, Data) ->
             % 判断对方是否在线
             case user_logic:is_online(ToId) of
                 true ->
-                    imboy_message_helper:encode_and_send(ToId, MsgId, EditMsg, <<"c2s">>),
-                    %% 受理事实（含内容哈希绑定）：此后 message_edit_ack 仅在
-                    %% 事实与内容都匹配时才允许覆写原消息
-                    persist_action_accept(
-                        OriginalMsgId,
-                        MsgId,
-                        CurrentUid,
-                        <<"accepted_edit">>,
-                        #{<<"content_hash">> => content_sha256(NewContent)}
-                    ),
-                    {reply, EditMsg};
+                    case
+                        persist_action_accept(
+                            OriginalMsgId,
+                            MsgId,
+                            CurrentUid,
+                            ToId,
+                            <<"edit">>,
+                            content_sha256(NewContent)
+                        )
+                    of
+                        ok ->
+                            imboy_message_helper:encode_and_send(
+                                ToId, MsgId, EditMsg, <<"c2s">>
+                            ),
+                            {reply, EditMsg};
+                        {error, _} ->
+                            {reply, message_ds:assemble_s2c(MsgId, <<"internal_error">>, To)}
+                    end;
                 false ->
                     {reply, message_ds:assemble_s2c(MsgId, <<"internal_error">>, To)}
             end;
@@ -903,17 +923,24 @@ do_c2c_encrypted_edit(MsgId, CurrentUid, Data, OriginalMsgId) ->
             ),
             case user_logic:is_online(ToId) of
                 true ->
-                    imboy_message_helper:encode_and_send(ToId, MsgId, EditMsg, <<"c2s">>),
-                    %% 受理事实（密文哈希绑定）：E2EE 正文服务端不可见，
-                    %% 以密文哈希把 ack 绑定到本次受理
-                    persist_action_accept(
-                        OriginalMsgId,
-                        MsgId,
-                        CurrentUid,
-                        <<"accepted_edit">>,
-                        #{<<"content_hash">> => content_sha256(encrypted_payload_binary(Payload))}
-                    ),
-                    {reply, EditMsg};
+                    case
+                        persist_action_accept(
+                            OriginalMsgId,
+                            MsgId,
+                            CurrentUid,
+                            ToId,
+                            <<"edit">>,
+                            content_sha256(encrypted_payload_binary(Payload))
+                        )
+                    of
+                        ok ->
+                            imboy_message_helper:encode_and_send(
+                                ToId, MsgId, EditMsg, <<"c2s">>
+                            ),
+                            {reply, EditMsg};
+                        {error, _} ->
+                            {reply, message_ds:assemble_s2c(MsgId, <<"internal_error">>, To)}
+                    end;
                 false ->
                     case
                         msg_c2c_ds:write_msg_if_absent_with_sender(
@@ -929,17 +956,24 @@ do_c2c_encrypted_edit(MsgId, CurrentUid, Data, OriginalMsgId) ->
                         )
                     of
                         ok ->
-                            persist_action_accept(
-                                OriginalMsgId,
-                                MsgId,
-                                CurrentUid,
-                                <<"accepted_edit">>,
-                                #{
-                                    <<"content_hash">> =>
-                                        content_sha256(encrypted_payload_binary(Payload))
-                                }
-                            ),
-                            {reply, EditMsg};
+                            case
+                                persist_action_accept(
+                                    OriginalMsgId,
+                                    MsgId,
+                                    CurrentUid,
+                                    ToId,
+                                    <<"edit">>,
+                                    content_sha256(encrypted_payload_binary(Payload))
+                                )
+                            of
+                                ok ->
+                                    {reply, EditMsg};
+                                {error, _} ->
+                                    {reply,
+                                        message_ds:assemble_s2c(
+                                            MsgId, <<"internal_error">>, To
+                                        )}
+                            end;
                         {error, _} ->
                             {reply, message_ds:assemble_s2c(MsgId, <<"internal_error">>, To)}
                     end
@@ -1036,26 +1070,29 @@ c2c_edit_ack(MsgId, CurrentUid, #{
         <<"edited_at">> := _EditedAt
     } = Payload
 }) when is_binary(OriginalMsgId), OriginalMsgId =/= <<>> ->
+    AckPayload = Payload#{
+        <<"action">> => <<"message_edit_ack">>,
+        <<"ack_msg_id">> => MsgId,
+        <<"ack_uid">> => CurrentUid,
+        <<"ack_at">> => elib_dt:millisecond()
+    },
     case
-        action_accept_marker_matches(
-            OriginalMsgId, CurrentUid, MsgId, <<"accepted_edit">>, Payload
+        msg_c2c_ds:consume_action(
+            MsgId,
+            OriginalMsgId,
+            CurrentUid,
+            <<"edit">>,
+            content_sha256(maps:get(<<"content">>, Payload, <<>>)),
+            AckPayload
         )
     of
-        true ->
+        ok ->
             %% 安全审计 P2-1：NewContent 含编辑后明文，已注释。
             % ok = ?DEBUG_LOG([MsgId, CurrentUid, OriginalMsgId, NewContent, EditedAt]),
-            AckPayload = Payload#{
-                <<"action">> => <<"message_edit_ack">>,
-                <<"ack_msg_id">> => MsgId,
-                <<"ack_uid">> => CurrentUid,
-                <<"ack_at">> => elib_dt:millisecond()
-            },
-            persist_action_payload(OriginalMsgId, AckPayload),
             ok;
-        false ->
-            %% 无服务端受理事实或内容绑定不符：绝不覆写原消息
+        {error, Reason} ->
             _ = ?WARN_LOG(
-                {unaccepted_action_ack_dropped, edit, MsgId, CurrentUid, OriginalMsgId}
+                {unaccepted_action_ack_dropped, edit, MsgId, CurrentUid, OriginalMsgId, Reason}
             ),
             ok
     end;
@@ -1346,97 +1383,18 @@ extract_snippet_plain(OriginalMsg) ->
 set_c2c_expire_at(MsgId, ExpireAt) ->
     msg_c2c_ds:set_expire_at(MsgId, ExpireAt).
 
-%% @doc 持久化 action ack payload 到原消息记录
-%% 原消息若已被客户端 ACK 清理，更新影响行数为 0，不视为错误。
--spec persist_action_payload(binary(), map()) -> ok.
-persist_action_payload(<<>>, _Payload) ->
-    ok;
-persist_action_payload(OriginalMsgId, Payload) when is_binary(OriginalMsgId), is_map(Payload) ->
-    PayloadJson = imboy_message_helper:encode_json(Payload),
-    case msg_c2c_ds:update_payload_by_msg_id(OriginalMsgId, PayloadJson) of
-        {ok, _} ->
-            ok;
-        {error, Reason} ->
-            _ = ?WARN_LOG({persist_action_payload_failed, OriginalMsgId, Reason}),
-            ok
-    end.
-
-%% @doc 把 action 受理事实合入原消息 payload（读-改-写；失败仅告警不阻断
-%% 主流程）。事实把本次受理与（请求 id、发起者、时刻[、内容哈希]）绑定，
-%% 落库即重启可查；此后对应 C2S *_ack 仅在事实匹配时才允许覆写原消息。
--spec persist_action_accept(binary(), binary(), integer(), binary(), map()) -> ok.
-persist_action_accept(OriginalMsgId, RequestId, RequestUid, Kind, Extra) ->
-    Base =
-        case msg_c2c_ds:find_msg_by_id(OriginalMsgId) of
-            {ok, MsgData} -> action_payload_map(MsgData);
-            _ -> #{}
-        end,
-    Marker = maps:merge(
-        #{
-            <<"request_id">> => RequestId,
-            <<"uid">> => ec_cnv:to_binary(RequestUid),
-            <<"accepted_at">> => elib_dt:millisecond()
-        },
-        Extra
-    ),
-    PayloadJson = imboy_message_helper:encode_json(Base#{Kind => Marker}),
-    case msg_c2c_ds:update_payload_by_msg_id(OriginalMsgId, PayloadJson) of
-        {ok, _} ->
-            ok;
-        {error, Reason} ->
-            _ = ?WARN_LOG({persist_action_accept_failed, OriginalMsgId, Kind, Reason}),
-            ok
-    end.
-
-%% @private 校验原消息上的受理事实：Kind 标记存在且 request_id/uid 匹配；
-%% 标记带 content_hash 时额外校验来帧内容绑定（缺失视为旧格式放行）。
--spec action_accept_marker_matches(binary(), integer(), binary(), binary(), map()) ->
-    boolean().
-action_accept_marker_matches(OriginalMsgId, CurrentUid, MsgId, Kind, IncomingPayload) ->
-    case msg_c2c_ds:find_msg_by_id(OriginalMsgId) of
-        {ok, MsgData} ->
-            case maps:get(Kind, action_payload_map(MsgData), undefined) of
-                #{<<"request_id">> := RequestId, <<"uid">> := MarkerUid} = Marker ->
-                    RequestId =:= MsgId andalso
-                        MarkerUid =:= ec_cnv:to_binary(CurrentUid) andalso
-                        content_hash_matches(Marker, IncomingPayload);
-                _ ->
-                    false
-            end;
-        _ ->
-            false
-    end.
-
-content_hash_matches(Marker, IncomingPayload) ->
-    case maps:get(<<"content_hash">>, Marker, none) of
-        none ->
-            true;
-        Hash ->
-            Hash =:= content_sha256(maps:get(<<"content">>, IncomingPayload, <<>>))
-    end.
+%% @doc 持久化服务端受理事实。只有成功落库后才把 action 视为已受理。
+-spec persist_action_accept(binary(), binary(), integer(), integer(), binary(), binary() | null) ->
+    ok | {error, term()}.
+persist_action_accept(OriginalMsgId, RequestId, RequestUid, PeerUid, Action, ContentHash) ->
+    msg_c2c_ds:accept_action(
+        RequestId, OriginalMsgId, RequestUid, PeerUid, Action, ContentHash
+    ).
 
 content_sha256(Content) when is_binary(Content) ->
     binary:encode_hex(crypto:hash(sha256, Content), lowercase);
 content_sha256(Other) ->
     binary:encode_hex(crypto:hash(sha256, jsone:encode(Other)), lowercase).
-
-%% @private 提取原消息 payload 为 map（兼容已解码 map / JSON binary / 缺失）。
-action_payload_map(MsgData) when is_map(MsgData) ->
-    case maps:get(<<"payload">>, MsgData, #{}) of
-        Payload when is_map(Payload) ->
-            Payload;
-        Bin when is_binary(Bin) ->
-            try jsone:decode(Bin) of
-                Map when is_map(Map) -> Map;
-                _ -> #{}
-            catch
-                _:_ -> #{}
-            end;
-        _ ->
-            #{}
-    end;
-action_payload_map(_) ->
-    #{}.
 
 %% @private 撤回提交成功后取消接收方在线设备的投递重试定时器，避免撤回后
 %% 重试窗口内原文仍被再投递一次；仅在提交成功后调用（副作用后置）。

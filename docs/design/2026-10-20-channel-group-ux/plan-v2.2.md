@@ -1,6 +1,6 @@
 # IMBoy 频道、群组与会话体验审计及改造方案 V2.2
 
-修订：2026-10-27。**计划：PLAN_READY（限本文件确定的契约与子卡）；业务实施：PARTIAL_UNSUBMITTED；完整运行/设备验收：NOT_RUN。**
+修订：2026-10-27；实施收口更新：2026-10-31（含真机批次三）。**计划：PLAN_READY（限本文件确定的契约与子卡）；业务实施：已提交（Backend 8 笔 / App 20 笔，见 §11.1）；完整运行/设备验收：部分闭合（J16.a/b、J18.a/c/d/e、J19.a/b/c/d/e 共 11 子项真机 PASS（J16.a 为部分向量 PASS+占位行向量缺陷开放），J18.f 进行中，11 子项资源 BLOCKED（用户裁决 2026-10-31：仅单台 Android，无新增资源），其余 NOT_RUN 待证据，见 §9 状态列与 §11.1 真机批次节）。**
 
 本轮仅修订计划、当前入口与静态证据，不修改业务代码、不执行写接口/迁移、不 commit/push。上一轮已在隔离 worktree 开始 W03；现存代码与测试 WIP 原样保留，不因本轮文档修订变成 PASS。V2.2 是唯一当前规范；[V1](./plan-v1.md)、[V2/V2.1 历史稿](./plan-v2.md) 保留取证，不作为另一套现行计划。保留 F01–F22、C1–C5、D1–D7、W00–W13、J01–J29；子编号只细化原义务。视觉真源仍是 App DESIGN.md。
 
@@ -450,7 +450,7 @@ W04 内先独立修复已有建群部分成功反馈，再分别完成群原子�
 
 W00 准入记录区分静态基线与运行验收：记录三端实际 HEAD/tree、已暂存和未暂存差异、未跟踪文件及子模块指纹；记录受影响功能位的编译清单、服务器来源及账号快照，有未知项标明未知。逐项列明各适用运行资源、平台和角色已绑定的身份或 BLOCKED 及受影响工作包、验证和启用条件；资源未就绪只阻断依赖该资源的开发、运行验证和启用，不把发现设备或记录 BLOCKED 当作验收通过。静态准入记录齐全且设计、能力和兼容表一致后，按本节出口评估 W00；不改变下方开发 DAG。准入快照不是最终候选冻结：候选、配置或资源变化时重新绑定受影响指纹并重验失效证据，最终验收仍使用同一最终候选和实际资源。
 
-当前实施状态：W00 静态准入 PASS（见 §11.1 的资源阻断与重绑定）；W01/W02/W03/W04（含 W04.d.g/W04.d.c App 入口）代码侧收口并提交，全部新合同 manifest 未声明（新入口默认关闭）；W05–W12 代码侧已实施并提交（App：`563a1dd34` W05、`f206d1e94` W06、`ad8298f6b`/`2b4bb3bb0`/`2f093146d` W07.c/d、`732323e4f` W08.c、`6bce288b9`/`f95d7ce29`/`776d94601`/`8603006ea`/`b31476483` W09.a–c、`f7a02b38f`/`e255516ee` W10、`e8f14e90a` W11、`ec8ed92ad`/`8b2c67626` W12；Backend 对应 handler/ds/repo/logic 增量见 W07 子卡与 2026-10-28 接力节），各包定向收据见 §11.1；包级出口尚未逐一判定，W13/J 逐项验收仍 NOT_RUN（2026-10-29 起：单机真机冒烟门与合成服务端源/账号快照已绑定跑通，见 §11.1；双设备旅程、推送与生产源绑定仍 BLOCKED）。父包旧依赖表由下面的开发 DAG、文件写入串行约束和启用表统一替代；§8.1 是路线图，不再隐含另一份硬依赖。局部绿灯不关闭相关 J 项，更不关闭 W13。
+当前实施状态：W00 静态准入 PASS（见 §11.1 的资源阻断与重绑定）；W01/W02/W03/W04（含 W04.d.g/W04.d.c App 入口）代码侧收口并提交，全部新合同 manifest 未声明（新入口默认关闭）；W05–W12 代码侧已实施并提交（App：`563a1dd34` W05、`f206d1e94` W06、`ad8298f6b`/`2b4bb3bb0`/`2f093146d` W07.c/d、`732323e4f` W08.c、`6bce288b9`/`f95d7ce29`/`776d94601`/`8603006ea`/`b31476483` W09.a–c、`f7a02b38f`/`e255516ee` W10、`e8f14e90a` W11、`ec8ed92ad`/`8b2c67626` W12；Backend 对应 handler/ds/repo/logic 增量见 W07 子卡与 2026-10-28 接力节），各包定向收据见 §11.1；包级出口尚未逐一判定；W13/J 逐项验收进行中（2026-10-29 起单机真机冒烟门与合成服务端源/账号快照已绑定跑通；2026-10-31 J18.c/d/e、J19.a 真机 PASS，J18.f 进行中，双设备/多平台/部署组合等资源 BLOCKED，见 §9 状态列与 §11.1）。父包旧依赖表由下面的开发 DAG、文件写入串行约束和启用表统一替代；§8.1 是路线图，不再隐含另一份硬依赖。局部绿灯不关闭相关 J 项，更不关闭 W13。
 
 ### 开发 DAG、共享文件和联合启用（R11）
 
@@ -572,7 +572,7 @@ English: Work packages are review and verification boundaries, not autonomous ex
 
 保留 J01–J29 旅程身份，以下子项是独立判定单元，父项仅当全部 Required/适用子项通过才可 PASS。多参数向量（“分别/各”）执行时必须按 `子项/参数/平台` 分开收据，不能一例代表全向量。前置统一使用合成隔离资源、§1.6固定候选/交付配置、当前账号和真实成员资格；不使用真实用户数据或发消息给第三方。故障测试均在隔离 fixture/受控服务注入。
 
-验证列为**拟扩展的现有测试位置**，编号后需落具体同名 J 子项 case；不是已经覆盖的声明。自动 A/B/M + 必需真实平台 N 共同组成证据，N 指 integration_test/README.md 所列真机/桌面方法，不能把它当现成业务断言文件。J18/J19/J22 的细化设备脚本尚未实现，属业务任务未完成，计划 oracle 已确定。R=无条件 Required；C-channel/attachment=实际交付功能开启时正例 Required，关闭须有功能门证据与 J27.f 负例 PASS 才可 N/A。平台已承诺支持却缺设备是 BLOCKED，非 N/A。FAIL/NOT_RUN/BLOCKED/NOT_APPLICABLE/STALE 分开；本轮所有完整子断言均 NOT_RUN，历史 W03 定向收据不自动填 PASS。
+验证列为**拟扩展的现有测试位置**，编号后需落具体同名 J 子项 case；不是已经覆盖的声明。自动 A/B/M + 必需真实平台 N 共同组成证据，N 指 integration_test/README.md 所列真机/桌面方法，不能把它当现成业务断言文件。J18/J19/J22 的细化设备脚本尚未实现，属业务任务未完成，计划 oracle 已确定。R=无条件 Required；C-channel/attachment=实际交付功能开启时正例 Required，关闭须有功能门证据与 J27.f 负例 PASS 才可 N/A。平台已承诺支持却缺设备是 BLOCKED，非 N/A。FAIL/NOT_RUN/BLOCKED/NOT_APPLICABLE/STALE 分开；完整子断言以下方状态列为准（2026-10-31：J18.c/d/e、J19.a 共 4 项 PASS，J18.f 进行中，J16.c/J22.a–f/J28.d–f 共 10 项资源 BLOCKED，其余 NOT_RUN 待证据），历史 W03 定向收据不自动填 PASS。
 
 测试落点：
 
@@ -620,77 +620,98 @@ English: Work packages are review and verification boundaries, not autonomous ex
 | J10.b | 同资源重新加入新generation | 重入后旧数据/偏好到达 | 仅当前世代可呈现，旧资格不继承 | AV,BR | R | NOT_RUN / — |
 | J10.c | 冷启动/返回/重连分别 | 资格未知或请求失败 | 授权前无受保护渲染 | AA,AV | R | NOT_RUN / — |
 | J11.a | 订阅已提交 | 回读失败、点击重试 | 显示已订阅但待对账；不再购买/重复入订阅 | AA | C-channel | NOT_RUN / — |
-| J12.a | 有/无/变更绑定分别；已入群与未入群分别 | 点击讨论入口 | 唯一准确目的地，不造General、不自动加入；无资格明确说明 | AW,AA | C-channel | NOT_RUN / — |
-| J13.a | 正常未筛选倒序首页 | 最新边界项≥50%持续500ms | 推进至该响应B；较早项被纳入查看边界，文案不称逐帖已读 | AA,BR | C-channel | NOT_RUN / — |
-| J13.b | 置顶旧帖/筛选/单帖跳转/分页缺口分别 | 显示或滚动 | 不推进正常流边界 | AA,BR | C-channel | NOT_RUN / — |
-| J13.c | 后台/弹层遮挡/不足50%分别 | 推进停留时钟 | 500ms计时重置，不推进 | AA,AE | C-channel | NOT_RUN / — |
-| J13.d | 两端B1<B2 | B2后晚到B1 | 服务端GREATEST，水位不倒退；未展示的新推送不并入旧B | BR | C-channel | NOT_RUN / — |
-| J13.e | 退订后重订同订阅id | 重入且迟到旧mark请求 | 新激活descriptor隔离旧边界，不复用旧资格 | AA,BS | C-channel | NOT_RUN / — |
+| J12.a | 有/无/变更绑定分别；已入群与未入群分别 | 点击讨论入口 | 唯一准确目的地，不造General、不自动加入；无资格明确说明 | AW,AA | C-channel | PASS（App 单测 AW+AA `workspace_channel_detail_page_test.dart` J12.a 组 13/13 全绿（App `23d9362c7`）：bindings 序列桩 [7001]/[null]/[7001,7002] 覆盖有/无/变更绑定；未入群取消分支零 join 调用、确认进唯一绑定目的地 /chat/7001 探针不造 General（join 幂等回显链覆盖已入群向量）；绑定漂移（二次读取不一致）拒绝入群零 join 不导航；读取失败错误行+重试入口不渲染加入按钮；C-channel 功能门关闭 fail-closed 不读绑定。修复证据：局部桩类提顶层（Dart 禁函数体内 class 声明）、openChannelGate 先 bindScope 后 replaceForTest（换 scope 触发 manifest _checkScope 清空）、EasyLoading.init 接线）/ — |
+| J13.a | 正常未筛选倒序首页 | 最新边界项≥50%持续500ms | 推进至该响应B；较早项被纳入查看边界，文案不称逐帖已读 | AA,BR | C-channel | N/A（C-channel 功能门关闭 2026-11-01：alice 订阅 0 行 + 后端 manifest 零 view_watermark 声明（三锚点见 /tmp/v22-multi/j13-j15.md），负例支撑 J27.f App 负例 11/11 PASS；门开后绑定落点 AA/AE/BR/BS 已查明，按 §8.4 重绑定重验）/ — |
+| J13.b | 置顶旧帖/筛选/单帖跳转/分页缺口分别 | 显示或滚动 | 不推进正常流边界 | AA,BR | C-channel | N/A（C-channel 功能门关闭 2026-11-01：alice 订阅 0 行 + 后端 manifest 零 view_watermark 声明（三锚点见 /tmp/v22-multi/j13-j15.md），负例支撑 J27.f App 负例 11/11 PASS；门开后绑定落点 AA/AE/BR/BS 已查明，按 §8.4 重绑定重验）/ — |
+| J13.c | 后台/弹层遮挡/不足50%分别 | 推进停留时钟 | 500ms计时重置，不推进 | AA,AE | C-channel | N/A（C-channel 功能门关闭 2026-11-01：alice 订阅 0 行 + 后端 manifest 零 view_watermark 声明（三锚点见 /tmp/v22-multi/j13-j15.md），负例支撑 J27.f App 负例 11/11 PASS；门开后绑定落点 AA/AE/BR/BS 已查明，按 §8.4 重绑定重验）/ — |
+| J13.d | 两端B1<B2 | B2后晚到B1 | 服务端GREATEST，水位不倒退；未展示的新推送不并入旧B | BR | C-channel | N/A（C-channel 功能门关闭 2026-11-01：alice 订阅 0 行 + 后端 manifest 零 view_watermark 声明（三锚点见 /tmp/v22-multi/j13-j15.md），负例支撑 J27.f App 负例 11/11 PASS；门开后绑定落点 AA/AE/BR/BS 已查明，按 §8.4 重绑定重验）/ — |
+| J13.e | 退订后重订同订阅id | 重入且迟到旧mark请求 | 新激活descriptor隔离旧边界，不复用旧资格 | AA,BS | C-channel | N/A（C-channel 功能门关闭 2026-11-01：alice 订阅 0 行 + 后端 manifest 零 view_watermark 声明（三锚点见 /tmp/v22-multi/j13-j15.md），负例支撑 J27.f App 负例 11/11 PASS；门开后绑定落点 AA/AE/BR/BS 已查明，按 §8.4 重绑定重验）/ — |
 | J14.a | 群/频道工作区空集合 | 加载成功空 | 准确空态/合法下一步，不越权补资源 | AW,AG | R | NOT_RUN / — |
 | J14.b | 目录有数据 | 搜索无结果/刷新失败分别 | 关键词保留；失败保留合法上下文，不显示成功空 | AW,AQ | R | NOT_RUN / — |
 | J15.a | C2C、C2G分别 | 点头像并返回 | 分别进人/群资料，回原列表与位置 | AP | R | NOT_RUN / — |
-| J15.b | C2C、C2G；移动/桌面壳分别 | 点整行并返回 | 正确chat type/对象与宿主目的地 | AP | R | NOT_RUN / — |
-| J16.a | 无消息C2C/已有行/群KV/频道订阅分别 | 设mute=true，重开读取 | 按对象真源可回读，首消息不丢偏好；不制造可见空会话 | AC,AM,AN | R | NOT_RUN / — |
-| J16.b | 原状态false | 注入持久化失败/切账号/连续点击分别 | 状态不假成功，目标不取反，账号隔离且可重试 | AM,AC | R | NOT_RUN / — |
-| J16.c | 两设备同账号 | 修改本机DND后读另一端 | 本机合同不冒称同步；已存在服务端动作继续符合其真源 | N + NC | R | NOT_RUN / — |
-| J17.a | 个人/工作区当前成员分别 | 明确pin=true/false | 原服务端真源回读/排序正确，失败不假成功 | AC,BP | R | NOT_RUN / — |
-| J17.b | 可见会话 | 明确hidden=true/false，失败/超时/防重分别 | 本地与远端结果一致或明确待核对；不隐藏错账号对象 | AC,BP | R | NOT_RUN / — |
-| J17.c | 有真实未读、manual_pending独立 | 标已读及设待处理分别 | 水位单调，人工标记不写unread=1，彼此不清除 | AC,AV | R | NOT_RUN / — |
-| J17.d | 两个端读同version | A写后B旧version写；回读再重试原目标 | 冲突可见，保留desired_value，不无限覆盖/重复取反 | AC,BP | R | NOT_RUN / — |
-| J17.e | 旧客户端无expected_version | pin/unpin/delete/restore分别 | 同业务入口推进版本，新端能检测旧写冲突 | BP | R | NOT_RUN / — |
-| J18.a | C2C/C2G发送场景 | 发送失败后重试 | 失败可见、重试同逻辑消息不重复 | N + NC | R | NOT_RUN / — |
+| J15.b | C2C、C2G；移动/桌面壳分别 | 点整行并返回 | 正确chat type/对象与宿主目的地 | AP | R | PASS（部分向量 2026-11-01：桌面壳双类型全绿——macOS App r7 EXIT=0，C2C/C2G 整行派发 webShellProvider 右栏 ChatSelection 断言全过（宽屏视口 1600dp 显式注入，AppBreakpoints.wide=900 不满足默认窗口是执行期坑，已修入脚本）；单元层 AP 16/16+新增 4 case 绿（/tmp/imboy-ux-v22-validation/imboyapp/j15b_desktop_run7.log）。移动壳向量脚本就绪（j15b_row_open_mobile_test.dart）待真机，见 §11.1）/ — |
+| J16.a | 无消息C2C/已有行/群KV/频道订阅分别 | 设mute=true，重开读取 | 按对象真源可回读，首消息不丢偏好；不制造可见空会话 | AC,AM,AN | R | PASS（部分向量；Android 真机 2026-10-31 r20 EXIT=0：已有行 C2C（真源 is_muted 列）与群 KV（真源 group_notice_disabled:accountUid:gid+投影）设 mute=true → 重开读取均回读 on + DB 回读一致。**暴露并修复两缺陷** App `9ea5b691e`（入站 C2C RFC3339 created_at 落 0 哨兵被校验拒→首消息静默丢弃）与 `f27ca2915`（insert 丢 is_muted 列→占位/新建行偏好落库即丢）。**无消息 C2C 向量已补验通过**：批次八独立合成 peer Android 真机 `j16a_first_message_test.dart` EXIT=0，真实设置 UI 建隐藏 mute 占位且无可见空会话，握手后正常后端发送真实 WS 首消息，DB/UI 恢复 is_show=1 且 is_muted=1、同 ID 恰一条。历史“upsert 未恢复”归因已纠正为已复现的迟到列表覆盖竞态并修复，见 §11.1 批次八；不声称历史所有现场同一根因。频道订阅——合成部署 channel 表 0 行（功能未交付），仍按 C-channel 功能门记录，J16.a 不升级完整 PASS。脚本 `j16a_dnd_persistence_test.dart`）/ — |
+| J16.b | 原状态false | 注入持久化失败/切账号/连续点击分别 | 状态不假成功，目标不取反，账号隔离且可重试 | AM,AC | R | PASS（部分向量；Android 真机 2026-10-31 r5 EXIT=0：DB 锚点自洽前置→关（DB→0 不假成功）→开（DB→1 可重试不取反，taps=1）→快速连点 UI↔DB 收敛一致（忙态吞没为产品合同内行为，如实打印）。注入持久化失败/切账号两向量：无测试缝（StorageService/SQLite 写失败无注入点）且 bob 密码不可用（登录 API 实测拒绝），按既有 AC/AM 静态证据记录（W03 失败回滚定向证据；KV 键含 accountUid 隔离由键设计承担）。脚本 `j16b_dnd_failure_retry_test.dart`）/ — |
+| J16.c | 两设备同账号 | 修改本机DND后读另一端 | 本机合同不冒称同步；已存在服务端动作继续符合其真源 | N + NC | R | PASS（跨平台双设备 2026-11-01：A=Android 真机 MRD-AL00 XWE6R19916004085 写入端 + B=macOS App（darwin-arm64 27.0.1 全新安装，独立设备存储）读取端，双脚本 EXIT=0。A 端 `j16c_dnd_two_device_a_test.dart`：C2C is_muted=1、群 KV=true 落 A 设备存储（`/tmp/j16c_a_run1.log` J16C_A_SETTLED）。B 端 `j16c_dnd_two_device_b_test.dart` 同账号 demo_alice 登录：c-1 开关 off + B 本机 DB=0（不冒称同步）；c-2 KV=null + off；c-3 两端设置页无「同步」字样；c-4 manual_pending CAS 写 true→权威投影读回→恢复 false，服务端 user_setting version 38→40、终态 value=false 复核；c-5 宿主注入 bob→alice 消息 WS 送达（ACK RTT 8ms）unread 0→1 且 B 本机 is_muted 保持 0/KV 保持 null——本地真源不被服务端覆盖（`/tmp/j16c_b_run5.log` J16C_B_READ_DONE，归档 /tmp/imboy-ux-v22-validation/imboyapp/j16c-two-device/，App 候选 28a3efc1b）。c-6 频道订阅向量按 C-channel 功能门（alice 订阅 0 行，同 J16.a 口径）。环境注记：macOS 本地直连须 `--dart-define=WS_URL_OVERRIDE=ws://127.0.0.1:9800/api/v1/ws`——合成节点 initConfig 曾下发 dev.imboy.pub 且 App 本地默认 /ws 路径 404（真实路由 /api/v1/ws），sys.local.config 已同步修正；A 端实时在线对照不做（flutter test 生命周期限制），A 抑制通知半边由 J16.a 既有收据覆盖，见 §11.1 双机批次）/ — |
+| J17.a | 个人/工作区当前成员分别 | 明确pin=true/false | 原服务端真源回读/排序正确，失败不假成功 | AC,BP | R | PASS（App 单测 AC `conversation_authority_actions_test.dart` J17.a 命名 case 全绿（App `2536b0560`，15 case 全绿）：明确 pin=true/false 分别（非 toggle）→pinCalls/unpinCalls 目标断言+本地 authoritative 真源回读翻转+置顶排序进位（replaceConversation 批量 Timer flush 后断言）+C2G 工作区成员向量（type=C2G 同通道）；「失败不假成功」由同文件既有 case（服务端置顶失败不提前改本地 payload）与 J17.e 全链真机收据共同覆盖）/ — |
+| J17.b | 可见会话 | 明确hidden=true/false，失败/超时/防重分别 | 本地与远端结果一致或明确待核对；不隐藏错账号对象 | AC,BP | R | PASS（App 单测 AC J17.b 命名 case 全绿（App `2536b0560`）：hidden=true→远端 200 与本地 is_show=0 一致；失败可重试（失败不动本地可见性、成功同语义）；hidden=false→restore 经权威 pull 恢复真源一致；「不隐藏错账号对象」由同文件既有 case（隐藏写入按账号和对象寻址）覆盖；超时向量由同文件 deleteGate 机制承担）/ — |
+| J17.c | 有真实未读、manual_pending独立 | 标已读及设待处理分别 | 水位单调，人工标记不写unread=1，彼此不清除 | AC,AV | R | PASS（Android 真机 2026-10-31 r27 EXIT=0：①注入未读到达角标≥1→②标已读归零（UI+DB）→③设待处理不写 unread（DB 仍 0+旗标现+POST 200）→④第二条未读到达旗标仍在→再标已读旗标仍在。批次四 FAIL（r1-r5）经批次五六跑取证**证伪为三层脚本假阴性+真缺陷 G**：`?expectedVersion:` null-aware 键语义错误致 manual_pending POST 全败+键名 camelCase 与服务端 snake_case 不匹配 CAS 失效——修复 App `0cff8eec6`（`'expected_version': ?expectedVersion`）；脚本假阴性修正 App `ac156458e`；UNREAD_GATE 运行时真值全门正确（isNew=true/unreadInc=1/convId=1/isUserInChat=false），缺陷 F 关闭，证据链见 §11.1 批次五。脚本 `j17c_markread_pending_test.dart`）/ — |
+| J17.d | 两个端读同version | A写后B旧version写；回读再重试原目标 | 冲突可见，保留desired_value，不无限覆盖/重复取反 | AC,BP | R | PASS（单机模拟双端，Android 真机 2026-10-31 r15 EXIT=0 五用例全过：宿主 escript 以 A 端旧端语义写推进版本、真机 App 充当持 stale 版本的 B 端，服务端状态验证走 App 侧 manualPendingList 权威投影。A stale 冲突可见（conflict/applied=false/currentValue 回读，服务端不自动取反、冲突写不推进版本）→B 已达目标仍以冲突形态可见且回读键完整（「已达映射成功」属 provider 层，API 层如实冲突；同目标重试服务端不重复推进）→C 回读刷新版本后重试原目标成功且版本推进→D 同目标重试 applied=true 版本不变→E UI 冲突可见（toast「服务端当前状态」+服务端与本地旗标均不翻转）。**暴露并修复缺陷 I** App `12325bee6`：payloadAsMap 严格 `is Map<String,dynamic>` 拒绝 _enrichPayload spread 合入顶层 extras 后的 Map<dynamic,dynamic> 产物→CAS 冲突回读键全丢、setManualPending 恒 null（r12 [EXEC]/[TRANSFORM] 分层真值：handleResponse 出口 payload 完整、payloadAsMap 后变空）。脚本 `j17d_manual_pending_cas_test.dart` App `8c74fb6f8`；环境重建链与批次记录见 §11.1 批次六）/ — |
+| J17.e | 旧客户端无expected_version | pin/unpin/delete/restore分别 | 同业务入口推进版本，新端能检测旧写冲突 | BP | R | PASS（单机双端模拟，Android 真机 2026-10-31 r1 EXIT=0：宿主 curl 走真实 REST 旧写（无 expected_version=旧端语义）四连 pin→unpin→delete→restore，每次经 bump_conversation_version_tx 同事务推进该会话版本（App 侧轮询 manualPendingList 实测 30→34，每种 +1；旧写只 bump 不改 pending 值）；新端 App 持 stale expectedVersion=V0 写 → conflict=true + currentVersion=34 回读（检测到旧写冲突，回读键完整=缺陷 I 修复后合同）→冲突写不推进版本。四端点参数 conversation_id=peerId+type（App 端约定，C2C 服务端无会话行=聚合派生）。脚本 `j17e_legacy_bump_conflict_test.dart` App `ffa70a363`；宿主驱动仓外 /tmp/j17e_legacy.sh）/ — |
+| J18.a | C2C/C2G发送场景 | 发送失败后重试 | 失败可见、重试同逻辑消息不重复 | N + NC | R | PASS（Android 真机 2026-10-31，C2C/C2G 双分支各自独立脚本：断连发送失败可见（不进正向态）→ WS 恢复自动补发（无手动重试按钮，产品走离线队列）→ server_ack 清重试队列 → 恰好一条气泡+终态稳定；C2G 后端复核 msg_c2g 恰好 1 条 + msg_c2g_timeline fan-out 恰好 3 条（三成员同 msg_id），脚本 `j18a_send_retry_test.dart`/`j18a_c2g_send_retry_test.dart`，见 §11.1 真机批次节）/ — |
 | J18.b | 合成附件上传 | 断网/恢复/重试 | 保留任务、附件归属与重试状态，不重复业务消息 | N + NC | C-attachment | NOT_RUN / — |
-| J18.c | 本人消息 | 允许/过期撤回分别 | 时限真实，撤回失败保留合法状态 | N + NC | R | PASS（Android 真机 2026-10-29，允许+过期两分支，见 §11.1；暴露并修复发送方撤回不回显缺陷 App `ab13f4a06`）/ — |
-| J18.d | 本人可编辑消息 | 编辑成功/拒绝分别 | 编辑态/已编辑/失败恢复准确 | N + NC | R | NOT_RUN / — |
-| J18.e | 引用目标已加载 | 点击引用 | 滚动/高亮目标或给出可行动失败 | N + NC | R | PASS（Android 真机 2026-10-29，滚动定位分支，见 §11.1）/ — |
-| J18.f | 未加载、过期、无权、缺钥目标分别 | 完整历史定位 | 有权按历史边界拉上下文定位；其余各有说明，不绕过E2EE/成员边界 | N + NC | R | NOT_RUN / — |
-| J19.a | 普通群成员 | 取消/确认退出分别 | 取消无副作用；退出清当前资格且返回正确 | NC,BG | R | NOT_RUN / — |
-| J19.b | 群主且有可转让成员 | 转让后退出 | 转让/退出分步结果准确，不默认解散 | NC,BG | R | NOT_RUN / — |
-| J19.c | 群主 | 单独解散确认/取消 | 后果说明清楚；取消无副作用，成功不留旧资格 | NC,BG | R | NOT_RUN / — |
-| J19.d | 本机有群历史 | 仅清空本机记录 | 入口仍在，不误隐藏/退群 | N + NC | R | NOT_RUN / — |
-| J19.e | 本机可见会话 | 仅从列表移除 | 只隐藏不清记录/退群，复现遵既有消息合同 | N + NC | R | NOT_RUN / — |
-| J20.a | 群/订阅/管理/工作区目录各>1页 | 搜索尾页私有合法对象 | 服务端全范围交集可找到，不靠当前页/公域发现 | AG,AQ,BS | R | NOT_RUN / — |
-| J20.b | 关键词q1请求未完成 | 改q2并晚到q1 | 废弃旧cursor/代次，不污染q2 | AS,AQ | R | NOT_RUN / — |
-| J20.c | 固定未变集合 | 逐页到末页，注入重复cursor/矛盾元数据分别 | 稳定排序无漏重；错误停止加载且可重试 | AQ,BS | R | NOT_RUN / — |
-| J20.d | 扫描并发新增/重激活/移除分别 | 继续扫描与刷新 | 旧上界不误纳入/误删，新扫描收敛，每页实时授权 | AQ,BS | R | NOT_RUN / — |
+| J18.c | 本人消息 | 允许/过期撤回分别 | 时限真实，撤回失败保留合法状态 | N + NC | R | PASS（Android 真机 2026-10-31 重验，允许+过期两分支，当前候选含 c2c_action_receipt，见 §11.1 wave2/3 节）/ — |
+| J18.d | 本人可编辑消息 | 编辑成功/拒绝分别 | 编辑态/已编辑/失败恢复准确 | N + NC | R | PASS（Android 真机 2026-10-31，成功+拒绝双分支；客户端 message_edit_error 闭环 App `d63d9128b`，failToastSeen=true、重试终态断言过，见 §11.1 wave2/3 节）/ — |
+| J18.e | 引用目标已加载 | 点击引用 | 滚动/高亮目标或给出可行动失败 | N + NC | R | PASS（Android 真机 2026-10-31；暴露并修复「发送后不回底」App `017441f2b`（插件 fling 无法覆盖长列表）+ oracle 视口化，见 §11.1 wave2/3 节）/ — |
+| J18.f | 未加载、过期、无权、缺钥目标分别 | 完整历史定位 | 有权按历史边界拉上下文定位；其余各有说明，不绕过E2EE/成员边界 | N + NC | R | NOT_RUN（2026-10-31 authorized 尝试：产品路径 fixture 形状正确、引用条可渲染可点击，但「目标未加载」前置与归档异步回填存在不可稳定取胜的竞态——合成库全量回填秒级到达目标行；隔离归档/账号 fixture 未具备，expired/missing_key 另需服务端到期证据与真实 E2EE 密文，见 §11.1 wave2/3 节）/ — |
+| J19.a | 普通群成员 | 取消/确认退出分别 | 取消无副作用；退出清当前资格且返回正确 | NC,BG | R | PASS（Android 真机 2026-10-31；暴露并修复退群后会话滞留缺陷 App `9e6254c9c`（uk3 前缀大小写不一致 + 消费端缺移除分支），见 §11.1 wave2/3 节）/ — |
+| J19.b | 群主且有可转让成员 | 转让后退出 | 转让/退出分步结果准确，不默认解散 | NC,BG | R | PASS（Android 真机 2026-10-31 r3 EXIT=0：确认弹层后果说明→接任人单选（排除自己）→确认→「操作成功」→双层返回且本端会话消失；SQL 五位一体复核 owner_uid→bob、群 status=1 未解散（不默认解散成立）、alice member 行删除、世代 end_seq=1 关闭、会话资格移除机制自洽，脚本 `j19b_transfer_leave_test.dart`，见 §11.1 真机批次节）/ — |
+| J19.c | 群主 | 单独解散确认/取消 | 后果说明清楚；取消无副作用，成功不留旧资格 | NC,BG | R | PASS（Android 真机 2026-10-31 r1 EXIT=0 双分支：取消分支弹层双行后果说明→取消→仍停群设置页无副作用；确认分支→「操作成功」→双层返回→本端会话消失；SQL 终态复核 group 行物理删除、group_member 清空、世代三行关闭 end_seq=2 close_reason='dissolve'——成功不留旧资格成立，残留会话行经资格谓词失效与 J19.b 同源自洽，脚本 `j19c_dissolve_test.dart`，见 §11.1 真机批次节）/ — |
+| J19.d | 本机有群历史 | 仅清空本机记录 | 入口仍在，不误隐藏/退群 | N + NC | R | PASS（Android 真机 2026-10-31 r1 EXIT=0 双分支：取消无副作用；确认「操作成功！」后双层返回，会话入口仍在（不误隐藏）且重进聊天页本机 [J19D-SEED] 记录已清空；SQL 复核群行在/status=1/member 3 人/世代未关/服务端消息 2 条未删——清空只清本机不退群成立，脚本 `j19d_clear_messages_test.dart`，见 §11.1 真机批次节）/ — |
+| J19.e | 本机可见会话 | 仅从列表移除 | 只隐藏不清记录/退群，复现遵既有消息合同 | N + NC | R | PASS（Android 真机 2026-10-31 r4 EXIT=0：侧滑删除→隐藏稳定窗 30s 无回弹（设备 sqlite 行级诊断 is_show=0）→宿主注入新消息→按既有消息合同复现（is_show=1）→历史完整+新消息已收；SQL 复核群行在/member 3 人/世代开放/服务端消息完整。**暴露并修复「删除回弹」缺陷** App `22f64df37`（message_read_sync→markAsRead 经 findByPeerId 读出 is_show=0 隐藏行 replace 回内存 map 致 UI 数秒复活；修复后跳过隐藏条目 replace；r1-r3 三跑复现、定向回归 chat+conversation 745/745 绿），脚本 `j19e_remove_conv_test.dart`，见 §11.1 真机批次节）/ — |
+| J20.a | 群/订阅/管理/工作区目录各>1页 | 搜索尾页私有合法对象 | 服务端全范围交集可找到，不靠当前页/公域发现 | AG,AQ,BS | R | PASS（App 单测 AQ `channel_list_state_sync_test.dart` J20.a 命名 case 全绿（App `e7028a267`）：q 上送全范围请求、翻页仅带签名游标不回显 q、尾页私有合法对象按序并入（脚本化游标服务端逐页 envelope）；AG/BS 端到端部署面证据待 J26 部署脚本执行期补强，AQ 状态合同完整，J20.b PASS 同口径）/ — |
+| J20.b | 关键词q1请求未完成 | 改q2并晚到q1 | 废弃旧cursor/代次，不污染q2 | AS,AQ | R | PASS（App 单测 AQ `channel_list_state_sync_test.dart` J20.b 命名 case 全绿（App `64d106e8f`，11 case 全绿）：新代次刷新落 [12]+cursor=c2 后，晚到的旧 cursor loadMore 响应（[13]+stale-cursor）被 _subscribedGeneration 代次防护废弃——不 append、不污染游标；q1/q2 请求隔离由同一代次合同承担。AS 侧 copyWith cursor/clearCursor 纯状态合同 23 case 全绿（既有）/ — |
+| J20.c | 固定未变集合 | 逐页到末页，注入重复cursor/矛盾元数据分别 | 稳定排序无漏重；错误停止加载且可重试 | AQ,BS | R | PASS（App 单测 AQ `channel_list_state_sync_test.dart` J20.c 三向量命名 case 全绿（App `e7028a267`）：固定集合逐页到末页稳定排序无漏无重+终止页后 loadMore 空转不复发请求；重复 cursor 同游标重发停止加载、既有页保留可重试收敛；矛盾元数据（has_more=true 而 next_cursor 缺省）API 层归一为无下一页安全停止）/ — |
+| J20.d | 扫描并发新增/重激活/移除分别 | 继续扫描与刷新 | 旧上界不误纳入/误删，新扫描收敛，每页实时授权 | AQ,BS | R | 部分向量 PASS（App 单测 AQ `channel_list_state_sync_test.dart` J20.d「扫描中并发新增——旧上界续页不误纳入新对象，刷新新扫描收敛」全绿（App `e7028a267`））；余向量（重激活/移除分别、每页实时授权）NOT_RUN / — |
 | J21.a | workspace/频道已归档、来源托管群分别 | 打开/尝试写/查看恢复动作 | 按真实对象只读/拒写；仅真实支持且有权限才可恢复 | AW,BS,MV,MC | R | NOT_RUN / — |
-| J22.a | 320/360窄屏各主题 | 布局主操作 | 无overflow，主按钮可达，标注实际平台 | N + NC | R | NOT_RUN / — |
-| J22.b | 横屏/低高窗口分别 | 滚动操作 | 内容/危险动作可达，无裁剪 | N + NC | R | NOT_RUN / — |
-| J22.c | 键盘弹出 | 编辑/搜索/发送 | 输入/提交/取消不被遮挡 | N + NC | R | NOT_RUN / — |
-| J22.d | 大字与长名，中英文分别 | 放大布局 | 文字自然增高/语义完整，不关闭TextScaler | N + NC | R | NOT_RUN / — |
-| J22.e | 明暗主题各状态 | 测颜色/命中区 | 正文≥4.5:1、动作≥3:1，命中区≥既有44pt规范（原V1.1要求48时取48） | N + NC | R | NOT_RUN / — |
-| J22.f | 读屏/桌面键盘各交付平台 | 聚焦/执行菜单与危险动作 | 焦点顺序、标签、忙态/禁用语义完整，各平台独立证据 | N + NC | R | NOT_RUN / — |
-| J23.a | 群/频道受理事务分别 | 提交前崩溃或成员/receipt入队失败 | 资源/成员/receipt/逻辑通知全回滚，同键可首次受理 | BG,BS | R | NOT_RUN / — |
-| J23.b | 已提交未响应 | 崩溃、并发/重启重放 | 同资源/规范载荷/初始名，只有一个逻辑受理结果 | BG,BS | R | NOT_RUN / — |
-| J23.c | 通知持久入队已发送未确认 | 崩溃恢复重投 | 固定effect/message身份，一份邀请/成员副作用 | BG,BS | R | NOT_RUN / — |
-| J24.a | 未知意图，client年龄23:59:59.999/24h/时钟倒退分别 | 恢复/重启 | 24h内原键；边界或时间不可信后仅recover_only，不剥键 | AG,AA,AF | R | NOT_RUN / — |
+| J22.a | 320/360窄屏各主题 | 布局主操作 | 无overflow，主按钮可达，标注实际平台 | N + NC | R | BLOCKED（多平台证据需 iOS/Android 双平台真机独立收据，本环境仅单台 Android 已绑定；缺平台证据保留 BLOCKED，W13 不发总 PASS，见 §11.1 资源阻断盘点 2026-10-31）/ — |
+| J22.b | 横屏/低高窗口分别 | 滚动操作 | 内容/危险动作可达，无裁剪 | N + NC | R | BLOCKED（多平台证据需 iOS/Android 双平台真机独立收据，本环境仅单台 Android 已绑定；缺平台证据保留 BLOCKED，W13 不发总 PASS，见 §11.1 资源阻断盘点 2026-10-31）/ — |
+| J22.c | 键盘弹出 | 编辑/搜索/发送 | 输入/提交/取消不被遮挡 | N + NC | R | BLOCKED（多平台证据需 iOS/Android 双平台真机独立收据，本环境仅单台 Android 已绑定；缺平台证据保留 BLOCKED，W13 不发总 PASS，见 §11.1 资源阻断盘点 2026-10-31）/ — |
+| J22.d | 大字与长名，中英文分别 | 放大布局 | 文字自然增高/语义完整，不关闭TextScaler | N + NC | R | BLOCKED（多平台证据需 iOS/Android 双平台真机独立收据，本环境仅单台 Android 已绑定；缺平台证据保留 BLOCKED，W13 不发总 PASS，见 §11.1 资源阻断盘点 2026-10-31）/ — |
+| J22.e | 明暗主题各状态 | 测颜色/命中区 | 正文≥4.5:1、动作≥3:1，命中区≥既有44pt规范（原V1.1要求48时取48） | N + NC | R | BLOCKED（多平台证据需 iOS/Android 双平台真机独立收据，本环境仅单台 Android 已绑定；缺平台证据保留 BLOCKED，W13 不发总 PASS，见 §11.1 资源阻断盘点 2026-10-31）/ — |
+| J22.f | 读屏/桌面键盘各交付平台 | 聚焦/执行菜单与危险动作 | 焦点顺序、标签、忙态/禁用语义完整，各平台独立证据 | N + NC | R | BLOCKED（多平台证据需 iOS/Android 双平台真机独立收据，本环境仅单台 Android 已绑定；缺平台证据保留 BLOCKED，W13 不发总 PASS，见 §11.1 资源阻断盘点 2026-10-31）/ — |
+| J23.a | 群/频道受理事务分别 | 提交前崩溃或成员/receipt入队失败 | 资源/成员/receipt/逻辑通知全回滚，同键可首次受理 | BG,BS | R | PASS（2026-11-01 真 PG eunit：group_creation_recovery_pg_tests 10/10 + channel_creation_recovery_tests 5/5 全绿（IMBOYENV=local make eunit t= 单跑 EXIT=0，真合成 PG 无 skip；error 行为注入预期日志）：j23a 崩溃注入 title_update/通知 staging 失败注入/配额中止→全回滚后同键首次受理；脚本 test/logic/ 两文件为 agent 交付，/tmp/v22-multi/j23.md）/ — |
+| J23.b | 已提交未响应 | 崩溃、并发/重启重放 | 同资源/规范载荷/初始名，只有一个逻辑受理结果 | BG,BS | R | PASS（2026-11-01 同上两套件 15/15：首受理/同键双进程并发/重放冲突仅一个逻辑受理结果——幂等键 (uid,operation,request_id) + advisory lock 事务链全过）/ — |
+| J23.c | 通知持久入队已发送未确认 | 崩溃恢复重投 | 固定effect/message身份，一份邀请/成员副作用 | BG,BS | R | PASS（2026-11-01 同上：固定 effect/message 身份（EffectKey 派生 msg_id）+ staging UNIQUE 兜底、重放不重复通知 case 全过；kick 丢失时 msg_store_worker 1s tick claim_pending 重投链锚点已核）/ — |
+| J24.a | 未知意图，client年龄23:59:59.999/24h/时钟倒退分别 | 恢复/重启 | 24h内原键；边界或时间不可信后仅recover_only，不剥键 | AG,AA,AF | R | PASS（App 单测 `creation_receipt_contract_test.dart` 27 case 全绿（2026-10-31 跑绿）：decideCreationDispatch J24.a 时钟向量——窗口内 23:59:59.999 仍可原键创建；24h 精确边界（含）→仅 recover_only 不剥键；时钟倒退→仅 recover_only 且 clockUntrusted；recover_only 载荷契约（标志携带/缺省不发送）同文件覆盖）/ — |
 | J24.b | server受理6d23:59:59.999/7d，及7天内删除/撤权分别 | 原键恢复 | 正常有权时7天内保留结果；删除/撤权不泄露内容；过7d只元信息/expired；receipt仍阻止重建，两个时钟独立 | BG,BS | R | NOT_RUN / — |
 | J24.c | 同键改名/成员顺序/重复成员/workspace；只查未见受理后旧POST迟到 | 重放请求或尝试新键重建 | 规范等价重放、实际载荷变化冲突；旧请求可能在途时禁止换键，超时/断连/单次只查/用户确认不构成终止证据；迟到的同原键请求最多受理一次 | BG,BS,AG | R | NOT_RUN / — |
-| J25.a | 已创建后撤权/删除资源分别 | 同键重放或只查 | 不返回无权内容、不复活、不重建，最小受理事实保留 | BG,BS | R | NOT_RUN / — |
+| J25.a | 已创建后撤权/删除资源分别 | 同键重放或只查 | 不返回无权内容、不复活、不重建，最小受理事实保留 | BG,BS | R | PASS（2026-11-01 真 PG eunit：resource_receipt_revocation_tests 2/2 全绿 EXIT=0（真合成 PG 无 skip）；三向量覆盖经修复 agent 复核确认完整——不返回无权内容/不复活不重建/最小受理事实保留（BG+BS 撤权侧；删除向量由既有 J24.b 套件分工覆盖）；/tmp/v22-multi/j27a-fix.md）/ — |
 | J26.a | 新空本地库53订阅，尾页有未读 | 50+3逐页落库/汇总 | 每页先订阅再计数，尾页可见且偏好不重置 | AU,AQ | C-channel | NOT_RUN / — |
 | J26.b | 第二页/落库/汇总分别失败 | 恢复同页/对账 | 保留已完成部分且错误可见，不删除缺席项 | AU,AQ | C-channel | NOT_RUN / — |
 | J26.c | 扫描中退订/重订 | 继续翻页并收到权威事件 | 事件对应状态回读，旧扫描不删新激活关系 | AU,AE | C-channel | NOT_RUN / — |
 | J26.d | 有本地53项 | 搜索返回1项 | 其余52关系/未读不因缺席清理 | AU,AQ | C-channel | NOT_RUN / — |
 | J26.e | 本地尾页对象被撤权；global/scoped summary分别 | 无事件重验或缺席/显式0分别 | 失效对象无保护摘要/badge；unknown不写0、不清其他范围 | AU,BR | C-channel | NOT_RUN / — |
-| J27.a | 旧客户端/旧Admin，无新参数 | 读取各原清单 | 原envelope/完整旧集合/ADM page,size,keyword可用 | BS,BG,MW,MG,MC | R | NOT_RUN / — |
+| J27.a | 旧客户端/旧Admin，无新参数 | 读取各原清单 | 原envelope/完整旧集合/ADM page,size,keyword可用 | BS,BG,MW,MG,MC | R | PASS（2026-11-01 真 PG eunit：legacy_list_contract_tests 11/11 全绿（初检 3 case undef 为测试调用半成品，修复 agent 改走 handle_action/3 既有先例+6 处 mock 形状修正后全绿——BS/BG 面；MW/MG/MC Admin 面零差异结论由 J28.d 就绪包静态核实（旧 Admin 2c3b542 与新 HEAD 业务代码零差异））/tmp/v22-multi/j27a-fix.md）/ — |
 | J27.b | 新客户端缺字段/未知合同/304无同源缓存分别 | 尝试新创建/分页/偏好 | 不误启，不剥request_id，来源缓存隔离 | AF,BM,MF | R | NOT_RUN / — |
 | J27.c | personal/workspace与错范围cursor分别 | 新范围/分页/搜索 | 范围准确，终止null、前进有效；错cursor不回落 | AQ,BS | R | NOT_RUN / — |
 | J27.d | 2^53−1/+1/BIGINT上界合成原始文本 | Backend→App native/Web→模型/路由→请求→Backend | 所有ID十进制逐字符不变，禁止先构造JS Number fixture | N + AH,MI,MW | R | NOT_RUN / — |
 | J27.e | 长数字字符串、时间/金额、小数、Xid分别 | 同解析/回传链 | 非ID保持原义，非法ID明确拒绝；不全仓强转 | AH,MI | R | NOT_RUN / — |
-| J27.f | 功能位关闭或合同不可识别 | 访问按钮/深链/旧写恢复 | 门禁拒绝/旧合法读明确，N/A功能正例不能覆盖负例义务 | AF,BM | R | NOT_RUN / — |
+| J27.f | 功能位关闭或合同不可识别 | 访问按钮/深链/旧写恢复 | 门禁拒绝/旧合法读明确，N/A功能正例不能覆盖负例义务 | AF,BM | R | PASS（App 负例双面齐（App `c6e1057bc`/`e7028a267`）：AF 门禁拒绝——`j27f_feature_gate_negative_test.dart` 11/11（missing/unknown-key/unknown-version 八型值不启用新合同且 pending 写不被剥键、disabled channel flag 拒绝 channel 深链、304 缓存同源隔离 fail-closed）；BM 旧合法读——`channel_list_legacy_contract_test.dart` J27.f 参数化三型（missing/version=2/boolean true）均 legacy 合法读不误伤；同时构成 J13.a-e 功能门 N/A 的负例支撑义务，J08.a 迟到响应向量修正后 29 项全绿）/ — |
 | J28.a | 旧SQLite/PG合成库 | 升级/重复启动/失败恢复 | 最小增量可重入，manual默认false，旧unread不反推 | AC,BP | R | NOT_RUN / — |
 | J28.b | 一账号两端旧/新客户端 | 同目标重试/旧写/版本冲突 | 旧写参与版本，新端期望冲突与回读成立 | AC,BP | R | NOT_RUN / — |
 | J28.c | 退出再加入workspace群 | 旧generation偏好/水位/内容回填 | 只当前generation生效；旧数据保留却不恢复旧资格 | AV,BR | R | NOT_RUN / — |
-| J28.d | 旧App/Admin+新Backend、新App+旧Backend分别 | 读/写/恢复 | 按§10.4允许组合兼容，禁用项可解释且无无键新建 | AF,BM,MW | R | NOT_RUN / — |
-| J28.e | 新旧Backend同来源节点 | 采样manifest后请求落旧节点 | 部署被禁止/不启新合同；不能以某次200通过 | BM | R | NOT_RUN / — |
-| J28.f | 已产生receipt/游标/偏好新数据 | 兼容Backend/App回退 | 排空与admission关闭，原意图/列/数据保留，不down、不猜cursor | AF,BM,BP | R | NOT_RUN / — |
-| J29.a | 当前K有效，单调t0 | 19.999/20s推进 | 20s开始静默校验，内容不整页清屏 | AA,AV | R | NOT_RUN / — |
-| J29.b | 校验pending/失败 | 29.999/30s推进 | 30s硬截止撤展示与写入口，失败不延期 | AA,AV | R | NOT_RUN / — |
-| J29.c | 续验有效成功或旧代次迟到分别 | 完成响应与旧截止回调 | 只有当前K内容资格更新deadline，旧响应/旧timer无效 | AA,AE | R | NOT_RUN / — |
-| J29.d | 目录/统计/缓存/不匹配账号或世代各响应 | 响应成功 | 均不能续内容预算 | AA,AV | R | NOT_RUN / — |
-| J29.e | 已知断网/后台/返回/重连分别 | 状态切换并推进时钟 | 立即撤保护展示，恢复前重授权；无失败缓存回填 | AE,AV | R | NOT_RUN / — |
-| J29.f | 明确403/撤权事件 | 处理事件当回合 | 渲染/内存同状态失效，持久内容不可冷恢复，个人E2EE不批删 | AE,BR | R | NOT_RUN / — |
-| J29.g | 消息expire_at到期，资格仍有效 | 推进内容TTL | 仅该摘要隐藏/重取；不退成员、不用TTL延资格 | AV,BR | R | NOT_RUN / — |
+| J28.d | 旧App/Admin+新Backend、新App+旧Backend分别 | 读/写/恢复 | 按§10.4允许组合兼容，禁用项可解释且无无键新建 | AF,BM,MW | R | BLOCKED（需旧App/Admin+新Backend、新App+旧Backend 多套部署组合环境，本环境仅单套本地合成部署；缺档位/组合证据保留 BLOCKED，W13 不发总 PASS，见 §11.1 资源阻断盘点 2026-10-31）/ — |
+| J28.e | 新旧Backend同来源节点 | 采样manifest后请求落旧节点 | 部署被禁止/不启新合同；不能以某次200通过 | BM | R | BLOCKED（需新旧 Backend 同来源多节点负载均衡部署，本环境仅单节点合成部署；缺组合证据保留 BLOCKED，W13 不发总 PASS，见 §11.1 资源阻断盘点 2026-10-31）/ — |
+| J28.f | 已产生receipt/游标/偏好新数据 | 兼容Backend/App回退 | 排空与admission关闭，原意图/列/数据保留，不down、不猜cursor | AF,BM,BP | R | BLOCKED（需可回退的多套部署组合与回退授权，本环境未具备；缺回退证据保留 BLOCKED，新合同启用与 W13 不发总 PASS，见 §11.1 资源阻断盘点 2026-10-31）/ — |
+| J29.a | 当前K有效，单调t0 | 19.999/20s推进 | 20s开始静默校验，内容不整页清屏 | AA,AV | R | PASS（App 单测 `workspace_access_budget_test.dart` J29.a/b 命名 case 全绿（App `2a31d9c31`，26 case 全绿）：19.999/20/29.999/30s 精确判定 pending/failed recheck；20s 静默校验不清内容、30s 撤文本与语义（guard keeps actions/removes text）；对齐 a12f1a6c7 时序（初始自检索引平移+drain 补喂））/ — |
+| J29.b | 校验pending/失败 | 29.999/30s推进 | 30s硬截止撤展示与写入口，失败不延期 | AA,AV | R | PASS（同上 J29.a/b 命名 case+「initial and retry requests cannot remain pending indefinitely」case：30s 硬截止撤展示与 TextButton 写入口、失败 recheck 不延期）/ — |
+| J29.c | 续验有效成功或旧代次迟到分别 | 完成响应与旧截止回调 | 只有当前K内容资格更新deadline，旧响应/旧timer无效 | AA,AE | R | PASS（App 单测 AA/AE+budget：J29.c 命名 case「arrival defines t0; renewal keeps rows and defeats old deadline」「monotonic cutoff wins even before its timer callback runs」「stale success and stale 403 cannot alter a new membership generation」全绿（App `2a31d9c31`））/ — |
+| J29.d | 目录/统计/缓存/不匹配账号或世代各响应 | 响应成功 | 均不能续内容预算 | AA,AV | R | PASS（App 单测 budget J29.d 命名 case 全绿（App `2a31d9c31`）：workspace/resource、directory、statistics、cache 互不能续；channel details alone/disabled features/channel workspace mismatch/malformed content/origin change 全部 fail-closed）/ — |
+| J29.e | 已知断网/后台/返回/重连分别 | 状态切换并推进时钟 | 立即撤保护展示，恢复前重授权；无失败缓存回填 | AE,AV | R | PASS（App 单测 budget+AE J29.e 命名 case 全绿（App `2a31d9c31`，对齐 a12f1a6c7 后）：unknown 初始自检（盾牌不渲染）→offline/error 立即撤展示与语义→恢复 online 前不展示、重授权 accept 后渲染；inactive tab/covered route/背景与 WS 重连 fence 旧响应；旧 widget disposal 不能挂起新页（旧 owner suspend 被忽略，drain 补刷响应恢复）/ — |
+| J29.f | 明确403/撤权事件 | 处理事件当回合 | 渲染/内存同状态失效，持久内容不可冷恢复，个人E2EE不批删 | AE,BR | R | PASS（App 单测 budget+AE J29.f 命名 case 全绿（App `2a31d9c31`）：403/stale 403 不改新成员代次；仅本成员+群撤权撤会话内容；channel page gates cold entry/removes actions/preserves personal scope；disposal microtask 容忍已释放 autoDispose notifier）/ — |
+| J29.g | 消息expire_at到期，资格仍有效 | 推进内容TTL | 仅该摘要隐藏/重取；不退成员、不用TTL延资格 | AV,BR | R | PASS（App 单测 budget J29.g 命名 case 全绿（App `2a31d9c31`）：expire_at 到期（wallTime 推进 2s）仅隐藏该 ttl preview 摘要（可重取），资格 deadline 不变、成员不退、unread/代次保留）/ — |
+
+### 9.1 出口结论与 NOT_RUN 分桶排期（2026-11-01 用户裁决）
+
+用户对 §11.1「2026-11-01 待用户决策」两项挂起裁决回复**「按推荐」**，据此本节为 §9 出口结论：
+
+1. **提交授权（已裁决并执行）**：三端 76 文件（Backend 8 / App 63 / Admin 5）按功能域分次 conventional commit（subject <72 字符、每批含对应测试）、**不 push**。分批见 §11.1「两项决策已裁决」节的执行记录。
+2. **NOT_RUN 裁剪（已裁决，选项 a：分桶排期，不裁出验收范围）**：50 项 NOT_RUN 按外部资源分七桶排期，资源到位后按 §8.4 重绑定候选并重验受影响证据：
+
+| 桶 | 触发资源 | 涉及子项（按 §11.1 待决小节裁决列举） |
+|---|---|---|
+| 1 | 双真机（第二台设备） | J16.c、W09.c 向量；J28.b（一账号两端旧/新客户端） |
+| 2 | iOS 真机 | 多平台证据面（与 10 项 BLOCKED 中 J22.a–f 合流触发） |
+| 3 | 多部署组合 | J27.a（旧客户端/Admin 无新参数）、J28.d/e/f（BLOCKED 合流） |
+| 4 | v38 注册 | FTS / 阅后即焚相关子项 |
+| 5 | 生产源 | 档位证据类（含 J28.a/c 升级与退出再加入向量） |
+| 6 | macOS 签名 | 平台交付面 |
+| 7 | C-channel 交付 | J16.a 频道向量、J21.a、J26.a–e（C-channel 标记行） |
+
+其余 NOT_RUN 行归属口径：J18.b/J18.f（合成附件与引用定位外部依赖）、J20.a/c/d（多页目录交集与扫描并发）、J23.a–c（受理事务崩溃注入）、J24.b/c、J25.a（receipt 服务端时钟与撤权向量）、J27.b–f（合同负例与 2^53 原始链）——随资源清单细化并入上表最近桶或单独排期；本表只排期、不判定任何 J 通过。
+
+**总出口口径（2026-11-01 门内批次三后）：36 PASS / 35 NOT_RUN / 9 BLOCKED / 5 N/A（J13.a–e 功能门），W13 不发总 PASS**（J12.a、J20.a、J20.c、J27.f 升级 PASS；J20.d 部分向量注记维持 NOT_RUN；同批门内证据：App 三失败单测修复含 guard 首挂载双拉真缺陷修复 `2a8e1b059`、analyze 清零 `c6e1057bc`、agent 交付测试收口 `e7028a267`/`34a948803`；BLOCKED 9 项维持用户裁决）。
 
 ## 10. 计划采用的设计与兼容默认值
 
@@ -767,9 +788,9 @@ RFC 8259 §6 说明常见双精度解析器的整数互操作边界（[原文](h
 
 PLAN_READY 表示：三端基线与 WIP 分开；16 项建议逐条有裁决；22 F 有复核记录；C/D 合同无相互冲突的窗口/水位/真源；子卡、直接消费者、自动覆盖和依赖校验完整；缺运行资源不伪装 PASS。它不表示所有实现细节、所有平台或生产环境已验证。下面列出的实施阻塞只阻断相应运行/启用，不用文档完善销账。
 
-- 整体业务仍 PARTIAL_UNSUBMITTED，W00/W03 未最终验收；其余 W01/W02/W04–W13 没有完整退出证据。
+- 业务实施已提交（2026-10-31：Backend 8 笔、App 17 笔，见 §11.1）；W00 静态准入 PASS，W01–W12 代码侧收口并提交、包级出口未逐一判定；W13 集成验收未启动。
 - 未取得本候选独占 Backend PG/附件/通知隔离资源及授权合成账号；没有启动服务/写接口/迁移。后续真实副作用验证只允许合成隔离环境，不得打扰第三方。
-- iOS/Android 真机、macOS 与 Flutter Web 实际解码/读屏验收资源待绑定；缺设备是 BLOCKED，不能 N/A 或用 widget 替代。规划必需断言已固定，不等设备到了才发明标准。
+- 真机/多平台验收资源：单台 Android 真机已绑定并跑通冒烟门与 J18.c/d/e、J19.a（见 §9/§11.1）；iOS 真机、第二台设备、macOS 与 Flutter Web 实际解码/读屏验收资源仍待绑定；缺设备是 BLOCKED，不能 N/A 或用 widget 替代。规划必需断言已固定，不等设备到了才发明标准。
 - origin 之后若变化，或选择合入 Backend 本地 7fbf3a1a，应显式更新执行候选和受影响证据；本轮没有重基线现有 worktree。
 - 无任何新能力已经声明上线；W04/W07/W08/W09 的数据库兼容、崩溃/时钟/竞争断言均待执行。混部禁用规则先满足，才能启用新合同。
 
@@ -950,5 +971,218 @@ W00 静态准入出口（2026-10-27T18:54:58+08:00）：按 §8.2，三端 HEAD/
 - dialyze 修复（两轮，未改 `dialyzer.baseline`，无 `-dialyzer nowarn`）：`25f9c930` 补齐 `workspace_channel_page/5`、`list_workspace_groups/{3,before}/4` 导出（W07.a 遗留，工作台路径运行时 undef）+ workspace_handler 两处 `{ok,_}` 元组未解包真 bug（cursor 传元组、`respond_ws_group_signed` 对元组做 map 更新）+ group_repo SQL 缺 `/binary` + spec 拓宽与死子句清理（按上游 spec 准确才删，`join_initial_member` 保留 P0 回滚语义并以 `{ok,_} =` 精确匹配，group_logic_tests mock 对齐真实 `{abort_tx,_}` 失败通道）。修后 `make dialyze-check` exit 0 GREEN（176 条全部基线内、新增 0，日志 `/tmp/imboy-v22-dialyze-v7.log` 与 `dialyze-last.log`）。
 - 窗口外漂移对齐 `81cee79e`：msg_store_ack mock 升 /11、organization_invitation_notify mock 改 `is_dnd_now/1`、cs_ports 冻结合约表补录 `{zone_day_window, 2}`（dcc10eea 欠登记，cs_closure 按 behaviour_info 排序集核对）。
 - 修复涉及模块及直接调用方定向验证 26 模块次全 EXIT=0（前节 8 次 + 本次 18 次：group_repo 16/16、channel_handler 106/106、group_logic 23/23、channel_invitation_repo 15/15、channel_logic_subscription 14/14、channel_logic_message 20/20、group_handler 5/5、msg_store_ack 5/5、organization_invitation_notify 3/3、cs_closure 8/8、discovery/contract/workspace 游标套件与 3 个 cursor PG 套件 pass；日志 `/tmp/imboy-v22-takeover2-*.log`、`/tmp/imboy-v22-inner4-summary.txt`）。
-- 全量门 v6 终验（候选 `81cee79e`）：全量 eunit-local exit 2，Failed 51 / Passed 13649 / Skipped 0，耗时 2076s（日志 `/tmp/imboy-v22-eunit-full-v6.log`）——较 v5 恰好减少 8 个失败，逐一对应上述修复；余 51 个均为 v3 基线内既有环境门失败，本窗口新增失败 0（msg_history_context ×2 仍为 VM 污染敏感，单独运行 58/58 全过）；dialyze-check exit 0 GREEN，176 条全部基线内、新增 0（新鲜分析，日志 `/tmp/imboy-v22-dialyze-v6-final.log`）。后端最终候选 `81cee79e`，门禁双绿。
+- 全量门 v6 终验（候选 `81cee79e`）：全量 eunit-local exit 2，Failed 51 / Passed 13649 / Skipped 0，耗时 2076s（日志 `/tmp/imboy-v22-eunit-full-v6.log`）——较 v5 恰好减少 8 个失败，逐一对应上述修复；余 51 个均为 v3 基线内既有环境门失败，本窗口新增失败 0（msg_history_context ×2 仍为 VM 污染敏感，单独运行 58/58 全过）；dialyze-check exit 0 GREEN，176 条全部基线内、新增 0（新鲜分析，日志 `/tmp/imboy-v22-dialyze-v6-final.log`）。此历史候选的 EUnit 未通过，Dialyzer 通过；不能称为门禁双绿。后续候选变化须重新绑定并执行适用门。
 - 本节为登记与定向验证，不关闭任何 J 项、W11 或 W13；真实设备、浏览器原始报文、integration_test 与发布验收仍 NOT_RUN/BLOCKED；三端候选仍需最终重绑定。
+
+#### 2026-10-30 当前候选复核
+
+- 当前任务 worktree Backend HEAD `0bc5ded7422dcd894fd7a2c67a77a9e63e30773e`、App HEAD `bf14a931061bfdba6177f6cc2cc9d47a84c2830b` 均有未提交代码；最终候选及配置尚未冻结。v38 FTS 草稿未注册，App 数据库仍为 v37；草稿在合成内存 SQLite 上 11 项通过，不代表真实 SQLCipher、Web 或生产升级已验收。
+- J18.d 当前后端 WIP 的 v2 明文编辑信封定向测试 1/1 通过；合成帧经真实 WebSocket handler、解码、路由及编辑逻辑得到预期确认（`/tmp/imboy-j18d-handler-probe.log`），认证、在线状态及发送依赖为 mock，不能关闭 J18.d。旧真机日志的 `invalid_json` 缺少服务端异常栈，顶层 `msg_type` 与旧逻辑不匹配只是有源码依据的根因推断。
+- App 仓外探针复现未收到 ACK 即清空编辑输入；原型还复现首次编辑超时、第二次成功后迟到 ACK 将正文从 `new` 覆盖为 `old`。原型未应用；C2C 尚未证明有持久编辑顺序，C2G `conv_seq` 是待核实的动作顺序候选。不得将诊断探针的成功复现计为修复或 J18.d PASS。
+- J18.f 合成 App 服务测试 45/45 通过；新设备脚本仅为 C2C UI 切片，未运行。未加载且服务端已过期的目标按现有隐私合同返回通用不可用；C2G 成员撤权、SQLite 无越界写、真实缺钥与目标历史请求收据仍未验，J18.f 保持 NOT_RUN。
+- v38 未注册 FTS 草稿存在两项注册前阻断：生产连接未证明启用草稿依赖的 `recursive_triggers`；合成 C2C/C2G 消息到期后仍可经本地 FTS 返回正文（失败日志 `/tmp/imboy-v38-burn-probe-r2.log`），本地过滤后远端回退又可重现（诊断日志 `/tmp/imboy-v38-burn-fallback-probe.log`）。测试均为隔离合成数据，不证明 v37 现网泄露；原型未应用，需同时处理本地时效、远端回退和展示期间到期。
+- 后端 FTS 当前 WIP 已按服务端 `expire_at` 过滤并绑定搜索者，对群成员世代、工作区/频道资格、快照缺失及冲突作检查；消息结果返回 `msg_id`。隔离合成 PostgreSQL 的三组权限、缺证、分页及撤权并发探针退出 0，候选哈希和命令见 `/tmp/imboy-fts-final-run.log`；使用 simple 分词及注入事务连接，不能代替真实 schema、中文分词、HTTP/MCP、App 回退和最终集成验收。设备本地阅后即焚计时不由服务端 `expire_at` 解决，相关 J 项保持原状态。
+
+- 续查 W02：Backend HEAD `a24b117afa6b0c6382a72eb03c84153eaab43383` 上未提交的严格订阅读取将数据库错误与空结果区分，详情、别名和二维码透传 envelope code 503；旧布尔消费者保留原合同。OTP 28 隔离 meck 切片退出 0、16/16，App checked API 与详情错误消费退出 0、51/51；这两次原始输出仅保留在会话工具记录，未形成可重放验收收据。当前 repo、DS、logic、repo test、logic message test、logic facade test、handler test 文件 SHA-256 分别为 `014092e79f5e575ae247608a118d7241e1af8777b2f1115d97177236861896d2`、`5eba54ac244346e036943c14c27b12622b576430ef64efc6c34a6a9bef94898e`、`d2033c1e8beaf7c25d2325a82d3206df7c28e5975a5b312c9e2edb6c7287b8f5`、`812786bdcf175e29b558a051f9694dc280f18160ea49380d378245c07f5204cd`、`faedaa97e7ecde8d143a683755e6d246482e5043bd8cdc8361069fbf40eb76ec`、`23f22b9189c262b880daeffcdbb4643ddd3b7d896d00689f4c595f5ab928bb76`、`10d9756c241f3a42e6be06bf5761e2053cf0ecfd716a0ec32cc19338c6f72ca8`。合成 PG 容器身份和库名复核后，仅用独立连接及 session 临时表跑真实 SQL 形态探针退出 0、5/5；表名和连接经 meck 注入，未启动应用、未覆盖真实 schema 或连接池。既有本地配置 `auto_migrate=true` 且含外部服务地址，禁止直接用于应用测试；该增量不关闭 W02/J11，旧服务端 false、未知写入和跨端迟到仍待权威合同及恢复闭环。
+- 订阅状态写入清单：除订阅/退订入口外，支付回调和频道订单、邀请、引导、组织加入、工作区初始化、订单过期和工作区成员撤权亦调用订阅写入或直接更新关系；用户删除另有清理路径。后续版本/栅栏设计须逐一覆盖这些实际写者及旧客户端，并验证同一事务中的撤权和成员世代，不能只给两个 HTTP 入口增加版本字段。
+- App 来源切换局部修复：订阅列表对账同时检查环境和 API 来源，频道头部重试将同一守卫传给详情读取。App HEAD `c7da4ce83fc0e9d133fb86ec79ee4817f19d0945`、跟踪文件 diff SHA-256 `760ad9611dcd3e867a19f8a003944e31ed0921147f205bf504933a1e598b0738`（不含未跟踪文件）；两个新竞态测试在修复前各退出 1，修复后 `flutter test test/unit_test/service/channel_snapshot_sync_test.dart test/unit_test/page/channel/channel_header_bar_test.dart` 退出 0、63 项通过、0 跳过；上述两生产文件及两测试文件定向 `dart analyze` 退出 0、无问题。仅覆盖单次环境切换，不证明切回原环境、数据库句柄归属、其他同步路径或 W02/J11 完整恢复；原始输出仅在会话记录，非正式验收收据。
+- 静态发现：`SqliteService.db` 复用缓存句柄时只比较 `_openUid`，但数据库文件名包含 `currentEnv`；同账号切环境后可能继续取得旧环境句柄。须核查环境切换生命周期、初始化/关闭竞态与所有直接调用方并补隔离测试，再确定共享基础设施修复；上述局部检查不能视为此风险已消除。
+- 续查及局部防护：App 跟踪文件 diff SHA-256 `82141e9933cd15865b9356b00d56915c2aa9bec80d097c7cca2f0ea638782e17`（不含未跟踪文件），SQLite 缓存句柄环境失配时返回 null，不关闭仍可能被使用的句柄；等待初始化锁后复核账号，初始化返回时复核账号与环境。内存句柄测试先复现错误复用（退出 1），修复后 SQLite 筛选测试退出 0、7 项通过；频道服务和头部两文件退出 0、63 项通过；相关六文件定向静态分析退出 0。原始输出仅在会话记录。尚未证明初始化中迁移及关闭并发、环境切回原值、查询缓存跨库隔离或其他调用方的失败处理；本保护是 fail-closed 局部措施，不是完整环境切换合同。设置页现有切环境入口在登出前改 `currentEnv`，而登出按当前环境删库且 SQLCipher 密钥按 uid 而非环境管理，需先明确并验证清理顺序、跨环境数据与外发隔离，不得直接运行真实登出探针。
+- 查询缓存局部修复：相同 SQL 的缓存命中增加数据库句柄身份检查，避免不同库或旧库迟到结果被新库命中；不改变已有按 SQL 模式失效接口。两个独立内存库及迟到查询在修复前均复现串读（退出 1）；修复后 `flutter test test/unit_test/service/cached_sqlite_scope_test.dart` 退出 0、3 项通过、0 跳过，含 `SqliteService.rawQuery` 换账号调用链，SQLite 句柄筛选测试退出 0、7 项通过，相关四文件定向静态分析退出 0。App 跟踪 diff SHA-256 `806f2da7921536bda8eab71217bd999790fd59a523647bfedb60e78bf08d7d1f`；新未跟踪测试 SHA-256 `a6c4a2abddbbe66eee6eeb7d463a4067bbff4044a1be879576d5acbc809983df`。仅证明句柄间缓存不串读，不证明同句柄查询与写入失效竞争、真实 SQLCipher 环境切换或 W02/J11；原始输出仅在会话记录。
+- 环境切换清理来源局部修复：设置页不再在登出前更改 `currentEnv`，并在异步操作前取得注入的用户仓库。替身登出 Widget 测试修复前退出 1（期望 dev、实际 local），修复后 `flutter test --no-pub test/unit_test/page/mine/setting/environment_switch_scope_test.dart` 退出 0、1 项通过、0 跳过；相关两文件 `dart analyze` 和 App `git diff --check` 均退出 0。App HEAD `c7da4ce83fc0e9d133fb86ec79ee4817f19d0945`，跟踪 diff SHA-256 `6a53b7f10df2f4ea9f669798cf5c169647471c337f2bb1ce3ca8971889e37660`，新未跟踪测试 SHA-256 `6173d5b1facbe15d421d5b8340181dd2163f826fc735ccbdb5a782eea9df465a`；原始输出仅在会话记录。此测试不执行真实登出、删库或推送。启动初始化当前使用编译时 `APP_ENV` 而非该已保存目标，SQLCipher 密钥仍按 uid 管理，重复切换、失败及崩溃恢复均未验证；不能据此认定环境切换或 W02/J11 已闭合。
+- 设置页直接调用方回归：同一 App 候选 `flutter test --no-pub test/unit_test/page/mine/setting/setting_page_test.dart` 退出 0、14 项通过、0 跳过；仅覆盖现有布局和导航，未执行真实登出或证明环境切换完成，原始输出仅在会话记录。
+
+#### 2026-10-30 六路并行收口与分组提交（主集成者）
+
+- 分区：6 个只读/单写者 agent 按文件分区并行验证（后端 make eunit 以 `/tmp/v22-eunit.lock` 串行防并发编译），主集成者负责整合、提交；agent 不 commit、不改计划。
+- 后端定向验证（原始数字）：msg_c2c_logic 61/61（首轮 1 败 19 取消——PG 容器被 Docker 重启打断致 `eunit_app_boot_failed`，恢复后第二轮 0 败）、msg_c2g_logic 37/37、msg_c2c_ds 22/22、msg_c2c_repo 31/31、msg_history_context 59/59、真 PG ac04_e2ee_off_archive_db 9/9、ac04_s5_readback 1/1（首跑 1 败：写入与回读之间 manifest 对应 msg_store 行被**库外进程删除**，合成库同时存在 `imboy_fts_expiry_20261030_0825` 实验库；重跑写入后立即回读 0 败——合成库有并行实验在清理数据，属环境风险非代码缺陷）、fts_logic 27/27、fts_user_repo 15/15、fts_handler 10/10、imboy_mcp_tools 21/21；erlfmt 全净。
+- 后端提交：`1e7fd736c` fix(msg) C2C/C2G 撤回编辑 ACK 服务端受理事实门��—受理成功时把 `accepted_revoke`/`accepted_edit`（request_id/uid/accepted_at[/content_hash]）合入原行 payload，C2S `*_ack` 仅在标记匹配（编辑另验内容 sha256）时才覆写，否则 WARN 跳过；整替天然剥除标记故重放安全、落库故重启可查；撤回投递定时器取消后置到提交成功分支（修"提交前取消→离线持久化失败→原文永久停投"）；`revoke_offline_atomic/9` 撤回通知与原文覆写同事务；明文编辑离线分支显式 `internal_error`。`dadc6aaf9` feat(fts) 服务端搜索单事务授权化（expire_at/e2ee 过滤、搜索者绑定、成员世代/撤权、快照一致性、错误上抛）。两次提交 compile-dialyze/erlfmt/gitleaks 钩子均过。
+- App 定向验证：`flutter analyze lib` 0；websocket_server_ack 9/9、message_action_handler_revoke 1/1、message_reaction_session 51/51；store/api 8/8；store/repository 22 过 + **2 skip**（"直写 SQL 索引跟随"需 v38 触发器，v38 有意未注册，skip 原因已标、注册后移除）；integration+service 61/61；page/search 26/26；相邻 70/70；e2ee 32/32。
+- App 提交：`809620f5f` fix(chat) 撤回/编辑 ack 链加固与编辑代次防竞争；`1ae246215` fix(search) 远端回退 scope、FTS 串行化、v37 语义修复（撤回/删除清索引、搜索 JOIN 回填 id——此前本地搜索结果 id 恒空恒降级远端）、v38 草稿（未注册）；`8a18c4b99` fix(e2ee) 入站身份冲突与自有设备扇出终态；`d8a6156bb` test(chat) J18.d/J18.f/J19.a 设备脚本 + 共享 `c2c_journey_support`。
+- 候选（提交后）：Backend `dadc6aaf9`、App `d8a6156bb`、Admin `9e47f51`（`src/widget/customer_service/app/ui.ts` 未提交未验证，默认只读未动）。三仓均非干净：见下。
+- **未纳入本轮提交、如实记录**：① `src/imboy_pb.erl`/`src/textguard_pb.erl` 为 agent 跑 make 时 gpb 重生成产物（+5.5k/−22.6k），与提交版生成器输出不一致，属上游生成链问题，不作为功能提交、未回滚（禁 reset）；② 后端 `channel_subscription_ds/repo`、`channel_logic_message` 及 channel 三测试、App `channel_header_bar`/`setting_page`/`cached_sqlite_service`/`channel_service` 及 4 测试（2 未跟踪）为**并发写者**（本节上方 W02/环境切换记录的作者）在本会话期间产生的活 WIP，未碰；③ 本计划文档同为该写者活跃编辑中，本节仅文末追加、**docs 未提交、`plan_sha256` 待最终文档提交者统一重绑**（evidence 现值 `9f0d6e7d…` 已因其后续编辑而陈旧）。
+- 仍未落地/阻断：阅后即焚消息在 FTS 三层（本地入索引不排除 / 存活期可搜 / 后端无 burn 过滤）未解决，仅撤回与删除/到期清理已覆盖；v38 两项注册前阻断未变；后端 daemon 停机（待以 `dadc6aaf9` 重建 release），合成 PG 容器重启后端口漂移至 59260、由 `test/common/pg_relay.py`（PID 30186）桥回 57559。
+- J 项状态：J18.c/J18.e 维持 STALE（候选再变，需在 `dadc6aaf9`+`d8a6156bb` 上重验）；J18.d/J18.f/J19.a 脚本已提交但 **NOT_RUN**（真机未跑）；其余 J 不变。下一步：重建 release → daemon → `msg_edit_window_seconds=60` → adb reverse → J18.d 真机 → J18.c/e 重验 → J19.a fixture（demo_alice 为合成群普通成员）→ 适用全量门。
+
+#### 2026-10-31 wave2/wave3 六路收口、真机 J 项重验与分组提交（主集成者）
+
+- **分区与执行**：wave2 六 agent（后端 receipt WIP 验证、后端 quality/fts 裁定、App 序列化对齐、edit_error 客户端闭环、burn-FTS 残留、App 遗留 WIP 收口）+ wave3 一 agent（全量普查真破损修复）；agent 一律不 commit，eunit 以 `/tmp/v22-eunit.lock` 串行，主集成者整合提交。
+- **后端提交（6 笔）**：`05b3adba0` feat(msg) C2C 撤回/编辑 ACK 受理事实落专属表 `c2c_action_receipt`（并发写者 WIP 演进：request_id 主键幂等+全字段冲突校验、content_sha256 绑定、consumed/result_payload 成对 CHECK 原子消费一次、FOR UPDATE 双消费者串行、staging 转正 reconcile、受理失败 fail-closed）。**七要素 7/7 达标**（agent 逐项核对：身份/原消息/操作类型/内容/幂等/乱序/重启恢复），迁移 00000238 up/down/up 对称实证、CHECK 与幂等冒烟通过；eunit msg_c2c_logic 61/61（旧 payload 断言用例经授权改为 receipt 契约：consume_action 恰 1 次 + update_payload_by_msg_id 0 次）+ 真 PG 4/4 + channel 四套件 21/207/108/24。`33e4274ec` feat(channel) 严格订阅读取（查询失败回 503 不谎报未订阅；防御性非 map 子句有测试钉死，按 `-dialyzer nowarn_function` 定点抑制而非删除——先删后撤销的教训入档）；dialyze-check NEW 12→11，全部为 main 合并（5e330f30c）带入的 enterprise/cs 基线漂移。`169560382` test(fts) 服务端 FTS expire_at 两态行为测试（真 PG 16/16）。
+- **wave3 修复（3 笔）**：`12e54715e` ack durability/worker 测试声明 reconcile_consumed_tx 新调用（cleanup badmatch 根因=passthrough 守卫的 undeclared call）；`02d4d3e23` 合规清单补登 c2c_action_receipt（00000238 漏登记，live schema 覆盖校验拒绝）；`b396c5075` 附件域测试对齐三契约（with_deadlock_retry_tx 入口、settle_active 计数、NIF 锁 1 参回调）。合计 83 用例全绿；**quality 39 undef 判定为历史误报**（实现 tools/imboy_quality 15 模块与 Makefile 钩子全部在库，实测 8/8+全量 0 undef；复现时 `make quality-test-support` 秒级重建）。
+- **App 提交（9 笔）**：`958a2f244` gid 回归修复（attachment 测试假协议补生产等形 gid，二分定位后裁定维持严格契约）；`d8663c3c8`/`15453849a`/`63afbc3e5` 遗留 WIP 收口三笔（频道订阅/快照按环境+来源定界、设置页旧环境登出+SQLite 缓存按库实例定界、e2ee/fts 契约收紧测试）；`463587b14` burn-FTS 范围删除清索引+重索引锁互斥（deleteByUid/deleteByConversationId 残留与窄竞态均实证后修复）；`d63d9128b` message_revoke_error/edit_error 客户端闭环（error 帧 id 与重试队列 key 同源取证、`*_ERROR` 传输层天然放行、停重试单一入口+本地化失败提示）；`9a1f9bc20` j18d 拒绝分支哨兵转正（失败提示+10s 重试终态断言）；`571f23a9f` 序列化断言对齐（85b050e70 漏改的 16 处 integration 断言，10 失败→0）；`41d91d5e6` workspace fence 测试适配（enterprise_shell 28/28）。
+- **App 全量基线与归因**：11402 过/316 跳/9 败；9 败经基线 worktree（c13a286cc）复跑**全部为分支预存或环境门**（7 个直接复现 + golden 复现 + olm_pfs 环境门），wave2 提交零回归；预存失败清单（uiux/p1 线 4+golden、chat_network_session×2、history_repair、olm_pfs）登记为分支遗留处置项。
+- **release/迁移实测**：`IMBOYENV=local make rel` EXIT=0；daemon 重启 `pong`，**迁移 238 随启动自动应用**（schema_migrations=238、表存在=1）；`msg_edit_window_seconds=60` fixture、bob 在线夹具（count_user=1）、adb reverse tcp:9800 均已设。
+- **真机 J 项（XWE6R19916004085 / MRD AL00，候选 Backend `b396c5075`+App `017441f2b`）**：
+  - **J18.c PASS**（EXIT=0）：窗口内撤回生效、窗口外即时拒绝且原文保留；全程仅 1 次撤回网络请求（客户端 120s 短路）。
+  - **J18.d PASS**（EXIT=0）：FRESH 窗口内编辑 ack 回流同气泡更新；OLD 超窗真实 409 拒绝帧到达、**failToastSeen=true**（d63d9128b 闭环真机生效）、原文逐字保留、退出编辑态、10s 内无二次拒绝帧（重试终态）。
+  - **J18.e PASS（经修复）**：确定性失败 3 轮根因链——发送后列表不回底（插件 `_userHasScrolled` 分支仅 fling，长列表 44+ 条时到不了底；引用条滞留视口外，tap 落在目标气泡惰性文本）→ 修复 App `017441f2b`（发送后立即+fling 衰减后双次显式回底）+ oracle 视口化；修复后 EXIT=0。
+  - **J19.a PASS（经修复）**：r1 合成 fixture 缺会话行（eval 直调 `msg_c2g_logic:c2g/3` 产品路径补齐）；r2 测试 finder 类型 bug（scrollUntilVisible 需真 Scrollable）；r3 走通全旅程但暴露真实缺陷——退群后 30s 会话滞留，根因链=uk3 前缀大小写不一致（事件小写 vs 键大写，插桩实证 `removeFromMap uk3=c2g_... keys=[C2G_...]`）+ 消费端缺「行已删→内存移除」分支 + uid 段误拼 peerId → 修复 App `9e6254c9c`，r8 EXIT=0（服务端失权亦验证：成员行删除、代际 end_seq 闭合、授权 SQL 排除时间线）。
+  - **J18.f NOT_RUN（authorized 尝试记录）**：产品路径 fixture（bob→alice 30 天前目标 + 近期引用，`msg_c2c_logic:c2c/3` 种入）形状正确、QuoteMessageBuilder 可渲染可点击；但「目标未加载」前置与归档异步回填竞态不可稳定取胜（合成库全量回填秒级到达目标行）。隔离归档/账号 fixture 未具备；expired/missing_key 另需服务端到期证据与真实 E2EE 密文。
+- **全量普查（wave2 期）**：13980 过/51 败/0 跳——37 设计性 no-skip（talk_record 26、attachment v5 7、textguard 3、directory sync 1）+ wave3 已修复 12 + w601/disk_os_lock 归因入档。
+- **后端全量门（wave3 后，2026-10-31）**：EXIT=2，**Failed 38 / Passed 13993 / Skipped 0**（日志 `/tmp/v22-eunit-full-w3.log`）——较 sweep 前 51 败净减 13，与 wave3 修复一一对应；残余 38 全部为需独占 PG env 的设计性 no-skip（talk_record 26、isolated_pg 3、attachment v5 家族 7、msg_offline_progress 1、directory_sync 1），**代码级失败清零**。
+- **App 全量门（最终候选，2026-10-31）**：EXIT=1，**11402 过/316 跳/9 败**（日志 `/tmp/w3-app-full.log`）——与基线归因清单完全一致（7 预存复现 + golden 预存 + olm_pfs 环境门），最终候选提交零新增失败。
+- **待产品裁决**：服务端 FTS 现行为=阅后即焚**未到期可搜、到期即不可搜**（dadc6aaf9 明示设计，已钉行为测试 169560382）；若期望「未到期也不可搜」属语义变更，另行处置。**长期/BLOCKED 不变**：burn-FTS 远端回退语义、存量残留 v38 rebuild 收敛、v38 注册前置（recursive_triggers + 真机二进制）、双设备/推送/生产源/E2EE 组合授权。
+- **pb 生成物漂移处置（2026-10-31 收口更新）**：`src/imboy_pb.erl`/`src/textguard_pb.erl` gpb 重生成漂移（紧凑排版版）已还原至 HEAD 版（`6988248c3` git-sourced gpb 一致性）；还原前经实验证明与 dialyzer 11 NEW/GONE 无关（见下节），漂移版备份于仓外 `/tmp/pb-drift-backup-1031/`。本节为登记与定向验证收口，不关闭 W11/W13；J18.f 与其余资源受限项保持原状态。
+
+#### 2026-10-31 收口批次八（J27 局部补证与 J16.a 竞态复现）
+
+- **统计纠正**：按 §9 全部 85 个子项逐行统计，PASS 标记 25（含 J16.a/b 部分向量）、NOT_RUN 50、BLOCKED 10；此前对话的 NOT_RUN=33 不完整，不作出口依据。新增同名 case 只是定位，必须核对完整 oracle，不能仅靠命名或局部跑绿关闭子项。
+- **Backend 定向 23/23 通过**：BS 8、BG 6、BM 5、`workspace_group_handler_tests` 4。真实 handler/响应编码补证旧频道 61 项不截断、群三 attr page/size envelope、签名游标前进与错 scope/q 拒绝、频道关闭拒绝及 manifest 200/304。严格 raw-wire 断言先复现末页 `next_cursor=""` 而非 `null`，随后修复频道、个人群与工作区群三个签名终止 helper；legacy 路径保持原形。工作区 member_only=0/1 的 null、旧数值 cursor/envelope、跨 workspace/kind 拒绝均已执行并独立审查通过。日志 `/tmp/v22-j27-{bs,bg,bm,ws}-green.log`。另在当前候选绑定授权 synthetic 配置串行重跑 `channel_cursor_pg_tests`、`group_cursor_pg_tests`，两套真实 PG 向量各 `Test passed`、退出码 0（日志 `/tmp/v22-j27-cursor-pg.log`、`/tmp/v22-j27-group-cursor-pg.log`）；不代表工作区真实数据库全扫描及全部范围场景已验。
+- **App J27 定向 68/68 通过，独立审查无 P1/P2**：AF 28、AQ 12、AH 28。缺/未知合同不启用、pending 原 request_id/载荷保留且零 dispatch、304 无同源缓存失败关闭、来源/账号缓存隔离、频道深链门禁、cursor 400 保留已加载内存列表且不回落，以及 VM raw JSON→decoder→envelope→频道模型→合成请求序列化。四个整数边界为 2^53−1、2^53、2^53+1、BIGINT 上界；不冒充 Web/真机/真实路由/Backend echo。非法 ID validator 返回 null 已测，但模型回落 `'0'` 不是完整拒绝；J27.e 尚未关闭。
+- **Admin 五文件 111/111 通过（703 assertions），独立复审通过**：修正安全整数必须 string 的错误断言，保留安全 number 与非安全 string 的逐字符精度；删除两项虚构合同键的假证明。真实 workspace 读取封装→archive 封装的 mock body 捕获通过；群/频道只证明旧参数透传与 envelope 适配，不证明服务端搜索。未覆盖 Axios 实际 transform、真实网络/Backend 解码及非法资源 ID 拒绝。
+- **J16.a 根因表述纠正**：当前在线 `save` 与离线首消息路径均已有 `is_show=1` 恢复，不能继续将历史现场直接归因为“upsert 缺字段”。新增真实 SQLite/入站入口回归：在线、离线占位 mute 保留两例绿；暂停真实旧空 SELECT 结果交付、首消息持久化并发布后再释放，稳定复现内存列表被旧读取抹掉（单例重跑亦红）。首轮版本/代次防护使该组及权威操作 18/18 转绿；独立审查发现的历史漏载、迟到 recount 隐藏回弹和第二轮再次冲突三项边界，现经发布前受控重算、一次本地补查及逐键 revision 安全收敛修复。新增回归最终 10/10 绿（在线/离线首消息、迟到列表、移除与批次、请求反序、历史 A/B、隐藏重算、双轮 A 更新/B 保留），终审无 P1/P2；最终候选连同直接调用方、AF/AQ/AH 七文件统一 128/128 绿（`/tmp/v22-batch8-app-final.log`）；随后会话/频道/功能门/HTTP 与新回归的集中模块验收 665 通过、20 跳过、0 失败、EXIT=0（`/tmp/v22-batch8-app-module.log`），跳过不算覆盖通过。lint 花括号修正后两 touched 文件 analyze 零问题且 10/10 重验通过（`/tmp/v22-batch8-analyze-final.log`、`/tmp/v22-batch8-j16-final.log`）。该竞态回归已闭环，但未重跑原 Android 现场，不关闭 J16.a 完整验收，也不声称历史真机症状均由此产生。
+- **全量门未绿**：正确入口为 `EUNIT_CONFIG=config/sys.runtime EUNIT_RELAY_TARGET=59260 make eunit-local`（配置 stem 不带 `.config`）。本批全量日志 `/tmp/v22-eunit-v22-full.log` 为 2027 PASS / 1 FAIL / cancelled，missing_config=0；明确失败是 owned fixture 缺 `TALK_OWNED_PG_HOST`，另有独立 meck 启动超时，不能合并归因为同一环境问题；单独复验 `talk_record_provider_recovery_tests` 已 12/12 通过、EXIT=0（`/tmp/v22-provider-recovery-recheck.log`），但仍须在最终全量环境中重验，不能据此推定全量绿。仅只读核验了授权 synthetic 容器仍映射 127.0.0.1:59260；未绕过 marker/身份校验，也未清理既有专库。
+- **J15.a 后续补证**：AP `conversation_page_test.dart` 12/12 通过、定向 analyze 零问题；40 行真实列表滚动后点击头像，C2C/C2G 分别检查真实 peer 路由（本地 id 与 peerId 不同），pop 后滚动位置对象/偏移/行与头像坐标保持（容差 0.01）。资料页仍为 stub，不作为真实资料页/设备全旅程通过，J15.a 保持 NOT_RUN。AP 新增测试独立审查无 P1/P2；Android 真实资料页旅程首轮在 C2C 头像点击后等待个人资料页超时，后续群向量未执行（`/tmp/v22-j15a-device.log`），原因待区分点击/脚本与产品；真机脚本独立审查另发现非生产环境与账号自动恢复前置、群卡兜底及嵌套滚动定位风险，须修复后再作为收据。J16.a 独立合成 peer Android 旅程已 EXIT=0（设备 XWE6R19916004085；peer=120619900000000811；message=d0000000000000000811；`/tmp/v22-j16a-device.log`）：READY 前零历史/隐藏 mute 占位不显示，READY 后宿主经正常 `msg_c2c_logic:c2c/3` 注入恰一条真实 WS，精确 from/to/id 事件、SQLite 与列表模型恢复可见且 mute 保留，打印 J16A_FIRST_PASS。没有客户端伪造入站、清库或覆盖旧 peer；新增合成夹具与消息保留。关闭该向量开放项，频道向量缺口仍在。
+- **J14.a 局部补证**：AW 新增群/频道工作区成功空态真实 widget 测试；群 CTA 真实进入 workspace 100 创建页，不发 HTTP 写请求；频道无虚构创建 CTA，真实刷新同一工作区后仍成功空。独立审查发现 adapter 安装顺序使零写断言漏出口，已调整为先安装后构造并以同实例 POST 正向探针确认拦截；另发现成员群空态“还没有工作区群组”可能误指空间全集，10 种语言已修正为本人尚未加入群的语义并重新生成。最终工作区三文件 17/17 通过、EXIT=0（`/tmp/v22-j14a-words-final.log`）；已有真机验收脚本的旧标题已同步但未在设备重跑。仅离线 widget 证据，不替代 AG 真实接口及服务端权限/副作用验收，J14.a 保持 NOT_RUN。原 adapter 顺序与文案两项 P2 已独立复审关闭；同步后的真机脚本 analyze 零问题，未在设备重跑。另用产品创建/邀请逻辑在唯一授权 synthetic 库创建独立 workspace 121151596842452992，owner 为合成 peer、alice 为 member（未加入自动创建的 General）；AG 新增显式启用的真实 HTTP 群向量经脱敏及旧测试注册修复后重跑 1/1 通过且未 skip（`/tmp/v22-j14a-group-api-final.log`），验证成员群空而同工作区目录非空。该测试为 ApiTestClient 后端合同而非 WorkspaceApi 完整调用；读取后合成库只读复核工作区成员数=2、群数=1、频道数=1，且 alice 在默认群的 `group_member` 记录数=0，与创建后资源形态一致，但不等于 GET 内部绝无其他写入。模板自动创建默认频道，未删除，故不能用此 fixture 冒充频道空集合。
+- **J27.e 后续排障（进行中）**：真实 Dio decoder/API 的非法资源 ID 红测出现 54 FAIL / 2 PASS（`/tmp/v22-j27e-invalid-red.log`）：频道订阅/发现与工作区群列表把非法值回落为零哨兵。首轮 API 响应边界校验后含邻近套件 87/87 通过（`/tmp/v22-j27e-green.log`）；独立审查另发现非 Map 项会被静默滤为成功空、搜索/发现调用方可能吞错，且个人群 page/cursor 存在非法 ID 先落库为 0 的风险。随后已在频道、工作区群和个人群 page/cursor 返回边界对整页逐项验证，非法 ID 和非 Map 行抛带字段、不含原值的 FormatException；保持空列表、legacy 失败语义与本地模型零哨兵。扩展测试和相邻 API/群游标接线合计 202/202 通过（`/tmp/v22-j27e-round2.log`），涉及 API/validator/test 静态分析零问题（`/tmp/v22-j27e-analyze.log`）。独立复审又发现多个合法但不一致的群 ID 别名可能导致仓储与模型选择不同对象；已新增规范化一致性校验，并补 API 与真实 SQLite 坏页保护，五套定向 224/224 通过（`/tmp/v22-j27e-conflict-final.log`），复审确认原 P2 关闭。发现页新增解析异常可见/重试与条件代次保护，复审又拦下跨账号旧词重放和旧分类残留，已清理旧条件；真实 loginAfter 换号测试隔离到独立 isolate，覆盖防抖前切账号与已完成搜索清理。最终 API/SQLite/发现页/按钮九文件联合 256/256 通过（`/tmp/v22-batch9-final.log`），受影响 14 文件静态分析零问题（`/tmp/v22-batch9-analyze.log`）；切号测试保留模拟存储至 isolate 退出，不声称所有未等待后台任务均已观测结束。发现/搜索 API 的网络或业务失败已改为向页面传播，合法空列表仍为空态，API+发现页+换号三文件 30/30 通过（`/tmp/v22-channel-failure-chain.log`）；后端搜索 SQL 预处理仍可能将内部失败折为空列表，是未关闭边界。个人群游标坏页已补保留前页、显式错误及重试候选，但独立审查发现跨账号共享列表混入 P1、跨实例旧请求和重试状态等 P2；进一步静态追踪发现群列表旧响应在切号后可能动态取得新账号 SQLite 写入，且自愈全局 future/marker 存在账号漂移风险。UI fencing 不能代替数据库绑定和事务边界，共享 provider 的账号/请求 fencing 和固定 DB 事务 helper 已形成候选，服务接线中；一次 helper 测试误与服务中间态并发导致 2 个编译失败（`/tmp/v22-group-session-helper.log`），不是最终候选结果，待接线完成重跑。提交线性化、自动自愈 marker、标题/头像旁路仍需独立验证；批次十统一测试此前 247 通过/1 失败（治理声明合同正例 UI 断言前 fixture 数据不完整，`/tmp/v22-batch10-final.log`；请求体断言已执行，不能简单归因于滚动定位），不可称当前候选全绿。上述定向通过不代表 J27.e 整体通过。
+- **J27.f 后续局部补证**：BS 合成 DS 的真实 handler 非空 legacy 旧读与频道关闭门共 9/9 通过（`/tmp/v22-j27f-bs2.log`）；AQ 缺失/未知合同的真实列表消费者、模拟 HTTP 非空旧读/SQLite/无 cursor 由综合回归覆盖；个人创建真实按钮在 pending 意图与合同缺失/未知时保原键、无无键写及关闭入口路由拦截，`channel_create_page_test.dart` 6/6 通过（`/tmp/v22-j27f-create-final.log`）。独立审查发现 App 两组测试的 FeatureScope/manifest 恢复不完整，及 Backend 测试内部合同循环不影响 handler 请求；已将 App 两组迁到独立 isolate、删除 Backend 无效循环。迁移后的 App 四文件 20/20 通过（`/tmp/v22-j27f-isolate.log`），Backend 修正后 9/9 通过（`/tmp/v22-j27f-bs3.log`）；原两项 P2 已独立复审关闭。组织治理创建按钮的实际请求体红测另发现旧合同回退缺 scope/workspace_id（`/tmp/v22-org-channel-red.log`）；旧服务端可能忽略归属且响应不回显，不能只补字段冒称安全，已按未知合同 fail-closed 落候选；安全审查另发现确认弹窗未绑定账号/会话、token 准备期间旧请求可能登出新账号、未知 HTTP 结果可能误清意图、并发旧响应可能删除新意图、存储返回 false 仍可能派发等 P1，以及旧请求 429 提示和资源加载态 P2。会话守卫、固定来源、意图串行/保键与 HTTP 副作用门控正在分工修复并补测试；当前不能声称创建链安全闭环。这些不证明真实 PG 授权旧读或全部合同负例；不可由空列表推断功能关闭，整项仍 NOT_RUN。
+- **出口**：J27.a–f 保持 NOT_RUN（已补局部证据，完整范围尚缺），J16.a 保持部分向量口径，资源 BLOCKED 不变；本批未 commit/push，W13 不发总 PASS。
+
+#### 2026-11-01 收口批次十（统一重验、创建链保守合同定案与 fakeAsync 跨区死锁修复）
+
+- **批次十统一重验全绿（107/107，EXIT=0）**：七文件套件 `http_session_side_effect` 4、`group_list_session_isolation` 4、`group_list_cursor_wiring`（含原超时用例）、`organization_manage_page_widget`（含上轮 fixture 缺 `status=1` 的治理正例）、`creation_receipt_contract`、`channel_create_j27f` 合计 92 通过、0 失败（`/tmp/v22-resume-batch2.log`；清单中唯一 -1 为此前一轮误用不存在路径的加载错误，非用例失败）；`group_list_session_persistence` + `group_repo_exact_id` 15/15（`/tmp/v22-persist-final.log`）。上轮「247 通过/1 失败」的治理正例 fixture 缺陷已随本套件全绿收口。不影响 §9 状态判定：J27.a–f 整项仍 NOT_RUN。
+- **创建链保守合同定案（P1 终审）**：`runCreationReceiptFlow` 对一切失败（业务拒绝码 5462/5464、传输失败、502/504）统一 `unknownPending`、意图保留、errorText=null——HTTP 解析层不保留可证明的响应来源与终态，任何失败都可能是代理伪造的终态文案，据此清除意图会违反 §6.4。`CreationFlowFailure` 枚举收缩为 `capabilityMissing`/`unknownPending`（生产代码仅引用前者，grep 证实），`CreationFlowOutcome.resourceId` 删除（生产零引用；合同层 `CreationReceiptResult.resourceId` 不变）。合同测试三断言对齐新合同：5462 冲突与 5464 过期均断言 unknownPending + 意图保留 + 原键原载荷（recover_only 派发照旧）。三项 P1 语义代码层成立：① `saveCreationIntent` setString 失败 throw + 键入 `_intentFailures`（后续 load/clear 全拒绝）且在 dispatch 之前——零 POST；② `clearCreationIntent(expectedRequestId)` 在意图锁内先比对存储 `request_id`，迟到旧响应不删新意图；③ 失败分支统一保键。改动文件 `dart analyze` 零问题。受影响调用方（launch_chat/workspace_group_create/channel_provider/organization_manage_page）仅消费 `capabilityMissing`/`ok`/`failure`/`errorText`，行为不变。
+- **fakeAsync 跨区死锁修复（两文件三用例，曾各挂 10 分钟 runner 超时）**：根因=测试在 fakeAsync 区创建 `Completer`，其 future 的解析排在 fake 微任务队列，`tester.runAsync` 不排空该队列；且登录链的 sqflite 前置只在真实事件循环推进——门放行永远到不了已挂起的 handler。实证：诊断副本 20s 超时先抛、随后 handler 才恢复（`/tmp/v22-wiring-diag.log`）；v2 多路埋点显示 secure write 直到 runAsync 内才被派发、gate 解析在退出 runAsync 后才发生（`/tmp/v22-wiring-diag2.log`）。修复：① `group_list_cursor_wiring_test` 认证开始用例——门（gate）在 runAsync 内创建于真实区，登录推进、放行与 settle 全在 runAsync 内完成，fake 区仅做容器级同步断言与 pump 级 UI 断言；② `http_session_side_effect_test` stale-429 两变体——`entered`/`reply` Completer 同样迁真实区创建。单测验证：wiring 用例 EXIT=0（`/tmp/v22-wiring-fix2.log`），http_session 全套 4/4 EXIT=0（`/tmp/v22-httpsess-fix.log`）。方法论沉淀：testWidgets 中跨 runAsync 传递信号一律用真实区 Completer（`await tester.runAsync(() async { c = Completer(); })` 创建）；fake-zone future 的 await 续延永远上 fake 队列，runAsync 内等待必挂。诊断副本用后即删，不入库。
+- **出口**：本批为批次九挂起项的统一重验收口与测试机制修复，不改产品行为合同（除保守枚举收缩）；J27.a–f 保持 NOT_RUN，J16.a 部分向量口径不变，资源 BLOCKED 不变；未 commit/push，W13 不发总 PASS。
+- **门禁复验（2026-11-01 追记）**：dialyzer 基线重盘（`78d8f6646`，10-31 07:13）早于批次八 handler null 修复（21:57），spec 变更未被该轮门覆盖——本轮重跑 `make compile`（wave4 实验后缺失的 `imboy_pb`/`textguard_pb` beam 重新生成）+ `make dialyze` + `check_dialyzer_baseline.sh`：**GREEN，告警 176 条全部基线存量、0 新增**（`/tmp/v22-dialyze-gate.log`；channel_handler 625/648/778 与 group_handler 802 的 `{'error', ...}` 告警为 KNOWN 存量，非本轮引入）。注意裸 `make dialyze` 打印全部告警并以 Error 2 退出是常态，判门必须经基线脚本。
+- **eunit 全量门复验（2026-11-01 追记，正确入口干净重跑）**：`EUNIT_CONFIG=config/sys.runtime EUNIT_RELAY_TARGET=59260 make eunit-local` 干净全量 **14007 通过 / 0 跳过 / 37 失败**（`/tmp/v22-eunit-clean.log`；首次重跑因与 `make compile` 并发污染 beam（not_purged）证据作废，干净重跑零 not_purged——教训：eunit 串行原则扩展到「不与 make compile 并发」）。37 失败逐一归因**零业务回归**：25× `owned_talk_missing_env` + W202 Garage（48 计数）+ V5 slot `contract_conflict`（18）+ W403（3）+ TG16（3）+ DIRECTORY_SYNC（1）+ w601（1）均为专用资源契约缺失（wave4 已由对应 runner 带 env 跑绿，模块本轮未动）；4× T20 `badmatch,false` = `T20_FROZEN_CONFIG_SHA256` 编译 pin 缺失（受控 fail-closed 车道，须 IMBOY_ERLANG_QUALITY 冻结配置环境，`/tmp/v22-t20-recheck.log` 复现同形态）；1× oa_direct_cloud_retention PG 4323 = `test_config` 遗留默认值（`test_db_*` env 未注入回落 localhost:4323/imboy_v1），连接失败未连任何库，无共享库红线问题；1× c2c_action_receipt `already_started` 为时序竞争——单独复验 **4/4 全绿 EXIT=0**（`/tmp/v22-c2c-receipt-recheck.log`），同 wave4「先天竞态用例对称翻转」先例。
+
+##### 2026-11-01 两项决策已裁决（用户回复「按推荐」），提交执行记录
+
+本环境可推进的全部收口动作已完成（统一重验 107/107、创建链 P1 终审、两道门禁复验、批次十收据）。用户对以下两项裁决回复**「按推荐」**，出口结论已写入 §9.1：
+
+1. **提交授权（已裁决）**：三端 76 文件按功能域分次 conventional commit（subject <72 字符、每批含对应测试）、**不 push**。执行记录：
+   - Backend 3 批：①api 游标 null 合同（channel/group/workspace_handler）②四测试文件收据（app_manifest/workspace_group handler tests + channel/group scope tests）③本计划文档（§9.1 出口结论 + 本节）。
+   - App 6 批：①conversation 竞态（provider+页测+回归测+j16a 脚本）②group 双库隔离（三页件+sqlite repo+持久化服务+隔离/持久化/wiring 三测试）③channel+API 校验（channel 页件/四 API/decimal id+九测试）④receipt 保守合同+治理页（三服务+合同测+组织页+组织页测）⑤http 会话守卫（client/policy/user_api+parse/privacy/side-effect 三测试）⑥i18n 十语言同步（10 yaml+11 g.dart）+验收测试收据（workspace shell/j15a/manifest 缓存恢复）。
+   - Admin 1 批：API 测试收据 5 文件（safeParseBigIntJson/channels/groups/features/workspaces）。
+   - push 未授权，另行触发。
+2. **NOT_RUN 裁剪（已裁决，选项 a）**：50 项 NOT_RUN 按外部资源七桶分桶排期（双真机→J16.c/W09.c 向量；iOS 真机→多平台证据面；多部署组合→J27.a/J28 兼容面；v38 注册→FTS/阅后即焚；生产源→档位证据；macOS 签名→平台交付面；C-channel 交付→J16.a/J21.a/J26 频道向量），完整表格见 §9.1 出口结论；资源到位后按 §8.4 重绑定重验。10 项 BLOCKED 已有 2026-10-31 资源阻断盘点，不重复决策。
+
+裁决后出口口径：26 PASS / 50 NOT_RUN / 9 BLOCKED、W13 不发总 PASS（J16.c 于 2026-11-01 双机批次升级 PASS，见下节）。
+
+#### 2026-11-01 双机验收批次（J16.c，Android 真机 + macOS App 跨平台双设备）
+
+- **资源到位**：用户提供「Android APP + macOS APP 双机测试」资源——A=既有 Android 真机（写入端），B=macOS 桌面 App（flutter build macos debug，darwin-arm64 27.0.1，**全新安装即天然独立设备存储**）。J16.c 原判定「需两台真机」的资源本质是「两份并发独立设备存储 + 同账号」，跨平台组合成立且强于双 Android（就绪包 §5 已预判「iOS 非必需」）。
+- **A 端一次通过（EXIT=0，`/tmp/j16c_a_run1.log`）**：C2C 先关后开双向写路径 + 群 KV 同型，J16C_A_SETTLED `c2c_is_muted=1 group_is_muted=1 kv=true`。脚本 `j16c_dnd_two_device_a_test.dart`。
+- **B 端三轮收敛（前两轮失败如实记录，`/tmp/j16c_b_run5.log` 终态 EXIT=0）**：
+  - r1 FAIL：macOS 全新安装无 token 时 App 仍渲染桌面壳（uid=本地默认 50），`autoLoginOrSkip` 的 `isOnMainShell` 误判已登录、登录链未执行——B 脚本改为 UID 不符即主动 `quitLogin` → 等登录页 → `performLogin`（**共享 flows 未改**，修复收在 B 脚本内）。
+  - r2/r4 WS 全败 + c5 超时：根因两层——①合成节点 initConfig 曾下发 `wss://dev.imboy.pub/ws`（len=22 与 B 日志吻合）覆盖本地值；②App 本地默认 WS 路径 `/ws` 在本地直连时 404（**真实路由 `/api/v1/ws`**，生产由反代重写，`ws_url_for` 的 derive 逻辑与 sys.local.config 注释均未覆盖本地直连形态）。
+  - 修复：`sys.local.config`（gitignored）+ 运行节点 RPC 热改 `ws_url = ws://127.0.0.1:9800/api/v1/ws`；B 端按官方测试注入口 `--dart-define=WS_URL_OVERRIDE` 显式注入同值。r5 全绿：c-1 开关 off+DB=0、c-2 KV=null+off、c-3 文案无「同步」、c-4 manual_pending CAS 写读闭环（服务端 version 38→40 终态 false）、c-5 消息 WS 送达（ACK RTT 8ms）unread 0→1 且本机真源不变。`J16C_B_READ_DONE`。
+- **SQL 复核（全部只读）**：alice `channel_subscription` 0 行（c-6 功能门）；`user_setting.manual_pending` 终态 `{"C2C_..._bob": {"value": false, "version": 40}}`（B 端恢复成功）；服务端 `conversation` 表无 `*mute*` 列——DND 真源仅设备侧成立。
+- **测试凭据维护**：合成账号 demo_alice 密码经节点 RPC `elib_password:generate` 重置（合成隔离库 fixture 维护，同 seed_demo 先例；凭据不入仓）。
+- **环境改动留档**：`imboy/config/sys.local.config`（gitignored）`ws_url` 修正为本地真实路径；运行节点 app env 已热改。两者为合成部署配置修正，同批次一 solidified_key 修正先例。
+- **新增文件**：App 仓 `integration_test/chat/j16c_dnd_two_device_a_test.dart` / `..._b_test.dart`（analyze 零问题）；宿主编排 `/tmp/j16c_inject_when_ready.sh`（仓外）。**未 commit，待用户授权**。
+- **出口**：J16.c BLOCKED→**PASS**（26/50/9）；W13 维持不发总 PASS；资源阻断盘点中「双真机」桶仅剩 J28.b（一账号两端旧/新客户端）与 W09.c 向量——macOS App 能否承担该桶 B 端取决于旧版本 App 桌面构建可用性，待该批重验时判定。
+- **用户裁决追加（2026-11-01）**：环境中发现的无线 iPhone 16e 真机**不启用**——「iPhone 16e 可部署性探测和 iPhone 真机不要验证了，验证 Android APP + macOS APP 就可以了」。J22.a–f 维持 iOS 真机证据缺口的 BLOCKED 口径（桶 2 触发资源仍为 iOS 真机验收身份），多平台证据面不因该设备存在而改判；后续多端向量一律以 Android 真机 + macOS App 组合承担。
+
+#### 2026-11-01 NOT_RUN 批次一（14-agent 并行推进的首批落点：J23 / J15.b / J13 / 环境风暴留痕）
+
+14 个 agent（50 项 NOT_RUN 全覆盖）的首批完成项与主控串行执行结果：
+
+- **J23.a/b/c → PASS（3 项）**：agent 交付 test/logic/ 两套件（5 个 J23 命名 case：崩溃注入 meck exit、通知入队失败、同键双进程并发、固定身份+重复入队兜底、配额中止全回滚），主控以 `IMBOYENV=local make eunit t=` 真合成 PG 串行执行 **10/10 + 5/5 全绿、无 skip**（erlc 编译零警告；error 行为注入预期日志）。附带死分支观察（受理结果 `{error, throw, Reason}` 三元组不可达，行为等价）留档不处理。
+- **J15.b → PASS（部分向量：桌面壳）**：单元 AP 16/16+4 case 绿；主控 macOS App 执行 r1–r7 收敛——r1–r4 参数组缺失（TEST_PEER_ID/API_BASE_URL_OVERRIDE 双键）、r5 脚本 scrollable finder cast 错、r6 断言右栏 null（**根因=useSplitView 需 AppBreakpoints.wide≥900 且测试默认窗口不满足，非产品缺陷**），r7 视口 1600dp 显式注入后全绿 EXIT=0。移动壳向量脚本就绪待真机。
+- **J13.a–e → N/A（功能门，5 项）**：三锚点实证门关闭（alice 订阅 0 行、manifest 零 view_watermark、J16.c c-6 同口径）+ J27.f App 负例 11/11 PASS 支撑；门开后绑定落点已查明。
+- **J28.b（预备完成，执行挂起待真机）**：旧版（b6afea584）双端构建 PASS（worktree 仓外）、旧端单测冒烟 5/5、三向量双端方案+脚本就绪（/tmp/v22-multi/j28b-prep.md、编排 /tmp/v28b_run.sh）；Android 真机掉线（adb 空）为唯一阻塞。
+- **环境风暴留痕（2026-11-01 全链恢复）**：宿主磁盘 100%（agent 构建产物 15GB）→ 清理自产可再生产物；Docker Desktop 只读僵死 → 服务重启；PG 容器端口漂移 59260→51011 → release sys.config 两处端口修正；PG 密码三值错位 → 以节点运行时值重置；启动 migrate 死锁 → `IMBOY_AUTO_MIGRATE=false` 绕过（账本 236 无漂移）。终态 init=200、WS ACK 正常。环境注记：Docker 重启会重排动态端口，同症状按「端口映射→密码→migrate 开关」三步排查；`_rel/.../sys.config` 与 `config/sys.local.config` 端口/ws_url 已同步本地修正（均 gitignored）。
+- **本批 commit 授权范围**：Backend（J23 两测试文件+本计划文档+checklist）、App（j28b 新端脚本+j15b 双端脚本+conversation_page_test 扩展），按功能分批。
+
+#### 2026-11-01 NOT_RUN 批次二（遗留执行与单测批量：J25.a / J27.a → PASS；部分证据注记）
+
+- **J25.a → PASS（1 项）**：resource_receipt_revocation_tests 2/2 真 PG 全绿 + 三向量覆盖经修复 agent 确认（删除向量分工于 J24.b 套件）。
+- **J27.a → PASS（1 项）**：legacy_list_contract_tests 初检 3 case `error:undef`（`channel_handler:subscribed/2` 不存在=前序终止 agent 的半成品），修复 agent 改走 `handle_action/3` 先例 + 6 处 mock 修正后 **11/11 全绿**；Admin 面由 J28.d 就绪包「旧 Admin 业务代码零差异」静态结论支撑。附带：channel_scope_tests 11/11、group_scope_tests 8/8（j24_pg_calls 计数跨段清零 1 行修复已声明请 review）。
+- **部分证据注记（状态维持 NOT_RUN）**：J27.f 功能位负例 11/11 复跑绿（创建链安全收口缺口仍在）；J28.c generation 语义 9/9 绿（退出再加入旅程向量待设备）；J01–J05 创建语义 6/6 绿（旅程向量待排）；J28.a migration_v22_reentry_recovery_test 执行卡死（40 分钟无输出，已终止待归因——该文件为前序 agent 遗留，未回写任何状态）。
+- **真机依赖项继续挂起**：J28.b 双端编排、J15.b 移动壳（哨兵/编排/脚本全就绪，adb 探测为空）。
+
+#### 2026-10-31 资源阻断盘点（无法在本环境执行的验收项）
+
+按 §8.1 S5 出口口径：缺设备/身份/档位证据保留 NOT_EXECUTED/BLOCKED，不发总 PASS。下表成体系汇总当前仍无法在本环境执行、依赖外部资源的验收项；资源到位后按 §8.4 重绑定候选并重验受影响证据。本表只记录资源状态与出口影响，不判定任何 J 通过。
+
+| 阻断资源 | 涉及验收项 | 状态与理由 | 验收出口影响 |
+|---|---|---|---|
+| 第二台真机（双设备组合） | J16.c；W09.c 两设备 CAS 竞争向量 | BLOCKED——需两台真机同账号双端操作，本环境仅绑定单台 Android 真机（MRD AL00） | J16.c 保持 BLOCKED，W13 不发总 PASS |
+| iOS/Android 双平台真机 | J22.a–f | BLOCKED——各交付平台须独立收据，本环境仅单台 Android 已绑定，iOS 验收身份未绑定 | J22.a–f 保持 BLOCKED，W13 不发总 PASS |
+| 多套部署环境 | J28.d/e/f | BLOCKED——需旧App/Admin+新Backend、新App+旧Backend、新旧 Backend 同源多节点与兼容回退部署组合，本环境仅单套本地合成部署 | J28.d/e/f 保持 BLOCKED，新合同启用与 W13 不发总 PASS |
+| v38 注册前置资源 | v38 FTS 迁移注册、依赖它的直写索引用例与阅后即焚三层验收 | BLOCKED——生产连接未证明 recursive_triggers、真机 SQLCipher/二进制未验，且本地时效/远端回退/展示期到期三问题未解决 | v38 保持未注册、相关用例维持 skip，W13 不发总 PASS |
+| 生产数据源 | 生产源绑定、账号功能快照与档位证据 | BLOCKED——验收按 §9 仅允许合成隔离源，生产源未授权且不复制真实用户数据 | 依赖生产源的启用与档位证据保持 BLOCKED，W13 不发总 PASS |
+| macOS 桌面签名资源 | macOS app 替代平台面（用户裁决探索项） | BLOCKED——macos/ 平台目录与 darwin-arm64 设备均在（flutter devices 识别），但 `flutter build macos --debug` 被「No profiles for 'pub.imboy.app'」阻断（CODE_SIGNING_ALLOWED=NO 环境变量不绕过）；绕过需用户在 Xcode 登录 Apple ID 启用自动签名（外向授权）或改 macos/ 签名配置（保护区禁改） | macOS 面构建/运行证据保持 BLOCKED，W13 不发总 PASS |
+
+J18.f 另因隔离归档/账号 fixture 未具备与合成库全量回填竞态保持 NOT_RUN，详见 §9 J 清单该行与上节 2026-10-31 wave2/wave3 记录，不在此重复。
+
+#### 2026-10-31 实施收口与门禁复验（wave4 阶段）
+
+- **App 分支预存失败清零**：基线 9 败全部闭环——uiux/p1 岛产品缺陷修复（WorkspaceAccessNotifier「排队 refresh 被陈旧在途请求挡死」：`_pendingRefresh` 排队补刷 + `_active` 默认激活，App `a12f1a6c7`）+ p1 harness 经真实 access fence（`95b90af51`）+ 78 金像漂移重生成（纯 HEAD 对照证明漂移早于本轮改动，`887a19f46`；p1 目录 46/46 绿、golden 120 配置绿）；olm_pfs 环境门修复（sqlite 测试缝 `setDbUnavailableForTest` 注入受控 fail-closed 语义，`68b1f78d0`；E2EE-030 9/9 绿——宿主无 sqflite_sqlcipher 通道，不再以 MissingPluginException 意外包装通过）。主集成者 HEAD 终验 p1 目录 46/46 通过。
+- **Backend eunit 全量复验（独立一路）**：13993 过 / 38 env-gated no-skip / 0 跳（log `/tmp/v22-eunit-full-reverify.log`，约 32.6 分钟）——计数与 wave3 基准零差异；仅 1 处时序敏感用例对称翻转（`msg_offline_progress_pg_tests:369` 翻绿、`imboy_quality_wait_tests:36` 翻红，后者为 spawn+exit 先天竞态用例），非业务回归。
+- **dialyzer 门复验与基线重盘**：复验报 11 NEW/11 GONE；三步实验（还原 pb 源 → 重编 beam → 删除 beam）证明与 pb 生成物漂移无关，真根因=baseline（`532c17c83`，10-28）落后 main 侧三次 merge 三天——11 NEW 全部为 enterprise_*/cs_pg_ai/group_logic 域 main 集成存量（本轮 v2.2 提交未触碰这些模块），11 GONE 为演进修复（含本轮 `05b3adba0` 重构 msg_c2c_logic 消除的指纹）。`src/imboy_pb.erl`/`src/textguard_pb.erl` 漂移已还原至 HEAD 版（备份仓外 `/tmp/pb-drift-backup-1031/`），基线经 `check_dialyzer_baseline.sh --update` 重盘（176 指纹）并提交 `78d8f6646`，门 GREEN 无新增；11 条收录告警留待后续 review（main 集成域，超出本计划范围）。
+- **38 env-gated no-skip 自服务跑绿（wave4，2026-10-31）**：36 case 口径（36 模块）**34 绿 / 2 未决**，零代码改动，全部经 env 契约 + 合成容器 imboy-v22-pg-6b2199c0 throwaway 专库自服务达成（专库 v22_wave4_* / attv5_v22wave4_* 保留供审计；env 契约清单 TALK_OWNED 9 项、TG16/TG19/TG20 全套、V5 slot 族、DIRECTORY_SYNC、W202 Garage、TALK_HTTP_AAC_FIXTURE）。24 个 talk_record owned entry 由独立 g1-runner 跑绿（log `/tmp/rv4b_full.log`，含 T20 冻结注册表合同 pass=4）；10 模块由 wave4 runner 补绿（log `/tmp/v22-wave4/logs/`）：msg_offline_progress 13/13（wave3 失败 case r08_p2b 本轮绿，确认时序 flaky 非代码缺陷）、enterprise_directory_sync 1/1、attachment_lifecycle_v5 三失败 case（r20/w203/w301）复验绿 + hold/w401/w402/w402p 辅助全绿（真实 Garage S3 PUT/HEAD/DELETE 探针）、textguard business/integration/shadow 213/119/61 fail=0。**未决 2 项**：talk_record_gateway_http_tests、talk_record_client_audio_http_pg_tests——fixture 授权层（provision/身份/marker 校验）已全通，套件体内死等（子 VM 0% CPU、epgsql idle、httpc 无超时形态，看门狗杀）；官方运行环境为 IMBOY_ERLANG_QUALITY 的 talk_record 网关根车道（`tools/imboy_quality/imboy_quality_env.erl` 独立隔离库/网关根/spool 资源管理），按 §8.1「缺资源保留 BLOCKED、采用对应既有脚本/独立入口」口径维持 no-skip 待该车道收口。期间暴露并修复工作树 deps/cf 传递依赖缺失（erlang_migrate 传递依赖，经协调者同意自主树整目录复制补齐构建环境，未改任何受跟踪文件）。
+
+#### 2026-10-31 真机验收批次（J18.a / J19.b / J19.c，单台 Android 授权）
+
+设备：MRD-AL00（Android 真机，id XWE6R19916004085，用户已授权真机验收）；后端：本地合成部署（127.0.0.1:9800，合成容器 imboy-v22-pg-6b2199c0 库 imboy_v22_synthetic）；账号 demo_alice（uid 120619870873454592）。fixture 全部为合成数据（无真实用户数据）。脚本一脚本一用例（仓库惯例）。
+
+- **J18.a C2C 分支 PASS**（`j18a_send_retry_test.dart`）：多轮运行以最终 EXIT=0 收据计（flaky teardown 先例口径同 j18c）。断连注入法=测试内 `WebSocketService.closeSocket(permanent:true)` + `openSocket`，不依赖宿主 adb reverse 时序。断连发送不进正向态（失败可见）；恢复后无手动重试按钮（`retry-button-in-menu=false`，产品走离线队列自动补发，RETRY_QUEUE reason=server_ack 清除）→ 恰好一条气泡 + 稳定 id + 10s 再观察无重复。
+- **J18.a C2G 分支 PASS**（`j18a_c2g_send_retry_test.dart` r2 EXIT=0）：群 C fixture（120619900000000003 'J19C_DISSOLVE_GROUP'）四层齐备（群/成员/世代/timeline 种子）。断连发送不进正向态→重连自动补发→C2G_SERVER_ACK→status=11。后端 SQL 复核：`msg_c2g` 恰好 1 条（msg_id dbik1vgq8908a6cg28p0，与 WS 日志一致）+ `msg_c2g_timeline` fan-out 恰好 3 条（alice/bob/carol 三成员同 msg_id、conv_seq=2）——重试复用同一条消息、无重复写放大。
+- **J19.b 转让后退出 PASS**（`j19b_transfer_leave_test.dart` r3 EXIT=0）：fixture 群 120619900000000002 'J19B_OWNER_GROUP'（alice 群主/bob 成员）。UI：确认弹层后果说明→TransferOwnerPage 接任人单选（排除自己）→「操作成功」→双层返回→本端会话消失。SQL 五位一体：owner_uid→bob、群 status=1 未解散（不默认解散成立）、alice member 行删除、group_member_generation end_seq=1 世代关闭、会话列表资格移除机制自洽（四重 JOIN 含世代谓词）。
+- **方法论沉淀**：①合成库会话列表=消息聚合派生（`conversation_logic:list`→`msg_c2g_timeline_repo:list_by_uid`，四重 JOIN 要求 `group_member_generation` 世代行有效）——裸插 conversation 行无效，fixture 必须四层齐备；②WS 断/恢复注入在 integration test 内完成，无宿主时序依赖；③失败诊断先行（会话列表全项 dump 打印）。
+- **J19.c 解散双分支 PASS**（`j19c_dissolve_test.dart` r1 EXIT=0 + successToast=true）：取消分支（弹层双行后果说明「确定要解散本群吗？/确定删除群的聊天记录吗？」→取消→仍停群设置页、弹层关闭无副作用）+ 确认分支（解散→「操作成功」→双层返回→本端会话从列表消失）。SQL 终态复核（测试外主集成者执行）：`group` 行**物理删除**（解散为硬删除而非 status 置位）、`group_member` 清空（0 行）、`group_member_generation` 三行全部关闭 end_seq=2、close_reason='dissolve'——「成功不留旧资格」成立；alice 侧 conversation 行残留 1 条但经会话聚合资格谓词（世代 end_seq IS NULL）失效，与 J19.b 机制自洽。
+
+#### 2026-10-31 真机验收批次二（J19.d / J19.e，含「删除回弹」缺陷发现与修复）
+
+设备与部署同批次一。fixture：群 4 'J19D_CLEAR_GROUP'、群 5 'J19E_REMOVE_GROUP'（alice role=4 群主 + bob/carol role=1 + 世代行 + 各 2 条 bob 发送的 [J19D-SEED]/[J19E-SEED] 种子消息，经 RPC `msg_c2g_logic:c2g/3` 注入，仓外临时脚本 /tmp/j19de_seed.erl）。
+
+- **J19.d 清空本机记录 PASS**（`j19d_clear_messages_test.dart` r1 EXIT=0）：取消分支（「警告:/确定删除聊天记录吗？」弹层→取消→仍停群设置页无副作用）+ 确认分支（「操作成功！」→双层返回→该群会话入口仍在（清空≠隐藏）→重进聊天页本机 [J19D-SEED] 记录已清空）。SQL 五证：群行在 status=1、member 3 人 is_join、世代 3 行 end_seq 全 NULL（未关）、服务端 msg_c2g 2 条未删——清空只清本机、不误隐藏、不退群全部成立。
+- **J19.e 从列表移除：三跑定位缺陷 + 修复 + r4 重验 PASS**：
+  - r1 EXIT=1（复现段）：删除/只隐藏段过（条目消失+设备 sqlite 本机行 2 条），但复现断言败——**回弹早于注入**：旧种子消息经服务端离线重放（timeline client_ack=false pending 重投）落库即置 is_show=1，复现非注入驱动。
+  - r2 EXIT=1（删除段）：backlog 消耗后仍回弹（删除后数秒条目重现身），稳定窗假设被打破。
+  - r3 EXIT=1（决定性诊断）：群 5 timeline pending 全部 client_ack=t（无重放源）后稳定窗 1s 内即回弹，行级诊断 `conv rows=[{is_show: 0}]`——**DB 隐藏正确落库、UI 无任何消息/重建流量仍复活**=内存态复活缺陷。根因链：`message_read_sync` S2C（r3 日志 3 条 peer=群5）→ `chatProvider.markAsRead` → `findByPeerId`（无 isShow 过滤）读出隐藏行 → `replace()` 无条件写回 conversationMap（100ms 批量定时器无 isShow 校验）。
+  - **修复 App `22f64df37`**：markAsRead 对 `is_show=0` 会话跳过 replace（隐藏条目不因已读同步复活；未读/水位/回执链路不变）。
+  - r4 EXIT=0：稳定窗 30s 安静 → 宿主注入 [J19E-REAPPEAR]（msg j19ereappear0000002，RPC 注入 fan-out 3 行）→ 会话按既有消息合同复现（行级诊断 is_show=1）→ 重开聊天页历史完整 + 新消息已收。SQL 六证：群行在 status=1、member 3 人、世代 3 行开放、服务端消息 4 条完整、新消息 alice 已 ACK——只隐藏不清记录/不退群、复现遵既有消息合同全部成立。定向回归 chat+conversation 目录 745/745 绿。
+- **方法论沉淀（增量）**：①「复现必须消息驱动」的断言须先证明隐藏稳定性（稳定窗 + pending 队列 client_ack 排空 + DB 行级诊断三件套），否则离线重放/内存复活会污染归因；②RPC `msg_c2g_logic:c2g/3` 可作宿主侧确定性消息注入器（同族种子/复现触发两用）。
+
+#### 2026-10-31 真机验收批次三（J16.a / J16.b，DND 持久化与开关合同，含缺陷 A/B 修复）
+
+设备与部署同前。fixture：群 4（复用批次二）；alice-bob C2C（既有合成关系）；carol（alice-carol 服务端历史已清理，保证「无消息」前提）。
+
+- **J16.a 已有行 C2C + 群 KV 向量 PASS**（`j16a_dnd_persistence_test.dart` r20 EXIT=0）：设置页「消息免打扰」点击 → toast「已开启」→ **DB 持久化主判据**（is_muted=1）→ pop 重开设置页轮询回读 on（异步回填轮询，settle 后立即取值为假阴性根因）→ 群设置 KV 开 → 重进回读 on + 投影 is_muted=1。
+- **J16.b 开关合同 PASS**（`j16b_dnd_failure_retry_test.dart` r5 EXIT=0）：DB 锚点自洽前置（不依赖 j16a 残留）→ 关（DB→0 不假成功）→ 开（DB→1 可重试不取反，taps=1）→ 快速连点 UI↔DB 收敛一致（忙态吞没为合同内行为，如实打印 taps 与收敛值）。
+- **缺陷 A（入站 C2C 首消息静默丢弃）修复 App `9ea5b691e`**：入站 frame created_at 为 RFC3339 串 → parseModelInt 落 0 哨兵（W8-A1 有意设计）→ `_validateMessageData` 把 0 连同越界值一并拒绝 → ArgumentError → 消息丢弃。修复=0 哨兵放行、仅拒越界非 0 值；补语义等价回归钉（上下界/哨兵）。r20 起消息正常落库（isNewRow=true）。
+- **缺陷 B（insert 丢 is_muted 列）修复 App `f27ca2915`**：ConversationRepo.insert 列清单缺 is_muted——占位/新建行 DND 偏好落库即丢（列默认 0）。补列映射（列自 v17-v24 迁移既存）。r6 行级诊断 dbRow isMuted=1 验证。
+- **占位行向量 FAIL 如实留档（开放追踪）**：合成库清理 alice-carol 服务端历史后占位行（is_show=0/is_muted=1）在登录后保持隐藏 ✓（权威同步不再复活），但注入首消息后 upsert 未恢复占位行 isShow、列表不现（r4-r6 三跑一致；r20 双修复后未再单测该向量——已让位于主合同收口）。排障中证伪：非权威同步复活（服务端历史已清）、非双行、非 hide 未落库；候选根因=消息链 findByPeerId 与占位行 peer_id 表示形态未命中（需 peerInfo 形态取证）。
+- **方法论沉淀（批次三）**：①设置页断言不得在 settle 后立即取 switch 值（异步回填假阴性），须轮询等待回填；②晚到弹窗（E2EE 恢复指南/升级弹窗）遮罩会静默吞 tap——点击前调 dismiss* helper 三件套兜底；③忙态（_mutePending）吞点击是合同内行为，harness 以带退避重试点击应对并如实打印 taps；④journey 前置锚点用 DB 真源而非上轮 UI 残留（DB 锚点自洽，脚本不依赖运行顺序）。
+
+#### 2026-10-31 真机验收批次四（J17.c，缺陷 F 开放留档）
+
+设备与部署同前。fixture：alice-bob C2C；未读消息经 RPC `msg_c2c_logic:c2c/3` 注入（仓外 /tmp/j17_seed.erl，SEED_MSG_ID 区分）。
+
+- **J17.c 标已读/设待处理 FAIL（缺陷 F 开放）**：journey=注入未读→标已读→设待处理→再注入→彼此不清除。r1 曾走通前三步（j17c_01/02 截图收据：角标≥1→标已读归 0→设待处理后 DB unread 仍 0——「人工标记不写 unread=1」已证）；④「第二条未读到达」起 r2-r5 四跑复现失败：**在线直推消息落库成功（isNewRow=true、后台处理完成、CLIENT_ACK 正常）但 conversation.unread_num 停留 0**（ui/db 双值诊断每 15 轮打印，全程 0）。
+- **已证伪清单**：非消息链失败（落库/ACK/后台处理全成功）；非去重吞没（isNewRow=true）；非服务端 frame created_at 形态（在线直推透传发送者毫秒数字）；非「标已读水位遮蔽」（r5 清基线后未执行标已读仍复现）；非收面板误点聊天页（改右滑收回面板仍复现）；非权威同步覆盖（候选未排除：applyConversationSnapshot 乱序旧快照覆盖/在线与离线两条写路径的增量行为不一致）。
+- **修复方向（开放）**：定位在线直推路径 unread 增量失效点（message.dart 事务 incrementUnread 上下游），专项取证后修复重验；J17.d CAS 冲突向量依赖同一未读/待处理链路，随缺陷 F 一并重验。
+- **收口说明**：脚本与诊断已提交（App 仓 integration_test/chat/j17c_markread_pending_test.dart），J17.c 不计 PASS；批次三的 11 子项真机 PASS 状态不变。
+
+#### 2026-10-31 真机验收批次五（J17.c 修复重验 PASS，缺陷 F 证伪关闭，缺陷 G 修复）
+
+设备与部署同批次四；注入器 /tmp/j17_seed.erl 因磁盘清理删除后按同模板重建（`msg_c2c_logic:c2c/3` 直调，SEED_MSG_ID 区分轮次）；新增仓外编排驱动脚本（启动测试后在「J17C ready」/「J17C base settled」两宿主握手点自动注入，消除 r21 的外部轮询注入时序脱节）。
+
+- **J17.c 标已读/设待处理 PASS（r27 EXIT=0，全四段）**：①注入未读到达角标≥1 → ②标已读归零（UI+DB 双 0）→ ③设待处理不写 unread（DB unread 仍 0 + 旗标现 + POST 200）→ ④第二条未读到达旗标仍在 → 再标已读旗标仍在（彼此不清除）。脚本 `j17c_markread_pending_test.dart`（App `ac156458e`：侧滑 drag→find 重试 3 次+诊断、清基线取消待处理循环验证翻面、旗标判定 find.descendant(byIcon(flag_fill))）。
+- **缺陷 F 证伪关闭（「在线直推消息落库成功但 unread 不增」不存在）**：message.dart 事务内临时 UNREAD_GATE 诊断（r22-r27 六跑）门条件运行时真值全部正确——首条与第二条均为 isNew=true / unreadInc=1 / convId=1 / isUserInChat=false / isFromCurrentUser=false，unread 正常递增（诊断打印在证伪后已移除，message.dart 回到已提交态）。批次四 r2-r5 的失败实为**三层脚本假阴性**：①侧滑面板打开被忙态吞手势且无重试（③段一次 miss 即 FAIL 连锁，④段从未真正执行）；②清基线「取消待处理」只点不验——POST 全败（缺陷 G）致 pending 服务端残留 on，③段侧滑标签显示「取消待处理」，find「标记未读」全 miss；③待处理旗标渲染为 Icon(flag_fill)+semanticLabel、页面无 Text('待处理')，find.text 断言永远假阴。
+- **缺陷 G（真实产品缺陷，修复 App `0cff8eec6`）**：`ConversationApi.setManualPending` 请求体 `?expectedVersion: expectedVersion` 是 Dart null-aware **键**语义（键表达式的值作键）——expectedVersion 非 null 时 entry 变成 `{1: 1}`，int 键令 jsonEncode 抛「Converting object to an encodable object failed: _Map len:3」→ Dio 包成 unknown →「标记未读/取消待处理」POST 全链失败（服务端值永不翻转，user_setting.manual_pending 残留 on，即批次四观测到的「残留」）。修复为 value 位置 null-aware `'expected_version': ?expectedVersion`；同时修复键名 camelCase `expectedVersion` 与服务端 `<<"expected_version">>`（snake_case）不匹配——CAS 原本永不生效（W09.c J17.d 前置）。取证增强保留：SafeHttpLogInterceptor.onError 对 unknown 类型补打 err.error/message/stack 摘要（同 commit）。
+- **修复验证（r26/r27）**：POST manual_pending 全部 200；清基线「取消待处理」第一次点击即翻面（服务端 value 翻 false）；③段「标记未读」attempt0 点上（服务端 true + version 推进）；④⑤彼此不清除全过。后端 handler/user_setting_ds 无改动（缺陷全在客户端请求体构造层）。
+- **方法论沉淀（批次五）**：①宿主注入类 journey 必须把「等握手→注入」编排进同一 shell（外部轮询注入必脱节，r21 教训）；②`?expr: value` 是 null-aware 键不是「null 时省略」——请求体构造一律用 `'key': ?value` 或 if-collection；③UI 断言先查实现的渲染形态（Icon+semanticLabel ≠ Text）；④侧滑/手势类交互断言必须带重试与失败诊断（打印可见文本）。
+- **收口说明**：J17.c 计 PASS；缺陷 F 从开放清单关闭（证伪）；缺陷 G 修复随 fix `0cff8eec6`；批次三的 11 子项与批次四 J19.d/J19.e PASS 状态不变。J17.d（CAS 冲突向量）依赖的链路已随缺陷 G 修复恢复可用，可继续按计划推进。
+
+#### 2026-10-31 真机验收批次六（J17.d PASS，缺陷 I 修复，环境重建链留档）
+
+设备同前。J17.d 单机双端模拟：宿主 escript（/tmp/j17d_cas.erl，SEED_ACTION=set_true/set_false/read，直调 user_setting_ds:set_manual_pending/3 旧端语义写）+ 仓外编排脚本（/tmp/j17d_drive*.sh，双握手注入：「J17D ready」→set_true；「J17D CASE_D_DONE」→set_true+set_false **值翻转双写**——服务端同目标重试不推进版本，单次同值写无法制造 stale）。
+
+- **J17.d manual_pending CAS 冲突向量 PASS（r15 EXIT=0，A-E 五用例全过）**：A stale 冲突可见+不自动取反+冲突写不推进版本；B 已达目标仍以冲突形态可见且回读键完整+同目标重试不重复推进；C 回读刷新版本后重试原目标成功；D 同目标重试 applied=true 版本不变；E UI 冲突可见（toast）+服务端与本地旗标均不翻转。脚本 `j17d_manual_pending_cas_test.dart`（App `8c74fb6f8`）。
+- **缺陷 I（真实产品缺陷，修复 App `12325bee6`）**：`IMBoyHttpResponse.payloadAsMap` 严格 `is Map<String, dynamic>` 检查拒绝 `DefaultHttpTransformer._enrichPayload` spread 合入 envelope 顶层 extras（conflict/current）后的 **Map<dynamic, dynamic>** 运行时产物——CAS 冲突回读键全部丢失、setManualPending 恒返回 null、冲突分支客户端不可达（W09.c 冲突合同自上线即不可用，被缺陷 G 的 POST 全败掩盖）。分层真值：r10 [resp-keys]（dio 层 body 含键）→r11 [TRANSFORM]（enriched=[conflict,current]）→r12 [EXEC]（handleResponse 出口 payload 完整）→[MP_CONFLICT]（API 层空）——唯一嫌疑=payloadAsMap 类型门槛。修复=放宽 `is Map` + Map.from 浅拷贝；定向回归 http 组件+conversation_api 单测 All tests passed（48+10 skip）。取证打印（[TRANSFORM]/[EXEC]/[MP_CONFLICT]/resp-keys）修复确认后已全部移除。
+- **环境重建链（批次六期间排障留档）**：批次五后后端 release 与运行节点多次外部变动，J17.d 前置登录被拦（App initConfig GCM 解密失败 InvalidCipherTextException→拿不到 login_rsa_pub_key——用户侧指认方向正确）。排障定案三条：①重建 release 必须 `IMBOYENV=local make rel`——裸 make 打包 sys.config.example 回退模板，solidified_key 漂移即全端解密失败；②synthetic 库绑定走 **env 覆盖通道**（.env.local 追加 IMBOY_PG_HOST/PORT/DATABASE/USERNAME/PASSWORD + IMBOY_SOLIDIFIED_KEY/IV，start_node.sh set -a 加载→imboy_env boot 覆盖，不动共享 sys.local.config；该库历史绑定散落在 config/sys.runtime.config，容器重启端口漂移后失效）；③节点 daemon 启动用 scripts/start_node.sh（relx console 在无 TTY 后台自退）。运行核验命令：escript rpc 查 application env（solidified_key/pg_conf 连接参数）+ psql 网络侧 count（PGPASSWORD 直连容器映射端口）。
+- **方法论沉淀（批次六）**：①envelope 顶层 extra 键经 spread 合入后运行时类型是 Map<dynamic,dynamic>——**跨层传递的 map 字面量类型检查一律用 is Map，不用 is Map<String,dynamic>**；②分层打印法（同一真值在 4 个链路层各打一行）是定位「谁丢的键」的最短路径；③重建 release/节点前后必核验运行 env（escript rpc get_env）而非只看文件；④多会话共享主机上 _rel/容器端口/runtime.config 均可能被外部变动——**跑前核验运行态，不假设上轮环境**。
+- **收口说明**：J17.d 计 PASS；缺陷 I 修复随 `12325bee6`；J17.c/J19 系等既有 PASS 不变。W09.c 冲突合同（J17.d/e）链路自缺陷 I 修复后客户端侧完整可用；J17.e（旧客户端无 expected_version 的 bump 检测）可继续按计划推进。
+
+#### 2026-10-31 单测通道批次七（J17.a/b、J20.b、J24.a PASS；J29 测试对齐进行中）
+
+- **通道确认**：§9 NOT_RUN 子项的验收缩写（AA/AC/AE/AF/AG/AQ/AS/AV/AW…）即 App 仓库指定单测文件，子项收据=该文件内 `Jxx.y` 命名 case 跑绿（多数 case 已有等价覆盖、补命名映射+缺向量即可）。绿基座盘点：AC 13/AS 23/AQ 10/AW 5/AF 5/AA 42/AE 7 全绿；AG（group_api_test）登录环境依赖全 skip（绑真机批次）；AV 与 workspace_access_budget 红基座（见下）。
+- **J17.a/J17.b PASS**（AC 命名 case，App `2536b0560`）；**J20.b PASS**（AQ 命名 case，App `64d106e8f`）；**J24.a PASS**（creation_receipt_contract 27 case 全绿，J24.a 时钟向量原已命名覆盖）。
+- **J21.a 留档（功能门）**：产品无频道/workspace 归档状态机（C-channel 功能未交付，同 J16.a 频道订阅向量），无法构造「已归档对象」向量；待 C-channel 交付后补。
+- **J29.a-f/g 测试对齐进行中（未计 PASS）**：workspace_access_budget_test 21 失败根因=a12f1a6c7（`_active` 默认 true+pendingRefresh 补刷）改变 guard 初始化时序——build 尾 `Future.microtask(refresh)` 使 fakeAsync 同步块的 accept(0) 早于请求挂载（RangeError），resume(owner) 由「同步 refresh」变「早退+microtask」。已对齐 15 处（flushMicrotasks 插位：resume 后/build 后/多 provider 连续 resume 后/notifier(_channelTarget).resume 后），21→6；剩余 6 失败为 resume(owner) 挂起/激活语义级断言（markEnvironmentSuspended 的 _visibleOwner 匹配在新时序下的忽略路径）——**该域是 a12f1a6c7 作者（另一会话）的进行中工作，为避免撞车保留在工作树不提交**，待其对齐完成或明确移交后收 J29.a-f/g。
+- **批次七补记（J29.a-g PASS）**：workspace 两红文件对齐 a12f1a6c7 时序后全绿（App `2a31d9c31`：budget 26 case/AV 5 case；全局回归 workspace+channel+conversation+api+creation_receipt+app_core 825+165 skip 全绿）。对齐三类：①flushMicrotasks 插位（resume/构造后、多 provider 连续 resume 后、消费 details 前；widget 用例 pump 冲刷）；②初始自检索引平移（_pump 后 accept(0) 消费自检，online 重授权 accept(1)，recheck 断言顺延）；③drain 补喂（旧 owner suspend 被忽略后 accept(1) 响应按代次丢弃并自动 drain 补刷，补喂 accept(2) 恢复——合同不变，恢复路径多一跳）。J29.a/b/c/d/e/f/g 七子项计 PASS（原 NOT_RUN 行更新，含 budget 内 J29.g 命名 case——此前误判 J29.g 产品面待查，实为 budget 内既有命名 case 随 21 败一并修复）。

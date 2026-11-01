@@ -20,6 +20,12 @@
 %%% 解散删除标识与 7d 服务端过期窗口（J24.b）、规范等价/冲突（J24.c）。
 %%% 规范摘要纯函数性质单测不依赖 DB。
 %%%
+%%% v2.2 验收（J23.a/b/c 命名 case，另见文件底部「J23 验收向量」节）：
+%%%   - J23.a 提交前崩溃（事务内 exit 注入）与通知/receipt 入队失败注入
+%%%     → 全回滚、同键可首次受理；
+%%%   - J23.b 并发同键重放 → 单一逻辑受理结果（accepted+replayed）；
+%%%   - J23.c 固定效果/消息身份复算 + staging UNIQUE 重复入队兜底。
+%%%
 %%% DB 不可用时按 TEST_WITH_DB 惯例 skip（PG-absent 运行不得计为通过）。
 %%%===================================================================
 
@@ -540,6 +546,315 @@ receipt_delete_and_expiry_window_test_() ->
             cleanup_test_rows()
         end
     end).
+
+%%%===================================================================
+%%% J23 验收向量（v2.2 验收 Backend 车道，J23.a/b/c 命名 case）
+%%% 崩溃/失败注入采用仓内既有先例：meck_helper 直接 setup/cleanup
+%%%（guard 只对测试侧调用者生效，常驻 worker 打进来的调用 passthrough），
+%%% 事务语义断言全部落在真实 PG 上。
+%%%===================================================================
+
+%% J23.a（提交前崩溃）：事务体内 receipt 占位之后的非业务运行时崩溃
+%%（exit 经 meck group_repo:update_by_id_tx 注入）→ with_conn 归一为
+%% {db_exception, exit, _} 并 ROLLBACK：资源/成员/receipt/通知全部消失，
+%% 同键随后仍可首次受理一次。
+j23a_crash_mid_tx_rolls_back_all_and_key_reusable_test_() ->
+    ?TEST_WITH_DB_TIMEOUT(60, fun() ->
+        cleanup_test_rows(),
+        try
+            seed_test_rows(),
+            {ok, _} = meck_helper:setup_mock(group_repo, [
+                {'update_by_id_tx', 3, fun(_C, _Gid0, _D0) ->
+                    exit({j23a_crash_injected, title_update})
+                end}
+            ]),
+            ?assertEqual(
+                {error, <<"群创建失败，请稍后重试"/utf8>>},
+                group_logic:add_with_receipt(
+                    0,
+                    ?CREATOR_UID,
+                    2,
+                    [?MEMBER_UID_BIN],
+                    {<<"workspace">>, ?WS_ID},
+                    <<"req-j23a-crash">>,
+                    <<"崩溃名"/utf8>>,
+                    false
+                )
+            ),
+            %% 全回滚：无资源、无 receipt、无任何通知效果（staging∪msg_s2c）
+            ?assertEqual(0, scoped_group_count()),
+            ?assertEqual(0, receipt_count()),
+            ?assertEqual(0, receipt_notify_effect_count()),
+
+            %% 注入移除后同键可首次受理（占位行已随事务消失）
+            meck_helper:cleanup_mock(group_repo),
+            {ok, Gid, accepted} = group_logic:add_with_receipt(
+                0,
+                ?CREATOR_UID,
+                2,
+                [?MEMBER_UID_BIN],
+                {<<"workspace">>, ?WS_ID},
+                <<"req-j23a-crash">>,
+                <<"崩溃名"/utf8>>,
+                false
+            ),
+            ?assertEqual(1, scoped_group_count()),
+            ?assertMatch(
+                {ok, [#{<<"resource_id">> := Gid, <<"resource_deleted">> := false}]},
+                receipt_row(<<"req-j23a-crash">>)
+            ),
+            ?assertEqual(1, receipt_notify_effect_count())
+        after
+            meck_helper:cleanup_mock(group_repo),
+            cleanup_test_rows()
+        end
+    end).
+
+%% J23.a（通知入队失败）：通知 staging 失败（meck
+%% msg_store_repo:stage_s2c_tx 注入 {error,_}）→ 逻辑层 throw
+%% {abort_tx, receipt_notify_stage_failed} → 已插入的群/成员/receipt
+%% 占位全部随事务回滚；同键随后可首次受理且通知恰好一份。
+j23a_notify_stage_failure_rolls_back_receipt_test_() ->
+    ?TEST_WITH_DB_TIMEOUT(60, fun() ->
+        cleanup_test_rows(),
+        try
+            seed_test_rows(),
+            {ok, _} = meck_helper:setup_mock(msg_store_repo, [
+                {'stage_s2c_tx', 7, fun(
+                    _C, _Mid, _Act, _Pld, _Fid, _Tid, _Cat
+                ) ->
+                    {error, j23a_stage_injected}
+                end}
+            ]),
+            ?assertEqual(
+                {error, <<"群创建失败，请稍后重试"/utf8>>},
+                group_logic:add_with_receipt(
+                    0,
+                    ?CREATOR_UID,
+                    2,
+                    [?MEMBER_UID_BIN],
+                    {<<"workspace">>, ?WS_ID},
+                    <<"req-j23a-notify">>,
+                    <<"入队失败名"/utf8>>,
+                    false
+                )
+            ),
+            ?assertEqual(0, scoped_group_count()),
+            ?assertEqual(0, receipt_count()),
+            ?assertEqual(0, receipt_notify_effect_count()),
+
+            %% 注入移除后同键可首次受理
+            meck_helper:cleanup_mock(msg_store_repo),
+            {ok, Gid, accepted} = group_logic:add_with_receipt(
+                0,
+                ?CREATOR_UID,
+                2,
+                [?MEMBER_UID_BIN],
+                {<<"workspace">>, ?WS_ID},
+                <<"req-j23a-notify">>,
+                <<"入队失败名"/utf8>>,
+                false
+            ),
+            ?assertEqual(1, scoped_group_count()),
+            ?assertEqual(1, receipt_count()),
+            %% 每个初始成员恰好一份持久通知效果
+            ?assertEqual(1, msg_effect_count(Gid))
+        after
+            meck_helper:cleanup_mock(msg_store_repo),
+            cleanup_test_rows()
+        end
+    end).
+
+%% J23.b（并发重放）：同键两进程并发首次受理——advisory xact lock 在
+%% 触碰 receipt/资源锁之前串行化，后到者在事务内命中已提交占位走重放。
+%% 不变量：恰好一个资源、一份 receipt、每成员恰好一份通知；结果集合
+%% 恰为 {accepted, replayed}（不可能双 accepted）。
+j23b_concurrent_same_key_single_acceptance_test_() ->
+    ?TEST_WITH_DB_TIMEOUT(60, fun() ->
+        cleanup_test_rows(),
+        try
+            seed_test_rows(),
+            Self = self(),
+            Members = [?MEMBER_UID_BIN, ?MEMBER2_UID_BIN],
+            Fun = fun() ->
+                Result =
+                    group_logic:add_with_receipt(
+                        0,
+                        ?CREATOR_UID,
+                        2,
+                        Members,
+                        {<<"workspace">>, ?WS_ID},
+                        <<"req-j23b-race">>,
+                        <<"并发名"/utf8>>,
+                        false
+                    ),
+                Self ! {j23b_result, self(), Result}
+            end,
+            P1 = spawn(Fun),
+            P2 = spawn(Fun),
+            Results = wait_j23b_results([P1, P2], 30),
+
+            %% 两个调用都不崩、都返回完整三元组
+            ?assert(
+                lists:all(
+                    fun
+                        ({ok, _, _}) -> true;
+                        (_) -> false
+                    end,
+                    Results
+                )
+            ),
+            %% 恰好一个 accepted + 一个 replayed
+            ?assertEqual(1, length([ok || {ok, _, accepted} <- Results])),
+            ?assertEqual(1, length([ok || {ok, _, replayed} <- Results])),
+            [{ok, GidA, _}, {ok, GidB, _}] = Results,
+            ?assertEqual(GidA, GidB),
+
+            %% 单一逻辑受理结果：一资源/一 receipt/每成员一份通知
+            ?assertEqual(1, scoped_group_count()),
+            ?assertEqual(1, receipt_count()),
+            ?assertEqual(2, msg_effect_count(GidA))
+        after
+            cleanup_test_rows()
+        end
+    end).
+
+%% J23.c（固定消息/效果身份 + 崩溃恢复重投安全网）：
+%%  1. 受理提交后，通知 MsgId 由逻辑效果身份确定派生且可独立复算
+%%     （"s2c-" ++ hex(sha256(EffectKey|ToUid)[0:16])）——恢复重投永远
+%%     投递同一身份，接收方按 msg_id 去重即得一份邀请；
+%%  2. 同一 MsgId 的意外重复入队（新事务/新连接，模拟崩溃后重复恢复）
+%%     被 staging UNIQUE(type,msg_id) 兜底拒绝，不产生第二份效果；
+%%  3. 已提交未响应重放不再入队（效果计数不变）。
+j23c_fixed_effect_identity_and_duplicate_stage_rejected_test_() ->
+    ?TEST_WITH_DB_TIMEOUT(60, fun() ->
+        cleanup_test_rows(),
+        try
+            seed_test_rows(),
+            Members = [?MEMBER_UID_BIN, ?MEMBER2_UID_BIN],
+            {ok, Gid, accepted} = group_logic:add_with_receipt(
+                0,
+                ?CREATOR_UID,
+                2,
+                Members,
+                {<<"workspace">>, ?WS_ID},
+                <<"req-j23c-id">>,
+                <<"身份名"/utf8>>,
+                false
+            ),
+
+            %% 1. 效果身份复算：staging∪msg_s2c 的 msg_id 集合 == 派生集合
+            EffectKey = <<"create_group|req-j23c-id|group_member_join">>,
+            ExpectedIds =
+                [expected_receipt_msg_id(EffectKey, M) || M <- [?MEMBER_UID, ?MEMBER2_UID]],
+            ?assertEqual(
+                lists:sort(ExpectedIds), lists:sort(receipt_effect_msg_ids(Gid))
+            ),
+
+            %% 2. 重复入队兜底：同一 MsgId 再走一次独立事务 staging → 唯一
+            %% 约束拒绝（紧跟首受理执行，规避 worker 晋升+延迟清理窗口）
+            DuplicateRes = elib_pg:with_tx(fun(Conn) ->
+                msg_store_repo:stage_s2c_tx(
+                    Conn,
+                    hd(ExpectedIds),
+                    <<"group_member_join">>,
+                    #{<<"gid">> => Gid},
+                    ?CREATOR_UID,
+                    ?MEMBER_UID,
+                    elib_dt:now()
+                )
+            end),
+            ?assertMatch({error, _}, DuplicateRes),
+            ?assertEqual(2, msg_effect_count(Gid)),
+
+            %% 3. 重放（响应丢失场景）零新效果
+            ?assertEqual(
+                {ok, Gid, replayed},
+                group_logic:add_with_receipt(
+                    0,
+                    ?CREATOR_UID,
+                    2,
+                    Members,
+                    {<<"workspace">>, ?WS_ID},
+                    <<"req-j23c-id">>,
+                    <<"身份名"/utf8>>,
+                    false
+                )
+            ),
+            ?assertEqual(2, msg_effect_count(Gid))
+        after
+            cleanup_test_rows()
+        end
+    end).
+
+%%%===================================================================
+%%% J23 辅助
+%%%===================================================================
+
+%% 收集并发受理结果（J23.b）：逐进程等待，超时视为失败。
+wait_j23b_results(Pids, TimeoutSec) ->
+    Deadline = erlang:monotonic_time(millisecond) + TimeoutSec * 1000,
+    wait_j23b_results(Pids, Deadline, []).
+
+wait_j23b_results([], _Deadline, Acc) ->
+    lists:reverse(Acc);
+wait_j23b_results(Pids, Deadline, Acc) ->
+    Left = max(0, Deadline - erlang:monotonic_time(millisecond)),
+    receive
+        {j23b_result, Pid, Result} ->
+            case lists:member(Pid, Pids) of
+                true ->
+                    wait_j23b_results(Pids -- [Pid], Deadline, [Result | Acc]);
+                false ->
+                    wait_j23b_results(Pids, Deadline, Acc)
+            end
+    after Left ->
+        error({j23b_concurrent_timeout, Pids, Acc})
+    end.
+
+%% 固定效果身份 → 稳定 MsgId（J23.c）：镜像
+%% msg_s2c_ds:deterministic_msg_id/2 的派生合同（sha256 前 16 字节小写
+%% hex，前缀 "s2c-"）。派生规则变化时本用例按验收意图失败（身份固定
+%% 是 J23.c 的验收点，接收端按 msg_id 去重依赖其跨崩溃/重投稳定）。
+expected_receipt_msg_id(EffectKey, ToUid) ->
+    ToBin = integer_to_binary(ToUid),
+    <<Head:16/binary, _/binary>> = crypto:hash(sha256, <<EffectKey/binary, $|, ToBin/binary>>),
+    <<"s2c-", (string:lowercase(binary:encode_hex(Head)))/binary>>.
+
+%% 受理通知效果的 msg_id 集合（J23.c）：staging 与已晋升两侧按 msg_id
+%% 去重联合——与 worker 晋升/清理进度无关，只取决于效果身份本身。
+receipt_effect_msg_ids(Gid) ->
+    GidBin = integer_to_binary(Gid),
+    case
+        elib_pg:query(
+            <<"SELECT DISTINCT msg_id FROM (",
+                "SELECT msg_id FROM msg_store_staging WHERE from_id = $1 ",
+                "AND action = 'group_member_join' AND payload->>'gid' = $2 ", "UNION ",
+                "SELECT msg_id FROM msg_s2c WHERE from_id = $1 ",
+                "AND action = 'group_member_join' AND payload->>'gid' = $2", ") ids">>,
+            [?CREATOR_UID, GidBin]
+        )
+    of
+        {ok, Rows} -> [M || #{<<"msg_id">> := M} <- Rows];
+        Other -> error({receipt_effect_msg_ids_failed, Other})
+    end.
+
+%% 提交前失败向量（J23.a）：本夹具创作者名下不得残留任何
+%% group_member_join 通知效果（staging∪msg_s2c 联合去重计数）。
+receipt_notify_effect_count() ->
+    case
+        elib_pg:query(
+            <<"SELECT COUNT(DISTINCT msg_id) AS cnt FROM (",
+                "SELECT msg_id FROM msg_store_staging WHERE from_id = $1 ",
+                "AND action = 'group_member_join' ", "UNION ",
+                "SELECT msg_id FROM msg_s2c WHERE from_id = $1 ",
+                "AND action = 'group_member_join'", ") effects">>,
+            [?CREATOR_UID]
+        )
+    of
+        {ok, [#{<<"cnt">> := Cnt}]} -> Cnt;
+        Other -> error({receipt_notify_effect_count_failed, Other})
+    end.
 
 %%%===================================================================
 %%% W04.b 辅助

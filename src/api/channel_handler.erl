@@ -952,9 +952,9 @@ respond_channel_cursor(Req0, Uid, Kind, Ctx, BeforeId, Limit, Fetcher) ->
     end.
 
 -spec next_channel_cursor(boolean(), integer(), binary(), map(), integer()) ->
-    {ok, binary()} | {error, integer(), binary()}.
+    {ok, binary() | null} | {error, integer(), binary()}.
 next_channel_cursor(false, _Uid, _Kind, _Ctx, _Upper) ->
-    {ok, <<>>};
+    {ok, null};
 next_channel_cursor(true, Uid, Kind, Ctx, Upper) ->
     case list_cursor:issue(Uid, Kind, Ctx#{upper => Upper}, os:system_time(second)) of
         {ok, Token} -> {ok, Token};

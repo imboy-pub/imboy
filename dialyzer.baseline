@@ -92,14 +92,14 @@ channel_logic_sync.erl|The pattern {'ok', UnexpectedSubscriptions} can never mat
 cors_middleware.erl|The pattern <'undefined', _Header, Req> can never match the type <<<_:64, _:_*8>>, <<_:64, _:_*8>>, #{'body_length' := 'undefined' | non_neg_integer(), 'cert' := 'undefined' | binary(), 'has_body' := boolean(), 'headers' := #{binary() => binary() | maybe_improper_list(any(), binary() | [])}, 'host' := binary(), 'method' := binary(), 'path' := binary(), 'peer' := {{_, _, _, _} | {_, _, _, _, _, _, _, _}, char()}, 'pid' := pid(), 'port' := char(), 'qs' := binary(), 'ref' := _, 'scheme' := binary(), 'sock' := {{_, _, _, _} | {_, _, _, _, _, _, _, _}, char()}, 'streamid' := _, 'version' := atom(), 'bindings' => #{atom() => _}, 'charset' => 'undefined' | binary(), 'has_read_body' => 'true', 'has_sent_resp' => 'headers' | 'true', 'host_info' => [binary()], 'language' => 'undefined' | binary(), 'media_type' => {binary(), binary(), [any()]}, 'multipart' => 'done' | {binary(), binary()}, 'path_info' => [binary()], 'proxy_header' => #{'command' := 'local' | 'proxy', 'version' := 1 | 2, 'alpn' => binary(), 'authority' => binary(), 'dest_address' => binary() | {_, _, _, _} | {_, _, _, _, _, _, _, _}, 'dest_port' => char(), 'netns' => binary(), 'raw_tlvs' => [any()], 'src_address' => binary() | {_, _, _, _} | {_, _, _, _, _, _, _, _}, 'src_port' => char(), 'ssl' => map(), 'transport_family' => 'ipv4' | 'ipv6' | 'undefined' | 'unix', 'transport_protocol' => 'dgram' | 'stream' | 'undefined', 'unique_id' => binary()}, 'range' => {binary(), binary() | [any()]}, 'resp_body' => binary() | maybe_improper_list(binary() | maybe_improper_list(any(), binary() | []) | byte(), binary() | []) | {'sendfile', non_neg_integer(), non_neg_integer(), atom() | binary() | [any()]}, 'resp_cookies' => #{binary() | maybe_improper_list(any(), binary() | []) => binary() | maybe_improper_list(any(), binary() | [])}, 'resp_headers' => #{binary() => binary() | maybe_improper_list(any(), binary() | [])}, 'websocket_version' => 7 | 8 | 13, _ => _}>
 cs_ai_app.erl|The variable _ can never match since previous clauses completely covered the type 'allow' | 'deny' | {'scoped', 'purge' | 'seat_identity' | 'workspace'}
 cs_ai_retrieval.erl|The variable _ can never match since previous clauses completely covered the type float()
-cs_pg_ai.erl|Expression produces a value of type {'error', {'epgsql', 'empty_batch_result'} | {_, _, [{_, _} | {_, _, _} | {_, _, _, _}]} | {'error', 'debug' | 'error' | 'fatal' | 'info' | 'log' | 'notice' | 'panic' | 'warning', binary(), atom(), binary(), [{_, _}]}} | {'ok', [tuple()] | non_neg_integer()} | {'ok', non_neg_integer(), [tuple()]}, but this value is unmatched
+cs_pg_ai.erl|Expression produces a value of type {'error', 'closed' | 'sock_closed' | 'sock_error' | 'sync_required' | {'epgsql', 'empty_batch_result'} | {_, _, [any()]} | {'error', 'debug' | 'error' | 'fatal' | 'info' | 'log' | 'notice' | 'panic' | 'warning', binary(), atom(), binary(), [any()]}} | {'ok', [tuple()] | non_neg_integer()} | {'ok', non_neg_integer(), [tuple()]}, but this value is unmatched
 cs_pg_ai.erl|Function vector_literal/1 will never be called
-cs_pg_ai.erl|The pattern {'ok', N, _, _} can never match the type {'error', {'epgsql', 'empty_batch_result'} | {_, _, [any()]} | {'error', 'debug' | 'error' | 'fatal' | 'info' | 'log' | 'notice' | 'panic' | 'warning', binary(), atom(), binary(), [any()]}} | {'ok', [tuple()]}
+cs_pg_ai.erl|The pattern {'ok', N, _, _} can never match the type {'error', 'closed' | 'sock_closed' | 'sock_error' | 'sync_required' | {'epgsql', 'empty_batch_result'} | {_, _, [any()]} | {'error', 'debug' | 'error' | 'fatal' | 'info' | 'log' | 'notice' | 'panic' | 'warning', binary(), atom(), binary(), [any()]}} | {'ok', [tuple()]}
+cs_pg_ai.erl|The pattern {'ok', _, _, _} can never match the type {'error', 'closed' | 'sock_closed' | 'sock_error' | 'sync_required' | {'epgsql', 'empty_batch_result'} | {_, _, [any()]} | {'error', 'debug' | 'error' | 'fatal' | 'info' | 'log' | 'notice' | 'panic' | 'warning', binary(), atom(), binary(), [any()]}}
 cs_pg_ai.erl|The pattern {'ok', _, _, _} can never match the type {'error', _} | {'ok', [tuple()] | non_neg_integer()} | {'ok', non_neg_integer(), [tuple()]}
-cs_pg_ai.erl|The pattern {'ok', _, _, _} can never match the type {'error', {'epgsql', 'empty_batch_result'} | {_, _, [{_, _} | {_, _, _} | {_, _, _, _}]} | {'error', 'debug' | 'error' | 'fatal' | 'info' | 'log' | 'notice' | 'panic' | 'warning', binary(), atom(), binary(), [{_, _}]}}
 cs_pg_ai.erl|The variable _ can never match since previous clauses completely covered the type #{'attempt' := _, 'context_watermark' := _, 'conversation_id' := _, 'deadline_at' := _, 'generation_epoch' := _, 'lease_owner' := _, 'seat_identity_id' := _, 'session_id' := _, 'status' := _, 'version' := _, 'workspace_id' := _}
 eb_asset_direct.erl|The pattern {'error', _} can never match the type {'ok', <<_:64, _:_*8>>}
-eb_pg_asset_meta.erl|Expression produces a value of type [#{binary() => _}], but this value is unmatched
+eb_pg_asset_meta.erl|Expression produces a value of type [map()], but this value is unmatched
 eb_pg_audit.erl|Guard test is_integer (Id :: tuple()) can never succeed
 eb_pg_purge.erl|The pattern [Failure = #{organization_id := Org, workspace_id := Ws} | _] can never match the type []
 elib_password.erl|Guard test is_list (Ciphertext :: binary()) can never succeed
@@ -108,13 +108,13 @@ elib_password.erl|The pattern <Plaintext, 'hmac_sha512', Salt, Ciphertext> can n
 elib_req.erl|The variable Ip can never match since previous clauses completely covered the type binary()
 enterprise_asset_handler.erl|The pattern 'false' can never match the type 'true'
 enterprise_asset_logic.erl|The variable _ can never match since previous clauses completely covered the type integer()
-enterprise_asset_repo.erl|Guard test is_integer (N :: [#{binary() => _}]) can never succeed
-enterprise_audit_event_repo.erl|Guard test is_integer (Id :: #{binary() => _}) can never succeed
-enterprise_audit_event_repo.erl|The pattern {Id} can never match the type #{binary() => _}
-enterprise_directory_source_config_logic.erl|The pattern 'ok' can never match the type {'error', 'audit_not_inserted' | 'closed' | 'confirmed_human_owner_required' | 'directory_membership_not_managed' | 'directory_source_not_configured' | 'insert_empty_result' | 'invalid_credential' | 'key_conflict' | 'not_found' | 'sock_closed' | 'sock_error' | 'sync_required' | {'invalid_organization_id', _} | {'error', 'debug' | 'error' | 'fatal' | 'info' | 'log' | 'notice' | 'panic' | 'warning', binary(), atom(), binary(), [any()]}} | {'ok', [map()] | integer() | map()}
+enterprise_asset_repo.erl|Guard test is_integer (N :: [map()]) can never succeed
+enterprise_audit_event_repo.erl|Guard test is_integer (Id :: map()) can never succeed
+enterprise_audit_event_repo.erl|The pattern {Id} can never match the type map()
+enterprise_directory_source_config_logic.erl|The pattern 'ok' can never match the type {'error', 'audit_not_inserted' | 'closed' | 'confirmed_human_owner_required' | 'directory_membership_not_managed' | 'directory_source_not_configured' | 'insert_empty_result' | 'invalid_credential' | 'key_conflict' | 'not_found' | 'sock_closed' | 'sock_error' | 'sync_required' | {'epgsql', 'empty_batch_result'} | {'invalid_organization_id', _} | {_, _, [any()]} | {'error', 'debug' | 'error' | 'fatal' | 'info' | 'log' | 'notice' | 'panic' | 'warning', binary(), atom(), binary(), [any()]}} | {'ok', [map()] | integer() | map()}
 enterprise_oa_sso_exchange_handler.erl|The pattern {'error', _Other} can never match since previous clauses completely covered the type {'error', binary()} | {'ok', map()}
-enterprise_oa_sso_logic.erl|The pattern {'ok', _Other} can never match the type {'error', 'closed' | 'sock_closed' | 'sock_error' | 'sync_required' | {'error', 'debug' | 'error' | 'fatal' | 'info' | 'log' | 'notice' | 'panic' | 'warning', binary(), atom(), binary(), [{_, _}]}}
-enterprise_webhook_repo.erl|The pattern {'ok', _N} can never match the type {'error', 'closed' | 'sock_closed' | 'sock_error' | 'sync_required' | #error{severity :: 'debug' | 'error' | 'fatal' | 'info' | 'log' | 'notice' | 'panic' | 'warning', code :: binary(), codename :: atom(), message :: binary(), extra :: [{_, _}]}}
+enterprise_oa_sso_logic.erl|The pattern {'ok', _Other} can never match the type {'error', 'closed' | 'sock_closed' | 'sock_error' | 'sync_required' | {'epgsql', 'empty_batch_result'} | {_, _, [any()]} | {'error', 'debug' | 'error' | 'fatal' | 'info' | 'log' | 'notice' | 'panic' | 'warning', binary(), atom(), binary(), [any()]}}
+enterprise_webhook_repo.erl|The pattern {'ok', _N} can never match the type {'error', 'closed' | 'sock_closed' | 'sock_error' | 'sync_required' | {'epgsql', 'empty_batch_result'} | {_, _, [any()]} | #error{severity :: 'debug' | 'error' | 'fatal' | 'info' | 'log' | 'notice' | 'panic' | 'warning', code :: binary(), codename :: atom(), message :: binary(), extra :: [any()]}}
 feedback_handler.erl|The pattern {'error', Reason} can never match the type 'ok'
 finance_adm_logic.erl|The pattern {'rollback', Reason} can never match the type {'error', _}
 group_album_handler.erl|The pattern {'error', 980} can never match the type {'ok', [{'error', _} | {'ok', map()}]}
@@ -127,6 +127,7 @@ group_discovery_handler.erl|The pattern {'error', Reason} can never match the ty
 group_ds.erl|The pattern {'error', Reason2} can never match the type {'ok', integer()}
 group_file_handler.erl|Function bind/2 will never be called
 group_handler.erl|The pattern {'error', 'workspace_membership_required'} can never match the type {'error', binary()}
+group_logic.erl|The pattern {'error', Reason} can never match the type {'ok', integer()}
 imboy_license.erl|The variable _ can never match since previous clauses completely covered the type integer()
 imboy_syn.erl|Expression produces a value of type 'false' | 'ok' | non_neg_integer(), but this value is unmatched
 imboy_syn.erl|Expression produces a value of type ['ok' | reference()], but this value is unmatched
@@ -142,7 +143,6 @@ moderation_shadow.erl|Expression produces a value of type atom() | ets:tid(), bu
 moment_logic.erl|The pattern <_AuthorUid, _PostId, _AtUids, _Post> can never match since previous clauses completely covered the type <integer(), integer(), [pos_integer()], map()>
 moment_logic_notify.erl|Guard test is_integer (Uid :: map()) can never succeed
 moment_logic_notify.erl|The variable _ can never match since previous clauses completely covered the type [map()]
-msg_c2c_logic.erl|Expression produces a value of type 'ok' | {'error', _}, but this value is unmatched
 msg_c2c_logic.erl|Function c2c_conv_key/2 will never be called
 msg_c2c_logic.erl|Function maybe_webhook_push/4 will never be called
 msg_c2g_logic.erl|Expression produces a value of type 'ok' | {'error', _}, but this value is unmatched

@@ -31,9 +31,11 @@ setup() ->
         elib_oss
     ],
     lists:foreach(fun(M) -> meck:new(M, [non_strict, no_link]) end, Modules),
-    %% with_tx 与 with_deadlock_retry_tx（d4bef2e9e 起 queue_pending 改用
-    %% 后者）同合同，均用 transaction/1 替身；不替身后者会在 mock 模块上
-    %% 抛 undef（46932c1c5 同型修复）。
+    %% d4bef2e9e 起 pending 清理事务入口改为可死锁重试事务
+    %% （elib_pg:with_deadlock_retry_tx/1，40P01 确认回滚才重试）；
+    %% orphan 清理（queue_orphan）仍走 with_tx/1。真·重试路径由
+    %% elib_pg_deadlock_retry_tests 覆盖，此处两个入口共用 transaction/1
+    %% 桩（abort_tx → {error, Reason}，与新入口返回契约一致）。
     meck:expect(elib_pg, with_tx, fun transaction/1),
     meck:expect(elib_pg, with_deadlock_retry_tx, fun transaction/1),
     meck:expect(attach_pending_repo, list_expired, fun(_) -> {ok, []} end),

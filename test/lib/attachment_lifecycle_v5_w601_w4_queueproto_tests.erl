@@ -35,9 +35,10 @@ refuse_nonempty_queues() ->
         {w601_queue_not_isolated, "enterprise_asset_delete_queue"},
         ?P:reset_eb(conn)
     ),
-    %% refuse 路径不再是"零 q 调用"：settle_active 的守卫 UPDATE（drain 每表
-    %% 一次，见 queueproto:settle_active/2）是合法写；本组断言保护的真实语义
-    %% 是不提交/不回滚事务、不 ACK——清空动作在队列未隔离时全被拒绝。
+    %% 484362542 起 reset=settle_active+require_empty：隔离断言失败前
+    %% 允许对两队列各发一次收敛 UPDATE；事务协议语句与 ACK 仍禁止
+    %% （原"不得启动协议/不得误 ACK"语义不变，只是 UPDATE 放行）。
+    ?assertEqual(0, meck:num_calls(?X, q, [conn, "BEGIN"])),
     ?assertEqual(0, meck:num_calls(?X, q, [conn, "COMMIT"])),
     ?assertEqual(0, meck:num_calls(?X, q, [conn, "ROLLBACK"])),
     ?assertEqual(0, meck:num_calls(attachment_gc_repo, v5_ack, '_')),

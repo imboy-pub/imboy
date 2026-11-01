@@ -11,6 +11,7 @@
 -export([list_by_uid/1]).
 %% G3 thin wrappers for channel_logic_*
 -export([is_subscribed/2]).
+-export([subscription_status/2]).
 -export([count_unread/1]).
 -export([count_unread_channels/1]).
 -export([list_unread_by_uid/1]).
@@ -27,6 +28,10 @@ list_by_uid(Uid) ->
 
 -spec is_subscribed(integer(), integer()) -> boolean().
 is_subscribed(ChannelId, Uid) -> channel_subscription_repo:is_subscribed(ChannelId, Uid).
+
+-spec subscription_status(integer(), integer()) -> {ok, boolean()} | {error, term()}.
+subscription_status(ChannelId, Uid) ->
+    channel_subscription_repo:subscription_status(ChannelId, Uid).
 
 -spec count_unread(integer()) -> integer().
 count_unread(Uid) -> channel_subscription_repo:count_unread(Uid).
