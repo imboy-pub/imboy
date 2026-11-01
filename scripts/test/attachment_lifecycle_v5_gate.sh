@@ -1021,10 +1021,25 @@ json.dump({"kind": kind, "resource_id": resource, "process_id": int(pid),
 PYC
 }
 
-w602_run_flutter() { # $1 app $2 cdir $3 driver $4 device $5 phase(put|restore)
-  local app="$1" cdir="$2" driver="$3" device="$4" phase="$5" pid rc dpid=""
-  local out err prov
-  if [ "$phase" = "restore" ]; then
+w602_run_flutter() { # $1 app $2 cdir $3 driver $4 device $5 phase(put|restore|"") $6 tag(leaf scenario or "")
+  local app="$1" cdir="$2" driver="$3" device="$4" phase="$5" tag="${6:-}" pid rc dpid=""
+  local out err prov label="$driver"
+  if [ -n "$tag" ]; then
+    # Per-leaf scenario runs own leaf-named artifacts: the put phase is
+    # suffixed, while the restore phase (or the single-run invocation) owns
+    # the leaf's final report; the merge step later combines the per-leaf
+    # reports into the adapter-visible per-driver artifact.
+    label="$driver-$tag"
+    if [ "$phase" = "put" ]; then
+      out="$cdir/flutter-integration-$label-put.jsonl"
+      err="$cdir/flutter-integration-$label-put.err"
+      prov="$cdir/device-provenance-$tag-put.json"
+    else
+      out="$cdir/flutter-integration-$label.jsonl"
+      err="$cdir/flutter-integration-$label.err"
+      prov="$cdir/device-provenance-$tag.json"
+    fi
+  elif [ "$phase" = "restore" ]; then
     # The restore phase is the final verification session; it owns the
     # unsuffixed artifact names consumed by the measured adapter.
     out="$cdir/flutter-integration-$driver.jsonl"
@@ -1036,7 +1051,7 @@ w602_run_flutter() { # $1 app $2 cdir $3 driver $4 device $5 phase(put|restore)
     prov="$cdir/device-provenance-$phase.json"
   fi
   rm -f "$cdir/device-provenance.json" "$prov"
-  ( cd "$app" && v5_w602_flutter_command "$driver" "$device" "$phase" ) \
+  ( cd "$app" && v5_w602_flutter_command "$driver" "$device" "$phase" "$(w602_scenario_define "$tag")" ) \
     > "$out" 2> "$err" &
   pid=$!
   while kill -0 "$pid" 2>/dev/null; do
@@ -1053,7 +1068,7 @@ w602_run_flutter() { # $1 app $2 cdir $3 driver $4 device $5 phase(put|restore)
   done
   wait "$pid"
   rc=$?
-  echo "W6-02 CMD[flutter-$driver-$phase] cwd=$app device=$device exit=$rc device_pid=${dpid:-unobserved}" >> "$cdir/raw.log"
+  echo "W6-02 CMD[flutter-$label${phase:+-$phase}] cwd=$app device=$device exit=$rc device_pid=${dpid:-unobserved}" >> "$cdir/raw.log"
   if [ -z "$dpid" ]; then
     echo "BLOCKED_EXTERNAL: device-side application process not observed" >&2
     return 75
@@ -1123,9 +1138,11 @@ try:
                 payload = json.dumps(json.loads(line), ensure_ascii=False)
             except ValueError:
                 payload = line
-            found = re.search(r"V5_KILL_READY run=\S+ task=\S+ pid=([0-9]+)", payload)
+            found = re.search(
+                r"V5_KILL_READY run=\S+ task=\S+( scenario=\S+)? pid=([0-9]+)",
+                payload)
             if found:
-                pid = found.group(1)
+                pid = found.group(2)
 except OSError:
     pass
 print(pid)
@@ -1143,9 +1160,9 @@ w602_wait_pid_gone() { # $1 device $2 pid -> 0 once pidof no longer reports it
   return 30
 }
 
-w602_write_killed_marker() { # $1 device $2 cdir $3 run $4 task $5 pid
-  local device="$1" cdir="$2" run="$3" task="$4" pid="$5" name host_mark
-  name="v5-killed-$run-$task.mark"
+w602_write_killed_marker() { # $1 device $2 cdir $3 run $4 task $5 pid $6 tag(or "")
+  local device="$1" cdir="$2" run="$3" task="$4" pid="$5" tag="${6:-}" name host_mark
+  name="v5-killed-$run-$task${tag:+-$tag}.mark"
   host_mark="$cdir/$name"
   printf 'killed run=%s task=%s pid=%s at=%s\n' "$run" "$task" "$pid" "$(date +%s)" > "$host_mark"
   if ! adb -s "$device" push "$host_mark" "/data/local/tmp/$name" >/dev/null 2>&1; then
@@ -1163,10 +1180,10 @@ w602_write_killed_marker() { # $1 device $2 cdir $3 run $4 task $5 pid
   return 0
 }
 
-w602_flutter_two_phase() { # $1 app $2 cdir $3 driver $4 device $5 run $6 task
-  local app="$1" cdir="$2" driver="$3" device="$4" run="$5" task="$6" kpid=""
-  w602_run_flutter "$app" "$cdir" "$driver" "$device" put || return $?
-  kpid="$(w602_kill_ready_pid "$cdir/flutter-integration-$driver-put.jsonl")"
+w602_flutter_two_phase() { # $1 app $2 cdir $3 driver $4 device $5 run $6 task $7 tag(or "")
+  local app="$1" cdir="$2" driver="$3" device="$4" run="$5" task="$6" tag="${7:-}" kpid=""
+  w602_run_flutter "$app" "$cdir" "$driver" "$device" put "$tag" || return $?
+  kpid="$(w602_kill_ready_pid "$cdir/flutter-integration-$driver${tag:+-$tag}-put.jsonl")"
   if [ -z "$kpid" ]; then
     echo "NO_GO: V5_KILL_READY pid missing from phase-A (put) output" >&2
     return 30
@@ -1179,10 +1196,145 @@ w602_flutter_two_phase() { # $1 app $2 cdir $3 driver $4 device $5 run $6 task
     echo "NO_GO: killed pid $kpid still observed on $device" >&2
     return 30
   fi
-  echo "W6-02 KILL -9 pid=$kpid device=$device driver=$driver" >> "$cdir/raw.log"
-  w602_write_killed_marker "$device" "$cdir" "$run" "$task" "$kpid" || return $?
-  w602_run_flutter "$app" "$cdir" "$driver" "$device" restore || return $?
+  echo "W6-02 KILL -9 pid=$kpid device=$device driver=$driver${tag:+ tag=$tag}" >> "$cdir/raw.log"
+  w602_write_killed_marker "$device" "$cdir" "$run" "$task" "$kpid" "$tag" || return $?
+  w602_run_flutter "$app" "$cdir" "$driver" "$device" restore "$tag" || return $?
   return 0
+}
+
+# ---------------- W6-02 leaf-scenario wiring (flutter-recovery-real) ---------
+# The run contract expands W6-02/flutter-recovery-real into 14 leaf scenarios
+# per storage driver. Every leaf is executed under its own name so the
+# measured adapter binds exactly one executed test per leaf (find_flutter_test
+# requires a unique test title): the gate injects
+# --dart-define=V5_E2E_SCENARIO=<leaf> and the dart suite names the registered
+# testWidgets after the injected leaf. Two archived leaves fold onto their
+# implementation flows inside the dart suite while keeping the leaf-name test
+# identity: restart_before_put executes the kill_after_registered flow and
+# same_key_same_ciphertext_after_restart executes the kill_after_put flow in
+# scenario mode. The kill_after_put leaf maps to the frozen empty-scenario
+# argv: its protocol IS the empty-scenario two-phase flow registered as
+# 'kill_after_put'. After all leaves of a driver pass, their leaf-named
+# reports are merged (transport-level id renumbering only; measured events
+# stay verbatim) into flutter-integration-<driver>.jsonl, the artifact name
+# consumed by the measured adapter and the W6-02 receipt raw evidence.
+w602_scenario_define() { # $1 leaf -> stdout: V5_E2E_SCENARIO value ("" = frozen argv)
+  case "$1" in
+    kill_after_put|'') printf '' ;;
+    *) printf '%s' "$1" ;;
+  esac
+}
+
+w602_scenario_two_phase() { # $1 leaf -> 0 when the leaf runs put/restore phases
+  case "$1" in
+    kill_after_registered|kill_after_put|kill_after_confirm|\
+presign_response_lost|expired_capability_resume|authorization_revoked|\
+restart_before_put|same_key_same_ciphertext_after_restart) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
+w602_flutter_scenario_suite() { # $1 app $2 cdir $3 driver $4 device $5 run $6 task
+  local app="$1" cdir="$2" driver="$3" device="$4" run="$5" task="$6"
+  local scenario tags=""
+  # Frozen contract leaf order (expected_leaf_matrix["W6-02/flutter-recovery-real"]).
+  while IFS= read -r scenario; do
+    [ -n "$scenario" ] || continue
+    tags="$tags $scenario"
+    if w602_scenario_two_phase "$scenario"; then
+      w602_flutter_two_phase "$app" "$cdir" "$driver" "$device" "$run" "$task" "$scenario" \
+        || return $?
+    else
+      w602_run_flutter "$app" "$cdir" "$driver" "$device" "" "$scenario" || return $?
+    fi
+  done <<'W602_SCENARIO_LEAVES'
+kill_after_registered
+kill_after_put
+kill_after_confirm
+unknown_message_commit
+user_switch
+presign_response_lost
+restart_before_put
+expired_capability_resume
+account_switch_late_callback
+workspace_switch_late_callback
+authorization_revoked
+durable_checkpoint_failure
+same_key_same_ciphertext_after_restart
+lost_cipher_material_requires_new_task
+W602_SCENARIO_LEAVES
+  # shellcheck disable=SC2086
+  w602_merge_flutter_reports "$cdir" "$driver" $tags || return 30
+}
+
+w602_merge_flutter_reports() { # $1 cdir $2 driver $3... leaf tags (contract order)
+  local cdir="$1" driver="$2"; shift 2
+  [ $# -ge 1 ] || { echo "NO_GO: scenario merge needs at least one leaf report" >&2; return 30; }
+  python3 - "$cdir" "$driver" "$@" <<'PYC'
+import json, os, sys
+
+cdir, driver, tags = sys.argv[1], sys.argv[2], sys.argv[3:]
+out_path = os.path.join(cdir, "flutter-integration-%s.jsonl" % driver)
+DELTA = 10000  # per-segment id offset; one flutter run stays far below this
+ID_KEYS = ("id", "suiteID", "testID", "groupID", "groupIDs")
+
+
+def remap(value, delta):
+    if isinstance(value, dict):
+        mapped = {}
+        for key, item in value.items():
+            if key in ID_KEYS and isinstance(item, int):
+                item = item + delta
+            elif (key in ID_KEYS and isinstance(item, list)
+                    and all(isinstance(part, int) for part in item)):
+                item = [part + delta for part in item]
+            else:
+                item = remap(item, delta)
+            mapped[key] = item
+        return mapped
+    if isinstance(value, list):
+        return [remap(part, delta) for part in value]
+    return value
+
+
+lines = []
+for index, tag in enumerate(tags):
+    path = os.path.join(cdir, "flutter-integration-%s-%s.jsonl" % (driver, tag))
+    if not os.path.isfile(path) or os.path.getsize(path) == 0:
+        sys.stderr.write("NO_GO: scenario report missing or empty: %s\n" % path)
+        sys.exit(30)
+    delta = DELTA * (index + 1)
+    finished = False
+    with open(path, encoding="utf-8", errors="replace") as stream:
+        for raw in stream:
+            line = raw.strip()
+            if not line.startswith("{"):
+                continue
+            try:
+                event = json.loads(line)
+            except ValueError:
+                sys.stderr.write("NO_GO: unparsable line in %s\n" % path)
+                sys.exit(30)
+            event = remap(event, delta)
+            if event.get("type") == "done":
+                if event.get("success") is not True:
+                    sys.stderr.write(
+                        "NO_GO: scenario %s report finished unsuccessfully\n" % tag)
+                    sys.exit(30)
+                finished = True
+            lines.append(json.dumps(event, ensure_ascii=False))
+    if not finished:
+        sys.stderr.write(
+            "NO_GO: scenario %s report has no successful done event\n" % tag)
+        sys.exit(30)
+if not lines:
+    sys.stderr.write("NO_GO: scenario merge produced no events\n")
+    sys.exit(30)
+tmp = out_path + ".tmp"
+with open(tmp, "w", encoding="utf-8") as handle:
+    handle.write("\n".join(lines) + "\n")
+os.replace(tmp, out_path)
+PYC
 }
 
 w602_backend_start() { # $1 cdir -> starts W602_BACKEND_START_CMD, sets W602_STARTED_BACKEND_PID
@@ -1332,7 +1484,11 @@ w602_case_impl() { # $1 case_id $2 cdir
   local driver
   for driver in garage disk; do
     if [ $need_flutter -eq 1 ]; then
-      w602_flutter_two_phase "$app" "$cdir" "$driver" "$device" "$phase_run" "$phase_task" || { rc=$?; return "$rc"; }
+      if [ "$cid" = "W6-02/flutter-recovery-real" ]; then
+        w602_flutter_scenario_suite "$app" "$cdir" "$driver" "$device" "$phase_run" "$phase_task" || { rc=$?; return "$rc"; }
+      else
+        w602_flutter_two_phase "$app" "$cdir" "$driver" "$device" "$phase_run" "$phase_task" || { rc=$?; return "$rc"; }
+      fi
     fi
     if [ $need_admin -eq 1 ]; then
       w602_run_admin "$admin" "$cdir" "$driver" || { rc=$?; return "$rc"; }

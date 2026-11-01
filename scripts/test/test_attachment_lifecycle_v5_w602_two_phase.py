@@ -2,6 +2,7 @@ import json
 import os
 from pathlib import Path
 import subprocess
+import sys
 import tempfile
 import unittest
 
@@ -33,15 +34,27 @@ exit 0
 FLUTTER_STUB = '''#!/usr/bin/env python3
 import os, sys, time
 time.sleep(3)
-phase = ""
+phase = scenario = ""
 for arg in sys.argv[1:]:
     if arg.startswith("--dart-define=V5_E2E_PHASE="):
         phase = arg.rsplit("=", 1)[1]
+    if arg.startswith("--dart-define=V5_E2E_SCENARIO="):
+        scenario = arg.rsplit("=", 1)[1]
 run = os.environ["W602_E2E_RUN_ID"]
 task = os.environ["W602_E2E_UPLOAD_ID"]
+name = scenario or "kill_after_put"
+print('{"type":"start","pid":%d,"time":0}' % os.getpid())
+print('{"type":"suite","time":0,"suite":{"id":0,"platform":"android",'
+      '"path":"integration_test/attachment_lifecycle_v5_test.dart"}}')
+print('{"type":"testStart","time":1,"test":{"id":3,"name":"%s",'
+      '"suiteID":0,"groupIDs":[]}}' % name)
 if phase == "put" and os.environ.get("V5_STUB_EMIT_KILL_READY", "1") == "1":
-    print('{"type":"print","message":"V5_KILL_READY run=%s task=%s pid=4242"}' % (run, task))
-print('{"type":"testDone","successful":1}')
+    tail = " scenario=%s" % name if scenario else ""
+    print('{"type":"print","testID":3,"message":"V5_KILL_READY run=%s '
+          'task=%s%s pid=4242"}' % (run, task, tail))
+print('{"type":"testDone","testID":3,"result":"success","skipped":false,'
+      '"hidden":false,"time":5}')
+print('{"type":"done","success":true,"time":6}')
 '''
 
 
@@ -136,6 +149,148 @@ class W602TwoPhaseTest(unittest.TestCase):
         self.assertEqual(0, result.returncode, result.stderr)
         self.assertIn("run-as copy of the killed marker",
                       (self.cdir / "raw.log").read_text())
+
+    # ---------------- leaf-scenario wiring (flutter-recovery-real) ----------
+
+    def test_scenario_define_folds_kill_after_put_to_frozen_argv(self):
+        script = self.script_base + (
+            '\nfor leaf in kill_after_registered kill_after_put '
+            'restart_before_put same_key_same_ciphertext_after_restart ""; do '
+            'printf "[%s]" "$(w602_scenario_define "$leaf")"; done; printf "\n"\n')
+        result = subprocess.run(["bash", "-c", script], env=self.env,
+                                capture_output=True, text=True, timeout=15)
+        self.assertEqual(0, result.returncode, result.stderr)
+        self.assertEqual("[kill_after_registered][][restart_before_put]"
+                         "[same_key_same_ciphertext_after_restart][]\n",
+                         result.stdout)
+
+    def test_scenario_two_phase_classification_covers_the_eight_kill_leaves(self):
+        script = self.script_base + (
+            '\nfor leaf in kill_after_put restart_before_put '
+            'same_key_same_ciphertext_after_restart user_switch '
+            'lost_cipher_material_requires_new_task; do '
+            'w602_scenario_two_phase "$leaf" && printf "two:%s " "$leaf" '
+            '|| printf "single:%s " "$leaf"; done; printf "\n"\n')
+        result = subprocess.run(["bash", "-c", script], env=self.env,
+                                capture_output=True, text=True, timeout=15)
+        self.assertEqual(0, result.returncode, result.stderr)
+        self.assertEqual(
+            "two:kill_after_put two:restart_before_put "
+            "two:same_key_same_ciphertext_after_restart "
+            "single:user_switch single:lost_cipher_material_requires_new_task \n",
+            result.stdout)
+
+    def test_tagged_two_phase_writes_leaf_named_artifacts_and_marker(self):
+        result = self.run_two_phase(
+            'TAG=restart_before_put\n'
+            'w602_flutter_two_phase "%s" "%s" garage stub-device '
+            '"$W602_E2E_RUN_ID" "$W602_E2E_UPLOAD_ID" "$TAG"; rc=$?\nexit "$rc"\n'
+            % (ROOT, self.cdir))
+        self.assertEqual(0, result.returncode, result.stderr)
+        raw_log = (self.cdir / "raw.log").read_text()
+        self.assertIn("CMD[flutter-garage-restart_before_put-put]", raw_log)
+        self.assertIn("CMD[flutter-garage-restart_before_put-restore]", raw_log)
+        # ... while the restore phase owns the leaf's final (phase-less)
+        # report file, exactly like the untagged flow owns the driver name.
+        self.assertTrue(
+            (self.cdir / "flutter-integration-garage-restart_before_put.jsonl")
+            .exists())
+        self.assertIn("KILL -9 pid=4242 device=stub-device driver=garage "
+                      "tag=restart_before_put", raw_log)
+        self.assertIn("KILLED_MARKER v5-killed-%s-%s-restart_before_put.mark"
+                      % ("v5-e2e-two-phase-1",
+                         "a1234567-1234-4123-8123-123456789012"), raw_log)
+        self.assertTrue(
+            (self.cdir / "flutter-integration-garage-restart_before_put-put.jsonl")
+            .exists())
+        leaf_report = (
+            self.cdir / "flutter-integration-garage-restart_before_put.jsonl"
+        ).read_text()
+        self.assertIn('"name":"restart_before_put"', leaf_report)
+        # The put-phase announcement carries the leaf name for the host
+        # parser, and the leaf-named report registers the leaf-named test.
+        put_report = (
+            self.cdir
+            / "flutter-integration-garage-restart_before_put-put.jsonl"
+        ).read_text()
+        self.assertIn("V5_KILL_READY run=v5-e2e-two-phase-1 "
+                      "task=a1234567-1234-4123-8123-123456789012 "
+                      "scenario=restart_before_put pid=4242", put_report)
+        # The frozen (untagged) artifact names must not be produced by a
+        # tagged run; only the merge step may write them.
+        self.assertFalse((self.cdir / "flutter-integration-garage.jsonl").exists())
+
+    def test_kill_ready_pid_parses_scenario_tagged_announcement(self):
+        jsonl = self.cdir / "tagged.jsonl"
+        jsonl.write_text("\n".join([
+            '{"type":"start","pid":4242}',
+            '{"type":"print","message":"V5_KILL_READY run=v5-e2e-x '
+            'task=t scenario=restart_before_put pid=1723"}',
+        ]))
+        script = self.script_base + (
+            '\nw602_kill_ready_pid "%s";\n' % jsonl)
+        result = subprocess.run(["bash", "-c", script], env=self.env,
+                                capture_output=True, text=True, timeout=15)
+        self.assertEqual("1723\n", result.stdout)
+
+    def test_merge_renumbers_ids_and_adapter_suite_binds_each_leaf_once(self):
+        sys.path.insert(0, str(ROOT / "scripts" / "test"))
+        import attachment_lifecycle_v5_adapter_w6_02_support as S2
+
+        leaves = ["kill_after_registered", "user_switch", "restart_before_put"]
+        for index, leaf in enumerate(leaves):
+            events = [
+                {"type": "start", "pid": 100 + index, "time": 0},
+                {"type": "suite", "time": 0, "suite": {
+                    "id": 0, "platform": "android",
+                    "path": "integration_test/attachment_lifecycle_v5_test.dart"}},
+                {"type": "testStart", "time": 1, "test": {
+                    "id": 3, "name": leaf, "suiteID": 0, "groupIDs": []}},
+                {"type": "testDone", "testID": 3, "result": "success",
+                 "skipped": False, "hidden": False, "time": 10 + index},
+                {"type": "done", "success": True, "time": 12 + index},
+            ]
+            path = self.cdir / ("flutter-integration-garage-%s.jsonl" % leaf)
+            path.write_text("\n".join(json.dumps(event) for event in events))
+        script = self.script_base + (
+            '\nw602_merge_flutter_reports "%s" garage kill_after_registered '
+            'user_switch restart_before_put; rc=$?; echo "rc=$rc"\n'
+            % self.cdir)
+        result = subprocess.run(["bash", "-c", script], env=self.env,
+                                capture_output=True, text=True, timeout=15)
+        self.assertIn("rc=0", result.stdout, result.stderr)
+        merged = self.cdir / "flutter-integration-garage.jsonl"
+        self.assertTrue(merged.exists())
+        suite = S2.flutter_suite(str(self.cdir), "flutter-integration-garage.jsonl",
+                                 "W6-02/flutter-recovery-real", "probe")
+        names = sorted(test["name"] for test in suite["tests"])
+        self.assertEqual(["kill_after_registered", "restart_before_put",
+                          "user_switch"], names)
+        for leaf in leaves:
+            hits = S2.find_flutter_test(suite, leaf)
+            self.assertEqual(1, len(hits), leaf)
+
+    def test_merge_fails_closed_on_unsuccessful_segment(self):
+        good = self.cdir / "flutter-integration-disk-user_switch.jsonl"
+        good.write_text("\n".join(json.dumps(event) for event in [
+            {"type": "start", "pid": 7, "time": 0},
+            {"type": "done", "success": True, "time": 5},
+        ]))
+        bad = self.cdir / "flutter-integration-disk-kill_after_put.jsonl"
+        bad.write_text("\n".join(json.dumps(event) for event in [
+            {"type": "start", "pid": 8, "time": 0},
+            {"type": "done", "success": False, "time": 6},
+        ]))
+        script = self.script_base + (
+            '\nw602_merge_flutter_reports "%s" disk user_switch kill_after_put; '
+            'rc=$?; echo "rc=$rc"\n' % self.cdir)
+        result = subprocess.run(["bash", "-c", script], env=self.env,
+                                capture_output=True, text=True, timeout=15)
+        self.assertIn("rc=30", result.stdout)
+        self.assertIn("finished unsuccessfully", result.stderr)
+        # The adapter-visible merged artifact must not exist after a refusal.
+        self.assertFalse(
+            (self.cdir / "flutter-integration-disk.jsonl").exists())
 
 
 if __name__ == "__main__":
