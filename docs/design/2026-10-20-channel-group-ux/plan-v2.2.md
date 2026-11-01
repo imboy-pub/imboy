@@ -621,15 +621,15 @@ English: Work packages are review and verification boundaries, not autonomous ex
 | J10.c | 冷启动/返回/重连分别 | 资格未知或请求失败 | 授权前无受保护渲染 | AA,AV | R | NOT_RUN / — |
 | J11.a | 订阅已提交 | 回读失败、点击重试 | 显示已订阅但待对账；不再购买/重复入订阅 | AA | C-channel | NOT_RUN / — |
 | J12.a | 有/无/变更绑定分别；已入群与未入群分别 | 点击讨论入口 | 唯一准确目的地，不造General、不自动加入；无资格明确说明 | AW,AA | C-channel | NOT_RUN / — |
-| J13.a | 正常未筛选倒序首页 | 最新边界项≥50%持续500ms | 推进至该响应B；较早项被纳入查看边界，文案不称逐帖已读 | AA,BR | C-channel | NOT_RUN / — |
-| J13.b | 置顶旧帖/筛选/单帖跳转/分页缺口分别 | 显示或滚动 | 不推进正常流边界 | AA,BR | C-channel | NOT_RUN / — |
-| J13.c | 后台/弹层遮挡/不足50%分别 | 推进停留时钟 | 500ms计时重置，不推进 | AA,AE | C-channel | NOT_RUN / — |
-| J13.d | 两端B1<B2 | B2后晚到B1 | 服务端GREATEST，水位不倒退；未展示的新推送不并入旧B | BR | C-channel | NOT_RUN / — |
-| J13.e | 退订后重订同订阅id | 重入且迟到旧mark请求 | 新激活descriptor隔离旧边界，不复用旧资格 | AA,BS | C-channel | NOT_RUN / — |
+| J13.a | 正常未筛选倒序首页 | 最新边界项≥50%持续500ms | 推进至该响应B；较早项被纳入查看边界，文案不称逐帖已读 | AA,BR | C-channel | N/A（C-channel 功能门关闭 2026-11-01：alice 订阅 0 行 + 后端 manifest 零 view_watermark 声明（三锚点见 /tmp/v22-multi/j13-j15.md），负例支撑 J27.f App 负例 11/11 PASS；门开后绑定落点 AA/AE/BR/BS 已查明，按 §8.4 重绑定重验）/ — |
+| J13.b | 置顶旧帖/筛选/单帖跳转/分页缺口分别 | 显示或滚动 | 不推进正常流边界 | AA,BR | C-channel | N/A（C-channel 功能门关闭 2026-11-01：alice 订阅 0 行 + 后端 manifest 零 view_watermark 声明（三锚点见 /tmp/v22-multi/j13-j15.md），负例支撑 J27.f App 负例 11/11 PASS；门开后绑定落点 AA/AE/BR/BS 已查明，按 §8.4 重绑定重验）/ — |
+| J13.c | 后台/弹层遮挡/不足50%分别 | 推进停留时钟 | 500ms计时重置，不推进 | AA,AE | C-channel | N/A（C-channel 功能门关闭 2026-11-01：alice 订阅 0 行 + 后端 manifest 零 view_watermark 声明（三锚点见 /tmp/v22-multi/j13-j15.md），负例支撑 J27.f App 负例 11/11 PASS；门开后绑定落点 AA/AE/BR/BS 已查明，按 §8.4 重绑定重验）/ — |
+| J13.d | 两端B1<B2 | B2后晚到B1 | 服务端GREATEST，水位不倒退；未展示的新推送不并入旧B | BR | C-channel | N/A（C-channel 功能门关闭 2026-11-01：alice 订阅 0 行 + 后端 manifest 零 view_watermark 声明（三锚点见 /tmp/v22-multi/j13-j15.md），负例支撑 J27.f App 负例 11/11 PASS；门开后绑定落点 AA/AE/BR/BS 已查明，按 §8.4 重绑定重验）/ — |
+| J13.e | 退订后重订同订阅id | 重入且迟到旧mark请求 | 新激活descriptor隔离旧边界，不复用旧资格 | AA,BS | C-channel | N/A（C-channel 功能门关闭 2026-11-01：alice 订阅 0 行 + 后端 manifest 零 view_watermark 声明（三锚点见 /tmp/v22-multi/j13-j15.md），负例支撑 J27.f App 负例 11/11 PASS；门开后绑定落点 AA/AE/BR/BS 已查明，按 §8.4 重绑定重验）/ — |
 | J14.a | 群/频道工作区空集合 | 加载成功空 | 准确空态/合法下一步，不越权补资源 | AW,AG | R | NOT_RUN / — |
 | J14.b | 目录有数据 | 搜索无结果/刷新失败分别 | 关键词保留；失败保留合法上下文，不显示成功空 | AW,AQ | R | NOT_RUN / — |
 | J15.a | C2C、C2G分别 | 点头像并返回 | 分别进人/群资料，回原列表与位置 | AP | R | NOT_RUN / — |
-| J15.b | C2C、C2G；移动/桌面壳分别 | 点整行并返回 | 正确chat type/对象与宿主目的地 | AP | R | NOT_RUN / — |
+| J15.b | C2C、C2G；移动/桌面壳分别 | 点整行并返回 | 正确chat type/对象与宿主目的地 | AP | R | PASS（部分向量 2026-11-01：桌面壳双类型全绿——macOS App r7 EXIT=0，C2C/C2G 整行派发 webShellProvider 右栏 ChatSelection 断言全过（宽屏视口 1600dp 显式注入，AppBreakpoints.wide=900 不满足默认窗口是执行期坑，已修入脚本）；单元层 AP 16/16+新增 4 case 绿（/tmp/imboy-ux-v22-validation/imboyapp/j15b_desktop_run7.log）。移动壳向量脚本就绪（j15b_row_open_mobile_test.dart）待真机，见 §11.1）/ — |
 | J16.a | 无消息C2C/已有行/群KV/频道订阅分别 | 设mute=true，重开读取 | 按对象真源可回读，首消息不丢偏好；不制造可见空会话 | AC,AM,AN | R | PASS（部分向量；Android 真机 2026-10-31 r20 EXIT=0：已有行 C2C（真源 is_muted 列）与群 KV（真源 group_notice_disabled:accountUid:gid+投影）设 mute=true → 重开读取均回读 on + DB 回读一致。**暴露并修复两缺陷** App `9ea5b691e`（入站 C2C RFC3339 created_at 落 0 哨兵被校验拒→首消息静默丢弃）与 `f27ca2915`（insert 丢 is_muted 列→占位/新建行偏好落库即丢）。**无消息 C2C 向量已补验通过**：批次八独立合成 peer Android 真机 `j16a_first_message_test.dart` EXIT=0，真实设置 UI 建隐藏 mute 占位且无可见空会话，握手后正常后端发送真实 WS 首消息，DB/UI 恢复 is_show=1 且 is_muted=1、同 ID 恰一条。历史“upsert 未恢复”归因已纠正为已复现的迟到列表覆盖竞态并修复，见 §11.1 批次八；不声称历史所有现场同一根因。频道订阅——合成部署 channel 表 0 行（功能未交付），仍按 C-channel 功能门记录，J16.a 不升级完整 PASS。脚本 `j16a_dnd_persistence_test.dart`）/ — |
 | J16.b | 原状态false | 注入持久化失败/切账号/连续点击分别 | 状态不假成功，目标不取反，账号隔离且可重试 | AM,AC | R | PASS（部分向量；Android 真机 2026-10-31 r5 EXIT=0：DB 锚点自洽前置→关（DB→0 不假成功）→开（DB→1 可重试不取反，taps=1）→快速连点 UI↔DB 收敛一致（忙态吞没为产品合同内行为，如实打印）。注入持久化失败/切账号两向量：无测试缝（StorageService/SQLite 写失败无注入点）且 bob 密码不可用（登录 API 实测拒绝），按既有 AC/AM 静态证据记录（W03 失败回滚定向证据；KV 键含 accountUid 隔离由键设计承担）。脚本 `j16b_dnd_failure_retry_test.dart`）/ — |
 | J16.c | 两设备同账号 | 修改本机DND后读另一端 | 本机合同不冒称同步；已存在服务端动作继续符合其真源 | N + NC | R | PASS（跨平台双设备 2026-11-01：A=Android 真机 MRD-AL00 XWE6R19916004085 写入端 + B=macOS App（darwin-arm64 27.0.1 全新安装，独立设备存储）读取端，双脚本 EXIT=0。A 端 `j16c_dnd_two_device_a_test.dart`：C2C is_muted=1、群 KV=true 落 A 设备存储（`/tmp/j16c_a_run1.log` J16C_A_SETTLED）。B 端 `j16c_dnd_two_device_b_test.dart` 同账号 demo_alice 登录：c-1 开关 off + B 本机 DB=0（不冒称同步）；c-2 KV=null + off；c-3 两端设置页无「同步」字样；c-4 manual_pending CAS 写 true→权威投影读回→恢复 false，服务端 user_setting version 38→40、终态 value=false 复核；c-5 宿主注入 bob→alice 消息 WS 送达（ACK RTT 8ms）unread 0→1 且 B 本机 is_muted 保持 0/KV 保持 null——本地真源不被服务端覆盖（`/tmp/j16c_b_run5.log` J16C_B_READ_DONE，归档 /tmp/imboy-ux-v22-validation/imboyapp/j16c-two-device/，App 候选 28a3efc1b）。c-6 频道订阅向量按 C-channel 功能门（alice 订阅 0 行，同 J16.a 口径）。环境注记：macOS 本地直连须 `--dart-define=WS_URL_OVERRIDE=ws://127.0.0.1:9800/api/v1/ws`——合成节点 initConfig 曾下发 dev.imboy.pub 且 App 本地默认 /ws 路径 404（真实路由 /api/v1/ws），sys.local.config 已同步修正；A 端实时在线对照不做（flutter test 生命周期限制），A 抑制通知半边由 J16.a 既有收据覆盖，见 §11.1 双机批次）/ — |
@@ -660,9 +660,9 @@ English: Work packages are review and verification boundaries, not autonomous ex
 | J22.d | 大字与长名，中英文分别 | 放大布局 | 文字自然增高/语义完整，不关闭TextScaler | N + NC | R | BLOCKED（多平台证据需 iOS/Android 双平台真机独立收据，本环境仅单台 Android 已绑定；缺平台证据保留 BLOCKED，W13 不发总 PASS，见 §11.1 资源阻断盘点 2026-10-31）/ — |
 | J22.e | 明暗主题各状态 | 测颜色/命中区 | 正文≥4.5:1、动作≥3:1，命中区≥既有44pt规范（原V1.1要求48时取48） | N + NC | R | BLOCKED（多平台证据需 iOS/Android 双平台真机独立收据，本环境仅单台 Android 已绑定；缺平台证据保留 BLOCKED，W13 不发总 PASS，见 §11.1 资源阻断盘点 2026-10-31）/ — |
 | J22.f | 读屏/桌面键盘各交付平台 | 聚焦/执行菜单与危险动作 | 焦点顺序、标签、忙态/禁用语义完整，各平台独立证据 | N + NC | R | BLOCKED（多平台证据需 iOS/Android 双平台真机独立收据，本环境仅单台 Android 已绑定；缺平台证据保留 BLOCKED，W13 不发总 PASS，见 §11.1 资源阻断盘点 2026-10-31）/ — |
-| J23.a | 群/频道受理事务分别 | 提交前崩溃或成员/receipt入队失败 | 资源/成员/receipt/逻辑通知全回滚，同键可首次受理 | BG,BS | R | NOT_RUN / — |
-| J23.b | 已提交未响应 | 崩溃、并发/重启重放 | 同资源/规范载荷/初始名，只有一个逻辑受理结果 | BG,BS | R | NOT_RUN / — |
-| J23.c | 通知持久入队已发送未确认 | 崩溃恢复重投 | 固定effect/message身份，一份邀请/成员副作用 | BG,BS | R | NOT_RUN / — |
+| J23.a | 群/频道受理事务分别 | 提交前崩溃或成员/receipt入队失败 | 资源/成员/receipt/逻辑通知全回滚，同键可首次受理 | BG,BS | R | PASS（2026-11-01 真 PG eunit：group_creation_recovery_pg_tests 10/10 + channel_creation_recovery_tests 5/5 全绿（IMBOYENV=local make eunit t= 单跑 EXIT=0，真合成 PG 无 skip；error 行为注入预期日志）：j23a 崩溃注入 title_update/通知 staging 失败注入/配额中止→全回滚后同键首次受理；脚本 test/logic/ 两文件为 agent 交付，/tmp/v22-multi/j23.md）/ — |
+| J23.b | 已提交未响应 | 崩溃、并发/重启重放 | 同资源/规范载荷/初始名，只有一个逻辑受理结果 | BG,BS | R | PASS（2026-11-01 同上两套件 15/15：首受理/同键双进程并发/重放冲突仅一个逻辑受理结果——幂等键 (uid,operation,request_id) + advisory lock 事务链全过）/ — |
+| J23.c | 通知持久入队已发送未确认 | 崩溃恢复重投 | 固定effect/message身份，一份邀请/成员副作用 | BG,BS | R | PASS（2026-11-01 同上：固定 effect/message 身份（EffectKey 派生 msg_id）+ staging UNIQUE 兜底、重放不重复通知 case 全过；kick 丢失时 msg_store_worker 1s tick claim_pending 重投链锚点已核）/ — |
 | J24.a | 未知意图，client年龄23:59:59.999/24h/时钟倒退分别 | 恢复/重启 | 24h内原键；边界或时间不可信后仅recover_only，不剥键 | AG,AA,AF | R | PASS（App 单测 `creation_receipt_contract_test.dart` 27 case 全绿（2026-10-31 跑绿）：decideCreationDispatch J24.a 时钟向量——窗口内 23:59:59.999 仍可原键创建；24h 精确边界（含）→仅 recover_only 不剥键；时钟倒退→仅 recover_only 且 clockUntrusted；recover_only 载荷契约（标志携带/缺省不发送）同文件覆盖）/ — |
 | J24.b | server受理6d23:59:59.999/7d，及7天内删除/撤权分别 | 原键恢复 | 正常有权时7天内保留结果；删除/撤权不泄露内容；过7d只元信息/expired；receipt仍阻止重建，两个时钟独立 | BG,BS | R | NOT_RUN / — |
 | J24.c | 同键改名/成员顺序/重复成员/workspace；只查未见受理后旧POST迟到 | 重放请求或尝试新键重建 | 规范等价重放、实际载荷变化冲突；旧请求可能在途时禁止换键，超时/断连/单次只查/用户确认不构成终止证据；迟到的同原键请求最多受理一次 | BG,BS,AG | R | NOT_RUN / — |
@@ -711,7 +711,7 @@ English: Work packages are review and verification boundaries, not autonomous ex
 
 其余 NOT_RUN 行归属口径：J18.b/J18.f（合成附件与引用定位外部依赖）、J20.a/c/d（多页目录交集与扫描并发）、J23.a–c（受理事务崩溃注入）、J24.b/c、J25.a（receipt 服务端时钟与撤权向量）、J27.b–f（合同负例与 2^53 原始链）——随资源清单细化并入上表最近桶或单独排期；本表只排期、不判定任何 J 通过。
 
-**总出口口径（2026-11-01 双机批次后）：26 PASS / 50 NOT_RUN / 9 BLOCKED，W13 不发总 PASS**（J16.c 经跨平台双设备升级 PASS，见 §11.1 双机批次；BLOCKED 9 项已有 2026-10-31 资源阻断盘点，与桶 2/3 合流触发，不重复决策）。
+**总出口口径（2026-11-01 NOT_RUN 批次一后）：30 PASS / 41 NOT_RUN / 9 BLOCKED / 5 N/A（J13.a–e 功能门），W13 不发总 PASS**（J23.a–c、J15.b 桌面向量升级 PASS；J13.a–e 转功能门 N/A；BLOCKED 9 项维持 2026-10-31 盘点口径）。
 
 ## 10. 计划采用的设计与兼容默认值
 
@@ -1074,6 +1074,17 @@ W00 静态准入出口（2026-10-27T18:54:58+08:00）：按 §8.2，三端 HEAD/
 - **新增文件**：App 仓 `integration_test/chat/j16c_dnd_two_device_a_test.dart` / `..._b_test.dart`（analyze 零问题）；宿主编排 `/tmp/j16c_inject_when_ready.sh`（仓外）。**未 commit，待用户授权**。
 - **出口**：J16.c BLOCKED→**PASS**（26/50/9）；W13 维持不发总 PASS；资源阻断盘点中「双真机」桶仅剩 J28.b（一账号两端旧/新客户端）与 W09.c 向量——macOS App 能否承担该桶 B 端取决于旧版本 App 桌面构建可用性，待该批重验时判定。
 - **用户裁决追加（2026-11-01）**：环境中发现的无线 iPhone 16e 真机**不启用**——「iPhone 16e 可部署性探测和 iPhone 真机不要验证了，验证 Android APP + macOS APP 就可以了」。J22.a–f 维持 iOS 真机证据缺口的 BLOCKED 口径（桶 2 触发资源仍为 iOS 真机验收身份），多平台证据面不因该设备存在而改判；后续多端向量一律以 Android 真机 + macOS App 组合承担。
+
+#### 2026-11-01 NOT_RUN 批次一（14-agent 并行推进的首批落点：J23 / J15.b / J13 / 环境风暴留痕）
+
+14 个 agent（50 项 NOT_RUN 全覆盖）的首批完成项与主控串行执行结果：
+
+- **J23.a/b/c → PASS（3 项）**：agent 交付 test/logic/ 两套件（5 个 J23 命名 case：崩溃注入 meck exit、通知入队失败、同键双进程并发、固定身份+重复入队兜底、配额中止全回滚），主控以 `IMBOYENV=local make eunit t=` 真合成 PG 串行执行 **10/10 + 5/5 全绿、无 skip**（erlc 编译零警告；error 行为注入预期日志）。附带死分支观察（受理结果 `{error, throw, Reason}` 三元组不可达，行为等价）留档不处理。
+- **J15.b → PASS（部分向量：桌面壳）**：单元 AP 16/16+4 case 绿；主控 macOS App 执行 r1–r7 收敛——r1–r4 参数组缺失（TEST_PEER_ID/API_BASE_URL_OVERRIDE 双键）、r5 脚本 scrollable finder cast 错、r6 断言右栏 null（**根因=useSplitView 需 AppBreakpoints.wide≥900 且测试默认窗口不满足，非产品缺陷**），r7 视口 1600dp 显式注入后全绿 EXIT=0。移动壳向量脚本就绪待真机。
+- **J13.a–e → N/A（功能门，5 项）**：三锚点实证门关闭（alice 订阅 0 行、manifest 零 view_watermark、J16.c c-6 同口径）+ J27.f App 负例 11/11 PASS 支撑；门开后绑定落点已查明。
+- **J28.b（预备完成，执行挂起待真机）**：旧版（b6afea584）双端构建 PASS（worktree 仓外）、旧端单测冒烟 5/5、三向量双端方案+脚本就绪（/tmp/v22-multi/j28b-prep.md、编排 /tmp/v28b_run.sh）；Android 真机掉线（adb 空）为唯一阻塞。
+- **环境风暴留痕（2026-11-01 全链恢复）**：宿主磁盘 100%（agent 构建产物 15GB）→ 清理自产可再生产物；Docker Desktop 只读僵死 → 服务重启；PG 容器端口漂移 59260→51011 → release sys.config 两处端口修正；PG 密码三值错位 → 以节点运行时值重置；启动 migrate 死锁 → `IMBOY_AUTO_MIGRATE=false` 绕过（账本 236 无漂移）。终态 init=200、WS ACK 正常。环境注记：Docker 重启会重排动态端口，同症状按「端口映射→密码→migrate 开关」三步排查；`_rel/.../sys.config` 与 `config/sys.local.config` 端口/ws_url 已同步本地修正（均 gitignored）。
+- **本批 commit 授权范围**：Backend（J23 两测试文件+本计划文档+checklist）、App（j28b 新端脚本+j15b 双端脚本+conversation_page_test 扩展），按功能分批。
 
 #### 2026-10-31 资源阻断盘点（无法在本环境执行的验收项）
 
