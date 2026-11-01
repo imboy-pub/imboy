@@ -1021,25 +1021,39 @@ json.dump({"kind": kind, "resource_id": resource, "process_id": int(pid),
 PYC
 }
 
-w602_run_flutter() { # $1 app $2 cdir $3 driver $4 device
-  local app="$1" cdir="$2" driver="$3" device="$4" pid rc dpid=""
-  rm -f "$cdir/device-provenance.json"
-  ( cd "$app" && v5_w602_flutter_command "$driver" "$device" ) \
-    > "$cdir/flutter-integration-$driver.jsonl" 2> "$cdir/flutter-integration-$driver.err" &
+w602_run_flutter() { # $1 app $2 cdir $3 driver $4 device $5 phase(put|restore)
+  local app="$1" cdir="$2" driver="$3" device="$4" phase="$5" pid rc dpid=""
+  local out err prov
+  if [ "$phase" = "restore" ]; then
+    # The restore phase is the final verification session; it owns the
+    # unsuffixed artifact names consumed by the measured adapter.
+    out="$cdir/flutter-integration-$driver.jsonl"
+    err="$cdir/flutter-integration-$driver.err"
+    prov="$cdir/device-provenance.json"
+  else
+    out="$cdir/flutter-integration-$driver-$phase.jsonl"
+    err="$cdir/flutter-integration-$driver-$phase.err"
+    prov="$cdir/device-provenance-$phase.json"
+  fi
+  rm -f "$cdir/device-provenance.json" "$prov"
+  ( cd "$app" && v5_w602_flutter_command "$driver" "$device" "$phase" ) \
+    > "$out" 2> "$err" &
   pid=$!
   while kill -0 "$pid" 2>/dev/null; do
     if [ -z "$dpid" ]; then
       dpid="$(w602_device_pid "$device")"
       if [ -n "$dpid" ] && kill -0 "$pid" 2>/dev/null; then
         w602_write_provenance "$cdir/device-provenance.json" physical "$device" "$dpid" \
-          "adb shell pidof pub.imboy.app observed live during the integration run"
+          "adb shell pidof pub.imboy.app observed live during the integration $phase run"
+        w602_write_provenance "$prov" physical "$device" "$dpid" \
+          "adb shell pidof pub.imboy.app observed live during the integration $phase run"
       fi
     fi
     sleep 2
   done
   wait "$pid"
   rc=$?
-  echo "W6-02 CMD[flutter-$driver] cwd=$app device=$device exit=$rc device_pid=${dpid:-unobserved}" >> "$cdir/raw.log"
+  echo "W6-02 CMD[flutter-$driver-$phase] cwd=$app device=$device exit=$rc device_pid=${dpid:-unobserved}" >> "$cdir/raw.log"
   if [ -z "$dpid" ]; then
     echo "BLOCKED_EXTERNAL: device-side application process not observed" >&2
     return 75
@@ -1088,13 +1102,163 @@ w602_run_admin() { # $1 admin $2 cdir $3 driver
   return $rc
 }
 
-w602_case() { # $1 case_id $2 cdir
-  # shortcut: session/driver provenance and backend ownership are not bound;
-  # remove only after both are verified before any external request.
-  echo "BLOCKED_EXTERNAL: W6-02 backend ownership and per-driver session provenance are unverified" >&2
-  return 75
+# ---------------- W6-02 two-phase kill/restore orchestration ----------------
+# The archived protocol runs as two flutter test invocations sharing the same
+# V5_E2E_RUN_ID/V5_E2E_UPLOAD_ID: phase A (V5_E2E_PHASE=put) uploads to the
+# durable putDone checkpoint and prints V5_KILL_READY with the device-side
+# pid, the gate kill -9s that process and writes the killed marker, and
+# phase B (V5_E2E_PHASE=restore) relaunches the same binary and asserts the
+# automatic recovery. A failing phase fails the whole case (30); every phase
+# keeps its own logs.
+w602_kill_ready_pid() { # $1 jsonl -> device-side pid printed by V5_KILL_READY
+  python3 - "$1" <<'PYC'
+import json, re, sys
+pid = ""
+try:
+    with open(sys.argv[1], encoding="utf-8", errors="replace") as stream:
+        for line in stream:
+            if "V5_KILL_READY" not in line:
+                continue
+            try:
+                payload = json.dumps(json.loads(line), ensure_ascii=False)
+            except ValueError:
+                payload = line
+            found = re.search(r"V5_KILL_READY run=\S+ task=\S+ pid=([0-9]+)", payload)
+            if found:
+                pid = found.group(1)
+except OSError:
+    pass
+print(pid)
+PYC
+}
+
+w602_wait_pid_gone() { # $1 device $2 pid -> 0 once pidof no longer reports it
+  local device="$1" pid="$2" i=0 alive
+  while [ "$i" -lt 10 ]; do
+    alive="$(w602_device_pid "$device")"
+    [ "$alive" != "$pid" ] && return 0
+    sleep 1
+    i=$((i + 1))
+  done
+  return 30
+}
+
+w602_write_killed_marker() { # $1 device $2 cdir $3 run $4 task $5 pid
+  local device="$1" cdir="$2" run="$3" task="$4" pid="$5" name host_mark
+  name="v5-killed-$run-$task.mark"
+  host_mark="$cdir/$name"
+  printf 'killed run=%s task=%s pid=%s at=%s\n' "$run" "$task" "$pid" "$(date +%s)" > "$host_mark"
+  if ! adb -s "$device" push "$host_mark" "/data/local/tmp/$name" >/dev/null 2>&1; then
+    echo "NO_GO: killed marker push to $device failed" >&2
+    return 30
+  fi
+  # Best-effort copy into the QA app sandbox for consumers that poll the
+  # app-visible directory; the /data/local/tmp marker stays as the
+  # host-visible record either way.
+  if ! adb -s "$device" shell run-as pub.imboy.app sh -c \
+      "mkdir -p files && cp /data/local/tmp/$name files/$name" >/dev/null 2>&1; then
+    echo "W6-02 WARN: run-as copy of the killed marker into pub.imboy.app failed; /data/local/tmp/$name remains" >> "$cdir/raw.log"
+  fi
+  echo "W6-02 KILLED_MARKER $name device=$device killed_pid=$pid" >> "$cdir/raw.log"
+  return 0
+}
+
+w602_flutter_two_phase() { # $1 app $2 cdir $3 driver $4 device $5 run $6 task
+  local app="$1" cdir="$2" driver="$3" device="$4" run="$5" task="$6" kpid=""
+  w602_run_flutter "$app" "$cdir" "$driver" "$device" put || return $?
+  kpid="$(w602_kill_ready_pid "$cdir/flutter-integration-$driver-put.jsonl")"
+  if [ -z "$kpid" ]; then
+    echo "NO_GO: V5_KILL_READY pid missing from phase-A (put) output" >&2
+    return 30
+  fi
+  if ! adb -s "$device" shell kill -9 "$kpid" >/dev/null 2>&1; then
+    echo "NO_GO: adb kill -9 $kpid failed on $device" >&2
+    return 30
+  fi
+  if ! w602_wait_pid_gone "$device" "$kpid"; then
+    echo "NO_GO: killed pid $kpid still observed on $device" >&2
+    return 30
+  fi
+  echo "W6-02 KILL -9 pid=$kpid device=$device driver=$driver" >> "$cdir/raw.log"
+  w602_write_killed_marker "$device" "$cdir" "$run" "$task" "$kpid" || return $?
+  w602_run_flutter "$app" "$cdir" "$driver" "$device" restore || return $?
+  return 0
+}
+
+w602_backend_start() { # $1 cdir -> starts W602_BACKEND_START_CMD, sets W602_STARTED_BACKEND_PID
+  local cdir="$1" deadline
+  if [ -z "${W602_BACKEND_URL:-}" ]; then
+    echo "BLOCKED_EXTERNAL: W602_BACKEND_START_CMD also requires W602_BACKEND_URL (expected healthz endpoint)" >&2
+    return 75
+  fi
+  deadline=$(( $(date +%s) + ${W602_BACKEND_START_TIMEOUT:-90} ))
+  ( cd "$ROOT" && IMBOYENV="${W602_BACKEND_IMBOYENV:-local}" sh -c "$W602_BACKEND_START_CMD" ) \
+    > "$cdir/backend-start.log" 2>&1 &
+  W602_STARTED_BACKEND_PID=$!
+  echo "W6-02 CMD[backend-start] cwd=$ROOT pid=$W602_STARTED_BACKEND_PID imboyenv=${W602_BACKEND_IMBOYENV:-local}" >> "$cdir/raw.log"
+  while [ "$(date +%s)" -lt "$deadline" ]; do
+    if ! kill -0 "$W602_STARTED_BACKEND_PID" 2>/dev/null; then
+      echo "NO_GO: gate-started backend exited before becoming healthy (see backend-start.log)" >&2
+      return 30
+    fi
+    curl -fsS --max-time 3 "${W602_BACKEND_URL%/}/healthz" > /dev/null 2>&1 && return 0
+    sleep 2
+  done
+  echo "NO_GO: gate-started backend did not pass /healthz within ${W602_BACKEND_START_TIMEOUT:-90}s" >&2
+  return 30
+}
+
+w602_backend_stop() { # stops a gate-started backend, if any; never fails the case
+  local pid="${W602_STARTED_BACKEND_PID:-}"
+  W602_STARTED_BACKEND_PID=""
+  case "$pid" in ''|*[!0-9]*) return 0 ;; esac
+  kill "$pid" 2>/dev/null || return 0
+  local i=0
+  while kill -0 "$pid" 2>/dev/null && [ "$i" -lt 10 ]; do
+    sleep 1
+    i=$((i + 1))
+  done
+  kill -9 "$pid" 2>/dev/null || true
+  return 0
+}
+
+w602_backend_provenance_write() { # $1 file $2 base_url $3 started_pid(or "")
+  python3 - "$@" <<'PYC'
+import json, os, sys, time
+from urllib.parse import urlparse
+path, base_url, started_pid = sys.argv[1:4]
+parts = urlparse(base_url)
+resource = "%s:%s" % (parts.hostname or "", parts.port or (443 if parts.scheme == "https" else 80))
+doc = {"kind": "owned-backend", "resource_id": resource, "base_url": base_url,
+       "source": os.environ.get("W602_BACKEND_PROVENANCE_SOURCE",
+                                "provided via W602_BACKEND_URL"),
+       "healthz_checked_at": int(time.time())}
+provided = os.environ.get("W602_BACKEND_PID", "")
+for candidate in (started_pid, provided):
+    if candidate.isdigit() and int(candidate) > 0:
+        doc["process_id"] = int(candidate)
+        break
+if started_pid.isdigit() and int(started_pid) > 0:
+    doc["start_command"] = os.environ.get("W602_BACKEND_START_CMD", "")
+    doc["imboyenv"] = os.environ.get("W602_BACKEND_IMBOYENV", "local")
+containers = [c for c in os.environ.get("W602_BACKEND_CONTAINERS", "").split(",") if c]
+if containers:
+    doc["containers"] = containers
+json.dump(doc, open(path, "w"), indent=1)
+PYC
+}
+
+w602_case() { # $1 case_id $2 cdir — stops any gate-started backend before returning
+  W602_STARTED_BACKEND_PID=""
+  local rc=0
+  w602_case_impl "$@"; rc=$?
+  w602_backend_stop
+  return $rc
+}
+
+w602_case_impl() { # $1 case_id $2 cdir
   local cid="$1" cdir="$2" app admin device="" devices_json browser=0 version=""
-  local backend="${W602_BACKEND_URL:-}" need_flutter=0 need_admin=0 rc=0
+  local backend="${W602_BACKEND_URL:-}" need_flutter=0 need_admin=0 rc=0 phase_run="" phase_task=""
   app="$(worktree_sibling imboyapp)" || return $?
   admin="$(worktree_sibling imboyadmin)" || return $?
   mkdir -p "$cdir"
@@ -1137,16 +1301,38 @@ w602_case() { # $1 case_id $2 cdir
   [ "$need_admin" -eq 0 ] || [ $browser -eq 1 ] || {
     echo "BLOCKED_EXTERNAL: playwright-chromium unavailable in $admin" >&2
     return 75; }
+  # Run-owned backend: an already-running endpoint via W602_BACKEND_URL, or a
+  # gate-started one via W602_BACKEND_START_CMD (+W602_BACKEND_URL as the
+  # expected healthz endpoint). Without either, the case refuses explicitly.
+  if [ -z "${W602_BACKEND_URL:-}" ] && [ -n "${W602_BACKEND_START_CMD:-}" ]; then
+    w602_backend_start "$cdir" || { rc=$?; return "$rc"; }
+  fi
   [ -n "$backend" ] || {
-    echo "BLOCKED_EXTERNAL: W602_BACKEND_URL not set; a real backend/storage is required" >&2
+    echo "BLOCKED_EXTERNAL: W602_BACKEND_URL not set; provide W602_BACKEND_URL or W602_BACKEND_START_CMD with W602_BACKEND_URL for a run-owned backend" >&2
     return 75; }
   curl -fsS --max-time 10 "$backend" > /dev/null 2>&1 || {
     echo "BLOCKED_EXTERNAL: real backend $backend is not reachable" >&2
     return 75; }
+  curl -fsS --max-time 10 "${backend%/}/healthz" > /dev/null 2>&1 || {
+    echo "BLOCKED_EXTERNAL: real backend $backend /healthz is not healthy" >&2
+    return 75; }
+  w602_backend_provenance_write "$cdir/backend-provenance.json" "$backend" \
+    "${W602_STARTED_BACKEND_PID:-}" || {
+    echo "NO_GO: backend-provenance.json write failed" >&2
+    return 30; }
+  if [ "$need_flutter" -eq 1 ]; then
+    # The killed-marker filename embeds both ids; validate the frozen shapes
+    # here before any device mutation (flutter_command.sh re-validates too).
+    phase_run="${W602_E2E_RUN_ID:-}" phase_task="${W602_E2E_UPLOAD_ID:-}"
+    [[ "$phase_run" =~ ^v5-e2e-[a-z0-9-]{1,64}$ ]] &&
+      [[ "$phase_task" =~ ^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$ ]] || {
+      echo "BLOCKED_EXTERNAL: missing or invalid W602_E2E_RUN_ID/W602_E2E_UPLOAD_ID" >&2
+      return 75; }
+  fi
   local driver
   for driver in garage disk; do
     if [ $need_flutter -eq 1 ]; then
-      w602_run_flutter "$app" "$cdir" "$driver" "$device" || { rc=$?; return "$rc"; }
+      w602_flutter_two_phase "$app" "$cdir" "$driver" "$device" "$phase_run" "$phase_task" || { rc=$?; return "$rc"; }
     fi
     if [ $need_admin -eq 1 ]; then
       w602_run_admin "$admin" "$cdir" "$driver" || { rc=$?; return "$rc"; }

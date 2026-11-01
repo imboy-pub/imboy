@@ -2093,7 +2093,18 @@ def receipt_errors(leaf, expected_leaf, task_id, case_id, candidate, run_dir, al
     # input as historical. The missing proofs apply to every W6 invocation.
     mandatory_errors = []
     if task_id == "W6-02" or (isinstance(case_id, str) and case_id.startswith("W6-02/")):
-        mandatory_errors.append("W6-02 provenance is not bound to its driver session and owned backend")
+        # Honest failure instead of a blanket rejection: a W6-02 receipt is
+        # accepted only when it carries a registered, live, gate-owned
+        # backend binding. The driver session side is verified below from
+        # the registered device/browser provenance receipts.
+        proof = leaf.get("backend_provenance") if isinstance(leaf, dict) else None
+        if (not isinstance(proof, dict) or proof.get("kind") != "owned-backend"
+                or not isinstance(allowlist, dict)
+                or not isinstance(allowlist.get("backend_provenance"), list)
+                or proof.get("resource_id") not in allowlist.get("backend_provenance", [])
+                or type(proof.get("process_id")) is not int or proof["process_id"] <= 0
+                or not isinstance(proof.get("base_url"), str) or not proof["base_url"]):
+            mandatory_errors.append("missing registered live backend_provenance")
     if (task_id == "W6-01" and isinstance(expected_leaf, dict)
             and expected_leaf.get("source_case_ref") == "W4-03/driver-content-immutable"):
         # The adapter proves the binding before admitting the row (unique
