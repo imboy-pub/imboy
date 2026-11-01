@@ -1227,13 +1227,15 @@ w602_flutter_two_phase() { # $1 app $2 cdir $3 driver $4 device $5 run $6 task $
 # The same mechanism wires W6-02/ac08 and W6-02/e2e-compat, whose adapter
 # MAPPINGs otherwise match 0 executed tests (their scenarios would never
 # appear in a frozen empty-scenario run):
-#   - W6-02/ac08 runs its three contract leaf scenarios per leaf:
-#     legacy_acl_cipher_bytes and unknown_history_retained single-run,
-#     physical_device_restart through the two-phase restart protocol.
+#   - W6-02/ac08 runs its three contract leaf scenarios per leaf, each
+#     through the two-phase put/kill/restore protocol (the dart suite
+#     registers legacy_acl_cipher_bytes, unknown_history_retained and
+#     physical_device_restart in _twoPhaseScenarios and asserts
+#     V5_E2E_PHASE=put|restore for every injected scenario name).
 #   - W6-02/e2e-compat keeps the frozen empty-scenario two-phase flow for its
 #     any-kind scenarios (kill_after_put tag, no V5_E2E_SCENARIO define —
 #     the measured protocol is unchanged) and additionally runs the
-#     physical_device leaf under its own scenario name.
+#     physical_device leaf under its own scenario name, also two-phase.
 # The dart suite must register every injected leaf name (an unknown scenario
 # is a red test by design); a leaf name absent there is an imboyapp-side
 # deliverable gap, never a gate-side skip.
@@ -1249,7 +1251,8 @@ w602_scenario_two_phase() { # $1 leaf -> 0 when the leaf runs put/restore phases
     kill_after_registered|kill_after_put|kill_after_confirm|\
 presign_response_lost|expired_capability_resume|authorization_revoked|\
 restart_before_put|same_key_same_ciphertext_after_restart|\
-physical_device_restart) return 0 ;;
+legacy_acl_cipher_bytes|unknown_history_retained|\
+physical_device_restart|physical_device) return 0 ;;
     *) return 1 ;;
   esac
 }

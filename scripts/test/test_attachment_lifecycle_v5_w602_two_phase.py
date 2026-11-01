@@ -304,16 +304,18 @@ class W602TwoPhaseTest(unittest.TestCase):
                                 capture_output=True, text=True, timeout=15)
         self.assertEqual(0, result.returncode, result.stderr)
         self.assertEqual(
-            "two:physical_device_restart single:legacy_acl_cipher_bytes "
-            "single:unknown_history_retained single:physical_device "
+            "two:physical_device_restart two:legacy_acl_cipher_bytes "
+            "two:unknown_history_retained two:physical_device "
             "two:kill_after_put \n",
             result.stdout)
 
     def test_run_scenario_leaves_merges_e2e_compat_case_list(self):
         # e2e-compat's frozen list: the empty-scenario two-phase flow
-        # (kill_after_put tag) plus its own physical_device leaf; after the
-        # merge, the adapter-visible per-driver artifact binds each scenario
-        # name exactly once.
+        # (kill_after_put tag) plus its own physical_device leaf; every
+        # e2e-compat leaf runs the two-phase put/kill/restore protocol
+        # (the dart suite expects V5_E2E_PHASE for each injected scenario
+        # name). After the merge, the adapter-visible per-driver artifact
+        # binds each scenario name exactly once.
         script = self.script_base + (
             '\nw602_run_scenario_leaves "%s" "%s" garage stub-device '
             '"$W602_E2E_RUN_ID" "$W602_E2E_UPLOAD_ID" kill_after_put '
@@ -332,7 +334,8 @@ class W602TwoPhaseTest(unittest.TestCase):
             self.assertEqual(1, len(S2.find_flutter_test(suite, leaf)), leaf)
         raw_log = (self.cdir / "raw.log").read_text()
         self.assertIn("CMD[flutter-garage-kill_after_put-put]", raw_log)
-        self.assertIn("CMD[flutter-garage-physical_device]", raw_log)
+        self.assertIn("CMD[flutter-garage-physical_device-put]", raw_log)
+        self.assertIn("CMD[flutter-garage-physical_device-restore]", raw_log)
 
     def test_flutter_command_pins_standard_flavor(self):
         # The app declares a brand flavor dimension; only --flavor standard
