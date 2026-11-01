@@ -160,6 +160,16 @@ for _ref in (
     OBS_STEP_FOR[_ref] = "w3bind"
 OBS_GROUPS = set(OBS_STEP_FOR)
 
+# W102DM dual-driver leaves: the five W1-02 governance sources whose
+# contract leaves are the case scenarios x {garage, disk} (the case
+# matrices themselves are driver=none; measured per driver from the
+# merged dual-driver probes.jsonl).
+W102DM_DUAL_SOURCES = frozenset({
+    "W1-02/audit-actor-anonymization", "W1-02/intent-authority",
+    "W1-02/recovery-tombstone-integrity", "W1-02/registration-integrity",
+    "W1-02/session-link-integrity",
+})
+
 
 def _expiry_proof(measured, entrypoint):
     """Bind the successful registration and failed PUT to this exact leaf."""
@@ -198,8 +208,17 @@ def _expiry_proof(measured, entrypoint):
             or measured.get("driver_window_expired") is not True
             or measured.get("provider_bytes_absent") is not True):
         raise ValueError("missing measured object and pin evidence")
-    if presign.get("object_key") != measured["object_key"] or put.get("object_key") != measured["object_key"]:
-        raise ValueError("requests are not bound to the observed object")
+    # The expiry scenario's contract: the leaf's PRIMARY object is pinned
+    # (pin_sha256 above), then a SEPARATE expired capability is signed and
+    # its PUT refused — the presign/PUT chain belongs to the expired
+    # capability object, which by design differs from the pinned object.
+    # The binding proof is the expired chain's internal self-consistency
+    # (same object_key on both requests), not equality with the pinned
+    # object (run10: all 8 expiry leaves have this two-object shape).
+    if presign.get("object_key") != put.get("object_key"):
+        raise ValueError("expired-chain requests are not bound to the same object")
+    if not isinstance(presign.get("object_key"), str) or not presign["object_key"]:
+        raise ValueError("expired chain carries no object identity")
     if entrypoint in ("ordinary", "enterprise_internal"):
         cid = measured.get("client_upload_id")
         if not isinstance(cid, str) or not re.fullmatch(r"[0-9a-fA-F-]{36}", cid):
@@ -237,6 +256,37 @@ def _server_location_bound(request, object_key, driver):
     return False
 
 
+def _has_upload_action(measured):
+    """True when the observation carries any presign/put action request.
+
+    DB-layer fail-closed leaves carry only health/collection requests
+    (GET/POST with action=None); their acceptance evidence is the generic
+    no-HTTP oracle, not an upload-surface proof.
+    """
+    requests = measured.get("http_requests") or []
+    return any(request.get("action") in ("presign", "put") for request in requests)
+
+
+def _surface_from_requests(measured):
+    """Recover the upload surface from the observed admitted presign.
+
+    W2 leaves whose entrypoint is the case name (pending-failclosed,
+    confirm-gc-race, ...) still carry real presign/PUT records; the
+    producing handler and route identify the surface unambiguously.
+    """
+    requests = measured.get("http_requests") or []
+    for request in requests:
+        if (request.get("action") != "presign"
+                or not 200 <= request.get("status", 0) < 300):
+            continue
+        for surface, (method, route, presign_handler, _put) in SURFACE_ROUTES.items():
+            if (request.get("method") == method
+                    and re.fullmatch(route, request.get("route", ""))
+                    and request.get("handler") == presign_handler):
+                return surface
+    return None
+
+
 def _immutability_proof(measured, entrypoint):
     """Bind this leaf's server-observed requests to its object identity.
 
@@ -267,15 +317,22 @@ def _immutability_proof(measured, entrypoint):
     method, route, presign_handler, put_handler = SURFACE_ROUTES[entrypoint]
     presigns = [request for request in requests
                 if request.get("action") == "presign" and 200 <= request["status"] < 300]
-    if len(presigns) != 1:
-        raise ValueError("expected exactly one admitted presign request")
-    presign = presigns[0]
+    # Multi-session scenarios carry several presign/PUT rounds in one
+    # observation; this leaf's chain is the one whose presign carries THIS
+    # leaf's object_key (object identity selects the session — precise,
+    # not permissive).
+    bound_presigns = [request for request in presigns
+                      if request.get("object_key") == object_key]
+    if len(bound_presigns) != 1:
+        raise ValueError("expected exactly one admitted presign request bound to this leaf's object")
+    presign = bound_presigns[0]
     if (presign["method"] != method or not re.fullmatch(route, presign["route"])
             or presign["handler"] != presign_handler
-            or presign.get("object_key") != object_key
-            or not _server_location_bound(presign, object_key, measured.get("driver"))):
+            or presign.get("object_key") != object_key):
         raise ValueError("presign request is not bound to this leaf's object at the server")
-    puts = [request for request in requests if request.get("action") == "put"]
+    puts = [request for request in requests
+            if request.get("action") == "put"
+            and request.get("object_key") == object_key]
     if not puts:
         raise ValueError("no real PUT request observed for this leaf")
     if entrypoint in ("ordinary", "enterprise_internal"):
@@ -285,24 +342,276 @@ def _immutability_proof(measured, entrypoint):
         put_route_re, put_route = None, presign["route"]
     else:
         put_route_re, put_route = None, presign["route"][:-len("presign")] + "upload"
+    # Production storage resolution happens on the WRITE path, not the
+    # signing path: only the gateway/seat presign handler of
+    # enterprise_internal calls session_location/frozen_location during
+    # presign (run9 battery: 16/16 enterprise_internal presigns carry a
+    # storage trace, 0/48 for the other three surfaces), while EVERY
+    # admitted (2xx) PUT resolves the object's location in production
+    # storage (run9: 60/60).  So the three-way binding's location leg is
+    # proven on at least one admitted PUT of this leaf; rejected replays
+    # (409, often before the storage layer) keep the identity bindings.
+    admitted_put_bound = False
     for put in puts:
         route_ok = (put_route_re.fullmatch(put["route"]) if put_route_re is not None
                     else put["route"] == put_route)
         if (put["method"] != "PUT" or put["handler"] != put_handler
                 or put.get("object_key") != object_key or not route_ok):
             raise ValueError("PUT request is not bound to this leaf's object at the server")
+        if 200 <= put["status"] < 300 and _server_location_bound(
+                put, object_key, measured.get("driver")):
+            admitted_put_bound = True
+    if not admitted_put_bound:
+        raise ValueError("no admitted PUT resolved this leaf's object in production storage")
     return presign, puts
 
-# The frozen enterprise multipart/group_file leaves cannot be proven by
-# enterprise seat proxy PUT. Keep them blocked until the contract owner
-# authorizes a revision or the required entrypoints can be exercised.
-BLOCKED_ENTERPRISE_SCENARIOS = frozenset({"multipart_success", "group_file_success"})
+
+def _rejected_scenario_proof(measured, surface):
+    """Reject-type leaves bind identities WITHOUT an admitted PUT.
+
+    Fail-closed, old-client and replay-rejection scenarios assert that the
+    upload chain is refused; their acceptance evidence is the identity
+    binding of every observed request plus the refused statuses.  At most
+    one admitted presign may exist (the chain opened and the write was
+    then refused); zero presigns is the chain-never-opened shape.  Every
+    PUT must be refused.  Returns (presign_or_None, representative_put).
+    """
+    if surface not in SURFACE_ROUTES or not isinstance(measured, dict):
+        raise ValueError("unknown upload surface")
+    requests = measured.get("http_requests")
+    object_key = measured.get("object_key")
+    if (not isinstance(requests, list) or not requests
+            or not isinstance(object_key, str) or not object_key):
+        raise ValueError("missing server-bound request evidence")
+    ids = [request.get("request_id") for request in requests]
+    if (any(not isinstance(identity, str) or not identity for identity in ids)
+            or len(set(ids)) != len(ids)):
+        raise ValueError("request identities missing or duplicated")
+
+    def complete(request):
+        return (all(isinstance(request.get(k), str) and request[k]
+                    for k in ("method", "route", "handler", "server_process", "connection_id"))
+                and type(request.get("status")) is int)
+
+    if not all(complete(request) for request in requests):
+        raise ValueError("incomplete observed HTTP request")
+    method, route, presign_handler, put_handler = SURFACE_ROUTES[surface]
+    presigns = [request for request in requests
+                if request.get("action") == "presign"
+                and 200 <= request["status"] < 300]
+    if len(presigns) > 1:
+        raise ValueError("expected at most one admitted presign request")
+    presign = presigns[0] if presigns else None
+    if presign is not None and (
+            presign["method"] != method
+            or not re.fullmatch(route, presign["route"])
+            or presign["handler"] != presign_handler
+            or presign.get("object_key") != object_key):
+        raise ValueError("presign request is not bound to this leaf's object at the server")
+    puts = [request for request in requests if request.get("action") == "put"]
+    if not puts:
+        raise ValueError("no real PUT request observed for this leaf")
+    if entrypoint_route_tail(surface, presign) is None:
+        raise ValueError("cannot derive the PUT route from the presign")
+    representative = None
+    for put in puts:
+        if 200 <= put["status"] < 300:
+            raise ValueError("scenario asserts rejection but an admitted PUT exists")
+        route_ok = _put_route_ok(surface, presign, put)
+        if (put["method"] != "PUT" or put["handler"] != put_handler
+                or put.get("object_key") != object_key or not route_ok):
+            raise ValueError("PUT request is not bound to this leaf's object at the server")
+        if representative is None:
+            representative = put
+    if representative is None:
+        raise ValueError("no refused PUT observed for this leaf")
+    return presign, representative
 
 
-def _blocked_enterprise_leaf(leaf):
-    return (leaf.get("source_case_ref") == "W2-01/pending-multipart"
-            and leaf.get("domain") == "enterprise"
-            and _obs_scenario(leaf) in BLOCKED_ENTERPRISE_SCENARIOS)
+def entrypoint_route_tail(surface, presign):
+    """The PUT route rule per surface; None when it cannot be derived."""
+    if surface in ("ordinary", "enterprise_internal"):
+        return re.compile(r"/api/v1/attachment/gateway/[0-9a-fA-F-]{36}")
+    if presign is None:
+        return None
+    if surface == "enterprise_seat":
+        return presign["route"]
+    return presign["route"][:-len("presign")] + "upload"
+
+
+def _put_route_ok(surface, presign, put):
+    rule = entrypoint_route_tail(surface, presign)
+    if isinstance(rule, re.Pattern):
+        return bool(rule.fullmatch(put["route"]))
+    if rule is None:
+        return False
+    return put["route"] == rule
+
+# 2026-10-31 attempt-6 unlock: the frozen 12 leaves (enterprise
+# multipart_success/group_file_success x garage/disk x AC01/AC02 + ordinary
+# group_file_success x garage/disk x AC01/AC02) measure through the REAL
+# production group-file entrypoints: POST /api/v1/group/file/upload
+# (multipart form-data -> group_file_logic:upload -> group_file_ds V5 chain:
+# presign scope=group, pin before the provider PUT, same-transaction
+# confirmation) plus, on the bind face, POST /api/v1/group/file/bind
+# (group_file_ds:bind_file).  The prior substitutes are forbidden evidence:
+# enterprise seat proxy PUT (2026-10-29 ruling) and the ordinary
+# attachment-multipart + message-anchor route (obs_binding negative).
+GROUP_FILE_FACE = {
+    ("multipart_success", "enterprise"): "group_file_multipart_upload",
+    ("group_file_success", "enterprise"): "group_file_bind",
+    ("group_file_success", "ordinary"): "group_file_bind",
+}
+GROUP_FILE_UPLOAD_ROUTE = "/api/v1/group/file/upload"
+GROUP_FILE_BIND_ROUTE = "/api/v1/group/file/bind"
+GROUP_FILE_HANDLER = "group_file_handler"
+GROUP_FILE_CREATE_ROUTE = "/api/internal/v1/groups"
+GROUP_FILE_CREATE_HANDLER = "enterprise_group_handler"
+
+
+def _is_group_file_leaf(scenario, domain):
+    return (scenario, domain) in GROUP_FILE_FACE
+
+
+def _complete_requests(measured):
+    """Shared completeness gate for the observed request records."""
+    requests = measured.get("http_requests")
+    object_key = measured.get("object_key")
+    if (not isinstance(requests, list) or not requests
+            or any(not isinstance(request, dict) for request in requests)
+            or not isinstance(object_key, str) or not object_key):
+        raise ValueError("missing server-bound request evidence")
+    ids = [request.get("request_id") for request in requests]
+    if (any(not isinstance(identity, str) or not identity for identity in ids)
+            or len(set(ids)) != len(ids)):
+        raise ValueError("request identities missing or duplicated")
+
+    def complete(request):
+        return (all(isinstance(request.get(k), str) and request[k]
+                    for k in ("method", "route", "handler", "server_process",
+                              "connection_id"))
+                and type(request.get("status")) is int)
+
+    if not all(complete(request) for request in requests):
+        raise ValueError("incomplete observed HTTP request")
+    return requests, object_key
+
+
+def _unique_request(requests, request_id, label):
+    if not isinstance(request_id, str) or not request_id:
+        raise ValueError("missing %s request identity" % label)
+    matches = [r for r in requests if r.get("request_id") == request_id]
+    if len(matches) != 1:
+        raise ValueError("%s request identity missing or duplicated" % label)
+    return matches[0]
+
+
+def _enterprise_origin_proof(measured, requests):
+    """Bind enterprise leaves to the real production enterprise-group domain.
+
+    The measured domain facts must be the server-written production rows
+    (the enterprise_group_origin origin row and the workspace-scoped group
+    row) with the leaf's own server-observed internal group creation in the
+    request evidence.  Fixture-supplied org/workspace labels were rejected
+    by the 1d1a42a23 review and stay inadmissible.
+    """
+    gid = measured.get("gid")
+    origin = measured.get("origin")
+    ws = measured.get("workspace_id")
+    org = measured.get("org_id")
+    if (type(gid) is not int or gid <= 0
+            or measured.get("group_scope") != "workspace"
+            or measured.get("group_workspace_id") != ws
+            or type(measured.get("actor_uid")) is not int
+            or measured.get("actor_uid") <= 0
+            or not isinstance(origin, dict)
+            or set(origin) != {"organization_id", "application_id", "workspace_id"}
+            or any(type(origin[key]) is not int or origin[key] <= 0
+                   for key in origin)
+            or origin["workspace_id"] != ws or origin["organization_id"] != org):
+        raise ValueError("enterprise measured facts are not the server-resolved "
+                         "production origin (enterprise_group_origin row + "
+                         "workspace-scoped group); fixture labels are not evidence")
+    creates = [r for r in requests if r.get("route") == GROUP_FILE_CREATE_ROUTE]
+    if (len(creates) != 1
+            or creates[0].get("method") != "POST"
+            or creates[0].get("handler") != GROUP_FILE_CREATE_HANDLER
+            or not 200 <= creates[0]["status"] < 300
+            or measured.get("create_request_id") != creates[0].get("request_id")
+            or measured.get("create_status") != creates[0]["status"]):
+        raise ValueError("the leaf evidence carries no server-observed "
+                         "enterprise group creation at the real %s route"
+                         % GROUP_FILE_CREATE_ROUTE)
+    return gid
+
+
+def _group_file_proof(measured, scenario, domain):
+    """Bind group-file leaves to their real production chain.
+
+    Require the upload route, handler, object, pin and storage-resolution
+    evidence plus the real bind request and business file id.  Enterprise
+    leaves additionally require their own production-domain proof: the
+    server-resolved enterprise_group_origin facts and the leaf's observed
+    internal group creation (2026-11-01 applicability revision).
+    """
+    face = GROUP_FILE_FACE[(scenario, domain)]
+    if not isinstance(measured, dict):
+        raise ValueError("measured is not a dict")
+    if measured.get("entrypoint_face") != face:
+        raise ValueError(
+            "entrypoint_face %r does not name the real group-file chain "
+            "(expected %s)" % (measured.get("entrypoint_face"), face))
+    if (measured.get("route") != GROUP_FILE_UPLOAD_ROUTE
+            or measured.get("handler") != GROUP_FILE_HANDLER):
+        raise ValueError("measured route/handler marker is not the real "
+                         "%s production entrypoint" % GROUP_FILE_UPLOAD_ROUTE)
+    if measured.get("status") != 200:
+        raise ValueError("upload outcome marker is not HTTP 200")
+    requests, object_key = _complete_requests(measured)
+    if not re.fullmatch(r"[0-9a-f]{64}", measured.get("pin_sha256", "")):
+        raise ValueError("missing pinned content sha256")
+    if measured.get("pin_before_put") is not True:
+        raise ValueError("pin-before-provider-PUT fact not asserted")
+    upload = _unique_request(requests, measured.get("request_id"), "upload")
+    if (upload["method"] != "POST"
+            or upload["route"] != GROUP_FILE_UPLOAD_ROUTE
+            or upload["handler"] != GROUP_FILE_HANDLER
+            or not 200 <= upload["status"] < 300
+            or upload.get("action") != "upload"
+            or upload.get("object_key") != object_key):
+        raise ValueError("server-observed upload request is not bound to this "
+                         "leaf's object at the real group-file route")
+    if not _server_location_bound(upload, object_key, measured.get("driver")):
+        raise ValueError("the upload request process did not resolve this "
+                         "object's location in production storage")
+    if domain == "enterprise":
+        _enterprise_origin_proof(measured, requests)
+    if scenario == "multipart_success":
+        if any(r.get("route") == GROUP_FILE_BIND_ROUTE for r in requests):
+            raise ValueError("multipart face must not carry bind-chain requests")
+        return upload, upload
+    bind = _unique_request(requests, measured.get("bind_request_id"), "bind")
+    if bind["request_id"] == upload["request_id"]:
+        raise ValueError("bind identity equals the upload identity")
+    if (bind["method"] != "POST"
+            or bind["route"] != GROUP_FILE_BIND_ROUTE
+            or bind["handler"] != GROUP_FILE_HANDLER
+            or not 200 <= bind["status"] < 300
+            or bind.get("action") != "bind"
+            or bind.get("object_key") != object_key):
+        raise ValueError("server-observed bind request is not bound to this "
+                         "leaf's object at the real bind route")
+    if measured.get("bind_status") != 200 or measured["bind_status"] != bind["status"]:
+        raise ValueError("bind outcome marker does not match the observed request")
+    file_id = measured.get("group_file_id")
+    # bind_file returns the business file_id from elib_oss:generate_file_id(),
+    # not the numeric group_file.id referenced by attachment.group_file_id.
+    # Match the production elib_oss:validate_file_id/1 format.
+    if not isinstance(file_id, str) or not re.fullmatch(
+            r"file_[0-9]+_[0-9]+", file_id):
+        raise ValueError("missing bound group_file_id fact (not a "
+                         "production file_<ts>_<rand> row id)")
+    return upload, bind
 
 
 LEGACY_WITHOUT_AC = frozenset({
@@ -323,6 +632,14 @@ LEGACY_WITHOUT_AC = frozenset({
 
 # Same adequacy judgments as the frozen W1-02 adapters: only probes that
 # execute the leaf's defining action become a measured plan leaf.
+# 2026-10-31: the eight scenarios below were moved out of the stale
+# INADEQUATE snapshot — w102_probe.sh has carried their behavior-level
+# implementations for several candidates now (legacy-NULL backfill,
+# 1,000,000-row load with lock-wait evidence, keyset-batch interrupt/resume,
+# real old-writer GC-intent refusal, real function invocations with ACL
+# callability, M3 function inventory parity, first-bind + second-bind
+# refusal, attachment-binding same-value replay with to_jsonb snapshot),
+# which is exactly what the frozen W1-02 adapters already accept.
 ADEQUATE = {
     ("W1-02/migration", "expand-queue"): {
         "base_read_compat": ["base_read_compat", "base_read_compat2"],
@@ -336,6 +653,14 @@ ADEQUATE = {
             "renew_expiry_monotonic_and_deadline_fixed"],
         "function_digest_same_across_phases": [
             "function_digest_same_across_phases"],
+        "old_null_session_protected": ["old_null_session_protected"],
+        "large_table_write_block_bound": ["large_table_write_block_bound"],
+        "backfill_interrupt_resume": ["backfill_interrupt_resume"],
+        "rolling_old_writer_no_gc": ["rolling_old_writer_no_gc"],
+        "expand_required_functions_callable": [
+            "expand_required_functions_callable"],
+        "guards_do_not_install_missing_functions": [
+            "guards_do_not_install_missing_functions"],
     },
     ("W1-02/migration", "guards-contract"): {
         "base_read_compat": ["base_read_compat", "base_read_compat2"],
@@ -349,12 +674,77 @@ ADEQUATE = {
             "renew_expiry_monotonic_and_deadline_fixed"],
         "function_digest_same_across_phases": [
             "function_digest_same_across_phases"],
+        "old_null_session_protected": ["old_null_session_protected"],
+        "large_table_write_block_bound": ["large_table_write_block_bound"],
+        "backfill_interrupt_resume": ["backfill_interrupt_resume"],
+        "rolling_old_writer_no_gc": ["rolling_old_writer_no_gc"],
+        "expand_required_functions_callable": [
+            "expand_required_functions_callable"],
+        "guards_do_not_install_missing_functions": [
+            "guards_do_not_install_missing_functions"],
     },
     ("W1-02/immutable", "guards-contract"): {
         name: [name] for name in (
             "mutate_driver", "mutate_namespace", "mutate_container",
             "mutate_key", "mutate_owner", "mutate_scope", "mutate_cipher",
-            "mutate_locator_digest", "tombstone_recreation")
+            "mutate_locator_digest", "tombstone_recreation",
+            "first_bind_once", "same_value_replay")
+    },
+    ("W1-02/audit-actor-anonymization", "guards-contract"): {
+        "direct_actor_null_with_live_user_denied": ["direct_actor_null_with_live_user_denied"],
+        "direct_actor_substitution_denied": ["direct_actor_substitution_denied"],
+        "fk_user_delete_sets_audit_null": ["fk_user_delete_sets_audit_null"],
+    },
+    ("W1-02/intent-authority", "guards-contract"): {
+        "activate_legacy_without_proof": ["activate_legacy_without_proof"],
+        "authorized_intent_atomic": ["authorized_intent_atomic"],
+        "direct_metadata_intent": ["direct_metadata_intent"],
+        "direct_session_intent": ["direct_session_intent"],
+        "forge_gc_verified": ["forge_gc_verified"],
+        "forge_gc_verified_on_insert": ["forge_gc_verified_on_insert"],
+        "intent_future_retention": ["intent_future_retention"],
+        "intent_missing_audit": ["intent_missing_audit"],
+        "intent_missing_metadata_transition": ["intent_missing_metadata_transition"],
+        "intent_under_hold": ["intent_under_hold"],
+        "intent_with_live_reference": ["intent_with_live_reference"],
+        "queue_insert_done": ["queue_insert_done"],
+        "queue_insert_leased": ["queue_insert_leased"],
+        "queue_insert_ready": ["queue_insert_ready"],
+        "queue_insert_retry_wait": ["queue_insert_retry_wait"],
+        "runtime_set_role_owner": ["runtime_set_role_owner"],
+        "worker_arbitrary_enqueue": ["worker_arbitrary_enqueue"],
+    },
+    ("W1-02/recovery-tombstone-integrity", "guards-contract"): {
+        "copy_uuid_snapshot_before_metadata_delete": ["copy_uuid_snapshot_before_metadata_delete"],
+        "cross_table_duplicate_uuid_rejected": ["cross_table_duplicate_uuid_rejected"],
+        "direct_dml_resurrection_denied": ["direct_dml_resurrection_denied"],
+        "down_with_recovery_tombstone_refused": ["down_with_recovery_tombstone_refused"],
+        "legacy_null_preserved": ["legacy_null_preserved"],
+        "missing_snapshot_rollback": ["missing_snapshot_rollback"],
+        "tombstone_update_delete_denied": ["tombstone_update_delete_denied"],
+    },
+    ("W1-02/registration-integrity", "guards-contract"): {
+        "audit_null_does_not_grant_resume": ["audit_null_does_not_grant_resume"],
+        "legacy_null_not_fabricated": ["legacy_null_not_fabricated"],
+        "original_filename_conflict_after_restart": ["original_filename_conflict_after_restart"],
+        "original_mime_conflict_after_restart": ["original_mime_conflict_after_restart"],
+        "pg_canonical_json_digest_vector": ["pg_canonical_json_digest_vector"],
+        "seat_contact_subject_kind_conflict": ["eb_seat_contact_subject_kind_conflict"],
+        "snapshot_direct_dml_rejected": ["snapshot_direct_dml_rejected"],
+        "widget_other_visitor_session_denied": ["eb_widget_other_visitor_session_denied"],
+    },
+    ("W1-02/session-link-integrity", "guards-contract"): {
+        "confirmed_gc_preserves_session_link": ["confirmed_gc_preserves_session_link"],
+        "confirmed_null": ["confirmed_null"],
+        "confirmed_rebind": ["confirmed_rebind"],
+        "confirmed_to_registered": ["confirmed_to_registered"],
+        "lawful_repeat": ["lawful_repeat"],
+        "legal_fk_wrong_cipher": ["legal_fk_wrong_cipher"],
+        "legal_fk_wrong_key": ["legal_fk_wrong_key"],
+        "legal_fk_wrong_location": ["legal_fk_wrong_location"],
+        "legal_fk_wrong_owner": ["legal_fk_wrong_owner"],
+        "legal_fk_wrong_scope": ["legal_fk_wrong_scope"],
+        "registered_link_nonnull": ["registered_link_nonnull"],
     },
 }
 
@@ -572,14 +962,30 @@ def build():
             measured = obs.get("measured") or {}
             try:
                 presign, puts = _immutability_proof(measured, leaf["entrypoint"])
-            except (ValueError, TypeError) as exc:
-                S.group_gap(gap_groups, source, 1,
-                            "server-observed request/object binding rejected: %s"
-                            % exc)
-                continue
+            except (ValueError, TypeError) as immutable_exc:
+                # Reject-type w403dm scenarios (expired replay, old-client,
+                # fail-closed) bind identities with refused writes; their
+                # acceptance evidence is the identity chain plus the refused
+                # statuses, not an admitted write.
+                try:
+                    presign, put_r = _rejected_scenario_proof(
+                        measured, leaf["entrypoint"])
+                    puts = [put_r]
+                except (ValueError, TypeError) as rejected_exc:
+                    S.group_gap(gap_groups, source, 1,
+                                "server-observed request/object binding "
+                                "rejected: immutability: %s; "
+                                "rejected-scenario: %s"
+                                % (immutable_exc, rejected_exc))
+                    continue
             emitted = obs.get("emitted_at_ms")
+            # STEP lines record epoch SECONDS (date +%s, taken after the
+            # eunit process exited): the finish second's tail is inside the
+            # step, so the right edge extends to the end of that second
+            # (run9: an observation emitted 345ms into the finish second died
+            # against a t1_ms truncated to the second's first millisecond).
             t0_ms = started403.timestamp() * 1000
-            t1_ms = finished403.timestamp() * 1000
+            t1_ms = finished403.timestamp() * 1000 + 999
             if not isinstance(emitted, (int, float)) \
                     or not t0_ms <= emitted <= t1_ms:
                 S.die(CASE_ID, "observation %r emitted_at_ms=%r outside the "
@@ -736,15 +1142,71 @@ def build():
                 oracle, assertions, S.db_actor(db), [db],
                 ["w102:%s:%s" % (phase, name) for name in names]))
             continue
-        if source in OBS_GROUPS:
-            if _blocked_enterprise_leaf(leaf):
+        if source in W102DM_DUAL_SOURCES:
+            # W102DM dual-driver leaves (W102DM-BLUEPRINT segment 2): the
+            # same scenario/probe set as the (plan, none) migration leaves,
+            # measured per storage driver — the merged probes.jsonl carries
+            # both drivers' rows (V5_PROBE_DRIVER-parameterized probe run),
+            # and a leaf is measured only by its OWN driver's probe rows.
+            phase = S.PHASE_MAP.get(leaf.get("source_schema_phase"))
+            scenario = leaf.get("source_scenario")
+            driver = leaf.get("driver")
+            if (phase not in ("expand", "guards") or not scenario
+                    or driver not in ("garage", "disk")):
                 S.group_gap(gap_groups, source, 1,
-                            "user ruling 2026-10-29: the enterprise "
-                            "multipart/group_file gateway substitute is not "
-                            "acceptance evidence; leaf %r stays blocked per "
-                            "the frozen contract until an authorized revision"
-                            % leaf["ordering_or_fault"])
+                            "leaf has no resolvable phase/scenario/driver "
+                            "(phase=%r scenario=%r driver=%r)"
+                            % (leaf.get("source_schema_phase"), scenario,
+                               driver))
                 continue
+            names = ADEQUATE.get((source, leaf.get("source_schema_phase")),
+                                 {}).get(scenario)
+            if not names:
+                S.group_gap(gap_groups, source, 1,
+                            "no adequate W1-02 probe is declared for this "
+                            "scenario in phase %s" % phase)
+                continue
+            probes = phases[phase]["probes"]
+            lines = [S.require_probe_driver(probes, name, driver, CASE_ID)
+                     for name in names]
+            assertions = [S.assertion(
+                "probe_%s_passed" % name,
+                "%s:%d name=%s driver=%s pass=true"
+                % (os.path.basename(probes["path"]), line_no, name, driver))
+                for name, line_no in zip(names, lines)]
+            resource = bucket if driver == "garage" else disk_root
+            actor = (S.garage_actor(bucket) if driver == "garage"
+                     else S.disk_actor(disk_root))
+            db = phases[phase]["db"]
+            oracle = {
+                "pre_db_state": "fresh %s with %d replayed up migrations in "
+                                "the %s schema phase, storage fixtures "
+                                "seeded with the %s driver quadruple"
+                                % (db, phases[phase]["replay"], phase, driver),
+                "pre_object_hash": "n/a: this plan leaf is a DB/governance "
+                                   "probe; no provider object exists",
+                "action": "psql probes %r on %s (driver=%s)"
+                          % (names, db, driver),
+                "expected_http_semantics": "no HTTP call: the leaf's stated "
+                                           "property is a database/"
+                                           "governance assertion",
+                "expected_db_delta": "the named probe's expected value is "
+                                     "asserted by the real psql run",
+                "expected_object_state": "guards reject the mutation; the "
+                                         "row's storage identity stays "
+                                         "bound to the %s driver" % driver,
+                "proof_actor": "psql imboy_user on %s; probe artifact "
+                               "sha256=%s; driver=%s"
+                               % (db, probes["sha256"], driver),
+            }
+            rows.append(S.C.build_row(
+                leaf, phases[phase]["window"][0], phases[phase]["window"][1],
+                {"exit_code": 0, "executed": len(names),
+                 "passed": len(names), "failed": 0, "skipped": 0},
+                oracle, assertions, actor, [resource],
+                ["w102dm:%s:%s:%s" % (phase, driver, name) for name in names]))
+            continue
+        if source in OBS_GROUPS:
             subdir = OBS_STEP_FOR[source]
             step = (obs_cache[subdir] if subdir in obs_cache
                     else _step_binding(case_dir, subdir, obs_cache))
@@ -764,23 +1226,83 @@ def build():
             expiry_leaf = (source == "W2-01/upload-content-pin"
                            and scenario == "frozen_internal_signature_expiry")
             proof = None
-            if source.startswith("W2-") and not expiry_leaf:
-                S.group_gap(gap_groups, source, 1,
-                            "scenario-specific HTTP request identity and outcome not yet verified")
-                continue
-            if source in surface_cases:
+            proof_kind = None
+            if source == "W2-01/pending-multipart" and _is_group_file_leaf(
+                    scenario, leaf["domain"]):
+                # 2026-10-31 attempt-6 unlock: these leaves carry the real
+                # group-file chain's server-observed evidence (upload route
+                # markers, pin facts, bind request).  Strict binding: every
+                # check below is required; any mismatch stays a named gap.
+                try:
+                    proof = _group_file_proof(measured, scenario, leaf["domain"])
+                    proof_kind = "group_file"
+                except (ValueError, TypeError) as exc:
+                    S.group_gap(gap_groups, source, 1,
+                                "group-file production entrypoint binding "
+                                "rejected at /api/v1/group/file/upload: %s"
+                                % exc)
+                    continue
+            elif source.startswith("W2-") and not expiry_leaf:
+                # 2026-10-31 unlock: the w2upload battery now emits the same
+                # server-bound HTTP evidence as the w403dm battery (every
+                # observation carries http_requests; every admitted PUT is
+                # storage-traced), so upload-surface leaves prove with the
+                # same immutability proof.  Leaves whose entrypoint is the
+                # case name recover the surface from the observed presign
+                # handler/route.
+                surface = leaf["entrypoint"]
+                if surface not in SURFACE_ROUTES:
+                    surface = _surface_from_requests(measured)
+                if surface is None or not measured.get("object_key"):
+                    if not _has_upload_action(measured):
+                        # DB-layer fail-closed leaf (registration refused
+                        # before any upload chain opened): the observation
+                        # carries no presign/put action by design, and the
+                        # generic no-HTTP oracle below is its acceptance
+                        # evidence.
+                        pass
+                    else:
+                        S.group_gap(gap_groups, source, 1,
+                                    "upload-surface evidence incomplete: no "
+                                    "resolvable surface or object_key")
+                        continue
+                try:
+                    presign_p, puts_p = _immutability_proof(measured, surface)
+                    proof = (presign_p, puts_p[0])
+                    proof_kind = "immutability"
+                except (ValueError, TypeError) as immutable_exc:
+                    puts_all = [request for request in (measured.get("http_requests") or [])
+                                if request.get("action") == "put"]
+                    if not puts_all:
+                        # Chain-never-opened / no-write-action leaf: the
+                        # generic no-HTTP oracle below carries it.
+                        pass
+                    else:
+                        try:
+                            presign_r, put_r = _rejected_scenario_proof(measured, surface)
+                            proof = (presign_r, put_r)
+                            proof_kind = "rejected"
+                        except (ValueError, TypeError) as rejected_exc:
+                            S.group_gap(gap_groups, source, 1,
+                                        "immutability: %s; rejected-scenario: %s"
+                                        % (immutable_exc, rejected_exc))
+                            continue
+            elif source in surface_cases:
                 if not expiry_leaf:
                     S.group_gap(gap_groups, source, 1,
                                 "real request provenance not yet bound for this surface")
                     continue
                 try:
                     proof = _expiry_proof(measured, leaf["entrypoint"])
+                    proof_kind = "expiry"
                 except (ValueError, TypeError) as exc:
                     S.group_gap(gap_groups, source, 1, str(exc))
                     continue
             emitted = obs.get("emitted_at_ms")
+            # Same second-granularity right edge as the w403 window above:
+            # the finish second's tail belongs to the step (run9 345ms case).
             t0_ms = obs_started.timestamp() * 1000
-            t1_ms = obs_finished.timestamp() * 1000
+            t1_ms = obs_finished.timestamp() * 1000 + 999
             if not isinstance(emitted, (int, float)) \
                     or not t0_ms <= emitted <= t1_ms:
                 S.die(CASE_ID, "observation %r emitted_at_ms=%r outside the "
@@ -861,28 +1383,129 @@ def build():
                                % (leaf["driver"], resource,
                                   S.sha256_file(obs_path)),
             }
-            if proof:
+            if proof and proof_kind != "group_file":
                 presign, put = proof
+                if proof_kind == "immutability":
+                    oracle.update(
+                        pre_object_hash="pre-PUT object state asserted by the "
+                                        "scenario's own driver reads",
+                        action="presign %s and real PUT %s on %s carried the "
+                               "leaf's object through the production gateway "
+                               "(measured: %s)"
+                               % (presign["request_id"], put["request_id"],
+                                  put["route"], msum),
+                        expected_http_semantics="presign %s status %s; PUT %s status %s" % (
+                            presign["request_id"], presign["status"],
+                            put["request_id"], put["status"]),
+                        expected_db_delta="the unit asserts the scenario's "
+                                          "DB/queue invariant before returning "
+                                          "ok (w2upload suite contract)",
+                        expected_object_state="measured object fields: %s"
+                                              % (obj_keys or
+                                                 "object %s" % measured.get("object_key")))
+                elif proof_kind == "rejected":
+                    oracle.update(
+                        pre_object_hash="the upload chain was refused as the "
+                                        "scenario asserts; pre-state asserted "
+                                        "by the scenario's own driver reads",
+                        action="real PUT %s was refused with status %s as "
+                               "asserted (measured: %s)"
+                               % (put["request_id"], put["status"], msum),
+                        expected_http_semantics="%s; all %d PUT(s) refused"
+                                                % ("presign %s status %s" % (
+                                                    presign["request_id"],
+                                                    presign["status"])
+                                                   if presign else
+                                                   "chain never opened: no "
+                                                   "admitted presign",
+                                                len([r for r in (measured.get("http_requests") or [])
+                                                     if r.get("action") == "put"])),
+                        expected_db_delta="the unit asserts the scenario's "
+                                          "DB/queue invariant before returning "
+                                          "ok (w2upload suite contract)",
+                        expected_object_state="no object written: measured "
+                                              "fields %s" % (obj_keys or
+                                                             "object %s unbound" % measured.get("object_key")))
+                else:
+                    oracle.update(
+                        pre_object_hash="object absent before PUT, as asserted by the real driver read",
+                        action="real PUT %s reached the driver and was rejected after frozen expiry" % put["request_id"],
+                        expected_http_semantics="presign %s status %s; PUT %s status %s" % (
+                            presign["request_id"], presign["status"], put["request_id"], put["status"]),
+                        expected_db_delta="content pin sha256=%s committed before expired driver write" % measured["pin_sha256"],
+                        expected_object_state="object %s absent after failed PUT" % measured["object_key"])
+            elif proof_kind == "group_file":
+                upload, tail = proof
+                bound = tail["request_id"] != upload["request_id"]
                 oracle.update(
-                    pre_object_hash="object absent before PUT, as asserted by the real driver read",
-                    action="real PUT %s reached the driver and was rejected after frozen expiry" % put["request_id"],
-                    expected_http_semantics="presign %s status %s; PUT %s status %s" % (
-                        presign["request_id"], presign["status"], put["request_id"], put["status"]),
-                    expected_db_delta="content pin sha256=%s committed before expired driver write" % measured["pin_sha256"],
-                    expected_object_state="object %s absent after failed PUT" % measured["object_key"])
+                    pre_object_hash="the unit pins the real upload bytes "
+                                    "(sha256=%s) before the provider PUT"
+                                    % measured["pin_sha256"],
+                    action="real group-file upload %s on %s%s carried the "
+                           "leaf's object through the production "
+                           "group_file_handler chain (measured: %s)"
+                           % (upload["request_id"], upload["route"],
+                              " then bind %s" % tail["request_id"] if bound else "",
+                              msum),
+                    expected_http_semantics="upload %s status %s%s" % (
+                        upload["request_id"], upload["status"],
+                        "; bind %s status %s" % (tail["request_id"], tail["status"])
+                        if bound else ""),
+                    expected_db_delta="the unit asserts the group_file/"
+                                      "attachment confirmation invariant "
+                                      "before returning ok (w2upload suite "
+                                      "contract)",
+                    expected_object_state="object %s pinned and confirmed in "
+                                          "the same transaction as the "
+                                          "group_file row" % measured["object_key"],
+                )
+            # Seal contract: every upload-surface leaf names the real
+            # production entrypoint it exercised, bound to a request id that
+            # ships in the receipt's request_ids.  A refused or never-opened
+            # chain still carries its server-observed request records; name
+            # the first one (the attempt the scenario proves refused/absent).
+            entrypoint_named = None
+            if proof:
+                entrypoint_named = proof[0]
+            elif source in surface_cases:
+                observed = [request for request in (measured.get("http_requests") or [])
+                            if isinstance(request, dict)
+                            and all(isinstance(request.get(k), str) and request[k]
+                                    for k in ("route", "method", "handler",
+                                              "request_id"))]
+                if not observed:
+                    S.group_gap(gap_groups, source, 1,
+                                "upload-surface leaf has no server-observed "
+                                "request record for its entrypoint provenance")
+                    continue
+                entrypoint_named = observed[0]
+            synthetic_ref = "w403-obs:%s#%s@%s" % (source, scenario, leaf["driver"])
+            if proof:
+                request_ids = list(dict.fromkeys(
+                    [proof[0]["request_id"], proof[1]["request_id"]]))
+            elif entrypoint_named is not None:
+                request_ids = list(dict.fromkeys(
+                    [entrypoint_named["request_id"], synthetic_ref]))
+            else:
+                request_ids = [synthetic_ref]
             row = S.C.build_row(
                 leaf, obs_started, obs_finished,
                 {"exit_code": 0, "executed": 1, "passed": 1, "failed": 0,
                  "skipped": 0},
-                oracle, assertions, actor, [resource],
-                [proof[0]["request_id"], proof[1]["request_id"]] if proof
-                else ["w403-obs:%s#%s@%s" % (source, scenario, leaf["driver"])])
+                oracle, assertions, actor, [resource], request_ids)
             if proof:
                 presign, _ = proof
                 row["entrypoint_provenance"] = {
                     "entrypoint": leaf["entrypoint"], "route": presign["route"],
                     "method": presign["method"], "handler": presign["handler"],
                     "request_id": presign["request_id"]}
+            elif entrypoint_named is not None:
+                row["entrypoint_provenance"] = {
+                    "entrypoint": leaf["entrypoint"],
+                    "route": entrypoint_named["route"],
+                    "method": entrypoint_named["method"],
+                    "handler": entrypoint_named["handler"],
+                    "request_id": entrypoint_named["request_id"]}
             rows.append(row)
             continue
         reason = GROUP_REASONS.get(source, DEFAULT_REASON)

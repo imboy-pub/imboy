@@ -70,7 +70,16 @@ emit({Case, Entry, Driver, Scenario, Domain, Ac}, Measured) ->
 
 emit(Spec, Measured, Leaf) ->
     Requests = attachment_w403_http_fixture:evidence(Leaf),
-    emit(Spec, Measured#{http_requests => Requests}).
+    %% 与 w403dm 同形：把叶对象 key 放进 measured 顶层（adapter 三方绑定
+    %% 的 request record / measured object 两方各需一份）。
+    emit(Spec, Measured#{
+        object_key => w2_object_key(Requests),
+        http_requests => Requests
+    }).
+
+w2_object_key([]) -> <<>>;
+w2_object_key([#{object_key := Key} | _]) when is_binary(Key), Key =/= <<>> -> Key;
+w2_object_key([_ | Rest]) -> w2_object_key(Rest).
 
 %% 契约域映射：ordinary/enterprise_internal 面 = ordinary 域；
 %% enterprise_seat/cs_widget 面 = enterprise 域。

@@ -15,6 +15,7 @@
 -include_lib("epgsql/include/epgsql.hrl").
 
 -define(X, attachment_lifecycle_v5_w601_w4_context).
+-define(QP, attachment_lifecycle_v5_w601_w4_queueproto).
 -define(CASE, <<"W4-02/purged-session-recovery">>).
 -define(EP_SEAT, <<"enterprise_seat">>).
 -define(EP_WIDGET, <<"cs_widget">>).
@@ -168,6 +169,12 @@ confirmed_cycle(St, Conn, Key, Triple, N) ->
     #{register_rejected => <<"23505">>, tombstone_uuid => Uuid, scope => face(St)}.
 
 done_job_cycle(St, Conn, Key, Triple, N) ->
+    %% claim_until 以"claim 非目标行 → ack done → 重试"跳过邻居，预算 20；
+    %% 组间共享同库时 worker/queue/purged 前序叶遗留的 'ready' 企业行可超过
+    %% 预算（run2 实测首叶耗尽 20 次），claim 前按 job guard 合法 UPDATE 把
+    %% 遗留活跃行收敛到 done（queueproto settle_active 先例），
+    %% require_empty 保留隔离断言。
+    ?QP:drain_eb(Conn),
     Uuid = uuid_bin(),
     ok = seed_eb_confirmed(Conn, Key, Triple, eb_id(N), Uuid),
     {ok, _, _} = ?X:e(

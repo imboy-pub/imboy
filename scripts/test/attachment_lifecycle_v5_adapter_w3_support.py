@@ -162,13 +162,17 @@ def parse_eunit(text, case_id):
     if pending is not None:
         failures.append({"test": pending["name"], "line": pending["line"],
                          "detail": "test line never reached an ok/failed terminator"})
+    # Dual-driver logs can carry two EUnit summaries in one file; accumulate
+    # so the count matches the total parsed test lines (same fix as the EUnit
+    # verbose parser in adapter_w4_support: run8 ADAPTER_FAIL had the last
+    # summary line overwrite 16 != 32 on a 2x16-log).
     summary_count = 0
     summary_raw = ""
     for line in text.splitlines():
         match = SUMMARY.match(line)
         if match:
             count = match.group(1) or match.group(2)
-            summary_count = int(count) if count else 1
+            summary_count += int(count) if count else 1
             summary_raw = line.strip()
     done = DONE_IN.search(text)
     return {

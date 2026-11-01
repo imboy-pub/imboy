@@ -29,6 +29,8 @@
     driver/0,
     other_driver/1,
     driver_index/1,
+    run_nonce/0,
+    leaf_id_offset/0,
     setup/1,
     cleanup/1,
     emit/2,
@@ -97,6 +99,51 @@ other_driver(<<"disk">>) -> <<"garage">>.
 %% id 空间分段：同库双 driver 遍互不撞主键（garage 低半段 / disk 高半段）。
 driver_index(<<"garage">>) -> 0;
 driver_index(<<"disk">>) -> 10.
+
+%% attv5 库跨 run 持久，且迁移 191 冻结语义规定：path 一旦留下
+%% attachment_object_deletion 墓碑行即永久烧毁（fn_v5_register_pending 对
+%% 任何墓碑按 path 抛 23505 'v5 key tombstoned'，无复活路径）。he/hr/rr/so
+%% 的 key 叶内唯一但跨 run 恒定，上一 run 遗留的墓碑会烧掉本 run 的 seed
+%% 注册（run3 实测 w3hold 80F / w3race 15F 全部 23505）。key 构造统一拼接
+%% 本 run 级 nonce：跨 run 不再触碰任何已烧毁 key；同一次电池 VM 内 memo
+%% 一次，保证叶主体与 sweep 对同一叶派生出同一个 key；叶内唯一性仍由
+%% Idx/Sc/Dom 保证，path 列为 text 无长度约束。
+run_nonce() ->
+    Key = {?MODULE, w601_run_nonce},
+    case persistent_term:get(Key, undefined) of
+        undefined ->
+            Nonce = iolist_to_binary(
+                [
+                    integer_to_binary(os:system_time(millisecond)),
+                    $x,
+                    integer_to_binary(erlang:unique_integer([positive]))
+                ]
+            ),
+            persistent_term:put(Key, Nonce),
+            Nonce;
+        Nonce ->
+            Nonce
+    end.
+
+%% he/hr/rr/so 的合成 asset id 段被同一 attv5 库上的多套件共享，且失败叶的
+%% attachment 行可能跨轮/跨 run 残留（行内 path 是外来 key）：固定基底时
+%% seed 的 INSERT ON CONFLICT (id) DO NOTHING 会原样保住外来行，随后
+%% fn_v5_confirm_pending 因 v_a.path ≠ v_p.object_key 抛
+%% 'v5 confirm key mismatch'（run5 w3hold 78F 实测；干净库手工复现全链
+%% 通过，证明是环境态而非冻结链问题）。id 基底按 run nonce 每 VM 偏移
+%% 1..400 × 1e6：与本 run 其他套件的基底网格（偏移 0）绝不相交，且
+%% 951000000 + 4e8 + 叶跨度仍远低于 w4queue 的 952000000000 段。
+leaf_id_offset() ->
+    Key = {?MODULE, w601_leaf_id_offset},
+    case persistent_term:get(Key, undefined) of
+        undefined ->
+            <<H:32/unsigned, _/binary>> = crypto:hash(sha, run_nonce()),
+            Offset = (1 + H rem 400) * 1000000,
+            persistent_term:put(Key, Offset),
+            Offset;
+        Offset ->
+            Offset
+    end.
 
 %% ------------------------------------------------------------------ setup
 
@@ -444,51 +491,24 @@ lenient_q(Conn, Sql, Params) ->
         {error, Reason} -> erlang:error({w601_w3_sql_failed, Reason, Sql})
     end.
 
-%% 幂等清理 attachment 元数据行，两段式：
-%%   1) attachment 行不存在（干净 key）时为 no-op，绝不触碰
-%%      attachment_object_deletion：守卫协议第二步会 INSERT 永久 tombstone
-%%      （迁移 179:1026 "v5 job rows are permanent tombstones (no DELETE)"），
-%%      而 fn_v5_register_pending（迁移 191）见同 path tombstone 即以 23505
-%%      "v5 key tombstoned" 拒绝重注册——seed 先 purge 后 register 的顺序会
-%%      给干净 key 自造挡路墓碑（run-five hold/race 全叶 23505 的根因）。
-%%   2) 行存在（sweep 兜底删除/残留行复用）才走守卫协议：
-%%      fn_v5_metadata_delete_guard（迁移 190）要求 DELETE 前
-%%      lifecycle_state='delete_intent' 且 tombstone 在位，故在单事务内
-%%      intent 转移 → tombstone 补齐 → 删除 →（提交后）tombstone 收敛为
-%%      done（只能按 job guard 的合法 UPDATE 路径收敛，同
-%%      w601_w4_queueproto:settle_active 先例）。DELETE 被治理行 FK 钉住
-%%      （23503）时整体回滚、行保持原状供 seed 的 INSERT ON CONFLICT 复用；
-%%      其余失败回滚后照抛。
+%% 幂等清理 attachment 元数据行：fn_v5_metadata_delete_guard（迁移 190）
+%% 要求 DELETE 前 lifecycle_state='delete_intent' 且 tombstone 在位，故在
+%% 单事务内按守卫协议构造：intent 转移 → tombstone 补齐 → 删除 →（提交后）
+%% tombstone 收敛为 done（迁移 179:1026 "v5 job rows are permanent
+%% tombstones (no DELETE)"——队列行是永久墓碑，只能按 job guard 的合法
+%% UPDATE 路径收敛，同 w601_w4_queueproto:settle_active 先例）。DELETE 被
+%% 治理行 FK 钉住时整体回滚、行保持原状：FK 声明为 RESTRICT 的约束
+%% （如 workspace_attachment → 迁移 168 冻结其行不可变的 WAR）抛的是
+%% **23001 restrict_violation**，非 RESTRICT 的 FK 抛 23503——两种都属
+%% "治理行钉住的合法不可销毁残留"，同样容忍（run6 w3hold 76F 实测只
+%% 认 23503 漏了 23001，把已成功的场景整叶拉红）。**23510** 同属此族：
+%% 迁移 237 fn_v5_cross_queue_guard 在向 attachment_object_deletion 写
+%% physical key 前若发现同 key 已在 enterprise_asset_delete_queue
+%% （enterprise 场景 intent 注册的队列行），抛 23510 'v5 cross-domain
+%% physical deletion conflict'（run7 w3hold 2F/78P 实测，失败落在
+%% Tombstone 位——第 2 条 SQL——故须扫任一位置而非只看第 3 位）。
+%% 其余失败回滚后照抛。
 purge_attachment_metadata(Conn, Key) ->
-    Probe = "SELECT 1 FROM attachment WHERE path=$1 LIMIT 1",
-    case e(Conn, Probe, [Key]) of
-        {ok, _, []} ->
-            ok;
-        {ok, _, [_]} ->
-            case eb_queue_holds_key(Conn, Key) of
-                true -> ok;
-                false -> purge_attachment_metadata_guarded(Conn, Key)
-            end;
-        {error, Reason} ->
-            erlang:error({w601_w3_sql_failed, Reason, Probe})
-    end.
-
-%% EB 域删除 job 在位时 ordinary 守卫协议不可用：迁移 237
-%% fn_v5_cross_queue_guard 规定同一物理 key 只允许一个域持有删除 job
-%%（23510 "v5 cross-domain physical deletion conflict"），而队列行是
-%% 永久墓碑（迁移 179，无合法 DELETE），故 aod tombstone 对该 key 永不可
-%% 合法写入——兜底 no-op，attachment 行留步级一次性库（同 WAR 残留语义）。
-eb_queue_holds_key(Conn, Key) ->
-    Sql =
-        "SELECT 1 FROM enterprise_asset_delete_queue"
-        " WHERE coalesce(storage_physical_key, object_key)=$1 LIMIT 1",
-    case e(Conn, Sql, [Key]) of
-        {ok, _, []} -> false;
-        {ok, _, [_]} -> true;
-        {error, Reason} -> erlang:error({w601_w3_sql_failed, Reason, Sql})
-    end.
-
-purge_attachment_metadata_guarded(Conn, Key) ->
     q(Conn, "BEGIN", []),
     [Intent, Tombstone, Deleted] =
         [epgsql:equery(Conn, Sql, [Key]) || Sql <- purge_sqls()],
@@ -503,23 +523,42 @@ purge_attachment_metadata_guarded(Conn, Key) ->
             ),
             q(Conn, "COMMIT", []),
             ok;
-        {_, _, {error, #error{code = Code}}} when Code =:= <<"23001">>; Code =:= <<"23503">> ->
-            %% 治理行 FK 钉住的不可销毁残留：回滚保持原状，复用既有行。
-            %% RESTRICT 违反报 23001（如迁移 168 WAR "ON DELETE RESTRICT"，
-            %% ri_ReportViolation 走 restrict_violation），NO ACTION 报 23503，
-            %% 两者同为 FK 拒绝，语义相同必须同容。
-            q(Conn, "ROLLBACK", []),
-            ok;
-        {_, _, _} ->
+        _ ->
             q(Conn, "ROLLBACK", []),
             Failed = [R || {error, _} = R <- [Intent, Tombstone, Deleted]],
-            erlang:error({w601_w3_sql_failed, Failed, purge_sqls()})
+            case
+                [
+                    C
+                 || {error, #error{code = C}} <- Failed,
+                    lists:member(C, tolerable_purge_codes())
+                ]
+            of
+                [] ->
+                    erlang:error({w601_w3_sql_failed, Failed, purge_sqls()});
+                _ ->
+                    %% 治理守卫/FK 钉住的不可销毁残留：回滚保持原状，
+                    %% 复用既有行；path 带 per-run nonce，跨 run 无污染
+                    ok
+            end
     end.
+
+%% purge 语境下"治理钉住"错误码族：23503/23001=FK 钉住（RESTRICT 与否），
+%% 23510=迁移 237 跨队列物理删除守卫。25P02 不入集——它只是事务已中止
+%% 的连锁症状，不是根因。
+tolerable_purge_codes() ->
+    [<<"23503">>, <<"23001">>, <<"23510">>].
 
 purge_sqls() ->
     [
         "UPDATE attachment SET lifecycle_state='delete_intent' WHERE path=$1",
-        "INSERT INTO attachment_object_deletion(path,bucket) VALUES ($1,'b')"
+        %% 墓碑只在真有待删 attachment 行时前置（190 删除守卫要求
+        %% intent+tombstone）：全新 key 无残留行时不得落墓碑——
+        %% fn_v5_register_pending 对任何墓碑按 path 抛 23505
+        %% 'v5 key tombstoned'（191 冻结语义无复活路径），无条件
+        %% INSERT 会把本叶尚未注册的 key 提前烧毁（run3/run4 的
+        %% w3hold 80F、w3race 注册族失败均源于此）。
+        "INSERT INTO attachment_object_deletion(path,bucket)"
+        " SELECT $1,'b' WHERE EXISTS (SELECT 1 FROM attachment WHERE path=$1)"
         " ON CONFLICT (path) DO NOTHING",
         "DELETE FROM attachment WHERE path=$1"
     ].

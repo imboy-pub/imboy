@@ -14,6 +14,14 @@ from unittest.mock import patch
 from scripts import attachment_lifecycle_v5_runner as runner
 
 
+def write_plan(plan, contract):
+    contract_path = plan / "execution-contract.json"
+    contract_path.write_text(json.dumps(contract))
+    manifest = plan / "manifest.sha256"
+    manifest.write_text(runner.sha256_file(contract_path) + "  execution-contract.json\n")
+    return runner.sha256_file(manifest)
+
+
 class ExistingAdmissionTest(unittest.TestCase):
     def test_expired_run_resume_and_next_never_offer_unstarted_wave(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -24,18 +32,18 @@ class ExistingAdmissionTest(unittest.TestCase):
                                   {'task_id': 'W1-01', 'wave': 'W1', 'dependencies': ['W0-01']}],
                         'wave_gates': {'G1': {'wave': 'W1', 'previous_gate': 'G0'}},
                         'timeouts': {'run_seconds': 10, 'wave_seconds': 30}}
-            (plan / 'execution-contract.json').write_text(json.dumps(contract))
+            digest = write_plan(plan, contract)
             now = datetime.datetime.now(datetime.timezone.utc)
             auth = root / 'auth.json'
-            auth.write_text(json.dumps({'plan_manifest_sha256': 'digest', 'implementation_allowed': True,
+            auth.write_text(json.dumps({'plan_manifest_sha256': digest, 'implementation_allowed': True,
                 'local_commit_allowed': True, 'allowed_tasks': ['W0-01', 'W1-01'],
                 'issued_at': (now - datetime.timedelta(minutes=1)).isoformat(),
                 'expires_at': (now + datetime.timedelta(days=1)).isoformat()}))
             start = time.time() - 20
             store = runner.StateStore(tmp)
-            candidate = {'plan_manifest_sha256': 'digest'}
+            candidate = {'plan_manifest_sha256': digest}
             state = store.write_snapshot({'run_id': root.name, 'plan_dir': str(plan), 'revision': 0,
-                'plan_manifest_sha256': 'digest', 'authorization_path': str(auth),
+                'plan_manifest_sha256': digest, 'authorization_path': str(auth),
                 'authorization_sha256': runner.sha256_file(auth), 'gates': {'G0': 'PASS'},
                 'verification_candidate': candidate, 'gate_candidates': {'G0': candidate},
                 'tasks': {'W0-01': {'state': 'PASS', 'attempt': 1},
@@ -43,7 +51,7 @@ class ExistingAdmissionTest(unittest.TestCase):
                 'time_budgets': {'run': {'started_at': start, 'deadline': start + 10},
                                  'waves': {'W0': {'started_at': start, 'deadline': start + 30}}}}, 'admit')
             before = Path(store.state_path).read_bytes(), Path(store.events_path).read_bytes()
-            with patch.object(runner, 'verify_plan_manifest', return_value=(True, 'digest')), \
+            with patch.object(runner, 'verify_plan_manifest', return_value=(True, digest)), \
                  patch.object(runner, 'candidate_errors', return_value=[]):
                 out = io.StringIO()
                 with contextlib.redirect_stdout(out):
@@ -64,24 +72,24 @@ class ExistingAdmissionTest(unittest.TestCase):
                 plan.mkdir()
                 contract = {'tasks': [{'task_id': 'W0-01', 'wave': 'W0', 'dependencies': []}],
                             'wave_gates': {}, 'timeouts': {'run_seconds': 10, 'wave_seconds': 5}}
-                (plan / 'execution-contract.json').write_text(json.dumps(contract))
+                digest = write_plan(plan, contract)
                 now = datetime.datetime.now(datetime.timezone.utc)
                 auth = root / 'auth.json'
-                auth.write_text(json.dumps({'plan_manifest_sha256': 'digest', 'implementation_allowed': True,
+                auth.write_text(json.dumps({'plan_manifest_sha256': digest, 'implementation_allowed': True,
                     'local_commit_allowed': True, 'allowed_tasks': ['W0-01'],
                     'issued_at': (now - datetime.timedelta(minutes=1)).isoformat(),
                     'expires_at': (now + datetime.timedelta(days=1)).isoformat()}))
                 start = time.time() - 20
                 store = runner.StateStore(tmp)
                 state = store.write_snapshot({'run_id': root.name, 'plan_dir': str(plan), 'revision': 0,
-                    'plan_manifest_sha256': 'digest', 'authorization_path': str(auth),
+                    'plan_manifest_sha256': digest, 'authorization_path': str(auth),
                     'authorization_sha256': runner.sha256_file(auth), 'gates': {},
                     'tasks': {'W0-01': {'state': status, 'attempt': 1}},
                     'time_budgets': {'run': {'started_at': start, 'deadline': start + 10},
                                      'waves': {'W0': {'started_at': start, 'deadline': start + 5}}}}, 'admit')
                 args = SimpleNamespace(run_dir=tmp, task_id='W0-01', to=target,
                                        case_results=None, commit_vector=None, blocked_reason='expired')
-                with patch.object(runner, 'verify_plan_manifest', return_value=(True, 'digest')):
+                with patch.object(runner, 'verify_plan_manifest', return_value=(True, digest)):
                     self.assertEqual(state, runner._resume_state(tmp))
                     if target == 'NO_GO' and status == 'COMMITTING':
                         with self.assertRaises(SystemExit) as exc:
@@ -306,30 +314,30 @@ class ExistingAdmissionTest(unittest.TestCase):
             plan.mkdir()
             contract = {"tasks": [{"task_id": "W0-01", "wave": "W0", "dependencies": []}],
                         "wave_gates": {}, "timeouts": {"task_seconds": 100}}
-            (plan / "execution-contract.json").write_text(json.dumps(contract))
+            digest = write_plan(plan, contract)
             now = datetime.datetime.now(datetime.timezone.utc)
             auth = root / "auth.json"
-            auth.write_text(json.dumps({"plan_manifest_sha256": "digest", "implementation_allowed": True,
+            auth.write_text(json.dumps({"plan_manifest_sha256": digest, "implementation_allowed": True,
                                         "local_commit_allowed": True, "allowed_tasks": ["W0-01"],
                                         "issued_at": (now - datetime.timedelta(minutes=1)).isoformat(),
                                         "expires_at": (now + datetime.timedelta(days=1)).isoformat()}))
             store = runner.StateStore(tmp)
             state = {"run_id": root.name, "revision": 0, "plan_dir": str(plan),
-                     "plan_manifest_sha256": "digest", "authorization_path": str(auth),
+                     "plan_manifest_sha256": digest, "authorization_path": str(auth),
                      "authorization_sha256": runner.sha256_file(auth),
                      "tasks": {"W0-01": {"state": "READY", "attempt": 0}},
                      "gates": {}}
             store.write_snapshot(state, "admit", {"synthetic": True})
             args = SimpleNamespace(run_dir=tmp, task_id="W0-01", to="RUNNING",
                                    case_results=None, commit_vector=None, blocked_reason=None)
-            with patch.object(runner, "verify_plan_manifest", return_value=(True, "digest")), \
+            with patch.object(runner, "verify_plan_manifest", return_value=(True, digest)), \
                  patch.object(runner.StateStore, "persist_snapshot", side_effect=OSError("crash")):
                 with self.assertRaises(OSError):
                     runner.cmd_task(args)
             durable = store.load_events()[-1]["payload"]["state_payload"]["tasks"]["W0-01"]
             self.assertEqual(1, durable["attempt"])
             before_events = Path(store.events_path).read_bytes()
-            with patch.object(runner, "verify_plan_manifest", return_value=(True, "digest")), \
+            with patch.object(runner, "verify_plan_manifest", return_value=(True, digest)), \
                  contextlib.redirect_stdout(io.StringIO()):
                 self.assertEqual(runner.EXIT_OK, runner.cmd_resume(SimpleNamespace(run_dir=tmp)))
                 self.assertEqual(runner.EXIT_OK, runner.cmd_resume(SimpleNamespace(run_dir=tmp)))
@@ -510,25 +518,26 @@ class ExistingAdmissionTest(unittest.TestCase):
             run = root / "run"
             plan.mkdir()
             run.mkdir()
+            digest = write_plan(plan, {"tasks": [], "wave_gates": {}})
             auth = root / "authorization.json"
-            auth.write_text(json.dumps({"plan_manifest_sha256": "digest",
+            auth.write_text(json.dumps({"plan_manifest_sha256": digest,
                                         "implementation_allowed": True,
                                         "local_commit_allowed": True,
                                         "allowed_tasks": [],
                                         "issued_at": (datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(minutes=1)).isoformat(),
                                         "expires_at": (datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(days=1)).isoformat()}))
             old = {"run_id": "run", "mode": "IMPLEMENTATION",
-                   "plan_dir": str(plan), "plan_manifest_sha256": "digest",
+                   "plan_dir": str(plan), "plan_manifest_sha256": digest,
                    "authorization_path": str(auth),
                    "authorization_sha256": "old-receipt-hash"}
             store = runner.StateStore(str(run))
-            store.append_event("admit", {"plan_manifest_sha256": "digest",
+            store.append_event("admit", {"plan_manifest_sha256": digest,
                                          "authorization_sha256": "old-receipt-hash"})
             store.write_snapshot(old)
             before = (run / "state.json").read_bytes()
             events_before = (run / "events.jsonl").read_bytes()
             args = SimpleNamespace(plan_dir=str(plan), run_dir=str(run), authorization=str(auth))
-            with patch.object(runner, "verify_plan_manifest", return_value=(True, "digest")), \
+            with patch.object(runner, "verify_plan_manifest", return_value=(True, digest)), \
                  patch.object(runner, "load_contract", return_value={"tasks": [], "wave_gates": {}}), \
                  contextlib.redirect_stderr(io.StringIO()), self.assertRaises(SystemExit) as exc:
                 runner.cmd_admit(args)
@@ -538,7 +547,7 @@ class ExistingAdmissionTest(unittest.TestCase):
             fresh = root / "fresh"
             fresh.mkdir()
             args.run_dir = str(fresh)
-            with patch.object(runner, "verify_plan_manifest", return_value=(True, "digest")), \
+            with patch.object(runner, "verify_plan_manifest", return_value=(True, digest)), \
                  patch.object(runner, "load_contract", return_value={"tasks": [], "wave_gates": {}}), \
                  contextlib.redirect_stdout(io.StringIO()):
                 self.assertEqual(runner.EXIT_OK, runner.cmd_admit(args))
@@ -553,20 +562,20 @@ class ExistingAdmissionTest(unittest.TestCase):
             for field in ("plan_dir", "authorization_path"):
                 altered = dict(valid_snapshot, **{field: None})
                 (fresh / "state.json").write_text(json.dumps(altered))
-                with patch.object(runner, "verify_plan_manifest", return_value=(True, "digest")), \
+                with patch.object(runner, "verify_plan_manifest", return_value=(True, digest)), \
                      patch.object(runner, "load_contract", return_value={"tasks": [], "wave_gates": {}}), \
                      contextlib.redirect_stderr(io.StringIO()), self.assertRaises(SystemExit) as invalid:
                     runner.cmd_admit(args)
                 self.assertEqual(runner.EXIT_CONTRACT, invalid.exception.code)
             (fresh / "state.json").write_text(json.dumps(valid_snapshot))
             (fresh / "events.jsonl").unlink()
-            with patch.object(runner, "verify_plan_manifest", return_value=(True, "digest")), \
+            with patch.object(runner, "verify_plan_manifest", return_value=(True, digest)), \
                  patch.object(runner, "load_contract", return_value={"tasks": [], "wave_gates": {}}), \
                  contextlib.redirect_stderr(io.StringIO()), self.assertRaises(SystemExit) as exc:
                 runner.cmd_admit(args)
             self.assertEqual(runner.EXIT_CONTRACT, exc.exception.code)
             (fresh / "state.json").write_text("null")
-            with patch.object(runner, "verify_plan_manifest", return_value=(True, "digest")), \
+            with patch.object(runner, "verify_plan_manifest", return_value=(True, digest)), \
                  patch.object(runner, "load_contract", return_value={"tasks": [], "wave_gates": {}}), \
                  contextlib.redirect_stderr(io.StringIO()), self.assertRaises(SystemExit) as invalid:
                 runner.cmd_admit(args)
@@ -581,7 +590,7 @@ class ExistingAdmissionTest(unittest.TestCase):
                     else:
                         state_path.write_text(state_content)
                     (fresh / "events.jsonl").write_text(event_content)
-                    with patch.object(runner, "verify_plan_manifest", return_value=(True, "digest")), \
+                    with patch.object(runner, "verify_plan_manifest", return_value=(True, digest)), \
                          patch.object(runner, "load_contract", return_value={"tasks": [], "wave_gates": {}}), \
                          contextlib.redirect_stderr(io.StringIO()), self.assertRaises(SystemExit) as invalid:
                         runner.cmd_admit(args)

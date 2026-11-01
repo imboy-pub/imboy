@@ -68,7 +68,11 @@ hr_specs(Driver) ->
     ].
 
 %% 双跑幂等 id：driver 分段（garage 低半段 / disk 高半段）+ 叶序 * 20。
-leaf_id(Driver, Idx) -> ?ASSET_BASE + (Idx - 1) * 20 + ?SUP:driver_index(Driver).
+%% 基底再叠加 run 级偏移（?SUP:leaf_id_offset/0）：attachment.id 段与同库
+%% 其他套件共享，外来残留行会让 ON CONFLICT (id) DO NOTHING 保住旧 path、
+%% confirm 抛 'v5 confirm key mismatch'（run5 实测）。
+leaf_id(Driver, Idx) ->
+    ?ASSET_BASE + ?SUP:leaf_id_offset() + (Idx - 1) * 20 + ?SUP:driver_index(Driver).
 
 leaf_unit(S, {Case, Entry, Driver, Sc, Dom, Ac, _Idx, _Scope, _EP} = Spec) ->
     Desc = binary_to_list(
@@ -162,7 +166,10 @@ hold_all_entrypoint(S, ScBin, Idx, ScopeVal, EP) ->
     ).
 
 he_key(Driver, Idx) ->
-    <<"v5e2e/w601/", Driver/binary, "/he/", (integer_to_binary(Idx))/binary>>.
+    %% run 级 nonce：迁移 191 规定墓碑 key 永久烧毁（见 ?SUP:run_nonce/0 注），
+    %% 跨 run 不再复用已烧毁 key；VM 内 memo 保证叶主体与 sweep 同 key。
+    Nonce = ?SUP:run_nonce(),
+    <<"v5e2e/w601/", Driver/binary, "/he/", Nonce/binary, "/", (integer_to_binary(Idx))/binary>>.
 
 he_ctrl_key(Key) -> <<Key/binary, "/ctrl">>.
 
@@ -413,7 +420,8 @@ hold_gc_race(S, Driver, ScBin, DomBin, Idx, Scope) ->
     ).
 
 hr_key(Driver, ScBin, DomBin) ->
-    <<"v5e2e/w601/", Driver/binary, "/hr/", ScBin/binary, "/", DomBin/binary>>.
+    Nonce = ?SUP:run_nonce(),
+    <<"v5e2e/w601/", Driver/binary, "/hr/", Nonce/binary, "/", ScBin/binary, "/", DomBin/binary>>.
 
 hr_eb_id(Id) -> Id + 100000.
 

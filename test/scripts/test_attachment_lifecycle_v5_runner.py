@@ -421,7 +421,7 @@ class VerificationTests(unittest.TestCase):
             w602 = runner.receipt_errors(row, self.leaf, "W6-02", "W6-02/e2e-compat",
                                          self.candidate, str(self.run), self.state["resource_allowlist"],
                                          self.contract, 1, legacy=legacy)
-            self.assertIn("W6-02 provenance is not bound to its driver session and owned backend", w602)
+            self.assertIn("missing registered live backend_provenance", w602)
             mismatch = runner.receipt_errors(row, expected, "W4-03", "W6-01/real-pg-garage-disk",
                                             self.candidate, str(self.run), self.state["resource_allowlist"],
                                             self.contract, 1, legacy=legacy)
@@ -818,7 +818,35 @@ class VerificationTests(unittest.TestCase):
                 row["case_id"] = cid
                 errors = runner.receipt_errors(row, self.leaf, "W6-02", cid,
                     self.candidate, str(self.run), allowlist)
-                self.assertIn("W6-02 provenance is not bound to its driver session and owned backend", errors)
+                self.assertIn("missing registered live backend_provenance", errors)
+        # Forged or unregistered backend bindings fail closed with the same
+        # honest reason; a fully registered binding clears the receipt.
+        allowlist["backend_provenance"] = ["127.0.0.1:9801"]
+        row["case_id"] = "W6-02/e2e-compat"
+        for proof in (
+                {"kind": "owned-backend", "resource_id": "127.0.0.1:9999",
+                 "process_id": 7, "base_url": "http://127.0.0.1:9999"},
+                {"kind": "owned-backend", "resource_id": "127.0.0.1:9801",
+                 "base_url": "http://127.0.0.1:9801"},
+                {"kind": "owned-backend", "resource_id": "127.0.0.1:9801",
+                 "process_id": -1, "base_url": "http://127.0.0.1:9801"},
+                {"kind": "owned-backend", "resource_id": "127.0.0.1:9801",
+                 "process_id": 7}):
+            row["backend_provenance"] = proof
+            errors = runner.receipt_errors(row, self.leaf, "W6-02", row["case_id"],
+                self.candidate, str(self.run), allowlist)
+            self.assertIn("missing registered live backend_provenance", errors, proof)
+        row["backend_provenance"] = {"kind": "owned-backend", "resource_id": "127.0.0.1:9801",
+                                     "process_id": 4242, "base_url": "http://127.0.0.1:9801",
+                                     # healthz before the receipt's finished_at (R3 window).
+                                     "healthz_checked_at": 1792022400}
+        raw = dict(row)
+        raw["assertions"] = [{"id": "delete_ack_lost", "passed": True}]
+        self.raw.write_text(json.dumps(raw))
+        row["raw_output_sha256"] = runner.sha256_file(self.raw)
+        errors = runner.receipt_errors(row, self.leaf, "W6-02", row["case_id"],
+            self.candidate, str(self.run), allowlist)
+        self.assertEqual([], errors)
 
     def test_ac08_requires_device_but_not_browser(self):
         row = self.bound_receipt()
@@ -828,7 +856,7 @@ class VerificationTests(unittest.TestCase):
         errors = runner.receipt_errors(row, self.leaf, "W6-02", row["case_id"],
                                        self.candidate, str(self.run), allowlist)
         self.assertNotIn("missing registered live browser_provenance", errors)
-        self.assertIn("W6-02 provenance is not bound to its driver session and owned backend", errors)
+        self.assertIn("missing registered live backend_provenance", errors)
         invalid_allowlist = dict(allowlist, device_provenance="synthetic-device")
         invalid_errors = runner.receipt_errors(row, self.leaf, "W6-02", row["case_id"],
                                                self.candidate, str(self.run), invalid_allowlist)
@@ -930,7 +958,7 @@ class VerificationTests(unittest.TestCase):
         output = io.StringIO()
         with contextlib.redirect_stdout(output):
             self.assertEqual(runner.EXIT_CONTRACT, self.seal_as_controller(args, launch))
-        self.assertEqual(["W6-02 provenance is not bound to its driver session and owned backend"],
+        self.assertEqual(["missing registered live backend_provenance"],
                          json.loads(output.getvalue())["errors"])
         self.assertFalse((case_dir / "leaf-001.json").exists())
         self.assertEqual(before, self.state_file.read_bytes())

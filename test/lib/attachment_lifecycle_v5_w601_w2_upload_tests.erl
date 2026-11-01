@@ -375,7 +375,12 @@ frozen_driver_expiry(S, Ep, Driver) ->
         frozen_expiry => Expiry,
         provider_bytes_absent => true,
         control_put_succeeded => true,
-        registration_preseeded_fixture => true,
+        %% short_lived_session/4 (seat/widget) registers through ?F:register —
+        %% the real HTTP presign chain (seeded_eb_http_session seeds the
+        %% org/ws/asset ENTITIES, not the registration).  The flag must state
+        %% that fact; the adapter's preseeded gate reads it as an admission
+        %% that the registration did NOT go through HTTP.
+        registration_preseeded_fixture => false,
         object_key => key(T),
         pin_sha256 => PinSha,
         client_upload_id => maps:get(client_upload_id, T),

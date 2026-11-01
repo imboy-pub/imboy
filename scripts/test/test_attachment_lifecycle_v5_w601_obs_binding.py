@@ -41,18 +41,66 @@ class ObservationBindingTests(unittest.TestCase):
                     adapter._match_observation({key: [(1, no_ac), (2, {"measured": {"ac_id": "AC01"}})]}, key, "AC01")
         self.assertIsNone(adapter._match_observation({self.key: [(1, {"measured": {}})]}, self.key, "AC01"))
 
-    def test_blocked_enterprise_multipart_leaves_stay_gaps(self):
-        blocked = {"source_case_ref": "W2-01/pending-multipart", "entrypoint": "pending-multipart", "driver": "disk", "domain": "enterprise", "ordering_or_fault": "W2-01/pending-multipart/expand-queue/multipart_success", "ac_id": "AC01"}
-        ordinary = {"source_case_ref": "W2-01/pending-multipart", "entrypoint": "pending-multipart", "driver": "disk", "domain": "ordinary", "ordering_or_fault": "W2-01/pending-multipart/expand-queue/multipart_success", "ac_id": "AC01"}
+    def test_group_file_entrypoints_bind_strictly(self):
+        """Ordinary and enterprise group files bind to their real production chain.
+
+        Enterprise leaves additionally require the server-resolved production
+        origin (enterprise_group_origin row facts + workspace-scoped group +
+        the leaf's own observed internal group creation); invented labels
+        cannot turn ordinary JWT uploads into enterprise evidence. Missing or
+        substituted markers on either domain stay gaps.
+        """
         start = datetime(2026, 1, 1, tzinfo=timezone.utc)
         window = (start, start + timedelta(seconds=10))
         log = {"parsed": {"markers": ["W403_DIRECT_OK"], "tests": [1], "summary_raw": "ok"}, "path": "log", "sha256": "digest"}
+        object_key = "u9/g55/20261031/att_1/w403.txt"
+        upload = {"request_id": "w403-upload", "action": "upload", "method": "POST", "route": "/api/v1/group/file/upload", "handler": "group_file_handler", "status": 200, "object_key": object_key, "server_process": "<1.2.3>", "connection_id": "<1.2.4>", "diagnostic_untrusted_locations": [{"trust": "diagnostic_untrusted", "source": "attachment_storage:frozen_location/2", "identity": {"key": object_key, "driver": "disk", "namespace": "ns", "container": "container", "locator_digest": "digest"}}]}
+        bind = {"request_id": "w403-bind", "action": "bind", "method": "POST", "route": "/api/v1/group/file/bind", "handler": "group_file_handler", "status": 200, "object_key": object_key, "server_process": "<1.2.5>", "connection_id": "<1.2.6>"}
+        create = {"request_id": "w403-create", "action": "create", "method": "POST", "route": "/api/internal/v1/groups", "handler": "enterprise_group_handler", "status": 200, "server_process": "<1.2.7>", "connection_id": "<1.2.8>"}
+
+        def enterprise_facts():
+            return {
+                "org_id": 42,
+                "workspace_id": 7,
+                "gid": 123456789,
+                "group_scope": "workspace",
+                "group_workspace_id": 7,
+                "actor_uid": 999,
+                "origin": {"organization_id": 42, "application_id": 11, "workspace_id": 7},
+                "create_request_id": "w403-create",
+                "create_route": "/api/internal/v1/groups",
+                "create_handler": "enterprise_group_handler",
+                "create_status": 200,
+            }
+
+        def measured(scenario, domain, mutate=lambda m: None):
+            m = {"driver": "disk", "ac_id": "AC01", "route": "/api/v1/group/file/upload", "handler": "group_file_handler", "status": 200, "request_id": "w403-upload", "object_key": object_key, "pin_sha256": "a" * 64, "pin_before_put": True, "http_requests": [dict(upload)]}
+            if scenario == "group_file_success":
+                m["entrypoint_face"] = "group_file_bind"
+                m["http_requests"].append(dict(bind))
+                m["bind_route"] = "/api/v1/group/file/bind"
+                m["bind_request_id"] = "w403-bind"
+                m["bind_status"] = 200
+                m["group_file_id"] = "file_1793452084668_254671"
+            else:
+                m["entrypoint_face"] = "group_file_multipart_upload"
+            if domain == "enterprise":
+                m.update(enterprise_facts())
+                m["http_requests"] = [dict(create)] + m["http_requests"]
+            mutate(m)
+            return m
+
+        def index_for(scenario, domain, m, driver="disk", ac="AC01"):
+            key = ("W2-01/pending-multipart", "pending-multipart", scenario, domain, driver)
+            return {key: [(1, {"measured": m, "emitted_at_ms": int((start + timedelta(seconds=1)).timestamp() * 1000)})]}
+
+        def leaf_for(scenario, domain, driver="disk", ac="AC01"):
+            return {"source_case_ref": "W2-01/pending-multipart", "entrypoint": "pending-multipart", "driver": driver, "domain": domain, "ordering_or_fault": "W2-01/pending-multipart/expand-queue/" + scenario, "ac_id": ac}
+
+        state = {"index": {}}
 
         def step(name):
-            ref = "W2-01/pending-multipart"
-            key = (ref, "pending-multipart", "multipart_success", "ordinary", "disk")
-            obs = {"measured": {"driver": "disk", "ac_id": "AC01"}, "emitted_at_ms": int((start + timedelta(seconds=1)).timestamp() * 1000)}
-            return {"started": window[0], "finished": window[1], "index": {key: [(1, obs)]}, "path": name, "record": {"line": name}, "log": log, "markers": set()}
+            return {"started": window[0], "finished": window[1], "index": state["index"], "path": name, "record": {"line": name}, "log": log, "markers": set()}
 
         with ExitStack() as stack:
             gaps = stack.enter_context(patch.object(adapter.S, "group_gap"))
@@ -61,7 +109,7 @@ class ObservationBindingTests(unittest.TestCase):
             build_row = stack.enter_context(patch.object(adapter.S.C, "build_row", side_effect=lambda leaf, a, b, *args: {"source": leaf["source_case_ref"], "domain": leaf["domain"]}))
             for item in (
                 patch.object(adapter.S.C, "argv_paths", return_value=("run", "case", "root")),
-                patch.object(adapter.S, "context", return_value={"allowlist": {}}),
+                patch.object(adapter.S, "context", return_value={"allowlist": {}, "contract": {}}),
                 patch.object(adapter.S.C, "resolve_slot", return_value="slot1"),
                 patch.object(adapter.S.C, "db_resource", return_value="db"),
                 patch.object(adapter.S.C, "garage_bucket", return_value="bucket"),
@@ -79,35 +127,237 @@ class ObservationBindingTests(unittest.TestCase):
             ):
                 stack.enter_context(item)
             leaf_mock = stack.enter_context(patch.object(adapter.S, "leaves"))
-            # The blocked enterprise leaf must be reported as a named gap,
-            # never reach build_row, and fail the case with exit 30.
-            for scenario in ("multipart_success", "group_file_success"):
-                leaf_mock.return_value = [{**blocked, "ordering_or_fault":
-                    "W2-01/pending-multipart/expand-queue/" + scenario}]
-                with self.subTest(scenario=scenario):
+
+            # Both domains are proven by this production chain: ordinary JWT
+            # uploads for ordinary leaves, and enterprise leaves carrying the
+            # server-resolved enterprise-group origin facts.
+            for scenario, domain in (
+                ("group_file_success", "ordinary"),
+                ("group_file_success", "enterprise"),
+                ("multipart_success", "enterprise"),
+            ):
+                state["index"] = index_for(scenario, domain, measured(scenario, domain))
+                leaf_mock.return_value = [leaf_for(scenario, domain)]
+                rows = adapter.build()
+                self.assertFalse(gaps.called)
+                self.assertTrue(build_row.called)
+                self.assertEqual(1, len(rows[1]))
+                self.assertEqual("W2-01/pending-multipart", rows[1][0]["source"])
+                self.assertEqual(domain, rows[1][0]["domain"])
+                # The row carries the real entrypoint provenance, not a proxy.
+                self.assertEqual(
+                    "/api/v1/group/file/upload", rows[1][0]["entrypoint_provenance"]["route"])
+                self.assertEqual(
+                    "group_file_handler", rows[1][0]["entrypoint_provenance"]["handler"])
+                oracle = build_row.call_args.args[4]
+                self.assertIn("real group-file upload", oracle["action"])
+                self.assertIn("pinned and confirmed", oracle["expected_object_state"])
+                self.assertNotIn("absent after failed PUT", oracle["expected_object_state"])
+                gaps.reset_mock()
+                build_row.reset_mock()
+
+            # Complete chain evidence plus invented enterprise labels (org/ws
+            # overrides that contradict the origin facts) must still fail for
+            # every driver and acceptance leaf.
+            for scenario, driver, ac in itertools.product(
+                    ("multipart_success", "group_file_success"),
+                    ("disk", "garage"), ("AC01", "AC02")):
+                m = measured(scenario, "enterprise")
+                m.update(driver=driver, ac_id=ac, org_id=999999, workspace_id=888888)
+                state["index"] = index_for(scenario, "enterprise", m, driver, ac)
+                leaf_mock.return_value = [leaf_for(scenario, "enterprise", driver, ac)]
+                with self.subTest(scenario=scenario, driver=driver, ac=ac):
+                    with self.assertRaises(SystemExit) as caught:
+                        adapter.build()
+                    self.assertEqual(30, caught.exception.code)
+                    self.assertFalse(build_row.called)
+                    self.assertIn("group-file production entrypoint binding rejected",
+                                  gaps.call_args[0][3])
+                    if driver == "disk":
+                        # The origin cross-check is reached only when the
+                        # storage-location binding (disk fixture) passes first.
+                        self.assertIn("fixture labels are not evidence",
+                                      gaps.call_args[0][3])
+                gaps.reset_mock()
+                build_row.reset_mock()
+
+            # Negative: any substituted or missing marker stays a named gap.
+            def wrong_face(m):
+                m["entrypoint_face"] = "group_file_bind"
+
+            def multipart_face_on_bind_leaf(m):
+                m["entrypoint_face"] = "group_file_multipart_upload"
+
+            def wrong_object_key(m):
+                m["object_key"] = ""
+
+            def substitute_route(m):
+                m["route"] = "/api/v1/attachment/upload"
+
+            def substitute_handler(m):
+                m["handler"] = "attach_handler"
+
+            def not_ok(m):
+                m["status"] = 500
+
+            def no_pin_hash(m):
+                m["pin_sha256"] = "not-hex"
+
+            def no_pin_order(m):
+                m["pin_before_put"] = False
+
+            def no_storage(m):
+                del m["http_requests"][0]["diagnostic_untrusted_locations"]
+
+            def no_bind(m):
+                m["bind_request_id"] = ""
+
+            def substitute_bind(m):
+                m["http_requests"][1]["route"] = "/api/v1/attachment/confirm"
+
+            def no_workspace(m):
+                del m["org_id"]
+
+            def no_origin(m):
+                del m["origin"]
+
+            def personal_scope(m):
+                m["group_scope"] = "personal"
+
+            def ws_mismatch(m):
+                m["origin"] = dict(m["origin"])
+                m["origin"]["workspace_id"] = 8
+
+            def no_actor(m):
+                del m["actor_uid"]
+
+            def no_gid(m):
+                del m["gid"]
+
+            def no_create_record(m):
+                m["http_requests"] = [r for r in m["http_requests"]
+                                      if r["route"] != "/api/internal/v1/groups"]
+
+            def substitute_create(m):
+                for r in m["http_requests"]:
+                    if r["route"] == "/api/internal/v1/groups":
+                        r["route"] = "/api/internal/v1/other"
+
+            def create_not_ok(m):
+                for r in m["http_requests"]:
+                    if r["route"] == "/api/internal/v1/groups":
+                        r["status"] = 500
+
+            def create_id_mismatch(m):
+                m["create_request_id"] = "w403-other"
+
+            def numeric_business_id(m):
+                m["group_file_id"] = 1001
+
+            def invalid_business_id(m):
+                m["group_file_id"] = "not-a-file-id"
+
+            def bind_on_multipart_face(m):
+                m["http_requests"].append(dict(bind))
+
+            cases = [
+                ("multipart_success", "enterprise", wrong_face),
+                ("multipart_success", "enterprise", wrong_object_key),
+                ("multipart_success", "enterprise", no_workspace),
+                ("multipart_success", "enterprise", bind_on_multipart_face),
+                ("multipart_success", "enterprise", no_origin),
+                ("multipart_success", "enterprise", personal_scope),
+                ("multipart_success", "enterprise", ws_mismatch),
+                ("multipart_success", "enterprise", no_actor),
+                ("multipart_success", "enterprise", no_gid),
+                ("multipart_success", "enterprise", no_create_record),
+                ("multipart_success", "enterprise", substitute_create),
+                ("multipart_success", "enterprise", create_not_ok),
+                ("multipart_success", "enterprise", create_id_mismatch),
+                ("group_file_success", "ordinary", multipart_face_on_bind_leaf),
+                ("group_file_success", "ordinary", substitute_route),
+                ("group_file_success", "ordinary", substitute_handler),
+                ("group_file_success", "ordinary", not_ok),
+                ("group_file_success", "ordinary", no_pin_hash),
+                ("group_file_success", "ordinary", no_pin_order),
+                ("group_file_success", "ordinary", no_storage),
+                ("group_file_success", "ordinary", no_bind),
+                ("group_file_success", "ordinary", substitute_bind),
+                ("group_file_success", "ordinary", numeric_business_id),
+                ("group_file_success", "ordinary", invalid_business_id),
+                ("group_file_success", "enterprise", no_workspace),
+                ("group_file_success", "enterprise", no_origin),
+                ("group_file_success", "enterprise", personal_scope),
+                ("group_file_success", "enterprise", ws_mismatch),
+                ("group_file_success", "enterprise", no_actor),
+                ("group_file_success", "enterprise", no_gid),
+                ("group_file_success", "enterprise", no_create_record),
+                ("group_file_success", "enterprise", substitute_create),
+                ("group_file_success", "enterprise", create_not_ok),
+                ("group_file_success", "enterprise", create_id_mismatch),
+            ]
+            for scenario, domain, mutate in cases:
+                with self.subTest(scenario=scenario, domain=domain, mutate=mutate.__name__):
+                    state["index"] = index_for(scenario, domain, measured(scenario, domain, mutate))
+                    leaf_mock.return_value = [leaf_for(scenario, domain)]
                     with self.assertRaises(SystemExit) as caught:
                         adapter.build()
                     self.assertEqual(30, caught.exception.code)
                     self.assertTrue(gaps.called)
-                    self.assertIn("user ruling", gaps.call_args[0][3])
+                    self.assertIn("/api/v1/group/file/upload", gaps.call_args[0][3])
                     self.assertFalse(build_row.called)
-            # …while the ordinary-domain twin of the same scenario binds
-            # without raising a new gap.
-            gaps_count_after_blocked = gaps.call_count
-            leaf_mock.return_value = [ordinary]
-            self.assertEqual([{"source": ordinary["source_case_ref"], "domain": "ordinary"}], adapter.build()[1])
-            self.assertEqual(gaps_count_after_blocked, gaps.call_count)
+                gaps.reset_mock()
+                build_row.reset_mock()
+
+            # An ordinary group-scope attachment is not a group-file upload.
+            # No driver or AC can publish a row from that substitute evidence
+            # (the observation carries no group-file chain markers at all).
+            for driver, ac in itertools.product(("disk", "garage"), ("AC01", "AC02")):
+                state["index"] = index_for("group_file_success", "ordinary", {"driver": driver, "ac_id": ac, "http_requests": []}, driver=driver, ac=ac)
+                leaf_mock.return_value = [leaf_for("group_file_success", "ordinary", driver=driver, ac=ac)]
+                with self.subTest(domain="ordinary", driver=driver, ac=ac):
+                    with self.assertRaises(SystemExit) as caught:
+                        adapter.build()
+                    self.assertEqual(30, caught.exception.code)
+                    self.assertIn("/api/v1/group/file/upload", gaps.call_args[0][3])
+                    self.assertFalse(build_row.called)
+                gaps.reset_mock()
+                build_row.reset_mock()
+
+            # …while the ordinary-domain multipart_success twin of the same
+            # case still binds through the pre-existing evidence path.
+            state["index"] = index_for("multipart_success", "ordinary", {"driver": "disk", "ac_id": "AC01"})
+            leaf_mock.return_value = [leaf_for("multipart_success", "ordinary")]
+            rows = adapter.build()
+            self.assertFalse(gaps.called)
+            self.assertEqual([{"source": "W2-01/pending-multipart", "domain": "ordinary"}], rows[1])
 
     def test_step_windows_are_independent_of_leaf_order(self):
         start = datetime(2026, 1, 1, tzinfo=timezone.utc)
         windows = {name: (start + timedelta(seconds=n), start + timedelta(seconds=n + 10))
                    for name, n in (("w403", 0), ("w2upload", 20), ("w4queue", 40))}
-        matrix_leaf = {"source_case_ref": "W4-03/driver-content-immutable", "entrypoint": "surface", "driver": "disk", "domain": "ordinary", "ordering_or_fault": "scenario", "ac_id": "AC02"}
+        matrix_leaf = {"source_case_ref": "W4-03/driver-content-immutable", "entrypoint": "ordinary", "driver": "disk", "domain": "ordinary", "ordering_or_fault": "scenario", "source_scenario": "scenario", "ac_id": "AC02"}
         obs_leaves = [
             {"source_case_ref": ref, "entrypoint": "entry", "driver": "disk", "domain": "ordinary", "ordering_or_fault": ref + "/expand-queue/scenario", "ac_id": "AC01"}
             for ref in ("W2-01/session-recovery-api", "W4-01/delete-entrypoints")]
-        ctx = {"allowlist": {}}
+        ctx = {"allowlist": {}, "contract": {}}
         log = {"parsed": {"markers": ["W403_DIRECT_OK"], "tests": [1], "summary_raw": "ok"}, "path": "log", "sha256": "digest"}
+        key = (matrix_leaf["source_case_ref"], "ordinary", "scenario", "ordinary", "disk")
+        common = {"object_key": "owned/key", "server_process": "<1.2.3>",
+                  "connection_id": "<1.2.4>", "status": 200}
+        presign = {**common, "request_id": "presign", "action": "presign",
+                   "method": "GET", "route": "/api/v1/attachment/presign",
+                   "handler": "attach_handler"}
+        put = {**common, "request_id": "put", "action": "put", "method": "PUT",
+               "route": "/api/v1/attachment/gateway/12345678-1234-1234-1234-123456789abc",
+               "handler": "attachment_storage_gateway_handler",
+               "diagnostic_untrusted_locations": [{
+                   "trust": "diagnostic_untrusted", "source": "attachment_storage:session_location/1",
+                   "identity": {"key": "owned/key", "driver": "disk", "namespace": "ns",
+                                "container": "container", "locator_digest": "digest"}}]}
+        matrix_obs = {"measured": {"driver": "disk", "ac_id": "AC02", "object_key": "owned/key",
+                                   "http_requests": [presign, put]},
+                      "emitted_at_ms": int((start + timedelta(seconds=1)).timestamp() * 1000)}
 
         def step(name):
             first, last = windows[name]
@@ -127,7 +377,7 @@ class ObservationBindingTests(unittest.TestCase):
             patch.object(adapter.S, "step_record", side_effect=lambda _, name, __: {"exit": 0, "line": name}),
             patch.object(adapter.S, "eunit_log", return_value=log),
             patch.object(adapter.S, "step_window", side_effect=lambda rec, _: windows.get(rec["line"], windows["w403"])),
-            patch.object(adapter, "_obs_index", return_value=({}, "obs403")),
+            patch.object(adapter, "_obs_index", return_value=({key: [(1, matrix_obs)]}, "obs403")),
             patch.object(adapter.S, "probe_file", return_value={}),
             patch.object(adapter, "_replay_count", return_value=1),
             patch.object(adapter.S, "find_eunit_unit", return_value={"func": "f", "duration": 0.1}),

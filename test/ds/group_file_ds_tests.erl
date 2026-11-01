@@ -19,7 +19,6 @@ upload_file_success_test_() ->
         FileName = <<"test.pdf"/utf8>>,
         FileBinary = <<<<"test">> || _ <- lists:seq(1, 100)>>,
         FileType = <<"application/pdf">>,
-        FileUrl = <<"https://oss.example.com/group/test.pdf">>,
         FileId = <<"file_123">>,
         GroupFileId = 123456789,
         NowTs = 1700000000,
@@ -37,35 +36,34 @@ upload_file_success_test_() ->
             true
         end),
         ObjectKey = <<"tenant/u100/g1/20261001/random/test.pdf">>,
-        meck:expect(elib_oss, build_object_key, fun(100, <<"group">>, <<"1">>, Name) ->
-            ?assertEqual(FileName, Name),
-            ObjectKey
-        end),
-        meck:expect(elib_oss, get_bucket, fun(<<"group">>) -> <<"private">> end),
-        meck:expect(elib_oss, get_url, fun(Key) ->
-            ?assertEqual(ObjectKey, Key),
-            {ok, FileUrl}
-        end),
+        Proof = #{
+            sha256 => <<"provider-sha256">>,
+            size => byte_size(FileBinary),
+            mime => FileType,
+            stat => #{snapshot => #{driver => garage, container => <<"frozen">>}}
+        },
+        meck:expect(elib_oss, max_file_size, fun() -> byte_size(FileBinary) end),
+        meck:expect(elib_oss, public_endpoint, fun() -> <<"https://oss.example.com">> end),
         meck:expect(elib_oss, generate_file_id, fun() -> FileId end),
-        meck:expect(attachment_ds, pending_add, fun(Key, <<"private">>, <<"group">>, 100) ->
-            ?assertEqual(ObjectKey, Key),
-            self() ! registered,
-            ok
+        meck:new(attach_logic, [passthrough]),
+        meck:expect(attach_logic, presign, fun(
+            100, FileName0, FileType0, <<"group">>, <<"1">>, Cid
+        ) ->
+            ?assertEqual(FileName, FileName0),
+            ?assertEqual(FileType, FileType0),
+            ?assert(is_binary(Cid)),
+            {ok, #{<<"object_key">> => ObjectKey}}
         end),
-        meck:expect(elib_oss, put_object, fun(<<"private">>, Key, Binary, Type) ->
-            receive
-                registered -> ok
-            after 0 -> ?assert(false)
-            end,
+        meck:new(attachment_upload_logic, [passthrough]),
+        meck:expect(attachment_upload_logic, upload_binary, fun(100, Key, Type, Binary) ->
             ?assertEqual(ObjectKey, Key),
             ?assertEqual(FileBinary, Binary),
             ?assertEqual(FileType, Type),
-            ok
+            {ok, #{}}
         end),
-        meck:expect(attachment_ds, pending_remove, fun(Key) ->
+        meck:expect(attach_logic, prepare_group_file_confirmation, fun(Key) ->
             ?assertEqual(ObjectKey, Key),
-            self() ! removed,
-            ok
+            {ok, Proof}
         end),
         meck:expect(elib_oss, get_file_category, fun(Type) ->
             ?assertEqual(FileType, Type),
@@ -87,7 +85,10 @@ upload_file_success_test_() ->
             ?assertEqual(byte_size(FileBinary), maps:get(file_size, Data)),
             ?assertEqual(FileType, maps:get(file_type, Data)),
             ?assertEqual(<<"document">>, maps:get(file_category, Data)),
-            ?assertEqual(FileUrl, maps:get(file_url, Data)),
+            ?assertEqual(
+                <<"https://oss.example.com/frozen/", ObjectKey/binary>>,
+                maps:get(file_url, Data)
+            ),
             ?assertEqual(ExpectedHashHex, maps:get(file_hash, Data)),
             ?assertEqual(UploaderId, maps:get(uploader_id, Data)),
             ?assertEqual(0, maps:get(download_count, Data)),
@@ -104,49 +105,42 @@ upload_file_success_test_() ->
         % 无签名且 attachment 表无记录 → 下载端 404）。验证 ObjectKey 与
         % 上传时选定的含前缀真实路径一致。
         meck:new(elib_pg, [passthrough]),
-        meck:expect(elib_pg, with_tx, fun(F) -> F(conn) end),
-        meck:expect(attachment_ds, ensure_upload_scope_tx, fun(conn, {group, 1}, 100) -> ok end),
-        meck:new(attachment_repo, [passthrough]),
-        meck:expect(attachment_repo, bind_reference_lock_tx, fun(conn, ObjectKey0) ->
-            ?assertEqual(ObjectKey, ObjectKey0),
-            self() ! attachment_locked,
+        meck:expect(elib_pg, with_deadlock_retry_tx, fun(F) -> F(conn) end),
+        meck:expect(attachment_ds, ensure_upload_scope_tx_retryable, fun(conn, {group, 1}, 100) ->
             ok
+        end),
+        meck:new(attach_pending_repo, [passthrough]),
+        meck:expect(attach_pending_repo, lock_session_tx, fun(conn, Key) ->
+            ?assertEqual(ObjectKey, Key),
+            self() ! session_locked,
+            {ok, #{}}
+        end),
+        meck:new(attachment_repo, [passthrough]),
+        meck:expect(attachment_repo, confirmation_row_tx, fun(conn, Key) ->
+            ?assertEqual(ObjectKey, Key),
+            receive
+                session_locked -> ok
+            after 0 -> ?assert(false)
+            end,
+            {ok, not_found}
         end),
         meck:expect(attachment_repo, refresh_gc_verified_tx, fun(conn, ObjectKey0) ->
             ?assertEqual(ObjectKey, ObjectKey0),
             self() ! attachment_refreshed,
             {ok, 1}
         end),
-        meck:expect(attachment_ds, save, fun(Conn, CreatedAt, Uid, Attaches) ->
-            receive
-                attachment_locked -> ok
-            after 0 -> ?assert(false)
-            end,
+        meck:expect(attach_logic, confirm_group_file_tx, fun(Conn, Key, Gid0, Uid, Id, Proof0) ->
             self() ! attachment_saved,
             ?assertEqual(conn, Conn),
-            ?assertEqual(NowTs, CreatedAt),
+            ?assertEqual(ObjectKey, Key),
+            ?assertEqual(Gid, Gid0),
             ?assertEqual(UploaderId, Uid),
-            [Attach] = Attaches,
-            ?assertEqual(
-                binary:encode_hex(erlang:md5(FileBinary)), maps:get(<<"file_hash256">>, Attach)
-            ),
-            ?assertEqual(FileType, maps:get(<<"mime_type">>, Attach)),
-            ?assertEqual(FileName, maps:get(<<"name">>, Attach)),
-            ?assertEqual(ObjectKey, maps:get(<<"path">>, Attach)),
-            ?assertEqual(FileUrl, maps:get(<<"url">>, Attach)),
-            ?assertEqual(byte_size(FileBinary), maps:get(<<"size">>, Attach)),
-            ?assertEqual(<<"group">>, maps:get(<<"scope">>, Attach)),
-            ?assertEqual(integer_to_binary(Gid), maps:get(<<"scope_ref">>, Attach)),
-            ?assertEqual(GroupFileId, maps:get(<<"group_file_id">>, Attach)),
+            ?assertEqual(GroupFileId, Id),
+            ?assertEqual(Proof, Proof0),
             ok
         end),
 
         Result = group_file_ds:upload_file(Gid, UploaderId, FileName, FileBinary, FileType),
-        receive
-            removed -> ok
-        after 0 -> ?assert(false)
-        end,
-
         receive
             attachment_refreshed -> ok
         after 0 -> ?assert(false)
@@ -602,6 +596,120 @@ with_scope_cleans_failure_test() ->
         [group_file_repo, attachment_ds, enterprise_audit_event_repo]
     ).
 
+bind_existing_reference_under_lock_test_() ->
+    bind_locked_test(
+        #{
+            <<"group_file_id">> => 42,
+            <<"anchor_msg_id">> => null,
+            <<"anchor_conv_seq">> => null
+        },
+        {ok, <<"existing">>}
+    ).
+
+bind_message_anchor_rejected_under_lock_test_() ->
+    bind_locked_test(
+        #{
+            <<"group_file_id">> => null,
+            <<"anchor_msg_id">> => <<"m1">>,
+            <<"anchor_conv_seq">> => null
+        },
+        {error, attachment_anchor_conflict}
+    ).
+
+bind_negative_size_rejected_test_() ->
+    bind_metadata_test(-1, <<"text/plain">>, <<>>, {error, file_size_mismatch}).
+
+bind_wrong_size_rejected_test_() ->
+    bind_metadata_test(2, <<"text/plain">>, <<>>, {error, file_size_mismatch}).
+
+bind_wrong_type_rejected_test_() ->
+    bind_metadata_test(1, <<"application/pdf">>, <<>>, {error, file_type_mismatch}).
+
+bind_unverifiable_md5_rejected_test_() ->
+    bind_metadata_test(1, <<"text/plain">>, <<"forged">>, {error, unverifiable_file_md5}).
+
+partial_storage_identity_rejected_test() ->
+    ?assertThrow(
+        {abort_tx, incomplete_storage_identity},
+        group_file_ds:location_columns(#{driver => garage})
+    ),
+    ?assertEqual(#{}, group_file_ds:location_columns(#{})).
+
+bind_metadata_test(Size, Type, Md5, Expected) ->
+    bind_locked_test(
+        #{
+            <<"group_file_id">> => 42,
+            <<"anchor_msg_id">> => null,
+            <<"anchor_conv_seq">> => null
+        },
+        Size,
+        Type,
+        Md5,
+        Expected
+    ).
+
+bind_locked_test(Fields, Expected) ->
+    bind_locked_test(Fields, 1, <<"text/plain">>, <<>>, Expected).
+
+bind_locked_test(Fields, Size, Type, Md5, Expected) ->
+    with_scope(fun() ->
+        meck:new(group_ds, [passthrough]),
+        meck:expect(group_ds, is_member, fun(100, 1) -> true end),
+        meck:new(elib_oss, [passthrough]),
+        meck:expect(elib_oss, validate_file_type, fun(_) -> true end),
+        meck:new(workspace_resolver, [passthrough]),
+        meck:expect(workspace_resolver, resolve_workspace, fun(_) -> personal end),
+        meck:expect(attachment_ds, ensure_upload_scope_tx_retryable, fun(_, _, _) -> ok end),
+        meck:new(attachment_repo, [passthrough]),
+        meck:expect(attachment_repo, bind_reference_lock_tx, fun(conn, <<"key">>) ->
+            put(group_file_locked, true),
+            ok
+        end),
+        meck:new(elib_pg, [passthrough]),
+        meck:expect(elib_pg, with_deadlock_retry_tx, fun(F) ->
+            try
+                F(conn)
+            catch
+                throw:{abort_tx, Reason} -> {error, Reason}
+            end
+        end),
+        meck:expect(elib_pg, query, fun(conn, Sql, _Params) ->
+            ?assertEqual(true, get(group_file_locked)),
+            case binary:match(iolist_to_binary(Sql), <<"SELECT creator_user_id">>) of
+                {_, _} ->
+                    {ok, [
+                        maps:merge(
+                            #{
+                                <<"creator_user_id">> => 100,
+                                <<"scope">> => <<"group">>,
+                                <<"scope_ref">> => <<"1">>,
+                                <<"lifecycle_state">> => <<"live">>,
+                                <<"size">> => 1,
+                                <<"mime_type">> => <<"text/plain">>,
+                                <<"file_hash256">> => <<"confirmed-sha256">>
+                            },
+                            Fields
+                        )
+                    ]};
+                nomatch ->
+                    {ok, [#{<<"file_id">> => <<"existing">>}]}
+            end
+        end),
+        ?assertEqual(
+            Expected,
+            group_file_ds:bind_file(
+                1,
+                100,
+                <<"a.txt">>,
+                Type,
+                <<"key">>,
+                Size,
+                Md5
+            )
+        ),
+        erase(group_file_locked)
+    end).
+
 with_scope(Test) ->
     fun() ->
         Existing = meck:mocked(),
@@ -616,7 +724,10 @@ with_scope(Test) ->
             workspace_resolver,
             elib_pg,
             group_member_repo,
-            workspace_guard
+            workspace_guard,
+            attach_logic,
+            attach_pending_repo,
+            attachment_upload_logic
         ],
         try
             meck:new(enterprise_audit_event_repo, [passthrough]),

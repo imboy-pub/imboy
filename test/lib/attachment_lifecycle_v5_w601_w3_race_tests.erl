@@ -64,7 +64,10 @@ so_specs(Driver) ->
      || {Idx, {ScBin, DomBin}} <- indexed(so_units())
     ].
 
-leaf_id(Driver, Idx) -> ?ASSET_BASE + (Idx - 1) * 20 + ?SUP:driver_index(Driver).
+%% 基底叠加 run 级偏移（见 hold 测试 leaf_id/2 注释）：防同库共享 id 段的
+%% 外来残留行让 confirm 撞 'v5 confirm key mismatch'。
+leaf_id(Driver, Idx) ->
+    ?ASSET_BASE + ?SUP:leaf_id_offset() + (Idx - 1) * 20 + ?SUP:driver_index(Driver).
 
 leaf_unit(S, {Case, Sc, Driver, Dom, Ac, Idx} = Spec) ->
     Desc = binary_to_list(
@@ -155,7 +158,8 @@ reference_gc_race(S, Driver, ScBin, DomBin, Idx) ->
     ).
 
 rr_key(Driver, ScBin, DomBin) ->
-    <<"v5e2e/w601/", Driver/binary, "/rr/", ScBin/binary, "/", DomBin/binary>>.
+    Nonce = ?SUP:run_nonce(),
+    <<"v5e2e/w601/", Driver/binary, "/rr/", Nonce/binary, "/", ScBin/binary, "/", DomBin/binary>>.
 
 %% (1) bind_commits_first ordinary：Holder 持对象 advisory 168 锁（生产 intent
 %% 在行锁之前取得的对象锁；绑定入口 bind_reference_lock_tx 请求同一把 168，
@@ -601,7 +605,8 @@ seed_so_asset(S, <<"original_post_remove">>, <<"ordinary">>, Key, Id, Quad) ->
     ).
 
 so_key(Driver, ScBin, DomBin) ->
-    <<"v5e2e/w601/", Driver/binary, "/so/", ScBin/binary, "/", DomBin/binary>>.
+    Nonce = ?SUP:run_nonce(),
+    <<"v5e2e/w601/", Driver/binary, "/so/", Nonce/binary, "/", ScBin/binary, "/", DomBin/binary>>.
 
 %% (1) owner_logout ordinary：群绑定资产（绑定活跃），creator 注销不得删除。
 so_step(S, <<"owner_logout">>, <<"ordinary">>, Key, Id, _Quad) ->

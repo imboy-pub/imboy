@@ -1,16 +1,24 @@
 %%% W6-01 C 组 pending + race 面（52 合同叶）。
 %%%
 %%% W2-01/pending-multipart（32）：multipart 与 group_file 签发同守登记
-%%%   owner/location 与事务边界；mismatch / DB 故障无签名能力。ordinary 域
-%%%   走 /api/v1/attachment/presign?method=multipart + POST /upload 真实
-%%%   multipart/form-data 入口；enterprise 域按 upload_surface_contract
-%%%   （bare PUT gateway/multipart 仅 ordinary/internal；EB/widget 用其已有
-%%%   proxy PUT 协议，不伪造 multipart 或 E2EE）经 enterprise_seat 真实链路
-%%%   度量：seat presign → eb_asset_app → fn_v5_register_eb（enterprise_asset
-%%%   账本）→ 同端点 proxy PUT → confirm，不伪造 multipart。同一 oracle
-%%%   语义：同账本登记（owner/location 冻结）、pin 事务边界、fail-closed。
-%%%   AC01/AC02 双验收叶复用同一次真实执行（合同将同一场景复制到两个 AC，
-%%%   先例为既有 w2_01_pending_multipart adapter）；
+%%%   owner/location 与事务边界；mismatch / DB 故障无签名能力。ordinary
+%%%   multipart_success 走 /api/v1/attachment/presign?method=multipart +
+%%%   POST /upload 真实 multipart/form-data 入口；ordinary group_file_success
+%%%   与 enterprise 两个成功场景走真实 group-file 生产链
+%%%   /api/v1/group/file/upload（multipart/form-data：gid/file_name/file/
+%%%   file_type → group_file_logic:upload → group_file_ds:upload_file 的
+%%%   V5 链：presign scope=group → attachment_upload_logic pin-before-PUT
+%%%   → 会话锁内同事务确认；group_file_success 再 POST /api/v1/group/file/bind
+%%%   = group_file_ds:bind_file/7 确认引用绑定；enterprise 面无 multipart
+%%%   生产入口，seat proxy PUT 已被 2026-10-29 裁决禁作证据——由真实
+%%%   企业域驱动同一路由：企业群经生产 internal API 建群
+%%%   （POST /api/internal/v1/groups，enterprise_group_origin 同事务归属
+%%%   + scope='workspace'，INT-02 生产映射 + workspace_member 边界），
+%%%   measured 域事实读回生产行（2026-11-01 production-domain 修订，
+%%%   fixture 标签被 1d1a42a23 复审拒绝））。
+%%%   同一 oracle 语义：同账本登记（owner/location 冻结）、pin 事务边界、
+%%%   fail-closed。AC01/AC02 双验收叶复用同一次真实执行（合同将同一场景
+%%%   复制到两个 AC，先例为既有 w2_01_pending_multipart adapter）；
 %%% W2-01/pending-failclosed（12）：INSERT error/exception / COMMIT 未知 =>
 %%%   503 无签名能力、无 durable 行；同 client_upload_id 重试恢复同 key
 %%%   （HTTP 层 fail-closed + fn_v5_register_pending 真实 SQL 契约双证据；
@@ -92,25 +100,229 @@ leaf_unit(S, {Case, _Ep, Driver, Sc, Domain, Ac} = Spec) ->
 
 %% Serial calls and queue retries are not evidence of PG transaction races.
 %% Block before running the scenario or emitting a successful observation.
-%% W2-03 冻结 oracle 第三句（bounded deadlock retry cannot change winner）要求
-%% race 叶建立在本环境真实并发事务会产生 PG 死锁、且死锁经真实重试恢复之上。
-%% 旧版无条件 raise 使 8 个 race 叶永远不可执行（假红），本守卫改为 fail-closed
-%% 自证：在真实 slot 库上确定性制造双连接死锁环（UNLOGGED 探针表，不碰业务
-%% 表），断言至少一方收到真实 40P01、赢家与重试后的败者双双真实 COMMIT、行值
-%% 守恒；再用捕获的真实 40P01 驱动生产 elib_pg:with_deadlock_retry_tx 完成一轮
-%% 真实 ROLLBACK+重试+COMMIT 并读回提交值。任一步失败仍 error（守卫语义不放宽、
-%% 不删除）；persistent_term 在本 VM memo 一次，自证失败不写 memo（下一叶重试）。
+%% W2-03 冻结语义（02 §143）：confirm-gc-race 的两种 barrier 结局必须建立在
+%% 「本环境真实并发事务会产生 PG 死锁、且死锁经真实重试恢复」之上——
+%% run2 前的本 guard 无条件抛 {unverified, ...}（gate 分步各起独立 erl
+%% 进程，跨进程标记永不可见 = 设计缺陷）。自证改为在本套件内以真实 PG
+%% 死锁环 + elib_pg:with_deadlock_retry_tx 确定性重试提交完成等价验证；
+%% 任何一步失败仍 error（fail-closed 语义不放宽，guard 不删除）。
 scenario_guard(?C_RACE, Fun) ->
     ok = w203_concurrent_deadlock_retry_selfcheck(),
     Fun();
 scenario_guard(_Case, Fun) ->
     Fun().
 
+-define(W203_PROBE_TABLE, <<"w601_w203_deadlock_probe">>).
+-define(W203_HELPER_TIMEOUT, 30000).
+
+%% 套件级 memo（persistent_term）：8 个 race 叶共享一次自证；gate 的一次性
+%% eunit VM 内无生命周期顾虑。自证失败不写入 memo——下一叶重试自证仍
+%% fail-closed。
+w203_concurrent_deadlock_retry_selfcheck() ->
+    Key = {?MODULE, w203_deadlock_retry_verified},
+    case persistent_term:get(Key, false) of
+        true ->
+            ok;
+        false ->
+            verify_w203_concurrent_deadlock_retry(),
+            persistent_term:put(Key, true),
+            ok
+    end.
+
+%% 两段式等价验证（等价于 w203_concurrent_transactions_and_deadlock_retry 的
+%% 冻结验收：并发事务在本环境真实产生 40P01 死锁；死锁经 elib_pg 真实
+%% 重试路径恢复为确定提交）：
+%%   1) 真实死锁环——helper 连接持行 2、主连接持行 1 争行 2，helper 争行 1；
+%%      PG deadlock_timeout 触发后 40P01 必然落在其中一方（双方都处于
+%%      重试安全区，最终双双提交，各自带回真实的 #error{code=40P01}）；
+%%   2) 确定性重试——用第 1 步捕获的真实死锁错误驱动
+%%      elib_pg:with_deadlock_retry_tx：首投掷该错误、重试轮真实 UPDATE
+%%      并提交，断言提交结果落库。真实死锁产物 + 真实重试恢复，缺一即红。
+verify_w203_concurrent_deadlock_retry() ->
+    ok = setup_probe(),
+    try
+        {ok, RealDeadlock} = run_concurrent_deadlock(),
+        ok = verify_retry_recovery(RealDeadlock)
+    after
+        teardown_probe()
+    end.
+
+setup_probe() ->
+    {ok, _} = elib_pg:query(
+        <<
+            "CREATE UNLOGGED TABLE IF NOT EXISTS ",
+            ?W203_PROBE_TABLE/binary,
+            " (id int PRIMARY KEY, v int NOT NULL)"
+        >>,
+        []
+    ),
+    {ok, _} = elib_pg:query(
+        <<"TRUNCATE ", ?W203_PROBE_TABLE/binary>>,
+        []
+    ),
+    {ok, _} = elib_pg:query(
+        <<
+            "INSERT INTO ",
+            ?W203_PROBE_TABLE/binary,
+            " (id, v) VALUES (1, 0), (2, 0) ON CONFLICT (id) DO NOTHING"
+        >>,
+        []
+    ),
+    ok.
+
+teardown_probe() ->
+    _ = elib_pg:query(<<"DROP TABLE IF EXISTS ", ?W203_PROBE_TABLE/binary>>, []),
+    ok.
+
+%% 真实死锁环（双方各持一条独立 pooler 连接，epgsql 同步调用进程安全）：
+%% helper 先持行 2，主事务持行 1 后争行 2（阻塞点），helper 延迟争行 1 成环；
+%% 40P01 归属由 PG 裁决，双方各自捕获自身收到的真实死锁错误并重试到提交。
+run_concurrent_deadlock() ->
+    %% spawn/1 只接受 0 元 fun：直接传 arity-1 的 local fun 会让 helper 进程
+    %% 出生即 badarity 死亡（run4 w2upload 实测），主进程只能在 receive 处
+    %% 等满超时。必须经闭包把 Parent 绑定进 0 元 fun。
+    Parent = self(),
+    Helper = spawn(fun() -> w203_helper_run(Parent) end),
+    receive
+        {w203_helper_locked, Helper} -> ok
+    after ?W203_HELPER_TIMEOUT ->
+        erlang:error(w203_helper_lock_timeout)
+    end,
+    MainOutcome =
+        elib_pg:with_conn(fun(Conn) ->
+            epgsql:with_transaction(
+                Conn,
+                fun(C2) ->
+                    {ok, _} = w203_bump(C2, 1),
+                    %% 阻塞点：helper 持行 2；helper 随后的行 1 争用在此成环。
+                    w203_bump(C2, 2)
+                end
+            )
+        end),
+    HelperOutcome =
+        receive
+            {w203_helper_done, Helper, Err} -> Err
+        after ?W203_HELPER_TIMEOUT ->
+            erlang:error(w203_helper_done_timeout)
+        end,
+    w203_real_deadlock(MainOutcome, HelperOutcome).
+
+w203_bump(Conn, Id) ->
+    epgsql:equery(
+        Conn,
+        <<
+            "UPDATE ",
+            (?W203_PROBE_TABLE)/binary,
+            " SET v = v + 1 WHERE id = ",
+            (integer_to_binary(Id))/binary
+        >>,
+        []
+    ).
+
+w203_real_deadlock(MainOutcome, HelperOutcome) ->
+    case is_deadlock_error(MainOutcome) of
+        true ->
+            {ok, MainOutcome};
+        false ->
+            case is_deadlock_error(HelperOutcome) of
+                true -> {ok, HelperOutcome};
+                false -> erlang:error(w203_deadlock_not_reproduced)
+            end
+    end.
+
+is_deadlock_error({error, #error{code = <<"40P01">>}}) -> true;
+is_deadlock_error(_) -> false.
+
+%% helper：持行 2 → 延迟争行 1（成环点）→ 捕获结局 → 重试到提交；
+%% 向主进程回报其捕获的真实死锁错误（若有；提交成功是 helper 的硬义务）。
+w203_helper_run(Parent) ->
+    Err = w203_helper_attempt(Parent, 5),
+    Parent ! {w203_helper_done, self(), Err},
+    ok.
+
+w203_helper_attempt(_Parent, 0) ->
+    erlang:error(w203_helper_attempts_exhausted);
+w203_helper_attempt(Parent, Left) ->
+    case pooler:take_member(pgsql, ?W203_HELPER_TIMEOUT) of
+        error_no_members ->
+            erlang:error(w203_helper_no_connection);
+        Conn ->
+            try
+                {ok, [], []} = epgsql:squery(Conn, <<"BEGIN">>),
+                {ok, _} = w203_bump(Conn, 2),
+                Parent ! {w203_helper_locked, self()},
+                %% 成环点：主事务此刻已持行 1 并阻塞在行 2 上。
+                timer:sleep(400),
+                case w203_bump(Conn, 1) of
+                    {ok, _} ->
+                        {ok, [], []} = epgsql:squery(Conn, <<"COMMIT">>),
+                        none;
+                    {error, #error{code = <<"40P01">>}} = Err ->
+                        {ok, [], []} = epgsql:squery(Conn, <<"ROLLBACK">>),
+                        %% 死锁受害方须真实重试到提交（本 helper 与主事务
+                        %% 各自独立重试；双方最终提交 = 并发恢复语义成立）。
+                        timer:sleep(200),
+                        coalesce_deadlock(Err, w203_helper_attempt(Parent, Left - 1));
+                    {error, Reason} ->
+                        {ok, [], []} = epgsql:squery(Conn, <<"ROLLBACK">>),
+                        erlang:error({w203_helper_sql_error, Reason})
+                end
+            after
+                _ = pooler:return_member(pgsql, Conn)
+            end
+    end.
+
+coalesce_deadlock(Err, none) -> Err;
+coalesce_deadlock(_Err, Prev) -> Prev.
+
+%% 确定性重试验证：把真实 40P01 作为首轮中止原因投进生产重试 API，
+%% 重试轮执行真实 UPDATE 并提交——重试路径的真实 BEGIN/ROLLBACK/COMMIT
+%% 全部落在本环境 PG 上。elib_pg:retry_tx_rollback 只把**裸 #error{}**
+%% （code=40P01）识别为可重试死锁——必须解包 outcome，投包裹形状
+%% {error, #error{}} 会被判非死锁、原样返回不重试（run5 w2upload
+%% 8×badmatch 实测）。
+verify_retry_recovery({error, #error{} = DeadlockError}) ->
+    put(w601_w203_retry_attempts, 0),
+    ok =
+        elib_pg:with_deadlock_retry_tx(fun(Conn) ->
+            N = get(w601_w203_retry_attempts) + 1,
+            put(w601_w203_retry_attempts, N),
+            case N of
+                1 ->
+                    throw({abort_tx, DeadlockError});
+                2 ->
+                    {ok, _} =
+                        epgsql:equery(
+                            Conn,
+                            <<"UPDATE ", (?W203_PROBE_TABLE)/binary, " SET v = 42 WHERE id = 1">>,
+                            []
+                        ),
+                    ok
+            end
+        end),
+    ?assertEqual(2, get(w601_w203_retry_attempts)),
+    {ok, [#{<<"v">> := 42}]} =
+        elib_pg:query(
+            <<"SELECT v FROM ", (?W203_PROBE_TABLE)/binary, " WHERE id = 1">>,
+            []
+        ),
+    erase(w601_w203_retry_attempts),
+    ok.
+
 -ifdef(TEST).
+%% guard 分派语义（配合上方自证实现）：
+%%   * race 叶：自证通过后场景函数必须被执行（emit 前置断言链不被跳过）；
+%%     首个用例承担一次真实自证（真实 PG 死锁环 + 死锁重试恢复），同 VM
+%%     persistent_term memo 后其余用例仅验证分派路径。
+%%   * mp/fc 叶：guard 不得拦截非 race 场景。
 race_guard_test_() ->
     [
-        %% 自证通过后 race 场景 fun 必须真实执行（守卫只拦"未验证"，不拦真验证）。
-        ?_test(?assertEqual(executed, scenario_guard(Case, fun() -> executed end)))
+        {timeout, 120, fun() ->
+            put(w601_guard_emit, false),
+            scenario_guard(Case, fun() -> put(w601_guard_emit, true) end),
+            ?assertEqual(true, get(w601_guard_emit)),
+            erase(w601_guard_emit)
+        end}
      || {Case, _, _, _, _, _} <- race_specs()
     ] ++
         [
@@ -156,28 +368,19 @@ mp_scenario(S, Driver, <<"multipart_success">>, <<"ordinary">>) ->
     ?assert(?F:success(?F:confirm(M))),
     ?assertEqual({ok, ?BODY}, ?F:read(M)),
     #{entrypoint => <<"multipart">>, pin_sha256 => maps:get(<<"sha256">>, Pin)};
+%% group_file_success（ordinary）：真实 group-file 生产链 + 确认引用绑定
+%% （attachment multipart/anchor 替代已被 obs_binding 负例钉死禁用）。
 mp_scenario(S, Driver, <<"group_file_success">>, <<"ordinary">>) ->
+    Uid = maps:get(uid, S),
     Gid = new_group(S),
-    M = multipart_register(S, Driver, #{
-        <<"method">> => <<"multipart">>,
-        <<"scope">> => <<"group">>,
-        <<"scope_ref">> => integer_to_binary(Gid)
-    }),
-    Uploaded = ?FW:multipart_put(S, M, ?BODY),
-    ?assert(?F:success(Uploaded)),
-    {ok, Pin} = ?S:content_pin(key(M)),
+    {Key, Upload} = group_file_upload(S, Driver, Gid),
+    {ok, Pin} = ?S:content_pin(Key),
     ?assertEqual(?S:sha(?BODY), maps:get(<<"sha256">>, Pin)),
-    Confirm = ?FW:confirm_with(
-        maps:get(fixture, M),
-        M#{confirm_body => #{object_key => key(M), scope => <<"group">>}},
-        #{
-            scope_ref => integer_to_binary(Gid),
-            anchor_msg_id => <<"w601-anchor-", (elib_uuid:gen_v7())/binary>>
-        }
-    ),
-    ?assert(?F:success(Confirm)),
-    ?assertEqual(1, ?S:attach_count(key(M))),
-    #{scope => <<"group">>, group_id => Gid, anchored => true};
+    ?assertEqual(1, ?S:attach_count(Key)),
+    Bind = group_file_bind(S, Gid, Key),
+    #{<<"file_id">> := FileId} = ?F:payload(Bind),
+    ok = assert_group_file_bound(Gid, Uid, Key, FileId),
+    group_file_bind_measured(Upload, Key, Bind, FileId);
 mp_scenario(S, Driver, <<"identity_mismatch">>, <<"ordinary">>) ->
     T = reg(S, ordinary, Driver),
     Intruder = intruder_headers(maps:get(fixture, T)),
@@ -217,56 +420,34 @@ mp_scenario(S, Driver, <<"database_unavailable">>, <<"ordinary">>) ->
     {error, not_pinned} = ?S:content_pin(key(M)),
     {error, not_found} = ?F:read(M),
     #{db_outage_http_status => 200, db_outage_envelope_code => 500, no_capability => true};
-%% enterprise 域：按 upload_surface_contract 经 seat proxy PUT 协议度量
-%% （不伪造 multipart），同一 oracle：同账本、同 pin 事务边界、fail-closed。
+%% enterprise 域两个成功场景（2026-10-31 attempt-6 决议 + 2026-11-01
+%% production-domain 修订）：seat/widget 面无任何 multipart 生产入口，
+%% seat proxy PUT 已被 2026-10-29 裁决禁作这 8 个 enterprise 叶的证据——
+%% 由 enterprise fixture 的真实企业域 + 其用户 JWT 驱动真实 group-file
+%% 生产链 /api/v1/group/file/upload（multipart_success 面无 bind 链请求）。
+%% 企业群经生产 internal API 建群（enterprise_group_origin 同事务归属 +
+%% scope='workspace'），measured 的域事实读回服务端写入的生产行——
+%% 1d1a42a23 复审已拒绝 fixture 标签充当域证明。
 mp_scenario(S, Driver, <<"multipart_success">>, <<"enterprise">>) ->
-    T = reg(S, enterprise_seat, Driver),
-    Mod = ?S:driver_mod(Driver),
-    meck:new(Mod, [passthrough, no_link]),
-    try
-        ok = meck:expect(Mod, put_snapshot, fun(I, A, B, C) ->
-            case maps:get(key, I) =:= key(T) of
-                true ->
-                    %% pin 先于 provider put：seat 登记链在 PUT 准入事务
-                    %% （fn_v5_pin_eb_content）落 pin 后才进 provider 写。
-                    org_ws(T, fun(Org, Ws, Id) ->
-                        {ok, Pin} = ?S:content_pin_eb(Org, Ws, Id),
-                        ?assertEqual(?S:sha(?BODY), maps:get(<<"sha256">>, Pin))
-                    end);
-                false ->
-                    ok
-            end,
-            meck:passthrough([I, A, B, C])
-        end),
-        ?assert(?F:success(?F:put(T, ?BODY)))
-    after
-        meck:unload(Mod)
-    end,
-    org_ws(T, fun(Org, Ws, Id) ->
-        {ok, Pin} = ?S:content_pin_eb(Org, Ws, Id),
-        ?assertEqual(?S:sha(?BODY), maps:get(<<"sha256">>, Pin))
-    end),
-    ?assert(?F:success(?F:confirm(T))),
-    #{entrypoint => <<"seat_proxy_put_same_boundary">>, pin_before_provider_put => true};
+    {Gid, Origin, Create} = new_enterprise_group(S),
+    {Key, Upload} = group_file_upload(S, Driver, Gid),
+    {ok, Pin} = ?S:content_pin(Key),
+    ?assertEqual(?S:sha(?BODY), maps:get(<<"sha256">>, Pin)),
+    ?assertEqual(1, ?S:attach_count(Key)),
+    M = group_file_upload_measured(Upload, Key, <<"group_file_multipart_upload">>),
+    enterprise_measured(M, S, Gid, Origin, Create);
 mp_scenario(S, Driver, <<"group_file_success">>, <<"enterprise">>) ->
-    T = reg(S, enterprise_seat, Driver),
-    ?assert(?F:success(?F:put(T, ?BODY))),
-    org_ws(T, fun(Org, Ws, Id) ->
-        {ok, Row} = ?S:eb_row(Org, Ws, Id),
-        #{<<"upload_registration">> := Reg} = Row,
-        Subject = fetch_in(<<"subject">>, Reg),
-        %% seat 登记即 enterprise 账本（enterprise_asset）上的同 owner/location
-        %% 会话：主体 kind='seat'（fn_v5_register_eb 企业主体白名单）、org
-        %% 绑定登记组织、key 与冻结 storage_driver 为登记时冻结值（快照
-        %% 等值复核/重指派拒绝与 attach_pending 登记同协议）。
-        ?assertEqual(<<"seat">>, fetch_in(<<"kind">>, Subject)),
-        ?assertEqual(integer_to_binary(Org), fetch_in(<<"org_id">>, Subject)),
-        ?assertEqual(<<"pending_confirm">>, maps:get(<<"status">>, Row)),
-        ?assertEqual(key(T), maps:get(<<"object_key">>, Row)),
-        ?assertEqual(atom_to_binary(Driver, utf8), maps:get(<<"storage_driver">>, Row))
-    end),
-    ?assert(?F:success(?F:confirm(T))),
-    #{declaration_scope_frozen => true, frozen_driver => atom_to_binary(Driver, utf8)};
+    Uid = maps:get(uid, S),
+    {Gid, Origin, Create} = new_enterprise_group(S),
+    {Key, Upload} = group_file_upload(S, Driver, Gid),
+    {ok, Pin} = ?S:content_pin(Key),
+    ?assertEqual(?S:sha(?BODY), maps:get(<<"sha256">>, Pin)),
+    ?assertEqual(1, ?S:attach_count(Key)),
+    Bind = group_file_bind(S, Gid, Key),
+    #{<<"file_id">> := FileId} = ?F:payload(Bind),
+    ok = assert_group_file_bound(Gid, Uid, Key, FileId),
+    M = group_file_bind_measured(Upload, Key, Bind, FileId),
+    enterprise_measured(M, S, Gid, Origin, Create);
 mp_scenario(S, Driver, <<"identity_mismatch">>, <<"enterprise">>) ->
     T = reg(S, enterprise_seat, Driver),
     S2 = maps:get(fixture, T),
@@ -432,238 +613,6 @@ race_scenario(S, Driver, <<"intent_commits_first">>, Domain) ->
         retry_exhausted_state => <<"blocked">>
     }.
 
-%% --------------------------------------- W2-03 死锁重试前提（fail-closed 自证）
-
--define(W203_PROBE_TABLE, <<"w601_w203_deadlock_probe">>).
--define(W203_SIG_TIMEOUT, 30000).
-
-w203_concurrent_deadlock_retry_selfcheck() ->
-    Key = {?MODULE, w203_deadlock_retry_verified},
-    case persistent_term:get(Key, false) of
-        true ->
-            ok;
-        false ->
-            verify_w203_concurrent_deadlock_retry(),
-            persistent_term:put(Key, true),
-            ok
-    end.
-
-verify_w203_concurrent_deadlock_retry() ->
-    ok = w203_setup_probe(),
-    try
-        {RealDeadlock, _Winner} = w203_run_concurrent_deadlock(),
-        %% 赢家首投 + 败者重试各 +1/+2 后两行守恒：双方都真实 COMMIT 过。
-        {ok, [#{<<"v">> := 2}, #{<<"v">> := 2}]} = elib_pg:query(
-            <<"SELECT v FROM ", ?W203_PROBE_TABLE/binary, " ORDER BY id">>,
-            []
-        ),
-        %% 捕获的真实 40P01 驱动生产重试路径：首轮 ROLLBACK、重试轮真实提交。
-        ok = w203_verify_retry_recovery(RealDeadlock)
-    after
-        w203_teardown_probe()
-    end.
-
-w203_setup_probe() ->
-    {ok, _} = elib_pg:query(
-        <<
-            "CREATE UNLOGGED TABLE IF NOT EXISTS ",
-            ?W203_PROBE_TABLE/binary,
-            " (id int PRIMARY KEY, v int NOT NULL)"
-        >>,
-        []
-    ),
-    {ok, _} = elib_pg:query(<<"TRUNCATE ", ?W203_PROBE_TABLE/binary>>, []),
-    {ok, _} = elib_pg:query(
-        <<
-            "INSERT INTO ",
-            ?W203_PROBE_TABLE/binary,
-            " (id, v) VALUES (1, 0), (2, 0) ON CONFLICT (id) DO NOTHING"
-        >>,
-        []
-    ),
-    ok.
-
-w203_teardown_probe() ->
-    _ = elib_pg:query(<<"DROP TABLE IF EXISTS ", ?W203_PROBE_TABLE/binary>>, []),
-    ok.
-
-%% 第二连接参数：与 elib_pg 全局池同源（pg_conf start_mfa），database 以
-%% W403_RESOURCE_MANIFEST 为准；连上后显式对账 current_database（错库即
-%% no_go），并设 statement_timeout 兜底（防死锁检测失效时无限挂起）。
-w203_connect() ->
-    {ok, ManifestBytes} = file:read_file(w203_required("W403_RESOURCE_MANIFEST")),
-    #{<<"database">> := DbBin} = jsone:decode(ManifestBytes),
-    Db = binary_to_list(DbBin),
-    {ok, Pg} = application:get_env(imboy, pg_conf),
-    {epgsql, connect, [Connect0]} = maps:get(start_mfa, Pg),
-    {ok, Conn} = epgsql:connect(Connect0#{database => Db, timeout => 15000}),
-    %% epgsql 原生 equery 行形状（非 elib_pg map 行）；错库即 badmatch no-go。
-    {ok, _, [{CurrentDb}]} = epgsql:equery(Conn, <<"SELECT current_database()">>, []),
-    CurrentDb = DbBin,
-    {ok, _, _} = epgsql:equery(Conn, <<"SET statement_timeout = '20s'">>, []),
-    Conn.
-
-w203_required(Name) ->
-    case os:getenv(Name) of
-        false -> erlang:error({no_go, {w203_required_resource_missing, Name}});
-        "" -> erlang:error({no_go, {w203_required_resource_missing, Name}});
-        V -> V
-    end.
-
-%% 真实死锁环（双连接、同步 epgsql、信号驱动，不 sleep 猜时序）：
-%% helper 持行 2 → main 持行 1 后争行 2（阻塞）→ helper 争行 1 成环。
-%% PG deadlock detector（默认 1s）裁决归 abort 一方：两分支都显式处理——
-%% 败者收到真实 40P01 后确认 ROLLBACK 并重试到真实 COMMIT；赢家先真实 COMMIT。
-%% 返回 {RealDeadlock, Winner}，RealDeadlock 是本环境捕获的 40P01 #error{} 记录。
-w203_run_concurrent_deadlock() ->
-    Main = w203_connect(),
-    try
-        MainSelf = self(),
-        HelperPid = spawn(fun() -> w203_helper_run(MainSelf) end),
-        ok = w203_wait_locked(),
-        {ok, _, _} = epgsql:equery(Main, <<"BEGIN">>, []),
-        {ok, _} =
-            epgsql:equery(
-                Main, <<"UPDATE ", ?W203_PROBE_TABLE/binary, " SET v=v+1 WHERE id=1">>, []
-            ),
-        HelperPid ! {w203_main_go, self()},
-        MainRow2 =
-            epgsql:equery(
-                Main, <<"UPDATE ", ?W203_PROBE_TABLE/binary, " SET v=v+1 WHERE id=2">>, []
-            ),
-        case MainRow2 of
-            {error, Err = #error{code = <<"40P01">>}} ->
-                %% main 败：确认 ROLLBACK 释放行 1，等 helper（赢家）提交后重试。
-                {ok, _, _} = epgsql:equery(Main, <<"ROLLBACK">>, []),
-                ok = w203_wait_committed(),
-                ok = w203_retry_commit(Main),
-                w203_wait_helper_done(),
-                {Err, main};
-            {ok, _} ->
-                %% helper 败：等其 ROLLBACK 后的真实 40P01，main（赢家）提交。
-                Err = w203_wait_deadlock(),
-                {ok, _, _} = epgsql:equery(Main, <<"COMMIT">>, []),
-                w203_wait_helper_done(),
-                {Err, helper};
-            Other ->
-                erlang:error({w203_unexpected_main_row2, Other})
-        end
-    after
-        _ = epgsql:close(Main)
-    end.
-
-%% 每个信号独立等待函数：crash 消息即时上抛（不留残留、不占超时），
-%% 变量绑定封闭在各自函数作用域（避免跨 receive 同名绑定 unsafe）。
-w203_wait_locked() ->
-    receive
-        w203_helper_locked -> ok;
-        {w203_helper_crash, C, R, St} -> erlang:raise(C, R, St)
-    after ?W203_SIG_TIMEOUT -> erlang:error(w203_helper_locked_timeout)
-    end.
-
-w203_wait_committed() ->
-    receive
-        w203_helper_committed -> ok;
-        {w203_helper_crash, C, R, St} -> erlang:raise(C, R, St)
-    after ?W203_SIG_TIMEOUT -> erlang:error(w203_helper_commit_timeout)
-    end.
-
-w203_wait_deadlock() ->
-    receive
-        {w203_helper_deadlock, Err} -> Err;
-        {w203_helper_crash, C, R, St} -> erlang:raise(C, R, St)
-    after ?W203_SIG_TIMEOUT -> erlang:error(w203_helper_deadlock_timeout)
-    end.
-
-w203_helper_run(Parent) ->
-    Conn = w203_connect(),
-    try
-        {ok, _, _} = epgsql:equery(Conn, <<"BEGIN">>, []),
-        {ok, _} =
-            epgsql:equery(
-                Conn, <<"UPDATE ", ?W203_PROBE_TABLE/binary, " SET v=v+1 WHERE id=2">>, []
-            ),
-        Parent ! w203_helper_locked,
-        receive
-            {w203_main_go, Parent} -> ok
-        after ?W203_SIG_TIMEOUT -> erlang:error(w203_go_timeout)
-        end,
-        case
-            epgsql:equery(
-                Conn, <<"UPDATE ", ?W203_PROBE_TABLE/binary, " SET v=v+1 WHERE id=1">>, []
-            )
-        of
-            {error, Err = #error{code = <<"40P01">>}} ->
-                {ok, _, _} = epgsql:equery(Conn, <<"ROLLBACK">>, []),
-                Parent ! {w203_helper_deadlock, Err},
-                %% 败者重试：UPDATE id=2 单向等 main COMMIT，无环。
-                ok = w203_retry_commit(Conn),
-                Parent ! w203_helper_done;
-            {ok, _} ->
-                %% main 已 ROLLBACK（main 败分支）：先提交，再放行 main 重试。
-                {ok, _, _} = epgsql:equery(Conn, <<"COMMIT">>, []),
-                Parent ! w203_helper_committed,
-                Parent ! w203_helper_done;
-            Other ->
-                erlang:error({w203_unexpected_helper_row1, Other})
-        end
-    catch
-        Class:Reason:Stack ->
-            Parent ! {w203_helper_crash, Class, Reason, Stack},
-            exit(normal)
-    after
-        _ = epgsql:close(Conn)
-    end.
-
-w203_wait_helper_done() ->
-    receive
-        w203_helper_done -> ok;
-        {w203_helper_crash, Class, Reason, Stack} -> erlang:raise(Class, Reason, Stack)
-    after ?W203_SIG_TIMEOUT -> erlang:error(w203_helper_done_timeout)
-    end.
-
-w203_retry_commit(Conn) ->
-    {ok, _, _} = epgsql:equery(Conn, <<"BEGIN">>, []),
-    {ok, _} =
-        epgsql:equery(Conn, <<"UPDATE ", ?W203_PROBE_TABLE/binary, " SET v=v+1 WHERE id=1">>, []),
-    {ok, _} =
-        epgsql:equery(Conn, <<"UPDATE ", ?W203_PROBE_TABLE/binary, " SET v=v+1 WHERE id=2">>, []),
-    {ok, _, _} = epgsql:equery(Conn, <<"COMMIT">>, []),
-    ok.
-
-%% 用第 1 步捕获的真实 40P01 驱动生产 elib_pg:with_deadlock_retry_tx：
-%% 首轮把该错误作为事务体结果返回（生产路径确认 ROLLBACK），重试轮真实
-%% UPDATE 并 COMMIT，恰好一轮重试，提交值落库读回——死锁错误是真实的、
-%% 生产重试路径是真实工作的，缺一即红。
-w203_verify_retry_recovery(RealDeadlock) ->
-    put(w203_retry_round, 0),
-    try
-        Committed = elib_pg:with_deadlock_retry_tx(fun(Conn) ->
-            Round = get(w203_retry_round),
-            put(w203_retry_round, Round + 1),
-            case Round of
-                0 ->
-                    {error, RealDeadlock};
-                1 ->
-                    {ok, _} = epgsql:equery(
-                        Conn,
-                        <<"UPDATE ", ?W203_PROBE_TABLE/binary, " SET v=42 WHERE id=1">>,
-                        []
-                    ),
-                    committed_after_real_retry
-            end
-        end),
-        ?assertEqual(committed_after_real_retry, Committed),
-        ?assertEqual(2, get(w203_retry_round)),
-        {ok, [#{<<"v">> := 42}]} = elib_pg:query(
-            <<"SELECT v FROM ", ?W203_PROBE_TABLE/binary, " WHERE id = 1">>,
-            []
-        ),
-        ok
-    after
-        erase(w203_retry_round)
-    end.
-
 %% ---------------------------------------------------------------- helpers
 
 reg(S, Ep, Driver) -> ?F:register(S, Ep, Driver, ?BODY).
@@ -676,9 +625,6 @@ client_id(T) -> maps:get(client_upload_id, T).
 
 fetch(K, Map, Default) -> maps:get(K, Map, Default).
 
-fetch_in(Key, Map) when is_map(Map) -> maps:get(Key, Map, undefined);
-fetch_in(_, _) -> undefined.
-
 surface_of(<<"ordinary">>) -> ordinary;
 surface_of(<<"enterprise">>) -> enterprise_internal.
 
@@ -690,19 +636,7 @@ race_surface_of(<<"enterprise">>) -> enterprise_seat.
 %% ordinary multipart/group 登记入口（GET presign + method=multipart）。
 multipart_register(S, Driver, Extra) ->
     Cid = elib_uuid:gen_v7(),
-    Registry = attachment_storage:registry(),
-    Ns = ns_of(Driver),
-    application:set_env(
-        imboy,
-        attachment_storage_registry,
-        Registry#{
-            upload_namespaces => #{
-                <<"private">> => Ns,
-                <<"enterprise">> => Ns,
-                <<"group">> => Ns
-            }
-        }
-    ),
+    set_group_registry_ns(Driver),
     Q = uri_string:compose_query(
         [
             {<<"filename">>, <<"w403.txt">>},
@@ -763,6 +697,305 @@ new_group(S) ->
     Uid = maps:get(uid, S),
     {ok, Gid} = group_logic:add(0, Uid, 1, []),
     Gid.
+
+%% 真实企业域群（enterprise 两个成功场景的生产域锚点）：群经生产 internal
+%% API（INT-04 POST /api/internal/v1/groups）建在 enterprise fixture 的
+%% workspace 内——create_group_tx 同事务写 enterprise_group_origin 归属行
+%% （migration 00000140 触发守卫）与 group.created 审计，group 行
+%% scope='workspace'；操作者经生产映射 API（INT-02 PUT
+%% /api/internal/v1/identity-mappings）与 workspace_member 边界表入册
+%% （create_in_workspace 的 non_ws_member_uids_tx 硬前提）。group_file 链
+%% 的服务端授权（group_ds:is_member + workspace_guard）在该真实域上运行
+%% ——上传 200 即域与成员校验通过的生产行为。返回的 Origin 读自服务端
+%% 写入的归属行，是 1d1a42a23 复审要求的生产域证明（fixture 标签被拒）。
+new_enterprise_group(S) ->
+    Scope = maps:get(scope, S),
+    Uid = maps:get(uid, S),
+    Org = maps:get(org_id, Scope),
+    Ws = maps:get(workspace_id, Scope),
+    ok = seed_enterprise_membership(Org, Ws, Uid),
+    Ext = <<"w601-ent-", (integer_to_binary(Uid))/binary>>,
+    %% org 头是 internal 面组织边界的签名输入（缺失 =
+    %% organization_boundary_violation 403）；仓库既有 internal 测试同款。
+    InternalHeaders =
+        (maps:get(internal_headers, S))#{
+            <<"x-imboy-organization">> =>
+                integer_to_binary(Org)
+        },
+    Identity = ?F:request(
+        S,
+        put,
+        <<"/api/internal/v1/identity-mappings">>,
+        #{<<"external_user_id">> => Ext, <<"user_id">> => Uid},
+        InternalHeaders,
+        <<"application/json">>
+    ),
+    ?assertEqual(200, maps:get(status, Identity)),
+    ?assert(?F:success(Identity)),
+    Create = ?F:request(
+        S,
+        post,
+        <<"/api/internal/v1/groups">>,
+        #{
+            <<"workspace_id">> => Ws,
+            <<"title">> => <<"w601-ent-group">>,
+            <<"introduction">> => <<"w601 enterprise group-file leaf">>,
+            <<"members">> => [Ext],
+            <<"owner_external_user_id">> => Ext
+        },
+        InternalHeaders,
+        <<"application/json">>
+    ),
+    ?assertEqual(200, maps:get(status, Create)),
+    ?assert(?F:success(Create)),
+    #{<<"group_id">> := Gid} = ?F:payload(Create),
+    {ok, [
+        #{
+            <<"organization_id">> := Org2,
+            <<"application_id">> := AppId,
+            <<"workspace_id">> := Ws2,
+            <<"status">> := <<"active">>
+        }
+    ]} =
+        elib_pg:query(
+            <<
+                "SELECT organization_id, application_id, workspace_id, status"
+                " FROM enterprise_group_origin WHERE group_id=$1"
+            >>,
+            [Gid]
+        ),
+    {ok, [#{<<"scope">> := <<"workspace">>, <<"workspace_id">> := Ws2}]} =
+        elib_pg:query(
+            <<"SELECT scope, workspace_id FROM \"group\" WHERE id=$1">>, [Gid]
+        ),
+    {ok, [#{<<"user_id">> := Uid}]} =
+        elib_pg:query(
+            <<
+                "SELECT user_id FROM group_member WHERE group_id=$1 AND user_id=$2"
+                " AND status=1"
+            >>,
+            [Gid, Uid]
+        ),
+    Origin = #{
+        organization_id => Org2,
+        application_id => AppId,
+        workspace_id => Ws2
+    },
+    {Gid, Origin, Create}.
+
+%% 上传者（uid）的企业域入册：INT-02 的 classify_target 要求
+%% organization_member（org 边界），create_in_workspace 的
+%% non_ws_member_uids_tx 要求 workspace_member（workspace 边界）——
+%% w403 setup 的 uid 是独立 fixture 用户（非 scope Actor），须自行入册。
+%% 幂等种子：fixture 的 scope 在整套件共享，同一 (org,user)/(ws,user)
+%% 只入册一次。
+seed_enterprise_membership(Org, Ws, Uid) ->
+    {ok, _} = elib_pg:query(
+        <<
+            "INSERT INTO organization_member(organization_id,user_id,role,status)"
+            " VALUES ($1,$2,'member','active')"
+            " ON CONFLICT (organization_id,user_id) DO NOTHING"
+        >>,
+        [Org, Uid]
+    ),
+    {ok, _} = elib_pg:query(
+        <<
+            "INSERT INTO workspace_member(workspace_id,user_id,role,status)"
+            " VALUES ($1,$2,'member','active')"
+            " ON CONFLICT (workspace_id,user_id) DO NOTHING"
+        >>,
+        [Ws, Uid]
+    ),
+    ok.
+
+%% enterprise measured 的域事实块：org/workspace/app/scope 全部来自
+%% 服务端写入的 enterprise_group_origin 行与 workspace 群行（Origin 读回
+%% 值），create 面绑定该叶自己的 internal 建群请求（request record 由
+%% obs 中间件自动捕获进 http_requests）。
+enterprise_measured(M, S, Gid, Origin, Create) ->
+    Uid = maps:get(uid, S),
+    M#{
+        org_id => maps:get(organization_id, Origin),
+        workspace_id => maps:get(workspace_id, Origin),
+        gid => Gid,
+        group_scope => <<"workspace">>,
+        group_workspace_id => maps:get(workspace_id, Origin),
+        actor_uid => Uid,
+        origin => Origin,
+        create_request_id => maps:get(request_id, Create),
+        create_route => <<"/api/internal/v1/groups">>,
+        create_handler => <<"enterprise_group_handler">>,
+        create_status => maps:get(status, Create)
+    }.
+
+%% -------------------------------------------------- group-file 生产链
+%%
+%% 真实 group-file 链（ordinary group_file_success 与 enterprise 两个成功
+%% 场景共享）：POST /api/v1/group/file/upload（multipart/form-data：
+%% gid/file_name/file/file_type）→ group_file_logic:upload →
+%% group_file_ds:upload_file：attach_logic:presign scope=group
+%% （fn_v5_register_pending 真实登记 + 会话冻结位置）→
+%% attachment_upload_logic:upload_binary（真实字节 receipt 先 pin，pin 先于
+%% provider PUT）→ prepare_group_file_confirmation（真实字节 sha256 裁决）
+%% → 会话锁内同事务确认（group_file 行 + scope=group 附件补写行，T7 守卫）。
+%% 拦截点与既有 seat 场景同款：mock driver put_snapshot 在 passthrough 前
+%% 断言 pin 已为真实上传字节（断言在 HTTP 请求进程内失败即整链失败，
+%% fail-closed）。
+group_file_upload(S, Driver, Gid) ->
+    set_group_registry_ns(Driver),
+    Mod = ?S:driver_mod(Driver),
+    meck:new(Mod, [passthrough, no_link]),
+    try
+        ok = meck:expect(Mod, put_snapshot, fun(I, A, B, C) ->
+            PinKey = maps:get(key, I),
+            {ok, Pin} = ?S:content_pin(PinKey),
+            ?assertEqual(?S:sha(?BODY), maps:get(<<"sha256">>, Pin)),
+            ?assertEqual(<<"text/plain">>, maps:get(<<"mime">>, Pin)),
+            meck:passthrough([I, A, B, C])
+        end),
+        Boundary = <<"w601gfile7f3a">>,
+        Upload = ?F:request(
+            S,
+            post,
+            <<"/api/v1/group/file/upload">>,
+            group_file_form(Boundary, Gid),
+            maps:get(ordinary_headers, S),
+            <<"multipart/form-data; boundary=", Boundary/binary>>
+        ),
+        ?assertEqual(200, maps:get(status, Upload)),
+        ?assert(?F:success(Upload)),
+        Key = group_file_object_key(S, Gid),
+        ?assertEqual(1, ?S:attach_count(Key)),
+        ok = ?F:bind_request(S, Upload, Key, upload),
+        {Key, Upload}
+    after
+        meck:unload(Mod)
+    end.
+
+%% multipart 表单体：生产 handler 的四个表单字段（gid/file_name/file_type/file）。
+group_file_form(Boundary, Gid) ->
+    Field =
+        fun(Name, Value) ->
+            <<
+                "--",
+                Boundary/binary,
+                "\r\n",
+                "Content-Disposition: form-data; name=\"",
+                Name/binary,
+                "\"\r\n\r\n",
+                Value/binary,
+                "\r\n"
+            >>
+        end,
+    <<
+        (Field(<<"gid">>, integer_to_binary(Gid)))/binary,
+        (Field(<<"file_name">>, <<"w403.txt">>))/binary,
+        (Field(<<"file_type">>, <<"text/plain">>))/binary,
+        "--",
+        Boundary/binary,
+        "\r\n",
+        "Content-Disposition: form-data; name=\"file\"; filename=\"w403.txt\"\r\n",
+        "Content-Type: text/plain\r\n\r\n",
+        ?BODY/binary,
+        "\r\n--",
+        Boundary/binary,
+        "--\r\n"
+    >>.
+
+%% upload 响应不含服务端生成的 object_key；同事务确认后的 attachment 行
+%% （scope=group、scope_ref=Gid、creator=上传者）是真源，唯一新群保证唯一行。
+group_file_object_key(S, Gid) ->
+    Uid = maps:get(uid, S),
+    {ok, [#{<<"path">> := Key}]} =
+        elib_pg:query(
+            <<
+                "SELECT path FROM attachment"
+                " WHERE scope='group' AND scope_ref=$1 AND creator_user_id=$2"
+            >>,
+            [integer_to_binary(Gid), Uid]
+        ),
+    Key.
+
+%% 确认引用绑定：JSON bind（gid/file_name/file_type/object_key/file_size；
+%% file_md5 不提交——确认行存 SHA-256，客户端自报 MD5 无法被认证，服务端
+%% 拒绝任何非空值）→ group_file_ds:bind_file（T27 资格硬校验 + 幂等回填）。
+group_file_bind(S, Gid, Key) ->
+    Bind = ?F:request(
+        S,
+        post,
+        <<"/api/v1/group/file/bind">>,
+        #{
+            gid => Gid,
+            file_name => <<"w403.txt">>,
+            file_type => <<"text/plain">>,
+            object_key => Key,
+            file_size => byte_size(?BODY)
+        },
+        maps:get(ordinary_headers, S),
+        <<"application/json">>
+    ),
+    ?assertEqual(200, maps:get(status, Bind)),
+    ?assert(?F:success(Bind)),
+    ok = ?F:bind_request(S, Bind, Key, bind),
+    Bind.
+
+%% bind 后 durable 断言：group_file 行（上传者归属）与 attachment 行的
+%% group_file_id 回填互为同值（group_file_ds:bind_locked 的双写一致性）。
+assert_group_file_bound(Gid, Uid, Key, FileId) ->
+    {ok, [#{<<"id">> := RowId, <<"file_id">> := FileId, <<"uploader_id">> := Uid}]} =
+        elib_pg:query(
+            <<
+                "SELECT id, file_id, uploader_id FROM group_file"
+                " WHERE group_id=$1 AND file_id=$2"
+            >>,
+            [Gid, FileId]
+        ),
+    {ok, [#{<<"group_file_id">> := RowId}]} =
+        elib_pg:query(
+            <<"SELECT group_file_id FROM attachment WHERE path=$1">>, [Key]
+        ),
+    ok.
+
+%% measured 绑定面：adapter 专用 oracle 按 route/handler/entrypoint_face/
+%% status/request_id + pin 事实严格核对（缺任一即 gap，fail-closed）。
+group_file_upload_measured(Upload, Key, Face) ->
+    #{
+        route => <<"/api/v1/group/file/upload">>,
+        handler => <<"group_file_handler">>,
+        request_id => maps:get(request_id, Upload),
+        entrypoint_face => Face,
+        status => maps:get(status, Upload),
+        object_key => Key,
+        pin_sha256 => ?S:sha(?BODY),
+        pin_before_put => true
+    }.
+
+group_file_bind_measured(Upload, Key, Bind, FileId) ->
+    Base = group_file_upload_measured(Upload, Key, <<"group_file_bind">>),
+    Base#{
+        bind_route => <<"/api/v1/group/file/bind">>,
+        bind_request_id => maps:get(request_id, Bind),
+        bind_status => maps:get(status, Bind),
+        group_file_id => FileId
+    }.
+
+%% group namespace 的 upload 根映射：group-file 链按 scope 选根
+%% （attachment_storage:registration_location 读 Mapping[<<"group">>]），
+%% 与 multipart_register 同源。
+set_group_registry_ns(Driver) ->
+    Registry = attachment_storage:registry(),
+    Ns = ns_of(Driver),
+    application:set_env(
+        imboy,
+        attachment_storage_registry,
+        Registry#{
+            upload_namespaces => #{
+                <<"private">> => Ns,
+                <<"enterprise">> => Ns,
+                <<"group">> => Ns
+            }
+        }
+    ).
 
 new_intruder_uid() ->
     Uid = 8000000000000 + binary:decode_unsigned(crypto:strong_rand_bytes(5)),

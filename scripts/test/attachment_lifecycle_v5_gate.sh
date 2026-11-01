@@ -370,12 +370,36 @@ w102_phase_run() { # $1 cdir $2 phase
   done
   echo "replayed $(ls "$ROOT/priv/migrations/"*.up.sql | wc -l | tr -d ' ') up files" >> "$cdir/raw.log"
   local GUARDS_DB="attv5_${SLOT}_w102_guards"
+  # W102DM dual-driver expansion (W102DM-BLUEPRINT segment 2, final shape):
+  # - the expand phase stays single-driver (garage): no contract leaf
+  #   consumes expand-phase probes per driver (all dual-driver leaves are
+  #   guards-contract), and the expand probes include the DDL-cycle
+  #   down-block which needs the fourth (CYCLE) database name the
+  #   authorization allowlist does not have.
+  # - the guards phase runs the full probe suite twice (garage, disk) in
+  #   the SAME phase database.  Cross-driver claim isolation is provided
+  #   by the probe suite itself: each guards session starts by settling
+  #   leftover `ready` job rows to `retry_wait` (a legal job_state
+  #   convergence UPDATE, migration-179 shape), so a session only ever
+  #   claims jobs it seeded itself — cross-session non-claiming is the
+  #   production lease semantics (run11 exposed the shared-ready-pool
+  #   flaw: the disk pass leased the garage pass leftovers, 1:0).
+  # Each probes-<drv>.jsonl rows carry the driver key; the merged
+  # probes.jsonl keeps the (name, driver) pair per row for the adapter.
+  local drv PROBE_OUT
   if [ "$phase" = "guards" ]; then
     guards_contract_stream | docker exec -i "$PG_CONTAINER" psql -X -U imboy_user -d "$DB" -v ON_ERROR_STOP=1 --single-transaction -f - \
       >> "$cdir/raw.log" 2>&1 \
       || { echo "GUARDS_FAIL" >> "$cdir/raw.log"; return 30; }
-    V5_EXPAND_DB="${V5_EXPAND_DB:-attv5_${SLOT}_w102_expand}" V5_GUARDS_DB="$DB" \
-      V5_RUN_DIR="$RUN_DIR" bash "$ROOT/scripts/test/attachment_lifecycle_v5_w102_probe.sh" "$DB" guards "$cdir/probes.jsonl" >> "$cdir/raw.log" 2>&1
+    for drv in garage disk; do
+      PROBE_OUT="$cdir/probes-$drv.jsonl"
+      : > "$PROBE_OUT"
+      V5_EXPAND_DB="${V5_EXPAND_DB:-attv5_${SLOT}_w102_expand}" V5_GUARDS_DB="$DB" \
+        V5_PROBE_DRIVER="$drv" V5_RUN_DIR="$RUN_DIR" \
+        bash "$ROOT/scripts/test/attachment_lifecycle_v5_w102_probe.sh" "$DB" guards "$PROBE_OUT" >> "$cdir/raw.log" 2>&1 \
+        || { echo "PROBE_FAIL guards $drv" >> "$cdir/raw.log"; return 30; }
+    done
+    cat "$cdir/probes-garage.jsonl" "$cdir/probes-disk.jsonl" > "$cdir/probes.jsonl"
   else
     # cross-phase leaves need the guards DB too: build it alongside
     authorize_fixture_database "$GUARDS_DB" || return 20
@@ -391,8 +415,12 @@ w102_phase_run() { # $1 cdir $2 phase
     guards_contract_stream | docker exec -i "$PG_CONTAINER" psql -X -U imboy_user -d "$GUARDS_DB" -v ON_ERROR_STOP=1 --single-transaction -f - \
       >> "$cdir/raw.log" 2>&1 \
       || { echo "GUARDS_FAIL" >> "$cdir/raw.log"; return 30; }
+    PROBE_OUT="$cdir/probes-garage.jsonl"
+    : > "$PROBE_OUT"
     V5_EXPAND_DB="$DB" V5_GUARDS_DB="$GUARDS_DB" \
-      V5_RUN_DIR="$RUN_DIR" bash "$ROOT/scripts/test/attachment_lifecycle_v5_w102_probe.sh" "$DB" expand "$cdir/probes.jsonl" >> "$cdir/raw.log" 2>&1
+      V5_PROBE_DRIVER=garage V5_RUN_DIR="$RUN_DIR" \
+      bash "$ROOT/scripts/test/attachment_lifecycle_v5_w102_probe.sh" "$DB" expand "$PROBE_OUT" >> "$cdir/raw.log" 2>&1
+    cat "$cdir/probes-garage.jsonl" > "$cdir/probes.jsonl"
   fi
   return $?
 }
@@ -985,33 +1013,67 @@ w602_device_pid() { # $1 device -> device-side app pid if observable
 }
 
 w602_write_provenance() { # $1 file $2 kind $3 resource $4 pid $5 source
+  # observed_at (epoch seconds) records when the executor actually observed
+  # the live process; the measured adapter binds this instant to the suite's
+  # reconstructed execution window so a provenance file captured in another
+  # session can never pass as this run's device/browser evidence.
   python3 - "$@" <<'PYC'
-import json, sys
+import json, sys, time
 path, kind, resource, pid, source = sys.argv[1:6]
 json.dump({"kind": kind, "resource_id": resource, "process_id": int(pid),
-           "source": source}, open(path, "w"), indent=1)
+           "observed_at": int(time.time()), "source": source},
+          open(path, "w"), indent=1)
 PYC
 }
 
-w602_run_flutter() { # $1 app $2 cdir $3 driver $4 device
-  local app="$1" cdir="$2" driver="$3" device="$4" pid rc dpid=""
-  rm -f "$cdir/device-provenance.json"
-  ( cd "$app" && v5_w602_flutter_command "$driver" "$device" ) \
-    > "$cdir/flutter-integration-$driver.jsonl" 2> "$cdir/flutter-integration-$driver.err" &
+w602_run_flutter() { # $1 app $2 cdir $3 driver $4 device $5 phase(put|restore|"") $6 tag(leaf scenario or "")
+  local app="$1" cdir="$2" driver="$3" device="$4" phase="$5" tag="${6:-}" pid rc dpid=""
+  local out err prov label="$driver"
+  if [ -n "$tag" ]; then
+    # Per-leaf scenario runs own leaf-named artifacts: the put phase is
+    # suffixed, while the restore phase (or the single-run invocation) owns
+    # the leaf's final report; the merge step later combines the per-leaf
+    # reports into the adapter-visible per-driver artifact.
+    label="$driver-$tag"
+    if [ "$phase" = "put" ]; then
+      out="$cdir/flutter-integration-$label-put.jsonl"
+      err="$cdir/flutter-integration-$label-put.err"
+      prov="$cdir/device-provenance-$tag-put.json"
+    else
+      out="$cdir/flutter-integration-$label.jsonl"
+      err="$cdir/flutter-integration-$label.err"
+      prov="$cdir/device-provenance-$tag.json"
+    fi
+  elif [ "$phase" = "restore" ]; then
+    # The restore phase is the final verification session; it owns the
+    # unsuffixed artifact names consumed by the measured adapter.
+    out="$cdir/flutter-integration-$driver.jsonl"
+    err="$cdir/flutter-integration-$driver.err"
+    prov="$cdir/device-provenance.json"
+  else
+    out="$cdir/flutter-integration-$driver-$phase.jsonl"
+    err="$cdir/flutter-integration-$driver-$phase.err"
+    prov="$cdir/device-provenance-$phase.json"
+  fi
+  rm -f "$cdir/device-provenance.json" "$prov"
+  ( cd "$app" && v5_w602_flutter_command "$driver" "$device" "$phase" "$(w602_scenario_define "$tag")" ) \
+    > "$out" 2> "$err" &
   pid=$!
   while kill -0 "$pid" 2>/dev/null; do
     if [ -z "$dpid" ]; then
       dpid="$(w602_device_pid "$device")"
       if [ -n "$dpid" ] && kill -0 "$pid" 2>/dev/null; then
         w602_write_provenance "$cdir/device-provenance.json" physical "$device" "$dpid" \
-          "adb shell pidof pub.imboy.app observed live during the integration run"
+          "adb shell pidof pub.imboy.app observed live during the integration $phase run"
+        w602_write_provenance "$prov" physical "$device" "$dpid" \
+          "adb shell pidof pub.imboy.app observed live during the integration $phase run"
       fi
     fi
     sleep 2
   done
   wait "$pid"
   rc=$?
-  echo "W6-02 CMD[flutter-$driver] cwd=$app device=$device exit=$rc device_pid=${dpid:-unobserved}" >> "$cdir/raw.log"
+  echo "W6-02 CMD[flutter-$label${phase:+-$phase}] cwd=$app device=$device exit=$rc device_pid=${dpid:-unobserved}" >> "$cdir/raw.log"
   if [ -z "$dpid" ]; then
     echo "BLOCKED_EXTERNAL: device-side application process not observed" >&2
     return 75
@@ -1060,13 +1122,336 @@ w602_run_admin() { # $1 admin $2 cdir $3 driver
   return $rc
 }
 
-w602_case() { # $1 case_id $2 cdir
-  # shortcut: session/driver provenance and backend ownership are not bound;
-  # remove only after both are verified before any external request.
-  echo "BLOCKED_EXTERNAL: W6-02 backend ownership and per-driver session provenance are unverified" >&2
-  return 75
+# ---------------- W6-02 two-phase kill/restore orchestration ----------------
+# The archived protocol runs as two flutter test invocations sharing the same
+# V5_E2E_RUN_ID/V5_E2E_UPLOAD_ID: phase A (V5_E2E_PHASE=put) uploads to the
+# durable putDone checkpoint and prints V5_KILL_READY with the device-side
+# pid, the gate kill -9s that process and writes the killed marker, and
+# phase B (V5_E2E_PHASE=restore) relaunches the same binary and asserts the
+# automatic recovery. A failing phase fails the whole case (30); every phase
+# keeps its own logs.
+w602_kill_ready_pid() { # $1 jsonl -> device-side pid printed by V5_KILL_READY
+  python3 - "$1" <<'PYC'
+import json, re, sys
+pid = ""
+try:
+    with open(sys.argv[1], encoding="utf-8", errors="replace") as stream:
+        for line in stream:
+            if "V5_KILL_READY" not in line:
+                continue
+            try:
+                payload = json.dumps(json.loads(line), ensure_ascii=False)
+            except ValueError:
+                payload = line
+            found = re.search(
+                r"V5_KILL_READY run=\S+ task=\S+( scenario=\S+)? pid=([0-9]+)",
+                payload)
+            if found:
+                pid = found.group(2)
+except OSError:
+    pass
+print(pid)
+PYC
+}
+
+w602_wait_pid_gone() { # $1 device $2 pid -> 0 once pidof no longer reports it
+  local device="$1" pid="$2" i=0 alive
+  while [ "$i" -lt 10 ]; do
+    alive="$(w602_device_pid "$device")"
+    [ "$alive" != "$pid" ] && return 0
+    sleep 1
+    i=$((i + 1))
+  done
+  return 30
+}
+
+w602_write_killed_marker() { # $1 device $2 cdir $3 run $4 task $5 pid $6 tag(or "")
+  local device="$1" cdir="$2" run="$3" task="$4" pid="$5" tag="${6:-}" name host_mark
+  name="v5-killed-$run-$task${tag:+-$tag}.mark"
+  host_mark="$cdir/$name"
+  printf 'killed run=%s task=%s pid=%s at=%s\n' "$run" "$task" "$pid" "$(date +%s)" > "$host_mark"
+  if ! adb -s "$device" push "$host_mark" "/data/local/tmp/$name" >/dev/null 2>&1; then
+    echo "NO_GO: killed marker push to $device failed" >&2
+    return 30
+  fi
+  # Best-effort copy into the QA app sandbox for consumers that poll the
+  # app-visible directory; the /data/local/tmp marker stays as the
+  # host-visible record either way.
+  if ! adb -s "$device" shell run-as pub.imboy.app sh -c \
+      "mkdir -p files && cp /data/local/tmp/$name files/$name" >/dev/null 2>&1; then
+    echo "W6-02 WARN: run-as copy of the killed marker into pub.imboy.app failed; /data/local/tmp/$name remains" >> "$cdir/raw.log"
+  fi
+  echo "W6-02 KILLED_MARKER $name device=$device killed_pid=$pid" >> "$cdir/raw.log"
+  return 0
+}
+
+w602_flutter_two_phase() { # $1 app $2 cdir $3 driver $4 device $5 run $6 task $7 tag(or "")
+  local app="$1" cdir="$2" driver="$3" device="$4" run="$5" task="$6" tag="${7:-}" kpid=""
+  w602_run_flutter "$app" "$cdir" "$driver" "$device" put "$tag" || return $?
+  kpid="$(w602_kill_ready_pid "$cdir/flutter-integration-$driver${tag:+-$tag}-put.jsonl")"
+  if [ -z "$kpid" ]; then
+    echo "NO_GO: V5_KILL_READY pid missing from phase-A (put) output" >&2
+    return 30
+  fi
+  if ! adb -s "$device" shell kill -9 "$kpid" >/dev/null 2>&1; then
+    echo "NO_GO: adb kill -9 $kpid failed on $device" >&2
+    return 30
+  fi
+  if ! w602_wait_pid_gone "$device" "$kpid"; then
+    echo "NO_GO: killed pid $kpid still observed on $device" >&2
+    return 30
+  fi
+  echo "W6-02 KILL -9 pid=$kpid device=$device driver=$driver${tag:+ tag=$tag}" >> "$cdir/raw.log"
+  w602_write_killed_marker "$device" "$cdir" "$run" "$task" "$kpid" "$tag" || return $?
+  w602_run_flutter "$app" "$cdir" "$driver" "$device" restore "$tag" || return $?
+  return 0
+}
+
+# ---------------- W6-02 leaf-scenario wiring (flutter-recovery-real) ---------
+# The run contract expands W6-02/flutter-recovery-real into 14 leaf scenarios
+# per storage driver. Every leaf is executed under its own name so the
+# measured adapter binds exactly one executed test per leaf (find_flutter_test
+# requires a unique test title): the gate injects
+# --dart-define=V5_E2E_SCENARIO=<leaf> and the dart suite names the registered
+# testWidgets after the injected leaf. Two archived leaves fold onto their
+# implementation flows inside the dart suite while keeping the leaf-name test
+# identity: restart_before_put executes the kill_after_registered flow and
+# same_key_same_ciphertext_after_restart executes the kill_after_put flow in
+# scenario mode. The kill_after_put leaf maps to the frozen empty-scenario
+# argv: its protocol IS the empty-scenario two-phase flow registered as
+# 'kill_after_put'. After all leaves of a driver pass, their leaf-named
+# reports are merged (transport-level id renumbering only; measured events
+# stay verbatim) into flutter-integration-<driver>.jsonl, the artifact name
+# consumed by the measured adapter and the W6-02 receipt raw evidence.
+#
+# The same mechanism wires W6-02/ac08 and W6-02/e2e-compat, whose adapter
+# MAPPINGs otherwise match 0 executed tests (their scenarios would never
+# appear in a frozen empty-scenario run):
+#   - W6-02/ac08 runs its three contract leaf scenarios per leaf, each
+#     through the two-phase put/kill/restore protocol (the dart suite
+#     registers legacy_acl_cipher_bytes, unknown_history_retained and
+#     physical_device_restart in _twoPhaseScenarios and asserts
+#     V5_E2E_PHASE=put|restore for every injected scenario name).
+#   - W6-02/e2e-compat keeps the frozen empty-scenario two-phase flow for its
+#     any-kind scenarios (kill_after_put tag, no V5_E2E_SCENARIO define —
+#     the measured protocol is unchanged) and additionally runs the
+#     physical_device leaf under its own scenario name, also two-phase.
+# The dart suite must register every injected leaf name (an unknown scenario
+# is a red test by design); a leaf name absent there is an imboyapp-side
+# deliverable gap, never a gate-side skip.
+w602_scenario_define() { # $1 leaf -> stdout: V5_E2E_SCENARIO value ("" = frozen argv)
+  case "$1" in
+    kill_after_put|'') printf '' ;;
+    *) printf '%s' "$1" ;;
+  esac
+}
+
+w602_scenario_two_phase() { # $1 leaf -> 0 when the leaf runs put/restore phases
+  case "$1" in
+    kill_after_registered|kill_after_put|kill_after_confirm|\
+presign_response_lost|expired_capability_resume|authorization_revoked|\
+restart_before_put|same_key_same_ciphertext_after_restart|\
+legacy_acl_cipher_bytes|unknown_history_retained|\
+physical_device_restart|physical_device) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
+w602_run_scenario_leaves() { # $1 app $2 cdir $3 driver $4 device $5 run $6 task $7... leaf tags
+  # One measured run per contract leaf under its own name (the dart suite
+  # registers testWidgets after the injected V5_E2E_SCENARIO leaf), then a
+  # transport-level merge of the leaf-named reports into the per-driver
+  # artifact the measured adapter binds.  kill_after_put keeps the frozen
+  # empty-scenario argv via w602_scenario_define; two-phase leaves run the
+  # put/kill/restore protocol, single-run leaves one invocation.
+  local app="$1" cdir="$2" driver="$3" device="$4" run="$5" task="$6"
+  shift 6
+  local scenario tags=""
+  for scenario in "$@"; do
+    [ -n "$scenario" ] || continue
+    tags="$tags $scenario"
+    if w602_scenario_two_phase "$scenario"; then
+      w602_flutter_two_phase "$app" "$cdir" "$driver" "$device" "$run" "$task" "$scenario" \
+        || return $?
+    else
+      w602_run_flutter "$app" "$cdir" "$driver" "$device" "" "$scenario" || return $?
+    fi
+  done
+  # shellcheck disable=SC2086
+  w602_merge_flutter_reports "$cdir" "$driver" $tags || return 30
+}
+
+w602_flutter_scenario_suite() { # $1 app $2 cdir $3 driver $4 device $5 run $6 task
+  local app="$1" cdir="$2" driver="$3" device="$4" run="$5" task="$6"
+  local scenario leaves=""
+  # Frozen contract leaf order (expected_leaf_matrix["W6-02/flutter-recovery-real"]).
+  while IFS= read -r scenario; do
+    [ -n "$scenario" ] || continue
+    leaves="$leaves $scenario"
+  done <<'W602_SCENARIO_LEAVES'
+kill_after_registered
+kill_after_put
+kill_after_confirm
+unknown_message_commit
+user_switch
+presign_response_lost
+restart_before_put
+expired_capability_resume
+account_switch_late_callback
+workspace_switch_late_callback
+authorization_revoked
+durable_checkpoint_failure
+same_key_same_ciphertext_after_restart
+lost_cipher_material_requires_new_task
+W602_SCENARIO_LEAVES
+  # shellcheck disable=SC2086
+  w602_run_scenario_leaves "$app" "$cdir" "$driver" "$device" "$run" "$task" $leaves
+}
+
+w602_merge_flutter_reports() { # $1 cdir $2 driver $3... leaf tags (contract order)
+  local cdir="$1" driver="$2"; shift 2
+  [ $# -ge 1 ] || { echo "NO_GO: scenario merge needs at least one leaf report" >&2; return 30; }
+  python3 - "$cdir" "$driver" "$@" <<'PYC'
+import json, os, sys
+
+cdir, driver, tags = sys.argv[1], sys.argv[2], sys.argv[3:]
+out_path = os.path.join(cdir, "flutter-integration-%s.jsonl" % driver)
+DELTA = 10000  # per-segment id offset; one flutter run stays far below this
+ID_KEYS = ("id", "suiteID", "testID", "groupID", "groupIDs")
+
+
+def remap(value, delta):
+    if isinstance(value, dict):
+        mapped = {}
+        for key, item in value.items():
+            if key in ID_KEYS and isinstance(item, int):
+                item = item + delta
+            elif (key in ID_KEYS and isinstance(item, list)
+                    and all(isinstance(part, int) for part in item)):
+                item = [part + delta for part in item]
+            else:
+                item = remap(item, delta)
+            mapped[key] = item
+        return mapped
+    if isinstance(value, list):
+        return [remap(part, delta) for part in value]
+    return value
+
+
+lines = []
+for index, tag in enumerate(tags):
+    path = os.path.join(cdir, "flutter-integration-%s-%s.jsonl" % (driver, tag))
+    if not os.path.isfile(path) or os.path.getsize(path) == 0:
+        sys.stderr.write("NO_GO: scenario report missing or empty: %s\n" % path)
+        sys.exit(30)
+    delta = DELTA * (index + 1)
+    finished = False
+    with open(path, encoding="utf-8", errors="replace") as stream:
+        for raw in stream:
+            line = raw.strip()
+            if not line.startswith("{"):
+                continue
+            try:
+                event = json.loads(line)
+            except ValueError:
+                sys.stderr.write("NO_GO: unparsable line in %s\n" % path)
+                sys.exit(30)
+            event = remap(event, delta)
+            if event.get("type") == "done":
+                if event.get("success") is not True:
+                    sys.stderr.write(
+                        "NO_GO: scenario %s report finished unsuccessfully\n" % tag)
+                    sys.exit(30)
+                finished = True
+            lines.append(json.dumps(event, ensure_ascii=False))
+    if not finished:
+        sys.stderr.write(
+            "NO_GO: scenario %s report has no successful done event\n" % tag)
+        sys.exit(30)
+if not lines:
+    sys.stderr.write("NO_GO: scenario merge produced no events\n")
+    sys.exit(30)
+tmp = out_path + ".tmp"
+with open(tmp, "w", encoding="utf-8") as handle:
+    handle.write("\n".join(lines) + "\n")
+os.replace(tmp, out_path)
+PYC
+}
+
+w602_backend_start() { # $1 cdir -> starts W602_BACKEND_START_CMD, sets W602_STARTED_BACKEND_PID
+  local cdir="$1" deadline
+  if [ -z "${W602_BACKEND_URL:-}" ]; then
+    echo "BLOCKED_EXTERNAL: W602_BACKEND_START_CMD also requires W602_BACKEND_URL (expected healthz endpoint)" >&2
+    return 75
+  fi
+  deadline=$(( $(date +%s) + ${W602_BACKEND_START_TIMEOUT:-90} ))
+  ( cd "$ROOT" && IMBOYENV="${W602_BACKEND_IMBOYENV:-local}" sh -c "$W602_BACKEND_START_CMD" ) \
+    > "$cdir/backend-start.log" 2>&1 &
+  W602_STARTED_BACKEND_PID=$!
+  echo "W6-02 CMD[backend-start] cwd=$ROOT pid=$W602_STARTED_BACKEND_PID imboyenv=${W602_BACKEND_IMBOYENV:-local}" >> "$cdir/raw.log"
+  while [ "$(date +%s)" -lt "$deadline" ]; do
+    if ! kill -0 "$W602_STARTED_BACKEND_PID" 2>/dev/null; then
+      echo "NO_GO: gate-started backend exited before becoming healthy (see backend-start.log)" >&2
+      return 30
+    fi
+    curl -fsS --max-time 3 "${W602_BACKEND_URL%/}/healthz" > /dev/null 2>&1 && return 0
+    sleep 2
+  done
+  echo "NO_GO: gate-started backend did not pass /healthz within ${W602_BACKEND_START_TIMEOUT:-90}s" >&2
+  return 30
+}
+
+w602_backend_stop() { # stops a gate-started backend, if any; never fails the case
+  local pid="${W602_STARTED_BACKEND_PID:-}"
+  W602_STARTED_BACKEND_PID=""
+  case "$pid" in ''|*[!0-9]*) return 0 ;; esac
+  kill "$pid" 2>/dev/null || return 0
+  local i=0
+  while kill -0 "$pid" 2>/dev/null && [ "$i" -lt 10 ]; do
+    sleep 1
+    i=$((i + 1))
+  done
+  kill -9 "$pid" 2>/dev/null || true
+  return 0
+}
+
+w602_backend_provenance_write() { # $1 file $2 base_url $3 started_pid(or "")
+  python3 - "$@" <<'PYC'
+import json, os, sys, time
+from urllib.parse import urlparse
+path, base_url, started_pid = sys.argv[1:4]
+parts = urlparse(base_url)
+resource = "%s:%s" % (parts.hostname or "", parts.port or (443 if parts.scheme == "https" else 80))
+doc = {"kind": "owned-backend", "resource_id": resource, "base_url": base_url,
+       "source": os.environ.get("W602_BACKEND_PROVENANCE_SOURCE",
+                                "provided via W602_BACKEND_URL"),
+       "healthz_checked_at": int(time.time())}
+provided = os.environ.get("W602_BACKEND_PID", "")
+for candidate in (started_pid, provided):
+    if candidate.isdigit() and int(candidate) > 0:
+        doc["process_id"] = int(candidate)
+        break
+if started_pid.isdigit() and int(started_pid) > 0:
+    doc["start_command"] = os.environ.get("W602_BACKEND_START_CMD", "")
+    doc["imboyenv"] = os.environ.get("W602_BACKEND_IMBOYENV", "local")
+containers = [c for c in os.environ.get("W602_BACKEND_CONTAINERS", "").split(",") if c]
+if containers:
+    doc["containers"] = containers
+json.dump(doc, open(path, "w"), indent=1)
+PYC
+}
+
+w602_case() { # $1 case_id $2 cdir — stops any gate-started backend before returning
+  W602_STARTED_BACKEND_PID=""
+  local rc=0
+  w602_case_impl "$@"; rc=$?
+  w602_backend_stop
+  return $rc
+}
+
+w602_case_impl() { # $1 case_id $2 cdir
   local cid="$1" cdir="$2" app admin device="" devices_json browser=0 version=""
-  local backend="${W602_BACKEND_URL:-}" need_flutter=0 need_admin=0 rc=0
+  local backend="${W602_BACKEND_URL:-}" need_flutter=0 need_admin=0 rc=0 phase_run="" phase_task=""
   app="$(worktree_sibling imboyapp)" || return $?
   admin="$(worktree_sibling imboyadmin)" || return $?
   mkdir -p "$cdir"
@@ -1109,16 +1494,56 @@ w602_case() { # $1 case_id $2 cdir
   [ "$need_admin" -eq 0 ] || [ $browser -eq 1 ] || {
     echo "BLOCKED_EXTERNAL: playwright-chromium unavailable in $admin" >&2
     return 75; }
+  # Run-owned backend: an already-running endpoint via W602_BACKEND_URL, or a
+  # gate-started one via W602_BACKEND_START_CMD (+W602_BACKEND_URL as the
+  # expected healthz endpoint). Without either, the case refuses explicitly.
+  if [ -z "${W602_BACKEND_URL:-}" ] && [ -n "${W602_BACKEND_START_CMD:-}" ]; then
+    w602_backend_start "$cdir" || { rc=$?; return "$rc"; }
+  fi
   [ -n "$backend" ] || {
-    echo "BLOCKED_EXTERNAL: W602_BACKEND_URL not set; a real backend/storage is required" >&2
+    echo "BLOCKED_EXTERNAL: W602_BACKEND_URL not set; provide W602_BACKEND_URL or W602_BACKEND_START_CMD with W602_BACKEND_URL for a run-owned backend" >&2
     return 75; }
   curl -fsS --max-time 10 "$backend" > /dev/null 2>&1 || {
     echo "BLOCKED_EXTERNAL: real backend $backend is not reachable" >&2
     return 75; }
+  curl -fsS --max-time 10 "${backend%/}/healthz" > /dev/null 2>&1 || {
+    echo "BLOCKED_EXTERNAL: real backend $backend /healthz is not healthy" >&2
+    return 75; }
+  w602_backend_provenance_write "$cdir/backend-provenance.json" "$backend" \
+    "${W602_STARTED_BACKEND_PID:-}" || {
+    echo "NO_GO: backend-provenance.json write failed" >&2
+    return 30; }
+  if [ "$need_flutter" -eq 1 ]; then
+    # The killed-marker filename embeds both ids; validate the frozen shapes
+    # here before any device mutation (flutter_command.sh re-validates too).
+    phase_run="${W602_E2E_RUN_ID:-}" phase_task="${W602_E2E_UPLOAD_ID:-}"
+    [[ "$phase_run" =~ ^v5-e2e-[a-z0-9-]{1,64}$ ]] &&
+      [[ "$phase_task" =~ ^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$ ]] || {
+      echo "BLOCKED_EXTERNAL: missing or invalid W602_E2E_RUN_ID/W602_E2E_UPLOAD_ID" >&2
+      return 75; }
+  fi
   local driver
   for driver in garage disk; do
     if [ $need_flutter -eq 1 ]; then
-      w602_run_flutter "$app" "$cdir" "$driver" "$device" || { rc=$?; return "$rc"; }
+      # Per-case contract leaf scenarios (see the leaf-scenario wiring comment
+      # above): flutter-recovery-real owns the frozen 14-leaf suite; ac08 runs
+      # its three scenarios; e2e-compat keeps the frozen empty-scenario
+      # two-phase flow (any-kind scenarios) plus its physical_device leaf.
+      local case_leaves=""
+      case "$cid" in
+        W6-02/ac08)
+          case_leaves="legacy_acl_cipher_bytes unknown_history_retained physical_device_restart" ;;
+        W6-02/e2e-compat)
+          case_leaves="kill_after_put physical_device" ;;
+      esac
+      if [ "$cid" = "W6-02/flutter-recovery-real" ]; then
+        w602_flutter_scenario_suite "$app" "$cdir" "$driver" "$device" "$phase_run" "$phase_task" || { rc=$?; return "$rc"; }
+      elif [ -n "$case_leaves" ]; then
+        # shellcheck disable=SC2086
+        w602_run_scenario_leaves "$app" "$cdir" "$driver" "$device" "$phase_run" "$phase_task" $case_leaves || { rc=$?; return "$rc"; }
+      else
+        w602_flutter_two_phase "$app" "$cdir" "$driver" "$device" "$phase_run" "$phase_task" || { rc=$?; return "$rc"; }
+      fi
     fi
     if [ $need_admin -eq 1 ]; then
       w602_run_admin "$admin" "$cdir" "$driver" || { rc=$?; return "$rc"; }

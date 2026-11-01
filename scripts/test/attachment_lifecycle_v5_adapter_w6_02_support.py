@@ -10,7 +10,8 @@ The W6-02 gate executor writes, per case:
 
 Nothing below invents a result: every row binds a contract scenario to a parsed
 test with status success and to a live provenance record whose PID is an
-integer > 0 and whose resource id is in the admission allowlist.
+integer > 0, whose resource id is in the admission allowlist and whose
+observed_at epoch timestamp overlaps this case's measured suite window.
 """
 import json
 import os
@@ -157,7 +158,14 @@ def spec_gaps(preflight, specs_needed):
 
 
 def provenance_pipeline_gaps(root, case_id, need_device, need_browser):
-    """Reject proofs that are not bound to the individual driver run."""
+    """Reject receipts whose producer would drop the provenance proof fields.
+
+    The session/time binding of the captured provenance itself is verified
+    where the artifacts are read: read_provenance (w6_support) fails closed
+    on a record without a positive observed_at, and rows_for rejects an
+    observed_at outside the case's measured suite window.  A captured record
+    that passes both is carried into every row of this case verbatim.
+    """
     fields = []
     if need_device:
         fields.append("device_provenance")
@@ -165,13 +173,63 @@ def provenance_pipeline_gaps(root, case_id, need_device, need_browser):
         fields.append("browser_provenance")
     path = os.path.join(root, "scripts", PRODUCER)
     dropped = producer_drops(path, fields, case_id)
-    gaps = ["device/browser process provenance lacks per-driver session and time binding"]
     if dropped:
-        gaps.append("frozen producer never copies %s from a row into the receipt "
+        return ["frozen producer never copies %s from a row into the receipt "
             "(producer.py receipt assembly); the runner's receipt_errors then "
             "rejects every W6-02 receipt with 'missing registered live %s' even "
             "when the adapter measured a live provenance record"
-            % (", ".join(dropped), "/".join(dropped)))
+            % (", ".join(dropped), "/".join(dropped))]
+    return []
+
+
+# Tolerance (seconds) for the provenance observation-window overlap check.
+# A suite window is reconstructed as [artifact mtime - parsed test duration,
+# artifact mtime]; the executor observes the live PID during the real
+# process run, which starts a flutter build/install lead-in (minutes on a
+# cold gradle) BEFORE the first parsed testStart event, and artifact
+# mtime/fsync lag plus the 1-2 s observation poll add jitter at the edges.
+# 900 s absorbs that in-session reconstruction error with wide margin while
+# a provenance record captured in any other session or attempt is separated
+# by at least one full re-run and stays far outside the bound: fail-closed.
+PROVENANCE_WINDOW_TOLERANCE_S = 900
+
+
+def provenance_window_gaps(device, browser, kind_windows,
+                           tolerance=PROVENANCE_WINDOW_TOLERANCE_S):
+    """Bind each provenance record to this case's own measured session.
+
+    The executor observes the live device/browser PID while its own suite
+    runs, so a present proof's observed_at must overlap the measured
+    execution windows of the same-kind suites bound to this case's leaves
+    (device -> flutter suites, browser -> playwright suites).  The union of
+    one kind's windows is the binding scope because a case shares a single
+    provenance record across its per-driver suites; overlap with that union
+    still rejects every record written by a different run.
+    """
+    gaps = []
+    for label, proof, kind in (("device", device, "flutter"),
+                               ("browser", browser, "playwright")):
+        if proof is None:
+            continue
+        windows = kind_windows.get(kind) or []
+        observed = proof.get("observed_at") if isinstance(proof, dict) else None
+        if not windows:
+            gaps.append("%s provenance cannot be bound to this case's session: "
+                        "no measured %s suite window is available" % (label, kind))
+            continue
+        if type(observed) is not int or observed <= 0:
+            gaps.append("%s provenance carries no usable observed_at epoch "
+                        "seconds (%r); the executor must record when it "
+                        "observed the live process" % (label, observed))
+            continue
+        window_lo = min(started.timestamp() for started, _f in windows)
+        window_hi = max(finished.timestamp() for _s, finished in windows)
+        if not window_lo - tolerance <= observed <= window_hi + tolerance:
+            gaps.append("%s provenance observed_at %d is outside this case's "
+                        "measured %s suite window [%d, %d] (tolerance %ds): "
+                        "the record was not captured during this run"
+                        % (label, observed, kind, int(window_lo),
+                           int(window_hi), tolerance))
     return gaps
 
 
@@ -189,6 +247,27 @@ def read_provenance(case_dir, ctx, case_id, need_device, need_browser):
 
 
 PRODUCER = "attachment_lifecycle_v5_producer.py"
+
+
+def backend_provenance_for(case_dir, case_id):
+    """Read the gate-written owned-backend proof from the case dir.
+
+    Absence is honest (rows simply carry no backend proof; the per-driver
+    session/time gap fence still rejects everything). A present file that is
+    unparsable or not a JSON object fails closed. The object is attached
+    verbatim; reading it proves transport only, never authenticity.
+    """
+    path = os.path.join(case_dir, "backend-provenance.json")
+    if not os.path.isfile(path):
+        return None
+    try:
+        with open(path, "r", encoding="utf-8") as handle:
+            proof = json.load(handle)
+    except (OSError, ValueError) as exc:
+        S6.die(case_id, "unparsable backend-provenance.json %s: %s" % (path, exc))
+    if not isinstance(proof, dict):
+        S6.die(case_id, "backend-provenance.json must be a JSON object: %s" % path)
+    return proof
 
 
 def producer_drops(producer_path, fields, case_id):
@@ -248,6 +327,16 @@ def rows_for(ctx, case_id, leaves, case_dir, suites, mapping, device, browser,
     gaps = []
     rows = []
     used_tests = set()
+    backend = backend_provenance_for(case_dir, case_id)
+    kind_windows = {}
+    for (kind, _driver), suite in sorted(suites.items()):
+        started, finished = S5.window(suite["path"], suite["duration_s"])
+        kind_windows.setdefault(kind, []).append((started, finished))
+    # Fail-closed session/time binding: a captured proof whose observed_at is
+    # missing or outside this case's measured suite windows turns into a gap
+    # below (report_gaps exits 30); an overlapping proof is carried into the
+    # rows with its binding.
+    gaps.extend(provenance_window_gaps(device, browser, kind_windows))
     for leaf in leaves:
         scenario = leaf["ordering_or_fault"].split("/")[-1]
         kind, reason = mapping.get(scenario, ("any", None))
@@ -315,6 +404,8 @@ def rows_for(ctx, case_id, leaves, case_dir, suites, mapping, device, browser,
             row["device_provenance"] = device
         if browser:
             row["browser_provenance"] = browser
+        if backend is not None:
+            row["backend_provenance"] = backend
         rows.append(row)
     if gaps:
         S6.report_gaps(case_id, len(rows), {case_id: (len(gaps), gaps)})

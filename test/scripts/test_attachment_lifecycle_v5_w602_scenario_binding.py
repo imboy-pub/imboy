@@ -69,6 +69,23 @@ class ScenarioBindingTests(unittest.TestCase):
                   {'driver': 'disk', 'ordering_or_fault': 'x/seat_timeout'}]
         self.assertEqual(2, len(self.run_rows(suite, leaves)))
 
+    def test_backend_provenance_transport(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            # Absent file is honest: no proof attached, no failure.
+            self.assertIsNone(support.backend_provenance_for(str(root), 'probe'))
+            proof = {'kind': 'owned-backend', 'resource_id': '127.0.0.1:9810',
+                     'base_url': 'http://127.0.0.1:9810', 'process_id': 4242}
+            (root / 'backend-provenance.json').write_text(json.dumps(proof))
+            self.assertEqual(proof, support.backend_provenance_for(str(root), 'probe'))
+            # Corrupt and non-object payloads fail closed.
+            (root / 'backend-provenance.json').write_text('{not json')
+            with self.assertRaises(SystemExit):
+                support.backend_provenance_for(str(root), 'probe')
+            (root / 'backend-provenance.json').write_text('[1, 2]')
+            with self.assertRaises(SystemExit):
+                support.backend_provenance_for(str(root), 'probe')
+
 
 if __name__ == '__main__':
     unittest.main()

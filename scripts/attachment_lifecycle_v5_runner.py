@@ -30,6 +30,10 @@ try:
 except ImportError:
     sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
     import attachment_lifecycle_v5_case_store as case_store
+try:
+    from . import attachment_lifecycle_v5_readmission as admission
+except ImportError:
+    import attachment_lifecycle_v5_readmission as admission
 
 EXIT_OK, EXIT_USAGE, EXIT_CONTRACT, EXIT_NOGO, EXIT_BLOCKED = 0, 2, 20, 30, 75
 TASK_STATES = ["NOT_STARTED", "READY", "RUNNING", "VERIFYING", "COMMITTING",
@@ -108,22 +112,282 @@ def _budget_start(state, contract, task_id, started):
     return budget
 
 
+def _receipt_bytes(path):
+    with open(path, "rb") as handle:
+        return handle.read()
+
+
+def _load_archive_dir(path):
+    """Validate all manifest paths before safely opening bounded regular files."""
+    if not isinstance(path, str) or not os.path.isabs(path):
+        raise ValueError("archive path must be absolute")
+    manifest = _read_run_artifact(path, os.path.join(path, "manifest.sha256"))
+    entries = {}
+    for line in manifest.decode("utf-8").splitlines():
+        digest, name = line.split(None, 1)
+        name = name.strip()
+        if (not _valid_digest(digest) or not name or os.path.isabs(name)
+                or any(part in ("", ".", "..") for part in name.split("/"))
+                or name in entries):
+            raise ValueError("invalid archive manifest entry")
+        entries[name] = digest
+    if "execution-contract.json" not in entries:
+        raise ValueError("archive contract missing")
+    files = {}
+    for name, digest in entries.items():
+        data = _read_run_artifact(path, os.path.join(path, name))
+        if sha256_bytes(data) != digest:
+            raise ValueError("archive digest mismatch: " + name)
+        files[name] = data
+    return {"manifest": manifest, "files": files}
+
+
+# The auditable anchor for admission-008: the exact sentence the repository
+# owner committed to sending (published in-session ahead of the ceremony and
+# embedded here in the same reviewed commit). The harness offers no
+# cryptographic user channel, so verifiers enforce verbatim binding and
+# consistency; authenticity rests on post-hoc audit of the receipt against
+# the user's actual message (see receipt trust_model field).
+READMISSION_USER_SENTENCE = (
+    "我授权 W6-01 预算 5→8 及 group-file applicability 合同修订，"
+    "修订评审模式 reviewer=user-self"
+)
+READMISSION_TRUST_MODEL = ("verbatim-quote + post-hoc user audit; "
+                           "no cryptographic user channel in this harness")
+
+
+def _readmission_sentence_digest():
+    return sha256_bytes(READMISSION_USER_SENTENCE.encode("utf-8"))
+
+
+def _verify_reviewed_readmission(state, contract):
+    """Steady-state provenance, re-verified from disk on every budget check.
+
+    A state or contract marker alone is never authorization: the digest
+    chain (state.authorization_sha256 == state.reviewed_readmission ==
+    sha256 of the receipt bytes), the receipt's plan binding, the verbatim
+    canonical user sentence, the reviewer=self binding and the receipt/
+    policy agreement must all hold together, or budgets stay blocked.
+    """
+    try:
+        raw = _receipt_bytes(state["authorization_path"])
+        receipt = json.loads(raw.decode("utf-8"))
+        digest = sha256_bytes(raw)
+        if (digest != state.get("authorization_sha256")
+                or digest != state.get("reviewed_readmission")
+                or receipt.get("plan_manifest_sha256") != state.get("plan_manifest_sha256")):
+            return False
+        reference = receipt.get("trusted_user_message_reference")
+        if (not isinstance(reference, str) or READMISSION_USER_SENTENCE not in reference
+                or receipt.get("reviewer_mode") != "user-self"
+                or receipt.get("trust_model") != READMISSION_TRUST_MODEL):
+            return False
+        scope = receipt.get("readmission")
+        policy = contract.get("reviewed_readmission")
+        if (not isinstance(scope, dict) or not isinstance(policy, dict)
+                or scope.get("task_id") != policy.get("task_id")
+                or policy.get("task_id") != "W6-01"
+                or scope.get("attempt_limit") != policy.get("attempt_limit")
+                or policy.get("attempt_limit") != 8
+                or scope.get("new_deadlines") != policy.get("deadlines")):
+            return False
+        issued = datetime.datetime.fromisoformat(
+            receipt["issued_at"].replace("Z", "+00:00")).timestamp()
+        expires = datetime.datetime.fromisoformat(
+            receipt["expires_at"].replace("Z", "+00:00")).timestamp()
+        return 0 < issued <= time.time() < expires
+    except (KeyError, TypeError, ValueError, OSError):
+        return False
+
+
+def _verify_readmission_user(receipt_bytes):
+    """Bind the receipt to the canonical authorization sentence.
+
+    Checks verbatim containment of READMISSION_USER_SENTENCE plus the
+    reviewer=self declaration and the documented trust model. This proves
+    binding and consistency, not cryptographic provenance.
+    """
+    try:
+        receipt = json.loads(receipt_bytes.decode("utf-8"))
+    except (ValueError, UnicodeDecodeError):
+        return False
+    reference = receipt.get("trusted_user_message_reference")
+    return (isinstance(reference, str) and READMISSION_USER_SENTENCE in reference
+            and isinstance(receipt.get("w6_02_decisions"), dict)
+            and receipt.get("reviewer_mode") == "user-self"
+            and receipt.get("trust_model") == READMISSION_TRUST_MODEL)
+
+
+def _verify_readmission_review(review_bytes, receipt_bytes):
+    """The reviewer=self review must bind the exact artifacts it approves
+    AND the same user authorization sentence the receipt cites."""
+    try:
+        receipt = json.loads(receipt_bytes.decode("utf-8"))
+        reference = receipt.get("trusted_user_message_reference")
+        if (not isinstance(reference, str) or READMISSION_USER_SENTENCE not in reference
+                or receipt.get("reviewer_mode") != "user-self"):
+            return False
+    except (ValueError, UnicodeDecodeError):
+        return False
+    scope = receipt.get("readmission")
+    if not isinstance(scope, dict):
+        return False
+    # The review binds the receipt identity, the reviewed plan pair, the
+    # reviewer=self mode and the user sentence digest; the receipt in turn
+    # binds the exact review bytes via readmission.review_sha256.
+    required = [
+        "READMISSION-REVIEW-VERDICT: APPROVED",
+        "receipt_id: " + str(receipt.get("receipt_id")),
+        "old_manifest_sha256: " + str(scope.get("old_manifest_sha256")),
+        "new_manifest_sha256: " + str(scope.get("new_manifest_sha256")),
+        "reviewer_mode: user-self",
+        "user_sentence_sha256: " + _readmission_sentence_digest(),
+    ]
+    text = review_bytes.decode("utf-8", errors="replace")
+    return all(line in text for line in required)
+
+
+def _verify_readmission_transition(old, new, evidence, at):
+    """Verify immutable archives, authorized user input, reviewer
+    provenance and receipt expiry through the pure check module."""
+    def logical(snapshot):
+        return {key: value for key, value in snapshot.items()
+                if key not in ("revision", "events_head_hash", "clock_anchor")}
+
+    try:
+        ok, _reason = admission.validate_readmission(
+            logical(old), logical(new),
+            _load_archive_dir(evidence["old_archive_path"]),
+            _load_archive_dir(evidence["new_archive_path"]),
+            _receipt_bytes(old["authorization_path"]),
+            _receipt_bytes(new["authorization_path"]),
+            _receipt_bytes(evidence["review_path"]),
+            at, _verify_readmission_user, _verify_readmission_review)
+        return bool(ok)
+    except (KeyError, TypeError, ValueError, OSError):
+        return False
+
+
+def _check_readmission_transition(old, new, evidence, at):
+    if not isinstance(old, dict) or not isinstance(new, dict) or not isinstance(evidence, dict):
+        die(EXIT_CONTRACT, 'invalid readmission transition')
+    required = {'old_manifest_sha256', 'new_manifest_sha256', 'old_receipt_sha256',
+                'new_receipt_sha256', 'review_sha256', 'old_archive_path',
+                'new_archive_path', 'review_path'}
+    if (set(evidence) != required
+            or any(not _valid_digest(evidence[key]) for key in required if key.endswith('_sha256'))
+            or any(not isinstance(evidence[key], str) or not os.path.isabs(evidence[key])
+                   for key in ('old_archive_path', 'new_archive_path', 'review_path'))
+            or type(at) not in (int, float) or not 0 < at < float('inf')
+            or old.get('active_launch') is not None or old.get('reviewed_readmission') is not None
+            or old.get('tasks', {}).get('W6-01', {}).get('state') != 'RUNNING'
+            or old.get('tasks', {}).get('W6-01', {}).get('attempt') != 5
+            or evidence['old_manifest_sha256'] != old.get('plan_manifest_sha256')
+            or old.get('verification_candidate', {}).get('plan_manifest_sha256') != old.get('plan_manifest_sha256')
+            or evidence['new_manifest_sha256'] != new.get('plan_manifest_sha256')
+            or evidence['old_receipt_sha256'] != old.get('authorization_sha256')
+            or evidence['new_receipt_sha256'] != new.get('authorization_sha256')
+            or new.get('reviewed_readmission') != evidence['new_receipt_sha256']
+            or not isinstance(new.get('plan_dir'), str) or not os.path.isabs(new['plan_dir'])
+            or not isinstance(new.get('authorization_path'), str) or not os.path.isabs(new['authorization_path'])
+            or new['plan_dir'] == old.get('plan_dir')
+            or new['authorization_path'] == old.get('authorization_path')):
+        die(EXIT_CONTRACT, 'invalid readmission bindings')
+    try:
+        expected = copy.deepcopy(old)
+        for key in ('plan_dir', 'plan_manifest_sha256', 'authorization_path',
+                    'authorization_sha256', 'reviewed_readmission'):
+            expected[key] = new[key]
+        expected['verification_candidate']['plan_manifest_sha256'] = new['plan_manifest_sha256']
+        expected['tasks']['W6-01']['task_deadline'] = new['tasks']['W6-01']['task_deadline']
+        expected['time_budgets']['run']['deadline'] = new['time_budgets']['run']['deadline']
+        expected['time_budgets']['waves']['W6']['deadline'] = new['time_budgets']['waves']['W6']['deadline']
+        old_deadlines = (old['tasks']['W6-01']['task_deadline'], old['time_budgets']['waves']['W6']['deadline'],
+                         old['time_budgets']['run']['deadline'])
+        deadlines = (new['tasks']['W6-01']['task_deadline'], new['time_budgets']['waves']['W6']['deadline'],
+                     new['time_budgets']['run']['deadline'])
+        if (any(type(v) not in (int, float) or not 0 < v < float('inf') for v in (*old_deadlines, *deadlines))
+                or any(n <= max(o, at) for o, n in zip(old_deadlines, deadlines))
+                or not deadlines[0] <= deadlines[1] <= deadlines[2]):
+            raise ValueError('invalid deadlines')
+        for key in ('revision', 'events_head_hash', 'clock_anchor'):
+            expected.pop(key, None)
+        comparable = {k: v for k, v in new.items() if k not in ('revision', 'events_head_hash', 'clock_anchor')}
+        if expected != comparable:
+            raise ValueError('unrelated state changed')
+    except (KeyError, TypeError, ValueError):
+        die(EXIT_CONTRACT, 'invalid readmission state delta')
+    if not _verify_readmission_transition(old, new, evidence, at):
+        die(EXIT_BLOCKED, 'readmission user and reviewer provenance is not verified')
+
+
+def _reviewed_budget_policy(state, contract):
+    policy = contract.get('reviewed_readmission')
+    marker = state.get('reviewed_readmission')
+    overrides = contract.get('retry_policy', {}).get('task_attempts_overrides')
+    if policy is None and marker is None and overrides is None:
+        return None
+    if not _verify_reviewed_readmission(state, contract):
+        die(EXIT_BLOCKED, 'reviewed readmission provenance is not verified')
+    if (not isinstance(policy, dict) or set(policy) != {'task_id', 'attempt_limit', 'deadlines'}
+            or policy['task_id'] != 'W6-01' or policy['attempt_limit'] != 8
+            or type(policy['attempt_limit']) is not int
+            or contract.get('retry_policy', {}).get('task_attempts_total_max') != 5
+            or overrides != {'W6-01': 8} or not _valid_digest(marker)):
+        die(EXIT_CONTRACT, 'invalid reviewed readmission policy')
+    deadlines = policy['deadlines']
+    if (not isinstance(deadlines, dict) or set(deadlines) != {'task', 'wave', 'run'}
+            or any(type(v) not in (int, float) or not 0 < v < float('inf')
+                   for v in deadlines.values())
+            or not deadlines['task'] <= deadlines['wave'] <= deadlines['run']):
+        die(EXIT_CONTRACT, 'invalid reviewed readmission deadlines')
+    task = state.get('tasks', {}).get('W6-01', {})
+    budget = state.get('time_budgets', {})
+    run = budget.get('run') if isinstance(budget, dict) else None
+    waves = budget.get('waves', {}) if isinstance(budget, dict) else {}
+    wave = waves.get('W6') if isinstance(waves, dict) else None
+    if (not isinstance(task, dict) or task.get('task_deadline') != deadlines['task']
+            or not isinstance(run, dict) or run.get('deadline') != deadlines['run']
+            or not isinstance(wave, dict) or wave.get('deadline') != deadlines['wave']):
+        die(EXIT_CONTRACT, 'reviewed deadlines differ from persistent state')
+    started = task.get('task_started_at')
+    timeouts = contract.get('timeouts', {})
+    seconds = timeouts.get('task_overrides', {}).get('W6-01', timeouts.get('task_seconds', 28800))
+    if (any(type(v) not in (int, float) or not 0 < v < float('inf') for v in (started, seconds))
+            or deadlines['task'] <= started + seconds):
+        die(EXIT_CONTRACT, 'invalid reviewed task deadline')
+    return policy
+
+
+def _task_attempt_limit(state, contract, task_id):
+    policy = _reviewed_budget_policy(state, contract)
+    if policy is not None and task_id == policy['task_id']:
+        return policy['attempt_limit']
+    return contract.get('retry_policy', {}).get('task_attempts_total_max', 5)
+
+
 def _budget_check(state, contract, task_id=None, enforce=True, at=None):
     budget = state.get('time_budgets')
     if not isinstance(budget, dict) or set(budget) != {'run', 'waves'} or not isinstance(budget['waves'], dict):
         die(EXIT_CONTRACT, 'missing persistent run/wave budgets; reviewed reconciliation required')
+    policy = _reviewed_budget_policy(state, contract)
     entries = []
     if budget['run'] is not None:
-        entries.append((budget['run'], contract.get('timeouts', {}).get('run_seconds', 604800)))
+        entries.append((budget['run'], contract.get('timeouts', {}).get('run_seconds', 604800), 'run'))
     for wave, entry in budget['waves'].items():
         seconds = contract.get('timeouts', {}).get('wave_overrides', {}).get(wave, contract.get('timeouts', {}).get('wave_seconds', 86400))
-        entries.append((entry, seconds))
+        entries.append((entry, seconds, 'wave' if wave == 'W6' else None))
     if budget['waves'] and budget['run'] is None:
         die(EXIT_CONTRACT, 'wave budget without run budget')
-    for entry, seconds in entries:
+    for entry, seconds, kind in entries:
         if (not isinstance(entry, dict) or set(entry) != {'started_at', 'deadline'}
-                or any(type(v) not in (int, float) or not 0 < v < float('inf') for v in (entry['started_at'], entry['deadline'], seconds))
-                or entry['deadline'] != entry['started_at'] + seconds):
+                or any(type(v) not in (int, float) or not 0 < v < float('inf') for v in (entry['started_at'], entry['deadline'], seconds))):
+            die(EXIT_CONTRACT, 'invalid persistent run/wave budget')
+        original = entry['started_at'] + seconds
+        if policy is not None and kind is not None:
+            if entry['deadline'] != policy['deadlines'][kind] or entry['deadline'] <= original:
+                die(EXIT_CONTRACT, 'invalid reviewed run/wave deadline')
+        elif entry['deadline'] != original:
             die(EXIT_CONTRACT, 'invalid persistent run/wave budget')
     now = time.time() if at is None else at
     if enforce and budget['run'] and now >= budget['run']['deadline']:
@@ -139,7 +403,7 @@ def _task_attempt_check(state, contract, task_id):
     task = state.get('tasks', {}).get(task_id, {})
     deadline = task.get('task_deadline')
     attempt = task.get('attempt')
-    limit = contract.get('retry_policy', {}).get('task_attempts_total_max', 5)
+    limit = _task_attempt_limit(state, contract, task_id)
     if (type(deadline) not in (int, float) or not 0 < deadline < float('inf')
             or time.time() >= deadline):
         die(EXIT_NOGO, 'persisted task deadline missing or exhausted')
@@ -1425,6 +1689,51 @@ def _resume_launch_intent(run_dir, store, old, new, event):
     return store.persist_snapshot(new, event["entry_hash"])
 
 
+def _write_reviewed_readmission(run_dir, proposed, evidence):
+    """Append one reviewed transition; provenance remains fail-closed until integrated."""
+    lock = RunLock(run_dir)
+    if not lock.acquire_nb():
+        die(EXIT_BLOCKED, 'cannot acquire readmission lock')
+    try:
+        store = StateStore(run_dir)
+        old = store.load_state()
+        scan = store.scan_chain()
+        if (not isinstance(old, dict) or not scan['ok'] or not scan['count']
+                or old.get('events_head_hash') != scan['last']['entry_hash']
+                or not store.snapshot_bound(old, [scan['bound']])):
+            die(EXIT_CONTRACT, 'readmission requires a consistent snapshot and ledger')
+        contract = _load_bound_contract(old)
+        # Steady-state semantics (mirroring the seal read path): a contract
+        # without an anchor map allows contract-legal direct seals; the
+        # chain consistency was just verified above via scan_chain.
+        _validate_timed_case_events(store.iter_events(), contract.get("legacy_case_event_hashes"))
+        _clock_check(old.get('clock_anchor'))
+        _budget_check(old, contract, enforce=False)
+        if (type(old.get('revision')) is not int
+                or any(key not in old or key not in proposed or proposed[key] != old[key]
+                       for key in ('revision', 'events_head_hash', 'clock_anchor'))):
+            die(EXIT_CONTRACT, 'readmission snapshot anchors changed')
+        _check_readmission_transition(old, proposed, evidence, time.time())
+        if candidate_errors(proposed.get('verification_candidate', {})):
+            die(EXIT_CONTRACT, 'candidate drift prevents readmission')
+        return store.write_snapshot(proposed, 'reviewed_readmission', {'evidence': evidence})
+    finally:
+        lock.release()
+
+
+def _resume_reviewed_readmission(store, old, new, event):
+    if (type(old.get('revision')) is not int or type(new.get('revision')) is not int
+            or new['revision'] != old['revision'] + 1 or 'events_head_hash' in new):
+        die(EXIT_CONTRACT, 'invalid readmission revision')
+    _clock_check(old.get('clock_anchor'))
+    _clock_check(new.get('clock_anchor'))
+    _clock_transition(old['clock_anchor'], new['clock_anchor'])
+    _check_readmission_transition(old, new, event['payload'].get('evidence'), event.get('ts'))
+    if candidate_errors(new.get('verification_candidate', {})):
+        die(EXIT_CONTRACT, 'candidate drift prevents readmission recovery')
+    return store.persist_snapshot(new, event['entry_hash'])
+
+
 def _resume_state(run_dir):
     """Reconcile one durable task transition while the caller holds RunLock."""
     store = StateStore(run_dir)
@@ -1461,6 +1770,8 @@ def _resume_state(run_dir):
         reconstructed = dict(new, events_head_hash=event["entry_hash"])
         if not store.snapshot_bound(reconstructed, [scan["bound"]]):
             die(EXIT_CONTRACT, "event state digest mismatch")
+        if event.get("kind") == "reviewed_readmission":
+            return _resume_reviewed_readmission(store, old, new, event)
         if event.get("kind") == "launch_intent":
             return _resume_launch_intent(run_dir, store, old, new, event)
         if event.get("kind") == "case_manifest_bound":
@@ -1520,7 +1831,7 @@ def _resume_state(run_dir):
             started, deadline = new_task.get("task_started_at"), new_task.get("task_deadline")
             timeouts = contract.get("timeouts", {})
             seconds = timeouts.get("task_overrides", {}).get(task_id, timeouts.get("task_seconds", 28800))
-            limit = contract.get("retry_policy", {}).get("task_attempts_total_max", 5)
+            limit = _task_attempt_limit(old, contract, task_id)
             if (type(started) not in (int, float) or type(deadline) not in (int, float)
                     or not 0 < started <= deadline < float("inf")
                     or type(limit) is not int or not 1 <= new_attempt <= limit
@@ -1782,7 +2093,31 @@ def receipt_errors(leaf, expected_leaf, task_id, case_id, candidate, run_dir, al
     # input as historical. The missing proofs apply to every W6 invocation.
     mandatory_errors = []
     if task_id == "W6-02" or (isinstance(case_id, str) and case_id.startswith("W6-02/")):
-        mandatory_errors.append("W6-02 provenance is not bound to its driver session and owned backend")
+        # Honest failure instead of a blanket rejection: a W6-02 receipt is
+        # accepted only when it carries a registered, live, gate-owned
+        # backend binding. The driver session side is verified below from
+        # the registered device/browser provenance receipts. The healthz
+        # timestamp is part of the liveness claim: it must be a positive
+        # epoch seconds value that does not postdate the leaf's completion
+        # (a healthz observed after the fact proves nothing).
+        proof = leaf.get("backend_provenance") if isinstance(leaf, dict) else None
+        checked_at = proof.get("healthz_checked_at") if isinstance(proof, dict) else None
+        finished = None
+        if isinstance(leaf, dict) and isinstance(leaf.get("finished_at"), str):
+            try:
+                finished = datetime.datetime.fromisoformat(
+                    leaf["finished_at"].replace("Z", "+00:00")).timestamp()
+            except ValueError:
+                finished = None
+        if (not isinstance(proof, dict) or proof.get("kind") != "owned-backend"
+                or not isinstance(allowlist, dict)
+                or not isinstance(allowlist.get("backend_provenance"), list)
+                or proof.get("resource_id") not in allowlist.get("backend_provenance", [])
+                or type(proof.get("process_id")) is not int or proof["process_id"] <= 0
+                or not isinstance(proof.get("base_url"), str) or not proof["base_url"]
+                or type(checked_at) not in (int, float) or not 0 < checked_at
+                or finished is None or checked_at > finished):
+            mandatory_errors.append("missing registered live backend_provenance")
     if (task_id == "W6-01" and isinstance(expected_leaf, dict)
             and expected_leaf.get("source_case_ref") == "W4-03/driver-content-immutable"):
         # The adapter proves the binding before admitting the row (unique
@@ -2993,7 +3328,7 @@ def cmd_task(args):
         now = time.time()
         _budget_check(state, contract, args.task_id, enforce=to not in ('NO_GO', 'BLOCKED_EXTERNAL'))
         if to == "RUNNING":
-            limit = contract.get("retry_policy", {}).get("task_attempts_total_max", 5)
+            limit = _task_attempt_limit(state, contract, args.task_id)
             attempts = cur.get("attempt", 0)
             if type(limit) is not int or limit <= 0 or type(attempts) is not int or attempts < 0:
                 die(EXIT_CONTRACT, "invalid task attempt budget")
@@ -3326,7 +3661,7 @@ def cmd_accept_task(args):
         _budget_check(state, contract, args.task_id)
         deadline = cur.get("task_deadline")
         attempt = cur.get("attempt")
-        limit = contract.get("retry_policy", {}).get("task_attempts_total_max", 5)
+        limit = _task_attempt_limit(state, contract, args.task_id)
         if (type(deadline) not in (int, float) or not 0 < deadline < float("inf")
                 or time.time() >= deadline):
             die(EXIT_NOGO, "persisted task deadline missing or exhausted")

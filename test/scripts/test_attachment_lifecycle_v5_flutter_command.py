@@ -32,6 +32,12 @@ class FlutterCommandTest(unittest.TestCase):
                                "test", str(HELPER), driver, "synthetic-device"],
                               env=self.env, capture_output=True, text=True)
 
+    def run_phased_command(self, phase, driver="garage"):
+        return subprocess.run(
+            ["bash", "-c", 'source "$1"; v5_w602_flutter_command "$2" "$3" "$4"',
+             "test", str(HELPER), driver, "synthetic-device", phase],
+            env=self.env, capture_output=True, text=True)
+
     def test_actual_argv_contains_all_separate_defines(self):
         result = self.run_command()
         self.assertEqual(result.returncode, 0, result.stderr)
@@ -62,6 +68,36 @@ class FlutterCommandTest(unittest.TestCase):
             self.env[key] = old
         self.assertEqual(self.run_command("other").returncode, 75)
         self.assertFalse(self.capture.exists())
+
+    def test_phase_defines_are_appended_without_changing_frozen_defines(self):
+        for phase in ("put", "restore"):
+            result = self.run_phased_command(phase)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertEqual(result.stdout, "")
+            self.assertEqual(result.stderr, "")
+            args = json.loads(self.capture.read_text())
+            self.assertEqual(args[6:13], ["--dart-define=APP_ENV=local",
+                                          "--dart-define=V5_E2E_OPT_IN=true",
+                                          "--dart-define=API_BASE_URL_OVERRIDE=http://127.0.0.1:9800",
+                                          "--dart-define=V5_E2E_RUN_ID=v5-e2e-test-1",
+                                          "--dart-define=V5_E2E_UPLOAD_ID=a1234567-1234-4123-8123-123456789012",
+                                          "--dart-define=V5_E2E_UID=synthetic-user",
+                                          "--dart-define=V5_E2E_DRIVER=garage"])
+            self.assertEqual(args[13:], ["--dart-define=V5_E2E_PHASE=" + phase])
+
+    def test_invalid_phase_fails_without_launch(self):
+        for phase in ("kill", "PUT", "put restore"):
+            result = self.run_phased_command(phase)
+            self.assertEqual(result.returncode, 75)
+            self.assertFalse(self.capture.exists())
+            self.assertEqual(result.stderr, "BLOCKED_EXTERNAL: missing or invalid W6-02 Flutter inputs\n")
+
+    def test_empty_phase_keeps_frozen_seven_defines(self):
+        result = self.run_phased_command("")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        args = json.loads(self.capture.read_text())
+        self.assertEqual(len(args[6:]), 7)
+        self.assertNotIn("--dart-define=V5_E2E_PHASE=", " ".join(args))
 
 
 if __name__ == "__main__":
