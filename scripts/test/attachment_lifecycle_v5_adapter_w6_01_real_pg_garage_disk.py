@@ -1459,20 +1459,53 @@ def build():
                                           "the same transaction as the "
                                           "group_file row" % measured["object_key"],
                 )
+            # Seal contract: every upload-surface leaf names the real
+            # production entrypoint it exercised, bound to a request id that
+            # ships in the receipt's request_ids.  A refused or never-opened
+            # chain still carries its server-observed request records; name
+            # the first one (the attempt the scenario proves refused/absent).
+            entrypoint_named = None
+            if proof:
+                entrypoint_named = proof[0]
+            elif source in surface_cases:
+                observed = [request for request in (measured.get("http_requests") or [])
+                            if isinstance(request, dict)
+                            and all(isinstance(request.get(k), str) and request[k]
+                                    for k in ("route", "method", "handler",
+                                              "request_id"))]
+                if not observed:
+                    S.group_gap(gap_groups, source, 1,
+                                "upload-surface leaf has no server-observed "
+                                "request record for its entrypoint provenance")
+                    continue
+                entrypoint_named = observed[0]
+            synthetic_ref = "w403-obs:%s#%s@%s" % (source, scenario, leaf["driver"])
+            if proof:
+                request_ids = list(dict.fromkeys(
+                    [proof[0]["request_id"], proof[1]["request_id"]]))
+            elif entrypoint_named is not None:
+                request_ids = list(dict.fromkeys(
+                    [entrypoint_named["request_id"], synthetic_ref]))
+            else:
+                request_ids = [synthetic_ref]
             row = S.C.build_row(
                 leaf, obs_started, obs_finished,
                 {"exit_code": 0, "executed": 1, "passed": 1, "failed": 0,
                  "skipped": 0},
-                oracle, assertions, actor, [resource],
-                list(dict.fromkeys([proof[0]["request_id"], proof[1]["request_id"]]))
-                if proof
-                else ["w403-obs:%s#%s@%s" % (source, scenario, leaf["driver"])])
+                oracle, assertions, actor, [resource], request_ids)
             if proof:
                 presign, _ = proof
                 row["entrypoint_provenance"] = {
                     "entrypoint": leaf["entrypoint"], "route": presign["route"],
                     "method": presign["method"], "handler": presign["handler"],
                     "request_id": presign["request_id"]}
+            elif entrypoint_named is not None:
+                row["entrypoint_provenance"] = {
+                    "entrypoint": leaf["entrypoint"],
+                    "route": entrypoint_named["route"],
+                    "method": entrypoint_named["method"],
+                    "handler": entrypoint_named["handler"],
+                    "request_id": entrypoint_named["request_id"]}
             rows.append(row)
             continue
         reason = GROUP_REASONS.get(source, DEFAULT_REASON)
