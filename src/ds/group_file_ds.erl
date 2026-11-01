@@ -122,14 +122,12 @@ do_upload_file(Gid, UploaderId, FileName, FileBinary, FileType) ->
     end.
 
 save_uploaded_file(Gid, UploaderId, FileName, FileBinary, FileType, ObjectKey, Proof) ->
-    case group_file_url(ObjectKey, Proof) of
-        {ok, FileUrl} ->
-            save_uploaded_file_tx(
-                Gid, UploaderId, FileName, FileBinary, FileType, ObjectKey, Proof, FileUrl
-            );
-        {error, _} = Error ->
-            Error
-    end.
+    %% group_file_url 当前全子句返回 {ok, binary()}；断言匹配让未来新增
+    %% 错误路径 fail-fast，而不是留下 Dialyzer 可证的死分支。
+    {ok, FileUrl} = group_file_url(ObjectKey, Proof),
+    save_uploaded_file_tx(
+        Gid, UploaderId, FileName, FileBinary, FileType, ObjectKey, Proof, FileUrl
+    ).
 
 group_file_url(ObjectKey, #{stat := #{snapshot := #{driver := garage, container := Bucket}}}) when
     is_binary(Bucket), Bucket =/= <<>>
@@ -606,31 +604,40 @@ write_attachment_tx(
     ok.
 
 location_columns(Location) ->
-    case Location of
-        #{
-            driver := Driver,
-            namespace := Namespace,
-            container := Container,
-            locator_digest := Digest
-        } when
-            (Driver =:= disk orelse Driver =:= garage),
-            is_binary(Namespace),
-            byte_size(Namespace) > 0,
-            is_binary(Container),
-            byte_size(Container) > 0,
-            is_binary(Digest),
-            byte_size(Digest) > 0
-        ->
+    %% 运行时校验而非模式匹配：当前仓内唯一调用值域恒为 #{}（bind 路径），
+    %% 完整四元组分支是 direct-v1 预留接口；若用 case 模式匹配，Dialyzer
+    %% 会按值域收窄把完整分支判为不可达（pattern_match 棘轮变红）。
+    %% 语义与旧实现一致：空 map → 不写位置列（NULL，绝不推断默认桶），
+    %% 不完整位置 → fail-closed throw。
+    case storage_identity(Location) of
+        {ok, Driver, Namespace, Container, Digest} ->
             #{
                 <<"storage_driver">> => atom_to_binary(Driver),
                 <<"storage_namespace">> => Namespace,
                 <<"storage_container">> => Container,
                 <<"storage_locator_sha256">> => Digest
             };
-        Empty when is_map(Empty), map_size(Empty) =:= 0 ->
+        empty ->
             #{};
-        _ ->
+        incomplete ->
             throw({abort_tx, incomplete_storage_identity})
+    end.
+
+storage_identity(Location) when is_map(Location), map_size(Location) =:= 0 ->
+    empty;
+storage_identity(Location) when is_map(Location) ->
+    Driver = maps:get(driver, Location, undefined),
+    Namespace = maps:get(namespace, Location, undefined),
+    Container = maps:get(container, Location, undefined),
+    Digest = maps:get(locator_digest, Location, undefined),
+    case
+        (Driver =:= disk orelse Driver =:= garage) andalso
+            is_binary(Namespace) andalso Namespace =/= <<>> andalso
+            is_binary(Container) andalso Container =/= <<>> andalso
+            is_binary(Digest) andalso Digest =/= <<>>
+    of
+        true -> {ok, Driver, Namespace, Container, Digest};
+        false -> incomplete
     end.
 
 audit_file_tx(Conn, Gid, Uid, FileId, Action) ->
