@@ -2096,14 +2096,27 @@ def receipt_errors(leaf, expected_leaf, task_id, case_id, candidate, run_dir, al
         # Honest failure instead of a blanket rejection: a W6-02 receipt is
         # accepted only when it carries a registered, live, gate-owned
         # backend binding. The driver session side is verified below from
-        # the registered device/browser provenance receipts.
+        # the registered device/browser provenance receipts. The healthz
+        # timestamp is part of the liveness claim: it must be a positive
+        # epoch seconds value that does not postdate the leaf's completion
+        # (a healthz observed after the fact proves nothing).
         proof = leaf.get("backend_provenance") if isinstance(leaf, dict) else None
+        checked_at = proof.get("healthz_checked_at") if isinstance(proof, dict) else None
+        finished = None
+        if isinstance(leaf, dict) and isinstance(leaf.get("finished_at"), str):
+            try:
+                finished = datetime.datetime.fromisoformat(
+                    leaf["finished_at"].replace("Z", "+00:00")).timestamp()
+            except ValueError:
+                finished = None
         if (not isinstance(proof, dict) or proof.get("kind") != "owned-backend"
                 or not isinstance(allowlist, dict)
                 or not isinstance(allowlist.get("backend_provenance"), list)
                 or proof.get("resource_id") not in allowlist.get("backend_provenance", [])
                 or type(proof.get("process_id")) is not int or proof["process_id"] <= 0
-                or not isinstance(proof.get("base_url"), str) or not proof["base_url"]):
+                or not isinstance(proof.get("base_url"), str) or not proof["base_url"]
+                or type(checked_at) not in (int, float) or not 0 < checked_at
+                or finished is None or checked_at > finished):
             mandatory_errors.append("missing registered live backend_provenance")
     if (task_id == "W6-01" and isinstance(expected_leaf, dict)
             and expected_leaf.get("source_case_ref") == "W4-03/driver-content-immutable"):

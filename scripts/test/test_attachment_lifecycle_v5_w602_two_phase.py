@@ -293,5 +293,50 @@ class W602TwoPhaseTest(unittest.TestCase):
             (self.cdir / "flutter-integration-disk.jsonl").exists())
 
 
+
+class W602BackendProvenanceWindowTest(unittest.TestCase):
+    """R3 hardening: healthz_checked_at is consumed, not decoration.
+
+    A W6-02 receipt's backend liveness claim must carry a positive epoch
+    healthz timestamp that does not postdate the leaf's completion; a
+    missing, malformed, zero or future timestamp fails the mandatory
+    backend_provenance check fail-closed.
+    """
+
+    FINISHED = "2026-11-01T00:15:26Z"
+
+    @staticmethod
+    def receipt(healthz):
+        leaf = {
+            "required": True, "task_id": "W6-02", "case_id": "W6-02/ac08",
+            "finished_at": W602BackendProvenanceWindowTest.FINISHED,
+            "backend_provenance": {
+                "kind": "owned-backend", "resource_id": "127.0.0.1:9810",
+                "base_url": "http://127.0.0.1:9810", "process_id": 4242,
+                "healthz_checked_at": healthz,
+            },
+        }
+        return leaf, dict(leaf, source_case_ref="W2-01/upload-content-pin")
+
+    def errors(self, healthz):
+        sys.path.insert(0, str(ROOT / "scripts"))
+        import attachment_lifecycle_v5_runner as runner
+        with tempfile.TemporaryDirectory() as tmp:
+            errs = runner.receipt_errors(
+                *self.receipt(healthz), "W6-02", "W6-02/ac08", {},
+                tmp, {"backend_provenance": ["127.0.0.1:9810"]}, {})
+        return [e for e in errs
+                if e == "missing registered live backend_provenance"]
+
+    def test_healthz_within_window_is_accepted(self):
+        # 1793480000 < 2026-11-01T00:15:26Z epoch: an honest past healthz.
+        self.assertEqual([], self.errors(1793480000))
+
+    def test_missing_malformed_zero_and_future_healthz_fail(self):
+        for healthz in (None, "not-a-number", 0, -5, 1793600000):
+            with self.subTest(healthz=healthz):
+                self.assertEqual(1, len(self.errors(healthz)))
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -837,7 +837,9 @@ class VerificationTests(unittest.TestCase):
                 self.candidate, str(self.run), allowlist)
             self.assertIn("missing registered live backend_provenance", errors, proof)
         row["backend_provenance"] = {"kind": "owned-backend", "resource_id": "127.0.0.1:9801",
-                                     "process_id": 4242, "base_url": "http://127.0.0.1:9801"}
+                                     "process_id": 4242, "base_url": "http://127.0.0.1:9801",
+                                     # healthz before the receipt's finished_at (R3 window).
+                                     "healthz_checked_at": 1792022400}
         raw = dict(row)
         raw["assertions"] = [{"id": "delete_ack_lost", "passed": True}]
         self.raw.write_text(json.dumps(raw))
