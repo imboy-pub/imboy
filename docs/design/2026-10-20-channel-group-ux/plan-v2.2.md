@@ -632,7 +632,7 @@ English: Work packages are review and verification boundaries, not autonomous ex
 | J15.b | C2C、C2G；移动/桌面壳分别 | 点整行并返回 | 正确chat type/对象与宿主目的地 | AP | R | NOT_RUN / — |
 | J16.a | 无消息C2C/已有行/群KV/频道订阅分别 | 设mute=true，重开读取 | 按对象真源可回读，首消息不丢偏好；不制造可见空会话 | AC,AM,AN | R | PASS（部分向量；Android 真机 2026-10-31 r20 EXIT=0：已有行 C2C（真源 is_muted 列）与群 KV（真源 group_notice_disabled:accountUid:gid+投影）设 mute=true → 重开读取均回读 on + DB 回读一致。**暴露并修复两缺陷** App `9ea5b691e`（入站 C2C RFC3339 created_at 落 0 哨兵被校验拒→首消息静默丢弃）与 `f27ca2915`（insert 丢 is_muted 列→占位/新建行偏好落库即丢）。**无消息 C2C 向量已补验通过**：批次八独立合成 peer Android 真机 `j16a_first_message_test.dart` EXIT=0，真实设置 UI 建隐藏 mute 占位且无可见空会话，握手后正常后端发送真实 WS 首消息，DB/UI 恢复 is_show=1 且 is_muted=1、同 ID 恰一条。历史“upsert 未恢复”归因已纠正为已复现的迟到列表覆盖竞态并修复，见 §11.1 批次八；不声称历史所有现场同一根因。频道订阅——合成部署 channel 表 0 行（功能未交付），仍按 C-channel 功能门记录，J16.a 不升级完整 PASS。脚本 `j16a_dnd_persistence_test.dart`）/ — |
 | J16.b | 原状态false | 注入持久化失败/切账号/连续点击分别 | 状态不假成功，目标不取反，账号隔离且可重试 | AM,AC | R | PASS（部分向量；Android 真机 2026-10-31 r5 EXIT=0：DB 锚点自洽前置→关（DB→0 不假成功）→开（DB→1 可重试不取反，taps=1）→快速连点 UI↔DB 收敛一致（忙态吞没为产品合同内行为，如实打印）。注入持久化失败/切账号两向量：无测试缝（StorageService/SQLite 写失败无注入点）且 bob 密码不可用（登录 API 实测拒绝），按既有 AC/AM 静态证据记录（W03 失败回滚定向证据；KV 键含 accountUid 隔离由键设计承担）。脚本 `j16b_dnd_failure_retry_test.dart`）/ — |
-| J16.c | 两设备同账号 | 修改本机DND后读另一端 | 本机合同不冒称同步；已存在服务端动作继续符合其真源 | N + NC | R | BLOCKED（需两台真机组成双设备同账号向量，本环境仅绑定单台 Android 真机；缺设备证据保留 BLOCKED，W13 不发总 PASS，见 §11.1 资源阻断盘点 2026-10-31）/ — |
+| J16.c | 两设备同账号 | 修改本机DND后读另一端 | 本机合同不冒称同步；已存在服务端动作继续符合其真源 | N + NC | R | PASS（跨平台双设备 2026-11-01：A=Android 真机 MRD-AL00 XWE6R19916004085 写入端 + B=macOS App（darwin-arm64 27.0.1 全新安装，独立设备存储）读取端，双脚本 EXIT=0。A 端 `j16c_dnd_two_device_a_test.dart`：C2C is_muted=1、群 KV=true 落 A 设备存储（`/tmp/j16c_a_run1.log` J16C_A_SETTLED）。B 端 `j16c_dnd_two_device_b_test.dart` 同账号 demo_alice 登录：c-1 开关 off + B 本机 DB=0（不冒称同步）；c-2 KV=null + off；c-3 两端设置页无「同步」字样；c-4 manual_pending CAS 写 true→权威投影读回→恢复 false，服务端 user_setting version 38→40、终态 value=false 复核；c-5 宿主注入 bob→alice 消息 WS 送达（ACK RTT 8ms）unread 0→1 且 B 本机 is_muted 保持 0/KV 保持 null——本地真源不被服务端覆盖（`/tmp/j16c_b_run5.log` J16C_B_READ_DONE，归档 /tmp/imboy-ux-v22-validation/imboyapp/j16c-two-device/，App 候选 28a3efc1b）。c-6 频道订阅向量按 C-channel 功能门（alice 订阅 0 行，同 J16.a 口径）。环境注记：macOS 本地直连须 `--dart-define=WS_URL_OVERRIDE=ws://127.0.0.1:9800/api/v1/ws`——合成节点 initConfig 曾下发 dev.imboy.pub 且 App 本地默认 /ws 路径 404（真实路由 /api/v1/ws），sys.local.config 已同步修正；A 端实时在线对照不做（flutter test 生命周期限制），A 抑制通知半边由 J16.a 既有收据覆盖，见 §11.1 双机批次）/ — |
 | J17.a | 个人/工作区当前成员分别 | 明确pin=true/false | 原服务端真源回读/排序正确，失败不假成功 | AC,BP | R | PASS（App 单测 AC `conversation_authority_actions_test.dart` J17.a 命名 case 全绿（App `2536b0560`，15 case 全绿）：明确 pin=true/false 分别（非 toggle）→pinCalls/unpinCalls 目标断言+本地 authoritative 真源回读翻转+置顶排序进位（replaceConversation 批量 Timer flush 后断言）+C2G 工作区成员向量（type=C2G 同通道）；「失败不假成功」由同文件既有 case（服务端置顶失败不提前改本地 payload）与 J17.e 全链真机收据共同覆盖）/ — |
 | J17.b | 可见会话 | 明确hidden=true/false，失败/超时/防重分别 | 本地与远端结果一致或明确待核对；不隐藏错账号对象 | AC,BP | R | PASS（App 单测 AC J17.b 命名 case 全绿（App `2536b0560`）：hidden=true→远端 200 与本地 is_show=0 一致；失败可重试（失败不动本地可见性、成功同语义）；hidden=false→restore 经权威 pull 恢复真源一致；「不隐藏错账号对象」由同文件既有 case（隐藏写入按账号和对象寻址）覆盖；超时向量由同文件 deleteGate 机制承担）/ — |
 | J17.c | 有真实未读、manual_pending独立 | 标已读及设待处理分别 | 水位单调，人工标记不写unread=1，彼此不清除 | AC,AV | R | PASS（Android 真机 2026-10-31 r27 EXIT=0：①注入未读到达角标≥1→②标已读归零（UI+DB）→③设待处理不写 unread（DB 仍 0+旗标现+POST 200）→④第二条未读到达旗标仍在→再标已读旗标仍在。批次四 FAIL（r1-r5）经批次五六跑取证**证伪为三层脚本假阴性+真缺陷 G**：`?expectedVersion:` null-aware 键语义错误致 manual_pending POST 全败+键名 camelCase 与服务端 snake_case 不匹配 CAS 失效——修复 App `0cff8eec6`（`'expected_version': ?expectedVersion`）；脚本假阴性修正 App `ac156458e`；UNREAD_GATE 运行时真值全门正确（isNew=true/unreadInc=1/convId=1/isUserInChat=false），缺陷 F 关闭，证据链见 §11.1 批次五。脚本 `j17c_markread_pending_test.dart`）/ — |
@@ -711,7 +711,7 @@ English: Work packages are review and verification boundaries, not autonomous ex
 
 其余 NOT_RUN 行归属口径：J18.b/J18.f（合成附件与引用定位外部依赖）、J20.a/c/d（多页目录交集与扫描并发）、J23.a–c（受理事务崩溃注入）、J24.b/c、J25.a（receipt 服务端时钟与撤权向量）、J27.b–f（合同负例与 2^53 原始链）——随资源清单细化并入上表最近桶或单独排期；本表只排期、不判定任何 J 通过。
 
-**总出口口径不变：25 PASS / 50 NOT_RUN / 10 BLOCKED，W13 不发总 PASS**（BLOCKED 10 项已有 2026-10-31 资源阻断盘点，与桶 2/3 合流触发，不重复决策）。
+**总出口口径（2026-11-01 双机批次后）：26 PASS / 50 NOT_RUN / 9 BLOCKED，W13 不发总 PASS**（J16.c 经跨平台双设备升级 PASS，见 §11.1 双机批次；BLOCKED 9 项已有 2026-10-31 资源阻断盘点，与桶 2/3 合流触发，不重复决策）。
 
 ## 10. 计划采用的设计与兼容默认值
 
@@ -1058,7 +1058,22 @@ W00 静态准入出口（2026-10-27T18:54:58+08:00）：按 §8.2，三端 HEAD/
    - push 未授权，另行触发。
 2. **NOT_RUN 裁剪（已裁决，选项 a）**：50 项 NOT_RUN 按外部资源七桶分桶排期（双真机→J16.c/W09.c 向量；iOS 真机→多平台证据面；多部署组合→J27.a/J28 兼容面；v38 注册→FTS/阅后即焚；生产源→档位证据；macOS 签名→平台交付面；C-channel 交付→J16.a/J21.a/J26 频道向量），完整表格见 §9.1 出口结论；资源到位后按 §8.4 重绑定重验。10 项 BLOCKED 已有 2026-10-31 资源阻断盘点，不重复决策。
 
-裁决后出口口径：25 PASS / 50 NOT_RUN / 10 BLOCKED、W13 不发总 PASS，维持不变。
+裁决后出口口径：26 PASS / 50 NOT_RUN / 9 BLOCKED、W13 不发总 PASS（J16.c 于 2026-11-01 双机批次升级 PASS，见下节）。
+
+#### 2026-11-01 双机验收批次（J16.c，Android 真机 + macOS App 跨平台双设备）
+
+- **资源到位**：用户提供「Android APP + macOS APP 双机测试」资源——A=既有 Android 真机（写入端），B=macOS 桌面 App（flutter build macos debug，darwin-arm64 27.0.1，**全新安装即天然独立设备存储**）。J16.c 原判定「需两台真机」的资源本质是「两份并发独立设备存储 + 同账号」，跨平台组合成立且强于双 Android（就绪包 §5 已预判「iOS 非必需」）。
+- **A 端一次通过（EXIT=0，`/tmp/j16c_a_run1.log`）**：C2C 先关后开双向写路径 + 群 KV 同型，J16C_A_SETTLED `c2c_is_muted=1 group_is_muted=1 kv=true`。脚本 `j16c_dnd_two_device_a_test.dart`。
+- **B 端三轮收敛（前两轮失败如实记录，`/tmp/j16c_b_run5.log` 终态 EXIT=0）**：
+  - r1 FAIL：macOS 全新安装无 token 时 App 仍渲染桌面壳（uid=本地默认 50），`autoLoginOrSkip` 的 `isOnMainShell` 误判已登录、登录链未执行——B 脚本改为 UID 不符即主动 `quitLogin` → 等登录页 → `performLogin`（**共享 flows 未改**，修复收在 B 脚本内）。
+  - r2/r4 WS 全败 + c5 超时：根因两层——①合成节点 initConfig 曾下发 `wss://dev.imboy.pub/ws`（len=22 与 B 日志吻合）覆盖本地值；②App 本地默认 WS 路径 `/ws` 在本地直连时 404（**真实路由 `/api/v1/ws`**，生产由反代重写，`ws_url_for` 的 derive 逻辑与 sys.local.config 注释均未覆盖本地直连形态）。
+  - 修复：`sys.local.config`（gitignored）+ 运行节点 RPC 热改 `ws_url = ws://127.0.0.1:9800/api/v1/ws`；B 端按官方测试注入口 `--dart-define=WS_URL_OVERRIDE` 显式注入同值。r5 全绿：c-1 开关 off+DB=0、c-2 KV=null+off、c-3 文案无「同步」、c-4 manual_pending CAS 写读闭环（服务端 version 38→40 终态 false）、c-5 消息 WS 送达（ACK RTT 8ms）unread 0→1 且本机真源不变。`J16C_B_READ_DONE`。
+- **SQL 复核（全部只读）**：alice `channel_subscription` 0 行（c-6 功能门）；`user_setting.manual_pending` 终态 `{"C2C_..._bob": {"value": false, "version": 40}}`（B 端恢复成功）；服务端 `conversation` 表无 `*mute*` 列——DND 真源仅设备侧成立。
+- **测试凭据维护**：合成账号 demo_alice 密码经节点 RPC `elib_password:generate` 重置（合成隔离库 fixture 维护，同 seed_demo 先例；凭据不入仓）。
+- **环境改动留档**：`imboy/config/sys.local.config`（gitignored）`ws_url` 修正为本地真实路径；运行节点 app env 已热改。两者为合成部署配置修正，同批次一 solidified_key 修正先例。
+- **新增文件**：App 仓 `integration_test/chat/j16c_dnd_two_device_a_test.dart` / `..._b_test.dart`（analyze 零问题）；宿主编排 `/tmp/j16c_inject_when_ready.sh`（仓外）。**未 commit，待用户授权**。
+- **出口**：J16.c BLOCKED→**PASS**（26/50/9）；W13 维持不发总 PASS；资源阻断盘点中「双真机」桶仅剩 J28.b（一账号两端旧/新客户端）与 W09.c 向量——macOS App 能否承担该桶 B 端取决于旧版本 App 桌面构建可用性，待该批重验时判定。
+- **用户裁决追加（2026-11-01）**：环境中发现的无线 iPhone 16e 真机**不启用**——「iPhone 16e 可部署性探测和 iPhone 真机不要验证了，验证 Android APP + macOS APP 就可以了」。J22.a–f 维持 iOS 真机证据缺口的 BLOCKED 口径（桶 2 触发资源仍为 iOS 真机验收身份），多平台证据面不因该设备存在而改判；后续多端向量一律以 Android 真机 + macOS App 组合承担。
 
 #### 2026-10-31 资源阻断盘点（无法在本环境执行的验收项）
 
