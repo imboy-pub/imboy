@@ -1013,11 +1013,16 @@ w602_device_pid() { # $1 device -> device-side app pid if observable
 }
 
 w602_write_provenance() { # $1 file $2 kind $3 resource $4 pid $5 source
+  # observed_at (epoch seconds) records when the executor actually observed
+  # the live process; the measured adapter binds this instant to the suite's
+  # reconstructed execution window so a provenance file captured in another
+  # session can never pass as this run's device/browser evidence.
   python3 - "$@" <<'PYC'
-import json, sys
+import json, sys, time
 path, kind, resource, pid, source = sys.argv[1:6]
 json.dump({"kind": kind, "resource_id": resource, "process_id": int(pid),
-           "source": source}, open(path, "w"), indent=1)
+           "observed_at": int(time.time()), "source": source},
+          open(path, "w"), indent=1)
 PYC
 }
 
