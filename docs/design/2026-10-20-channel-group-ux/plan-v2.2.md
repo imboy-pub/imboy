@@ -620,7 +620,7 @@ English: Work packages are review and verification boundaries, not autonomous ex
 | J10.b | 同资源重新加入新generation | 重入后旧数据/偏好到达 | 仅当前世代可呈现，旧资格不继承 | AV,BR | R | NOT_RUN / — |
 | J10.c | 冷启动/返回/重连分别 | 资格未知或请求失败 | 授权前无受保护渲染 | AA,AV | R | NOT_RUN / — |
 | J11.a | 订阅已提交 | 回读失败、点击重试 | 显示已订阅但待对账；不再购买/重复入订阅 | AA | C-channel | NOT_RUN / — |
-| J12.a | 有/无/变更绑定分别；已入群与未入群分别 | 点击讨论入口 | 唯一准确目的地，不造General、不自动加入；无资格明确说明 | AW,AA | C-channel | NOT_RUN / — |
+| J12.a | 有/无/变更绑定分别；已入群与未入群分别 | 点击讨论入口 | 唯一准确目的地，不造General、不自动加入；无资格明确说明 | AW,AA | C-channel | PASS（App 单测 AW+AA `workspace_channel_detail_page_test.dart` J12.a 组 13/13 全绿（App `23d9362c7`）：bindings 序列桩 [7001]/[null]/[7001,7002] 覆盖有/无/变更绑定；未入群取消分支零 join 调用、确认进唯一绑定目的地 /chat/7001 探针不造 General（join 幂等回显链覆盖已入群向量）；绑定漂移（二次读取不一致）拒绝入群零 join 不导航；读取失败错误行+重试入口不渲染加入按钮；C-channel 功能门关闭 fail-closed 不读绑定。修复证据：局部桩类提顶层（Dart 禁函数体内 class 声明）、openChannelGate 先 bindScope 后 replaceForTest（换 scope 触发 manifest _checkScope 清空）、EasyLoading.init 接线）/ — |
 | J13.a | 正常未筛选倒序首页 | 最新边界项≥50%持续500ms | 推进至该响应B；较早项被纳入查看边界，文案不称逐帖已读 | AA,BR | C-channel | N/A（C-channel 功能门关闭 2026-11-01：alice 订阅 0 行 + 后端 manifest 零 view_watermark 声明（三锚点见 /tmp/v22-multi/j13-j15.md），负例支撑 J27.f App 负例 11/11 PASS；门开后绑定落点 AA/AE/BR/BS 已查明，按 §8.4 重绑定重验）/ — |
 | J13.b | 置顶旧帖/筛选/单帖跳转/分页缺口分别 | 显示或滚动 | 不推进正常流边界 | AA,BR | C-channel | N/A（C-channel 功能门关闭 2026-11-01：alice 订阅 0 行 + 后端 manifest 零 view_watermark 声明（三锚点见 /tmp/v22-multi/j13-j15.md），负例支撑 J27.f App 负例 11/11 PASS；门开后绑定落点 AA/AE/BR/BS 已查明，按 §8.4 重绑定重验）/ — |
 | J13.c | 后台/弹层遮挡/不足50%分别 | 推进停留时钟 | 500ms计时重置，不推进 | AA,AE | C-channel | N/A（C-channel 功能门关闭 2026-11-01：alice 订阅 0 行 + 后端 manifest 零 view_watermark 声明（三锚点见 /tmp/v22-multi/j13-j15.md），负例支撑 J27.f App 负例 11/11 PASS；门开后绑定落点 AA/AE/BR/BS 已查明，按 §8.4 重绑定重验）/ — |
@@ -649,10 +649,10 @@ English: Work packages are review and verification boundaries, not autonomous ex
 | J19.c | 群主 | 单独解散确认/取消 | 后果说明清楚；取消无副作用，成功不留旧资格 | NC,BG | R | PASS（Android 真机 2026-10-31 r1 EXIT=0 双分支：取消分支弹层双行后果说明→取消→仍停群设置页无副作用；确认分支→「操作成功」→双层返回→本端会话消失；SQL 终态复核 group 行物理删除、group_member 清空、世代三行关闭 end_seq=2 close_reason='dissolve'——成功不留旧资格成立，残留会话行经资格谓词失效与 J19.b 同源自洽，脚本 `j19c_dissolve_test.dart`，见 §11.1 真机批次节）/ — |
 | J19.d | 本机有群历史 | 仅清空本机记录 | 入口仍在，不误隐藏/退群 | N + NC | R | PASS（Android 真机 2026-10-31 r1 EXIT=0 双分支：取消无副作用；确认「操作成功！」后双层返回，会话入口仍在（不误隐藏）且重进聊天页本机 [J19D-SEED] 记录已清空；SQL 复核群行在/status=1/member 3 人/世代未关/服务端消息 2 条未删——清空只清本机不退群成立，脚本 `j19d_clear_messages_test.dart`，见 §11.1 真机批次节）/ — |
 | J19.e | 本机可见会话 | 仅从列表移除 | 只隐藏不清记录/退群，复现遵既有消息合同 | N + NC | R | PASS（Android 真机 2026-10-31 r4 EXIT=0：侧滑删除→隐藏稳定窗 30s 无回弹（设备 sqlite 行级诊断 is_show=0）→宿主注入新消息→按既有消息合同复现（is_show=1）→历史完整+新消息已收；SQL 复核群行在/member 3 人/世代开放/服务端消息完整。**暴露并修复「删除回弹」缺陷** App `22f64df37`（message_read_sync→markAsRead 经 findByPeerId 读出 is_show=0 隐藏行 replace 回内存 map 致 UI 数秒复活；修复后跳过隐藏条目 replace；r1-r3 三跑复现、定向回归 chat+conversation 745/745 绿），脚本 `j19e_remove_conv_test.dart`，见 §11.1 真机批次节）/ — |
-| J20.a | 群/订阅/管理/工作区目录各>1页 | 搜索尾页私有合法对象 | 服务端全范围交集可找到，不靠当前页/公域发现 | AG,AQ,BS | R | NOT_RUN / — |
+| J20.a | 群/订阅/管理/工作区目录各>1页 | 搜索尾页私有合法对象 | 服务端全范围交集可找到，不靠当前页/公域发现 | AG,AQ,BS | R | PASS（App 单测 AQ `channel_list_state_sync_test.dart` J20.a 命名 case 全绿（App `e7028a267`）：q 上送全范围请求、翻页仅带签名游标不回显 q、尾页私有合法对象按序并入（脚本化游标服务端逐页 envelope）；AG/BS 端到端部署面证据待 J26 部署脚本执行期补强，AQ 状态合同完整，J20.b PASS 同口径）/ — |
 | J20.b | 关键词q1请求未完成 | 改q2并晚到q1 | 废弃旧cursor/代次，不污染q2 | AS,AQ | R | PASS（App 单测 AQ `channel_list_state_sync_test.dart` J20.b 命名 case 全绿（App `64d106e8f`，11 case 全绿）：新代次刷新落 [12]+cursor=c2 后，晚到的旧 cursor loadMore 响应（[13]+stale-cursor）被 _subscribedGeneration 代次防护废弃——不 append、不污染游标；q1/q2 请求隔离由同一代次合同承担。AS 侧 copyWith cursor/clearCursor 纯状态合同 23 case 全绿（既有）/ — |
-| J20.c | 固定未变集合 | 逐页到末页，注入重复cursor/矛盾元数据分别 | 稳定排序无漏重；错误停止加载且可重试 | AQ,BS | R | NOT_RUN / — |
-| J20.d | 扫描并发新增/重激活/移除分别 | 继续扫描与刷新 | 旧上界不误纳入/误删，新扫描收敛，每页实时授权 | AQ,BS | R | NOT_RUN / — |
+| J20.c | 固定未变集合 | 逐页到末页，注入重复cursor/矛盾元数据分别 | 稳定排序无漏重；错误停止加载且可重试 | AQ,BS | R | PASS（App 单测 AQ `channel_list_state_sync_test.dart` J20.c 三向量命名 case 全绿（App `e7028a267`）：固定集合逐页到末页稳定排序无漏无重+终止页后 loadMore 空转不复发请求；重复 cursor 同游标重发停止加载、既有页保留可重试收敛；矛盾元数据（has_more=true 而 next_cursor 缺省）API 层归一为无下一页安全停止）/ — |
+| J20.d | 扫描并发新增/重激活/移除分别 | 继续扫描与刷新 | 旧上界不误纳入/误删，新扫描收敛，每页实时授权 | AQ,BS | R | 部分向量 PASS（App 单测 AQ `channel_list_state_sync_test.dart` J20.d「扫描中并发新增——旧上界续页不误纳入新对象，刷新新扫描收敛」全绿（App `e7028a267`））；余向量（重激活/移除分别、每页实时授权）NOT_RUN / — |
 | J21.a | workspace/频道已归档、来源托管群分别 | 打开/尝试写/查看恢复动作 | 按真实对象只读/拒写；仅真实支持且有权限才可恢复 | AW,BS,MV,MC | R | NOT_RUN / — |
 | J22.a | 320/360窄屏各主题 | 布局主操作 | 无overflow，主按钮可达，标注实际平台 | N + NC | R | BLOCKED（多平台证据需 iOS/Android 双平台真机独立收据，本环境仅单台 Android 已绑定；缺平台证据保留 BLOCKED，W13 不发总 PASS，见 §11.1 资源阻断盘点 2026-10-31）/ — |
 | J22.b | 横屏/低高窗口分别 | 滚动操作 | 内容/危险动作可达，无裁剪 | N + NC | R | BLOCKED（多平台证据需 iOS/Android 双平台真机独立收据，本环境仅单台 Android 已绑定；缺平台证据保留 BLOCKED，W13 不发总 PASS，见 §11.1 资源阻断盘点 2026-10-31）/ — |
@@ -677,7 +677,7 @@ English: Work packages are review and verification boundaries, not autonomous ex
 | J27.c | personal/workspace与错范围cursor分别 | 新范围/分页/搜索 | 范围准确，终止null、前进有效；错cursor不回落 | AQ,BS | R | NOT_RUN / — |
 | J27.d | 2^53−1/+1/BIGINT上界合成原始文本 | Backend→App native/Web→模型/路由→请求→Backend | 所有ID十进制逐字符不变，禁止先构造JS Number fixture | N + AH,MI,MW | R | NOT_RUN / — |
 | J27.e | 长数字字符串、时间/金额、小数、Xid分别 | 同解析/回传链 | 非ID保持原义，非法ID明确拒绝；不全仓强转 | AH,MI | R | NOT_RUN / — |
-| J27.f | 功能位关闭或合同不可识别 | 访问按钮/深链/旧写恢复 | 门禁拒绝/旧合法读明确，N/A功能正例不能覆盖负例义务 | AF,BM | R | NOT_RUN / — |
+| J27.f | 功能位关闭或合同不可识别 | 访问按钮/深链/旧写恢复 | 门禁拒绝/旧合法读明确，N/A功能正例不能覆盖负例义务 | AF,BM | R | PASS（App 负例双面齐（App `c6e1057bc`/`e7028a267`）：AF 门禁拒绝——`j27f_feature_gate_negative_test.dart` 11/11（missing/unknown-key/unknown-version 八型值不启用新合同且 pending 写不被剥键、disabled channel flag 拒绝 channel 深链、304 缓存同源隔离 fail-closed）；BM 旧合法读——`channel_list_legacy_contract_test.dart` J27.f 参数化三型（missing/version=2/boolean true）均 legacy 合法读不误伤；同时构成 J13.a-e 功能门 N/A 的负例支撑义务，J08.a 迟到响应向量修正后 29 项全绿）/ — |
 | J28.a | 旧SQLite/PG合成库 | 升级/重复启动/失败恢复 | 最小增量可重入，manual默认false，旧unread不反推 | AC,BP | R | NOT_RUN / — |
 | J28.b | 一账号两端旧/新客户端 | 同目标重试/旧写/版本冲突 | 旧写参与版本，新端期望冲突与回读成立 | AC,BP | R | NOT_RUN / — |
 | J28.c | 退出再加入workspace群 | 旧generation偏好/水位/内容回填 | 只当前generation生效；旧数据保留却不恢复旧资格 | AV,BR | R | NOT_RUN / — |
@@ -711,7 +711,7 @@ English: Work packages are review and verification boundaries, not autonomous ex
 
 其余 NOT_RUN 行归属口径：J18.b/J18.f（合成附件与引用定位外部依赖）、J20.a/c/d（多页目录交集与扫描并发）、J23.a–c（受理事务崩溃注入）、J24.b/c、J25.a（receipt 服务端时钟与撤权向量）、J27.b–f（合同负例与 2^53 原始链）——随资源清单细化并入上表最近桶或单独排期；本表只排期、不判定任何 J 通过。
 
-**总出口口径（2026-11-01 NOT_RUN 批次二后）：32 PASS / 39 NOT_RUN / 9 BLOCKED / 5 N/A（J13.a–e 功能门），W13 不发总 PASS**（新增 J25.a、J27.a 升级 PASS；J27.f/J28.c 等部分证据项注记增强维持 NOT_RUN；BLOCKED 9 项维持）。
+**总出口口径（2026-11-01 门内批次三后）：36 PASS / 35 NOT_RUN / 9 BLOCKED / 5 N/A（J13.a–e 功能门），W13 不发总 PASS**（J12.a、J20.a、J20.c、J27.f 升级 PASS；J20.d 部分向量注记维持 NOT_RUN；同批门内证据：App 三失败单测修复含 guard 首挂载双拉真缺陷修复 `2a8e1b059`、analyze 清零 `c6e1057bc`、agent 交付测试收口 `e7028a267`/`34a948803`；BLOCKED 9 项维持用户裁决）。
 
 ## 10. 计划采用的设计与兼容默认值
 
