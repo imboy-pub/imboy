@@ -666,13 +666,13 @@ English: Work packages are review and verification boundaries, not autonomous ex
 | J24.a | 未知意图，client年龄23:59:59.999/24h/时钟倒退分别 | 恢复/重启 | 24h内原键；边界或时间不可信后仅recover_only，不剥键 | AG,AA,AF | R | PASS（App 单测 `creation_receipt_contract_test.dart` 27 case 全绿（2026-10-31 跑绿）：decideCreationDispatch J24.a 时钟向量——窗口内 23:59:59.999 仍可原键创建；24h 精确边界（含）→仅 recover_only 不剥键；时钟倒退→仅 recover_only 且 clockUntrusted；recover_only 载荷契约（标志携带/缺省不发送）同文件覆盖）/ — |
 | J24.b | server受理6d23:59:59.999/7d，及7天内删除/撤权分别 | 原键恢复 | 正常有权时7天内保留结果；删除/撤权不泄露内容；过7d只元信息/expired；receipt仍阻止重建，两个时钟独立 | BG,BS | R | NOT_RUN / — |
 | J24.c | 同键改名/成员顺序/重复成员/workspace；只查未见受理后旧POST迟到 | 重放请求或尝试新键重建 | 规范等价重放、实际载荷变化冲突；旧请求可能在途时禁止换键，超时/断连/单次只查/用户确认不构成终止证据；迟到的同原键请求最多受理一次 | BG,BS,AG | R | NOT_RUN / — |
-| J25.a | 已创建后撤权/删除资源分别 | 同键重放或只查 | 不返回无权内容、不复活、不重建，最小受理事实保留 | BG,BS | R | NOT_RUN / — |
+| J25.a | 已创建后撤权/删除资源分别 | 同键重放或只查 | 不返回无权内容、不复活、不重建，最小受理事实保留 | BG,BS | R | PASS（2026-11-01 真 PG eunit：resource_receipt_revocation_tests 2/2 全绿 EXIT=0（真合成 PG 无 skip）；三向量覆盖经修复 agent 复核确认完整——不返回无权内容/不复活不重建/最小受理事实保留（BG+BS 撤权侧；删除向量由既有 J24.b 套件分工覆盖）；/tmp/v22-multi/j27a-fix.md）/ — |
 | J26.a | 新空本地库53订阅，尾页有未读 | 50+3逐页落库/汇总 | 每页先订阅再计数，尾页可见且偏好不重置 | AU,AQ | C-channel | NOT_RUN / — |
 | J26.b | 第二页/落库/汇总分别失败 | 恢复同页/对账 | 保留已完成部分且错误可见，不删除缺席项 | AU,AQ | C-channel | NOT_RUN / — |
 | J26.c | 扫描中退订/重订 | 继续翻页并收到权威事件 | 事件对应状态回读，旧扫描不删新激活关系 | AU,AE | C-channel | NOT_RUN / — |
 | J26.d | 有本地53项 | 搜索返回1项 | 其余52关系/未读不因缺席清理 | AU,AQ | C-channel | NOT_RUN / — |
 | J26.e | 本地尾页对象被撤权；global/scoped summary分别 | 无事件重验或缺席/显式0分别 | 失效对象无保护摘要/badge；unknown不写0、不清其他范围 | AU,BR | C-channel | NOT_RUN / — |
-| J27.a | 旧客户端/旧Admin，无新参数 | 读取各原清单 | 原envelope/完整旧集合/ADM page,size,keyword可用 | BS,BG,MW,MG,MC | R | NOT_RUN / — |
+| J27.a | 旧客户端/旧Admin，无新参数 | 读取各原清单 | 原envelope/完整旧集合/ADM page,size,keyword可用 | BS,BG,MW,MG,MC | R | PASS（2026-11-01 真 PG eunit：legacy_list_contract_tests 11/11 全绿（初检 3 case undef 为测试调用半成品，修复 agent 改走 handle_action/3 既有先例+6 处 mock 形状修正后全绿——BS/BG 面；MW/MG/MC Admin 面零差异结论由 J28.d 就绪包静态核实（旧 Admin 2c3b542 与新 HEAD 业务代码零差异））/tmp/v22-multi/j27a-fix.md）/ — |
 | J27.b | 新客户端缺字段/未知合同/304无同源缓存分别 | 尝试新创建/分页/偏好 | 不误启，不剥request_id，来源缓存隔离 | AF,BM,MF | R | NOT_RUN / — |
 | J27.c | personal/workspace与错范围cursor分别 | 新范围/分页/搜索 | 范围准确，终止null、前进有效；错cursor不回落 | AQ,BS | R | NOT_RUN / — |
 | J27.d | 2^53−1/+1/BIGINT上界合成原始文本 | Backend→App native/Web→模型/路由→请求→Backend | 所有ID十进制逐字符不变，禁止先构造JS Number fixture | N + AH,MI,MW | R | NOT_RUN / — |
@@ -711,7 +711,7 @@ English: Work packages are review and verification boundaries, not autonomous ex
 
 其余 NOT_RUN 行归属口径：J18.b/J18.f（合成附件与引用定位外部依赖）、J20.a/c/d（多页目录交集与扫描并发）、J23.a–c（受理事务崩溃注入）、J24.b/c、J25.a（receipt 服务端时钟与撤权向量）、J27.b–f（合同负例与 2^53 原始链）——随资源清单细化并入上表最近桶或单独排期；本表只排期、不判定任何 J 通过。
 
-**总出口口径（2026-11-01 NOT_RUN 批次一后）：30 PASS / 41 NOT_RUN / 9 BLOCKED / 5 N/A（J13.a–e 功能门），W13 不发总 PASS**（J23.a–c、J15.b 桌面向量升级 PASS；J13.a–e 转功能门 N/A；BLOCKED 9 项维持 2026-10-31 盘点口径）。
+**总出口口径（2026-11-01 NOT_RUN 批次二后）：32 PASS / 39 NOT_RUN / 9 BLOCKED / 5 N/A（J13.a–e 功能门），W13 不发总 PASS**（新增 J25.a、J27.a 升级 PASS；J27.f/J28.c 等部分证据项注记增强维持 NOT_RUN；BLOCKED 9 项维持）。
 
 ## 10. 计划采用的设计与兼容默认值
 
@@ -1085,6 +1085,13 @@ W00 静态准入出口（2026-10-27T18:54:58+08:00）：按 §8.2，三端 HEAD/
 - **J28.b（预备完成，执行挂起待真机）**：旧版（b6afea584）双端构建 PASS（worktree 仓外）、旧端单测冒烟 5/5、三向量双端方案+脚本就绪（/tmp/v22-multi/j28b-prep.md、编排 /tmp/v28b_run.sh）；Android 真机掉线（adb 空）为唯一阻塞。
 - **环境风暴留痕（2026-11-01 全链恢复）**：宿主磁盘 100%（agent 构建产物 15GB）→ 清理自产可再生产物；Docker Desktop 只读僵死 → 服务重启；PG 容器端口漂移 59260→51011 → release sys.config 两处端口修正；PG 密码三值错位 → 以节点运行时值重置；启动 migrate 死锁 → `IMBOY_AUTO_MIGRATE=false` 绕过（账本 236 无漂移）。终态 init=200、WS ACK 正常。环境注记：Docker 重启会重排动态端口，同症状按「端口映射→密码→migrate 开关」三步排查；`_rel/.../sys.config` 与 `config/sys.local.config` 端口/ws_url 已同步本地修正（均 gitignored）。
 - **本批 commit 授权范围**：Backend（J23 两测试文件+本计划文档+checklist）、App（j28b 新端脚本+j15b 双端脚本+conversation_page_test 扩展），按功能分批。
+
+#### 2026-11-01 NOT_RUN 批次二（遗留执行与单测批量：J25.a / J27.a → PASS；部分证据注记）
+
+- **J25.a → PASS（1 项）**：resource_receipt_revocation_tests 2/2 真 PG 全绿 + 三向量覆盖经修复 agent 确认（删除向量分工于 J24.b 套件）。
+- **J27.a → PASS（1 项）**：legacy_list_contract_tests 初检 3 case `error:undef`（`channel_handler:subscribed/2` 不存在=前序终止 agent 的半成品），修复 agent 改走 `handle_action/3` 先例 + 6 处 mock 修正后 **11/11 全绿**；Admin 面由 J28.d 就绪包「旧 Admin 业务代码零差异」静态结论支撑。附带：channel_scope_tests 11/11、group_scope_tests 8/8（j24_pg_calls 计数跨段清零 1 行修复已声明请 review）。
+- **部分证据注记（状态维持 NOT_RUN）**：J27.f 功能位负例 11/11 复跑绿（创建链安全收口缺口仍在）；J28.c generation 语义 9/9 绿（退出再加入旅程向量待设备）；J01–J05 创建语义 6/6 绿（旅程向量待排）；J28.a migration_v22_reentry_recovery_test 执行卡死（40 分钟无输出，已终止待归因——该文件为前序 agent 遗留，未回写任何状态）。
+- **真机依赖项继续挂起**：J28.b 双端编排、J15.b 移动壳（哨兵/编排/脚本全就绪，adb 探测为空）。
 
 #### 2026-10-31 资源阻断盘点（无法在本环境执行的验收项）
 
