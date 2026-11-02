@@ -54,7 +54,7 @@ prepare_response_loss_discovers_task_without_new_grant_test() ->
             <<"job_id">> => 20,
             <<"state">> => <<"prepared">>,
             <<"revision">> => 1,
-            <<"request_profile">> => talk_record_provider_contract:profile(),
+            <<"request_profile">> => talk_record_provider_contract:profile(16000),
             <<"assembly">> => #{},
             <<"source_authorization_id">> => null,
             <<"source_issued_at">> => null,

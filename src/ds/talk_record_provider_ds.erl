@@ -84,12 +84,20 @@ authority(C, Ctx, R, J, T, A) ->
     ),
     %% Reading an existing supplier task does not grant a new submit permission.
     ensure(is_integer(maps:get(uid, Ctx)), forbidden),
-    Profile = talk_record_provider_contract:profile(),
+    %% no-backend-ffmpeg V1：恢复/查询验证任务已冻结的合法 profile（固定
+    %% 策略 + ADTS 白名单真实采样率 + hash 与 profile 自洽），不再与无参
+    %% 默认单一值比较——历史 16k 任务与新真实率任务都可恢复，参数漂移
+    %% 仍被拒绝。
+    Frozen = talk_record_client_gate:json(maps:get(<<"request_profile">>, T)),
     ensure(
-        Profile =:= talk_record_client_gate:json(maps:get(<<"request_profile">>, T)), input_stale
+        case talk_record_provider_contract:profile_rate(Frozen) of
+            {ok, _} -> true;
+            _ -> false
+        end,
+        input_stale
     ),
     ensure(
-        talk_record_client_contract:hash(Profile) =:= maps:get(<<"profile_hash">>, T), input_stale
+        talk_record_client_contract:hash(Frozen) =:= maps:get(<<"profile_hash">>, T), input_stale
     ).
 
 mutate(C, A, Ctx, R, J, T, Ids, H, B) ->

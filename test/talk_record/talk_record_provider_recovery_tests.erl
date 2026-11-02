@@ -182,7 +182,19 @@ job() ->
         <<"attempt">> => 1,
         <<"kind">> => <<"transcribe">>,
         <<"state">> => <<"running">>,
-        <<"processor_input">> => maps:remove(<<"confirmed">>, consent())
+        <<"processor_input">> =>
+            (maps:remove(<<"confirmed">>, consent()))#{
+                <<"final_audio">> => #{
+                    <<"object_key">> => <<"u1/talk_record/r1/final.aac">>,
+                    <<"client_upload_id">> => <<"0f0e0d0c-0b0a-49f8-8a7b-6c5d4e3f2a1b">>,
+                    <<"sha256">> => hash(),
+                    <<"byte_size">> => 1024,
+                    <<"sample_rate">> => 16000,
+                    <<"channels">> => 1,
+                    <<"sample_count">> => 1024,
+                    <<"duration_ms">> => 64
+                }
+            }
     }.
 consent() ->
     #{
@@ -201,7 +213,7 @@ task() ->
         <<"state">> => <<"accepted">>,
         <<"provider_task_id">> => <<"returned-id">>,
         <<"revision">> => 1,
-        <<"request_profile">> => talk_record_provider_contract:profile(),
+        <<"request_profile">> => talk_record_provider_contract:profile(16000),
         <<"assembly">> => #{},
         <<"source_authorization_id">> => 60,
         <<"source_issued_at">> => 100,
