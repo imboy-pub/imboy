@@ -26,20 +26,19 @@
 |---|---|---|---|---|---|
 | 1 | attachment_lifecycle_v5 家族（repo/attachment_lifecycle_v5_*.erl，含 pg/w401/w402/hold/w403/w601 等） | `V5_INTTEST_DB` 等各槽 `<PREFIX>_DB`；w403 另需 `W403_RESOURCE_MANIFEST` | `bash scripts/test/attachment_lifecycle_v5_gate.sh --task TASK_ID --run-dir ABS --slot SLOT_ID`（钉名导出后执行） | 按任务号留证据（gate 输出 + evidence/ 目录） | ✅ 脚本在仓；w403/w601 的 task 覆盖待逐项核对 |
 | 2 | textguard 三套件（textguard_business/integration/shadow_tests） | `TG16_PG_*`、`TG19_*`、`TEXTGUARD_*_SECRET_FILE`（全套） | `python3 scripts/verify_textguard_business.py` / `verify_textguard_shadow.py` / `verify_textguard_dual.py`（官方启动器，`TEXTGUARD_TEST_OWN_VM=1` 自持 VM） | 启动器输出 + golden 对账 | ✅ 脚本在仓 |
-| 3 | talk_record_owned 映射批（talk_record_*_tests 共 27+ 模块，经 talk_record_owned_eunit_fixture） | `TALK_OWNED_PG_HOST/PORT/USER/PASSWORD/DB` | ❗ 仓内未找到执行脚本/文档 | 无 | ⚠️ 通道缺失，待补 |
-| 4 | talk_record_attachment_lifecycle_tests（T06） | `T06_PG_HOST/PORT/USER/DATABASE` | ❗ 仓内未找到执行脚本/文档 | 无 | ⚠️ 通道缺失，待补 |
-| 5 | enterprise_directory_sync_pg_tests | `DIRECTORY_SYNC_INTTEST_PG_*` 四项 | ❗ 仓内未找到执行脚本/文档 | 无 | ⚠️ 通道缺失，待补 |
-| 6 | inttest_marker_db 直调批（enterprise_full_api/identity_group/message_push/msg_asset_webhook/webhook_governance、enterprise_oa_sso、moment_delete_atomic、cs_seat_console/cs_pg_widget、hird p1/p2/p3、adm_organization_create/adm_owner_activation 等，各自 `<PREFIX>_DB`） | 各套件 `env_prefix` 对应 `<PREFIX>_DB` + `<PREFIX>_PG_*` | ❗ 无统一 gate；历史上为开发者本地配 env 后 `IMBOYENV=local make eunit t=<模块>` | 无统一记录 | ⚠️ 通道缺失，待补（逐套件登记或建统一 runner） |
-| 7 | oa_direct_cloud_retention_pg_tests | `OA_CLOUD_MARKER_PORT`（marker 隔离容器端口合同） | ❗ 待核实（phase1 遗产） | 无 | ⚠️ 待核实 |
+| 3 | talk_record_owned 映射批（talk_record_*_tests 共 27+ 模块） | 具名钉库 `talk_record_t05`（T05 系 support 直连）+ `TALK_UPLOAD_DISK_ROOT`（绝对真实路径） | `bash scripts/test/pinned_pg_eunit_gate.sh talk_record_capture_tests ...`（逐模块；env 清单见脚本头注与本行） | 2026-11-02 本地实测 `All 31 tests passed.`（talk_record_capture_tests，talk_record_t05@4323） | ✅ 通道在仓 |
+| 4 | talk_record_attachment_lifecycle_tests（T06） | `T06_PG_HOST/PORT/USER/DATABASE` + `TALK_UPLOAD_DISK_ROOT` | 同上 runner：`bash scripts/test/pinned_pg_eunit_gate.sh talk_record_attachment_lifecycle_tests` | 待首跑 | ✅ 通道在仓（env 待首跑确认） |
+| 5 | enterprise_directory_sync_pg_tests | `DIRECTORY_SYNC_INTTEST_PG_*` 四项 + marker 契约 | 同上 runner：`bash scripts/test/pinned_pg_eunit_gate.sh enterprise_directory_sync_pg_tests` | 待首跑 | ✅ 通道在仓（env 待首跑确认） |
+| 6 | inttest_marker_db 直调批（各 `<PREFIX>_DB` + `<PREFIX>_PG_*`） | 各套件 `env_prefix` 对应 `<PREFIX>_DB` + `<PREFIX>_PG_*` | 同上 runner，按套件传模块名并导出该套件 PREFIX env（PREFIX 清单：FULL02/EPGZ03/FULL07/EPGZ04/FULL03/ADM_ORG_CREATE_INTTEST/GZAPP06/ATTACH_BIND_INTTEST/EPGZ05_INTTEST/IMBOY_INTTEST_MOMENT/CS_CONSOLE_MIGRATION/CS_WIDGET_MIGRATION/HIRDPOC） | 2026-11-02 让位 gate 验证 R=ok（各批次 agent） | ✅ 通道在仓 |
+| 7 | oa_direct_cloud_retention_pg_tests | `OA_CLOUD_MARKER_PORT` + `INTBE02_INTTEST_*` | 导出入口已核实：`scripts/quality.escript:431`（钉本 run PG 端口）与 `scripts/ci/native-eunit-run.sh:151`（55432）；或经本 runner 导出后单跑 | 专项 C 取证（run 41393644512 日志） | ✅ 通道在仓 |
 | 8 | c2c_action_receipt_pg_tests | 无 env 让位（共享 PG 可跑）；问题为 pool 顺序耦合（修复中） | 同全量轨道 | run 41393644512 之前正常 | ✅ 修复后随全量执行 |
 
 ## 待办（通道补齐）
 
-- [ ] T3：为 talk_record_owned 批建立钉库执行脚本（对齐 T06 的 TALK_OWNED 钉名合同），或在 docs/reference 登记执行手册
-- [ ] T4：T06 同上
-- [ ] T5：directory_sync 同上
-- [ ] T6：inttest_marker_db 批——建统一 runner（枚举套件→PREFIX→钉库→t= 单跑→汇总），或逐套件登记本地执行手册
-- [ ] T7：核实 oa_direct 的 marker 容器启动来源（phase1 文档/脚本），补登记
+- [x] T3-T7：统一 runner `scripts/test/pinned_pg_eunit_gate.sh` 已建（2026-11-02，
+  守卫/防零用例假绿沿用 group_schedule_remind_pg_gate 惯例；T3 已本地实测
+  `All 31 tests passed.`，T4/T5/T6 env 清单已登记待首跑）
+- [ ] T4/T5/T6 各套件首次经 runner 真跑并回填证据列（含 T06/T5 的完整 env 清单确认）
 - [ ] 每次让位类提交：本表 + 同提交的独立通道证据（脚本/文档/最近 run id）
 
 ## 与 known-failures.yaml 的关系
