@@ -252,8 +252,12 @@ INT-23 还保留一个端点特定的兼容错误：旧 `page`/`size` 参数返�
 |---|---|---|
 | `message.enterprise.accepted` | 企业托管消息受理成功（INT-09/10，与消息同事务） | `{type: "msg_c2c" \| "msg_c2g", id: 消息表行 ID}` |
 | `message.enterprise.failed` | 企业托管消息发送失败（业务回滚后独立事务；当前信封**不含**失败原因，仅事件本身表明该消息未受理） | `{type: "msg_c2c" \| "msg_c2g", id: 消息表行 ID}` |
+| `message.enterprise.delivered` | 企业托管消息收件端 ACK（V3-24；独立小事务、失败只留痕不阻断 ACK 主链；**仅企业托管行**——按消息行回查 origin_application_id，Human 消息零外发） | `{type: "msg_c2c" \| "msg_c2g", id: 消息表行 ID}` |
+| `message.enterprise.read` | 企业托管消息收件人已读（V3-24；归属解析同 delivered；accepted/delivered/read 是三层不同语义，不可互替表达） | `{type: "msg_c2c" \| "msg_c2g", id: 消息表行 ID}` |
 | `file.confirmed` | 附件确认入库（INT-08，与转正同事务） | `{type: "attachment", id: 附件行 ID}` |
-| `group.member.changed` | **白名单预留，当前版本无触发点**：订阅合法，但暂不会产生投递 | — |
+| `group.member.changed` | 企业群成员集变更（V3-24：INT-05 加 / INT-06 移除，与审计同事务；仅 added+removed>0 时产生，纯幂等空转不发） | `{type: "enterprise_group", id: 群行 ID}` |
+| `user.mapping.changed` | 用户映射变更（V3-24：INT-02 绑定 / INT-15 撤销 / 目录成员停启用；撤销事件行已软删，resource.id 为 null，以你方 external_user_id 记录关联） | `{type: "identity_mapping" \| "enterprise_member", id: 映射/成员行 ID（撤销事件为 null）}` |
+| `cs.session.changed` | 客服会话状态迁移/转接/评分（V3-24；归属 org 下全部 active Application 逐个订阅判定，无 active Application 即 skip） | `{type: "cs_session", id: 会话行 ID}` |
 | `webhook.ping` | **不可订阅**（INT-12 `events` 填它会被拒绝）；仅由 INT-32 测试投递产生 | `{type: "webhook", id: 端点配置代际}` |
 
 > **注意**：`resource.id` 是平台侧消息表行 ID（int64），与 INT-09/10 响应返回的

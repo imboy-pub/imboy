@@ -3,6 +3,9 @@
 -export([
     reserve_tx/3,
     write/2,
+    begin_write/1,
+    finish_write/2,
+    copy_staging/2,
     read/1,
     complete_tx/2,
     reconcile/0,
@@ -65,6 +68,38 @@ write(Aid, Bytes) ->
         Error ->
             Error
     end.
+
+%% ===== V3-18 P2：Worker 写链拆分（begin → Worker staging upload → Copy → finish） =====
+
+%% begin_write/1：reserved→writing + 返回冻结位置（含凭据快照给 Worker）。
+begin_write(Aid) ->
+    elib_pg:with_tx(fun(C) -> begin_write_tx(C, Aid) end, [{reraise, false}]).
+
+%% finish_write/2：Worker 结果收口（complete/unknown——与 write/2 同语义：
+%% 上传失败不是"无字节到达"的证明）。
+finish_write(Aid, Result) ->
+    State =
+        case Result of
+            {ok, _} -> <<"complete">>;
+            _ -> <<"unknown">>
+        end,
+    case
+        elib_pg:execute(
+            <<
+                "UPDATE attachment_derived_write SET state=$2,updated_at=now()"
+                " WHERE attachment_id=$1 AND state='writing'"
+            >>,
+            [Aid, State]
+        )
+    of
+        {ok, 1} -> Result;
+        _ -> {error, artifact_write_quarantined}
+    end.
+
+%% copy_staging/2：服务端 CopyObject（staging 物理键 → 工件物理键），
+%% 零字节过 BEAM（与 direct finalize 的 copy_dispatch 同一原语）。
+copy_staging(#{namespace := Ns, container := C, key := DstKey}, StagingKey) ->
+    attachment_storage_garage:copy_dispatch(Ns, C, StagingKey, DstKey).
 
 begin_write_tx(Conn, Aid) ->
     case
@@ -150,6 +185,11 @@ metadata(Aid) ->
         Error -> Error
     end.
 
+%% V3-18 P3 收口登记：talk_record 回放/导出下载的 HTTP 正文已切边缘承载
+%% （attachment_edge_redirect）；attachment_artifact_reader:with_range/
+%% range_spool 剩余消费者仅本模块 with_range（派生工件受控小段读）与
+%% with_live_spool（≤Max 全量受控读）——均为有界控制面读，不再有全量
+%% 正文过 BEAM 的 HTTP 入口。
 with_range(Aid, Offset, Length, Fun) ->
     case metadata(Aid) of
         {ok, Row} ->

@@ -213,6 +213,8 @@ facade_targets() ->
         cs_widget_app,
         cs_widget_session_app,
         cs_visitor_read_app,
+        %% V3-27 子能力：快捷回复（Admin CRUD + Seat 只读）的 facade 委派目标。
+        cs_quick_reply_app,
         %% CSD-BE-01S：widget 接入面的机械辅助（derive_org_by_token——持
         %% token 动作面的租户解析，facade 在 env 装配前调用）。
         cs_widget_support,
@@ -239,4 +241,12 @@ facade_reference_whitelist() ->
 external_reference_whitelist() ->
     %% imboy_llm_registry（P0-9 方甲冻结）：LLM registry 属基础设施端口，
     %% feature 内直呼是端口级外部依赖，非跨 Feature 业务边。
-    [enterprise_business_facade, organization_repo, imboy_llm_registry].
+    %% enterprise_webhook_logic（V3-24 G-5）：cs.session.changed 事件 emit 的
+    %% 归属通道（src/logic legacy 层，Feature → Core/legacy 单向，铁律 5
+    %% 合法方向）；审计落行成功后的 fail-safe 通知，非跨 Feature 业务边。
+    [
+        enterprise_business_facade,
+        enterprise_webhook_logic,
+        organization_repo,
+        imboy_llm_registry
+    ].

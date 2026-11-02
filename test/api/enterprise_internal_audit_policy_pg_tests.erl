@@ -56,9 +56,9 @@ policy_coverage() ->
         length(lists:usort(Required ++ Deviation)),
         overlapping_verdicts
     ),
-    ?assertEqual(49, length(enterprise_internal_routes:routes())),
-    ?assertEqual(32, length(NonGet)),
-    ?assertEqual(28, length(Required)),
+    ?assertEqual(50, length(enterprise_internal_routes:routes())),
+    ?assertEqual(33, length(NonGet)),
+    ?assertEqual(29, length(Required)),
     ?assertEqual(4, length(Deviation)),
     lists:foreach(
         fun(Policy) ->

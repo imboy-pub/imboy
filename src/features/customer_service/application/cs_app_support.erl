@@ -178,8 +178,14 @@ new_id(Kind, Params) ->
 -spec append_event(map(), integer(), map()) -> ok | {error, term()}.
 append_event(Params, OrgId, Event) when is_map(Event) ->
     case with_store(Params, fun(Store) -> Store:append_event(OrgId, Event) end) of
-        {ok, _EventId} -> ok;
-        {error, Reason} -> {error, {audit_append_failed, Reason}}
+        {ok, _EventId} ->
+            %% V3-24 G-5：审计落行成功后 emit cs.session.changed（org 作用域
+            %% 归属：org 下全部 active Application 逐个订阅判定，无则 skip；
+            %% 独立小事务 fail-safe，不阻断 CS 主链）。
+            enterprise_webhook_logic:emit_cs_session_changed(OrgId, Event),
+            ok;
+        {error, Reason} ->
+            {error, {audit_append_failed, Reason}}
     end;
 append_event(_Params, _OrgId, _Event) ->
     {error, {invalid_argument, append_event}}.

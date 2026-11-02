@@ -187,12 +187,20 @@ a01(Scope) ->
     end),
 
     check(
-        <<"EB-07-A01.5">>, <<"content 端点返回原始字节且不含 storage URL/endpoint/object key"/utf8>>, fun() ->
+        <<"EB-07-A01.5">>,
+        <<"content 端点回 302 边缘视图且不含 storage URL/endpoint/object key"/utf8>>,
+        fun() ->
             case ?L:facade_content(Scope, Actor, AssetId) of
                 {ok, Stream} ->
-                    case maps:get(body, Stream, undefined) of
-                        Payload -> ?L:no_storage_reference(Stream, Org, Ws, AssetId);
-                        Other -> {error, {body_mismatch, byte_size(Other)}}
+                    %% V3-17：正文读链切边缘——旧接口名为有界鉴权壳，视图是
+                    %% redirect_url（自家边缘）而非字节。
+                    case maps:get(redirect_url, Stream, undefined) of
+                        Url when is_binary(Url), byte_size(Url) > 0 ->
+                            ?L:no_storage_reference(
+                                Stream, Org, Ws, AssetId, [Url]
+                            );
+                        Other ->
+                            {error, {redirect_view_missing, Other}}
                     end;
                 Other ->
                     {error, {content_failed, Other}}
@@ -437,8 +445,12 @@ a04(Scope) ->
         Key = maps:get(object_key, Row),
         Binary = iolist_to_binary(io_lib:format("~p", [Stream])),
         case binary:match(Binary, Key) of
-            nomatch -> ?L:no_storage_reference(Stream, Org, Ws, AssetId);
-            _ -> {error, {object_key_leaked, Key}}
+            nomatch ->
+                %% V3-17：redirect_url（自家边缘）是视图合法组成，深扫剥离
+                Url = maps:get(redirect_url, Stream, undefined),
+                ?L:no_storage_reference(Stream, Org, Ws, AssetId, [Url]);
+            _ ->
+                {error, {object_key_leaked, Key}}
         end
     end).
 
@@ -466,7 +478,8 @@ a05(Scope) ->
     Expired = ?L:seed_pending(Scope, Actor, <<"EB07-A05-expired">>, stale),
     {ok, ExpiredBefore} = ?L:asset_row(Org, Ws, Expired),
     {ok, ExpiredObject} = eb_asset_object_stub:get(
-        maps:get(object_key, ExpiredBefore), ?L:key_prefix(Org, Ws)),
+        maps:get(object_key, ExpiredBefore), ?L:key_prefix(Org, Ws)
+    ),
     Fresh = ?L:seed_pending(Scope, Actor, <<"EB07-A05-fresh">>, fresh),
     {ok, Active, _} = ?L:upload_and_confirm(Scope, Actor, <<"EB07-A05-active">>),
     Foreign = ?L:seed_foreign_expired_pending(Scope, <<"EB07-A05-foreign-bytes">>),
@@ -490,10 +503,14 @@ a05(Scope) ->
                 Deleted = maps:get(deleted, Result, []),
                 Skipped = maps:get(skipped, Result, []),
                 case {lists:member(Expired, Deleted), lists:keyfind(Expired, 1, Skipped)} of
-                    {true, false} -> cleanup_effects(
-                        Scope, Expired, Fresh, Active, Foreign, ExpiredBefore, ExpiredObject);
-                    {false, _} -> {error, {expired_pending_not_cleaned, Result}};
-                    {true, Found} -> {error, {expired_asset_also_skipped, Found}}
+                    {true, false} ->
+                        cleanup_effects(
+                            Scope, Expired, Fresh, Active, Foreign, ExpiredBefore, ExpiredObject
+                        );
+                    {false, _} ->
+                        {error, {expired_pending_not_cleaned, Result}};
+                    {true, Found} ->
+                        {error, {expired_asset_also_skipped, Found}}
                 end;
             Other ->
                 {error, {cleanup_failed, Other}}
@@ -530,13 +547,21 @@ cleanup_effects(Scope, Expired, Fresh, Active, Foreign, Before, BeforeObject) ->
     {Org, Ws} = ?L:tenant(Scope),
     %% A configured frozen root produces a ready job. Intent commits before
     %% provider I/O; only separate real-driver worker coverage proves deletion.
-    Frozen = maps:from_list([{atom_to_binary(K), maps:get(K, Before)}
-        || K <- [storage_driver, storage_namespace, storage_container, storage_locator_sha256]]),
+    Frozen = maps:from_list([
+        {atom_to_binary(K), maps:get(K, Before)}
+     || K <- [storage_driver, storage_namespace, storage_container, storage_locator_sha256]
+    ]),
     Key = maps:get(object_key, Before),
-    {ok, #{driver := disk}} = attachment_storage:frozen_location(Key, Frozen),
-    ExpectedJob = Frozen#{<<"organization_id">> => Org, <<"workspace_id">> => Ws,
-        <<"asset_id">> => Expired, <<"object_key">> => Key, <<"job_state">> => <<"ready">>,
-        <<"attempts">> => 0, <<"last_error_code">> => null},
+    {ok, #{driver := garage}} = attachment_storage:frozen_location(Key, Frozen),
+    ExpectedJob = Frozen#{
+        <<"organization_id">> => Org,
+        <<"workspace_id">> => Ws,
+        <<"asset_id">> => Expired,
+        <<"object_key">> => Key,
+        <<"job_state">> => <<"ready">>,
+        <<"attempts">> => 0,
+        <<"last_error_code">> => null
+    },
     Checks = [
         {expired_object_unchanged_before_worker,
             eb_asset_object_stub:get(Key, ?L:key_prefix(Org, Ws)) =:= {ok, BeforeObject}},
@@ -705,8 +730,12 @@ a06(Scope) ->
 
     check(<<"EB-07-A06.8">>, <<"已确认附件仍可经鉴权代理读取（ACK/隐藏/离职均不撤权）"/utf8>>, fun() ->
         case ?L:facade_content(Scope, Actor, AssetId) of
-            {ok, Stream} -> ?L:no_storage_reference(Stream, Org, Ws, AssetId);
-            Other -> {error, {content_failed_after_decoy_ops, Other}}
+            {ok, Stream} ->
+                %% V3-17：读取形态为 302 边缘视图（redirect_url），深扫剥离自家 URL
+                Url = maps:get(redirect_url, Stream, undefined),
+                ?L:no_storage_reference(Stream, Org, Ws, AssetId, [Url]);
+            Other ->
+                {error, {content_failed_after_decoy_ops, Other}}
         end
     end).
 

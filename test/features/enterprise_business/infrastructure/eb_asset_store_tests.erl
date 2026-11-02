@@ -25,15 +25,17 @@ setup() ->
             try
                 Registry = eb_pg_test_fixture:install_asset_registry(),
                 {asset_stub, Previous, Registry, Result}
-            catch Class:Reason:Stack ->
-                try
-                    cleanup_db(Result)
-                after
-                    eb_pg_test_fixture:restore_asset_store(Previous)
-                end,
-                erlang:raise(Class, Reason, Stack)
+            catch
+                Class:Reason:Stack ->
+                    try
+                        cleanup_db(Result)
+                    after
+                        eb_pg_test_fixture:restore_asset_store(Previous)
+                    end,
+                    erlang:raise(Class, Reason, Stack)
             end;
-        _ -> Result
+        _ ->
+            Result
     end.
 
 setup_db() ->
@@ -178,8 +180,10 @@ a11c_bottom_failures_are_propagated() ->
         %% later handles an already-missing object idempotently.
         ok = eb_asset_store:delete_private(Org, Ws, AssetId),
         assert_frozen_delete_job(Org, Ws, AssetId, Before),
-        ?assertEqual({error, {object_store, not_found}},
-            eb_asset_store:stream_content(Org, Ws, AssetId)),
+        ?assertEqual(
+            {error, {object_store, not_found}},
+            eb_asset_store:stream_content(Org, Ws, AssetId)
+        ),
         ok
     after
         eb_pg_test_fixture:cleanup(Scope)
@@ -247,13 +251,22 @@ sha256_hex(Bin) ->
     binary:encode_hex(crypto:hash(sha256, Bin), lowercase).
 
 assert_frozen_delete_job(Org, Ws, AssetId, Before) ->
-    Frozen = maps:from_list([{atom_to_binary(K), maps:get(K, Before)}
-        || K <- [storage_driver, storage_namespace, storage_container, storage_locator_sha256]]),
+    Frozen = maps:from_list([
+        {atom_to_binary(K), maps:get(K, Before)}
+     || K <- [storage_driver, storage_namespace, storage_container, storage_locator_sha256]
+    ]),
     Key = maps:get(object_key, Before),
-    ?assertMatch({ok, #{driver := disk}}, attachment_storage:frozen_location(Key, Frozen)),
-    Expected = Frozen#{<<"organization_id">> => Org, <<"workspace_id">> => Ws,
-        <<"asset_id">> => AssetId, <<"object_key">> => Key, <<"job_state">> => <<"ready">>,
-        <<"attempts">> => 0, <<"last_error_code">> => null},
+    %% V3-17：替身 registry 与 EB 读链同为 garage 形态（S3-only）
+    ?assertMatch({ok, #{driver := garage}}, attachment_storage:frozen_location(Key, Frozen)),
+    Expected = Frozen#{
+        <<"organization_id">> => Org,
+        <<"workspace_id">> => Ws,
+        <<"asset_id">> => AssetId,
+        <<"object_key">> => Key,
+        <<"job_state">> => <<"ready">>,
+        <<"attempts">> => 0,
+        <<"last_error_code">> => null
+    },
     ?assertEqual({ok, [Expected]}, eb_pg_test_fixture:asset_delete_job(Org, Ws, AssetId)).
 
 put_fixture(Org, Ws, D) ->

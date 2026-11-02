@@ -4,6 +4,7 @@
     object_key_prefix/2,
     build_object_key/3,
     owned_key/3,
+    well_formed_key/1,
     scope_ref/2,
     pending_add_tx/4,
     pending_find_tx/2,
@@ -53,6 +54,17 @@ owned_key(ObjectKey, OrgId, AppId) ->
     PrefixLen = byte_size(Prefix),
     byte_size(ObjectKey) >= PrefixLen andalso
         binary:part(ObjectKey, 0, PrefixLen) =:= Prefix.
+
+%% @doc object_key 是否属于企业域格式（eoa/ 前缀 + org/app/Ymd 结构）。
+%% confirm 入口的格式/归属两级裁决用：格式坏 → invalid_request；
+%% 格式好但不属于本主体 → resource_not_found（跨主体不泄露存在性）。
+-spec well_formed_key(binary()) -> boolean().
+well_formed_key(<<"eoa/", Rest/binary>>) ->
+    %% 至少 org/app/日期/文件段四层；各段非空。
+    Segs = binary:split(Rest, <<"/">>, [global]),
+    length(Segs) >= 4 andalso lists:all(fun(S) -> byte_size(S) > 0 end, Segs);
+well_formed_key(_) ->
+    false.
 
 %%%===================================================================
 %%% attach_pending（presign 登记 / confirm 销账）

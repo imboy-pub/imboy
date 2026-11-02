@@ -22,6 +22,7 @@
     frozen_location/2,
     delete_snapshot/1,
     head_snapshot/1,
+    presign_put_snapshot/3,
     registration_location/3,
     resolve/1,
     canonical_namespace/1,
@@ -284,7 +285,9 @@ snapshot(Key, Container, Rec, Row) ->
                     <<"mime">>, P, maps:get(<<"mime_type">>, Row, <<"application/octet-stream">>)
                 );
             _ ->
-                <<"application/octet-stream">>
+                %% V3-14 S3-only 直传会话：无网关 pin receipt，冻结 mime 取
+                %% 登记声明（upload_registration.declaration.mime）。
+                declared_mime_of(Row)
         end,
     Base = #{
         driver => binary_to_atom(maps:get(driver, Rec), utf8),
@@ -365,9 +368,34 @@ delete_snapshot(_) -> {error, location_unverified}.
 %% undefined；disk 另含设备/inode identity）。与 delete_snapshot 同一分发
 %% 形态：driver 自行用 HEAD/read_link_info，不经 with_snapshot 重解析。
 -spec head_snapshot(map()) ->
-    {ok, #{size := non_neg_integer(), mtime => integer() | undefined,
-        etag => binary() | undefined, identity => {integer(), integer(), integer()}}}
+    {ok, #{
+        size := non_neg_integer(),
+        mtime => integer() | undefined,
+        etag => binary() | undefined,
+        identity => {integer(), integer(), integer()}
+    }}
     | {error, not_found | term()}.
 head_snapshot(#{driver := disk} = I) -> attachment_storage_disk:head_snapshot(I);
 head_snapshot(#{driver := garage} = I) -> attachment_storage_garage:head_snapshot(I);
 head_snapshot(_) -> {error, location_unverified}.
+
+%% V3-14 直传会话的冻结 mime：登记声明（declaration.mime）优先，缺省
+%% octet-stream（与有 pin 时的回落语义一致；mime 白名单校验仍在 confirm）。
+declared_mime_of(Row) ->
+    Decl = maps:get(<<"declaration">>, maps:get(<<"upload_registration">>, Row, #{}), #{}),
+    case maps:get(<<"mime">>, Decl, undefined) of
+        M when is_binary(M), M =/= <<>> -> M;
+        _ -> <<"application/octet-stream">>
+    end.
+
+%% @doc V3-14 S3-only 直传签发（统一 driver 派发）：对已校验冻结身份 I 签
+%% 短时 presigned PUT（garage；disk 域无 presign 直传面——历史 disk 位置
+%% 一律 fail-closed，由受控读/删路径处理，不再签发写入能力）。
+%% internal/OA 文件上传 issuance（enterprise_asset_handler COMMIT 后签发）
+%% 的唯一正文通道：OA 后端本人是 S3 上传客户端（02 §14 S3-only 合同）。
+-spec presign_put_snapshot(map(), binary(), integer()) ->
+    {ok, binary()} | {error, term()}.
+presign_put_snapshot(#{driver := garage} = I, Mime, Ttl) ->
+    attachment_storage_garage:presign_put_snapshot(I, Mime, Ttl);
+presign_put_snapshot(_, _Mime, _Ttl) ->
+    {error, unsupported_driver}.

@@ -12,10 +12,13 @@
 %%%      结论、不 mock elib_pg。
 %%%   3. **真 Cowboy listener**：`imboy_router:get_routes()` 全量 dispatch +
 %%%      与 imboy_app 同序的中间件链（enterprise_internal_wiring_http_tests
-%%%      同款 ?MIDDLEWARES），HTTP 层零 mock；仅**外部 DNS 服务替身**走 meck：
+%%%      同款 ?MIDDLEWARES），HTTP 层零 mock；仅**外部替身**走 meck：
 %%%      `inet:getaddrs`（INT-12 SSRF 守卫的 DNS 解析，
-%%%      enterprise_msg_asset_webhook_pg_tests 同款 with_public_dns）。
-%%%      INT-07/08 使用独占 Disk 根，经真实 capability PUT 固定内容后确认。
+%%%      enterprise_msg_asset_webhook_pg_tests 同款 with_public_dns）与
+%%%      V3-14 S3-only 直传的 S3 服务端替身（合成 endpoint/bucket，meck
+%%%      httpc passthrough 分流 + garage driver head/read 供数；INT-07/08
+%%%      presign 签发 s3_put descriptor、PUT 直打存储、confirm 真实读流
+%%%      均由替身承载，无受控网关正文路径）。
 %%%
 %%% 合成租户（995 段 ID，与 987/988/989/991/992/993 段互不冲突）在 setup
 %%% 阶段 COMMIT 提交；HTTP 用例各自走 handler 自己的事务（真提交），marker
@@ -39,6 +42,9 @@
     one/2,
     one/3,
     upload_file/3,
+    s3_stub_object/1,
+    declare_real_garage/1,
+    issue_credential/4,
     with_public_dns/1,
     fixture/2
 ]).
@@ -105,6 +111,16 @@
 -define(LISTENER, intbe02_http_listener).
 -define(COVERED_TAB, intbe02_covered_ops).
 -define(UPLOAD_ORIGIN, <<"http://intbe02.invalid">>).
+%% V3-14 S3-only 直传替身：合成 storage endpoint/bucket（DNS 不可达；仅
+%% meck httpc S3 替身截获）。对象本体存 persistent_term，PUT/HEAD/GET 全
+%% 部离线。
+-define(S3_STUB_ENDPOINT, <<"http://intbe02-s3.invalid">>).
+-define(S3_STUB_BUCKET, <<"intbe02-synthetic">>).
+-define(S3_OBJ_NS, {intbe02_http_support, s3_object}).
+%% 真 Garage 模式声明（persistent_term；application:load(imboy) 会以
+%% -config 值覆盖此前 set_env，预置 env 不可靠——真链调用方必须在
+%% setup_all 之前显式声明本测试拥有的 garage env）。
+-define(REAL_GARAGE_KEY, {intbe02_http_support, real_garage}).
 
 -define(MIDDLEWARES, [
     cowboy_router,
@@ -485,13 +501,39 @@ setup_storage() ->
         {error, {already_loaded, imboy}} -> ok;
         {error, LoadReason} -> erlang:error({intbe02_app_load_failed, LoadReason})
     end,
+    %% V3-14 S3-only：garage env 必须先于 install_asset_registry——fixture
+    %% 在安装期用 elib_oss:endpoint()/get_bucket/1 冻结 registry Record。
+    %% application:load(imboy) 以 -config 装载 env 会覆盖此前 set_env，
+    %% 因此真链调用方（enterprise_internal_file_garage_checks）必须在
+    %% setup_all 前用 declare_real_garage/1 显式声明本测试拥有的 env；
+    %% 未声明（conformance 离线形态）一律合成 endpoint（DNS 不可达，仅
+    %% meck S3 替身截获）+ 合成凭据 + 替身安装——绝不能触碰宿主常驻
+    %% Garage（127.0.0.1:3900 开发实例）。
+    {GarageMode, PriorGarage} =
+        case persistent_term:get(?REAL_GARAGE_KEY, undefined) of
+            undefined ->
+                ok = application:set_env(imboy, garage, #{
+                    endpoint => ?S3_STUB_ENDPOINT,
+                    bucket => ?S3_STUB_BUCKET,
+                    region => <<"garage">>,
+                    access_key => <<"intbe02-synthetic-ak">>,
+                    secret_key => <<"intbe02-synthetic-sk">>
+                }),
+                {stub, application:get_env(imboy, garage)};
+            {ok, Declared} = Real ->
+                _ = Real,
+                ok = application:set_env(imboy, garage, Declared),
+                {real, application:get_env(imboy, garage)}
+        end,
     Registry = eb_pg_test_fixture:install_asset_registry(),
     State = #{
         registry => Registry,
         base_url => application:get_env(imboy, base_url),
         webhook_key => application:get_env(imboy, postgre_aes_key),
         jwt_key => application:get_env(imboy, jwt_key),
-        gateway_tmp => os:getenv("IMBOY_V5_GATEWAY_TMP")
+        gateway_tmp => os:getenv("IMBOY_V5_GATEWAY_TMP"),
+        garage => PriorGarage,
+        garage_mode => GarageMode
     },
     try
         Tmp = filename:join(maps:get(root, Registry), "gateway-tmp"),
@@ -505,6 +547,10 @@ setup_storage() ->
         %% Application loading does not run the boot secret policy. Upload
         %% capabilities need a real, fixture-owned signing key as well.
         ok = application:set_env(imboy, jwt_key, crypto:strong_rand_bytes(32)),
+        case GarageMode of
+            stub -> s3_stub_install();
+            real -> ok
+        end,
         State
     catch
         Class:Reason:Stack ->
@@ -517,7 +563,9 @@ teardown_storage(#{
     base_url := Base,
     webhook_key := Key,
     jwt_key := JwtKey,
-    gateway_tmp := Tmp
+    gateway_tmp := Tmp,
+    garage := PriorGarage,
+    garage_mode := GarageMode
 }) ->
     try
         case Base of
@@ -535,6 +583,15 @@ teardown_storage(#{
         case Tmp of
             false -> os:unsetenv("IMBOY_V5_GATEWAY_TMP");
             Value0 -> os:putenv("IMBOY_V5_GATEWAY_TMP", Value0)
+        end,
+        case GarageMode of
+            stub -> s3_stub_uninstall();
+            real -> ok
+        end,
+        persistent_term:erase(?REAL_GARAGE_KEY),
+        case PriorGarage of
+            undefined -> application:unset_env(imboy, garage);
+            {ok, Garage} -> application:set_env(imboy, garage, Garage)
         end
     after
         eb_pg_test_fixture:restore_asset_registry(Registry)
@@ -1027,35 +1084,135 @@ covered_ids() ->
 %%% 外部服务替身（meck 窗口）
 %%%===================================================================
 
-%% The reserved origin is a fixture alias for this loopback listener. Preserve
-%% the returned raw path/query and capability; never construct an upload token
-%% or substitute a storage result. V5 confirm reads the actual frozen bytes.
-upload_file(Port, Registration, Bytes) when is_binary(Bytes) ->
-    true = maps:get(<<"gateway">>, Registration),
+%% V3-14 S3-only 直传合同（OA 后端本人是 S3 上传客户端）：presign 视图必须
+%% 是 s3_put descriptor（无受控网关能力、无 JWT upload_capability）；PUT 打
+%% 向 presign URL（合成 endpoint，meck S3 替身收字节），随后从替身存储读回
+%% 校验——confirm 的真实读流（HEAD/GET）同样由替身供数。
+upload_file(_Port, Registration, Bytes) when is_binary(Bytes) ->
+    #{<<"transport">> := <<"s3_put">>, <<"method">> := <<"PUT">>, <<"url">> := Url} =
+        maps:get(<<"upload">>, Registration),
+    false = maps:is_key(<<"gateway">>, Registration),
+    false = maps:is_key(<<"upload_capability">>, Registration),
     Url = maps:get(<<"put_url">>, Registration),
-    Prefix = <<?UPLOAD_ORIGIN/binary, "/api/v1/attachment/gateway/">>,
-    PrefixSize = byte_size(Prefix),
-    Path =
-        case Url of
-            <<Prefix:PrefixSize/binary, Rest/binary>> ->
-                <<"/api/v1/attachment/gateway/", Rest/binary>>;
-            _ ->
-                erlang:error(invalid_fixture_upload_origin)
+    case uri_string:parse(Url) of
+        #{host := <<"intbe02-s3.invalid">>} -> ok;
+        Other -> erlang:error({invalid_direct_upload_url, Other})
+    end,
+    Mime =
+        case maps:get(<<"mime_type">>, Registration, undefined) of
+            M when is_binary(M), M =/= <<>> -> M;
+            _ -> <<"application/octet-stream">>
         end,
-    #{status := 200, body := Body} = http(
-        Port,
-        <<"PUT">>,
-        Path,
-        Bytes,
-        #{<<"content-type">> => <<"text/plain">>}
-    ),
-    Sha = binary:encode_hex(crypto:hash(sha256, Bytes), lowercase),
-    Size = byte_size(Bytes),
-    #{<<"pinned">> := true, <<"sha256">> := Sha, <<"size">> := Size} = jsone:decode(Body),
+    Req = {binary_to_list(Url), [], binary_to_list(Mime), Bytes},
+    {ok, {{_, 200, _}, _, <<>>}} =
+        httpc:request(put, Req, [{timeout, 10000}], [{body_format, binary}]),
     Key = maps:get(<<"object_key">>, Registration),
-    {ok, #{driver := disk} = Snapshot} = attachment_storage:session_location(Key),
-    {ok, Bytes} = attachment_storage_disk:read_snapshot(Snapshot),
+    {Mime, Bytes} = s3_stub_object(Key),
     ok.
+
+%%%===================================================================
+%%% V3-14 S3 直传替身（meck httpc passthrough 分流 + driver 供数）
+%%%===================================================================
+
+%% 安装：meck httpc（仅截获打向 ?S3_STUB_ENDPOINT 的同步请求，其余
+%% passthrough 原实现）+ meck attachment_storage_garage（head_snapshot/
+%% read_snapshot 供数替身，其余 passthrough——presign 签名仍走真实现）。
+s3_stub_install() ->
+    catch meck:new(httpc, [unstick, passthrough, no_link]),
+    ok = meck:expect(httpc, request, fun
+        (put, {Url, _Headers, Ct, Body} = Request, Opts, To) ->
+            case s3_stub_claim(Url) of
+                {ok, Key} ->
+                    s3_stub_serve(put, Key, {unicode:characters_to_binary(Ct), Body});
+                pass ->
+                    meck:passthrough([put, Request, Opts, To])
+            end;
+        (get, {Url, _Headers} = Request, Opts, To) ->
+            case s3_stub_claim(Url) of
+                {ok, Key} -> s3_stub_serve(get, Key, none);
+                pass -> meck:passthrough([get, Request, Opts, To])
+            end;
+        (Method, Request, Opts, To) ->
+            meck:passthrough([Method, Request, Opts, To])
+    end),
+    catch meck:new(attachment_storage_garage, [unstick, passthrough, no_link]),
+    ok = meck:expect(attachment_storage_garage, head_snapshot, fun(I) ->
+        Key = maps:get(key, I),
+        case s3_stub_object(Key) of
+            {_Mime, Bytes} ->
+                {ok, #{
+                    size => byte_size(Bytes),
+                    mtime => undefined,
+                    etag => binary:encode_hex(crypto:hash(md5, Bytes), lowercase)
+                }};
+            undefined ->
+                {error, not_found}
+        end
+    end),
+    ok = meck:expect(attachment_storage_garage, read_snapshot, fun(I) ->
+        Key = maps:get(key, I),
+        case s3_stub_object(Key) of
+            {_Mime, Bytes} -> {ok, Bytes};
+            undefined -> {error, not_found}
+        end
+    end),
+    [persistent_term:erase(K) || {{?S3_OBJ_NS, _} = K, _} <- persistent_term:get()],
+    ok.
+
+s3_stub_uninstall() ->
+    catch meck:unload(attachment_storage_garage),
+    catch meck:unload(httpc),
+    [persistent_term:erase(K) || {{?S3_OBJ_NS, _} = K, _} <- persistent_term:get()],
+    ok.
+
+%% 仅认领 ?S3_STUB_ENDPOINT 桶前缀 URL（返回物理键）；其余一律 pass——
+%% 替身绝不能吞噬非本 fixture 的请求。
+s3_stub_claim(Url0) ->
+    Url = unicode:characters_to_binary(Url0),
+    Prefix = <<?S3_STUB_ENDPOINT/binary, "/", ?S3_STUB_BUCKET/binary, "/">>,
+    PrefixSize = byte_size(Prefix),
+    case Url of
+        <<Prefix:PrefixSize/binary, PathQ/binary>> ->
+            %% presign URL 带 ?X-Amz-... 签名查询；物理键为 path 段。
+            [Path | _] = binary:split(PathQ, <<"?">>),
+            {ok, Path};
+        _ ->
+            pass
+    end.
+
+s3_stub_serve(put, Key, {Ct, Body}) ->
+    persistent_term:put({?S3_OBJ_NS, Key}, {Ct, Body}),
+    {ok, {{"HTTP/1.1", 200, "OK"}, [{"content-length", "0"}], <<>>}};
+s3_stub_serve(get, Key, none) ->
+    case s3_stub_object(Key) of
+        {Mime, Bytes} ->
+            {ok, {
+                {"HTTP/1.1", 200, "OK"},
+                [
+                    {"content-type", binary_to_list(Mime)},
+                    {"content-length", integer_to_binary(byte_size(Bytes))}
+                ],
+                Bytes
+            }};
+        undefined ->
+            {ok, {{"HTTP/1.1", 404, "NotFound"}, [], <<>>}}
+    end.
+
+%% 真 Garage 模式声明：EnvMap 为本测试拥有的完整 garage env
+%% （endpoint/bucket/region/access_key/secret_key）。必须在 setup_all/0
+%% 之前调用；teardown 自动复原并清除声明。
+-spec declare_real_garage(map()) -> ok.
+declare_real_garage(EnvMap) when is_map(EnvMap) ->
+    persistent_term:put(?REAL_GARAGE_KEY, {ok, EnvMap}),
+    ok.
+
+-spec s3_stub_object(binary()) -> {binary(), binary()} | undefined.
+s3_stub_object(Key) ->
+    try persistent_term:get({?S3_OBJ_NS, Key}) of
+        Entry -> Entry
+    catch
+        error:badarg -> undefined
+    end.
 
 %% INT-12 SSRF 守卫 DNS 替身：公网假 IP（with_public_dns 同款）。
 with_public_dns(Fun) ->

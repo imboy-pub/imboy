@@ -5,10 +5,14 @@
 -export([direct_tx/3, group_tx/4]).
 -export([push_after_commit/2]).
 -export([with_principal_tx/2, fetch_row_id_tx/3]).
+%% V3-23 企业频道通道（INT-50）复用判定链：sender 解析 / payload 构造 /
+%% 受理收尾（origin + 审计 + webhook 事件同事务）。
+-export([resolve_sender/3, build_payload/5, finish_accept/7]).
 
 -include("log.hrl").
 
 -define(MAX_CONTENT_BYTES, 4000).
+-define(MAX_URL_LEN, 2048).
 -define(ORIGIN_KIND, <<"enterprise_application">>).
 
 %%%===================================================================
@@ -257,10 +261,16 @@ sender_group_authorized(Conn, <<"human">>, SenderUid, WsId, GroupId) ->
 %%% payload / 落库 / 审计 / 事件
 %%%===================================================================
 
-%% @doc 构造 payload 子对象（msg_c2c/msg_c2g payload 列形态）。
+%% @doc 构造 payload 子对象（msg_c2c/msg_c2g/msg_channel payload 列形态）。
 %% text：content/text + origin；file：file{object_key,name,size,mime_type}
 %% + origin（附件字段来自服务端 attachment 行——confirm 后的 file 才能引用，
 %% 未 confirm / 跨 org/app 的一律 resource_not_found，不泄露存在性）。
+%% V3-23 白名单扩展（SPEC §5 A1/A2，wire 值与 flutter B5
+%% message_type_constants.dart 对齐）：
+%%   image               —— 复用 file 分支的已 confirm 附件元数据；
+%%   link_card           —— title/url 必填（url 带 host ≤2048），description/thumb 可选；
+%%   business_action_card —— title/action_type 必填，url/description/thumb/
+%%                           action_params 可选（action_params 须 object）。
 build_payload(Conn, Ctx, Input, SenderKind, SenderUid) ->
     case maps:get(msg_type, Input, undefined) of
         <<"text">> ->
@@ -280,32 +290,229 @@ build_payload(Conn, Ctx, Input, SenderKind, SenderUid) ->
                     {error, {<<"invalid_request">>, invalid_content}}
             end;
         <<"file">> ->
-            ObjectKey = maps:get(object_key, Input, undefined),
-            case is_binary(ObjectKey) andalso ObjectKey =/= <<>> of
-                true ->
-                    OrgId = maps:get(organization_id, Ctx),
-                    AppId = maps:get(application_id, Ctx),
-                    case enterprise_asset_repo:find_confirmed_tx(Conn, OrgId, AppId, ObjectKey) of
-                        {ok, Att} ->
-                            Payload = #{
-                                <<"file">> => #{
-                                    <<"file_id">> => maps:get(<<"id">>, Att),
-                                    <<"object_key">> => ObjectKey,
-                                    <<"name">> => maps:get(<<"name">>, Att, <<>>),
-                                    <<"size">> => maps:get(<<"size">>, Att, 0),
-                                    <<"mime_type">> => maps:get(<<"mime_type">>, Att, <<>>)
-                                },
-                                <<"origin">> => origin(Ctx, SenderKind, SenderUid)
-                            },
-                            {ok, <<"file">>, Payload};
-                        {error, not_found} ->
-                            {error, {<<"resource_not_found">>, file_not_confirmed}}
-                    end;
-                false ->
-                    {error, {<<"invalid_request">>, object_key_required}}
-            end;
+            with_confirmed_attachment(Conn, Ctx, Input, SenderKind, SenderUid, <<"file">>);
+        <<"image">> ->
+            with_confirmed_attachment(Conn, Ctx, Input, SenderKind, SenderUid, <<"image">>);
+        <<"link_card">> ->
+            build_link_card(Ctx, Input, SenderKind, SenderUid);
+        <<"business_action_card">> ->
+            build_business_action_card(Ctx, Input, SenderKind, SenderUid);
         _ ->
             {error, {<<"invalid_request">>, invalid_msg_type}}
+    end.
+
+with_confirmed_attachment(Conn, Ctx, Input, SenderKind, SenderUid, Key) ->
+    ObjectKey = maps:get(object_key, Input, undefined),
+    case is_binary(ObjectKey) andalso ObjectKey =/= <<>> of
+        true ->
+            OrgId = maps:get(organization_id, Ctx),
+            AppId = maps:get(application_id, Ctx),
+            case enterprise_asset_repo:find_confirmed_tx(Conn, OrgId, AppId, ObjectKey) of
+                {ok, Att} ->
+                    Att0 = #{
+                        <<"file_id">> => maps:get(<<"id">>, Att),
+                        <<"object_key">> => ObjectKey,
+                        <<"name">> => maps:get(<<"name">>, Att, <<>>),
+                        <<"size">> => maps:get(<<"size">>, Att, 0),
+                        <<"mime_type">> => maps:get(<<"mime_type">>, Att, <<>>)
+                    },
+                    %% image 的宽高可选透传（整数>0 才携带；不回显非法值）
+                    Att1 =
+                        case Key of
+                            <<"image">> ->
+                                maps:merge(
+                                    Att0,
+                                    maps:from_list(
+                                        [
+                                            {K, V}
+                                         || {K, V} <-
+                                                [
+                                                    {<<"width">>,
+                                                        maps:get(width, Input, undefined)},
+                                                    {<<"height">>,
+                                                        maps:get(height, Input, undefined)}
+                                                ],
+                                            is_integer(V),
+                                            V > 0
+                                        ]
+                                    )
+                                );
+                            _ ->
+                                Att0
+                        end,
+                    Payload = #{
+                        Key => Att1,
+                        <<"origin">> => origin(Ctx, SenderKind, SenderUid)
+                    },
+                    {ok, Key, Payload};
+                {error, not_found} ->
+                    {error, {<<"resource_not_found">>, file_not_confirmed}}
+            end;
+        false ->
+            {error, {<<"invalid_request">>, object_key_required}}
+    end.
+
+%% 链接卡片：title 1..200；url 必填带 host ≤2048；description/thumb 可选。
+build_link_card(Ctx, Input, SenderKind, SenderUid) ->
+    case card_text(Input, title, <<"title">>, 200) of
+        {ok, Title} ->
+            case required_url(Input, url) of
+                {ok, Url} ->
+                    Card0 = #{<<"title">> => Title, <<"url">> => Url},
+                    Card1 = optional_text(Card0, description, Input, <<"description">>, 2000),
+                    Card2 = optional_url(Card1, thumb, Input, <<"thumb">>),
+                    Payload = #{
+                        <<"link_card">> => Card2,
+                        <<"origin">> => origin(Ctx, SenderKind, SenderUid)
+                    },
+                    {ok, <<"link_card">>, Payload};
+                {error, _} = E ->
+                    E
+            end;
+        {error, _} = E ->
+            E
+    end.
+
+%% 业务操作卡片：title/action_type 必填；url/description/thumb 可选；
+%% action_params 可选 object（序列化 ≤ MAX_CONTENT_BYTES）。
+build_business_action_card(Ctx, Input, SenderKind, SenderUid) ->
+    case card_text(Input, title, <<"title">>, 200) of
+        {ok, Title} ->
+            case card_text(Input, action_type, <<"action_type">>, 100) of
+                {ok, ActionType} ->
+                    Card0 = #{
+                        <<"title">> => Title,
+                        <<"action_type">> => ActionType
+                    },
+                    case optional_url(Input, url) of
+                        {ok, Url} ->
+                            finish_business_action_card(
+                                Ctx, Input, SenderKind, SenderUid, Card0#{<<"url">> => Url}
+                            );
+                        undefined ->
+                            finish_business_action_card(
+                                Ctx, Input, SenderKind, SenderUid, Card0
+                            );
+                        {error, _} = E ->
+                            E
+                    end;
+                {error, _} = E ->
+                    E
+            end;
+        {error, _} = E ->
+            E
+    end.
+
+finish_business_action_card(Ctx, Input, SenderKind, SenderUid, Card1) ->
+    Card2 = optional_text(Card1, description, Input, <<"description">>, 2000),
+    Card3 = optional_url(Card2, thumb, Input, <<"thumb">>),
+    case action_params(Input) of
+        {ok, undefined} ->
+            Payload = #{
+                <<"business_action_card">> => Card3,
+                <<"origin">> => origin(Ctx, SenderKind, SenderUid)
+            },
+            {ok, <<"business_action_card">>, Payload};
+        {ok, Params} ->
+            Payload = #{
+                <<"business_action_card">> => Card3#{<<"action_params">> => Params},
+                <<"origin">> => origin(Ctx, SenderKind, SenderUid)
+            },
+            {ok, <<"business_action_card">>, Payload};
+        {error, Detail} ->
+            {error, {<<"invalid_request">>, Detail}}
+    end.
+
+card_text(Input, Key, Bin, MaxLen) ->
+    V = maps:get(Key, Input, undefined),
+    case is_binary(V) andalso byte_size(V) > 0 andalso byte_size(V) =< MaxLen of
+        true -> {ok, V};
+        false -> {error, {<<"invalid_request">>, {invalid_field, Bin}}}
+    end.
+
+optional_text(Card, Key, Input, Bin, MaxLen) ->
+    case maps:get(Key, Input, undefined) of
+        V when is_binary(V), byte_size(V) > 0, byte_size(V) =< MaxLen ->
+            Card#{Bin => V};
+        _ ->
+            %% 可选键：缺省或形状非法一律「不带」（不写垃圾值进 payload；
+            %% 必填键才走硬失败）
+            Card
+    end.
+
+required_url(Input, Key) ->
+    case maps:get(Key, Input, undefined) of
+        V when is_binary(V) ->
+            case valid_url(V) of
+                ok -> {ok, V};
+                {error, _} = E -> E
+            end;
+        _ ->
+            {error, {<<"invalid_request">>, {invalid_field, <<"url">>}}}
+    end.
+
+optional_url(Card, Key, Input, Bin) ->
+    case maps:get(Key, Input, undefined) of
+        V when is_binary(V), byte_size(V) > 0, byte_size(V) =< ?MAX_URL_LEN ->
+            case valid_url(V) of
+                ok -> Card#{Bin => V};
+                _ -> Card
+            end;
+        _ ->
+            Card
+    end.
+
+optional_url(Input, Key) ->
+    case maps:get(Key, Input, undefined) of
+        undefined ->
+            undefined;
+        V when is_binary(V), byte_size(V) > 0, byte_size(V) =< ?MAX_URL_LEN ->
+            case valid_url(V) of
+                ok -> {ok, V};
+                {error, _} = E -> E
+            end;
+        _ ->
+            {error, {<<"invalid_request">>, {invalid_field, <<"url">>}}}
+    end.
+
+action_params(Input) ->
+    case maps:get(action_params, Input, undefined) of
+        undefined ->
+            {ok, undefined};
+        V when is_map(V) ->
+            try
+                Encoded = jsone:encode(V),
+                case byte_size(Encoded) =< ?MAX_CONTENT_BYTES of
+                    true -> {ok, V};
+                    false -> {error, action_params_too_large}
+                end
+            catch
+                _:_ -> {error, invalid_action_params}
+            end;
+        _ ->
+            {error, invalid_action_params}
+    end.
+
+%% url 校验（SPEC §5 A2：带 host ≤2048，上限口径同 project_channel_logic
+%% ?MAX_URL_LEN=2048）：scheme ∈ http|https 且 host 非空。
+valid_url(Url) when is_binary(Url) ->
+    case binary:split(Url, <<"://">>) of
+        [Scheme, Rest] when Scheme =:= <<"http">>; Scheme =:= <<"https">> ->
+            case host_of(Rest) =/= <<>> of
+                true -> ok;
+                false -> {error, {<<"invalid_request">>, {invalid_field, <<"url">>}}}
+            end;
+        _ ->
+            {error, {<<"invalid_request">>, {invalid_field, <<"url">>}}}
+    end;
+valid_url(_) ->
+    {error, {<<"invalid_request">>, {invalid_field, <<"url">>}}}.
+
+host_of(Rest) ->
+    case binary:split(Rest, <<"/">>) of
+        [HostOnly] -> HostOnly;
+        [Host, _Path] -> Host;
+        _ -> <<>>
     end.
 
 origin(Ctx, SenderKind, SenderUid) ->
@@ -359,9 +566,12 @@ finish_accept(Conn, Ctx, SenderKind, SenderUid, ResourceType, RowId, MsgId) ->
             {error, {<<"internal_error">>, {message_origin, Reason}}}
     end.
 
--spec conversation_kind(binary()) -> direct | group.
+-spec conversation_kind(binary()) -> direct | group | channel.
 conversation_kind(<<"msg_c2c">>) -> direct;
 conversation_kind(<<"msg_c2g">>) -> group;
+%% V3-23 企业频道（INT-50）：origin 账本 conversation_kind 扩 'channel'
+%% （migration 00000241 前向扩展 ck_emo_conversation 取值）。
+conversation_kind(<<"msg_channel">>) -> channel;
 conversation_kind(_Other) -> direct.
 
 -spec sender_kind_atom(binary()) -> application | human.
@@ -538,6 +748,12 @@ fetch_row_id_tx(Conn, <<"msg_c2c">>, MsgId) ->
     end;
 fetch_row_id_tx(Conn, <<"msg_c2g">>, MsgId) ->
     case enterprise_message_repo:find_group_tx(Conn, MsgId) of
+        {ok, #{<<"id">> := Id}} -> Id;
+        _ -> null
+    end;
+%% V3-23 企业频道（INT-50）幂等登记行 id。
+fetch_row_id_tx(Conn, <<"msg_channel">>, MsgId) ->
+    case enterprise_channel_message_repo:find_tx(Conn, MsgId) of
         {ok, #{<<"id">> := Id}} -> Id;
         _ -> null
     end;

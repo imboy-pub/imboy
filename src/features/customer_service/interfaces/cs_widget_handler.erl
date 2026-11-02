@@ -324,19 +324,24 @@ content_authorized(Entry, Case, Req0, Body, OrgId) ->
 
 content_respond(Req, _Origin, {error, Reason}) ->
     cs_http:reply_error(Req, Reason);
-content_respond(Req, _Origin, {ok, #{body := Bytes} = View}) when is_binary(Bytes) ->
+content_respond(Req, _Origin, {ok, #{redirect_url := Url} = View}) when
+    is_binary(Url),
+    byte_size(Url) > 0
+->
+    %% V3-17（G17）：旧接口名保留为有界鉴权壳——302 到边缘 `/edge?ticket=`，
+    %% 正文由边缘 OS 进程承载（BEAM 零字节）。动态 CORS echo 口径与普通
+    %% 成功动作一致；302 额外带通配 ACAO（无凭证 GET，票据在 URL）。
     Headers = #{
-        <<"content-type">> => maps:get(mime, View, <<"application/octet-stream">>),
+        <<"location">> => Url,
         <<"cache-control">> => <<"private, no-store">>,
+        <<"access-control-allow-origin">> => <<"*">>,
         <<"x-asset-id">> => content_bin(maps:get(asset_id, View, undefined)),
-        <<"x-asset-sha256">> => maps:get(object_hash, View, undefined)
+        <<"x-asset-sha256">> => content_bin(maps:get(object_hash, View, undefined))
     },
-    Req1 = cowboy_req:stream_reply(200, Headers, Req),
-    _ = cowboy_req:stream_body(Bytes, fin, Req1),
-    Req1;
+    cowboy_req:reply(302, Headers, <<>>, Req);
 content_respond(Req, Origin, {ok, _Other}) ->
-    %% 用例返回形状异常：fail-closed（不把未知形状当成功），但成功鉴权事实
-    %% 已确立，动态 CORS echo 照常（与普通动作口径一致）。
+    %% 用例返回形状异常（含已退役的字节视图）：fail-closed（不把未知形状当
+    %% 成功），但成功鉴权事实已确立，动态 CORS echo 照常（与普通动作口径一致）。
     Req1 = dynamic_cors(Req, Origin, {ok, ok}),
     cs_http:reply_error(Req1, {invalid_argument, widget_asset_content}).
 
@@ -403,7 +408,6 @@ asset_put_params(Entry, Case, Req0, OrgId) ->
 %% 本地常量而非跨单元引用——接口层只依赖 core/本 feature/facade（铁律 5）；
 %% 真正的 size 语义校验（申报值=实际值、mime sniff、hash 复核）全部在企业
 %% eb_asset_app:put_object，这里是纯传输 DoS 门（超限 400 fail-closed）。
-
 
 %% ===================================================================
 %% /w/:public_widget_id 动态 frame HTML（CSD-BE-01，hosted-widget-contract S4）

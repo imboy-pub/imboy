@@ -487,11 +487,18 @@ install_asset_registry() ->
         ok = file:change_mode(Root, 8#700),
         Roots = maps:get(roots, Registry, #{}),
         Uploads = maps:get(upload_namespaces, Registry, #{}),
+        %% V3-17：EB content 读链只承载 S3（garage）——替身 registry 记录
+        %% 对齐同形态。garage 记录须与 elib_oss 系统桶（endpoint/bucket）
+        %% 一致才过 registration_location 校验（namespace 仍每轮唯一随机，
+        %% digest 只含 driver/root_id/endpoint/canonical-namespace，不触网；
+        %% put 链经 stub 内存，content 链只做 registry resolve 与签名）。
         Record = #{
-            driver => <<"disk">>,
+            driver => <<"garage">>,
             namespace => Namespace,
-            endpoint => list_to_binary("file://" ++ Root),
-            container => <<"fixture">>
+            endpoint => elib_oss:endpoint(),
+            container => elib_oss:get_bucket(<<"private">>),
+            access_key => <<"synthetic-ak-probe">>,
+            secret_key => <<"synthetic-sk-probe">>
         },
         ok = application:set_env(imboy, attachment_storage_registry, Registry#{
             roots => Roots#{Namespace => Record},

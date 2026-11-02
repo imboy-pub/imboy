@@ -1853,6 +1853,9 @@ msg_origin_db(C, State) ->
             ]
         )
     ),
+    %% 'channel' 自 migration 00000241（V3-23 INT-50）起为合法取值（正向
+    %% 用例见 enterprise_channel_message_v323_pg_tests:origin_channel）；
+    %% 非法 kind 负例改用未注册值，CHECK 语义不变。
     ?assertEqual(
         <<"23514">>,
         rejected_code(
@@ -1860,7 +1863,7 @@ msg_origin_db(C, State) ->
             <<
                 "INSERT INTO enterprise_message_origin"
                 " (id, conversation_kind, organization_id, application_id, sender_kind,"
-                "  msg_row_id, msg_id) VALUES (992900004, 'channel', $1, $2, 'application', 1, 'x')"
+                "  msg_row_id, msg_id) VALUES (992900004, 'bogus', $1, $2, 'application', 1, 'x')"
             >>,
             [
                 ?ORG_A, AppId
@@ -1963,7 +1966,9 @@ bnd_spec_align_test() ->
             {<<"INT-46">>, list},
             {<<"INT-47">>, list},
             {<<"INT-48">>, list},
-            {<<"INT-49">>, list}
+            {<<"INT-49">>, list},
+            %% V3-23 INT-50 企业频道消息代发（channel 所属 W 边界）
+            {<<"INT-50">>, workspace}
         ],
         lists:foreach(
             fun({Id, Kind}) ->

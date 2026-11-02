@@ -171,7 +171,7 @@ Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
 
 握手只接受有效 access JWT；过期 token 返回 HTTP 401、业务码 705 与
 `X-Token-Error: expired`，refresh token 返回 401 / `refresh_not_allowed`。
-缺少凭证返回 412。客户端先经 `/api/v1/refreshtoken` 换取 access token，再重新握手。
+缺少凭证返回 401。客户端先经 `/api/v1/refreshtoken` 换取 access token，再重新握手。
 JWT 从 `Authorization` 读取，该头缺失时才使用 query `token`。
 `Sec-WebSocket-Protocol` 仅选择编码，不承载 JWT；可选
 `imboy.v2`、`imboy-protobuf`、`imboy-json`、`text`，按此顺序优先选择。

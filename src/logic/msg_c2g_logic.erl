@@ -687,6 +687,9 @@ c2g_read(MsgId, CurrentUid, Data) ->
 handle_c2g_read_receipt(MsgId, CurrentUid, Gid, MsgIds, ReadAt, NowMs) ->
     case group_ds:mark_read(CurrentUid, Gid, MsgIds) of
         {ok, [#{<<"read_seq">> := ReadSeq} | _]} when is_integer(ReadSeq), ReadSeq > 0 ->
+            %% V3-24 G-4：企业托管行已读事件（按 origin 归属解析，Human 消息
+            %% 零外发；独立小事务，失败只留痕不阻断已读主链）。
+            enterprise_webhook_logic:emit_read_for(MsgIds),
             ReadSyncPayload = #{
                 <<"conversation_type">> => <<"c2g">>,
                 <<"gid">> => Gid,

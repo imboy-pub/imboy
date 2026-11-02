@@ -644,6 +644,8 @@ get_routes() ->
                 % 附件下载短时签发 URL，替代 bucket 公开读（需 JWT 认证）
                 {"/api/v1/attachment/view_url", attach_handler, #{action => view_url}},
                 {"/api/v1/attachment/content", attachment_download_handler, #{}},
+                % V3-08 下载边缘逐请求授权（仅 loopback 边缘调用；有界 JSON，零正文）
+                {"/api/v1/attachment/edge/authorize", attachment_edge_authorize_handler, #{}},
                 % 附件 multipart 直传（大文件流式：form-data file 字段 → 临时文件
                 % → Garage；需 JWT 认证；confirm 仍是唯一落库真源）
                 {"/api/v1/attachment/upload", attach_handler, #{action => upload}},
@@ -1525,6 +1527,9 @@ open() ->
         <<"/api/v1/app/features">>,
         %% Dedicated download capability; handler verifies signature and current ACL.
         <<"/api/v1/attachment/content">>,
+        %% V3-08 下载边缘逐请求授权：免 JWT 白名单原因是它自带边缘内部共享
+        %% 密钥（x-edge-internal-token，hash_equals 校验）且仅回有界 JSON。
+        <<"/api/v1/attachment/edge/authorize">>,
         <<"/api/v1/talk-records/client-audio-source">>,
         <<"/api/v1/app/manifest">>,
         <<"/api/v1/app/policy">>,
@@ -2020,6 +2025,8 @@ seat_console_route(_) ->
 seat_console_methods(cs_tenant_handler, Action) ->
     case Action of
         seat_contexts -> [<<"GET">>];
+        %% V3-27 子能力：坐席快捷回复只读清单（坐席工作台同源复用；仅 GET）。
+        quick_replies -> [<<"GET">>];
         session_queue -> [<<"GET">>];
         session_claim -> [<<"POST">>];
         session_transfer -> [<<"POST">>];
@@ -2058,6 +2065,12 @@ customer_service_human_routes() ->
         }},
         %% 门店开会话（T-2 后 org 显式在路径）：shop key 主体（cs_auth 用 digest
         %% 同语句证明 path org 与 key 绑定 org 逐字一致）。
+        {"/api/v1/cs/organizations/:org_id/quick-replies", cs_tenant_handler, #{
+            action => quick_replies,
+            auth_context => cs_seat,
+            required_function => <<"customer_service">>,
+            required_permission => <<"conversation.read">>
+        }},
         {"/api/v1/cs/organizations/:org_id/sessions/queue", cs_tenant_handler, #{
             action => session_queue,
             auth_context => cs_shop_key
@@ -2393,6 +2406,17 @@ customer_service_platform_routes() ->
                 auth_context => platform_admin,
                 required_permission => <<"customer_service:write">>
             }},
+        {"/api/adm/customer-service/quick-replies", cs_platform_handler, #{
+            action => p_quick_replies,
+            auth_context => platform_admin,
+            required_permission => <<"customer_service:read">>
+        }},
+        %% PUT/DELETE 共路径（合同 §2.3/§2.4；cs_actions 按 method 分派）。
+        {"/api/adm/customer-service/quick-replies/:id", cs_platform_handler, #{
+            action => p_quick_reply_mutate,
+            auth_context => platform_admin,
+            required_permission => <<"customer_service:write">>
+        }},
         {"/api/adm/customer-service/widget-installations", cs_platform_handler, #{
             action => p_widget_installations,
             auth_context => platform_admin,
@@ -2557,6 +2581,10 @@ enterprise_internal_routes() ->
         }},
         {"/api/internal/v1/channels", enterprise_channel_handler, #{action => channels}},
         {"/api/internal/v1/channels/:channel_id", enterprise_channel_handler, #{
+            action => channel
+        }},
+        %% V3-23 INT-50 企业频道消息代发（application / 指定 human，固定非 E2EE）
+        {"/api/internal/v1/channels/:channel_id/messages", enterprise_message_handler, #{
             action => channel
         }}
     ].

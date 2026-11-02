@@ -54,6 +54,7 @@
     put_object/2,
     confirm_asset/2,
     content_stream/2,
+    edge_authorize_content/1,
     cleanup_pending/2,
     session_status/2,
     session_renew/2
@@ -1196,7 +1197,7 @@ content_authorized(OrgId, Ws, Row, Actor, Params) ->
                 {error, _} = Err ->
                     Err;
                 ok ->
-                    content_status_gate(OrgId, Ws, Row, Params)
+                    content_gated_read(OrgId, Ws, Row, Params)
             end;
         contact ->
             case
@@ -1207,35 +1208,169 @@ content_authorized(OrgId, Ws, Row, Actor, Params) ->
                 {error, _} = Err ->
                     Err;
                 ok ->
-                    content_status_gate(OrgId, Ws, Row, Params)
+                    content_gated_read(OrgId, Ws, Row, Params)
             end
     end.
 
-content_status_gate(OrgId, Ws, Row, Params) ->
+%% ACL 通过后：status 门 → 票据签发（V3-17：止于 Row，不读字节）。
+content_gated_read(OrgId, Ws, Row, Params) ->
+    case content_status_gate(OrgId, Ws, Row, Params) of
+        {ok, Row} -> content_read(OrgId, Ws, Row, Params);
+        {error, _} = Err -> Err
+    end.
+
+content_status_gate(_OrgId, _Ws, Row, _Params) ->
     case maps:get(status, Row, undefined) of
         active ->
-            content_read(OrgId, Ws, Row, Params);
+            {ok, Row};
         deleted ->
             {error, not_found};
         Other ->
             {error, {not_confirmed, Other}}
     end.
 
+%% V3-17（G17）：正文读链切边缘——鉴权链（绑定门/ACL/status 门）全部原样
+%% 保留，止于 Row；此后 BEAM **不再读字节**：签 EB 下载票据（claims=本链已
+%% 确立的鉴权事实），302 到边缘 `/edge?ticket=`。边缘逐字节请求回调
+%% authorize 重放完整 ACL（edge_authorize_content/1）。fail-closed：边缘
+%% 未配置或位置非 garage 一律 {error,_}，不回退 BEAM 取流。
 content_read(OrgId, Ws, Row, Params) ->
     Asset = port(Params, asset),
-    case Asset:stream_content(OrgId, Ws, maps:get(id, Row)) of
-        {ok, {content_stream, Bytes}} ->
-            content_verify(Bytes, Row);
+    case Asset:download_location(OrgId, Ws, maps:get(id, Row)) of
+        {ok, _Location} ->
+            case actor_scope(Params) of
+                {ok, Actor} ->
+                    Claims0 = #{
+                        org_id => OrgId,
+                        workspace_id => Ws,
+                        asset_id => maps:get(id, Row),
+                        actor_kind => maps:get(kind, Actor),
+                        actor_id => maps:get(id, Actor)
+                    },
+                    Claims = lists:foldl(
+                        fun(K, Acc) ->
+                            case maps:get(K, Params, undefined) of
+                                undefined -> Acc;
+                                V -> Acc#{K => V}
+                            end
+                        end,
+                        Claims0,
+                        [conversation_id, visitor_session_id]
+                    ),
+                    issue_redirect(Claims, Row);
+                {error, _} = Err ->
+                    Err
+            end;
         {error, Reason} ->
             {error, {object_unreadable, Reason}}
     end.
 
-content_verify(Bytes, Row) ->
-    Expected = maps:get(object_hash, Row, undefined),
-    case eb_asset_content:sha256_hex(Bytes) =:= Expected of
-        true -> {ok, eb_asset_content:public_content_view(Bytes, Row)};
-        false -> {error, {integrity_check_failed, Expected}}
+issue_redirect(Claims, Row) ->
+    case eb_asset_download_ticket:issue(Claims, config_ds:env(jwt_key, <<>>)) of
+        {ok, Ticket} ->
+            case edge_base() of
+                <<>> ->
+                    {error, edge_not_configured};
+                Base ->
+                    Url = <<
+                        (string:trim(Base, trailing, "/"))/binary,
+                        "?ticket=",
+                        Ticket/binary
+                    >>,
+                    {ok, #{
+                        redirect_url => Url,
+                        asset_id => maps:get(id, Row),
+                        object_hash => maps:get(object_hash, Row, undefined),
+                        mime => maps:get(mime, Row, <<"application/octet-stream">>),
+                        size_bytes => maps:get(size_bytes, Row, undefined)
+                    }}
+            end;
+        _ ->
+            {error, {ticket, invalid}}
     end.
+
+%% 边缘对外基址：专用 `edge_base_url` 优先；缺省回退 `base_url` + `/edge`
+%% （同域反代形态）。两者皆空 → fail-closed（edge_not_configured）。
+edge_base() ->
+    case config_ds:env(edge_base_url, <<>>) of
+        <<>> ->
+            case config_ds:env(base_url, <<>>) of
+                <<>> -> <<>>;
+                Base -> <<(string:trim(Base, trailing, "/"))/binary, "/edge">>
+            end;
+        Url ->
+            Url
+    end.
+
+%% @doc V3-17：边缘 authorize 回调重放——票据 claims 重建 Params，走与
+%% content_stream **完全相同**的鉴权链（绑定门/ACL/status 门），通过后解析
+%% 精确 winner 并签短时 presign GET（仅回有界 URL，零正文）。撤权（成员
+%% 停用/资产删除/会话移交）在下一边缘请求即时生效。
+-spec edge_authorize_content(map()) -> {ok, binary()} | {error, term()}.
+edge_authorize_content(
+    #{
+        org_id := OrgId,
+        workspace_id := Ws,
+        asset_id := AssetId,
+        actor_kind := Kind,
+        actor_id := ActorId
+    } = Claims
+) ->
+    Params0 = #{workspace_id => Ws, asset_id => AssetId},
+    Params1 =
+        case Kind of
+            member -> Params0#{actor_user_id => ActorId};
+            contact -> Params0#{actor_contact_id => ActorId}
+        end,
+    Params =
+        case Claims of
+            #{conversation_id := Conv} -> Params1#{conversation_id => Conv};
+            _ -> Params1
+        end,
+    case content_args(Params) of
+        {error, _} = Err ->
+            Err;
+        {ok, Ws, AssetId, Actor} ->
+            Asset = port(Params, asset),
+            case Asset:fetch_asset(OrgId, Ws, AssetId) of
+                {ok, Row} ->
+                    case content_binding_gate(Row, Actor, Params) of
+                        ok ->
+                            Auth = port(Params, auth),
+                            Store = port(Params, store),
+                            RowConv = maps:get(conversation_id, Row, undefined),
+                            case authorize_actor(Auth, Store, OrgId, Ws, RowConv, Actor) of
+                                {error, _} = Err ->
+                                    Err;
+                                ok ->
+                                    case content_status_gate(OrgId, Ws, Row, Params) of
+                                        {ok, Row} -> edge_presign(Asset, OrgId, Ws, AssetId);
+                                        {error, _} = Err -> Err
+                                    end
+                            end;
+                        {error, _} = Err ->
+                            Err
+                    end;
+                {error, _} ->
+                    {error, not_found}
+            end
+    end.
+
+authorize_actor(Auth, Store, OrgId, Ws, Conv, #{kind := member, id := Id}) ->
+    eb_asset_scope:authorize(Auth, Store, OrgId, Ws, Conv, Id);
+authorize_actor(_Auth, Store, OrgId, Ws, Conv, #{kind := contact, id := Id}) ->
+    eb_asset_scope:authorize_contact(Store, OrgId, Ws, Conv, Id).
+
+edge_presign(Asset, OrgId, Ws, AssetId) ->
+    case Asset:download_location(OrgId, Ws, AssetId) of
+        {ok, I} ->
+            attachment_storage_garage:presign_snapshot(I, 600);
+        {error, Reason} ->
+            {error, {object_unreadable, Reason}}
+    end.
+
+%% （V3-17 起正文不再过 BEAM：原 content_verify 的全量字节复核随之退役；
+%% 内容完整性由存储侧 checksum proof 与 GC 复核链保证。）
 
 %% ===================================================================
 %% 5. cleanup：只回收「超时且未确认」的 pending 对象

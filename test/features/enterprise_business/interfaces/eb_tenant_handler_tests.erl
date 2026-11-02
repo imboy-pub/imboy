@@ -37,15 +37,17 @@ setup() ->
             try
                 Registry = eb_pg_test_fixture:install_asset_registry(),
                 {asset_stub, Previous, Registry, Result}
-            catch Class:Reason:Stack ->
-                try
-                    cleanup(Result)
-                after
-                    eb_pg_test_fixture:restore_asset_store(Previous)
-                end,
-                erlang:raise(Class, Reason, Stack)
+            catch
+                Class:Reason:Stack ->
+                    try
+                        cleanup(Result)
+                    after
+                        eb_pg_test_fixture:restore_asset_store(Previous)
+                    end,
+                    erlang:raise(Class, Reason, Stack)
             end;
-        _ -> Result
+        _ ->
+            Result
     end.
 
 setup_db() ->
@@ -778,19 +780,24 @@ a05_asset_content_end_to_end_through_http() ->
                     {<<"workspace_id">>, Ws}
                 ])
             ),
-            ?assertEqual(200, maps:get(status, Resp)),
-            %% ① 流式返回的字节 == 上传的字节（逐字节相等，不是「包含」）
-            ?assertEqual(Payload, maps:get(body, Resp)),
-            %% ② 白名单头 + 真值
+            %% V3-17：旧接口名=有界鉴权壳——302 到自家边缘（location 必含
+            %% edge 票据），正文由边缘 OS 进程承载（BEAM 零字节）。
+            ?assertEqual(302, maps:get(status, Resp)),
+            ?assertEqual(<<>>, maps:get(body, Resp)),
             Headers = maps:get(headers, Resp),
-            ?assertEqual(<<"text/plain">>, maps:get(<<"content-type">>, Headers)),
+            Location = maps:get(<<"location">>, Headers),
+            ?assert(is_binary(Location) andalso byte_size(Location) > 0),
+            %% 自家边缘票据 URL：非存储 presign（无 X-Amz- 签名特征、无
+            %% 存储直链 query）
+            ?assertEqual(nomatch, binary:match(Location, <<"X-Amz-">>)),
+            ?assertEqual(nomatch, binary:match(Location, <<"x-amz-">>)),
             ?assertEqual(<<"private, no-store">>, maps:get(<<"cache-control">>, Headers)),
             ?assertEqual(integer_to_binary(AssetId), maps:get(<<"x-asset-id">>, Headers)),
             ?assertEqual(Hash, maps:get(<<"x-asset-sha256">>, Headers)),
-            %% ④ 不是重定向、不签发 GET URL
-            ?assertNot(maps:is_key(<<"location">>, Headers)),
-            %% ③ 值层扫描：真派生 object key 与 key 前缀都不得出现在响应里
-            Raw = ?S:raw(Resp),
+            %% ③ 值层扫描：剥离自家 location 后全量深扫——真派生 object key
+            %% 与 key 前缀都不得出现在其余响应里（判据强度不降）
+            Raw0 = ?S:raw(Resp),
+            Raw = binary:replace(Raw0, Location, <<"">>, [global]),
             ?assertEqual(ok, eb_enterprise_http:storage_leak_scan(Raw)),
             ?assertEqual(
                 nomatch,
@@ -951,8 +958,13 @@ a05_asset_download_writes_no_personal_attachment() ->
                             {<<"workspace_id">>, Ws}
                         ])
                     ),
-                    ?assertEqual(200, maps:get(status, Resp)),
-                    ?assertEqual(Payload, maps:get(body, Resp))
+                    %% V3-17：302 边缘视图（逐请求签发新票据）；重复请求
+                    %% 幂等鉴权，不写个人 attachment 行的断言保持。
+                    ?assertEqual(302, maps:get(status, Resp)),
+                    ?assertEqual(<<>>, maps:get(body, Resp)),
+                    ?assert(
+                        is_binary(maps:get(<<"location">>, maps:get(headers, Resp)))
+                    )
                 end,
                 [1, 2, 3]
             )

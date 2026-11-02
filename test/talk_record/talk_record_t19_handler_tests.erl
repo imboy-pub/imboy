@@ -235,20 +235,32 @@ export_state_and_download_handler_test_() ->
         ?assert(is_binary(maps:get(<<"url">>, D))),
         Ticket = maps:get(<<"ticket">>, D),
 
-        %% 内容流：download?ticket= → 200 文本 + Content-Disposition
+        %% 内容流（V3-18 P3/EXC-2 边缘承载）：download?ticket= → 302 到边缘
+        %% /edge?ticket=<同一票据>；Location 不泄 storage endpoint/presign；
+        %% 正文由边缘 OS 进程承载（G18 gate 端到端覆盖字节流）。
+        ok = application:set_env(imboy, edge_base_url, <<"http://127.0.0.1:13991/edge">>),
         R3 = talk_record_handler:handle_action(
             export_download,
             req(#{method => <<"GET">>, bindings => Bind, qs => <<"ticket=", Ticket/binary>>}),
             #{current_uid => U1}
         ),
-        ?assertEqual(200, maps:get(response_status, R3)),
-        ?assert(binary:match(maps:get(response_body, R3), <<"handler 正文"/utf8>>) =/= nomatch),
-        %% meck reply 写 response_headers（与 set_resp_header 的 resp_headers 键区分）
+        ?assertEqual(302, maps:get(response_status, R3)),
         Hdrs = maps:get(response_headers, R3),
+        Loc = maps:get(<<"location">>, Hdrs),
+        ?assert(binary:match(Loc, <<"http://127.0.0.1:13991/edge?ticket=">>) =/= nomatch),
+        ?assert(binary:match(Loc, Ticket) =/= nomatch),
+        ?assert(binary:match(Loc, <<"X-Amz">>) =:= nomatch),
         ?assert(
             binary:match(maps:get(<<"content-disposition">>, Hdrs), <<"attachment">>) =/= nomatch
         ),
-        ?assertEqual(<<"text/plain; charset=utf-8">>, maps:get(<<"content-type">>, Hdrs)),
+        ok = application:unset_env(imboy, edge_base_url),
+        %% 边缘未配置 → fail-closed（不回退 BEAM 字节直出）
+        R3N = talk_record_handler:handle_action(
+            export_download,
+            req(#{method => <<"GET">>, bindings => Bind, qs => <<"ticket=", Ticket/binary>>}),
+            #{current_uid => U1}
+        ),
+        ?assert(lists:member(maps:get(response_status, R3N), [403, 410, 500, 503])),
 
         %% 他人票据 → 403（5561）
         R4 = talk_record_handler:handle_action(

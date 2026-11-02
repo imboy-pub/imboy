@@ -154,6 +154,9 @@ FEATURE_BACKEND_MODULES = {
         "cs_pg_token",
         "cs_platform_handler",
         "cs_presence",
+        # V3-27 子能力：坐席快捷回复（app 编排 + cs_pg_quick_reply Port）
+        "cs_quick_reply_app",
+        "cs_pg_quick_reply",
         "cs_ports",
         "cs_preflight_facts_pg",
         "cs_seat_app",

@@ -281,6 +281,19 @@ table(tenant) ->
         %% 门店开会话（T-2 后 org 显式在路径）：shop key 主体；contact/conversation
         %% 由门店集成方给出，session 只挂同一个 enterprise conversation（§5.2）。
         %% path org 由 cs_auth 用 shop key digest 同语句证明（跨 Org 必失败）。
+        %% V3-27 子能力：坐席快捷回复只读清单（workspace 必填；坐席作用域
+        %% assignment 由 application 复核——active org member + workspace 归属）。
+        {quick_replies,
+            entry(
+                [
+                    {<<"GET">>, quick_reply_seat_list, [{workspace_id, tsid, required}], [], #{
+                        clock_unit => second
+                    }}
+                ],
+                seat_auth(<<"conversation.read">>),
+                server_common() ++ [organization_id],
+                path
+            )},
         {session_queue,
             with_case_auth(
                 entry(
@@ -1057,6 +1070,55 @@ table(platform) ->
             platform_entry(
                 [{<<"POST">>, close, [{expected_version, int, required}], [{id, session_id}]}],
                 platform_auth(<<"customer_service:write">>)
+            )},
+        %% V3-27 子能力：快捷回复（合同 v3/specs/cs-quick-reply.md）。
+        %% 读 customer_service:read；写 POST/PUT/DELETE customer_service:write
+        %% （case_auth 分流）。organization_id 显式参数（param）、workspace_id
+        %% 必填（face 级门）；update/delete 的 :id 在路径（param_entry path id）。
+        {p_quick_replies,
+            with_case_auth(
+                platform_param_entry(
+                    [
+                        {<<"GET">>, quick_reply_page,
+                            [
+                                {workspace_id, tsid, required},
+                                {page, int, optional},
+                                {size, int, optional},
+                                {search, binary, optional}
+                            ],
+                            []},
+                        {<<"POST">>, quick_reply_create,
+                            [
+                                {workspace_id, tsid, required},
+                                {title, binary, required},
+                                {content, binary, required},
+                                {sort, int, optional}
+                            ],
+                            [], #{clock_unit => second}}
+                    ],
+                    platform_auth(<<"customer_service:read">>),
+                    []
+                ),
+                #{<<"POST">> => platform_auth(<<"customer_service:write">>)}
+            )},
+        %% PUT/DELETE 同路径双方法（合同 §2.3/§2.4；cowboy 按 path 匹配，
+        %% 本表按 method 分派 case）。
+        {p_quick_reply_mutate,
+            platform_param_entry(
+                [
+                    {<<"PUT">>, quick_reply_update,
+                        [
+                            {workspace_id, tsid, required},
+                            {title, binary, required},
+                            {content, binary, required},
+                            {sort, int, optional}
+                        ],
+                        [{id, id}], #{clock_unit => second}},
+                    {<<"DELETE">>, quick_reply_delete, [{workspace_id, tsid, required}], [{id, id}],
+                        #{clock_unit => second}}
+                ],
+                platform_auth(<<"customer_service:write">>),
+                [id]
             )},
         {p_widget_installations,
             with_case_auth(

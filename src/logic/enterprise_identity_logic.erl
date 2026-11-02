@@ -132,6 +132,7 @@ revoke_mapping_tx(Conn, Ctx, ExternalUserId) ->
                                 )
                             of
                                 ok ->
+                                    emit_mapping_changed(Conn, Ctx, null),
                                     {ok, #{
                                         <<"external_user_id">> => ExternalUserId,
                                         <<"status">> => <<"removed">>,
@@ -244,6 +245,7 @@ do_bind(Conn, Ctx, ExternalUserId, UserId) ->
                         )
                     of
                         ok ->
+                            emit_mapping_changed(Conn, Ctx, maps:get(<<"id">>, Row, null)),
                             {ok, mapping_view(Row)};
                         {error, Reason} ->
                             {error, {<<"internal_error">>, {audit, Reason}}}
@@ -286,6 +288,21 @@ audit_mutation(Conn, Ctx, Action, ResourceId, ExtraDetail) ->
         {ok, _AuditId} -> ok;
         {error, Reason} -> {error, Reason}
     end.
+
+%% V3-24 G-3：user.mapping.changed 与审计同事务 emit（bind/revoke 两挂点；
+%% 撤销事件行已软删 → resource.id=null，集成方以 external_user_id 关联——
+%% README §8 事件表已注明）。旁路语义不变：guard 拒/未订阅/无 principal
+%% 一律 skipped，绝不阻断映射主链。
+-spec emit_mapping_changed(any(), map(), term()) -> ok.
+emit_mapping_changed(Conn, Ctx, ResourceId) ->
+    CtxW = enterprise_webhook_logic:with_principal_tx(Conn, Ctx),
+    _ = enterprise_webhook_logic:emit_event_tx(
+        Conn,
+        CtxW,
+        <<"user.mapping.changed">>,
+        #{resource_type => <<"identity_mapping">>, resource_id => ResourceId}
+    ),
+    ok.
 
 -spec mapping_view(map()) -> map().
 mapping_view(Row) ->

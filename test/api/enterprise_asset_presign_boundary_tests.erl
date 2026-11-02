@@ -1,13 +1,14 @@
 %%% Handler boundary only: transaction/provider are doubles, not HTTP acceptance.
+%%% V3-14 S3-only：签发面 = attachment_storage:session_location +
+%%% presign_put_snapshot（s3_put descriptor）；无 JWT 能力、无网关正文路径。
 -module(enterprise_asset_presign_boundary_tests).
 -include_lib("eunit/include/eunit.hrl").
 
 postcommit_test_() ->
     {foreach, fun setup/0, fun cleanup/1, [
-        fun absolute_gateway/0,
-        fun missing_base/0,
-        fun invalid_base/0,
-        fun unknown_location/0,
+        fun direct_put_descriptor/0,
+        fun location_unavailable/0,
+        fun presign_failure/0,
         fun legacy_cached_url/0,
         fun fresh_registration/0,
         fun governance_null_times/0,
@@ -34,7 +35,7 @@ setup() ->
         enterprise_internal_boundary,
         enterprise_asset_logic,
         enterprise_asset_retention_logic,
-        imboy_jwt
+        attachment_storage
     ],
     try
         [meck:new(M, [no_link]) || M <- Modules],
@@ -59,7 +60,9 @@ setup() ->
             <<"organization_boundary_violation">>
         end),
         meck:expect(enterprise_asset_logic, presign_recovery_tx, fun(_, _, _) -> {ok, reg()} end),
-        meck:expect(imboy_jwt, issue_upload_capability, fun(_, _, _) -> {ok, <<"cap">>} end),
+        meck:expect(attachment_storage, presign_put_snapshot, fun(_I, _Mime, _Ttl) ->
+            {ok, <<"http://s3.example.invalid/fixture/fixture/key?X-Amz-Signature=stub">>}
+        end),
         application:set_env(imboy, base_url, <<"https://files.example.invalid/">>),
         {Modules, Prior}
     catch
@@ -83,7 +86,13 @@ reg() ->
         <<"bucket">> => <<"fixture">>,
         <<"object_key">> => <<"fixture/key">>,
         <<"mime_type">> => <<"text/plain">>,
-        <<"expires_at">> => 9999999999
+        <<"expires_at">> => 9999999999,
+        <<"storage_snapshot">> => #{
+            driver => garage,
+            container => <<"fixture">>,
+            key => <<"fixture/key">>,
+            endpoint => <<"http://s3.example.invalid">>
+        }
     }.
 replay(Body) ->
     meck:expect(enterprise_internal_idempotency, begin_tx, fun(_, _, _, _, _) ->
@@ -98,40 +107,47 @@ assert_error(Status, Code, R) ->
     B = jsone:decode(maps:get(body, R)),
     ?assertEqual(Code, maps:get(<<"code">>, maps:get(<<"error">>, B))),
     ?assertNot(maps:is_key(<<"put_url">>, B)),
-    ?assertNot(maps:is_key(<<"upload_capability">>, B)),
+    ?assertNot(maps:is_key(<<"upload">>, B)),
     B.
-absolute_gateway() ->
+direct_put_descriptor() ->
     R = replay(reg()),
     ?assertEqual(200, maps:get(status, R)),
-    #{<<"put_url">> := Url} = jsone:decode(maps:get(body, R)),
-    ?assertMatch(<<"https://files.example.invalid/api/v1/attachment/gateway/", _/binary>>, Url),
+    #{
+        <<"put_url">> := Url,
+        <<"upload">> := #{
+            <<"transport">> := <<"s3_put">>,
+            <<"method">> := <<"PUT">>,
+            <<"url">> := Url,
+            <<"required_headers">> := #{<<"Content-Type">> := <<"text/plain">>}
+        }
+    } = jsone:decode(maps:get(body, R)),
+    %% S3-only：无受控网关正文路径、无 JWT upload 能力、凭据快照不泄漏
+    Body = jsone:decode(maps:get(body, R)),
+    ?assertNot(maps:is_key(<<"gateway">>, Body)),
+    ?assertNot(maps:is_key(<<"upload_capability">>, Body)),
+    ?assertNot(maps:is_key(<<"storage_snapshot">>, Body)),
     ?assertEqual(<<"no-store">>, maps:get(<<"cache-control">>, maps:get(headers, R))),
     ?assertEqual(1, meck:num_calls(enterprise_internal_boundary, enforce, '_')),
-    ?assertEqual(1, meck:num_calls(enterprise_asset_logic, presign_recovery_tx, '_')).
-missing_base() ->
-    application:unset_env(imboy, base_url),
-    assert_error(503, <<"security_gate_closed">>, replay(reg())),
-    ?assertEqual(0, meck:num_calls(imboy_jwt, issue_upload_capability, '_')).
-invalid_base() ->
-    lists:foreach(
-        fun(Base) ->
-            application:set_env(imboy, base_url, Base),
-            assert_error(503, <<"security_gate_closed">>, replay(reg()))
-        end,
-        [<<"files.internal">>, <<"/files">>, <<"ftp://files.invalid">>]
-    ),
-    ?assertEqual(0, meck:num_calls(imboy_jwt, issue_upload_capability, '_')).
-unknown_location() ->
+    ?assertEqual(1, meck:num_calls(enterprise_asset_logic, presign_recovery_tx, '_')),
+    ?assertEqual(1, meck:num_calls(attachment_storage, presign_put_snapshot, '_')).
+location_unavailable() ->
+    %% 恢复视图未携带已验证位置快照（位置漂移/历史行）→ 无能力签发
     meck:expect(enterprise_asset_logic, presign_recovery_tx, fun(_, _, _) ->
-        {error, {<<"resource_conflict">>, recovery_unverified}}
+        {ok, maps:remove(<<"storage_snapshot">>, reg())}
     end),
-    assert_error(409, <<"resource_conflict">>, replay(reg())),
-    ?assertEqual(0, meck:num_calls(imboy_jwt, issue_upload_capability, '_')).
+    assert_error(503, <<"security_gate_closed">>, replay(reg())),
+    ?assertEqual(0, meck:num_calls(attachment_storage, presign_put_snapshot, '_')).
+presign_failure() ->
+    meck:expect(attachment_storage, presign_put_snapshot, fun(_I, _Mime, _Ttl) ->
+        {error, signing_failed}
+    end),
+    assert_error(503, <<"security_gate_closed">>, replay(reg())),
+    ?assertEqual(1, meck:num_calls(attachment_storage, presign_put_snapshot, '_')).
 legacy_cached_url() ->
     assert_error(
         409, <<"resource_conflict">>, replay(#{<<"put_url">> => <<"https://old.invalid/unsafe">>})
     ),
-    ?assertEqual(0, meck:num_calls(imboy_jwt, issue_upload_capability, '_')).
+    ?assertEqual(0, meck:num_calls(attachment_storage, presign_put_snapshot, '_')).
 fresh_registration() ->
     %% 无 client_upload_id 的旧调用方也先登记 V5 稳定会话，不返回裸 PUT URL。
     inserted(),
@@ -225,7 +241,7 @@ governance_response(PurgedAt, ExtendedUntil, RetentionUntil) ->
 transaction_failure() ->
     meck:expect(elib_pg, with_tx, fun(_) -> {rollback, fixture_failure} end),
     assert_error(500, <<"internal_error">>, invoke()),
-    ?assertEqual(0, meck:num_calls(imboy_jwt, issue_upload_capability, '_')).
+    ?assertEqual(0, meck:num_calls(attachment_storage, presign_put_snapshot, '_')).
 confirmed_no_capability() ->
     Confirmed = #{
         <<"file_id">> => 42,
@@ -241,13 +257,13 @@ confirmed_no_capability() ->
     ?assertEqual(200, maps:get(status, R)),
     ?assertEqual(Confirmed, jsone:decode(maps:get(body, R))),
     ?assertEqual(<<"no-store">>, maps:get(<<"cache-control">>, maps:get(headers, R))),
-    ?assertEqual(0, meck:num_calls(imboy_jwt, issue_upload_capability, '_')).
+    ?assertEqual(0, meck:num_calls(attachment_storage, presign_put_snapshot, '_')).
 terminal_conflict() ->
     meck:expect(enterprise_asset_logic, presign_recovery_tx, fun(_, _, _) ->
         {error, {<<"resource_conflict">>, session_not_renewable}}
     end),
     assert_error(409, <<"resource_conflict">>, replay(reg())),
-    ?assertEqual(0, meck:num_calls(imboy_jwt, issue_upload_capability, '_')).
+    ?assertEqual(0, meck:num_calls(attachment_storage, presign_put_snapshot, '_')).
 expired_recovery() ->
     meck:expect(enterprise_asset_logic, presign_recovery_tx, fun(_, _, _) ->
         {error, {<<"gone">>, session_expired}}
@@ -257,21 +273,21 @@ expired_recovery() ->
     ?assertEqual(<<"reupload_required">>, maps:get(<<"retry_action">>, B)),
     ?assertEqual(false, maps:get(<<"can_resume">>, B)),
     ?assertEqual(<<"no-store">>, maps:get(<<"cache-control">>, maps:get(headers, R))),
-    ?assertEqual(0, meck:num_calls(imboy_jwt, issue_upload_capability, '_')).
+    ?assertEqual(0, meck:num_calls(attachment_storage, presign_put_snapshot, '_')).
 recovery_unavailable() ->
     meck:expect(enterprise_asset_logic, presign_recovery_tx, fun(_, _, _) ->
         {error, {<<"security_gate_closed">>, recovery_unavailable}}
     end),
     B = assert_error(503, <<"security_gate_closed">>, replay(reg())),
     ?assertEqual(<<"retry_same_id">>, maps:get(<<"retry_action">>, B)),
-    ?assertEqual(0, meck:num_calls(imboy_jwt, issue_upload_capability, '_')).
+    ?assertEqual(0, meck:num_calls(attachment_storage, presign_put_snapshot, '_')).
 authorization_revoked() ->
     meck:expect(enterprise_internal_boundary, enforce, fun(_, _, _, _) ->
         {error, organization_boundary_violation}
     end),
     assert_error(403, <<"organization_boundary_violation">>, replay(reg())),
     ?assertEqual(0, meck:num_calls(enterprise_asset_logic, presign_recovery_tx, '_')),
-    ?assertEqual(0, meck:num_calls(imboy_jwt, issue_upload_capability, '_')).
+    ?assertEqual(0, meck:num_calls(attachment_storage, presign_put_snapshot, '_')).
 recovery_commit_unknown() ->
     meck:expect(elib_pg, with_tx, fun(F) ->
         case get(recovery_tx_seen) of
@@ -284,4 +300,4 @@ recovery_commit_unknown() ->
         end
     end),
     assert_error(503, <<"security_gate_closed">>, replay(reg())),
-    ?assertEqual(1, meck:num_calls(imboy_jwt, issue_upload_capability, '_')).
+    ?assertEqual(1, meck:num_calls(attachment_storage, presign_put_snapshot, '_')).

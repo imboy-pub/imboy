@@ -50,6 +50,9 @@
     emit_event_tx/4,
     emit_event_failed/4,
     emit_ping_tx/2,
+    emit_delivered_for/2,
+    emit_read_for/1,
+    emit_cs_session_changed/2,
     execute_delivery/1,
     deliveries_tx/4,
     delivery_stats_tx/2,
@@ -65,7 +68,16 @@
 -define(EVENTS_WHITELIST, [
     <<"message.enterprise.accepted">>,
     <<"message.enterprise.failed">>,
+    %% V3-24 新增：收件端 ACK（企业托管行；Human 消息零外发）
+    <<"message.enterprise.delivered">>,
+    %% V3-24 新增：收件人已读（企业托管行）
+    <<"message.enterprise.read">>,
+    %% V3-24 补生产者（枚举此前已预留）
     <<"group.member.changed">>,
+    %% V3-24 新增：bind/revoke + member active<->suspended
+    <<"user.mapping.changed">>,
+    %% V3-24 新增：CS 会话迁移/转接/评分（resource.type=cs_session 细分）
+    <<"cs.session.changed">>,
     <<"file.confirmed">>
 ]).
 
@@ -467,6 +479,178 @@ emit_event_failed(Ctx, EventType, Resource, ReasonCode) ->
 -spec ping_event_type() -> binary().
 ping_event_type() ->
     ?EVENT_PING.
+
+%% ===================================================================
+%% V3-24 G-4：delivered / read 事件（企业托管行归属解析）
+%% ===================================================================
+%%
+%% 挂点在 Human WS 路径（msg_ack_logic / msg_c2c_logic / msg_c2g_logic），
+%% 调用栈无企业 Ctx——归属解析硬条件（SPEC P0-G4 / 不扩散边界 3）：
+%%   * 以消息业务 ID 回查 enterprise_message_origin；**无 origin 行即
+%%     非 Enterprise 托管行（Human/E2EE）→ skip，零外发**；
+%%   * origin.application_id 恒非空（DB CHECK），重建 emit Ctx 后走
+%%     emit_event_tx 常规链（订阅∩白名单→skipped / guard 拒→skipped）；
+%%   * 独立小事务（emit_event_failed 同款），失败只留日志不阻断 ACK/已读主链；
+%%   * accepted/delivered/read 三层语义不混淆（不扩散边界 2）。
+
+%% @doc message.enterprise.delivered：收件端 ACK 后调用（MsgTable 为
+%% msg_c2c | msg_c2g；s2c/c2s 等非业务表由调用方/本函数直接 skip——
+%% 企业托管只写 c2c/c2g）。恒返回 ok。
+-spec emit_delivered_for(binary(), binary()) -> ok.
+emit_delivered_for(MsgTable, MsgId) when MsgTable =:= <<"msg_c2c">>; MsgTable =:= <<"msg_c2g">> ->
+    Fun = fun(Conn) ->
+        case enterprise_message_origin_repo:find_by_msg_id_tx(Conn, MsgId) of
+            {ok, Origin} ->
+                case origin_ctx(Conn, Origin) of
+                    {ok, Ctx} ->
+                        _ = emit_event_tx(
+                            Conn,
+                            Ctx,
+                            <<"message.enterprise.delivered">>,
+                            #{
+                                resource_type => MsgTable,
+                                resource_id => maps:get(<<"msg_row_id">>, Origin)
+                            }
+                        ),
+                        ok;
+                    error ->
+                        ok
+                end;
+            {error, not_found} ->
+                %% 非 Enterprise 托管行：Human 消息零外发（硬条件）。
+                ok;
+            {error, Reason} ->
+                ?WARN_LOG("[V3-24] delivered origin lookup failed: ~p~n", [Reason]),
+                ok
+        end
+    end,
+    side_effect_tx(Fun, delivered);
+emit_delivered_for(_OtherTable, _MsgId) ->
+    ok.
+
+%% @doc message.enterprise.read：已读上报成功后调用（MsgIds 为被读消息业务
+%% ID 批量；逐条归属解析，非托管行静默跳过）。恒返回 ok。
+-spec emit_read_for([binary()]) -> ok.
+emit_read_for(MsgIds) when is_list(MsgIds) ->
+    Fun = fun(Conn) ->
+        lists:foreach(
+            fun(MsgId) ->
+                case enterprise_message_origin_repo:find_by_msg_id_tx(Conn, MsgId) of
+                    {ok, Origin} ->
+                        case origin_ctx(Conn, Origin) of
+                            {ok, Ctx} ->
+                                _ = emit_event_tx(
+                                    Conn,
+                                    Ctx,
+                                    <<"message.enterprise.read">>,
+                                    #{
+                                        resource_type => origin_resource_type(Origin),
+                                        resource_id => maps:get(<<"msg_row_id">>, Origin)
+                                    }
+                                ),
+                                ok;
+                            error ->
+                                ok
+                        end;
+                    {error, not_found} ->
+                        ok;
+                    {error, Reason} ->
+                        ?WARN_LOG("[V3-24] read origin lookup failed: ~p~n", [Reason]),
+                        ok
+                end
+            end,
+            MsgIds
+        )
+    end,
+    side_effect_tx(Fun, read);
+emit_read_for(_) ->
+    ok.
+
+%% origin 行 → emit Ctx（org/app/principal）。principal 缺失 → emit_event_tx
+%% 会按 skipped 旁路（此处只组装，不做硬失败）。
+origin_ctx(Conn, Origin) ->
+    OrgId = maps:get(<<"organization_id">>, Origin, undefined),
+    AppId = maps:get(<<"application_id">>, Origin, undefined),
+    case is_integer(OrgId) andalso is_integer(AppId) of
+        true ->
+            Ctx0 = #{organization_id => OrgId, application_id => AppId},
+            {ok, with_principal_tx(Conn, Ctx0)};
+        false ->
+            error
+    end.
+
+%% conversation_kind → 信封 resource.type（与 accepted 同一 msg 表命名空间）。
+origin_resource_type(Origin) ->
+    case maps:get(<<"conversation_kind">>, Origin, <<"direct">>) of
+        <<"group">> -> <<"msg_c2g">>;
+        <<"channel">> -> <<"msg_channel">>;
+        _ -> <<"msg_c2c">>
+    end.
+
+%% 独立小事务执行（fail-safe：crash 只留日志，不影响 ACK/已读主链）。
+side_effect_tx(Fun, Kind) ->
+    try
+        ok = elib_pg:with_tx(Fun),
+        ok
+    catch
+        Class:Reason ->
+            ?ERROR_LOG("[V3-24] ~p webhook side-effect crash ~p:~p~n", [Kind, Class, Reason]),
+            ok
+    end.
+
+%% ===================================================================
+%% V3-24 G-5：客服事件（org 作用域归属决策）
+%% ===================================================================
+%%
+%% 挂点 = cs_app_support:append_event 成功后（审计落行同事务处的后续动作）。
+%% 归属决策（SPEC §5 最小实现）：org 下全部 active 且有 principal 的
+%% Application 逐个走 emit_event_tx（该 principal bot 行的订阅判定）；
+%% 无 active Application 即 skip。失败只留日志（旁路纪律不变）。
+
+%% @doc cs.session.changed：OrgId 为会话归属组织，Event 为 CS 审计事件 map
+%% （session_id/business_identity_id 等键）。恒返回 ok。
+-spec emit_cs_session_changed(integer(), map()) -> ok.
+emit_cs_session_changed(OrgId, Event) when is_integer(OrgId), is_map(Event) ->
+    SessionId = maps:get(session_id, Event, maps:get(<<"session_id">>, Event, null)),
+    Fun = fun(Conn) ->
+        case active_apps_by_org_tx(Conn, OrgId) of
+            {ok, Apps} ->
+                lists:foreach(
+                    fun(#{<<"id">> := AppId, <<"principal_user_id">> := P}) ->
+                        Ctx = #{
+                            organization_id => OrgId,
+                            application_id => AppId,
+                            principal_user_id => P
+                        },
+                        _ = emit_event_tx(
+                            Conn,
+                            Ctx,
+                            <<"cs.session.changed">>,
+                            #{resource_type => <<"cs_session">>, resource_id => SessionId}
+                        ),
+                        ok
+                    end,
+                    Apps
+                ),
+                ok;
+            {error, Reason} ->
+                ?WARN_LOG("[V3-24] cs session apps lookup failed: ~p~n", [Reason]),
+                ok
+        end
+    end,
+    side_effect_tx(Fun, cs_session);
+emit_cs_session_changed(_OrgId, _Event) ->
+    ok.
+
+%% org 下 active 且 principal 可用的 Application 列表（归属决策真源）。
+active_apps_by_org_tx(Conn, OrgId) ->
+    Sql =
+        <<
+            "SELECT id, principal_user_id FROM enterprise_application"
+            " WHERE organization_id = $1 AND status = 'active'"
+            " AND principal_user_id IS NOT NULL"
+        >>,
+    elib_pg:query(Conn, Sql, [OrgId]).
 
 %% @doc INT-32 测试投递：向当前已配置且 enabled 的出站端点投递一条合成
 %% webhook.ping 事件（v1.1.1 追加）。与 emit_event_tx 的三点差异构成独立

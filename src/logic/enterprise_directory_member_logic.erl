@@ -80,6 +80,9 @@ change(C, Ctx, Row, Key, Body) ->
         end,
     must(enterprise_directory_member_repo:remember_tx(C, App, Org, External, Marker)),
     must(audit(C, Ctx, User, From, To)),
+    %% V3-24 G-3：成员停启用影响映射可用性 → user.mapping.changed 与审计
+    %% 同事务 emit（resource_type=enterprise_member；旁路语义不变）。
+    emit_member_changed(C, Ctx, User),
     %% Recheck live authority even on long transactions. A replay also enters
     %% through target/6, so revoked source/credential/grant never replays data.
     _ = must(
@@ -194,6 +197,19 @@ audit(C, Ctx, User, From, To) ->
             <<"to_status">> => To
         }
     }).
+
+%% V3-24 G-3：成员停启用（active<->suspended）改变映射可用性 → 与审计同
+%% 事务 emit user.mapping.changed（resource_type=enterprise_member）。旁路
+%% 语义不变：guard 拒/未订阅/无 principal 一律 skipped，不阻断主链。
+emit_member_changed(C, Ctx, User) ->
+    CtxW = enterprise_webhook_logic:with_principal_tx(C, Ctx),
+    _ = enterprise_webhook_logic:emit_event_tx(
+        C,
+        CtxW,
+        <<"user.mapping.changed">>,
+        #{resource_type => <<"enterprise_member">>, resource_id => User}
+    ),
+    ok.
 
 validate(Mode, Input) when is_map(Input) ->
     try

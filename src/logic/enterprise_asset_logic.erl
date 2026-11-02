@@ -302,6 +302,9 @@ recover_registered(Cached, Row, Expiry, Deadline) ->
     Key = maps:get(<<"object_key">>, Row),
     case attachment_storage:frozen_location(Key, Row) of
         {ok, Snapshot} when is_map(Snapshot) ->
+            %% storage_snapshot：同一锁域内已验证的冻结位置快照（含凭据），
+            %% 仅供 handler 在本事务内签发 s3_put 直传 descriptor 使用，
+            %% 绝不进入 JSON 响应（响应前由 handler 剥离）。
             Stable = #{
                 <<"object_key">> => Key,
                 <<"bucket">> => maps:get(<<"bucket">>, Row),
@@ -309,7 +312,8 @@ recover_registered(Cached, Row, Expiry, Deadline) ->
                 <<"session_state">> => <<"registered">>,
                 <<"client_upload_id">> => maps:get(<<"client_upload_id">>, Row),
                 <<"session_deadline">> => Deadline,
-                <<"expires_at">> => Expiry
+                <<"expires_at">> => Expiry,
+                <<"storage_snapshot">> => Snapshot
             },
             case maps:get(<<"renew">>, Cached, false) of
                 true -> {ok, Stable#{<<"renew">> => true, <<"deadline">> => Deadline}};
@@ -423,13 +427,22 @@ confirm_tx(Conn, Ctx, Input) when is_map(Input) ->
     AppId = maps:get(application_id, Ctx),
     ObjectKey = maps:get(object_key, Input, undefined),
     Hash = maps:get(file_hash256, Input, undefined),
-    case
-        is_binary(ObjectKey) andalso ObjectKey =/= <<>> andalso
-            enterprise_asset_repo:owned_key(ObjectKey, OrgId, AppId) andalso
-            valid_hash(Hash)
-    of
+    case is_binary(ObjectKey) andalso ObjectKey =/= <<>> andalso valid_hash(Hash) of
         true ->
-            confirm_owned(Conn, Ctx, ObjectKey, Hash);
+            %% 两级裁决（V3-14 同体不可见）：企业域格式坏 → invalid_request；
+            %% 格式好但不属于本 (org, app) → resource_not_found（不泄露
+            %% key 是否存在/归属）。
+            case enterprise_asset_repo:well_formed_key(ObjectKey) of
+                false ->
+                    {error, {<<"invalid_request">>, invalid_confirm_input}};
+                true ->
+                    case enterprise_asset_repo:owned_key(ObjectKey, OrgId, AppId) of
+                        true ->
+                            confirm_owned(Conn, Ctx, ObjectKey, Hash);
+                        false ->
+                            {error, {<<"resource_not_found">>, key_not_visible}}
+                    end
+            end;
         false ->
             {error, {<<"invalid_request">>, invalid_confirm_input}}
     end;
@@ -628,40 +641,40 @@ confirm_v5_link_tx(Conn, ObjectKey, AttId, Sha256, RealSize, StatCtx) ->
             case pin_of_session(Session) of
                 #{<<"sha256">> := PinSha, <<"size_bytes">> := PinSize} ->
                     case PinSha =:= Sha256 andalso ec_cnv:to_integer(PinSize) =:= RealSize of
-                        true ->
-                            %% 锁后二次 stat 复核（W2-02）：首 stat（读字节前
-                            %% head）与此刻不一致即对象在 GET 与提交之间被覆写/
-                            %% 删除——复用现有 content_hash_mismatch 拒绝形状
-                            %% （with_idempotency 回滚），不留成功口。stat 不可得
-                            %% 同样拒绝（fail-closed）；对象删后 tombstone 语义
-                            %% 不变：入口 not_found 仍在 confirm_head_v5 返回。
-                            case storage_stat_unchanged(StatCtx) of
-                                true ->
-                                    case
-                                        attach_pending_repo:confirm_session_tx(
-                                            Conn, ObjectKey, AttId
-                                        )
-                                    of
-                                        {ok, AttId} ->
-                                            ok;
-                                        {ok, _OtherId} ->
-                                            {error, {<<"resource_conflict">>, confirm_id_mismatch}};
-                                        {error, confirm_conflict} ->
-                                            {error, {<<"resource_conflict">>, confirm_conflict}};
-                                        {error, Reason} ->
-                                            {error, {<<"internal_error">>, Reason}}
-                                    end;
-                                false ->
-                                    {error, {<<"invalid_request">>, content_hash_mismatch}}
-                            end;
-                        false ->
-                            {error, {<<"invalid_request">>, content_hash_mismatch}}
+                        true -> confirm_v5_stat_and_link(Conn, ObjectKey, AttId, StatCtx);
+                        false -> {error, {<<"invalid_request">>, content_hash_mismatch}}
                     end;
                 _ ->
-                    {error, {<<"invalid_request">>, content_not_pinned}}
+                    %% V3-14 S3-only 直传会话：OA 后端本人 PUT 对象存储，无受控
+                    %% 网关 pin receipt。裁决依据=事务内真实读流（frozen 位置
+                    %% 校验 + 首 stat 基线 + GET 全量读 + sha256，confirm_head_v5
+                    %% 已完成）+ 锁后 stat 复核——对象存储真值裁决，严于网关
+                    %% 自证 pin 对照；复核不过同样 content_hash_mismatch 拒绝。
+                    confirm_v5_stat_and_link(Conn, ObjectKey, AttId, StatCtx)
             end;
         {error, Reason} ->
             {error, {<<"internal_error">>, Reason}}
+    end.
+
+%% 锁后二次 stat 复核（W2-02）：首 stat（读字节前 head）与此刻不一致即对象
+%% 在 GET 与提交之间被覆写/删除——复用现有 content_hash_mismatch 拒绝形状
+%% （with_idempotency 回滚），不留成功口。stat 不可得同样拒绝（fail-closed）；
+%% 对象删后 tombstone 语义不变：入口 not_found 仍在 confirm_head_v5 返回。
+confirm_v5_stat_and_link(Conn, ObjectKey, AttId, StatCtx) ->
+    case storage_stat_unchanged(StatCtx) of
+        true ->
+            case attach_pending_repo:confirm_session_tx(Conn, ObjectKey, AttId) of
+                {ok, AttId} ->
+                    ok;
+                {ok, _OtherId} ->
+                    {error, {<<"resource_conflict">>, confirm_id_mismatch}};
+                {error, confirm_conflict} ->
+                    {error, {<<"resource_conflict">>, confirm_conflict}};
+                {error, Reason} ->
+                    {error, {<<"internal_error">>, Reason}}
+            end;
+        false ->
+            {error, {<<"invalid_request">>, content_hash_mismatch}}
     end.
 
 %% 锁后二次 stat：与首 stat（读字节前 head）对照同一冻结 snapshot I。

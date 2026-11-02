@@ -35,13 +35,18 @@ direct_session_port_delegation_test_() ->
                 {ok, eb_asset_store} = eb_infra_ports:resolve(asset),
                 lists:foreach(
                     fun({RowResult, Expected}) ->
-                        ok = meck:expect(eb_pg_asset_meta, direct_session_row,
+                        ok = meck:expect(
+                            eb_pg_asset_meta,
+                            direct_session_row,
                             fun(K) ->
                                 ?assertEqual(Key, K),
                                 RowResult
-                            end),
-                        ?assertEqual(Expected,
-                            eb_asset_direct:scan_confirmed(Key, <<"image/png">>, <<"sec">>, 1000))
+                            end
+                        ),
+                        ?assertEqual(
+                            Expected,
+                            eb_asset_direct:scan_confirmed(Key, <<"image/png">>, <<"sec">>, 1000)
+                        )
                     end,
                     [
                         {{ok, #{<<"direct_state">> => <<"REGISTERED">>}}, {error, not_confirmed}},
@@ -180,38 +185,40 @@ eb_chain_to_confirmed(Bin) ->
 %% ---------------------------------------------------------------- cases
 
 eb_full_chain_and_worker_scan() ->
+    %% V3-17：scan_confirmed 已切外部 OS Worker（正文零过 BEAM）——本用例
+    %% mock Worker port 返回真签发 receipt（规则/摘要语义由
+    %% attachment_worker_port_gate.sh 真 Garage 端到端锁定）。
     Bin = sample(<<"image/png">>),
     {Key, Sha, Size} = eb_chain_to_confirmed(Bin),
-    %% 受控读 mock：presign 产 URL；httpc Range 分块（模拟 Garage 分块读合同）
-    ok = meck:new(attachment_storage_garage, [passthrough, no_link]),
+    ok = meck:new(attachment_worker_port, [no_link]),
     ok = meck:expect(
-        attachment_storage_garage,
-        presign_snapshot,
-        2,
-        fun(_I, _T) -> {ok, <<"http://mock/get">>} end
-    ),
-    ok = meck:new(httpc, [no_link]),
-    ok = meck:expect(httpc, request, 4, fun(get, {_U, Headers}, _Opts, _ClientOpts) ->
-        Range = proplists:get_value("range", Headers),
-        <<"bytes=", RangeRest/binary>> = list_to_binary(Range),
-        [FromS, ToS] = binary:split(RangeRest, <<"-">>, [global]),
-        From = binary_to_integer(FromS),
-        To = binary_to_integer(ToS),
-        case From >= byte_size(Bin) of
-            true ->
-                {ok, {{"HTTP/1.1", 416, "Range Not Satisfiable"}, [], <<>>}};
-            false ->
-                End = min(To, byte_size(Bin) - 1),
-                Slice = binary:part(Bin, From, End - From + 1),
-                {ok, {{"HTTP/1.1", 206, "Partial Content"}, [], Slice}}
+        attachment_worker_port,
+        scan_external,
+        fun(Task) ->
+            AttemptKey = maps:get(attempt_key, Task),
+            Receipt = attachment_content_receipt:issue(
+                #{
+                    attempt_key => AttemptKey,
+                    object_key => maps:get(object_key, Task),
+                    sha256 => Sha,
+                    size => Size,
+                    mime => <<"image/png">>,
+                    verdict => <<"pass">>
+                },
+                maps:get(secret, Task)
+            ),
+            {ok, #{sha256 => Sha, size => Size, receipt => Receipt, verified => true}}
         end
-    end),
+    ),
     R =
         try
-            eb_asset_direct:scan_confirmed(Key, <<"image/png">>, <<"sec">>, 60000)
+            Res = eb_asset_direct:scan_confirmed(Key, <<"image/png">>, <<"sec">>, 60000),
+            %% validate 必须在 unload 之前（unload 后模块非 mock 态，
+            %% validate 会抛 {not_mocked, _}——顺序修正）
+            ?assert(meck:validate(attachment_worker_port)),
+            Res
         after
-            meck:unload(httpc),
-            meck:unload(attachment_storage_garage)
+            meck:unload(attachment_worker_port)
         end,
     ?assertMatch({ok, #{verified := true, sha256 := Sha, size := Size}}, R),
     ok.

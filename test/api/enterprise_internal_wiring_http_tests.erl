@@ -952,34 +952,29 @@ assert_registered_presign_replay(C, First, Replay) ->
     B = assert_ok_json(Replay),
     ?assertEqual(<<"registered">>, maps:get(<<"session_state">>, B)),
     ?assertEqual(
-        maps:without([<<"put_url">>, <<"upload_capability">>], A),
-        maps:without([<<"put_url">>, <<"upload_capability">>], B)
+        maps:without([<<"put_url">>, <<"upload">>], A),
+        maps:without([<<"put_url">>, <<"upload">>], B)
     ),
-    {ok, ClaimsA} = imboy_jwt:verify_upload_capability(maps:get(<<"upload_capability">>, A)),
-    {ok, ClaimsB} = imboy_jwt:verify_upload_capability(maps:get(<<"upload_capability">>, B)),
-    ?assertEqual(maps:remove(<<"iat">>, ClaimsA), maps:remove(<<"iat">>, ClaimsB)),
-    ?assert(maps:get(<<"iat">>, ClaimsB) >= maps:get(<<"iat">>, ClaimsA)),
-    ?assert(maps:get(<<"iat">>, ClaimsB) =< erlang:system_time(second)),
     lists:foreach(
-        fun({Response, View, Claims}) ->
+        fun({Response, View}) ->
             ?assertEqual(
                 <<"no-store">>, intbe02_http_support:json_header_val(Response, <<"cache-control">>)
             ),
-            ?assertEqual(<<"upload">>, maps:get(<<"aud">>, Claims)),
-            ?assertEqual(<<"upload">>, maps:get(<<"sub">>, Claims)),
-            ?assertEqual(maps:get(<<"object_key">>, View), maps:get(<<"key">>, Claims)),
-            ?assertEqual(maps:get(<<"mime_type">>, View), maps:get(<<"mime">>, Claims)),
-            ?assertEqual(maps:get(<<"expires_at">>, View), maps:get(<<"exp">>, Claims)),
-            Prefix =
-                <<"http://intbe02.invalid/api/v1/attachment/gateway/",
-                    (maps:get(<<"client_upload_id">>, View))/binary, "?capability=">>,
-            %% Boolean assertion avoids printing a signed URL if this check fails.
-            ?assert(
-                maps:get(<<"put_url">>, View) =:=
-                    <<Prefix/binary, (maps:get(<<"upload_capability">>, View))/binary>>
-            )
+            %% V3-14 S3-only：无受控网关正文路径、无 JWT upload 能力
+            ?assertNot(maps:is_key(<<"gateway">>, View)),
+            ?assertNot(maps:is_key(<<"upload_capability">>, View)),
+            #{<<"transport">> := <<"s3_put">>, <<"method">> := <<"PUT">>} =
+                Upload = maps:get(<<"upload">>, View),
+            Url = maps:get(<<"url">>, Upload),
+            ?assertEqual(Url, maps:get(<<"put_url">>, View)),
+            ?assertNotEqual(
+                nomatch,
+                binary:match(Url, <<"http://intbe02-s3.invalid/intbe02-synthetic/">>)
+            ),
+            ?assertNotEqual(nomatch, binary:match(Url, <<"X-Amz-Signature">>)),
+            #{<<"Content-Type">> := _Mime} = maps:get(<<"required_headers">>, Upload)
         end,
-        [{First, A, ClaimsA}, {Replay, B, ClaimsB}]
+        [{First, A}, {Replay, B}]
     ),
     ?assertEqual(
         <<"true">>, intbe02_http_support:json_header_val(Replay, <<"idempotent-replayed">>)
@@ -1011,8 +1006,8 @@ assert_confirmed_presign_replay(C, First, Replay, ConfirmedId) ->
     assert_presign_window(C, A),
     Key = maps:get(<<"object_key">>, A),
     ?assertEqual(maps:get(test_storage_identity, First), presign_session_identity(C, Key)),
-    {ok, #{driver := disk} = Frozen} = attachment_storage:session_location(Key),
-    {ok, Bytes} = attachment_storage_disk:read_snapshot(Frozen),
+    %% V3-14 S3-only：正文在 S3 替身存储（OA 后端直传落点），BEAM 无副本
+    {_, Bytes} = intbe02_http_support:s3_stub_object(Key),
     ?assertEqual(binary:copy(<<"x">>, 1024), Bytes),
     Metadata = intbe02_http_support:one(
         C,

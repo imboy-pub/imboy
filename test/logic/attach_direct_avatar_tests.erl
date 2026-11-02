@@ -176,25 +176,32 @@ app_subject_full_chain_confirmed() ->
 publish_copies_to_public_and_recovers() ->
     {Key, {ok, #{attempt_id := No}}} = prepare_to_granted(),
     {ok, #{state := <<"CONFIRMED">>}} = finalize_in_mock(Key, No),
+    %% V3-13（G13）：发布是服务端跨桶 Copy（private winner → 公开桶），
+    %% 正文零过 BEAM——read_snapshot/put_object 回环不存在（负向断言）。
     ok = meck:new(attachment_storage_garage, [passthrough, no_link]),
     ok = meck:expect(
         attachment_storage_garage,
-        read_snapshot,
-        1,
-        fun(_I) -> {ok, <<"avatar-bytes">>} end
+        copy_cross,
+        5,
+        fun(_Ns, _SB, _SK, TB, TK) ->
+            ?assertEqual(elib_oss:get_bucket(<<"public">>), TB),
+            ?assert(is_binary(TK) andalso byte_size(TK) > 0),
+            {ok, #{etag => <<"synthetic-etag">>}}
+        end
     ),
     ok = meck:new(elib_oss, [passthrough, no_link]),
     try
-        %% 发布前：公开桶零写操作（T35/I13：验证与发布许可前匿名不可读）
+        %% 发布前：公开桶零 BEAM 写操作（T35/I13：验证与发布许可前匿名不可读）
         ?assertEqual(0, meck:num_calls(elib_oss, put_object, '_')),
-        %% publish 成功：恰好一次公开复制
-        ok = meck:expect(elib_oss, put_object, 4, fun(_B, _K, _Bytes, _M) -> ok end),
         {ok, Pub} = attach_direct_logic:publish_avatar(Key, <<"agent-1">>, <<>>),
         ?assertMatch(
             <<"https://s3.imboy.pub/app990910/avatar/", _/binary>>,
             maps:get(public_url, Pub)
         ),
-        ?assertEqual(1, meck:num_calls(elib_oss, put_object, '_'))
+        %% 恰好一次服务端 Copy；全程零 BEAM 正文回环
+        ?assertEqual(1, meck:num_calls(attachment_storage_garage, copy_cross, '_')),
+        ?assertEqual(0, meck:num_calls(attachment_storage_garage, read_snapshot, '_')),
+        ?assertEqual(0, meck:num_calls(elib_oss, put_object, '_'))
     after
         meck:unload(elib_oss),
         meck:unload(attachment_storage_garage)
@@ -203,24 +210,18 @@ publish_copies_to_public_and_recovers() ->
     ok = meck:new(attachment_storage_garage, [passthrough, no_link]),
     ok = meck:expect(
         attachment_storage_garage,
-        read_snapshot,
-        1,
-        fun(_I) -> {ok, <<"avatar-bytes">>} end
-    ),
-    ok = meck:new(elib_oss, [passthrough, no_link]),
-    ok = meck:expect(
-        elib_oss,
-        put_object,
-        4,
-        fun(_B, _K, _Bytes, _M) -> {error, storage_down} end
+        copy_cross,
+        5,
+        fun(_Ns, _SB, _SK, _TB, _TK) -> {error, storage_down} end
     ),
     try
         ?assertMatch(
             {error, {publish_failed, _}},
             attach_direct_logic:publish_avatar(Key, <<"agent-1">>, <<>>)
-        )
+        ),
+        %% 失败不重试（一次授权一次请求）；不写错误头像引用
+        ?assertEqual(1, meck:num_calls(attachment_storage_garage, copy_cross, '_'))
     after
-        meck:unload(elib_oss),
         meck:unload(attachment_storage_garage)
     end,
     %% 未 confirm 会话不可 publish

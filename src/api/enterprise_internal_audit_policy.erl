@@ -363,6 +363,16 @@ policies() ->
             audit_action => <<"channel.archive">>,
             audit_resource_type => <<"channel">>,
             reason => <<"软归档是可审计的状态迁移（不做物理删除），必须留痕"/utf8>>
+        },
+        %% ---- V3-23 INT-50 企业频道消息代发（SPEC §5 B3）----
+        #{
+            id => <<"INT-50">>,
+            method => <<"POST">>,
+            path => <<"/api/internal/v1/channels/{channel_id}/messages">>,
+            verdict => required_audit,
+            audit_action => <<"message.enterprise.accepted">>,
+            audit_resource_type => <<"msg_channel">>,
+            reason => <<"OA 频道代发消息（已有审计：message.enterprise.accepted，同事务）"/utf8>>
         }
     ].
 

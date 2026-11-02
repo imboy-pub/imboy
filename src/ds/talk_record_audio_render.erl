@@ -64,40 +64,71 @@ render(Dir, Parts, Fun) ->
             end
     end.
 
-write_parts(_Dir, [], _N, Acc) ->
+write_parts(Dir, Parts, _N0, _Acc0) ->
+    %% V3-18 P2：parts 的 S3→盘下载经外部 IO Worker（BEAM 零音频字节）。
+    %% 两段式：先全部签 GET URL（BEAM 只做签名），单次 Worker 进程批量
+    %% 下载（顺序即拼接序，逐项 size+sha256 全量校验）；成功后再逐 part
+    %% ffmpeg 解码（normalize_part——外部进程）。
+    case part_fetch_items(Dir, Parts, 0, []) of
+        {ok, Items} ->
+            case attachment_worker_port:fetch_files(Items) of
+                {ok, _} -> normalize_parts(Dir, Parts, 0, []);
+                {error, {part_integrity_mismatch, _}} -> {error, audio_part_integrity_mismatch};
+                {error, _} = E -> E
+            end;
+        Error ->
+            Error
+    end.
+
+part_fetch_items(_Dir, [], _N, Acc) ->
     {ok, lists:reverse(Acc)};
-write_parts(Dir, [P | Rest], N, Acc) ->
-    Result = attachment_derived_artifact:with_live_spool(
-        maps:get(<<"attachment_id">>, P), part_limit(), fun(Source) ->
-            Size = maps:get(<<"byte_size">>, P),
-            Hash = maps:get(<<"sha256">>, P),
-            case
-                attachment_upload_spool:size(Source) =:= Size andalso
-                    attachment_upload_spool:sha256(Source) =:= Hash
-            of
-                true ->
-                    Name = "part-" ++ integer_to_list(N) ++ ".aac",
-                    case file:open(filename:join(Dir, Name), [write, binary, exclusive]) of
-                        {ok, F} ->
-                            try
-                                case attachment_upload_spool:copy_to(Source, F) of
-                                    ok -> normalize_part(Dir, Name, P);
-                                    E -> E
-                                end
-                            after
-                                file:close(F)
-                            end;
-                        E ->
-                            E
-                    end;
-                false ->
-                    {error, audio_part_integrity_mismatch}
-            end
-        end
-    ),
-    case Result of
-        {ok, Name} -> write_parts(Dir, Rest, N + 1, [Name | Acc]);
+part_fetch_items(Dir, [P | Rest], N, Acc) ->
+    case part_fetch_item(Dir, N, P) of
+        {ok, Item} -> part_fetch_items(Dir, Rest, N + 1, [Item | Acc]);
         Error -> Error
+    end.
+
+normalize_parts(_Dir, [], _N, Acc) ->
+    {ok, lists:reverse(Acc)};
+normalize_parts(Dir, [P | Rest], N, Acc) ->
+    Name = "part-" ++ integer_to_list(N) ++ ".aac",
+    case normalize_part(Dir, Name, P) of
+        {ok, Pcm} -> normalize_parts(Dir, Rest, N + 1, [Pcm | Acc]);
+        E -> E
+    end.
+
+%% BEAM 只签 GET URL（frozen_location presign，不触字节）+ 目标路径与
+%% 期望 hash/size；下载与校验在 Worker。size 门（part_limit）与原
+%% with_live_spool 的 Max 语义一致。
+part_fetch_item(Dir, N, P) ->
+    Aid = maps:get(<<"attachment_id">>, P),
+    Size = maps:get(<<"byte_size">>, P),
+    case Size =< part_limit() of
+        false ->
+            {error, audio_size_limit};
+        true ->
+            case attachment_derived_artifact:metadata(Aid) of
+                {ok, Row} ->
+                    case attachment_storage:frozen_location(maps:get(<<"path">>, Row), Row) of
+                        {ok, #{driver := garage} = I} ->
+                            case attachment_storage_garage:presign_snapshot(I, 600) of
+                                {ok, Url} ->
+                                    Name = "part-" ++ integer_to_list(N) ++ ".aac",
+                                    {ok, #{
+                                        url => Url,
+                                        path => iolist_to_binary(filename:join(Dir, Name)),
+                                        sha256_hex => maps:get(<<"sha256">>, P),
+                                        size => Size
+                                    }};
+                                Error ->
+                                    Error
+                            end;
+                        _ ->
+                            {error, historical_location_unverified}
+                    end;
+                Error ->
+                    Error
+            end
     end.
 
 part_limit() -> maps:get(<<"max_part_bytes">>, talk_record_ds:capabilities(), 0).
@@ -323,9 +354,11 @@ safe_close(Port) ->
     end.
 
 with_output(Path, Fun) ->
+    %% V3-18 P2：成品以文件路径交付回调（Worker 上传在回调内做）——
+    %% 本进程不再把字节读进 spool。文件大小/类型门保持。
     case file:read_file_info(Path) of
         {ok, #file_info{type = regular, size = N}} when N > 0, N < ?MAX_BYTES ->
-            attachment_upload_spool:with_source({file, Path}, Fun);
+            Fun(Path);
         _ ->
             {error, audio_render_invalid_output}
     end.

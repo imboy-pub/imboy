@@ -457,6 +457,17 @@ routes() ->
             rate_bucket => internal_write,
             idempotency => required,
             sender_mode => none
+        },
+        %% V3-23 INT-50 企业频道消息代发（SPEC §5 B2）：sender_mode 与
+        %% INT-09/10 同构（application / 指定 human）；频道目标校验
+        %% （org 内 + scope=workspace + status=1 + ws active）在 logic fail-closed。
+        #{
+            id => <<"INT-50">>,
+            method => <<"POST">>,
+            path => <<"/api/internal/v1/channels/{channel_id}/messages">>,
+            rate_bucket => internal_write,
+            idempotency => required,
+            sender_mode => application_human
         }
     ].
 

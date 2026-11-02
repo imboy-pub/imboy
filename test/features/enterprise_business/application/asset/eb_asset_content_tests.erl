@@ -109,6 +109,22 @@ mime_and_sniff_matrix_test_() ->
      || {Mime, Good, Bad} <- Cases
     ].
 
+%% T08/V3-15：EB 面硬限额边界（25 MiB）。上限值即拒绝点契约：
+%% max 通过、max+1 拒绝且错误携带原值（申报/Worker 扫描共用此闸）。
+max_size_boundary_test() ->
+    Max = eb_asset_content:max_size_bytes(),
+    ?assertEqual(25 * 1024 * 1024, Max),
+    ok = eb_asset_content:validate_size(Max),
+    ?assertEqual(
+        {error, {invalid_size_bytes, Max + 1}},
+        eb_asset_content:validate_size(Max + 1)
+    ),
+    ?assertEqual({error, {invalid_size_bytes, 0}}, eb_asset_content:validate_size(0)),
+    ?assertEqual({error, {invalid_size_bytes, -1}}, eb_asset_content:validate_size(-1)),
+    ?assertMatch(
+        {error, {invalid_size_bytes, _}}, eb_asset_content:validate_size(not_integer)
+    ).
+
 reject_octet_stream_test() ->
     ?assertMatch(
         {error, {invalid_mime, _}},
