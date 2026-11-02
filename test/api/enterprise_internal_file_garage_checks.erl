@@ -4,20 +4,25 @@
 
 run() ->
     {ok, _} = application:ensure_all_started(inets),
+    %% V3-14 S3-only 直传：真 Garage env 必须先于 setup_all 声明——
+    %% application:load(imboy) 会以 -config 覆盖裸 set_env，故经
+    %% declare_real_garage/1（persistent_term）显式声明本套件拥有的 env；
+    %% fixture 据此冻结 registry Record（namespace/container/endpoint），
+    %% 且不安装 S3 替身（PUT/HEAD/GET 打真实例）。
+    ok = intbe02_http_support:declare_real_garage(#{
+        endpoint => env("IMBOY_TEST_ENDPOINT"),
+        bucket => <<"synthetic-enterprise-assets">>,
+        region => <<"garage">>,
+        access_key => env("IMBOY_TEST_ACCESS"),
+        secret_key => env("IMBOY_TEST_SECRET")
+    }),
     S = intbe02_http_support:setup_all(),
     try
-        application:set_env(imboy, garage, #{
-            endpoint => env("IMBOY_TEST_ENDPOINT"),
-            bucket => <<"synthetic-enterprise-assets">>,
-            region => <<"garage">>,
-            access_key => env("IMBOY_TEST_ACCESS"),
-            secret_key => env("IMBOY_TEST_SECRET")
-        }),
         journey(S),
         io:format("INTERNAL_FILE_REAL_GARAGE_RESULT=ok~n")
     after
-        application:unset_env(imboy, garage),
         intbe02_http_support:teardown_all(S),
+        application:unset_env(imboy, garage),
         inttest_marker_db:release(S)
     end.
 
@@ -88,6 +93,16 @@ real_upload(Presign, Key, Bytes) ->
     ?assertEqual(<<"text/plain">>, Type),
     io:format("INTERNAL_FILE_PRESIGN_REAL_PUT_HEAD=PASS~n").
 
+%% 跨 Org 凭证（一次性；fixture 主链不常备 ORG_B 凭证）：995102 域
+%% 对 995101 域 Key 的 confirm 必须 resource_not_found（同体不可见）。
+foreign_org_credential(C) ->
+    {ok, AppB} = enterprise_application_repo:create_tx(
+        C, 995102, <<"real-file-foreign-org-app">>, <<"synthetic foreign org oa">>, null
+    ),
+    intbe02_http_support:issue_credential(
+        C, 995102, maps:get(<<"id">>, AppB), <<"real_file_foreign_secret_0123456789abcdef">>
+    ).
+
 foreign_object(C, Bytes) ->
     {ok, ForeignApp} = enterprise_application_repo:create_tx(
         C, 995102, <<"real-file-foreign-app">>, <<"synthetic foreign storage app">>, null
@@ -114,6 +129,9 @@ foreign_object(C, Bytes) ->
 check_foreign(S, C, Auth, Key, Bytes, Before) ->
     Body = #{<<"object_key">> => Key},
     {Bucket, Foreign} = foreign_object(C, Bytes),
+    ForeignCred = foreign_org_credential(C),
+    %% V3-14 同体不可见：他域 key 对本主体一律 resource_not_found
+    %% （不泄露存在性/归属；旧实现的 invalid_request 属信息泄露面）。
     error_json(
         post(
             S,
@@ -122,7 +140,7 @@ check_foreign(S, C, Auth, Key, Bytes, Before) ->
             Auth,
             <<"real-file-foreign">>
         ),
-        <<"invalid_request">>
+        <<"resource_not_found">>
     ),
     ?assertEqual(0, attachment_count(C, Foreign)),
     ?assertEqual(1, pending_count(C, Foreign)),
@@ -140,7 +158,7 @@ check_foreign(S, C, Auth, Key, Bytes, Before) ->
             S,
             <<"/api/internal/v1/files/confirm">>,
             Body,
-            intbe02_http_support:auth(maps:get(cred_b, S)),
+            intbe02_http_support:auth(ForeignCred),
             <<"real-file-scope">>
         ),
         <<"resource_not_found">>
@@ -212,7 +230,16 @@ error_json(Resp, Code) ->
     ?assertEqual(Code, Actual).
 attachment_count(C, Key) ->
     count(C, <<"SELECT count(*)::int AS n FROM attachment WHERE path=$1">>, [Key]).
+%% V5 会话语义：confirm 后 session 行保留为 confirmed 态（恢复/重放
+%% 合同）；「销账」= registered 态清零。
 pending_count(C, Key) ->
-    count(C, <<"SELECT count(*)::int AS n FROM attach_pending WHERE object_key=$1">>, [Key]).
+    count(
+        C,
+        <<
+            "SELECT count(*)::int AS n FROM attach_pending WHERE object_key=$1"
+            " AND session_state='registered'"
+        >>,
+        [Key]
+    ).
 count(C, Sql, Params) -> maps:get(<<"n">>, intbe02_http_support:one(C, Sql, Params)).
 env(Name) -> list_to_binary(os:getenv(Name)).

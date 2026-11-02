@@ -255,37 +255,39 @@ export_download(Req0, State) ->
             talk_record_http:respond_error(Req0, Reason)
     end.
 
-%% @private 内容流：验票（含 uid claim 与当前身份比对——防拿他人票据）
-%% → 200 文本流（Content-Disposition 附件；不进 JSON 信封）。
+%% @private 内容流（V3-18 P3/EXC-2 边缘承载）：验票（含 uid claim 与当前
+%% 身份比对——防拿他人票据）**不读正文** → 302 到边缘 /edge?ticket=（字节
+%% 由边缘 OS 进程承载；正文=派生工件，生成期已有 ?MAX_CONTENT_BYTES 有界
+%% 上限）。BEAM 直出 DB/工件字节的旧形态退役（EXC-2 收口）。
+%% fail-closed：边缘未配置 → 503，不回退 BEAM 取流。
 -spec stream_export(cowboy_req:req(), integer(), integer(), integer(), binary()) ->
     cowboy_req:req().
 stream_export(Req0, Uid, Id, ExportId, Ticket) ->
-    case talk_record_export_download:verify_ticket(Ticket, Uid, Id, ExportId) of
-        {ok,
-            #{
-                <<"claims">> := #{
-                    <<"uid">> := Uid,
-                    <<"rid">> := Id,
-                    <<"eid">> := ExportId
-                },
-                <<"content">> := Content,
-                <<"format">> := Format
-            } = _Row} when is_binary(Content) ->
-            {ContentType, Ext} =
+    case talk_record_export_download:verify_ticket_ref(Ticket, Uid, Id, ExportId) of
+        {ok, #{
+            <<"claims">> := #{
+                <<"uid">> := Uid,
+                <<"rid">> := Id,
+                <<"eid">> := ExportId
+            },
+            <<"format">> := Format
+        }} ->
+            Ext =
                 case Format of
-                    <<"md">> -> {<<"text/markdown; charset=utf-8">>, <<"md">>};
-                    _ -> {<<"text/plain; charset=utf-8">>, <<"txt">>}
+                    <<"md">> -> <<"md">>;
+                    _ -> <<"txt">>
                 end,
-            cowboy_req:reply(
-                200,
-                #{
-                    <<"content-type">> => ContentType,
-                    <<"content-disposition">> =>
-                        <<"attachment; filename=\"talk-record-export.", Ext/binary, "\"">>
-                },
-                Content,
-                Req0
-            );
+            case attachment_edge_redirect:edge_ready() of
+                true ->
+                    Req1 = cowboy_req:set_resp_header(
+                        <<"content-disposition">>,
+                        <<"attachment; filename=\"talk-record-export.", Ext/binary, "\"">>,
+                        Req0
+                    ),
+                    attachment_edge_redirect:redirect(Req1, Ticket);
+                false ->
+                    talk_record_http:respond_error(Req0, edge_not_configured)
+            end;
         {ok, _} ->
             %% 票据属他人：按无效票处理（不泄露导出存在性）
             talk_record_http:respond_error(Req0, export_ticket_invalid);

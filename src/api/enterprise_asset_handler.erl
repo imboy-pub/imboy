@@ -40,8 +40,8 @@ presign(<<"POST">>, Req0, State) ->
     of
         {ok, Digest} ->
             %% F19（02 §137）：幂等事务只保存稳定登记结果（无能力）；
-            %% COMMIT（含幂等重放）后由 post_commit_presign 签发受控网关
-            %% 能力。DB 不可用/回滚一律无能力泄漏（503 语义在错误分支）。
+            %% COMMIT（含幂等重放）后由 post_commit_presign 签发 s3_put
+            %% 直传 descriptor。DB 不可用/回滚一律无能力泄漏（503 语义在错误分支）。
             with_idempotency(
                 Req0,
                 Ctx,
@@ -281,35 +281,40 @@ recover_presign_reply(Req0, Ctx, Reg, Kind) ->
 
 signed_session_data(Reg) ->
     case maps:get(<<"expires_at">>, Reg) > erlang:system_time(second) of
-        true -> signed_unexpired_session_data(Reg);
+        true -> signed_s3_direct(Reg);
         false -> {error, {<<"gone">>, session_expired}}
     end.
 
-signed_unexpired_session_data(Reg) ->
-    Base = application:get_env(imboy, base_url, <<>>),
-    case uri_string:parse(Base) of
-        #{scheme := Scheme, host := Host} when
-            (Scheme =:= <<"http">> orelse Scheme =:= <<"https">>), Host =/= <<>>
-        ->
-            Key = maps:get(<<"object_key">>, Reg),
-            case
-                imboy_jwt:issue_upload_capability(
-                    Key,
-                    maps:get(<<"mime_type">>, Reg),
-                    maps:get(<<"expires_at">>, Reg)
-                )
-            of
-                {ok, Capability} ->
-                    Cid = maps:get(<<"client_upload_id">>, Reg),
-                    Prefix = list_to_binary(string:trim(binary_to_list(Base), trailing, "/")),
-                    Url =
-                        <<Prefix/binary, "/api/v1/attachment/gateway/", Cid/binary, "?capability=",
-                            Capability/binary>>,
-                    {ok, Reg#{
+%% V3-14 S3-only 合同：签发即 s3_put 直传 descriptor。位置快照由
+%% presign_recovery_tx 在同一锁域事务内验证并随登记视图带回
+%% （<<"storage_snapshot">>，含凭据、绝不进 JSON），此处只做纯签名：
+%% 按会话冻结 expires_at 折算短时 TTL 签 presigned PUT。OA 后端本人是
+%% S3 上传客户端——不经受控网关正文路径、不签 JWT upload 能力、不依赖
+%% base_url、不在恢复事务内再开嵌套事务重取位置（同行锁自等死锁）。
+%% 位置漂移/签名失败一律 fail-closed（无能力泄漏）。
+signed_s3_direct(Reg) ->
+    Mime =
+        case maps:get(<<"mime_type">>, Reg, undefined) of
+            M when is_binary(M), M =/= <<>> -> M;
+            _ -> <<"application/octet-stream">>
+        end,
+    Ttl = maps:get(<<"expires_at">>, Reg) - erlang:system_time(second),
+    case maps:get(<<"storage_snapshot">>, Reg, undefined) of
+        #{driver := garage} = Snapshot ->
+            case attachment_storage:presign_put_snapshot(Snapshot, Mime, Ttl) of
+                {ok, Url} ->
+                    Public = Reg#{
                         <<"put_url">> => Url,
-                        <<"upload_capability">> => Capability,
-                        <<"gateway">> => true
-                    }};
+                        <<"upload">> => #{
+                            <<"transport">> => <<"s3_put">>,
+                            <<"method">> => <<"PUT">>,
+                            <<"url">> => Url,
+                            <<"required_headers">> => [
+                                {<<"Content-Type">>, Mime}
+                            ]
+                        }
+                    },
+                    {ok, maps:remove(<<"storage_snapshot">>, Public)};
                 _ ->
                     {error, {<<"security_gate_closed">>, signing_unavailable}}
             end;
@@ -338,9 +343,10 @@ resource_id_of(Result) when is_map(Result) ->
         _ -> null
     end.
 
-%% COMMIT（含重放）后的能力签发（02 §137：内部应用 V5 会话发受控网关
-%% 能力；重放同样走这里，以冻结 expiry 重签新 token）。status 只读视图
-%% 不产生能力；旧缓存裸 PUT URL 拒绝重放。
+%% COMMIT（含重放）后的能力签发（02 §137 + V3-14 S3-only：内部应用 V5
+%% 会话签发 s3_put 直传 descriptor；重放同样走这里，以冻结 expiry 重签
+%% 新 presigned PUT URL——URL 签名参数随时钟变化，稳定字段由幂等缓存体
+%% 保证逐字一致）。status 只读视图不产生能力；旧缓存裸 PUT URL 拒绝重放。
 post_commit_presign(Req0, Ctx, Body, Kind) ->
     Decoded =
         try

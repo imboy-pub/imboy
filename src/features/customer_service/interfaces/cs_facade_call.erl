@@ -73,6 +73,17 @@ call(issue_visit_token, OrgId, Params) ->
     customer_service_facade:issue_visit_token(OrgId, Params);
 call(revoke_visit_token, OrgId, Params) ->
     customer_service_facade:revoke_visit_token(OrgId, Params);
+%% V3-27 子能力：快捷回复（合同 v3/specs/cs-quick-reply.md）。
+call(quick_reply_page, OrgId, Params) ->
+    customer_service_facade:quick_reply_page(OrgId, Params);
+call(quick_reply_create, OrgId, Params) ->
+    customer_service_facade:quick_reply_create(OrgId, Params);
+call(quick_reply_update, OrgId, Params) ->
+    customer_service_facade:quick_reply_update(OrgId, Params);
+call(quick_reply_delete, OrgId, Params) ->
+    customer_service_facade:quick_reply_delete(OrgId, Params);
+call(quick_reply_seat_list, OrgId, Params) ->
+    customer_service_facade:quick_reply_seat_list(OrgId, Params);
 call(list_widget_installations, OrgId, Params) ->
     customer_service_facade:list_widget_installations(OrgId, Params);
 call(create_widget_installation, OrgId, Params) ->
@@ -238,6 +249,12 @@ actions() ->
         create_widget_installation,
         update_widget_installation,
         revoke_widget_installation,
+        %% V3-27 子能力：快捷回复（页面 CRUD + 坐席只读清单）
+        quick_reply_page,
+        quick_reply_create,
+        quick_reply_update,
+        quick_reply_delete,
+        quick_reply_seat_list,
         %% seat-console-embed SC-BE：控制台管理 CRUD 与 /seat/ 嵌入面
         list_seat_consoles,
         create_seat_console,

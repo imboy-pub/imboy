@@ -1175,6 +1175,9 @@ handle_read_receipt(MsgId, To, ToId, From, _FromId, CurrentUid, Data) ->
     Results = [msg_read_ds:save_read(Id, ToId, CurrentUid, ToDid, ReadAtRfc) || Id <- MsgIds],
     case [R || R <- Results, R =/= ok] of
         [] ->
+            %% V3-24 G-4：企业托管行已读事件（按 origin 归属解析，Human 消息
+            %% 零外发；独立小事务，失败只留痕不阻断已读主链）。
+            enterprise_webhook_logic:emit_read_for(MsgIds),
             % 【T18/MSG-P1-6】已读状态同步给阅读者自己的其他设备（多端未读数一致）。
             % save 落 msg_s2c：离线设备按 per-device 送达语义（T03）重连后仍可拉到；
             % 阅读设备自身也会收到并 ACK（客户端按已读状态幂等忽略），单设备用户

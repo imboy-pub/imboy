@@ -47,13 +47,21 @@ put:
                 enum:
                   - message.enterprise.accepted
                   - message.enterprise.failed
+                  - message.enterprise.delivered
+                  - message.enterprise.read
                   - group.member.changed
+                  - user.mapping.changed
+                  - cs.session.changed
                   - file.confirmed
               description: |
                 订阅事件列表（⊆ 事件白名单；空列表 = 只停用订阅）。
-                白名单固定 4 值；其中 group.member.changed 为预留值（当前版本
-                无触发点，订阅合法但暂不产生投递）。事件语义与回调正文信封
-                见集成方文档 api/internal/v1/README.md §8。
+                白名单固定 8 值（V3-24 起五类事件全部有生产者：
+                发送结果 accepted/failed、送达 delivered、已读 read、
+                群成员变更 group.member.changed、映射变更
+                user.mapping.changed、客服事件 cs.session.changed）。
+                delivered/read 只针对企业托管行（Human 消息零外发）。
+                事件语义与回调正文信封见集成方文档
+                api/internal/v1/README.md §8。
             status:
               type: string
               enum: [enabled, disabled]
@@ -79,7 +87,11 @@ put:
                   enum:
                     - message.enterprise.accepted
                     - message.enterprise.failed
+                    - message.enterprise.delivered
+                    - message.enterprise.read
                     - group.member.changed
+                    - user.mapping.changed
+                    - cs.session.changed
                     - file.confirmed
               status: { type: string, enum: [enabled, disabled] }
               rotated: { type: boolean }

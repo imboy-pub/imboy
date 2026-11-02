@@ -196,21 +196,28 @@ publish_avatar(ObjectKey, AgentRef, _SecretPlaceholder) ->
             {error, R}
     end.
 
-publish_avatar_(Row, ObjectKey, AgentRef) ->
+publish_avatar_(_Row, ObjectKey, AgentRef) ->
+    %% V3-13（G13/F03）：发布改**服务端跨桶 Copy**——private winner → 公开桶，
+    %% 零正文过 BEAM（原 read_snapshot→put_object 回环已删除）。失败可恢复：
+    %% winner 未动、公开桶未写错误引用，重试即重新 Copy。
+    %% 物理键以 **attachment 行**（winner_pin 写入的 storage_physical_key）为
+    %% 准——pending 会话行无物理键，逻辑键 ≠ 物理 winner 键。
     PublicKey = ObjectKey,
-    case attachment_storage:frozen_location(ObjectKey, Row) of
-        {ok, I} when is_map(I) ->
-            case attachment_storage_garage:read_snapshot(I) of
-                {ok, Bytes} ->
+    case attachment_ds:find_by_path(ObjectKey) of
+        {ok, AttachRow} ->
+            case attachment_storage:frozen_location(ObjectKey, AttachRow) of
+                {ok, #{namespace := Ns, container := C, key := PhysKey}} when
+                    is_binary(Ns),
+                    is_binary(C),
+                    is_binary(PhysKey)
+                ->
+                    PublicBucket = elib_oss:get_bucket(<<"public">>),
                     case
-                        elib_oss:put_object(
-                            elib_oss:get_bucket(<<"public">>),
-                            PublicKey,
-                            Bytes,
-                            mime_from_row(Row)
+                        attachment_storage_garage:copy_cross(
+                            Ns, C, PhysKey, PublicBucket, PublicKey
                         )
                     of
-                        ok ->
+                        {ok, _CopyInfo} ->
                             {ok, #{
                                 public_url => elib_oss:public_url_for_key(PublicKey),
                                 public_key => PublicKey,
@@ -220,11 +227,12 @@ publish_avatar_(Row, ObjectKey, AgentRef) ->
                             %% 公开复制失败可恢复：winner 未动，重试即可
                             {error, {publish_failed, R}}
                     end;
-                {error, R} ->
-                    {error, {winner_read_failed, R}}
+                _ ->
+                    {error, location_unverified}
             end;
         _ ->
-            {error, location_unverified}
+            %% CONFIRMED 必有 attachment 行；缺行=账本不一致，fail-closed
+            {error, {winner_row_missing, ObjectKey}}
     end.
 
 %% @doc Admin 身份域（avatar_direct）会话主体断言：仅 application 主体会话
@@ -827,6 +835,7 @@ ext_mime_map() ->
         <<".mov">> => <<"video/quicktime">>,
         <<".mp3">> => <<"audio/mpeg">>,
         <<".m4a">> => <<"audio/mp4">>,
+        <<".aac">> => <<"audio/aac">>,
         <<".pdf">> => <<"application/pdf">>,
         <<".txt">> => <<"text/plain">>
     }.

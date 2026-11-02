@@ -32,8 +32,10 @@ bind_fixture() ->
 
 setup_database() ->
     false = lists:keymember(imboy, 1, application:which_applications()),
-    Original = #{apps => [A || {A, _, _} <- application:which_applications()],
-        pooler_env => application:get_env(pooler, pools)},
+    Original = #{
+        apps => [A || {A, _, _} <- application:which_applications()],
+        pooler_env => application:get_env(pooler, pools)
+    },
     try
         Marker = inttest_marker_db:provision(#{env_prefix => <<"ATTACH_BIND_INTTEST">>}),
         S = Marker#{original_runtime => Original},
@@ -43,41 +45,64 @@ setup_database() ->
             {ok, _} = application:ensure_all_started(crypto),
             Opts = (maps:with([host, port, username, password], maps:get(server, S)))#{
                 database => binary_to_list(maps:get(db, S)),
-                codecs => [{epgsql_codec_rfc3339_bin, []}]},
-            {ok, _} = pooler:new_pool(#{name => pgsql, init_count => 2, max_count => 4,
-                start_mfa => {epgsql, connect, [Opts]}}),
+                codecs => [{epgsql_codec_rfc3339_bin, []}]
+            },
+            {ok, _} = pooler:new_pool(#{
+                name => pgsql,
+                init_count => 2,
+                max_count => 4,
+                start_mfa => {epgsql, connect, [Opts]}
+            }),
             ok = elib_tsid:init(#{dc_id => 0, node_id => 1}),
             S
-        catch Class0:Reason0:Stack0 ->
-            CleanupResult = try cleanup_database(S)
-                catch CleanupClass:CleanupReason -> {error, {CleanupClass, CleanupReason}} end,
-            case CleanupResult of
-                ok -> erlang:raise(Class0, Reason0, Stack0);
-                _ -> error({fixture_setup_and_cleanup_failed,
-                    {Class0, Reason0}, CleanupResult})
-            end
+        catch
+            Class0:Reason0:Stack0 ->
+                CleanupResult =
+                    try
+                        cleanup_database(S)
+                    catch
+                        CleanupClass:CleanupReason -> {error, {CleanupClass, CleanupReason}}
+                    end,
+                case CleanupResult of
+                    ok -> erlang:raise(Class0, Reason0, Stack0);
+                    _ -> error({fixture_setup_and_cleanup_failed, {Class0, Reason0}, CleanupResult})
+                end
         end
-    catch Class:Reason:Stack ->
-        restore_runtime(Original), erlang:raise(Class, Reason, Stack)
+    catch
+        Class:Reason:Stack ->
+            restore_runtime(Original),
+            erlang:raise(Class, Reason, Stack)
     end.
 
 cleanup_database(S) ->
     %% Always attempt DB disposal, even when partial setup never made a pool.
     try
-        PoolResult = try pooler:rm_pool(pgsql)
-            catch PoolClass:PoolReason -> {error, {PoolClass, PoolReason}} end,
-        DbResult = try inttest_marker_db:release(S)
-            catch DbClass:DbReason -> {error, {DbClass, DbReason}} end,
+        PoolResult =
+            try
+                pooler:rm_pool(pgsql)
+            catch
+                PoolClass:PoolReason -> {error, {PoolClass, PoolReason}}
+            end,
+        DbResult =
+            try
+                inttest_marker_db:release(S)
+            catch
+                DbClass:DbReason -> {error, {DbClass, DbReason}}
+            end,
         case {PoolResult, DbResult} of
             {ok, ok} -> ok;
             Other -> error({owned_fixture_cleanup_failed, Other})
         end
-    after restore_runtime(maps:get(original_runtime, S))
+    after
+        restore_runtime(maps:get(original_runtime, S))
     end.
 
 restore_runtime(#{apps := OriginalApps, pooler_env := OriginalEnv}) ->
-    NewApps = [A || {A, _, _} <- application:which_applications(),
-        not lists:member(A, OriginalApps)],
+    NewApps = [
+        A
+     || {A, _, _} <- application:which_applications(),
+        not lists:member(A, OriginalApps)
+    ],
     [application:stop(A) || A <- NewApps],
     case OriginalEnv of
         undefined -> application:unset_env(pooler, pools);
@@ -86,63 +111,121 @@ restore_runtime(#{apps := OriginalApps, pooler_env := OriginalEnv}) ->
     ok.
 
 setup(_Database) ->
-    Before = [{K, application:get_env(imboy, K)}
-        || K <- [garage, attachment_storage_registry]],
+    Before = [
+        {K, application:get_env(imboy, K)}
+     || K <- [garage, attachment_storage_registry]
+    ],
     Base = 8000000000000 + binary:decode_unsigned(crypto:strong_rand_bytes(5)),
     EP = <<"http://127.0.0.1:39999">>,
     Ns = <<"dv1bind-", (binary:encode_hex(crypto:strong_rand_bytes(12), lowercase))/binary>>,
-    S = #{before_env => Before, ns => Ns, ep => EP,
-        uid => Base, org => Base + 1, ws => Base + 2, gid => Base + 3,
-        other_uid => Base + 4, other_gid => Base + 5, album => Base + 6,
-        other_album => Base + 7, missing_album => Base + 8, attachment => Base + 9},
+    S = #{
+        before_env => Before,
+        ns => Ns,
+        ep => EP,
+        uid => Base,
+        org => Base + 1,
+        ws => Base + 2,
+        gid => Base + 3,
+        other_uid => Base + 4,
+        other_gid => Base + 5,
+        album => Base + 6,
+        other_album => Base + 7,
+        missing_album => Base + 8,
+        attachment => Base + 9
+    },
     try
-        ok = application:set_env(imboy, garage,
-            #{endpoint => EP, bucket => <<"b">>, access_key => <<"ak">>, secret_key => <<"sk">>}),
+        ok = application:set_env(
+            imboy,
+            garage,
+            #{endpoint => EP, bucket => <<"b">>, access_key => <<"ak">>, secret_key => <<"sk">>}
+        ),
         Registry = attachment_storage:registry(),
         Roots = maps:get(roots, Registry, #{}),
         ok = application:set_env(imboy, attachment_storage_registry, Registry#{
-            roots => Roots#{Ns => #{driver => <<"garage">>, namespace => Ns,
-                endpoint => EP, container => <<"b">>, root_id => Ns}}}),
+            roots => Roots#{
+                Ns => #{
+                    driver => <<"garage">>,
+                    namespace => Ns,
+                    endpoint => EP,
+                    container => <<"b">>,
+                    root_id => Ns
+                }
+            }
+        }),
         ok = elib_pg:with_tx(fun(Conn) ->
-            {ok, _} = elib_pg:query(Conn,
+            {ok, _} = elib_pg:query(
+                Conn,
                 <<"INSERT INTO public.\"user\"(id,account,password,reg_ip,reg_cosv) VALUES($1,$2,'','127.0.0.1','owned-bind-fixture')">>,
-                [Base, <<"bind-", (integer_to_binary(Base))/binary>>]),
-            {ok, _} = elib_pg:query(Conn,
+                [Base, <<"bind-", (integer_to_binary(Base))/binary>>]
+            ),
+            {ok, _} = elib_pg:query(
+                Conn,
                 <<"INSERT INTO organization(id,name,owner_id) VALUES($1,'owned-bind-fixture',$2)">>,
-                [maps:get(org, S), Base]),
-            {ok, _} = elib_pg:query(Conn,
+                [maps:get(org, S), Base]
+            ),
+            {ok, _} = elib_pg:query(
+                Conn,
                 <<"INSERT INTO workspace(id,organization_id,name,owner_id) VALUES($1,$2,'owned-bind-fixture',$3)">>,
-                [maps:get(ws, S), maps:get(org, S), Base]),
-            {ok, _} = elib_pg:query(Conn,
+                [maps:get(ws, S), maps:get(org, S), Base]
+            ),
+            {ok, _} = elib_pg:query(
+                Conn,
                 <<"INSERT INTO public.\"user\"(id,account,password,reg_ip,reg_cosv) VALUES($1,$2,'','127.0.0.1','owned-bind-fixture')">>,
-                [maps:get(other_uid, S), <<"bind-other-", (integer_to_binary(Base))/binary>>]),
+                [maps:get(other_uid, S), <<"bind-other-", (integer_to_binary(Base))/binary>>]
+            ),
             %% The production organization INSERT trigger creates its owner membership.
-            {ok, _} = elib_pg:query(Conn,
+            {ok, _} = elib_pg:query(
+                Conn,
                 <<"INSERT INTO organization_member(organization_id,user_id,role,status) VALUES($1,$2,'member','active')">>,
-                [maps:get(org, S), maps:get(other_uid, S)]),
-            {ok, _} = elib_pg:query(Conn,
+                [maps:get(org, S), maps:get(other_uid, S)]
+            ),
+            {ok, _} = elib_pg:query(
+                Conn,
                 <<"INSERT INTO workspace_member(workspace_id,user_id,role,status) VALUES($1,$2,'owner','active'),($1,$3,'member','active')">>,
-                [maps:get(ws, S), Base, maps:get(other_uid, S)]),
-            {ok, _} = elib_pg:query(Conn,
+                [maps:get(ws, S), Base, maps:get(other_uid, S)]
+            ),
+            {ok, _} = elib_pg:query(
+                Conn,
                 <<"INSERT INTO public.\"group\"(id,owner_uid,creator_uid,title,status,scope,workspace_id) VALUES($1,$2,$2,'owned-bind-fixture',1,'workspace',$3),($4,$5,$5,'owned-bind-other',1,'workspace',$3)">>,
-                [maps:get(gid, S), Base, maps:get(ws, S), maps:get(other_gid, S), maps:get(other_uid, S)]),
-            {ok, _} = elib_pg:query(Conn,
+                [
+                    maps:get(gid, S),
+                    Base,
+                    maps:get(ws, S),
+                    maps:get(other_gid, S),
+                    maps:get(other_uid, S)
+                ]
+            ),
+            {ok, _} = elib_pg:query(
+                Conn,
                 <<"INSERT INTO group_member(id,group_id,user_id,role,is_join,status) VALUES($1,$2,$3,5,true,1),($4,$5,$6,5,true,1)">>,
-                [Base + 10, maps:get(gid, S), Base, Base + 11, maps:get(other_gid, S), maps:get(other_uid, S)]),
+                [
+                    Base + 10,
+                    maps:get(gid, S),
+                    Base,
+                    Base + 11,
+                    maps:get(other_gid, S),
+                    maps:get(other_uid, S)
+                ]
+            ),
             ok
         end),
         S
-    catch Class:Reason:Stack ->
-        cleanup(S), erlang:raise(Class, Reason, Stack)
+    catch
+        Class:Reason:Stack ->
+            cleanup(S),
+            erlang:raise(Class, Reason, Stack)
     end.
 
 cleanup(#{before_env := Before}) ->
     %% Rows live only until the enclosing marker DB is dropped. Never bypass
     %% bounded-purge authorization or suppress referential-integrity checks.
-    [case Value of
-        undefined -> application:unset_env(imboy, K);
-        {ok, V} -> application:set_env(imboy, K, V)
-     end || {K, Value} <- Before],
+    [
+        case Value of
+            undefined -> application:unset_env(imboy, K);
+            {ok, V} -> application:set_env(imboy, K, V)
+        end
+     || {K, Value} <- Before
+    ],
     ok.
 
 %% ---------------------------------------------------------------- helpers
@@ -187,10 +270,21 @@ physical_of(Path) ->
 %% album_id is varchar; bind_photo accepts the corresponding integer ID.
 seed_albums(S) ->
     {ok, _} = elib_pg:query(
-        <<"INSERT INTO group_album(id,group_id,album_id,album_name,creator_id,status)"
-          " VALUES($1,$2,$3,'dv1-own',$4,1),($5,$6,$7,'dv1-other',$8,1)">>,
-        [maps:get(album, S), maps:get(gid, S), integer_to_binary(maps:get(album, S)), maps:get(uid, S),
-         maps:get(other_album, S), maps:get(other_gid, S), integer_to_binary(maps:get(other_album, S)), maps:get(other_uid, S)]),
+        <<
+            "INSERT INTO group_album(id,group_id,album_id,album_name,creator_id,status)"
+            " VALUES($1,$2,$3,'dv1-own',$4,1),($5,$6,$7,'dv1-other',$8,1)"
+        >>,
+        [
+            maps:get(album, S),
+            maps:get(gid, S),
+            integer_to_binary(maps:get(album, S)),
+            maps:get(uid, S),
+            maps:get(other_album, S),
+            maps:get(other_gid, S),
+            integer_to_binary(maps:get(other_album, S)),
+            maps:get(other_uid, S)
+        ]
+    ),
     ok.
 
 object_key(S, Suffix) ->
@@ -235,6 +329,9 @@ bind_file_cross_subject_rejected(S) ->
 bind_file_success_and_idempotent(S) ->
     Path = object_key(S, <<"ok.png">>),
     insert_direct_attachment(S, Path, maps:get(uid, S)),
+    %% V5 收口后 confirmed attachment 只存 SHA-256，提交的 MD5 无法从该摘要
+    %% 认证（group_file_ds:validate_bind_metadata/4 → unverifiable_file_md5）。
+    %% 成功路径按新合同传空 MD5；不伪作 proof。
     {ok, FileId1} = group_file_ds:bind_file(
         maps:get(gid, S),
         maps:get(uid, S),
@@ -242,7 +339,7 @@ bind_file_success_and_idempotent(S) ->
         <<"image/png">>,
         Path,
         10,
-        hex64(3)
+        <<>>
     ),
     %% group_file 行 + attachment 引用（group_file_id 回填 DB 主键）均落库
     {ok, RefRow} = elib_pg:one(
@@ -274,7 +371,7 @@ bind_file_success_and_idempotent(S) ->
         <<"image/png">>,
         Path,
         10,
-        hex64(3)
+        <<>>
     ),
     ?assertEqual(FileId1, FileId2),
     {ok, GfRow2} = elib_pg:one(

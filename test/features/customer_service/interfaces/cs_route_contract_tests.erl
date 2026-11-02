@@ -54,6 +54,8 @@ tenant_literal_routes() ->
     [
         %% BE-S01a（T-2 裁定）：坐席上下文清单——主体自身作用域（无 Org 键）。
         {<<"/api/v1/cs/me/seat-contexts">>, seat_contexts, [<<"GET">>], cs_seat},
+        %% V3-27 子能力：坐席快捷回复只读清单（workspace 必填；坐席作用域）。
+        {<<O/binary, "/quick-replies">>, quick_replies, [<<"GET">>], cs_seat},
         %% CSB-02R：同路径 method+auth_context 分流——POST=门店（route metadata
         %% 冻结主体），GET=坐席队列（case_auth 覆盖，审计见 entry_violations）。
         %% T-2 后 org 显式在路径（旧 /api/v1/cs/sessions/queue 已删）。
@@ -158,6 +160,13 @@ platform_literal_routes() ->
         {<<P/binary, "/sessions/:id/close">>, p_session_close, [<<"POST">>], platform_admin},
         {<<"/api/adm/customer-service/widget-installations">>, p_widget_installations,
             [<<"GET">>, <<"POST">>], platform_admin},
+        %% V3-27 子能力：快捷回复（读 GET=customer_service:read；POST/PUT/DELETE
+        %% =customer_service:write 由 case_auth 分流；路由元数据冻结同
+        %% widget-installations 口径——列表=读、:id=写）。
+        {<<"/api/adm/customer-service/quick-replies">>, p_quick_replies, [<<"GET">>, <<"POST">>],
+            platform_admin},
+        {<<"/api/adm/customer-service/quick-replies/:id">>, p_quick_reply_mutate,
+            [<<"PUT">>, <<"DELETE">>], platform_admin},
         {<<"/api/adm/customer-service/widget-installations/:id">>, p_widget_installation_update,
             [<<"PUT">>], platform_admin},
         {<<"/api/adm/customer-service/widget-installations/:id/revoke">>,

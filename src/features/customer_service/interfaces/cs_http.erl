@@ -189,6 +189,9 @@ is_web_seat_surface_path(Path) when is_binary(Path) ->
             true;
         [<<"api">>, <<"v1">>, <<"cs">>, <<"organizations">>, _OrgId, <<"transfer-targets">>] ->
             true;
+        %% V3-27 子能力：坐席快捷回复只读清单（工作台侧栏；cs_seat 主体）。
+        [<<"api">>, <<"v1">>, <<"cs">>, <<"organizations">>, _OrgId, <<"quick-replies">>] ->
+            true;
         [
             <<"api">>,
             <<"v1">>,

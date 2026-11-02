@@ -523,7 +523,19 @@ with_seat_upload_url(Req, WorkspaceId, {ok, View} = Ok) when is_map(View) ->
             Ok;
         Url ->
             Upload = maps:get(upload, View, #{}),
-            {ok, View#{upload => Upload#{url => Url, method => <<"PUT">>}}}
+            %% V3-16：显式上传 descriptor 权威下发（消费方禁止按 URL 外观或
+            %% upload_ref 猜传输类型）。现形态=api_byte（本 API 域字节端点，
+            %% 同源 Bearer）；V3-20 切 s3_put 直传时改为对象存储 descriptor。
+            {ok, View#{
+                upload => Upload#{
+                    url => Url,
+                    method => <<"PUT">>,
+                    descriptor => #{
+                        kind => <<"api_byte">>,
+                        method => <<"PUT">>
+                    }
+                }
+            }}
     end;
 with_seat_upload_url(_Req, _WorkspaceId, Other) ->
     Other.
@@ -646,30 +658,25 @@ reply_error(Req, Reason) ->
     Status = status(Reason),
     elib_response:error_with_status(Req, Status, tag(Reason), Status).
 
-%% @doc asset content：把 facade 取得的**字节**原样流式写出。
-%%
-%% 契约（A05）：响应里**不得**出现 object key / storage endpoint / presigned URL /
-%% bucket / storage_ref —— 本函数只可能写出 `body` 的字节与下面四个头（全部是
-%% 白名单非存储字段：asset id、对象哈希、mime、长度）。
+%% @doc asset content（V3-17）：旧接口名保留为**有界鉴权壳**——鉴权在
+%% action 链完成后，本函数只回 302 到边缘 `/edge?ticket=`（正文由边缘
+%% OS 进程承载，BEAM 零字节）。契约（A05 演进）不变：响应里不得出现
+%% object key / storage endpoint / presigned URL / bucket；新增头仍全部是
+%% 白名单非存储字段（asset id、对象哈希）。字节视图分支已退役——出现即
+%% fail-closed（500），防御未知调用方退回 BEAM 取流。
 -spec reply_content(cowboy_req:req(), term()) -> cowboy_req:req().
-reply_content(Req, #{body := Bytes} = View) when is_binary(Bytes) ->
+reply_content(Req, #{redirect_url := Url} = View) when is_binary(Url), byte_size(Url) > 0 ->
     Headers = #{
-        <<"content-type">> => maps:get(mime, View, <<"application/octet-stream">>),
+        <<"location">> => Url,
         <<"cache-control">> => <<"private, no-store">>,
+        <<"access-control-allow-origin">> => <<"*">>,
         <<"x-asset-id">> => to_bin(maps:get(asset_id, View, undefined)),
         <<"x-asset-sha256">> => to_bin(maps:get(object_hash, View, undefined))
     },
-    stream(Headers, Bytes, Req);
-reply_content(Req, {content_stream, Bytes}) when is_binary(Bytes) ->
-    stream(#{<<"content-type">> => <<"application/octet-stream">>}, Bytes, Req).
-
-%% 固定带 `content-length` 的流式响应：不使用 chunked（响应体就是对象字节，
-%% 调用方与证据脚本都能按定长读取）。
-stream(Headers, Bytes, Req) ->
-    Headers1 = Headers#{<<"content-length">> => integer_to_binary(byte_size(Bytes))},
-    Req1 = cowboy_req:stream_reply(200, Headers1, Req),
-    _ = cowboy_req:stream_body(Bytes, fin, Req1),
-    Req1.
+    cowboy_req:reply(302, Headers, <<>>, Req);
+reply_content(Req, _RetiredBytesView) ->
+    %% 字节直出路径已随 V3-17 退役（S3-only 合同：BEAM 不传正文）
+    cowboy_req:reply(500, #{<<"cache-control">> => <<"private, no-store">>}, <<>>, Req).
 
 to_bin(undefined) -> <<>>;
 to_bin(V) when is_binary(V) -> V;

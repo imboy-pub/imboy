@@ -3,7 +3,7 @@
 -export([fixture/3, tone/0]).
 
 assembly_pipeline_test_() ->
-    {timeout, 180,
+    {timeout, 600,
         {setup, fun setup/0, fun talk_record_t19_support:teardown_all/1, fun(S) ->
             ?_test(run(S))
         end}}.
@@ -18,10 +18,82 @@ setup() ->
                 talk_record_render_tmp_dir,
                 filename:join(os:getenv("TALK_UPLOAD_DISK_ROOT"), "render")
             ),
-            S
+            %% V3-18 P2 三段式合同：audio_render part_fetch_item 只为
+            %% garage 位置签 Worker GET（disk 位置 historical_location_
+            %% unverified fail-closed）。relay 的 part 附件因此挂 garage
+            %% registry（A0_ENDPOINT=v3run1），与 upload_namespaces 对齐。
+            PrevGarage = application:get_env(imboy, garage),
+            PrevRegistry = application:get_env(imboy, attachment_storage_registry),
+            PrevPortTimeout = application:get_env(imboy, attachment_worker_port_timeout_ms),
+            PrevInProcess = application:get_env(imboy, attachment_worker_in_process),
+            ok = garage_registry_install(),
+            %% W5b fork 楔死旁路：eunit VM 下 fork/exec 偶发楔死调度线程
+            %% （取证见 attachment_worker_port:run_io_worker 注释），IO 段
+            %% 切进程内等价路径；fork 类真链路由 G18 gate 承载。
+            application:set_env(imboy, attachment_worker_in_process, true),
+            %% 收割界保留（防御任意仍走 escript 的调用：端口等待 45s <
+            %% 外层 eunit timeout 600s，挂死转化为有界成败判定）。
+            application:set_env(imboy, attachment_worker_port_timeout_ms, 45000),
+            S#{
+                relay_prev_garage => PrevGarage,
+                relay_prev_registry => PrevRegistry,
+                relay_prev_port_timeout => PrevPortTimeout,
+                relay_prev_in_process => PrevInProcess
+            }
         end,
-        fun talk_record_t19_support:teardown_all/1
+        fun relay_teardown/1
     ).
+
+garage_registry_install() ->
+    {ok, _} = application:ensure_all_started(inets),
+    {ok, _} = application:ensure_all_started(crypto),
+    {ok, _} = application:ensure_all_started(ssl),
+    Ep = list_to_binary(os:getenv("A0_ENDPOINT")),
+    Ak = list_to_binary(os:getenv("A0_AK")),
+    Sk = list_to_binary(os:getenv("A0_SK")),
+    ok = application:set_env(imboy, garage, #{
+        endpoint => Ep,
+        bucket => <<"imboy">>,
+        region => <<"garage">>,
+        access_key => Ak,
+        secret_key => Sk
+    }),
+    Base = attachment_storage:registry(),
+    application:set_env(imboy, attachment_storage_registry, Base#{
+        roots => (maps:get(roots, Base, #{}))#{
+            <<"talk-relay-garage">> => #{
+                driver => <<"garage">>,
+                namespace => <<"talk-relay-garage">>,
+                endpoint => Ep,
+                container => <<"imboy">>,
+                access_key => Ak,
+                secret_key => Sk,
+                region => <<"garage">>
+            }
+        },
+        upload_namespaces =>
+            (maps:get(upload_namespaces, Base, #{}))#{<<"talk_record">> => <<"talk-relay-garage">>}
+    }),
+    ok.
+
+relay_teardown(S) ->
+    case maps:get(relay_prev_registry, S, undefined) of
+        undefined -> application:unset_env(imboy, attachment_storage_registry);
+        {ok, R} -> application:set_env(imboy, attachment_storage_registry, R)
+    end,
+    case maps:get(relay_prev_garage, S, undefined) of
+        undefined -> application:unset_env(imboy, garage);
+        {ok, G} -> application:set_env(imboy, garage, G)
+    end,
+    case maps:get(relay_prev_port_timeout, S, undefined) of
+        undefined -> application:unset_env(imboy, attachment_worker_port_timeout_ms);
+        {ok, T} -> application:set_env(imboy, attachment_worker_port_timeout_ms, T)
+    end,
+    case maps:get(relay_prev_in_process, S, undefined) of
+        undefined -> application:unset_env(imboy, attachment_worker_in_process);
+        {ok, V} -> application:set_env(imboy, attachment_worker_in_process, V)
+    end,
+    talk_record_t19_support:teardown_all(S).
 
 run(S) ->
     C = maps:get(conn, S),
@@ -157,34 +229,66 @@ fixture(C, Bytes, N) ->
 late_publish(C, B, N, Mode) ->
     {Rid, J} = fixture(C, B, N),
     {ok, P} = elib_pg:with_tx(fun(X) -> talk_record_assembly_job:prepare_tx(X, J) end),
-    ok = talk_record_audio_render:with_audio(maps:get(parts, P), fun(Source) ->
-        Mb = jsone:encode(maps:get(manifest, P)),
-        {ok, Ready} = elib_pg:with_tx(fun(X) ->
-            talk_record_assembly_job:reserve_tx(X, J, P, {Source, Mb})
-        end),
-        ok = talk_record_assembly_artifact:write(Ready, Source, Mb),
-        Expected =
-            case Mode of
-                lease ->
-                    {ok, 1} = elib_pg:execute(
-                        C,
-                        <<"UPDATE talk_record_job SET lease_until=now()-interval '1s' WHERE id=$1">>,
-                        [maps:get(<<"id">>, J)]
-                    ),
-                    lease_lost;
-                delete ->
-                    {ok, 1} = elib_pg:execute(
-                        C, <<"UPDATE talk_record SET deleted_at=now() WHERE id=$1">>, [Rid]
-                    ),
-                    record_deleted
-            end,
-        ?assertEqual({error, Expected}, talk_record_assembly_job:run(J)),
-        Result = elib_pg:with_tx(fun(X) -> talk_record_assembly_job:publish_tx(X, J, Ready) end, [
-            {reraise, false}
-        ]),
-        ?assertEqual({rollback, {talk_assembly_abort, Expected}}, Result),
-        ok
+    %% V3-18 P2 三段式迁移：中间段与 run/1 同构（Worker staging 上传拿
+    %% proof → reserve_tx({Proof, ManifestBytes}) → write/2），旧 write/3
+    %% + BEAM 字节哈希形态已退役。竞态注入不需要第二遍真渲染——gate 在
+    %% prepare 期即拒绝（prepare_tx 已取，后续 run(J) 直接失败）；本体
+    %% 字节复用 fixture 的 tone 文件（staging/copy 不参与后续断言）。
+    {ok, PartsRows} = talk_record_assembly_logic:confirmed_parts_tx(
+        C, maps:get(<<"record_id">>, J)
+    ),
+    _ = PartsRows,
+    %% tone() 生成即删源文件（fixture 只留字节）；late_publish 本体字节
+    %% 自落盘（内容不参与竞态断言，仅满足 Worker staging 上传的形态链）。
+    OutPath = filename:join(os:getenv("TALK_UPLOAD_DISK_ROOT"), "late-publish-body.aac"),
+    ok = file:write_file(OutPath, B),
+    Mb = jsone:encode(maps:get(manifest, P)),
+    ManifestFile = filename:join(os:getenv("TALK_UPLOAD_DISK_ROOT"), "manifest-relay.json"),
+    ok = file:write_file(ManifestFile, Mb),
+    AudioStaging = relay_staging_key(J, <<"audio">>),
+    ManifestStaging = relay_staging_key(J, <<"manifest">>),
+    T0 = erlang:monotonic_time(millisecond),
+    {ok, #{sha256 := ASha, size := ASize}} =
+        relay_staging_upload(OutPath, <<"audio/aac">>, AudioStaging),
+    T1 = erlang:monotonic_time(millisecond),
+    io:format("RELAY_T stage_upload_audio=~pms~n", [T1 - T0]),
+    {ok, _} = relay_staging_upload(ManifestFile, <<"application/json">>, ManifestStaging),
+    T2 = erlang:monotonic_time(millisecond),
+    io:format("RELAY_T stage_upload_manifest=~pms~n", [T2 - T1]),
+    {ok, Ready} = elib_pg:with_tx(fun(X) ->
+        talk_record_assembly_job:reserve_tx(X, J, P, {{ASha, ASize}, Mb})
     end),
+    ok = talk_record_assembly_artifact:write(
+        Ready,
+        #{
+            audio_staging => AudioStaging,
+            manifest_staging => ManifestStaging,
+            audio_file => OutPath,
+            manifest_file => ManifestFile
+        }
+    ),
+    Expected =
+        case Mode of
+            lease ->
+                {ok, 1} = elib_pg:execute(
+                    C,
+                    <<"UPDATE talk_record_job SET lease_until=now()-interval '1s' WHERE id=$1">>,
+                    [maps:get(<<"id">>, J)]
+                ),
+                lease_lost;
+            delete ->
+                {ok, 1} = elib_pg:execute(
+                    C, <<"UPDATE talk_record SET deleted_at=now() WHERE id=$1">>, [Rid]
+                ),
+                record_deleted
+        end,
+    ?assertEqual({error, Expected}, talk_record_assembly_job:run(J)),
+    Result = elib_pg:with_tx(fun(X) -> talk_record_assembly_job:publish_tx(X, J, Ready) end, [
+        {reraise, false}
+    ]),
+    ?assertEqual({rollback, {talk_assembly_abort, Expected}}, Result),
+    _ = file:delete(ManifestFile),
+    _ = file:delete(OutPath),
     {ok, A} = talk_record_assembly_logic:find_tx(C, Rid),
     ?assertEqual(null, maps:get(<<"audio_attachment_id">>, A)),
     {ok, 1} = elib_pg:execute(
@@ -192,6 +296,36 @@ late_publish(C, B, N, Mode) ->
         <<"UPDATE talk_record_job SET state='cancelled',finished_at=now() WHERE id=$1">>,
         [maps:get(<<"id">>, J)]
     ).
+
+%% 与 talk_record_assembly_job:staging_key/staging_upload 同构（未导出，
+%% 测试本地复刻；键随机一次性，sweep 收敛残留）。
+relay_staging_key(Job, Role) ->
+    Jid = maps:get(<<"id">>, Job),
+    Nonce = binary:encode_hex(crypto:strong_rand_bytes(16), lowercase),
+    <<"assembly-staging/", (integer_to_binary(Jid))/binary, "/", Role/binary, "/", Nonce/binary>>.
+
+relay_staging_upload(Path, Mime, StagingKey) ->
+    Cfg = application:get_env(imboy, garage, #{}),
+    Parent = self(),
+    Pid = spawn(fun() ->
+        R =
+            (catch attachment_worker_port:upload_file(#{
+                src_path => Path,
+                endpoint => maps:get(endpoint, Cfg),
+                ak => maps:get(access_key, Cfg),
+                sk => maps:get(secret_key, Cfg),
+                bucket => maps:get(bucket, Cfg, <<"imboy">>),
+                region => maps:get(region, Cfg, <<"garage">>),
+                object_key => StagingKey,
+                mime => Mime
+            })),
+        io:format("RELAY_T staged ~ts -> ~200p~n", [StagingKey, R]),
+        Parent ! {staged, R}
+    end),
+    receive
+        {staged, R} -> R
+    after 45000 -> erlang:error({staging_timeout, StagingKey, Pid})
+    end.
 
 invalid_source(C, N) ->
     {Rid, J} = fixture(C, <<"invalid AAC">>, N),
@@ -266,15 +400,18 @@ duration_mismatch(C, B, N) ->
 
 corrupt_source(C, B, N) ->
     {Rid, J} = fixture(C, B, N),
+    %% V3-18 P2 三段式：字节完整性锚 = talk_record_audio_part.sha256
+    %% （Worker fetch 逐项 size+sha256 校验，任一不符 fail-closed；
+    %% attachment.file_hash256 只是元数据，不再作 fetch 锚）。锚值破坏
+    %% 在 prepare 期即被 fence（manifest 重验不一致 → input_stale，
+    %% 不再进 fetch 段）；fetch 段错 sha fail-closed 由
+    %% assembly_io_worker_tests（真 Garage）覆盖。
     {ok, 1} = elib_pg:execute(
         C,
-        <<
-            "UPDATE attachment SET file_hash256=repeat('0',64)"
-            " WHERE id=(SELECT attachment_id FROM talk_record_audio_part WHERE record_id=$1)"
-        >>,
+        <<"UPDATE talk_record_audio_part SET sha256=repeat('0',64) WHERE record_id=$1">>,
         [Rid]
     ),
-    ?assertEqual({error, artifact_integrity_mismatch}, talk_record_assembly_job:run(J)),
+    ?assertEqual({error, input_stale}, talk_record_assembly_job:run(J)),
     {ok, A} = talk_record_assembly_logic:find_tx(C, Rid),
     ?assertEqual(null, maps:get(<<"audio_attachment_id">>, A)).
 

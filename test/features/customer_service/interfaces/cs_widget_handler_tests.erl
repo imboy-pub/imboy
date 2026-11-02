@@ -488,7 +488,9 @@ asset_content_tests(_) ->
                     size_bytes => 5,
                     object_hash =>
                         <<"deadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef">>,
-                    body => <<"BYTES">>
+                    %% V3-17：302 边缘视图（自家 edge URL），正文不经 BEAM
+                    redirect_url =>
+                        <<"https://edge.example.test/edge?ticket=synthetic-wgt">>
                 }}
             end),
             ?S:with_listener(widget, widget_asset_content, widget_inject(), fun(Port) ->
@@ -500,11 +502,18 @@ asset_content_tests(_) ->
                     <<>>,
                     #{<<"x-cs-visit-token">> => ?TOKEN}
                 ),
-                ?assertEqual(200, ?S:status(Resp)),
+                %% V3-17：旧接口名=有界鉴权壳——302 到自家边缘，正文由边缘
+                %% OS 进程承载（BEAM 零字节），不再回 200 字节。
+                ?assertEqual(302, ?S:status(Resp)),
                 Headers = maps:get(headers, Resp),
-                ?assertEqual(<<"image/png">>, maps:get(<<"content-type">>, Headers)),
+                Location = maps:get(<<"location">>, Headers),
+                ?assert(is_binary(Location) andalso byte_size(Location) > 0),
+                %% 红线保持：location 是自家边缘（edge?ticket=），非存储
+                %% presign（无 X-Amz- 签名特征）
+                ?assertEqual(nomatch, binary:match(Location, <<"X-Amz-">>)),
+                ?assertEqual(nomatch, binary:match(Location, <<"x-amz-">>)),
                 ?assertEqual(<<"private, no-store">>, maps:get(<<"cache-control">>, Headers)),
-                ?assertEqual(<<"BYTES">>, maps:get(body, Resp))
+                ?assertEqual(<<>>, maps:get(body, Resp))
             end)
         end},
         {"BE-S01b content proxy without token is 401 before the use case", fun() ->

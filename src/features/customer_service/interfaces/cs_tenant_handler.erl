@@ -183,6 +183,11 @@ now(Case) ->
         millisecond -> cs_http:now_ms()
     end.
 
+identity_derived(#{auth_context := cs_seat, user_id := Uid, business_identity_id := Bid}) ->
+    %% V3-27 子能力：快捷回复坐席门读 seat_user_id（cs_quick_reply_app:
+    %% seat_assignment_ok 的 org-member 复核基准）——与 business_identity_id
+    %% 同源自认证上下文派生，客户端不可申报。
+    #{business_identity_id => Bid, seat_user_id => Uid};
 identity_derived(#{auth_context := cs_seat, business_identity_id := Bid}) ->
     #{business_identity_id => Bid};
 identity_derived(#{auth_context := cs_visit, contact_id := Cid}) ->

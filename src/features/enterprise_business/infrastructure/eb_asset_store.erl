@@ -39,6 +39,7 @@
     put_private/3,
     stream_content/3,
     stream_content_chunked/3,
+    download_location/3,
     delete_private/3,
     insert_asset/3,
     fetch_asset/3,
@@ -243,6 +244,37 @@ stream_content_chunked(OrgId, WorkspaceId, AssetId) ->
         end
     end).
 
+%% @doc V3-17（G17）：精确 winner 的**位置解析**——正文读链切边缘后的
+%% BEAM 侧唯一定位入口。与 stream_content 的差异：
+%%   * 不读字节（BEAM=0 正文合同），只经 frozen_location 解析物理 winner；
+%%   * status 门同 stream_content（deleted → not_found；pending 保持原语义
+%%     由调用方 status_gate 把关，本函数仅拦 deleted）；
+%%   * 非 garage（disk/stub/legacy）位置 fail-closed：
+%%     {error, location_unverified}——边缘只承载 S3，不回退 BEAM 兜底。
+-spec download_location(integer(), integer(), integer()) ->
+    {ok, #{driver := garage, key := binary(), container := binary(), namespace := binary()}}
+    | {error, term()}.
+download_location(OrgId, WorkspaceId, AssetId) ->
+    eb_pg_exec:with_tenant(OrgId, WorkspaceId, fun() ->
+        case eb_pg_asset_meta:fetch_asset(OrgId, WorkspaceId, AssetId) of
+            {ok, Row = #{status := Status}} when Status =/= deleted ->
+                case location(Row) of
+                    {ok, #{driver := garage} = I} -> {ok, I};
+                    _ -> {error, location_unverified}
+                end;
+            {ok, #{status := deleted}} ->
+                {error, not_found};
+            {ok, Row} ->
+                %% status 字段缺省（历史行）：位置解析照常，状态门由调用方裁决
+                case location(Row) of
+                    {ok, #{driver := garage} = I} -> {ok, I};
+                    _ -> {error, location_unverified}
+                end;
+            {error, _} = Err ->
+                Err
+        end
+    end).
+
 put_reserved(eb_asset_object_stub = Store, Row, Payload, Meta) ->
     Store:put(maps:get(object_key, Row), Payload, Meta);
 put_reserved(_, Row, Payload, Meta) ->
@@ -290,9 +322,11 @@ read_frozen(Row) ->
                                 {ok, _Changed} -> {error, object_changed_during_read};
                                 Error -> Error
                             end;
-                        Error -> Error
+                        Error ->
+                            Error
                     end;
-                Error -> Error
+                Error ->
+                    Error
             end;
         {ok, legacy_unknown} ->
             case maps:get(status, Row) of

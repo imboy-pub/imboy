@@ -159,6 +159,8 @@ namespaces() ->
         enterprise_message,
         enterprise_message_delivery,
         enterprise_message_origin,
+        %% V3-23 企业频道消息（migration 00000241）
+        enterprise_channel_message,
         enterprise_audit_event,
         enterprise_application,
         enterprise_application_grant,
@@ -183,6 +185,8 @@ namespaces() ->
         cs_seat_console_public,
         cs_widget_installation,
         cs_widget_installation_public,
+        %% V3-27 子能力：客服快捷回复（cs_quick_reply 表主键域）。
+        cs_quick_reply,
         agent_grant,
         agent_grant_event,
         agent_run,

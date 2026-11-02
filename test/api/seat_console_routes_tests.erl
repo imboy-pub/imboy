@@ -83,6 +83,7 @@ expected_paths() ->
     E = "/api/v1/seat/enterprise/organizations/:org_id",
     [
         "/api/v1/seat/cs/me/seat-contexts",
+        C ++ "/quick-replies",
         C ++ "/sessions/queue",
         C ++ "/sessions/:id/claim",
         C ++ "/sessions/:id/transfer",

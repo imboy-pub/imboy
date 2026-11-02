@@ -44,8 +44,21 @@ client_ack(Type, MsgId, CurrentUid, DID) ->
         _ ->
             elib_metric:increment(msg_delivered_total),
             record_deliver_duration(MsgId),
+            %% V3-24 G-4：企业托管行送达事件（按 origin 归属解析，Human 消息
+            %% 零外发；独立小事务，失败只留痕不阻断 ACK 主链）。
+            emit_enterprise_delivered(Type, MsgId),
             ok
     end.
+
+%% 企业托管消息 delivered 归属：只有 c2c/c2g 是企业代发承载表（s2c/c2s
+%% 系统通道不查不外发）。内部调用的独立小事务 fail-safe（恒 ok）。
+-spec emit_enterprise_delivered(binary(), binary()) -> ok.
+emit_enterprise_delivered(<<"c2c">>, MsgId) ->
+    enterprise_webhook_logic:emit_delivered_for(<<"msg_c2c">>, MsgId);
+emit_enterprise_delivered(<<"c2g">>, MsgId) ->
+    enterprise_webhook_logic:emit_delivered_for(<<"msg_c2g">>, MsgId);
+emit_enterprise_delivered(_Type, _MsgId) ->
+    ok.
 
 %% ===================================================================
 %% Internal Function Definitions
@@ -78,12 +91,15 @@ record_deliver_duration(MsgId) ->
     end.
 
 -spec msg_created_ms(term()) -> integer().
-msg_created_ms(<<T0:8/binary, "-", T1:4/binary, "-", V:4/binary, "-", R:4/binary, "-", T2:12/binary>>) ->
+msg_created_ms(
+    <<T0:8/binary, "-", T1:4/binary, "-", V:4/binary, "-", R:4/binary, "-", T2:12/binary>>
+) ->
     %% Decode the entire canonical UUID, then require version 7 and RFC 9562 variant 10.
     %% 校验所有十六进制字符及版本/variant，不能把任意 UUID 当作时间戳。
     try
-        <<Ts:48, 7:4, _:12, 2:2, _:62>> = binary:decode_hex(<<T0/binary, T1/binary,
-            V/binary, R/binary, T2/binary>>),
+        <<Ts:48, 7:4, _:12, 2:2, _:62>> = binary:decode_hex(
+            <<T0/binary, T1/binary, V/binary, R/binary, T2/binary>>
+        ),
         Ts
     catch
         _:_ -> 0

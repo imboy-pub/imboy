@@ -54,8 +54,30 @@ presign(Uid, FileName, MimeType, Scope, ScopeRef, ClientUploadId) ->
         false ->
             {error, invalid_file_type};
         true ->
-            presign_authorized(Uid, FileName, MimeType, Scope, ScopeRef, ClientUploadId)
+            %% V5 幂等键是 uuid 列（fn_v5_register_pending $5::uuid /
+            %% attach_pending.client_upload_id=$1::uuid）：非法形状值一旦直传，
+            %% epgsql uuid codec 编码即 badarg、崩掉池内连接（dead_connection
+            %% 连锁 503）。入口 fail-closed：非 UUID 一律 400，不触 PG。
+            case valid_client_upload_id(ClientUploadId) of
+                true ->
+                    presign_authorized(Uid, FileName, MimeType, Scope, ScopeRef, ClientUploadId);
+                false ->
+                    {error, invalid_client_upload_id}
+            end
     end.
+
+%% 外部申报的幂等恢复键形状门（undefined=本次登记不带恢复键，放行）。
+valid_client_upload_id(undefined) ->
+    true;
+valid_client_upload_id(Bin) when is_binary(Bin) ->
+    Re = <<"^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$">>,
+    try
+        nomatch =/= re:run(Bin, Re)
+    catch
+        _:_ -> false
+    end;
+valid_client_upload_id(_) ->
+    false.
 
 %% V5 恢复合同（AC01 / 02 §12）：登记事务 COMMIT 成功后才签发能力。
 %% 登记失败、异常或提交结果未知一律不返回可用 put_url —— 签名器调用 0 次。

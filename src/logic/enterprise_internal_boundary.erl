@@ -168,6 +168,10 @@ spec(<<"INT-48">>) ->
     {ok, #{kind => list}};
 spec(<<"INT-49">>) ->
     {ok, #{kind => list}};
+%% V3-23 INT-50 企业频道消息代发（channel 所属 W 边界；handler 先定位频道
+%% 再以 workspace_id enforce——与 INT-10 两步编排同款）
+spec(<<"INT-50">>) ->
+    {ok, #{kind => workspace}};
 spec(_RouteId) ->
     error.
 
@@ -261,7 +265,8 @@ candidate_ids() ->
                 <<"INT-46">>,
                 <<"INT-47">>,
                 <<"INT-48">>,
-                <<"INT-49">>
+                <<"INT-49">>,
+                <<"INT-50">>
             ]
     ].
 

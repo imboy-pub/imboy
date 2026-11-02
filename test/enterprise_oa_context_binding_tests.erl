@@ -9,6 +9,13 @@
 %%   - disabled → 404
 %%   - organization_id 请求字段容忍并忽略：垃圾值不改变结果
 context_binding_test() ->
+    %% 单跑防御：签发链真实调用 elib_tsid:generate（meck 只钉 elib_pg），
+    %% 未初始化时崩——对齐 talk_record_cleanup_retry_pg_checks 先例。
+    case elib_tsid:readiness() of
+        ready -> ok;
+        not_initialized -> ok = elib_tsid:init(#{dc_id => 1, node_id => 1, dc_bits => 3});
+        Other -> error({oa_binding_allocator_not_ready, Other})
+    end,
     meck:new(elib_pg, [non_strict, no_link]),
     try
         Params = #{

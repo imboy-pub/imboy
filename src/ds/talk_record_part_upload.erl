@@ -22,71 +22,45 @@ prepare(Uid, RecordId, Part) ->
     end.
 
 prepare_aac(Uid, RecordId, Part) ->
+    %% V3-18：录音分片上传切 direct s3_put——正文不过 BEAM（原 V5 presign +
+    %% gateway put_url 通道随 V3-20 退役）。字节证明链：presign 绑定
+    %% x-amz-checksum-sha256（PUT 时 S3 验内容）→ finalize copy proof——
+    %% 强于旧 verify_and_save_v5 的 BEAM 读回复核。Cid 幂等保持（T02）：
+    %% 重试/续录同 part 恒同 object_key，不会铸造/复用错对象。
     Pid = part_id(Part),
-    Ref = integer_to_binary(RecordId),
     {Mime, Ext} = codec(maps:get(<<"codec">>, Part, null)),
     Name = <<"part-", (integer_to_binary(Pid))/binary, Ext/binary>>,
     Cid = client_upload_id(Pid),
-    case attach_logic:presign(Uid, Name, Mime, <<"talk_record">>, Ref, Cid) of
-        {ok, Session} -> {ok, Session};
-        {error, session_expired} -> renew(Uid, Cid, Mime);
-        Error -> Error
-    end.
-
-%% Renewal reuses the frozen location and repository deadline guard. Signing is
-%% performed only after the new expiry commits; a dead session is never replaced.
-renew(Uid, Cid, Mime) ->
-    case attach_pending_repo:status_lookup(Cid) of
-        {ok, #{<<"object_key">> := Key} = Row} ->
-            case
-                {
-                    attach_logic:reauthorize_upload_session(Uid, Row),
-                    attachment_storage:session_location(Key)
-                }
-            of
-                {ok, {ok, Location}} when is_map(Location) ->
-                    case renew_expiry(Key, Uid, Row) of
-                        {ok, #{committed_expires_at := Expiry}} ->
-                            {ok, Cap} = imboy_jwt:issue_upload_capability(Key, Mime, Expiry),
-                            {ok, #{
-                                <<"object_key">> => Key,
-                                <<"client_upload_id">> => Cid,
-                                <<"put_url">> =>
-                                    <<"/api/v1/attachment/gateway/", Cid/binary, "?capability=",
-                                        Cap/binary>>,
-                                <<"expires_at">> => Expiry,
-                                <<"upload_capability">> => Cap,
-                                <<"gateway">> => true,
-                                <<"session_state">> => <<"registered">>
-                            }};
-                        Error ->
-                            Error
-                    end;
-                {{error, _} = Error, _} ->
-                    Error;
-                {_, _} ->
-                    {error, historical_location_unverified}
+    Sha = maps:get(<<"sha256">>, Part, <<>>),
+    Size = maps:get(<<"byte_size">>, Part, 0),
+    case
+        attach_direct_logic:register(
+            Uid, <<"talk_record">>, integer_to_binary(RecordId), Cid, Name
+        )
+    of
+        {ok, #{object_key := Key}} ->
+            case attach_direct_logic:declare(Key, Sha, Size, Mime) of
+                ok -> grant_descriptor(Key, Sha);
+                %% 同 part 重试（expected 已冻结同值）：幂等直接再取 descriptor
+                {error, expected_conflict} -> grant_descriptor(Key, Sha);
+                Error -> Error
             end;
         Error ->
             Error
     end.
 
-renew_expiry(Key, Uid, Row) ->
-    Now = erlang:system_time(second),
-    Deadline = unix_seconds(maps:get(<<"session_deadline">>, Row, null)),
-    case Now < Deadline of
-        true -> attach_pending_repo:renew_capability(Key, Uid, min(Now + 3600, Deadline));
-        false -> {error, session_expired}
+%% GRANTED/FINALIZING（票据过期/前次 attempt 未收口）→ renew_grant 新
+%% attempt（I05：新 staging/target，一次授权一次请求）；CONFIRMED 重试
+%% 返回原会话投影（幂等）。
+grant_descriptor(Key, Sha) ->
+    case attach_direct_logic:grant(Key, Sha) of
+        {ok, #{grant := _G, attempt_id := _No} = Granted} ->
+            {ok, Granted};
+        {error, illegal_state} ->
+            attach_direct_logic:renew_grant(Key, Sha);
+        Error ->
+            Error
     end.
-
-unix_seconds(Bin) when is_binary(Bin) ->
-    try
-        calendar:rfc3339_to_system_time(binary_to_list(Bin), [{unit, second}])
-    catch
-        _:_ -> 0
-    end;
-unix_seconds(_) ->
-    0.
 
 %% Authorization is checked by the caller before any storage I/O and again when
 %% binding. No user-provided key or attachment ID is accepted in the receipt.
@@ -122,24 +96,55 @@ verify_session(Uid, RecordId, Part, Row) ->
             end
     end.
 
-verify_bytes(Uid, RecordId, Part, Row) ->
-    %% Gateway pin is server-computed from uploaded bytes, not a client claim.
-    case pin_matches(Part, maps:get(<<"upload_content">>, Row, null)) of
-        false ->
-            {error, audio_part_verification_failed};
-        true ->
-            case
-                attach_logic:confirm(
-                    Uid,
-                    maps:get(<<"object_key">>, Row),
-                    <<"talk_record">>,
-                    integer_to_binary(RecordId),
-                    #{}
-                )
-            of
-                {ok, _} -> ok;
-                Error -> Error
-            end
+verify_bytes(_Uid, _RecordId, _Part, Row) ->
+    %% V3-18：registered 会话按 direct 收口最新 attempt——字节证明来自
+    %% staging PUT 的 S3 checksum（presign 绑定）与 finalize copy proof，
+    %% 不再 BEAM 读回复核（verify_and_save_v5 退役面）。declared expected
+    %% 与 proof 的一致性由 direct 状态机保证；会话/主体匹配已在上层核过。
+    Key = maps:get(<<"object_key">>, Row),
+    case latest_attempt(Key) of
+        {ok, No} ->
+            case attach_direct_logic:finalize(Key, No) of
+                {ok, #{state := <<"CONFIRMED">>}} ->
+                    ok;
+                {ok, #{outcome := <<"UNKNOWN_QUARANTINED">>}} ->
+                    %% UNKNOWN 不晋升（I13）：对调用方保持“未确认可重试”
+                    {error, upload_not_confirmed};
+                {ok, _Rejected} ->
+                    {error, audio_part_verification_failed};
+                {error, attempt_not_dispatchable} ->
+                    %% attempt 已收口但会话未 confirm（proof 拒绝）或已
+                    %% CONFIRMED 竞态——重读会话态裁决
+                    case session_confirmed(Key) of
+                        true -> ok;
+                        false -> {error, audio_part_verification_failed}
+                    end;
+                Error ->
+                    Error
+            end;
+        none ->
+            %% 无 attempt：会话未取 descriptor（客户端未走 grant）
+            {error, upload_not_confirmed}
+    end.
+
+latest_attempt(Key) ->
+    case attach_direct_attempt_repo:list_for_session(Key) of
+        {ok, Attempts} when Attempts =/= [] ->
+            #{<<"attempt_no">> := No} = lists:last(Attempts),
+            {ok, No};
+        _ ->
+            none
+    end.
+
+session_confirmed(Key) ->
+    case
+        elib_pg:query(
+            <<"SELECT session_state FROM attach_pending WHERE object_key=$1">>,
+            [Key]
+        )
+    of
+        {ok, [#{<<"session_state">> := <<"confirmed">>}]} -> true;
+        _ -> false
     end.
 
 confirmed_asset_tx(Conn, Uid, RecordId, Part) ->

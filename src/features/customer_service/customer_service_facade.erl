@@ -52,6 +52,11 @@
     %% widget installation 管理
     list_widget_installations/2,
     create_widget_installation/2,
+    quick_reply_page/2,
+    quick_reply_create/2,
+    quick_reply_update/2,
+    quick_reply_delete/2,
+    quick_reply_seat_list/2,
     update_widget_installation/2,
     revoke_widget_installation/2,
     %% seat console 嵌入管理（seat-console-embed SC-BE）
@@ -437,6 +442,40 @@ create_widget_installation(OrgId, Params) when is_integer(OrgId), is_map(Params)
 create_widget_installation(OrgId, _Params) ->
     {error, {invalid_argument, {organization_id, OrgId}}}.
 
+%% ===================================================================
+%% V3-27 子能力：快捷回复（合同 v3/specs/cs-quick-reply.md §2/§3/§4）。
+%% ===================================================================
+
+-spec quick_reply_page(integer(), map()) -> term().
+quick_reply_page(OrgId, Params) when is_integer(OrgId), is_map(Params) ->
+    cs_quick_reply_app:page(Params#{organization_id => OrgId});
+quick_reply_page(OrgId, _Params) ->
+    {error, {invalid_argument, {organization_id, OrgId}}}.
+
+-spec quick_reply_create(integer(), map()) -> term().
+quick_reply_create(OrgId, Params) when is_integer(OrgId), is_map(Params) ->
+    cs_quick_reply_app:create(Params#{organization_id => OrgId});
+quick_reply_create(OrgId, _Params) ->
+    {error, {invalid_argument, {organization_id, OrgId}}}.
+
+-spec quick_reply_update(integer(), map()) -> term().
+quick_reply_update(OrgId, Params) when is_integer(OrgId), is_map(Params) ->
+    cs_quick_reply_app:update(Params#{organization_id => OrgId});
+quick_reply_update(OrgId, _Params) ->
+    {error, {invalid_argument, {organization_id, OrgId}}}.
+
+-spec quick_reply_delete(integer(), map()) -> term().
+quick_reply_delete(OrgId, Params) when is_integer(OrgId), is_map(Params) ->
+    cs_quick_reply_app:delete(Params#{organization_id => OrgId});
+quick_reply_delete(OrgId, _Params) ->
+    {error, {invalid_argument, {organization_id, OrgId}}}.
+
+-spec quick_reply_seat_list(integer(), map()) -> term().
+quick_reply_seat_list(OrgId, Params) when is_integer(OrgId), is_map(Params) ->
+    cs_quick_reply_app:seat_list(Params#{organization_id => OrgId});
+quick_reply_seat_list(OrgId, _Params) ->
+    {error, {invalid_argument, {organization_id, OrgId}}}.
+
 -spec revoke_widget_installation(integer(), map()) -> term().
 revoke_widget_installation(OrgId, #{id := Id, at := At} = Params) when
     is_integer(OrgId), is_integer(Id), is_integer(At), is_map(Params)
@@ -781,13 +820,21 @@ widget_asset_upload(
     %% Status/renew locate an existing session; registration declarations are
     %% required only for register. Authentication and visitor scoping stay shared.
     %% status/renew 定位既有会话，仅 register 必须携带登记声明；共用鉴权归属门。
-    case {maps:get(operation, Params, <<"register">>),
-        maps:get(mime, Params, undefined), maps:get(size_bytes, Params, undefined)} of
-        {<<"status">>, _, _} -> widget_asset_upload_scoped(Params);
-        {<<"renew">>, _, _} -> widget_asset_upload_scoped(Params);
+    case
+        {
+            maps:get(operation, Params, <<"register">>),
+            maps:get(mime, Params, undefined),
+            maps:get(size_bytes, Params, undefined)
+        }
+    of
+        {<<"status">>, _, _} ->
+            widget_asset_upload_scoped(Params);
+        {<<"renew">>, _, _} ->
+            widget_asset_upload_scoped(Params);
         {_, Mime, Size} when is_binary(Mime), is_integer(Size) ->
             widget_asset_upload_scoped(Params);
-        _ -> {error, {invalid_argument, widget_asset_upload}}
+        _ ->
+            {error, {invalid_argument, widget_asset_upload}}
     end;
 widget_asset_upload(_OrgId, Params) when is_map(Params) ->
     {error, {invalid_argument, widget_asset_upload}};
@@ -843,15 +890,15 @@ widget_asset_put(
     } = Params
 ) when
     is_integer(OrgId) andalso
-    is_integer(InstallationId) andalso
-    is_integer(SessionId) andalso
-    is_binary(UploadRef) andalso
-    (is_binary(Payload) orelse
-        (is_tuple(Payload) andalso tuple_size(Payload) =:= 4 andalso
-            element(1, Payload) =:= upload_spool andalso is_pid(element(2, Payload)) andalso
-            is_integer(element(3, Payload)) andalso element(3, Payload) >= 0 andalso
-            is_binary(element(4, Payload)))) andalso
-    is_map(Params)
+        is_integer(InstallationId) andalso
+        is_integer(SessionId) andalso
+        is_binary(UploadRef) andalso
+        (is_binary(Payload) orelse
+            (is_tuple(Payload) andalso tuple_size(Payload) =:= 4 andalso
+                element(1, Payload) =:= upload_spool andalso is_pid(element(2, Payload)) andalso
+                is_integer(element(3, Payload)) andalso element(3, Payload) >= 0 andalso
+                is_binary(element(4, Payload)))) andalso
+        is_map(Params)
 ->
     case cs_widget_env:merge_visitor(OrgId, Params) of
         {ok, Merged} -> cs_widget_session_app:asset_put(OrgId, Merged);

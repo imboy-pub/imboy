@@ -53,39 +53,34 @@ scan_confirmed(ObjectKey, Mime, Secret, BudgetMs) ->
     case direct_session_row(ObjectKey) of
         {ok, Row = #{<<"direct_state">> := <<"CONFIRMED">>}} ->
             case attachment_storage:frozen_location(ObjectKey, Row) of
-                {ok, I} when is_map(I) ->
+                {ok, I = #{garage_config := Cfg}} when is_map(I) ->
+                    %% V3-17：正文读移出 BEAM——外部 OS Worker（Range GET 流式
+                    %% 扫描+receipt），本进程只收有界结果并二次验证；无 BEAM
+                    %% 内 ReadFun 路径、无回退（fail-closed，S3-only 合同 §7）。
                     AttemptKey = attempt_key_of(Row, ObjectKey),
-                    ReadFun = read_fun_from_snapshot(I),
                     Budget =
                         case BudgetMs of
                             infinity -> 600000;
                             N when is_integer(N), N > 0 -> N
                         end,
-                    case
-                        attachment_content_worker:scan(
-                            ReadFun,
-                            fun eb_asset_content:sniff/2,
-                            Mime,
-                            AttemptKey,
-                            ObjectKey,
-                            #{secret => Secret, deadline_ms => Budget}
-                        )
-                    of
-                        {ok, Res = #{receipt := Receipt, sha256 := Sha, size := Size}} ->
-                            case
-                                attachment_content_receipt:verify(Receipt, Secret, #{
-                                    attempt_key => AttemptKey,
-                                    object_key => ObjectKey,
-                                    sha256 => Sha,
-                                    size => Size,
-                                    mime => Mime,
-                                    ruleset_digest =>
-                                        attachment_content_receipt:ruleset_digest()
-                                })
-                            of
-                                ok -> {ok, Res#{verified => true}};
-                                {error, Reason} -> {error, {receipt, Reason}}
-                            end;
+                    Task = #{
+                        endpoint => maps:get(endpoint, Cfg),
+                        ak => maps:get(access_key, Cfg),
+                        sk => maps:get(secret_key, Cfg),
+                        bucket => maps:get(container, I),
+                        region => maps:get(region, Cfg, <<"garage">>),
+                        object_key => maps:get(key, I, ObjectKey),
+                        attempt_key => AttemptKey,
+                        mime => Mime,
+                        secret => Secret,
+                        deadline_ms => Budget
+                    },
+                    case attachment_worker_port:scan_external(Task) of
+                        {ok, Res = #{verified := true}} ->
+                            {ok, Res};
+                        {ok, _} ->
+                            %% port 层已验证但未回 verified 标记（不可达防御）
+                            {error, {receipt, unverified}};
                         {error, _} = E ->
                             E
                     end;

@@ -134,6 +134,10 @@ do_presign_register(Uid, Qs, Req0) ->
             elib_response:success(Req0, Data, "success.");
         {error, invalid_file_type} ->
             elib_response:error(Req0, <<"不支持的文件类型"/utf8>>, ?ERR_BAD_REQUEST);
+        {error, invalid_client_upload_id} ->
+            %% V5 幂等键形状门：client_upload_id 必须 UUID（否则 uuid 列参数
+            %% 打崩池内 epgsql 连接，dead_connection 连锁 503）。
+            elib_response:error(Req0, <<"client_upload_id 必须是 UUID"/utf8>>, ?ERR_BAD_REQUEST);
         {error, forbidden} ->
             elib_response:error(Req0, <<"无权向该范围上传"/utf8>>, ?ERR_FORBIDDEN);
         {error, historical_location_unverified} ->

@@ -113,8 +113,11 @@ add_members_tx(Conn, Ctx, GroupId, ExternalIds) ->
                     member_audit_detail(Ok)
                 )
             of
-                ok -> {ok, Ok};
-                {error, Reason} -> {error, {<<"internal_error">>, {audit, Reason}}}
+                ok ->
+                    emit_group_member_changed(Conn, Ctx, GroupId, Ok),
+                    {ok, Ok};
+                {error, Reason} ->
+                    {error, {<<"internal_error">>, {audit, Reason}}}
             end;
         {error, _} = Err ->
             Err
@@ -138,11 +141,36 @@ remove_members_tx(Conn, Ctx, GroupId, ExternalIds) ->
                     member_audit_detail(Ok)
                 )
             of
-                ok -> {ok, Ok};
-                {error, Reason} -> {error, {<<"internal_error">>, {audit, Reason}}}
+                ok ->
+                    emit_group_member_changed(Conn, Ctx, GroupId, Ok),
+                    {ok, Ok};
+                {error, Reason} ->
+                    {error, {<<"internal_error">>, {audit, Reason}}}
             end;
         {error, _} = Err ->
             Err
+    end.
+
+%% V3-24 G-2：group.member.changed 与审计同事务 emit（SPEC §2.3 挂点：
+%% INT-05/06 audit ok 后、返回前）。旁路语义不变——guard 拒/未订阅/无
+%% principal 一律 skipped，绝不阻断业务主链。仅 added+removed>0 时产生
+%% （纯幂等空转/全 already_* 不发，避免订阅方收到零变更噪音投递）。
+-spec emit_group_member_changed(any(), map(), integer(), map()) -> ok.
+emit_group_member_changed(Conn, Ctx, GroupId, Ok) ->
+    Added = maps:get(<<"added">>, Ok, 0),
+    Removed = maps:get(<<"removed">>, Ok, 0),
+    case is_integer(Added) andalso is_integer(Removed) andalso Added + Removed > 0 of
+        true ->
+            CtxW = enterprise_webhook_logic:with_principal_tx(Conn, Ctx),
+            _ = enterprise_webhook_logic:emit_event_tx(
+                Conn,
+                CtxW,
+                <<"group.member.changed">>,
+                #{resource_type => <<"enterprise_group">>, resource_id => GroupId}
+            ),
+            ok;
+        false ->
+            ok
     end.
 
 %% 成员变更审计 detail：聚合计数 + 变更名单（external_user_id，OA 侧标识，

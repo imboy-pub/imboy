@@ -396,7 +396,15 @@ with_upload_url(OrgId, Params, Session, View) ->
             View;
         Url ->
             Upload = maps:get(upload, View, #{}),
-            View#{upload => Upload#{url => Url, method => <<"PUT">>}}
+            %% V3-16：显式 descriptor 权威下发（widget 裸 PUT 无凭据面；
+            %% 现形态=api_byte 域字节端点，V3-20 切 s3_put 时改 descriptor）。
+            View#{
+                upload => Upload#{
+                    url => Url,
+                    method => <<"PUT">>,
+                    descriptor => #{kind => <<"api_byte">>, method => <<"PUT">>}
+                }
+            }
     end.
 
 upload_proxy_url(OrgId, Params, Session, View) ->

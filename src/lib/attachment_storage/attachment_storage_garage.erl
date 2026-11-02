@@ -6,6 +6,7 @@
     head/3,
     head_bounded/3,
     copy_dispatch/4,
+    copy_cross/5,
     delete/3,
     presign_put/4,
     presign_get/4,
@@ -14,7 +15,8 @@
     read_snapshot/1,
     delete_snapshot/1,
     head_snapshot/1,
-    presign_snapshot/2
+    presign_snapshot/2,
+    presign_put_snapshot/3
 ]).
 
 %% direct-v1 有界控制面常量：错误体/XML 响应硬上限与单次请求预算（协议 §4，
@@ -230,6 +232,77 @@ parse_copy_result(Body) ->
             end
     end.
 
+%% @doc V3-13（G13）：跨桶服务端 CopyObject——private winner → 公开桶发布。
+%% 与 copy_dispatch/4（同桶 staging→candidate）的差异：
+%%   * 源/目标 bucket 显式分离（copy_dispatch 的 with_snapshot 要求目标桶
+%%     == registry 记录桶，跨桶需独立签名路径；凭据仍是同实例 garage config）；
+%%   * 语义相同：一次授权一次请求、autoredirect false、无重试、有界 XML
+%%     响应、if-match "*"（源必须存在）、错误 XML 不当作成功；
+%%   * 零正文过 BEAM：请求/响应都是控制面（≤ ?CONTROL_MAX_BODY）。
+-spec copy_cross(
+    Ns :: binary(),
+    SourceBucket :: binary(),
+    SourceKey :: binary(),
+    TargetBucket :: binary(),
+    TargetKey :: binary()
+) -> {ok, #{etag => binary()}} | {error, term()}.
+copy_cross(Ns, SourceBucket, SourceKey, TargetBucket, TargetKey) ->
+    case attachment_storage:resolve(Ns) of
+        {ok, #{driver := <<"garage">>, endpoint := EP}} ->
+            Cfg = application:get_env(imboy, garage, #{}),
+            case maps:get(endpoint, Cfg, undefined) =:= EP of
+                true ->
+                    copy_cross_req(Cfg, SourceBucket, SourceKey, TargetBucket, TargetKey);
+                false ->
+                    {error, location_changed}
+            end;
+        _ ->
+            {error, location_unverified}
+    end.
+
+copy_cross_req(Cfg, SourceBucket, SourceKey, TargetBucket, TargetKey) ->
+    {AK, SK, _Region} = garage_creds(Cfg),
+    AmzDate = elib_s3_sign:format_amz_date(calendar:universal_time()),
+    CopySource =
+        <<"/", SourceBucket/binary, "/", (elib_s3_sign:uri_encode_path(SourceKey))/binary>>,
+    Auth = elib_s3_sign:authorization_header_extra(
+        <<"PUT">>,
+        TargetBucket,
+        TargetKey,
+        undefined,
+        AmzDate,
+        AK,
+        SK,
+        [
+            {<<"x-amz-copy-source">>, CopySource},
+            {<<"x-amz-copy-source-if-match">>, <<"*">>}
+        ]
+    ),
+    Url = iolist_to_binary([
+        maps:get(endpoint, Cfg),
+        "/",
+        TargetBucket,
+        "/",
+        elib_s3_sign:uri_encode_path(TargetKey)
+    ]),
+    Headers = [
+        {"authorization", binary_to_list(Auth)},
+        {"x-amz-copy-source", binary_to_list(CopySource)},
+        {"x-amz-copy-source-if-match", "*"},
+        {"x-amz-date", binary_to_list(AmzDate)},
+        {"x-amz-content-sha256", "UNSIGNED-PAYLOAD"}
+    ],
+    case bounded_control_request(put, Url, Headers, ?CONTROL_MAX_BODY) of
+        {ok, Status, _, Body} when Status >= 200, Status < 300 ->
+            parse_copy_result(Body);
+        {ok, 404, _, _} ->
+            {error, not_found};
+        {ok, Status, _, _} ->
+            {error, {storage_status, Status}};
+        {error, R} ->
+            {error, R}
+    end.
+
 copy_etag(Body) ->
     case binary:split(Body, <<"<ETag>">>) of
         [_, Rest] when byte_size(Rest) > 0 ->
@@ -427,3 +500,12 @@ presign_get(Ns, C, K, T) ->
         {ok, signed(I, <<"GET">>, <<>>, calendar:universal_time(), T)}
     end).
 presign_snapshot(I, Expiry) -> {ok, signed(I, <<"GET">>, <<>>, calendar:universal_time(), Expiry)}.
+
+%% V3-14 S3-only 直传签发：按已冻结位置快照 I（endpoint/container/key 已
+%% 校验）+ garage env 凭据签短时 PUT。Mime 为登记冻结值；Ttl 由调用方按
+%% 会话冻结 expires_at 计算（<=0 拒绝）。不经 with_snapshot 重解析——
+%% 调用方（internal/OA presign COMMIT 后签发）已持同一锁域验证过的位置。
+presign_put_snapshot(I, Mime, Ttl) when is_map(I), is_binary(Mime), is_integer(Ttl), Ttl > 0 ->
+    {ok, signed(I, <<"PUT">>, Mime, calendar:universal_time(), Ttl)};
+presign_put_snapshot(_I, _Mime, _Ttl) ->
+    {error, invalid_signature_context}.

@@ -236,10 +236,11 @@ bes01b_visitor_content_linked_positive() ->
                 conversation_id => Conv,
                 actor_contact_id => Contact
             }),
-        ?assertEqual(Payload, maps:get(body, View)),
+        %% V3-17：正文读链切边缘——视图是 302 redirect（自家边缘 URL），
+        %% 不再携带字节 body；mime/object_hash 元数据投影保持。
+        Redirect = maps:get(redirect_url, View),
+        ?assert(is_binary(Redirect) andalso byte_size(Redirect) > 0),
         ?assertEqual(<<"text/plain">>, maps:get(mime, View)),
-        ?assertEqual(MsgId, maps:get(message_id, View)),
-        ?assertEqual(active, maps:get(status, View)),
         %% 红线：视图零存储侧引用（key / URL 不在白名单投影里）。
         ?assertNot(maps:is_key(object_key, View)),
         ?assertEqual(

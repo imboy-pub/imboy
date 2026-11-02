@@ -16,7 +16,7 @@
 %% 消息主体原子：要么都在、要么都不在。
 %%%
 
--export([tablename/0, next_id/0, insert_tx/8, count_for_msg_tx/3]).
+-export([tablename/0, next_id/0, insert_tx/8, count_for_msg_tx/3, find_by_msg_id_tx/2]).
 
 -include_lib("epgsql/include/epgsql.hrl").
 
@@ -38,12 +38,13 @@ tablename() ->
 next_id() ->
     elib_tsid:generate(enterprise_message_origin).
 
-%% @doc 事务内写入 origin 行。ConversationKind ∈ direct|group；SenderKind ∈
+%% @doc 事务内写入 origin 行。ConversationKind ∈ direct|group|channel
+%% （V3-23 起扩 channel，migration 00000241）；SenderKind ∈
 %% application|human（human 必须给 sender_user_id）。形态非法由 DB CHECK 拒绝
 %% （归一 {error, invalid_origin}），调用方按内部错误处理（程序错误）。
 -spec insert_tx(
     any(),
-    direct | group,
+    direct | group | channel,
     integer(),
     integer(),
     application | human,
@@ -95,3 +96,22 @@ count_for_msg_tx(Conn, MsgRowId, MsgId) when is_integer(MsgRowId), is_binary(Msg
         {ok, []} -> {ok, 0};
         {error, Reason} -> {error, Reason}
     end.
+
+%% @doc 按业务消息 ID 反查 origin 行（V3-24 delivered/read 事件归属解析：
+%% 企业托管行有 origin（application_id 恒非空），Human/E2EE 行无行 → skip）。
+-spec find_by_msg_id_tx(any(), binary()) -> {ok, map()} | {error, not_found}.
+find_by_msg_id_tx(Conn, MsgId) when is_binary(MsgId) ->
+    Sql =
+        <<
+            "SELECT id, conversation_kind, organization_id, application_id, sender_kind,"
+            " sender_user_id, msg_row_id, msg_id FROM ",
+            (tablename())/binary,
+            " WHERE msg_id = $1 LIMIT 1"
+        >>,
+    case elib_pg:query(Conn, Sql, [MsgId]) of
+        {ok, [Row | _]} -> {ok, Row};
+        {ok, []} -> {error, not_found};
+        {error, _} -> {error, not_found}
+    end;
+find_by_msg_id_tx(_Conn, _MsgId) ->
+    {error, not_found}.

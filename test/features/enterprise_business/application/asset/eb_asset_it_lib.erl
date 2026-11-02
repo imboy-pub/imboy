@@ -45,6 +45,7 @@
     expect_error_match/2,
     expect_db_error/4,
     no_storage_reference/4,
+    no_storage_reference/5,
     forbidden_keys/1,
     sha256_hex/1,
     now_sec/0,
@@ -447,8 +448,25 @@ classify_db_error(Reason) ->
 %%      对象 key 字面量；
 %%   2. 键名层：`object_key` / `endpoint` / `bucket` / `url` 等一律禁止出现在返回体里。
 no_storage_reference(Term, Org, Ws, AssetId) ->
+    no_storage_reference(Term, Org, Ws, AssetId, []).
+
+%% V3-17：EB content 读链返回 302 视图（redirect_url=**自家边缘** URL——公开
+%% 合同部分）。AllowedUrls 把这些已知合法的自家 URL 从值层扫描中精确剥离后
+%% 再深扫：任何**其他** `://` URL（含存储侧直链/presign）仍然全量命中，
+%% 判据强度不降。
+no_storage_reference(Term, Org, Ws, AssetId, AllowedUrls) when is_list(AllowedUrls) ->
     Key = object_key(Org, Ws, AssetId),
-    Bin = iolist_to_binary(io_lib:format("~p", [Term])),
+    Bin0 = iolist_to_binary(io_lib:format("~p", [Term])),
+    Bin = lists:foldl(
+        fun
+            (U, Acc) when is_binary(U), byte_size(U) > 0 ->
+                binary:replace(Acc, U, <<"">>, [global]);
+            (_, Acc) ->
+                Acc
+        end,
+        Bin0,
+        AllowedUrls
+    ),
     Bad =
         [{scheme_in_value, <<"://">>} || binary:match(Bin, <<"://">>) =/= nomatch] ++
             [{object_key_in_value, Key} || binary:match(Bin, Key) =/= nomatch] ++

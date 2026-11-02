@@ -19,6 +19,7 @@ init(Req0, State0) ->
         case Action of
             direct -> direct(Method, Req0, State);
             group -> group(Method, Req0, State);
+            channel -> channel(Method, Req0, State);
             _ -> Req0
         end,
     {ok, Req1, State}.
@@ -93,6 +94,67 @@ group(<<"POST">>, Req0, State) ->
     end;
 group(_, Req0, _State) ->
     cowboy_req:reply(405, #{}, <<"Method Not Allowed">>, Req0).
+
+%% V3-23 INT-50 企业频道代发：频道定位/Workspace 边界（INT-31 只读同口径）
+%% 在 logic 内 fail-closed；boundary enforce 以频道所属 workspace 为 Grant 边界。
+-spec channel(binary(), cowboy_req:req(), map()) -> cowboy_req:req().
+channel(<<"POST">>, Req0, State) ->
+    Ctx0 = maps:get(enterprise_internal, State, #{}),
+    Params0 = enterprise_internal_request:params(Req0),
+    ChannelId = maps:get(channel_id, State, 0),
+    IdemKey = idempotency_key(Req0),
+    case
+        enterprise_internal_idempotency:request_digest(
+            <<"POST">>, channel_path(ChannelId), Params0
+        )
+    of
+        {ok, Digest} ->
+            with_idempotency(
+                Req0,
+                Ctx0,
+                <<"enterprise_channel_message">>,
+                IdemKey,
+                Digest,
+                <<"msg_channel">>,
+                fun(Ctx, Conn) ->
+                    %% INT-50 的边界资源是该频道所属 workspace：先按 Org 边界
+                    %% 定位频道（不泄露存在性），再用其 workspace_id 做 Grant
+                    %% workspace 边界判定（与 INT-10 同款两步编排）。
+                    case channel_workspace_tx(Conn, Ctx, ChannelId) of
+                        {ok, WsId} ->
+                            enforce_dynamic(Conn, Ctx, <<"INT-50">>, WsId, Params0);
+                        {error, _} = Err ->
+                            Err
+                    end
+                end,
+                fun(Ctx, Conn) ->
+                    enterprise_channel_message_logic:channel_tx(
+                        Conn, Ctx, ChannelId, params_to_input(Params0)
+                    )
+                end
+            );
+        {error, non_canonical} ->
+            enterprise_internal_error:reply(Req0, <<"invalid_request">>)
+    end;
+channel(_, Req0, _State) ->
+    cowboy_req:reply(405, #{}, <<"Method Not Allowed">>, Req0).
+
+%% 频道所属 workspace（Org 边界在 SQL 内强制；scope=workspace AND status=1
+%% AND ws active —— channel_repo:internal_find_tx 同口径）。
+channel_workspace_tx(Conn, Ctx, ChannelId) when is_integer(ChannelId), ChannelId > 0 ->
+    OrgId = maps:get(organization_id, Ctx),
+    case channel_repo:internal_find_tx(Conn, OrgId, ChannelId) of
+        {ok, #{<<"workspace_id">> := WsId}} -> {ok, WsId};
+        {error, not_found} -> {error, {<<"resource_not_found">>, channel_not_found}};
+        {error, Reason} -> {error, {<<"internal_error">>, Reason}}
+    end;
+channel_workspace_tx(_Conn, _Ctx, _ChannelId) ->
+    {error, {<<"invalid_request">>, invalid_channel_id}}.
+
+channel_path(ChannelId) when is_integer(ChannelId) ->
+    <<"/api/internal/v1/channels/", (integer_to_binary(ChannelId))/binary, "/messages">>;
+channel_path(_) ->
+    <<"/api/internal/v1/channels/{channel_id}/messages">>.
 
 %% The message logic validates sender_mode and resolves its current identity.
 enforce_dynamic(Conn, Ctx, RouteId, WorkspaceId, _Params) ->
