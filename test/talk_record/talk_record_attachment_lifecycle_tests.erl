@@ -31,7 +31,18 @@ talk_record_t06_test_() ->
         true ->
             {setup, fun setup/0, fun cleanup/1, fun tests/1};
         false ->
-            {skip, "T06 isolated PG env (T06_PG_*) not set"}
+            %% eunit 无 skip 语义：{skip,...} 是 Common Test 概念，在 eunit
+            %% 中被计为 cancel，使整轮 eunit 以 "One or more tests were
+            %% cancelled." 失败（run 41388448424：Failed 0 / Passed 14214
+            %% 仍 Error 2 实证）。改为生成器空清单让位，与 v5_gate_pinned /
+            %% TALK_OWNED / TEXTGUARD 让位同语义。
+            _ =
+                (catch io:format(
+                    user,
+                    "T06_EUNIT_YIELD reason=t06_isolated_pg_env_not_set~n",
+                    []
+                )),
+            []
     end.
 
 setup() ->
