@@ -13,7 +13,7 @@ run() ->
 
 run(#{conn := C} = S) ->
     Routes = enterprise_internal_routes:routes(),
-    ?assertEqual(49, length(Routes)),
+    ?assertEqual(50, length(Routes)),
     {ok, App} = enterprise_application_repo:create_tx(
         C,
         995101,

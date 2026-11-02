@@ -134,8 +134,9 @@ begin_write_tx(Conn, Aid) ->
             Error
     end.
 
-put_bytes(#{driver := disk} = I, Bytes) ->
-    attachment_storage_disk:put_snapshot(I, Bytes, erlang:system_time(second) + 30);
+%% V3-20 退役：disk root fail-closed。
+put_bytes(#{driver := disk}, _Bytes) ->
+    {error, disk_driver_retired};
 put_bytes(#{driver := garage} = I, Bytes) ->
     Now = calendar:universal_time(),
     Exp = calendar:gregorian_seconds_to_datetime(calendar:datetime_to_gregorian_seconds(Now) + 30),
@@ -235,7 +236,7 @@ read_spool(Source, Offset, Acc) ->
         Error -> Error
     end.
 
-read_location({ok, #{driver := disk} = I}) -> attachment_storage_disk:read_snapshot(I);
+read_location({ok, #{driver := disk}}) -> {error, disk_driver_retired};
 read_location({ok, #{driver := garage} = I}) -> attachment_storage_garage:read_snapshot(I);
 read_location(Error) -> Error.
 

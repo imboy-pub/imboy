@@ -260,8 +260,9 @@ IMBOY_EUNIT_ROUTE := legacy
 endif
 
 # erlang.mk builds c_src as part of app/test-build and relx-rel depends on app.
-# Match the runtime NIF loader's name; do not modify vendored erlang.mk.
-C_SRC_OUTPUT := $(CURDIR)/priv/attachment_disk_lock_nif
+# V3-20 退役：disk lock NIF（C 源）已删除——c_src 为空，erlang.mk 跳过 C 构建。
+# 显式置空 C_SRC_OUTPUT 以免历史 priv/ 残留 .so 被误当作构建产物重新打包。
+C_SRC_OUTPUT :=
 ifeq ($(shell uname -s),Darwin)
 LDFLAGS += -undefined dynamic_lookup
 endif
