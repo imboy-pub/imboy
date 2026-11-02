@@ -107,7 +107,7 @@ root(Id, TestMod, Est) when is_atom(TestMod), is_integer(Est) ->
     #{id => Id, test_mod => TestMod, estimated_ms => Est, resources => []}.
 
 compile_fixtures() ->
-    Out = filename:join("/private/tmp", "imboy-quality-p6-" ++ os:getpid()),
+    Out = filename:join(tmp_root(), "imboy-quality-p6-" ++ os:getpid()),
     ok = filelib:ensure_dir(filename:join(Out, "x")),
     Srcs = filelib:wildcard(filename:join(repo_root_tools(), "*.erl")),
     true = Srcs =/= [],
@@ -129,3 +129,11 @@ repo_root_tools() ->
             _ -> element(2, file:get_cwd())
         end,
     filename:join(Repo, "tools/imboy_quality/test_fixtures").
+
+%% Linux has /tmp (real dir); macOS aliases it to /private/tmp (symlink).
+%% Resolve to the real path so no symlink appears in the parent chain.
+tmp_root() ->
+    case file:read_link_all("/tmp") of
+        {ok, Target} -> filename:absname(Target, "/");
+        {error, einval} -> "/tmp"
+    end.

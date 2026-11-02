@@ -25,18 +25,60 @@ entry(Module) ->
             Module;
         {Module, Seconds} ->
             {timeout, Seconds, fun() ->
-                {Result, Summary} = isolated_pg_fixture:run(
-                    fun() -> run_module(Module) end, Seconds
-                ),
-                %% Explicit user device survives EUnit capture and logger filters.
-                io:format(
-                    user,
-                    "TALK_OWNED_EUNIT_CHILD module=~p result=~p counts=~0p~n",
-                    [Module, Result, Summary]
-                ),
-                assert_summary(Module, Result, Summary)
+                %% Descriptor shape is pinned by talk_record_owned_eunit_fixture_tests
+                %% (mapping tests assert {timeout, N, Fun}), so the controlled yield
+                %% lives inside the fun: the full-suite/nightly track has no explicit
+                %% TALK_OWNED_* server env and must yield this slot instead of
+                %% spawning a peer VM that can only fail. Env presence still fails
+                %% closed exactly as before via owned_options/required.
+                case missing_owned_env() of
+                    false ->
+                        {Result, Summary} = isolated_pg_fixture:run(
+                            fun() -> run_module(Module) end, Seconds
+                        ),
+                        %% Explicit user device survives EUnit capture and logger filters.
+                        io:format(
+                            user,
+                            "TALK_OWNED_EUNIT_CHILD module=~p result=~p counts=~0p~n",
+                            [Module, Result, Summary]
+                        ),
+                        assert_summary(Module, Result, Summary);
+                    Name ->
+                        io:format(
+                            user,
+                            "TALK_OWNED_EUNIT_YIELD module=~p missing_env=~p~n",
+                            [Module, Name]
+                        ),
+                        ok
+                end
             end}
     end.
+
+%% 让位仅由"缺 env"（os:getenv =:= false）触发；名单与 owned_options/required
+%% 及 imboy_quality_env 专属车道注入的九个 TALK_OWNED_* 一一对应。env 存在但
+%% 为空串/错值/根目录非法时仍由 required/marker/validate_roots 显式 error，
+%% fail-closed 合同不变。
+%% Yield triggers on absence only; the nine names mirror owned_options exactly
+%% (same set the imboy_quality_env exclusive lane injects).
+missing_owned_env() ->
+    Names = owned_env_names(),
+    case [Name || Name <- Names, os:getenv(Name) =:= false] of
+        [] -> false;
+        [Missing | _] -> Missing
+    end.
+
+owned_env_names() ->
+    [
+        "TALK_OWNED_PG_HOST",
+        "TALK_OWNED_PG_PORT",
+        "TALK_OWNED_PG_USER",
+        "TALK_OWNED_PG_PASSWORD",
+        "TALK_OWNED_MAINT_DB",
+        "TALK_OWNED_PG_MARKER",
+        "TALK_OWNED_PG_SYSTEM_ID",
+        "TALK_OWNED_RUN_ROOT",
+        "TALK_OWNED_SCRATCH_ROOT"
+    ].
 
 %% Conservative source audit: maximum original EUnit timeout * number of
 %% generator/direct-test/inline-test slots + 900s migration/cleanup allowance.

@@ -219,7 +219,7 @@ build_recipe_real_make_twice_test_() ->
 
 build_recipe_real_make_twice() ->
     RepoRoot = find_erlang_mk_root(),
-    Dir = filename:join("/private/tmp", "imboy-quality-p5make-" ++ os:getpid()),
+    Dir = filename:join(tmp_root(), "imboy-quality-p5make-" ++ os:getpid()),
     ok = filelib:ensure_dir(filename:join(Dir, "src/x")),
     ok = filelib:ensure_dir(filename:join(Dir, "test/x")),
     ok = file:write_file(
@@ -316,8 +316,16 @@ beam_mtimes(Dir) ->
      || F <- lists:sort(filelib:wildcard(filename:join(Dir, "*.beam")))
     ].
 
+%% Linux has /tmp (real dir); macOS aliases it to /private/tmp (symlink).
+%% Resolve to the real path so the fixture tree lives under a plain directory.
+tmp_root() ->
+    case file:read_link_all("/tmp") of
+        {ok, Target} -> filename:absname(Target, "/");
+        {error, einval} -> "/tmp"
+    end.
+
 tmp_project() ->
-    Dir = filename:join("/private/tmp", "imboy-quality-p5-" ++ os:getpid()),
+    Dir = filename:join(tmp_root(), "imboy-quality-p5-" ++ os:getpid()),
     ok = filelib:ensure_dir(filename:join(Dir, "src/x")),
     ok = filelib:ensure_dir(filename:join(Dir, "include/x")),
     ok = filelib:ensure_dir(filename:join(Dir, "test/x")),
@@ -334,7 +342,7 @@ tmp_project() ->
     Dir.
 
 tmp_receipt_project() ->
-    Dir = filename:join("/private/tmp", "imboy-quality-p5rcpt-" ++ os:getpid()),
+    Dir = filename:join(tmp_root(), "imboy-quality-p5rcpt-" ++ os:getpid()),
     ok = filelib:ensure_dir(filename:join(Dir, "src/x")),
     ok = filelib:ensure_dir(filename:join(Dir, "include/x")),
     ok = filelib:ensure_dir(filename:join(Dir, "test/x")),

@@ -605,9 +605,17 @@ env_planned_db_names_fit_pg_limit_test() ->
 
 %% ---------- 辅助 ----------
 
+tmp_root() ->
+    %% Linux 有 /tmp（真实目录）；macOS 把 /tmp 软链到 /private/tmp。
+    %% safe_parent 保守拒绝 symlink 父链（PAR03），故解析到真实路径后再用。
+    case file:read_link_all("/tmp") of
+        {ok, Target} -> filename:absname(Target, "/");
+        {error, einval} -> "/tmp"
+    end.
+
 scratch_dir(Tag) ->
     D = filename:join(
-        "/private/tmp",
+        tmp_root(),
         "imboy-quality-selftest-" ++ Tag ++ "-" ++
             integer_to_list(erlang:unique_integer([positive]))
     ),
@@ -615,9 +623,7 @@ scratch_dir(Tag) ->
     D.
 
 tmp_dir() ->
-    %% macOS /tmp 是 symlink 到 /private/tmp；safe_parent 保守拒绝 symlink 父链（PAR03），
-    %% 故用真实路径 /private/tmp。
-    Dir = filename:join("/private/tmp", "imboy-quality-p1-" ++ os:getpid()),
+    Dir = filename:join(tmp_root(), "imboy-quality-p1-" ++ os:getpid()),
     ok = filelib:ensure_dir(filename:join(Dir, "x")),
     Dir.
 

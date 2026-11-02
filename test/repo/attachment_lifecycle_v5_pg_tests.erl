@@ -7,8 +7,38 @@
 -define(REG_KEY, <<"v5e2e/reg/1">>).
 -define(ASSET_ID, 901100101).
 
+%% 钉名 gate env 在场判定：与 inttest_marker_db:bound_v5_database/1 的
+%% 第一步输入对齐——只检查 gate 导出的 <PREFIX>_DB 是否设置且非空。
+%% gate（attachment_lifecycle_v5_gate.sh bound_marker_dbs / 各 case
+%% executor）一定成套导出 _DB 与 V5_RUN_DIR/V5_SLOT；只有 _DB 而缺
+%% RUN_DIR/SLOT 的非法半配置不在此静默让位，继续走 provision 由
+%% fail-closed 契约显式报 contract_conflict。
+v5_gate_pinned(Prefix) when is_binary(Prefix) ->
+    Env = binary_to_list(<<Prefix/binary, "_DB">>),
+    case os:getenv(Env) of
+        false -> false;
+        "" -> false;
+        _ -> true
+    end.
+
 r20_test_() ->
-    {timeout, 900, fun() -> isolated_pg_fixture:run(fun run/0) end}.
+    %% 受控让位（仓库先例：talk_record_parent_fixture_tests 的 env 分支，
+    %% 生成器返回空清单）。本套件是 attachment_lifecycle_v5_gate.sh 的
+    %% 证据电池：gate 会钉名导出 V5_INTTEST_DB 等环境变量（V5 契约：
+    %% 随机 marker 库不得逃逸收据，inttest_marker_db 对无钉名 env
+    %% fail-closed）。nightly 全量 `make eunit-local-legacy` 不经 gate
+    %% 裸跑，此时生成器返回空清单静默让位（eunit 无 {skip, ...} 顶层
+    %% 描述符，返回空清单才是等价机制）；gate 路径（钉名 env 在场）全
+    %% 语义执行，断言零删减。半配置（DB 在场但 V5_RUN_DIR/V5_SLOT
+    %% 缺失）不在此让位，仍交由 provision 的 fail-closed 契约显式拒绝。
+    case v5_gate_pinned(<<"V5_INTTEST">>) of
+        true ->
+            {timeout, 900, fun() -> isolated_pg_fixture:run(fun run/0) end};
+        false ->
+            %% 无钉名 env：由 scripts/test/attachment_lifecycle_v5_gate.sh
+            %% 专门执行；空清单 = 本轮不产任何测试项（静默让位）。
+            []
+    end.
 
 run() ->
     elib_tsid:init(#{dc_id => 1, node_id => 1, dc_bits => 3}),
@@ -143,7 +173,14 @@ worker_claim_ack(Conn) ->
 %% ===================================================================
 
 w203_test_() ->
-    {timeout, 900, fun w203_run/0}.
+    %% 受控让位：同 r20_test_（无钉名 env 时返回空清单静默让位，由
+    %% scripts/test/attachment_lifecycle_v5_gate.sh 专门执行）。
+    case v5_gate_pinned(<<"V5_INTTEST_W203">>) of
+        true ->
+            {timeout, 900, fun w203_run/0};
+        false ->
+            []
+    end.
 
 w203_run() ->
     State = inttest_marker_db:provision(
@@ -395,7 +432,14 @@ w203_confirm_first(Conn, Server, State) ->
 %% ===================================================================
 
 w301_test_() ->
-    {timeout, 900, fun w301_run/0}.
+    %% 受控让位：同 r20_test_（无钉名 env 时返回空清单静默让位，由
+    %% scripts/test/attachment_lifecycle_v5_gate.sh 专门执行）。
+    case v5_gate_pinned(<<"V5_INTTEST_W301">>) of
+        true ->
+            {timeout, 900, fun w301_run/0};
+        false ->
+            []
+    end.
 
 w301_run() ->
     %% w301 用 elib_pg 池（生产 repo 协议），先 boot app + DB 池

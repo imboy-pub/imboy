@@ -144,6 +144,14 @@ commit(Repo, Msg) ->
 
 tmp(Name) ->
     filename:join(
-        "/private/tmp",
+        tmp_root(),
         "imboy-quality-" ++ Name ++ "-" ++ os:getpid()
     ).
+
+%% Linux has /tmp (real dir); macOS aliases it to /private/tmp (symlink).
+%% Resolve to the real path so no symlink appears in the parent chain.
+tmp_root() ->
+    case file:read_link_all("/tmp") of
+        {ok, Target} -> filename:absname(Target, "/");
+        {error, einval} -> "/tmp"
+    end.

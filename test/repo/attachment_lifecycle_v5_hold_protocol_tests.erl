@@ -14,7 +14,34 @@
 -define(ASSET_BASE, 920000000).
 
 hold_protocol_test_() ->
-    {timeout, 900, fun run/0}.
+    %% 受控让位（仓库先例：talk_record_parent_fixture_tests 的 env 分支，
+    %% 生成器返回空清单）。本套件是 attachment_lifecycle_v5_gate.sh 的
+    %% 证据电池：gate 会钉名导出 V5_INTTEST_W302_DB 等环境变量（V5 契约：
+    %% 随机 marker 库不得逃逸收据，inttest_marker_db 对无钉名 env
+    %% fail-closed）。nightly 全量 `make eunit-local-legacy` 不经 gate
+    %% 裸跑，此时生成器返回空清单静默让位（eunit 无 {skip, ...} 顶层
+    %% 描述符，返回空清单才是等价机制）；gate 路径（钉名 env 在场）全
+    %% 语义执行，断言零删减。非法半配置（只有 _DB 而缺
+    %% V5_RUN_DIR/V5_SLOT）不在此静默让位，仍交由 provision 的
+    %% fail-closed 契约显式拒绝。
+    case v5_gate_pinned(<<"V5_INTTEST_W302">>) of
+        true ->
+            {timeout, 900, fun run/0};
+        false ->
+            %% 无钉名 env：由 scripts/test/attachment_lifecycle_v5_gate.sh
+            %% 专门执行；空清单 = 本轮不产任何测试项（静默让位）。
+            []
+    end.
+
+%% 钉名 gate env 在场判定：与 inttest_marker_db:bound_v5_database/1 的
+%% 第一步输入对齐——只检查 gate 导出的 <PREFIX>_DB 是否设置且非空。
+v5_gate_pinned(Prefix) when is_binary(Prefix) ->
+    Env = binary_to_list(<<Prefix/binary, "_DB">>),
+    case os:getenv(Env) of
+        false -> false;
+        "" -> false;
+        _ -> true
+    end.
 
 run() ->
     elib_tsid:init(#{dc_id => 1, node_id => 1, dc_bits => 3}),
@@ -283,16 +310,19 @@ w302_entrypoint_matrix(Conn, Ep, ScopeVal, Cipher, N) ->
     %% second capability window and proves live pin/confirm before that expiry.
     %% 先准备独立资产再等待；每个保留原三秒能力窗，并证明窗内 pin/confirm。
     Cases = lists:zip(lists:seq(1, 6), [
-            hold_workspace,
-            hold_conversation,
-            hold_message,
-            hold_attachment,
-            future_retention,
-            permanent_workspace_retention
-        ]),
-    lists:foreach(fun({Idx, _}) ->
-        seed_live(Conn, hold_case_key(Ep, Idx), ScopeVal, Cipher, N * 10 + Idx)
-    end, Cases),
+        hold_workspace,
+        hold_conversation,
+        hold_message,
+        hold_attachment,
+        future_retention,
+        permanent_workspace_retention
+    ]),
+    lists:foreach(
+        fun({Idx, _}) ->
+            seed_live(Conn, hold_case_key(Ep, Idx), ScopeVal, Cipher, N * 10 + Idx)
+        end,
+        Cases
+    ),
     lists:foreach(
         fun({Idx, Scope}) ->
             Key = hold_case_key(Ep, Idx),

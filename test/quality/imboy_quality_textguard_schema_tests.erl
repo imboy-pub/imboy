@@ -73,7 +73,7 @@ exclusive_test() ->
 
 with_fixture(Fun) ->
     Root = filename:join(
-        "/private/tmp",
+        tmp_root(),
         "imboy-schema-unit-" ++ os:getpid() ++ "-" ++
             integer_to_list(erlang:unique_integer([positive, monotonic]))
     ),
@@ -82,6 +82,14 @@ with_fixture(Fun) ->
         Fun(Root, Out, Expected)
     after
         file:del_dir_r(Root)
+    end.
+
+%% Linux has /tmp (real dir); macOS aliases it to /private/tmp (symlink).
+%% Resolve to the real path so the fixture root is a plain directory.
+tmp_root() ->
+    case file:read_link_all("/tmp") of
+        {ok, Target} -> filename:absname(Target, "/");
+        {error, einval} -> "/tmp"
     end.
 
 fixture(Root) ->

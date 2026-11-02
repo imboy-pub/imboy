@@ -20,7 +20,34 @@
 -include_lib("epgsql/include/epgsql.hrl").
 
 w402_purged_recovery_test_() ->
-    {timeout, 1200, fun run/0}.
+    %% 受控让位（仓库先例：talk_record_parent_fixture_tests 的 env 分支，
+    %% 生成器返回空清单）。本套件是 attachment_lifecycle_v5_gate.sh 的
+    %% 证据电池：gate 会钉名导出 V5_INTTEST_W402P_DB 等环境变量（V5 契约：
+    %% 随机 marker 库不得逃逸收据，inttest_marker_db 对无钉名 env
+    %% fail-closed）。nightly 全量 `make eunit-local-legacy` 不经 gate
+    %% 裸跑，此时生成器返回空清单静默让位（eunit 无 {skip, ...} 顶层
+    %% 描述符，返回空清单才是等价机制）；gate 路径（钉名 env 在场）全
+    %% 语义执行，断言零删减。非法半配置（只有 _DB 而缺
+    %% V5_RUN_DIR/V5_SLOT）不在此静默让位，仍交由 provision 的
+    %% fail-closed 契约显式拒绝。
+    case v5_gate_pinned(<<"V5_INTTEST_W402P">>) of
+        true ->
+            {timeout, 1200, fun run/0};
+        false ->
+            %% 无钉名 env：由 scripts/test/attachment_lifecycle_v5_gate.sh
+            %% 专门执行；空清单 = 本轮不产任何测试项（静默让位）。
+            []
+    end.
+
+%% 钉名 gate env 在场判定：与 inttest_marker_db:bound_v5_database/1 的
+%% 第一步输入对齐——只检查 gate 导出的 <PREFIX>_DB 是否设置且非空。
+v5_gate_pinned(Prefix) when is_binary(Prefix) ->
+    Env = binary_to_list(<<Prefix/binary, "_DB">>),
+    case os:getenv(Env) of
+        false -> false;
+        "" -> false;
+        _ -> true
+    end.
 
 -define(EP_SEAT, <<"enterprise_seat">>).
 -define(EP_WIDGET, <<"cs_widget">>).

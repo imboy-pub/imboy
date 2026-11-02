@@ -127,8 +127,14 @@ personal_mocks() ->
         ]},
         {elib_pg, [
             {'with_tx', 1, tx_fun()},
-            {'query', 3, fun(_C, <<"SELECT status FROM workspace", _/binary>>, _) ->
-                {error, must_not_lock_workspace}
+            %% att-v5 后 group_file 落库走 with_deadlock_retry_tx（save_uploaded_file_tx）
+            {'with_deadlock_retry_tx', 1, tx_fun()},
+            {'query', 3, fun
+                (_C, <<"SELECT status FROM workspace", _/binary>>, _) ->
+                    {error, must_not_lock_workspace};
+                %% tx 版归属解析（resolve_workspace_tx）：personal 归属行 → 直通
+                (_C, <<"SELECT scope, workspace_id FROM ", _/binary>>, _) ->
+                    {ok, [#{<<"scope">> => <<"personal">>}]}
             end},
             {'execute', 3, fun(_C, _S, _P) -> {ok, 1} end}
         ]}
@@ -1123,11 +1129,32 @@ group_file_upload_closure_test_() ->
             end)
         end},
         {"group file attachment write aborted in-tx on archived (window race)", fun() ->
-            %% 前置检查通过后归档竞态落进检查-写窗口：write_tx 的
+            %% 前置检查通过后归档竞态落进检查-写窗口：落库事务的
             %% 同事务守卫兜底——group_file 与 attachment 均不落库。
             %% 驱动公开入口 upload_file/5：预检（自动提交 one/2）读到 active，
             %% 落库守卫（事务内 query/3）已翻为 archived——窗口竞态。
+            %% att-v5 后上传链改走 attach_logic:presign（登记/签名/OSS 细节由
+            %% group_file_ds_tests 与 attachment_lifecycle_v5 覆盖）；本用例只测
+            %% 归档守卫，presign 与二进制上传门面短路、落库路径保持真实。
             MemberMock = {group_ds, [{'is_member', 2, fun(_, _) -> true end}]},
+            UploadFacade =
+                {attach_logic, [
+                    {'presign', 6, fun(_, _, _, _, _, _) ->
+                        {ok, #{<<"object_key">> => <<"key">>}}
+                    end},
+                    {'prepare_group_file_confirmation', 1, fun(_) ->
+                        {ok, #{
+                            sha256 => <<"sha">>,
+                            size => 3,
+                            mime => <<"image/png">>,
+                            stat => #{snapshot => #{driver => disk}}
+                        }}
+                    end}
+                ]},
+            UploadBinary =
+                {attachment_upload_logic, [
+                    {'upload_binary', 4, fun(_, _, _, _) -> {ok, uploaded} end}
+                ]},
             OssOk =
                 {elib_oss, [
                     {'validate_file_type', 1, fun(_) -> true end},
@@ -1147,15 +1174,28 @@ group_file_upload_closure_test_() ->
             RaceMock =
                 {elib_pg, [
                     {'with_tx', 1, tx_fun()},
+                    %% save_uploaded_file_tx 的落库事务边界
+                    {'with_deadlock_retry_tx', 1, tx_fun()},
                     {'one', 2, fun(<<"SELECT status FROM workspace", _/binary>>, _) ->
                         {ok, #{<<"status">> => <<"active">>}}
                     end},
-                    {'query', 3, fun(fake_conn, <<"SELECT status FROM workspace", _/binary>>, _) ->
-                        {ok, [#{<<"status">> => <<"archived">>}]}
+                    {'query', 3, fun
+                        (fake_conn, <<"SELECT status FROM workspace", _/binary>>, _) ->
+                            {ok, [#{<<"status">> => <<"archived">>}]};
+                        %% tx 版归属解析（ensure_upload_scope_tx_retryable →
+                        %% resolve_workspace_tx）：group 行解析回 workspace 归属
+                        (fake_conn, <<"SELECT scope, workspace_id FROM \"group\"", _/binary>>, _) ->
+                            {ok, [
+                                #{
+                                    <<"scope">> => <<"workspace">>,
+                                    <<"workspace_id">> => ?WS_ID
+                                }
+                            ]}
                     end}
                 ]},
             run_with_mocks(
-                archived_mocks() ++ [MemberMock, RaceMock, OssOk, SaveMustNot],
+                archived_mocks() ++
+                    [MemberMock, UploadFacade, UploadBinary, RaceMock, OssOk, SaveMustNot],
                 fun() ->
                     ?assertMatch(
                         {error, {980, _}},
@@ -1167,7 +1207,45 @@ group_file_upload_closure_test_() ->
             )
         end},
         {"personal group file upload unaffected (zero regression)", fun() ->
+            %% att-v5 后上传链走 attach_logic:presign / attachment_upload_logic:
+            %% upload_binary；个人域回归红线只关注「非 workspace 归属群上传不受
+            %% 归档守卫影响」，登记/签名/OSS 门面短路，落库事务保持真实
+            %% （with_deadlock_retry_tx + 守卫 + insert_tx + 审计）。
             MemberMock = {group_ds, [{'is_member', 2, fun(_, _) -> true end}]},
+            UploadFacade =
+                {attach_logic, [
+                    {'presign', 6, fun(_, _, _, _, _, _) ->
+                        {ok, #{<<"object_key">> => <<"key">>}}
+                    end},
+                    {'prepare_group_file_confirmation', 1, fun(_) ->
+                        {ok, #{
+                            sha256 => <<"sha">>,
+                            size => 3,
+                            mime => <<"image/png">>,
+                            stat => #{snapshot => #{driver => disk}}
+                        }}
+                    end},
+                    {'confirm_group_file_tx', 6, fun(_, _, _, _, _, _) -> ok end}
+                ]},
+            UploadBinary =
+                {attachment_upload_logic, [
+                    {'upload_binary', 4, fun(_, _, _, _) -> {ok, uploaded} end}
+                ]},
+            PendingTx =
+                {attach_pending_repo, [
+                    {'lock_session_tx', 2, fun(_, _) -> {ok, locked} end}
+                ]},
+            %% 此 config 重建 attachment_repo mock（覆盖 personal_mocks 内
+            %% attachment_parent_member_mock 的同模块 expects），须带上落库
+            %% 事务与 has_file_access 所需的全部子句。
+            AttachmentRepoTx =
+                {attachment_repo, [
+                    {'authorize_group_scope', 2, fun(_, _) -> true end},
+                    {'lock_upload_organization_tx', 3, fun(_, _, _) -> ok end},
+                    {'authorize_upload_scope_tx_retryable', 4, fun(_, _, _, _) -> true end},
+                    {'confirmation_row_tx', 2, fun(_, _) -> {ok, not_found} end},
+                    {'refresh_gc_verified_tx', 2, fun(_, _) -> {ok, 1} end}
+                ]},
             OssMock =
                 {elib_oss, [
                     {'validate_file_type', 1, fun(_) -> true end},
@@ -1191,7 +1269,18 @@ group_file_upload_closure_test_() ->
                     {'append_scope_file_tx', 4, fun(_, {group, 777099}, ?UID, _) -> ok end}
                 ]},
             run_with_mocks(
-                personal_mocks() ++ [MemberMock, OssMock, InsertMock, SaveOk, PersonalAudit],
+                personal_mocks() ++
+                    [
+                        MemberMock,
+                        UploadFacade,
+                        UploadBinary,
+                        PendingTx,
+                        AttachmentRepoTx,
+                        OssMock,
+                        InsertMock,
+                        SaveOk,
+                        PersonalAudit
+                    ],
                 fun() ->
                     ?assertMatch(
                         {ok, _},

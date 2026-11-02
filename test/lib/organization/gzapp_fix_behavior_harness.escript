@@ -31,7 +31,7 @@ main(_) ->
         filename:join([RepoDir, "deps/uid/ebin"])
     ]),
     ok = elib_tsid:init(#{
-        dc_id => 0, node_id => 9, dc_bits => 3, %% V10 TSID 重构后 namespace 走 elib_tsid_inventory 合同，init/1 不再收 names
+        dc_id => 0, node_id => 9, dc_bits => 3 %% V10 TSID 重构后 namespace 走 elib_tsid_inventory 合同，init/1 不再收 names
     }),
     ConnOpts = conn_opts(),
     {ok, Conn} = epgsql:connect(ConnOpts),
