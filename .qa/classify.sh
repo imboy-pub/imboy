@@ -12,7 +12,7 @@
 #   classify.sh GATE LOGFILE [--known FILE] [--flaky-passed] [--gh-output FILE]
 #   classify.sh GATE LOGFILE --emit-known        # 首跑盘点：输出 YAML 片段供人工回填
 #
-#   GATE   ∈ full-eunit | dialyze | eqwalizer-lib | gradualizer | elvis
+#   GATE   ∈ full-eunit | dialyze | eqwalizer-lib | gradualizer | elvis | pg-behavior-harnesses
 #   LOGFILE 该 gate 的完整输出（CI 里 tee 落盘；elvis 的 ANSI 色码会先被清洗）
 #   --known        known-failures.yaml 路径（默认 <仓根>/.qa/known-failures.yaml）
 #   --flaky-passed 标记「本 LOGFILE 中的失败经 step 级 retry 已通过」→ 全计 FLAKY 不阻断
@@ -43,7 +43,7 @@ usage() {
 
 while [ $# -gt 0 ]; do
   case "$1" in
-    full-eunit|dialyze|eqwalizer-lib|gradualizer|elvis) GATE="$1" ;;
+    full-eunit|dialyze|eqwalizer-lib|gradualizer|elvis|pg-behavior-harnesses) GATE="$1" ;;
     --known)        KNOWN_FILE="${2:?}"; shift ;;
     --flaky-passed) FLAKY_PASSED=1 ;;
     --gh-output)    GH_OUTPUT="${2:?}"; shift ;;
@@ -85,6 +85,10 @@ extract_failures() {
     # elvis: "# <path> [FAIL]"
     elvis)
       grep -E '^# .* \[FAIL\]' "$log" | awk '{print $2}' || true ;;
+    # pg-behavior-harnesses: run_pg_behavior_harnesses.sh 的
+    #   "FAIL: test/lib/organization/<name>.escript 非零退出（明细见 /tmp/...）"
+    pg-behavior-harnesses)
+      grep -E '^FAIL: .*\.escript' "$log" | awk '{print $2}' | sed 's|.*/||' || true ;;
   esac | sort -u
 }
 
@@ -100,6 +104,7 @@ summary_failed_count() {
     gradualizer)    { grep -oE 'failing=[0-9]+' "$log" | grep -oE '[0-9]+' \
                       | awk '{s+=$1} END{print s+0}'; } || true ;;
     elvis)          grep -cE '^# .* \[FAIL\]' "$log" || true ;;
+    pg-behavior-harnesses) grep -cE '^FAIL: .*\.escript' "$log" || true ;;
   esac
 }
 
