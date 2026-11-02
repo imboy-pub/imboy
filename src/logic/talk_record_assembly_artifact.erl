@@ -1,25 +1,20 @@
 -module(talk_record_assembly_artifact).
--moduledoc "合成音频及JSON清单复用派生附件与现有引用生命周期。".
--export([reserve_tx/5, write/2, publish_tx/3, with_audio/2]).
+-moduledoc "成品直传绑定与小JSON清单派生附件复用现有引用生命周期。".
+%% no-backend-ffmpeg V1：音频不再由服务端 reserve/write 派生副本——
+%% 客户端合成的成品经 direct-v1 已 CONFIRMED 为正式附件（冻结于
+%% job.processor_input.final_audio），本模块只负责：
+%%   1. 小 JSON manifest（拼装清单）的派生附件 reserve/land（保留既有
+%%      内部作业/引用类别，通用 spool 与 Worker 自签 PUT 不涉 FFmpeg）；
+%%   2. 发布事务：成品附件以 role='final_audio' 建永久业务引用，
+%%      talk_record_assembly.audio_attachment_id 指向真实客户端成品。
+-export([reserve_tx/4, write/2, publish_tx/3]).
 
-reserve_tx(C, Job, Prepared, AudioProof, ManifestBytes) ->
-    %% V3-18 P2：Audio 的 hash/size 来自 Worker staging 上传的返回值
-    %% （{Sha256Hex, Size}）——BEAM 不再读成品字节算哈希。
+reserve_tx(C, Job, Prepared, ManifestBytes) ->
     Rid = maps:get(<<"record_id">>, Job),
     {ok, [#{<<"owner_user_id">> := Uid}]} = elib_pg:query(
         C,
         <<"SELECT owner_user_id FROM talk_record WHERE id=$1">>,
         [Rid]
-    ),
-    {AudioSha, AudioSize} = AudioProof,
-    Audio = reserve(
-        C,
-        Job,
-        Uid,
-        <<"transcoded_audio">>,
-        <<"audio/aac">>,
-        AudioSize,
-        AudioSha
     ),
     Manifest = reserve(
         C,
@@ -30,7 +25,7 @@ reserve_tx(C, Job, Prepared, AudioProof, ManifestBytes) ->
         byte_size(ManifestBytes),
         binary:encode_hex(crypto:hash(sha256, ManifestBytes), lowercase)
     ),
-    Prepared#{artifacts => [Audio, Manifest]}.
+    Prepared#{artifacts => [Manifest]}.
 
 reserve(C, Job, Uid, Role, Mime, Size, Hash) ->
     Rid = maps:get(<<"record_id">>, Job),
@@ -63,26 +58,16 @@ reserve(C, Job, Uid, Role, Mime, Size, Hash) ->
     ),
     #{attachment_id => Aid, role => Role, lease_key => Lease}.
 
-%% V3-18 P2：Worker 落链——staging 上传（音频/manifest 临时文件，Worker
+%% Worker 落链（仅 manifest）：staging 上传（小 JSON 临时文件，Worker
 %% 自签 PUT+checksum）→ 服务端 CopyObject（staging→工件物理键）→
-%% derived_write 状态收口。BEAM 全程零工件字节。
-write(#{artifacts := [#{attachment_id := Audio}, #{attachment_id := Manifest}]}, #{
-    audio_staging := AudioStaging,
+%% derived_write 状态收口。BEAM 全程零成品音频字节。
+write(#{artifacts := [#{attachment_id := Manifest}]}, #{
     manifest_staging := ManifestStaging,
-    audio_file := AudioFile,
     manifest_file := ManifestFile
 }) ->
-    %% land_artifact 成功返回 finish_write 的 Worker 结果（{ok, #{sha256,
-    %% size}}）；write/2 对外合同统一收敛为 ok / {error, _}（runner 与
-    %% relay 测试只关心成败，不透传上传视图——历史 case_clause 源）。
-    case land_artifact(Audio, AudioFile, AudioStaging) of
-        {ok, _} ->
-            case land_artifact(Manifest, ManifestFile, ManifestStaging) of
-                {ok, _} -> ok;
-                Error -> Error
-            end;
-        Error ->
-            Error
+    case land_artifact(Manifest, ManifestFile, ManifestStaging) of
+        {ok, _} -> ok;
+        Error -> Error
     end.
 
 land_artifact(Aid, Path, StagingKey) ->
@@ -116,21 +101,32 @@ land_artifact(Aid, Path, StagingKey) ->
             Error
     end.
 
-publish_tx(C, Rid, #{artifacts := Artifacts}) ->
-    lists:foreach(
-        fun(#{attachment_id := Aid, role := Role, lease_key := Lease}) ->
-            ok = require(attachment_derived_artifact:complete_tx(C, Aid)),
-            Key = <<"assembly:", Role/binary, ":", (integer_to_binary(Aid))/binary>>,
-            {ok, _, _} = require(
-                talk_record_attachment_adapter:bind_artifact_tx(C, Rid, Aid, Role, Key)
-            ),
-            {ok, _} = require(
-                talk_record_attachment_adapter:cancel_processing_lease_tx(C, Rid, Role, Lease)
-            )
-        end,
-        Artifacts
+publish_tx(
+    C,
+    Rid,
+    #{artifacts := [#{attachment_id := Manifest, role := Role, lease_key := Lease}]} = Prepared
+) ->
+    #{final_audio := Final} = Prepared,
+    FinalAttachment = maps:get(attachment_id, Final),
+    ok = require(attachment_derived_artifact:complete_tx(C, Manifest)),
+    Key = <<"assembly:", Role/binary, ":", (integer_to_binary(Manifest))/binary>>,
+    {ok, _, _} = require(
+        talk_record_attachment_adapter:bind_artifact_tx(C, Rid, Manifest, Role, Key)
     ),
-    [#{attachment_id := Audio}, #{attachment_id := Manifest}] = Artifacts,
+    {ok, _} = require(
+        talk_record_attachment_adapter:cancel_processing_lease_tx(C, Rid, Role, Lease)
+    ),
+    %% 成品：真实客户端直传附件。引用角色沿用既有 'transcoded_audio' 类别
+    %% （消费链回听/AI 按该类别+business_key 查询；T5 切读取权威时一并
+    %% 收敛），指向对象从派生副本改为直传附件——不重建派生副本，不二次
+    %% Copy；audio_attachment_id 同步指向真实成品。
+    FinalRole = <<"transcoded_audio">>,
+    FinalKey = <<"assembly:transcoded_audio:", (integer_to_binary(FinalAttachment))/binary>>,
+    {ok, _, _} = require(
+        talk_record_attachment_adapter:bind_artifact_tx(
+            C, Rid, FinalAttachment, FinalRole, FinalKey
+        )
+    ),
     {ok, 1} = require(
         elib_pg:execute(
             C,
@@ -138,7 +134,7 @@ publish_tx(C, Rid, #{artifacts := Artifacts}) ->
                 "UPDATE talk_record_assembly SET audio_attachment_id=$2"
                 " WHERE record_id=$1"
             >>,
-            [Rid, Audio]
+            [Rid, FinalAttachment]
         )
     ),
     {ok, 1} = require(
@@ -151,10 +147,7 @@ publish_tx(C, Rid, #{artifacts := Artifacts}) ->
             [Rid, Manifest]
         )
     ),
-    ok;
-publish_tx(_, _, _) ->
-    {error, assembly_artifacts_missing}.
+    ok.
 
-with_audio(Aid, Fun) -> attachment_derived_artifact:with_spool(Aid, Fun).
 require({error, R}) -> throw({talk_assembly_abort, R});
 require(V) -> V.

@@ -3,63 +3,83 @@
 -export([run/1, prepare_tx/2, reserve_tx/4, publish_tx/3, fail/2]).
 
 run(Job) ->
-    %% V3-18 P2 三段式：prepare（tx 权益）→ 外部处理（Worker fetch parts +
-    %% ffmpeg 解码/拼接/编码 + Worker staging 上传拿 proof）→ tx reserve
-    %% （hash/size 真值建行）→ 服务端 Copy + finish（零 BEAM 字节）→
-    %% tx publish。staging 键随机一次性；残留由 sweep 收敛。
+    %% no-backend-ffmpeg V1 三段式（无 FFmpeg 渲染段）：
+    %% prepare（tx 权益 + 冻结 final 输入的附件事实预检）→ 事务外 I/O
+    %% （成品对象一次有界下载 → 分段范围 SHA + ADTS + 样本轴校验——
+    %% 服务器读字节，不信客户端声明；小 JSON manifest 写私有临时文件 +
+    %% Worker staging 上传）→ tx reserve（manifest 真值建行）→ 服务端
+    %% Copy + finish → tx publish（绑定真实客户端成品附件，无派生副本）。
     case tx(fun(C) -> prepare_tx(C, Job) end) of
         {ok, P} ->
-            talk_record_audio_render:with_audio(maps:get(parts, P), fun(OutPath) ->
-                Bytes = jsone:encode(maps:get(manifest, P)),
-                ManifestFile = filename:join(filename:dirname(OutPath), "manifest.json"),
-                ok = file:write_file(ManifestFile, Bytes),
-                AudioStaging = staging_key(Job, <<"audio">>),
-                ManifestStaging = staging_key(Job, <<"manifest">>),
-                case staging_upload(OutPath, <<"audio/aac">>, AudioStaging) of
-                    {ok, #{sha256 := ASha, size := ASize}} ->
-                        case
-                            staging_upload(ManifestFile, <<"application/json">>, ManifestStaging)
-                        of
-                            {ok, _} ->
-                                case
-                                    tx(fun(C) -> reserve_tx(C, Job, P, {{ASha, ASize}, Bytes}) end)
-                                of
-                                    {ok, Ready} ->
-                                        case
-                                            talk_record_assembly_artifact:write(
-                                                Ready,
-                                                #{
-                                                    audio_staging => AudioStaging,
-                                                    manifest_staging => ManifestStaging,
-                                                    audio_file => OutPath,
-                                                    manifest_file => ManifestFile
-                                                }
-                                            )
-                                        of
-                                            %% worker 合同 {ok, published}：
-                                            %% publish 成功统一收敛为 tagged
-                                            %% 结果（publish_tx 的内部视图
-                                            %% 不透传到 dispatch case）。
-                                            ok ->
-                                                case tx(fun(C) -> publish_tx(C, Job, Ready) end) of
-                                                    {ok, _} -> {ok, published};
-                                                    E -> E
-                                                end;
-                                            Error ->
-                                                Error
-                                        end;
-                                    Error ->
-                                        Error
-                                end;
-                            {error, _} = E ->
-                                E
-                        end;
-                    {error, _} = E ->
-                        E
-                end
-            end);
+            case validate_final(P) of
+                {ok, Final} ->
+                    run_manifest(P#{final_audio => Final}, Job);
+                {error, _} = E ->
+                    E
+            end;
         Error ->
             Error
+    end.
+
+validate_final(P) ->
+    Final = maps:get(final_audio, P),
+    Row = maps:get(<<"_row">>, Final),
+    Parts = maps:get(parts, P),
+    Max = maps:get(max_bytes, talk_record_audio_validate:limits()),
+    attachment_artifact_reader:with_source(Row, Max, fun(Source) ->
+        case talk_record_audio_validate:validate(Source, Parts, Final) of
+            {ok, _Summary} -> {ok, Final};
+            {error, _} = E -> E
+        end
+    end).
+
+run_manifest(P, Job) ->
+    Bytes = jsone:encode(maps:get(manifest, P)),
+    Base = config_ds:env(imboy, talk_record_render_tmp_dir, "/tmp"),
+    Name =
+        "assembly-manifest-" ++
+            binary_to_list(binary:encode_hex(crypto:strong_rand_bytes(8), lowercase)),
+    Dir = filename:join(Base, Name),
+    ok = file:make_dir(Dir),
+    ok = file:change_mode(Dir, 8#700),
+    ManifestFile = filename:join(Dir, "manifest.json"),
+    {ok, F} = file:open(ManifestFile, [write, binary, exclusive]),
+    ok = file:change_mode(ManifestFile, 8#600),
+    ok = file:write(F, Bytes),
+    ok = file:close(F),
+    ManifestStaging = staging_key(Job, <<"manifest">>),
+    try
+        case staging_upload(ManifestFile, <<"application/json">>, ManifestStaging) of
+            {ok, _} ->
+                case tx(fun(C) -> reserve_tx(C, Job, P, Bytes) end) of
+                    {ok, Ready} ->
+                        %% worker 合同 {ok, published}：publish 成功统一收敛
+                        %% 为 tagged 结果（publish_tx 的内部视图不透传）。
+                        case
+                            talk_record_assembly_artifact:write(Ready, #{
+                                manifest_staging => ManifestStaging,
+                                manifest_file => ManifestFile
+                            })
+                        of
+                            ok ->
+                                case tx(fun(C) -> publish_tx(C, Job, Ready) end) of
+                                    {ok, _} -> {ok, published};
+                                    E -> E
+                                end;
+                            Error ->
+                                Error
+                        end;
+                    Error ->
+                        Error
+                end;
+            {error, _} = E ->
+                E
+        end
+    after
+        case {file:delete(ManifestFile), file:del_dir(Dir)} of
+            {ok, ok} -> ok;
+            _ -> throw(manifest_cleanup_unconfirmed)
+        end
     end.
 
 staging_key(Job, Role) ->
@@ -85,10 +105,11 @@ prepare_tx(C, Job) ->
     ok = gate(C, Job),
     require(talk_record_assembly_logic:prepare_tx(C, Job)).
 
-reserve_tx(C, Job, P, {AudioProof, Bytes}) ->
-    %% V3-18 P2：AudioProof={Sha256Hex,Size}（Worker staging 上传返回值）
+reserve_tx(C, Job, P, Bytes) ->
+    %% no-backend-ffmpeg V1：仅 manifest 派生附件建行（成品不再 reserve——
+    %% 直接绑定客户端直传的 CONFIRMED 附件）。
     ok = gate(C, Job),
-    {ok, talk_record_assembly_artifact:reserve_tx(C, Job, P, AudioProof, Bytes)}.
+    {ok, talk_record_assembly_artifact:reserve_tx(C, Job, P, Bytes)}.
 
 publish_tx(C, Job, P) ->
     ok = gate(C, Job),

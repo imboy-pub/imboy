@@ -47,6 +47,9 @@ seg_direct_upload_then_assembly(Root) ->
     <<P1:Half/binary, P2/binary>> = Bytes,
     {A1, S1, Z1} = direct_part(1, P1),
     {A2, S2, Z2} = direct_part(2, P2),
+    %% no-backend-ffmpeg V1：客户端合成成品独立直传（第三 direct 会话），
+    %% assembly job 冻结其身份并在发布时绑定（不再服务端产派生副本）。
+    {AFinal, SF, ZF} = direct_part(3, Bytes),
     io:format("G18_direct_parts_confirmed: a=~p/~pB b=~p/~pB~n", [A1, Z1, A2, Z2]),
     %% record + capture（logic 真链路创建）
     Body = #{
@@ -78,6 +81,21 @@ seg_direct_upload_then_assembly(Root) ->
     {ok, _, _} = elib_pg:with_tx(fun(C) ->
         talk_record_assembly_logic:persist_tx(C, Rid, Cid, Manifest)
     end),
+    {ok, [#{<<"path">> := FinalPath}]} = elib_pg:query(
+        <<"SELECT path FROM attachment WHERE id=$1">>, [AFinal]
+    ),
+    Frames = 64,
+    Final = #{
+        <<"object_key">> => FinalPath,
+        <<"client_upload_id">> => elib_uuid:gen_v7(),
+        <<"sha256">> => SF,
+        <<"byte_size">> => ZF,
+        <<"sample_rate">> => 16000,
+        <<"channels">> => 1,
+        <<"sample_count">> => Frames * 1024,
+        <<"duration_ms">> => (Frames * 1024 * 1000 + 8000) div 16000,
+        <<"attachment_id">> => AFinal
+    },
     {ok, created, _} = elib_pg:with_tx(fun(C) ->
         talk_record_job_repo:enqueue_tx(
             C,
@@ -86,7 +104,8 @@ seg_direct_upload_then_assembly(Root) ->
                 kind => <<"assemble">>,
                 input_manifest_hash => maps:get(<<"manifest_hash">>, Manifest),
                 input_content_revision => 1,
-                dedupe_key => <<"g18-assembly-", (elib_uuid:gen_v7())/binary>>
+                dedupe_key => <<"g18-assembly-", (elib_uuid:gen_v7())/binary>>,
+                processor_input => jsone:encode(#{<<"final_audio">> => Final})
             }
         )
     end),
@@ -161,7 +180,12 @@ insert_audio_part(Rid, Cid, Seq, Aid, Sha, Size) ->
     ok.
 
 read_assembly_audio(Aid) ->
-    talk_record_assembly_artifact:with_audio(Aid, fun(Source) ->
+    %% no-backend-ffmpeg V1：audio_attachment_id = 客户端直传成品附件，
+    %% 经冻结位置有界读取（不再读派生副本）。
+    {ok, [Row]} = elib_pg:query(
+        <<"SELECT path, size, file_hash256 FROM attachment WHERE id=$1">>, [Aid]
+    ),
+    attachment_artifact_reader:with_source(Row, 134217728, fun(Source) ->
         Size = attachment_upload_spool:size(Source),
         {ok, attachment_upload_spool:read(Source, 0, Size)}
     end).
@@ -308,36 +332,16 @@ install_garage_registry() ->
     }),
     ok.
 
-tone(Root) ->
-    Path = filename:join(Root, "g18-tone.aac"),
-    P = open_port({spawn_executable, ?FFMPEG}, [
-        binary,
-        exit_status,
-        use_stdio,
-        stderr_to_stdout,
-        {args, [
-            "-nostdin",
-            "-v",
-            "error",
-            "-f",
-            "lavfi",
-            "-i",
-            "sine=frequency=440:duration=1",
-            "-c:a",
-            "aac",
-            "-b:a",
-            "32k",
-            "-y",
-            Path
-        ]}
-    ]),
-    receive
-        {P, {exit_status, 0}} -> ok;
-        {P, {exit_status, N}} -> exit({ffmpeg_failed, N})
-    after 30000 -> exit(ffmpeg_timeout)
-    end,
-    {ok, Bin} = file:read_file(Path),
-    Bin.
+%% no-backend-ffmpeg V1：固定合法 ADTS 字节（16kHz 单声道 39 字节帧 ×64，
+%% 与 talk_record_audio_validate 同构），替换旧 ?FFMPEG 动态生成——
+%% 无 FFmpeg 环境仍走真实完成链。Root 参数保留以兼容调用点。
+tone(_Root) ->
+    Length = 39,
+    B3 = 16#40 bor (Length bsr 11),
+    B4 = (Length bsr 3) band 16#FF,
+    B5 = (Length band 7) bsl 5,
+    Frame = <<16#FF, 16#F1, 16#60, B3, B4, B5, 16#00, 0:256>>,
+    iolist_to_binary(lists:duplicate(64, Frame)).
 
 staging_put(#{url := Url, required_headers := Headers}, Body) ->
     Hs = [{binary_to_list(K), binary_to_list(V)} || {K, V} <- Headers],

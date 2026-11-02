@@ -216,10 +216,92 @@ prepare_parts(Conn, #{<<"record_id">> := RecordId, <<"input_manifest_hash">> := 
             Manifest = build_manifest(CaptureId, Parts),
             case maps:get(<<"manifest_hash">>, Manifest) =:= InputHash of
                 true ->
-                    grant_part_leases(Conn, Job, Parts, Manifest);
+                    %% no-backend-ffmpeg V1：冻结 final 输入（complete 事务
+                    %% 准入时写入 processor_input）——数据库事实复核附件
+                    %% live 与对象/字节身份，事务外校验以此行为准。
+                    case prepare_final_tx(Conn, Job) of
+                        {ok, Final} ->
+                            case grant_part_leases(Conn, Job, Parts, Manifest) of
+                                {ok, _} = Ok -> {ok, Ok#{final_audio => Final}};
+                                {error, _} = E -> E
+                            end;
+                        {error, _} = E ->
+                            E
+                    end;
                 false ->
                     {error, input_stale}
             end;
+        {error, Reason} ->
+            {error, Reason}
+    end.
+
+%% 冻结 final 输入提取与附件事实复核（同一事务：与 grant lease 同锁窗口）。
+prepare_final_tx(Conn, Job) ->
+    case final_input_of(Job) of
+        {ok, Final} ->
+            case final_attachment_tx(Conn, Job, Final) of
+                {ok, Row} -> {ok, Final#{<<"_row">> => Row}};
+                {error, _} = E -> E
+            end;
+        {error, _} = E ->
+            E
+    end.
+
+final_input_of(Job) ->
+    case maps:get(<<"processor_input">>, Job, null) of
+        null ->
+            {error, final_input_missing};
+        PinBin when is_binary(PinBin) ->
+            Pin = jsone:decode(PinBin),
+            case maps:get(<<"final_audio">>, Pin, undefined) of
+                #{
+                    <<"object_key">> := _,
+                    <<"client_upload_id">> := _,
+                    <<"sha256">> := _,
+                    <<"byte_size">> := _,
+                    <<"sample_rate">> := _,
+                    <<"channels">> := _,
+                    <<"sample_count">> := _,
+                    <<"duration_ms">> := _
+                } = Final when is_map(Final) ->
+                    {ok, Final};
+                _ ->
+                    {error, final_input_missing}
+            end;
+        _ ->
+            {error, final_input_missing}
+    end.
+
+%% 数据库事实复核（PLAN T4：不用客户端声明替代服务器事实）：
+%% 附件 live、path==object_key、size/sha 与冻结声明逐项一致。
+final_attachment_tx(Conn, Job, Final) ->
+    Aid = maps:get(<<"attachment_id">>, Final, undefined),
+    ObjectKey = maps:get(<<"object_key">>, Final),
+    RidBin = integer_to_binary(maps:get(<<"record_id">>, Job)),
+    Sql =
+        <<
+            "SELECT a.path, a.size, a.file_hash256, a.lifecycle_state"
+            " FROM attachment a WHERE a.id=$1::int8"
+            " AND a.scope='talk_record' AND a.scope_ref=$2"
+        >>,
+    case elib_pg:query(Conn, Sql, [ec_cnv:to_binary(Aid), RidBin]) of
+        {ok, [
+            #{
+                <<"path">> := ObjectKey,
+                <<"lifecycle_state">> := <<"live">>,
+                <<"size">> := Size,
+                <<"file_hash256">> := Sha
+            } = Row
+        ]} ->
+            case
+                ec_cnv:to_integer(Size) =:= maps:get(<<"byte_size">>, Final) andalso
+                    Sha =:= maps:get(<<"sha256">>, Final)
+            of
+                true -> {ok, Row};
+                false -> {error, final_asset_mismatch}
+            end;
+        {ok, _} ->
+            {error, final_not_confirmed};
         {error, Reason} ->
             {error, Reason}
     end.
