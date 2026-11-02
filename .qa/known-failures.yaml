@@ -166,17 +166,13 @@ gates:
   # 提取依据：make gradualize-audit 输出 "❌ src/<dir>/<mod>.erl" 行取 basename
   # ---------------------------------------------------------------------------
   gradualizer:
-    source: "local 2026-08-22, gradualize-audit, 507 模块 failing 277"
+    source: "2026-11-01 回册：run 41362094143 首跑实测 NEW=85（批次演进 7-25 基线后积压）；首版 2026-08-22 gradualize-audit 507 模块 failing 277"
     note: >-
       与入仓 .gradualizer-baseline.txt（2026-07-25, 247 条）相比 +31/-1：7-25
       基线重建后新增 31 个失败模块（pre-push 只查变更文件未拦住）。按"首版以
       实测为准"原则全部入册存量化；如需回溯 triage：comm -13
       <(sort .gradualizer-baseline.txt) <(awk '{print $2"    - "$1}' 本段)
     known_failures:
-
-  # ---------------------------------------------------------------------------
-  # elvis —— 失败标识粒度：FAIL 文件路径（"elvis rock" 输出 "# <path> [FAIL]" 行）
-  # ---------------------------------------------------------------------------
       - ack_retry_cache
       - adm_acl
       - adm_admin_handler
@@ -186,6 +182,7 @@ gates:
       - adm_app_version_handler
       - adm_attach_handler
       - adm_channel_handler
+      - adm_cs_ai_handler
       - adm_enterprise_application_handler
       - adm_feedback_handler
       - adm_finance_handler
@@ -193,6 +190,7 @@ gates:
       - adm_group_handler
       - adm_group_helper
       - adm_group_schedule_handler
+      - adm_group_task_handler
       - adm_index_handler
       - adm_logout_apply_handler
       - adm_mcp_handler
@@ -228,9 +226,14 @@ gates:
       - announcement_ds
       - app_ddl_ds
       - app_manifest_handler
+      - app_upgrade_log_logic
+      - app_version_logic
       - app_version_repo
+      - attach_direct_handler
+      - attach_direct_logic
       - attach_handler
       - attach_logic
+      - attachment_download_handler
       - attachment_repo
       - attachment_upload_logic
       - auth_ds
@@ -248,6 +251,7 @@ gates:
       - bot_webhook_delivery_repo
       - bot_webhook_delivery_worker
       - bot_webhook_logic
+      - c2c_action_receipt_repo
       - channel_admin_repo
       - channel_comment_logic
       - channel_comment_repo
@@ -265,6 +269,7 @@ gates:
       - channel_logic_order
       - channel_logic_stats
       - channel_message_repo
+      - channel_message_tags
       - channel_order_repo
       - channel_repo
       - channel_subscription_repo
@@ -304,9 +309,14 @@ gates:
       - enterprise_admin_governance_logic
       - enterprise_application_grant_repo
       - enterprise_asset_handler
+      - enterprise_asset_logic
       - enterprise_asset_repo
       - enterprise_asset_retention_logic
       - enterprise_audit_event_repo
+      - enterprise_channel_logic
+      - enterprise_channel_write_logic
+      - enterprise_cs_seat_logic
+      - enterprise_cursor_v2
       - enterprise_directory_handler
       - enterprise_directory_logic
       - enterprise_friend_request_handler
@@ -316,11 +326,15 @@ gates:
       - enterprise_internal_auth
       - enterprise_internal_idempotency
       - enterprise_internal_ops
+      - enterprise_internal_read_page
       - enterprise_internal_routes
       - enterprise_message_handler
+      - enterprise_oa_bootstrap
       - enterprise_oa_sso_logic
+      - enterprise_project_logic
       - enterprise_webhook_handler
       - enterprise_webhook_logic
+      - enterprise_workspace_logic
       - eunit_runner
       - feedback_handler
       - feedback_logic
@@ -341,6 +355,7 @@ gates:
       - group_category_repo
       - group_ds
       - group_file_ds
+      - group_file_handler
       - group_file_repo
       - group_handler
       - group_log_repo
@@ -351,6 +366,7 @@ gates:
       - group_notice_handler
       - group_notice_repo
       - group_repo
+      - group_schedule_ds
       - group_schedule_handler
       - group_schedule_logic
       - group_schedule_repo
@@ -361,8 +377,15 @@ gates:
       - group_task_logic
       - group_task_repo
       - group_vote_repo
+      - healthz_handler
       - imboy_app
       - imboy_cache
+      - imboy_cache_policy
+      - imboy_cache_sync
+      - imboy_cache_sync_coverage
+      - imboy_cache_sync_proto
+      - imboy_cache_sync_recover
+      - imboy_cache_sync_snapshot
       - imboy_cluster
       - imboy_codec
       - imboy_env
@@ -370,6 +393,7 @@ gates:
       - imboy_feature
       - imboy_frame
       - imboy_http_metrics
+      - imboy_jwt
       - imboy_license
       - imboy_llm_registry
       - imboy_mcp_tools
@@ -384,7 +408,6 @@ gates:
       - imboy_policy_codec
       - imboy_policy_normalize
       - imboy_profile_preset
-      - imboy_secret_policy
       - imboy_route_shape
       - imboy_secret_policy
       - imboy_sms
@@ -394,10 +417,12 @@ gates:
       - imboy_syn
       - imboy_telemetry
       - index_handler
+      - list_cursor
       - live_room_ds
       - live_room_repo
       - log_redact
       - login_attempt_ds
+      - login_attempt_state
       - mcp_client_repo
       - mcp_governance_logic
       - mcp_handler
@@ -410,6 +435,9 @@ gates:
       - metrics_handler
       - moderation_appeal_logic
       - moderation_appeal_repo
+      - moderation_detector_grpc
+      - moderation_detector_http
+      - moderation_detector_transport
       - moderation_policy
       - moment_comment_repo
       - moment_ds
@@ -446,7 +474,9 @@ gates:
       - msg_c2s_repo
       - msg_delivery_repo
       - msg_handler
+      - msg_offline_cursor
       - msg_rate_logic
+      - msg_reaction_logic
       - msg_s2c_ds
       - msg_s2c_logic
       - msg_s2c_repo
@@ -458,6 +488,7 @@ gates:
       - olm_identity_logic
       - olm_identity_repo
       - ops_report_logic
+      - org_invite_landing_handler
       - organization_admin_logic
       - organization_logic
       - organization_owner_activation_logic
@@ -483,6 +514,7 @@ gates:
       - project_task_handler
       - project_task_repo
       - push_notification_ds
+      - push_provider_fcm_token
       - push_provider_jpush
       - push_provider_jpush_http
       - push_token_repo
@@ -496,13 +528,59 @@ gates:
       - report_logic
       - report_ticket_ds
       - report_ticket_repo
+      - resource_create_receipt_repo
       - review_queue_repo
       - rtc_room_logic
       - sensitive_word_repo
       - sso_config_ds
       - sso_logic
+      - talk_record_attachment_adapter
+      - talk_record_audio_render
+      - talk_record_capture_ds
+      - talk_record_capture_http
+      - talk_record_capture_input
+      - talk_record_capture_repo
+      - talk_record_cleanup_logic
+      - talk_record_client_audio_contract
+      - talk_record_client_ds
+      - talk_record_content_common
+      - talk_record_content_http
+      - talk_record_content_segments
+      - talk_record_content_speakers
+      - talk_record_context_ds
+      - talk_record_cursor_ds
+      - talk_record_delete_repo
+      - talk_record_directory_repo
+      - talk_record_ds
+      - talk_record_export_download
+      - talk_record_export_logic
+      - talk_record_governance_logic
+      - talk_record_grant_candidates
+      - talk_record_http
+      - talk_record_job_logic
+      - talk_record_job_repo
+      - talk_record_job_requests
+      - talk_record_job_worker
+      - talk_record_logic
+      - talk_record_marks_logic
+      - talk_record_marks_repo
+      - talk_record_part_upload
+      - talk_record_participant_logic
+      - talk_record_participant_repo
+      - talk_record_parts_ds
+      - talk_record_processor_audio
+      - talk_record_processor_config
+      - talk_record_processor_runner
+      - talk_record_repo
+      - talk_record_sharing_http
+      - talk_record_transfer_logic
+      - textguard_export
+      - textguard_grpc_call
+      - textguard_pb
+      - textguard_publisher
       - transfer_logic
       - trust_audit_repo
+      - user_collect_ds
       - user_collect_handler
       - user_deletion_job_repo
       - user_deletion_logic
@@ -520,6 +598,7 @@ gates:
       - user_onboarding_logic
       - user_repo
       - user_server
+      - user_setting_ds
       - user_setting_repo
       - user_tag_ds
       - user_tag_relation_ds
@@ -532,6 +611,7 @@ gates:
       - websocket_ds
       - websocket_handler
       - websocket_logic
+      - wechat_mini_auth_logic
       - withdrawal_logic
       - workspace_ds
       - workspace_guard
