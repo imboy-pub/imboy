@@ -387,3 +387,12 @@ GLM 返回带 segment IDs 引用的结构化草稿；服务端校验来源、边
 完整端点与表增量见[DOUBAO-API.md](DOUBAO-API.md)，共享请求profile见[fixture](fixtures/doubao-profile-v1.json)。BE R7/App R8代码候选不等于正式验收。迁移222/223/224及provider-task事实依实际冻结源码核对，编号合并前再查所有分支；不改历史223。source purpose只允许成功assembly、当前ACL/同意/策略、bound/live引用及保留/删除语义下的短时读取，不放宽derived通用view_url，不接受任意URL/路径，不新建公开桶或GC链。
 
 submission UUID不是供应商返回taskID。durable intent只首次授权may_submit；knownID pending/unknown只能query；首版query_receipt failed不开放，HTTP拒绝不是ASR终态。响应丢失通过latest发现task/run或recover-unprepared，已保存taskID可reconcile-receipt；source300秒期限不截断受理后的查询和完成。明确未派发prepared恢复不收虚假重复费用确认；无ID未知重提须双风险确认，旧未知事实不抹除。完整恢复/撤权/旧generic旁路拒绝须定向与真实事务验证，不由文档认定通过。
+
+## 14. 修订11：no-backend-ffmpeg V1（成品客户端合成直传）
+
+后端移除全部 FFmpeg：`talk_record_audio_render` 删除；assemble 作业保留 prepare→事务外 I/O→publish 三段式，中间段改为对客户端直传成品的一次有界下载校验（`talk_record_audio_validate`：总字节三账相符严格拒尾随、按 manifest 段 byte_size 分界逐段 SHA-256 比对已确认分段、ADTS 全帧扫描（与客户端 talk_record_adts.dart 同一结构规则、段边界帧对齐）、样本总数/统一舍入时长与冻结输入逐项比对、限额取 capabilities 有效较小值 fail-closed）。
+
+- complete 合同（修订11）：`captures[].manifest_hash` 与 `final_audio` 八字段（object_key/client_upload_id/sha256/byte_size/sample_rate/channels=1/sample_count/duration_ms）必填；服务端以 direct CONFIRMED 会话、活附件与 winner 物理身份逐项比对准入；同清单换直传会话返回 `final_identity_conflict`（409），不静默替换首绑成品。错误码 `final_audio_required`/`invalid_final_audio`（422）、`final_not_confirmed`/`final_asset_mismatch`/`final_identity_conflict`（409）；assemble 终态错误码 `audio_render_*` 由 `audio_frame_invalid`/`audio_identity_mismatch`/`audio_part_boundary_invalid`/`final_*` 取代。
+- 读取权威：回听/Range/本机处理器/客户端与供应商 source 一律读 `talk_record_assembly.audio_attachment_id`（客户端直传成品附件，assemble job succeeded 锚、attachment live）——不再要求 derived_write 完成行；引用类别沿用 `transcoded_audio`（business_key 同构），不全局放宽 attachment_derived_artifact。
+- provider profile：rate 取自冻结 final_audio 的真实采样率（ADTS 帧头读出、字节验证一致），取消永久写死 16000；`provider_task_profile_exact` 随迁移 00000242 改为 13 对 (request_profile, profile_hash) 白名单精确配对（ADTS 合法采样率全集），固定 request 策略不放宽，provider pins immutable trigger 与 source custody insert guard 保留；同一任务的 profile/hash 不可变，恢复与重试必须使用已冻结值。
+- 测试 fixture：三处动态 FFmpeg 生成（assembly relay tone、g18 gate tone、t12 synthetic_audio、质量夹具 ensure_aac_fixture）全部替换为固定合法 ADTS 字节（16kHz 单声道 39 字节帧结构，与 validate 同构）；无 FFmpeg 环境仍走真实完成链。

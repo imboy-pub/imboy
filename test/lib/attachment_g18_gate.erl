@@ -10,11 +10,8 @@
 
 -define(UID, 700002).
 -define(TOKEN, <<"v3run1-edge-internal-token">>).
--define(FFMPEG, "/usr/local/bin/ffmpeg").
-
 main(AppPort, EdgePort) ->
     false = os:getenv("A0_ENDPOINT") =:= false orelse exit(a0_env_missing),
-    true = filelib:is_file(?FFMPEG) orelse exit(ffmpeg_missing),
     Root = os:getenv("G18_TALK_UPLOAD_ROOT", "/tmp/v3w5b-g18-talk-root"),
     filelib:ensure_dir(filename:join(Root, "x")),
     {ok, _} = application:ensure_all_started(inets),

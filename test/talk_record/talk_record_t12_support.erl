@@ -313,44 +313,16 @@ upload_audio(Uid, Part) ->
         ok = file:delete(Name)
     end.
 
+%% no-backend-ffmpeg V1：固定合法 ADTS 字节（16kHz 单声道 39 字节帧 ×469
+%% ≈ 30 秒，与 talk_record_audio_validate 同构），替换旧 ffmpeg 动态生成
+%% ——分段 byte_size 声明取 byte_size(audio_bytes()) 自动自洽。
 synthetic_audio() ->
-    Exe =
-        case os:find_executable("ffmpeg") of
-            false -> erlang:error(t12_ffmpeg_unavailable);
-            Path -> Path
-        end,
-    Port = open_port({spawn_executable, Exe}, [
-        binary,
-        exit_status,
-        use_stdio,
-        {args, [
-            "-nostdin",
-            "-v",
-            "error",
-            "-f",
-            "lavfi",
-            "-i",
-            "sine=frequency=440:duration=30",
-            "-ac",
-            "1",
-            "-ar",
-            "16000",
-            "-c:a",
-            "aac",
-            "-f",
-            "adts",
-            "pipe:1"
-        ]}
-    ]),
-    try
-        collect_audio(Port, erlang:monotonic_time(millisecond) + 30000, <<>>)
-    after
-        try
-            port_close(Port)
-        catch
-            error:badarg -> ok
-        end
-    end.
+    Length = 39,
+    B3 = 16#40 bor (Length bsr 11),
+    B4 = (Length bsr 3) band 16#FF,
+    B5 = (Length band 7) bsl 5,
+    Frame = <<16#FF, 16#F1, 16#60, B3, B4, B5, 16#00, 0:256>>,
+    iolist_to_binary(lists:duplicate(469, Frame)).
 
 collect_audio(Port, Deadline, Bytes) ->
     Left = max(0, Deadline - erlang:monotonic_time(millisecond)),
