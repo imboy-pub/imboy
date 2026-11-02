@@ -14,8 +14,38 @@
 -include_lib("eunit/include/eunit.hrl").
 -include_lib("epgsql/include/epgsql.hrl").
 
+%% 钉名 gate env 在场判定：与 inttest_marker_db:bound_v5_database/1 的
+%% 第一步输入对齐——只检查 gate 导出的 <PREFIX>_DB 是否设置且非空。
+%% 专项 gate executor 一定成套导出 _DB；只有 _DB 而缺其余凭证的非法半配置
+%% 不在此静默让位，继续走 provision 由 fail-closed 契约显式报 contract_conflict。
+v5_gate_pinned(Prefix) when is_binary(Prefix) ->
+    Env = binary_to_list(<<Prefix/binary, "_DB">>),
+    case os:getenv(Env) of
+        false -> false;
+        "" -> false;
+        _ -> true
+    end.
+
 bind_test_() ->
-    isolated_pg_fixture:test(fun bind_fixture/0).
+    %% 受控让位（仓库先例：attachment_lifecycle_v5_pg_tests 的
+    %% v5_gate_pinned，生成器返回空清单）。本套件虽已包 isolated_pg_fixture，
+    %% 但该夹具只负责子 VM 隔离，不做 env 让位：无钉名 env 裸跑时
+    %% setup_database 内 inttest_marker_db:provision 由 fail-closed 契约
+    %% 抛 contract_conflict，且返回空清单也会被其 Passed>0 收据断言判
+    %% 失败——让位必须落在本生成器入口。nightly 全量
+    %% `make eunit-local-legacy` 不经专项 gate 裸跑，此时生成器返回空清单
+    %% 静默让位（eunit 无 {skip, ...} 顶层描述符，返回空清单才是等价
+    %% 机制）；gate 路径（ATTACH_BIND_INTTEST_DB 在场）全语义执行，
+    %% 断言零删减。
+    case v5_gate_pinned(<<"ATTACH_BIND_INTTEST">>) of
+        true ->
+            isolated_pg_fixture:test(fun bind_fixture/0);
+        false ->
+            io:format(user, "ATTACH_BIND_EUNIT_YIELD missing_env=~p~n", [
+                "ATTACH_BIND_INTTEST_DB"
+            ]),
+            []
+    end.
 
 bind_fixture() ->
     {setup, fun setup_database/0, fun cleanup_database/1, fun(Database) ->

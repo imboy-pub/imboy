@@ -777,7 +777,37 @@ provider_failure_is_failsafe(C, State) ->
 %%% Suite
 %%%===================================================================
 
+%% 钉名 gate env 在场判定：与 inttest_marker_db:bound_v5_database/1 的
+%% 第一步输入对齐——只检查 gate 导出的 <PREFIX>_DB 是否设置且非空。
+%% 专项 gate executor 一定成套导出 _DB；只有 _DB 而缺其余凭证的非法半配置
+%% 不在此静默让位，继续走 provision 由 fail-closed 契约显式报 contract_conflict。
+v5_gate_pinned(Prefix) when is_binary(Prefix) ->
+    Env = binary_to_list(<<Prefix/binary, "_DB">>),
+    case os:getenv(Env) of
+        false -> false;
+        "" -> false;
+        _ -> true
+    end.
+
 enterprise_message_push_pg_test_() ->
+    %% 受控让位（仓库先例：attachment_lifecycle_v5_pg_tests 的
+    %% v5_gate_pinned，生成器返回空清单）。本套件唯一生成器整体依赖
+    %% setup_conn 的 inttest_marker_db 钉名 env（FULL07_INTTEST_DB，
+    %% fail-closed 契约）；nightly 全量 `make eunit-local-legacy` 不经
+    %% 专项 gate 裸跑，此时生成器返回空清单静默让位（eunit 无
+    %% {skip, ...} 顶层描述符，返回空清单才是等价机制，{skip,...} 会被
+    %% 计 cancel 使整轮失败）；gate 路径（钉名 env 在场）全语义执行，
+    %% 断言零删减。
+    case v5_gate_pinned(<<"FULL07_INTTEST">>) of
+        true ->
+            enterprise_message_push_pg_suite();
+        false ->
+            io:format(user, "FULL07_EUNIT_YIELD missing_env=~p~n", ["FULL07_INTTEST_DB"]),
+            []
+    end.
+
+%% gate 放行时的原套件描述符（原样执行，断言零删减）。
+enterprise_message_push_pg_suite() ->
     {timeout, 900,
         {setup, fun setup_conn/0, fun close_conn/1, fun(State) ->
             C = maps:get(conn, State),

@@ -3,6 +3,26 @@
 -define(H, intbe02_http_support).
 
 retention_test_() ->
+    %% 受控让位（仓库先例：attachment_lifecycle_v5_pg_tests 的 r20_test_/
+    %% v5_gate_pinned：eunit 无 {skip, ...} 顶层描述符，生成器返回空清单
+    %% 才是等价的静默让位机制）。本套件是"需显式钉库 env 才有意义"的
+    %% 专属专项套件（见 msg_accepted_at_pg_tests 头注）：OA_CLOUD_MARKER_PORT
+    %% 是其 marker 端口钉库合同——scripts/quality.escript 与
+    %% scripts/ci/native-eunit-run.sh 显式导出该 env 指向本 run 的隔离 PG；
+    %% nightly 全量 legacy 裸跑（make eunit-local-legacy）不导出，setup_
+    %% owned 的端口断言（默认 4337 phase1 容器）必然 badmatch（CI
+    %% run 41393644512 实证 expected 4337 vs 实际 4323）。缺合同 env 时在
+    %% 生成器入口让位，不进 setup；env 在场时端口断言原样保留（守卫语义
+    %% 不变，防误连共享库）。
+    case os:getenv("OA_CLOUD_MARKER_PORT") of
+        V when is_list(V), V =/= "" ->
+            retention_units();
+        _ ->
+            io:format(user, "OA_CLOUD_EUNIT_YIELD missing_env=\"OA_CLOUD_MARKER_PORT\"~n", []),
+            []
+    end.
+
+retention_units() ->
     {timeout, 900,
         {setup, fun setup/0, fun close/1, fun(S) ->
             {inorder, [

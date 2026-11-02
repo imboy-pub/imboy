@@ -5,6 +5,22 @@
 -include_lib("kernel/include/file.hrl").
 
 protocol_test_() ->
+    %% 受控让位（仓库先例：attachment_lifecycle_v5_pg_tests 的 r20_test_/
+    %% v5_gate_pinned：eunit 无 {skip, ...} 顶层描述符，生成器返回空清单
+    %% 才是等价的静默让位机制）。本套件由 scripts/test/attachment_lifecycle_
+    %% v5_gate.sh 成套导出 W403_* 钉名 env 后专门执行；nightly 全量裸跑
+    %% （make eunit-local-legacy）不经 gate，缺钉名 env 时在生成器入口
+    %% 让位，不进 setup（required/1 的 fail-closed no_go 留给非法半配置）。
+    %% gate 路径（env 在场）语义与断言零删减。
+    case os:getenv("W403_RESOURCE_MANIFEST") of
+        V when is_list(V), V =/= "" ->
+            protocol_units();
+        _ ->
+            io:format(user, "W403_EUNIT_YIELD missing_env=\"W403_RESOURCE_MANIFEST\"~n", []),
+            []
+    end.
+
+protocol_units() ->
     {setup, fun setup/0, fun cleanup/1, fun(S) ->
         [
             {
@@ -197,12 +213,15 @@ ensure_started(App) ->
 %% Ordinary native-CI bases have their own namespace. Unlike legacy V5 review
 %% manifests, they require private provenance and a live read-only identity check.
 %% 原生 CI 普通主库使用独立命名空间；必须先核私有清单与实时身份，不只认前缀。
-assert_chain_fixture_database(<<"attv5_chain_", _/binary>>, _, _, _) -> ok;
+assert_chain_fixture_database(<<"attv5_chain_", _/binary>>, _, _, _) ->
+    ok;
 assert_chain_fixture_database(<<"imboy_chain_ci_", _/binary>> = Db, Manifest, Env, Path) ->
     assert_fixture_database(Db, Manifest, Env, Path);
-assert_chain_fixture_database(_, _, _, _) -> error({no_go, w403_chain_database_unverified}).
+assert_chain_fixture_database(_, _, _, _) ->
+    error({no_go, w403_chain_database_unverified}).
 
-assert_fixture_database(<<"attv5_", _/binary>>, _Manifest, _Env, _Path) -> ok;
+assert_fixture_database(<<"attv5_", _/binary>>, _Manifest, _Env, _Path) ->
+    ok;
 assert_fixture_database(<<"imboy_chain_ci_", _/binary>> = Db, Manifest, Env, Path) ->
     {match, _} = re:run(Db, "^imboy_chain_ci_[0-9]+_[0-9]+_(uid|full)$"),
     absolute = filename:pathtype(Path),
@@ -215,18 +234,27 @@ assert_fixture_database(<<"imboy_chain_ci_", _/binary>> = Db, Manifest, Env, Pat
     {match, _} = re:run(SystemId, "^[0-9]+$"),
     Marker = <<"imboy-native-eunit:ordinary-base:", Db/binary>>,
     Pg = proplists:get_value(pg_conf, Env),
-    {epgsql, connect, [#{host := "127.0.0.1", port := 55432,
-        username := "imboy_ci", password := ""} = Opts]} = maps:get(start_mfa, Pg),
+    {epgsql, connect, [
+        #{
+            host := "127.0.0.1",
+            port := 55432,
+            username := "imboy_ci",
+            password := ""
+        } = Opts
+    ]} = maps:get(start_mfa, Pg),
     Db = iolist_to_binary(maps:get(database, Opts)),
     {ok, Started} = application:ensure_all_started(epgsql),
     try
         {ok, Conn} = epgsql:connect(Opts),
         try
             Expected = {Db, <<"imboy_ci">>, SystemId, Marker},
-            {ok, _, [Expected]} = epgsql:equery(Conn,
+            {ok, _, [Expected]} = epgsql:equery(
+                Conn,
                 "SELECT current_database(),current_user,system_identifier::text,"
                 "shobj_description(d.oid,'pg_database') FROM pg_control_system(),pg_database d"
-                " WHERE d.datname=current_database()", []),
+                " WHERE d.datname=current_database()",
+                []
+            ),
             ok
         after
             epgsql:close(Conn)
@@ -234,7 +262,8 @@ assert_fixture_database(<<"imboy_chain_ci_", _/binary>> = Db, Manifest, Env, Pat
     after
         lists:foreach(fun application:stop/1, lists:reverse(Started))
     end;
-assert_fixture_database(_, _, _, _) -> error({no_go, w403_fixture_database_unverified}).
+assert_fixture_database(_, _, _, _) ->
+    error({no_go, w403_fixture_database_unverified}).
 
 assert_database(Expected) ->
     case elib_pg:query(<<"SELECT current_database() AS db">>, []) of

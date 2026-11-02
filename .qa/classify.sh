@@ -2,6 +2,9 @@
 # =============================================================================
 # classify.sh — nightly gate 失败五分类（P4-Q1 / Golden Gates 计划 §6.1，语义钉死）
 #
+# 让位（yield）套件是"未执行"不是"通过"：对照登记见 .qa/yield-registry.md；
+# 让位类提交须同步维护该表并附独立通道证据。
+#
 #   NEW_FAILURE   不在 known 清单 -> 阻断（exit 1，nightly 红 + P4-Q4 建 issue）
 #   KNOWN_FAILURE known 清单内    -> 只计数
 #   FIXED         上期 known 本期消失 -> 棘轮收紧建议（人工 review 后移除，脚本不自动改 yaml）

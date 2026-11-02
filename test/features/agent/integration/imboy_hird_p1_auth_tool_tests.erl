@@ -128,23 +128,56 @@ fn main() → () ! {Supervise, Send<ProbeMsg>, Await<ProbeStatus>} =
 %%% 套件
 %%%===================================================================
 
+%% 钉名 gate env 在场判定：与 inttest_marker_db:bound_v5_database/1 的
+%% 第一步输入对齐——只检查 gate 导出的 <PREFIX>_DB 是否设置且非空。
+%% gate（HIRD POC 车道 executor，scripts/hird_poc_v1/）一定成套导出 _DB
+%% 与配套 PG env；只有 _DB 而缺其他配套的非法半配置不在此静默让位，
+%% 继续走 provision 由 fail-closed 契约显式报 contract_conflict。
+v5_gate_pinned(Prefix) when is_binary(Prefix) ->
+    Env = binary_to_list(<<Prefix/binary, "_DB">>),
+    case os:getenv(Env) of
+        false -> false;
+        "" -> false;
+        _ -> true
+    end.
+
 p1_test_() ->
-    {timeout, 900,
-        {foreach, fun setup/0, fun cleanup/1, [
-            {~B'合法请求：生成程序实际调用→授权 allow→真实读取，业务恰执行一次', fun t_legal/0},
-            {~B'无 Grant capability：deny，业务执行零次，域错误回传', fun t_not_granted/0},
-            {~B'Grant 撤销提交完成后：新请求 deny，业务执行零次', fun t_revoked/0},
-            {~B'跨组织资源：cross_org deny，不泄露目标数据', fun t_cross_org/0},
-            {~B'伪造执行上下文（不存在的 Run）：deny，业务执行零次', fun t_forged_ctx/0},
-            {~B'未知 capability（未注册工具）：deny，业务执行零次', fun t_unknown_tool/0},
-            {~B'绕过授权链直调 registry handler：无凭证拒绝，业务读取零次', fun t_bypass_direct/0},
-            {~B'作用域内绕过桥直调 dispatch：仍走真实授权', fun t_bypass_dispatch/0},
-            {~B'run_tool 同工具递归防护：HandlerMap 缺目标键即拒绝', fun t_recursion_guard/0},
-            {~B'同组织跨 Workspace（grant 未授权）：grant_scope_mismatch 拒', fun t_same_org_other_ws/0},
-            {~B'effect 凭证资源绑定：窗口内跨资源请求拒绝', fun t_effect_resource_binding/0},
-            {~B'Provider 变体（纯文本回复）：业务 Tool 仍被固定执行（C5 如实取证）', fun t_provider_variant/0},
-            {~B'默认关闭：不配 PoC env 时目录空集+策略恒拒，业务执行零次', fun t_default_off/0}
-        ]}}.
+    %% 受控让位（仓库先例：attachment_lifecycle_v5_pg_tests 的 r20_test_
+    %% env 分支，生成器返回空清单）。本生成器整体依赖钉库：setup 经
+    %% ensure_env + inttest_marker_db:provision（env 前缀 HIRDPOC，reuse
+    %% 共享）。不经 gate 的全量裸跑（nightly eunit 等）生成器返回空清单
+    %% 静默让位（eunit 无 {skip, ...} 顶层描述符，返回空清单才是等价
+    %% 机制）；gate 路径（钉名 env 在场）全语义执行，断言零删减。半配置
+    %% 不在此让位，仍交由 provision / ensure_env 的 fail-closed 契约显式
+    %% 拒绝。注意：同模块 poc_env_ownership_test_/0 是纯 application env
+    %% 槽位（零钉库依赖），不参与本让位。
+    case v5_gate_pinned(<<"HIRDPOC">>) of
+        true ->
+            {timeout, 900,
+                {foreach, fun setup/0, fun cleanup/1, [
+                    {~B'合法请求：生成程序实际调用→授权 allow→真实读取，业务恰执行一次', fun t_legal/0},
+                    {~B'无 Grant capability：deny，业务执行零次，域错误回传', fun t_not_granted/0},
+                    {~B'Grant 撤销提交完成后：新请求 deny，业务执行零次', fun t_revoked/0},
+                    {~B'跨组织资源：cross_org deny，不泄露目标数据', fun t_cross_org/0},
+                    {~B'伪造执行上下文（不存在的 Run）：deny，业务执行零次', fun t_forged_ctx/0},
+                    {~B'未知 capability（未注册工具）：deny，业务执行零次', fun t_unknown_tool/0},
+                    {~B'绕过授权链直调 registry handler：无凭证拒绝，业务读取零次', fun t_bypass_direct/0},
+                    {~B'作用域内绕过桥直调 dispatch：仍走真实授权', fun t_bypass_dispatch/0},
+                    {~B'run_tool 同工具递归防护：HandlerMap 缺目标键即拒绝', fun t_recursion_guard/0},
+                    {
+                        ~B'同组织跨 Workspace（grant 未授权）：grant_scope_mismatch 拒',
+                        fun t_same_org_other_ws/0
+                    },
+                    {~B'effect 凭证资源绑定：窗口内跨资源请求拒绝', fun t_effect_resource_binding/0},
+                    {~B'Provider 变体（纯文本回复）：业务 Tool 仍被固定执行（C5 如实取证）', fun t_provider_variant/0},
+                    {~B'默认关闭：不配 PoC env 时目录空集+策略恒拒，业务执行零次', fun t_default_off/0}
+                ]}};
+        false ->
+            %% 无钉名 env：由 HIRD POC 车道专门执行；空清单 = 本轮不产
+            %% 任何测试项（静默让位）。
+            io:format(user, "HIRD_P1_EUNIT_YIELD missing_env=~p~n", ["HIRDPOC_DB"]),
+            []
+    end.
 
 %%%===================================================================
 %%% setup / cleanup
@@ -254,8 +287,9 @@ poc_env_keys() ->
 
 poc_env_ownership_test_() ->
     [
-        {atom_to_list(Mode) ++ " env restored after " ++ atom_to_list(Phase),
-            fun() -> check_poc_env_ownership(Mode, Phase) end}
+        {atom_to_list(Mode) ++ " env restored after " ++ atom_to_list(Phase), fun() ->
+            check_poc_env_ownership(Mode, Phase)
+        end}
      || Mode <- [present, absent],
         Phase <- [cleanup, setup_failure, cleanup_failure]
     ].
@@ -291,16 +325,28 @@ check_poc_env_ownership(Mode, Phase) ->
                 ?assertNotEqual(Expected, capture_poc_env()),
                 ok = cleanup_with_owned_env(SavedEnv, fun uninstall_poc_env/0);
             setup_failure ->
-                ?assertError(poc_setup_failed, setup_with_owned_env(
-                    fun() -> ok = Setup(), erlang:error(poc_setup_failed) end,
-                    fun uninstall_poc_env/0
-                ));
+                ?assertError(
+                    poc_setup_failed,
+                    setup_with_owned_env(
+                        fun() ->
+                            ok = Setup(),
+                            erlang:error(poc_setup_failed)
+                        end,
+                        fun uninstall_poc_env/0
+                    )
+                );
             cleanup_failure ->
                 SavedEnv = setup_with_owned_env(Setup, fun uninstall_poc_env/0),
-                ?assertError(poc_cleanup_failed, cleanup_with_owned_env(
-                    SavedEnv,
-                    fun() -> ok = uninstall_poc_env(), erlang:error(poc_cleanup_failed) end
-                ))
+                ?assertError(
+                    poc_cleanup_failed,
+                    cleanup_with_owned_env(
+                        SavedEnv,
+                        fun() ->
+                            ok = uninstall_poc_env(),
+                            erlang:error(poc_cleanup_failed)
+                        end
+                    )
+                )
         end,
         ?assertEqual(Expected, capture_poc_env())
     after

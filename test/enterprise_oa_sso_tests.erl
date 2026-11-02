@@ -233,52 +233,85 @@ do_exchange(C, F, Code, RedirectUri, Nonce) ->
 %%% Suite
 %%%===================================================================
 
+%% 钉名 gate env 在场判定：与 inttest_marker_db:bound_v5_database/1 的
+%% 第一步输入对齐——只检查 gate 导出的 <PREFIX>_DB 是否设置且非空。
+%% gate（EPGZ05 车道 executor）一定成套导出 _DB 与配套 PG env；只有 _DB
+%% 而缺其他配套的非法半配置不在此静默让位，继续走 provision 由
+%% fail-closed 契约显式报 contract_conflict。
+v5_gate_pinned(Prefix) when is_binary(Prefix) ->
+    Env = binary_to_list(<<Prefix/binary, "_DB">>),
+    case os:getenv(Env) of
+        false -> false;
+        "" -> false;
+        _ -> true
+    end.
+
 enterprise_oa_sso_test_() ->
-    {timeout, 900,
-        {setup, fun setup_conn/0, fun close_conn/1, fun(State) ->
-            C = maps:get(conn, State),
-            [
-                %% 实现在场哨兵（W1 red_canary 翻转）
-                {"impl_present_canary", impl_present_canary_test()},
-                %% INT-14 面（合同 §4/§6）
-                {"NEG-01 exchange 未知 code 被拒", with_tx(C, fun neg01_unknown_code/1)},
-                {"NEG-02 exchange 过期 code（>60s）被拒", with_tx(C, fun neg02_expired_code/1)},
-                {"NEG-03 exchange 重放被拒且不回放原响应", with_tx(C, fun neg03_replay/1)},
-                {"NEG-04 并发双 exchange 恰好一个赢家", neg04_concurrent_cas_test(State)},
-                {"NEG-05 exchange 跨应用 code 被拒（原跨 org 语义，定位修订后 org 非绑定维度）",
-                    with_tx(C, fun neg05_cross_org/1)},
-                {"NEG-06 exchange 跨 app（同 org）被拒", with_tx(C, fun neg06_cross_app/1)},
-                {"NEG-07 exchange redirect_uri 不匹配被拒", with_tx(C, fun neg07_redirect_mismatch/1)},
-                {"NEG-08 exchange nonce 不匹配被拒", with_tx(C, fun neg08_nonce_mismatch/1)},
-                {"NEG-10 凭证/应用拒绝与组织归档无关性", with_tx(C, fun neg10_credential_chain/1)},
-                {"NEG-11 identity_not_mapped 且 code 不被消费",
-                    with_tx(C, fun neg11_identity_not_mapped/1)},
-                {"NEG-12 exchange 语法非法请求 invalid_request", neg12_malformed_request_test()},
-                {"NEG-13 internal_sso 限流配置缺失 fail-closed",
-                    with_tx(C, fun neg13_rate_fail_closed/1)},
-                {"NEG-14 exchange 响应无任何 IMBoy 凭证", with_tx(C, fun neg14_no_imboy_credential/1)},
-                {"NEG-15 code/nonce 明文零落日志", with_tx(C, fun neg15_zero_log_leak/1)},
-                %% HUMAN-SSO-01 面（合同 §3/§6）
-                {"NEG-H01 签发缺 Human JWT 401", with_tx(C, fun neg_h01_no_jwt/1)},
-                {"NEG-H02 签发未知/停用 application 404", with_tx(C, fun neg_h02_unknown_app/1)},
-                {"POS-H03 非成员用户签发成功（org 成员关系不参与判定）", with_tx(C, fun pos_h03_any_human/1)},
-                {"POS-H04 无 identity mapping 签发成功（mapping 可选化）",
-                    with_tx(C, fun pos_h04_no_mapping/1)},
-                {"NEG-H05 签发 redirect_uri 不在 allowlist 400",
-                    with_tx(C, fun neg_h05_redirect_not_allowlisted/1)},
-                {"NEG-H06 签发 nonce/body 格式非法 400", neg_h06_malformed_params_test()},
-                {"NEG-H07 重复签发 code 相互独立且 TTL 恒 60", with_tx(C, fun neg_h07_independent_codes/1)},
-                {"NEG-H08 当前非 active Human 拒绝签发且无残留", with_tx(C, fun neg_h08_inactive_issue/1)},
-                %% 双向隔离（manifest INV-2/INV-3）
-                {"NEG-X01 Application Credential 不能调签发端点",
-                    with_tx(C, fun neg_x01_credential_cannot_issue/1)},
-                {"NEG-X02 Human JWT 不能调 exchange 端点",
-                    with_tx(C, fun neg_x02_human_jwt_cannot_exchange/1)},
-                %% 存储合同（合同 §2 digest-only）
-                {"STORAGE-01 code/nonce 只存 digest", with_tx(C, fun storage01_digest_only/1)},
-                {"STORAGE-02 签发响应字段合同", with_tx(C, fun storage02_issue_response/1)}
-            ]
-        end}}.
+    %% 受控让位（仓库先例：attachment_lifecycle_v5_pg_tests 的 r20_test_
+    %% env 分支，生成器返回空清单）。本套件是 EPGZ05 钉名车道的证据电池：
+    %% gate 钉名导出 EPGZ05_INTTEST_DB 等环境变量；不经 gate 的全量裸跑
+    %% （nightly eunit 等）生成器返回空清单静默让位（eunit 无 {skip, ...}
+    %% 顶层描述符，返回空清单才是等价机制）；gate 路径（钉名 env 在场）
+    %% 全语义执行，断言零删减。半配置不在此让位，仍交由 provision 的
+    %% fail-closed 契约显式拒绝。
+    case v5_gate_pinned(<<"EPGZ05_INTTEST">>) of
+        true ->
+            {timeout, 900,
+                {setup, fun setup_conn/0, fun close_conn/1, fun(State) ->
+                    C = maps:get(conn, State),
+                    [
+                        %% 实现在场哨兵（W1 red_canary 翻转）
+                        {"impl_present_canary", impl_present_canary_test()},
+                        %% INT-14 面（合同 §4/§6）
+                        {"NEG-01 exchange 未知 code 被拒", with_tx(C, fun neg01_unknown_code/1)},
+                        {"NEG-02 exchange 过期 code（>60s）被拒", with_tx(C, fun neg02_expired_code/1)},
+                        {"NEG-03 exchange 重放被拒且不回放原响应", with_tx(C, fun neg03_replay/1)},
+                        {"NEG-04 并发双 exchange 恰好一个赢家", neg04_concurrent_cas_test(State)},
+                        {"NEG-05 exchange 跨应用 code 被拒（原跨 org 语义，定位修订后 org 非绑定维度）",
+                            with_tx(C, fun neg05_cross_org/1)},
+                        {"NEG-06 exchange 跨 app（同 org）被拒", with_tx(C, fun neg06_cross_app/1)},
+                        {"NEG-07 exchange redirect_uri 不匹配被拒",
+                            with_tx(C, fun neg07_redirect_mismatch/1)},
+                        {"NEG-08 exchange nonce 不匹配被拒", with_tx(C, fun neg08_nonce_mismatch/1)},
+                        {"NEG-10 凭证/应用拒绝与组织归档无关性", with_tx(C, fun neg10_credential_chain/1)},
+                        {"NEG-11 identity_not_mapped 且 code 不被消费",
+                            with_tx(C, fun neg11_identity_not_mapped/1)},
+                        {"NEG-12 exchange 语法非法请求 invalid_request", neg12_malformed_request_test()},
+                        {"NEG-13 internal_sso 限流配置缺失 fail-closed",
+                            with_tx(C, fun neg13_rate_fail_closed/1)},
+                        {"NEG-14 exchange 响应无任何 IMBoy 凭证",
+                            with_tx(C, fun neg14_no_imboy_credential/1)},
+                        {"NEG-15 code/nonce 明文零落日志", with_tx(C, fun neg15_zero_log_leak/1)},
+                        %% HUMAN-SSO-01 面（合同 §3/§6）
+                        {"NEG-H01 签发缺 Human JWT 401", with_tx(C, fun neg_h01_no_jwt/1)},
+                        {"NEG-H02 签发未知/停用 application 404", with_tx(C, fun neg_h02_unknown_app/1)},
+                        {"POS-H03 非成员用户签发成功（org 成员关系不参与判定）", with_tx(C, fun pos_h03_any_human/1)},
+                        {"POS-H04 无 identity mapping 签发成功（mapping 可选化）",
+                            with_tx(C, fun pos_h04_no_mapping/1)},
+                        {"NEG-H05 签发 redirect_uri 不在 allowlist 400",
+                            with_tx(C, fun neg_h05_redirect_not_allowlisted/1)},
+                        {"NEG-H06 签发 nonce/body 格式非法 400", neg_h06_malformed_params_test()},
+                        {"NEG-H07 重复签发 code 相互独立且 TTL 恒 60",
+                            with_tx(C, fun neg_h07_independent_codes/1)},
+                        {"NEG-H08 当前非 active Human 拒绝签发且无残留",
+                            with_tx(C, fun neg_h08_inactive_issue/1)},
+                        %% 双向隔离（manifest INV-2/INV-3）
+                        {"NEG-X01 Application Credential 不能调签发端点",
+                            with_tx(C, fun neg_x01_credential_cannot_issue/1)},
+                        {"NEG-X02 Human JWT 不能调 exchange 端点",
+                            with_tx(C, fun neg_x02_human_jwt_cannot_exchange/1)},
+                        %% 存储合同（合同 §2 digest-only）
+                        {"STORAGE-01 code/nonce 只存 digest",
+                            with_tx(C, fun storage01_digest_only/1)},
+                        {"STORAGE-02 签发响应字段合同", with_tx(C, fun storage02_issue_response/1)}
+                    ]
+                end}};
+        false ->
+            %% 无钉名 env：由 EPGZ05 车道专门执行；空清单 = 本轮不产任何
+            %% 测试项（静默让位）。
+            io:format(user, "OA_SSO_EUNIT_YIELD missing_env=~p~n", ["EPGZ05_INTTEST_DB"]),
+            []
+    end.
 
 %%%===================================================================
 %%% 哨兵（W1 red_canary_impl_absent_test_ 翻转：实现必须在场）

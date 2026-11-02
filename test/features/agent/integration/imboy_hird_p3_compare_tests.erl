@@ -21,13 +21,42 @@
 %%% 套件
 %%%===================================================================
 
+%% 钉名 gate env 在场判定：与 inttest_marker_db:bound_v5_database/1 的
+%% 第一步输入对齐——只检查 gate 导出的 <PREFIX>_DB 是否设置且非空。
+%% gate（HIRD POC 车道 executor，scripts/hird_poc_v1/）一定成套导出 _DB
+%% 与配套 PG env；只有 _DB 而缺其他配套的非法半配置不在此静默让位，
+%% 继续走 provision 由 fail-closed 契约显式报 contract_conflict。
+v5_gate_pinned(Prefix) when is_binary(Prefix) ->
+    Env = binary_to_list(<<Prefix/binary, "_DB">>),
+    case os:getenv(Env) of
+        false -> false;
+        "" -> false;
+        _ -> true
+    end.
+
 p3_test_() ->
-    {timeout, 900,
-        {foreach, fun setup/0, fun cleanup/1, [
-            {~B'路径 A（Erlang 原生）：authorize+业务直调，allow 结果与 B 等价', fun t_path_a_allow/0},
-            {~B'路径 A 无授权：deny 语义与 B 等价，业务执行零次', fun t_path_a_deny/0},
-            {~B'路径 A/B 结果与授权事实等价性（同输入同 fixture）', fun t_equivalence/0}
-        ]}}.
+    %% 受控让位（仓库先例：attachment_lifecycle_v5_pg_tests 的 r20_test_
+    %% env 分支，生成器返回空清单）。本套件唯一生成器整体依赖钉库：
+    %% setup 经 ?P1:ensure_env + inttest_marker_db:provision（env 前缀
+    %% HIRDPOC，reuse 共享）。不经 gate 的全量裸跑（nightly eunit 等）
+    %% 生成器返回空清单静默让位（eunit 无 {skip, ...} 顶层描述符，返回
+    %% 空清单才是等价机制）；gate 路径（钉名 env 在场）全语义执行，断言
+    %% 零删减。半配置不在此让位，仍交由 provision / ensure_env 的
+    %% fail-closed 契约显式拒绝。
+    case v5_gate_pinned(<<"HIRDPOC">>) of
+        true ->
+            {timeout, 900,
+                {foreach, fun setup/0, fun cleanup/1, [
+                    {~B'路径 A（Erlang 原生）：authorize+业务直调，allow 结果与 B 等价', fun t_path_a_allow/0},
+                    {~B'路径 A 无授权：deny 语义与 B 等价，业务执行零次', fun t_path_a_deny/0},
+                    {~B'路径 A/B 结果与授权事实等价性（同输入同 fixture）', fun t_equivalence/0}
+                ]}};
+        false ->
+            %% 无钉名 env：由 HIRD POC 车道专门执行；空清单 = 本轮不产
+            %% 任何测试项（静默让位）。
+            io:format(user, "HIRD_P3_EUNIT_YIELD missing_env=~p~n", ["HIRDPOC_DB"]),
+            []
+    end.
 
 setup() ->
     ?P1:setup_with_owned_env(fun setup_fixture/0, fun cleanup_fixture/0).

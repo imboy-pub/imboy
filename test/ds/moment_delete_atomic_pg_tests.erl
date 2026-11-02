@@ -1,8 +1,41 @@
 -module(moment_delete_atomic_pg_tests).
 -include_lib("eunit/include/eunit.hrl").
 
+%% 钉名 gate env 在场判定：与 inttest_marker_db:bound_v5_database/1 的
+%% 第一步输入对齐——只检查 gate 导出的 <PREFIX>_DB 是否设置且非空。
+%% gate（native 回执车道 / attv5 legacy 车道的 case executor）一定成套
+%% 导出 _DB 与配套资源 env；只有 _DB 而缺其他配套的非法半配置不在此
+%% 静默让位，继续走 provision 由 fail-closed 契约显式报 contract_conflict。
+v5_gate_pinned(Prefix) when is_binary(Prefix) ->
+    Env = binary_to_list(<<Prefix/binary, "_DB">>),
+    case os:getenv(Env) of
+        false -> false;
+        "" -> false;
+        _ -> true
+    end.
+
 delete_transaction_test_() ->
-    {timeout, 900, fun() -> isolated_pg_fixture:run(fun run/0) end}.
+    %% 受控让位（仓库先例：attachment_lifecycle_v5_pg_tests 的 r20_test_
+    %% env 分支，生成器返回空清单）。本套件唯一生成器整体依赖钉库：
+    %% provision 前缀由 marker_prefix() 决定——ordinary 车道为
+    %% IMBOY_INTTEST_MOMENT，native/v5_run 车道为 V5_INTTEST_MOMENT（对
+    %% V5 前缀 inttest_marker_db 恒 fail-closed）。不经对应 gate 的裸跑
+    %% 生成器返回空清单静默让位（eunit 无 {skip, ...} 顶层描述符，返回
+    %% 空清单才是等价机制）；gate 路径（钉名 env 在场）全语义执行，断言
+    %% 零删减。半配置不在此让位，仍交由 provision 的 fail-closed 契约
+    %% 显式拒绝。
+    Prefix = marker_prefix(),
+    case v5_gate_pinned(Prefix) of
+        true ->
+            {timeout, 900, fun() -> isolated_pg_fixture:run(fun run/0) end};
+        false ->
+            %% 无钉名 env：由对应车道专门执行；空清单 = 本轮不产任何
+            %% 测试项（静默让位）。
+            io:format(user, "MOMENT_DEL_EUNIT_YIELD missing_env=~p~n", [
+                binary_to_list(<<Prefix/binary, "_DB">>)
+            ]),
+            []
+    end.
 
 run() ->
     ok = require_authorized_fixture(),

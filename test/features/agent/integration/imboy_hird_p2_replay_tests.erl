@@ -38,19 +38,51 @@
 %%% 套件
 %%%===================================================================
 
+%% 钉名 gate env 在场判定：与 inttest_marker_db:bound_v5_database/1 的
+%% 第一步输入对齐——只检查 gate 导出的 <PREFIX>_DB 是否设置且非空。
+%% gate（HIRD POC 车道 executor，scripts/hird_poc_v1/）一定成套导出 _DB
+%% 与配套 PG env；只有 _DB 而缺其他配套的非法半配置不在此静默让位，
+%% 继续走 provision 由 fail-closed 契约显式报 contract_conflict。
+v5_gate_pinned(Prefix) when is_binary(Prefix) ->
+    Env = binary_to_list(<<Prefix/binary, "_DB">>),
+    case os:getenv(Env) of
+        false -> false;
+        "" -> false;
+        _ -> true
+    end.
+
 p2_test_() ->
-    {timeout, 900,
-        {foreach, fun setup/0, fun cleanup/1, [
-            {timeout, 120, {~B'正常轨迹回放成功：cursor 全消费、真实执行尝试为零、audit 结构一致', fun t_replay_ok/0}},
-            {timeout, 120, {~B'程序调用参数偏移：args_mismatch 失败，游标不前移', fun t_args_mismatch/0}},
-            {timeout, 120, {~B'工具名偏移致签名不兼容：加载期 replay_load_error', fun t_tool_mismatch/0}},
-            {timeout, 120, {~B'日志不足（删末行）：log_exhausted 失败', fun t_log_exhausted/0}},
-            {timeout, 120, {~B'多余调用记录：finish 报 replay_incomplete（不静默截尾）', fun t_extra_records/0}},
-            {timeout, 120, {~B'日志格式损坏：start_link 显式 replay_load_error（带行号）', fun t_corrupt_line/0}},
-            {timeout, 120,
-                {~B'已记录领域错误按原语义回放：{err} 以 {hird_exn} throw，两轮一致', fun t_err_semantics/0}},
-            {timeout, 120, {~B'cursor 无法启动：编排中止，不退回真实执行', fun t_start_failure/0}}
-        ]}}.
+    %% 受控让位（仓库先例：attachment_lifecycle_v5_pg_tests 的 r20_test_
+    %% env 分支，生成器返回空清单）。本套件唯一生成器整体依赖钉库：
+    %% setup 经 ?P1:ensure_env + inttest_marker_db:provision（env 前缀
+    %% HIRDPOC，reuse 共享）。不经 gate 的全量裸跑（nightly eunit 等）
+    %% 生成器返回空清单静默让位（eunit 无 {skip, ...} 顶层描述符，返回
+    %% 空清单才是等价机制）；gate 路径（钉名 env 在场）全语义执行，断言
+    %% 零删减。半配置不在此让位，仍交由 provision / ensure_env 的
+    %% fail-closed 契约显式拒绝。
+    case v5_gate_pinned(<<"HIRDPOC">>) of
+        true ->
+            {timeout, 900,
+                {foreach, fun setup/0, fun cleanup/1, [
+                    {timeout, 120,
+                        {~B'正常轨迹回放成功：cursor 全消费、真实执行尝试为零、audit 结构一致', fun t_replay_ok/0}},
+                    {timeout, 120, {~B'程序调用参数偏移：args_mismatch 失败，游标不前移', fun t_args_mismatch/0}},
+                    {timeout, 120, {~B'工具名偏移致签名不兼容：加载期 replay_load_error', fun t_tool_mismatch/0}},
+                    {timeout, 120, {~B'日志不足（删末行）：log_exhausted 失败', fun t_log_exhausted/0}},
+                    {timeout, 120,
+                        {~B'多余调用记录：finish 报 replay_incomplete（不静默截尾）', fun t_extra_records/0}},
+                    {timeout, 120,
+                        {~B'日志格式损坏：start_link 显式 replay_load_error（带行号）', fun t_corrupt_line/0}},
+                    {timeout, 120,
+                        {~B'已记录领域错误按原语义回放：{err} 以 {hird_exn} throw，两轮一致', fun t_err_semantics/0}},
+                    {timeout, 120, {~B'cursor 无法启动：编排中止，不退回真实执行', fun t_start_failure/0}}
+                ]}};
+        false ->
+            %% 无钉名 env：由 HIRD POC 车道专门执行；空清单 = 本轮不产
+            %% 任何测试项（静默让位）。
+            io:format(user, "HIRD_P2_EUNIT_YIELD missing_env=~p~n", ["HIRDPOC_DB"]),
+            []
+    end.
 
 %%%===================================================================
 %%% setup / cleanup（与 P1 同构：marker 库 reuse 共享、PoC env、registry）

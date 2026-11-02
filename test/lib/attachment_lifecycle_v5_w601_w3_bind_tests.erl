@@ -33,10 +33,24 @@
 -define(CONTAINER_DISK, <<"w601c">>).
 
 w601_w3_bind_test_() ->
-    Driver = ?SUP:driver(),
-    {setup, fun setup/0, fun cleanup/1, fun(S) ->
-        [leaf_unit(S, Spec) || Spec <- specs(Driver)]
-    end}.
+    %% 受控让位（仓库先例：attachment_lifecycle_v5_pg_tests 的 r20_test_/
+    %% v5_gate_pinned：eunit 无 {skip, ...} 顶层描述符，生成器返回空清单
+    %% 才是等价的静默让位机制）。本套件直连 gate 建好的 attv5_<slot>_w601
+    %% 库（bind_db/0 读 V5_INTTEST_W404_DB，由
+    %% scripts/test/attachment_lifecycle_v5_gate.sh 成套导出）；nightly
+    %% 全量裸跑不经 gate，缺钉名 env 时在生成器入口让位，不进 setup
+    %% （bind_db/0 的 fail-closed no_go 留给非法半配置）。gate 路径
+    %% （env 在场）语义与断言零删减。
+    case os:getenv("V5_INTTEST_W404_DB") of
+        V when is_list(V), V =/= "" ->
+            Driver = ?SUP:driver(),
+            {setup, fun setup/0, fun cleanup/1, fun(S) ->
+                [leaf_unit(S, Spec) || Spec <- specs(Driver)]
+            end};
+        _ ->
+            io:format(user, "W601_W3_EUNIT_YIELD missing_env=\"V5_INTTEST_W404_DB\"~n", []),
+            []
+    end.
 
 %% ------------------------------------------------------------------ setup
 

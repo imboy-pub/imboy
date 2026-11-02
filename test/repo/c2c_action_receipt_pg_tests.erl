@@ -28,6 +28,13 @@ setup() ->
     }),
     application:set_env(pooler, pools, []),
     {ok, _} = application:ensure_all_started(pooler),
+    %% 全量跑时前序根（runner 默认池或漏清 pgsql 池的套件，如
+    %% group_schedule_remind_pg_tests）可能已注册同名 pgsql 池，顺序耦合
+    %% 下 new_pool 报 {error,{already_started,_}}（CI run 41393644512 实证）。
+    %% 先移除再建，保证池 start_mfa 指向本套件自己的 marker database，
+    %% 绝不复用他人指向的库。rm_pool 不存在时返回 {error, not_found}
+    %% （pooler_sup:rm_pool 同步 terminate+delete，建池前必然已腾位）。
+    _ = pooler:rm_pool(pgsql),
     PoolOpts = (maps:get(server, State))#{
         database => binary_to_list(maps:get(db, State)),
         codecs => [{epgsql_codec_rfc3339_bin, []}]

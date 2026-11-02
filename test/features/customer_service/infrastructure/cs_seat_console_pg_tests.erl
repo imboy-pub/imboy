@@ -13,8 +13,39 @@
 -define(MIG_DIR, "priv/migrations").
 -define(TABLE, <<"customer_service_seat_console">>).
 
+%% 钉名 gate env 在场判定：与 inttest_marker_db:bound_v5_database/1 的
+%% 第一步输入对齐——只检查 gate 导出的 <PREFIX>_DB 是否设置且非空。
+%% gate（SC-BE 车道 executor）一定成套导出 _DB 与配套 PG env；只有 _DB
+%% 而缺其他配套的非法半配置不在此静默让位，继续走 provision 由
+%% fail-closed 契约显式报 contract_conflict。
+v5_gate_pinned(Prefix) when is_binary(Prefix) ->
+    Env = binary_to_list(<<Prefix/binary, "_DB">>),
+    case os:getenv(Env) of
+        false -> false;
+        "" -> false;
+        _ -> true
+    end.
+
 seat_console_pg_test_() ->
-    {setup, fun setup/0, fun cleanup/1, fun cases/1}.
+    %% 受控让位（仓库先例：attachment_lifecycle_v5_pg_tests 的 r20_test_
+    %% env 分支，生成器返回空清单）。本套件唯一生成器整体依赖真库：
+    %% setup 起全量 app 池连接、用例经 with_console_migration 调
+    %% inttest_marker_db:provision（env 前缀 CS_CONSOLE_MIGRATION）。不经
+    %% gate 的全量裸跑（nightly eunit 等）生成器返回空清单静默让位
+    %% （eunit 无 {skip, ...} 顶层描述符，返回空清单才是等价机制）；gate
+    %% 路径（钉名 env 在场）全语义执行，断言零删减。半配置不在此让位，
+    %% 仍交由 provision 的 fail-closed 契约显式拒绝。
+    case v5_gate_pinned(<<"CS_CONSOLE_MIGRATION">>) of
+        true ->
+            {setup, fun setup/0, fun cleanup/1, fun cases/1};
+        false ->
+            %% 无钉名 env：由 SC-BE 车道专门执行；空清单 = 本轮不产任何
+            %% 测试项（静默让位）。
+            io:format(user, "CS_SEAT_EUNIT_YIELD missing_env=~p~n", [
+                "CS_CONSOLE_MIGRATION_DB"
+            ]),
+            []
+    end.
 
 setup() ->
     case eunit_runner:eunit_setup_with_db() of
