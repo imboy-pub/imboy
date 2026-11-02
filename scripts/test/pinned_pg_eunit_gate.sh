@@ -47,7 +47,7 @@ for mod in "$@"; do
     echo "::$mod 未执行（套件让位或模块名有误——核对钉名 env 与模块名）" >&2
     yielded=$((yielded + 1))
     [[ $overall -eq 0 ]] && overall=3
-  elif [[ $rc -ne 0 ]] || ! grep -Eq 'Test passed\.|All [1-9][0-9]* tests passed\.' "$mod_log"; then
+  elif [[ $rc -ne 0 ]] || ! grep -Eq 'Test passed\.|([1-9][0-9]*|All [1-9][0-9]*) tests passed\.' "$mod_log"; then
     overall=1
   fi
 done
