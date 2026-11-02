@@ -214,7 +214,16 @@ derive_org_by_token(Params) when is_map(Params) ->
                 {error, _} = Err ->
                     Err;
                 {ok, Token} ->
-                    {ok, maps:get(organization_id, Token)}
+                    %% S6 撤销立即生效：digest 命中≠可用——本函数是全部 widget
+                    %% 凭证面（history/消息/资产/评分/流内 poll）的统一入口，
+                    %% 吊销/过期 token 在此统一翻译 token_revoked|token_expired
+                    %% （流内 poll 命中即 DF-10 fin 关流 → 前端重连 4xx fail-
+                    %% closed；此前只查行存在，吊销后流永不降级——W12 根因⑨）。
+                    At = maps:get(at, Params, cs_http:now_sec()),
+                    case token_usable(Token, At) of
+                        {ok, _} -> {ok, maps:get(organization_id, Token)};
+                        {error, _} = Err -> Err
+                    end
             end
     end;
 derive_org_by_token(_Params) ->
