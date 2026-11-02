@@ -6,8 +6,8 @@
 % 真中间件链，不 mock 认证结论）。
 %
 % 覆盖（plan §6 白名单 / §10 门禁 / A0 control/internal-api-manifest.yaml；
-% 当前全集 INT-01..49）：
-%   ① 冻结路由表 49 条，对应 34 个 cowboy path（同 path 多方法）；
+% 当前全集 INT-01..50）：
+%   ① 冻结路由表 50 条，对应 35 个 cowboy path（同 path 多方法）；
 %      INT-24..31 的 handler 由 A2 实现后经 A0 接线，此处对这 8 条断言注册
 %      形态（method/path/scope/idempotency=none/rate_bucket）与 match/2 可达；
 %      已接线 handler 模块可加载（无 undef 悬挂）；
@@ -49,25 +49,27 @@ route_table() ->
     Paths = [P || {P, _H, _O} <- Routes],
 
     %% ①② 冻结表逐条登记 + 零 open 面
-    %% 当前 49 条 operation 全部接线；注册形态另由 manifest_v21_entries 断言。
+    %% 当前 50 条 operation 全部接线（INT-50 企业频道消息，W4/V3-23 入表，
+    %% escript 直证 routes=50/nonget=33/required=29）；注册形态另由
+    %% manifest_v21_entries 断言。
     Manifest = enterprise_internal_routes:routes(),
-    ?assertEqual(49, length(Manifest)),
-    %% 多方法共享 cowboy path，49 条 operation 对应 34 条唯一 path。
+    ?assertEqual(50, length(Manifest)),
+    %% 多方法共享 cowboy path，50 条 operation 对应 35 条唯一 path。
     Wired = Manifest,
-    ?assertEqual(49, length(Wired)),
+    ?assertEqual(50, length(Wired)),
     %% 冻结表用 {name} 占位符语法，cowboy 路由用 :name —— 归一后逐条比对。
     WiredPaths = lists:usort([
         cowboy_path(binary_to_list(maps:get(path, R)))
      || R <- Wired
     ]),
-    ?assertEqual(34, length(WiredPaths)),
+    ?assertEqual(35, length(WiredPaths)),
     lists:foreach(
         fun(P) ->
             ?assert(lists:member(P, Paths))
         end,
         WiredPaths
     ),
-    ?assertEqual(34, length([P || P <- Paths, lists:prefix("/api/internal/v1/", P)])),
+    ?assertEqual(35, length([P || P <- Paths, lists:prefix("/api/internal/v1/", P)])),
 
     %% ③ internal 前缀不在匿名白名单；零 open 面
     Open = imboy_router:open(),
@@ -96,10 +98,10 @@ manifest_v21_entries_test_() ->
 
 manifest_v21_entries() ->
     Manifest = enterprise_internal_routes:routes(),
-    ?assertEqual(49, length(Manifest)),
+    ?assertEqual(50, length(Manifest)),
     Ids = lists:sort([maps:get(id, R) || R <- Manifest]),
     ?assertEqual(
-        [iolist_to_binary(io_lib:format("INT-~2..0B", [N])) || N <- lists:seq(1, 49)], Ids
+        [iolist_to_binary(io_lib:format("INT-~2..0B", [N])) || N <- lists:seq(1, 50)], Ids
     ),
     lists:foreach(
         fun(R) ->
@@ -285,12 +287,12 @@ normalize_code() ->
 %%%===================================================================
 
 %%%===================================================================
-%%% INT-BE-02 —— 49-operation 真实 HTTP conformance
+%%% INT-BE-02 —— 50-operation 真实 HTTP conformance
 %%%（disposable PG + 真 Cowboy + synthetic Application credential/Grant；
 %%%  harness 细节见 test/api/intbe02_http_support.erl 模块头）
 %%%
 %%% INT-API-02A 验收口径：
-%%%   ① covered_operation_ids 精确等于冻结表 49 个 runtime operation ID
+%%%   ① covered_operation_ids 精确等于冻结表 50 个 runtime operation ID
 %%%      （本节末 assert_coverage 用 ETS 登记集合 ↔ routes()/0 全量比对）；
 %%%   ② 每个 method+path 至少一个预期成功或业务可达响应（本节正例链全部
 %%%      走 200/业务语义；禁止裸 404 计入覆盖）；
@@ -298,7 +300,7 @@ normalize_code() ->
 %%%      重放（同 key 同 body → 同 status + 逐字节同 body；同 key 异 body →
 %%%      409）；INT-14 为合同声明的 single_use_code 豁免项，改为验证 code
 %%%      一次性（重放已消费 code → 404 resource_not_found）；
-%%%   ④ negative 三件套：无 credential=401（49 条逐一）、缺 scope=403
+%%%   ④ negative 三件套：无 credential=401（50 条逐一）、缺 scope=403
 %%%      （RO 应用全 mutation 面 + 零 Grant 应用）、跨 Org / 未覆盖
 %%%      Workspace 同体拒绝（404 同体 / 403 organization_boundary_violation）；
 %%%   ⑤ envelope 对齐：错误响应状态码与信封 code 按
@@ -628,6 +630,26 @@ positive_chain(S) ->
     end),
     #{<<"msg_id">> := _} = assert_ok_json(R10),
     cover(<<"INT-10">>),
+
+    %% ---- INT-50 POST /channels/{cid}/messages（企业频道代发，W4/V3-23：
+    %%      application 模式无订阅要求；channel W 边界在 logic fail-closed）----
+    Body50 = #{
+        <<"sender_mode">> => <<"application">>,
+        <<"msg_type">> => <<"text">>,
+        <<"content">> => <<"intbe02 channel hello"/utf8>>
+    },
+    R50 = with_dns(fun() ->
+        enterprise_internal_audit_http_checks:http(
+            C,
+            Port,
+            <<"POST">>,
+            <<"/api/internal/v1/channels/", (integer_to_binary(ChnA1))/binary, "/messages">>,
+            Body50,
+            maps:merge(A, intbe02_http_support:idem(<<"intbe02-idem-50">>))
+        )
+    end),
+    #{<<"msg_id">> := _} = assert_ok_json(R50),
+    cover(<<"INT-50">>),
 
     %% ---- INT-11 POST friend-requests（H2 → H1 pending）----
     Body11 = #{<<"sender_user_id">> => H2, <<"target_user_id">> => H1},
@@ -1308,7 +1330,7 @@ assert_coverage() ->
     Expected =
         lists:sort([maps:get(id, R) || R <- enterprise_internal_routes:routes()]),
     Actual = intbe02_http_support:covered_ids(),
-    ?assertEqual(49, length(Expected)),
+    ?assertEqual(50, length(Expected)),
     ?assertEqual(Expected, Actual, {coverage_gap, Expected -- Actual, Actual -- Expected}),
     write_coverage(Actual).
 

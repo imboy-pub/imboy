@@ -508,7 +508,7 @@ confirm_head_v5(Conn, Ctx, ObjectKey, Hash, Pending) ->
                     BytesResult =
                         case Driver of
                             garage -> attachment_storage_garage:read_snapshot(Snapshot);
-                            disk -> attachment_storage_disk:read_snapshot(Snapshot)
+                            disk -> {error, disk_driver_retired}
                         end,
                     case BytesResult of
                         {ok, Bytes} ->

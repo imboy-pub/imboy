@@ -55,15 +55,9 @@ range_spool(I, Offset, Length, Total, Fun) ->
         Error ->
             Error
     end.
-copy_range(#{driver := disk} = I, W, Offset, Length, Total) ->
-    attachment_storage_disk:fold_range_snapshot(
-        I,
-        Offset,
-        Length,
-        Total,
-        fun(B, N) -> append(W, B, N, Length) end,
-        0
-    );
+%% V3-20 退役：disk root fail-closed。
+copy_range(#{driver := disk}, _W, _Offset, _Length, _Total) ->
+    {error, disk_driver_retired};
 copy_range(#{driver := garage} = I, W, Offset, Length, Total) ->
     %% presign_snapshot takes a relative TTL in seconds, not a datetime.
     case attachment_storage_garage:presign_snapshot(I, 300) of

@@ -392,8 +392,9 @@ v5_object_bytes(Key, _Scope) ->
             {error, historical_location_unverified};
         {ok, #{driver := garage, mime := Mime} = I} ->
             v5_bytes_with_stat(attachment_storage_garage, I, Mime);
-        {ok, #{driver := disk, mime := Mime} = I} ->
-            v5_bytes_with_stat(attachment_storage_disk, I, Mime);
+        %% V3-20 退役：disk root 读取面 fail-closed（不回 BEAM、不回 disk）。
+        {ok, #{driver := disk}} ->
+            {error, disk_driver_retired};
         {error, _} = E ->
             E;
         _ ->

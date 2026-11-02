@@ -7,9 +7,11 @@ internal_driver_test_() ->
 
 internal_driver_fixture() ->
     {setup, fun setup/0, fun cleanup/1, fun(S) ->
+        %% V3-20 退役：disk driver 已删除——generator 收窄为 garage 单驱动；
+        %% disk root 行为由 retired 负例钉死（fail-closed，不再有 disk 路径）。
         [
             {atom_to_list(D) ++ "/" ++ atom_to_list(F), {timeout, 90, fun() -> run(S, D, F) end}}
-         || D <- [disk, garage],
+         || D <- [garage],
             F <- [
                 confirm_replay,
                 snapshot_switch,
@@ -17,22 +19,27 @@ internal_driver_fixture() ->
                 no_uuid_registration,
                 registration_unavailable
             ]
-        ]
+        ] ++
+            [
+                {"retired/disk_root_rejected", {timeout, 30, fun() -> disk_root_rejected() end}}
+            ]
     end}.
 setup() ->
-    Base = case file:read_link("/tmp") of
-        {ok, Target} -> filename:absname(Target, "/");
-        {error, einval} -> "/tmp";
-        {error, Reason} -> error({temporary_root_unavailable, Reason})
-    end,
+    Base =
+        case file:read_link("/tmp") of
+            {ok, Target} -> filename:absname(Target, "/");
+            {error, einval} -> "/tmp";
+            {error, Reason} -> error({temporary_root_unavailable, Reason})
+        end,
     Root = filename:join(Base, "attv5-internal-" ++ binary_to_list(elib_uuid:gen_v7())),
     ok = file:make_dir(Root),
     try
         ok = file:change_mode(Root, 8#700),
         (setup_owned(Root))#{root => Root}
-    catch Class:Reason0:Stack ->
-        cleanup(#{root => Root}),
-        erlang:raise(Class, Reason0, Stack)
+    catch
+        Class:Reason0:Stack ->
+            cleanup(#{root => Root}),
+            erlang:raise(Class, Reason0, Stack)
     end.
 
 setup_owned(RootPath) ->
@@ -40,7 +47,8 @@ setup_owned(RootPath) ->
     #{<<"database">> := Db} = Identity = jsone:decode(B),
     {ok, [Config]} = file:consult(os:getenv("W403_CONFIG_PATH")),
     ok = attachment_lifecycle_v5_w403_gateway_protocol_tests:assert_chain_fixture_database(
-        Db, Identity, proplists:get_value(imboy, Config), os:getenv("W403_RESOURCE_MANIFEST")),
+        Db, Identity, proplists:get_value(imboy, Config), os:getenv("W403_RESOURCE_MANIFEST")
+    ),
     [application:set_env(imboy, K, V) || {K, V} <- proplists:get_value(imboy, Config)],
     {ok, Pg} = application:get_env(imboy, pg_conf),
     {epgsql, connect, [C]} = maps:get(start_mfa, Pg),
@@ -100,9 +108,17 @@ setup_owned(RootPath) ->
     }),
     #{registry => Registry, bucket => Bucket, port => ranch:get_port(internal_driver_fixture)}.
 cleanup(#{root := Root}) ->
-    try cowboy:stop_listener(internal_driver_fixture) catch _:_ -> ok end,
+    try
+        cowboy:stop_listener(internal_driver_fixture)
+    catch
+        _:_ -> ok
+    end,
     [
-        try meck:unload(M) catch _:_ -> ok end
+        try
+            meck:unload(M)
+        catch
+            _:_ -> ok
+        end
      || M <- [
             enterprise_asset_retention_logic,
             enterprise_audit_event_repo,
@@ -110,7 +126,11 @@ cleanup(#{root := Root}) ->
             enterprise_application_usage_repo
         ]
     ],
-    try pooler:rm_pool(pgsql) catch _:_ -> ok end,
+    try
+        pooler:rm_pool(pgsql)
+    catch
+        _:_ -> ok
+    end,
     case file:del_dir_r(Root) of
         ok -> ok;
         {error, enoent} -> ok;
@@ -277,3 +297,36 @@ confirm(Key) ->
             #{object_key => Key}
         )
     end).
+
+%% V3-20 退役负例：显式 disk registry root 被 storage 层拒绝（不再有可执行
+%% disk 位置；driver_module 不再分派 disk）。
+disk_root_rejected() ->
+    Reg = #{
+        version => 1,
+        roots => #{
+            <<"retired-disk">> => #{
+                driver => <<"disk">>,
+                namespace => <<"retired-disk">>,
+                endpoint => <<"file:///tmp/retired-disk">>,
+                container => <<"fixture">>
+            }
+        },
+        upload_namespaces => #{}
+    },
+    {error, {unsupported_driver, <<"retired-disk">>}} =
+        attachment_storage:validate_registry_with_reg(Reg),
+    Prev = application:get_env(imboy, attachment_storage_registry),
+    application:set_env(imboy, attachment_storage_registry, Reg),
+    R =
+        (catch attachment_storage:registration_location(
+            <<"private">>, <<"imboy">>, <<"u1/x/probe.bin">>
+        )),
+    case Prev of
+        undefined -> application:unset_env(imboy, attachment_storage_registry);
+        {ok, V} -> application:set_env(imboy, attachment_storage_registry, V)
+    end,
+    case R of
+        {error, upload_root_unavailable} -> ok;
+        Other -> erlang:error({disk_root_expected_rejected, Other})
+    end,
+    ok.

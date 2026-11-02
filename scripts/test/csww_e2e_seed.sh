@@ -64,7 +64,9 @@ PG_CONTAINER="${PG_CONTAINER:-imboy_pg18}"
 ORG_ID=1603940848519155              # env.ts ORG_ID
 WS_ID=1776025844701027               # env.ts WORKSPACE_ID
 ORG_OTHER_ID=1593173991415380        # env.ts OTHER_ORG_ID
-WS_OTHER_ID=1700000000000202         # env.ts 不引用；v3run 稳定段
+WS_OTHER_ID=1700000000000212         # env.ts 不引用；v3run 稳定段（0202 被老 run 的
+                                     # customer_service_event 复合 FK 锁死 org 归属，
+                                     # 只能弃用换新 id，见 W12 resume.md 根因③）
 INST_ID=5837897154422619             # env.ts INSTALLATION_ID
 PUB_WIDGET='csww-e2e-widget-77729338'          # env.ts PUBLIC_WIDGET_ID
 INST_OTHER_ID=9460771712205608       # env.ts OTHER_INSTALLATION_ID
@@ -75,6 +77,16 @@ SEAT_A_UID=1700000000000111          # env.ts 不引用 user id；账号固定 1
 SEAT_B_UID=1700000000000112          # env.ts 不引用 user id；账号固定 19900000002
 ASSIGN_A_ID=1700000000000131         # assignment id env.ts 不引用；v3run 稳定段
 ASSIGN_B_ID=1700000000000132
+# other org 最小接待身份链（W12 根因⑤）：createSession 的 intake_identity 派生
+# 查 customer_service_seat（enabled，取 business_identity_id 最小），缺行即
+# 500 missing_injection.intake_business_identity_id —— other installation 的
+# bootstrap→建会话链（real A02-2 / p2 A02 负例夹具）必须可建会话。
+# 用独立 user（不与 SEAT_A 共用）：跨 org 隔离语义（A01 org-select 默认值、
+# A02 负例的跨 org 断言）不被主 org 坐席兼任污染。
+OTHER_UID=1700000000000113           # other org 接待 user（env.ts 不引用）
+OTHER_ACCOUNT=19900000003
+OTHER_IDENTITY_ID=1812620870393277   # other org 接待 identity（env.ts 不引用）
+ASSIGN_OTHER_ID=1700000000000133     # other org assignment id
 SEAT_A_ACCOUNT=19900000001
 SEAT_B_ACCOUNT=19900000002
 SEAT_PASSWORD='CswwE2e2026'   # 仅合成测试账号；与 env.ts SEAT_PASSWORD 同值
@@ -109,26 +121,53 @@ PWD_HASH="$(cat /tmp/csww-seed-pwd.txt 2>/dev/null | tr -d '\r\n')"
 psql_run <<SQL
 INSERT INTO public."user" (id, password, account, mobile, reg_ip, reg_cosv, nickname, status)
 VALUES (${SEAT_A_UID}, '${PWD_HASH}', '${SEAT_A_ACCOUNT}', '${SEAT_A_ACCOUNT}', '127.0.0.1', 'v3run', 'csww-seat-a', 1),
-       (${SEAT_B_UID}, '${PWD_HASH}', '${SEAT_B_ACCOUNT}', '${SEAT_B_ACCOUNT}', '127.0.0.1', 'v3run', 'csww-seat-b', 1)
+       (${SEAT_B_UID}, '${PWD_HASH}', '${SEAT_B_ACCOUNT}', '${SEAT_B_ACCOUNT}', '127.0.0.1', 'v3run', 'csww-seat-b', 1),
+       (${OTHER_UID}, '${PWD_HASH}', '${OTHER_ACCOUNT}', '${OTHER_ACCOUNT}', '127.0.0.1', 'v3run', 'csww-seat-other', 1)
 ON CONFLICT (id) DO UPDATE SET password = EXCLUDED.password, mobile = EXCLUDED.mobile;
+-- other org owner 不换人（fn_organization_member_owner_invariant 行级校验覆盖
+-- INSERT/UPDATE，历史 owner=SEAT_A_UID 已一致合法；换 owner 无原子路径）：
+-- OTHER_UID 只以 member 身份加入；接待链（intake_identity）只看
+-- customer_service_seat 行，与 member 角色无关。
 INSERT INTO public.organization (id, name, owner_id, status)
 VALUES (${ORG_ID}, 'csww-e2e-org', ${SEAT_A_UID}, 'active'),
        (${ORG_OTHER_ID}, 'csww-e2e-org-other', ${SEAT_A_UID}, 'active')
-ON CONFLICT (id) DO UPDATE SET name = EXCLUDED.name;
+ON CONFLICT (id) DO UPDATE SET name = EXCLUDED.name, status = EXCLUDED.status;
 INSERT INTO public.workspace (id, organization_id, name, owner_id, status)
 VALUES (${WS_ID}, ${ORG_ID}, 'csww-e2e-ws', ${SEAT_A_UID}, 'active'),
        (${WS_OTHER_ID}, ${ORG_OTHER_ID}, 'csww-e2e-ws-other', ${SEAT_A_UID}, 'active')
-ON CONFLICT (id) DO UPDATE SET name = EXCLUDED.name;
+ON CONFLICT (id) DO UPDATE SET organization_id = EXCLUDED.organization_id,
+    owner_id = EXCLUDED.owner_id, status = EXCLUDED.status, name = EXCLUDED.name;
 INSERT INTO public.organization_member (organization_id, user_id, role, status)
 VALUES (${ORG_ID}, ${SEAT_A_UID}, 'owner', 'active'),
-       (${ORG_ID}, ${SEAT_B_UID}, 'member', 'active')
+       (${ORG_ID}, ${SEAT_B_UID}, 'member', 'active'),
+       (${ORG_OTHER_ID}, ${SEAT_A_UID}, 'owner', 'active'),
+       (${ORG_OTHER_ID}, ${OTHER_UID}, 'member', 'active')
 ON CONFLICT (organization_id, user_id) DO UPDATE SET status = 'active', role = EXCLUDED.role;
 INSERT INTO public.user_device (id, user_id, device_id, login_count, last_login_ip, status)
 VALUES (${SEAT_A_UID}, ${SEAT_A_UID}, 'csww-device-a', 1, '127.0.0.1', 1),
-       (${SEAT_B_UID}, ${SEAT_B_UID}, 'csww-device-b', 1, '127.0.0.1', 1)
+       (${SEAT_B_UID}, ${SEAT_B_UID}, 'csww-device-b', 1, '127.0.0.1', 1),
+       (${OTHER_UID}, ${OTHER_UID}, 'csww-device-other', 1, '127.0.0.1', 1)
 ON CONFLICT (id) DO UPDATE SET status = 1;
 SQL
-log "基础事实就绪（org=${ORG_ID}/${ORG_OTHER_ID} ws=${WS_ID}/${WS_OTHER_ID} users=${SEAT_A_UID}/${SEAT_B_UID}）"
+log "基础事实就绪（org=${ORG_ID}/${ORG_OTHER_ID} ws=${WS_ID}/${WS_OTHER_ID} users=${SEAT_A_UID}/${SEAT_B_UID}/${OTHER_UID}）"
+
+# ── 2b) 历史残留 membership 清理（fixture 卫生；W12 根因⑭）：A/B 是多 run
+#    复用的固定 uid —— 老组织残留的 member/assignment/seat 会让工作台 org-select
+#    默认选错 org（failover 语义下 suspend 撤权断言失效）。只保留本 run 两 org。
+psql_run <<SQL
+DELETE FROM public.customer_service_seat WHERE business_identity_id IN (
+  SELECT a.business_identity_id FROM public.organization_business_identity_assignment a
+   WHERE a.user_id IN (${SEAT_A_UID}, ${SEAT_B_UID})
+     AND a.organization_id NOT IN (${ORG_ID}, ${ORG_OTHER_ID}));
+UPDATE public.organization_business_identity_assignment
+   SET status = 'ended', ended_at = now(), end_reason = 'csww-e2e-cleanup', version = version + 1
+ WHERE user_id IN (${SEAT_A_UID}, ${SEAT_B_UID})
+   AND organization_id NOT IN (${ORG_ID}, ${ORG_OTHER_ID})
+   AND status = 'active';
+-- member 行不删（owner_invariant 触发器对含 owner 行的批量 DELETE 逐行校验
+-- 会误伤；org-select 的选项来自 seat contexts——seat/assignment 清理已足够）。
+SQL
+log "历史残留 membership 清理完成（A/B 的 seat/assignment 仅保留主 org + other org）"
 
 # ── 3) 坐席身份链固定 id 预插（psql 幂等；provision 无法指定 id）──────────
 # identity/assignment 列口径对齐 cs_pg_seat:provision_tx 生产插入语句；
@@ -136,23 +175,34 @@ log "基础事实就绪（org=${ORG_ID}/${ORG_OTHER_ID} ws=${WS_ID}/${WS_OTHER_I
 # (b) 保证 provision_seat 的 FIND_IDENTITY 只命中固定 identity 行。
 psql_run <<SQL
 UPDATE organization_business_identity_assignment
-   SET status = 'ended', ended_at = now() at time zone 'utc',
+   SET status = 'ended', ended_at = now(),
        end_reason = 'csww-e2e-superseded', version = version + 1
  WHERE organization_id = ${ORG_ID}
    AND user_id IN (${SEAT_A_UID}, ${SEAT_B_UID})
    AND function_key = 'customer_service'
    AND status = 'active'
    AND business_identity_id NOT IN (${SEAT_A_IDENTITY_ID}, ${SEAT_B_IDENTITY_ID});
+UPDATE organization_business_identity_assignment
+   SET status = 'ended', ended_at = now(),
+       end_reason = 'csww-e2e-superseded', version = version + 1
+ WHERE organization_id = ${ORG_OTHER_ID}
+   AND user_id <> ${OTHER_UID}
+   AND function_key = 'customer_service'
+   AND status = 'active';
 INSERT INTO organization_business_identity
   (id, organization_id, function_key, display_name, status, version, created_by_user_id)
 VALUES (${SEAT_A_IDENTITY_ID}, ${ORG_ID}, 'customer_service', 'csww-e2e-seat-a', 'active', 1, NULL),
-       (${SEAT_B_IDENTITY_ID}, ${ORG_ID}, 'customer_service', 'csww-e2e-seat-b', 'active', 1, NULL)
+       (${SEAT_B_IDENTITY_ID}, ${ORG_ID}, 'customer_service', 'csww-e2e-seat-b', 'active', 1, NULL),
+       (${OTHER_IDENTITY_ID}, ${ORG_OTHER_ID}, 'customer_service', 'csww-e2e-seat-other', 'active', 1, NULL)
 ON CONFLICT (id) DO UPDATE SET display_name = EXCLUDED.display_name, status = 'active';
 INSERT INTO organization_business_identity_assignment
   (id, organization_id, business_identity_id, function_key, user_id, status, assigned_by, version)
 VALUES (${ASSIGN_A_ID}, ${ORG_ID}, ${SEAT_A_IDENTITY_ID}, 'customer_service', ${SEAT_A_UID}, 'active', NULL, 1),
-       (${ASSIGN_B_ID}, ${ORG_ID}, ${SEAT_B_IDENTITY_ID}, 'customer_service', ${SEAT_B_UID}, 'active', NULL, 1)
-ON CONFLICT (id) DO UPDATE SET status = 'active', ended_at = NULL, end_reason = NULL;
+       (${ASSIGN_B_ID}, ${ORG_ID}, ${SEAT_B_IDENTITY_ID}, 'customer_service', ${SEAT_B_UID}, 'active', NULL, 1),
+       (${ASSIGN_OTHER_ID}, ${ORG_OTHER_ID}, ${OTHER_IDENTITY_ID}, 'customer_service', ${OTHER_UID}, 'active', NULL, 1)
+ON CONFLICT (id) DO UPDATE SET organization_id = EXCLUDED.organization_id,
+    business_identity_id = EXCLUDED.business_identity_id, user_id = EXCLUDED.user_id,
+    status = 'active', ended_at = NULL, end_reason = NULL;
 SQL
 log "固定身份链就绪：A identity=${SEAT_A_IDENTITY_ID} B identity=${SEAT_B_IDENTITY_ID}"
 
@@ -167,6 +217,10 @@ SEAT_A_OUT="$(provision "${ORG_ID}" "${WS_ID}" "${SEAT_A_UID}" "csww-e2e-seat-a"
 SEAT_B_OUT="$(provision "${ORG_ID}" "${WS_ID}" "${SEAT_B_UID}" "csww-e2e-seat-b")"
 echo "${SEAT_A_OUT}" | grep -q "^{ok" || die "seat A provision 失败: ${SEAT_A_OUT}"
 echo "${SEAT_B_OUT}" | grep -q "^{ok" || die "seat B provision 失败: ${SEAT_B_OUT}"
+# other org 最小接待 seat（W12 根因⑤）：intake_identity 派生查 customer_service_seat，
+# 缺行即 createSession 500 missing_injection（other installation bootstrap→建会话链必需）
+SEAT_OTHER_OUT="$(provision "${ORG_OTHER_ID}" "${WS_OTHER_ID}" "${OTHER_UID}" "csww-e2e-seat-other")"
+echo "${SEAT_OTHER_OUT}" | grep -q "^{ok" || die "seat other provision 失败: ${SEAT_OTHER_OUT}"
 
 # 身份 id 从事实链权威行（assignment）回读，并断言与 env.ts 固定值一致（防漂移）
 SEAT_A_IDENTITY="$(psql_run -c "SELECT business_identity_id FROM organization_business_identity_assignment WHERE organization_id=${ORG_ID} AND user_id=${SEAT_A_UID} AND function_key='customer_service' AND status='active' ORDER BY business_identity_id LIMIT 1" | head -1 | tr -d '[:space:]')"
@@ -199,6 +253,38 @@ SQL
 FRAME_CODE="$(curl -s -o /dev/null -w '%{http_code}' "${BACKEND_BASE}/w/${PUB_WIDGET}")"
 [ "${FRAME_CODE}" = "200" ] || die "widget frame 探针失败: HTTP ${FRAME_CODE} (${BACKEND_BASE}/w/${PUB_WIDGET})"
 log "安装就绪：${INST_ID}/${PUB_WIDGET}（负例 ${INST_OTHER_ID}/${PUB_WIDGET_OTHER}；frame 探针 200）"
+
+# ── 5b) seat console（SC-FE：坐席工作台唯一入口 = cs 域 iframe，壳由后端
+#    /seat/:public_seat_console_id 服务；p2 spec 经同源反代驱动）──────────────
+SEAT_CONSOLE_ID=1700000000000141     # env.ts 不引用 id 行；公开标识固定
+SEAT_CONSOLE_PUBLIC_ID='7772933810'  # env.ts SEAT_CONSOLE_PUBLIC_ID（数字串形状）
+psql_run <<SQL
+INSERT INTO customer_service_seat_console
+  (id, organization_id, workspace_id, public_seat_console_id, allowed_origins, status, created_by_user_id)
+VALUES (${SEAT_CONSOLE_ID}, ${ORG_ID}, ${WS_ID}, '${SEAT_CONSOLE_PUBLIC_ID}',
+        '["${HOST_ORIGIN}", "${P2_SHOP_ORIGIN}", "${P2_ADMIN_ORIGIN}"]'::jsonb,
+        'active', NULL)
+ON CONFLICT (id) DO UPDATE SET organization_id = EXCLUDED.organization_id,
+  workspace_id = EXCLUDED.workspace_id, public_seat_console_id = EXCLUDED.public_seat_console_id,
+  allowed_origins = EXCLUDED.allowed_origins, status = 'active', revoked_at = NULL;
+SQL
+CONSOLE_CODE="$(curl -s -o /dev/null -w '%{http_code}' "${BACKEND_BASE}/seat/${SEAT_CONSOLE_PUBLIC_ID}")"
+[ "${CONSOLE_CODE}" = "200" ] || die "seat console 壳探针失败: HTTP ${CONSOLE_CODE} (${BACKEND_BASE}/seat/${SEAT_CONSOLE_PUBLIC_ID})"
+log "seat console 就绪：${SEAT_CONSOLE_PUBLIC_ID}（壳 200；SC-FE cs 域 iframe 入口）"
+
+# ── 5c) 企业消息保留策略（canonical tx 的 accept_message 前置门：缺行即
+#    422 missing_retention_policy，访客/坐席消息全部被拒）──────────────────────
+psql_run <<SQL
+INSERT INTO enterprise_retention_policy
+  (id, organization_id, workspace_id, data_class, version, retention_days, trigger_event, created_by_user_id)
+VALUES (1700000000000151, ${ORG_ID}, ${WS_ID}, 'enterprise_message', 1, 1095, 'message.accept', NULL),
+       (1700000000000152, ${ORG_OTHER_ID}, ${WS_OTHER_ID}, 'enterprise_message', 1, 1095, 'message.accept', NULL)
+ON CONFLICT (id) DO UPDATE SET organization_id = EXCLUDED.organization_id,
+  workspace_id = EXCLUDED.workspace_id, data_class = EXCLUDED.data_class,
+  version = EXCLUDED.version, retention_days = EXCLUDED.retention_days,
+  trigger_event = EXCLUDED.trigger_event;
+SQL
+log "保留策略就绪：enterprise_message v1/1095d（主 org + other org）"
 
 # ── 6) 输出实体清单 + CSWW_E2E_* / CSWW_P2_* 注入段 ──────────────────────
 cat <<ENVELOPE
@@ -233,6 +319,7 @@ export CSWW_P2_BACKEND=${BACKEND_BASE}
 export CSWW_P2_SHOP_ORIGIN=${P2_SHOP_ORIGIN}
 export CSWW_P2_ADMIN_ORIGIN=${P2_ADMIN_ORIGIN}
 export CSWW_P2_PG_DB=${PG_DATABASE}
+export CSWW_P2_SEAT_CONSOLE_PUBLIC_ID=${SEAT_CONSOLE_PUBLIC_ID}
 ENVELOPE
 
 log "种子就绪（幂等；可重复执行）"

@@ -279,18 +279,9 @@ put_reserved(eb_asset_object_stub = Store, Row, Payload, Meta) ->
     Store:put(maps:get(object_key, Row), Payload, Meta);
 put_reserved(_, Row, Payload, Meta) ->
     case location(Row) of
-        {ok, #{driver := disk} = I} ->
-            case maps:get(signature_context, Meta, undefined) of
-                #{expires_at := Expiry} ->
-                    attachment_storage_disk:put_snapshot(
-                        I,
-                        Payload,
-                        calendar:datetime_to_gregorian_seconds(Expiry) - 62167219200,
-                        fun() -> recheck_put(Meta, I) end
-                    );
-                _ ->
-                    {error, invalid_signature_context}
-            end;
+        {ok, #{driver := disk}} ->
+            %% V3-20 退役：disk root fail-closed（不落盘、不回退）。
+            {error, disk_driver_retired};
         {ok, #{driver := garage} = I} ->
             case recheck_put(Meta, I) of
                 ok ->

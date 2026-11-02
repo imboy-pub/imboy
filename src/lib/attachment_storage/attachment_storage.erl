@@ -18,6 +18,7 @@
 -export([
     registry/0,
     validate_registry/0,
+    validate_registry_with_reg/1,
     session_location/1,
     frozen_location/2,
     delete_snapshot/1,
@@ -62,6 +63,14 @@ validate_registry() ->
         _ -> validate_roots(maps:to_list(Roots))
     end.
 
+%% V3-20 退役：带参校验（测试/启动校验共用同一 disk-root 拒绝语义）。
+validate_registry_with_reg(Registry) when is_map(Registry) ->
+    Roots = maps:get(roots, Registry, #{}),
+    case maps:size(Roots) of
+        0 -> {error, empty_roots};
+        _ -> validate_roots(maps:to_list(Roots))
+    end.
+
 validate_roots(Roots) ->
     case [{Id, R} || {Id, R} <- Roots, not valid_root_record(R)] of
         [{Id, _} | _] ->
@@ -75,8 +84,7 @@ validate_roots_drivers(Roots) ->
         [
             Id
          || {Id, R} <- Roots,
-            maps:get(driver, R) =/= <<"garage">>,
-            maps:get(driver, R) =/= <<"disk">>
+            maps:get(driver, R) =/= <<"garage">>
         ]
     of
         [Id | _] ->
@@ -222,7 +230,8 @@ identity(Namespace, Container, Key) ->
 %% @doc driver 模块派发（garage | disk；其余 fail-closed）。
 -spec driver_module(binary()) -> module() | {error, unsupported_driver}.
 driver_module(<<"garage">>) -> attachment_storage_garage;
-driver_module(<<"disk">>) -> attachment_storage_disk;
+%% V3-20 退役：disk driver 分支删除——disk root 一律 unsupported（fail-closed），
+%% 显式 disk registry 配置由启动校验拒绝（imboy_app:validate_attachment_registry）。
 driver_module(_) -> {error, unsupported_driver}.
 
 %% NULL 历史定位只能走兼容读取，不能据此取得可清理身份。
@@ -335,16 +344,16 @@ registration_location(Scope, Bucket, Key) ->
                 ]
         end,
     case Matches of
-        [{RootId, #{driver := Driver, namespace := Ns0, container := C, endpoint := _} = Rec}] when
-            (Driver =:= <<"garage">> orelse Driver =:= <<"disk">>), is_binary(C), byte_size(C) > 0
+        [
+            {RootId,
+                #{driver := <<"garage">>, namespace := Ns0, container := C, endpoint := _} = Rec}
+        ] when
+            is_binary(C), byte_size(C) > 0
         ->
-            case
-                Driver =:= <<"disk">> orelse
-                    (C =:= Bucket andalso maps:get(endpoint, Rec) =:= elib_oss:endpoint())
-            of
+            case C =:= Bucket andalso maps:get(endpoint, Rec) =:= elib_oss:endpoint() of
                 true ->
                     {ok, #{
-                        driver => Driver,
+                        driver => <<"garage">>,
                         namespace => Ns0,
                         container => C,
                         key => Key,

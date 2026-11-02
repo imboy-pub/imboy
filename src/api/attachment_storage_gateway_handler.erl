@@ -222,18 +222,16 @@ serve_pinned(Req0, Key, DeclMime, CapabilityExp, Source, Size) ->
 
 %% provider PUT 容错包装：driver 抛出异常按 PUT 失败处理（pin 保留），
 %% invalid_signature_context 透传给上层区分 410。
-provider_put_ctx(Key, Source, DeclMime, Ctx, Receipt) ->
+provider_put_ctx(Key, Source, DeclMime, Ctx, _Receipt) ->
     try
         case attachment_storage:session_location(Key) of
             {ok, legacy_unknown} ->
                 {error, historical_location_unverified};
             {ok, #{driver := garage} = I} ->
                 attachment_storage_garage:put_snapshot(I, Source, DeclMime, Ctx);
-            {ok, #{driver := disk} = I} ->
-                Expiry =
-                    calendar:datetime_to_gregorian_seconds(maps:get(expires_at, Ctx)) - 62167219200,
-                Recheck = fun() -> attach_logic:recheck_content_pin(Key, Receipt, I) end,
-                attachment_storage_disk:put_snapshot(I, Source, Expiry, Recheck);
+            %% V3-20 退役：disk root fail-closed（gateway 不承载 disk 正文）。
+            {ok, #{driver := disk}} ->
+                {error, disk_driver_retired};
             {error, _} = E ->
                 E;
             _ ->

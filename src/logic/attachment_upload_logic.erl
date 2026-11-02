@@ -195,10 +195,9 @@ provider_put(Key, Source, Mime, Identity, Expiry, Receipt) ->
     try
         Result =
             case maps:get(driver, Identity) of
+                %% V3-20 退役：disk root fail-closed。
                 disk ->
-                    %% The live DB recheck runs after the physical-object OS lock.
-                    %% DB 复核必须发生于物理对象 OS 锁内，结束事务后才写字节。
-                    attachment_storage_disk:put_snapshot(Identity, Source, Expiry, Recheck);
+                    {error, disk_driver_retired};
                 garage ->
                     case Recheck() of
                         ok ->

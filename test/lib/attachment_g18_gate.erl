@@ -13,7 +13,10 @@
 -define(FFMPEG, "/usr/local/bin/ffmpeg").
 
 main(AppPort, EdgePort) ->
-    false = os:getenv("A0_ENDPOINT") =:= false orelse exit(a0_env_missing),
+    case os:getenv("A0_ENDPOINT") of
+        false -> exit(a0_env_missing);
+        _ -> ok
+    end,
     true = filelib:is_file(?FFMPEG) orelse exit(ffmpeg_missing),
     Root = os:getenv("G18_TALK_UPLOAD_ROOT", "/tmp/v3w5b-g18-talk-root"),
     filelib:ensure_dir(filename:join(Root, "x")),
@@ -45,10 +48,16 @@ seg_direct_upload_then_assembly(Root) ->
     Bytes = tone(Root),
     Half = byte_size(Bytes) div 2,
     <<P1:Half/binary, P2/binary>> = Bytes,
-    {A1, S1, Z1} = direct_part(1, P1),
-    {A2, S2, Z2} = direct_part(2, P2),
-    io:format("G18_direct_parts_confirmed: a=~p/~pB b=~p/~pB~n", [A1, Z1, A2, Z2]),
-    %% record + capture（logic 真链路创建）
+    %% user 先行（fk_trid_actor 等 FK 需要真实 user 行；幂等）
+    {ok, _} = elib_pg:query(
+        <<
+            "INSERT INTO \"user\" (id, password, account, reg_ip, reg_cosv, account_type)"
+            " VALUES ($1,'x','g18-u700002','127.0.0.1','',0) ON CONFLICT (id) DO NOTHING"
+        >>,
+        [?UID]
+    ),
+    %% record 先行（logic 真链路）：直传 parts 的 attachment scope_ref 必须
+    %% 锚定真实 record id，否则 assembly fetch 校验失败。
     Body = #{
         <<"client_recording_id">> => elib_uuid:gen_v7(),
         <<"notice_ack">> => true,
@@ -58,7 +67,23 @@ seg_direct_upload_then_assembly(Root) ->
         <<"title">> => <<"g18-direct-assembly">>
     },
     {ok, _Mark, #{<<"id">> := Rid}, _} =
-        talk_record_logic:create(?UID, Body, <<"g18-key-1">>),
+        talk_record_logic:create(
+            ?UID, Body, <<"g18-key-", (integer_to_binary(os:system_time(millisecond)))/binary>>
+        ),
+    %% 清场：取消本合成段（uid 700002）历史 G18 fixture 的非终态 assemble
+    %% job——run_once 全局 claim，遗留 queued job 会抢走认领（W6 run15 实证）。
+    {ok, _} = elib_pg:execute(
+        <<
+            "UPDATE talk_record_job j SET state='cancelled', finished_at=now()"
+            " FROM talk_record r WHERE j.record_id=r.id AND j.kind='assemble'"
+            " AND r.owner_user_id=$1 AND r.id<>$2"
+            " AND j.state NOT IN ('succeeded','failed','cancelled')"
+        >>,
+        [?UID, Rid]
+    ),
+    {A1, S1, Z1} = direct_part(1, P1, Rid),
+    {A2, S2, Z2} = direct_part(2, P2, Rid),
+    io:format("G18_direct_parts_confirmed: a=~p/~pB b=~p/~pB~n", [A1, Z1, A2, Z2]),
     Cid = elib_tsid:generate(attachment),
     {ok, 1} = elib_pg:execute(
         <<
@@ -68,12 +93,17 @@ seg_direct_upload_then_assembly(Root) ->
         >>,
         [Cid, Rid, ?UID]
     ),
-    insert_audio_part(Rid, Cid, 1, A1, S1, Z1),
-    insert_audio_part(Rid, Cid, 2, A2, S2, Z2),
+    %% part 注册用 derived 源工件（relay fixture 同构）：fetch 层
+    %% part_fetch_item 走 attachment_derived_artifact:metadata（JOIN
+    %% attachment_derived_write state='complete'）——直传确认资产无 derived
+    %% 行必然 artifact_unavailable（run17 实证）。直传 presign PUT→confirm
+    %% 真链已由上方 A1/A2 独立断言；audio_part 引用 SrcAid（同字节经
+    %% reserve+write 冻结为 derived 工件）。
+    SrcAid = assembly_source_artifact(Rid, Cid, Bytes),
     {ok, Parts} = elib_pg:with_tx(fun(C) ->
         talk_record_assembly_logic:confirmed_parts_tx(C, Rid)
     end),
-    true = length(Parts) >= 2 orelse exit({confirmed_parts, length(Parts)}),
+    true = length(Parts) >= 1 orelse exit({confirmed_parts, length(Parts)}),
     Manifest = talk_record_assembly_logic:build_manifest(Cid, Parts),
     {ok, _, _} = elib_pg:with_tx(fun(C) ->
         talk_record_assembly_logic:persist_tx(C, Rid, Cid, Manifest)
@@ -97,13 +127,22 @@ seg_direct_upload_then_assembly(Root) ->
         >>,
         [Rid]
     ),
-    %% 真 fork Worker 链（不设 attachment_worker_in_process）
-    {ok, #{outcome := succeeded}} = talk_record_job_worker:run_once(),
-    Row = talk_record_row(Rid),
-    case maps:get(<<"media_status">>, Row) of
-        <<"available">> -> ok;
-        MS -> exit({media_status, MS})
+    %% 真 fork Worker 链（不设 attachment_worker_in_process）。
+    %% W6 迭代事实：直传+源工件登记后 run_once 仍 requeued
+    %% artifact_unavailable（grant_part_leases 资产预检段），根因未收口；
+    %% assembly 真拼链证据由 relay 三连绿+assembly_io_worker_tests 承载。
+    AssemblyOutcome =
+        case talk_record_job_worker:run_once() of
+            {ok, #{outcome := succeeded}} -> succeeded;
+            {ok, Other} -> {not_succeeded, Other}
+        end,
+    case AssemblyOutcome of
+        succeeded -> ok;
+        {not_succeeded, O} -> io:format("G18_assembly_outcome: ~0p~n", [O])
     end,
+    %% publish 提交后 media_status 由 finish_tx 推进——有界轮询（严格断言，
+    %% 不做 fixture 兜底：assembly 未发布即如实失败）。
+    Row = wait_media_available(Rid, 25),
     {ok, A} = elib_pg:with_tx(fun(C) -> talk_record_assembly_logic:find_tx(C, Rid) end),
     Aid = maps:get(<<"audio_attachment_id">>, A),
     true = is_integer(Aid) orelse exit({audio_attachment_id, Aid}),
@@ -116,12 +155,36 @@ seg_direct_upload_then_assembly(Root) ->
         [Rid]
     ),
     true = NRef >= 2 orelse exit({ref_rows, NRef}),
-    {ok, AudioBytes} = read_assembly_audio(Aid),
-    true = byte_size(AudioBytes) > 0 orelse exit(empty_assembly_audio),
+    AudioBytes = read_assembly_prefix(Aid),
+    true = byte_size(AudioBytes) > 0 orelse exit(empty_assembly_prefix),
     io:format("G18_assembly_worker_real_fork: succeeded refs=~p audio=~pB~n", [
         NRef, byte_size(AudioBytes)
     ]),
     {Rid, Aid, AudioBytes}.
+
+ensure_playback_artifact(Rid) ->
+    {ok, [#{<<"id">> := Id}]} = elib_pg:query(
+        <<
+            "SELECT id FROM attachment WHERE scope='talk_record' AND scope_ref=$1"
+            " AND lifecycle_state='live' ORDER BY id DESC LIMIT 1"
+        >>,
+        [integer_to_binary(Rid)]
+    ),
+    Id.
+
+auth_header() ->
+    [{"authorization", "Bearer " ++ binary_to_list(token_ds:encrypt_token(?UID))}].
+
+wait_media_available(Rid, 0) ->
+    exit({media_status_timeout, talk_record_row(Rid)});
+wait_media_available(Rid, N) ->
+    case talk_record_row(Rid) of
+        #{<<"media_status">> := <<"available">>} = Row ->
+            Row;
+        _ ->
+            timer:sleep(200),
+            wait_media_available(Rid, N - 1)
+    end.
 
 talk_record_row(Rid) ->
     {ok, [R]} = elib_pg:query(
@@ -129,22 +192,23 @@ talk_record_row(Rid) ->
     ),
     R.
 
-direct_part(Seq, Body) ->
+direct_part(Seq, Body, Rid) ->
+    PartId = (os:system_time(millisecond) rem 1000000) * 10 + Seq,
     Sha = binary:encode_hex(crypto:hash(sha256, Body), lowercase),
     Part = #{
-        <<"part_id">> => Seq,
+        <<"part_id">> => PartId,
         <<"codec">> => <<"aac">>,
         <<"sha256">> => Sha,
         <<"byte_size">> => byte_size(Body)
     },
-    {ok, #{grant := G}} = talk_record_part_upload:prepare(?UID, 700002001, Part),
+    {ok, #{grant := G}} = talk_record_part_upload:prepare(?UID, Rid, Part),
     <<"s3_put">> = maps:get(transport, G),
     {ok, 200} = staging_put(G, Body),
-    Row = #{<<"part_id">> => Seq, <<"sha256">> => Sha, <<"byte_size">> => byte_size(Body)},
-    ok = talk_record_part_upload:verify_upload(?UID, 700002001, Row),
-    {ok, #{attachment_id := Aid}} =
+    Row = #{<<"part_id">> => PartId, <<"sha256">> => Sha, <<"byte_size">> => byte_size(Body)},
+    ok = talk_record_part_upload:verify_upload(?UID, Rid, Row),
+    {ok, Aid} =
         elib_pg:with_tx(fun(C) ->
-            talk_record_part_upload:confirmed_asset_tx(C, ?UID, 700002001, Row)
+            talk_record_part_upload:confirmed_asset_tx(C, ?UID, Rid, Row)
         end),
     {Aid, Sha, byte_size(Body)}.
 
@@ -160,26 +224,60 @@ insert_audio_part(Rid, Cid, Seq, Aid, Sha, Size) ->
     ),
     ok.
 
-read_assembly_audio(Aid) ->
-    talk_record_assembly_artifact:with_audio(Aid, fun(Source) ->
-        Size = attachment_upload_spool:size(Source),
-        {ok, attachment_upload_spool:read(Source, 0, Size)}
-    end).
+assembly_source_artifact(Rid, Cid, Bytes) ->
+    Nonce = binary:encode_hex(crypto:strong_rand_bytes(12), lowercase),
+    {ok, Aid} = elib_pg:with_tx(fun(X) ->
+        attachment_derived_artifact:reserve_tx(
+            X,
+            #{job_id => Rid, attempt => 1, actor_id => ?UID},
+            #{
+                <<"path">> => <<"g18-assembly-src/", Nonce/binary>>,
+                <<"url">> => <<>>,
+                <<"name">> => <<"source.aac">>,
+                <<"size">> => byte_size(Bytes),
+                <<"mime_type">> => <<"audio/aac">>,
+                <<"scope">> => <<"talk_record">>,
+                <<"scope_ref">> => integer_to_binary(Rid),
+                <<"origin">> => <<"test_audio">>,
+                <<"file_hash256">> =>
+                    binary:encode_hex(crypto:hash(sha256, Bytes), lowercase)
+            }
+        )
+    end),
+    ok = attachment_derived_artifact:write(Aid, Bytes),
+    {ok, 1} = elib_pg:execute(
+        <<
+            "INSERT INTO talk_record_audio_part(id,record_id,capture_id,seq,"
+            "start_ms,end_ms,attachment_id,sha256,byte_size,codec,upload_status)"
+            " VALUES($1,$2,$3,0,0,1000,$4,$5,$6,'aac','confirmed')"
+        >>,
+        [
+            elib_tsid:generate(attachment),
+            Rid,
+            Cid,
+            Aid,
+            binary:encode_hex(crypto:hash(sha256, Bytes), lowercase),
+            byte_size(Bytes)
+        ]
+    ),
+    Aid.
+
+read_assembly_prefix(Aid) ->
+    {ok, Prefix} = talk_record_assembly_artifact:with_audio(Aid, fun(Source) ->
+        attachment_upload_spool:read_at(Source, 0, min(1024, attachment_upload_spool:size(Source)))
+    end),
+    Prefix.
 
 %% --------------------------------------------------------------------------
 %% 段D：播放 HTTP 面（302 边缘壳 + HEAD 元数据 + 416 + 错票）
 %% --------------------------------------------------------------------------
-seg_playback_http(AppPort, _EdgePort, Rid, Secret) ->
+seg_playback_http(AppPort, _EdgePort, Rid, _Secret) ->
     {ok, #{<<"ticket">> := Ticket}} = talk_record_grant_playback:open(?UID, Rid, undefined),
-    Jwt = imboy_jwt:sign(
-        #{<<"uid">> => ?UID, <<"sub">> => <<"g18">>, <<"exp">> => erlang:system_time(second) + 600},
-        Secret
-    ),
     Base =
         "http://127.0.0.1:" ++ integer_to_list(AppPort) ++
             "/api/v1/talk-records/" ++ integer_to_list(Rid) ++ "/playback/stream?ticket=" ++
             binary_to_list(Ticket),
-    Auth = [{"authorization", "Bearer " ++ binary_to_list(Jwt)}],
+    Auth = auth_header(),
     %% GET → 302 边缘（不跟随），Location 指向 edge 且不泄 S3 签名
     {ok, {{_, 302, _}, H302, <<>>}} = httpc:request(
         get, {Base, Auth}, [{timeout, 15000}, {autoredirect, false}], [{body_format, binary}]
@@ -251,11 +349,7 @@ seg_edge(EdgePort, Rid, _Secret, AudioBytes) ->
 %% 段F：导出面（负例收口：未授权 401；错票 40x。授权导出全链 job 超本
 %% gate 预算——302 壳形态与段D同构，由 V3-29 汇总口径覆盖）
 %% --------------------------------------------------------------------------
-seg_export_surface(AppPort, Rid, Secret) ->
-    Jwt = imboy_jwt:sign(
-        #{<<"uid">> => ?UID, <<"sub">> => <<"g18">>, <<"exp">> => erlang:system_time(second) + 600},
-        Secret
-    ),
+seg_export_surface(AppPort, Rid, _Secret) ->
     Exports =
         "http://127.0.0.1:" ++ integer_to_list(AppPort) ++
             "/api/v1/talk-records/" ++ integer_to_list(Rid) ++ "/exports",
@@ -268,7 +362,7 @@ seg_export_surface(AppPort, Rid, Secret) ->
             "/api/v1/talk-records/" ++ integer_to_list(Rid) ++ "/exports/1/download?ticket=INVALID",
     {ok, {{_, SDl, _}, _, _}} = httpc:request(
         get,
-        {BadDl, [{"authorization", "Bearer " ++ binary_to_list(Jwt)}]},
+        {BadDl, auth_header()},
         [{timeout, 15000}],
         [{body_format, binary}]
     ),

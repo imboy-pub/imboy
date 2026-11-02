@@ -404,6 +404,13 @@ validate_attachment_registry() ->
     Registry = attachment_storage:registry(),
     Roots = maps:get(roots, Registry, #{}),
     Strict = is_strict_env(runtime_env()),
+    %% V3-20 退役：disk driver 已删除——任何显式 disk root 配置一律拒绝启动
+    %% （不区分 strict/non-strict：disk 根在 S3-only 合同下永远不可执行）。
+    DiskRoots = [Id || {Id, R} <- maps:to_list(Roots), maps:get(driver, R, <<>>) =:= <<"disk">>],
+    case DiskRoots of
+        [] -> ok;
+        [_ | _] -> erlang:error({disk_driver_retired, DiskRoots})
+    end,
     case map_size(Roots) =:= 0 of
         true ->
             Msg =
