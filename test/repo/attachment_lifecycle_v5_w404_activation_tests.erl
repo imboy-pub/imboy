@@ -33,9 +33,31 @@
 -define(APP, 9103).
 
 w404_activation_test_() ->
-    {setup, fun setup/0, fun cleanup/1, fun(St) ->
-        [leaf_unit(St, Spec) || Spec <- specs()]
-    end}.
+    case v5_gate_pinned(<<"V5_INTTEST_W404">>) of
+        true ->
+            {setup, fun setup/0, fun cleanup/1, fun(St) ->
+                [leaf_unit(St, Spec) || Spec <- specs()]
+            end};
+        false ->
+            %% 受控让位（仓库先例：v5_gate_pinned / TALK_OWNED / TEXTGUARD）：
+            %% nightly 全量轨道无钉名 env，setup 的 provision 会按 fail-closed
+            %% 契约抛 contract_conflict 被 eunit 计 cancel（run 41409234749）。
+            io:format(
+                user,
+                "W404_ACT_EUNIT_YIELD missing_env=\"V5_INTTEST_W404_DB\"~n",
+                []
+            ),
+            []
+    end.
+
+%% 钉名 gate：<PREFIX>_DB 设置且非空才执行（与 v5 家族 gate 同语义）。
+v5_gate_pinned(Prefix) when is_binary(Prefix) ->
+    Env = binary_to_list(<<Prefix/binary, "_DB">>),
+    case os:getenv(Env) of
+        false -> false;
+        "" -> false;
+        _ -> true
+    end.
 
 %% ---------------------------------------------------------------- specs
 

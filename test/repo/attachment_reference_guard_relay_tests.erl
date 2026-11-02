@@ -3,10 +3,24 @@
 -include_lib("epgsql/include/epgsql.hrl").
 
 reference_guard_test_() ->
-    {timeout, 60,
-        {setup, fun setup/0, fun talk_record_t19_support:teardown_all/1, fun(S) ->
-            ?_test(run(S))
-        end}}.
+    case os:getenv("TALK_OWNED_PG_HOST") of
+        H when H =/= false, H =/= "" ->
+            {timeout, 60,
+                {setup, fun setup/0, fun talk_record_t19_support:teardown_all/1, fun(S) ->
+                    ?_test(run(S))
+                end}};
+        _ ->
+            %% 受控让位（talk_record 域统一锚点 TALK_OWNED_PG_HOST，与
+            %% T3 映射批/T4 同锚）：本生成器独立直跑（不经 owned fixture
+            %% 包装），setup 经 t19→t17→t15→t05 support 直连具名钉库
+            %% （默认 55433），全量轨道无钉库必崩计 cancel（run 41409234749）。
+            io:format(
+                user,
+                "REF_GUARD_EUNIT_YIELD missing_env=\"TALK_OWNED_PG_HOST\"~n",
+                []
+            ),
+            []
+    end.
 setup() ->
     S = talk_record_t19_support:setup_all(),
     C = maps:get(conn, S),

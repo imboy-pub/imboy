@@ -250,7 +250,23 @@ reason_format() ->
     assert_mocks_valid().
 
 assert_mocks_valid() ->
-    [?assert(meck:validate(Module)) || Module <- mock_modules()].
+    %% validate=false = mock 收到未被 expect 的调用（跨套件顺序耦合的
+    %% 典型症状：前序套件残留进程在用例期间调入 mock）。失败时打印
+    %% history 定位意外调用者——诊断增量，断言语义不变。
+    [
+        case meck:validate(Module) of
+            true ->
+                ok;
+            false ->
+                io:format(
+                    user,
+                    "MECK_INVALID module=~p history=~0p~n",
+                    [Module, meck:history(Module)]
+                ),
+                ?assert(meck:validate(Module))
+        end
+     || Module <- mock_modules()
+    ].
 
 object_key() -> <<"direct-fixture.bin">>.
 target_key() -> <<"direct-c/fixture">>.
