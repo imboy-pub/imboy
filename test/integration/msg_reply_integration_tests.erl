@@ -12,6 +12,11 @@
 %% 测试夹具
 msg_reply_test_() ->
     _ = eunit_runner:eunit_setup(),
+    %% 真库套件防 mock 污染：全量 VM 中前序 meck 套件若泄漏未卸载
+    %% （run 41417571502 实证 elib_pg mock 残留致本套件查询返回 mock
+    %% 夹具数据 badmap），先全量卸载再连库。meck:unload() 对无 mock
+    %% 状态是 no-op，catch 兜底防未初始化异常。
+    _ = (catch meck:unload()),
     application:set_env(imboy, env, test),
     case eunit_runner:eunit_try_db() of
         {ok, _Driver, _Conn} ->
@@ -24,7 +29,10 @@ msg_reply_test_() ->
                 {"批量引用回复", fun test_batch_reply/0}
             ]};
         {error, _Reason} ->
-            {"Database not available", fun() -> {skip, "Database not available"} end}
+            %% eunit 无 skip 语义：{skip,...} 被计 cancel 使整轮失败
+            %% （同 talk_record t06 已修模式），改空清单让位。
+            io:format(user, "MSG_REPLY_EUNIT_YIELD reason=db_not_available~n"),
+            []
     end.
 
 setup() ->
