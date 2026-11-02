@@ -1,6 +1,7 @@
 type: object
 required:
 - captures
+- final_audio
 properties:
   captures:
     type: array
@@ -26,5 +27,54 @@ properties:
           pattern: ^[a-f0-9]{64}$
     minItems: 1
     maxItems: 1
+  final_audio:
+    type: object
+    description: >-
+      客户端合成最终成品的直传会话声明。服务端不信任本声明：以
+      object_key+client_upload_id 查询真实 direct CONFIRMED 会话、活附件
+      与 winner 物理身份，逐项比对后才创建验证任务。
+    required:
+    - object_key
+    - client_upload_id
+    - sha256
+    - byte_size
+    - sample_rate
+    - channels
+    - sample_count
+    - duration_ms
+    properties:
+      object_key:
+        type: string
+        minLength: 1
+        description: direct API 返回的逻辑对象标识（非 URL/磁盘路径）。
+      client_upload_id:
+        type: string
+        pattern: ^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$
+        description: 本次成品的稳定直传会话 ID（与分段身份分开）。
+      sha256:
+        type: string
+        pattern: ^[a-f0-9]{64}$
+        description: 整个成品的实际 SHA-256（非分段 hash 文本的 hash）。
+      byte_size:
+        type: integer
+        format: int64
+        minimum: 1
+        description: 成品字节数（须等于清单各段明文字节之和）。
+      sample_rate:
+        type: integer
+        minimum: 1
+        description: 实际 ADTS 采样率 Hz（读自帧头，非配置值）。
+      channels:
+        type: integer
+        enum: [1]
+        description: V1 固定单声道。
+      sample_count:
+        type: integer
+        minimum: 1
+        description: 全部编码帧的样本总数。
+      duration_ms:
+        type: integer
+        minimum: 1
+        description: 按统一整数舍入 ms(S,R) 得到的成品时长。
   processing_consent:
     $ref: Consent.yaml

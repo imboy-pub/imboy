@@ -295,25 +295,35 @@ complete_manifest_tx(
 ) ->
     Manifest = talk_record_assembly_logic:build_manifest(CaptureId, Parts),
     ManifestHash = maps:get(<<"manifest_hash">>, Manifest),
-    case maps:get(manifest_hash, CapDecl, undefined) of
-        undefined -> ok;
+    %% manifest_hash 必填且必须与服务端重算一致（parse 层已拒缺失）。
+    case maps:get(manifest_hash, CapDecl) of
         ClientHash when ClientHash =:= ManifestHash -> ok;
         _Other -> throw({talk_record_rollback, {error, manifest_hash_conflict}})
     end,
     {ok, _AsmId, _} = talk_record_assembly_logic:persist_tx(Conn, RecordId, CaptureId, Manifest),
-    complete_jobs_tx(Conn, Uid, RecordId, RecordRow, ManifestHash, Parsed, IdemKey, Resource).
+    complete_jobs_tx(
+        Conn, Uid, RecordId, RecordRow, CaptureId, ManifestHash, Parsed, IdemKey, Resource
+    ).
 
-complete_jobs_tx(Conn, Uid, RecordId, RecordRow, ManifestHash, Parsed, IdemKey, Resource) ->
+complete_jobs_tx(
+    Conn, Uid, RecordId, RecordRow, CaptureId, ManifestHash, Parsed, IdemKey, Resource
+) ->
     Mode = maps:get(<<"processing_mode">>, RecordRow),
     ContentRevision = maps:get(<<"content_revision">>, RecordRow),
+    %% 成品身份准入（服务器不信任客户端声明）：按 object_key+client_upload_id
+    %% 查询真实 direct CONFIRMED 会话 → 活附件 → winner 物理身份；声明的
+    %% sha256/byte_size/时长必须与真实附件/清单一致。同事务行锁与删除/GC 互斥。
+    FinalInput = resolve_final_input_tx(Conn, Uid, RecordId, CaptureId, Parsed),
     {ok, AssembleMark, AssembleJobId} =
         talk_record_job_support:enqueue_job_tx(Conn, #{
             record_id => RecordId,
             kind => <<"assemble">>,
+            processor_input => #{<<"final_audio">> => FinalInput},
             input_manifest_hash => ManifestHash,
             input_content_revision => ContentRevision,
             dedupe_key => talk_record_job_support:dedupe_key(<<"assemble">>, RecordId, ManifestHash)
         }),
+    ok = assert_final_identity_tx(Conn, AssembleMark, AssembleJobId, FinalInput),
     %% Q-L1：回填固化行的产出 job（manifest 先落、job 后投递——同一事务；
     %% 幂等重放/dedupe 命中时写同值，i_tra_job 反查索引因此有真实数据）
     _ = elib_pg:query(
@@ -377,8 +387,144 @@ complete_jobs_tx(Conn, Uid, RecordId, RecordRow, ManifestHash, Parsed, IdemKey, 
             {error, Reason}
     end.
 
-%% @doc complete 请求体解析：V1 单 capture 清单 + 可选处理同意。
-%% 返回 #{captures := [#{capture_id,last_seq,manifest_hash?}], consent => map()|undefined}。
+%% ===================================================================
+%% 成品身份准入（final_audio；服务器事实，非客户端声明）
+%% ===================================================================
+
+%% @doc 解析本次 complete 的最终成品上传事实并冻结为作业输入。
+%% 客户端声明只用于与真实会话/附件比对，不作为发布依据：
+%%   1. attach_pending（client_upload_id 幂等键）：direct CONFIRMED 且
+%%      session confirmed；scope/creator 匹配（跨主体按 not found 处理，
+%%      不泄露存在性）；
+%%   2. attachment（confirmed_attachment_id，行锁与删除/GC 互斥）：live、
+%%      scope=talk_record、scope_ref=record_id、file_hash256/size 与声明
+%%      逐一相等；
+%%   3. attach_direct_attempt（WINNER 单行）：真实物理键与 attempt 归属。
+%% 任何环节不符 → final_not_confirmed / final_asset_mismatch（不晋级）。
+-spec resolve_final_input_tx(any(), integer(), integer(), integer(), map()) -> map().
+resolve_final_input_tx(Conn, Uid, RecordId, CaptureId, Parsed) ->
+    Decl = maps:get(final_audio, Parsed),
+    #{client_upload_id := Cid} = Decl,
+    case
+        elib_pg:query(
+            Conn,
+            <<
+                "SELECT a.id AS attachment_id, a.file_hash256, a.size,"
+                " p.object_key AS session_object_key"
+                " FROM attach_pending p"
+                " JOIN attachment a ON a.id = p.confirmed_attachment_id AND a.path = p.object_key"
+                " WHERE p.client_upload_id = $1::uuid"
+                " AND p.session_state = 'confirmed' AND p.direct_state = 'CONFIRMED'"
+                " AND p.scope = 'talk_record' AND p.creator_user_id = $2"
+                " AND a.lifecycle_state = 'live' AND a.status >= 0"
+                " AND a.scope = 'talk_record' AND a.scope_ref = $3"
+                " FOR UPDATE OF a"
+            >>,
+            [Cid, Uid, integer_to_binary(RecordId)]
+        )
+    of
+        {ok, [Row]} ->
+            case
+                ec_cnv:to_integer(maps:get(<<"attachment_id">>, Row)) =:=
+                    maps:get(attachment_id, Decl)
+            of
+                true -> final_winner_tx(Conn, Decl, Row, CaptureId);
+                false -> throw({talk_record_rollback, {error, final_asset_mismatch}})
+            end;
+        {ok, []} ->
+            throw({talk_record_rollback, {error, final_not_confirmed}});
+        {error, Reason} ->
+            ?ERROR_LOG([talk_record_final_lookup_failed, RecordId, Reason]),
+            throw({talk_record_rollback, {error, db_error}})
+    end.
+
+%% @private 客户端声明的 attachment_id 必须等于服务端解析值——裸
+%% attachment_id/任意 object_key 不构成准入证明（PLAN T3）。
+final_winner_tx(Conn, Decl, Row, CaptureId) ->
+    Key = maps:get(<<"session_object_key">>, Row),
+    DeclKey = maps:get(object_key, Decl),
+    case Key =:= DeclKey of
+        true -> ok;
+        false -> throw({talk_record_rollback, {error, final_asset_mismatch}})
+    end,
+    case
+        elib_pg:query(
+            Conn,
+            <<
+                "SELECT attempt_no, target_key FROM attach_direct_attempt"
+                " WHERE object_key = $1 AND attempt_state = 'WINNER'"
+            >>,
+            [Key]
+        )
+    of
+        {ok, [#{<<"attempt_no">> := No, <<"target_key">> := TargetKey}]} ->
+            Frozen = #{
+                <<"capture_id">> => CaptureId,
+                <<"object_key">> => Key,
+                <<"client_upload_id">> => maps:get(client_upload_id, Decl),
+                <<"attachment_id">> => maps:get(attachment_id, Decl),
+                <<"sha256">> => maps:get(<<"file_hash256">>, Row),
+                <<"byte_size">> => ec_cnv:to_integer(maps:get(<<"size">>, Row)),
+                <<"sample_rate">> => maps:get(sample_rate, Decl),
+                <<"channels">> => maps:get(channels, Decl),
+                <<"sample_count">> => maps:get(sample_count, Decl),
+                <<"duration_ms">> => maps:get(duration_ms, Decl),
+                <<"physical_key">> => TargetKey,
+                <<"winner_attempt">> => ec_cnv:to_integer(No)
+            },
+            case
+                maps:get(sha256, Decl) =:= maps:get(<<"sha256">>, Frozen) andalso
+                    maps:get(byte_size, Decl) =:= maps:get(<<"byte_size">>, Frozen)
+            of
+                true -> Frozen;
+                false -> throw({talk_record_rollback, {error, final_asset_mismatch}})
+            end;
+        {ok, []} ->
+            throw({talk_record_rollback, {error, final_not_confirmed}});
+        {error, Reason} ->
+            ?ERROR_LOG([talk_record_final_winner_lookup_failed, Key, Reason]),
+            throw({talk_record_rollback, {error, db_error}})
+    end.
+
+%% @private 首次成品身份冻结（业务幂等）：dedupe 命中既有 assemble job 时，
+%% 同清单重放必须携带同一成品会话；换 object_key/client_upload_id——即使
+%% 字节相同——也明确冲突，让客户端恢复首次会话，不静默替换首次绑定。
+-spec assert_final_identity_tx(any(), created | existing, integer(), map()) -> ok.
+assert_final_identity_tx(_Conn, created, _JobId, _FinalInput) ->
+    ok;
+assert_final_identity_tx(Conn, existing, JobId, FinalInput) ->
+    case talk_record_job_repo:find_tx(Conn, JobId) of
+        {ok, #{<<"processor_input">> := PinBin}} when is_binary(PinBin) ->
+            Pinned = jsone:decode(PinBin),
+            case Pinned of
+                #{
+                    <<"final_audio">> := #{
+                        <<"object_key">> := OldKey, <<"client_upload_id">> := OldCid
+                    }
+                } ->
+                    #{object_key := NewKey, client_upload_id := NewCid} = FinalInput,
+                    case OldKey =:= NewKey andalso OldCid =:= NewCid of
+                        true -> ok;
+                        false -> throw({talk_record_rollback, {error, final_identity_conflict}})
+                    end;
+                _ ->
+                    %% 旧输入形态（无 final_audio）：输入已过时，按冲突处理
+                    %% 而非静默覆盖（本轮 complete 由 job gate input_stale 收敛）。
+                    throw({talk_record_rollback, {error, final_identity_conflict}})
+            end;
+        {ok, #{<<"processor_input">> := null}} ->
+            throw({talk_record_rollback, {error, final_identity_conflict}});
+        {ok, _} ->
+            throw({talk_record_rollback, {error, final_identity_conflict}});
+        {error, Reason} ->
+            ?ERROR_LOG([talk_record_final_identity_check_failed, JobId, Reason]),
+            throw({talk_record_rollback, {error, db_error}})
+    end.
+
+%% @doc complete 请求体解析：V1 单 capture 清单 + 必填 manifest_hash 与
+%% final_audio + 可选处理同意。
+%% 返回 #{captures := [#{capture_id,last_seq,manifest_hash}],
+%%        final_audio := #{...}, consent => map()|undefined}。
 -spec parse_complete(map()) -> {ok, map()} | {error, atom()}.
 parse_complete(Body) when is_map(Body) ->
     case maps:get(<<"captures">>, Body, undefined) of
@@ -406,31 +552,97 @@ parse_capture_decl(Body, CapDecl) ->
     end.
 
 parse_decl_hash(Body, Cid, LastSeq, ClientHash) ->
-    HashOk =
-        ClientHash =:= undefined orelse (is_binary(ClientHash) andalso is_hex64(ClientHash)),
+    %% manifest_hash 必填（no-backend-ffmpeg V1：完成清单不可缺服务端校验锚）。
+    HashOk = is_binary(ClientHash) andalso is_hex64(ClientHash),
     case HashOk of
         true ->
-            Consent =
-                case maps:get(<<"processing_consent">>, Body, undefined) of
-                    undefined -> undefined;
-                    C when is_map(C) -> C;
-                    _ -> invalid
-                end,
-            case Consent of
-                invalid ->
-                    {error, invalid_processing_consent};
-                _ ->
-                    Decl = #{capture_id => Cid, last_seq => LastSeq},
-                    Decl1 =
-                        case ClientHash of
-                            undefined -> Decl;
-                            _ -> Decl#{manifest_hash => ClientHash}
+            case parse_final_audio(maps:get(<<"final_audio">>, Body, undefined)) of
+                {ok, Final} ->
+                    Consent =
+                        case maps:get(<<"processing_consent">>, Body, undefined) of
+                            undefined -> undefined;
+                            C when is_map(C) -> C;
+                            _ -> invalid
                         end,
-                    {ok, #{captures => [Decl1], consent => Consent}}
+                    case Consent of
+                        invalid ->
+                            {error, invalid_processing_consent};
+                        _ ->
+                            {ok, #{
+                                captures => [
+                                    #{
+                                        capture_id => Cid,
+                                        last_seq => LastSeq,
+                                        manifest_hash => ClientHash
+                                    }
+                                ],
+                                final_audio => Final,
+                                consent => Consent
+                            }}
+                    end;
+                {error, Reason} ->
+                    {error, Reason}
             end;
         false ->
             {error, invalid_manifest_hash}
     end.
+
+%% @private final_audio 形态校验（值级合法性；真实性由 resolve_final_input_tx
+%% 与服务端会话/附件比对）。V1 成品合同：AAC-LC/ADTS 单声道。
+-spec parse_final_audio(term()) -> {ok, map()} | {error, atom()}.
+parse_final_audio(D) when is_map(D) ->
+    ObjectKey = maps:get(<<"object_key">>, D, undefined),
+    Cid = maps:get(<<"client_upload_id">>, D, undefined),
+    Sha = maps:get(<<"sha256">>, D, undefined),
+    ByteSize = maps:get(<<"byte_size">>, D, undefined),
+    Rate = maps:get(<<"sample_rate">>, D, undefined),
+    Channels = maps:get(<<"channels">>, D, undefined),
+    Samples = maps:get(<<"sample_count">>, D, undefined),
+    DurationMs = maps:get(<<"duration_ms">>, D, undefined),
+    case
+        is_binary(ObjectKey) andalso byte_size(ObjectKey) > 0 andalso
+            is_uuid36(Cid) andalso is_binary(Sha) andalso is_hex64(Sha) andalso
+            positive_int(ByteSize) =/= error andalso positive_int(Rate) =/= error andalso
+            Channels =:= 1 andalso positive_int(Samples) =/= error andalso
+            positive_int(DurationMs) =/= error
+    of
+        true ->
+            {ok, #{
+                object_key => ObjectKey,
+                client_upload_id => Cid,
+                sha256 => Sha,
+                byte_size => ByteSize,
+                sample_rate => Rate,
+                channels => Channels,
+                sample_count => Samples,
+                duration_ms => DurationMs
+            }};
+        false ->
+            {error, invalid_final_audio}
+    end;
+parse_final_audio(undefined) ->
+    {error, final_audio_required};
+parse_final_audio(_) ->
+    {error, invalid_final_audio}.
+
+%% client_upload_id 为 36 位 UUID 形态（8-4-4-4-12 hex）。
+is_uuid36(Bin) when is_binary(Bin), byte_size(Bin) =:= 36 ->
+    Parts = binary:split(Bin, <<"-">>, [global]),
+    case Parts of
+        [A, B, C, D, E] ->
+            byte_size(A) =:= 8 andalso byte_size(B) =:= 4 andalso byte_size(C) =:= 4 andalso
+                byte_size(D) =:= 4 andalso byte_size(E) =:= 12 andalso
+                lists:all(
+                    fun is_hex_lower/1,
+                    binary_to_list(<<A/binary, B/binary, C/binary, D/binary, E/binary>>)
+                );
+        _ ->
+            false
+    end;
+is_uuid36(_) ->
+    false.
+
+is_hex_lower(C) -> (C >= $0 andalso C =< $9) orelse (C >= $a andalso C =< $f).
 
 %% ===================================================================
 %% 取消（删除/治理流程入口，T20 接线点）
