@@ -43,6 +43,8 @@ BSL 1.1 的默认授予是"复制、修改、创作演绎作品、再分发，�
 
 > **判据提示**：Additional Use Grant 用"单租户 / 多租户"作为 SaaS 的判据，而不是"是否收费"——为单一客户做的私有部署即使收费也是允许的，一套实例服务多个客户即使免费也不在授予范围内。
 
+上述三类场景的正式商业授权文本（合同条款模板 + 授权确认书签署页）见 [`commercial-license-terms.md`](./commercial-license-terms.md)。该模板以许可方自然人名义出具（设立企业主体后按其第八条办理继受），签署前需律师审阅。
+
 ### ⏳ 自动转开源
 
 每个版本自其首次公开发布之日起，四年后（以先到者为准）自动转为 **MPL 2.0** 授权，上述限制随之终止。该承诺写在 `LICENSE` 的 Covenants of Licensor 第 1 条，对全部接收者有效。
@@ -85,4 +87,5 @@ BSL 1.1 的正文明确**不授予**许可方及其关联方的商标、服务�
 
 | 日期 | 变更 |
 |------|------|
+| 2026-11-02 | 新增商业授权条款模板 [`commercial-license-terms.md`](./commercial-license-terms.md)，覆盖多租户 SaaS、竞争性服务、白标/OEM 三类需授权场景及授权确认书签署页。根 `LICENSE` 未改动（其 Additional Use Grant 已包含 SaaS 限制）。 |
 | 2026-09-14 | 后端 `imboy` 与管理后台 `imboy-admin-frontend` 由 MulanPSL-2.0 切换为 BSL 1.1（Change License: MPL 2.0）；移动客户端 `imboy-flutter` 保持 MulanPSL-2.0。旧许可文本保留为 `docs/legal/MulanPSL-2.0.txt`（不放根目录：避免被托管平台的许可证扫描识别为第二个许可证）。 |
