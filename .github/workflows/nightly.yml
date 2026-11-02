@@ -584,13 +584,17 @@ jobs:
           done
           echo "::error::PG 未在 60s 内就绪"; docker logs imboy_pg_ci; exit 1
 
-      - name: Build deps for migration escript
+      - name: Build deps and app beams for harnesses
         run: |
-          # scripts/drill_migrate.escript 依赖 deps/{epgsql,erlang_migrate}/ebin
-          # （escript 头注释：先 make compile）。本 job 此前不编译 deps，
-          # 缓存未命中时 escript 报 epgsql:connect/1 undefined（run
-          # 41360214828 实测）。make deps 拉取并编译全部 DEPS；缓存命中时增量。
+          # scripts/drill_migrate.escript 依赖 deps/{epgsql,erlang_migrate}/ebin；
+          # 行为 harness escript 依赖 ebin/ 下 imboy 自身 beam（escript 头注释：
+          # 先 make compile）。本 job 此前只 make deps 从不编译主项目，ebin/ 为
+          # 空，harness 首个 imboy 模块调用即 undef——同根因两种表象：
+          #   epgsql:connect/1（41360214828，deps 未编译）
+          #   elib_tsid:init/1（41377820035，主项目未编译）。
+          # make deps 拉取并编译全部 DEPS；make compile 编译 src/ → ebin/。
           make deps
+          make compile
 
       - name: Apply migrations to head
         env:
