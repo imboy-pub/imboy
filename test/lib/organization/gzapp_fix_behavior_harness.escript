@@ -31,17 +31,22 @@ main(_) ->
         filename:join([RepoDir, "deps/uid/ebin"])
     ]),
     ok = elib_tsid:init(#{
-        dc_id => 0, node_id => 9, dc_bits => 3 %% V10 TSID 重构后 namespace 走 elib_tsid_inventory 合同，init/1 不再收 names
+        %% V10 TSID 重构后 namespace 走 elib_tsid_inventory 合同，init/1 不再收 names
+        dc_id => 0,
+        node_id => 9,
+        dc_bits => 3
     }),
     ConnOpts = conn_opts(),
     {ok, Conn} = epgsql:connect(ConnOpts),
     Counters = counters:new(1, []),
     {ok, _} = application:ensure_all_started(pooler),
     ok = application:set_env(imboy, sql_driver, pgsql),
-    {ok, _} = pooler:new_pool(maps:merge(
-        #{name => pgsql, init_count => 2, max_count => 6, queue_max => 20},
-        #{start_mfa => {epgsql, connect, [ConnOpts]}}
-    )),
+    {ok, _} = pooler:new_pool(
+        maps:merge(
+            #{name => pgsql, init_count => 2, max_count => 6, queue_max => 20},
+            #{start_mfa => {epgsql, connect, [ConnOpts]}}
+        )
+    ),
     {ok, _} = imboy_cache:start_link([{depcache_memory_max, 100}]),
     _ = (catch application:ensure_all_started(lager)),
     ok = setup(Conn),
@@ -75,16 +80,26 @@ env(Key, Default) ->
 %% ===================================================================
 -define(ORG1, 16#83E90001).
 -define(ORG2, 16#83E90002).
--define(WS1, 16#83E90011).        %% org1 首个 ws（初始默认），owner=OWNER1
--define(WS2, 16#83E90012).        %% org1 次个 ws，owner=WSOWNER1
--define(WS_ORG2, 16#83E90013).    %% org2 的 ws（跨 org 替代项来源）
--define(WS3, 16#83E90014).        %% org1 第 3 个 ws，owner=OWNER1（非默认归档用）
--define(OWNER1, 16#83E90101).     %% org1 owner + ws1 owner（组织管理者）
--define(ADMIN1, 16#83E90102).     %% org1 admin（组织管理者，非任何 ws owner）
--define(MEMBER1, 16#83E90103).    %% org1 普通 member（既非管理者也非 ws owner）
--define(WSOWNER1, 16#83E90104).   %% org1 member + ws2 owner（非组织管理者）
--define(OUTSIDER, 16#83E90105).   %% org2 owner，与 org1 无关
--define(CREATE_OWNER, 16#83E90106). %% F3：admin_create 的 owner（active human）
+%% org1 首个 ws（初始默认），owner=OWNER1
+-define(WS1, 16#83E90011).
+%% org1 次个 ws，owner=WSOWNER1
+-define(WS2, 16#83E90012).
+%% org2 的 ws（跨 org 替代项来源）
+-define(WS_ORG2, 16#83E90013).
+%% org1 第 3 个 ws，owner=OWNER1（非默认归档用）
+-define(WS3, 16#83E90014).
+%% org1 owner + ws1 owner（组织管理者）
+-define(OWNER1, 16#83E90101).
+%% org1 admin（组织管理者，非任何 ws owner）
+-define(ADMIN1, 16#83E90102).
+%% org1 普通 member（既非管理者也非 ws owner）
+-define(MEMBER1, 16#83E90103).
+%% org1 member + ws2 owner（非组织管理者）
+-define(WSOWNER1, 16#83E90104).
+%% org2 owner，与 org1 无关
+-define(OUTSIDER, 16#83E90105).
+%% F3：admin_create 的 owner（active human）
+-define(CREATE_OWNER, 16#83E90106).
 -define(FORBIDDEN_PREFIX, <<"仅组织 Owner/Admin"/utf8>>).
 
 setup(Conn) ->
@@ -92,63 +107,79 @@ setup(Conn) ->
     _ = cleanup(Conn),
     exec(
         Conn,
-        <<"INSERT INTO \"user\" (id, password, account, reg_ip, reg_cosv, account_type)"
+        <<
+            "INSERT INTO \"user\" (id, password, account, reg_ip, reg_cosv, account_type)"
             " SELECT i, 'x', 'gzfix-u' || i, '127.0.0.1', '', 0"
-            " FROM unnest($1::bigint[]) AS i ON CONFLICT (id) DO NOTHING">>,
+            " FROM unnest($1::bigint[]) AS i ON CONFLICT (id) DO NOTHING"
+        >>,
         [[?OWNER1, ?ADMIN1, ?MEMBER1, ?WSOWNER1, ?OUTSIDER, ?CREATE_OWNER]]
     ),
     exec(
         Conn,
-        <<"INSERT INTO organization (id, name, owner_id, status, branding, settings)"
+        <<
+            "INSERT INTO organization (id, name, owner_id, status, branding, settings)"
             " VALUES ($1,'GZFIX-Org1',$2,'active','{}','{}'),"
             " ($3,'GZFIX-Org2',$4,'active','{}','{}')"
-            " ON CONFLICT (id) DO NOTHING">>,
+            " ON CONFLICT (id) DO NOTHING"
+        >>,
         [?ORG1, ?OWNER1, ?ORG2, ?OUTSIDER]
     ),
     %% 角色矩阵：owner / admin / member / member
     exec(
         Conn,
-        <<"INSERT INTO organization_member (organization_id, user_id, role, status)"
+        <<
+            "INSERT INTO organization_member (organization_id, user_id, role, status)"
             " VALUES ($1,$2,'owner','active'), ($1,$3,'admin','active'),"
             " ($1,$4,'member','active'), ($1,$5,'member','active'),"
             " ($6,$7,'owner','active')"
-            " ON CONFLICT DO NOTHING">>,
+            " ON CONFLICT DO NOTHING"
+        >>,
         [?ORG1, ?OWNER1, ?ADMIN1, ?MEMBER1, ?WSOWNER1, ?ORG2, ?OUTSIDER]
     ),
     exec(
         Conn,
-        <<"INSERT INTO workspace (id, name, owner_id, organization_id, status, type, branding)"
+        <<
+            "INSERT INTO workspace (id, name, owner_id, organization_id, status, type, branding)"
             " VALUES ($1,'GZFIX-WS1',$2,$3,'active','project','{}'),"
             " ($4,'GZFIX-WS2',$5,$3,'active','project','{}'),"
             " ($6,'GZFIX-WS3',$7,$8,'active','project','{}')"
-            " ON CONFLICT (id) DO NOTHING">>,
+            " ON CONFLICT (id) DO NOTHING"
+        >>,
         [?WS1, ?OWNER1, ?ORG1, ?WS2, ?WSOWNER1, ?WS_ORG2, ?OUTSIDER, ?ORG2]
     ),
     exec(
         Conn,
-        <<"INSERT INTO workspace_member (workspace_id, user_id, role, status)"
+        <<
+            "INSERT INTO workspace_member (workspace_id, user_id, role, status)"
             " VALUES ($1,$2,'owner','active'), ($3,$4,'owner','active'), ($5,$6,'owner','active')"
-            " ON CONFLICT DO NOTHING">>,
+            " ON CONFLICT DO NOTHING"
+        >>,
         [?WS1, ?OWNER1, ?WS2, ?WSOWNER1, ?WS_ORG2, ?OUTSIDER]
     ),
     exec(
         Conn,
-        <<"INSERT INTO workspace (id, name, owner_id, organization_id, status, type, branding)"
+        <<
+            "INSERT INTO workspace (id, name, owner_id, organization_id, status, type, branding)"
             " VALUES ($1,'GZFIX-WS3b',$2,$3,'active','project','{}')"
-            " ON CONFLICT (id) DO NOTHING">>,
+            " ON CONFLICT (id) DO NOTHING"
+        >>,
         [?WS3, ?OWNER1, ?ORG1]
     ),
     exec(
         Conn,
-        <<"INSERT INTO workspace_member (workspace_id, user_id, role, status)"
-            " VALUES ($1,$2,'owner','active') ON CONFLICT DO NOTHING">>,
+        <<
+            "INSERT INTO workspace_member (workspace_id, user_id, role, status)"
+            " VALUES ($1,$2,'owner','active') ON CONFLICT DO NOTHING"
+        >>,
         [?WS3, ?OWNER1]
     ),
     %% 初始默认：org1 → WS1（模拟「建企时首个 ws 即默认」的稳态）
     exec(
         Conn,
-        <<"INSERT INTO organization_default_workspace (organization_id, workspace_id)"
-            " VALUES ($1,$2) ON CONFLICT (organization_id) DO UPDATE SET workspace_id = $2">>,
+        <<
+            "INSERT INTO organization_default_workspace (organization_id, workspace_id)"
+            " VALUES ($1,$2) ON CONFLICT (organization_id) DO UPDATE SET workspace_id = $2"
+        >>,
         [?ORG1, ?WS1]
     ),
     ok.
@@ -363,9 +394,14 @@ probes(Conn, Counters) ->
     io:format("~n== F3 建企模板原语 + 加入编排（真库） ==~n"),
     %% EADM-07 起 admin_create/5 携带 AuditCtx（见 gzapp_enterprise harness 同注）
     RA = organization_admin_logic:admin_create(
-        1, <<"GZFIX-建企验证"/utf8>>, ?CREATE_OWNER, <<"GZFIX-默认工作区"/utf8>>,
-        #{ip => <<"127.0.0.1">>,
-          request => #{<<"method">> => <<"POST">>, <<"path">> => <<"/api/adm/organizations">>}}
+        1,
+        <<"GZFIX-建企验证"/utf8>>,
+        ?CREATE_OWNER,
+        <<"GZFIX-默认工作区"/utf8>>,
+        #{
+            ip => <<"127.0.0.1">>,
+            request => #{<<"method">> => <<"POST">>, <<"path">> => <<"/api/adm/organizations">>}
+        }
     ),
     pass_val(Counters, <<"P14 admin_create → {ok,_}"/utf8>>, RA, fun is_ok/1),
     {OrgNew, WsNew} = created_ids(RA),
@@ -392,7 +428,9 @@ probes(Conn, Counters) ->
     pass(Counters, <<"P18 默认关系指向该 ws"/utf8>>, default_of(Conn, OrgNew) =:= WsNew),
     %% P19：F3 的业务面证据——加入编排现在能拿到 group_id/channel_id（此前恒 none）
     {ok, Sum} = elib_pg:with_tx(fun(C) ->
-        {ok, _Outcome, S} = organization_join_orchestrator:join_tx(C, OrgNew, ?MEMBER1, null),
+        {ok, _Outcome, S} = organization_join_orchestrator:join_tx(
+            C, OrgNew, ?MEMBER1, null, <<"member">>
+        ),
         {ok, S}
     end),
     pass(
@@ -417,7 +455,6 @@ probes(Conn, Counters) ->
     ),
     cleanup_created(Conn, OrgNew, WsNew),
     ok.
-
 
 is_error_binary({error, Msg}) when is_binary(Msg) -> true;
 is_error_binary(_) -> false.
@@ -454,8 +491,10 @@ default_of(Conn, OrgId) ->
     case
         epgsql:equery(
             Conn,
-            <<"SELECT workspace_id FROM organization_default_workspace"
-                " WHERE organization_id = $1">>,
+            <<
+                "SELECT workspace_id FROM organization_default_workspace"
+                " WHERE organization_id = $1"
+            >>,
             [OrgId]
         )
     of
@@ -484,14 +523,18 @@ ws_member_role(Conn, WsId, Uid) ->
 default_resource_ids(Conn, WsId) ->
     Gid = one_opt(
         Conn,
-        <<"SELECT id FROM \"group\" WHERE workspace_id = $1 AND scope = 'workspace'"
-            " AND status = 1 ORDER BY id ASC LIMIT 1">>,
+        <<
+            "SELECT id FROM \"group\" WHERE workspace_id = $1 AND scope = 'workspace'"
+            " AND status = 1 ORDER BY id ASC LIMIT 1"
+        >>,
         [WsId]
     ),
     Cid = one_opt(
         Conn,
-        <<"SELECT id FROM channel WHERE workspace_id = $1 AND scope = 'workspace'"
-            " AND status = 1 ORDER BY id ASC LIMIT 1">>,
+        <<
+            "SELECT id FROM channel WHERE workspace_id = $1 AND scope = 'workspace'"
+            " AND status = 1 ORDER BY id ASC LIMIT 1"
+        >>,
         [WsId]
     ),
     {Gid, Cid}.
@@ -513,8 +556,10 @@ channel_admin_role(Conn, Cid, Uid) ->
 channel_subs(Conn, Cid, Uid) ->
     scalar(
         Conn,
-        <<"SELECT count(*) FROM channel_subscription WHERE channel_id = $1"
-            " AND user_id = $2 AND status = 1">>,
+        <<
+            "SELECT count(*) FROM channel_subscription WHERE channel_id = $1"
+            " AND user_id = $2 AND status = 1"
+        >>,
         [Cid, Uid]
     ).
 
@@ -586,8 +631,10 @@ cleanup(Conn) ->
     ),
     _ = epgsql:equery(
         Conn,
-        <<"DELETE FROM channel_admin WHERE channel_id IN"
-            " (SELECT id FROM channel WHERE workspace_id = ANY($1))">>,
+        <<
+            "DELETE FROM channel_admin WHERE channel_id IN"
+            " (SELECT id FROM channel WHERE workspace_id = ANY($1))"
+        >>,
         [WsIds]
     ),
     _ = epgsql:equery(Conn, <<"DELETE FROM channel WHERE workspace_id = ANY($1)">>, [WsIds]),
@@ -633,22 +680,28 @@ group_ids_of_ws(Conn, WsIds) ->
 cleanup_created(Conn, OrgId, WsId) ->
     _ = epgsql:equery(
         Conn,
-        <<"DELETE FROM group_log WHERE group_id IN"
-            " (SELECT id FROM \"group\" WHERE workspace_id = $1)">>,
+        <<
+            "DELETE FROM group_log WHERE group_id IN"
+            " (SELECT id FROM \"group\" WHERE workspace_id = $1)"
+        >>,
         [WsId]
     ),
     _ = epgsql:equery(
         Conn,
-        <<"DELETE FROM group_member WHERE group_id IN"
-            " (SELECT id FROM \"group\" WHERE workspace_id = $1)">>,
+        <<
+            "DELETE FROM group_member WHERE group_id IN"
+            " (SELECT id FROM \"group\" WHERE workspace_id = $1)"
+        >>,
         [WsId]
     ),
     _ = epgsql:equery(Conn, <<"DELETE FROM \"group\" WHERE workspace_id = $1">>, [WsId]),
     _ = epgsql:equery(Conn, <<"DELETE FROM channel_subscription WHERE workspace_id = $1">>, [WsId]),
     _ = epgsql:equery(
         Conn,
-        <<"DELETE FROM channel_admin WHERE channel_id IN"
-            " (SELECT id FROM channel WHERE workspace_id = $1)">>,
+        <<
+            "DELETE FROM channel_admin WHERE channel_id IN"
+            " (SELECT id FROM channel WHERE workspace_id = $1)"
+        >>,
         [WsId]
     ),
     _ = epgsql:equery(Conn, <<"DELETE FROM channel WHERE workspace_id = $1">>, [WsId]),
