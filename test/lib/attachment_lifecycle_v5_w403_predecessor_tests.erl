@@ -19,6 +19,22 @@
 -define(SUP, attachment_lifecycle_v5_w403_predecessor_support).
 
 w403_predecessor_test_() ->
+    %% 受控让位（仓库先例：attachment_lifecycle_v5_pg_tests r20_test_/
+    %% v5_gate_pinned：eunit 无 {skip, ...} 顶层描述符，生成器返回空清单
+    %% 才是等价的静默让位机制）。setup 经 inttest_marker_db:provision
+    %% 钉 V5_INTTEST_W403P（gate 由 scripts/test/attachment_lifecycle_v5_
+    %% gate.sh 成套导出 V5_INTTEST_W403P_DB）；nightly 全量裸跑不经 gate，
+    %% 缺钉名 env 时在生成器入口让位，不进 setup（provision 的 fail-closed
+    %% 契约留给非法半配置）。gate 路径（env 在场）语义与断言零删减。
+    case os:getenv("V5_INTTEST_W403P_DB") of
+        V when is_list(V), V =/= "" ->
+            predecessor_units();
+        _ ->
+            io:format(user, "W403_PRED_EUNIT_YIELD missing_env=\"V5_INTTEST_W403P_DB\"~n", []),
+            []
+    end.
+
+predecessor_units() ->
     {setup, fun setup/0, fun cleanup/1, fun(St) ->
         [leaf_unit(St, Spec) || Spec <- specs()]
     end}.

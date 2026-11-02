@@ -5,6 +5,23 @@
 %% Focused first-stage proof. The immutable matrix below remains independent;
 %% a successful round trip never seals an unexecuted race/fault scenario.
 roundtrip_test_() ->
+    %% 受控让位（仓库先例：attachment_lifecycle_v5_pg_tests r20_test_/
+    %% v5_gate_pinned、w403_gateway_protocol_tests protocol_test_：eunit 无
+    %% {skip, ...} 顶层描述符，生成器返回空清单才是等价的静默让位机制）。
+    %% 本套件经 attachment_w403_http_fixture:setup 依赖
+    %% attachment_lifecycle_v5_w403_gateway_protocol_tests:setup，后者
+    %% required("W403_RESOURCE_MANIFEST") fail-closed；nightly 全量裸跑
+    %% （make eunit-local-legacy）不经 gate，缺钉名 env 时在生成器入口
+    %% 让位，不进 setup。gate 路径（env 在场）语义与断言零删减。
+    case os:getenv("W403_RESOURCE_MANIFEST") of
+        V when is_list(V), V =/= "" ->
+            roundtrip_units();
+        _ ->
+            io:format(user, "W403DM_EUNIT_YIELD missing_env=\"W403_RESOURCE_MANIFEST\"~n", []),
+            []
+    end.
+
+roundtrip_units() ->
     {setup, fun attachment_w403_http_fixture:setup/0, fun attachment_w403_http_fixture:cleanup/1,
         fun(S) ->
             [
@@ -31,6 +48,16 @@ roundtrip_test_() ->
 %% Separate from the fixed 64-leaf matrix: the declared hash and size match the
 %% real body, but a disallowed text control byte lies beyond the first 64 KiB.
 sealed_body_validation_test_() ->
+    %% 受控让位：同 roundtrip_test_/0 的 W403_RESOURCE_MANIFEST gate。
+    case os:getenv("W403_RESOURCE_MANIFEST") of
+        V when is_list(V), V =/= "" ->
+            sealed_body_validation_units();
+        _ ->
+            io:format(user, "W403DM_EUNIT_YIELD missing_env=\"W403_RESOURCE_MANIFEST\"~n", []),
+            []
+    end.
+
+sealed_body_validation_units() ->
     {setup, fun attachment_w403_http_fixture:setup/0, fun attachment_w403_http_fixture:cleanup/1,
         fun(S) ->
             [
@@ -79,6 +106,16 @@ report_evidence(Leaf) ->
     ]).
 
 w403_driver_matrix_test_() ->
+    %% 受控让位：同 roundtrip_test_/0 的 W403_RESOURCE_MANIFEST gate。
+    case os:getenv("W403_RESOURCE_MANIFEST") of
+        V when is_list(V), V =/= "" ->
+            matrix_units();
+        _ ->
+            io:format(user, "W403DM_EUNIT_YIELD missing_env=\"W403_RESOURCE_MANIFEST\"~n", []),
+            []
+    end.
+
+matrix_units() ->
     {setup, fun attachment_w403_http_fixture:setup/0, fun attachment_w403_http_fixture:cleanup/1,
         fun(S) ->
             [

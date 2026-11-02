@@ -37,7 +37,25 @@
 -define(MARKER, <<"V5_INTTEST_W601H">>).
 
 w601_w3_hold_test_() ->
-    Driver = ?SUP:driver(),
+    %% 受控让位（仓库先例：attachment_lifecycle_v5_pg_tests r20_test_/
+    %% v5_gate_pinned：eunit 无 {skip, ...} 顶层描述符，生成器返回空清单
+    %% 才是等价的静默让位机制）。setup 经 ?SUP:setup 直连 gate 建好的
+    %% attv5_<slot>_w601 库（V5_INTTEST_W601H_DB，由
+    %% scripts/test/attachment_lifecycle_v5_gate.sh 成套导出）；nightly
+    %% 全量裸跑不经 gate，缺钉名 env 时在生成器入口让位，不进 setup
+    %% （?SUP:setup 的 fail-closed 契约留给非法半配置）。gate 路径（env
+    %% 在场）语义与断言零删减。?SUP:driver/0 缺 V5_PROBE_DRIVER 时安全
+    %% 回退 <<"garage">>，先于其执行不构成额外风险。
+    case os:getenv("V5_INTTEST_W601H_DB") of
+        V when is_list(V), V =/= "" ->
+            Driver = ?SUP:driver(),
+            hold_units(Driver);
+        _ ->
+            io:format(user, "W601W3_HOLD_EUNIT_YIELD missing_env=\"V5_INTTEST_W601H_DB\"~n", []),
+            []
+    end.
+
+hold_units(Driver) ->
     {setup, fun setup/0, fun cleanup/1, fun(S) ->
         [leaf_unit(S, Spec) || Spec <- specs(Driver)]
     end}.

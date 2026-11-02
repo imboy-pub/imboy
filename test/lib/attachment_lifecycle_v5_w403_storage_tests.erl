@@ -34,6 +34,38 @@
 -define(DISK_CONTAINER, <<"w403c">>).
 
 w403_storage_test_() ->
+    %% 受控让位（仓库先例：attachment_lifecycle_v5_pg_tests r20_test_/
+    %% v5_gate_pinned：eunit 无 {skip, ...} 顶层描述符，生成器返回空清单
+    %% 才是等价的静默让位机制）。setup 的 garage_env/0 对 W202_GARAGE_*
+    %% 四个 env fail-closed（gate 由 scripts/test/attachment_lifecycle_v5_
+    %% gate.sh 成套导出）；nightly 全量裸跑不经 gate，缺任一钉名 env 时在
+    %% 生成器入口让位，不进 setup（半配置由 setup 内 fail-closed 显式
+    %% 拒绝，不在生成器猜测）。gate 路径（env 齐全）语义与断言零删减。
+    case garage_env_set() of
+        true ->
+            storage_units();
+        false ->
+            io:format(user, "W403_STORAGE_EUNIT_YIELD missing_env=\"W202_GARAGE_*\"~n", []),
+            []
+    end.
+
+garage_env_set() ->
+    lists:all(
+        fun(Name) ->
+            case os:getenv(Name) of
+                V when is_list(V), V =/= "" -> true;
+                _ -> false
+            end
+        end,
+        [
+            "W202_GARAGE_ENDPOINT",
+            "W202_GARAGE_BUCKET",
+            "W202_GARAGE_ACCESS_KEY",
+            "W202_GARAGE_SECRET_KEY"
+        ]
+    ).
+
+storage_units() ->
     {setup, fun setup/0, fun cleanup/1, fun(S) ->
         [leaf_unit(S, Spec) || Spec <- specs()]
     end}.

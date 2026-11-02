@@ -34,6 +34,25 @@
 -define(DRV, [disk, garage]).
 
 w601_w2_confirm_test_() ->
+    %% 受控让位（仓库先例：attachment_lifecycle_v5_pg_tests r20_test_/
+    %% v5_gate_pinned、w403_gateway_protocol_tests protocol_test_：eunit 无
+    %% {skip, ...} 顶层描述符，生成器返回空清单才是等价的静默让位机制）。
+    %% 本套件经 ?F:setup（attachment_w403_http_fixture）依赖 gate 成套导出
+    %% 的 W403_* 钉名 env；nightly 全量裸跑（make eunit-local-legacy）不经
+    %% gate，缺钉名 env 时在生成器入口让位，不进 setup。gate 路径（env 在
+    %% 场）语义与断言零删减。矩阵形状自证（confirm_matrix_instantiation_test）
+    %% 走 confirm_units/0 直连，不依赖钉名 env。
+    case os:getenv("W403_RESOURCE_MANIFEST") of
+        V when is_list(V), V =/= "" ->
+            confirm_units();
+        _ ->
+            io:format(
+                user, "W601W2_CONFIRM_EUNIT_YIELD missing_env=\"W403_RESOURCE_MANIFEST\"~n", []
+            ),
+            []
+    end.
+
+confirm_units() ->
     {setup, fun ?F:setup/0, fun ?F:cleanup/1, fun(S) ->
         [leaf_unit(S, Spec) || Spec <- specs()]
     end}.
@@ -119,7 +138,10 @@ ep_name(E) when is_binary(E) -> E.
 %% names and the two domains must produce 58 distinct runnable descriptors.
 %% 建立完整矩阵无需 PG/HTTP；二进制入口和两个域须生成 58 个不同描述符。
 confirm_matrix_instantiation_test() ->
-    {setup, _, _, Instantiate} = w601_w2_confirm_test_(),
+    %% 直连 confirm_units/0（不取 w601_w2_confirm_test_/0：后者缺钉名 env
+    %% 时让位返回 []，模式匹配 {setup,_,_,_} 会 badmatch）；矩阵形状自证
+    %% 是纯逻辑，不需要钉名 env。
+    {setup, _, _, Instantiate} = confirm_units(),
     Units = Instantiate(#{}),
     ?assertEqual(58, length(Units)),
     Names = [Name || {Name, {timeout, 240, Fun}} <- Units, is_function(Fun, 0)],

@@ -35,6 +35,23 @@
 ]).
 
 w601_w4_race_test_() ->
+    %% 受控让位（同 attachment_lifecycle_v5_pg_tests r20_test_/v5_gate_pinned
+    %% 先例：eunit 无 {skip, ...} 顶层描述符，生成器返回空清单才是等价的
+    %% 静默让位机制）。setup 经 ?X:setup 钉 V5_INTTEST_W601W4RACE；nightly
+    %% 全量裸跑不经 gate，缺钉名 env 时在生成器入口让位，不进 setup
+    %% （?X:setup 的 fail-closed 契约留给非法半配置）。gate 路径（env 在
+    %% 场）语义与断言零删减。
+    case os:getenv("V5_INTTEST_W601W4RACE_DB") of
+        V when is_list(V), V =/= "" ->
+            race_units();
+        _ ->
+            io:format(
+                user, "W601W4_RACE_EUNIT_YIELD missing_env=\"V5_INTTEST_W601W4RACE_DB\"~n", []
+            ),
+            []
+    end.
+
+race_units() ->
     {setup, fun setup/0, fun cleanup/1, fun(St) ->
         [?X:leaf(S, fun() -> scenario(St, S) end) || S <- specs()]
     end}.

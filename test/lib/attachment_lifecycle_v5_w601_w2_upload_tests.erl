@@ -29,6 +29,26 @@
 -define(DRV, [disk, garage]).
 
 w601_w2_upload_test_() ->
+    %% 受控让位（仓库先例：attachment_lifecycle_v5_pg_tests r20_test_/
+    %% v5_gate_pinned：eunit 无 {skip, ...} 顶层描述符，生成器返回空清单
+    %% 才是等价的静默让位机制）。本套件经 ?F:setup（attachment_w403_http_
+    %% fixture → attachment_lifecycle_v5_w403_gateway_protocol_tests:setup
+    %% required("W403_RESOURCE_MANIFEST")）依赖 gate 成套导出的 W403_* 钉名
+    %% env；nightly 全量裸跑（make eunit-local-legacy）不经 gate，缺钉名
+    %% env 时在生成器入口让位，不进 setup。gate 路径（env 在场）语义与
+    %% 断言零删减。server_ttl_not_client_param_test/0 是纯 action 目录
+    %% 自证，不受此 gate 影响。
+    case os:getenv("W403_RESOURCE_MANIFEST") of
+        V when is_list(V), V =/= "" ->
+            upload_units();
+        _ ->
+            io:format(
+                user, "W601W2_UPLOAD_EUNIT_YIELD missing_env=\"W403_RESOURCE_MANIFEST\"~n", []
+            ),
+            []
+    end.
+
+upload_units() ->
     {setup, fun ?F:setup/0, fun ?F:cleanup/1, fun(S) ->
         [leaf_unit(S, Spec) || Spec <- specs()]
     end}.
