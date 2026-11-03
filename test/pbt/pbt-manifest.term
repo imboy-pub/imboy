@@ -16,5 +16,13 @@
     #{id => d02_precision_scaling,
       kind => ordinary,
       mfa => {imboy_quality_pbt_dt_props, prop_d02_precision_scaling, 0},
-      witnesses => [{imboy_quality_pbt_dt_props, witnesses_ok, 0}]}
+      witnesses => [{imboy_quality_pbt_dt_props, witnesses_ok, 0}]},
+    #{id => c01_canonical_reference,
+      kind => ordinary,
+      mfa => {imboy_quality_pbt_cjson_props, prop_c01_canonical_reference, 0},
+      witnesses => [{imboy_quality_pbt_cjson_props, witnesses_ok, 0}]},
+    #{id => c02_illegal_injection,
+      kind => ordinary,
+      mfa => {imboy_quality_pbt_cjson_props, prop_c02_illegal_injection, 0},
+      witnesses => [{imboy_quality_pbt_cjson_props, witnesses_ok, 0}]}
 ]}.

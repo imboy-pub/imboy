@@ -275,13 +275,17 @@ dispatch({pbt, Profile}, _Ctx, Ctrl) ->
         true -> true = code:add_patha(ProperEbin);
         false -> erlang:error({proper_dependency_missing, ProperEbin})
     end,
-    %% P2-03 起，真实性质引用生产模块（如 imboy_frame）：项目 ebin 加入
-    %% path（产物由 make compile 就位；缺失即 error 而非静默 skip）。
+    %% P2-03 起，真实性质引用生产模块（如 imboy_frame）：项目 ebin 与全部
+    %% deps ebin（被测运行时依赖闭包，如 jsone）加入 path；缺失即 error。
     ProjectEbin = filename:join([Repo, "ebin"]),
     case filelib:is_dir(ProjectEbin) of
         true -> true = code:add_patha(ProjectEbin);
         false -> erlang:error({project_ebin_missing, ProjectEbin})
     end,
+    lists:foreach(
+        fun(D) -> true = code:add_patha(D) end,
+        lists:sort(filelib:wildcard(filename:join([Repo, "deps", "*", "ebin"])))
+    ),
     ManifestPath = filename:join([Repo, "test", "pbt", "pbt-manifest.term"]),
     case imboy_quality_pbt:load_manifest(ManifestPath) of
         {ok, Manifest} ->
