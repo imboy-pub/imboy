@@ -324,13 +324,49 @@ garage_creds(Cfg) ->
         maps:get(region, Cfg, <<"garage">>)
     }.
 
-%% HEAD uses Gun because httpc discards duplicate Content-Length headers.
-%% Copy uses async inets: 超限即取消（T44）。inets 合同：
-%% 2xx 以 {stream_start, Headers, Pid} 四元组交付并需 stream_next 流控；
-%% 非 2xx 以完整 result 形态交付（错误体尺寸由 Garage 自身决定，收到后仍
-%% 做上限复核；对恶意存储端的收前硬上限依赖受信存储假设，A0/5a 实测登记）。
+%% 控制面统一 Gun transport（T44 有界合同，C02 收口）：
+%%   * 响应头块在 Gun parser 内受 max_header_block_size 收前硬限：跨 TCP 段
+%%     累积未终结即 limit_reached（gun_http handle/2 wait_headers 分支），
+%%     整块到达后再做一次 64KiB 事后复核，双界闭合。
+%%   * 非 HEAD 控制响应（Copy XML/错误体）逐块累计，超 ?CONTROL_MAX_BODY
+%%     立即 cancel：不依赖 inets 对非 2xx 的完整 result 预缓冲形态，也不把
+%%     流式交付伪装成固定 200（status 取自 Gun response 事件）。
+%%   * TLS verify_peer + 主机名校验；信任锚默认操作系统库，私有部署内部 CA
+%%     可经 garage_control_cacerts 显式注入（DER 列表）。
 %% 不做自动重定向、不在本层重试（上层按状态机裁决）。
-bounded_control_request(head, Url, [], 0) ->
+bounded_control_request(Method, Url, Headers, MaxBody) ->
+    case open_control(Url) of
+        {ok, Connection, Uri, Deadline} ->
+            try
+                Remaining = max(0, Deadline - erlang:monotonic_time(millisecond)),
+                case gun:await_up(Connection, Remaining) of
+                    {ok, http} ->
+                        Path = path_with_query(Uri),
+                        case Method of
+                            head ->
+                                Stream = gun:head(Connection, Path, []),
+                                await_head_response(Connection, Stream, Deadline);
+                            _ ->
+                                GunHeaders = [
+                                    {iolist_to_binary(K), iolist_to_binary(V)}
+                                 || {K, V} <- Headers
+                                ],
+                                MethodBin = control_method_binary(Method),
+                                Stream = gun:request(Connection, MethodBin, Path, GunHeaders, <<>>),
+                                await_control_body(Connection, Stream, MaxBody, Deadline)
+                        end;
+                    {error, _} = Error ->
+                        Error
+                end
+            after
+                gun:close(Connection),
+                gun:flush(Connection)
+            end;
+        {error, _} = Error ->
+            Error
+    end.
+
+open_control(Url) ->
     #{scheme := Scheme, host := Host} = Uri = uri_string:parse(Url),
     Transport =
         case Scheme of
@@ -342,65 +378,93 @@ bounded_control_request(head, Url, [], 0) ->
             tls -> 443;
             tcp -> 80
         end,
-    Options = #{
+    Options0 = #{
         transport => Transport,
         protocols => [http],
         retry => 0,
         connect_timeout => 10000,
         http_opts => #{max_headers => 100, max_header_block_size => ?CONTROL_MAX_BODY}
     },
-    TlsOptions =
+    Options =
         case Transport of
-            tcp ->
-                Options;
-            tls ->
-                Options#{
-                    tls_opts => [
-                        {verify, verify_peer},
-                        {cacerts, public_key:cacerts_get()},
-                        {server_name_indication, binary_to_list(Host)},
-                        {customize_hostname_check, [
-                            {match_fun, public_key:pkix_verify_hostname_match_fun(https)}
-                        ]}
-                    ]
-                }
+            tcp -> Options0;
+            tls -> Options0#{tls_opts => control_tls_opts(Host)}
         end,
     {ok, _} = application:ensure_all_started(gun),
     Deadline = erlang:monotonic_time(millisecond) + ?CONTROL_TIMEOUT_MS,
-    case gun:open(binary_to_list(Host), maps:get(port, Uri, DefaultPort), TlsOptions) of
-        {ok, Connection} ->
-            try
-                head_response(Connection, Uri, Deadline)
-            after
-                gun:close(Connection),
-                gun:flush(Connection)
-            end;
-        {error, _} = Error ->
-            Error
-    end;
-bounded_control_request(Method, Url, Headers, MaxBody) ->
-    Request = {binary_to_list(Url), Headers, "application/octet-stream", <<>>},
-    case
-        httpc:request(
-            Method,
-            Request,
-            [{connect_timeout, 10000}, {autoredirect, false}],
-            [{sync, false}, {stream, {self, once}}, {body_format, binary}]
-        )
-    of
-        {ok, ReqId} -> collect_control(ReqId, MaxBody, ?CONTROL_TIMEOUT_MS);
-        {error, R} -> {error, R}
+    case gun:open(binary_to_list(Host), maps:get(port, Uri, DefaultPort), Options) of
+        {ok, Connection} -> {ok, Connection, Uri, Deadline};
+        {error, _} = Error -> Error
     end.
 
-head_response(Connection, Uri, Deadline) ->
-    case gun:await_up(Connection, max(0, Deadline - erlang:monotonic_time(millisecond))) of
-        {ok, http} ->
-            Path = maps:get(path, Uri, <<"/">>),
-            Query = maps:get(query, Uri, <<>>),
-            Stream = gun:head(Connection, <<Path/binary, "?", Query/binary>>, []),
-            await_head_response(Connection, Stream, Deadline);
+%% 私有部署 Garage endpoint 常由内部 CA 签发：garage_control_cacerts 提供
+%% DER 证书列表时作为信任锚，否则回退操作系统信任库。仅在控制连接建立时
+%% 读取，不影响数据面 presign 合同。
+control_tls_opts(Host) ->
+    Anchors =
+        case application:get_env(imboy, garage_control_cacerts) of
+            {ok, Ders} when is_list(Ders), Ders =/= [] -> Ders;
+            _ -> public_key:cacerts_get()
+        end,
+    [
+        {verify, verify_peer},
+        {cacerts, Anchors},
+        {server_name_indication, binary_to_list(Host)},
+        {customize_hostname_check, [
+            {match_fun, public_key:pkix_verify_hostname_match_fun(https)}
+        ]}
+    ].
+
+path_with_query(Uri) ->
+    Path = maps:get(path, Uri, <<"/">>),
+    case maps:get(query, Uri, <<>>) of
+        <<>> -> Path;
+        Query -> <<Path/binary, "?", Query/binary>>
+    end.
+
+await_control_body(Connection, Stream, MaxBody, Deadline) ->
+    Timeout = max(0, Deadline - erlang:monotonic_time(millisecond)),
+    case gun:await(Connection, Stream, Timeout) of
+        {response, fin, Status, Headers} ->
+            {ok, Status, norm_control_headers(Headers), <<>>};
+        {response, nofin, Status, Headers} ->
+            collect_control_body(Connection, Stream, Status, Headers, MaxBody, Deadline, <<>>);
+        {inform, _, _} ->
+            await_control_body(Connection, Stream, MaxBody, Deadline);
         {error, _} = Error ->
-            Error
+            Error;
+        _ ->
+            {error, invalid_control_response}
+    end.
+
+collect_control_body(Connection, Stream, Status, Headers, MaxBody, Deadline, Acc) ->
+    Timeout = max(0, Deadline - erlang:monotonic_time(millisecond)),
+    case gun:await(Connection, Stream, Timeout) of
+        {data, fin, Bin} ->
+            case byte_size(Acc) + byte_size(Bin) > MaxBody of
+                true -> {error, body_too_large};
+                false -> {ok, Status, norm_control_headers(Headers), <<Acc/binary, Bin/binary>>}
+            end;
+        {data, nofin, Bin} ->
+            case byte_size(Acc) + byte_size(Bin) > MaxBody of
+                true ->
+                    _ = gun:cancel(Connection, Stream),
+                    {error, body_too_large};
+                false ->
+                    collect_control_body(
+                        Connection,
+                        Stream,
+                        Status,
+                        Headers,
+                        MaxBody,
+                        Deadline,
+                        <<Acc/binary, Bin/binary>>
+                    )
+            end;
+        {error, _} = Error ->
+            Error;
+        _ ->
+            {error, invalid_control_response}
     end.
 
 await_head_response(Connection, Stream, Deadline) ->
@@ -429,76 +493,12 @@ await_head_response(Connection, Stream, Deadline) ->
             {error, timeout}
     end.
 
-collect_control(ReqId, MaxBody, TimeoutMs) ->
-    Deadline = erlang:monotonic_time(millisecond) + TimeoutMs,
-    collect_first(ReqId, MaxBody, Deadline).
+norm_control_headers(Headers) ->
+    [{binary_to_list(K), binary_to_list(V)} || {K, V} <- Headers].
 
-collect_first(ReqId, MaxBody, Deadline) ->
-    Timeout = max(0, Deadline - erlang:monotonic_time(millisecond)),
-    receive
-        {http, {ReqId, stream_start, Hs, Pid}} ->
-            %% 流式交付隐含 2xx（错误状态走完整 result 形态）
-            httpc:stream_next(Pid),
-            collect_stream(ReqId, Pid, MaxBody, Deadline, Hs, <<>>);
-        {http, {ReqId, stream_start, Hs}} ->
-            collect_stream(ReqId, undefined, MaxBody, Deadline, Hs, <<>>);
-        {http, {ReqId, {{_Ver, Status, _Reason}, Hs, Body}}} when is_binary(Body) ->
-            case byte_size(Body) > MaxBody of
-                true -> {error, body_too_large};
-                false -> {ok, Status, Hs, Body}
-            end;
-        {http, {ReqId, {{_Ver, Status, _Reason}, Hs, _Other}}} ->
-            {ok, Status, Hs, <<>>};
-        {http, {ReqId, {error, R}}} ->
-            {error, R};
-        {http, {ReqId, saved_to_file, _}} ->
-            try
-                httpc:cancel_request(ReqId)
-            catch
-                _:_ -> ok
-            end,
-            {error, unexpected_saved_to_file}
-    after Timeout ->
-        try
-            httpc:cancel_request(ReqId)
-        catch
-            _:_ -> ok
-        end,
-        {error, timeout}
-    end.
-
-collect_stream(ReqId, Pid, MaxBody, Deadline, Hs, Acc) ->
-    Timeout = max(0, Deadline - erlang:monotonic_time(millisecond)),
-    receive
-        {http, {ReqId, stream, Bin}} when is_binary(Bin) ->
-            NewAcc = <<Acc/binary, Bin/binary>>,
-            case byte_size(NewAcc) > MaxBody of
-                true ->
-                    try
-                        httpc:cancel_request(ReqId)
-                    catch
-                        _:_ -> ok
-                    end,
-                    {error, body_too_large};
-                false ->
-                    case Pid of
-                        undefined -> ok;
-                        _ -> httpc:stream_next(Pid)
-                    end,
-                    collect_stream(ReqId, Pid, MaxBody, Deadline, Hs, NewAcc)
-            end;
-        {http, {ReqId, stream_end, _Hs}} ->
-            {ok, 200, Hs, Acc};
-        {http, {ReqId, {error, R}}} ->
-            {error, R}
-    after Timeout ->
-        try
-            httpc:cancel_request(ReqId)
-        catch
-            _:_ -> ok
-        end,
-        {error, timeout}
-    end.
+%% gun:request 只接受 binary 方法行（atom 会 is_valid_request 崩溃）。
+control_method_binary(Method) ->
+    binary:list_to_bin(string:uppercase(atom_to_list(Method))).
 
 signed(#{endpoint := EP, container := C, key := K, garage_config := Cfg}, Method, Mime, Now, Ttl) ->
     elib_s3_sign:presign_url_at(Method, EP, C, K, Mime, Now, Ttl, Cfg).

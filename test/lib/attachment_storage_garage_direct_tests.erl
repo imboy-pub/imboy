@@ -132,6 +132,163 @@ control_test_() ->
         {timeout, 35, ?_test(pure_mock_fixture:run(fun head_bounded_no_full_read/0))}
     ].
 
+%% ---------------------------------------------------------------- TLS 控制面（C02）
+
+tls_control_test_() ->
+    [
+        {timeout, 45, ?_test(pure_mock_fixture:run(fun tls_trusted_private_ca/0))},
+        {timeout, 45, ?_test(pure_mock_fixture:run(fun tls_untrusted_ca_rejected/0))},
+        {timeout, 45, ?_test(pure_mock_fixture:run(fun tls_hostname_mismatch_rejected/0))}
+    ].
+
+tls_trusted_private_ca() -> tls_control_case(trusted).
+tls_untrusted_ca_rejected() -> tls_control_case(untrusted).
+tls_hostname_mismatch_rejected() -> tls_control_case(mismatch).
+
+%% 真实 TLS loopback：openssl 生成私有 CA/服务器证书/主机名不匹配证书，
+%% ssl listener + 生产 head_bounded 全链路。受信链正向（garage_control_cacerts
+%% 显式信任锚）、系统信任库负向（unknown_ca）、主机名不匹配负向三态。
+tls_control_case(Mode) ->
+    Dir = make_test_pki(),
+    try
+        {ok, _} = application:ensure_all_started(ssl),
+        {ok, _} = application:ensure_all_started(gun),
+        RootDer = pki_root_der(Dir),
+        CertBase =
+            case Mode of
+                mismatch -> "mismatch";
+                _ -> "server"
+            end,
+        {ok, LS} = ssl:listen(0, [
+            binary,
+            {active, false},
+            {ip, {127, 0, 0, 1}},
+            {certfile, Dir ++ "/" ++ CertBase ++ ".pem"},
+            {keyfile, Dir ++ "/" ++ CertBase ++ ".key"},
+            {verify, verify_none}
+        ]),
+        {ok, {_, Port}} = ssl:sockname(LS),
+        Server = spawn(fun() -> serve_tls(LS, 0) end),
+        EP = iolist_to_binary(["https://127.0.0.1:", integer_to_list(Port)]),
+        application:set_env(imboy, garage, maps:put(endpoint, EP, ?CFG)),
+        case Mode of
+            trusted -> application:set_env(imboy, garage_control_cacerts, [RootDer]);
+            _ -> ok
+        end,
+        try
+            pure_mock_fixture:with_mocks(
+                [
+                    {attachment_storage, [
+                        {resolve, 1, fun(<<"g">>) ->
+                            {ok, #{
+                                driver => <<"garage">>, container => <<"bucket">>, endpoint => EP
+                            }}
+                        end}
+                    ]}
+                ],
+                fun() ->
+                    Result =
+                        attachment_storage_garage:head_bounded(<<"g">>, <<"bucket">>, <<"key">>),
+                    case Mode of
+                        trusted ->
+                            ?assertMatch(
+                                {ok, #{size := 123, content_type := <<"application/xml">>}}, Result
+                            );
+                        _ ->
+                            %% 证书不受信/主机名不匹配必须握手拒绝，绝不回退明文 HTTP
+                            ?assertMatch({error, _}, Result)
+                    end
+                end
+            )
+        after
+            ssl:close(LS),
+            exit(Server, kill)
+        end
+    after
+        _ = file:del_dir_r(Dir)
+    end.
+
+make_test_pki() ->
+    Dir = string:trim(os:cmd("mktemp -d /tmp/imboy_c02_pki.XXXXXXXX")),
+    _ = os:cmd(
+        io_lib:format(
+            "openssl req -x509 -newkey rsa:2048 -nodes -keyout ~s/root.key -out ~s/root.pem "
+            "-subj '/CN=closeout-c02-root' -days 2 "
+            "-addext 'basicConstraints=critical,CA:TRUE' "
+            "-addext 'keyUsage=critical,keyCertSign,cRLSign' 2>/dev/null",
+            [Dir, Dir]
+        )
+    ),
+    make_leaf_pki(Dir, "server", "127.0.0.1"),
+    make_leaf_pki(Dir, "mismatch", "127.0.0.2"),
+    true = filelib:is_regular(Dir ++ "/root.pem"),
+    true = filelib:is_regular(Dir ++ "/server.pem"),
+    true = filelib:is_regular(Dir ++ "/mismatch.pem"),
+    Dir.
+
+make_leaf_pki(Dir, Base, HostIp) ->
+    _ = os:cmd(
+        io_lib:format(
+            "openssl req -newkey rsa:2048 -nodes -keyout ~s/~s.key -out ~s/~s.csr "
+            "-subj '/CN=~s' 2>/dev/null",
+            [Dir, Base, Dir, Base, HostIp]
+        )
+    ),
+    ok = file:write_file(
+        Dir ++ "/" ++ Base ++ ".ext",
+        "subjectAltName=IP:" ++ HostIp ++
+            "\nkeyUsage=critical,digitalSignature,keyEncipherment\nextendedKeyUsage=serverAuth\n"
+    ),
+    _ = os:cmd(
+        io_lib:format(
+            "openssl x509 -req -in ~s/~s.csr -CA ~s/root.pem -CAkey ~s/root.key -CAcreateserial "
+            "-out ~s/~s.pem -days 2 -extfile ~s/~s.ext 2>/dev/null",
+            [Dir, Base, Dir, Dir, Dir, Base, Dir, Base]
+        )
+    ),
+    ok.
+
+pki_root_der(Dir) ->
+    {ok, Pem} = file:read_file(Dir ++ "/root.pem"),
+    [{'Certificate', Der, _} | _] =
+        [E || E <- public_key:pem_decode(Pem), element(1, E) =:= 'Certificate'],
+    Der.
+
+serve_tls(_LS, N) when N >= 3 ->
+    ok;
+serve_tls(LS, N) ->
+    case ssl:transport_accept(LS, 6000) of
+        {ok, S1} ->
+            case ssl:handshake(S1, 6000) of
+                {ok, Sock} ->
+                    _ = read_tls_request(Sock, <<>>),
+                    ssl:send(
+                        Sock,
+                        "HTTP/1.1 200 OK\r\n"
+                        "Content-Length: 123\r\n"
+                        "Content-Type: application/xml\r\n"
+                        "Connection: close\r\n\r\n"
+                    ),
+                    ssl:close(Sock);
+                _ ->
+                    ok
+            end,
+            serve_tls(LS, N + 1);
+        _ ->
+            serve_tls(LS, N)
+    end.
+
+read_tls_request(Sock, Acc) ->
+    case binary:match(Acc, <<"\r\n\r\n">>) of
+        nomatch ->
+            case ssl:recv(Sock, 0, 3000) of
+                {ok, B} -> read_tls_request(Sock, <<Acc/binary, B/binary>>);
+                _ -> Acc
+            end;
+        _ ->
+            Acc
+    end.
+
 strict_head_length_test_() ->
     Cases = [
         {[], {error, invalid_content_length}},
@@ -276,29 +433,97 @@ head_mocks(Script) ->
         {await_up, 2, fun(_, _) -> {ok, http} end},
         {head, 3, fun(_, Path, []) ->
             ReqId = make_ref(),
+            put({gun_mock_kind, ReqId}, head),
             Script(head, binary_to_list(Path), [], self(), ReqId),
             ReqId
         end},
-        {await, 3, fun(_, ReqId, _) -> mock_head_response(ReqId) end},
+        {request, 5, fun(_, MethodBin, Path, Headers, _Body) ->
+            %% C02：Copy 控制请求统一 Gun transport 后的请求行/头可见性。
+            ReqId = make_ref(),
+            put({gun_mock_kind, ReqId}, put),
+            StrHeaders = [{binary_to_list(K), binary_to_list(V)} || {K, V} <- Headers],
+            Script(mock_method(MethodBin), binary_to_list(Path), StrHeaders, self(), ReqId),
+            ReqId
+        end},
+        {await, 3, fun(_, ReqId, _) -> mock_gun_event(ReqId) end},
+        {cancel, 2, fun(_, _) -> ok end},
         {close, 1, fun(_) -> ok end},
         {flush, 1, fun(_) -> ok end}
     ]}.
 
-mock_head_response(ReqId) ->
-    receive
-        {http, {ReqId, {{_, Status, _}, Headers, _Body}}} ->
-            mock_head_headers(Status, Headers, fin);
-        {http, {ReqId, stream_start, Headers, _}} ->
+mock_method(<<"PUT">>) -> put;
+mock_method(<<"GET">>) -> get;
+mock_method(<<"DELETE">>) -> delete.
+
+%% Script 的 httpc 风格消息 → Gun await 事件序列（response/data 两段）。
+%% body 缓存在进程字典，下一次 await 以 data fin/nofin 交付，与生产
+%% gun 数据流语义一致（流未终结交付 nofin，超限取消走 cancel）。
+mock_gun_event(ReqId) ->
+    case get({gun_mock_data, ReqId}) of
+        {Bin, Fin} ->
+            erase({gun_mock_data, ReqId}),
+            {data, Fin, Bin};
+        undefined ->
             receive
-                {http, {ReqId, stream_end, _}} -> mock_head_headers(200, Headers, fin);
-                {http, {ReqId, stream, _}} -> mock_head_headers(200, Headers, fin)
-            end;
-        {http, {ReqId, {error, _} = Error}} ->
-            Error
+                {http, {ReqId, {{_, Status, _}, Headers, Body}}} when
+                    is_binary(Body), byte_size(Body) > 0
+                ->
+                    case get({gun_mock_kind, ReqId}) of
+                        head ->
+                            %% HEAD 响应按协议无 body，违规字节忽略（真实 Gun 不发 data）
+                            {response, fin, Status, mock_hdr(Headers)};
+                        _ ->
+                            put({gun_mock_data, ReqId}, {Body, fin}),
+                            {response, nofin, Status, mock_hdr(Headers)}
+                    end;
+                {http, {ReqId, {{_, Status, _}, Headers, _}}} ->
+                    {response, fin, Status, mock_hdr(Headers)};
+                {http, {ReqId, stream_start, Headers, _}} ->
+                    mock_gun_stream_event(ReqId, Headers);
+                {http, {ReqId, {error, _} = Error}} ->
+                    Error
+            after 2000 ->
+                {error, timeout}
+            end
     end.
 
-mock_head_headers(Status, Headers, Fin) ->
-    {response, Fin, Status, [{list_to_binary(K), list_to_binary(V)} || {K, V} <- Headers]}.
+mock_gun_stream_event(ReqId, Headers) ->
+    case get({gun_mock_kind, ReqId}) of
+        head ->
+            %% 真实 Gun 对 HEAD 请求不产生 data 事件（响应按协议无 body，
+            %% 服务器违规多发的字节被忽略）：与旧 mock 语义一致。
+            receive
+                {http, {ReqId, stream, _}} ->
+                    _ =
+                        receive
+                            {http, {ReqId, stream_end, _}} -> ok
+                        after 0 -> ok
+                        end,
+                    {response, fin, 200, mock_hdr(Headers)};
+                {http, {ReqId, stream_end, _}} ->
+                    {response, fin, 200, mock_hdr(Headers)}
+            after 2000 ->
+                {error, timeout}
+            end;
+        _ ->
+            receive
+                {http, {ReqId, stream, Bin}} ->
+                    Fin =
+                        receive
+                            {http, {ReqId, stream_end, _}} -> fin
+                        after 0 -> nofin
+                        end,
+                    put({gun_mock_data, ReqId}, {Bin, Fin}),
+                    {response, nofin, 200, mock_hdr(Headers)};
+                {http, {ReqId, stream_end, _}} ->
+                    {response, fin, 200, mock_hdr(Headers)}
+            after 2000 ->
+                {error, timeout}
+            end
+    end.
+
+mock_hdr(Headers) ->
+    [{list_to_binary(K), list_to_binary(V)} || {K, V} <- Headers].
 
 head_bounded_parses_headers() ->
     Script = fun(head, _Url, [], Receiver, ReqId) ->
@@ -448,13 +673,15 @@ real_http_control_test_() ->
             head_duplicate,
             head_missing_length,
             head_oversized_headers,
+            head_preparse_limit,
             legacy_head_ok,
             legacy_head_zero,
             legacy_head_forbidden,
             copy_ok,
             copy_error_xml,
             copy_missing,
-            copy_oversized
+            copy_oversized,
+            copy_non2xx_oversized
         ]
     ].
 
@@ -491,7 +718,8 @@ real_http_control(Kind) ->
                             HeadKind =:= head_missing;
                             HeadKind =:= head_duplicate;
                             HeadKind =:= head_missing_length;
-                            HeadKind =:= head_oversized_headers
+                            HeadKind =:= head_oversized_headers;
+                            HeadKind =:= head_preparse_limit
                         ->
                             attachment_storage_garage:head_bounded(
                                 <<"g">>, <<"bucket">>, <<"key">>
@@ -518,7 +746,8 @@ real_http_control(Kind) ->
                             CopyKind =:= copy_ok;
                             CopyKind =:= copy_error_xml;
                             CopyKind =:= copy_missing;
-                            CopyKind =:= copy_oversized
+                            CopyKind =:= copy_oversized;
+                            CopyKind =:= copy_non2xx_oversized
                         ->
                             <<"PUT">>;
                         _ ->
@@ -549,6 +778,46 @@ serve_control(Listener, Kind, Owner, Ref) ->
                 ok
         end,
         Owner ! {Ref, Method},
+        case Kind of
+            head_preparse_limit ->
+                %% C02：跨 TCP 段持续发送未终结 header 块（9×~8.2KB > 64KiB），
+                %% 证明 Gun parser 在 preparse 累积路径触发收前硬限 limit_reached，
+                %% 而不是等整块到达后的事后复核。
+                _ = [
+                    begin
+                        ok = gen_tcp:send(Socket, [
+                            "X-Flood-",
+                            integer_to_list(I),
+                            ": ",
+                            lists:duplicate(8176, $x),
+                            "\r\n"
+                        ]),
+                        timer:sleep(15)
+                    end
+                 || I <- lists:seq(1, 9)
+                ],
+                drain_until_closed(Socket),
+                exit(normal);
+            copy_non2xx_oversized ->
+                %% C02：非 2xx + 超大错误体分块下发，证明 Copy 控制路径对
+                %% 错误响应体同样逐块累计超限即取消（无服务端错误体预缓冲）。
+                ok = gen_tcp:send(Socket, [
+                    "HTTP/1.1 404 Not Found\r\n"
+                    "Content-Type: application/xml\r\n"
+                    "Content-Length: 131076\r\n"
+                    "Connection: close\r\n\r\n"
+                ]),
+                _ = [
+                    begin
+                        send_ignoring_errors(Socket, binary:copy(<<"x">>, 43692)),
+                        timer:sleep(15)
+                    end
+                 || _ <- lists:seq(1, 3)
+                ],
+                exit(normal);
+            _ ->
+                ok
+        end,
         {Status, Body} =
             case Kind of
                 HeadKind when
@@ -634,6 +903,12 @@ assert_control_result(head_missing_length, Result) ->
     ?assertEqual({error, invalid_content_length}, Result);
 assert_control_result(head_oversized_headers, Result) ->
     ?assertMatch({error, _}, Result);
+assert_control_result(head_preparse_limit, Result) ->
+    %% Gun parser 收前硬限（非事后复核）：跨段未终结 header 块触发 limit_reached；
+    %% gun:await 对连接级错误有 {connection_error, _} 外层包装（gun 2.6.0）。
+    ?assertMatch(
+        {error, {connection_error, {connection_error, limit_reached, _}}}, Result
+    );
 assert_control_result(legacy_head_ok, Result) ->
     ?assertMatch({ok, #{size := 123}}, Result);
 assert_control_result(legacy_head_zero, Result) ->
@@ -647,9 +922,22 @@ assert_control_result(copy_error_xml, Result) ->
 assert_control_result(copy_missing, Result) ->
     ?assertEqual({error, not_found}, Result);
 assert_control_result(copy_oversized, Result) ->
+    ?assertEqual({error, body_too_large}, Result);
+assert_control_result(copy_non2xx_oversized, Result) ->
+    %% 非 2xx 错误体同样受逐块上限约束：超限即取消，不整块接收
     ?assertEqual({error, body_too_large}, Result).
 
 %% ---------------------------------------------------------------- helpers
+
+drain_until_closed(Socket) ->
+    case gen_tcp:recv(Socket, 0, 2000) of
+        {ok, _} -> drain_until_closed(Socket);
+        _ -> ok
+    end.
+
+send_ignoring_errors(Socket, Bin) ->
+    _ = gen_tcp:send(Socket, Bin),
+    ok.
 
 base64_urlsafe_zero() -> base64:encode(binary:copy(<<0>>, 32)).
 base64_urlsafe_one() -> base64:encode(binary:copy(<<1>>, 32)).
