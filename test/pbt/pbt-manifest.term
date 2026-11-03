@@ -36,5 +36,17 @@
     #{id => q01_tsid_reserve_sequences,
       kind => sequence,
       mfa => {imboy_quality_pbt_tsid_seq_props, prop_q01_reserve_sequences, 0},
-      witnesses => [{imboy_quality_pbt_tsid_seq_props, witnesses_ok, 0}]}
+      witnesses => [{imboy_quality_pbt_tsid_seq_props, witnesses_ok, 0}]},
+    #{id => m01_full_manifest_model,
+      kind => ordinary,
+      mfa => {imboy_quality_pbt_manifest_props, prop_m01_full_manifest_model, 0},
+      witnesses => [{imboy_quality_pbt_manifest_props, witnesses_ok, 0}]},
+    #{id => m02_entry_idempotence_page_integrity,
+      kind => ordinary,
+      mfa => {imboy_quality_pbt_manifest_props, prop_m02_entry_idempotence_page_integrity, 0},
+      witnesses => [{imboy_quality_pbt_manifest_props, witnesses_ok, 0}]},
+    #{id => m03_revision_conflict_compat,
+      kind => ordinary,
+      mfa => {imboy_quality_pbt_manifest_props, prop_m03_revision_conflict_compat, 0},
+      witnesses => [{imboy_quality_pbt_manifest_props, witnesses_ok, 0}]}
 ]}.
