@@ -739,8 +739,14 @@ compile_all(BuildDir) ->
             case needs_compile(Src, any_beam(BuildDir, _Mod)) of
                 true ->
                     case erlc(Src, BuildDir) of
-                        0 -> ok;
-                        Code -> erlang:error({compile_failed, Src, Code})
+                        0 ->
+                            {ok, Bin2} = file:read_file(Src),
+                            Sidecar =
+                                BuildDir ++ "/" ++
+                                    filename:rootname(filename:basename(Src)) ++ ".beam.srcmd5",
+                            ok = file:write_file(Sidecar, crypto:hash(md5, Bin2));
+                        Code ->
+                            erlang:error({compile_failed, Src, Code})
                     end;
                 false ->
                     ok
@@ -781,12 +787,22 @@ collect_port(Port, Acc) ->
         erlang:error(erlc_timeout)
     end.
 
+%% P2-04 fix: mtime comparison missed same-session re-edits twice (resolution
+%% / same-second writes); replaced by source-md5 sidecar (<mod>.beam.srcmd5):
+%% recompile iff content changed or beam missing (BUILD03-class guard).
 needs_compile(Src, Out) ->
-    case {filelib:last_modified(Src), filelib:last_modified(Out)} of
-        {Zero, _} when element(1, Zero) =:= {0, 0, 0} ->
-            erlang:error({missing_source, Src});
-        {SrcM, OutM} ->
-            SrcM >= OutM
+    case file:read_file(Src) of
+        {ok, Bin} ->
+            Md5 = crypto:hash(md5, Bin),
+            Sidecar = Out ++ ".srcmd5",
+            Recorded =
+                case file:read_file(Sidecar) of
+                    {ok, Prev} -> Prev;
+                    _ -> <<>>
+                end,
+            Recorded =/= Md5 orelse not filelib:is_regular(Out);
+        {error, _} ->
+            erlang:error({missing_source, Src})
     end.
 
 %% ---- guard 辅助 ----

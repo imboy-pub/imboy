@@ -8,5 +8,13 @@
     #{id => f02_frame_fragment_recovery,
       kind => ordinary,
       mfa => {imboy_quality_pbt_frame_props, prop_f02_fragment_recovery, 0},
-      witnesses => [{imboy_quality_pbt_frame_props, witnesses_ok, 0}]}
+      witnesses => [{imboy_quality_pbt_frame_props, witnesses_ok, 0}]},
+    #{id => d01_same_instant_offsets,
+      kind => ordinary,
+      mfa => {imboy_quality_pbt_dt_props, prop_d01_same_instant_offsets, 0},
+      witnesses => [{imboy_quality_pbt_dt_props, witnesses_ok, 0}]},
+    #{id => d02_precision_scaling,
+      kind => ordinary,
+      mfa => {imboy_quality_pbt_dt_props, prop_d02_precision_scaling, 0},
+      witnesses => [{imboy_quality_pbt_dt_props, witnesses_ok, 0}]}
 ]}.
