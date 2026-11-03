@@ -401,6 +401,17 @@ map_reason({missing_sequences, Detail}) when is_map(Detail) ->
     {409, <<"录音分段不完整，请补传后重试"/utf8>>, ?ERR_PARAM_INVALID};
 map_reason(manifest_hash_conflict) ->
     {409, <<"录音清单校验不一致"/utf8>>, ?ERR_PARAM_INVALID};
+%% ---- no-backend-ffmpeg V1 成品合同 ----
+map_reason(final_audio_required) ->
+    {422, <<"缺少最终成品上传信息（final_audio）"/utf8>>, ?ERR_PARAM_INVALID};
+map_reason(invalid_final_audio) ->
+    {422, <<"final_audio 字段不合规"/utf8>>, ?ERR_PARAM_INVALID};
+map_reason(final_not_confirmed) ->
+    {409, <<"最终成品上传尚未确认，请先完成直传确认"/utf8>>, ?ERR_PARAM_INVALID};
+map_reason(final_asset_mismatch) ->
+    {409, <<"最终成品与会话事实不一致"/utf8>>, ?ERR_PARAM_INVALID};
+map_reason(final_identity_conflict) ->
+    {409, <<"同一清单已绑定其他成品会话，请恢复首次上传会话"/utf8>>, ?ERR_PARAM_INVALID};
 map_reason(capture_not_ended) ->
     {409, <<"录音尚未结束"/utf8>>, ?ERR_PARAM_INVALID};
 map_reason(job_not_retryable) ->

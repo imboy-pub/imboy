@@ -61,9 +61,14 @@
     part_attachment_missing,
     audio_size_limit,
     audio_part_integrity_mismatch,
-    audio_render_failed,
-    audio_render_invalid_output,
-    audio_render_invalid_duration,
+    audio_frame_invalid,
+    audio_identity_mismatch,
+    audio_part_boundary_invalid,
+    final_input_missing,
+    final_input_invalid,
+    final_asset_mismatch,
+    final_not_confirmed,
+    final_identity_conflict,
     audio_duration_mismatch,
     artifact_integrity_mismatch
 ]).

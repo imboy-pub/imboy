@@ -83,31 +83,42 @@ stream_bytes_and_revocation_test_() ->
                 qs => <<"ticket=", T/binary>>,
                 headers => #{<<"range">> => <<"bytes=2-5">>}
             },
-            {ok, Resp, _} = talk_record_playback_handler:init(Base, #{current_uid => 700001}),
-            ?assertEqual(206, maps:get(status, Resp)),
+            %% 边缘未配置：GET fail-closed 503（不回退 BEAM 取流）。
+            {ok, Resp503, _} = talk_record_playback_handler:init(Base, #{
+                current_uid => 700001
+            }),
+            ?assertEqual(503, maps:get(status, Resp503)),
+            Reads = meck:num_calls(attachment_artifact_reader, with_range, '_'),
+            %% 配置边缘基址：GET 302 到边缘（同一票据，不泄私有签名）。
+            ok = application:set_env(imboy, edge_base_url, <<"http://127.0.0.1:13992/edge">>),
+            {ok, Resp302, _} = talk_record_playback_handler:init(Base, #{
+                current_uid => 700001
+            }),
+            ?assertEqual(302, maps:get(status, Resp302)),
             ?assertEqual(
-                <<"bytes 2-5/150000">>,
-                maps:get(<<"content-range">>, maps:get(response_headers, Resp))
+                <<"http://127.0.0.1:13992/edge?ticket=", T/binary>>,
+                maps:get(<<"location">>, maps:get(response_headers, Resp302))
             ),
-            ?assertEqual(<<"nthe">>, iolist_to_binary(lists:reverse(get(stream_bytes)))),
-            Reads = meck:num_calls(attachment_derived_artifact, with_range, '_'),
             put(stream_bytes, []),
             {ok, Head, _} = talk_record_playback_handler:init(Base#{method => <<"HEAD">>}, #{
                 current_uid => 700001
             }),
             ?assertEqual(206, maps:get(status, Head)),
             ?assertEqual([], get(stream_bytes)),
-            ?assertEqual(Reads, meck:num_calls(attachment_derived_artifact, with_range, '_')),
-            {ok, Denied, _} = talk_record_playback_handler:init(Base, #{current_uid => 700002}),
-            ?assertEqual(403, maps:get(status, Denied)),
-            put(revoke_after_chunk, true),
-            ?assertExit(
-                playback_authorization_changed,
-                talk_record_playback_handler:init(
-                    Base#{headers => #{}}, #{current_uid => 700001}
-                )
+            ?assertEqual(Reads, meck:num_calls(attachment_artifact_reader, with_range, '_')),
+            %% 记录不可见（撤权/删除语义）：HEAD recheck → 404。
+            meck:expect(talk_record_repo, find_visible, fun(_, _) ->
+                {error, not_found}
+            end),
+            {ok, Revoked, _} = talk_record_playback_handler:init(
+                Base#{method => <<"HEAD">>}, #{current_uid => 700001}
             ),
-            ?assertEqual(65536, byte_size(iolist_to_binary(get(stream_bytes))))
+            ?assertEqual(404, maps:get(status, Revoked)),
+            meck:expect(talk_record_repo, find_visible, fun(_, _) ->
+                {ok, row(1, <<"available">>)}
+            end),
+            {ok, Denied, _} = talk_record_playback_handler:init(Base, #{current_uid => 700002}),
+            ?assertEqual(403, maps:get(status, Denied))
         end)
     end}.
 
@@ -117,15 +128,10 @@ stream_setup() ->
     put(revoke_after_chunk, false),
     ok = meck:new(elib_pg, [passthrough, no_link]),
     meck:expect(elib_pg, with_conn, fun(F) -> F(test_connection) end),
-    ok = meck:new(talk_record_assembly_logic, [passthrough, no_link]),
-    meck:expect(talk_record_assembly_logic, find_tx, fun(_, 800001) ->
-        {ok, #{<<"audio_attachment_id">> => 900001}}
-    end),
-    ok = meck:new(attachment_derived_artifact, [passthrough, no_link]),
-    meck:expect(attachment_derived_artifact, metadata, fun(900001) ->
-        {ok, #{<<"size">> => 150000}}
-    end),
-    meck:expect(attachment_derived_artifact, with_range, fun(900001, Offset, Length, F) ->
+    %% T5 读取权威：assembly 已发布成品行（published_audio_tx 查询）
+    meck:expect(elib_pg, query, fun(_C, _Sql, _Args) -> {ok, [published_row()]} end),
+    ok = meck:new(attachment_artifact_reader, [non_strict, no_link]),
+    meck:expect(attachment_artifact_reader, with_range, fun(_Row, Offset, Length, F) ->
         attachment_upload_spool:with_source(
             binary:part(binary:copy(<<"synthetic-audio">>, 10000), Offset, Length), F
         )
@@ -153,9 +159,8 @@ stream_setup() ->
     end),
     Prev.
 stream_cleanup(Prev) ->
-    lists:foreach(fun meck:unload/1, [
-        cowboy_req, attachment_derived_artifact, talk_record_assembly_logic, elib_pg
-    ]),
+    application:unset_env(imboy, edge_base_url),
+    lists:foreach(fun meck:unload/1, [cowboy_req, attachment_artifact_reader, elib_pg]),
     erase(stream_bytes),
     erase(revoke_after_chunk),
     cleanup(Prev).
@@ -173,6 +178,15 @@ cleanup(Prev) ->
         undefined -> application:unset_env(imboy, jwt_key)
     end.
 row(Acl, Media) -> #{<<"acl_revision">> => Acl, <<"media_status">> => Media}.
+
+%% T5 读取权威：published_audio_tx 查询返回的已发布成品附件行。
+published_row() ->
+    #{
+        <<"id">> => 900001,
+        <<"size">> => 150000,
+        <<"path">> => <<"talk-record/final/synthetic.aac">>,
+        <<"file_hash256">> => binary:copy(<<"a">>, 64)
+    }.
 key() -> <<"synthetic-playback-signing-key-000000000001">>.
 ticket() ->
     imboy_jwt:sign(

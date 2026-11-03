@@ -66,9 +66,20 @@ method_dispatch_test_() ->
         end}.
 
 complete_parse_contract_test() ->
-    Body = #{<<"captures">> => [#{<<"capture_id">> => 123, <<"last_seq">> => 0}]},
+    %% no-backend-ffmpeg V1：manifest_hash 与 final_audio 必填。
+    Hash = hash64(),
+    Body = #{
+        <<"captures">> => [
+            #{<<"capture_id">> => 123, <<"last_seq">> => 0, <<"manifest_hash">> => Hash}
+        ],
+        <<"final_audio">> => final_decl()
+    },
     ?assertEqual(
-        {ok, #{captures => [#{capture_id => 123, last_seq => 0}], consent => undefined}},
+        {ok, #{
+            captures => [#{capture_id => 123, last_seq => 0, manifest_hash => Hash}],
+            final_audio => final_parsed(),
+            consent => undefined
+        }},
         talk_record_job_logic:parse_complete(Body)
     ),
     ?assertEqual(
@@ -77,6 +88,91 @@ complete_parse_contract_test() ->
             #{<<"captures">> => [#{<<"capture_id">> => 123}]}
         )
     ).
+
+complete_parse_mandatory_test() ->
+    Hash = hash64(),
+    CapH = #{<<"capture_id">> => 1, <<"last_seq">> => 0, <<"manifest_hash">> => Hash},
+    %% manifest_hash 缺失/非 hex64 → invalid_manifest_hash。
+    ?assertEqual(
+        {error, invalid_manifest_hash},
+        talk_record_job_logic:parse_complete(
+            #{
+                <<"captures">> => [#{<<"capture_id">> => 1, <<"last_seq">> => 0}],
+                <<"final_audio">> => final_decl()
+            }
+        )
+    ),
+    ?assertEqual(
+        {error, invalid_manifest_hash},
+        talk_record_job_logic:parse_complete(
+            #{
+                <<"captures">> => [CapH#{<<"manifest_hash">> => <<"zz">>}],
+                <<"final_audio">> => final_decl()
+            }
+        )
+    ),
+    %% final_audio 缺失/形态非法。
+    ?assertEqual(
+        {error, final_audio_required},
+        talk_record_job_logic:parse_complete(#{<<"captures">> => [CapH]})
+    ),
+    ?assertEqual(
+        {error, invalid_final_audio},
+        talk_record_job_logic:parse_complete(
+            #{
+                <<"captures">> => [CapH],
+                <<"final_audio">> => maps:remove(<<"channels">>, final_decl())
+            }
+        )
+    ),
+    %% channels 非 1（V1 单声道合同）与 client_upload_id 非 UUID。
+    ?assertEqual(
+        {error, invalid_final_audio},
+        talk_record_job_logic:parse_complete(
+            #{
+                <<"captures">> => [CapH],
+                <<"final_audio">> => final_decl(#{<<"channels">> => 2})
+            }
+        )
+    ),
+    ?assertEqual(
+        {error, invalid_final_audio},
+        talk_record_job_logic:parse_complete(
+            #{
+                <<"captures">> => [CapH],
+                <<"final_audio">> =>
+                    final_decl(#{<<"client_upload_id">> => <<"not-a-uuid">>})
+            }
+        )
+    ).
+
+final_decl() -> final_decl(#{}).
+final_decl(Override) ->
+    maps:merge(
+        #{
+            <<"object_key">> => <<"u1/talk_record/r1/final.aac">>,
+            <<"client_upload_id">> => <<"0f0e0d0c-0b0a-49f8-8a7b-6c5d4e3f2a1b">>,
+            <<"sha256">> => hash64(),
+            <<"byte_size">> => 1024,
+            <<"sample_rate">> => 16000,
+            <<"channels">> => 1,
+            <<"sample_count">> => 1024,
+            <<"duration_ms">> => 64
+        },
+        Override
+    ).
+
+final_parsed() ->
+    #{
+        object_key => <<"u1/talk_record/r1/final.aac">>,
+        client_upload_id => <<"0f0e0d0c-0b0a-49f8-8a7b-6c5d4e3f2a1b">>,
+        sha256 => hash64(),
+        byte_size => 1024,
+        sample_rate => 16000,
+        channels => 1,
+        sample_count => 1024,
+        duration_ms => 64
+    }.
 
 processing_parse_contract_test() ->
     Body = #{
@@ -132,3 +228,5 @@ module_size_test() ->
         end,
         Modules
     ).
+
+hash64() -> list_to_binary(lists:duplicate(64, $a)).

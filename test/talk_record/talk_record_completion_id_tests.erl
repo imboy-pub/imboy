@@ -30,4 +30,29 @@ invalid_capture_maps_http_422_test() ->
         meck:unload(elib_response)
     end.
 
-body(Id) -> #{<<"captures">> => [#{<<"capture_id">> => Id, <<"last_seq">> => 0}]}.
+body(Id) ->
+    #{
+        <<"captures">> => [
+            #{
+                <<"capture_id">> => Id,
+                <<"last_seq">> => 0,
+                <<"manifest_hash">> => hash64()
+            }
+        ],
+        <<"final_audio">> => final_audio_decl()
+    }.
+
+%% no-backend-ffmpeg V1：complete 必填 final_audio（形态校验级）。
+final_audio_decl() ->
+    #{
+        <<"object_key">> => <<"u1/talk_record/r1/final.aac">>,
+        <<"client_upload_id">> => <<"0f0e0d0c-0b0a-49f8-8a7b-6c5d4e3f2a1b">>,
+        <<"sha256">> => hash64(),
+        <<"byte_size">> => 1024,
+        <<"sample_rate">> => 16000,
+        <<"channels">> => 1,
+        <<"sample_count">> => 1024,
+        <<"duration_ms">> => 64
+    }.
+
+hash64() -> list_to_binary(lists:duplicate(64, $a)).

@@ -18,7 +18,9 @@ new(C, R, J, Run) ->
     talk_record_client_gate:ensure(Current =:= Snapshot, input_stale),
     Plan = talk_record_provider_contract:plan(Snapshot),
     freeze(C, Run, Plan),
-    Profile = talk_record_provider_contract:profile(),
+    %% no-backend-ffmpeg V1：rate 来自 assemble 校验通过的冻结成品参数。
+    Rate = final_rate(J),
+    Profile = talk_record_provider_contract:profile(Rate),
     Previous = predecessor(C, R, J, Run),
     T = (maps:with(
         [
@@ -56,6 +58,25 @@ new(C, R, J, Run) ->
     reply(
         C, R, J, Run, talk_record_provider_ds:task(C, maps:get(<<"id">>, R), maps:get(<<"id">>, T))
     ).
+
+%% 冻结成品真实采样率（complete 事务准入时写入 processor_input）。
+final_rate(J) ->
+    Pin = maps:get(<<"processor_input">>, J, null),
+    Final =
+        case Pin of
+            Bin when is_binary(Bin) -> jsone:decode(Bin);
+            M when is_map(M) -> M;
+            _ -> null
+        end,
+    case maps:get(<<"final_audio">>, Final, undefined) of
+        #{<<"sample_rate">> := Rate} when is_integer(Rate), Rate > 0 ->
+            case lists:member(Rate, talk_record_provider_contract:rates()) of
+                true -> Rate;
+                false -> talk_record_client_gate:abort(final_input_invalid)
+            end;
+        _ ->
+            talk_record_client_gate:abort(final_input_missing)
+    end.
 freeze(C, #{<<"chunk_plan_hash">> := null} = Run, Plan) ->
     Id = maps:get(<<"id">>, Run),
     Hash = talk_record_client_contract:hash(Plan),

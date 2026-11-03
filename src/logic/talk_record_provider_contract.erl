@@ -1,7 +1,9 @@
 -module(talk_record_provider_contract).
 -moduledoc "Pure asynchronous supplier protocol, immutable identifiers and paid-intent fences.".
 -export([
-    profile/0,
+    profile/1,
+    profile_rate/1,
+    rates/0,
     plan/1,
     validate/2,
     transition/4,
@@ -11,11 +13,14 @@
     can_resume_preparation/1
 ]).
 
-profile() ->
+%% no-backend-ffmpeg V1：rate 来自 assemble 校验通过的真实成品采样率
+%% （ADTS 帧头读出、服务器字节验证、complete 冻结于 processor_input），
+%% 不再永久写死 16000；固定 request 策略与 audio 其余参数不放宽。
+profile(Rate) when is_integer(Rate), Rate > 0 ->
     #{
         <<"audio">> => #{
             <<"format">> => <<"aac">>,
-            <<"rate">> => 16000,
+            <<"rate">> => Rate,
             <<"bits">> => 16,
             <<"channel">> => 1
         },
@@ -29,6 +34,37 @@ profile() ->
             <<"enable_ddc">> => false
         }
     }.
+
+%% ADTS 合法采样率（与 talk_record_audio_validate / 客户端
+%% talk_record_adts.dart 同一集合；迁移 00000242 白名单同源）。
+rates() ->
+    [96000, 88200, 64000, 48000, 44100, 32000, 24000, 22050, 16000, 12000, 11025, 8000, 7350].
+
+%% 已冻结 profile 的真实采样率提取与固定策略校验（恢复/查询用）：
+%% 验证该任务已冻结的合法 profile——固定 request 策略精确、audio 其余
+%% 参数固定、rate 在 ADTS 白名单内——不再与无参默认单一值比较。
+profile_rate(#{<<"audio">> := Audio, <<"request">> := Request}) when is_map(Audio) ->
+    Fixed = #{<<"format">> => <<"aac">>, <<"bits">> => 16, <<"channel">> => 1},
+    DefaultRequest = maps:get(<<"request">>, profile(16000)),
+    case
+        maps:with([<<"format">>, <<"bits">>, <<"channel">>], Audio) =:= Fixed andalso
+            Request =:= DefaultRequest
+    of
+        false ->
+            {error, profile_policy_invalid};
+        true ->
+            case maps:get(<<"rate">>, Audio, 0) of
+                Rate when is_integer(Rate), Rate > 0 ->
+                    case lists:member(Rate, rates()) of
+                        true -> {ok, Rate};
+                        false -> {error, profile_rate_invalid}
+                    end;
+                _ ->
+                    {error, profile_rate_invalid}
+            end
+    end;
+profile_rate(_) ->
+    {error, profile_policy_invalid}.
 
 plan(#{<<"assembly">> := A, <<"parts">> := Parts}) ->
     #{

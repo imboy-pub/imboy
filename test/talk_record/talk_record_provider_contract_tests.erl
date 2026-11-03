@@ -3,7 +3,7 @@
 profile_frozen_hash_test() ->
     ?assertEqual(
         <<"d723bf03c21bf27f6d35a38d6134c2cdf33ebe4a6700b35c8bd98ec27fc4cfab">>,
-        talk_record_client_contract:hash(talk_record_provider_contract:profile())
+        talk_record_client_contract:hash(talk_record_provider_contract:profile(16000))
     ).
 submit_once_test() ->
     T = task(),
@@ -123,7 +123,7 @@ task() ->
         <<"provider_task_id">> => null,
         <<"intent_id">> => null,
         <<"profile_hash">> => talk_record_client_contract:hash(
-            talk_record_provider_contract:profile()
+            talk_record_provider_contract:profile(16000)
         ),
         <<"client_request_id">> => uuid()
     }.
@@ -171,7 +171,7 @@ known_pending_view_and_recovery_block_resubmit_test() ->
     Base = #{
         <<"id">> => 1,
         <<"revision">> => 1,
-        <<"request_profile">> => talk_record_provider_contract:profile(),
+        <<"request_profile">> => talk_record_provider_contract:profile(16000),
         <<"assembly">> => #{},
         <<"source_authorization_id">> => 1,
         <<"cancelled_at">> => null,
@@ -262,3 +262,50 @@ unstarted() ->
             ]
         ]
     ]).
+
+%% no-backend-ffmpeg V1：非 16k 黄金 hash（迁移 00000242 白名单同源值）。
+profile_non_16k_golden_hash_test() ->
+    ?assertEqual(
+        <<"cab55b1c02a75033e4b7e396abb14ba29d4ca2d3ebfffdc4de4c885ea76bbb16">>,
+        talk_record_client_contract:hash(talk_record_provider_contract:profile(44100))
+    ).
+
+%% 冻结 profile 白名单校验：固定策略精确 + ADTS 采样率合法 + 漂移拒绝。
+profile_rate_whitelist_test() ->
+    {ok, 44100} = talk_record_provider_contract:profile_rate(
+        talk_record_provider_contract:profile(44100)
+    ),
+    {ok, 16000} = talk_record_provider_contract:profile_rate(
+        talk_record_provider_contract:profile(16000)
+    ),
+    lists:foreach(
+        fun(Rate) ->
+            {ok, Rate} = talk_record_provider_contract:profile_rate(
+                talk_record_provider_contract:profile(Rate)
+            )
+        end,
+        talk_record_provider_contract:rates()
+    ),
+    %% 未知采样率：白名单外拒绝。
+    {error, profile_rate_invalid} = talk_record_provider_contract:profile_rate(
+        talk_record_provider_contract:profile(12345)
+    ),
+    %% request 策略漂移拒绝（固定策略不放宽）。
+    Drifted = (talk_record_provider_contract:profile(16000))#{
+        <<"request">> =>
+            (maps:get(<<"request">>, talk_record_provider_contract:profile(16000)))#{
+                <<"enable_punc">> => false
+            }
+    },
+    {error, profile_policy_invalid} = talk_record_provider_contract:profile_rate(Drifted),
+    %% audio 形态漂移拒绝（声道/格式/位深固定）。
+    {error, profile_policy_invalid} = talk_record_provider_contract:profile_rate(
+        (talk_record_provider_contract:profile(16000))#{
+            <<"audio">> =>
+                (maps:get(<<"audio">>, talk_record_provider_contract:profile(16000)))#{
+                    <<"channel">> => 2
+                }
+        }
+    ),
+    %% 坏形态拒绝。
+    {error, profile_policy_invalid} = talk_record_provider_contract:profile_rate(<<"junk">>).

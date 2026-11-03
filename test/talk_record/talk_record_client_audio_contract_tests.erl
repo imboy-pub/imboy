@@ -318,8 +318,9 @@ task(Now) ->
         <<"enable_ddc">> => false,
         <<"intent_id">> => 40,
         <<"request_hash">> => hash(),
+        <<"request_profile">> => talk_record_provider_contract:profile(16000),
         <<"profile_hash">> => talk_record_client_contract:hash(
-            talk_record_provider_contract:profile()
+            talk_record_provider_contract:profile(16000)
         ),
         <<"state">> => <<"accepted">>,
         <<"source_authorization_id">> => 60,

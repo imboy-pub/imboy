@@ -10,14 +10,12 @@
 
 -define(UID, 700002).
 -define(TOKEN, <<"v3run1-edge-internal-token">>).
--define(FFMPEG, "/usr/local/bin/ffmpeg").
 
 main(AppPort, EdgePort) ->
     case os:getenv("A0_ENDPOINT") of
         false -> exit(a0_env_missing);
         _ -> ok
     end,
-    true = filelib:is_file(?FFMPEG) orelse exit(ffmpeg_missing),
     Root = os:getenv("G18_TALK_UPLOAD_ROOT", "/tmp/v3w5b-g18-talk-root"),
     filelib:ensure_dir(filename:join(Root, "x")),
     {ok, _} = application:ensure_all_started(inets),
@@ -41,7 +39,7 @@ main(AppPort, EdgePort) ->
 
 %% --------------------------------------------------------------------------
 %% 段B+C：分片直传（真 presign PUT + S3 checksum）→ confirm → assembly
-%% （真 fork escript Worker：fetch_parts+ffmpeg+staging_upload+Copy）。
+%% （真 fork escript Worker：成品经 artifact_reader 校验 + manifest staging 上传）。
 %% 返回 {Rid, AudioAttachmentId, AudioBytes}
 %% --------------------------------------------------------------------------
 seg_direct_upload_then_assembly(Root) ->
@@ -83,6 +81,9 @@ seg_direct_upload_then_assembly(Root) ->
     ),
     {A1, S1, Z1} = direct_part(1, P1, Rid),
     {A2, S2, Z2} = direct_part(2, P2, Rid),
+    %% no-backend-ffmpeg V1：客户端合成成品独立直传（第三 direct 会话），
+    %% assembly job 冻结其身份并在发布时绑定（不再服务端产派生副本）。
+    {AFinal, SF, ZF} = direct_part(3, Bytes, Rid),
     io:format("G18_direct_parts_confirmed: a=~p/~pB b=~p/~pB~n", [A1, Z1, A2, Z2]),
     Cid = elib_tsid:generate(attachment),
     {ok, 1} = elib_pg:execute(
@@ -108,6 +109,21 @@ seg_direct_upload_then_assembly(Root) ->
     {ok, _, _} = elib_pg:with_tx(fun(C) ->
         talk_record_assembly_logic:persist_tx(C, Rid, Cid, Manifest)
     end),
+    {ok, [#{<<"path">> := FinalPath}]} = elib_pg:query(
+        <<"SELECT path FROM attachment WHERE id=$1">>, [AFinal]
+    ),
+    Frames = 64,
+    Final = #{
+        <<"object_key">> => FinalPath,
+        <<"client_upload_id">> => elib_uuid:gen_v7(),
+        <<"sha256">> => SF,
+        <<"byte_size">> => ZF,
+        <<"sample_rate">> => 16000,
+        <<"channels">> => 1,
+        <<"sample_count">> => Frames * 1024,
+        <<"duration_ms">> => (Frames * 1024 * 1000 + 8000) div 16000,
+        <<"attachment_id">> => AFinal
+    },
     {ok, created, _} = elib_pg:with_tx(fun(C) ->
         talk_record_job_repo:enqueue_tx(
             C,
@@ -116,7 +132,8 @@ seg_direct_upload_then_assembly(Root) ->
                 kind => <<"assemble">>,
                 input_manifest_hash => maps:get(<<"manifest_hash">>, Manifest),
                 input_content_revision => 1,
-                dedupe_key => <<"g18-assembly-", (elib_uuid:gen_v7())/binary>>
+                dedupe_key => <<"g18-assembly-", (elib_uuid:gen_v7())/binary>>,
+                processor_input => jsone:encode(#{<<"final_audio">> => Final})
             }
         )
     end),
@@ -127,10 +144,9 @@ seg_direct_upload_then_assembly(Root) ->
         >>,
         [Rid]
     ),
-    %% 真 fork Worker 链（不设 attachment_worker_in_process）。
-    %% W6 迭代事实：直传+源工件登记后 run_once 仍 requeued
-    %% artifact_unavailable（grant_part_leases 资产预检段），根因未收口；
-    %% assembly 真拼链证据由 relay 三连绿+assembly_io_worker_tests 承载。
+    %% 真 fork Worker 链（不设 attachment_worker_in_process）。run_once 非
+    %% succeeded 时打印实际结果，由下方 media_status 有界轮询严格断言兜底
+    %% ——assembly 未发布即如实失败，不做 fixture 兜底。
     AssemblyOutcome =
         case talk_record_job_worker:run_once() of
             {ok, #{outcome := succeeded}} -> succeeded;
@@ -155,8 +171,8 @@ seg_direct_upload_then_assembly(Root) ->
         [Rid]
     ),
     true = NRef >= 2 orelse exit({ref_rows, NRef}),
-    AudioBytes = read_assembly_prefix(Aid),
-    true = byte_size(AudioBytes) > 0 orelse exit(empty_assembly_prefix),
+    {ok, AudioBytes} = read_assembly_audio(Aid),
+    true = byte_size(AudioBytes) > 0 orelse exit(empty_assembly_audio),
     io:format("G18_assembly_worker_real_fork: succeeded refs=~p audio=~pB~n", [
         NRef, byte_size(AudioBytes)
     ]),
@@ -262,11 +278,16 @@ assembly_source_artifact(Rid, Cid, Bytes) ->
     ),
     Aid.
 
-read_assembly_prefix(Aid) ->
-    {ok, Prefix} = talk_record_assembly_artifact:with_audio(Aid, fun(Source) ->
-        attachment_upload_spool:read_at(Source, 0, min(1024, attachment_upload_spool:size(Source)))
-    end),
-    Prefix.
+read_assembly_audio(Aid) ->
+    %% no-backend-ffmpeg V1：audio_attachment_id = 客户端直传成品附件，
+    %% 经冻结位置有界读取（不再读派生副本）。
+    {ok, [Row]} = elib_pg:query(
+        <<"SELECT path, size, file_hash256 FROM attachment WHERE id=$1">>, [Aid]
+    ),
+    attachment_artifact_reader:with_source(Row, 134217728, fun(Source) ->
+        Size = attachment_upload_spool:size(Source),
+        {ok, attachment_upload_spool:read(Source, 0, Size)}
+    end).
 
 %% --------------------------------------------------------------------------
 %% 段D：播放 HTTP 面（302 边缘壳 + HEAD 元数据 + 416 + 错票）
@@ -402,36 +423,16 @@ install_garage_registry() ->
     }),
     ok.
 
-tone(Root) ->
-    Path = filename:join(Root, "g18-tone.aac"),
-    P = open_port({spawn_executable, ?FFMPEG}, [
-        binary,
-        exit_status,
-        use_stdio,
-        stderr_to_stdout,
-        {args, [
-            "-nostdin",
-            "-v",
-            "error",
-            "-f",
-            "lavfi",
-            "-i",
-            "sine=frequency=440:duration=1",
-            "-c:a",
-            "aac",
-            "-b:a",
-            "32k",
-            "-y",
-            Path
-        ]}
-    ]),
-    receive
-        {P, {exit_status, 0}} -> ok;
-        {P, {exit_status, N}} -> exit({ffmpeg_failed, N})
-    after 30000 -> exit(ffmpeg_timeout)
-    end,
-    {ok, Bin} = file:read_file(Path),
-    Bin.
+%% no-backend-ffmpeg V1：固定合法 ADTS 字节（16kHz 单声道 39 字节帧 ×64，
+%% 与 talk_record_audio_validate 同构），替换旧 ?FFMPEG 动态生成——
+%% 无 FFmpeg 环境仍走真实完成链。Root 参数保留以兼容调用点。
+tone(_Root) ->
+    Length = 39,
+    B3 = 16#40 bor (Length bsr 11),
+    B4 = (Length bsr 3) band 16#FF,
+    B5 = (Length band 7) bsl 5,
+    Frame = <<16#FF, 16#F1, 16#60, B3, B4, B5, 16#00, 0:256>>,
+    iolist_to_binary(lists:duplicate(64, Frame)).
 
 staging_put(#{url := Url, required_headers := Headers}, Body) ->
     Hs = [{binary_to_list(K), binary_to_list(V)} || {K, V} <- Headers],

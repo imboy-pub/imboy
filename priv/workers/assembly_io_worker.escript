@@ -3,7 +3,7 @@
 %%%
 %%% V3-18 P2 汇编 IO Worker（独立 OS 进程，S3-only 合同 §5.4/§7）：
 %%%   * 派生工件链的 S3↔盘字节搬运全部在本进程——主 BEAM 零音频字节
-%%%     （音频解码/编码已由 ffmpeg 外部进程承担，本 Worker 补齐 IO 段）；
+%%%     （no-backend-ffmpeg V1 后无服务端解码/编码，本 Worker 只补 IO 段）；
 %%%   * fetch：按序下载 parts 到工作目录（逐项 size+sha256 校验，任一
 %%%     不符即失败——完整性不降于原 BEAM spool 校验）；
 %%%   * upload：本地文件 → 对象存储（Worker 本地算 sha256/b64 checksum、

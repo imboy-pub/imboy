@@ -71,7 +71,25 @@ complete_replay(C, Rid) ->
         >>,
         [Cid, Rid]
     ),
-    Body = #{<<"captures">> => [#{<<"capture_id">> => Cid, <<"last_seq">> => 0}]},
+    Body = #{
+        <<"captures">> => [
+            #{
+                <<"capture_id">> => Cid,
+                <<"last_seq">> => 0,
+                <<"manifest_hash">> => binary:copy(<<"a">>, 64)
+            }
+        ],
+        <<"final_audio">> => #{
+            <<"object_key">> => <<"talk-record/final/results-replay.aac">>,
+            <<"client_upload_id">> => <<"00000000-0000-0000-0000-0000000000f1">>,
+            <<"sha256">> => binary:copy(<<"b">>, 64),
+            <<"byte_size">> => 39,
+            <<"sample_rate">> => 16000,
+            <<"channels">> => 1,
+            <<"sample_count">> => 1024,
+            <<"duration_ms">> => 64
+        }
+    },
     Resource = <<"/api/v1/talk-records/", (integer_to_binary(Rid))/binary, "/complete">>,
     {ok, Digest} = talk_record_logic:request_digest(<<"POST">>, Resource, Body),
     {ok, inserted} = elib_pg:with_tx(fun(X) ->

@@ -367,9 +367,12 @@ task(T, R, J, Run, Artifact, Now) ->
         {<<"ssd_version">>, <<"300">>}
     ],
     lists:foreach(fun({K, V}) -> V = maps:get(K, T) end, Pairs),
+    %% no-backend-ffmpeg V1：验证任务已冻结的合法 profile（固定策略 + ADTS
+    %% 白名单真实采样率）且 hash 与冻结 profile 自洽——不再绑定单一 16k 值。
+    FrozenProfile = maps:get(<<"request_profile">>, T),
+    {ok, _} = talk_record_provider_contract:profile_rate(FrozenProfile),
     true =
-        maps:get(<<"profile_hash">>, T) =:=
-            talk_record_client_contract:hash(talk_record_provider_contract:profile()),
+        maps:get(<<"profile_hash">>, T) =:= talk_record_client_contract:hash(FrozenProfile),
     true = lists:member(maps:get(<<"state">>, T), [
         <<"prepared">>, <<"submit_outcome_unknown">>, <<"accepted">>, <<"processing">>
     ]),

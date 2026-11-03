@@ -194,9 +194,20 @@ complete_body(Uid, Rid, Cid, IdemKey, Extra) ->
         <<"captures">> => [
             #{
                 <<"capture_id">> => Cid,
-                <<"last_seq">> => LastSeq
+                <<"last_seq">> => LastSeq,
+                <<"manifest_hash">> => binary:copy(<<"a">>, 64)
             }
-        ]
+        ],
+        <<"final_audio">> => #{
+            <<"object_key">> => <<"talk-record/final/t12-synthetic.aac">>,
+            <<"client_upload_id">> => <<"00000000-0000-0000-0000-000000000001">>,
+            <<"sha256">> => binary:copy(<<"b">>, 64),
+            <<"byte_size">> => 39,
+            <<"sample_rate">> => 16000,
+            <<"channels">> => 1,
+            <<"sample_count">> => 1024,
+            <<"duration_ms">> => 64
+        }
     },
     Body = maps:merge(Body0, maps:remove(last_seq, Extra)),
     talk_record_job_logic:complete(Uid, Rid, <<"\"1\"">>, IdemKey, Body).
@@ -294,73 +305,38 @@ audio_bytes() ->
     {ok, Bytes} = application:get_env(imboy, talk_record_t12_audio_bytes),
     Bytes.
 
-upload_audio(Uid, Part) ->
-    Key = maps:get(<<"object_key">>, maps:get(<<"upload_ref">>, Part)),
-    Root = os:getenv("TALK_UPLOAD_DISK_ROOT"),
-    Name = filename:join(
-        Root,
-        "t12-spool-" ++
-            binary_to_list(binary:encode_hex(crypto:strong_rand_bytes(12), lowercase))
-    ),
+%% S3-only direct 合同：按 register 返回的 grant 描述符直 PUT 成品分段
+%% 字节（逐字头部含 checksum），再由 confirm 面收口 CONFIRMED。
+upload_audio(_Uid, Part) ->
+    application:ensure_all_started(inets),
+    Ref = pick(Part, upload_ref, <<"upload_ref">>),
+    Grant = pick(Ref, grant, <<"grant">>),
+    Url = pick(Grant, url, <<"url">>),
+    Hs0 = pick(Grant, required_headers, <<"required_headers">>),
+    Hs = [{binary_to_list(K), binary_to_list(V)} || {K, V} <- Hs0],
     Bytes = audio_bytes(),
-    ok = file:write_file(Name, Bytes, [exclusive]),
-    try
-        {ok, _} = attachment_upload_logic:upload_multipart(
-            Uid, Key, <<"audio/aac">>, Name, byte_size(Bytes)
+    {ok, {{_, 200, _}, _, _}} =
+        httpc:request(
+            put,
+            {binary_to_list(Url), Hs, "audio/aac", Bytes},
+            [],
+            [{body_format, binary}]
         ),
-        ok
-    after
-        ok = file:delete(Name)
+    ok.
+
+pick(Map, A, B) ->
+    case maps:is_key(A, Map) of
+        true -> maps:get(A, Map);
+        false -> maps:get(B, Map)
     end.
 
+%% no-backend-ffmpeg V1：固定合法 ADTS 字节（16kHz 单声道 39 字节帧 ×469
+%% ≈ 30 秒，与 talk_record_audio_validate 同构），替换旧 ffmpeg 动态生成
+%% ——分段 byte_size 声明取 byte_size(audio_bytes()) 自动自洽。
 synthetic_audio() ->
-    Exe =
-        case os:find_executable("ffmpeg") of
-            false -> erlang:error(t12_ffmpeg_unavailable);
-            Path -> Path
-        end,
-    Port = open_port({spawn_executable, Exe}, [
-        binary,
-        exit_status,
-        use_stdio,
-        {args, [
-            "-nostdin",
-            "-v",
-            "error",
-            "-f",
-            "lavfi",
-            "-i",
-            "sine=frequency=440:duration=30",
-            "-ac",
-            "1",
-            "-ar",
-            "16000",
-            "-c:a",
-            "aac",
-            "-f",
-            "adts",
-            "pipe:1"
-        ]}
-    ]),
-    try
-        collect_audio(Port, erlang:monotonic_time(millisecond) + 30000, <<>>)
-    after
-        try
-            port_close(Port)
-        catch
-            error:badarg -> ok
-        end
-    end.
-
-collect_audio(Port, Deadline, Bytes) ->
-    Left = max(0, Deadline - erlang:monotonic_time(millisecond)),
-    receive
-        {Port, {data, Chunk}} when byte_size(Bytes) + byte_size(Chunk) =< 2097152 ->
-            collect_audio(Port, Deadline, <<Bytes/binary, Chunk/binary>>);
-        {Port, {data, _}} ->
-            erlang:error(t12_audio_fixture_too_large);
-        {Port, {exit_status, 0}} when byte_size(Bytes) > 0 -> Bytes;
-        {Port, {exit_status, Code}} ->
-            erlang:error({t12_audio_fixture_failed, Code})
-    after Left -> erlang:error(t12_audio_fixture_timeout)
-    end.
+    Length = 39,
+    B3 = 16#40 bor (Length bsr 11),
+    B4 = (Length bsr 3) band 16#FF,
+    B5 = (Length band 7) bsl 5,
+    Frame = <<16#FF, 16#F1, 16#60, B3, B4, B5, 16#00, 0:256>>,
+    iolist_to_binary(lists:duplicate(469, Frame)).

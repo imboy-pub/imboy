@@ -18,9 +18,8 @@ setup() ->
                 talk_record_render_tmp_dir,
                 filename:join(os:getenv("TALK_UPLOAD_DISK_ROOT"), "render")
             ),
-            %% V3-18 P2 三段式合同：audio_render part_fetch_item 只为
-            %% garage 位置签 Worker GET（disk 位置 historical_location_
-            %% unverified fail-closed）。relay 的 part 附件因此挂 garage
+            %% no-backend-ffmpeg V1：事务外校验经 frozen_location 真读成品
+            %% 对象（garage 位置）。relay 的 part/final 附件因此挂 garage
             %% registry（A0_ENDPOINT=v3run1），与 upload_namespaces 对齐。
             PrevGarage = application:get_env(imboy, garage),
             PrevRegistry = application:get_env(imboy, attachment_storage_registry),
@@ -124,13 +123,9 @@ run(S) ->
     ?assert(is_integer(Mid)),
     {ok, Mb} = attachment_derived_artifact:read(Mid),
     ?assertEqual(maps:get(<<"manifest_hash">>, A), maps:get(<<"manifest_hash">>, jsone:decode(Mb))),
-    ?assertEqual(
-        {ok, true},
-        talk_record_assembly_artifact:with_audio(Aid, fun(Source) ->
-            ?assert(attachment_upload_spool:size(Source) > 0),
-            {ok, true}
-        end)
-    ),
+    %% 成品 = 真实客户端直传附件（audio_attachment_id 指向它，且建
+    %% role='transcoded_audio' 永久引用（既有类别，指向直传成品）），服务端不再产出派生音频副本。
+    ?assertEqual(Aid, final_attachment_id(C, Rid)),
     {ok, [#{<<"n">> := 2}]} = elib_pg:query(
         C,
         <<
@@ -145,7 +140,7 @@ run(S) ->
     late_publish(C, Bytes, 953, delete),
     invalid_source(C, 954),
     finish_cas(C, Bytes, 955),
-    duration_mismatch(C, Bytes, 956),
+    final_asset_mismatch(C, Bytes, 956),
     corrupt_source(C, Bytes, 957),
     mixed_bad_frames(C, Bytes, 958),
     capabilities_limits(),
@@ -157,6 +152,20 @@ run(S) ->
     {ok, []} = file:list_dir(config_ds:env(imboy, talk_record_render_tmp_dir, "/tmp")),
     ok.
 
+final_attachment_id(C, Rid) ->
+    {ok, [#{<<"id">> := Aid}]} = elib_pg:query(
+        C,
+        <<
+            "SELECT id FROM attachment WHERE scope='talk_record' AND scope_ref=$1"
+            " AND origin='test_final'"
+        >>,
+        [integer_to_binary(Rid)]
+    ),
+    Aid.
+
+%% 组装链 fixture：源段附件 + 客户端成品直传附件（同字节流、独立物理
+%% 对象、origin='test_final'）+ job 冻结 final_audio 输入（complete 事务
+%% 准入形态）。Bytes 即成品字节（单段：源段明文 == 成品）。
 fixture(C, Bytes, N) ->
     {ok, Rid} = talk_record_t15_support:create_record(700001, N, <<"audio assembly">>),
     Cid = elib_tsid:generate(attachment),
@@ -169,25 +178,13 @@ fixture(C, Bytes, N) ->
         >>,
         [Cid, Rid]
     ),
-    {ok, Aid} = elib_pg:with_tx(fun(X) ->
-        Nonce = binary:encode_hex(crypto:strong_rand_bytes(12), lowercase),
-        attachment_derived_artifact:reserve_tx(
-            X,
-            #{job_id => N, attempt => 1, actor_id => 700001},
-            #{
-                <<"path">> => <<"assembly-source/", Nonce/binary>>,
-                <<"url">> => <<>>,
-                <<"name">> => <<"source.aac">>,
-                <<"size">> => byte_size(Bytes),
-                <<"mime_type">> => <<"audio/aac">>,
-                <<"scope">> => <<"talk_record">>,
-                <<"scope_ref">> => integer_to_binary(Rid),
-                <<"origin">> => <<"test_audio">>,
-                <<"file_hash256">> => binary:encode_hex(crypto:hash(sha256, Bytes), lowercase)
-            }
-        )
-    end),
-    ok = attachment_derived_artifact:write(Aid, Bytes),
+    {ok, Aid} = derived_attachment(N, Rid, <<"assembly-source">>, <<"test_audio">>, Bytes),
+    {ok, AidFinal} = derived_attachment(N, Rid, <<"assembly-final">>, <<"test_final">>, Bytes),
+    {ok, 1} = elib_pg:execute(
+        C,
+        <<"UPDATE attachment SET lifecycle_state='live' WHERE id IN ($1,$2)">>,
+        [Aid, AidFinal]
+    ),
     Pid = elib_tsid:generate(attachment),
     Hash = binary:encode_hex(crypto:hash(sha256, Bytes), lowercase),
     {ok, 1} = elib_pg:execute(
@@ -204,6 +201,10 @@ fixture(C, Bytes, N) ->
     {ok, _, _} = elib_pg:with_tx(fun(X) ->
         talk_record_assembly_logic:persist_tx(X, Rid, Cid, Manifest)
     end),
+    {ok, [#{<<"path">> := FinalPath}]} = elib_pg:query(
+        C, <<"SELECT path FROM attachment WHERE id=$1">>, [AidFinal]
+    ),
+    Final = final_decl(FinalPath, AidFinal, Bytes),
     {ok, created, _} = elib_pg:with_tx(fun(X) ->
         talk_record_job_repo:enqueue_tx(
             X,
@@ -212,7 +213,8 @@ fixture(C, Bytes, N) ->
                 kind => <<"assemble">>,
                 input_manifest_hash => maps:get(<<"manifest_hash">>, Manifest),
                 input_content_revision => 1,
-                dedupe_key => <<"assembly-", (integer_to_binary(N))/binary>>
+                dedupe_key => <<"assembly-", (integer_to_binary(N))/binary>>,
+                processor_input => jsone:encode(#{<<"final_audio">> => Final})
             }
         )
     end),
@@ -226,44 +228,60 @@ fixture(C, Bytes, N) ->
     end),
     {Rid, J}.
 
+derived_attachment(N, Rid, Prefix, Origin, Bytes) ->
+    elib_pg:with_tx(fun(X) ->
+        Nonce = binary:encode_hex(crypto:strong_rand_bytes(12), lowercase),
+        Aid = attachment_derived_artifact:reserve_tx(
+            X,
+            #{job_id => N, attempt => 1, actor_id => 700001},
+            #{
+                <<"path">> => <<Prefix/binary, "/", Nonce/binary>>,
+                <<"url">> => <<>>,
+                <<"name">> => <<"audio.aac">>,
+                <<"size">> => byte_size(Bytes),
+                <<"mime_type">> => <<"audio/aac">>,
+                <<"scope">> => <<"talk_record">>,
+                <<"scope_ref">> => integer_to_binary(Rid),
+                <<"origin">> => Origin,
+                <<"file_hash256">> => binary:encode_hex(crypto:hash(sha256, Bytes), lowercase)
+            }
+        ),
+        ok = attachment_derived_artifact:write(Aid, Bytes),
+        {ok, Aid}
+    end).
+
+final_decl(Path, AidFinal, Bytes) ->
+    Frames = 64,
+    #{
+        <<"object_key">> => Path,
+        <<"client_upload_id">> => <<"0f0e0d0c-0b0a-49f8-8a7b-6c5d4e3f2a1b">>,
+        <<"sha256">> => binary:encode_hex(crypto:hash(sha256, Bytes), lowercase),
+        <<"byte_size">> => byte_size(Bytes),
+        <<"sample_rate">> => 16000,
+        <<"channels">> => 1,
+        <<"sample_count">> => Frames * 1024,
+        <<"duration_ms">> => (Frames * 1024 * 1000 + 8000) div 16000,
+        <<"attachment_id">> => AidFinal
+    }.
+
 late_publish(C, B, N, Mode) ->
     {Rid, J} = fixture(C, B, N),
     {ok, P} = elib_pg:with_tx(fun(X) -> talk_record_assembly_job:prepare_tx(X, J) end),
-    %% V3-18 P2 三段式迁移：中间段与 run/1 同构（Worker staging 上传拿
-    %% proof → reserve_tx({Proof, ManifestBytes}) → write/2），旧 write/3
-    %% + BEAM 字节哈希形态已退役。竞态注入不需要第二遍真渲染——gate 在
-    %% prepare 期即拒绝（prepare_tx 已取，后续 run(J) 直接失败）；本体
-    %% 字节复用 fixture 的 tone 文件（staging/copy 不参与后续断言）。
-    {ok, PartsRows} = talk_record_assembly_logic:confirmed_parts_tx(
-        C, maps:get(<<"record_id">>, J)
-    ),
-    _ = PartsRows,
-    %% tone() 生成即删源文件（fixture 只留字节）；late_publish 本体字节
-    %% 自落盘（内容不参与竞态断言，仅满足 Worker staging 上传的形态链）。
-    OutPath = filename:join(os:getenv("TALK_UPLOAD_DISK_ROOT"), "late-publish-body.aac"),
-    ok = file:write_file(OutPath, B),
+    %% no-backend-ffmpeg V1：中间段仅 manifest（成品不再服务端产副本）。
+    %% 竞态注入不需要第二遍真校验——gate 在 prepare 期即拒绝（prepare_tx
+    %% 已取，后续 run(J) 直接失败）。
     Mb = jsone:encode(maps:get(manifest, P)),
     ManifestFile = filename:join(os:getenv("TALK_UPLOAD_DISK_ROOT"), "manifest-relay.json"),
     ok = file:write_file(ManifestFile, Mb),
-    AudioStaging = relay_staging_key(J, <<"audio">>),
     ManifestStaging = relay_staging_key(J, <<"manifest">>),
-    T0 = erlang:monotonic_time(millisecond),
-    {ok, #{sha256 := ASha, size := ASize}} =
-        relay_staging_upload(OutPath, <<"audio/aac">>, AudioStaging),
-    T1 = erlang:monotonic_time(millisecond),
-    io:format("RELAY_T stage_upload_audio=~pms~n", [T1 - T0]),
     {ok, _} = relay_staging_upload(ManifestFile, <<"application/json">>, ManifestStaging),
-    T2 = erlang:monotonic_time(millisecond),
-    io:format("RELAY_T stage_upload_manifest=~pms~n", [T2 - T1]),
     {ok, Ready} = elib_pg:with_tx(fun(X) ->
-        talk_record_assembly_job:reserve_tx(X, J, P, {{ASha, ASize}, Mb})
+        talk_record_assembly_job:reserve_tx(X, J, P, Mb)
     end),
     ok = talk_record_assembly_artifact:write(
         Ready,
         #{
-            audio_staging => AudioStaging,
             manifest_staging => ManifestStaging,
-            audio_file => OutPath,
             manifest_file => ManifestFile
         }
     ),
@@ -288,7 +306,6 @@ late_publish(C, B, N, Mode) ->
     ]),
     ?assertEqual({rollback, {talk_assembly_abort, Expected}}, Result),
     _ = file:delete(ManifestFile),
-    _ = file:delete(OutPath),
     {ok, A} = talk_record_assembly_logic:find_tx(C, Rid),
     ?assertEqual(null, maps:get(<<"audio_attachment_id">>, A)),
     {ok, 1} = elib_pg:execute(
@@ -329,7 +346,7 @@ relay_staging_upload(Path, Mime, StagingKey) ->
 
 invalid_source(C, N) ->
     {Rid, J} = fixture(C, <<"invalid AAC">>, N),
-    ?assertEqual({error, audio_render_failed}, talk_record_assembly_job:run(J)),
+    ?assertEqual({error, audio_frame_invalid}, talk_record_assembly_job:run(J)),
     {ok, A} = talk_record_assembly_logic:find_tx(C, Rid),
     ?assertEqual(null, maps:get(<<"audio_attachment_id">>, A)),
     {ok, 1} = elib_pg:execute(
@@ -338,7 +355,7 @@ invalid_source(C, N) ->
         [maps:get(<<"id">>, J)]
     ),
     ?assertEqual(
-        {ok, #{outcome => failed, error_code => <<"audio_render_failed">>}},
+        {ok, #{outcome => failed, error_code => <<"audio_frame_invalid">>}},
         talk_record_job_worker:run_once()
     ),
     {ok, [#{<<"media_status">> := Status}]} = elib_pg:query(
@@ -382,16 +399,21 @@ finish_cas(C, B, N) ->
         [maps:get(<<"id">>, J)]
     ).
 
-duration_mismatch(C, B, N) ->
+%% 成品附件字节身份被篡改（与冻结声明不符）→ prepare 期数据库事实复核
+%% final_asset_mismatch，不进事务外校验段。
+final_asset_mismatch(C, B, N) ->
     {Rid, J} = fixture(C, B, N),
     {ok, 1} = elib_pg:execute(
-        C, <<"UPDATE talk_record_audio_part SET end_ms=5000 WHERE record_id=$1">>, [Rid]
+        C,
+        <<
+            "UPDATE attachment SET file_hash256=repeat('f',64)"
+            " WHERE scope='talk_record' AND scope_ref=$1 AND origin='test_final'"
+        >>,
+        [integer_to_binary(Rid)]
     ),
-    {ok, Parts} = talk_record_assembly_logic:confirmed_parts_tx(C, Rid),
-    ?assertEqual(
-        {error, audio_duration_mismatch},
-        talk_record_audio_render:with_audio(Parts, fun(_) -> ok end)
-    ),
+    ?assertEqual({error, final_asset_mismatch}, talk_record_assembly_job:run(J)),
+    {ok, A} = talk_record_assembly_logic:find_tx(C, Rid),
+    ?assertEqual(null, maps:get(<<"audio_attachment_id">>, A)),
     {ok, 1} = elib_pg:execute(
         C,
         <<"UPDATE talk_record_job SET state='cancelled',finished_at=now() WHERE id=$1">>,
@@ -400,12 +422,8 @@ duration_mismatch(C, B, N) ->
 
 corrupt_source(C, B, N) ->
     {Rid, J} = fixture(C, B, N),
-    %% V3-18 P2 三段式：字节完整性锚 = talk_record_audio_part.sha256
-    %% （Worker fetch 逐项 size+sha256 校验，任一不符 fail-closed；
-    %% attachment.file_hash256 只是元数据，不再作 fetch 锚）。锚值破坏
-    %% 在 prepare 期即被 fence（manifest 重验不一致 → input_stale，
-    %% 不再进 fetch 段）；fetch 段错 sha fail-closed 由
-    %% assembly_io_worker_tests（真 Garage）覆盖。
+    %% 字节完整性锚 = talk_record_audio_part.sha256（manifest 重算比对，
+    %% 任一不符 fail-closed：锚值破坏在 prepare 期即被 fence → input_stale）。
     {ok, 1} = elib_pg:execute(
         C,
         <<"UPDATE talk_record_audio_part SET sha256=repeat('0',64) WHERE record_id=$1">>,
@@ -419,7 +437,7 @@ mixed_bad_frames(C, B, N) ->
     <<Head:100/binary, _:20/binary, Tail/binary>> = B,
     Damaged = <<Head/binary, (binary:copy(<<255>>, 20))/binary, Tail/binary>>,
     {_Rid, J} = fixture(C, Damaged, N),
-    ?assertEqual({error, audio_render_failed}, talk_record_assembly_job:run(J)).
+    ?assertEqual({error, audio_frame_invalid}, talk_record_assembly_job:run(J)).
 
 capabilities_limits() ->
     talk_record_t19_support:with_env(
@@ -464,7 +482,7 @@ failure_fences(C, B, N, Mode) ->
                 ),
                 {ok, failed}
         end,
-    ?assertEqual(Expected, talk_record_assembly_job:fail(J, <<"audio_render_failed">>)),
+    ?assertEqual(Expected, talk_record_assembly_job:fail(J, <<"audio_frame_invalid">>)),
     {ok, [#{<<"media_status">> := Status}]} = elib_pg:query(
         C, <<"SELECT media_status FROM talk_record WHERE id=$1">>, [Rid]
     ),
@@ -553,36 +571,13 @@ claim() ->
         )
     end).
 
+%% 固定合法 ADTS 字节（no-backend-ffmpeg V1：与
+%% talk_record_audio_validate_tests 同构的 16kHz 单声道 39 字节帧 ×64），
+%% 替换旧 /usr/local/bin/ffmpeg 动态生成——无 FFmpeg 环境仍走真实完成链。
 tone() ->
-    Dir = os:getenv("TALK_UPLOAD_DISK_ROOT"),
-    Path = filename:join(Dir, "test-tone.aac"),
-    P = open_port({spawn_executable, "/usr/local/bin/ffmpeg"}, [
-        binary,
-        exit_status,
-        {args, [
-            "-nostdin",
-            "-v",
-            "error",
-            "-f",
-            "lavfi",
-            "-i",
-            "sine=frequency=440:duration=1",
-            "-ac",
-            "1",
-            "-ar",
-            "16000",
-            "-c:a",
-            "aac",
-            "-f",
-            "adts",
-            "-y",
-            Path
-        ]}
-    ]),
-    receive
-        {P, {exit_status, 0}} -> ok
-    after 10000 -> error(tone_timeout)
-    end,
-    {ok, B} = file:read_file(Path),
-    ok = file:delete(Path),
-    B.
+    Length = 39,
+    B3 = 16#40 bor (Length bsr 11),
+    B4 = (Length bsr 3) band 16#FF,
+    B5 = (Length band 7) bsl 5,
+    Frame = <<16#FF, 16#F1, 16#60, B3, B4, B5, 16#00, 0:256>>,
+    iolist_to_binary(lists:duplicate(64, Frame)).

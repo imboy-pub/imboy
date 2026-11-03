@@ -3,7 +3,7 @@
 source_fact_projection_from_durable_task_test() ->
     meck:new(talk_record_provider_repo, [passthrough, no_link]),
     try
-        Profile = talk_record_provider_contract:profile(),
+        Profile = talk_record_provider_contract:profile(16000),
         Base = #{
             <<"id">> => 50,
             <<"cancelled_at">> => null,

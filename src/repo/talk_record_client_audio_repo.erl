@@ -23,20 +23,25 @@ assembly_tx(C, Rid) ->
     ).
 
 artifact_tx(C, Rid, Aid) ->
+    %% no-backend-ffmpeg V1：读取合同 = "当前 assembly 已成功验证并发布
+    %% 的音频"——audio_attachment_id 即客户端直传成品附件（无 derived_write
+    %% 行），锚定 assemble job succeeded；不再 JOIN attachment_derived_write。
     one(
         C,
         <<
             "SELECT a.id,a.size,a.file_hash256,a.mime_type,a.cipher,a.lifecycle_state,"
-            " w.state AS write_state,r.state AS ref_state,r.role AS ref_role,"
+            " 'complete' AS write_state,r.state AS ref_state,r.role AS ref_role,"
             " (r.lease_until IS NULL OR r.lease_until>clock_timestamp()) AS reference_valid,"
             " EXISTS(SELECT 1 FROM enterprise_attachment_retention e WHERE e.attachment_id=a.id"
             " AND e.purge_state='purged') AS governance_purged"
-            " FROM attachment a JOIN attachment_derived_write w ON w.attachment_id=a.id"
-            " JOIN talk_record_job j ON j.id=w.source_job_id AND j.record_id=$1"
-            " AND j.kind='assemble' AND j.state='succeeded' AND j.attempt=w.source_attempt"
+            " FROM attachment a"
+            " JOIN talk_record_assembly m ON m.record_id=$1 AND m.audio_attachment_id=a.id"
+            " JOIN talk_record_job j ON j.record_id=$1 AND j.kind='assemble'"
+            " AND j.state='succeeded'"
             " JOIN talk_record_attachment_ref r ON r.attachment_id=a.id AND r.record_id=$1"
             " AND r.role='transcoded_audio' AND r.business_key='assembly:transcoded_audio:'||a.id::text"
-            " WHERE a.id=$2 AND a.scope='talk_record' AND a.scope_ref=$1::text AND a.status=1"
+            " WHERE a.id=$2 AND a.scope='talk_record' AND a.scope_ref=$1::text"
+            " AND a.status=1 AND a.lifecycle_state='live'"
         >>,
         [Rid, Aid]
     ).

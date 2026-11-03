@@ -14,7 +14,7 @@ fold(Aid, Range, Guard, Fun, Acc) when
             Range, maps:get(<<"size">>, B)
         ),
         case
-            attachment_derived_artifact:with_range(Aid, Offset, Length, fun(Source) ->
+            with_published_range(Aid, Offset, Length, fun(Source) ->
                 drain(Source, 0, Length, B, Guard, Fun, Acc)
             end)
         of
@@ -35,3 +35,29 @@ drain(Source, Offset, Left, B, Guard, Fun, Acc) ->
     true = byte_size(Bytes) > 0 andalso byte_size(Bytes) =< Left,
     Next = Fun(Bytes, Acc),
     drain(Source, Offset + byte_size(Bytes), Left - byte_size(Bytes), B, Guard, Fun, Next).
+
+%% no-backend-ffmpeg V1：读取权威 = assembly 已发布音频（直传成品附件，
+%% assemble job succeeded 锚）——不再要求 derived_write 完成行。
+with_published_range(Aid, Offset, Length, Fun) ->
+    {ok, Row} =
+        elib_pg:with_conn(fun(C) ->
+            case
+                elib_pg:query(
+                    C,
+                    <<
+                        "SELECT a.path, a.size, a.file_hash256"
+                        " FROM talk_record_assembly m"
+                        " JOIN attachment a ON a.id = m.audio_attachment_id"
+                        " JOIN talk_record_job j ON j.record_id = m.record_id"
+                        " AND j.kind='assemble' AND j.state='succeeded'"
+                        " WHERE m.audio_attachment_id = $1"
+                        " AND a.lifecycle_state='live' AND a.status=1 AND a.size>0"
+                    >>,
+                    [Aid]
+                )
+            of
+                {ok, [R]} -> {ok, R};
+                _ -> {error, audio_source_denied}
+            end
+        end),
+    attachment_artifact_reader:with_range(Row, Offset, Length, Fun).

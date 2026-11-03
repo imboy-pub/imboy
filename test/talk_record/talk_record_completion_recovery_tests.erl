@@ -63,7 +63,23 @@ conflict_has_explicit_http_status_test() ->
 
 body() ->
     #{
-        <<"captures">> => [#{<<"capture_id">> => 2, <<"last_seq">> => 0}],
+        <<"captures">> => [
+            #{
+                <<"capture_id">> => 2,
+                <<"last_seq">> => 0,
+                <<"manifest_hash">> => binary:copy(<<"a">>, 64)
+            }
+        ],
+        <<"final_audio">> => #{
+            <<"object_key">> => <<"talk-record/final/synthetic.aac">>,
+            <<"client_upload_id">> => <<"00000000-0000-0000-0000-000000000001">>,
+            <<"sha256">> => binary:copy(<<"b">>, 64),
+            <<"byte_size">> => 39,
+            <<"sample_rate">> => 16000,
+            <<"channels">> => 1,
+            <<"sample_count">> => 1024,
+            <<"duration_ms">> => 64
+        },
         <<"processing_consent">> => #{
             <<"policy_version">> => <<"v2">>, <<"processor_config_version">> => <<"pcv2">>
         }

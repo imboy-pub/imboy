@@ -34,7 +34,7 @@ guard_before_storage_and_invalid_ranges_test() ->
             denied(),
             talk_record_client_audio_stream:fold(80, {99, 2}, fun() -> {ok, binding(100)} end, F, 0)
         ),
-        ?assertEqual(0, meck:num_calls(attachment_derived_artifact, with_range, '_'))
+        ?assertEqual(0, meck:num_calls(attachment_artifact_reader, with_range, '_'))
     end).
 
 chunks_are_bounded_and_precise_test() ->
@@ -77,10 +77,14 @@ changed_identity_or_callback_errors_are_sanitized_test() ->
     end).
 
 with_storage(F) ->
-    meck:new(attachment_derived_artifact, [passthrough, no_link]),
-    meck:new(attachment_upload_spool, [passthrough, no_link]),
+    meck:new(elib_pg, [non_strict, no_link]),
+    meck:new(attachment_artifact_reader, [non_strict, no_link]),
+    meck:new(attachment_upload_spool, [non_strict, no_link]),
     try
-        meck:expect(attachment_derived_artifact, with_range, fun(80, _, _, Callback) ->
+        %% T5 读取权威：assembly 已发布成品行（elib_pg 查询）+
+        %% attachment_artifact_reader:with_range 承载 spool 读。
+        meck:expect(elib_pg, with_conn, fun(_) -> {ok, [published_row()]} end),
+        meck:expect(attachment_artifact_reader, with_range, fun(_Row, _, _, Callback) ->
             Callback(synthetic_spool)
         end),
         meck:expect(attachment_upload_spool, read_at, fun(synthetic_spool, _, N) ->
@@ -88,11 +92,19 @@ with_storage(F) ->
         end),
         F()
     after
-        meck:unload(attachment_derived_artifact),
+        meck:unload(elib_pg),
+        meck:unload(attachment_artifact_reader),
         meck:unload(attachment_upload_spool),
         erase(audio_guard_count),
         erase(audio_callback_count)
     end.
+
+published_row() ->
+    #{
+        <<"path">> => <<"talk-record/final/synthetic.aac">>,
+        <<"size">> => 1048576,
+        <<"file_hash256">> => binary:copy(<<"a">>, 64)
+    }.
 binding(Size) ->
     #{
         <<"attachment_id">> => 80,

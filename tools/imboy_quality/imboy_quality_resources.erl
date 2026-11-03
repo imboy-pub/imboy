@@ -8,7 +8,7 @@
 %% 任务私有原生 Garage（§2.2/§3.7）：attv5/W403 与 talk_record 网关根需要真实 S3；
 %% 本机 Homebrew `garage` 原生拉起（独立数据目录/随机端口/随机密钥），跑完即停并清理。
 %%
-%% HIRD 编译器定位、attv5 清单文件、ffmpeg 合成 AAC 夹具：只准备资源，不伪造结果；
+%% HIRD 编译器定位、attv5 清单文件、内置固定 ADTS 字节的 AAC 夹具：只准备资源，不伪造结果；
 %% 二进制缺失时返回 {error, _}，调用方让对应根按各自 no-skip 铁律硬失败（可归属）。
 -module(imboy_quality_resources).
 -export([
@@ -439,56 +439,27 @@ ancestors(Dir, N) ->
 %% audio_duration_mismatch → media_status=retryable_failed。夹具时长必须等于声明的 1 秒。
 %% t12_support 自生成 30 秒夹具并声明 30 秒，不读本 env，不受影响。
 
+%% no-backend-ffmpeg V1：固定合法 ADTS 字节（16kHz 单声道 39 字节帧 ×64
+%% = 1024ms，与 talk_record_audio_validate 同构），替换旧 ffmpeg 动态
+%% 生成——无 FFmpeg 环境仍产出真实可解码夹具。
 ensure_aac_fixture(Ctrl) ->
     Path = filename:join([Ctrl, "runtime", "fixtures", "synthetic_440hz_1s.aac"]),
     case filelib:file_size(Path) > 0 of
         true ->
             {ok, Path};
         false ->
-            case os:find_executable("ffmpeg") of
-                false ->
-                    {error, ffmpeg_missing};
-                Exe ->
-                    ok = filelib:ensure_dir(Path),
-                    Port = open_port(
-                        {spawn_executable, Exe},
-                        [
-                            {args, [
-                                "-nostdin",
-                                "-y",
-                                "-v",
-                                "error",
-                                "-f",
-                                "lavfi",
-                                "-i",
-                                "sine=frequency=440:duration=1",
-                                "-ac",
-                                "1",
-                                "-ar",
-                                "16000",
-                                "-c:a",
-                                "aac",
-                                "-f",
-                                "adts",
-                                Path
-                            ]},
-                            exit_status,
-                            use_stdio,
-                            stderr_to_stdout,
-                            binary
-                        ]
-                    ),
-                    case cli_collect(Port, []) of
-                        {0, _} ->
-                            case filelib:file_size(Path) > 0 of
-                                true -> {ok, Path};
-                                false -> {error, aac_fixture_empty}
-                            end;
-                        {Code, Out} ->
-                            {error, {ffmpeg_failed, Code, iolist_to_binary(Out)}}
-                    end
-            end
+            ok = filelib:ensure_dir(Path),
+            ok = file:write_file(Path, aac_fixture_bytes(), [write, binary, exclusive]),
+            {ok, Path}
     end.
+
+aac_fixture_bytes() ->
+    Length = 39,
+    B3 = 16#40 bor (Length bsr 11),
+    B4 = (Length bsr 3) band 16#FF,
+    B5 = (Length band 7) bsl 5,
+    Frame = <<16#FF, 16#F1, 16#60, B3, B4, B5, 16#00, 0:256>>,
+    iolist_to_binary(lists:duplicate(64, Frame)).
 
 %% ---- 清单与配置文件 ----
 

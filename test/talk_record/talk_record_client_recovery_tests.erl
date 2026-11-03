@@ -91,7 +91,7 @@ task() ->
         <<"state">> => <<"prepared">>,
         <<"revision">> => 1,
         <<"provider_task_id">> => null,
-        <<"request_profile">> => talk_record_provider_contract:profile(),
+        <<"request_profile">> => talk_record_provider_contract:profile(16000),
         <<"assembly">> => #{},
         <<"source_authorization_id">> => null,
         <<"source_issued_at">> => null,

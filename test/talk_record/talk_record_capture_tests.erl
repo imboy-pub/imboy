@@ -253,9 +253,18 @@ part_register_and_replay_test_() ->
         {ok, created, P1} = part(U1, Rid, Cid, 0, 0, 30_000, <<"t07-p-0">>),
         ?assertEqual(<<"pending">>, maps:get(<<"upload_status">>, P1)),
         ?assertEqual(null, maps:get(<<"attachment_id">>, P1)),
+        %% direct-v3 合同：upload_ref 为 direct 会话（GRANTED + s3_put 描述符，
+        %% ds 直返内层为原子键）
         Ref = maps:get(<<"upload_ref">>, P1),
-        ?assertEqual(true, maps:get(<<"gateway">>, Ref)),
-        ?assert(is_binary(maps:get(<<"put_url">>, Ref))),
+        ?assertEqual(<<"GRANTED">>, maps:get(state, Ref)),
+        Grant = maps:get(grant, Ref),
+        ?assertEqual(<<"s3_put">>, maps:get(transport, Grant)),
+        ?assert(is_binary(maps:get(url, Grant))),
+        ?assert(
+            lists:keymember(
+                <<"x-amz-checksum-sha256">>, 1, maps:get(required_headers, Grant)
+            )
+        ),
         ?assertEqual(
             #{<<"n">> => 0},
             talk_record_t07_support:one(C, [
