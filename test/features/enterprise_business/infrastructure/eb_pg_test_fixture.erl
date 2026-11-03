@@ -497,8 +497,8 @@ install_asset_registry() ->
             namespace => Namespace,
             endpoint => elib_oss:endpoint(),
             container => elib_oss:get_bucket(<<"private">>),
-            access_key => <<"synthetic-ak-probe">>,
-            secret_key => <<"synthetic-sk-probe">>
+            access_key => env_or(<<"C04_GARAGE_AK">>, <<"synthetic-ak-probe">>),
+            secret_key => env_or(<<"C04_GARAGE_SK">>, <<"synthetic-sk-probe">>)
         },
         ok = application:set_env(imboy, attachment_storage_registry, Registry#{
             roots => Roots#{Namespace => Record},
@@ -513,6 +513,13 @@ install_asset_registry() ->
 
 %% 解析路径中全部符号链接段（file:read_link_all 只解析末段；macOS 将 /tmp、
 %% /var 软链到 /private/*，no_symlinks 安全校验要求真实路径）。
+env_or(Name, Default) ->
+    case os:getenv(binary_to_list(Name)) of
+        false -> Default;
+        "" -> Default;
+        V -> list_to_binary(V)
+    end.
+
 real_path(P) ->
     real_path_segments(filename:split(filename:absname(P)), ["/"]).
 real_path_segments([], Acc) ->

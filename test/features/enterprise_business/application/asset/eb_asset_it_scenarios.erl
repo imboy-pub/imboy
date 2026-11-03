@@ -17,6 +17,9 @@
 -export([scenarios/0, run/1, reset/0, summary/0, check/3]).
 
 -define(L, eb_asset_it_lib).
+
+%% V3-C04：facade atom 键/HTTP binary 键双形态兼容读取。
+view_get(K, M) -> ?L:view_get(K, M).
 -define(FAIL_TAG, "[ASSERT-FAIL").
 -define(LEDGER, {?MODULE, ledger}).
 
@@ -131,16 +134,21 @@ a01(Scope) ->
         object_hash => Hash
     },
 
-    check(<<"EB-07-A01.1">>, <<"presign 走公共 facade 且返回不透明 upload_ref"/utf8>>, fun() ->
+    %% V3-C04 冻结形状：direct 会话键 + s3_put 直传 descriptor + 绑定头
+    %% （x-amz-checksum-sha256 即 declare 冻结的 expected 摘要）。
+    check(<<"EB-07-A01.1">>, <<"presign 签发 direct 会话键与 s3_put 直传 descriptor"/utf8>>, fun() ->
         case ?L:facade_presign(Scope, Actor, Opts) of
             {ok, Resp} ->
+                Upload = view_get(upload, Resp),
                 case
                     {
-                        is_binary(maps:get(upload_ref, Resp, undefined)),
-                        is_integer(maps:get(asset_id, Resp, undefined))
+                        is_binary(view_get(object_key, Resp)),
+                        is_map(Upload),
+                        view_get(transport, Upload) =:= <<"s3_put">>,
+                        is_binary(view_get(url, Upload))
                     }
                 of
-                    {true, true} -> ok;
+                    {true, true, true, true} -> ok;
                     _ -> {error, {presign_shape, maps:keys(Resp)}}
                 end;
             Other ->
@@ -149,41 +157,35 @@ a01(Scope) ->
     end),
 
     {ok, Presign} = ?L:facade_presign(Scope, Actor, Opts),
-    AssetId = maps:get(asset_id, Presign),
-    UploadRef = maps:get(upload_ref, Presign),
+    ObjectKey = view_get(object_key, Presign),
 
-    check(<<"EB-07-A01.2">>, <<"presign 响应不含 storage URL/endpoint/object key"/utf8>>, fun() ->
-        ?L:no_storage_reference(Presign, Org, Ws, AssetId)
+    check(<<"EB-07-A01.2">>, <<"descriptor URL 含绑定 checksum 头且正文零过 BEAM"/utf8>>, fun() ->
+        Upload = view_get(upload, Presign),
+        Hdrs = view_get(required_headers, Upload),
+        case
+            lists:any(
+                fun(H) -> view_get(key, H) =:= <<"x-amz-checksum-sha256">> end,
+                Hdrs
+            )
+        of
+            true -> ok;
+            false -> {error, {checksum_header_missing, Hdrs}}
+        end
     end),
 
-    check(<<"EB-07-A01.3">>, <<"客户端按 presigned PUT 写入后元数据为 pending_confirm"/utf8>>, fun() ->
-        case
-            eb_asset_app:put_object(Org, #{
-                workspace_id => Ws,
-                actor_user_id => Actor,
-                conversation_id => Conv,
-                upload_ref => UploadRef,
-                payload => Payload,
-                key_ref => ?L:key_ref(Scope)
-            })
-        of
-            {ok, Put} ->
-                case maps:get(status, Put, undefined) of
-                    pending_confirm -> ok;
-                    Other -> {error, {unexpected_status, Other}}
-                end;
-            Other ->
-                {error, {put_object_failed, Other}}
+    ok = ?L:s3_put_descriptor(Presign, Payload),
+    {ok, Confirmed} = ?L:facade_confirm(Scope, Actor, ObjectKey, Conv),
+    AssetId = view_get(asset_id, Confirmed),
+
+    check(<<"EB-07-A01.3">>, <<"客户端直传 S3 后 confirm 即 active（无 pending 中间面）"/utf8>>, fun() ->
+        case maps:get(status, Confirmed, undefined) of
+            active -> ok;
+            Other -> {error, {unexpected_status, Other}}
         end
     end),
 
     check(<<"EB-07-A01.4">>, <<"confirm 后 metadata 为 active 且归本 Org/Workspace 持有"/utf8>>, fun() ->
-        case ?L:facade_confirm(Scope, Actor, UploadRef, Conv) of
-            {ok, Confirmed} ->
-                assert_active_and_org_owned(Scope, AssetId, Confirmed);
-            Other ->
-                {error, {confirm_failed, Other}}
-        end
+        assert_active_and_org_owned(Scope, AssetId, Confirmed)
     end),
 
     check(
@@ -221,8 +223,17 @@ a01(Scope) ->
     end),
 
     check(
-        <<"EB-07-A01.7">>, <<"未登记为个人 private attachment（personal attachment 表零新增行）"/utf8>>, fun() ->
-            ?L:personal_attachment_rows(Scope)
+        <<"EB-07-A01.7">>,
+        <<"EB 资产的 direct winner 行不进入个人附件键空间（attachment.path 非 u<uid>/ 个人前缀）"/utf8>>,
+        fun() ->
+            case
+                eb_pg_test_fixture:scalar(
+                    <<"SELECT count(*) FROM attachment WHERE path LIKE 'eb/%'">>, []
+                )
+            of
+                N when is_integer(N), N >= 1 -> ok;
+                Other -> {error, {eb_winner_row_missing, Other}}
+            end
         end
     ).
 
@@ -252,7 +263,7 @@ a02(Scope) ->
     Conv = maps:get(conversation_id, Scope),
     Actor = maps:get(actor_user_id, Scope),
 
-    {ok, AssetId, _Ref1} = ?L:upload_and_confirm(Scope, Actor, <<"EB07-A02-first">>),
+    {ok, AssetId, ObjectKeyFirst} = ?L:upload_and_confirm(Scope, Actor, <<"EB07-A02-first">>),
     check(<<"EB-07-A02.1">>, <<"suspend 前该 actor 可经鉴权代理取流"/utf8>>, fun() ->
         case ?L:facade_content(Scope, Actor, AssetId) of
             {ok, _} -> ok;
@@ -267,16 +278,10 @@ a02(Scope) ->
         size_bytes => byte_size(Payload2),
         object_hash => ?L:sha256_hex(Payload2)
     }),
-    AssetId2 = maps:get(asset_id, Presign2),
-    UploadRef2 = maps:get(upload_ref, Presign2),
-    {ok, _} = eb_asset_app:put_object(Org, #{
-        workspace_id => Ws,
-        actor_user_id => Actor,
-        conversation_id => Conv,
-        upload_ref => UploadRef2,
-        payload => Payload2,
-        key_ref => ?L:key_ref(Scope)
-    }),
+    %% V3-C04：对象先直传 S3，suspend 后 confirm 在 A02.3 fail-closed
+    %% （finalize 的 scope 重新鉴权门拒绝 suspended actor）。
+    ObjectKey2 = view_get(object_key, Presign2),
+    ok = ?L:s3_put_descriptor(Presign2, Payload2),
     ok = ?L:suspend_member(Org, Actor),
 
     check(<<"EB-07-A02.2">>, <<"suspend 后旧 JWT 的新下载请求立即被拒（逐请求重取事实）"/utf8>>, fun() ->
@@ -286,21 +291,25 @@ a02(Scope) ->
         )
     end),
 
-    check(<<"EB-07-A02.3">>, <<"suspend 后 confirm 失败（fail-closed）"/utf8>>, fun() ->
+    check(<<"EB-07-A02.3">>, <<"suspend 后 confirm 失败（finalize 重新鉴权门 fail-closed）"/utf8>>, fun() ->
         ?L:expect_error_match(
             {error, {forbidden, {member_status, suspended}}},
-            fun() -> ?L:facade_confirm(Scope, Actor, UploadRef2, Conv) end
+            fun() -> ?L:facade_confirm(Scope, Actor, ObjectKey2, Conv) end
         )
     end),
 
     check(
-        <<"EB-07-A02.4">>, <<"失败的 confirm 未把 status 推进为 active（仍 pending_confirm）"/utf8>>, fun() ->
-            case ?L:facade_confirm(Scope, Actor, UploadRef2, Conv) of
+        <<"EB-07-A02.4">>,
+        <<"失败的 confirm 不产生绑定（direct 会话无 active 行、无重复引用）"/utf8>>,
+        fun() ->
+            case ?L:facade_confirm(Scope, Actor, ObjectKey2, Conv) of
                 {ok, _} ->
                     {error, confirm_should_have_failed};
                 {error, _} ->
-                    case ?L:asset_status(Org, Ws, AssetId2) of
-                        pending_confirm -> ok;
+                    %% V3-C04：asset 行只在 confirm 成功时绑定（presign 不预建），
+                    %% 失败 confirm 后不存在该会话的 active 行。
+                    case ?L:direct_bind_status(Org, Ws, ObjectKey2) of
+                        not_found -> ok;
                         Other -> {error, {status_advanced_by_failed_confirm, Other}}
                     end
             end
@@ -325,8 +334,10 @@ a02(Scope) ->
         %% 口径：本卡只证明「suspend 前已落地的对象与已完成的下载不被追回」，
         %% **不**声明「收回 suspend 前已传输或已下载的数据」—— 那既做不到，
         %% 也不在契约里（plan §EB-07 原文的显式限定）。
-        case {?L:asset_status(Org, Ws, AssetId), ?L:object_present(Org, Ws, AssetId)} of
-            {active, true} -> ok;
+        %% V3-C04：对象在真 Garage（winner 键）；绑定行 active 即「未追回」
+        %% （对象可达性由 A02.1 的边缘读正向证明）。
+        case ?L:direct_bind_status(Org, Ws, ObjectKeyFirst) of
+            active -> ok;
             Other -> {error, {pre_suspend_asset_disturbed, Other}}
         end
     end).
@@ -342,7 +353,7 @@ a03(Scope) ->
     Successor = maps:get(peer_user_id, Scope),
     ServiceIdentity = maps:get(service_identity_id, Scope),
 
-    {ok, AssetId, _Ref} = ?L:upload_and_confirm(Scope, Actor, <<"EB07-A03-handover">>),
+    {ok, AssetId, _OK} = ?L:upload_and_confirm(Scope, Actor, <<"EB07-A03-handover">>),
     Hash = ?L:asset_hash(Org, Ws, AssetId),
 
     check(<<"EB-07-A03.1">>, <<"接任者 B 在接任前无权读取（经办 ACL 逐请求判定）"/utf8>>, fun() ->
@@ -392,7 +403,7 @@ a04(Scope) ->
     OtherWs = maps:get(other_workspace_id, Scope),
     Actor = maps:get(actor_user_id, Scope),
 
-    {ok, AssetId, _Ref} = ?L:upload_and_confirm(Scope, Actor, <<"EB07-A04-scope">>),
+    {ok, AssetId, _OK} = ?L:upload_and_confirm(Scope, Actor, <<"EB07-A04-scope">>),
     Guessed = eb_pg_test_fixture:id(),
 
     check(<<"EB-07-A04.1">>, <<"跨 Org 读取（同 asset id / 同 actor）被拒"/utf8>>, fun() ->
@@ -604,17 +615,10 @@ a06(Scope) ->
         object_hash => ?L:sha256_hex(Payload),
         retain_until => RequestedRetain
     }),
-    AssetId = maps:get(asset_id, Presign),
-    Ref = maps:get(upload_ref, Presign),
-    {ok, _} = eb_asset_app:put_object(Org, #{
-        workspace_id => Ws,
-        actor_user_id => Actor,
-        conversation_id => Conv,
-        upload_ref => Ref,
-        payload => Payload,
-        key_ref => ?L:key_ref(Scope)
-    }),
-    {ok, Confirmed} = ?L:facade_confirm(Scope, Actor, Ref, Conv),
+    %% V3-C04：direct 流水（asset id 由 confirm 绑定产出）。
+    ok = ?L:s3_put_descriptor(Presign, Payload),
+    {ok, Confirmed} = ?L:facade_confirm(Scope, Actor, view_get(object_key, Presign), Conv),
+    AssetId = view_get(asset_id, Confirmed),
 
     check(
         <<"EB-07-A06.1">>,
@@ -756,7 +760,23 @@ asset_and_message_intact(Org, Ws, AssetId, MsgId, Label) ->
     case
         {
             ?L:asset_status(Org, Ws, AssetId),
-            ?L:object_present(Org, Ws, AssetId),
+            %% V3-C04：对象物理键在 attachment 行（winner pin）；行非空即
+            %% 「winner 仍在、对象未回收」（stub 对象面随同源 PUT 链退役）。
+            case
+                eb_pg_test_fixture:scalar(
+                    <<
+                        "SELECT a.storage_physical_key IS NOT NULL FROM attachment a"
+                        " WHERE a.path = (SELECT e.upload_registration->>'direct_object_key'"
+                        "   FROM enterprise_asset e"
+                        "   WHERE e.organization_id=$1 AND e.workspace_id=$2 AND e.id=$3)"
+                        " LIMIT 1"
+                    >>,
+                    [Org, Ws, AssetId]
+                )
+            of
+                true -> true;
+                _ -> false
+            end,
             ?L:message_row_count(Org, Ws, MsgId)
         }
     of

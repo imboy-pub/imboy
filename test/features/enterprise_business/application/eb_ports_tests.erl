@@ -157,6 +157,7 @@ ports_have_explicit_frozen_contracts_test() ->
     %% 原 put/stream/delete 三件保留，追加 metadata 生命周期与 V5 会话元数据。
     ?assertEqual(
         [
+            {bind_direct, 4},
             {cleanup_asset, 3},
             {cleanup_pending_private, 5},
             {confirm_asset, 3},
@@ -305,6 +306,7 @@ asset_port_callback_names_cannot_leak_storage_handle_test() ->
     %% metadata 生命周期与 V5 会话操作均不得泄漏存储句柄。
     ?assertEqual(
         [
+            bind_direct,
             cleanup_asset,
             cleanup_pending_private,
             confirm_asset,

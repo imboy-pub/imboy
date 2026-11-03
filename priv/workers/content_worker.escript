@@ -1,5 +1,5 @@
 #!/usr/bin/env escript
-%%! -noshell +Bd
+%%! -noshell +Bd -mode interactive
 %%%
 %% V3-07 最小外部内容 Worker（独立 OS 进程，S3-only 合同 §5.4/§7）：
 %%   * 任务文件路径经 argv 传入；任务体为 base64(term_to_binary(Task))，
@@ -32,6 +32,25 @@ main([TaskFile | _]) ->
         ObjectKey = maps:get(object_key, Task),
         Mime = maps:get(mime, Task),
         Deadline = erlang:monotonic_time(millisecond) + maps:get(deadline_ms, Task, 600000),
+        %% V3-C04：escript 进程对 add_patha 后的模块延迟解析不可靠（OTP29
+        %% 实测：path 已含目录但首调 undef）。关键依赖显式 ensure_loaded。
+        io:format(standard_error, "DBG ebin=~p s3sign_beam_exists=~p path_hit=~p~n", [
+            maps:get(ebin, Task),
+            filelib:is_file(binary_to_list(
+                <<(maps:get(ebin, Task))/binary, "/elib_s3_sign.beam">>)),
+            [P || P <- code:get_path(),
+                  filelib:is_file(filename:join(P, "elib_s3_sign.beam"))]]),
+        lists:foreach(
+            fun(M) ->
+                Res = code:ensure_loaded(M),
+                io:format(standard_error, "ENSURE ~p=~p which=~p~n",
+                    [M, Res, code:which(M)])
+            end,
+            [
+                elib_s3_sign, attachment_content_receipt,
+                attachment_content_worker, eb_asset_content
+            ]
+        ),
         ReadFun = range_read_fun(Cfg, ObjectKey),
         Result =
             case attachment_content_worker:scan_stream(
@@ -57,7 +76,9 @@ main([TaskFile | _]) ->
         ok = file:write_file(TaskFile ++ ".out", Out),
         halt(0)
     catch
-        Class:Reason:_Stack ->
+        Class:Reason:Stack ->
+            io:format(standard_error, "WORKER_CRASH ~p:~p~n", [Class, Reason]),
+            [io:format(standard_error, "  ~p~n", [T]) || T <- lists:sublist(Stack, 6)],
             Err = base64:encode(term_to_binary({error, {worker_crash, Class, Reason}})),
             _ = file:write_file(TaskFile ++ ".out", Err),
             halt(1)

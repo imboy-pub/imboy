@@ -202,16 +202,8 @@ widget_literal_routes() ->
             [<<"POST">>],
             cs_visit
         },
-        %% BE-PATCH-01：访客附件字节上传代理（upload_ref 唯一凭证——FE 裸 PUT
-        %% 合同；payload=请求体字节，线格式分支在 cs_widget_handler）。
-        %% P1-E2E-01 实证：presign 回显 upload.method=PUT，动作表放行 POST+PUT
-        %% 双形态（同参同用例），否则浏览器按合同发 PUT 一律 405。
-        {
-            <<W/binary, "/sessions/:id/assets/upload">>,
-            widget_asset_put,
-            [<<"POST">>, <<"PUT">>],
-            cs_visit
-        },
+        %% V3-C04：访客字节上传代理（widget_asset_put）已移除——
+        %% 正文走 presign 下发的 s3_put 直传 descriptor（S3-only 合同）。
         %% BE-S01b（api-surface-freeze widget_apis）：访客附件内容代理（对象字节
         %% 本体响应；线格式分支在 cs_widget_handler）。
         {
@@ -982,10 +974,9 @@ widget_bootstrap_public_id_and_server_derived_locked_test() ->
 %% CSD-BE-01S（hosted-widget-contract S3 v1.1，GAP-3 修复锁死）：**全部持
 %% token widget 动作面**零 org 申报——org_source=derived（Org 由 (installation_id,
 %% secret) 的 digest 全局命中行服务端派生），organization_id 客户端提供即
-%% 400 `server_derived_key_rejected`。两个例外是同一豁免面：旧 frame（S4
-%% 兼容窗口，query organization_id 原样保留）与 widget_asset_put（无 token
-%% 的裸 PUT 代理——presign 下发 URL 携带服务端签发的 organization_id，同值
-%% 回传，非浏览器申报）。
+%% 400 `server_derived_key_rejected`。豁免面是旧 frame（S4 兼容窗口，query
+%% organization_id 原样保留）；V3-C04 起 widget_asset_put 字节代理已移除
+%% （正文 s3_put 直传，无 org 申报面）。
 widget_token_surfaces_org_derived_locked_test() ->
     DerivedSurfaces = [
         widget_identity_exchange,
@@ -1023,7 +1014,7 @@ widget_token_surfaces_org_derived_locked_test() ->
             {ok, Entry} = cs_actions:widget(Action),
             ?assertEqual({Action, param}, {Action, cs_actions:org_source(Entry)})
         end,
-        [widget_frame_html, widget_asset_put]
+        [widget_frame_html]
     ).
 
 %% R2-F2（hosted-widget-contract S3 查询串面）：派生键申报面 = 正文与查询串

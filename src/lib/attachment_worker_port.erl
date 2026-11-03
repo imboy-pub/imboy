@@ -320,9 +320,21 @@ window_seconds(Task) ->
     end.
 
 ebin_dir() ->
+    %% V3-C04：规范化为绝对路径并剥掉 `.` 段——escript 子进程对
+    %% `dir/./mod.beam` 形态的 path 项做模块解析不可靠（add_patha 成功但
+    %% code:which 不命中，worker 内 undef/badarg）。
     case code:which(attachment_content_worker) of
-        P when is_list(P) -> iolist_to_binary(filename:dirname(P));
-        _ -> iolist_to_binary(<<".">>)
+        P when is_list(P) ->
+            %% 相对 path 项（-pa ebin）以当前 VM cwd 锚定；worker 子进程
+            %% 继承同一 cwd，故 absname/1（cwd 基准）语义一致。
+            Abs = filename:absname(
+                filename:join(
+                    [Seg || Seg <- filename:split(filename:dirname(P)), Seg =/= "."]
+                )
+            ),
+            iolist_to_binary(Abs);
+        _ ->
+            iolist_to_binary(<<"/tmp">>)
     end.
 
 %% Worker 需要的 code path：当前 VM 全量 + backend deps（jsone 等）。

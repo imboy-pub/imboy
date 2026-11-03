@@ -22,6 +22,9 @@
     tenant/1,
     facade_presign/3,
     facade_confirm/4,
+    view_get/2,
+    presign_object_key/1,
+    s3_put_descriptor/2,
     facade_content/3,
     facade_content/5,
     upload_and_confirm/3,
@@ -33,6 +36,7 @@
     assignment_for/5,
     suspend_member/2,
     asset_status/3,
+    direct_bind_status/3,
     asset_hash/3,
     asset_row/3,
     message_retain_until/3,
@@ -107,11 +111,12 @@ facade_presign(Scope, Actor, Opts) ->
         base_params(Scope, Actor, Opts)
     ).
 
-facade_confirm(Scope, Actor, UploadRef, ConversationId) ->
+%% V3-C04：confirm 以 direct 会话键（object_key）定位 finalize。
+facade_confirm(Scope, Actor, ObjectKey, ConversationId) ->
     enterprise_business_facade:confirm_asset(
         maps:get(org_id, Scope),
         (base_params(Scope, Actor, #{}))#{
-            upload_ref => UploadRef,
+            object_key => ObjectKey,
             conversation_id => ConversationId
         }
     ).
@@ -142,7 +147,7 @@ base_params(Scope, Actor, Opts) ->
 %% 上传 / 确认流水（presign → PUT → confirm）
 %% ===================================================================
 
-%% @doc 走完整流水：presign → put_object → confirm；返回 `{ok, AssetId, UploadRef}`。
+%% V3-C04：direct 流水 presign → s3_put 直传 → confirm；返回 `{ok, AssetId, ObjectKey}`。
 upload_and_confirm(Scope, Actor, Marker) ->
     Conv = maps:get(conversation_id, Scope),
     Payload = <<Marker/binary, "-", (integer_to_binary(eb_pg_test_fixture:id()))/binary>>,
@@ -152,22 +157,21 @@ upload_and_confirm(Scope, Actor, Marker) ->
         size_bytes => byte_size(Payload),
         object_hash => sha256_hex(Payload)
     }),
-    AssetId = maps:get(asset_id, Presign),
-    Ref = maps:get(upload_ref, Presign),
-    {ok, _} = put_payload(Scope, Actor, Ref, Payload),
-    case facade_confirm(Scope, Actor, Ref, Conv) of
+    ObjectKey = presign_object_key(Presign),
+    ok = s3_put_descriptor(Presign, Payload),
+    case facade_confirm(Scope, Actor, ObjectKey, Conv) of
         {ok, Confirmed} ->
             case maps:get(status, Confirmed, undefined) of
-                active -> {ok, AssetId, Ref};
+                active -> {ok, maps:get(asset_id, Confirmed), ObjectKey};
                 Other -> {error, {confirm_status, Other}}
             end;
         Other ->
             {error, {confirm_failed, Other}}
     end.
 
-%% @doc 建一个 pending 资产；`Age = stale` 时把 `created_at` 推到 2 小时前（夹具动作）。
+%% V3-C04：种一个「已直传未确认」的 direct 会话；`Age = stale` 时把
+%% 会话 deadline 推到 2 小时前（过期；GC/清理语义由 dv1 侧承接）。
 seed_pending(Scope, Actor, Marker, Age) ->
-    {Org, Ws} = tenant(Scope),
     Conv = maps:get(conversation_id, Scope),
     Payload = <<Marker/binary, "-", (integer_to_binary(eb_pg_test_fixture:id()))/binary>>,
     {ok, Presign} = facade_presign(Scope, Actor, #{
@@ -176,33 +180,92 @@ seed_pending(Scope, Actor, Marker, Age) ->
         size_bytes => byte_size(Payload),
         object_hash => sha256_hex(Payload)
     }),
-    AssetId = maps:get(asset_id, Presign),
-    {ok, _} = put_payload(Scope, Actor, maps:get(upload_ref, Presign), Payload),
+    ObjectKey = presign_object_key(Presign),
+    ok = s3_put_descriptor(Presign, Payload),
     case Age of
         stale ->
             ok = eb_pg_test_fixture:exec(
                 <<
-                    "UPDATE enterprise_asset SET created_at = now() - interval '2 hours'"
-                    " WHERE organization_id=$1 AND workspace_id=$2 AND id=$3"
+                    "UPDATE attach_pending SET session_deadline = now() - interval '2 hours'"
+                    " WHERE object_key=$1"
                 >>,
-                [Org, Ws, AssetId]
+                [ObjectKey]
             );
         fresh ->
             ok
     end,
-    AssetId.
+    ObjectKey.
 
 %% @doc 客户端按 presigned PUT 写入私有桶（本地替身下即 `eb_asset_app:put_object/2`）。
-put_payload(Scope, Actor, UploadRef, Payload) ->
-    {Org, Ws} = tenant(Scope),
-    eb_asset_app:put_object(Org, #{
-        workspace_id => Ws,
-        actor_user_id => Actor,
-        conversation_id => maps:get(conversation_id, Scope),
-        upload_ref => UploadRef,
-        payload => Payload,
-        key_ref => key_ref(Scope)
-    }).
+%% V3-C04：presign 视图的 direct 会话键（object_key）。
+%% facade 直调为 atom 键；HTTP 面（JSON 往返）为 binary 键——双形态兼容。
+presign_object_key(Presign) ->
+    view_get(object_key, Presign).
+
+view_get(K, M) when is_map(M) ->
+    case maps:get(K, M, undefined) of
+        undefined -> maps:get(atom_to_binary(K, utf8), M, undefined);
+        V -> V
+    end;
+view_get(_, _) ->
+    undefined.
+
+%% 客户端按 descriptor 直传 S3（gun；头与签名逐字一致）。
+%% 真 Garage 凭据经 C04_GARAGE_* env 注入（与 seat_send 同款；REAL_LOCAL）。
+s3_put_descriptor(Presign, Payload) ->
+    Upload = view_get(upload, Presign),
+    #{path := Path, query := Query} =
+        uri_string:normalize(view_get(url, Upload), [return_map]),
+    {ok, Conn} = gun:open(garage_host(), garage_port(), #{protocols => [http]}),
+    try
+        {ok, _} = gun:await_up(Conn, 10000),
+        Hdrs = [
+            {binary_to_list(view_get(key, H)), binary_to_list(view_get(value, H))}
+         || H <- view_get(required_headers, Upload)
+        ],
+        Ref = gun:request(Conn, <<"PUT">>, <<Path/binary, $?, Query/binary>>, Hdrs, Payload),
+        Res = gun:await(Conn, Ref, 30000),
+        ok =
+            case Res of
+                {response, fin, 200, _} ->
+                    ok;
+                {response, nofin, 200, _} ->
+                    {ok, _} = gun:await_body(Conn, Ref, 30000),
+                    ok;
+                {response, _, Status, RH} ->
+                    {ok, Body} = gun:await_body(Conn, Ref, 30000),
+                    erlang:error({s3_put_failed, {Status, RH, Body}});
+                Other ->
+                    erlang:error({s3_put_failed, Other})
+            end,
+        ok
+    after
+        gun:close(Conn)
+    end.
+
+%% 从 C04_GARAGE_ENDPOINT（如 http://127.0.0.1:49319）剥 scheme 取 host。
+garage_host() ->
+    Endpoint = env_or_default(<<"C04_GARAGE_ENDPOINT">>, <<"127.0.0.1:49319">>),
+    {Host, _Port} = host_port(Endpoint),
+    binary_to_list(Host).
+
+garage_port() ->
+    Endpoint = env_or_default(<<"C04_GARAGE_ENDPOINT">>, <<"127.0.0.1:49319">>),
+    case host_port(Endpoint) of
+        {_, Port} when is_integer(Port) -> Port;
+        _ -> 49319
+    end.
+
+host_port(Endpoint) ->
+    #{host := Host, port := Port} = uri_string:normalize(Endpoint, [return_map]),
+    {Host, Port}.
+
+env_or_default(Name, Default) ->
+    case os:getenv(binary_to_list(Name)) of
+        false -> Default;
+        "" -> Default;
+        V -> list_to_binary(V)
+    end.
 
 %% ===================================================================
 %% 消息 / hold / 成员 / 经办夹具（合成行）
@@ -314,6 +377,23 @@ suspend_member(Org, UserId) ->
 %% ===================================================================
 %% 只读探针
 %% ===================================================================
+
+%% V3-C04：按 direct 会话键查绑定行状态（未绑定 → not_found）。
+direct_bind_status(Org, Ws, ObjectKey) ->
+    case
+        eb_pg_test_fixture:scalar(
+            <<
+                "SELECT e.status FROM enterprise_asset e"
+                " WHERE e.organization_id=$1 AND e.workspace_id=$2"
+                "   AND e.upload_registration->>'direct_object_key'=$3"
+            >>,
+            [Org, Ws, ObjectKey]
+        )
+    of
+        undefined -> not_found;
+        Bin when is_binary(Bin) -> to_atom(Bin);
+        Other -> Other
+    end.
 
 asset_status(Org, Ws, AssetId) ->
     case

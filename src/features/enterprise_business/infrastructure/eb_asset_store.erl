@@ -51,7 +51,8 @@
     session_by_client_id/3,
     renew_session/4,
     register_session/6,
-    direct_session_row/1
+    direct_session_row/1,
+    bind_direct/4
 ]).
 
 %% @doc 由作用域派生对象 key（与元数据 `object_key` 同源，单一真源）。
@@ -462,3 +463,8 @@ register_session(Org, Ws, Descriptor, Cid, Registration, Window) ->
 -spec direct_session_row(binary()) -> {ok, map()} | {error, term()}.
 direct_session_row(ObjectKey) ->
     eb_pg_asset_meta:direct_session_row(ObjectKey).
+
+%% V3-C04：direct-v1 CONFIRMED 会话 → active 绑定（幂等；winner 物理键）。
+-spec bind_direct(integer(), integer(), binary(), map()) -> {ok, map()} | {error, term()}.
+bind_direct(OrgId, WorkspaceId, DirectKey, Descriptor) ->
+    eb_pg_asset_meta:bind_direct(OrgId, WorkspaceId, DirectKey, Descriptor).

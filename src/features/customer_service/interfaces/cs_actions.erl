@@ -874,58 +874,30 @@ table(widget) ->
                             %% CS-BE-01：展示文件名（可选；随凭证进 PUT 登记
                             %% 与历史 assets[].file_name 投影）。
                             {file_name, binary, optional},
-                            %% V5 恢复合同（02 §137）：operation=register（缺省）
+                            %% V3-C04 恢复合同：operation=register（缺省）
                             %% |status|renew；client_upload_id 幂等登记；
-                            %% asset_id 为 status/renew 会话定位。
+                            %% object_key 为 status/renew direct 会话定位。
                             {operation, binary, optional},
                             {client_upload_id, binary, optional},
-                            {asset_id, tsid, optional}
+                            {object_key, binary, optional}
                         ],
                         [{id, session_id}]}
                 ]
             )},
+        %% V3-C04：confirm 走 direct finalize + Worker 校验 + active 绑定
+        %% （object_key 定位 direct 会话；asset_id 保留为存量恢复入口）。
         {widget_asset_confirm,
             widget_token_entry(
                 [
                     {<<"POST">>, widget_asset_confirm,
                         [
                             {installation_id, tsid, required},
-                            {upload_ref, binary, optional},
+                            {object_key, binary, optional},
+                            {attempt_id, int, optional},
                             {asset_id, tsid, optional}
                         ],
                         [{id, session_id}]}
                 ]
-            )},
-        %% BE-PATCH-01：字节上传代理（POST .../assets/upload）。upload_ref 是
-        %% 唯一凭证（FE 裸 PUT 合同：无凭证头/Cookie，URL 查询串携带申报键），
-        %% **不要求** visit token 头；payload=请求体字节，不经 JSON 参数表——
-        %% 线格式分支在 cs_widget_handler（asset_content 同款先例），handler 取
-        %% 原始体注入 payload 键。鉴权链：installation active → 会话事实（服务
-        %% 端派生 contact）→ upload_ref open（过期/篡改/同上传人）→ contact
-        %% 会话归属门（全部复用 eb_asset_app:put_object 既有实现）。
-        {widget_asset_put,
-            widget_entry(
-                [
-                    {<<"POST">>, widget_asset_put,
-                        [
-                            {installation_id, tsid, required},
-                            {upload_ref, binary, required}
-                        ],
-                        [{id, session_id}]},
-                    %% P1-E2E-01 实证缺陷修复：presign 回显 upload.method=PUT
-                    %% （with_upload_url），浏览器按合同发裸 PUT，而动作表只登记
-                    %% POST → PUT 一律 405，FE-W01 附件链必炸。PUT 与 POST 同参
-                    %% 同用例，方法门放行两形态（鉴权/绑定门不变）。
-                    {<<"PUT">>, widget_asset_put,
-                        [
-                            {installation_id, tsid, required},
-                            {upload_ref, binary, required}
-                        ],
-                        [{id, session_id}]}
-                ],
-                widget_auth(),
-                widget_server_derived(),
-                param
             )},
         %% BE-S01b（api-surface-freeze widget_apis）：访客附件内容代理（GET）。
         %% 响应是对象字节本体（mime 定 content-type），不走 cs_http:respond 的

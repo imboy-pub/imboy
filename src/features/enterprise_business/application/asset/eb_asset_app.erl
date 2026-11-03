@@ -51,7 +51,6 @@
 -moduledoc "企业附件闭环用例层（EB-07）—— facade 的唯一委派目标。".
 -export([
     request_presign/2,
-    put_object/2,
     confirm_asset/2,
     content_stream/2,
     edge_authorize_content/1,
@@ -67,90 +66,96 @@
 -define(DEFAULT_CLEANUP_TTL_SEC, 3600).
 
 %% ===================================================================
-%% 1b. V5 会话协议（02 §137/§143）：status 只读回查、renew 单调续期
+%% 1b. direct 会话协议（V3-C04）：status 只读回查、renew 换新 attempt
 %% ===================================================================
 
-%% @doc 会话回查：Params 需 `workspace_id` + (`asset_id` | `client_upload_id`)
-%% + actor/auth/store 端口（与 presign 同门）。只读，响应绝不含能力。
+%% @doc 会话回查（direct-v1）：Params 需 `workspace_id` + `object_key`
+%% + actor（user/contact 二选一）。归属逐字比对（跨主体/跨空间
+%% not_found，C04-02）；只读，响应不含任何写能力。
 session_status(OrgId, Params) ->
-    with_authorized_session(OrgId, Params, fun(_Org, _Ws, AssetId, Row, _Cid) ->
-        {ok, v5_status_view(AssetId, Row)}
+    session_direct_op(OrgId, Params, fun(Key, Owner) ->
+        {ok, direct_status_view(Key, Owner)}
     end).
 
-%% @doc 续期：min(now+既有TTL, deadline) 冻结后单调提交，COMMIT 后按已
-%% 提交绝对值重新 mint upload_ref（不延长 deadline；终态/越期 fail-closed）。
+%% @doc 续期（V3-C04）：GRANTED/FINALIZING → renew_grant（新 attempt +
+%% 新 staging descriptor，expected sha 复用冻结声明）；CONFIRMED 幂等
+%% 终态投影（无新 attempt、无 presign）。
 session_renew(OrgId, Params) ->
-    with_authorized_session(OrgId, Params, fun(Org, Ws, AssetId, Row, _Cid) ->
-        Deadline = eb_deadline_sec(Row),
-        Now = (port(Params, clock)):now(),
-        case Now >= Deadline of
-            true ->
-                {error, session_expired};
-            false ->
-                NewExpiry = min(Now + upload_ttl_value(Params), Deadline),
-                Asset = port(Params, asset),
-                case Asset:renew_session(Org, Ws, AssetId, NewExpiry) of
-                    {ok, #{committed_expires_at := Committed}} ->
-                        case v5_session_mint(Org, Params, AssetId, Row, Now, Committed) of
-                            {ok, Token} ->
-                                Base = v5_status_view(AssetId, Row),
-                                {ok, Base#{
-                                    upload_ref => Token,
-                                    upload => #{
-                                        method => <<"PUT">>, token => Token, expires_at => Committed
-                                    },
-                                    expires_at => Committed,
-                                    renewed => true,
-                                    can_resume => true,
-                                    retry_action => <<"resume_same_asset">>
-                                }};
-                            {error, _} = Err ->
-                                Err
-                        end;
-                    {error, not_renewable} ->
-                        {error, session_not_renewable};
-                    {error, Reason} ->
-                        {error, Reason}
-                end
+    session_direct_op(OrgId, Params, fun(Key, Owner) ->
+        case eb_asset_direct:direct_renew(Key) of
+            {ok, #{grant := Grant} = Info} ->
+                {ok, (direct_status_view(Key, Owner))#{
+                    attempt_id => maps:get(attempt_id, Info),
+                    upload => #{
+                        method => maps:get(method, Grant),
+                        transport => maps:get(transport, Grant),
+                        url => maps:get(url, Grant),
+                        required_headers =>
+                            required_headers_js(maps:get(required_headers, Grant)),
+                        expires_in => maps:get(expires_in, Grant)
+                    }
+                }};
+            {ok, Info} ->
+                %% CONFIRMED 幂等终态（无 grant 键）
+                {ok, (direct_status_view(Key, Owner))#{
+                    state_confirmed => true,
+                    info => Info
+                }};
+            {error, _} = Err ->
+                Err
         end
     end).
 
-%% 会话定位 + 授权门（复用 presign 同一 scope 门），然后执行回调。
-with_authorized_session(OrgId, Params, Fun) ->
+%% direct 会话协议用例共用门：actor 二选一 + object_key 定位 + 归属逐字
+%% 比对（跨主体/跨空间 not_found——C04-02）。
+session_direct_op(OrgId, Params, Fun) ->
     case actor_scope(Params) of
         {error, _} = Err ->
             Err;
         {ok, Actor} ->
-            locate_session(OrgId, Params, fun(Org, Ws, AssetId, Row, Cid) ->
-                Registration = registration_map(Row),
-                Expected = registration_subject(Org, Actor, Params),
-                case
-                    maps:get(<<"subject">>, Registration, undefined) =:= Expected andalso
-                        maps:get(client_upload_id, Params, maps:get(<<"client_upload_id">>, Row)) =:=
-                            maps:get(<<"client_upload_id">>, Row)
-                of
-                    false ->
-                        {error, not_found};
-                    true ->
-                        Args = #{
-                            actor => Actor, ws => Ws, conv => maps:get(<<"conversation_id">>, Row)
-                        },
-                        case
-                            presign_scope_check(port(Params, auth), port(Params, store), Org, Args)
-                        of
-                            ok -> Fun(Org, Ws, AssetId, Row, Cid);
-                            {error, _} = Err -> Err
-                        end
-                end
-            end)
+            Ws = maps:get(workspace_id, Params, undefined),
+            Key = maps:get(object_key, Params, undefined),
+            case {is_integer(Ws), is_binary(Key)} of
+                {true, true} ->
+                    case eb_asset_direct:session_owner(Key) of
+                        {ok, Owner} ->
+                            case owner_matches(Owner, OrgId, Ws, Actor) of
+                                ok -> Fun(Key, Owner);
+                                {error, not_found} -> {error, not_found};
+                                {error, _} = Err2 -> Err2
+                            end;
+                        {error, _} ->
+                            {error, not_found}
+                    end;
+                _ ->
+                    {error, {invalid_argument, session_identity}}
+            end
     end.
 
-registration_map(Row) ->
-    case maps:get(<<"upload_registration">>, Row, undefined) of
-        B when is_binary(B) -> jsone:decode(B);
-        M when is_map(M) -> M;
-        _ -> #{}
-    end.
+%% direct 会话只读投影（status/renew 共用；不含任何写能力）。
+direct_status_view(Key, Owner) ->
+    State = maps:get(direct_state, Owner),
+    #{
+        object_key => Key,
+        session_state => direct_session_state(State),
+        direct_state => State,
+        session_deadline => maps:get(session_deadline, Owner, undefined),
+        object_hash => maps:get(expected_sha, Owner, undefined),
+        mime => maps:get(mime, Owner),
+        file_name => maps:get(file_name, Owner, undefined),
+        can_resume => (State =:= <<"GRANTED">>) orelse (State =:= <<"FINALIZING">>),
+        retry_action =>
+            case State of
+                <<"GRANTED">> -> <<"resume_same_object_key">>;
+                <<"FINALIZING">> -> <<"retry_confirm">>;
+                <<"CONFIRMED">> -> <<"retry_confirm">>;
+                _ -> <<"none">>
+            end
+    }.
+
+direct_session_state(<<"CONFIRMED">>) -> <<"confirmed">>;
+direct_session_state(<<"FAILED">>) -> <<"rejected">>;
+direct_session_state(_) -> <<"registered">>.
 
 registration_subject(Org, Actor, Params) ->
     Base = #{
@@ -167,136 +172,8 @@ registration_subject(Org, Actor, Params) ->
         member -> Base
     end.
 
-locate_session(OrgId, Params, Fun) ->
-    Ws = maps:get(workspace_id, Params, undefined),
-    AssetId = maps:get(asset_id, Params, undefined),
-    Cid = maps:get(client_upload_id, Params, undefined),
-    Asset = port(Params, asset),
-    case {is_integer(AssetId), Cid} of
-        {true, _} ->
-            run_session_fun(Asset, OrgId, Ws, AssetId, Fun);
-        {false, Cid} when is_binary(Cid), byte_size(Cid) =:= 36 ->
-            case Asset:session_by_client_id(OrgId, Ws, Cid) of
-                {ok, RecoveredId} -> run_session_fun(Asset, OrgId, Ws, RecoveredId, Fun);
-                {error, _} = Err -> Err
-            end;
-        _ ->
-            {error, {invalid_argument, session_identity}}
-    end.
-
-run_session_fun(Asset, OrgId, Ws, AssetId, Fun) ->
-    case Asset:fetch_session(OrgId, Ws, AssetId) of
-        {ok, Row} -> Fun(OrgId, Ws, AssetId, Row, maps:get(<<"client_upload_id">>, Row, undefined));
-        {error, _} = Err -> Err
-    end.
-
-v5_status_view(AssetId, Row) ->
-    State = session_state_of(Row),
-    #{
-        asset_id => AssetId,
-        client_upload_id => maps:get(<<"client_upload_id">>, Row, undefined),
-        session_state => State,
-        session_deadline => eb_deadline_sec(Row),
-        upload_expires_at => eb_expiry_sec(Row),
-        can_resume => State =:= <<"registered">>,
-        retry_action =>
-            case State of
-                <<"registered">> -> <<"resume_same_asset">>;
-                _ -> <<"none">>
-            end
-    }.
-
-session_state_of(Row) ->
-    case maps:get(<<"lifecycle_state">>, Row, <<"live">>) of
-        <<"live">> -> session_status_of(Row);
-        _ -> <<"deleted">>
-    end.
-
-session_status_of(Row) ->
-    case maps:get(<<"status">>, Row) of
-        pending_confirm -> <<"registered">>;
-        <<"pending_confirm">> -> <<"registered">>;
-        active -> <<"confirmed">>;
-        <<"active">> -> <<"confirmed">>;
-        deleted -> <<"deleted">>;
-        <<"deleted">> -> <<"deleted">>;
-        Other -> Other
-    end.
-
-eb_deadline_sec(Row) ->
-    ts_to_sec(maps:get(<<"session_deadline">>, Row)).
-
-eb_expiry_sec(Row) ->
-    ts_to_sec(maps:get(<<"upload_expires_at">>, Row)).
-
-ts_to_sec(N) when is_integer(N) -> N;
-ts_to_sec(null) ->
-    undefined;
-ts_to_sec(undefined) ->
-    undefined;
-ts_to_sec({Date, {H, M, Seconds}}) when is_number(Seconds) ->
-    calendar:datetime_to_gregorian_seconds({Date, {H, M, trunc(Seconds)}}) - 62167219200;
-ts_to_sec(Bin) when is_binary(Bin) ->
-    case
-        try
-            calendar:rfc3339_to_system_time(binary_to_list(Bin), [{unit, second}])
-        catch
-            _:_ -> undefined
-        end
-    of
-        N when is_integer(N) -> N;
-        _ -> undefined
-    end;
-ts_to_sec(_) ->
-    undefined.
-
-upload_ttl_value(Params) ->
-    case maps:get(upload_ttl_seconds, Params, ?DEFAULT_UPLOAD_TTL_SEC) of
-        T when is_integer(T), T > 0, T =< ?MAX_UPLOAD_TTL_SEC -> T;
-        _ -> ?DEFAULT_UPLOAD_TTL_SEC
-    end.
-
-%% 按已提交会话与主行声明重新 mint upload_ref（冻结绝对到期）。
-v5_session_mint(Org, Params, AssetId, Row, Now, ExpiresAt) ->
-    Crypto = port(Params, crypto),
-    KeyRef = key_ref(Params),
-    Conv =
-        case maps:get(<<"conversation_id">>, Row) of
-            undefined -> undefined;
-            C when is_integer(C) -> C;
-            _ -> undefined
-        end,
-    Msg =
-        case maps:get(<<"message_id">>, Row) of
-            M when is_integer(M) -> M;
-            _ -> undefined
-        end,
-    {ok, Actor} = actor_scope(Params),
-    Aad = eb_asset_upload_ref:aad(Org, maps:get(<<"workspace_id">>, Row), Conv, Msg),
-    Claims = maps:merge(
-        #{
-            asset_id => AssetId,
-            upload_subject => maps:get(<<"subject">>, registration_map(Row)),
-            object_hash => maps:get(<<"object_hash">>, Row),
-            mime => maps:get(<<"mime">>, Row),
-            size_bytes => maps:get(<<"size_bytes">>, Row),
-            file_name =>
-                case maps:get(<<"file_name">>, Row, undefined) of
-                    null -> undefined;
-                    FileName -> FileName
-                end,
-            retain_until => ts_to_sec(maps:get(<<"retain_until">>, Row, undefined)),
-            conversation_id => Conv,
-            message_id => Msg,
-            issued_at => Now,
-            expires_at => ExpiresAt
-        },
-        actor_claim(Actor)
-    ),
-    eb_asset_upload_ref:mint(Aad, Claims, Crypto, KeyRef).
-
 %% ===================================================================
-%% 1. presign：签发不透明上传凭证
+%% 1. presign：签发 s3_put 直传 descriptor（V3-C04）
 %% ===================================================================
 
 %% @doc `Params`：`workspace_id` / `conversation_id` / `mime` / `size_bytes` /
@@ -461,152 +338,32 @@ requested_floor(Requested) when is_integer(Requested) -> Requested;
 requested_floor(_Other) -> 0.
 
 presign_mint(OrgId, Args, Retain, Params) ->
-    Crypto = port(Params, crypto),
-    Clock = port(Params, clock),
-    Id = port(Params, id),
-    %% F6（RULING-2026-09-15 §七）：显式注入优先；缺省经 eb_env_keyring 服务端装配。
-    KeyRef = key_ref(Params),
-    Now = Clock:now(),
-    case upload_ttl(Params) of
+    %% V3-C04：正文切 direct-v1（S3-only 硬合同）——
+    %% register(fn_dv1_register_eb) → declare → grant 一站式签发 s3_put
+    %% staging descriptor。控制门不变（scope/retention/actor 校验已在前置
+    %% 步骤通过）；BEAM 零正文，api_byte/upload_ref 正文链一并移除。
+    Actor = maps:get(actor, Args),
+    Decl = #{
+        org_id => OrgId,
+        workspace_id => maps:get(ws, Args),
+        conversation_id => maps:get(conv, Args),
+        message_id => msg_or_undefined(Params),
+        client_upload_id => maps:get(client_upload_id, Params, undefined),
+        mime => maps:get(mime, Args),
+        size_bytes => maps:get(size, Args),
+        sha256_hex => maps:get(hash, Args),
+        file_name => maps:get(file_name, Args, undefined)
+    },
+    case
+        eb_asset_direct:direct_presign(
+            maps:get(kind, Actor), maps:get(id, Actor), Decl
+        )
+    of
+        {ok, Info} ->
+            {ok, presign_direct_view(Info, Args, Retain, Params)};
         {error, _} = Err ->
-            Err;
-        {ok, Ttl} ->
-            AssetId = Id:new_id(enterprise_asset),
-            ExpiresAt = Now + Ttl,
-            %% V5（02 §137/§143 + F20）：带 client_upload_id 的会话先登记
-            %% （预建 pending 主行 + fn_v5_register_eb 填会话列），登记失败
-            %% 不 mint 任何能力（失败关闭）；旧客户端（无 UUID）行为不变。
-            case
-                maybe_v5_register(
-                    OrgId, Args, Params#{retain_until => Retain}, AssetId, Now, ExpiresAt
-                )
-            of
-                {error, _} = Err ->
-                    Err;
-                {ok, Row} when is_map(Row) ->
-                    resume_registered(OrgId, Params, Row, Now);
-                {ok, undefined} ->
-                    Aad = eb_asset_upload_ref:aad(
-                        OrgId, maps:get(ws, Args), maps:get(conv, Args), msg_or_undefined(Params)
-                    ),
-                    Claims = maps:merge(
-                        #{
-                            asset_id => AssetId,
-                            object_hash => maps:get(hash, Args),
-                            mime => maps:get(mime, Args),
-                            size_bytes => maps:get(size, Args),
-                            file_name => maps:get(file_name, Args, undefined),
-                            retain_until => Retain,
-                            conversation_id => maps:get(conv, Args),
-                            message_id => msg_or_undefined(Params),
-                            issued_at => Now,
-                            expires_at => ExpiresAt
-                        },
-                        actor_claim(maps:get(actor, Args))
-                    ),
-                    case eb_asset_upload_ref:mint(Aad, Claims, Crypto, KeyRef) of
-                        {ok, Token} ->
-                            {ok, presign_view(AssetId, Args, Retain, ExpiresAt, Token)};
-                        {error, _} = Err1 ->
-                            Err1
-                    end
-            end
+            Err
     end.
-
-%% V5 会话登记（EB 主行即 session）。Subject kind 按 actor 主体分流：
-%% member→seat、contact→visitor_session（fn_v5_register_eb 白名单）。
-%% 快照只含稳定声明（mime/hash/size/file_name/conv/msg/retain），不含
-%% 能力 token/到期（02 §15：快照不含能力）。
-maybe_v5_register(OrgId, Args, Params, AssetId, Now, ExpiresAt) ->
-    case maps:get(client_upload_id, Params, undefined) of
-        undefined ->
-            {ok, undefined};
-        Cid when is_binary(Cid), byte_size(Cid) =:= 36 ->
-            Actor = maps:get(actor, Args),
-            Registration = #{
-                <<"subject">> => registration_subject(OrgId, Actor, Params),
-                <<"declaration">> => #{
-                    <<"mime">> => maps:get(mime, Args),
-                    <<"object_hash">> => maps:get(hash, Args),
-                    <<"size_bytes">> => maps:get(size, Args),
-                    <<"file_name">> => json_nullable(maps:get(file_name, Args, undefined)),
-                    <<"conversation_id">> => maps:get(conv, Args),
-                    <<"message_id">> => json_nullable(msg_or_undefined(Params)),
-                    <<"retain_until">> => json_nullable(maps:get(retain_until, Params, undefined))
-                }
-            },
-            Descriptor = #{
-                id => AssetId,
-                object_hash => maps:get(hash, Args),
-                mime => maps:get(mime, Args),
-                size_bytes => maps:get(size, Args),
-                file_name => maps:get(file_name, Args, undefined),
-                conversation_id => maps:get(conv, Args),
-                message_id => msg_or_undefined(Params),
-                business_identity_id => maps:get(business_identity_id, Params, undefined),
-                retain_until =>
-                    case maps:get(retain_until, Params, undefined) of
-                        R when is_integer(R) -> R * 1000;
-                        _ -> undefined
-                    end,
-                uploaded_by_user_id =>
-                    case maps:get(kind, Actor) of
-                        member -> maps:get(id, Actor);
-                        contact -> undefined
-                    end
-            },
-            Ws = maps:get(ws, Args),
-            Asset = port(Params, asset),
-            case
-                Asset:register_session(
-                    OrgId,
-                    Ws,
-                    Descriptor,
-                    Cid,
-                    Registration,
-                    {Now + ?V5_EB_SESSION_DEADLINE_SEC, ExpiresAt}
-                )
-            of
-                {ok, Id} -> Asset:fetch_session(OrgId, Ws, Id);
-                {error, _} = Err -> Err
-            end;
-        _ ->
-            {error, {invalid_argument, client_upload_id}}
-    end.
-
-json_nullable(undefined) -> null;
-json_nullable(Value) -> Value.
-
-resume_registered(Org, Params, Row, Now) ->
-    Id = maps:get(<<"id">>, Row),
-    case session_state_of(Row) of
-        <<"confirmed">> ->
-            {ok, v5_status_view(Id, Row)};
-        <<"registered">> ->
-            case Now < eb_deadline_sec(Row) andalso Now < eb_expiry_sec(Row) of
-                true ->
-                    Expiry = eb_expiry_sec(Row),
-                    case v5_session_mint(Org, Params, Id, Row, Now, Expiry) of
-                        {ok, Token} ->
-                            {ok, (v5_status_view(Id, Row))#{
-                                upload_ref => Token,
-                                expires_at => Expiry,
-                                upload => #{
-                                    method => <<"PUT">>, token => Token, expires_at => Expiry
-                                }
-                            }};
-                        {error, _} = Err ->
-                            Err
-                    end;
-                false ->
-                    {error, session_expired}
-            end;
-        _ ->
-            {error, session_not_renewable}
-    end.
-
-actor_claim(#{kind := member, id := Id}) -> #{actor_user_id => Id};
-actor_claim(#{kind := contact, id := Id}) -> #{actor_contact_id => Id}.
 
 msg_or_undefined(Params) ->
     case maps:get(message_id, Params, undefined) of
@@ -614,91 +371,38 @@ msg_or_undefined(Params) ->
         _Other -> undefined
     end.
 
-%% F6（RULING-2026-09-15 §七）主密钥装配：显式注入（map 形态的测试/内部合同）
-%% 原样优先；缺省经 `eb_env_keyring` 从服务端 env 解析 active key_ref。env 缺失
-%% 时得 undefined，`eb_asset_upload_ref` 的 mint/open 照旧 fail-closed（500 面）。
-key_ref(Params) ->
-    eb_env_keyring:resolve_key_ref(maps:get(key_ref, Params, undefined)).
-
-%% 凭证时限：只设**上界**（`?MAX_UPLOAD_TTL_SEC`）。0 与负值被允许，因为那只会让凭证
-%% **立即过期**（fail-closed，不产生任何放行风险），同时让过期路径可在不伪造时钟的前提下
-%% 被测试覆盖（`eb_asset_tests:unit_upload_ref_expiry_is_enforced` 即用 `-1`）。
-upload_ttl(Params) ->
-    case maps:get(upload_ttl_seconds, Params, ?DEFAULT_UPLOAD_TTL_SEC) of
-        Ttl when is_integer(Ttl), Ttl =< ?MAX_UPLOAD_TTL_SEC -> {ok, Ttl};
-        Other -> {error, {invalid_upload_ttl, Other}}
-    end.
-
-presign_view(AssetId, Args, Retain, ExpiresAt, Token) ->
+%% direct presign 成功视图（V3-C04）：s3_put descriptor + object_key
+%% （direct 会话键，客户端后续 confirm 的定位标识）。不再预分 asset_id、
+%% 不再签发 upload_ref（同源正文凭证链已移除）。
+presign_direct_view(Info, Args, Retain, _Params) ->
+    Grant = maps:get(grant, Info),
     #{
-        asset_id => AssetId,
-        session_state => <<"registered">>,
-        upload_ref => Token,
+        object_key => maps:get(object_key, Info),
+        session_state => maps:get(state, Info),
+        attempt_id => maps:get(attempt_id, Info),
+        session_deadline => maps:get(session_deadline, Info, undefined),
         object_hash => maps:get(hash, Args),
         mime => maps:get(mime, Args),
         size_bytes => maps:get(size, Args),
         file_name => maps:get(file_name, Args, undefined),
         retain_until => Retain,
-        expires_at => ExpiresAt,
         upload => #{
-            method => <<"PUT">>,
-            token => Token,
-            expires_at => ExpiresAt,
-            adapter => <<"private_object_store">>,
-            rule => <<"opaque_token_no_url_no_object_key">>
+            method => maps:get(method, Grant),
+            transport => maps:get(transport, Grant),
+            url => maps:get(url, Grant),
+            required_headers => required_headers_js(maps:get(required_headers, Grant)),
+            expires_in => maps:get(expires_in, Grant)
         }
     }.
 
-%% ===================================================================
-%% 2. PUT：客户端按凭证写入私有桶
-%% ===================================================================
-
-%% @doc `Params`：`workspace_id` / `upload_ref` / `payload` 必填；`actor_user_id` /
-%% `key_ref` 可选（`actor_user_id` 给出时必须等于签发凭证的上传人，否则 `not_uploader`）。
--spec put_object(integer(), map()) -> {ok, map()} | {error, term()}.
-put_object(OrgId, Params) when is_integer(OrgId), is_map(Params) ->
-    case put_args(Params) of
-        {error, _} = Err ->
-            Err;
-        {ok, Ws, Token, Payload, Actor} ->
-            case open_ref(OrgId, Ws, Token, Actor, Params) of
-                {error, _} = Err ->
-                    Err;
-                {ok, Claims} ->
-                    put_authorized(OrgId, Ws, Payload, Claims, Params)
-            end
-    end;
-put_object(_OrgId, _Params) ->
-    {error, {invalid_argument, put_object}}.
-
-put_args(Params) ->
-    Ws = maps:get(workspace_id, Params, undefined),
-    Token = maps:get(upload_ref, Params, undefined),
-    Payload = maps:get(payload, Params, undefined),
-    case actor_scope(Params) of
-        {error, _} = Err ->
-            Err;
-        {ok, Actor} ->
-            case {is_integer(Ws), is_binary(Token), upload_payload(Payload)} of
-                {true, true, true} -> {ok, Ws, Token, Payload, Actor};
-                _ -> {error, {invalid_argument, {put_object, [Ws, Token, Payload]}}}
-            end
-    end.
-
-open_ref(OrgId, Ws, Token, Actor, Params) ->
-    Crypto = port(Params, crypto),
-    Clock = port(Params, clock),
-    %% F6（RULING-2026-09-15 §七）：显式注入优先；缺省经 eb_env_keyring 服务端装配。
-    KeyRef = key_ref(Params),
-    case eb_asset_upload_ref:open(Token, OrgId, Ws, Crypto, KeyRef, Clock:now()) of
-        {ok, #{claims := Claims}} ->
-            case actor_claim_value(Claims) =:= actor_value(Actor) of
-                true -> {ok, Claims};
-                _Other -> {error, {forbidden, not_uploader}}
-            end;
-        {error, _} = Err ->
-            Err
-    end.
+%% KV tuple 列表 → JSON 对象数组（jsone 不编码 tuple）
+required_headers_js(Headers) when is_list(Headers) ->
+    [
+        #{key => K, value => V}
+     || {K, V} <- Headers
+    ];
+required_headers_js(_) ->
+    [].
 
 %% CSB-02S D6：凭证里的 actor（member/contact 二选一）与请求方主体逐字比对。
 actor_claim_value(Claims) ->
@@ -710,17 +414,6 @@ actor_claim_value(Claims) ->
 actor_value(#{kind := Kind, id := Id}) ->
     {Kind, Id}.
 
-put_authorized(OrgId, Ws, Payload, Claims, Params) ->
-    Auth = port(Params, auth),
-    Store = port(Params, store),
-    Conv = maps:get(conversation_id, Claims, undefined),
-    case scope_check_by_claims(Auth, Store, OrgId, Ws, Conv, Claims) of
-        {error, _} = Err ->
-            Err;
-        ok ->
-            put_verify(OrgId, Ws, Payload, Claims, Params)
-    end.
-
 %% CSB-02S D6：按凭证 actor 主体种类分流授权（member=成员+经办门；
 %% contact=访客会话归属门）。
 scope_check_by_claims(Auth, Store, OrgId, Ws, Conv, Claims) ->
@@ -729,120 +422,6 @@ scope_check_by_claims(Auth, Store, OrgId, Ws, Conv, Claims) ->
             eb_asset_scope:authorize(Auth, Store, OrgId, Ws, Conv, ActorUserId);
         {contact, ActorContactId} ->
             eb_asset_scope:authorize_contact(Store, OrgId, Ws, Conv, ActorContactId)
-    end.
-
-%% 服务端重算并复核上传方声明的 hash / size / mime —— 三者任一不符都在落库前拒。
-put_verify(OrgId, Ws, Payload, Claims, Params) ->
-    ExpectedHash = maps:get(object_hash, Claims),
-    ExpectedSize = maps:get(size_bytes, Claims),
-    Mime = maps:get(mime, Claims),
-    ActualHash = payload_hash(Payload),
-    case {ActualHash =:= ExpectedHash, payload_size(Payload) =:= ExpectedSize} of
-        {false, _} ->
-            {error, {hash_mismatch, ExpectedHash, ActualHash}};
-        {true, false} ->
-            {error, {size_mismatch, ExpectedSize, payload_size(Payload)}};
-        {true, true} ->
-            case payload_sniff(Mime, Payload) of
-                {error, _} = Err ->
-                    Err;
-                ok ->
-                    asset_put_private(OrgId, Ws, Payload, Claims, Params)
-            end
-    end.
-
-%% HTTP uploads retain one owned descriptor; existing binary callers remain compatible.
-%% HTTP 上传复用请求拥有的描述符；原 binary 调用方保持兼容。
-upload_payload(B) when is_binary(B) -> true;
-upload_payload({upload_spool, Fh, Size, Hash}) ->
-    is_pid(Fh) andalso is_integer(Size) andalso Size >= 0 andalso is_binary(Hash);
-upload_payload(_) ->
-    false.
-
-payload_size(B) when is_binary(B) -> byte_size(B);
-payload_size(Source) -> attachment_upload_spool:size(Source).
-payload_hash(B) when is_binary(B) -> eb_asset_content:sha256_hex(B);
-payload_hash(Source) -> attachment_upload_spool:sha256(Source).
-
-payload_sniff(Mime, B) when is_binary(B) -> eb_asset_content:sniff(Mime, B);
-payload_sniff(Mime, Source) ->
-    case attachment_upload_spool:read(Source, 0) of
-        {ok, Head} ->
-            case eb_asset_content:sniff(Mime, Head) of
-                ok when
-                    Mime =:= <<"text/plain">>;
-                    Mime =:= <<"text/markdown">>;
-                    Mime =:= <<"text/csv">>;
-                    Mime =:= <<"image/svg+xml">>
-                ->
-                    sniff_remaining_text(Source, byte_size(Head), Mime);
-                Result ->
-                    Result
-            end;
-        _ ->
-            {error, {mime_content_mismatch, Mime}}
-    end.
-
-sniff_remaining_text(Source, Offset, Mime) ->
-    case attachment_upload_spool:read(Source, Offset) of
-        eof ->
-            ok;
-        {ok, Bytes} ->
-            case eb_asset_content:sniff(<<"text/plain">>, Bytes) of
-                ok -> sniff_remaining_text(Source, Offset + byte_size(Bytes), Mime);
-                _ -> {error, {mime_content_mismatch, Mime}}
-            end;
-        _ ->
-            {error, {mime_content_mismatch, Mime}}
-    end.
-
-asset_put_private(OrgId, Ws, Payload, Claims, Params) ->
-    Asset = port(Params, asset),
-    Store = port(Params, store),
-    case identity_of(Store, OrgId, Ws, maps:get(conversation_id, Claims, undefined)) of
-        {error, _} = Err ->
-            Err;
-        {ok, IdentityId} ->
-            Descriptor = #{
-                id => maps:get(asset_id, Claims),
-                object_hash => maps:get(object_hash, Claims),
-                mime => maps:get(mime, Claims),
-                size_bytes => maps:get(size_bytes, Claims),
-                file_name => maps:get(file_name, Claims, undefined),
-                payload => Payload,
-                upload_subject => maps:get(upload_subject, Claims, undefined),
-                signature_context => #{
-                    issued_at => calendar:system_time_to_universal_time(
-                        maps:get(issued_at, Claims), second
-                    ),
-                    expires_at => calendar:system_time_to_universal_time(
-                        maps:get(expires_at, Claims), second
-                    )
-                },
-                conversation_id => maps:get(conversation_id, Claims, undefined),
-                message_id => maps:get(message_id, Claims, undefined),
-                business_identity_id => IdentityId,
-                uploaded_by_user_id => maps:get(actor_user_id, Claims, undefined),
-                retain_until => eb_asset_content:to_retain_ms(
-                    maps:get(retain_until, Claims, undefined)
-                )
-            },
-            case Asset:put_private(OrgId, Ws, Descriptor) of
-                {ok, _Summary} ->
-                    %% 只回可对外字段：`put_private/3` 的 Summary 含不透明 storage_ref，
-                    %% 这里刻意不把它抬进返回体（A01/A04 的机械判据）。
-                    {ok, #{
-                        asset_id => maps:get(asset_id, Claims),
-                        status => pending_confirm,
-                        object_hash => maps:get(object_hash, Claims),
-                        mime => maps:get(mime, Claims),
-                        size_bytes => maps:get(size_bytes, Claims),
-                        file_name => maps:get(file_name, Claims, undefined),
-                        retain_until => maps:get(retain_until, Claims, undefined)
-                    }};
-                {error, _} = Err ->
-                    Err
-            end
     end.
 
 identity_of(_Store, _OrgId, _Ws, undefined) ->
@@ -854,7 +433,7 @@ identity_of(Store, OrgId, Ws, ConversationId) when is_integer(ConversationId) ->
     end.
 
 %% ===================================================================
-%% 3. confirm：重新鉴权 + 完整性 + 保留期继承
+%% 3. confirm：direct-v1 finalize + Worker 校验 + active 绑定（V3-C04）
 %% ===================================================================
 
 %% @doc `Params`：`workspace_id` / `upload_ref` / `actor_user_id` 必填；
@@ -863,43 +442,164 @@ identity_of(Store, OrgId, Ws, ConversationId) when is_integer(ConversationId) ->
 %% scope 复核为准）。
 -spec confirm_asset(integer(), map()) -> {ok, map()} | {error, term()}.
 confirm_asset(OrgId, Params) when is_integer(OrgId), is_map(Params) ->
-    case confirm_args(Params) of
-        {error, _} = Err ->
-            Err;
-        {ok, Ws, {ref, Token}, Actor} ->
-            case open_ref(OrgId, Ws, Token, Actor, Params) of
-                {error, _} = Err ->
-                    Err;
-                {ok, Claims} ->
-                    confirm_authorized(OrgId, Ws, Claims, Params)
-            end;
-        {ok, Ws, {asset_id, AssetId}, Actor} ->
-            confirm_by_asset_id(OrgId, Ws, AssetId, Actor, Params)
-    end;
-confirm_asset(_OrgId, _Params) ->
-    {error, {invalid_argument, confirm_asset}}.
-
-confirm_args(Params) ->
-    Ws = maps:get(workspace_id, Params, undefined),
-    Token = maps:get(upload_ref, Params, undefined),
-    AssetId = maps:get(asset_id, Params, undefined),
     case actor_scope(Params) of
         {error, _} = Err ->
             Err;
         {ok, Actor} ->
-            cond_ref_or_id(Ws, Token, AssetId, Actor)
+            Ws = maps:get(workspace_id, Params, undefined),
+            Key = maps:get(object_key, Params, undefined),
+            AssetId = maps:get(asset_id, Params, undefined),
+            case {is_integer(Ws), is_binary(Key), is_integer(AssetId)} of
+                {true, true, _} ->
+                    confirm_direct(OrgId, Ws, Key, Params, Actor);
+                {true, undefined, true} ->
+                    %% W2-02 存量恢复：V5 pending 行按 asset_id 走既有确认链
+                    confirm_by_asset_id(OrgId, Ws, AssetId, Actor, Params);
+                _ ->
+                    {error, {invalid_argument, {confirm_asset, [Ws, Key, AssetId]}}}
+            end
+    end;
+confirm_asset(_OrgId, _Params) ->
+    {error, {invalid_argument, confirm_asset}}.
+
+%% 门 1（C04-02）：direct 会话归属逐字比对——跨主体/跨 Org/跨 Workspace
+%% 猜 object_key 一律 not_found（不泄露会话存在性）。
+confirm_direct(OrgId, Ws, Key, Params, Actor) ->
+    case eb_asset_direct:session_owner(Key) of
+        {ok, Owner} ->
+            case owner_matches(Owner, OrgId, Ws, Actor) of
+                {error, _} = Err ->
+                    Err;
+                ok ->
+                    %% 门 2（A02）：confirm **重新**鉴权——presign 后被
+                    %% suspend/转接的 actor 在此失败，失败不得推进状态。
+                    case confirm_scope_recheck(Params, OrgId, Ws, Owner) of
+                        {error, _} = Err2 ->
+                            Err2;
+                        ok ->
+                            confirm_direct_settle(OrgId, Ws, Key, Params, Actor, Owner)
+                    end
+            end;
+        {error, _} ->
+            {error, not_found}
     end.
 
-cond_ref_or_id(Ws, Token, _AssetId, Actor) when is_integer(Ws), is_binary(Token) ->
-    {ok, Ws, {ref, Token}, Actor};
-cond_ref_or_id(Ws, _Token, AssetId, Actor) when is_integer(Ws), is_integer(AssetId) ->
-    {ok, Ws, {asset_id, AssetId}, Actor};
-cond_ref_or_id(Ws, Token, AssetId, _Actor) ->
-    {error, {invalid_argument, {confirm_asset, [Ws, Token, AssetId]}}}.
+owner_matches(Owner, OrgId, Ws, Actor) ->
+    case
+        maps:get(kind, Owner) =:= maps:get(kind, Actor) andalso
+            maps:get(principal, Owner) =:= maps:get(id, Actor) andalso
+            maps:get(org_id, Owner) =:= OrgId andalso
+            maps:get(workspace_id, Owner) =:= Ws
+    of
+        true -> ok;
+        false -> {error, not_found}
+    end.
 
-%% W2-02 asset_id 恢复路径：不依赖 upload_ref JWT——claims 自资产行派生
-%% （object_hash/size 以服务端行为准），授权重走 scope 复核门（成员比对
-%% 行审计字段，访客走会话归属门）；已 active 的资产幂等回读同一视图。
+confirm_scope_recheck(Params, OrgId, Ws, Owner) ->
+    Auth = port(Params, auth),
+    Store = port(Params, store),
+    Principal = maps:get(principal, Owner),
+    Conv = maps:get(conversation_id, Owner),
+    case maps:get(kind, Owner) of
+        contact ->
+            eb_asset_scope:authorize_contact(Store, OrgId, Ws, Conv, Principal);
+        _ ->
+            eb_asset_scope:authorize(Auth, Store, OrgId, Ws, Conv, Principal)
+    end.
+
+%% 状态分派：GRANTED/FINALIZING → finalize+scan；CONFIRMED（响应丢失恢复）
+%% → 补 Worker 校验再绑定；其余（RESERVED/DECLARED/FAILED）fail-closed。
+confirm_direct_settle(OrgId, Ws, Key, Params, Actor, Owner) ->
+    State = maps:get(direct_state, Owner),
+    Mime = maps:get(mime, Owner),
+    case State of
+        S when S =:= <<"GRANTED">> orelse S =:= <<"FINALIZING">> ->
+            case
+                eb_asset_direct:direct_finalize_scan(
+                    Key, attempt_no_param(Params), Mime, 600000
+                )
+            of
+                {ok, Scan} ->
+                    confirm_bind(OrgId, Ws, Key, Params, Actor, Owner, Scan);
+                {error, _} = Err ->
+                    Err
+            end;
+        <<"CONFIRMED">> ->
+            case scan_only(Key, Mime) of
+                {ok, Scan} ->
+                    confirm_bind(OrgId, Ws, Key, Params, Actor, Owner, Scan);
+                {error, _} = Err ->
+                    Err
+            end;
+        _ ->
+            {error, conflict}
+    end.
+
+attempt_no_param(Params) ->
+    max(1, elib_cnv:safe_to_integer(maps:get(attempt_id, Params, 1))).
+
+scan_only(Key, Mime) ->
+    case eb_asset_direct:receipt_secret() of
+        {ok, Secret} -> eb_asset_direct:scan_confirmed(Key, Mime, Secret, 600000);
+        {error, _} = Err -> Err
+    end.
+
+%% 绑定：Worker 校验通过后折叠进 enterprise_asset active（meta 层幂等：
+%% 同 direct 键回读同一行——重复 confirm 不产生重复引用）。
+confirm_bind(OrgId, Ws, Key, Params, Actor, Owner, Scan) ->
+    Store = port(Params, store),
+    Id = port(Params, id),
+    Conv = maps:get(conversation_id, Owner),
+    case identity_of(Store, OrgId, Ws, Conv) of
+        {error, _} = Err ->
+            Err;
+        {ok, IdentityId} ->
+            case bind_retain(OrgId, Ws, Params, Owner) of
+                {error, _} = Err2 ->
+                    Err2;
+                RetainSec ->
+                    Descriptor = #{
+                        id => Id:new_id(enterprise_asset),
+                        object_hash => maps:get(sha256, Scan),
+                        mime => maps:get(mime, Owner),
+                        size_bytes => maps:get(size, Scan),
+                        conversation_id => Conv,
+                        message_id => maps:get(message_id, Owner),
+                        uploaded_by_user_id => uploaded_by(Actor),
+                        business_identity_id => IdentityId,
+                        file_name => maps:get(file_name, Owner),
+                        retain_until => eb_asset_content:to_retain_ms(RetainSec),
+                        attempt_no => attempt_no_param(Params)
+                    },
+                    case eb_asset_direct:direct_bind(OrgId, Ws, Key, Descriptor) of
+                        {ok, Row} ->
+                            confirm_view(Params, OrgId, Ws, Row);
+                        {error, _} = Err3 ->
+                            Err3
+                    end
+            end
+    end.
+
+%% 保留期：绑定消息时**只能后移**（resolve_retention 消息锚点继承复用）。
+bind_retain(OrgId, Ws, Params, Owner) ->
+    MsgId = maps:get(message_id, Owner),
+    case resolve_retention(OrgId, Ws, Params#{message_id => MsgId}) of
+        {error, _} = Err -> Err;
+        {ok, Retain} -> Retain
+    end.
+
+confirm_view(Params, OrgId, Ws, Row) ->
+    Count =
+        case hold_count(port(Params, store), OrgId, Ws, Row) of
+            {ok, N} -> N;
+            {error, _} -> 0
+        end,
+    {ok, eb_asset_content:with_hold_count(eb_asset_content:public_asset_view(Row), Count)}.
+
+uploaded_by(#{kind := member, id := Id}) -> Id;
+uploaded_by(#{kind := seat, id := Id}) -> Id;
+uploaded_by(_) -> undefined.
+
 confirm_by_asset_id(OrgId, Ws, AssetId, Actor, Params) ->
     Asset = port(Params, asset),
     case Asset:fetch_asset(OrgId, Ws, AssetId) of
@@ -982,30 +682,6 @@ confirm_dispatch_status(OrgId, Ws, Row, Claims, Params) ->
             replay_view(OrgId, Ws, Row, Params);
         _Other ->
             {error, conflict}
-    end.
-
-%% A02 的落点：confirm 必须**重新**鉴权（presign 后被 suspend 的 actor 在此失败；
-%% CSB-02S D6：访客 contact 主体重新走会话归属门），失败的 confirm 不得把状态
-%% 推进为 active。
-confirm_authorized(OrgId, Ws, Claims, Params) ->
-    Auth = port(Params, auth),
-    Store = port(Params, store),
-    Conv = maps:get(conversation_id, Claims, undefined),
-    case scope_check_by_claims(Auth, Store, OrgId, Ws, Conv, Claims) of
-        {error, _} = Err ->
-            Err;
-        ok ->
-            confirm_pending(OrgId, Ws, Claims, Params)
-    end.
-
-confirm_pending(OrgId, Ws, Claims, Params) ->
-    Asset = port(Params, asset),
-    AssetId = maps:get(asset_id, Claims),
-    case Asset:fetch_asset(OrgId, Ws, AssetId) of
-        {ok, Row} ->
-            confirm_dispatch_status(OrgId, Ws, Row, Claims, Params);
-        {error, _} = Err ->
-            Err
     end.
 
 confirm_checks(OrgId, Ws, Row, Claims, Params) ->

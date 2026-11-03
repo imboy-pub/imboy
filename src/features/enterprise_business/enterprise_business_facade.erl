@@ -48,7 +48,6 @@
     request_session_status/2,
     request_session_renew/2,
     confirm_asset/2,
-    put_object/2,
     content_stream/2,
     %% member
     suspend_member/2,
@@ -343,6 +342,11 @@ request_session_renew(OrgId, _Params) ->
 %% @doc confirm 必须重新鉴权：presign 后被 suspend 的 actor 在此 fail-closed。
 %% W2-02：upload_ref（常规）与 asset_id（响应丢失恢复，02 §137）二选一。
 -spec confirm_asset(integer(), map()) -> term().
+%% V3-C04：direct 会话键恢复入口（object_key 定位 finalize）。
+confirm_asset(OrgId, #{workspace_id := WorkspaceId, object_key := ObjectKey} = Params) when
+    is_integer(OrgId), is_integer(WorkspaceId), is_binary(ObjectKey), is_map(Params)
+->
+    eb_asset_app:confirm_asset(OrgId, Params);
 confirm_asset(OrgId, #{workspace_id := WorkspaceId, upload_ref := UploadRef} = Params) when
     is_integer(OrgId), is_integer(WorkspaceId), is_binary(UploadRef), is_map(Params)
 ->
@@ -354,34 +358,6 @@ confirm_asset(OrgId, #{workspace_id := WorkspaceId, asset_id := AssetId} = Param
 confirm_asset(OrgId, Params) when is_integer(OrgId), is_map(Params) ->
     {error, {invalid_argument, confirm_asset}};
 confirm_asset(OrgId, _Params) ->
-    {error, {invalid_argument, {organization_id, OrgId}}}.
-
-%% BE-PATCH-01：字节上传代理（`eb_asset_app:put_object/2` 的 facade 出口）。
-%% `payload` = 请求体原始字节（HTTP 面由 handler 线格式层注入，非 JSON 参数）；
-%% `actor_user_id` / `actor_contact_id` 二选一（member / contact 主体），由调用
-%% 面服务端派生。ref open 验过期/篡改/同上传人 + 主体作用域门 + hash/size/mime
-%% 复核，全部既有实现。响应只含 asset 元数据投影，永无对象 URL。
--spec put_object(integer(), map()) -> term().
-put_object(
-    OrgId,
-    #{
-        workspace_id := WorkspaceId, upload_ref := UploadRef, payload := Payload
-    } = Params
-) when
-    is_integer(OrgId) andalso
-    is_integer(WorkspaceId) andalso
-    is_binary(UploadRef) andalso
-    (is_binary(Payload) orelse
-        (is_tuple(Payload) andalso tuple_size(Payload) =:= 4 andalso
-            element(1, Payload) =:= upload_spool andalso is_pid(element(2, Payload)) andalso
-            is_integer(element(3, Payload)) andalso element(3, Payload) >= 0 andalso
-            is_binary(element(4, Payload)))) andalso
-    is_map(Params)
-->
-    eb_asset_app:put_object(OrgId, Params);
-put_object(OrgId, Params) when is_integer(OrgId) andalso is_map(Params) ->
-    {error, {invalid_argument, put_object}};
-put_object(OrgId, _Params) ->
     {error, {invalid_argument, {organization_id, OrgId}}}.
 
 %% @doc 鉴权代理取流。返回内容流，绝不返回对象 key 或任何可下载链接。

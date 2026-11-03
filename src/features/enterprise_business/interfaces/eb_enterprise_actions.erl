@@ -308,52 +308,54 @@ table(tenant) ->
         %% 上传/确认/读取；经办 ACL 由 eb_asset_scope 的 assignee 门对全员
         %% 生效——sales 行为不变）。
         %%
-        %% CS-BE-01B：presign 路径承载第二个用例——`PUT` = 字节上传（同一
-        %% path 的方法分派，**零路由变更**：cowboy 只按 path 匹配，方法门在
-        %% `eb_tenant_handler` 的 case_for；对齐 widget 面 widget_asset_put 的
-        %% 「presign 下发的 PUT 目标就是本端点」协议）。请求体是**原始字节**
-        %% （附件内容，非 JSON——线格式分支在 eb_tenant_handler），`upload_ref`
-        %% 经查询串携带（presign 响应的 upload.url 已把它拼好）。鉴权链照走
-        %% 路由级成员门（asset.write + sales|customer_service），再用例内
-        %% `eb_asset_app:put_object` 复核凭证（过期/篡改/同上传人/经办 ACL/
-        %% hash/size/mime）——全部既有实现，零复制。
+        %% V3-C04：正文切 direct-v1（S3-only 硬合同）——presign 只剩 POST
+        %% 一个用例（签发 s3_put staging descriptor，正文自客户端直达
+        %% S3）；同源 `PUT` 字节上传用例与 upload_ref 凭证链一并移除，不
+        %% 保留同源鉴权正文兼容。声明键（conversation/mime/size/hash）改为
+        %% 必填：dv1 declare 在 presign 内一站式冻结 expected。
         {presign,
             entry(
                 tenant,
                 [
                     {<<"POST">>, request_presign,
                         [
-                            {conversation_id, tsid, optional},
-                            {mime, binary, optional},
-                            {size_bytes, int, optional},
-                            {object_hash, binary, optional},
+                            {conversation_id, tsid, required},
+                            {mime, binary, required},
+                            {size_bytes, int, required},
+                            {object_hash, binary, required},
                             {message_id, tsid, optional},
                             {business_identity_id, tsid, optional},
                             {retain_until, int, optional},
                             %% CS-BE-01：展示文件名（可选，1..256 字节；随凭证
                             %% 进 PUT 登记与历史 assets[].file_name 投影）。
                             {file_name, binary, optional},
-                            %% V5 恢复合同（02 §137）：operation=register（缺省）
+                            %% V3-C04 恢复合同：operation=register（缺省）
                             %% |status|renew；client_upload_id 幂等登记；
-                            %% asset_id 为 status/renew 的会话定位（新字段必须
-                            %% 进投影表，不得被动作表丢弃）。
+                            %% object_key 为 status/renew 的 direct 会话定位。
                             {operation, binary, optional},
                             {client_upload_id, binary, optional},
-                            {asset_id, tsid, optional}
+                            {object_key, binary, optional}
                         ],
-                        []},
-                    {<<"PUT">>, put_object, [{upload_ref, binary, required}], []}
+                        []}
                 ],
                 member_auth(<<"asset.write">>, [<<"sales">>, <<"customer_service">>]),
                 false,
                 false
             )},
+        %% V3-C04：confirm 走 direct finalize（copy→proof→winner pin）+
+        %% 内容 Worker 同字节校验 + active 绑定；object_key 定位 direct
+        %% 会话；asset_id 保留为存量 V5 pending 行的恢复入口。
         {confirm_asset,
             entry(
                 tenant,
                 [
                     {<<"POST">>, confirm_asset,
-                        [{upload_ref, binary, optional}, {asset_id, tsid, optional}], []}
+                        [
+                            {object_key, binary, optional},
+                            {attempt_id, int, optional},
+                            {asset_id, tsid, optional}
+                        ],
+                        []}
                 ],
                 member_auth(<<"asset.write">>, [<<"sales">>, <<"customer_service">>]),
                 false,

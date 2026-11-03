@@ -32,6 +32,8 @@
     v5_session_by_cid/3,
     renew_v5/4,
     direct_session_row/1,
+    register_eb/1,
+    bind_direct/4,
     sql_statements/0
 ]).
 
@@ -776,6 +778,16 @@ insert_without_pending_delete(Conn, Org, Ws, Id, Params) ->
 rollback_error(Reason) ->
     throw({rollback, {error, Reason}}).
 
+%% @doc dv1 EB 主体 register（V3-C04 铁律5：application 层不经 elib_pg，
+%% fn_dv1_register_eb 的 SQL 收敛在本 infrastructure 层；幂等/配额语义
+%% 全在受限函数内）。返回单行 {ok, [#{<<"key">> := ObjectKey}]}。
+-spec register_eb([term()]) -> {ok, [map()]} | {error, term()}.
+register_eb(RegisterArgs) when is_list(RegisterArgs) ->
+    elib_pg:query(
+        <<"SELECT fn_dv1_register_eb($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16) AS key">>,
+        RegisterArgs
+    ).
+
 %% @doc direct-v1 会话行读取（EB 域 Port：application 层经此访问，
 %% 铁律5）。attach_pending 为平台级表（非租户隔离模型），不做 tenant 包裹。
 %% upload_registration JSONB 一并解码为 map。
@@ -784,9 +796,16 @@ direct_session_row(ObjectKey) ->
     case
         elib_pg:query(
             <<
-                "SELECT object_key, bucket, scope, creator_user_id, session_state, direct_state,"
-                " upload_registration, storage_driver, storage_namespace, storage_container,"
-                " storage_locator_sha256 FROM attach_pending WHERE object_key=$1"
+                "SELECT p.object_key, p.bucket, p.scope, p.creator_user_id, p.session_state,"
+                " p.direct_state, p.upload_registration, p.storage_driver, p.storage_namespace,"
+                " p.storage_container, p.storage_locator_sha256, p.session_deadline,"
+                " p.direct_expected,"
+                %% V3-C04：winner pin 的物理键（CONFIRMED 后有值）——scan/位置
+                %% 解析的物理键真源在 attachment 行（与 bind_direct 同口径）。
+                " (SELECT a.storage_physical_key FROM attachment a"
+                "   WHERE a.path = p.object_key AND a.storage_physical_key IS NOT NULL"
+                "   LIMIT 1) AS storage_physical_key"
+                " FROM attach_pending p WHERE p.object_key=$1"
             >>,
             [ObjectKey]
         )
@@ -800,4 +819,176 @@ direct_decode_reg(Row) ->
     case maps:get(<<"upload_registration">>, Row, undefined) of
         B when is_binary(B) -> Row#{<<"upload_registration">> => jsone:decode(B)};
         _ -> Row
+    end.
+
+%% ===================================================================
+%% V3-C04：direct-v1 CONFIRMED 会话 → enterprise_asset active 绑定
+%% ===================================================================
+
+%% @doc 绑定 direct 会话（bind）：`DirectObjectKey` 的 direct-v1 会话在
+%% CONFIRMED + 内容 Worker 校验通过后，把资产行落为 active。
+%%   * 物理键/位置 = winner pin 写入的 attachment 行（`path=DirectKey`），
+%%     不是 EB 派生键——与读路径 `stream_content` 的唯一真源一致；
+%%   * 幂等（C04-03）：advisory lock(DirectKey) 线性化 + 同键 active 行
+%%     直接回读——重复 confirm 不产生第二行、不做第二次状态跃迁；
+%%   * Descriptor 需：id（调用方生成的 asset id）、object_hash（=attempt
+%%     proof sha）、mime、size_bytes；可选 conversation_id/message_id/
+%%     business_identity_id/uploaded_by_user_id/file_name/retain_until/
+%%     eb_registration（EB subject+declaration 快照投影）。
+%% 注意：attach_pending / attachment 为平台级表（非租户隔离模型），
+%% enterprise_asset 行在租户事务内落库。
+-spec bind_direct(integer(), integer(), binary(), map()) ->
+    {ok, map()} | {error, term()}.
+bind_direct(Org, Ws, DirectKey, D) when
+    is_integer(Org), is_integer(Ws), is_binary(DirectKey), is_map(D)
+->
+    AssetId = maps:get(id, D, undefined),
+    Hash = maps:get(object_hash, D, undefined),
+    case is_integer(AssetId) andalso is_binary(Hash) of
+        false ->
+            {error, invalid_asset_descriptor};
+        true ->
+            eb_pg_exec:with_tenant(Org, Ws, fun() ->
+                Result =
+                    elib_pg:with_tx(fun(Conn) ->
+                        tx_query(
+                            Conn,
+                            <<"SELECT pg_advisory_xact_lock(hashtextextended($1,168))">>,
+                            [DirectKey]
+                        ),
+                        case
+                            tx_query(
+                                Conn,
+                                <<
+                                    "SELECT id, status FROM enterprise_asset"
+                                    " WHERE organization_id=$1 AND workspace_id=$2"
+                                    " AND upload_registration->>'direct_object_key'=$3"
+                                    " LIMIT 1 FOR UPDATE"
+                                >>,
+                                [Org, Ws, DirectKey]
+                            )
+                        of
+                            [#{<<"id">> := Id, <<"status">> := <<"active">>}] ->
+                                %% 幂等回读：重复 confirm 返回同一 active 行
+                                [Row] = tx_query(Conn, ?SQL_FETCH_ASSET, [Org, Ws, Id]),
+                                {ok, {existing, Row}};
+                            [#{<<"id">> := _Id, <<"status">> := _Deleted}] ->
+                                %% 生命周期已删除的绑定不得复活/重绑（C04-03）
+                                rollback_error(conflict);
+                            [] ->
+                                bind_insert_tx(Conn, Org, Ws, DirectKey, D)
+                        end
+                    end),
+                case Result of
+                    {rollback, Error} ->
+                        Error;
+                    {ok, {existing, Row}} ->
+                        {ok, eb_pg_store_sql:normalize(Row, asset_fields())};
+                    {ok, {inserted, Id2}} ->
+                        case
+                            eb_pg_exec:fetch_one(?SQL_FETCH_ASSET, [Org, Ws, Id2], asset_fields())
+                        of
+                            {ok, Row} -> {ok, Row};
+                            {error, _} = Err -> Err
+                        end;
+                    Other ->
+                        Other
+                end
+            end)
+    end;
+bind_direct(_Org, _Ws, _Key, _D) ->
+    {error, invalid_asset_descriptor}.
+
+bind_insert_tx(Conn, Org, Ws, DirectKey, D) ->
+    %% winner 物理键 + 位置四元组：CONFIRMED 前提下 attachment 行必有
+    %% storage_physical_key（fn_dv1_winner_pin 写入）；缺失 = 未确认，
+    %% fail-closed（C04-03「未确认绑定」反例在此拒绝）。
+    [Attach] =
+        tx_query(
+            Conn,
+            <<
+                "SELECT storage_physical_key, storage_driver, storage_namespace,"
+                " storage_container FROM attachment WHERE path=$1"
+                " AND storage_physical_key IS NOT NULL LIMIT 1"
+            >>,
+            [DirectKey]
+        ),
+    #{<<"storage_physical_key">> := WinnerKey} = Attach,
+    [Pending] =
+        tx_query(
+            Conn,
+            <<
+                "SELECT storage_locator_sha256, session_state, upload_registration"
+                " FROM attach_pending WHERE object_key=$1"
+            >>,
+            [DirectKey]
+        ),
+    <<"confirmed">> = maps:get(<<"session_state">>, Pending),
+    Registration = eb_direct_registration(D, DirectKey, Pending),
+    Sql =
+        <<
+            "INSERT INTO enterprise_asset"
+            " (id, organization_id, workspace_id, conversation_id, message_id,"
+            "  business_identity_id, uploaded_by_user_id, object_key, object_hash,"
+            "  mime, size_bytes, status, key_version, file_name, retain_until, version,"
+            "  upload_registration, storage_driver, storage_namespace,"
+            "  storage_container, storage_locator_sha256)"
+            " VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,'active',1,$12,"
+            "  CASE WHEN $13::bigint IS NULL THEN NULL ELSE to_timestamp($13::bigint/1000) END,"
+            "  1,$14,$15,$16,$17,$18)"
+            " RETURNING id"
+        >>,
+    Params = [
+        maps:get(id, D),
+        Org,
+        Ws,
+        eb_pg_store_sql:nullify(maps:get(conversation_id, D, undefined)),
+        eb_pg_store_sql:nullify(maps:get(message_id, D, undefined)),
+        eb_pg_store_sql:nullify(maps:get(business_identity_id, D, undefined)),
+        eb_pg_store_sql:nullify(maps:get(uploaded_by_user_id, D, undefined)),
+        WinnerKey,
+        maps:get(object_hash, D),
+        eb_pg_store_sql:nullify(maps:get(mime, D, undefined)),
+        eb_pg_store_sql:nullify(maps:get(size_bytes, D, undefined)),
+        eb_pg_store_sql:nullify(maps:get(file_name, D, undefined)),
+        eb_pg_store_sql:nullify(maps:get(retain_until, D, undefined)),
+        jsone:encode(Registration),
+        maps:get(<<"storage_driver">>, Attach),
+        maps:get(<<"storage_namespace">>, Attach),
+        maps:get(<<"storage_container">>, Attach),
+        maps:get(<<"storage_locator_sha256">>, Pending)
+    ],
+    case tx_query(Conn, Sql, Params) of
+        [#{<<"id">> := Id}] -> {ok, {inserted, Id}};
+        [] -> rollback_error(insert_not_returned)
+    end.
+
+%% EB direct 绑定行的 registration 投影：direct_object_key（幂等键）+
+%% protocol + dv1 subject/declaration 快照（audit/读路径授权复核用）。
+eb_direct_registration(D, DirectKey, Pending) ->
+    Reg0 =
+        case maps:get(<<"upload_registration">>, Pending, undefined) of
+            B when is_binary(B) -> jsone:decode(B);
+            M when is_map(M) -> M;
+            _ -> #{}
+        end,
+    Base = #{
+        <<"protocol">> => <<"direct-v1-eb-bind">>,
+        <<"direct_object_key">> => DirectKey,
+        <<"subject">> =>
+            case maps:get(eb_registration, D, undefined) of
+                S when is_map(S) -> maps:get(<<"subject">>, S, maps:get(<<"subject">>, Reg0, #{}));
+                _ -> maps:get(<<"subject">>, Reg0, #{})
+            end,
+        <<"declaration">> =>
+            case maps:get(eb_registration, D, undefined) of
+                S2 when is_map(S2) ->
+                    maps:get(<<"declaration">>, S2, maps:get(<<"declaration">>, Reg0, #{}));
+                _ ->
+                    maps:get(<<"declaration">>, Reg0, #{})
+            end
+    },
+    case maps:get(attempt_no, D, undefined) of
+        undefined -> Base;
+        No -> Base#{<<"winner_attempt_no">> => No}
     end.

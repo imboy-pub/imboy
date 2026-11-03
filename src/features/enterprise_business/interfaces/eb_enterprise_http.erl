@@ -27,10 +27,8 @@
     tsid/1,
     workspace_id/2,
     read_body/1,
-    read_upload_body/1,
     path_params/2,
     build_params/5,
-    with_seat_upload_url/3,
     respond/3,
     reply_error/2,
     reply_content/2,
@@ -202,16 +200,6 @@ decode(Raw) ->
 %% （附件内容，非 JSON；widget 面 `widget_asset_put` 同款先例）。返回
 %% `{ok, Bytes, Req}`（Req 已消费 body，可供后续 reply 复用）或
 %% `{error, {invalid_param, payload}}`（超传输上限，400 fail-closed）。
-%% 上限与 presign 申报 size 的企业面上界一致（25 MiB）；真正的 size 语义
-%% 校验（申报值=实际值、mime sniff、hash 复核）在 `eb_asset_app:put_object`，
-%% 这里是纯传输 DoS 门。
--define(UPLOAD_MAX_BYTES, 25 * 1024 * 1024).
-
--spec read_upload_body(cowboy_req:req()) ->
-    {ok, term(), cowboy_req:req()} | {error, term()}.
-read_upload_body(Req) ->
-    attachment_upload_body:read(Req, ?UPLOAD_MAX_BYTES).
-
 normalize_body(Map) ->
     Known = known_keys(),
     maps:from_list([
@@ -496,94 +484,9 @@ tsid(Raw) when is_binary(Raw) ->
 tsid(_Raw) ->
     error.
 
-%% ===================================================================
-%% CS-BE-01B：坐席面 presign 响应的 upload.url 投影
-%% ===================================================================
-
-%% @doc presign（POST）成功视图补 `upload.url`——指向**本 API 自己**的字节
-%% 上传端点（presign 路径的 PUT 用例），不是对象存储 URL、不含 object key /
-%% bucket / 签名串（A05 存储能力红线不触碰；与 widget 面
-%% `cs_widget_session_app:with_upload_url/4` 同构：代理端点 + 查询串凭证）。
-%%
-%% 查询串携带 `workspace_id`（TSID 十进制 string，A02）与 `upload_ref`
-%% （不透明、HMAC、短 TTL——短 TTL 语义即凭证自身的 `expires_at`，URL 只在
-%% 凭证有效期内可用）。base_url 未配置或非 https ⇒ 不加 url（fail-closed，
-%% 与现状同形；widget 面同款判定）。非 `{ok, Map}` 结果原样透传。
-%%
-%% URL 可得性 = 已通过路由级成员门（asset.write + sales|customer_service 职能）
-%% 的坐席；PUT 端点本身还复走同一授权门（比 widget 面「upload_ref 即唯一
-%% 凭证」更严），随后用例内复核凭证 TTL/篡改/同上传人/经办 ACL。
--spec with_seat_upload_url(
-    cowboy_req:req(), integer(), {ok, map()} | {error, term()}
-) ->
-    {ok, map()} | {error, term()}.
-with_seat_upload_url(Req, WorkspaceId, {ok, View} = Ok) when is_map(View) ->
-    case seat_put_target(Req, WorkspaceId, View) of
-        undefined ->
-            Ok;
-        Url ->
-            Upload = maps:get(upload, View, #{}),
-            %% V3-16：显式上传 descriptor 权威下发（消费方禁止按 URL 外观或
-            %% upload_ref 猜传输类型）。现形态=api_byte（本 API 域字节端点，
-            %% 同源 Bearer）；V3-20 切 s3_put 直传时改为对象存储 descriptor。
-            {ok, View#{
-                upload => Upload#{
-                    url => Url,
-                    method => <<"PUT">>,
-                    descriptor => #{
-                        kind => <<"api_byte">>,
-                        method => <<"PUT">>
-                    }
-                }
-            }}
-    end;
-with_seat_upload_url(_Req, _WorkspaceId, Other) ->
-    Other.
-
-seat_put_target(Req, WorkspaceId, View) ->
-    Ref = maps:get(upload_ref, View, undefined),
-    case is_https_base(api_base_url()) andalso is_binary(Ref) andalso Ref =/= <<>> of
-        true ->
-            case org_id(Req) of
-                {ok, OrgId} when is_integer(WorkspaceId) ->
-                    Query = uri_string:compose_query([
-                        {<<"workspace_id">>, integer_to_binary(WorkspaceId)},
-                        {<<"upload_ref">>, Ref}
-                    ]),
-                    Prefix =
-                        case cowboy_req:path(Req) of
-                            <<"/api/v1/seat/", _/binary>> ->
-                                <<"/api/v1/seat/enterprise/organizations/">>;
-                            _ ->
-                                <<"/api/v1/enterprise/organizations/">>
-                        end,
-                    Path = iolist_to_binary([
-                        Prefix,
-                        integer_to_binary(OrgId),
-                        <<"/assets/presign">>
-                    ]),
-                    case Path of
-                        <<"/api/v1/seat/", _/binary>> -> <<Path/binary, $?, Query/binary>>;
-                        _ -> <<(api_base_url())/binary, Path/binary, $?, Query/binary>>
-                    end;
-                _Other ->
-                    undefined
-            end;
-        false ->
-            undefined
-    end.
-
-%% API 绝对 URL 基址（`{imboy, base_url}`；仓内既有派生方式——widget 面
-%% `cs_widget_support:api_base/0` 同源配置，未配置 = 空串）。此处直读
-%% application env（等价 config_ds:env/3 的取值口径），保持本模块的静态
-%% 扫描面（A05：零 `*_ds:` 引用）不变。
-api_base_url() ->
-    application:get_env(imboy, base_url, <<>>).
-
-is_https_base(<<"https://", _Rest/binary>>) ->
-    true;
-is_https_base(_Other) ->
-    false.
+%% V3-C04：坐席面 `upload.url`（api_byte 同源字节端点 descriptor）签发已
+%% 移除——presign 视图直接携带 s3_put 直传 descriptor（`eb_asset_app:
+%% presign_direct_view`），正文不再经 BEAM / 本 API（S3-only 硬合同）。
 
 %% ===================================================================
 %% 响应映射

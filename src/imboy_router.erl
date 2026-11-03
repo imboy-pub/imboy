@@ -2046,7 +2046,8 @@ seat_console_methods(cs_tenant_handler, Action) ->
 seat_console_methods(eb_tenant_handler, Action) ->
     case Action of
         conversation_messages -> [<<"GET">>, <<"POST">>];
-        presign -> [<<"POST">>, <<"PUT">>];
+        %% V3-C04：正文切 s3_put 直传，同源 PUT 字节上传用例移除。
+        presign -> [<<"POST">>];
         confirm_asset -> [<<"POST">>];
         asset_content -> [<<"GET">>];
         _ -> []
@@ -2319,13 +2320,7 @@ customer_service_human_routes() ->
             action => widget_asset_confirm,
             auth_context => cs_visit
         }},
-        %% BE-PATCH-01：访客附件字节上传代理（payload=请求体字节；upload_ref 是
-        %% 唯一凭证——FE 裸 PUT 合同，无凭证头/无 Cookie。服务端经
-        %% eb_asset_app:put_object 写私有桶，响应永无对象 URL）。
-        {"/api/v1/cs/widget/sessions/:id/assets/upload", cs_widget_handler, #{
-            action => widget_asset_put,
-            auth_context => cs_visit
-        }},
+        %% V3-C04：访客字节上传代理路由移除——正文 s3_put 直传 S3。
         %% BE-S01b：访客附件内容代理（GET；响应是对象字节本体，不走 JSON 面——
         %% 线格式分支在 cs_widget_handler；绑定门：asset 必须绑在本会话的消息上）。
         {"/api/v1/cs/widget/sessions/:id/assets/:asset/content", cs_widget_handler, #{

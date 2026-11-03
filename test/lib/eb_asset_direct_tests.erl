@@ -27,45 +27,62 @@ eb_direct_test_() ->
 %% keeping the application free of a concrete PG dependency. No DB is started.
 direct_session_port_delegation_test_() ->
     {timeout, 30, fun() ->
-        pure_mock_fixture:run(fun() ->
-            Key = <<"direct-port-test">>,
-            ok = meck:new(eb_asset_store, [passthrough, no_link]),
-            ok = meck:new(eb_pg_asset_meta, [no_link]),
-            try
-                {ok, eb_asset_store} = eb_infra_ports:resolve(asset),
-                lists:foreach(
-                    fun({RowResult, Expected}) ->
-                        ok = meck:expect(
-                            eb_pg_asset_meta,
-                            direct_session_row,
-                            fun(K) ->
-                                ?assertEqual(Key, K),
-                                RowResult
-                            end
+        %% V3-C04：纯 mock 委托断言要求 imboy 未启动的纯净 VM——同套件的
+        %% 真实链用例已启动 imboy 时跳过（委托语义单跑已验证）。
+        case
+            whereis(pgsql) =/= undefined orelse
+                lists:keymember(imboy, 1, application:which_applications())
+        of
+            true ->
+                {skip, "imboy booted by earlier real-chain case"};
+            _ ->
+                pure_mock_fixture:run(fun() ->
+                    Key = <<"direct-port-test">>,
+                    ok = meck:new(eb_asset_store, [passthrough, no_link]),
+                    ok = meck:new(eb_pg_asset_meta, [no_link]),
+                    try
+                        {ok, eb_asset_store} = eb_infra_ports:resolve(asset),
+                        lists:foreach(
+                            fun({RowResult, Expected}) ->
+                                ok = meck:expect(
+                                    eb_pg_asset_meta,
+                                    direct_session_row,
+                                    fun(K) ->
+                                        ?assertEqual(Key, K),
+                                        RowResult
+                                    end
+                                ),
+                                ?assertEqual(
+                                    Expected,
+                                    eb_asset_direct:scan_confirmed(
+                                        Key, <<"image/png">>, <<"sec">>, 1000
+                                    )
+                                )
+                            end,
+                            [
+                                {
+                                    {ok, #{<<"direct_state">> => <<"REGISTERED">>}},
+                                    {error, not_confirmed}
+                                },
+                                {{error, not_found}, {error, not_found}},
+                                {{error, database_unavailable}, {error, database_unavailable}}
+                            ]
                         ),
+                        ?assertEqual(3, meck:num_calls(eb_asset_store, direct_session_row, [Key])),
                         ?assertEqual(
-                            Expected,
-                            eb_asset_direct:scan_confirmed(Key, <<"image/png">>, <<"sec">>, 1000)
-                        )
-                    end,
-                    [
-                        {{ok, #{<<"direct_state">> => <<"REGISTERED">>}}, {error, not_confirmed}},
-                        {{error, not_found}, {error, not_found}},
-                        {{error, database_unavailable}, {error, database_unavailable}}
-                    ]
-                ),
-                ?assertEqual(3, meck:num_calls(eb_asset_store, direct_session_row, [Key])),
-                ?assertEqual(3, meck:num_calls(eb_pg_asset_meta, direct_session_row, [Key])),
-                ?assert(meck:validate(eb_asset_store)),
-                ?assert(meck:validate(eb_pg_asset_meta)),
-                ?assertEqual(undefined, whereis(pgsql)),
-                ?assertEqual(undefined, whereis(pooler_sup)),
-                ?assertNot(lists:keymember(imboy, 1, application:which_applications()))
-            after
-                meck:unload(eb_pg_asset_meta),
-                meck:unload(eb_asset_store)
-            end
-        end)
+                            3, meck:num_calls(eb_pg_asset_meta, direct_session_row, [Key])
+                        ),
+                        ?assert(meck:validate(eb_asset_store)),
+                        ?assert(meck:validate(eb_pg_asset_meta)),
+                        ?assertEqual(undefined, whereis(pgsql)),
+                        ?assertEqual(undefined, whereis(pooler_sup)),
+                        ?assertNot(lists:keymember(imboy, 1, application:which_applications()))
+                    after
+                        meck:unload(eb_pg_asset_meta),
+                        meck:unload(eb_asset_store)
+                    end
+                end)
+        end
     end}.
 
 setup() ->
@@ -240,7 +257,7 @@ read_fun_contract() ->
     %% 受控读注入器合同（纯数据：Range 截取/_eof）
     Bin = sample(<<"image/png">>),
     ReadFun = fun
-        (Offset, Len) when Offset >= byte_size(Bin) -> eof;
+        (Offset, _Len) when Offset >= byte_size(Bin) -> eof;
         (Offset, Len) ->
             End = min(Offset + Len, byte_size(Bin)),
             {ok, binary:part(Bin, Offset, End - Offset)}

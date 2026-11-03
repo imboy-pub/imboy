@@ -21,6 +21,31 @@ asset_test_() ->
     {setup, fun setup/0, fun cleanup_db/1, fun cases/1}.
 
 setup() ->
+    %% V3-C04：direct s3_put 直传真 Garage（REAL_LOCAL）——凭据经 env 注入，
+    %% 与 seat_send 同款；descriptor 签发/客户端直传对齐同一 endpoint/bucket。
+    case os:getenv("C04_GARAGE_ENDPOINT") of
+        false ->
+            ok;
+        Ep ->
+            ok = application:set_env(imboy, garage, #{
+                endpoint => list_to_binary(Ep),
+                bucket => list_to_binary(os:getenv("C04_GARAGE_BUCKET")),
+                access_key => list_to_binary(os:getenv("C04_GARAGE_AK")),
+                secret_key => list_to_binary(os:getenv("C04_GARAGE_SK")),
+                region => <<"garage">>
+            }),
+            ok = application:set_env(
+                imboy,
+                attachment_receipt_secret,
+                binary:encode_hex(crypto:strong_rand_bytes(16), lowercase)
+            ),
+            %% V3-17 content 面的边缘基址（302 redirect_url 构造必需）。
+            ok = application:set_env(
+                imboy,
+                edge_base_url,
+                <<"https://edge.eb07.fixture.invalid">>
+            )
+    end,
     Result = setup_db(),
     case Result of
         {ok, _} ->
@@ -68,11 +93,10 @@ cases({ok, _Conn}) ->
         {timeout, ?SCENARIO_TIMEOUT, fun acceptance_a02/0},
         {timeout, ?SCENARIO_TIMEOUT, fun acceptance_a03/0},
         {timeout, ?SCENARIO_TIMEOUT, fun acceptance_a04/0},
-        {timeout, ?SCENARIO_TIMEOUT, fun acceptance_a05/0},
         {timeout, ?SCENARIO_TIMEOUT, fun acceptance_a06/0},
         {timeout, 60, fun unit_retain_until_seconds_boundary/0},
         {timeout, 60, fun unit_upload_ref_is_opaque_and_bound_to_scope/0},
-        {timeout, 60, fun unit_upload_ref_expiry_is_enforced/0},
+        {timeout, 60, fun unit_illegal_state_confirm_is_fail_closed/0},
         {timeout, 60, fun unit_mime_size_hash_validation_is_fail_closed/0},
         {timeout, 60, fun unit_cleanup_classifies_skips/0},
         {timeout, 60, fun csb02s_d6_visitor_presign_put_confirm_positive/0},
@@ -110,7 +134,8 @@ acceptance_a01() -> run_acceptance(<<"EB-07-A01">>).
 acceptance_a02() -> run_acceptance(<<"EB-07-A02">>).
 acceptance_a03() -> run_acceptance(<<"EB-07-A03">>).
 acceptance_a04() -> run_acceptance(<<"EB-07-A04">>).
-acceptance_a05() -> run_acceptance(<<"EB-07-A05">>).
+%% V3-C04：acceptance_a05（V5 pending GC）退役——direct 化后 presign 不建
+%% pending_confirm 行，被测物消失；过期 direct 会话 GC 由 C03 dv1 GC 测试承担。
 acceptance_a06() -> run_acceptance(<<"EB-07-A06">>).
 
 run_acceptance(Id) ->
@@ -152,26 +177,17 @@ csb02s_d6_visitor_presign_put_confirm_positive() ->
             upload_ttl_seconds => 900
         },
         {ok, Presign} = enterprise_business_facade:request_presign(Org, Params),
-        Ref = maps:get(upload_ref, Presign),
-        AssetId = maps:get(asset_id, Presign),
-        %% PUT（访客主体；凭证 uploader 逐字比对 contact）。
-        {ok, _} = eb_asset_app:put_object(Org, #{
-            workspace_id => Ws,
-            conversation_id => Conv,
-            upload_ref => Ref,
-            payload => Payload,
-            actor_contact_id => Contact,
-            key_ref => eb_asset_it_lib:key_ref(Scope)
-        }),
-        %% confirm（重新鉴权仍走访客分支）。
+        %% V3-C04：访客主体 direct 流水——s3_put 直传 + object_key confirm
+        %% （confirm 重新鉴权仍走访客分支）。
+        ObjectKey = eb_asset_it_lib:presign_object_key(Presign),
+        ok = eb_asset_it_lib:s3_put_descriptor(Presign, Payload),
         {ok, Confirmed} = enterprise_business_facade:confirm_asset(Org, #{
             workspace_id => Ws,
-            upload_ref => Ref,
+            object_key => ObjectKey,
             actor_contact_id => Contact,
             key_ref => eb_asset_it_lib:key_ref(Scope)
         }),
-        ?assertEqual(active, maps:get(status, Confirmed)),
-        ?assert(eb_asset_it_lib:object_present(Org, Ws, AssetId))
+        ?assertEqual(active, maps:get(status, Confirmed))
     after
         _ = eb_asset_object_stub:reset()
     end.
@@ -311,19 +327,13 @@ bes01b_visitor_upload(Scope, Conv, Contact, MsgId, Payload) ->
             _ -> Base#{message_id => MsgId}
         end,
     {ok, Presign} = enterprise_business_facade:request_presign(Org, Params),
-    Ref = maps:get(upload_ref, Presign),
-    {ok, _} = eb_asset_app:put_object(Org, #{
-        workspace_id => Ws,
-        conversation_id => Conv,
-        upload_ref => Ref,
-        payload => Payload,
-        actor_contact_id => Contact,
-        key_ref => eb_asset_it_lib:key_ref(Scope)
-    }),
+    %% V3-C04：direct 流水。
+    ObjectKey = eb_asset_it_lib:presign_object_key(Presign),
+    ok = eb_asset_it_lib:s3_put_descriptor(Presign, Payload),
     {ok, Confirmed} =
         enterprise_business_facade:confirm_asset(Org, #{
             workspace_id => Ws,
-            upload_ref => Ref,
+            object_key => ObjectKey,
             actor_contact_id => Contact,
             key_ref => eb_asset_it_lib:key_ref(Scope)
         }),
@@ -365,10 +375,8 @@ unit_retain_until_seconds_boundary() ->
 unit_upload_ref_is_opaque_and_bound_to_scope() ->
     Scope = eb_asset_it_lib:new_scope(),
     try
-        {Org, Ws} = eb_asset_it_lib:tenant(Scope),
         Conv = maps:get(conversation_id, Scope),
         Actor = maps:get(actor_user_id, Scope),
-        KeyRef = eb_asset_it_lib:key_ref(Scope),
         Payload = <<"unit-upload-ref">>,
         {ok, Presign} = eb_asset_it_lib:facade_presign(Scope, Actor, #{
             conversation_id => Conv,
@@ -376,39 +384,38 @@ unit_upload_ref_is_opaque_and_bound_to_scope() ->
             size_bytes => byte_size(Payload),
             object_hash => eb_asset_it_lib:sha256_hex(Payload)
         }),
-        Ref = maps:get(upload_ref, Presign),
-        ?assert(is_binary(Ref)),
-        %% 不透明：既不是 URL，也不含对象 key
-        ?assertEqual(nomatch, binary:match(Ref, <<"://">>)),
-        AssetId = maps:get(asset_id, Presign),
-        ?assertEqual(
-            nomatch,
-            binary:match(Ref, eb_asset_it_lib:object_key(Org, Ws, AssetId))
-        ),
-        %% 篡改一个字节 → 必须打不开（fail-closed，不得静默放行）
-        Tampered = tamper(Ref),
-        ?assertNotEqual(Ref, Tampered),
+        %% V3-C04：descriptor/会话键形状（无 upload_ref 凭证面）。
+        ObjectKey = eb_asset_it_lib:presign_object_key(Presign),
+        ?assert(is_binary(ObjectKey)),
+        ?assertEqual(nomatch, binary:match(ObjectKey, <<"://">>)),
+        Upload = eb_asset_it_lib:view_get(upload, Presign),
+        ?assert(is_binary(eb_asset_it_lib:view_get(url, Upload))),
+        %% 跨租户 presign：换 Org/Workspace 的授权门拒绝（作用域门，
+        %% C04-02——direct 会话的控制面逐门绑定 org/ws/conv）。
         ?assertMatch(
             {error, _},
-            eb_asset_app:put_object(Org, #{
-                workspace_id => Ws,
-                actor_user_id => Actor,
-                conversation_id => Conv,
-                upload_ref => Tampered,
-                payload => Payload,
-                key_ref => KeyRef
-            })
+            eb_asset_it_lib:facade_presign(
+                Scope#{
+                    org_id => maps:get(other_org_id, Scope),
+                    workspace_id => maps:get(other_workspace_id, Scope)
+                },
+                Actor,
+                #{
+                    conversation_id => Conv,
+                    mime => <<"text/plain">>,
+                    size_bytes => byte_size(Payload),
+                    object_hash => eb_asset_it_lib:sha256_hex(Payload)
+                }
+            )
         ),
-        %% 换租户重放 → 必须失败（AAD 绑定 Org/Workspace/会话）
+        %% 跨空间 confirm（猜 direct 键）：归属逐字比对 not_found。
+        ok = eb_asset_it_lib:s3_put_descriptor(Presign, Payload),
         ?assertMatch(
-            {error, _},
-            eb_asset_app:put_object(maps:get(other_org_id, Scope), #{
+            {error, not_found},
+            eb_asset_app:confirm_asset(maps:get(other_org_id, Scope), #{
                 workspace_id => maps:get(other_workspace_id, Scope),
-                actor_user_id => Actor,
-                conversation_id => Conv,
-                upload_ref => Ref,
-                payload => Payload,
-                key_ref => KeyRef
+                object_key => ObjectKey,
+                actor_user_id => Actor
             })
         )
     after
@@ -417,7 +424,7 @@ unit_upload_ref_is_opaque_and_bound_to_scope() ->
 
 %% @doc 凭证过期必须被拒（注入式时钟：直接构造一个已过期的凭证不足以复现，
 %% 故用 `upload_ttl_seconds => -1` 让签发即过期）。
-unit_upload_ref_expiry_is_enforced() ->
+unit_illegal_state_confirm_is_fail_closed() ->
     Scope = eb_asset_it_lib:new_scope(),
     try
         {Org, Ws} = eb_asset_it_lib:tenant(Scope),
@@ -431,15 +438,27 @@ unit_upload_ref_expiry_is_enforced() ->
             object_hash => eb_asset_it_lib:sha256_hex(Payload),
             upload_ttl_seconds => -1
         }),
+        %% V3-C04：upload_ttl 凭证面移除；**非法状态推进**与**未知 attempt**
+        %% 反例等价验证 fail-closed（deadline 不可变由 v5 guard 防线另行保证）：
+        %% ① GRANTED 会话伪造 attempt_no=9 finalize → 拒；
+        %% ② 伪造 direct 键 confirm → not_found（归属逐字比对）。
+        ObjectKey = eb_asset_it_lib:presign_object_key(Presign),
+        ok = eb_asset_it_lib:s3_put_descriptor(Presign, Payload),
         ?assertMatch(
-            {error, expired_upload_ref},
-            eb_asset_app:put_object(Org, #{
+            {error, _},
+            eb_asset_app:confirm_asset(Org, #{
                 workspace_id => Ws,
-                actor_user_id => Actor,
-                conversation_id => Conv,
-                upload_ref => maps:get(upload_ref, Presign),
-                payload => Payload,
-                key_ref => eb_asset_it_lib:key_ref(Scope)
+                object_key => ObjectKey,
+                attempt_id => 9,
+                actor_user_id => Actor
+            })
+        ),
+        ?assertMatch(
+            {error, not_found},
+            eb_asset_app:confirm_asset(Org, #{
+                workspace_id => Ws,
+                object_key => <<ObjectKey/binary, "-forged">>,
+                actor_user_id => Actor
             })
         )
     after
@@ -501,19 +520,20 @@ unit_cleanup_classifies_skips() ->
     try
         {Org, Ws} = eb_asset_it_lib:tenant(Scope),
         Actor = maps:get(actor_user_id, Scope),
-        Fresh = eb_asset_it_lib:seed_pending(Scope, Actor, <<"unit-cleanup-fresh">>, fresh),
+        %% V3-C04：direct 化后 presign 不建 pending_confirm 行——「超时未确认
+        %% 会话」的回收由 dv1 GC 承担（C03 覆盖）；本用例保留 active/not_found
+        %% 两条 skip 分类断言。
         {ok, Active, _} = eb_asset_it_lib:upload_and_confirm(
             Scope, Actor, <<"unit-cleanup-active">>
         ),
         Unknown = eb_pg_test_fixture:id(),
         {ok, Result} = eb_asset_app:cleanup_pending(Org, #{
             workspace_id => Ws,
-            asset_ids => [Fresh, Active, Unknown],
+            asset_ids => [Active, Unknown],
             ttl_seconds => 3600
         }),
         ?assertEqual([], maps:get(deleted, Result)),
         Skipped = maps:get(skipped, Result),
-        ?assertEqual(not_expired, element(2, lists:keyfind(Fresh, 1, Skipped))),
         ?assertEqual(not_pending, element(2, lists:keyfind(Active, 1, Skipped))),
         ?assertEqual(not_found, element(2, lists:keyfind(Unknown, 1, Skipped)))
     after
@@ -529,15 +549,6 @@ unit_cleanup_classifies_skips() ->
 %% 为什么不是末位：token 末位常是 `=` 填充，而 base64 解码器会忽略末字符的
 %% 非有效位 —— 首版测试翻末位时被判据「放行」过，即那条断言**不 load-bearing**。
 %% 中部字符一定落在有效位里，翻转必然改变解码后的字节。
-tamper(Bin) when byte_size(Bin) > 4 ->
-    Pos = byte_size(Bin) div 2,
-    <<Head:Pos/binary, Char, Tail/binary>> = Bin,
-    Flip =
-        case Char of
-            $A -> $B;
-            _ -> $A
-        end,
-    <<Head/binary, Flip, Tail/binary>>.
 
 %% ===================================================================
 %% W2-02：confirm 幂等重放 + asset_id 恢复（不要求持久化 upload_ref）
@@ -564,24 +575,16 @@ w202_confirm_replay_idempotent_active() ->
         {ok, Presign} = enterprise_business_facade:request_presign(
             Org, Base#{actor_contact_id => Contact}
         ),
-        Ref = maps:get(upload_ref, Presign),
-        AssetId = maps:get(asset_id, Presign),
-        {ok, _} = eb_asset_app:put_object(Org, #{
-            workspace_id => Ws,
-            conversation_id => Conv,
-            upload_ref => Ref,
-            payload => Payload,
-            actor_contact_id => Contact,
-            key_ref => eb_asset_it_lib:key_ref(Scope)
-        }),
+        %% V3-C04：direct 流水；重放=同一 direct 会话键 confirm 幂等回读。
+        ObjectKey = eb_asset_it_lib:presign_object_key(Presign),
+        ok = eb_asset_it_lib:s3_put_descriptor(Presign, Payload),
         ConfirmParams = #{
             workspace_id => Ws,
-            upload_ref => Ref,
+            object_key => ObjectKey,
             actor_contact_id => Contact,
             key_ref => eb_asset_it_lib:key_ref(Scope)
         },
         {ok, First} = enterprise_business_facade:confirm_asset(Org, ConfirmParams),
-        ?assertEqual(AssetId, maps:get(asset_id, First)),
         ?assertEqual(active, maps:get(status, First)),
         %% 100 次重放：同一 asset 视图（幂等成功，非 conflict）
         lists:foreach(
@@ -618,32 +621,26 @@ w202_confirm_by_asset_id_recovery() ->
         {ok, Presign} = enterprise_business_facade:request_presign(
             Org, Base#{actor_contact_id => Contact}
         ),
-        Ref = maps:get(upload_ref, Presign),
-        AssetId = maps:get(asset_id, Presign),
-        {ok, _} = eb_asset_app:put_object(Org, #{
+        %% V3-C04：响应丢失恢复=同一 direct 会话键重复 confirm（幂等回读，
+        %% asset id 由首次绑定产出）；winner 对象仍可读（物理键真源）。
+        ObjectKey = eb_asset_it_lib:presign_object_key(Presign),
+        ok = eb_asset_it_lib:s3_put_descriptor(Presign, Payload),
+        {ok, First} = enterprise_business_facade:confirm_asset(Org, #{
             workspace_id => Ws,
-            conversation_id => Conv,
-            upload_ref => Ref,
-            payload => Payload,
+            object_key => ObjectKey,
             actor_contact_id => Contact,
             key_ref => eb_asset_it_lib:key_ref(Scope)
         }),
-        %% 不带 upload_ref：仅 workspace_id + asset_id + 主体
-        {ok, Recovered} = enterprise_business_facade:confirm_asset(Org, #{
-            workspace_id => Ws,
-            asset_id => AssetId,
-            actor_contact_id => Contact,
-            key_ref => eb_asset_it_lib:key_ref(Scope)
-        }),
-        ?assertEqual(active, maps:get(status, Recovered)),
-        %% 恢复后再以原 ref 重放：同一视图（同 id 幂等）
+        AssetId = maps:get(asset_id, First),
+        ?assertEqual(active, maps:get(status, First)),
         {ok, Replay} = enterprise_business_facade:confirm_asset(Org, #{
             workspace_id => Ws,
-            upload_ref => Ref,
+            object_key => ObjectKey,
             actor_contact_id => Contact,
             key_ref => eb_asset_it_lib:key_ref(Scope)
         }),
-        ?assertEqual(maps:get(asset_id, Recovered), maps:get(asset_id, Replay))
+        ?assertEqual(AssetId, maps:get(asset_id, Replay)),
+        ?assertEqual(active, maps:get(status, Replay))
     after
         _ = eb_asset_object_stub:reset()
     end.

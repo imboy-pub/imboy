@@ -210,8 +210,10 @@ reauthorize_renew(Key, Bucket, Scope, Uid, Row, Req0) ->
     case attach_logic:reauthorize_upload_session(Uid, Row) of
         ok ->
             case attachment_storage:session_location(Key) of
-                {ok, I} when is_map(I) -> renew_authorized(Key, Bucket, Scope, Uid, Row, Req0);
-                _ -> reupload_required(Req0)
+                {ok, I} when is_map(I) ->
+                    renew_authorized(Key, Bucket, Scope, Uid, Row, I, Req0);
+                _ ->
+                    reupload_required(Req0)
             end;
         {error, _} ->
             elib_response:error(Req0, <<"not found">>, ?ERR_NOT_FOUND)
@@ -222,10 +224,10 @@ reupload_required(Req0) ->
         Req0, 409, <<"historical_location_unverified: reupload_new_session">>, ?ERR_CONFLICT
     ).
 
-renew_authorized(Key, _Bucket, _Scope, Uid, Row, Req0) ->
-    %% V5 renew（02 §143）：min(now+TTL, deadline) 为新到期，
-    %% 单调持久提交后按已提交绝对值签发受控网关能力；
-    %% 直传 URL 不再签发（新地址不能绕过网关，upload-content-pin）。
+renew_authorized(Key, _Bucket, _Scope, Uid, Row, Location, Req0) ->
+    %% V5 renew（02 §143）：min(now+TTL, deadline) 为新到期，单调持久提交
+    %% 后按已提交绝对值签发 S3 presigned PUT（V3-C04：网关能力签发移除，
+    %% 正文自客户端直达存储，BEAM 零正文）。
     Deadline = maps:get(<<"session_deadline">>, Row, undefined),
     NowSec = erlang:system_time(second),
     DeadlineSec =
@@ -243,24 +245,31 @@ renew_authorized(Key, _Bucket, _Scope, Uid, Row, Req0) ->
         false ->
             NewExpiry = min(NowSec + 3600, DeadlineSec),
             Mime = declared_mime(Row),
+            Ttl = max(1, NewExpiry - NowSec),
             case attachment_ds:renew_capability(Key, Uid, NewExpiry) of
                 {ok, #{committed_expires_at := Committed}} ->
-                    {ok, Capability} = imboy_jwt:issue_upload_capability(Key, Mime, Committed),
-                    Data = #{
-                        <<"put_url">> =>
-                            <<"/api/v1/attachment/gateway/",
-                                (maps:get(<<"client_upload_id">>, Row))/binary, "?capability=",
-                                Capability/binary>>,
-                        <<"object_key">> => Key,
-                        <<"upload_capability">> => Capability,
-                        <<"gateway">> => true,
-                        %% 已提交的绝对到期（历次最晚），非本地现算
-                        <<"expires_at">> => Committed,
-                        <<"can_resume">> => true,
-                        <<"retry_action">> => <<"resume_same_key">>
-                    },
-                    Req1 = cowboy_req:set_resp_header(<<"cache-control">>, <<"no-store">>, Req0),
-                    elib_response:success(Req1, Data, "success.");
+                    case attachment_storage:presign_put_snapshot(Location, Mime, Ttl) of
+                        {ok, PutUrl} ->
+                            Data = #{
+                                <<"put_url">> => PutUrl,
+                                <<"object_key">> => Key,
+                                <<"transport">> => <<"s3_put">>,
+                                %% 已提交的绝对到期（历次最晚），非本地现算
+                                <<"expires_at">> => Committed,
+                                <<"can_resume">> => true,
+                                <<"retry_action">> => <<"resume_same_key">>
+                            },
+                            Req1 = cowboy_req:set_resp_header(
+                                <<"cache-control">>, <<"no-store">>, Req0
+                            ),
+                            elib_response:success(Req1, Data, "success.");
+                        {error, _} ->
+                            elib_response:error(
+                                Req0,
+                                <<"service unavailable"/utf8>>,
+                                ?ERR_SERVICE_UNAVAILABLE
+                            )
+                    end;
                 {error, not_renewable} ->
                     elib_response:error(
                         Req0, <<"session not renewable"/utf8>>, ?ERR_CONFLICT

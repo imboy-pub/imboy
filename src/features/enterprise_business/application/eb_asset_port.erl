@@ -101,3 +101,13 @@
 
 %% Internal direct-v1 scan snapshot lookup; no descriptor or client response.
 -callback direct_session_row(binary()) -> {ok, map()} | {error, term()}.
+
+%% V3-C04：direct-v1 CONFIRMED 会话 → enterprise_asset active 绑定
+%% （幂等：同 direct 键回读同一行；物理键=winner pin 值）。
+-callback bind_direct(
+    OrgId :: integer(),
+    WorkspaceId :: integer(),
+    DirectKey :: binary(),
+    Descriptor :: descriptor()
+) ->
+    {ok, asset_metadata()} | {error, conflict | not_found | term()}.

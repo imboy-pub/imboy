@@ -144,18 +144,8 @@ presign_authorized(Uid, FileName, MimeType, Scope, ScopeRef, ClientUploadId) ->
             E
     end.
 
-%% Old clients expect an absolute PUT URL and need no knowledge of session UUIDs.
-legacy_upload_url(undefined, {ok, #{<<"gateway">> := true, <<"put_url">> := Path} = Data}) ->
-    Base = config_ds:env(base_url, <<>>),
-    case uri_string:parse(Base) of
-        #{scheme := Scheme, host := Host} when
-            (Scheme =:= <<"http">> orelse Scheme =:= <<"https">>), Host =/= <<>>
-        ->
-            Origin = string:trim(Base, trailing, "/"),
-            {ok, Data#{<<"put_url">> => <<Origin/binary, Path/binary>>}};
-        _ ->
-            {error, upload_base_url_required}
-    end;
+%% V3-C04：gateway 相对 PUT URL 升级子句随能力签发一并移除；put_url
+%% 已是绝对 S3 presigned URL，旧客户端语义兼容（绝对 URL 直传）。
 legacy_upload_url(_, Result) ->
     Result.
 
@@ -213,18 +203,30 @@ presign_registered(
         false ->
             {error, session_expired};
         true ->
+            %% V3-C04：业务网关能力签发移除（S3-only 硬合同）——presign 按
+            %% register 冻结的位置快照直接签 S3 presigned PUT（正文自客户端
+            %% 直达 Garage，BEAM 零正文；gateway handler 本体物理删除归 C10）。
             Cid = maps:get(client_upload_id, Session),
-            {ok, Capability} = imboy_jwt:issue_upload_capability(Key, MimeType, Expiry),
-            Base = #{
-                <<"put_url">> => gateway_put_url(Cid, Capability),
-                <<"object_key">> => Key,
-                <<"expires_at">> => Expiry,
-                <<"upload_capability">> => Capability,
-                <<"gateway">> => true,
-                <<"client_upload_id">> => Cid,
-                <<"session_state">> => <<"registered">>
+            Location = #{
+                driver => Driver,
+                namespace => Ns,
+                container => Container,
+                locator_sha256 => Digest
             },
-            {ok, maybe_public_url(Scope, Key, Base)}
+            case attachment_storage:presign_put_snapshot(Location, MimeType, ?PUT_EXPIRES) of
+                {ok, PutUrl} ->
+                    Base = #{
+                        <<"put_url">> => PutUrl,
+                        <<"object_key">> => Key,
+                        <<"expires_at">> => Expiry,
+                        <<"transport">> => <<"s3_put">>,
+                        <<"client_upload_id">> => Cid,
+                        <<"session_state">> => <<"registered">>
+                    },
+                    {ok, maybe_public_url(Scope, Key, Base)};
+                {error, _} = Err ->
+                    Err
+            end
     end;
 presign_registered(_, _, _, _) ->
     {error, historical_location_unverified}.
@@ -1125,14 +1127,6 @@ maybe_public_url(<<"public">>, ObjectKey, Map) ->
     Map#{<<"public_url">> => elib_oss:public_url_for_key(ObjectKey)};
 maybe_public_url(_Scope, _ObjectKey, Map) ->
     Map.
-
-%% @doc V5 受控网关 PUT 地址：路径段是会话 client_upload_id（UUID，单段）；
-%% 真实 ObjectKey/mime/到期都在 capability token claims 内，网关不信任路径寻址。
-%% token 经 query 传递（客户端无 header 能力时也可用），网关侧与
-%% x-upload-capability header 等价接受。
--spec gateway_put_url(binary(), binary()) -> binary().
-gateway_put_url(ClientUploadId, Capability) ->
-    <<"/api/v1/attachment/gateway/", ClientUploadId/binary, "?capability=", Capability/binary>>.
 
 -spec scope_ref(map()) -> binary() | undefined.
 scope_ref(Rec) ->

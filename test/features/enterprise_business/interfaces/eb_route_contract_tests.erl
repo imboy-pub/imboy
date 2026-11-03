@@ -48,7 +48,7 @@ tenant_literal_routes() ->
         {<<P/binary, "/conversations/:id/messages/:message_id/ack">>, ack_delivery, [<<"POST">>]},
         %% CS-BE-01B：presign 路径承载 POST（签发）+ PUT（字节上传）两个用例
         %% （同路径方法分派，零路由变更；见 eb_enterprise_actions 的 presign 条目）。
-        {<<P/binary, "/assets/presign">>, presign, [<<"POST">>, <<"PUT">>]},
+        {<<P/binary, "/assets/presign">>, presign, [<<"POST">>]},
         {<<P/binary, "/assets/confirm">>, confirm_asset, [<<"POST">>]},
         {<<P/binary, "/assets/:id/content">>, asset_content, [<<"GET">>]},
         {<<P/binary, "/members/:uid/suspend">>, suspend_member, [<<"POST">>]},
@@ -65,7 +65,7 @@ seat_literal_routes() ->
     P = <<"/api/v1/seat/enterprise/organizations/:org_id">>,
     [
         {<<P/binary, "/conversations/:id/messages">>, conversation_messages, [<<"GET">>, <<"POST">>]},
-        {<<P/binary, "/assets/presign">>, presign, [<<"POST">>, <<"PUT">>]},
+        {<<P/binary, "/assets/presign">>, presign, [<<"POST">>]},
         {<<P/binary, "/assets/confirm">>, confirm_asset, [<<"POST">>]},
         {<<P/binary, "/assets/:id/content">>, asset_content, [<<"GET">>]}
     ].
@@ -692,19 +692,23 @@ a05_asset_content_is_proxy_only_test() ->
 %% 见 RESULT findings EB-09-F4），故该段标记为 NOT_VERIFIED，不由本测试冒充。
 a05_content_response_has_no_storage_capability_test() ->
     {ok, _Started} = application:ensure_all_started(cowboy),
+    %% V3-C04/V3-17：content 响应构造器唯一形态 = 302 边缘 redirect（字节
+    %% 直出已退役——S3-only 合同 BEAM 不传正文，body 形态恒 500 fail-closed）。
     Body = <<"EB09-CONTENT-BYTES">>,
     View = #{
         asset_id => 12345,
         object_hash => <<"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa">>,
         mime => <<"text/plain">>,
         size_bytes => byte_size(Body),
-        body => Body,
+        %% 边缘授权 URL（自家边缘，非存储 presigned；存储能力零出站）
+        redirect_url => <<"https://edge.imboy.test/asset/probe?ticket=x">>,
         %% 诱饵：真实实现里根本不该出现这些字段；若 reply_content 把它们写出去，
         %% 下面的扫描必须命中
         object_key => <<"org/1/ws/2/asset/3/object_key_LEAK">>,
         storage_ref => <<"garage-bucket-LEAK">>,
         url => <<"https://garage.internal/LEAK">>,
-        endpoint => <<"http://127.0.0.1:3900/LEAK">>
+        endpoint => <<"http://127.0.0.1:3900/LEAK">>,
+        body => Body
     },
     ok = persistent_term:put({eb09_content_probe, view}, View),
     {ok, Name, Port} = eb_handler_test_support:listener(
@@ -712,15 +716,28 @@ a05_content_response_has_no_storage_capability_test() ->
     ),
     try
         Resp = ?S:request(Port, <<"GET">>, <<"/__eb09_probe_content">>),
-        ?assertEqual(200, maps:get(status, Resp)),
-        Raw = ?S:raw(Resp),
-        %% ① 字节原样返回（流式内容 = 对象字节）
-        ?assertNotEqual(nomatch, binary:match(Raw, Body)),
-        %% ② 存储能力扫描：object key / bucket / URL / endpoint 一个都不许出现
-        ?assertEqual(ok, eb_enterprise_http:storage_leak_scan(Raw)),
+        %% ⓪ 302 边缘视图（字节形态是 500 fail-closed，不经响应体扫描）
+        ?assertEqual(302, maps:get(status, Resp)),
+        %% ① 正文零出站：响应体不含对象字节；location 指向自家边缘
+        RespBody = maps:get(body, Resp),
+        ?assertEqual(nomatch, binary:match(RespBody, Body)),
+        ?assertNotEqual(
+            nomatch,
+            binary:match(maps:get(<<"location">>, maps:get(headers, Resp)), <<"edge.imboy.test">>)
+        ),
+        %% ② 存储能力扫描：响应体 + 除 location（自家边缘 302 必然含
+        %% scheme）外的全部头——object key / bucket / endpoint 一个都不许出现
+        ?assertEqual(ok, eb_enterprise_http:storage_leak_scan(RespBody)),
+        Loc = maps:get(<<"location">>, maps:get(headers, Resp)),
+        ?assertEqual(nomatch, binary:match(Loc, <<"garage">>)),
+        ?assertEqual(nomatch, binary:match(Loc, <<"presign">>)),
+        ?assertEqual(nomatch, binary:match(Loc, <<"X-Amz-">>)),
+        ?assertEqual(nomatch, binary:match(Loc, <<"object_key">>)),
+        HeadBin =
+            jsone:encode(maps:without([<<"location">>], maps:get(headers, Resp))),
+        ?assertEqual(ok, eb_enterprise_http:storage_leak_scan(HeadBin)),
         %% ③ 只出现白名单头
         Headers = maps:get(headers, Resp),
-        ?assertEqual(<<"text/plain">>, maps:get(<<"content-type">>, Headers)),
         ?assertEqual(<<"12345">>, maps:get(<<"x-asset-id">>, Headers)),
         ?assertNot(maps:is_key(<<"object_key">>, Headers)),
         %% ④ 非真空：把诱饵值单独扫一遍，扫描器必须命中（证明②不是恒真）
