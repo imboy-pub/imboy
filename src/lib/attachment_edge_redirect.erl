@@ -59,12 +59,38 @@ redirect(Req, Ticket) ->
 presign_attachment(Aid, WindowSeconds) when is_integer(Aid), Aid > 0 ->
     case attachment_derived_artifact:metadata(Aid) of
         {ok, Row} ->
-            case attachment_storage:frozen_location(maps:get(<<"path">>, Row), Row) of
-                {ok, #{driver := garage} = I} ->
-                    attachment_storage_garage:presign_snapshot(I, WindowSeconds);
-                _ ->
-                    {error, historical_location_unverified}
-            end;
+            frozen_presign(Row, WindowSeconds);
+        %% 缺陷⑬：final 成品是客户端 direct 直传附件（无 attachment_derived_write
+        %% 行），派生读链必 404 → artifact_unavailable → 回放/导出 403。回退到
+        %% direct live 附件读：live/status>0/物理定位齐备；授权仍由调用链先行
+        %% 校验（playback verify_ticket+assembly 发布锚、export 授权），此处
+        %% 只补「非派生工件」的定位解析。
+        {error, artifact_unavailable} ->
+            direct_presign(Aid, WindowSeconds);
+        Error ->
+            Error
+    end.
+
+-spec frozen_presign(map(), pos_integer()) -> {ok, binary()} | {error, term()}.
+frozen_presign(Row, WindowSeconds) ->
+    case attachment_storage:frozen_location(maps:get(<<"path">>, Row), Row) of
+        {ok, #{driver := garage} = I} ->
+            attachment_storage_garage:presign_snapshot(I, WindowSeconds);
+        _ ->
+            {error, historical_location_unverified}
+    end.
+
+-spec direct_presign(integer(), pos_integer()) -> {ok, binary()} | {error, term()}.
+direct_presign(Aid, WindowSeconds) ->
+    Sql =
+        <<"SELECT a.* FROM attachment a WHERE a.id=$1 AND a.lifecycle_state='live'",
+            " AND a.status=1 AND a.size>0",
+            " AND a.storage_physical_key IS NOT NULL AND a.storage_driver IS NOT NULL">>,
+    case elib_pg:query(Sql, [Aid]) of
+        {ok, [Row]} ->
+            frozen_presign(Row, WindowSeconds);
+        {ok, []} ->
+            {error, artifact_unavailable};
         Error ->
             Error
     end.

@@ -52,23 +52,27 @@ respond(Req, #{size := Size}, Uid, Rid, Ticket) ->
                         Error -> Error
                     end;
                 _ ->
-                    %% V3-18 P3 边缘承载：GET 正文不再经 BEAM spool
-                    %% （attachment_artifact_reader:with_range 收口）——同一
-                    %% 回放票据 302 到边缘 /edge?ticket=；边缘逐请求回调
-                    %% authorize 重放 ACL 后承载 Range/206/416（
-                    %% attachment_edge_proxy_handler，语义与原 spool 形态
-                    %% 一致）。fail-closed：边缘未配置 → 503，不回退 BEAM。
-                    case attachment_edge_redirect:edge_ready() of
-                        true ->
-                            {ok, attachment_edge_redirect:redirect(Req, Ticket)};
-                        false ->
+                    %% 缺陷⑭：V3-18 P3 的 /edge 承载端点在本形态不存在（单机
+                    %% 部署无外部边缘反代）→ 302 目标 404。改为直接 302 到
+                    %% 一次性短窗 presigned Garage URL（edge_target/1 已在
+                    %% 本请求内完成 verify_ticket+ACL recheck+published 锚
+                    %% 校验后 presign；Range/206 由 Garage S3 原生承载）。
+                    %% fail-closed：presign 失败 → deny，不回退 BEAM 取流。
+                    case talk_record_playback_stream:edge_target(Ticket) of
+                        {ok, Presigned} ->
                             {ok,
                                 cowboy_req:reply(
-                                    503,
-                                    #{<<"cache-control">> => <<"private, no-store">>},
+                                    302,
+                                    #{
+                                        <<"location">> => Presigned,
+                                        <<"cache-control">> => <<"private, no-store">>,
+                                        <<"access-control-allow-origin">> => <<"*">>
+                                    },
                                     <<>>,
                                     Req
-                                )}
+                                )};
+                        {error, Reason} ->
+                            deny(Req, Reason)
                     end
             end;
         {error, range_not_satisfiable} ->
