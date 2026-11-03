@@ -306,7 +306,7 @@ dispatch({pbt, Profile}, _Ctx, Ctrl) ->
             Result = #{
                 <<"op">> => <<"pbt">>,
                 <<"profile">> => atom_to_binary(Profile),
-                <<"candidate_sha">> => string:trim(binary_to_list(HeadB)),
+                <<"candidate_sha">> => iolist_to_binary(string:trim(HeadB)),
                 <<"total">> => Total,
                 <<"passed">> => Passed,
                 <<"verdict">> =>
@@ -613,7 +613,7 @@ ct_expect(_) ->
 ct_head() ->
     {ok, Repo} = file:get_cwd(),
     {0, HeadB} = imboy_quality_guard:git(Repo, ["rev-parse", "HEAD"]),
-    string:trim(binary_to_list(HeadB)).
+    iolist_to_binary(string:trim(HeadB)).
 
 ct_verdict_bin(pass) -> <<"pass">>;
 ct_verdict_bin({fail, Reason}) ->
