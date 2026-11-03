@@ -83,20 +83,28 @@ stream_bytes_and_revocation_test_() ->
                 qs => <<"ticket=", T/binary>>,
                 headers => #{<<"range">> => <<"bytes=2-5">>}
             },
-            %% 边缘未配置：GET fail-closed 503（不回退 BEAM 取流）。
-            {ok, Resp503, _} = talk_record_playback_handler:init(Base, #{
+            %% presign 失败：GET fail-closed 403（不回退 BEAM 取流）。
+            meck:expect(attachment_edge_redirect, presign_attachment, fun(_Aid, _Win) ->
+                {error, artifact_unavailable}
+            end),
+            {ok, Resp403, _} = talk_record_playback_handler:init(Base, #{
                 current_uid => 700001
             }),
-            ?assertEqual(503, maps:get(status, Resp503)),
+            ?assertEqual(403, maps:get(status, Resp403)),
             Reads = meck:num_calls(attachment_artifact_reader, with_range, '_'),
-            %% 配置边缘基址：GET 302 到边缘（同一票据，不泄私有签名）。
-            ok = application:set_env(imboy, edge_base_url, <<"http://127.0.0.1:13992/edge">>),
+            %% presign 成功：GET 302 直跳一次性短窗 presigned URL
+            %% （A16 真机实证合同，缺陷⑭——Location 是 Garage 签名 URL 本身，
+            %% 不含内部 /edge 基址、不含票据）。
+            Presigned = <<"https://s3.test/imboy/final.aac?X-Amz-Signature=abc">>,
+            meck:expect(attachment_edge_redirect, presign_attachment, fun(_Aid, _Win) ->
+                {ok, Presigned}
+            end),
             {ok, Resp302, _} = talk_record_playback_handler:init(Base, #{
                 current_uid => 700001
             }),
             ?assertEqual(302, maps:get(status, Resp302)),
             ?assertEqual(
-                <<"http://127.0.0.1:13992/edge?ticket=", T/binary>>,
+                Presigned,
                 maps:get(<<"location">>, maps:get(response_headers, Resp302))
             ),
             put(stream_bytes, []),
@@ -130,6 +138,9 @@ stream_setup() ->
     meck:expect(elib_pg, with_conn, fun(F) -> F(test_connection) end),
     %% T5 读取权威：assembly 已发布成品行（published_audio_tx 查询）
     meck:expect(elib_pg, query, fun(_C, _Sql, _Args) -> {ok, [published_row()]} end),
+    %% 缺陷⑭合同：GET 302 由 edge_target 经 presign_attachment 产出——
+    %% mock presign 结果控制 302/403 两分支（Storage 定位在单测域外）。
+    ok = meck:new(attachment_edge_redirect, [no_link]),
     ok = meck:new(attachment_artifact_reader, [non_strict, no_link]),
     meck:expect(attachment_artifact_reader, with_range, fun(_Row, Offset, Length, F) ->
         attachment_upload_spool:with_source(
@@ -159,8 +170,10 @@ stream_setup() ->
     end),
     Prev.
 stream_cleanup(Prev) ->
-    application:unset_env(imboy, edge_base_url),
-    lists:foreach(fun meck:unload/1, [cowboy_req, attachment_artifact_reader, elib_pg]),
+    lists:foreach(
+        fun meck:unload/1,
+        [cowboy_req, attachment_artifact_reader, attachment_edge_redirect, elib_pg]
+    ),
     erase(stream_bytes),
     erase(revoke_after_chunk),
     cleanup(Prev).

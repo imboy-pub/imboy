@@ -72,7 +72,10 @@ respond(Req, #{size := Size}, Uid, Rid, Ticket) ->
                                     Req
                                 )};
                         {error, Reason} ->
-                            deny(Req, Reason)
+                            %% respond 合同恒 {ok, Req}（416/HEAD 分支同款）；
+                            %% 返回裸 map 会让 open 的 case_clause 变 500——
+                            %% fail-closed 语义必须落 403。
+                            {ok, deny(Req, Reason)}
                     end
             end;
         {error, range_not_satisfiable} ->
