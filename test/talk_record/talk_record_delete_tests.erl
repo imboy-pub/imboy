@@ -32,6 +32,10 @@
 %% compiled pin, no controller assets); every generator runs on the shared
 %% migrated marker DB through the t12 support chain, like the rest of the family.
 setup(_Case) ->
+    %% 运行 nonce：共享 marker 库跨 VM 复用，全部夹具 id/幂等键派生自它
+    %% （v5 冻结位/首绑守卫使固定 id 残留不可覆盖，运行唯一化是正解）。
+    RunNonce = 100000 + os:system_time(second) rem 8000000,
+    persistent_term:put({?MODULE, run_nonce}, RunNonce),
     State = talk_record_t12_support:setup_all(),
     try
         talk_record_t12_support:seed(State),
@@ -68,7 +72,11 @@ ready(State, N) ->
 
 ready(State, N, U1) ->
     {ok, {Rid, Cid, _}} = talk_record_t12_support:ready_record(
-        U1, ?REC(N), <<"record_only">>, [0, 1], <<"t20-", (integer_to_binary(N))/binary>>
+        U1,
+        nrec(N),
+        <<"record_only">>,
+        [0, 1],
+        nidem(iolist_to_binary([<<"t20-">>, integer_to_binary(N)]))
     ),
     {ok, created, _} = talk_record_t12_support:complete(
         U1, Rid, Cid, <<"t20-", (integer_to_binary(N))/binary, "-cmp">>
@@ -81,7 +89,7 @@ ready(State, N, U1) ->
 draft(Uid, N, Scope) ->
     Body = maps:merge(
         #{
-            <<"client_recording_id">> => ?REC(N),
+            <<"client_recording_id">> => nrec(N),
             <<"notice_ack">> => true,
             <<"policy_version">> => <<"talk-record-notice-v1">>,
             <<"processing_mode">> => <<"record_only">>
@@ -89,7 +97,7 @@ draft(Uid, N, Scope) ->
         Scope
     ),
     {ok, created, Payload, ETag} = talk_record_logic:create(
-        Uid, Body, <<"t20-draft-", (integer_to_binary(N))/binary>>
+        Uid, Body, nidem(iolist_to_binary([<<"t20-draft-">>, integer_to_binary(N)]))
     ),
     ?assertEqual({ok, 1}, talk_record_logic:parse_if_match(ETag)),
     maps:get(<<"id">>, Payload).
@@ -157,6 +165,12 @@ bind_ref(Conn, RecordId, AttachmentId, BusinessKey) ->
     ok.
 
 collect_hash(Conn, CollectId, Hash) ->
+    %% 前序运行残留的 (700002, kind) 收藏行会撞 uk_user_collect_uid_kind
+    %% （共享 marker 库），夹具用户收藏面先清再插。
+    {ok, _} =
+        elib_pg:query(
+            Conn, <<"DELETE FROM user_collect WHERE user_id = 700002">>, []
+        ),
     {ok, []} =
         elib_pg:query(
             Conn,
@@ -220,83 +234,152 @@ raw_tx(Conn, Fun) ->
             erlang:raise(Class, Reason, Stack)
     end.
 
-disk_root(_Tag) ->
-    Root = os:getenv("TALK_UPLOAD_DISK_ROOT"),
-    true = is_list(Root) andalso filename:pathtype(Root) =:= absolute,
-    Root.
+%% 运行唯一派生 id：client_recording_id（uuid 形）、幂等键、附件 int8 id。
+nonce() ->
+    persistent_term:get({?MODULE, run_nonce}).
 
-disk_registry_apply(Dir) ->
-    Expected = disk_root(disk1),
-    true = filename:absname(Dir) =:= Expected,
-    #{namespace => <<"talk-upload-test">>, container => <<"capture">>}.
+nrec(N) ->
+    %% 严格 uuid36（8-4-4-4-12）：nonce 折进第 2/3 组，N 折进末组。
+    iolist_to_binary([
+        "30000000-",
+        io_lib:format("~4.16.0b", [(nonce() bsr 16) band 16#FFFF]),
+        "-",
+        io_lib:format("~4.16.0b", [nonce() band 16#FFFF]),
+        "-0000-",
+        io_lib:format("~12.16.0b", [N])
+    ]).
 
-disk_locator_digest() ->
-    Ns = <<"talk-upload-test">>,
+nidem(Prefix) ->
+    iolist_to_binary([Prefix, $-, integer_to_binary(nonce())]).
+
+nat(K) ->
+    nonce() * 1000 + K.
+
+fixture_ns() ->
+    <<"talk-upload-test">>.
+
+fixture_registry() ->
+    {ok, Rec} = attachment_storage:resolve(fixture_ns()),
+    Rec.
+
+fixture_locator_digest() ->
+    Ns = fixture_ns(),
     {ok, Rec} = attachment_storage:resolve(Ns),
     attachment_storage:locator_digest(Ns, Rec).
 
 %% 原车道意图是"排空 presign 分段会话窗口"（置 upload_expires_at 过去）。
-%% 本车道事实：V5 分段会话在 t12 confirm 链后即 confirmed，其 expires 由
-%% 会话触发器保护（不可 shrink），生产 TTL 3600s 不可缩短——置过去必然
-%% 23510。真实语义由 rebind_parts_to_local_objects 承担：参与删除协调的
-%% 分段位换成本地真实对象；V5 分段行与其会话成为无引用旁路，不进入删除
-%% 协调，无需也不应改写其窗口。因此本夹具在此车道内是显式 no-op。
+%% 本车道事实：V5 分段会话在 t12 confirm 链后即 confirmed（终态），本 lane
+%% 删除链不检查会话窗口（能力检查仅属旧控制器车道），因此显式 no-op——
+%% 分段位即真实 garage 对象，直接进入删除协调。
 drain_upload_sessions(_State, _Rid) ->
     ok.
 
-%% 分段位改挂真实本地对象：t12 ready_record 的 V5 分段会话带生产上传能力
-%% 窗口（V5_PUT_EXPIRY_SECONDS=3600 硬编码，会话触发器禁止缩短 expires、
-%% confirmed 状态无出边——原控制器车道靠真实等待自然过期，本车道没有控制
-%% 器窗口）。装配事实（part 行、derived 产物）不变，把分段位的附件换成本
-%% 地真实对象（真字节、真冻结位置、真引用——与 8101 同款装配），其 audio_part
-%% 引用与 part.attachment_id 一并重绑；旧 V5 分段行连同其会话成为无引用旁
-%% 路，不再进入删除协调。两个真字节旅程（disk 队列消费、队列耗尽续删）
-%% 由此获得全部真实对象。
-rebind_parts_to_local_objects(C, Rid, PartIds, BaseId) ->
-    #{namespace := Ns, container := Container} = disk_registry_apply(disk_root(disk1)),
-    Locator = disk_locator_digest(),
+%% S3-only 退役收编后的夹具字节面：行先建（garage 冻结位），再
+%% frozen_location → presign PUT → httpc 直传真字节。
+put_fixture_bytes(C, Id, Opts, Bytes) ->
+    Path = insert_attachment(C, Id, Opts#{
+        storage_driver => <<"garage">>,
+        storage_namespace => fixture_ns(),
+        storage_container => maps:get(container, fixture_registry()),
+        storage_locator => fixture_locator_digest()
+    }),
+    {ok, I} = attachment_storage:frozen_location(Path, attachment_row(C, Id)),
+    {ok, Url} = attachment_storage_garage:presign_put_snapshot(
+        I, <<"application/octet-stream">>, 300
+    ),
+    {ok, {{_, 200, _}, _, _}} =
+        httpc:request(
+            put,
+            {binary_to_list(Url), [], "application/octet-stream", Bytes},
+            [],
+            [{body_format, binary}]
+        ),
+    Path.
+
+attachment_row(C, Id) ->
+    {ok, [Row]} = elib_pg:query(
+        C, <<"SELECT * FROM attachment WHERE id=$1">>, [Id]
+    ),
+    Row.
+
+%% 冻结位字节读（presign GET）；返回 {ok, {{_,200,_},_,Bytes}} | {error,_}。
+fixture_bytes(Row) ->
+    {ok, I} = attachment_storage:frozen_location(maps:get(<<"path">>, Row), Row),
+    case attachment_storage_garage:presign_snapshot(I, 300) of
+        {ok, Url} ->
+            httpc:request(
+                get, {binary_to_list(Url), []}, [], [{body_format, binary}]
+            );
+        Error ->
+            Error
+    end.
+
+%% 字节已物理消失（HEAD fail-closed）。
+object_gone(Row) ->
+    {ok, I} = attachment_storage:frozen_location(maps:get(<<"path">>, Row), Row),
+    ?assertMatch({error, _}, attachment_storage:head_snapshot(I)).
+
+%% 把删除协调面的附件位（bound 引用、part 行、assembly 成品位）换挂到夹具
+%% 自建的 garage 真实对象：CONFIRMED 会话无出边（v5 合法转移集封死），其
+%% 3600s 能力窗不可排空，intent 资格门的窗口检查会保守保留——与 disk 时代
+%% rebind 同理，用无会话的夹具对象承接；字节按原对象真读真写，SHA 冻结一致。
+rebind_garage(C, Rid) ->
+    %% 派生台账附件（manifest）无上传会话、不受窗口检查，换挂会令
+    %% attachment_derived_write 与引用位指向分裂——跳过，仅换挂会话位。
+    {ok, Rows} = elib_pg:query(
+        C,
+        <<
+            "SELECT DISTINCT r.attachment_id AS aid"
+            " FROM talk_record_attachment_ref r WHERE r.record_id=$1 AND r.state='bound'"
+            " AND NOT EXISTS (SELECT 1 FROM attachment_derived_write w"
+            "                 WHERE w.attachment_id = r.attachment_id)"
+            " ORDER BY r.attachment_id"
+        >>,
+        [Rid]
+    ),
     lists:foreach(
-        fun({N, Pid}) ->
-            Id = BaseId + N,
-            Bytes = iolist_to_binary(["t20-part-bytes-", integer_to_binary(Id)]),
-            Path = insert_attachment(C, Id, #{
-                record_id => Rid,
-                gc_verified => false,
-                hash => binary:encode_hex(crypto:hash(sha256, Bytes), lowercase),
-                storage_driver => <<"disk">>,
-                storage_namespace => Ns,
-                storage_container => Container,
-                storage_locator => Locator
-            }),
-            ok = attachment_storage_disk:put(Ns, Container, Path, Bytes),
-            {ok, [#{<<"v5_aid">> := V5Aid}]} = elib_pg:query(
-                C,
-                <<
-                    "SELECT attachment_id AS v5_aid FROM talk_record_audio_part"
-                    " WHERE id=$1 AND record_id=$2"
-                >>,
-                [Pid, Rid]
+        fun({N, #{<<"aid">> := Aid}}) ->
+            {ok, [OldRow]} = elib_pg:query(
+                C, <<"SELECT * FROM attachment WHERE id=$1">>, [Aid]
             ),
-            true = is_integer(V5Aid) andalso V5Aid > 0,
+            {ok, {{_, 200, _}, _, Bytes}} = fixture_bytes(OldRow),
+            NewId = nat(700 + N),
+            NewPath = put_fixture_bytes(
+                C,
+                NewId,
+                located_attachment(Rid, #{
+                    hash => binary:encode_hex(crypto:hash(sha256, Bytes), lowercase)
+                }),
+                Bytes
+            ),
+            true = is_binary(NewPath) andalso byte_size(NewPath) > 0,
             {ok, _} = elib_pg:query(
                 C,
                 <<
                     "UPDATE talk_record_attachment_ref SET attachment_id=$1"
                     " WHERE attachment_id=$2 AND record_id=$3"
                 >>,
-                [Id, V5Aid, Rid]
+                [NewId, Aid, Rid]
             ),
             {ok, _} = elib_pg:query(
                 C,
                 <<
                     "UPDATE talk_record_audio_part SET attachment_id=$1"
-                    " WHERE id=$2 AND record_id=$3"
+                    " WHERE attachment_id=$2 AND record_id=$3"
                 >>,
-                [Id, Pid, Rid]
+                [NewId, Aid, Rid]
+            ),
+            {ok, _} = elib_pg:query(
+                C,
+                <<
+                    "UPDATE talk_record_assembly SET audio_attachment_id=$1"
+                    " WHERE record_id=$2 AND audio_attachment_id=$3"
+                >>,
+                [NewId, Rid, Aid]
             ),
             ok
         end,
-        lists:zip(lists:seq(1, length(PartIds)), PartIds)
+        lists:zip(lists:seq(1, length(Rows)), Rows)
     ),
     ok.
 
@@ -318,15 +401,13 @@ row(Conn, Sql) ->
 %% Protected/retained assets still require valid V5 locations; these cases do
 %% not claim a successful physical deletion or manufacture gc completion.
 located_attachment(Rid, Extra) ->
-    Root = disk_root(disk1),
-    #{namespace := Ns, container := Container} = disk_registry_apply(Root),
     maps:merge(
         #{
             record_id => Rid,
-            storage_driver => <<"disk">>,
-            storage_namespace => Ns,
-            storage_container => Container,
-            storage_locator => disk_locator_digest()
+            storage_driver => <<"garage">>,
+            storage_namespace => fixture_ns(),
+            storage_container => maps:get(container, fixture_registry()),
+            storage_locator => fixture_locator_digest()
         },
         Extra
     ).
@@ -344,7 +425,7 @@ complete_for_cancellation(C, Uid, Rid, Cid) ->
     },
     Complete = fun() ->
         talk_record_t12_support:complete_body(
-            Uid, Rid, Cid, <<"t20-96-cmp">>, Body
+            Uid, Rid, Cid, nidem(<<"t20-96-cmp">>), Body
         )
     end,
     talk_record_t20_support:with_env(talk_record_processor, #{}, fun() ->
@@ -501,13 +582,13 @@ delete_fences_active_capture_test_() ->
     %% active_capture_id 投影已清（deleted_at 在上一断言组已验）
     end).
 
-disk_objects(C, Rid) ->
+%% V1 合同：成品=客户端直传附件（publish 经 bind_artifact_tx 引用，非派生
+%% 写入）；唯一派生产物=manifest。故 derived 恒 1，成品出现在 refs 并集。
+garage_objects(C, Rid) ->
     Rows = attachment_rows(C, Rid),
     ?assertEqual(2, length([R || #{<<"part">> := true} = R <- Rows])),
-    ?assertEqual(2, length([R || #{<<"derived">> := true} = R <- Rows])),
-    Objects = [disk_object(R) || R <- Rows],
-    ?assertEqual(5, length(lists:usort([maps:get(identity, O) || O <- Objects]))),
-    Objects.
+    ?assertEqual(1, length([R || #{<<"derived">> := true} = R <- Rows])),
+    [garage_object(R) || R <- Rows].
 
 attachment_rows(C, Rid) ->
     {ok, Rows} = elib_pg:query(
@@ -526,27 +607,27 @@ attachment_rows(C, Rid) ->
     ),
     Rows.
 
-disk_object(#{<<"path">> := Path} = Row) ->
+%% 冻结位读回：presign GET 字节、逐对象 SHA 与行冻结身份比对；row 随身
+%% 携带（后续仍在/已消失断言直接用行驱动）。
+garage_object(#{<<"path">> := Path} = Row) ->
     {ok,
         #{
-            driver := disk,
+            driver := garage,
             namespace := Ns,
             container := Container,
             key := Key,
-            locator_digest := Digest,
-            endpoint := <<"file://", Root/binary>>
+            locator_digest := Digest
         } = I} =
         attachment_storage:frozen_location(Path, Row),
-    ?assertEqual(disk_root(disk1), binary_to_list(Root)),
-    {ok, Bytes} = attachment_storage_disk:read_snapshot(I),
+    {ok, Url} = attachment_storage_garage:presign_snapshot(I, 300),
+    {ok, {{_, 200, _}, _, Bytes}} =
+        httpc:request(get, {binary_to_list(Url), []}, [], [{body_format, binary}]),
     ?assert(byte_size(Bytes) > 0),
-    File = filename:join([binary_to_list(Root), binary_to_list(Container), binary_to_list(Key)]),
-    {ok, PhysicalBytes} = file:read_file(File),
     Hash = crypto:hash(sha256, Bytes),
-    ?assertEqual(Hash, crypto:hash(sha256, PhysicalBytes)),
+    ?assertEqual(binary:decode_hex(maps:get(<<"file_hash256">>, Row)), Hash),
     #{
         path => Path,
-        file => File,
+        row => Row,
         sha256 => Hash,
         identity => {Ns, Container, Digest, Key}
     }.
@@ -802,7 +883,7 @@ purge_complete_disk_queue_test_() ->
             <<"record">> := #{<<"id">> := Rid, <<"owner_user_id">> := U1},
             <<"extra_attachment_path">> := Path
         } = Prepared,
-        Objects = disk_objects(C, Rid),
+        Objects = garage_objects(C, Rid),
         ?assertEqual(5, length(Objects)),
         ?assertEqual(5, length(lists:usort([maps:get(path, O) || O <- Objects]))),
         ?assert(lists:member(Path, [maps:get(path, O) || O <- Objects])),
@@ -814,8 +895,8 @@ purge_complete_disk_queue_test_() ->
         {St, _AnyCount} = talk_record_t20_support:ref_state(C, Rid),
         ?assertEqual(<<"released">>, St),
         ?assertEqual(<<"delete_intent">>, talk_record_t20_support:attachment_state(C, Path)),
-        %% 既有附件 worker：claim → disk DELETE → ack done（真路径；
-        %% 5 个真实对象：8101、两段上传、assemble 的 audio 与 manifest。
+        %% 既有附件 worker：claim → 真删（garage delete_snapshot）→ ack done
+        %% （真路径；5 个真实对象：8101、两段上传、assemble 的 audio 与 manifest）。
         {ok, 5} = attachment_delete_worker:run_batch(
             C, fun(_Ns2, _C2, _K, I) -> attachment_storage:delete_snapshot(I) end
         ),
@@ -823,9 +904,7 @@ purge_complete_disk_queue_test_() ->
         %% 物理完成证据 = 队列 done + 字节消失）
         ?assertEqual(<<"delete_intent">>, talk_record_t20_support:attachment_state(C, Path)),
         lists:foreach(
-            fun(#{file := File}) ->
-                ?assertEqual({error, enoent}, file:read_file(File))
-            end,
+            fun(#{row := Row}) -> object_gone(Row) end,
             Objects
         ),
         {ok, Purged} = talk_record_delete_repo:purged_attachment_paths_tx(C, Rid),
@@ -859,29 +938,33 @@ prepare_disk_queue_fixture(State) ->
     %% （共享 marker 库、本根独占——不触碰他根事实。）
     talk_record_t12_support:sql(C, "TRUNCATE talk_record_job CASCADE"),
     talk_record_t12_support:sql(C, "TRUNCATE attachment_object_deletion"),
+    %% 本套件 cleanup-retry 旅程的装置行（共享 marker 库，t12 夹具清洁门
+    %% 要求该表为空）。
+    talk_record_t12_support:sql(C, "TRUNCATE talk_record_cleanup_retry"),
     Uid = maps:get(u1, talk_record_t20_support:ids()),
-    {ok, {Rid, Cid, PartIds}} = talk_record_t12_support:ready_record(
-        Uid, ?REC(91), <<"record_only">>, [0, 1], <<"t20-disk-natural-91">>
+    {ok, {Rid, Cid, _PartIds}} = talk_record_t12_support:ready_record(
+        Uid, nrec(91), <<"record_only">>, [0, 1], nidem(<<"t20-disk-natural-91">>)
     ),
     {ok, created, _} = talk_record_t12_support:complete(
-        Uid, Rid, Cid, <<"t20-disk-natural-91-complete">>
+        Uid, Rid, Cid, nidem(<<"t20-disk-natural-91-complete">>)
     ),
-    %% Assemble returns outcome only; disk_objects verifies the actual job kind/state.
+    %% Assemble returns outcome only; garage_objects verifies the actual job
+    %% kind/state. CONFIRMED 会话能力窗不可排空 → 引用位换挂夹具自有对象。
     {ok, #{outcome := succeeded}} = talk_record_job_worker:run_once(),
-    #{namespace := Ns, container := Container} = disk_registry_apply(disk_root(disk1)),
+    rebind_garage(C, Rid),
     Bytes = <<"t20-bytes!">>,
-    Path = insert_attachment(C, 8101, #{
-        record_id => Rid,
-        gc_verified => false,
-        hash => binary:encode_hex(crypto:hash(sha256, Bytes), lowercase),
-        storage_driver => <<"disk">>,
-        storage_namespace => Ns,
-        storage_container => Container,
-        storage_locator => disk_locator_digest()
-    }),
-    ok = attachment_storage_disk:put(Ns, Container, Path, Bytes),
-    ok = bind_ref(C, Rid, 8101, <<"audio_part:1">>),
-    ok = rebind_parts_to_local_objects(C, Rid, PartIds, 8101),
+    ExtraId = nat(101),
+    Path = put_fixture_bytes(
+        C,
+        ExtraId,
+        #{
+            record_id => Rid,
+            gc_verified => false,
+            hash => binary:encode_hex(crypto:hash(sha256, Bytes), lowercase)
+        },
+        Bytes
+    ),
+    ok = bind_ref(C, Rid, ExtraId, <<"audio_part:1">>),
     {ok, [Record]} = elib_pg:query(
         C, <<"SELECT r.* FROM talk_record r WHERE r.id=$1">>, [Rid]
     ),
@@ -892,8 +975,9 @@ purge_blocked_retention_test_() ->
     with_db(purge_blocked_retention_test_, fun(State) ->
         C = talk_record_t20_support:conn_of(State),
         {Rid, _, U1} = ready(State, 92),
-        Path = insert_attachment(C, 8201, located_attachment(Rid, #{})),
-        ok = bind_ref(C, Rid, 8201, <<"audio_part:1">>),
+        RetainId = nat(201),
+        Path = insert_attachment(C, RetainId, located_attachment(Rid, #{})),
+        ok = bind_ref(C, Rid, RetainId, <<"audio_part:1">>),
         talk_record_t12_support:sql(C, [
             "UPDATE talk_record SET retention_until = now() + interval '30 days' WHERE id = ",
             integer_to_binary(Rid)
@@ -940,9 +1024,10 @@ purge_blocked_hold_test_() ->
         C = talk_record_t20_support:conn_of(State),
         U1 = maps:get(u1, talk_record_t20_support:ids()),
         Rid = draft(U1, 93, #{<<"scope">> => <<"organization">>, <<"organization_id">> => 710001}),
-        Path = insert_attachment(C, 8301, located_attachment(Rid, #{})),
-        ok = bind_ref(C, Rid, 8301, <<"audio_part:1">>),
-        ok = hold_row(C, 8301),
+        HoldId = nat(301),
+        Path = insert_attachment(C, HoldId, located_attachment(Rid, #{})),
+        ok = bind_ref(C, Rid, HoldId, <<"audio_part:1">>),
+        ok = hold_row(C, HoldId),
         {ok, [#{<<"held_count">> := 1, <<"retained_count">> := 0}]} =
             talk_record_governance_repo:facts_tx(C, Rid),
         {ok, deleted, _} = talk_record_delete_logic:delete(U1, Rid, <<"1">>),
@@ -950,7 +1035,7 @@ purge_blocked_hold_test_() ->
         ?assertEqual(<<"blocked_hold">>, cleanup_status(C, Rid)),
         ?assertEqual(<<"bound">>, element(1, talk_record_t20_support:ref_state(C, Rid))),
         ?assertEqual(<<"live">>, talk_record_t20_support:attachment_state(C, Path)),
-        {ok, [#{<<"state">> := <<"bound">>, <<"attachment_id">> := 8301}]} =
+        {ok, [#{<<"state">> := <<"bound">>, <<"attachment_id">> := HoldId}]} =
             elib_pg:query(
                 C,
                 <<
@@ -974,7 +1059,7 @@ purge_blocked_hold_test_() ->
                 "SELECT count(*) AS n FROM enterprise_attachment_retention"
                 " WHERE attachment_id=$1 AND hold_reason='t20-hold'"
             >>,
-            [8301]
+            [HoldId]
         ),
         {ok, [#{<<"n">> := 1}]} = elib_pg:query(
             C, <<"SELECT count(*) AS n FROM enterprise_attachment_retention">>, []
@@ -989,10 +1074,10 @@ purge_retained_by_other_reference_test_() ->
         {Rid, _, U1} = ready(State, 94),
         CollectHash = binary:copy(<<"e">>, 64),
         Path = insert_attachment(
-            C, 8401, located_attachment(Rid, #{hash => CollectHash})
+            C, nat(401), located_attachment(Rid, #{hash => CollectHash})
         ),
-        ok = bind_ref(C, Rid, 8401, <<"audio_part:1">>),
-        ok = collect_hash(C, 8401, CollectHash),
+        ok = bind_ref(C, Rid, nat(401), <<"audio_part:1">>),
+        ok = collect_hash(C, nat(401), CollectHash),
         {ok, deleted, _} = talk_record_delete_logic:delete(U1, Rid, <<"1">>),
         {ok, #{outcome := succeeded, kind := <<"purge">>}} = talk_record_job_worker:run_once(),
         ?assertEqual(
@@ -1016,24 +1101,27 @@ purge_failed_then_retry(State) ->
     %% 全局面，先清装置（置于装配之前：CASCADE 不误伤本 case 将建的行）。
     talk_record_t12_support:sql(C, "TRUNCATE talk_record_job CASCADE"),
     talk_record_t12_support:sql(C, "TRUNCATE attachment_object_deletion"),
+    %% 本套件 cleanup-retry 旅程的装置行（共享 marker 库，t12 夹具清洁门
+    %% 要求该表为空）。
+    talk_record_t12_support:sql(C, "TRUNCATE talk_record_cleanup_retry"),
     Ids = talk_record_t20_support:ids(),
     U1 = maps:get(u1, Ids),
     U7 = maps:get(u7, Ids),
-    {ok, {Rid, Cid, PartIds}} = talk_record_t12_support:ready_record(
-        U1, ?REC(95), <<"record_only">>, [0, 1], <<"t20-retry-95">>
+    {ok, {Rid, Cid, _PartIds}} = talk_record_t12_support:ready_record(
+        U1, nrec(95), <<"record_only">>, [0, 1], nidem(<<"t20-retry-95">>)
     ),
     {ok, created, _} = talk_record_t12_support:complete(
-        U1, Rid, Cid, <<"t20-retry-95-complete">>
+        U1, Rid, Cid, nidem(<<"t20-retry-95-complete">>)
     ),
     {ok, #{outcome := succeeded}} = talk_record_job_worker:run_once(),
-    ok = rebind_parts_to_local_objects(C, Rid, PartIds, 8104),
+    rebind_garage(C, Rid),
     {ok, deleted, _} = talk_record_delete_logic:delete(U1, Rid, <<"1">>),
     {ok, #{outcome := succeeded, kind := <<"purge">>}} = talk_record_job_worker:run_once(),
-    %% 两段上传 + assemble 的 audio/manifest：四个真实对象、四个真实位置
+    %% 两段上传 + 成品（bind 引用）+ manifest：四个真实对象、四个真实位置
     Rows = attachment_rows(C, Rid),
     ?assertEqual(2, length([R || #{<<"part">> := true} = R <- Rows])),
-    ?assertEqual(2, length([R || #{<<"derived">> := true} = R <- Rows])),
-    Objects = [disk_object(R) || R <- Rows],
+    ?assertEqual(1, length([R || #{<<"derived">> := true} = R <- Rows])),
+    Objects = [garage_object(R) || R <- Rows],
     ?assertEqual(4, length(lists:usort([maps:get(identity, O) || O <- Objects]))),
     Paths = [maps:get(path, O) || O <- Objects],
     ?assertEqual(4, length(Paths)),
@@ -1049,8 +1137,8 @@ purge_failed_then_retry(State) ->
     ?assertEqual(lists:sort(Paths), [maps:get(<<"path">>, R) || R <- Pending]),
     %% 字节仍在（故障 = 未删除）
     lists:foreach(
-        fun(#{file := File, sha256 := Hash}) ->
-            {ok, Bytes} = file:read_file(File),
+        fun(#{row := Row, sha256 := Hash}) ->
+            {ok, {{_, 200, _}, _, Bytes}} = fixture_bytes(Row),
             ?assertEqual(Hash, crypto:hash(sha256, Bytes))
         end,
         Objects
@@ -1096,9 +1184,7 @@ purge_failed_then_retry(State) ->
     ),
     ?assertEqual(length(Paths), Count),
     lists:foreach(
-        fun(#{file := File}) ->
-            ?assertEqual({error, enoent}, file:read_file(File))
-        end,
+        fun(#{row := Row}) -> object_gone(Row) end,
         Objects
     ),
     {ok, _} = talk_record_job_worker:refresh_cleanup_pending(),
@@ -1203,7 +1289,7 @@ late_results_not_published_test_() ->
         U1 = maps:get(u1, Ids),
         %% transcribe 模式记录：complete 投 assemble + transcribe 两 job（不消费）
         {ok, {Rid, Cid, _}} = talk_record_t12_support:ready_record(
-            U1, ?REC(96), <<"transcribe">>, [0, 1], <<"t20-96">>
+            U1, nrec(96), <<"transcribe">>, [0, 1], nidem(<<"t20-96">>)
         ),
         ok = complete_for_cancellation(C, U1, Rid, Cid),
         Queued = row(C, [
@@ -1354,6 +1440,16 @@ grants_first_then_delete_consistent_test_() ->
         U1 = maps:get(u1, Ids),
         U2 = maps:get(u2, Ids),
         {Rid, _, _} = ready(State, 98),
+        %% 前序运行残留的双向好友行会使下方拒绝预言提前失效（共享 marker
+        %% 库、personal 目录判定=双向 user_friend），先清两用户间全部好友行。
+        {ok, _} = elib_pg:query(
+            C,
+            <<
+                "DELETE FROM user_friend WHERE (from_user_id=$1 AND to_user_id=$2)"
+                " OR (from_user_id=$2 AND to_user_id=$1)"
+            >>,
+            [U1, U2]
+        ),
         %% Personal grants require actual mutual active contacts, not merely
         %% membership in the same organization. Preserve the rejection oracle.
         ?assertEqual(
@@ -1603,17 +1699,24 @@ scan_organization_l2_regression_test_() ->
         %% 附件命名：一个字面含 % 的名字 + 一个普通名
         Path1 = insert_attachment(
             C,
-            8601,
+            nat(601),
             #{record_id => Rid1, gc_verified => false}
         ),
         talk_record_t12_support:sql(C, [
             "UPDATE attachment SET name='plan 50% done' WHERE path = '", Path1, "'"
         ]),
+        DirtyId = nat(602),
+        DirtyPath = iolist_to_binary(["t20/dirty-", integer_to_binary(DirtyId)]),
         talk_record_t12_support:sql(C, [
             "INSERT INTO attachment(id, file_hash256, mime_type, name, path, url, size,"
             " referer_time, creator_user_id, scope, scope_ref, gc_verified)"
-            " VALUES (8602, repeat('d',64), 'audio/aac', 'abc50x', 't20/dirty-8602',"
-            " 't20/dirty-8602', 10, 1, ",
+            " VALUES (",
+            integer_to_binary(DirtyId),
+            ", repeat('d',64), 'audio/aac', 'abc50x', '",
+            DirtyPath,
+            "', '",
+            DirtyPath,
+            "', 10, 1, ",
             integer_to_binary(U1),
             ", 'talk_record', 'not-a-number', false)"
         ]),
@@ -1625,7 +1728,7 @@ scan_organization_l2_regression_test_() ->
         ?assert(lists:member(Path1, [maps:get(<<"path">>, R) || R <- Rows])),
         ?assertNot(
             lists:member(
-                <<"t20/dirty-8602">>,
+                DirtyPath,
                 [maps:get(<<"path">>, R) || R <- Rows]
             )
         ),

@@ -254,12 +254,20 @@ export_state_and_download_handler_test_() ->
             binary:match(maps:get(<<"content-disposition">>, Hdrs), <<"attachment">>) =/= nomatch
         ),
         ok = application:unset_env(imboy, edge_base_url),
-        %% 边缘未配置 → fail-closed（不回退 BEAM 字节直出）
+        %% 边缘未配置 → fail-closed（不回退 BEAM 字节直出）。edge_base()
+        %% 含 base_url+"/edge" 回退——须同屏空 base_url 才表达「边缘未
+        %% 配置」，否则配置里的 base_url 使边缘仍然 ready（302）。
+        PrevBaseUrl = application:get_env(imboy, base_url),
+        ok = application:set_env(imboy, base_url, <<>>),
         R3N = talk_record_handler:handle_action(
             export_download,
             req(#{method => <<"GET">>, bindings => Bind, qs => <<"ticket=", Ticket/binary>>}),
             #{current_uid => U1}
         ),
+        case PrevBaseUrl of
+            undefined -> ok = application:unset_env(imboy, base_url);
+            {ok, V} -> ok = application:set_env(imboy, base_url, V)
+        end,
         ?assert(lists:member(maps:get(response_status, R3N), [403, 410, 500, 503])),
 
         %% 他人票据 → 403（5561）
