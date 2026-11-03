@@ -24,5 +24,13 @@
     #{id => c02_illegal_injection,
       kind => ordinary,
       mfa => {imboy_quality_pbt_cjson_props, prop_c02_illegal_injection, 0},
-      witnesses => [{imboy_quality_pbt_cjson_props, witnesses_ok, 0}]}
+      witnesses => [{imboy_quality_pbt_cjson_props, witnesses_ok, 0}]},
+    #{id => s01_tsid_bit_layout,
+      kind => ordinary,
+      mfa => {imboy_quality_pbt_tsid_props, prop_s01_bit_layout_slot_roundtrip, 0},
+      witnesses => [{imboy_quality_pbt_tsid_props, witnesses_ok, 0}]},
+    #{id => s02_tsid_interval_reservation,
+      kind => ordinary,
+      mfa => {imboy_quality_pbt_tsid_props, prop_s02_interval_reservation, 0},
+      witnesses => [{imboy_quality_pbt_tsid_props, witnesses_ok, 0}]}
 ]}.
