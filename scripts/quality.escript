@@ -494,6 +494,13 @@ ct_report(Profile, Results, Ctrl) ->
 
 ct_plan(ct01, Repo, _Ctrl) ->
     {[msg_delivery_SUITE, msg_ack_logic_SUITE], filename:join(Repo, "test")};
+ct_plan(ct02, Repo, _Ctrl) ->
+    {[imboy_quality_ct02_org_boundary_SUITE], filename:join(Repo, "test")};
+ct_plan(ct03, Repo, _Ctrl) ->
+    {[imboy_quality_ct03_migration_SUITE], filename:join(Repo, "test")};
+ct_plan(critical, Repo, _Ctrl) ->
+    {[msg_delivery_SUITE, msg_ack_logic_SUITE, imboy_quality_ct02_org_boundary_SUITE,
+        imboy_quality_ct03_migration_SUITE], filename:join(Repo, "test")};
 ct_plan(ct04, _Repo, Ctrl) ->
     Dir = filename:join(Ctrl, "drafts/ct-selftest"),
     ok = filelib:ensure_dir(filename:join(Dir, "x")),
@@ -511,7 +518,9 @@ ct_expect(_) ->
     undefined.
 
 ct_verdict_bin(pass) -> <<"pass">>;
-ct_verdict_bin({fail, _}) -> <<"fail">>.
+ct_verdict_bin({fail, Reason}) ->
+    Rb = iolist_to_binary(io_lib:format("~0p", [Reason])),
+    <<"fail: ", Rb/binary>>.
 
 write_ct_selftest_suites(Dir) ->
     Suits = [

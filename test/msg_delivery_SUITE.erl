@@ -147,10 +147,17 @@ message_delivered_to_online_user(_Config) ->
 
     % Mock 在线用户
     meck:new(imboy_syn, [unstick]),
+    meck:expect(imboy_syn, schedule_ack_retry, fun(_, _, _, _, _) -> ok end),
     meck:expect(imboy_syn, list_by_uid, fun(_) ->
         [{self(), {<<"ios">>, <<"device_001">>}}]
     end),
     meck:expect(imboy_syn, publish, fun(_, _, _) -> ok end),
+    %% send_next_loop 投递计时器（meck 模块须覆盖产品实际调用的全部导出）
+    meck:expect(
+        imboy_syn,
+        start_delivery_timer,
+        fun(D, P, M) -> erlang:start_timer(D, P, M) end
+    ),
 
     % 投递消息
     Msg = <<"{\"id\":\"", MsgId/binary, "\"}">>,
@@ -168,13 +175,7 @@ message_ack_cleanup(_Config) ->
 
     % 准备离线消息
     elib_pg:execute(<<"DELETE FROM msg_c2c WHERE msg_id = $1">>, [MsgId]),
-    elib_pg:execute(
-        <<
-            "INSERT INTO msg_c2c (from_id, to_id, msg_id, payload, created_at)\n"
-            "                      VALUES ($1, $2, $3, $4, NOW())"
-        >>,
-        [9000, ToUid, MsgId, <<"{\"text\":\"test\"}">>]
-    ),
+    insert_c2c_row(9000, ToUid, MsgId, <<"{\"text\":\"test\"}">>),
 
     % Mock
     meck:new(msg_store_ds, [unstick]),
@@ -204,6 +205,13 @@ store_offline_message(_Config) ->
 
     % 模拟用户离线
     meck:new(imboy_syn, [unstick]),
+    %% send_next/ack 链会调用 imboy_syn 全部投递导出，meck 模块须齐全
+    meck:expect(
+        imboy_syn,
+        start_delivery_timer,
+        fun(D, P, M) -> erlang:start_timer(D, P, M) end
+    ),
+    meck:expect(imboy_syn, schedule_ack_retry, fun(_, _, _, _, _) -> ok end),
     meck:expect(imboy_syn, list_by_uid, fun(_) -> [] end),
 
     % 发送消息（应存储为离线；write_msg/6）
@@ -234,20 +242,20 @@ retrieve_offline_message_on_user_online(_Config) ->
 
     % 准备离线消息
     elib_pg:execute(<<"DELETE FROM msg_c2c WHERE msg_id = $1">>, [MsgId]),
-    elib_pg:execute(
-        <<
-            "INSERT INTO msg_c2c (from_id, to_id, msg_id, payload, created_at)\n"
-            "                      VALUES ($1, $2, $3, $4, NOW())"
-        >>,
-        [9020, ToUid, MsgId, <<"{\"text\":\"offline\"}">>]
-    ),
+    insert_c2c_row(9020, ToUid, MsgId, <<"{\"text\":\"offline\"}">>),
 
     % Mock
     meck:new(imboy_syn, [unstick]),
+    meck:expect(imboy_syn, schedule_ack_retry, fun(_, _, _, _, _) -> ok end),
     meck:expect(imboy_syn, list_by_uid, fun(_) ->
         [{self(), {<<"ios">>, <<"device_001">>}}]
     end),
     meck:expect(imboy_syn, publish, fun(_, _, _) -> ok end),
+    meck:expect(
+        imboy_syn,
+        start_delivery_timer,
+        fun(D, P, M) -> erlang:start_timer(D, P, M) end
+    ),
 
     meck:new(msg_store_ds, [unstick]),
     meck:expect(msg_store_ds, unstage, 2, ok),
@@ -302,6 +310,13 @@ deliver_to_all_devices(_Config) ->
     % Mock 多设备（3 个设备 Pid 均为 self()，Delay=0 时 send_next 走
     % erlang:start_timer(0, Pid, Msg) 逐设备投递，故 self() 会收到 3 个 timeout 消息）
     meck:new(imboy_syn, [unstick]),
+    %% send_next/ack 链会调用 imboy_syn 全部投递导出，meck 模块须齐全
+    meck:expect(
+        imboy_syn,
+        start_delivery_timer,
+        fun(D, P, M) -> erlang:start_timer(D, P, M) end
+    ),
+    meck:expect(imboy_syn, schedule_ack_retry, fun(_, _, _, _, _) -> ok end),
     meck:expect(imboy_syn, list_by_uid, fun(_) ->
         [
             {self(), {<<"ios">>, <<"device_ios">>}},
@@ -338,6 +353,13 @@ ack_from_single_device(_Config) ->
 
     % Mock
     meck:new(imboy_syn, [unstick]),
+    %% send_next/ack 链会调用 imboy_syn 全部投递导出，meck 模块须齐全
+    meck:expect(
+        imboy_syn,
+        start_delivery_timer,
+        fun(D, P, M) -> erlang:start_timer(D, P, M) end
+    ),
+    meck:expect(imboy_syn, schedule_ack_retry, fun(_, _, _, _, _) -> ok end),
     meck:expect(imboy_syn, broadcast_ack_cancel, fun(_, _, _) -> ok end),
 
     meck:new(imboy_cache, [unstick, passthrough]),
@@ -351,3 +373,35 @@ ack_from_single_device(_Config) ->
     % 验证广播被调用
     ?assert(meck:validate(imboy_syn)),
     {comment, "单设备 ACK 不影响其他设备"}.
+
+%% ---- 现行 c2c 写入合同夹具（与 test/repo/msg_accepted_at_pg_tests 同形状）----
+%% fn_c2c_order_write_guard 要求 conv_seq 为会话头部 +1；accepted_at 与
+%% server_ts 同事务 NOW()。断言不变，仅夹具对齐现行列形状。
+insert_c2c_row(From, To, MsgId, PayloadBin) ->
+    Seq = c2c_conversation_head(From, To) + 1,
+    {ok, _} = elib_pg:execute(
+        <<
+            "INSERT INTO msg_c2c (id, from_id, to_id, msg_id, msg_type, e2ee, payload,"
+            " server_ts, created_at, accepted_at, conv_seq)"
+            " VALUES ($1,$2,$3,$4,$5,NULL,$6::jsonb,NOW(),NOW(),NOW(),$7)"
+        >>,
+        [elib_tsid:generate(msg_c2c), From, To, MsgId, <<"text">>, PayloadBin, Seq]
+    ).
+
+c2c_conversation_head(From, To) ->
+    Key =
+        <<"c2c:", (integer_to_binary(min(From, To)))/binary, ":",
+            (integer_to_binary(max(From, To)))/binary>>,
+    {ok, [#{<<"head">> := Head}]} = elib_pg:query(
+        <<"SELECT greatest(",
+            " coalesce((SELECT seq FROM public.msg_store_seq WHERE conv_key = $1), 0),",
+            " coalesce((SELECT max(conv_seq) FROM public.msg_store WHERE chat_type='c2c'",
+            "   AND conv_key = $1), 0),",
+            " coalesce((SELECT max(conv_seq) FROM public.msg_store_staging WHERE type='c2c'",
+            "   AND least(from_id,to_id)=least($2::bigint,$3::bigint) AND greatest(from_id,to_id)=greatest($2::bigint,$3::bigint)), 0),",
+            " coalesce((SELECT max(conv_seq) FROM public.msg_c2c",
+            "   WHERE least(from_id,to_id)=least($2::bigint,$3::bigint) AND greatest(from_id,to_id)=greatest($2::bigint,$3::bigint)), 0)",
+            ") AS head">>,
+        [Key, From, To]
+    ),
+    Head.

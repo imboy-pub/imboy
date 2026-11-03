@@ -69,14 +69,8 @@ c2c_ack_deletes_offline_msg(_Config) ->
     MsgId = <<"test_c2c_msg_001">>,
 
     % 准备测试数据
-    Sql = <<
-        "INSERT INTO msg_c2c (id, from_id, to_id, msg_id, msg_type, payload, created_at)\n"
-        "            VALUES ($1, $2, $3, $4, $5, $6, NOW())"
-    >>,
     Payload = <<"{\"content\":\"test message\"}">>,
-    {ok, _} = elib_pg:execute(Sql, [
-        elib_tsid:generate(msg_c2c), 999, Uid, MsgId, <<"text">>, Payload
-    ]),
+    insert_c2c_row(999, Uid, MsgId, Payload),
 
     % Mock msg_store_ds:unstage
     meck:new(msg_store_ds, [unstick]),
@@ -237,3 +231,35 @@ extract_count([{Count}]) when is_integer(Count) ->
     Count;
 extract_count(_) ->
     0.
+
+%% ---- 现行 c2c 写入合同夹具（与 test/repo/msg_accepted_at_pg_tests 同形状）----
+%% fn_c2c_order_write_guard 要求 conv_seq 为会话头部 +1；accepted_at 与
+%% server_ts 同事务 NOW()。断言不变，仅夹具对齐现行列形状。
+insert_c2c_row(From, To, MsgId, PayloadBin) ->
+    Seq = c2c_conversation_head(From, To) + 1,
+    {ok, _} = elib_pg:execute(
+        <<
+            "INSERT INTO msg_c2c (id, from_id, to_id, msg_id, msg_type, e2ee, payload,"
+            " server_ts, created_at, accepted_at, conv_seq)"
+            " VALUES ($1,$2,$3,$4,$5,NULL,$6::jsonb,NOW(),NOW(),NOW(),$7)"
+        >>,
+        [elib_tsid:generate(msg_c2c), From, To, MsgId, <<"text">>, PayloadBin, Seq]
+    ).
+
+c2c_conversation_head(From, To) ->
+    Key =
+        <<"c2c:", (integer_to_binary(min(From, To)))/binary, ":",
+            (integer_to_binary(max(From, To)))/binary>>,
+    {ok, [#{<<"head">> := Head}]} = elib_pg:query(
+        <<"SELECT greatest(",
+            " coalesce((SELECT seq FROM public.msg_store_seq WHERE conv_key = $1), 0),",
+            " coalesce((SELECT max(conv_seq) FROM public.msg_store WHERE chat_type='c2c'",
+            "   AND conv_key = $1), 0),",
+            " coalesce((SELECT max(conv_seq) FROM public.msg_store_staging WHERE type='c2c'",
+            "   AND least(from_id,to_id)=least($2::bigint,$3::bigint) AND greatest(from_id,to_id)=greatest($2::bigint,$3::bigint)), 0),",
+            " coalesce((SELECT max(conv_seq) FROM public.msg_c2c",
+            "   WHERE least(from_id,to_id)=least($2::bigint,$3::bigint) AND greatest(from_id,to_id)=greatest($2::bigint,$3::bigint)), 0)",
+            ") AS head">>,
+        [Key, From, To]
+    ),
+    Head.
