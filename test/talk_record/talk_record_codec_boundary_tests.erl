@@ -35,30 +35,33 @@ missing_codec_has_no_io_test() ->
     ),
     ?assertEqual({error, invalid_codec}, talk_record_part_upload:prepare(1, 2, #{})).
 
-aac_presign_contract_test() ->
-    meck:new(attach_logic, [non_strict]),
+%% V3-18/V3-20 退役后 prepare_aac 走 direct s3_put 通道（register→declare→
+%% grant），不再经 attach_logic:presign——mock 对齐新合同：register 的
+%% Cid 幂等锚（T02）+ grant 投影直传。Storage/DB 在单测域外，全部 mock。
+aac_direct_grant_contract_test() ->
+    meck:new(attach_direct_logic, [non_strict]),
     try
-        meck:expect(attach_logic, presign, fun(
-            1,
-            <<"part-4.aac">>,
-            <<"audio/aac">>,
-            <<"talk_record">>,
-            <<"2">>,
-            Cid
+        meck:expect(attach_direct_logic, register, fun(
+            1, <<"talk_record">>, <<"2">>, Cid, <<"part-4.aac">>
         ) ->
             ?assertEqual(talk_record_part_upload:client_upload_id(4), Cid),
-            {ok, #{scoped => true}}
+            {ok, #{object_key => <<"direct-c/u1/talk_record/2/part-4.aac">>}}
         end),
+        meck:expect(attach_direct_logic, declare, fun(_Key, _Sha, _Size, _Mime) -> ok end),
+        Granted = #{grant => #{url => <<"https://s3.test/put">>}, attempt_id => 1},
+        meck:expect(attach_direct_logic, grant, fun(_Key, _Sha) -> {ok, Granted} end),
         ?assertEqual(
-            {ok, #{scoped => true}},
+            {ok, Granted},
             talk_record_part_upload:prepare(
                 1,
                 2,
                 #{<<"part_id">> => 4, <<"codec">> => <<"aac">>}
             )
         ),
-        ?assertEqual(1, meck:num_calls(attach_logic, presign, '_')),
-        ?assert(meck:validate(attach_logic))
+        ?assertEqual(1, meck:num_calls(attach_direct_logic, register, '_')),
+        ?assertEqual(1, meck:num_calls(attach_direct_logic, declare, '_')),
+        ?assertEqual(1, meck:num_calls(attach_direct_logic, grant, '_')),
+        ?assert(meck:validate(attach_direct_logic))
     after
-        meck:unload(attach_logic)
+        meck:unload(attach_direct_logic)
     end.
