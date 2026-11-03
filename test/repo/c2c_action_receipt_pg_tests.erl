@@ -158,7 +158,10 @@ insert_formal(MsgId, Payload) ->
     {ok, 1} = elib_pg:execute_count(
         <<"INSERT INTO public.msg_c2c ", "(id,msg_id,from_id,to_id,payload,msg_type,conv_seq) ",
             "VALUES($1,$2,101,202,$3,'text',$4)">>,
-        [erlang:unique_integer([positive]), MsgId, Payload, erlang:unique_integer([positive])]
+        %% conv_seq 带 monotonic：c2c_order_write_guard 要求新行 seq 严格大于
+        %% 同 pair 既有最大值，无 monotonic 的 unique_integer 不保证递增，
+        %% 概率性回退即触发 c2c_order_conflict（run 41424669122 实证）。
+        [erlang:unique_integer([positive]), MsgId, Payload, erlang:unique_integer([positive, monotonic])]
     ),
     ok.
 
@@ -167,7 +170,7 @@ insert_staging(MsgId, Payload) ->
         <<"INSERT INTO public.msg_store_staging ",
             "(id,type,msg_id,msg_type,payload,from_id,to_id,conv_seq) ",
             "VALUES($1,'c2c',$2,'text',$3::jsonb,101,202,$4)">>,
-        [erlang:unique_integer([positive]), MsgId, Payload, erlang:unique_integer([positive])]
+        [erlang:unique_integer([positive]), MsgId, Payload, erlang:unique_integer([positive, monotonic])]
     ),
     ok.
 

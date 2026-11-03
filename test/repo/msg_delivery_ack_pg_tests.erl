@@ -94,7 +94,10 @@ stage(K, M, U, Processed) ->
         <<"INSERT INTO public.msg_store_staging ",
             "(id,type,msg_id,payload,from_id,to_id,conv_seq,processed_at) ",
             "VALUES($1,$2,$3,'{}',8,$4,$5,CASE WHEN $6 THEN now() ELSE NULL END)">>,
-        [erlang:unique_integer([positive]), K, M, U, erlang:unique_integer([positive]), Processed]
+        %% conv_seq 带 monotonic：c2c 行过 trg_00_c2c_order_guard 时要求新 seq
+        %% 严格大于同 pair 既有最大值，无 monotonic 不保证递增，概率性触发
+        %% c2c_order_conflict（run 41424669122 同型实证）。
+        [erlang:unique_integer([positive]), K, M, U, erlang:unique_integer([positive, monotonic]), Processed]
     ),
     ok.
 main(K, M, U) ->
