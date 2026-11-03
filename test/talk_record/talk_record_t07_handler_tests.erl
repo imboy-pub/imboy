@@ -213,7 +213,12 @@ event_and_part_handler_test_() ->
         ?assertEqual(201, maps:get(response_status, R3)),
         PEnv = jsone:decode(maps:get(response_body, R3)),
         PP = maps:get(<<"payload">>, PEnv),
-        ?assertEqual(true, maps:get(<<"gateway">>, maps:get(<<"upload_ref">>, PP))),
+        %% direct-v3 合同：HTTP 层 upload_ref 为 GRANTED + s3_put 描述符（二进制键）
+        RefPP = maps:get(<<"upload_ref">>, PP),
+        ?assertEqual(<<"GRANTED">>, maps:get(<<"state">>, RefPP)),
+        ?assertEqual(
+            <<"s3_put">>, maps:get(<<"transport">>, maps:get(<<"grant">>, RefPP))
+        ),
         ?assertEqual(null, maps:get(<<"attachment_id">>, PP)),
         ok = talk_record_upload_test_support:upload(U1, PP),
         Pid = maps:get(<<"part_id">>, PP),
