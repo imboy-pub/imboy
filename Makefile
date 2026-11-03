@@ -92,7 +92,7 @@ endif
 LOCAL_DEPS = mnesia sasl ssl inets eunit crypto public_key
 BUILD_DEPS = relx gpb bbmustache
 DEP_PLUGINS = cowboy
-TEST_DEPS += meck
+TEST_DEPS += meck proper
 
 SP = 4
 DOC_DEPS = edown

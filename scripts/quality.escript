@@ -93,6 +93,7 @@ mode_atom(Other) -> Other.
 %% ---- 参数与许可 ----
 
 parse(["inspect"]) -> inspect;
+parse(["pbt", "--profile=" ++ P | _]) -> {pbt, list_to_atom(P)};
 parse(["selftest"]) -> selftest;
 parse(["build-check"]) -> build_check;
 parse(["build-seal"]) -> build_seal;
@@ -115,6 +116,7 @@ enforce(Ctx, Op) ->
 permit_op(selftest) -> synthetic_selftest;
 permit_op(admission_check_only) -> admission_check_only;
 permit_op({eunit_group, _}) -> eunit_group;
+permit_op({pbt, _}) -> pbt;
 permit_op(Op) -> Op.
 
 %% ---- 执行 ----
@@ -250,6 +252,42 @@ dispatch(guard, _Ctx, Ctrl) ->
     Out = filename:join(Ctrl, "evidence/guard-latest.json"),
     {ok, _} = imboy_report_write(Out, Result),
     {Result, Out};
+dispatch({pbt, Profile}, _Ctx, Ctrl) ->
+    %% P2-01：PropEr 执行底座真实接线。manifest 由 P2-03..P2-08 填充真实
+    %% 12 性质；缺失/非法时 fail-closed（PBT02：启动前拒绝，不默认掩盖）。
+    %% 反例完整 term 的 ETF 落盘属 P2-02，此处仅计数摘要。
+    {ok, Repo} = file:get_cwd(),
+    %% proper 运行时必须可加载（性质体展开为 proper:forall 等调用）；
+    %% 缺依赖时 fail-closed，不产生误导性的 verdict=error 绿灯。
+    ProperEbin = filename:join([Repo, "deps", "proper", "ebin"]),
+    case filelib:is_dir(ProperEbin) of
+        true -> true = code:add_patha(ProperEbin);
+        false -> erlang:error({proper_dependency_missing, ProperEbin})
+    end,
+    ManifestPath = filename:join([Repo, "test", "pbt", "pbt-manifest.term"]),
+    case imboy_quality_pbt:load_manifest(ManifestPath) of
+        {ok, Manifest} ->
+            {ok, Summary} = imboy_quality_pbt:run(Manifest, Profile, #{}),
+            Total = maps:get(total, Summary),
+            Passed = maps:get(passed, Summary),
+            Result = #{
+                <<"op">> => <<"pbt">>,
+                <<"profile">> => atom_to_binary(Profile),
+                <<"total">> => Total,
+                <<"passed">> => Passed,
+                <<"verdict">> =>
+                    case Passed =:= Total of
+                        true -> <<"all_passed">>;
+                        false -> <<"properties_failed">>
+                    end,
+                <<"results">> => [format_pbt_result(R) || R <- maps:get(results, Summary)]
+            },
+            Out = filename:join(Ctrl, "evidence/pbt-latest.json"),
+            {ok, _} = imboy_report_write(Out, Result),
+            {Result, Out};
+        {error, Reason} ->
+            erlang:error({pbt_manifest_invalid, ManifestPath, Reason})
+    end;
 dispatch(eunit_full, _Ctx, Ctrl) ->
     %% P1-10/P1-12 真实接线：分片执行完整 U（普通根 + 独占车道）。G-HEAVY 已由
     %% enforce 校验。环境：IMBOY_QUALITY_WORKERS（默认 2）、EUNIT_CONFIG
@@ -630,6 +668,13 @@ sources() ->
         [
             {
                 filename:rootname(filename:basename(P)),
+                filename:join(["test/pbt", filename:basename(P)])
+            }
+         || P <- filelib:wildcard("test/pbt/*.erl")
+        ] ++
+        [
+            {
+                filename:rootname(filename:basename(P)),
                 filename:join(["test/quality", filename:basename(P)])
             }
          || P <- filelib:wildcard("test/quality/*.erl")
@@ -658,13 +703,20 @@ any_beam(BuildDir, Mod) ->
 
 erlc(Src, OutDir) ->
     Erlc = os:find_executable("erlc"),
+    %% P2-01：test/pbt 源含 include_lib("proper/include/proper.hrl")，
+    %% erlc 需 proper 在 code path 解析（deps/proper 由 TEST_DEPS 就位）。
+    ProperPa =
+        case filelib:is_dir("deps/proper/ebin") of
+            true -> ["-pa", "deps/proper/ebin"];
+            false -> []
+        end,
     Port = open_port(
         {spawn_executable, Erlc},
         [
             exit_status,
             use_stdio,
             stderr_to_stdout,
-            {args, ["-o", OutDir, Src]}
+            {args, ["-o", OutDir] ++ ProperPa ++ [Src]}
         ]
     ),
     collect_port(Port, []).
@@ -728,6 +780,22 @@ imboy_state_read(Path) ->
     Map = json:decode(B),
     {ok, Map, crypto:hash(sha256, B)}.
 
+%% PBT 结果摘要（JSON 化；counterexample/stack 等 term 类不在此落盘，
+%% 由 P2-02 的 ETF 反例机制承接）。
+format_pbt_result(R) ->
+    M = maps:merge(
+        #{completion_events => 0, performed => 0, requested => 0, random_started => 0},
+        R
+    ),
+    #{
+        <<"id">> => atom_to_binary(maps:get(id, M)),
+        <<"verdict">> => atom_to_binary(maps:get(verdict, M)),
+        <<"completion_events">> => maps:get(completion_events, M),
+        <<"performed">> => maps:get(performed, M),
+        <<"requested">> => maps:get(requested, M),
+        <<"random_started">> => maps:get(random_started, M)
+    }.
+
 imboy_report_write(Path, Map) ->
     Bytes = iolist_to_binary(json:encode(Map)),
     Temp = Path ++ ".tmp." ++ os:getpid(),
@@ -746,6 +814,11 @@ imboy_report_write(Path, Map) ->
 exit_code(#{<<"op">> := <<"guard">>, <<"verdict">> := <<"clean">>}, _) ->
     0;
 exit_code(#{<<"op">> := <<"guard">>, <<"verdict">> := <<"violations">>}, _) ->
+    1;
+%% PBT：全性质 pass=0；任一性质非 pass=1（INCOMPLETE/失败同等对待）
+exit_code(#{<<"op">> := <<"pbt">>, <<"verdict">> := <<"all_passed">>}, _) ->
+    0;
+exit_code(#{<<"op">> := <<"pbt">>}, _) ->
     1;
 %% P1-05 BUILD01：hit=0（Make 跳过硬复位）；miss=1（触发重建路径）；
 %% seal 成功=0；异常路径经 main 的 catch → halt(2)。
