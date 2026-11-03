@@ -8,7 +8,7 @@
 %% 任务私有原生 Garage（§2.2/§3.7）：attv5/W403 与 talk_record 网关根需要真实 S3；
 %% 本机 Homebrew `garage` 原生拉起（独立数据目录/随机端口/随机密钥），跑完即停并清理。
 %%
-%% HIRD 编译器定位、attv5 清单文件、ffmpeg 合成 AAC 夹具：只准备资源，不伪造结果；
+%% HIRD 编译器定位、attv5 清单文件、内置固定 ADTS 字节的 AAC 夹具：只准备资源，不伪造结果；
 %% 二进制缺失时返回 {error, _}，调用方让对应根按各自 no-skip 铁律硬失败（可归属）。
 -module(imboy_quality_resources).
 -export([

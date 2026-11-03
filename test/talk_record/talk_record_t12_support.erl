@@ -323,16 +323,3 @@ synthetic_audio() ->
     B5 = (Length band 7) bsl 5,
     Frame = <<16#FF, 16#F1, 16#60, B3, B4, B5, 16#00, 0:256>>,
     iolist_to_binary(lists:duplicate(469, Frame)).
-
-collect_audio(Port, Deadline, Bytes) ->
-    Left = max(0, Deadline - erlang:monotonic_time(millisecond)),
-    receive
-        {Port, {data, Chunk}} when byte_size(Bytes) + byte_size(Chunk) =< 2097152 ->
-            collect_audio(Port, Deadline, <<Bytes/binary, Chunk/binary>>);
-        {Port, {data, _}} ->
-            erlang:error(t12_audio_fixture_too_large);
-        {Port, {exit_status, 0}} when byte_size(Bytes) > 0 -> Bytes;
-        {Port, {exit_status, Code}} ->
-            erlang:error({t12_audio_fixture_failed, Code})
-    after Left -> erlang:error(t12_audio_fixture_timeout)
-    end.

@@ -35,7 +35,7 @@ main(AppPort, EdgePort) ->
 
 %% --------------------------------------------------------------------------
 %% 段B+C：分片直传（真 presign PUT + S3 checksum）→ confirm → assembly
-%% （真 fork escript Worker：fetch_parts+ffmpeg+staging_upload+Copy）。
+%% （真 fork escript Worker：成品经 artifact_reader 校验 + manifest staging 上传）。
 %% 返回 {Rid, AudioAttachmentId, AudioBytes}
 %% --------------------------------------------------------------------------
 seg_direct_upload_then_assembly(Root) ->
