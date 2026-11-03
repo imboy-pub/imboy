@@ -94,6 +94,7 @@ mode_atom(Other) -> Other.
 
 parse(["inspect"]) -> inspect;
 parse(["pbt", "--profile=" ++ P | _]) -> {pbt, list_to_atom(P)};
+parse(["replay", "--next"]) -> replay_next;
 parse(["selftest"]) -> selftest;
 parse(["build-check"]) -> build_check;
 parse(["build-seal"]) -> build_seal;
@@ -117,6 +118,7 @@ permit_op(selftest) -> synthetic_selftest;
 permit_op(admission_check_only) -> admission_check_only;
 permit_op({eunit_group, _}) -> eunit_group;
 permit_op({pbt, _}) -> pbt;
+permit_op(replay_next) -> replay;
 permit_op(Op) -> Op.
 
 %% ---- 执行 ----
@@ -164,8 +166,13 @@ dispatch(build_check, _Ctx, _Ctrl) ->
         {miss, Reason} ->
             io:format("== quality-test-build MISS: ~tp ==~n", [Reason]),
             {
-                #{op => build_check, verdict => miss, key => hex(Key), reason =>
-                    list_to_binary(io_lib:format("~tp", [Reason]))},
+                #{
+                    op => build_check,
+                    verdict => miss,
+                    key => hex(Key),
+                    reason =>
+                        list_to_binary(io_lib:format("~tp", [Reason]))
+                },
                 undefined
             }
     end;
@@ -186,8 +193,12 @@ dispatch(build_seal, _Ctx, _Ctrl) ->
             ok = imboy_quality_build:write_receipt(Path, Receipt),
             io:format(
                 "== quality-test-build SEALED key=~s modules=~p app_modules=~p -> ~ts ==~n",
-                [hex(Key), length(maps:get(modules, Collect)),
-                 length(maps:get(app_modules, Collect)), Path]
+                [
+                    hex(Key),
+                    length(maps:get(modules, Collect)),
+                    length(maps:get(app_modules, Collect)),
+                    Path
+                ]
             ),
             {
                 #{
@@ -287,6 +298,36 @@ dispatch({pbt, Profile}, _Ctx, Ctrl) ->
             {Result, Out};
         {error, Reason} ->
             erlang:error({pbt_manifest_invalid, ManifestPath, Reason})
+    end;
+dispatch(replay_next, _Ctx, Ctrl) ->
+    %% P2-02：重放最旧未重放反例。allowlist 来自 manifest（若存在）；无
+    %% manifest 时显式拒绝（不能无白名单 apply 任意 MFA）。无待重放如实
+    %% exit 2（REPLAY06）。
+    {ok, Repo} = file:get_cwd(),
+    ProperEbin0 = filename:join([Repo, "deps", "proper", "ebin"]),
+    true = code:add_patha(ProperEbin0),
+    ManifestPath = filename:join([Repo, "test", "pbt", "pbt-manifest.term"]),
+    Allowed =
+        case imboy_quality_pbt:load_manifest(ManifestPath) of
+            {ok, #{properties := Props}} ->
+                [maps:get(mfa, P) || P <- Props];
+            {error, _} ->
+                erlang:error({replay_requires_manifest_allowlist, ManifestPath})
+        end,
+    case imboy_quality_pbt:replay_next(Ctrl, Allowed) of
+        {ok, #{path := P, replay := R, entry := E}} ->
+            Result = #{
+                <<"op">> => <<"replay">>,
+                <<"verdict">> => <<"replayed">>,
+                <<"path">> => unicode:characters_to_binary(P),
+                <<"id">> => atom_to_binary(maps:get(id, E)),
+                <<"replay">> => format_replay(R)
+            },
+            {Result, undefined};
+        {error, no_pending_counterexamples} ->
+            erlang:error(no_pending_counterexamples);
+        {error, R2} ->
+            erlang:error({replay_failed, R2})
     end;
 dispatch(eunit_full, _Ctx, Ctrl) ->
     %% P1-10/P1-12 真实接线：分片执行完整 U（普通根 + 独占车道）。G-HEAVY 已由
@@ -545,7 +586,8 @@ build_profile() ->
         test_mode => true
     }.
 
-split_opts(false) -> [];
+split_opts(false) ->
+    [];
 split_opts(S) when is_list(S) ->
     [P || P <- string:split(S, " ", all), P =/= []].
 
@@ -560,9 +602,11 @@ load_estimates(Ctrl) ->
     %% 流写盘（run_exclusive 无 stream 键），但其逐根独占执行、不参与普通道
     %% LPT 打包，估计只需覆盖普通根。
     Dirs = lists:sort(
-        [D
+        [
+            D
          || D <- filelib:wildcard(filename:join([Ctrl, "evidence", "full-*"])),
-            filelib:is_dir(D)]
+            filelib:is_dir(D)
+        ]
     ),
     Streams =
         case Dirs of
@@ -782,6 +826,9 @@ imboy_state_read(Path) ->
 
 %% PBT 结果摘要（JSON 化；counterexample/stack 等 term 类不在此落盘，
 %% 由 P2-02 的 ETF 反例机制承接）。
+format_replay({ok, still_fails}) -> <<"still_fails">>;
+format_replay({ok, now_passes}) -> <<"now_passes">>;
+format_replay({error, R}) -> unicode:characters_to_binary(io_lib:format("~0p", [R])).
 format_pbt_result(R) ->
     M = maps:merge(
         #{completion_events => 0, performed => 0, requested => 0, random_started => 0},
@@ -823,10 +870,14 @@ exit_code(#{<<"op">> := <<"pbt">>}, _) ->
 %% P1-05 BUILD01：hit=0（Make 跳过硬复位）；miss=1（触发重建路径）；
 %% seal 成功=0；异常路径经 main 的 catch → halt(2)。
 %% 本组 dispatch 结果为原子键（仅打印，不落盘，与 admission/report 同风格）。
-exit_code(#{op := build_check, verdict := hit}, _) -> 0;
-exit_code(#{op := build_check, verdict := miss}, _) -> 1;
-exit_code(#{op := build_seal, ok := true}, _) -> 0;
-exit_code(#{op := build_seal}, _) -> 2;
+exit_code(#{op := build_check, verdict := hit}, _) ->
+    0;
+exit_code(#{op := build_check, verdict := miss}, _) ->
+    1;
+exit_code(#{op := build_seal, ok := true}, _) ->
+    0;
+exit_code(#{op := build_seal}, _) ->
+    2;
 %% full：资源回收失败 → 2（协议/资源异常，优先于测试结果）；根缺失 → 3；
 %% 测试失败/取消 → 1；全绿 → 0
 exit_code(#{<<"run_id">> := _, <<"cleanup">> := #{<<"ok">> := false}}, _) ->

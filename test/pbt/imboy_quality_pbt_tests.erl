@@ -226,6 +226,148 @@ repo_root() ->
     Out = os:cmd("git rev-parse --show-toplevel 2>/dev/null"),
     string:trim(Out, both, "\n").
 
+%% ---- P2-02 REPLAY01–REPLAY06 ----
+
+replay01_shrink_and_etf_roundtrip_test_() ->
+    {timeout, 120, fun() ->
+        Spec = #{
+            id => r01,
+            kind => sequence,
+            mfa => {?DEMO, prop_shrink_witness, 0},
+            witnesses => [{?DEMO, witness_ok, 0}]
+        },
+        #{
+            verdict := property_failed,
+            num_shrinks := {verified, N},
+            counterexample := CE
+        } =
+            ?PBT:run_property(Spec, quick),
+        %% 可控非最小失败：缩减必须实际发生。
+        ?assert(N > 0),
+        ?assert(is_list(CE) andalso CE =/= []),
+        %% ETF 往返：保存 → 加载 → 同输入可重放。
+        Tmp = replay_tmp_dir(),
+        {ok, Path} = ?PBT:save_counterexample(Tmp, #{
+            id => r01,
+            case_kind => random,
+            mfa => {?DEMO, prop_shrink_witness, 0},
+            input => CE,
+            source_sha => <<"before">>,
+            performed => 1,
+            num_shrinks => {verified, N}
+        }),
+        {ok, #{input := CE2}} = ?PBT:load_counterexample(Path),
+        ?assertEqual(CE, CE2)
+    end}.
+
+replay02_witness_kind_not_claimed_shrunk_test() ->
+    Tmp = replay_tmp_dir(),
+    {ok, Path} = ?PBT:save_counterexample(Tmp, #{
+        id => r02,
+        case_kind => witness,
+        witness_id => {?DEMO, witness_bad_with_input},
+        mfa => {?DEMO, witness_bad_with_input, 0},
+        input => {demo_witness_failed, 42},
+        source_sha => <<"witness-probe">>
+    }),
+    {ok, #{case_kind := witness} = E0} = ?PBT:load_counterexample(Path),
+    %% witness 反例不带 num_shrinks 键（REPLAY02：不称已缩减）
+    ?assertEqual(false, maps:is_key(num_shrinks, E0)),
+    ?assertEqual(false, filelib:is_regular(Path ++ ".shrunk")).
+
+replay03_fix_before_fail_after_pass_test_() ->
+    {timeout, 120, fun() ->
+        Before = #{
+            id => r03,
+            kind => sequence,
+            mfa => {?DEMO, prop_repair_before, 0},
+            witnesses => [{?DEMO, witness_ok, 0}]
+        },
+        #{verdict := property_failed, counterexample := [X]} =
+            ?PBT:run_property(Before, quick),
+        %% 同 schema（仅 mfa 不同）修复前失败、修复后通过。
+        {ok, still_fails} = ?PBT:replay_check(
+            #{mfa => {?DEMO, prop_repair_before, 0}, input => [X]},
+            [{?DEMO, prop_repair_before, 0}, {?DEMO, prop_repair_after, 0}]
+        ),
+        {ok, now_passes} = ?PBT:replay_check(
+            #{mfa => {?DEMO, prop_repair_after, 0}, input => [X]},
+            [{?DEMO, prop_repair_before, 0}, {?DEMO, prop_repair_after, 0}]
+        ),
+        %% 未知 MFA 不在白名单：apply 前拒绝（REPLAY04）
+        ?assertMatch(
+            {error, mfa_not_allowed},
+            ?PBT:replay_check(
+                #{mfa => {no_such_module_anywhere, f, 0}, input => [X]},
+                [{?DEMO, prop_repair_before, 0}]
+            )
+        )
+    end}.
+
+replay04_rejects_bad_etf_test() ->
+    Tmp = replay_tmp_dir(),
+    %% 损坏（截断）
+    Corrupt = filename:join(Tmp, "corrupt.etf"),
+    ok = file:write_file(Corrupt, binary:part(term_to_binary(#{a => 1}), 0, 5)),
+    ?assertMatch({error, corrupt_etf}, ?PBT:load_counterexample(Corrupt)),
+    %% 超大（>1MB）
+    Big = filename:join(Tmp, "big.etf"),
+    ok = file:write_file(Big, binary:copy(<<"x">>, 1048577)),
+    ?assertMatch({error, too_large}, ?PBT:load_counterexample(Big)),
+    %% 未知 schema
+    Unknown = filename:join(Tmp, "unknown.etf"),
+    ok = file:write_file(Unknown, term_to_binary(#{schema => 99, id => x})),
+    ?assertMatch({error, {unknown_schema, 99}}, ?PBT:load_counterexample(Unknown)),
+    %% 恶意 ETF（含 fun）：safe 解码必须拒绝
+    Evil = filename:join(Tmp, "evil.etf"),
+    ok = file:write_file(Evil, term_to_binary(#{schema => 1, fun_payload => fun() -> ok end})),
+    %% safe 解码不拒普通 fun，显式递归扫描拒绝（REPLAY04）
+    ?assertMatch({error, fun_in_etf}, ?PBT:load_counterexample(Evil)).
+
+replay05_no_fake_cex_on_success_test_() ->
+    {timeout, 60, fun() ->
+        Spec = #{
+            id => r05,
+            kind => sequence,
+            mfa => {?DEMO, prop_sort_idempotent, 0},
+            witnesses => [{?DEMO, witness_ok, 0}]
+        },
+        #{counterexample := none, num_shrinks := unverified} =
+            ?PBT:run_property(Spec, quick),
+        %% 成功运行不产生反例文件；缩减消息缺失时标 unverified（不声称完成）
+        Tmp = replay_tmp_dir(),
+        Allowed06 = [{?DEMO, prop_always_false, 0}],
+        ?assertEqual({error, no_pending_counterexamples}, ?PBT:replay_next(Tmp, Allowed06))
+    end}.
+
+replay06_duplicate_and_pending_test_() ->
+    {timeout, 120, fun() ->
+        Tmp = replay_tmp_dir(),
+        Entry = #{
+            id => r06,
+            case_kind => random,
+            mfa => {?DEMO, prop_always_false, 0},
+            input => [1],
+            source_sha => <<"t">>
+        },
+        {ok, _} = ?PBT:save_counterexample(Tmp, Entry),
+        %% 重复材料拒绝，不静默覆盖
+        ?assertMatch({error, duplicate_material}, ?PBT:save_counterexample(Tmp, Entry)),
+        %% 无待重放时如实错误；有则重放并标记
+        {ok, #{replay := {ok, still_fails}}} = ?PBT:replay_next(Tmp, [{?DEMO, prop_always_false, 0}]),
+        ?assertMatch(
+            {error, no_pending_counterexamples},
+            ?PBT:replay_next(Tmp, [{?DEMO, prop_always_false, 0}])
+        )
+    end}.
+
+replay_tmp_dir() ->
+    D = io_lib:format("/tmp/imboy_quality_pbt_replay_~s_~p", [
+        os:getpid(), erlang:unique_integer([positive])
+    ]),
+    ok = filelib:ensure_dir(filename:join(D, "x")),
+    D.
+
 %% ---- peer 隔离执行（复用纯 Erlang 底座；真实性质经 peer 跑通） ----
 
 peer_isolated_property_test_() ->
