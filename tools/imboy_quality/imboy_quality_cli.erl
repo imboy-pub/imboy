@@ -91,6 +91,8 @@ permit_mode(integrated_execution, _, Ctx, eunit_full) ->
     heavy_gate(Ctx, eunit_full);
 permit_mode(integrated_execution, _, Ctx, baseline) ->
     heavy_gate(Ctx, baseline);
+permit_mode(integrated_execution, all_phases, _, ci_gate) ->
+    ok;
 permit_mode(integrated_execution, all_phases, _, pbt) ->
     ok;
 permit_mode(integrated_execution, all_phases, _, ct) ->

@@ -104,6 +104,9 @@ parse(["eunit", "--full" | _]) -> eunit_full;
 parse(["eunit", "--group=" ++ ModsStr | _]) -> {eunit_group, ModsStr};
 parse(["ct", "--profile=" ++ P | _]) -> {ct, list_to_atom(P)};
 parse(["ct", "--selftest"]) -> ct_selftest;
+parse(["ci", "--final-gate"]) -> ci_final_gate;
+parse(["ci", "--lang-audit"]) -> ci_lang_audit;
+parse(["ci", "--selftest"]) -> ci_selftest;
 parse(["report"]) -> report;
 parse(_) -> erlang:error(usage).
 
@@ -121,6 +124,9 @@ permit_op(admission_check_only) -> admission_check_only;
 permit_op({eunit_group, _}) -> eunit_group;
 permit_op({ct, _}) -> ct;
 permit_op(ct_selftest) -> ct;
+permit_op(ci_final_gate) -> ci_gate;
+permit_op(ci_lang_audit) -> ci_gate;
+permit_op(ci_selftest) -> ci_gate;
 permit_op({pbt, _}) -> pbt;
 permit_op(replay_next) -> replay;
 permit_op(Op) -> Op.
@@ -296,9 +302,11 @@ dispatch({pbt, Profile}, _Ctx, Ctrl) ->
             {ok, Summary} = imboy_quality_pbt:run(Manifest, Profile, #{}),
             Total = maps:get(total, Summary),
             Passed = maps:get(passed, Summary),
+            {0, HeadB} = imboy_quality_guard:git(Repo, ["rev-parse", "HEAD"]),
             Result = #{
                 <<"op">> => <<"pbt">>,
                 <<"profile">> => atom_to_binary(Profile),
+                <<"candidate_sha">> => string:trim(binary_to_list(HeadB)),
                 <<"total">> => Total,
                 <<"passed">> => Passed,
                 <<"verdict">> =>
@@ -403,7 +411,91 @@ dispatch(eunit_group, _Ctx, _Ctrl) ->
 dispatch({ct, Profile}, _Ctx, Ctrl) ->
     ct_run_profile(Profile, Ctrl);
 dispatch(ct_selftest, _Ctx, Ctrl) ->
-    ct_run_profile(ct04, Ctrl).
+    ct_run_profile(ct04, Ctrl);
+dispatch(ci_selftest, _Ctx, _Ctrl) ->
+    ok = imboy_quality_ci:selftest(),
+    {#{<<"op">> => <<"ci_selftest">>, <<"verdict">> => <<"all_passed">>}, undefined};
+dispatch(ci_lang_audit, _Ctx, Ctrl) ->
+    {ok, Repo} = file:get_cwd(),
+    Report = imboy_quality_ci:lang_audit(Repo),
+    Result = #{<<"op">> => <<"ci_lang_audit">>, <<"verdict">> => <<"report">>, <<"report">> => Report},
+    Out = filename:join(Ctrl, "evidence/lang-audit.json"),
+    {ok, _} = imboy_report_write(Out, Result),
+    {Result, Out};
+dispatch(ci_final_gate, _Ctx, Ctrl) ->
+    ci_final_gate(Ctrl).
+
+%% P2-10：CI final gate——读各 op 的最新结构化证据（CI06 不信退出码），
+%% 校验同候选（CI02）与制品存在（CI04）。
+ci_final_gate(Ctrl) ->
+    {ok, Repo} = file:get_cwd(),
+    {0, HeadB} = imboy_quality_guard:git(Repo, ["rev-parse", "HEAD"]),
+    Head = string:trim(binary_to_list(HeadB)),
+    Evid = filename:join(Ctrl, "evidence"),
+    Read = fun(Name) -> file:read_file(filename:join(Evid, Name)) end,
+    OpResults0 =
+        [
+            read_op_result(pbt, Read("pbt-latest.json")),
+            read_op_result(ct, Read("ct-latest.json")),
+            read_op_result(guard, Read("guard-latest.json"))
+        ],
+    %% 全量 EUnit：取最新 full run 的 result.json（存在才纳入）
+    FullGlob = [F || F <- filelib:wildcard(filename:join([Evid, "full-*", "result.json"])), filelib:is_file(F)],
+    OpResults =
+        case FullGlob of
+            [] ->
+                OpResults0;
+            _ ->
+                OpResults0 ++
+                    [read_op_result(eunit_full, file:read_file(lists:last(lists:sort(FullGlob))))]
+        end,
+    Results = lists:flatten(OpResults),
+    Artifacts = [
+        {pbt_latest, filelib:is_file(filename:join(Evid, "pbt-latest.json"))},
+        {ct_latest, filelib:is_file(filename:join(Evid, "ct-latest.json"))},
+        {guard_latest, filelib:is_file(filename:join(Evid, "guard-latest.json"))}
+    ],
+    Verdict = imboy_quality_ci:gate(Results, #{head => iolist_to_binary(Head), artifacts => Artifacts}),
+    GateResult = #{
+        <<"op">> => <<"ci_final_gate">>,
+        <<"head">> => list_to_binary(Head),
+        <<"results">> => [
+            #{
+                <<"op">> => maps:get(op, R),
+                <<"verdict">> => maps:get(verdict, R, undefined)
+            }
+         || R <- Results
+        ],
+        <<"verdict">> =>
+            case Verdict of
+                pass -> <<"all_passed">>;
+                {fail, Issues} -> <<"gate_failed">>
+            end,
+        <<"issues">> =>
+            case Verdict of
+                pass -> [];
+                {fail, Issues} -> [iolist_to_binary(io_lib:format("~0p", [I])) || I <- Issues]
+            end
+    },
+    Out = filename:join(Ctrl, "evidence/ci-gate-latest.json"),
+    {ok, _} = imboy_report_write(Out, GateResult),
+    {GateResult, Out}.
+
+read_op_result(Op, {ok, Bin}) ->
+    J = json:decode(Bin),
+    #{
+        op => atom_to_binary(Op),
+        verdict => maps:get(<<"verdict">>, J, undefined),
+        candidate_sha =>
+            maps:get(<<"candidate_sha">>, J, maps:get(<<"head">>, J, any)),
+        <<"total">> => maps:get(<<"total">>, J, 0),
+        <<"passed">> => maps:get(<<"passed">>, J, 0),
+        <<"fail">> => maps:get(<<"fail">>, J, 0),
+        <<"cancel">> => maps:get(<<"cancel">>, J, 0),
+        <<"roots_missing">> => maps:get(<<"roots_missing">>, J, 0)
+    };
+read_op_result(Op, {error, _}) ->
+    #{op => atom_to_binary(Op), verdict => <<"missing_artifact">>}.
 
 %% P2-09：CT 合同入口（CT01-04）。判据器 fail-closed（imboy_quality_ct:classify）：
 %% 零案例/auto-skip/init 失败/cleanup 异常一律不通过；ct04 为 drafts 合成
@@ -477,6 +569,7 @@ ct_report(Profile, Results, Ctrl) ->
     Result = #{
         <<"op">> => <<"ct">>,
         <<"profile">> => atom_to_binary(Profile),
+        <<"candidate_sha">> => ct_head(),
         <<"results">> =>
             [
                 #{
@@ -516,6 +609,11 @@ ct_expect(ct04) ->
     };
 ct_expect(_) ->
     undefined.
+
+ct_head() ->
+    {ok, Repo} = file:get_cwd(),
+    {0, HeadB} = imboy_quality_guard:git(Repo, ["rev-parse", "HEAD"]),
+    string:trim(binary_to_list(HeadB)).
 
 ct_verdict_bin(pass) -> <<"pass">>;
 ct_verdict_bin({fail, Reason}) ->
