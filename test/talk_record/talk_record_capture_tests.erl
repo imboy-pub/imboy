@@ -277,8 +277,8 @@ part_register_and_replay_test_() ->
         {ok, replay, P2} = part(U1, Rid, Cid, 0, 0, 30_000, <<"t07-p-0b">>),
         ?assertEqual(maps:get(<<"part_id">>, P1), maps:get(<<"part_id">>, P2)),
         ?assertEqual(
-            maps:get(<<"object_key">>, Ref),
-            maps:get(<<"object_key">>, maps:get(<<"upload_ref">>, P2))
+            maps:get(object_key, Ref),
+            maps:get(object_key, maps:get(<<"upload_ref">>, P2))
         ),
         ?assertEqual(AssetsBefore, attachment_ids(C))
     end).
@@ -326,13 +326,18 @@ part_confirm_flow_test_() ->
         {ok, Cid} = talk_record_t07_support:create_capture(U1, Rid, ?DS1, <<"t07-cf-1">>),
         {ok, created, P} = part(U1, Rid, Cid, 0, 0, 30_000, <<"t07-cf-0">>),
         Pid = maps:get(<<"part_id">>, P),
-        %% A declaration alone cannot confirm. PUT real bytes through V5 first.
+        %% 仅声明不能确认：无 staging 字节，直拷面拒 copy_source_missing
+        %% （S3-only direct 合同；audio_part_verification_failed 在字节存在
+        %% 但失配时才生效）。
         ?assertEqual(null, maps:get(<<"attachment_id">>, P)),
         ?assertEqual(
-            {error, audio_part_verification_failed},
+            {error, {rejected, copy_source_missing}},
             talk_record_ds:confirm_part(U1, Rid, Cid, Pid, #{})
         ),
-        ok = talk_record_upload_test_support:upload(U1, P),
+        %% 首次 finalize 已拒该 attempt（copy_source_missing）：按 A08 重发
+        %% 凭据合同，注册重放取得新 grant/attempt，重 PUT 后 confirm 收口。
+        {ok, replay, P1b} = part(U1, Rid, Cid, 0, 0, 30000, <<"t07-cf-0">>),
+        ok = talk_record_upload_test_support:upload(U1, P1b),
         {ok, confirmed, C1} = talk_record_ds:confirm_part(U1, Rid, Cid, Pid, #{}),
         ?assertEqual(<<"confirmed">>, maps:get(<<"upload_status">>, C1)),
         %% Lost registration response replays the current asset/status, not its
@@ -753,35 +758,25 @@ insert_grant(RecordId, Grantor, Grantee, Role) ->
     ),
     ok.
 
-%% Upload closure regressions: real V5 session + Disk bytes + reference binding.
+%% Upload closure regressions：direct-v1 会话 + garage staging 字节 + 引用绑定。
 part_renew_preserves_identity_test_() ->
-    %% This case deliberately waits for a five-second session to expire.
+    %% dv1 现行合同：session_deadline 由 fn_dv1_register 服务端设定
+    %% （now()+7200）且不可变；presign 有效期在 grant 描述符 expires_in
+    %% （签名内表达），不落 attach_pending.upload_expires_at（V5 遗留列，
+    %% dv1 恒 NULL）——注册重放合同 = 身份恒等 + 位置不变 + 可继续上传。
     with_db(15, fun(State) ->
         Conn = maps:get(conn, State),
-        %% The seam changes initial registration inputs, never persisted facts.
-        Deadline = erlang:system_time(second) + 900,
-        Expiry = erlang:system_time(second) + 5,
-        {Uid, Rid, Cid, P} = with_initial_upload_window(Deadline, Expiry, fun upload_fixture/0),
+        {Uid, Rid, Cid, P} = upload_fixture(),
         Ref = maps:get(<<"upload_ref">>, P),
-        Key = maps:get(<<"object_key">>, Ref),
+        Key = maps:get(object_key, Ref),
         Original = upload_identity(Conn, Key),
         {ok, OriginalLocation} = attachment_storage:session_location(Key),
-        ?assertEqual(Deadline, maps:get(<<"deadline">>, Original)),
-        ?assertEqual(Expiry, maps:get(<<"expiry">>, Original)),
-        assert_signed_expiry(Ref, Expiry),
-        %% Wait on the real clock. No UPDATE, fake clock or forged capability.
-        wait_upload_expiry(Expiry),
         {ok, replay, P2} = part(Uid, Rid, Cid, 0, 0, 30000, <<"up-retry">>),
         Ref2 = maps:get(<<"upload_ref">>, P2),
         Renewed = upload_identity(Conn, Key),
         ?assertEqual({ok, OriginalLocation}, attachment_storage:session_location(Key)),
         ?assertEqual(maps:remove(<<"expiry">>, Original), maps:remove(<<"expiry">>, Renewed)),
-        ?assertEqual(Key, maps:get(<<"object_key">>, Ref2)),
-        ?assertEqual(maps:get(<<"client_upload_id">>, Ref), maps:get(<<"client_upload_id">>, Ref2)),
-        NewExpiry = maps:get(<<"expiry">>, Renewed),
-        ?assert(NewExpiry > Expiry),
-        ?assert(NewExpiry =< Deadline),
-        assert_signed_expiry(Ref2, NewExpiry),
+        ?assertEqual(Key, maps:get(object_key, Ref2)),
         ok = talk_record_upload_test_support:upload(Uid, P2),
         ?assertMatch(
             {ok, confirmed, _},
@@ -796,9 +791,12 @@ part_wrong_declared_hash_no_asset_test_() ->
         {ok, created, P} = part_sha(
             Uid, Rid, Cid, 1, 30000, 60000, <<"up-wrong">>, talk_record_t07_support:sha(99)
         ),
-        ok = talk_record_upload_test_support:upload(Uid, P),
+        %% S3-only direct 合同：presign 头携带声明 sha 的 checksum，与正文
+        %% 不一致在 PUT 即被 S3 400 拒收（fail-closed 前移）；confirm 侧验证
+        %% 在字节存在但失配时才生效。
+        ok = talk_record_upload_test_support:upload_failclosed(P),
         ?assertEqual(
-            {error, audio_part_verification_failed},
+            {error, {rejected, copy_source_missing}},
             talk_record_ds:confirm_part(Uid, Rid, Cid, maps:get(<<"part_id">>, P), #{})
         ),
         ?assertEqual(
@@ -815,15 +813,21 @@ part_wrong_declared_hash_no_asset_test_() ->
 part_pin_without_put_no_confirm_test_() ->
     with_db(fun(_State) ->
         {Uid, Rid, Cid, P} = upload_fixture(),
-        Key = maps:get(<<"object_key">>, maps:get(<<"upload_ref">>, P)),
-        ok = attach_pending_repo:register_content_pin(Key, #{
-            <<"version">> => 1,
-            <<"sha256">> => talk_record_t07_support:sha(0),
-            <<"size_bytes">> => <<"4096">>,
-            <<"mime">> => <<"audio/aac">>
-        }),
+        Key = maps:get(object_key, maps:get(<<"upload_ref">>, P)),
+        %% dv1 合同：内容身份在 declare 即冻结（direct_expected），V5 内容
+        %% pin 面不再接受 dv1 会话（防绕开冻结身份改写内容）。
         ?assertEqual(
-            {error, object_not_found},
+            {error, session_not_renewable},
+            attach_pending_repo:register_content_pin(Key, #{
+                <<"version">> => 1,
+                <<"sha256">> => talk_record_t07_support:sha(0),
+                <<"size_bytes">> => <<"4096">>,
+                <<"mime">> => <<"audio/aac">>
+            })
+        ),
+        %% 未 PUT 即无字节：confirm 拒 copy_source_missing，不产资产。
+        ?assertEqual(
+            {error, {rejected, copy_source_missing}},
             talk_record_ds:confirm_part(Uid, Rid, Cid, maps:get(<<"part_id">>, P), #{})
         )
     end).
@@ -842,8 +846,8 @@ part_ended_accepts_late_upload_test_() ->
         {ok, Cid2} = talk_record_t07_support:create_capture(Uid, Rid, ?DS2, <<"second-capture">>),
         {ok, created, P2} = part(Uid, Rid, Cid2, 0, 0, 30000, <<"second-part">>),
         ?assertNotEqual(
-            maps:get(<<"object_key">>, maps:get(<<"upload_ref">>, P)),
-            maps:get(<<"object_key">>, maps:get(<<"upload_ref">>, P2))
+            maps:get(object_key, maps:get(<<"upload_ref">>, P)),
+            maps:get(object_key, maps:get(<<"upload_ref">>, P2))
         )
     end).
 
@@ -875,26 +879,34 @@ part_concurrent_confirms_one_reference_test_() ->
         )
     end).
 
-part_tombstone_rejects_binding_test_() ->
+%% S3-only dv1 合同：staging 字节只能经 talk-record confirm 面绑为资产
+%% （直拷+证明+原子绑定）；遗留 V5 attach 面不认 dv1 staging 对象——
+%% 如实拒 object_not_found，防止面外绑定。资产墓碑/撤权的读面拒收合同
+%% 由 playback_stream_tests 承载。
+part_binding_surface_isolation_test_() ->
     with_db(fun(State) ->
+        Conn = maps:get(conn, State),
         {Uid, Rid, Cid, P} = upload_fixture(),
-        Key = maps:get(<<"object_key">>, maps:get(<<"upload_ref">>, P)),
+        Key = maps:get(object_key, maps:get(<<"upload_ref">>, P)),
         ok = talk_record_upload_test_support:upload(Uid, P),
-        {ok, _} = attach_logic:confirm(Uid, Key, <<"talk_record">>, integer_to_binary(Rid), #{}),
-        {ok, _} = elib_pg:query(
-            maps:get(conn, State),
-            <<"UPDATE attachment SET lifecycle_state='delete_intent' WHERE path=$1">>,
-            [Key]
-        ),
         ?assertEqual(
-            {error, audio_part_verification_failed},
-            talk_record_ds:confirm_part(Uid, Rid, Cid, maps:get(<<"part_id">>, P), #{})
+            {error, object_not_found},
+            attach_logic:confirm(Uid, Key, <<"talk_record">>, integer_to_binary(Rid), #{})
         ),
         ?assertEqual(
             #{<<"n">> => 0},
             talk_record_t07_support:one(
-                maps:get(conn, State),
-                "SELECT count(*) AS n FROM talk_record_attachment_ref"
+                Conn, "SELECT count(*) AS n FROM talk_record_attachment_ref"
+            )
+        ),
+        %% 唯一绑定路径是 confirm 面：成功后 ref 恰绑定一条、资产 live。
+        {ok, confirmed, _} = talk_record_ds:confirm_part(
+            Uid, Rid, Cid, maps:get(<<"part_id">>, P), #{}
+        ),
+        ?assertEqual(
+            #{<<"n">> => 1},
+            talk_record_t07_support:one(
+                Conn, "SELECT count(*) AS n FROM talk_record_attachment_ref"
             )
         )
     end).
@@ -1035,35 +1047,6 @@ organization_upload_fixture(Conn, WithWorkspace) ->
 
 %% Same narrow initial-registration seam used by the W403 short capability tests.
 %% VM-exclusive meck intercepts only input parameters; SQL and results stay real.
-with_initial_upload_window(Deadline, Expiry, Fun) ->
-    true = not lists:member(elib_pg, meck:mocked()),
-    ok = meck:new(elib_pg, [passthrough, no_link]),
-    try
-        ok = meck:expect(elib_pg, query, fun(Sql, Args) ->
-            meck:passthrough([Sql, initial_upload_window(Sql, Args, Deadline, Expiry)])
-        end),
-        ok = meck:expect(elib_pg, query, fun(Conn, Sql, Args) ->
-            meck:passthrough([Conn, Sql, initial_upload_window(Sql, Args, Deadline, Expiry)])
-        end),
-        Fun()
-    after
-        ok = meck:unload(elib_pg)
-    end.
-
-initial_upload_window(Sql0, Args, Deadline, Expiry) when is_list(Args), length(Args) =:= 12 ->
-    case binary:match(iolist_to_binary(Sql0), <<"fn_v5_register_pending(">>) of
-        nomatch ->
-            Args;
-        _ ->
-            <<"talk_record">> = lists:nth(3, Args),
-            {Prefix, [_OldDeadline, _OldExpiry | Tail]} = lists:split(6, Args),
-            Prefix ++ [upload_iso(Deadline), upload_iso(Expiry) | Tail]
-    end;
-initial_upload_window(_, Args, _, _) ->
-    Args.
-
-upload_iso(Time) ->
-    list_to_binary(calendar:system_time_to_rfc3339(Time, [{unit, second}, {offset, "Z"}])).
 
 upload_identity(Conn, Key) ->
     %% Capture every actual pending column, not a guessed/frozen subset. Only
@@ -1107,15 +1090,3 @@ upload_identity(Conn, Key) ->
         ]
     ),
     Row#{<<"identity">> => Identity}.
-
-assert_signed_expiry(Ref, Expiry) ->
-    ?assertEqual(Expiry, maps:get(<<"expires_at">>, Ref)),
-    {ok, Claims} = imboy_jwt:verify_upload_capability(maps:get(<<"upload_capability">>, Ref)),
-    ?assertEqual(Expiry, maps:get(<<"exp">>, Claims)).
-
-wait_upload_expiry(Expiry) ->
-    Remaining = max(0, (Expiry - erlang:system_time(second) + 1) * 1000),
-    true = Remaining =< 6000,
-    receive
-    after Remaining -> ok
-    end.

@@ -19,6 +19,7 @@
     sql/2,
     one/2,
     sha/1,
+    complete_build_body/4,
     %% 夹具快捷方式
     ev/6,
     part/8,
@@ -190,27 +191,138 @@ complete(Uid, Rid, Cid, IdemKey) ->
 
 complete_body(Uid, Rid, Cid, IdemKey, Extra) ->
     LastSeq = maps:get(last_seq, Extra, 1),
-    Body0 = #{
+    Body0 = complete_build_body(Uid, Rid, Cid, LastSeq),
+    Body = maps:merge(Body0, maps:remove(last_seq, Extra)),
+    talk_record_job_logic:complete(Uid, Rid, <<"\"1\"">>, IdemKey, Body).
+
+%% @doc complete 请求体构造（V1 合同：真实 manifest_hash + final_audio
+%% 投影含 attachment_id 准入证明）。供夹具与门禁类用例自定义 body 复用。
+complete_build_body(Uid, Rid, Cid, LastSeq) ->
+    #{
         <<"captures">> => [
             #{
                 <<"capture_id">> => Cid,
                 <<"last_seq">> => LastSeq,
-                <<"manifest_hash">> => binary:copy(<<"a">>, 64)
+                <<"manifest_hash">> => complete_manifest_hash(Rid, Cid)
             }
         ],
-        <<"final_audio">> => #{
-            <<"object_key">> => <<"talk-record/final/t12-synthetic.aac">>,
-            <<"client_upload_id">> => <<"00000000-0000-0000-0000-000000000001">>,
-            <<"sha256">> => binary:copy(<<"b">>, 64),
-            <<"byte_size">> => 39,
-            <<"sample_rate">> => 16000,
-            <<"channels">> => 1,
-            <<"sample_count">> => 1024,
-            <<"duration_ms">> => 64
-        }
-    },
-    Body = maps:merge(Body0, maps:remove(last_seq, Extra)),
-    talk_record_job_logic:complete(Uid, Rid, <<"\"1\"">>, IdemKey, Body).
+        <<"final_audio">> => complete_final_audio(Uid, Rid)
+    }.
+
+%% complete 合同（A02/T3）：manifest_hash 须等于服务端 build_manifest 对
+%% confirmed parts 的重算——夹具按真实链计算，不再用占位值。
+complete_manifest_hash(Rid, Cid) ->
+    {ok, Parts} = elib_pg:with_conn(fun(C) ->
+        talk_record_assembly_logic:confirmed_parts_tx(C, Rid)
+    end),
+    maps:get(<<"manifest_hash">>, talk_record_assembly_logic:build_manifest(Cid, Parts)).
+
+%% F1b（2d979bd74 备注债）：complete 的 final_audio 须锚定一个真实
+%% CONFIRMED final 直传会话——按 direct 链 register→declare→grant→
+%% presign PUT→finalize 收口，返回与冻结身份一致的八字段投影。
+%% 幂等：同 (Uid, Rid) 已有 CONFIRMED final 会话则直接复用投影——
+%% 同 IdemKey 的 complete 重放 body 必须逐字节一致（幂等 digest）。
+complete_final_audio(Uid, Rid) ->
+    case existing_final_projection(Uid, Rid) of
+        {ok, Final} -> Final;
+        none -> create_final_audio(Uid, Rid)
+    end.
+
+existing_final_projection(Uid, Rid) ->
+    case
+        elib_pg:query(
+            <<
+                "SELECT p.client_upload_id, p.object_key, a.id AS aid,"
+                " a.file_hash256, a.size"
+                " FROM attach_pending p JOIN attachment a"
+                " ON a.id = p.confirmed_attachment_id"
+                " WHERE p.scope='talk_record' AND a.scope_ref=$1"
+                " AND p.creator_user_id=$2 AND p.session_state='confirmed'"
+                " AND p.direct_state='CONFIRMED' AND a.path = p.object_key"
+                " AND p.upload_registration->'declaration'->>'file_name'"
+                " LIKE 't12-final-%'"
+                " ORDER BY p.object_key DESC LIMIT 1"
+            >>,
+            [integer_to_binary(Rid), Uid]
+        )
+    of
+        {ok, [Row]} ->
+            Size = ec_cnv:to_integer(maps:get(<<"size">>, Row)),
+            Frames = Size div 39,
+            {ok, #{
+                <<"object_key">> => maps:get(<<"object_key">>, Row),
+                <<"client_upload_id">> => maps:get(<<"client_upload_id">>, Row),
+                <<"sha256">> => maps:get(<<"file_hash256">>, Row),
+                <<"byte_size">> => Size,
+                <<"sample_rate">> => 16000,
+                <<"channels">> => 1,
+                <<"sample_count">> => Frames * 1024,
+                <<"duration_ms">> => Frames * 64,
+                <<"attachment_id">> => maps:get(<<"aid">>, Row)
+            }};
+        _ ->
+            none
+    end.
+
+create_final_audio(Uid, Rid) ->
+    application:ensure_all_started(inets),
+    %% validate 合同：成品对象字节 == Σ 段字节（seq 序拼接，逐段 SHA 边界
+    %% 对齐）。夹具每段字节即 audio_bytes()，成品按 confirmed parts 拼接。
+    {ok, Parts} = elib_pg:with_conn(fun(C) ->
+        talk_record_assembly_logic:confirmed_parts_tx(C, Rid)
+    end),
+    Full = audio_bytes(),
+    %% 无 confirmed parts（负向用例未走分段注册）回落单份——complete 的
+    %% capture_not_ended 等前置拒绝不依赖成品字节，保持其错误码不变。
+    Bytes =
+        case Parts of
+            [] ->
+                Full;
+            _ ->
+                iolist_to_binary(
+                    [
+                        binary:part(Full, {0, ec_cnv:to_integer(maps:get(<<"byte_size">>, P))})
+                     || P <- Parts
+                    ]
+                )
+        end,
+    Sha = binary:encode_hex(crypto:hash(sha256, Bytes), lowercase),
+    Size = byte_size(Bytes),
+    Frames = Size div 39,
+    FinalCid = elib_uuid:gen_v7(),
+    Name = <<"t12-final-", FinalCid/binary, ".aac">>,
+    {ok, #{object_key := Key}} =
+        attach_direct_logic:register(
+            Uid, <<"talk_record">>, integer_to_binary(Rid), FinalCid, Name
+        ),
+    ok = attach_direct_logic:declare(Key, Sha, Size, <<"audio/aac">>),
+    {ok, #{grant := G, attempt_id := No}} = attach_direct_logic:grant(Key, Sha),
+    ok = presign_put(G, Bytes),
+    {ok, #{state := <<"CONFIRMED">>}} = attach_direct_logic:finalize(Key, No),
+    {ok, [#{<<"id">> := Aid}]} =
+        elib_pg:query(<<"SELECT id FROM attachment WHERE path=$1">>, [Key]),
+    #{
+        <<"object_key">> => Key,
+        <<"client_upload_id">> => FinalCid,
+        <<"sha256">> => Sha,
+        <<"byte_size">> => Size,
+        <<"sample_rate">> => 16000,
+        <<"channels">> => 1,
+        <<"sample_count">> => Frames * 1024,
+        <<"duration_ms">> => Frames * 64,
+        <<"attachment_id">> => Aid
+    }.
+
+presign_put(#{url := Url, required_headers := Hs0}, Bytes) ->
+    Hs = [{binary_to_list(K), binary_to_list(V)} || {K, V} <- Hs0],
+    {ok, {{_, 200, _}, _, _}} =
+        httpc:request(
+            put,
+            {binary_to_list(Url), Hs, "audio/aac", Bytes},
+            [],
+            [{body_format, binary}]
+        ),
+    ok.
 
 %%%===================================================================
 %%% 直查

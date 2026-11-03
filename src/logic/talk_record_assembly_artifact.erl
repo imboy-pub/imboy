@@ -107,7 +107,9 @@ publish_tx(
     #{artifacts := [#{attachment_id := Manifest, role := Role, lease_key := Lease}]} = Prepared
 ) ->
     #{final_audio := Final} = Prepared,
-    FinalAttachment = maps:get(attachment_id, Final),
+    %% 冻结投影为 JSON 形（binary 键）；attachment_id 由 complete 准入冻结
+    %% （正整数），publish 时直接取用。
+    FinalAttachment = maps:get(<<"attachment_id">>, Final),
     ok = require(attachment_derived_artifact:complete_tx(C, Manifest)),
     Key = <<"assembly:", Role/binary, ":", (integer_to_binary(Manifest))/binary>>,
     {ok, _, _} = require(

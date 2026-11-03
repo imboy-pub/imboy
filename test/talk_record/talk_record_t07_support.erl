@@ -30,6 +30,9 @@ setup_all() ->
     State = talk_record_t05_support:setup_all(),
     try
         ok = talk_record_upload_test_support:configure(),
+        %% confirm 链经 garage copy_dispatch（httpc），每用例确保 inets 在 VM。
+        {ok, _} = application:ensure_all_started(inets),
+        _ = retire_direct_residue(maps:get(conn, State)),
         ok = persistent_test_ids(maps:get(conn, State)),
         State
     catch
@@ -37,6 +40,67 @@ setup_all() ->
             talk_record_t05_support:teardown_all(State),
             erlang:raise(Class, Reason, Stack)
     end.
+
+%% direct-v1 每用户 4 活会话配额按非终态+deadline>now 计活（00000202
+%% fn_dv1_quota_check）。恢复类用例有意留非终态残留，会把后续用例推过
+%% 配额墙；本支撑在每用例 setup 经产品内置真实生命周期终态函数清退本库
+%% 残留（不删行、不改 session_deadline——触发器已令其不可变）：
+%%   GRANTED/FINALIZING → fn_dv1_cancel → CANCELLED（00000202）；
+%%   DECLARED → fn_dv1_grant（本地 presign，零网络 I/O）→ fn_dv1_cancel；
+%%   RESERVED → fn_dv1_declare（冻结新 expected）→ fn_dv1_grant → cancel。
+%% attempt 身份约束 ck_dv1_attempt_identity 仅允许 driver='garage'。
+%% 单行失败仅报告不中断：残留若未清退，配额墙会在该用例如实显形。
+retire_direct_residue(Conn) ->
+    {ok, _, Rows} = epgsql:equery(
+        Conn,
+        "SELECT object_key, direct_state FROM attach_pending"
+        " WHERE direct_state IN ('RESERVED','DECLARED','GRANTED','FINALIZING')"
+        " AND (session_deadline IS NULL OR session_deadline > now())",
+        []
+    ),
+    lists:foreach(
+        fun(Row) ->
+            try
+                retire_one(Conn, Row)
+            catch
+                Class:Reason ->
+                    io:format("T07_direct_residue_retire_failed: ~0p ~0p~n", [
+                        Row, {Class, Reason}
+                    ])
+            end
+        end,
+        Rows
+    ),
+    ok.
+
+retire_one(Conn, {Key, State}) when State =:= <<"GRANTED">>; State =:= <<"FINALIZING">> ->
+    retire_cancel(Conn, Key);
+retire_one(Conn, {Key, <<"DECLARED">>}) ->
+    {ok, _, _} = epgsql:equery(
+        Conn,
+        "SELECT fn_dv1_grant($1,'eunit-retire-staging','eunit-retire-target',"
+        "'garage','talk-record-relay','talk-record-relay','eunit-retire')",
+        [Key]
+    ),
+    retire_cancel(Conn, Key);
+retire_one(Conn, {Key, <<"RESERVED">>}) ->
+    {ok, _, _} = epgsql:equery(
+        Conn,
+        "SELECT fn_dv1_declare($1,$2,$3,$4)",
+        [Key, retire_sha(), 1024, <<"audio/aac">>]
+    ),
+    retire_one(Conn, {Key, <<"DECLARED">>});
+retire_one(_Conn, Row) ->
+    erlang:error({retire_unknown_state, Row}).
+
+retire_cancel(Conn, Key) ->
+    {ok, _, _} = epgsql:equery(
+        Conn, "SELECT fn_dv1_cancel($1,'eunit-teardown')", [Key]
+    ),
+    ok.
+
+retire_sha() ->
+    binary:encode_hex(crypto:hash(sha256, <<"eunit-direct-retire">>), lowercase).
 
 -spec teardown_all(map()) -> ok.
 teardown_all(State) ->

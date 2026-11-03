@@ -334,9 +334,13 @@ complete_gates_test_() ->
         %% If-Match 过期 → 412
         ?assertEqual(
             {error, precondition_failed},
-            talk_record_job_logic:complete(U1, Rid, <<"\"9\"">>, <<"t12-gt-412">>, #{
-                <<"captures">> => [#{<<"capture_id">> => Cid, <<"last_seq">> => 1}]
-            })
+            talk_record_job_logic:complete(
+                U1,
+                Rid,
+                <<"\"9\"">>,
+                <<"t12-gt-412">>,
+                talk_record_t12_support:complete_build_body(U1, Rid, Cid, 1)
+            )
         ),
         %% viewer（有活跃 grant）→ 403
         insert_grant(C, Rid, U1, U2, <<"viewer">>),
@@ -381,7 +385,7 @@ complete_transcribe_enqueue_component(State) ->
     {ok, {Rid, Cid, _}} = talk_record_t12_support:ready_record(
         U1, ?REC(7), <<"transcribe">>, [0, 1], <<"t12-tr-7">>
     ),
-    Base = #{<<"captures">> => [#{<<"capture_id">> => Cid, <<"last_seq">> => 1}]},
+    Base = talk_record_t12_support:complete_build_body(U1, Rid, Cid, 1),
     Consent = #{
         <<"policy_version">> => <<"talk-record-notice-v1">>,
         <<"processor_config_version">> => <<"pc-v1">>
@@ -880,13 +884,18 @@ transcribe_suspends_waiting_processor_test_() ->
             U1, ?REC(18), <<"transcribe">>, [0, 1], <<"t12-sp-18">>
         ),
         {ok, created, _} = with_enqueue_capability(fun() ->
-            talk_record_job_logic:complete(U1, Rid, <<"\"1\"">>, <<"t12-sp-c">>, #{
-                <<"captures">> => [#{<<"capture_id">> => Cid, <<"last_seq">> => 1}],
-                <<"processing_consent">> => #{
-                    <<"policy_version">> => <<"talk-record-notice-v1">>,
-                    <<"processor_config_version">> => <<"pc-v1">>
+            talk_record_job_logic:complete(
+                U1,
+                Rid,
+                <<"\"1\"">>,
+                <<"t12-sp-c">>,
+                (talk_record_t12_support:complete_build_body(U1, Rid, Cid, 1))#{
+                    <<"processing_consent">> => #{
+                        <<"policy_version">> => <<"talk-record-notice-v1">>,
+                        <<"processor_config_version">> => <<"pc-v1">>
+                    }
                 }
-            })
+            )
         end),
         ?assertEqual(null, talk_record_processor_config:version()),
         ?assertEqual(false, maps:get(<<"asr_enabled">>, talk_record_ds:capabilities())),

@@ -222,8 +222,14 @@ prepare_parts(Conn, #{<<"record_id">> := RecordId, <<"input_manifest_hash">> := 
                     case prepare_final_tx(Conn, Job) of
                         {ok, Final} ->
                             case grant_part_leases(Conn, Job, Parts, Manifest) of
-                                {ok, _} = Ok -> {ok, Ok#{final_audio => Final}};
-                                {error, _} = E -> E
+                                %% final_audio 必须落在内层 map 上——此前
+                                %% {ok, Ok#{...}} 对元组做 map 更新（badmap）
+                                %% 导致 prepare 结果恒缺 final_audio、publish
+                                %% 绑定阶段必炸（墙解除后首次可达暴露）。
+                                {ok, Granted} ->
+                                    {ok, Granted#{final_audio => Final}};
+                                {error, _} = E ->
+                                    E
                             end;
                         {error, _} = E ->
                             E
@@ -280,11 +286,13 @@ final_attachment_tx(Conn, Job, Final) ->
     RidBin = integer_to_binary(maps:get(<<"record_id">>, Job)),
     Sql =
         <<
-            "SELECT a.path, a.size, a.file_hash256, a.lifecycle_state"
+            "SELECT a.path, a.size, a.file_hash256, a.lifecycle_state,"
+            " a.storage_driver, a.storage_namespace, a.storage_container,"
+            " a.storage_locator_sha256, a.storage_physical_key"
             " FROM attachment a WHERE a.id=$1::int8"
             " AND a.scope='talk_record' AND a.scope_ref=$2"
         >>,
-    case elib_pg:query(Conn, Sql, [ec_cnv:to_binary(Aid), RidBin]) of
+    case elib_pg:query(Conn, Sql, [ec_cnv:to_integer(Aid), RidBin]) of
         {ok, [
             #{
                 <<"path">> := ObjectKey,
