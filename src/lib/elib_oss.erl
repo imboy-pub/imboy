@@ -358,15 +358,18 @@ object_sha256(Bucket, ObjectKey) ->
 -spec head_object(binary(), binary()) -> {ok, map()} | {error, not_found | term()}.
 head_object(Bucket, ObjectKey) ->
     ok = assert_garage_configured(),
-    Endpoint = endpoint(),
-    %% 用 presigned GET（query 签名，仅签 host）+ Range: bytes=0-0 核实对象。
-    %% 不走 header 鉴权 HEAD：经 nginx 反代后 HEAD 在 Garage 端按 GET 校验，
-    %% 方法行与签名不符 → "Invalid signature" 403（query 预签名链路同 PUT 已验证可用）。
-    Url = elib_s3_sign:presign_get(Endpoint, Bucket, ObjectKey, 60),
-    Headers = [{"range", "bytes=0-0"}],
-    parse_head_response(
-        httpc:request(get, {binary_to_list(Url), Headers}, [{timeout, 10000}], [])
-    ).
+    Cfg = garage_config(),
+    Snapshot = #{
+        endpoint => maps:get(endpoint, Cfg, <<"http://127.0.0.1:3900">>),
+        container => Bucket,
+        key => ObjectKey,
+        garage_config => Cfg
+    },
+    case attachment_storage_garage:head_bounded(Snapshot) of
+        {ok, Info} -> {ok, maps:with([size, content_type], Info)};
+        {error, {storage_status, Status}} -> {error, {http_error, Status}};
+        {error, _} = Error -> Error
+    end.
 
 %% @doc 解析 HEAD 响应为 {ok, #{size, content_type}}（纯函数，便于单测）
 -spec parse_head_response(term()) -> {ok, map()} | {error, not_found | term()}.

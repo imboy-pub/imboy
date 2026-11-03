@@ -3,7 +3,7 @@
 %%%
 % 协议 §3/§4（docs/architecture/attachment-direct-transfer-v1-protocol.md）：
 %   * presign 绑定 content-type + x-amz-checksum-sha256（同输入同 URL）；
-%   * head_bounded 真 HEAD：无正文；到达正文/超限即拒绝（不完整缓冲）；
+%   * head_bounded 真 HEAD：只消费元数据，不请求或交付正文；
 %   * copy_dispatch 单次请求：autoredirect off、200+错误 XML 不算成功、
 %     超限 body_too_large；redirect 不跟随；
 %   * direct 无全文 GET fallback（head_bounded 不触碰 read/read_snapshot）。
@@ -124,12 +124,95 @@ control_test_() ->
     [
         {timeout, 35, ?_test(pure_mock_fixture:run(fun head_bounded_parses_headers/0))},
         {timeout, 35, ?_test(pure_mock_fixture:run(fun head_bounded_404/0))},
-        {timeout, 35, ?_test(pure_mock_fixture:run(fun head_bounded_rejects_body/0))},
+        {timeout, 35, ?_test(pure_mock_fixture:run(fun head_bounded_metadata_only/0))},
         {timeout, 35, ?_test(pure_mock_fixture:run(fun copy_dispatch_success_xml/0))},
         {timeout, 35, ?_test(pure_mock_fixture:run(fun copy_dispatch_error_xml_not_confirmed/0))},
         {timeout, 35, ?_test(pure_mock_fixture:run(fun copy_dispatch_oversized_body_rejected/0))},
         {timeout, 35, ?_test(pure_mock_fixture:run(fun copy_dispatch_redirect_not_followed/0))},
         {timeout, 35, ?_test(pure_mock_fixture:run(fun head_bounded_no_full_read/0))}
+    ].
+
+strict_head_length_test_() ->
+    Cases = [
+        {[], {error, invalid_content_length}},
+        {[{"content-length", ""}], {error, invalid_content_length}},
+        {[{"content-length", "garbage"}], {error, invalid_content_length}},
+        {[{"content-length", "-1"}], {error, invalid_content_length}},
+        {[{"content-length", "+1"}], {error, invalid_content_length}},
+        {[{"content-length", "1.0"}], {error, invalid_content_length}},
+        {[{"content-length", " 1"}], {error, invalid_content_length}},
+        {[{"content-length", "1, 1"}], {error, invalid_content_length}},
+        {[{"content-length", "1"}, {"content-length", "1"}], {error, invalid_content_length}},
+        {[{"content-length", "1"}, {"Content-Length", "2"}], {error, invalid_content_length}},
+        {[{"content-length", "9223372036854775808"}], {error, invalid_content_length}},
+        {[{"content-length", lists:duplicate(200, $9)}], {error, invalid_content_length}},
+        {[{"Content-Length", "0"}], {ok, 0}},
+        {[{"content-length", "0001"}], {ok, 1}},
+        {[{"content-length", "9223372036854775807"}], {ok, 9223372036854775807}}
+    ],
+    [
+        {timeout, 35,
+            ?_test(
+                pure_mock_fixture:run(fun() ->
+                    check_head_length(Entry, Headers, Expected)
+                end)
+            )}
+     || Entry <- [head, bounded, snapshot, legacy], {Headers, Expected} <- Cases
+    ].
+
+check_head_length(Entry, Headers, Expected) ->
+    Script = fun(head, _Url, [], Receiver, ReqId) ->
+        Receiver ! {http, {ReqId, {{"HTTP/1.1", 200, "OK"}, Headers, <<>>}}}
+    end,
+    with_ctrl_mocks(Script, fun() ->
+        Result =
+            case Entry of
+                head ->
+                    attachment_storage_garage:head(<<"g">>, <<"bucket">>, <<"key">>);
+                bounded ->
+                    attachment_storage_garage:head_bounded(<<"g">>, <<"bucket">>, <<"key">>);
+                snapshot ->
+                    attachment_storage_garage:head_snapshot(#{
+                        endpoint => ?ENDPOINT,
+                        container => <<"bucket">>,
+                        key => <<"key">>,
+                        garage_config => ?CFG
+                    });
+                legacy ->
+                    elib_oss:head_object(<<"bucket">>, <<"key">>)
+            end,
+        case Expected of
+            {ok, Size} -> ?assertMatch({ok, #{size := Size}}, Result);
+            _ -> ?assertEqual(Expected, Result)
+        end
+    end).
+
+legacy_head_bounded_test_() ->
+    [
+        {timeout, 35,
+            ?_test(
+                pure_mock_fixture:run(fun() ->
+                    Script = fun(head, Url, [], Receiver, ReqId) ->
+                        ?assert(
+                            binary:match(list_to_binary(Url), <<"X-Amz-Signature=">>) =/= nomatch
+                        ),
+                        Receiver ! {http, {ReqId, Response}}
+                    end,
+                    with_ctrl_mocks(Script, fun() ->
+                        ?assertEqual(Expected, elib_oss:head_object(<<"bucket">>, <<"key">>))
+                    end)
+                end)
+            )}
+     || {Response, Expected} <- [
+            {
+                {{"HTTP/1.1", 200, "OK"}, [{"content-length", "5"}], <<"hello">>},
+                {ok, #{size => 5, content_type => <<"application/octet-stream">>}}
+            },
+            {{{"HTTP/1.1", 404, "Not Found"}, [], <<>>}, {error, not_found}},
+            {{{"HTTP/1.1", 403, "Forbidden"}, [], <<>>}, {error, {http_error, 403}}},
+            {{{"HTTP/1.1", 302, "Found"}, [], <<>>}, {error, {http_error, 302}}},
+            {{error, timeout}, {error, timeout}}
+        ]
     ].
 
 setup_ctrl() ->
@@ -168,6 +251,7 @@ with_ctrl_mocks(Script, Inner) ->
     pure_mock_fixture:with_mocks(
         [
             http_mocks(Script),
+            head_mocks(Script),
             {attachment_storage, [
                 {resolve, 1, fun(<<"g">>) ->
                     {ok, #{
@@ -180,6 +264,41 @@ with_ctrl_mocks(Script, Inner) ->
         ],
         Inner
     ).
+
+head_mocks(Script) ->
+    {gun, [
+        {open, 3, fun(_, _, Options) ->
+            ?assertEqual(0, maps:get(retry, Options)),
+            ?assertEqual([http], maps:get(protocols, Options)),
+            ?assertEqual(65536, maps:get(max_header_block_size, maps:get(http_opts, Options))),
+            {ok, self()}
+        end},
+        {await_up, 2, fun(_, _) -> {ok, http} end},
+        {head, 3, fun(_, Path, []) ->
+            ReqId = make_ref(),
+            Script(head, binary_to_list(Path), [], self(), ReqId),
+            ReqId
+        end},
+        {await, 3, fun(_, ReqId, _) -> mock_head_response(ReqId) end},
+        {close, 1, fun(_) -> ok end},
+        {flush, 1, fun(_) -> ok end}
+    ]}.
+
+mock_head_response(ReqId) ->
+    receive
+        {http, {ReqId, {{_, Status, _}, Headers, _Body}}} ->
+            mock_head_headers(Status, Headers, fin);
+        {http, {ReqId, stream_start, Headers, _}} ->
+            receive
+                {http, {ReqId, stream_end, _}} -> mock_head_headers(200, Headers, fin);
+                {http, {ReqId, stream, _}} -> mock_head_headers(200, Headers, fin)
+            end;
+        {http, {ReqId, {error, _} = Error}} ->
+            Error
+    end.
+
+mock_head_headers(Status, Headers, Fin) ->
+    {response, Fin, Status, [{list_to_binary(K), list_to_binary(V)} || {K, V} <- Headers]}.
 
 head_bounded_parses_headers() ->
     Script = fun(head, _Url, [], Receiver, ReqId) ->
@@ -212,15 +331,14 @@ head_bounded_404() ->
         )
     end).
 
-head_bounded_rejects_body() ->
-    %% HEAD 不允许正文（T44：到达即拒，不缓冲）
+head_bounded_metadata_only() ->
     Script = fun(head, _Url, [], Receiver, ReqId) ->
         Receiver ! {http, {ReqId, stream_start, [{"content-length", "5"}], fake_pid}},
         Receiver ! {http, {ReqId, stream, <<"hello">>}}
     end,
     with_ctrl_mocks(Script, fun() ->
         ?assertEqual(
-            {error, body_too_large},
+            {ok, #{size => 5, content_type => <<"application/octet-stream">>}},
             attachment_storage_garage:head_bounded(<<"g">>, <<"bucket">>, <<"u1/a.png">>)
         )
     end).
@@ -322,7 +440,22 @@ head_bounded_no_full_read() ->
 real_http_control_test_() ->
     [
         {timeout, 35, ?_test(pure_mock_fixture:run(fun() -> real_http_control(Kind) end))}
-     || Kind <- [head_ok, head_missing, copy_ok, copy_error_xml, copy_missing, copy_oversized]
+     || Kind <- [
+            head_ok,
+            head_informational,
+            head_unexpected_body,
+            head_missing,
+            head_duplicate,
+            head_missing_length,
+            head_oversized_headers,
+            legacy_head_ok,
+            legacy_head_zero,
+            legacy_head_forbidden,
+            copy_ok,
+            copy_error_xml,
+            copy_missing,
+            copy_oversized
+        ]
     ].
 
 real_http_control(Kind) ->
@@ -352,10 +485,23 @@ real_http_control(Kind) ->
                             attachment_storage_garage:head_bounded(
                                 <<"g">>, <<"bucket">>, <<"key">>
                             );
-                        head_missing ->
+                        HeadKind when
+                            HeadKind =:= head_informational;
+                            HeadKind =:= head_unexpected_body;
+                            HeadKind =:= head_missing;
+                            HeadKind =:= head_duplicate;
+                            HeadKind =:= head_missing_length;
+                            HeadKind =:= head_oversized_headers
+                        ->
                             attachment_storage_garage:head_bounded(
                                 <<"g">>, <<"bucket">>, <<"key">>
                             );
+                        LegacyKind when
+                            LegacyKind =:= legacy_head_ok;
+                            LegacyKind =:= legacy_head_zero;
+                            LegacyKind =:= legacy_head_forbidden
+                        ->
+                            elib_oss:head_object(<<"bucket">>, <<"key">>);
                         _ ->
                             attachment_storage_garage:copy_dispatch(
                                 <<"g">>, <<"bucket">>, <<"source">>, <<"key">>
@@ -368,9 +514,15 @@ real_http_control(Kind) ->
             {Ref, Method} ->
                 Expected =
                     case Kind of
-                        head_ok -> <<"HEAD">>;
-                        head_missing -> <<"HEAD">>;
-                        _ -> <<"PUT">>
+                        CopyKind when
+                            CopyKind =:= copy_ok;
+                            CopyKind =:= copy_error_xml;
+                            CopyKind =:= copy_missing;
+                            CopyKind =:= copy_oversized
+                        ->
+                            <<"PUT">>;
+                        _ ->
+                            <<"HEAD">>
                     end,
                 ?assertEqual(Expected, Method)
         after 5000 -> error(control_request_missing)
@@ -390,13 +542,31 @@ serve_control(Listener, Kind, Owner, Ref) ->
     try
         Request = read_control_request(Socket, <<>>),
         [Method | _] = binary:split(Request, <<" ">>, [global]),
+        case Method of
+            <<"HEAD">> ->
+                ?assertEqual(nomatch, binary:match(string:lowercase(Request), <<"\r\nrange:">>));
+            _ ->
+                ok
+        end,
         Owner ! {Ref, Method},
         {Status, Body} =
             case Kind of
-                head_ok ->
+                HeadKind when
+                    HeadKind =:= head_ok;
+                    HeadKind =:= head_informational;
+                    HeadKind =:= head_duplicate;
+                    HeadKind =:= head_missing_length;
+                    HeadKind =:= head_oversized_headers;
+                    HeadKind =:= legacy_head_ok;
+                    HeadKind =:= legacy_head_zero
+                ->
                     {"200 OK", <<>>};
+                head_unexpected_body ->
+                    {"200 OK", <<"hello">>};
                 head_missing ->
                     {"404 Not Found", <<>>};
+                legacy_head_forbidden ->
+                    {"403 Forbidden", <<>>};
                 copy_ok ->
                     {"200 OK", <<"<CopyObjectResult><ETag>owned-etag</ETag></CopyObjectResult>">>};
                 copy_error_xml ->
@@ -406,17 +576,35 @@ serve_control(Listener, Kind, Owner, Ref) ->
                 copy_oversized ->
                     {"200 OK", binary:copy(<<"x">>, 65537)}
             end,
-        Length =
+        LengthHeader =
             case Kind of
-                head_ok -> 123;
-                _ -> byte_size(Body)
+                head_ok ->
+                    "Content-Length: 123\r\n";
+                head_informational ->
+                    "Content-Length: 123\r\n";
+                legacy_head_ok ->
+                    "Content-Length: 123\r\n";
+                head_duplicate ->
+                    "Content-Length: 123\r\ncOnTeNt-LeNgTh: 123\r\n";
+                head_missing_length ->
+                    "";
+                head_oversized_headers ->
+                    ["Content-Length: 0\r\nX-Large: ", lists:duplicate(65537, $x), "\r\n"];
+                _ ->
+                    ["Content-Length: ", integer_to_list(byte_size(Body)), "\r\n"]
             end,
+        case Kind of
+            head_informational ->
+                ok = gen_tcp:send(Socket, "HTTP/1.1 103 Early Hints\r\nLink: </owned>\r\n\r\n");
+            _ ->
+                ok
+        end,
         ok = gen_tcp:send(Socket, [
             "HTTP/1.1 ",
             Status,
-            "\r\nContent-Length: ",
-            integer_to_list(Length),
-            "\r\nContent-Type: application/xml\r\nConnection: close\r\n\r\n",
+            "\r\n",
+            LengthHeader,
+            "Content-Type: application/xml\r\nConnection: close\r\n\r\n",
             Body
         ])
     after
@@ -432,12 +620,34 @@ read_control_request(Socket, Bytes) when byte_size(Bytes) < 65536 ->
             Bytes
     end.
 
-assert_control_result(head_ok, Result) -> ?assertMatch({ok, #{size := 123}}, Result);
-assert_control_result(head_missing, Result) -> ?assertEqual({error, not_found}, Result);
-assert_control_result(copy_ok, Result) -> ?assertEqual({ok, #{etag => <<"owned-etag">>}}, Result);
-assert_control_result(copy_error_xml, Result) -> ?assertEqual({error, copy_xml_error}, Result);
-assert_control_result(copy_missing, Result) -> ?assertEqual({error, not_found}, Result);
-assert_control_result(copy_oversized, Result) -> ?assertEqual({error, body_too_large}, Result).
+assert_control_result(head_ok, Result) ->
+    ?assertMatch({ok, #{size := 123}}, Result);
+assert_control_result(head_informational, Result) ->
+    ?assertMatch({ok, #{size := 123}}, Result);
+assert_control_result(head_unexpected_body, Result) ->
+    ?assertEqual({ok, #{size => 5, content_type => <<"application/xml">>}}, Result);
+assert_control_result(head_missing, Result) ->
+    ?assertEqual({error, not_found}, Result);
+assert_control_result(head_duplicate, Result) ->
+    ?assertEqual({error, invalid_content_length}, Result);
+assert_control_result(head_missing_length, Result) ->
+    ?assertEqual({error, invalid_content_length}, Result);
+assert_control_result(head_oversized_headers, Result) ->
+    ?assertMatch({error, _}, Result);
+assert_control_result(legacy_head_ok, Result) ->
+    ?assertMatch({ok, #{size := 123}}, Result);
+assert_control_result(legacy_head_zero, Result) ->
+    ?assertMatch({ok, #{size := 0}}, Result);
+assert_control_result(legacy_head_forbidden, Result) ->
+    ?assertEqual({error, {http_error, 403}}, Result);
+assert_control_result(copy_ok, Result) ->
+    ?assertEqual({ok, #{etag => <<"owned-etag">>}}, Result);
+assert_control_result(copy_error_xml, Result) ->
+    ?assertEqual({error, copy_xml_error}, Result);
+assert_control_result(copy_missing, Result) ->
+    ?assertEqual({error, not_found}, Result);
+assert_control_result(copy_oversized, Result) ->
+    ?assertEqual({error, body_too_large}, Result).
 
 %% ---------------------------------------------------------------- helpers
 

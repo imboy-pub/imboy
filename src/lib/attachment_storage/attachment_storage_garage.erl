@@ -4,6 +4,7 @@
 -export([
     put/4,
     head/3,
+    head_bounded/1,
     head_bounded/3,
     copy_dispatch/4,
     copy_cross/5,
@@ -107,46 +108,33 @@ request_window(ExpiryMs, Deadline) ->
         {true, true} -> {ok, min(ExpiryLeft, BudgetLeft)}
     end.
 
-%% V5 旧 head 合同保留（legacy read 语义不动，R02：旧行为保留到排空）。
 head(Ns, C, K) ->
-    case read(Ns, C, K) of
-        {ok, B} -> {ok, #{size => byte_size(B), content_type => <<"application/octet-stream">>}};
-        E -> E
-    end.
+    head_bounded(Ns, C, K).
 
 %% @doc direct-v1 真 HEAD（step-5 / R02）：presigned HEAD（query 签名方法
-%% HEAD），无响应正文；到达正文即违规（拒绝，不缓冲）。头集合受信：
+%% HEAD），只消费响应元数据，不读取正文。头集合受信：
 %% content-length 是对象长度而非已传输字节。签名与 GET/PUT 的方法行严格
 %% 一致；若 A0/5a 实测反代会把 HEAD 改写为 GET，该合同须按 profile 显式
 %% 登记（不得静默回落 read）。
 head_bounded(Ns, C, K) ->
-    with_snapshot(Ns, C, K, fun(I) ->
-        Url = signed(I, <<"HEAD">>, <<>>, calendar:universal_time(), 60),
-        case bounded_control_request(head, Url, [], 0) of
-            {ok, 200, Headers, <<>>} ->
-                {ok, head_from_headers(Headers)};
-            {ok, 404, _, _} ->
-                {error, not_found};
-            {ok, Status, _, _} ->
-                {error, {storage_status, Status}};
-            {error, R} ->
-                {error, R}
-        end
-    end).
+    with_snapshot(Ns, C, K, fun head_bounded/1).
+
+head_bounded(I) ->
+    Url = signed(I, <<"HEAD">>, <<>>, calendar:universal_time(), 60),
+    case bounded_control_request(head, Url, [], 0) of
+        {ok, 200, Headers, <<>>} -> head_from_headers(Headers);
+        {ok, 404, _, _} -> {error, not_found};
+        {ok, Status, _, _} -> {error, {storage_status, Status}};
+        {error, R} -> {error, R}
+    end.
 
 head_from_headers(Headers) ->
-    Size =
-        case header_value(Headers, "content-length") of
-            undefined ->
-                0;
-            V ->
-                try list_to_integer(V) of
-                    N when N >= 0 -> N;
-                    _ -> 0
-                catch
-                    _:_ -> 0
-                end
-        end,
+    case content_length(Headers) of
+        {ok, Size} -> {ok, head_from_headers(Headers, Size)};
+        {error, _} = Error -> Error
+    end.
+
+head_from_headers(Headers, Size) ->
     Type =
         case header_value(Headers, "content-type") of
             undefined -> <<"application/octet-stream">>;
@@ -162,9 +150,24 @@ head_from_headers(Headers) ->
         _ -> #{size => Size, content_type => Type, etag => Etag}
     end.
 
+content_length(Headers) ->
+    case [Value || {Name, Value} <- Headers, string:lowercase(Name) =:= "content-length"] of
+        [[Digit | Rest]] when Digit >= $0, Digit =< $9 -> content_length(Rest, Digit - $0);
+        _ -> {error, invalid_content_length}
+    end.
+
+content_length([], Size) ->
+    {ok, Size};
+content_length([Digit | Rest], Size) when
+    Digit >= $0, Digit =< $9, Size =< (9223372036854775807 - (Digit - $0)) div 10
+->
+    content_length(Rest, Size * 10 + Digit - $0);
+content_length(_, _) ->
+    {error, invalid_content_length}.
+
 header_value(Headers, Name) ->
-    case lists:keyfind(Name, 1, Headers) of
-        {_, V} -> V;
+    case lists:search(fun({Key, _}) -> string:lowercase(Key) =:= Name end, Headers) of
+        {value, {_, V}} -> V;
         false -> undefined
     end.
 
@@ -321,18 +324,62 @@ garage_creds(Cfg) ->
         maps:get(region, Cfg, <<"garage">>)
     }.
 
-%% @doc 有界控制请求：async 流式接收 + 超限即取消（T44）。MaxBody=0 表示
-%% 禁止任何正文（HEAD）。inets 合同（attachment_download_handler 先例）：
+%% HEAD uses Gun because httpc discards duplicate Content-Length headers.
+%% Copy uses async inets: 超限即取消（T44）。inets 合同：
 %% 2xx 以 {stream_start, Headers, Pid} 四元组交付并需 stream_next 流控；
 %% 非 2xx 以完整 result 形态交付（错误体尺寸由 Garage 自身决定，收到后仍
 %% 做上限复核；对恶意存储端的收前硬上限依赖受信存储假设，A0/5a 实测登记）。
 %% 不做自动重定向、不在本层重试（上层按状态机裁决）。
-bounded_control_request(Method, Url, Headers, MaxBody) ->
-    Request =
-        case Method of
-            put -> {binary_to_list(Url), Headers, "application/octet-stream", <<>>};
-            head -> {binary_to_list(Url), Headers}
+bounded_control_request(head, Url, [], 0) ->
+    #{scheme := Scheme, host := Host} = Uri = uri_string:parse(Url),
+    Transport =
+        case Scheme of
+            <<"https">> -> tls;
+            <<"http">> -> tcp
         end,
+    DefaultPort =
+        case Transport of
+            tls -> 443;
+            tcp -> 80
+        end,
+    Options = #{
+        transport => Transport,
+        protocols => [http],
+        retry => 0,
+        connect_timeout => 10000,
+        http_opts => #{max_headers => 100, max_header_block_size => ?CONTROL_MAX_BODY}
+    },
+    TlsOptions =
+        case Transport of
+            tcp ->
+                Options;
+            tls ->
+                Options#{
+                    tls_opts => [
+                        {verify, verify_peer},
+                        {cacerts, public_key:cacerts_get()},
+                        {server_name_indication, binary_to_list(Host)},
+                        {customize_hostname_check, [
+                            {match_fun, public_key:pkix_verify_hostname_match_fun(https)}
+                        ]}
+                    ]
+                }
+        end,
+    {ok, _} = application:ensure_all_started(gun),
+    Deadline = erlang:monotonic_time(millisecond) + ?CONTROL_TIMEOUT_MS,
+    case gun:open(binary_to_list(Host), maps:get(port, Uri, DefaultPort), TlsOptions) of
+        {ok, Connection} ->
+            try
+                head_response(Connection, Uri, Deadline)
+            after
+                gun:close(Connection),
+                gun:flush(Connection)
+            end;
+        {error, _} = Error ->
+            Error
+    end;
+bounded_control_request(Method, Url, Headers, MaxBody) ->
+    Request = {binary_to_list(Url), Headers, "application/octet-stream", <<>>},
     case
         httpc:request(
             Method,
@@ -343,6 +390,43 @@ bounded_control_request(Method, Url, Headers, MaxBody) ->
     of
         {ok, ReqId} -> collect_control(ReqId, MaxBody, ?CONTROL_TIMEOUT_MS);
         {error, R} -> {error, R}
+    end.
+
+head_response(Connection, Uri, Deadline) ->
+    case gun:await_up(Connection, max(0, Deadline - erlang:monotonic_time(millisecond))) of
+        {ok, http} ->
+            Path = maps:get(path, Uri, <<"/">>),
+            Query = maps:get(query, Uri, <<>>),
+            Stream = gun:head(Connection, <<Path/binary, "?", Query/binary>>, []),
+            await_head_response(Connection, Stream, Deadline);
+        {error, _} = Error ->
+            Error
+    end.
+
+await_head_response(Connection, Stream, Deadline) ->
+    case Deadline - erlang:monotonic_time(millisecond) of
+        Remaining when Remaining > 0 ->
+            case gun:await(Connection, Stream, Remaining) of
+                {inform, _, _} ->
+                    await_head_response(Connection, Stream, Deadline);
+                {response, fin, Status, Headers} ->
+                    case lists:sum([byte_size(K) + byte_size(V) + 4 || {K, V} <- Headers]) of
+                        Size when Size =< ?CONTROL_MAX_BODY ->
+                            {ok, Status,
+                                [{binary_to_list(K), binary_to_list(V)} || {K, V} <- Headers],
+                                <<>>};
+                        _ ->
+                            {error, headers_too_large}
+                    end;
+                {response, nofin, _, _} ->
+                    {error, body_too_large};
+                {error, _} = Error ->
+                    Error;
+                _ ->
+                    {error, invalid_head_response}
+            end;
+        _ ->
+            {error, timeout}
     end.
 
 collect_control(ReqId, MaxBody, TimeoutMs) ->
@@ -448,7 +532,7 @@ head_snapshot(I) ->
     Url = signed(I, <<"HEAD">>, <<>>, calendar:universal_time(), 60),
     case bounded_control_request(head, Url, [], 0) of
         {ok, 200, Headers, <<>>} ->
-            {ok, stat_from_headers(Headers)};
+            stat_from_headers(Headers);
         {ok, 404, _, _} ->
             {error, not_found};
         {ok, Status, _, _} ->
@@ -458,18 +542,12 @@ head_snapshot(I) ->
     end.
 
 stat_from_headers(Headers) ->
-    Size =
-        case header_value(Headers, "content-length") of
-            undefined ->
-                0;
-            V ->
-                try list_to_integer(V) of
-                    N when N >= 0 -> N;
-                    _ -> 0
-                catch
-                    _:_ -> 0
-                end
-        end,
+    case content_length(Headers) of
+        {ok, Size} -> {ok, stat_from_headers(Headers, Size)};
+        {error, _} = Error -> Error
+    end.
+
+stat_from_headers(Headers, Size) ->
     #{
         size => Size,
         mtime =>
