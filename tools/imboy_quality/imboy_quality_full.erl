@@ -11,7 +11,9 @@
     long_root_hints/0,
     run_group_rotating/6,
     ordered_affinity/0,
-    apply_ordered_affinity/2
+    apply_ordered_affinity/2,
+    ensure_lib_alias/1,
+    maybe_remove_lib_alias/2
 ]).
 
 -define(EXCL, [

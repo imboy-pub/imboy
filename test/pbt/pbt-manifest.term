@@ -48,5 +48,21 @@
     #{id => m03_revision_conflict_compat,
       kind => ordinary,
       mfa => {imboy_quality_pbt_manifest_props, prop_m03_revision_conflict_compat, 0},
-      witnesses => [{imboy_quality_pbt_manifest_props, witnesses_ok, 0}]}
+      witnesses => [{imboy_quality_pbt_manifest_props, witnesses_ok, 0}]},
+    #{id => oracle01_frame_corruption,
+      kind => ordinary,
+      mfa => {imboy_quality_pbt_oracle_faults, prop_oracle01_frame_corruption, 0},
+      witnesses => [{imboy_quality_pbt_oracle_faults, witnesses_ok, 0}]},
+    #{id => oracle02_offset_reversal,
+      kind => ordinary,
+      mfa => {imboy_quality_pbt_oracle_faults, prop_oracle02_offset_reversal, 0},
+      witnesses => [{imboy_quality_pbt_oracle_faults, witnesses_ok, 0}]},
+    #{id => oracle03_tsid_slot_reuse,
+      kind => ordinary,
+      mfa => {imboy_quality_pbt_oracle_faults, prop_oracle03_tsid_slot_reuse, 0},
+      witnesses => [{imboy_quality_pbt_oracle_faults, witnesses_ok, 0}]},
+    #{id => oracle04_stale_live_over_delete,
+      kind => ordinary,
+      mfa => {imboy_quality_pbt_oracle_faults, prop_oracle04_stale_live_over_delete, 0},
+      witnesses => [{imboy_quality_pbt_oracle_faults, witnesses_ok, 0}]}
 ]}.

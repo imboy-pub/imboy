@@ -102,6 +102,8 @@ parse(["admission", "--check-only"]) -> admission_check_only;
 parse(["guard"]) -> guard;
 parse(["eunit", "--full" | _]) -> eunit_full;
 parse(["eunit", "--group=" ++ ModsStr | _]) -> {eunit_group, ModsStr};
+parse(["ct", "--profile=" ++ P | _]) -> {ct, list_to_atom(P)};
+parse(["ct", "--selftest"]) -> ct_selftest;
 parse(["report"]) -> report;
 parse(_) -> erlang:error(usage).
 
@@ -117,6 +119,8 @@ enforce(Ctx, Op) ->
 permit_op(selftest) -> synthetic_selftest;
 permit_op(admission_check_only) -> admission_check_only;
 permit_op({eunit_group, _}) -> eunit_group;
+permit_op({ct, _}) -> ct;
+permit_op(ct_selftest) -> ct;
 permit_op({pbt, _}) -> pbt;
 permit_op(replay_next) -> replay;
 permit_op(Op) -> Op.
@@ -395,7 +399,153 @@ dispatch({eunit_group, ModsStr}, _Ctx, Ctrl) ->
         {Result, OutDir}
     end);
 dispatch(eunit_group, _Ctx, _Ctrl) ->
-    erlang:error(eunit_group_requires_modlist).
+    erlang:error(eunit_group_requires_modlist);
+dispatch({ct, Profile}, _Ctx, Ctrl) ->
+    ct_run_profile(Profile, Ctrl);
+dispatch(ct_selftest, _Ctx, Ctrl) ->
+    ct_run_profile(ct04, Ctrl).
+
+%% P2-09：CT 合同入口（CT01-04）。判据器 fail-closed（imboy_quality_ct:classify）：
+%% 零案例/auto-skip/init 失败/cleanup 异常一律不通过；ct04 为 drafts 合成
+%% 负向自测，不进仓库 U。
+ct_run_profile(Profile, Ctrl) ->
+    {ok, Repo} = file:get_cwd(),
+    require_test_build(Repo),
+    {Suites, TestDir} = ct_plan(Profile, Repo, Ctrl),
+    case Profile of
+        ct04 ->
+            %% 合成 SUITE（drafts）无 app/PG 依赖，主 VM 直跑
+            Results = imboy_quality_ct:run_suites(Suites, TestDir),
+            ct_report(Profile, Results, Ctrl);
+        _ ->
+            %% 真实 SUITE 复用 P1 worker 链：私有 PG 模板/克隆 + per-worker
+            %% overlay config + peer VM（boot 同 eunit_setup 源）。
+            Prepared = imboy_quality_env:prepare(Repo, Ctrl, 1),
+            AliasState = imboy_quality_full:ensure_lib_alias(Repo),
+            try
+                CfgFile = imboy_quality_env:worker_config(Repo, 0, Prepared),
+                CodePaths =
+                    filelib:wildcard(filename:join([Repo, "deps", "*", "ebin"])) ++
+                    [
+                        filename:join(Repo, "imboy/ebin"),
+                        filename:join(Repo, "ebin"),
+                        filename:join(Repo, "test"),
+                        filename:join(Ctrl, "prep/build")
+                    ],
+                PaArgs = lists:append([["-pa", CP] || CP <- CodePaths]),
+                {ok, Peer, _Node} = peer:start_link(#{
+                    connection => {{127, 0, 0, 1}, 0},
+                    args =>
+                        [
+                            "-noshell",
+                            "-noinput",
+                            "-boot",
+                            "no_dot_erlang",
+                            "-config",
+                            CfgFile
+                        ] ++ PaArgs
+                }),
+                try
+                    Results = peer:call(
+                        Peer, imboy_quality_ct, run_suites, [Suites, TestDir], 900000
+                    ),
+                    ct_report(Profile, Results, Ctrl)
+                after
+                    peer:stop(Peer)
+                end
+            after
+                imboy_quality_full:maybe_remove_lib_alias(Repo, AliasState),
+                _ = imboy_quality_env:release(Prepared)
+            end
+    end.
+
+ct_report(Profile, Results, Ctrl) ->
+    Failed = [R || R = {_, V} <- Results, element(1, V) =:= fail],
+    %% ct04（CT04 负向自测）：判定标准 = 判据分类与期望一一相符
+    %% （正控 pass，init 失败/auto-skip/cleanup 异常必须 fail），而非套件通过。
+    Kind = fun(pass) -> pass; ({fail, _}) -> fail end,
+    Check =
+        case ct_expect(Profile) of
+            undefined -> Failed =:= [];
+            Expect -> lists:all(fun({S, V}) -> maps:get(S, Expect) =:= Kind(V) end, Results)
+        end,
+    Verdict =
+        case Check of
+            true -> <<"all_passed">>;
+            false -> <<"suites_failed">>
+        end,
+    Result = #{
+        <<"op">> => <<"ct">>,
+        <<"profile">> => atom_to_binary(Profile),
+        <<"results">> =>
+            [
+                #{
+                    <<"suite">> => atom_to_binary(S),
+                    <<"verdict">> => ct_verdict_bin(V)
+                }
+             || {S, V} <- Results
+            ],
+        <<"total">> => length(Results),
+        <<"verdict">> => Verdict
+    },
+    Out = filename:join(Ctrl, "evidence/ct-latest.json"),
+    {ok, _} = imboy_report_write(Out, Result),
+    {Result, Out}.
+
+ct_plan(ct01, Repo, _Ctrl) ->
+    {[msg_delivery_SUITE, msg_ack_logic_SUITE], filename:join(Repo, "test")};
+ct_plan(ct04, _Repo, Ctrl) ->
+    Dir = filename:join(Ctrl, "drafts/ct-selftest"),
+    ok = filelib:ensure_dir(filename:join(Dir, "x")),
+    ok = write_ct_selftest_suites(Dir),
+    {[qct_ok_SUITE, qct_initfail_SUITE, qct_autoskip_SUITE, qct_cleanupfail_SUITE], Dir}.
+
+ct_expect(ct04) ->
+    #{
+        qct_ok_SUITE => pass,
+        qct_initfail_SUITE => fail,
+        qct_autoskip_SUITE => fail,
+        qct_cleanupfail_SUITE => fail
+    };
+ct_expect(_) ->
+    undefined.
+
+ct_verdict_bin(pass) -> <<"pass">>;
+ct_verdict_bin({fail, _}) -> <<"fail">>.
+
+write_ct_selftest_suites(Dir) ->
+    Suits = [
+        {qct_ok_SUITE,
+            "-module(qct_ok_SUITE).\n"
+            "-export([all/0, passes/1]).\n"
+            "all() -> [passes].\n"
+            "passes(_C) -> ok.\n"},
+        {qct_initfail_SUITE,
+            "-module(qct_initfail_SUITE).\n"
+            "-export([all/0, broken/1, init_per_suite/1]).\n"
+            "all() -> [broken].\n"
+            "init_per_suite(_C) -> {fail, injected_init_failure}.\n"
+            "broken(_C) -> ok.\n"},
+        {qct_autoskip_SUITE,
+            "-module(qct_autoskip_SUITE).\n"
+            "-export([all/0, s1/1]).\n"
+            "all() -> [s1].\n"
+            "s1(_C) -> {skip, \"injected_auto_skip\"}.\n"},
+        {qct_cleanupfail_SUITE,
+            "-module(qct_cleanupfail_SUITE).\n"
+            "-export([all/0, c1/1, end_per_suite/1]).\n"
+            "all() -> [c1].\n"
+            "c1(_C) -> ok.\n"
+            "end_per_suite(_C) -> ok = injected_cleanup_failure.\n"}
+    ],
+    lists:foreach(
+        fun({Name, Src}) ->
+            Path = filename:join(Dir, atom_to_list(Name) ++ ".erl"),
+            ok = file:write_file(Path, Src)
+        end,
+        Suits
+    ),
+    ok.
 
 %% 资源生命周期包裹：正常/异常路径的 after 回收 + SIGTERM 信号路径回收（被 TERM 的控制器
 %% 不会执行 after，2026-10-29 实证遗留 16 库/10 配置/1 Garage 守护进程）。
@@ -890,6 +1040,10 @@ exit_code(#{<<"op">> := <<"guard">>, <<"verdict">> := <<"clean">>}, _) ->
 exit_code(#{<<"op">> := <<"guard">>, <<"verdict">> := <<"violations">>}, _) ->
     1;
 %% PBT：全性质 pass=0；任一性质非 pass=1（INCOMPLETE/失败同等对待）
+exit_code(#{<<"op">> := <<"ct">>, <<"verdict">> := <<"all_passed">>}, _) ->
+    0;
+exit_code(#{<<"op">> := <<"ct">>}, _) ->
+    1;
 exit_code(#{<<"op">> := <<"pbt">>, <<"verdict">> := <<"all_passed">>}, _) ->
     0;
 exit_code(#{<<"op">> := <<"pbt">>}, _) ->
