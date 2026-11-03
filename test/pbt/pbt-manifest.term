@@ -1,0 +1,12 @@
+%% IMBOY_ERLANG_QUALITY 正式 PBT manifest（P2-03 起填充；P2-01 的机制验证
+%% 临时条目不入此文件）。kind=ordinary -> quick 200 / nightly 2000。
+#{properties => [
+    #{id => f01_frame_roundtrip_wire,
+      kind => ordinary,
+      mfa => {imboy_quality_pbt_frame_props, prop_f01_roundtrip_wire_layout, 0},
+      witnesses => [{imboy_quality_pbt_frame_props, witnesses_ok, 0}]},
+    #{id => f02_frame_fragment_recovery,
+      kind => ordinary,
+      mfa => {imboy_quality_pbt_frame_props, prop_f02_fragment_recovery, 0},
+      witnesses => [{imboy_quality_pbt_frame_props, witnesses_ok, 0}]}
+]}.
