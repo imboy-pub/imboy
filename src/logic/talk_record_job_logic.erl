@@ -599,12 +599,15 @@ parse_final_audio(D) when is_map(D) ->
     Channels = maps:get(<<"channels">>, D, undefined),
     Samples = maps:get(<<"sample_count">>, D, undefined),
     DurationMs = maps:get(<<"duration_ms">>, D, undefined),
+    %% PLAN T3 准入证明：attachment_id 为必填（resolve_final_input_tx 以
+    %% 「客户端声明 = 服务端解析」比对其非伪造性）。
+    Aid = maps:get(<<"attachment_id">>, D, undefined),
     case
         is_binary(ObjectKey) andalso byte_size(ObjectKey) > 0 andalso
             is_uuid36(Cid) andalso is_binary(Sha) andalso is_hex64(Sha) andalso
             positive_int(ByteSize) =/= error andalso positive_int(Rate) =/= error andalso
             Channels =:= 1 andalso positive_int(Samples) =/= error andalso
-            positive_int(DurationMs) =/= error
+            positive_int(DurationMs) =/= error andalso positive_int(Aid) =/= error
     of
         true ->
             {ok, #{
@@ -615,7 +618,8 @@ parse_final_audio(D) when is_map(D) ->
                 sample_rate => Rate,
                 channels => Channels,
                 sample_count => Samples,
-                duration_ms => DurationMs
+                duration_ms => DurationMs,
+                attachment_id => Aid
             }};
         false ->
             {error, invalid_final_audio}

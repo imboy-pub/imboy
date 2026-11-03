@@ -325,6 +325,10 @@ renew_grant(ObjectKey, Sha256Hex) ->
                         {error, R}
                 end
             end);
+        {ok, #{<<"direct_state">> := <<"CONFIRMED">>}} ->
+            %% I05/T02：CONFIRMED 重试返回原会话投影（幂等）——无新 attempt、
+            %% 无 presign；信封 state 表达终态，调用方按 state 分支收口。
+            {ok, #{state => <<"CONFIRMED">>, object_key => ObjectKey}};
         {ok, #{<<"direct_state">> := _}} ->
             {error, illegal_state};
         {error, R} ->
