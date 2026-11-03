@@ -874,13 +874,19 @@ enforce_pool_capacity() ->
                 false ->
                     Max = maps:get(max_count, PgConf, 0),
                     NewMax = erlang:max(Max, ?MIN_POOL_INIT_COUNT + 8),
+                    %% `=>` 而非 `:=`：owned lane 夹具
+                    %% （talk_record_owned_eunit_fixture）的 pg_conf 只有
+                    %% start_mfa（空密码隔离，刻意不带容量键）——update
+                    %% 语法对缺键 badkey 会让其后所有套件的 setup 全灭
+                    %% （quality-full 2026-11-04 实证）。construct 语义
+                    %% 存在即覆盖、缺失即补，钉容量意图不变。
                     application:set_env(
                         imboy,
                         pg_conf,
-                        PgConf#{init_count := ?MIN_POOL_INIT_COUNT, max_count := NewMax}
+                        PgConf#{init_count => ?MIN_POOL_INIT_COUNT, max_count => NewMax}
                     ),
                     realign_default_pool(
-                        PgConf#{init_count := ?MIN_POOL_INIT_COUNT, max_count := NewMax}
+                        PgConf#{init_count => ?MIN_POOL_INIT_COUNT, max_count => NewMax}
                     )
             end;
         _ ->
