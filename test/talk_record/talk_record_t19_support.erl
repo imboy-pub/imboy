@@ -31,7 +31,11 @@
 
 -spec setup_all() -> map().
 setup_all() ->
-    talk_record_t17_support:setup_all().
+    State = talk_record_t17_support:setup_all(),
+    %% relay/gateway 链的直拷与 HTTP 面依赖 httpc；每套件自起 VM，不能
+    %% 依赖先行套件隐式启动 inets。
+    {ok, _} = application:ensure_all_started(inets),
+    State.
 
 -spec teardown_all(map()) -> ok.
 teardown_all(State) ->

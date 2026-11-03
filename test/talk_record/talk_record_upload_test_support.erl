@@ -1,5 +1,5 @@
 -module(talk_record_upload_test_support).
--export([configure/0, bytes/1, upload/2]).
+-export([configure/0, bytes/1, upload/2, upload_failclosed/1]).
 
 %% Explicit isolated root required; never fall back to a previous run's root.
 %% S3-only direct 合同（基线 garage-direct-v3）：分段注册经 direct-v1 链，
@@ -71,6 +71,25 @@ upload(_Uid, Part) ->
     Hs = [{binary_to_list(K), binary_to_list(V)} || {K, V} <- Hs0],
     Bytes = bytes(maps:get(<<"seq">>, Part)),
     {ok, {{_, 200, _}, _, _}} =
+        httpc:request(
+            put,
+            {binary_to_list(Url), Hs, "audio/aac", Bytes},
+            [],
+            [{body_format, binary}]
+        ),
+    ok.
+
+%% 声明不防劣负例（fail-closed 合同）：presign 头携带声明 sha 的 checksum，
+%% 与正文不一致 → S3 在 PUT 即 400 拒收（早于 confirm 侧验证生效）。
+upload_failclosed(Part) ->
+    application:ensure_all_started(inets),
+    Ref = pick(Part, upload_ref, <<"upload_ref">>),
+    Grant = pick(Ref, grant, <<"grant">>),
+    Url = pick(Grant, url, <<"url">>),
+    Hs0 = pick(Grant, required_headers, <<"required_headers">>),
+    Hs = [{binary_to_list(K), binary_to_list(V)} || {K, V} <- Hs0],
+    Bytes = bytes(maps:get(<<"seq">>, Part)),
+    {ok, {{_, 400, _}, _, _}} =
         httpc:request(
             put,
             {binary_to_list(Url), Hs, "audio/aac", Bytes},
