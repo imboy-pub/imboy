@@ -142,8 +142,8 @@ start_stream(Req, Id, Filename) ->
             end;
         {http, {Id, {{_, 404, _}, _, _}}} ->
             reply(Req, 404, #{}, <<>>);
-        {http, {Id, {{_, 416, _}, _, Headers}}} ->
-            reply(Req, 416, maps:merge(private_headers(), response_headers(Headers)), <<>>);
+        {http, {Id, {{_, 416, _}, Headers, _}}} ->
+            reply(Req, 416, maps:remove(<<"content-length">>, response_headers(Headers)), <<>>);
         {http, {Id, _}} ->
             reply(Req, 502, #{}, <<>>)
     after 30000 -> reply(Req, 504, #{}, <<>>)
