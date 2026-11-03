@@ -151,6 +151,16 @@ capture_create_insert(Conn, Uid, RecordId, Validated, IdemKey, Resource) ->
     {ok, created | replay, map()} | {error, term()}.
 capture_active_check(Conn, Uid, RecordId, Validated, IdemKey, Resource) ->
     DeviceId = maps:get(device_id, Validated),
+    %% 先收割租约已过期的中断残留（缺陷⑨）：预检虽豁免过期僵尸，活跃唯一
+    %% 部分索引（uq_trc_device_active / uq_trc_record_active）仍按 status 判
+    %% 活——不同步收割则 INSERT 撞索引兜底 409。
+    case talk_record_capture_repo:expire_stale_conflicts_tx(Conn, RecordId, DeviceId) of
+        {ok, _} ->
+            ok;
+        {error, StaleReason} ->
+            ?ERROR_LOG([talk_record_capture_stale_expire_failed, RecordId, StaleReason]),
+            throw({talk_record_rollback, {error, db_error}})
+    end,
     case talk_record_capture_repo:active_conflict_tx(Conn, RecordId, DeviceId, undefined) of
         {ok, none} ->
             insert_new_capture(Conn, Uid, RecordId, Validated, IdemKey, Resource);

@@ -424,12 +424,15 @@ resolve_final_input_tx(Conn, Uid, RecordId, CaptureId, Parsed) ->
         )
     of
         {ok, [Row]} ->
-            case
-                ec_cnv:to_integer(maps:get(<<"attachment_id">>, Row)) =:=
-                    maps:get(attachment_id, Decl)
-            of
-                true -> final_winner_tx(Conn, Decl, Row, CaptureId);
-                false -> throw({talk_record_rollback, {error, final_asset_mismatch}})
+            %% 声明 attachment_id 可选（缺陷⑫）；存在时仍严格比对（PLAN T3）
+            case maps:get(attachment_id, Decl) of
+                undefined ->
+                    final_winner_tx(Conn, Decl, Row, CaptureId);
+                DeclAid ->
+                    case ec_cnv:to_integer(maps:get(<<"attachment_id">>, Row)) =:= DeclAid of
+                        true -> final_winner_tx(Conn, Decl, Row, CaptureId);
+                        false -> throw({talk_record_rollback, {error, final_asset_mismatch}})
+                    end
             end;
         {ok, []} ->
             throw({talk_record_rollback, {error, final_not_confirmed}});
@@ -462,7 +465,9 @@ final_winner_tx(Conn, Decl, Row, CaptureId) ->
                 <<"capture_id">> => CaptureId,
                 <<"object_key">> => Key,
                 <<"client_upload_id">> => maps:get(client_upload_id, Decl),
-                <<"attachment_id">> => maps:get(attachment_id, Decl),
+                %% 服务端解析值恒有：声明端可缺省（缺陷⑫），下游 publish_tx
+                %% 依赖此键（装配深链缺陷⑦修复处），冻结行不允许 undefined。
+                <<"attachment_id">> => ec_cnv:to_integer(maps:get(<<"attachment_id">>, Row)),
                 <<"sha256">> => maps:get(<<"file_hash256">>, Row),
                 <<"byte_size">> => ec_cnv:to_integer(maps:get(<<"size">>, Row)),
                 <<"sample_rate">> => maps:get(sample_rate, Decl),
@@ -607,7 +612,7 @@ parse_final_audio(D) when is_map(D) ->
             is_uuid36(Cid) andalso is_binary(Sha) andalso is_hex64(Sha) andalso
             positive_int(ByteSize) =/= error andalso positive_int(Rate) =/= error andalso
             Channels =:= 1 andalso positive_int(Samples) =/= error andalso
-            positive_int(DurationMs) =/= error andalso positive_int(Aid) =/= error
+            positive_int(DurationMs) =/= error
     of
         true ->
             {ok, #{
@@ -619,7 +624,16 @@ parse_final_audio(D) when is_map(D) ->
                 channels => Channels,
                 sample_count => Samples,
                 duration_ms => DurationMs,
-                attachment_id => Aid
+                %% 缺陷⑫：attachment_id 改可选。DirectUploadResult 不回传
+                %% confirmed attachment id，已发布客户端 complete 缺此字段
+                %% 被必填校验 422 挡死（A16 真机实证）。准入锚不变——
+                %% client_upload_id+object_key+owner+scope 组合（PLAN T3），
+                %% 声明值存在时 resolve 仍严格比对。
+                attachment_id =>
+                    case positive_int(Aid) of
+                        {ok, N} -> N;
+                        _ -> undefined
+                    end
             }};
         false ->
             {error, invalid_final_audio}

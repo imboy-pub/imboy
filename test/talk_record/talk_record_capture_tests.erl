@@ -114,6 +114,34 @@ capture_active_unique_conflicts_test_() ->
         )
     end).
 
+%% 缺陷⑨回归：lease 过期的中断残留不得锁死同设备/同记录的后续采集
+%% （A16 真机实证：终端杀进程后僵尸租约 3 小时仍 409 capture_active_on_device，
+%% 用户永远无法再次上传）。
+capture_expired_lease_not_conflict_test_() ->
+    with_db(fun(State) ->
+        C = maps:get(conn, State),
+        Ids = talk_record_t07_support:ids(),
+        U1 = maps:get(u1, Ids),
+        {ok, R1} = talk_record_t07_support:create_record(U1, <<"t07-k-exp-1">>, ?REC1),
+        {ok, R2} = talk_record_t07_support:create_record(U1, <<"t07-k-exp-2">>, ?REC2),
+        {ok, _} = talk_record_t07_support:create_capture(
+            U1, R1, ?DS1, <<"t07-exp-1">>, <<"t07-exp-dev">>
+        ),
+        %% 模拟终端中断后租约到期：status 仍 recording，lease 已过期
+        {ok, 1} = epgsql:equery(
+            C,
+            "UPDATE talk_record_capture SET lease_until = now() - interval '1 hour'"
+            " WHERE record_id = $1",
+            [R1]
+        ),
+        %% 同设备（不同记录）→ 租约过期不再 409 capture_active_on_device
+        {ok, _} = talk_record_t07_support:create_capture(
+            U1, R2, ?DS2, <<"t07-exp-2">>, <<"t07-exp-dev">>
+        ),
+        %% 同记录第二采集（不同设备会话）→ 旧租约过期后同样放行
+        {ok, _} = talk_record_t07_support:create_capture(U1, R1, ?DS3, <<"t07-exp-3">>)
+    end).
+
 capture_if_match_mismatch_test_() ->
     with_db(fun(_State) ->
         Ids = talk_record_t07_support:ids(),

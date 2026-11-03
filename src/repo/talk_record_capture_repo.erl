@@ -22,6 +22,7 @@
 -export([insert_capture_tx/2]).
 -export([find_tx/4, find_by_record_device_tx/3, find_recent_by_record_tx/2]).
 -export([active_conflict_tx/4]).
+-export([expire_stale_conflicts_tx/3]).
 -export([insert_event_tx/2, list_events_tx/2, find_event_tx/3, find_event_by_seq_tx/3]).
 -export([apply_status_tx/5]).
 -export([touch_lease_tx/2]).
@@ -120,13 +121,21 @@ find_recent_by_record_tx(Conn, RecordId) ->
     {ok, none | record | device} | {error, term()}.
 active_conflict_tx(Conn, RecordId, DeviceId, ExcludeCaptureId) ->
     Exclude = exclude_id(ExcludeCaptureId),
+    %% 活跃判定必须含租约活性：lease 过期的 draft/recording/paused/interrupted
+    %% 是中断残留（终端杀进程后无人 end），若继续算活跃，同设备/同记录的
+    %% 后续 create_capture 永远 409（capture_active_on_device/on_record），
+    %% 用户被僵尸租约锁死（A16 真机实证：lease 过期 3 小时仍挡上传）。
+    %% lease_until 为 NULL 视为活跃（防御：写入路径必填租约，NULL 仅存于
+    %% 历史数据，保守不豁免）。
     Sql =
         <<"SELECT", "  EXISTS (SELECT 1 FROM talk_record_capture r",
             "   WHERE r.record_id = $1 AND r.id <> $3",
-            "     AND r.status IN ('draft','recording','paused','interrupted')) AS on_record,",
+            "     AND r.status IN ('draft','recording','paused','interrupted')",
+            "     AND (r.lease_until IS NULL OR r.lease_until > now())) AS on_record,",
             "  EXISTS (SELECT 1 FROM talk_record_capture d",
             "   WHERE d.device_id = $2 AND d.id <> $3",
-            "     AND d.status IN ('draft','recording','paused','interrupted')) AS on_device">>,
+            "     AND d.status IN ('draft','recording','paused','interrupted')",
+            "     AND (d.lease_until IS NULL OR d.lease_until > now())) AS on_device">>,
     case elib_pg:query(Conn, Sql, [RecordId, DeviceId, Exclude]) of
         {ok, [#{<<"on_record">> := true}]} -> {ok, record};
         {ok, [#{<<"on_device">> := true}]} -> {ok, device};
@@ -137,6 +146,28 @@ active_conflict_tx(Conn, RecordId, DeviceId, ExcludeCaptureId) ->
 -spec exclude_id(integer() | undefined) -> integer().
 exclude_id(undefined) -> 0;
 exclude_id(Id) -> Id.
+
+%% @doc 收割租约已过期的活跃 capture（中断残留）：置终态 'ended' 释放活跃
+%% 唯一部分索引（uq_trc_device_active / uq_trc_record_active 的谓词只看
+%% status，PG 部分索引无法用 now() 表达租约活性）。仅限同记录或同设备的
+%% 僵尸，不触碰无关会话；并把受影响记录的 capture_status 投影同步终结。
+%% （缺陷⑨：终端杀进程后无人 end，僵尸租约把同设备后续 create_capture
+%% 永久锁死——A16 真机实证 lease 过期 3 小时仍 409。）
+-spec expire_stale_conflicts_tx(any(), integer(), binary()) -> {ok, non_neg_integer()}.
+expire_stale_conflicts_tx(Conn, RecordId, DeviceId) ->
+    Sql =
+        <<"WITH stale AS (", "  UPDATE talk_record_capture c",
+            "     SET status = 'ended', ended_at = now(),",
+            "         updated_at = now(), revision = c.revision + 1",
+            "   WHERE c.status IN ('draft','recording','paused','interrupted')",
+            "     AND c.lease_until IS NOT NULL AND c.lease_until <= now()",
+            "     AND (c.record_id = $1 OR c.device_id = $2)", "  RETURNING c.record_id)",
+            " UPDATE talk_record r", "    SET capture_status = 'ended', updated_at = now()",
+            "  WHERE r.id IN (SELECT record_id FROM stale)">>,
+    case elib_pg:query(Conn, Sql, [RecordId, DeviceId]) of
+        {ok, Count} -> {ok, Count};
+        {error, Reason} -> {error, Reason}
+    end.
 
 %% ===================================================================
 %% capture_event

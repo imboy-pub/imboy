@@ -164,19 +164,34 @@ route(<<"GET">>, <<"status">>, Req0, State) ->
         undefined ->
             reply_err(Req0, ?ERR_BAD_REQUEST, <<"object_key required">>, retry_session);
         Key ->
-            case attach_direct_logic:status(Key, Uid) of
-                {ok, Info} ->
-                    reply_ok(Req0, Info);
-                {error, not_found} ->
-                    reply_err(Req0, ?ERR_NOT_FOUND, <<"not_found">>, retry_session);
-                {error, _} ->
-                    reply_err(Req0, ?ERR_SERVICE_UNAVAILABLE, <<"service_unavailable">>, poll)
-            end
+            status_reply(Req0, Key, Uid)
+    end;
+%% 客户端（含已发布版本）status 会话查询走 POST + JSON body（direct-v1 会话
+%% seam 统一 POST；A16 真机实证：面聊 final 直传卡 405 Method Not Allowed）。
+%% GET + query 保留为等价形态。
+route(<<"POST">>, <<"status">>, Req0, State) ->
+    Uid = auth_ds:current_uid(State),
+    case maps:get(<<"object_key">>, body_map(Req0), undefined) of
+        undefined ->
+            reply_err(Req0, ?ERR_BAD_REQUEST, <<"object_key required">>, retry_session);
+        Key ->
+            status_reply(Req0, Key, Uid)
     end;
 route(_, _, Req0, _State) ->
     cowboy_req:reply(405, #{}, <<"Method Not Allowed">>, Req0).
 
 %% ===== 内部 =====
+
+-spec status_reply(cowboy_req:req(), binary(), integer()) -> cowboy_req:req().
+status_reply(Req0, Key, Uid) ->
+    case attach_direct_logic:status(Key, Uid) of
+        {ok, Info} ->
+            reply_ok(Req0, Info);
+        {error, not_found} ->
+            reply_err(Req0, ?ERR_NOT_FOUND, <<"not_found">>, retry_session);
+        {error, _} ->
+            reply_err(Req0, ?ERR_SERVICE_UNAVAILABLE, <<"service_unavailable">>, poll)
+    end.
 
 body_map(Req0) ->
     case cowboy_req:read_body(Req0) of
