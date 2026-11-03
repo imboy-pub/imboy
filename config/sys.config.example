@@ -124,6 +124,11 @@
             public_base_url => <<"https://s3.imboy.pub">>,
             access_key => <<"GKxxxx">>,
             secret_key => <<"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx">>
+            %% 内部 CA 私有部署（C02）：Garage endpoint 走自签/内部 CA 的 HTTPS
+            %% 时，用 garage_control_cacerts 显式注入 DER 证书列表作为服务端
+            %% 控制连接（HEAD/Copy）信任锚；缺省回落操作系统信任库。仅影响
+            %% 服务端控制面 TLS，不改变数据面 presign 合同。示例：
+            %% garage_control_cacerts => [DerBin1, DerBin2]
         }},
 
         %% LiveKit SFU 配置（群通话/屏幕共享；占位符，实际值走 IMBOY_LIVEKIT_* 环境变量）

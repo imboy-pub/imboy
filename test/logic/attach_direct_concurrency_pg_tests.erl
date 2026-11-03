@@ -102,6 +102,11 @@ new_session(Sha) ->
 
 %% attempt 手动推进到 PROOF_VERIFIED（不经 finalize/confirm；与
 %% attach_direct_quota_gc_pg_tests 同款造数，供 SQL 层并发/负向用例使用）。
+%% winner_pin 合同（迁移 00000200 注释 + 00000196 fn_v5_pending_session_guard
+%% line 40）：confirm 跳转前 attachment 行必须已存在（正常链由
+%% save_confirmed_tx→confirm_if_absent_tx 建立，物理键留 NULL 由 pin 补映射）。
+%% 造数因此复用同一 confirm_if_absent_tx 入口建行；缺失即 'v5 confirm
+%% unknown asset'（23510，被 winner_pin_tx 折叠为 winner_conflict）。
 bring_to_proof_verified(Key, No, ProofSha) ->
     elib_pg:query(
         <<
@@ -113,7 +118,40 @@ bring_to_proof_verified(Key, No, ProofSha) ->
     elib_pg:with_tx(fun(Conn) ->
         ok = attach_direct_attempt_repo:mark_dispatched_tx(Conn, Key, No),
         ok = attach_direct_attempt_repo:record_outcome_tx(Conn, Key, No, copy_completed, undefined),
-        attach_direct_attempt_repo:record_proof_tx(Conn, Key, No, ProofSha, 10)
+        attach_direct_attempt_repo:record_proof_tx(Conn, Key, No, ProofSha, 10),
+        %% 正常链 save_confirmed_tx 同款建行（诊断 v4 实证）：location 四元组
+        %% 取 pending register 冻结值、物理键预填 attempt target——与
+        %% attach_direct_logic:confirm_attach_and_pin 交付给 save_confirmed_tx
+        %% 的 Attach+Location 逐字段一致。缺失行 → 'v5 confirm unknown asset'；
+        %% 缺 location → 'v5 attachment location immutable after fill'；两者
+        %% 均 23510，被 winner_pin_tx 折叠为 winner_conflict（已确诊）。
+        {ok, [Pending]} = elib_pg:query(
+            <<
+                "SELECT storage_driver, storage_namespace, storage_container,"
+                " storage_locator_sha256 FROM attach_pending WHERE object_key=$1"
+            >>,
+            [Key]
+        ),
+        {ok, _Id, _First} = attachment_repo:confirm_if_absent_tx(
+            Conn,
+            elib_dt:now(),
+            ?UID,
+            #{
+                <<"path">> => Key,
+                <<"mime_type">> => <<"application/octet-stream">>,
+                <<"name">> => <<"a.bin">>,
+                <<"url">> => Key,
+                <<"size">> => 10,
+                <<"scope">> => <<"private">>,
+                <<"storage_driver">> => maps:get(<<"storage_driver">>, Pending),
+                <<"storage_namespace">> => maps:get(<<"storage_namespace">>, Pending),
+                <<"storage_container">> => maps:get(<<"storage_container">>, Pending),
+                <<"storage_locator_sha256">> =>
+                    maps:get(<<"storage_locator_sha256">>, Pending),
+                <<"storage_physical_key">> => attempt_target(Key, No)
+            }
+        ),
+        ok
     end).
 
 attempt_target(Key, No) ->
@@ -136,6 +174,18 @@ attachment_count(Key) ->
         [Key]
     ),
     N.
+
+physical_key_row(Key) ->
+    elib_pg:query(
+        <<"SELECT storage_physical_key AS pk FROM attachment WHERE path=$1">>,
+        [Key]
+    ).
+
+pending_confirmed(Key) ->
+    {ok, [#{<<"direct_state">> := DS}]} = elib_pg:query(
+        <<"SELECT direct_state FROM attach_pending WHERE object_key=$1">>, [Key]
+    ),
+    DS =:= <<"CONFIRMED">>.
 
 with_storage_mock(CopyFun, HeadFun, Inner) ->
     ok = meck:new(attachment_storage_garage, [passthrough, no_link]),
@@ -219,35 +269,66 @@ concurrent_finalize_single_winner() ->
 
 %% C03-02：GC claim 与 winner_pin 真实并发（两个独立事务同时开火）。数据库
 %% 互斥（同 advisory 锁 + FOR UPDATE）保证恰一个提交成功；败者 fail-closed。
+%% 两个 spawn 的启动顺序在此确定性调度下决定 advisory 锁归属（实证 12/12
+%% 先 spawn 者赢），因此正反两种 spawn 顺序各跑一轮，分别覆盖两个合法
+%% 终态分支，并证明互斥性与到达顺序无关。
 concurrent_gc_vs_winner_pin() ->
+    ok = gc_vs_winner_race(gc_first),
+    ok = gc_vs_winner_race(pin_first),
+    ok.
+
+gc_vs_winner_race(Order) ->
     {Key, No} = new_session(hex64(16#D2)),
     Sha = hex64(16#D3),
     bring_to_proof_verified(Key, No, Sha),
     Target = attempt_target(Key, No),
-    Results = run_concurrent([
-        fun() ->
-            elib_pg:query(<<"SELECT fn_dv1_gc_claim($1,$2,$3)">>, [Key, No, <<"concurrent-gc">>])
+    GcFun = fun() ->
+        elib_pg:query(<<"SELECT fn_dv1_gc_claim($1,$2,$3)">>, [Key, No, <<"concurrent-gc">>])
+    end,
+    PinFun = fun() ->
+        elib_pg:with_tx(fun(Conn) ->
+            attach_direct_attempt_repo:winner_pin_tx(Conn, Key, No, Target, Sha)
+        end)
+    end,
+    Funs =
+        case Order of
+            gc_first -> [GcFun, PinFun];
+            pin_first -> [PinFun, GcFun]
         end,
-        fun() ->
-            elib_pg:with_tx(fun(Conn) ->
-                attach_direct_attempt_repo:winner_pin_tx(Conn, Key, No, Target, Sha)
-            end)
-        end
-    ]),
-    {_P1, GcResult} = hd(Results),
-    {_P2, PinResult} = hd(tl(Results)),
+    Results = run_concurrent(Funs),
+    %% run_concurrent 保序返回：首元素对应 Funs 的第一项（按 Order 即 GC 或 pin）
+    GcResult =
+        case Order of
+            gc_first -> element(2, hd(Results));
+            pin_first -> element(2, lists:nth(2, Results))
+        end,
+    PinResult =
+        case Order of
+            gc_first -> element(2, lists:nth(2, Results));
+            pin_first -> element(2, hd(Results))
+        end,
     FinalState = attempt_state(Key, No),
     case FinalState of
         <<"WINNER">> ->
-            %% pin 先提交：GC 后到被拒（not_claimable 或等价错误），对象已发布
+            %% pin 先提交：GC 后到被拒（not_claimable 或等价错误），物理映射
+            %% 补齐、pending CONFIRMED（可发布状态）
             ?assertMatch({error, _}, gc_error(GcResult)),
             ?assertMatch(ok, PinResult),
-            ?assertEqual(1, attachment_count(Key));
+            ?assertEqual(1, attachment_count(Key)),
+            {ok, [#{<<"pk">> := WinPk}]} = physical_key_row(Key),
+            ?assertEqual(Target, WinPk),
+            ?assert(pending_confirmed(Key));
         <<"GC_CLAIMED">> ->
-            %% GC 先提交：winner 后到 fail-closed，不发布已删对象
+            %% GC 先提交：winner 后到 fail-closed，不发布已删对象：
+            %% 物理键未映射（不可绑定读取）、pending 非 CONFIRMED、清理账入列
             ?assertMatch({ok, _}, GcResult),
             ?assertMatch({error, _}, PinResult),
-            ?assertEqual(0, attachment_count(Key)),
+            ?assertEqual(1, attachment_count(Key)),
+            %% 物理键已按正常链预填 target；不可读可绑由 pending 非
+            %% CONFIRMED 保证（对象从未进入已确认状态）
+            {ok, [#{<<"pk">> := GcPk}]} = physical_key_row(Key),
+            ?assertEqual(Target, GcPk),
+            ?assertNot(pending_confirmed(Key)),
             {ok, Rows} = elib_pg:query(
                 <<"SELECT physical_key FROM attach_direct_cleanup WHERE object_key=$1">>, [Key]
             ),
@@ -268,10 +349,12 @@ cleanup_lease_expiry_reclaim() ->
     {Key, _No} = new_session(hex64(16#D4)),
     {ok, #{attempt_id := _No2}} = attach_direct_logic:renew_grant(Key, hex64(16#D5)),
     {ok, [_]} = elib_pg:query(<<"SELECT fn_dv1_cancel($1,$2)">>, [Key, <<"lease-test">>]),
-    %% cancel 对 2 个 attempt 各记 staging+candidate（去重后共 4 行），全部过龄期
+    %% cancel 对 2 个 attempt 各记 staging+candidate（去重后共 4 行）。龄期设
+    %% 1 小时使本 Key 的行在 fn_dv1_cleanup_claim 的全表 (created_at,id) 序中
+    %% 排最前（共享测试库中他套件残留行不会插队）；循环领取兜底残留插队。
     {ok, _} = elib_pg:query(
         <<
-            "UPDATE attach_direct_cleanup SET created_at = now() - interval '120 seconds'"
+            "UPDATE attach_direct_cleanup SET created_at = now() - interval '1 hour'"
             " WHERE object_key=$1"
         >>,
         [Key]
@@ -281,14 +364,9 @@ cleanup_lease_expiry_reclaim() ->
         [Key]
     ),
     ?assert(RowsK =/= []),
-    %% 首次领取（每次 LIMIT 1，按 created_at,id 序）：领到本 Key 的任意一行
-    {ok, Claimed1} = elib_pg:query(
-        <<"SELECT out_physical_key, out_attempts FROM fn_dv1_cleanup_claim($1)">>,
-        [claim_token()]
-    ),
-    [Row1] = Claimed1,
-    Taken = maps:get(<<"out_physical_key">>, Row1),
-    ?assert(lists:member(Taken, [maps:get(<<"physical_key">>, R) || R <- RowsK])),
+    OurKeys = [maps:get(<<"physical_key">>, R) || R <- RowsK],
+    %% 循环领取（cap 12）：领到本 Key 的任意一行为止
+    {Taken, Row1} = claim_until_ours(OurKeys, 12),
     ?assertEqual(1, maps:get(<<"out_attempts">>, Row1)),
     %% lease 未失效期间不可重复领取同一行（互斥不重发）
     {ok, Claimed2} = elib_pg:query(
@@ -323,6 +401,27 @@ claim_token() ->
     %% epgsql uuid codec 接受 32 字符小写 hex binary
     binary:encode_hex(crypto:strong_rand_bytes(16), lowercase).
 
+%% fn_dv1_cleanup_claim 全表按 (created_at,id) LIMIT 1 领取：循环直到领到
+%% 本 Key 的行（cap 内领空即失败——本 Key 行龄期 1h 必在任意外来残留行之前，
+%% 连续领空说明表状态异常，属测试环境问题应显式暴露）。
+claim_until_ours(OurKeys, N) when N =< 0 ->
+    erlang:error({claim_ours_exhausted, OurKeys});
+claim_until_ours(OurKeys, N) ->
+    {ok, Claimed} = elib_pg:query(
+        <<"SELECT out_physical_key, out_attempts FROM fn_dv1_cleanup_claim($1)">>,
+        [claim_token()]
+    ),
+    case [R || R <- Claimed, lists:member(maps:get(<<"out_physical_key">>, R), OurKeys)] of
+        [Row] ->
+            {maps:get(<<"out_physical_key">>, Row), Row};
+        [] ->
+            %% 领到外来行或领空：外来行继续消化，领空直接报错
+            case Claimed of
+                [] -> erlang:error({claim_ours_exhausted, OurKeys});
+                _ -> claim_until_ours(OurKeys, N - 1)
+            end
+    end.
+
 %% C03-04：以 attempt N-1 的 target/proof 冒充 attempt N 的回执——
 %% fn_dv1_winner_pin 的 digest/physical 比对拒绝，attempt N 不可确认。
 cross_attempt_receipt_rejected() ->
@@ -338,13 +437,30 @@ cross_attempt_receipt_rejected() ->
         [Key, No2, OldTarget, OldSha]
     ),
     ?assertMatch({error, _}, Spoof),
-    %% 未确认：无 attachment、attempt 仍 PROOF_VERIFIED（无 winner）
-    ?assertEqual(0, attachment_count(Key)),
+    %% 冒充被拒：attempt 仍 PROOF_VERIFIED，attachment 行存在（confirm 建行、
+    %% 物理键按正常链预填 target），pending 非 CONFIRMED——无可读可绑状态。
     ?assertEqual(<<"PROOF_VERIFIED">>, attempt_state(Key, No2)),
-    %% 合法路径可确认性已由 attach_direct_quota_gc_pg_tests 的
-    %% gc_claim_after_winner_rejected 同款造数证明（bring_to_proof_verified
-    %% + 正确 winner_pin_tx），此处不重复（SQL 直调错误后的连接状态对
-    %% 紧随的事务有干扰，属测试耦合而非产品行为）。
+    ?assertEqual(1, attachment_count(Key)),
+    {ok, [#{<<"pk">> := SpoofPk}]} = physical_key_row(Key),
+    ?assertEqual(attempt_target(Key, No2), SpoofPk),
+    ?assertNot(pending_confirmed(Key)),
+    %% 冒充被拒后，同一 attempt 的合法回执仍可确认（fail-closed 不误伤合法
+    %% 路径）：digest/物理键门禁放行，物理映射补齐，pending 收敛 CONFIRMED
+    %% 且 referer_time=1（不重复计费）。
+    ok = elib_pg:with_tx(fun(Conn) ->
+        attach_direct_attempt_repo:winner_pin_tx(
+            Conn, Key, No2, attempt_target(Key, No2), Sha2
+        )
+    end),
+    ?assertEqual(<<"WINNER">>, attempt_state(Key, No2)),
+    {ok, [#{<<"pk">> := MappedPk}]} = physical_key_row(Key),
+    ?assertEqual(attempt_target(Key, No2), MappedPk),
+    ?assert(pending_confirmed(Key)),
+    {ok, [Att]} = elib_pg:query(
+        <<"SELECT referer_time FROM attachment WHERE path=$1">>, [Key]
+    ),
+    ?assertEqual(1, maps:get(<<"referer_time">>, Att)),
+    ?assert(pending_confirmed(Key)),
     ok.
 
 %% C03-04：proof digest 与 attempt 声明不符（hash 错）——winner_pin 拒绝。
@@ -360,8 +476,12 @@ proof_digest_mismatch_rejected() ->
             [Key, No, attempt_target(Key, No), WrongSha]
         )
     ),
-    ?assertEqual(0, attachment_count(Key)),
+    %% digest 拒后：attempt 仍 PROOF_VERIFIED，pending 非 CONFIRMED
+    %% （无 winner、无可读可绑状态；物理键按正常链预填 target）
     ?assertEqual(<<"PROOF_VERIFIED">>, attempt_state(Key, No)),
+    {ok, [#{<<"pk">> := Pk1}]} = physical_key_row(Key),
+    ?assertEqual(attempt_target(Key, No), Pk1),
+    ?assertNot(pending_confirmed(Key)),
     ok.
 
 %% C03-04：endpoint 配置切换后 finalize fail-closed。direct 派发使用 grant 时
