@@ -20,9 +20,31 @@ upload_success_pins_and_puts_frozen_disk_test() ->
         ?assertEqual({ok, maps:get(bytes, C)}, file:read_file(maps:get(target, C))),
         ?assertEqual(receipt(maps:get(bytes, C)), get(multipart_receipt)),
         ?assertEqual(1, meck:num_calls(attach_pending_repo, register_content_pin, 2)),
-        ?assertEqual(1, meck:num_calls(attach_pending_repo, recheck_content_pin, 3)),
-        ?assertEqual(0, meck:num_calls(elib_oss, put_object_from_file, 4))
+        ?assertEqual(1, meck:num_calls(attach_pending_repo, recheck_content_pin, 3))
     end).
+
+%% V3-19 退役守卫（C09）：elib_oss 不再提供磁盘文件→对象存储的 BEAM 内
+%% 写通道；该面唯一合法路径是受限 Worker（attachment_worker_port:upload_file
+%% → assembly_io_worker.escript，Worker 进程内自签 presign PUT+checksum）。
+%% meck 无法 mock 不存在的函数，退役以导出面断言承载（mock 卸载后亦真）。
+put_object_from_file_retired_test() ->
+    meck_unload_guard(),
+    {module, elib_oss} = code:ensure_loaded(elib_oss),
+    ?assertNot(erlang:function_exported(elib_oss, put_object_from_file, 4)),
+    ?assertNot(erlang:function_exported(elib_oss, put_object_from_file_ctx, 5)),
+    assert_put_object_from_file_retired().
+
+meck_unload_guard() ->
+    try
+        meck:unload(elib_oss)
+    catch
+        _:_ -> ok
+    end,
+    ok.
+
+assert_put_object_from_file_retired() ->
+    ?assertNot(erlang:function_exported(elib_oss, put_object_from_file, 4)),
+    ?assertNot(erlang:function_exported(elib_oss, put_object_from_file_ctx, 5)).
 
 upload_rejects_other_owner_key_prefix_test() ->
     with_fixture(fun(C) ->
@@ -468,15 +490,10 @@ with_fixture(Fun) ->
             ok
         end),
         meck:expect(elib_oss, max_file_size, fun() -> 100 end),
-        meck:expect(
-            elib_oss,
-            put_object_from_file,
-            fun(_, _, _, _) -> error(uncontrolled_multipart_storage_write) end
-        ),
         Fun(C),
         ?assert(meck:validate(attach_pending_repo)),
         ?assert(meck:validate(elib_oss)),
-        ?assertEqual(0, meck:num_calls(elib_oss, put_object_from_file, 4))
+        assert_put_object_from_file_retired()
     after
         meck:unload([attach_pending_repo, elib_oss]),
         erase(multipart_receipt),

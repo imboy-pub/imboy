@@ -58,9 +58,14 @@ worker_e2e() ->
         mime => <<"image/png">>,
         ruleset_digest => attachment_content_receipt:ruleset_digest()
     }),
-    %% 2) 负向：篡改 sha256 绑定 → verify 拒（fail-closed）
+    %% 2) 负向：篡改 sha256 绑定 → verify 拒（fail-closed）。
+    %%    tamper_verify 直调 attachment_content_receipt:verify/3，其合同
+    %%    返回裸原子（forged|expired|binding_mismatch|verdict_not_pass）；
+    %%    {error, {receipt, _}} 包装形态仅出现在 port 层二次验证
+    %%    （attachment_worker_port:verify_receipt）。binding 门拒绝篡改
+    %%    sha256 → binding_mismatch。
     ?assertMatch(
-        {error, {receipt, _}},
+        {error, binding_mismatch},
         tamper_verify(Receipt, Secret, AttemptKey, Key, Size)
     ),
     %% 3) 负向：回执跨 attempt 冒充（Worker 按任务签发后用攻击者期望字段

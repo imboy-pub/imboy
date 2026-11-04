@@ -44,7 +44,8 @@ scan_external(Task) ->
 %% ===== V3-18 P2：汇编 IO Worker 派发（fetch/upload；正文零过 BEAM） =====
 
 %% Items：[{url, path, sha256_hex, size}]（有序，顺序即拼接序）。
-%% 返回 {ok, #{fetched => 0}} | {error, _}（fail-closed，不回退 BEAM 下载）。
+%% 返回 {ok, #{fetched => N}}（N=实际成功项数，逐项 size+sha 校验在
+%% worker 内完成）| {error, _}（fail-closed，不回退 BEAM 下载）。
 fetch_files(Items) ->
     Task = #{
         action => fetch,
@@ -109,7 +110,12 @@ do_fetch_in_process([Item | Rest]) ->
             case byte_size(Body) =:= WantSize andalso Sha =:= WantSha of
                 true ->
                     ok = file:write_file(Path, Body),
-                    do_fetch_in_process(Rest);
+                    %% C09 修正：与 assembly_io_worker.escript 同构——
+                    %% 回执 fetched = 实际成功项数（原实现递归丢弃计数）。
+                    case do_fetch_in_process(Rest) of
+                        {ok, #{fetched := C}} -> {ok, #{fetched => C + 1}};
+                        Error -> Error
+                    end;
                 false ->
                     {error, part_integrity_mismatch}
             end;

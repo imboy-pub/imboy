@@ -48,6 +48,9 @@ to_path(P) when is_binary(P) -> binary_to_list(P);
 to_path(P) when is_list(P) -> P.
 
 %% parts 按序下载（顺序即拼接序）；逐项 size+sha256 全量校验。
+%% 回执 {ok, #{fetched => N}} 的 N = 实际成功下载项数（C09 修正：原实现
+%% 递归丢弃计数——单 item 成功与空 items 均回 fetched=0，回执无法区分
+%% "全部成功"与"未执行"；失败任一项即整链 {error, _} 非零退出）。
 do_fetch(Items) -> do_fetch(Items, 1).
 do_fetch([], _N) -> {ok, #{fetched => 0}};
 do_fetch([Item | Rest], N) ->
@@ -61,7 +64,10 @@ do_fetch([Item | Rest], N) ->
             case byte_size(Body) =:= WantSize andalso Sha =:= WantSha of
                 true ->
                     ok = file:write_file(Path, Body),
-                    do_fetch(Rest, N + 1);
+                    case do_fetch(Rest, N + 1) of
+                        {ok, #{fetched := C}} -> {ok, #{fetched => C + 1}};
+                        Error -> Error
+                    end;
                 false ->
                     {error, {part_integrity_mismatch, N}}
             end;
