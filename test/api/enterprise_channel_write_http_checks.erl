@@ -20,6 +20,16 @@ run(S) ->
         maps:get(<<"updated_at">>, ok_json(R40)), maps:get(<<"updated_at">>, ok_json(R41))
     ),
     cover(41),
+    %% INT-50：频道消息代发（application sender；required_audit 落盘由
+    %% audited_req 的计数断言把关，seen 记录使 assert_complete 29 项齐全）。
+    B50 = #{
+        <<"sender_mode">> => <<"application">>,
+        <<"msg_type">> => <<"text">>,
+        <<"content">> => <<"internal audit channel dispatch">>
+    },
+    R50 = audited_req(S, <<"POST">>, <<Path/binary, "/messages">>, B50, <<"ch-50">>),
+    ok_json(R50),
+    cover(50),
     negatives(S, Path, B40, B41),
     creator_negatives(S, B40),
     resource_negatives(S, Path, B40),

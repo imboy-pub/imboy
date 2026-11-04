@@ -31,18 +31,21 @@
     user_deletion_executor
 ]).
 
-run(Entry, Fault, #{conn := Conn, root := Root}) ->
+%% V3-20 S3-only：state 不再携带 disk root——support 的探针三函数
+%% （put_disk_file/disk_listing/assert_disk_intact）已等效迁移至真实 Garage
+%% （W202_GARAGE_*），Root 实参保留兼容签名（garage 分支不消费）。
+run(Entry, Fault, #{conn := Conn}) ->
     Key = ?S:unique_key(<<"v5e2e/w403p/", Entry/binary>>),
     Bytes = <<"w403p-intent-bytes:", Entry/binary, ":", (atom_to_binary(Fault, utf8))/binary>>,
-    ok = ?S:put_disk_file(Root, Key, Bytes),
-    Before = ?S:disk_listing(Root),
+    ok = ?S:put_disk_file(undefined, Key, Bytes),
+    Before = ?S:disk_listing(undefined),
     [ok = meck:new(M, [non_strict, no_link, passthrough]) || M <- ?MECK_MODULES],
     try
         ok = base_expectations(Conn),
         Extra = execute(Entry, Fault, Conn, Key),
-        After = ?S:disk_listing(Root),
+        After = ?S:disk_listing(undefined),
         Before = After,
-        ok = ?S:assert_disk_intact(Root, Key, Bytes),
+        ok = ?S:assert_disk_intact(undefined, Key, Bytes),
         ok = ?S:assert_no_queue_row(Conn, Key, Entry),
         maps:merge(
             #{

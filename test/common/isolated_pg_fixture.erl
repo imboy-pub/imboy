@@ -18,7 +18,12 @@ test(Generator, Seconds) when is_function(Generator, 0), is_integer(Seconds), Se
         ]),
         case {Result, proplists:get_value(pass, Summary, 0)} of
             {ok, Passed} when Passed > 0 -> ok;
-            _ -> error({isolated_eunit_failed, Result, Summary})
+            %% 透传子 case 失败详情（listener 收集的 failures），不再只报计数。
+            _ ->
+                error(
+                    {isolated_eunit_failed, Result, Summary,
+                        proplists:get_value(failures, Summary, [])}
+                )
         end
     end}.
 
@@ -67,13 +72,30 @@ await_cache_ready(Deadline) ->
 
 %% EUnit owns the counts; the parent logs them even when its test output is captured.
 start(Options) -> eunit_listener:start(?MODULE, Options).
-init(Options) -> proplists:get_value(owner, Options).
+init(Options) -> {[], proplists:get_value(owner, Options)}.
 handle_begin(_Type, _Data, State) -> State.
-handle_end(_Type, _Data, State) -> State.
-handle_cancel(_Type, _Data, State) -> State.
-terminate(Result, {Owner, Ref}) ->
-    Owner ! {Ref, Result},
+%% 收集非 ok 结局的 case 详情随 Summary 透传——否则 isolated_eunit_failed
+%% 只带计数，真实失败原因被吞（G13 归因阻塞）。
+handle_end(_Type, Data, {Fails, Owner}) ->
+    case proplists:get_value(result, Data, ok) of
+        ok ->
+            {Fails, Owner};
+        Res ->
+            Desc = proplists:get_value(descr, Data, proplists:get_value(name, Data, unknown)),
+            {[{Desc, Res} | Fails], Owner}
+    end.
+
+handle_cancel(_Type, Data, {Fails, Owner}) ->
+    Desc = proplists:get_value(descr, Data, proplists:get_value(name, Data, unknown)),
+    {[{cancel, Desc} | Fails], Owner}.
+terminate(Result, {Fails, {Owner, Ref}}) ->
+    Owner ! {Ref, attach_failures(Result, Fails)},
     ok.
+
+attach_failures({ok, Summary}, Fails) ->
+    {ok, Summary ++ [{failures, lists:reverse(Fails)}]};
+attach_failures(Other, _Fails) ->
+    Other.
 
 %% Each PG case owns a fresh BEAM: TSID and named pools cannot reuse App state.
 run(TestFun) when is_function(TestFun, 0) -> run(TestFun, 900).

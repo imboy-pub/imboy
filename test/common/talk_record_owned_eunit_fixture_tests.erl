@@ -339,23 +339,38 @@ with_owned_guard(Changes, ProofFun, ActualChanges, Fun) ->
         lists:foreach(fun({K, V}) -> set_env(K, V) end, Env ++ Changes),
         set_guard_proof(ProofFun(owned_guard_proof())),
         Actual = maps:merge(owned_guard_identity(), ActualChanges),
-        ok = meck:expect(epgsql, equery, fun(guard_connection, Sql, []) ->
-            ?assertMatch({match, _}, re:run(Sql, "^SELECT ")),
-            ?assertEqual(
-                nomatch,
-                re:run(
-                    Sql,
-                    "(?i)\\b(CREATE|ALTER|DROP|COMMENT|INSERT|UPDATE|DELETE)\\b"
-                )
-            ),
-            #{
-                db := Db,
-                system_id := Id,
-                user := User,
-                server_port := Port,
-                marker := Marker
-            } = Actual,
-            {ok, [], [{Db, Id, User, Port, Marker}]}
+        ok = meck:expect(epgsql, equery, fun
+            (guard_connection, Sql, []) ->
+                ?assertMatch({match, _}, re:run(Sql, "^SELECT ")),
+                ?assertEqual(
+                    nomatch,
+                    re:run(
+                        Sql,
+                        "(?i)\\b(CREATE|ALTER|DROP|COMMENT|INSERT|UPDATE|DELETE)\\b"
+                    )
+                ),
+                #{
+                    db := Db,
+                    system_id := Id,
+                    user := User,
+                    server_port := Port,
+                    marker := Marker
+                } = Actual,
+                {ok, [], [{Db, Id, User, Port, Marker}]};
+            %% legacy mock 窗口内经真实连接的旁路查询（如 t07 residue 清退
+            %% 的 SELECT）：同样只允许只读查询，一律返回空结果集——窗口内
+            %% 零真实 I/O；否则非 guard_connection 形态在 mock 下以 undef
+            %% 失败（full-20261103T201005Z t07_support:54 实证）。
+            (_Conn, Sql, []) ->
+                ?assertMatch({match, _}, re:run(Sql, "^SELECT ")),
+                ?assertEqual(
+                    nomatch,
+                    re:run(
+                        Sql,
+                        "(?i)\\b(CREATE|ALTER|DROP|COMMENT|INSERT|UPDATE|DELETE)\\b"
+                    )
+                ),
+                {ok, [], []}
         end),
         Fun(maps:get(db, owned_guard_identity()))
     after

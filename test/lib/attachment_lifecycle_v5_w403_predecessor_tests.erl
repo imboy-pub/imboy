@@ -188,10 +188,11 @@ setup() ->
         env_prefix => <<"V5_INTTEST_W403P">>,
         connect_extra => #{codecs => [{epgsql_codec_rfc3339_bin, []}]}
     }),
-    Root = disk_root(),
+    %% V3-20 S3-only：registry 收敛 garage-only（setup 即 validate，
+    %% 非 garage root 会被 unsupported_driver 拒绝）。
+    Garage = ?SUP:garage_env(),
     try
-        ok = file:change_mode(Root, 8#700),
-        ok = application:set_env(imboy, attachment_storage_registry, registry(Root)),
+        ok = application:set_env(imboy, attachment_storage_registry, registry(Garage)),
         case attachment_storage:validate_registry() of
             ok -> ok;
             Other -> erlang:error({w403p_registry_not_executable, Other})
@@ -202,21 +203,18 @@ setup() ->
             boot => Boot,
             db => Db,
             conn => Conn,
-            root => Root,
             prior_registry => PriorRegistry
         }
     catch
         Class:Reason:Stack ->
             restore_registry(PriorRegistry),
-            _ = file:del_dir_r(Root),
             inttest_marker_db:release(Db),
             eunit_runner:eunit_cleanup(Boot),
             erlang:raise(Class, Reason, Stack)
     end.
 
-cleanup(#{root := Root, prior_registry := Prior, db := Db, boot := Boot}) ->
+cleanup(#{prior_registry := Prior, db := Db, boot := Boot}) ->
     restore_registry(Prior),
-    _ = file:del_dir_r(Root),
     inttest_marker_db:release(Db),
     eunit_runner:eunit_cleanup(Boot),
     ok.
@@ -224,40 +222,17 @@ cleanup(#{root := Root, prior_registry := Prior, db := Db, boot := Boot}) ->
 restore_registry({ok, Value}) -> application:set_env(imboy, attachment_storage_registry, Value);
 restore_registry(undefined) -> application:unset_env(imboy, attachment_storage_registry).
 
-registry(Root) ->
+registry(Garage) ->
     #{
         version => 1,
         roots => #{
-            <<"root-disk-1">> => #{
-                driver => <<"disk">>,
-                namespace => ?SUP:ns(),
+            <<"w403p-garage-root">> => #{
+                driver => <<"garage">>,
+                namespace => <<"w601-w4-garage">>,
                 aliases => [],
-                endpoint => list_to_binary("file://" ++ Root),
-                container => ?SUP:container()
+                endpoint => maps:get(endpoint, Garage),
+                container => maps:get(bucket, Garage)
             }
         },
         upload_namespaces => #{}
     }.
-
-%% V5_DISK_ROOT 由 gate 固定为 admission allowlist 内路径；缺省退回临时目录
-%% （仅普通 eunit 干跑；gate 执行时一定存在）。
-disk_root() ->
-    Parent =
-        case os:getenv("V5_DISK_ROOT") of
-            false -> temp_parent();
-            "" -> temp_parent();
-            Dir -> Dir
-        end,
-    ok = filelib:ensure_dir(filename:join(Parent, "probe")),
-    Root = filename:join(
-        Parent,
-        "w403p-" ++ binary_to_list(binary:encode_hex(crypto:strong_rand_bytes(12), lowercase))
-    ),
-    ok = file:make_dir(Root),
-    Root.
-
-temp_parent() ->
-    case file:read_link_all("/tmp") of
-        {ok, Target} -> filename:absname(Target, "/");
-        {error, einval} -> "/tmp"
-    end.

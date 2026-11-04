@@ -189,7 +189,7 @@ temp_parent() ->
         {error, einval} -> "/tmp"
     end.
 
-registry(Base, Garage) ->
+registry(_Base, Garage) ->
     %% w403p-* namespace（w403_predecessor_support 的 ns()/container()，intent
     %% 回放复用其封印形态）声明为同物理根的 **aliases**：生产冻结校验
     %% attachment_storage:validate_registry（duplicate_physical_root，
@@ -201,16 +201,13 @@ registry(Base, Garage) ->
     %% 生产 attachment_storage:registry/0 只认 version=1 信封（缺 version 的
     %% 值一律替换为空 registry → validate_registry 报 empty_roots），故按
     %% imboy_env 的构造形状包装（对照 w403_storage_tests 的 registry 信封）。
+    %% V3-20 S3-only：registry 收敛为 garage-only——非 garage driver 的 root
+    %% 会被 validate_registry 以 unsupported_driver 拒绝（w601-disk-root 曾使
+    %% setup 直接 w601_registry_not_executable，full-20261103T225954Z EXCL
+    %% 车道 20 根实证）；w601_w4 场景已 set_driver(garage) 全量落真实 Garage。
     #{
         version => 1,
         roots => #{
-            <<"w601-disk-root">> => #{
-                driver => <<"disk">>,
-                namespace => ?NS_DISK,
-                aliases => [<<"w403p-disk">>],
-                endpoint => list_to_binary("file://" ++ Base),
-                container => ?CONTAINER_DISK
-            },
             <<"w601-garage-root">> => #{
                 driver => <<"garage">>,
                 namespace => ?NS_GARAGE,

@@ -23,7 +23,11 @@ read_case(Sync, Notice) ->
                         {assemble_s2c, 3, fun(Id, Action, _) ->
                             #{<<"id">> => Id, <<"action">> => Action}
                         end}
-                    ]}
+                    ]},
+                    %% V3-24 G-4：notice 链的企业 delivered side-effect 走
+                    %% elib_pg:with_tx（side_effect_tx fail-safe）。显式声明
+                    %% stub，避免 Guards 空 mock 下 undeclared fail-closed。
+                    {elib_pg, [{with_tx, 1, fun(_Fun) -> ok end}]}
                 ],
                 fun() ->
                     Data = #{

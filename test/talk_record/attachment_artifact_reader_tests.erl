@@ -1,41 +1,29 @@
 -module(attachment_artifact_reader_tests).
 -include_lib("eunit/include/eunit.hrl").
 
+%% V3-20 S3-only：artifact reader 的 disk 路径 fail-closed（copy/3 恒
+%% {error, disk_driver_retired}）。spool 完整性/hash/篡改拒绝义务由下方的
+%% garage_stream_integrity_test 在现行 garage 路径完整承载；本用例冻结
+%% disk 路径的拒绝合同（零存储 I/O）。
 bounded_disk_integrity_test_() ->
     {setup, fun setup/0, fun cleanup/1, fun({Root, Bytes, I}) ->
         ?_test(begin
             Row = row(Bytes),
             meck:expect(attachment_storage, frozen_location, fun(_, _) -> {ok, I} end),
-            Result = attachment_artifact_reader:with_source(
-                Row,
-                200000,
-                fun(S) ->
-                    ?assertEqual(byte_size(Bytes), attachment_upload_spool:size(S)),
-                    {ok, B} = attachment_upload_spool:read_at(S, 65536, 65536),
-                    ?assertEqual(binary:part(Bytes, 65536, 65536), B),
-                    {ok, attachment_upload_spool:size(S)}
-                end
-            ),
-            ?assertEqual({ok, byte_size(Bytes)}, Result),
-            RangeResult = attachment_artifact_reader:with_range(Row, 65537, 9, fun(S) ->
-                {ok, B} = attachment_upload_spool:read(S, 0),
-                ?assertEqual(binary:part(Bytes, 65537, 9), B),
-                {ok, attachment_upload_spool:size(S)}
-            end),
-            ?assertEqual({ok, 9}, RangeResult),
             ?assertEqual(
-                {error, artifact_integrity_mismatch},
-                attachment_artifact_reader:with_source(Row, 10, fun(_) -> error(unreachable) end)
-            ),
-            Bad = Row#{<<"file_hash256">> => binary:copy(<<"0">>, 64)},
-            ?assertEqual(
-                {error, artifact_integrity_mismatch},
-                attachment_artifact_reader:with_source(Bad, 200000, fun(_) -> error(unreachable) end)
-            ),
-            ok = file:write_file(filename:join([Root, "bucket", "audio.aac"]), <<Bytes/binary, 0>>),
-            ?assertEqual(
-                {error, artifact_integrity_mismatch},
+                {error, disk_driver_retired},
                 attachment_artifact_reader:with_source(Row, 200000, fun(_) -> error(unreachable) end)
+            ),
+            ?assertEqual(
+                {error, disk_driver_retired},
+                attachment_artifact_reader:with_range(Row, 65537, 9, fun(_) ->
+                    error(unreachable)
+                end)
+            ),
+            %% fail-closed 不产生任何存储读/写：源文件字节保持原样
+            ?assertEqual(
+                {ok, Bytes},
+                file:read_file(filename:join([Root, "bucket", "audio.aac"]))
             )
         end)
     end}.

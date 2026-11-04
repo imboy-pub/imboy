@@ -9,18 +9,18 @@
 
 upload_success_pins_and_puts_frozen_disk_test() ->
     with_fixture(fun(C) ->
+        %% V3-20 S3-only：disk driver 退役——multipart 上传对 disk root
+        %% fail-closed（attachment_upload_logic:provider_put）。现行合同顺序：
+        %% 先登记内容 pin（register_content_pin），provider 判定 retired 后
+        %% 直接返回错误（不落盘、不 recheck、不 oss）；原「disk 落盘成功」
+        %% 义务随被测 driver 退役收敛为拒绝合同。
         ?assertEqual(
-            {ok, #{
-                <<"object_key">> => ?KEY,
-                <<"mime_type">> => ?MIME,
-                <<"size">> => byte_size(maps:get(bytes, C))
-            }},
+            {error, {storage_error, disk_driver_retired}},
             upload(C)
         ),
-        ?assertEqual({ok, maps:get(bytes, C)}, file:read_file(maps:get(target, C))),
-        ?assertEqual(receipt(maps:get(bytes, C)), get(multipart_receipt)),
+        ?assertEqual(false, filelib:is_regular(maps:get(target, C))),
         ?assertEqual(1, meck:num_calls(attach_pending_repo, register_content_pin, 2)),
-        ?assertEqual(1, meck:num_calls(attach_pending_repo, recheck_content_pin, 3)),
+        ?assertEqual(0, meck:num_calls(attach_pending_repo, recheck_content_pin, 3)),
         ?assertEqual(0, meck:num_calls(elib_oss, put_object_from_file, 4))
     end).
 
@@ -86,11 +86,13 @@ upload_rechecks_actual_size_before_pin_test() ->
         assert_unwritten(C)
     end).
 
+%% V3-18/V3-20：multipart disk 成功路径退役（direct s3_put 替代）；
+%% 「响应 size 取实际保留字节数」义务随通道迁移至 attach_direct_* 测试族。
+%% 此处冻结现行 fail-closed 合同：disk root 恒拒绝。
 upload_receipt_and_response_use_actual_size_test() ->
     with_fixture(fun(C) ->
-        {ok, Data} = upload(C, 1),
-        ?assertEqual(byte_size(maps:get(bytes, C)), maps:get(<<"size">>, Data)),
-        ?assertEqual(receipt(maps:get(bytes, C)), get(multipart_receipt))
+        ?assertEqual({error, {storage_error, disk_driver_retired}}, upload(C, 1)),
+        ?assertEqual(false, filelib:is_regular(maps:get(target, C)))
     end).
 
 upload_rejects_session_mime_substitution_test() ->
@@ -161,29 +163,23 @@ upload_rejects_unknown_and_changed_locations_test() ->
         assert_unwritten(C)
     end).
 
+%% V3-18/V3-20：multipart disk 成功路径退役。原「pin 后路径/registry 替换
+%% 不能改变已冻结字节」义务由 direct 通道冻结身份（expected/attempt 绑定）
+%% 承载。此处冻结 disk 路径恒拒绝且源文件不被触碰。
 upload_path_and_registry_replacement_cannot_change_pinned_bytes_test() ->
     with_fixture(fun(C) ->
-        meck:expect(attach_pending_repo, register_content_pin, fun(?KEY, Receipt) ->
-            ?assertEqual(receipt(maps:get(bytes, C)), Receipt),
-            put(multipart_receipt, Receipt),
-            ok = file:delete(maps:get(path, C)),
-            ok = file:write_file(maps:get(path, C), <<"replacement bytes">>),
-            application:set_env(imboy, attachment_storage_registry, #{version => 1, roots => #{}}),
-            ok
-        end),
-        ?assertMatch({ok, _}, upload(C)),
-        ?assertEqual({ok, maps:get(bytes, C)}, file:read_file(maps:get(target, C))),
-        ?assertEqual({ok, <<"replacement bytes">>}, file:read_file(maps:get(path, C)))
+        ?assertEqual({error, {storage_error, disk_driver_retired}}, upload(C)),
+        ?assertEqual(false, filelib:is_regular(maps:get(target, C))),
+        ?assertEqual({ok, maps:get(bytes, C)}, file:read_file(maps:get(path, C)))
     end).
 
+%% V3-18/V3-20：multipart disk 成功路径退役。原「同 part 重试恒同对象、
+%% 换内容即 conflict」幂等义务由 direct 通道承载（Cid 幂等 + checksum 内容
+%% 证明，attach_direct_* 测试族）。此处冻结 disk 路径恒拒绝。
 upload_identical_retry_and_different_content_conflict_test() ->
     with_fixture(fun(C) ->
-        ?assertMatch({ok, _}, upload(C)),
-        ?assertMatch({ok, _}, upload(C)),
-        ok = file:write_file(maps:get(path, C), <<"different">>),
-        ?assertEqual({error, content_mismatch}, upload(C)),
-        ?assertEqual({ok, maps:get(bytes, C)}, file:read_file(maps:get(target, C))),
-        ?assertEqual(2, meck:num_calls(attach_pending_repo, recheck_content_pin, 3))
+        ?assertEqual({error, {storage_error, disk_driver_retired}}, upload(C)),
+        ?assertEqual(false, filelib:is_regular(maps:get(target, C)))
     end).
 
 upload_pin_rejections_never_reach_storage_test() ->
@@ -210,97 +206,46 @@ upload_pin_rejections_never_reach_storage_test() ->
         ?assertEqual(0, meck:num_calls(attach_pending_repo, recheck_content_pin, 3))
     end).
 
+%% V3-18/V3-20：disk 分支在 provider_put 入口即 fail-closed，不再进入
+%% recheck——recheck 拒绝矩阵义务由 upload_garage_recheck_rejection_prevents_
+%% http_test 在现行 garage 路径承载。此处冻结：disk 上传恒 retired、
+%% recheck 零调用、不落盘。
 upload_disk_live_recheck_rejections_never_publish_test() ->
     with_fixture(fun(C) ->
-        lists:foreach(
-            fun({Reason, Expected}) ->
-                meck:expect(attach_pending_repo, recheck_content_pin, fun(?KEY, Receipt, Identity) ->
-                    ?assertEqual(get(multipart_receipt), Receipt),
-                    ?assertEqual(maps:get(identity, C), Identity),
-                    ?assertEqual(false, filelib:is_regular(maps:get(target, C))),
-                    {error, Reason}
-                end),
-                ?assertEqual({error, Expected}, upload(C)),
-                ?assertEqual(false, filelib:is_regular(maps:get(target, C)))
-            end,
-            [
-                {content_mismatch, content_mismatch},
-                {tombstone, tombstone},
-                {session_not_renewable, session_not_renewable},
-                {location_changed, location_changed},
-                {not_found, object_not_found},
-                {pool_down, {db_error, pool_down}}
-            ]
-        )
+        meck:expect(attach_pending_repo, recheck_content_pin, fun(_, _, _) ->
+            erlang:error(recheck_must_not_run_on_retired_disk_path)
+        end),
+        ?assertEqual({error, {storage_error, disk_driver_retired}}, upload(C)),
+        ?assertEqual(false, filelib:is_regular(maps:get(target, C))),
+        ?assertEqual(0, meck:num_calls(attach_pending_repo, recheck_content_pin, 3))
     end).
 
+%% V3-18/V3-20：disk 分支不再进入 recheck/文件锁发布序列——该物理锁
+%% 时序义务随 disk 通道退役（garage 路径的对应拒绝/发布合同见
+%% upload_garage_* 测试族）。此处冻结：disk 上传恒 retired、零 recheck、
+%% 不落盘。
 upload_disk_recheck_waits_for_physical_object_lock_test() ->
     with_fixture(fun(C) ->
-        Parent = self(),
-        meck:expect(attach_pending_repo, register_content_pin, fun(?KEY, Receipt) ->
-            put(multipart_receipt, Receipt),
-            Parent ! multipart_pinned,
-            ok
+        meck:expect(attach_pending_repo, recheck_content_pin, fun(_, _, _) ->
+            erlang:error(recheck_must_not_run_on_retired_disk_path)
         end),
-        meck:expect(attach_pending_repo, recheck_content_pin, fun(?KEY, Receipt, Identity) ->
-            ?assertEqual(get(multipart_receipt), Receipt),
-            ?assertEqual(maps:get(identity, C), Identity),
-            Parent ! multipart_rechecked,
-            ok
-        end),
-        Holder = hold_disk_lock(C),
-        try
-            Writer = start_upload(C),
-            receive
-                multipart_pinned -> ok
-            after 2000 -> error(pin_timeout)
-            end,
-            receive
-                multipart_rechecked -> error(rechecked_without_os_lock)
-            after 100 -> ok
-            end,
-            ?assertEqual(false, filelib:is_regular(maps:get(target, C))),
-            release_disk_lock(Holder),
-            ?assertMatch({ok, _}, await_upload(Writer)),
-            receive
-                multipart_rechecked -> ok
-            after 2000 -> error(recheck_timeout)
-            end,
-            ?assertEqual({ok, maps:get(bytes, C)}, file:read_file(maps:get(target, C)))
-        after
-            element(1, Holder) ! release
-        end
+        ?assertEqual({error, {storage_error, disk_driver_retired}}, upload(C)),
+        ?assertEqual(false, filelib:is_regular(maps:get(target, C))),
+        ?assertEqual(0, meck:num_calls(attach_pending_repo, recheck_content_pin, 3))
     end).
 
+%% V3-18/V3-20：disk 分支的锁内过期签名复核（invalid_signature_context）
+%% 随 disk 通道退役——「并发续期不能延长准入时冻结的写入期限」义务由
+%% direct 通道的 attempt/expiry 冻结合同承载。此处冻结：disk 上传恒
+%% retired、零 recheck、不落盘。
 upload_disk_wait_cannot_extend_frozen_expiry_test() ->
     with_fixture(fun(C) ->
-        Parent = self(),
-        Expiry = erlang:system_time(second) + 2,
-        pending((maps:get(row, C))#{<<"upload_expires_at">> => timestamp(Expiry)}),
-        meck:expect(attach_pending_repo, register_content_pin, fun(?KEY, Receipt) ->
-            put(multipart_receipt, Receipt),
-            Parent ! multipart_pinned,
-            ok
+        meck:expect(attach_pending_repo, recheck_content_pin, fun(_, _, _) ->
+            erlang:error(recheck_must_not_run_on_retired_disk_path)
         end),
-        Holder = hold_disk_lock(C),
-        try
-            Writer = start_upload(C),
-            receive
-                multipart_pinned -> ok
-            after 2000 -> error(pin_timeout)
-            end,
-            %% Even a concurrent renewal cannot extend this admitted request's window.
-            %% 并发续期不能延长本请求在准入时冻结的原始写入期限。
-            pending(maps:get(row, C)),
-            timer:sleep(max(0, Expiry * 1000 - erlang:system_time(millisecond) + 20)),
-            release_disk_lock(Holder),
-            ?assertEqual({error, invalid_signature_context}, await_upload(Writer)),
-            ?assertEqual(0, meck:num_calls(attach_pending_repo, recheck_content_pin, 3)),
-            ?assertEqual(1, meck:num_calls(attach_pending_repo, status_lookup, 1)),
-            ?assertEqual(false, filelib:is_regular(maps:get(target, C)))
-        after
-            element(1, Holder) ! release
-        end
+        ?assertEqual({error, {storage_error, disk_driver_retired}}, upload(C)),
+        ?assertEqual(0, meck:num_calls(attach_pending_repo, recheck_content_pin, 3)),
+        ?assertEqual(false, filelib:is_regular(maps:get(target, C)))
     end).
 
 upload_db_fault_tagged_test() ->
@@ -576,52 +521,3 @@ read_producer(Producer, Offset, Acc) ->
         {ok, Bytes, Next} -> read_producer(Producer, Next, [Bytes | Acc]);
         eof -> iolist_to_binary(lists:reverse(Acc))
     end.
-
-hold_disk_lock(C) ->
-    Parent = self(),
-    {Pid, _Ref} =
-        Holder = spawn_monitor(fun() ->
-            Result = attachment_storage_disk:put_snapshot(
-                maps:get(identity, C),
-                <<"unused">>,
-                maps:get(expiry, C),
-                fun() ->
-                    Parent ! {disk_lock_held, self()},
-                    receive
-                        release -> {error, test_release}
-                    after 4000 -> error(release_timeout)
-                    end
-                end
-            ),
-            Parent ! {disk_holder_result, self(), Result}
-        end),
-    receive
-        {disk_lock_held, Pid} -> Holder
-    after 2000 -> error(lock_timeout)
-    end.
-
-release_disk_lock({Pid, Ref}) ->
-    Pid ! release,
-    receive
-        {disk_holder_result, Pid, Result} -> ?assertEqual({error, test_release}, Result)
-    after 2000 -> error(holder_timeout)
-    end,
-    receive
-        {'DOWN', Ref, process, Pid, Reason} -> ?assertEqual(normal, Reason)
-    after 2000 -> error(holder_exit_timeout)
-    end.
-
-start_upload(C) ->
-    Parent = self(),
-    spawn_monitor(fun() -> Parent ! {multipart_result, self(), upload(C)} end).
-await_upload({Pid, Ref}) ->
-    Result =
-        receive
-            {multipart_result, Pid, Value} -> Value
-        after 2000 -> error(upload_timeout)
-        end,
-    receive
-        {'DOWN', Ref, process, Pid, Reason} -> ?assertEqual(normal, Reason)
-    after 2000 -> error(upload_exit_timeout)
-    end,
-    Result.

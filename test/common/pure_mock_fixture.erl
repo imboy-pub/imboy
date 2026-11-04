@@ -100,19 +100,18 @@ cleanup(Configs, Env) ->
             proplists:get_value(M, Configs)
         )
     end,
-    Unexpected = lists:any(
+    Offenders = lists:flatmap(
         fun(M) ->
             case lists:member(M, meck:mocked()) of
                 false ->
-                    false;
+                    [];
                 true ->
-                    lists:any(
-                        fun(Entry) ->
-                            {Mod, F, Args} = element(2, Entry),
-                            not Declared(Mod, F, Args)
-                        end,
-                        meck:history(M)
-                    )
+                    [
+                        {M, F, Args}
+                     || Entry <- meck:history(M),
+                        {_, F, Args} <- [element(2, Entry)],
+                        not Declared(M, F, Args)
+                    ]
             end
         end,
         Modules
@@ -131,5 +130,9 @@ cleanup(Configs, Env) ->
         application:get_all_env(imboy)
     ),
     lists:foreach(fun({K, V}) -> application:set_env(imboy, K, V) end, Env),
-    false = Unexpected,
+    %% fail-closed 不变：存在未声明的 mock 调用即失败；带违规 MFA 清单便于归因
+    case Offenders of
+        [] -> ok;
+        _ -> erlang:error({undeclared_mock_calls, Offenders})
+    end,
     ok.

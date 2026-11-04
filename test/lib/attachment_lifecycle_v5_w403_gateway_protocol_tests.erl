@@ -129,12 +129,6 @@ setup_owned() ->
     application:set_env(imboy, attachment_storage_registry, #{
         version => 1,
         roots => #{
-            <<"w403-disk-root">> => #{
-                driver => <<"disk">>,
-                namespace => <<"w403-disk">>,
-                endpoint => list_to_binary("file://" ++ Root),
-                container => <<"fixture">>
-            },
             <<"w403-garage-root">> => #{
                 driver => <<"garage">>,
                 namespace => <<"w403-garage">>,

@@ -66,8 +66,10 @@ disk_requires_explicit_mapping() ->
     application:set_env(imboy, attachment_storage_registry, R#{
         upload_namespaces => #{<<"private">> => <<"d">>}
     }),
-    ?assertMatch(
-        {ok, #{driver := <<"disk">>, namespace := <<"d">>, container := <<"fixed">>}},
+    %% V3-20 S3-only：即使 upload_namespaces 显式映射指向 disk root，上传根
+    %% 解析也只接受 garage driver——disk 不再可成为注册位置（fail-closed）。
+    ?assertEqual(
+        {error, upload_root_unavailable},
         attachment_storage:registration_location(<<"private">>, <<"b">>, <<"key">>)
     ).
 explicit_unknown_denied() ->

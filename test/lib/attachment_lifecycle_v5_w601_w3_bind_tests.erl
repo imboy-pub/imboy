@@ -208,16 +208,11 @@ registry(Base, Garage) ->
     %% 生产 attachment_storage:registry/0 只认 version=1 信封（缺 version
     %% 一律替换为空 registry → validate_registry 报 empty_roots），按
     %% w601_w4_context:registry/2 同款形状包装（套件无裸读 roots 路径）。
+    %% V3-20 S3-only：registry 收敛为 garage-only（非 garage root 被
+    %% validate_registry 以 unsupported_driver 拒绝——EXCL 车道实证）。
     #{
         version => 1,
         roots => #{
-            <<"w601-w3-bind-disk-root">> => #{
-                driver => <<"disk">>,
-                namespace => ?NS_DISK,
-                aliases => [],
-                endpoint => list_to_binary("file://" ++ Base),
-                container => ?CONTAINER_DISK
-            },
             <<"w601-w3-bind-garage-root">> => #{
                 driver => <<"garage">>,
                 namespace => ?NS_GARAGE,

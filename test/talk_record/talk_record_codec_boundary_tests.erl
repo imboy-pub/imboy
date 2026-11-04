@@ -35,18 +35,34 @@ missing_codec_has_no_io_test() ->
     ),
     ?assertEqual({error, invalid_codec}, talk_record_part_upload:prepare(1, 2, #{})).
 
-aac_presign_contract_test() ->
-    meck:new(attach_logic, [non_strict]),
+%% V3-18/V3-20：录音分片上传切 direct s3_put（presign/gateway put_url 通道已
+%% 退役）。义务逐字保留：codec→定名 part-4.aac、mime audio/aac、Cid 幂等、
+%% 走（现行的）attach_direct_logic register→declare→grant 上传通道。
+aac_direct_upload_contract_test() ->
+    meck:new(attach_direct_logic, [non_strict]),
     try
-        meck:expect(attach_logic, presign, fun(
+        meck:expect(attach_direct_logic, register, fun(
             1,
-            <<"part-4.aac">>,
-            <<"audio/aac">>,
             <<"talk_record">>,
             <<"2">>,
-            Cid
+            Cid,
+            <<"part-4.aac">>
         ) ->
             ?assertEqual(talk_record_part_upload:client_upload_id(4), Cid),
+            {ok, #{object_key => <<"talk_record/2/part-4.aac">>}}
+        end),
+        meck:expect(attach_direct_logic, declare, fun(
+            <<"talk_record/2/part-4.aac">>,
+            <<>>,
+            0,
+            <<"audio/aac">>
+        ) ->
+            ok
+        end),
+        meck:expect(attach_direct_logic, grant, fun(
+            <<"talk_record/2/part-4.aac">>,
+            <<>>
+        ) ->
             {ok, #{scoped => true}}
         end),
         ?assertEqual(
@@ -57,8 +73,8 @@ aac_presign_contract_test() ->
                 #{<<"part_id">> => 4, <<"codec">> => <<"aac">>}
             )
         ),
-        ?assertEqual(1, meck:num_calls(attach_logic, presign, '_')),
-        ?assert(meck:validate(attach_logic))
+        ?assertEqual(1, meck:num_calls(attach_direct_logic, register, 5)),
+        ?assert(meck:validate(attach_direct_logic))
     after
-        meck:unload(attach_logic)
+        meck:unload(attach_direct_logic)
     end.

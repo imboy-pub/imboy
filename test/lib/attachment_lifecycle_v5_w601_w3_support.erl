@@ -326,16 +326,11 @@ temp_parent() ->
 %% attachment_storage:resolve/identity/frozen_location 生产访问器消费，
 %% 无裸读 roots 的路径。
 registry(Base, Garage) ->
+    %% V3-20 S3-only：registry 收敛为 garage-only（非 garage root 被
+    %% validate_registry 以 unsupported_driver 拒绝——EXCL 车道 20 根实证）。
     #{
         version => 1,
         roots => #{
-            <<"w601-w3-disk-root">> => #{
-                driver => <<"disk">>,
-                namespace => ?NS_DISK,
-                aliases => [],
-                endpoint => list_to_binary("file://" ++ Base),
-                container => ?CONTAINER_DISK
-            },
             <<"w601-w3-garage-root">> => #{
                 driver => <<"garage">>,
                 namespace => ?NS_GARAGE,

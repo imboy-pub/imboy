@@ -31,7 +31,10 @@
 -define(OTHER, <<"w601 overwritten different bytes">>).
 
 -define(EP4, [ordinary, enterprise_internal, enterprise_seat, cs_widget]).
--define(DRV, [disk, garage]).
+%% V3-20 S3-only：driver 矩阵收敛为 garage——registry 校验拒非 garage root
+%% （unsupported_driver），disk 变体的 meck(attachment_storage_disk) 亦因模块
+%% 已删除无法装桩（undefined_module）。义务由 garage 变体全量承载。
+-define(DRV, [garage]).
 
 w601_w2_confirm_test_() ->
     %% 受控让位（仓库先例：attachment_lifecycle_v5_pg_tests r20_test_/

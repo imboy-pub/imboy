@@ -157,7 +157,9 @@ final_decl(Override) ->
             <<"sample_rate">> => 16000,
             <<"channels">> => 1,
             <<"sample_count">> => 1024,
-            <<"duration_ms">> => 64
+            <<"duration_ms">> => 64,
+            %% PLAN T3 准入证明：attachment_id 为 parse_final_audio 必填字段。
+            <<"attachment_id">> => 420001
         },
         Override
     ).
@@ -171,7 +173,8 @@ final_parsed() ->
         sample_rate => 16000,
         channels => 1,
         sample_count => 1024,
-        duration_ms => 64
+        duration_ms => 64,
+        attachment_id => 420001
     }.
 
 processing_parse_contract_test() ->

@@ -43,7 +43,10 @@
 -define(BODY, <<"w601 pending multipart controlled bytes">>).
 
 -define(DOMAINS, [<<"ordinary">>, <<"enterprise">>]).
--define(DRV, [disk, garage]).
+%% V3-20 S3-only：driver 矩阵收敛为 garage——registry 校验拒非 garage root
+%% （unsupported_driver），disk 变体无法装桩（attachment_storage_disk 已删除）。
+%% 义务由 garage 变体全量承载。
+-define(DRV, [garage]).
 
 w601_w2_pending_test_() ->
     %% 受控让位（仓库先例：attachment_lifecycle_v5_pg_tests r20_test_/

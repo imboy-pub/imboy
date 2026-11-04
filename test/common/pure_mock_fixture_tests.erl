@@ -24,7 +24,9 @@ swallowed_undeclared_call_still_fails_test_() ->
         pure_mock_fixture:run(fun() ->
             Before = lists:sort(application:get_all_env(imboy)),
             ?assertError(
-                {badmatch, true},
+                %% cleanup 增强（G10）：未声明调用从布尔 badmatch 变为
+                %% 带违规 MFA 清单的结构化错误——fail-closed 语义不变。
+                {undeclared_mock_calls, [{elib_pg, execute, [<<"must never reach PG">>, []]}]},
                 pure_mock_fixture:with_mocks(
                     [{elib_pg, [{query, 2, fun(_, _) -> declared_result end}]}],
                     fun() ->

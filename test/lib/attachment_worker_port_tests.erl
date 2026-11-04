@@ -58,9 +58,10 @@ worker_e2e() ->
         mime => <<"image/png">>,
         ruleset_digest => attachment_content_receipt:ruleset_digest()
     }),
-    %% 2) 负向：篡改 sha256 绑定 → verify 拒（fail-closed）
+    %% 2) 负向：篡改 sha256 绑定 → verify 拒（fail-closed；现行合同返回
+    %%    精确错误 binding_mismatch，attachment_content_receipt.erl spec）
     ?assertMatch(
-        {error, {receipt, _}},
+        {error, binding_mismatch},
         tamper_verify(Receipt, Secret, AttemptKey, Key, Size)
     ),
     %% 3) 负向：回执跨 attempt 冒充（Worker 按任务签发后用攻击者期望字段

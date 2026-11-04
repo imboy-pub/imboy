@@ -162,6 +162,7 @@ ports_have_explicit_frozen_contracts_test() ->
             {confirm_asset, 3},
             {delete_private, 3},
             {direct_session_row, 1},
+            {download_location, 3},
             {fetch_asset, 3},
             {fetch_session, 3},
             {insert_asset, 3},
@@ -310,6 +311,9 @@ asset_port_callback_names_cannot_leak_storage_handle_test() ->
             confirm_asset,
             delete_private,
             direct_session_row,
+            %% V3-24 契约面补齐：locator 身份解析（driver/key/container/
+            %% namespace），spec 明示不含预签 URL 与存储凭证——非泄漏型。
+            download_location,
             fetch_asset,
             fetch_session,
             insert_asset,

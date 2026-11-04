@@ -227,7 +227,10 @@ stage_completion_fixture(A, B, MsgId) ->
         to_id => B,
         created_at => ts(1),
         server_ts => ts(1),
-        available_at => elib_dt:to_rfc3339(elib_dt:millisecond() + 3600000)
+        %% available_at 为 timestamptz 列：RFC3339 binary 走 epgsql timestamp
+        %% 编码器会异常（INSERT 静默失败 → staging 0 行）。时间参数用 UTC 元组。
+        available_at =>
+            calendar:gregorian_seconds_to_datetime(erlang:system_time(second) + 3600)
     },
     {ok, _, 1} = personal_message_order_repo:stage_c2c_ordered(msg_store_repo:tablename(), Data),
     ok.

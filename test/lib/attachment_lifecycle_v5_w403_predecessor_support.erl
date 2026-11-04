@@ -34,7 +34,8 @@
     consume_ready_until/4,
     set_driver/1,
     reset_driver/0,
-    current_driver/0
+    current_driver/0,
+    garage_env/0
 ]).
 
 q(Conn, Sql) -> q(Conn, Sql, []).
@@ -84,8 +85,10 @@ reset_driver() ->
     ok.
 
 current_driver() ->
+    %% V3-20 S3-only：缺省收敛 garage（未显式 set_driver 的场景不再退化
+    %% disk——registry 已无 disk root，w403p-disk namespace 不可解析）。
     case get(?DRIVER_KEY) of
-        undefined -> disk;
+        undefined -> garage;
         Driver -> Driver
     end.
 
