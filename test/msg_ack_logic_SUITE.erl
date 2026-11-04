@@ -68,14 +68,15 @@ c2c_ack_deletes_offline_msg(_Config) ->
     Did = <<"device_ios_001">>,
     MsgId = <<"test_c2c_msg_001">>,
 
-    % 准备测试数据
+    % 准备测试数据（00000194 order guard：C2C 写必须带正 conv_seq
+    % ——c2c_sequence_required 约束；fixture 对齐现行合同）
     Sql = <<
-        "INSERT INTO msg_c2c (id, from_id, to_id, msg_id, msg_type, payload, created_at)\n"
-        "            VALUES ($1, $2, $3, $4, $5, $6, NOW())"
+        "INSERT INTO msg_c2c (id, from_id, to_id, msg_id, msg_type, payload, conv_seq, created_at)\n"
+        "            VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())"
     >>,
     Payload = <<"{\"content\":\"test message\"}">>,
     {ok, _} = elib_pg:execute(Sql, [
-        elib_tsid:generate(msg_c2c), 999, Uid, MsgId, <<"text">>, Payload
+        elib_tsid:generate(msg_c2c), 999, Uid, MsgId, <<"text">>, Payload, 1
     ]),
 
     % Mock msg_store_ds:unstage

@@ -145,8 +145,10 @@ message_delivered_to_online_user(_Config) ->
     ToUid = 9002,
     MsgId = <<"test_msg_002">>,
 
-    % Mock 在线用户
-    meck:new(imboy_syn, [unstick]),
+    % Mock 在线用户（passthrough：未 expect 的函数走原实现——投递定时器
+    % start_delivery_timer/schedule_ack_retry 必须真实行为，deliver_to_all
+    % 的 timeout 断言依赖真实 timer；96d73705e 后原 expect 集缺它们曾致 undef）
+    meck:new(imboy_syn, [unstick, passthrough]),
     meck:expect(imboy_syn, list_by_uid, fun(_) ->
         [{self(), {<<"ios">>, <<"device_001">>}}]
     end),
@@ -301,7 +303,8 @@ deliver_to_all_devices(_Config) ->
 
     % Mock 多设备（3 个设备 Pid 均为 self()，Delay=0 时 send_next 走
     % erlang:start_timer(0, Pid, Msg) 逐设备投递，故 self() 会收到 3 个 timeout 消息）
-    meck:new(imboy_syn, [unstick]),
+    % passthrough 同上：投递定时器保持真实行为。
+    meck:new(imboy_syn, [unstick, passthrough]),
     meck:expect(imboy_syn, list_by_uid, fun(_) ->
         [
             {self(), {<<"ios">>, <<"device_ios">>}},
