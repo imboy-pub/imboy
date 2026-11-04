@@ -21,8 +21,7 @@
 -export([upload/2, upload/3]).
 -export([get_url/1]).
 -export([presign_put/3, presign_put_for_key/3, presign_put_for_key/4]).
--export([put_object/4, put_object_from_file/4]).
--export([put_object_ctx/5, put_object_from_file_ctx/5]).
+-export([put_object/4, put_object_ctx/5]).
 -export([presign_get_for_key/2, presign_get_for_key/3]).
 -export([build_object_key/2, build_object_key/4, owner_of_key/1]).
 -export([get_bucket/1, public_base_url/0, public_url_for_key/1]).
@@ -116,27 +115,19 @@ put_object(Bucket, ObjectKey, Bin, MimeType) ->
             {error, R}
     end.
 
-%% @doc 服务端从磁盘文件 PUT 到指定桶（multipart 直传端点用）。
-%% 与 put_object/4 同款 presigned query URL。OTP29 httpc 已移除
-%% {file, Path}，而 {ProcessBody, Acc} 生成器实测对 Garage 只发出 0 字节
-%% （对象落盘为空、confirm 的 HEAD 探测 416）；故退回整文件读入后
-%% binary body 发送（与已验证的客户端 PUT 直传通道同路径）。大文件是
-%% refc binary（数据驻留堆外），100MB 上限内内存可控。
--spec put_object_from_file(binary(), binary(), string(), binary()) -> ok | {error, term()}.
-put_object_from_file(Bucket, ObjectKey, FilePath, MimeType) ->
-    ok = assert_garage_configured(),
-    case file:read_file(FilePath) of
-        {ok, Bin} ->
-            put_object(Bucket, ObjectKey, Bin, MimeType);
-        {error, R} ->
-            {error, R}
-    end.
+%% V3-19 退役（C09 全仓唯一化收口）：put_object_from_file/4 与
+%% put_object_from_file_ctx/5 已删除——磁盘文件进对象存储的唯一合法路径
+%% 是受限 Worker（assembly_io_worker upload：Worker 进程内自算 sha256、
+%% presign PUT + checksum 头，正文零过 BEAM，经
+%% attachment_worker_port:upload_file 派发）。BEAM 内整文件读入后
+%% binary PUT 的服务端写通道不再存在；调用面盘点见
+%% evidence/C09/C09-IMPLEMENTATION.md（retire 后 grep 零业务调用）。
 
 %% @doc 冻结签名 Context 的服务端 PUT（V5.5 受控上传，02 §15）。
 %%
 %% Ctx 必须含绝对 issued_at/expires_at（calendar:datetime()，UTC），由调用方
 %% 在登记/签发时冻结后端到端传入；本入口与 elib_s3_sign 均不读取当前时钟。
-%% 旧 put_object/4、put_object_from_file/4 只保留给不属于 V5 的调用者。
+%% 旧 put_object/4 只保留给不属于 V5 的调用者（from_file 变体已退役）。
 -spec put_object_ctx(binary(), binary(), binary(), binary(), map()) -> ok | {error, term()}.
 put_object_ctx(Bucket, ObjectKey, Bin, MimeType, Ctx) when is_binary(Bin), is_map(Ctx) ->
     case signature_times(Ctx) of
@@ -155,14 +146,6 @@ put_object_ctx(Bucket, ObjectKey, Bin, MimeType, Ctx) when is_binary(Bin), is_ma
     end;
 put_object_ctx(_Bucket, _ObjectKey, _Bin, _MimeType, _Ctx) ->
     {error, invalid_signature_context}.
-
--spec put_object_from_file_ctx(binary(), binary(), string(), binary(), map()) ->
-    ok | {error, term()}.
-put_object_from_file_ctx(Bucket, ObjectKey, FilePath, MimeType, Ctx) ->
-    case file:read_file(FilePath) of
-        {ok, Bin} -> put_object_ctx(Bucket, ObjectKey, Bin, MimeType, Ctx);
-        {error, R} -> {error, R}
-    end.
 
 signature_times(Ctx) ->
     I = maps:get(issued_at, Ctx, undefined),

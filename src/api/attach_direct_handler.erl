@@ -144,6 +144,10 @@ route(<<"POST">>, <<"finalize">>, Req0, State) ->
                             );
                         {error, attempt_not_dispatchable} ->
                             reply_err(Req0, ?ERR_CONFLICT, <<"attempt_not_dispatchable">>, poll);
+                        %% CONFIRMED 等终态会话的 finalize 重放：与 grant/renew
+                        %% 同语义 409 illegal_state 信封（poll），不落 503 兜底
+                        {error, illegal_state} ->
+                            reply_err(Req0, ?ERR_CONFLICT, <<"illegal_state">>, poll);
                         {error, not_found} ->
                             reply_err(Req0, ?ERR_NOT_FOUND, <<"not_found">>, retry_session);
                         {error, _} ->
