@@ -207,29 +207,42 @@ presign_registered(
             %% register 冻结的位置快照直接签 S3 presigned PUT（正文自客户端
             %% 直达 Garage，BEAM 零正文；gateway handler 本体物理删除归 C10）。
             Cid = maps:get(client_upload_id, Session),
-            Location = #{
-                driver => Driver,
-                namespace => Ns,
-                container => Container,
-                locator_sha256 => Digest
-            },
-            case attachment_storage:presign_put_snapshot(Location, MimeType, ?PUT_EXPIRES) of
-                {ok, PutUrl} ->
-                    Base = #{
-                        <<"put_url">> => PutUrl,
-                        <<"object_key">> => Key,
-                        <<"expires_at">> => Expiry,
-                        <<"transport">> => <<"s3_put">>,
-                        <<"client_upload_id">> => Cid,
-                        <<"session_state">> => <<"registered">>
-                    },
-                    {ok, maybe_public_url(Scope, Key, Base)};
-                {error, _} = Err ->
-                    Err
+            %% 快照必须经统一解析构造（driver 原子化、endpoint/key/garage_config
+            %% 齐备）——手拼四键落 presign_put_snapshot 的 unsupported_driver 兜底；
+            %% 解析 locator 与 register 冻结值逐字对照，并发改登记即 fail-closed。
+            case presign_snapshot_for(Key, Digest) of
+                {ok, Snapshot} ->
+                    case
+                        attachment_storage:presign_put_snapshot(Snapshot, MimeType, ?PUT_EXPIRES)
+                    of
+                        {ok, PutUrl} ->
+                            Base = #{
+                                <<"put_url">> => PutUrl,
+                                <<"object_key">> => Key,
+                                <<"expires_at">> => Expiry,
+                                <<"transport">> => <<"s3_put">>,
+                                <<"client_upload_id">> => Cid,
+                                <<"session_state">> => <<"registered">>
+                            },
+                            {ok, maybe_public_url(Scope, Key, Base)};
+                        {error, _} = Err ->
+                            Err
+                    end;
+                {error, _} = LocErr ->
+                    LocErr
             end
     end;
 presign_registered(_, _, _, _) ->
     {error, historical_location_unverified}.
+
+%% register 冻结位置 → 统一解析快照（session_location 锁行重验 locator 与
+%% registry 一致性）；解析 digest 与会话冻结 digest 不一致 = 登记已被并发
+%% 改写或位置漂移，fail-closed 不签发（错误形状与位置校验语汇一致）。
+presign_snapshot_for(Key, FrozenDigest) ->
+    case attachment_storage:session_location(Key) of
+        {ok, #{locator_digest := FrozenDigest} = Snapshot} -> {ok, Snapshot};
+        _ -> {error, historical_location_unverified}
+    end.
 
 %% ===================================================================
 %% confirm：写归属守卫 + 上传权校验 + HEAD 核实 + 落库
