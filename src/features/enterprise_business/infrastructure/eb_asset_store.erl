@@ -38,7 +38,6 @@
 -export([
     put_private/3,
     stream_content/3,
-    stream_content_chunked/3,
     download_location/3,
     delete_private/3,
     insert_asset/3,
@@ -194,57 +193,6 @@ read_object(OrgId, WorkspaceId, _AssetId, Row) ->
 %% BEAM；物理 winner 键解析沿 step-4 reader 兼容（frozen_location）；Range
 %% 分块经受控读注入器（416→eof 合同），HEAD 语义由调用方以 size 呈现。
 %% 历史行（legacy_unknown/无物理键）回退既有全量 read_frozen（兼容不变）。
--spec stream_content_chunked(integer(), integer(), integer()) ->
-    {ok, #{
-        read_fun := fun((non_neg_integer(), non_neg_integer()) -> {ok, binary()} | eof),
-        size := non_neg_integer(),
-        mime => binary()
-    }}
-    | {error, term()}
-    | {fallback_full, term()}.
-stream_content_chunked(OrgId, WorkspaceId, AssetId) ->
-    eb_pg_exec:with_tenant(OrgId, WorkspaceId, fun() ->
-        case eb_pg_asset_meta:fetch_asset(OrgId, WorkspaceId, AssetId) of
-            {ok, Row} ->
-                case maps:get(status, Row, undefined) of
-                    deleted ->
-                        {error, not_found};
-                    _Other ->
-                        case location(Row) of
-                            {ok,
-                                #{
-                                    driver := garage,
-                                    namespace := Ns,
-                                    container := Container,
-                                    key := Key
-                                } = I} ->
-                                case attachment_storage_garage:head_bounded(Ns, Container, Key) of
-                                    {ok, #{size := Size}} ->
-                                        {ok, #{
-                                            read_fun =>
-                                                eb_asset_direct:read_fun_from_snapshot(I),
-                                            size => Size,
-                                            mime => maps:get(
-                                                mime,
-                                                Row,
-                                                <<"application/octet-stream">>
-                                            )
-                                        }};
-                                    {error, not_found} ->
-                                        {error, not_found};
-                                    {error, R} ->
-                                        {error, {object_store, R}}
-                                end;
-                            _ ->
-                                %% 历史位置/非 garage：回退全量（兼容不变）
-                                {fallback_full, read_object(OrgId, WorkspaceId, AssetId, Row)}
-                        end
-                end;
-            {error, _} = Err ->
-                Err
-        end
-    end).
-
 %% @doc V3-17（G17）：精确 winner 的**位置解析**——正文读链切边缘后的
 %% BEAM 侧唯一定位入口。与 stream_content 的差异：
 %%   * 不读字节（BEAM=0 正文合同），只经 frozen_location 解析物理 winner；
