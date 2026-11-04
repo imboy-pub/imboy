@@ -659,13 +659,6 @@ ct_critical_run(Repo, Ctrl, ConfigPath) ->
             ["-config", ConfigPath]
     }),
     try
-        %% 一次性诊断（收口后删）：peer 里 imboy_syn 的加载事实（纯 MFA）
-        _ = peer:call(Peer, code, load_file, [imboy_syn], 10000),
-        DiagWhich = peer:call(Peer, code, which, [imboy_syn], 10000),
-        DiagExported = peer:call(
-            Peer, erlang, function_exported, [imboy_syn, start_delivery_timer, 3], 10000
-        ),
-        io:format("CT_DIAG which=~0p exported=~0p~n", [DiagWhich, DiagExported]),
         Raw =
             peer:call(
                 Peer,
