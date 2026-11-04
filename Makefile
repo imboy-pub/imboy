@@ -92,7 +92,7 @@ endif
 LOCAL_DEPS = mnesia sasl ssl inets eunit crypto public_key
 BUILD_DEPS = relx gpb bbmustache
 DEP_PLUGINS = cowboy
-TEST_DEPS += meck
+TEST_DEPS += meck proper
 
 SP = 4
 DOC_DEPS = edown
@@ -875,7 +875,10 @@ IMBOY_QUALITY_WORKERS ?= 4
 
 # 新日常入口（P1-12 切换后 `make eunit` 的落点）。单模块/分组诊断：
 # make quality-group g=mod1,mod2（旧口径可用 make eunit-local t=<模块>）。
-quality-full: quality-test-build
+quality-full:
+	escript scripts/quality.escript full-reserve
+	$(MAKE) quality-test-build
+	escript scripts/quality.escript full-build-complete
 	IMBOY_QUALITY_WORKERS=$(IMBOY_QUALITY_WORKERS) escript scripts/quality.escript eunit --full
 
 eunit-all: quality-full

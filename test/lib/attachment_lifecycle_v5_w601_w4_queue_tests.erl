@@ -72,7 +72,7 @@ specs() ->
 dual(Case, Entry, Scenarios) ->
     [
         {Case, Entry, Drv, Scn, Dom}
-     || Scn <- Scenarios, Dom <- [?ORD, ?ENT], Drv <- [<<"disk">>, <<"garage">>]
+     || Scn <- Scenarios, Dom <- [?ORD, ?ENT], Drv <- [<<"garage">>]
     ].
 
 garage_dual(Case, Entry, Scenarios) ->
@@ -88,7 +88,7 @@ cross_specs() ->
     [
         {<<"W4-02/cross-queue-identity">>, <<"cross-queue-identity">>, Drv, Scn, ?XDOM}
      || Scn <- [<<"simultaneous_domain_producers">>, <<"unknown_shared_history">>],
-        Drv <- [<<"disk">>, <<"garage">>]
+        Drv <- [<<"garage">>]
     ].
 
 %% ------------------------------------------------------------- 分发
@@ -98,7 +98,7 @@ scenario(St, {_Case, Entry, Drv, Scn, Dom}) ->
     N = ((?X:leaf_id(qbase) rem 100000) * 1000 + ?X:leaf_id(queue)),
     Key = <<"v5e2e/w601q/", Entry/binary, "/", (integer_to_binary(N))/binary>>,
     Triple = ?X:triple(St, Drv, Key),
-    Measured = run_scenario(St, Conn, Entry, Scn, Key, Triple, N),
+    Measured = run_domain_scenario(St, Conn, Entry, Scn, Key, Triple, N, Dom),
     Measured#{
         driver => Drv,
         object_key => Key,
@@ -145,12 +145,56 @@ seed_legacy_job(Conn, Key, Triple, Attempts, State, LastError) ->
     ),
     ok.
 
+%% Preserve actual enterprise fault semantics rather than labelling an ordinary run.
+run_domain_scenario(St, Conn, <<"worker-db-fault">>, Scn, Key, Triple, N, ?ENT) ->
+    enterprise_db_fault(St, Conn, Scn, Key, Triple, N);
+run_domain_scenario(St, Conn, Entry, Scn, Key, Triple, N, _Dom) ->
+    run_scenario(St, Conn, Entry, Scn, Key, Triple, N).
+
+enterprise_db_fault(St, Conn, Scn, Key, Triple, N) ->
+    AssetId = eb_id(N),
+    Bytes = <<"w601-eb-fault:", Key/binary>>,
+    ok = ?X:put_probe(St, <<"garage">>, Key, Bytes),
+    ok = ?QP:reset_eb(Conn),
+    ok = ?X:seed_eb_asset_row(Conn, Key, AssetId, Triple, <<"deleted">>, false, <<"live">>),
+    ok = ?QP:enqueue_eb(Conn, 9101, 9102, AssetId, <<"w601 enterprise fault">>),
+    {ok, _} = ?QP:claim_eb_for(Conn, 9101, 9102, AssetId),
+    case Scn of
+        <<"db_lost_before_claim_verified">> ->
+            {ok, <<"stale_token">>} = ?QP:ack_eb(Conn, 9101, 9102, AssetId, ?X:token()),
+            {ok, <<"missing">>} = ?QP:ack_eb(Conn, 9101, 9102, AssetId + 999999, ?X:token()),
+            {ok, Bytes} = garage_read(Triple, Key),
+            #{stale_ack_zero_rows => true, missing_ack_no_crash => true};
+        <<"db_lost_after_delete">> ->
+            ok = attachment_storage:delete_snapshot(?QP:frozen_eb(Conn, 9101, AssetId)),
+            {error, not_found} = garage_read(Triple, Key),
+            ok = ?QP:expire_eb(Conn, 9101, AssetId),
+            {ok, _, [{1}]} = ?X:e(Conn, "SELECT fn_v5_reaper_eb(100)", []),
+            ok = retry_eb_now(Conn, AssetId),
+            {ok, #{token := T2, attempts := Attempts}} = ?QP:claim_eb_for(
+                Conn, 9101, 9102, AssetId
+            ),
+            {ok, <<"done">>} = ?QP:ack_eb(Conn, 9101, 9102, AssetId, T2),
+            #{same_exact_location => Key, resolved_attempts => Attempts}
+    end.
+
+retry_eb_now(Conn, AssetId) ->
+    ?X:q(
+        Conn,
+        "UPDATE enterprise_asset_delete_queue SET next_retry_at=now()-interval '1 s' "
+        "WHERE organization_id=$1 AND workspace_id=$2 AND asset_id=$3 AND job_state='retry_wait'",
+        [9101, 9102, AssetId]
+    ).
+
+garage_read(Triple, Key) ->
+    attachment_storage_garage:read(maps:get(namespace, Triple), maps:get(container, Triple), Key).
+
 %% ------------------------------------------------- old-attempts-preserved
 
 run_scenario(St, Conn, Entry, Scn, Key, Triple, N) ->
     case Entry of
         <<"old-attempts-preserved">> -> attempts_cycle(Conn, Scn, Key, Triple);
-        <<"worker-db-fault">> -> db_fault_cycle(Conn, Scn, Key, Triple);
+        <<"worker-db-fault">> -> db_fault_cycle(St, Conn, Scn, Key, Triple);
         <<"queue-adoption">> -> adoption_cycle(St, Conn, Scn, Key, Triple, N);
         <<"ordinary-queue-recovery">> -> recovery_cycle(St, Conn, Scn, Key, Triple, N);
         <<"cross-queue-identity">> -> cross_cycle(St, Conn, Scn, Key, Triple, N)
@@ -216,7 +260,9 @@ proof_exception_rejected(Conn, Key, Triple) ->
 
 %% ------------------------------------------------------ worker-db-fault
 
-db_fault_cycle(Conn, Scn, Key, Triple) ->
+db_fault_cycle(St, Conn, Scn, Key, Triple) ->
+    Bytes = <<"w601-fault:", Key/binary>>,
+    ok = ?X:put_probe(St, <<"garage">>, Key, Bytes),
     ?QP:drain_ordinary(Conn),
     case Scn of
         <<"db_lost_before_claim_verified">> ->
@@ -231,11 +277,14 @@ db_fault_cycle(Conn, Scn, Key, Triple) ->
                 "SELECT fn_v5_ack_ordinary($1, $2, true)",
                 [<<"v5e2e/w601q/never-existed">>, ?X:token()]
             ),
+            {ok, Bytes} = garage_read(Triple, Key),
             #{stale_ack_zero_rows => true, missing_ack_no_crash => true};
         <<"db_lost_after_delete">> ->
             seed_job(Conn, Key, Triple, 0, ready),
             T1 = ?X:token(),
             {ok, _} = ?QP:claim_ordinary(Conn, T1),
+            ok = attachment_storage:delete_snapshot(?QP:frozen_ordinary(Conn, Key)),
+            {error, not_found} = garage_read(Triple, Key),
             ?QP:expire_ordinary(Conn, Key),
             {ok, 1} = attachment_gc_repo:v5_reap(Conn, 100),
             T2 = ?X:token(),

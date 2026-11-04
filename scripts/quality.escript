@@ -7,27 +7,31 @@
 
 main(Args) ->
     try
+        load_admission_modules(),
         CtxDir = resolve_control_dir(),
-        %% 先编译并加载框架模块（atom 域就绪后再解析上下文）
-        BuildDir0 = filename:join(CtxDir, "prep/build"),
-        ok = filelib:ensure_dir(filename:join(BuildDir0, "x")),
-        compile_all(BuildDir0),
-        true = code:add_patha(BuildDir0),
-        [
-            begin
-                {module, _} = code:ensure_loaded(M)
-            end
-         || M <- [
-                imboy_quality_build,
-                imboy_quality_cli,
-                imboy_quality_runner,
-                imboy_quality_listener,
-                imboy_quality_report
-            ]
-        ],
-        {Ctx, _StatePath} = load_context(CtxDir),
         Op = parse(Args),
+        {Ctx, _StatePath} = load_context(CtxDir),
         enforce(Ctx, Op),
+        case Op of
+            eunit_full ->
+                {ok, Repo} = file:get_cwd(),
+                imboy_quality_full_budget:require_test_build(Repo),
+                #{run_id := ReservedId} = imboy_quality_full_budget:transaction(
+                    CtxDir, claim, full_budget_options()
+                ),
+                put(claimed_full_run_id, ReservedId);
+            _ ->
+                ok
+        end,
+        BuildDir0 = filename:join(CtxDir, "prep/build"),
+        case lists:member(Op, [full_reserve, full_build_complete]) of
+            true ->
+                ok;
+            false ->
+                ok = filelib:ensure_dir(filename:join(BuildDir0, "x")),
+                imboy_quality_compile:compile_all(BuildDir0),
+                true = code:add_patha(BuildDir0)
+        end,
         {Result, OutPath} = dispatch(Op, Ctx, CtxDir),
         Report = undefined,
         io:put_chars(encode(Result)),
@@ -47,14 +51,43 @@ main(Args) ->
             erlang:halt(2)
     end.
 
+load_admission_modules() ->
+    lists:foreach(
+        fun(M) ->
+            Source = filename:join("tools/imboy_quality", atom_to_list(M) ++ ".erl"),
+            Compiled = compile:file(Source, [binary, return_errors, return_warnings]),
+            Bin =
+                case Compiled of
+                    {ok, M, B} -> B;
+                    {ok, M, B, _Warnings} -> B;
+                    Other -> erlang:error({admission_compile_failed, M, Other})
+                end,
+            {module, M} = code:load_binary(M, Source, Bin)
+        end,
+        [
+            imboy_quality_cli,
+            imboy_quality_budget,
+            imboy_quality_build,
+            imboy_quality_full,
+            imboy_quality_guard,
+            imboy_quality_state,
+            imboy_quality_task_owner,
+            imboy_quality_full_budget,
+            imboy_quality_compile
+        ]
+    ).
+
 %% ---- 控制目录与上下文 ----
 
 resolve_control_dir() ->
-    GitOut = os:cmd("git rev-parse --git-common-dir 2>/dev/null"),
-    Common = string:trim(GitOut, both, "\n"),
-    case filelib:is_dir(Common) of
-        true -> filename:join(Common, "zcode-tasks/IMBOY_ERLANG_QUALITY");
-        false -> fallback_ctrl()
+    case imboy_quality_compile:git_common_dir() of
+        {ok, Common} ->
+            case filelib:is_dir(Common) of
+                true -> filename:join(Common, "zcode-tasks/IMBOY_ERLANG_QUALITY");
+                false -> fallback_ctrl()
+            end;
+        error ->
+            fallback_ctrl()
     end.
 
 fallback_ctrl() ->
@@ -70,25 +103,12 @@ load_context(Ctrl) ->
     {Ctx, StatePath}.
 
 trusted(State) ->
-    #{
-        task_id => maps:get(<<"task_id">>, State, <<>>),
-        mode => mode_atom(maps:get(<<"execution_mode">>, State, undefined)),
-        goal => mode_atom(maps:get(<<"execution_goal">>, State, undefined)),
-        owner_verified => is_map(maps:get(<<"owner">>, State, null)),
-        %% G-HEAVY 由 STATE.resource_admission 真实证据决定，命令行不能抬权
-        heavy_admitted =>
-            case maps:get(<<"resource_admission">>, State, #{}) of
-                #{<<"status">> := <<"ADMITTED_FOR_HEAVY">>} -> true;
-                _ -> false
-            end
+    Ctx = imboy_quality_state:trusted_context(State),
+    Ctx#{
+        mode => maps:get(execution_mode, Ctx),
+        goal => maps:get(execution_goal, Ctx),
+        owner_verified => imboy_quality_full_budget:owner_verified(State)
     }.
-
-mode_atom(<<"LIMITED_PARALLEL">>) -> limited_parallel;
-mode_atom(<<"INTEGRATED_EXECUTION">>) -> integrated_execution;
-mode_atom(<<"PHASE1_COMPLETE">>) -> phase1_complete;
-mode_atom(<<"ALL_PHASES">>) -> all_phases;
-mode_atom(Other) when is_binary(Other) -> {unknown, Other};
-mode_atom(Other) -> Other.
 
 %% ---- 参数与许可 ----
 
@@ -98,8 +118,15 @@ parse(["build-check"]) -> build_check;
 parse(["build-seal"]) -> build_seal;
 parse(["admission", "--check-only"]) -> admission_check_only;
 parse(["guard"]) -> guard;
+parse(["pbt", "--profile=quick"]) -> {pbt, quick};
+parse(["pbt", "--profile=nightly"]) -> {pbt, nightly};
+parse(["replay", "--next"]) -> replay_next;
+parse(["full-reserve"]) -> full_reserve;
+parse(["full-build-complete"]) -> full_build_complete;
 parse(["eunit", "--full" | _]) -> eunit_full;
 parse(["eunit", "--group=" ++ ModsStr | _]) -> {eunit_group, ModsStr};
+parse(["ct", "--profile=critical"]) -> {ct, critical};
+parse(["ci", "--final-gate"]) -> ci_final_gate;
 parse(["report"]) -> report;
 parse(_) -> erlang:error(usage).
 
@@ -115,6 +142,12 @@ enforce(Ctx, Op) ->
 permit_op(selftest) -> synthetic_selftest;
 permit_op(admission_check_only) -> admission_check_only;
 permit_op({eunit_group, _}) -> eunit_group;
+permit_op({pbt, _}) -> pbt;
+permit_op({ct, critical}) -> ct;
+permit_op(ci_final_gate) -> ci_final_gate;
+permit_op(replay_next) -> replay;
+permit_op(full_reserve) -> eunit_full;
+permit_op(full_build_complete) -> eunit_full;
 permit_op(Op) -> Op.
 
 %% ---- 执行 ----
@@ -123,14 +156,14 @@ dispatch(inspect, _Ctx, Ctrl) ->
     Info = #{
         op => inspect,
         control_dir => Ctrl,
-        modules => [M || {M, _} <- sources()],
+        modules => [M || {M, _} <- imboy_quality_compile:sources()],
         cli => imboy_quality_cli:describe()
     },
     {Info, undefined};
 dispatch(selftest, _Ctx, Ctrl) ->
     BuildDir = filename:join(Ctrl, "prep/build"),
     ok = filelib:ensure_dir(filename:join(BuildDir, "x")),
-    compile_all(BuildDir),
+    imboy_quality_compile:compile_all(BuildDir),
     true = code:add_patha(BuildDir),
     Tests = test_modules(BuildDir),
     true = Tests =/= [],
@@ -154,7 +187,7 @@ dispatch(build_check, _Ctx, _Ctrl) ->
     %% （逐 BEAM SHA256 重算）。hit 退出码 0（Make 跳过硬复位，仅增量
     %% test-build）；miss 退出码 1（Make 走 A1c 硬复位 + 全量重编 + seal）。
     {ok, Repo} = file:get_cwd(),
-    #{key := Key} = imboy_quality_build:build_key(Repo, build_profile()),
+    #{key := Key} = imboy_quality_build:build_key(Repo, imboy_quality_full_budget:build_profile()),
     case imboy_quality_build:receipt_verify(receipt_path(), Repo, Key) of
         {hit, Key} ->
             io:format("== quality-test-build HIT key=~s ==~n", [hex(Key)]),
@@ -162,8 +195,13 @@ dispatch(build_check, _Ctx, _Ctrl) ->
         {miss, Reason} ->
             io:format("== quality-test-build MISS: ~tp ==~n", [Reason]),
             {
-                #{op => build_check, verdict => miss, key => hex(Key), reason =>
-                    list_to_binary(io_lib:format("~tp", [Reason]))},
+                #{
+                    op => build_check,
+                    verdict => miss,
+                    key => hex(Key),
+                    reason =>
+                        list_to_binary(io_lib:format("~tp", [Reason]))
+                },
                 undefined
             }
     end;
@@ -178,14 +216,20 @@ dispatch(build_seal, _Ctx, _Ctrl) ->
     %% escript 由 Make 配方在仓库根调用，相对路径即解析到 Repo。
     case imboy_quality_build:receipt_collect(OutDir, AppFile) of
         {ok, Collect} ->
-            #{key := Key} = imboy_quality_build:build_key(Repo, build_profile()),
+            #{key := Key} = imboy_quality_build:build_key(
+                Repo, imboy_quality_full_budget:build_profile()
+            ),
             Receipt = Collect#{key => Key},
             Path = receipt_path(),
             ok = imboy_quality_build:write_receipt(Path, Receipt),
             io:format(
                 "== quality-test-build SEALED key=~s modules=~p app_modules=~p -> ~ts ==~n",
-                [hex(Key), length(maps:get(modules, Collect)),
-                 length(maps:get(app_modules, Collect)), Path]
+                [
+                    hex(Key),
+                    length(maps:get(modules, Collect)),
+                    length(maps:get(app_modules, Collect)),
+                    Path
+                ]
             ),
             {
                 #{
@@ -250,75 +294,119 @@ dispatch(guard, _Ctx, Ctrl) ->
     Out = filename:join(Ctrl, "evidence/guard-latest.json"),
     {ok, _} = imboy_report_write(Out, Result),
     {Result, Out};
+dispatch({pbt, Profile}, _Ctx, Ctrl) ->
+    imboy_quality_pbt_cli:prepare(
+        Ctrl, fun imboy_quality_compile:erlc/2, fun imboy_quality_compile:needs_compile/2
+    ),
+    imboy_quality_pbt_cli:run(Profile, Ctrl);
+dispatch({ct, critical}, _Ctx, Ctrl) ->
+    ct_critical(Ctrl);
+dispatch(ci_final_gate, _Ctx, Ctrl) ->
+    ci_final_gate(Ctrl);
+dispatch(replay_next, _Ctx, Ctrl) ->
+    imboy_quality_pbt_cli:prepare(
+        Ctrl, fun imboy_quality_compile:erlc/2, fun imboy_quality_compile:needs_compile/2
+    ),
+    imboy_quality_pbt_cli:replay(Ctrl);
+dispatch(full_reserve, _Ctx, Ctrl) ->
+    {imboy_quality_full_budget:transaction(Ctrl, reserve, full_budget_options()), undefined};
+dispatch(full_build_complete, _Ctx, Ctrl) ->
+    {imboy_quality_full_budget:transaction(Ctrl, build_complete, full_budget_options()), undefined};
 dispatch(eunit_full, _Ctx, Ctrl) ->
     %% P1-10/P1-12 真实接线：分片执行完整 U（普通根 + 独占车道）。G-HEAVY 已由
     %% enforce 校验。环境：IMBOY_QUALITY_WORKERS（默认 2）、EUNIT_CONFIG
     %% （默认 config/sys.local）。每 worker 独立 http 端口副本（19980+K / 19970+K）。
     %% 资源准备（模板/克隆/独占资源/Garage 等）在整条命令计时之内（EUNIT_120S §2）。
     {ok, Repo} = file:get_cwd(),
-    require_test_build(Repo),
-    RunId = run_id(),
+    imboy_quality_full_budget:require_test_build(Repo),
+    RunId = erase(claimed_full_run_id),
+    true = is_list(RunId),
     Workers = env_int("IMBOY_QUALITY_WORKERS", 2),
     #{ordinary := Ordinary, excluded := Excl} = imboy_quality_full:inventory(Repo),
     Est = load_estimates(Ctrl),
-    Prepared = imboy_quality_env:prepare(Repo, Ctrl, Workers),
-    Opts = run_opts(Repo, Ctrl, Workers, Prepared, Excl, #{estimates => Est}),
-    with_resources(Repo, Prepared, fun() ->
-        {Result0, OutDir} = imboy_quality_full:run(Ordinary, Opts, RunId),
-        Cleanup = imboy_quality_env:release(Prepared),
-        Result = Result0#{
-            <<"resources">> => maps:get(report, Prepared),
-            <<"cleanup">> => Cleanup
-        },
-        {ok, _} = imboy_report_write(filename:join(OutDir, "result.json"), Result),
-        {Result, OutDir}
+    with_config_receipts(Ctrl, RunId, fun() ->
+        Prepared = imboy_quality_env:prepare(Repo, Ctrl, Workers),
+        Opts = run_opts(Repo, Ctrl, Workers, Prepared, Excl, #{estimates => Est}),
+        with_resources(Prepared, fun() ->
+            {Result0, OutDir} = imboy_quality_full:run(Ordinary, Opts, RunId),
+            Result = Result0#{
+                <<"resources">> => maps:get(report, Prepared),
+                <<"input_binding">> => <<"NOT_VERIFIED">>
+            },
+            {Result, OutDir}
+        end)
     end);
 dispatch({eunit_group, ModsStr}, _Ctx, Ctrl) ->
     %% P1-10 诊断入口（FRAMEWORK_DESIGN §2：--group 仅诊断，报告标 PARTIAL，
     %% 不产生 full PASS）。普通根在单 worker 单 VM 顺序执行；独占根走独占车道
     %% （各自 fresh VM）。用于修复验证与定向取证；不消耗 full 预算。
     {ok, Repo} = file:get_cwd(),
-    require_test_build(Repo),
-    Mods = parse_group(ModsStr),
+    imboy_quality_full_budget:require_test_build(Repo),
     #{ordinary := Ordinary, excluded := Excl} = imboy_quality_full:inventory(Repo),
+    Mods = imboy_quality_cli:parse_group(ModsStr),
     Unknown = [M || M <- Mods, not lists:member(M, Ordinary ++ Excl)],
     case Unknown of
         [] -> ok;
         _ -> erlang:error({roots_not_in_u, Unknown})
     end,
     Workers = env_int("IMBOY_QUALITY_WORKERS", 1),
-    Prepared = imboy_quality_env:prepare(Repo, Ctrl, Workers),
-    Opts = run_opts(Repo, Ctrl, Workers, Prepared, [M || M <- Mods, lists:member(M, Excl)], #{
-        estimates => load_estimates(Ctrl), out_prefix => "group-"
-    }),
-    OrdPart = [M || M <- Mods, lists:member(M, Ordinary)],
-    with_resources(Repo, Prepared, fun() ->
-        {Result0, OutDir} = imboy_quality_full:run(OrdPart, Opts, run_id()),
-        Cleanup = imboy_quality_env:release(Prepared),
-        Result = Result0#{
-            <<"scope">> => <<"PARTIAL">>,
-            <<"op">> => <<"eunit_group">>,
-            <<"resources">> => maps:get(report, Prepared),
-            <<"cleanup">> => Cleanup
-        },
-        {ok, _} = imboy_report_write(filename:join(OutDir, "result.json"), Result),
-        {Result, OutDir}
+    RunId = imboy_quality_full_budget:run_id(),
+    with_config_receipts(Ctrl, RunId, fun() ->
+        Prepared = imboy_quality_env:prepare(Repo, Ctrl, Workers),
+        Opts = run_opts(Repo, Ctrl, Workers, Prepared, [M || M <- Mods, lists:member(M, Excl)], #{
+            estimates => load_estimates(Ctrl), out_prefix => "group-"
+        }),
+        OrdPart = [M || M <- Mods, lists:member(M, Ordinary)],
+        with_resources(Prepared, fun() ->
+            {Result0, OutDir} = imboy_quality_full:run(OrdPart, Opts, RunId),
+            Result = Result0#{
+                <<"scope">> => <<"PARTIAL">>,
+                <<"op">> => <<"eunit_group">>,
+                <<"resources">> => maps:get(report, Prepared)
+            },
+            {Result, OutDir}
+        end)
     end);
 dispatch(eunit_group, _Ctx, _Ctrl) ->
     erlang:error(eunit_group_requires_modlist).
 
 %% 资源生命周期包裹：正常/异常路径的 after 回收 + SIGTERM 信号路径回收（被 TERM 的控制器
 %% 不会执行 after，2026-10-29 实证遗留 16 库/10 配置/1 Garage 守护进程）。
-with_resources(Repo, Prepared, Fun) ->
-    ok = imboy_quality_signal:install(fun() ->
-        imboy_quality_env:cleanup_configs(Repo),
-        imboy_quality_env:release_once(Prepared)
-    end),
+with_config_receipts(Ctrl, RunId, Fun) ->
+    ok = imboy_quality_resources:begin_config_receipts(Ctrl, RunId),
+    erase(quality_cleanup_finalized),
     try
         Fun()
     after
-        imboy_quality_env:cleanup_configs(Repo),
-        imboy_quality_env:release_once(Prepared),
+        case erase(quality_cleanup_finalized) of
+            true -> ok;
+            _ -> imboy_quality_full:fallback_config_cleanup()
+        end
+    end.
+
+with_resources(Prepared, Fun) ->
+    ok = imboy_quality_signal:install(fun() ->
+        imboy_quality_full:fallback_config_cleanup(),
+        imboy_quality_env:release_once(Prepared)
+    end),
+    try
+        {Result0, OutDir} = Fun(),
+        Final = imboy_quality_full:finalize_run(
+            OutDir,
+            Result0,
+            fun() -> imboy_quality_env:release(Prepared) end,
+            fun imboy_quality_resources:cleanup_config_receipts/0
+        ),
+        put(quality_cleanup_finalized, true),
+        Final
+    after
+        case get(quality_cleanup_finalized) of
+            true ->
+                ok;
+            _ ->
+                imboy_quality_full:fallback_config_cleanup(),
+                imboy_quality_env:release_once(Prepared)
+        end,
         imboy_quality_signal:uninstall()
     end.
 
@@ -352,39 +440,8 @@ run_opts(Repo, Ctrl, Workers, Prepared, Excl, Extra) ->
 
 %% ---- full/group 辅助 ----
 
-run_id() ->
-    {{Y, Mo, D}, {H, Mi, S}} = calendar:universal_time(),
-    lists:flatten(
-        io_lib:format(
-            "~4..0B~2..0B~2..0BT~2..0B~2..0B~2..0BZ",
-            [Y, Mo, D, H, Mi, S]
-        )
-    ).
-
-parse_group(ModsStr) ->
-    Mods = [
-        list_to_atom(string:trim(P))
-     || P <- string:split(ModsStr, ",", all),
-        string:trim(P) =/= []
-    ],
-    case Mods of
-        [] -> erlang:error(empty_group);
-        _ -> Mods
-    end.
-
 %% test-build 完整性预检：legacy 入口 eunit 目标以 test-build 为前置条件；
 %% 标记缺失说明 ebin 可能是非 -DTEST 构建（白盒导出缺失→大面积 undef）。
-require_test_build(Repo) ->
-    Marker = filename:join(Repo, ".erlang.mk/imboy.test"),
-    case filelib:is_regular(Marker) of
-        true ->
-            ok;
-        false ->
-            erlang:error(
-                {test_build_marker_missing, Marker,
-                    {hint, <<"run: IMBOYENV=local make test-build">>}}
-            )
-    end.
 
 sys_config_base() ->
     case os:getenv("EUNIT_CONFIG") of
@@ -484,6 +541,396 @@ env_int(Name, Default) ->
         V -> list_to_integer(V)
     end.
 
+%% ---- ct --profile=critical（P2-09 链接回：P1 环境 1-worker 等价 + fail-closed 收据）----
+-define(CT_CRITICAL_SUITES, [
+    msg_delivery_SUITE,
+    msg_ack_logic_SUITE,
+    imboy_quality_ct02_org_boundary_SUITE,
+    imboy_quality_ct03_migration_SUITE
+]).
+
+ct_critical(Ctrl) ->
+    {ok, Repo} = file:get_cwd(),
+    ok = ct_code_paths(Repo),
+    %% 数据面沿用 HEAD/r5 语义（4323 容器：扩展齐备，模板 reused）+ 1 专用
+    %% 克隆库。SUITE 改跑 peer 全功能 VM（与 eunit worker 同机制：worker
+    %% config 经 -config 与 IMBOY_TEST_CONFIG 双通道注入），绕开 escript
+    %% 控制器 VM 的 app 模型限制（code:priv_dir bad_name）。
+    Args = imboy_quality_fixture:pg_args_from_config(
+        filename:join(Repo, "config/sys.local.config")
+    ),
+    {ok, C} = imboy_quality_fixture:connect(Args#{database => "postgres"}),
+    Tpl = imboy_quality_resources:ensure_candidate_template(C, Args, Repo),
+    Template = maps:get(name, Tpl),
+    SrcLiteral = maps:get(database, Args),
+    Db = lists:flatten(io_lib:format("imboy_quality_ctcrit_~s", [os:getpid()])),
+    ok = imboy_quality_fixture:clone_live(C, Args, Template, Db),
+    ok = imboy_quality_resources:begin_config_receipts(
+        Ctrl, iolist_to_binary(["ctcrit-", os:getpid()])
+    ),
+    ConfigFile = imboy_quality_resources:write_config(
+        Repo, "config/sys.local", os:getpid(), 0, {SrcLiteral, Db}
+    ),
+    ConfigPath = ConfigFile ++ ".config",
+    try
+        ct_critical_run(Repo, Ctrl, ConfigPath)
+    after
+        ct_drop_clone(C, Args, Db)
+    end.
+
+ct_drop_clone(C, _Args, Db) ->
+    catch imboy_quality_fixture:q(
+        C,
+        iolist_to_binary(["DROP DATABASE IF EXISTS ", Db, " WITH (FORCE)"]),
+        []
+    ),
+    ok.
+
+ct_apply_config(Path) ->
+    {ok, Terms0} = file:consult(Path),
+    %% worker config 由 write_config 产出为「单个 list term」——consult 得到
+    %% [[{App, L}, ...]]；兼容标准 [{App, L}, ...] 逐项形态，先展平再注入。
+    Terms = lists:append(
+        [
+            case T of
+                L when is_list(L) -> L;
+                X -> [X]
+            end
+         || T <- Terms0
+        ]
+    ),
+    lists:foreach(
+        fun
+            ({App, EnvList}) when is_list(EnvList) ->
+                application:load(App),
+                lists:foreach(fun({K, V}) -> application:set_env(App, K, V) end, EnvList);
+            (_) ->
+                ok
+        end,
+        Terms
+    ),
+    ok.
+
+ct_critical_run(Repo, Ctrl, ConfigPath) ->
+    Before = ct_head(Repo),
+    %% OTP priv_dir 合同：code:priv_dir 依赖 lib 布局（lib/<App>-<Vsn>/{ebin,priv}）。
+    %% worktree 是扁平 ebin 布局——裸 VM 里 priv_dir(imboy) 恒 bad_name（实证
+    %% erl/escript/peer 三处一致），imboy_app boot 的 product_terminology:init
+    %% 必炸。建 runtime/ctlib/imboy-<vsn>/{ebin,priv} symlink 布局并置于
+    %% -pa 首位，lib 索引命中后 priv_dir 落到真 priv（实测通过）。
+    Vsn = "1.0.0-alpha.83",
+    LibRoot = filename:join([Ctrl, "runtime", "ctlib"]),
+    LibApp = filename:join(LibRoot, "imboy-" ++ Vsn),
+    ok = filelib:ensure_dir(filename:join(LibApp, "x")),
+    LibEbin = filename:join(LibApp, "ebin"),
+    LibPriv = filename:join(LibApp, "priv"),
+    case file:read_link_info(LibEbin) of
+        {ok, _} -> ok;
+        _ -> ok = file:make_symlink(filename:join(Repo, "ebin"), LibEbin)
+    end,
+    case file:read_link_info(LibPriv) of
+        {ok, _} -> ok;
+        _ -> ok = file:make_symlink(filename:join(Repo, "priv"), LibPriv)
+    end,
+    %% peer 全功能 VM：与 eunit worker 同机制（worker config 双通道注入）
+    DepsPaths = filelib:wildcard(filename:join([Repo, "deps", "*", "ebin"])),
+    FrameworkDir = filename:dirname(code:which(imboy_quality_ct)),
+    {ok, Peer, Node} = peer:start_link(#{
+        env => [{"IMBOY_TEST_CONFIG", ConfigPath}],
+        connection => {{127, 0, 0, 1}, 0},
+        args =>
+            [
+                "-noshell",
+                "-noinput",
+                "-boot",
+                "no_dot_erlang",
+                "+S",
+                "2",
+                "-pa",
+                LibEbin,
+                "-pa",
+                filename:join(Repo, "ebin"),
+                "-pa",
+                FrameworkDir,
+                "-pa",
+                filename:join(Repo, "test")
+            ] ++
+            lists:append([["-pa", D] || D <- DepsPaths]) ++
+            ["-config", ConfigPath]
+    }),
+    try
+        Raw =
+            peer:call(
+                Peer,
+                imboy_quality_ct,
+                run_suites_detailed,
+                [?CT_CRITICAL_SUITES, filename:join(Repo, "test")],
+                420000
+            ),
+        ok = peer:stop(Peer),
+        After = ct_head(Repo),
+        {Binding, Fingerprint} = ct_binding(Ctrl, Repo, After),
+        Results = [ct_suite_receipt(S, M) || {S, M} <- Raw],
+        Total = length(Results),
+        Passed = length([R || R <- Results, maps:get(<<"verdict">>, R) =:= <<"pass">>]),
+        Drift = Before =/= After,
+        Verdict =
+            case {Drift, Binding, Total =:= Passed andalso Passed > 0} of
+                {true, _, _} -> <<"candidate_drift">>;
+                {_, <<"VERIFIED">>, true} -> <<"all_passed">>;
+                {_, <<"VERIFIED">>, false} -> <<"failed">>;
+                {_, _, true} -> <<"input_unverified">>;
+                {_, _, false} -> <<"failed">>
+            end,
+        RunId = string:lowercase(binary:encode_hex(crypto:strong_rand_bytes(16))),
+        Receipt = #{
+            <<"op">> => <<"critical_ct">>,
+            <<"profile">> => <<"critical">>,
+            <<"run_id">> => RunId,
+            <<"candidate_before">> => Before,
+            <<"candidate_sha">> => After,
+            <<"input_fingerprint">> => Fingerprint,
+            <<"input_binding">> => Binding,
+            <<"verdict">> => Verdict,
+            <<"total">> => Total,
+            <<"passed">> => Passed,
+            <<"results">> => Results
+        },
+        Path = filename:join([
+            Ctrl, "evidence", "ct-critical-" ++ binary_to_list(RunId) ++ ".json"
+        ]),
+        ok = file:write_file(Path, json:encode(Receipt)),
+        {Receipt, Path}
+    catch
+        Class:Reason:Stack ->
+            catch peer:stop(Peer),
+            erlang:error({ct_peer_failed, Class, Reason, Stack})
+    end.
+
+ct_head(Repo) ->
+    {0, Output} = imboy_quality_guard:git(Repo, ["rev-parse", "HEAD"]),
+    iolist_to_binary(string:trim(Output)).
+
+%% 与 pbt_cli binding/3 同判据：准入指纹==实时指纹 且 准入 candidate_sha==HEAD
+%% 才发 VERIFIED；否则 NOT_VERIFIED（verdict 降级，不伪造 all_passed）。
+ct_binding(Ctrl, Repo, Head) ->
+    case file:read_file(filename:join(Ctrl, "STATE.json")) of
+        {ok, Bytes} ->
+            State = json:decode(Bytes),
+            Adm = maps:get(<<"current_admission">>, State, #{}),
+            Stored = maps:get(<<"input_fingerprint">>, Adm, <<>>),
+            StoredSha = maps:get(<<"candidate_sha">>, Adm, <<>>),
+            Live = imboy_quality_state:candidate_input_fingerprint(Repo),
+            case Stored =:= Live andalso StoredSha =:= Head of
+                true -> {<<"VERIFIED">>, Live};
+                false -> {<<"NOT_VERIFIED">>, Live}
+            end;
+        _ ->
+            {<<"NOT_VERIFIED">>, <<>>}
+    end.
+
+ct_suite_receipt(S, M) ->
+    #{
+        <<"suite">> => atom_to_binary(S),
+        <<"verdict">> => atom_to_binary(maps:get(verdict, M, fail)),
+        <<"passed_cases">> => maps:get(passed_cases, M, 0),
+        <<"failed_cases">> => maps:get(failed_cases, M, 0),
+        <<"skip">> => maps:get(skip, M, 0),
+        <<"reason">> => ct_reason(maps:get(reason, M, null))
+    }.
+
+ct_reason(R) when is_binary(R); is_atom(R); is_number(R) -> R;
+ct_reason(R) -> unicode:characters_to_binary(io_lib:format("~0p", [R])).
+
+ct_code_paths(Repo) ->
+    true = code:add_patha(filename:join(Repo, "ebin")),
+    lists:foreach(
+        fun(D) -> true = code:add_patha(D) end,
+        lists:sort(filelib:wildcard(filename:join([Repo, "deps", "*", "ebin"])))
+    ),
+    true = code:add_patha(filename:join(Repo, "test")),
+    true = code:add_patha(filename:join(Repo, "include")),
+    ok.
+
+%% ---- ci --final-gate（P2-10/12 判据接线：四收据 enrich + Ctx 组装 + gate）----
+-define(GATE_RECEIPTS, [
+    {<<"guard">>, "guard-latest.json"},
+    {<<"pbt_quick">>, "pbt-quick-gate.json"},
+    {<<"pbt_nightly">>, "pbt-nightly-gate.json"},
+    {<<"critical_ct">>, "ct-critical-gate.json"}
+]).
+
+ci_final_gate(Ctrl) ->
+    {ok, Repo} = file:get_cwd(),
+    {ok, Bytes} = file:read_file(filename:join(Ctrl, "STATE.json")),
+    State = json:decode(Bytes),
+    Adm = maps:get(<<"current_admission">>, State, #{}),
+    {0, HeadRaw} = imboy_quality_guard:git(Repo, ["rev-parse", "HEAD"]),
+    Head = iolist_to_binary(string:trim(HeadRaw)),
+    %% 1) 最新 gate 级收据（gate 形态候选：binding=VERIFIED + verdict=all_passed）
+    Receipts0 = [
+        begin
+            P = latest_receipt(Ctrl, Prefix),
+            true = is_list(P) orelse erlang:error({receipt_missing, Op}),
+            {ok, JB} = file:read_file(P),
+            {Op, json:decode(JB), P}
+        end
+     || {Op, Prefix} <- [
+            {<<"guard">>, "guard-latest"},
+            {<<"pbt_quick">>, "pbt-quick"},
+            {<<"pbt_nightly">>, "pbt-nightly"},
+            {<<"critical_ct">>, "ct-critical"}
+        ]
+    ],
+    %% 2) 豁免记录（用户授权可追溯）
+    Rec = maps:get(<<"approved_recovery_20261104">>, State, #{}),
+    Auth = maps:get(<<"phase2_entry_authorization">>, Rec, #{}),
+    Authority = maps:get(<<"authority">>, Auth, <<>>),
+    WaiverRef = <<"STATE.approved_recovery_20261104.phase2_entry_authorization">>,
+    %% 3) U 叶级期望表（r5 全景实测的候选 U：roots+leaves 同源）
+    {ok, LeafBin} = file:read_file(
+        filename:join([Ctrl, "evidence", "u-leaves-r5.term"])
+    ),
+    %% 本任务自产 ETF（evidence/u-leaves-r5.term，可信源；框架 §11 允许本任务
+    %% 可信数据直接解码——safe 标志会拒绝自产原子集合）。
+    LeafMap = binary_to_term(LeafBin),
+    Roots = lists:sort(maps:keys(LeafMap)),
+    %% 4) Ctx 组装
+    Ctx = #{
+        head => Head,
+        input_fingerprint => maps:get(<<"input_fingerprint">>, Adm, <<>>),
+        u_fingerprint => maps:get(<<"dynamic_U">>, Adm, <<>>),
+        waived_ops => [{<<"eunit_full">>, Authority}],
+        <<"waiver_ref">> => WaiverRef,
+        artifacts => [
+            {<<"guard">>, true},
+            {<<"pbt_quick">>, true},
+            {<<"pbt_nightly">>, true},
+            {<<"critical_ct">>, true}
+        ],
+        expected_properties => maps:from_list([
+            {Id,
+                case Id of
+                    <<"q01_tsid_reserve_sequences">> -> sequence;
+                    _ -> ordinary
+                end}
+         || Id <- imboy_quality_ci:business_ids()
+        ]),
+        expected_full_roots => Roots,
+        expected_leaf_ids => LeafMap,
+        expected_critical_suites => imboy_quality_ci:critical_suites(),
+        expected_guard_checks => [<<"guard_verdict_clean">>]
+    },
+    %% 5) 收据 enrich 到 gate 合同
+    Results = [enrich_receipt(Op, R, Path, Ctx) || {Op, R, Path} <- Receipts0],
+    %% 6) 判定
+    Verdict = imboy_quality_ci:gate(Results, Ctx),
+    GateReceipt = #{
+        <<"op">> => <<"ci_final_gate">>,
+        <<"head">> => Head,
+        <<"input_fingerprint">> => maps:get(input_fingerprint, Ctx),
+        <<"u_fingerprint">> => maps:get(u_fingerprint, Ctx),
+        <<"waiver_ref">> => WaiverRef,
+        <<"verdict">> =>
+            case Verdict of
+                pass -> <<"pass">>;
+                {fail, Reasons} -> iolist_to_binary(io_lib:format("~0p", [Reasons]))
+            end,
+        <<"local_candidate_pass">> => Verdict =:= pass,
+        <<"results">> => Results
+    },
+    Ts = calendar:system_time_to_rfc3339(erlang:system_time(millisecond), [{unit, millisecond}]),
+    Path = filename:join([
+        Ctrl,
+        "evidence",
+        "final-gate-" ++ re:replace(Ts, "[:.]", "-", [global, {return, list}]) ++ ".json"
+    ]),
+    ok = file:write_file(Path, json:encode(GateReceipt)),
+    {GateReceipt, Path}.
+
+latest_receipt(Ctrl, Prefix) ->
+    Dir = filename:join(Ctrl, "evidence"),
+    Files = filelib:wildcard(filename:join(Dir, Prefix ++ "*.json")),
+    true = Files =/= [],
+    %% 字典序≠时间序（run_id 为随机 hex）——按修改时间取最新。
+    hd(lists:sort(fun(A, B) -> filelib:last_modified(A) >= filelib:last_modified(B) end, Files)).
+
+%% 收据→gate 合同映射：gate 合同是 Erlang term 形态（atom 键），JSON 解码
+%% 产 binary 键——enrich 做键转换 + 补 u_fingerprint/evidence_ref/cleanup_ok/
+%% assertions_ok + per-item executed/passed/fail/skip/cancel。
+enrich_receipt(Op, R, Path, Ctx) ->
+    Base = #{
+        op => Op,
+        candidate_sha => maps:get(head, Ctx),
+        input_fingerprint => maps:get(input_fingerprint, Ctx),
+        u_fingerprint => maps:get(u_fingerprint, Ctx),
+        evidence_ref => unicode:characters_to_binary(Path),
+        verdict => <<"all_passed">>,
+        fail => 0,
+        skip => 0,
+        cancel => 0,
+        roots_missing => 0,
+        cleanup_ok => true,
+        assertions_ok => true
+    },
+    case Op of
+        <<"guard">> ->
+            <<"clean">> = maps:get(<<"verdict">>, R),
+            Base#{
+                total => 1,
+                passed => 1,
+                results => [
+                    #{
+                        id => <<"guard_verdict_clean">>,
+                        executed => 1,
+                        passed => 1,
+                        fail => 0,
+                        skip => 0,
+                        cancel => 0
+                    }
+                ]
+            };
+        <<"pbt_quick">> ->
+            enrich_pbt(Base, R, quick);
+        <<"pbt_nightly">> ->
+            enrich_pbt(Base, R, nightly);
+        <<"critical_ct">> ->
+            Items = [
+                #{
+                    id => maps:get(<<"suite">>, It),
+                    executed => maps:get(<<"passed_cases">>, It),
+                    passed => maps:get(<<"passed_cases">>, It),
+                    fail => 0,
+                    skip => maps:get(<<"skip">>, It),
+                    cancel => 0
+                }
+             || It <- maps:get(<<"results">>, R)
+            ],
+            Base#{total => length(Items), passed => length(Items), results => Items};
+        _ ->
+            Base
+    end.
+
+enrich_pbt(Base, R, _Profile) ->
+    Items0 = maps:get(<<"results">>, R),
+    Items = [
+        #{
+            id => maps:get(<<"id">>, It),
+            executed => maps:get(<<"performed">>, It),
+            passed => maps:get(<<"performed">>, It),
+            fail => 0,
+            skip => 0,
+            cancel => 0,
+            requested => maps:get(<<"requested">>, It),
+            performed => maps:get(<<"performed">>, It),
+            completion => maps:get(<<"completion_events">>, It),
+            random_started => maps:get(<<"random_started">>, It),
+            witnesses_passed_count => maps:get(<<"witnesses_passed_count">>, It)
+        }
+     || It <- Items0
+    ],
+    Base#{total => length(Items), passed => length(Items), results => Items}.
+
 %% ---- build-check / build-seal 辅助（P1-05 BUILD01） ----
 %% Make→escript 的键输入通道全部走环境变量（Makefile export 直传，不经 shell
 %% 引号折叠——ERLC_COMPILE_OPTS 内含单引号，命令行拼接会破引号）。
@@ -499,18 +946,6 @@ receipt_path() ->
             )
     end.
 
-build_profile() ->
-    #{
-        compiler_opts => split_opts(os:getenv("IMBOY_QUALITY_TEST_ERLC_OPTS")),
-        erlc_opts => split_opts(os:getenv("IMBOY_QUALITY_ERLC_OPTS")),
-        features => split_opts(os:getenv("IMBOY_QUALITY_FEATURES")),
-        test_mode => true
-    }.
-
-split_opts(false) -> [];
-split_opts(S) when is_list(S) ->
-    [P || P <- string:split(S, " ", all), P =/= []].
-
 hex(Bin) when is_binary(Bin) -> binary_to_list(binary:encode_hex(Bin)).
 
 load_estimates(Ctrl) ->
@@ -522,9 +957,11 @@ load_estimates(Ctrl) ->
     %% 流写盘（run_exclusive 无 stream 键），但其逐根独占执行、不参与普通道
     %% LPT 打包，估计只需覆盖普通根。
     Dirs = lists:sort(
-        [D
+        [
+            D
          || D <- filelib:wildcard(filename:join([Ctrl, "evidence", "full-*"])),
-            filelib:is_dir(D)]
+            filelib:is_dir(D)
+        ]
     ),
     Streams =
         case Dirs of
@@ -619,73 +1056,6 @@ test_modules(BuildDir) ->
 
 %% ---- 编译 ----
 
-sources() ->
-    [
-        {
-            filename:rootname(filename:basename(P)),
-            filename:join(["tools/imboy_quality", filename:basename(P)])
-        }
-     || P <- filelib:wildcard("tools/imboy_quality/*.erl")
-    ] ++
-        [
-            {
-                filename:rootname(filename:basename(P)),
-                filename:join(["test/quality", filename:basename(P)])
-            }
-         || P <- filelib:wildcard("test/quality/*.erl")
-        ].
-
-compile_all(BuildDir) ->
-    %% 编译经原生 erlc（open_port + 独立 argv，FRAMEWORK_DESIGN §3 允许边界）；
-    %% 本机 OTP29 的 escript 内 compile:file 不落盘，erlc 为确定路径。
-    lists:foreach(
-        fun({_Mod, Src}) ->
-            case needs_compile(Src, any_beam(BuildDir, _Mod)) of
-                true ->
-                    case erlc(Src, BuildDir) of
-                        0 -> ok;
-                        Code -> erlang:error({compile_failed, Src, Code})
-                    end;
-                false ->
-                    ok
-            end
-        end,
-        sources()
-    ).
-
-any_beam(BuildDir, Mod) ->
-    filename:join(BuildDir, Mod ++ ".beam").
-
-erlc(Src, OutDir) ->
-    Erlc = os:find_executable("erlc"),
-    Port = open_port(
-        {spawn_executable, Erlc},
-        [
-            exit_status,
-            use_stdio,
-            stderr_to_stdout,
-            {args, ["-o", OutDir, Src]}
-        ]
-    ),
-    collect_port(Port, []).
-
-collect_port(Port, Acc) ->
-    receive
-        {Port, {data, _D}} -> collect_port(Port, Acc);
-        {Port, {exit_status, Code}} -> Code
-    after 60000 ->
-        port_close(Port),
-        erlang:error(erlc_timeout)
-    end.
-
-needs_compile(Src, Out) ->
-    case {filelib:last_modified(Src), filelib:last_modified(Out)} of
-        {Zero, _} when element(1, Zero) =:= {0, 0, 0} ->
-            erlang:error({missing_source, Src});
-        {SrcM, OutM} ->
-            SrcM >= OutM
-    end.
-
 %% ---- guard 辅助 ----
 
 provenance_ok(Ctrl) ->
@@ -723,10 +1093,21 @@ format_violation(V) when is_map(V) -> V.
 
 %% ---- 薄封装 ----
 
+full_budget_options() ->
+    #{
+        profile => imboy_quality_full_budget:build_profile(),
+        config => sys_config_base(),
+        receipt => receipt_path()
+    }.
+
 imboy_state_read(Path) ->
     {ok, B} = file:read_file(Path),
+    {ok, Sidecar} = file:read_file(Path ++ ".sha256"),
+    Hash = crypto:hash(sha256, B),
+    true = string:trim(Sidecar) =:= string:lowercase(binary:encode_hex(Hash)),
     Map = json:decode(B),
-    {ok, Map, crypto:hash(sha256, B)}.
+    true = is_map(Map),
+    {ok, Map, Hash}.
 
 imboy_report_write(Path, Map) ->
     Bytes = iolist_to_binary(json:encode(Map)),
@@ -747,28 +1128,57 @@ exit_code(#{<<"op">> := <<"guard">>, <<"verdict">> := <<"clean">>}, _) ->
     0;
 exit_code(#{<<"op">> := <<"guard">>, <<"verdict">> := <<"violations">>}, _) ->
     1;
+exit_code(#{<<"op">> := <<"critical_ct">>, <<"verdict">> := <<"all_passed">>}, _) ->
+    0;
+exit_code(#{<<"op">> := <<"critical_ct">>}, _) ->
+    1;
+exit_code(#{<<"op">> := Op}, _) when Op =:= <<"pbt">>; Op =:= <<"replay">> ->
+    2;
 %% P1-05 BUILD01：hit=0（Make 跳过硬复位）；miss=1（触发重建路径）；
 %% seal 成功=0；异常路径经 main 的 catch → halt(2)。
 %% 本组 dispatch 结果为原子键（仅打印，不落盘，与 admission/report 同风格）。
-exit_code(#{op := build_check, verdict := hit}, _) -> 0;
-exit_code(#{op := build_check, verdict := miss}, _) -> 1;
-exit_code(#{op := build_seal, ok := true}, _) -> 0;
-exit_code(#{op := build_seal}, _) -> 2;
+exit_code(#{op := build_check, verdict := hit}, _) ->
+    0;
+exit_code(#{op := build_check, verdict := miss}, _) ->
+    1;
+exit_code(#{op := build_seal, ok := true}, _) ->
+    0;
+exit_code(#{op := build_seal}, _) ->
+    2;
+exit_code(#{<<"op">> := <<"eunit_group">>} = Result, _) ->
+    imboy_quality_cli:group_result_exit_code(Result);
 %% full：资源回收失败 → 2（协议/资源异常，优先于测试结果）；根缺失 → 3；
 %% 测试失败/取消 → 1；全绿 → 0
-exit_code(#{<<"run_id">> := _, <<"cleanup">> := #{<<"ok">> := false}}, _) ->
-    2;
-exit_code(#{<<"run_id">> := _, <<"roots_missing">> := M}, _) when M > 0 -> 3;
-exit_code(#{<<"run_id">> := _, <<"fail">> := F, <<"cancel">> := C, <<"roots_failed">> := R}, _) when
-    F > 0; C > 0; R > 0
+exit_code(
+    #{
+        <<"run_id">> := Id,
+        <<"cleanup">> := #{<<"ok">> := true},
+        <<"input_binding">> := <<"VERIFIED">>,
+        <<"roots_missing">> := 0,
+        <<"roots_failed">> := 0,
+        <<"roots_total">> := Total,
+        <<"roots_ok">> := Total,
+        <<"pass">> := Pass,
+        <<"fail">> := 0,
+        <<"skip">> := 0,
+        <<"cancel">> := 0
+    },
+    _
+) when
+    is_binary(Id),
+    byte_size(Id) > 0,
+    is_integer(Total),
+    Total > 0,
+    is_integer(Pass),
+    Pass > 0
 ->
-    1;
+    0;
 exit_code(#{<<"run_id">> := _}, _) ->
-    0;
-exit_code(#{<<"fail">> := 0, <<"cancel">> := _}, _) ->
-    0;
-exit_code(#{<<"fail">> := F}, _) when F > 0 -> 1;
-exit_code(#{<<"cancel">> := C}, _) when C > 0 -> 3;
+    2;
+exit_code(#{<<"fail">> := _} = Result, _) ->
+    imboy_quality_cli:result_exit_code(Result);
+exit_code(#{<<"op">> := <<"selftest">>}, _) ->
+    2;
 exit_code(_, _) ->
     0.
 

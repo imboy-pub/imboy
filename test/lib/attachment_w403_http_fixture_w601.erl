@@ -70,7 +70,7 @@ multipart_register(S0, _Bytes) ->
     S = S0,
     Cid = elib_uuid:gen_v7(),
     Registry = attachment_storage:registry(),
-    Ns = maps:get(multipart_ns, S0, <<"w403-disk">>),
+    Ns = maps:get(multipart_ns, S0, <<"w403-garage">>),
     application:set_env(
         imboy,
         attachment_storage_registry,
@@ -97,7 +97,7 @@ multipart_register(S0, _Bytes) ->
         fixture => S,
         leaf => maps:get(leaf, S, elib_uuid:gen_v7()),
         surface => ordinary,
-        driver => maps:get(multipart_driver, S0, disk),
+        driver => maps:get(multipart_driver, S0, garage),
         key => Key,
         location => Location,
         upload_url => maps:get(<<"put_url">>, Data),

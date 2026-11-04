@@ -19,7 +19,8 @@ ctx_int() ->
         task_id => <<"IMBOY_ERLANG_QUALITY">>,
         execution_mode => integrated_execution,
         execution_goal => phase1_complete,
-        owner_verified => true
+        owner_verified => true,
+        gimpl_profile => phase1_snapshot
     }.
 
 cli_permit_test() ->
@@ -441,6 +442,8 @@ resources_port_base_test() ->
     Saved = os:getenv("IMBOY_QUALITY_PORT_BASE"),
     Has = fun(Bin, S) -> ?assertNotEqual(nomatch, binary:match(Bin, S)) end,
     try
+        ok = filelib:ensure_dir(filename:join([Repo, "evidence", "x"])),
+        ok = imboy_quality_config_receipts:begin_run(Repo, "portbase", Repo),
         true = os:unsetenv("IMBOY_QUALITY_PORT_BASE"),
         ?assertEqual(19980, imboy_quality_resources:port_base()),
         P0 = imboy_quality_resources:write_config(
@@ -462,8 +465,12 @@ resources_port_base_test() ->
         true = os:putenv("IMBOY_QUALITY_PORT_BASE", "abc"),
         ?assertError({bad_port_base, _}, imboy_quality_resources:port_base()),
         true = os:putenv("IMBOY_QUALITY_PORT_BASE", "80"),
-        ?assertError({bad_port_base, _}, imboy_quality_resources:port_base())
+        ?assertError({bad_port_base, _}, imboy_quality_resources:port_base()),
+        ?assertEqual(ok, imboy_quality_resources:cleanup_config_receipts()),
+        ?assertEqual({error, enoent}, file:read_link_info(P0 ++ ".config")),
+        ?assertEqual({error, enoent}, file:read_link_info(P1 ++ ".config"))
     after
+        _ = imboy_quality_resources:cleanup_config_receipts(),
         case Saved of
             false -> os:unsetenv("IMBOY_QUALITY_PORT_BASE");
             V -> os:putenv("IMBOY_QUALITY_PORT_BASE", V)

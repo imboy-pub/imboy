@@ -1,7 +1,15 @@
 %% IMBOY_ERLANG_QUALITY P1-03：命令许可门与退出码协议（纯 OTP）。
 %% 上下文来自可信 STATE/owner 读取，命令行参数不能抬权（PAR24）。
 -module(imboy_quality_cli).
--export([permit/2, exit_code/1, describe/0, perf_verdict/1, perf_verdict/2]).
+-export([
+    permit/2,
+    exit_code/1,
+    result_exit_code/1,
+    group_result_exit_code/1,
+    parse_group/1,
+    describe/0,
+    perf_verdict/1, perf_verdict/2
+]).
 
 %% EUNIT_120S：完整 U 全量目标（整条外部命令墙钟，毫秒）
 -define(FULL_TARGET_MS, 120000).
@@ -91,12 +99,14 @@ permit_mode(integrated_execution, _, Ctx, eunit_full) ->
     heavy_gate(Ctx, eunit_full);
 permit_mode(integrated_execution, _, Ctx, baseline) ->
     heavy_gate(Ctx, baseline);
-permit_mode(integrated_execution, all_phases, _, pbt) ->
-    ok;
-permit_mode(integrated_execution, all_phases, _, ct) ->
-    ok;
-permit_mode(integrated_execution, all_phases, _, replay) ->
-    ok;
+permit_mode(integrated_execution, all_phases, Ctx, pbt) ->
+    heavy_gate(Ctx, pbt);
+permit_mode(integrated_execution, all_phases, Ctx, ct) ->
+    heavy_gate(Ctx, ct);
+permit_mode(integrated_execution, all_phases, Ctx, replay) ->
+    heavy_gate(Ctx, replay);
+permit_mode(integrated_execution, all_phases, Ctx, ci_final_gate) ->
+    heavy_gate(Ctx, ci_final_gate);
 permit_mode(integrated_execution, all_phases, _, certify) ->
     {error, g_cert_required};
 permit_mode(integrated_execution, _, _, pbt) ->
@@ -110,8 +120,17 @@ permit_mode(integrated_execution, _, _, certify) ->
 permit_mode(integrated_execution, _, _, _) ->
     {error, unknown_operation}.
 
-heavy_gate(#{heavy_admitted := true}, _) -> ok;
+heavy_gate(#{heavy_admitted := true} = Ctx, Op) -> admission_gate(Ctx, Op);
 heavy_gate(_, Op) -> {error, {g_heavy_not_admitted, Op}}.
+
+admission_gate(#{gimpl_profile := phase2_integrated}, _) ->
+    ok;
+admission_gate(#{gimpl_profile := phase1_snapshot}, Op) when
+    Op =:= eunit_full; Op =:= eunit_group; Op =:= baseline
+->
+    ok;
+admission_gate(_, Op) ->
+    {error, {g_impl_not_admitted, Op}}.
 
 is_synthetic_manifest(Manifest) when is_list(Manifest), Manifest =/= [] ->
     lists:all(
@@ -142,6 +161,49 @@ exit_code({error, {blocked_or_deferred, _}}) -> 6;
 exit_code({error, denied}) -> 2;
 exit_code({error, _}) -> 2;
 exit_code(_) -> 2.
+
+result_exit_code(#{<<"fail">> := F, <<"skip">> := S, <<"cancel">> := C}) when
+    is_integer(F), F >= 0, is_integer(S), S >= 0, is_integer(C), C >= 0
+->
+    if
+        F > 0 -> 1;
+        S > 0 orelse C > 0 -> 3;
+        true -> 0
+    end;
+result_exit_code(_) ->
+    2.
+
+group_result_exit_code(#{
+    <<"op">> := <<"eunit_group">>,
+    <<"scope">> := <<"PARTIAL">>,
+    <<"run_id">> := Id,
+    <<"cleanup">> := #{<<"ok">> := true},
+    <<"roots_total">> := Total,
+    <<"roots_ok">> := Total,
+    <<"roots_missing">> := 0,
+    <<"roots_failed">> := 0,
+    <<"pass">> := Pass,
+    <<"fail">> := 0,
+    <<"skip">> := 0,
+    <<"cancel">> := 0
+}) when
+    is_binary(Id),
+    byte_size(Id) > 0,
+    is_integer(Total),
+    Total > 0,
+    is_integer(Pass),
+    Pass > 0
+->
+    0;
+group_result_exit_code(_) ->
+    2.
+
+parse_group(Text) when is_list(Text) ->
+    Parts = [string:trim(P) || P <- string:split(Text, ",", all)],
+    true = lists:all(fun(P) -> P =/= [] end, Parts),
+    Mods = [list_to_existing_atom(P) || P <- Parts],
+    true = length(Mods) =:= length(lists:usort(Mods)),
+    Mods.
 
 describe() ->
     #{

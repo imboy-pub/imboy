@@ -11,6 +11,12 @@
 -export([
     prepare/3,
     release/1,
+    release_with/4,
+    release_with/5,
+    cleanup_result/3,
+    orphan_recovery/4,
+    write_json_exclusive/2,
+    verified_volume_root/3,
     release_once/1,
     worker_config/3,
     cleanup_configs/1,
@@ -109,16 +115,60 @@ prepare(Repo, Ctrl, Workers) ->
     {ok, _} = application:ensure_all_started(epgsql),
     Base = sys_config_base(),
     Args = imboy_quality_fixture:pg_args_from_config(filename:join(Repo, Base ++ ".config")),
+    ResourceRoot = garage_resource_root(Ctrl),
+    imboy_quality_pg_owner:with_owner(
+        Ctrl,
+        ResourceRoot,
+        fun imboy_quality_pg_register:register/3,
+        fun imboy_quality_pg_register:record_exit/3,
+        fun(Handle) -> prepare_started(Ctrl, Workers, Repo, Base, Args, ResourceRoot, Handle) end
+    ).
+
+prepare_started(Ctrl, Workers, Repo, Base, Args, ResourceRoot, Handle) ->
+    {ok, PG} = imboy_quality_env_cleanup:verify_postgres(Ctrl, Args, ResourceRoot),
     Pid = os:getpid(),
-    {ok, C} = imboy_quality_fixture:connect(Args#{database => "postgres"}),
-    try
+    Journal = imboy_quality_env_cleanup:journal_open(Ctrl, PG),
+    Cleanup = fun(Type, Resource) ->
+        imboy_quality_env_cleanup:prepare_cleanup(Ctrl, Args, ResourceRoot, PG, Type, Resource)
+    end,
+    Finalize = fun() ->
+        case erase(imboy_prepare_connection) of
+            undefined -> ok;
+            Conn -> close_quiet(Conn)
+        end
+    end,
+    imboy_quality_env_cleanup:with_transaction(Journal, Cleanup, Finalize, fun() ->
+        {ok, C} = imboy_quality_fixture:connect(Args#{database => "postgres"}),
+        put(imboy_prepare_connection, C),
+        ExpectedSystemId = maps:get(<<"system_identifier">>, PG),
+        ExpectedSystemId = list_to_binary(imboy_quality_fixture:system_identifier(C)),
         Reaped = reap_orphans(C, Args, Repo, Ctrl),
-        Talk = talk_owned(C, Ctrl, Args),
+        RuntimeNames = [
+            filename:join([ResourceRoot, "runtime", D, Pid])
+         || D <- ["attv5", "hird", "textguard", "talk_owned"]
+        ],
+        [
+            imboy_quality_env_cleanup:transaction_intent(runtime, list_to_binary(N))
+         || N <- RuntimeNames
+        ],
+        OwnedRuntimeDirs = imboy_quality_env_cleanup:reserve_dirs(ResourceRoot, Pid),
+        [
+            imboy_quality_env_cleanup:transaction_confirm(
+                runtime, list_to_binary(maps:get(path, E)), E
+            )
+         || E <- OwnedRuntimeDirs
+        ],
+        Scratch = filename:join([ResourceRoot, "runtime", "talk_owned", Pid]),
+        Talk = talk_owned(C, Scratch, Args, Pid),
+        imboy_quality_env_cleanup:transaction_intent(template, <<"candidate_template">>),
         Tpl = imboy_quality_resources:ensure_candidate_template(C, Args, Repo),
+        imboy_quality_env_cleanup:transaction_confirm(template, <<"candidate_template">>, Tpl),
         Template = maps:get(name, Tpl),
         SrcLiteral = maps:get(database, Args),
         Clone = fun(Name) ->
+            imboy_quality_env_cleanup:transaction_intent(clone, list_to_binary(Name)),
             ok = imboy_quality_fixture:clone_live(C, Args, Template, Name),
+            imboy_quality_env_cleanup:transaction_confirm(clone, list_to_binary(Name), Name),
             Name
         end,
         Clones = maps:from_list([
@@ -139,12 +189,31 @@ prepare(Repo, Ctrl, Workers) ->
             ]
         ],
         PgEnv = pg_env(Args),
-        Hird = hird(Repo, Ctrl, Args, Clone, Pid),
-        Garage = garage(Ctrl, Pid),
-        Aac = imboy_quality_resources:ensure_aac_fixture(Ctrl),
-        Attv5 = attv5(Repo, Base, Ctrl, Garage, Clone, SrcLiteral, Pid, Args),
+        Hird = hird(Repo, ResourceRoot, Args, Clone, Pid),
+        GarageName = list_to_binary("garage_" ++ Pid),
+        imboy_quality_env_cleanup:transaction_intent(garage, GarageName),
+        Garage = {ok, G} = garage(Ctrl, Pid),
+        try
+            true = is_map(maps:get(process_identity, G)),
+            imboy_quality_env_cleanup:transaction_confirm(garage, GarageName, G)
+        catch
+            Class:Reason:Stack ->
+                Cleanup =
+                    try
+                        imboy_quality_env_cleanup:prepare_cleanup(
+                            Ctrl, Args, ResourceRoot, PG, garage, G
+                        )
+                    catch
+                        CleanupClass:CleanupReason -> {error, {CleanupClass, CleanupReason}}
+                    end,
+                erlang:raise(Class, {garage_confirmation_failed, Reason, Cleanup}, Stack)
+        end,
+        AacPath = filename:join([Scratch, "runtime", "fixtures", "synthetic_440hz_1s.aac"]),
+        {error, enoent} = file:read_link_info(AacPath),
+        Aac = {ok, _} = imboy_quality_resources:ensure_aac_fixture(Scratch),
+        Attv5 = attv5(Repo, Base, ResourceRoot, Garage, Clone, SrcLiteral, Pid, Args),
         Iso = isolated(Repo, Base, Clone, SrcLiteral, Pid),
-        Textguard = textguard(Repo, Ctrl, Args, Pid),
+        Textguard = textguard(Repo, ResourceRoot, Args, Pid),
         ExclusiveEnv = maps:merge(
             maps:merge(
                 #{
@@ -175,7 +244,7 @@ prepare(Repo, Ctrl, Workers) ->
             )
         ),
         #{
-            env => maps:get(env, Talk) ++ talk_garage_env(Ctrl, Garage, Aac, Pid),
+            env => maps:get(env, Talk) ++ talk_garage_env(Scratch, Garage, Aac, Pid),
             report => #{
                 <<"reaped_orphans">> => Reaped,
                 <<"talk_owned">> => maps:get(report, Talk),
@@ -204,39 +273,41 @@ prepare(Repo, Ctrl, Workers) ->
                 }
             },
             pg_args => Args,
+            pg_identity => PG,
+            resource_root => ResourceRoot,
+            pg_handle => Handle,
             source_db => SrcLiteral,
             template => Template,
             clones => Clones,
             exclusive_env => ExclusiveEnv,
             exclusive_config => maps:merge(maps:get(config, Attv5), maps:get(config, Iso)),
             drop_dbs =>
-                [GsDb | [N || {_, N} <- Ag31]] ++ maps:get(drop_dbs, Hird) ++
+                [maps:get(maint_db, Talk), GsDb | [N || {_, N} <- Ag31]] ++ maps:get(drop_dbs, Hird) ++
                 maps:get(drop_dbs, Attv5) ++ maps:get(drop_dbs, Iso),
             garage => Garage,
             ctrl => Ctrl,
-            runtime_dirs => [
-                filename:join([Ctrl, "runtime", D, Pid])
-             || D <- ["attv5", "hird", "textguard"]
-            ]
+            runtime_dirs => OwnedRuntimeDirs
         }
-    after
-        close_quiet(C)
-    end.
+    end).
 
 %% TALK_OWNED 合同（test/common/talk_record_owned_eunit_fixture.erl）：维护库的 database
 %% COMMENT 为 marker、PG system_identifier 与 env 一致、RUN_ROOT 位于 SCRATCH_ROOT 之下。
 %% legacy 入口从不提供这些变量；本入口在计时内自动准备，使这些义务真实执行。
-talk_owned(C, Ctrl, Args) ->
-    Maint = "imboy_quality_talk_owned_maint",
+talk_owned(C, Scratch, Args, Pid) ->
+    Maint = "imboy_quality_talk_owned_maint_" ++ Pid,
     Marker = "IMBOY_ERLANG_QUALITY:talk_owned:maint",
+    imboy_quality_env_cleanup:transaction_intent(clone, list_to_binary(Maint)),
+    {ok, _, []} = q(C, ["SELECT 1 FROM pg_database WHERE datname = '", Maint, "'"]),
     ok = imboy_quality_fixture:ensure_marked_database(C, Maint, Marker),
+    ok = imboy_quality_fixture:connect_db(Args, Maint, fun imboy_quality_fixture:ensure_marker/1),
+    imboy_quality_env_cleanup:transaction_confirm(clone, list_to_binary(Maint), Maint),
     SysId = imboy_quality_fixture:system_identifier(C),
-    Scratch = filename:join(Ctrl, "runtime/talk_owned"),
     Run = filename:join(Scratch, "run"),
-    ok = filelib:ensure_dir(filename:join(Run, "x")),
+    ok = file:make_dir(Run),
     PgEnv = pg_env(Args),
     #{
         sys_id => SysId,
+        maint_db => Maint,
         env => [
             {"TALK_OWNED_PG_HOST", maps:get(host, PgEnv)},
             {"TALK_OWNED_PG_PORT", maps:get(port, PgEnv)},
@@ -292,13 +363,19 @@ hird(Repo, Ctrl, Args, Clone, Pid) ->
 
 garage(Ctrl, Pid) ->
     try
+        Root = garage_resource_root(Ctrl),
         {ok,
-            imboy_quality_resources:start_garage(Ctrl, Pid, [
+            imboy_quality_resources:start_garage(Root, Pid, [
                 "imboy-w403-" ++ Pid, "talk-record-relay"
             ])}
     catch
         Class:Reason -> {error, {Class, Reason}}
     end.
+
+garage_resource_root(Ctrl) -> imboy_quality_env_cleanup:garage_resource_root(Ctrl).
+
+verified_volume_root(V, C, Evidence) ->
+    imboy_quality_env_cleanup:verified_volume_root(V, C, Evidence).
 
 garage_report({ok, G}) ->
     #{
@@ -342,7 +419,7 @@ attv5(Repo, Base, Ctrl, Garage, Clone, SrcLiteral, Pid, Args) ->
             Tag = atom_to_list(R),
             Db = Clone(attv5_db_name(Short, Pid)),
             Manifest = filename:join(Dir, Tag ++ ".json"),
-            ok = imboy_quality_resources:write_json(Manifest, #{database => list_to_binary(Db)}),
+            ok = write_json_exclusive(Manifest, #{database => list_to_binary(Db)}),
             Config = imboy_quality_resources:write_config(Repo, Base, Tag, K, {SrcLiteral, Db}),
             ConfigFile = Config ++ ".config",
             Env =
@@ -503,7 +580,7 @@ textguard_files(Repo, Dir) ->
     Secrets = [
         begin
             Path = filename:join(Dir, Base),
-            ok = file:write_file(Path, secret_token()),
+            ok = file:write_file(Path, secret_token(), [write, binary, exclusive]),
             ok = file:change_mode(Path, 8#600),
             {Name, Path}
         end
@@ -538,12 +615,12 @@ planned_db_names(Workers, Pid) ->
 %% talk-record-relay、endpoint 为 http://127.0.0.1:*；TALK_HTTP_AAC_FIXTURE 为合成 AAC。
 %% JSON 键集 = 全部消费者读取的并集：网关根读连接 5 键，
 %% private_garage 根另读 spool_dir（attachment_gateway_tmp_dir），缺键即 setup badkey。
-talk_garage_env(Ctrl, {ok, G}, Aac, Pid) ->
-    Scratch = filename:join([Ctrl, "runtime", "talk_owned"]),
+talk_garage_env(Scratch, {ok, G}, Aac, Pid) ->
     Path = filename:join(Scratch, "garage_" ++ Pid ++ ".json"),
     Spool = filename:join(Scratch, "spool_" ++ Pid),
-    ok = filelib:ensure_dir(filename:join(Spool, "x")),
-    ok = imboy_quality_resources:write_json(Path, #{
+    {error, enoent} = file:read_link_info(Path),
+    ok = file:make_dir(Spool),
+    ok = write_json_exclusive(Path, #{
         endpoint => list_to_binary(maps:get(endpoint, G)),
         bucket => <<"talk-record-relay">>,
         region => list_to_binary(maps:get(region, G)),
@@ -558,13 +635,14 @@ talk_garage_env(_Ctrl, {error, _}, Aac, _Pid) ->
 aac_env({ok, Path}) -> [{"TALK_HTTP_AAC_FIXTURE", Path}];
 aac_env({error, _}) -> [].
 
+write_json_exclusive(Path, Map) ->
+    ok = filelib:ensure_dir(Path),
+    file:write_file(Path, iolist_to_binary(json:encode(Map)), [write, binary, exclusive]).
+
 %% ---- 孤儿回收 ----
 
-%% 控制器被 KILL（非 TERM）时 try/after 与信号处理器都不会执行；下一轮 prepare 回收
-%% 已死控制器 pid 留下的克隆库、配置副本、Garage 守护进程与 runtime 目录。判据：资源名
-%% 尾部 _<pid> 对应的 OS 进程不存在；活跃 pid（并行中的另一轮）一概不碰。维护库与模板库
-%% 不带运行 pid，天然不在范围内。
-reap_orphans(C, Args, Repo, Ctrl) ->
+%% PID and names alone cannot establish ownership of old resources.
+reap_orphans(C, _Args, Repo, Ctrl) ->
     {ok, _, Rows} = q(C, [
         "SELECT datname FROM pg_database WHERE datname LIKE 'imboy_quality_%' ",
         "OR datname LIKE 'attv5_chain_imboy_quality_%'"
@@ -577,14 +655,11 @@ reap_orphans(C, Args, Repo, Ctrl) ->
         trailing_pid(N) =/= undefined,
         not pid_alive(trailing_pid(N))
     ],
-    DbResults = [{N, catch imboy_quality_fixture:drop_owned(C, Args, N)} || N <- DeadDbs],
     GarageDirs = dead_pid_dirs(filename:join([Ctrl, "runtime", "garage"])),
-    [reap_garage(Ctrl, P) || P <- GarageDirs],
     ScratchDirs = [
         filename:join([Ctrl, "runtime", D, P])
      || D <- ["attv5", "hird", "textguard"], P <- dead_pid_dirs(filename:join([Ctrl, "runtime", D]))
     ],
-    [_ = file:del_dir_r(Dir) || Dir <- ScratchDirs],
     Configs = [
         F
      || F <- filelib:wildcard(filename:join(Repo, "config/sys.quality.*")),
@@ -592,36 +667,19 @@ reap_orphans(C, Args, Repo, Ctrl) ->
         Pid =/= undefined,
         not pid_alive(Pid)
     ],
-    [_ = file:delete(F) || F <- Configs],
-    #{
-        <<"databases">> => [list_to_binary(N) || {N, ok} <- DbResults],
-        <<"database_drop_failed">> => [
-            fmt({N, R})
-         || {N, R} <- DbResults, R =/= ok
-        ],
-        <<"garage_daemons">> => [list_to_binary(P) || P <- GarageDirs],
-        <<"scratch_dirs">> => length(ScratchDirs),
-        <<"config_copies">> => length(Configs)
-    }.
+    orphan_recovery(DeadDbs, GarageDirs, ScratchDirs, Configs).
 
-reap_garage(Ctrl, PidDir) ->
-    Dir = filename:join([Ctrl, "runtime", "garage", PidDir]),
-    case file:read_file(filename:join(Dir, "server.pid")) of
-        {ok, B} ->
-            OsPid = string:trim(binary_to_list(B)),
-            case pid_alive(list_to_integer(OsPid)) of
-                true -> _ = os:cmd("kill -TERM " ++ OsPid);
-                false -> ok
-            end;
-        _ ->
-            ok
-    end,
-    _ = file:copy(
-        filename:join(Dir, "server.log"),
-        filename:join([Ctrl, "evidence", "garage-" ++ PidDir ++ "-orphan.log"])
-    ),
-    _ = file:del_dir_r(Dir),
-    ok.
+orphan_recovery([], [], [], []) ->
+    #{<<"status">> => <<"no_unverified_orphans">>};
+orphan_recovery(Dbs, Garage, Scratch, Configs) ->
+    error(
+        {unverified_orphans, #{
+            databases => Dbs,
+            garage_dirs => Garage,
+            scratch_dirs => Scratch,
+            config_files => Configs
+        }}
+    ).
 
 dead_pid_dirs(Parent) ->
     case file:list_dir(Parent) of
@@ -655,8 +713,7 @@ config_pid(Path) ->
     end.
 
 pid_alive(Pid) when is_integer(Pid) ->
-    Pid =:= list_to_integer(os:getpid()) orelse
-        string:trim(os:cmd("ps -p " ++ integer_to_list(Pid) ++ " -o pid=")) =/= "".
+    Pid =:= list_to_integer(os:getpid()).
 
 q(C, Sql) ->
     SqlStr = iolist_to_binary(Sql),
@@ -671,63 +728,11 @@ q(C, Sql) ->
 
 %% 回收所有本轮克隆库（worker VM 已退出，后端断开有界等待）、停止私有 Garage、删除
 %% runtime 目录（Garage 日志先存入 evidence）。回收失败不掩盖：记入结果并由退出码体现。
-release(#{pg_args := Args, clones := Clones} = Prepared) ->
-    put(resources_released, true),
-    {ok, C} = imboy_quality_fixture:connect(Args#{database => "postgres"}),
-    DbResults =
-        try
-            [
-                {Name,
-                    try imboy_quality_fixture:drop_owned(C, Args, Name) of
-                        ok -> ok
-                    catch
-                        Class:Reason -> {Class, Reason}
-                    end}
-             || Name <-
-                    [N || {_, N} <- lists:sort(maps:to_list(Clones))] ++
-                        maps:get(drop_dbs, Prepared, [])
-            ]
-        after
-            close_quiet(C)
-        end,
-    GarageExit =
-        case maps:get(garage, Prepared, undefined) of
-            {ok, G} ->
-                Evidence = filename:join([
-                    maps:get(ctrl, Prepared), "evidence", "garage-" ++ os:getpid() ++ ".log"
-                ]),
-                _ = file:copy(maps:get(log, G), Evidence),
-                maps:get(exit, imboy_quality_resources:stop_garage(G));
-            _ ->
-                not_started
-        end,
-    [_ = file:del_dir_r(D) || D <- maps:get(runtime_dirs, Prepared, [])],
-    Failed = [
-        iolist_to_binary(io_lib:format("~s: ~0p", [N, R]))
-     || {N, R} <- DbResults, R =/= ok
-    ],
-    #{
-        <<"clones_dropped">> => [list_to_binary(N) || {N, ok} <- DbResults],
-        <<"clone_drop_failed">> => Failed,
-        <<"garage">> => fmt(GarageExit),
-        <<"ok">> => Failed =:= []
-    };
-release(_) ->
-    #{<<"clones_dropped">> => [], <<"clone_drop_failed">> => [], <<"ok">> => true}.
-
-%% after 子句的兜底回收：正常路径已回收则跳过；异常路径尽力回收不再抛错。
-release_once(Prepared) ->
-    case get(resources_released) of
-        true ->
-            ok;
-        _ ->
-            try
-                _ = release(Prepared),
-                ok
-            catch
-                _:_ -> ok
-            end
-    end.
+release(P) -> imboy_quality_env_cleanup:release(P).
+release_with(P, D, S, C) -> imboy_quality_env_cleanup:release_with(P, D, S, C).
+release_with(P, D, S, C, X) -> imboy_quality_env_cleanup:release_with(P, D, S, C, X).
+cleanup_result(D, G, R) -> imboy_quality_env_cleanup:cleanup_result(D, G, R).
+release_once(P) -> imboy_quality_env_cleanup:release_once(P).
 
 %% ---- 配置副本 ----
 
@@ -743,11 +748,10 @@ worker_config(Repo, K, Prepared) ->
     imboy_quality_resources:write_config(Repo, sys_config_base(), integer_to_list(K), K, {Src, Db}).
 
 cleanup_configs(Repo) ->
-    [
-        file:delete(filename:join([Repo, "config", F]))
-     || F <- filelib:wildcard(filename:join(Repo, "config/sys.quality.*"))
-    ],
-    ok.
+    case filelib:wildcard(filename:join(Repo, "config/sys.quality.*")) of
+        [] -> ok;
+        _ -> {error, config_ownership_not_verified}
+    end.
 
 %% ---- 辅助 ----
 

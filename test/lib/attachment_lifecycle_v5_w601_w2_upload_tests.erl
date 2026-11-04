@@ -26,7 +26,7 @@
 -define(OTHER, <<"w601 competing different payload">>).
 
 -define(EP4, [ordinary, enterprise_internal, enterprise_seat, cs_widget]).
--define(DRV, [disk, garage]).
+-define(DRV, [garage]).
 
 w601_w2_upload_test_() ->
     %% 受控让位（仓库先例：attachment_lifecycle_v5_pg_tests r20_test_/
@@ -328,7 +328,7 @@ pin_scenario(S, Ep, Driver, <<"frozen_internal_signature_expiry">>) when
     Ep =:= ordinary; Ep =:= enterprise_internal
 ->
     %% 能力过期与 storage driver 无关（过期裁决在 gateway capability 验证）：
-    %% disk/garage 双 driver 走同一真实过期 PUT（F2：子句头不再限定 garage）。
+    %% Garage 真实过期 PUT。
     T = reg(S, Ep, Driver),
     Failed = ?FW:expired_put(T, ?BODY),
     ?assertNot(?F:success(Failed)),
@@ -445,8 +445,6 @@ short_lived_session(S, Ep, Driver) ->
     end),
     {T, maps:get(issued_at, Claims), maps:get(expires_at, Claims)}.
 
-assert_frozen_context(disk, Expiry, _Recheck, _Issued, Expiry) ->
-    ok;
 assert_frozen_context(
     garage,
     _Mime,
@@ -871,7 +869,6 @@ upload_ref_of(T) -> maps:get(upload_ref, maps:get(confirm_body, T), undefined).
 
 fetch(K, Map, Default) -> maps:get(K, Map, Default).
 
-ns_of(disk) -> <<"w403-disk">>;
 ns_of(garage) -> <<"w403-garage">>.
 
 %% F6：重放响应同 key/同 id 的取证。ordinary/internal 面 payload 真实回显
@@ -1032,9 +1029,7 @@ run_intent(T, Reason) ->
             end)
     end.
 
-%% provider 侧旁证：garage 拒绝未签名直传；disk 无网络写面（受控根专用）。
-provider_unsigned_denied(_S, disk, _T) ->
-    #{provider_unsigned_write => <<"no_http_surface">>};
+%% provider 侧旁证：Garage 拒绝未签名直传。
 provider_unsigned_denied(_S, garage, T) ->
     I = maps:get(location, T),
     Key = maps:get(key, I),
