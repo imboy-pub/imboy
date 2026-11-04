@@ -78,7 +78,9 @@ pin_sql() ->
         "pinned_at = EXCLUDED.pinned_at">>.
 
 pin_params(Uid, ConversationId, Type, GenerationId) ->
-    Now = elib_dt:now(),
+    %% timestamptz 参数用 UTC datetime 元组：RFC3339 binary 在 epgsql 按
+    %% PG 参数类型走 timestamp 编码器会 function_clause（msg_read_repo 同事故惯例）。
+    Now = calendar:universal_time(),
     Id = elib_tsid:generate(conversation_pin),
     [Id, Uid, ConversationId, Type, GenerationId, Now, Now].
 

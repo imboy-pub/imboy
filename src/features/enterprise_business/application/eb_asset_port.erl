@@ -39,6 +39,18 @@
 -callback stream_content(OrgId :: integer(), WorkspaceId :: integer(), AssetId :: asset_id()) ->
     {ok, content_stream()} | {error, term()}.
 
+%% @doc 冻结 location 解析（garage-only；V3-20 后 disk 恒 fail-closed）。
+%% 返回 locator 身份（driver/key/container/namespace），不含预签 URL、
+%% 不含任何存储凭证——与 stream_content 的「不交句柄」铁律同边界。
+-callback download_location(OrgId :: integer(), WorkspaceId :: integer(), AssetId :: asset_id()) ->
+    {ok, #{
+        driver := binary(),
+        key := binary(),
+        container := binary(),
+        namespace := binary()
+    }}
+    | {error, term()}.
+
 %% @doc 仅由 Org policy 或未确认对象回收触发；不由 uploader 决定，
 %% 也不由离职流程触发。
 -callback delete_private(OrgId :: integer(), WorkspaceId :: integer(), AssetId :: asset_id()) ->

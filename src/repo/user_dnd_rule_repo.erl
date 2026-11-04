@@ -78,8 +78,10 @@ validate_zone(_) ->
 upsert(#{<<"user_id">> := _Uid} = Data0) ->
     case validate_zone(maps:get(<<"time_zone">>, Data0, undefined)) of
         ok ->
-            %% id 为 bigserial 自增，不注入；updated_at 由服务端统一写入
-            Data = Data0#{<<"updated_at">> => elib_dt:now()},
+            %% id 为 bigserial 自增，不注入；updated_at 由服务端统一写入。
+            %% timestamptz 参数用 UTC datetime 元组：RFC3339 binary 在 epgsql
+            %% 按 PG 参数类型走 timestamp 编码器会 function_clause（同 msg_read_repo 惯例）。
+            Data = Data0#{<<"updated_at">> => calendar:universal_time()},
             OnConflict = <<
                 "ON CONFLICT (user_id) DO UPDATE SET\n"
                 "  start_min = EXCLUDED.start_min,\n"

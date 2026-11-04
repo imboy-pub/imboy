@@ -100,8 +100,9 @@ spool(I, Size, Hash, Fun) ->
             Error
     end.
 
-copy(#{driver := disk} = I, Writer, Size) ->
-    attachment_storage_disk:fold_snapshot(I, fun(B, N) -> append(Writer, B, N, Size) end, 0);
+%% V3-20 退役：disk root fail-closed（与 copy_range 同合同）。
+copy(#{driver := disk}, _Writer, _Size) ->
+    {error, disk_driver_retired};
 copy(#{driver := garage} = I, Writer, Size) ->
     %% presign_snapshot takes a relative TTL in seconds, not a datetime.
     case attachment_storage_garage:presign_snapshot(I, 300) of

@@ -1481,6 +1481,20 @@ tables:
     mechanism: 迁移 180 独立数据库角色治理
     review: self-evident
     retention: 随服务身份生命周期
+  cs_quick_reply:
+    action: delete
+    owner: customer-service
+    reason: 客服快捷回复模板（迁移 240，workspace 级配置，含 created_by 用户引用）
+    mechanism: delete rows by created_by ownership column; 软删行随组织删除清理
+    review: self-evident
+    retention: n/a
+  enterprise_channel_message:
+    action: delete
+    owner: messages
+    reason: 企业频道消息（迁移 241，企业 Application 代发与指定员工发送共用；非个人 E2EE 路径）
+    mechanism: delete rows by from_id ownership column
+    review: self-evident
+    retention: n/a
 
 # talk_record V1 ownership and retained identity dependencies are mandatory preflight facts.
   talk_record:

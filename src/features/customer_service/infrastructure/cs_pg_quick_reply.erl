@@ -22,7 +22,7 @@
 ]).
 
 -define(COLS, <<
-    "id, tenant_id, workspace_id, title, content, sort, created_by,"
+    "id, organization_id, workspace_id, title, content, sort, created_by,"
     " extract(epoch from created_at)::bigint AS created_at,"
     " extract(epoch from updated_at)::bigint AS updated_at"
 >>).
@@ -40,7 +40,7 @@ insert_tx(Conn, Row) when is_map(Row) ->
         <<"INSERT INTO ">>,
         tablename(),
         <<
-            " (id, tenant_id, workspace_id, title, content, sort, created_by)"
+            " (id, organization_id, workspace_id, title, content, sort, created_by)"
             " VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING "
         >>,
         ?COLS
@@ -83,7 +83,7 @@ update_tx(Conn, Id, OrgId, WorkspaceId, Fields) when
                         tablename(),
                         <<
                             " SET title=$4, content=$5, sort=$6, updated_at=now()"
-                            " WHERE id=$1 AND tenant_id=$2 AND workspace_id=$3"
+                            " WHERE id=$1 AND organization_id=$2 AND workspace_id=$3"
                             " AND deleted_at IS NULL"
                         >>
                     ]),
@@ -121,7 +121,7 @@ soft_delete_tx(Conn, Id, OrgId, WorkspaceId) when
                 tablename(),
                 <<
                     " SET deleted_at=now(), updated_at=now()"
-                    " WHERE id=$1 AND tenant_id=$2 AND workspace_id=$3"
+                    " WHERE id=$1 AND organization_id=$2 AND workspace_id=$3"
                     " AND deleted_at IS NULL"
                 >>
             ]),
@@ -160,7 +160,7 @@ page_tx(Conn, OrgId, WorkspaceId, Opts) when
     Base = [
         <<"FROM ">>,
         tablename(),
-        <<" WHERE tenant_id=">>,
+        <<" WHERE organization_id=">>,
         OrgBin,
         <<" AND workspace_id=">>,
         WsBin,
@@ -202,7 +202,7 @@ list_tx(Conn, OrgId, WorkspaceId) ->
         <<" FROM ">>,
         tablename(),
         <<
-            " WHERE tenant_id=$1 AND workspace_id=$2 AND deleted_at IS NULL"
+            " WHERE organization_id=$1 AND workspace_id=$2 AND deleted_at IS NULL"
             " ORDER BY sort ASC, title ASC"
         >>
     ]),

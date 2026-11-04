@@ -542,7 +542,7 @@ parse_capture_decl(Body, CapDecl) ->
     CaptureId = maps:get(<<"capture_id">>, CapDecl, 0),
     LastSeq = maps:get(<<"last_seq">>, CapDecl, -1),
     ClientHash = maps:get(<<"manifest_hash">>, CapDecl, undefined),
-    case positive_int(CaptureId) of
+    case talk_record_job_support:positive_int(CaptureId) of
         {ok, Cid} when is_integer(LastSeq), LastSeq >= 0 ->
             parse_decl_hash(Body, Cid, LastSeq, ClientHash);
         {ok, _} ->
@@ -553,7 +553,7 @@ parse_capture_decl(Body, CapDecl) ->
 
 parse_decl_hash(Body, Cid, LastSeq, ClientHash) ->
     %% manifest_hash 必填（no-backend-ffmpeg V1：完成清单不可缺服务端校验锚）。
-    HashOk = is_binary(ClientHash) andalso is_hex64(ClientHash),
+    HashOk = is_binary(ClientHash) andalso talk_record_job_support:is_hex64(ClientHash),
     case HashOk of
         true ->
             case parse_final_audio(maps:get(<<"final_audio">>, Body, undefined)) of
@@ -604,10 +604,13 @@ parse_final_audio(D) when is_map(D) ->
     Aid = maps:get(<<"attachment_id">>, D, undefined),
     case
         is_binary(ObjectKey) andalso byte_size(ObjectKey) > 0 andalso
-            is_uuid36(Cid) andalso is_binary(Sha) andalso is_hex64(Sha) andalso
-            positive_int(ByteSize) =/= error andalso positive_int(Rate) =/= error andalso
-            Channels =:= 1 andalso positive_int(Samples) =/= error andalso
-            positive_int(DurationMs) =/= error andalso positive_int(Aid) =/= error
+            talk_record_job_support:is_uuid36(Cid) andalso is_binary(Sha) andalso
+            talk_record_job_support:is_hex64(Sha) andalso
+            talk_record_job_support:positive_int(ByteSize) =/= error andalso
+            talk_record_job_support:positive_int(Rate) =/= error andalso
+            Channels =:= 1 andalso talk_record_job_support:positive_int(Samples) =/= error andalso
+            talk_record_job_support:positive_int(DurationMs) =/= error andalso
+            talk_record_job_support:positive_int(Aid) =/= error
     of
         true ->
             {ok, #{
@@ -628,25 +631,6 @@ parse_final_audio(undefined) ->
     {error, final_audio_required};
 parse_final_audio(_) ->
     {error, invalid_final_audio}.
-
-%% client_upload_id 为 36 位 UUID 形态（8-4-4-4-12 hex）。
-is_uuid36(Bin) when is_binary(Bin), byte_size(Bin) =:= 36 ->
-    Parts = binary:split(Bin, <<"-">>, [global]),
-    case Parts of
-        [A, B, C, D, E] ->
-            byte_size(A) =:= 8 andalso byte_size(B) =:= 4 andalso byte_size(C) =:= 4 andalso
-                byte_size(D) =:= 4 andalso byte_size(E) =:= 12 andalso
-                lists:all(
-                    fun is_hex_lower/1,
-                    binary_to_list(<<A/binary, B/binary, C/binary, D/binary, E/binary>>)
-                );
-        _ ->
-            false
-    end;
-is_uuid36(_) ->
-    false.
-
-is_hex_lower(C) -> (C >= $0 andalso C =< $9) orelse (C >= $a andalso C =< $f).
 
 %% ===================================================================
 %% 取消（删除/治理流程入口，T20 接线点）
@@ -747,19 +731,6 @@ execute_purge_tx(Conn, Job) ->
 -spec complete_resource(integer()) -> binary().
 complete_resource(RecordId) ->
     <<"/api/v1/talk-records/", (integer_to_binary(RecordId))/binary, "/complete">>.
-
--spec positive_int(term()) -> {ok, integer()} | error.
-positive_int(N) when is_integer(N), N > 0, N =< 9223372036854775807 -> {ok, N};
-positive_int(_) -> error.
-
--spec is_hex64(binary()) -> boolean().
-is_hex64(Bin) when is_binary(Bin), byte_size(Bin) =:= 64 ->
-    lists:all(
-        fun(C) -> (C >= $0 andalso C =< $9) orelse (C >= $a andalso C =< $f) end,
-        binary_to_list(Bin)
-    );
-is_hex64(_) ->
-    false.
 
 %% ===================================================================
 %% HTTP 语义映射（handler 接线用；5543x 为本卡建议值——5520..5542 已被

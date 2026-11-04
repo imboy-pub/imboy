@@ -218,6 +218,9 @@ contracts() ->
             {put_private, 3},
             {stream_content, 3},
             {delete_private, 3},
+            %% V3-24 契约面补齐：冻结 location 解析（G11 修复，与
+            %% eb_asset_port -callback 同步；eb_contract_closure 要求在册）。
+            {download_location, 3},
             %% ---- EB-03R 追加：R0-4 的 metadata 生命周期（P12）----
             {insert_asset, 3},
             {fetch_asset, 3},

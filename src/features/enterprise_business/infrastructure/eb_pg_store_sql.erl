@@ -475,6 +475,32 @@ to_unix(undefined) ->
     undefined;
 to_unix(Value) when is_integer(Value) ->
     Value;
+%% PG timestamptz 以 UTC datetime 元组返回（秒可为浮点）。换算常数与
+%% elib_dt 一致（Gregorian→Unix epoch 62167219200）；非法元组收敛为
+%% undefined，与 binary 分支解析失败语义相同。
+to_unix({{Y, Mo, D}, {H, Mi, S}}) when
+    is_integer(Y),
+    is_integer(Mo),
+    Mo >= 1,
+    Mo =< 12,
+    is_integer(D),
+    D >= 1,
+    D =< 31,
+    is_integer(H),
+    H >= 0,
+    H =< 23,
+    is_integer(Mi),
+    Mi >= 0,
+    Mi =< 59,
+    is_number(S)
+->
+    try
+        calendar:datetime_to_gregorian_seconds(
+            {{Y, Mo, D}, {H, Mi, trunc(S)}}
+        ) - 62167219200
+    catch
+        _:_ -> undefined
+    end;
 to_unix(Value) when is_binary(Value) ->
     case elib_dt:rfc3339_to(Value, second) of
         Seconds when is_integer(Seconds) -> Seconds;

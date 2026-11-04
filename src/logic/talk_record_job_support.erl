@@ -13,7 +13,10 @@
     processor_pin/3,
     summary_snapshot_tx/2,
     model_dedupe_key/3,
-    role_gate/3
+    role_gate/3,
+    positive_int/1,
+    is_hex64/1,
+    is_uuid36/1
 ]).
 
 %% @private 模型同意事件（§2 consent_event：记录操作事实，不伪造现场同意）。
@@ -165,3 +168,38 @@ idempotency_ttl_seconds() ->
         N when is_integer(N), N > 0 -> N;
         _ -> 604800
     end.
+
+%% ---- 形态校验纯函数（自 talk_record_job_logic 迁入以满足 800 行门禁；
+%% 行为逐字不变）-------------------------------------------------------
+
+-spec positive_int(term()) -> {ok, integer()} | error.
+positive_int(N) when is_integer(N), N > 0, N =< 9223372036854775807 -> {ok, N};
+positive_int(_) -> error.
+
+-spec is_hex64(binary()) -> boolean().
+is_hex64(Bin) when is_binary(Bin), byte_size(Bin) =:= 64 ->
+    lists:all(
+        fun(C) -> (C >= $0 andalso C =< $9) orelse (C >= $a andalso C =< $f) end,
+        binary_to_list(Bin)
+    );
+is_hex64(_) ->
+    false.
+
+%% client_upload_id 为 36 位 UUID 形态（8-4-4-4-12 hex）。
+is_uuid36(Bin) when is_binary(Bin), byte_size(Bin) =:= 36 ->
+    Parts = binary:split(Bin, <<"-">>, [global]),
+    case Parts of
+        [A, B, C, D, E] ->
+            byte_size(A) =:= 8 andalso byte_size(B) =:= 4 andalso byte_size(C) =:= 4 andalso
+                byte_size(D) =:= 4 andalso byte_size(E) =:= 12 andalso
+                lists:all(
+                    fun is_hex_lower/1,
+                    binary_to_list(<<A/binary, B/binary, C/binary, D/binary, E/binary>>)
+                );
+        _ ->
+            false
+    end;
+is_uuid36(_) ->
+    false.
+
+is_hex_lower(C) -> (C >= $0 andalso C =< $9) orelse (C >= $a andalso C =< $f).

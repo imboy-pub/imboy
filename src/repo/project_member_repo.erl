@@ -56,7 +56,10 @@ upsert_active_tx(Conn, WsId, ProjectId, Uid, InvitedBy) ->
             {ok, unchanged, Row};
         _ ->
             Tb = tablename(),
-            Now = elib_dt:now(),
+            %% timestamptz 参数用 UTC datetime 元组：epgsql 按 PG 参数类型编码，
+            %% RFC3339 binary 走 timestamp 编码器会 function_clause（msg_read_repo
+            %% 同事故惯例）。
+            Now = calendar:universal_time(),
             Sql =
                 <<"INSERT INTO ", Tb/binary,
                     " (workspace_id, project_id, user_id, invited_by, joined_at, status,",
@@ -119,7 +122,8 @@ find_tx(Conn, ProjectId, Uid, Column) ->
 -spec remove_tx(any(), integer(), integer()) -> {ok, non_neg_integer()} | {error, term()}.
 remove_tx(Conn, ProjectId, Uid) ->
     Tb = tablename(),
-    Now = elib_dt:now(),
+    %% 同 upsert_active_tx：timestamptz 参数用 UTC datetime 元组。
+    Now = calendar:universal_time(),
     Sql =
         <<"UPDATE ", Tb/binary, " SET status = 'removed', updated_at = $1",
             " WHERE project_id = $2 AND user_id = $3 AND status = 'active'">>,

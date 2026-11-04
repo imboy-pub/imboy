@@ -204,7 +204,10 @@ clear_unread_tx(Conn, ChannelId, Uid) ->
     Sql =
         <<"UPDATE ", Tb/binary, " SET unread_count = 0, last_read_at = $1",
             " WHERE channel_id = $2 AND user_id = $3 AND status = 1">>,
-    elib_pg:execute_count(Conn, Sql, [elib_dt:now(), ChannelId, Uid]).
+    %% last_read_at 为 timestamptz（迁移 00000003）：RFC3339 binary 走 epgsql
+    %% timestamptz 编码器会异常并使 clear_unread 静默跳过（W08 水位测试
+    %% unread_count=9 不清零实证）。时间参数统一用 UTC datetime 元组。
+    elib_pg:execute_count(Conn, Sql, [calendar:universal_time(), ChannelId, Uid]).
 
 %% @doc W08（§6.8）：事务内推进查看边界 V。
 %% 水位推进一律 GREATEST（J13.d：两端 B1<B2，晚到旧边界不倒退）；
