@@ -370,7 +370,17 @@ standalone_main(TestMod, SpecWrapper, OutFile) ->
 %% 普通组、独占根与 standalone 的配置必须同源：测试夹具通过环境变量
 %% consult 的文件与 VM 启动加载的文件一致，不能继承控制器的其他库配置。
 worker_config(Opts) ->
-    Env = maps:get(env, Opts, []),
+    Env0 = maps:get(env, Opts, []),
+    %% PG max_connections=100（历史实证 max_count=80 已偶发拒连）：池容量按
+    %% worker 总数分摊（总预算 88 留 headroom），否则 4 worker × 40 钉容量
+    %% = 160 连接需求打爆服务器 → dead_connection/no_connection（run2 G3 实证）。
+    Env =
+        case maps:get(worker_total, Opts, undefined) of
+            undefined ->
+                Env0;
+            N when is_integer(N), N >= 1 ->
+                [{"EUNIT_POOL_INIT_COUNT", integer_to_list(max(16, 88 div N))} | Env0]
+        end,
     case maps:get(config, Opts, undefined) of
         undefined ->
             {[], Env};

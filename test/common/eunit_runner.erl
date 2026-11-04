@@ -142,6 +142,11 @@ eunit_setup() ->
         end,
         CoreApps
     ),
+    %% 测试 VM 直连本地服务（garage S3 探针、HTTP 网关夹具）：httpc 默认读
+    %% macOS 系统代理（scutil 实证 127.0.0.1 代理开启），回环目标经代理会被
+    %% 拒为 403 而 garage 服务端实为 404——客户端/服务端响应不一致（G5
+    %% garage-read 403 实证）。显式置空代理仅在测试 VM 生效。
+    _ = httpc:set_options([{proxy, {{[], []}, []}}]),
 
     % 启动 imboy 应用：全部经由单例启动协调进程串行化。
     % eunit 各模块 setup 并发进入时，若无协调器会出现并发 cleanup/并发
@@ -865,26 +870,44 @@ test_config_path() ->
 -define(MIN_POOL_INIT_COUNT, 40).
 
 enforce_pool_capacity() ->
+    Floor = min_pool_floor(),
     case application:get_env(imboy, pg_conf) of
         {ok, PgConf} when is_map(PgConf) ->
             Init = maps:get(init_count, PgConf, 0),
-            case Init >= ?MIN_POOL_INIT_COUNT of
+            case Init >= Floor of
                 true ->
                     realign_default_pool(PgConf);
                 false ->
                     Max = maps:get(max_count, PgConf, 0),
-                    NewMax = erlang:max(Max, ?MIN_POOL_INIT_COUNT + 8),
+                    NewMax = erlang:max(Max, Floor + 8),
+                    %% `=>` add-or-update：部分 pg_conf（如 talk owned fixture 只设
+                    %% start_mfa）缺 init_count/max_count 时 `:=` 会 badkey 并使整组
+                    %% setup_failed 级联 cancel（full-20261103T185810Z 496 cancel 实证）。
                     application:set_env(
                         imboy,
                         pg_conf,
-                        PgConf#{init_count := ?MIN_POOL_INIT_COUNT, max_count := NewMax}
+                        PgConf#{init_count => Floor, max_count => NewMax}
                     ),
                     realign_default_pool(
-                        PgConf#{init_count := ?MIN_POOL_INIT_COUNT, max_count := NewMax}
+                        PgConf#{init_count => Floor, max_count => NewMax}
                     )
             end;
         _ ->
             ok
+    end.
+
+%% 池容量下限：runner 按 worker 总数注入 EUNIT_POOL_INIT_COUNT（88/N 分摊，
+%% PG max_connections=100 留 headroom；见 imboy_quality_runner:worker_config/1）。
+%% 未注入（单机诊断/历史入口）时保持既有 40 下限不变。
+min_pool_floor() ->
+    case os:getenv("EUNIT_POOL_INIT_COUNT") of
+        false ->
+            ?MIN_POOL_INIT_COUNT;
+        S ->
+            case catch list_to_integer(string:trim(S)) of
+                N when is_integer(N), N >= 8, N =< 40 -> N;
+                _ -> ?MIN_POOL_INIT_COUNT
+            end
     end.
 
 %% 容量代际对齐（rv4 full-20261030T225326Z 根A snapshot_default_pool L318

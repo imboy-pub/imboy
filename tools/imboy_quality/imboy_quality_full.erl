@@ -104,7 +104,24 @@
     %% badmatch 死亡 → spawn_link EXIT 杀死 eunit Runner → 该 case 及后续 case
     %% cancel（单跑 fresh VM 十 case 全过，evidence/group-20261031T002355Z）。
     %% 独占车道 fresh VM 消除瞬态窗口；资源面按根差异化（env.erl textguard/4）。
-    textguard_export
+    textguard_export,
+    %% 2026-11-04 顺序敏感族接入（同 §3.2 口径）：两根在 full 共享 VM 挂
+    %% （q06 stage 返回裸 error / grounding gate_3 deliver function_clause）、
+    %% 诊断组 fresh VM 全绿（/tmp 诊断轮 group-20261103T224620Z 等 8 组实证）
+    %% ——共享 VM 前序套件残留状态引发，非产品缺陷。独占车道 fresh VM 隔离；
+    %% 根集合与 roots_total 不变，不缩分母。
+    q06_fault_injection_db_tests,
+    cs_ai_grounding_gate_tests
+]).
+
+%% V3-20 S3-only 退役面（attachment-s3-only-v3-contract，commit 8cd095a8f）：
+%% 整模块验证已删除的 attachment_storage_disk NIF 物理锁/owner 死亡语义，
+%% garage 路径无等价物（对象一致性由 S3 条件写与 direct attempt 冻结合同
+%% 承载，义务迁移登记见 STATE p2_11_recovery_progress）。随被测对象移出 U
+%% ——不是 EXCL 资源车道（EXCL 根仍执行），而是义务退役映射。
+-define(RETIRED, [
+    attachment_storage_disk_lock_owner_death_tests,
+    attachment_storage_disk_owner_exit_tests
 ]).
 
 %% 已知与 peer 宿主不兼容的根：直接走独立非 peer VM（imboy_quality_runner:run_standalone）。
@@ -191,7 +208,12 @@ inventory(Repo) ->
     Companions = sets:from_list([list_to_atom(atom_to_list(M) ++ "_tests") || M <- Src]),
     TestRoots = [M || M <- Test, not sets:is_element(M, Companions)],
     All = lists:usort(Src ++ TestRoots),
-    Ordinary = [M || M <- All, not lists:member(M, ?EXCL)],
+    Ordinary = [
+        M
+     || M <- All,
+        not lists:member(M, ?EXCL),
+        not lists:member(M, ?RETIRED)
+    ],
     Excl = [M || M <- All, lists:member(M, ?EXCL)],
     #{ordinary => Ordinary, excluded => Excl, total => length(All)}.
 
@@ -353,6 +375,7 @@ run_exclusive([M | Rest], Opts, Paths, CfgFn, Acc) ->
     WOpts = Opts#{
         schedulers => maps:get(schedulers, Opts, 2),
         config => Config,
+        worker_total => maps:get(worker_count, Opts, 2),
         env => maps:get(env, Opts, []) ++ Overlay
     },
     Deadline = maps:get(exclusive_deadline_ms, Opts, 900000),
@@ -404,6 +427,7 @@ rotate(K, Mods, Opts, Paths, CfgFn, OutDir, T0, Acc, Killers, Attempts, Left) ->
     WOpts = Opts#{
         schedulers => maps:get(schedulers, Opts, 2),
         config => CfgFn(K),
+        worker_total => maps:get(worker_count, Opts, 2),
         stream => Stream
     },
     Elapsed = erlang:monotonic_time(millisecond) - T0,
