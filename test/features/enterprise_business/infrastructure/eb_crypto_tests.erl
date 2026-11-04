@@ -334,7 +334,8 @@ registry_does_not_override_frozen_ports_test() ->
             eb_ports:auth(),
             eb_ports:member_fact(),
             eb_ports:tx(),
-            eb_ports:purge()
+            eb_ports:purge(),
+            eb_ports:edge_asset()
         ]
     ).
 

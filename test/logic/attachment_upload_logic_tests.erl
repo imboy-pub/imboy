@@ -2,13 +2,12 @@
 -include_lib("eunit/include/eunit.hrl").
 -include_lib("kernel/include/file.hrl").
 
-%% Real private files, hashing and Disk publication; only DB admission is mocked.
-%% 使用真实私有文件、hash 和 Disk 落盘；仅 mock 数据库准入，无应用/数据库启动依赖。
+%% 使用真实私有文件和 hash，模拟数据库准入与 Garage 写入。
 -define(KEY, <<"u7/file/20260911/file_1/x.jpg">>).
 -define(MIME, <<"image/jpeg">>).
 
-upload_success_pins_and_puts_frozen_disk_test() ->
-    with_fixture(fun(C) ->
+upload_success_pins_and_puts_frozen_garage_test() ->
+    with_garage(fun(C) ->
         ?assertEqual(
             {ok, #{
                 <<"object_key">> => ?KEY,
@@ -17,11 +16,11 @@ upload_success_pins_and_puts_frozen_disk_test() ->
             }},
             upload(C)
         ),
-        ?assertEqual({ok, maps:get(bytes, C)}, file:read_file(maps:get(target, C))),
+        ?assertEqual(maps:get(bytes, C), get(garage_bytes)),
         ?assertEqual(receipt(maps:get(bytes, C)), get(multipart_receipt)),
         ?assertEqual(1, meck:num_calls(attach_pending_repo, register_content_pin, 2)),
         ?assertEqual(1, meck:num_calls(attach_pending_repo, recheck_content_pin, 3)),
-        ?assertEqual(0, meck:num_calls(elib_oss, put_object_from_file, 4))
+        ?assertEqual(1, meck:num_calls(attachment_storage_garage, put_snapshot, 4))
     end).
 
 upload_rejects_other_owner_key_prefix_test() ->
@@ -87,7 +86,7 @@ upload_rechecks_actual_size_before_pin_test() ->
     end).
 
 upload_receipt_and_response_use_actual_size_test() ->
-    with_fixture(fun(C) ->
+    with_garage(fun(C) ->
         {ok, Data} = upload(C, 1),
         ?assertEqual(byte_size(maps:get(bytes, C)), maps:get(<<"size">>, Data)),
         ?assertEqual(receipt(maps:get(bytes, C)), get(multipart_receipt))
@@ -162,7 +161,7 @@ upload_rejects_unknown_and_changed_locations_test() ->
     end).
 
 upload_path_and_registry_replacement_cannot_change_pinned_bytes_test() ->
-    with_fixture(fun(C) ->
+    with_garage(fun(C) ->
         meck:expect(attach_pending_repo, register_content_pin, fun(?KEY, Receipt) ->
             ?assertEqual(receipt(maps:get(bytes, C)), Receipt),
             put(multipart_receipt, Receipt),
@@ -172,17 +171,18 @@ upload_path_and_registry_replacement_cannot_change_pinned_bytes_test() ->
             ok
         end),
         ?assertMatch({ok, _}, upload(C)),
-        ?assertEqual({ok, maps:get(bytes, C)}, file:read_file(maps:get(target, C))),
+        ?assertEqual(maps:get(bytes, C), get(garage_bytes)),
         ?assertEqual({ok, <<"replacement bytes">>}, file:read_file(maps:get(path, C)))
     end).
 
 upload_identical_retry_and_different_content_conflict_test() ->
-    with_fixture(fun(C) ->
+    with_garage(fun(C) ->
         ?assertMatch({ok, _}, upload(C)),
         ?assertMatch({ok, _}, upload(C)),
         ok = file:write_file(maps:get(path, C), <<"different">>),
         ?assertEqual({error, content_mismatch}, upload(C)),
-        ?assertEqual({ok, maps:get(bytes, C)}, file:read_file(maps:get(target, C))),
+        ?assertEqual(maps:get(bytes, C), get(garage_bytes)),
+        ?assertEqual(2, meck:num_calls(attachment_storage_garage, put_snapshot, 4)),
         ?assertEqual(2, meck:num_calls(attach_pending_repo, recheck_content_pin, 3))
     end).
 
@@ -210,18 +210,17 @@ upload_pin_rejections_never_reach_storage_test() ->
         ?assertEqual(0, meck:num_calls(attach_pending_repo, recheck_content_pin, 3))
     end).
 
-upload_disk_live_recheck_rejections_never_publish_test() ->
-    with_fixture(fun(C) ->
+upload_garage_live_recheck_rejections_never_publish_test() ->
+    with_garage(fun(C) ->
         lists:foreach(
             fun({Reason, Expected}) ->
                 meck:expect(attach_pending_repo, recheck_content_pin, fun(?KEY, Receipt, Identity) ->
                     ?assertEqual(get(multipart_receipt), Receipt),
-                    ?assertEqual(maps:get(identity, C), Identity),
-                    ?assertEqual(false, filelib:is_regular(maps:get(target, C))),
+                    ?assertEqual(maps:get(garage_identity, C), Identity),
                     {error, Reason}
                 end),
                 ?assertEqual({error, Expected}, upload(C)),
-                ?assertEqual(false, filelib:is_regular(maps:get(target, C)))
+                ?assertEqual(0, meck:num_calls(attachment_storage_garage, put_snapshot, 4))
             end,
             [
                 {content_mismatch, content_mismatch},
@@ -234,73 +233,34 @@ upload_disk_live_recheck_rejections_never_publish_test() ->
         )
     end).
 
-upload_disk_recheck_waits_for_physical_object_lock_test() ->
+upload_garage_recheck_cannot_extend_frozen_expiry_test_() ->
+    {timeout, 15, fun upload_garage_recheck_cannot_extend_frozen_expiry/0}.
+
+upload_garage_recheck_cannot_extend_frozen_expiry() ->
     with_fixture(fun(C) ->
-        Parent = self(),
-        meck:expect(attach_pending_repo, register_content_pin, fun(?KEY, Receipt) ->
-            put(multipart_receipt, Receipt),
-            Parent ! multipart_pinned,
+        Garage = garage_session(C),
+        Expiry = erlang:system_time(second) + 4,
+        pending((maps:get(row, Garage))#{<<"upload_expires_at">> => timestamp(Expiry)}),
+        meck:expect(attach_pending_repo, recheck_content_pin, fun(_, _, _) ->
+            pending(maps:get(row, Garage)),
+            timer:sleep(max(0, Expiry * 1000 - erlang:system_time(millisecond) + 20)),
             ok
         end),
-        meck:expect(attach_pending_repo, recheck_content_pin, fun(?KEY, Receipt, Identity) ->
-            ?assertEqual(get(multipart_receipt), Receipt),
-            ?assertEqual(maps:get(identity, C), Identity),
-            Parent ! multipart_rechecked,
-            ok
-        end),
-        Holder = hold_disk_lock(C),
+        meck:new(httpc, [passthrough, no_link, unstick]),
         try
-            Writer = start_upload(C),
-            receive
-                multipart_pinned -> ok
-            after 2000 -> error(pin_timeout)
-            end,
-            receive
-                multipart_rechecked -> error(rechecked_without_os_lock)
-            after 100 -> ok
-            end,
-            ?assertEqual(false, filelib:is_regular(maps:get(target, C))),
-            release_disk_lock(Holder),
-            ?assertMatch({ok, _}, await_upload(Writer)),
-            receive
-                multipart_rechecked -> ok
-            after 2000 -> error(recheck_timeout)
-            end,
-            ?assertEqual({ok, maps:get(bytes, C)}, file:read_file(maps:get(target, C)))
+            ?assertEqual({error, invalid_signature_context}, upload(C)),
+            ?assertEqual(0, meck:num_calls(httpc, request, 4))
         after
-            element(1, Holder) ! release
+            meck:unload(httpc)
         end
     end).
 
-upload_disk_wait_cannot_extend_frozen_expiry_test() ->
+upload_retired_disk_fails_closed_test() ->
     with_fixture(fun(C) ->
-        Parent = self(),
-        Expiry = erlang:system_time(second) + 2,
-        pending((maps:get(row, C))#{<<"upload_expires_at">> => timestamp(Expiry)}),
-        meck:expect(attach_pending_repo, register_content_pin, fun(?KEY, Receipt) ->
-            put(multipart_receipt, Receipt),
-            Parent ! multipart_pinned,
-            ok
-        end),
-        Holder = hold_disk_lock(C),
-        try
-            Writer = start_upload(C),
-            receive
-                multipart_pinned -> ok
-            after 2000 -> error(pin_timeout)
-            end,
-            %% Even a concurrent renewal cannot extend this admitted request's window.
-            %% 并发续期不能延长本请求在准入时冻结的原始写入期限。
-            pending(maps:get(row, C)),
-            timer:sleep(max(0, Expiry * 1000 - erlang:system_time(millisecond) + 20)),
-            release_disk_lock(Holder),
-            ?assertEqual({error, invalid_signature_context}, await_upload(Writer)),
-            ?assertEqual(0, meck:num_calls(attach_pending_repo, recheck_content_pin, 3)),
-            ?assertEqual(1, meck:num_calls(attach_pending_repo, status_lookup, 1)),
-            ?assertEqual(false, filelib:is_regular(maps:get(target, C)))
-        after
-            element(1, Holder) ! release
-        end
+        ?assertEqual({error, {storage_error, disk_driver_retired}}, upload(C)),
+        ?assertEqual(receipt(maps:get(bytes, C)), get(multipart_receipt)),
+        ?assertEqual(0, meck:num_calls(attach_pending_repo, recheck_content_pin, 3)),
+        ?assertEqual(false, filelib:is_regular(maps:get(target, C)))
     end).
 
 upload_db_fault_tagged_test() ->
@@ -407,6 +367,36 @@ upload_garage_recheck_rejection_prevents_http_test() ->
             meck:unload(httpc)
         end
     end).
+
+with_garage(Fun) ->
+    with_fixture(fun(C) ->
+        Garage = garage_session(C),
+        Identity = maps:get(identity, Garage),
+        pending(maps:get(row, Garage)),
+        meck:expect(attach_pending_repo, recheck_content_pin, fun(?KEY, Receipt, I) ->
+            ?assertEqual(get(multipart_receipt), Receipt),
+            ?assertEqual(Identity, I),
+            ok
+        end),
+        meck:new(attachment_storage_garage, [passthrough, no_link]),
+        try
+            meck:expect(attachment_storage_garage, put_snapshot, fun(I, Source, ?MIME, _) ->
+                ?assertEqual(Identity, I),
+                put(garage_bytes, read_spool(Source, 0, [])),
+                ok
+            end),
+            Fun(C#{garage_identity => Identity})
+        after
+            meck:unload(attachment_storage_garage),
+            erase(garage_bytes)
+        end
+    end).
+
+read_spool(Source, Offset, Acc) ->
+    case attachment_upload_spool:read(Source, Offset) of
+        {ok, Bytes} -> read_spool(Source, Offset + byte_size(Bytes), [Bytes | Acc]);
+        eof -> iolist_to_binary(lists:reverse(Acc))
+    end.
 
 with_fixture(Fun) ->
     Dir = filename:join(
@@ -576,52 +566,3 @@ read_producer(Producer, Offset, Acc) ->
         {ok, Bytes, Next} -> read_producer(Producer, Next, [Bytes | Acc]);
         eof -> iolist_to_binary(lists:reverse(Acc))
     end.
-
-hold_disk_lock(C) ->
-    Parent = self(),
-    {Pid, _Ref} =
-        Holder = spawn_monitor(fun() ->
-            Result = attachment_storage_disk:put_snapshot(
-                maps:get(identity, C),
-                <<"unused">>,
-                maps:get(expiry, C),
-                fun() ->
-                    Parent ! {disk_lock_held, self()},
-                    receive
-                        release -> {error, test_release}
-                    after 4000 -> error(release_timeout)
-                    end
-                end
-            ),
-            Parent ! {disk_holder_result, self(), Result}
-        end),
-    receive
-        {disk_lock_held, Pid} -> Holder
-    after 2000 -> error(lock_timeout)
-    end.
-
-release_disk_lock({Pid, Ref}) ->
-    Pid ! release,
-    receive
-        {disk_holder_result, Pid, Result} -> ?assertEqual({error, test_release}, Result)
-    after 2000 -> error(holder_timeout)
-    end,
-    receive
-        {'DOWN', Ref, process, Pid, Reason} -> ?assertEqual(normal, Reason)
-    after 2000 -> error(holder_exit_timeout)
-    end.
-
-start_upload(C) ->
-    Parent = self(),
-    spawn_monitor(fun() -> Parent ! {multipart_result, self(), upload(C)} end).
-await_upload({Pid, Ref}) ->
-    Result =
-        receive
-            {multipart_result, Pid, Value} -> Value
-        after 2000 -> error(upload_timeout)
-        end,
-    receive
-        {'DOWN', Ref, process, Pid, Reason} -> ?assertEqual(normal, Reason)
-    after 2000 -> error(upload_exit_timeout)
-    end,
-    Result.

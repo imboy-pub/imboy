@@ -12,7 +12,9 @@
 -include_lib("eunit/include/eunit.hrl").
 
 quick_reply_repo_test_() ->
-    {timeout, 60, {setup, fun setup/0, fun teardown/1, fun(S) -> [?_test(t_all(S))] end}}.
+    isolated_pg_fixture:test(fun() ->
+        {timeout, 60, {setup, fun setup/0, fun teardown/1, fun(S) -> [?_test(t_all(S))] end}}
+    end).
 
 setup() ->
     ok = ensure_pool(),
@@ -154,47 +156,42 @@ t_all(S) ->
     }),
     ok.
 
-%% 隔离库直连池（talk_record_t05 已迁 00000240；本套件专用 996 段清场）。
-%% 不触碰共享池：pooler `csqr` 池 + elib_pg 池化查询仍走 `pgsql` 名——本套件
-%% 的数据面调用经 cs_pg_quick_reply:with_tx（默认池名 pgsql），故此处替换
-%% 默认池并在 teardown 恢复（无并发套件：单模块 t= 运行形态）。
+%% 独立 VM 使用当前测试配置；T05 变量只覆盖显式提供的字段。
 ensure_pool() ->
     catch elib_tsid:init(#{dc_id => 1, node_id => 1, dc_bits => 3}),
     _ = code:ensure_loaded(pooler),
     {ok, _} = application:ensure_all_started(pooler),
-    true = code:add_patha(filename:absname("deps/pooler/ebin")),
     _ = application:load(imboy),
-    ok = application:set_env(imboy, pg_conf, #{
-        name => pgsql,
-        start_mfa =>
-            {epgsql, connect, [
-                #{
-                    host => os:getenv("T05_PG_HOST", "127.0.0.1"),
-                    port => list_to_integer(os:getenv("T05_PG_PORT", "4323")),
-                    username => list_to_binary(os:getenv("T05_PG_USER", "imboy_user")),
-                    password => list_to_binary(os:getenv("T05_PG_PASSWORD", "")),
-                    database => list_to_binary(os:getenv("T05_PG_DB", "talk_record_t05")),
-                    ssl => false,
-                    timeout => 10000
-                }
-            ]}
-    }),
-    catch pooler:rm_pool(pgsql),
-    {ok, _} = pooler:new_pool(#{
+    {ok, Base} = application:get_env(imboy, pg_conf),
+    {epgsql, connect, [Opts]} = maps:get(start_mfa, Base),
+    Overrides = [
+        {"T05_PG_HOST", host},
+        {"T05_PG_USER", username},
+        {"T05_PG_PASSWORD", password},
+        {"T05_PG_DB", database}
+    ],
+    Selected = lists:foldl(
+        fun({Env, Key}, Acc) ->
+            case os:getenv(Env) of
+                false -> Acc;
+                Value -> Acc#{Key => Value}
+            end
+        end,
+        Opts,
+        Overrides
+    ),
+    Connect =
+        case os:getenv("T05_PG_PORT") of
+            false -> Selected;
+            Port -> Selected#{port => list_to_integer(Port)}
+        end,
+    Conf = Base#{
         name => pgsql,
         init_count => 1,
         max_count => 2,
-        start_mfa =>
-            {epgsql, connect, [
-                #{
-                    host => os:getenv("T05_PG_HOST", "127.0.0.1"),
-                    port => list_to_integer(os:getenv("T05_PG_PORT", "4323")),
-                    username => list_to_binary(os:getenv("T05_PG_USER", "imboy_user")),
-                    password => list_to_binary(os:getenv("T05_PG_PASSWORD", "")),
-                    database => list_to_binary(os:getenv("T05_PG_DB", "talk_record_t05")),
-                    ssl => false,
-                    timeout => 10000
-                }
-            ]}
-    }),
+        start_mfa => {epgsql, connect, [Connect]}
+    },
+    ok = application:set_env(imboy, pg_conf, Conf),
+    catch pooler:rm_pool(pgsql),
+    {ok, _} = pooler:new_pool(Conf),
     ok.

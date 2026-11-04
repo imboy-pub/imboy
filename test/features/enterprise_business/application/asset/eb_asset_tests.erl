@@ -13,6 +13,7 @@
 -module(eb_asset_tests).
 
 -include_lib("eunit/include/eunit.hrl").
+-export([garage_begin/0, garage_end/1]).
 
 %% 场景超时：A05/A06 有多条真实 PG 往返 + 加密凭证派生，默认 5s 不够。
 -define(SCENARIO_TIMEOUT, 180).
@@ -25,9 +26,11 @@ setup() ->
     case Result of
         {ok, _} ->
             Previous = eb_pg_test_fixture:select_asset_stub(),
+            PreviousJwt = application:get_env(imboy, jwt_key),
             try
                 Registry = eb_pg_test_fixture:install_asset_registry(),
-                {asset_stub, Previous, Registry, Result}
+                ok = application:set_env(imboy, jwt_key, <<"synthetic-eb-asset-test-key-only">>),
+                {asset_stub, Previous, Registry, PreviousJwt, Result}
             catch
                 Class:Reason:Stack ->
                     try
@@ -44,14 +47,21 @@ setup() ->
 setup_db() ->
     eunit_runner:eunit_setup_with_db().
 
-cleanup_db({asset_stub, Previous, Registry, Result}) ->
+cleanup_db({asset_stub, Previous, Registry, PreviousJwt, Result}) ->
     try
         cleanup_db(Result)
     after
         try
             eb_pg_test_fixture:restore_asset_registry(Registry)
         after
-            eb_pg_test_fixture:restore_asset_store(Previous)
+            try
+                eb_pg_test_fixture:restore_asset_store(Previous)
+            after
+                case PreviousJwt of
+                    undefined -> application:unset_env(imboy, jwt_key);
+                    {ok, Key} -> application:set_env(imboy, jwt_key, Key)
+                end
+            end
         end
     end;
 cleanup_db({ok, Conn}) ->
@@ -60,7 +70,7 @@ cleanup_db({ok, Conn}) ->
 cleanup_db(_Other) ->
     ok.
 
-cases({asset_stub, _Previous, _Registry, Result}) ->
+cases({asset_stub, _Previous, _Registry, _PreviousJwt, Result}) ->
     cases(Result);
 cases({ok, _Conn}) ->
     [

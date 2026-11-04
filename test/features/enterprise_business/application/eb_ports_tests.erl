@@ -34,6 +34,7 @@ ports_registry_is_frozen_test() ->
             eb_auth_port,
             eb_clock_port,
             eb_crypto_port,
+            eb_edge_asset_port,
             eb_id_port,
             eb_member_fact_port,
             eb_purge_port,
@@ -50,6 +51,7 @@ ports_registry_lookup_test() ->
     ?assertEqual(eb_id_port, eb_ports:port_module_for(id)),
     ?assertEqual(eb_audit_port, eb_ports:port_module_for(audit)),
     ?assertEqual(eb_asset_port, eb_ports:port_module_for(asset)),
+    ?assertEqual(eb_edge_asset_port, eb_ports:port_module_for(edge_asset)),
     %% EB-03R 新增的三个域键
     ?assertEqual(eb_auth_port, eb_ports:port_module_for(auth)),
     ?assertEqual(eb_member_fact_port, eb_ports:port_module_for(member_fact)),

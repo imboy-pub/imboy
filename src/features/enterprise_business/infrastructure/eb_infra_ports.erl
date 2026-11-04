@@ -41,6 +41,7 @@
     | eb_id_port
     | eb_audit_port
     | eb_asset_port
+    | eb_edge_asset_port
     | eb_auth_port
     | eb_member_fact_port
     | eb_tx_port
@@ -120,6 +121,7 @@ implementations() ->
         {eb_ports:id(), id()},
         {eb_ports:audit(), audit()},
         {eb_ports:asset(), asset()},
+        {eb_ports:edge_asset(), asset()},
         {eb_ports:auth(), auth_impl()},
         {eb_ports:member_fact(), member_fact()},
         {eb_ports:tx(), tx()},
@@ -141,6 +143,7 @@ by_key() ->
         {id, id()},
         {audit, audit()},
         {asset, asset()},
+        {edge_asset, asset()},
         {auth, auth_impl()},
         {member_fact, member_fact()},
         {tx, tx()},

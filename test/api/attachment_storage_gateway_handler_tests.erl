@@ -42,8 +42,16 @@ repo_chain_test_() ->
     ].
 
 run_chain(Result) ->
-    Modules = [cowboy_req, imboy_jwt, elib_oss, elib_pg, elib_pg_sql, attach_pending_repo,
-        attachment_storage, attachment_storage_garage],
+    Modules = [
+        cowboy_req,
+        imboy_jwt,
+        elib_oss,
+        elib_pg,
+        elib_pg_sql,
+        attach_pending_repo,
+        attachment_storage,
+        attachment_storage_garage
+    ],
     TmpState = setup_tmp(),
     try
         lists:foreach(fun(Module) -> meck:new(Module, [non_strict]) end, Modules),
@@ -145,68 +153,41 @@ chain_status(_) -> 500.
 gateway_put_test_() ->
     [?_test(run_put(Result)) || Result <- [ok, content_mismatch, not_found, put_failed]].
 
-%% The handler passes a deferred logic callback to Disk. This unit boundary
-%% checks dispatch timing/arguments; real OS-lock coverage remains in Disk tests.
-%% 网关只传延迟逻辑回调；此处检查时序和完整参数，真实锁由 Disk 套件验收。
-disk_recheck_callback_test_() ->
-    [?_test(run_disk_recheck(Result, Status)) || {Result, Status} <- [
-        {ok, 200}, {{error, content_mismatch}, 409}, {{error, not_found}, 404},
-        {{error, invalid_signature_context}, 410}, {{error, {database, closed}}, 502},
-        {exception, 502}
-    ]].
-
-run_disk_recheck(Result, ExpectedStatus) ->
-    Modules = [cowboy_req, imboy_jwt, attach_pending_repo, elib_oss,
-        attachment_storage, attachment_storage_garage, attachment_storage_disk],
+retired_disk_fails_closed_test() ->
+    Modules = [
+        cowboy_req,
+        imboy_jwt,
+        attach_pending_repo,
+        elib_oss,
+        attachment_storage,
+        attachment_storage_garage
+    ],
     TmpState = setup_tmp(),
     try
         lists:foreach(fun(Module) -> meck:new(Module, [non_strict]) end, Modules),
-        meck:new(attach_logic, [passthrough, no_link]),
         setup_mocks(ok),
         Key = get(gateway_key),
-        Identity = #{driver => disk, key => Key, mime => <<"text/plain">>,
-            namespace => <<"gateway-disk-unit">>, root_id => <<"gateway-disk-unit-root">>,
-            container => <<"bucket">>, endpoint => <<"file:///fixture-only">>,
-            locator_digest => binary:copy(<<"a">>, 64)},
-        meck:expect(attachment_storage, session_location, fun(K) ->
-            ?assertEqual(Key, K),
-            {ok, Identity}
-        end),
-        meck:expect(attach_pending_repo, recheck_content_pin, fun(K, Receipt, Frozen) ->
-            ?assertEqual(Key, K),
-            ?assertEqual(get(gateway_pin), Receipt),
-            ?assertEqual(Identity, Frozen),
-            case Result of
-                exception -> erlang:error(recheck_failed);
-                _ -> Result
-            end
-        end),
-        meck:expect(attachment_storage_disk, put_snapshot, fun(Frozen, Source, Expiry, Recheck) ->
-            ?assertEqual(Identity, Frozen),
-            ?assertEqual(get(gateway_exp), Expiry),
-            assert_sealed_bytes(Source, <<"payload">>),
-            put(gateway_source, Source),
-            ?assertEqual(1, meck:num_calls(attach_pending_repo, register_content_pin, '_')),
-            ?assertEqual(0, meck:num_calls(attach_logic, recheck_content_pin, '_')),
-            ?assertEqual(0, meck:num_calls(attach_pending_repo, recheck_content_pin, '_')),
-            Recheck()
+        meck:expect(attachment_storage, session_location, fun(_) ->
+            {ok, #{driver => disk, key => Key}}
         end),
         {Status, _, Body} = attachment_storage_gateway_handler:put(<<"PUT">>, #{}, #{}),
-        ?assertEqual(ExpectedStatus, Status),
+        ?assertEqual(502, Status),
         ?assert(is_binary(Body)),
-        Args = [Key, get(gateway_pin), Identity],
-        ?assertEqual(1, meck:num_calls(attach_logic, recheck_content_pin, Args)),
-        ?assertEqual(1, meck:num_calls(attach_pending_repo, recheck_content_pin, Args)),
-        ?assertEqual(1, meck:num_calls(attachment_storage_disk, put_snapshot, '_')),
         ?assertEqual(0, meck:num_calls(attachment_storage_garage, put_snapshot, '_')),
-        ?assertMatch({error, _}, attachment_upload_spool:read(get(gateway_source), 0))
+        ?assertEqual([], filelib:wildcard(tmp_base() ++ "/" ++ binary_to_list(Key) ++ ".*"))
     after
-        cleanup_gateway([attach_logic | Modules], TmpState)
+        cleanup_gateway(Modules, TmpState)
     end.
 
 pinned_success_test() ->
-    Modules = [cowboy_req, imboy_jwt, attach_pending_repo, elib_oss,
-        attachment_storage, attachment_storage_garage],
+    Modules = [
+        cowboy_req,
+        imboy_jwt,
+        attach_pending_repo,
+        elib_oss,
+        attachment_storage,
+        attachment_storage_garage
+    ],
     TmpState = setup_tmp(),
     Tmp = tmp_base() ++ "/pinned-success",
     try
@@ -227,8 +208,14 @@ pinned_success_test() ->
     end.
 
 run_put(Result) ->
-    Modules = [cowboy_req, imboy_jwt, attach_pending_repo, elib_oss,
-        attachment_storage, attachment_storage_garage],
+    Modules = [
+        cowboy_req,
+        imboy_jwt,
+        attach_pending_repo,
+        elib_oss,
+        attachment_storage,
+        attachment_storage_garage
+    ],
     TmpState = setup_tmp(),
     try
         lists:foreach(fun(Module) -> meck:new(Module, [non_strict]) end, Modules),
@@ -286,8 +273,10 @@ setup_mocks(Result) ->
     end),
     meck:expect(attachment_storage_garage, put_snapshot, fun(Frozen, Source, Mime, Ctx) ->
         ?assertEqual(Identity, Frozen),
-        ?assertEqual(calendar:system_time_to_universal_time(Expiry, second),
-            maps:get(expires_at, Ctx)),
+        ?assertEqual(
+            calendar:system_time_to_universal_time(Expiry, second),
+            maps:get(expires_at, Ctx)
+        ),
         ?assertEqual(<<"text/plain">>, Mime),
         assert_sealed_bytes(Source, <<"payload">>),
         put(gateway_source, Source),
@@ -331,8 +320,10 @@ assert_response(Result, Status, _, Body) ->
 %% the same sealed bytes/hash/size, with no pathname to reopen or replace.
 assert_sealed_bytes(Source, Bytes) ->
     ?assertEqual(byte_size(Bytes), attachment_upload_spool:size(Source)),
-    ?assertEqual(binary:encode_hex(crypto:hash(sha256, Bytes), lowercase),
-        attachment_upload_spool:sha256(Source)),
+    ?assertEqual(
+        binary:encode_hex(crypto:hash(sha256, Bytes), lowercase),
+        attachment_upload_spool:sha256(Source)
+    ),
     ?assertEqual({ok, Bytes}, attachment_upload_spool:read(Source, 0)),
     ?assertEqual(eof, attachment_upload_spool:read(Source, byte_size(Bytes))).
 
@@ -344,24 +335,39 @@ tmp_base() ->
     end.
 
 fixture_identity(Key, Mime) ->
-    #{driver => garage, key => Key, mime => Mime, namespace => <<"gateway-unit">>,
-        root_id => <<"gateway-unit-root">>, container => <<"bucket">>,
+    #{
+        driver => garage,
+        key => Key,
+        mime => Mime,
+        namespace => <<"gateway-unit">>,
+        root_id => <<"gateway-unit-root">>,
+        container => <<"bucket">>,
         endpoint => <<"http://127.0.0.1:1">>,
-        garage_config => #{endpoint => <<"http://127.0.0.1:1">>, bucket => <<"bucket">>}}.
+        garage_config => #{endpoint => <<"http://127.0.0.1:1">>, bucket => <<"bucket">>}
+    }.
 
 setup_tmp() ->
     Previous = os:getenv("IMBOY_V5_GATEWAY_TMP"),
-    Base = case os:getenv("TMPDIR") of false -> "/tmp"; "" -> "/tmp"; Dir -> Dir end,
-    Root = filename:join(Base, "gateway-unit-" ++
-        binary_to_list(binary:encode_hex(crypto:strong_rand_bytes(12), lowercase))),
+    Base =
+        case os:getenv("TMPDIR") of
+            false -> "/tmp";
+            "" -> "/tmp";
+            Dir -> Dir
+        end,
+    Root = filename:join(
+        Base,
+        "gateway-unit-" ++
+            binary_to_list(binary:encode_hex(crypto:strong_rand_bytes(12), lowercase))
+    ),
     ok = file:make_dir(Root),
     try
         ok = file:change_mode(Root, 8#700),
         true = os:putenv("IMBOY_V5_GATEWAY_TMP", Root),
         {Previous, Root}
-    catch Class:Reason:Stack ->
-        cleanup_tmp({Previous, Root}),
-        erlang:raise(Class, Reason, Stack)
+    catch
+        Class:Reason:Stack ->
+            cleanup_tmp({Previous, Root}),
+            erlang:raise(Class, Reason, Stack)
     end.
 
 cleanup_tmp({Previous, Root}) ->
@@ -414,8 +420,9 @@ ctx_setup_mocks(PinResult, PutResult, MaxBytes) ->
                 ?assertEqual({ok, []}, file:list_dir(tmp_base())),
                 %% Exact frozen destination, bytes and capability expiry survive dispatch.
                 put(gw_source, Source),
-                put(gw_put_args, {maps:get(key, Frozen), Mime, Ctx,
-                    attachment_upload_spool:read(Source, 0)}),
+                put(gw_put_args, {
+                    maps:get(key, Frozen), Mime, Ctx, attachment_upload_spool:read(Source, 0)
+                }),
                 PutResult
             end}
         ]},

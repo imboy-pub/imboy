@@ -32,6 +32,7 @@
 
 -moduledoc "eb_asset_port 的唯一装配实现（EB-03R P13 + P12）。".
 -behaviour(eb_asset_port).
+-behaviour(eb_edge_asset_port).
 
 -include_lib("epgsql/include/epgsql.hrl").
 
@@ -39,7 +40,8 @@
     put_private/3,
     stream_content/3,
     stream_content_chunked/3,
-    download_location/3,
+    check_download/3,
+    presign_download/3,
     delete_private/3,
     insert_asset/3,
     fetch_asset/3,
@@ -251,6 +253,20 @@ stream_content_chunked(OrgId, WorkspaceId, AssetId) ->
 %%     由调用方 status_gate 把关，本函数仅拦 deleted）；
 %%   * 非 garage（disk/stub/legacy）位置 fail-closed：
 %%     {error, location_unverified}——边缘只承载 S3，不回退 BEAM 兜底。
+-spec check_download(integer(), integer(), integer()) -> ok | {error, term()}.
+check_download(OrgId, WorkspaceId, AssetId) ->
+    case download_location(OrgId, WorkspaceId, AssetId) of
+        {ok, _} -> ok;
+        {error, _} = Error -> Error
+    end.
+
+-spec presign_download(integer(), integer(), integer()) -> {ok, binary()} | {error, term()}.
+presign_download(OrgId, WorkspaceId, AssetId) ->
+    case download_location(OrgId, WorkspaceId, AssetId) of
+        {ok, Identity} -> attachment_storage_garage:presign_snapshot(Identity, 600);
+        {error, Reason} -> {error, {object_unreadable, Reason}}
+    end.
+
 -spec download_location(integer(), integer(), integer()) ->
     {ok, #{driver := garage, key := binary(), container := binary(), namespace := binary()}}
     | {error, term()}.

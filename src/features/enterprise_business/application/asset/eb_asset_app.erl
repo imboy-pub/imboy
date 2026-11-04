@@ -1235,9 +1235,9 @@ content_status_gate(_OrgId, _Ws, Row, _Params) ->
 %% authorize 重放完整 ACL（edge_authorize_content/1）。fail-closed：边缘
 %% 未配置或位置非 garage 一律 {error,_}，不回退 BEAM 取流。
 content_read(OrgId, Ws, Row, Params) ->
-    Asset = port(Params, asset),
-    case Asset:download_location(OrgId, Ws, maps:get(id, Row)) of
-        {ok, _Location} ->
+    EdgeAsset = port(Params, edge_asset),
+    case EdgeAsset:check_download(OrgId, Ws, maps:get(id, Row)) of
+        ok ->
             case actor_scope(Params) of
                 {ok, Actor} ->
                     Claims0 = #{
@@ -1344,8 +1344,11 @@ edge_authorize_content(
                                     Err;
                                 ok ->
                                     case content_status_gate(OrgId, Ws, Row, Params) of
-                                        {ok, Row} -> edge_presign(Asset, OrgId, Ws, AssetId);
-                                        {error, _} = Err -> Err
+                                        {ok, Row} ->
+                                            EdgeAsset = port(Params, edge_asset),
+                                            EdgeAsset:presign_download(OrgId, Ws, AssetId);
+                                        {error, _} = Err ->
+                                            Err
                                     end
                             end;
                         {error, _} = Err ->
@@ -1360,14 +1363,6 @@ authorize_actor(Auth, Store, OrgId, Ws, Conv, #{kind := member, id := Id}) ->
     eb_asset_scope:authorize(Auth, Store, OrgId, Ws, Conv, Id);
 authorize_actor(_Auth, Store, OrgId, Ws, Conv, #{kind := contact, id := Id}) ->
     eb_asset_scope:authorize_contact(Store, OrgId, Ws, Conv, Id).
-
-edge_presign(Asset, OrgId, Ws, AssetId) ->
-    case Asset:download_location(OrgId, Ws, AssetId) of
-        {ok, I} ->
-            attachment_storage_garage:presign_snapshot(I, 600);
-        {error, Reason} ->
-            {error, {object_unreadable, Reason}}
-    end.
 
 %% （V3-17 起正文不再过 BEAM：原 content_verify 的全量字节复核随之退役；
 %% 内容完整性由存储侧 checksum proof 与 GC 复核链保证。）

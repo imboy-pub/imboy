@@ -140,6 +140,22 @@ run_audit(S) ->
     atomicity(S, Ctx),
     replay_no_dup(S, Ctx),
     ok = enterprise_internal_audit_http_checks:seats(S),
+    Channel = intbe02_http_support:fixture(chn_a1, S),
+    ChannelPath =
+        <<"/api/internal/v1/channels/", (integer_to_binary(Channel))/binary, "/messages">>,
+    with_dns(fun() ->
+        enterprise_internal_audit_http_checks:request(
+            S,
+            <<"POST">>,
+            ChannelPath,
+            #{
+                <<"sender_mode">> => <<"application">>,
+                <<"msg_type">> => <<"text">>,
+                <<"content">> => <<"synthetic audit channel message">>
+            },
+            <<"audit-channel-message">>
+        )
+    end),
     enterprise_channel_write_http_checks:run(S),
     enterprise_workspace_write_http_checks:run(S),
     ok = enterprise_internal_audit_http_checks:directory_sync(S),

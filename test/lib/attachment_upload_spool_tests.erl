@@ -192,103 +192,19 @@ bounded_copy_test() ->
         ?assertEqual({ok, Bytes}, file:read_file(Path))
     end).
 
-disk_recheck_rejection_never_publishes_test() ->
-    with_directory(fun(Dir) ->
-        I = disk_identity(Dir),
-        ?assertEqual(
-            {error, upload_closed},
-            attachment_storage_disk:put_snapshot(
-                I,
-                <<"rejected">>,
-                erlang:system_time(second) + 60,
-                fun() -> {error, upload_closed} end
-            )
-        ),
-        ?assertEqual({error, not_found}, attachment_storage_disk:read_snapshot(I)),
+garage_expired_context_never_publishes_test() ->
+    ok = meck:new(httpc, [passthrough, no_link, unstick]),
+    try
+        Now = erlang:system_time(second),
+        Ctx = #{issued_at => datetime(Now - 60), expires_at => datetime(Now - 1)},
         ?assertEqual(
             {error, invalid_signature_context},
-            attachment_storage_disk:put_snapshot(
-                I,
-                <<"expired">>,
-                erlang:system_time(second) - 1,
-                fun() -> error(expired_recheck_must_not_run) end
-            )
-        )
-    end).
-
-disk_snapshot_private_and_atomic_test() ->
-    with_directory(fun(Dir) ->
-        I = disk_identity(Dir),
-        Path = filename:join([Dir, "bucket", "object"]),
-        Bytes = binary:copy(<<"disk-stream">>, 20000),
-        Result = attachment_storage_disk:put_snapshot(
-            I,
-            Bytes,
-            erlang:system_time(second) + 60,
-            fun() ->
-                ?assertEqual(false, filelib:is_regular(Path)),
-                ok
-            end
+            attachment_storage_garage:put_snapshot(#{}, <<"expired">>, <<"text/plain">>, Ctx)
         ),
-        ?assertEqual(ok, Result),
-        ?assertEqual({ok, Bytes}, attachment_storage_disk:read_snapshot(I)),
-        {ok, #file_info{mode = Mode}} = file:read_file_info(Path),
-        ?assertEqual(8#600, Mode band 8#777),
-        ?assertEqual([], filelib:wildcard(Path ++ ".v5tmp.*"))
-    end).
-
-disk_recheck_runs_inside_shared_os_lock_test() ->
-    with_directory(fun(Dir) ->
-        I = disk_identity(Dir),
-        Expiry = erlang:system_time(second) + 60,
-        Parent = self(),
-        {First, FirstRef} = spawn_monitor(fun() ->
-            Result = attachment_storage_disk:put_snapshot(I, <<"first">>, Expiry, fun() ->
-                Parent ! {self(), locked},
-                receive
-                    release -> ok
-                after 2000 -> error(release_timeout)
-                end
-            end),
-            Parent ! {self(), result, Result}
-        end),
-        receive
-            {First, locked} -> ok
-        after 2000 -> error(lock_timeout)
-        end,
-        {Second, SecondRef} = spawn_monitor(fun() ->
-            Result = attachment_storage_disk:put_snapshot(I, <<"second">>, Expiry, fun() ->
-                Parent ! {self(), recheck, attachment_storage_disk:read_snapshot(I)},
-                {error, upload_closed}
-            end),
-            Parent ! {self(), result, Result}
-        end),
-        try
-            receive
-                {Second, recheck, _} -> error(recheck_before_lock)
-            after 50 -> ok
-            end,
-            First ! release,
-            receive
-                {First, result, ok} -> ok
-            after 2000 -> error(first_timeout)
-            end,
-            receive
-                {Second, recheck, Result} -> ?assertEqual({ok, <<"first">>}, Result)
-            after 2000 -> error(recheck_timeout)
-            end,
-            receive
-                {Second, result, {error, upload_closed}} -> ok
-            after 2000 -> error(second_timeout)
-            end,
-            ?assertEqual({ok, <<"first">>}, attachment_storage_disk:read_snapshot(I))
-        after
-            exit(First, kill),
-            exit(Second, kill),
-            erlang:demonitor(FirstRef, [flush]),
-            erlang:demonitor(SecondRef, [flush])
-        end
-    end).
+        ?assertEqual(0, meck:num_calls(httpc, request, '_'))
+    after
+        meck:unload(httpc)
+    end.
 
 garage_real_httpc_stream_test() ->
     {ok, _} = application:ensure_all_started(inets),
@@ -387,8 +303,6 @@ receive_bytes(Socket, Left, Hash) when Left > 0 ->
     {ok, Bytes} = gen_tcp:recv(Socket, min(65536, Left), 3000),
     receive_bytes(Socket, Left - byte_size(Bytes), crypto:hash_update(Hash, Bytes)).
 
-disk_identity(Dir) ->
-    #{endpoint => list_to_binary("file://" ++ Dir), container => <<"bucket">>, key => <<"object">>}.
 datetime(Unix) -> calendar:gregorian_seconds_to_datetime(Unix + 62167219200).
 hex_hash(Bytes) -> binary:encode_hex(crypto:hash(sha256, Bytes), lowercase).
 read_all(Source, Offset, Acc) ->

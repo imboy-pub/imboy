@@ -25,6 +25,7 @@
     id/0,
     audit/0,
     asset/0,
+    edge_asset/0,
     auth/0,
     member_fact/0,
     tx/0,
@@ -63,7 +64,8 @@ all() ->
         auth(),
         member_fact(),
         tx(),
-        purge()
+        purge(),
+        edge_asset()
     ].
 
 %% @doc 持久化读写扩展点。所有资源级 callback 的前两个业务参数必须是
@@ -90,6 +92,9 @@ audit() -> eb_audit_port.
 %% @doc 企业私有对象读写 + 鉴权代理取流扩展点。
 -spec asset() -> port_module().
 asset() -> eb_asset_port.
+
+-spec edge_asset() -> port_module().
+edge_asset() -> eb_edge_asset_port.
 
 %% @doc 授权事实扩展点（**只读**、逐请求加载；EB-04 的契约，EB-03R 只做注册）。
 -spec auth() -> port_module().
@@ -118,6 +123,7 @@ port_module_for(clock) -> clock();
 port_module_for(id) -> id();
 port_module_for(audit) -> audit();
 port_module_for(asset) -> asset();
+port_module_for(edge_asset) -> edge_asset();
 port_module_for(auth) -> auth();
 port_module_for(member_fact) -> member_fact();
 port_module_for(tx) -> tx();
@@ -230,6 +236,7 @@ contracts() ->
             {register_session, 6},
             {direct_session_row, 1}
         ],
+        edge_asset() => [{check_download, 3}, {presign_download, 3}],
         auth() => [
             {load_request_facts, 1}
         ],

@@ -13,6 +13,7 @@ read_case(Sync, Notice) ->
         pure_mock_fixture:run(fun() ->
             pure_mock_fixture:with_mocks(
                 [
+                    {enterprise_webhook_logic, [{emit_read_for, 1, fun(_) -> ok end}]},
                     {friend_ds, [{check_relationship, 2, fun(_, _) -> {true, false} end}]},
                     {msg_read_ds, [{save_read, 5, fun(_, _, _, _, _) -> ok end}]},
                     {msg_s2c_ds, [{send, 7, fun(_, _, _, _, _, _, _) -> Sync end}]},
@@ -33,6 +34,10 @@ read_case(Sync, Notice) ->
                     },
                     {reply, R} = msg_c2c_logic:c2c_read(<<"ReadId">>, 9, Data),
                     ?assertEqual(1, meck:num_calls(msg_read_ds, save_read, 5)),
+                    ?assertEqual(
+                        1,
+                        meck:num_calls(enterprise_webhook_logic, emit_read_for, [[<<"business">>]])
+                    ),
                     case {Sync, Notice} of
                         {ok, ok} ->
                             ?assertEqual(<<"message_read_ack">>, maps:get(<<"action">>, R)),

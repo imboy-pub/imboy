@@ -22,6 +22,10 @@
 -define(DEFAULT_DEADLINE_MS, 600000).
 -define(PORT_TIMEOUT_MS, 650000).
 
+-ifdef(TEST).
+-export([escript_executable/0]).
+-endif.
+
 %% Task 字段与 content_worker.escript 对齐：
 %%   endpoint/ak/sk/bucket/region/object_key/attempt_key/mime/deadline_ms/secret
 %% 返回 {ok, #{sha256 := binary(), size := non_neg_integer(),
@@ -32,7 +36,7 @@ scan_external(Task) ->
         ebin => ebin_dir(),
         code_paths => worker_code_paths()
     },
-    case {os:find_executable("escript"), worker_script_path()} of
+    case {escript_executable(), worker_script_path()} of
         {false, _} ->
             {error, {worker_missing, escript}};
         {_, false} ->
@@ -73,7 +77,7 @@ run_io_worker(Task) ->
         {ok, true} ->
             run_io_worker_in_process(Task1);
         _ ->
-            case {os:find_executable("escript"), io_worker_script_path()} of
+            case {escript_executable(), io_worker_script_path()} of
                 {false, _} ->
                     {error, {worker_missing, escript}};
                 {_, false} ->
@@ -345,6 +349,13 @@ port_timeout_ms() ->
     case application:get_env(imboy, attachment_worker_port_timeout_ms) of
         {ok, N} when is_integer(N), N >= 1000 -> N;
         _ -> ?PORT_TIMEOUT_MS
+    end.
+
+escript_executable() ->
+    Path = filename:join([code:root_dir(), "bin", "escript"]),
+    case filelib:is_file(Path) of
+        true -> Path;
+        false -> os:find_executable("escript")
     end.
 
 worker_script_path() ->

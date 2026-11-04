@@ -194,6 +194,18 @@ read_cursor_generation_cascade_test_() ->
         )
     end).
 
+pending_new_disposition_test() ->
+    {ok, Entries} = data_disposition:parse_file(?MANIFEST),
+    lists:foreach(
+        fun(Name) ->
+            [Entry] = [E || E <- Entries, maps:get(table, E) =:= Name],
+            ?assertEqual(retain, maps:get(action, Entry)),
+            ?assertEqual(<<"pending-owner">>, maps:get(review, Entry)),
+            ?assertEqual(<<"unknown">>, maps:get(retention, Entry))
+        end,
+        [<<"cs_quick_reply">>, <<"enterprise_channel_message">>]
+    ).
+
 attachment_retention_disposition_test() ->
     {ok, Entries} = data_disposition:parse_file(?MANIFEST),
     lists:foreach(

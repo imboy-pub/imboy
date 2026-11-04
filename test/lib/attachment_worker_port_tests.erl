@@ -9,13 +9,17 @@
 -include_lib("eunit/include/eunit.hrl").
 
 -define(EP, os:getenv("A0_ENDPOINT")).
--define(BUCKET, <<"imboy">>).
+
+worker_runtime_escript_test() ->
+    ?assertEqual(
+        filename:join([code:root_dir(), "bin", "escript"]),
+        attachment_worker_port:escript_executable()
+    ).
 
 worker_e2e_test_() ->
     {timeout, 120, fun worker_e2e/0}.
 
 worker_e2e() ->
-    false = ?EP =:= false,
     {ok, _} = application:ensure_all_started(inets),
     {ok, _} = application:ensure_all_started(crypto),
     {ok, _} = application:ensure_all_started(ssl),
@@ -32,7 +36,7 @@ worker_e2e() ->
         endpoint => maps:get(endpoint, Cfg),
         ak => maps:get(access_key, Cfg),
         sk => maps:get(secret_key, Cfg),
-        bucket => ?BUCKET,
+        bucket => maps:get(container, Cfg),
         region => <<"garage">>,
         object_key => Key,
         attempt_key => AttemptKey,
@@ -60,7 +64,7 @@ worker_e2e() ->
     }),
     %% 2) 负向：篡改 sha256 绑定 → verify 拒（fail-closed）
     ?assertMatch(
-        {error, {receipt, _}},
+        {error, binding_mismatch},
         tamper_verify(Receipt, Secret, AttemptKey, Key, Size)
     ),
     %% 3) 负向：回执跨 attempt 冒充（Worker 按任务签发后用攻击者期望字段
@@ -98,11 +102,24 @@ tamper_verify(Receipt, Secret, AK, OK, Size) ->
     }).
 
 garage_cfg() ->
+    {Endpoint, Bucket, Access, Secret} =
+        case ?EP of
+            false ->
+                {
+                    os:getenv("W202_GARAGE_ENDPOINT"),
+                    os:getenv("W202_GARAGE_BUCKET"),
+                    os:getenv("W202_GARAGE_ACCESS_KEY"),
+                    os:getenv("W202_GARAGE_SECRET_KEY")
+                };
+            E ->
+                {E, os:getenv("A0_BUCKET", "imboy"), os:getenv("A0_AK"), os:getenv("A0_SK")}
+        end,
+    true = lists:all(fun(V) -> is_list(V) andalso V =/= [] end, [Endpoint, Bucket, Access, Secret]),
     #{
-        endpoint => list_to_binary(?EP),
-        container => ?BUCKET,
-        access_key => list_to_binary(os:getenv("A0_AK")),
-        secret_key => list_to_binary(os:getenv("A0_SK")),
+        endpoint => list_to_binary(Endpoint),
+        container => list_to_binary(Bucket),
+        access_key => list_to_binary(Access),
+        secret_key => list_to_binary(Secret),
         region => <<"garage">>
     }.
 
@@ -111,7 +128,7 @@ put_object(Cfg, Key, Body, Mime) ->
     Url = elib_s3_sign:presign_signed_url_at(
         <<"PUT">>,
         maps:get(endpoint, Cfg),
-        ?BUCKET,
+        maps:get(container, Cfg),
         Key,
         [{<<"content-type">>, Mime}, {<<"x-amz-checksum-sha256">>, Ck}],
         calendar:universal_time(),

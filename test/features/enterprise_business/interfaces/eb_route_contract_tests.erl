@@ -687,15 +687,14 @@ a05_asset_content_is_proxy_only_test() ->
 %% facade 视图，由**生产侧** `eb_enterprise_http:reply_content/2` 真的写到 socket 上，
 %% 再按原始字节扫描（生产侧与证据侧共用同一判据 `storage_leak_scan/1`）。
 %%
-%% 说明（不假绿）：本测试覆盖的是「content 响应**构造器**」的真实输出；handler →
-%% facade → 对象存储的完整链路在本 worktree **无法运行**（`eb_asset_app` 未播种，
-%% 见 RESULT findings EB-09-F4），故该段标记为 NOT_VERIFIED，不由本测试冒充。
+%% 仅覆盖响应构造器，不代表完整存储链路验收。
 a05_content_response_has_no_storage_capability_test() ->
     {ok, _Started} = application:ensure_all_started(cowboy),
     Body = <<"EB09-CONTENT-BYTES">>,
     View = #{
         asset_id => 12345,
         object_hash => <<"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa">>,
+        redirect_url => <<"/edge?ticket=synthetic">>,
         mime => <<"text/plain">>,
         size_bytes => byte_size(Body),
         body => Body,
@@ -712,15 +711,15 @@ a05_content_response_has_no_storage_capability_test() ->
     ),
     try
         Resp = ?S:request(Port, <<"GET">>, <<"/__eb09_probe_content">>),
-        ?assertEqual(200, maps:get(status, Resp)),
+        ?assertEqual(302, maps:get(status, Resp)),
         Raw = ?S:raw(Resp),
-        %% ① 字节原样返回（流式内容 = 对象字节）
-        ?assertNotEqual(nomatch, binary:match(Raw, Body)),
+        %% ① 对象字节不经过 BEAM 响应。
+        ?assertEqual(nomatch, binary:match(Raw, Body)),
         %% ② 存储能力扫描：object key / bucket / URL / endpoint 一个都不许出现
         ?assertEqual(ok, eb_enterprise_http:storage_leak_scan(Raw)),
         %% ③ 只出现白名单头
         Headers = maps:get(headers, Resp),
-        ?assertEqual(<<"text/plain">>, maps:get(<<"content-type">>, Headers)),
+        ?assertEqual(maps:get(redirect_url, View), maps:get(<<"location">>, Headers)),
         ?assertEqual(<<"12345">>, maps:get(<<"x-asset-id">>, Headers)),
         ?assertNot(maps:is_key(<<"object_key">>, Headers)),
         %% ④ 非真空：把诱饵值单独扫一遍，扫描器必须命中（证明②不是恒真）
@@ -730,7 +729,12 @@ a05_content_response_has_no_storage_capability_test() ->
         %% ⑤ 「全量视图」扫一遍会命中（若有人把整个 View 序列化进响应，②必红）
         ?assertMatch({leak, _}, eb_enterprise_http:storage_leak_scan(jsone:encode(View)), [
             native_utf8
-        ])
+        ]),
+        ok = persistent_term:put({eb09_content_probe, view}, maps:remove(redirect_url, View)),
+        Retired = ?S:request(Port, <<"GET">>, <<"/__eb09_probe_content">>),
+        ?assertEqual(500, maps:get(status, Retired)),
+        ?assertEqual(nomatch, binary:match(?S:raw(Retired), Body)),
+        ?assertEqual(ok, eb_enterprise_http:storage_leak_scan(?S:raw(Retired)))
     after
         _ = persistent_term:erase({eb09_content_probe, view}),
         ?S:stop(Name)

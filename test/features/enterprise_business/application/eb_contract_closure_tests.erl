@@ -27,6 +27,7 @@
     {<<"Clock">>, eb_clock_port},
     {<<"Id">>, eb_id_port},
     {<<"Asset">>, eb_asset_port},
+    {<<"EdgeAsset">>, eb_edge_asset_port},
     {<<"Auth">>, eb_auth_port},
     {<<"MemberFact">>, eb_member_fact_port},
     {<<"Fact">>, eb_member_fact_port},

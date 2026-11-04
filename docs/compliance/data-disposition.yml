@@ -1348,6 +1348,20 @@ tables:
     mechanism: 迁移 179 的审计表；保留期限与 details 脱敏仍待复核
     review: pending-owner
     retention: unknown
+  cs_quick_reply:
+    action: retain
+    owner: customer-service
+    reason: 工作区快捷回复含正文及 created_by；账号删除执行器当前未处置该表
+    mechanism: 迁移 240 未设置用户外键或级联；删除与保留策略待确认
+    review: pending-owner
+    retention: unknown
+  enterprise_channel_message:
+    action: retain
+    owner: enterprise
+    reason: 企业频道消息含正文及 from_id；账号删除执行器当前未处置该表
+    mechanism: 迁移 241 未设置用户外键或级联；删除与保留策略待确认
+    review: pending-owner
+    retention: unknown
   customer_service_ai_agent:
     action: retain
     owner: customer-service

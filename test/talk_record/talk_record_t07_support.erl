@@ -32,8 +32,8 @@ setup_all() ->
         ok = talk_record_upload_test_support:configure(),
         %% confirm 链经 garage copy_dispatch（httpc），每用例确保 inets 在 VM。
         {ok, _} = application:ensure_all_started(inets),
-        _ = retire_direct_residue(maps:get(conn, State)),
         ok = persistent_test_ids(maps:get(conn, State)),
+        _ = retire_direct_residue(maps:get(conn, State)),
         State
     catch
         Class:Reason:Stack ->

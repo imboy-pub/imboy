@@ -31,8 +31,7 @@ seat_send_protocol_test_() ->
     {setup, fun setup/0, fun cleanup/1, fun cases/1}.
 
 setup() ->
-    %% Boot may load application env. Use the actual frozen Disk driver for
-    %% HTTP sealed-body uploads; the binary-only local stub cannot consume them.
+    %% Boot may load application env; sealed-body uploads use isolated Garage.
     Result = setup_db(),
     case Result of
         {ok, _} ->
@@ -40,44 +39,65 @@ setup() ->
             ok = application:unset_env(imboy, eb_asset_object_store),
             try
                 Registry = ?FIX:install_asset_registry(),
-                {asset_disk, Previous, Registry, Result}
-            catch Class:Reason:Stack ->
-                try cleanup(Result)
-                after ?FIX:restore_asset_store(Previous) end,
-                erlang:raise(Class, Reason, Stack)
+                try
+                    Garage = eb_asset_tests:garage_begin(),
+                    {asset_garage, Previous, Registry, Garage, Result}
+                catch
+                    Class1:Reason1:Stack1 ->
+                        ?FIX:restore_asset_registry(Registry),
+                        erlang:raise(Class1, Reason1, Stack1)
+                end
+            catch
+                Class:Reason:Stack ->
+                    try
+                        cleanup(Result)
+                    after
+                        ?FIX:restore_asset_store(Previous)
+                    end,
+                    erlang:raise(Class, Reason, Stack)
             end;
-        _ -> Result
+        _ ->
+            Result
     end.
 
 setup_db() ->
     case eunit_runner:eunit_setup_with_db() of
         {ok, Conn} ->
             try ?FIX:ensure_purge_role() of
-                ok -> {ok, Conn};
+                ok ->
+                    {ok, Conn};
                 {error, Reason} ->
                     eunit_runner:eunit_cleanup_db(Conn),
                     {error, Reason}
-            catch Class:Reason:Stack ->
-                eunit_runner:eunit_cleanup_db(Conn),
-                erlang:raise(Class, Reason, Stack)
+            catch
+                Class:Reason:Stack ->
+                    eunit_runner:eunit_cleanup_db(Conn),
+                    erlang:raise(Class, Reason, Stack)
             end;
         {error, Reason} ->
             {error, Reason}
     end.
 
-cleanup({asset_disk, Previous, Registry, Result}) ->
+cleanup({asset_garage, Previous, Registry, Garage, Result}) ->
     try
         cleanup(Result)
     after
-        try ?FIX:restore_asset_registry(Registry)
-        after ?FIX:restore_asset_store(Previous) end
+        try
+            eb_asset_tests:garage_end(Garage)
+        after
+            try
+                ?FIX:restore_asset_registry(Registry)
+            after
+                ?FIX:restore_asset_store(Previous)
+            end
+        end
     end;
 cleanup({ok, Conn}) ->
     eunit_runner:eunit_cleanup_db(Conn);
 cleanup(Other) ->
     Other.
 
-cases({asset_disk, _Previous, _Registry, Result}) ->
+cases({asset_garage, _Previous, _Registry, _Garage, Result}) ->
     cases(Result);
 cases({ok, _Conn}) ->
     [

@@ -20,8 +20,7 @@
 %%% 断言自首次 RED（commit ff719b83 cherry-pick 自 b092e78b）以来未改动——
 %%% 同一断言由红转绿，即修复满足合同的证据。
 %%%
-%%% 隔离与 cs_inbox_pg_tests 同款：随机 TSID scope + fixture 直驱（不自起
-%%% eunit_runner/app config；由本 run 私有 runtime 的 pgsql pool 承载）；
+%%% 隔离：独立 VM 初始化测试池，随机 TSID scope；
 %%% 无真实数据；环境不可用 ⇒ 直接抛错（不是 skip）。
 -module(cs04_ack_cross_conversation_reject_red_tests).
 
@@ -29,7 +28,20 @@
 
 -define(FIX, cs_pg_test_fixture).
 
-cross_conversation_ack_must_be_rejected_test() ->
+cross_conversation_ack_must_be_rejected_test_() ->
+    isolated_pg_fixture:test(fun() ->
+        os:putenv("TEST_HTTP_PORT", "0"),
+        {setup, fun eunit_runner:eunit_setup_with_db/0,
+            fun
+                ({ok, Conn}) -> eunit_runner:eunit_cleanup_db(Conn);
+                (_) -> ok
+            end, fun
+                ({ok, _}) -> {timeout, 60, fun cross_conversation_ack_must_be_rejected/0};
+                ({error, Reason}) -> error({cs04_database_unavailable, Reason})
+            end}
+    end).
+
+cross_conversation_ack_must_be_rejected() ->
     Scope = ?FIX:new_scope(),
     try
         %% 会话 A：本坐席持有；消息 Ma（本会话事实）。

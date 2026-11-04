@@ -1,41 +1,22 @@
 -module(attachment_artifact_reader_tests).
 -include_lib("eunit/include/eunit.hrl").
 
-bounded_disk_integrity_test_() ->
-    {setup, fun setup/0, fun cleanup/1, fun({Root, Bytes, I}) ->
+retired_disk_fails_closed_test_() ->
+    {setup, fun setup/0, fun cleanup/1, fun({_Root, Bytes, I}) ->
         ?_test(begin
             Row = row(Bytes),
             meck:expect(attachment_storage, frozen_location, fun(_, _) -> {ok, I} end),
-            Result = attachment_artifact_reader:with_source(
-                Row,
-                200000,
-                fun(S) ->
-                    ?assertEqual(byte_size(Bytes), attachment_upload_spool:size(S)),
-                    {ok, B} = attachment_upload_spool:read_at(S, 65536, 65536),
-                    ?assertEqual(binary:part(Bytes, 65536, 65536), B),
-                    {ok, attachment_upload_spool:size(S)}
-                end
+            ?assertEqual(
+                {error, disk_driver_retired},
+                attachment_artifact_reader:with_source(Row, 200000, fun(_) -> error(unreachable) end)
             ),
-            ?assertEqual({ok, byte_size(Bytes)}, Result),
-            RangeResult = attachment_artifact_reader:with_range(Row, 65537, 9, fun(S) ->
-                {ok, B} = attachment_upload_spool:read(S, 0),
-                ?assertEqual(binary:part(Bytes, 65537, 9), B),
-                {ok, attachment_upload_spool:size(S)}
-            end),
-            ?assertEqual({ok, 9}, RangeResult),
+            ?assertEqual(
+                {error, disk_driver_retired},
+                attachment_artifact_reader:with_range(Row, 2, 4, fun(_) -> error(unreachable) end)
+            ),
             ?assertEqual(
                 {error, artifact_integrity_mismatch},
                 attachment_artifact_reader:with_source(Row, 10, fun(_) -> error(unreachable) end)
-            ),
-            Bad = Row#{<<"file_hash256">> => binary:copy(<<"0">>, 64)},
-            ?assertEqual(
-                {error, artifact_integrity_mismatch},
-                attachment_artifact_reader:with_source(Bad, 200000, fun(_) -> error(unreachable) end)
-            ),
-            ok = file:write_file(filename:join([Root, "bucket", "audio.aac"]), <<Bytes/binary, 0>>),
-            ?assertEqual(
-                {error, artifact_integrity_mismatch},
-                attachment_artifact_reader:with_source(Row, 200000, fun(_) -> error(unreachable) end)
             )
         end)
     end}.
@@ -63,6 +44,18 @@ garage_stream_integrity_test_() ->
                     end)
                 end,
                 Check(Bytes, 200, {ok, byte_size(Bytes)}),
+                with_http(Bytes, 200, fun(Url) ->
+                    meck:expect(attachment_storage_garage, presign_snapshot, fun(_, _) ->
+                        {ok, Url}
+                    end),
+                    Bad = (row(Bytes))#{<<"file_hash256">> => binary:copy(<<"0">>, 64)},
+                    ?assertEqual(
+                        {error, artifact_integrity_mismatch},
+                        attachment_artifact_reader:with_source(Bad, 200000, fun(_) ->
+                            error(unreachable)
+                        end)
+                    )
+                end),
                 Check(<<Bytes/binary, 0>>, 200, {error, artifact_integrity_mismatch}),
                 Check(<<"denied">>, 403, {error, {storage_http_status, 403}}),
                 Partial = binary:part(Bytes, 2, 4),

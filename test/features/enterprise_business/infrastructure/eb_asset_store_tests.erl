@@ -14,6 +14,43 @@
 -include_lib("eunit/include/eunit.hrl").
 -include("eunit_setup.hrl").
 
+edge_download_location_is_private_and_fails_closed_test() ->
+    Modules = [eb_pg_exec, eb_pg_asset_meta, attachment_storage, attachment_storage_garage],
+    lists:foreach(fun(M) -> meck:new(M, [passthrough, no_link]) end, Modules),
+    try
+        meck:expect(eb_pg_exec, with_tenant, fun(1, 2, F) -> F() end),
+        meck:expect(eb_pg_asset_meta, fetch_asset, fun(1, 2, 3) ->
+            {ok, #{status => active, object_key => <<"private-key">>}}
+        end),
+        Identity = #{driver => garage, key => <<"private-key">>},
+        meck:expect(attachment_storage, frozen_location, fun(_, _) -> {ok, Identity} end),
+        meck:expect(attachment_storage_garage, presign_snapshot, fun(Actual, 600) ->
+            ?assertEqual(Identity, Actual),
+            {ok, <<"https://synthetic.invalid/signed">>}
+        end),
+        ?assertEqual(ok, eb_asset_store:check_download(1, 2, 3)),
+        ?assertEqual(
+            {ok, <<"https://synthetic.invalid/signed">>},
+            eb_asset_store:presign_download(1, 2, 3)
+        ),
+        meck:expect(attachment_storage, frozen_location, fun(_, _) -> {ok, #{driver => disk}} end),
+        ?assertEqual({error, location_unverified}, eb_asset_store:check_download(1, 2, 3)),
+        ?assertEqual(
+            {error, {object_unreadable, location_unverified}},
+            eb_asset_store:presign_download(1, 2, 3)
+        ),
+        meck:expect(eb_pg_asset_meta, fetch_asset, fun(1, 2, 3) -> {ok, #{status => deleted}} end),
+        ?assertEqual({error, not_found}, eb_asset_store:check_download(1, 2, 3)),
+        ?assertEqual(
+            {error, {object_unreadable, not_found}},
+            eb_asset_store:presign_download(1, 2, 3)
+        ),
+        ?assertEqual(1, meck:num_calls(attachment_storage_garage, presign_snapshot, 2)),
+        ?assertNot(erlang:function_exported(eb_asset_store, download_location, 3))
+    after
+        lists:foreach(fun meck:unload/1, Modules)
+    end.
+
 asset_store_test_() ->
     {setup, fun setup/0, fun cleanup_db/1, fun cases/1}.
 

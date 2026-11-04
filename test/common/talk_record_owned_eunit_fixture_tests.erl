@@ -399,7 +399,7 @@ legacy_public_setup_preserves_id_sequence_test() ->
         ?assertEqual(0, meck:num_calls(talk_record_t05_support, teardown_all, '_')),
         ?assertEqual(ok, talk_record_t07_support:teardown_all(State)),
         ?assertEqual(1, meck:num_calls(talk_record_t05_support, teardown_all, [State])),
-        assert_legacy_mocks()
+        assert_legacy_mocks(1)
     end).
 
 ordinary_database_public_setup_rejected_test() ->
@@ -423,7 +423,7 @@ ordinary_database_public_setup_rejected_test() ->
             )
         ),
         ?assertEqual(0, meck:num_calls(elib_tsid, generate, '_')),
-        assert_legacy_mocks()
+        assert_legacy_mocks(0)
     end).
 
 with_legacy_public_setup(Db, Fun) ->
@@ -479,6 +479,12 @@ configure_legacy_mocks(Db) ->
         fun(#{conn := C}) when C =:= Owner -> ok end
     ),
     ok = meck:expect(talk_record_upload_test_support, configure, fun() -> ok end),
+    ok = meck:expect(epgsql, equery, fun(C, Sql, []) when C =:= Owner ->
+        ?assertMatch(
+            {match, _}, re:run(Sql, "^SELECT object_key, direct_state FROM attach_pending")
+        ),
+        {ok, [], []}
+    end),
     SequenceSql = legacy_sequence_sql(),
     ok = meck:expect(epgsql, squery, fun
         (C, "SELECT current_database()") when C =:= Owner -> {ok, [], [{Db}]};
@@ -491,12 +497,12 @@ legacy_sequence_sql() ->
     "CREATE SEQUENCE IF NOT EXISTS talk_record_test_entity_id"
     " AS bigint START WITH 900000000000000000 NO CYCLE".
 
-assert_legacy_mocks() ->
+assert_legacy_mocks(ExpectedQueries) ->
     lists:foreach(
         fun(Module) -> ?assert(meck:validate(Module)) end,
         [talk_record_t05_support, talk_record_upload_test_support, epgsql, elib_tsid]
     ),
-    ?assertEqual(0, meck:num_calls(epgsql, equery, '_')).
+    ?assertEqual(ExpectedQueries, meck:num_calls(epgsql, equery, '_')).
 
 client_audio_http_mapping_test() ->
     Module = talk_record_client_audio_http_pg_tests,

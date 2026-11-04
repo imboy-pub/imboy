@@ -10,9 +10,12 @@ reset() ->
 assert_complete() ->
     Required = enterprise_internal_audit_policy:required_ids(),
     ?assertEqual(29, length(Required)),
+    Seen = seen(),
     ?assertEqual(
         lists:sort(Required),
-        lists:sort(seen())
+        lists:sort(Seen),
+        {missing_audit_operations, lists:sort(Required -- Seen), unexpected_audit_operations,
+            lists:sort(Seen -- Required)}
     ),
     io:format("INTERNAL_REQUIRED_AUDIT_RESULT=ok operations=~B~n", [length(Required)]).
 
