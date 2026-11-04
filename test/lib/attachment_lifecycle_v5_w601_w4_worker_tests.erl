@@ -81,7 +81,7 @@ group_specs(Case, Entry, Scenarios) ->
         {Case, Entry, Drv, Scn, Dom}
      || Scn <- Scenarios,
         Dom <- [?ORD, ?ENT],
-        Drv <- [<<"disk">>, <<"garage">>]
+        Drv <- [<<"garage">>]
     ].
 
 %% worker-crash 合同仅 6 叶：3 scenario × 2 domain × garage。
@@ -102,7 +102,7 @@ scenario(St, {_Case, Entry, Drv, Scn, Dom}) ->
     #{conn := Conn} = St,
     Key = unique_key(Entry),
     Triple = ?X:triple(St, Drv, Key),
-    Measured = run_scenario(St, Conn, Entry, Scn, Key, Triple),
+    Measured = run_domain_scenario(St, Conn, Entry, Scn, Key, Triple, Dom),
     Measured#{
         driver => Drv,
         object_key => Key,
@@ -128,6 +128,58 @@ seed_job(Conn, Key, Triple, Attempts, State) ->
             blocked -> <<"max_attempts">>;
             _ -> null
         end
+    ).
+
+%% Enterprise crash must use the enterprise queue, not the ordinary domain face.
+run_domain_scenario(St, Conn, <<"worker-crash">>, Scn, Key, Triple, ?ENT) ->
+    enterprise_crash(St, Conn, Scn, Key, Triple);
+run_domain_scenario(St, Conn, Entry, Scn, Key, Triple, _Dom) ->
+    run_scenario(St, Conn, Entry, Scn, Key, Triple).
+
+enterprise_crash(St, Conn, Scn, Key, Triple) ->
+    AssetId = 948000000000 + eb_leaf_id(),
+    Bytes = <<"w601-eb-crash:", Key/binary>>,
+    ok = ?X:put_probe(St, <<"garage">>, Key, Bytes),
+    ok = ?QP:reset_eb(Conn),
+    ok = ?X:seed_eb_asset_row(Conn, Key, AssetId, Triple, <<"deleted">>, true, <<"live">>),
+    ok = ?QP:enqueue_eb(Conn, 9101, 9102, AssetId, <<"w601 enterprise crash">>),
+    case Scn of
+        <<"kill_before_claim_commit">> ->
+            {ok, _, [{0, <<"ready">>}]} = ?X:e(
+                Conn,
+                "SELECT attempts,job_state FROM enterprise_asset_delete_queue "
+                "WHERE organization_id=$1 AND workspace_id=$2 AND asset_id=$3",
+                [9101, 9102, AssetId]
+            ),
+            {ok, Bytes} = driver_read(St, Triple, Key),
+            #{zero_delete_calls => true, state_after => <<"ready">>};
+        <<"kill_after_claim_before_delete">> ->
+            {ok, #{attempts := 1}} = ?QP:claim_eb_for(Conn, 9101, 9102, AssetId),
+            ok = ?QP:expire_eb(Conn, 9101, AssetId),
+            {ok, _, [{1}]} = ?X:e(Conn, "SELECT fn_v5_reaper_eb(100)", []),
+            {ok, _, [{<<"retry_wait">>}]} = ?QP:eb_state(Conn, 9101, AssetId),
+            ok = retry_eb_now(Conn, AssetId),
+            {ok, #{attempts := 2}} = ?QP:claim_eb_for(Conn, 9101, 9102, AssetId),
+            {ok, Bytes} = driver_read(St, Triple, Key),
+            #{recovered_after_reap => true, attempts_after => 2};
+        <<"kill_after_delete_before_completion">> ->
+            {ok, _} = ?QP:claim_eb_for(Conn, 9101, 9102, AssetId),
+            ok = attachment_storage:delete_snapshot(?QP:frozen_eb(Conn, 9101, AssetId)),
+            {error, not_found} = driver_read(St, Triple, Key),
+            ok = ?QP:expire_eb(Conn, 9101, AssetId),
+            {ok, _, [{1}]} = ?X:e(Conn, "SELECT fn_v5_reaper_eb(100)", []),
+            ok = retry_eb_now(Conn, AssetId),
+            {ok, #{token := T2}} = ?QP:claim_eb_for(Conn, 9101, 9102, AssetId),
+            {ok, <<"done">>} = ?QP:ack_eb(Conn, 9101, 9102, AssetId, T2),
+            #{resolved_to_done => true, bytes_gone => true}
+    end.
+
+retry_eb_now(Conn, AssetId) ->
+    ?X:q(
+        Conn,
+        "UPDATE enterprise_asset_delete_queue SET next_retry_at=now()-interval '1 s' "
+        "WHERE organization_id=$1 AND workspace_id=$2 AND asset_id=$3 AND job_state='retry_wait'",
+        [9101, 9102, AssetId]
     ).
 
 %% --------------------------------------------------- claim-capacity

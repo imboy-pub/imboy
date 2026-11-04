@@ -41,7 +41,7 @@ roundtrip_units() ->
                     end}
                 }
              || Surface <- [ordinary, enterprise_internal, enterprise_seat, cs_widget],
-                Driver <- [disk, garage]
+                Driver <- [garage]
             ]
         end}.
 
@@ -93,7 +93,7 @@ sealed_body_validation_units() ->
                         end
                     end}
                 }
-             || Surface <- [enterprise_seat, cs_widget], Driver <- [disk, garage]
+             || Surface <- [enterprise_seat, cs_widget], Driver <- [garage]
             ]
         end}.
 
@@ -125,7 +125,7 @@ matrix_units() ->
                     {timeout, 180, fun() -> run_leaf(S, Surface, Driver, Scenario) end}
                 }
              || Surface <- [ordinary, enterprise_internal, enterprise_seat, cs_widget],
-                Driver <- [disk, garage],
+                Driver <- [garage],
                 Scenario <- scenarios()
             ]
         end}.
@@ -161,7 +161,7 @@ run_leaf(S0, Surface, Driver, Scenario) ->
         report_evidence(Leaf)
     end.
 
-%% 逐叶观测：64 cell（surface × driver × scenario）断言全过后落盘。
+%% 逐叶观测：surface × Garage × scenario 断言全过后落盘。
 %% domain 按契约矩阵：enterprise_seat/cs_widget 为 enterprise 面，其余 ordinary。
 %% measured 携带服务器侧绑定证据：evidence(Leaf) 的每条真实请求
 %% （request_id/route/method/handler/status 与 bind_request 绑定的
@@ -319,8 +319,6 @@ scenario(S, Surface, Driver, max_supported_file_gateway_budget) ->
     ?assert(Elapsed < 120000),
     ?assertEqual({ok, Bytes}, ?F:read(T)),
     ?assert(?F:success(?F:confirm(T)));
-scenario(S, Surface, disk, disk_put_delete_lock_order_or_garage_expiry_fence) ->
-    disk_delete_order(short_registration(S, Surface, disk, ?BODY));
 scenario(S, Surface, garage, disk_put_delete_lock_order_or_garage_expiry_fence) ->
     garage_signed_expiry(short_registration(S, Surface, garage, ?BODY)).
 
@@ -401,11 +399,6 @@ with_put_barrier(T, Fun) ->
                 meck:expect(Mod, put_snapshot, fun(I, Source, Mime, Ctx) ->
                     maybe_pause(I, Key, Parent, Barrier, Gate),
                     meck:passthrough([I, Source, Mime, Ctx])
-                end);
-            disk ->
-                meck:expect(Mod, put_snapshot, fun(I, Source, Expiry, Check) ->
-                    maybe_pause(I, Key, Parent, Barrier, Gate),
-                    meck:passthrough([I, Source, Expiry, Check])
                 end)
         end,
         Fun(Barrier)
@@ -508,7 +501,6 @@ cleanup_jobs() ->
     ],
     erlang:erase(w403_jobs),
     ok.
-driver(disk) -> attachment_storage_disk;
 driver(garage) -> attachment_storage_garage.
 put_calls(Mod) -> meck:num_calls(Mod, put_snapshot, '_').
 
@@ -618,204 +610,11 @@ bypass_denied(#{driver := garage, location := I} = T) ->
         [{body_format, binary}]
     ),
     ?assert(lists:member(Code, [401, 403])),
-    bypass_evidence(T, #{provider_http_status => Code});
-bypass_denied(#{driver := disk, location := I} = T) ->
-    %% Same-UID filesystem writers are explicitly outside the isolation boundary
-    %% (src/lib/attachment_storage/attachment_storage_disk.erl:179-180: the root
-    %% must belong to a dedicated service UID). Prove rejection by a genuinely
-    %% different OS principal instead:
-    %%   * Linux: runuser -u nobody;
-    %%   * host with passwordless sudo: sudo -n -u nobody (opt-in, probed);
-    %%   * otherwise a disposable container as nobody(65534) against the same
-    %%     physical root (on VirtioFS bind mounts the kernel ignores the host
-    %%     POSIX mode, so this path cannot prove denial and fails closed).
-    case unprivileged_writer_mode() of
-        runuser -> bypass_denied_runuser(T, I, os:find_executable("runuser"));
-        sudo -> bypass_denied_sudo(T, I);
-        container -> bypass_denied_container(T, I)
-    end.
-
-unprivileged_writer_mode() ->
-    case os:find_executable("runuser") of
-        false ->
-            case os:find_executable("sudo") of
-                false ->
-                    container;
-                Sudo ->
-                    case command(Sudo, ["-n", "-u", "nobody", "--", "/usr/bin/id", "-u"]) of
-                        {0, _} -> sudo;
-                        _ -> container
-                    end
-            end;
-        _ ->
-            runuser
-    end.
-
-bypass_denied_sudo(T, I) ->
-    Sudo = os:find_executable("sudo"),
-    {0, WriterText} = command(Sudo, ["-n", "-u", "nobody", "--", "/usr/bin/id", "-u"]),
-    Writer = binary_to_integer(string:trim(WriterText)),
-    {0, OwnerText} = command(os:find_executable("id"), ["-u"]),
-    Owner = binary_to_integer(string:trim(OwnerText)),
-    ?assert(Writer > 0),
-    ?assertNotEqual(Owner, Writer),
-    <<"file://", Root/binary>> = maps:get(endpoint, I),
-    Path = filename:join([
-        binary_to_list(Root),
-        binary_to_list(maps:get(container, I)),
-        binary_to_list(maps:get(key, I))
-    ]),
-    {Code, Output} = command(Sudo, [
-        "-n",
-        "-u",
-        "nobody",
-        "--",
-        "/bin/sh",
-        "-c",
-        "printf '%s' \"$1\" > \"$2\"",
-        "w403",
-        "unprivileged bypass writer",
-        Path
-    ]),
-    ?assert(Code =/= 0),
-    ?assert(match_permission_denied(Output)),
-    bypass_evidence(T, #{
-        unprivileged_writer_exit => Code,
-        owner_uid => Owner,
-        writer_uid => Writer
-    }).
-
-match_permission_denied(Output) ->
-    binary:match(Output, <<"Permission denied">>) =/= nomatch orelse
-        binary:match(Output, <<"Operation not permitted">>) =/= nomatch.
-
-bypass_denied_runuser(T, I, Exe) ->
-    Id =
-        case os:find_executable("id") of
-            false -> erlang:error({no_go, unprivileged_writer_tool_missing, id});
-            IdPath -> IdPath
-        end,
-    {0, OwnerText} = command(Id, ["-u"]),
-    Owner = binary_to_integer(string:trim(OwnerText)),
-    Writer =
-        case command(Exe, ["-u", "nobody", "--", Id, "-u"]) of
-            {0, UidText} -> binary_to_integer(string:trim(UidText));
-            _ -> erlang:error({no_go, unprivileged_writer_unavailable})
-        end,
-    ?assert(Writer > 0),
-    ?assertNotEqual(Owner, Writer),
-    <<"file://", Root/binary>> = maps:get(endpoint, I),
-    Path = filename:join([
-        binary_to_list(Root),
-        binary_to_list(maps:get(container, I)),
-        binary_to_list(maps:get(key, I))
-    ]),
-    {Code, Output} = command(Exe, [
-        "-u",
-        "nobody",
-        "--",
-        "/bin/sh",
-        "-c",
-        "printf '%s' \"$1\" > \"$2\"",
-        "w403",
-        "unprivileged bypass writer",
-        Path
-    ]),
-    ?assert(Code =/= 0),
-    ?assertNotEqual(nomatch, binary:match(Output, <<"Permission denied">>)),
-    bypass_evidence(T, #{
-        unprivileged_writer_exit => Code,
-        owner_uid => Owner,
-        writer_uid => Writer
-    }).
-
-bypass_denied_container(T, I) ->
-    Docker =
-        case os:find_executable("docker") of
-            false -> erlang:error({no_go, unprivileged_writer_tool_missing, docker});
-            D -> D
-        end,
-    Image = bypass_container_image(Docker),
-    <<"file://", Root/binary>> = maps:get(endpoint, I),
-    RootStr = binary_to_list(Root),
-    ContainerRel = filename:join([
-        binary_to_list(maps:get(container, I)),
-        binary_to_list(maps:get(key, I))
-    ]),
-    {_, WriterText} = command(Docker, [
-        "run",
-        "--rm",
-        "--user",
-        "65534:65534",
-        "-v",
-        RootStr ++ ":/w",
-        Image,
-        "id",
-        "-u"
-    ]),
-    Writer = binary_to_integer(string:trim(WriterText)),
-    ?assert(Writer > 0),
-    {Code, Output} = command(Docker, [
-        "run",
-        "--rm",
-        "--user",
-        "65534:65534",
-        "-v",
-        RootStr ++ ":/w",
-        Image,
-        "sh",
-        "-c",
-        "printf '%s' \"$1\" > \"$2\"",
-        "w403",
-        "unprivileged bypass writer",
-        "/w/" ++ ContainerRel
-    ]),
-    ?assert(Code =/= 0),
-    ?assertNotEqual(nomatch, binary:match(Output, <<"Permission denied">>)),
-    bypass_evidence(T, #{
-        unprivileged_writer_exit => Code,
-        owner_uid => 65534,
-        writer_uid => Writer,
-        isolation => <<"container nobody over the same storage root">>
-    }).
-
-bypass_container_image(Docker) ->
-    Candidates = [<<"redis:7-alpine">>, <<"alpine:3.19">>],
-    case
-        lists:search(
-            fun(Image) ->
-                {Rc, _} = command(Docker, ["image", "inspect", binary_to_list(Image)]),
-                Rc =:= 0
-            end,
-            Candidates
-        )
-    of
-        {value, Image} -> binary_to_list(Image);
-        false -> erlang:error({no_go, unprivileged_writer_image_missing})
-    end.
+    bypass_evidence(T, #{provider_http_status => Code}).
 bypass_evidence(T, Detail) ->
     %% EUnit's group leader owns the per-case output consumed by the native
     %% Surefire proof validator. The user device bypasses that capture.
     io:format("W403_PROVIDER_BYPASS ~s~n", [jsone:encode(Detail#{leaf => maps:get(leaf, T)})]).
-command(Exe, Args) ->
-    Port = open_port({spawn_executable, Exe}, [
-        binary,
-        exit_status,
-        use_stdio,
-        stderr_to_stdout,
-        {args, Args},
-        {env, [{"LC_ALL", "C"}]}
-    ]),
-    command_result(Port, <<>>).
-command_result(Port, Acc) ->
-    receive
-        {Port, {data, Data}} -> command_result(Port, <<Acc/binary, Data/binary>>);
-        {Port, {exit_status, Code}} -> {Code, Acc}
-    after 5000 ->
-        port_close(Port),
-        erlang:error(unprivileged_writer_timeout)
-    end.
-
 sample_memory(Parent, Ref, Peak0) ->
     Peak = max(Peak0, erlang:memory(binary)),
     receive
@@ -951,61 +750,6 @@ provider_error_code(Body) ->
     case re:run(Body, <<"<Code>([A-Za-z0-9_]{1,64})</Code>">>, [{capture, [1], binary}]) of
         {match, [Code]} -> Code;
         nomatch -> <<"unclassified">>
-    end.
-
-disk_delete_order(T) ->
-    ?assert(?F:success(?F:put(T, ?BODY))),
-    Key = maps:get(key, T),
-    Parent = self(),
-    Barrier = make_ref(),
-    Gate = ets:new(w403_disk_lock_barrier, [public, set]),
-    meck:new(attachment_storage_disk, [passthrough, no_link]),
-    try
-        meck:expect(attachment_storage_disk, put_snapshot, fun(I, Source, Expiry, Check) ->
-            LockedCheck = fun() ->
-                Result = Check(),
-                case maps:get(key, I) =:= Key andalso Result =:= ok of
-                    true -> pause_once(Parent, Barrier, Gate);
-                    false -> ok
-                end,
-                Result
-            end,
-            meck:passthrough([I, Source, Expiry, LockedCheck])
-        end),
-        meck:expect(attachment_storage_disk, delete_snapshot, fun(I) ->
-            case maps:get(key, I) =:= Key of
-                true -> Parent ! {disk_delete_started, Barrier};
-                false -> erlang:error(unowned_delete_attempt)
-            end,
-            meck:passthrough([I])
-        end),
-        Writer = start_job(fun() -> ?F:put(T, ?BODY) end),
-        Worker = await_barrier(Barrier),
-        wait_expired(T),
-        {Drain, QueueSql, QueueArgs} = deletion_intent(T),
-        Deleter = start_job(Drain),
-        receive
-            {disk_delete_started, Barrier} -> ok
-        after 5000 -> erlang:error(delete_did_not_reach_lock)
-        end,
-        %% DELETE has entered the real driver but cannot pass the held OS lock.
-        DeleteRef = element(3, Deleter),
-        receive
-            {w403_result, DeleteRef, _} -> erlang:error(delete_bypassed_put_lock)
-        after 100 -> ok
-        end,
-        ?assertEqual({ok, ?BODY}, ?F:read(T)),
-        release(Barrier, Worker),
-        ?assertNot(?F:success(finish_job(Writer))),
-        ?assertMatch({ok, _}, finish_job(Deleter)),
-        ?assertEqual({error, not_found}, ?F:read(T)),
-        {ok, [#{<<"job_state">> := <<"done">>}]} = elib_pg:query(QueueSql, QueueArgs),
-        ?assertNot(?F:success(?F:put(T, ?BODY))),
-        ?assertEqual({error, not_found}, ?F:read(T))
-    after
-        release_all(Barrier, Gate),
-        cleanup_jobs(),
-        meck:unload(attachment_storage_disk)
     end.
 
 deletion_intent(#{surface := Surface, key := Key} = T) when

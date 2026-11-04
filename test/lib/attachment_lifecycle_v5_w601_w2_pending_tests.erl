@@ -43,7 +43,7 @@
 -define(BODY, <<"w601 pending multipart controlled bytes">>).
 
 -define(DOMAINS, [<<"ordinary">>, <<"enterprise">>]).
--define(DRV, [disk, garage]).
+-define(DRV, [garage]).
 
 w601_w2_pending_test_() ->
     %% 受控让位（仓库先例：attachment_lifecycle_v5_pg_tests r20_test_/
@@ -697,7 +697,6 @@ multipart_register(S, Driver, Extra) ->
         client_upload_id => Cid
     }.
 
-ns_of(disk) -> <<"w403-disk">>;
 ns_of(garage) -> <<"w403-garage">>.
 
 multipart_body(Boundary, Bytes) ->

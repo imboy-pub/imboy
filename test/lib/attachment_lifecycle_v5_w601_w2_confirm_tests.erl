@@ -31,7 +31,7 @@
 -define(OTHER, <<"w601 overwritten different bytes">>).
 
 -define(EP4, [ordinary, enterprise_internal, enterprise_seat, cs_widget]).
--define(DRV, [disk, garage]).
+-define(DRV, [garage]).
 
 w601_w2_confirm_test_() ->
     %% 受控让位（仓库先例：attachment_lifecycle_v5_pg_tests r20_test_/

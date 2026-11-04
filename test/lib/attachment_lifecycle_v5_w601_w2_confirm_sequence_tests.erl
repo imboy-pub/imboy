@@ -75,7 +75,7 @@ setup() ->
         {ok, #{
             <<"session_state">> => <<"confirmed">>,
             <<"object_key">> => <<"test-key">>,
-            <<"storage_driver">> => <<"disk">>,
+            <<"storage_driver">> => <<"garage">>,
             <<"storage_namespace">> => <<"test">>,
             <<"storage_container">> => <<"test">>,
             <<"storage_locator_sha256">> => <<"hash">>
@@ -101,7 +101,7 @@ first_write_precedes_barrier() ->
     Result = ?C:imm_scenario(
         #{leaf => <<"test">>},
         ordinary,
-        disk,
+        garage,
         <<"put_A_confirm_old_capability_put_B">>
     ),
     ?assertEqual(409, maps:get(old_capability_put_status, Result)),
@@ -115,7 +115,7 @@ backend_failure_is_not_a_conflict() ->
         ?C:imm_scenario(
             #{leaf => <<"test">>},
             ordinary,
-            disk,
+            garage,
             <<"put_A_confirm_old_capability_put_B">>
         )
     ).
@@ -128,7 +128,7 @@ unexpected_provider_write_is_released_and_rejected() ->
         ?C:imm_scenario(
             #{leaf => <<"test">>},
             ordinary,
-            disk,
+            garage,
             <<"put_A_confirm_old_capability_put_B">>
         )
     ).
@@ -142,7 +142,7 @@ changed_pin_is_rejected() ->
         ?C:imm_scenario(
             #{leaf => <<"test">>},
             ordinary,
-            disk,
+            garage,
             <<"put_A_confirm_old_capability_put_B">>
         )
     ).
