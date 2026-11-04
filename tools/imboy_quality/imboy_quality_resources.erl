@@ -11,12 +11,20 @@
 %% HIRD 编译器定位、attv5 清单文件、内置固定 ADTS 字节的 AAC 夹具：只准备资源，不伪造结果；
 %% 二进制缺失时返回 {error, _}，调用方让对应根按各自 no-skip 铁律硬失败（可归属）。
 -module(imboy_quality_resources).
+-include_lib("kernel/include/file.hrl").
 -export([
     ensure_candidate_template/3,
+    template_action/2,
     template_digest/2,
     migration_head/1,
     start_garage/3,
+    create_garage_dir/2,
+    owned_port_identity/3,
+    close_owned_port/1,
+    await_garage_start/5,
     stop_garage/1,
+    cleanup_stopped_garage/2,
+    directory_identity/1,
     garage_toml/1,
     parse_key_output/1,
     parse_node_id/1,
@@ -26,6 +34,8 @@
     ensure_aac_fixture/1,
     write_json/2,
     write_config/5,
+    begin_config_receipts/2,
+    cleanup_config_receipts/0,
     port_base/0
 ]).
 
@@ -54,18 +64,21 @@ ensure_candidate_template(Conn, Args, Repo) ->
     Head = migration_head(Repo),
     Digest = template_digest(Repo, pg_version(Conn)),
     Name = ?TEMPLATE_PREFIX ++ Digest,
-    prune_stale_templates(Conn, Args, Name),
-    case db_exists(Conn, Name) andalso template_valid(Args, Name, Digest, Head) of
-        true ->
+    Exists = db_exists(Conn, Name),
+    Valid = Exists andalso template_valid(Args, Name, Digest, Head),
+    case template_action(Exists, Valid) of
+        reuse ->
             #{name => Name, digest => Digest, head => Head, status => reused};
-        false ->
-            case db_exists(Conn, Name) of
-                true -> imboy_quality_fixture:drop_owned(Conn, Args, Name);
-                false -> ok
-            end,
+        conflict ->
+            error({template_conflict_retained, Name});
+        create ->
             build_template(Conn, Args, Repo, Name, Digest, Head),
             #{name => Name, digest => Digest, head => Head, status => built}
     end.
+
+template_action(true, true) -> reuse;
+template_action(true, false) -> conflict;
+template_action(false, false) -> create.
 
 build_template(Conn, Args, Repo, Name, Digest, Head) ->
     q(Conn, ["CREATE DATABASE \"", Name, "\""]),
@@ -104,8 +117,7 @@ build_template(Conn, Args, Repo, Name, Digest, Head) ->
         ok
     catch
         Class:Reason:Stack ->
-            catch q(Conn, ["DROP DATABASE \"", Name, "\""]),
-            erlang:raise(Class, {template_build_failed, Name, Reason}, Stack)
+            erlang:raise(Class, {template_build_failed_retained, Name, Reason}, Stack)
     end.
 
 template_valid(Args, Name, Digest, Head) ->
@@ -125,17 +137,6 @@ template_valid(Args, Name, Digest, Head) ->
     catch
         _:_ -> false
     end.
-
-%% 同前缀但 digest 不同的旧模板（候选迁移已变）：归属核验后回收，避免库累积。
-prune_stale_templates(Conn, Args, Keep) ->
-    {ok, _, Rows} = q(Conn, [
-        "SELECT datname FROM pg_database WHERE datname LIKE '", ?TEMPLATE_PREFIX, "%'"
-    ]),
-    [
-        catch imboy_quality_fixture:drop_owned(Conn, Args, binary_to_list(N))
-     || {N} <- Rows, binary_to_list(N) =/= Keep
-    ],
-    ok.
 
 %% digest = sha256(迁移文件名+内容 ‖ 扩展清单 ‖ PG 版本) 前 12 位 hex。
 template_digest(Repo, PgVersion) ->
@@ -181,10 +182,12 @@ start_garage(Ctrl, Tag, Buckets) ->
             false -> error({garage_binary_missing, "garage"});
             P -> P
         end,
-    Dir = filename:join([Ctrl, "runtime", "garage", Tag]),
-    _ = file:del_dir_r(Dir),
-    ok = filelib:ensure_dir(filename:join(Dir, "x")),
+    {Dir, Identity, Token} = create_garage_dir(Ctrl, Tag),
     [S3, Rpc, Admin] = [free_port() || _ <- [1, 2, 3]],
+    case length(lists:usort([S3, Rpc, Admin])) of
+        3 -> ok;
+        _ -> error({garage_port_collision, [S3, Rpc, Admin]})
+    end,
     Cfg = filename:join(Dir, "garage.toml"),
     ok = file:write_file(
         Cfg,
@@ -195,20 +198,19 @@ start_garage(Ctrl, Tag, Buckets) ->
             admin_port => Admin,
             rpc_secret => hex(crypto:strong_rand_bytes(32)),
             admin_token => hex(crypto:strong_rand_bytes(16))
-        })
+        }),
+        [exclusive]
     ),
     Log = filename:join(Dir, "server.log"),
     Parent = self(),
     Ref = make_ref(),
-    Owner = spawn(fun() -> garage_owner(Exe, Cfg, Log, Parent, Ref) end),
-    OsPid =
-        receive
-            {Ref, os_pid, P0} -> P0
-        after 10000 -> error(garage_spawn_timeout)
-        end,
-    %% 守护进程 pidfile：控制器被 KILL 时无法自清理，下一轮 prepare 据此回收孤儿实例。
-    ok = file:write_file(filename:join(Dir, "server.pid"), integer_to_list(OsPid)),
+    {Owner, Monitor} = spawn_monitor(fun() -> garage_owner(Exe, Cfg, Log, Parent, Ref) end),
+    Startup = #{
+        dir => Dir, dir_identity => Identity, dir_token => Token, exe => Exe, config => Cfg
+    },
     try
+        {ok, OsPid, ProcessIdentity} = await_garage_start(Owner, Monitor, Ref, Startup, 10000),
+        {ok, VerifiedIdentity} = ProcessIdentity,
         ok = wait_tcp(S3, 300),
         NodeId = parse_node_id(cli_ok(Exe, Cfg, ["node", "id"])),
         _ = cli_ok(Exe, Cfg, ["layout", "assign", "-z", "dc1", "-c", "1G", NodeId]),
@@ -225,7 +227,10 @@ start_garage(Ctrl, Tag, Buckets) ->
         #{
             owner => Owner,
             os_pid => OsPid,
+            process_identity => VerifiedIdentity,
             dir => Dir,
+            dir_identity => Identity,
+            dir_token => Token,
             config => Cfg,
             log => Log,
             s3_port => S3,
@@ -237,33 +242,123 @@ start_garage(Ctrl, Tag, Buckets) ->
         }
     catch
         Class:Reason:Stack ->
-            _ = stop_garage(#{owner => Owner, dir => Dir, log => Log, keep_dir => true}),
-            erlang:raise(Class, {garage_setup_failed, Reason}, Stack)
+            Stop =
+                case is_process_alive(Owner) of
+                    true ->
+                        stop_garage(#{owner => Owner, dir => Dir, log => Log, keep_dir => true});
+                    false ->
+                        #{exit => owner_not_alive, cleanup => retained}
+                end,
+            erlang:raise(Class, {garage_setup_failed, Reason, Stop}, Stack)
+    after
+        erlang:demonitor(Monitor, [flush])
     end.
 
 garage_owner(Exe, Cfg, Log, Parent, Ref) ->
-    {ok, Fd} = file:open(Log, [write, raw, binary]),
+    {ok, Fd} = file:open(Log, [write, raw, binary, exclusive]),
     Port = open_port(
         {spawn_executable, Exe},
         [{args, ["-c", Cfg, "server"]}, exit_status, use_stdio, stderr_to_stdout, binary]
     ),
     {os_pid, OsPid} = erlang:port_info(Port, os_pid),
-    Parent ! {Ref, os_pid, OsPid},
-    garage_loop(Port, OsPid, Fd, undefined).
+    PidFile = filename:join(filename:dirname(Cfg), "server.pid"),
+    case file:write_file(PidFile, integer_to_list(OsPid), [exclusive]) of
+        ok -> Parent ! {Ref, spawned, OsPid};
+        {error, Why} -> Parent ! {Ref, pidfile_error, OsPid, Why}
+    end,
+    Identity = owned_port_identity(Port, Exe, Cfg),
+    Parent ! {Ref, os_pid, OsPid, Identity},
+    garage_loop(Port, Fd, undefined).
 
-garage_loop(Port, OsPid, Fd, Exit) ->
+%% Suspend the owner before cancellation so it cannot launch after timeout.
+await_garage_start(Owner, Monitor, Ref, Startup, Timeout) ->
+    Deadline = erlang:monotonic_time(millisecond) + Timeout,
+    await_garage_start(Owner, Monitor, Ref, Startup, Deadline, undefined).
+
+await_garage_start(Owner, Monitor, Ref, Startup, Deadline, SeenPid) ->
+    Remaining = max(0, Deadline - erlang:monotonic_time(millisecond)),
+    receive
+        {Ref, spawned, Pid} -> await_garage_start(Owner, Monitor, Ref, Startup, Deadline, Pid);
+        {Ref, pidfile_error, Pid, Why} -> {error, {pidfile_write_failed, Pid, Why}};
+        {Ref, os_pid, Pid, Identity} -> {ok, Pid, Identity};
+        {'DOWN', Monitor, process, Owner, Why} -> {error, {garage_owner_down, Why, SeenPid}}
+    after Remaining ->
+        cancel_garage_start(Owner, Monitor, Startup, SeenPid)
+    end.
+
+cancel_garage_start(Owner, Monitor, Startup, SeenPid) ->
+    Suspended =
+        try
+            erlang:suspend_process(Owner)
+        catch
+            error:badarg -> false
+        end,
+    Links =
+        case Suspended of
+            true ->
+                case erlang:process_info(Owner, links) of
+                    {links, L} -> L;
+                    _ -> []
+                end;
+            false ->
+                []
+        end,
+    Pids = lists:usort(
+        [
+            Pid
+         || Port <- Links,
+            is_port(Port),
+            {os_pid, Pid} <- [safe_port_pid(Port)]
+        ] ++
+            case SeenPid of
+                P when is_integer(P) -> [P];
+                _ -> []
+            end
+    ),
+    Snapshots = [{Pid, #{scope => linked_port_or_spawn_notice, exit => unverified}} || Pid <- Pids],
+    Record = record_startup_timeout(Startup, Snapshots),
+    case Suspended of
+        true -> exit(Owner, kill);
+        false -> ok
+    end,
+    Down =
+        receive
+            {'DOWN', Monitor, process, Owner, _} -> confirmed
+        after 2000 -> unconfirmed
+        end,
+    {error, {garage_start_timeout, Snapshots, Record, Down}}.
+
+safe_port_pid(Port) ->
+    try
+        erlang:port_info(Port, os_pid)
+    catch
+        error:badarg -> undefined
+    end.
+
+record_startup_timeout(#{dir := Dir} = Startup, Snapshots) ->
+    try
+        ok = imboy_quality_garage_cleanup:verify(Startup),
+        file:write_file(
+            filename:join(Dir, "startup-timeout.term"),
+            term_to_binary(#{status => exit_unverified, snapshots => Snapshots}),
+            [exclusive]
+        )
+    catch
+        _:_ -> {error, ownership_not_verified}
+    end.
+
+garage_loop(Port, Fd, Exit) ->
     receive
         {Port, {data, D}} ->
             _ = file:write(Fd, D),
-            garage_loop(Port, OsPid, Fd, Exit);
+            garage_loop(Port, Fd, Exit);
         {Port, {exit_status, Code}} ->
-            garage_loop(Port, OsPid, Fd, Code);
+            garage_loop(Port, Fd, Code);
         {stop, From, Ref} ->
             Code =
                 case Exit of
                     undefined ->
-                        _ = os:cmd("kill -TERM " ++ integer_to_list(OsPid)),
-                        wait_exit(Port, OsPid, 100);
+                        close_owned_port(Port);
                     C ->
                         C
                 end,
@@ -271,32 +366,127 @@ garage_loop(Port, OsPid, Fd, Exit) ->
             From ! {Ref, stopped, Code}
     end.
 
-wait_exit(Port, OsPid, 0) ->
-    _ = os:cmd("kill -KILL " ++ integer_to_list(OsPid)),
-    receive
-        {Port, {exit_status, Code}} -> Code
-    after 5000 -> killed
-    end;
-wait_exit(Port, OsPid, Left) ->
-    receive
-        {Port, {exit_status, Code}} -> Code
-    after 100 -> wait_exit(Port, OsPid, Left - 1)
+%% Closing the owned port does not prove the external process exited.
+close_owned_port(Port) ->
+    try
+        Self = self(),
+        {connected, Self} = erlang:port_info(Port, connected),
+        receive
+            {Port, {exit_status, Code}} -> Code
+        after 0 ->
+            true = erlang:port_close(Port),
+            {error, process_exit_unverified}
+        end
+    catch
+        _:_ -> {error, process_exit_unverified}
     end.
 
+owned_port_identity(Port, Exe, Cfg) when is_port(Port) ->
+    try
+        Self = self(),
+        {connected, Self} = erlang:port_info(Port, connected),
+        {name, PortExe} = erlang:port_info(Port, name),
+        {os_pid, Pid} = erlang:port_info(Port, os_pid),
+        true = is_integer(Pid) andalso Pid > 0,
+        ExeIdentity = file_identity(Exe),
+        ExeIdentity = file_identity(PortExe),
+        {ok, #{
+            pid => Pid,
+            executable => ExeIdentity,
+            executable_path => Exe,
+            config => Cfg,
+            observed_at_unix_ms => erlang:system_time(millisecond),
+            scope => <<"LOCAL_OTP_PORT_ONLY_NOT_CROSS_SESSION_IDENTITY">>
+        }}
+    catch
+        _:_ -> {error, port_identity_unverified}
+    end;
+owned_port_identity(_, _, _) ->
+    {error, port_identity_unverified}.
+
+file_identity(Path) ->
+    {ok, #file_info{type = regular, inode = Inode, major_device = Major, minor_device = Minor}} =
+        file:read_file_info(Path),
+    true = is_integer(Inode) andalso Inode > 0,
+    {Major, Minor, Inode}.
+
 %% 停止守护进程并删除数据目录（keep_dir => true 仅用于失败取证路径）。
-stop_garage(#{owner := Owner, dir := Dir} = G) ->
+stop_garage(#{owner := Owner} = G) ->
     Ref = make_ref(),
     Owner ! {stop, self(), Ref},
     Code =
         receive
-            {Ref, stopped, C} -> C
-        after 20000 -> stop_timeout
+            {Ref, stopped, StopCode} -> StopCode
+        after 25000 -> stop_timeout
         end,
-    case maps:get(keep_dir, G, false) of
-        true -> ok;
-        false -> _ = file:del_dir_r(Dir)
+    case {Code, maps:get(keep_dir, G, false)} of
+        {ExitCode, true} when is_integer(ExitCode) ->
+            retain_garage_stop(G, ExitCode);
+        {ExitCode, false} when is_integer(ExitCode) ->
+            Stop = retain_garage_stop(G, ExitCode),
+            case cleanup_stopped_garage(G, Stop) of
+                ok -> #{exit => ExitCode, cleanup => ok};
+                {error, Reason} -> #{exit => {cleanup_failed, Reason}, cleanup => {error, Reason}}
+            end;
+        _ ->
+            #{exit => Code, cleanup => {error, process_exit_unverified}}
+    end.
+
+cleanup_stopped_garage(G, Stop) -> imboy_quality_garage_cleanup:cleanup(G, Stop).
+
+retain_garage_stop(#{dir := Dir, dir_identity := Identity, dir_token := Token}, ExitCode) ->
+    Receipt = make_ref(),
+    put({imboy_quality_garage_cleanup, Receipt}, {Dir, Identity, Token, ExitCode}),
+    #{exit => ExitCode, cleanup => retained, receipt => Receipt};
+retain_garage_stop(_, ExitCode) ->
+    #{exit => ExitCode, cleanup => retained}.
+
+create_garage_dir(Ctrl, Tag) ->
+    true = valid_garage_tag(Tag),
+    Runtime = filename:join(Ctrl, "runtime"),
+    Base = filename:join(Runtime, "garage"),
+    {ok, #file_info{type = directory}} = file:read_link_info(Ctrl),
+    ok = ensure_directory(Runtime),
+    ok = ensure_directory(Base),
+    Dir = filename:join(Base, Tag),
+    case file:make_dir(Dir) of
+        ok -> ok;
+        {error, Reason} -> error({garage_directory_create_failed, Dir, Reason})
     end,
-    #{exit => Code}.
+    ok = file:change_mode(Dir, 8#700),
+    Identity = directory_identity(Dir),
+    Token = crypto:strong_rand_bytes(32),
+    ok = file:write_file(filename:join(Dir, ".imboy-quality-owner"), Token, [exclusive]),
+    {Dir, Identity, Token}.
+
+valid_garage_tag(Tag) when is_list(Tag), Tag =/= [] ->
+    lists:all(
+        fun(C) ->
+            (C >= $0 andalso C =< $9) orelse
+                (C >= $a andalso C =< $z) orelse (C >= $A andalso C =< $Z) orelse
+                C =:= $- orelse C =:= $_
+        end,
+        Tag
+    );
+valid_garage_tag(_) ->
+    false.
+
+ensure_directory(Path) ->
+    case file:make_dir(Path) of
+        ok ->
+            ok;
+        {error, eexist} ->
+            {ok, #file_info{type = directory}} = file:read_link_info(Path),
+            ok;
+        {error, Reason} ->
+            error({garage_parent_directory_failed, Path, Reason})
+    end.
+
+directory_identity(Path) ->
+    {ok, #file_info{type = directory, inode = Inode, major_device = Major, minor_device = Minor}} =
+        file:read_link_info(Path),
+    true = is_integer(Inode) andalso Inode > 0,
+    {Major, Minor, Inode}.
 
 garage_toml(#{
     dir := Dir,
@@ -465,8 +655,17 @@ aac_fixture_bytes() ->
 
 write_json(Path, Map) ->
     ok = filelib:ensure_dir(Path),
-    ok = file:write_file(Path, iolist_to_binary(json:encode(Map))),
-    ok.
+    {ok, F} = file:open(Path, [write, binary, raw, exclusive]),
+    try
+        ok = file:change_mode(Path, 8#600),
+        ok = file:write(F, iolist_to_binary(json:encode(Map))),
+        file:sync(F)
+    after
+        file:close(F)
+    end.
+
+begin_config_receipts(Ctrl, RunId) -> imboy_quality_config_receipts:begin_run(Ctrl, RunId).
+cleanup_config_receipts() -> imboy_quality_config_receipts:cleanup().
 
 %% 从 Base.config 派生一份私有配置：http/adm 端口按 PortIndex 唯一化，
 %% database => "<SrcLiteral>" 全部指向 Db。写入 config/sys.quality.<pid>.<Tag>.config，
@@ -491,7 +690,7 @@ write_config(Repo, Base, Tag, PortIndex, {SrcLiteral, Db}) ->
         list_to_binary("database => \"" ++ Db ++ "\"")
     ),
     Path = filename:join(Repo, "config/sys.quality." ++ os:getpid() ++ "." ++ Tag),
-    ok = file:write_file(Path ++ ".config", Out),
+    ok = imboy_quality_config_receipts:write(Path ++ ".config", Out),
     Path.
 
 %% 多个独立控制器并行诊断时各自 worker 0 不能同绑 19980/19970；

@@ -1,7 +1,14 @@
 %% IMBOY_ERLANG_QUALITY P1-03：原子状态读写与安全新路径（纯 OTP，OTP29 json）。
 %% 草稿（LP-03）正式化：write 临时文件 + sync + rename；拒绝 symlink/hardlink 目标。
 -module(imboy_quality_state).
--export([write/2, read/1, new_path/2, trusted_context/1]).
+-export([
+    write/2,
+    read/1,
+    new_path/2,
+    trusted_context/1,
+    admission_profile/2,
+    candidate_input_fingerprint/1
+]).
 -include_lib("kernel/include/file.hrl").
 
 write(Path, State) when is_map(State) ->
@@ -11,6 +18,7 @@ write(Path, State) when is_map(State) ->
     Temp = Path ++ ".tmp." ++ os:getpid(),
     {ok, Handle} = file:open(Temp, [write, binary, raw, exclusive]),
     try
+        ok = file:change_mode(Temp, 8#600),
         ok = file:write(Handle, Bytes),
         ok = file:sync(Handle)
     after
@@ -33,8 +41,134 @@ trusted_context(State) ->
         execution_mode => map_atom(State, <<"execution_mode">>),
         execution_goal => map_atom(State, <<"execution_goal">>),
         owner_verified => owner_verified(State),
-        heavy_admitted => heavy_admitted(State)
+        heavy_admitted => heavy_admitted(State),
+        gimpl_profile => admission_profile(State, live_head())
     }.
+
+admission_profile(State, Head) ->
+    try
+        Profile = snapshot_profile(State, Head),
+        true = Profile =/= not_admitted,
+        Admission = maps:get(<<"current_admission">>, State),
+        Expected = maps:get(<<"input_fingerprint">>, Admission),
+        Expected = candidate_input_fingerprint(binary_to_list(maps:get(<<"worktree">>, State))),
+        Profile
+    catch
+        _:_ -> not_admitted
+    end.
+
+candidate_input_fingerprint(Repo) ->
+    Patterns = [
+        "src/**/*",
+        "include/**/*",
+        "test/**/*",
+        "tools/imboy_quality/**/*",
+        "priv/migrations/**/*",
+        "config/**/*.config",
+        "deps/**/*.erl",
+        "deps/**/*.hrl",
+        "deps/**/*.app.src",
+        "deps/**/*.proto",
+        "deps/**/*.config",
+        "deps/**/*.term",
+        "deps/**/*.mk",
+        "deps/**/Makefile",
+        "deps/**/*.yrl",
+        "deps/**/*.xrl",
+        "deps/**/*.asn1"
+    ],
+    Config =
+        case os:getenv("EUNIT_CONFIG") of
+            false -> "config/sys.local";
+            V -> V
+        end,
+    SelectedConfig =
+        case filename:extension(Config) of
+            ".config" -> Config;
+            _ -> Config ++ ".config"
+        end,
+    SelectedPath = filename:absname(SelectedConfig, Repo),
+    true = filelib:is_regular(SelectedPath),
+    {ok, _SelectedBytes} = file:read_file(SelectedPath),
+    Paths = lists:usort(
+        lists:append([filelib:wildcard(filename:join(Repo, P)) || P <- Patterns]) ++
+            [
+                SelectedPath
+                | [
+                    filename:join(Repo, P)
+                 || P <- [
+                        "Makefile",
+                        "erlang.mk",
+                        "include/deps.mk",
+                        "scripts/quality.escript",
+                        "config/sys.local.config",
+                        "config/sys.config",
+                        "config/sys.config.example"
+                    ]
+                ]
+            ]
+    ),
+    Files = [P || P <- Paths, filelib:is_regular(P), source_input(P) orelse P =:= SelectedPath],
+    true = Files =/= [],
+    Hashes = [
+        begin
+            {ok, Bytes} = file:read_file(P),
+            {filename:absname(P), crypto:hash(sha256, Bytes)}
+        end
+     || P <- Files
+    ],
+    string:lowercase(
+        binary:encode_hex(
+            crypto:hash(
+                sha256,
+                term_to_binary(
+                    {erlang:system_info(otp_release), erlang:system_info(version), Hashes}
+                )
+            )
+        )
+    ).
+
+source_input(Path) ->
+    Name = filename:basename(Path),
+    filename:extension(Path) =/= ".beam" andalso
+        Name =/= "sys.runtime.config" andalso
+        not lists:prefix("sys.quality.", Name).
+
+snapshot_profile(State, Head) when
+    is_binary(Head), byte_size(Head) =:= 40; is_binary(Head), byte_size(Head) =:= 64
+->
+    case
+        {
+            maps:get(<<"current_gate_status">>, State, #{}),
+            maps:get(<<"current_admission">>, State, #{})
+        }
+    of
+        {#{<<"G-IMPL">> := <<"ADMITTED">>}, #{
+            <<"status">> := <<"ADMITTED">>,
+            <<"candidate_sha">> := Head,
+            <<"profile">> := <<"PHASE1_SNAPSHOT">>
+        }} ->
+            phase1_snapshot;
+        {#{<<"G-IMPL">> := <<"ADMITTED">>}, #{
+            <<"status">> := <<"ADMITTED">>,
+            <<"candidate_sha">> := Head,
+            <<"profile">> := <<"PHASE2_INTEGRATED">>
+        }} ->
+            phase2_integrated;
+        _ ->
+            not_admitted
+    end;
+snapshot_profile(_, _) ->
+    not_admitted.
+
+live_head() ->
+    try
+        {ok, Repo} = file:get_cwd(),
+        {0, Head} = imboy_quality_guard:git(Repo, ["rev-parse", "HEAD"]),
+        iolist_to_binary(string:trim(Head))
+    catch
+        _:_ -> undefined
+    end.
 
 owner_verified(State) ->
     case maps:get(<<"owner">>, State, null) of

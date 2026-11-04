@@ -875,7 +875,10 @@ IMBOY_QUALITY_WORKERS ?= 4
 
 # 新日常入口（P1-12 切换后 `make eunit` 的落点）。单模块/分组诊断：
 # make quality-group g=mod1,mod2（旧口径可用 make eunit-local t=<模块>）。
-quality-full: quality-test-build
+quality-full:
+	escript scripts/quality.escript full-reserve
+	$(MAKE) quality-test-build
+	escript scripts/quality.escript full-build-complete
 	IMBOY_QUALITY_WORKERS=$(IMBOY_QUALITY_WORKERS) escript scripts/quality.escript eunit --full
 
 eunit-all: quality-full

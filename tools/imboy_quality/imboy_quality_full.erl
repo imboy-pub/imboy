@@ -3,8 +3,17 @@
 %% 以模块原子为根（EUnit 自动带入 M_tests 伴随），按 LPT 分到有界 peer 组，
 %% 每组一 VM 顺序执行，结果按根落盘。独占根（Excl 清单）作为 U 成员单列。
 -module(imboy_quality_full).
+-include_lib("kernel/include/file.hrl").
 -export([
     inventory/1,
+    summarize/2,
+    combine_cleanup/2,
+    finalize_run/4,
+    fallback_config_cleanup/0,
+    write_terminal_result/2,
+    ensure_lib_alias/1,
+    maybe_remove_lib_alias/2,
+    maybe_remove_lib_alias/3,
     run/3,
     root_identity_set/1,
     excluded/0,
@@ -202,15 +211,25 @@ run(Roots0, Opts, RunId) ->
     Repo = maps:get(repo, Opts),
     Ctrl = maps:get(ctrl, Opts),
     Prefix = maps:get(out_prefix, Opts, "full-"),
-    OutDir = filename:join([Ctrl, "evidence", Prefix ++ RunId]),
-    ok = filelib:ensure_dir(filename:join(OutDir, "x")),
+    Relative = filename:join("evidence", Prefix ++ RunId),
+    {ok, OutDir} = imboy_quality_state:new_path(Ctrl, Relative),
+    ok = filelib:ensure_dir(filename:join(filename:dirname(OutDir), "x")),
+    {ok, OutDir} = imboy_quality_state:new_path(Ctrl, Relative),
+    ok = file:make_dir(OutDir),
     T0 = erlang:monotonic_time(millisecond),
     Est = maps:get(estimates, Opts, #{}),
     AliasState = ensure_lib_alias(Repo),
-    try
-        run_locked(Roots0, Opts, RunId, Repo, OutDir, T0, Est)
-    after
-        maybe_remove_lib_alias(Repo, AliasState)
+    try run_locked(Roots0, Opts, RunId, Repo, OutDir, T0, Est) of
+        {Result, OutDir} ->
+            AliasCleanup = maybe_remove_lib_alias(Repo, AliasState),
+            {Result#{<<"alias_cleanup">> => alias_cleanup_result(AliasCleanup)}, OutDir}
+    catch
+        Class:Reason:Stack ->
+            case maybe_remove_lib_alias(Repo, AliasState) of
+                ok -> ok;
+                Error -> io:format(standard_error, "library alias cleanup failed: ~0p~n", [Error])
+            end,
+            erlang:raise(Class, Reason, Stack)
     end.
 
 run_locked(Roots0, Opts, RunId, Repo, OutDir, T0, Est) ->
@@ -299,12 +318,79 @@ run_locked(Roots0, Opts, RunId, Repo, OutDir, T0, Est) ->
         <<"vm_killer_roots">> => [atom_to_binary(M) || M <- Killers],
         <<"standalone_fallback">> => Standalone
     },
-    {ok, _} = imboy_quality_report:write(filename:join(OutDir, "result.json"), Result),
     ok = file:write_file(
         filename:join(OutDir, "per_root.term"),
-        io_lib:format("~p.~n", [PerRoot])
+        io_lib:format("~p.~n", [PerRoot]),
+        [exclusive]
     ),
     {Result, OutDir}.
+
+combine_cleanup(#{<<"ok">> := ResourceOk} = Cleanup, ConfigResult) when is_boolean(ResourceOk) ->
+    ConfigOk = ConfigResult =:= ok,
+    Cleanup#{
+        <<"ok">> => ResourceOk andalso ConfigOk,
+        <<"config_cleanup">> =>
+            case ConfigResult of
+                ok -> <<"ok">>;
+                _ -> unicode:characters_to_binary(io_lib:format("~0p", [ConfigResult]))
+            end
+    };
+combine_cleanup(Other, ConfigResult) ->
+    #{
+        <<"ok">> => false,
+        <<"resource_cleanup_error">> => unicode:characters_to_binary(io_lib:format("~0p", [Other])),
+        <<"config_cleanup">> => unicode:characters_to_binary(io_lib:format("~0p", [ConfigResult]))
+    }.
+
+finalize_run(OutDir, Result0, Release, CleanupConfigs) ->
+    ResourceCleanup = try_cleanup(Release),
+    ConfigCleanup = try_cleanup(CleanupConfigs),
+    BaseCleanup = combine_cleanup(ResourceCleanup, ConfigCleanup),
+    AliasCleanup = maps:get(
+        <<"alias_cleanup">>,
+        Result0,
+        #{<<"ok">> => false, <<"error">> => <<"alias_cleanup_unverified">>}
+    ),
+    AliasOk = is_map(AliasCleanup) andalso maps:get(<<"ok">>, AliasCleanup, false) =:= true,
+    Cleanup = BaseCleanup#{
+        <<"ok">> => maps:get(<<"ok">>, BaseCleanup) andalso AliasOk,
+        <<"alias">> => AliasCleanup
+    },
+    Result = Result0#{<<"cleanup">> => Cleanup},
+    ok = write_terminal_result(OutDir, Result),
+    {Result, OutDir}.
+
+try_cleanup(Fun) ->
+    try
+        Fun()
+    catch
+        Class:Reason -> {error, {Class, Reason}}
+    end.
+
+fallback_config_cleanup() ->
+    case try_cleanup(fun imboy_quality_resources:cleanup_config_receipts/0) of
+        ok -> ok;
+        Error -> io:format(standard_error, "configuration cleanup failed: ~0p~n", [Error])
+    end.
+
+write_terminal_result(OutDir, Result) ->
+    Path = filename:join(OutDir, "result.json"),
+    Temp = Path ++ ".tmp." ++ os:getpid(),
+    {ok, Handle} = file:open(Temp, [write, binary, raw, exclusive]),
+    try
+        try
+            ok = file:write(Handle, json:encode(Result)),
+            ok = file:sync(Handle)
+        after
+            ok = file:close(Handle)
+        end,
+        ok = file:make_link(Temp, Path),
+        ok = file:delete(Temp)
+    catch
+        Class:Reason:Stack ->
+            _ = file:delete(Temp),
+            erlang:raise(Class, Reason, Stack)
+    end.
 
 %% vm_killer 根（两次致 peer 宿主 VM 死亡）改在独立非 peer VM 兜底执行一次：
 %% 保留 peer 侧历史（vm_killer_in_peer），结果以独立 VM 为准（可通过/可失败/可超时）。
@@ -477,16 +563,41 @@ ensure_lib_alias(Repo) ->
             existing;
         {ok, Other} ->
             erlang:error({lib_alias_conflict, Alias, Other});
-        {error, _} ->
+        {error, enoent} ->
             ok = file:make_symlink(".", Alias),
-            created
+            {ok, #file_info{type = symlink} = Info} = file:read_link_info(Alias),
+            {created, alias_identity(Info)};
+        {error, Reason} ->
+            error({lib_alias_conflict, Alias, Reason})
     end.
 
-maybe_remove_lib_alias(_Repo, existing) ->
+maybe_remove_lib_alias(Repo, AliasState) ->
+    maybe_remove_lib_alias(Repo, AliasState, fun file:delete/1).
+
+maybe_remove_lib_alias(_Repo, existing, _Delete) ->
     ok;
-maybe_remove_lib_alias(Repo, created) ->
-    _ = file:delete(filename:join(Repo, "imboy")),
-    ok.
+maybe_remove_lib_alias(Repo, {created, Identity}, Delete) ->
+    Alias = filename:join(Repo, "imboy"),
+    case {file:read_link_info(Alias), file:read_link(Alias)} of
+        {{ok, #file_info{type = symlink} = Info}, {ok, "."}} ->
+            case alias_identity(Info) =:= Identity of
+                true -> Delete(Alias);
+                false -> {error, alias_identity_changed}
+            end;
+        _ ->
+            {error, alias_identity_changed}
+    end.
+
+alias_identity(Info) ->
+    {Info#file_info.major_device, Info#file_info.minor_device, Info#file_info.inode}.
+
+alias_cleanup_result(ok) ->
+    #{<<"ok">> => true};
+alias_cleanup_result(Error) ->
+    #{
+        <<"ok">> => false,
+        <<"error">> => unicode:characters_to_binary(io_lib:format("~0p", [Error]))
+    }.
 
 collect(_Ref, Acc, 0) ->
     Acc;
@@ -503,46 +614,49 @@ collect(Ref, Acc, N) ->
     end.
 
 summarize(PerRoot, Roots) ->
-    Fold = fun(M, {P, F, Cn, Ok, Bad, Missing}) ->
+    Fold = fun(M, {P, F, Sk, Cn, Ok, Bad, Missing, Zero}) ->
         case maps:get(M, PerRoot, undefined) of
-            #{exit := ok, counts := C} ->
-                {
-                    P + maps:get(pass, C, 0),
-                    F + maps:get(fail, C, 0),
-                    Cn + maps:get(cancel, C, 0),
-                    [M | Ok],
-                    Bad,
-                    Missing
-                };
-            #{counts := C} ->
-                {
-                    P + maps:get(pass, C, 0),
-                    F + maps:get(fail, C, 0),
-                    Cn + maps:get(cancel, C, 0),
-                    Ok,
-                    [M | Bad],
-                    Missing
-                };
+            #{counts := C} = Entry ->
+                {Pass, Fail, Skip, Cancel} = verified_counts(C),
+                ExitOk = maps:get(exit, Entry, undefined) =:= ok,
+                {NextOk, NextBad, NextZero} =
+                    case {ExitOk, Pass, Fail, Skip, Cancel} of
+                        {true, 0, 0, 0, 0} -> {Ok, Bad, [M | Zero]};
+                        {true, _, 0, 0, 0} -> {[M | Ok], Bad, Zero};
+                        _ -> {Ok, [M | Bad], Zero}
+                    end,
+                {P + Pass, F + Fail, Sk + Skip, Cn + Cancel, NextOk, NextBad, Missing, NextZero};
             undefined ->
-                {P, F, Cn, Ok, Bad, [M | Missing]}
+                {P, F, Sk, Cn, Ok, Bad, [M | Missing], Zero}
         end
     end,
-    {P, F, Cn, Ok, Bad, Missing} = lists:foldl(Fold, {0, 0, 0, [], [], []}, Roots),
+    {P, F, Sk, Cn, Ok, Bad, Missing, Zero} =
+        lists:foldl(Fold, {0, 0, 0, 0, [], [], [], []}, Roots),
     #{
         <<"pass">> => P,
         <<"fail">> => F,
+        <<"skip">> => Sk,
         <<"cancel">> => Cn,
         <<"roots_ok">> => length(Ok),
         <<"roots_failed">> => length(Bad),
         <<"roots_missing">> => length(Missing),
+        <<"roots_zero_leaf">> => length(Zero),
+        <<"zero_leaf_roots">> => [atom_to_binary(M) || M <- lists:sort(Zero)],
         <<"failed_roots">> => [atom_to_binary(M) || M <- lists:sort(Bad)],
         <<"missing_roots">> => [atom_to_binary(M) || M <- lists:sort(Missing)]
     }.
 
+verified_counts(C) ->
+    Values = {maps:get(pass, C), maps:get(fail, C), maps:get(skip, C), maps:get(cancel, C)},
+    case lists:all(fun(V) -> is_integer(V) andalso V >= 0 end, tuple_to_list(Values)) of
+        true -> Values;
+        false -> error({invalid_counts, C})
+    end.
+
 %% 身份集合：EQ01 等价对照（根集合 + 每根叶计数）
 root_identity_set(PerRoot) ->
     lists:sort([
-        {M, maps:get(pass, C, 0) + maps:get(fail, C, 0) + maps:get(cancel, C, 0)}
+        {M, lists:sum(tuple_to_list(verified_counts(C)))}
      || {M, #{counts := C}} <- maps:to_list(PerRoot), is_atom(M)
     ]).
 
