@@ -141,15 +141,11 @@ channel(_, Req0, _State) ->
 
 %% 频道所属 workspace（Org 边界在 SQL 内强制；scope=workspace AND status=1
 %% AND ws active —— channel_repo:internal_find_tx 同口径）。
-channel_workspace_tx(Conn, Ctx, ChannelId) when is_integer(ChannelId), ChannelId > 0 ->
-    OrgId = maps:get(organization_id, Ctx),
-    case channel_repo:internal_find_tx(Conn, OrgId, ChannelId) of
+channel_workspace_tx(Conn, Ctx, ChannelId) ->
+    case enterprise_channel_logic:locate_tx(Conn, Ctx, ChannelId) of
         {ok, #{<<"workspace_id">> := WsId}} -> {ok, WsId};
-        {error, not_found} -> {error, {<<"resource_not_found">>, channel_not_found}};
-        {error, Reason} -> {error, {<<"internal_error">>, Reason}}
-    end;
-channel_workspace_tx(_Conn, _Ctx, _ChannelId) ->
-    {error, {<<"invalid_request">>, invalid_channel_id}}.
+        {error, _} = Err -> Err
+    end.
 
 channel_path(ChannelId) when is_integer(ChannelId) ->
     <<"/api/internal/v1/channels/", (integer_to_binary(ChannelId))/binary, "/messages">>;
