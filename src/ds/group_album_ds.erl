@@ -599,7 +599,8 @@ photo_object_key(_) ->
 update_album_cover(AlbumId, PhotoId) ->
     case group_album_repo:find_album_by_album_id(AlbumId) of
         #{<<"id">> := Id, <<"group_id">> := Gid} ->
-            UpdateData = #{id => Id, album_cover => PhotoId},
+            %% update_album_tx 契约为 binary 键（UpdateData 携带 <<"id">> 主键）
+            UpdateData = #{<<"id">> => Id, <<"album_cover">> => PhotoId},
             %% T7 归档写守卫：{group, Gid}（相册行归属群）行锁与写入同事务
             case
                 workspace_guard:write_tx({group, Gid}, fun(Conn) ->

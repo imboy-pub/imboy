@@ -653,3 +653,52 @@ message_cursor_real_helper_caps_test_() ->
             ?assertEqual(12, meck:num_calls(channel_message_ds, list_by_channel_page, '_'))
         end
     ).
+
+%% D3（C11-03 回归）：归档(0)/删除(-1)频道发布一律拒绝（status 门在角色门后）。
+archived_channel_publish_rejected_test_() ->
+    ?WITH_MECKS(
+        [
+            {channel_logic_common, [
+                {resolve_channel_id, 1, fun(_) -> 42 end},
+                {get_user_role, 2, fun(_, _) -> 3 end}
+            ]},
+            {channel_ds, [
+                {find_by_id, 2, fun(42, <<"status">>) -> #{<<"status">> => 0} end}
+            ]}
+        ],
+        fun() ->
+            ?assertEqual(
+                {error, <<"频道已归档或删除，无法发布消息"/utf8>>},
+                channel_logic_message:publish_message(1001, <<"42">>, <<"hi">>, <<"text">>, #{})
+            )
+        end
+    ).
+
+%% status=1 不误拦：穿 status 门 + 附件归属门 + 审核门，到达 store（此处以
+%% store 故障形态断言穿门成功——若 status 门误拦会返回归档错误而非 store_down）。
+active_channel_publish_passes_status_gate_test_() ->
+    ?WITH_MECKS(
+        [
+            {channel_logic_common, [
+                {resolve_channel_id, 1, fun(_) -> 42 end},
+                {get_user_role, 2, fun(_, _) -> 3 end}
+            ]},
+            {channel_ds, [
+                {find_by_id, 2, fun(42, <<"status">>) -> #{<<"status">> => 1} end}
+            ]},
+            {moderation_business, [
+                {inspect_channel, 4, fun(_, _, _, _) -> ok end}
+            ]},
+            {channel_message_store, [
+                {publish, 6, fun(_Mode, _Cid, _Uid, _Content, _Type, _Payload) ->
+                    {error, store_down}
+                end}
+            ]}
+        ],
+        fun() ->
+            ?assertEqual(
+                {error, <<"store_down">>},
+                channel_logic_message:publish_message(1001, <<"42">>, <<"hi">>, <<"text">>, #{})
+            )
+        end
+    ).

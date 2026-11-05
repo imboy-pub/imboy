@@ -744,18 +744,26 @@ do_publish_message(Uid, ChannelIdBin, Content, MsgType, Payload, StoreMode) ->
                 true ->
                     {error, <<"只有管理员可以发布消息"/utf8>>};
                 false ->
-                    %% 帖子图片归属硬校验（prod 2026-10-20 事故二加固）：
-                    %% 图片只允许引用本频道的 channel 附件或 public 资源；
-                    %% private/跨频道附件在发布时拒绝——否则发布成功但订阅者
-                    %% 渲染 view_url 400「无权访问该附件」，失败被推迟到
-                    %% 每个订阅者的渲染期才暴露。
-                    case validate_post_images(ChannelId, Payload) of
-                        ok ->
-                            do_publish_after_images(
-                                Uid, ChannelId, Content, MsgType, Payload, StoreMode
-                            );
-                        {error, _} = ImgErr ->
-                            ImgErr
+                    %% GZAPP-02/G4（D3，C11-03 回归）：归档(0)/删除(-1)频道一律
+                    %% 不可发布；status 门在角色门后、附件归属校验前，口径与
+                    %% 归档/恢复（0↔1，删除 -1）一致，避免归档频道继续接受发布。
+                    case channel_ds:find_by_id(ChannelId, <<"status">>) of
+                        #{<<"status">> := 1} ->
+                            %% 帖子图片归属硬校验（prod 2026-10-20 事故二加固）：
+                            %% 图片只允许引用本频道的 channel 附件或 public 资源；
+                            %% private/跨频道附件在发布时拒绝——否则发布成功但订阅者
+                            %% 渲染 view_url 400「无权访问该附件」，失败被推迟到
+                            %% 每个订阅者的渲染期才暴露。
+                            case validate_post_images(ChannelId, Payload) of
+                                ok ->
+                                    do_publish_after_images(
+                                        Uid, ChannelId, Content, MsgType, Payload, StoreMode
+                                    );
+                                {error, _} = ImgErr ->
+                                    ImgErr
+                            end;
+                        _ ->
+                            {error, <<"频道已归档或删除，无法发布消息"/utf8>>}
                     end
             end
     end.

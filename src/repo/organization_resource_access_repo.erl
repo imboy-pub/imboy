@@ -24,9 +24,17 @@ workspace_predicate_sql(WorkspaceExpr, UidExpr) ->
         "WHERE ra_ws.id=",
         WorkspaceExpr/binary,
         " AND ra_ws.status IN ('active','archived') "
-        "AND (ra_ws.organization_id IS NULL OR (ra_org.status='active' AND ra_om.user_id=",
+        %% D1（C11-03 回归）：pending 建企（GZAPP-08/09）与 live access 谓词
+        %% （OA 停用强制）同事务冲突——APP 建企事务内 org 仍为 pending，owner
+        %% 生成默认 Workspace 模板（建群→join_group→eligible_tx）被 'active'
+        %% 硬要求整体回滚。放行分支=「pending 且 owner 本人」，且 ra_om join
+        %% 条件已含 ra_om.status='active'——owner 被停用时 ra_om 不匹配、放行
+        %% 不成立，OA 停用强制语义不回退；rejected/archived 不在放行分支。
+        "AND (ra_ws.organization_id IS NULL OR ((ra_org.status='active' AND ra_om.user_id=",
         UidExpr/binary,
-        ")) AND (EXISTS (SELECT 1 FROM public.workspace_member ra_wm "
+        ") OR (ra_org.status='pending' AND ra_org.owner_id=",
+        UidExpr/binary,
+        " AND ra_om.role='owner'))) AND (EXISTS (SELECT 1 FROM public.workspace_member ra_wm "
         "WHERE ra_wm.workspace_id=ra_ws.id AND ra_wm.user_id=",
         UidExpr/binary,
         " AND ra_wm.status='active') OR ra_om.role IN ('owner','admin')))"

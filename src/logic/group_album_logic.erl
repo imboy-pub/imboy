@@ -206,7 +206,8 @@ rename_album(AlbumId, NewName, CurrentUid) ->
         #{<<"id">> := Id, <<"group_id">> := Gid, <<"creator_id">> := CreatorId} ->
             case check_album_delete_permission(CurrentUid, CreatorId, Gid) of
                 ok ->
-                    UpdateData = #{id => Id, album_name => NewName},
+                    %% update_album_tx 契约为 binary 键（UpdateData 携带 <<"id">> 主键）
+                    UpdateData = #{<<"id">> => Id, <<"album_name">> => NewName},
                     case normalize_write_result(group_album_ds:update_album(UpdateData)) of
                         {ok, _} -> ok;
                         {error, Reason} -> {error, Reason}

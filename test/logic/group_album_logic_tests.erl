@@ -162,6 +162,98 @@ delete_album_not_found_case() ->
         end
     ).
 
+%% ===================================================================
+%% D2 回归（C13-fix）：rename_album / update_album_cover 曾以 atom 键
+%% （#{id => ...}）构造更新数据，而 ds:update_album 与
+%% repo:update_album_tx 契约为 binary 键（maps:get(<<"id">>, Data)）
+%% → badkey <<"id">> → 500。此处锁定 binary 键契约。
+%% ===================================================================
+
+rename_album_by_creator_passes_binary_id_test_() ->
+    ?WITH_MECKS(
+        [
+            {group_album_repo, [
+                {'find_album_by_album_id', 1, fun(<<"album_r1">>) ->
+                    #{
+                        <<"id">> => 11,
+                        <<"group_id">> => 20,
+                        <<"creator_id">> => 100
+                    }
+                end},
+                {'update_album_tx', 2, fun(_Conn, Data) ->
+                    self() ! {rename_update_data, Data},
+                    {ok, 1}
+                end}
+            ]},
+            %% T7 归档写守卫收口适配：personal 直通 + with_tx 直跑
+            {workspace_resolver, [{'resolve_workspace', 1, fun(_) -> personal end}]},
+            {elib_pg, [{'with_tx', 1, fun(TxFun) -> TxFun(fake_conn) end}]}
+        ],
+        fun() ->
+            ?assertEqual(
+                ok,
+                group_album_logic:rename_album(<<"album_r1">>, <<"新相册名"/utf8>>, 100)
+            ),
+            receive
+                {rename_update_data, Data} ->
+                    ?assertEqual(
+                        #{<<"id">> => 11, <<"album_name">> => <<"新相册名"/utf8>>},
+                        Data
+                    )
+            after 1000 ->
+                ?assert(false, "update_album_tx not called")
+            end
+        end
+    ).
+
+rename_album_not_found_test_() ->
+    ?WITH_MECK(
+        group_album_repo,
+        [
+            {'find_album_by_album_id', 1, fun(<<"album_r404">>) -> #{} end}
+        ],
+        fun() ->
+            ?assertEqual(
+                {error, <<"相册不存在"/utf8>>},
+                group_album_logic:rename_album(<<"album_r404">>, <<"改名"/utf8>>, 100)
+            )
+        end
+    ).
+
+update_album_cover_passes_binary_id_test_() ->
+    ?WITH_MECKS(
+        [
+            {group_album_repo, [
+                {'find_album_by_album_id', 1, fun(<<"album_c1">>) ->
+                    #{
+                        <<"id">> => 12,
+                        <<"group_id">> => 20,
+                        <<"creator_id">> => 100
+                    }
+                end},
+                {'update_album_tx', 2, fun(_Conn, Data) ->
+                    self() ! {cover_update_data, Data},
+                    {ok, 1}
+                end}
+            ]},
+            %% T7 归档写守卫收口适配：personal 直通 + with_tx 直跑
+            {workspace_resolver, [{'resolve_workspace', 1, fun(_) -> personal end}]},
+            {elib_pg, [{'with_tx', 1, fun(TxFun) -> TxFun(fake_conn) end}]}
+        ],
+        fun() ->
+            ?assertEqual(
+                ok,
+                group_album_logic:update_album_cover(<<"album_c1">>, <<"photo_9">>, 100)
+            ),
+            receive
+                {cover_update_data, Data} ->
+                    ?assertEqual(#{<<"id">> => 12, <<"album_cover">> => <<"photo_9">>}, Data)
+            after 1000 ->
+                ?assert(false, "update_album_tx not called")
+            end
+        end
+    ).
+
 %% 回归（IDOR）：list_comments/3 非该图片所属群成员 → 拒绝，
 %% 防止任意登录用户传任意 photo_id 跨群窥探评论内容
 list_comments_non_member_rejected_test_() ->
