@@ -180,6 +180,107 @@ jobs:
           # Explicit modules run in a fresh VM; these fixtures need no database schema.
           IMBOYENV=local make eunit-local EUNIT_CONFIG=config/sys EUNIT_MODS="$CONTRACT_REGRESSION_MODULES"
 
+  quick-reply-pg:
+    name: Quick reply native PostgreSQL Gate
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    needs: [compile]
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Setup Erlang/OTP toolchain
+        uses: erlef/setup-beam@v1
+        with:
+          otp-version: "28"
+          rebar3-version: '3.27'
+
+      - name: Cache dependencies and build artifacts
+        uses: actions/cache@v6
+        with:
+          path: |
+            deps
+            _build
+            .erlang.mk
+            ~/.cache/rebar3
+          key: ${{ runner.os }}-otp28-beam-${{ hashFiles('Makefile', 'include/deps.mk') }}
+
+      - name: Compile
+        run: IMBOYENV=local make test-build
+
+      - name: Build pinned native PostgreSQL 18
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(id -u)" -ne 0
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends \
+            build-essential bison flex pkg-config libssl-dev zlib1g-dev
+          pg_prefix="$RUNNER_TEMP/cs-quick-reply-pg"
+          test ! -e "$pg_prefix"
+          pg_source_dir="$(python3 - "$RUNNER_TEMP" <<'PY'
+          import hashlib
+          import json
+          from pathlib import Path
+          import re
+          import subprocess
+          import sys
+          import tarfile
+          import tempfile
+
+          pins = json.loads(Path('scripts/ci/native-eunit-pins.json').read_text())
+          sources = [entry for entry in pins['sources']
+                     if entry['kind'] == 'archive' and entry['file'].startswith('postgresql-')]
+          if len(sources) != 1:
+              raise SystemExit('Expected exactly one pinned PostgreSQL source archive')
+          pin = sources[0]
+          if not re.fullmatch(r'18\.\d+', pin['version']):
+              raise SystemExit('Quick reply gate requires PostgreSQL 18')
+          if pin['file'] != f"postgresql-{pin['version']}.tar.bz2" or not pin['url'].startswith('https://'):
+              raise SystemExit('Invalid pinned PostgreSQL archive')
+          source_root = Path(tempfile.mkdtemp(prefix='cs-quick-reply-pg-source-', dir=sys.argv[1]))
+          archive = source_root / pin['file']
+          subprocess.run(['curl', '--proto', '=https', '--proto-redir', '=https', '--tlsv1.2',
+                          '-fsSL', '--retry', '3', '--connect-timeout', '30', '--max-time', '300',
+                          '-o', str(archive), pin['url']], check=True)
+          with archive.open('rb') as stream:
+              digest = hashlib.file_digest(stream, 'sha256').hexdigest()
+          if digest != pin['sha256']:
+              raise SystemExit('Pinned PostgreSQL archive SHA256 mismatch')
+          print(f"Verified PostgreSQL {pin['version']} SHA256 {digest}", file=sys.stderr)
+          with tarfile.open(archive) as bundle:
+              bundle.extractall(source_root, filter='data')
+          source = source_root / f"postgresql-{pin['version']}"
+          if not (source / 'configure').is_file():
+              raise SystemExit('Pinned PostgreSQL source is incomplete')
+          print(source)
+          PY
+          )"
+          (
+            cd "$pg_source_dir"
+            ./configure --prefix="$pg_prefix" --with-openssl --without-readline --without-icu
+            make -j2
+            make install
+          )
+          printf '%s/bin\n' "$pg_prefix" >> "$GITHUB_PATH"
+          "$pg_prefix/bin/pg_config" --version
+
+      - name: Run quick reply real PostgreSQL regression
+        shell: bash
+        run: |
+          set -euo pipefail
+          bash scripts/test/cs_quick_reply_pg_gate.sh 2>&1 | tee cs-quick-reply-pg.log
+
+      - name: Upload quick reply PostgreSQL log
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: cs-quick-reply-pg-log
+          path: cs-quick-reply-pg.log
+          retention-days: 14
+          if-no-files-found: warn
+
   # ----------------------------------------------------------------
   # Dialyzer 递减基线门（CI-00，阻塞）—— make dialyze-check = 全量分析 +
   # dialyzer.baseline 指纹比对：基线外新增 1 条告警即红（棘轮：存量只准减
