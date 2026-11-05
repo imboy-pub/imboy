@@ -9,14 +9,14 @@
 
 enqueue_in(Conn, Org, Ws, MessageIds, AssetIds) ->
     case
-        elib_pg:execute(
+        elib_pg:query(
             Conn,
             <<
-                "INSERT INTO enterprise_asset_delete_queue(organization_id,workspace_id,asset_id,object_key)"
-                " SELECT organization_id,workspace_id,id,object_key FROM enterprise_asset"
-                " WHERE organization_id=$1 AND workspace_id=$2"
+                "SELECT fn_v5_intent_eb_delete(organization_id,workspace_id,id,'enterprise purge')"
+                " FROM enterprise_asset WHERE organization_id=$1 AND workspace_id=$2"
                 " AND (message_id=ANY($3::bigint[]) OR id=ANY($4::bigint[]))"
-                " ON CONFLICT (organization_id,workspace_id,asset_id) DO NOTHING"
+                " AND upload_registration->>'protocol' IS DISTINCT FROM 'direct-v1'"
+                " ORDER BY id"
             >>,
             [Org, Ws, MessageIds, AssetIds]
         )
@@ -85,7 +85,7 @@ claim(Token) ->
             <<
                 "SELECT out_organization_id, out_workspace_id, out_asset_id,"
                 " out_object_key, out_storage_driver, out_storage_namespace,"
-                " out_storage_container, out_storage_locator_sha256, out_attempts"
+                " out_storage_container, out_storage_locator_sha256, out_storage_physical_key, out_attempts"
                 " FROM fn_v5_claim_eb($1)"
             >>,
             [Token]

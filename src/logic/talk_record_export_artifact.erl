@@ -5,7 +5,8 @@
 prepare_tx(Conn, Job, Export, Generated) ->
     Rid = maps:get(<<"record_id">>, Export),
     Eid = maps:get(<<"id">>, Export),
-    Bytes = maps:get(<<"content">>, Generated),
+    Size = maps:get(size, Generated),
+    Hash = maps:get(sha256, Generated),
     Ext = maps:get(<<"format">>, Export),
     Nonce = binary:encode_hex(crypto:strong_rand_bytes(16), lowercase),
     Key = <<"talk-record/export/", Nonce/binary, ".", Ext/binary>>,
@@ -13,9 +14,9 @@ prepare_tx(Conn, Job, Export, Generated) ->
         <<"path">> => Key,
         <<"url">> => <<>>,
         <<"name">> => <<"talk-record.", Ext/binary>>,
-        <<"size">> => byte_size(Bytes),
+        <<"size">> => Size,
         <<"mime_type">> => mime(Ext),
-        <<"file_hash256">> => binary:encode_hex(crypto:hash(sha256, Bytes), lowercase),
+        <<"file_hash256">> => Hash,
         <<"scope">> => <<"talk_record">>,
         <<"scope_ref">> => integer_to_binary(Rid),
         <<"origin">> => <<"server_export">>
@@ -53,7 +54,37 @@ bind_prepared_tx(Conn, Rid, Eid, Aid) ->
             Error
     end.
 
-write(#{attachment_id := Aid}, Bytes) -> attachment_derived_artifact:write(Aid, Bytes).
+write(#{attachment_id := Aid}, #{task := Render, size := Size, sha256 := Hash}) ->
+    Token = crypto:strong_rand_bytes(32),
+    case attachment_derived_artifact:begin_export_write(Aid, crypto:hash(sha256, Token)) of
+        {ok, Location = #{container := Container}} ->
+            Cfg = application:get_env(imboy, garage, #{}),
+            Task = Render#{
+                endpoint => maps:get(endpoint, Cfg),
+                ak => maps:get(access_key, Cfg),
+                sk => maps:get(secret_key, Cfg),
+                bucket => Container,
+                region => maps:get(region, Cfg, <<"garage">>),
+                object_key => maps:get(key, Location),
+                mime => maps:get(mime, Location, <<"application/octet-stream">>),
+                expected_sha256 => Hash,
+                expected_size => Size,
+                attachment_id => Aid,
+                receipt_token => Token
+            },
+            Result =
+                case attachment_worker_port:upload_export(Task) of
+                    {ok, #{sha256 := Hash, size := Size} = Uploaded} -> {ok, Uploaded};
+                    {ok, _} -> {error, artifact_integrity_mismatch};
+                    UploadError -> UploadError
+                end,
+            case attachment_derived_artifact:finish_write(Aid, Result) of
+                {ok, _} -> ok;
+                FinishError -> FinishError
+            end;
+        Error ->
+            Error
+    end.
 
 publish_tx(Conn, #{attachment_id := Aid, record_id := Rid, business_key := Key}) ->
     case attachment_derived_artifact:complete_tx(Conn, Aid) of

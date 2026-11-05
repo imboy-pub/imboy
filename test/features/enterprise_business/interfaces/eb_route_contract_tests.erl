@@ -22,6 +22,15 @@
 
 -include_lib("eunit/include/eunit.hrl").
 
+enterprise_direct_fields_are_projected_test() ->
+    {ok, Upload} = eb_enterprise_actions:tenant(presign),
+    {ok, Confirm} = eb_enterprise_actions:tenant(confirm_asset),
+    ?assert(lists:member(object_key, eb_enterprise_actions:param_keys(Upload))),
+    ?assert(lists:member(object_key, eb_enterprise_actions:param_keys(Confirm))),
+    ?assert(lists:member(attempt_id, eb_enterprise_actions:param_keys(Confirm))),
+    {ok, Case} = eb_enterprise_actions:case_for(Confirm, <<"POST">>),
+    ?assert(lists:member({attempt_id, int, optional}, maps:get(params, Case))).
+
 -define(S, eb_handler_test_support).
 -define(TENANT_HANDLER, "src/features/enterprise_business/interfaces/eb_tenant_handler.erl").
 -define(PLATFORM_HANDLER, "src/features/enterprise_business/interfaces/eb_platform_handler.erl").

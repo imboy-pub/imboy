@@ -14,7 +14,8 @@ recovery_test_() ->
         fun registration_reuses_original_identity/0,
         fun register_projects_real_session_view/0,
         fun nullable_file_name_is_absent_in_upload_claims/0,
-        fun widget_bridge_preserves_recovery_identity/0
+        fun widget_bridge_preserves_recovery_identity/0,
+        fun widget_bridge_uses_verified_token_identity/0
     ]}.
 
 setup() ->
@@ -136,7 +137,7 @@ intent_never_renews() ->
     ?assertEqual(0, meck:num_calls(eb_asset_upload_ref, mint, '_')).
 
 tombstone_precedes_insert() ->
-    meck:expect(elib_pg, with_tx, fun(F) -> F(test_conn) end),
+    meck:expect(elib_pg, with_physical_guard_retry_tx, fun(F) -> F(test_conn) end),
     meck:expect(elib_pg, query, fun(test_conn, Sql, _) ->
         case binary:match(Sql, <<"enterprise_asset_delete_queue">>) of
             nomatch -> {ok, []};
@@ -150,7 +151,7 @@ tombstone_precedes_insert() ->
     ?assertEqual(3, meck:num_calls(elib_pg, query, 3)).
 registration_reuses_original_identity() ->
     Registration = #{<<"subject">> => #{<<"principal">> => <<"7">>}},
-    meck:expect(elib_pg, with_tx, fun(F) -> F(test_conn) end),
+    meck:expect(elib_pg, with_physical_guard_retry_tx, fun(F) -> F(test_conn) end),
     meck:expect(elib_pg, query, fun(test_conn, Sql, _) ->
         case binary:match(Sql, <<"SELECT id,organization_id">>) of
             nomatch ->
@@ -260,3 +261,46 @@ widget_bridge_preserves_recovery_identity() ->
     }),
     ?assertMatch(#{asset_id := 3, session_state := <<"registered">>}, V),
     ?assertNot(maps:is_key(upload_ref, V)).
+
+widget_bridge_uses_verified_token_identity() ->
+    meck:expect(cs_widget_support, verify_bootstrap_token, fun(1, _) ->
+        {ok, #{id => 77, contact_id => 7}}
+    end),
+    meck:expect(cs_widget_support, fetch_installation, fun(_, 1, 9) -> {ok, #{}} end),
+    meck:expect(cs_widget_support, resolve_default_workspace, fun(1, _) -> {ok, 2} end),
+    meck:expect(cs_widget_support, session_fetch, fun(1, _) ->
+        {ok, #{id => 70, conversation_id => 44, contact_id => 7}}
+    end),
+    meck:expect(cs_widget_support, eb_request_presign, fun(1, P) ->
+        ?assertMatch(
+            #{
+                visitor_token_id := 77,
+                visitor_installation_id := 9,
+                visitor_session_id := 70,
+                actor_contact_id := 7
+            },
+            P
+        ),
+        {ok, #{}}
+    end),
+    meck:expect(cs_widget_support, eb_confirm_asset, fun(1, P) ->
+        ?assertMatch(
+            #{
+                visitor_token_id := 77,
+                visitor_installation_id := 9,
+                visitor_session_id := 70,
+                actor_contact_id := 7
+            },
+            P
+        ),
+        {ok, #{}}
+    end),
+    Params = #{
+        installation_id => 9,
+        session_id => 70,
+        visitor_token_id => 999,
+        visitor_installation_id => 999,
+        object_key => <<"key">>
+    },
+    ?assertMatch({ok, _}, cs_widget_session_app:asset_presign(1, Params)),
+    ?assertMatch({ok, _}, cs_widget_session_app:asset_confirm(1, Params)).

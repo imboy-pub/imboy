@@ -2,9 +2,11 @@
 -include_lib("eunit/include/eunit.hrl").
 
 revoked_parent_denies_all_file_operations_test_() ->
+    %% C08（V3-12）：upload 用例已随 multipart 上传链退役，引用入口为 bind
+    %% （bind_file 先查成员资格，同样被 not_member 前置拒绝）。
     [
         {atom_to_list(Op), fun() -> denied(Op) end}
-     || Op <- [list, search, categories, download, delete, upload]
+     || Op <- [list, search, categories, download, delete, bind]
     ].
 
 denied(Op) ->
@@ -36,12 +38,20 @@ denied(Op) ->
     try
         Result =
             case Op of
-                list -> group_file_ds:list_files(11, 1, 1, 10);
-                search -> group_file_ds:search_files(11, <<"a">>, 1, 10, 1);
-                categories -> group_file_logic:get_categories(<<"11">>, 1);
-                download -> group_file_ds:download_file(9, 1);
-                delete -> group_file_ds:delete_file(9, 1);
-                upload -> group_file_ds:upload_file(11, 1, <<"a.txt">>, <<0>>, <<"text/plain">>)
+                list ->
+                    group_file_ds:list_files(11, 1, 1, 10);
+                search ->
+                    group_file_ds:search_files(11, <<"a">>, 1, 10, 1);
+                categories ->
+                    group_file_logic:get_categories(<<"11">>, 1);
+                download ->
+                    group_file_ds:download_file(9, 1);
+                delete ->
+                    group_file_ds:delete_file(9, 1);
+                bind ->
+                    group_file_ds:bind_file(
+                        11, 1, <<"a.txt">>, <<"text/plain">>, <<"key">>, 1, <<>>
+                    )
             end,
         ?assertEqual({error, not_member}, Result),
         ?assertEqual(0, meck:num_calls(group_file_repo, list_by_group, 4)),

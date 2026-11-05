@@ -9,7 +9,7 @@
 "段边界帧对齐；截断帧拒绝——与客户端 talk_record_adts.dart 同一结构规则）；</li>"
 "<li>真实样本总数（帧数×1024）、统一整数舍入时长与冻结输入逐项比对；</li>"
 "<li>限额取 capabilities 与通用附件上限的有效较小值，fail-closed。</li></ul>".
--export([validate/3, limits/0]).
+-export([validate/3, validate/4, limits/0]).
 
 -define(READ_CHUNK, 65536).
 -define(MAX_PARTS, 2000).
@@ -23,9 +23,11 @@
 -spec validate(term(), [map()], map()) ->
     {ok, map()} | {error, term()}.
 validate(Source, Parts, Final) ->
+    validate(Source, Parts, Final, limits()).
+
+validate(Source, Parts, Final, Limits) ->
     SegSizes = [seg_size(P) || P <- Parts],
     Total = lists:sum(SegSizes),
-    Limits = limits(),
     case
         Parts =/= [] andalso
             Total > 0 andalso

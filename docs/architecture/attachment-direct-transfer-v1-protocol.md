@@ -103,7 +103,7 @@ s3_put presign 合同（step-5 实现，此处冻结语义）：
 | EB Member/Platform（business_gateway presign + upload_ref） | business_gateway 字节端点（现状保留）→ direct 化后 s3_put | 26214400 B | 同上 | 实例凭证 scope（现状） |
 | Seat（console 同源 Bearer） | business_gateway（仅同源白名单路径） | 25MiB | 同上 | 同 EB |
 | Visitor/Widget（upload_ref 无登录态） | business_gateway | 25MiB + 魔数/文本尾部规则（Worker） | durable journal 状态机 | upload_ref 单次性（现状） |
-| Admin AI 头像（Admin 身份域） | s3_put（新，替代 FormData 正文） | 图片策略预算 | 处理中不可引用 | 发布前匿名不可读（许可后公开复制） |
+| Admin AI 头像（Admin 身份域） | s3_put（新，替代 FormData 正文） | 图片策略预算 | 处理中不可引用 | 发布前匿名不可读（许可后由受控边缘别名读取已确认私有 winner，不做第二次复制） |
 | internal application | edge_content（原 content 路由保留 + 逐请求授权适配） | — | — | 撤权后下一请求拒绝 |
 
 所有面共通：业务 Bearer 仅送本实例允许路由；`Content-Length` 不可由浏览器脚本自定义（T11）；native fixed-length streaming 验证归 step-8/20b。
@@ -129,6 +129,14 @@ s3_put presign 合同（step-5 实现，此处冻结语义）：
 - 服务端恢复：进程重启后 UNKNOWN_QUARANTINED 保持隔离；FINALIZING 会话由 reconcile 任务续走（复核 attempts 账本），不重复 dispatch。
 - 回滚顺序：停新 grant（新 register 返回 unsupported）→ 记录最大已发期限/活跃会话/在途 attempt → 排空 → 保留 reader/mapping/restricted 函数/quota/GC 账/reconciler（有新数据不破坏性 down）。
 - 兼容 Schema/reader 先行，后启用新会话（10）；新客户端连旧服务端：创建会话前协商失败即走 V5，不混用。
+
+### 录音 assembly staging 升级与恢复
+
+- 迁移 272 前须停止旧版 assembly worker，并核实旧进程及其 PUT/Copy 请求已静默；数据库中仍有 running assembly 时迁移失败。迁移后的数据库版本栅栏拒绝旧版 worker 领取 assembly 任务。
+- 旧版每个曾尝试的 assembly 任务都记入 `attachment_assembly_legacy_unresolved`。未完成核验时，新 assembly staging 注册及 staging 重扫均暂停；受影响任务进入 `legacy_staging_unresolved` 挂起，不自动消耗重试。
+- 人工核验须有旧节点、Worker、在途 PUT/Copy 全部停止及相关 staging 对象盘点的可信证据。数据库函数只保存操作者、时间和证据引用，不验证证据真实性；未经用户授权不得在生产执行 attestation 或恢复。
+- 经授权的数据库超级用户逐项调用 `fn_assembly_legacy_attest(job_id, evidence_ref)`；全部历史项核验后，对相应挂起作业逐项调用 `fn_assembly_legacy_resume(job_id)`。恢复和 attestation 均只记录一次；其他未知写原因不会被该流程解除。
+- 新 staging 在远端 PUT 前冻结身份；写入期间重扫阻断，结果未知或完成后由重扫持续处理可能迟到的写入。存在 staging 或历史核验记录时禁止回滚 272。
 
 ## 9. 未决项（阻塞启用，不阻塞编码）
 

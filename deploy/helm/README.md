@@ -50,9 +50,17 @@ kubectl create secret generic imboy-release-imboy-secrets \
   --from-literal=IMBOY_JWT_KEY='32-byte-random-key' \
   --from-literal=IMBOY_POSTGRE_AES_KEY='32-byte-random-key' \
   --from-literal=IMBOY_ADM_COOKIE_SECRET='32-byte-random-key' \
+  --from-literal=IMBOY_EDGE_INTERNAL_TOKEN='separate-random-secret' \
   --from-literal=GF_SECURITY_ADMIN_PASSWORD='grafana-password' \
   --from-literal=SENTRY_DSN=''
 ```
+
+边缘读取服务与后端共用 `IMBOY_EDGE_INTERNAL_TOKEN`；请使用独立随机密钥，
+并保证已存在或外部管理的 Secret 也包含该键。空值会使边缘服务拒绝启动。
+升级前确认 backend 镜像包含 `/opt/imboy/bin/start_download_edge.sh`；旧镜像无法
+启动 edge sidecar，Pod 不会就绪。头像别名使用当前 API 域，旧头像 URL 保持原样。
+
+Helm 需要至少 32 字符且非占位的 `secrets.edgeInternalToken`，并与 JWT、数据库加密和管理 Cookie 密钥互不相同。请通过受保护的 values 文件提供，不要在命令行传递真实密钥。既有或外部管理的 Secret 若被保留，升级前须通过受控密钥管理流程加入相同的 `IMBOY_EDGE_INTERNAL_TOKEN`。升级渲染需要读取该 Secret；离线 `helm template --is-upgrade` 无法校验，应使用有集群访问权限的服务端 dry-run。
 
 ### 3. 安装
 
@@ -139,3 +147,11 @@ deploy/helm/
 | `imboy_nginx` + `imboy_certbot` | nginx Ingress Controller + cert-manager 替代 |
 | `imboy_prometheus` | 建议使用 kube-prometheus-stack |
 | `imboy_grafana` | 建议使用 kube-prometheus-stack |
+
+Direct cleanup requires a dedicated PostgreSQL LOGIN granted only the `v5_worker`
+role. Set `secrets.directCleanupPgUser` and `secrets.directCleanupPgPassword` (or
+provide the matching keys in the external Secret). The cleanup service refuses
+an application/proof role member or a superuser. Without these credentials it
+keeps tombstones and retries without deleting objects; do not reuse the backend
+application database account. Provisioning the LOGIN and its role membership is
+a separate database administration step.

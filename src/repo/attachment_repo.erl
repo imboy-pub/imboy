@@ -51,7 +51,8 @@
 -export([find_by_path_and_uid/2]).
 
 %% @doc 根据 object_key(path) 查找附件（不带 uid，读鉴权按 scope 在 logic 层判定）
--export([find_by_path/1]).
+-export([find_by_path/1, find_by_path_for_update_tx/2]).
+-export([verify_direct_winner_tx/2]).
 
 -export([find_path_by_id/1]).
 -export([find_path_by_group_file/2]).
@@ -410,12 +411,15 @@ build_filter(_, _) ->
 update_status(Id, Status) when Status =:= -1; Status =:= 0; Status =:= 1 ->
     Tb = tablename(),
     case
-        elib_pg:update(
-            Tb,
-            #{<<"status">> => Status, <<"updated_at">> => elib_dt:now()},
-            <<"id = $1">>,
-            [Id]
-        )
+        elib_pg:with_physical_guard_retry_tx(fun(Conn) ->
+            elib_pg:update(
+                Conn,
+                Tb,
+                #{<<"status">> => Status, <<"updated_at">> => elib_dt:now()},
+                <<"id = $1">>,
+                [Id]
+            )
+        end)
     of
         {ok, _} -> ok;
         {error, Reason} -> {error, Reason}
@@ -532,7 +536,9 @@ intent_purged_delete_tx(Conn, Path, Reason) ->
 -spec intent_ordinary_delete(binary(), binary()) ->
     ok | {error, intent_conflict | tombstone | not_found | term()}.
 intent_ordinary_delete(Path, Reason) ->
-    elib_pg:with_tx(fun(Conn) -> intent_ordinary_delete_tx(Conn, Path, Reason) end).
+    elib_pg:with_physical_guard_retry_tx(fun(Conn) ->
+        intent_ordinary_delete_tx(Conn, Path, Reason)
+    end).
 
 -spec orphan_path_tx(pid() | any(), integer(), map()) -> {ok, [map()]} | {error, term()}.
 orphan_path_tx(Conn, Id, Opts) -> attachment_reference_guard_repo:orphan_path_tx(Conn, Id, Opts).
@@ -582,7 +588,8 @@ find_by_path(ObjectKey) ->
     Tb = tablename(),
     Sql =
         <<
-            "SELECT id, path, url, creator_user_id, scope, scope_ref, status, mime_type, storage_driver,"
+            "SELECT id, path, url, creator_user_id, scope, scope_ref, status, mime_type,"
+            " lifecycle_state, size, file_hash256, storage_driver,"
             " storage_namespace, storage_container, storage_locator_sha256, storage_physical_key FROM ",
             Tb/binary,
             " WHERE path = $1 AND status >= 0 LIMIT 1"
@@ -591,6 +598,44 @@ find_by_path(ObjectKey) ->
         {ok, [Row]} -> {ok, Row};
         {ok, []} -> {error, not_found};
         {error, R} -> {error, R}
+    end.
+
+%% Serialize public copying with lifecycle transitions on the attachment row.
+find_by_path_for_update_tx(Conn, ObjectKey) ->
+    Sql = <<
+        "SELECT id, path, url, creator_user_id, scope, scope_ref, status, mime_type,"
+        " lifecycle_state, size, file_hash256, storage_driver, storage_namespace,"
+        " storage_container, storage_locator_sha256, storage_physical_key"
+        " FROM public.attachment WHERE path=$1 AND status>=0 FOR UPDATE"
+    >>,
+    case elib_pg:query(Conn, Sql, [ObjectKey]) of
+        {ok, [Row]} -> {ok, Row};
+        {ok, []} -> {error, not_found};
+        {error, R} -> {error, R}
+    end.
+
+%% Bind only a confirmed direct-v1 attachment whose winner matches the stored identity.
+-spec verify_direct_winner_tx(any(), binary()) -> ok | {error, term()}.
+verify_direct_winner_tx(Conn, Key) ->
+    Sql = <<
+        "SELECT EXISTS (SELECT 1 FROM public.attachment a JOIN public.attach_pending p"
+        " ON p.object_key=a.path AND p.confirmed_attachment_id=a.id"
+        " JOIN public.attach_direct_attempt w ON w.object_key=a.path AND w.attempt_state='WINNER'"
+        " WHERE a.path=$1 AND a.lifecycle_state='live' AND a.status>=0"
+        " AND p.direct_state='CONFIRMED' AND p.session_state='confirmed'"
+        " AND p.storage_driver=a.storage_driver AND p.storage_namespace=a.storage_namespace"
+        " AND p.storage_container=a.storage_container AND p.storage_locator_sha256=a.storage_locator_sha256"
+        " AND p.direct_expected->>'sha256'=a.file_hash256 AND p.direct_expected->>'size_bytes'=a.size::text"
+        " AND p.direct_expected->>'mime'=a.mime_type"
+        " AND w.target_key=a.storage_physical_key AND w.target_driver=a.storage_driver"
+        " AND w.target_namespace=a.storage_namespace AND w.target_container=a.storage_container"
+        " AND w.proof_sha256=a.file_hash256 AND w.proof_size=a.size) AS verified"
+    >>,
+    case elib_pg:query(Conn, Sql, [Key]) of
+        {ok, [#{<<"verified">> := true}]} -> ok;
+        {ok, [#{<<"verified">> := false}]} -> {error, not_confirmed};
+        {ok, _} -> {error, not_confirmed};
+        {error, Reason} -> {error, Reason}
     end.
 
 %% 仅采用已有群文件绑定；不从裸 URL 猜测附件归属。
@@ -633,7 +678,10 @@ group_access_sql(Tb) ->
         " OR (a.group_file_id IS NOT NULL AND EXISTS (",
         "      SELECT 1 FROM public.group_file gf ",
         "      WHERE gf.id = a.group_file_id AND gf.group_id = gmg.group_id ",
-        "        AND gf.status = 1)))) AS allowed">>.
+        "        AND gf.status = 1)) ", " OR EXISTS (SELECT 1 FROM public.group_album_photo gap ",
+        "      JOIN public.group_album ga ON ga.album_id = gap.album_id ",
+        "      WHERE gap.photo_url = a.path AND gap.group_id = gmg.group_id ",
+        "        AND ga.group_id = gmg.group_id AND gap.status = 1 AND ga.status = 1))) AS allowed">>.
 
 %% @doc 频道附件的父级范围资格；订阅/付费/频道角色仍由原逻辑裁决。
 -spec authorize_channel_scope(integer(), integer()) -> boolean().
@@ -733,15 +781,40 @@ authorize_upload_scope_tx(Conn, Kind, Id, Uid, Retryable) ->
             Table/binary, " WHERE id = $1) FOR SHARE">>,
     case elib_pg:query(Conn, LockSql, [Id, Uid]) of
         {ok, _} ->
-            case elib_pg:query(Conn, scope_access_sql(Kind), [Id, Uid]) of
-                {ok, [#{<<"allowed">> := true}]} -> true;
+            case lock_scope_member_tx(Conn, Kind, Id, Uid) of
+                ok ->
+                    case elib_pg:query(Conn, scope_access_sql(Kind), [Id, Uid]) of
+                        {ok, [#{<<"allowed">> := true}]} ->
+                            true;
+                        {error, #error{code = <<"40P01">>} = Reason} when Retryable ->
+                            {error, Reason};
+                        _ ->
+                            false
+                    end;
                 {error, #error{code = <<"40P01">>} = Reason} when Retryable -> {error, Reason};
-                _ -> false
+                _ ->
+                    false
             end;
         {error, #error{code = <<"40P01">>} = Reason} when Retryable -> {error, Reason};
         _ ->
             false
     end.
+
+%% Serialize confirmation with leave's DELETE on the same membership row.
+lock_scope_member_tx(Conn, group, Id, Uid) ->
+    case
+        elib_pg:query(
+            Conn,
+            <<"SELECT id FROM public.group_member WHERE group_id=$1 AND user_id=$2 AND status=1 FOR SHARE">>,
+            [Id, Uid]
+        )
+    of
+        {ok, [_]} -> ok;
+        {ok, _} -> {error, forbidden};
+        {error, _} = Error -> Error
+    end;
+lock_scope_member_tx(_Conn, channel, _Id, _Uid) ->
+    ok.
 
 %% 固定 grp 别名供群、频道共用；只拼接内部 SQL，参数仍使用 $1/$2。
 -spec resource_scope_access_sql() -> binary().

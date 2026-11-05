@@ -24,7 +24,12 @@ main(_) ->
     Token = os:getenv("EDGE_INTERNAL_TOKEN", ""),
     Ctx = {AuthorizeUrl, Token},
     Dispatch = cowboy_router:compile([
-        {'_', [{"/edge", attachment_edge_proxy_handler, Ctx}]}
+        {'_', [
+            {"/edge", attachment_edge_proxy_handler, Ctx},
+            {"/api/v1/talk-records/client-audio-source", attachment_edge_proxy_handler,
+                {AuthorizeUrl, Token, client_audio}},
+            {"/_avatar/:alias", attachment_edge_proxy_handler, {AuthorizeUrl, Token, avatar}}
+        ]}
     ]),
     {ok, _} = cowboy:start_clear(edge_http, [{port, Port}], #{env => #{dispatch => Dispatch}}),
     io:format(standard_error, "EDGE_READY port=~p~n", [Port]),

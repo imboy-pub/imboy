@@ -86,6 +86,7 @@ owned_env_names() ->
 %% These are ceilings, not forced waits; nested original timeouts remain intact.
 budgets() ->
     [
+        {talk_record_direct_contract_tests, 1260},
         {talk_record_assembly_relay_tests, 1260},
         {talk_record_capture_tests, 4740},
         {talk_record_content_tests, 3420},

@@ -26,6 +26,9 @@
     object_key/3,
     register_v5/9,
     register_session_v5/6,
+    register_direct_session_v5/6,
+    bind_direct/8,
+    direct_proof/3,
     reserve_registered_put/3,
     recheck_registered_put/4,
     v5_session/3,
@@ -250,7 +253,7 @@ recheck_registered_put(Org, Ws, D, Identity) ->
 registered_put(Org, Ws, D, Mode) ->
     case registered_put_receipt(D) of
         {ok, Receipt, Expiry} ->
-            Result = elib_pg:with_tx(fun(Conn) ->
+            Result = elib_pg:with_physical_guard_retry_tx(fun(Conn) ->
                 registered_put_tx(Conn, Org, Ws, D, Mode, Receipt, Expiry)
             end),
             registered_put_result(Result);
@@ -381,7 +384,19 @@ registered_put_result(Result) ->
 
 %% UUID 查重、pending 创建与登记必须在同一事务，失败不能留下孤儿主行。
 register_session_v5(Org, Ws, Descriptor, Cid, Registration, {Deadline, Expiry}) ->
-    Result = elib_pg:with_tx(fun(Conn) ->
+    register_session_v5(Org, Ws, Descriptor, Cid, Registration, {Deadline, Expiry}, legacy).
+
+%% Internal direct registration keeps both domain records in the same transaction.
+register_direct_session_v5(Org, Ws, Descriptor, Cid, Registration, {Deadline, Expiry}) ->
+    case maps:get(<<"protocol">>, Registration, undefined) of
+        <<"direct-v1">> ->
+            register_session_v5(Org, Ws, Descriptor, Cid, Registration, {Deadline, Expiry}, direct);
+        _ ->
+            {error, invalid_direct_registration}
+    end.
+
+register_session_v5(Org, Ws, Descriptor, Cid, Registration, {Deadline, Expiry}, Mode) ->
+    Result = elib_pg:with_physical_guard_retry_tx(fun(Conn) ->
         tx_query(
             Conn, <<"SELECT id FROM workspace WHERE organization_id=$1 AND id=$2 FOR UPDATE">>, [
                 Org, Ws
@@ -400,9 +415,22 @@ register_session_v5(Org, Ws, Descriptor, Cid, Registration, {Deadline, Expiry}) 
             )
         of
             [] ->
-                register_session_live(
-                    Conn, Org, Ws, Descriptor, Cid, Registration, Deadline, Expiry
-                );
+                case
+                    register_session_live(
+                        Conn, Org, Ws, Descriptor, Cid, Registration, Deadline, Expiry
+                    )
+                of
+                    {ok, Id} when Mode =:= direct ->
+                        Subject = maps:get(<<"subject">>, Registration),
+                        [#{<<"object_key">> := Key}] = tx_query(
+                            Conn,
+                            <<"SELECT fn_eb_direct_reserve($1,$2,$3,$4::jsonb) AS object_key">>,
+                            [Org, Ws, Id, jsone:encode(Subject)]
+                        ),
+                        {ok, #{asset_id => Id, object_key => Key}};
+                    Other ->
+                        Other
+                end;
             _ ->
                 {error, not_found}
         end
@@ -410,6 +438,45 @@ register_session_v5(Org, Ws, Descriptor, Cid, Registration, {Deadline, Expiry}) 
     case Result of
         {rollback, Error} -> Error;
         Other -> Other
+    end.
+
+direct_proof(Org, Ws, Asset) ->
+    case elib_pg:query(<<"SELECT * FROM fn_eb_direct_proof_view($1,$2,$3)">>, [Org, Ws, Asset]) of
+        {ok, [Row]} ->
+            Fence = maps:get(<<"fence">>, Row),
+            {ok, Row#{
+                <<"fence">> =>
+                    case Fence of
+                        B when is_binary(B) -> jsone:decode(B);
+                        _ -> Fence
+                    end
+            }};
+        {ok, []} ->
+            {error, proof_pending};
+        {error, Reason} ->
+            {error, eb_pg_store_sql:normalize_error(Reason)}
+    end.
+
+%% The caller supplies only an independently recorded Worker proof fingerprint.
+bind_direct(Org, Ws, Asset, Subject, Fence, ReceiptSha, RulesetSha, Expiry) ->
+    case
+        elib_pg:query(
+            <<"SELECT fn_eb_direct_bind($1,$2,$3,$4::jsonb,$5::jsonb,$6,$7,$8) AS id">>,
+            [
+                Org,
+                Ws,
+                Asset,
+                jsone:encode(Subject),
+                jsone:encode(Fence),
+                ReceiptSha,
+                RulesetSha,
+                Expiry
+            ]
+        )
+    of
+        {ok, [#{<<"id">> := Asset}]} -> {ok, Asset};
+        {ok, _} -> {error, binding_not_returned};
+        {error, Reason} -> {error, eb_pg_store_sql:normalize_error(Reason)}
     end.
 
 register_session_live(Conn, Org, Ws, D, Cid, Registration, Deadline, Expiry) ->
@@ -618,18 +685,21 @@ v5_session_by_cid(OrgId, WsId, Cid) ->
 renew_v5(OrgId, WsId, AssetId, NewExpirySec) ->
     eb_pg_exec:with_tenant(OrgId, WsId, fun() ->
         case
-            elib_pg:query(
-                <<
-                    "UPDATE enterprise_asset SET upload_expires_at ="
-                    " LEAST(session_deadline,GREATEST(COALESCE(upload_expires_at, to_timestamp($4::double precision)),"
-                    " to_timestamp($4::double precision)))"
-                    " WHERE organization_id = $1 AND workspace_id = $2 AND id = $3"
-                    " AND status = 'pending_confirm' AND lifecycle_state = 'live' AND client_upload_id IS NOT NULL"
-                    " AND session_deadline IS NOT NULL AND session_deadline > now()"
-                    " RETURNING extract(epoch from upload_expires_at)::bigint AS committed_expiry"
-                >>,
-                [OrgId, WsId, AssetId, NewExpirySec]
-            )
+            elib_pg:with_physical_guard_retry_tx(fun(Conn) ->
+                elib_pg:query(
+                    Conn,
+                    <<
+                        "UPDATE enterprise_asset SET upload_expires_at ="
+                        " LEAST(session_deadline,GREATEST(COALESCE(upload_expires_at, to_timestamp($4::double precision)),"
+                        " to_timestamp($4::double precision)))"
+                        " WHERE organization_id = $1 AND workspace_id = $2 AND id = $3"
+                        " AND status = 'pending_confirm' AND lifecycle_state = 'live' AND client_upload_id IS NOT NULL"
+                        " AND session_deadline IS NOT NULL AND session_deadline > now()"
+                        " RETURNING extract(epoch from upload_expires_at)::bigint AS committed_expiry"
+                    >>,
+                    [OrgId, WsId, AssetId, NewExpirySec]
+                )
+            end)
         of
             {ok, [Row | _]} ->
                 {ok, #{committed_expires_at => maps:get(<<"committed_expiry">>, Row)}};
@@ -647,7 +717,7 @@ iso8601_utc(UnixSeconds) ->
 %% Workspace FOR UPDATE conflicts with hold INSERT's FK KEY SHARE lock.
 %% Claim is committed before network deletion; confirm can never revive this tombstone.
 claim_pending_cleanup(Org, Ws, Id, Now, Ttl) ->
-    Result = elib_pg:with_tx(fun(Conn) ->
+    Result = elib_pg:with_physical_guard_retry_tx(fun(Conn) ->
         case
             elib_pg:query(
                 Conn,
@@ -722,7 +792,7 @@ finish_pending_cleanup_tx(Conn, Org, Ws, Id) ->
 %% A committed deletion intent owns this ID until the old object is gone.
 %% KEY SHARE precedes the queue read, so a waiting insert sees a fresh post-purge snapshot.
 guarded_insert(Org, Ws, Id, Params) ->
-    Result = elib_pg:with_tx(fun(Conn) ->
+    Result = elib_pg:with_physical_guard_retry_tx(fun(Conn) ->
         case
             elib_pg:query(
                 Conn,
@@ -784,9 +854,22 @@ direct_session_row(ObjectKey) ->
     case
         elib_pg:query(
             <<
-                "SELECT object_key, bucket, scope, creator_user_id, session_state, direct_state,"
-                " upload_registration, storage_driver, storage_namespace, storage_container,"
-                " storage_locator_sha256 FROM attach_pending WHERE object_key=$1"
+                "SELECT p.object_key, p.bucket, p.scope, p.creator_user_id, p.session_state, p.direct_state,"
+                " p.upload_registration, a.storage_driver, a.storage_namespace, a.storage_container,"
+                " a.storage_locator_sha256, a.storage_physical_key, a.file_hash256, a.size,"
+                " a.mime_type, a.id AS attachment_id, w.attempt_no, w.dispatch_cas_uuid"
+                " FROM attach_pending p JOIN attachment a ON a.id=p.confirmed_attachment_id AND a.path=p.object_key"
+                " JOIN attach_direct_attempt w ON w.object_key=p.object_key AND w.attempt_state='WINNER'"
+                " WHERE p.object_key=$1 AND p.direct_state='CONFIRMED' AND p.session_state='confirmed'"
+                " AND a.lifecycle_state='live' AND a.status>=0"
+                " AND p.creator_user_id=a.creator_user_id AND p.scope=a.scope"
+                " AND p.storage_driver=a.storage_driver AND p.storage_namespace=a.storage_namespace"
+                " AND p.storage_container=a.storage_container AND p.storage_locator_sha256=a.storage_locator_sha256"
+                " AND p.direct_expected->>'sha256'=a.file_hash256 AND p.direct_expected->>'size_bytes'=a.size::text"
+                " AND p.direct_expected->>'mime'=a.mime_type AND w.target_key=a.storage_physical_key"
+                " AND w.target_driver=a.storage_driver AND w.target_namespace=a.storage_namespace"
+                " AND w.target_container=a.storage_container AND w.proof_sha256=a.file_hash256"
+                " AND w.proof_size=a.size"
             >>,
             [ObjectKey]
         )

@@ -16,7 +16,7 @@
 -include_lib("epgsql/include/epgsql.hrl").
 
 -define(APP, <<"990910">>).
--define(ORG, <<"990911">>).
+-define(ORG, <<"0">>).
 
 avatar_test_() ->
     {foreach, fun setup/0, fun cleanup/1, [
@@ -163,7 +163,7 @@ app_subject_full_chain_confirmed() ->
     %% creator=0（application 主体）；guard 要求 scope_ref='org:O/app:A'
     ?assertEqual(0, maps:get(<<"creator_user_id">>, Att)),
     ?assertEqual(<<"public">>, maps:get(<<"scope">>, Att)),
-    ?assertEqual(<<"org:990911/app:990910">>, maps:get(<<"scope_ref">>, Att)),
+    ?assertEqual(<<"org:0/app:990910">>, maps:get(<<"scope_ref">>, Att)),
     %% pending 侧 subject 也为 application（不借 Human 凭据）
     {ok, [Pending]} = elib_pg:query(
         <<"SELECT upload_registration FROM attach_pending WHERE object_key=$1">>, [Key]
@@ -176,6 +176,13 @@ app_subject_full_chain_confirmed() ->
 publish_copies_to_public_and_recovers() ->
     {Key, {ok, #{attempt_id := No}}} = prepare_to_granted(),
     {ok, #{state := <<"CONFIRMED">>}} = finalize_in_mock(Key, No),
+    ok = meck:new(attachment_worker_port, [passthrough, no_link]),
+    ok = meck:expect(
+        attachment_worker_port,
+        scan_external,
+        1,
+        fun(_) -> {ok, #{verified => true, sha256 => hex64(16#AA), size => 10}} end
+    ),
     %% V3-13（G13）：发布是服务端跨桶 Copy（private winner → 公开桶），
     %% 正文零过 BEAM——read_snapshot/put_object 回环不存在（负向断言）。
     ok = meck:new(attachment_storage_garage, [passthrough, no_link]),
@@ -191,9 +198,27 @@ publish_copies_to_public_and_recovers() ->
     ),
     ok = meck:new(elib_oss, [passthrough, no_link]),
     try
+        %% 扫描摘要不符时不得发起公开 Copy。
+        ok = meck:expect(
+            attachment_worker_port,
+            scan_external,
+            1,
+            fun(_) -> {ok, #{verified => true, sha256 => hex64(16#BB), size => 10}} end
+        ),
+        ?assertEqual(
+            {error, avatar_proof_mismatch},
+            attach_direct_logic:publish_avatar(Key, ?APP, <<>>)
+        ),
+        ?assertEqual(0, meck:num_calls(attachment_storage_garage, copy_cross, '_')),
+        ok = meck:expect(
+            attachment_worker_port,
+            scan_external,
+            1,
+            fun(_) -> {ok, #{verified => true, sha256 => hex64(16#AA), size => 10}} end
+        ),
         %% 发布前：公开桶零 BEAM 写操作（T35/I13：验证与发布许可前匿名不可读）
         ?assertEqual(0, meck:num_calls(elib_oss, put_object, '_')),
-        {ok, Pub} = attach_direct_logic:publish_avatar(Key, <<"agent-1">>, <<>>),
+        {ok, Pub} = attach_direct_logic:publish_avatar(Key, ?APP, <<>>),
         ?assertMatch(
             <<"https://s3.imboy.pub/app990910/avatar/", _/binary>>,
             maps:get(public_url, Pub)
@@ -217,7 +242,7 @@ publish_copies_to_public_and_recovers() ->
     try
         ?assertMatch(
             {error, {publish_failed, _}},
-            attach_direct_logic:publish_avatar(Key, <<"agent-1">>, <<>>)
+            attach_direct_logic:publish_avatar(Key, ?APP, <<>>)
         ),
         %% 失败不重试（一次授权一次请求）；不写错误头像引用
         ?assertEqual(1, meck:num_calls(attachment_storage_garage, copy_cross, '_'))
@@ -230,8 +255,9 @@ publish_copies_to_public_and_recovers() ->
     ),
     ?assertEqual(
         {error, not_confirmed},
-        attach_direct_logic:publish_avatar(Key2, <<"agent-1">>, <<>>)
+        attach_direct_logic:publish_avatar(Key2, ?APP, <<>>)
     ),
+    meck:unload(attachment_worker_port),
     ok.
 
 register_idempotent_same_declaration() ->
@@ -272,7 +298,7 @@ human_session_rejected_on_admin_face() ->
     try
         ?assertEqual(
             {error, not_application_session},
-            attach_direct_logic:publish_avatar(Key, <<"agent-1">>, <<>>)
+            attach_direct_logic:publish_avatar(Key, ?APP, <<>>)
         ),
         ?assertEqual(0, meck:num_calls(elib_oss, put_object, '_')),
         ?assertEqual(0, meck:num_calls(attachment_storage_garage, read_snapshot, '_'))

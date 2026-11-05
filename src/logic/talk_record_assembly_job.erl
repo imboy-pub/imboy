@@ -7,11 +7,11 @@ run(Job) ->
     %% prepare（tx 权益 + 冻结 final 输入的附件事实预检）→ 事务外 I/O
     %% （成品对象一次有界下载 → 分段范围 SHA + ADTS + 样本轴校验——
     %% 服务器读字节，不信客户端声明；小 JSON manifest 写私有临时文件 +
-    %% Worker staging 上传）→ tx reserve（manifest 真值建行）→ 服务端
-    %% Copy + finish → tx publish（绑定真实客户端成品附件，无派生副本）。
+    %% 临时文件）→ tx reserve（manifest 真值建行）→ Worker staging 上传、
+    %% 服务端 Copy + finish → tx publish（绑定真实客户端成品附件）。
     case tx(fun(C) -> prepare_tx(C, Job) end) of
         {ok, P} ->
-            case validate_final(P) of
+            case validate_final(P, Job) of
                 {ok, Final} ->
                     run_manifest(P#{final_audio => Final}, Job);
                 {error, _} = E ->
@@ -21,17 +21,54 @@ run(Job) ->
             Error
     end.
 
-validate_final(P) ->
+validate_final(P, Job) ->
     Final = maps:get(final_audio, P),
     Row = maps:get(<<"_row">>, Final),
     Parts = maps:get(parts, P),
-    Max = maps:get(max_bytes, talk_record_audio_validate:limits()),
-    attachment_artifact_reader:with_source(Row, Max, fun(Source) ->
-        case talk_record_audio_validate:validate(Source, Parts, Final) of
-            {ok, _Summary} -> {ok, Final};
-            {error, _} = E -> E
-        end
-    end).
+    Limits = talk_record_audio_validate:limits(),
+    Size = maps:get(<<"size">>, Row, 0),
+    Sha = maps:get(<<"file_hash256">>, Row, <<>>),
+    case
+        is_integer(Size) andalso Size > 0 andalso Size =< maps:get(max_bytes, Limits) andalso
+            is_binary(Sha) andalso byte_size(Sha) =:= 64
+    of
+        false -> {error, artifact_integrity_mismatch};
+        true -> validate_final_location(Row, Parts, Final, Job, Limits, Size, Sha)
+    end.
+
+validate_final_location(Row, Parts, Final, Job, Limits, Size, Sha) ->
+    case attachment_storage:frozen_location(maps:get(<<"path">>, Row), Row) of
+        {ok, #{driver := garage} = Location} ->
+            case attachment_storage_garage:presign_snapshot(Location, 300) of
+                {ok, Url} ->
+                    Input = maps:without([<<"_row">>], Final),
+                    Binding = crypto:hash(
+                        sha256,
+                        term_to_binary({
+                            crypto:strong_rand_bytes(32), Job, Row, Parts, Input, Limits
+                        })
+                    ),
+                    Task = #{
+                        url => Url,
+                        size => Size,
+                        sha256 => Sha,
+                        parts => Parts,
+                        final => Input,
+                        limits => Limits,
+                        binding => Binding
+                    },
+                    case attachment_worker_port:validate_audio(Task) of
+                        {ok, _} -> {ok, Final};
+                        {error, _} = Error -> Error
+                    end;
+                Error ->
+                    Error
+            end;
+        {ok, _} ->
+            {error, location_unverified};
+        Error ->
+            Error
+    end.
 
 run_manifest(P, Job) ->
     Bytes = jsone:encode(maps:get(manifest, P)),
@@ -51,31 +88,24 @@ run_manifest(P, Job) ->
     ok = file:close(F),
     ManifestStaging = staging_key(Job, <<"manifest">>),
     try
-        case staging_upload(ManifestFile, <<"application/json">>, ManifestStaging) of
-            {ok, _} ->
-                case tx(fun(C) -> reserve_tx(C, Job, P, Bytes) end) of
-                    {ok, Ready} ->
-                        %% worker 合同 {ok, published}：publish 成功统一收敛
-                        %% 为 tagged 结果（publish_tx 的内部视图不透传）。
-                        case
-                            talk_record_assembly_artifact:write(Ready, #{
-                                manifest_staging => ManifestStaging,
-                                manifest_file => ManifestFile
-                            })
-                        of
-                            ok ->
-                                case tx(fun(C) -> publish_tx(C, Job, Ready) end) of
-                                    {ok, _} -> {ok, published};
-                                    E -> E
-                                end;
-                            Error ->
-                                Error
+        case tx(fun(C) -> reserve_tx(C, Job, P, Bytes) end) of
+            {ok, Ready} ->
+                case
+                    talk_record_assembly_artifact:write(Ready, #{
+                        manifest_staging => ManifestStaging,
+                        manifest_file => ManifestFile
+                    })
+                of
+                    ok ->
+                        case tx(fun(C) -> publish_tx(C, Job, Ready) end) of
+                            {ok, _} -> {ok, published};
+                            Error -> Error
                         end;
                     Error ->
                         Error
                 end;
-            {error, _} = E ->
-                E
+            Error ->
+                Error
         end
     after
         case {file:delete(ManifestFile), file:del_dir(Dir)} of
@@ -88,20 +118,6 @@ staging_key(Job, Role) ->
     Jid = maps:get(<<"id">>, Job),
     Nonce = binary:encode_hex(crypto:strong_rand_bytes(16), lowercase),
     <<"assembly-staging/", (integer_to_binary(Jid))/binary, "/", Role/binary, "/", Nonce/binary>>.
-
-staging_upload(Path, Mime, StagingKey) ->
-    Cfg = application:get_env(imboy, garage, #{}),
-    Task = #{
-        src_path => Path,
-        endpoint => maps:get(endpoint, Cfg),
-        ak => maps:get(access_key, Cfg),
-        sk => maps:get(secret_key, Cfg),
-        bucket => maps:get(bucket, Cfg, <<"imboy">>),
-        region => maps:get(region, Cfg, <<"garage">>),
-        object_key => StagingKey,
-        mime => Mime
-    },
-    attachment_worker_port:upload_file(Task).
 
 prepare_tx(C, Job) ->
     ok = gate(C, Job),

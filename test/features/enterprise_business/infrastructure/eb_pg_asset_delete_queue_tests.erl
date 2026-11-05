@@ -1,6 +1,25 @@
 -module(eb_pg_asset_delete_queue_tests).
 -include_lib("eunit/include/eunit.hrl").
 
+global_claim_preserves_physical_key_test() ->
+    pure_mock_fixture:run(fun() ->
+        Key = <<"physical/object">>,
+        pure_mock_fixture:with_mocks(
+            [
+                {elib_pg, [
+                    {query, 2, fun(Sql, [_]) ->
+                        ?assertNotEqual(nomatch, binary:match(Sql, <<"out_storage_physical_key">>)),
+                        {ok, [#{<<"out_storage_physical_key">> => Key}]}
+                    end}
+                ]}
+            ],
+            fun() ->
+                {ok, Row} = eb_pg_asset_delete_queue:claim(elib_uuid:gen_v7()),
+                ?assertEqual(Key, maps:get(<<"out_storage_physical_key">>, Row))
+            end
+        )
+    end).
+
 worker_result_test_() ->
     [
         {timeout, 35,

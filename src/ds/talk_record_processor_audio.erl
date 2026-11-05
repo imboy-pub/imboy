@@ -16,7 +16,12 @@
 %% 对象被换/凭据失效均以 {error,_} 结束，模型作业按既有 classify 走
 %% requeue/suspend，绝不以缺字节的临时文件进入 processor 发布链。
 with_audio(Aid, Fun) ->
-    {ok, Row} = published_row(Aid),
+    case published_row(Aid) of
+        {ok, Row} -> with_published_audio(Row, Fun);
+        {error, _} = Error -> Error
+    end.
+
+with_published_audio(Row, Fun) ->
     {Dir, Path} = tmp_target(),
     ok = file:make_dir(Dir),
     ok = file:change_mode(Dir, 8#700),
@@ -28,8 +33,7 @@ with_audio(Aid, Fun) ->
                 cleanup(Path, Dir)
             end;
         {error, _} = E ->
-            %% Worker 校验失败不写盘（fetch 先验 size+sha 再落盘）；残留
-            %% 目录尽力清理，不遮蔽原始失败（作业按 {error,_} settle）。
+            %% Worker 校验失败不写盘，残留目录尽力清理且不遮蔽原始失败。
             discard(Path, Dir),
             E
     end.
@@ -40,9 +44,8 @@ published_row(Aid) ->
             elib_pg:query(
                 C,
                 <<
-                    "SELECT a.path, a.size, a.file_hash256,"
-                    " a.storage_driver, a.storage_namespace, a.storage_container,"
-                    " a.storage_locator_sha256, a.storage_physical_key"
+                    "SELECT a.path, a.size, a.file_hash256, a.storage_driver, a.storage_namespace,"
+                    " a.storage_container, a.storage_physical_key, a.storage_locator_sha256"
                     " FROM talk_record_assembly m"
                     " JOIN attachment a ON a.id = m.audio_attachment_id"
                     " JOIN talk_record_job j ON j.record_id = m.record_id"
@@ -54,7 +57,8 @@ published_row(Aid) ->
             )
         of
             {ok, [R]} -> {ok, R};
-            _ -> {error, audio_source_denied}
+            {ok, _} -> {error, audio_source_denied};
+            {error, _} = Error -> Error
         end
     end).
 
@@ -70,14 +74,19 @@ fetch_audio(#{<<"path">> := P, <<"size">> := Size, <<"file_hash256">> := Hash} =
 ->
     case attachment_storage:frozen_location(P, Row) of
         {ok, #{driver := garage} = I} ->
-            {ok, Url} = attachment_storage_garage:presign_snapshot(I, 600),
-            case
-                attachment_worker_port:fetch_files([
-                    #{url => Url, path => TmpPath, sha256_hex => Hash, size => Size}
-                ])
-            of
-                {ok, _} -> ok;
-                {error, _} = E -> E
+            case attachment_storage_garage:presign_snapshot(I, 600) of
+                {ok, Url} ->
+                    case
+                        attachment_worker_port:fetch_files([
+                            #{url => Url, path => TmpPath, sha256_hex => Hash, size => Size}
+                        ])
+                    of
+                        {ok, #{fetched := 1}} -> ok;
+                        {ok, _} -> {error, worker_incomplete_fetch};
+                        {error, _} = E -> E
+                    end;
+                {error, _} = E ->
+                    E
             end;
         {ok, #{driver := disk}} ->
             {error, disk_driver_retired};

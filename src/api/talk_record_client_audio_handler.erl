@@ -36,7 +36,7 @@ respond(Req, T, #{size := N, headers := Base}) ->
                         _ -> deny(Req)
                     end;
                 _ ->
-                    stream(Req, T, {Start, Length}, Status, H)
+                    cowboy_req:reply(503, #{<<"cache-control">> => <<"no-store">>}, <<>>, Req)
             end;
         _ ->
             cowboy_req:reply(
@@ -49,20 +49,6 @@ respond(Req, T, #{size := N, headers := Base}) ->
                 Req
             )
     end.
-stream(Req, T, Range, Status, H) ->
-    Reply = cowboy_req:stream_reply(Status, H, Req),
-    F = fun(Bytes, Acc) ->
-        ok = cowboy_req:stream_body(Bytes, nofin, Reply),
-        Acc
-    end,
-    %% A revocation/truncation ends the declared-length stream without exposing
-    %% request state through an unhandled exception or writing another response.
-    case talk_record_client_audio_logic:fold(T, Range, F, ok) of
-        {ok, ok} -> ok;
-        _ -> logger:warning("talk_record provider audio stream interrupted")
-    end,
-    _ = cowboy_req:stream_body(<<>>, fin, Reply),
-    Reply.
 safe_open(Req) ->
     try
         open(Req)

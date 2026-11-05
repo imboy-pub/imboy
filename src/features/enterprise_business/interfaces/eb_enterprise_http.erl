@@ -542,7 +542,8 @@ with_seat_upload_url(_Req, _WorkspaceId, Other) ->
 
 seat_put_target(Req, WorkspaceId, View) ->
     Ref = maps:get(upload_ref, View, undefined),
-    case is_https_base(api_base_url()) andalso is_binary(Ref) andalso Ref =/= <<>> of
+    Base = upload_base(cowboy_req:path(Req)),
+    case is_https_base(Base) andalso is_binary(Ref) andalso Ref =/= <<>> of
         true ->
             case org_id(Req) of
                 {ok, OrgId} when is_integer(WorkspaceId) ->
@@ -564,7 +565,7 @@ seat_put_target(Req, WorkspaceId, View) ->
                     ]),
                     case Path of
                         <<"/api/v1/seat/", _/binary>> -> <<Path/binary, $?, Query/binary>>;
-                        _ -> <<(api_base_url())/binary, Path/binary, $?, Query/binary>>
+                        _ -> <<Base/binary, Path/binary, $?, Query/binary>>
                     end;
                 _Other ->
                     undefined
@@ -573,12 +574,9 @@ seat_put_target(Req, WorkspaceId, View) ->
             undefined
     end.
 
-%% API 绝对 URL 基址（`{imboy, base_url}`；仓内既有派生方式——widget 面
-%% `cs_widget_support:api_base/0` 同源配置，未配置 = 空串）。此处直读
-%% application env（等价 config_ds:env/3 的取值口径），保持本模块的静态
-%% 扫描面（A05：零 `*_ds:` 引用）不变。
-api_base_url() ->
-    application:get_env(imboy, base_url, <<>>).
+%% Seat 使用 Widget 同源地址；企业 API 保持原 API 基址。
+upload_base(<<"/api/v1/seat/", _/binary>>) -> imboy_widget_origin:base();
+upload_base(_) -> application:get_env(imboy, base_url, <<>>).
 
 is_https_base(<<"https://", _Rest/binary>>) ->
     true;

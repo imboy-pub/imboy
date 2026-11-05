@@ -12,7 +12,7 @@
 -export([main/0]).
 
 -define(APP, <<"990910">>).
--define(ORG, <<"990911">>).
+-define(ORG, <<"0">>).
 -define(HUMAN_UID, 990915).
 -define(GARAGE, "http://127.0.0.1:13910").
 
@@ -58,7 +58,9 @@ main() ->
     end.
 
 run_assertions(Cfg) ->
-    Body = <<"G13-AVATAR-PNG-BYTES-", 0:(32 * 8)>>,
+    Body = base64:decode(
+        <<"iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/aX8AAAAASUVORK5CYII=">>
+    ),
     Sha = binary:encode_hex(crypto:hash(sha256, Body), lowercase),
     %% 1) register→declare→grant（application 主体，creator=0 合成）
     {ok, #{object_key := Key}} = attach_direct_logic:register_application(
@@ -157,12 +159,12 @@ run_assertions(Cfg) ->
     io:format("pre_publish_target_absent: ok~n"),
     %% 5) publish：服务端跨桶 Copy（零 BEAM 正文）
     {ok, #{public_url := _PubUrl, public_key := PublicKey}} =
-        attach_direct_logic:publish_avatar(Key, <<"agent-gate">>, <<>>),
+        attach_direct_logic:publish_avatar(Key, ?APP, <<>>),
     %% 6) 目标对象字节与上传逐字节一致（签名 GET 验证内容）
     {ok, Body} = public_get(Cfg, PublicKey),
     io:format("publish_copy_bytes_exact: ~pB ok~n", [byte_size(Body)]),
     %% 7) 重复发布幂等（CopyObject 覆盖语义；不产生错误引用）
-    {ok, _} = attach_direct_logic:publish_avatar(Key, <<"agent-gate">>, <<>>),
+    {ok, _} = attach_direct_logic:publish_avatar(Key, ?APP, <<>>),
     {ok, Body} = public_get(Cfg, PublicKey),
     io:format("republish_idempotent: ok~n"),
     %% 8) 反例：Human 主体会话不可经 Admin 面发布（T28 身份域隔离；

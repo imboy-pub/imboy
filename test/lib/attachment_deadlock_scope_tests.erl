@@ -9,6 +9,8 @@ scope_deadlock_test_() ->
         fun(_) -> ?_test(resolver_deadlock_uses_transaction_connection()) end,
         fun(_) -> ?_test(upload_scope_lock_error_propagates()) end,
         fun(_) -> ?_test(upload_scope_query_error_propagates()) end,
+        fun(_) -> ?_test(upload_scope_member_lock_error_propagates()) end,
+        fun(_) -> ?_test(upload_scope_missing_group_member_rejected()) end,
         fun(_) -> ?_test(upload_scope_other_error_remains_false()) end
     ]}.
 
@@ -60,15 +62,39 @@ upload_scope_lock_error_propagates() ->
 upload_scope_query_error_propagates() ->
     Err = error_record(<<"40P01">>),
     meck:expect(elib_pg, query, fun(_, Sql, _) ->
-        case binary:match(iolist_to_binary(Sql), <<"FOR SHARE">>) of
-            nomatch -> {error, Err};
-            _ -> {ok, []}
+        case iolist_to_binary(Sql) of
+            <<"SELECT wm.status FROM public.workspace_member wm ", _/binary>> -> {ok, []};
+            <<"SELECT id FROM public.group_member ", _/binary>> -> {ok, [#{<<"id">> => 4}]};
+            <<"SELECT EXISTS (SELECT 1 FROM public.\"group\" grp ", _/binary>> -> {error, Err}
         end
     end),
     ?assertEqual(
         {error, Err}, attachment_repo:authorize_upload_scope_tx_retryable(fake, group, 1, 2)
     ),
     ?assertEqual(false, attachment_repo:authorize_upload_scope_tx(fake, group, 1, 2)).
+upload_scope_member_lock_error_propagates() ->
+    Err = error_record(<<"40P01">>),
+    meck:expect(elib_pg, query, fun(_, Sql, _) ->
+        case iolist_to_binary(Sql) of
+            <<"SELECT wm.status FROM public.workspace_member wm ", _/binary>> -> {ok, []};
+            <<"SELECT id FROM public.group_member ", _/binary>> -> {error, Err}
+        end
+    end),
+    ?assertEqual(
+        {error, Err}, attachment_repo:authorize_upload_scope_tx_retryable(fake, group, 1, 2)
+    ),
+    ?assertEqual(false, attachment_repo:authorize_upload_scope_tx(fake, group, 1, 2)).
+
+upload_scope_missing_group_member_rejected() ->
+    meck:expect(elib_pg, query, fun(_, Sql, _) ->
+        case iolist_to_binary(Sql) of
+            <<"SELECT wm.status FROM public.workspace_member wm ", _/binary>> -> {ok, []};
+            <<"SELECT id FROM public.group_member ", _/binary>> -> {ok, []}
+        end
+    end),
+    ?assertEqual(false, attachment_repo:authorize_upload_scope_tx_retryable(fake, group, 1, 2)),
+    ?assertEqual(false, attachment_repo:authorize_upload_scope_tx(fake, group, 1, 2)).
+
 upload_scope_other_error_remains_false() ->
     Err = error_record(<<"23505">>),
     meck:expect(elib_pg, query, fun(_, _, _) -> {error, Err} end),

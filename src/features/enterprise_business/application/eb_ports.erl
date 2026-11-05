@@ -234,6 +234,9 @@ contracts() ->
             {session_by_client_id, 3},
             {renew_session, 4},
             {register_session, 6},
+            {register_direct_session, 6},
+            {bind_direct, 8},
+            {direct_proof, 3},
             {direct_session_row, 1}
         ],
         edge_asset() => [{check_download, 3}, {presign_download, 3}],

@@ -128,19 +128,14 @@ check_tsid_positive_int() {
     fi
 }
 
-# 校验 imboy.base_url（IMBOY_BASE_URL → {imboy, base_url}）恰为 Widget 网关 origin：
-# check_base_url_matches_cs_widget_domain <URL_VAR> <url> <DOMAIN_VAR> <domain>
-# 坐席附件 presign 下发 upload.url 的绝对基址即该值，必须恰为 https://<CS_WIDGET_DOMAIN>
-#（https、无路径、无尾斜杠）——配错源的表现是坐席附件链 fail-closed 整体不可用
-#（DEF-SC153-14，规格见 deploy/cs-seat-console-embed.md §5）。缺失值交由 check_var
-# 报告，此处不重复计（与 check_secret_strength 同口径）。
-check_base_url_matches_cs_widget_domain() {
+# 校验 API 绝对基址恰为 HTTPS 网关 origin；缺失由 check_var 报告。
+check_base_url_matches_domain() {
     local url_var="$1" url="$2" dom_var="$3" dom="$4"
     if [[ -z "$url" || -z "$dom" ]]; then
         return 0
     fi
     if [[ "$url" != "https://${dom}" ]]; then
-        err "${url_var}（${url}）必须恰为 https://<${dom_var}>（即 https://${dom}，https、无路径、无尾斜杠）——坐席附件 presign 以其为上传基址，配错源整条附件链 fail-closed 不可用；修复见 deploy/cs-seat-console-embed.md §5（DEF-SC153-14）"
+        err "${url_var}（${url}）必须恰为 https://<${dom_var}>（即 https://${dom}，https、无路径、无尾斜杠）——API 地址必须与实际 API 网关一致"
     else
         ok "${url_var} 与 ${dom_var} 一致（${url}）"
     fi
@@ -148,7 +143,7 @@ check_base_url_matches_cs_widget_domain() {
 
 # --self-test：以负向 fixtures 自检上述规则函数（每个用例必须被抓到才算过）
 run_secret_rules_self_test() {
-    echo "▶ LT-06 secret 规则 + 三域唯一性 + base_url↔Widget 域比对规则自测（负向 fixtures 必须全部被抓到）"
+    echo "▶ LT-06 secret 规则 + 三域唯一性 + base_url↔API 域比对规则自测（负向 fixtures 必须全部被抓到）"
     local passed=0 failed=0
 
     ERRORS=0; check_secret_strength "T_KEY" "short" >/dev/null
@@ -201,19 +196,19 @@ run_secret_rules_self_test() {
 
     # SC-EMBED §5：base_url ↔ Widget 域比对规则 fixtures（正例放行 + 三类漂移必抓）
     ERRORS=0
-    check_base_url_matches_cs_widget_domain "T_URL" "https://cs.fixt" "T_DOM" "cs.fixt" >/dev/null
+    check_base_url_matches_domain "T_URL" "https://cs.fixt" "T_DOM" "cs.fixt" >/dev/null
     if (( ERRORS == 0 )); then ok "自测15 base_url 恰为 Widget 域 origin 放行"; passed=$((passed+1)); else err "自测15 失败：合法 base_url 被误拒"; failed=$((failed+1)); fi
 
     ERRORS=0
-    check_base_url_matches_cs_widget_domain "T_URL" "http://cs.fixt" "T_DOM" "cs.fixt" >/dev/null
+    check_base_url_matches_domain "T_URL" "http://cs.fixt" "T_DOM" "cs.fixt" >/dev/null
     if (( ERRORS == 1 )); then ok "自测16 base_url http:// 被拒"; passed=$((passed+1)); else err "自测16 失败：http:// 未被拒"; failed=$((failed+1)); fi
 
     ERRORS=0
-    check_base_url_matches_cs_widget_domain "T_URL" "https://cs.fixt/" "T_DOM" "cs.fixt" >/dev/null
+    check_base_url_matches_domain "T_URL" "https://cs.fixt/" "T_DOM" "cs.fixt" >/dev/null
     if (( ERRORS == 1 )); then ok "自测17 base_url 尾斜杠被拒"; passed=$((passed+1)); else err "自测17 失败：尾斜杠未被拒"; failed=$((failed+1)); fi
 
     ERRORS=0
-    check_base_url_matches_cs_widget_domain "T_URL" "https://api.fixt" "T_DOM" "cs.fixt" >/dev/null
+    check_base_url_matches_domain "T_URL" "https://api.fixt" "T_DOM" "cs.fixt" >/dev/null
     if (( ERRORS == 1 )); then ok "自测18 base_url 域不符被拒"; passed=$((passed+1)); else err "自测18 失败：域不符未被拒"; failed=$((failed+1)); fi
 
     echo ""
@@ -252,9 +247,38 @@ set +u
 while IFS='=' read -r key value; do
     [[ "$key" =~ ^#.*$ ]] && continue
     [[ -z "$key" ]] && continue
+    if [[ "${IMBOY_PREFLIGHT_RESOLVED_DOMAINS:-0}" = 1 ]]; then
+        case "$key" in API_DOMAIN|ADMIN_DOMAIN|CS_WIDGET_DOMAIN|RTC_DOMAIN|TURN_DOMAIN|IMBOY_BASE_URL)
+            [[ "${!key+x}" = x ]] && continue ;;
+        esac
+    fi
     export "$key"="${value}"
 done < "$ENV_FILE"
 set -u
+
+# Enterprise direct may start only with its isolated proof process configured.
+case "${IMBOY_EB_DIRECT_ENABLED:-false}" in
+    true)
+        case ",${COMPOSE_PROFILES:-}," in
+            *,enterprise-direct,*) ;;
+            *) err "企业 direct 已启用，COMPOSE_PROFILES 必须包含 enterprise-direct" ;;
+        esac
+        for proof_key in EB_PROOF_PG_DB EB_PROOF_PG_USER EB_PROOF_PG_PASSWORD EB_PROOF_PG_SSL EB_PROOF_STORAGE_NAMESPACE EB_PROOF_STORAGE_ENDPOINT EB_PROOF_STORAGE_CONTAINER EB_PROOF_HEALTH_KEY EB_PROOF_STORAGE_ACCESS_KEY EB_PROOF_STORAGE_SECRET_KEY; do
+            [[ -n "${!proof_key:-}" ]] || err "$proof_key 未设置"
+        done
+        if [[ "${EB_PROOF_PG_USER:-}" != "imboy_eb_proof_worker" ]]; then
+            err "proof 数据库登录必须为 imboy_eb_proof_worker"
+        fi
+        if [[ -n "${EB_PROOF_PG_PASSWORD:-}" && ( "${EB_PROOF_PG_PASSWORD}" == "${POSTGRES_PASSWORD:-}" || "${EB_PROOF_PG_PASSWORD}" == "${IMBOY_PG_PASSWORD:-}" ) ]]; then
+            err "proof 数据库凭据必须独立于应用和初始化凭据"
+        fi
+        if [[ -n "${EB_PROOF_STORAGE_SECRET_KEY:-}" && "${EB_PROOF_STORAGE_SECRET_KEY}" == "${IMBOY_GARAGE_SECRET_KEY:-}" ]]; then
+            err "proof 存储凭据必须独立于应用凭据"
+        fi
+        ;;
+    false) ;;
+    *) err "IMBOY_EB_DIRECT_ENABLED 只能为 true 或 false" ;;
+esac
 
 # ── 2. 必填变量未留占位符 ──────────────────────────────────────────────────────
 echo ""
@@ -286,9 +310,15 @@ check_var "TURN_DOMAIN"
 check_var "POSTGRES_USER"
 check_var "POSTGRES_PASSWORD"
 check_var "POSTGRES_DB"
+check_var "IMBOY_DIRECT_CLEANUP_PG_USER"
+check_var "IMBOY_DIRECT_CLEANUP_PG_PASSWORD"
+if [[ -n "${IMBOY_DIRECT_CLEANUP_PG_USER:-}" && "${IMBOY_DIRECT_CLEANUP_PG_USER}" == "${POSTGRES_USER:-}" ]]; then
+    err "IMBOY_DIRECT_CLEANUP_PG_USER 必须与应用数据库账号不同"
+fi
 check_var "JWT_KEY"
 check_var "POSTGRE_AES_KEY"
 check_var "ADM_COOKIE_SECRET"
+check_var "IMBOY_EDGE_INTERNAL_TOKEN"
 check_var "IMBOY_SOLIDIFIED_KEY"
 check_var "IMBOY_SOLIDIFIED_KEY_IV"
 # password_salt 是 imboy_app:validate_runtime_config/0 的 ensure_required_secret 强制项，
@@ -305,9 +335,15 @@ check_var "LIVEKIT_API_SECRET"
 check_secret_strength "JWT_KEY" "${JWT_KEY:-}"
 check_secret_strength "POSTGRE_AES_KEY" "${POSTGRE_AES_KEY:-}"
 check_secret_strength "ADM_COOKIE_SECRET" "${ADM_COOKIE_SECRET:-}"
+check_secret_strength "IMBOY_EDGE_INTERNAL_TOKEN" "${IMBOY_EDGE_INTERNAL_TOKEN:-}"
+check_secret_strength "IMBOY_DIRECT_CLEANUP_PG_PASSWORD" "${IMBOY_DIRECT_CLEANUP_PG_PASSWORD:-}"
+check_secrets_distinct "IMBOY_DIRECT_CLEANUP_PG_PASSWORD" "${IMBOY_DIRECT_CLEANUP_PG_PASSWORD:-}" "POSTGRES_PASSWORD" "${POSTGRES_PASSWORD:-}"
 check_secrets_distinct "JWT_KEY" "${JWT_KEY:-}" "POSTGRE_AES_KEY" "${POSTGRE_AES_KEY:-}"
 check_secrets_distinct "JWT_KEY" "${JWT_KEY:-}" "ADM_COOKIE_SECRET" "${ADM_COOKIE_SECRET:-}"
 check_secrets_distinct "POSTGRE_AES_KEY" "${POSTGRE_AES_KEY:-}" "ADM_COOKIE_SECRET" "${ADM_COOKIE_SECRET:-}"
+check_secrets_distinct "IMBOY_EDGE_INTERNAL_TOKEN" "${IMBOY_EDGE_INTERNAL_TOKEN:-}" "JWT_KEY" "${JWT_KEY:-}"
+check_secrets_distinct "IMBOY_EDGE_INTERNAL_TOKEN" "${IMBOY_EDGE_INTERNAL_TOKEN:-}" "POSTGRE_AES_KEY" "${POSTGRE_AES_KEY:-}"
+check_secrets_distinct "IMBOY_EDGE_INTERNAL_TOKEN" "${IMBOY_EDGE_INTERNAL_TOKEN:-}" "ADM_COOKIE_SECRET" "${ADM_COOKIE_SECRET:-}"
 
 is_domain() {
     [[ "$1" =~ ^[A-Za-z0-9]([A-Za-z0-9.-]*[A-Za-z0-9])$ ]] \
@@ -333,12 +369,9 @@ check_domains_distinct "RTC_DOMAIN" "${RTC_DOMAIN:-}" "CS_WIDGET_DOMAIN" "${CS_W
 check_domains_distinct "TURN_DOMAIN" "${TURN_DOMAIN:-}" "API_DOMAIN" "${API_DOMAIN:-}"
 check_domains_distinct "TURN_DOMAIN" "${TURN_DOMAIN:-}" "ADMIN_DOMAIN" "${ADMIN_DOMAIN:-}"
 check_domains_distinct "TURN_DOMAIN" "${TURN_DOMAIN:-}" "CS_WIDGET_DOMAIN" "${CS_WIDGET_DOMAIN:-}"
-# imboy.base_url ↔ CS_WIDGET_DOMAIN 硬约束（deploy/cs-seat-console-embed.md §5 /
-# DEF-SC153-14）：坐席附件 presign 下发 upload.url 的绝对基址 = {imboy, base_url}
-#（.env 经 IMBOY_BASE_URL 注入），必须恰为 Widget 网关 origin —— 配错源的表现是
-# 坐席附件链 fail-closed 整体不可用，preflight 在此拦下，避免带病上线。
+# API base 与 API 网关保持一致；旧 Widget/Seat 地址由独立配置派生。
 check_var "IMBOY_BASE_URL"
-check_base_url_matches_cs_widget_domain "IMBOY_BASE_URL" "${IMBOY_BASE_URL:-}" "CS_WIDGET_DOMAIN" "${CS_WIDGET_DOMAIN:-}"
+check_base_url_matches_domain "IMBOY_BASE_URL" "${IMBOY_BASE_URL:-}" "API_DOMAIN" "${API_DOMAIN:-}"
 if ! is_email "${CERTBOT_EMAIL:-}"; then err "CERTBOT_EMAIL 格式无效"; fi
 
 # ── 2a. LiveKit 域名 DNS 解析（可选开关，开启即 fail-closed）─────────────────

@@ -71,14 +71,22 @@ write(#{artifacts := [#{attachment_id := Manifest}]}, #{
     end.
 
 land_artifact(Aid, Path, StagingKey) ->
-    case attachment_derived_artifact:begin_write(Aid) of
-        {ok, I = #{namespace := _, container := C}} ->
-            Cfg = application:get_env(imboy, garage, #{}),
+    case attachment_derived_artifact:begin_write(Aid, StagingKey) of
+        {ok,
+            I = #{
+                driver := garage,
+                namespace := _,
+                container := C,
+                endpoint := Endpoint,
+                garage_config := #{
+                    endpoint := Endpoint, access_key := AccessKey, secret_key := SecretKey
+                } = Cfg
+            }} ->
             Task = #{
                 src_path => Path,
-                endpoint => maps:get(endpoint, Cfg),
-                ak => maps:get(access_key, Cfg),
-                sk => maps:get(secret_key, Cfg),
+                endpoint => Endpoint,
+                ak => AccessKey,
+                sk => SecretKey,
                 bucket => C,
                 region => maps:get(region, Cfg, <<"garage">>),
                 object_key => StagingKey,
@@ -90,15 +98,22 @@ land_artifact(Aid, Path, StagingKey) ->
                         {ok, _} ->
                             attachment_derived_artifact:finish_write(Aid, OkUp);
                         {error, _} = CopyErr ->
-                            _ = attachment_derived_artifact:finish_write(Aid, CopyErr),
-                            CopyErr
+                            record_unknown(Aid, CopyErr)
                     end;
                 {error, _} = UpErr ->
-                    _ = attachment_derived_artifact:finish_write(Aid, UpErr),
-                    UpErr
+                    record_unknown(Aid, UpErr)
             end;
+        {ok, _} ->
+            record_unknown(Aid, {error, location_unverified});
         Error ->
             Error
+    end.
+
+record_unknown(Aid, Error) ->
+    case attachment_derived_artifact:finish_write(Aid, Error) of
+        {error, artifact_write_quarantined} = Unconfirmed -> Unconfirmed;
+        {error, _} -> {error, artifact_write_unknown};
+        Other -> {error, {unknown_write_unconfirmed, Other}}
     end.
 
 publish_tx(

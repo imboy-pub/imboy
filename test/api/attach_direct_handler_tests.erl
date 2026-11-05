@@ -63,3 +63,34 @@ finalize_rejected_returns_req_and_reason_test_() ->
             )
         end
     ).
+
+register_conflict_contract_test_() ->
+    [
+        {setup,
+            fun() ->
+                Modules = [cowboy_req, auth_ds, attach_direct_logic, elib_response],
+                [meck:new(M, [passthrough, no_link]) || M <- Modules],
+                meck:expect(cowboy_req, method, fun(_) -> <<"POST">> end),
+                meck:expect(cowboy_req, bindings, fun(_) -> #{action => <<"register">>} end),
+                meck:expect(cowboy_req, read_body, fun(_) -> {ok, <<"{}">>, req_left} end),
+                meck:expect(auth_ds, current_uid, fun(_) -> ?UID end),
+                meck:expect(attach_direct_logic, register, fun(_, _, _, _, _, _) ->
+                    {error, Reason}
+                end),
+                meck:expect(elib_response, error, fun(Req, Msg, Code, Meta) ->
+                    Req#{response_status => Code, message => Msg, err_meta => Meta}
+                end),
+                Modules
+            end,
+            fun(Modules) -> [meck:unload(M) || M <- Modules] end, fun(_) ->
+                ?_test(begin
+                    {ok, Resp, _} = attach_direct_handler:init(mock_req(), #{}),
+                    ?assertEqual(?ERR_CONFLICT, maps:get(response_status, Resp)),
+                    ?assertEqual(atom_to_binary(Reason, utf8), maps:get(message, Resp)),
+                    ?assertEqual(
+                        <<"new_session">>, maps:get(<<"retry_action">>, maps:get(err_meta, Resp))
+                    )
+                end)
+            end}
+     || Reason <- [legacy_session_conflict, terminal_session_conflict, declaration_conflict]
+    ].

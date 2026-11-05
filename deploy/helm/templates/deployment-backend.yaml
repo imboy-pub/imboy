@@ -1,4 +1,51 @@
 {{- if .Values.backend.enabled -}}
+{{- $edgeToken := required "secrets.edgeInternalToken is required for the download edge" .Values.secrets.edgeInternalToken -}}
+{{- if or (lt (len $edgeToken) 32) (contains "CHANGE_ME" $edgeToken) (contains "example" $edgeToken) -}}
+{{- fail "secrets.edgeInternalToken must be a non-placeholder secret of at least 32 characters" -}}
+{{- end -}}
+{{- range $name, $value := dict "jwtKey" .Values.secrets.jwtKey "postgreAesKey" .Values.secrets.postgreAesKey "admCookieSecret" .Values.secrets.admCookieSecret -}}
+{{- if and $value (eq $edgeToken $value) -}}
+{{- fail (printf "secrets.edgeInternalToken must differ from secrets.%s" $name) -}}
+{{- end -}}
+{{- end -}}
+{{- $installCleanupUser := required "secrets.directCleanupPgUser is required" .Values.secrets.directCleanupPgUser -}}
+{{- $installCleanupPassword := required "secrets.directCleanupPgPassword is required" .Values.secrets.directCleanupPgPassword -}}
+{{- $installPgUser := required "secrets.postgresUser is required" .Values.secrets.postgresUser -}}
+{{- $installPgPassword := required "secrets.postgresPassword is required" .Values.secrets.postgresPassword -}}
+{{- if or (eq $installCleanupUser $installPgUser) (eq $installCleanupPassword $installPgPassword) -}}
+{{- fail "application and direct cleanup database credentials must differ" -}}
+{{- end -}}
+{{- if .Release.IsUpgrade -}}
+{{- $existing := lookup "v1" "Secret" .Release.Namespace (include "imboy.secretName" .) -}}
+{{- if not $existing -}}
+{{- fail "existing release Secret could not be read; use a server-side upgrade with Secret read access" -}}
+{{- end -}}
+{{- $oldToken := get $existing.data "IMBOY_EDGE_INTERNAL_TOKEN" | default "" | b64dec -}}
+{{- if or (eq $oldToken "") (ne $oldToken $edgeToken) -}}
+{{- fail "existing kept Secret must contain the same IMBOY_EDGE_INTERNAL_TOKEN before upgrade" -}}
+{{- end -}}
+{{- $oldCleanupUser := get $existing.data "IMBOY_DIRECT_CLEANUP_PG_USER" | default "" | b64dec -}}
+{{- $oldCleanupPassword := get $existing.data "IMBOY_DIRECT_CLEANUP_PG_PASSWORD" | default "" | b64dec -}}
+{{- $cleanupUser := required "secrets.directCleanupPgUser is required" .Values.secrets.directCleanupPgUser -}}
+{{- $cleanupPassword := required "secrets.directCleanupPgPassword is required" .Values.secrets.directCleanupPgPassword -}}
+{{- if or (eq $oldCleanupUser "") (eq $oldCleanupPassword "") (ne $oldCleanupUser $cleanupUser) (ne $oldCleanupPassword $cleanupPassword) -}}
+{{- fail "existing kept Secret must contain matching direct cleanup credentials before upgrade" -}}
+{{- end -}}
+{{- $oldPgUser := get $existing.data "POSTGRES_USER" | default "" | b64dec -}}
+{{- $oldPgPassword := get $existing.data "POSTGRES_PASSWORD" | default "" | b64dec -}}
+{{- if or (eq $oldPgUser "") (eq $oldPgPassword "") (eq $oldCleanupUser $oldPgUser) (eq $oldCleanupPassword $oldPgPassword) -}}
+{{- fail "existing kept Secret must contain separate application and cleanup database credentials" -}}
+{{- end -}}
+{{- range $key := list "IMBOY_JWT_KEY" "IMBOY_POSTGRE_AES_KEY" "IMBOY_ADM_COOKIE_SECRET" -}}
+{{- $oldValue := get $existing.data $key | default "" | b64dec -}}
+{{- if eq $oldValue "" -}}
+{{- fail (printf "existing kept Secret must contain %s before upgrade" $key) -}}
+{{- end -}}
+{{- if eq $oldToken $oldValue -}}
+{{- fail (printf "existing edge token must differ from %s" $key) -}}
+{{- end -}}
+{{- end -}}
+{{- end -}}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -86,6 +133,21 @@ spec:
                 secretKeyRef:
                   name: {{ include "imboy.secretName" . }}
                   key: IMBOY_ADM_COOKIE_SECRET
+            - name: IMBOY_DIRECT_CLEANUP_PG_USER
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "imboy.secretName" . }}
+                  key: IMBOY_DIRECT_CLEANUP_PG_USER
+            - name: IMBOY_DIRECT_CLEANUP_PG_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "imboy.secretName" . }}
+                  key: IMBOY_DIRECT_CLEANUP_PG_PASSWORD
+            - name: IMBOY_EDGE_INTERNAL_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "imboy.secretName" . }}
+                  key: IMBOY_EDGE_INTERNAL_TOKEN
             - name: SENTRY_DSN
               valueFrom:
                 secretKeyRef:
@@ -210,6 +272,27 @@ spec:
             {{- end }}
 
 
+        - name: download-edge
+          image: {{ include "imboy.image" (dict "global" .Values.global "image" .Values.backend.image) }}
+          imagePullPolicy: {{ .Values.backend.image.pullPolicy }}
+          command: ["/bin/sh", "/opt/imboy/bin/start_download_edge.sh"]
+          ports:
+            - name: edge
+              containerPort: 13990
+          readinessProbe:
+            tcpSocket:
+              port: edge
+            periodSeconds: 5
+            timeoutSeconds: 2
+          env:
+            - name: EDGE_AUTHORIZE_URL
+              value: http://127.0.0.1:{{ .Values.backend.service.port }}/api/v1/attachment/edge/authorize
+            - name: EDGE_INTERNAL_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "imboy.secretName" . }}
+                  key: IMBOY_EDGE_INTERNAL_TOKEN
+
       volumes:
         {{- if .Values.backend.persistence.log.enabled }}
         - name: backend-log
@@ -276,5 +359,4 @@ spec:
 {{- end }}
 ---
 
-{{- end }}
 {{- end }}

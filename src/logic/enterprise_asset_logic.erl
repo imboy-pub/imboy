@@ -37,7 +37,7 @@ presign_tx(Conn, Ctx, Input) when is_map(Input) ->
     ClientUploadId = maps:get(client_upload_id, Input, undefined),
     case {Operation, ClientUploadId} of
         {<<"status">>, _} ->
-            presign_status_tx(Ctx, Input);
+            presign_status_tx(Conn, Ctx, Input);
         {<<"renew">>, _} ->
             presign_renew_tx(Conn, Ctx, Input);
         %% V5 register：带 client_upload_id 的新会话走失败关闭协议链
@@ -126,14 +126,14 @@ presign_register_v5_tx(Conn, Ctx, Input) ->
     end.
 
 %% 只读回查：无能力、跨主体不泄露存在性（02 §137）。
-presign_status_tx(Ctx, Input) ->
+presign_status_tx(Conn, Ctx, Input) ->
     IdOrKey = id_or_key(Input),
     AppId = maps:get(application_id, Ctx),
     case IdOrKey of
         undefined ->
             {error, {<<"invalid_request">>, missing_session_identity}};
         _ ->
-            case attach_pending_repo:status_lookup(IdOrKey) of
+            case attach_pending_repo:status_lookup_tx(Conn, IdOrKey) of
                 {ok, Row} ->
                     case v5_subject_app(Row) =:= AppId of
                         true -> {ok, status_view(Row)};
@@ -154,7 +154,7 @@ presign_renew_tx(Conn, Ctx, Input) ->
         undefined ->
             {error, {<<"invalid_request">>, missing_session_identity}};
         _ ->
-            case attach_pending_repo:status_lookup(IdOrKey) of
+            case attach_pending_repo:status_lookup_tx(Conn, IdOrKey) of
                 {ok, #{<<"session_state">> := <<"registered">>} = Row} ->
                     case v5_subject_app(Row) =:= AppId of
                         false ->

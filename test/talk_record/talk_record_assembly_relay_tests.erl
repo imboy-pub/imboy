@@ -153,13 +153,11 @@ run(S) ->
     ok.
 
 final_attachment_id(C, Rid) ->
-    %% attachment 表无 origin 列（夹具 meta 的 origin 键不落库）——以
-    %% derived_attachment 的物理 path 前缀标识 final 成品行。
     {ok, [#{<<"id">> := Aid}]} = elib_pg:query(
         C,
         <<
             "SELECT id FROM attachment WHERE scope='talk_record' AND scope_ref=$1"
-            " AND path LIKE 'assembly-final/%'"
+            " AND origin='test_final'"
         >>,
         [integer_to_binary(Rid)]
     ),
@@ -182,7 +180,6 @@ fixture(C, Bytes, N) ->
     ),
     {ok, Aid} = derived_attachment(N, Rid, <<"assembly-source">>, <<"test_audio">>, Bytes),
     {ok, AidFinal} = derived_attachment(N, Rid, <<"assembly-final">>, <<"test_final">>, Bytes),
-    %% 派生附件行 reserve 即默认 'live'（00000178 列默认）——UPDATE 固化意图并断言两行。
     {ok, 2} = elib_pg:execute(
         C,
         <<"UPDATE attachment SET lifecycle_state='live' WHERE id IN ($1,$2)">>,
@@ -217,8 +214,6 @@ fixture(C, Bytes, N) ->
                 input_manifest_hash => maps:get(<<"manifest_hash">>, Manifest),
                 input_content_revision => 1,
                 dedupe_key => <<"assembly-", (integer_to_binary(N))/binary>>,
-                %% enqueue_tx 对 processor_input 自行 jsone:encode（repo 134-137 行）——
-                %% 传已编码 binary 会双重编码成 JSON string，ck_trj_processor_input 即拒。
                 processor_input => #{<<"final_audio">> => Final}
             }
         )
@@ -234,30 +229,24 @@ fixture(C, Bytes, N) ->
     {Rid, J}.
 
 derived_attachment(N, Rid, Prefix, Origin, Bytes) ->
-    Nonce = binary:encode_hex(crypto:strong_rand_bytes(12), lowercase),
-    %% reserve_tx 返回 {ok, Aid}——直接当 Aid 用会让 write 的 SQL 参数
-    %% 携带 {ok, N} 元组（epgsql int8 encode 即 integer_overflow）。
-    %% write/2 自带事务（elib_pg 嵌套 tx 不受嵌套拒绝保护），必须在 reserve
-    %% 事务提交后调用——生产 run_manifest 即此次序。
-    {ok, Aid} =
-        elib_pg:with_tx(fun(X) ->
-            attachment_derived_artifact:reserve_tx(
-                X,
-                #{job_id => N, attempt => 1, actor_id => 700001},
-                #{
-                    <<"path">> => <<Prefix/binary, "/", Nonce/binary>>,
-                    <<"url">> => <<>>,
-                    <<"name">> => <<"audio.aac">>,
-                    <<"size">> => byte_size(Bytes),
-                    <<"mime_type">> => <<"audio/aac">>,
-                    <<"scope">> => <<"talk_record">>,
-                    <<"scope_ref">> => integer_to_binary(Rid),
-                    <<"origin">> => Origin,
-                    <<"file_hash256">> =>
-                        binary:encode_hex(crypto:hash(sha256, Bytes), lowercase)
-                }
-            )
-        end),
+    {ok, Aid} = elib_pg:with_tx(fun(X) ->
+        Nonce = binary:encode_hex(crypto:strong_rand_bytes(12), lowercase),
+        attachment_derived_artifact:reserve_tx(
+            X,
+            #{job_id => N, attempt => 1, actor_id => 700001},
+            #{
+                <<"path">> => <<Prefix/binary, "/", Nonce/binary>>,
+                <<"url">> => <<>>,
+                <<"name">> => <<"audio.aac">>,
+                <<"size">> => byte_size(Bytes),
+                <<"mime_type">> => <<"audio/aac">>,
+                <<"scope">> => <<"talk_record">>,
+                <<"scope_ref">> => integer_to_binary(Rid),
+                <<"origin">> => Origin,
+                <<"file_hash256">> => binary:encode_hex(crypto:hash(sha256, Bytes), lowercase)
+            }
+        )
+    end),
     ok = attachment_derived_artifact:write(Aid, Bytes),
     {ok, Aid}.
 
@@ -418,8 +407,7 @@ final_asset_mismatch(C, B, N) ->
         C,
         <<
             "UPDATE attachment SET file_hash256=repeat('f',64)"
-            " WHERE scope='talk_record' AND scope_ref=$1"
-            " AND path LIKE 'assembly-final/%'"
+            " WHERE scope='talk_record' AND scope_ref=$1 AND origin='test_final'"
         >>,
         [integer_to_binary(Rid)]
     ),

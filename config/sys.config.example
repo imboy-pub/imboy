@@ -59,6 +59,8 @@
         {certfile, "/ssl/public.crt"},
         {keyfile, "/ssl/server.key"},
         {base_url, <<"https://dev.imboy.pub">>},
+        %% 新头像公开别名只使用显式配置的 edge origin；未配置时拒绝发布。
+        {avatar_edge_base_url, <<>>},
 
         % CORS 白名单（仅这些 Origin 允许跨域携带凭证）
         % 开发环境支持 localhost 任意端口

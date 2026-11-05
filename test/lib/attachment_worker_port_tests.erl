@@ -29,7 +29,9 @@ worker_e2e() ->
     Png =
         <<137, 80, 78, 71, 13, 10, 26, 10, 0, 0, 0, 13, "IHDR", "v3-worker-e2e-payload",
             0:(16 * 8)>>,
-    Key = <<"v3run1/worker-e2e.png">>,
+    Key =
+        <<"v3run1/worker-e2e-", (binary:encode_hex(crypto:strong_rand_bytes(12), lowercase))/binary,
+            ".png">>,
     put_object(Cfg, Key, Png, <<"image/png">>),
     AttemptKey = <<"eb:990921:", Key/binary>>,
     Task = #{

@@ -1255,7 +1255,12 @@ content_read(OrgId, Ws, Row, Params) ->
                             end
                         end,
                         Claims0,
-                        [conversation_id, visitor_session_id]
+                        [
+                            conversation_id,
+                            visitor_session_id,
+                            visitor_token_id,
+                            visitor_installation_id
+                        ]
                     ),
                     issue_redirect(Claims, Row);
                 {error, _} = Err ->
@@ -1327,6 +1332,12 @@ edge_authorize_content(
             #{conversation_id := Conv} -> Params1#{conversation_id => Conv};
             _ -> Params1
         end,
+    case visitor_edge_access(Kind, Claims) of
+        ok -> edge_authorize_scoped(OrgId, Params);
+        {error, _} = Err -> Err
+    end.
+
+edge_authorize_scoped(OrgId, Params) ->
     case content_args(Params) of
         {error, _} = Err ->
             Err;
@@ -1358,6 +1369,9 @@ edge_authorize_content(
                     {error, not_found}
             end
     end.
+
+visitor_edge_access(member, _Claims) -> ok;
+visitor_edge_access(contact, Claims) -> eb_asset_visitor_access:authorize(Claims).
 
 authorize_actor(Auth, Store, OrgId, Ws, Conv, #{kind := member, id := Id}) ->
     eb_asset_scope:authorize(Auth, Store, OrgId, Ws, Conv, Id);

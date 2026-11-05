@@ -28,9 +28,9 @@
 %%%         update_participant_status/delete_participant/insert_remind（980）、
 %%%         update_remind_sent + process_reminders 提醒推送门控（freeze：归档
 %%%         零推送泄漏）；
-%%%   album：create_album/upload_photo（OSS 前预检）/delete_photo/like/unlike/
+%%%   album：create_album/bind_photo（archived 短路）/delete_photo/like/unlike/
 %%%          add_comment/update_album/update_album_cover/delete_album（980）；
-%%%   file：upload_file（OSS 前预检）/delete_file/soft_delete（980）、
+%%%   file：bind_file（archived 短路）/delete_file/soft_delete（980）；原 upload 附件补写组已随旧上传链退役（见组注释），
 %%%         download_file 下载计数（freeze：下载读取永不 403）；
 %%%   task：insert_task/update_task/soft_delete/restore/assignment_insert/
 %%%         assignment_update（980，含 adm 治理共用入口；logic 侧不再吞错）；
@@ -144,6 +144,7 @@ personal_mocks() ->
 attachment_parent_member_mock() ->
     {attachment_repo, [
         {'bind_reference_lock_tx', 2, fun(fake_conn, <<"key">>) -> ok end},
+        {'verify_direct_winner_tx', 2, fun(_, _) -> ok end},
         {'refresh_gc_verified_tx', 2, fun(fake_conn, <<"key">>) -> {ok, false} end},
         {'confirm_if_absent_tx', 4, fun(fake_conn, _, ?UID, #{<<"path">> := <<"k">>}) ->
             {ok, 1, true}
@@ -729,24 +730,44 @@ subdomain_closure_test_() ->
                 )
             end)
         end},
-        {"album upload_photo short-circuits before OSS when archived", fun() ->
+        %% C08（V3-12）：upload_photo 用例已随正文直传链退役；归档拒绝面
+        %% 改为 bind_photo（引用绑定入口，archived 短路同样在动库前拒绝）。
+        {"album bind_photo rejected 980 when archived", fun() ->
             MemberOk = [
                 {group_ds, [
                     {'is_member', 2, fun(_, _) -> true end}
                 ]},
-                {elib_oss, [
-                    {'upload', 3, fun(_, _, _) -> erlang:error(must_not_upload) end}
+                %% 相册归属校验（ensure_album_belongs → group_album_repo）放行，
+                %% 归档拒绝落在 workspace_guard:ensure_writable 预检（真模块，
+                %% archived_mocks 的 elib_pg one/2 读 archived）。
+                {group_album_repo, [
+                    {'find_album_by_album_id', 1, fun(<<"alb">>) ->
+                        #{<<"id">> => 11, <<"group_id">> => ?GID}
+                    end},
+                    {'insert_photo_tx', 2, fun(_, _) -> {error, must_not_write} end},
+                    {'increment_photo_count_tx', 2, fun(_, _) -> {error, must_not_write} end}
                 ]}
             ],
             run_with_mocks(archived_mocks() ++ MemberOk, fun() ->
                 ?assertMatch(
                     {error, {980, _}},
-                    group_album_ds:upload_photo(?GID, ?UID, <<"alb">>, <<0, 0, 0>>, <<"a.png">>)
+                    group_album_ds:bind_photo(
+                        ?GID,
+                        ?UID,
+                        <<"alb">>,
+                        <<"a.png">>,
+                        <<"key">>,
+                        3,
+                        <<"image/png">>,
+                        <<"sha">>
+                    )
                 ),
-                ?assertEqual(0, meck:num_calls(elib_oss, upload, 3))
+                ?assertEqual(0, meck:num_calls(group_album_repo, insert_photo_tx, 2))
             end)
         end},
-        {"file upload/delete rejected 980 (upload before OSS)", fun() ->
+        %% C08（V3-12）：upload_file 用例已随 multipart 上传链退役；归档拒绝
+        %% 面改为 bind_file（引用绑定入口，archived 短路同样在动库前拒绝）。
+        {"file bind/delete rejected 980 when archived", fun() ->
             MemberOk = [
                 {group_ds, [
                     {'is_member', 2, fun(_, _) -> true end}
@@ -765,16 +786,17 @@ subdomain_closure_test_() ->
                     {'soft_delete_tx', 2, fun(_, _) -> {error, must_not_write} end}
                 ]},
                 {elib_oss, [
-                    {'validate_file_type', 1, fun(_) -> true end},
-                    {'upload', 3, fun(_, _, _) -> erlang:error(must_not_upload) end}
+                    {'validate_file_type', 1, fun(_) -> true end}
                 ]}
             ],
             run_with_mocks(archived_mocks() ++ MemberOk, fun() ->
                 ?assertMatch(
                     {error, {980, _}},
-                    group_file_ds:upload_file(?GID, ?UID, <<"a.txt">>, <<0>>, <<"text/plain">>)
+                    group_file_ds:bind_file(
+                        ?GID, ?UID, <<"a.txt">>, <<"text/plain">>, <<"key">>, 1, <<>>
+                    )
                 ),
-                ?assertEqual(0, meck:num_calls(elib_oss, put_object, 4)),
+                ?assertEqual(0, meck:num_calls(group_file_repo, insert_tx, 2)),
                 ?assertMatch(
                     {error, {980, _}}, group_file_ds:delete_file(?FILE_PK, ?UID)
                 ),
@@ -1106,190 +1128,83 @@ attachment_save_closure_test_() ->
     ].
 
 %%% ===================================================================
-%%% 群文件上传附件补写（group_file_ds，T7 收口：scope=group 附件的
-%%% 第二个落库点——上传入口前置守卫 + 补写事务同事务守卫双保险）
+%%% 群文件附件补写（C08/V3-12 退役说明）
+%%%
+%%% 原 group_file_upload_closure_test_ 组（upload into archived / window
+%%% race / personal zero-regression 三个用例）依赖的 multipart 正文上传链
+%%% group_file_ds:upload_file/5 已随"登记即绑定"旧链退役，整组一并退役：
+%%%   * archived 短路拒绝：本套件 "file bind/delete rejected 980 when
+%%%     archived"（bind_file 预检拒绝 + insert_tx 零调用）；
+%%%   * 窗口竞态/落库原子性：group_file_ds_tests 的 bind_* 用例（锁序 +
+%%%     abort 语义）与 attach_direct_bind_tests（真 PG 全链）覆盖；
+%%%   * personal 直通：group_file_ds_tests bind 用例的 resolver personal
+%%%     路径覆盖。
 %%% ===================================================================
 
-group_file_upload_closure_test_() ->
+%% The preflight can succeed before an archive commits; the binding transaction
+%% must check again, while personal groups remain writable.
+group_file_bind_closure_test_() ->
     [
-        {"group file upload into archived workspace rejected 980 before OSS", fun() ->
-            MemberMock = {group_ds, [{'is_member', 2, fun(_, _) -> true end}]},
-            OssMustNot =
-                {elib_oss, [
-                    {'validate_file_type', 1, fun(_) -> true end},
-                    {'put_object', 4, fun(_, _, _, _) -> {error, must_not_upload} end}
+        {"archive after preflight aborts confirmed binding in transaction", fun() ->
+            Member = {group_ds, [{'is_member', 2, fun(_, _) -> true end}]},
+            Type = {elib_oss, [{'validate_file_type', 1, fun(_) -> true end}]},
+            Scope =
+                {attachment_ds, [
+                    {'ensure_upload_scope_tx_retryable', 3, fun(_, _, _) ->
+                        {error, {980, <<"archived">>}}
+                    end}
                 ]},
-            run_with_mocks(archived_mocks() ++ [MemberMock, OssMustNot], fun() ->
+            Insert =
+                {group_file_repo, [{'insert_tx', 2, fun(_, _) -> {error, must_not_write} end}]},
+            run_with_mocks(personal_mocks() ++ [Member, Type, Scope, Insert], fun() ->
                 ?assertMatch(
                     {error, {980, _}},
-                    group_file_ds:upload_file(
-                        ?GID, ?UID, <<"a.png">>, <<"bin">>, <<"image/png">>
+                    group_file_ds:bind_file(
+                        ?GID, ?UID, <<"a.txt">>, <<"text/plain">>, <<"key">>, 1, <<>>
+                    )
+                ),
+                ?assertEqual(0, meck:num_calls(group_file_repo, insert_tx, 2))
+            end)
+        end},
+        {"personal group confirmed binding remains available", fun() ->
+            Member = {group_ds, [{'is_member', 2, fun(_, _) -> true end}]},
+            Type = {elib_oss, [{'validate_file_type', 1, fun(_) -> true end}]},
+            Scope =
+                {attachment_ds, [{'ensure_upload_scope_tx_retryable', 3, fun(_, _, _) -> ok end}]},
+            Repo =
+                {attachment_repo, [
+                    {'authorize_group_scope', 2, fun(_, _) -> true end},
+                    {'bind_reference_lock_tx', 2, fun(_, _) -> ok end},
+                    {'verify_direct_winner_tx', 2, fun(_, _) -> ok end}
+                ]},
+            Pg =
+                {elib_pg, [
+                    {'with_deadlock_retry_tx', 1, tx_fun()},
+                    {'query', 3, fun
+                        (fake_conn, <<"SELECT creator_user_id", _/binary>>, _) ->
+                            {ok, [
+                                #{
+                                    <<"creator_user_id">> => ?UID,
+                                    <<"scope">> => <<"group">>,
+                                    <<"scope_ref">> => <<"777099">>,
+                                    <<"lifecycle_state">> => <<"live">>,
+                                    <<"size">> => 1,
+                                    <<"mime_type">> => <<"text/plain">>,
+                                    <<"group_file_id">> => 42
+                                }
+                            ]};
+                        (fake_conn, <<"SELECT file_id FROM group_file", _/binary>>, _) ->
+                            {ok, [#{<<"file_id">> => <<"existing">>}]}
+                    end}
+                ]},
+            run_with_mocks(personal_mocks() ++ [Member, Type, Scope, Repo, Pg], fun() ->
+                ?assertEqual(
+                    {ok, <<"existing">>},
+                    group_file_ds:bind_file(
+                        777099, ?UID, <<"a.txt">>, <<"text/plain">>, <<"key">>, 1, <<>>
                     )
                 )
             end)
-        end},
-        {"group file attachment write aborted in-tx on archived (window race)", fun() ->
-            %% 前置检查通过后归档竞态落进检查-写窗口：落库事务的
-            %% 同事务守卫兜底——group_file 与 attachment 均不落库。
-            %% 驱动公开入口 upload_file/5：预检（自动提交 one/2）读到 active，
-            %% 落库守卫（事务内 query/3）已翻为 archived——窗口竞态。
-            %% att-v5 后上传链改走 attach_logic:presign（登记/签名/OSS 细节由
-            %% group_file_ds_tests 与 attachment_lifecycle_v5 覆盖）；本用例只测
-            %% 归档守卫，presign 与二进制上传门面短路、落库路径保持真实。
-            MemberMock = {group_ds, [{'is_member', 2, fun(_, _) -> true end}]},
-            UploadFacade =
-                {attach_logic, [
-                    {'presign', 6, fun(_, _, _, _, _, _) ->
-                        {ok, #{<<"object_key">> => <<"key">>}}
-                    end},
-                    {'prepare_group_file_confirmation', 1, fun(_) ->
-                        {ok, #{
-                            sha256 => <<"sha">>,
-                            size => 3,
-                            mime => <<"image/png">>,
-                            stat => #{snapshot => #{driver => disk}}
-                        }}
-                    end}
-                ]},
-            UploadBinary =
-                {attachment_upload_logic, [
-                    {'upload_binary', 4, fun(_, _, _, _) -> {ok, uploaded} end}
-                ]},
-            OssOk =
-                {elib_oss, [
-                    {'validate_file_type', 1, fun(_) -> true end},
-                    {'max_file_size', 0, fun() -> 1000 end},
-                    {'build_object_key', 4, fun(_, _, _, _) -> <<"key">> end},
-                    {'get_bucket', 1, fun(_) -> <<"private">> end},
-                    {'get_url', 1, fun(_) -> {ok, <<"http://u">>} end},
-                    {'generate_file_id', 0, fun() -> <<"fid">> end},
-                    {'put_object', 4, fun(_, _, _, _) -> ok end},
-                    {'get_file_category', 1, fun(_) -> image end}
-                ]},
-            SaveMustNot =
-                {attachment_ds, [
-                    {'pending_add', 4, fun(_, _, _, _) -> ok end},
-                    {'save', 4, fun(_, _, _, _) -> must_not_save end}
-                ]},
-            RaceMock =
-                {elib_pg, [
-                    {'with_tx', 1, tx_fun()},
-                    %% save_uploaded_file_tx 的落库事务边界
-                    {'with_deadlock_retry_tx', 1, tx_fun()},
-                    {'one', 2, fun(<<"SELECT status FROM workspace", _/binary>>, _) ->
-                        {ok, #{<<"status">> => <<"active">>}}
-                    end},
-                    {'query', 3, fun
-                        (fake_conn, <<"SELECT status FROM workspace", _/binary>>, _) ->
-                            {ok, [#{<<"status">> => <<"archived">>}]};
-                        %% tx 版归属解析（ensure_upload_scope_tx_retryable →
-                        %% resolve_workspace_tx）：group 行解析回 workspace 归属
-                        (fake_conn, <<"SELECT scope, workspace_id FROM \"group\"", _/binary>>, _) ->
-                            {ok, [
-                                #{
-                                    <<"scope">> => <<"workspace">>,
-                                    <<"workspace_id">> => ?WS_ID
-                                }
-                            ]}
-                    end}
-                ]},
-            run_with_mocks(
-                archived_mocks() ++
-                    [MemberMock, UploadFacade, UploadBinary, RaceMock, OssOk, SaveMustNot],
-                fun() ->
-                    ?assertMatch(
-                        {error, {980, _}},
-                        group_file_ds:upload_file(
-                            ?GID, ?UID, <<"a.png">>, <<"bin">>, <<"image/png">>
-                        )
-                    )
-                end
-            )
-        end},
-        {"personal group file upload unaffected (zero regression)", fun() ->
-            %% att-v5 后上传链走 attach_logic:presign / attachment_upload_logic:
-            %% upload_binary；个人域回归红线只关注「非 workspace 归属群上传不受
-            %% 归档守卫影响」，登记/签名/OSS 门面短路，落库事务保持真实
-            %% （with_deadlock_retry_tx + 守卫 + insert_tx + 审计）。
-            MemberMock = {group_ds, [{'is_member', 2, fun(_, _) -> true end}]},
-            UploadFacade =
-                {attach_logic, [
-                    {'presign', 6, fun(_, _, _, _, _, _) ->
-                        {ok, #{<<"object_key">> => <<"key">>}}
-                    end},
-                    {'prepare_group_file_confirmation', 1, fun(_) ->
-                        {ok, #{
-                            sha256 => <<"sha">>,
-                            size => 3,
-                            mime => <<"image/png">>,
-                            stat => #{snapshot => #{driver => disk}}
-                        }}
-                    end},
-                    {'confirm_group_file_tx', 6, fun(_, _, _, _, _, _) -> ok end}
-                ]},
-            UploadBinary =
-                {attachment_upload_logic, [
-                    {'upload_binary', 4, fun(_, _, _, _) -> {ok, uploaded} end}
-                ]},
-            PendingTx =
-                {attach_pending_repo, [
-                    {'lock_session_tx', 2, fun(_, _) -> {ok, locked} end}
-                ]},
-            %% 此 config 重建 attachment_repo mock（覆盖 personal_mocks 内
-            %% attachment_parent_member_mock 的同模块 expects），须带上落库
-            %% 事务与 has_file_access 所需的全部子句。
-            AttachmentRepoTx =
-                {attachment_repo, [
-                    {'authorize_group_scope', 2, fun(_, _) -> true end},
-                    {'lock_upload_organization_tx', 3, fun(_, _, _) -> ok end},
-                    {'authorize_upload_scope_tx_retryable', 4, fun(_, _, _, _) -> true end},
-                    {'confirmation_row_tx', 2, fun(_, _) -> {ok, not_found} end},
-                    {'refresh_gc_verified_tx', 2, fun(_, _) -> {ok, 1} end}
-                ]},
-            OssMock =
-                {elib_oss, [
-                    {'validate_file_type', 1, fun(_) -> true end},
-                    {'max_file_size', 0, fun() -> 1000 end},
-                    {'build_object_key', 4, fun(_, _, _, _) -> <<"key">> end},
-                    {'get_bucket', 1, fun(_) -> <<"private">> end},
-                    {'get_url', 1, fun(_) -> {ok, <<"http://u">>} end},
-                    {'generate_file_id', 0, fun() -> <<"fid">> end},
-                    {'put_object', 4, fun(_, _, _, _) -> ok end},
-                    {'get_file_category', 1, fun(_) -> image end}
-                ]},
-            InsertMock = {group_file_repo, [{'insert_tx', 2, fun(_, _) -> {ok, 1} end}]},
-            SaveOk =
-                {attachment_ds, [
-                    {'pending_add', 4, fun(_, _, _, _) -> ok end},
-                    {'pending_remove', 1, fun(_) -> ok end},
-                    {'save', 4, fun(_, _, _, _) -> ok end}
-                ]},
-            PersonalAudit =
-                {enterprise_audit_event_repo, [
-                    {'append_scope_file_tx', 4, fun(_, {group, 777099}, ?UID, _) -> ok end}
-                ]},
-            run_with_mocks(
-                personal_mocks() ++
-                    [
-                        MemberMock,
-                        UploadFacade,
-                        UploadBinary,
-                        PendingTx,
-                        AttachmentRepoTx,
-                        OssMock,
-                        InsertMock,
-                        SaveOk,
-                        PersonalAudit
-                    ],
-                fun() ->
-                    ?assertMatch(
-                        {ok, _},
-                        group_file_ds:upload_file(
-                            777099, ?UID, <<"a.png">>, <<"bin">>, <<"image/png">>
-                        )
-                    )
-                end
-            )
         end}
     ].
 

@@ -42,7 +42,7 @@
 -export([finish_failed_tx/4]).
 -export([finish_retry_tx/5]).
 -export([finish_suspended_tx/4]).
--export([cancel_job_tx/2]).
+-export([cancel_job_tx/2, cancel_running_tx/3]).
 -export([cancel_record_jobs_tx/2]).
 -export([retry_failed_tx/2]).
 -export([unsuspend_kind_tx/2]).
@@ -175,10 +175,11 @@ claim_next_tx(Conn, LeaseOwner, LeaseToken, LeaseSeconds) when
     is_binary(LeaseOwner), is_binary(LeaseToken), is_integer(LeaseSeconds), LeaseSeconds > 0
 ->
     Sql =
-        <<"UPDATE ", (tablename())/binary, " j SET", " state='running', attempt = j.attempt + 1,",
+        <<"WITH assembly_contract AS MATERIALIZED (SELECT set_config('imboy.assembly_staging_contract','2',true)) ",
+            "UPDATE ", (tablename())/binary, " j SET", " state='running', attempt = j.attempt + 1,",
             " lease_owner=$1, lease_token=$2,", " lease_until = now() + make_interval(secs => $3),",
-            " retry_at = NULL, error_code = NULL, updated_at = now()", " WHERE j.id IN (",
-            "   SELECT id FROM ", (tablename())/binary,
+            " retry_at = NULL, error_code = NULL, updated_at = now()",
+            " FROM assembly_contract WHERE j.id IN (", "   SELECT id FROM ", (tablename())/binary,
             "   WHERE execution_mode='server_local' AND state IN ('queued','retry_wait')",
             "     AND suspended = false", "     AND (retry_at IS NULL OR retry_at <= now())",
             "   ORDER BY created_at ASC, id ASC", "   LIMIT 1 FOR UPDATE SKIP LOCKED)",
@@ -313,6 +314,22 @@ cancel_job_tx(Conn, JobId) ->
             {error, Reason}
     end.
 
+%% 仅当前租约持有者可结束其 running 作业。
+-spec cancel_running_tx(any(), integer(), binary()) -> {ok, cancelled} | {error, term()}.
+cancel_running_tx(Conn, JobId, LeaseToken) ->
+    Sql =
+        <<"UPDATE ", (tablename())/binary,
+            " SET state='cancelled', finished_at=now(), suspended=false,",
+            " lease_owner=NULL, lease_token=NULL, lease_until=NULL,",
+            " retry_at=NULL, updated_at=now()",
+            " WHERE id=$1 AND state='running' AND lease_token=$2 AND execution_mode='server_local'",
+            " RETURNING id">>,
+    case elib_pg:query(Conn, Sql, [JobId, LeaseToken]) of
+        {ok, [_]} -> {ok, cancelled};
+        {ok, []} -> {error, lease_lost};
+        {error, Reason} -> {error, Reason}
+    end.
+
 %% 记录级取消（删除/治理流程入口，T20 接线）：全部非终态任务 → cancelled。
 %% 返回取消行数。
 -spec cancel_record_jobs_tx(any(), integer()) -> {ok, non_neg_integer()} | {error, term()}.
@@ -356,6 +373,8 @@ unsuspend_kind_tx(Conn, Kind) ->
     Sql =
         <<"UPDATE ", (tablename())/binary, " SET suspended=false, updated_at=now()",
             " WHERE kind=$1 AND execution_mode='server_local' AND suspended=true AND state='retry_wait'",
+            " AND COALESCE(error_code,'') NOT IN ('artifact_write_unknown','artifact_write_quarantined',",
+            " 'artifact_write_unconfirmed','worker_crash_unconfirmed','artifact_recovery_required','legacy_staging_unresolved')",
             " RETURNING id">>,
     case elib_pg:query(Conn, Sql, [Kind]) of
         {ok, Rows} -> {ok, length(Rows)};
@@ -371,16 +390,35 @@ unsuspend_kind_tx(Conn, Kind) ->
 %% 租约有效绝不被回收。
 -spec reap_expired_tx(any()) -> {ok, non_neg_integer()} | {error, term()}.
 reap_expired_tx(Conn) ->
+    Select =
+        <<"SELECT j.id FROM ", (tablename())/binary, " j",
+            " WHERE j.execution_mode='server_local' AND j.state='running'",
+            " AND j.lease_until IS NOT NULL AND j.lease_until <= clock_timestamp()",
+            " FOR UPDATE OF j SKIP LOCKED">>,
+    case elib_pg:query(Conn, Select, []) of
+        {ok, Rows} -> reap_locked_jobs(Conn, Rows, 0);
+        {error, _} = Error -> Error
+    end.
+
+reap_locked_jobs(_Conn, [], Count) ->
+    {ok, Count};
+reap_locked_jobs(Conn, [#{<<"id">> := Id} | Rest], Count) ->
     Sql =
-        <<"UPDATE ", (tablename())/binary,
-            " SET state='queued', lease_owner=NULL, lease_token=NULL,",
-            " lease_until=NULL, updated_at=now()",
-            " WHERE execution_mode='server_local' AND state='running'",
-            "   AND lease_until IS NOT NULL AND lease_until <= clock_timestamp()",
-            " RETURNING id">>,
-    case elib_pg:query(Conn, Sql, []) of
-        {ok, Rows} -> {ok, length(Rows)};
-        {error, Reason} -> {error, Reason}
+        <<"UPDATE ", (tablename())/binary, " j SET",
+            " state=CASE WHEN x.unsafe THEN 'retry_wait' ELSE 'queued' END,",
+            " suspended=x.unsafe,",
+            " error_code=CASE WHEN x.unsafe THEN 'artifact_recovery_required' ELSE j.error_code END,",
+            " retry_at=CASE WHEN x.unsafe THEN NULL ELSE j.retry_at END,",
+            " lease_owner=NULL, lease_token=NULL, lease_until=NULL, updated_at=now()",
+            " FROM (SELECT locked.id, EXISTS(SELECT 1 FROM attachment_derived_write w",
+            " WHERE w.source_job_id=locked.id AND w.source_attempt=locked.attempt",
+            " AND w.state IN ('reserved','writing','unknown','complete')) AS unsafe", " FROM ",
+            (tablename())/binary, " locked WHERE locked.id=$1) x",
+            " WHERE j.id=x.id RETURNING j.id">>,
+    case elib_pg:query(Conn, Sql, [Id]) of
+        {ok, [_]} -> reap_locked_jobs(Conn, Rest, Count + 1);
+        {error, _} = Error -> Error;
+        Other -> {error, {reap_unconfirmed, Other}}
     end.
 
 %% ===================================================================

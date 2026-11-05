@@ -23,9 +23,14 @@ assembly_io() ->
     Ep = list_to_binary(os:getenv("A0_ENDPOINT")),
     Ak = list_to_binary(os:getenv("A0_AK")),
     Sk = list_to_binary(os:getenv("A0_SK")),
+    Bucket =
+        case os:getenv("A0_BUCKET") of
+            false -> <<"imboy">>;
+            B -> list_to_binary(B)
+        end,
     Cfg = #{
         endpoint => Ep,
-        bucket => <<"imboy">>,
+        bucket => Bucket,
         access_key => Ak,
         secret_key => Sk,
         region => <<"garage">>
@@ -42,7 +47,7 @@ assembly_io() ->
                 driver => <<"garage">>,
                 namespace => <<"a0-ns">>,
                 endpoint => Ep,
-                container => <<"imboy">>,
+                container => Bucket,
                 access_key => Ak,
                 secret_key => Sk,
                 region => <<"garage">>
@@ -64,7 +69,7 @@ assembly_io() ->
                     endpoint => Ep,
                     ak => Ak,
                     sk => Sk,
-                    bucket => <<"imboy">>,
+                    bucket => Bucket,
                     region => <<"garage">>,
                     object_key => Staging,
                     mime => <<"application/octet-stream">>
@@ -77,13 +82,13 @@ assembly_io() ->
         Dst = <<"talk-record/assembly/g18-", (list_to_binary(Run))/binary>>,
         {ok, #{etag := _}} =
             attachment_derived_artifact:copy_staging(
-                #{namespace => <<"a0-ns">>, container => <<"imboy">>, key => Dst},
+                #{namespace => <<"a0-ns">>, container => Bucket, key => Dst},
                 Staging
             ),
         io:format("server_side_copy: ok~n"),
         %% 3) fetch_files（GET + size/sha 校验）
         GetUrl = elib_s3_sign:presign_signed_url_at(
-            <<"GET">>, Ep, <<"imboy">>, Dst, [], calendar:universal_time(), 300, Cfg
+            <<"GET">>, Ep, Bucket, Dst, [], calendar:universal_time(), 300, Cfg
         ),
         Dl = filename:join("/tmp", Run ++ "-dl.bin"),
         {ok, _} = attachment_worker_port:fetch_files([
@@ -93,7 +98,7 @@ assembly_io() ->
         io:format("worker_fetch_bytes_exact: ok~n"),
         %% 4) 反例：fetch 错 sha → fail-closed
         ?assertMatch(
-            {error, {part_integrity_mismatch, 1}},
+            {error, worker_outcome_unknown},
             attachment_worker_port:fetch_files([
                 #{url => GetUrl, path => Dl, sha256_hex => <<"dead">>, size => byte_size(Body)}
             ])
@@ -110,7 +115,7 @@ assembly_io() ->
                     endpoint => Ep,
                     ak => Ak,
                     sk => Sk,
-                    bucket => <<"imboy">>,
+                    bucket => Bucket,
                     region => <<"garage">>,
                     object_key => <<"assembly-staging/g18/empty-", (list_to_binary(Run))/binary>>,
                     mime => <<"application/octet-stream">>

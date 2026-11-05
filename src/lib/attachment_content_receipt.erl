@@ -16,6 +16,7 @@
 -export([
     issue/2,
     verify/3,
+    verify_with_expiry/3,
     ruleset_digest/0
 ]).
 
@@ -120,6 +121,21 @@ verify(ReceiptB64, Secret, #{
         end
     catch
         _:_ -> {error, forged}
+    end.
+
+%% The caller must check this deadline again after acquiring its database locks.
+-spec verify_with_expiry(binary(), binary(), map()) -> {ok, integer()} | {error, term()}.
+verify_with_expiry(ReceiptB64, Secret, Expected) ->
+    case verify(ReceiptB64, Secret, Expected) of
+        ok ->
+            try
+                #{<<"f">> := Fields} = jsone:decode(base64:decode(ReceiptB64)),
+                {ok, binary_to_integer(maps:get(<<"expires_at">>, fields_map(Fields)))}
+            catch
+                _:_ -> {error, forged}
+            end;
+        {error, _} = Error ->
+            Error
     end.
 
 canonical_fields(#{

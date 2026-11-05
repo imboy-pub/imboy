@@ -201,7 +201,7 @@ orphan_cleanup(Opts) ->
     end.
 
 queue_orphan(Id, Opts) ->
-    elib_pg:with_tx(fun(Conn) ->
+    elib_pg:with_physical_guard_retry_tx(fun(Conn) ->
         case attachment_repo:orphan_path_tx(Conn, Id, Opts) of
             {ok, []} ->
                 skipped;

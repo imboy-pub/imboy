@@ -2,6 +2,19 @@
 ConfigMap：非敏感的后端运行时配置。
 敏感值（密钥、密码）位于 secret.yaml。
 */ -}}
+{{- $widgetHost := default "" .Values.widgetHost -}}
+{{- $widgetBase := default "" .Values.widgetBaseUrl -}}
+{{- if or $widgetHost $widgetBase -}}
+{{- if or (not (regexMatch `^[A-Za-z0-9]([A-Za-z0-9.-]*[A-Za-z0-9])?(:[0-9]{1,5})?$` $widgetHost)) (contains ".." $widgetHost) (ne $widgetBase (printf "https://%s" $widgetHost)) -}}
+{{- fail "widgetBaseUrl must equal https://<widgetHost>" -}}
+{{- end -}}
+{{- $widgetDomain := regexReplaceAll `:[0-9]+$` (lower $widgetHost) "" -}}
+{{- $apiDomain := regexReplaceAll `:[0-9]+$` (lower .Values.ingress.api.host) "" -}}
+{{- $adminDomain := regexReplaceAll `:[0-9]+$` (lower .Values.ingress.admin.host) "" -}}
+{{- if or (eq $widgetDomain $apiDomain) (eq $widgetDomain $adminDomain) -}}
+{{- fail "widgetHost must use a different domain from API and Admin" -}}
+{{- end -}}
+{{- end -}}
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -13,6 +26,7 @@ data:
   # ---------- 后端运行时 ----------
   TZ: {{ .Values.global.timezone | quote }}
   IMBOYENV: {{ .Values.backend.env.IMBOYENV | default "pro" | quote }}
+  IMBOY_EB_DIRECT_ENABLED: {{ .Values.enterpriseProof.enabled | toString | quote }}
   IMBOY_HTTP_PORT: {{ .Values.backend.service.port | toString | quote }}
   ERL_MAX_PORTS: {{ .Values.backend.env.ERL_MAX_PORTS | default "1048576" | quote }}
   IMBOY_PRODUCT_PROFILE: {{ .Values.backend.env.IMBOY_PRODUCT_PROFILE | default "community" | quote }}
@@ -38,4 +52,7 @@ data:
 
   # ---------- 域名（URL 相关，注入 BASE_URL / WS_URL）----------
   IMBOY_BASE_URL: {{ printf "https://%s" .Values.ingress.api.host | quote }}
+  IMBOY_WIDGET_BASE_URL: {{ default "" .Values.widgetBaseUrl | quote }}
+  IMBOY_WIDGET_DOMAIN: {{ default "" .Values.widgetHost | quote }}
+  IMBOY_AVATAR_EDGE_BASE_URL: {{ printf "https://%s" .Values.ingress.api.host | quote }}
   IMBOY_WS_URL: {{ printf "wss://%s/ws" .Values.ingress.api.host | quote }}

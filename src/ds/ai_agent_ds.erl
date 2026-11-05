@@ -61,6 +61,7 @@ create(ConfigMap) when is_map(ConfigMap) ->
                     ok = workspace_guard:abort_on_error(
                         bind_agent_tx(Conn, AgentData)
                     ),
+                    ok = workspace_guard:abort_on_error(profile_tx(Conn, Uid, ConfigMap, true)),
                     #{<<"user_id">> => Uid}
                 end)
             of
@@ -81,49 +82,115 @@ create(ConfigMap) when is_map(ConfigMap) ->
             Err
     end.
 
-%% @doc 更新既有 agent 绑定（不新建 user，按 user_id upsert 元数据）；
-%% ConfigMap 含非空 nickname/avatar 时同步 user 表（agent 资料管理后台可配）。
+%% @doc Agent metadata, profile and avatar binding commit together.
 -spec update(integer(), map()) -> {ok, map()} | {error, binary()}.
 update(UserId, ConfigMap) when is_map(ConfigMap) ->
     case trim(maps:get(<<"provider">>, ConfigMap, <<>>)) of
         <<>> ->
             {error, <<"provider 不能为空"/utf8>>};
         Provider ->
-            case ai_agent_repo:patch(UserId, patch_data(UserId, Provider, ConfigMap)) of
-                {ok, _} ->
-                    ok = maybe_update_user_profile(UserId, ConfigMap),
-                    {ok, #{<<"user_id">> => UserId}};
+            case
+                elib_pg:with_tx(fun(Conn) ->
+                    case
+                        ai_agent_repo:patch_tx(
+                            Conn, UserId, patch_data(UserId, Provider, ConfigMap)
+                        )
+                    of
+                        {ok, [_]} -> ok;
+                        {ok, _} -> workspace_guard:abort_on_error({error, agent_not_found});
+                        {error, R} -> workspace_guard:abort_on_error({error, R})
+                    end,
+                    ok = workspace_guard:abort_on_error(profile_tx(Conn, UserId, ConfigMap, false)),
+                    #{<<"user_id">> => UserId}
+                end)
+            of
+                #{<<"user_id">> := _} = Result ->
+                    {ok, Result};
                 {error, Reason} ->
-                    ?ERROR_LOG("ai_agent_ds:update user_id=~p error ~p~n", [UserId, Reason]),
+                    ?ERROR_LOG("ai_agent_ds:update user_id=~p error ~p", [UserId, Reason]),
                     {error, <<"更新 Agent 失败"/utf8>>}
             end
     end.
 
-%% nickname/avatar 任一非空则同步 user 表（一次 update 合并）；
-%% 失败仅记日志（元数据更新已成功，资料可重试）
--spec maybe_update_user_profile(integer(), map()) -> ok.
-maybe_update_user_profile(UserId, ConfigMap) ->
+profile_tx(Conn, UserId, ConfigMap, IsCreate) ->
+    Avatar = trim(maps:get(<<"avatar">>, ConfigMap, <<>>)),
     Profile = maps:from_list([
         {K, V}
      || {K, V} <- [
             {nickname, trim(maps:get(<<"nickname">>, ConfigMap, <<>>))},
-            {avatar, trim(maps:get(<<"avatar">>, ConfigMap, <<>>))}
+            {avatar, Avatar}
         ],
         V =/= <<>>
     ]),
-    case map_size(Profile) of
-        0 ->
-            ok;
+    Changed =
+        case IsCreate of
+            true -> maps:remove(nickname, Profile);
+            false -> Profile
+        end,
+    case validate_avatar_tx(Conn, UserId, ConfigMap, Avatar, IsCreate) of
+        ok when map_size(Changed) =:= 0 -> ok;
+        ok ->
+            case user_repo:update_tx(Conn, UserId, Changed) of
+                {ok, 1} -> ok;
+                {ok, _} -> {error, agent_user_not_found};
+                {error, _} = Error -> Error
+            end;
+        {error, _} = Error ->
+            Error
+    end.
+
+validate_avatar_tx(_Conn, _UserId, _Config, <<>>, _IsCreate) ->
+    ok;
+validate_avatar_tx(Conn, UserId, Config, Avatar, IsCreate) ->
+    Key = maps:get(<<"avatar_object_key">>, Config, <<>>),
+    Cid = maps:get(<<"avatar_client_upload_id">>, Config, <<>>),
+    case {Key, Cid} of
+        {K, C} when is_binary(K), K =/= <<>>, is_binary(C), byte_size(C) =:= 36 ->
+            case maps:get(admin_actor_id, Config, undefined) of
+                AdminId when is_integer(AdminId), AdminId > 0 ->
+                    bind_avatar_url_tx(Conn, K, C, UserId, IsCreate, AdminId, Avatar);
+                _ ->
+                    {error, avatar_session_mismatch}
+            end;
+        {<<>>, <<>>} ->
+            legacy_avatar_tx(Conn, UserId, Avatar, IsCreate);
         _ ->
-            case user_repo:update(UserId, Profile) of
-                {ok, _} ->
-                    ok;
-                {error, Reason} ->
-                    ?ERROR_LOG("ai_agent_ds:update profile user_id=~p error ~p~n", [
-                        UserId, Reason
-                    ]),
-                    ok
+            {error, avatar_session_missing}
+    end.
+
+bind_avatar_url_tx(Conn, Key, Cid, UserId, IsCreate, AdminId, Avatar) ->
+    case elib_oss:public_url_for_key(Key) =:= Avatar of
+        true ->
+            case ai_agent_repo:bind_avatar_tx(Conn, Key, Cid, UserId, IsCreate, AdminId) of
+                ok -> attachment_avatar_alias_repo:revoke_other_tx(Conn, UserId, Key);
+                Error -> Error
+            end;
+        false ->
+            case attachment_avatar_alias_repo:bind_tx(Conn, Key, Cid, UserId, IsCreate, AdminId) of
+                {ok, Alias} ->
+                    case attachment_avatar_alias_repo:public_url(Alias) of
+                        {ok, Avatar} ->
+                            attachment_avatar_alias_repo:revoke_other_tx(Conn, UserId, Key);
+                        _ ->
+                            {error, avatar_url_mismatch}
+                    end;
+                {error, _} = Error ->
+                    Error
             end
+    end.
+
+legacy_avatar_tx(_Conn, _UserId, _Avatar, true) ->
+    {error, avatar_session_missing};
+legacy_avatar_tx(Conn, UserId, Avatar, false) ->
+    %% Without upload proof, only preserve the exact avatar already stored.
+    case
+        elib_pg:query(
+            Conn, <<"SELECT 1 FROM public.\"user\" WHERE id=$1 AND avatar=$2">>, [UserId, Avatar]
+        )
+    of
+        {ok, [_]} -> ok;
+        {ok, _} -> {error, avatar_session_missing};
+        {error, _} = Error -> Error
     end.
 
 %% ===================================================================

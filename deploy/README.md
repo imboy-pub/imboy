@@ -176,25 +176,11 @@ Uptrace 默认关闭。启用时在 `.env` 设置 `UPTRACE_ENABLED=true`，填�
 - `--edition business`：改用商务版 `docker-compose.prod.yml` + sales-policy
   overlay（缺文件时提示商务索取方式）
 
-### imboy.base_url 硬约束（CS Widget / Seat 附件预签名基址）
+### API 与客服上传地址
 
-后端配置 `{imboy, base_url}` 由 `.env` 的 `IMBOY_BASE_URL` 注入（读方
-`src/lib/imboy_env.erl`），是客服 Widget 与 Seat 工作台附件 presign 下发
-`upload.url` 的**绝对基址**。三条硬约束（DEF-SC153-14，规格详见
-[cs-seat-console-embed.md §5](./cs-seat-console-embed.md)）：
+`IMBOY_BASE_URL` 使用 `https://<API_DOMAIN>`，供 API、edge 回退及其他业务使用。社区 Compose 为旧 Widget/Seat 同源上传单独设置 `IMBOY_WIDGET_BASE_URL=https://<CS_WIDGET_DOMAIN>`；缺少该地址时旧上传不下发 URL。direct-v1 上传使用独立的存储授权。Helm 的 `widgetHost` 和 `widgetBaseUrl` 默认为空，启用旧同源上传时须配置同一实际 Widget 网关。
 
-1. **必须公网 HTTPS**：仅 `https://` 起始、无路径、无尾斜杠。非 `https://`
-   时后端 fail-closed——presign 不下发 `upload.url`，附件上传整体不可用。
-2. **必须恰为 `https://<CS_WIDGET_DOMAIN>`**：客服 Widget frame（`/w/*`）与
-   Seat 工作台 frame（`/seat/`）都从 `CS_WIDGET_DOMAIN` 网关域加载，
-   `upload.url` 必须与其同源。指错域（误填 `API_DOMAIN`、内网地址或另一
-   环境的域名）会使附件预签名指向错误主机，坐席/访客侧 PUT 直接失败、
-   零资产落库。例：`CS_WIDGET_DOMAIN=cs.imboy.pub` 时必须
-   `IMBOY_BASE_URL=https://cs.imboy.pub`。
-3. **preflight 机器校验**：`bash preflight.sh`（`install.sh` 的前置环节）对
-   `IMBOY_BASE_URL ↔ CS_WIDGET_DOMAIN` 做精确比对，`http://`、尾斜杠、域名
-   不符均报 ERROR 拒绝部署；该规则的负向 fixtures 自测见
-   `bash preflight.sh --self-test` 输出中的自测 15-18。
+安装器以 Compose 实际解析的域名执行 preflight，五个域名必须有效且互不相同。
 
 ---
 
@@ -372,6 +358,8 @@ docker compose -f docker-compose.prod.yml -f docker-compose-sales-policy.yml log
 
 版本历史、每版升级说明与回滚指引见仓库根 [RELEASES.md](../RELEASES.md)。
 升级前先备份（`scripts/backup_pg.sh` 等，见 backup-restore 手册）。
+
+企业保留期清理使用 DBA 配置的 `imboy_enterprise_purge_worker` 角色；若该角色在迁移 264 之后才创建，由 DBA 对应用数据库执行 `scripts/grant_enterprise_direct_purge.sql`。缺少角色或授权时清理保持失败关闭。
 
 **社区版**（`docker-compose.community.yml`）——迁移默认自动执行（`auto_migrate=true`，
 新镜像启动时自动跑数据库迁移）：

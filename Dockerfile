@@ -120,6 +120,8 @@ RUN /opt/imboy/erts-*/bin/erlexec -version
 #   /opt/imboy/erts-*/bin/escript /opt/imboy/bin/imboy_ctl adm create ...
 # scripts/ 未被 .dockerignore 排除，构建上下文中始终存在。
 COPY scripts/imboy_ctl /opt/imboy/bin/imboy_ctl
+COPY scripts/start_download_edge.sh /opt/imboy/bin/start_download_edge.sh
+COPY scripts/start_enterprise_direct_proof.sh /opt/imboy/bin/start_enterprise_direct_proof.sh
 
 WORKDIR /opt/imboy
 EXPOSE 9800

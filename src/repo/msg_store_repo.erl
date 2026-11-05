@@ -664,11 +664,9 @@ stage_c2g(
     Data = put_sender_did(Data1, SenderDid),
     GenId = elib_tsid:generate(msg_store),
     case
-        elib_pg:with_tx(fun(Conn) ->
+        forward_attachment_repo:transaction(fun(Conn) ->
             %% 与 workspace 归档 UPDATE 锁同一行；先拿锁者决定消息是否被接受。
-            ok = workspace_guard:abort_on_error(
-                workspace_guard:ensure_writable_tx(Conn, {group, ToId})
-            ),
+            ok = forward_attachment_repo:writable_group_tx(Conn, ToId),
             ok = micro_community_access_repo:lock_group_tx(Conn, ToId),
             Seq = allocate_c2g_seq(Conn, ConvKey),
             MemberUids =
@@ -718,9 +716,14 @@ stage_c2g(
                 {ok, _} ->
                     case OriginalMsgId of
                         undefined ->
+                            ok = forward_attachment_repo:accept_tx(
+                                Conn, <<"c2g">>, MsgId, FromId, ToId, Seq
+                            ),
                             ok = bind_group_attachment_anchors(Conn, MsgId, FromId, ToId, Seq);
                         _ ->
-                            ok
+                            ok = persist_c2g_revoke_fact(
+                                Conn, Action, ToId, OriginalMsgId, MsgId, FromId, Seq
+                            )
                     end,
                     {ok, Seq, MemberUids};
                 {error, {error, error, <<"23505">>, unique_violation, _, _}} ->
@@ -731,6 +734,7 @@ stage_c2g(
         end)
     of
         {ok, Seq, MemberUids} when is_integer(Seq), Seq > 0, is_list(MemberUids) ->
+            ok = forward_attachment_repo:mark_committed(<<"c2g">>, MsgId),
             {ok, GenId, Seq, MemberUids};
         {rollback, {unique_violation, MsgId}} ->
             {error, {unique_violation, MsgId}};
@@ -1129,6 +1133,30 @@ verify_c2g_duplicate_identity(
     end.
 
 %% @private 不可变收件人快照不随离线 ACK、timeline retention 或 staging 清理删除。
+%% Serialize revocation with consumers that verify the source message.
+persist_c2g_revoke_fact(Conn, <<"message_revoke_ack">>, Gid, Original, ActionId, Uid, Seq) ->
+    Lock = <<"c2g_forward_revoke:", (integer_to_binary(Gid))/binary, ":", Original/binary>>,
+    case elib_pg:query(Conn, <<"SELECT pg_advisory_xact_lock(hashtextextended($1,0))">>, [Lock]) of
+        {ok, _} -> ok;
+        {error, Reason} -> throw({rollback, {revoke_lock_failed, Reason}})
+    end,
+    case
+        elib_pg:execute(
+            Conn,
+            <<
+                "INSERT INTO public.c2g_revoke_fact"
+                " (group_id,original_msg_id,action_msg_id,actor_uid,accepted_seq)"
+                " VALUES ($1,$2,$3,$4,$5) ON CONFLICT (group_id,original_msg_id) DO NOTHING"
+            >>,
+            [Gid, Original, ActionId, Uid, Seq]
+        )
+    of
+        {ok, _} -> ok;
+        {error, Reason2} -> throw({rollback, {revoke_fact_failed, Reason2}})
+    end;
+persist_c2g_revoke_fact(_, _, _, _, _, _, _) ->
+    ok.
+
 -spec persist_c2g_recipient_snapshot(
     pid(), binary(), integer(), integer(), integer(), [integer()], binary()
 ) -> ok.
@@ -1538,59 +1566,27 @@ vacuum_table() ->
     Tb = tablename(),
     elib_pg:query(<<"VACUUM ANALYZE ", Tb/binary>>, []).
 
-%% @doc 确保备份表存在
-%% 动态创建 msg_store_staging 表及其索引
+%% @doc 校验迁移创建的暂存表和索引；应用运行账号无需 DDL 权限。
 -spec ensure_table_exists() -> ok | {error, any()}.
 ensure_table_exists() ->
-    Tb = tablename(),
-    case
-        elib_pg:execute(
-            <<"CREATE TABLE IF NOT EXISTS ", Tb/binary,
-                " (\n"
-                "            id BIGINT PRIMARY KEY,\n"
-                "            type VARCHAR(10) NOT NULL,\n"
-                "            msg_id VARCHAR(50) NOT NULL,\n"
-                "            msg_type VARCHAR(50),\n"
-                "            action VARCHAR(50),\n"
-                "            e2ee JSONB,\n"
-                %% A2-a：发送者设备标识（PFv3 context binding #6）。本 DDL 只覆盖
-                %% 全新安装；存量部署由 priv/migrations/00000048 的 ALTER 补列——
-                %% 两处必须同步，漏一处即新老部署 schema 分叉。
-                "            sender_did VARCHAR(128),\n"
-                %% Task 8 / E2EE-2026-012：staging 预分配列（持久接受顺序）。
-                %% 本 DDL 只覆盖全新安装；存量部署由 priv/migrations/00000101
-                %% 的 ALTER 补列——两处必须同步（同 sender_did 的 00000048 惯例）。
-                "            conv_seq BIGINT,\n"
-                %% R03/D04（IMBOY-TIMEZONE-REPAIR-V1）：首次持久接受时间。
-                %% 本 DDL 只覆盖全新安装；存量部署由 priv/migrations/00000229
-                %% 的 ALTER 补列——两处必须同步（同 conv_seq 的 00000101 惯例）。
-                "            accepted_at TIMESTAMPTZ,\n"
-                %% R05-A（IMBOY-TIMEZONE-REPAIR-V1）：接受事务内决定的自毁绝对
-                %% 期限。本 DDL 只覆盖全新安装；存量部署由 priv/migrations/00000229
-                %% 的 ALTER 补列——两处必须同步（同 accepted_at 惯例）。
-                "            expire_at TIMESTAMPTZ,\n"
-                "            payload JSONB NOT NULL,\n"
-                "            from_id BIGINT NOT NULL,\n"
-                "            to_id BIGINT,\n"
-                "            to_id_list BIGINT[],\n"
-                "            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),\n"
-                "            server_ts TIMESTAMPTZ NOT NULL DEFAULT NOW(),\n"
-                "            retry_count INTEGER NOT NULL DEFAULT 0,\n"
-                "            processed_at TIMESTAMPTZ,\n"
-                "            available_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),\n"
-                "            error_msg TEXT,\n"
-                "            CONSTRAINT msg_store_staging_type_msg_id_key UNIQUE (type, msg_id)\n"
-                "        )">>,
-            []
-        )
-    of
-        {ok, _} ->
-            %% 创建索引
-            create_indexes(Tb);
-        {error, {error, Reason}} ->
-            {error, Reason};
-        {error, Reason} ->
-            {error, Reason}
+    Sql = <<
+        "SELECT to_regclass('public.msg_store_staging') IS NOT NULL AND "
+        "has_table_privilege(current_user, to_regclass('public.msg_store_staging'), 'SELECT') AND "
+        "has_table_privilege(current_user, to_regclass('public.msg_store_staging'), 'INSERT') AND "
+        "has_table_privilege(current_user, to_regclass('public.msg_store_staging'), 'UPDATE') AND "
+        "has_table_privilege(current_user, to_regclass('public.msg_store_staging'), 'DELETE') AND "
+        "NOT EXISTS (SELECT 1 FROM unnest(ARRAY["
+        "'msg_store_staging_processed_at_idx','msg_store_staging_available_at_idx',"
+        "'msg_store_staging_created_at_idx']) AS expected(name) WHERE NOT EXISTS ("
+        "SELECT 1 FROM pg_catalog.pg_class i JOIN pg_catalog.pg_namespace n ON n.oid=i.relnamespace "
+        "JOIN pg_catalog.pg_index x ON x.indexrelid=i.oid "
+        "WHERE n.nspname='public' AND i.relname=expected.name AND x.indisvalid "
+        "AND x.indrelid=to_regclass('public.msg_store_staging'))) AS ready"
+    >>,
+    case elib_pg:query(Sql, []) of
+        {ok, [#{<<"ready">> := true}]} -> ok;
+        {ok, _} -> {error, staging_schema_unavailable};
+        {error, Reason} -> {error, Reason}
     end.
 
 %% @doc 创建备份表的索引

@@ -36,27 +36,34 @@
 
 -define(CONV_KEY, <<"c2c:100:200">>).
 -define(CONVERSATION_LOCK_SQL,
-    <<"SELECT pg_advisory_xact_lock(hashtextextended('c2c_order:' || $1, 0))">>).
--define(COUNTER_INSERT_SQL,
-    <<"INSERT INTO public.msg_store_seq (conv_key, seq) VALUES ($1, 0) "
-      "ON CONFLICT (conv_key) DO NOTHING">>).
+    <<"SELECT pg_advisory_xact_lock(hashtextextended('c2c_order:' || $1, 0))">>
+).
+-define(COUNTER_INSERT_SQL, <<
+    "INSERT INTO public.msg_store_seq (conv_key, seq) VALUES ($1, 0) "
+    "ON CONFLICT (conv_key) DO NOTHING"
+>>).
 -define(COUNTER_SELECT_SQL,
-    <<"SELECT seq FROM public.msg_store_seq WHERE conv_key = $1 FOR UPDATE">>).
+    <<"SELECT seq FROM public.msg_store_seq WHERE conv_key = $1 FOR UPDATE">>
+).
 -define(MESSAGE_LOCK_SQL,
-    <<"SELECT pg_advisory_xact_lock(hashtextextended('msg_c2c:' || $1, 0))">>).
--define(OBSERVED_HEAD_SQL,
-    <<"SELECT greatest($2::bigint, coalesce((SELECT max(conv_seq) FROM public.msg_store "
-      "WHERE chat_type='c2c' AND conv_key=$1),0), "
-      "coalesce((SELECT max(conv_seq) FROM public.msg_store_staging WHERE type='c2c' "
-      "AND least(from_id,to_id)=$3 AND greatest(from_id,to_id)=$4),0), "
-      "coalesce((SELECT max(conv_seq) FROM public.msg_c2c "
-      "WHERE least(from_id,to_id)=$3 AND greatest(from_id,to_id)=$4),0)) AS seq">>).
--define(IDENTITY_SQL,
-    <<"SELECT from_id, to_id, conv_seq FROM public.msg_store_staging WHERE type = 'c2c' AND msg_id = $1 "
-      "UNION ALL SELECT from_id, to_id, conv_seq FROM public.msg_c2c WHERE msg_id = $1 "
-      "UNION ALL SELECT from_id, to_id, conv_seq FROM public.msg_store WHERE chat_type = 'c2c' AND msg_id = $1">>).
+    <<"SELECT pg_advisory_xact_lock(hashtextextended('msg_c2c:' || $1, 0))">>
+).
+-define(OBSERVED_HEAD_SQL, <<
+    "SELECT greatest($2::bigint, coalesce((SELECT max(conv_seq) FROM public.msg_store "
+    "WHERE chat_type='c2c' AND conv_key=$1),0), "
+    "coalesce((SELECT max(conv_seq) FROM public.msg_store_staging WHERE type='c2c' "
+    "AND least(from_id,to_id)=$3 AND greatest(from_id,to_id)=$4),0), "
+    "coalesce((SELECT max(conv_seq) FROM public.msg_c2c "
+    "WHERE least(from_id,to_id)=$3 AND greatest(from_id,to_id)=$4),0)) AS seq"
+>>).
+-define(IDENTITY_SQL, <<
+    "SELECT from_id, to_id, conv_seq FROM public.msg_store_staging WHERE type = 'c2c' AND msg_id = $1 "
+    "UNION ALL SELECT from_id, to_id, conv_seq FROM public.msg_c2c WHERE msg_id = $1 "
+    "UNION ALL SELECT from_id, to_id, conv_seq FROM public.msg_store WHERE chat_type = 'c2c' AND msg_id = $1"
+>>).
 -define(COUNTER_UPDATE_SQL,
-    <<"UPDATE public.msg_store_seq SET seq = $2 WHERE conv_key = $1">>).
+    <<"UPDATE public.msg_store_seq SET seq = $2 WHERE conv_key = $1">>
+).
 
 %% ===================================================================
 %% 1. 读取列集
@@ -349,26 +356,14 @@ claim_pending_selects_sender_did_test() ->
 %% 5. 全新安装与存量部署的 schema 不得分叉
 %% ===================================================================
 
-%% staging 表不由迁移创建，而是 msg_store_repo:ensure_table_exists/0 的
-%% CREATE TABLE IF NOT EXISTS。迁移只覆盖存量部署；漏改 DDL = 全新安装少一列。
-ensure_table_ddl_has_sender_did_test() ->
-    meck:new(elib_pg, [passthrough]),
-    try
-        meck:expect(elib_pg, execute, fun(Sql, _Params) ->
-            Bin = iolist_to_binary(Sql),
-            case binary:match(Bin, <<"CREATE TABLE IF NOT EXISTS">>) of
-                nomatch -> ok;
-                _ -> persistent_term:put({?MODULE, ddl}, Bin)
-            end,
-            {ok, 0}
-        end),
-        _ = msg_store_repo:ensure_table_exists(),
-        Ddl = persistent_term:get({?MODULE, ddl}),
-        ?assert(binary:match(Ddl, <<"sender_did">>) =/= nomatch)
-    after
-        persistent_term:erase({?MODULE, ddl}),
-        _ = (catch meck:unload(elib_pg))
-    end.
+%% 新安装由迁移 165 建表，早期存量安装由迁移 48 安全追加列。
+migration_staging_has_sender_did_test() ->
+    {ok, Initial} = file:read_file(
+        "priv/migrations/00000165_msg_staging_before_tsid_bootstrap.up.sql"
+    ),
+    {ok, Upgrade} = file:read_file("priv/migrations/00000048_msg_sender_did.up.sql"),
+    ?assert(binary:match(Initial, <<"sender_did VARCHAR(128)">>) =/= nomatch),
+    ?assert(binary:match(Upgrade, <<"ADD COLUMN IF NOT EXISTS sender_did">>) =/= nomatch).
 
 %% 全新安装执行迁移时，staging 表尚未由应用启动阶段创建；字段注释必须
 %% 显式守护表存在性，否则迁移会被标记为 dirty 并阻断首次启动。

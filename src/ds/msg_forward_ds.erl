@@ -8,11 +8,14 @@
 -include("chat.hrl").
 -include("log.hrl").
 
--export([save_forward_record/8]).
+-export([save_forward_record/8, source_group_visible/3]).
 
 %% ===================================================================
 %% API
 %% ===================================================================
+
+source_group_visible(MsgId, Gid, Uid) ->
+    msg_forward_repo:source_group_visible(MsgId, Gid, Uid).
 
 %% @doc 保存转发记录
 %% @param OriginalMsgId 原始消息ID

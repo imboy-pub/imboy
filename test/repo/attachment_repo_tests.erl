@@ -189,7 +189,10 @@ update_status_disable_test_() ->
     ?WITH_MECKS(
         [
             {elib_pg_sql, [{'public_tablename', 1, fun(_) -> <<"public.attachment">> end}]},
-            {elib_pg, [{'update', 4, fun(_Tb, _D, _W, _P) -> {ok, 1} end}]},
+            {elib_pg, [
+                {'with_physical_guard_retry_tx', 1, fun(F) -> F(self()) end},
+                {'update', 5, fun(_C, _Tb, _D, _W, _P) -> {ok, 1} end}
+            ]},
             {elib_dt, [{'now', 0, fun() -> 1748430000 end}]}
         ],
         fun() ->
@@ -201,7 +204,10 @@ update_status_soft_delete_test_() ->
     ?WITH_MECKS(
         [
             {elib_pg_sql, [{'public_tablename', 1, fun(_) -> <<"public.attachment">> end}]},
-            {elib_pg, [{'update', 4, fun(_Tb, _D, _W, _P) -> {ok, 1} end}]},
+            {elib_pg, [
+                {'with_physical_guard_retry_tx', 1, fun(F) -> F(self()) end},
+                {'update', 5, fun(_C, _Tb, _D, _W, _P) -> {ok, 1} end}
+            ]},
             {elib_dt, [{'now', 0, fun() -> 1748430000 end}]}
         ],
         fun() ->
@@ -213,7 +219,10 @@ update_status_db_error_test_() ->
     ?WITH_MECKS(
         [
             {elib_pg_sql, [{'public_tablename', 1, fun(_) -> <<"public.attachment">> end}]},
-            {elib_pg, [{'update', 4, fun(_Tb, _D, _W, _P) -> {error, db_error} end}]},
+            {elib_pg, [
+                {'with_physical_guard_retry_tx', 1, fun(F) -> F(self()) end},
+                {'update', 5, fun(_C, _Tb, _D, _W, _P) -> {error, db_error} end}
+            ]},
             {elib_dt, [{'now', 0, fun() -> 1748430000 end}]}
         ],
         fun() ->

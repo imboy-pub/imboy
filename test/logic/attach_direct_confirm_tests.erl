@@ -6,7 +6,10 @@ confirm_test_() ->
         {"group guard and binary time", fun() -> confirm_success(<<"group">>) end},
         {"channel guard and binary time", fun() -> confirm_success(<<"channel">>) end},
         {"private null ref and binary time", fun confirm_private/0},
-        {"unknown reason formatting", fun reason_format/0}
+        {"unknown reason formatting", fun reason_format/0},
+        {"unknown is not reported when ledger write fails", fun unknown_write_fails/0},
+        {"rejected is not reported when outcome write fails", fun rejected_write_fails/0},
+        {"rejected is not reported when final transition loses", fun rejected_transition_loses/0}
     ],
     Missing = [
         {lists:flatten(io_lib:format("~s missing ref ~p", [Scope, Ref])), fun() ->
@@ -63,7 +66,7 @@ fixture(Scope, Ref) ->
         ?assertEqual(object_key(), ObjectKey),
         {ok, [Row]}
     end),
-    meck:expect(elib_pg, with_tx, fun(Transaction) ->
+    meck:expect(elib_pg, with_physical_guard_retry_tx, fun(Transaction) ->
         try
             Transaction(self())
         catch
@@ -107,7 +110,10 @@ guard_fixture(Status, Member) ->
         lock_upload_organization_tx,
         fun(_Conn, _Target, 123) -> ok end
     ),
-    meck:expect(workspace_resolver, resolve_workspace, fun(_Target) -> {ok, 77} end),
+    meck:expect(workspace_resolver, resolve_workspace_tx, fun(Conn, _Target) ->
+        ?assertEqual(self(), Conn),
+        {ok, 77}
+    end),
     meck:expect(elib_pg, query, fun(Conn, Sql, [77]) ->
         ?assertEqual(self(), Conn),
         ?assertEqual(<<"SELECT status FROM workspace WHERE id = $1 FOR UPDATE">>, Sql),
@@ -115,7 +121,7 @@ guard_fixture(Status, Member) ->
     end),
     meck:expect(
         attachment_repo,
-        authorize_upload_scope_tx,
+        authorize_upload_scope_tx_retryable,
         fun(_Conn, _Kind, 42, 123) -> Member end
     ).
 
@@ -137,7 +143,7 @@ save_fixture(Scope, ExpectedRef) ->
                 ?assertEqual(
                     0,
                     meck:num_calls(
-                        attachment_ds, ensure_upload_scope_tx, '_'
+                        attachment_ds, ensure_upload_scope_tx_retryable, '_'
                     )
                 )
         end,
@@ -158,7 +164,7 @@ assert_guard_called(Kind) ->
         1,
         meck:num_calls(
             attachment_ds,
-            ensure_upload_scope_tx,
+            ensure_upload_scope_tx_retryable,
             [self(), {Kind, <<"42">>}, 123]
         )
     ),
@@ -170,12 +176,12 @@ assert_guard_called(Kind) ->
             [self(), {Kind, 42}, 123]
         )
     ),
-    ?assertEqual(1, meck:num_calls(workspace_resolver, resolve_workspace, [{Kind, 42}])),
+    ?assertEqual(1, meck:num_calls(workspace_resolver, resolve_workspace_tx, [self(), {Kind, 42}])),
     ?assertEqual(
         1,
         meck:num_calls(
             attachment_repo,
-            authorize_upload_scope_tx,
+            authorize_upload_scope_tx_retryable,
             [self(), Kind, 42, 123]
         )
     ).
@@ -207,7 +213,7 @@ assert_confirmed() ->
 confirm_missing_ref(Scope, Ref) ->
     fixture(Scope, Ref),
     ?assertEqual({error, missing_scope_ref}, attach_direct_logic:finalize(object_key(), 1)),
-    ?assertEqual(0, meck:num_calls(attachment_ds, ensure_upload_scope_tx, '_')),
+    ?assertEqual(0, meck:num_calls(attachment_ds, ensure_upload_scope_tx_retryable, '_')),
     ?assertEqual(0, meck:num_calls(attachment_repo, lock_upload_organization_tx, '_')),
     assert_no_confirmation().
 
@@ -232,7 +238,7 @@ confirm_denied(Scope, Denial) ->
     ?assertEqual(
         ExpectedAuthCalls,
         meck:num_calls(
-            attachment_repo, authorize_upload_scope_tx, '_'
+            attachment_repo, authorize_upload_scope_tx_retryable, '_'
         )
     ),
     assert_no_confirmation().
@@ -247,6 +253,51 @@ reason_format() ->
     ?assertEqual(<<"copy_timeout">>, attach_direct_logic:reason_bin(copy_timeout)),
     ?assertEqual(<<"storage_status_503">>, attach_direct_logic:reason_bin({storage_status, 503})),
     ?assertEqual(<<"fixture">>, attach_direct_logic:reason_bin(<<"fixture">>)),
+    assert_mocks_valid().
+
+unknown_write_fails() ->
+    fixture(<<"private">>, null),
+    meck:expect(attachment_storage_garage, copy_dispatch, fun(_, _, _, _) -> {error, timeout} end),
+    meck:expect(attach_direct_attempt_repo, record_outcome_tx, fun(_, _, 1, unknown_quarantined, _) ->
+        {error, synthetic_ledger_failure}
+    end),
+    ?assertEqual(
+        {error, {outcome_unconfirmed, {error, synthetic_ledger_failure}}},
+        attach_direct_logic:finalize(object_key(), 1)
+    ),
+    ?assertEqual(1, meck:num_calls(attachment_storage_garage, copy_dispatch, '_')),
+    ?assertEqual(0, meck:num_calls(attach_direct_attempt_repo, winner_pin_tx, '_')),
+    assert_mocks_valid().
+
+rejected_write_fails() ->
+    fixture(<<"private">>, null),
+    meck:expect(attachment_storage_garage, copy_dispatch, fun(_, _, _, _) ->
+        {error, copy_xml_error}
+    end),
+    meck:expect(attach_direct_attempt_repo, record_outcome_tx, fun(_, _, 1, copy_completed, _) ->
+        {error, synthetic_ledger_failure}
+    end),
+    ?assertEqual(
+        {error, {outcome_unconfirmed, {error, synthetic_ledger_failure}}},
+        attach_direct_logic:finalize(object_key(), 1)
+    ),
+    ?assertEqual(1, meck:num_calls(attachment_storage_garage, copy_dispatch, '_')),
+    ?assertEqual(0, meck:num_calls(attach_direct_attempt_repo, transition_tx, '_')),
+    assert_mocks_valid().
+
+rejected_transition_loses() ->
+    fixture(<<"private">>, null),
+    meck:expect(attachment_storage_garage, copy_dispatch, fun(_, _, _, _) ->
+        {error, copy_xml_error}
+    end),
+    meck:expect(attach_direct_attempt_repo, record_outcome_tx, fun(_, _, 1, copy_completed, _) ->
+        ok
+    end),
+    meck:expect(attach_direct_attempt_repo, transition_tx, fun(_, _, _, _, _, _) ->
+        {error, cas_lost}
+    end),
+    ?assertEqual({error, cas_lost}, attach_direct_logic:finalize(object_key(), 1)),
+    ?assertEqual(1, meck:num_calls(attachment_storage_garage, copy_dispatch, '_')),
     assert_mocks_valid().
 
 assert_mocks_valid() ->

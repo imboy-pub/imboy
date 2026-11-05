@@ -20,7 +20,11 @@ retry_test_() ->
         fun(C) -> ?_test(rollback_status_unknown_discards_and_clears_context(C)) end,
         fun(C) -> ?_test(commit_eof_discards_and_clears_context(C)) end,
         fun(C) -> ?_test(after_commit_can_start_normal_transaction(C)) end,
-        fun(C) -> ?_test(retry_is_bounded(C)) end
+        fun(C) -> ?_test(retry_is_bounded(C)) end,
+        fun(C) -> ?_test(physical_guard_retries_after_rollback(C)) end,
+        fun(C) -> ?_test(other_serialization_is_not_retried(C)) end,
+        fun(C) -> ?_test(existing_retry_handles_physical_conflict(C)) end,
+        fun(C) -> ?_test(physical_guard_rollback_failure_never_retries(C)) end
     ]}.
 
 setup() ->
@@ -64,6 +68,81 @@ deadlock() ->
         message = <<"deadlock">>,
         extra = []
     }.
+
+physical_conflict() ->
+    #error{
+        severity = error,
+        code = <<"40001">>,
+        codename = serialization_failure,
+        message = <<"physical key busy">>,
+        extra = []
+    }.
+
+physical_guard_retries_after_rollback(_) ->
+    put(retry_test_attempt, 0),
+    put(retry_test_actions, []),
+    Result = elib_pg:with_physical_guard_retry_tx(fun(C) ->
+        N = get(retry_test_attempt) + 1,
+        put(retry_test_attempt, N),
+        elib_pg:after_commit(C, physical_action, fun() ->
+            put(retry_test_actions, [done | get(retry_test_actions)]),
+            ok
+        end),
+        case N of
+            1 -> {error, physical_conflict()};
+            _ -> ok
+        end
+    end),
+    ?assertEqual(ok, Result),
+    ?assertEqual(2, get(retry_test_attempt)),
+    ?assertEqual([done], get(retry_test_actions)),
+    ?assertEqual(1, meck:num_calls(epgsql, squery, ['_', <<"ROLLBACK">>])).
+
+other_serialization_is_not_retried(_) ->
+    put(retry_test_attempt, 0),
+    Other = (physical_conflict())#error{message = <<"other serialization failure">>},
+    ?assertEqual(
+        {error, Other},
+        elib_pg:with_deadlock_retry_tx(fun(_) ->
+            put(retry_test_attempt, get(retry_test_attempt) + 1),
+            {error, Other}
+        end)
+    ),
+    ?assertEqual(1, get(retry_test_attempt)).
+
+existing_retry_handles_physical_conflict(_) ->
+    put(retry_test_attempt, 0),
+    ?assertEqual(
+        ok,
+        elib_pg:with_deadlock_retry_tx(fun(_) ->
+            N = get(retry_test_attempt) + 1,
+            put(retry_test_attempt, N),
+            case N of
+                1 -> {error, physical_conflict()};
+                _ -> ok
+            end
+        end)
+    ),
+    ?assertEqual(2, get(retry_test_attempt)).
+
+physical_guard_rollback_failure_never_retries(Conn) ->
+    meck:expect(epgsql, squery, fun
+        (_, <<"ROLLBACK">>) ->
+            {error, closed};
+        (_, Sql) ->
+            put(retry_test_status, status(Sql)),
+            {ok, [], []}
+    end),
+    put(retry_test_attempt, 0),
+    ?assertMatch(
+        {error, {rollback_not_confirmed, _, _}},
+        elib_pg:with_physical_guard_retry_tx(fun(_) ->
+            put(retry_test_attempt, get(retry_test_attempt) + 1),
+            {error, physical_conflict()}
+        end)
+    ),
+    ?assertEqual(1, get(retry_test_attempt)),
+    ?assertEqual(1, meck:num_calls(pooler, return_member, [pgsql, Conn, fail])).
 
 retry_only_confirmed_deadlock(_) ->
     put(retry_test_attempt, 0),

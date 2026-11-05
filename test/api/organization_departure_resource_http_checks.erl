@@ -8,6 +8,16 @@
 
 run(H) ->
     configure(H),
+    #{garage_mode := real} = maps:get(storage_fixture, H),
+    ok = ?H:enable_group_direct(),
+    Edge = ?H:start_direct_edge(maps:get(port, H)),
+    try
+        run_with_edge(H)
+    after
+        ?H:stop_direct_edge(Edge)
+    end.
+
+run_with_edge(H) ->
     W = ?H:fixture(ws_a1, H),
     G = ?H:fixture(grp_human, H),
     Ch = ?H:fixture(chn_a1, H),
@@ -42,16 +52,14 @@ run(H) ->
 
 prepare_file(H, G, Headers, Bytes) ->
     C = maps:get(conn, H),
-    {ok, #{<<"file_id">> := Ref}} = group_file_logic:upload(
-        G, ?U, <<"departure.txt">>, Bytes, <<"text/plain">>
-    ),
+    {Ref, _ObjectKey} = ?H:direct_group_file(G, ?U, <<"departure.txt">>, Bytes),
     #{<<"id">> := FileId} = ?H:one(C, <<"SELECT id FROM group_file WHERE file_id=$1">>, [Ref]),
     ?assertEqual(0, code(get(H, file_list(G), Headers))),
     DownloadPath = <<"/api/v1/group/file/download?file_id=", (integer_to_binary(FileId))/binary>>,
     Download = get(H, DownloadPath, Headers),
     ?assertEqual(302, maps:get(status, Download)),
     TicketPath = url_path(maps:get(<<"location">>, maps:get(headers, Download))),
-    Content = get(H, TicketPath, #{}),
+    Content = ?H:follow_direct_edge(get(H, TicketPath, #{})),
     ?assertEqual(200, maps:get(status, Content)),
     ?assertEqual(Bytes, maps:get(body, Content)),
     {FileId, DownloadPath, TicketPath}.

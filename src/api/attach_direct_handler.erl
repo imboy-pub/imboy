@@ -28,11 +28,20 @@ route(<<"POST">>, <<"register">>, Req0, State) ->
     Scope = maps:get(<<"scope">>, Body, <<"private">>),
     ScopeRef = maps:get(<<"scope_ref">>, Body, undefined),
     ClientUploadId = maps:get(<<"client_upload_id">>, Body, undefined),
-    case attach_direct_logic:register(Uid, Scope, ScopeRef, ClientUploadId, FileName) of
+    Contract = maps:with([<<"cipher">>, <<"purpose">>, <<"anchor_msg_id">>], Body),
+    case attach_direct_logic:register(Uid, Scope, ScopeRef, ClientUploadId, FileName, Contract) of
         {ok, Info} ->
             reply_ok(Req0, Info);
+        {error, legacy_session_conflict} ->
+            reply_err(Req0, ?ERR_CONFLICT, <<"legacy_session_conflict">>, new_session);
+        {error, terminal_session_conflict} ->
+            reply_err(Req0, ?ERR_CONFLICT, <<"terminal_session_conflict">>, new_session);
         {error, declaration_conflict} ->
             reply_err(Req0, ?ERR_CONFLICT, <<"declaration_conflict">>, new_session);
+        {error, unsupported_cipher} ->
+            reply_err(Req0, ?ERR_BAD_REQUEST, <<"unsupported_cipher">>, abort);
+        {error, invalid_attachment_contract} ->
+            reply_err(Req0, ?ERR_BAD_REQUEST, <<"invalid_attachment_contract">>, abort);
         {error, _} ->
             reply_err(Req0, ?ERR_SERVICE_UNAVAILABLE, <<"service_unavailable">>, retry_session)
     end;
@@ -80,6 +89,8 @@ route(<<"POST">>, <<"grant">>, Req0, State) ->
             case attach_direct_logic:grant(Key, Sha) of
                 {ok, Info} ->
                     reply_ok(Req0, Info);
+                {error, expected_conflict} ->
+                    reply_err(Req0, ?ERR_CONFLICT, <<"expected_conflict">>, abort);
                 {error, illegal_state} ->
                     reply_err(Req0, ?ERR_CONFLICT, <<"illegal_state">>, poll);
                 {error, not_found} ->
@@ -103,6 +114,8 @@ route(<<"POST">>, <<"renew">>, Req0, State) ->
                     reply_ok(Req0, Info);
                 {error, attempt_budget_exhausted} ->
                     reply_err(Req0, ?ERR_CONFLICT, <<"attempt_budget_exhausted">>, abort);
+                {error, expected_conflict} ->
+                    reply_err(Req0, ?ERR_CONFLICT, <<"expected_conflict">>, abort);
                 {error, illegal_state} ->
                     reply_err(Req0, ?ERR_CONFLICT, <<"illegal_state">>, poll);
                 {error, not_found} ->

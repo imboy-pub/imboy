@@ -118,6 +118,9 @@ override_from_env() ->
 
     %% URL 配置覆盖（生产环境必须通过这两个变量消除 sys.config 中的 dev URL）
     ok = override_binary_key("IMBOY_BASE_URL", base_url),
+    ok = override_binary_key("IMBOY_AVATAR_EDGE_BASE_URL", avatar_edge_base_url),
+    ok = override_binary_key("IMBOY_WIDGET_BASE_URL", widget_base_url),
+    ok = override_binary_key("IMBOY_WIDGET_DOMAIN", widget_domain),
     ok = override_binary_key("IMBOY_WS_URL", ws_url),
 
     %% OpenTelemetry 遥测（Uptrace）：DSN 含项目 token 属敏感凭据，只走 env
@@ -217,6 +220,7 @@ override_from_env() ->
     %% IMBOY_CS_WIDGET_SUBJECT_KEY_FILE / IMBOY_CS_WIDGET_IDENTITY_KEYS_FILE
     %% 文件变体：读文件内容为值，文件权限必须 0600，双源同给 fail-closed。
     ok = imboy_env_overrides:override_cs_widget(),
+    ok = imboy_env_overrides:override_edge_token(),
 
     %% BE-W01：CORS 三面 origin 名单（widget 应用 origin / admin origin），
     %% 逗号分隔；消费方 cors_middleware 按 API 面精确校验。

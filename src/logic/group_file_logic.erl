@@ -1,12 +1,13 @@
 -module(group_file_logic).
 -moduledoc "群文件业务逻辑层 / group file logic。".
--dialyzer({nowarn_function, [upload/5]}).
 %%%
 % group_file_logic 是 group file logic 缩写
 % 群文件业务逻辑层，处理群文件相关的业务逻辑
+%
+% C08（V3-12）：multipart 正文上传（"登记即绑定"旧链）已退役；群文件唯一
+% 引用入口为 group_file_ds:bind_file（direct-v1 confirmed 逻辑引用绑定）。
 %%%
 
--export([upload/5]).
 -export([download/2]).
 -export([delete/2]).
 -export([list/4]).
@@ -20,42 +21,6 @@
 %% ===================================================================
 %% API 函数
 %% ===================================================================
-
-%% @doc 上传文件到群文件
-%% @param Gid 群组ID（整数）
-%% @param CurrentUid 当前用户ID
-%% @param FileName 文件名
-%% @param FileBinary 文件二进制数据
-%% @param FileType MIME类型
-%% @return {ok, FileData} | {error, Reason}
--spec upload(binary(), integer(), binary(), binary(), binary()) -> {ok, map()} | {error, term()}.
-upload(Gid, CurrentUid, FileName, FileBinary, FileType) ->
-    % 1. 解码群组ID
-    Gid2 = ec_cnv:to_integer(Gid),
-
-    % 2. 调用DS层上传文件
-    case
-        normalize_write_result(
-            group_file_ds:upload_file(Gid2, CurrentUid, FileName, FileBinary, FileType)
-        )
-    of
-        {ok, FileId} ->
-            % 3. 返回文件信息
-            FileData = #{
-                <<"file_id">> => FileId,
-                <<"file_name">> => FileName,
-                <<"file_size">> => byte_size(FileBinary),
-                <<"file_type">> => FileType,
-                <<"file_category">> => elib_oss:get_file_category(FileType),
-                <<"created_at">> => elib_dt:timestamp()
-            },
-            {ok, FileData};
-        %% T7 归档拒绝归一为稳定错误码（handler 直接映射 envelope code 980）
-        {error, {?ERR_WORKSPACE_ARCHIVED, _Msg}} ->
-            {error, ?ERR_WORKSPACE_ARCHIVED};
-        {error, Reason} ->
-            {error, Reason}
-    end.
 
 %% @doc 下载文件
 %% @param FileId 文件ID（主键ID）

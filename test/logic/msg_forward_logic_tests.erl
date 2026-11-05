@@ -236,6 +236,7 @@ forward_c2g_to_c2c_with_valid_data_succeeds_test_() ->
                 {'millisecond', 0, fun() -> 1700000000000 end}
             ]},
             {msg_forward_ds, [
+                {'source_group_visible', 3, fun(_, _, _) -> true end},
                 {'save_forward_record', 8, fun(_, _, _, _, _, _, _, _) -> ok end}
             ]}
         ],
@@ -253,6 +254,7 @@ forward_c2g_to_c2c_with_valid_data_succeeds_test_() ->
 forward_c2g_to_c2c_without_group_membership_fails_test_() ->
     ?WITH_MECKS(
         [
+            {msg_forward_ds, [{'source_group_visible', 3, fun(_, _, _) -> false end}]},
             {msg_c2c_ds, [
                 {'find_msg_by_id', 1, fun(_MsgId) ->
                     {error, not_found}
@@ -284,6 +286,53 @@ forward_c2g_to_c2c_without_group_membership_fails_test_() ->
 
             Result = msg_forward_logic:forward(MsgIds, FromUid, ToId, ToType),
             ?assertMatch({error, {permission_denied, _}}, Result)
+        end
+    ).
+
+forward_group_sender_not_in_original_recipient_snapshot_is_denied_test_() ->
+    ?WITH_MECKS(
+        [
+            {msg_c2c_ds, [{'find_msg_by_id', 1, fun(_) -> {error, not_found} end}]},
+            {msg_c2g_ds, [
+                {'timeline_find_body_by_msg_id', 1, fun(_) ->
+                    {ok, [
+                        #{<<"from_id">> => 999, <<"to_gid">> => 1001, <<"msg_type">> => <<"text">>}
+                    ]}
+                end}
+            ]},
+            {msg_forward_ds, [
+                {'source_group_visible', 3, fun(<<"msg_123">>, 1001, 123) -> false end}
+            ]},
+            {friend_ds, [{'check_relationship', 2, fun(_, _) -> {true, false} end}]}
+        ],
+        fun() ->
+            ?assertMatch(
+                {error, {permission_denied, _}},
+                msg_forward_logic:forward([<<"msg_123">>], 123, 789, <<"c2c">>)
+            )
+        end
+    ).
+
+forward_original_group_sender_after_exit_fails_test_() ->
+    ?WITH_MECKS(
+        [
+            {msg_forward_ds, [{'source_group_visible', 3, fun(_, _, _) -> false end}]},
+            {msg_c2c_ds, [{'find_msg_by_id', 1, fun(_) -> {error, not_found} end}]},
+            {msg_c2g_ds, [
+                {'timeline_find_body_by_msg_id', 1, fun(_) ->
+                    {ok, [
+                        #{<<"from_id">> => 123, <<"to_gid">> => 1001, <<"msg_type">> => <<"text">>}
+                    ]}
+                end}
+            ]},
+            {group_ds, [{'is_member', 2, fun(123, 1001) -> false end}]},
+            {friend_ds, [{'check_relationship', 2, fun(_, _) -> {true, false} end}]}
+        ],
+        fun() ->
+            ?assertMatch(
+                {error, {permission_denied, _}},
+                msg_forward_logic:forward([<<"msg_123">>], 123, 789, <<"c2c">>)
+            )
         end
     ).
 
@@ -322,6 +371,7 @@ forward_c2g_to_c2g_with_valid_data_succeeds_test_() ->
                 {'millisecond', 0, fun() -> 1700000000000 end}
             ]},
             {msg_forward_ds, [
+                {'source_group_visible', 3, fun(_, _, _) -> true end},
                 {'save_forward_record', 8, fun(_, _, _, _, _, _, _, _) -> ok end}
             ]}
         ],
@@ -713,10 +763,8 @@ forward_rejects_e2ee_message_test_() ->
         end
     ).
 
-%% 媒体消息复刻 payload 也「没用」：附件读取授权绑在原会话（attach_logic:authorize/3
-%% 对 scope=c2c 判 c2c_members(scope_ref)），新接收方拿不到 view_url 的签发，
-%% 结果是「看得见、点开打不开」。与其投递一条坏消息，不如明确拒绝。
-forward_rejects_media_message_test_() ->
+%% A successful send must include the target reference in its transaction.
+forward_rejects_uncommitted_media_reference_test_() ->
     ?WITH_MECKS(
         [
             {msg_c2c_ds, [
@@ -746,7 +794,80 @@ forward_rejects_media_message_test_() ->
         ],
         fun() ->
             Result = msg_forward_logic:forward([<<"msg_123">>], 123, 789, <<"c2c">>),
-            ?assertMatch({error, {invalid_param, _}}, Result)
+            ?assertEqual({error, forward_reference_not_committed}, Result)
+        end
+    ).
+
+forward_accepts_committed_media_reference_test_() ->
+    ?WITH_MECKS(
+        [
+            {msg_c2c_ds, [
+                {'find_msg_by_id', 1, fun(_) ->
+                    {ok, #{
+                        <<"from_id">> => 123,
+                        <<"to_id">> => 456,
+                        <<"msg_type">> => <<"image">>,
+                        <<"payload">> => #{<<"uri">> => <<"u4/c2c/20261008/a/b.png">>},
+                        <<"e2ee">> => null
+                    }}
+                end}
+            ]},
+            {msg_c2c_logic, [
+                {'c2c', 3, fun(Id, _, _) ->
+                    forward_attachment_repo:mark_committed(<<"c2c">>, Id),
+                    ok
+                end}
+            ]},
+            {friend_ds, [{'check_relationship', 2, fun(_, _) -> {true, false} end}]},
+            {elib_uuid, [{'gen_v7', 0, fun() -> <<"018f0000-0000-7000-8000-000987654321">> end}]},
+            {elib_dt, [{'millisecond', 0, fun() -> 1700000000000 end}]},
+            {msg_forward_ds, [{'save_forward_record', 8, fun(_, _, _, _, _, _, _, _) -> ok end}]}
+        ],
+        fun() ->
+            ?assertMatch({ok, [_]}, msg_forward_logic:forward([<<"msg_123">>], 123, 789, <<"c2c">>))
+        end
+    ).
+
+forward_group_media_preserves_source_envelope_test_() ->
+    Envelope = #{
+        <<"payload">> => #{<<"uri">> => <<"u4/c2g/image.png">>},
+        <<"msg_type">> => <<"image">>
+    },
+    ?WITH_MECKS(
+        [
+            {msg_c2c_ds, [{'find_msg_by_id', 1, fun(_) -> {error, not_found} end}]},
+            {msg_c2g_ds, [
+                {'timeline_find_body_by_msg_id', 1, fun(_) ->
+                    {ok, [
+                        #{
+                            <<"from_id">> => 123,
+                            <<"to_gid">> => 456,
+                            <<"msg_type">> => <<"image">>,
+                            <<"payload">> => Envelope,
+                            <<"e2ee">> => null
+                        }
+                    ]}
+                end}
+            ]},
+            {msg_forward_ds, [
+                {'source_group_visible', 3, fun(_, _, _) -> true end},
+                {'save_forward_record', 8, fun(_, _, _, _, _, _, _, _) -> ok end}
+            ]},
+            {friend_ds, [{'check_relationship', 2, fun(_, _) -> {true, false} end}]},
+            {elib_uuid, [{'gen_v7', 0, fun() -> <<"018f0000-0000-7000-8000-000987654321">> end}]},
+            {elib_dt, [{'millisecond', 0, fun() -> 1700000000000 end}]},
+            {forward_attachment_repo, [
+                {'with_context', 2, fun(Context, _) ->
+                    ?assertEqual(Envelope, maps:get(source_payload, Context)),
+                    {ok, <<"forwarded">>}
+                end}
+            ]}
+        ],
+        fun() ->
+            ?assertEqual(
+                {ok, [<<"forwarded">>]},
+                msg_forward_logic:forward([<<"msg_123">>], 123, 789, <<"c2c">>)
+            )
         end
     ).
 
@@ -780,6 +901,63 @@ forward_rejects_payload_with_object_reference_test_() ->
         fun() ->
             Result = msg_forward_logic:forward([<<"msg_123">>], 123, 789, <<"c2c">>),
             ?assertMatch({error, {invalid_param, _}}, Result)
+        end
+    ).
+
+forward_rejects_unknown_attachment_reference_shape_test_() ->
+    ?WITH_MECKS(
+        [
+            {msg_c2c_ds, [
+                {'find_msg_by_id', 1, fun(_) ->
+                    {ok, #{
+                        <<"from_id">> => 123,
+                        <<"to_id">> => 456,
+                        <<"msg_type">> => <<"card">>,
+                        <<"payload">> => #{<<"uri">> => [<<"u50/c2c/x/y.png">>]},
+                        <<"e2ee">> => null
+                    }}
+                end}
+            ]},
+            {friend_ds, [{'check_relationship', 2, fun(_, _) -> {true, false} end}]}
+        ],
+        fun() ->
+            ?assertMatch(
+                {error, {invalid_param, _}},
+                msg_forward_logic:forward([<<"msg_123">>], 123, 789, <<"c2c">>)
+            )
+        end
+    ).
+
+forward_rejects_nested_attachment_reference_test_() ->
+    ?WITH_MECKS(
+        [
+            {msg_c2c_ds, [
+                {'find_msg_by_id', 1, fun(_MsgId) ->
+                    {ok, #{
+                        <<"from_id">> => 123,
+                        <<"to_id">> => 456,
+                        <<"msg_type">> => <<"card">>,
+                        <<"payload">> => #{
+                            <<"items">> => [
+                                #{<<"preview">> => #{<<"uri">> => <<"u50/c2c/x/y.png">>}}
+                            ]
+                        },
+                        <<"e2ee">> => null
+                    }}
+                end}
+            ]},
+            {msg_c2c_logic, [
+                {'c2c', 3, fun(_, _, _) -> error(unexpected_send) end}
+            ]},
+            {friend_ds, [
+                {'check_relationship', 2, fun(_, _) -> {true, false} end}
+            ]}
+        ],
+        fun() ->
+            ?assertMatch(
+                {error, {invalid_param, _}},
+                msg_forward_logic:forward([<<"msg_123">>], 123, 789, <<"c2c">>)
+            )
         end
     ).
 

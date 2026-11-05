@@ -21,4 +21,8 @@ spec:
       protocol: TCP
       port: {{ .Values.backend.service.port }}
       targetPort: http
+    - name: edge
+      protocol: TCP
+      port: 13990
+      targetPort: edge
 {{- end }}

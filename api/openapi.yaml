@@ -471,8 +471,6 @@ paths:
     $ref: './paths/api/v1/group-schedule/my-list.yaml'
   /api/v1/group_schedule/confirm:
     $ref: './paths/api/v1/group-schedule/confirm.yaml'
-  /api/v1/group/file/upload:
-    $ref: './paths/api/v1/group-file/upload.yaml'
   /api/v1/group/file/download:
     $ref: './paths/api/v1/group-file/download.yaml'
   /api/v1/group/file/list:

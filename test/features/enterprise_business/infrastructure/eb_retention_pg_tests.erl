@@ -55,6 +55,7 @@ cases({ok, _Conn}) ->
         {timeout, 60, fun a06_purge_deletes_children_then_message_and_audits/0},
         {timeout, 60, fun a06_batch_limit_bounds_each_run/0},
         {timeout, 60, fun a06_active_hold_blocks_purge_even_when_due/0},
+        {timeout, 60, fun a06_intent_scoped_hold_and_idempotence/0},
         {timeout, 60, fun a06_db_guard_rejection_keeps_everything/0},
         {timeout, 60, fun a06_asset_retained_longer_than_message_blocks_purge/0},
         {timeout, 60, fun a06_purge_never_crosses_tenants/0},
@@ -236,6 +237,34 @@ a06_active_hold_blocks_purge_even_when_due() ->
 
 %% DB 守卫（retain_until 相对 DB 时钟未到期）在 purge worker 内被命中时，
 %% 整个批次回滚：消息与附件都不删、不写审计（失败宁可多保留）。
+a06_intent_scoped_hold_and_idempotence() ->
+    Scope = eb_pg_test_fixture:new_scope(),
+    try
+        {Org, Ws} = scope_tenant(Scope),
+        Now = eb_system_clock:now(),
+        Target = insert_message(Scope, <<"intent-target">>, Now - 60),
+        Other = insert_message(Scope, <<"intent-other">>, Now - 60),
+        Asset = attach_asset(Scope, Target, Now - 60),
+        Unrelated = insert_hold(Scope, #{scope_type => <<"message">>, scope_message_id => Other}),
+        TargetHold = insert_hold(Scope, #{scope_type => <<"message">>, scope_message_id => Target}),
+        Sql = <<"SELECT fn_v5_intent_eb_delete($1,$2,$3,'scope regression')">>,
+        {error, Held} = elib_pg:query(Sql, [Org, Ws, Asset]),
+        ?assertEqual(<<"23510">>, eb_pg_exec:error_of(Held)),
+        ok = eb_pg_store:release_hold(Org, Ws, TargetHold, maps:get(actor_user_id, Scope)),
+        {ok, _} = elib_pg:query(Sql, [Org, Ws, Asset]),
+        {ok, _} = elib_pg:query(Sql, [Org, Ws, Asset]),
+        ?assertEqual(
+            1,
+            eb_pg_test_fixture:scalar(
+                <<"SELECT count(*) AS n FROM enterprise_asset_delete_queue WHERE organization_id=$1 AND workspace_id=$2 AND asset_id=$3">>,
+                [Org, Ws, Asset]
+            )
+        ),
+        ok = eb_pg_store:release_hold(Org, Ws, Unrelated, maps:get(actor_user_id, Scope))
+    after
+        eb_pg_test_fixture:cleanup(Scope)
+    end.
+
 a06_db_guard_rejection_keeps_everything() ->
     Scope = eb_pg_test_fixture:new_scope(),
     try
@@ -247,9 +276,8 @@ a06_db_guard_rejection_keeps_everything() ->
         AssetId = attach_asset(Scope, MsgId, RetainUntil),
         AuditsBefore = eb_pg_test_fixture:count(Org, Ws, audits),
         Result = eb_pg_purge:purge_batch(Org, Ws, #{now => Now + 7200, batch_limit => 10}),
-        ?assertMatch({error, {sql, _, _}}, Result),
-        {error, {sql, Code, _Constraint}} = Result,
-        ?assertEqual(<<"23514">>, Code),
+        {error, {object_intent_failed, Reason}} = Result,
+        ?assertEqual(<<"23510">>, eb_pg_exec:error_of(Reason)),
         ?assertEqual(1, alive_message_count(Org, Ws, MsgId)),
         ?assertEqual(1, eb_pg_test_fixture:count(Org, Ws, assets)),
         ?assertEqual(1, alive_asset_count(Org, Ws, AssetId)),
@@ -267,10 +295,8 @@ a06_asset_retained_longer_than_message_blocks_purge() ->
         MsgId = insert_message(Scope, <<"eb03-asset-1">>, Now - 600),
         AssetId = attach_asset(Scope, MsgId, Now + 86400),
         Result = eb_pg_purge:purge_batch(Org, Ws, #{now => Now, batch_limit => 10}),
-        ?assertMatch({error, {sql, _, _}}, Result),
-        {error, {sql, Code, Constraint}} = Result,
-        ?assertEqual(<<"23514">>, Code),
-        ?assertEqual(<<"trg_enterprise_asset_purge_guard">>, Constraint),
+        {error, {object_intent_failed, Reason}} = Result,
+        ?assertEqual(<<"23510">>, eb_pg_exec:error_of(Reason)),
         ?assertEqual(1, alive_message_count(Org, Ws, MsgId)),
         ?assertEqual(1, alive_asset_count(Org, Ws, AssetId))
     after

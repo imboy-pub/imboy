@@ -1,0 +1,53 @@
+{{- if .Values.enterpriseProof.enabled }}
+{{- $proofSecret := required "enterpriseProof.existingSecret is required" .Values.enterpriseProof.existingSecret }}
+{{- if eq $proofSecret (include "imboy.secretName" .) }}
+{{- fail "enterprise proof must use a separate Secret" }}
+{{- end }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "imboy.fullname" . }}-enterprise-proof
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "imboy.labels" . | nindent 4 }}
+    app.kubernetes.io/component: enterprise-proof
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: {{ include "imboy.name" . }}
+      app.kubernetes.io/instance: {{ .Release.Name }}
+      app.kubernetes.io/component: enterprise-proof
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: {{ include "imboy.name" . }}
+        app.kubernetes.io/instance: {{ .Release.Name }}
+        app.kubernetes.io/component: enterprise-proof
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65532
+        runAsGroup: 65532
+      containers:
+        - name: proof
+          image: {{ include "imboy.image" (dict "global" .Values.global "image" .Values.backend.image) }}
+          imagePullPolicy: {{ .Values.backend.image.pullPolicy }}
+          command: ["/bin/sh", "/opt/imboy/bin/start_enterprise_direct_proof.sh"]
+          envFrom:
+            - secretRef:
+                name: {{ $proofSecret | quote }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: tmp
+          emptyDir:
+            sizeLimit: 256Mi
+{{- end }}

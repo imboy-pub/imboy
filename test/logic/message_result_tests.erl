@@ -8,17 +8,21 @@ message_result_test_() ->
         fun invalid_sequence_is_unknown/0,
         fun revoked_group_never_queries/0,
         fun group_membership_boundary_is_bound/0,
+        fun group_membership_race_fails_closed/0,
         fun invalid_parameters_never_query/0,
         fun database_failure_is_not_nonacceptance/0,
         fun repo_query_is_parameterized_and_scoped/0,
         fun unauthenticated_handler_rejects/0,
-        fun handler_binds_authenticated_sender/0
+        fun handler_binds_authenticated_sender/0,
+        fun c2s_result_requires_positive_sender_peer_fact/0,
+        fun c2s_missing_and_failure_do_not_confirm/0,
+        fun c2s_query_is_scoped/0
     ]}.
 
 setup() ->
     lists:foreach(
         fun(M) -> meck:new(M, [non_strict, no_link]) end,
-        [msg_archive_ds, group_ds, elib_pg, cowboy_req, elib_response]
+        [msg_archive_ds, msg_c2s_ds, group_ds, elib_pg, cowboy_req, elib_response]
     ),
     meck:expect(msg_archive_ds, conv_key_c2c, fun(7, 8) -> <<"c2c:7:8">> end),
     meck:expect(msg_archive_ds, conv_key_c2g, fun(9) -> <<"c2g:9">> end).
@@ -26,11 +30,42 @@ setup() ->
 cleanup(_) ->
     lists:foreach(
         fun meck:unload/1,
-        [msg_archive_ds, group_ds, elib_pg, cowboy_req, elib_response]
+        [msg_archive_ds, msg_c2s_ds, group_ds, elib_pg, cowboy_req, elib_response]
     ).
 
+c2s_result_requires_positive_sender_peer_fact() ->
+    meck:expect(msg_c2s_ds, message_result, fun(7, <<"bot_测试"/utf8>>, <<"id">>) ->
+        {ok, [#{<<"accepted">> => 1}]}
+    end),
+    ?assertMatch(
+        {ok, #{<<"state">> := <<"committed">>}},
+        messaging_logic:message_result(7, <<"c2s">>, <<"bot_测试"/utf8>>, <<"id">>)
+    ).
+
+c2s_missing_and_failure_do_not_confirm() ->
+    meck:expect(msg_c2s_ds, message_result, fun(_, _, _) -> {ok, []} end),
+    ?assertMatch(
+        {ok, #{<<"state">> := <<"unknown">>}},
+        messaging_logic:message_result(7, <<"c2s">>, <<"bot">>, <<"id">>)
+    ),
+    meck:expect(msg_c2s_ds, message_result, fun(_, _, _) -> {error, unavailable} end),
+    ?assertMatch(
+        {error, _, 500},
+        messaging_logic:message_result(7, <<"c2s">>, <<"bot">>, <<"id">>)
+    ).
+
+c2s_query_is_scoped() ->
+    meck:expect(elib_pg, query, fun(Sql, [7, <<"bot">>, <<"id">>]) ->
+        ?assertNotEqual(nomatch, binary:match(Sql, <<"from_id = $1">>)),
+        ?assertNotEqual(nomatch, binary:match(Sql, <<"to_id_str' = $2">>)),
+        {ok, []}
+    end),
+    ?assertEqual({ok, []}, msg_c2s_repo:message_result(7, <<"bot">>, <<"id">>)).
+
 original_sender_and_conversation_are_bound() ->
-    meck:expect(msg_archive_ds, message_result, fun(<<"c2c:7:8">>, <<"original-id">>, 7, 0) ->
+    meck:expect(msg_archive_ds, message_result_with_staging, fun(
+        <<"c2c">>, 7, 8, <<"original-id">>, <<"c2c:7:8">>, 0
+    ) ->
         {ok, [#{<<"conv_seq">> => 42}]}
     end),
     {ok, Payload} = query(),
@@ -43,11 +78,11 @@ original_sender_and_conversation_are_bound() ->
     ).
 
 missing_archive_is_unknown() ->
-    meck:expect(msg_archive_ds, message_result, fun(_, _, _, _) -> {ok, []} end),
+    meck:expect(msg_archive_ds, message_result_with_staging, fun(_, _, _, _, _, _) -> {ok, []} end),
     ?assertMatch({ok, #{<<"state">> := <<"unknown">>}}, query()).
 
 invalid_sequence_is_unknown() ->
-    meck:expect(msg_archive_ds, message_result, fun(_, _, _, _) ->
+    meck:expect(msg_archive_ds, message_result_with_staging, fun(_, _, _, _, _, _) ->
         {ok, [#{<<"conv_seq">> => null}]}
     end),
     ?assertMatch({ok, #{<<"state">> := <<"unknown">>}}, query()).
@@ -57,15 +92,27 @@ revoked_group_never_queries() ->
     ?assertMatch(
         {error, _, 403}, messaging_logic:message_result(7, <<"c2g">>, <<"9">>, <<"original-id">>)
     ),
-    ?assertEqual(0, meck:num_calls(msg_archive_ds, message_result, '_')).
+    ?assertEqual(0, meck:num_calls(msg_archive_ds, message_result_with_staging, '_')).
 
 group_membership_boundary_is_bound() ->
     meck:expect(group_ds, authorize_group_history, fun(7, 9) -> {ok, #{start_seq => 80}} end),
-    meck:expect(msg_archive_ds, message_result, fun(<<"c2g:9">>, <<"original-id">>, 7, 80) ->
+    meck:expect(msg_archive_ds, message_result_with_staging, fun(
+        <<"c2g">>, 7, 9, <<"original-id">>, <<"c2g:9">>, 80
+    ) ->
         {ok, []}
     end),
     ?assertMatch(
         {ok, #{<<"state">> := <<"unknown">>}},
+        messaging_logic:message_result(7, <<"c2g">>, <<"9">>, <<"original-id">>)
+    ).
+
+group_membership_race_fails_closed() ->
+    meck:expect(group_ds, authorize_group_history, fun(7, 9) -> {ok, #{start_seq => 80}} end),
+    meck:expect(msg_archive_ds, message_result_with_staging, fun(_, _, _, _, _, _) ->
+        {error, permission_denied}
+    end),
+    ?assertMatch(
+        {error, _, 403},
         messaging_logic:message_result(7, <<"c2g">>, <<"9">>, <<"original-id">>)
     ).
 
@@ -82,10 +129,12 @@ invalid_parameters_never_query() ->
             {<<"other">>, <<"8">>, <<"id">>}
         ]
     ),
-    ?assertEqual(0, meck:num_calls(msg_archive_ds, message_result, '_')).
+    ?assertEqual(0, meck:num_calls(msg_archive_ds, message_result_with_staging, '_')).
 
 database_failure_is_not_nonacceptance() ->
-    meck:expect(msg_archive_ds, message_result, fun(_, _, _, _) -> {error, unavailable} end),
+    meck:expect(msg_archive_ds, message_result_with_staging, fun(_, _, _, _, _, _) ->
+        {error, unavailable}
+    end),
     ?assertMatch({error, _, 500}, query()).
 
 repo_query_is_parameterized_and_scoped() ->
@@ -110,7 +159,9 @@ handler_binds_authenticated_sender() ->
             {<<"from_id">>, <<"999">>}
         ]
     end),
-    meck:expect(msg_archive_ds, message_result, fun(<<"c2c:7:8">>, <<"original-id">>, 7, 0) ->
+    meck:expect(msg_archive_ds, message_result_with_staging, fun(
+        <<"c2c">>, 7, 8, <<"original-id">>, <<"c2c:7:8">>, 0
+    ) ->
         {ok, [#{<<"conv_seq">> => 42}]}
     end),
     meck:expect(elib_response, success, fun(request, #{<<"state">> := <<"committed">>}) ->

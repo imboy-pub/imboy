@@ -159,15 +159,18 @@ ports_have_explicit_frozen_contracts_test() ->
     %% 原 put/stream/delete 三件保留，追加 metadata 生命周期与 V5 会话元数据。
     ?assertEqual(
         [
+            {bind_direct, 8},
             {cleanup_asset, 3},
             {cleanup_pending_private, 5},
             {confirm_asset, 3},
             {delete_private, 3},
+            {direct_proof, 3},
             {direct_session_row, 1},
             {fetch_asset, 3},
             {fetch_session, 3},
             {insert_asset, 3},
             {put_private, 3},
+            {register_direct_session, 6},
             {register_session, 6},
             {renew_session, 4},
             {session_by_client_id, 3},
@@ -307,15 +310,18 @@ asset_port_callback_names_cannot_leak_storage_handle_test() ->
     %% metadata 生命周期与 V5 会话操作均不得泄漏存储句柄。
     ?assertEqual(
         [
+            bind_direct,
             cleanup_asset,
             cleanup_pending_private,
             confirm_asset,
             delete_private,
+            direct_proof,
             direct_session_row,
             fetch_asset,
             fetch_session,
             insert_asset,
             put_private,
+            register_direct_session,
             register_session,
             renew_session,
             session_by_client_id,

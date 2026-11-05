@@ -364,8 +364,8 @@ get_routes() ->
                 {"/api/v1/group_album/list", group_album_handler, #{action => list_albums}},
                 {"/api/v1/group_album/rename", group_album_handler, #{action => rename_album}},
                 {"/api/v1/group_album/delete", group_album_handler, #{action => delete_album}},
-                {"/api/v1/group_album/photo/upload", group_album_handler, #{action => upload_photo}},
-                {"/api/v1/group_album/photo/batch", group_album_handler, #{action => batch_upload}},
+                %% C08（V3-12）：相册正文上传（photo/upload、photo/batch）已退役，
+                %% 仅保留 direct-v1 confirmed 引用绑定（bind/bind_batch）。
                 {"/api/v1/group_album/photo/bind", group_album_handler, #{action => bind_photo}},
                 {"/api/v1/group_album/photo/bind_batch", group_album_handler, #{
                     action => bind_batch
@@ -549,7 +549,8 @@ get_routes() ->
                 {"/api/v1/bot/send_message", bot_handler, #{action => send_message}},
 
                 % 群文件管理 API
-                {"/api/v1/group/file/upload", group_file_handler, #{action => upload}},
+                %% C08（V3-12）：multipart 正文上传（file/upload）已退役，
+                %% 仅保留 direct-v1 confirmed 引用绑定（file/bind）。
                 {"/api/v1/group/file/bind", group_file_handler, #{action => bind}},
                 {"/api/v1/group/file/download", group_file_handler, #{action => download}},
                 {"/api/v1/group/file/list", group_file_handler, #{action => list}},
@@ -1033,8 +1034,9 @@ get_routes() ->
             {"/api/adm/ai_agent/set_status", adm_ai_agent_handler, #{action => set_status}},
             % ai_roles 人格 KV 管理：GET 读 / POST 保存删除（users:read|update）
             {"/api/adm/ai_agent/roles", adm_ai_agent_handler, #{action => roles}},
-            % 头像上传（multipart → Garage）：POST（users:update）
-            {"/api/adm/ai_agent/upload_avatar", adm_ai_agent_handler, #{action => upload_avatar}},
+            %% C08（V3-13）：旧 multipart 头像上传已退役（前端已切 avatar_direct）；
+            %% direct-v1 application 主体头像会话：register/declare/grant/
+            %% finalize/publish（users:update）
             {"/api/adm/ai_agent/avatar_direct", adm_ai_agent_handler, #{action => avatar_direct}},
             % 新手引导配置（AI 冷启动）：GET 读 / POST 半量保存（users:read|update）
             {"/api/adm/ai_agent/onboarding_config", adm_ai_agent_handler, #{

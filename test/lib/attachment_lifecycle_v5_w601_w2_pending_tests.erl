@@ -1,21 +1,17 @@
 %%% W6-01 C 组 pending + race 面（52 合同叶）。
 %%%
-%%% W2-01/pending-multipart（32）：multipart 与 group_file 签发同守登记
-%%%   owner/location 与事务边界；mismatch / DB 故障无签名能力。ordinary
-%%%   multipart_success 走 /api/v1/attachment/presign?method=multipart +
-%%%   POST /upload 真实 multipart/form-data 入口；ordinary group_file_success
-%%%   与 enterprise 两个成功场景走真实 group-file 生产链
-%%%   /api/v1/group/file/upload（multipart/form-data：gid/file_name/file/
-%%%   file_type → group_file_logic:upload → group_file_ds:upload_file 的
-%%%   V5 链：presign scope=group → attachment_upload_logic pin-before-PUT
-%%%   → 会话锁内同事务确认；group_file_success 再 POST /api/v1/group/file/bind
-%%%   = group_file_ds:bind_file/7 确认引用绑定；enterprise 面无 multipart
-%%%   生产入口，seat proxy PUT 已被 2026-10-29 裁决禁作证据——由真实
-%%%   企业域驱动同一路由：企业群经生产 internal API 建群
-%%%   （POST /api/internal/v1/groups，enterprise_group_origin 同事务归属
-%%%   + scope='workspace'，INT-02 生产映射 + workspace_member 边界），
-%%%   measured 域事实读回生产行（2026-11-01 production-domain 修订，
-%%%   fixture 标签被 1d1a42a23 复审拒绝））。
+%%% W2-01/pending-multipart（ordinary 12 叶）：multipart 签发同守登记
+%%%   owner/location 与事务边界；mismatch / DB 故障无签名能力。
+%%%   ordinary multipart_success 走 /api/v1/attachment/presign?method=multipart +
+%%%   POST /upload 真实 multipart/form-data 入口。
+%%%   C08（V3-12）退役叶：group_file_success（两域）依赖的
+%%%   /api/v1/group/file/upload multipart 生产链已随"登记即绑定"旧链退役
+%%%   ——群文件唯一引用入口为 bind_file（direct-v1 confirmed 绑定，真 PG
+%%%   语义由 attach_direct_bind_tests 覆盖）；enterprise 域 multipart_success
+%%%   本无 multipart 生产入口（旧实现借道 group-file 链），链退役后无生产
+%%%   载体，一并退役。W2-01 登记冻结/pin 边界/fail-closed 合同仍由
+%%%   multipart_success(ordinary) + pending-failclosed + confirm-gc-race
+%%%   全矩阵覆盖。
 %%%   同一 oracle 语义：同账本登记（owner/location 冻结）、pin 事务边界、
 %%%   fail-closed。AC01/AC02 双验收叶复用同一次真实执行（合同将同一场景
 %%%   复制到两个 AC，先例为既有 w2_01_pending_multipart adapter）；
@@ -81,14 +77,21 @@ mp_specs() ->
      || Sc <-
             [
                 <<"multipart_success">>,
-                <<"group_file_success">>,
                 <<"identity_mismatch">>,
                 <<"database_unavailable">>
             ],
         Domain <- ?DOMAINS,
         Driver <- ?DRV,
-        Ac <- [<<"AC01">>, <<"AC02">>]
+        Ac <- [<<"AC01">>, <<"AC02">>],
+        %% C08（V3-12）：group_file_success 场景（两域）与 enterprise 域
+        %% multipart_success 已随 group-file multipart 生产链退役（见套件头）。
+        not retired_mp_spec(Sc, Domain)
     ].
+
+%% C08（V3-12）退役组合判定（语义见套件头注释）。
+retired_mp_spec(<<"group_file_success">>, _Domain) -> true;
+retired_mp_spec(<<"multipart_success">>, <<"enterprise">>) -> true;
+retired_mp_spec(_, _) -> false.
 
 fc_specs() ->
     [
@@ -388,19 +391,9 @@ mp_scenario(S, Driver, <<"multipart_success">>, <<"ordinary">>) ->
     ?assert(?F:success(?F:confirm(M))),
     ?assertEqual({ok, ?BODY}, ?F:read(M)),
     #{entrypoint => <<"multipart">>, pin_sha256 => maps:get(<<"sha256">>, Pin)};
-%% group_file_success（ordinary）：真实 group-file 生产链 + 确认引用绑定
-%% （attachment multipart/anchor 替代已被 obs_binding 负例钉死禁用）。
-mp_scenario(S, Driver, <<"group_file_success">>, <<"ordinary">>) ->
-    Uid = maps:get(uid, S),
-    Gid = new_group(S),
-    {Key, Upload} = group_file_upload(S, Driver, Gid),
-    {ok, Pin} = ?S:content_pin(Key),
-    ?assertEqual(?S:sha(?BODY), maps:get(<<"sha256">>, Pin)),
-    ?assertEqual(1, ?S:attach_count(Key)),
-    Bind = group_file_bind(S, Gid, Key),
-    #{<<"file_id">> := FileId} = ?F:payload(Bind),
-    ok = assert_group_file_bound(Gid, Uid, Key, FileId),
-    group_file_bind_measured(Upload, Key, Bind, FileId);
+%% C08（V3-12）：group_file_success（ordinary/enterprise）与
+%% multipart_success（enterprise）子句已随 /api/v1/group/file/upload
+%% multipart 生产链退役（specs 同步过滤；语义见套件头注释）。
 mp_scenario(S, Driver, <<"identity_mismatch">>, <<"ordinary">>) ->
     T = reg(S, ordinary, Driver),
     Intruder = intruder_headers(maps:get(fixture, T)),
@@ -440,34 +433,6 @@ mp_scenario(S, Driver, <<"database_unavailable">>, <<"ordinary">>) ->
     {error, not_pinned} = ?S:content_pin(key(M)),
     {error, not_found} = ?F:read(M),
     #{db_outage_http_status => 200, db_outage_envelope_code => 500, no_capability => true};
-%% enterprise 域两个成功场景（2026-10-31 attempt-6 决议 + 2026-11-01
-%% production-domain 修订）：seat/widget 面无任何 multipart 生产入口，
-%% seat proxy PUT 已被 2026-10-29 裁决禁作这 8 个 enterprise 叶的证据——
-%% 由 enterprise fixture 的真实企业域 + 其用户 JWT 驱动真实 group-file
-%% 生产链 /api/v1/group/file/upload（multipart_success 面无 bind 链请求）。
-%% 企业群经生产 internal API 建群（enterprise_group_origin 同事务归属 +
-%% scope='workspace'），measured 的域事实读回服务端写入的生产行——
-%% 1d1a42a23 复审已拒绝 fixture 标签充当域证明。
-mp_scenario(S, Driver, <<"multipart_success">>, <<"enterprise">>) ->
-    {Gid, Origin, Create} = new_enterprise_group(S),
-    {Key, Upload} = group_file_upload(S, Driver, Gid),
-    {ok, Pin} = ?S:content_pin(Key),
-    ?assertEqual(?S:sha(?BODY), maps:get(<<"sha256">>, Pin)),
-    ?assertEqual(1, ?S:attach_count(Key)),
-    M = group_file_upload_measured(Upload, Key, <<"group_file_multipart_upload">>),
-    enterprise_measured(M, S, Gid, Origin, Create);
-mp_scenario(S, Driver, <<"group_file_success">>, <<"enterprise">>) ->
-    Uid = maps:get(uid, S),
-    {Gid, Origin, Create} = new_enterprise_group(S),
-    {Key, Upload} = group_file_upload(S, Driver, Gid),
-    {ok, Pin} = ?S:content_pin(Key),
-    ?assertEqual(?S:sha(?BODY), maps:get(<<"sha256">>, Pin)),
-    ?assertEqual(1, ?S:attach_count(Key)),
-    Bind = group_file_bind(S, Gid, Key),
-    #{<<"file_id">> := FileId} = ?F:payload(Bind),
-    ok = assert_group_file_bound(Gid, Uid, Key, FileId),
-    M = group_file_bind_measured(Upload, Key, Bind, FileId),
-    enterprise_measured(M, S, Gid, Origin, Create);
 mp_scenario(S, Driver, <<"identity_mismatch">>, <<"enterprise">>) ->
     T = reg(S, enterprise_seat, Driver),
     S2 = maps:get(fixture, T),
@@ -718,286 +683,9 @@ new_group(S) ->
     {ok, Gid} = group_logic:add(0, Uid, 1, []),
     Gid.
 
-%% 真实企业域群（enterprise 两个成功场景的生产域锚点）：群经生产 internal
-%% API（INT-04 POST /api/internal/v1/groups）建在 enterprise fixture 的
-%% workspace 内——create_group_tx 同事务写 enterprise_group_origin 归属行
-%% （migration 00000140 触发守卫）与 group.created 审计，group 行
-%% scope='workspace'；操作者经生产映射 API（INT-02 PUT
-%% /api/internal/v1/identity-mappings）与 workspace_member 边界表入册
-%% （create_in_workspace 的 non_ws_member_uids_tx 硬前提）。group_file 链
-%% 的服务端授权（group_ds:is_member + workspace_guard）在该真实域上运行
-%% ——上传 200 即域与成员校验通过的生产行为。返回的 Origin 读自服务端
-%% 写入的归属行，是 1d1a42a23 复审要求的生产域证明（fixture 标签被拒）。
-new_enterprise_group(S) ->
-    Scope = maps:get(scope, S),
-    Uid = maps:get(uid, S),
-    Org = maps:get(org_id, Scope),
-    Ws = maps:get(workspace_id, Scope),
-    ok = seed_enterprise_membership(Org, Ws, Uid),
-    Ext = <<"w601-ent-", (integer_to_binary(Uid))/binary>>,
-    %% org 头是 internal 面组织边界的签名输入（缺失 =
-    %% organization_boundary_violation 403）；仓库既有 internal 测试同款。
-    InternalHeaders =
-        (maps:get(internal_headers, S))#{
-            <<"x-imboy-organization">> =>
-                integer_to_binary(Org)
-        },
-    Identity = ?F:request(
-        S,
-        put,
-        <<"/api/internal/v1/identity-mappings">>,
-        #{<<"external_user_id">> => Ext, <<"user_id">> => Uid},
-        InternalHeaders,
-        <<"application/json">>
-    ),
-    ?assertEqual(200, maps:get(status, Identity)),
-    ?assert(?F:success(Identity)),
-    Create = ?F:request(
-        S,
-        post,
-        <<"/api/internal/v1/groups">>,
-        #{
-            <<"workspace_id">> => Ws,
-            <<"title">> => <<"w601-ent-group">>,
-            <<"introduction">> => <<"w601 enterprise group-file leaf">>,
-            <<"members">> => [Ext],
-            <<"owner_external_user_id">> => Ext
-        },
-        InternalHeaders,
-        <<"application/json">>
-    ),
-    ?assertEqual(200, maps:get(status, Create)),
-    ?assert(?F:success(Create)),
-    #{<<"group_id">> := Gid} = ?F:payload(Create),
-    {ok, [
-        #{
-            <<"organization_id">> := Org2,
-            <<"application_id">> := AppId,
-            <<"workspace_id">> := Ws2,
-            <<"status">> := <<"active">>
-        }
-    ]} =
-        elib_pg:query(
-            <<
-                "SELECT organization_id, application_id, workspace_id, status"
-                " FROM enterprise_group_origin WHERE group_id=$1"
-            >>,
-            [Gid]
-        ),
-    {ok, [#{<<"scope">> := <<"workspace">>, <<"workspace_id">> := Ws2}]} =
-        elib_pg:query(
-            <<"SELECT scope, workspace_id FROM \"group\" WHERE id=$1">>, [Gid]
-        ),
-    {ok, [#{<<"user_id">> := Uid}]} =
-        elib_pg:query(
-            <<
-                "SELECT user_id FROM group_member WHERE group_id=$1 AND user_id=$2"
-                " AND status=1"
-            >>,
-            [Gid, Uid]
-        ),
-    Origin = #{
-        organization_id => Org2,
-        application_id => AppId,
-        workspace_id => Ws2
-    },
-    {Gid, Origin, Create}.
-
-%% 上传者（uid）的企业域入册：INT-02 的 classify_target 要求
-%% organization_member（org 边界），create_in_workspace 的
-%% non_ws_member_uids_tx 要求 workspace_member（workspace 边界）——
-%% w403 setup 的 uid 是独立 fixture 用户（非 scope Actor），须自行入册。
-%% 幂等种子：fixture 的 scope 在整套件共享，同一 (org,user)/(ws,user)
-%% 只入册一次。
-seed_enterprise_membership(Org, Ws, Uid) ->
-    {ok, _} = elib_pg:query(
-        <<
-            "INSERT INTO organization_member(organization_id,user_id,role,status)"
-            " VALUES ($1,$2,'member','active')"
-            " ON CONFLICT (organization_id,user_id) DO NOTHING"
-        >>,
-        [Org, Uid]
-    ),
-    {ok, _} = elib_pg:query(
-        <<
-            "INSERT INTO workspace_member(workspace_id,user_id,role,status)"
-            " VALUES ($1,$2,'member','active')"
-            " ON CONFLICT (workspace_id,user_id) DO NOTHING"
-        >>,
-        [Ws, Uid]
-    ),
-    ok.
-
-%% enterprise measured 的域事实块：org/workspace/app/scope 全部来自
-%% 服务端写入的 enterprise_group_origin 行与 workspace 群行（Origin 读回
-%% 值），create 面绑定该叶自己的 internal 建群请求（request record 由
-%% obs 中间件自动捕获进 http_requests）。
-enterprise_measured(M, S, Gid, Origin, Create) ->
-    Uid = maps:get(uid, S),
-    M#{
-        org_id => maps:get(organization_id, Origin),
-        workspace_id => maps:get(workspace_id, Origin),
-        gid => Gid,
-        group_scope => <<"workspace">>,
-        group_workspace_id => maps:get(workspace_id, Origin),
-        actor_uid => Uid,
-        origin => Origin,
-        create_request_id => maps:get(request_id, Create),
-        create_route => <<"/api/internal/v1/groups">>,
-        create_handler => <<"enterprise_group_handler">>,
-        create_status => maps:get(status, Create)
-    }.
-
-%% -------------------------------------------------- group-file 生产链
-%%
-%% 真实 group-file 链（ordinary group_file_success 与 enterprise 两个成功
-%% 场景共享）：POST /api/v1/group/file/upload（multipart/form-data：
-%% gid/file_name/file/file_type）→ group_file_logic:upload →
-%% group_file_ds:upload_file：attach_logic:presign scope=group
-%% （fn_v5_register_pending 真实登记 + 会话冻结位置）→
-%% attachment_upload_logic:upload_binary（真实字节 receipt 先 pin，pin 先于
-%% provider PUT）→ prepare_group_file_confirmation（真实字节 sha256 裁决）
-%% → 会话锁内同事务确认（group_file 行 + scope=group 附件补写行，T7 守卫）。
-%% 拦截点与既有 seat 场景同款：mock driver put_snapshot 在 passthrough 前
-%% 断言 pin 已为真实上传字节（断言在 HTTP 请求进程内失败即整链失败，
-%% fail-closed）。
-group_file_upload(S, Driver, Gid) ->
-    set_group_registry_ns(Driver),
-    Mod = ?S:driver_mod(Driver),
-    meck:new(Mod, [passthrough, no_link]),
-    try
-        ok = meck:expect(Mod, put_snapshot, fun(I, A, B, C) ->
-            PinKey = maps:get(key, I),
-            {ok, Pin} = ?S:content_pin(PinKey),
-            ?assertEqual(?S:sha(?BODY), maps:get(<<"sha256">>, Pin)),
-            ?assertEqual(<<"text/plain">>, maps:get(<<"mime">>, Pin)),
-            meck:passthrough([I, A, B, C])
-        end),
-        Boundary = <<"w601gfile7f3a">>,
-        Upload = ?F:request(
-            S,
-            post,
-            <<"/api/v1/group/file/upload">>,
-            group_file_form(Boundary, Gid),
-            maps:get(ordinary_headers, S),
-            <<"multipart/form-data; boundary=", Boundary/binary>>
-        ),
-        ?assertEqual(200, maps:get(status, Upload)),
-        ?assert(?F:success(Upload)),
-        Key = group_file_object_key(S, Gid),
-        ?assertEqual(1, ?S:attach_count(Key)),
-        ok = ?F:bind_request(S, Upload, Key, upload),
-        {Key, Upload}
-    after
-        meck:unload(Mod)
-    end.
-
-%% multipart 表单体：生产 handler 的四个表单字段（gid/file_name/file_type/file）。
-group_file_form(Boundary, Gid) ->
-    Field =
-        fun(Name, Value) ->
-            <<
-                "--",
-                Boundary/binary,
-                "\r\n",
-                "Content-Disposition: form-data; name=\"",
-                Name/binary,
-                "\"\r\n\r\n",
-                Value/binary,
-                "\r\n"
-            >>
-        end,
-    <<
-        (Field(<<"gid">>, integer_to_binary(Gid)))/binary,
-        (Field(<<"file_name">>, <<"w403.txt">>))/binary,
-        (Field(<<"file_type">>, <<"text/plain">>))/binary,
-        "--",
-        Boundary/binary,
-        "\r\n",
-        "Content-Disposition: form-data; name=\"file\"; filename=\"w403.txt\"\r\n",
-        "Content-Type: text/plain\r\n\r\n",
-        ?BODY/binary,
-        "\r\n--",
-        Boundary/binary,
-        "--\r\n"
-    >>.
-
-%% upload 响应不含服务端生成的 object_key；同事务确认后的 attachment 行
-%% （scope=group、scope_ref=Gid、creator=上传者）是真源，唯一新群保证唯一行。
-group_file_object_key(S, Gid) ->
-    Uid = maps:get(uid, S),
-    {ok, [#{<<"path">> := Key}]} =
-        elib_pg:query(
-            <<
-                "SELECT path FROM attachment"
-                " WHERE scope='group' AND scope_ref=$1 AND creator_user_id=$2"
-            >>,
-            [integer_to_binary(Gid), Uid]
-        ),
-    Key.
-
-%% 确认引用绑定：JSON bind（gid/file_name/file_type/object_key/file_size；
-%% file_md5 不提交——确认行存 SHA-256，客户端自报 MD5 无法被认证，服务端
-%% 拒绝任何非空值）→ group_file_ds:bind_file（T27 资格硬校验 + 幂等回填）。
-group_file_bind(S, Gid, Key) ->
-    Bind = ?F:request(
-        S,
-        post,
-        <<"/api/v1/group/file/bind">>,
-        #{
-            gid => Gid,
-            file_name => <<"w403.txt">>,
-            file_type => <<"text/plain">>,
-            object_key => Key,
-            file_size => byte_size(?BODY)
-        },
-        maps:get(ordinary_headers, S),
-        <<"application/json">>
-    ),
-    ?assertEqual(200, maps:get(status, Bind)),
-    ?assert(?F:success(Bind)),
-    ok = ?F:bind_request(S, Bind, Key, bind),
-    Bind.
-
-%% bind 后 durable 断言：group_file 行（上传者归属）与 attachment 行的
-%% group_file_id 回填互为同值（group_file_ds:bind_locked 的双写一致性）。
-assert_group_file_bound(Gid, Uid, Key, FileId) ->
-    {ok, [#{<<"id">> := RowId, <<"file_id">> := FileId, <<"uploader_id">> := Uid}]} =
-        elib_pg:query(
-            <<
-                "SELECT id, file_id, uploader_id FROM group_file"
-                " WHERE group_id=$1 AND file_id=$2"
-            >>,
-            [Gid, FileId]
-        ),
-    {ok, [#{<<"group_file_id">> := RowId}]} =
-        elib_pg:query(
-            <<"SELECT group_file_id FROM attachment WHERE path=$1">>, [Key]
-        ),
-    ok.
-
-%% measured 绑定面：adapter 专用 oracle 按 route/handler/entrypoint_face/
-%% status/request_id + pin 事实严格核对（缺任一即 gap，fail-closed）。
-group_file_upload_measured(Upload, Key, Face) ->
-    #{
-        route => <<"/api/v1/group/file/upload">>,
-        handler => <<"group_file_handler">>,
-        request_id => maps:get(request_id, Upload),
-        entrypoint_face => Face,
-        status => maps:get(status, Upload),
-        object_key => Key,
-        pin_sha256 => ?S:sha(?BODY),
-        pin_before_put => true
-    }.
-
-group_file_bind_measured(Upload, Key, Bind, FileId) ->
-    Base = group_file_upload_measured(Upload, Key, <<"group_file_bind">>),
-    Base#{
-        bind_route => <<"/api/v1/group/file/bind">>,
-        bind_request_id => maps:get(request_id, Bind),
-        bind_status => maps:get(status, Bind),
-        group_file_id => FileId
-    }.
+%% C08（V3-12）：group-file multipart 生产链的 HTTP 驱动与 measured
+%% 断言面已随场景叶退役（group_file_upload/form/object_key/bind/
+%% assert_group_file_bound/*_measured）。
 
 %% group namespace 的 upload 根映射：group-file 链按 scope 选根
 %% （attachment_storage:registration_location 读 Mapping[<<"group">>]），

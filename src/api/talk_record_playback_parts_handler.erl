@@ -77,21 +77,18 @@ respond(Req, Uid, Rid, Ticket, Seq, P) ->
             )
     end.
 
-send_source(Req, Uid, Rid, Ticket, Seq, Expected, Status, Start, Length, H) ->
-    case
-        talk_record_playback_parts:with_source(Uid, Rid, Ticket, Seq, fun(Source, Size, P) ->
-            case P =:= Expected andalso Start + Length =< Size of
+send_source(Req, Uid, Rid, Ticket, Seq, Expected, _Status, _Start, _Length, _H) ->
+    case talk_record_playback_parts:recheck_part(Uid, Rid, Ticket, Seq, Expected) of
+        ok ->
+            case attachment_edge_redirect:edge_ready() of
                 true ->
-                    Reply = cowboy_req:stream_reply(Status, H, Req),
-                    send(Source, Start, Length, Reply, Uid, Rid, Ticket, Seq, P),
-                    {ok, Reply};
+                    EdgeTicket = <<"parts:", (integer_to_binary(Seq))/binary, ":", Ticket/binary>>,
+                    attachment_edge_redirect:redirect(Req, EdgeTicket);
                 false ->
-                    {error, playback_media_unavailable}
-            end
-        end)
-    of
-        {ok, Reply} -> Reply;
-        {error, Reason} -> deny(Req, Reason)
+                    cowboy_req:reply(503, #{<<"cache-control">> => <<"no-store">>}, <<>>, Req)
+            end;
+        {error, Reason} ->
+            deny(Req, Reason)
     end.
 
 headers(Status, Start, Length, Size) ->
@@ -112,32 +109,6 @@ headers(Status, Start, Length, Size) ->
             };
         _ ->
             H
-    end.
-
-send(_, _, 0, Req, _, _, _, _, _) ->
-    cowboy_req:stream_body(<<>>, fin, Req);
-send(Source, Offset, Remaining, Req, Uid, Rid, Ticket, Seq, P) ->
-    case talk_record_playback_parts:recheck_part(Uid, Rid, Ticket, Seq, P) of
-        ok ->
-            case attachment_upload_spool:read_at(Source, Offset, min(65536, Remaining)) of
-                {ok, Bytes} when byte_size(Bytes) > 0 ->
-                    ok = cowboy_req:stream_body(Bytes, nofin, Req),
-                    send(
-                        Source,
-                        Offset + byte_size(Bytes),
-                        Remaining - byte_size(Bytes),
-                        Req,
-                        Uid,
-                        Rid,
-                        Ticket,
-                        Seq,
-                        P
-                    );
-                _ ->
-                    exit(playback_artifact_truncated)
-            end;
-        _ ->
-            exit(playback_authorization_changed)
     end.
 
 deny(Req, Reason) ->

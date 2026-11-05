@@ -1,6 +1,17 @@
 -module(attachment_artifact_reader).
 -moduledoc "已授权附件冻结位置的有界私有spool读取；完整大小/hash通过后才向业务交付句柄。".
--export([with_source/3, with_range/4]).
+-export([with_source/3, with_range/4, with_signed_source/4]).
+
+%% Worker-only: the caller resolves and signs the frozen location before dispatch.
+with_signed_source(Url, Size, Hash, Fun) when
+    is_binary(Url),
+    is_integer(Size),
+    Size > 0,
+    is_binary(Hash),
+    byte_size(Hash) =:= 64,
+    is_function(Fun, 1)
+->
+    spool_copy(fun(Writer) -> download(Url, Writer, Size) end, Size, Hash, Fun).
 
 with_source(Row, Max, Fun) when is_integer(Max), Max > 0, is_function(Fun, 1) ->
     Size = maps:get(<<"size">>, Row, 0),
@@ -74,10 +85,13 @@ copy_range(_, _, _, _, _) ->
     {error, location_unverified}.
 
 spool(I, Size, Hash, Fun) ->
+    spool_copy(fun(Writer) -> copy(I, Writer, Size) end, Size, Hash, Fun).
+
+spool_copy(Copy, Size, Hash, Fun) ->
     case attachment_upload_spool:new() of
         {ok, Writer} ->
             try
-                case copy(I, Writer, Size) of
+                case Copy(Writer) of
                     {ok, Size} ->
                         case attachment_upload_spool:seal(Writer) of
                             {ok, Source} ->

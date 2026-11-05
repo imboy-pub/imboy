@@ -6,7 +6,7 @@
 % 记录 ACL 的旁路」）。
 %
 % 票据模型（capability token，与 T17 talk_record_grant_playback 同构——
-% 参考 attach_gateway 的 imboy_jwt:issue_upload_capability 先例）：
+% 参考 direct-v1 grant 的专用 audience + 绝对 exp 先例）：
 %   * claims：aud/sub=<<"talk_record_export_download">>、rid=记录 ID、
 %     eid=导出行 ID、uid=请求者（下载流验票时须与当前 JWT 身份一致，
 %     防拿他人票据）、**acl=签发时 acl_revision**（撤销版本绑定进票据
@@ -19,12 +19,12 @@
 %   * 下载端点每次开票都重新走 export_access 四要素重验（记录 ACL +
 %     requester 绑定 + 未过期 + 未删除——§4"每次下载重验"）。
 %
-% 校验点（导出供流式/网关用）：verify_ticket/1——验签 + 时间 + audience
+% 校验点（导出供边缘授权用）：verify_ticket_ref/1——验签 + 时间 + audience
 % → 记录 ACL 重验（visible 谓词，票据 uid 为主体）→ 撤销版本比对
 % （当前 acl_revision == 票据 acl claim）→ 导出行复核（复合匹配 +
 % state=ready + 未过期）。撤权/软删 → {error, not_found}；再授权/移交
 % （acl_revision 推进）→ {error, acl_stale}；票据/导出过期 →
-% {error, export_expired}。这是导出内容流的单一校验点。
+% {error, export_expired}。这是导出边缘授权的校验点。
 %
 % **导出副本边界（§11.3）**：导出生成的是独立副本——生成后无法通过
 % 删除记录或撤销权限收回接收者已保存的字节；票据机制只保证后续下载
@@ -33,12 +33,10 @@
 
 -export([
     issue/5,
-    verify_ticket/1,
-    verify_ticket/4,
     verify_ticket_ref/1,
     verify_ticket_ref/4,
-    stream_url/3,
     edge_target/1,
+    stream_url/3,
     ttl_seconds/0
 ]).
 
@@ -109,20 +107,7 @@ stream_url(RecordId, ExportId, Ticket) ->
 %% 票据校验点（内容流/网关调用）
 %% ===================================================================
 
-%% @doc 票据全量重验：验签（HS256 strict + exp/iat）+ audience → 记录 ACL
-%% 重验（visible 谓词，以票据 uid claim 为主体——撤权/软删/企业退出 →
-%% {error, not_found}）→ 撤销版本比对（当前 acl_revision == 票据 acl
-%% claim；撤权/再授权/移交使 acl_revision 推进 → {error, acl_stale}）
-%% → 导出行复核（record_id+export_id 复合匹配、state=ready、未过期）。
-%% 与 T17 talk_record_grant_playback:verify_ticket 同构（ACL+撤销版本
-%% 双重验），这是导出内容流的单一校验点。
-%% 成功返回 {ok, ExportRow}（含 content，供内容流输出）。
--spec verify_ticket(binary()) -> {ok, map()} | {error, atom() | term()}.
-verify_ticket(Ticket) -> verify_bound_ticket(Ticket, any).
-verify_ticket(Ticket, Uid, Rid, Eid) -> verify_bound_ticket(Ticket, {Uid, Rid, Eid}).
-
-%% @doc 字节自由校验点（V3-18 P3/EXC-2 边缘承载）：与 verify_ticket/1 同链
-%% （验签+audience → 记录 ACL 重验 → 撤销版本比对 → 导出行复核），但
+%% @doc 字节自由校验点（V3-18 P3/EXC-2 边缘承载）：验签+audience → 记录 ACL 重验 → 撤销版本比对 → 导出行复核；
 %% **不读工件字节**——成功返回行含 attachment_id，供边缘 authorize 端点
 %% presign（正文由边缘 OS 进程承载，BEAM 零字节）。
 -spec verify_ticket_ref(binary()) -> {ok, map()} | {error, atom() | term()}.
@@ -155,17 +140,6 @@ edge_target(Ticket) ->
             {error, Reason}
     end.
 
-verify_bound_ticket(Ticket, Expected) ->
-    case verify_bound_ref_ticket(Ticket, Expected) of
-        {ok, Row} ->
-            case talk_record_export_artifact:read(Row) of
-                {ok, Content} -> {ok, Row#{<<"content">> => Content}};
-                Error -> Error
-            end;
-        Error ->
-            Error
-    end.
-
 %% @private 字节自由形态：同一 claim 校验链，止于导出行复核（不触工件）。
 verify_bound_ref_ticket(Ticket, Expected) when is_binary(Ticket) ->
     case download_signing_key() of
@@ -191,7 +165,7 @@ recheck_ref_expected(#{<<"uid">> := U, <<"rid">> := R, <<"eid">> := E} = Claims,
 recheck_ref_expected(_, _) ->
     {error, export_ticket_invalid}.
 
-%% @private 统一 ACL 重验与撤销版本比对，止于行复核。
+%% @private ACL 重验 + 撤销版本比对，止于行复核。
 recheck_ref_claims(#{<<"rid">> := RecordId, <<"uid">> := Uid, <<"acl">> := TicketAcl} = Claims) when
     is_integer(RecordId), is_integer(Uid), is_integer(TicketAcl)
 ->
@@ -211,7 +185,7 @@ recheck_ref_claims(#{<<"rid">> := RecordId, <<"uid">> := Uid, <<"acl">> := Ticke
 recheck_ref_claims(_) ->
     {error, export_ticket_invalid}.
 
-%% @private 统一导出行 state/到期裁决，**不读字节**，
+%% @private 导出行状态与到期复核，**不读字节**，
 %% 返回行含 attachment_id（工件物理位置由调用方按需解析）。
 recheck_export_ref(#{<<"rid">> := RecordId, <<"eid">> := ExportId} = Claims) when
     is_integer(RecordId), is_integer(ExportId)

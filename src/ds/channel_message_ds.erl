@@ -30,16 +30,31 @@ list_by_channel_page(ChannelId, Cursor, Limit) ->
 
 -spec update(integer(), map()) -> {ok, integer()} | {error, any()}.
 update(MessageId, Data) ->
-    %% T7 归档写守卫（P0 收口）：置顶/编辑等消息更新与守卫同事务
-    %% （{channel_message, Id} → channel → workspace 行锁）。
-    workspace_guard:write_tx({channel_message, MessageId}, fun(Conn) ->
-        channel_message_repo:update_tx(Conn, MessageId, Data)
-    end).
+    case reference_change(Data) of
+        true ->
+            {error, channel_reference_update_unsupported};
+        false ->
+            workspace_guard:write_tx({channel_message, MessageId}, fun(Conn) ->
+                channel_message_repo:update_tx(Conn, MessageId, Data)
+            end)
+    end.
 
 update_checked(MessageId, Data, Expected) ->
-    workspace_guard:write_tx({channel_message, MessageId}, fun(Conn) ->
-        channel_message_repo:update_checked_tx(Conn, MessageId, Data, Expected)
-    end).
+    case reference_change(Data) of
+        true ->
+            {error, channel_reference_update_unsupported};
+        false ->
+            workspace_guard:write_tx({channel_message, MessageId}, fun(Conn) ->
+                channel_message_repo:update_checked_tx(Conn, MessageId, Data, Expected)
+            end)
+    end.
+
+%% Text and pin updates cannot replace or resurrect attachment references.
+reference_change(Data) ->
+    lists:any(
+        fun(K) -> maps:is_key(K, Data) end,
+        [payload, status, revoked, <<"payload">>, <<"status">>, <<"revoked">>]
+    ).
 
 delete_checked(MessageId, Content) ->
     workspace_guard:write_tx({channel_message, MessageId}, fun(Conn) ->

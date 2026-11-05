@@ -39,13 +39,17 @@ optional_claims_roundtrip_test() ->
         actor_kind => contact,
         actor_id => 4,
         conversation_id => 5,
-        visitor_session_id => 6
+        visitor_session_id => 6,
+        visitor_token_id => 7,
+        visitor_installation_id => 8
     },
     {ok, T} = eb_asset_download_ticket:issue(Claims, ?SECRET),
     {ok, Verified} = eb_asset_download_ticket:verify(T, ?SECRET),
     %% 绑定门重放键（atom）必须原样回传
     ?assertEqual(5, maps:get(conversation_id, Verified)),
     ?assertEqual(6, maps:get(visitor_session_id, Verified)),
+    ?assertEqual(7, maps:get(visitor_token_id, Verified)),
+    ?assertEqual(8, maps:get(visitor_installation_id, Verified)),
     ?assertEqual(contact, maps:get(actor_kind, Verified)).
 
 invalid_claims_fail_closed_test() ->
@@ -60,6 +64,18 @@ invalid_claims_fail_closed_test() ->
         {error, invalid_claims}, eb_asset_download_ticket:issue(Base#{asset_id => <<"x">>}, ?SECRET)
     ),
     ?assertMatch({error, _}, eb_asset_download_ticket:issue(Base#{}, <<>>)).
+
+visitor_claims_required_test() ->
+    Base = #{
+        org_id => 1,
+        workspace_id => 2,
+        asset_id => 3,
+        actor_kind => contact,
+        actor_id => 4,
+        conversation_id => 5,
+        visitor_session_id => 6
+    },
+    ?assertEqual({error, invalid_claims}, eb_asset_download_ticket:issue(Base, ?SECRET)).
 
 cross_purpose_rejected_test() ->
     %% 主域票据（attachment_download purpose）不得被 EB verify 接受

@@ -28,6 +28,7 @@
     "  FROM enterprise_message"
     " WHERE organization_id = $1 AND workspace_id = $2"
     "   AND retain_until <= to_timestamp($3::bigint/1000)"
+    "   AND NOT fn_eb_direct_purge_deferred($1,$2,'message',id)"
     " ORDER BY retain_until, id"
     " LIMIT $4"
     " FOR UPDATE SKIP LOCKED"
@@ -62,6 +63,7 @@
     "   AND message_id IS NULL"
     "   AND created_at <= to_timestamp($3::bigint/1000)"
     "   AND (retain_until IS NULL OR retain_until <= to_timestamp($4::bigint/1000))"
+    "   AND NOT fn_eb_direct_purge_deferred($1,$2,'asset',id)"
     " ORDER BY created_at, id"
     " LIMIT $5"
     " FOR UPDATE SKIP LOCKED"
@@ -380,8 +382,21 @@ eligible(Candidates, Holds, Now) ->
     ).
 
 delete_and_audit(Conn, OrgId, WorkspaceId, Now, MsgEligible, OrphanEligible, Skipped, Failures) ->
-    Ids = [maps:get(message_id, Message) || Message <- MsgEligible],
-    OrphanIds = [maps:get(id, Asset) || Asset <- OrphanEligible],
+    {Messages, MessageSkipped} = direct_ready(Conn, OrgId, WorkspaceId, message, MsgEligible),
+    {Orphans, OrphanSkipped} = direct_ready(Conn, OrgId, WorkspaceId, asset, OrphanEligible),
+    Ids = [maps:get(message_id, Message) || Message <- Messages],
+    OrphanIds = [maps:get(id, Asset) || Asset <- Orphans],
+    AllSkipped = Skipped ++ MessageSkipped ++ OrphanSkipped,
+    case {Ids, OrphanIds} of
+        {[], []} ->
+            {ok, summary([], [], AllSkipped, undefined, Failures)};
+        _ ->
+            delete_ready_and_audit(
+                Conn, OrgId, WorkspaceId, Now, Ids, OrphanIds, AllSkipped, Failures
+            )
+    end.
+
+delete_ready_and_audit(Conn, OrgId, WorkspaceId, Now, Ids, OrphanIds, Skipped, Failures) ->
     ok = eb_pg_asset_delete_queue:enqueue_in(Conn, OrgId, WorkspaceId, Ids, OrphanIds),
     %% 先删子表（asset / delivery），再删消息：与 RESTRICT FK 顺序一致；
     %% 孤儿资产（F-1）无消息外键，随后按 id 精确删除。
@@ -395,6 +410,140 @@ delete_and_audit(Conn, OrgId, WorkspaceId, Now, MsgEligible, OrphanEligible, Ski
             end;
         {error, Reason} ->
             {error, {sql, sql_state(Reason), constraint_name(Reason)}}
+    end.
+
+direct_ready(Conn, Org, Ws, Kind, Items) ->
+    lists:foldr(
+        fun(Item, {Ready, Skipped}) ->
+            Id = maps:get(
+                case Kind of
+                    message -> message_id;
+                    asset -> id
+                end,
+                Item
+            ),
+            case retire_direct_unit(Conn, Org, Ws, Kind, Id) of
+                ok -> {[Item | Ready], Skipped};
+                deferred -> {Ready, [{Id, {ineligible, direct_retirement_deferred}} | Skipped]}
+            end
+        end,
+        {[], []},
+        Items
+    ).
+
+retire_direct_unit(Conn, Org, Ws, Kind, Id) ->
+    ok = direct_savepoint(Conn, <<"SAVEPOINT eb_direct_purge_unit">>),
+    {MsgIds, AssetIds} =
+        case Kind of
+            message -> {[Id], []};
+            asset -> {[], [Id]}
+        end,
+    Result =
+        try retire_direct_assets(Conn, Org, Ws, MsgIds, AssetIds) of
+            ok -> ok
+        catch
+            throw:{rollback, Reason} -> {error, Reason}
+        end,
+    case Result of
+        ok ->
+            ok = direct_savepoint(Conn, <<"RELEASE SAVEPOINT eb_direct_purge_unit">>),
+            ok = direct_wait_action(Conn, <<"fn_eb_direct_purge_clear">>, Org, Ws, Kind, Id),
+            ok;
+        {error, Reason1} ->
+            ok = direct_savepoint(Conn, <<"ROLLBACK TO SAVEPOINT eb_direct_purge_unit">>),
+            ok = direct_savepoint(Conn, <<"RELEASE SAVEPOINT eb_direct_purge_unit">>),
+            case direct_retryable(Reason1) of
+                true ->
+                    ok = direct_wait_action(
+                        Conn, <<"fn_eb_direct_purge_defer">>, Org, Ws, Kind, Id
+                    ),
+                    deferred;
+                false ->
+                    throw({rollback, Reason1})
+            end
+    end.
+
+direct_retryable({direct_retirement_referenced, _}) ->
+    true;
+direct_retryable({direct_retirement_failed, #error{code = <<"23510">>, message = Message}}) ->
+    lists:member(Message, [
+        <<"enterprise direct retention active">>,
+        <<"enterprise direct pending session still active">>,
+        <<"enterprise direct capability not exhausted">>,
+        <<"v5 intent requires proven reference-zero (gc_verified)">>,
+        <<"v5 intent upload capability not exhausted">>,
+        <<"v5 intent blocked by workspace retention">>,
+        <<"v5 intent blocked by EAR">>,
+        <<"v5 intent blocked by live group_file binding">>,
+        <<"v5 intent blocked by collect reference">>,
+        <<"v5 intent blocked by group album reference">>,
+        <<"v5 intent blocked by channel message reference">>,
+        <<"v5 intent blocked by moment media reference">>,
+        <<"v5 intent blocked by talk_record reference">>,
+        <<"live forwarded attachment reference">>,
+        <<"avatar alias source is held">>
+    ]);
+direct_retryable(_) ->
+    false.
+
+direct_savepoint(Conn, Sql) ->
+    case elib_pg:query(Conn, Sql, []) of
+        {ok, _} -> ok;
+        {error, Reason} -> throw({rollback, {direct_retirement_savepoint_failed, Reason}})
+    end.
+
+direct_wait_action(Conn, Function, Org, Ws, Kind, Id) ->
+    Sql = <<"SELECT ", Function/binary, "($1,$2,$3,$4)">>,
+    case elib_pg:query(Conn, Sql, [Org, Ws, atom_to_binary(Kind, utf8), Id]) of
+        {ok, _} -> ok;
+        {error, Reason} -> throw({rollback, {direct_retirement_wait_failed, Reason}})
+    end.
+
+retire_direct_assets(Conn, Org, Ws, MessageIds, AssetIds) ->
+    Sql = <<
+        "SELECT asset_id,object_key,binding_state FROM fn_eb_direct_purge_candidates($1,$2,$3,$4)"
+    >>,
+    case elib_pg:query(Conn, Sql, [Org, Ws, MessageIds, AssetIds]) of
+        {ok, Rows} ->
+            lists:foreach(fun(Row) -> retire_direct_asset(Conn, Org, Ws, Row) end, Rows),
+            ok;
+        {error, Reason} ->
+            throw({rollback, {direct_retirement_query_failed, Reason}})
+    end.
+
+retire_direct_asset(_Conn, _Org, _Ws, #{<<"asset_id">> := Id, <<"object_key">> := Key}) when
+    not is_binary(Key)
+->
+    throw({rollback, {direct_retirement_link_missing, Id}});
+retire_direct_asset(Conn, Org, Ws, #{<<"asset_id">> := Id, <<"object_key">> := Key} = Row) ->
+    case elib_pg:query(Conn, <<"SELECT fn_v5_lock_ordinary_upload($1)">>, [Key]) of
+        {ok, _} -> ok;
+        {error, Reason} -> throw({rollback, {direct_retirement_lock_failed, Reason}})
+    end,
+    case maps:get(<<"binding_state">>, Row, null) of
+        <<"reserved">> ->
+            ok;
+        <<"bound">> ->
+            case
+                elib_pg:query(Conn, <<"SELECT fn_eb_direct_refresh_gc($1,$2,$3) AS proven">>, [
+                    Org, Ws, Id
+                ])
+            of
+                {ok, [#{<<"proven">> := true}]} ->
+                    ok;
+                {ok, [#{<<"proven">> := false}]} ->
+                    throw({rollback, {direct_retirement_referenced, Id}});
+                {ok, Other} ->
+                    throw({rollback, {direct_retirement_proof_invalid, Other}});
+                {error, Reason1} ->
+                    throw({rollback, {direct_retirement_proof_failed, Reason1}})
+            end;
+        _ ->
+            throw({rollback, {direct_retirement_binding_invalid, Id}})
+    end,
+    case elib_pg:query(Conn, <<"SELECT fn_eb_direct_retire($1,$2,$3)">>, [Org, Ws, Id]) of
+        {ok, _} -> ok;
+        {error, Reason2} -> throw({rollback, {direct_retirement_failed, Reason2}})
     end.
 
 delete_message_rows(_Conn, _OrgId, _WorkspaceId, _Now, []) ->

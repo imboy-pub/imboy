@@ -92,8 +92,9 @@ update_rejects_empty_provider_test_() ->
 update_preserves_omitted_behavior_fields_test_() ->
     ?WITH_MECKS(
         [
+            {elib_pg, [{'with_tx', 1, fun(F) -> F(fake_conn) end}]},
             {ai_agent_repo, [
-                {'patch', 2, fun(7, Data) ->
+                {'patch_tx', 3, fun(fake_conn, 7, Data) ->
                     ?assertEqual(
                         #{
                             provider => <<"qianfan">>,
@@ -284,9 +285,10 @@ get_decodes_trigger_policy_test_() ->
 update_syncs_nickname_when_present_test_() ->
     ?WITH_MECKS(
         [
-            {user_repo, [{'update', 2, fun(_Uid, _Data) -> {ok, 1} end}]},
+            {elib_pg, [{'with_tx', 1, fun(F) -> F(fake_conn) end}]},
+            {user_repo, [{'update_tx', 3, fun(_Conn, _Uid, _Data) -> {ok, 1} end}]},
             {ai_agent_repo, [
-                {'patch', 2, fun(_Uid, _Data) ->
+                {'patch_tx', 3, fun(_Conn, _Uid, _Data) ->
                     {ok, [#{<<"user_id">> => 7}]}
                 end}
             ]}
@@ -296,16 +298,19 @@ update_syncs_nickname_when_present_test_() ->
                 <<"provider">> => <<"qianfan">>,
                 <<"nickname">> => <<"新昵称"/utf8>>
             }),
-            ?assert(meck:called(user_repo, update, [7, #{nickname => <<"新昵称"/utf8>>}]))
+            ?assert(
+                meck:called(user_repo, update_tx, [fake_conn, 7, #{nickname => <<"新昵称"/utf8>>}])
+            )
         end
     ).
 
 update_skips_nickname_when_absent_or_blank_test_() ->
     ?WITH_MECKS(
         [
-            {user_repo, [{'update', 2, fun(_, _) -> {ok, 1} end}]},
+            {elib_pg, [{'with_tx', 1, fun(F) -> F(fake_conn) end}]},
+            {user_repo, [{'update_tx', 3, fun(_, _, _) -> {ok, 1} end}]},
             {ai_agent_repo, [
-                {'patch', 2, fun(_Uid, _Data) ->
+                {'patch_tx', 3, fun(_Conn, _Uid, _Data) ->
                     {ok, [#{<<"user_id">> => 7}]}
                 end}
             ]}
@@ -317,7 +322,7 @@ update_skips_nickname_when_absent_or_blank_test_() ->
             {ok, _} = ai_agent_ds:update(7, #{
                 <<"provider">> => <<"qianfan">>, <<"nickname">> => <<"  ">>
             }),
-            ?assertNot(meck:called(user_repo, update, '_'))
+            ?assertNot(meck:called(user_repo, update_tx, '_'))
         end
     ).
 
@@ -329,9 +334,10 @@ update_skips_nickname_when_absent_or_blank_test_() ->
 update_persists_extended_fields_test_() ->
     ?WITH_MECKS(
         [
-            {user_repo, [{'update', 2, fun(_, _) -> {ok, 1} end}]},
+            {elib_pg, [{'with_tx', 1, fun(F) -> F(fake_conn) end}]},
+            {user_repo, [{'update_tx', 3, fun(_, _, _) -> {ok, 1} end}]},
             {ai_agent_repo, [
-                {'patch', 2, fun(_Uid, _Data) ->
+                {'patch_tx', 3, fun(_Conn, _Uid, _Data) ->
                     {ok, [#{<<"user_id">> => 7}]}
                 end}
             ]}
@@ -353,7 +359,8 @@ update_persists_extended_fields_test_() ->
             %% 5 个新字段全部透传到 repo patch（capabilities 编码为 JSON binary，
             %% temperature 透传数值）
             ?assert(
-                meck:called(ai_agent_repo, patch, [
+                meck:called(ai_agent_repo, patch_tx, [
+                    fake_conn,
                     7,
                     #{
                         provider => <<"bailian">>,
@@ -376,9 +383,10 @@ update_persists_extended_fields_test_() ->
 update_syncs_avatar_when_present_test_() ->
     ?WITH_MECKS(
         [
-            {user_repo, [{'update', 2, fun(_, _) -> {ok, 1} end}]},
+            {elib_pg, [{'with_tx', 1, fun(F) -> F(fake_conn) end}]},
+            {user_repo, [{'update_tx', 3, fun(_, _, _) -> {ok, 1} end}]},
             {ai_agent_repo, [
-                {'patch', 2, fun(_Uid, _Data) ->
+                {'patch_tx', 3, fun(_Conn, _Uid, _Data) ->
                     {ok, [#{<<"user_id">> => 7}]}
                 end}
             ]}
@@ -389,7 +397,8 @@ update_syncs_avatar_when_present_test_() ->
                 <<"avatar">> => <<"https://s3.example.com/u7/avatar.png">>
             }),
             ?assert(
-                meck:called(user_repo, update, [
+                meck:called(user_repo, update_tx, [
+                    fake_conn,
                     7,
                     #{avatar => <<"https://s3.example.com/u7/avatar.png">>}
                 ])
@@ -400,9 +409,10 @@ update_syncs_avatar_when_present_test_() ->
 update_skips_avatar_when_absent_or_blank_test_() ->
     ?WITH_MECKS(
         [
-            {user_repo, [{'update', 2, fun(_, _) -> {ok, 1} end}]},
+            {elib_pg, [{'with_tx', 1, fun(F) -> F(fake_conn) end}]},
+            {user_repo, [{'update_tx', 3, fun(_, _, _) -> {ok, 1} end}]},
             {ai_agent_repo, [
-                {'patch', 2, fun(_Uid, _Data) ->
+                {'patch_tx', 3, fun(_Conn, _Uid, _Data) ->
                     {ok, [#{<<"user_id">> => 7}]}
                 end}
             ]}
@@ -412,7 +422,7 @@ update_skips_avatar_when_absent_or_blank_test_() ->
             {ok, _} = ai_agent_ds:update(7, #{
                 <<"provider">> => <<"bailian">>, <<"avatar">> => <<"  ">>
             }),
-            ?assertNot(meck:called(user_repo, update, '_'))
+            ?assertNot(meck:called(user_repo, update_tx, '_'))
         end
     ).
 

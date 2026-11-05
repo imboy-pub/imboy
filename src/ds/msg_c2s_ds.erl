@@ -8,6 +8,10 @@
 
 -export([write_topic/6]).
 -export([write_msg/2]).
+-export([message_result/3]).
+
+message_result(Uid, Peer, MsgId) ->
+    msg_c2s_repo:message_result(Uid, Peer, MsgId).
 
 %% ===================================================================
 %% API

@@ -129,7 +129,7 @@ forward_single_message(MsgId, CurrentUid, ToId, ToType) ->
     case get_original_message(MsgId) of
         {ok, OriginalMsg, OriginalType} ->
             % 验证权限
-            case validate_forward_permission(OriginalMsg, CurrentUid) of
+            case validate_forward_permission(OriginalMsg, MsgId, CurrentUid) of
                 ok ->
                     % 创建转发消息
                     create_forward_message(
@@ -165,26 +165,24 @@ get_original_message(MsgId) ->
     end.
 
 %% @doc 验证转发权限
--spec validate_forward_permission(map(), integer()) -> ok | {error, term()}.
-validate_forward_permission(Msg, CurrentUid) ->
+-spec validate_forward_permission(map(), binary(), integer()) -> ok | {error, term()}.
+validate_forward_permission(Msg, MsgId, CurrentUid) ->
     % 检查用户是否是消息的发送者或接收者
     FromId = maps:get(<<"from_id">>, Msg, undefined),
     ToId = maps:get(<<"to_id">>, Msg, undefined),
     ToGid = maps:get(<<"to_gid">>, Msg, undefined),
 
     case {FromId, ToId, ToGid} of
-        {CurrentUid, _, _} ->
-            % 用户是消息发送者
-            ok;
-        {_, CurrentUid, _} ->
-            % 用户是消息接收者（单聊）
-            ok;
         {_, _, GroupId} when is_integer(GroupId), GroupId > 0 ->
-            % 群聊消息需校验当前用户是否为群成员
-            case group_ds:is_member(CurrentUid, GroupId) of
+            % 原发送者退出群后同样不能转发群消息。
+            case msg_forward_ds:source_group_visible(MsgId, GroupId, CurrentUid) of
                 true -> ok;
                 false -> {error, {permission_denied, <<"无权限转发该消息"/utf8>>}}
             end;
+        {CurrentUid, _, _} ->
+            ok;
+        {_, CurrentUid, _} ->
+            ok;
         _ ->
             {error, {permission_denied, <<"无权限转发该消息"/utf8>>}}
     end.
@@ -208,7 +206,7 @@ validate_forward_permission(Msg, CurrentUid) ->
 create_forward_message(OriginalMsg, OriginalType, OriginalMsgId, CurrentUid, ToId, ToType) ->
     NowMs = elib_dt:millisecond(),
     case build_forward_content(OriginalMsg) of
-        {ok, MsgType, OriginalPayload} ->
+        {ok, MsgType, OriginalPayload, Keys} ->
             % 构建转发消息数据（复用现有 c2c/c2g 的输入结构）
             To = ToId,
             ForwardData = #{
@@ -228,18 +226,43 @@ create_forward_message(OriginalMsg, OriginalType, OriginalMsgId, CurrentUid, ToI
             % 先发送，成功后才落转发记录：避免"库里有记录但根本没进投递管道"。
             % 新转发消息使用独立 UUIDv7；原消息 ID 只作引用，不能重用为新消息 ID。
             % A forwarded message gets a new UUIDv7; retain the source ID only as a reference.
-            case send_forward_message(ToType, CurrentUid, ForwardData) of
+            Send = fun() -> send_forward_message(ToType, CurrentUid, ForwardData) end,
+            Result =
+                case Keys of
+                    [] ->
+                        Send();
+                    _ ->
+                        Context = #{
+                            source_type => OriginalType,
+                            source_id => OriginalMsgId,
+                            source_from => OriginalFromId,
+                            source_target => OriginalToId,
+                            source_msg_type => maps:get(<<"msg_type">>, OriginalMsg, <<>>),
+                            source_payload => maps:get(<<"payload">>, OriginalMsg, #{}),
+                            target_type => ToType,
+                            target_id => ToId,
+                            sender => CurrentUid,
+                            keys => Keys
+                        },
+                        forward_attachment_repo:with_context(Context, Send)
+                end,
+            case Result of
                 {ok, ForwardMsgId} ->
-                    ok = msg_forward_ds:save_forward_record(
-                        OriginalMsgId,
-                        OriginalFromId,
-                        OriginalToId,
-                        OriginalType,
-                        ForwardMsgId,
-                        CurrentUid,
-                        ToId,
-                        ToType
-                    ),
+                    case Keys of
+                        [] ->
+                            ok = msg_forward_ds:save_forward_record(
+                                OriginalMsgId,
+                                OriginalFromId,
+                                OriginalToId,
+                                OriginalType,
+                                ForwardMsgId,
+                                CurrentUid,
+                                ToId,
+                                ToType
+                            );
+                        _ ->
+                            ok
+                    end,
                     {ok, ForwardMsgId};
                 {error, Reason} ->
                     {error, Reason}
@@ -249,7 +272,7 @@ create_forward_message(OriginalMsg, OriginalType, OriginalMsgId, CurrentUid, ToI
     end.
 
 %% @doc 提取可复刻的消息类型与内容
--spec build_forward_content(map()) -> {ok, binary(), map()} | {error, term()}.
+-spec build_forward_content(map()) -> {ok, binary(), map(), [binary()]} | {error, term()}.
 build_forward_content(OriginalMsg) ->
     case is_encrypted_message(OriginalMsg) of
         true ->
@@ -269,9 +292,19 @@ build_forward_content(OriginalMsg) ->
                 _ ->
                     MsgType = forwardable_msg_type(RawType),
                     Payload = decode_forward_payload(maps:get(<<"payload">>, OriginalMsg, #{})),
-                    case forwardable_assets(MsgType, Payload) of
-                        true -> {ok, MsgType, Payload};
-                        false -> {error, {invalid_param, <<"含附件/媒体的消息暂不支持转发"/utf8>>}}
+                    case attachment_keys(Payload) of
+                        {ok, []} ->
+                            case forwardable_assets(MsgType, Payload) of
+                                true -> {ok, MsgType, Payload, []};
+                                false -> {error, {invalid_param, <<"附件引用不完整"/utf8>>}}
+                            end;
+                        {ok, Keys} ->
+                            case asset_msg_type(MsgType) of
+                                true -> {ok, MsgType, Payload, Keys};
+                                false -> {error, {invalid_param, <<"未知附件消息类型"/utf8>>}}
+                            end;
+                        error ->
+                            {error, {invalid_param, <<"附件引用无效"/utf8>>}}
                     end
             end
     end.
@@ -289,6 +322,55 @@ build_forward_content(OriginalMsg) ->
 -spec forwardable_assets(binary(), map()) -> boolean().
 forwardable_assets(MsgType, Payload) ->
     not has_object_reference(MsgType, Payload).
+
+%% Reject ambiguous reference shapes; the authoritative source is rechecked in the transaction.
+attachment_keys(Payload) ->
+    case collect_attachment_keys(Payload, []) of
+        {ok, Keys} when length(Keys) =< 50 -> {ok, lists:usort(Keys)};
+        _ -> error
+    end.
+
+collect_attachment_keys(Map, Acc) when is_map(Map) ->
+    maps:fold(
+        fun(Key, Value, Result) ->
+            case Result of
+                error ->
+                    error;
+                {ok, Items} ->
+                    case {Key, Value} of
+                        {<<"thumb">>, Thumb} when is_map(Thumb) ->
+                            collect_attachment_keys(Thumb, Items);
+                        _ ->
+                            case lists:member(Key, [<<"uri">>, <<"thumb">>, <<"url">>]) of
+                                true -> collect_reference(Value, Items);
+                                false -> collect_attachment_keys(Value, Items)
+                            end
+                    end
+            end
+        end,
+        {ok, Acc},
+        Map
+    );
+collect_attachment_keys(List, Acc) when is_list(List) ->
+    lists:foldl(
+        fun(Value, Result) ->
+            case Result of
+                error -> error;
+                {ok, Items} -> collect_attachment_keys(Value, Items)
+            end
+        end,
+        {ok, Acc},
+        List
+    );
+collect_attachment_keys(_, Acc) ->
+    {ok, Acc}.
+
+collect_reference(<<"http://", _/binary>>, Acc) -> {ok, Acc};
+collect_reference(<<"https://", _/binary>>, Acc) -> {ok, Acc};
+collect_reference(<<>>, Acc) -> {ok, Acc};
+collect_reference(null, Acc) -> {ok, Acc};
+collect_reference(Key, Acc) when is_binary(Key), byte_size(Key) =< 512 -> {ok, [Key | Acc]};
+collect_reference(_, _) -> error.
 
 %% 媒体/附件类消息类型（即使 payload 暂时缺 uri 也不能当作纯文本转发）
 -spec asset_msg_type(binary()) -> boolean().
@@ -308,18 +390,30 @@ asset_msg_type(_) -> false.
 %% 只有形如 `u4/c2c/...` 的 object_key 才依赖原会话的读取授权。
 -spec has_object_reference(binary(), map()) -> boolean().
 has_object_reference(MsgType, Payload) ->
-    asset_msg_type(MsgType) orelse
-        lists:any(
-            fun(Key) -> is_object_key_ref(maps:get(Key, Payload, undefined)) end,
-            [<<"uri">>, <<"thumb">>, <<"url">>]
-        ).
+    asset_msg_type(MsgType) orelse contains_object_reference(Payload).
+
+contains_object_reference(Value) when is_map(Value) ->
+    maps:fold(
+        fun(Key, Child, Found) ->
+            Found orelse
+                (lists:member(Key, [<<"uri">>, <<"thumb">>, <<"url">>]) andalso
+                    is_object_key_ref(Child)) orelse contains_object_reference(Child)
+        end,
+        false,
+        Value
+    );
+contains_object_reference(Value) when is_list(Value) ->
+    lists:any(fun contains_object_reference/1, Value);
+contains_object_reference(_) ->
+    false.
 
 -spec is_object_key_ref(term()) -> boolean().
 is_object_key_ref(<<"http://", _/binary>>) -> false;
 is_object_key_ref(<<"https://", _/binary>>) -> false;
 is_object_key_ref(<<>>) -> false;
-is_object_key_ref(V) when is_binary(V) -> true;
-is_object_key_ref(_) -> false.
+is_object_key_ref(null) -> false;
+is_object_key_ref(undefined) -> false;
+is_object_key_ref(_) -> true.
 
 %% @doc 原消息是否带 E2EE 元数据（密文无法跨会话解密，不能原样转发）
 -spec is_encrypted_message(map()) -> boolean().

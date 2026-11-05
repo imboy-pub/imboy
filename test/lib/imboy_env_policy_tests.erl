@@ -199,6 +199,27 @@ temp_secret_file(Name, Content, Mode) ->
     ok = file:change_mode(Path, Mode),
     Path.
 
+edge_internal_token_override_test() ->
+    Keys = ["IMBOY_EDGE_INTERNAL_TOKEN", "IMBOY_EDGE_INTERNAL_TOKEN_FILE"],
+    SavedEnv = [{Key, os:getenv(Key)} || Key <- Keys],
+    SavedApp = [{edge_internal_token, application:get_env(imboy, edge_internal_token)}],
+    Path = temp_secret_file("imboy-edge-token", <<"test-token\n">>, 8#600),
+    try
+        [os:unsetenv(Key) || Key <- Keys],
+        os:putenv("IMBOY_EDGE_INTERNAL_TOKEN_FILE", Path),
+        ok = imboy_env_overrides:override_edge_token(),
+        ?assertEqual({ok, <<"test-token">>}, application:get_env(imboy, edge_internal_token)),
+        os:putenv("IMBOY_EDGE_INTERNAL_TOKEN", "other"),
+        ?assertError(
+            {conflicting_env, "IMBOY_EDGE_INTERNAL_TOKEN", "IMBOY_EDGE_INTERNAL_TOKEN_FILE"},
+            imboy_env_overrides:override_edge_token()
+        )
+    after
+        _ = file:delete(Path),
+        restore_app_env(SavedApp),
+        restore_os_env(SavedEnv)
+    end.
+
 cs_widget_file_variant_reads_0600_content_test() ->
     SavedApp = [{Key, application:get_env(imboy, Key)} || Key <- cs_widget_env_keys()],
     SavedEnv = [{Key, os:getenv(Key)} || Key <- cs_widget_os_keys()],

@@ -257,10 +257,10 @@ copy_cross(Ns, SourceBucket, SourceKey, TargetBucket, TargetKey) ->
                 true ->
                     copy_cross_req(Cfg, SourceBucket, SourceKey, TargetBucket, TargetKey);
                 false ->
-                    {error, location_changed}
+                    {error, {not_dispatched, location_changed}}
             end;
         _ ->
-            {error, location_unverified}
+            {error, {not_dispatched, location_unverified}}
     end.
 
 copy_cross_req(Cfg, SourceBucket, SourceKey, TargetBucket, TargetKey) ->

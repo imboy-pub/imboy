@@ -340,8 +340,10 @@ download_ticket_and_stream_test_() ->
         ?assert(is_binary(maps:get(<<"ticket">>, D))),
         ?assert(is_integer(maps:get(<<"expiry">>, D))),
         %% 验票（内容流校验点）→ 行含 content
-        {ok, VRow} = talk_record_export_download:verify_ticket(maps:get(<<"ticket">>, D)),
-        ?assert(binary:match(maps:get(<<"content">>, VRow), <<"第一句正文"/utf8>>) =/= nomatch)
+        {ok, VRow} = talk_record_export_download:verify_ticket_ref(maps:get(<<"ticket">>, D)),
+        ?assertEqual(false, maps:is_key(<<"content">>, VRow)),
+        {ok, Bytes} = talk_record_export_artifact:read(VRow),
+        ?assert(binary:match(Bytes, <<"第一句正文"/utf8>>) =/= nomatch)
     end).
 
 download_reverify_test_() ->
@@ -784,7 +786,7 @@ ticket_revoke_stale_test_() ->
         {ok, D} = talk_record_export_logic:download(U2, Rid, maps:get(<<"export_id">>, P)),
         Ticket = maps:get(<<"ticket">>, D),
         %% 基线：验票通过
-        ?assertMatch({ok, _}, talk_record_export_download:verify_ticket(Ticket)),
+        ?assertMatch({ok, _}, talk_record_export_download:verify_ticket_ref(Ticket)),
         %% 撤权（撤销 U2 的 grant，acl_revision 推进）→ 验票 not_found
         G = talk_record_t17_support:one(Conn, [
             "SELECT id FROM talk_record_grant WHERE record_id=",
@@ -794,7 +796,7 @@ ticket_revoke_stale_test_() ->
             " AND revoked_at IS NULL LIMIT 1"
         ]),
         {ok, _} = talk_record_grant_logic:revoke(U1, Rid, maps:get(<<"id">>, G), <<"acl:1">>),
-        ?assertMatch({error, not_found}, talk_record_export_download:verify_ticket(Ticket))
+        ?assertMatch({error, not_found}, talk_record_export_download:verify_ticket_ref(Ticket))
     end).
 
 ticket_transfer_stale_test_() ->
@@ -808,7 +810,7 @@ ticket_transfer_stale_test_() ->
         {ok, created, P} = create_ready(U1, Rid, <<"t19-q-105">>, body(<<"txt">>)),
         {ok, D} = talk_record_export_logic:download(U1, Rid, maps:get(<<"export_id">>, P)),
         Ticket = maps:get(<<"ticket">>, D),
-        ?assertMatch({ok, _}, talk_record_export_download:verify_ticket(Ticket)),
+        ?assertMatch({ok, _}, talk_record_export_download:verify_ticket_ref(Ticket)),
         {ok, created, _} = talk_record_transfer_logic:transfer(
             U1,
             Rid,
@@ -817,7 +819,7 @@ ticket_transfer_stale_test_() ->
             #{<<"target_user_id">> => U2, <<"keep_access">> => true}
         ),
         %% U1 仍可见，但移交保留的 viewer grant 未授予导出能力。
-        ?assertMatch({error, forbidden}, talk_record_export_download:verify_ticket(Ticket)),
+        ?assertMatch({error, forbidden}, talk_record_export_download:verify_ticket_ref(Ticket)),
         %% 重新开票也必须拒绝；可见权限不能替代 allow_export。
         ?assertEqual(
             {error, forbidden},
@@ -837,7 +839,7 @@ ticket_soft_delete_stale_test_() ->
         talk_record_t19_support:sql(Conn, [
             "UPDATE talk_record SET deleted_at=now() WHERE id=", integer_to_binary(Rid)
         ]),
-        ?assertMatch({error, not_found}, talk_record_export_download:verify_ticket(Ticket))
+        ?assertMatch({error, not_found}, talk_record_export_download:verify_ticket_ref(Ticket))
     end).
 
 %% P2：并发双移交双花防护——锁后复核当前 owner == 发起人（行锁 CAS

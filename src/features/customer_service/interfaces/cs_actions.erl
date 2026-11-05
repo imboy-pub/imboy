@@ -879,6 +879,7 @@ table(widget) ->
                             %% asset_id 为 status/renew 会话定位。
                             {operation, binary, optional},
                             {client_upload_id, binary, optional},
+                            {object_key, binary, optional},
                             {asset_id, tsid, optional}
                         ],
                         [{id, session_id}]}
@@ -891,6 +892,8 @@ table(widget) ->
                         [
                             {installation_id, tsid, required},
                             {upload_ref, binary, optional},
+                            {object_key, binary, optional},
+                            {attempt_id, int, optional},
                             {asset_id, tsid, optional}
                         ],
                         [{id, session_id}]}

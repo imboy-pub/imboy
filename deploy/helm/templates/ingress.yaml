@@ -64,6 +64,52 @@ spec:
                   number: {{ .Values.backend.service.port }}
 
 ---
+# Edge URLs may contain bearer tickets in the query string.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ include "imboy.fullname" . }}-edge
+  namespace: {{ .Release.Namespace }}
+  annotations:
+    kubernetes.io/ingress.class: {{ .Values.ingress.className | quote }}
+    nginx.ingress.kubernetes.io/enable-access-log: "false"
+    nginx.ingress.kubernetes.io/configuration-snippet: |
+      error_log /dev/null crit;
+spec:
+  ingressClassName: {{ .Values.ingress.className }}
+  {{- if .Values.ingress.api.tls }}
+  tls:
+    - hosts:
+        - {{ .Values.ingress.api.host | quote }}
+      secretName: {{ .Values.ingress.api.secretName }}
+  {{- end }}
+  rules:
+    - host: {{ .Values.ingress.api.host | quote }}
+      http:
+        paths:
+          - path: /edge
+            pathType: Exact
+            backend:
+              service:
+                name: {{ include "imboy.fullname" . }}-backend
+                port:
+                  number: 13990
+          - path: /_avatar
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ include "imboy.fullname" . }}-backend
+                port:
+                  number: 13990
+          - path: /api/v1/talk-records/client-audio-source
+            pathType: Exact
+            backend:
+              service:
+                name: {{ include "imboy.fullname" . }}-backend
+                port:
+                  number: 13990
+
+---
 # ===== 管理后台 =====
 apiVersion: networking.k8s.io/v1
 kind: Ingress

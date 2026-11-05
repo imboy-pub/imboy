@@ -1,17 +1,7 @@
 -module(group_file_handler).
 
 -moduledoc "群文件 API 处理器 / Group file API —— 按 action 分发的群文件管理端点。".
--dialyzer(
-    {nowarn_function, [
-        handle_action/3,
-        upload/2,
-        download/2,
-        parse_multipart/1,
-        parse_multipart/5,
-        normalize_file_part/3,
-        choose_binary/2
-    ]}
-).
+-dialyzer({nowarn_function, [handle_action/3, download/2]}).
 
 -behaviour(cowboy_rest).
 
@@ -35,7 +25,6 @@ init(Req0, State0) ->
 
 %% @doc Action 分发处理
 -spec handle_action(atom() | false, cowboy_req:req(), map()) -> cowboy_req:req().
-handle_action(upload, Req, State) -> upload(Req, State);
 handle_action(bind, Req, State) -> bind(Req, State);
 handle_action(download, Req, State) -> download(Req, State);
 handle_action(list, Req, State) -> list(Req, State);
@@ -48,55 +37,8 @@ handle_action(false, Req, _State) -> Req.
 %% Action 处理函数
 %% ===================================================================
 
-%% @doc 上传文件
-%% POST /v1/group/file/upload
-%% Content-Type: multipart/form-data
-%% 参数: gid, file
--spec upload(cowboy_req:req(), map()) -> cowboy_req:req().
-upload(Req0, State) ->
-    CurrentUid = maps:get(current_uid, State),
-
-    % 解析 multipart 表单数据。cowboy_req:read_part/1 是流式 API：每次只
-    % 返回单个 part 的 headers map，须配合 read_part_body 循环读完全部
-    % part。此前把首个 part 的 headers 当 parts 列表直传 parse_multipart
-    % → function_clause 崩溃，真实请求下上传从未成功过（2026-07-14 生产
-    % crash.log 坐实）。
-    {Parts, Req1} = read_all_parts(Req0),
-
-    % 提取参数
-    {Gid, FileName, FileBinary, FileType} = parse_multipart(Parts),
-
-    % 验证参数
-    case {Gid, FileName, FileBinary} of
-        {undefined, _, _} ->
-            elib_response:error(Req1, <<"缺少必填参数"/utf8>>, ?ERR_MISSING_PARAM);
-        {_, undefined, _} ->
-            elib_response:error(Req1, <<"缺少必填参数"/utf8>>, ?ERR_MISSING_PARAM);
-        {_, _, undefined} ->
-            elib_response:error(Req1, <<"缺少必填参数"/utf8>>, ?ERR_MISSING_PARAM);
-        {_, _, _} ->
-            % 调用 Logic 层上传文件
-            case group_file_logic:upload(Gid, CurrentUid, FileName, FileBinary, FileType) of
-                {ok, FileData} ->
-                    elib_response:success(Req1, FileData);
-                {error, not_member} ->
-                    elib_response:error(Req1, <<"非群组成员"/utf8>>, ?ERR_NOT_GROUP_MEMBER);
-                {error, file_too_large} ->
-                    elib_response:error(Req1, <<"文件大小超出限制"/utf8>>, ?ERR_FILE_SIZE_EXCEEDED);
-                {error, invalid_file_type} ->
-                    elib_response:error(Req1, <<"不允许的文件类型"/utf8>>, ?ERR_FILE_TYPE_NOT_ALLOWED);
-                {error, ?ERR_WORKSPACE_ARCHIVED} ->
-                    % T7 归档写守卫（群文件上传 = group_file 行 + scope=group
-                    % 附件补写行两笔 workspace 范围写）
-                    elib_response:error(
-                        Req1,
-                        imboy_error:error_msg(?ERR_WORKSPACE_ARCHIVED),
-                        ?ERR_WORKSPACE_ARCHIVED
-                    );
-                {error, _Reason} ->
-                    elib_response:error(Req1, <<"文件上传失败"/utf8>>, ?ERR_FILE_UPLOAD_FAILED)
-            end
-    end.
+%% C08（V3-12）：multipart 正文上传（file/upload，"登记即绑定"旧链）已退役。
+%% 群文件唯一引用入口为 direct-v1 confirmed 逻辑引用绑定（file/bind）。
 
 %% direct-v1 确认引用绑定（step-11）：JSON 引用 bind，不收正文。
 %% POST /v1/group/file/bind {gid, file_name, file_type, object_key, file_size, file_md5}
@@ -140,6 +82,12 @@ bind(Req0, State) ->
                 {error, invalid_file_type} ->
                     elib_response:error(Req1, <<"不允许的文件类型"/utf8>>, ?ERR_FILE_TYPE_NOT_ALLOWED);
                 {error, ?ERR_WORKSPACE_ARCHIVED} ->
+                    elib_response:error(
+                        Req1,
+                        imboy_error:error_msg(?ERR_WORKSPACE_ARCHIVED),
+                        ?ERR_WORKSPACE_ARCHIVED
+                    );
+                {error, {?ERR_WORKSPACE_ARCHIVED, _}} ->
                     elib_response:error(
                         Req1,
                         imboy_error:error_msg(?ERR_WORKSPACE_ARCHIVED),
@@ -309,86 +257,6 @@ categories(Req0, State) ->
 %% ===================================================================
 %% 内部函数
 %% ===================================================================
-
-%% @doc 流式读完请求的全部 multipart part，归一化为
-%% [{FieldName, Value}]：普通表单字段 Value 为 binary；文件字段 Value 为
-%% #{filename, data, content_type}（与 parse_multipart/normalize_file_part
-%% 的既有子句对齐）。
--spec read_all_parts(cowboy_req:req()) -> {list(), cowboy_req:req()}.
-read_all_parts(Req0) ->
-    read_all_parts(Req0, []).
-
-read_all_parts(Req0, Acc) ->
-    case cowboy_req:read_part(Req0) of
-        {ok, Headers, Req1} ->
-            case cow_multipart:form_data(Headers) of
-                {data, FieldName} ->
-                    {Body, Req2} = read_full_part_body(Req1, <<>>),
-                    read_all_parts(Req2, [{FieldName, Body} | Acc]);
-                {file, FieldName, Filename, CType} ->
-                    {Body, Req2} = read_full_part_body(Req1, <<>>),
-                    Value = #{filename => Filename, data => Body, content_type => CType},
-                    read_all_parts(Req2, [{FieldName, Value} | Acc])
-            end;
-        {done, Req1} ->
-            {lists:reverse(Acc), Req1}
-    end.
-
-%% @doc 循环 read_part_body 直到读完单个 part（大文件会分多次 more 返回）。
-read_full_part_body(Req0, Acc) ->
-    case cowboy_req:read_part_body(Req0) of
-        {ok, Data, Req1} -> {<<Acc/binary, Data/binary>>, Req1};
-        {more, Data, Req1} -> read_full_part_body(Req1, <<Acc/binary, Data/binary>>)
-    end.
-
-%% @doc 解析 multipart 表单数据（兼容测试桩和简化结构）
-%% @param Parts cowboy_req 读到的部分
-%% @return {Gid, FileName, FileBinary, FileType}
--spec parse_multipart(list()) -> {term(), term(), term(), term()}.
-parse_multipart(Parts) ->
-    parse_multipart(Parts, undefined, undefined, undefined, undefined).
-
-parse_multipart([], Gid, FileName, FileBinary, FileType) ->
-    FinalType =
-        case FileType of
-            undefined -> <<"application/octet-stream">>;
-            <<>> -> <<"application/octet-stream">>;
-            _ -> FileType
-        end,
-    {Gid, FileName, FileBinary, FinalType};
-parse_multipart([Part | Rest], Gid, FileName, FileBinary, FileType) ->
-    case Part of
-        {<<"gid">>, Value} ->
-            parse_multipart(Rest, Value, FileName, FileBinary, FileType);
-        {<<"file_name">>, Value} ->
-            parse_multipart(Rest, Gid, Value, FileBinary, FileType);
-        {<<"file_type">>, Value} ->
-            parse_multipart(Rest, Gid, FileName, FileBinary, Value);
-        {<<"file">>, Value} ->
-            {FileName2, FileBinary2, FileType2} = normalize_file_part(Value, FileName, FileType),
-            parse_multipart(Rest, Gid, FileName2, FileBinary2, FileType2);
-        _ ->
-            parse_multipart(Rest, Gid, FileName, FileBinary, FileType)
-    end.
-
-normalize_file_part(Value, FileName, FileType) when is_binary(Value) ->
-    {FileName, Value, FileType};
-normalize_file_part({Name, Binary}, FileName, FileType) when is_binary(Binary) ->
-    {choose_binary(Name, FileName), Binary, FileType};
-normalize_file_part({Name, Binary, Type}, FileName, FileType) when is_binary(Binary) ->
-    {choose_binary(Name, FileName), Binary, choose_binary(Type, FileType)};
-normalize_file_part(Value, FileName, FileType) when is_map(Value) ->
-    Name = maps:get(filename, Value, maps:get(<<"filename">>, Value, FileName)),
-    Binary = maps:get(data, Value, maps:get(<<"data">>, Value, undefined)),
-    Type = maps:get(content_type, Value, maps:get(<<"content_type">>, Value, FileType)),
-    {Name, Binary, Type};
-normalize_file_part(_Value, FileName, FileType) ->
-    {FileName, undefined, FileType}.
-
-choose_binary(Value, _Default) when is_binary(Value), Value =/= <<>> ->
-    Value;
-choose_binary(_Value, Default) ->
-    Default.
 
 %% @doc 安全解析分页参数，非法或小于 1 时回退默认值，避免 binary_to_integer badarg 崩溃
 -spec safe_page(binary(), pos_integer()) -> pos_integer().

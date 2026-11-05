@@ -104,7 +104,10 @@ run_once() ->
         )
     of
         {ok, Job} ->
-            dispatch_job(Job);
+            case dispatch_job(Job) of
+                {rollback, Reason} -> {error, {finish_not_confirmed, Reason}};
+                Result -> Result
+            end;
         {error, empty} ->
             {ok, done};
         {error, Reason} ->
@@ -168,8 +171,14 @@ dispatch_job(Job) ->
             ?WARN_LOG("talk_record_job_worker job ~p crashed ~p", [
                 maps:get(<<"id">>, Job), Unexpected
             ]),
-            finish_transient(Job, <<"worker_crash">>),
-            {ok, #{outcome => crash}}
+            case maps:get(<<"kind">>, Job) of
+                <<"assemble">> ->
+                    finish_outcome(finish_suspended(Job, <<"worker_crash_unconfirmed">>), #{
+                        outcome => suspended, reason => worker_crash_unconfirmed
+                    });
+                _ ->
+                    finish_retry_result(Job, <<"worker_crash">>, #{outcome => crash})
+            end
     end.
 
 dispatch_kind(<<"assemble">>, Job) ->
@@ -183,8 +192,9 @@ dispatch_kind(<<"purge">>, Job) ->
     %% 不执行存储 DELETE——§10.4）
     run_purge(Job);
 dispatch_kind(_Unknown, Job) ->
-    finish_terminal(Job, <<"unknown_kind">>),
-    {ok, #{outcome => failed, error_code => <<"unknown_kind">>}}.
+    finish_outcome(finish_terminal(Job, <<"unknown_kind">>), #{
+        outcome => failed, error_code => <<"unknown_kind">>
+    }).
 
 %% -------------------------------------------------------------------
 %% purge：协调清理（T20 接线；claim/finish 分事务，处理期不持 job 锁）
@@ -203,11 +213,16 @@ run_export(Job) ->
             Reason =:= forbidden;
             Reason =:= export_disabled_by_policy
         ->
-            finish_terminal(Job, atom_to_binary(Reason, utf8)),
-            {ok, #{outcome => failed, error_code => Reason}};
+            case finish_terminal(Job, atom_to_binary(Reason, utf8)) of
+                ok -> {ok, #{outcome => failed, error_code => Reason}};
+                {error, lease_lost} -> {ok, #{outcome => late_result_rejected}};
+                {error, _} = Error -> Error;
+                Other -> {error, {finish_not_confirmed, Other}}
+            end;
         _ ->
-            finish_transient(Job, <<"export_failed">>),
-            {ok, #{outcome => requeued, kind => <<"export">>}}
+            finish_retry_result(Job, <<"export_failed">>, #{
+                outcome => requeued, kind => <<"export">>
+            })
     end.
 
 run_purge(Job) ->
@@ -220,21 +235,21 @@ run_purge(Job) ->
         {ok, Result} ->
             %% 协调成功 = purge job 终态 succeeded（cleanup_status 的
             %% complete 推进归 refresh 物理回读——队列进度不归本 job 等待）
-            finish_success(Job),
-            {ok, #{outcome => succeeded, kind => <<"purge">>, detail => Result}};
+            finish_outcome(finish_success(Job), #{
+                outcome => succeeded, kind => <<"purge">>, detail => Result
+            });
         {rollback, Reason} ->
             ?WARN_LOG("talk_record_job_worker purge rollback ~p", [Reason]),
-            finish_transient(Job, <<"db_error">>),
-            {ok, #{outcome => requeued, kind => <<"purge">>}};
+            finish_retry_result(Job, <<"db_error">>, #{outcome => requeued, kind => <<"purge">>});
         {error, record_not_deleted} ->
             %% 未删除记录的 purge 行（防御性投递/数据异常）：终态失败，
             %% 同输入重试无意义
-            finish_terminal(Job, <<"record_not_deleted">>),
-            {ok, #{outcome => failed, error_code => record_not_deleted}};
+            finish_outcome(finish_terminal(Job, <<"record_not_deleted">>), #{
+                outcome => failed, error_code => record_not_deleted
+            });
         {error, Reason} ->
             ?WARN_LOG("talk_record_job_worker purge error ~p", [Reason]),
-            finish_transient(Job, <<"db_error">>),
-            {ok, #{outcome => requeued, kind => <<"purge">>}}
+            finish_retry_result(Job, <<"db_error">>, #{outcome => requeued, kind => <<"purge">>})
     end.
 
 %% -------------------------------------------------------------------
@@ -251,6 +266,25 @@ run_assemble_attempt(Job) ->
         {error, lease_lost} ->
             release_leases_best_effort(Job),
             {ok, #{outcome => late_result_rejected}};
+        {error, Reason} when
+            Reason =:= artifact_write_unknown;
+            Reason =:= artifact_write_quarantined;
+            Reason =:= legacy_staging_unresolved
+        ->
+            finish_outcome(finish_suspended(Job, atom_error_code(Reason)), #{
+                outcome => suspended, reason => Reason
+            });
+        {error, {unknown_write_unconfirmed, _}} ->
+            finish_outcome(finish_suspended(Job, <<"artifact_write_unconfirmed">>), #{
+                outcome => suspended, reason => artifact_write_unconfirmed
+            });
+        {error, Reason} when
+            is_tuple(Reason),
+            tuple_size(Reason) > 0,
+            (element(1, Reason) =:= commit_not_confirmed orelse
+                element(1, Reason) =:= rollback_not_confirmed)
+        ->
+            {error, Reason};
         {error, Reason} ->
             assemble_prepare_failure(Job, Reason);
         {rollback, _} ->
@@ -265,9 +299,17 @@ assemble_prepare_failure(Job, Reason) ->
             case Reason of
                 record_deleted ->
                     %% 删除中 job 不重新发布内容（§2）：转 cancelled 终态
-                    finish_cancelled(Job),
-                    release_leases_best_effort(Job),
-                    {ok, #{outcome => cancelled, error_code => record_deleted}};
+                    case finish_cancelled(Job) of
+                        {ok, cancelled} ->
+                            release_leases_best_effort(Job),
+                            {ok, #{outcome => cancelled, error_code => record_deleted}};
+                        {ok, already_terminal} ->
+                            {ok, #{outcome => late_result_rejected}};
+                        Error ->
+                            finish_outcome(Error, #{
+                                outcome => cancelled, error_code => record_deleted
+                            })
+                    end;
                 _ ->
                     case finish_terminal(Job, atom_error_code(Reason)) of
                         ok ->
@@ -286,8 +328,7 @@ assemble_prepare_failure(Job, Reason) ->
                     R when is_atom(R) -> atom_error_code(R);
                     _ -> <<"db_error">>
                 end,
-            finish_transient(Job, Code),
-            {ok, #{outcome => requeued, reason => Code}}
+            finish_retry_result(Job, Code, #{outcome => requeued, reason => Code})
     end.
 
 %% @private 资产类错误成分（T06 adapter 返回形态）→ part_attachment_missing。
@@ -386,16 +427,43 @@ finish_transient(#{<<"kind">> := Kind} = Job, ErrorCode) when
 finish_transient(Job, ErrorCode) ->
     Attempt = maps:get(<<"attempt">>, Job, 1),
     Delay = backoff_seconds(Attempt),
-    _ =
-        elib_pg:with_tx(
-            fun(Conn) ->
-                talk_record_job_repo:finish_retry_tx(
-                    Conn, job_id(Job), lease_token(Job), ErrorCode, Delay
-                )
-            end,
-            [{reraise, false}]
-        ),
-    ok.
+    elib_pg:with_tx(
+        fun(Conn) ->
+            talk_record_job_repo:finish_retry_tx(
+                Conn, job_id(Job), lease_token(Job), ErrorCode, Delay
+            )
+        end,
+        [{reraise, false}]
+    ).
+
+finish_retry_result(Job, ErrorCode, Outcome) ->
+    case finish_transient(Job, ErrorCode) of
+        ok when
+            map_get(<<"kind">>, Job) =:= <<"transcribe">>;
+            map_get(<<"kind">>, Job) =:= <<"summarize">>
+        ->
+            {ok, Outcome};
+        {ok, retry_wait, _} ->
+            {ok, Outcome};
+        {error, lease_lost} ->
+            {ok, #{outcome => late_result_rejected}};
+        {error, _} = Error ->
+            Error;
+        {rollback, Reason} ->
+            {error, {retry_not_confirmed, Reason}};
+        Other ->
+            {error, {retry_not_confirmed, Other}}
+    end.
+
+finish_suspended(Job, ErrorCode) ->
+    elib_pg:with_tx(
+        fun(Conn) ->
+            talk_record_job_repo:finish_suspended_tx(
+                Conn, job_id(Job), lease_token(Job), ErrorCode
+            )
+        end,
+        [{reraise, false}]
+    ).
 
 %% @private 终态失败。
 finish_terminal(#{<<"kind">> := Kind} = Job, ErrorCode) when
@@ -408,38 +476,39 @@ finish_terminal(#{<<"kind">> := <<"assemble">>} = Job, ErrorCode) ->
         Error -> Error
     end;
 finish_terminal(#{<<"kind">> := <<"export">>} = Job, ErrorCode) ->
-    _ = talk_record_export_job:fail(Job, ErrorCode),
-    ok;
+    talk_record_export_job:fail(Job, ErrorCode);
 finish_terminal(Job, ErrorCode) ->
-    _ =
-        elib_pg:with_tx(
-            fun(Conn) ->
-                talk_record_job_repo:finish_failed_tx(
-                    Conn, job_id(Job), lease_token(Job), ErrorCode
-                )
-            end,
-            [{reraise, false}]
-        ),
-    ok.
+    elib_pg:with_tx(
+        fun(Conn) ->
+            talk_record_job_repo:finish_failed_tx(
+                Conn, job_id(Job), lease_token(Job), ErrorCode
+            )
+        end,
+        [{reraise, false}]
+    ).
+
+finish_outcome(ok, Outcome) -> {ok, Outcome};
+finish_outcome({error, lease_lost}, _) -> {ok, #{outcome => late_result_rejected}};
+finish_outcome({error, _} = Error, _) -> Error;
+finish_outcome(Other, _) -> {error, {finish_not_confirmed, Other}}.
 
 %% @private purge 协调成功终态（独立 finish 事务，与其他 kind 同款 CAS）。
 finish_success(Job) ->
-    _ =
-        elib_pg:with_tx(
-            fun(Conn) ->
-                talk_record_job_repo:finish_success_tx(Conn, job_id(Job), lease_token(Job))
-            end,
-            [{reraise, false}]
-        ),
-    ok.
+    elib_pg:with_tx(
+        fun(Conn) ->
+            talk_record_job_repo:finish_success_tx(Conn, job_id(Job), lease_token(Job))
+        end,
+        [{reraise, false}]
+    ).
 
 %% @private running → cancelled（删除中 job 不重新发布；幂等：已终态无副作用）。
 finish_cancelled(Job) ->
-    _ = elib_pg:with_tx(
-        fun(Conn) -> talk_record_job_repo:cancel_job_tx(Conn, job_id(Job)) end,
+    elib_pg:with_tx(
+        fun(Conn) ->
+            talk_record_job_repo:cancel_running_tx(Conn, job_id(Job), lease_token(Job))
+        end,
         [{reraise, false}]
-    ),
-    ok.
+    ).
 
 %%%===================================================================
 %%% lease 清理

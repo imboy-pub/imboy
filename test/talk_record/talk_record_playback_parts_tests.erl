@@ -14,23 +14,7 @@ parts_test_() ->
             ?assertMatch({error, _}, talk_record_playback_parts:metadata(9, 8, Ticket, 0)),
             ?assertMatch({error, _}, talk_record_playback_parts:metadata(7, 9, Ticket, 0)),
             ?assertMatch({error, _}, talk_record_playback_parts:metadata(7, 8, Ticket, 1)),
-            ?assertEqual(
-                {ok, <<"audio">>},
-                talk_record_playback_parts:with_source(
-                    7,
-                    8,
-                    Ticket,
-                    0,
-                    fun(Source, Size, _) -> attachment_upload_spool:read_at(Source, 0, Size) end
-                )
-            ),
-            meck:expect(attachment_derived_artifact, with_live_spool, fun(22, _, F) ->
-                attachment_upload_spool:with_source(<<"other">>, F)
-            end),
-            ?assertEqual(
-                {error, playback_media_unavailable},
-                talk_record_playback_parts:with_source(7, 8, Ticket, 0, fun(_, _, _) -> leaked end)
-            ),
+            ?assertNot(erlang:function_exported(talk_record_playback_parts, with_source, 5)),
             meck:expect(elib_pg, query, fun(_, _) -> {ok, []} end),
             ?assertEqual(
                 {error, playback_media_unavailable},
@@ -45,6 +29,63 @@ parts_test_() ->
             end),
             ?assertMatch({error, _}, talk_record_playback_parts:metadata(7, 8, Ticket, 0)),
             ?assertMatch({error, _}, talk_record_playback_parts:open(7, 8))
+        end)
+    end}.
+
+edge_target_test_() ->
+    {setup, fun setup/0, fun cleanup/1, fun(_) ->
+        ?_test(begin
+            meck:new(attachment_repo, [passthrough, no_link]),
+            meck:new(attachment_storage, [passthrough, no_link]),
+            meck:new(attachment_storage_garage, [passthrough, no_link]),
+            try
+                meck:expect(elib_pg, query, fun(_, _, _) ->
+                    {ok, [#{<<"path">> => <<"private-key">>}]}
+                end),
+                meck:expect(attachment_repo, verify_direct_winner_tx, fun(_, _) -> ok end),
+                meck:expect(attachment_storage, frozen_location, fun(_, _) ->
+                    {ok, #{driver => garage}}
+                end),
+                meck:expect(attachment_storage_garage, presign_snapshot, fun(_, _) ->
+                    {ok, <<"signed">>}
+                end),
+                {ok, Payload} = talk_record_playback_parts:open(7, 8),
+                [P] = maps:get(<<"parts">>, Payload),
+                [_, Ticket] = binary:split(maps:get(<<"url">>, P), <<"?ticket=">>),
+                ?assertMatch(
+                    {ok, {verified_part, <<"signed">>, 5, _}},
+                    talk_record_playback_parts:edge_target(Ticket, 0)
+                ),
+                ?assertMatch({error, _}, talk_record_playback_parts:edge_target(Ticket, 1)),
+                ?assertMatch({error, _}, talk_record_playback_parts:edge_target(<<"bad">>, 0)),
+                meck:expect(attachment_repo, verify_direct_winner_tx, fun(_, _) ->
+                    {error, not_confirmed}
+                end),
+                ?assertMatch({error, _}, talk_record_playback_parts:edge_target(Ticket, 0)),
+                meck:expect(elib_pg, query, fun(_, Sql, _) ->
+                    case binary:match(Sql, <<"attach_direct_attempt">>) of
+                        nomatch -> {ok, [#{<<"path">> => <<"private-key">>}]};
+                        _ -> {ok, [#{<<"direct">> => false}]}
+                    end
+                end),
+                ?assertMatch(
+                    {ok, {verified_part, <<"signed">>, 5, _}},
+                    talk_record_playback_parts:edge_target(Ticket, 0)
+                ),
+                meck:expect(elib_pg, query, fun(_, Sql, _) ->
+                    case binary:match(Sql, <<"attach_direct_attempt">>) of
+                        nomatch -> {ok, [#{<<"path">> => <<"private-key">>}]};
+                        _ -> {ok, [#{<<"direct">> => true}]}
+                    end
+                end),
+                ?assertMatch({error, _}, talk_record_playback_parts:edge_target(Ticket, 0)),
+                meck:expect(talk_record_content_common, visible_or_404, fun(_, _) ->
+                    {error, not_found}
+                end),
+                ?assertMatch({error, _}, talk_record_playback_parts:edge_target(Ticket, 0))
+            after
+                meck:unload([attachment_repo, attachment_storage, attachment_storage_garage])
+            end
         end)
     end}.
 
@@ -74,16 +115,16 @@ stream_revocation_test_() ->
             ),
             ?assertEqual(416, maps:get(status, Bad)),
             ?assertEqual(0, meck:num_calls(attachment_derived_artifact, with_live_spool, '_')),
-            Before = meck:num_calls(talk_record_assembly_logic, confirmed_parts_tx, '_'),
-            ?assertExit(
-                playback_authorization_changed,
-                talk_record_playback_parts_handler:init(Req, #{current_uid => 7, action => part})
+            {ok, Redirect, _} = talk_record_playback_parts_handler:init(
+                Req, #{current_uid => 7, action => part}
             ),
-            ?assertEqual(65536, iolist_size(get(sent))),
-            %% Two full checks at request entry, regardless of transmitted blocks.
-            ?assertEqual(
-                2, meck:num_calls(talk_record_assembly_logic, confirmed_parts_tx, '_') - Before
-            )
+            ?assertEqual(302, maps:get(status, Redirect)),
+            ?assertEqual(0, meck:num_calls(attachment_derived_artifact, with_live_spool, '_')),
+            put(revoked, true),
+            {ok, Denied, _} = talk_record_playback_parts_handler:init(
+                Req, #{current_uid => 7, action => part}
+            ),
+            ?assertEqual(403, maps:get(status, Denied))
         end)
     end}.
 
@@ -120,6 +161,9 @@ stream_setup() ->
             _ -> {ok, #{<<"acl_revision">> => 1, <<"media_status">> => <<"assembling">>}}
         end
     end),
+    meck:new(attachment_edge_redirect, [passthrough, no_link]),
+    meck:expect(attachment_edge_redirect, edge_ready, fun() -> true end),
+    meck:expect(attachment_edge_redirect, redirect, fun(Req, _) -> Req#{status => 302} end),
     meck:new(cowboy_req, [passthrough, unstick, no_link]),
     meck:expect(cowboy_req, reply, fun(Status, H, _, Req) ->
         Req#{status => Status, headers => H}
@@ -135,7 +179,7 @@ stream_setup() ->
     ok.
 
 stream_cleanup(_) ->
-    meck:unload(cowboy_req),
+    meck:unload([cowboy_req, attachment_edge_redirect]),
     cleanup(ok).
 
 setup() ->

@@ -339,6 +339,7 @@ table(tenant) ->
                             %% 进投影表，不得被动作表丢弃）。
                             {operation, binary, optional},
                             {client_upload_id, binary, optional},
+                            {object_key, binary, optional},
                             {asset_id, tsid, optional}
                         ],
                         []},
@@ -353,7 +354,13 @@ table(tenant) ->
                 tenant,
                 [
                     {<<"POST">>, confirm_asset,
-                        [{upload_ref, binary, optional}, {asset_id, tsid, optional}], []}
+                        [
+                            {upload_ref, binary, optional},
+                            {object_key, binary, optional},
+                            {attempt_id, int, optional},
+                            {asset_id, tsid, optional}
+                        ],
+                        []}
                 ],
                 member_auth(<<"asset.write">>, [<<"sales">>, <<"customer_service">>]),
                 false,

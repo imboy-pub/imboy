@@ -41,6 +41,15 @@
     "src/features/customer_service/interfaces/cs_seat_console_handler.erl"
 ).
 
+widget_direct_fields_are_projected_test() ->
+    {ok, Upload} = cs_actions:widget(widget_asset_upload),
+    {ok, Confirm} = cs_actions:widget(widget_asset_confirm),
+    ?assert(lists:member(object_key, cs_actions:param_keys(Upload))),
+    ?assert(lists:member(object_key, cs_actions:param_keys(Confirm))),
+    ?assert(lists:member(attempt_id, cs_actions:param_keys(Confirm))),
+    {ok, Case} = cs_actions:case_for(Confirm, <<"POST">>),
+    ?assert(lists:member({attempt_id, int, optional}, maps:get(params, Case))).
+
 %% ===================================================================
 %% 冻结的路由清单（path → 动作/方法/五类 principal）；与 router 字面登记互为审计面
 %% ===================================================================

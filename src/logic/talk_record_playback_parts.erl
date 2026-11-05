@@ -1,6 +1,6 @@
 -module(talk_record_playback_parts).
 -moduledoc "Authenticated playback of completed, confirmed source parts.".
--export([open/2, metadata/4, with_source/5, recheck/4, recheck_part/5]).
+-export([open/2, metadata/4, recheck/4, recheck_part/5, edge_target/2]).
 
 -define(AUD, <<"talk_record_playback_parts">>).
 
@@ -76,27 +76,85 @@ recheck(Uid, Rid, Ticket, Seq) ->
             Error
     end.
 
-with_source(Uid, Rid, Ticket, Seq, Fun) ->
-    case metadata(Uid, Rid, Ticket, Seq) of
-        {ok, P} ->
-            Aid = maps:get(<<"attachment_id">>, P),
-            Size = maps:get(<<"byte_size">>, P),
-            Hash = maps:get(<<"sha256">>, P),
-            Max = maps:get(<<"max_part_bytes">>, talk_record_ds:capabilities(), 0),
-            talk_record_playback_parts_limit:with_slot(fun() ->
-                attachment_derived_artifact:with_live_spool(Aid, Max, fun(Source) ->
-                    case
-                        attachment_upload_spool:size(Source) =:= Size andalso
-                            attachment_upload_spool:sha256(Source) =:= Hash andalso
-                            recheck_part(Uid, Rid, Ticket, Seq, P) =:= ok
-                    of
-                        true -> Fun(Source, Size, P);
-                        false -> {error, playback_media_unavailable}
-                    end
-                end)
-            end);
+%% The edge receives no user session: replay the signed subject and current ACL.
+edge_target(Ticket, Seq) when is_binary(Ticket), is_integer(Seq), Seq >= 0 ->
+    case secret() of
+        {ok, Key} ->
+            case imboy_jwt:verify(Ticket, Key) of
+                {ok, #{
+                    <<"aud">> := ?AUD,
+                    <<"sub">> := ?AUD,
+                    <<"uid">> := Uid,
+                    <<"rid">> := Rid
+                }} ->
+                    case metadata(Uid, Rid, Ticket, Seq) of
+                        {ok, P} -> edge_part(Uid, Rid, Ticket, Seq, P);
+                        Error -> Error
+                    end;
+                _ ->
+                    {error, playback_ticket_invalid}
+            end;
         Error ->
             Error
+    end;
+edge_target(_, _) ->
+    {error, playback_ticket_invalid}.
+
+edge_part(Uid, Rid, Ticket, Seq, P) ->
+    Aid = maps:get(<<"attachment_id">>, P),
+    Size = maps:get(<<"byte_size">>, P),
+    Hash = maps:get(<<"sha256">>, P),
+    case recheck_part(Uid, Rid, Ticket, Seq, P) of
+        ok ->
+            case
+                elib_pg:with_conn(fun(C) ->
+                    case
+                        elib_pg:query(
+                            C,
+                            <<
+                                "SELECT * FROM attachment WHERE id=$1 AND size=$2 "
+                                "AND lifecycle_state='live'"
+                            >>,
+                            [Aid, Size]
+                        )
+                    of
+                        {ok, [#{<<"path">> := Path} = Row]} ->
+                            case attachment_repo:verify_direct_winner_tx(C, Path) of
+                                ok -> {ok, Row};
+                                {error, not_confirmed} -> legacy_part_tx(C, Path, Row);
+                                _ -> {error, playback_media_unavailable}
+                            end;
+                        _ ->
+                            {error, playback_media_unavailable}
+                    end
+                end)
+            of
+                {ok, #{<<"path">> := Path} = Row} ->
+                    case attachment_storage:frozen_location(Path, Row) of
+                        {ok, #{driver := garage} = Location} ->
+                            case attachment_storage_garage:presign_snapshot(Location, 300) of
+                                {ok, Url} -> {ok, {verified_part, Url, Size, Hash}};
+                                Error -> Error
+                            end;
+                        _ ->
+                            {error, playback_media_unavailable}
+                    end;
+                Error ->
+                    Error
+            end;
+        Error ->
+            Error
+    end.
+
+%% Only an object with no direct ledger can take the legacy hash-verified path.
+legacy_part_tx(C, Path, Row) ->
+    Sql = <<
+        "SELECT EXISTS (SELECT 1 FROM attach_pending WHERE object_key=$1 AND direct_state IS NOT NULL) "
+        "OR EXISTS (SELECT 1 FROM attach_direct_attempt WHERE object_key=$1) AS direct"
+    >>,
+    case elib_pg:query(C, Sql, [Path]) of
+        {ok, [#{<<"direct">> := false}]} -> {ok, Row};
+        _ -> {error, playback_media_unavailable}
     end.
 
 verified(Uid, Rid, Ticket) when is_binary(Ticket) ->

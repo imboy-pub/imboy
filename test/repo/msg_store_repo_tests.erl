@@ -1403,6 +1403,12 @@ c2g_action_stage_uses_original_snapshot_and_generation_test_() ->
                 ]},
                 {elib_pg, [
                     {'with_tx', 1, fun(Tx) -> Tx(fake_conn) end},
+                    {'execute', 3, fun(
+                        fake_conn, Sql, [100, <<"original-msg">>, <<"action-msg">>, 50, 8]
+                    ) ->
+                        ?assertNotEqual(nomatch, binary:match(Sql, <<"c2g_revoke_fact">>)),
+                        {ok, 1}
+                    end},
                     {'query', 3, fun
                         %% discussion 访问锁（791b8817）：无 discussion 绑定语义 → 放行
                         (_, <<"SELECT id FROM public.channel", _/binary>>, _) ->
@@ -1447,7 +1453,13 @@ c2g_action_stage_uses_original_snapshot_and_generation_test_() ->
                         (_, _, [<<"action-msg">>, 50, 100, 8, [50, 60], _]) ->
                             {ok, [#{<<"msg_id">> => <<"action-msg">>}]};
                         (_, <<"INSERT action">>, []) ->
-                            {ok, 1}
+                            {ok, 1};
+                        (
+                            _,
+                            <<"SELECT pg_advisory_xact_lock", _/binary>>,
+                            [<<"c2g_forward_revoke:100:original-msg">>]
+                        ) ->
+                            {ok, []}
                     end}
                 ]}
             ],
@@ -1471,7 +1483,7 @@ c2g_action_stage_uses_original_snapshot_and_generation_test_() ->
                     )
                 ),
                 %% +2：discussion 访问锁（791b8817）新增 LOCK TABLE 与 channel FOR UPDATE 两次查询
-                ?assertEqual(6, meck:num_calls(elib_pg, query, 3))
+                ?assertEqual(7, meck:num_calls(elib_pg, query, 3))
             end
         )}.
 
@@ -2250,53 +2262,24 @@ vacuum_table_validates_sql_test_() ->
 %% ensure_table_exists/0 测试
 %% ===================================================================
 
-ensure_table_exists_validates_ddl_test_() ->
+ensure_table_exists_checks_migrated_schema_test_() ->
     ?WITH_MECKS(
         [
-            {elib_pg_sql, [
-                {'public_tablename', 1, fun(_) -> <<"msg_store_staging">> end}
-            ]},
             {elib_pg, [
-                {'execute', 2, fun(Sql, []) ->
-                    case binary:match(Sql, <<"CREATE TABLE IF NOT EXISTS ">>) of
-                        nomatch ->
-                            % Index creation calls -- just return ok
-                            {ok, []};
-                        _ ->
-                            % 验证 CREATE TABLE 语句
-                            ?assertNotEqual(
-                                nomatch, binary:match(Sql, <<"id BIGINT PRIMARY KEY">>)
-                            ),
-                            ?assertNotEqual(
-                                nomatch, binary:match(Sql, <<"type VARCHAR(10) NOT NULL">>)
-                            ),
-                            ?assertNotEqual(
-                                nomatch, binary:match(Sql, <<"msg_id VARCHAR(50) NOT NULL">>)
-                            ),
-                            ?assertNotEqual(
-                                nomatch, binary:match(Sql, <<"payload JSONB NOT NULL">>)
-                            ),
-                            ?assertNotEqual(
-                                nomatch, binary:match(Sql, <<"from_id BIGINT NOT NULL">>)
-                            ),
-                            ?assertNotEqual(
-                                nomatch,
-                                binary:match(Sql, <<"retry_count INTEGER NOT NULL DEFAULT 0">>)
-                            ),
-                            ?assertNotEqual(
-                                nomatch, binary:match(Sql, <<"processed_at TIMESTAMPTZ">>)
-                            ),
-                            ?assertNotEqual(
-                                nomatch, binary:match(Sql, <<"UNIQUE (type, msg_id)">>)
-                            ),
-                            {ok, []}
-                    end
+                {'query', 2, fun(Sql, []) ->
+                    ?assertNotEqual(nomatch, binary:match(Sql, <<"pg_catalog.pg_index">>)),
+                    {ok, [#{<<"ready">> => true}]}
                 end}
             ]}
         ],
+        fun() -> ?assertEqual(ok, msg_store_repo:ensure_table_exists()) end
+    ).
+
+ensure_table_exists_rejects_missing_schema_test_() ->
+    ?WITH_MECKS(
+        [{elib_pg, [{'query', 2, fun(_, []) -> {ok, [#{<<"ready">> => false}]} end}]}],
         fun() ->
-            Result = msg_store_repo:ensure_table_exists(),
-            ?assertEqual(ok, Result)
+            ?assertEqual({error, staging_schema_unavailable}, msg_store_repo:ensure_table_exists())
         end
     ).
 

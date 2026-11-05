@@ -11,6 +11,7 @@ postcommit_test_() ->
         fun presign_failure/0,
         fun legacy_cached_url/0,
         fun fresh_registration/0,
+        fun registration_retry_signs_once/0,
         fun governance_null_times/0,
         fun governance_pg_times/0,
         fun purge_uses_retry_transaction/0,
@@ -47,6 +48,7 @@ setup() ->
         end),
         meck:expect(elib_param, post, fun(_) -> #{} end),
         meck:expect(elib_pg, with_tx, fun(F) -> F(fixture_conn) end),
+        meck:expect(elib_pg, with_physical_guard_retry_tx, fun(F) -> F(fixture_conn) end),
         meck:expect(enterprise_internal_idempotency, request_digest, fun(_, _, _) ->
             {ok, <<"digest">>}
         end),
@@ -160,6 +162,30 @@ fresh_registration() ->
     ?assert(maps:is_key(<<"put_url">>, jsone:decode(maps:get(body, R)))),
     ?assertEqual(1, meck:num_calls(enterprise_asset_logic, presign_recovery_tx, '_')).
 
+registration_retry_signs_once() ->
+    inserted(),
+    put(registration_attempt, 0),
+    meck:expect(enterprise_asset_logic, presign_tx, fun(_, _, _) ->
+        N = get(registration_attempt) + 1,
+        put(registration_attempt, N),
+        case N of
+            1 -> throw({abort_tx, synthetic_guard_conflict});
+            _ -> {ok, reg()}
+        end
+    end),
+    meck:expect(elib_pg, with_physical_guard_retry_tx, fun(F) ->
+        try
+            F(fixture_conn)
+        catch
+            throw:{abort_tx, synthetic_guard_conflict} -> F(fixture_conn)
+        end
+    end),
+    ?assertEqual(200, maps:get(status, invoke())),
+    ?assertEqual(2, get(registration_attempt)),
+    ?assertEqual(1, meck:num_calls(enterprise_internal_idempotency, must_complete_tx, '_')),
+    ?assertEqual(1, meck:num_calls(attachment_storage, presign_put_snapshot, '_')),
+    erase(registration_attempt).
+
 inserted() ->
     meck:expect(enterprise_internal_idempotency, begin_tx, fun(_, _, _, _, _) ->
         {ok, inserted}
@@ -239,7 +265,7 @@ governance_response(PurgedAt, ExtendedUntil, RetentionUntil) ->
     ?assertEqual(Decoded, erase(stored_json_body)),
     Decoded.
 transaction_failure() ->
-    meck:expect(elib_pg, with_tx, fun(_) -> {rollback, fixture_failure} end),
+    meck:expect(elib_pg, with_physical_guard_retry_tx, fun(_) -> {rollback, fixture_failure} end),
     assert_error(500, <<"internal_error">>, invoke()),
     ?assertEqual(0, meck:num_calls(attachment_storage, presign_put_snapshot, '_')).
 confirmed_no_capability() ->
@@ -290,14 +316,8 @@ authorization_revoked() ->
     ?assertEqual(0, meck:num_calls(attachment_storage, presign_put_snapshot, '_')).
 recovery_commit_unknown() ->
     meck:expect(elib_pg, with_tx, fun(F) ->
-        case get(recovery_tx_seen) of
-            undefined ->
-                put(recovery_tx_seen, true),
-                F(fixture_conn);
-            true ->
-                _ = F(fixture_conn),
-                {rollback, recovery_commit_unknown}
-        end
+        _ = F(fixture_conn),
+        {rollback, recovery_commit_unknown}
     end),
     assert_error(503, <<"security_gate_closed">>, replay(reg())),
     ?assertEqual(1, meck:num_calls(attachment_storage, presign_put_snapshot, '_')).

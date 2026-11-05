@@ -471,6 +471,21 @@ chat_type_bin(<<"c2g">>) -> <<"c2g">>;
 chat_type_bin(_) -> <<"c2c">>.
 
 %% Positive archive evidence only: a missing/purged row never proves non-acceptance.
+message_result(Uid, <<"c2s">>, Peer, Id) when is_binary(Peer), is_binary(Id) ->
+    case
+        byte_size(Peer) > 0 andalso byte_size(Peer) =< 128 andalso
+            re:run(Id, <<"\\A[A-Za-z0-9_-]{1,50}\\z">>, [{capture, none}]) =:= match
+    of
+        false ->
+            {error, <<"消息结果查询参数无效"/utf8>>, ?ERR_BAD_REQUEST};
+        true ->
+            Base = #{<<"message_id">> => Id, <<"chat_type">> => <<"c2s">>, <<"peer_id">> => Peer},
+            case msg_c2s_ds:message_result(Uid, Peer, Id) of
+                {ok, [#{<<"accepted">> := 1}]} -> {ok, Base#{<<"state">> => <<"committed">>}};
+                {ok, []} -> {ok, Base#{<<"state">> => <<"unknown">>}};
+                _ -> {error, <<"消息结果暂不可用"/utf8>>, ?ERR_INTERNAL_SERVER_ERROR}
+            end
+    end;
 message_result(Uid, Type, Peer, Id) ->
     case valid_result_params(Type, Peer, Id) of
         false ->
@@ -506,11 +521,17 @@ read_message_result(Uid, Type, Peer, Id, ConvKey, MinSeq) ->
         <<"chat_type">> => Type,
         <<"peer_id">> => binary_to_integer(Peer)
     },
-    case msg_archive_ds:message_result(ConvKey, Id, Uid, MinSeq) of
+    case
+        msg_archive_ds:message_result_with_staging(
+            Type, Uid, binary_to_integer(Peer), Id, ConvKey, MinSeq
+        )
+    of
         {ok, [#{<<"conv_seq">> := Seq}]} when is_integer(Seq), Seq > 0 ->
             {ok, Base#{<<"state">> => <<"committed">>, <<"conv_seq">> => Seq}};
         {ok, _} ->
             {ok, Base#{<<"state">> => <<"unknown">>}};
+        {error, permission_denied} ->
+            {error, <<"无权限访问该群消息"/utf8>>, ?ERR_ACCESS_DENIED};
         {error, _} ->
             {error, <<"消息结果暂不可用"/utf8>>, ?ERR_INTERNAL_SERVER_ERROR}
     end.

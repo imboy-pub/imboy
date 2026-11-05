@@ -8,6 +8,27 @@ flag_cannot_replace_missing_durable_authority_test() ->
         ?assertEqual(0, meck:num_calls(attachment_derived_artifact, with_range, '_'))
     end).
 
+edge_rechecks_authority_before_presigning_test() ->
+    with_domain(fun() ->
+        meck:new(talk_record_playback_stream, [passthrough, no_link]),
+        try
+            meck:expect(talk_record_playback_stream, presign_published_audio, fun(7, 80) ->
+                {ok, <<"https://private.invalid/signed">>}
+            end),
+            enable_durable_fixture(),
+            {ok, #{url := URL}} = issue(),
+            [{_, Ticket}] = uri_string:dissect_query(maps:get(query, uri_string:parse(URL))),
+            ?assertMatch({ok, _}, talk_record_client_audio_logic:edge_target(Ticket)),
+            put(audio_device_active, false),
+            ?assertEqual(denied(), talk_record_client_audio_logic:edge_target(Ticket)),
+            ?assertEqual(
+                1, meck:num_calls(talk_record_playback_stream, presign_published_audio, '_')
+            )
+        after
+            meck:unload(talk_record_playback_stream)
+        end
+    end).
+
 issue_and_read_recheck_current_authority_and_hide_bearer_test() ->
     with_domain(fun() ->
         enable_durable_fixture(),

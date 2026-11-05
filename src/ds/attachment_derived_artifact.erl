@@ -4,6 +4,8 @@
     reserve_tx/3,
     write/2,
     begin_write/1,
+    begin_write/2,
+    begin_export_write/2,
     finish_write/2,
     copy_staging/2,
     read/1,
@@ -57,6 +59,59 @@ write(Aid, Bytes) ->
 %% begin_write/1：reserved→writing + 返回冻结位置（含凭据快照给 Worker）。
 begin_write(Aid) ->
     elib_pg:with_tx(fun(C) -> begin_write_tx(C, Aid) end, [{reraise, false}]).
+
+%% Registration and writing state commit together before the worker receives the key.
+begin_write(Aid, StagingKey) when is_binary(StagingKey) ->
+    elib_pg:with_physical_guard_retry_tx(
+        fun(C) ->
+            case begin_write_tx(C, Aid) of
+                {ok, Location} ->
+                    case
+                        elib_pg:query(
+                            C, <<"SELECT fn_assembly_staging_register($1,$2) AS registered">>, [
+                                Aid, StagingKey
+                            ]
+                        )
+                    of
+                        {ok, [#{<<"registered">> := true}]} ->
+                            {ok, Location};
+                        {ok, [#{<<"registered">> := false}]} ->
+                            throw({abort_tx, legacy_staging_unresolved});
+                        {error, Reason} ->
+                            throw({abort_tx, Reason});
+                        Other ->
+                            throw({abort_tx, {staging_registration_failed, Other}})
+                    end;
+                {error, Reason} ->
+                    throw({abort_tx, Reason});
+                Other ->
+                    throw({abort_tx, {begin_write_failed, Other}})
+            end
+        end
+    );
+begin_write(_, _) ->
+    {error, invalid_staging_key}.
+
+begin_export_write(Aid, TokenDigest) ->
+    case
+        elib_pg:with_tx(
+            fun(C) ->
+                {ok, Location} = begin_write_tx(C, Aid),
+                case
+                    elib_pg:query(C, <<"SELECT fn_export_issue_receipt($1,$2) AS issued">>, [
+                        Aid, TokenDigest
+                    ])
+                of
+                    {ok, [#{<<"issued">> := true}]} -> {ok, Location};
+                    _ -> throw(export_receipt_issue_failed)
+                end
+            end,
+            [{reraise, false}]
+        )
+    of
+        {rollback, _} -> {error, export_receipt_issue_failed};
+        Result -> Result
+    end.
 
 %% finish_write/2：Worker 结果收口（complete/unknown——与 write/2 同语义：
 %% 上传失败不是"无字节到达"的证明）。
@@ -275,13 +330,23 @@ verify_read(_Row, Error) ->
 %% A stopped lease does not establish that remote I/O stopped. Uncertain writes
 %% are explicitly quarantined; only never-dispatched reservations can be retired.
 reconcile() ->
-    elib_pg:execute(
-        <<
-            "UPDATE attachment_derived_write w SET state=CASE"
-            " WHEN w.state='reserved' THEN 'abandoned' ELSE 'unknown' END,updated_at=now()"
-            " WHERE w.state IN ('reserved','writing') AND NOT EXISTS(SELECT 1"
-            " FROM talk_record_job j WHERE j.id=w.source_job_id AND j.state='running'"
-            " AND j.attempt=w.source_attempt AND j.lease_until>clock_timestamp())"
-        >>,
-        []
-    ).
+    case
+        elib_pg:execute(
+            <<
+                "UPDATE attachment_derived_write w SET state=CASE"
+                " WHEN w.state='reserved' THEN 'abandoned' ELSE 'unknown' END,updated_at=now()"
+                " WHERE w.state IN ('reserved','writing') AND NOT EXISTS(SELECT 1"
+                " FROM talk_record_job j WHERE j.id=w.source_job_id AND j.state='running'"
+                " AND j.attempt=w.source_attempt AND j.lease_until>clock_timestamp())"
+            >>,
+            []
+        )
+    of
+        {ok, N} ->
+            case elib_pg:query(<<"SELECT fn_export_reconcile_receipts() AS recovered">>, []) of
+                {ok, [#{<<"recovered">> := Recovered}]} -> {ok, N + Recovered};
+                Error -> Error
+            end;
+        Error ->
+            Error
+    end.

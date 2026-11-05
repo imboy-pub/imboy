@@ -139,102 +139,9 @@ roles_invalid_action_rejected_test_() ->
         end
     ).
 
-%% ===================================================================
-%% upload_avatar — multipart → Garage → URL
-%% ===================================================================
-
-upload_avatar_success_returns_url_test_() ->
-    ?WITH_MECKS(
-        with_perm_ok() ++
-            [
-                {cowboy_req, [
-                    {'method', 1, fun(_) -> <<"POST">> end},
-                    {'read_part', 1, fun(Req) ->
-                        case get(read_part_calls) of
-                            undefined ->
-                                put(read_part_calls, 1),
-                                {ok, #{}, Req};
-                            _ ->
-                                {done, Req}
-                        end
-                    end},
-                    {'read_part_body', 1, fun(Req) -> {ok, <<"PNGDATA">>, Req} end}
-                ]},
-                {cow_multipart, [
-                    {'form_data', 1, fun(_) ->
-                        {file, <<"file">>, <<"avatar.png">>, <<"image/png">>}
-                    end}
-                ]},
-                {elib_oss, [
-                    {'upload', 3, fun(
-                        <<"PNGDATA">>, <<"avatar.png">>, #{mime_type := <<"image/png">>}
-                    ) ->
-                        {ok, <<"https://s3.example.com/avatar.png">>, <<"file123">>}
-                    end}
-                ]}
-            ] ++ response_ok(),
-        fun() ->
-            Req = mock_req(),
-            {ok, RespReq, _} =
-                adm_ai_agent_handler:init(Req, #{action => upload_avatar, adm_user_id => 1}),
-            ?assertEqual(200, maps:get(response_status, RespReq)),
-            ?assertEqual(
-                #{<<"url">> => <<"https://s3.example.com/avatar.png">>},
-                maps:get(data, RespReq)
-            )
-        end
-    ).
-
-upload_avatar_rejects_oversize_test_() ->
-    ?WITH_MECKS(
-        with_perm_ok() ++
-            [
-                {cowboy_req, [
-                    {'method', 1, fun(_) -> <<"POST">> end},
-                    {'read_part', 1, fun(Req) ->
-                        case get(read_part_calls) of
-                            undefined ->
-                                put(read_part_calls, 1),
-                                {ok, #{}, Req};
-                            _ ->
-                                {done, Req}
-                        end
-                    end},
-                    {'read_part_body', 1, fun(Req) -> {ok, <<"BIG">>, Req} end}
-                ]},
-                {cow_multipart, [
-                    {'form_data', 1, fun(_) ->
-                        {file, <<"file">>, <<"big.bin">>, <<"application/octet-stream">>}
-                    end}
-                ]},
-                {elib_oss, [
-                    {'upload', 3, fun(_, _, _) -> {error, file_too_large} end}
-                ]}
-            ] ++ response_ok(),
-        fun() ->
-            Req = mock_req(),
-            {ok, RespReq, _} =
-                adm_ai_agent_handler:init(Req, #{action => upload_avatar, adm_user_id => 1}),
-            ?assertEqual(?ERR_FILE_SIZE_EXCEEDED, maps:get(response_status, RespReq))
-        end
-    ).
-
-upload_avatar_missing_file_rejected_test_() ->
-    ?WITH_MECKS(
-        with_perm_ok() ++
-            [
-                {cowboy_req, [
-                    {'method', 1, fun(_) -> <<"POST">> end},
-                    {'read_part', 1, fun(Req) -> {done, Req} end}
-                ]}
-            ] ++ response_ok(),
-        fun() ->
-            Req = mock_req(),
-            {ok, RespReq, _} =
-                adm_ai_agent_handler:init(Req, #{action => upload_avatar, adm_user_id => 1}),
-            ?assertEqual(?ERR_MISSING_PARAM, maps:get(response_status, RespReq))
-        end
-    ).
+%% C08（V3-13）：upload_avatar（multipart 直传）入口及用例已退役——
+%% admin 前端已切 avatar_direct（register→declare→grant→PUT→finalize→publish），
+%% 其 application 主体全链由 attach_direct_avatar_tests 覆盖。
 
 %% ===================================================================
 %% list — category 筛选透传
@@ -365,6 +272,9 @@ avatar_direct_declare_returns_empty_success_test_() ->
                             Req}
                     end}
                 ]},
+                {admin_avatar_session_repo, [
+                    {'owned', 2, fun(<<"avatar-key">>, 1) -> ok end}
+                ]},
                 {attach_direct_logic, [
                     {'require_application_session', 1, fun(<<"avatar-key">>) -> ok end},
                     {'declare', 4, fun(<<"avatar-key">>, <<"checksum">>, 100, <<"image/png">>) ->
@@ -378,5 +288,188 @@ avatar_direct_declare_returns_empty_success_test_() ->
             ),
             ?assertEqual(200, maps:get(response_status, Resp)),
             ?assertEqual(#{}, maps:get(data, Resp))
+        end
+    ).
+
+avatar_direct_status_requires_application_session_test_() ->
+    ?WITH_MECKS(
+        with_perm_ok() ++
+            [
+                {cowboy_req, [{'method', 1, fun(_) -> <<"POST">> end}]},
+                {elib_req, [
+                    {'body', 2, fun(Req, []) ->
+                        {ok, #{<<"op">> => <<"status">>, <<"object_key">> => <<"avatar-key">>}, Req}
+                    end}
+                ]},
+                {admin_avatar_session_repo, [
+                    {'owned', 2, fun(<<"avatar-key">>, 1) -> ok end}
+                ]},
+                {attach_direct_logic, [
+                    {'require_application_session', 1, fun(<<"avatar-key">>) -> ok end},
+                    {'status', 2, fun(<<"avatar-key">>, 0) ->
+                        {ok, #{state => <<"CONFIRMED">>}}
+                    end}
+                ]}
+            ] ++ response_ok(),
+        fun() ->
+            {ok, Resp, _} = adm_ai_agent_handler:init(
+                mock_req(), #{action => avatar_direct, adm_user_id => 1}
+            ),
+            ?assertEqual(#{state => <<"CONFIRMED">>}, maps:get(data, Resp))
+        end
+    ).
+
+avatar_direct_foreign_owner_is_denied_test_() ->
+    ?WITH_MECKS(
+        with_perm_ok() ++
+            [
+                {cowboy_req, [{'method', 1, fun(_) -> <<"POST">> end}]},
+                {elib_req, [
+                    {'body', 2, fun(Req, []) ->
+                        {ok, #{<<"op">> => <<"status">>, <<"object_key">> => <<"avatar-key">>}, Req}
+                    end}
+                ]},
+                {admin_avatar_session_repo, [
+                    {'owned', 2, fun(<<"avatar-key">>, 7) -> {error, not_session_owner} end}
+                ]},
+                {attach_direct_logic, [
+                    {'require_application_session', 1, fun(_) -> error(must_not_reach_session) end}
+                ]}
+            ] ++ response_ok(),
+        fun() ->
+            {ok, Resp, _} = adm_ai_agent_handler:init(
+                mock_req(), #{action => avatar_direct, adm_user_id => 7}
+            ),
+            ?assertEqual(?ERR_FORBIDDEN, maps:get(response_status, Resp))
+        end
+    ).
+
+avatar_register_reserves_trusted_admin_before_session_test_() ->
+    ?WITH_MECKS(
+        with_perm_ok() ++
+            [
+                {cowboy_req, [{'method', 1, fun(_) -> <<"POST">> end}]},
+                {elib_req, [
+                    {'body', 2, fun(Req, []) ->
+                        {ok,
+                            #{
+                                <<"op">> => <<"register">>,
+                                <<"application_id">> => <<"123">>,
+                                <<"client_upload_id">> =>
+                                    <<"5f0e9c1e-1111-4222-8333-444455556666">>,
+                                <<"adm_user_id">> => 99
+                            },
+                            Req}
+                    end}
+                ]},
+                {ai_agent_ds, [{'get', 1, fun(123) -> {ok, #{}} end}]},
+                {elib_oss, [
+                    {'get_bucket', 1, fun
+                        (<<"private">>) -> <<"private">>;
+                        (<<"public">>) -> <<"public">>
+                    end}
+                ]},
+                {attach_direct_logic, [
+                    {'register_application_owned', 6, fun(
+                        _, _, _, <<"5f0e9c1e-1111-4222-8333-444455556666">>, _, 7
+                    ) ->
+                        {ok, #{object_key => <<"key">>}}
+                    end}
+                ]}
+            ] ++ response_ok(),
+        fun() ->
+            {ok, Resp, _} = adm_ai_agent_handler:init(
+                mock_req(), #{action => avatar_direct, adm_user_id => 7}
+            ),
+            ?assertEqual(#{object_key => <<"key">>}, maps:get(data, Resp))
+        end
+    ).
+
+avatar_register_rejects_cross_domain_or_unknown_agent_test_() ->
+    [
+        register_denied(Extra)
+     || Extra <- [
+            #{<<"application_id">> => <<"123">>, <<"org_id">> => <<"9">>},
+            #{<<"application_id">> => <<"999">>, <<"org_id">> => <<"0">>},
+            #{<<"application_id">> => <<"5f0e9c1e-1111-4222-8333-444455556667">>}
+        ]
+    ].
+
+register_denied(Extra) ->
+    Mocks =
+        with_perm_ok() ++
+            [
+                {cowboy_req, [{'method', 1, fun(_) -> <<"POST">> end}]},
+                {elib_req, [
+                    {'body', 2, fun(Req, []) ->
+                        Body = maps:merge(
+                            #{
+                                <<"op">> => <<"register">>,
+                                <<"client_upload_id">> => <<"5f0e9c1e-1111-4222-8333-444455556666">>
+                            },
+                            Extra
+                        ),
+                        {ok, Body, Req}
+                    end}
+                ]},
+                {ai_agent_ds, [{'get', 1, fun(_) -> {error, notfound} end}]},
+                {attach_direct_logic, [
+                    {'register_application_owned', 6, fun(_, _, _, _, _, _) ->
+                        error(unexpected_register)
+                    end}
+                ]}
+            ] ++ response_ok(),
+    ?WITH_MECKS(Mocks, fun() ->
+        {ok, Resp, _} = adm_ai_agent_handler:init(mock_req(), #{
+            action => avatar_direct, adm_user_id => 7
+        }),
+        ?assertEqual(?ERR_FORBIDDEN, maps:get(response_status, Resp))
+    end).
+
+avatar_register_uuid_casing_test_() ->
+    [
+        register_case(App, Cid)
+     || {App, Cid} <- [
+            {<<"AA000000-0000-4000-8000-000000000001">>,
+                <<"aa000000-0000-4000-8000-000000000001">>},
+            {<<"aa000000-0000-4000-8000-000000000001">>, <<"AA000000-0000-4000-8000-000000000001">>}
+        ]
+    ].
+
+register_case(App, Cid) ->
+    ?WITH_MECKS(
+        with_perm_ok() ++
+            [
+                {cowboy_req, [{'method', 1, fun(_) -> <<"POST">> end}]},
+                {elib_req, [
+                    {'body', 2, fun(Req, []) ->
+                        {ok,
+                            #{
+                                <<"op">> => <<"register">>,
+                                <<"application_id">> => App,
+                                <<"client_upload_id">> => Cid
+                            },
+                            Req}
+                    end}
+                ]},
+                {elib_oss, [
+                    {'get_bucket', 1, fun
+                        (<<"private">>) -> <<"private">>;
+                        (<<"public">>) -> <<"public">>
+                    end}
+                ]},
+                {attach_direct_logic, [
+                    {'register_application_owned', 6, fun(App0, <<"0">>, <<"public">>, Cid0, _, 7) ->
+                        ?assertEqual(App, App0),
+                        ?assertEqual(Cid, Cid0),
+                        {ok, #{object_key => <<"key">>}}
+                    end}
+                ]}
+            ] ++ response_ok(),
+        fun() ->
+            {ok, Resp, _} = adm_ai_agent_handler:init(mock_req(), #{
+                action => avatar_direct, adm_user_id => 7
+            }),
+            ?assertEqual(#{object_key => <<"key">>}, maps:get(data, Resp))
         end
     ).

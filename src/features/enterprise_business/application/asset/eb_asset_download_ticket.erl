@@ -40,7 +40,12 @@ issue(Claims, Secret) when
                 <<"actor_kind">> => actor_kind_bin(maps:get(actor_kind, Claims)),
                 <<"actor_id">> => maps:get(actor_id, Claims)
             },
-            Payload = with_optional(Payload0, Claims, [conversation_id, visitor_session_id]),
+            Payload = with_optional(Payload0, Claims, [
+                conversation_id,
+                visitor_session_id,
+                visitor_token_id,
+                visitor_installation_id
+            ]),
             {ok, imboy_jwt:sign(Payload, key(Secret))};
         {error, _} = Err ->
             Err
@@ -112,9 +117,23 @@ validate(Claims) ->
         IntKeys
     ),
     case {IntsOk, maps:get(actor_kind, Claims, undefined)} of
-        {true, member} -> ok;
-        {true, contact} -> ok;
-        _ -> {error, invalid_claims}
+        {true, member} ->
+            ok;
+        {true, contact} ->
+            case
+                lists:all(
+                    fun(K) ->
+                        V = maps:get(K, Claims, undefined),
+                        is_integer(V) andalso V > 0
+                    end,
+                    [conversation_id, visitor_session_id, visitor_token_id, visitor_installation_id]
+                )
+            of
+                true -> ok;
+                false -> {error, invalid_claims}
+            end;
+        _ ->
+            {error, invalid_claims}
     end.
 
 actor_kind_bin(member) -> <<"member">>;
@@ -132,7 +151,9 @@ take_optional(Claims, Verified) ->
     %% content_stream Params 约定一致）；JWT 层的 binary 键在此转换。
     copy_optional(Claims, Verified, [
         {<<"conversation_id">>, conversation_id},
-        {<<"visitor_session_id">>, visitor_session_id}
+        {<<"visitor_session_id">>, visitor_session_id},
+        {<<"visitor_token_id">>, visitor_token_id},
+        {<<"visitor_installation_id">>, visitor_installation_id}
     ]).
 
 copy_optional(Target, Source, Keys) ->

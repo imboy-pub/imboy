@@ -150,6 +150,10 @@ admin:
     initialDelaySeconds: 5
     periodSeconds: 10
 
+# 旧 Widget/Seat 同源上传地址；未配置时旧上传失败关闭。
+widgetBaseUrl: ""
+widgetHost: ""
+
 # ---------- Ingress（对应 Compose nginx 反向代理的路由规则）----------
 ingress:
   enabled: true
@@ -195,6 +199,9 @@ secrets:
   jwtKey: ""
   postgreAesKey: ""
   admCookieSecret: ""
+  directCleanupPgUser: ""
+  directCleanupPgPassword: ""
+  edgeInternalToken: ""
   # 可选
   sentryDsn: ""
   # Grafana 管理员密码
@@ -230,3 +237,8 @@ affinity: {}
 # ---------- 网络策略 ----------
 networkPolicy:
   enabled: false
+
+# 企业 direct 内容证明使用独立进程与独立 Secret，不能将凭据注入 backend。
+enterpriseProof:
+  enabled: false
+  existingSecret: ""

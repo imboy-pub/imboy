@@ -15,7 +15,11 @@
 -export([claim_expired_tx/3]).
 -export([add/4]).
 -export([
-    register_v5/5, register_v5/6, status_lookup/1, register_content_pin/2, recheck_content_pin/3
+    register_v5/5, register_v5/6,
+    status_lookup/1,
+    status_lookup_tx/2,
+    register_content_pin/2,
+    recheck_content_pin/3
 ]).
 -export([register_v5_tx/7, renew_capability/3, renew_capability_tx/4]).
 -export([lock_session_tx/2, confirm_session_tx/3]).
@@ -71,7 +75,11 @@ add(ObjectKey, Bucket, Scope, Uid) ->
             " created_at = NOW()"
         >>
     ],
-    normalize(elib_pg:execute(Sql, [ObjectKey, Bucket, Scope, Uid])).
+    normalize(
+        elib_pg:with_physical_guard_retry_tx(fun(Conn) ->
+            elib_pg:execute(Conn, Sql, [ObjectKey, Bucket, Scope, Uid])
+        end)
+    ).
 
 %% @doc 按 object_key 查登记行（multipart 直传端点的归属/范围校验用）。
 %% 返回 bucket/scope/creator_user_id：upload 端点据此把对象写入正确桶、
@@ -199,7 +207,9 @@ register_v5(ObjectKey, Bucket, Scope, Uid, ClientUploadId, Registration) when
         null,
         null
     ],
-    execute_registration(fun elib_pg:query/2, Args).
+    elib_pg:with_physical_guard_retry_tx(fun(Conn) ->
+        execute_registration(fun(Sql, Params) -> elib_pg:query(Conn, Sql, Params) end, Args)
+    end).
 
 register_v5(ObjectKey, Bucket, Scope, Uid, ClientUploadId) ->
     register_v5(ObjectKey, Bucket, Scope, Uid, ClientUploadId, undefined).
@@ -364,7 +374,11 @@ principal_to_int(B) when is_binary(B) ->
 -spec renew_capability(binary(), integer(), integer()) ->
     {ok, #{committed_expires_at => integer(), deadline => integer()}} | {error, term()}.
 renew_capability(Key, Uid, NewExpirySec) ->
-    renew_result(elib_pg:query(renew_sql(), [Key, Uid, NewExpirySec])).
+    renew_result(
+        elib_pg:with_physical_guard_retry_tx(fun(Conn) ->
+            elib_pg:query(Conn, renew_sql(), [Key, Uid, NewExpirySec])
+        end)
+    ).
 
 %% 事务内版本（企业内部入口幂等事务回调使用）。
 -spec renew_capability_tx(any(), binary(), integer() | binary(), integer()) ->
@@ -512,6 +526,12 @@ intent_pending_delete(ObjectKey, Mode, Reason) ->
 %% @doc status/renew 查找：client_upload_id 或 object_key。
 -spec status_lookup(binary()) -> {ok, map()} | {error, not_found | term()}.
 status_lookup(IdOrKey) ->
+    status_lookup_using(fun(Sql, Params) -> elib_pg:query(Sql, Params) end, IdOrKey).
+
+status_lookup_tx(Conn, IdOrKey) ->
+    status_lookup_using(fun(Sql, Params) -> elib_pg:query(Conn, Sql, Params) end, IdOrKey).
+
+status_lookup_using(Query, IdOrKey) ->
     Tb = tablename(),
     Sql = [
         <<"SELECT object_key, bucket, scope, creator_user_id, session_state,">>,
@@ -521,7 +541,7 @@ status_lookup(IdOrKey) ->
         Tb,
         <<" WHERE (client_upload_id::text = $1 OR object_key = $1) LIMIT 1">>
     ],
-    case elib_pg:query(Sql, [IdOrKey]) of
+    case Query(Sql, [IdOrKey]) of
         {ok, [Row | _]} ->
             %% 登记快照同口径归一（renew 的 declared_mime 按 map 消费）
             case maps:get(<<"upload_registration">>, Row, undefined) of

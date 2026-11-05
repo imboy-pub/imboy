@@ -14,7 +14,7 @@
 
 -include("generated/imboy_product_features.hrl").
 
--define(MAX_BODY, 8192).
+-define(MAX_BODY, 16384).
 
 init(Req0, State) ->
     Req =
@@ -34,9 +34,15 @@ serve(Req0) ->
         {ok, Body, Req1} ->
             try
                 #{<<"ticket">> := Ticket, <<"method">> := Method} = jsone:decode(Body),
-                true = is_binary(Ticket) andalso byte_size(Ticket) =< 8192,
+                true = is_binary(Ticket) andalso byte_size(Ticket) =< 8205,
                 true = Method =:= <<"GET">> orelse Method =:= <<"HEAD">>,
                 case authorize_target(Ticket) of
+                    {ok, {verified_part, Url, Size, Hash}} when
+                        is_binary(Url), is_integer(Size), Size > 0, is_binary(Hash)
+                    ->
+                        reply_json(Req1, 200, #{
+                            <<"url">> => Url, <<"size">> => Size, <<"sha256">> => Hash
+                        });
                     {ok, Url} when is_binary(Url) ->
                         reply_json(Req1, 200, #{<<"url">> => Url});
                     {ok, {Url, Filename}} when is_binary(Url), is_binary(Filename) ->
@@ -62,6 +68,43 @@ serve(Req0) ->
 %% V3-18 P3/EXC：追加 talk-record 回放/导出下载域（V3-18 边缘承载后，
 %% 旧入口 302 到边缘，边缘逐请求回调本端点换 presigned GET；talk-record
 %% 票据 audience 独立，交叉验签同样不可能通过）。
+authorize_target(<<"parts:", Rest/binary>>) ->
+    case binary:split(Rest, <<":">>) of
+        [SeqBin, Ticket] when byte_size(SeqBin) > 0, byte_size(SeqBin) =< 6 ->
+            try binary_to_integer(SeqBin) of
+                Seq when Seq >= 0 -> talk_record_playback_parts:edge_target(Ticket, Seq);
+                _ -> {error, forbidden}
+            catch
+                error:badarg -> {error, forbidden}
+            end;
+        _ ->
+            {error, forbidden}
+    end;
+authorize_target(<<"client_audio:", Ticket/binary>>) ->
+    talk_record_client_audio_logic:edge_target(Ticket);
+authorize_target(<<"avatar:", Alias/binary>>) ->
+    case
+        re:run(
+            Alias,
+            <<"^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-4[0-9a-fA-F]{3}-[89aAbB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$">>,
+            [{capture, none}]
+        )
+    of
+        match ->
+            case attachment_avatar_alias_repo:resolve(Alias) of
+                {ok, #{<<"path">> := Path} = Row} ->
+                    case attachment_storage:frozen_location(Path, Row) of
+                        {ok, #{driver := garage} = Location} ->
+                            attachment_storage_garage:presign_snapshot(Location, 300);
+                        _ ->
+                            {error, forbidden}
+                    end;
+                _ ->
+                    {error, forbidden}
+            end;
+        _ ->
+            {error, forbidden}
+    end;
 authorize_target(Ticket) ->
     case attach_logic:download(Ticket) of
         {ok, _} = Ok ->

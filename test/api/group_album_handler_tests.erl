@@ -36,8 +36,7 @@ photo_id_boundary_test_() ->
                 lists:foreach(fun(Module) -> meck:new(Module, [non_strict]) end, Modules),
                 Modules
             end,
-            fun(Modules) -> lists:foreach(fun meck:unload/1, Modules) end,
-            fun(_) ->
+            fun(Modules) -> lists:foreach(fun meck:unload/1, Modules) end, fun(_) ->
                 [?_test(photo_id_boundary_case(Action, Value)) || Value <- Values]
             end}
      || Action <- [
@@ -212,271 +211,39 @@ delete_album_success_returns_success_response_test_() ->
         end
     ).
 
-upload_photo_with_json_content_type_test_() ->
+%% C08（V3-12）：upload_photo/batch_upload 入口及用例已随正文直传链退役；
+%% 相册唯一引用入口为 bind_photo/bind_batch（direct-v1 confirmed 绑定）。
+
+bind_photo_accepts_string_album_id_test_() ->
     ?WITH_MECKS(
         [
-            {cowboy_req, [
-                {'header', 3, fun(<<"content-type">>, _Req, <<>>) ->
-                    <<"application/json">>
-                end}
-            ]},
             {elib_req, [
-                {'body', 2, fun(_Req, _Opts) ->
+                {'body', 2, fun(_, _) ->
                     {ok,
                         #{
-                            <<"gid">> => <<"group_1">>,
-                            <<"album_id">> => <<"album_3">>,
-                            <<"photo">> => <<"aGVsbG8=">>,
-                            <<"photo_name">> => <<"a.jpg">>
+                            <<"gid">> => 42,
+                            <<"album_id">> => <<"album_123_456">>,
+                            <<"object_key">> => <<"fixture/key">>
                         },
                         req_body}
                 end}
             ]},
-            {group_album_logic, [
-                {'upload_photo', 5, fun(
-                    <<"group_1">>, 102, <<"album_3">>, <<"hello">>, <<"a.jpg">>
-                ) ->
-                    {ok, #{<<"photo_id">> => 1}}
+            {group_album_ds, [
+                {'bind_photo', 8, fun(42, 100, <<"album_123_456">>, _, _, _, _, _) ->
+                    {ok, #{}}
                 end}
             ]},
-            {elib_response, [
-                {'success', 3, fun(_Req, _Data, _Msg) ->
-                    req_ok
-                end}
-            ]}
+            {elib_response, [{'success', 2, fun(_, _) -> req_ok end}]}
         ],
         fun() ->
-            Result = group_album_handler:handle_action(upload_photo, req_mock(), #{
-                current_uid => 102
-            }),
-            ?assertEqual(req_ok, Result)
-        end
-    ).
-
-upload_photo_with_missing_album_id_returns_bad_request_test_() ->
-    ?WITH_MECKS(
-        [
-            {cowboy_req, [
-                {'header', 3, fun(<<"content-type">>, _Req, <<>>) ->
-                    <<"application/json">>
-                end}
-            ]},
-            {elib_req, [
-                {'body', 2, fun(_Req, _Opts) ->
-                    {ok,
-                        #{
-                            <<"gid">> => <<"group_1">>,
-                            <<"photo">> => <<"aGVsbG8=">>,
-                            <<"photo_name">> => <<"a.jpg">>
-                        },
-                        req_body}
-                end}
-            ]},
-            {elib_response, [
-                {'error', 3, fun(_Req, _Msg, Code) ->
-                    self() ! {resp_code, Code},
-                    req_error
-                end}
-            ]}
-        ],
-        fun() ->
-            Result = group_album_handler:handle_action(upload_photo, req_mock(), #{
-                current_uid => 102
-            }),
-            ?assertEqual(req_error, Result),
-            ?assertEqual(?ERR_BAD_REQUEST, receive_resp_code())
-        end
-    ).
-
-upload_photo_with_invalid_base64_returns_bad_request_test_() ->
-    ?WITH_MECKS(
-        [
-            {cowboy_req, [
-                {'header', 3, fun(<<"content-type">>, _Req, <<>>) ->
-                    <<"application/json">>
-                end}
-            ]},
-            {elib_req, [
-                {'body', 2, fun(_Req, _Opts) ->
-                    {ok,
-                        #{
-                            <<"gid">> => <<"group_1">>,
-                            <<"album_id">> => <<"album_3">>,
-                            <<"photo">> => <<"%%%INVALID_BASE64%%%">>,
-                            <<"photo_name">> => <<"a.jpg">>
-                        },
-                        req_body}
-                end}
-            ]},
-            {elib_response, [
-                {'error', 3, fun(_Req, _Msg, Code) ->
-                    self() ! {resp_code, Code},
-                    req_error
-                end}
-            ]}
-        ],
-        fun() ->
-            Result = group_album_handler:handle_action(upload_photo, req_mock(), #{
-                current_uid => 102
-            }),
-            ?assertEqual(req_error, Result),
-            ?assertEqual(?ERR_BAD_REQUEST, receive_resp_code())
-        end
-    ).
-
-upload_photo_with_missing_gid_returns_bad_request_test_() ->
-    ?WITH_MECKS(
-        [
-            {cowboy_req, [
-                {'header', 3, fun(<<"content-type">>, _Req, <<>>) ->
-                    <<"application/json">>
-                end}
-            ]},
-            {elib_req, [
-                {'body', 2, fun(_Req, _Opts) ->
-                    {ok,
-                        #{
-                            <<"album_id">> => <<"album_3">>,
-                            <<"photo">> => <<"aGVsbG8=">>,
-                            <<"photo_name">> => <<"a.jpg">>
-                        },
-                        req_body}
-                end}
-            ]},
-            {elib_response, [
-                {'error', 3, fun(_Req, _Msg, Code) ->
-                    self() ! {resp_code, Code},
-                    req_error
-                end}
-            ]}
-        ],
-        fun() ->
-            Result = group_album_handler:handle_action(upload_photo, req_mock(), #{
-                current_uid => 102
-            }),
-            ?assertEqual(req_error, Result),
-            ?assertEqual(?ERR_BAD_REQUEST, receive_resp_code())
-        end
-    ).
-
-upload_photo_json_album_not_found_maps_error_code_test_() ->
-    ?WITH_MECKS(
-        [
-            {cowboy_req, [
-                {'header', 3, fun(<<"content-type">>, _Req, <<>>) ->
-                    <<"application/json">>
-                end}
-            ]},
-            {elib_req, [
-                {'body', 2, fun(_Req, _Opts) ->
-                    {ok,
-                        #{
-                            <<"gid">> => <<"group_1">>,
-                            <<"album_id">> => <<"album_404">>,
-                            <<"photo">> => <<"aGVsbG8=">>,
-                            <<"photo_name">> => <<"a.jpg">>
-                        },
-                        req_body}
-                end}
-            ]},
-            {group_album_logic, [
-                {'upload_photo', 5, fun(
-                    <<"group_1">>, 102, <<"album_404">>, <<"hello">>, <<"a.jpg">>
-                ) ->
-                    {error, <<"相册不存在"/utf8>>}
-                end}
-            ]},
-            {elib_response, [
-                {'error', 3, fun(_Req, _Msg, Code) ->
-                    self() ! {resp_code, Code},
-                    req_error
-                end}
-            ]}
-        ],
-        fun() ->
-            Result = group_album_handler:handle_action(upload_photo, req_mock(), #{
-                current_uid => 102
-            }),
-            ?assertEqual(req_error, Result),
-            ?assertEqual(?ERR_ALBUM_NOT_FOUND, receive_resp_code())
-        end
-    ).
-
-upload_photo_json_permission_denied_maps_error_code_test_() ->
-    ?WITH_MECKS(
-        [
-            {cowboy_req, [
-                {'header', 3, fun(<<"content-type">>, _Req, <<>>) ->
-                    <<"application/json">>
-                end}
-            ]},
-            {elib_req, [
-                {'body', 2, fun(_Req, _Opts) ->
-                    {ok,
-                        #{
-                            <<"gid">> => <<"group_1">>,
-                            <<"album_id">> => <<"album_perm">>,
-                            <<"photo">> => <<"aGVsbG8=">>,
-                            <<"photo_name">> => <<"a.jpg">>
-                        },
-                        req_body}
-                end}
-            ]},
-            {group_album_logic, [
-                {'upload_photo', 5, fun(
-                    <<"group_1">>, 102, <<"album_perm">>, <<"hello">>, <<"a.jpg">>
-                ) ->
-                    {error, <<"相册权限不足"/utf8>>}
-                end}
-            ]},
-            {elib_response, [
-                {'error', 3, fun(_Req, _Msg, Code) ->
-                    self() ! {resp_code, Code},
-                    req_error
-                end}
-            ]}
-        ],
-        fun() ->
-            Result = group_album_handler:handle_action(upload_photo, req_mock(), #{
-                current_uid => 102
-            }),
-            ?assertEqual(req_error, Result),
-            ?assertEqual(?ERR_ALBUM_PERMISSION_DENIED, receive_resp_code())
-        end
-    ).
-
-upload_photo_with_malformed_multipart_returns_bad_request_test_() ->
-    ?WITH_MECKS(
-        [
-            {cowboy_req, [
-                {'header', 3, fun(<<"content-type">>, _Req, <<>>) ->
-                    <<"multipart/form-data; boundary=abc">>
-                end},
-                {'read_part', 1, fun(_Req) ->
-                    {ok, #{mock_header => true}, req_part}
-                end},
-                {'read_part_body', 2, fun(_Req, _Opts) ->
-                    {ok, <<"binary">>, req_part_body}
-                end}
-            ]},
-            {cow_multipart, [
-                {'form_data', 1, fun(_Headers) ->
-                    erlang:error(malformed_headers)
-                end}
-            ]},
-            {elib_response, [
-                {'error', 3, fun(_Req, _Msg, Code) ->
-                    self() ! {resp_code, Code},
-                    req_error
-                end}
-            ]}
-        ],
-        fun() ->
-            Result = group_album_handler:handle_action(upload_photo, req_mock(), #{
-                current_uid => 103
-            }),
-            ?assertEqual(req_error, Result),
-            ?assertEqual(?ERR_BAD_REQUEST, receive_resp_code())
+            ?assertEqual(
+                req_ok,
+                group_album_handler:handle_action(
+                    bind_photo,
+                    req_mock(),
+                    #{current_uid => 100}
+                )
+            )
         end
     ).
 

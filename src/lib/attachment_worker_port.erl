@@ -15,6 +15,9 @@
     scan_external/1,
     fetch_files/1,
     upload_file/1,
+    render_export/1,
+    upload_export/1,
+    validate_audio/1,
     worker_script_path/0
 ]).
 
@@ -63,6 +66,28 @@ fetch_files(Items) ->
 %% 返回 {ok, #{sha256, size}} | {error, _}。
 upload_file(UploadTask) ->
     run_io_worker(UploadTask#{action => upload}).
+
+%% Audio validation always runs in the OS worker, including test mode.
+validate_audio(Task) ->
+    case {os:find_executable("escript"), io_worker_script_path()} of
+        {false, _} -> {error, {worker_missing, escript}};
+        {_, false} -> {error, {worker_missing, script}};
+        {Es, Script} -> run_worker(Es, Script, prepare_task(Task#{action => validate_audio}))
+    end.
+
+render_export(Task) ->
+    case {escript_executable(), io_worker_script_path()} of
+        {false, _} -> {error, {worker_missing, escript}};
+        {_, false} -> {error, {worker_missing, script}};
+        {Es, Script} -> run_worker(Es, Script, prepare_task(Task#{action => render_export}))
+    end.
+
+upload_export(Task) ->
+    case {escript_executable(), io_worker_script_path()} of
+        {false, _} -> {error, {worker_missing, escript}};
+        {_, false} -> {error, {worker_missing, script}};
+        {Es, Script} -> run_worker(Es, Script, prepare_task(Task#{action => upload_export}))
+    end.
 
 run_io_worker(Task) ->
     Task1 = maps:merge(Task, #{deadline_ms => maps:get(deadline_ms, Task, 600000)}),
@@ -209,13 +234,17 @@ io_worker_script_path() ->
     end.
 
 run_worker(Es, Script, Task) ->
+    Budget = min(port_timeout_ms(), maps:get(deadline_ms, Task, ?DEFAULT_DEADLINE_MS)),
+    EffectiveTask = Task#{deadline_ms => Budget},
     Base =
         "imboy-worker-" ++ os:getpid() ++ "-" ++
-            integer_to_list(erlang:unique_integer([positive, monotonic])),
-    TaskFile = filename:join(worker_tmp_dir(), Base ++ ".task"),
+            binary_to_list(binary:encode_hex(crypto:strong_rand_bytes(16), lowercase)),
+    Dir = filename:join(worker_tmp_dir(), Base),
+    ok = filelib:ensure_dir(filename:join(Dir, "placeholder")),
+    ok = file:change_mode(Dir, 8#700),
+    TaskFile = filename:join(Dir, "worker.task"),
     OutFile = TaskFile ++ ".out",
-    ok = filelib:ensure_dir(TaskFile),
-    Encoded = base64:encode(term_to_binary(Task)),
+    Encoded = base64:encode(term_to_binary(EffectiveTask)),
     ok = file:write_file(TaskFile, Encoded),
     ok = file:change_mode(TaskFile, 8#600),
     try
@@ -232,40 +261,32 @@ run_worker(Es, Script, Task) ->
                 %% OTP port exit_status 消息实形是 2-tuple {Port, {exit_status, N}}
                 %%（trap_exit 与否同形；旧 3-tuple 模式永不匹配——eunit 等断言
                 %% 进程 trap_exit=true 时滞留邮箱直至超时挂死）。
-                {Port, {exit_status, 0}} -> read_result(OutFile, Task);
+                {Port, {exit_status, 0}} -> read_result(OutFile, EffectiveTask);
                 {Port, {exit_status, N}} -> {error, {worker_exit, N}};
-                %% 与 exit_status 的送达顺序竞争：EXIT normal 时结果文件已可
-                %% 能完整落盘，按结果文件判定（缺文件即错误）。
-                {'EXIT', Port, normal} -> read_result(OutFile, Task);
                 {'EXIT', Port, Reason} -> {error, {port_exit, Reason}}
-            after port_timeout_ms() ->
-                %% V3-18 W5b 收割：eunit VM（长命 VM + eunit 进程环境）下
-                %% 偶发 exit_status 消息丢失——遗留 .task/.out 取证显示
-                %% worker 已成功落盘 .out 并退出，端口消息却未达/未匹配
-                %% （三次挂点不同；同代码非 eunit VM 150 连跑零丢失）。
-                %% 超时后以结果文件为准：文件在即按其内容收割（端口
-                %% 显式关闭，防 zombie 端口泄漏），不在则 fail-closed
-                %% timeout。配合应用层可覆盖超时（relay 套件注入 < 外层
-                %% eunit timeout 的界），挂死转化为有界成败判定。
-                io:format(user, "W5B_AFTER_FIRED task=~s~n", [OutFile]),
-                Harvested =
-                    case read_result(OutFile, Task) of
-                        {ok, _} = Ok -> Ok;
-                        _ -> {error, timeout}
-                    end,
+            after Budget ->
                 try
                     erlang:port_close(Port)
                 catch
                     _:_ -> ok
                 end,
-                Harvested
+                {error, timeout}
             end,
-        Res
+        uncertain_result(EffectiveTask, Res)
     after
         %% 任务/结果文件短存即删（凭据不留盘面）
         _ = file:delete(TaskFile),
-        _ = file:delete(OutFile)
+        _ = file:delete(OutFile),
+        _ = file:del_dir(Dir)
     end.
+
+%% Any worker failure after dispatch may have left a PUT or local file behind.
+uncertain_result(#{action := Action}, {error, _}) when
+    Action =:= upload; Action =:= fetch; Action =:= upload_export
+->
+    {error, worker_outcome_unknown};
+uncertain_result(_, Result) ->
+    Result.
 
 read_result(OutFile, Task) ->
     case file:read_file(OutFile) of
@@ -283,6 +304,30 @@ decode_result(Bin, Task) ->
     try
         Result = binary_to_term(base64:decode(Bin)),
         case Result of
+            {ok, #{audio_validation := Binding, summary := Summary}} when
+                is_map_key(binding, Task), is_map(Summary)
+            ->
+                case maps:get(binding, Task) =:= Binding of
+                    true -> {ok, Summary};
+                    false -> {error, worker_binding_mismatch}
+                end;
+            {ok, _} when map_get(action, Task) =:= validate_audio ->
+                {error, worker_bad_result_shape};
+            {ok, #{export_binding := Binding, sha256 := Sha, size := Size} = Export} when
+                (map_get(action, Task) =:= render_export orelse
+                    map_get(action, Task) =:= upload_export),
+                is_binary(Sha),
+                is_integer(Size),
+                Size > 0
+            ->
+                case maps:get(binding, Task) =:= Binding of
+                    true -> {ok, Export};
+                    false -> {error, worker_binding_mismatch}
+                end;
+            {ok, _} when map_get(action, Task) =:= render_export ->
+                {error, worker_bad_result_shape};
+            {ok, _} when map_get(action, Task) =:= upload_export ->
+                {error, worker_bad_result_shape};
             {ok, #{sha256 := Sha, size := Size, receipt := Receipt}} ->
                 verify_receipt(Receipt, Sha, Size, Task);
             %% V3-18 P2 汇编 IO Worker（assembly_io_worker.escript）合同：

@@ -10,7 +10,7 @@
 -export([tablename/0]).
 -export([upsert/1]).
 -export([upsert_tx/2]).
--export([patch/2]).
+-export([patch/2, patch_tx/3, bind_avatar_tx/6]).
 -export([find/1]).
 -export([active_ids/0]).
 -export([set_status/2]).
@@ -109,6 +109,12 @@ upsert_sql(#{user_id := UserId, provider := Provider} = Data) ->
 %% @doc 部分更新既有 agent；未提交的行为字段保持原值，避免管理端编辑资料时清空兼容配置。
 -spec patch(integer(), map()) -> {ok, [map()]} | {error, term()}.
 patch(UserId, Data) when is_integer(UserId), is_map(Data) ->
+    patch_with_conn(undefined, UserId, Data).
+
+patch_tx(Conn, UserId, Data) when is_integer(UserId), is_map(Data) ->
+    patch_with_conn(Conn, UserId, Data).
+
+patch_with_conn(Conn, UserId, Data) ->
     Tb = tablename(),
     Fields = patch_fields(Data),
     case Fields of
@@ -117,28 +123,66 @@ patch(UserId, Data) when is_integer(UserId), is_map(Data) ->
         _ ->
             Assignments = [
                 patch_assignment(Column, Cast, Index)
-             || {{Column, _Value, Cast}, Index} <- lists:zip(
-                    Fields, lists:seq(1, length(Fields))
-                )
+             || {{Column, _Value, Cast}, Index} <- lists:zip(Fields, lists:seq(1, length(Fields)))
             ],
-            WhereIndex = length(Fields) + 1,
             Sql = iolist_to_binary([
                 <<"UPDATE ">>,
                 Tb,
                 <<" SET ">>,
                 join_binary(Assignments),
                 <<" WHERE user_id = $">>,
-                integer_to_binary(WhereIndex),
+                integer_to_binary(length(Fields) + 1),
                 <<" RETURNING user_id">>
             ]),
             Params = [Value || {_Column, Value, _Cast} <- Fields] ++ [UserId],
-            case elib_pg:query(Sql, Params) of
-                {ok, Rows} ->
-                    {ok, Rows};
-                {error, Reason} ->
-                    ?ERROR_LOG("ai_agent_repo:patch user_id=~p error ~p~n", [UserId, Reason]),
-                    {error, Reason}
+            case Conn of
+                undefined -> elib_pg:query(Sql, Params);
+                _ -> elib_pg:query(Conn, Sql, Params)
             end
+    end.
+
+%% Lock the confirmed session and completed publication before attaching it to a user.
+bind_avatar_tx(Conn, Key, ClientUploadId, UserId, IsCreate, AdminId) when
+    is_binary(ClientUploadId)
+->
+    case
+        re:run(
+            ClientUploadId,
+            <<"^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$">>,
+            [{capture, none}]
+        )
+    of
+        match -> bind_avatar_valid_tx(Conn, Key, ClientUploadId, UserId, IsCreate, AdminId);
+        nomatch -> {error, avatar_session_mismatch}
+    end;
+bind_avatar_tx(_, _, _, _, _, _) ->
+    {error, avatar_session_mismatch}.
+
+bind_avatar_valid_tx(Conn, Key, ClientUploadId, UserId, IsCreate, AdminId) ->
+    Sql = <<
+        "UPDATE public.attachment_avatar_publication v SET bound_user_id=$4"
+        " FROM public.attach_pending p, public.admin_avatar_session_owner o WHERE v.object_key=$1 AND v.public_key=$1"
+        " AND p.object_key=v.object_key AND p.client_upload_id=$2::uuid"
+        " AND o.client_upload_id=p.client_upload_id AND o.admin_user_id=$5"
+        " AND p.direct_state='CONFIRMED' AND p.session_state='confirmed'"
+        " AND p.confirmed_attachment_id=v.attachment_id AND v.state='complete'"
+        " AND p.upload_registration->'subject'->>'kind'='application'"
+        " AND p.upload_registration->'subject'->>'org_id'='0'"
+        " AND (CASE WHEN $6 THEN CASE WHEN p.upload_registration->'subject'->>'principal'"
+        " ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'"
+        " THEN (p.upload_registration->'subject'->>'principal')::uuid=$2::uuid ELSE false END"
+        " ELSE p.upload_registration->'subject'->>'principal'=$3 END)"
+        " AND (v.bound_user_id IS NULL OR v.bound_user_id=$4) RETURNING v.attachment_id"
+    >>,
+    Principal =
+        case IsCreate of
+            true -> ClientUploadId;
+            false -> integer_to_binary(UserId)
+        end,
+    case elib_pg:query(Conn, Sql, [Key, ClientUploadId, Principal, UserId, AdminId, IsCreate]) of
+        {ok, [_]} -> ok;
+        {ok, _} -> {error, avatar_session_mismatch};
+        {error, _} = Error -> Error
     end.
 
 patch_fields(Data) ->

@@ -65,22 +65,9 @@ Seat 资产缓存策略为 no-cache 重验证，回滚后已打开的 Seat 页�
 
 ---
 
-## 5. `imboy.base_url` 硬约束（附件 presign 的上传基址）
+## 5. 旧附件上传基址
 
-坐席附件链的 presign 步骤以下发 `upload.url` 的**绝对地址**来自 `{imboy, base_url}`
-（`src/features/enterprise_business/interfaces/eb_enterprise_http.erl` 的
-`api_base_url()`）：
-
-* **必须等于坐席可达的 API origin**，即本 vhost 的 `CS_WIDGET_DOMAIN`
-  （`https://<CS_WIDGET_DOMAIN>`）。base_url 配错源会把 presign 下发的裸 PUT
-  打向无关主机——本候选验收期实测（DEF-SC153-14）：base_url 指向无关主机时
-  坐席附件链整条失败、零资产落库。
-* **fail-closed 语义**：base_url 非 `https://` 时 presign 不下发 `upload.url`
-  （为空），坐席端 `SeatUploadTargetMissingError` 终止上传，绝不自造端点。
-  因此 base_url 配置错误的表现是"附件功能整体不可用"，而非降级到错误主机。
-* **上线前检查**：从坐席网络环境 `curl -i https://<base_url>/api/v1/cs/...`
-  必须命中本网关域（同证书、同域名）；建议在部署 preflight 中加入该比对
-  （当前 preflight.sh 未覆盖，属已知加固项）。
+旧 Widget/Seat 同源上传使用 `IMBOY_WIDGET_BASE_URL=https://<CS_WIDGET_DOMAIN>`；缺失或非 HTTPS 时不下发上传 URL。社区 Compose 根据 `CS_WIDGET_DOMAIN` 设置该值，Helm 需为旧上传显式配置同源的 `widgetHost` 和 `widgetBaseUrl`。`IMBOY_BASE_URL` 保持 API 域，direct-v1 上传使用独立存储授权。
 
 ---
 

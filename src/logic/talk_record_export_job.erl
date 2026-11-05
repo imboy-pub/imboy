@@ -4,27 +4,63 @@
 
 run(Job) ->
     case transaction(fun(C) -> prepare_tx(C, Job) end) of
-        {ok, Prepared} -> write_and_publish(Job, Prepared);
+        {ok, Export} -> render_and_publish(Job, Export);
         Error -> Error
     end.
 
 prepare_tx(Conn, Job) ->
     Rid = maps:get(<<"record_id">>, Job),
-    {ok, _} = require(talk_record_export_repo:lock_record_tx(Conn, Rid)),
+    {ok, _} = require(talk_record_export_repo:lock_record_metadata_tx(Conn, Rid)),
     {ok, _} = require_live_job(Conn, Job),
     {ok, Export} = require(talk_record_export_repo:find_by_job_tx(Conn, maps:get(<<"id">>, Job))),
     {ok, Record} = require(
-        talk_record_export_logic:authorize_tx(
+        talk_record_export_logic:authorize_metadata_tx(
             Conn, maps:get(<<"requester_id">>, Export), Rid
         )
     ),
     ok = check_input(Record, Job),
-    {ok, Generated} = require(talk_record_export_logic:snapshot_tx(Conn, Export)),
-    {ok, Artifact} = require(talk_record_export_artifact:prepare_tx(Conn, Job, Export, Generated)),
-    {ok, #{export => Export, artifact => Artifact, generated => Generated}}.
+    {ok, Export}.
+
+render_and_publish(Job, Export) ->
+    #{start_mfa := {_, _, [PgOptions]}} = config_ds:env(pg_conf),
+    Binding = crypto:hash(sha256, term_to_binary({crypto:strong_rand_bytes(32), Job, Export})),
+    Task = #{
+        pg_options => PgOptions,
+        export => maps:with([<<"id">>, <<"record_id">>, <<"format">>], Export),
+        revision => maps:get(<<"input_content_revision">>, Job),
+        source_job_id => maps:get(<<"id">>, Job),
+        source_attempt => maps:get(<<"attempt">>, Job),
+        binding => Binding
+    },
+    case attachment_worker_port:render_export(Task) of
+        {ok, Generated} -> reserve_and_publish(Job, Export, Generated#{task => Task});
+        Error -> Error
+    end.
+
+reserve_and_publish(Job, Export, Generated) ->
+    case transaction(fun(C) -> reserve_tx(C, Job, Export, Generated) end) of
+        {ok, Artifact} ->
+            write_and_publish(Job, #{export => Export, artifact => Artifact, generated => Generated});
+        Error ->
+            Error
+    end.
+
+reserve_tx(Conn, Job, Export, Generated) ->
+    Rid = maps:get(<<"record_id">>, Job),
+    {ok, _} = require(talk_record_export_repo:lock_record_metadata_tx(Conn, Rid)),
+    {ok, _} = require_live_job(Conn, Job),
+    {ok, Current} = require(talk_record_export_repo:find_by_job_tx(Conn, maps:get(<<"id">>, Job))),
+    true = Current =:= Export,
+    {ok, Record} = require(
+        talk_record_export_logic:authorize_metadata_tx(
+            Conn, maps:get(<<"requester_id">>, Export), Rid
+        )
+    ),
+    ok = check_input(Record, Job),
+    require(talk_record_export_artifact:prepare_tx(Conn, Job, Export, Generated)).
 
 write_and_publish(Job, #{artifact := Artifact, generated := Generated} = Prepared) ->
-    case talk_record_export_artifact:write(Artifact, maps:get(<<"content">>, Generated)) of
+    case talk_record_export_artifact:write(Artifact, Generated) of
         ok -> transaction(fun(C) -> publish_tx(C, Job, Prepared) end);
         Error -> Error
     end.
@@ -34,10 +70,10 @@ execute_tx(_Conn, _Job) -> {error, export_requires_worker}.
 
 publish_tx(Conn, Job, #{export := Export, artifact := Artifact}) ->
     Rid = maps:get(<<"record_id">>, Job),
-    {ok, _} = require(talk_record_export_repo:lock_record_tx(Conn, Rid)),
+    {ok, _} = require(talk_record_export_repo:lock_record_metadata_tx(Conn, Rid)),
     {ok, _} = require_live_job(Conn, Job),
     {ok, Record} = require(
-        talk_record_export_logic:authorize_tx(
+        talk_record_export_logic:authorize_metadata_tx(
             Conn, maps:get(<<"requester_id">>, Export), Rid
         )
     ),
@@ -100,7 +136,7 @@ abort(Reason) -> throw({talk_export_abort, Reason}).
 fail(Job, ErrorCode) ->
     transaction(fun(C) ->
         {ok, _} = require(
-            talk_record_export_repo:lock_record_tx(C, maps:get(<<"record_id">>, Job))
+            talk_record_export_repo:lock_record_metadata_tx(C, maps:get(<<"record_id">>, Job))
         ),
         {ok, _} = require_live_job(C, Job),
         case talk_record_export_repo:find_by_job_tx(C, maps:get(<<"id">>, Job)) of

@@ -12,22 +12,32 @@ start_link(enterprise) ->
     gen_server:start_link({local, enterprise_attachment_delete_reaper}, ?MODULE, enterprise, []).
 
 child_specs() ->
-    case application:get_env(imboy, attachment_delete_worker_enabled, false) of
-        true ->
-            [
-                #{
-                    id => attachment_delete_worker,
-                    start => {attachment_delete_worker, start_link, []},
-                    restart => permanent,
-                    shutdown => 5000,
-                    type => worker,
-                    modules => [attachment_delete_worker]
-                },
-                spec(ordinary)
-            ] ++ enterprise_specs();
-        false ->
-            []
-    end.
+    [direct_spec()] ++
+        case application:get_env(imboy, attachment_delete_worker_enabled, false) of
+            true ->
+                [
+                    #{
+                        id => attachment_delete_worker,
+                        start => {attachment_delete_worker, start_link, []},
+                        restart => permanent,
+                        shutdown => 5000,
+                        type => worker,
+                        modules => [attachment_delete_worker]
+                    },
+                    spec(ordinary)
+                ] ++ enterprise_specs();
+            false ->
+                []
+        end.
+direct_spec() ->
+    #{
+        id => attachment_direct_cleanup_worker,
+        start => {attachment_direct_cleanup_worker, start_link, []},
+        restart => permanent,
+        shutdown => 5000,
+        type => worker,
+        modules => [attachment_direct_cleanup_worker]
+    }.
 spec(Queue) ->
     #{
         id => {attachment_delete_reaper, Queue},

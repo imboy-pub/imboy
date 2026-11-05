@@ -11,6 +11,7 @@
 -export([list_by_ids/2]).
 -export([delete_msg/1]).
 -export([delete_msg/2]).
+-export([message_result/3]).
 
 %% ===================================================================
 %% API
@@ -21,6 +22,17 @@
 -spec tablename() -> binary().
 tablename() ->
     elib_pg_sql:public_tablename(<<"msg_c2s">>).
+
+%% A single snapshot prevents a gap while the worker moves a staged row.
+message_result(Uid, Peer, MsgId) ->
+    Sql =
+        <<"SELECT 1 AS accepted WHERE EXISTS (",
+            "SELECT 1 FROM public.msg_store_staging WHERE type = 'c2s' ",
+            "AND from_id = $1 AND msg_id = $3 AND payload->>'to_id_str' = $2 ",
+            "UNION ALL SELECT 1 FROM public.msg_c2s WHERE from_id = $1 AND msg_id = $3 ",
+            "AND CASE WHEN pg_input_is_valid(payload, 'jsonb') ",
+            "THEN payload::jsonb->>'to_id_str' = $2 ELSE false END)">>,
+    elib_pg:query(Sql, [Uid, Peer, MsgId]).
 
 %% @doc 根据消息ID列表查询机器人消息
 %% @param Ids 消息ID列表

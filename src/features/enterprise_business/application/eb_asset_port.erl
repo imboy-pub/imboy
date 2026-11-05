@@ -99,5 +99,19 @@
 }) ->
     {ok, asset_id()} | {error, term()}.
 
+-callback register_direct_session(
+    integer(),
+    integer(),
+    descriptor(),
+    binary(),
+    map(),
+    {integer(), integer()}
+) -> {ok, map()} | {error, term()}.
+-callback bind_direct(
+    integer(), integer(), asset_id(), map(), map(), binary(), binary(), integer()
+) ->
+    {ok, asset_id()} | {error, term()}.
+-callback direct_proof(integer(), integer(), asset_id()) -> {ok, map()} | {error, term()}.
+
 %% Internal direct-v1 scan snapshot lookup; no descriptor or client response.
 -callback direct_session_row(binary()) -> {ok, map()} | {error, term()}.

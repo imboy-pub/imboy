@@ -303,30 +303,141 @@ publish_message(ChannelId, AuthorId, Content, MsgType, Payload, RequestId) ->
     %% 不写新行，可能留下序号空洞；序列只承诺单调不承诺连续）。
     %% 作者自己的新发布不计其未查看（沿既有通知口径）：同事务将其
     %% 激活订阅的 view_seq 推进到新序号（GREATEST，不倒退）。
-    Result =
-        elib_pg:with_tx(fun(Conn) ->
-            ok = workspace_guard:abort_on_error(
-                workspace_guard:ensure_writable_tx(Conn, {channel, ChannelId})
-            ),
-            case allocate_update_seq_tx(Conn, ChannelId) of
-                {ok, UpdateSeq} ->
-                    Data = #{
-                        channel_id => ChannelId,
-                        author_id => AuthorId,
-                        author_name => AuthorName,
-                        author_avatar => AuthorAvatar,
-                        content => Content,
-                        msg_type => MsgType,
-                        payload => PayloadJson,
-                        update_seq => UpdateSeq,
-                        created_at => Now
-                    },
-                    insert_publish_tx(Conn, RequestId, Data, UpdateSeq, AuthorId);
-                {error, Reason} ->
-                    {error, normalize_error(Reason)}
-            end
-        end),
-    Result.
+    Keys = channel_attachment_keys(Payload),
+    Tx = fun(Conn) ->
+        Guard =
+            case Keys of
+                [] -> workspace_guard:ensure_writable_tx(Conn, {channel, ChannelId});
+                _ -> workspace_guard:ensure_writable_tx_retryable(Conn, {channel, ChannelId})
+            end,
+        ok = workspace_guard:abort_on_error(Guard),
+        ok = workspace_guard:abort_on_error(
+            bind_channel_images_tx(Conn, ChannelId, AuthorId, Keys)
+        ),
+        case allocate_update_seq_tx(Conn, ChannelId) of
+            {ok, UpdateSeq} ->
+                Data = #{
+                    channel_id => ChannelId,
+                    author_id => AuthorId,
+                    author_name => AuthorName,
+                    author_avatar => AuthorAvatar,
+                    content => Content,
+                    msg_type => MsgType,
+                    payload => PayloadJson,
+                    update_seq => UpdateSeq,
+                    created_at => Now
+                },
+                insert_publish_tx(Conn, RequestId, Data, UpdateSeq, AuthorId);
+            {error, Reason} ->
+                {error, normalize_error(Reason)}
+        end
+    end,
+    case Keys of
+        [] -> elib_pg:with_tx(Tx);
+        _ -> elib_pg:with_deadlock_retry_tx(Tx)
+    end.
+
+%% Local logical keys are locked in stable order before the message is inserted.
+channel_attachment_keys(Payload) ->
+    Images = maps:get(<<"images">>, Payload, []),
+    ImageUris =
+        case is_list(Images) of
+            true -> [maps:get(<<"uri">>, Image, undefined) || Image <- Images, is_map(Image)];
+            false -> []
+        end,
+    Thumb = maps:get(<<"thumb">>, Payload, #{}),
+    ThumbUri =
+        case is_map(Thumb) of
+            true -> maps:get(<<"uri">>, Thumb, undefined);
+            false -> undefined
+        end,
+    lists:usort([
+        Uri
+     || Uri <- [maps:get(<<"uri">>, Payload, undefined), ThumbUri | ImageUris],
+        is_binary(Uri),
+        Uri =/= <<>>,
+        is_local_image_key(Uri)
+    ]).
+
+is_local_image_key(Key) ->
+    case elib_oss:owner_of_key(Key) of
+        {ok, _} -> true;
+        {error, invalid_key} -> false
+    end.
+
+bind_channel_images_tx(_Conn, _ChannelId, _AuthorId, []) ->
+    ok;
+bind_channel_images_tx(Conn, ChannelId, AuthorId, Keys) ->
+    ok = workspace_guard:abort_on_error(lock_channel_author_tx(Conn, ChannelId, AuthorId)),
+    ok = workspace_guard:abort_on_error(
+        attachment_repo:lock_upload_organization_tx(Conn, {channel, ChannelId}, AuthorId)
+    ),
+    case attachment_repo:authorize_upload_scope_tx_retryable(Conn, channel, ChannelId, AuthorId) of
+        true -> ok;
+        false -> throw({abort_tx, forbidden});
+        {error, Reason} -> throw({abort_tx, Reason})
+    end,
+    lists:foreach(
+        fun(Key) ->
+            ok = workspace_guard:abort_on_error(attachment_repo:bind_reference_lock_tx(Conn, Key)),
+            ok = workspace_guard:abort_on_error(attachment_repo:verify_direct_winner_tx(Conn, Key)),
+            ok = workspace_guard:abort_on_error(channel_image_scope_tx(Conn, Key, ChannelId))
+        end,
+        Keys
+    ),
+    ok.
+
+lock_channel_author_tx(Conn, ChannelId, AuthorId) ->
+    case
+        elib_pg:query(
+            Conn,
+            <<"SELECT creator_uid FROM channel WHERE id=$1 AND status=1 FOR UPDATE">>,
+            [ChannelId]
+        )
+    of
+        {ok, [#{<<"creator_uid">> := AuthorId}]} ->
+            ok;
+        {ok, [_]} ->
+            case
+                elib_pg:query(
+                    Conn,
+                    <<"SELECT role FROM channel_admin WHERE channel_id=$1 AND user_id=$2 FOR SHARE">>,
+                    [ChannelId, AuthorId]
+                )
+            of
+                {ok, [#{<<"role">> := Role}]} when Role > 0 -> ok;
+                {ok, _} -> {error, forbidden};
+                {error, _} = Error -> Error
+            end;
+        {ok, []} ->
+            {error, channel_not_found};
+        {error, _} = Error ->
+            Error
+    end.
+
+channel_image_scope_tx(Conn, Key, ChannelId) ->
+    case attachment_repo:find_by_path_for_update_tx(Conn, Key) of
+        {ok, #{
+            <<"status">> := 1,
+            <<"lifecycle_state">> := <<"live">>,
+            <<"scope">> := <<"public">>
+        }} ->
+            ok;
+        {ok, #{
+            <<"status">> := 1,
+            <<"lifecycle_state">> := <<"live">>,
+            <<"scope">> := <<"channel">>,
+            <<"scope_ref">> := Ref
+        }} ->
+            case elib_cnv:safe_to_integer(Ref) =:= ChannelId of
+                true -> ok;
+                false -> {error, scope_mismatch}
+            end;
+        {ok, _} ->
+            {error, scope_mismatch};
+        {error, _} = Error ->
+            Error
+    end.
 
 %% 事务内插入（legacy 与 request_id 幂等两分支），inserted 时同事务完成
 %% 订阅者未读累加与作者查看边界推进。

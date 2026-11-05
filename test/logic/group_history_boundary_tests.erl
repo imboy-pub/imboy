@@ -529,22 +529,11 @@ migration_112_preserves_server_session_attestation_test() ->
     ?assert(binary:match(Up, <<"generation_no">>) =/= nomatch),
     ?assertEqual(nomatch, binary:match(Down, <<"DROP TABLE">>)).
 
-%% 全新安装与存量部署 schema 不得分叉：运行时 DDL 必须包含 conv_seq 列。
-ensure_table_ddl_has_conv_seq_test() ->
-    meck:new(elib_pg, [passthrough]),
-    try
-        meck:expect(elib_pg, execute, fun(Sql, _Params) ->
-            Bin = iolist_to_binary(Sql),
-            case binary:match(Bin, <<"CREATE TABLE IF NOT EXISTS">>) of
-                nomatch -> ok;
-                _ -> persistent_term:put({?MODULE, ddl_conv_seq}, Bin)
-            end,
-            {ok, 0}
-        end),
-        _ = msg_store_repo:ensure_table_exists(),
-        Ddl = persistent_term:get({?MODULE, ddl_conv_seq}),
-        ?assert(binary:match(Ddl, <<"conv_seq">>) =/= nomatch)
-    after
-        persistent_term:erase({?MODULE, ddl_conv_seq}),
-        _ = (catch meck:unload(elib_pg))
-    end.
+%% 新安装由迁移 165 建表，旧部署由迁移 101 补充 conv_seq。
+migration_staging_has_conv_seq_test() ->
+    {ok, Initial} = file:read_file(
+        "priv/migrations/00000165_msg_staging_before_tsid_bootstrap.up.sql"
+    ),
+    {ok, Upgrade} = file:read_file("priv/migrations/00000101_group_history_join_boundary.up.sql"),
+    ?assert(binary:match(Initial, <<"conv_seq BIGINT">>) =/= nomatch),
+    ?assert(binary:match(Upgrade, <<"ADD COLUMN IF NOT EXISTS conv_seq">>) =/= nomatch).

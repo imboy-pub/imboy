@@ -12,6 +12,37 @@
 init(Req0, Ctx) ->
     {ok, handle(Req0, Ctx), Ctx}.
 
+handle(Req, {AuthorizeUrl, Token, client_audio}) ->
+    case {cowboy_req:method(Req), cowboy_req:parse_qs(Req)} of
+        {M, [{<<"ticket">>, Ticket}]} when
+            (M =:= <<"GET">> orelse M =:= <<"HEAD">>),
+            byte_size(Ticket) > 0,
+            byte_size(Ticket) =< 8192
+        ->
+            case authorize(AuthorizeUrl, Token, <<"client_audio:", Ticket/binary>>, M) of
+                {ok, UpstreamUrl} ->
+                    proxy(Req, UpstreamUrl, cowboy_req:header(<<"range">>, Req), undefined);
+                _ ->
+                    hidden_deny(Req)
+            end;
+        {M, _} when M =:= <<"GET">>; M =:= <<"HEAD">> -> hidden_deny(Req);
+        _ ->
+            reply(Req, 405, #{<<"allow">> => <<"GET, HEAD">>}, <<>>)
+    end;
+handle(Req, {AuthorizeUrl, Token, avatar}) ->
+    case cowboy_req:method(Req) of
+        M when M =:= <<"GET">>; M =:= <<"HEAD">> ->
+            Alias = cowboy_req:binding(alias, Req, <<>>),
+            Ticket = <<"avatar:", Alias/binary>>,
+            case authorize(AuthorizeUrl, Token, Ticket, M) of
+                {ok, UpstreamUrl} ->
+                    proxy(Req, UpstreamUrl, cowboy_req:header(<<"range">>, Req), undefined);
+                _ ->
+                    hidden_deny(Req)
+            end;
+        _ ->
+            reply(Req, 405, #{}, <<>>)
+    end;
 handle(Req, {AuthorizeUrl, Token}) ->
     case cowboy_req:method(Req) of
         M when M =:= <<"GET">>; M =:= <<"HEAD">> ->
@@ -19,9 +50,16 @@ handle(Req, {AuthorizeUrl, Token}) ->
             Ticket = proplists:get_value(<<"ticket">>, Query, <<>>),
             Range = cowboy_req:header(<<"range">>, Req),
             case authorize(AuthorizeUrl, Token, Ticket, M) of
-                {ok, UpstreamUrl} -> proxy(Req, UpstreamUrl, Range, undefined);
-                {ok, UpstreamUrl, Filename} -> proxy(Req, UpstreamUrl, Range, Filename);
-                deny -> hidden_deny(Req)
+                {ok, UpstreamUrl} ->
+                    proxy(Req, UpstreamUrl, Range, undefined);
+                {ok, UpstreamUrl, {verified_part, Size, Hash}} ->
+                    verified_part(
+                        Req, UpstreamUrl, Range, Size, Hash, AuthorizeUrl, Token, Ticket, M
+                    );
+                {ok, UpstreamUrl, Filename} ->
+                    proxy(Req, UpstreamUrl, Range, Filename);
+                deny ->
+                    hidden_deny(Req)
             end;
         _ ->
             reply(Req, 405, #{}, <<>>)
@@ -44,6 +82,15 @@ authorize(AuthorizeUrl, Token, Ticket, Method) ->
         {ok, {{_, 200, _}, _, RespBody}} ->
             try
                 case jsone:decode(RespBody) of
+                    #{<<"url">> := Url, <<"size">> := Size, <<"sha256">> := Hash} when
+                        is_binary(Url),
+                        is_integer(Size),
+                        Size > 0,
+                        Size =< 134217728,
+                        is_binary(Hash),
+                        byte_size(Hash) =:= 64
+                    ->
+                        {ok, Url, {verified_part, Size, Hash}};
                     #{<<"url">> := Url, <<"filename">> := Filename} when
                         is_binary(Url),
                         is_binary(Filename),
@@ -98,6 +145,149 @@ proxy(Req, Url, Range, Filename) ->
                     reply(Req, 502, #{}, <<>>)
             end
     end.
+
+%% Verify the entire bounded source before returning any part of a historical object.
+verified_part(Req, Url, Range, Size, Hash, AuthorizeUrl, Token, Ticket, Method) ->
+    Lock = {{?MODULE, verified_part}, self()},
+    case global:set_lock(Lock, [node()], 0) of
+        true ->
+            try
+                verified_part_locked(
+                    Req, Url, Range, Size, Hash, AuthorizeUrl, Token, Ticket, Method
+                )
+            after
+                global:del_lock(Lock, [node()])
+            end;
+        false ->
+            reply(Req, 429, #{<<"retry-after">> => <<"1">>}, <<>>)
+    end.
+
+verified_part_locked(Req, Url, Range, Size, Hash, AuthorizeUrl, Token, Ticket, Method) ->
+    Deadline = erlang:monotonic_time(millisecond) + 30000,
+    case talk_record_playback_handler:byte_range(Range, Size) of
+        {ok, Status, Start, Length} ->
+            case
+                httpc:request(
+                    get,
+                    {binary_to_list(Url), []},
+                    [{timeout, 30000}, {connect_timeout, 10000}, {autoredirect, false}],
+                    [{sync, false}, {stream, {self, once}}]
+                )
+            of
+                {ok, Id} ->
+                    try
+                        case verified_collect(Id, Size, Deadline) of
+                            {ok, Bytes} ->
+                                Actual = binary:encode_hex(crypto:hash(sha256, Bytes), lowercase),
+                                case crypto:hash_equals(Actual, Hash) of
+                                    true ->
+                                        case authorize(AuthorizeUrl, Token, Ticket, Method) of
+                                            {ok, _, {verified_part, Size, Hash}} ->
+                                                verified_reply(
+                                                    Req, Status, Start, Length, Size, Bytes
+                                                );
+                                            _ ->
+                                                hidden_deny(Req)
+                                        end;
+                                    false ->
+                                        hidden_deny(Req)
+                                end;
+                            _ ->
+                                hidden_deny(Req)
+                        end
+                    after
+                        httpc:cancel_request(Id)
+                    end;
+                _ ->
+                    hidden_deny(Req)
+            end;
+        _ ->
+            reply(
+                Req,
+                416,
+                #{<<"content-range">> => <<"bytes */", (integer_to_binary(Size))/binary>>},
+                <<>>
+            )
+    end.
+
+verified_collect(Id, Size, Deadline) ->
+    Remaining = max(0, Deadline - erlang:monotonic_time(millisecond)),
+    receive
+        {http, {Id, stream_start, _, Pid}} ->
+            httpc:stream_next(Pid),
+            verified_collect(Id, Pid, Size, 0, [], Deadline);
+        {http, {Id, _}} ->
+            {error, upstream}
+    after Remaining -> {error, timeout}
+    end.
+
+verified_collect(Id, Pid, Size, Seen, Acc, Deadline) ->
+    Remaining = max(0, Deadline - erlang:monotonic_time(millisecond)),
+    receive
+        {http, {Id, stream, Bytes}} when Seen + byte_size(Bytes) =< Size ->
+            httpc:stream_next(Pid),
+            verified_collect(Id, Pid, Size, Seen + byte_size(Bytes), [Bytes | Acc], Deadline);
+        {http, {Id, stream_end, _}} when Seen =:= Size ->
+            {ok, iolist_to_binary(lists:reverse(Acc))};
+        {http, {Id, _}} ->
+            {error, upstream}
+    after Remaining -> {error, timeout}
+    end.
+
+verified_reply(Req, Status, Start, Length, Size, Bytes) ->
+    H0 = #{
+        <<"content-type">> => <<"audio/aac">>,
+        <<"accept-ranges">> => <<"bytes">>,
+        <<"content-length">> => integer_to_binary(Length)
+    },
+    H =
+        case Status of
+            206 ->
+                H0#{
+                    <<"content-range">> =>
+                        <<"bytes ", (integer_to_binary(Start))/binary, "-",
+                            (integer_to_binary(Start + Length - 1))/binary, "/",
+                            (integer_to_binary(Size))/binary>>
+                };
+            _ ->
+                H0
+        end,
+    Headers = maps:merge(private_headers(), H),
+    Reply = cowboy_req:stream_reply(Status, Headers, Req),
+    case cowboy_req:method(Req) of
+        <<"HEAD">> ->
+            Reply;
+        _ ->
+            Owner = self(),
+            Watch = spawn(fun() -> send_deadline(Owner) end),
+            try
+                send_verified(Reply, Bytes, Start, Length),
+                Reply
+            after
+                Watch ! stop
+            end
+    end.
+
+%% stream_body can wait forever for a stalled connection's data_ack.
+send_deadline(Owner) ->
+    Monitor = erlang:monitor(process, Owner),
+    receive
+        stop ->
+            erlang:demonitor(Monitor, [flush]),
+            ok;
+        {'DOWN', Monitor, process, Owner, _} ->
+            ok
+    after 30000 -> exit(Owner, kill)
+    end.
+
+%% Copy each bounded block: Cowboy must not retain the complete verified binary.
+send_verified(Req, _Bytes, _Offset, 0) ->
+    cowboy_req:stream_body(<<>>, fin, Req);
+send_verified(Req, Bytes, Offset, Remaining) ->
+    N = min(65536, Remaining),
+    Chunk = binary:copy(binary:part(Bytes, Offset, N)),
+    ok = cowboy_req:stream_body(Chunk, nofin, Req),
+    send_verified(Req, Bytes, Offset + N, Remaining - N).
 
 normalize_range(undefined) ->
     [];

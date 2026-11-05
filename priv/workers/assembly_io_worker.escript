@@ -22,12 +22,20 @@ main([TaskFile | _]) ->
         {ok, _} = application:ensure_all_started(ssl),
         {ok, Encoded0} = file:read_file(TaskFile),
         Task = binary_to_term(base64:decode(strip_nl(Encoded0))),
+        Deadline = maps:get(deadline_ms, Task),
+        true = is_integer(Deadline) andalso Deadline > 0,
+        spawn(fun() -> receive
+            after Deadline -> halt(124)
+            end end),
         code:add_patha(to_path(maps:get(ebin, Task))),
         [code:add_patha(to_path(P)) || P <- maps:get(code_paths, Task, [])],
         Result =
             case maps:get(action, Task) of
                 fetch -> do_fetch(maps:get(items, Task, []));
-                upload -> do_upload(Task)
+                upload -> do_upload(Task);
+                validate_audio -> validate_audio(Task);
+                render_export -> render_export(Task);
+                upload_export -> render_export(Task)
             end,
         Out = base64:encode(term_to_binary(Result)),
         ok = file:write_file(TaskFile ++ ".out", Out),
@@ -47,18 +55,104 @@ strip_nl(B) -> binary:replace(B, <<"\n">>, <<>>, [global]).
 to_path(P) when is_binary(P) -> binary_to_list(P);
 to_path(P) when is_list(P) -> P.
 
+validate_audio(Task) ->
+    #{
+        url := Url,
+        size := Size,
+        sha256 := Sha,
+        parts := Parts,
+        final := Final,
+        limits := Limits,
+        binding := Binding
+    } = Task,
+    case
+        attachment_artifact_reader:with_signed_source(Url, Size, Sha, fun(Source) ->
+            talk_record_audio_validate:validate(Source, Parts, Final, Limits)
+        end)
+    of
+        {ok, Summary} -> {ok, #{audio_validation => Binding, summary => Summary}};
+        {error, _} = Error -> Error
+    end.
+
+render_export(
+    #{
+        pg_options := Pg,
+        export := Export,
+        revision := Revision,
+        binding := Binding
+    } = Task
+) ->
+    {ok, Conn} = epgsql:connect(Pg),
+    try
+        {ok, [], []} = epgsql:squery(Conn, "BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY"),
+        case talk_record_export_logic:snapshot_tx(Conn, Export) of
+            {ok, #{<<"content">> := Bytes, <<"content_revision">> := Revision}} ->
+                {ok, [], []} = epgsql:squery(Conn, "COMMIT"),
+                Sha = binary:encode_hex(crypto:hash(sha256, Bytes), lowercase),
+                Size = byte_size(Bytes),
+                case maps:get(action, Task) of
+                    render_export ->
+                        {ok, #{export_binding => Binding, size => Size, sha256 => Sha}};
+                    upload_export ->
+                        case {maps:get(expected_sha256, Task), maps:get(expected_size, Task)} of
+                            {Sha, Size} ->
+                                case do_upload_bytes(Task, Bytes) of
+                                    {ok, Result} ->
+                                        case confirm_export_receipt(Conn, Task, Result) of
+                                            ok -> {ok, Result#{export_binding => Binding}};
+                                            Error -> Error
+                                        end;
+                                    Error ->
+                                        Error
+                                end;
+                            _ ->
+                                {error, export_snapshot_mismatch}
+                        end
+                end;
+            {ok, _} ->
+                {error, input_stale};
+            {error, _} = Error ->
+                Error
+        end
+    after
+        epgsql:close(Conn)
+    end.
+
+confirm_export_receipt(Conn, Task, #{sha256 := Sha, size := Size}) ->
+    Sql =
+        "SELECT fn_export_confirm_receipt($1::bigint,$2::bytea,$3::bigint,"
+        "$4::integer,$5::text,$6::text,$7::bigint)",
+    Args = [
+        maps:get(attachment_id, Task),
+        maps:get(receipt_token, Task),
+        maps:get(source_job_id, Task),
+        maps:get(source_attempt, Task),
+        maps:get(object_key, Task),
+        Sha,
+        Size
+    ],
+    case epgsql:equery(Conn, Sql, Args) of
+        {ok, _, [{true}]} -> ok;
+        _ -> {error, export_receipt_unconfirmed}
+    end.
+
 %% parts 按序下载（顺序即拼接序）；逐项 size+sha256 全量校验。
 %% 回执 {ok, #{fetched => N}} 的 N = 实际成功下载项数（C09 修正：原实现
 %% 递归丢弃计数——单 item 成功与空 items 均回 fetched=0，回执无法区分
 %% "全部成功"与"未执行"；失败任一项即整链 {error, _} 非零退出）。
 do_fetch(Items) -> do_fetch(Items, 1).
-do_fetch([], _N) -> {ok, #{fetched => 0}};
+do_fetch([], _N) ->
+    {ok, #{fetched => 0}};
 do_fetch([Item | Rest], N) ->
     Url = maps:get(url, Item),
     Path = to_path(maps:get(path, Item)),
     WantSha = maps:get(sha256_hex, Item),
     WantSize = maps:get(size, Item),
-    case httpc:request(get, {binary_to_list(Url), []}, [{timeout, 60000}, {autoredirect, false}], [{body_format, binary}]) of
+    case
+        httpc:request(get, {binary_to_list(Url), []}, [{timeout, 60000}, {autoredirect, false}], [
+            {body_format, binary}
+        ])
+    of
         {ok, {{_, 200, _}, _, Body}} ->
             Sha = binary:encode_hex(crypto:hash(sha256, Body), lowercase),
             case byte_size(Body) =:= WantSize andalso Sha =:= WantSha of
@@ -81,55 +175,65 @@ do_fetch([Item | Rest], N) ->
 do_upload(Task) ->
     SrcPath = to_path(maps:get(src_path, Task)),
     case file:read_file(SrcPath) of
-        {ok, Bytes} when byte_size(Bytes) > 0 ->
-            Cfg = #{
-                endpoint => maps:get(endpoint, Task),
-                container => maps:get(bucket, Task),
-                access_key => maps:get(ak, Task),
-                secret_key => maps:get(sk, Task),
-                region => maps:get(region, Task, <<"garage">>)
+        {ok, Bytes} when byte_size(Bytes) > 0 -> do_upload_bytes(Task, Bytes);
+        {ok, _} -> {error, empty_source};
+        Error -> {error, {read_source, Error}}
+    end.
+
+do_upload_bytes(Task, Bytes) ->
+    Cfg = #{
+        endpoint => maps:get(endpoint, Task),
+        container => maps:get(bucket, Task),
+        access_key => maps:get(ak, Task),
+        secret_key => maps:get(sk, Task),
+        region => maps:get(region, Task, <<"garage">>)
+    },
+    Ck = base64:encode(crypto:hash(sha256, Bytes)),
+    Mime = maps:get(mime, Task, <<"application/octet-stream">>),
+    Url = elib_s3_sign:presign_signed_url_at(
+        <<"PUT">>,
+        maps:get(endpoint, Cfg),
+        maps:get(container, Cfg),
+        maps:get(object_key, Task),
+        [{<<"content-type">>, Mime}, {<<"x-amz-checksum-sha256">>, Ck}],
+        maps:get(issued_at, Task, calendar:universal_time()),
+        window_seconds(Task),
+        Cfg
+    ),
+    case
+        httpc:request(
+            put,
+            {
+                binary_to_list(Url),
+                [
+                    {"Content-Type", binary_to_list(Mime)},
+                    {"x-amz-checksum-sha256", binary_to_list(Ck)}
+                ],
+                binary_to_list(Mime),
+                Bytes
             },
-            Ck = base64:encode(crypto:hash(sha256, Bytes)),
-            Mime = maps:get(mime, Task, <<"application/octet-stream">>),
-            Url = elib_s3_sign:presign_signed_url_at(
-                <<"PUT">>, maps:get(endpoint, Cfg), maps:get(container, Cfg),
-                maps:get(object_key, Task),
-                [{<<"content-type">>, Mime}, {<<"x-amz-checksum-sha256">>, Ck}],
-                maps:get(issued_at, Task, calendar:universal_time()),
-                window_seconds(Task),
-                Cfg
-            ),
-            case
-                httpc:request(
-                    put,
-                    {binary_to_list(Url),
-                     [{"Content-Type", binary_to_list(Mime)},
-                      {"x-amz-checksum-sha256", binary_to_list(Ck)}],
-                     binary_to_list(Mime), Bytes},
-                    [{timeout, 60000}, {autoredirect, false}],
-                    [{body_format, binary}]
-                )
-            of
-                {ok, {{_, S, _}, _, _}} when S >= 200, S < 300 ->
-                    {ok, #{
-                        sha256 => binary:encode_hex(crypto:hash(sha256, Bytes), lowercase),
-                        size => byte_size(Bytes)
-                    }};
-                {ok, {{_, S, _}, _, B}} ->
-                    {error, {upload_status, S, B}};
-                {error, R} ->
-                    {error, {upload_error, R}}
-            end;
-        {ok, _} ->
-            {error, empty_source};
-        Error ->
-            {error, {read_source, Error}}
+            [{timeout, 60000}, {autoredirect, false}],
+            [{body_format, binary}]
+        )
+    of
+        {ok, {{_, S, _}, _, _}} when S >= 200, S < 300 ->
+            {ok, #{
+                sha256 => binary:encode_hex(crypto:hash(sha256, Bytes), lowercase),
+                size => byte_size(Bytes)
+            }};
+        {ok, {{_, S, _}, _, B}} ->
+            {error, {upload_status, S, B}};
+        {error, R} ->
+            {error, {upload_error, R}}
     end.
 
 window_seconds(Task) ->
     case maps:get(expires_at, Task, undefined) of
-        undefined -> 30;
+        undefined ->
+            30;
         Exp ->
             calendar:datetime_to_gregorian_seconds(Exp) -
-                calendar:datetime_to_gregorian_seconds(maps:get(issued_at, Task, calendar:universal_time()))
+                calendar:datetime_to_gregorian_seconds(
+                    maps:get(issued_at, Task, calendar:universal_time())
+                )
     end.

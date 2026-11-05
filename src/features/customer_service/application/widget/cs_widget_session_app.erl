@@ -353,13 +353,16 @@ asset_presign(OrgId, Params) when is_map(Params) ->
     case visitor_session_scope(OrgId, Params) of
         {error, _} = Err ->
             Err;
-        {ok, #{workspace_id := WorkspaceId, contact_id := ContactId, session := Session}} ->
+        {ok, #{
+            workspace_id := WorkspaceId, contact_id := ContactId, session := Session, token := Token
+        }} ->
             EbParams = cs_widget_support:eb_params(
                 Params,
                 #{
                     workspace_id => WorkspaceId,
                     operation => maps:get(operation, Params, <<"register">>),
                     client_upload_id => maps:get(client_upload_id, Params, undefined),
+                    object_key => maps:get(object_key, Params, undefined),
                     asset_id => maps:get(asset_id, Params, undefined),
                     conversation_id => maps:get(conversation_id, Session),
                     mime => maps:get(mime, Params, undefined),
@@ -372,7 +375,9 @@ asset_presign(OrgId, Params) when is_map(Params) ->
                     %% CSB-02S D6：访客主体（令牌 contact，服务端派生）进企业
                     %% 面的访客作用域分支——企业面 member 校验照旧不放宽。
                     actor_contact_id => ContactId,
-                    visitor_session_id => maps:get(id, Session)
+                    visitor_session_id => maps:get(id, Session),
+                    visitor_token_id => maps:get(id, Token, undefined),
+                    visitor_installation_id => maps:get(installation_id, Params)
                 }
             ),
             case cs_widget_support:eb_request_presign(OrgId, EbParams) of
@@ -389,7 +394,7 @@ asset_presign(_OrgId, _Params) ->
 %% URL）。代理端点不是对象存储——不含 object key / storage 引用，不违反
 %% 「永不出对象 URL」；url 查询串携带 organization_id / installation_id /
 %% upload_ref（裸 PUT 的唯一凭证），FE 检测到 upload.url 即零改动闭环。
-%% base_url 未配置（或非 https）→ 不加 url（fail-closed，与现状同形）。
+%% widget_base_url 未配置（或非 https）→ 不加 url（fail-closed，与现状同形）。
 with_upload_url(OrgId, Params, Session, View) ->
     case upload_proxy_url(OrgId, Params, Session, View) of
         undefined ->
@@ -455,14 +460,20 @@ asset_confirm(OrgId, Params) when is_map(Params) ->
     case visitor_session_scope(OrgId, Params) of
         {error, _} = Err ->
             Err;
-        {ok, #{workspace_id := WorkspaceId, contact_id := ContactId, session := Session}} ->
+        {ok, #{
+            workspace_id := WorkspaceId, contact_id := ContactId, session := Session, token := Token
+        }} ->
             EbParams = cs_widget_support:eb_params(
                 Params,
                 #{
                     workspace_id => WorkspaceId,
                     upload_ref => maps:get(upload_ref, Params, undefined),
+                    object_key => maps:get(object_key, Params, undefined),
+                    attempt_id => maps:get(attempt_id, Params, undefined),
                     asset_id => maps:get(asset_id, Params, undefined),
                     visitor_session_id => maps:get(id, Session),
+                    visitor_token_id => maps:get(id, Token, undefined),
+                    visitor_installation_id => maps:get(installation_id, Params),
                     %% CSB-02S D6：confirm 重新鉴权同样走访客分支。
                     actor_contact_id => ContactId
                 }
@@ -546,7 +557,9 @@ asset_content(OrgId, Params) when is_map(Params) ->
     case visitor_session_scope(OrgId, Params) of
         {error, _} = Err ->
             Err;
-        {ok, #{workspace_id := WorkspaceId, contact_id := ContactId, session := Session}} ->
+        {ok, #{
+            workspace_id := WorkspaceId, contact_id := ContactId, session := Session, token := Token
+        }} ->
             EbParams = cs_widget_support:eb_params(
                 Params,
                 #{
@@ -557,7 +570,9 @@ asset_content(OrgId, Params) when is_map(Params) ->
                     conversation_id => maps:get(conversation_id, Session),
                     %% CSB-02S D6：访客主体走企业面 contact 分支（会话归属门）。
                     actor_contact_id => ContactId,
-                    visitor_session_id => maps:get(id, Session)
+                    visitor_session_id => maps:get(id, Session),
+                    visitor_token_id => maps:get(id, Token),
+                    visitor_installation_id => maps:get(installation_id, Params)
                 }
             ),
             cs_widget_support:eb_content_stream(OrgId, EbParams)

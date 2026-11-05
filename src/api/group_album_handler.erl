@@ -38,8 +38,6 @@ handle_action(create_album, Req, State) -> create_album(Req, State);
 handle_action(list_albums, Req, State) -> list_albums(Req, State);
 handle_action(rename_album, Req, State) -> rename_album(Req, State);
 handle_action(delete_album, Req, State) -> delete_album(Req, State);
-handle_action(upload_photo, Req, State) -> upload_photo(Req, State);
-handle_action(batch_upload, Req, State) -> batch_upload(Req, State);
 handle_action(bind_photo, Req, State) -> bind_photo(Req, State);
 handle_action(bind_batch, Req, State) -> bind_batch(Req, State);
 handle_action(list_photos, Req, State) -> list_photos(Req, State);
@@ -207,12 +205,12 @@ bind_photo(Req0, State) ->
     CurrentUid = maps:get(current_uid, State),
     {ok, Body, Req1} = elib_req:body(Req0, []),
     Gid = elib_cnv:safe_to_integer(maps:get(<<"gid">>, Body, 0)),
-    AlbumId = elib_cnv:safe_to_integer(maps:get(<<"album_id">>, Body, 0)),
+    AlbumId = maps:get(<<"album_id">>, Body, <<>>),
     ObjectKey = maps:get(<<"object_key">>, Body, <<>>),
     case {Gid, AlbumId, ObjectKey} of
         {0, _, _} ->
             elib_response:error(Req1, <<"群组ID不能为空"/utf8>>, ?ERR_BAD_REQUEST);
-        {_, 0, _} ->
+        {_, Id, _} when not is_binary(Id); Id =:= <<>> ->
             elib_response:error(Req1, <<"相册ID不能为空"/utf8>>, ?ERR_BAD_REQUEST);
         {_, _, <<>>} ->
             elib_response:error(Req1, <<"object_key不能为空"/utf8>>, ?ERR_BAD_REQUEST);
@@ -256,198 +254,9 @@ fmt_reason(F, Reason, Default, Req) ->
     ?ERROR_LOG(["group_album ", F, " failed: ", Reason]),
     elib_response:error(Req, Default, ?ERR_BAD_REQUEST).
 
--spec upload_photo(cowboy_req:req(), map()) -> cowboy_req:req().
-upload_photo(Req0, State) ->
-    CurrentUid = maps:get(current_uid, State),
-
-    ContentType = cowboy_req:header(<<"content-type">>, Req0, <<>>),
-    case binary:match(ContentType, <<"multipart/form-data">>) of
-        nomatch ->
-            % 处理 JSON 请求（base64 编码的图片）
-            upload_photo_json(Req0, CurrentUid);
-        _ ->
-            upload_photo_multipart(Req0, CurrentUid)
-    end.
-
-%% @doc 上传图片（multipart/form-data）
--spec upload_photo_multipart(cowboy_req:req(), integer()) -> cowboy_req:req().
-upload_photo_multipart(Req0, CurrentUid) ->
-    case read_upload_multipart(Req0, #{}) of
-        {ok, Parts, Req1} ->
-            Gid = maps:get(gid, Parts, <<>>),
-            AlbumId = maps:get(album_id, Parts, <<>>),
-            PhotoBinary = maps:get(photo_binary, Parts, <<>>),
-            PhotoName = maps:get(photo_name, Parts, <<"photo.jpg">>),
-
-            case {Gid, AlbumId, PhotoBinary} of
-                {<<>>, _, _} ->
-                    elib_response:error(Req1, <<"群组ID不能为空"/utf8>>, ?ERR_BAD_REQUEST);
-                {_, <<>>, _} ->
-                    elib_response:error(Req1, <<"相册ID不能为空"/utf8>>, ?ERR_BAD_REQUEST);
-                {_, _, <<>>} ->
-                    elib_response:error(Req1, <<"请上传图片文件"/utf8>>, ?ERR_BAD_REQUEST);
-                _ ->
-                    case
-                        group_album_logic:upload_photo(
-                            Gid, CurrentUid, AlbumId, PhotoBinary, PhotoName
-                        )
-                    of
-                        {ok, PhotoData} ->
-                            elib_response:success(Req1, PhotoData, <<"上传成功"/utf8>>);
-                        {error, <<"相册不存在"/utf8>>} ->
-                            elib_response:error(Req1, <<"相册不存在"/utf8>>, ?ERR_ALBUM_NOT_FOUND);
-                        {error, <<"相册权限不足"/utf8>>} ->
-                            elib_response:error(
-                                Req1, <<"相册权限不足"/utf8>>, ?ERR_ALBUM_PERMISSION_DENIED
-                            );
-                        {error, ?ERR_WORKSPACE_ARCHIVED} ->
-                            elib_response:error(
-                                Req1, error_msg(?ERR_WORKSPACE_ARCHIVED), ?ERR_WORKSPACE_ARCHIVED
-                            );
-                        {error, Reason} ->
-                            elib_response:error(
-                                Req1,
-                                fmt_reason(upload_photo, Reason, <<"上传失败"/utf8>>),
-                                ?ERR_INTERNAL_SERVER_ERROR
-                            )
-                    end
-            end;
-        {error, malformed_multipart, Req1} ->
-            elib_response:error(Req1, <<"请求体格式错误"/utf8>>, ?ERR_BAD_REQUEST)
-    end.
-
-%% @doc 上传图片（JSON + base64）
--spec upload_photo_json(cowboy_req:req(), integer()) -> cowboy_req:req().
-upload_photo_json(Req0, CurrentUid) ->
-    {ok, Body, Req1} = elib_req:body(Req0, []),
-
-    Gid = maps:get(<<"gid">>, Body, <<>>),
-    AlbumId = maps:get(<<"album_id">>, Body, <<>>),
-    PhotoBase64 = maps:get(<<"photo">>, Body, <<>>),
-    PhotoName = maps:get(<<"photo_name">>, Body, <<"photo.jpg">>),
-
-    % 验证参数
-    case {Gid, AlbumId, PhotoBase64} of
-        {<<>>, _, _} ->
-            elib_response:error(Req1, <<"群组ID不能为空"/utf8>>, ?ERR_BAD_REQUEST);
-        {_, <<>>, _} ->
-            elib_response:error(Req1, <<"相册ID不能为空"/utf8>>, ?ERR_BAD_REQUEST);
-        {_, _, <<>>} ->
-            elib_response:error(Req1, <<"图片数据不能为空"/utf8>>, ?ERR_BAD_REQUEST);
-        _ ->
-            % 解码 base64
-            try base64:decode(PhotoBase64) of
-                PhotoBinary ->
-                    case
-                        group_album_logic:upload_photo(
-                            Gid, CurrentUid, AlbumId, PhotoBinary, PhotoName
-                        )
-                    of
-                        {ok, PhotoData} ->
-                            elib_response:success(Req1, PhotoData, <<"上传成功"/utf8>>);
-                        {error, <<"相册不存在"/utf8>>} ->
-                            elib_response:error(Req1, <<"相册不存在"/utf8>>, ?ERR_ALBUM_NOT_FOUND);
-                        {error, <<"相册权限不足"/utf8>>} ->
-                            elib_response:error(
-                                Req1, <<"相册权限不足"/utf8>>, ?ERR_ALBUM_PERMISSION_DENIED
-                            );
-                        {error, ?ERR_WORKSPACE_ARCHIVED} ->
-                            elib_response:error(
-                                Req1, error_msg(?ERR_WORKSPACE_ARCHIVED), ?ERR_WORKSPACE_ARCHIVED
-                            );
-                        {error, Reason} ->
-                            elib_response:error(
-                                Req1,
-                                fmt_reason(upload_photo_json, Reason, <<"上传失败"/utf8>>),
-                                ?ERR_INTERNAL_SERVER_ERROR
-                            )
-                    end
-            catch
-                _:_ ->
-                    elib_response:error(Req1, <<"图片数据格式错误"/utf8>>, ?ERR_BAD_REQUEST)
-            end
-    end.
-
-%% @doc 读取 multipart 上传字段
--spec read_upload_multipart(cowboy_req:req(), map()) ->
-    {ok, map(), cowboy_req:req()} | {error, malformed_multipart, cowboy_req:req()}.
-read_upload_multipart(Req0, Acc0) ->
-    case cowboy_req:read_part(Req0) of
-        {done, Req1} ->
-            {ok, Acc0, Req1};
-        {ok, Headers, Req1} ->
-            case read_part_body_all(Req1, <<>>) of
-                {ok, Data, Req2} ->
-                    try cow_multipart:form_data(Headers) of
-                        {data, <<"gid">>} ->
-                            read_upload_multipart(Req2, Acc0#{gid => Data});
-                        {data, <<"album_id">>} ->
-                            read_upload_multipart(Req2, Acc0#{album_id => Data});
-                        {data, <<"photo_name">>} ->
-                            read_upload_multipart(Req2, Acc0#{photo_name => Data});
-                        {file, _Field, FileName, _ContentType} ->
-                            Acc1 = Acc0#{
-                                photo_binary => Data,
-                                photo_name => maps:get(photo_name, Acc0, FileName)
-                            },
-                            read_upload_multipart(Req2, Acc1);
-                        _ ->
-                            read_upload_multipart(Req2, Acc0)
-                    catch
-                        _:_ ->
-                            {error, malformed_multipart, Req2}
-                    end;
-                {error, malformed_multipart, Req2} ->
-                    {error, malformed_multipart, Req2}
-            end
-    end.
-
-%% @doc 读取完整 part body（处理 read_part_body/2 的 more 场景）
--spec read_part_body_all(cowboy_req:req(), binary()) ->
-    {ok, binary(), cowboy_req:req()} | {error, malformed_multipart, cowboy_req:req()}.
-read_part_body_all(Req0, Acc0) ->
-    try cowboy_req:read_part_body(Req0, #{length => 20971520, period => 5000}) of
-        {ok, Data, Req1} ->
-            {ok, <<Acc0/binary, Data/binary>>, Req1};
-        {more, Data, Req1} ->
-            read_part_body_all(Req1, <<Acc0/binary, Data/binary>>)
-    catch
-        _:_ ->
-            {error, malformed_multipart, Req0}
-    end.
-
-%% @doc 批量上传图片
-%% @param Req0 Cowboy请求对象
-%% @param State 状态映射
-%% @return 处理后的请求对象
--spec batch_upload(cowboy_req:req(), map()) -> cowboy_req:req().
-batch_upload(Req0, State) ->
-    CurrentUid = maps:get(current_uid, State),
-    {ok, Body, Req1} = elib_req:body(Req0, []),
-
-    Gid = maps:get(<<"gid">>, Body, <<>>),
-    Photos = maps:get(<<"photos">>, Body, []),
-
-    % 验证参数
-    case Gid of
-        <<>> ->
-            elib_response:error(Req1, <<"群组ID不能为空"/utf8>>, ?ERR_BAD_REQUEST);
-        _ ->
-            case group_album_logic:batch_upload_photos(Gid, CurrentUid, Photos) of
-                {ok, Results} ->
-                    elib_response:success(Req1, #{results => Results}, <<"批量上传完成"/utf8>>);
-                {error, ?ERR_WORKSPACE_ARCHIVED} ->
-                    elib_response:error(
-                        Req1, error_msg(?ERR_WORKSPACE_ARCHIVED), ?ERR_WORKSPACE_ARCHIVED
-                    );
-                {error, Reason} ->
-                    elib_response:error(
-                        Req1,
-                        fmt_reason(batch_upload, Reason, <<"批量上传失败"/utf8>>),
-                        ?ERR_INTERNAL_SERVER_ERROR
-                    )
-            end
-    end.
+%% C08（V3-12）：旧正文上传入口（photo/upload 的 multipart+base64 双形态、
+%% photo/batch）已退役；相册唯一引用入口为 bind_photo/bind_batch
+%% （direct-v1 confirmed 逻辑引用绑定）。
 
 %% @doc 查询图片列表
 %% @param Req0 Cowboy请求对象

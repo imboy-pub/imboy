@@ -42,18 +42,39 @@ cleanup(S) ->
 run(S) ->
     C = maps:get(conn, S),
     ?assertEqual(true, maps:get(<<"asr_enabled">>, talk_record_ds:capabilities())),
+    ?assertEqual(
+        {error, audio_source_denied},
+        talk_record_processor_audio:with_audio(0, fun(_) -> error(unexpected_audio) end)
+    ),
     {Rid, Assembly} = talk_record_assembly_relay_tests:fixture(
         C, talk_record_assembly_relay_tests:tone(), 971
     ),
     {ok, published} = talk_record_assembly_job:run(Assembly),
+    {ok, Published} = talk_record_assembly_logic:find_tx(C, Rid),
+    AudioId = maps:get(<<"audio_attachment_id">>, Published),
+    meck:new(attachment_worker_port, [passthrough]),
+    try
+        meck:expect(attachment_worker_port, fetch_files, fun(_) -> {ok, #{fetched => 0}} end),
+        ?assertEqual(
+            {error, worker_incomplete_fetch},
+            talk_record_processor_audio:with_audio(AudioId, fun(_) -> error(unexpected_audio) end)
+        )
+    after
+        meck:unload(attachment_worker_port)
+    end,
     {ok, J} = model_job(C, Rid, <<"transcribe">>, <<"summarize">>, 1),
     {ok, 1} = elib_pg:execute(
         C,
         <<"UPDATE talk_record_job SET state='queued',lease_token=NULL,lease_owner=NULL,lease_until=NULL WHERE id=$1">>,
         [maps:get(<<"id">>, J)]
     ),
+    TranscribeResult = talk_record_job_worker:run_once(),
+    {ok, [TranscribeState]} = elib_pg:query(
+        C, <<"SELECT state,error_code FROM talk_record_job WHERE id=$1">>, [maps:get(<<"id">>, J)]
+    ),
     ?assertMatch(
-        {ok, #{outcome := succeeded, kind := <<"transcribe">>}}, talk_record_job_worker:run_once()
+        {{ok, #{outcome := succeeded, kind := <<"transcribe">>}}, #{<<"state">> := <<"succeeded">>}},
+        {TranscribeResult, TranscribeState}
     ),
     {ok, T} = talk_record_transcript_repo:find_current_tx(C, Rid, <<"t.id,t.version,t.status">>),
     ?assertEqual(1, maps:get(<<"version">>, T)),

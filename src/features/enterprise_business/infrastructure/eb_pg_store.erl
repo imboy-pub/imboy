@@ -852,7 +852,11 @@ insert_hold(OrgId, WorkspaceId, Hold) when is_map(Hold) ->
             eb_pg_store_sql:nullify(maps:get(actor_user_id, Hold, undefined))
         ],
         HoldId = maps:get(id, Hold, undefined),
-        case execute_insert(eb_pg_store_sql:sql(insert_hold), Params) of
+        case
+            elib_pg:with_physical_guard_retry_tx(fun(Conn) ->
+                run_execute(Conn, eb_pg_store_sql:sql(insert_hold), Params)
+            end)
+        of
             {ok, _Inserted} ->
                 fetch_hold(OrgId, WorkspaceId, HoldId);
             {error, no_row} ->

@@ -126,6 +126,71 @@ stream_bytes_and_revocation_test_() ->
         end)
     end}.
 
+edge_source_gate_test_() ->
+    {setup, fun stream_setup/0, fun stream_cleanup/1, fun(_) ->
+        ?_test(begin
+            Mods = [
+                attachment_repo,
+                attachment_storage,
+                attachment_storage_garage,
+                attachment_edge_redirect
+            ],
+            [meck:new(M, [passthrough, no_link]) || M <- Mods],
+            try
+                meck:expect(attachment_repo, verify_direct_winner_tx, fun(_, _) -> ok end),
+                meck:expect(attachment_storage, frozen_location, fun(_, _) ->
+                    {ok, #{driver => garage}}
+                end),
+                meck:expect(attachment_storage_garage, presign_snapshot, fun(_, _) ->
+                    {ok, <<"direct-url">>}
+                end),
+                meck:expect(attachment_edge_redirect, presign_attachment, fun(_, _) ->
+                    {ok, <<"legacy-url">>}
+                end),
+                ?assertEqual(
+                    {ok, <<"direct-url">>}, talk_record_playback_stream:edge_target(ticket())
+                ),
+                meck:expect(attachment_repo, verify_direct_winner_tx, fun(_, _) ->
+                    {error, not_confirmed}
+                end),
+                meck:expect(elib_pg, query, fun(_, Sql, _) ->
+                    case binary:match(Sql, <<"SELECT EXISTS">>) of
+                        nomatch -> {ok, [published_row()]};
+                        _ -> {ok, [#{<<"direct">> => false}]}
+                    end
+                end),
+                ?assertEqual(
+                    {ok, <<"legacy-url">>}, talk_record_playback_stream:edge_target(ticket())
+                ),
+                meck:expect(elib_pg, query, fun(_, Sql, _) ->
+                    case binary:match(Sql, <<"SELECT EXISTS">>) of
+                        nomatch -> {ok, [published_row()]};
+                        _ -> {ok, [#{<<"direct">> => true}]}
+                    end
+                end),
+                ?assertEqual(
+                    {error, not_confirmed}, talk_record_playback_stream:edge_target(ticket())
+                ),
+                ?assertEqual(1, meck:num_calls(attachment_edge_redirect, presign_attachment, '_')),
+                meck:expect(elib_pg, query, fun(_, Sql, _) ->
+                    case binary:match(Sql, <<"SELECT EXISTS">>) of
+                        nomatch -> {ok, [published_row()]};
+                        _ -> {error, db_unavailable}
+                    end
+                end),
+                ?assertEqual(
+                    {error, db_unavailable}, talk_record_playback_stream:edge_target(ticket())
+                ),
+                meck:expect(talk_record_repo, find_visible, fun(_, _) -> {error, not_found} end),
+                ?assertMatch({error, _}, talk_record_playback_stream:edge_target(ticket())),
+                ?assertEqual(1, meck:num_calls(attachment_edge_redirect, presign_attachment, '_')),
+                ?assertEqual(1, meck:num_calls(attachment_storage_garage, presign_snapshot, '_'))
+            after
+                [meck:unload(M) || M <- Mods]
+            end
+        end)
+    end}.
+
 stream_setup() ->
     Prev = setup(),
     put(stream_bytes, []),

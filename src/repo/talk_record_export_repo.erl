@@ -10,6 +10,7 @@
     expire_tx/2,
     sweep_expired_tx/1,
     lock_record_tx/2,
+    lock_record_metadata_tx/2,
     grant_export_tx/3,
     lock_job_tx/2,
     artifact_tx/2,
@@ -119,6 +120,13 @@ sweep_expired_tx(Conn) ->
 
 lock_record_tx(Conn, Rid) ->
     one(Conn, <<"SELECT * FROM talk_record WHERE id=$1 AND deleted_at IS NULL FOR UPDATE">>, [Rid]).
+
+lock_record_metadata_tx(Conn, Rid) ->
+    one(
+        Conn,
+        <<"SELECT id,content_revision FROM talk_record WHERE id=$1 AND deleted_at IS NULL FOR UPDATE">>,
+        [Rid]
+    ).
 
 grant_export_tx(Conn, Rid, Uid) ->
     case

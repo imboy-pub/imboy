@@ -1,18 +1,19 @@
 -module(group_file_ds).
 -moduledoc "群文件领域服务 / group file domain service。".
--dialyzer({nowarn_function, [upload_file/5]}).
 %%%
 % group_file_ds 是 group file domain service 缩写
 % 群文件数据服务层，封装群文件业务逻辑和数据访问
 %
-% T7 归档写守卫（P0 后续批）：上传/删除为内容写——upload_file 的 OSS 上传
-% 是对外副作用，无法进 DB 事务，故在动 Garage 之前 ensure_writable 预检
-% （归档后零上传），落库在同一守卫事务内；delete_file 同事务守卫；
-% download_file 的下载计数是派生读写（freeze：归档跳过计数，下载读取
-% 在有效成员授权后允许归档工作区只读）；soft_delete（adm 治理 G3 入口）同事务守卫。
+% T7 归档写守卫（P0 后续批）：内容写入口经 workspace_guard 同事务守卫；
+% delete_file 同事务守卫；download_file 的下载计数是派生读写（freeze：
+% 归档跳过计数，下载读取在有效成员授权后允许归档工作区只读）；
+% soft_delete（adm 治理 G3 入口）同事务守卫。
+%
+% C08（V3-12）：multipart 正文上传（upload_file，"登记即绑定"旧链）已
+% 退役；群文件唯一引用入口为 bind_file（direct-v1 confirmed 逻辑引用绑定，
+% T27 资格硬校验）。
 %%%
 
--export([upload_file/5]).
 -export([bind_file/7]).
 -export([download_file/2]).
 -export([delete_file/2]).
@@ -38,150 +39,6 @@
 %% ===================================================================
 %% API 函数
 %% ===================================================================
-
-%% @doc 上传文件到群文件
-%% @param Gid 群组ID
-%% @param UploaderId 上传者ID
-%% @param FileName 文件名
-%% @param FileBinary 文件二进制数据
-%% @param FileType MIME类型
-%% @return {ok, FileId} | {error, Reason}
--spec upload_file(integer(), integer(), binary(), binary(), binary()) ->
-    {ok, binary()} | {error, term()}.
-upload_file(Gid, UploaderId, FileName, FileBinary, FileType) ->
-    % 1. 验证群成员身份
-    case has_file_access(Gid, UploaderId) of
-        false ->
-            {error, not_member};
-        true ->
-            % 2. 验证文件类型
-            case elib_oss:validate_file_type(FileType) of
-                false ->
-                    {error, invalid_file_type};
-                true ->
-                    % 3. T7 归档写守卫（OSS 前预检）：OSS 上传是对外副作用，无法进
-                    %    DB 事务——归档群在动 Garage 之前稳定拒绝（980），
-                    %    确保归档后零上传副作用。
-                    case workspace_guard:ensure_writable({group, Gid}) of
-                        {error, Reason} ->
-                            {error, Reason};
-                        ok ->
-                            do_upload_file(
-                                Gid, UploaderId, FileName, FileBinary, FileType
-                            )
-                    end
-            end
-    end.
-
-%% @doc 复用附件 V5 会话登记和统一 Storage Driver；失败会话由 pending 清理器回收。
--spec do_upload_file(integer(), integer(), binary(), binary(), binary()) ->
-    {ok, binary()} | {error, term()}.
-do_upload_file(Gid, UploaderId, FileName, FileBinary, FileType) ->
-    case byte_size(FileBinary) > elib_oss:max_file_size() of
-        true ->
-            {error, file_too_large};
-        false ->
-            Cid = elib_uuid:gen_v7(),
-            case
-                attach_logic:presign(
-                    UploaderId,
-                    FileName,
-                    FileType,
-                    <<"group">>,
-                    integer_to_binary(Gid),
-                    Cid
-                )
-            of
-                {ok, #{<<"object_key">> := ObjectKey}} ->
-                    case
-                        attachment_upload_logic:upload_binary(
-                            UploaderId, ObjectKey, FileType, FileBinary
-                        )
-                    of
-                        {ok, _} ->
-                            case attach_logic:prepare_group_file_confirmation(ObjectKey) of
-                                {ok, Proof} ->
-                                    save_uploaded_file(
-                                        Gid,
-                                        UploaderId,
-                                        FileName,
-                                        FileBinary,
-                                        FileType,
-                                        ObjectKey,
-                                        Proof
-                                    );
-                                {error, _} = Error ->
-                                    Error
-                            end;
-                        {error, _} = Error ->
-                            Error
-                    end;
-                {error, _} = Error ->
-                    Error
-            end
-    end.
-
-save_uploaded_file(Gid, UploaderId, FileName, FileBinary, FileType, ObjectKey, Proof) ->
-    %% group_file_url 当前全子句返回 {ok, binary()}；断言匹配让未来新增
-    %% 错误路径 fail-fast，而不是留下 Dialyzer 可证的死分支。
-    {ok, FileUrl} = group_file_url(ObjectKey, Proof),
-    save_uploaded_file_tx(
-        Gid, UploaderId, FileName, FileBinary, FileType, ObjectKey, Proof, FileUrl
-    ).
-
-group_file_url(ObjectKey, #{stat := #{snapshot := #{driver := garage, container := Bucket}}}) when
-    is_binary(Bucket), Bucket =/= <<>>
-->
-    Endpoint = elib_oss:public_endpoint(),
-    {ok, <<Endpoint/binary, "/", Bucket/binary, "/", ObjectKey/binary>>};
-group_file_url(ObjectKey, #{stat := #{snapshot := #{driver := disk}}}) ->
-    {ok, ObjectKey}.
-
-save_uploaded_file_tx(Gid, UploaderId, FileName, FileBinary, FileType, ObjectKey, Proof, FileUrl) ->
-    FileId = elib_oss:generate_file_id(),
-    Now = elib_dt:now(),
-    Data = #{
-        group_id => Gid,
-        file_id => FileId,
-        file_name => FileName,
-        file_size => byte_size(FileBinary),
-        file_type => FileType,
-        file_category => atom_to_binary(elib_oss:get_file_category(FileType), utf8),
-        file_url => FileUrl,
-        file_hash => binary:encode_hex(erlang:md5(FileBinary)),
-        uploader_id => UploaderId,
-        download_count => 0,
-        status => 1,
-        created_at => Now,
-        updated_at => Now
-    },
-    %% 群文件与附件授权记录必须一起提交；任一失败保留 pending。
-    elib_pg:with_deadlock_retry_tx(fun(Conn) ->
-        ok = workspace_guard:abort_on_error(
-            attachment_ds:ensure_upload_scope_tx_retryable(Conn, {group, Gid}, UploaderId)
-        ),
-        case attach_pending_repo:lock_session_tx(Conn, ObjectKey) of
-            {ok, not_found} -> throw({abort_tx, session_vanished});
-            {ok, _} -> ok;
-            {error, LockReason} -> throw({abort_tx, LockReason})
-        end,
-        case attachment_repo:confirmation_row_tx(Conn, ObjectKey) of
-            {ok, not_found} -> ok;
-            {ok, _} -> throw({abort_tx, attachment_already_confirmed});
-            {error, RowReason} -> throw({abort_tx, RowReason})
-        end,
-        case group_file_repo:insert_tx(Conn, Data) of
-            {ok, GroupFileId} ->
-                ok = attach_logic:confirm_group_file_tx(
-                    Conn, ObjectKey, Gid, UploaderId, GroupFileId, Proof
-                ),
-                {ok, _} = attachment_repo:refresh_gc_verified_tx(Conn, ObjectKey),
-                ok = audit_file_tx(Conn, Gid, UploaderId, GroupFileId, <<"file.uploaded">>),
-                {ok, FileId};
-            {error, Reason} ->
-                throw({abort_tx, Reason})
-        end
-    end).
 
 %% ===================================================================
 %% direct-v1 确认引用绑定（step-11，协议 §2/§6）：正文经 direct-v1 已
@@ -281,6 +138,9 @@ do_bind_file(Gid, UploaderId, FileName, FileType, ObjectKey, FileSize, FileHashH
         ok = workspace_guard:abort_on_error(
             attachment_repo:bind_reference_lock_tx(Conn, ObjectKey)
         ),
+        ok = workspace_guard:abort_on_error(
+            attachment_repo:verify_direct_winner_tx(Conn, ObjectKey)
+        ),
         case ensure_bindable_reference(Conn, ObjectKey, UploaderId, Gid) of
             {ok, Row} ->
                 ok = validate_bind_metadata(Row, FileType, FileSize, FileHashHex),
@@ -340,7 +200,11 @@ bind_locked(
     _Size,
     _Hash
 ) when ExistingId =/= null ->
-    case elib_pg:query(Conn, <<"SELECT file_id FROM group_file WHERE id=$1">>, [ExistingId]) of
+    case
+        elib_pg:query(Conn, <<"SELECT file_id FROM group_file WHERE id=$1 AND status=1">>, [
+            ExistingId
+        ])
+    of
         {ok, [#{<<"file_id">> := ExistingBizId}]} ->
             {ok, ExistingBizId};
         {ok, []} ->

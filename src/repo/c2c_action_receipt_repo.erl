@@ -6,6 +6,13 @@
     {ok, new | duplicate} | {error, conflict | term()}.
 accept(RequestId, OriginalMsgId, ActorUid, PeerUid, Action, ContentHash) ->
     elib_pg:with_tx(fun(Conn) ->
+        Lock = <<"c2c_forward_revoke:", OriginalMsgId/binary>>,
+        case
+            elib_pg:query(Conn, <<"SELECT pg_advisory_xact_lock(hashtextextended($1,0))">>, [Lock])
+        of
+            {ok, _} -> ok;
+            {error, Reason0} -> throw({rollback, {revoke_lock_failed, Reason0}})
+        end,
         Sql =
             <<"INSERT INTO public.c2c_action_receipt ",
                 "(request_id,original_msg_id,actor_uid,peer_uid,action,content_sha256) ",

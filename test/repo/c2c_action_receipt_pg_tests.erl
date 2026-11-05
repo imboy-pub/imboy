@@ -7,6 +7,7 @@ c2c_action_receipt_pg_test_() ->
         {setup, fun setup/0, fun cleanup/1, fun(_State) ->
             [
                 ?_test(authenticity_and_replay()),
+                ?_test(forward_revoke_serializes()),
                 ?_test(concurrent_single_consumer()),
                 ?_test(missing_target_keeps_receipt()),
                 ?_test(worker_reconciles_stale_snapshot())
@@ -90,6 +91,63 @@ authenticity_and_replay() ->
         c2c_action_receipt_repo:consume(Request, Original, 202, <<"edit">>, Hash, Result)
     ).
 
+forward_revoke_serializes() ->
+    Original = <<"forward-lock-original">>,
+    Request = <<"forward-lock-request">>,
+    insert_formal(Original, <<"old">>),
+    {ok, [#{<<"conv_seq">> := Seq}]} = elib_pg:query(
+        <<"SELECT conv_seq FROM public.msg_c2c WHERE msg_id=$1">>, [Original]
+    ),
+    {ok, 1} = elib_pg:execute_count(
+        <<"INSERT INTO public.c2c_forward_source_fact(msg_id,sender_id,recipient_id,conv_seq) VALUES($1,101,202,$2)">>,
+        [Original, Seq]
+    ),
+    Parent = self(),
+    Gate = spawn(fun() ->
+        Result = elib_pg:with_tx(fun(C) ->
+            ok = forward_attachment_source_repo:c2c_tx(C, Original, 101),
+            Parent ! {forward_lock_held, self()},
+            receive
+                release_forward_lock -> ok
+            after 10000 -> error(lock_release_timeout)
+            end
+        end),
+        Parent ! {forward_lock_result, Result}
+    end),
+    receive
+        {forward_lock_held, Gate} -> ok
+    after 10000 -> error(lock_wait_timeout)
+    end,
+    Revoke = spawn(fun() ->
+        Parent ! {forward_revoke_trying, self()},
+        Parent !
+            {forward_revoke_result,
+                c2c_action_receipt_repo:accept(
+                    Request, Original, 101, 202, <<"revoke">>, null
+                )}
+    end),
+    receive
+        {forward_revoke_trying, Revoke} -> ok
+    after 10000 -> error(revoke_start_timeout)
+    end,
+    receive
+        {forward_revoke_result, Unexpected} -> error({revoke_crossed_lock, Unexpected})
+    after 200 -> ok
+    end,
+    Gate ! release_forward_lock,
+    receive
+        {forward_lock_result, ok} -> ok
+    after 10000 -> error(lock_finish_timeout)
+    end,
+    receive
+        {forward_revoke_result, {ok, new}} -> ok
+    after 10000 -> error(revoke_finish_timeout)
+    end,
+    ?assertEqual(
+        {error, forbidden},
+        elib_pg:with_tx(fun(C) -> forward_attachment_source_repo:c2c_tx(C, Original, 101) end)
+    ).
+
 concurrent_single_consumer() ->
     Original = <<"ack-race-original">>,
     Request = <<"ack-race-request">>,
@@ -161,7 +219,12 @@ insert_formal(MsgId, Payload) ->
         %% conv_seq 带 monotonic：c2c_order_write_guard 要求新行 seq 严格大于
         %% 同 pair 既有最大值，无 monotonic 的 unique_integer 不保证递增，
         %% 概率性回退即触发 c2c_order_conflict（run 41424669122 实证）。
-        [erlang:unique_integer([positive]), MsgId, Payload, erlang:unique_integer([positive, monotonic])]
+        [
+            erlang:unique_integer([positive]),
+            MsgId,
+            Payload,
+            erlang:unique_integer([positive, monotonic])
+        ]
     ),
     ok.
 
@@ -170,7 +233,12 @@ insert_staging(MsgId, Payload) ->
         <<"INSERT INTO public.msg_store_staging ",
             "(id,type,msg_id,msg_type,payload,from_id,to_id,conv_seq) ",
             "VALUES($1,'c2c',$2,'text',$3::jsonb,101,202,$4)">>,
-        [erlang:unique_integer([positive]), MsgId, Payload, erlang:unique_integer([positive, monotonic])]
+        [
+            erlang:unique_integer([positive]),
+            MsgId,
+            Payload,
+            erlang:unique_integer([positive, monotonic])
+        ]
     ),
     ok.
 

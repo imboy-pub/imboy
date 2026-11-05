@@ -19,6 +19,7 @@
 -export([
     register/6,
     scan_confirmed/4,
+    bind_confirmed/7,
     read_fun_from_snapshot/1
 ]).
 
@@ -51,7 +52,13 @@ register(OrgId, Subject, FileName, ClientUploadId, _Mime, _Purpose) ->
     {ok, map()} | {error, term()}.
 scan_confirmed(ObjectKey, Mime, Secret, BudgetMs) ->
     case direct_session_row(ObjectKey) of
-        {ok, Row = #{<<"direct_state">> := <<"CONFIRMED">>}} ->
+        {ok,
+            Row = #{
+                <<"direct_state">> := <<"CONFIRMED">>,
+                <<"mime_type">> := Mime,
+                <<"file_hash256">> := ExpectedSha,
+                <<"size">> := ExpectedSize
+            }} ->
             case attachment_storage:frozen_location(ObjectKey, Row) of
                 {ok, I = #{garage_config := Cfg}} when is_map(I) ->
                     %% V3-17：正文读移出 BEAM——外部 OS Worker（Range GET 流式
@@ -76,8 +83,35 @@ scan_confirmed(ObjectKey, Mime, Secret, BudgetMs) ->
                         deadline_ms => Budget
                     },
                     case attachment_worker_port:scan_external(Task) of
-                        {ok, Res = #{verified := true}} ->
-                            {ok, Res};
+                        {ok,
+                            Res = #{
+                                verified := true,
+                                sha256 := ExpectedSha,
+                                size := ExpectedSize,
+                                receipt := Receipt
+                            }} ->
+                            Expected = #{
+                                attempt_key => AttemptKey,
+                                object_key => maps:get(key, I),
+                                sha256 => ExpectedSha,
+                                size => ExpectedSize,
+                                mime => Mime,
+                                ruleset_digest => attachment_content_receipt:ruleset_digest()
+                            },
+                            case
+                                attachment_content_receipt:verify_with_expiry(
+                                    Receipt, Secret, Expected
+                                )
+                            of
+                                {ok, ExpiresAt} ->
+                                    {ok, Res#{
+                                        receipt_expires_at => ExpiresAt,
+                                        ruleset_digest => maps:get(ruleset_digest, Expected),
+                                        winner_fence => winner_fence(Row)
+                                    }};
+                                {error, Reason} ->
+                                    {error, {receipt, Reason}}
+                            end;
                         {ok, _} ->
                             %% port 层已验证但未回 verified 标记（不可达防御）
                             {error, {receipt, unverified}};
@@ -91,6 +125,54 @@ scan_confirmed(ObjectKey, Mime, Secret, BudgetMs) ->
             {error, not_confirmed};
         {error, R} ->
             {error, R}
+    end.
+
+%% The subject must come from the authenticated EB/CS request, never from the body.
+-spec bind_confirmed(
+    integer(),
+    integer(),
+    integer(),
+    binary(),
+    map(),
+    binary(),
+    non_neg_integer() | infinity
+) -> {ok, integer()} | {error, term()}.
+bind_confirmed(Org, Workspace, AssetId, ObjectKey, Subject, Mime, _Budget) ->
+    case eb_infra_ports:resolve(asset) of
+        {ok, Asset} ->
+            case Asset:direct_proof(Org, Workspace, AssetId) of
+                {ok, #{
+                    <<"fence">> := Fence,
+                    <<"receipt_sha256">> := ReceiptSha,
+                    <<"ruleset_sha256">> := Ruleset,
+                    <<"expires_at">> := Expiry
+                }} ->
+                    case
+                        {
+                            maps:get(<<"object_key">>, Fence, undefined),
+                            maps:get(<<"mime_type">>, Fence, undefined),
+                            string:lowercase(attachment_content_receipt:ruleset_digest())
+                        }
+                    of
+                        {ObjectKey, Mime, Ruleset} ->
+                            Asset:bind_direct(
+                                Org,
+                                Workspace,
+                                AssetId,
+                                Subject,
+                                Fence,
+                                ReceiptSha,
+                                Ruleset,
+                                Expiry
+                            );
+                        _ ->
+                            {error, proof_mismatch}
+                    end;
+                {error, _} = Error ->
+                    Error
+            end;
+        {error, _} = Error ->
+            Error
     end.
 
 %% @doc 受控读注入器：garage 位置快照 I → 分块流式读函数
@@ -152,7 +234,27 @@ direct_session_row(ObjectKey) ->
     Asset:direct_session_row(ObjectKey).
 
 attempt_key_of(Row, ObjectKey) ->
-    Reg = maps:get(<<"upload_registration">>, Row, #{}),
-    Subject = maps:get(<<"subject">>, Reg, #{}),
-    Principal = maps:get(<<"principal">>, Subject, <<"0">>),
-    <<"eb:", Principal/binary, ":", ObjectKey/binary>>.
+    Fence = {ObjectKey, maps:get(<<"attempt_no">>, Row), maps:get(<<"dispatch_cas_uuid">>, Row)},
+    binary:encode_hex(crypto:hash(sha256, term_to_binary(Fence)), lowercase).
+
+winner_fence(Row) ->
+    maps:with(
+        [
+            <<"object_key">>,
+            <<"attachment_id">>,
+            <<"creator_user_id">>,
+            <<"scope">>,
+            <<"upload_registration">>,
+            <<"attempt_no">>,
+            <<"dispatch_cas_uuid">>,
+            <<"storage_driver">>,
+            <<"storage_namespace">>,
+            <<"storage_container">>,
+            <<"storage_locator_sha256">>,
+            <<"storage_physical_key">>,
+            <<"file_hash256">>,
+            <<"size">>,
+            <<"mime_type">>
+        ],
+        Row
+    ).

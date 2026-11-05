@@ -15,7 +15,7 @@
 %   POST /adm/ai_agent/knowledge_config  -> 半量保存知识库配置（白名单键校验）
 %   GET  /adm/ai_agent/roles            -> 读取 ai_roles 人格 KV 全量
 %   POST /adm/ai_agent/roles            -> 保存/删除单个角色（action=save|delete, role_id, prompt?）
-%   POST /adm/ai_agent/upload_avatar    -> multipart 上传头像到 Garage，返回 URL
+%   POST /adm/ai_agent/avatar_direct    -> direct-v1 头像会话（register/declare/grant/finalize/publish）
 %   POST /adm/ai_agent/mandate_create-> 【admin 应急入口】代运营为 agent 创建受控支付授权
 %
 % 权限：users:read 读，users:create 建，users:update 改，finance:write 授权代付。
@@ -58,7 +58,6 @@ init(Req0, State0) ->
             role_publish -> role_publish(Method, Req0, State);
             role_set_status -> role_set_status(Method, Req0, State);
             roles -> roles(Method, Req0, State);
-            upload_avatar -> upload_avatar(Method, Req0, State);
             avatar_direct -> avatar_direct(Method, Req0, State);
             mandate_create -> mandate_create(Method, Req0, State);
             _ -> Req0
@@ -99,7 +98,8 @@ detail(_, Req0, _State) ->
 create(<<"POST">>, Req0, State) ->
     with_perm(?PERM_CREATE, State, Req0, fun() ->
         PostVals = elib_param:post(Req0),
-        case ai_agent_ds:create(PostVals) of
+        Config = PostVals#{admin_actor_id => maps:get(adm_user_id, State, 0)},
+        case ai_agent_ds:create(Config) of
             {ok, Result} -> elib_response:success(Req0, Result, <<"创建成功"/utf8>>);
             {error, Reason} -> elib_response:error(Req0, Reason, ?ERR_BAD_REQUEST)
         end
@@ -112,7 +112,8 @@ update(<<"POST">>, Req0, State) ->
     with_perm(?PERM_UPDATE, State, Req0, fun() ->
         PostVals = elib_param:post(Req0),
         UserId = ec_cnv:to_integer(maps:get(<<"user_id">>, PostVals, 0)),
-        case ai_agent_ds:update(UserId, PostVals) of
+        Config = PostVals#{admin_actor_id => maps:get(adm_user_id, State, 0)},
+        case ai_agent_ds:update(UserId, Config) of
             {ok, Result} -> elib_response:success(Req0, Result, <<"更新成功"/utf8>>);
             {error, Reason} -> elib_response:error(Req0, Reason, ?ERR_BAD_REQUEST)
         end
@@ -323,17 +324,27 @@ avatar_direct(<<"POST">>, Req0, State) ->
     with_perm(?PERM_UPDATE, State, Req0, fun() ->
         {ok, Body, Req1} = elib_req:body(Req0, []),
         Op = maps:get(<<"op">>, Body, <<>>),
-        case avatar_direct_op(Op, Body) of
+        case avatar_direct_op(Op, Body, maps:get(adm_user_id, State, 0)) of
             ok ->
                 elib_response:success(Req1, #{});
             {ok, Data} ->
                 elib_response:success(Req1, Data);
             {error, not_confirmed} ->
                 elib_response:error(Req1, <<"会话未确认"/utf8>>, ?ERR_BAD_REQUEST);
+            {error, not_session_owner} ->
+                elib_response:error(Req1, <<"会话主体不符"/utf8>>, ?ERR_FORBIDDEN);
+            {error, unowned_session} ->
+                elib_response:error(Req1, <<"会话主体不符"/utf8>>, ?ERR_FORBIDDEN);
+            {error, invalid_upload_id} ->
+                elib_response:error(Req1, <<"上传会话标识无效"/utf8>>, ?ERR_BAD_REQUEST);
             {error, not_application_session} ->
                 elib_response:error(Req1, <<"会话主体不符（仅 application 会话）"/utf8>>, ?ERR_FORBIDDEN);
             {error, session_not_found} ->
                 elib_response:error(Req1, <<"会话不存在"/utf8>>, ?ERR_NOT_FOUND);
+            {error, legacy_session_conflict} ->
+                elib_response:error(Req1, <<"legacy_session_conflict">>, ?ERR_CONFLICT);
+            {error, terminal_session_conflict} ->
+                elib_response:error(Req1, <<"terminal_session_conflict">>, ?ERR_CONFLICT);
             {error, declaration_conflict} ->
                 elib_response:error(Req1, <<"声明冲突"/utf8>>, ?ERR_CONFLICT);
             {error, quota_exceeded} ->
@@ -348,9 +359,22 @@ avatar_direct(<<"POST">>, Req0, State) ->
 avatar_direct(_, Req0, _State) ->
     method_not_allowed(Req0).
 
-avatar_direct_op(<<"register">>, Body) ->
-    AppId = maps:get(<<"application_id">>, Body, <<>>),
-    OrgId = maps:get(<<"org_id">>, Body, <<>>),
+avatar_direct_op(<<"register">>, Body, AdminId) ->
+    %% application_id/org_id 缺省派生（C08）：admin 页面管理的是具体 agent，
+    %% application 取 agent_id，org 取 0（admin 平台身份域）——前端只传
+    %% agent_id + filename 即可；显式传值仍被接受（多 agent 平台预留）。
+    AppId0 = maps:get(<<"application_id">>, Body, <<>>),
+    AppId =
+        case AppId0 of
+            <<>> -> maps:get(<<"agent_id">>, Body, <<>>);
+            _ -> AppId0
+        end,
+    OrgId0 = maps:get(<<"org_id">>, Body, <<>>),
+    OrgId =
+        case OrgId0 of
+            <<>> -> <<"0">>;
+            _ -> OrgId0
+        end,
     FileName = maps:get(<<"filename">>, Body, <<"avatar.png">>),
     case {AppId, OrgId} of
         {<<>>, _} ->
@@ -358,20 +382,17 @@ avatar_direct_op(<<"register">>, Body) ->
         {_, <<>>} ->
             {error, missing_org};
         _ ->
-            Scope = <<"public">>,
-            attach_direct_logic:register_application(
-                AppId,
-                OrgId,
-                Scope,
-                maps:get(<<"client_upload_id">>, Body, undefined),
-                FileName
-            )
+            Cid = maps:get(<<"client_upload_id">>, Body, undefined),
+            case avatar_registration_subject(AppId, OrgId, Cid) of
+                ok -> avatar_register(AppId, OrgId, Cid, FileName, AdminId);
+                {error, _} = Error -> Error
+            end
     end;
 %% declare/grant/finalize/publish 前置主体断言（review P1 修复）：
 %% 仅 application 会话可经 Admin 面推进/发布——Human 用户会话的 key 不受
 %% 本入口操作（通用 logic 函数按 key 寻址不校验主体，防线在入口）。
-avatar_direct_op(<<"declare">>, Body) ->
-    with_app_session(Body, fun(Key) ->
+avatar_direct_op(<<"declare">>, Body, AdminId) ->
+    with_app_session(Body, AdminId, fun(Key) ->
         attach_direct_logic:declare(
             Key,
             maps:get(<<"sha256">>, Body, <<>>),
@@ -379,104 +400,85 @@ avatar_direct_op(<<"declare">>, Body) ->
             maps:get(<<"mime">>, Body, <<"image/png">>)
         )
     end);
-avatar_direct_op(<<"grant">>, Body) ->
-    with_app_session(Body, fun(Key) ->
+avatar_direct_op(<<"grant">>, Body, AdminId) ->
+    with_app_session(Body, AdminId, fun(Key) ->
         attach_direct_logic:grant(Key, maps:get(<<"sha256">>, Body, <<>>))
     end);
-avatar_direct_op(<<"finalize">>, Body) ->
-    with_app_session(Body, fun(Key) ->
+avatar_direct_op(<<"status">>, Body, AdminId) ->
+    with_app_session(Body, AdminId, fun(Key) -> attach_direct_logic:status(Key, 0) end);
+avatar_direct_op(<<"renew">>, Body, AdminId) ->
+    with_app_session(Body, AdminId, fun(Key) ->
+        attach_direct_logic:renew_grant(Key, maps:get(<<"sha256">>, Body, <<>>))
+    end);
+avatar_direct_op(<<"finalize">>, Body, AdminId) ->
+    with_app_session(Body, AdminId, fun(Key) ->
         attach_direct_logic:finalize(
             Key, elib_cnv:safe_to_integer(maps:get(<<"attempt_id">>, Body, 0))
         )
     end);
-avatar_direct_op(<<"publish">>, Body) ->
-    with_app_session(Body, fun(Key) ->
+avatar_direct_op(<<"publish">>, Body, AdminId) ->
+    with_app_session(Body, AdminId, fun(Key) ->
         attach_direct_logic:publish_avatar(
             Key, maps:get(<<"agent_id">>, Body, <<>>), <<>>
         )
     end);
-avatar_direct_op(_, _) ->
+avatar_direct_op(_, _, _) ->
     {error, unknown_op}.
 
-with_app_session(Body, Fun) ->
-    Key = maps:get(<<"object_key">>, Body, <<>>),
-    case attach_direct_logic:require_application_session(Key) of
-        ok -> Fun(Key);
-        {error, not_found} -> {error, session_not_found};
-        {error, R} -> {error, R}
+avatar_register(AppId, OrgId, Cid, FileName, AdminId) ->
+    case elib_oss:get_bucket(<<"private">>) =/= elib_oss:get_bucket(<<"public">>) of
+        true ->
+            attach_direct_logic:register_application_owned(
+                AppId, OrgId, <<"public">>, Cid, FileName, AdminId
+            );
+        false ->
+            {error, avatar_bucket_not_isolated}
     end.
 
-%% @doc multipart 上传头像到 Garage，返回 URL（前端存入表单随 update 提交，
-%% 由 ai_agent_ds:update 同步写 user.avatar）。
-%% 复用 group_file_handler 的流式 part 读取模式（read_all_parts 未导出，
-%% 此处按同一结构内联，字段仅取 file）。
--spec upload_avatar(binary(), cowboy_req:req(), map()) -> cowboy_req:req().
-upload_avatar(<<"POST">>, Req0, State) ->
-    with_perm(?PERM_UPDATE, State, Req0, fun() ->
-        {Parts, Req1} = read_all_parts(Req0),
-        case find_file_part(Parts) of
-            {ok, FileName, FileBinary, FileType} ->
-                case elib_oss:upload(FileBinary, FileName, #{mime_type => FileType}) of
-                    {ok, FileUrl, _FileId} ->
-                        elib_response:success(Req1, #{<<"url">> => FileUrl});
-                    {error, file_too_large} ->
-                        elib_response:error(
-                            Req1, <<"文件大小超出限制"/utf8>>, ?ERR_FILE_SIZE_EXCEEDED
-                        );
-                    {error, invalid_file_type} ->
-                        elib_response:error(
-                            Req1, <<"不允许的文件类型"/utf8>>, ?ERR_FILE_TYPE_NOT_ALLOWED
-                        );
-                    {error, _} ->
-                        elib_response:error(Req1, <<"文件上传失败"/utf8>>, ?ERR_FILE_UPLOAD_FAILED)
-                end;
-            error ->
-                elib_response:error(Req1, <<"缺少文件参数"/utf8>>, ?ERR_MISSING_PARAM)
-        end
-    end);
-upload_avatar(_, Req0, _State) ->
-    method_not_allowed(Req0).
-
-%% @doc 流式读完 multipart part，归一化为 [{FieldName, Value}]：
-%% 普通字段 Value 为 binary；文件字段为 #{filename, data, content_type}。
--spec read_all_parts(cowboy_req:req()) -> {list(), cowboy_req:req()}.
-read_all_parts(Req0) ->
-    read_all_parts(Req0, []).
-
-read_all_parts(Req0, Acc) ->
-    case cowboy_req:read_part(Req0) of
-        {ok, Headers, Req1} ->
-            case cow_multipart:form_data(Headers) of
-                {data, FieldName} ->
-                    {Body, Req2} = read_full_part_body(Req1, <<>>),
-                    read_all_parts(Req2, [{FieldName, Body} | Acc]);
-                {file, FieldName, Filename, CType} ->
-                    {Body, Req2} = read_full_part_body(Req1, <<>>),
-                    read_all_parts(Req2, [
-                        {FieldName, #{filename => Filename, data => Body, content_type => CType}}
-                        | Acc
-                    ])
-            end;
-        {done, Req1} ->
-            {lists:reverse(Acc), Req1}
-    end.
-
-read_full_part_body(Req0, Acc) ->
-    case cowboy_req:read_part_body(Req0) of
-        {ok, Data, Req1} -> {<<Acc/binary, Data/binary>>, Req1};
-        {more, Data, Req1} -> read_full_part_body(Req1, <<Acc/binary, Data/binary>>)
-    end.
-
-%% 从 parts 提取 file 字段：{ok, FileName, FileBinary, FileType} | error
--spec find_file_part(list()) -> {ok, binary(), binary(), binary()} | error.
-find_file_part([{<<"file">>, #{filename := FileName, data := Data, content_type := Type}} | _]) when
-    FileName =/= undefined, Data =/= undefined
+avatar_registration_subject(AppId, <<"0">>, Cid) when
+    is_binary(AppId), byte_size(AppId) =:= 36, is_binary(Cid), byte_size(Cid) =:= 36
 ->
-    {ok, FileName, Data, Type};
-find_file_part([_ | Rest]) ->
-    find_file_part(Rest);
-find_file_part([]) ->
-    error.
+    Pattern =
+        <<"^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-4[0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$">>,
+    case {re:run(AppId, Pattern, [{capture, none}]), re:run(Cid, Pattern, [{capture, none}])} of
+        {match, match} ->
+            case string:lowercase(AppId) =:= string:lowercase(Cid) of
+                true -> ok;
+                false -> {error, not_application_session}
+            end;
+        _ ->
+            {error, not_application_session}
+    end;
+avatar_registration_subject(AppId, <<"0">>, _Cid) when is_binary(AppId), byte_size(AppId) =< 19 ->
+    case re:run(AppId, <<"^[1-9][0-9]*$">>, [{capture, none}]) of
+        match ->
+            Uid = binary_to_integer(AppId),
+            case Uid =< 9223372036854775807 andalso ai_agent_ds:get(Uid) of
+                {ok, _} -> ok;
+                _ -> {error, not_application_session}
+            end;
+        nomatch ->
+            {error, not_application_session}
+    end;
+avatar_registration_subject(_, _, _) ->
+    {error, not_application_session}.
+
+with_app_session(Body, AdminId, Fun) ->
+    Key = maps:get(<<"object_key">>, Body, <<>>),
+    case admin_avatar_session_repo:owned(Key, AdminId) of
+        ok ->
+            case attach_direct_logic:require_application_session(Key) of
+                ok -> Fun(Key);
+                {error, not_found} -> {error, session_not_found};
+                {error, R} -> {error, R}
+            end;
+        {error, _} = Error ->
+            Error
+    end.
+
+%% C08（V3-13）：旧 multipart 头像上传（upload_avatar，elib_oss 直传链）已
+%% 退役——admin 前端已切 avatar_direct（register→declare→grant→staging
+%% PUT→finalize→publish），正文不经后端入口（协议 §5 Admin 身份域）。
 
 %% @doc 【admin 应急入口(c)】代运营为指定 agent 创建受控支付授权。
 %% ⚠️ owner_uid **不取管理员身份**，而是目标 agent 的 ai_agent.owner_uid

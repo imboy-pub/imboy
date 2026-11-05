@@ -22,6 +22,7 @@
 
 -export([
     override_cs_widget/0,
+    override_edge_token/0,
     override_cors_face_origins/0,
     override_trusted_proxy_ips/0,
     override_payment_mode/0,
@@ -66,6 +67,13 @@ override_cs_widget() ->
         cs_widget_intake_business_identity_id
     ),
     ok.
+
+-spec override_edge_token() -> ok.
+override_edge_token() ->
+    apply_binary_value(
+        secret_env_value("IMBOY_EDGE_INTERNAL_TOKEN", "IMBOY_EDGE_INTERNAL_TOKEN_FILE"),
+        edge_internal_token
+    ).
 
 %% @doc direct 值与 _FILE 变体的统一读取：双源同给报歧义错；单源 direct
 %% 返回 binary；单源 _FILE 读文件（0600 + 内容剥首尾空白）；都缺省返回

@@ -1,6 +1,6 @@
 -module(talk_record_playback_stream).
 -moduledoc "回放字节流：JWT主体与票据绑定，HEAD只读元数据，Range仅读必要字节。".
--export([metadata/3, with_range/7, recheck/3, edge_target/1]).
+-export([metadata/3, with_range/7, recheck/3, edge_target/1, presign_published_audio/2]).
 
 metadata(Uid, Rid, Ticket) ->
     case recheck(Uid, Rid, Ticket) of
@@ -27,9 +27,9 @@ metadata(Uid, Rid, Ticket) ->
 published_audio_tx(C, Rid) ->
     Sql =
         <<
-            "SELECT a.id, a.size, a.path, a.file_hash256,"
-            " a.storage_driver, a.storage_namespace, a.storage_container,"
-            " a.storage_locator_sha256, a.storage_physical_key"
+            "SELECT a.id, a.size, a.path, a.file_hash256, a.storage_driver,"
+            " a.storage_namespace, a.storage_container, a.storage_physical_key,"
+            " a.storage_locator_sha256"
             " FROM talk_record_assembly m"
             " JOIN attachment a ON a.id = m.audio_attachment_id"
             " JOIN talk_record_job j ON j.record_id = m.record_id"
@@ -80,7 +80,12 @@ edge_target(Ticket) ->
         {ok, #{<<"uid">> := Uid, <<"rid">> := Rid}} ->
             case metadata(Uid, Rid, Ticket) of
                 {ok, #{attachment_id := Aid}} ->
-                    attachment_edge_redirect:presign_attachment(Aid, 600);
+                    case presign_published_audio(Rid, Aid) of
+                        {error, legacy_derived} ->
+                            attachment_edge_redirect:presign_attachment(Aid, 600);
+                        Result ->
+                            Result
+                    end;
                 {ok, _} ->
                     {error, playback_media_unavailable};
                 Error ->
@@ -88,4 +93,50 @@ edge_target(Ticket) ->
             end;
         _ ->
             {error, playback_ticket_invalid}
+    end.
+
+%% Playback permits only the confirmed direct winner already anchored to this record.
+presign_published_audio(Rid, Aid) ->
+    case
+        elib_pg:with_conn(fun(C) ->
+            case published_audio_tx(C, Rid) of
+                {ok, #{<<"id">> := Aid, <<"path">> := Path} = Row} ->
+                    case attachment_repo:verify_direct_winner_tx(C, Path) of
+                        ok -> {ok, Row};
+                        {error, not_confirmed} -> direct_absence_tx(C, Path);
+                        {error, _} = Error -> Error
+                    end;
+                {ok, _} ->
+                    {error, playback_media_unavailable};
+                {error, _} = Error ->
+                    Error
+            end
+        end)
+    of
+        {ok, #{<<"path">> := Path} = Row} ->
+            case attachment_storage:frozen_location(Path, Row) of
+                {ok, #{driver := garage} = Location} ->
+                    attachment_storage_garage:presign_snapshot(Location, 600);
+                _ ->
+                    {error, historical_location_unverified}
+            end;
+        {error, _} = Error ->
+            Error
+    end.
+
+%% A damaged direct ledger must never be treated as a legacy derived artifact.
+direct_absence_tx(C, Path) ->
+    case
+        elib_pg:query(
+            C,
+            <<
+                "SELECT EXISTS (SELECT 1 FROM attach_pending WHERE object_key=$1"
+                " AND direct_state IS NOT NULL) AS direct"
+            >>,
+            [Path]
+        )
+    of
+        {ok, [#{<<"direct">> := false}]} -> {error, legacy_derived};
+        {ok, _} -> {error, not_confirmed};
+        {error, _} = Error -> Error
     end.

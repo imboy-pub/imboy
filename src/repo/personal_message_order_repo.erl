@@ -17,13 +17,16 @@ stage_c2c(Table, Data) ->
 %% Same transaction returns the trusted seq; delivery never rereads after ACK.
 stage_c2c_ordered(Table, Data) ->
     Key = msg_archive_repo:conv_key(<<"c2c">>, maps:get(from_id, Data), maps:get(to_id, Data)),
-    case elib_pg:with_tx(fun(Conn) -> stage_tx(Conn, Table, Key, Data) end) of
+    case forward_attachment_repo:transaction(fun(Conn) -> stage_tx(Conn, Table, Key, Data) end) of
         {rollback, {accepted_duplicate, Seq}} ->
             {ok, duplicate, Seq};
         {rollback, {message_id_collision, OriginalError}} ->
             resolve_collision(Data, OriginalError);
         {rollback, Reason} ->
             {error, Reason};
+        {ok, Id, Seq} = Result when is_integer(Id), is_integer(Seq) ->
+            ok = forward_attachment_repo:mark_committed(<<"c2c">>, maps:get(msg_id, Data)),
+            Result;
         Result ->
             Result
     end.
@@ -36,6 +39,9 @@ stage_tx(Conn, Table, Key, Data) ->
             Seq = Previous + 1,
             {Sql, Params} = elib_pg_sql:insert(Table, Data#{conv_seq => Seq}),
             insert_staging(Conn, Sql, Params),
+            ok = forward_attachment_repo:accept_tx(
+                Conn, <<"c2c">>, MsgId, maps:get(from_id, Data), maps:get(to_id, Data), Seq
+            ),
             set_counter(Conn, Key, Seq),
             {ok, maps:get(id, Data), Seq};
         Rows ->

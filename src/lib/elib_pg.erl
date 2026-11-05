@@ -30,6 +30,7 @@
     with_tx/1,
     with_tx/2,
     with_deadlock_retry_tx/1,
+    with_physical_guard_retry_tx/1,
     after_commit/3,
 
     execute/2,
@@ -263,14 +264,19 @@ with_tx_unchecked(F, Opts0, RetriesLeft, Delay) ->
         Other -> Other
     end.
 
-%% Retry only an actual PostgreSQL deadlock after this connection confirms
-%% ROLLBACK. COMMIT failure is deliberately never eligible for a retry.
+%% Retry a PostgreSQL deadlock or the physical-key guard's exact conflict only
+%% after confirmed ROLLBACK. COMMIT failure is never eligible for a retry.
 -spec with_deadlock_retry_tx(fun((pid()) -> term())) -> term().
 with_deadlock_retry_tx(F) ->
     case get(elib_pg_commit_actions) of
         undefined -> deadlock_retry_tx(F, 2);
         _ -> {error, nested_transaction_unsupported}
     end.
+
+%% Opt-in only for database-only physical-identity transactions.
+-spec with_physical_guard_retry_tx(fun((pid()) -> term())) -> term().
+with_physical_guard_retry_tx(F) ->
+    with_deadlock_retry_tx(F).
 
 deadlock_retry_tx(F, Retries) ->
     Driver = config_ds:env(sql_driver),
@@ -292,10 +298,18 @@ deadlock_retry_tx(F, Retries) ->
                 discard -> pooler:return_member(Driver, Conn, fail)
             end,
             case Outcome of
+                {retry_deadlock, #error{code = <<"40001">>, message = <<"physical key busy">>}} when
+                    Retries > 0
+                ->
+                    timer:sleep((3 - Retries) * 10),
+                    deadlock_retry_tx(F, Retries - 1);
                 {retry_deadlock, _} when Retries > 0 -> deadlock_retry_tx(F, Retries - 1);
-                {retry_deadlock, Reason} -> {error, Reason};
-                {committed, Result, Actions} -> run_commit_actions(Result, Actions);
-                {finished, Result} -> Result
+                {retry_deadlock, Reason} ->
+                    {error, Reason};
+                {committed, Result, Actions} ->
+                    run_commit_actions(Result, Actions);
+                {finished, Result} ->
+                    Result
             end
     end.
 
@@ -340,8 +354,12 @@ retry_tx_rollback(Conn, Failure, Reason) ->
     case retry_tx_command(Conn, <<"ROLLBACK">>, rollback) of
         ok ->
             case Reason of
-                #error{code = <<"40P01">>} -> {reusable, {retry_deadlock, Reason}};
-                _ -> {reusable, {finished, Failure}}
+                #error{code = <<"40P01">>} ->
+                    {reusable, {retry_deadlock, Reason}};
+                #error{code = <<"40001">>, message = <<"physical key busy">>} ->
+                    {reusable, {retry_deadlock, Reason}};
+                _ ->
+                    {reusable, {finished, Failure}}
             end;
         {error, RollbackError} ->
             {discard, {finished, {error, {rollback_not_confirmed, Failure, RollbackError}}}}
@@ -559,6 +577,13 @@ query(C, Sql, Params) ->
 %% Only the active retry transaction's own connection can abort the entire
 %% transaction on a PostgreSQL deadlock. Other modes retain their old result.
 retry_deadlock_result(Conn, {error, #error{code = <<"40P01">>} = Reason} = Result) ->
+    case {get(elib_pg_retry_tx_active), get(elib_pg_commit_actions)} of
+        {true, {Conn, _}} -> throw({abort_tx, Reason});
+        _ -> Result
+    end;
+retry_deadlock_result(
+    Conn, {error, #error{code = <<"40001">>, message = <<"physical key busy">>} = Reason} = Result
+) ->
     case {get(elib_pg_retry_tx_active), get(elib_pg_commit_actions)} of
         {true, {Conn, _}} -> throw({abort_tx, Reason});
         _ -> Result

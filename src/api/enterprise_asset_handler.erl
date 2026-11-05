@@ -53,7 +53,8 @@ presign(<<"POST">>, Req0, State) ->
                         enterprise_asset_logic:presign_tx(Conn, Ctx, params_to_input(Params))
                     end)
                 end,
-                fun(Req, Body, Kind) -> post_commit_presign(Req, Ctx, Body, Kind) end
+                fun(Req, Body, Kind) -> post_commit_presign(Req, Ctx, Body, Kind) end,
+                physical_retry
             );
         {error, non_canonical} ->
             enterprise_internal_error:reply(Req0, <<"invalid_request">>)
@@ -196,6 +197,7 @@ with_idempotency(Req0, Ctx, ResourceType, IdemKey, Digest, LogicFun, PostCommitF
     end.
 
 run_governance_transaction(deadlock_retry, Fun) -> elib_pg:with_deadlock_retry_tx(Fun);
+run_governance_transaction(physical_retry, Fun) -> elib_pg:with_physical_guard_retry_tx(Fun);
 run_governance_transaction(ordinary, Fun) -> elib_pg:with_tx(Fun).
 
 post_commit_reply(Req0, undefined, Body, Kind) ->

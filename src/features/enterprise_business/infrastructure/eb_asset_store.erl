@@ -53,6 +53,9 @@
     session_by_client_id/3,
     renew_session/4,
     register_session/6,
+    register_direct_session/6,
+    bind_direct/8,
+    direct_proof/3,
     direct_session_row/1
 ]).
 
@@ -481,6 +484,15 @@ session_by_client_id(Org, Ws, Cid) -> eb_pg_asset_meta:v5_session_by_cid(Org, Ws
 renew_session(Org, Ws, Id, Expiry) -> eb_pg_asset_meta:renew_v5(Org, Ws, Id, Expiry).
 register_session(Org, Ws, Descriptor, Cid, Registration, Window) ->
     eb_pg_asset_meta:register_session_v5(Org, Ws, Descriptor, Cid, Registration, Window).
+
+register_direct_session(Org, Ws, Descriptor, Cid, Registration, Window) ->
+    eb_pg_asset_meta:register_direct_session_v5(Org, Ws, Descriptor, Cid, Registration, Window).
+
+bind_direct(Org, Ws, Asset, Subject, Fence, ReceiptSha, RulesetSha, Expiry) ->
+    eb_pg_asset_meta:bind_direct(Org, Ws, Asset, Subject, Fence, ReceiptSha, RulesetSha, Expiry).
+
+direct_proof(Org, Ws, Asset) ->
+    eb_pg_asset_meta:direct_proof(Org, Ws, Asset).
 
 %% Preserve the direct-v1 query and decoding behind the assembled asset port.
 -spec direct_session_row(binary()) -> {ok, map()} | {error, term()}.

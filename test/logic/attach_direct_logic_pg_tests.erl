@@ -23,7 +23,9 @@ direct_test_() ->
         fun declare_idempotent_and_conflict/0,
         fun cross_subject_status_hidden/0,
         fun size_mismatch_rejected/0,
-        fun register_idempotent_by_client_upload_id/0
+        fun register_idempotent_by_client_upload_id/0,
+        fun encrypted_contract_and_grant_conflict/0,
+        fun group_anchor_contract/0
     ]}.
 
 setup() ->
@@ -418,5 +420,73 @@ register_idempotent_by_client_upload_id() ->
     ?assertEqual(
         {error, declaration_conflict},
         attach_direct_logic:register(?UID, <<"private">>, undefined, Cid, <<"other.png">>)
+    ),
+    ok.
+
+encrypted_contract_and_grant_conflict() ->
+    Cid = elib_uuid:gen_v7(),
+    Opts = #{<<"cipher">> => <<"AES-256-GCM">>, <<"purpose">> => <<"message">>},
+    {ok, #{object_key := Key}} = attach_direct_logic:register(
+        ?UID, <<"private">>, undefined, Cid, <<"cipher.png">>, Opts
+    ),
+    {ok, #{object_key := Key}} = attach_direct_logic:register(
+        ?UID, <<"private">>, undefined, Cid, <<"cipher.png">>, Opts
+    ),
+    ?assertEqual(
+        {error, declaration_conflict},
+        attach_direct_logic:register(?UID, <<"private">>, undefined, Cid, <<"cipher.png">>)
+    ),
+    Sha = hex64(16#AA),
+    Wrong = hex64(16#BB),
+    ok = attach_direct_logic:declare(Key, Sha, 10, <<"image/png">>),
+    ?assertEqual({error, expected_conflict}, attach_direct_logic:grant(Key, Wrong)),
+    {ok, Before} = attach_direct_attempt_repo:list_for_session(Key),
+    ?assertEqual([], Before),
+    {ok, #{attempt_id := No}} = attach_direct_logic:grant(Key, Sha),
+    ?assertEqual({error, expected_conflict}, attach_direct_logic:renew_grant(Key, Wrong)),
+    {ok, After} = attach_direct_attempt_repo:list_for_session(Key),
+    ?assertEqual(1, length(After)),
+    with_storage_mock(
+        fun(_, _, _, _) -> {ok, #{etag => <<"fixture">>}} end,
+        fun(_, _, _) -> {ok, #{size => 10}} end,
+        fun() ->
+            ?assertMatch({ok, #{state := <<"CONFIRMED">>}}, attach_direct_logic:finalize(Key, No))
+        end
+    ),
+    {ok, [Row]} = elib_pg:query(<<"SELECT cipher,anchor_msg_id FROM attachment WHERE path=$1">>, [
+        Key
+    ]),
+    ?assertEqual(<<"AES-256-GCM">>, maps:get(<<"cipher">>, Row)),
+    ?assertEqual(null, maps:get(<<"anchor_msg_id">>, Row)),
+    ?assertEqual({error, expected_conflict}, attach_direct_logic:renew_grant(Key, Wrong)),
+    ok.
+
+group_anchor_contract() ->
+    Message = #{<<"purpose">> => <<"message">>, <<"anchor_msg_id">> => <<"message-id">>},
+    ?assertEqual(
+        {error, invalid_attachment_contract},
+        attach_direct_logic:register(
+            ?UID, <<"group">>, <<"1">>, undefined, <<"a.png">>, #{<<"purpose">> => <<"message">>}
+        )
+    ),
+    ?assertEqual(
+        {error, invalid_attachment_contract},
+        attach_direct_logic:register(
+            ?UID, <<"private">>, undefined, undefined, <<"a.png">>, Message
+        )
+    ),
+    ?assertEqual(
+        {error, unsupported_cipher},
+        attach_direct_logic:register(
+            ?UID, <<"private">>, undefined, undefined, <<"a.png">>, #{<<"cipher">> => <<"other">>}
+        )
+    ),
+    ?assertEqual(
+        {error, invalid_attachment_contract},
+        attach_direct_logic:register(
+            ?UID, <<"group">>, <<"1">>, undefined, <<"a.png">>, Message#{
+                <<"anchor_msg_id">> => binary:copy(<<"x">>, 129)
+            }
+        )
     ),
     ok.

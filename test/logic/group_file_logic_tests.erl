@@ -9,86 +9,8 @@
 %%% 测试群文件业务逻辑层的所有功能
 %%%===================================================================
 
-%% ===================================================================
-%% upload/5 测试
-%% ===================================================================
-
-upload_success_test_() ->
-    ?WITH_MECKS(
-        [
-            {group_file_ds, [
-                {'upload_file', 5, fun(_, _, _, _, _) ->
-                    {ok, <<"file_123">>}
-                end}
-            ]},
-            {elib_oss, [
-                {'get_file_category', 1, fun(_) -> <<"document">> end}
-            ]},
-            {elib_dt, [
-                {'timestamp', 0, fun() -> 1700000000 end}
-            ]}
-        ],
-        fun() ->
-            Gid = <<"1">>,
-            CurrentUid = 100,
-            FileName = <<"test.pdf"/utf8>>,
-            FileBinary = <<<<"test">> || _ <- lists:seq(1, 100)>>,
-            FileType = <<"application/pdf">>,
-
-            Result = group_file_logic:upload(Gid, CurrentUid, FileName, FileBinary, FileType),
-
-            case Result of
-                {ok, FileData} when is_map(FileData) ->
-                    ?assertMatch(#{<<"file_id">> := _}, FileData);
-                {error, Reason} ->
-                    assert_reason(Reason)
-            end
-        end
-    ).
-
-upload_not_member_test_() ->
-    ?WITH_MECKS(
-        [
-            {group_file_ds, [
-                {'upload_file', 5, fun(_, _, _, _, _) ->
-                    {error, not_member}
-                end}
-            ]}
-        ],
-        fun() ->
-            Gid = <<"1">>,
-            CurrentUid = 999,
-            FileName = <<"test.pdf"/utf8>>,
-            FileBinary = <<<<"test">> || _ <- lists:seq(1, 100)>>,
-            FileType = <<"application/pdf">>,
-
-            Result = group_file_logic:upload(Gid, CurrentUid, FileName, FileBinary, FileType),
-
-            ?assertMatch({error, not_member}, Result)
-        end
-    ).
-
-upload_file_too_large_test_() ->
-    ?WITH_MECKS(
-        [
-            {group_file_ds, [
-                {'upload_file', 5, fun(_, _, _, _, _) ->
-                    {error, file_too_large}
-                end}
-            ]}
-        ],
-        fun() ->
-            Gid = <<"1">>,
-            CurrentUid = 100,
-            FileName = <<"large.pdf"/utf8>>,
-            FileBinary = <<0:100102400>>,
-            FileType = <<"application/pdf">>,
-
-            Result = group_file_logic:upload(Gid, CurrentUid, FileName, FileBinary, FileType),
-
-            ?assertMatch({error, file_too_large}, Result)
-        end
-    ).
+%% C08（V3-12）：upload/5 及其用例已随 multipart 正文上传链退役；
+%% 群文件唯一引用入口为 group_file_ds:bind_file（direct-v1 confirmed 绑定）。
 
 %% ===================================================================
 %% download/2 测试

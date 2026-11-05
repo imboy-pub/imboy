@@ -118,7 +118,7 @@ register_retention_tx(Conn, {AttachmentId, OrgId, AppId}) ->
 -spec governance_tx(any(), map(), map()) -> {ok, map()} | {error, {binary(), term()}}.
 governance_tx(Conn, Ctx, Input) when is_map(Input) ->
     Op = maps:get(op, Input, undefined),
-    case resolve_attachment(Conn, Ctx, maps:get(object_key, Input, undefined)) of
+    case resolve_locked_attachment(Conn, Ctx, maps:get(object_key, Input, undefined)) of
         {ok, Att} ->
             %% W3-02 Hold 竞争协议（02 §4）：intent 先提交（delete_intent/
             %% deleted）时治理操作返回 already_deleting——Hold/留存延长不得
@@ -150,6 +150,18 @@ governance_tx(_Conn, _Ctx, _Input) ->
 %% ===================================================================
 %% Internal
 %% ===================================================================
+
+%% Serialize governance with ordinary deletion before re-reading lifecycle.
+resolve_locked_attachment(Conn, Ctx, ObjectKey) ->
+    case resolve_attachment(Conn, Ctx, ObjectKey) of
+        {ok, _} ->
+            case elib_pg:query(Conn, <<"SELECT fn_v5_lock_ordinary_upload($1)">>, [ObjectKey]) of
+                {ok, _} -> resolve_attachment(Conn, Ctx, ObjectKey);
+                {error, Reason} -> {error, {<<"internal_error">>, {attachment_lock, Reason}}}
+            end;
+        Error ->
+            Error
+    end.
 
 %% @doc 对象定位：必须是本 (org, app) 已 confirm 的附件（跨 org/app 的 key
 %% 一律 resource_not_found，不泄露存在性）。

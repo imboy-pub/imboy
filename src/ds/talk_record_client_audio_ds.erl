@@ -1,6 +1,6 @@
 -module(talk_record_client_audio_ds).
 -moduledoc "Assembly source capability domain backed by durable provider-task authorization.".
--export([issue/3, metadata/1, fold/4]).
+-export([issue/3, metadata/1, fold/4, edge_target/1]).
 
 issue(Context, Ids, Headers) ->
     protect(fun() ->
@@ -22,6 +22,16 @@ issue(Context, Ids, Headers) ->
 
 metadata(Ticket) ->
     protect(fun() -> {ok, projection(authorize_ticket(Ticket))} end).
+
+edge_target(Ticket) ->
+    protect(fun() ->
+        B = authorize_ticket(Ticket),
+        Aid = maps:get(<<"attachment_id">>, B),
+        case talk_record_playback_stream:presign_published_audio(maps:get(<<"rid">>, B), Aid) of
+            {error, legacy_derived} -> attachment_edge_redirect:presign_attachment(Aid, 600);
+            Result -> Result
+        end
+    end).
 
 fold(Ticket, Range, Fun, Acc) when is_function(Fun, 2) ->
     protect(fun() ->

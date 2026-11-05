@@ -3,8 +3,8 @@
 
 export_pipeline_test_() ->
     {timeout, 120,
-        {setup, fun setup/0, fun talk_record_t19_support:teardown_all/1, fun(State) ->
-            ?_test(pipeline(State))
+        {setup, fun setup/0, fun teardown/1, fun(State) ->
+            {timeout, 120, ?_test(pipeline(State))}
         end}}.
 
 setup() ->
@@ -15,11 +15,21 @@ setup() ->
             C = maps:get(conn, State),
             talk_record_t19_support:sql(C, "DELETE FROM attachment_derived_write"),
             talk_record_t19_support:seed(State),
+            {ok, PgConf = #{start_mfa := {M, F, [Opts]}}} = application:get_env(imboy, pg_conf),
+            Db = os:getenv("T05_PG_DB"),
+            true = is_list(Db),
+            ok = application:set_env(imboy, pg_conf, PgConf#{
+                start_mfa := {M, F, [Opts#{database => Db}]}
+            }),
             ok = talk_record_upload_test_support:configure(),
-            State
+            State#{export_original_pg_conf => PgConf}
         end,
         fun talk_record_t19_support:teardown_all/1
     ).
+
+teardown(#{export_original_pg_conf := PgConf} = State) ->
+    ok = application:set_env(imboy, pg_conf, PgConf),
+    talk_record_t19_support:teardown_all(State).
 
 pipeline(State) ->
     C = maps:get(conn, State),
@@ -40,19 +50,25 @@ pipeline(State) ->
     ?assert(is_integer(maps:get(<<"attachment_id">>, Ready))),
     ?assertEqual(false, maps:is_key(<<"content">>, Ready)),
     {ok, #{<<"ticket">> := Ticket}} = talk_record_export_logic:download(Uid, Rid, Eid),
-    {ok, Stream} = talk_record_export_download:verify_ticket(Ticket),
-    ?assertNotEqual(nomatch, binary:match(maps:get(<<"content">>, Stream), <<"first paragraph">>)),
+    ?assertMatch(
+        {ok, {_, <<"talk-record-export.", _/binary>>}},
+        talk_record_export_download:edge_target(Ticket)
+    ),
+    {ok, Stream} = talk_record_export_download:verify_ticket_ref(Ticket),
+    ?assertEqual(false, maps:is_key(<<"content">>, Stream)),
+    {ok, Bytes} = talk_record_export_artifact:read(Stream),
+    ?assertNotEqual(nomatch, binary:match(Bytes, <<"first paragraph">>)),
     ?assertEqual(
         {error, export_ticket_invalid},
-        talk_record_export_download:verify_ticket(Ticket, Uid, Rid + 1, Eid)
+        talk_record_export_download:verify_ticket_ref(Ticket, Uid, Rid + 1, Eid)
     ),
     ?assertEqual(
         {error, export_ticket_invalid},
-        talk_record_export_download:verify_ticket(Ticket, Uid, Rid, Eid + 1)
+        talk_record_export_download:verify_ticket_ref(Ticket, Uid, Rid, Eid + 1)
     ),
     ?assertEqual(
         {error, export_ticket_invalid},
-        talk_record_export_download:verify_ticket(Ticket, 700002, Rid, Eid)
+        talk_record_export_download:verify_ticket_ref(Ticket, 700002, Rid, Eid)
     ),
     {ok, Asset} = talk_record_export_repo:artifact_tx(C, maps:get(<<"attachment_id">>, Ready)),
     ?assertEqual(false, talk_record_attachment_adapter:authorize(Uid, Asset)),
@@ -62,9 +78,14 @@ pipeline(State) ->
     lease_loss(C, Uid, Rid),
     snapshot_errors(C, Uid, Rid),
     read_failures(C, Uid, Rid),
+    second_page_failure(C, Uid),
     publish_fence(C, Uid, Rid),
     concurrent_write_guard(C, Uid, Rid),
     unknown_guard(C, Uid, Rid),
+    unknown_after_remote_write(C, Uid, Rid),
+    os_worker_killed(C, Uid, Rid),
+    late_worker_receipt(C, Uid, Rid),
+    receipt_capability_guard(C, Uid, Rid),
     retention_blocks_sweep(C, Uid, Rid),
     expiry_error_rolls_back(C, Rid, Eid),
     expire(C, Rid, Eid, Ready),
@@ -118,7 +139,8 @@ blocked_policy(Uid, Rid, Eid, Ticket) ->
             {error, export_disabled_by_policy}, talk_record_export_logic:download(Uid, Rid, Eid)
         ),
         ?assertEqual(
-            {error, export_disabled_by_policy}, talk_record_export_download:verify_ticket(Ticket)
+            {error, export_disabled_by_policy},
+            talk_record_export_download:verify_ticket_ref(Ticket)
         )
     end).
 
@@ -136,7 +158,7 @@ grant_recheck(C, Rid) ->
         C, <<"UPDATE talk_record_grant SET allow_export=false WHERE record_id=$1">>, [Rid]
     ),
     ?assertEqual({error, forbidden}, talk_record_export_logic:download(700002, Rid, Eid)),
-    ?assertEqual({error, forbidden}, talk_record_export_download:verify_ticket(T)).
+    ?assertEqual({error, forbidden}, talk_record_export_download:verify_ticket_ref(T)).
 
 lease_loss(C, Uid, Rid) ->
     {ok, created, P} = talk_record_export_logic:create(Uid, Rid, <<"lost-export">>, #{}),
@@ -158,14 +180,12 @@ lease_loss(C, Uid, Rid) ->
 snapshot_errors(C, Uid, Rid) ->
     {ok, created, _} = talk_record_export_logic:create(Uid, Rid, <<"read-error-export">>, #{}),
     {ok, J} = claim(),
-    ok = meck:new(talk_record_speaker_repo, [passthrough, no_link]),
-    meck:expect(talk_record_speaker_repo, list_by_record_tx, fun(_, _) ->
-        {error, injected_read_error}
-    end),
+    {ok, PgConf = #{start_mfa := {Mod, Fun, [Opts]}}} = application:get_env(imboy, pg_conf),
+    ok = application:set_env(imboy, pg_conf, PgConf#{start_mfa := {Mod, Fun, [Opts#{port => 1}]}}),
     try
-        ?assertEqual({error, injected_read_error}, talk_record_export_job:run(J))
+        ?assertMatch({error, _}, talk_record_export_job:run(J))
     after
-        meck:unload(talk_record_speaker_repo)
+        application:set_env(imboy, pg_conf, PgConf)
     end,
     {ok, _} = elib_pg:execute(
         C,
@@ -176,8 +196,11 @@ snapshot_errors(C, Uid, Rid) ->
 unknown_guard(C, Uid, Rid) ->
     {ok, created, _} = talk_record_export_logic:create(Uid, Rid, <<"unknown-export">>, #{}),
     {ok, J} = claim(),
-    {ok, Prepared} = elib_pg:with_tx(fun(X) -> talk_record_export_job:prepare_tx(X, J) end),
-    A = maps:get(artifact, Prepared),
+    {ok, Export} = elib_pg:with_tx(fun(X) -> talk_record_export_job:prepare_tx(X, J) end),
+    Hash = binary:encode_hex(crypto:hash(sha256, <<"test">>), lowercase),
+    {ok, A} = elib_pg:with_tx(fun(X) ->
+        talk_record_export_artifact:prepare_tx(X, J, Export, #{size => 4, sha256 => Hash})
+    end),
     Aid = maps:get(attachment_id, A),
     {ok, _} = elib_pg:execute(
         C, <<"UPDATE attachment_derived_write SET state='writing' WHERE attachment_id=$1">>, [Aid]
@@ -235,48 +258,387 @@ expire(C, Rid, Eid, Ready) ->
 
 read_failures(C, Uid, Rid) ->
     lists:foreach(
-        fun({Module, Function, Arity, Key}) ->
+        fun({Table, Key}) ->
             {ok, created, P} = talk_record_export_logic:create(Uid, Rid, Key, #{}),
             {ok, J} = claim(),
-            ok = meck:new(Module, [passthrough, no_link]),
-            Expect =
-                case Arity of
-                    2 ->
-                        fun(_, _) -> {error, injected_read_error} end;
-                    4 ->
-                        fun
-                            (_, _, _, #{cursor := undefined}) ->
-                                {ok, [
-                                    #{<<"id">> => N, <<"start_ms">> => N}
-                                 || N <- lists:seq(1, 200)
-                                ]};
-                            (_, _, _, _) ->
-                                {error, injected_read_error}
-                        end
-                end,
-            meck:expect(Module, Function, Expect),
+            talk_record_t19_support:sql(C, [
+                "ALTER TABLE ", Table, " RENAME TO export_fault_fixture"
+            ]),
             try
-                ?assertEqual({error, injected_read_error}, talk_record_export_job:run(J))
+                ?assertMatch({error, _}, talk_record_export_job:run(J))
             after
-                meck:unload(Module)
+                talk_record_t19_support:sql(C, [
+                    "ALTER TABLE export_fault_fixture RENAME TO ", Table
+                ])
             end,
             {ok, Row} = talk_record_export_repo:find_tx(C, Rid, maps:get(<<"export_id">>, P)),
             ?assertEqual(null, maps:get(<<"attachment_id">>, Row)),
             cancel(C, J)
         end,
         [
-            {talk_record_summary_repo, find_by_record_tx, 2, <<"summary-error">>},
-            {talk_record_segment_repo, page_tx, 4, <<"second-page-error">>}
+            {"talk_record_summary", <<"summary-error">>},
+            {"talk_record_segment", <<"segment-error">>}
         ]
     ).
+
+unknown_after_remote_write(C, Uid, Rid) ->
+    {ok, created, P} = talk_record_export_logic:create(Uid, Rid, <<"remote-unknown-export">>, #{}),
+    {ok, J} = claim(),
+    ok = meck:new(attachment_worker_port, [passthrough, no_link]),
+    meck:expect(attachment_worker_port, upload_export, fun(Task) ->
+        {ok, _} = meck:passthrough([Task]),
+        {error, worker_outcome_unknown}
+    end),
+    try
+        ?assertEqual({error, worker_outcome_unknown}, talk_record_export_job:run(J))
+    after
+        meck:unload(attachment_worker_port)
+    end,
+    {ok, Export} = talk_record_export_repo:find_tx(C, Rid, maps:get(<<"export_id">>, P)),
+    Aid = maps:get(<<"attachment_id">>, Export),
+    {ok, [Row]} = elib_pg:query(
+        C,
+        <<
+            "SELECT a.*,w.state AS write_state FROM attachment a "
+            "JOIN attachment_derived_write w ON w.attachment_id=a.id WHERE a.id=$1"
+        >>,
+        [Aid]
+    ),
+    ?assertEqual(<<"unknown">>, maps:get(<<"write_state">>, Row)),
+    {ok, Location} = attachment_storage:frozen_location(maps:get(<<"path">>, Row), Row),
+    {ok, #{size := Size}} = attachment_storage:head_snapshot(Location),
+    ?assertEqual(maps:get(<<"size">>, Row), Size),
+    ?assertMatch(
+        {error, _},
+        elib_pg:execute(
+            C,
+            <<"UPDATE attachment SET lifecycle_state='delete_intent' WHERE id=$1">>,
+            [Aid]
+        )
+    ),
+    {ok, _} = attachment_derived_artifact:reconcile(),
+    {ok, [#{<<"state">> := <<"unknown">>}]} = elib_pg:query(
+        C, <<"SELECT state FROM attachment_derived_write WHERE attachment_id=$1">>, [Aid]
+    ),
+    cancel(C, J),
+    {ok, _} = attachment_derived_artifact:reconcile(),
+    {ok, [#{<<"state">> := <<"complete">>}]} = elib_pg:query(
+        C, <<"SELECT state FROM attachment_derived_write WHERE attachment_id=$1">>, [Aid]
+    ).
+
+os_worker_killed(C, Uid, Rid) ->
+    {ok, created, P} = talk_record_export_logic:create(Uid, Rid, <<"os-worker-kill">>, #{}),
+    {ok, J} = claim(),
+    Base =
+        case os:getenv("TMPDIR") of
+            false -> "/tmp";
+            Path -> Path
+        end,
+    Dir = filename:join(
+        Base,
+        "c09-kill-" ++
+            binary_to_list(binary:encode_hex(crypto:strong_rand_bytes(16), lowercase))
+    ),
+    ok = file:make_dir(Dir),
+    try
+        ok = file:change_mode(Dir, 8#700),
+        Prev = os:getenv("IMBOY_WORKER_TMPDIR"),
+        true = os:putenv("IMBOY_WORKER_TMPDIR", Dir),
+        try
+            {ok, Listener} = gen_tcp:listen(0, [binary, {active, false}, {reuseaddr, true}]),
+            try
+                os_worker_killed_with_listener(C, Rid, P, J, Dir, Listener)
+            after
+                gen_tcp:close(Listener)
+            end
+        after
+            case Prev of
+                false -> os:unsetenv("IMBOY_WORKER_TMPDIR");
+                _ -> os:putenv("IMBOY_WORKER_TMPDIR", Prev)
+            end
+        end
+    after
+        ok = file:del_dir_r(Dir)
+    end.
+
+os_worker_killed_with_listener(C, Rid, P, J, Dir, Listener) ->
+    {ok, {_, Port}} = inet:sockname(Listener),
+    Endpoint = iolist_to_binary(io_lib:format("http://127.0.0.1:~B", [Port])),
+    Parent = self(),
+    Server = spawn(fun() ->
+        {ok, Socket} = gen_tcp:accept(Listener),
+        {ok, <<"PUT ", _/binary>>} = gen_tcp:recv(Socket, 0, 10000),
+        Parent ! put_entered,
+        receive
+            release -> gen_tcp:close(Socket)
+        end
+    end),
+    try
+        ok = meck:new(attachment_worker_port, [passthrough, no_link]),
+        try
+            meck:expect(attachment_worker_port, upload_export, fun(Task) ->
+                meck:passthrough([Task#{endpoint => Endpoint}])
+            end),
+            {Runner, Monitor} = spawn_monitor(fun() ->
+                Parent ! {killed_job_result, talk_record_export_job:run(J)}
+            end),
+            try
+                os_worker_killed_assert(C, Rid, P, J, Dir)
+            after
+                exit(Runner, kill),
+                try
+                    receive
+                        {'DOWN', Monitor, process, Runner, _} -> ok
+                    after 5000 -> error(kill_runner_timeout)
+                    end
+                after
+                    kill_test_workers(Dir)
+                end
+            end
+        after
+            meck:unload(attachment_worker_port)
+        end
+    after
+        exit(Server, shutdown)
+    end.
+
+kill_test_workers(Dir) ->
+    TaskFiles = filelib:wildcard(filename:join([Dir, "imboy-worker-*", "worker.task"])),
+    Lines = string:split(os:cmd("ps -axo pid=,args="), "\n", all),
+    lists:foreach(
+        fun(TaskFile) ->
+            lists:foreach(
+                fun(Line) ->
+                    [PidText | _] = string:lexemes(Line, " "),
+                    _ = os:cmd("kill -KILL " ++ integer_to_list(list_to_integer(PidText))),
+                    ok
+                end,
+                [L || L <- Lines, string:find(L, TaskFile) =/= nomatch]
+            )
+        end,
+        TaskFiles
+    ).
+
+os_worker_killed_assert(C, Rid, P, J, Dir) ->
+    receive
+        put_entered -> ok
+    after 30000 -> error(put_not_entered)
+    end,
+    [TaskFile] = filelib:wildcard(filename:join([Dir, "imboy-worker-*", "worker.task"])),
+    Lines = string:split(os:cmd("ps -axo pid=,args="), "\n", all),
+    [Line] = [L || L <- Lines, string:find(L, TaskFile) =/= nomatch],
+    [PidText | _] = string:lexemes(Line, " "),
+    Pid = list_to_integer(PidText),
+    _ = os:cmd("kill -KILL " ++ integer_to_list(Pid)),
+    receive
+        {killed_job_result, R} -> ?assertEqual({error, worker_outcome_unknown}, R)
+    after 30000 -> error(killed_worker_result_timeout)
+    end,
+    {ok, Export} = talk_record_export_repo:find_tx(C, Rid, maps:get(<<"export_id">>, P)),
+    ?assertNotEqual(<<"ready">>, maps:get(<<"state">>, Export)),
+    Aid = maps:get(<<"attachment_id">>, Export),
+    {ok, [#{<<"state">> := <<"unknown">>}]} = elib_pg:query(
+        C,
+        <<"SELECT state FROM attachment_derived_write WHERE attachment_id=$1">>,
+        [Aid]
+    ),
+    ?assertMatch(
+        {error, _},
+        elib_pg:execute(
+            C,
+            <<"UPDATE attachment SET lifecycle_state='delete_intent' WHERE id=$1">>,
+            [Aid]
+        )
+    ),
+    cancel(C, J),
+    {ok, _} = attachment_derived_artifact:reconcile(),
+    {ok, [#{<<"state">> := <<"unknown">>}]} = elib_pg:query(
+        C,
+        <<"SELECT state FROM attachment_derived_write WHERE attachment_id=$1">>,
+        [Aid]
+    ).
+
+late_worker_receipt(C, Uid, Rid) ->
+    {ok, created, _} = talk_record_export_logic:create(Uid, Rid, <<"late-worker-receipt">>, #{}),
+    {ok, J} = claim(),
+    {ok, Export} = elib_pg:with_tx(fun(X) -> talk_record_export_job:prepare_tx(X, J) end),
+    #{start_mfa := {_, _, [PgOptions]}} = config_ds:env(pg_conf),
+    Binding = crypto:strong_rand_bytes(32),
+    Render = #{
+        pg_options => PgOptions,
+        export => maps:with([<<"id">>, <<"record_id">>, <<"format">>], Export),
+        revision => maps:get(<<"input_content_revision">>, J),
+        source_job_id => maps:get(<<"id">>, J),
+        source_attempt => maps:get(<<"attempt">>, J),
+        binding => Binding
+    },
+    {ok, Generated} = attachment_worker_port:render_export(Render),
+    {ok, Artifact} = elib_pg:with_tx(fun(X) ->
+        talk_record_export_artifact:prepare_tx(X, J, Export, Generated)
+    end),
+    Aid = maps:get(attachment_id, Artifact),
+    Token = crypto:strong_rand_bytes(32),
+    {ok, Location} = attachment_derived_artifact:begin_export_write(
+        Aid, crypto:hash(sha256, Token)
+    ),
+    Cfg = application:get_env(imboy, garage, #{}),
+    Task = Render#{
+        attachment_id => Aid,
+        receipt_token => Token,
+        endpoint => maps:get(endpoint, Cfg),
+        ak => maps:get(access_key, Cfg),
+        sk => maps:get(secret_key, Cfg),
+        bucket => maps:get(container, Location),
+        region => maps:get(region, Cfg, <<"garage">>),
+        object_key => maps:get(key, Location),
+        mime => maps:get(mime, Location),
+        expected_sha256 => maps:get(sha256, Generated),
+        expected_size => maps:get(size, Generated)
+    },
+    Parent = self(),
+    Writer = spawn(fun() ->
+        receive
+            proceed ->
+                Parent ! {late_worker_result, attachment_worker_port:upload_export(Task)}
+        end
+    end),
+    {error, worker_outcome_unknown} = attachment_derived_artifact:finish_write(
+        Aid, {error, worker_outcome_unknown}
+    ),
+    cancel(C, J),
+    {ok, _} = attachment_derived_artifact:reconcile(),
+    {ok, [#{<<"state">> := <<"unknown">>}]} = elib_pg:query(
+        C, <<"SELECT state FROM attachment_derived_write WHERE attachment_id=$1">>, [Aid]
+    ),
+    Writer ! proceed,
+    receive
+        {late_worker_result, {ok, _}} -> ok
+    after 30000 -> error(late_worker_timeout)
+    end,
+    {ok, _} = attachment_derived_artifact:reconcile(),
+    {ok, [#{<<"state">> := <<"complete">>}]} = elib_pg:query(
+        C, <<"SELECT state FROM attachment_derived_write WHERE attachment_id=$1">>, [Aid]
+    ).
+
+receipt_capability_guard(C, Uid, Rid) ->
+    {ok, created, _} = talk_record_export_logic:create(Uid, Rid, <<"receipt-capability">>, #{}),
+    {ok, J} = claim(),
+    {ok, Export} = elib_pg:with_tx(fun(X) -> talk_record_export_job:prepare_tx(X, J) end),
+    Hash = binary:encode_hex(crypto:hash(sha256, <<"test">>), lowercase),
+    {ok, Artifact} = elib_pg:with_tx(fun(X) ->
+        talk_record_export_artifact:prepare_tx(X, J, Export, #{size => 4, sha256 => Hash})
+    end),
+    Aid = maps:get(attachment_id, Artifact),
+    Token = crypto:strong_rand_bytes(32),
+    {ok, Location} = attachment_derived_artifact:begin_export_write(
+        Aid, crypto:hash(sha256, Token)
+    ),
+    DownPath = filename:join([
+        code:priv_dir(imboy), "migrations", "00000262_export_worker_receipt.down.sql"
+    ]),
+    {ok, DownSql} = file:read_file(DownPath),
+    [DownGuard | _] = binary:split(DownSql, <<"DROP FUNCTION">>),
+    ?assertMatch({error, _}, epgsql:squery(C, DownGuard)),
+    JobId = maps:get(<<"id">>, J),
+    Attempt = maps:get(<<"attempt">>, J),
+    Key = maps:get(key, Location),
+    Sql = <<"SELECT fn_export_confirm_receipt($1,$2,$3,$4,$5,$6,$7) AS confirmed">>,
+    Args = [Aid, Token, JobId, Attempt, Key, Hash, 4],
+    {rollback, receipt_test_rollback} = elib_pg:with_tx(
+        fun(X) ->
+            {ok, [], []} = epgsql:squery(X, "SET LOCAL ROLE v5_app_runtime"),
+            {ok, [#{<<"confirmed">> := false}]} = elib_pg:query(
+                X,
+                Sql,
+                [Aid, crypto:strong_rand_bytes(32), JobId, Attempt, Key, Hash, 4]
+            ),
+            {ok, [#{<<"confirmed">> := false}]} = elib_pg:query(
+                X,
+                Sql,
+                [Aid, Token, JobId, Attempt + 1, Key, Hash, 4]
+            ),
+            {ok, [#{<<"confirmed">> := false}]} = elib_pg:query(
+                X,
+                Sql,
+                [Aid, Token, JobId, Attempt, <<"wrong-key">>, Hash, 4]
+            ),
+            {ok, [#{<<"confirmed">> := true}]} = elib_pg:query(X, Sql, Args),
+            {ok, [#{<<"confirmed">> := false}]} = elib_pg:query(X, Sql, Args),
+            throw(receipt_test_rollback)
+        end,
+        [{reraise, false}]
+    ),
+    lists:foreach(
+        fun(Role) ->
+            ?assertMatch(
+                {rollback, _},
+                elib_pg:with_tx(
+                    fun(X) ->
+                        {ok, [], []} = epgsql:squery(X, ["SET LOCAL ROLE ", Role]),
+                        {ok, _} = elib_pg:query(X, Sql, Args)
+                    end,
+                    [{reraise, false}]
+                )
+            )
+        end,
+        ["v5_proof", "v5_worker"]
+    ),
+    ?assertMatch(
+        {rollback, _},
+        elib_pg:with_tx(
+            fun(X) ->
+                {ok, [], []} = epgsql:squery(X, "SET LOCAL ROLE v5_app_runtime"),
+                {ok, _} = elib_pg:query(X, <<"SELECT * FROM attachment_export_write_receipt">>, [])
+            end,
+            [{reraise, false}]
+        )
+    ),
+    cancel(C, J),
+    {ok, _} = attachment_derived_artifact:reconcile(),
+    {ok, [#{<<"state">> := <<"unknown">>}]} = elib_pg:query(
+        C, <<"SELECT state FROM attachment_derived_write WHERE attachment_id=$1">>, [Aid]
+    ).
+
+second_page_failure(C, Uid) ->
+    {ok, Rid} = talk_record_t15_support:create_record(Uid, 9903, <<"second page failure">>),
+    _ = talk_record_t15_support:seed_transcript(C, Rid, 1),
+    lists:foreach(
+        fun(N) ->
+            _ = talk_record_t15_support:seed_segment(C, Rid, 1, N, null, N, <<"fixture">>)
+        end,
+        lists:seq(1, 201)
+    ),
+    {ok, created, P} = talk_record_export_logic:create(Uid, Rid, <<"second-page-fault">>, #{}),
+    {ok, J} = claim(),
+    talk_record_t19_support:sql(C, "ALTER TABLE talk_record_segment RENAME TO export_test_segment"),
+    talk_record_t19_support:sql(C, <<
+        "CREATE FUNCTION export_test_page_guard() RETURNS boolean LANGUAGE plpgsql AS $$ "
+        "BEGIN IF strpos(current_query(),'AND (s.start_ms, s.id)') > 0 THEN "
+        "RAISE EXCEPTION 'injected second page fault'; END IF; RETURN true; END $$"
+    >>),
+    talk_record_t19_support:sql(C, <<
+        "CREATE VIEW talk_record_segment AS SELECT * FROM export_test_segment "
+        "WHERE export_test_page_guard()"
+    >>),
+    try
+        ?assertMatch({error, _}, talk_record_export_job:run(J)),
+        {ok, Row} = talk_record_export_repo:find_tx(C, Rid, maps:get(<<"export_id">>, P)),
+        ?assertEqual(null, maps:get(<<"attachment_id">>, Row))
+    after
+        talk_record_t19_support:sql(C, "DROP VIEW talk_record_segment"),
+        talk_record_t19_support:sql(C, "DROP FUNCTION export_test_page_guard()"),
+        talk_record_t19_support:sql(
+            C, "ALTER TABLE export_test_segment RENAME TO talk_record_segment"
+        )
+    end,
+    cancel(C, J).
 
 publish_fence(C, Uid, Rid) ->
     {ok, created, P} = talk_record_export_logic:create(Uid, Rid, <<"publish-lease-lost">>, #{}),
     {ok, J} = claim(),
-    %% V3-20：disk 驱动退役，物理写边界为 garage put_snapshot（生产派发面）。
-    ok = meck:new(attachment_storage_garage, [passthrough, no_link]),
-    meck:expect(attachment_storage_garage, put_snapshot, fun(I, B, M, Ctx) ->
-        Result = meck:passthrough([I, B, M, Ctx]),
+    ok = meck:new(attachment_worker_port, [passthrough, no_link]),
+    meck:expect(attachment_worker_port, upload_export, fun(Task) ->
+        Result = meck:passthrough([Task]),
         {ok, _} = elib_pg:execute(
             C,
             <<"UPDATE talk_record_job SET lease_until=now()-interval '1 second' WHERE id=$1">>,
@@ -287,7 +649,7 @@ publish_fence(C, Uid, Rid) ->
     try
         ?assertEqual({error, lease_lost}, talk_record_export_job:run(J))
     after
-        meck:unload(attachment_storage_garage)
+        meck:unload(attachment_worker_port)
     end,
     {ok, Row} = talk_record_export_repo:find_tx(C, Rid, maps:get(<<"export_id">>, P)),
     ?assertEqual(<<"queued">>, maps:get(<<"state">>, Row)),
@@ -297,12 +659,11 @@ concurrent_write_guard(C, Uid, Rid) ->
     {ok, created, P} = talk_record_export_logic:create(Uid, Rid, <<"concurrent-guard">>, #{}),
     {ok, J} = claim(),
     Parent = self(),
-    %% V3-20：disk 驱动退役，物理写边界为 garage put_snapshot（生产派发面）。
-    ok = meck:new(attachment_storage_garage, [passthrough, no_link]),
-    meck:expect(attachment_storage_garage, put_snapshot, fun(I, B, M, Ctx) ->
+    ok = meck:new(attachment_worker_port, [passthrough, no_link]),
+    meck:expect(attachment_worker_port, upload_export, fun(Task) ->
         Parent ! {write_started, self()},
         receive
-            allow_write -> meck:passthrough([I, B, M, Ctx])
+            allow_write -> meck:passthrough([Task])
         after 5000 -> {error, test_timeout}
         end
     end),
@@ -327,7 +688,7 @@ concurrent_write_guard(C, Uid, Rid) ->
         after 5000 -> erlang:error(write_not_finished)
         end
     after
-        meck:unload(attachment_storage_garage)
+        meck:unload(attachment_worker_port)
     end.
 
 cancel(C, J) ->

@@ -129,7 +129,7 @@ fi
 #   *_KEY / IMBOY_SOLIDIFIED_KEY 需 32 字节 → rand -hex 16 得 32 个十六进制字符
 #   IMBOY_SOLIDIFIED_KEY_IV 需 16 字节      → rand -hex 8
 #   LIVEKIT_API_SECRET 需 ≥32 字符          → rand -hex 24 得 48 字符，留余量
-SECRET_VARS_32="POSTGRES_PASSWORD JWT_KEY POSTGRE_AES_KEY ADM_COOKIE_SECRET GRAFANA_ADMIN_PASSWORD IMBOY_SOLIDIFIED_KEY IMBOY_PASSWORD_SALT LIVEKIT_API_KEY"
+SECRET_VARS_32="IMBOY_DIRECT_CLEANUP_PG_PASSWORD POSTGRES_PASSWORD JWT_KEY POSTGRE_AES_KEY ADM_COOKIE_SECRET IMBOY_EDGE_INTERNAL_TOKEN GRAFANA_ADMIN_PASSWORD IMBOY_SOLIDIFIED_KEY IMBOY_PASSWORD_SALT LIVEKIT_API_KEY"
 SECRET_VARS_16="IMBOY_SOLIDIFIED_KEY_IV"
 SECRET_VARS_48="LIVEKIT_API_SECRET"
 UPTRACE_SECRET_VARS="UPTRACE_SERVICE_SECRET UPTRACE_PG_PASSWORD UPTRACE_CLICKHOUSE_PASSWORD UPTRACE_REDIS_PASSWORD UPTRACE_ADMIN_PASSWORD UPTRACE_PROJECT_TOKEN"
@@ -386,7 +386,70 @@ for compose_file in $COMPOSE_FILES; do COMPOSE_DISPLAY="$COMPOSE_DISPLAY -f $com
 
 # ── 2) 前置检查 ──────────────────────────────────────────────────────────────
 say "前置检查 (preflight, edition=$EDITION)"
-bash preflight.sh --docker --edition "$EDITION" || die "preflight 未通过，修复 ERROR 后重跑"
+if [ "$EDITION" = community ]; then
+  command -v python3 >/dev/null || die "需要 python3 校验 Compose 配置"
+  compose config --environment | python3 -c '
+import os, subprocess, sys
+names = {"API_DOMAIN", "ADMIN_DOMAIN", "CS_WIDGET_DOMAIN", "RTC_DOMAIN", "TURN_DOMAIN"}
+env = os.environ.copy()
+for line in sys.stdin:
+    key, sep, value = line.rstrip("\n").partition("=")
+    if sep and key in names:
+        env[key] = value
+if not names.issubset(env):
+    sys.exit("Compose 域名配置不完整")
+env["IMBOY_BASE_URL"] = "https://" + env["API_DOMAIN"]
+env["IMBOY_PREFLIGHT_RESOLVED_DOMAINS"] = "1"
+sys.exit(subprocess.call(["bash", "preflight.sh", "--docker", "--edition", "community"], env=env))
+' || die "preflight 未通过，修复 ERROR 后重跑"
+else
+  bash preflight.sh --docker --edition "$EDITION" || die "preflight 未通过，修复 ERROR 后重跑"
+fi
+
+# Compose 环境覆盖 .env；仅检查实际传入服务的值，不输出密钥。
+if [ "$EDITION" = community ]; then
+  command -v python3 >/dev/null || die "需要 python3 校验 Compose 密钥；服务尚未启动"
+  compose config --format json | python3 -c '
+import json, sys
+try:
+    services = json.load(sys.stdin)["services"]
+    backend = services["imboy_backend"]["environment"]
+    edge = services["imboy_edge"]["environment"]
+    nginx = services["imboy_nginx"]["environment"]
+    if (backend["IMBOY_BASE_URL"] != "https://" + nginx["API_DOMAIN"] or
+            backend["IMBOY_WIDGET_BASE_URL"] != "https://" + nginx["CS_WIDGET_DOMAIN"] or
+            backend["IMBOY_WIDGET_DOMAIN"] != nginx["CS_WIDGET_DOMAIN"]):
+        raise ValueError("origin mismatch")
+    def valid(value, minimum=1):
+        return (isinstance(value, str) and len(value) >= minimum and
+                "CHANGE_ME" not in value and "example" not in value.lower())
+    token = backend["IMBOY_EDGE_INTERNAL_TOKEN"]
+    core = [backend[name] for name in ("IMBOY_JWT_KEY", "IMBOY_POSTGRE_AES_KEY", "IMBOY_ADM_COOKIE_SECRET")]
+    if not all(valid(value, 32) for value in [token, *core]):
+        raise ValueError("invalid secret")
+    if edge["EDGE_INTERNAL_TOKEN"] != token or len(set([token, *core])) != 4:
+        raise ValueError("secret mismatch")
+    required = ("IMBOY_PG_USER", "IMBOY_PG_PASSWORD", "IMBOY_SOLIDIFIED_KEY",
+                "IMBOY_SOLIDIFIED_KEY_IV", "IMBOY_PASSWORD_SALT",
+                "IMBOY_LIVEKIT_API_KEY", "IMBOY_LIVEKIT_API_SECRET")
+    if any(not valid(backend[name]) for name in required):
+        raise ValueError("invalid required secret")
+    pg = services["imboy_pg18"]["environment"]
+    if pg["POSTGRES_USER"] != backend["IMBOY_PG_USER"] or pg["POSTGRES_PASSWORD"] != backend["IMBOY_PG_PASSWORD"]:
+        raise ValueError("database identity mismatch")
+    if "imboy_grafana" in services and not valid(services["imboy_grafana"]["environment"]["GF_SECURITY_ADMIN_PASSWORD"]):
+        raise ValueError("invalid monitoring secret")
+    cleanup_keys = ("IMBOY_DIRECT_CLEANUP_PG_USER", "IMBOY_DIRECT_CLEANUP_PG_PASSWORD")
+    if any(name in backend for name in cleanup_keys):
+        user, password = (backend[name] for name in cleanup_keys)
+        app_user, app_password = backend["IMBOY_PG_USER"], backend["IMBOY_PG_PASSWORD"]
+        if (not valid(user) or not valid(password, 32) or not valid(app_user) or
+                not valid(app_password) or user == app_user or password == app_password):
+            raise ValueError("invalid cleanup identity")
+except (KeyError, TypeError, ValueError):
+    sys.exit("Compose 密钥或清理账号无效、不独立或两服务不一致")
+' || die "Compose 密钥校验失败；服务尚未启动"
+fi
 
 # ── 3) 镜像 + 网络 + 启动 ────────────────────────────────────────────────────
 # 先拉齐全部缺失镜像再启动，避免私有/缺失镜像导致机器进入半安装状态。
@@ -397,6 +460,34 @@ compose pull --policy missing || die "镜像拉取失败，尚未启动任何服
     · IMBoy 发布镜像标签存在且客户具备拉取权限
     · 私有 GHCR 已由客户在部署机完成 docker login ghcr.io
     · Docker Hub 网络与登录状态正常"
+
+# Resolve exactly the images Compose will use, including environment overrides.
+# The JSON stays in the pipe; only image references leave the parser.
+command -v python3 >/dev/null || die "需要 python3 检查 Compose 镜像；服务尚未启动"
+resolved_edge_images="$(compose config --format json | python3 -c '
+import json, sys
+try:
+    services = json.load(sys.stdin)["services"]
+    images = [services[name]["image"] for name in ("imboy_backend", "imboy_edge")]
+    if any(not isinstance(image, str) or not image or "\n" in image for image in images):
+        raise ValueError("invalid image")
+    print("\n".join(dict.fromkeys(images)))
+except (KeyError, TypeError, ValueError):
+    sys.exit("无法确定 Compose 后端及 edge 镜像")
+')" || die "Compose 镜像解析失败；服务尚未启动"
+[ -n "$resolved_edge_images" ] || die "Compose 镜像为空；服务尚未启动"
+# Keep exited probe containers for diagnosis; they have no credentials or network.
+while IFS= read -r edge_image; do
+  edge_probe_id="$(docker create --network none --entrypoint /bin/sh "$edge_image" -c '
+    test -r /opt/imboy/bin/start_download_edge.sh || exit 1
+    for p in /opt/imboy/erts-*/bin/escript; do test -x "$p" && break; done
+    test -x "$p" || exit 1
+    for p in /opt/imboy/lib/imboy-*/priv/workers/download_edge.escript; do test -r "$p" && exit 0; done
+    exit 1
+  ')" || die "无法创建 edge 镜像检查容器；服务尚未启动"
+  docker start -a "$edge_probe_id" >/dev/null || die "所选后端镜像缺少可运行的 edge 文件；服务尚未启动（检查容器: $edge_probe_id）"
+  say "edge 镜像文件检查通过（检查容器: $edge_probe_id）"
+done <<< "$resolved_edge_images"
 
 say "创建网络并启动服务"
 docker network create imboy-network 2>/dev/null || true

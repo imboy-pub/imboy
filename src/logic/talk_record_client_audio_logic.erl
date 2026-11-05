@@ -1,6 +1,6 @@
 -module(talk_record_client_audio_logic).
 -moduledoc "Purpose-specific source authority; JWT issuance and bearer-only provider read.".
--export([issue/3, metadata/1, fold/4]).
+-export([issue/3, metadata/1, fold/4, edge_target/1]).
 
 %% Context must come from the existing JWT/device middleware, not request JSON.
 issue(#{uid := Uid, did := Did} = Context, Ids, Headers) ->
@@ -12,6 +12,7 @@ issue(_, _, _) ->
     {error, audio_source_denied}.
 
 metadata(Ticket) -> talk_record_client_audio_ds:metadata(Ticket).
+edge_target(Ticket) -> talk_record_client_audio_ds:edge_target(Ticket).
 fold(Ticket, Range, Fun, Acc) -> talk_record_client_audio_ds:fold(Ticket, Range, Fun, Acc).
 
 valid(

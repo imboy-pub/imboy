@@ -73,11 +73,13 @@ db_failure_keeps_periodic_recovery() ->
     ?assert(erlang:read_timer(maps:get(timer, S)) > 29000).
 
 child_specs_respect_opt_in_and_feature() ->
-    ?assertEqual([], attachment_delete_reaper:child_specs()),
+    ?assertMatch(
+        [#{id := attachment_direct_cleanup_worker}], attachment_delete_reaper:child_specs()
+    ),
     application:set_env(imboy, attachment_delete_worker_enabled, true),
-    ?assertEqual(3, length(attachment_delete_reaper:child_specs())),
+    ?assertEqual(4, length(attachment_delete_reaper:child_specs())),
     meck:expect(imboy_feature, enabled, fun(_) -> false end),
-    ?assertEqual(2, length(attachment_delete_reaper:child_specs())).
+    ?assertEqual(3, length(attachment_delete_reaper:child_specs())).
 
 real_timer_recovers_without_manual_reconcile() ->
     application:set_env(imboy, attachment_delete_worker_enabled, true),

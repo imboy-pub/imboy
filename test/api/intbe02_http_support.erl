@@ -42,6 +42,11 @@
     one/2,
     one/3,
     upload_file/3,
+    direct_group_file/4,
+    enable_group_direct/0,
+    start_direct_edge/1,
+    stop_direct_edge/1,
+    follow_direct_edge/1,
     s3_stub_object/1,
     declare_real_garage/1,
     issue_credential/4,
@@ -509,7 +514,8 @@ setup_storage() ->
     %% 未声明（conformance 离线形态）一律合成 endpoint（DNS 不可达，仅
     %% meck S3 替身截获）+ 合成凭据 + 替身安装——绝不能触碰宿主常驻
     %% Garage（127.0.0.1:3900 开发实例）。
-    {GarageMode, PriorGarage} =
+    PriorGarage = application:get_env(imboy, garage),
+    GarageMode =
         case persistent_term:get(?REAL_GARAGE_KEY, undefined) of
             undefined ->
                 ok = application:set_env(imboy, garage, #{
@@ -519,11 +525,11 @@ setup_storage() ->
                     access_key => <<"intbe02-synthetic-ak">>,
                     secret_key => <<"intbe02-synthetic-sk">>
                 }),
-                {stub, application:get_env(imboy, garage)};
+                stub;
             {ok, Declared} = Real ->
                 _ = Real,
                 ok = application:set_env(imboy, garage, Declared),
-                {real, application:get_env(imboy, garage)}
+                real
         end,
     Registry = eb_pg_test_fixture:install_asset_registry(),
     State = #{
@@ -1109,6 +1115,158 @@ upload_file(_Port, Registration, Bytes) when is_binary(Bytes) ->
     Key = maps:get(<<"object_key">>, Registration),
     {Mime, Bytes} = s3_stub_object(Key),
     ok.
+
+%% Real Garage fixture: direct-v1 confirms the winner before the group reference.
+enable_group_direct() ->
+    Registry = attachment_storage:registry(),
+    Garage = application:get_env(imboy, garage, #{}),
+    Namespace = <<"intbe02-group-garage">>,
+    Root = #{
+        driver => <<"garage">>,
+        namespace => Namespace,
+        endpoint => maps:get(endpoint, Garage),
+        container => maps:get(bucket, Garage)
+    },
+    Roots = maps:get(roots, Registry, #{}),
+    Uploads = maps:get(upload_namespaces, Registry, #{}),
+    application:set_env(
+        imboy,
+        attachment_storage_registry,
+        Registry#{
+            roots => Roots#{Namespace => Root},
+            upload_namespaces => Uploads#{<<"group">> => Namespace}
+        }
+    ).
+
+direct_group_file(Gid, Uid, FileName, Bytes) ->
+    GidBin = integer_to_binary(elib_cnv:safe_to_integer(Gid)),
+    Sha = binary:encode_hex(crypto:hash(sha256, Bytes), lowercase),
+    {ok, #{object_key := Key}} = attach_direct_logic:register(
+        Uid, <<"group">>, GidBin, elib_uuid:gen_v7(), FileName
+    ),
+    ok = attach_direct_logic:declare(Key, Sha, byte_size(Bytes), <<"text/plain">>),
+    {ok, #{grant := #{url := Url, required_headers := Hs}, attempt_id := Attempt}} =
+        attach_direct_logic:grant(Key, Sha),
+    Headers = [{binary_to_list(K), binary_to_list(V)} || {K, V} <- Hs],
+    {ok, {{_, Status, _}, _, _}} = httpc:request(
+        put,
+        {binary_to_list(Url), Headers, "text/plain", Bytes},
+        [{timeout, 30000}, {autoredirect, false}],
+        [{body_format, binary}]
+    ),
+    true = Status >= 200 andalso Status < 300,
+    {ok, #{state := <<"CONFIRMED">>}} = attach_direct_logic:finalize(Key, Attempt),
+    {ok, Ref} = group_file_ds:bind_file(
+        elib_cnv:safe_to_integer(Gid), Uid, FileName, <<"text/plain">>, Key, byte_size(Bytes), <<>>
+    ),
+    {Ref, Key}.
+
+start_direct_edge(BackendPort) ->
+    {ok, Listener} = gen_tcp:listen(0, [{ip, {127, 0, 0, 1}}, {active, false}]),
+    {ok, {_, EdgePort}} = inet:sockname(Listener),
+    ok = gen_tcp:close(Listener),
+    Token = binary_to_list(binary:encode_hex(crypto:strong_rand_bytes(32), lowercase)),
+    PrevToken = application:get_env(imboy, edge_internal_token),
+    PrevBase = application:get_env(imboy, edge_base_url),
+    Script = direct_edge_script(),
+    Paths = lists:join(":", code:get_path()),
+    try
+        ok = application:set_env(imboy, edge_internal_token, list_to_binary(Token)),
+        ok = application:set_env(
+            imboy,
+            edge_base_url,
+            iolist_to_binary(["http://127.0.0.1:", integer_to_list(EdgePort), "/edge"])
+        ),
+        Edge = open_port({spawn_executable, os:find_executable("escript")}, [
+            exit_status,
+            stderr_to_stdout,
+            {args, [Script]},
+            {env, [
+                {"EDGE_PORT", integer_to_list(EdgePort)},
+                {"EDGE_AUTHORIZE_URL",
+                    "http://127.0.0.1:" ++ integer_to_list(BackendPort) ++
+                        "/api/v1/attachment/edge/authorize"},
+                {"EDGE_INTERNAL_TOKEN", Token},
+                {"EDGE_EBIN", filename:dirname(code:which(attachment_edge_proxy_handler))},
+                {"EDGE_CODE_PATHS", lists:flatten(Paths)}
+            ]}
+        ]),
+        State = {Edge, PrevToken, PrevBase},
+        try
+            ok = wait_direct_edge(EdgePort, 100),
+            State
+        catch
+            Class0:Reason0:Stack0 ->
+                stop_direct_edge(State),
+                erlang:raise(Class0, Reason0, Stack0)
+        end
+    catch
+        Class:Reason:Stack ->
+            restore_direct_edge_env(edge_internal_token, PrevToken),
+            restore_direct_edge_env(edge_base_url, PrevBase),
+            erlang:raise(Class, Reason, Stack)
+    end.
+
+direct_edge_script() ->
+    Local = filename:absname("priv/workers/download_edge.escript"),
+    case filelib:is_regular(Local) of
+        true -> Local;
+        false -> filename:join([code:priv_dir(imboy), "workers", "download_edge.escript"])
+    end.
+
+wait_direct_edge(_, 0) ->
+    error(edge_not_ready);
+wait_direct_edge(Port, Retries) ->
+    case gen_tcp:connect({127, 0, 0, 1}, Port, [{active, false}], 100) of
+        {ok, Socket} ->
+            gen_tcp:close(Socket),
+            ok;
+        _ ->
+            timer:sleep(100),
+            wait_direct_edge(Port, Retries - 1)
+    end.
+
+stop_direct_edge({Edge, PrevToken, PrevBase}) ->
+    try
+        case erlang:port_info(Edge, os_pid) of
+            {os_pid, Pid} ->
+                _ = os:cmd("kill -TERM " ++ integer_to_list(Pid)),
+                wait_direct_edge_exit(Pid, 30);
+            undefined ->
+                ok
+        end
+    after
+        catch erlang:port_close(Edge),
+        restore_direct_edge_env(edge_internal_token, PrevToken),
+        restore_direct_edge_env(edge_base_url, PrevBase)
+    end.
+
+wait_direct_edge_exit(_, 0) ->
+    error(edge_process_not_stopped);
+wait_direct_edge_exit(Pid, Retries) ->
+    case string:trim(os:cmd("ps -p " ++ integer_to_list(Pid) ++ " -o stat=")) of
+        "" ->
+            ok;
+        [$Z | _] ->
+            ok;
+        _ ->
+            timer:sleep(100),
+            wait_direct_edge_exit(Pid, Retries - 1)
+    end.
+
+restore_direct_edge_env(Key, {ok, Value}) -> application:set_env(imboy, Key, Value);
+restore_direct_edge_env(Key, undefined) -> application:unset_env(imboy, Key).
+
+follow_direct_edge(#{status := 302, headers := #{<<"location">> := Url}}) ->
+    {ok, {{_, Status, _}, _, Body}} = httpc:request(
+        get,
+        {binary_to_list(Url), []},
+        [{autoredirect, false}, {timeout, 10000}],
+        [{body_format, binary}]
+    ),
+    #{status => Status, body => Body};
+follow_direct_edge(Response) ->
+    Response.
 
 %%%===================================================================
 %%% V3-14 S3 直传替身（meck httpc passthrough 分流 + driver 供数）

@@ -9,7 +9,8 @@
     export_ttl_seconds/0,
     render/3,
     snapshot_tx/2,
-    authorize_tx/3
+    authorize_tx/3,
+    authorize_metadata_tx/3
 ]).
 
 -include_lib("kernel/include/logger.hrl").
@@ -109,21 +110,27 @@ export_gate_tx(Conn, Uid, RecordId) ->
 
 %% 当前授权在父记录锁内重验；grant 修改/删除/移交共享父锁。
 authorize_tx(Conn, Uid, RecordId) ->
-    case talk_record_export_repo:lock_record_tx(Conn, RecordId) of
-        {ok, _} -> authorize_visible_tx(Conn, Uid, RecordId);
+    case talk_record_export_repo:lock_record_metadata_tx(Conn, RecordId) of
+        {ok, _} -> authorize_metadata_tx(Conn, Uid, RecordId);
         Error -> Error
     end.
 
-authorize_visible_tx(Conn, Uid, RecordId) ->
-    case talk_record_repo:find_visible(Uid, RecordId) of
-        {ok, #{<<"owner_user_id">> := Uid} = Row} ->
+authorize_metadata_tx(Conn, Uid, RecordId) ->
+    Sql =
+        <<"SELECT tr.id,tr.owner_user_id,tr.scope,tr.organization_id,tr.content_revision,tr.acl_revision",
+            " FROM talk_record tr WHERE tr.id=$2 AND (",
+            (talk_record_repo:visible_access_sql(all))/binary, ")">>,
+    case elib_pg:query(Conn, Sql, [Uid, RecordId]) of
+        {ok, [#{<<"owner_user_id">> := Uid} = Row]} ->
             policy_gate(Row);
-        {ok, Row} ->
+        {ok, [Row]} ->
             case talk_record_export_repo:grant_export_tx(Conn, RecordId, Uid) of
                 {ok, true} -> policy_gate(Row);
                 {ok, false} -> {error, forbidden};
                 Error -> Error
             end;
+        {ok, []} ->
+            {error, not_found};
         Error ->
             Error
     end.

@@ -24,7 +24,9 @@
 
 -export([
     register/5,
+    register/6,
     register_application/5,
+    register_application_owned/6,
     declare/4,
     grant/2,
     status/2,
@@ -54,6 +56,44 @@
 ) ->
     {ok, map()} | {error, term()}.
 register(Uid, Scope, ScopeRef, ClientUploadId, FileName) ->
+    register(Uid, Scope, ScopeRef, ClientUploadId, FileName, #{}).
+
+register(Uid, Scope, ScopeRef, ClientUploadId, FileName, Options) when is_map(Options) ->
+    case registration_contract(Scope, Options) of
+        {ok, Cipher, Purpose, Anchor} ->
+            register_(Uid, Scope, ScopeRef, ClientUploadId, FileName, Cipher, Purpose, Anchor);
+        {error, _} = Error ->
+            Error
+    end;
+register(_, _, _, _, _, _) ->
+    {error, invalid_attachment_contract}.
+
+registration_contract(Scope, Options) ->
+    Cipher = attach_logic:normalize_cipher(maps:get(<<"cipher">>, Options, null)),
+    Purpose = maps:get(<<"purpose">>, Options, <<"attachment">>),
+    Anchor0 = maps:get(<<"anchor_msg_id">>, Options, null),
+    Anchor =
+        case Anchor0 of
+            undefined -> null;
+            <<>> -> null;
+            _ -> Anchor0
+        end,
+    case {Cipher, Purpose, Scope, Anchor} of
+        {{error, _}, _, _, _} ->
+            {error, unsupported_cipher};
+        {C, <<"message">>, <<"group">>, A} when
+            is_binary(A), byte_size(A) > 0, byte_size(A) =< 128
+        ->
+            {ok, C, <<"message">>, A};
+        {C, <<"message">>, S, null} when S =/= <<"group">> ->
+            {ok, C, <<"message">>, null};
+        {C, <<"attachment">>, _, null} ->
+            {ok, C, <<"attachment">>, null};
+        _ ->
+            {error, invalid_attachment_contract}
+    end.
+
+register_(Uid, Scope, ScopeRef, ClientUploadId, FileName, Cipher, Purpose, Anchor) ->
     ObjectKey = elib_oss:build_object_key(Uid, Scope, ScopeRef, FileName),
     %% elib_oss:default_bucket/0 未导出；同语义直接读 garage 配置
     Bucket = maps:get(bucket, application:get_env(imboy, garage, #{}), <<"imboy">>),
@@ -73,27 +113,37 @@ register(Uid, Scope, ScopeRef, ClientUploadId, FileName) ->
             locator_digest := Locator
         }} ->
             SafeName = filename:basename(FileName),
-            Sql = <<"SELECT fn_dv1_register($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) AS key">>,
+            Sql =
+                <<"SELECT fn_dv1_register($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15) AS key">>,
             case
-                elib_pg:query(Sql, [
-                    ObjectKey,
-                    Bucket,
-                    Scope,
-                    scope_ref_bin(ScopeRef),
-                    Uid,
-                    Uuid,
-                    mime_of(FileName),
-                    SafeName,
-                    Driver,
-                    Ns,
-                    Container,
-                    Locator
-                ])
+                with_tx(fun(Conn) ->
+                    elib_pg:query(Conn, Sql, [
+                        ObjectKey,
+                        Bucket,
+                        Scope,
+                        scope_ref_bin(ScopeRef),
+                        Uid,
+                        Uuid,
+                        mime_of(FileName),
+                        SafeName,
+                        Driver,
+                        Ns,
+                        Container,
+                        Locator,
+                        Cipher,
+                        Purpose,
+                        Anchor
+                    ])
+                end)
             of
                 {ok, [#{<<"key">> := Key}]} ->
                     deadline_info(Key);
                 {ok, []} ->
                     {error, register_not_returned};
+                {error, #error{code = <<"P1002">>}} ->
+                    {error, legacy_session_conflict};
+                {error, #error{code = <<"P1001">>}} ->
+                    {error, terminal_session_conflict};
                 {error, #error{code = <<"23510">>}} ->
                     {error, declaration_conflict};
                 {error, #error{code = <<"23514">>}} ->
@@ -117,6 +167,28 @@ register(Uid, Scope, ScopeRef, ClientUploadId, FileName) ->
 ) ->
     {ok, map()} | {error, term()}.
 register_application(AppId, OrgId, Scope, ClientUploadId, FileName) ->
+    case register_application_sql(undefined, AppId, OrgId, Scope, ClientUploadId, FileName) of
+        {ok, Key} -> deadline_info(Key);
+        {error, _} = Error -> Error
+    end.
+
+%% Ownership and the pending session commit together before any upload capability.
+register_application_owned(AppId, OrgId, Scope, ClientUploadId, FileName, AdminId) ->
+    Result = with_tx(fun(Conn) ->
+        ok = workspace_guard:abort_on_error(
+            admin_avatar_session_repo:reserve_tx(Conn, ClientUploadId, AdminId)
+        ),
+        case register_application_sql(Conn, AppId, OrgId, Scope, ClientUploadId, FileName) of
+            {ok, Key} -> {ok, Key};
+            {error, Reason} -> throw({abort_tx, Reason})
+        end
+    end),
+    case Result of
+        {ok, Key} -> deadline_info(Key);
+        {error, _} = Error -> Error
+    end.
+
+register_application_sql(Conn, AppId, OrgId, Scope, ClientUploadId, FileName) ->
     ObjectKey = application_object_key(AppId, FileName),
     Bucket = maps:get(bucket, application:get_env(imboy, garage, #{}), <<"imboy">>),
     Uuid =
@@ -135,26 +207,34 @@ register_application(AppId, OrgId, Scope, ClientUploadId, FileName) ->
             SafeName = filename:basename(FileName),
             Sql =
                 <<"SELECT fn_dv1_register_application($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) AS key">>,
-            case
-                elib_pg:query(Sql, [
-                    ObjectKey,
-                    Bucket,
-                    Scope,
-                    ec_cnv:to_binary(AppId),
-                    ec_cnv:to_binary(OrgId),
-                    Uuid,
-                    mime_of(FileName),
-                    SafeName,
-                    Driver,
-                    Ns,
-                    Container,
-                    Locator
-                ])
-            of
+            Params = [
+                ObjectKey,
+                Bucket,
+                Scope,
+                ec_cnv:to_binary(AppId),
+                ec_cnv:to_binary(OrgId),
+                Uuid,
+                mime_of(FileName),
+                SafeName,
+                Driver,
+                Ns,
+                Container,
+                Locator
+            ],
+            Result =
+                case Conn of
+                    undefined -> with_tx(fun(C) -> elib_pg:query(C, Sql, Params) end);
+                    _ -> elib_pg:query(Conn, Sql, Params)
+                end,
+            case Result of
                 {ok, [#{<<"key">> := Key}]} ->
-                    deadline_info(Key);
+                    {ok, Key};
                 {ok, []} ->
                     {error, register_not_returned};
+                {error, #error{code = <<"P1002">>}} ->
+                    {error, legacy_session_conflict};
+                {error, #error{code = <<"P1001">>}} ->
+                    {error, terminal_session_conflict};
                 {error, #error{code = <<"23510">>}} ->
                     {error, declaration_conflict};
                 {error, #error{code = <<"23514">>}} ->
@@ -178,10 +258,9 @@ ymd_today() ->
     {{Y, M, D}, _} = calendar:universal_time(),
     iolist_to_binary(io_lib:format("~4..0B~2..0B~2..0B", [Y, M, D])).
 
-%% @doc avatar 业务发布（公开复制）：仅 application 主体的 CONFIRMED 会话可
-%% 发布；私有 winner 字节复制到公开桶，成功才返回公开 URL（失败可重试：
-%% winner/candidate 仍在，agent.avatar 由调用方在成功后更新——失败无错误
-%% 头像引用）。匿名可见性 = 公开桶对象存在性（I13/协议 §5）。
+%% @doc avatar 业务发布：仅 application 主体的 CONFIRMED 会话可发布。
+%% 扫描并校验私有 winner 后，由受控边缘别名提供公开 URL；未绑定预览
+%% 有时限，已绑定别名受用户头像引用约束。历史公开复制 URL 保持兼容。
 %% 主体断言（review P1 修复）：Admin 面入口只允许 application 会话——
 %% Human 用户会话绝不能经 publish 公开（权限边界：Admin ≠ 读任意用户附件）。
 -spec publish_avatar(binary(), binary(), binary()) ->
@@ -189,9 +268,14 @@ ymd_today() ->
 publish_avatar(ObjectKey, AgentRef, _SecretPlaceholder) ->
     case session_row(ObjectKey) of
         {ok, Row = #{<<"direct_state">> := <<"CONFIRMED">>}} ->
-            case subject_kind(Row) of
-                <<"application">> -> publish_avatar_(Row, ObjectKey, AgentRef);
-                _ -> {error, not_application_session}
+            case avatar_subject(Row, ObjectKey) of
+                {ok, Principal} ->
+                    case avatar_agent_matches(Principal, AgentRef) of
+                        true -> publish_avatar_(Row, ObjectKey, AgentRef);
+                        false -> {error, not_application_session}
+                    end;
+                error ->
+                    {error, not_application_session}
             end;
         {ok, #{<<"direct_state">> := _}} ->
             {error, not_confirmed};
@@ -199,43 +283,94 @@ publish_avatar(ObjectKey, AgentRef, _SecretPlaceholder) ->
             {error, R}
     end.
 
-publish_avatar_(_Row, ObjectKey, AgentRef) ->
-    %% V3-13（G13/F03）：发布改**服务端跨桶 Copy**——private winner → 公开桶，
-    %% 零正文过 BEAM（原 read_snapshot→put_object 回环已删除）。失败可恢复：
-    %% winner 未动、公开桶未写错误引用，重试即重新 Copy。
-    %% 物理键以 **attachment 行**（winner_pin 写入的 storage_physical_key）为
-    %% 准——pending 会话行无物理键，逻辑键 ≠ 物理 winner 键。
-    PublicKey = ObjectKey,
-    case attachment_ds:find_by_path(ObjectKey) of
-        {ok, AttachRow} ->
-            case attachment_storage:frozen_location(ObjectKey, AttachRow) of
-                {ok, #{namespace := Ns, container := C, key := PhysKey}} when
-                    is_binary(Ns),
-                    is_binary(C),
-                    is_binary(PhysKey)
-                ->
-                    PublicBucket = elib_oss:get_bucket(<<"public">>),
-                    case
-                        attachment_storage_garage:copy_cross(
-                            Ns, C, PhysKey, PublicBucket, PublicKey
-                        )
-                    of
-                        {ok, _CopyInfo} ->
-                            {ok, #{
-                                public_url => elib_oss:public_url_for_key(PublicKey),
-                                public_key => PublicKey,
-                                agent_ref => AgentRef
-                            }};
-                        {error, R} ->
-                            %% 公开复制失败可恢复：winner 未动，重试即可
-                            {error, {publish_failed, R}}
+publish_avatar_(_SessionRow, ObjectKey, AgentRef) ->
+    case attachment_edge_redirect:edge_ready() of
+        false ->
+            {error, edge_not_configured};
+        true ->
+            case attachment_avatar_alias_repo:reserve(ObjectKey) of
+                {ok, _, #{<<"state">> := <<"legacy_complete">>}} ->
+                    {ok, #{
+                        public_url => elib_oss:public_url_for_key(ObjectKey),
+                        public_key => ObjectKey,
+                        agent_ref => AgentRef
+                    }};
+                {ok, _, #{<<"alias_id">> := Alias, <<"state">> := <<"published">>}} ->
+                    avatar_alias_result(Alias, ObjectKey, AgentRef);
+                {ok, Row, #{<<"state">> := <<"unpublished">>}} ->
+                    publish_avatar_alias(Row, ObjectKey, AgentRef);
+                {ok, _, #{<<"state">> := <<"pending">>}} ->
+                    {error, avatar_alias_pending_requires_reconciliation};
+                {ok, _, #{<<"state">> := <<"revoked">>}} ->
+                    {error, avatar_alias_revoked};
+                {error, _} = Error ->
+                    Error
+            end
+    end.
+
+publish_avatar_alias(Row, ObjectKey, AgentRef) ->
+    case attachment_storage:frozen_location(ObjectKey, Row) of
+        {ok, #{key := PhysicalKey}} ->
+            case scan_avatar(Row, ObjectKey, PhysicalKey) of
+                ok ->
+                    case attachment_avatar_alias_repo:publish(ObjectKey, Row) of
+                        {ok, Alias} -> avatar_alias_result(Alias, ObjectKey, AgentRef);
+                        {error, _} = Error -> Error
                     end;
-                _ ->
-                    {error, location_unverified}
+                {error, _} = Error ->
+                    Error
             end;
         _ ->
-            %% CONFIRMED 必有 attachment 行；缺行=账本不一致，fail-closed
-            {error, {winner_row_missing, ObjectKey}}
+            {error, location_unverified}
+    end.
+
+avatar_alias_result(Alias, ObjectKey, AgentRef) ->
+    case attachment_avatar_alias_repo:public_url(Alias) of
+        {ok, Url} -> {ok, #{public_url => Url, public_key => ObjectKey, agent_ref => AgentRef}};
+        {error, _} = Error -> Error
+    end.
+
+scan_avatar(Row, ObjectKey, PhysicalKey) ->
+    case
+        {
+            maps:get(<<"lifecycle_state">>, Row, undefined),
+            maps:get(<<"mime_type">>, Row, undefined),
+            maps:get(<<"file_hash256">>, Row, undefined),
+            maps:get(<<"size">>, Row, undefined),
+            attachment_storage:frozen_location(ObjectKey, Row)
+        }
+    of
+        {<<"live">>, Mime, Sha, Size, {ok, #{garage_config := Cfg, container := Bucket}}} when
+            (Mime =:= <<"image/png">> orelse Mime =:= <<"image/jpeg">> orelse
+                Mime =:= <<"image/gif">> orelse Mime =:= <<"image/webp">>),
+            is_binary(Sha),
+            byte_size(Sha) =:= 64,
+            is_integer(Size),
+            Size > 0
+        ->
+            Fence = maps:get(avatar_winner_fence, Row, undefined),
+            Nonce = crypto:strong_rand_bytes(32),
+            AttemptKey = binary:encode_hex(
+                crypto:hash(sha256, term_to_binary({ObjectKey, Fence, Nonce}))
+            ),
+            Task = #{
+                endpoint => maps:get(endpoint, Cfg),
+                ak => maps:get(access_key, Cfg),
+                sk => maps:get(secret_key, Cfg),
+                bucket => Bucket,
+                region => maps:get(region, Cfg, <<"garage">>),
+                object_key => PhysicalKey,
+                attempt_key => AttemptKey,
+                mime => Mime,
+                secret => crypto:strong_rand_bytes(32)
+            },
+            case attachment_worker_port:scan_external(Task) of
+                {ok, #{verified := true, sha256 := Sha, size := Size}} -> ok;
+                {ok, _} -> {error, avatar_proof_mismatch};
+                {error, Reason} -> {error, {avatar_scan_failed, Reason}}
+            end;
+        _ ->
+            {error, avatar_not_validatable}
     end.
 
 %% @doc Admin 身份域（avatar_direct）会话主体断言：仅 application 主体会话
@@ -246,19 +381,42 @@ publish_avatar_(_Row, ObjectKey, AgentRef) ->
 require_application_session(ObjectKey) ->
     case session_row(ObjectKey) of
         {ok, Row} ->
-            case subject_kind(Row) of
-                <<"application">> -> ok;
-                _ -> {error, not_application_session}
+            case avatar_subject(Row, ObjectKey) of
+                {ok, _} -> ok;
+                error -> {error, not_application_session}
             end;
         {error, R} ->
             {error, R}
     end.
 
-subject_kind(Row) ->
+avatar_subject(Row, ObjectKey) ->
     case maps:get(<<"upload_registration">>, Row, #{}) of
-        #{<<"subject">> := #{<<"kind">> := Kind}} when is_binary(Kind) -> Kind;
-        _ -> <<>>
+        #{
+            <<"subject">> := #{
+                <<"kind">> := <<"application">>,
+                <<"org_id">> := <<"0">>,
+                <<"principal">> := Principal
+            }
+        } when is_binary(Principal), Principal =/= <<>> ->
+            Prefix = <<"app", Principal/binary, "/avatar/">>,
+            case ObjectKey of
+                <<Prefix:(byte_size(Prefix))/binary, _/binary>> -> {ok, Principal};
+                _ -> error
+            end;
+        _ ->
+            error
     end.
+
+avatar_agent_matches(Principal, Principal) ->
+    true;
+avatar_agent_matches(Principal, <<>>) ->
+    re:run(
+        Principal,
+        <<"^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$">>,
+        [caseless, {capture, none}]
+    ) =:= match;
+avatar_agent_matches(_, _) ->
+    false.
 
 %% ===== declare（expected 冻结）=====
 
@@ -274,10 +432,13 @@ declare(ObjectKey, Sha256Hex, Size, Mime) ->
 
 declare_(ObjectKey, Sha256Hex, Size, Mime) ->
     case
-        elib_pg:query(
-            <<"SELECT fn_dv1_declare($1,$2,$3,$4)">>,
-            [ObjectKey, Sha256Hex, Size, Mime]
-        )
+        with_tx(fun(Conn) ->
+            elib_pg:query(
+                Conn,
+                <<"SELECT fn_dv1_declare($1,$2,$3,$4)">>,
+                [ObjectKey, Sha256Hex, Size, Mime]
+            )
+        end)
     of
         {ok, _} -> ok;
         {error, #error{code = <<"23510">>}} -> {error, expected_conflict};
@@ -292,9 +453,10 @@ declare_(ObjectKey, Sha256Hex, Size, Mime) ->
 grant(ObjectKey, Sha256Hex) ->
     case session_row(ObjectKey) of
         {ok, Row = #{<<"direct_state">> := <<"DECLARED">>}} ->
-            with_tx(fun(Conn) ->
-                grant_tx(Conn, ObjectKey, Row, Sha256Hex, 1)
-            end);
+            case expected_sha_matches(Row, Sha256Hex) of
+                true -> with_tx(fun(Conn) -> grant_tx(Conn, ObjectKey, Row, Sha256Hex, 1) end);
+                false -> {error, expected_conflict}
+            end;
         {ok, #{<<"direct_state">> := _}} ->
             {error, illegal_state};
         {error, R} ->
@@ -308,35 +470,53 @@ renew_grant(ObjectKey, Sha256Hex) ->
         {ok, Row = #{<<"direct_state">> := State}} when
             State =:= <<"GRANTED">> orelse State =:= <<"FINALIZING">>
         ->
-            with_tx(fun(Conn) ->
-                StagingKey = staging_key(ObjectKey, next_no),
-                TargetKey = candidate_key(ObjectKey, next_no),
-                case
-                    attach_direct_attempt_repo:create_tx(
-                        Conn,
-                        ObjectKey,
-                        StagingKey,
-                        TargetKey,
-                        maps:get(<<"storage_driver">>, Row),
-                        maps:get(<<"storage_namespace">>, Row),
-                        maps:get(<<"storage_container">>, Row)
-                    )
-                of
-                    {ok, No} ->
-                        ok = open_capability_window_tx(Conn, ObjectKey),
-                        {ok, descriptor(ObjectKey, Row, No, StagingKey, Sha256Hex)};
-                    {error, R} ->
-                        {error, R}
-                end
-            end);
-        {ok, #{<<"direct_state">> := <<"CONFIRMED">>}} ->
+            case expected_sha_matches(Row, Sha256Hex) of
+                false ->
+                    {error, expected_conflict};
+                true ->
+                    with_tx(fun(Conn) ->
+                        StagingKey = staging_key(ObjectKey, next_no),
+                        TargetKey = candidate_key(ObjectKey, next_no),
+                        case
+                            attach_direct_attempt_repo:create_tx(
+                                Conn,
+                                ObjectKey,
+                                StagingKey,
+                                TargetKey,
+                                maps:get(<<"storage_driver">>, Row),
+                                maps:get(<<"storage_namespace">>, Row),
+                                maps:get(<<"storage_container">>, Row)
+                            )
+                        of
+                            {ok, No} ->
+                                ok = open_capability_window_tx(Conn, ObjectKey),
+                                {ok, descriptor(ObjectKey, Row, No, StagingKey, Sha256Hex)};
+                            {error, R} ->
+                                {error, R}
+                        end
+                    end)
+            end;
+        {ok, Row = #{<<"direct_state">> := <<"CONFIRMED">>}} ->
             %% I05/T02：CONFIRMED 重试返回原会话投影（幂等）——无新 attempt、
             %% 无 presign；信封 state 表达终态，调用方按 state 分支收口。
-            {ok, #{state => <<"CONFIRMED">>, object_key => ObjectKey}};
+            case expected_sha_matches(Row, Sha256Hex) of
+                true -> {ok, #{state => <<"CONFIRMED">>, object_key => ObjectKey}};
+                false -> {error, expected_conflict}
+            end;
         {ok, #{<<"direct_state">> := _}} ->
             {error, illegal_state};
         {error, R} ->
             {error, R}
+    end.
+
+expected_sha_matches(Row, Sha256Hex) ->
+    case expected_of(maps:get(<<"direct_expected">>, Row, null)) of
+        {Size, Sha256Hex} when
+            is_integer(Size), is_binary(Sha256Hex), byte_size(Sha256Hex) =:= 64
+        ->
+            true;
+        _ ->
+            false
     end.
 
 grant_tx(Conn, ObjectKey, Row, Sha256Hex, _AttemptNo) ->
@@ -485,21 +665,23 @@ settle_outcome(ObjectKey, _Row, Attempt, {rejected, Reason}) ->
 settle_outcome(ObjectKey, _Row, Attempt, {unknown, Reason}) ->
     %% §3.2：UNKNOWN 只探测/隔离；不重发原 target，不因 HEAD 相同晋升
     AttemptNo = ec_cnv:to_integer(maps:get(<<"attempt_no">>, Attempt)),
-    with_tx(fun(Conn) ->
-        attach_direct_attempt_repo:record_outcome_tx(
-            Conn,
-            ObjectKey,
-            AttemptNo,
-            unknown_quarantined,
-            reason_bin(Reason)
-        )
-    end),
-    {ok, #{
-        state => <<"FINALIZING">>,
-        attempt_id => AttemptNo,
-        outcome => <<"UNKNOWN_QUARANTINED">>,
-        reason => Reason
-    }}.
+    case
+        with_tx(fun(Conn) ->
+            attach_direct_attempt_repo:record_outcome_tx(
+                Conn, ObjectKey, AttemptNo, unknown_quarantined, reason_bin(Reason)
+            )
+        end)
+    of
+        ok ->
+            {ok, #{
+                state => <<"FINALIZING">>,
+                attempt_id => AttemptNo,
+                outcome => <<"UNKNOWN_QUARANTINED">>,
+                reason => Reason
+            }};
+        Error ->
+            {error, {outcome_unconfirmed, Error}}
+    end.
 
 expected_of(null) ->
     {undefined, undefined};
@@ -518,15 +700,22 @@ quarantine_or_reject(ObjectKey, _Row, Attempt, {copy_ok, _Size}) ->
 
 %% DISPATCHED → COPY_COMPLETED → REJECTED（两跳 CAS，白名单强制）
 reject_copy(ObjectKey, AttemptNo, Reason) ->
-    _ = with_tx(fun(Conn) ->
-        attach_direct_attempt_repo:record_outcome_tx(
-            Conn,
-            ObjectKey,
-            AttemptNo,
-            copy_completed,
-            reason_bin(Reason)
-        )
-    end),
+    case
+        with_tx(fun(Conn) ->
+            attach_direct_attempt_repo:record_outcome_tx(
+                Conn,
+                ObjectKey,
+                AttemptNo,
+                copy_completed,
+                reason_bin(Reason)
+            )
+        end)
+    of
+        ok -> reject_completed_copy(ObjectKey, AttemptNo, Reason);
+        Error -> {error, {outcome_unconfirmed, Error}}
+    end.
+
+reject_completed_copy(ObjectKey, AttemptNo, Reason) ->
     case
         with_tx(fun(Conn) ->
             attach_direct_attempt_repo:transition_tx(
@@ -540,7 +729,6 @@ reject_copy(ObjectKey, AttemptNo, Reason) ->
         end)
     of
         ok -> {error, {rejected, Reason}};
-        {error, cas_lost} -> {error, {rejected, Reason}};
         {error, R} -> {error, R}
     end.
 
@@ -551,6 +739,7 @@ confirm_winner(ObjectKey, Row, Attempt, Sha256Hex, Size) ->
     Uid = ec_cnv:to_integer(maps:get(<<"creator_user_id">>, Row)),
     Scope = maps:get(<<"scope">>, Row),
     Result = with_tx(fun(Conn) ->
+        ok = workspace_guard:abort_on_error(prelock_enterprise_workspace(Conn, ObjectKey, Row)),
         case
             attach_direct_attempt_repo:record_outcome_tx(
                 Conn,
@@ -601,20 +790,35 @@ confirm_winner(ObjectKey, Row, Attempt, Sha256Hex, Size) ->
             {error, R}
     end.
 
+prelock_enterprise_workspace(Conn, ObjectKey, Row) ->
+    case maps:get(<<"upload_registration">>, Row, #{}) of
+        #{<<"subject">> := #{<<"kind">> := <<"enterprise">>}} ->
+            case
+                elib_pg:query(Conn, <<"SELECT fn_eb_direct_workspace_prelock($1)">>, [ObjectKey])
+            of
+                {ok, _} -> ok;
+                {error, Reason} -> {error, Reason}
+            end;
+        _ ->
+            ok
+    end.
+
 confirm_attach_and_pin(Conn, ObjectKey, Row, Attempt, TargetKey, Sha256Hex, Size, Uid, Scope) ->
     ScopeRef = scope_ref_from_row(Row),
     %% workspace 资格（与 V5 confirm 同守卫；group/channel 必须存在且成员有效）
     case attach_scope_target(Scope, ScopeRef) of
         {ok, Target} ->
             ok = workspace_guard:abort_on_error(
-                attachment_ds:ensure_upload_scope_tx(Conn, Target, Uid)
+                attachment_ds:ensure_upload_scope_tx_retryable(Conn, Target, Uid)
             );
         passthrough ->
             ok;
         {error, Reason} ->
             throw({abort_tx, Reason})
     end,
-    Attach = confirm_attach_map(ObjectKey, Scope, ScopeRef, Size, mime_from_row(Row), Sha256Hex),
+    Attach = confirm_attach_map(
+        ObjectKey, Scope, ScopeRef, Size, mime_from_row(Row), Sha256Hex, Row
+    ),
     Location = #{
         <<"storage_driver">> => maps:get(<<"storage_driver">>, Row),
         <<"storage_namespace">> => maps:get(<<"storage_namespace">>, Row),
@@ -652,10 +856,11 @@ attach_scope_target(<<"channel">>, _Ref) ->
 attach_scope_target(_Scope, _Ref) ->
     passthrough.
 
-confirm_attach_map(ObjectKey, Scope, ScopeRef, RealSize, RealType, Sha256) ->
+confirm_attach_map(ObjectKey, Scope, ScopeRef, RealSize, RealType, Sha256, Row) ->
+    Declaration = maps:get(<<"declaration">>, maps:get(<<"upload_registration">>, Row, #{}), #{}),
     #{
         <<"file_hash256">> => Sha256,
-        <<"cipher">> => null,
+        <<"cipher">> => maps:get(<<"cipher">>, Declaration, null),
         <<"mime_type">> => RealType,
         <<"name">> => filename:basename(ObjectKey),
         <<"path">> => ObjectKey,
@@ -665,7 +870,7 @@ confirm_attach_map(ObjectKey, Scope, ScopeRef, RealSize, RealType, Sha256) ->
         %% 与 V5 confirm_attach_map 同合同：空 ref 归一为 null
         %% （save_confirmed_tx 回读比对 {creator,scope,ref}，undefined≠null）
         <<"scope_ref">> => normalize_ref(ScopeRef),
-        <<"anchor_msg_id">> => undefined
+        <<"anchor_msg_id">> => maps:get(<<"anchor_msg_id">>, Declaration, null)
     }.
 
 normalize_ref(undefined) -> null;
@@ -721,7 +926,11 @@ reconcile() ->
 %% ===== 内部 =====
 
 begin_finalize(ObjectKey, AttemptNo) ->
-    case elib_pg:query(<<"SELECT fn_dv1_begin_finalize($1,$2)">>, [ObjectKey, AttemptNo]) of
+    case
+        with_tx(fun(Conn) ->
+            elib_pg:query(Conn, <<"SELECT fn_dv1_begin_finalize($1,$2)">>, [ObjectKey, AttemptNo])
+        end)
+    of
         {ok, _} -> ok;
         {error, #error{code = <<"23510">>}} -> {error, attempt_not_dispatchable};
         {error, #error{code = <<"P0002">>}} -> {error, not_found};
@@ -779,14 +988,29 @@ deadline_info(Key) ->
     end.
 
 with_tx(Fun) ->
-    elib_pg:with_tx(Fun).
+    elib_pg:with_physical_guard_retry_tx(Fun).
 
 %% grant 描述符：s3_put 传输型（协议 §3）；required_headers 之外禁止扩展
 %% x-amz-*/ACL/copy-source（T07）。checksum 为原始 32 字节摘要 Base64（I04）。
 descriptor(ObjectKey, Row, AttemptNo, StagingKey, Sha256Hex) ->
-    Container = maps:get(<<"storage_container">>, Row),
-    Cfg = application:get_env(imboy, garage, #{}),
-    Endpoint = maps:get(endpoint, Cfg, elib_oss:endpoint()),
+    {Container, Cfg} =
+        case attachment_storage:frozen_location(ObjectKey, Row) of
+            {ok, #{driver := garage, container := C, garage_config := G}} -> {C, G};
+            {error, Reason} -> throw({abort_tx, {location_unverified, Reason}});
+            _ -> throw({abort_tx, location_unverified})
+        end,
+    Endpoint = maps:get(endpoint, Cfg),
+    case {maps:get(access_key, Cfg, undefined), maps:get(secret_key, Cfg, undefined)} of
+        {Access, Secret} when
+            is_binary(Access),
+            byte_size(Access) > 0,
+            is_binary(Secret),
+            byte_size(Secret) > 0
+        ->
+            ok;
+        _ ->
+            throw({abort_tx, signing_credentials_unavailable})
+    end,
     Now = calendar:universal_time(),
     Ttl = ?GRANT_TTL_SECONDS,
     Mime = mime_from_row(Row),
@@ -821,11 +1045,24 @@ descriptor(ObjectKey, Row, AttemptNo, StagingKey, Sha256Hex) ->
     }.
 
 mime_from_row(Row) ->
-    case maps:get(<<"upload_registration">>, Row, #{}) of
-        #{<<"declaration">> := #{<<"mime">> := Mime}} when is_binary(Mime), byte_size(Mime) > 0 ->
-            Mime;
+    Expected = maps:get(<<"direct_expected">>, Row, null),
+    Declared =
+        case Expected of
+            M when is_map(M) -> M;
+            B when is_binary(B) -> jsone:decode(B);
+            _ -> #{}
+        end,
+    case maps:get(<<"mime">>, Declared, undefined) of
+        Mime when is_binary(Mime), byte_size(Mime) > 0 -> Mime;
         _ ->
-            <<"application/octet-stream">>
+            case maps:get(<<"upload_registration">>, Row, #{}) of
+                #{<<"declaration">> := #{<<"mime">> := Mime}} when
+                    is_binary(Mime), byte_size(Mime) > 0
+                ->
+                    Mime;
+                _ ->
+                    <<"application/octet-stream">>
+            end
     end.
 
 %% sha256hex → 原始 32 字节 → Base64（I04：非 hex 文本）

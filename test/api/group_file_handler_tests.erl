@@ -8,102 +8,12 @@
 %%% group_file_handler 模块的 EUnit 测试
 %%%
 %%% 覆盖 action:
-%%% - upload/bind/download/list/delete/search/categories
+%%% - retired upload/bind/download/list/delete/search/categories
 %%%===================================================================
 
-%% 模拟 cowboy 流式 multipart 协议：read_part 每次返回一个 part 的
-%% headers map，read_part_body 返回对应 body，读完返回 {done, Req}。
-%% 旧 mock 把 parts 列表塞进单次 read_part 返回值，固化了错误契约，
-%% 正是生产 function_clause 崩溃（2026-07-14）漏网的原因。
-multipart_stream_mocks(PartSpecs) ->
-    % PartSpecs :: [{HeadersMap, BodyBinary}]
-    % atomics 计数器跨进程可见（mock fun 在 eunit 工作进程执行，进程字典不通）。
-    Ctr = atomics:new(2, []),
-    ReadPart = fun(_Req) ->
-        N = atomics:add_get(Ctr, 1, 1) - 1,
-        case N < length(PartSpecs) of
-            true ->
-                {Headers, _Body} = lists:nth(N + 1, PartSpecs),
-                {ok, Headers, req_headers};
-            false ->
-                {done, req_done}
-        end
-    end,
-    ReadBody = fun(_Req) ->
-        N = atomics:add_get(Ctr, 2, 1) - 1,
-        {_Headers, Body} = lists:nth(N + 1, PartSpecs),
-        {ok, Body, req_body}
-    end,
-    [{'read_part', 1, ReadPart}, {'read_part_body', 1, ReadBody}].
-
-upload_missing_gid_returns_missing_param_test_() ->
-    ?WITH_MECKS(
-        [
-            {cowboy_req,
-                multipart_stream_mocks([
-                    {
-                        #{
-                            <<"content-disposition">> =>
-                                <<"form-data; name=\"file\"; filename=\"a.txt\"">>,
-                            <<"content-type">> => <<"text/plain">>
-                        },
-                        <<"hello">>
-                    }
-                ])},
-            {elib_response, [
-                {'error', 3, fun(_Req, _Msg, Code) ->
-                    self() ! {resp_code, Code},
-                    req_error
-                end}
-            ]}
-        ],
-        fun() ->
-            Result = group_file_handler:handle_action(upload, req_mock(), #{current_uid => 100}),
-            ?assertEqual(req_error, Result),
-            ?assertEqual(?ERR_MISSING_PARAM, receive_resp_code())
-        end
-    ).
-
-upload_success_returns_success_test_() ->
-    ?WITH_MECKS(
-        [
-            {cowboy_req,
-                multipart_stream_mocks([
-                    {#{<<"content-disposition">> => <<"form-data; name=\"gid\"">>}, <<"gid_1">>},
-                    {
-                        #{<<"content-disposition">> => <<"form-data; name=\"file_name\"">>},
-                        <<"a.txt">>
-                    },
-                    {
-                        #{<<"content-disposition">> => <<"form-data; name=\"file_type\"">>},
-                        <<"text/plain">>
-                    },
-                    {
-                        #{
-                            <<"content-disposition">> =>
-                                <<"form-data; name=\"file\"; filename=\"a.txt\"">>,
-                            <<"content-type">> => <<"text/plain">>
-                        },
-                        <<"hello">>
-                    }
-                ])},
-            {group_file_logic, [
-                {'upload', 5, fun(_Gid, _Uid, _FileName, _FileBinary, _FileType) ->
-                    {ok, #{<<"file_id">> => <<"f_1">>}}
-                end}
-            ]},
-            {elib_response, [
-                {'success', 2, fun(_Req, Data) ->
-                    self() ! {resp_data, Data},
-                    req_ok
-                end}
-            ]}
-        ],
-        fun() ->
-            Result = group_file_handler:handle_action(upload, req_mock(), #{current_uid => 100}),
-            ?assertEqual(req_ok, Result),
-            ?assertMatch(#{<<"file_id">> := <<"f_1">>}, receive_resp_data())
-        end
+retired_upload_action_is_unreachable_test() ->
+    ?assertError(
+        function_clause, group_file_handler:handle_action(upload, req_mock(), #{current_uid => 100})
     ).
 
 bind_success_dispatches_existing_handler_test_() ->
@@ -147,6 +57,45 @@ bind_success_dispatches_existing_handler_test_() ->
             Result = group_file_handler:handle_action(bind, req_mock(), #{current_uid => 100}),
             ?assertEqual(req_ok, Result),
             ?assertEqual(#{<<"file_id">> => <<"f_7">>}, receive_resp_data())
+        end
+    ).
+
+bind_archived_workspace_preserves_error_code_test_() ->
+    ?WITH_MECKS(
+        [
+            {elib_req, [
+                {'body', 2, fun(_Req, _Opts) ->
+                    {ok,
+                        #{
+                            <<"gid">> => 7,
+                            <<"file_name">> => <<"a.txt">>,
+                            <<"file_type">> => <<"text/plain">>,
+                            <<"object_key">> => <<"key">>,
+                            <<"file_size">> => 5
+                        },
+                        req_after_body}
+                end}
+            ]},
+            {group_file_ds, [
+                {'bind_file', 7, fun(_, _, _, _, _, _, _) ->
+                    {error, {?ERR_WORKSPACE_ARCHIVED, <<"archived">>}}
+                end}
+            ]},
+            {elib_response, [
+                {'error', 3, fun(_Req, _Msg, Code) ->
+                    self() ! {resp_code, Code},
+                    req_error
+                end}
+            ]}
+        ],
+        fun() ->
+            ?assertEqual(
+                req_error, group_file_handler:handle_action(bind, req_mock(), #{current_uid => 100})
+            ),
+            receive
+                {resp_code, Code} -> ?assertEqual(?ERR_WORKSPACE_ARCHIVED, Code)
+            after 1000 -> ?assert(false)
+            end
         end
     ).
 

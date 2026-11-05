@@ -40,13 +40,42 @@ prepare_aac(Uid, RecordId, Part) ->
     of
         {ok, #{object_key := Key}} ->
             case attach_direct_logic:declare(Key, Sha, Size, Mime) of
-                ok -> grant_descriptor(Key, Sha);
-                %% 同 part 重试（expected 已冻结同值）：幂等直接再取 descriptor
-                {error, expected_conflict} -> grant_descriptor(Key, Sha);
-                Error -> Error
+                ok ->
+                    grant_descriptor(Key, Sha);
+                {error, expected_conflict} ->
+                    case matching_expected(Uid, Key, Sha, Size, Mime) of
+                        true -> grant_descriptor(Key, Sha);
+                        false -> {error, expected_conflict}
+                    end;
+                Error ->
+                    Error
             end;
         Error ->
             Error
+    end.
+
+matching_expected(Uid, Key, Sha, Size, Mime) when is_integer(Size), Size >= 0 ->
+    case attach_direct_logic:status(Key, Uid) of
+        {ok, #{state := State, expected := Raw}} when
+            State =:= <<"GRANTED">>; State =:= <<"FINALIZING">>; State =:= <<"CONFIRMED">>
+        ->
+            Expected =
+                case Raw of
+                    Bin when is_binary(Bin) ->
+                        try
+                            jsone:decode(Bin)
+                        catch
+                            _:_ -> #{}
+                        end;
+                    M when is_map(M) -> M;
+                    _ ->
+                        #{}
+                end,
+            maps:get(<<"sha256">>, Expected, undefined) =:= Sha andalso
+                maps:get(<<"size_bytes">>, Expected, undefined) =:= integer_to_binary(Size) andalso
+                maps:get(<<"mime">>, Expected, undefined) =:= Mime;
+        _ ->
+            false
     end.
 
 %% GRANTED/FINALIZING（票据过期/前次 attempt 未收口）→ renew_grant 新

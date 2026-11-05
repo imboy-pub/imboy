@@ -39,6 +39,7 @@
 -export([get_history/3, get_history/4]).
 -export([get_history_batch/2]).
 -export([message_result/4]).
+-export([message_result_with_staging/6]).
 -export([history_context/7]).
 %% R02/D05：归档增量的安全推进边界与受控补扫
 -export([safe_head/4, safe_heads/2, safe_history/6, backfill/6, backfill_range_limit/0]).
@@ -51,6 +52,71 @@ message_result(ConvKey, MsgId, Sender, MinSeq) ->
         >>,
         [ConvKey, MsgId, Sender, MinSeq]
     ).
+
+message_result_with_staging(Type, Uid, Peer, MsgId, ConvKey, MinSeq) ->
+    try
+        elib_pg:with_tx(
+            fun(Conn) ->
+                case Type of
+                    <<"c2g">> -> lock_result_entitlements(Conn, Peer, Uid);
+                    <<"c2c">> -> ok
+                end,
+                AccessPeer =
+                    case Type of
+                        <<"c2c">> -> Uid;
+                        <<"c2g">> -> Peer
+                    end,
+                {_, Floor} = context_access_tx(Conn, Type, Uid, AccessPeer, MinSeq),
+                Sql = <<
+                    "SELECT conv_seq FROM (",
+                    "SELECT conv_seq FROM public.msg_store WHERE conv_key=$1 AND msg_id=$2 AND from_id=$3 ",
+                    "UNION ALL SELECT conv_seq FROM public.msg_store_staging ",
+                    "WHERE type=$5 AND msg_id=$2 AND from_id=$3 AND to_id=$6 ",
+                    "UNION ALL SELECT conv_seq FROM public.msg_c2c ",
+                    "WHERE $5='c2c' AND msg_id=$2 AND from_id=$3 AND to_id=$6 ",
+                    "UNION ALL SELECT conv_seq FROM public.msg_c2g_recipient_snapshot ",
+                    "WHERE $5='c2g' AND msg_id=$2 AND from_id=$3 AND to_gid=$6",
+                    ") facts WHERE conv_seq >= $4 AND conv_seq > 0 LIMIT 1"
+                >>,
+                {ok, archive_query(Conn, Sql, [ConvKey, MsgId, Uid, Floor, Type, Peer])}
+            end,
+            [{reraise, false}, {begin_opts, <<"ISOLATION LEVEL REPEATABLE READ">>}]
+        )
+    of
+        {rollback, {rollback, Reason}} -> {error, Reason};
+        {rollback, Reason} -> {error, Reason};
+        Result -> Result
+    catch
+        Class:Reason -> {error, {Class, Reason}}
+    end.
+
+lock_result_entitlements(Conn, Gid, Uid) ->
+    %% The binding writer takes an exclusive table lock; the result is read-only.
+    _ = archive_query(Conn, <<"LOCK TABLE public.channel IN ROW EXCLUSIVE MODE">>, []),
+    _ = archive_query(
+        Conn, <<"SELECT id FROM public.channel WHERE discussion_group_id=$1 FOR SHARE">>, [Gid]
+    ),
+    Queries = [
+        <<"SELECT w.id FROM public.workspace w JOIN public.\"group\" g ON g.workspace_id=w.id WHERE g.id=$1 FOR SHARE OF w">>,
+        <<"SELECT o.id FROM public.organization o JOIN public.workspace w ON w.organization_id=o.id JOIN public.\"group\" g ON g.workspace_id=w.id WHERE g.id=$1 FOR SHARE OF o">>,
+        <<"SELECT om.user_id FROM public.organization_member om JOIN public.workspace w ON w.organization_id=om.organization_id JOIN public.\"group\" g ON g.workspace_id=w.id WHERE g.id=$1 AND om.user_id=$2 FOR SHARE OF om">>,
+        <<"SELECT wm.user_id FROM public.workspace_member wm JOIN public.\"group\" g ON g.workspace_id=wm.workspace_id WHERE g.id=$1 AND wm.user_id=$2 FOR SHARE OF wm">>,
+        <<"SELECT s.user_id FROM public.channel_subscription s JOIN public.channel c ON c.id=s.channel_id WHERE c.discussion_group_id=$1 AND s.user_id=$2 FOR SHARE OF s">>,
+        <<"SELECT o.user_id FROM public.channel_order o JOIN public.channel c ON c.id=o.channel_id WHERE c.discussion_group_id=$1 AND o.user_id=$2 FOR SHARE OF o">>,
+        <<"SELECT a.user_id FROM public.channel_admin a JOIN public.channel c ON c.id=a.channel_id WHERE c.discussion_group_id=$1 AND a.user_id=$2 FOR SHARE OF a">>
+    ],
+    lists:foreach(
+        fun(Sql) ->
+            Params =
+                case binary:match(Sql, <<"$2">>) of
+                    nomatch -> [Gid];
+                    _ -> [Gid, Uid]
+                end,
+            _ = archive_query(Conn, Sql, Params)
+        end,
+        Queries
+    ),
+    ok.
 
 -spec history_context(binary(), binary(), pos_integer(), binary(), integer(), integer(), integer()) ->
     {ok, [map()]} | {error, term()}.

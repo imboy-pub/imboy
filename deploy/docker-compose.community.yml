@@ -156,11 +156,17 @@ services:
       IMBOY_PG_USER: ${POSTGRES_USER}
       IMBOY_PG_PASSWORD: ${POSTGRES_PASSWORD}
       IMBOY_PG_DB: ${POSTGRES_DB}
+      IMBOY_DIRECT_CLEANUP_PG_USER: ${IMBOY_DIRECT_CLEANUP_PG_USER:?IMBOY_DIRECT_CLEANUP_PG_USER is required}
+      IMBOY_DIRECT_CLEANUP_PG_PASSWORD: ${IMBOY_DIRECT_CLEANUP_PG_PASSWORD:?IMBOY_DIRECT_CLEANUP_PG_PASSWORD is required}
       IMBOY_BASE_URL: https://${API_DOMAIN}
+      IMBOY_WIDGET_BASE_URL: https://${CS_WIDGET_DOMAIN}
+      IMBOY_WIDGET_DOMAIN: ${CS_WIDGET_DOMAIN}
+      IMBOY_AVATAR_EDGE_BASE_URL: https://${API_DOMAIN}
       IMBOY_WS_URL: wss://${API_DOMAIN}/api/ws
       IMBOY_JWT_KEY: ${JWT_KEY}
       IMBOY_POSTGRE_AES_KEY: ${POSTGRE_AES_KEY}
       IMBOY_ADM_COOKIE_SECRET: ${ADM_COOKIE_SECRET}
+      IMBOY_EDGE_INTERNAL_TOKEN: ${IMBOY_EDGE_INTERNAL_TOKEN:?IMBOY_EDGE_INTERNAL_TOKEN is required}
       IMBOY_SOLIDIFIED_KEY: ${IMBOY_SOLIDIFIED_KEY}
       IMBOY_SOLIDIFIED_KEY_IV: ${IMBOY_SOLIDIFIED_KEY_IV}
       # 生产强制项：imboy_app 的 ensure_required_secret(password_salt) 为空即
@@ -195,6 +201,7 @@ services:
       IMBOY_LIVEKIT_API_SECRET: ${LIVEKIT_API_SECRET:-}
       # 社区版固定标记（商务版才需要 professional/enterprise + License）
       IMBOY_EDITION: community
+      IMBOY_EB_DIRECT_ENABLED: ${IMBOY_EB_DIRECT_ENABLED:-false}
       # 双体验 T1：chat（默认，经典 IM）| workspace；非法值后端 fail-safe 降级 chat
       IMBOY_PRODUCT_EXPERIENCE: ${IMBOY_PRODUCT_EXPERIENCE:-chat}
       SENTRY_DSN: ${SENTRY_DSN:-}
@@ -312,6 +319,49 @@ services:
         max-size: "50m"
         max-file: "30"
 
+  imboy_edge:
+    image: ${BACKEND_IMAGE:-ghcr.io/imboy-pub/imboy-backend:${IMBOY_VERSION:-1.0.0-alpha.82}}
+    restart: unless-stopped
+    command: ["/bin/sh", "/opt/imboy/bin/start_download_edge.sh"]
+    environment:
+      EDGE_AUTHORIZE_URL: http://imboy_backend:9800/api/v1/attachment/edge/authorize
+      EDGE_INTERNAL_TOKEN: ${IMBOY_EDGE_INTERNAL_TOKEN:?IMBOY_EDGE_INTERNAL_TOKEN is required}
+    expose:
+      - "13990"
+    healthcheck:
+      disable: true
+
+  # Separate proof identity: credentials are never injected into the API container.
+  imboy_enterprise_proof:
+    profiles: ["enterprise-direct"]
+    image: ${BACKEND_IMAGE:-ghcr.io/imboy-pub/imboy-backend:${IMBOY_VERSION:-1.0.0-alpha.82}}
+    restart: unless-stopped
+    command: ["/bin/sh", "/opt/imboy/bin/start_enterprise_direct_proof.sh"]
+    depends_on:
+      imboy_pg18:
+        condition: service_healthy
+      garage:
+        condition: service_healthy
+    user: "65532:65532"
+    environment:
+      EB_PROOF_PG_HOST: ${EB_PROOF_PG_HOST:-imboy_pg18}
+      EB_PROOF_PG_PORT: ${EB_PROOF_PG_PORT:-5432}
+      EB_PROOF_PG_DB: ${EB_PROOF_PG_DB:-}
+      EB_PROOF_PG_USER: ${EB_PROOF_PG_USER:-}
+      EB_PROOF_PG_PASSWORD: ${EB_PROOF_PG_PASSWORD:-}
+      EB_PROOF_PG_SSL: ${EB_PROOF_PG_SSL:-}
+      EB_PROOF_STORAGE_NAMESPACE: ${EB_PROOF_STORAGE_NAMESPACE:-}
+      EB_PROOF_STORAGE_ENDPOINT: ${EB_PROOF_STORAGE_ENDPOINT:-}
+      EB_PROOF_STORAGE_CONTAINER: ${EB_PROOF_STORAGE_CONTAINER:-}
+      EB_PROOF_HEALTH_KEY: ${EB_PROOF_HEALTH_KEY:-}
+      EB_PROOF_STORAGE_ACCESS_KEY: ${EB_PROOF_STORAGE_ACCESS_KEY:-}
+      EB_PROOF_STORAGE_SECRET_KEY: ${EB_PROOF_STORAGE_SECRET_KEY:-}
+    read_only: true
+    tmpfs:
+      - /tmp:rw,nosuid,size=256m
+    healthcheck:
+      disable: true
+
   # ========== nginx 反向代理 + certbot 自动 TLS ==========
   # 首次部署后执行一次 `bash nginx/init-letsencrypt.sh` 签发证书；之后自动续期。
   imboy_nginx:
@@ -321,6 +371,7 @@ services:
     restart: unless-stopped
     depends_on:
       - imboy_backend
+      - imboy_edge
       - imboy_admin
       - imboy_widget
       - imboy_livekit
