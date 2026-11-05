@@ -6,7 +6,11 @@ registration_location_pg_test_() ->
 
 registration_location_fixture() ->
     {setup, fun setup/0, fun cleanup/1, fun(_) ->
-        [{timeout, 30, fun() -> registration(Driver) end} || Driver <- [<<"disk">>, <<"garage">>]]
+        [
+            {timeout, 30, fun() -> registration(Driver) end}
+         || %% V3-20：disk 驱动退役，disk 注册位置叶随驱动删除。
+            Driver <- [<<"garage">>]
+        ]
     end}.
 
 setup() ->
@@ -15,7 +19,8 @@ setup() ->
     {ok, [Config]} = file:consult(required("ATTACHMENT_REVIEW_CONFIG")),
     Env = proplists:get_value(imboy, Config),
     ok = attachment_lifecycle_v5_w403_gateway_protocol_tests:assert_chain_fixture_database(
-        Db, Identity, Env, required("ATTACHMENT_REVIEW_MANIFEST")),
+        Db, Identity, Env, required("ATTACHMENT_REVIEW_MANIFEST")
+    ),
     Pg = proplists:get_value(pg_conf, Env),
     {epgsql, connect, [Connect0]} = maps:get(start_mfa, Pg),
     Host = maps:get(host, Connect0),
@@ -39,9 +44,9 @@ required(Name) ->
 
 registration(Driver) ->
     Ns = <<"registration-", Driver/binary>>,
+    %% V3-20：disk 驱动退役，registry 构造仅剩 garage 根。
     Endpoint =
         case Driver of
-            <<"disk">> -> <<"file:///tmp/attv5-registration-owned">>;
             <<"garage">> -> <<"http://127.0.0.1:1">>
         end,
     application:set_env(imboy, garage, #{
@@ -58,12 +63,19 @@ registration(Driver) ->
         <<"scope">> => <<"private">>,
         <<"scope_ref">> => null
     },
-    try registration(Driver, Registry, Cid, Key, Declaration)
+    try
+        registration(Driver, Registry, Cid, Key, Declaration)
     after
         {ok, _} = elib_pg:execute(
             <<"DELETE FROM public.attach_pending WHERE object_key=ANY($1)">>,
-            [[Key, <<Key/binary, "/new-random">>, <<Key/binary, "/old-client">>,
-                <<Key/binary, "/internal">>]]
+            [
+                [
+                    Key,
+                    <<Key/binary, "/new-random">>,
+                    <<Key/binary, "/old-client">>,
+                    <<Key/binary, "/internal">>
+                ]
+            ]
         )
     end.
 

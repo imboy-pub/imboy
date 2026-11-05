@@ -72,38 +72,43 @@ run(S) ->
         )
     ),
     {ok, [_]} = attachment_repo:orphan_path_tx(C, A, Opts),
-    real_disk_intent_rollback(C, Old).
+    real_garage_intent_rollback(C, Old).
 
 %% Positive evidence uses real bytes and a trusted registry identity. Metadata,
 %% GC proof and deletion intent all roll back; no unrelated worker queue is drained.
-real_disk_intent_rollback(C, Old) ->
-    Base = os:getenv("TALK_UPLOAD_DISK_ROOT"),
-    true = is_list(Base) andalso filename:pathtype(Base) =:= absolute,
-    Dir = filename:join(
-        Base, "reference-guard-" ++ integer_to_list(erlang:unique_integer([positive]))
-    ),
-    ok = filelib:ensure_dir(filename:join(Dir, "x")),
+%% V3-20：disk 驱动退役，探针对象改挂真实 Garage。本套件不在 attv5 车道：
+%% garage 身份优先读 talk 车道注入的 TALK_RECORD_PRIVATE_GARAGE_CONFIG
+%% （JSON：endpoint/bucket/region/access_key/secret_key/spool_dir），
+%% fallback A0_ENDPOINT/A0_A0/A0_SK（桶名取 JSON 缺席时的命名约定值），
+%% 两者皆缺 no_go。同时装 imboy garage env（with_snapshot 的签名一致性校验）。
+real_garage_intent_rollback(C, Old) ->
+    #{endpoint := Endpoint, bucket := Bucket} = garage_env(),
     Saved = application:get_env(imboy, attachment_storage_registry),
+    SavedGarage = application:get_env(imboy, garage),
     Ns = <<"reference-guard-private">>,
-    Bucket = <<"synthetic">>,
+    ok = application:set_env(imboy, garage, #{
+        endpoint => Endpoint,
+        bucket => Bucket,
+        region => maps:get(region, garage_env(), <<"us-east-1">>),
+        access_key => maps:get(access_key, garage_env()),
+        secret_key => maps:get(secret_key, garage_env())
+    }),
     Root = #{
         root_id => <<"reference_guard">>,
-        driver => <<"disk">>,
+        driver => <<"garage">>,
         namespace => Ns,
         container => Bucket,
-        endpoint => <<"file://", (list_to_binary(Dir))/binary>>
+        endpoint => Endpoint
     },
     application:set_env(imboy, attachment_storage_registry, #{
         version => 1, roots => #{reference_guard => Root}
     }),
     Key = <<"synthetic/", (binary:encode_hex(crypto:strong_rand_bytes(12), lowercase))/binary>>,
-    {ok, Location} = attachment_storage:resolve(Ns),
     {ok, Identity} = attachment_storage:identity(Ns, Bucket, Key),
-    I = Identity#{endpoint => maps:get(endpoint, Location)},
     Bytes = <<"synthetic-reference-guard:", Key/binary>>,
     try
-        ok = attachment_storage_disk:put_snapshot(I, Bytes, infinity),
-        ?assertEqual({ok, Bytes}, attachment_storage_disk:read_snapshot(I)),
+        ok = attachment_storage_garage:put(Ns, Bucket, Key, Bytes),
+        ?assertEqual({ok, Bytes}, attachment_storage_garage:read(Ns, Bucket, Key)),
         Meta = #{
             <<"path">> => Key,
             <<"name">> => <<"synthetic.txt">>,
@@ -112,10 +117,10 @@ real_disk_intent_rollback(C, Old) ->
             <<"size">> => byte_size(Bytes),
             <<"scope">> => <<"private">>,
             <<"file_hash256">> => binary:encode_hex(crypto:hash(sha256, Bytes), lowercase),
-            <<"storage_driver">> => <<"disk">>,
+            <<"storage_driver">> => <<"garage">>,
             <<"storage_namespace">> => Ns,
             <<"storage_container">> => Bucket,
-            <<"storage_locator_sha256">> => maps:get(locator_digest, I)
+            <<"storage_locator_sha256">> => maps:get(locator_digest, Identity)
         },
         ?assertEqual(
             {rollback, synthetic_intent_rollback},
@@ -155,13 +160,49 @@ real_disk_intent_rollback(C, Old) ->
             {ok, []},
             elib_pg:query(C, <<"SELECT path FROM attachment_object_deletion WHERE path=$1">>, [Key])
         ),
-        ?assertEqual({ok, Bytes}, attachment_storage_disk:read_snapshot(I))
+        ?assertEqual({ok, Bytes}, attachment_storage_garage:read(Ns, Bucket, Key))
     after
-        attachment_storage_disk:delete_snapshot(I),
+        attachment_storage_garage:delete(Ns, Bucket, Key),
         case Saved of
             {ok, V} -> application:set_env(imboy, attachment_storage_registry, V);
             undefined -> application:unset_env(imboy, attachment_storage_registry)
-        end
+        end,
+        restore_garage(SavedGarage)
+    end.
+
+restore_garage({ok, V}) -> ok = application:set_env(imboy, garage, V);
+restore_garage(undefined) -> ok = application:unset_env(imboy, garage).
+
+%% 优先 TALK_RECORD_PRIVATE_GARAGE_CONFIG（JSON 文件，talk 车道契约键集）；
+%% fallback A0_ENDPOINT/A0_AK/A0_SK（gate 的 A0 约定，桶名沿用 talk 车道
+%% 命名约定 talk-record-relay）；两者皆缺 no_go。
+garage_env() ->
+    case os:getenv("TALK_RECORD_PRIVATE_GARAGE_CONFIG") of
+        Path when is_list(Path), Path =/= "" ->
+            {ok, Bin} = file:read_file(Path),
+            C = jsone:decode(Bin),
+            #{
+                endpoint => maps:get(<<"endpoint">>, C),
+                bucket => maps:get(<<"bucket">>, C),
+                region => maps:get(<<"region">>, C, <<"us-east-1">>),
+                access_key => maps:get(<<"access_key">>, C),
+                secret_key => maps:get(<<"secret_key">>, C)
+            };
+        _ ->
+            case {os:getenv("A0_ENDPOINT"), os:getenv("A0_AK"), os:getenv("A0_SK")} of
+                {EP, AK, SK} when
+                    is_list(EP), EP =/= "", is_list(AK), AK =/= "", is_list(SK), SK =/= ""
+                ->
+                    #{
+                        endpoint => list_to_binary(EP),
+                        bucket => <<"talk-record-relay">>,
+                        region => <<"us-east-1">>,
+                        access_key => list_to_binary(AK),
+                        secret_key => list_to_binary(SK)
+                    };
+                _ ->
+                    erlang:error({no_go, reference_guard_garage_env_missing})
+            end
     end.
 
 fixture(C, Created, Referer) ->

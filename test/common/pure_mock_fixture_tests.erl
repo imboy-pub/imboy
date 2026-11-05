@@ -24,7 +24,7 @@ swallowed_undeclared_call_still_fails_test_() ->
         pure_mock_fixture:run(fun() ->
             Before = lists:sort(application:get_all_env(imboy)),
             ?assertError(
-                {badmatch, true},
+                {undeclared_mock_calls, [_ | _]},
                 pure_mock_fixture:with_mocks(
                     [{elib_pg, [{query, 2, fun(_, _) -> declared_result end}]}],
                     fun() ->

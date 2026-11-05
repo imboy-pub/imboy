@@ -423,6 +423,7 @@ ordinary_database_public_setup_rejected_test() ->
             )
         ),
         ?assertEqual(0, meck:num_calls(elib_tsid, generate, '_')),
+        %% 拒绝路径：retire 未执行（re:run 首行即抛），业务 equery 恒 0。
         assert_legacy_mocks(0)
     end).
 
@@ -479,13 +480,12 @@ configure_legacy_mocks(Db) ->
         fun(#{conn := C}) when C =:= Owner -> ok end
     ),
     ok = meck:expect(talk_record_upload_test_support, configure, fun() -> ok end),
-    ok = meck:expect(epgsql, equery, fun(C, Sql, []) when C =:= Owner ->
-        ?assertMatch(
-            {match, _}, re:run(Sql, "^SELECT object_key, direct_state FROM attach_pending")
-        ),
+    SequenceSql = legacy_sequence_sql(),
+    %% t07_support:setup_all 的 direct 残留清退（retire_direct_residue）走
+    %% equery——legacy mock 形态恒空集（无残留可清，retire_one 不触发）。
+    ok = meck:expect(epgsql, equery, fun(C, _Sql, _Params) when C =:= Owner ->
         {ok, [], []}
     end),
-    SequenceSql = legacy_sequence_sql(),
     ok = meck:expect(epgsql, squery, fun
         (C, "SELECT current_database()") when C =:= Owner -> {ok, [], [{Db}]};
         (C, Sql) when C =:= Owner, Sql =:= SequenceSql -> {ok, [], []};
@@ -497,12 +497,16 @@ legacy_sequence_sql() ->
     "CREATE SEQUENCE IF NOT EXISTS talk_record_test_entity_id"
     " AS bigint START WITH 900000000000000000 NO CYCLE".
 
-assert_legacy_mocks(ExpectedQueries) ->
+%% ExpectedEquery：成功路径（retire_direct_residue 恒 1 次清单 equery，
+%% 空集 mock）传 1；ordinary DB 拒绝路径在 authorize_id_database 的
+%% re:run 首行即 {badmatch, nomatch} 抛出，retire 不执行，传 0——
+%% 业务路径两种形态下都不得触碰业务 equery。
+assert_legacy_mocks(ExpectedEquery) ->
     lists:foreach(
         fun(Module) -> ?assert(meck:validate(Module)) end,
         [talk_record_t05_support, talk_record_upload_test_support, epgsql, elib_tsid]
     ),
-    ?assertEqual(ExpectedQueries, meck:num_calls(epgsql, equery, '_')).
+    ?assertEqual(ExpectedEquery, meck:num_calls(epgsql, equery, '_')).
 
 client_audio_http_mapping_test() ->
     Module = talk_record_client_audio_http_pg_tests,
