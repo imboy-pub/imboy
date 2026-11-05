@@ -2,45 +2,47 @@ PROJECT = imboy
 PROJECT_DESCRIPTION = 基于Erlang的Cowboy、Flutter和PostgreSQL计算的一款聊天软件。
 PROJECT_VERSION = $(shell cat VERSION)
 export PROJECT_VERSION
+.DEFAULT_GOAL := test-build
 
 # --- 环境配置选择（IMBOYENV 驱动） ---
 # IMBOYENV=dev → relxdev.config + sys.dev.config
 # IMBOYENV=pro → relxpro.config + sys.pro.config
 # 不存在对应文件时回退默认 relx.config / sys.config
 # 环境变量 IMBOY_* 仍由 imboy_env.erl 在运行时覆盖（优先级更高）
-_RELX_SRC := relx.config
-_SYS_RUNTIME_SRC := config/sys.config
-# sys.config 本体不入仓（alpha.42 起），裸 make（无 IMBOYENV）回退 example 模板
-# 兜底——与 Dockerfile 构建期 cp example 的口径一致；否则每次裸 make 都打印
-# cp: cannot stat 噪音（非致命但干扰判断）。
-ifeq ($(wildcard config/sys.config),)
-  _SYS_RUNTIME_SRC := config/sys.config.example
-endif
-ifneq ($(IMBOYENV),)
-  ifneq ($(wildcard relx$(IMBOYENV).config),)
-    _RELX_SRC := relx$(IMBOYENV).config
-  endif
-  ifneq ($(wildcard config/sys.$(IMBOYENV).config),)
-    _SYS_RUNTIME_SRC := config/sys.$(IMBOYENV).config
-  endif
-endif
+_RELX_SRC := $(or $(firstword $(wildcard relx$(IMBOYENV).config)),relx.config)
+_SYS_RUNTIME_SRC := $(or $(firstword $(wildcard $(if $(IMBOYENV),config/sys.$(IMBOYENV).config) config/sys.config)),config/sys.config.example)
 RELX_CONFIG = $(CURDIR)/$(_RELX_SRC)
 
-$(shell mkdir -p config && cp $(_SYS_RUNTIME_SRC) config/sys.runtime.config)
+.PHONY: runtime-config relx-config-check
+runtime-config:
+	@mkdir -p config
+	@cp "$(_SYS_RUNTIME_SRC)" config/sys.runtime.config
 
-# --- LLM 密钥注入（补齐 `IMBOYENV=local make run` 这条路径） ---
-# 背景：LLM 密钥不写进 config，而是以 {env, <<"VAR">>} 占位，由
-# imboy_llm_registry:resolve_env/1 在**运行时**经 os:getenv/1 取值
-# （见 src/lib/imboy_llm_registry.erl）。所以密钥必须在**节点进程的环境里**。
-# scripts/start_node.sh 会加载 .env/.env.local，但 erlang.mk 的 `run` 目标
-# （`run:: all` → relx console）**不经过那个脚本** —— 于是按 AGENTS.md 里最常写的
-# `IMBOYENV=local make run` 起服务时，密钥永远不到位。症状极隐蔽：
-# 服务起得来、ecron 作业也在跑，但每次 AI 都落 failed/provider_unavailable，
-# 没有任何一处报「密钥没读到」。
-# 这里把三个已知的 LLM 密钥名从 .env.local（优先）/ .env 导出。
-# 只导出这三个具名变量，**不**整体 include .env —— 后者会把 .env 里可能含 $ 的
-# 密钥值交给 make 展开，有把密钥改写的风险。
-# 值为空时不导出，避免用空值覆盖调用方已 export 的密钥。
+relx-config-check:
+	@test -f "$(RELX_CONFIG)" -o -f "$(RELX_CONFIG_SCRIPT)" || { printf 'Missing relx configuration: [%s]\n' "$(RELX_CONFIG)" >&2; exit 1; }
+	@$(call erlang,$(imboy_relx_check.erl))
+
+define imboy_relx_check.erl
+	Config = $(call relx_get_config.erl),
+	case lists:keyfind(release, 1, Config) of
+		{release, {Name, _}, Apps} when is_atom(Name), is_list(Apps) -> halt(0);
+		_ -> io:format(standard_error, "Invalid relx release configuration~n", []), halt(1)
+	end.
+endef
+
+rel:: relx-config-check runtime-config
+relup:: relx-config-check runtime-config
+run:: relx-config-check runtime-config
+relx-rel relx-relup: relx-config-check runtime-config
+
+# efb0d04 唯一解析期 Erlang 调用是 relx 元数据；执行期沿用原生命令格式。
+# override 不能阻止 := 右侧展开，故在 include 期间只返回 shell 空操作。
+override define erlang
+$(if $(IMBOY_MAKE_READY),$(ERL) $2 -pz $(ERLANG_MK_TMP)/rebar3/_build/prod/lib/*/ebin/ -eval "$(subst $(newline),,$(call escape_dquotes,$1))" -- erlang.mk,:)
+endef
+
+# 仅 run 加载三个 LLM 变量：命令行 > .env.local > .env > 继承环境。
+# 原样保留 $/#/空格，不将 dotenv 当 Makefile 或 shell 执行。
 _LLM_ENV_SRCS := .env.local .env
 # 取第一个非空定义（.env.local 优先于 .env）
 _llm_key = $(shell for f in $(_LLM_ENV_SRCS); do \
@@ -48,18 +50,12 @@ _llm_key = $(shell for f in $(_LLM_ENV_SRCS); do \
     v=$$(grep -h '^$(1)=' $$f 2>/dev/null | head -1 | cut -d= -f2-); \
     if [ -n "$$v" ]; then printf '%s' "$$v"; break; fi; \
   done)
-_BIGMODEL_KEY := $(call _llm_key,BIGMODEL_API_KEY)
-_ARK_KEY := $(call _llm_key,ARK_API_KEY)
-_BAILIAN_KEY := $(call _llm_key,BAILIAN_API_KEY)
-ifneq ($(_BIGMODEL_KEY),)
-export BIGMODEL_API_KEY := $(_BIGMODEL_KEY)
-endif
-ifneq ($(_ARK_KEY),)
-export ARK_API_KEY := $(_ARK_KEY)
-endif
-ifneq ($(_BAILIAN_KEY),)
-export BAILIAN_API_KEY := $(_BAILIAN_KEY)
-endif
+_BIGMODEL_KEY := $(value BIGMODEL_API_KEY)
+_ARK_KEY := $(value ARK_API_KEY)
+_BAILIAN_KEY := $(value BAILIAN_API_KEY)
+run:: export BIGMODEL_API_KEY = $(or $(call _llm_key,BIGMODEL_API_KEY),$(_BIGMODEL_KEY))
+run:: export ARK_API_KEY = $(or $(call _llm_key,ARK_API_KEY),$(_ARK_KEY))
+run:: export BAILIAN_API_KEY = $(or $(call _llm_key,BAILIAN_API_KEY),$(_BAILIAN_KEY))
 
 include include/deps.mk
 
@@ -91,108 +87,20 @@ endif
 
 LOCAL_DEPS = mnesia sasl ssl inets eunit crypto public_key
 BUILD_DEPS = relx gpb bbmustache
-DEP_PLUGINS = cowboy
+# Cowboy 插件仅提供 new 模板；审计、帮助和编译无需为它下载依赖。
+DEP_PLUGINS = $(if $(filter new,$(MAKECMDGOALS)),cowboy)
 TEST_DEPS += meck proper
 
 SP = 4
 DOC_DEPS = edown
 EDOC_OPTS = {doclet, edown_doclet}
 
-# 独占命名 gen_server 套件排除（合并后 main 全量 62 cancelled 定性，见
-# /private/tmp/imboy-release-gate/CI-00/cancelled-analysis.md）：这些套件
-# 多 fixture 抢占 {local, Name} 单实例，全量并发下互踩必 cancel（历史上
-# 从未在全量真正通过）。单跑不受影响：make eunit-local t=<模块名>。
-# 注意需同时过滤 src 模块条目——eunit 运行 {module, X} 会自动附带 X_tests。
-#
-# 2026-09-01 收窄：elib_metric/imboy_router 系 5 套件已恢复参与全量——
-# elib_metric_tests 改让位模式（terminate_child 停应用实例+restart_child
-# 复原），router 系实测与应用实例共存无冲突。
-# 2026-09-01 清空：plugin 族 4 套件同款让位模式改造后恢复全量
-# （imboy_plugin_loader/imboy_plugin_sup/imboy_plugin_sup_metrics 挂
-# imboy_sup 下 permanent child，测试 setup terminate_child 让位、cleanup
-# restart_child 复原；loader/priv_plugins/sup_metrics 三个套件同理）。
-# 注意需同时过滤 src 模块条目——eunit 运行 {module, X} 会自动附带 X_tests；
-# 套件恢复后源模块条目一并移除。Excl 机制保留，未来再有独占套件时使用。
-# F-12 独占隔离（V10 延续）：elib_tsid_tests 操纵 VM 级 TSID 全局状态
-# （elib_tsid:reset_for_test + 测试配置 init），与在役 app runtime 共存会
-# 清掉/改写全局 runtime。Excl 排除出全量 VM，覆盖由专项单跑承载
-# （make eunit t=<模块名>）。V10 已删除 guard/bootstrap/fence 体系，
-# 对应的独占套件（guard/bootstrap_harness/reinit_fence）随之消失。
-# 全量 EUNIT_MODS 对存在 src 模块的套件只列源模块名，eunit:test({module,
-# elib_tsid}) 再自动附带 elib_tsid_tests；因此 Excl 写源模块名。
-# 注意：t= 单跑路径绝不能套用同一过滤器——否则被排除套件的单跑会变成
-# 空模块列表的静默假绿（eunit:test([]) → ok）。故 ifdef t 分流：
-# 单跑直通原样运行，仅全量轨道（无 t）应用 Excl。
-# 2026-10-01 AG31 隔离库验收组排除：agent_grant/recovery/run/tool_authorizer
-# 四套件设计为专项验收门口径（文件头「运行前置」：AG31_PG_* env 注入的
-# 隔离一次性 PG，非共享库；env 缺失显式 FAIL 禁止 skip 的铁律）——全量
-# 轨道无该环境必然红 4 个（run3/run4 实证），排除后由 AG31 门运行环境
-# 承载（t= 单跑仍可用：导出 env 后 IMBOYENV=local make eunit t=<模块>）。
-# 2026-10-01 补（run10 实证）：仅排除 test 侧 *_tests 名防不住伴随探测路径——
-# agent_grant_pg/agent_run_pg 的 src 生产模块存在时，erlang.mk 的 EUNIT_MODS
-# 会把 test 侧同名 *_tests filter-out（防重复），eunit:test 转而以 src 模块
-# agent_grant_pg 为入口、EUnit 自动伴随执行 agent_grant_pg_tests（AG31 env
-# 检查照样触发 → cancelled）。故须把 src 侧入口名一并排除（两文件均无
-# 自带 test_() 单测，已验证，无旁伤）。
-# 2026-10-04 SC153 验收 run 实证：cs_pg_widget / cs_seat_console_pg_tests
-# 两套件按设计对共享 eunit 库跑 erlang_migrate down/up 往返（20+ 步 DDL），
-# 与全量轨道 4 路并发的其他套件互踩——churn 窗口内并发套件读到半态 schema
-# （42P01/42703 级联 30+）、并发 app boot 在 maybe_migrate 处中止后呈
-# TSID not_initialized 误导形态（eunit_runner do_boot 头注同款教训），
-# 两套件自身在交错窗口也互踩失败。单跑均绿（cs_pg_widget 14/14、
-# cs_seat_console_pg_tests 11/11，SC153 run cards/SC-GATE/logs/reverify-20261004/）
-# ——Excl 排除出全量 VM，覆盖由专项单跑承载（t= 单跑直通不受过滤器影响）。
-# cs_pg_widget 有同名 src 模块 → 按 F-12 惯例写 src 名（eunit 以 {module,
-# cs_pg_widget} 入口自动伴随 *_tests）；cs_seat_console_pg_tests 无同名
-# src 模块 → 直接写测试模块名。
-# 2026-10-21 广州 V2.2 r3（zcode）：hird 独占验收组排除。imboy_hird_acceptance
-# / imboy_hird_replay_offline / agent_hird_mini_spike 按文件头「运行前置」要求
-# IMBOY_HIRD_BIN（Rust 编译的 hird 编译器，scripts/ci/native-eunit-run.sh 由 CI
-# 专属准备）与 HIRDPOC_PG_* 隔离库——与 AG31 同款口径：全量轨道无该环境必然红
-# （r3c1b 实证 9 例 command not found / missing_env）。Agent/RTC 属一期延期专项
-# （plan-v2 范围与执行合同），覆盖由专项运行环境承载（t= 单跑直通不受过滤影响；
-# 导出 IMBOY_HIRD_BIN 后可单跑）。
-# 2026-10-22 广州 V2.2 r4（zcode）：同口径补漏 imboy_hird_p1_auth_tool_tests /
-# imboy_hird_gates_tests——文件头同样要求 IMBOY_HIRD_BIN + HIRDPOC_PG_*（no-skip
-# 铁律，缺失即 FAIL）；全量实证 r3/r4 各 38 例 context setup failed（cancelled，
-# 不计入 Failed 但按计划 §Step22 仍算未过）。
-# 2026-10-22 r5b/r6 实证（zcode）：p1_auth_tool_tests 本体已被上述名单正确过滤；
-# r6 仍出现 22 例 cancel 来自 imboy_hird_p2_replay_tests（其 setup_fixture 复用
-# ?P1:ensure_env → 同款 HIRDPOC 合同）与 imboy_hird_p3_compare_tests（?P1 同款）
-# ——同为 HIRD 回放 POC 族，按同口径补入。
-# 2026-10-22 广州 V2.2 zcode r2 实证（eunit-zcode-r1）：三套件按文件头「运行前置」
-# 需专用控制器/独占资源，全量轨道不可满足——
-#   * talk_record_cleanup_retry_pg_checks / talk_record_delete_tests：T20 控制器
-#     注册表合同（T20_CASE_REGISTRY(+SHA)/T20_CASE_REPO/T20_PG_*，控制器冻结
-#     八项 claim/expiry/reaper 观察与专属空案例库；r2 当时的 run 无冻结注册表，
-#     no-skip 铁律下必红 42 项 cancel）。
-#     2026-10-30 更新：覆盖承载已改由 IMBOY_ERLANG_QUALITY 全量工具独占车道——
-#     两根在 tools/imboy_quality/imboy_quality_full.erl ?EXCL 经 run_exclusive
-#     逐根 fresh VM 真实执行（当期 per_root.term 实证 lane => exclusive），
-#     注册表激活由模块自行 talk_record_t20_case_registry:activate/1 承载
-#     （cleanup_retry_pg_checks 无独立 EUnit 用例面，经 delete_tests 续跑 case
-#     调 run_registered/0 自激活），不再按 C26 余额登记口径由控制器专项运行
-#     代替；T20_* env 冻结注册表合同仍适用于其控制器级用例。
-#   * attachment_lifecycle_v5_w403_gateway_protocol_tests：setup_owned 断言全局
-#     pgsql 池须指向其 manifest 的 attv5_chain_* 库且「绝不重定向既有池」——与
-#     全量轨道任何先行建池套件互斥（r5-r7/r1 均 12 cancel；设计性独占）——
-#     覆盖由 t= 单跑（独立 VM 池）承载。
-#   * 2026-10-22 zcode r4 实证：attv5 独占池合同被多个套件复用——
-#     attachment_ordinary_http_protocol_tests、eb_asset_frozen_storage_protocol_tests
-#     直接调用 w403 gateway setup；attachment_lifecycle_v5_w403_driver_matrix_tests
-#     使用其 HTTP fixture；enterprise_asset_driver_pg_tests、
-#     attachment_pending_location_pg_tests、message_result_pg_tests 使用
-#     W403/ATTACHMENT_REVIEW manifest 的 attv5_chain_* 库并自建同名 pgsql 池。
-#     全量轨道中任一先行套件建池后，这些套件 setup 必然 no_go（r4 实证 7 例
-#     context setup failed）。全部按同口径移入专项单跑。
-#   * group_schedule_remind_pg_tests：专属 PG 和独立 pgsql 池，专项运行；
-#     缺资源直接失败，专项验收须确认实际执行，不能以全量排除冒充通过。
-#     编译候选后设置 PG*、IMBOY_TEST_EXCLUSIVE_DATABASE、IMBOY_TEST_PG_SYSTEM_ID，
-#     运行 scripts/test/group_schedule_remind_pg_gate.sh；库 comment 必须标注本任务独占。
-ifdef t
-EUNIT_TEST_SPEC = (fun() -> lists:append([$1]) end)()
-else
-EUNIT_TEST_SPEC = (fun() -> Excl = [elib_tsid, agent_grant_pg, agent_run_pg, agent_grant_pg_tests, agent_recovery_pg_tests, agent_run_pg_tests, agent_tool_authorizer_pg_tests, cs_pg_widget, cs_seat_console_pg_tests, imboy_hird_acceptance_tests, imboy_hird_replay_offline_tests, agent_hird_mini_spike_tests, imboy_hird_p1_auth_tool_tests, imboy_hird_gates_tests, imboy_hird_p2_replay_tests, imboy_hird_p3_compare_tests, talk_record_cleanup_retry_pg_checks, talk_record_delete_tests, attachment_lifecycle_v5_w403_gateway_protocol_tests, attachment_lifecycle_v5_w403_driver_matrix_tests, attachment_ordinary_http_protocol_tests, eb_asset_frozen_storage_protocol_tests, enterprise_asset_driver_pg_tests, attachment_pending_location_pg_tests, message_result_pg_tests, group_schedule_remind_pg_tests, moment_delete_atomic_pg_tests], Mods = lists:append([$1]), [talk_record_owned_eunit_fixture:entry(M) || M <- Mods, not lists:member(M, Excl)] end)()
+# 全量排除 VM 全局 TSID、专属 PG/HIRD、迁移 DDL 和附件协议套件。
+# 源模块自动带入同名 *_tests，故也排除源入口；专项门负责实际执行。
+# t= 定向执行原样直通；talk_record fixture 包装仅用于全量。
+# group_schedule_remind 专项：scripts/test/group_schedule_remind_pg_gate.sh。
+ifndef t
+EUNIT_TEST_SPEC = (fun() -> Excl = [elib_tsid, agent_grant_pg, agent_run_pg, agent_grant_pg_tests, agent_recovery_pg_tests, agent_run_pg_tests, agent_tool_authorizer_pg_tests, cs_pg_widget, cs_seat_console_pg_tests, imboy_hird_acceptance_tests, imboy_hird_replay_offline_tests, agent_hird_mini_spike_tests, imboy_hird_p1_auth_tool_tests, imboy_hird_gates_tests, imboy_hird_p2_replay_tests, imboy_hird_p3_compare_tests, talk_record_cleanup_retry_pg_checks, talk_record_delete_tests, attachment_lifecycle_v5_w403_gateway_protocol_tests, attachment_lifecycle_v5_w403_driver_matrix_tests, attachment_ordinary_http_protocol_tests, eb_asset_frozen_storage_protocol_tests, enterprise_asset_driver_pg_tests, attachment_pending_location_pg_tests, message_result_pg_tests, group_schedule_remind_pg_tests, moment_delete_atomic_pg_tests], Tests = [talk_record_owned_eunit_fixture:entry(M) || M <- $1, not lists:member(M, Excl)], case Tests of [] -> erlang:error(empty_eunit_selection); _ -> Tests end end)()
 endif
 
 # BUILD-00R 后端物理裁剪接线：生成器按 manifest 产出未被选中 feature 的专属
@@ -204,59 +112,45 @@ endif
 -include include/generated/imboy_product_features_erlc.mk
 ERLC_EXCLUDE ?= $(IMBOY_FEATURE_ERLC_EXCLUDE)
 
-# WH-02（2026-09-28）：ebin「beam 缺失但 .app 新」死态自愈守卫。erlang.mk 的
-# ebin/imboy.app:: 规则只按「src 比 .app 新」($?) 驱动补编：并发会话/中断造成
-# 个别 beam 文件缺失而 .app 仍新时，make 判定一切最新 → 不补编 → eunit 报
-# *** test module not found ***（本日实证两例：adm_appeal_handler、
-# rtc_room_handler——后者 20:38 新增 src，全量重编产出后又被并发会话移走，
-# 期间 make 全程判定最新、零补编动作）。erlang.mk vendored 不动；利用
-# test-build 是双冒号目标、本规则写在 include 之前即先执行：守卫发现任一
-# （未被 ERLC_EXCLUDE 排除的）src 模块缺 beam 就删 ebin/$(PROJECT).app，
-# 令随后 .app 目标以 $?=全量 走 -DTEST=1 干净重编（罕见路径触发一次约 4 分钟
-# 全量重编，正确性优先）。.app 本就缺失时无需守卫——原生路径即全量重编。
-# TEST/非TEST 模式失步由 WH-01T 的标记机制负责，本守卫只管存在性，单一职责。
-# ERLC_EXCLUDE_PATHS 取下方覆写（按 basename 递归过滤），配方延迟求值，
-# 执行期已定义。
+# .app 时间戳不能证明 beam 完整或裁剪 profile 一致；失效时触发原生重编。
+# ERLC_EXCLUDE_PATHS 延迟展开，裁剪模块不参与存在性检查。
+app:: beam-presence-guard
 test-build:: beam-presence-guard
 .PHONY: beam-presence-guard
 beam-presence-guard:
+	@mkdir -p $(ERLANG_MK_TMP)
+	@if [ "$(sort $(ERLC_EXCLUDE))" != "$$(cat $(ERLANG_MK_TMP)/$(PROJECT).erlc-exclude 2>/dev/null)" ]; then \
+	  rm -f ebin/$(PROJECT).app && \
+	  printf '%s' "$(sort $(ERLC_EXCLUDE))" > $(ERLANG_MK_TMP)/$(PROJECT).erlc-exclude; \
+	fi
 	@if [ -f ebin/$(PROJECT).app ]; then \
 	  for f in $$(find src -name '*.erl'); do \
 	    case " $(ERLC_EXCLUDE_PATHS) " in *" $$f "*) continue ;; esac; \
 	    if [ ! -f "ebin/$$(basename "$$f" .erl).beam" ]; then \
-	      echo "== WH-02: ebin beam missing for $$f, force full -DTEST=1 recompile =="; \
+	      echo "== WH-02: ebin beam missing for $$f, force full recompile =="; \
 	      rm -f ebin/$(PROJECT).app; break; \
 	    fi; \
 	  done; \
 	fi
 
-# ==================== eunit 入口路由（P1-05/PLAN311，解析期纯 Make） ====================
-# 权威判定表：tools/imboy_quality/imboy_quality_build.erl entry_route/1（纯 Erlang，
-# 全分支 EUnit 覆盖于 test/quality/imboy_quality_build_tests.erl）；本块是其纯
-# Make 投影——只用 $(origin ...)/$(if ...)，零 shell/escript、零额外开销，两处
-# 注释互指，改判定顺序必须两侧同改。
-#   IMBOY_EUNIT_INNER 非空                              → native（erlang.mk 原生；
-#     eunit-local-legacy 内层 $(MAKE) eunit IMBOY_EUNIT_INNER=1 即此形态，现状）
-#   t / EUNIT_CONFIG / EUNIT_MODS / EUNIT_USE_RELAY 任一 origin≠undefined → legacy
-#     （旧路径；CI 显式参数调用即此形态：backend-ci.yml:154 与 nightly.yml:197 的
-#      `make eunit-local EUNIT_CONFIG=...` 逐字节走旧 eunit-local-legacy 配方）
-#   其余（裸 `make eunit` 与裸 `make eunit-local`）      → quality_full
-# eunit-legacy 目标不参与本判定：下方接线在 quality_full/legacy 两分支都令其落
-# eunit-local-legacy（强制 legacy，无需读 MAKECMDGOALS）。
-# 位置约束：必须先于 include erlang.mk——erlang.mk 会对 EUNIT_MODS 赋值
-# （origin 变 file，晚于此判定会把一切调用误判为 legacy）；也必须先于下方
-# `EUNIT_CONFIG ?=` 默认化，理由相同。
+# 权威判定：imboy_quality_build.erl entry_route/1；必须早于 erlang.mk 默认赋值。
+# 依据 origin 区分未定义与显式空值，内层调用优先。
 IMBOY_EUNIT_ROUTE := quality_full
 ifneq ($(IMBOY_EUNIT_INNER),)
 IMBOY_EUNIT_ROUTE := native
-else ifneq ($(origin t),undefined)
+else ifneq ($(filter-out undefined,$(foreach name,t EUNIT_CONFIG EUNIT_MODS EUNIT_USE_RELAY,$(origin $(name)))),)
 IMBOY_EUNIT_ROUTE := legacy
-else ifneq ($(origin EUNIT_CONFIG),undefined)
-IMBOY_EUNIT_ROUTE := legacy
-else ifneq ($(origin EUNIT_MODS),undefined)
-IMBOY_EUNIT_ROUTE := legacy
-else ifneq ($(origin EUNIT_USE_RELAY),undefined)
-IMBOY_EUNIT_ROUTE := legacy
+endif
+
+# 不让原生 eunit 的 test-build 前置与 quality-full 重复构建。
+ifeq ($(IMBOYENV):$(IMBOY_EUNIT_ROUTE),local:quality_full)
+EUNIT = imboy_quality
+tests:: eunit
+endif
+ifneq ($(origin EUNIT_MODS),undefined)
+IMBOY_EUNIT_MODS := $(EUNIT_MODS)
+override EUNIT_MODS = $(IMBOY_EUNIT_MODS)
+export EUNIT_MODS
 endif
 
 # erlang.mk builds c_src as part of app/test-build and relx-rel depends on app.
@@ -267,6 +161,11 @@ ifeq ($(shell uname -s),Darwin)
 LDFLAGS += -undefined dynamic_lookup
 endif
 include erlang.mk
+IMBOY_MAKE_READY := 1
+RELX_REL = $(eval RELX_REL := $(shell $(call erlang,$(get_relx_release.erl))))$(RELX_REL)
+RELX_REL_NAME = $(word 1,$(RELX_REL))
+RELX_REL_VSN = $(word 2,$(RELX_REL))
+RELX_REL_CMD = $(if $(word 3,$(RELX_REL)),console)
 
 # The quality framework's EUnit suites call its tools directly. Keep those
 # test-support beams outside the application and outside EUNIT_MODS.
@@ -305,21 +204,7 @@ autopatch-hird_runtime::
 		'PROJECT_VERSION = $(word 3,$(dep_hird_runtime))' 'ERLC_OPTS = +debug_info' \
 		'include $(CURDIR)/erlang.mk' > $(DEPS_DIR)/hird_runtime/Makefile
 
-# 本仓源码位于 src/<子目录>/*.erl（erlang.mk 递归 find），erlang.mk 默认的
-# ERLC_EXCLUDE_PATHS 只生成平铺 src/<mod>.erl，filter-out 永不命中——按本仓
-# 实际布局覆写为递归解析（BUILD-00R）。递归定义：ERLC_EXCLUDE 由 .mk 注入。
-#
-# EB-10 修掉 ADR-0007 §Decision 登记的那处**深度盲区**：原覆写是
-# `src/$(m).erl src/*/$(m).erl src/*/*/$(m).erl`——只到 3 层，而纵切单元的
-# 实际深度是 4 层（src/features/<bc>/<layer>/<sub>/<mod>.erl，如
-# src/features/enterprise_business/application/asset/eb_asset_app.erl）。
-# 后果**不是**「多编译几个模块」而是 release 组装期硬失败：深层模块逃过本
-# filter ⇒ 仍进 .app modules；而 prune 钩子按 `$(ERLC_EXCLUDE)`（模块名）删
-# ebin/*.beam ⇒ .app 声明的模块没有 beam ⇒ relx/systools 报
-# `{module_not_found,imboy,eb_asset_app}`（2026-09-14 EB-10 三档矩阵实证，
-# 见 scripts/enterprise_business_feature_matrix.sh 的 neither 档）。
-# 改为在 erlang.mk 自己的**递归** ERL_FILES 上按 basename 过滤，与目录深度解耦：
-# 模块名在 Erlang 里全局唯一，`%/$(m).erl` 不会误伤其他模块。
+# 原生排除仅覆盖 src/；按递归 ERL_FILES 的 basename 匹配所有层级。
 ERLC_EXCLUDE_PATHS = $(foreach m,$(ERLC_EXCLUDE),$(filter %/$(m).erl,$(ERL_FILES)))
 
 # Preserve direct-module unit coverage for physically excluded features.
@@ -340,11 +225,10 @@ endif
 # relx 组装前清掉 ebin 中的陈旧 beam，并删除同版本号的既有 release 目录
 # （同一 VERSION 下 preset 切换会互相残留文件）。挂在 relx-rel 的前置条件
 # 上获得确定性顺序：rel-deps → app → prune → relx 组装。
-# 注意：base-only 装配会删除 ebin 中被排除模块的 beam；切回 full 口径后
-# 如需完整 beam 集，touch 对应源文件再 make app 即可重编译恢复。
-relx-rel: imboy-prune-excluded-beams
+# 切换裁剪清单会失效 .app；切回 full 时原生编译自动恢复缺失 beam。
+relx-rel relx-relup: imboy-prune-excluded-beams
 
-imboy-prune-excluded-beams:
+imboy-prune-excluded-beams: app
 	@rm -f $(addprefix ebin/,$(addsuffix .beam,$(ERLC_EXCLUDE)))
 	@rm -f $(addprefix $(PROJECT_BEAM_CACHE_DIR)/ebin-app/,$(addsuffix .beam,$(ERLC_EXCLUDE)))
 	@rm -f $(addprefix $(PROJECT_BEAM_CACHE_DIR)/ebin-test/,$(addsuffix .beam,$(ERLC_EXCLUDE)))
@@ -354,13 +238,14 @@ imboy-prune-excluded-beams:
 .PHONY: imboy-prune-excluded-beams
 
 # 禁用 beam-cache 的 app/test 槽位交换，避免旧 mtime 导致错误复用 beam。
-# app 构建只移除测试标记；test 构建先删除 .app，再删除 beam，强制重编。
+# app/test 切换先删除 .app；test 构建再删除 beam，强制重编。
 # 先删除 .app 可保证构建中断后，下次构建仍会重建缺失的 beam。
 # app/test 构建共享 ebin，必须在不同 checkout 中运行以避免相互干扰。
 # Disable app/test cache-slot swaps to avoid stale beam reuse.
-# Test builds remove .app before beams so interrupted builds rebuild safely.
+# Invalidate .app on either mode switch; test builds then remove old beams.
 # App/test builds share ebin; use separate checkouts for concurrent builds.
 beam-cache-restore-app:
+	$(verbose) rm -f ebin/$(PROJECT).app
 	$(verbose) rm -f $(ERLANG_MK_TMP)/$(PROJECT).test
 beam-cache-restore-test:
 	$(verbose) touch $(ERLANG_MK_TMP)/$(PROJECT).test
@@ -408,13 +293,7 @@ TEST_ERLC_OPTS += -I src/lib
 # Common Test
 CT_CONFIG ?= config/sys.config
 TEST_HTTP_PORT ?= 0
-# 2026-10-04 SC153 review §13.7：本变量此前从未 export，`?= 0` 是死代码——
-# eunit VM 里 os:getenv("TEST_HTTP_PORT") 恒为 false，test_http_port() 回落
-# 硬编码 19800；19800 被同机 release VM 占用时全量轨道 boot 即
-# {listener_start_failed,http,eaddrinuse} 连锁全灭（SC153 验收期实证）。
-# export 后默认 0 = 内核随机端口，与 CT 轨道语义对齐（CT_ERL_ARGS 一直
-# 直接注入 $(TEST_HTTP_PORT)=0）；调用方显式导出非零值（如门跑
-# TEST_HTTP_PORT=47980）经环境继承，行为不变。
+# EUnit 通过 os:getenv 读取端口；默认由内核分配，调用方可显式指定。
 export TEST_HTTP_PORT
 CT_CONFIG_BASE = $(patsubst %.config,%,$(CT_CONFIG))
 CT_CONFIG_BASE_ABS = $(abspath $(CT_CONFIG_BASE))
@@ -656,20 +535,9 @@ docs-serve:
 docs-stop:
 	docker compose -f docs/api-sandbox/docker-compose.yml down
 
-# EUnit（本地真 PG）：注入 config/sys.local 使 pg_conf 可读并起全量 imboy app，
-# 让 ?TEST_WITH_APP / ?TEST_WITH_DB 类用例真连本地 imboy_v1 跑；否则纯 make eunit
-# 无 -config 时 eunit_runner:ensure_config_loaded/0 硬失败 {missing_config, pg_conf}，
-# 一大批 ?TEST_WITH_APP setup 被 cancelled。
-# 用法: make eunit-local                    # 全量（旧口径：CI 与诊断显式调用）
-#       make eunit-local t=elib_uri_tests   # 单模块
-# （2026-10-31 P1-12 入口切换起，日常默认入口为 `make eunit` → quality-full，
-#  见下方 IMBOY_ERLANG_QUALITY 段；本目标保留为旧口径诊断/CI 路径，
-#  CI 显式 EUNIT_CONFIG/EUNIT_USE_RELAY 参数不受影响。2026-11-01 P1-05/PLAN311
-#  路由接入：本配方本体改名 eunit-local-legacy（逐字节未动），`make eunit-local`
-#  变为路由入口——裸调用（IMBOYENV=local 且无 t=/EUNIT_* ）委派 quality-full；
-#  显式参数调用按 IMBOY_EUNIT_ROUTE 落到本配方，CI 行为保持。）
-# 前置: 本地 imboy_v1 schema 须已应用到最新迁移，否则 imboy_app:start/2 的
-#       imboy_migrate:migrate/0 会 {out_of_order, ...} 使 app 启动失败。
+# legacy 入口为需要应用/数据库的测试注入独立配置与端口，避免 missing_config。
+# make eunit-legacy 或 make eunit-local t=elib_uri_tests 使用此配方；
+# 本地无显式参数的 eunit/eunit-local 委派 quality-full。数据库须已完成迁移。
 # OTP requires a code path under a directory named imboy; use a private alias outside
 # the worktree so existing files named imboy are never replaced or removed.
 .PHONY: eunit-local eunit-local-legacy
@@ -685,32 +553,9 @@ EUNIT_RELAY_CONF := config/sys.eunit-relay.$$$$
 EUNIT_PROCESS_LIMIT ?= 32768
 EUNIT_ERL ?= erl -noinput -boot no_dot_erlang +P $(EUNIT_PROCESS_LIMIT) +Q 1024
 eunit-local-legacy:
-	@# A1c：erlang.mk beam-cache 防失步（CP-TD-A02）。L3 门顺序是 make compile →
-	@# eunit-local：当 .erlang.mk/imboy.test 标记与 ebin 内 beam 的 TEST/非TEST 模式
-	@# 失步时（历史运行中断/缓存残留），test-build 因 ebin/imboy.app 比 src 新
-	@# （$? 为空）而跳过 -DTEST=1 重编 → 全部 -ifdef(TEST) 导出缺失 → 依赖内部
-	@# 函数白盒导出的用例大面积 undef（13:56Z 门 38/40 失败根因）。删标记+清缓存，
-	@# 强制 beam-cache-restore-test 走「现 ebin 入缓存→clean-app→带 -DTEST=1
-	@# 干净重编」的确定性路径；erlang.mk 本体 vendored 不动，只在门入口加固。
 	@rm -f .erlang.mk/$(PROJECT).test
 	@rm -rf .erlang.mk/beam-cache/$(PROJECT)
-	@# A1c 补全（2026-09-28 15:13Z 门全 cancel 实证）：覆写版 beam-cache-restore-test
-	@# 当年只 touch 标记+清 beam，丢了 erlang.mk 原生路径里对 ebin/imboy.app 的
-	@# 删除 → test-build 跳过 -DTEST=1 重编 → ebin 空 beam、用例全 cancel。
-	@# 该缺口已由 WH-01T 在 beam-cache-restore-test 覆写处修复（见上方 Makefile
-	@# restore-app/restore-test，删 .app 先于清 beam）；此处三连删保留为
-	@# eunit-local 门入口的纵深防御（显式硬复位，不依赖覆写语义）。
 	@rm -f ebin/imboy.app
-	@# A1c：PG 接入走 fork-per-connection 本地中继（test/common/pg_relay.py）。
-	@# 证据（evidence/CP-TD-A02 run1-4）：长命 eunit VM 的新建 TCP 连接会被
-	@# com.docker.backend @127.0.0.1:<pg端口> 按调用方进程楔死——持续 econnrefused
-	@# 不恢复，而同刻 pg_isready/全新进程连接正常（防火墙关闭、无过滤器，已排除
-	@# 并发/累计连接数与 PG 上限成因）；首例拒绝恒定出现在首轮全链迁移重 I/O 后。
-	@# 中继让触达 <目标端口> 的 connect 全部来自 fork 出的全新子进程，按进程楔死
-	@# 机制无法命中；eunit VM 只连 127.0.0.1:$(EUNIT_RELAY_PORT)。
-	@# 生成 <EUNIT_CONFIG>.config 的端口替换副本（$(EUNIT_RELAY_CONF).config，
-	@# 不落 git；文件名按调用唯一，防并发 eunit 互相覆写）；
-	@# 无 python3 或配置里没有目标端口时自动退回直连，行为与旧版一致。
 	@alias_root=$$(mktemp -d "$${TMPDIR:-/tmp}/imboy-eunit.XXXXXXXX") || exit 1; \
 	ln -s "$$(pwd -P)" "$$alias_root/imboy" || { rmdir "$$alias_root"; exit 1; }; \
 	relay_pid=; \
@@ -735,7 +580,7 @@ eunit-local-legacy:
 	      -e "s/{http_port, 9800}/{http_port, $(EUNIT_HTTP_PORT)}/" \
 	      -e "s/{http_port_adm, 9706}/{http_port_adm, $(EUNIT_HTTP_ADM_PORT)}/" \
 	      "$(EUNIT_CONFIG).config" \
-	    > $(EUNIT_RELAY_CONF).config; \
+	    > $(EUNIT_RELAY_CONF).config || exit 1; \
 	  echo "== EUNIT PG RELAY: 127.0.0.1:$(EUNIT_RELAY_PORT) -> 127.0.0.1:$(EUNIT_RELAY_TARGET) (http $(EUNIT_HTTP_PORT)/adm $(EUNIT_HTTP_ADM_PORT)) =="; \
 	  mkfifo "$$alias_root/relay.fifo" || exit 1; \
 	  exec 3<>"$$alias_root/relay.fifo" || exit 1; \
@@ -750,7 +595,7 @@ eunit-local-legacy:
 	  sed -e "s/{http_port, 9800}/{http_port, $(EUNIT_HTTP_PORT)}/" \
 	      -e "s/{http_port_adm, 9706}/{http_port_adm, $(EUNIT_HTTP_ADM_PORT)}/" \
 	      "$(EUNIT_CONFIG).config" \
-	    > $(EUNIT_RELAY_CONF).config; \
+	    > $(EUNIT_RELAY_CONF).config || exit 1; \
 	  echo "== EUNIT PG DIRECT: $(EUNIT_RELAY_TARGET) (http $(EUNIT_HTTP_PORT)/adm $(EUNIT_HTTP_ADM_PORT), EUNIT_USE_RELAY=0) =="; \
 	  IMBOYENV=local $(MAKE) eunit IMBOY_EUNIT_INNER=1 $(if $(t),t=$(t)) ERL="$(EUNIT_ERL)" \
 	    EUNIT_ERL_OPTS="-config $(EUNIT_RELAY_CONF) -pa $$alias_root/imboy/ebin -pa ebin -pa test"; \
@@ -770,74 +615,16 @@ EUNIT_RELAY_TARGET ?= 4323
 EUNIT_HTTP_PORT ?= 19980
 EUNIT_HTTP_ADM_PORT ?= 19970
 
-# WH-03（2026-09-28）：plain `IMBOYENV=local make eunit` 与 eunit-local 同轨。
-# 历史（2026-09-28 final4 全量实证）：plain eunit 走 erlang.mk 原生路径，
-# EUNIT_ERL_OPTS 无 -config；且 erlang.mk 的 `-pa test -pa ebin` 因 -pa 后者优先，
-# ebin 的 src/lib/eunit_runner.beam 压过 test/common 同名模块，其 eunit_setup
-# 内部 ensure_config_loaded/0 在 pg_conf 缺失时硬失败 → 68 个 DB 测试文件、
-# 551 处 missing_config、586 个 context setup failed 全量 cancel——这正是原始
-# 报障「大面积 cancel」的主体。eunit-local 备齐了旧解法（-config 注入 +
-# PG 中继 + 私有 HTTP 端口 + A1c/WH-01T/WH-02 确定性重建）。
-# P1-12 入口切换（2026-10-31，evidence/P1-12.json 复评）：等价门遗留差异根
-# （throttle_middleware、oa_direct_cloud_retention_pg_tests）在 rv6 全量
-# （full-20261031T040531Z，HEAD 174d24f4d）逐根 exit=ok，完整 U 1862/1862 全绿，
-# 日常 `make eunit`（IMBOYENV=local 且非内层）自此委派质量新入口 quality-full；
-# 旧路径显式保留为诊断别名 `make eunit-legacy`（同轨 eunit-local；CI 显式
-# EUNIT_CONFIG/EUNIT_USE_RELAY 调用不受影响），不作默认。单冒号规则在本文件
-# （include erlang.mk 之后）后定义即覆盖 erlang.mk 的 eunit（前置并集、配方取
-# 后定义）；eunit-local 的内层 $(MAKE) eunit 已带 IMBOY_EUNIT_INNER=1 防递归，
-# eunit-legacy 落到同一配方故同理。非 local 环境（CI 显式构造的调用）不受影响。
-# P1-05/PLAN311 入口路由（见上方 IMBOY_EUNIT_ROUTE 块）：在 P1-12 基础上补齐——
-# native：erlang.mk 原生定义生效（本块整体不生效，现状内层形态）。
-# quality_full：裸 `make eunit` 与裸 `make eunit-local` 都委派 quality-full；
-#   `eunit-legacy` 两分支都落 eunit-local-legacy —— 强制 legacy 旧路径。
-# legacy（t= 或 EUNIT_* 显式传入，CI 即此）：`eunit` 不在此覆写 → 落 erlang.mk
-#   原生定义（t= 单跑路径恢复直通，不再被 quality-full 吞掉）；`eunit-local` /
-#   `eunit-legacy` 落旧配方 eunit-local-legacy —— CI 的
-#   `make eunit-local EUNIT_CONFIG=...`（backend-ci.yml:154、nightly.yml:197）
-#   执行序列逐字节保持（配方本体未改，仅目标改名后经前置进入）。
-ifeq ($(IMBOYENV),local)
-ifneq ($(IMBOY_EUNIT_INNER),)
-# native：erlang.mk 原生（现状；eunit-local-legacy 内层 $(MAKE) eunit 即此形态）
-else ifeq ($(IMBOY_EUNIT_ROUTE),quality_full)
-eunit: quality-full
-	$(verbose) :
-eunit-local: quality-full
-	$(verbose) :
+# local 默认委派质量全量；显式参数保留原生/legacy，内层禁止递归。
 eunit-legacy: eunit-local-legacy
-	$(verbose) :
-else
+ifeq ($(IMBOYENV):$(IMBOY_EUNIT_ROUTE),local:quality_full)
+eunit eunit-local: quality-full
+else ifneq ($(IMBOYENV):$(IMBOY_EUNIT_ROUTE),local:native)
 eunit-local: eunit-local-legacy
-	$(verbose) :
-eunit-legacy: eunit-local-legacy
-	$(verbose) :
-endif
-else
-# 非 local 环境：`make eunit` 走 erlang.mk 原生（现状）；`make eunit-local`
-# 保持旧路径（该配方自身对内层强制 IMBOYENV=local，行为与本路由前一致）。
-eunit-local: eunit-local-legacy
-	$(verbose) :
 endif
 
-# ==================== IMBOY_ERLANG_QUALITY：纯 Erlang 质量入口薄别名 ====================
-# FRAMEWORK_DESIGN §2 / RUN12：仅调用 Erlang 入口的最小接线，无递归 double-run——
-# 前置只做 TEST 构建硬复位 + test-build（不执行老 eunit）。
-# P1-12 入口切换（2026-10-31，evidence/P1-12.json 复评）：原切换前置（等价门
-# 通过 + 完整 U 业务全绿）已由 rv6 满足（full-20261031T040531Z，HEAD 174d24f4d，
-# 1862/1862、fail=0 cancel=0 missing=0 vm_killer=[]），日常 `make eunit` 委派
-# quality-full；旧路径显式保留为 eunit-legacy / eunit-local（诊断与 CI 显式
-# 口径），不作默认。
-# 硬复位（A1c）导致每次全量 TEST 重编；P1-05 BUILD01 起由内容指纹收据
-# （imboy_quality_build:build_key + receipt_*）承接防失步：quality-test-build
-# 改为 hit/miss（见下方目标），hit 时不再硬复位。
-#
-# 构建键输入的 Make→escript 通道：经 export 直传子进程环境，不走 shell 拼接
-# （ERLC_COMPILE_OPTS 内含单引号，命令行/赋值拼接会破引号）。展开时机为配方
-# 执行期（递归变量），因此捕获的是 erlang.mk 补齐后的最终 ERLC_OPTS /
-# TEST_ERLC_OPTS（含 +'{parse_transform, lager_transform}' / -I src/lib /
-# -DTEST=1）。features 取 ERLC_EXCLUDE（BUILD-00R 特性裁剪清单，profile 切换
-# 即变键）。收据路径在 .erlang.mk 顶层：硬复位只清 beam-cache/$(PROJECT) 子目录，
-# 收据跨轮存活，由键与完整性校验裁决新旧。
+# 质量入口使用内容指纹和逐 BEAM 收据；hit 复用，miss 复位构建并 seal。
+# 带引号的编译选项经环境直传；收据位于被清理的缓存目录之外。
 export IMBOY_QUALITY_PROJECT = $(PROJECT)
 export IMBOY_QUALITY_ERLC_OPTS = $(ERLC_OPTS)
 export IMBOY_QUALITY_TEST_ERLC_OPTS = $(TEST_ERLC_OPTS)
@@ -849,14 +636,7 @@ export IMBOY_QUALITY_BUILD_RECEIPT
 quality-selftest:
 	escript scripts/quality.escript selftest
 
-# P1-05 BUILD01 hit/miss：hit = 内容键相同且收据完整性通过（逐 BEAM SHA256
-# 重算，见 imboy_quality_build:receipt_verify）→ 跳过构建，本分支不做任何
-# make（quality-full worker 加载 prep/build 框架产物 + ebin/test/
-# feature-test-ebin，不依赖 .erlang.mk/quality-test-ebin——后者仅服务
-# erlang.mk 原生 eunit 的 legacy 路径）。miss（首跑/键变/收据缺失或损坏/
-# BEAM 缺失或漂移/模块集或 .app modules 变化）→ 原 A1c 硬复位 + 全量 TEST
-# 重编，成功后 build-seal 原子写收据。build-check/seal 经 quality.escript
-# 同一许可门（合成构建操作，PAR24 语义不变）。
+# 缺失、漂移、损坏或输入变化必须重建；仅完整性校验通过才能命中。
 quality-test-build:
 	@if escript scripts/quality.escript build-check; then \
 		: ; \

@@ -1,6 +1,6 @@
 # Make 命令参考 / Make Command Reference
 
-> **Last Updated:** 2026-09-30
+> **Last Updated:** 2026-11-05
 > **真源 / Source of Truth:** `Makefile`、`include/cli.mk`、`include/tpl.mk`、`erlang.mk`（vendored，勿改）
 > 部署与运维命令不在本文范围，见 `deploy/README.md`。
 
@@ -16,6 +16,18 @@
 | （未设置） | `relx.config` | `config/sys.config`（不存在时回退 `sys.config.example`） |
 
 `IMBOY_*` 环境变量在**运行时**覆盖配置值（`src/lib/imboy_env.erl`），优先级最高。环境变量参考见 [env-vars.md](./env-vars.md)。
+
+环境专用文件缺失时分别回退 `relx.config`、`config/sys.config`（后者缺失再用 example）。仅发布/运行目标通过 `runtime-config` 生成 `config/sys.runtime.config`；`help`、`mod-check` 和纯编译不复制运行配置，也不读取 LLM dotenv。发布/运行缺失或无效的 relx 配置会明确失败。
+
+Environment-specific files fall back independently. Release/run targets explicitly prepare runtime configuration and reject missing/invalid release configuration; audit/help/compilation do not prepare it or load LLM dotenv files.
+
+本仓 vendored erlang.mk 为 `efb0d04`。该版本解析期立即求 relx 元数据，Makefile 在 include 期间阻止 Erlang 命令执行，执行期恢复原生命令格式并按需缓存元数据。不要删除这一兼容屏障或以审计成功推断发布配置有效。`run` 的三个 LLM 变量优先级为：Make 命令行 > `.env.local`（首个定义非空时） > `.env`（同前） > 继承环境；保留 `$`、`#`、空格，不执行 dotenv 内容。
+
+The pinned erlang.mk eagerly evaluates release metadata. The project defers Erlang execution until parsing finishes and caches metadata on demand. LLM values are loaded only for the run process tree, preserving literal characters and existing precedence.
+
+裸 `make` 保留原有默认目标 `test-build`，并不等于官方原生默认 `all`。测试批量编译需要 GNU Make 4+；macOS 自带 Make 3.81 可执行帮助/审计，编译测试请使用 `gmake`。隔离构建回归：`python3 scripts/test/test_makefile.py`，仅使用临时假配置和纯函数测试，不连接数据库。
+
+Bare make retains the existing test-build default. Test compilation requires GNU Make 4+ (gmake on macOS). The build regression uses temporary configurations and pure tests without a database.
 
 <!-- AUTO-GENERATED:make-targets BEGIN（由 Makefile / include/*.mk 提取；手工内容请写在本区间外） -->
 
@@ -35,9 +47,12 @@
 
 | 命令 | 作用 |
 |------|------|
-| `IMBOYENV=local make eunit` | 全量 EUnit（`IMBOYENV=local` 下自动委派 `eunit-local`） |
-| `IMBOYENV=local make eunit t=<模块名>` | 单模块 EUnit（含 DB 用例的模块走 `eunit-local` 路径，自动注入 `-config`） |
-| `make eunit-local` | 显式入口：`-config` 注入 + PG 中继 + 私有 HTTP 端口；`EUNIT_CONFIG` 可覆盖（默认 `config/sys.local`） |
+| `IMBOYENV=local make eunit` | 委派 `quality-full`，由构建收据决定复用/重建，不重复运行原生 EUnit |
+| `IMBOYENV=local make eunit t=<模块名>` | 原生定向入口；支持 `t=模块:函数`，需要 DB 时使用 `eunit-local t=...` 或显式注入配置 |
+| `IMBOYENV=local make eunit-local` | 无显式测试参数时走 `quality-full`；显式 `t` / `EUNIT_CONFIG` / `EUNIT_MODS` / `EUNIT_USE_RELAY`（含空值）走 legacy |
+| `make eunit-legacy` | 强制 legacy：配置注入 + 可选 PG 中继 + 私有 HTTP 端口；`EUNIT_CONFIG` 默认 `config/sys.local` |
+| `make eunit-all` / `make quality-full` | 质量全量入口；保留许可、资源门和完整性判定 |
+| `make quality-group g=模块1,模块2` | 质量诊断分组，只产生部分执行结果 |
 | `make e2ee-verify` | E2EE 全套验证（安全门禁 + 专项 EUnit 套件） |
 | `make ct` | Common Test（`CT_CONFIG ?= config/sys.config`，`TEST_HTTP_PORT ?= 0`） |
 | `make rest-api-test` | REST API 黑盒测试（runner 自持隔离 scratch DB，容器 `imboy_pg18` 127.0.0.1:4323；`REST_PG_PORT` 可覆盖） |
@@ -128,6 +143,10 @@
 | `make start` / `make stop` | 启动/停止单个节点，走 `scripts/start_node.sh` / `scripts/stop_node.sh`（2026-09-30 修复 `script/` 少 s 笔误） |
 
 <!-- AUTO-GENERATED:make-targets END -->
+
+非 local 环境的 `eunit` 和 `IMBOY_EUNIT_INNER` 非空的内层调用保留原生路由。全量原生列表保留 `talk_record_owned_eunit_fixture` 包装与独占套件排除；TSID 全局状态、AG31/HIRD 专属 PG、迁移 DDL、附件协议等排除项仍由各自专项门执行。定向 `t=` 不过滤；显式空 `EUNIT_MODS` 不能产生零用例成功。Make 路由与 `imboy_quality_build:entry_route/1` 的 origin 判定保持一致。
+
+Non-local and inner EUnit calls retain native routing. Excluded exclusive suites still belong to their specialized gates; targeted selections are unfiltered, while an empty explicit module selection fails. The Make routing follows the authoritative Erlang origin table.
 
 ## 相关文档
 
