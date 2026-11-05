@@ -166,9 +166,33 @@ with_recovery(F) ->
         meck:expect(talk_record_client_repo, parts_tx, fun(conn, 30) ->
             {ok, get(recovery_parts)}
         end),
-        meck:expect(elib_pg, query, fun(conn, SQL, [31, 7, 10, <<"p1">>, _, <<"transcribe">>]) ->
-            ?assertNotEqual(nomatch, binary:match(SQL, <<"talk_record_consent_event">>)),
-            {ok, [#{<<"id">> => 31}]}
+        meck:expect(elib_pg, query, fun
+            (conn, SQL, [31, 7, 10, <<"p1">>, _, <<"transcribe">>]) ->
+                ?assertNotEqual(nomatch, binary:match(SQL, <<"talk_record_consent_event">>)),
+                {ok, [#{<<"id">> => 31}]};
+            %% V1 冻结成品真实采样率：final_rate 从本记录 succeeded assemble job
+            %% 读证据（单一事实源）。recovery 链无 assemble 成品——空集走 null 速率。
+            (conn, SQL, [7]) ->
+                ?assertNotEqual(nomatch, binary:match(SQL, <<"talk_record_job">>)),
+                %% V1 合同：rate 单一事实源 = succeeded assemble 成品
+                %% （final_audio.sample_rate）。恢复链创建的 provider task 必然
+                %% 在成品之后——回放 assemble 行证据；空集会走
+                %% abort(final_input_missing)（第十一轮实锤）。
+                {ok, [
+                    #{
+                        <<"processor_input">> => jsone:encode(#{
+                            <<"final_audio">> => #{
+                                <<"object_key">> => <<"u1/talk_record/r1/final.aac">>,
+                                <<"sha256">> => hash(),
+                                <<"byte_size">> => 1024,
+                                <<"sample_rate">> => 16000,
+                                <<"channels">> => 1,
+                                <<"sample_count">> => 1024,
+                                <<"duration_ms">> => 64
+                            }
+                        })
+                    }
+                ]}
         end),
         meck:expect(elib_tsid, generate, fun(attachment) -> 100 end),
         F()

@@ -235,11 +235,19 @@ event_and_part_handler_test_() ->
     end).
 
 confirm_facts_mismatch_409_handler_test_() ->
-    with_db(fun(_State) ->
+    with_db(fun(State) ->
+        C = maps:get(conn, State),
         Ids = talk_record_t07_support:ids(),
         U1 = maps:get(u1, Ids),
         {ok, Rid} = talk_record_t07_support:create_record(U1, <<"t07h-v-0">>, ?REC1),
         {ok, Cid} = talk_record_t07_support:create_capture(U1, Rid, ?DS1, <<"t07h-v-1">>),
+        %% 声明与正文一致（direct presign 绑 x-amz-checksum-sha256：不符
+        %% 字节 S3 在 PUT 即 400，到不了 confirm）——PUT 200 后改写 parts
+        %% 声明，confirm 侧 copy-proof 与声明失配 → 409/5537（旧 V5 通道
+        %% PUT 不验内容，409 直接可达；新合同由 S3 PUT 闸门提前拦截，
+        %% confirm 侧校验退居纵深防御，此用例经 DB 改写保持其覆盖）。
+        Bytes = binary:copy(<<0>>, 4096),
+        Sha = binary:encode_hex(crypto:hash(sha256, Bytes), lowercase),
         {ok, created, P} = talk_record_t07_support:register_part(
             U1,
             Rid,
@@ -248,8 +256,8 @@ confirm_facts_mismatch_409_handler_test_() ->
                 <<"seq">> => 0,
                 <<"start_ms">> => 0,
                 <<"end_ms">> => 1,
-                <<"sha256">> => binary:copy(<<"b">>, 64),
-                <<"byte_size">> => 1024,
+                <<"sha256">> => Sha,
+                <<"byte_size">> => 4096,
                 <<"codec">> => <<"aac">>
             },
             <<"t07h-v-0">>
@@ -259,8 +267,14 @@ confirm_facts_mismatch_409_handler_test_() ->
             cid => integer_to_binary(Cid),
             pid => integer_to_binary(maps:get(<<"part_id">>, P))
         },
-        %% Actual uploaded bytes differ from declared hash/size: no asset binding.
         ok = talk_record_upload_test_support:upload(U1, P),
+        talk_record_t07_support:sql(
+            C,
+            io_lib:format(
+                "UPDATE talk_record_audio_part SET sha256 = '~ts' WHERE record_id = ~b AND seq = 0",
+                [binary:copy(<<"b">>, 64), Rid]
+            )
+        ),
         mock_body(#{}),
         R = talk_record_handler:handle_action(
             capture_audio_part_confirm,

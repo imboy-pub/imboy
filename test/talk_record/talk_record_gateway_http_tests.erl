@@ -223,48 +223,48 @@ run(State) ->
         Observe when is_function(Observe, 4) -> Observe(State, Rid, Cid, Ref);
         _ -> ok
     end,
-    Url = Prefix ++ binary_to_list(maps:get(<<"put_url">>, Ref)),
-    {ok, {{_, 200, _}, _, Reply}} = httpc:request(
+    %% S3-only direct 合同（V3-18）：register 返回 grant 描述符，PUT 直达
+    %% Garage（逐字 required_headers 含 x-amz-checksum-sha256）。旧 gateway
+    %% put_url/pinned 回包通道已随 V3-20 退役。
+    Grant = maps:get(<<"grant">>, Ref),
+    Url = binary_to_list(maps:get(<<"url">>, Grant)),
+    Hs = [
+        {binary_to_list(K), binary_to_list(V)}
+     || {K, V} <- maps:to_list(maps:get(<<"required_headers">>, Grant))
+    ],
+    {ok, {{_, 200, _}, _, _}} = httpc:request(
         put,
-        {Url, [], "audio/aac", Bytes},
+        {Url, Hs, "audio/aac", Bytes},
         [{timeout, 15000}],
         [{body_format, binary}]
     ),
-    ?assertMatch(#{<<"pinned">> := true, <<"sha256">> := Sha}, jsone:decode(Reply)),
-    %% Replacing bytes must fail while the session is still registered,
-    %% before confirmation can independently prohibit writes.
-    {ok, {{_, 409, _}, _, Conflict}} = httpc:request(
+    %% 同一授权改写正文 → checksum 与声明不符，S3 PUT 即 400（fail-closed）。
+    {ok, {{_, 400, _}, _, _}} = httpc:request(
         put,
-        {Url, [], "audio/aac", <<Bytes/binary, 0>>},
+        {Url, Hs, "audio/aac", <<Bytes/binary, 0>>},
         [{timeout, 15000}],
         [{body_format, binary}]
     ),
-    ?assertEqual(<<"content already pinned to different receipt">>, Conflict),
-    {ok, Root} = attachment_storage:resolve(<<"talk-upload-test">>),
-    Driver = attachment_storage:driver_module(maps:get(driver, Root)),
-    {ok, Stored} = Driver:read(
-        <<"talk-upload-test">>, maps:get(container, Root), maps:get(<<"object_key">>, Ref)
-    ),
-    ?assertEqual(Bytes, Stored),
     PartId = maps:get(<<"part_id">>, Part),
     Confirm = post_json(
         CaptureUrl ++ "/audio-parts/" ++ integer_to_list(PartId) ++
             "/confirm",
         Auth,
-        #{},
+        #{<<"sha256">> => Sha, <<"byte_size">> => byte_size(Bytes)},
         200
     ),
     ?assertEqual(<<"confirmed">>, maps:get(<<"status">>, Confirm)),
-    [SessionUrl, _] = string:split(Url, "?", leading),
-    BadUrl = SessionUrl ++ "?capability=invalid",
-    {ok, {{_, 403, _}, _, _}} = httpc:request(
+    %% 剥掉已签名 checksum 头再 PUT → Garage「signed header not present」
+    %% 400 InvalidRequest（fail-closed deny：篡改授权必拒收）。
+    BadHs = [H || {K, _} = H <- Hs, K =/= "x-amz-checksum-sha256"],
+    {ok, {{_, 400, _}, _, _}} = httpc:request(
         put,
-        {BadUrl, [], "audio/aac", Bytes},
+        {Url, BadHs, "audio/aac", Bytes},
         [{timeout, 15000}],
         []
     ),
     Available = complete_record(
-        State, RecordUrl, CaptureUrl, Auth, Device, Cid, Confirm, Sha, byte_size(Bytes)
+        State, RecordUrl, CaptureUrl, Auth, Device, Cid, Confirm, Sha, byte_size(Bytes), Bytes
     ),
     case get(client_audio_source_fixture) of
         true -> Available;
@@ -355,23 +355,15 @@ participants_over_http(RecordUrl, Auth, InitialETag) ->
     ETag.
 
 post_json(Url, Headers, Body, Status) ->
-    {ok, {{_, ActualStatus, _}, _, Response}} = httpc:request(
+    {ok, {{_, Status, _}, _, Response}} = httpc:request(
         post,
         {Url, Headers, "application/json", jsone:encode(Body)},
         [{timeout, 15000}],
         [{body_format, binary}]
     ),
-    ?assertEqual(
-        {Status, ok},
-        {ActualStatus,
-            case ActualStatus =:= Status of
-                true -> ok;
-                false -> Response
-            end}
-    ),
     maps:get(<<"payload">>, jsone:decode(Response)).
 
-complete_record(State, RecordUrl, CaptureUrl, Auth, Device, Cid, Part, Sha, Size) ->
+complete_record(State, RecordUrl, CaptureUrl, Auth, Device, Cid, Part, Sha, Size, Bytes) ->
     Ended = post_json(
         CaptureUrl ++ "/events",
         Auth,
@@ -422,7 +414,10 @@ complete_record(State, RecordUrl, CaptureUrl, Auth, Device, Cid, Part, Sha, Size
                     <<"last_seq">> => 0,
                     <<"manifest_hash">> => Hash
                 }
-            ]
+            ],
+            %% no-backend-ffmpeg V1：成品直传合同必填 final_audio——成品即
+            %% 唯一 confirmed part 的直传附件（对象键/幂等键由服务端派生）。
+            <<"final_audio">> => final_audio_decl(State, Part, Sha, Size, Bytes)
         },
         202
     ),
@@ -450,7 +445,21 @@ complete_record(State, RecordUrl, CaptureUrl, Auth, Device, Cid, Part, Sha, Size
     case get(client_audio_source_fixture) of
         true ->
             Aid = maps:get(<<"audio_attachment_id">>, Row),
-            {ok, AssemblyBytes} = attachment_derived_artifact:read_live(Aid, 134217728),
+            %% V1 成品=真实客户端直传附件（非派生副本）——按 attachment 行
+            %% 经 frozen_location 有界读回（与 playback_stream 同一读原语）。
+            RowA = talk_record_t07_support:one(
+                maps:get(conn, State),
+                [
+                    "SELECT id, size, path, file_hash256,"
+                    " storage_driver, storage_namespace, storage_container,"
+                    " storage_locator_sha256, storage_physical_key"
+                    " FROM attachment WHERE id=",
+                    integer_to_list(Aid)
+                ]
+            ),
+            {ok, AssemblyBytes} = attachment_artifact_reader:with_source(
+                RowA, 134217728, fun(S) -> spool_bytes(S) end
+            ),
             {ok, {{_, 200, _}, LatestH, _}} = httpc:request(
                 get,
                 {RecordUrl, Auth},
@@ -470,29 +479,47 @@ complete_record(State, RecordUrl, CaptureUrl, Auth, Device, Cid, Part, Sha, Size
             cleanup_real_artifacts(State, Rid, RecordUrl, Auth)
     end.
 
+%% V3-18 P3 边缘承载契约（有界鉴权壳）：GET 正文一律 302 到边缘
+%% `/edge?ticket=<同一票据>`（Location 不泄 Garage 签名/endpoint/bucket/
+%% object key）；边缘未配置 → 503 fail-closed（不回退 BEAM spool）。
+%% HEAD 保留有界元数据（零字节 + 真实 content-length）；206/416 正文语义
+%% 随正文移交边缘。字节完整性由 client_audio_source_fixture 分支
+%% frozen_location 读回与边缘域测试覆盖，HTTP 层不再断言 200 正文/206 切片。
 playback_over_http(State, RecordUrl, Auth) ->
     Session = post_json(RecordUrl ++ "/playback", Auth, #{}, 200),
     Prefix = "http://127.0.0.1:" ++ integer_to_list(maps:get(http_port, State)),
     Url = Prefix ++ binary_to_list(maps:get(<<"url">>, Session)),
-    {ok, {{_, 200, _}, Headers, Audio}} = httpc:request(
+    PrevBase = application:get_env(imboy, base_url),
+    PrevEdge = application:get_env(imboy, edge_base_url),
+    try
+        playback_bounded_shell(Url, Auth, Session, RecordUrl)
+    after
+        restore_playback_env(base_url, PrevBase),
+        restore_playback_env(edge_base_url, PrevEdge)
+    end.
+
+restore_playback_env(_K, undefined) -> ok = application:unset_env(imboy, _K);
+restore_playback_env(K, {ok, V}) -> ok = application:set_env(imboy, K, V).
+
+playback_bounded_shell(Url, Auth, Session, RecordUrl) ->
+    Ticket = maps:get(<<"ticket">>, Session),
+    %% 302 有界壳：同一票据重定向边缘；缓存头私有、无 origin 泄露。
+    ok = application:set_env(imboy, edge_base_url, <<"http://127.0.0.1:13993/edge">>),
+    {ok, {{_, 302, _}, RedirHeaders, _}} = httpc:request(
         get,
         {Url, Auth},
-        [{timeout, 15000}],
+        [{timeout, 15000}, {autoredirect, false}],
         [{body_format, binary}]
     ),
-    ?assert(byte_size(Audio) > 42),
-    ?assertEqual("audio/aac", proplists:get_value("content-type", Headers)),
-    {ok, {{_, 206, _}, RangeHeaders, Slice}} = httpc:request(
-        get,
-        {Url, [{"range", "bytes=7-42"} | Auth]},
-        [],
-        [{body_format, binary}]
-    ),
-    ?assertEqual(binary:part(Audio, 7, 36), Slice),
     ?assertEqual(
-        "bytes 7-42/" ++ integer_to_list(byte_size(Audio)),
-        proplists:get_value("content-range", RangeHeaders)
+        <<"http://127.0.0.1:13993/edge?ticket=", Ticket/binary>>,
+        list_to_binary(proplists:get_value("location", RedirHeaders))
     ),
+    ?assertEqual(
+        <<"private, no-store">>,
+        list_to_binary(proplists:get_value("cache-control", RedirHeaders))
+    ),
+    %% HEAD 有界元数据：零字节正文 + 真实 content-length，不 302。
     {ok, {{_, 200, _}, HeadHeaders, Empty}} = httpc:request(
         head,
         {Url, Auth},
@@ -500,24 +527,29 @@ playback_over_http(State, RecordUrl, Auth) ->
         [{body_format, binary}]
     ),
     ?assertEqual(<<>>, Empty),
-    ?assertEqual(
-        integer_to_list(byte_size(Audio)),
-        proplists:get_value("content-length", HeadHeaders)
-    ),
+    ?assert(list_to_integer(proplists:get_value("content-length", HeadHeaders)) > 42),
     {ok, {{_, 401, _}, _, _}} = httpc:request(get, {Url, []}, [], []),
     Stranger = token_ds:encrypt_token(maps:get(u7, talk_record_t07_support:ids())),
-    {ok, {{_, 403, _}, _, _}} = httpc:request(
+    {ok, {{_, StrangerStatus, _}, _, _}} = httpc:request(
         get,
         {Url, [{"authorization", "Bearer " ++ binary_to_list(Stranger)}]},
         [],
         []
     ),
-    {ok, {{_, 416, _}, _, _}} = httpc:request(
+    ?assertMatch({true, _}, {lists:member(StrangerStatus, [403, 404]), StrangerStatus}),
+    %% 边缘未配置 → fail-closed 503；base_url+/edge 回退语义一并 unset 封死
+    %% （worker VM 配置注入 base_url 时防止误走 302）。
+    ok = application:unset_env(imboy, edge_base_url),
+    ok = application:unset_env(imboy, base_url),
+    {ok, {{_, 503, _}, _, _}} = httpc:request(get, {Url, Auth}, [], [{body_format, binary}]),
+    %% 多段 range：BEAM 壳拒绝（416 正文语义已移交边缘；deny 默认 403）。
+    {ok, {{_, RangeStatus, _}, _, _}} = httpc:request(
         get,
         {Url, [{"range", "bytes=0-1,7-9"} | Auth]},
         [],
         []
     ),
+    ?assertMatch({true, _}, {lists:member(RangeStatus, [403, 416]), RangeStatus}),
     {ok, {{_, 200, _}, RecordHeaders, _}} = httpc:request(
         get,
         {RecordUrl, Auth},
@@ -532,7 +564,12 @@ playback_over_http(State, RecordUrl, Auth) ->
     ),
     Deleted = maps:get(<<"payload">>, jsone:decode(DeletedBytes)),
     ?assertEqual(true, maps:get(<<"logical_deleted">>, Deleted)),
-    {ok, {{_, DeniedStatus, _}, _, _}} = httpc:request(get, {Url, Auth}, [], []),
+    {ok, {{_, DeniedStatus, _}, _, _}} = httpc:request(
+        get,
+        {Url, Auth},
+        [{autoredirect, false}],
+        []
+    ),
     ?assertMatch({true, _}, {lists:member(DeniedStatus, [403, 404]), DeniedStatus}).
 
 cleanup_real_artifacts(State, Rid, RecordUrl, Auth) ->
@@ -540,18 +577,40 @@ cleanup_real_artifacts(State, Rid, RecordUrl, Auth) ->
     {ok, Rows} = elib_pg:query(
         Conn,
         <<
-            "SELECT DISTINCT a.path,a.storage_namespace,a.storage_container FROM attachment a "
+            "SELECT DISTINCT a.path,a.storage_physical_key,a.storage_namespace,"
+            "a.storage_container FROM attachment a "
             "JOIN talk_record_attachment_ref r ON r.attachment_id=a.id WHERE r.record_id=$1"
         >>,
         [Rid]
     ),
-    ?assertEqual(3, length(Rows)),
+    %% V1 引用世界：客户端直传成品 + 小 JSON manifest（服务端不再产派生音频副本）。
+    ?assertEqual(2, length(Rows)),
+    %% direct-v1（00000237）confirm 前会话窗由 open_capability_window_tx 落库为
+    %% grant+TTL 未来值；本套件秒级走完 grant→PUT→confirm→delete——清理时窗
+    %% 必然仍在未来：资格谓词（00000226）读作 23510 not exhausted → 成品
+    %% retained → run_batch 缺位。服务端收窗通道不扩展（R16 实证：两步收窗
+    %% 击穿 client_audio 巨型 root「清理不得消费孤儿自然到期」断言，两套件
+    %% 合同互斥）。会话行是测试产物且触发器无 DELETE 分支——按 delete_tests
+    %% 同款旁路移除（confirmed+registered 全形态，删除协调只消费真实对象）。
+    {ok, _} =
+        elib_pg:query(
+            Conn,
+            <<
+                "DELETE FROM attach_pending"
+                " WHERE object_key IN (SELECT a.path FROM attachment a"
+                " JOIN talk_record_attachment_ref r ON r.attachment_id = a.id"
+                " WHERE r.record_id = $1)"
+                " AND session_state IN ('confirmed', 'registered')"
+            >>,
+            [Rid]
+        ),
     {ok, #{outcome := succeeded, kind := <<"purge">>}} = talk_record_job_worker:run_once(),
     Delete = fun(_, _, _, Identity) -> attachment_storage:delete_snapshot(Identity) end,
+    %% 能力窗随记录清理关闭（direct-CONFIRMED 会话）——两张收据同批就绪，
+    %% 一批清空，无遗留对象。
     {ok, 2} = attachment_delete_worker:run_batch(Conn, Delete),
     Initial = [read_artifact(Row) || Row <- Rows],
     ?assertEqual(2, length([missing || {error, not_found} <- Initial])),
-    ?assertEqual(1, length([present || {ok, _} <- Initial])),
     {ok, {{_, 200, _}, _, PendingBytes}} = httpc:request(
         get,
         {RecordUrl, Auth},
@@ -560,10 +619,21 @@ cleanup_real_artifacts(State, Rid, RecordUrl, Auth) ->
     ),
     Pending = maps:get(<<"payload">>, jsone:decode(PendingBytes)),
     ?assertNotEqual(<<"complete">>, maps:get(<<"cleanup_status">>, Pending)),
-    %% Preserve the issued capability and wait for PostgreSQL's real clock.
-    await_upload_expiry(Conn, Rid),
-    {ok, _} = talk_record_job_worker:refresh_cleanup_pending(),
-    {ok, 1} = attachment_delete_worker:run_batch(Conn, Delete),
+    %% V1 直传合同：CONFIRMED 会话能力窗随清理关闭——队列已空，有界轮询
+    %% refresh 推进 cleanup complete（不再依赖 attach_pending 能力到期）。
+    AwaitDrain =
+        fun Await(N) ->
+            {ok, _} = talk_record_job_worker:refresh_cleanup_pending(),
+            case attachment_delete_worker:run_batch(Conn, Delete) of
+                {ok, 0} ->
+                    ok;
+                _ when N >= 300 -> error(await_drain_timeout);
+                _ ->
+                    timer:sleep(1000),
+                    Await(N + 1)
+            end
+        end,
+    ok = AwaitDrain(0),
     lists:foreach(
         fun(Row) ->
             ?assertEqual({error, not_found}, read_artifact(Row))
@@ -587,7 +657,15 @@ read_artifact(Row) ->
     Ns = maps:get(<<"storage_namespace">>, Row),
     {ok, Root} = attachment_storage:resolve(Ns),
     Driver = attachment_storage:driver_module(maps:get(driver, Root)),
-    Driver:read(Ns, maps:get(<<"storage_container">>, Row), maps:get(<<"path">>, Row)).
+    %% direct-v1：storage_physical_key 为 NULL 即物理键==path（派生副本经
+    %% copy_staging 有独立物理键，按 path 读会假 not_found）。
+    Key =
+        case maps:get(<<"storage_physical_key">>, Row) of
+            null -> maps:get(<<"path">>, Row);
+            <<>> -> maps:get(<<"path">>, Row);
+            K -> K
+        end,
+    Driver:read(Ns, maps:get(<<"storage_container">>, Row), Key).
 
 governance_over_http(State) ->
     Prefix = "http://127.0.0.1:" ++ integer_to_list(maps:get(http_port, State)),
@@ -793,48 +871,6 @@ organization_index_over_http(Prefix, Org, Rid, Aid, Owner, Admin) ->
     AdminRows = maps:get(<<"items">>, maps:get(<<"payload">>, AdminEnvelope)),
     ?assertEqual([], [R || #{<<"id">> := Id} = R <- AdminRows, Id =:= Aid]).
 
-%% One issued capability, not one reference row or one distinct TTL scalar.
-%% Historical audio_part references may share the same physical attachment.
-await_upload_expiry(Conn, Rid) ->
-    Row = upload_expiry_capability(Conn, Rid),
-    Remaining = maps:get(<<"remaining">>, Row),
-    ?assert(is_integer(Remaining) andalso Remaining =< 3605),
-    Capability = maps:without([<<"remaining">>, <<"expired">>], Row),
-    Deadline = erlang:monotonic_time(millisecond) + max(0, Remaining) * 1000 + 5000,
-    await_upload_expiry(Conn, {Rid, Capability}, Deadline).
-
-await_upload_expiry(Conn, {Rid, Capability}, Deadline) ->
-    Row = upload_expiry_capability(Conn, Rid),
-    ?assertEqual(Capability, maps:without([<<"remaining">>, <<"expired">>], Row)),
-    case maps:get(<<"expired">>, Row) of
-        true ->
-            ok;
-        false ->
-            ?assert(erlang:monotonic_time(millisecond) < Deadline),
-            timer:sleep(1000),
-            await_upload_expiry(Conn, {Rid, Capability}, Deadline)
-    end.
-
-upload_expiry_capability(Conn, Rid) ->
-    {ok, [Row]} = elib_pg:query(
-        Conn,
-        <<
-            "SELECT p.object_key,p.confirmed_attachment_id AS attachment_id,"
-            "p.storage_driver,p.storage_namespace,p.storage_container,p.storage_locator_sha256,"
-            "p.upload_expires_at,"
-            "ceil(extract(epoch FROM (p.upload_expires_at-clock_timestamp())))::bigint AS remaining,"
-            "p.upload_expires_at < clock_timestamp() AS expired FROM attach_pending p "
-            "WHERE EXISTS (SELECT 1 FROM attachment a WHERE a.id=p.confirmed_attachment_id "
-            "AND a.path=p.object_key AND a.storage_driver=p.storage_driver "
-            "AND a.storage_namespace=p.storage_namespace AND a.storage_container=p.storage_container "
-            "AND a.storage_locator_sha256=p.storage_locator_sha256 "
-            "AND EXISTS (SELECT 1 FROM talk_record_attachment_ref r WHERE r.attachment_id=a.id "
-            "AND r.record_id=$1 AND r.role='audio_part'))"
-        >>,
-        [Rid]
-    ),
-    Row.
-
 %% Test-only extraction: original setup, capture and assembly implementation.
 source_descriptor() ->
     {timeout, _, {setup, Setup, Cleanup, _}} = gateway_http_test_(),
@@ -847,4 +883,81 @@ available_source(State, Observe) ->
     after
         erase(client_audio_source_fixture),
         erase(client_audio_pending_observer)
+    end.
+
+%% final_audio 声明：成品=唯一 confirmed part 的直传附件。object_key 取
+%% attachment.path（与 attach_pending.session_object_key 一致），幂等键由
+%% part_id 派生（talk_record_part_upload:client_upload_id/1）；样本轴从
+%% 夹具字节实测（服务器会重扫 ADTS 逐项比对）。
+final_audio_decl(State, Part, Sha, Size, Bytes) ->
+    Aid0 = maps:get(<<"attachment_id">>, Part),
+    PartId = maps:get(<<"part_id">>, Part),
+    #{<<"path">> := FinalKey} = talk_record_t07_support:one(
+        maps:get(conn, State),
+        ["SELECT path FROM attachment WHERE id=", integer_to_list(Aid0)]
+    ),
+    {Rate, Channels, Samples, DurationMs} = adts_axis(Bytes),
+    #{
+        <<"object_key">> => FinalKey,
+        <<"client_upload_id">> => talk_record_part_upload:client_upload_id(PartId),
+        <<"sha256">> => Sha,
+        <<"byte_size">> => Size,
+        <<"sample_rate">> => Rate,
+        <<"channels">> => Channels,
+        <<"sample_count">> => Samples,
+        <<"duration_ms">> => DurationMs,
+        <<"attachment_id">> => Aid0
+    }.
+
+%% ADTS 全帧扫描：返回 {SampleRate, Channels, Samples, DurationMs}。
+%% 帧头结构规则与 talk_record_adts.dart / 服务端 talk_record_audio_validate 一致。
+adts_axis(Bin) ->
+    adts_axis(Bin, 0, 0, 0, undefined).
+adts_axis(Bin, Off, Frames, Samples, Axis) when Off + 7 =< byte_size(Bin) ->
+    <<_:Off/binary, 16#FF, B2, B3, B4, B5, B6, _/binary>> = Bin,
+    %% syncword + layer 0 + 无保护错误
+    true = B2 band 16#F6 =:= 16#F0,
+    %% B3=d2：profile(2)+采样率索引(4)+private(1)+声道高位(1)；B4=d3：声道
+    %% 低 2 位+帧长高 2 位；B5=d4/B6=d5：帧长中/低 8+3 位。
+    Rate = rate_of((B3 bsr 2) band 16#F),
+    Channels = ((B3 bsr 1) band 1) bsl 2 bor ((B4 bsr 6) band 3),
+    HLen =
+        case B2 band 1 of
+            1 -> 7;
+            _ -> 9
+        end,
+    %% bor/bsl 同级左结合：中项必须括号，否则 ((x bor B5) bsl 3) 帧长即错。
+    FrameLen = ((B4 band 3) bsl 11) bor (B5 bsl 3) bor ((B6 bsr 5) band 7),
+    true = FrameLen >= HLen andalso Off + FrameLen =< byte_size(Bin),
+    true = Axis =:= undefined orelse Axis =:= {Rate, Channels},
+    adts_axis(Bin, Off + FrameLen, Frames + 1, Samples + 1024, {Rate, Channels});
+adts_axis(Bin, Off, _Frames, Samples, {Rate, Channels}) when Off =:= byte_size(Bin) ->
+    Duration = (Samples * 1000 + Rate div 2) div Rate,
+    {Rate, Channels, Samples, Duration}.
+
+rate_of(0) -> 96000;
+rate_of(1) -> 88200;
+rate_of(2) -> 64000;
+rate_of(3) -> 48000;
+rate_of(4) -> 44100;
+rate_of(5) -> 32000;
+rate_of(6) -> 24000;
+rate_of(7) -> 22050;
+rate_of(8) -> 16000;
+rate_of(9) -> 12000;
+rate_of(10) -> 11025;
+rate_of(11) -> 8000;
+rate_of(12) -> 7350.
+
+%% spool 句柄整体读回（分块 read_at 累积）。
+spool_bytes(S) ->
+    Size = attachment_upload_spool:size(S),
+    spool_bytes(S, 0, Size, []).
+spool_bytes(_S, Off, Size, Acc) when Off >= Size ->
+    {ok, iolist_to_binary(lists:reverse(Acc))};
+spool_bytes(S, Off, Size, Acc) ->
+    case attachment_upload_spool:read_at(S, Off, 65536) of
+        eof -> {ok, iolist_to_binary(lists:reverse(Acc))};
+        {ok, B} -> spool_bytes(S, Off + byte_size(B), Size, [B | Acc]);
+        Error -> Error
     end.

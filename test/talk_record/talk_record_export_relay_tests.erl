@@ -273,9 +273,10 @@ read_failures(C, Uid, Rid) ->
 publish_fence(C, Uid, Rid) ->
     {ok, created, P} = talk_record_export_logic:create(Uid, Rid, <<"publish-lease-lost">>, #{}),
     {ok, J} = claim(),
-    ok = meck:new(attachment_storage_disk, [passthrough, no_link]),
-    meck:expect(attachment_storage_disk, put_snapshot, fun(I, B, E) ->
-        Result = meck:passthrough([I, B, E]),
+    %% V3-20：disk 驱动退役，物理写边界为 garage put_snapshot（生产派发面）。
+    ok = meck:new(attachment_storage_garage, [passthrough, no_link]),
+    meck:expect(attachment_storage_garage, put_snapshot, fun(I, B, M, Ctx) ->
+        Result = meck:passthrough([I, B, M, Ctx]),
         {ok, _} = elib_pg:execute(
             C,
             <<"UPDATE talk_record_job SET lease_until=now()-interval '1 second' WHERE id=$1">>,
@@ -286,7 +287,7 @@ publish_fence(C, Uid, Rid) ->
     try
         ?assertEqual({error, lease_lost}, talk_record_export_job:run(J))
     after
-        meck:unload(attachment_storage_disk)
+        meck:unload(attachment_storage_garage)
     end,
     {ok, Row} = talk_record_export_repo:find_tx(C, Rid, maps:get(<<"export_id">>, P)),
     ?assertEqual(<<"queued">>, maps:get(<<"state">>, Row)),
@@ -296,11 +297,12 @@ concurrent_write_guard(C, Uid, Rid) ->
     {ok, created, P} = talk_record_export_logic:create(Uid, Rid, <<"concurrent-guard">>, #{}),
     {ok, J} = claim(),
     Parent = self(),
-    ok = meck:new(attachment_storage_disk, [passthrough, no_link]),
-    meck:expect(attachment_storage_disk, put_snapshot, fun(I, B, E) ->
+    %% V3-20：disk 驱动退役，物理写边界为 garage put_snapshot（生产派发面）。
+    ok = meck:new(attachment_storage_garage, [passthrough, no_link]),
+    meck:expect(attachment_storage_garage, put_snapshot, fun(I, B, M, Ctx) ->
         Parent ! {write_started, self()},
         receive
-            allow_write -> meck:passthrough([I, B, E])
+            allow_write -> meck:passthrough([I, B, M, Ctx])
         after 5000 -> {error, test_timeout}
         end
     end),
@@ -325,7 +327,7 @@ concurrent_write_guard(C, Uid, Rid) ->
         after 5000 -> erlang:error(write_not_finished)
         end
     after
-        meck:unload(attachment_storage_disk)
+        meck:unload(attachment_storage_garage)
     end.
 
 cancel(C, J) ->

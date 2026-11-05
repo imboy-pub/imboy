@@ -9,7 +9,7 @@
 %%%   B. 撤权即时性（grants revoked、playback 票据失效、新读全拒）
 %%%   C. 删除后 owner 白名单（形状、非 owner 404、protected/retryable 标志）
 %%%   D. 七态矩阵（pending→blocked_retention/blocked_hold/
-%%%      retained_by_other_reference/failed/complete 推进；真 disk 队列路径）
+%%%      retained_by_other_reference/failed/complete 推进；真实队列路径）
 %%%   E. 迟到模型结果不发布（在途 job 取消 + worker 无可抢 + purge 自身存活）
 %%%   F. 与 PUT grants 并发互斥（同一行 FOR UPDATE 串行化，两序终态一致）
 %%%   G. 注销预检（facts 形状/个人 blocker/企业不级联 + run/1 六域集成 +
@@ -97,8 +97,9 @@ draft(Uid, N, Scope) ->
 %%%===================================================================
 %%% Owned marker-lane local helpers
 %%%（原 T20 冻结注册表车道 helpers 的本车道等价：同 SQL/同连接事实，
-%%%  去掉冻结注册表校验链——该车道在本仓无供给方。disk 事实与
-%%%  talk_record_upload_test_support:configure/0 的注册表单一对齐。）
+%%%  去掉冻结注册表校验链——该车道在本仓无供给方。存储事实与
+%%%  talk_record_upload_test_support:configure/0 的注册表单一对齐
+%%%  （V3-20：disk 驱动退役，真字节按 run-owned registry 根派发）。）
 %%%===================================================================
 
 cleanup_status(Conn, RecordId) ->
@@ -220,15 +221,22 @@ raw_tx(Conn, Fun) ->
             erlang:raise(Class, Reason, Stack)
     end.
 
-disk_root(_Tag) ->
-    Root = os:getenv("TALK_UPLOAD_DISK_ROOT"),
-    true = is_list(Root) andalso filename:pathtype(Root) =:= absolute,
-    Root.
+%% V3-20：disk 驱动退役，真字节事实按 run-owned registry 根派发（garage），
+%% 不再直调已删除的 attachment_storage_disk、不再依赖本地磁盘根。
+upload_registry_apply() ->
+    {ok, #{namespace := Ns, container := Container} = Rec} =
+        attachment_storage:resolve(<<"talk-upload-test">>),
+    #{namespace => Ns, container => Container, driver => maps:get(driver, Rec)}.
 
-disk_registry_apply(Dir) ->
-    Expected = disk_root(disk1),
-    true = filename:absname(Dir) =:= Expected,
-    #{namespace => <<"talk-upload-test">>, container => <<"capture">>}.
+put_local(Ns, Container, Key, Bytes) ->
+    case attachment_storage:resolve(Ns) of
+        {ok, #{driver := <<"garage">>}} ->
+            attachment_storage_garage:put(Ns, Container, Key, Bytes);
+        {ok, #{driver := <<"disk">>}} ->
+            erlang:error(disk_driver_retired);
+        Other ->
+            erlang:error({talk_upload_root_unsupported, Other})
+    end.
 
 disk_locator_digest() ->
     Ns = <<"talk-upload-test">>,
@@ -250,10 +258,10 @@ drain_upload_sessions(_State, _Rid) ->
 %% 器窗口）。装配事实（part 行、derived 产物）不变，把分段位的附件换成本
 %% 地真实对象（真字节、真冻结位置、真引用——与 8101 同款装配），其 audio_part
 %% 引用与 part.attachment_id 一并重绑；旧 V5 分段行连同其会话成为无引用旁
-%% 路，不再进入删除协调。两个真字节旅程（disk 队列消费、队列耗尽续删）
+%% 路，不再进入删除协调。两个真字节旅程（队列消费、队列耗尽续删）
 %% 由此获得全部真实对象。
 rebind_parts_to_local_objects(C, Rid, PartIds, BaseId) ->
-    #{namespace := Ns, container := Container} = disk_registry_apply(disk_root(disk1)),
+    #{namespace := Ns, container := Container, driver := Driver} = upload_registry_apply(),
     Locator = disk_locator_digest(),
     lists:foreach(
         fun({N, Pid}) ->
@@ -263,12 +271,12 @@ rebind_parts_to_local_objects(C, Rid, PartIds, BaseId) ->
                 record_id => Rid,
                 gc_verified => false,
                 hash => binary:encode_hex(crypto:hash(sha256, Bytes), lowercase),
-                storage_driver => <<"disk">>,
+                storage_driver => Driver,
                 storage_namespace => Ns,
                 storage_container => Container,
                 storage_locator => Locator
             }),
-            ok = attachment_storage_disk:put(Ns, Container, Path, Bytes),
+            ok = put_local(Ns, Container, Path, Bytes),
             {ok, [#{<<"v5_aid">> := V5Aid}]} = elib_pg:query(
                 C,
                 <<
@@ -318,12 +326,11 @@ row(Conn, Sql) ->
 %% Protected/retained assets still require valid V5 locations; these cases do
 %% not claim a successful physical deletion or manufacture gc completion.
 located_attachment(Rid, Extra) ->
-    Root = disk_root(disk1),
-    #{namespace := Ns, container := Container} = disk_registry_apply(Root),
+    #{namespace := Ns, container := Container, driver := Driver} = upload_registry_apply(),
     maps:merge(
         #{
             record_id => Rid,
-            storage_driver => <<"disk">>,
+            storage_driver => Driver,
             storage_namespace => Ns,
             storage_container => Container,
             storage_locator => disk_locator_digest()
@@ -504,8 +511,12 @@ delete_fences_active_capture_test_() ->
 disk_objects(C, Rid) ->
     Rows = attachment_rows(C, Rid),
     ?assertEqual(2, length([R || #{<<"part">> := true} = R <- Rows])),
-    ?assertEqual(2, length([R || #{<<"derived">> := true} = R <- Rows])),
-    Objects = [disk_object(R) || R <- Rows],
+    %% no-backend-ffmpeg V1：assemble 结构性只产 1 个 derived（成品音频登记）；
+    %% V0 的服务端 FFmpeg 转码产物已随本分支砍除。
+    ?assertEqual(1, length([R || #{<<"derived">> := true} = R <- Rows])),
+    Objects = [object(R) || R <- Rows],
+    %% V1 实测（full-20261104T161607Z）：ref ∪ derived_write = 2 part +
+    %% 成品 audio（derived）+ manifest + extra = 5 行 5 个物理对象。
     ?assertEqual(5, length(lists:usort([maps:get(identity, O) || O <- Objects]))),
     Objects.
 
@@ -526,28 +537,24 @@ attachment_rows(C, Rid) ->
     ),
     Rows.
 
-disk_object(#{<<"path">> := Path} = Row) ->
+%% V3-20：disk 驱动退役，物理字节证据改经冻结位置快照（真 provider 读回）。
+object(#{<<"path">> := Path} = Row) ->
     {ok,
         #{
-            driver := disk,
             namespace := Ns,
             container := Container,
             key := Key,
-            locator_digest := Digest,
-            endpoint := <<"file://", Root/binary>>
+            locator_digest := Digest
         } = I} =
         attachment_storage:frozen_location(Path, Row),
-    ?assertEqual(disk_root(disk1), binary_to_list(Root)),
-    {ok, Bytes} = attachment_storage_disk:read_snapshot(I),
+    %% V3-20：read_snapshot 已随 disk 驱动退役，字节证据经 garage 快照读回。
+    {ok, Bytes} = attachment_storage_garage:read_snapshot(I),
     ?assert(byte_size(Bytes) > 0),
-    File = filename:join([binary_to_list(Root), binary_to_list(Container), binary_to_list(Key)]),
-    {ok, PhysicalBytes} = file:read_file(File),
     Hash = crypto:hash(sha256, Bytes),
-    ?assertEqual(Hash, crypto:hash(sha256, PhysicalBytes)),
     #{
         path => Path,
-        file => File,
         sha256 => Hash,
+        location => I,
         identity => {Ns, Container, Digest, Key}
     }.
 
@@ -790,7 +797,7 @@ purge_complete_no_attachments_test_() ->
         ?assertEqual(<<"succeeded">>, maps:get(<<"state">>, PJob))
     end).
 
-%% pending →（协调 intended）→ 真 disk 队列消费 → complete
+%% pending →（协调 intended）→ 真实队列消费 → complete
 purge_complete_disk_queue_test_() ->
     with_db(purge_complete_disk_queue_test_, fun(State) ->
         C = talk_record_t20_support:conn_of(State),
@@ -803,9 +810,28 @@ purge_complete_disk_queue_test_() ->
             <<"extra_attachment_path">> := Path
         } = Prepared,
         Objects = disk_objects(C, Rid),
+        %% V1：2 part + 成品 + manifest + extra = 5（V0 的 ffmpeg derived 已砍）
         ?assertEqual(5, length(Objects)),
         ?assertEqual(5, length(lists:usort([maps:get(path, O) || O <- Objects]))),
         ?assert(lists:member(Path, [maps:get(path, O) || O <- Objects])),
+        %% V1 成品会话行旁路化：t12 confirm 链的 attach_pending 行带生产
+        %% 上传窗（3600s，trg_v5_pending_session_guard 禁 shrink——第十四轮
+        %% UPDATE 置过去 23510 实证），资格谓词（00000226）对窗未过行发
+        %% 23510 → retained。本车道无控制器窗口可等；会话行是测试产物且
+        %% 触发器无 DELETE 分支——按 rebind 同款旁路哲学移除（旧行成无引用
+        %% 旁路，删除协调只消费真实对象）。
+        {ok, _} =
+            elib_pg:query(
+                C,
+                <<
+                    "DELETE FROM attach_pending"
+                    " WHERE object_key IN (SELECT a.path FROM attachment a"
+                    " JOIN talk_record_attachment_ref r ON r.attachment_id = a.id"
+                    " WHERE r.record_id = $1)"
+                    " AND session_state IN ('confirmed', 'registered')"
+                >>,
+                [Rid]
+            ),
         {ok, deleted, P0} = talk_record_delete_logic:delete(U1, Rid, <<"1">>),
         ?assertEqual(<<"none">>, maps:get(<<"physical_delete_state">>, P0)),
         %% purge 协调：引用释放 + intent 入队（物理未完成 → pending）
@@ -814,7 +840,7 @@ purge_complete_disk_queue_test_() ->
         {St, _AnyCount} = talk_record_t20_support:ref_state(C, Rid),
         ?assertEqual(<<"released">>, St),
         ?assertEqual(<<"delete_intent">>, talk_record_t20_support:attachment_state(C, Path)),
-        %% 既有附件 worker：claim → disk DELETE → ack done（真路径；
+        %% 既有附件 worker：claim → DELETE → ack done（真路径；
         %% 5 个真实对象：8101、两段上传、assemble 的 audio 与 manifest。
         {ok, 5} = attachment_delete_worker:run_batch(
             C, fun(_Ns2, _C2, _K, I) -> attachment_storage:delete_snapshot(I) end
@@ -823,8 +849,8 @@ purge_complete_disk_queue_test_() ->
         %% 物理完成证据 = 队列 done + 字节消失）
         ?assertEqual(<<"delete_intent">>, talk_record_t20_support:attachment_state(C, Path)),
         lists:foreach(
-            fun(#{file := File}) ->
-                ?assertEqual({error, enoent}, file:read_file(File))
+            fun(#{location := I}) ->
+                ?assertEqual({error, not_found}, attachment_storage_garage:read_snapshot(I))
             end,
             Objects
         ),
@@ -868,18 +894,18 @@ prepare_disk_queue_fixture(State) ->
     ),
     %% Assemble returns outcome only; disk_objects verifies the actual job kind/state.
     {ok, #{outcome := succeeded}} = talk_record_job_worker:run_once(),
-    #{namespace := Ns, container := Container} = disk_registry_apply(disk_root(disk1)),
+    #{namespace := Ns, container := Container, driver := Driver} = upload_registry_apply(),
     Bytes = <<"t20-bytes!">>,
     Path = insert_attachment(C, 8101, #{
         record_id => Rid,
         gc_verified => false,
         hash => binary:encode_hex(crypto:hash(sha256, Bytes), lowercase),
-        storage_driver => <<"disk">>,
+        storage_driver => Driver,
         storage_namespace => Ns,
         storage_container => Container,
         storage_locator => disk_locator_digest()
     }),
-    ok = attachment_storage_disk:put(Ns, Container, Path, Bytes),
+    ok = put_local(Ns, Container, Path, Bytes),
     ok = bind_ref(C, Rid, 8101, <<"audio_part:1">>),
     ok = rebind_parts_to_local_objects(C, Rid, PartIds, 8101),
     {ok, [Record]} = elib_pg:query(
@@ -1028,12 +1054,31 @@ purge_failed_then_retry(State) ->
     {ok, #{outcome := succeeded}} = talk_record_job_worker:run_once(),
     ok = rebind_parts_to_local_objects(C, Rid, PartIds, 8104),
     {ok, deleted, _} = talk_record_delete_logic:delete(U1, Rid, <<"1">>),
+    %% 成品 final 直传会话（create_final_audio：t12-final-*.aac）秒级
+    %% grant→finalize——purge 协调时窗仍在未来，intent 谓词（00000226）
+    %% 读作 23510 not exhausted → retained → 队列缺行（R17/R18 本地插桩
+    %% 实证：4 对象仅 3 行入队，成品恒 0 轮）。本旅程不经 ready() 的
+    %% drain_upload_sessions；会话行是测试产物且触发器无 DELETE 分支——
+    %% 按本套件同款旁路移除（confirmed+registered 全形态）。
+    talk_record_t12_support:sql(
+        C,
+        "DELETE FROM attach_pending"
+        " WHERE object_key IN (SELECT a.path FROM attachment a"
+        " JOIN talk_record_attachment_ref r ON r.attachment_id = a.id"
+        " WHERE r.record_id = " ++ integer_to_list(Rid) ++
+            ")"
+            " AND session_state IN ('confirmed', 'registered')"
+    ),
     {ok, #{outcome := succeeded, kind := <<"purge">>}} = talk_record_job_worker:run_once(),
-    %% 两段上传 + assemble 的 audio/manifest：四个真实对象、四个真实位置
+    %% 两段上传 + 独立成品 direct 会话 + manifest 派生：四个真实对象、四个
+    %% 真实位置。V1 合同（assembly_job reserve_tx）仅 manifest 建
+    %% derived_write；成品经 t12 complete 的 final_audio 锚定独立 CONFIRMED
+    %% direct 会话（create_final_audio：t12-final-*.aac 新附件行，ref 绑
+    %% transcoded_audio）——非 part 行、非 derived 行（R17 实测 identities=4）。
     Rows = attachment_rows(C, Rid),
     ?assertEqual(2, length([R || #{<<"part">> := true} = R <- Rows])),
-    ?assertEqual(2, length([R || #{<<"derived">> := true} = R <- Rows])),
-    Objects = [disk_object(R) || R <- Rows],
+    ?assertEqual(1, length([R || #{<<"derived">> := true} = R <- Rows])),
+    Objects = [object(R) || R <- Rows],
     ?assertEqual(4, length(lists:usort([maps:get(identity, O) || O <- Objects]))),
     Paths = [maps:get(path, O) || O <- Objects],
     ?assertEqual(4, length(Paths)),
@@ -1049,8 +1094,8 @@ purge_failed_then_retry(State) ->
     ?assertEqual(lists:sort(Paths), [maps:get(<<"path">>, R) || R <- Pending]),
     %% 字节仍在（故障 = 未删除）
     lists:foreach(
-        fun(#{file := File, sha256 := Hash}) ->
-            {ok, Bytes} = file:read_file(File),
+        fun(#{location := I, sha256 := Hash}) ->
+            {ok, Bytes} = attachment_storage_garage:read_snapshot(I),
             ?assertEqual(Hash, crypto:hash(sha256, Bytes))
         end,
         Objects
@@ -1096,8 +1141,8 @@ purge_failed_then_retry(State) ->
     ),
     ?assertEqual(length(Paths), Count),
     lists:foreach(
-        fun(#{file := File}) ->
-            ?assertEqual({error, enoent}, file:read_file(File))
+        fun(#{location := I}) ->
+            ?assertEqual({error, not_found}, attachment_storage_garage:read_snapshot(I))
         end,
         Objects
     ),

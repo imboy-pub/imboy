@@ -938,7 +938,8 @@ t_cleanup_maps_states_and_scans_org(Conn) ->
     {ok, []} = talk_record_attachment_ref_repo:scan_organization_tx(Conn, 10, #{workspace_id => 999}).
 
 %% ===================================================================
-%% I Disk 驱动（Garage 驱动留待有授权环境——如实标注，见 T06 报告）
+%% I Disk 驱动（V3-20 退役后 fail-closed：Garage 驱动留待有授权环境——
+%% 如实标注，见 T06 报告）
 %% ===================================================================
 
 t_disk_driver_full_delete_path(Conn) ->
@@ -960,12 +961,6 @@ t_disk_driver_full_delete_path(Conn) ->
         }
     ),
     ?F:insert_pending_confirmed(Conn, Path, 5901),
-    %% 真实字节落盘（Disk driver put）
-    ?assertEqual(
-        ok, attachment_storage_disk:put(Ns, Container, Key, <<"t06-bytes">>)
-    ),
-    DiskPath = filename:join([Root, binary_to_list(Container), binary_to_list(Key)]),
-    ?assertEqual({ok, <<"t06-bytes">>}, file:read_file(DiskPath)),
     %% 绑定 → 释放 → intent（引用零 + 完整位置）→ ready 队列
     {ok, _, true} =
         ?F:tx(Conn, fun(_) ->
@@ -975,17 +970,17 @@ t_disk_driver_full_delete_path(Conn) ->
         ?F:tx(Conn, fun(C) ->
             talk_record_attachment_adapter:request_record_cleanup_tx(C, 1001)
         end),
-    %% worker：claim → Disk driver DELETE → ack done → 墓碑 completed
-    {ok, 1} = attachment_delete_worker:run_batch(
+    %% worker：claim → delete_snapshot fail-closed（disk_driver_retired）→
+    %% 墓碑不 done（retry 保留），历史 disk 行永不误删
+    {ok, 0} = attachment_delete_worker:run_batch(
         Conn, fun(_Ns2, _C, _K, I) -> attachment_storage:delete_snapshot(I) end
     ),
-    ?assertEqual({error, enoent}, file:read_file(DiskPath)),
-    {ok, [#{<<"job_state">> := <<"done">>, <<"completed_at">> := Done}]} = ?F:q(
+    {ok, [#{<<"job_state">> := JobState}]} = ?F:q(
         Conn,
-        <<"SELECT job_state, completed_at FROM attachment_object_deletion WHERE path=$1">>,
+        <<"SELECT job_state FROM attachment_object_deletion WHERE path=$1">>,
         [Path]
     ),
-    ?assert(Done =/= null).
+    ?assert(JobState =/= <<"done">>).
 
 %% ===================================================================
 %% J 孤儿谓词（共享 attachment_repo:orphan_predicate 行为不变 + 新增）

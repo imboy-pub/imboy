@@ -254,6 +254,9 @@ export_state_and_download_handler_test_() ->
             binary:match(maps:get(<<"content-disposition">>, Hdrs), <<"attachment">>) =/= nomatch
         ),
         ok = application:unset_env(imboy, edge_base_url),
+        %% base_url 一并 unset：edge_ready() 有 base_url+/edge 回退语义，
+        %% worker VM 配置注入 base_url 时本场景会误走 302 redirect。
+        ok = application:unset_env(imboy, base_url),
         %% 边缘未配置 → fail-closed（不回退 BEAM 字节直出）
         R3N = talk_record_handler:handle_action(
             export_download,
