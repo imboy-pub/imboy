@@ -70,18 +70,14 @@ fetch_audio(#{<<"path">> := P, <<"size">> := Size, <<"file_hash256">> := Hash} =
 ->
     case attachment_storage:frozen_location(P, Row) of
         {ok, #{driver := garage} = I} ->
-            case attachment_storage_garage:presign_snapshot(I, 600) of
-                {ok, Url} ->
-                    case
-                        attachment_worker_port:fetch_files([
-                            #{url => Url, path => TmpPath, sha256_hex => Hash, size => Size}
-                        ])
-                    of
-                        {ok, _} -> ok;
-                        {error, _} = E -> E
-                    end;
-                {error, _} = E ->
-                    E
+            {ok, Url} = attachment_storage_garage:presign_snapshot(I, 600),
+            case
+                attachment_worker_port:fetch_files([
+                    #{url => Url, path => TmpPath, sha256_hex => Hash, size => Size}
+                ])
+            of
+                {ok, _} -> ok;
+                {error, _} = E -> E
             end;
         {ok, #{driver := disk}} ->
             {error, disk_driver_retired};

@@ -153,6 +153,30 @@ jobs:
           # 后取 env，无需 -eval）。EUNIT_MODS 经命令行变量透传子 make。
           IMBOYENV=local make eunit-local EUNIT_CONFIG=config/sys EUNIT_MODS='moment_repo_tests moment_logic_tests moment_handler_tests adm_moment_handler_tests'
 
+      - name: Run contract route regression EUnit
+        env:
+          IMBOY_PG_HOST: "127.0.0.1"
+          IMBOY_PG_PORT: "5432"
+          IMBOY_PG_USERNAME: "imboy_user"
+          IMBOY_PG_PASSWORD: "abc54321"
+          IMBOY_PG_DATABASE: "imboy_v1"
+          IMBOY_AUTO_MIGRATE: "false"
+          CONTRACT_REGRESSION_MODULES: >-
+            attachment_derived_artifact_state_tests
+            attachment_edge_authorize_handler_tests
+            attachment_edge_proxy_handler_tests
+            cs_handler_tests
+            cs_quick_reply_validation_tests
+            eb_asset_download_ticket_tests
+            enterprise_message_id_tests
+            talk_record_audio_validate_tests
+            talk_record_completion_recovery_tests
+            talk_record_export_download_ref_tests
+            talk_record_playback_stream_tests
+        run: |
+          # Explicit modules run in a fresh VM; these fixtures need no database schema.
+          IMBOYENV=local make eunit-local EUNIT_CONFIG=config/sys EUNIT_MODS="$CONTRACT_REGRESSION_MODULES"
+
   # ----------------------------------------------------------------
   # Dialyzer 递减基线门（CI-00，阻塞）—— make dialyze-check = 全量分析 +
   # dialyzer.baseline 指纹比对：基线外新增 1 条告警即红（棘轮：存量只准减

@@ -268,7 +268,15 @@ presign_download(OrgId, WorkspaceId, AssetId) ->
     end.
 
 -spec download_location(integer(), integer(), integer()) ->
-    {ok, #{driver := garage, key := binary(), container := binary(), namespace := binary()}}
+    {ok, #{
+        driver := garage,
+        key := binary(),
+        container := binary(),
+        namespace := binary(),
+        endpoint := binary(),
+        garage_config := map(),
+        _ => _
+    }}
     | {error, term()}.
 download_location(OrgId, WorkspaceId, AssetId) ->
     eb_pg_exec:with_tenant(OrgId, WorkspaceId, fun() ->

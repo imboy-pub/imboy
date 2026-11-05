@@ -99,7 +99,7 @@ count_for_msg_tx(Conn, MsgRowId, MsgId) when is_integer(MsgRowId), is_binary(Msg
 
 %% @doc 按业务消息 ID 反查 origin 行（V3-24 delivered/read 事件归属解析：
 %% 企业托管行有 origin（application_id 恒非空），Human/E2EE 行无行 → skip）。
--spec find_by_msg_id_tx(any(), binary()) -> {ok, map()} | {error, not_found}.
+-spec find_by_msg_id_tx(any(), binary()) -> {ok, map()} | {error, term()}.
 find_by_msg_id_tx(Conn, MsgId) when is_binary(MsgId) ->
     Sql =
         <<
@@ -111,7 +111,7 @@ find_by_msg_id_tx(Conn, MsgId) when is_binary(MsgId) ->
     case elib_pg:query(Conn, Sql, [MsgId]) of
         {ok, [Row | _]} -> {ok, Row};
         {ok, []} -> {error, not_found};
-        {error, _} -> {error, not_found}
+        {error, Reason} -> {error, Reason}
     end;
 find_by_msg_id_tx(_Conn, _MsgId) ->
     {error, not_found}.

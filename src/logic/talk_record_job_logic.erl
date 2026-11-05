@@ -496,7 +496,7 @@ assert_final_identity_tx(Conn, existing, JobId, FinalInput) ->
                         <<"object_key">> := OldKey, <<"client_upload_id">> := OldCid
                     }
                 } ->
-                    #{object_key := NewKey, client_upload_id := NewCid} = FinalInput,
+                    #{<<"object_key">> := NewKey, <<"client_upload_id">> := NewCid} = FinalInput,
                     case OldKey =:= NewKey andalso OldCid =:= NewCid of
                         true -> ok;
                         false -> throw({talk_record_rollback, {error, final_identity_conflict}})

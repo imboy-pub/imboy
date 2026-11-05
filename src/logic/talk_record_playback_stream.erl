@@ -45,25 +45,24 @@ published_audio_tx(C, Rid) ->
 with_range(Uid, Rid, Ticket, Aid, Offset, Length, Fun) ->
     case metadata(Uid, Rid, Ticket) of
         {ok, #{attachment_id := Aid}} ->
-            case
-                elib_pg:with_conn(fun(C) ->
-                    published_audio_tx(C, Rid)
-                end)
-            of
-                {ok, Row} ->
-                    attachment_artifact_reader:with_range(Row, Offset, Length, fun(Source) ->
-                        case recheck(Uid, Rid, Ticket) of
-                            ok -> Fun(Source);
-                            Error -> Error
-                        end
-                    end);
-                _ ->
-                    {error, playback_media_unavailable}
-            end;
+            with_published_range(Uid, Rid, Ticket, Offset, Length, Fun);
         {ok, _} ->
             {error, playback_media_unavailable};
         Error ->
             Error
+    end.
+
+with_published_range(Uid, Rid, Ticket, Offset, Length, Fun) ->
+    case elib_pg:with_conn(fun(C) -> published_audio_tx(C, Rid) end) of
+        {ok, Row} ->
+            attachment_artifact_reader:with_range(Row, Offset, Length, fun(Source) ->
+                case recheck(Uid, Rid, Ticket) of
+                    ok -> Fun(Source);
+                    Error -> Error
+                end
+            end);
+        _ ->
+            {error, playback_media_unavailable}
     end.
 
 recheck(Uid, Rid, Ticket) ->

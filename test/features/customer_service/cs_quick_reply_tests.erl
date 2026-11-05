@@ -148,18 +148,22 @@ t_all(S) ->
     {ok, _, _} = cs_pg_quick_reply:with_tx(fun(Cx) ->
         cs_pg_quick_reply:page_tx(Cx, T, W, #{page => 1, size => 10})
     end),
-    %% 6) app 层：trim 校验 + seat 投影/assignment 门
+    %% 6) 应用用例保留认证创建者，更新/删除继续校验组织和工作区归属。
+    t_app_crud(T, W, WOther),
+    %% 7) app 层：trim 校验 + seat 投影/assignment 门
     {error, invalid_argument} = cs_quick_reply_app:create(#{
         organization_id => T,
         workspace_id => W,
+        adm_user_id => 900001,
         title => <<"   ">>,
         content => <<"正文"/utf8>>
     }),
     {error, invalid_argument} = cs_quick_reply_app:create(#{
         organization_id => T,
         workspace_id => W,
+        adm_user_id => 900001,
         title => <<"标题"/utf8>>,
-        content => lists:duplicate(2001, $x)
+        content => binary:copy(<<"x">>, 2001)
     }),
     {error, invalid_argument} = cs_quick_reply_app:page(#{
         organization_id => T, page => 0, workspace_id => W
@@ -171,6 +175,39 @@ t_all(S) ->
         organization_id => T, workspace_id => W, seat_user_id => 900099
     }),
     ok.
+
+t_app_crud(OrgId, WorkspaceId, OtherWorkspaceId) ->
+    CreatorId = 900001,
+    {ok, #{quick_reply := Created}} = customer_service_facade:quick_reply_create(OrgId, #{
+        workspace_id => WorkspaceId,
+        adm_user_id => CreatorId,
+        title => <<"  问候语  "/utf8>>,
+        content => <<"  您好  "/utf8>>,
+        sort => -5
+    }),
+    Id = maps:get(id, Created),
+    ?assertEqual(CreatorId, maps:get(created_by, Created)),
+    ?assertEqual(OrgId, maps:get(organization_id, Created)),
+    ?assertEqual(<<"问候语"/utf8>>, maps:get(title, Created)),
+    ?assertEqual(-5, maps:get(sort, Created)),
+    {ok, Stored} = cs_pg_quick_reply:with_tx(fun(C) -> cs_pg_quick_reply:find_tx(C, Id) end),
+    ?assertEqual(CreatorId, maps:get(<<"created_by">>, Stored)),
+    Update = #{id => Id, workspace_id => WorkspaceId, title => <<"changed">>, content => <<"body">>},
+    ?assertEqual(
+        {error, organization_boundary_violation},
+        customer_service_facade:quick_reply_update(OrgId, Update#{workspace_id => OtherWorkspaceId})
+    ),
+    ?assertEqual(
+        {error, organization_boundary_violation},
+        customer_service_facade:quick_reply_delete(OrgId + 1, Update)
+    ),
+    {ok, #{quick_reply := Updated}} = customer_service_facade:quick_reply_update(OrgId, Update),
+    ?assertEqual(CreatorId, maps:get(created_by, Updated)),
+    ?assertEqual(<<"changed">>, maps:get(title, Updated)),
+    ?assertEqual(0, maps:get(sort, Updated)),
+    {ok, #{ok := true}} = customer_service_facade:quick_reply_delete(OrgId, Update),
+    {ok, #{ok := true}} = customer_service_facade:quick_reply_delete(OrgId, Update),
+    ?assertEqual({error, not_found}, customer_service_facade:quick_reply_update(OrgId, Update)).
 
 %% 独立 VM 使用当前测试配置；T05 变量只覆盖显式提供的字段。
 ensure_pool() ->

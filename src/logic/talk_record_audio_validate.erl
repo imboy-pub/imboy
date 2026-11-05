@@ -100,7 +100,7 @@ loop(Source, Offset, Total, State) ->
 feed(<<>>, State) ->
     {ok, State};
 feed(Bytes, State) ->
-    #{seg_idx := Idx, seg_left := Left} = State,
+    #{seg_left := Left} = State,
     Take = min(Left, byte_size(Bytes)),
     <<SegBytes:Take/binary, Rest/binary>> = Bytes,
     case adts_feed(SegBytes, maps:get(adts, State)) of
@@ -113,50 +113,39 @@ feed(Bytes, State) ->
                 seg_left => Left - Take,
                 adts => Adts
             },
-            case Left - Take of
-                0 ->
-                    %% 段边界：逐段 SHA 比对 + 帧对齐（客户端分段合同：段以
-                    %% 完整帧结尾，跨段残帧即拒绝）。
-                    {Frames, RateIdx, Channels, Buf} = Adts,
-                    Digest = binary:encode_hex(
-                        crypto:hash_final(maps:get(seg_ctx, State1)), lowercase
-                    ),
-                    Expected = lists:nth(Idx + 1, maps:get(seg_shas, State1)),
-                    case
-                        Digest =:= Expected andalso Buf =:= <<>> andalso
-                            Frames > 0
-                    of
-                        false when Buf =/= <<>> ->
-                            {error, audio_part_boundary_invalid};
-                        false ->
-                            {error, audio_part_integrity_mismatch};
-                        true ->
-                            case Idx + 1 =:= length(maps:get(seg_sizes, State1)) of
-                                true ->
-                                    %% 最后一段：feed 自然结束。
-                                    {ok, State1#{
-                                        seg_idx => Idx + 1,
-                                        digests => [Digest | maps:get(digests, State1)]
-                                    }};
-                                false ->
-                                    NextLeft = lists:nth(Idx + 2, maps:get(seg_sizes, State1)),
-                                    feed(
-                                        Rest,
-                                        State1#{
-                                            seg_idx => Idx + 1,
-                                            seg_ctx => crypto:hash_init(sha256),
-                                            seg_left => NextLeft,
-                                            digests => [Digest | maps:get(digests, State1)],
-                                            %% 帧计数/参数跨段累计，段边界仅
-                                            %% 要求缓冲排空（帧对齐）。
-                                            adts => {Frames, RateIdx, Channels, <<>>}
-                                        }
-                                    )
-                            end
-                    end;
-                Left2 when Left2 > 0 ->
-                    feed(Rest, State1)
-            end
+            continue_segment(Rest, State1)
+    end.
+
+continue_segment(Rest, #{seg_left := Left} = State) when Left > 0 ->
+    feed(Rest, State);
+continue_segment(Rest, #{seg_idx := Idx, adts := {Frames, _, _, Buf}} = State) ->
+    %% 段边界：逐段 SHA 比对 + 帧对齐（客户端分段合同：段以
+    %% 完整帧结尾，跨段残帧即拒绝）。
+    Digest = binary:encode_hex(crypto:hash_final(maps:get(seg_ctx, State)), lowercase),
+    Expected = lists:nth(Idx + 1, maps:get(seg_shas, State)),
+    case Digest =:= Expected andalso Buf =:= <<>> andalso Frames > 0 of
+        false when Buf =/= <<>> ->
+            {error, audio_part_boundary_invalid};
+        false ->
+            {error, audio_part_integrity_mismatch};
+        true ->
+            next_segment(Rest, State#{
+                seg_idx => Idx + 1,
+                digests => [Digest | maps:get(digests, State)]
+            })
+    end.
+
+next_segment(Rest, #{seg_idx := Idx, seg_sizes := Sizes} = State) ->
+    case Idx =:= length(Sizes) of
+        true ->
+            %% 最后一段：feed 自然结束。
+            {ok, State};
+        false ->
+            %% 帧计数/参数跨段累计；已确认段边界缓冲排空。
+            feed(Rest, State#{
+                seg_ctx => crypto:hash_init(sha256),
+                seg_left => lists:nth(Idx + 1, Sizes)
+            })
     end.
 
 finish(Final, End, GlobalCtx, Adts) ->
@@ -206,8 +195,6 @@ finish(Final, End, GlobalCtx, Adts) ->
 adts_init() ->
     {0, undefined, undefined, <<>>}.
 
-adts_feed(_Bytes, {error, _} = Stuck) ->
-    Stuck;
 adts_feed(Bytes, {Frames, RateIdx, Channels, Buf}) ->
     adts_loop(<<Buf/binary, Bytes/binary>>, Frames, RateIdx, Channels, <<>>).
 

@@ -28,6 +28,31 @@ same_key_replay_remains_authorized_test() ->
         ?assertEqual(0, meck:num_calls(talk_record_repo, find_by_id_tx, '_'))
     end).
 
+same_final_upload_dedupe_remains_valid_test() ->
+    Final = maps:get(<<"final_audio">>, body()),
+    with_existing_final_job(Final, fun() ->
+        ?assertMatch({ok, existing, #{<<"job_id">> := 9}}, complete()),
+        ?assertEqual(1, meck:num_calls(talk_record_job_repo, find_tx, [conn, 9])),
+        ?assertEqual(1, meck:num_calls(talk_record_idempotency_repo, complete_tx, '_')),
+        ?assertEqual(1, meck:num_calls(talk_record_job_worker, kick, '_'))
+    end).
+
+different_final_upload_identity_is_conflict_test_() ->
+    Final = maps:get(<<"final_audio">>, body()),
+    [
+        {binary_to_list(Key), fun() ->
+            with_existing_final_job(Final#{Key => Other}, fun() ->
+                ?assertEqual({error, final_identity_conflict}, complete()),
+                ?assertEqual(0, meck:num_calls(talk_record_idempotency_repo, complete_tx, '_')),
+                ?assertEqual(0, meck:num_calls(talk_record_job_worker, kick, '_'))
+            end)
+        end}
+     || {Key, Other} <- [
+            {<<"object_key">>, <<"talk-record/final/other.aac">>},
+            {<<"client_upload_id">>, <<"00000000-0000-0000-0000-000000000002">>}
+        ]
+    ].
+
 revoked_actor_cannot_reconcile_or_replay_test() ->
     with_mocks(<<"assembling">>, fun() ->
         meck:expect(talk_record_repo, find_visible, fun(7, 1) -> {error, not_found} end),
@@ -127,3 +152,71 @@ with_mocks(Status, F) ->
     after
         lists:foreach(fun meck:unload/1, Mods)
     end.
+
+with_existing_final_job(PinnedFinal, F) ->
+    with_mocks(<<"uploading">>, fun() ->
+        Mods = [talk_record_assembly_logic, talk_record_job_repo],
+        lists:foreach(fun(M) -> meck:new(M, [non_strict, no_link]) end, Mods),
+        try
+            Final = maps:get(<<"final_audio">>, body()),
+            Key = maps:get(<<"object_key">>, Final),
+            Cid = maps:get(<<"client_upload_id">>, Final),
+            Hash = binary:copy(<<"a">>, 64),
+            meck:expect(elib_pg, query, fun(conn, Sql, Params) ->
+                case {Sql, Params} of
+                    {<<"SELECT id FROM talk_record WHERE", _/binary>>, [1]} ->
+                        {ok, [#{<<"id">> => 1}]};
+                    {_, [1, 2, 7]} ->
+                        {ok, [#{<<"id">> => 2}]};
+                    {_, [1, 2]} ->
+                        {ok, [#{<<"id">> => 2, <<"status">> => <<"ended">>}]};
+                    {_, [Cid, 7, <<"1">>]} ->
+                        {ok, [#{
+                            <<"attachment_id">> => 20,
+                            <<"file_hash256">> => maps:get(<<"sha256">>, Final),
+                            <<"size">> => maps:get(<<"byte_size">>, Final),
+                            <<"session_object_key">> => Key
+                        }]};
+                    {_, [Key]} ->
+                        {ok, [#{<<"attempt_no">> => 1, <<"target_key">> => <<"physical/aac">>}]};
+                    {<<"UPDATE talk_record_assembly SET", _/binary>>, [1, 9]} ->
+                        {ok, 1};
+                    {<<"UPDATE talk_record SET", _/binary>>, [1]} ->
+                        {ok, 1}
+                end
+            end),
+            meck:expect(talk_record_repo, find_by_id_tx, fun(conn, 1, _) ->
+                {ok, #{
+                    <<"owner_user_id">> => 7,
+                    <<"deleted_at">> => null,
+                    <<"revision">> => 1,
+                    <<"content_revision">> => 1,
+                    <<"media_status">> => <<"uploading">>,
+                    <<"processing_mode">> => <<"record_only">>
+                }}
+            end),
+            meck:expect(talk_record_assembly_logic, confirmed_parts_tx, fun(conn, 1) ->
+                {ok, [part]}
+            end),
+            meck:expect(talk_record_assembly_logic, missing_sequences, fun([part], 0) -> [] end),
+            meck:expect(talk_record_assembly_logic, build_manifest, fun(2, [part]) ->
+                #{<<"manifest_hash">> => Hash}
+            end),
+            meck:expect(talk_record_assembly_logic, persist_tx, fun(conn, 1, 2, _) ->
+                {ok, 3, created}
+            end),
+            meck:expect(talk_record_job_repo, enqueue_tx, fun(conn, Job) ->
+                Frozen = maps:get(<<"final_audio">>, maps:get(processor_input, Job)),
+                ?assertEqual(Key, maps:get(<<"object_key">>, Frozen)),
+                ?assertEqual(Cid, maps:get(<<"client_upload_id">>, Frozen)),
+                {ok, existing, #{<<"id">> => 9}}
+            end),
+            meck:expect(talk_record_job_repo, find_tx, fun(conn, 9) ->
+                {ok, #{<<"processor_input">> => jsone:encode(#{<<"final_audio">> => PinnedFinal})}}
+            end),
+            meck:expect(talk_record_idempotency_repo, complete_tx, fun(_, _, _, _, _, _) -> ok end),
+            F()
+        after
+            lists:foreach(fun meck:unload/1, Mods)
+        end
+    end).

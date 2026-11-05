@@ -125,32 +125,26 @@ kind_atom(<<"contact">>) -> {ok, contact};
 kind_atom(_) -> error.
 
 with_optional(Payload, Claims, Keys) ->
-    lists:foldl(
-        fun(K, Acc) ->
-            case maps:get(K, Claims, undefined) of
-                undefined -> Acc;
-                V -> Acc#{K => V}
-            end
-        end,
-        Payload,
-        Keys
-    ).
+    copy_optional(Payload, Claims, [{K, K} || K <- Keys]).
 
 take_optional(Claims, Verified) ->
     %% 输出统一 atom 键（与 edge_authorize_content 的 claims 模式及
     %% content_stream Params 约定一致）；JWT 层的 binary 键在此转换。
+    copy_optional(Claims, Verified, [
+        {<<"conversation_id">>, conversation_id},
+        {<<"visitor_session_id">>, visitor_session_id}
+    ]).
+
+copy_optional(Target, Source, Keys) ->
     lists:foldl(
-        fun({BinK, AtomK}, Acc) ->
-            case maps:get(BinK, Verified, undefined) of
+        fun({FromKey, ToKey}, Acc) ->
+            case maps:get(FromKey, Source, undefined) of
                 undefined -> Acc;
-                V -> Acc#{AtomK => V}
+                V -> Acc#{ToKey => V}
             end
         end,
-        Claims,
-        [
-            {<<"conversation_id">>, conversation_id},
-            {<<"visitor_session_id">>, visitor_session_id}
-        ]
+        Target,
+        Keys
     ).
 
 key(Secret) ->

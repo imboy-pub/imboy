@@ -495,7 +495,7 @@ action_params(Input) ->
 
 %% url 校验（SPEC §5 A2：带 host ≤2048，上限口径同 project_channel_logic
 %% ?MAX_URL_LEN=2048）：scheme ∈ http|https 且 host 非空。
-valid_url(Url) when is_binary(Url) ->
+valid_url(Url) ->
     case binary:split(Url, <<"://">>) of
         [Scheme, Rest] when Scheme =:= <<"http">>; Scheme =:= <<"https">> ->
             case host_of(Rest) =/= <<>> of
@@ -504,9 +504,7 @@ valid_url(Url) when is_binary(Url) ->
             end;
         _ ->
             {error, {<<"invalid_request">>, {invalid_field, <<"url">>}}}
-    end;
-valid_url(_) ->
-    {error, {<<"invalid_request">>, {invalid_field, <<"url">>}}}.
+    end.
 
 host_of(Rest) ->
     case binary:split(Rest, <<"/">>) of
