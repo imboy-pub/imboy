@@ -34,6 +34,11 @@ setup() ->
     meck:expect(elib_oss, public_url_for_key, fun(Key) ->
         <<"https://public.example/", Key/binary>>
     end),
+    %% direct/alias 绑定成功路径都会撤销同主体旧别名——passthrough 会触真实
+    %% elib_pg（未起池），setup 统一给成功期望；alias 分支用例自行覆写。
+    meck:expect(attachment_avatar_alias_repo, revoke_other_tx, fun(_Conn, _UserId, _Key) ->
+        ok
+    end),
     Mods.
 
 cleanup(Mods) ->
