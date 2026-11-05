@@ -184,7 +184,7 @@ beam-cache-restore-test:
 
 define compile_proto.erl
 	[begin
-		gpb_compile:file(F, case filename:basename(F) of "textguard.proto" -> [use_packages]; _ -> [] end ++ [
+		ok = gpb_compile:file(F, case filename:basename(F) of "textguard.proto" -> [use_packages]; _ -> [] end ++ [
 			{i, "src"},
 			{include_as_lib, true},
 			{module_name_suffix, "_pb"},
@@ -195,7 +195,10 @@ define compile_proto.erl
 			{type_specs, true},
 			{maps_unset_optional, omitted},
 			{maps_oneof, flat}
-		])
+		]),
+		ErlFile = filename:join("src", filename:basename(F, ".proto") ++ "_pb.erl"),
+		{ok, Code} = file:read_file(ErlFile),
+		ok = file:write_file(ErlFile, ["%% @noformat\n", Code])
 	end || F <- string:tokens("$1", " ")],
 	halt().
 endef

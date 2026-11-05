@@ -253,6 +253,44 @@ mode() -> app.
         self.assertNotRegex(database, r"(?m)^(?:efmt|clean-beam|clear_beam):")
         self.assertNotRegex(database, r"(?m)^(?:APP_VERSION|DIALYZER_WARNINGS)\s*[:?+]?=")
 
+    def test_proto_generation_preserves_native_format_and_propagates_failure(self):
+        self.write("fixtures/gpb_compile.erl", '''-module(gpb_compile).
+-export([file/2]).
+file(Source, Options) ->
+    case file:read_file(Source) of
+        {ok, <<"invalid">>} -> {error, invalid_proto};
+        {ok, _} ->
+            Name = filename:basename(Source, ".proto"),
+            ExpectedPackages = Name =:= "textguard",
+            ExpectedPackages = lists:member(use_packages, Options),
+            file:write_file("src/" ++ Name ++ "_pb.erl",
+                ["%% -*- coding: utf-8 -*-\\n-module(", Name, "_pb).\\n",
+                 "-export([value/0]).\\nvalue()->native.\\n"])
+    end.
+''')
+        subprocess.run(["erlc", "-Werror", "-o", "fixtures", "fixtures/gpb_compile.erl"],
+                       cwd=self.root, env=self.environment, check=True, capture_output=True)
+        self.write("src/imboy.proto", "valid")
+        self.write("src/textguard.proto", "valid")
+        self.write("probe.mk", '''.PHONY: proto-probe
+proto-probe:
+	@$(call erlang,$(call compile_proto.erl,src/imboy.proto src/textguard.proto))
+''')
+        arguments = ("proto-probe", "ERL=erl -noshell -pa fixtures")
+        self.make(*arguments)
+        first = {}
+        for name in ("imboy", "textguard"):
+            output = self.root / "src" / (name + "_pb.erl")
+            first[name] = output.read_bytes()
+            self.assertTrue(first[name].startswith(b"%% @noformat\n%% -*- coding: utf-8 -*-\n"))
+            self.assertIn(b"value()->native.", first[name])
+        self.make(*arguments)
+        for name, expected in first.items():
+            self.assertEqual((self.root / "src" / (name + "_pb.erl")).read_bytes(), expected)
+        self.write("src/textguard.proto", "invalid")
+        result = self.make(*arguments, success=False)
+        self.assertIn("invalid_proto", result.stdout)
+
     def test_native_clean_preserves_dependency_beams(self):
         self.write("src/make_probe.erl", "-module(make_probe).\n")
         products = ("ebin/make_probe.beam", "test/make_probe_tests.beam",

@@ -146,6 +146,10 @@ Bare make retains the existing test-build default. Test compilation requires GNU
 
 The legacy efmt, clean-beam and clear_beam targets have been removed. Use make format and the native clean targets listed above.
 
+`src/imboy_pb.erl`、`src/textguard_pb.erl` 分别由 `src/imboy.proto`、`src/textguard.proto` 经 gpb 生成，入口是 Makefile 的 `compile_proto.erl`。生成时自动添加 `@noformat`，保留 gpb 原生排版，避免编译与 erlfmt 反复改写；格式化命令和提交钩子均尊重此标记。修改协议请编辑 `.proto` 后重新编译，不要手改生成文件。
+
+The Makefile's compile_proto.erl hook generates src/imboy_pb.erl and src/textguard_pb.erl from their respective src/*.proto files using gpb. Generated files receive @noformat to preserve gpb's native layout across builds, formatting commands and commit hooks. Edit the .proto schemas and rebuild instead of editing generated sources.
+
 四层模板使用同一功能前缀（如 `demo_handler/demo_logic/demo_ds/demo_repo`），生成到对应 `src/` 子目录。Handler 示例需要已认证的 `current_uid` 和 POST；路由需单独注册。Logic 转换业务结果与错误码；DS 统一校验正整数用户 ID 和两个 1～255 字节的字符串。Repo 示例假定 TSID 主键、JSONB `data` 及审计字段，需按实际迁移调整；查询示例最多取最近 20 条，正式列表需按契约接分页。`find_by_id(Id, Uid)`、`update(Id, Data, Uid)` 和 `delete(Id, Uid)` 均通过 SQL 限定 `created_by`；读取结果保留数据库二进制键，仅解码 `data`。模板内 EUnit 使用原生 `TEST` 编译开关；这些调整仅影响新生成文件。
 
 Use a shared feature prefix for the four templates. The handler requires an authenticated current_uid and POST; register its route separately. Logic translates business results and error codes; DS validates the positive user ID and two strings of 1–255 bytes. Adapt the repository's TSID key, JSONB data and audit columns to a real migration. The sample query returns at most 20 recent rows; implement pagination for a real list contract. find_by_id(Id, Uid), update(Id, Data, Uid) and delete(Id, Uid) restrict created_by in SQL. Reads preserve binary database keys and decode only data. Embedded EUnit tests use the native TEST define. These changes affect newly generated files only.
