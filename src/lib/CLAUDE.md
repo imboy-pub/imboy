@@ -57,12 +57,17 @@
 | `elib_req` | 请求解析 |
 | `elib_response` | 响应格式化 |
 
-### 附件上传
+### 附件上传（S3-only）
 
 | 模块 | 说明 |
 |------|------|
 | `attachment_upload_spool` | 私有、已取消目录链接的有界上传快照；同一描述符用于哈希与写入 |
-| `attachment_upload_body` | 分块 HTTP 收体与大小限制；调用方负责关闭成功返回的快照 |
+
+> 2026-11-05（garage-direct-v3 收口）：上传正文为客户端 presign PUT 直传
+> Garage S3，服务器不再代理收体——`attachment_upload_body`（分块 HTTP 收体
+> 与大小限制）已随旧 gateway body-path 退役删除；存储面唯一驱动为
+> `attachment_storage_garage`（`attachment_storage` registry 拒绝非 garage
+> driver，fail-closed）。
 
 ### 工具函数
 
