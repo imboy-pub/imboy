@@ -52,8 +52,7 @@ teardown(S) ->
             ok
     end.
 
-t_all(S) ->
-    C = maps:get(conn, S),
+t_all(_S) ->
     T = 996101,
     W = 996201,
     WOther = 996202,

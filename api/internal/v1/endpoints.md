@@ -168,12 +168,14 @@ OA JavaScript 调用方须无损解析数值 ID，不能经由 `Number` 丢失�
 
 消息、origin、受理审计及幂等结果共用事务。相同 key、方法、具体频道路径与
 规范化正文重放原 HTTP 状态和正文，附带 `Idempotent-Replayed: true`。
-此入口不触发单聊/群聊离线推送；客户端通过既有频道读取接口取得消息。
+当前响应确认服务端已受理并持久化，不包含订阅端送达或展示确认。
+此入口不触发单聊/群聊离线推送。
 
 English: INT-50 supports text, file, image, link cards and business action cards.
 Human senders need an active source mapping, membership and channel subscription;
 application senders use the current principal. The bare response contains numeric
 platform IDs, distinct from the external sender string in a human-mode request.
+Acceptance does not confirm subscriber delivery or display.
 
 ## 好友申请（只发起，平台不自动通过）
 

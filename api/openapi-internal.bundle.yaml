@@ -19824,11 +19824,13 @@ paths:
 
         消息、origin、受理审计及幂等结果在同一事务提交。相同幂等键、方法、
         具体频道路径与规范化正文重放首次结果，并返回 Idempotent-Replayed: true。
-        此入口不触发单聊/群聊离线推送；订阅者通过现有频道读取接口取得消息。
+        当前响应确认服务端已受理并持久化，不包含订阅端送达或展示确认。
+        此入口不触发单聊/群聊离线推送。
 
         Enterprise channel delivery uses HMAC authentication, current resource
         attribution and sender eligibility. Human senders must actively subscribe
-        to the target channel. Successful responses are bare JSON objects.
+        to the target channel. Successful responses are bare JSON objects and
+        confirm acceptance, not subscriber delivery or display.
       operationId: internalMessageChannel
       security:
       - ibIntHmacCredential: []

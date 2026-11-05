@@ -74,7 +74,19 @@ assert_internal_token_required() ->
         fun(Token) ->
             assert_response(404, #{<<"error">> => <<"not_found">>}, request(<<"GET">>, Token))
         end,
-        [<<>>, <<"wrong-internal-token">>]
+        [<<>>, <<"wrong-internal-token">>, <<"synthetic-edge-internal-tokeX">>]
+    ),
+    assert_response(
+        404, #{<<"error">> => <<"not_found">>}, maps:remove(internal_token, request(<<"GET">>, ?TOKEN))
+    ),
+    %% An otherwise valid caller cannot use an unconfigured or empty server token.
+    application:unset_env(imboy, edge_internal_token),
+    assert_response(404, #{<<"error">> => <<"not_found">>}, request(<<"GET">>, ?TOKEN)),
+    application:set_env(imboy, edge_internal_token, <<>>),
+    assert_response(404, #{<<"error">> => <<"not_found">>}, request(<<"GET">>, ?TOKEN)),
+    application:set_env(imboy, edge_internal_token, ?TOKEN),
+    assert_response(
+        404, #{<<"error">> => <<"not_found">>}, (request(<<"GET">>, ?TOKEN))#{method => <<"GET">>}
     ),
     ?assertEqual(0, meck:num_calls(cowboy_req, read_body, 2)),
     ?assertEqual(0, meck:num_calls(attach_logic, download, 1)).
