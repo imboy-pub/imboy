@@ -192,19 +192,8 @@ bounded_copy_test() ->
         ?assertEqual({ok, Bytes}, file:read_file(Path))
     end).
 
-garage_expired_context_never_publishes_test() ->
-    ok = meck:new(httpc, [passthrough, no_link, unstick]),
-    try
-        Now = erlang:system_time(second),
-        Ctx = #{issued_at => datetime(Now - 60), expires_at => datetime(Now - 1)},
-        ?assertEqual(
-            {error, invalid_signature_context},
-            attachment_storage_garage:put_snapshot(#{}, <<"expired">>, <<"text/plain">>, Ctx)
-        ),
-        ?assertEqual(0, meck:num_calls(httpc, request, '_'))
-    after
-        meck:unload(httpc)
-    end.
+%% V3-20：disk 驱动退役，disk put_snapshot 的 recheck 拒绝/原子写/OS 锁
+%% 三用例随驱动删除（模块已不存在，garage 侧对应面由 w403_storage 套件验收）。
 
 garage_real_httpc_stream_test() ->
     {ok, _} = application:ensure_all_started(inets),

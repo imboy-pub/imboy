@@ -4,7 +4,7 @@ registration_test_() ->
     {foreach, fun setup/0, fun cleanup/1, [
         fun exact_unique_garage/0,
         fun ambiguous_garage_denied/0,
-        fun disk_requires_explicit_mapping/0,
+        fun disk_rejected_even_with_explicit_mapping/0,
         fun explicit_unknown_denied/0
     ]}.
 setup() ->
@@ -46,7 +46,9 @@ ambiguous_garage_denied() ->
         {error, upload_root_unavailable},
         attachment_storage:registration_location(<<"private">>, <<"b">>, <<"key">>)
     ).
-disk_requires_explicit_mapping() ->
+%% V3-20：disk 驱动退役——disk root 即便显式映射 namespace 也一律被拒
+%% （registration_location 仅接受 garage 根；fail-closed 语义回归覆盖）。
+disk_rejected_even_with_explicit_mapping() ->
     R = #{
         version => 1,
         roots => #{
@@ -66,8 +68,8 @@ disk_requires_explicit_mapping() ->
     application:set_env(imboy, attachment_storage_registry, R#{
         upload_namespaces => #{<<"private">> => <<"d">>}
     }),
-    ?assertMatch(
-        {ok, #{driver := <<"disk">>, namespace := <<"d">>, container := <<"fixed">>}},
+    ?assertEqual(
+        {error, upload_root_unavailable},
         attachment_storage:registration_location(<<"private">>, <<"b">>, <<"key">>)
     ).
 explicit_unknown_denied() ->

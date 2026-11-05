@@ -59,12 +59,13 @@ root(Driver, Ns, Endpoint, Container) ->
     #{driver => Driver, namespace => Ns, endpoint => Endpoint, container => Container}.
 
 %% 同一 namespace/alias 属于两个根 = 未证明分离（namespace_contract）。
+%% V3-20：disk 驱动退役，场景改用两个 garage 根构造歧义。
 duplicate_namespace_is_ambiguous() ->
     application:set_env(imboy, attachment_storage_registry, #{
         version => 1,
         roots => #{
-            <<"a">> => root(<<"disk">>, <<"shared">>, <<"file:///tmp/a">>, <<"c">>),
-            <<"b">> => (root(<<"disk">>, <<"other">>, <<"file:///tmp/b">>, <<"c">>))#{
+            <<"a">> => root(<<"garage">>, <<"shared">>, <<"http://garage-a:3900">>, <<"c">>),
+            <<"b">> => (root(<<"garage">>, <<"other">>, <<"http://garage-b:3900">>, <<"c">>))#{
                 aliases => [<<"shared">>]
             }
         }
