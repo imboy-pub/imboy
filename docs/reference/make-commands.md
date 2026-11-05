@@ -1,7 +1,7 @@
 # Make 命令参考 / Make Command Reference
 
 > **Last Updated:** 2026-11-05
-> **真源 / Source of Truth:** `Makefile`、`include/cli.mk`、`include/tpl.mk`、`erlang.mk`（vendored，勿改）
+> **真源 / Source of Truth:** `Makefile`、`include/quality.mk`、`include/cli.mk`、`include/tpl.mk`、`erlang.mk`（vendored，勿改）
 > 部署与运维命令不在本文范围，见 `deploy/README.md`。
 
 ## 环境选择（IMBOYENV）
@@ -39,8 +39,8 @@ Bare make retains the existing test-build default. Test compilation requires GNU
 | `IMBOYENV=local make run` | 本地启动（relx console，自动加载 `config/sys.local.config`） |
 | `IMBOYENV=local make run HTTP_PORT=9800` | 指定 HTTP 端口启动 |
 | `IMBOYENV=pro make rel` | 构建生产 release（`scripts/imboy-deploy.sh` 使用该口径） |
-| `make clear_beam` | 删除全部 `.beam`（deps 除外） |
-| `make clean-beam` | 递归删除全部 `.beam`（`include/cli.mk`，比 `clear_beam` 更彻底） |
+| `make clean` | 清理应用、测试编译产物和项目 BEAM 缓存，保留依赖目录 |
+| `make clean-app` / `make clean-test-dir` | 分别清理应用编译产物 / 测试编译产物 |
 | `make help` | erlang.mk 内建帮助 |
 
 ## 测试
@@ -137,12 +137,18 @@ Bare make retains the existing test-build default. Test compilation requires GNU
 
 | 命令 | 状态 |
 |------|------|
-| `make efmt` | 旧格式化入口（`./efmt -w src/*.erl`），已被 `make format`（erlfmt）取代 |
-| `make clean-beam` | 可用（见上表） |
 | ~~`make gen-appup`~~ | 已删除目标（2026-09-30）：全仓无 `gen_appup.sh` 脚本可引；将来需要 appup 生成时须先补脚本再恢复目标 |
 | `make start` / `make stop` | 启动/停止单个节点，走 `scripts/start_node.sh` / `scripts/stop_node.sh`（2026-09-30 修复 `script/` 少 s 笔误） |
 
 <!-- AUTO-GENERATED:make-targets END -->
+
+旧 `efmt`、`clean-beam`、`clear_beam` 入口已移除；格式化使用 `make format`，清理使用上表中的原生目标。
+
+The legacy efmt, clean-beam and clear_beam targets have been removed. Use make format and the native clean targets listed above.
+
+四层模板使用同一功能前缀（如 `demo_handler/demo_logic/demo_ds/demo_repo`），生成到对应 `src/` 子目录。Handler 示例需要已认证的 `current_uid` 和 POST；路由需单独注册。Logic 转换业务结果与错误码；DS 统一校验正整数用户 ID 和两个 1～255 字节的字符串。Repo 示例假定 TSID 主键、JSONB `data` 及审计字段，需按实际迁移调整；查询示例最多取最近 20 条，正式列表需按契约接分页。`find_by_id(Id, Uid)`、`update(Id, Data, Uid)` 和 `delete(Id, Uid)` 均通过 SQL 限定 `created_by`；读取结果保留数据库二进制键，仅解码 `data`。模板内 EUnit 使用原生 `TEST` 编译开关；这些调整仅影响新生成文件。
+
+Use a shared feature prefix for the four templates. The handler requires an authenticated current_uid and POST; register its route separately. Logic translates business results and error codes; DS validates the positive user ID and two strings of 1–255 bytes. Adapt the repository's TSID key, JSONB data and audit columns to a real migration. The sample query returns at most 20 recent rows; implement pagination for a real list contract. find_by_id(Id, Uid), update(Id, Data, Uid) and delete(Id, Uid) restrict created_by in SQL. Reads preserve binary database keys and decode only data. Embedded EUnit tests use the native TEST define. These changes affect newly generated files only.
 
 非 local 环境的 `eunit` 和 `IMBOY_EUNIT_INNER` 非空的内层调用保留原生路由。全量原生列表保留 `talk_record_owned_eunit_fixture` 包装与独占套件排除；TSID 全局状态、AG31/HIRD 专属 PG、迁移 DDL、附件协议等排除项仍由各自专项门执行。定向 `t=` 不过滤；显式空 `EUNIT_MODS` 不能产生零用例成功。Make 路由与 `imboy_quality_build:entry_route/1` 的 origin 判定保持一致。
 

@@ -6,7 +6,7 @@ fixture="$(mktemp -d /tmp/imboy-e2ee-compile-gate.XXXXXX)"
 trap 'rm -rf -- "$fixture"' EXIT
 mkdir -p "$fixture/bin" "$fixture/deps/mock/ebin" "$fixture/test" "$fixture/ebin"
 awk '/^e2ee-verify:/ { active=1; print "e2ee-verify:"; next }
-     /^\.PHONY: clear_beam/ { active=0 }
+     active && /^[^[:space:]#]/ { exit }
      active { print }' Makefile > "$fixture/Makefile"
 touch "$fixture/test/e2ee_fixture.erl" "$fixture/test/stale_test.beam"
 cat > "$fixture/bin/erlc" <<'STUB'

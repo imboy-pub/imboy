@@ -16,7 +16,7 @@ class MakefileTest(unittest.TestCase):
         self.temporary = tempfile.TemporaryDirectory(prefix="imboy-make-test-")
         self.addCleanup(self.temporary.cleanup)
         self.root = Path(self.temporary.name)
-        for name in ("Makefile", "erlang.mk", "include/deps.mk", "include/tpl.mk", "include/cli.mk"):
+        for name in ("Makefile", "erlang.mk", "include/deps.mk", "include/tpl.mk", "include/cli.mk", "include/quality.mk"):
             self.write(name, (ROOT / name).read_text())
         self.write("VERSION", "0.0.0\n")
         (self.root / ".erlang.mk").mkdir()
@@ -247,6 +247,48 @@ mode() -> app.
         result = self.make("test-build", success=False)
         self.assertIn("Error", result.stdout)
         self.assertFalse((self.root / ".erlang.mk/imboy.last-testdir-build").exists())
+
+    def test_retired_commands_and_unused_variables_are_absent(self):
+        database = self.make("-np", "probe").stdout
+        self.assertNotRegex(database, r"(?m)^(?:efmt|clean-beam|clear_beam):")
+        self.assertNotRegex(database, r"(?m)^(?:APP_VERSION|DIALYZER_WARNINGS)\s*[:?+]?=")
+
+    def test_native_clean_preserves_dependency_beams(self):
+        self.write("src/make_probe.erl", "-module(make_probe).\n")
+        products = ("ebin/make_probe.beam", "test/make_probe_tests.beam",
+                    ".erlang.mk/beam-cache/imboy/ebin-app/make_probe.beam")
+        for name in products:
+            self.write(name, "synthetic build product\n")
+        dependency = self.write("deps/fixture/ebin/dependency.beam", "synthetic dependency\n")
+        self.make("clean")
+        for name in products:
+            self.assertFalse((self.root / name).exists(), name)
+        self.assertEqual(dependency.read_text(), "synthetic dependency\n")
+
+    def test_quality_include_invalidates_native_build_stamps(self):
+        self.write("src/make_probe.erl", "-module(make_probe).\n-export([value/0]).\nvalue() -> ok.\n")
+        self.pure_tests()
+        database = self.make("-np", "probe").stdout
+        for stamp in ("last-makefile-change", "imboy.last-testdir-build"):
+            with self.subTest(stamp=stamp):
+                rule = next(line for line in database.splitlines()
+                            if line.partition(":")[0].endswith(".erlang.mk/" + stamp))
+                self.assertIn("include/quality.mk", rule)
+
+    def test_eqwalize_all_preserves_tool_failures_and_diagnostics(self):
+        executable = self.write("bin/elp", '''#!/bin/sh
+printf '%s\\n' "$ELP_OUTPUT"
+exit "$ELP_EXIT"
+''')
+        executable.chmod(0o755)
+        for exit_code, output, success in ((0, "checked", True),
+                                          (0, "error: invalid type", False),
+                                          (7, "tool crashed", False)):
+            with self.subTest(exit_code=exit_code, output=output):
+                self.environment.update(ELP_EXIT=str(exit_code), ELP_OUTPUT=output)
+                result = self.make("eqwalize-all", "ELP=bin/elp", success=success)
+                self.assertIn(output, result.stdout)
+                self.assertEqual((self.root / ".elp/eqwalize-all.log").read_text(), output + "\n")
 
 
 if __name__ == "__main__":
