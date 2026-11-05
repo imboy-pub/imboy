@@ -1228,6 +1228,13 @@ tables:
     mechanism: delete rows by user ownership column
     review: self-evident
     retention: n/a
+  enterprise_channel_message:
+    action: retain
+    owner: channels
+    reason: 企业频道消息密文（迁移 241）——新表处置待 owner 确认（迁移 241 语义与 head 默认项 2「消息 delete」的竞合需 owner 裁决）
+    mechanism: n/a（pending owner review）
+    review: pending-owner
+    retention: unknown
   enterprise_note:
     action: delete
     owner: enterprise
@@ -1495,6 +1502,13 @@ tables:
     mechanism: 迁移 180 独立数据库角色治理
     review: self-evident
     retention: 随服务身份生命周期
+  cs_quick_reply:
+    action: retain
+    owner: customer-service
+    reason: 用户创建的客服快捷回复模板（迁移 240）——新表处置待 owner 确认
+    mechanism: n/a（pending owner review）
+    review: pending-owner
+    retention: unknown
 
 # talk_record V1 ownership and retained identity dependencies are mandatory preflight facts.
   talk_record:
