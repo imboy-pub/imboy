@@ -25,7 +25,9 @@
 -define(BODY, <<"w601 upload controlled bytes">>).
 -define(OTHER, <<"w601 competing different payload">>).
 
--define(EP4, [ordinary, enterprise_internal, enterprise_seat, cs_widget]).
+%% V3-14 合同分裂：INT 面为 s3_put 直传（不经 gateway pin 链），矩阵收敛三面。
+-define(EP4, [ordinary, enterprise_seat, cs_widget]).
+%% V3-20：disk 驱动退役，driver 维度仅剩 garage。
 -define(DRV, [garage]).
 
 w601_w2_upload_test_() ->
@@ -328,7 +330,7 @@ pin_scenario(S, Ep, Driver, <<"frozen_internal_signature_expiry">>) when
     Ep =:= ordinary; Ep =:= enterprise_internal
 ->
     %% 能力过期与 storage driver 无关（过期裁决在 gateway capability 验证）：
-    %% Garage 真实过期 PUT。
+    %% driver 无关的真实过期 PUT（F2：子句头不再限定 garage；V3-20 后仅 garage 遍）。
     T = reg(S, Ep, Driver),
     Failed = ?FW:expired_put(T, ?BODY),
     ?assertNot(?F:success(Failed)),
@@ -445,6 +447,7 @@ short_lived_session(S, Ep, Driver) ->
     end),
     {T, maps:get(issued_at, Claims), maps:get(expires_at, Claims)}.
 
+%% V3-20：disk 驱动退役，frozen context 断言仅剩 garage 子句。
 assert_frozen_context(
     garage,
     _Mime,
@@ -869,6 +872,7 @@ upload_ref_of(T) -> maps:get(upload_ref, maps:get(confirm_body, T), undefined).
 
 fetch(K, Map, Default) -> maps:get(K, Map, Default).
 
+%% V3-20：disk 驱动退役，ns_of 仅剩 garage。
 ns_of(garage) -> <<"w403-garage">>.
 
 %% F6：重放响应同 key/同 id 的取证。ordinary/internal 面 payload 真实回显
@@ -1029,7 +1033,7 @@ run_intent(T, Reason) ->
             end)
     end.
 
-%% provider 侧旁证：Garage 拒绝未签名直传。
+%% provider 侧旁证：garage 拒绝未签名直传（V3-20：disk 侧随驱动删除）。
 provider_unsigned_denied(_S, garage, T) ->
     I = maps:get(location, T),
     Key = maps:get(key, I),

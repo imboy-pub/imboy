@@ -366,7 +366,11 @@ garage(Ctrl, Pid) ->
         Root = garage_resource_root(Ctrl),
         {ok,
             imboy_quality_resources:start_garage(Root, Pid, [
-                "imboy-w403-" ++ Pid, "talk-record-relay"
+                "imboy-w403-" ++ Pid,
+                "talk-record-relay",
+                %% 真 Garage gate 链（assembly_io/worker_port/part_upload_direct/
+                %% assembly_relay）的夹具固定 bucket=imboy 语义
+                "imboy"
             ])}
     catch
         Class:Reason -> {error, {Class, Reason}}
@@ -628,7 +632,22 @@ talk_garage_env(Scratch, {ok, G}, Aac, Pid) ->
         secret_key => list_to_binary(maps:get(secret_key, G)),
         spool_dir => list_to_binary(Spool)
     }),
-    [{"TALK_RECORD_PRIVATE_GARAGE_CONFIG", Path} | aac_env(Aac)];
+    [
+        {"TALK_RECORD_PRIVATE_GARAGE_CONFIG", Path}
+        | aac_env(Aac)
+        %% 真 Garage gate 链 4 根的 A0_* 约定（scripts/test/*_gate.sh 同名 env）：
+        %% 与 harness Garage 同源，夹具守卫 `false = os:getenv(K) =:= false` 必需。
+    ] ++
+        [
+            {K, V}
+         || {K, V} <-
+                [
+                    {"A0_ENDPOINT", maps:get(endpoint, G)},
+                    {"A0_AK", maps:get(access_key, G)},
+                    {"A0_SK", maps:get(secret_key, G)}
+                ],
+            V =/= undefined
+        ];
 talk_garage_env(_Ctrl, {error, _}, Aac, _Pid) ->
     aac_env(Aac).
 

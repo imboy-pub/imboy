@@ -17,6 +17,11 @@ quick_reply_repo_test_() ->
     end).
 
 setup() ->
+    %% 快照泄漏前的 pg_conf：ensure_pool 会覆盖为 T05 直跑形态（T05_PG_PASSWORD
+    %% 未设时为空密码），teardown 必须还原，否则同 VM 后续 root 的
+    %% config_pg_conn/marker 连接全灭（full-20261104T081330Z invalid_password
+    %% ×15 + no_members ×20 连环根因；group-20261104T094* 复现实证）。
+    PrevPgConf = application:get_env(imboy, pg_conf),
     ok = ensure_pool(),
     {ok, Conn} = elib_pg:with_tx(fun(C) -> {ok, C} end),
     %% 清场（幂等；共享库下本套件专用前缀键）
@@ -25,16 +30,27 @@ setup() ->
         <<"DELETE FROM cs_quick_reply WHERE organization_id BETWEEN 996100 AND 996199">>,
         []
     ),
-    #{conn => Conn}.
+    #{conn => Conn, prev_pg_conf => PrevPgConf}.
 
-teardown(_S) ->
+teardown(S) ->
     {ok, Conn} = elib_pg:with_tx(fun(C) -> {ok, C} end),
     {ok, _} = elib_pg:execute(
         Conn,
         <<"DELETE FROM cs_quick_reply WHERE organization_id BETWEEN 996100 AND 996199">>,
         []
     ),
-    ok.
+    %% 还原覆盖过的 pg_conf 并按原值重建默认池（ensure_pool 曾 rm+new 过
+    %% pgsql 池）；Prev 不可用时至少 unset 脏值，fail-closed 交由
+    %% eunit_runner:enforce_pool_capacity 的基线自愈兜底。
+    case maps:get(prev_pg_conf, S, undefined) of
+        {ok, Prev} when is_map(Prev) ->
+            ok = application:set_env(imboy, pg_conf, Prev),
+            _ = eunit_runner:ensure_default_pool(),
+            ok;
+        _ ->
+            application:unset_env(imboy, pg_conf),
+            ok
+    end.
 
 t_all(S) ->
     C = maps:get(conn, S),
@@ -158,6 +174,39 @@ t_all(S) ->
 
 %% 独立 VM 使用当前测试配置；T05 变量只覆盖显式提供的字段。
 ensure_pool() ->
+    %% 本套件经 isolated_pg_fixture:test 在 peer VM 内执行：peer 只继承
+    %% -config 与 code path，父 VM 的 pgsql 池不随 peer 走。quality 车道
+    %% （IMBOY_TEST_CONFIG 注入 worker config）的 -config pg_conf 是正确的
+    %% 克隆库连接（不做 T05 覆盖——空密码泄漏源，full-20261104T081330Z
+    %% invalid_password/no_members 连环根因），池缺失时按它就地重建；
+    %% 本地单跑（无该 env）仍走 T05 直跑形态。
+    case pool_ready() of
+        true ->
+            ok;
+        false ->
+            case os:getenv("IMBOY_TEST_CONFIG") of
+                false -> ensure_pool_t05();
+                _ -> ok = eunit_runner:ensure_default_pool()
+            end
+    end,
+    %% peer VM 不继承父 VM 的 tsid 状态（full-20261104T161607Z 实证：
+    %% elib_tsid_not_initialized）。init 幂等，T05 分支已含同款。
+    catch elib_tsid:init(#{dc_id => 1, node_id => 1, dc_bits => 3}),
+    ok.
+
+pool_ready() ->
+    _ = code:ensure_loaded(pooler),
+    try pooler:take_member(pgsql, 100) of
+        Pid when is_pid(Pid) ->
+            pooler:return_member(pgsql, Pid, ok),
+            true;
+        _ ->
+            false
+    catch
+        _:_ -> false
+    end.
+
+ensure_pool_t05() ->
     catch elib_tsid:init(#{dc_id => 1, node_id => 1, dc_bits => 3}),
     _ = code:ensure_loaded(pooler),
     {ok, _} = application:ensure_all_started(pooler),

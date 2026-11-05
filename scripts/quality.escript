@@ -80,14 +80,21 @@ load_admission_modules() ->
 %% ---- 控制目录与上下文 ----
 
 resolve_control_dir() ->
-    case imboy_quality_compile:git_common_dir() of
-        {ok, Common} ->
-            case filelib:is_dir(Common) of
-                true -> filename:join(Common, "zcode-tasks/IMBOY_ERLANG_QUALITY");
-                false -> fallback_ctrl()
-            end;
-        error ->
-            fallback_ctrl()
+    %% 显式设置 IMBOY_QUALITY_CTRL 时优先：worktree 的 common dir 指向主仓，
+    %% 默认共享控制目录会与主仓/其他会话的质量流程互踩（STATE 为活文件被
+    %% 相互重写），需要独占时设置该 env 即可，不设时行为不变。
+    case os:getenv("IMBOY_QUALITY_CTRL") of
+        Dir when is_list(Dir), Dir =/= [] -> Dir;
+        _ ->
+            case imboy_quality_compile:git_common_dir() of
+                {ok, Common} ->
+                    case filelib:is_dir(Common) of
+                        true -> filename:join(Common, "zcode-tasks/IMBOY_ERLANG_QUALITY");
+                        false -> fallback_ctrl()
+                    end;
+                error ->
+                    fallback_ctrl()
+            end
     end.
 
 fallback_ctrl() ->

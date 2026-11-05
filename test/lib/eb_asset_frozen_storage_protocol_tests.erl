@@ -1,4 +1,5 @@
-%%% Real PG + Garage/Disk object boundary; not seat/widget HTTP authorization acceptance.
+%%% Real PG + Garage object boundary; not seat/widget HTTP authorization acceptance.
+%%% V3-20：disk 驱动退役，disk 遍随驱动删除，仅保留 garage 冻结协议面。
 -module(eb_asset_frozen_storage_protocol_tests).
 -include_lib("eunit/include/eunit.hrl").
 protocol_test_() ->
@@ -26,14 +27,16 @@ protocol_units() ->
                     atom_to_list(D) ++ "/" ++ binary_to_list(Kind),
                     {timeout, 90, fun() -> scenario(S, D, Kind) end}
                 }
-             || D <- [disk, garage], Kind <- [<<"seat">>, <<"visitor_session">>]
+             || %% V3-20：disk 驱动退役，disk 遍随驱动删除，garage 侧保留。
+                D <- [garage],
+                Kind <- [<<"seat">>, <<"visitor_session">>]
             ]
         end}.
 scenario(S, Driver, Kind) ->
     {ok, Original} = application:get_env(imboy, attachment_storage_registry),
+    %% V3-20：disk 驱动退役，冻结命名空间仅剩 garage 根。
     Ns =
         case Driver of
-            disk -> <<"w403-disk">>;
             garage -> <<"w403-garage">>
         end,
     Registry = Original#{upload_namespaces => #{<<"enterprise">> => Ns}},

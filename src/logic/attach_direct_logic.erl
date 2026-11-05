@@ -36,6 +36,9 @@
     reconcile/0
 ]).
 
+%% grant URL TTL（秒）——presign 生命周期与 DB 侧能力窗同源（零漂移）。
+-define(GRANT_TTL_SECONDS, 3600).
+
 -include("log.hrl").
 -include_lib("epgsql/include/epgsql.hrl").
 
@@ -320,6 +323,7 @@ renew_grant(ObjectKey, Sha256Hex) ->
                     )
                 of
                     {ok, No} ->
+                        ok = open_capability_window_tx(Conn, ObjectKey),
                         {ok, descriptor(ObjectKey, Row, No, StagingKey, Sha256Hex)};
                     {error, R} ->
                         {error, R}
@@ -355,12 +359,29 @@ grant_tx(Conn, ObjectKey, Row, Sha256Hex, _AttemptNo) ->
         )
     of
         {ok, [#{<<"no">> := No}]} ->
+            ok = open_capability_window_tx(Conn, ObjectKey),
             {ok, descriptor(ObjectKey, Row, No, StagingKey, Sha256Hex)};
         {ok, []} ->
             {error, grant_not_returned};
         {error, R} ->
             {error, R}
     end.
+
+%% direct-v1 能力窗落库：URL TTL（3600s）同步写 DB 侧窗。删除链守卫
+%% （00000237）与 pending 清扫按 upload_expires_at 判窗——不落库则 NULL
+%% 被读作「永活」，清理链永久 retained。续期刷新窗口与 URL 生命周期一致。
+open_capability_window_tx(Conn, ObjectKey) ->
+    {ok, _} =
+        elib_pg:query(
+            Conn,
+            %% 窗长与 presign URL TTL 同源（?GRANT_TTL_SECONDS），参数化避免字面量漂移。
+            <<
+                "UPDATE attach_pending SET upload_expires_at = now()"
+                " + ($1::integer) * INTERVAL '1 second' WHERE object_key = $2"
+            >>,
+            [?GRANT_TTL_SECONDS, ObjectKey]
+        ),
+    ok.
 
 %% ===== finalize（单次 dispatch → proof → winner pin）=====
 
@@ -767,7 +788,7 @@ descriptor(ObjectKey, Row, AttemptNo, StagingKey, Sha256Hex) ->
     Cfg = application:get_env(imboy, garage, #{}),
     Endpoint = maps:get(endpoint, Cfg, elib_oss:endpoint()),
     Now = calendar:universal_time(),
-    Ttl = 3600,
+    Ttl = ?GRANT_TTL_SECONDS,
     Mime = mime_from_row(Row),
     Url = elib_s3_sign:presign_signed_url_at(
         <<"PUT">>,

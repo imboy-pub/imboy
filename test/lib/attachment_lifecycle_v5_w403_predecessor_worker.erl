@@ -66,7 +66,9 @@ ordinary_crash(Scenario, Domain, #{conn := Conn, root := Root}) ->
             T = ?S:token(),
             {ok, #{<<"out_path">> := Key}} = attachment_gc_repo:v5_claim(Conn, T),
             ok = attachment_storage:delete_snapshot(frozen(Conn, Key)),
-            ?assertEqual({error, enoent}, file:read_file(?S:disk_file(Root, Key))),
+            %% V3-20：字节消失证据经 garage 快照读回（无本地文件形态）。
+            FI = frozen(Conn, Key),
+            ?assertEqual({error, not_found}, attachment_storage_garage:read_snapshot(FI)),
             expire_ordinary(Conn, Key),
             {ok, 1} = attachment_gc_repo:v5_reap(Conn, 100),
             T2 = ?S:token(),
@@ -109,7 +111,9 @@ enterprise_crash(Scenario, Domain, #{conn := Conn, root := Root}) ->
         <<"kill_after_delete_before_completion">> ->
             {ok, #{token := T1}} = claim_eb_for(Conn, AssetId),
             ok = attachment_storage:delete_snapshot(eb_frozen(Conn, AssetId)),
-            ?assertEqual({error, enoent}, file:read_file(?S:disk_file(Root, Key))),
+            %% V3-20：字节消失证据经 garage 快照读回（无本地文件形态）。
+            EFI = eb_frozen(Conn, AssetId),
+            ?assertEqual({error, not_found}, attachment_storage_garage:read_snapshot(EFI)),
             expire_eb(Conn, AssetId),
             {ok, _, [{1}]} = ?S:e(Conn, "SELECT fn_v5_reaper_eb(100)", []),
             {ok, #{token := T2}} = claim_eb_retry_for(Conn, AssetId),
@@ -161,7 +165,9 @@ db_fault(<<"db_lost_after_delete">> = Scenario, <<"ordinary">> = Domain, Ctx) ->
     {ok, _, [{<<"done">>, Attempts}]} = ?S:e(
         Conn, "SELECT job_state, attempts FROM attachment_object_deletion WHERE path=$1", [Key]
     ),
-    ?assertEqual({error, enoent}, file:read_file(?S:disk_file(Root, Key))),
+    %% V3-20：字节消失证据经 garage 快照读回（无本地文件形态）。
+    FI = frozen(Conn, Key),
+    ?assertEqual({error, not_found}, attachment_storage_garage:read_snapshot(FI)),
     base(Scenario, Domain, Key, Body, #{same_exact_location => Key, resolved_attempts => Attempts});
 db_fault(<<"db_lost_before_claim_verified">> = Scenario, <<"enterprise">> = Domain, Ctx) ->
     #{conn := Conn, root := Root} = Ctx,
@@ -202,7 +208,9 @@ db_fault(<<"db_lost_after_delete">> = Scenario, <<"enterprise">> = Domain, Ctx) 
     {ok, _, [{<<"done">>}]} = ?S:e(
         Conn, "SELECT fn_v5_ack_eb($1,$2,$3,$4,true)", [?ORG, ?WS, AssetId, T2]
     ),
-    ?assertEqual({error, enoent}, file:read_file(?S:disk_file(Root, Key))),
+    %% V3-20：字节消失证据经 garage 快照读回（无本地文件形态）。
+    EFI = eb_frozen(Conn, AssetId),
+    ?assertEqual({error, not_found}, attachment_storage_garage:read_snapshot(EFI)),
     _ = T1,
     base(Scenario, Domain, Key, Body, #{same_exact_location => Key, resolved_attempts => Attempts}).
 
@@ -276,12 +284,14 @@ adoption(<<"cross_queue_identity_conflict">> = Scenario, #{conn := Conn, root :=
     ok = reset_ordinary(Conn),
     ?S:q(
         Conn,
+        %% V3-20：blocked 行种子与 w403p-garage 根对齐（场景意图 = blocked
+        %% 状态不被 claim，与 driver 无关；error_code 保留历史场景标记）。
         "INSERT INTO attachment_object_deletion"
         " (path,bucket,storage_driver,storage_namespace,storage_container,"
         "  storage_locator_sha256,job_state,attempts,last_error_code)"
-        " VALUES ($1,'w403p-bucket','disk',$2,'c',NULL,'blocked',0,"
+        " VALUES ($1,$3,'garage',$2,$3,NULL,'blocked',0,"
         " 'legacy_location_unverified') ON CONFLICT (path) DO NOTHING",
-        [Key, ?S:ns()]
+        [Key, ?S:ns(), ?S:container()]
     ),
     {error, empty} = attachment_gc_repo:v5_claim(Conn, ?S:token()),
     ok = ?S:assert_disk_intact(Root, Key, Body),
@@ -326,7 +336,8 @@ recovery(<<"confirmed_fk_preserved">> = Scenario, #{conn := Conn, root := Root})
         "INSERT INTO attachment(id,path,scope,scope_ref,creator_user_id,storage_driver,"
         "storage_namespace,storage_container,storage_locator_sha256,gc_verified,"
         "cipher,group_file_id,file_hash256)"
-        " VALUES ($1,$2,'group','66',101,'disk',$3,'c',$4,true,NULL,$5,$6)"
+        %% V3-20：种子行与 w403p-garage 根严格对齐。
+        " VALUES ($1,$2,'group','66',101,'garage',$3,$7,$4,true,NULL,$5,$6)"
         " ON CONFLICT (id) DO NOTHING",
         [
             attachment_id(),
@@ -334,7 +345,8 @@ recovery(<<"confirmed_fk_preserved">> = Scenario, #{conn := Conn, root := Root})
             ?S:ns(),
             ?S:locator(Key),
             GfId,
-            ?S:hex64(crypto:hash(sha256, Key))
+            ?S:hex64(crypto:hash(sha256, Key)),
+            ?S:container()
         ]
     ),
     ?S:q(
@@ -371,7 +383,9 @@ recovery(<<"done_path_reuse_rejected">> = Scenario, #{conn := Conn, root := Root
     ),
     {error, _} = ?S:e(Conn, "SELECT fn_v5_intent_ordinary_delete($1,'w403p reuse')", [Key]),
     ok = epgsql:sync(Conn),
-    ?assertEqual({error, enoent}, file:read_file(?S:disk_file(Root, Key))),
+    %% V3-20：字节消失证据经 garage 快照读回（无本地文件形态）。
+    FI = frozen(Conn, Key),
+    ?assertEqual({error, not_found}, attachment_storage_garage:read_snapshot(FI)),
     base(Scenario, <<"ordinary">>, Key, Body, #{done_path => Key, reuse_rejected => true}).
 
 %% ------------------------------------------------------------------ helpers
@@ -519,7 +533,7 @@ seed_enterprise(Conn, AssetId, Key, PendingFlag) ->
         " (id,organization_id,workspace_id,object_key,object_hash,mime,size_bytes,"
         "  status,pending_object_delete,storage_driver,storage_namespace,"
         "  storage_container,storage_locator_sha256,lifecycle_state)"
-        " VALUES ($1,$2,$3,$4,$5,'text/plain',8,'deleted',$6,'disk',$7,'c',$8,'live')"
+        " VALUES ($1,$2,$3,$4,$5,'text/plain',8,'deleted',$6,'garage',$7,$9,$8,'live')"
         " ON CONFLICT (id) DO NOTHING",
         [
             AssetId,
@@ -529,7 +543,8 @@ seed_enterprise(Conn, AssetId, Key, PendingFlag) ->
             ?S:hex64(crypto:hash(sha256, Key)),
             PendingFlag,
             ?S:ns(),
-            ?S:locator(Key)
+            ?S:locator(Key),
+            ?S:container()
         ]
     ).
 

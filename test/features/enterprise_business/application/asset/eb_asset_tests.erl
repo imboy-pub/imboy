@@ -1007,14 +1007,16 @@ garage_restore(Saved) ->
 %% enterprise 上传 namespace 指向该根（EB registration_location 只查此键）。
 %% endpoint/container 与 imboy.garage 同源，满足 frozen_location 的
 %% garage 一致性复核（attachment_storage:snapshot/4）。
+%% 普通车道（seat_send 等）无 W202：fallback TALK_RECORD_PRIVATE_GARAGE_CONFIG
+%% JSON（harness talk_garage_env 注入，五键同构），再 fallback A0_*（桶名
+%% talk-record-relay 与 talk 车道一致）；全缺仍 no_go fail-closed。
 garage_apply_registry() ->
-    EP = garage_env("W202_GARAGE_ENDPOINT"),
-    Bucket = garage_env("W202_GARAGE_BUCKET"),
+    {EP, Bucket, AK, SK} = garage_conn(),
     ok = application:set_env(imboy, garage, #{
         endpoint => EP,
         bucket => Bucket,
-        access_key => garage_env("W202_GARAGE_ACCESS_KEY"),
-        secret_key => garage_env("W202_GARAGE_SECRET_KEY")
+        access_key => AK,
+        secret_key => SK
     }),
     Registry = attachment_storage:registry(),
     Roots = maps:get(roots, Registry, #{}),
@@ -1039,6 +1041,38 @@ garage_env(Name) ->
         false -> erlang:error({no_go, required_resource_missing, Name});
         "" -> erlang:error({no_go, required_resource_missing, Name});
         Value -> list_to_binary(Value)
+    end.
+
+%% 连接四元组：W202_GARAGE_*（attv5 独占车道）→ TALK_RECORD_PRIVATE_GARAGE_CONFIG
+%% JSON（talk 普通车道）→ A0_*（真 Garage gate 车道）。
+garage_conn() ->
+    case os:getenv("W202_GARAGE_ENDPOINT") of
+        EP when EP =/= false, EP =/= "" ->
+            {
+                list_to_binary(EP),
+                garage_env("W202_GARAGE_BUCKET"),
+                garage_env("W202_GARAGE_ACCESS_KEY"),
+                garage_env("W202_GARAGE_SECRET_KEY")
+            };
+        _ ->
+            case os:getenv("TALK_RECORD_PRIVATE_GARAGE_CONFIG") of
+                Path when Path =/= false, Path =/= "" ->
+                    {ok, B} = file:read_file(Path),
+                    #{<<"endpoint">> := E, <<"bucket">> := Bk} = J = jsone:decode(B),
+                    {
+                        E,
+                        Bk,
+                        maps:get(<<"access_key">>, J),
+                        maps:get(<<"secret_key">>, J)
+                    };
+                _ ->
+                    {
+                        garage_env("A0_ENDPOINT"),
+                        <<"talk-record-relay">>,
+                        garage_env("A0_AK"),
+                        garage_env("A0_SK")
+                    }
+            end
     end.
 
 %% ===================================================================

@@ -62,13 +62,15 @@ bytes(Seq) -> binary:copy(<<(Seq rem 256)>>, 4096).
 
 %% S3-only direct 合同：按 register 返回的 grant 描述符直 PUT（逐字头部，
 %% 含 x-amz-checksum-sha256），再由 confirm 面收口 CONFIRMED。
+%% required_headers 双形态：HTTP JSON 面经 jsone 往返是 map（object），
+%% logic 直调面是 proplist——helper 两者都吃。
 upload(_Uid, Part) ->
     application:ensure_all_started(inets),
     Ref = pick(Part, upload_ref, <<"upload_ref">>),
     Grant = pick(Ref, grant, <<"grant">>),
     Url = pick(Grant, url, <<"url">>),
     Hs0 = pick(Grant, required_headers, <<"required_headers">>),
-    Hs = [{binary_to_list(K), binary_to_list(V)} || {K, V} <- Hs0],
+    Hs = [{binary_to_list(K), binary_to_list(V)} || {K, V} <- header_pairs(Hs0)],
     Bytes = bytes(maps:get(<<"seq">>, Part)),
     {ok, {{_, 200, _}, _, _}} =
         httpc:request(
@@ -87,7 +89,7 @@ upload_failclosed(Part) ->
     Grant = pick(Ref, grant, <<"grant">>),
     Url = pick(Grant, url, <<"url">>),
     Hs0 = pick(Grant, required_headers, <<"required_headers">>),
-    Hs = [{binary_to_list(K), binary_to_list(V)} || {K, V} <- Hs0],
+    Hs = [{binary_to_list(K), binary_to_list(V)} || {K, V} <- header_pairs(Hs0)],
     Bytes = bytes(maps:get(<<"seq">>, Part)),
     {ok, {{_, 400, _}, _, _}} =
         httpc:request(
@@ -97,6 +99,9 @@ upload_failclosed(Part) ->
             [{body_format, binary}]
         ),
     ok.
+
+header_pairs(M) when is_map(M) -> maps:to_list(M);
+header_pairs(L) when is_list(L) -> L.
 
 pick(Map, A, B) ->
     case maps:is_key(A, Map) of

@@ -25,7 +25,8 @@ http_protocol_units() ->
     {setup, fun setup/0, fun cleanup/1, fun(S) ->
         [
             {atom_to_list(D), {timeout, 120, fun() -> roundtrip(S, D) end}}
-         || D <- [disk, garage]
+         || %% V3-20：disk 驱动退役，disk 遍随驱动删除，garage 侧保留。
+            D <- [garage]
         ]
     end}.
 
@@ -113,9 +114,9 @@ cleanup(S) ->
     attachment_lifecycle_v5_w403_gateway_protocol_tests:cleanup(S).
 
 roundtrip(S, D) ->
+    %% V3-20：disk 驱动退役，上传命名空间仅剩 garage 根。
     Ns =
         case D of
-            disk -> <<"w403-disk">>;
             garage -> <<"w403-garage">>
         end,
     Registry = attachment_storage:registry(),

@@ -153,7 +153,13 @@ chain_status(_) -> 500.
 gateway_put_test_() ->
     [?_test(run_put(Result)) || Result <- [ok, content_mismatch, not_found, put_failed]].
 
-retired_disk_fails_closed_test() ->
+%% V3-20：disk 驱动退役，原 disk recheck 回调分派单测转为 fail-closed 断言：
+%% disk 身份在 provider PUT 边界被拒（502），pin 保留供同 receipt 重试，
+%% garage put_snapshot 与 recheck 链路零调用。
+disk_rejected_test_() ->
+    [?_test(run_disk_rejected())].
+
+run_disk_rejected() ->
     Modules = [
         cowboy_req,
         imboy_jwt,
@@ -167,14 +173,28 @@ retired_disk_fails_closed_test() ->
         lists:foreach(fun(Module) -> meck:new(Module, [non_strict]) end, Modules),
         setup_mocks(ok),
         Key = get(gateway_key),
-        meck:expect(attachment_storage, session_location, fun(_) ->
-            {ok, #{driver => disk, key => Key}}
+        Identity = #{
+            driver => disk,
+            key => Key,
+            mime => <<"text/plain">>,
+            namespace => <<"gateway-disk-unit">>,
+            root_id => <<"gateway-disk-unit-root">>,
+            container => <<"bucket">>,
+            endpoint => <<"file:///fixture-only">>,
+            locator_digest => binary:copy(<<"a">>, 64)
+        },
+        meck:expect(attachment_storage, session_location, fun(K) ->
+            ?assertEqual(Key, K),
+            {ok, Identity}
         end),
         {Status, _, Body} = attachment_storage_gateway_handler:put(<<"PUT">>, #{}, #{}),
         ?assertEqual(502, Status),
-        ?assert(is_binary(Body)),
+        ?assertEqual(<<"object store put failed, retry same content">>, Body),
+        ?assertEqual(1, meck:num_calls(attach_pending_repo, register_content_pin, '_')),
         ?assertEqual(0, meck:num_calls(attachment_storage_garage, put_snapshot, '_')),
-        ?assertEqual([], filelib:wildcard(tmp_base() ++ "/" ++ binary_to_list(Key) ++ ".*"))
+        ?assertEqual(
+            0, meck:num_calls(attach_pending_repo, recheck_content_pin, '_')
+        )
     after
         cleanup_gateway(Modules, TmpState)
     end.

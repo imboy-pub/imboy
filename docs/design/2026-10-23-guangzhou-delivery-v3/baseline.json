@@ -1,0 +1,365 @@
+{
+  "schema_version": 1,
+  "observed_date": "2026-10-23 Asia/Shanghai",
+  "mode": "PLAN_ONLY",
+  "repos": {
+    "imboy": {
+      "path": "/Users/leeyi/project/imboy.pub/imboy",
+      "branch": "main",
+      "commit": "9f96b45ff5f864320585d1c74dac514add241893",
+      "tree": "cfab17fd9de541b68a4b95f581d184e1f6cd3a05",
+      "status": "?? docs/architecture/s3-direct-transfer-plan-v2.2.md\n?? docs/business/imboy-open-source-productization-strategy-v1.md\n?? docs/design/2026-10-08-micro-community/plan-v1.md.sha256\n?? docs/design/2026-10-15-guangzhou-phase1-closeout-v2/\n?? docs/design/2026-10-20-channel-group-ux/"
+    },
+    "imboyapp": {
+      "path": "/Users/leeyi/project/imboy.pub/imboyapp",
+      "branch": "main",
+      "commit": "f1086336e1c316c6189101e26b2f3f071709c3ee",
+      "tree": "cf09bd0b4c2c14504a455ea26e5df2618a19a136",
+      "status": ""
+    },
+    "imboyadmin": {
+      "path": "/Users/leeyi/project/imboy.pub/imboyadmin",
+      "branch": "main",
+      "commit": "2b1a7c926eb2f16c6ffbc44f0af5bcb4bfe98a44",
+      "tree": "510ffbb1b0e07e49926632a1e64989efa87a7873",
+      "status": "?? zcode-resume-prompt-v5.md"
+    }
+  },
+  "sources": [
+    {
+      "id": "GZ2",
+      "path": "docs/design/2026-10-15-guangzhou-phase1-closeout-v2/plan-v2.md",
+      "status": "LOCATED",
+      "sha256": "3d607bc378342a0b077f40b30cbfceba2795805fd2969b9427a547b1ccb032f9"
+    },
+    {
+      "id": "P1",
+      "path": "docs/design/2026-10-11-unified-delivery-closeout/source-contracts/phase1.md",
+      "status": "LOCATED",
+      "sha256": "3074702ea0b00ab32eb58252a35cc0f62217376b938c932ba9a05ccced1d5e00"
+    },
+    {
+      "id": "EO",
+      "path": "docs/design/2026-10-11-unified-delivery-closeout/source-contracts/enterprise-organization.md",
+      "status": "LOCATED",
+      "sha256": "484408ed8b0fec126267cb155875a75d2d24f7aef377df6b23cae8b48824961f"
+    },
+    {
+      "id": "MC",
+      "path": "docs/design/2026-10-08-micro-community/plan-v1.md",
+      "status": "LOCATED",
+      "sha256": "39e8e4b815ba004cb2de8431be45dfa4d96523f3e1a38c5b9cf7d303bab154de"
+    },
+    {
+      "id": "CI",
+      "path": "docs/plans/2026-10-14-three-platform-ci-micro-community-closeout-v2.md",
+      "status": "LOCATED",
+      "sha256": "51daccd01d4e426812873d8c13910062145e144afd23684d125c3bab7152db8f"
+    },
+    {
+      "id": "ORG",
+      "path": "docs/architecture/2026-10-12-organization-positioning-amendment.md",
+      "status": "LOCATED",
+      "sha256": "cc58294d81d30b4721ed16a77967892d55e03843da68fd6f29642d8ab1114bcc"
+    },
+    {
+      "id": "CACHE",
+      "path": "docs/architecture/cache-v2.2.1/backend-closeout-plan-v1.md",
+      "status": "LOCATED",
+      "sha256": "806114da93a904108dfa9a2747d1ee59d4efcb1a2562a92ae7ea6ae905882f0f"
+    },
+    {
+      "id": "ATT",
+      "path": "docs/architecture/attachment-lifecycle-v5/04-tasks.md",
+      "status": "LOCATED",
+      "sha256": "76e587076363b1815e54c569bcefb4a1181c3620d9af66b82e75bba9d398dece"
+    },
+    {
+      "id": "ATT-CONTRACT",
+      "path": "docs/architecture/attachment-lifecycle-v5/execution-contract.json",
+      "status": "LOCATED",
+      "sha256": "a90c6363692f4f53cf86141cfe04159e578baa9231d040c093af9a6ad3f71c80"
+    },
+    {
+      "id": "CX",
+      "path": "docs/design/2026-10-08-customer-service-experience-production/plan-v1.md",
+      "status": "LOCATED",
+      "sha256": "14289f917fb3e273e495b0e91de27f393844eb7f4c9cdb717bced1d94407f7fc"
+    },
+    {
+      "id": "CX-REQ",
+      "path": "docs/design/2026-10-08-customer-service-experience-production/acceptance-required.tsv",
+      "status": "LOCATED",
+      "sha256": "585919a0046991a97c03534225660c095d6d12b89094af27cb13c9ce2d28e5c7"
+    },
+    {
+      "id": "SC-REQ",
+      "path": "docs/design/2026-10-08-customer-service-experience-production/inherited-seat-required.tsv",
+      "status": "LOCATED",
+      "sha256": "2a4a6b4b3f34fe59cc4b46654e961cc729788707a03ae025ae174dea76f7ab97"
+    },
+    {
+      "id": "TALK",
+      "path": "docs/design/2026-10-20-face-to-face-notes/PLAN.md",
+      "status": "LOCATED",
+      "sha256": "1a777c8c968cb1cdf115e9412f2a6d0421264323299aaadecf421271b91597f8"
+    },
+    {
+      "id": "TALK-API",
+      "path": "docs/design/2026-10-20-face-to-face-notes/DOUBAO-API.md",
+      "status": "LOCATED",
+      "sha256": "9d7ed0744e1018a7527ae89bcda956e7c54cfeed704036dfa4c10af6d8dab2c1"
+    },
+    {
+      "id": "TALK-QUALITY",
+      "path": "docs/design/2026-10-20-face-to-face-notes/QUALITY.md",
+      "status": "LOCATED",
+      "sha256": "e03f3e16e3082be5b523f6cc2a3330c6ad25e142f8c934f882660b9a94758c6b"
+    },
+    {
+      "id": "TALK-CONTRACT",
+      "path": "docs/design/2026-10-20-face-to-face-notes/execution-contract.json",
+      "status": "LOCATED",
+      "sha256": "a44300750d289038e116a5edbee9d208cfe14184581314651eae454c4502f4d5"
+    },
+    {
+      "id": "MC-POLICY",
+      "path": "docs/reference/contracts/micro-community-v2-policy.json",
+      "status": "LOCATED",
+      "sha256": "7d08ea79de1d74791c3088ca6ed5d9b35968174756809af35109f968041c10ce"
+    }
+  ],
+  "inherited_materials_recheck": [
+    {
+      "id": "micro-community.md",
+      "path": "imboy/docs/design/2026-10-11-unified-delivery-closeout/source-contracts/micro-community.md",
+      "exists_now": true,
+      "observed_sha256": "5388e75002469219a569cd00d00388dced3efe8be686a35c219b1ca03feb1adc",
+      "original_expected_sha256": "5388e75002469219a569cd00d00388dced3efe8be686a35c219b1ca03feb1adc",
+      "classification": "SOURCE_DISCOVERY_ONLY_NOT_ACCEPTANCE"
+    },
+    {
+      "id": "phase1.md",
+      "path": "imboy/docs/design/2026-10-11-unified-delivery-closeout/source-contracts/phase1.md",
+      "exists_now": true,
+      "observed_sha256": "3074702ea0b00ab32eb58252a35cc0f62217376b938c932ba9a05ccced1d5e00",
+      "original_expected_sha256": "3074702ea0b00ab32eb58252a35cc0f62217376b938c932ba9a05ccced1d5e00",
+      "classification": "SOURCE_DISCOVERY_ONLY_NOT_ACCEPTANCE"
+    },
+    {
+      "id": "enterprise-organization.md",
+      "path": "imboy/docs/design/2026-10-11-unified-delivery-closeout/source-contracts/enterprise-organization.md",
+      "exists_now": true,
+      "observed_sha256": "484408ed8b0fec126267cb155875a75d2d24f7aef377df6b23cae8b48824961f",
+      "original_expected_sha256": "484408ed8b0fec126267cb155875a75d2d24f7aef377df6b23cae8b48824961f",
+      "classification": "SOURCE_DISCOVERY_ONLY_NOT_ACCEPTANCE"
+    },
+    {
+      "id": "eo-verdict",
+      "path": "imboy/docs/design/2026-10-06-enterprise-organization-gap/evidence/eo-20261006T001314Z/final/verdict.json",
+      "exists_now": true,
+      "observed_sha256": "f280a117836e088c5f0a887bc190939cff981506c42251871b58e89399ff9aa2",
+      "original_expected_sha256": "f280a117836e088c5f0a887bc190939cff981506c42251871b58e89399ff9aa2",
+      "classification": "SOURCE_DISCOVERY_ONLY_NOT_ACCEPTANCE"
+    },
+    {
+      "id": "eo-requirements",
+      "path": "imboy/docs/design/2026-10-06-enterprise-organization-gap/evidence/eo-20261006T001314Z/control/requirements.json",
+      "exists_now": true,
+      "observed_sha256": "4b3222197aa364a36d74daeb74b76b3bdc7698aeb0943f41aafdea07f72f765f",
+      "original_expected_sha256": null,
+      "classification": "SOURCE_DISCOVERY_ONLY_NOT_ACCEPTANCE"
+    },
+    {
+      "id": "phase1-audit",
+      "path": "imboy/docs/design/2026-10-07-phase1-delivery-quality-audit-v1.md",
+      "exists_now": true,
+      "observed_sha256": "468228c02e4aabdcdeb45ee24e3863c2375941c496df2cd6e5ac055217083ce7",
+      "original_expected_sha256": null,
+      "classification": "SOURCE_DISCOVERY_ONLY_NOT_ACCEPTANCE"
+    },
+    {
+      "id": "ews-plan",
+      "path": "worktrees/q12-g07/docs/plans/2026-10-04-zcode-enterprise-workspace-parallel-acceptance.md",
+      "exists_now": false,
+      "observed_sha256": null,
+      "original_expected_sha256": "afefa4d977397567db7e207da12c06dffc2f1b5c20b8d4049e8a67e8a06679e9",
+      "classification": "SOURCE_DISCOVERY_ONLY_NOT_ACCEPTANCE"
+    },
+    {
+      "id": "v21-original",
+      "path": "imboy/docs/plans/2026-09-23-enterprise-organization-admin-internal-v1-unified-plan-v2.1.md",
+      "exists_now": true,
+      "observed_sha256": "a866aa137eea856a9a6d9324d3cb46d3fb1f1fb8db73891808c85d1f17d23302",
+      "original_expected_sha256": "a866aa137eea856a9a6d9324d3cb46d3fb1f1fb8db73891808c85d1f17d23302",
+      "classification": "SOURCE_DISCOVERY_ONLY_NOT_ACCEPTANCE"
+    },
+    {
+      "id": "v21-closure",
+      "path": "worktrees/q12-g07/docs/plans/2026-09-26-enterprise-organization-admin-internal-v21-final-closure-plan-v2.1.md",
+      "exists_now": false,
+      "observed_sha256": null,
+      "original_expected_sha256": "9ac84b1a2464e4dc3ae9b35c57e8964fc15acbf1768bdb5fa99753f1fc59ef98",
+      "classification": "SOURCE_DISCOVERY_ONLY_NOT_ACCEPTANCE"
+    },
+    {
+      "id": "nonoa-plan",
+      "path": "worktrees/q12-g07/docs/plans/2026-10-02-enterprise-non-oa-final-acceptance-plan-v1.md",
+      "exists_now": false,
+      "observed_sha256": null,
+      "original_expected_sha256": "e083be9d911bfec5c76f2b0cfdc87a1c09c9eded7d1172e0f455abf55ddd31f1",
+      "classification": "SOURCE_DISCOVERY_ONLY_NOT_ACCEPTANCE"
+    },
+    {
+      "id": "ews-input-manifest.json",
+      "path": "worktrees/q12-g07/docs/archive/design/2026-10-04-enterprise-workspace-acceptance/evidence/ews-20261004T065500Z/control/input-manifest.json",
+      "exists_now": false,
+      "observed_sha256": null,
+      "original_expected_sha256": null,
+      "classification": "SOURCE_DISCOVERY_ONLY_NOT_ACCEPTANCE"
+    },
+    {
+      "id": "ews-inherited-requirements.json",
+      "path": "worktrees/q12-g07/docs/archive/design/2026-10-04-enterprise-workspace-acceptance/evidence/ews-20261004T065500Z/control/inherited-requirements.json",
+      "exists_now": false,
+      "observed_sha256": null,
+      "original_expected_sha256": null,
+      "classification": "SOURCE_DISCOVERY_ONLY_NOT_ACCEPTANCE"
+    },
+    {
+      "id": "ews-ews-coverage-map.json",
+      "path": "worktrees/q12-g07/docs/archive/design/2026-10-04-enterprise-workspace-acceptance/evidence/ews-20261004T065500Z/control/ews-coverage-map.json",
+      "exists_now": false,
+      "observed_sha256": null,
+      "original_expected_sha256": null,
+      "classification": "SOURCE_DISCOVERY_ONLY_NOT_ACCEPTANCE"
+    },
+    {
+      "id": "imboy/scripts/test/phase1_gates/g06_eunit_full_run1.sh",
+      "path": "imboy/scripts/test/phase1_gates/g06_eunit_full_run1.sh",
+      "exists_now": true,
+      "observed_sha256": "bf3385089fddba952de6e49a72422fbc9b323263ffa76d1f491a6035475934d9",
+      "original_expected_sha256": null,
+      "classification": "SOURCE_DISCOVERY_ONLY_NOT_ACCEPTANCE"
+    },
+    {
+      "id": "imboy/scripts/test/phase1_gates/g07_eunit_full_run2.sh",
+      "path": "imboy/scripts/test/phase1_gates/g07_eunit_full_run2.sh",
+      "exists_now": true,
+      "observed_sha256": "4642b197ebba489c0998977203e627af68e2b962e32a74494e18da5cccd8dd19",
+      "original_expected_sha256": null,
+      "classification": "SOURCE_DISCOVERY_ONLY_NOT_ACCEPTANCE"
+    },
+    {
+      "id": "imboy/scripts/test/phase1_gates/phase1_gate_all.sh",
+      "path": "imboy/scripts/test/phase1_gates/phase1_gate_all.sh",
+      "exists_now": true,
+      "observed_sha256": "581f89dfb2995d692335f3c888bf227cc72f4bb5c65b12aad646d81946bd6007",
+      "original_expected_sha256": null,
+      "classification": "SOURCE_DISCOVERY_ONLY_NOT_ACCEPTANCE"
+    },
+    {
+      "id": "imboy/scripts/verify_micro_community_acceptance.py",
+      "path": "imboy/scripts/verify_micro_community_acceptance.py",
+      "exists_now": true,
+      "observed_sha256": "52f234c706bbd1ecd7f1a29a73f62ac5ce5823c944ba2892c0de9e4df1164a81",
+      "original_expected_sha256": null,
+      "classification": "SOURCE_DISCOVERY_ONLY_NOT_ACCEPTANCE"
+    },
+    {
+      "id": "imboy/test/scripts/test_verify_micro_community_acceptance.py",
+      "path": "imboy/test/scripts/test_verify_micro_community_acceptance.py",
+      "exists_now": true,
+      "observed_sha256": "68b18fa13d4209deb7e2d4fb4fa3481202f29f420f8a3e4f07a746e86cbba65a",
+      "original_expected_sha256": null,
+      "classification": "SOURCE_DISCOVERY_ONLY_NOT_ACCEPTANCE"
+    },
+    {
+      "id": "imboy/Makefile",
+      "path": "imboy/Makefile",
+      "exists_now": true,
+      "observed_sha256": "795e08b1da6921c32aea886001c0709a3f7708cfdb2a05884a1fb5ea66d70bc9",
+      "original_expected_sha256": null,
+      "classification": "SOURCE_DISCOVERY_ONLY_NOT_ACCEPTANCE"
+    },
+    {
+      "id": "imboyadmin/package.json",
+      "path": "imboyadmin/package.json",
+      "exists_now": true,
+      "observed_sha256": "fcc82a45730286e5b860497d446512e8d79c77fdc332b083a0f54d79619bdc16",
+      "original_expected_sha256": null,
+      "classification": "SOURCE_DISCOVERY_ONLY_NOT_ACCEPTANCE"
+    },
+    {
+      "id": "imboyadmin/tests/e2e/enterprise-app-governance-real.spec.ts",
+      "path": "imboyadmin/tests/e2e/enterprise-app-governance-real.spec.ts",
+      "exists_now": true,
+      "observed_sha256": "52e85d57de5ab22a3336ed45f59f750972f4abab5d846ebd0de80238b73277b1",
+      "original_expected_sha256": null,
+      "classification": "SOURCE_DISCOVERY_ONLY_NOT_ACCEPTANCE"
+    },
+    {
+      "id": "imboyapp/integration_test/micro_community_owned_android_test.dart",
+      "path": "imboyapp/integration_test/micro_community_owned_android_test.dart",
+      "exists_now": true,
+      "observed_sha256": "31f5003232a080905ecaa7d1f863dceae373d9e461fe788814509ee3709c3c17",
+      "original_expected_sha256": null,
+      "classification": "SOURCE_DISCOVERY_ONLY_NOT_ACCEPTANCE"
+    },
+    {
+      "id": "imboyapp/integration_test/micro_community_owned_android_negative_test.dart",
+      "path": "imboyapp/integration_test/micro_community_owned_android_negative_test.dart",
+      "exists_now": true,
+      "observed_sha256": "c5853aa3f496b5171fc05e7abd3a8e8db2f70e17b5839562072d97514810a7d8",
+      "original_expected_sha256": null,
+      "classification": "SOURCE_DISCOVERY_ONLY_NOT_ACCEPTANCE"
+    },
+    {
+      "id": "imboyapp/integration_test/enterprise/enterprise_scope_native_test.dart",
+      "path": "imboyapp/integration_test/enterprise/enterprise_scope_native_test.dart",
+      "exists_now": true,
+      "observed_sha256": "2b8dd61f6780f59ecdd5ecf95e4b8841db1a783ceeb21c034a702f606dab7aad",
+      "original_expected_sha256": null,
+      "classification": "SOURCE_DISCOVERY_ONLY_NOT_ACCEPTANCE"
+    }
+  ],
+  "scope": "local main; no fetch/CI/runtime sampling; original evidence candidates are not promoted",
+  "historical_runtime_roots": "retired; never recreate old paths for resume",
+  "implementation_anchor_checks": {
+    "docs/design/2026-10-11-unified-delivery-closeout/materials-index.json": true,
+    "docs/design/2026-10-20-face-to-face-notes/execution-contract.json": true,
+    "scripts/check_migrations.sh": true,
+    "scripts/drill_migrate.escript": true,
+    "priv/migrations/00000225_talk_record_provider_task.up.sql": true,
+    "../imboyapp/scripts/run_sqlite_migration_gate.sh": true,
+    "docs/architecture/cache-v2.2.1/backend-closeout-plan-v1.md": true,
+    "scripts/attachment_lifecycle_v5_runner.py": true,
+    "src/lib/organization/domain/organization_owner_invariant.erl": true,
+    "src/logic/msg_ack_logic.erl": true,
+    "src/repo/msg_c2g_timeline_repo.erl": true,
+    "src/imboy_router.erl": true,
+    "src/logic/enterprise_directory_sync_logic.erl": true,
+    "src/logic/enterprise_oa_sso_logic.erl": true,
+    "src/api/enterprise_oa_login_handler.erl": true,
+    "../imboyapp/lib/modules/organization/presentation/organization_chart.dart": true,
+    "../imboyapp/lib/page/workspace/workspace_channel_detail_page.dart": true,
+    "../imboyapp/integration_test/enterprise/organization_ux_macos_test.dart": true,
+    "../imboyadmin/tests/e2e/customer-service-seat-embed/journey.spec.ts": true,
+    "../imboyadmin/tests/e2e/customer-service-real/a01-real-chain.spec.ts": true,
+    "src/api/talk_record_handler.erl": true,
+    "src/logic/talk_record_provider_contract.erl": true,
+    "../imboyapp/lib/store/api/talk_record_api.dart": true,
+    "../imboyapp/lib/component/talk_record_recorder/talk_record_recorder_bar.dart": true,
+    "docs/reference/contracts/micro-community-v2-policy.json": true,
+    "scripts/verify_micro_community_acceptance.py": true,
+    "scripts/backup_pg.sh": true,
+    "scripts/restore_pg.sh": true,
+    "scripts/backup_garage.sh": true,
+    "Makefile": true,
+    "../imboyadmin/package.json": true,
+    "../imboyapp/pubspec.lock": true,
+    "docs/design/2026-10-08-customer-service-experience-production/plan-v1.md": true,
+    "docs/product/packaging-contract.md": true,
+    "docs/design/2026-10-15-guangzhou-phase1-closeout-v2/plan-v2.md": true
+  }
+}

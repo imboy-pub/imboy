@@ -4,13 +4,14 @@
 %%%   * driver 双跑 —— V5_PROBE_DRIVER（默认 garage）决定本遍种子行的
 %%%     storage 四元组与叶展开；同一套件被 gate 以两种 env 各跑一遍。
 %%%     env 以字符串匹配（os:getenv 返回 list），非法取值 fail-closed。
-%%%     registry 恒装双根（disk + garage），种子四元组一律从 run-owned
+%%%     V3-20：disk 驱动退役，disk 遍退出双跑矩阵（V5_PROBE_DRIVER=disk
+%%%     一律 no_go），registry 只装 garage 根；种子四元组一律从 run-owned
 %%%     registry 解析（attachment_storage:identity），并逐叶以
 %%%     frozen_location 证明：正四元组可解析（identity_resolved）、
 %%%     换错 driver 字面量被拒（cross_driver_rejected）。
 %%%   * 真实对象探针 —— probe_io/2 经 sanctioned driver（garage 用
-%%%     W202_GARAGE_* env、disk 用 V5_DISK_ROOT registry 根）真实
-%%%     PUT/GET 探针对象，读回字节 sha256 一致；清理删除并容忍已合法删除。
+%%%     W202_GARAGE_* env）真实 PUT/GET 探针对象，读回字节 sha256 一致；
+%%%     清理删除并容忍已合法删除。
 %%%   * emit —— 断言全过后才调用；schema_phase 取合同叶值 integrated；
 %%%     ac_id 与 driver 放 measured。
 %%%   * 屏障 —— with_row_lock_barrier/4：{advisory, Key} 或
@@ -76,29 +77,27 @@
     release_workspace_holds/1
 ]).
 
--define(NS_DISK, <<"w601-w3-disk">>).
 -define(NS_GARAGE, <<"w601-w3-garage">>).
--define(CONTAINER_DISK, <<"w601c">>).
 
 %% ------------------------------------------------------------- driver 双跑
 
-%% 本遍种子 driver（gate 以 V5_PROBE_DRIVER=garage|disk 各跑一遍）。
+%% 本遍种子 driver（gate 以 V5_PROBE_DRIVER 各跑一遍）。
 %% os:getenv 返回 string；按字符串匹配并显式校验取值，非法值 fail-closed。
+%% V3-20：disk 驱动退役，V5_PROBE_DRIVER=disk 一并 no_go（fail-closed）。
 driver() ->
     case os:getenv("V5_PROBE_DRIVER") of
         false -> <<"garage">>;
         "" -> <<"garage">>;
         "garage" -> <<"garage">>;
-        "disk" -> <<"disk">>;
         Other -> erlang:error({no_go, w601_w3_unknown_probe_driver, Other})
     end.
 
-other_driver(<<"garage">>) -> <<"disk">>;
-other_driver(<<"disk">>) -> <<"garage">>.
+%% wrong-driver 字面量仍取 disk（已退役驱动）探测 frozen_location 的拒绝面。
+other_driver(<<"garage">>) -> <<"disk">>.
 
-%% id 空间分段：同库双 driver 遍互不撞主键（garage 低半段 / disk 高半段）。
-driver_index(<<"garage">>) -> 0;
-driver_index(<<"disk">>) -> 10.
+%% id 空间分段：同库双 driver 遍互不撞主键。
+%% V3-20：disk 驱动退役，disk 遍随驱动删除，仅剩 garage 低半段。
+driver_index(<<"garage">>) -> 0.
 
 %% attv5 库跨 run 持久，且迁移 191 冻结语义规定：path 一旦留下
 %% attachment_object_deletion 墓碑行即永久烧毁（fn_v5_register_pending 对
@@ -167,8 +166,8 @@ setup(Prefix) ->
         ok = ensure_started(inets),
         ok = ensure_started(ssl),
         ok = ensure_read_env(),
-        Base = disk_base(Prefix),
-        ok = application:set_env(imboy, attachment_storage_registry, registry(Base, Garage)),
+        %% V3-20：disk 驱动退役，registry 只装 garage 根（run-owned 目录不再建）。
+        ok = application:set_env(imboy, attachment_storage_registry, registry(Garage)),
         case attachment_storage:validate_registry() of
             ok -> ok;
             Other -> erlang:error({w601_w3_registry_not_executable, Other})
@@ -178,7 +177,6 @@ setup(Prefix) ->
             boot => Boot,
             db => Db,
             conn => Conn,
-            base => Base,
             garage => Garage,
             prior_registry => PriorRegistry,
             prior_garage => PriorGarage,
@@ -200,7 +198,6 @@ cleanup(
     #{
         boot := Boot,
         db := Db,
-        base := Base,
         prior_registry := PR,
         prior_garage := PG,
         prior_pg_conf := PPC,
@@ -211,7 +208,6 @@ cleanup(
     restore_env(PR, PG),
     restore_read_env(PJ, PB),
     restore_pg_conf(PPC),
-    _ = file:del_dir_r(Base),
     inttest_marker_db:release(Db),
     eunit_runner:eunit_cleanup(Boot),
     ok.
@@ -295,47 +291,19 @@ garage_env() ->
             #{endpoint => EP, bucket => Bucket, access_key => AK, secret_key => SK}
     end.
 
-%% V5_DISK_ROOT 由 gate 固定为 admission allowlist 内路径；缺省退回临时目录。
-disk_base(Prefix) ->
-    Parent =
-        case os:getenv("V5_DISK_ROOT") of
-            false -> temp_parent();
-            "" -> temp_parent();
-            Dir -> Dir
-        end,
-    Base = filename:join(
-        Parent,
-        "w601-w3-" ++ binary_to_list(Prefix) ++ "-" ++
-            binary_to_list(binary:encode_hex(crypto:strong_rand_bytes(12), lowercase))
-    ),
-    ok = filelib:ensure_dir(filename:join(Base, "placeholder")),
-    ok = file:change_mode(Base, 8#700),
-    Base.
-
-temp_parent() ->
-    case file:read_link_all("/tmp") of
-        {ok, Target} -> filename:absname(Target, "/");
-        {error, einval} -> "/tmp"
-    end.
+%% V3-20：disk 驱动退役，disk_base/temp_parent（V5_DISK_ROOT run-owned 目录）
+%% 随驱动删除，registry 只装 garage 根。
 
 %% 生产 attachment_storage:registry/0 只认 version=1 信封（缺 version 的
 %% 值一律替换为空 registry → validate_registry 报 empty_roots，见
 %% src/lib/attachment_storage/attachment_storage.erl registry/0），故按
-%% imboy_env 的构造形状包装（对照 w601_w4_context:registry/2 与
-%% w403_storage_tests 的 registry 信封先例）。三套件经
-%% attachment_storage:resolve/identity/frozen_location 生产访问器消费，
-%% 无裸读 roots 的路径。
-registry(Base, Garage) ->
+%% imboy_env 的构造形状包装（对照 w403_storage_tests 的 registry 信封先例）。
+%% 三套件经 attachment_storage:resolve/identity/frozen_location 生产访问器
+%% 消费，无裸读 roots 的路径。
+registry(Garage) ->
     #{
         version => 1,
         roots => #{
-            <<"w601-w3-disk-root">> => #{
-                driver => <<"disk">>,
-                namespace => ?NS_DISK,
-                aliases => [],
-                endpoint => list_to_binary("file://" ++ Base),
-                container => ?CONTAINER_DISK
-            },
             <<"w601-w3-garage-root">> => #{
                 driver => <<"garage">>,
                 namespace => ?NS_GARAGE,
@@ -364,11 +332,11 @@ emit({Case, Entry, Driver, Scenario, Domain, Ac}, Measured) ->
 %% ------------------------------------------------------- registry 身份证明
 
 %% 种子四元组从 run-owned registry 解析（冻结身份 = driver+ns+container+digest）。
+%% V3-20：disk 驱动退役，disk 种子分支随驱动删除（driver() 恒 garage）。
 seed_identity(_S, Driver, Key) ->
     {Ns, Container} =
         case Driver of
-            <<"garage">> -> {?NS_GARAGE, garage_bucket()};
-            <<"disk">> -> {?NS_DISK, ?CONTAINER_DISK}
+            <<"garage">> -> {?NS_GARAGE, garage_bucket()}
         end,
     {ok, #{locator_digest := Digest}} = attachment_storage:identity(Ns, Container, Key),
     #{
@@ -408,8 +376,8 @@ frozen(Key, Quad) ->
 %% ------------------------------------------------- 真实对象探针（P1-07）
 
 %% 每叶经 sanctioned driver 真实 PUT/GET 探针对象（garage 用 W202_GARAGE_*
-%% env，disk 用 V5_DISK_ROOT registry 根），读回字节 sha256 一致；返回
-%% measured 证据与幂等清理 fun（删除并容忍已合法删除）。
+%% env；V3-20 后 disk 驱动退役，driver_module 对其余字面量 no_go），
+%% 读回字节 sha256 一致；返回 measured 证据与幂等清理 fun（删除并容忍已合法删除）。
 probe_io(Key, Quad) ->
     Driver = maps:get(<<"storage_driver">>, Quad),
     Ns = maps:get(<<"storage_namespace">>, Quad),
@@ -423,7 +391,7 @@ probe_io(Key, Quad) ->
     ProbeKey = <<Key/binary, "/.w601w3-probe">>,
     Body = <<"w601w3-probe:", Key/binary, ":", (hex64(crypto:strong_rand_bytes(16)))/binary>>,
     Digest = hex64(crypto:hash(sha256, Body)),
-    %% 两驱动 put/4 均返回 ok（disk:atomic_write/file 写链、garage:put_snapshot）。
+    %% sanctioned driver put/4 返回 ok（garage:put_snapshot 真实写链）。
     ok = Mod:put(Ns, Container, ProbeKey, Body),
     {ok, Body} = Mod:read(Ns, Container, ProbeKey),
     true = hex64(crypto:hash(sha256, Body)) =:= Digest,

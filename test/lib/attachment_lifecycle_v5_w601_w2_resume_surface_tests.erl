@@ -13,7 +13,8 @@ resume_domain_test_() ->
         [
             ?_test(resume_surface(Ep))
          || Ep <-
-                [ordinary, enterprise_internal, enterprise_seat, cs_widget]
+                %% V3-14：INT 面直传形态不经 gateway 恢复投影链，矩阵收敛三面。
+                [ordinary, enterprise_seat, cs_widget]
         ] ++
             [
                 ?_test(provider_bypass_is_rejected()),
@@ -43,6 +44,7 @@ setup() ->
                 case ets:lookup(?TAB, bypass) of
                     [] ->
                         try
+                            %% V3-20：disk 驱动退役，provider 故障注入改走 garage 同名原语。
                             attachment_storage_garage:put_snapshot(#{key => <<"key">>}, a, b, c)
                         catch
                             error:pin_committed_then_crash -> #{status => 500}

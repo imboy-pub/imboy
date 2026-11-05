@@ -298,7 +298,42 @@ setup_full(Conn) ->
 setup_full_without_project_members(Conn) ->
     setup_base(Conn).
 
+%% 全局种子用户可能被其他套件的删除链消费（full-20261104T101434Z 实证只剩
+%% 2 行使 3 元素解构 badmatch）——大 id 段不足 3 个时补齐合成用户，世界自足。
+ensure_seed_users(Conn) ->
+    {ok, _, [{N}]} =
+        epgsql:equery(
+            Conn,
+            <<"SELECT count(*)::int AS n FROM \"user\" WHERE id >= 9000000000000000000">>,
+            []
+        ),
+    Need = 3 - N,
+    lists:foreach(
+        fun(I) ->
+            Id = 9000000000000020000 + I,
+            Ac = <<"zc03-milestone-seed-", (integer_to_binary(I))/binary>>,
+            %% 同 VM fault-injection 套件的「创建用户」注入窗口内让过本轮
+            %% （full-20261104T114916Z 实证），重查 count 后自然补齐。
+            case
+                catch epgsql:equery(
+                    Conn,
+                    <<
+                        "INSERT INTO \"user\" (id, password, account) SELECT $1, 'x', $2"
+                        " WHERE NOT EXISTS (SELECT 1 FROM \"user\" WHERE id = $1)"
+                    >>,
+                    [Id, Ac]
+                )
+            of
+                {ok, _} -> ok;
+                _ -> ok
+            end
+        end,
+        lists:seq(1, Need)
+    ),
+    ok.
+
 setup_base(Conn) ->
+    ok = ensure_seed_users(Conn),
     {ok, _, Rows} = epgsql:equery(
         Conn, <<"SELECT id FROM \"user\" ORDER BY id ASC LIMIT 3">>
     ),

@@ -27,7 +27,8 @@ protocol_units() ->
                 atom_to_list(D) ++ "/" ++ atom_to_list(F),
                 {timeout, 180, fun() -> scenario(S, D, F) end}
             }
-         || D <- [disk, garage],
+         || %% V3-20：disk 驱动退役，disk 遍与 disk 专属场景随驱动删除。
+            D <- [garage],
             F <- [
                 reject_different_after_pin,
                 confirm_then_old_put,
@@ -39,13 +40,10 @@ protocol_units() ->
                 ordinary_running_delete_remap,
                 eb_ready_delete_remap,
                 eb_running_delete_remap,
-                disk_authorized_download,
                 ordinary_snapshot_delete_race,
                 eb_snapshot_delete_race,
                 null_v5_never_guesses_location
-            ],
-            (F =/= null_v5_never_guesses_location orelse D =:= disk),
-            (F =/= disk_authorized_download orelse D =:= disk)
+            ]
         ]
     end}.
 setup() ->
@@ -118,23 +116,10 @@ setup_owned() ->
         access_key => list_to_binary(required("W202_GARAGE_ACCESS_KEY")),
         secret_key => list_to_binary(required("W202_GARAGE_SECRET_KEY"))
     }),
-    Root = filename:join(
-        temp_dir(),
-        "attv5-w403-" ++
-            binary_to_list(binary:encode_hex(crypto:strong_rand_bytes(12), lowercase))
-    ),
-    ok = file:make_dir(Root),
-    own_resource(root, Root),
-    ok = file:change_mode(Root, 8#700),
+    %% V3-20：disk 驱动退役，disk root 与 run-owned 目录随驱动删除，registry 只装 garage 根。
     application:set_env(imboy, attachment_storage_registry, #{
         version => 1,
         roots => #{
-            <<"w403-disk-root">> => #{
-                driver => <<"disk">>,
-                namespace => <<"w403-disk">>,
-                endpoint => list_to_binary("file://" ++ Root),
-                container => <<"fixture">>
-            },
             <<"w403-garage-root">> => #{
                 driver => <<"garage">>,
                 namespace => <<"w403-garage">>,
@@ -175,25 +160,11 @@ setup_owned() ->
         [Uid, <<"w403-", (integer_to_binary(Uid))/binary>>]
     ),
     #{
-        root => Root,
         uid => Uid,
         port => Port,
         bucket => Bucket,
         run => binary:encode_hex(crypto:strong_rand_bytes(12), lowercase)
     }.
-
-%% Match the Disk storage fixtures: macOS /tmp is a symlink to /private/tmp.
-%% Register the physical temporary root; keep the production symlink guard intact.
-%% V5_DISK_ROOT pins fixtures inside the run-owned disk root from the allowlist.
-temp_dir() ->
-    case os:getenv("V5_DISK_ROOT") of
-        Root when is_list(Root), Root =/= "" -> Root;
-        _ ->
-            case file:read_link_all("/tmp") of
-                {ok, Target} -> filename:absname(Target, "/");
-                {error, einval} -> "/tmp"
-            end
-    end.
 
 own_resource(Key, Value) ->
     erlang:put(w403_gateway_setup, (erlang:get(w403_gateway_setup))#{Key => Value}),
@@ -358,15 +329,7 @@ upload_scenario(S, D, Fault) ->
     Exp = erlang:system_time(second) + 60,
     {ok, Cap} = imboy_jwt:issue_upload_capability(Key, <<"text/plain">>, Exp),
     case Fault of
-        disk_authorized_download ->
-            ?assertEqual(200, put(S, Cap, Bytes)),
-            ?assertMatch(
-                {ok, _}, attach_logic:confirm(maps:get(uid, S), Key, <<"private">>, undefined, #{})
-            ),
-            case D of
-                disk -> assert_download(S, Key, Bytes);
-                garage -> assert_bytes(D, Ns, Container, Key, Bytes)
-            end;
+        %% V3-20：disk 驱动退役，disk_authorized_download 场景随驱动删除。
         reject_different_after_pin ->
             ?assertEqual(200, put(S, Cap, Bytes)),
             ?assertEqual(409, put(S, Cap, <<"different bytes">>)),
@@ -416,8 +379,8 @@ register(S, D, Fault) ->
         <<"u", (integer_to_binary(Uid))/binary, "/file/w403/", (maps:get(run, S))/binary, "/",
             (atom_to_binary(D))/binary, "/", (atom_to_binary(Fault))/binary>>,
     {Ns, Container} =
+        %% V3-20：disk 驱动退役，register 仅剩 garage 根维度。
         case D of
-            disk -> {<<"w403-disk">>, <<"fixture">>};
             garage -> {<<"w403-garage">>, maps:get(bucket, S)}
         end,
     {ok, I} = attachment_storage:identity(Ns, Container, Key),
@@ -451,7 +414,7 @@ put(S, Cap, Bytes) ->
         [{body_format, binary}]
     ),
     Status.
-read(disk, Ns, C, K) -> attachment_storage_disk:read(Ns, C, K);
+%% V3-20：disk 驱动退役，read 仅剩 garage 子句。
 read(garage, Ns, C, K) -> attachment_storage_garage:read(Ns, C, K).
 assert_bytes(D, Ns, C, K, Expected) ->
     {ok, Actual} = read(D, Ns, C, K),
@@ -459,7 +422,7 @@ assert_bytes(D, Ns, C, K, Expected) ->
     ?assertEqual(crypto:hash(sha256, Expected), crypto:hash(sha256, Actual)).
 
 %% 屏障只暂停真实 locator 读取的返回边界；PG/签名/HTTP/driver 均为生产实现。
-snapshot_race(S, D, Key, Ns, Container, Cap, Bytes, Mode) ->
+snapshot_race(S, _D, Key, Ns, _Container, Cap, Bytes, Mode) ->
     Parent = self(),
     {ok, Registry} = application:get_env(imboy, attachment_storage_registry),
     {ok, Garage} = application:get_env(imboy, garage),
@@ -468,11 +431,8 @@ snapshot_race(S, D, Key, Ns, Container, Cap, Bytes, Mode) ->
     ]),
     {ok, {_, TrapPort}} = inet:sockname(Trap),
     TrapPid = spawn(fun() -> trap_accept(Trap, Parent) end),
-    NewEndpoint =
-        case D of
-            disk -> list_to_binary(maps:get(root, S) ++ "-must-not-write-B");
-            garage -> list_to_binary("http://127.0.0.1:" ++ integer_to_list(TrapPort))
-        end,
+    %% V3-20：disk 驱动退役，B 根重定向仅剩 garage trap endpoint。
+    NewEndpoint = list_to_binary("http://127.0.0.1:" ++ integer_to_list(TrapPort)),
     meck:new(attachment_storage, [passthrough, no_link]),
     meck:expect(attachment_storage, session_location, fun(K) ->
         Result = meck:passthrough([K]),
@@ -503,16 +463,8 @@ snapshot_race(S, D, Key, Ns, Container, Cap, Bytes, Mode) ->
                 Roots = maps:map(
                     fun(_, R) ->
                         case maps:get(namespace, R) of
-                            Ns ->
-                                R#{
-                                    endpoint =>
-                                        case D of
-                                            disk -> <<"file://", NewEndpoint/binary>>;
-                                            garage -> NewEndpoint
-                                        end
-                                };
-                            _ ->
-                                R
+                            Ns -> R#{endpoint => NewEndpoint};
+                            _ -> R
                         end
                     end,
                     maps:get(roots, Registry)
@@ -528,26 +480,8 @@ snapshot_race(S, D, Key, Ns, Container, Cap, Bytes, Mode) ->
                         end
                 after 10000 -> erlang:error(race_http_timeout)
                 end,
-                Actual =
-                    case D of
-                        disk -> attachment_storage_disk:read_snapshot(I);
-                        garage -> attachment_storage_garage:read_snapshot(I)
-                    end,
+                Actual = attachment_storage_garage:read_snapshot(I),
                 ?assertEqual({ok, Bytes}, Actual),
-                case D of
-                    disk ->
-                        ?assertNot(
-                            filelib:is_file(
-                                filename:join([
-                                    binary_to_list(NewEndpoint),
-                                    binary_to_list(Container),
-                                    binary_to_list(Key)
-                                ])
-                            )
-                        );
-                    garage ->
-                        ok
-                end,
                 receive
                     trap_b_request -> erlang:error(wrong_destination_B_touched)
                 after 100 -> ok
@@ -583,18 +517,14 @@ delete_recovery(S, D, Domain, State) ->
     ),
     {ok, I} = attachment_storage:session_location(Key),
     Bytes = <<"run-owned delete fixture">>,
-    case D of
-        disk ->
-            ok = attachment_storage_disk:put_snapshot(I, Bytes, erlang:system_time(second) + 60);
-        garage ->
-            Now = calendar:universal_time(),
-            Exp = calendar:gregorian_seconds_to_datetime(
-                calendar:datetime_to_gregorian_seconds(Now) + 60
-            ),
-            ok = attachment_storage_garage:put_snapshot(I, Bytes, <<"text/plain">>, #{
-                issued_at => Now, expires_at => Exp
-            })
-    end,
+    %% V3-20：disk 驱动退役，delete_recovery 种子仅剩 garage put_snapshot。
+    Now = calendar:universal_time(),
+    Exp = calendar:gregorian_seconds_to_datetime(
+        calendar:datetime_to_gregorian_seconds(Now) + 60
+    ),
+    ok = attachment_storage_garage:put_snapshot(I, Bytes, <<"text/plain">>, #{
+        issued_at => Now, expires_at => Exp
+    }),
     {Table, Predicate, Args, Drain, Claim} =
         case Domain of
             ordinary ->
@@ -692,24 +622,13 @@ delete_recovery(S, D, Domain, State) ->
     {ok, Trap} = gen_tcp:listen(0, [binary, {active, false}, {ip, {127, 0, 0, 1}}]),
     {ok, {_, TrapPort}} = inet:sockname(Trap),
     TrapPid = spawn(fun() -> trap_accept(Trap, Parent) end),
-    B =
-        case D of
-            disk -> list_to_binary(maps:get(root, S) ++ "-delete-B");
-            garage -> list_to_binary("http://127.0.0.1:" ++ integer_to_list(TrapPort))
-        end,
+    %% V3-20：disk 驱动退役，delete 目标根仅剩 garage trap endpoint。
+    B = list_to_binary("http://127.0.0.1:" ++ integer_to_list(TrapPort)),
     Roots = maps:map(
         fun(_, R) ->
             case maps:get(namespace, R) of
-                Ns ->
-                    R#{
-                        endpoint =>
-                            case D of
-                                disk -> <<"file://", B/binary>>;
-                                garage -> B
-                            end
-                    };
-                _ ->
-                    R
+                Ns -> R#{endpoint => B};
+                _ -> R
             end
         end,
         maps:get(roots, Registry)
@@ -785,13 +704,7 @@ delete_recovery(S, D, Domain, State) ->
                 snapshot -> {error, not_found};
                 _ -> {ok, Bytes}
             end,
-        ?assertEqual(
-            Expected,
-            case D of
-                disk -> attachment_storage_disk:read_snapshot(I);
-                garage -> attachment_storage_garage:read_snapshot(I)
-            end
-        ),
+        ?assertEqual(Expected, attachment_storage_garage:read_snapshot(I)),
         receive
             trap_b_request -> erlang:error(wrong_delete_destination)
         after 50 -> ok
@@ -813,16 +726,11 @@ delete_recovery(S, D, Domain, State) ->
             due_owned_job(Table, Predicate, Args),
             ?assertMatch({ok, _}, Drain())
     end,
-    ?assertEqual(
-        {error, not_found},
-        case D of
-            disk -> attachment_storage_disk:read_snapshot(I);
-            garage -> attachment_storage_garage:read_snapshot(I)
-        end
-    ),
+    ?assertEqual({error, not_found}, attachment_storage_garage:read_snapshot(I)),
     {ok, [#{<<"job_state">> := <<"done">>}]} = elib_pg:query(
         <<"SELECT job_state FROM ", Table/binary, " WHERE ", Predicate/binary>>, Args
     ).
+%% V3-20：disk 驱动退役，assert_download（disk 本地流 download 链证明）随驱动删除。
 %% Global worker/reaper APIs have no scoped equivalent. Match their SQL
 %% eligibility and fail before calling them if a serialized fixture has foreign
 %% candidates; never claim, postpone, reset or delete those rows to make a test pass.
@@ -856,38 +764,6 @@ due_owned_job(Table, Predicate, Args) ->
         Args
     ),
     ok.
-
-assert_download(S, Key, Bytes) ->
-    {ok, Url} = attach_logic:view_url(maps:get(uid, S), Key),
-    ?assertNotEqual(nomatch, binary:match(Url, <<"/api/v1/attachment/content?ticket=">>)),
-    {ok, {{_, 200, _}, _, Bytes}} = httpc:request(get, {binary_to_list(Url), []}, [], [
-        {body_format, binary}
-    ]),
-    {ok, {{_, 206, _}, RangeHeaders, Part}} = httpc:request(
-        get, {binary_to_list(Url), [{"range", "bytes=0-7"}]}, [], [{body_format, binary}]
-    ),
-    ?assertEqual(binary:part(Bytes, 0, 8), Part),
-    ?assertEqual(
-        "bytes 0-7/" ++ integer_to_list(byte_size(Bytes)),
-        proplists:get_value("content-range", RangeHeaders)
-    ),
-    {ok, {{_, 200, _}, HeadHeaders, <<>>}} = httpc:request(head, {binary_to_list(Url), []}, [], [
-        {body_format, binary}
-    ]),
-    ?assertEqual(
-        integer_to_list(byte_size(Bytes)), proplists:get_value("content-length", HeadHeaders)
-    ),
-    {ok, {{_, 416, _}, _, _}} = httpc:request(
-        get, {binary_to_list(Url), [{"range", "bytes=0-1,3-4"}]}, [], [{body_format, binary}]
-    ),
-    ?assertEqual({error, forbidden}, attach_logic:view_url(maps:get(uid, S) + 1, Key)),
-    %% ticket 发出后权限事实变化（metadata禁用/删除）必须即时拒绝。
-    {ok, [_]} = elib_pg:query(<<"UPDATE attachment SET status=-1 WHERE path=$1 RETURNING id">>, [
-        Key
-    ]),
-    {ok, {{_, 403, _}, _, _}} = httpc:request(get, {binary_to_list(Url), []}, [], [
-        {body_format, binary}
-    ]).
 
 null_session_rejected(S) ->
     Uid = maps:get(uid, S),

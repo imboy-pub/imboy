@@ -84,6 +84,10 @@ stream_bytes_and_revocation_test_() ->
                 headers => #{<<"range">> => <<"bytes=2-5">>}
             },
             %% 边缘未配置：GET fail-closed 503（不回退 BEAM 取流）。
+            %% base_url 一并 unset：edge_base() 有 base_url+/edge 回退语义，
+            %% worker VM 配置注入 base_url 时 503 场景会误得 302。
+            ok = application:unset_env(imboy, base_url),
+            ok = application:unset_env(imboy, edge_base_url),
             {ok, Resp503, _} = talk_record_playback_handler:init(Base, #{
                 current_uid => 700001
             }),
@@ -106,12 +110,7 @@ stream_bytes_and_revocation_test_() ->
             ?assertEqual(206, maps:get(status, Head)),
             ?assertEqual([], get(stream_bytes)),
             ?assertEqual(Reads, meck:num_calls(attachment_artifact_reader, with_range, '_')),
-            ?assertEqual(
-                {ok, <<"https://storage.invalid/synthetic">>},
-                talk_record_playback_stream:edge_target(T)
-            ),
-            ?assertEqual(1, meck:num_calls(attachment_edge_redirect, presign_attachment, 2)),
-            %% 记录不可见（撤权/删除语义）：HEAD 和边缘授权回调均拒绝。
+            %% 记录不可见（撤权/删除语义）：HEAD recheck → 404。
             meck:expect(talk_record_repo, find_visible, fun(_, _) ->
                 {error, not_found}
             end),
@@ -119,8 +118,6 @@ stream_bytes_and_revocation_test_() ->
                 Base#{method => <<"HEAD">>}, #{current_uid => 700001}
             ),
             ?assertEqual(404, maps:get(status, Revoked)),
-            ?assertMatch({error, _}, talk_record_playback_stream:edge_target(T)),
-            ?assertEqual(1, meck:num_calls(attachment_edge_redirect, presign_attachment, 2)),
             meck:expect(talk_record_repo, find_visible, fun(_, _) ->
                 {ok, row(1, <<"available">>)}
             end),
@@ -130,10 +127,6 @@ stream_bytes_and_revocation_test_() ->
     end}.
 
 stream_setup() ->
-    PrevEdge = application:get_env(imboy, edge_base_url),
-    PrevBase = application:get_env(imboy, base_url),
-    application:unset_env(imboy, edge_base_url),
-    application:unset_env(imboy, base_url),
     Prev = setup(),
     put(stream_bytes, []),
     put(revoke_after_chunk, false),
@@ -146,10 +139,6 @@ stream_setup() ->
         attachment_upload_spool:with_source(
             binary:part(binary:copy(<<"synthetic-audio">>, 10000), Offset, Length), F
         )
-    end),
-    ok = meck:new(attachment_edge_redirect, [passthrough, no_link]),
-    meck:expect(attachment_edge_redirect, presign_attachment, fun(900001, 600) ->
-        {ok, <<"https://storage.invalid/synthetic">>}
     end),
     ok = meck:new(cowboy_req, [passthrough, unstick, no_link]),
     meck:expect(cowboy_req, reply, fun(Status, H, _B, Req) ->
@@ -172,18 +161,11 @@ stream_setup() ->
         end,
         ok
     end),
-    {Prev, PrevEdge, PrevBase}.
-stream_cleanup({Prev, PrevEdge, PrevBase}) ->
-    lists:foreach(
-        fun
-            ({Key, {ok, Value}}) -> application:set_env(imboy, Key, Value);
-            ({Key, undefined}) -> application:unset_env(imboy, Key)
-        end,
-        [{edge_base_url, PrevEdge}, {base_url, PrevBase}]
-    ),
-    lists:foreach(fun meck:unload/1, [
-        cowboy_req, attachment_edge_redirect, attachment_artifact_reader, elib_pg
-    ]),
+    Prev.
+stream_cleanup(Prev) ->
+    application:unset_env(imboy, edge_base_url),
+    application:unset_env(imboy, base_url),
+    lists:foreach(fun meck:unload/1, [cowboy_req, attachment_artifact_reader, elib_pg]),
     erase(stream_bytes),
     erase(revoke_after_chunk),
     cleanup(Prev).

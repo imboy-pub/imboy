@@ -88,6 +88,7 @@ surface_domain(enterprise_internal) -> <<"ordinary">>;
 surface_domain(enterprise_seat) -> <<"enterprise">>;
 surface_domain(cs_widget) -> <<"enterprise">>.
 
+%% V3-20：disk 驱动退役，driver_mod 仅剩 garage 映射（attachment_storage_disk 已删除）。
 driver_mod(garage) -> attachment_storage_garage;
 driver_mod(<<"garage">>) -> attachment_storage_garage.
 

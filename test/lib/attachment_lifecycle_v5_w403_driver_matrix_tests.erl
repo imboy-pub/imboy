@@ -40,7 +40,11 @@ roundtrip_units() ->
                         end
                     end}
                 }
-             || Surface <- [ordinary, enterprise_internal, enterprise_seat, cs_widget],
+             || Surface <-
+                    %% V3-14：INT 面直传形态无 gateway put 会话（409 拒覆写/
+                    %% pin 链不适用），矩阵收敛三面。
+                    [ordinary, enterprise_seat, cs_widget],
+                %% V3-20：disk 驱动退役，disk 侧矩阵随驱动删除，garage 侧保留。
                 Driver <- [garage]
             ]
         end}.
@@ -93,7 +97,9 @@ sealed_body_validation_units() ->
                         end
                     end}
                 }
-             || Surface <- [enterprise_seat, cs_widget], Driver <- [garage]
+             || Surface <- [enterprise_seat, cs_widget],
+                %% V3-20：disk 驱动退役，disk 侧矩阵随驱动删除，garage 侧保留。
+                Driver <- [garage]
             ]
         end}.
 
@@ -124,7 +130,11 @@ matrix_units() ->
                         atom_to_list(Scenario),
                     {timeout, 180, fun() -> run_leaf(S, Surface, Driver, Scenario) end}
                 }
-             || Surface <- [ordinary, enterprise_internal, enterprise_seat, cs_widget],
+             || Surface <-
+                    %% V3-14：INT 面直传形态无 gateway put 会话（409 拒覆写/
+                    %% pin 链不适用），矩阵收敛三面。
+                    [ordinary, enterprise_seat, cs_widget],
+                %% V3-20：disk 驱动退役，disk 侧矩阵随驱动删除，garage 侧保留。
                 Driver <- [garage],
                 Scenario <- scenarios()
             ]
@@ -161,7 +171,7 @@ run_leaf(S0, Surface, Driver, Scenario) ->
         report_evidence(Leaf)
     end.
 
-%% 逐叶观测：surface × Garage × scenario 断言全过后落盘。
+%% 逐叶观测：64 cell（surface × driver × scenario）断言全过后落盘。
 %% domain 按契约矩阵：enterprise_seat/cs_widget 为 enterprise 面，其余 ordinary。
 %% measured 携带服务器侧绑定证据：evidence(Leaf) 的每条真实请求
 %% （request_id/route/method/handler/status 与 bind_request 绑定的
@@ -319,6 +329,8 @@ scenario(S, Surface, Driver, max_supported_file_gateway_budget) ->
     ?assert(Elapsed < 120000),
     ?assertEqual({ok, Bytes}, ?F:read(T)),
     ?assert(?F:success(?F:confirm(T)));
+%% V3-20：disk 驱动退役，disk_put_delete_lock_order 场景随驱动删除，
+%% 该叶仅保留 garage 的签名过期栅栏（garage_signed_expiry）。
 scenario(S, Surface, garage, disk_put_delete_lock_order_or_garage_expiry_fence) ->
     garage_signed_expiry(short_registration(S, Surface, garage, ?BODY)).
 
@@ -394,6 +406,7 @@ with_put_barrier(T, Fun) ->
     Gate = ets:new(w403_barrier, [public, set]),
     meck:new(Mod, [passthrough, no_link]),
     try
+        %% V3-20：disk 驱动退役，put_snapshot 栅栏仅剩 garage 四参形态。
         case maps:get(driver, T) of
             garage ->
                 meck:expect(Mod, put_snapshot, fun(I, Source, Mime, Ctx) ->
@@ -501,6 +514,7 @@ cleanup_jobs() ->
     ],
     erlang:erase(w403_jobs),
     ok.
+%% V3-20：disk 驱动退役，driver 映射仅剩 garage（attachment_storage_disk 已删除）。
 driver(garage) -> attachment_storage_garage.
 put_calls(Mod) -> meck:num_calls(Mod, put_snapshot, '_').
 
@@ -611,10 +625,14 @@ bypass_denied(#{driver := garage, location := I} = T) ->
     ),
     ?assert(lists:member(Code, [401, 403])),
     bypass_evidence(T, #{provider_http_status => Code}).
+%% V3-20：disk 驱动退役，bypass_denied 的 disk 子句（runuser/sudo/container
+%% 非特权写者拒绝证明）随驱动删除，仅保留 garage 未签名直写拒绝面。
+
 bypass_evidence(T, Detail) ->
     %% EUnit's group leader owns the per-case output consumed by the native
     %% Surefire proof validator. The user device bypasses that capture.
     io:format("W403_PROVIDER_BYPASS ~s~n", [jsone:encode(Detail#{leaf => maps:get(leaf, T)})]).
+
 sample_memory(Parent, Ref, Peak0) ->
     Peak = max(Peak0, erlang:memory(binary)),
     receive
@@ -751,36 +769,3 @@ provider_error_code(Body) ->
         {match, [Code]} -> Code;
         nomatch -> <<"unclassified">>
     end.
-
-deletion_intent(#{surface := Surface, key := Key} = T) when
-    Surface =:= ordinary; Surface =:= enterprise_internal
-->
-    %% Ordinary worker lacks a scoped claim. Refuse to run it if another due job
-    %% exists; never consume, reset or postpone another run's queue rows.
-    {ok, []} = elib_pg:query(
-        <<"SELECT path FROM attachment_object_deletion WHERE job_state IN ('ready','retry_wait') AND next_retry_at<=clock_timestamp() AND attempts<8">>,
-        []
-    ),
-    {ok, [_]} = elib_pg:query(
-        <<"SELECT fn_v5_intent_pending_delete($1,'w403 owned expired upload','sweep')">>, [Key]
-    ),
-    ?assert(erlang:system_time(second) >= maps:get(expiry, T)),
-    {
-        fun attachment_delete_worker:run_batch/0,
-        <<"SELECT job_state FROM attachment_object_deletion WHERE path=$1">>,
-        [Key]
-    };
-deletion_intent(#{fixture := S, confirm_body := Body}) ->
-    Scope = maps:get(scope, S),
-    Org = maps:get(org_id, Scope),
-    Ws = maps:get(workspace_id, Scope),
-    Id = maps:get(asset_id, Body),
-    {ok, [_]} = elib_pg:query(
-        <<"SELECT fn_v5_intent_eb_delete($1,$2,$3,'w403 owned expired upload')">>,
-        [Org, Ws, Id]
-    ),
-    {
-        fun() -> eb_pg_asset_delete_queue:drain(Org, Ws, 1) end,
-        <<"SELECT job_state FROM enterprise_asset_delete_queue WHERE organization_id=$1 AND workspace_id=$2 AND asset_id=$3">>,
-        [Org, Ws, Id]
-    }.

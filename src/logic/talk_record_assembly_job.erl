@@ -40,7 +40,9 @@ run_manifest(P, Job) ->
         "assembly-manifest-" ++
             binary_to_list(binary:encode_hex(crypto:strong_rand_bytes(8), lowercase)),
     Dir = filename:join(Base, Name),
-    ok = file:make_dir(Dir),
+    %% Base（talk_record_render_tmp_dir）可能尚未创建：make_dir 要求父目录
+    %% 存在（缺父即 enoent badmatch 崩 worker），ensure_dir 连父一起建。
+    ok = filelib:ensure_dir(filename:join(Dir, "x")),
     ok = file:change_mode(Dir, 8#700),
     ManifestFile = filename:join(Dir, "manifest.json"),
     {ok, F} = file:open(ManifestFile, [write, binary, exclusive]),

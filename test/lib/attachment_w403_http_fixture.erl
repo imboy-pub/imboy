@@ -47,9 +47,16 @@ setup() ->
         erlang:put(w403_setup_resources, S),
         setup_throttle(),
         own_resource(previous_gateway_tmp, os:getenv("IMBOY_V5_GATEWAY_TMP")),
-        Tmp = filename:join(maps:get(root, S), "gateway-tmp"),
+        %% V3-20：gateway_protocol 不再建 run-owned 根，gateway-tmp 改为系统
+        %% 临时目录下的 run 专属子目录（cleanup 删除）。
+        Tmp = filename:join(
+            system_tmp(),
+            "w403-gateway-tmp-" ++
+                binary_to_list(binary:encode_hex(crypto:strong_rand_bytes(8), lowercase))
+        ),
         ok = file:make_dir(Tmp),
         ok = file:change_mode(Tmp, 8#700),
+        own_resource(gateway_tmp_dir, Tmp),
         true = os:putenv("IMBOY_V5_GATEWAY_TMP", Tmp),
         application:set_env(imboy, api_auth_switch, <<"on">>),
         application:set_env(imboy, base_url, ?ORIGIN),
@@ -121,6 +128,13 @@ cleanup(S) ->
                 {ok, false} -> os:unsetenv("IMBOY_V5_GATEWAY_TMP");
                 {ok, Previous} -> os:putenv("IMBOY_V5_GATEWAY_TMP", Previous);
                 error -> ok
+            end,
+            case maps:get(gateway_tmp_dir, S, undefined) of
+                Dir when is_list(Dir) ->
+                    _ = file:del_dir_r(Dir),
+                    ok;
+                _ ->
+                    ok
             end,
             attachment_lifecycle_v5_w403_gateway_protocol_tests:cleanup(S),
             erase(w403_setup_resources)
@@ -321,9 +335,9 @@ seed(S) ->
 register(S0, Surface, Driver, Bytes) ->
     Leaf = maps:get(leaf, S0, elib_uuid:gen_v7()),
     S = S0#{leaf => Leaf},
+    %% V3-20：disk 驱动退役，disk 注册场景随驱动删除，仅保留 garage 注册面。
     Ns =
         case Driver of
-            disk -> <<"w403-disk">>;
             garage -> <<"w403-garage">>
         end,
     Registry = attachment_storage:registry(),
@@ -349,7 +363,7 @@ register(S0, Surface, Driver, Bytes) ->
     Registered = request(S, Method, Path, Body, Headers, <<"application/json">>),
     ?assert(success(Registered)),
     Data = payload(Registered),
-    {Key, I, Upload, ConfirmBody} =
+    {Key, I, Upload, ConfirmBody, Direct} =
         case Surface of
             Ordinary when Ordinary =:= ordinary; Ordinary =:= enterprise_internal ->
                 K = maps:get(<<"object_key">>, Data),
@@ -359,7 +373,17 @@ register(S0, Surface, Driver, Bytes) ->
                         ordinary -> #{object_key => K, scope => <<"private">>};
                         enterprise_internal -> #{object_key => K}
                     end,
-                {K, Location, maps:get(<<"put_url">>, Data), CB};
+                PutUrl = maps:get(<<"put_url">>, Data),
+                %% V3-14 S3-only 合同：INT-07 的 put_url 是真 Garage 签名
+                %% URL（host = 车道 endpoint，不依赖 base_url）——非
+                %% w403.invalid/相对路径形态时为直传 URL，put 分流直连。
+                Direct =
+                    case PutUrl of
+                        <<"https://w403.invalid/", _/binary>> -> false;
+                        <<"/", _/binary>> -> false;
+                        _ -> true
+                    end,
+                {K, Location, PutUrl, CB, Direct};
             _ ->
                 Id = int(maps:get(<<"asset_id">>, Data)),
                 Scope = maps:get(scope, S),
@@ -386,9 +410,12 @@ register(S0, Surface, Driver, Bytes) ->
                         enterprise_seat -> Base#{workspace_id => maps:get(workspace_id, Scope)};
                         cs_widget -> Base#{installation_id => maps:get(installation_id, S)}
                     end,
-                {K, Location, maps:get(<<"url">>, maps:get(<<"upload">>, Data)), CB#{
-                    asset_id => Id
-                }}
+                Direct = false,
+                {K, Location, maps:get(<<"url">>, maps:get(<<"upload">>, Data)),
+                    CB#{
+                        asset_id => Id
+                    },
+                    Direct}
         end,
     ?assertEqual(Driver, maps:get(driver, I)),
     true = ets:insert(?TABLE, {{object, Key}, I}),
@@ -401,6 +428,7 @@ register(S0, Surface, Driver, Bytes) ->
         key => Key,
         location => I,
         upload_url => Upload,
+        direct_put => Direct,
         headers => Headers,
         confirm_body => ConfirmBody,
         registration => Data,
@@ -463,14 +491,49 @@ registration_request(S, Surface, Bytes, Cid) ->
     end.
 
 put(#{fixture := S, surface := Surface, upload_url := Url} = Session, Bytes) ->
-    Headers =
-        case Surface of
-            enterprise_seat -> maps:get(headers, Session);
-            _ -> #{}
-        end,
-    Response = request(S, put, Url, Bytes, Headers, <<"text/plain">>),
-    ok = bind_request(S, Response, maps:get(key, Session), put),
-    Response.
+    case maps:get(direct_put, Session, false) of
+        true ->
+            %% V3-14 S3-only 直传：INT-07 put_url 是真 Garage 签名 URL——
+            %% 字节直连车道 endpoint（不load本地 listener 观察面），观察
+            %% 记录手工落表（bind_request 契约：先有 {request,leaf,Id}）。
+            Response = direct_put_request(S, Url, Bytes),
+            ok = bind_request(S, Response, maps:get(key, Session), put),
+            Response;
+        false ->
+            Headers =
+                case Surface of
+                    enterprise_seat -> maps:get(headers, Session);
+                    _ -> #{}
+                end,
+            Response = request(S, put, Url, Bytes, Headers, <<"text/plain">>),
+            ok = bind_request(S, Response, maps:get(key, Session), put),
+            Response
+    end.
+
+%% S3 直传签名 URL 的 PUT：不经本地 Cowboy（无 execute/2 trace），按
+%% 观察记录契约手工落一条最小证据（不含 object_key/action——bind_request
+%% 只查这两个键缺席）。返回形状与 request/6 一致。
+direct_put_request(S, Url, Bytes) ->
+    Id = <<"w403-", (elib_uuid:gen_v7())/binary>>,
+    Started = erlang:monotonic_time(millisecond),
+    Req = {binary_to_list(Url), [{"content-type", "text/plain"}], "text/plain", Bytes},
+    {ok, {{_, Status, _}, _RH, RespBody}} = isolated_request(put, Req),
+    true = ets:insert(
+        ?TABLE,
+        {{request, maps:get(leaf, S), Id}, #{
+            request_id => Id,
+            route => <<"<garage-direct-put>">>,
+            method => <<"PUT">>,
+            handler => <<"garage_s3">>,
+            server_process => <<"<garage>">>,
+            connection_id => <<"<direct>">>,
+            observed_at_us => erlang:monotonic_time(microsecond),
+            status => Status,
+            elapsed_ms => erlang:monotonic_time(millisecond) - Started,
+            diagnostic_untrusted_locations => []
+        }}
+    ),
+    #{status => Status, body => RespBody, request_id => Id}.
 
 confirm(#{fixture := S, surface := Surface, confirm_body := Body, headers := Headers}) ->
     Path =
@@ -720,6 +783,15 @@ bind_request(S, #{request_id := Id}, Key, Action) when is_binary(Key) ->
     false = maps:is_key(action, Observed),
     true = ets:insert(?TABLE, {Entry, Observed#{object_key => Key, action => Action}}),
     ok.
+system_tmp() ->
+    case os:getenv("IMBOY_TMP_ROOT") of
+        Dir when is_list(Dir), Dir =/= "" -> Dir;
+        _ ->
+            case file:read_link_all("/tmp") of
+                {ok, Target} -> filename:absname(Target, "/");
+                {error, einval} -> "/tmp"
+            end
+    end.
 max_bytes(ordinary) -> elib_oss:max_file_size();
 max_bytes(enterprise_internal) -> elib_oss:max_file_size();
 max_bytes(_) -> eb_asset_content:max_size_bytes().

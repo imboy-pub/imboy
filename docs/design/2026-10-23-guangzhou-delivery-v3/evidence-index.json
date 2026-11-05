@@ -1,0 +1,98 @@
+{
+  "evidence": [
+    {
+      "id": "backend-final-177-eunit.json",
+      "path": "/Users/leeyi/.codex/cleanup-receipts/20261023-talk-gz/backend-final-177-eunit.json",
+      "exists": true,
+      "sha256": "00e965f82afac7e81acab0c609a8490a427c537cb5494e3e635d72035bbf4fa7",
+      "use": "HISTORICAL_SCOPED_SUPPORT_ONLY",
+      "accepts_v3_leaf": false
+    },
+    {
+      "id": "backend-migration-223-224-225.json",
+      "path": "/Users/leeyi/.codex/cleanup-receipts/20261023-talk-gz/backend-migration-223-224-225.json",
+      "exists": true,
+      "sha256": "cd742038c53896e18a647f3f8237d390e691f4bd30bce06441cb752cf99f254f",
+      "use": "HISTORICAL_SCOPED_SUPPORT_ONLY",
+      "accepts_v3_leaf": false
+    },
+    {
+      "id": "app-final-candidate.json",
+      "path": "/Users/leeyi/.codex/cleanup-receipts/20261023-talk-gz/app-final-candidate.json",
+      "exists": true,
+      "sha256": "e88cb3b60efada2ffdb5b5bcf689f6e07314fe3373c60431af64053a024829ad",
+      "use": "HISTORICAL_SCOPED_SUPPORT_ONLY",
+      "accepts_v3_leaf": false
+    },
+    {
+      "id": "app-final-full-test-native.log",
+      "path": "/Users/leeyi/.codex/cleanup-receipts/20261023-talk-gz/app-final-full-test-native.log",
+      "exists": true,
+      "sha256": "c4e44fd242a3fdd11279e30f78a58c0b3ea5986db96359491319dc14169748f7",
+      "use": "HISTORICAL_SCOPED_SUPPORT_ONLY",
+      "accepts_v3_leaf": false
+    },
+    {
+      "id": "app-final-analyze-r2.log",
+      "path": "/Users/leeyi/.codex/cleanup-receipts/20261023-talk-gz/app-final-analyze-r2.log",
+      "exists": true,
+      "sha256": "111bed24738cc19a4c0dd41847dc2288cdf1f23ced7a1dc2f1c642b120693d8e",
+      "use": "HISTORICAL_SCOPED_SUPPORT_ONLY",
+      "accepts_v3_leaf": false
+    },
+    {
+      "id": "backend-final-dialyze-r3.log",
+      "path": "/Users/leeyi/.codex/cleanup-receipts/20261023-talk-gz/backend-final-dialyze-r3.log",
+      "exists": true,
+      "sha256": "f21191739695ee3693fdfc4bbb8a7fb273da12575a36c454c34cea48626ee84b",
+      "use": "HISTORICAL_SCOPED_SUPPORT_ONLY",
+      "accepts_v3_leaf": false
+    },
+    {
+      "id": "backend-final-security-gate-r2.log",
+      "path": "/Users/leeyi/.codex/cleanup-receipts/20261023-talk-gz/backend-final-security-gate-r2.log",
+      "exists": true,
+      "sha256": "d185875784ae37f39320dca5c1403e26a5bdfda224a9539d3faa5a732379f7e8",
+      "use": "HISTORICAL_SCOPED_SUPPORT_ONLY",
+      "accepts_v3_leaf": false
+    },
+    {
+      "id": "moya-retirement-tests.log",
+      "path": "/Users/leeyi/.codex/cleanup-receipts/20261023-talk-gz/moya-retirement-tests.log",
+      "exists": true,
+      "sha256": "c051a8bd478e8ce7bb2f05aa930c211ef84d16c6aff8027a5a268803844fa96b",
+      "use": "HISTORICAL_SCOPED_SUPPORT_ONLY",
+      "accepts_v3_leaf": false
+    },
+    {
+      "id": "handoff-minimal/guangzhou/checkpoint.json",
+      "path": "/Users/leeyi/.codex/cleanup-receipts/20261023-talk-gz/handoff-minimal/guangzhou/checkpoint.json",
+      "exists": true,
+      "sha256": "6d15247a2c0ebc37cda7d069abd6f699f3da7cc2a0a4981f8ffe59220ee77ef5",
+      "use": "HISTORICAL_SCOPED_SUPPORT_ONLY",
+      "accepts_v3_leaf": false
+    },
+    {
+      "id": "handoff-minimal/guangzhou/candidate-manifest.json",
+      "path": "/Users/leeyi/.codex/cleanup-receipts/20261023-talk-gz/handoff-minimal/guangzhou/candidate-manifest.json",
+      "exists": true,
+      "sha256": "b81f20a6a26b89b153592fadbb6bae4b70f49caeef602c646f69ce3627a896ca",
+      "use": "HISTORICAL_SCOPED_SUPPORT_ONLY",
+      "accepts_v3_leaf": false
+    },
+    {
+      "id": "handoff-minimal/f75e659b8bc9-run-4.terminal.json",
+      "path": "/Users/leeyi/.codex/cleanup-receipts/20261023-talk-gz/handoff-minimal/f75e659b8bc9-run-4.terminal.json",
+      "exists": true,
+      "sha256": "6c76ab0b7c67129a64fa1c7b95e4caabeb491f52c6f6c0fa3a53a96a82d6c3f9",
+      "use": "HISTORICAL_SCOPED_SUPPORT_ONLY",
+      "accepts_v3_leaf": false
+    }
+  ],
+  "notes": [
+    "App log reports 10223 pass/313 skipped; requires skip attribution and full candidate/toolchain/resource receipt reconciliation.",
+    "Backend scoped receipt binds current 9f96b45f; no real ASR/HTTP acceptance.",
+    "Dialyzer baseline GREEN is not original strict raw-zero gate.",
+    "Old checkpoint has multiple stale candidate fields; never resume its NEXT_UNLOCK command or deleted run root."
+  ]
+}

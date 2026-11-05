@@ -58,7 +58,8 @@ specs() ->
         {?CASE, EP, Drv, Scn, <<"enterprise">>}
      || Scn <- ?SCENARIOS,
         EP <- [?EP_SEAT, ?EP_WIDGET],
-        Drv <- [<<"disk">>, <<"garage">>]
+        %% V3-20：disk 驱动退役，维度仅 garage。
+        Drv <- [<<"garage">>]
     ].
 
 %% ------------------------------------------------------------- 分发

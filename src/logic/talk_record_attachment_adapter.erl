@@ -462,6 +462,7 @@ request_record_cleanup_tx(Conn, RecordId) ->
                     {ok, Released} = talk_record_attachment_ref_repo:release_record_tx(
                         Conn, RecordId
                     ),
+                    ok = close_consumed_capability_windows_tx(Conn, RecordId),
                     Outcomes = [cleanup_one_tx(Conn, Path) || #{<<"path">> := Path} <- Attachments],
                     {ok, #{released => Released, outcomes => Outcomes}};
                 {error, _} = Error ->
@@ -495,6 +496,32 @@ lock_cleanup_attachments_tx(Conn, [#{<<"path">> := Path} | Rest]) ->
         {ok, _} -> lock_cleanup_attachments_tx(Conn, Rest);
         {error, _} = Error -> Error
     end.
+
+%% direct-v1 会话的 upload_expires_at 恒 NULL（能力窗由 Garage 预签 URL 承载，
+%% 不落库）；confirm 即消费能力，但删除链守卫（00000237）把 NULL 读作
+%% 「未设窗=永活」→ 意图恒 23510 → 记录永久 retained_by_other_reference。
+%% 记录清理时关闭其全部已确认会话的能力窗（能力已消费、物理删除在即，
+%% 不存在再写路径），使守卫按「窗已耗尽」放行。
+%% 合同张力注记（R16 实证）：00000237 open_capability_window_tx 已将 confirm
+%% 前会话窗落库为 grant+TTL 未来值，本函数的 NULL 单步收窗够不着非 NULL 窗
+%% ——客户端音频管线（client_audio_http_pg 巨型 root）据此断言「记录清理
+%% 不得消费孤儿会话的自然到期等待」，扩展收窗（非 NULL→NULL→过期）会击穿
+%% 该断言。两套件合同互斥，按现状编码保留，收窗扩展需另行设计裁决。
+close_consumed_capability_windows_tx(Conn, RecordId) ->
+    {ok, _} =
+        elib_pg:query(
+            Conn,
+            <<
+                "UPDATE attach_pending p SET upload_expires_at = now()"
+                " FROM attachment a WHERE a.id = p.confirmed_attachment_id"
+                " AND a.path = p.object_key"
+                " AND EXISTS (SELECT 1 FROM talk_record_attachment_ref r"
+                "   WHERE r.attachment_id = a.id AND r.record_id = $1)"
+                " AND p.session_state = 'confirmed' AND p.upload_expires_at IS NULL"
+            >>,
+            [RecordId]
+        ),
+    ok.
 
 cleanup_one_tx(Conn, Path) ->
     case

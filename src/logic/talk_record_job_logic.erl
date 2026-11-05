@@ -54,8 +54,7 @@
 -define(MAX_JOBS_LIST, 100).
 %% 可重试失败错误码白名单：环境性/瞬时失败。input_stale/record_deleted/
 %% missing_sequences/manifest_hash_conflict/part_attachment_missing/
-%% processor_not_implemented/attempts_exhausted 为证据性/结构性失败，
-%% 同输入重试不会变化，不开放人工重试。
+%% processor_not_implemented/attempts_exhausted 等证据性/结构性失败不开放人工重试。
 -define(RETRYABLE_ERRORS, [
     <<"db_error">>,
     <<"lease_grant_failed">>,
@@ -206,8 +205,7 @@ complete_fresh_tx(Conn, Uid, RecordId, ExpectedRevision, IdemKey, Parsed, Resour
             throw({talk_record_rollback, {error, Reason}})
     end.
 
-%% @private complete 门禁：软删 404；仅 owner（可见非 owner 403，不可见
-%% 404）；If-Match 对 record.revision（§3 complete 必须 If-Match）。
+%% @private complete 门禁：软删 404；仅 owner（可见非 owner 403，不可见 404）；If-Match 对 record.revision。
 owner_gate_tx(Conn, Uid, RecordId, ExpectedRevision) ->
     Columns =
         <<"tr.id, tr.owner_user_id, tr.revision, tr.deleted_at,",
@@ -310,9 +308,8 @@ complete_jobs_tx(
 ) ->
     Mode = maps:get(<<"processing_mode">>, RecordRow),
     ContentRevision = maps:get(<<"content_revision">>, RecordRow),
-    %% 成品身份准入（服务器不信任客户端声明）：按 object_key+client_upload_id
-    %% 查询真实 direct CONFIRMED 会话 → 活附件 → winner 物理身份；声明的
-    %% sha256/byte_size/时长必须与真实附件/清单一致。同事务行锁与删除/GC 互斥。
+    %% 成品身份准入（服务器不信任客户端声明）：按 object_key+client_upload_id 查询真实
+    %% direct CONFIRMED 会话→活附件→winner 身份；声明值须与真实附件/清单一致，行锁互斥 GC。
     FinalInput = resolve_final_input_tx(Conn, Uid, RecordId, CaptureId, Parsed),
     {ok, AssembleMark, AssembleJobId} =
         talk_record_job_support:enqueue_job_tx(Conn, #{
@@ -324,16 +321,14 @@ complete_jobs_tx(
             dedupe_key => talk_record_job_support:dedupe_key(<<"assemble">>, RecordId, ManifestHash)
         }),
     ok = assert_final_identity_tx(Conn, AssembleMark, AssembleJobId, FinalInput),
-    %% Q-L1：回填固化行的产出 job（manifest 先落、job 后投递——同一事务；
-    %% 幂等重放/dedupe 命中时写同值，i_tra_job 反查索引因此有真实数据）
+    %% Q-L1：回填固化行的产出 job（同一事务；幂等重放/dedupe 命中写同值，i_tra_job 反查有真实数据）
     _ = elib_pg:query(
         Conn,
         <<"UPDATE talk_record_assembly SET job_id=$2, updated_at=now() WHERE record_id=$1">>,
         [RecordId, AssembleJobId]
     ),
-    %% record_only 不创建模型任务（§4）；transcribe/summarize 建转写任务
-    %% （summary 必须绑定已成功转写版本——§3；V1 转写 job 对未选型处理器
-    %% 诚实挂起 waiting_processor，不伪造成功）
+    %% record_only 不创建模型任务（§4）；transcribe/summarize 建转写任务（summary 须绑定
+    %% 已成功转写版本——§3；V1 对未选型处理器诚实挂起 waiting_processor，不伪造成功）
     ModelJob =
         case Mode of
             M when M =:= <<"transcribe">>; M =:= <<"summarize">> ->
@@ -391,16 +386,13 @@ complete_jobs_tx(
 %% 成品身份准入（final_audio；服务器事实，非客户端声明）
 %% ===================================================================
 
-%% @doc 解析本次 complete 的最终成品上传事实并冻结为作业输入。
-%% 客户端声明只用于与真实会话/附件比对，不作为发布依据：
-%%   1. attach_pending（client_upload_id 幂等键）：direct CONFIRMED 且
-%%      session confirmed；scope/creator 匹配（跨主体按 not found 处理，
-%%      不泄露存在性）；
-%%   2. attachment（confirmed_attachment_id，行锁与删除/GC 互斥）：live、
-%%      scope=talk_record、scope_ref=record_id、file_hash256/size 与声明
-%%      逐一相等；
-%%   3. attach_direct_attempt（WINNER 单行）：真实物理键与 attempt 归属。
-%% 任何环节不符 → final_not_confirmed / final_asset_mismatch（不晋级）。
+%% @doc 解析本次 complete 的最终成品上传事实并冻结为作业输入。客户端声明只用于
+%% 与真实会话/附件比对，不作为发布依据：1) attach_pending（client_upload_id 幂等键）
+%% direct CONFIRMED 且 session confirmed；scope/creator 匹配（跨主体按 not found
+%% 处理，不泄露存在性）；2) attachment（confirmed_attachment_id，行锁与删除/GC 互斥）
+%% live、scope/scope_ref 匹配、file_hash256/size 与声明逐一相等；3) attach_direct_
+%% attempt（WINNER 单行）真实物理键与归属。任何不符 → final_not_confirmed /
+%% final_asset_mismatch（不晋级）。
 -spec resolve_final_input_tx(any(), integer(), integer(), integer(), map()) -> map().
 resolve_final_input_tx(Conn, Uid, RecordId, CaptureId, Parsed) ->
     Decl = maps:get(final_audio, Parsed),
@@ -424,12 +416,15 @@ resolve_final_input_tx(Conn, Uid, RecordId, CaptureId, Parsed) ->
         )
     of
         {ok, [Row]} ->
-            case
-                ec_cnv:to_integer(maps:get(<<"attachment_id">>, Row)) =:=
-                    maps:get(attachment_id, Decl)
-            of
-                true -> final_winner_tx(Conn, Decl, Row, CaptureId);
-                false -> throw({talk_record_rollback, {error, final_asset_mismatch}})
+            %% 声明 attachment_id 可选（缺陷⑫）；存在时仍严格比对（PLAN T3）
+            case maps:get(attachment_id, Decl) of
+                undefined ->
+                    final_winner_tx(Conn, Decl, Row, CaptureId);
+                DeclAid ->
+                    case ec_cnv:to_integer(maps:get(<<"attachment_id">>, Row)) =:= DeclAid of
+                        true -> final_winner_tx(Conn, Decl, Row, CaptureId);
+                        false -> throw({talk_record_rollback, {error, final_asset_mismatch}})
+                    end
             end;
         {ok, []} ->
             throw({talk_record_rollback, {error, final_not_confirmed}});
@@ -438,8 +433,7 @@ resolve_final_input_tx(Conn, Uid, RecordId, CaptureId, Parsed) ->
             throw({talk_record_rollback, {error, db_error}})
     end.
 
-%% @private 客户端声明的 attachment_id 必须等于服务端解析值——裸
-%% attachment_id/任意 object_key 不构成准入证明（PLAN T3）。
+%% @private 客户端声明的 attachment_id 必须等于服务端解析值（PLAN T3 准入锚）。
 final_winner_tx(Conn, Decl, Row, CaptureId) ->
     Key = maps:get(<<"session_object_key">>, Row),
     DeclKey = maps:get(object_key, Decl),
@@ -462,7 +456,8 @@ final_winner_tx(Conn, Decl, Row, CaptureId) ->
                 <<"capture_id">> => CaptureId,
                 <<"object_key">> => Key,
                 <<"client_upload_id">> => maps:get(client_upload_id, Decl),
-                <<"attachment_id">> => maps:get(attachment_id, Decl),
+                %% 服务端解析值恒有：声明端可缺省（缺陷⑫），publish_tx 依赖此键（缺陷⑦）。
+                <<"attachment_id">> => ec_cnv:to_integer(maps:get(<<"attachment_id">>, Row)),
                 <<"sha256">> => maps:get(<<"file_hash256">>, Row),
                 <<"byte_size">> => ec_cnv:to_integer(maps:get(<<"size">>, Row)),
                 <<"sample_rate">> => maps:get(sample_rate, Decl),
@@ -486,9 +481,8 @@ final_winner_tx(Conn, Decl, Row, CaptureId) ->
             throw({talk_record_rollback, {error, db_error}})
     end.
 
-%% @private 首次成品身份冻结（业务幂等）：dedupe 命中既有 assemble job 时，
-%% 同清单重放必须携带同一成品会话；换 object_key/client_upload_id——即使
-%% 字节相同——也明确冲突，让客户端恢复首次会话，不静默替换首次绑定。
+%% @private 首次成品身份冻结（业务幂等）：dedupe 命中既有 assemble job 时，同清单重放
+%% 必须携带同一成品会话；换 object_key/client_upload_id（即使字节相同）也明确冲突。
 -spec assert_final_identity_tx(any(), created | existing, integer(), map()) -> ok.
 assert_final_identity_tx(_Conn, created, _JobId, _FinalInput) ->
     ok;
@@ -508,8 +502,7 @@ assert_final_identity_tx(Conn, existing, JobId, FinalInput) ->
                         false -> throw({talk_record_rollback, {error, final_identity_conflict}})
                     end;
                 _ ->
-                    %% 旧输入形态（无 final_audio）：输入已过时，按冲突处理
-                    %% 而非静默覆盖（本轮 complete 由 job gate input_stale 收敛）。
+                    %% 旧输入形态（无 final_audio）：输入已过时按冲突处理（input_stale 收敛）。
                     throw({talk_record_rollback, {error, final_identity_conflict}})
             end;
         {ok, #{<<"processor_input">> := null}} ->
@@ -521,10 +514,9 @@ assert_final_identity_tx(Conn, existing, JobId, FinalInput) ->
             throw({talk_record_rollback, {error, db_error}})
     end.
 
-%% @doc complete 请求体解析：V1 单 capture 清单 + 必填 manifest_hash 与
-%% final_audio + 可选处理同意。
-%% 返回 #{captures := [#{capture_id,last_seq,manifest_hash}],
-%%        final_audio := #{...}, consent => map()|undefined}。
+%% @doc complete 请求体解析：V1 单 capture 清单 + 必填 manifest_hash 与 final_audio +
+%% 可选处理同意。返回 #{captures := [#{capture_id,last_seq,manifest_hash}],
+%% final_audio := #{...}, consent => map()|undefined}。
 -spec parse_complete(map()) -> {ok, map()} | {error, atom()}.
 parse_complete(Body) when is_map(Body) ->
     case maps:get(<<"captures">>, Body, undefined) of
@@ -587,8 +579,8 @@ parse_decl_hash(Body, Cid, LastSeq, ClientHash) ->
             {error, invalid_manifest_hash}
     end.
 
-%% @private final_audio 形态校验（值级合法性；真实性由 resolve_final_input_tx
-%% 与服务端会话/附件比对）。V1 成品合同：AAC-LC/ADTS 单声道。
+%% @private final_audio 形态校验（值级合法性；真实性由 resolve_final_input_tx 比对）。
+%% V1 成品合同：AAC-LC/ADTS 单声道。
 -spec parse_final_audio(term()) -> {ok, map()} | {error, atom()}.
 parse_final_audio(D) when is_map(D) ->
     ObjectKey = maps:get(<<"object_key">>, D, undefined),
@@ -599,15 +591,14 @@ parse_final_audio(D) when is_map(D) ->
     Channels = maps:get(<<"channels">>, D, undefined),
     Samples = maps:get(<<"sample_count">>, D, undefined),
     DurationMs = maps:get(<<"duration_ms">>, D, undefined),
-    %% PLAN T3 准入证明：attachment_id 为必填（resolve_final_input_tx 以
-    %% 「客户端声明 = 服务端解析」比对其非伪造性）。
+    %% PLAN T3 准入证明：resolve_final_input_tx 以「客户端声明 = 服务端解析」比对。
     Aid = maps:get(<<"attachment_id">>, D, undefined),
     case
         is_binary(ObjectKey) andalso byte_size(ObjectKey) > 0 andalso
             is_uuid36(Cid) andalso is_binary(Sha) andalso is_hex64(Sha) andalso
             positive_int(ByteSize) =/= error andalso positive_int(Rate) =/= error andalso
             Channels =:= 1 andalso positive_int(Samples) =/= error andalso
-            positive_int(DurationMs) =/= error andalso positive_int(Aid) =/= error
+            positive_int(DurationMs) =/= error
     of
         true ->
             {ok, #{
@@ -619,7 +610,12 @@ parse_final_audio(D) when is_map(D) ->
                 channels => Channels,
                 sample_count => Samples,
                 duration_ms => DurationMs,
-                attachment_id => Aid
+                %% 缺陷⑫：可选（DirectUploadResult 不回传 confirmed id）；准入锚不变（PLAN T3）。
+                attachment_id =>
+                    case positive_int(Aid) of
+                        {ok, N} -> N;
+                        _ -> undefined
+                    end
             }};
         false ->
             {error, invalid_final_audio}

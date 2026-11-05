@@ -387,8 +387,48 @@ conn(Ctx) ->
 %%   ws1(owner+member2+guest 的 active workspace_member)
 %%   + project(owner) + 三人 active project_member
 %%   + ch1/ch2（ws1 workspace 频道）+ ch_personal（personal）+ ws2/chws2（跨工作区）
+%% 全局种子用户可能被其他套件的删除链消费（full-20261104T101434Z 实证只剩
+%% 3 行使 LIMIT 4 解构 badmatch）——大 id 段不足 4 个时补齐合成用户，世界自足。
+ensure_seed_users(Conn, Tag) ->
+    {ok, _, [{N}]} =
+        epgsql:equery(
+            Conn,
+            <<"SELECT count(*)::int AS n FROM \"user\" WHERE id >= 9000000000000000000">>,
+            []
+        ),
+    Need = 4 - N,
+    lists:foreach(
+        fun(I) ->
+            Id = 9000000000000010000 + I,
+            Ac = <<"it-world-", Tag/binary, "-", (integer_to_binary(I))/binary>>,
+            %% 同 VM 的 fault-injection 套件可能给「创建用户」装注入失败
+            %% 触发器（full-20261104T114916Z 实证 {injected,step2}）：注入
+            %% 窗口内让过本轮，重查 count 后的下一补种轮自然补齐。
+            case
+                catch epgsql:equery(
+                    Conn,
+                    <<
+                        "INSERT INTO \"user\" (id, password, account) SELECT $1, 'x', $2"
+                        " WHERE NOT EXISTS (SELECT 1 FROM \"user\" WHERE id = $1)"
+                    >>,
+                    [Id, Ac]
+                )
+            of
+                {ok, _} -> ok;
+                _ -> ok
+            end
+        end,
+        lists:seq(1, Need)
+    ),
+    ok.
+
+%% @doc 造一个完整世界：
+%%   ws1(owner+member2+guest 的 active workspace_member)
+%%   + project(owner) + 三人 active project_member
+%%   + ch1/ch2（ws1 workspace 频道）+ ch_personal（personal）+ ws2/chws2（跨工作区）
 setup_world(Tag) ->
     {ok, Conn} = take_conn(),
+    ok = ensure_seed_users(Conn, Tag),
     {ok, _, [{Owner}, {Member2}, {Guest}, {Outsider}]} = epgsql:equery(
         Conn, <<"SELECT id FROM \"user\" ORDER BY id ASC LIMIT 4">>, []
     ),

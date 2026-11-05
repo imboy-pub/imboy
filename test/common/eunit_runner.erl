@@ -39,8 +39,22 @@ run(Modules) when is_list(Modules) ->
     State = eunit_setup(),
     try
         case Modules of
-            [] -> eunit:test([], [verbose]);
-            _ -> eunit:test(Modules, [verbose])
+            [] ->
+                eunit:test([], [verbose]);
+            _ ->
+                %% 组内逐 root 自愈：夹具族（cs_quick_reply 等）setup 用未设
+                %% 的 T05 密码覆盖 pg_conf 且 teardown 不恢复，full 同 VM
+                %% 下游连环 invalid_password/no_members（full-20261104T081330Z
+                %% 实证 48 新增根；group-20261104T094* 单 VM 顺序复现实证）。
+                %% boot 只钉一次接不住组内泄漏，逐 root 前重跑钉容量 + 基线
+                %% 恢复（幂等；listener 按事件收，不依赖单次调用返回值）。
+                lists:foreach(
+                    fun(M) ->
+                        enforce_pool_capacity(),
+                        _ = eunit:test([M], [verbose])
+                    end,
+                    Modules
+                )
         end
     after
         eunit_cleanup(State)
@@ -107,6 +121,7 @@ eunit_setup() ->
     %% 才能覆写。启动结果自此与根调度顺序解耦。
     application:unset_env(throttle, rates),
     load_test_config(),
+    snapshot_pg_conf_baseline(),
     enforce_pool_capacity(),
     application:set_env(imboy, sql_driver, pgsql),
     application:set_env(imboy, env, test),
@@ -867,25 +882,57 @@ test_config_path() ->
 enforce_pool_capacity() ->
     case application:get_env(imboy, pg_conf) of
         {ok, PgConf} when is_map(PgConf) ->
-            Init = maps:get(init_count, PgConf, 0),
-            case Init >= ?MIN_POOL_INIT_COUNT of
+            case capacity_ok(PgConf) of
                 true ->
                     realign_default_pool(PgConf);
                 false ->
-                    Max = maps:get(max_count, PgConf, 0),
-                    NewMax = erlang:max(Max, ?MIN_POOL_INIT_COUNT + 8),
-                    application:set_env(
-                        imboy,
-                        pg_conf,
-                        PgConf#{init_count := ?MIN_POOL_INIT_COUNT, max_count := NewMax}
-                    ),
-                    realign_default_pool(
-                        PgConf#{init_count := ?MIN_POOL_INIT_COUNT, max_count := NewMax}
-                    )
+                    %% 夹具可能把 pg_conf 恢复成仅含连接键/自管池指向的形态
+                    %% 且 teardown 未还原（cs_quick_reply、owned fixture 等
+                    %% 同族）——先恢复本 VM boot 时的 -config 基线再钉容量，
+                    %% 泄漏形态不再污染下游全部套件（full-20261104T044151Z
+                    %% group_2 badkey 148 根、group_3 no_connection 实证）。
+                    Repaired = ensure_capacity(baseline_pg_conf(PgConf)),
+                    application:set_env(imboy, pg_conf, Repaired),
+                    realign_default_pool(Repaired)
             end;
         _ ->
             ok
     end.
+
+%% boot 时（load_test_config 之后、任何夹具动手之前）的 -config 口径快照。
+snapshot_pg_conf_baseline() ->
+    case application:get_env(imboy, pg_conf) of
+        {ok, Conf} when is_map(Conf) ->
+            case maps:size(Conf) > 1 of
+                true -> persistent_term:put({?MODULE, pg_conf_baseline}, Conf);
+                false -> ok
+            end;
+        _ ->
+            ok
+    end.
+
+%% 形态完整且容量达下限才算 OK；缺任一容量键都触发基线自愈。
+capacity_ok(#{init_count := IC, max_count := MC}) when is_integer(IC), is_integer(MC) ->
+    IC >= ?MIN_POOL_INIT_COUNT;
+capacity_ok(_) ->
+    false.
+
+%% 基线不可用时退回现值（=> 补默认容量，78ef5987b 语义延续）。
+baseline_pg_conf(PgConf) ->
+    case persistent_term:get({?MODULE, pg_conf_baseline}, undefined) of
+        Conf when is_map(Conf) ->
+            case maps:size(Conf) > 1 of
+                true -> Conf;
+                false -> PgConf
+            end;
+        _ ->
+            PgConf
+    end.
+
+ensure_capacity(PgConf) ->
+    Max = maps:get(max_count, PgConf, 0),
+    NewMax = erlang:max(Max, ?MIN_POOL_INIT_COUNT + 8),
+    PgConf#{init_count => ?MIN_POOL_INIT_COUNT, max_count => NewMax}.
 
 %% 容量代际对齐（rv4 full-20261030T225326Z 根A snapshot_default_pool L318
 %% 第三形态实证，group-20261031T015444Z 复现：conf_init=40 vs dump_init=5，

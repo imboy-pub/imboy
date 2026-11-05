@@ -43,6 +43,7 @@
 -define(BODY, <<"w601 pending multipart controlled bytes">>).
 
 -define(DOMAINS, [<<"ordinary">>, <<"enterprise">>]).
+%% V3-20：disk 驱动退役，driver 维度仅剩 garage。
 -define(DRV, [garage]).
 
 w601_w2_pending_test_() ->
@@ -697,6 +698,7 @@ multipart_register(S, Driver, Extra) ->
         client_upload_id => Cid
     }.
 
+%% V3-20：disk 驱动退役，ns_of 仅剩 garage。
 ns_of(garage) -> <<"w403-garage">>.
 
 multipart_body(Boundary, Bytes) ->

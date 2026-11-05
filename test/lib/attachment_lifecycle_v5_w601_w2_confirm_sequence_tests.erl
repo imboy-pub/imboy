@@ -101,6 +101,7 @@ first_write_precedes_barrier() ->
     Result = ?C:imm_scenario(
         #{leaf => <<"test">>},
         ordinary,
+        %% V3-20：disk 驱动退役，imm_scenario 维度仅 garage。
         garage,
         <<"put_A_confirm_old_capability_put_B">>
     ),
@@ -115,6 +116,7 @@ backend_failure_is_not_a_conflict() ->
         ?C:imm_scenario(
             #{leaf => <<"test">>},
             ordinary,
+            %% V3-20：disk 驱动退役，imm_scenario 维度仅 garage。
             garage,
             <<"put_A_confirm_old_capability_put_B">>
         )
@@ -128,6 +130,7 @@ unexpected_provider_write_is_released_and_rejected() ->
         ?C:imm_scenario(
             #{leaf => <<"test">>},
             ordinary,
+            %% V3-20：disk 驱动退役，imm_scenario 维度仅 garage。
             garage,
             <<"put_A_confirm_old_capability_put_B">>
         )
@@ -142,6 +145,7 @@ changed_pin_is_rejected() ->
         ?C:imm_scenario(
             #{leaf => <<"test">>},
             ordinary,
+            %% V3-20：disk 驱动退役，imm_scenario 维度仅 garage。
             garage,
             <<"put_A_confirm_old_capability_put_B">>
         )

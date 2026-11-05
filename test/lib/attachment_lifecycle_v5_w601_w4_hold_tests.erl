@@ -1,15 +1,15 @@
-%%% @doc W6-01 E 组：W4-01/hold-entrypoints（144 叶）+ W4-01/delete-entrypoints
-%%% （24 叶），schema_phase=integrated，driver ∈ {disk, garage} 真实双边界。
+%%% @doc W6-01 E 组：W4-01/hold-entrypoints + W4-01/delete-entrypoints，
+%%% schema_phase=integrated（V3-20：disk 驱动退役，driver 维度仅 garage）。
 %%%
 %%% hold-entrypoints 逐叶 = 生产入口 × 治理 fixture × driver：每叶独立种子
-%%% （confirmed 元数据/企业/pending 资产，位置三元组指向该叶 driver 的真实
-%%% registry 根）+ 真实治理行 + 真实入口执行，断言资产行保留、零 ready job、
-%%% 探针字节完好（disk 文件/garage 对象真实读回）。
+%%% （confirmed 元数据/企业/pending 资产，位置三元组指向 garage registry 根）
+%%% + 真实治理行 + 真实入口执行，断言资产行保留、零 ready job、
+%%% 探针字节完好（garage 对象真实读回）。
 %%%
 %%% delete-entrypoints 逐叶 = 物理删除调用图静态门（扫描 12 入口生产模块，
 %%% 直接存储删除直调必须为 0；eb_asset_store 唯一 drain-worker 豁免）+
-%%% driver 边界检查（该 driver 的唯一合法删除边界 attachment_storage_disk /
-%%% attachment_storage_garage 已装载且导出 delete/3）。
+%%% driver 边界检查（唯一合法删除边界 attachment_storage_garage 已装载且
+%%% 导出 delete/3）。
 %%%
 %%% 复用：W4-01 hold 矩阵 oracle 与 test/repo/attachment_lifecycle_v5_w401_
 %%% hold_entrypoints_tests 逐字一致（fixture 安装、入口调用、no-delete 断言）。
@@ -100,7 +100,8 @@ hold_specs() ->
     [
         {?C_HOLD, Entry, Driver, Scenario, Domain}
      || {Entry, Domain} <- hold_entrypoints(),
-        Driver <- [<<"disk">>, <<"garage">>],
+        %% V3-20：disk 驱动退役，disk 侧叶随驱动删除。
+        Driver <- [<<"garage">>],
         Scenario <- fixture_binaries()
     ].
 
@@ -108,7 +109,8 @@ delete_specs() ->
     [
         {?C_DEL, Entry, Driver, <<"physical_delete_callgraph">>, Domain}
      || {Entry, Domain} <- hold_entrypoints(),
-        Driver <- [<<"disk">>, <<"garage">>]
+        %% V3-20：disk 驱动退役，disk 侧叶随驱动删除。
+        Driver <- [<<"garage">>]
     ].
 
 hold_entrypoints() ->
@@ -424,7 +426,7 @@ delete_scenario(_St, {_C, Entry, Driver, <<"physical_delete_callgraph">>, _Domai
         sanctioned_delete_export_present => true
     }.
 
-sanctioned_module(<<"disk">>) -> attachment_storage_disk;
+%% V3-20：disk 驱动退役，sanctioned 删除边界仅剩 garage。
 sanctioned_module(<<"garage">>) -> attachment_storage_garage.
 
 exemption(Mods) ->

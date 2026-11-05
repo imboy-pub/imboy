@@ -207,10 +207,17 @@ worker_main_group(TestMods, SpecWrapper, StreamPath) ->
                 {ok, FH} = file:open(P, [append, binary, raw]),
                 FH
         end,
+    %% 组内逐根恢复 pg_conf 基线：夹具族 set_env 后不恢复（cs_quick_reply 族
+    %% 实证）会让同 VM 后续根的 config_pg_conn/marker 连接全灭
+    %% （invalid_password/no_members 连环，full-20261104T081330Z 48 新增根）。
+    %% 快照取「任何夹具动手之前」的 -config 口径，每根开始前若漂移即回滚
+    %% 并按基线重建默认池。
+    PgConfBaseline = pg_conf_baseline(),
     try
         maps:from_list(
             lists:map(
                 fun(Mod) ->
+                    restore_pg_conf_baseline(PgConfBaseline),
                     stream_event(File, {start, Mod}),
                     T0 = erlang:monotonic_time(millisecond),
                     {EunitReturn, Counts, Events} = worker_main(Mod, SpecWrapper),
@@ -429,6 +436,36 @@ stream_parse(Bin, Acc) ->
     end.
 
 %% worker VM 环境摘要（纯数据，不崩溃：未加载模块返回 non_existing/bad_name）
+%% 「任何夹具动手之前」的 pg_conf 口径（-config 注入态）。形态不完整
+%% （缺键/非 map/单键）不作为基线，避免把夹具中间态固化。
+pg_conf_baseline() ->
+    case application:get_env(imboy, pg_conf) of
+        {ok, Conf} when is_map(Conf) ->
+            case maps:size(Conf) > 1 of
+                true -> Conf;
+                false -> undefined
+            end;
+        _ ->
+            undefined
+    end.
+
+restore_pg_conf_baseline(undefined) ->
+    ok;
+restore_pg_conf_baseline(Baseline) ->
+    case application:get_env(imboy, pg_conf) of
+        {ok, Baseline} ->
+            ok;
+        _ ->
+            application:set_env(imboy, pg_conf, Baseline),
+            %% 前序夹具可能 rm/new 过默认池：按基线重建，env 与池代际对齐
+            %% （与 eunit_runner:realign_default_pool 同语义）。必须经
+            %% eunit_runner:ensure_default_pool——pooler:new_pool 需要
+            %% name 键，直接传基线 map 会在 rm 后静默重建失败，整根
+            %% take_member noproc（第十一轮 user_logic ×3 根因）。
+            _ = eunit_runner:ensure_default_pool(),
+            ok
+    end.
+
 worker_env() ->
     #{
         node => node(),

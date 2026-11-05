@@ -19,7 +19,7 @@ new(C, R, J, Run) ->
     Plan = talk_record_provider_contract:plan(Snapshot),
     freeze(C, Run, Plan),
     %% no-backend-ffmpeg V1：rate 来自 assemble 校验通过的冻结成品参数。
-    Rate = final_rate(J),
+    Rate = final_rate(C, maps:get(<<"id">>, R)),
     Profile = talk_record_provider_contract:profile(Rate),
     Previous = predecessor(C, R, J, Run),
     T = (maps:with(
@@ -59,14 +59,35 @@ new(C, R, J, Run) ->
         C, R, J, Run, talk_record_provider_ds:task(C, maps:get(<<"id">>, R), maps:get(<<"id">>, T))
     ).
 
-%% 冻结成品真实采样率（complete 事务准入时写入 processor_input）。
-final_rate(J) ->
-    Pin = maps:get(<<"processor_input">>, J, null),
+%% 冻结成品真实采样率：complete 事务准入把 final_audio 钉在 assemble job
+%% 的 processor_input（BYOK transcribe job 的 processor_input 不含此键），
+%% 故从本记录 succeeded 的 assemble job 读证据——单一事实源，不在
+%% processing-requests 处重复成品准入逻辑。
+final_rate(C, Rid) ->
+    Pin =
+        case
+            elib_pg:query(
+                C,
+                %% 重录换 manifest 会再建 assemble job（旧行仍 succeeded）——
+                %% 取最新 succeeded 行对应当前发布成品。
+                <<
+                    "SELECT processor_input FROM talk_record_job"
+                    " WHERE record_id=$1 AND kind='assemble' AND state='succeeded'"
+                    " ORDER BY id DESC LIMIT 1"
+                >>,
+                [Rid]
+            )
+        of
+            {ok, [Row]} -> maps:get(<<"processor_input">>, Row, null);
+            _ -> null
+        end,
     Final =
         case Pin of
             Bin when is_binary(Bin) -> jsone:decode(Bin);
             M when is_map(M) -> M;
-            _ -> null
+            %% BYOK transcribe job 无 assemble 成品（processor_input 缺
+            %% final_audio 键）：走 final_input_missing，不因 null 容器崩。
+            _ -> #{}
         end,
     case maps:get(<<"final_audio">>, Final, undefined) of
         #{<<"sample_rate">> := Rate} when is_integer(Rate), Rate > 0 ->

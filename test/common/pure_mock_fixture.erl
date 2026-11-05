@@ -117,6 +117,8 @@ cleanup(Configs, Env) ->
         end,
         Modules
     ),
+    %% 明细在 unload 之前取证（unload 后 history 为空，诊断失效）
+    UnexpectedDetail = unexpected_history(Modules, Declared),
     lists:foreach(
         fun(M) ->
             case lists:member(M, meck:mocked()) of
@@ -131,5 +133,36 @@ cleanup(Configs, Env) ->
         application:get_all_env(imboy)
     ),
     lists:foreach(fun({K, V}) -> application:set_env(imboy, K, V) end, Env),
-    false = Unexpected,
+    %% fail-closed 且可诊断：erlang:error 直接带未声明调用明细（模块+调用+结果），
+    %% 不再退化成不可定位的 `false = true`。
+    case Unexpected of
+        false -> ok;
+        true -> erlang:error({undeclared_mock_calls, UnexpectedDetail})
+    end,
     ok.
+
+%% 未声明调用明细：[{模块, 调用三元组, 结果}, ...]（截取前 20 条防日志爆炸）。
+unexpected_history(Modules, Declared) ->
+    lists:append(
+        [
+            unexpected_module_history(M, Declared)
+         || M <- Modules,
+            lists:member(M, meck:mocked())
+        ]
+    ).
+
+unexpected_module_history(M, Declared) ->
+    unexpected_entries(M, lists:sublist(meck:history(M), 20), Declared, []).
+
+unexpected_entries(_M, [], _Declared, Acc) ->
+    lists:reverse(Acc);
+unexpected_entries(M, [Entry | Rest], Declared, Acc) ->
+    {Mod, F, Args} = element(2, Entry),
+    case Declared(Mod, F, Args) of
+        true ->
+            unexpected_entries(M, Rest, Declared, Acc);
+        false ->
+            unexpected_entries(M, Rest, Declared, [
+                {M, element(2, Entry), element(3, Entry)} | Acc
+            ])
+    end.
