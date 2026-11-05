@@ -368,7 +368,9 @@ registration_location(Scope, Bucket, Key) ->
 
 %% 队列/metadata 必须提交完整冻结身份；不能从当前默认根补齐未知值。
 frozen_location(Key, Row) -> location_row(Key, Row).
-delete_snapshot(#{driver := disk} = I) -> attachment_storage_disk:delete_snapshot(I);
+%% V3-20 退役：disk root 一律 unsupported（与 driver_module 同语义）——历史
+%% disk 行 fail-closed 拒删拒 head（数据保守保留），不再指向已删除的模块。
+delete_snapshot(#{driver := disk}) -> {error, disk_driver_retired};
 delete_snapshot(#{driver := garage} = I) -> attachment_storage_garage:delete_snapshot(I);
 delete_snapshot(_) -> {error, location_unverified}.
 
@@ -384,7 +386,7 @@ delete_snapshot(_) -> {error, location_unverified}.
         identity => {integer(), integer(), integer()}
     }}
     | {error, not_found | term()}.
-head_snapshot(#{driver := disk} = I) -> attachment_storage_disk:head_snapshot(I);
+head_snapshot(#{driver := disk}) -> {error, disk_driver_retired};
 head_snapshot(#{driver := garage} = I) -> attachment_storage_garage:head_snapshot(I);
 head_snapshot(_) -> {error, location_unverified}.
 

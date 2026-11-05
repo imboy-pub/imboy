@@ -79,6 +79,10 @@ source_authority_tx(C, #{rid := Rid, jid := Jid, run_id := RunId, seq := 0}) ->
             Request = maps:get(<<"request">>, Profile),
             {ok, (maps:merge(T, Request))#{
                 <<"run_id">> => maps:get(<<"source_run_id">>, T),
+                %% jsonb 列经 epgsql 返回原始 binary——回填解码后的 profile，
+                %% 否则 audio_contract:task/6 的 profile_rate 收到 binary 即
+                %% profile_policy_invalid（源 URL 签发全链 409）。
+                <<"request_profile">> => Profile,
                 <<"attachment_id">> => maps:get(<<"id">>, A),
                 <<"attachment_hash">> => maps:get(<<"sha256">>, A),
                 <<"manifest_hash">> => maps:get(<<"input_manifest_hash">>, T),

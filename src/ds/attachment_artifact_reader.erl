@@ -100,6 +100,8 @@ spool(I, Size, Hash, Fun) ->
             Error
     end.
 
+%% V3-20 退役：disk root 一律 unsupported——历史 disk 行 fail-closed 拒读
+%% （数据保守保留），不再指向已删除的 attachment_storage_disk 模块。
 copy(#{driver := disk}, _Writer, _Size) ->
     {error, disk_driver_retired};
 copy(#{driver := garage} = I, Writer, Size) ->

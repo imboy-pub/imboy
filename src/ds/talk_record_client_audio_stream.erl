@@ -45,7 +45,9 @@ with_published_range(Aid, Offset, Length, Fun) ->
                 elib_pg:query(
                     C,
                     <<
-                        "SELECT a.path, a.size, a.file_hash256"
+                        "SELECT a.path, a.size, a.file_hash256,"
+                        " a.storage_driver, a.storage_namespace, a.storage_container,"
+                        " a.storage_locator_sha256, a.storage_physical_key"
                         " FROM talk_record_assembly m"
                         " JOIN attachment a ON a.id = m.audio_attachment_id"
                         " JOIN talk_record_job j ON j.record_id = m.record_id"
