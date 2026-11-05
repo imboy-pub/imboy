@@ -77,6 +77,9 @@ jobs:
           bash scripts/check_cron_config.sh
           bash scripts/check_cron_config.sh --self-test
 
+      - name: Check Makefile dependency and release evaluation
+        run: python3 -m unittest discover -s scripts/test -p test_makefile.py -v
+
       - name: Compile
         run: |
           IMBOYENV=local make test-build

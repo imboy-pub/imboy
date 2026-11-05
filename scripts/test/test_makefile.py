@@ -1,8 +1,10 @@
+import io
 import json
 import os
 from pathlib import Path
 import shutil
 import subprocess
+import tarfile
 import tempfile
 import unittest
 
@@ -110,16 +112,93 @@ Path("run.env").write_text(json.dumps({name: os.environ.get(name) for name in
         self.assertIn("sys=[config/sys.config]", self.make("probe").stdout)
         self.assertIn("default=[test-build]", self.make("probe").stdout)
 
+    def hex_fixture(self):
+        # Exercise erlang.mk's actual eval-generated fetch/extract recipe offline.
+        # Only the Hex transport is replaced; no shared deps/cache or network I/O.
+        self.write(".erlang.mk/dep_built/hex_core", "offline transport fixture\n")
+        self.write("fixtures/hex_core.erl", '''-module(hex_core).
+-export([default_config/0]).
+default_config() -> #{offline_fixture => true}.
+''')
+        self.write("fixtures/hex_repo.erl", '''-module(hex_repo).
+-export([get_tarball/3]).
+get_tarball(#{offline_fixture := true} = Config, <<"fixture">>, <<"1.0.0">>) ->
+    ok = file:write_file("hex.request", <<"fixture 1.0.0">>),
+    case maps:get(response_status, Config, 200) of
+        200 ->
+            {ok, Tarball} = file:read_file("fixtures/package.tar"),
+            {ok, {200, [], Tarball}};
+        Status -> {ok, {Status, [], <<"offline fixture failure">>}}
+    end.
+''')
+        subprocess.run(
+            ["erlc", "-Werror", "-o", "fixtures", "fixtures/hex_core.erl", "fixtures/hex_repo.erl"],
+            cwd=self.root, env=self.environment, check=True, capture_output=True, timeout=20,
+        )
+        payload = b"verified local Hex payload\n"
+        contents = io.BytesIO()
+        with tarfile.open(fileobj=contents, mode="w:gz") as archive:
+            member = tarfile.TarInfo("payload.txt")
+            member.size = len(payload)
+            archive.addfile(member, io.BytesIO(payload))
+        with tarfile.open(self.root / "fixtures/package.tar", mode="w") as archive:
+            member = tarfile.TarInfo("contents.tar.gz")
+            member.size = len(contents.getvalue())
+            archive.addfile(member, io.BytesIO(contents.getvalue()))
+        return (
+            str(self.root / "deps/fixture"), "DEPS=fixture", "dep_fixture=hex 1.0.0",
+            "NO_AUTOPATCH=fixture", "ERL=erl -noshell -pa fixtures",
+            "CACHE_DIR=" + str(self.root / "cache"),
+        ), payload
+
+    def test_hex_fetch_runs_before_extraction_with_and_without_cache(self):
+        arguments, payload = self.hex_fixture()
+        for cached in (0, 1):
+            with self.subTest(cached=cached):
+                shutil.rmtree(self.root / "deps/fixture", ignore_errors=True)
+                self.make(*arguments, "CACHE_DEPS=" + str(cached))
+                self.assertEqual((self.root / "hex.request").read_text(), "fixture 1.0.0")
+                self.assertEqual((self.root / "deps/fixture/payload.txt").read_bytes(), payload)
+                (self.root / "hex.request").unlink()
+                shutil.rmtree(self.root / "deps/fixture")
+                if cached:
+                    # A populated cache must work when the transport would fail.
+                    self.make(*arguments, "CACHE_DEPS=1", "HEX_CONFIG=#{response_status => 503}")
+                    self.assertFalse((self.root / "hex.request").exists())
+                    self.assertEqual((self.root / "deps/fixture/payload.txt").read_bytes(), payload)
+
+    def test_hex_download_and_archive_failures_remain_failures(self):
+        arguments, _ = self.hex_fixture()
+        for cached in (0, 1):
+            for failure in ("transport", "archive"):
+                with self.subTest(cached=cached, failure=failure):
+                    if failure == "archive":
+                        (self.root / "fixtures/package.tar").write_bytes(b"invalid archive")
+                    status = 503 if failure == "transport" else 200
+                    result = self.make(
+                        *arguments, "CACHE_DEPS=" + str(cached),
+                        "HEX_CONFIG=#{response_status => " + str(status) + "}", success=False,
+                    )
+                    self.assertEqual((self.root / "hex.request").read_text(), "fixture 1.0.0")
+                    if failure == "transport":
+                        self.assertIn("Error 503", result.stdout)
+                    self.assertFalse((self.root / "deps/fixture/payload.txt").exists())
+                    (self.root / "hex.request").unlink()
+                    shutil.rmtree(self.root / "deps/fixture")
+
     def test_audit_and_help_have_no_release_side_effects(self):
         self.write("relxlocal.config", "this is invalid Erlang\n")
         self.write(".env.local", "BIGMODEL_API_KEY=$(touch SECRET_READ)\n")
+        erlang_probe = self.write("bin/erl-probe", '#!/bin/sh\nprintf called >> erlang.calls\nexit 93\n')
+        erlang_probe.chmod(0o755)
         for executable in dict.fromkeys([MAKE, shutil.which("make")]):
             for arguments in (("help",), ("mod-check",), ("-j4", "help", "mod-check")):
                 with self.subTest(make=executable, arguments=arguments):
-                    self.make(*arguments, "IMBOYENV=local", executable=executable)
+                    self.make(*arguments, "IMBOYENV=local", "ERL=bin/erl-probe", executable=executable)
                     self.assertFalse((self.root / "config/sys.runtime.config").exists())
                     self.assertFalse((self.root / "deps").exists())
                     self.assertFalse((self.root / "SECRET_READ").exists())
+                    self.assertFalse((self.root / "erlang.calls").exists())
         result = self.make("mod-check", "_RELX_SRC=$(if true, relxlocal.config)")
         self.assertIn("audit:check", result.stdout)
         self.environment["AUDIT_EXIT"] = "7"
