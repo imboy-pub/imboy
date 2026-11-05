@@ -72,7 +72,10 @@ specs() ->
 dual(Case, Entry, Scenarios) ->
     [
         {Case, Entry, Drv, Scn, Dom}
-     || Scn <- Scenarios, Dom <- [?ORD, ?ENT], Drv <- [<<"disk">>, <<"garage">>]
+     || %% V3-20：disk 驱动退役，维度仅 garage。
+        Scn <- Scenarios,
+        Dom <- [?ORD, ?ENT],
+        Drv <- [<<"garage">>]
     ].
 
 garage_dual(Case, Entry, Scenarios) ->
@@ -88,7 +91,8 @@ cross_specs() ->
     [
         {<<"W4-02/cross-queue-identity">>, <<"cross-queue-identity">>, Drv, Scn, ?XDOM}
      || Scn <- [<<"simultaneous_domain_producers">>, <<"unknown_shared_history">>],
-        Drv <- [<<"disk">>, <<"garage">>]
+        %% V3-20：disk 驱动退役，维度仅 garage。
+        Drv <- [<<"garage">>]
     ].
 
 %% ------------------------------------------------------------- 分发

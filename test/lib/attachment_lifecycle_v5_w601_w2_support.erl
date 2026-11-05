@@ -88,9 +88,8 @@ surface_domain(enterprise_internal) -> <<"ordinary">>;
 surface_domain(enterprise_seat) -> <<"enterprise">>;
 surface_domain(cs_widget) -> <<"enterprise">>.
 
-driver_mod(disk) -> attachment_storage_disk;
+%% V3-20：disk 驱动退役，driver_mod 仅剩 garage 映射（attachment_storage_disk 已删除）。
 driver_mod(garage) -> attachment_storage_garage;
-driver_mod(<<"disk">>) -> attachment_storage_disk;
 driver_mod(<<"garage">>) -> attachment_storage_garage.
 
 put_calls(Mod) -> meck:num_calls(Mod, put_snapshot, '_').

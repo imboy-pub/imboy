@@ -81,7 +81,8 @@ group_specs(Case, Entry, Scenarios) ->
         {Case, Entry, Drv, Scn, Dom}
      || Scn <- Scenarios,
         Dom <- [?ORD, ?ENT],
-        Drv <- [<<"disk">>, <<"garage">>]
+        %% V3-20：disk 驱动退役，维度仅 garage。
+        Drv <- [<<"garage">>]
     ].
 
 %% worker-crash 合同仅 6 叶：3 scenario × 2 domain × garage。

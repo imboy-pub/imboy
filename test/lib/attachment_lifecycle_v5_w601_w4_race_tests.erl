@@ -1,5 +1,6 @@
-%%% @doc W6-01 E 组：W4-01 三组竞态（reference-gc-race 16 + hold-gc-race 16 +
-%%% confirm-gc-race 8 叶），schema_phase=integrated，2 域 × 2 driver。
+%%% @doc W6-01 E 组：W4-01 三组竞态（reference-gc-race + hold-gc-race +
+%%% confirm-gc-race），schema_phase=integrated（V3-20：disk 驱动退役，
+%%% driver 维度仅 garage，2 域）。
 %%%
 %%% oracle 复用封印源：reference/confirm 镜像 pg_tests（W3-01 bind 先提交 =>
 %%% 意图拒绝；intent 先提交 => 绑定 0 行/confirm 重放 23510；confirm 先提交 =>
@@ -60,17 +61,24 @@ specs() ->
     %% 元组字段序与其余套件一致：{Case, Entry, Driver, Scenario, Domain}。
     Refs = [
         {?C_REF, <<"reference-gc-race">>, Drv, Scn, Dom}
-     || Scn <- ?REF_SCENARIOS, Dom <- [?ORD, ?ENT], Drv <- [<<"disk">>, <<"garage">>]
+     || %% V3-20：disk 侧叶随驱动删除。
+        Scn <- ?REF_SCENARIOS,
+        Dom <- [?ORD, ?ENT],
+        Drv <- [<<"garage">>]
     ],
     Holds = [
         {?C_HOLD, <<"hold-gc-race">>, Drv, Scn, Dom}
-     || Scn <- ?HOLD_SCENARIOS, Dom <- [?ORD, ?ENT], Drv <- [<<"disk">>, <<"garage">>]
+     || %% V3-20：disk 侧叶随驱动删除。
+        Scn <- ?HOLD_SCENARIOS,
+        Dom <- [?ORD, ?ENT],
+        Drv <- [<<"garage">>]
     ],
     Confs = [
         {?C_CONF, <<"confirm-gc-race">>, Drv, Scn, Dom}
      || Scn <- [<<"confirm_commits_first">>, <<"intent_commits_first">>],
         Dom <- [?ORD, ?ENT],
-        Drv <- [<<"disk">>, <<"garage">>]
+        %% V3-20：disk 侧叶随驱动删除。
+        Drv <- [<<"garage">>]
     ],
     Refs ++ Holds ++ Confs.
 

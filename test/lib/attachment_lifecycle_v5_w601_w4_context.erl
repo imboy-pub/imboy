@@ -1,13 +1,15 @@
 %%% @doc W6-01 E 组（W4-01/W4-02/W4-04 共 450 叶）共享 fixture 上下文。
 %%% 队列协议原语（claim/ack/reap/drain）在 w601_w4_queueproto。
 %%%
-%%% 每套件一个 {setup,...}：独立 marker DB（env_prefix 各异）+ 真实双 driver
-%%% registry（disk root 指向 run-owned 目录；garage root 指向 W202_GARAGE_*
-%%% 真实桶）。身份三元组 (driver, ns, container, locator) 一律由 registry
-%%% 解析（attachment_storage:identity），磁盘/garage 探针字节都是真实写读。
+%%% 每套件一个 {setup,...}：独立 marker DB（env_prefix 各异）+ 真实 garage
+%%% registry（指向 W202_GARAGE_* 真实桶）。身份三元组
+%%% (driver, ns, container, locator) 一律由 registry 解析
+%%% （attachment_storage:identity），garage 探针字节是真实写读。
+%%% V3-20：disk 驱动退役，disk root/disk 探针维度随驱动删除，残存的
+%%% disk 叶展开在 ns/container/put_probe 处 fail-closed 暴露。
 %%%
-%%% schema_phase 恒 <<"integrated">>（合同 W6-01/real-pg-garage-disk 全部
-%%% 450 叶的叶值）；emit 只在场景断言全过后发生。
+%%% schema_phase 恒 <<"integrated">>（合同 W6-01/real-pg-garage 全部叶的
+%%% 叶值）；emit 只在场景断言全过后发生。
 -module(attachment_lifecycle_v5_w601_w4_context).
 
 -include_lib("eunit/include/eunit.hrl").
@@ -53,9 +55,7 @@
 -define(ORD, <<"ordinary">>).
 -define(ENT, <<"enterprise">>).
 -define(XDOM, <<"cross_domain">>).
--define(NS_DISK, <<"w601-w4-disk">>).
 -define(NS_GARAGE, <<"w601-w4-garage">>).
--define(CONTAINER_DISK, <<"w601c">>).
 -define(PROBES, w601_w4_probes).
 
 %% ---------------------------------------------------------------- setup
@@ -74,8 +74,8 @@ setup(Prefix) ->
         ok = application:set_env(imboy, garage, Garage),
         ok = ensure_started(inets),
         ok = ensure_started(ssl),
-        Base = disk_base(Prefix),
-        Registry = registry(Base, Garage),
+        %% V3-20：disk 驱动退役，registry 只装 garage 根（run-owned 目录不再建）。
+        Registry = registry(Garage),
         ok = application:set_env(imboy, attachment_storage_registry, Registry),
         case attachment_storage:validate_registry() of
             ok -> ok;
@@ -87,7 +87,6 @@ setup(Prefix) ->
             boot => Boot,
             db => Db,
             conn => Conn,
-            base => Base,
             garage => Garage,
             probes => Probes,
             prior_registry => PriorRegistry,
@@ -104,14 +103,12 @@ setup(Prefix) ->
 cleanup(#{
     boot := Boot,
     db := Db,
-    base := Base,
     probes := Probes,
     prior_registry := PriorRegistry,
     prior_garage := PriorGarage
 }) ->
     delete_garage_probes(Probes),
     restore_env(PriorRegistry, PriorGarage),
-    _ = file:del_dir_r(Base),
     inttest_marker_db:release(Db),
     eunit_runner:eunit_cleanup(Boot),
     ok.
@@ -167,50 +164,25 @@ garage_env() ->
             #{endpoint => EP, bucket => Bucket, access_key => AK, secret_key => SK}
     end.
 
-disk_base(Prefix) ->
-    Parent =
-        case os:getenv("V5_DISK_ROOT") of
-            false -> temp_parent();
-            "" -> temp_parent();
-            Dir -> Dir
-        end,
-    Base = filename:join(
-        Parent,
-        "w601-" ++ binary_to_list(Prefix) ++ "-" ++
-            binary_to_list(binary:encode_hex(crypto:strong_rand_bytes(12), lowercase))
-    ),
-    ok = filelib:ensure_dir(filename:join(Base, "placeholder")),
-    ok = file:change_mode(Base, 8#700),
-    Base.
+%% V3-20：disk 驱动退役，disk_base/temp_parent（V5_DISK_ROOT run-owned 目录）
+%% 随驱动删除，registry 只装 garage 根。
 
-temp_parent() ->
-    case file:read_link_all("/tmp") of
-        {ok, Target} -> filename:absname(Target, "/");
-        {error, einval} -> "/tmp"
-    end.
-
-registry(Base, Garage) ->
-    %% w403p-* namespace（w403_predecessor_support 的 ns()/container()，intent
-    %% 回放复用其封印形态）声明为同物理根的 **aliases**：生产冻结校验
-    %% attachment_storage:validate_registry（duplicate_physical_root，
-    %% src/lib/attachment_storage/attachment_storage.erl:92-97）拒绝两个 root
-    %% 共享同一物理 locator {driver, endpoint, container}——此前 w403p-* 作为
-    %% 独立 root 指向同一 garage endpoint+bucket，setup 直接被拒
+registry(Garage) ->
+    %% w403p-garage namespace（w403_predecessor_support 的 ns()/container()，
+    %% intent 回放复用其封印形态）声明为同物理根的 **aliases**：生产冻结校验
+    %% attachment_storage:validate_registry（duplicate_physical_root）拒绝两个
+    %% root 共享同一物理 locator {driver, endpoint, container}——此前 w403p-garage
+    %% 作为独立 root 指向同一 garage endpoint+bucket，setup 直接被拒
     %% （w601_registry_not_executable）。alias 归 canonical root
     %% （resolve/1 namespace_matches），identity/frozen_location 照常解析。
+    %% V3-20：w403p-disk alias 随 disk root 一并退役（w403p disk 侧在
+    %% predecessor_support fail-closed）。
     %% 生产 attachment_storage:registry/0 只认 version=1 信封（缺 version 的
     %% 值一律替换为空 registry → validate_registry 报 empty_roots），故按
     %% imboy_env 的构造形状包装（对照 w403_storage_tests 的 registry 信封）。
     #{
         version => 1,
         roots => #{
-            <<"w601-disk-root">> => #{
-                driver => <<"disk">>,
-                namespace => ?NS_DISK,
-                aliases => [<<"w403p-disk">>],
-                endpoint => list_to_binary("file://" ++ Base),
-                container => ?CONTAINER_DISK
-            },
             <<"w601-garage-root">> => #{
                 driver => <<"garage">>,
                 namespace => ?NS_GARAGE,
@@ -224,10 +196,9 @@ registry(Base, Garage) ->
 
 %% ------------------------------------------------------- identity / probe
 
-ns(_State, <<"disk">>) -> ?NS_DISK;
+%% V3-20：disk 驱动退役，disk 维度子句随驱动删除（残存 disk 叶 case_clause 暴露）。
 ns(_State, <<"garage">>) -> ?NS_GARAGE.
 
-container(_State, <<"disk">>) -> ?CONTAINER_DISK;
 container(State, <<"garage">>) -> maps:get(bucket, maps:get(garage, State)).
 
 %% registry 解析的冻结身份三元组（locator digest 含 root endpoint/container）。
@@ -244,11 +215,7 @@ triple(State, Driver, Key) ->
     }.
 
 %% 真实 driver 写探针字节；garage 探针登记进 ets，cleanup 时 HEAD-仍在 + DELETE。
-put_probe(_State, <<"disk">>, Key, Bytes) ->
-    ok = attachment_storage_disk:put(?NS_DISK, ?CONTAINER_DISK, Key, Bytes),
-    {ok, Bytes} =
-        attachment_storage_disk:read(?NS_DISK, ?CONTAINER_DISK, Key),
-    ok;
+%% V3-20：disk 驱动退役，disk 探针分支随驱动删除。
 put_probe(State, <<"garage">>, Key, Bytes) ->
     Bucket = container(State, <<"garage">>),
     ok = attachment_storage_garage:put(?NS_GARAGE, Bucket, Key, Bytes),
@@ -256,13 +223,7 @@ put_probe(State, <<"garage">>, Key, Bytes) ->
     true = ets:insert(maps:get(probes, State), {Key, Key}),
     ok.
 
-assert_probe_intact(_State, <<"disk">>, Key, Bytes) ->
-    {ok, Bytes} =
-        attachment_storage_disk:read(?NS_DISK, ?CONTAINER_DISK, Key),
-    {ok, #{size := Size}} =
-        attachment_storage_disk:head_bounded(?NS_DISK, ?CONTAINER_DISK, Key),
-    Size = byte_size(Bytes),
-    ok;
+%% V3-20：disk 驱动退役，disk 探针分支随驱动删除。
 assert_probe_intact(State, <<"garage">>, Key, Bytes) ->
     Bucket = container(State, <<"garage">>),
     {ok, Bytes} = attachment_storage_garage:read(?NS_GARAGE, Bucket, Key),

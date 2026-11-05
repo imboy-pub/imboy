@@ -13,7 +13,8 @@ resume_domain_test_() ->
         [
             ?_test(resume_surface(Ep))
          || Ep <-
-                [ordinary, enterprise_internal, enterprise_seat, cs_widget]
+                %% V3-14：INT 面直传形态不经 gateway 恢复投影链，矩阵收敛三面。
+                [ordinary, enterprise_seat, cs_widget]
         ] ++
             [
                 ?_test(provider_bypass_is_rejected()),
@@ -43,7 +44,8 @@ setup() ->
                 case ets:lookup(?TAB, bypass) of
                     [] ->
                         try
-                            attachment_storage_disk:put_snapshot(#{key => <<"key">>}, a, b, c)
+                            %% V3-20：disk 驱动退役，provider 故障注入改走 garage 同名原语。
+                            attachment_storage_garage:put_snapshot(#{key => <<"key">>}, a, b, c)
                         catch
                             error:pin_committed_then_crash -> #{status => 500}
                         end;
@@ -153,7 +155,7 @@ cleanup(_) ->
 identity(Row) ->
     Row#{
         <<"object_key">> => <<"key">>,
-        <<"storage_driver">> => <<"disk">>,
+        <<"storage_driver">> => <<"garage">>,
         <<"storage_namespace">> => <<"run">>,
         <<"storage_container">> => <<"bucket">>,
         <<"storage_locator_sha256">> => <<"locator">>
@@ -189,7 +191,7 @@ provider_bypass_is_rejected() ->
         ?C:imm_scenario(
             #{leaf => <<"test">>},
             ordinary,
-            disk,
+            garage,
             <<"crash_after_pin_before_put_resume">>
         )
     ).
@@ -202,7 +204,7 @@ replay_changed_id_is_rejected() ->
         ?C:imm_scenario(
             #{leaf => <<"test">>},
             ordinary,
-            disk,
+            garage,
             <<"crash_after_pin_before_put_resume">>
         )
     ).
@@ -216,7 +218,7 @@ replay_added_reference_is_rejected() ->
         ?C:imm_scenario(
             #{leaf => <<"test">>},
             ordinary,
-            disk,
+            garage,
             <<"crash_after_pin_before_put_resume">>
         )
     ).
@@ -229,7 +231,7 @@ wrong_response_field_is_rejected() ->
         ?C:imm_scenario(
             #{leaf => <<"test">>},
             enterprise_seat,
-            disk,
+            garage,
             <<"crash_after_pin_before_put_resume">>
         )
     ).
@@ -243,7 +245,7 @@ missing_object_message_binding_is_rejected() ->
         ?C:imm_scenario(
             #{leaf => <<"test">>},
             enterprise_seat,
-            disk,
+            garage,
             <<"crash_after_pin_before_put_resume">>
         )
     ),
@@ -254,7 +256,7 @@ resume_surface(Ep) ->
     Result = ?C:imm_scenario(
         #{leaf => <<"test">>},
         Ep,
-        disk,
+        garage,
         <<"crash_after_pin_before_put_resume">>
     ),
     ?assertEqual(true, maps:get(resumed_same_receipt, Result)),

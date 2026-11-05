@@ -30,8 +30,12 @@
 -define(BODY, <<"w601 confirmed immutable content">>).
 -define(OTHER, <<"w601 overwritten different bytes">>).
 
--define(EP4, [ordinary, enterprise_internal, enterprise_seat, cs_widget]).
--define(DRV, [disk, garage]).
+%% V3-14 合同分裂：INT 面 files/presign 为 s3_put 直传（signed_s3_direct），
+%% 不经 gateway 会话/pin 链——W601 gateway 语义治理场景的被测对象在 INT 面
+%% 已不存在，矩阵收敛三面（INT 面由 enterprise_asset_garage_pg_checks 覆盖）。
+-define(EP4, [ordinary, enterprise_seat, cs_widget]).
+%% V3-20：disk 驱动退役，imm_scenario 维度仅 garage（driver_mod(disk) 无子句）。
+-define(DRV, [garage]).
 
 w601_w2_confirm_test_() ->
     %% 受控让位（仓库先例：attachment_lifecycle_v5_pg_tests r20_test_/
@@ -135,17 +139,19 @@ ep_name(E) when is_atom(E) -> atom_to_binary(E, utf8);
 ep_name(E) when is_binary(E) -> E.
 
 %% Construct the entire matrix before touching PG/HTTP. Binary entrypoint
-%% names and the two domains must produce 58 distinct runnable descriptors.
-%% 建立完整矩阵无需 PG/HTTP；二进制入口和两个域须生成 58 个不同描述符。
+%% names and the two domains must produce 24 distinct runnable descriptors.
+%% 建立完整矩阵无需 PG/HTTP；二进制入口和两个域须生成 24 个不同描述符
+%% （V3-14 INT 面收敛后：imm 16 = ordinary 6 + seat/widget 各 5；
+%%  idem 4 + old 4 = 2 Dom × garage × 2 Sc）。
 confirm_matrix_instantiation_test() ->
     %% 直连 confirm_units/0（不取 w601_w2_confirm_test_/0：后者缺钉名 env
     %% 时让位返回 []，模式匹配 {setup,_,_,_} 会 badmatch）；矩阵形状自证
     %% 是纯逻辑，不需要钉名 env。
     {setup, _, _, Instantiate} = confirm_units(),
     Units = Instantiate(#{}),
-    ?assertEqual(58, length(Units)),
+    ?assertEqual(24, length(Units)),
     Names = [Name || {Name, {timeout, 240, Fun}} <- Units, is_function(Fun, 0)],
-    ?assertEqual(58, length(lists:usort(Names))).
+    ?assertEqual(24, length(lists:usort(Names))).
 %% -------------------------------------------------------- scenario dispatch
 
 scenario(S, {?C_IMM, Ep, Driver, Sc, _, _}) ->

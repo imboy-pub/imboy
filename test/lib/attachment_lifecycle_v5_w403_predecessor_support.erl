@@ -120,7 +120,7 @@ disk_file(Root, Key) ->
 
 %% 真实 driver 写入（disk 同 registry 派发路径含 OS 锁与原子写；garage 走
 %% 真实 Garage PUT + 读回校验，并登记探针对象供 disk_listing 快照）。
-put_disk_file(Root, Key, Body) ->
+put_disk_file(_Root, Key, Body) ->
     case current_driver() of
         garage ->
             Garage = garage_env(),
@@ -131,9 +131,9 @@ put_disk_file(Root, Key, Body) ->
             track_garage_object(Key, byte_size(Body)),
             ok;
         disk ->
-            ok = attachment_storage_disk:put(ns(), container(), Key, Body),
-            {ok, Body} = file:read_file(disk_file(Root, Key)),
-            ok
+            %% V3-20：disk 驱动退役（attachment_storage_disk 模块已删除），
+            %% disk 探针写入转 fail-closed，不再引用已删除模块。
+            erlang:error({w403p_disk_driver_retired, Key})
     end.
 
 track_garage_object(Key, Size) ->
@@ -201,16 +201,10 @@ assert_disk_intact(Root, Key, Body) ->
         disk -> assert_disk_object_intact(Root, Key, Body)
     end.
 
-assert_disk_object_intact(Root, Key, Body) ->
-    Path = disk_file(Root, Key),
-    case file:read_file(Path) of
-        {ok, Body} -> ok;
-        Other -> erlang:error({w403p_disk_bytes_changed, Path, Other})
-    end,
-    case attachment_storage_disk:head(ns(), container(), Key) of
-        {ok, #{size := Size}} when Size =:= byte_size(Body) -> ok;
-        Other2 -> erlang:error({w403p_disk_head_mismatch, Path, Other2})
-    end.
+assert_disk_object_intact(_Root, _Key, _Body) ->
+    %% V3-20：disk 驱动退役（attachment_storage_disk 模块已删除），
+    %% disk 探针完整性断言转 fail-closed，不再引用已删除模块。
+    erlang:error(w403p_disk_driver_retired).
 
 assert_garage_object_intact(Key, Body) ->
     Garage = garage_env(),
@@ -271,7 +265,10 @@ seed_ordinary_job(Conn, Path, Attempts, State, LocatorDigest) ->
         "INSERT INTO attachment_object_deletion"
         " (path,bucket,storage_driver,storage_namespace,storage_container,"
         "  storage_locator_sha256,job_state,next_retry_at,attempts,last_error_code)"
-        " VALUES ($1,'w403p-bucket','disk',$2,'c',$3,$4,now(),$5,$6)"
+        %% V3-20：种子行与 w403p-garage 根严格对齐（driver/ns/container 同根，
+        %% bucket 列 = storage_container 值），worker 的 frozen_location 校验
+        %% 通过、DELETE 真落到 Garage。
+        " VALUES ($1,$7,'garage',$2,$7,$3,$4,now(),$5,$6)"
         " ON CONFLICT (path) DO NOTHING",
         [
             Path,
@@ -282,7 +279,8 @@ seed_ordinary_job(Conn, Path, Attempts, State, LocatorDigest) ->
             case State of
                 blocked -> <<"max_attempts">>;
                 _ -> null
-            end
+            end,
+            container()
         ]
     ).
 
@@ -296,10 +294,12 @@ seed_pending(Conn, Key, AgeHours, Mime, LocatorDigest) ->
     ]),
     q(
         Conn,
-        "SELECT * FROM fn_v5_register_pending($1,'w403p-bucket','private',101,"
+        %% V3-20：种子身份与 w403p-garage 根严格对齐（bucket 参数与
+        %% storage_container 同取 container()）。
+        "SELECT * FROM fn_v5_register_pending($1,$6,'private',101,"
         "gen_random_uuid(),$2::jsonb,now(),now() - ($3 || ' hours')::interval,"
-        "'disk',$4,'c',$5)",
-        [Key, Declaration, integer_to_binary(AgeHours), ns(), LocatorDigest]
+        "'garage',$4,$6,$5)",
+        [Key, Declaration, integer_to_binary(AgeHours), ns(), LocatorDigest, container()]
     ).
 
 %% gc_verified 明文无绑定孤儿（orphan 资格）。
@@ -309,9 +309,10 @@ seed_orphan(Conn, Key, Id, LocatorDigest) ->
         "INSERT INTO attachment(id,path,scope,creator_user_id,storage_driver,"
         "storage_namespace,storage_container,storage_locator_sha256,gc_verified,"
         "cipher,group_file_id,file_hash256,referer_time)"
-        " VALUES ($1,$2,'private',101,'disk',$3,'c',$4,true,NULL,NULL,$5,0)"
+        %% V3-20：种子行与 w403p-garage 根严格对齐。
+        " VALUES ($1,$2,'private',101,'garage',$3,$6,$4,true,NULL,NULL,$5,0)"
         " ON CONFLICT (id) DO NOTHING",
-        [Id, Key, ns(), LocatorDigest, hex64(crypto:hash(sha256, Key))]
+        [Id, Key, ns(), LocatorDigest, hex64(crypto:hash(sha256, Key)), container()]
     ).
 
 %% 普通队列 claim 无 path 过滤：循环消化无关 ready 行，直到拿到目标或耗尽。

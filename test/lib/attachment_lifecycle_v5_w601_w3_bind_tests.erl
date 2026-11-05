@@ -1,5 +1,5 @@
-%%% W6-01 D 组 bind 面（W3-03：cs-bind 8 + enterprise-bind 4 合同叶；本
-%%% driver 遍 4+2=6 叶）。
+%%% W6-01 D 组 bind 面（W3-03：cs-bind 8 + enterprise-bind 4 合同叶；
+%%% V3-20：disk 驱动退役，driver 维度仅 garage，本遍 4+2=6 叶）。
 %%%
 %%% cs-bind：cs_session_app 真实会话入口（open_session/append_session_message
 %%% ——widget/contact 消息唯一写入路径，收敛 enterprise canonical append）——
@@ -10,9 +10,10 @@
 %%%
 %%% DB 定位：直连 V5_INTTEST_W404_DB 指向的 attv5_<slot>_w601 库（gate 已
 %%% 建库+迁移，本套件不重复 provision）；种子 enterprise_asset 行的 storage
-%%% 四元组按 V5_PROBE_DRIVER 从 run-owned registry 解析，逐叶以 frozen_location
-%%% 证明身份真实（identity_resolved / cross_driver_rejected），并经 sanctioned
-%%% driver 真实 PUT/GET 探针对象（probe_sha256 / probe_readback_ok）。借出
+%%% 四元组按 V5_PROBE_DRIVER 从 run-owned registry 解析（V3-20 后恒 garage，
+%%% V5_PROBE_DRIVER=disk 一并 no_go），逐叶以 frozen_location 证明身份真实
+%%% （identity_resolved / cross_driver_rejected），并经 sanctioned driver 真实
+%%% PUT/GET 探针对象（probe_sha256 / probe_readback_ok）。借出
 %%% 连接（eunit_setup_with_db）在成功与失败路径均归还（eunit_cleanup_db）。
 %%% 每单元 eb_pg_test_fixture:cleanup（本 scope TSID 过滤），双跑幂等。
 -module(attachment_lifecycle_v5_w601_w3_bind_tests).
@@ -26,11 +27,10 @@
 -define(C_CS, <<"W3-03/cs-bind">>).
 -define(C_ENT, <<"W3-03/enterprise-bind">>).
 %% 与 ?SUP:seed_identity 的解析常量同值（Erlang 宏不跨模块，bind 本地重复
-%% 声明）：registry namespace/container 必须与 support 的 ?NS_*/?CONTAINER_
-%% DISK 一致，否则 seed 四元组解析 {error, unknown} → 各叶首步 badmatch。
--define(NS_DISK, <<"w601-w3-disk">>).
+%% 声明）：registry namespace/container 必须与 support 的 ?NS_GARAGE 一致，
+%% 否则 seed 四元组解析 {error, unknown} → 各叶首步 badmatch。
+%% V3-20：disk 驱动退役，?NS_DISK/?CONTAINER_DISK 随驱动删除。
 -define(NS_GARAGE, <<"w601-w3-garage">>).
--define(CONTAINER_DISK, <<"w601c">>).
 
 w601_w3_bind_test_() ->
     %% 受控让位（仓库先例：attachment_lifecycle_v5_pg_tests 的 r20_test_/
@@ -73,9 +73,9 @@ setup() ->
     try
         Garage = garage_env(),
         ok = application:set_env(imboy, garage, Garage),
-        Base = disk_base(),
+        %% V3-20：disk 驱动退役，registry 只装 garage 根（run-owned 目录不再建）。
         ok = application:set_env(
-            imboy, attachment_storage_registry, registry(Base, Garage)
+            imboy, attachment_storage_registry, registry(Garage)
         ),
         case attachment_storage:validate_registry() of
             ok -> ok;
@@ -85,7 +85,6 @@ setup() ->
         #{
             db => Db,
             conn => Conn,
-            base => Base,
             prior_pg_conf => PriorPgConf,
             prior_registry => PriorRegistry,
             prior_garage => PriorGarage
@@ -97,11 +96,8 @@ setup() ->
             erlang:raise(Class, Reason, Stack)
     end.
 
-cleanup(#{
-    conn := Conn, base := Base, prior_pg_conf := PPC, prior_registry := PR, prior_garage := PG
-}) ->
+cleanup(#{conn := Conn, prior_pg_conf := PPC, prior_registry := PR, prior_garage := PG}) ->
     restore(PR, PG, PPC),
-    _ = file:del_dir_r(Base),
     eunit_runner:eunit_cleanup_db(Conn),
     ok.
 
@@ -176,48 +172,21 @@ garage_env() ->
             #{endpoint => EP, bucket => Bucket, access_key => AK, secret_key => SK}
     end.
 
-disk_base() ->
-    Parent =
-        case os:getenv("V5_DISK_ROOT") of
-            false -> temp_parent();
-            "" -> temp_parent();
-            Dir -> Dir
-        end,
-    Base = filename:join(
-        Parent,
-        "w601-w3-bind-" ++
-            binary_to_list(binary:encode_hex(crypto:strong_rand_bytes(12), lowercase))
-    ),
-    ok = filelib:ensure_dir(filename:join(Base, "placeholder")),
-    ok = file:change_mode(Base, 8#700),
-    Base.
+%% V3-20：disk 驱动退役，disk_base/temp_parent 与 disk root 随驱动删除，
+%% registry 只装 garage 根。
 
-temp_parent() ->
-    case file:read_link_all("/tmp") of
-        {ok, Target} -> filename:absname(Target, "/");
-        {error, einval} -> "/tmp"
-    end.
-
-registry(Base, Garage) ->
-    %% N3：namespace/container 与 ?SUP:seed_identity 的解析（?NS_* /
-    %% ?CONTAINER_DISK 同值宏）对齐——attachment_storage:resolve/1 按
-    %% namespace 精确匹配，registry 自立名称会使 seed 四元组解析失败
-    %%（{error, unknown} → badmatch，6 叶全崩）。registry 根键名保留 bind
-    %% 标记，endpoint 仍指向 bind 自有目录；bind 与 race/hold 各用独立步级
-    %% 库，同 namespace 不同 root 不构成跨套件冲突。
+registry(Garage) ->
+    %% N3：namespace/container 与 ?SUP:seed_identity 的解析（?NS_GARAGE 同值
+    %% 宏）对齐——attachment_storage:resolve/1 按 namespace 精确匹配，
+    %% registry 自立名称会使 seed 四元组解析失败（{error, unknown} →
+    %% badmatch，6 叶全崩）。registry 根键名保留 bind 标记；bind 与 race/hold
+    %% 各用独立步级库，同 namespace 不同 root 不构成跨套件冲突。
     %% 生产 attachment_storage:registry/0 只认 version=1 信封（缺 version
     %% 一律替换为空 registry → validate_registry 报 empty_roots），按
-    %% w601_w4_context:registry/2 同款形状包装（套件无裸读 roots 路径）。
+    %% w601_w4_context:registry/1 同款形状包装（套件无裸读 roots 路径）。
     #{
         version => 1,
         roots => #{
-            <<"w601-w3-bind-disk-root">> => #{
-                driver => <<"disk">>,
-                namespace => ?NS_DISK,
-                aliases => [],
-                endpoint => list_to_binary("file://" ++ Base),
-                container => ?CONTAINER_DISK
-            },
             <<"w601-w3-bind-garage-root">> => #{
                 driver => <<"garage">>,
                 namespace => ?NS_GARAGE,

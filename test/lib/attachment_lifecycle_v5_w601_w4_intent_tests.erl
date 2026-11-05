@@ -69,12 +69,14 @@ entrypoints() ->
 %% 逐叶：support driver 上下文切 garage（仅本叶测试进程），intent 执行器的
 %% 探针写入/清单/完好断言全部落在真实 Garage；断言全过后由 ?X:leaf emit。
 scenario(St, {_C, Entry, _Driver, Fault, _Domain}) ->
-    #{conn := Conn, base := Base} = St,
+    #{conn := Conn} = St,
     ?S:set_driver(garage),
     try
         Measured =
+            %% V3-20：disk 驱动退役，context 不再建 run-owned 目录；
+            %% intent 执行器 garage 分支不消费 root，占位仅满足接口形状。
             attachment_lifecycle_v5_w403_predecessor_intent:run(
-                Entry, binary_to_atom(Fault, utf8), #{conn => Conn, root => Base}
+                Entry, binary_to_atom(Fault, utf8), #{conn => Conn, root => <<"garage-root">>}
             ),
         Measured#{probe_storage => <<"real-garage-bucket">>}
     after

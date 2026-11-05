@@ -1,5 +1,5 @@
 %%% W6-01 D 组 race/shared 面（W3-01：reference-gc-race 16 + shared-owner 16
-%%% 合同叶；本 driver 遍 8+8=16 叶）。
+%%% 合同叶；本 driver 遍 8+8=16 叶；V3-20：disk 驱动退役，driver 恒 garage）。
 %%%
 %%% reference-gc-race：4 场景 × 双域，每叶真实双连接屏障——屏障锁取生产入口
 %%% 锁序中与对侧真实竞争的那把锁：ordinary intent 锁序为 fn_v5_lock_ordinary_

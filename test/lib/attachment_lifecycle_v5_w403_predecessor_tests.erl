@@ -2,13 +2,16 @@
 %%%
 %%% W4-01 intent-rollback（12 入口 × 4 故障 = 48）与 W4-02 四组协议
 %%% （worker-crash 6、worker-db-fault 4、queue-adoption 4、
-%%% ordinary-queue-recovery 4）在真实 disk driver 下的重放。每叶一个具名
-%%% eunit unit：场景断言全过后 emit 一行观测，adapter 再按
-%%% case/entrypoint/scenario/domain/driver 唯一匹配封印。
+%%% ordinary-queue-recovery 4）的协议重放。每叶一个具名 eunit unit：场景断言
+%%% 全过后 emit 一行观测，adapter 再按 case/entrypoint/scenario/domain/driver
+%%% 唯一匹配封印。
 %%%
-%%% driver 恒为 disk：registry 指向 run-owned V5_DISK_ROOT；队列行、attachment
-%%% 行与 enterprise_asset 行的位置三元组都写 disk/namespace/container，删除经
-%%% `attachment_storage:delete_snapshot/1` 真实落盘。
+%%% V3-20 形态：registry 只装 garage 根（探针 put/head 走真实 Garage）；
+%%% 全部 SQL 种子（queue/attachment/enterprise_asset/pending）改为与
+%%% w403p-garage 根严格对齐的 garage 四元组——worker 的 frozen_location
+%%% 校验通过、DELETE 经 `attachment_storage:delete_snapshot/1` 真落到
+%%% Garage（对象消失/队列 done 断言自然成立）。specs 的 <<"disk">> 仅为
+%%% 封印 case/entrypoint/driver 匹配标签（历史 contract 键）。
 -module(attachment_lifecycle_v5_w403_predecessor_tests).
 
 -include_lib("eunit/include/eunit.hrl").
@@ -134,6 +137,9 @@ emit({Case, Entry, Driver, Scenario, Domain}, Measured) ->
 %% ------------------------------------------------------------ dispatch
 
 scenario(St, {?C, Entry, Driver, Scenario, Domain}) ->
+    %% V3-20：探针走 garage 路径（本叶进程的 support driver 上下文显式切
+    %% garage；specs 的 <<"disk">> 仅封印匹配标签）。
+    ok = ?SUP:set_driver(garage),
     Measured =
         case Scenario of
             <<"W4-01/intent-rollback/", _/binary>> ->
@@ -184,14 +190,18 @@ short_scenario(<<"W4-02/ordinary-queue-recovery/done_path_reuse_rejected">>) ->
 setup() ->
     Boot = eunit_runner:eunit_setup(),
     PriorRegistry = application:get_env(imboy, attachment_storage_registry),
+    PriorGarage = application:get_env(imboy, garage),
     Db = inttest_marker_db:provision(#{
         env_prefix => <<"V5_INTTEST_W403P">>,
         connect_extra => #{codecs => [{epgsql_codec_rfc3339_bin, []}]}
     }),
-    Root = disk_root(),
     try
-        ok = file:change_mode(Root, 8#700),
-        ok = application:set_env(imboy, attachment_storage_registry, registry(Root)),
+        %% V3-20：disk 驱动退役，registry 只装 garage 根（run-owned 目录不再
+        %% 建；root 字段保留接口形状，执行器 garage 分支不消费）。探针写读、
+        %% identity 解析与种子身份都需要 garage env（w403p-garage 根）。
+        Garage = garage_env(),
+        ok = application:set_env(imboy, garage, Garage),
+        ok = application:set_env(imboy, attachment_storage_registry, registry(Garage)),
         case attachment_storage:validate_registry() of
             ok -> ok;
             Other -> erlang:error({w403p_registry_not_executable, Other})
@@ -202,62 +212,73 @@ setup() ->
             boot => Boot,
             db => Db,
             conn => Conn,
-            root => Root,
+            root => <<"run-owned-registry-root">>,
             prior_registry => PriorRegistry
         }
     catch
         Class:Reason:Stack ->
-            restore_registry(PriorRegistry),
-            _ = file:del_dir_r(Root),
+            restore_registry(PriorRegistry, PriorGarage),
             inttest_marker_db:release(Db),
             eunit_runner:eunit_cleanup(Boot),
             erlang:raise(Class, Reason, Stack)
     end.
 
-cleanup(#{root := Root, prior_registry := Prior, db := Db, boot := Boot}) ->
-    restore_registry(Prior),
-    _ = file:del_dir_r(Root),
-    inttest_marker_db:release(Db),
-    eunit_runner:eunit_cleanup(Boot),
+cleanup(S) ->
+    %% setup 早期失败时 prior_garage/db/boot 可能未入 State（第十三轮
+    %% function_clause 实证）——cleanup 必须对部分 setup 成功的 State 稳健。
+    Prior = maps:get(prior_registry, S, undefined),
+    restore_registry(Prior, maps:get(prior_garage, S, undefined)),
+    case maps:get(db, S, undefined) of
+        Db when is_map(Db) -> inttest_marker_db:release(Db);
+        _ -> ok
+    end,
+    case maps:get(boot, S, undefined) of
+        Boot when is_map(Boot) -> eunit_runner:eunit_cleanup(Boot);
+        _ -> ok
+    end,
     ok.
 
-restore_registry({ok, Value}) -> application:set_env(imboy, attachment_storage_registry, Value);
-restore_registry(undefined) -> application:unset_env(imboy, attachment_storage_registry).
+restore_registry({ok, Value}, PG) ->
+    ok = application:set_env(imboy, attachment_storage_registry, Value),
+    restore_garage(PG);
+restore_registry(undefined, PG) ->
+    ok = application:unset_env(imboy, attachment_storage_registry),
+    restore_garage(PG).
 
-registry(Root) ->
+restore_garage({ok, V}) -> ok = application:set_env(imboy, garage, V);
+restore_garage(undefined) -> ok = application:unset_env(imboy, garage).
+
+%% namespace/container 与 ?SUP:set_driver(garage) 后的 ns()/container()（场景
+%% 叶进程内探针、identity 解析与种子参数的实际取值）同值：ns=w403p-garage、
+%% container=bucket（with_snapshot 要求 resolve 出的 container 与传入值相等；
+%% 种子行的 driver/ns/container/digest 与根一致，frozen_location 通过）。
+registry(Garage) ->
     #{
         version => 1,
         roots => #{
-            <<"root-disk-1">> => #{
-                driver => <<"disk">>,
-                namespace => ?SUP:ns(),
+            <<"w403p-garage-root">> => #{
+                driver => <<"garage">>,
+                namespace => <<"w403p-garage">>,
                 aliases => [],
-                endpoint => list_to_binary("file://" ++ Root),
-                container => ?SUP:container()
+                endpoint => maps:get(endpoint, Garage),
+                container => maps:get(bucket, Garage)
             }
         },
         upload_namespaces => #{}
     }.
 
-%% V5_DISK_ROOT 由 gate 固定为 admission allowlist 内路径；缺省退回临时目录
-%% （仅普通 eunit 干跑；gate 执行时一定存在）。
-disk_root() ->
-    Parent =
-        case os:getenv("V5_DISK_ROOT") of
-            false -> temp_parent();
-            "" -> temp_parent();
-            Dir -> Dir
-        end,
-    ok = filelib:ensure_dir(filename:join(Parent, "probe")),
-    Root = filename:join(
-        Parent,
-        "w403p-" ++ binary_to_list(binary:encode_hex(crypto:strong_rand_bytes(12), lowercase))
-    ),
-    ok = file:make_dir(Root),
-    Root.
-
-temp_parent() ->
-    case file:read_link_all("/tmp") of
-        {ok, Target} -> filename:absname(Target, "/");
-        {error, einval} -> "/tmp"
+garage_env() ->
+    Keys = [
+        "W202_GARAGE_ENDPOINT",
+        "W202_GARAGE_BUCKET",
+        "W202_GARAGE_ACCESS_KEY",
+        "W202_GARAGE_SECRET_KEY"
+    ],
+    Values = [os:getenv(K) || K <- Keys],
+    case lists:all(fun(V) -> is_list(V) andalso V =/= "" end, Values) of
+        false ->
+            erlang:error({no_go, garage_env_missing, lists:zip(Keys, Values)});
+        true ->
+            [EP, Bucket, AK, SK] = [list_to_binary(V) || V <- Values],
+            #{endpoint => EP, bucket => Bucket, access_key => AK, secret_key => SK}
     end.

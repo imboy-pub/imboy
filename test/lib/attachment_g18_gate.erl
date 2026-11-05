@@ -133,7 +133,9 @@ seg_direct_upload_then_assembly(Root) ->
                 input_manifest_hash => maps:get(<<"manifest_hash">>, Manifest),
                 input_content_revision => 1,
                 dedupe_key => <<"g18-assembly-", (elib_uuid:gen_v7())/binary>>,
-                processor_input => jsone:encode(#{<<"final_audio">> => Final})
+                %% enqueue_tx 对 processor_input 自行 jsone:encode——传 binary 会双重编码，
+                %% jsonb_typeof 变 string，ck_trj_processor_input 即拒。
+                processor_input => #{<<"final_audio">> => Final}
             }
         )
     end),
