@@ -27,7 +27,6 @@
 %%%
 
 -export([sign/2, verify/2, verify/3]).
--export([issue_upload_capability/3, verify_upload_capability/1]).
 
 -include("log.hrl").
 
@@ -145,53 +144,3 @@ leeway(Key, Opts) ->
 %% 绝对 exp（已提交的到期值，不续）。仅使用平台 jwt_key（至少 32 字节），
 %% 缺失或无效时拒绝签发和验签，不回退到 jwt_secret 或空密钥。
 %% ===================================================================
-
--spec issue_upload_capability(binary(), binary(), integer()) ->
-    {ok, binary()} | {error, term()}.
-issue_upload_capability(ObjectKey, Mime, ExpiresAtUnix) ->
-    case upload_signing_key() of
-        {ok, Secret} ->
-            Claims = #{
-                <<"aud">> => <<"upload">>,
-                <<"sub">> => <<"upload">>,
-                <<"key">> => ObjectKey,
-                <<"mime">> => Mime,
-                <<"iat">> => erlang:system_time(second),
-                <<"exp">> => ExpiresAtUnix
-            },
-            try
-                {ok, sign(Claims, Secret)}
-            catch
-                _:_ -> {error, sign_failed}
-            end;
-        {error, _} = Error ->
-            Error
-    end.
-
--spec verify_upload_capability(binary()) -> {ok, map()} | {error, term()}.
-verify_upload_capability(Token) when is_binary(Token) ->
-    case upload_signing_key() of
-        {ok, Secret} ->
-            case verify(Token, Secret) of
-                {ok, #{<<"aud">> := <<"upload">>, <<"sub">> := <<"upload">>} = Claims} ->
-                    {ok, Claims};
-                {ok, #{<<"aud">> := <<"upload">>}} ->
-                    {error, bad_subject};
-                {ok, _} ->
-                    {error, bad_audience};
-                {error, _} = Error ->
-                    Error
-            end;
-        {error, _} = Error ->
-            Error
-    end;
-verify_upload_capability(_) ->
-    {error, invalid}.
-
-upload_signing_key() ->
-    case application:get_env(imboy, jwt_key) of
-        {ok, Secret} when is_binary(Secret), byte_size(Secret) >= 32 ->
-            {ok, Secret};
-        _ ->
-            {error, upload_signing_key_unavailable}
-    end.

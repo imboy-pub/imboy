@@ -133,9 +133,6 @@ call(widget_asset_upload, OrgId, Params) ->
     customer_service_facade:widget_asset_upload(OrgId, Params);
 call(widget_asset_confirm, OrgId, Params) ->
     customer_service_facade:widget_asset_confirm(OrgId, Params);
-%% BE-PATCH-01：访客附件字节上传代理（payload=请求体字节，upload_ref 鉴权）。
-call(widget_asset_put, OrgId, Params) ->
-    customer_service_facade:widget_asset_put(OrgId, Params);
 %% BE-S01b：访客附件内容代理（api-surface-freeze widget_apis）。
 call(widget_asset_content, OrgId, Params) ->
     customer_service_facade:widget_asset_content(OrgId, Params);
@@ -273,7 +270,6 @@ actions() ->
         widget_rate,
         widget_asset_upload,
         widget_asset_confirm,
-        widget_asset_put,
         widget_asset_content,
         seat_session_detail,
         %% CS-BE-03：客户上下文只读投影

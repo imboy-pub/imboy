@@ -203,17 +203,24 @@ run(S, D, Fault) ->
         ]
     ),
     Bytes = <<"real internal attachment bytes">>,
-    Expiry = erlang:system_time(second) + 60,
-    {ok, Cap} = imboy_jwt:issue_upload_capability(Key, <<"text/plain">>, Expiry),
-    Url = "http://127.0.0.1:" ++ integer_to_list(maps:get(port, S)) ++ "/gateway",
+    {ok, Row} = attach_pending_repo:status_lookup(Key),
+    {ok, Snapshot} = attachment_storage:frozen_location(Key, Row),
+    %% C10：gateway 正文通道退役——按冻结位置快照直接签 S3 presigned PUT；
+    %% pin 一次固定语义由 register_content_pin 承接（与 multipart 同形状）。
+    {ok, PutUrl} = attachment_storage:presign_put_snapshot(Snapshot, <<"text/plain">>, 600),
     {ok, {{_, 200, _}, _, _}} = httpc:request(
         put,
-        {Url, [{"x-upload-capability", binary_to_list(Cap)}], "text/plain", Bytes},
+        {binary_to_list(PutUrl), [], "text/plain", Bytes},
         [{timeout, 30000}],
         [{body_format, binary}]
     ),
-    {ok, Row} = attach_pending_repo:status_lookup(Key),
-    {ok, Snapshot} = attachment_storage:frozen_location(Key, Row),
+    Sha = binary:encode_hex(crypto:hash(sha256, Bytes), lowercase),
+    ok = attach_pending_repo:register_content_pin(Key, #{
+        <<"version">> => 1,
+        <<"sha256">> => Sha,
+        <<"size_bytes">> => integer_to_list(byte_size(Bytes)),
+        <<"mime">> => <<"text/plain">>
+    }),
     case Fault of
         remap_rejected ->
             Roots = maps:map(
@@ -283,10 +290,7 @@ run(S, D, Fault) ->
     application:set_env(imboy, attachment_storage_registry, Registry),
     ?assertEqual(
         {ok, Bytes},
-        case D of
-            disk -> attachment_storage_disk:read_snapshot(Snapshot);
-            garage -> attachment_storage_garage:read_snapshot(Snapshot)
-        end
+        attachment_storage_garage:read_snapshot(Snapshot)
     ),
     ok = attachment_storage:delete_snapshot(Snapshot).
 confirm(Key) ->

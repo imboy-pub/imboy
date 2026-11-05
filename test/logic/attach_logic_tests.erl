@@ -1168,7 +1168,8 @@ soft_deleted_group_and_channel_downloads_are_denied_test_() ->
     ).
 
 %% ===================================================================
-%% W2-01：V5 新会话 presign 发受控网关能力，不发可变内容直传 URL（02 §14）
+%% W2-01（C10 S3-only）：V5 新会话 presign 按 register 冻结位置快照直接签
+%% S3 presigned PUT——capability/gateway 正文通道已退役。
 %% ===================================================================
 
 presign_v5_session_issues_gateway_capability_test_() ->
@@ -1188,6 +1189,25 @@ presign_v5_session_issues_gateway_capability_test_() ->
                         expires_at => 1893456000
                     }}
                 end}
+            ]},
+            {attachment_storage, [
+                {'session_location', 1, fun(<<"u789/file/original.png">>) ->
+                    {ok, #{
+                        driver => garage,
+                        namespace => <<"fixture-ns">>,
+                        container => <<"fixture">>,
+                        key => <<"u789/file/original.png">>,
+                        endpoint => <<"https://fixture-s3">>,
+                        root_id => fixture_root,
+                        locator_digest => binary:copy(<<"a">>, 64),
+                        mime => <<"image/png">>
+                    }}
+                end},
+                {'presign_put_snapshot', 3, fun(Snap, <<"image/png">>, Ttl) ->
+                    ?assertEqual(garage, maps:get(driver, Snap)),
+                    ?assert(Ttl > 0),
+                    {ok, <<"https://fixture-s3/signed-put">>}
+                end}
             ]}
         ],
         fun presign_v5_gateway_body/0
@@ -1195,30 +1215,15 @@ presign_v5_session_issues_gateway_capability_test_() ->
 
 presign_v5_gateway_body() ->
     set_garage_env(),
-    Previous = application:get_env(imboy, jwt_key),
-    try
-        application:set_env(imboy, jwt_key, <<"synthetic-upload-signing-key-only">>),
-        Cid = <<"0f0e0d0c-1111-2222-3333-444455556666">>,
-        {ok, Data} = attach_logic:presign(
-            789, <<"a.png">>, <<"image/png">>, <<"private">>, undefined, Cid
-        ),
-        ?assertMatch(
-            <<"/api/v1/attachment/gateway/", _/binary>>, maps:get(<<"put_url">>, Data)
-        ),
-        ?assertEqual(Cid, maps:get(<<"client_upload_id">>, Data)),
-        ?assertEqual(<<"u789/file/original.png">>, maps:get(<<"object_key">>, Data)),
-        ?assertEqual(true, maps:get(<<"gateway">>, Data)),
-        %% expires_at 是登记冻结值，不是底层重新计时
-        ?assertEqual(1893456000, maps:get(<<"expires_at">>, Data)),
-        %% capability 与网关验证回路（真签发 + 真验证）
-        Capability = maps:get(<<"upload_capability">>, Data),
-        {ok, Claims} = imboy_jwt:verify_upload_capability(Capability),
-        ?assertEqual(1893456000, maps:get(<<"exp">>, Claims)),
-        ?assertEqual(maps:get(<<"object_key">>, Data), maps:get(<<"key">>, Claims)),
-        ?assertEqual(<<"image/png">>, maps:get(<<"mime">>, Claims))
-    after
-        case Previous of
-            {ok, Value} -> application:set_env(imboy, jwt_key, Value);
-            undefined -> application:unset_env(imboy, jwt_key)
-        end
-    end.
+    Cid = <<"0f0e0d0c-1111-2222-3333-444455556666">>,
+    {ok, Data} = attach_logic:presign(
+        789, <<"a.png">>, <<"image/png">>, <<"private">>, undefined, Cid
+    ),
+    ?assertEqual(<<"https://fixture-s3/signed-put">>, maps:get(<<"put_url">>, Data)),
+    ?assertEqual(<<"s3_put">>, maps:get(<<"transport">>, Data)),
+    ?assertEqual(Cid, maps:get(<<"client_upload_id">>, Data)),
+    ?assertEqual(<<"u789/file/original.png">>, maps:get(<<"object_key">>, Data)),
+    ?assertEqual(false, maps:is_key(<<"gateway">>, Data)),
+    %% expires_at 是登记冻结值，不是底层重新计时
+    ?assertEqual(1893456000, maps:get(<<"expires_at">>, Data)),
+    ?assertEqual(false, maps:is_key(<<"upload_capability">>, Data)).

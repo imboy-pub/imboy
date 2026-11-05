@@ -310,7 +310,7 @@ table(tenant) ->
         %%
         %% CS-BE-01B：presign 路径承载第二个用例——`PUT` = 字节上传（同一
         %% path 的方法分派，**零路由变更**：cowboy 只按 path 匹配，方法门在
-        %% `eb_tenant_handler` 的 case_for；对齐 widget 面 widget_asset_put 的
+        %% `eb_tenant_handler` 的 case_for；对齐 widget 面 presign 动作的
         %% 「presign 下发的 PUT 目标就是本端点」协议）。请求体是**原始字节**
         %% （附件内容，非 JSON——线格式分支在 eb_tenant_handler），`upload_ref`
         %% 经查询串携带（presign 响应的 upload.url 已把它拼好）。鉴权链照走
@@ -342,8 +342,7 @@ table(tenant) ->
                             {object_key, binary, optional},
                             {asset_id, tsid, optional}
                         ],
-                        []},
-                    {<<"PUT">>, put_object, [{upload_ref, binary, required}], []}
+                        []}
                 ],
                 member_auth(<<"asset.write">>, [<<"sales">>, <<"customer_service">>]),
                 false,

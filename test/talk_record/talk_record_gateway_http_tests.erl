@@ -62,9 +62,7 @@ gateway_ready(State, Prev) ->
             talk_record_routes:routes() ++
                 [
                     {"/api/v1/organizations/:organization_id/attachments",
-                        workspace_attachment_handler, #{}},
-                    {"/api/v1/attachment/gateway/:session_key", attachment_storage_gateway_handler,
-                        #{action => put}}
+                        workspace_attachment_handler, #{}}
                 ]}
     ]),
     {ok, _} = cowboy:start_clear(

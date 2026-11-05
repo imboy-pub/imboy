@@ -25,10 +25,8 @@
 -define(BODY, <<"w601 upload controlled bytes">>).
 -define(OTHER, <<"w601 competing different payload">>).
 
-%% V3-14 合同分裂：INT 面为 s3_put 直传（不经 gateway pin 链），矩阵收敛三面。
--define(EP4, [ordinary, enterprise_seat, cs_widget]).
-%% V3-20：disk 驱动退役，driver 维度仅剩 garage。
--define(DRV, [garage]).
+-define(EP4, [ordinary, enterprise_internal, enterprise_seat, cs_widget]).
+-define(DRV, [disk, garage]).
 
 w601_w2_upload_test_() ->
     %% 受控让位（仓库先例：attachment_lifecycle_v5_pg_tests r20_test_/
@@ -75,7 +73,7 @@ pin_specs() ->
 
 pin_scenarios(ordinary) -> pin_all();
 pin_scenarios(enterprise_internal) -> pin_all();
-pin_scenarios(_) -> pin_all() -- [<<"multipart_uses_same_pin">>, <<"old_client_bare_put_gateway">>].
+pin_scenarios(_) -> pin_all() -- [<<"multipart_uses_same_pin">>].
 
 pin_all() ->
     [
@@ -85,7 +83,6 @@ pin_all() ->
         <<"pin_commit_unknown_no_put">>,
         <<"pin_commit_recovered_same_hash">>,
         <<"body_path_swap_rejected">>,
-        <<"old_client_bare_put_gateway">>,
         <<"multipart_uses_same_pin">>,
         <<"new_url_cannot_bypass_gateway">>,
         <<"frozen_internal_signature_expiry">>
@@ -233,16 +230,6 @@ pin_scenario(S, Ep, Driver, <<"body_path_swap_rejected">>) ->
     after
         meck:unload(Mod)
     end;
-pin_scenario(S, Ep, Driver, <<"old_client_bare_put_gateway">>) ->
-    T = reg(S, Ep, Driver),
-    Url = upload_url(T),
-    ?assertNotEqual(nomatch, binary:match(Url, <<"/api/v1/attachment/gateway/">>)),
-    Bare = ?FW:bare_put(T, ?BODY),
-    ?assertNot(?F:success(Bare)),
-    ?assertEqual(403, maps:get(status, Bare)),
-    {error, not_pinned} = ?S:content_pin(key(T)),
-    ?assertEqual({error, not_found}, ?F:read(T)),
-    #{put_url => <<"gateway">>, bare_put_status => 403, pinned => false};
 pin_scenario(S, ordinary, Driver, <<"multipart_uses_same_pin">>) ->
     M = ?FW:multipart_register(
         S#{multipart_driver => Driver, multipart_ns => ns_of(Driver)}, ?BODY
@@ -276,70 +263,58 @@ pin_scenario(S, enterprise_internal, Driver, <<"multipart_uses_same_pin">>) ->
 pin_scenario(S, Ep, Driver, <<"new_url_cannot_bypass_gateway">>) when
     Ep =:= ordinary; Ep =:= enterprise_internal
 ->
+    %% C10 S3-only：renew 按 register 冻结位置签 S3 presigned PUT（无 gateway
+    %% URL、无 capability）。负例保持：剥离签名查询串的裸 PUT 在 Garage 处
+    %% 认证缺失拒绝（400/401/403，F11），provider 侧旁证未签名直传拒绝。
     T = reg(S, Ep, Driver),
     Renew = ?FW:renew(T),
     ?assert(?F:success(Renew)),
     Data = ?F:payload(Renew),
-    Url = fetch(<<"put_url">>, Data, upload_url(T)),
-    ?assertNotEqual(nomatch, binary:match(Url, <<"/api/v1/attachment/gateway/">>)),
+    Url = fetch(<<"put_url">>, Data, <<>>),
+    ?assertNotEqual(nomatch, binary:match(Url, <<"X-Amz-Signature">>)),
+    ?assertEqual(nomatch, binary:match(Url, <<"/api/v1/attachment/gateway/">>)),
     Bare = ?FW:bare_put(T, ?BODY),
     ?assertNot(?F:success(Bare)),
-    %% 剥离 capability 的裸 PUT 属认证缺失拒绝：400/401/403（F11）。
     ?assert(lists:member(maps:get(status, Bare), [400, 401, 403])),
     maps:merge(
-        #{renew_put_url => <<"gateway">>, bare_put_status => maps:get(status, Bare)},
+        #{renew_put_url => <<"s3_presigned">>, bare_put_status => maps:get(status, Bare)},
         provider_unsigned_denied(S, Driver, T)
     );
 pin_scenario(S, Ep, Driver, <<"new_url_cannot_bypass_gateway">>) when
     Ep =:= enterprise_seat; Ep =:= cs_widget
 ->
-    %% 冻结 proxy 协议：renew 重签的 upload.url 指向本 API 自己的字节上传
-    %% 代理（查询串 upload_ref 唯一凭证），不是 gateway URL——按生产 proxy
-    %% URL 构造对账形状（eb_enterprise_http.erl:531-560 seat_put_target、
-    %% cs_widget_session_app.erl:402-432 upload_proxy_url）断言「新 URL 仍是
-    %% 代理面」：upload_ref 在位、无对象 key、无 capability= 直传能力。
-    %% 负例意图（不能绕过网关直传）保持：剥离唯一凭证（upload_ref）的代理
-    %% PUT 仍被拒——剥离唯一凭证后必经参数缺门：missing_param 显式 422
-    %% （cs_http.erl:964、eb_enterprise_http.erl:714；cs_http:783-786 的
-    %% invalid_upload_ref 400 只适用于参数在位但取值非法的路径）；
-    %% provider 侧旁证未签名直传拒绝。
+    %% C10 S3-only 冻结：renew 视图为 direct descriptor——无 upload.url、
+    %% 无 capability=、无对象 key（opaque token 合同）；字节代理链已物理
+    %% 退役，「新 URL 绕过代理」面不存在。凭证唯一性由 upload_ref token
+    %% 承接；provider 侧旁证未签名直传拒绝。
     T = reg(S, Ep, Driver),
     Renew = ?FW:renew(T),
     ?assert(?F:success(Renew)),
     Data = ?F:payload(Renew),
-    Url = fetch(<<"put_url">>, Data, fetch(<<"url">>, fetch(<<"upload">>, Data, #{}), <<>>)),
-    ?assert(is_binary(Url) andalso byte_size(Url) > 0),
-    ?assertNotEqual(nomatch, binary:match(Url, <<"upload_ref=">>)),
-    ?assertEqual(nomatch, binary:match(Url, <<"capability=">>)),
-    ?assertEqual(nomatch, binary:match(Url, key(T))),
-    NoRef = ?F:request(
-        maps:get(fixture, T),
-        put,
-        strip_upload_ref(Url),
-        ?BODY,
-        maps:get(headers, T),
-        <<"text/plain">>
-    ),
-    ?assertNot(?F:success(NoRef)),
-    ?assertEqual(422, maps:get(status, NoRef)),
+    ?assertNot(maps:is_key(<<"put_url">>, Data)),
+    Upload = fetch(<<"upload">>, Data, #{}),
+    ?assertEqual(nomatch, binary:match(fetch(<<"url">>, Upload, <<>>), <<"capability=">>)),
+    ?assertEqual(nomatch, binary:match(fetch(<<"url">>, Upload, <<>>), key(T))),
+    true =
+        is_binary(fetch(<<"token">>, Upload, <<>>)) andalso
+            fetch(<<"token">>, Upload, <<>>) =/= <<>>,
     maps:merge(
-        #{renew_put_url => <<"proxy">>, no_ref_put_status => maps:get(status, NoRef)},
+        #{renew => <<"descriptor_only">>, upload_token_present => true},
         provider_unsigned_denied(S, Driver, T)
     );
 pin_scenario(S, Ep, Driver, <<"frozen_internal_signature_expiry">>) when
     Ep =:= ordinary; Ep =:= enterprise_internal
 ->
-    %% 能力过期与 storage driver 无关（过期裁决在 gateway capability 验证）：
-    %% driver 无关的真实过期 PUT（F2：子句头不再限定 garage；V3-20 后仅 garage 遍）。
+    %% C10 S3-only：gateway capability 过期裁决随通道退役；认证失败形态由
+    %% 「剥离签名的直传」承接——Garage 403，绝不静默 5xx 或放行（F11）。
     T = reg(S, Ep, Driver),
-    Failed = ?FW:expired_put(T, ?BODY),
+    Failed = ?FW:bare_put(T, ?BODY),
     ?assertNot(?F:success(Failed)),
-    %% 过期能力属认证失败形态：400/401/403，绝不静默 5xx 或放行（F11）。
     ?assert(lists:member(maps:get(status, Failed), [400, 401, 403])),
     {error, not_pinned} = ?S:content_pin(key(T)),
     ?assertEqual({error, not_found}, ?F:read(T)),
     DriverEvidence = frozen_driver_expiry(S, Ep, Driver),
-    DriverEvidence#{expired_capability => true, expired_status => maps:get(status, Failed)};
+    DriverEvidence#{unsigned_direct => true, expired_status => maps:get(status, Failed)};
 pin_scenario(S, Ep, Driver, <<"frozen_internal_signature_expiry">>) when
     Ep =:= enterprise_seat; Ep =:= cs_widget
 ->
@@ -447,7 +422,8 @@ short_lived_session(S, Ep, Driver) ->
     end),
     {T, maps:get(issued_at, Claims), maps:get(expires_at, Claims)}.
 
-%% V3-20：disk 驱动退役，frozen context 断言仅剩 garage 子句。
+assert_frozen_context(disk, Expiry, _Recheck, _Issued, Expiry) ->
+    ok;
 assert_frozen_context(
     garage,
     _Mime,
@@ -872,7 +848,7 @@ upload_ref_of(T) -> maps:get(upload_ref, maps:get(confirm_body, T), undefined).
 
 fetch(K, Map, Default) -> maps:get(K, Map, Default).
 
-%% V3-20：disk 驱动退役，ns_of 仅剩 garage。
+ns_of(disk) -> <<"w403-disk">>;
 ns_of(garage) -> <<"w403-garage">>.
 
 %% F6：重放响应同 key/同 id 的取证。ordinary/internal 面 payload 真实回显
@@ -903,10 +879,14 @@ assert_replay_same_session(Data, T, _) ->
 assert_renewed_capability(Ep, _T, Capability) when
     Ep =:= ordinary; Ep =:= enterprise_internal
 ->
-    ?assertNotEqual(nomatch, binary:match(Capability, <<"capability=">>)),
+    %% C10 S3-only：renew 重签的是 S3 presigned PUT（无 capability=）。
+    ?assertNotEqual(nomatch, binary:match(Capability, <<"X-Amz-Signature">>)),
+    ?assertEqual(nomatch, binary:match(Capability, <<"capability=">>)),
+    ok;
+assert_renewed_capability(_ProxyEp, _T, <<>>) ->
+    %% seat/widget：descriptor-only 视图无 URL——token 在位即合同（上方断言）。
     ok;
 assert_renewed_capability(_ProxyEp, T, Capability) ->
-    ?assertNotEqual(nomatch, binary:match(Capability, <<"upload_ref=">>)),
     ?assertEqual(nomatch, binary:match(Capability, <<"capability=">>)),
     ?assertEqual(nomatch, binary:match(Capability, key(T))),
     ok.
@@ -1033,7 +1013,9 @@ run_intent(T, Reason) ->
             end)
     end.
 
-%% provider 侧旁证：garage 拒绝未签名直传（V3-20：disk 侧随驱动删除）。
+%% provider 侧旁证：garage 拒绝未签名直传；disk 无网络写面（受控根专用）。
+provider_unsigned_denied(_S, disk, _T) ->
+    #{provider_unsigned_write => <<"no_http_surface">>};
 provider_unsigned_denied(_S, garage, T) ->
     I = maps:get(location, T),
     Key = maps:get(key, I),

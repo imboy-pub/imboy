@@ -24,7 +24,7 @@
 %%% CS-BE-01B（坐席发送面协议补全）的两个线格式落点：
 %%%   * presign 的 **PUT 用例**是字节上传（原始体注入 `payload`，非 JSON），
 %%%     与 presign POST 同路径、同路由级授权门，凭证复核在
-%%%     `eb_asset_app:put_object`（widget 面 widget_asset_put 同款协议）；
+%%%     direct-v1 descriptor（s3_put 直传，BEAM 零正文）——历史字节代理
 %%%   * presign POST 成功视图补 `upload.url`（本 API 的 PUT 目标；短 TTL
 %%%     凭证在查询串，object key / 存储引用零出站）。
 %%%
@@ -71,16 +71,9 @@ dispatch(Entry, Case, Req0, State0) ->
     end.
 
 invoke(Entry, Case, Req0, OrgId, AuthContext) ->
-    case maps:get(facade, Case) of
-        %% CS-BE-01B：字节上传线格式（presign 的 PUT 用例）——请求体是原始
-        %% 字节而非 JSON，线格式分支在此（widget 面 cs_widget_handler 的
-        %% asset_put 同款先例）：先按查询串投影参数（缺参在读字节前
-        %% fail-fast），再读原始体注入 `payload` 键。
-        put_object ->
-            invoke_upload(Entry, Case, Req0, OrgId, AuthContext);
-        _JsonCase ->
-            invoke_json(Entry, Case, Req0, OrgId, AuthContext)
-    end.
+    %% C10：字节上传线格式（CS-BE-01B put_object PUT 用例）随 S3-only 直传
+    %% 退役——presign 视图只发 direct descriptor，正文不再过 BEAM。
+    invoke_json(Entry, Case, Req0, OrgId, AuthContext).
 
 invoke_json(Entry, Case, Req0, OrgId, AuthContext) ->
     case eb_enterprise_http:read_body(Req0) of
@@ -111,58 +104,13 @@ invoke_json(Entry, Case, Req0, OrgId, AuthContext) ->
                             ),
                             %% CS-BE-01B：presign（POST）成功视图补 upload.url
                             %% （指向本 API 的 PUT 用例；非 presign 原样透传）。
-                            Decorated = seat_send_view(Entry, Req0, WorkspaceId, Result),
+                            Decorated = Result,
                             eb_enterprise_http:respond(Entry, Req0, Decorated)
                     end
             end
     end.
 
-invoke_upload(Entry, Case, Req0, OrgId, AuthContext) ->
-    %% Body 置空：参数只来自查询串（presign 下发的 upload.url 已把
-    %% workspace_id / upload_ref 拼进查询串），缺参 422 在消费上传体之前。
-    case eb_enterprise_http:workspace_id(Req0, #{}) of
-        {error, Reason} ->
-            eb_enterprise_http:reply_error(Req0, Reason);
-        {ok, WorkspaceId} ->
-            Ctx = #{
-                organization_id => OrgId,
-                workspace_id => WorkspaceId,
-                actor_user_id => actor_user_id(Entry, AuthContext),
-                caller_identity_id => caller_identity_id(AuthContext),
-                caller_function_key => caller_function_key(AuthContext)
-            },
-            case eb_enterprise_http:build_params(Entry, Case, Req0, #{}, Ctx) of
-                {error, Reason} ->
-                    eb_enterprise_http:reply_error(Req0, Reason);
-                {ok, Params} ->
-                    case eb_enterprise_http:read_upload_body(Req0) of
-                        {error, Reason} ->
-                            eb_enterprise_http:reply_error(Req0, Reason);
-                        {ok, Payload, Req1} ->
-                            respond_upload(Entry, Req1, OrgId, Params, Payload)
-                    end
-            end
-    end.
-
-respond_upload(Entry, Req, OrgId, Params, Payload) ->
-    try
-        Result = eb_enterprise_facade_call:call(put_object, OrgId, Params#{payload => Payload}),
-        eb_enterprise_http:respond(Entry, Req, Result)
-    after
-        attachment_upload_spool:close(Payload)
-    end.
-
-%% presign 动作的 POST 成功视图补 `upload.url`；其余动作/方法原样透传。
-seat_send_view(#{action := presign}, Req0, WorkspaceId, Result) ->
-    case cowboy_req:method(Req0) of
-        <<"POST">> ->
-            eb_enterprise_http:with_seat_upload_url(Req0, WorkspaceId, Result);
-        _OtherMethod ->
-            Result
-    end;
-seat_send_view(_Entry, _Req0, _WorkspaceId, Result) ->
-    Result.
-
+%% C10：presign 视图只发 direct descriptor（upload.url 注入已随字节链退役）。
 %% 操作人（审计快照）：租户面取自**认证主体**（`eb_auth_app` 判定出的 `user_id`），
 %% 客户端无法自报（动作表把 `actor_user_id` 列为禁止的客户端键）。
 actor_user_id(_Entry, #{user_id := Uid}) when is_integer(Uid) -> Uid;

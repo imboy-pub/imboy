@@ -61,10 +61,7 @@ setup_owned(S) ->
     Dispatch = cowboy_router:compile([
         {'_', [
             {"/api/v1/attachment/presign", attach_handler, #{action => presign}},
-            {"/api/v1/attachment/confirm", attach_handler, #{action => confirm}},
-            {"/api/v1/attachment/gateway/:session", attachment_storage_gateway_handler, #{
-                action => put
-            }}
+            {"/api/v1/attachment/confirm", attach_handler, #{action => confirm}}
         ]}
     ]),
     {ok, Listener} = cowboy:start_clear(
@@ -158,17 +155,19 @@ roundtrip(S, D) ->
             <<"/", _/binary>> -> maps:get(base, S) ++ binary_to_list(Url0);
             _ -> binary_to_list(Url0)
         end,
+    %% C10：gateway 正文通道物理退役——合成 multipart/binary 请求落通用路由
+    %% 层 404（不读正文、不给升级消息）；新附件链路以下方读回继续证明。
     Gateway = maps:get(base, S) ++ "/api/v1/attachment/gateway/" ++ binary_to_list(Cid),
-    {ok, {{_, 403, _}, _, _}} = httpc:request(
+    {ok, {{_, 404, _}, _, _}} = httpc:request(
         put, {Gateway, [], "image/png", <<"unauthorized">>}, [{timeout, 30000}], []
     ),
-    {ok, {{_, 403, _}, _, _}} = httpc:request(
+    {ok, {{_, 404, _}, _, _}} = httpc:request(
         put,
         {Gateway ++ "?capability=invalid", [], "image/png", <<"unauthorized">>},
         [{timeout, 30000}],
         []
     ),
-    {ok, {{_, 405, _}, _, _}} = httpc:request(get, {Gateway, []}, [{timeout, 30000}], []),
+    {ok, {{_, 404, _}, _, _}} = httpc:request(get, {Gateway, []}, [{timeout, 30000}], []),
     {ok, I0} = attachment_storage:session_location(Key),
     Mod0 = attachment_storage:driver_module(atom_to_binary(maps:get(driver, I0))),
     ?assertEqual({error, not_found}, Mod0:read_snapshot(I0)),

@@ -27,10 +27,8 @@
     tsid/1,
     workspace_id/2,
     read_body/1,
-    read_upload_body/1,
     path_params/2,
     build_params/5,
-    with_seat_upload_url/3,
     respond/3,
     reply_error/2,
     reply_content/2,
@@ -197,20 +195,6 @@ decode(Raw) ->
     catch
         _:_ -> {error, malformed_json}
     end.
-
-%% CS-BE-01B：字节上传线格式（presign 的 PUT 用例）——请求体是**原始字节**
-%% （附件内容，非 JSON；widget 面 `widget_asset_put` 同款先例）。返回
-%% `{ok, Bytes, Req}`（Req 已消费 body，可供后续 reply 复用）或
-%% `{error, {invalid_param, payload}}`（超传输上限，400 fail-closed）。
-%% 上限与 presign 申报 size 的企业面上界一致（25 MiB）；真正的 size 语义
-%% 校验（申报值=实际值、mime sniff、hash 复核）在 `eb_asset_app:put_object`，
-%% 这里是纯传输 DoS 门。
--define(UPLOAD_MAX_BYTES, 25 * 1024 * 1024).
-
--spec read_upload_body(cowboy_req:req()) ->
-    {ok, term(), cowboy_req:req()} | {error, term()}.
-read_upload_body(Req) ->
-    attachment_upload_body:read(Req, ?UPLOAD_MAX_BYTES).
 
 normalize_body(Map) ->
     Known = known_keys(),
@@ -513,76 +497,6 @@ tsid(_Raw) ->
 %% URL 可得性 = 已通过路由级成员门（asset.write + sales|customer_service 职能）
 %% 的坐席；PUT 端点本身还复走同一授权门（比 widget 面「upload_ref 即唯一
 %% 凭证」更严），随后用例内复核凭证 TTL/篡改/同上传人/经办 ACL。
--spec with_seat_upload_url(
-    cowboy_req:req(), integer(), {ok, map()} | {error, term()}
-) ->
-    {ok, map()} | {error, term()}.
-with_seat_upload_url(Req, WorkspaceId, {ok, View} = Ok) when is_map(View) ->
-    case seat_put_target(Req, WorkspaceId, View) of
-        undefined ->
-            Ok;
-        Url ->
-            Upload = maps:get(upload, View, #{}),
-            %% V3-16：显式上传 descriptor 权威下发（消费方禁止按 URL 外观或
-            %% upload_ref 猜传输类型）。现形态=api_byte（本 API 域字节端点，
-            %% 同源 Bearer）；V3-20 切 s3_put 直传时改为对象存储 descriptor。
-            {ok, View#{
-                upload => Upload#{
-                    url => Url,
-                    method => <<"PUT">>,
-                    descriptor => #{
-                        kind => <<"api_byte">>,
-                        method => <<"PUT">>
-                    }
-                }
-            }}
-    end;
-with_seat_upload_url(_Req, _WorkspaceId, Other) ->
-    Other.
-
-seat_put_target(Req, WorkspaceId, View) ->
-    Ref = maps:get(upload_ref, View, undefined),
-    Base = upload_base(cowboy_req:path(Req)),
-    case is_https_base(Base) andalso is_binary(Ref) andalso Ref =/= <<>> of
-        true ->
-            case org_id(Req) of
-                {ok, OrgId} when is_integer(WorkspaceId) ->
-                    Query = uri_string:compose_query([
-                        {<<"workspace_id">>, integer_to_binary(WorkspaceId)},
-                        {<<"upload_ref">>, Ref}
-                    ]),
-                    Prefix =
-                        case cowboy_req:path(Req) of
-                            <<"/api/v1/seat/", _/binary>> ->
-                                <<"/api/v1/seat/enterprise/organizations/">>;
-                            _ ->
-                                <<"/api/v1/enterprise/organizations/">>
-                        end,
-                    Path = iolist_to_binary([
-                        Prefix,
-                        integer_to_binary(OrgId),
-                        <<"/assets/presign">>
-                    ]),
-                    case Path of
-                        <<"/api/v1/seat/", _/binary>> -> <<Path/binary, $?, Query/binary>>;
-                        _ -> <<Base/binary, Path/binary, $?, Query/binary>>
-                    end;
-                _Other ->
-                    undefined
-            end;
-        false ->
-            undefined
-    end.
-
-%% Seat 使用 Widget 同源地址；企业 API 保持原 API 基址。
-upload_base(<<"/api/v1/seat/", _/binary>>) -> imboy_widget_origin:base();
-upload_base(_) -> application:get_env(imboy, base_url, <<>>).
-
-is_https_base(<<"https://", _Rest/binary>>) ->
-    true;
-is_https_base(_Other) ->
-    false.
-
 %% ===================================================================
 %% 响应映射
 %% ===================================================================

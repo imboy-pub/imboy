@@ -16,7 +16,6 @@
     multipart_put/3,
     confirm_with/3,
     confirm_legacy/1,
-    expired_put/2,
     bare_put/2,
     q/2
 ]).
@@ -157,15 +156,10 @@ confirm_legacy(T) ->
             ?F:confirm(T)
     end.
 
-%% 过期能力 PUT：ordinary/internal 用真实 JWT 签发器构造已过期能力并替换
-%% gateway URL 的 capability 参数；seat/widget 的不透明 upload_ref 无法替换，
-%% 过期场景由套件正常登记后将服务端测试时钟推进至凭证到期时刻，
-%% 不走本函数，也不由客户端指定 TTL。
-expired_put(T, Bytes) ->
-    Key = maps:get(key, T),
-    {ok, Expired} =
-        imboy_jwt:issue_upload_capability(Key, <<"text/plain">>, erlang:system_time(second) - 1),
-    Stale = replace_capability(maps:get(upload_url, T), Expired),
+%% 裸 PUT（C10 S3-only）：剥离签名查询串的直传 URL——S3 侧认证缺失拒绝
+%% （400/401/403，F11）；gateway/capability 通道已物理退役。
+bare_put(T, Bytes) ->
+    Stale = unsigned_url(maps:get(upload_url, T)),
     S = maps:get(fixture, T),
     Headers =
         case maps:get(surface, T) of
@@ -174,45 +168,14 @@ expired_put(T, Bytes) ->
         end,
     ?F:request(S, put, Stale, Bytes, Headers, <<"text/plain">>).
 
-%% 裸 PUT：剥离 capability 参数的 gateway URL（旧客户端直传形态）。
-bare_put(T, Bytes) ->
-    Stale = strip_capability(maps:get(upload_url, T)),
-    S = maps:get(fixture, T),
-    Headers =
-        case maps:get(surface, T) of
-            enterprise_seat -> maps:get(headers, T);
-            _ -> #{}
-        end,
-    ?F:request(S, put, Stale, Bytes, Headers, <<"text/plain">>).
+unsigned_url(Url) ->
+    case binary:split(Url, <<"?">>) of
+        [Path, _Query] -> Path;
+        _ -> Url
+    end.
 
 %% SQL 直通（套件内持久状态断言用；只读查询为主）。
 q(Sql, Args) -> elib_pg:query(Sql, Args).
-
-replace_capability(Url, NewCap) ->
-    case binary:split(Url, <<"capability=">>) of
-        [Prefix, Rest] ->
-            Suffix =
-                case binary:split(Rest, <<"&">>) of
-                    [_, S] -> <<"&", S/binary>>;
-                    _ -> <<>>
-                end,
-            <<Prefix/binary, "capability=", NewCap/binary, Suffix/binary>>;
-        _ ->
-            erlang:error(no_capability_in_url)
-    end.
-
-strip_capability(Url) ->
-    case binary:split(Url, <<"capability=">>) of
-        [Prefix, Rest] ->
-            Suffix =
-                case binary:split(Rest, <<"&">>) of
-                    [_, S] -> <<"&", S/binary>>;
-                    _ -> <<>>
-                end,
-            <<Prefix/binary, "capability=", Suffix/binary>>;
-        _ ->
-            erlang:error(no_capability_in_url)
-    end.
 
 upload_ref_of(T) ->
     Body = maps:get(confirm_body, T),

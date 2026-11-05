@@ -5,7 +5,7 @@
 % 「回听：先记录 ACL 再附件授权；逐次续票/Range或分段请求重验撤销版本」）。
 %
 % 票据模型（capability token 模式，参考 attach_gateway 的
-% imboy_jwt:issue_upload_capability 先例——专用 audience + 绝对 exp +
+% direct-v1 grant 同款思路——专用 audience + 绝对 exp +
 % 平台 jwt_key（≥32 字节，缺失拒绝签发/验签，不回退弱密钥））：
 %   * claims：aud/sub=<<"talk_record_playback">>、rid=记录 ID、uid=签发
 %     对象、acl=签发时 acl_revision（撤销版本绑定进票据 claims）、

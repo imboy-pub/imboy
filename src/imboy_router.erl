@@ -650,10 +650,6 @@ get_routes() ->
                 % 附件 multipart 直传（大文件流式：form-data file 字段 → 临时文件
                 % → Garage；需 JWT 认证；confirm 仍是唯一落库真源）
                 {"/api/v1/attachment/upload", attach_handler, #{action => upload}},
-                %% V5 受控存储网关（专用 upload 能力 token，非 JWT 认证路由）
-                {"/api/v1/attachment/gateway/:session_key", attachment_storage_gateway_handler, #{
-                    action => put
-                }},
 
                 %% ============================================================
                 %% 工作区 / 项目 / 任务（双体验 v2.5.2 WP3+WP4）
@@ -2319,13 +2315,6 @@ customer_service_human_routes() ->
         }},
         {"/api/v1/cs/widget/sessions/:id/assets/confirm", cs_widget_handler, #{
             action => widget_asset_confirm,
-            auth_context => cs_visit
-        }},
-        %% BE-PATCH-01：访客附件字节上传代理（payload=请求体字节；upload_ref 是
-        %% 唯一凭证——FE 裸 PUT 合同，无凭证头/无 Cookie。服务端经
-        %% eb_asset_app:put_object 写私有桶，响应永无对象 URL）。
-        {"/api/v1/cs/widget/sessions/:id/assets/upload", cs_widget_handler, #{
-            action => widget_asset_put,
             auth_context => cs_visit
         }},
         %% BE-S01b：访客附件内容代理（GET；响应是对象字节本体，不走 JSON 面——

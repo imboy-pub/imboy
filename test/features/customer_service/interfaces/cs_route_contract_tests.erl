@@ -211,16 +211,6 @@ widget_literal_routes() ->
             [<<"POST">>],
             cs_visit
         },
-        %% BE-PATCH-01：访客附件字节上传代理（upload_ref 唯一凭证——FE 裸 PUT
-        %% 合同；payload=请求体字节，线格式分支在 cs_widget_handler）。
-        %% P1-E2E-01 实证：presign 回显 upload.method=PUT，动作表放行 POST+PUT
-        %% 双形态（同参同用例），否则浏览器按合同发 PUT 一律 405。
-        {
-            <<W/binary, "/sessions/:id/assets/upload">>,
-            widget_asset_put,
-            [<<"POST">>, <<"PUT">>],
-            cs_visit
-        },
         %% BE-S01b（api-surface-freeze widget_apis）：访客附件内容代理（对象字节
         %% 本体响应；线格式分支在 cs_widget_handler）。
         {
@@ -1026,13 +1016,14 @@ widget_token_surfaces_org_derived_locked_test() ->
         end,
         DerivedSurfaces
     ),
-    %% 豁免面保持 param（兼容窗口 / 无 token 裸 PUT），路径无 :org_id 绑定。
+    %% 豁免面保持 param（兼容窗口；widget_asset_put 裸 PUT 豁免已随
+    %% C10 字节上传链退役删除），路径无 :org_id 绑定。
     lists:foreach(
         fun(Action) ->
             {ok, Entry} = cs_actions:widget(Action),
             ?assertEqual({Action, param}, {Action, cs_actions:org_source(Entry)})
         end,
-        [widget_frame_html, widget_asset_put]
+        [widget_frame_html]
     ).
 
 %% R2-F2（hosted-widget-contract S3 查询串面）：派生键申报面 = 正文与查询串

@@ -8,7 +8,6 @@ scope_registration_test_() ->
         fun restored_identity_is_signed/0,
         fun confirmed_session_never_resigns/0,
         fun expired_session_never_resigns/0,
-        fun old_client_gets_absolute_gateway_url/0,
         fun historical_unknown_location_never_resigns/0,
         fun recovery_rechecks_original_scope/0,
         fun confirm_cannot_replace_original_group/0,
@@ -18,7 +17,7 @@ scope_registration_test_() ->
 setup() ->
     lists:foreach(
         fun(M) -> meck:new(M, [non_strict, no_link]) end,
-        [elib_oss, attach_pending_repo, group_member_ds, imboy_jwt]
+        [elib_oss, attach_pending_repo, group_member_ds, attachment_storage]
     ),
     meck:expect(elib_oss, validate_file_type, fun(_) -> true end),
     meck:expect(elib_oss, build_object_key, fun(_, _, _, _) -> <<"new-proposed-key">> end),
@@ -27,7 +26,7 @@ setup() ->
 cleanup(_) ->
     lists:foreach(
         fun meck:unload/1,
-        [elib_oss, attach_pending_repo, group_member_ds, imboy_jwt]
+        [elib_oss, attach_pending_repo, group_member_ds, attachment_storage]
     ).
 
 scope_ref_is_frozen_before_signing() ->
@@ -59,7 +58,7 @@ session(State, Expiry) ->
         object_key => <<"original-key">>,
         client_upload_id => cid(),
         session_state => State,
-        storage_driver => <<"disk">>,
+        storage_driver => <<"garage">>,
         storage_namespace => <<"fixture-ns">>,
         storage_container => <<"fixture">>,
         storage_locator_sha256 => binary:copy(<<"a">>, 64),
@@ -73,52 +72,41 @@ presign(Session) ->
 
 restored_identity_is_signed() ->
     Expiry = erlang:system_time(second) + 60,
-    meck:expect(imboy_jwt, issue_upload_capability, fun(<<"original-key">>, <<"image/png">>, E) ->
-        ?assertEqual(Expiry, E),
-        {ok, <<"fixture-capability">>}
+    %% C10：presign/renew 都按 register 冻结位置快照直接签 S3 presigned PUT。
+    meck:expect(attachment_storage, session_location, fun(<<"original-key">>) ->
+        {ok, #{
+            driver => garage,
+            namespace => <<"fixture-ns">>,
+            container => <<"fixture">>,
+            key => <<"original-key">>,
+            endpoint => <<"https://fixture-s3">>,
+            root_id => fixture_root,
+            locator_digest => binary:copy(<<"a">>, 64),
+            mime => <<"image/png">>
+        }}
+    end),
+    meck:expect(attachment_storage, presign_put_snapshot, fun(Snap, <<"image/png">>, Ttl) ->
+        ?assertEqual(garage, maps:get(driver, Snap)),
+        ?assert(Ttl > 0),
+        {ok, <<"https://fixture-s3/signed-put">>}
     end),
     {ok, Data} = presign(session(<<"registered">>, Expiry)),
     ?assertEqual(<<"original-key">>, maps:get(<<"object_key">>, Data)),
     ?assertEqual(Expiry, maps:get(<<"expires_at">>, Data)),
-    ?assertEqual(1, meck:num_calls(imboy_jwt, issue_upload_capability, '_')).
+    ?assertEqual(<<"https://fixture-s3/signed-put">>, maps:get(<<"put_url">>, Data)),
+    ?assertEqual(1, meck:num_calls(attachment_storage, presign_put_snapshot, '_')).
 
 confirmed_session_never_resigns() ->
     {ok, Data} = presign(session(<<"confirmed">>, erlang:system_time(second) + 60)),
     ?assertEqual(false, maps:is_key(<<"put_url">>, Data)),
-    ?assertEqual(0, meck:num_calls(imboy_jwt, issue_upload_capability, '_')).
+    ?assertEqual(0, meck:num_calls(attachment_storage, presign_put_snapshot, '_')).
 
 expired_session_never_resigns() ->
     ?assertEqual(
         {error, session_expired},
         presign(session(<<"registered">>, erlang:system_time(second) - 1))
     ),
-    ?assertEqual(0, meck:num_calls(imboy_jwt, issue_upload_capability, '_')).
-
-old_client_gets_absolute_gateway_url() ->
-    Prior = application:get_env(imboy, base_url),
-    application:set_env(imboy, base_url, <<"https://fixture.invalid/">>),
-    Expiry = erlang:system_time(second) + 60,
-    meck:expect(imboy_jwt, issue_upload_capability, fun(_, _, _) ->
-        {ok, <<"fixture-capability">>}
-    end),
-    meck:expect(attach_pending_repo, register_v5, fun(_, _, _, _, undefined, _) ->
-        {ok, session(<<"registered">>, Expiry)}
-    end),
-    try
-        {ok, Data} = attach_logic:presign(
-            7, <<"a.png">>, <<"image/png">>, <<"private">>, undefined
-        ),
-        ?assertMatch(
-            <<"https://fixture.invalid/api/v1/attachment/gateway/", _/binary>>,
-            maps:get(<<"put_url">>, Data)
-        ),
-        ?assertEqual(0, meck:num_calls(elib_oss, presign_put_for_key, '_'))
-    after
-        case Prior of
-            {ok, V} -> application:set_env(imboy, base_url, V);
-            undefined -> application:unset_env(imboy, base_url)
-        end
-    end.
+    ?assertEqual(0, meck:num_calls(attachment_storage, presign_put_snapshot, '_')).
 
 historical_unknown_location_never_resigns() ->
     Unknown = maps:without(
@@ -126,7 +114,7 @@ historical_unknown_location_never_resigns() ->
         session(<<"registered">>, erlang:system_time(second) + 60)
     ),
     ?assertEqual({error, historical_location_unverified}, presign(Unknown)),
-    ?assertEqual(0, meck:num_calls(imboy_jwt, issue_upload_capability, '_')).
+    ?assertEqual(0, meck:num_calls(attachment_storage, presign_put_snapshot, '_')).
 
 recovery_rechecks_original_scope() ->
     Row = #{

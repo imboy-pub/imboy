@@ -187,7 +187,6 @@ otp_lib_whitelist() ->
         cowboy_req,
         %% Shared core request-body sealing, not a cross-feature storage bypass.
         %% 共享核心请求体封装；不绕过跨 Feature facade。
-        attachment_upload_body,
         attachment_upload_spool,
         elib_response,
         os,
@@ -204,6 +203,9 @@ otp_lib_whitelist() ->
         %% BE-S01b：cs_http credential 面判据复用 core lib 的冻结路径形状
         %% （imboy_route_shape:is_cs_widget_frame_path/1）。
         imboy_route_shape,
+        %% C08：widget 域名归一共享核心（cs_widget_support:api_base 的
+        %% base 归一实现在 src/lib 共享层，cs/eb 两 feature 共用）。
+        imboy_widget_origin,
         %% CSD-BE-01 跑绿补录（Base 既有红：BE-PATCH-01 的 presign 查询串
         %% 组装用 uri_string:compose_query/1——OTP stdlib，非跨 Feature 依赖）。
         uri_string,

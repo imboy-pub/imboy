@@ -734,9 +734,7 @@ table(tenant) ->
 %% identity_exchange）由 (installation_id, secret) 的 digest **全局命中行**
 %% 派生（token 行本就绑定 (org, installation)，digest 命中无枚举面），
 %% `organization_id` 在全部面上客户端提供即 400。仅两个例外保留 param：
-%% 旧 frame（S4 兼容窗口，路径带 organization_id 查询参数原样保留）与
-%% widget_asset_put（无 token 面——presign 下发的裸 PUT URL 携带服务端
-%% 签发的 organization_id，同值回传语义，非浏览器申报）。
+%% 旧 frame（S4 兼容窗口，路径带 organization_id 查询参数原样保留）。
 %% ===================================================================
 table(widget) ->
     [
@@ -898,37 +896,6 @@ table(widget) ->
                         ],
                         [{id, session_id}]}
                 ]
-            )},
-        %% BE-PATCH-01：字节上传代理（POST .../assets/upload）。upload_ref 是
-        %% 唯一凭证（FE 裸 PUT 合同：无凭证头/Cookie，URL 查询串携带申报键），
-        %% **不要求** visit token 头；payload=请求体字节，不经 JSON 参数表——
-        %% 线格式分支在 cs_widget_handler（asset_content 同款先例），handler 取
-        %% 原始体注入 payload 键。鉴权链：installation active → 会话事实（服务
-        %% 端派生 contact）→ upload_ref open（过期/篡改/同上传人）→ contact
-        %% 会话归属门（全部复用 eb_asset_app:put_object 既有实现）。
-        {widget_asset_put,
-            widget_entry(
-                [
-                    {<<"POST">>, widget_asset_put,
-                        [
-                            {installation_id, tsid, required},
-                            {upload_ref, binary, required}
-                        ],
-                        [{id, session_id}]},
-                    %% P1-E2E-01 实证缺陷修复：presign 回显 upload.method=PUT
-                    %% （with_upload_url），浏览器按合同发裸 PUT，而动作表只登记
-                    %% POST → PUT 一律 405，FE-W01 附件链必炸。PUT 与 POST 同参
-                    %% 同用例，方法门放行两形态（鉴权/绑定门不变）。
-                    {<<"PUT">>, widget_asset_put,
-                        [
-                            {installation_id, tsid, required},
-                            {upload_ref, binary, required}
-                        ],
-                        [{id, session_id}]}
-                ],
-                widget_auth(),
-                widget_server_derived(),
-                param
             )},
         %% BE-S01b（api-surface-freeze widget_apis）：访客附件内容代理（GET）。
         %% 响应是对象字节本体（mime 定 content-type），不走 cs_http:respond 的

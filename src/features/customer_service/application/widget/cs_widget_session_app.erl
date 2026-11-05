@@ -382,76 +382,13 @@ asset_presign(OrgId, Params) when is_map(Params) ->
             ),
             case cs_widget_support:eb_request_presign(OrgId, EbParams) of
                 {ok, View} ->
-                    {ok, with_upload_url(OrgId, Params, Session, View)};
+                    {ok, View};
                 {error, _} = Err2 ->
                     Err2
             end
     end;
 asset_presign(_OrgId, _Params) ->
     {error, {invalid_argument, asset_presign}}.
-
-%% BE-PATCH-01：presign 响应补本 widget 代理端点的裸 PUT 目标（绝对 https
-%% URL）。代理端点不是对象存储——不含 object key / storage 引用，不违反
-%% 「永不出对象 URL」；url 查询串携带 organization_id / installation_id /
-%% upload_ref（裸 PUT 的唯一凭证），FE 检测到 upload.url 即零改动闭环。
-%% widget_base_url 未配置（或非 https）→ 不加 url（fail-closed，与现状同形）。
-with_upload_url(OrgId, Params, Session, View) ->
-    case upload_proxy_url(OrgId, Params, Session, View) of
-        undefined ->
-            View;
-        Url ->
-            Upload = maps:get(upload, View, #{}),
-            %% V3-16：显式 descriptor 权威下发（widget 裸 PUT 无凭据面；
-            %% 现形态=api_byte 域字节端点，V3-20 切 s3_put 时改 descriptor）。
-            View#{
-                upload => Upload#{
-                    url => Url,
-                    method => <<"PUT">>,
-                    descriptor => #{kind => <<"api_byte">>, method => <<"PUT">>}
-                }
-            }
-    end.
-
-upload_proxy_url(OrgId, Params, Session, View) ->
-    Base = cs_widget_support:api_base(),
-    case is_https_base(Base) of
-        false ->
-            undefined;
-        true ->
-            SessionId = maps:get(id, Session, undefined),
-            Ref = maps:get(upload_ref, View, undefined),
-            InstallationId = maps:get(installation_id, Params, undefined),
-            case
-                is_integer(SessionId) andalso is_integer(InstallationId) andalso
-                    is_binary(Ref) andalso Ref =/= <<>>
-            of
-                true ->
-                    Path = upload_path(SessionId),
-                    Query = uri_string:compose_query([
-                        {<<"organization_id">>, integer_to_binary(OrgId)},
-                        {<<"installation_id">>, integer_to_binary(InstallationId)},
-                        {<<"upload_ref">>, Ref}
-                    ]),
-                    <<Base/binary, Path/binary, $?, Query/binary>>;
-                false ->
-                    undefined
-            end
-    end.
-
-upload_path(SessionId) ->
-    iolist_to_binary([
-        <<"/api/v1/cs/widget/sessions/">>,
-        integer_to_binary(SessionId),
-        <<"/assets/upload">>
-    ]).
-
-is_https_base(Base) when is_binary(Base) ->
-    case Base of
-        <<"https://", _Rest/binary>> -> true;
-        _ -> false
-    end;
-is_https_base(_) ->
-    false.
 
 %% @doc 访客附件确认（confirm 重新鉴权：本用例先裁决令牌作用域，再进
 %% enterprise confirm 面）。
