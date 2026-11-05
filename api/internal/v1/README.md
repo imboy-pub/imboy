@@ -2,7 +2,7 @@
 
 > **版本**：v1.0（冻结）｜ **受众**：企业 OA / 第三方集成系统开发者
 > **Base Path**：`/api/internal/v1`
-> **机器契约**：`api/openapi-internal.yaml`（编辑真源，34 path / 49 端点，
+> **机器契约**：`api/openapi-internal.yaml`（编辑真源，35 path / 50 端点，
 > 字段级 schema 逐端点实证自 handler）；`api/openapi-internal.bundle.yaml`
 > （bundle 单文件，可直接导入 Postman / Apifox / openapi-generator）。
 > 本目录是面向集成方的交付文档。路由与合同由静态机械断言
@@ -29,14 +29,14 @@ Base URL（协议/域名/端口）由部署方提供，本文档只约定路径�
 | 企业群组 | 建群、增删成员、改群、成员角色；详情/列表/成员只读（INT-04/05/06/18/19/20/21/26/27） |
 | Workspace | 列表/详情（INT-24/25），创建/修改/软归档（INT-37..39） |
 | 企业文件 | 直传预签名 / 确认入库 / 治理（INT-07/08/22） |
-| 消息 | 应用身份直发、以人类身份代发；单聊与群聊（INT-09/10） |
+| 消息 | 应用身份直发、以人类身份代发；单聊、群聊与企业频道（INT-09/10/50） |
 | 好友申请 | 代 OA 用户发起（只发起、不自动通过，见 §6）（INT-11） |
 | Webhook | 登记出站回调、查询/重放投递、连通性测试（INT-12/13/23/32） |
 | OA SSO | 一次性 code 原子交换登录态（INT-14）；入站登录签票（INT-44） |
 | 来源目录 | 显式增量同步（INT-43），组织/部门/人员核对（INT-45..47），成员离职检查及停用/恢复（INT-48/49） |
 | 客服坐席 | 列表、详情、开通和调整配置（INT-33..36）；不签发坐席身份 |
 | 企业项目只读 | 列表与详情（INT-28/29） |
-| 企业频道 | 列表与详情（INT-30/31）；创建、修改、软归档（INT-40..42） |
+| 企业频道 | 列表与详情（INT-30/31）；创建、修改、软归档（INT-40..42）；消息发送（INT-50） |
 
 **边界（务必了解）**：
 
@@ -199,6 +199,10 @@ INT-14 的 code 本身一次性（`single_use_code`）；INT-44 不要求该头�
   别名参数；跨组织、未映射、已停用用户一律拒绝。
 - 企业托管消息**固定非端到端加密**，不会写入人类用户间 E2EE 消息存储；
   审计与合规视图永久保留「由应用发出 / 应用代发」的事实。
+- **频道消息（INT-50）**只面向有效 Workspace 企业频道；human 发送者还须是该频道
+  的有效订阅者，application principal 无订阅要求。请求的 `sender_user_id` 为 OA
+  外部标识字符串；响应同名字段为 principal 或 Human 的平台 JSON int64，均不为 null。
+  五类消息字段、字节上限与裸响应见 [端点参考](./endpoints.md#int-50-企业频道消息字段与身份)。
 - **好友申请（INT-11）只能以 `human` 形态发起**：仅可对同组织已映射用户发起，
   平台**不会**自动通过/确认，也**不提供**删除好友、批量加好友的能力。
 
@@ -250,8 +254,8 @@ INT-23 还保留一个端点特定的兼容错误：旧 `page`/`size` 参数返�
 
 | event_type | 触发时机 | resource |
 |---|---|---|
-| `message.enterprise.accepted` | 企业托管消息受理成功（INT-09/10，与消息同事务） | `{type: "msg_c2c" \| "msg_c2g", id: 消息表行 ID}` |
-| `message.enterprise.failed` | 企业托管消息发送失败（业务回滚后独立事务；当前信封**不含**失败原因，仅事件本身表明该消息未受理） | `{type: "msg_c2c" \| "msg_c2g", id: 消息表行 ID}` |
+| `message.enterprise.accepted` | 企业托管消息受理成功（INT-09/10/50，与消息同事务） | `{type: "msg_c2c" \| "msg_c2g" \| "msg_channel", id: 消息表行 ID}` |
+| `message.enterprise.failed` | 企业托管消息发送失败（业务回滚后独立事务；当前信封**不含**失败原因，仅事件本身表明该消息未受理） | `{type: "msg_c2c" \| "msg_c2g" \| "msg_channel", id: 消息表行 ID}` |
 | `message.enterprise.delivered` | 企业托管消息收件端 ACK（V3-24；独立小事务、失败只留痕不阻断 ACK 主链；**仅企业托管行**——按消息行回查 origin_application_id，Human 消息零外发） | `{type: "msg_c2c" \| "msg_c2g", id: 消息表行 ID}` |
 | `message.enterprise.read` | 企业托管消息收件人已读（V3-24；归属解析同 delivered；accepted/delivered/read 是三层不同语义，不可互替表达） | `{type: "msg_c2c" \| "msg_c2g", id: 消息表行 ID}` |
 | `file.confirmed` | 附件确认入库（INT-08，与转正同事务） | `{type: "attachment", id: 附件行 ID}` |
@@ -260,7 +264,7 @@ INT-23 还保留一个端点特定的兼容错误：旧 `page`/`size` 参数返�
 | `cs.session.changed` | 客服会话状态迁移/转接/评分（V3-24；归属 org 下全部 active Application 逐个订阅判定，无 active Application 即 skip） | `{type: "cs_session", id: 会话行 ID}` |
 | `webhook.ping` | **不可订阅**（INT-12 `events` 填它会被拒绝）；仅由 INT-32 测试投递产生 | `{type: "webhook", id: 端点配置代际}` |
 
-> **注意**：`resource.id` 是平台侧消息表行 ID（int64），与 INT-09/10 响应返回的
+> **注意**：`resource.id` 是平台侧消息表行 ID（int64），与 INT-09/10/50 响应返回的
 > `msg_id`（客户端消息 ID）是**两个不同标识符**。v1.1.1 起 INT-09/10 响应追加
 > `webhook_resource_id` 字段（与事件 `resource.id` 同源），集成方以此把回调
 > 关联回本次发送响应；此前发起的消息只能以你方业务侧记录关联。
@@ -336,7 +340,7 @@ application and device binding, short expiration and one-time consumption. Never
 
 ## 10. 端点参考与 Postman 集合
 
-- 人类阅读：[endpoints.md](./endpoints.md)（49 个 Internal 操作，按域分组）。
+- 人类阅读：[endpoints.md](./endpoints.md)（50 个 Internal 操作，按域分组）。
 - **机器契约**：`../../openapi-internal.yaml`（编辑真源）与
   `../../openapi-internal.bundle.yaml`（bundle 单文件）——字段级请求/响应
   schema 逐端点从 handler 实证（`src/api/enterprise_*_handler.erl`），
@@ -344,7 +348,7 @@ application and device binding, short expiration and one-time consumption. Never
   `x-imboy-rate-bucket` / `x-imboy-idempotency` 扩展字段
   标注。工具导入用 bundle 单文件。
 - **动手联调**：[IMBoy-Internal-API-v1.postman_collection.json](./IMBoy-Internal-API-v1.postman_collection.json)
-  —— Postman / Apifox 直接导入（Collection v2.1），已含全部 49 个 Internal 操作、按域分文件夹、
+  —— Postman / Apifox 直接导入（Collection v2.1），已含全部 50 个 Internal 操作、按域分文件夹、
   示例请求体与 base_url / credential 等变量；另含 3 个 Human 入站伴随请求，其认证分别配置。目录外部组织标识须对应可信来源配置，不能只替换域名即全量运行。
   集合收录全部 Internal 冻结路由及上述 Human 伴随请求，不包含尚未实现的接口。
   注意：示例体为合成数据（ID / 域名 / object_key 均为占位值，替换后使用）；

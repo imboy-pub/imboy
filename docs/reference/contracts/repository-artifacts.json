@@ -105,6 +105,12 @@
       "purpose": "Delivery source contract or reproducible execution handoff"
     },
     {
+      "path": "docs/design/2026-10-23-guangzhou-delivery-v3/resume-prompt.md",
+      "sha256": "3b0e4de7348f839a5fbad4b8ba618bc871d65087e78eb610fed5ed31f6063a43",
+      "source_contract": "docs/design/2026-10-23-guangzhou-delivery-v3/plan-v3.1.md",
+      "purpose": "Frozen portable handoff referenced by the Guangzhou V3/V3.1 delivery contracts; integrity only, not execution authorization or acceptance"
+    },
+    {
       "path": "docs/plans/2026-10-13-limiter-v1-local-evidence-and-plan.md",
       "sha256": "afb5490e45e84c5c51894561ffa75ebf3984703c643217edda44d5935b7f13f0",
       "source_contract": "docs/plans/2026-10-13-limiter-v1-local-evidence-and-plan.md",

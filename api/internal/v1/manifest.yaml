@@ -1,4 +1,4 @@
-# Current manifest: INT-01..49; HMAC is the default integration protocol.
+# Current manifest: INT-01..50; HMAC is the default integration protocol.
 # IMBoy Enterprise Internal API Manifest — frozen by A0 at BASE-00
 # RUN_ID: enterprise-internal-20260921T043945Z
 # Stage coverage: STAGE_GZ (INT-01..INT-14 + human-side SSO code issuance)
@@ -492,6 +492,17 @@ routes:
     idempotency: required
     rate: internal_write
     sender_mode: none
+
+  - id: INT-50
+    method: POST
+    path: /api/internal/v1/channels/{channel_id}/messages
+    resource: enterprise hosted Workspace channel message; NON-E2EE
+    actor: application (audit actor even in human sender_mode)
+    idempotency: required
+    rate: internal_write
+    sender_mode: application|human
+    sender_constraints: active application principal; human additionally requires active source mapping, member and channel subscription
+    resource_constraints: matching organization attribution; scope=workspace; active channel and Workspace
 
 stable_error_codes: [invalid_request, invalid_credential, credential_expired,
   application_disabled, organization_disabled, resource_not_found, identity_not_mapped,

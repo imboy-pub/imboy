@@ -1,6 +1,16 @@
 # Internal API v1 — 变更记录
 
-当前 Internal v1 使用 HMAC-SHA256 签名认证，49 个操作、34 条路径。
+当前 Internal v1 使用 HMAC-SHA256 签名认证，50 个操作、35 条路径。
+
+## Unreleased — 补齐 INT-50 企业频道消息合同
+
+- 将已实现的 `POST /channels/{channel_id}/messages` 同步到 manifest、端点参考、
+  OpenAPI 真源、确定性 bundle 与 Postman 集合；不增加或放宽运行时路由。
+- 如实声明 HMAC、必需幂等键、Workspace 频道业务归属、有效 Human 订阅校验，
+  五类消息字段及裸 JSON 响应；application 响应的 sender_user_id 为 principal 平台 ID。
+- Channel message documentation now matches INT-50's existing runtime contract;
+  no endpoint, authentication rule or breaking-change policy is relaxed.
+
 ## Unreleased — 分页参数统一 page_size（limit 为弃用别名）
 - 列表页大小参数统一为 `page_size`（canonical）：Workspace、群、群成员、项目、
   频道、客服坐席六个 `limit` 族端点（INT-24/26/27/28/30/33）追加接受 `page_size`。

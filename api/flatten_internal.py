@@ -30,8 +30,8 @@ BUNDLE = API_DIR / 'openapi-internal.bundle.yaml'
 METHODS = {'get', 'post', 'put', 'patch', 'delete', 'head', 'options', 'trace'}
 
 # 自校验冻结口径（计划 §15.1 修正后）
-EXPECT_PATHS = 34
-EXPECT_OPS = 49
+EXPECT_PATHS = 35
+EXPECT_OPS = 50
 
 
 def load_yaml(path):

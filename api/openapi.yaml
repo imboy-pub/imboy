@@ -1971,6 +1971,8 @@ paths:
     $ref: './paths/internal/v1/channel/list.yaml'
   /api/internal/v1/channels/{channel_id}:
     $ref: './paths/internal/v1/channel/detail.yaml'
+  /api/internal/v1/channels/{channel_id}/messages:
+    $ref: './paths/internal/v1/channel/messages.yaml'
   /api/internal/v1/customer-service/seats:
     $ref: './paths/internal/v1/customer-service/seats.yaml'
   /api/internal/v1/customer-service/seats/{business_identity_id}:
