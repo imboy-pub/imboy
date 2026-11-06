@@ -73,7 +73,9 @@
 **FTS expiry contract:** C2C and C2G search results expose the existing stored deadline as
 `expire_at` in epoch milliseconds or JSON `null`. Missing values stay unknown. This preserves
 the server TTL and separate local burn rules in §2.2; it neither starts nor extends a timer.
-See [消息 API 合同 / Message API contract §2.1](../api-contracts/message_api_contract.md#21-fts-消息结果的到期时间--fts-message-expiry)
+<!-- docs/api-contracts/ 未纳入 docs-site 同步（见本文件 §定位），此处用
+     GitHub 绝对链接，避免 docs-site 构建期 dead-link 检查失败。 -->
+See [消息 API 合同 / Message API contract §2.1](https://github.com/imboy-pub/imboy/blob/main/docs/api-contracts/message_api_contract.md#21-fts-消息结果的到期时间--fts-message-expiry)
 for response and PostgreSQL regression coverage.
 
 ### 2.5 非瞬间量
