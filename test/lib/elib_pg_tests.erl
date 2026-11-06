@@ -2065,3 +2065,64 @@ rows_to_maps_happy_paths_unchanged_test_() ->
         %% 零列 × 零行（非 SELECT 误入形态）合法空集
         ?assertEqual([], elib_pg:rows_to_maps([], []))
     end).
+
+execute_rfc3339_typed_parameters_test_() ->
+    {setup,
+        fun() ->
+            meck:new(epgsql, [no_link, passthrough]),
+            Statement = #statement{types = [timestamptz, text, timestamptz, timestamptz]},
+            meck:expect(epgsql, parse, fun(_, _) -> {ok, Statement} end),
+            meck:expect(epgsql, execute_batch, fun(_, [{Statement0, Values}]) ->
+                ?assertEqual(Statement, Statement0),
+                ?assertEqual(
+                    [
+                        {{2024, 1, 1}, {0, 0, 0.123456}},
+                        <<"2024-01-01T08:00:00+08:00">>,
+                        null,
+                        {{2024, 1, 2}, {3, 4, 5}}
+                    ],
+                    Values
+                ),
+                [{ok, 1}]
+            end)
+        end,
+        fun(_) -> meck:unload(epgsql) end, fun(_) ->
+            ?_assertEqual(
+                {ok, 1},
+                elib_pg:execute(
+                    self(),
+                    <<"typed parameters">>,
+                    [
+                        <<"2024-01-01T08:00:00.123456+08:00">>,
+                        <<"2024-01-01T08:00:00+08:00">>,
+                        null,
+                        {{2024, 1, 2}, {3, 4, 5}}
+                    ]
+                )
+            )
+        end}.
+
+query_rfc3339_typed_parameters_test_() ->
+    {setup,
+        fun() ->
+            meck:new(epgsql, [no_link, passthrough]),
+            Statement = #statement{types = [timestamptz, text]},
+            meck:expect(epgsql, parse, fun(_, _) -> {ok, Statement} end),
+            meck:expect(epgsql, prepared_query, fun(_, Statement0, Values) ->
+                ?assertEqual(Statement, Statement0),
+                ?assertEqual(
+                    [{{2024, 1, 1}, {0, 0, 0.0}}, <<"2024-01-01T08:00:00+08:00">>], Values
+                ),
+                {ok, [], []}
+            end)
+        end,
+        fun(_) -> meck:unload(epgsql) end, fun(_) ->
+            ?_assertEqual(
+                {ok, []},
+                elib_pg:query(
+                    self(),
+                    <<"typed parameters">>,
+                    [<<"2024-01-01T08:00:00+08:00">>, <<"2024-01-01T08:00:00+08:00">>]
+                )
+            )
+        end}.

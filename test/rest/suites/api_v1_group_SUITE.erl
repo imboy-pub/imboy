@@ -10,9 +10,9 @@
 %%   src/ds/group_ds.erl, src/ds/group_member_ds.erl, elib_response.
 %%
 %% Notable real behaviours encoded here (verified in code, not invented):
-%%   * group/detail for a MISSING gid answers HTTP 200 + code 0 with an
-%%     EMPTY payload: group_repo:find_by_id -> elib_pg:one -> {ok, #{}}
-%%     and the handler only maps {error, _} (SQL failure) to an error.
+%%   * Since 70a839f6, group/detail for a MISSING gid is fail-closed:
+%%     HTTP 200 + code 403 and an empty payload. The live parent-resource
+%%     predicate rejects it before the old empty lookup-success path.
 %%   * dissolve uses the same lookup, so a nonexistent gid or a
 %%     non-owner both end in "只有拥有者才能够解散该群，或者群已解散".
 %%   * group_member/join against a nonexistent gid falls through the
@@ -94,7 +94,7 @@ group_001_create_detail_join_leave_dissolve(Config) ->
         group_detail_path(Gid),
         <<>>,
         DetailAfterResp,
-        #{<<"http_status">> => 200, <<"code">> => 0, <<"payload">> => <<"{} (group deleted)">>},
+        #{<<"http_status">> => 200, <<"code">> => 403, <<"payload">> => <<"{} (access denied)">>},
         fun(Resp) ->
             assert_group_add(AddResp, Owner, Gid),
             assert_group_detail(DetailResp, Gid, Owner),
@@ -128,10 +128,10 @@ group_001_create_detail_join_leave_dissolve(Config) ->
                 },
                 DissolveResp
             ),
-            %% The dissolve hard-deletes the group row; detail answers the
-            %% empty-success shape of a missing gid (see header comment).
+            %% 70a839f6 requires a live parent group before detail access.
+            %% A deleted group must remain denied, never an empty success.
             common_assertions(Resp),
-            rest_assert:json_contains(#{<<"code">> => 0, <<"payload">> => #{}}, Resp)
+            assert_missing_group_denied(Resp)
         end
     ).
 
@@ -257,7 +257,7 @@ group_004_missing_gid_semantics(Config) ->
         },
         fun(Resp) ->
             common_assertions(DetailResp),
-            rest_assert:json_contains(#{<<"code">> => 0, <<"payload">> => #{}}, DetailResp),
+            assert_missing_group_denied(DetailResp),
             common_assertions(Resp),
             rest_assert:json_contains(
                 #{
@@ -527,3 +527,15 @@ list_contains_user(MemberList, Uid) when is_list(MemberList) ->
     );
 list_contains_user(_, _) ->
     false.
+
+%% Enforce the current fail-closed parent-resource contract. Check the exact
+%% code, message and empty payload, not merely absence of returned group data.
+assert_missing_group_denied(Response) ->
+    rest_assert:json_contains(
+        #{
+            <<"code">> => 403,
+            <<"msg">> => <<"无权限访问讨论区"/utf8>>
+        },
+        Response
+    ),
+    rest_assert:json_path([<<"payload">>], #{}, Response).

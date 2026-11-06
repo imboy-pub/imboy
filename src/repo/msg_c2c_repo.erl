@@ -201,8 +201,8 @@ write_msg_with_sender(
         Tb,
         <<" (id, payload, from_id, to_id, created_at, server_ts, msg_id, msg_type, e2ee, sender_did",
             TsCol/binary, ", conv_seq)">>,
-        <<" VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10", TsPh/binary, ", ", SeqPh/binary,
-            ")">>,
+        <<" VALUES ($1, $2, $3, $4, $5::text::timestamptz, $6::text::timestamptz, $7, $8, $9, $10",
+            TsPh/binary, ", ", SeqPh/binary, ")">>,
         <<" ON CONFLICT (msg_id, created_at) DO NOTHING">>
     ],
     %% 【BUG 修复】改用 elib_pg:execute/3 替代 elib_pg:query/3：
@@ -232,6 +232,8 @@ write_msg_with_sender(
         {error, Reason} -> {error, Reason}
     end.
 
+%% RFC3339 binaries must bind as text before PostgreSQL parses the timezone.
+%% Binding them directly as timestamp invokes epgsql's tuple-only binary codec.
 %% @private R05-A：可选时间戳列（accepted_at/expire_at 等）的通用 SQL 片段。
 %% 依次拼接非空列（", col"），占位符随列数递增；SeqPh 恒为最后一个参数的
 %% 占位符。空值省略列。
@@ -255,7 +257,7 @@ optional_ts_sql_fragments(Cols, BaseN) ->
     Ordered = lists:reverse(Present),
     {
         iolist_to_binary([[", ", C] || {C, _} <- Ordered]),
-        iolist_to_binary([[", $", integer_to_binary(I)] || {_, I} <- Ordered]),
+        iolist_to_binary([[", $", integer_to_binary(I), "::text::timestamptz"] || {_, I} <- Ordered]),
         iolist_to_binary(["$", integer_to_binary(N + 1)])
     }.
 
@@ -290,7 +292,7 @@ write_msg_if_absent(CreatedAt, Id, Payload, FromId, ToId, ServerTS, MsgType, E2E
         <<"INSERT INTO ">>,
         Tb,
         <<" (id, payload, from_id, to_id, created_at, server_ts, msg_id, msg_type, e2ee, conv_seq)">>,
-        <<" SELECT $1, $2, $3, $4, $5, $6, $7::varchar(40), $8, $9, $10">>,
+        <<" SELECT $1, $2, $3, $4, $5::text::timestamptz, $6::text::timestamptz, $7::varchar(40), $8, $9, $10">>,
         <<" WHERE NOT EXISTS (SELECT 1 FROM ">>,
         Tb,
         <<" WHERE msg_id = $7 AND to_id = $4)">>,
@@ -324,7 +326,7 @@ revoke_offline_atomic(CreatedAt, Id, OriginalId, Payload, FromId, ToId, ServerTS
         <<"INSERT INTO ">>,
         Table,
         <<" (id, payload, from_id, to_id, created_at, server_ts, msg_id, msg_type, e2ee, conv_seq)">>,
-        <<" SELECT $1, $2, $3, $4, $5, $6, $7::varchar(40), $8, $9, $10">>,
+        <<" SELECT $1, $2, $3, $4, $5::text::timestamptz, $6::text::timestamptz, $7::varchar(40), $8, $9, $10">>,
         <<" WHERE NOT EXISTS (SELECT 1 FROM ">>,
         Table,
         <<" WHERE msg_id = $7 AND to_id = $4) ON CONFLICT (msg_id, created_at) DO NOTHING">>
@@ -395,7 +397,7 @@ write_msg_if_absent_with_sender(
         <<"INSERT INTO ">>,
         Tb,
         <<" (id, payload, from_id, to_id, created_at, server_ts, msg_id, msg_type, e2ee, sender_did, conv_seq)">>,
-        <<" SELECT $1, $2, $3, $4, $5, $6, $7::varchar(40), $8, $9, $10, $11">>,
+        <<" SELECT $1, $2, $3, $4, $5::text::timestamptz, $6::text::timestamptz, $7::varchar(40), $8, $9, $10, $11">>,
         <<" WHERE NOT EXISTS (SELECT 1 FROM ">>,
         Tb,
         <<" WHERE msg_id = $7 AND to_id = $4)">>,
@@ -451,7 +453,7 @@ write_msg(CreatedAt, Id, Payload, FromId, ToId, ServerTS, MsgType, E2EE, ExpireA
         <<"INSERT INTO ">>,
         Tb,
         <<" (id, payload, from_id, to_id, created_at, server_ts, msg_id, msg_type, e2ee, expire_at, conv_seq)">>,
-        <<" VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)">>,
+        <<" VALUES ($1, $2, $3, $4, $5::text::timestamptz, $6::text::timestamptz, $7, $8, $9, $10::text::timestamptz, $11)">>,
         <<" ON CONFLICT (msg_id, created_at) DO NOTHING">>
     ],
     case
@@ -796,8 +798,8 @@ write_msg_with_reply(
             TsCol/binary,
             ", conv_seq)"
         >>,
-        <<" VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12", TsPh/binary, ", ",
-            SeqPh/binary, ")">>,
+        <<" VALUES ($1, $2, $3, $4, $5::text::timestamptz, $6::text::timestamptz, $7, $8, $9, $10, $11, $12",
+            TsPh/binary, ", ", SeqPh/binary, ")">>,
         %% RT-P3-03（2026-08-27）：本写入与 staging worker 双写并发存在竞态——
         %% 若 worker 先插入无引用行，原 DO NOTHING 让本次 reply 直写变 no-op，
         %% 引用元数据静默丢失。改为条件补洞：仅当既有行尚未携带引用时回填三列；

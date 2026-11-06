@@ -3,7 +3,7 @@
 -include_lib("kernel/include/file.hrl").
 
 state_receipt_is_private_test() ->
-    Dir = filename:join("/private/tmp", "imboy-state-private-" ++ os:getpid()),
+    Dir = filename:join(tmp_root(), "imboy-state-private-" ++ os:getpid()),
     Path = filename:join(Dir, "STATE.json"),
     ok = file:make_dir(Dir),
     try
@@ -13,4 +13,11 @@ state_receipt_is_private_test() ->
     after
         file:delete(Path),
         file:del_dir(Dir)
+    end.
+
+%% Resolve the macOS /tmp symlink while retaining the real Linux /tmp path.
+tmp_root() ->
+    case file:read_link_all("/tmp") of
+        {ok, Target} -> filename:absname(Target, "/");
+        {error, einval} -> "/tmp"
     end.

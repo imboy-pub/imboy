@@ -112,7 +112,7 @@ json_environment_authentication_in_separate_vm_test() ->
     {ok, Keeper, Owner} = imboy_quality_task_owner:start(Token, Repo),
     State = #{<<"owner">> => Owner, <<"worktree">> => Repo},
     Path = filename:join(
-        "/private/tmp",
+        tmp_root(),
         "quality-owner-json-" ++ os:getpid() ++ "-" ++
             integer_to_list(erlang:unique_integer([positive]))
     ),
@@ -172,3 +172,10 @@ child_exit(Port) ->
     end.
 
 token() -> string:lowercase(binary:encode_hex(crypto:strong_rand_bytes(32))).
+
+%% Resolve the macOS /tmp symlink while retaining the real Linux /tmp path.
+tmp_root() ->
+    case file:read_link_all("/tmp") of
+        {ok, Target} -> filename:absname(Target, "/");
+        {error, einval} -> "/tmp"
+    end.

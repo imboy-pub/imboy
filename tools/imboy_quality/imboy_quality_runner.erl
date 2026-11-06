@@ -579,6 +579,9 @@ validate_events(Events, Counts) ->
 validate_event({test_begin, Id}, {Open, Seen, open, none}) ->
     false = maps:is_key(Id, Seen),
     {Open#{Id => true}, Seen#{Id => true}, open, none};
+validate_event({leaf_metadata, Id, Metadata}, {Open, Seen, open, none}) when is_map(Metadata) ->
+    true = maps:is_key(Id, Open),
+    {Open, Seen, open, none};
 validate_event({test_end, Id, _, _}, {Open, Seen, open, none}) ->
     true = maps:is_key(Id, Open),
     {maps:remove(Id, Open), Seen, open, none};

@@ -463,12 +463,17 @@ add_member(Gid, Uid, Role) ->
 
 %% 直接插入一条 msg_c2c 主表消息行（撤回/离线/ACK 用例的确定性前置）
 insert_c2c(MsgId, FromUid, ToUid, CreatedAt) ->
-    elib_pg:execute(
-        <<
-            "INSERT INTO msg_c2c (id, from_id, to_id, msg_id, msg_type, payload, created_at)\n"
-            "VALUES ($1, $2, $3, $4, 'text', '{\"text\":\"t\"}', $5)"
-        >>,
-        [next_id(), FromUid, ToUid, MsgId, CreatedAt]
+    %% Use the real ordered writer: a positive conv_seq is mandatory, and a
+    %% failed fixture insert must fail setup rather than become msg_not_found.
+    ok = msg_c2c_repo:write_msg(
+        elib_dt:to_rfc3339(CreatedAt),
+        MsgId,
+        <<"{\"text\":\"t\"}">>,
+        FromUid,
+        ToUid,
+        elib_dt:to_rfc3339(CreatedAt),
+        <<"text">>,
+        null
     ).
 
 %% 范围幂等清理（覆盖前次崩溃遗留脏数据）

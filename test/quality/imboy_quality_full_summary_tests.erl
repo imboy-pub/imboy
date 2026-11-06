@@ -108,7 +108,7 @@ cleanup_requires_resources_and_configs_test() ->
     ).
 
 existing_run_evidence_is_not_overwritten_test() ->
-    Ctrl = filename:join("/private/tmp", "imboy-full-existing-" ++ os:getpid()),
+    Ctrl = filename:join(tmp_root(), "imboy-full-existing-" ++ os:getpid()),
     Existing = filename:join([Ctrl, "evidence", "full-duplicate", "per_root.term"]),
     ok = filelib:ensure_dir(Existing),
     ok = file:write_file(Existing, <<"preserve existing evidence">>, [exclusive]),
@@ -127,7 +127,7 @@ existing_run_evidence_is_not_overwritten_test() ->
     end.
 
 terminal_result_is_exclusive_test() ->
-    OutDir = filename:join("/private/tmp", "imboy-final-result-" ++ os:getpid()),
+    OutDir = filename:join(tmp_root(), "imboy-final-result-" ++ os:getpid()),
     ok = file:make_dir(OutDir),
     Path = filename:join(OutDir, "result.json"),
     try
@@ -145,7 +145,7 @@ terminal_result_is_exclusive_test() ->
     end.
 
 final_result_waits_for_both_cleanups_test() ->
-    OutDir = filename:join("/private/tmp", "imboy-final-cleanup-" ++ os:getpid()),
+    OutDir = filename:join(tmp_root(), "imboy-final-cleanup-" ++ os:getpid()),
     ok = file:make_dir(OutDir),
     Path = filename:join(OutDir, "result.json"),
     try
@@ -177,7 +177,7 @@ final_result_waits_for_both_cleanups_test() ->
     end.
 
 config_cleanup_runs_after_resource_failure_test() ->
-    OutDir = filename:join("/private/tmp", "imboy-final-error-" ++ os:getpid()),
+    OutDir = filename:join(tmp_root(), "imboy-final-error-" ++ os:getpid()),
     ok = file:make_dir(OutDir),
     Path = filename:join(OutDir, "result.json"),
     try
@@ -236,7 +236,7 @@ alias_delete_failure_is_reported_test() ->
     end).
 
 alias_failure_prevents_final_cleanup_success_test() ->
-    OutDir = filename:join("/private/tmp", "imboy-final-alias-" ++ os:getpid()),
+    OutDir = filename:join(tmp_root(), "imboy-final-alias-" ++ os:getpid()),
     ok = file:make_dir(OutDir),
     Path = filename:join(OutDir, "result.json"),
     try
@@ -256,7 +256,7 @@ alias_failure_prevents_final_cleanup_success_test() ->
     end.
 
 verified_alias_allows_cleanup_success_test() ->
-    OutDir = filename:join("/private/tmp", "imboy-final-alias-ok-" ++ os:getpid()),
+    OutDir = filename:join(tmp_root(), "imboy-final-alias-ok-" ++ os:getpid()),
     ok = file:make_dir(OutDir),
     Path = filename:join(OutDir, "result.json"),
     try
@@ -276,7 +276,7 @@ verified_alias_allows_cleanup_success_test() ->
     end.
 
 with_alias_repo(Fun) ->
-    Repo = filename:join("/private/tmp", "imboy-alias-test-" ++ os:getpid()),
+    Repo = filename:join(tmp_root(), "imboy-alias-test-" ++ os:getpid()),
     ok = file:make_dir(Repo),
     Alias = filename:join(Repo, "imboy"),
     try
@@ -285,4 +285,11 @@ with_alias_repo(Fun) ->
         file:delete(Alias),
         file:delete(Alias ++ ".saved"),
         file:del_dir(Repo)
+    end.
+
+%% Resolve the macOS /tmp symlink while retaining the real Linux /tmp path.
+tmp_root() ->
+    case file:read_link_all("/tmp") of
+        {ok, Target} -> filename:absname(Target, "/");
+        {error, einval} -> "/tmp"
     end.

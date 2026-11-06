@@ -471,12 +471,22 @@ resources_port_base_test() ->
         ?assertEqual({error, enoent}, file:read_link_info(P1 ++ ".config"))
     after
         _ = imboy_quality_resources:cleanup_config_receipts(),
+        case ets:info(imboy_quality_config_receipts, owner) of
+            Owner when Owner =:= self() -> ets:delete(imboy_quality_config_receipts);
+            _ -> ok
+        end,
         case Saved of
             false -> os:unsetenv("IMBOY_QUALITY_PORT_BASE");
             V -> os:putenv("IMBOY_QUALITY_PORT_BASE", V)
         end,
         file:del_dir_r(Repo)
     end.
+
+resources_port_base_does_not_leak_receipts_test() ->
+    resources_port_base_test(),
+    ?assertEqual(undefined, ets:info(imboy_quality_config_receipts)),
+    resources_port_base_test(),
+    ?assertEqual(undefined, ets:info(imboy_quality_config_receipts)).
 
 resources_template_digest_test() ->
     Repo = scratch_dir("tpl"),
@@ -487,13 +497,51 @@ resources_template_digest_test() ->
     ok = file:write_file(filename:join(Mig, "00000002_b.up.sql"), <<"-- b\n">>),
     try
         ?assertEqual(2, imboy_quality_resources:migration_head(Repo)),
-        D1 = imboy_quality_resources:template_digest(Repo, "180001"),
+        Environment = #{
+            pg_version => <<"180001">>,
+            extension_versions => #{<<"vector">> => <<"0.8.0">>},
+            locale => #{provider => <<"c">>, collate => <<"C">>}
+        },
+        %% The same map is emitted in the JSON receipt. Null locale fields are valid.
+        _ = json:encode(Environment#{locale := #{provider => <<"c">>, locale => null}}),
+        D1 = imboy_quality_resources:template_digest(Repo, Environment),
+        ?assertEqual(D1, imboy_quality_resources:template_digest(Repo, Environment)),
+        ?assertNotEqual(
+            D1,
+            imboy_quality_resources:template_digest(
+                Repo,
+                Environment#{extension_versions := #{<<"vector">> => <<"0.8.1">>}}
+            )
+        ),
+        ?assertNotEqual(
+            D1,
+            imboy_quality_resources:template_digest(
+                Repo,
+                Environment#{locale := #{provider => <<"c">>, collate => <<"en_US.UTF-8">>}}
+            )
+        ),
+        ?assertNotEqual(
+            D1,
+            imboy_quality_resources:template_digest(
+                Repo,
+                Environment#{locale := #{provider => <<"b">>, collate => <<"C">>}}
+            )
+        ),
+        ?assertNotEqual(
+            D1,
+            imboy_quality_resources:template_digest(
+                Repo,
+                Environment#{pg_version := <<"180002">>}
+            )
+        ),
+        ?assertException(
+            error, function_clause, imboy_quality_resources:template_digest(Repo, "180001")
+        ),
         ?assertEqual(12, length(D1)),
         ?assert(lists:all(fun(C) -> lists:member(C, "0123456789abcdef") end, D1)),
         %% 迁移内容或 PG 版本变化都必须改变键（§3.5：模板键含迁移 hash 与 PG 版本）
         ok = file:write_file(filename:join(Mig, "00000002_b.up.sql"), <<"-- b2\n">>),
-        ?assertNotEqual(D1, imboy_quality_resources:template_digest(Repo, "180001")),
-        ?assertNotEqual(D1, imboy_quality_resources:template_digest(Repo, "170001"))
+        ?assertNotEqual(D1, imboy_quality_resources:template_digest(Repo, Environment))
     after
         file:del_dir_r(Repo)
     end,

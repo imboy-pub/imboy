@@ -17,7 +17,7 @@ setup() ->
     #{<<"database">> := Db} = Identity = jsone:decode(Manifest),
     {ok, [Config]} = file:consult(required("ATTACHMENT_REVIEW_CONFIG")),
     Env = proplists:get_value(imboy, Config),
-    ok = attachment_lifecycle_v5_w403_gateway_protocol_tests:assert_chain_fixture_database(
+    ok = attachment_w403_owned_fixture:assert_chain_fixture_database(
         Db, Identity, Env, required("ATTACHMENT_REVIEW_MANIFEST")
     ),
     Pg = proplists:get_value(pg_conf, Env),

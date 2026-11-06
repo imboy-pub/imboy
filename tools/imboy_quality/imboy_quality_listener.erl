@@ -15,6 +15,9 @@ init(Opts) ->
 
 handle_begin(test, Data, Collector) ->
     Collector ! {test_begin, id(Data)},
+    Collector !
+        {leaf_metadata, id(Data),
+            maps:from_list([{Key, proplists:get_value(Key, Data)} || Key <- [source, line, desc]])},
     Collector;
 handle_begin(group, _Data, Collector) ->
     Collector.
