@@ -9,9 +9,15 @@
 
 enterprise_feature_profiles_test_() ->
     [
-        {atom_to_list(Profile), {timeout, 35, ?_test(pure_mock_fixture:run(fun() ->
-            check_profile(Profile)
-        end))}}
+        {
+            atom_to_list(Profile),
+            {timeout, 35,
+                ?_test(
+                    pure_mock_fixture:run(fun() ->
+                        check_profile(Profile)
+                    end)
+                )}
+        }
      || Profile <- [enabled, pruned]
     ].
 
@@ -65,7 +71,8 @@ assert_feature_imports(Profile, Beam) ->
         case Profile of
             enabled ->
                 [{eb_asset_app, edge_authorize_content, 1}, {eb_asset_download_ticket, verify, 1}];
-            pruned -> []
+            pruned ->
+                []
         end,
     ?assertEqual(Expected, lists:sort(EnterpriseImports)).
 
@@ -77,7 +84,9 @@ assert_internal_token_required() ->
         [<<>>, <<"wrong-internal-token">>, <<"synthetic-edge-internal-tokeX">>]
     ),
     assert_response(
-        404, #{<<"error">> => <<"not_found">>}, maps:remove(internal_token, request(<<"GET">>, ?TOKEN))
+        404,
+        #{<<"error">> => <<"not_found">>},
+        maps:remove(internal_token, request(<<"GET">>, ?TOKEN))
     ),
     %% An otherwise valid caller cannot use an unconfigured or empty server token.
     application:unset_env(imboy, edge_internal_token),
@@ -152,7 +161,7 @@ common_mocks() ->
                 maps:get(internal_token, Req, Default)
             end},
             {read_body, 2, fun(Req, Options) ->
-                ?assertEqual(8192, maps:get(length, Options)),
+                ?assertEqual(16384, maps:get(length, Options)),
                 {ok, maps:get(body, Req), Req}
             end},
             {reply, 4, fun(Status, Headers, Body, Req) ->

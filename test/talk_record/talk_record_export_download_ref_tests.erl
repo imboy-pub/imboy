@@ -12,10 +12,9 @@ reference_and_content_share_authorization_test() ->
         ?assertEqual(21, maps:get(<<"attachment_id">>, Ref)),
         ?assertEqual(false, maps:is_key(<<"content">>, Ref)),
         assert_no_byte_io(),
-        {ok, Full} = talk_record_export_download:verify_ticket(Ticket, 7, 1, 9),
-        ?assertEqual(Ref#{<<"content">> => <<"export content">>}, Full),
-        ?assertEqual(1, meck:num_calls(talk_record_export_artifact, read, [Ref])),
-        ?assertEqual(2, meck:num_calls(talk_record_export_logic, authorize_tx, [conn, 7, 1]))
+        %% 内容读取契约已退役（V3-18 边缘承载：ref 零字节、字节经 presigned
+        %% URL 流转），此处只保留鉴权链与零字节断言。
+        ?assertEqual(1, meck:num_calls(talk_record_export_logic, authorize_tx, [conn, 7, 1]))
     end).
 
 edge_target_uses_reference_without_reading_artifact_test() ->
@@ -55,7 +54,6 @@ current_guards_reject_before_byte_io_test_() ->
                 ?assertEqual(
                     {error, Reason}, talk_record_export_download:verify_ticket_ref(Ticket)
                 ),
-                ?assertEqual({error, Reason}, talk_record_export_download:verify_ticket(Ticket)),
                 ?assertEqual({error, Reason}, talk_record_export_download:edge_target(Ticket)),
                 assert_no_byte_io()
             end)
@@ -72,10 +70,6 @@ bound_identity_checked_before_acl_or_byte_io_test_() ->
                     {error, export_ticket_invalid},
                     talk_record_export_download:verify_ticket_ref(Ticket, Uid, Rid, Eid)
                 ),
-                ?assertEqual(
-                    {error, export_ticket_invalid},
-                    talk_record_export_download:verify_ticket(Ticket, Uid, Rid, Eid)
-                ),
                 ?assertEqual(0, meck:num_calls(talk_record_export_logic, authorize_tx, '_')),
                 assert_no_byte_io()
             end)
@@ -85,13 +79,15 @@ bound_identity_checked_before_acl_or_byte_io_test_() ->
         ]
     ].
 
-artifact_read_failure_is_preserved_test() ->
+presign_failure_is_preserved_test() ->
+    %% 工件字节不再内联读取（V3-18）；等价的失败透传点是 edge_target 的
+    %% presign 错误——不得被吞掉或误报成其它错误。
     with_fixture(fun() ->
-        meck:expect(talk_record_export_artifact, read, fun(_) ->
-            {error, artifact_unavailable}
+        meck:expect(attachment_edge_redirect, presign_attachment, fun(21, 600) ->
+            {error, presign_unavailable}
         end),
         ?assertEqual(
-            {error, artifact_unavailable}, talk_record_export_download:verify_ticket(ticket())
+            {error, presign_unavailable}, talk_record_export_download:edge_target(ticket())
         )
     end).
 
@@ -130,8 +126,11 @@ assert_no_byte_io() ->
 with_fixture(F) ->
     SavedKey = application:get_env(imboy, jwt_key),
     Mods = [
-        elib_pg, talk_record_export_logic, talk_record_export_repo,
-        talk_record_export_artifact, attachment_edge_redirect
+        elib_pg,
+        talk_record_export_logic,
+        talk_record_export_repo,
+        talk_record_export_artifact,
+        attachment_edge_redirect
     ],
     lists:foreach(fun(M) -> meck:new(M, [non_strict, no_link]) end, Mods),
     try
