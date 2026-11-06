@@ -707,7 +707,6 @@ gates:
       - src/api/qr_login_handler.erl
       - src/api/talk_record_capture_http.erl
       - src/api/talk_record_handler.erl
-      - src/api/talk_record_playback_handler.erl
       - src/api/talk_record_playback_parts_handler.erl
       - src/api/talk_record_routes.fragment.erl
       - src/api/talk_record_sharing_http.erl
@@ -764,7 +763,6 @@ gates:
       - src/ds/push_notification_ds.erl
       - src/ds/qr_login_event_ds.erl
       - src/ds/report_ticket_ds.erl
-      - src/ds/talk_record_audio_render.erl
       - src/ds/talk_record_capture_ds.erl
       - src/ds/talk_record_client_audio_ds.erl
       - src/ds/talk_record_client_claim.erl
@@ -878,7 +876,6 @@ gates:
       - src/lib/attachment_content_worker.erl
       - src/lib/attachment_guards_activation_check.erl
       - src/lib/attachment_storage/attachment_storage.erl
-      - src/lib/attachment_storage/attachment_storage_disk.erl
       - src/lib/attachment_storage/attachment_storage_garage.erl
       - src/lib/attachment_storage/attachment_upload_body.erl
       - src/lib/auth_oidc_jwks.erl
