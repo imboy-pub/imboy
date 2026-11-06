@@ -1,5 +1,9 @@
 -module(admin_avatar_session_repo_tests).
 -include_lib("eunit/include/eunit.hrl").
+%% 本模块定义了本地 register/2 辅助函数；OTP 27 会因预 R14 自动导入的
+%% BIF register/2 报"ambiguous call"编译错误（OTP 28+ 仅告警）。显式
+%% 关闭该自动导入，本地定义不再歧义。
+-compile({no_auto_import, [register/2]}).
 
 owner_test_() ->
     case os:getenv("C08_OWNER_DB") of
