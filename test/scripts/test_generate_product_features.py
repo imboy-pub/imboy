@@ -384,6 +384,68 @@ class ProductFeatureManifestTest(unittest.TestCase):
         self.assertIn("channel", catalog["features"])
         self.assertEqual(["channel"], catalog["dependencies"]["channel_order"])
 
+    def test_source_catalog_bootstraps_phase2_domains(self):
+        catalog = MODULE.source_catalog(SCRIPT.parents[1])
+        for feature in ("rtc", "rtc_group", "live_room", "ai_assistant", "agent_hub", "mcp", "wallet"):
+            with self.subTest(feature=feature):
+                self.assertIn(feature, catalog["features"])
+        contract = MODULE.validate(self.manifest(["rtc"]), catalog)
+        self.assertEqual(["core", "rtc"], contract["compiled_features"])
+
+    def test_runtime_catalog_without_beams_reads_phase2_source_keys(self):
+        # 新域只在 Erlang 真源声明，无 beam 时也必须可被 manifest 选择。
+        # 临时树不包含 ebin，且不写任何三仓生成物。
+        with tempfile.TemporaryDirectory() as directory:
+            repo = Path(directory)
+            for filename in ("imboy_feature.erl", "imboy_plugin_registry.erl", "imboy_policy_catalog.erl"):
+                target = repo / "src/lib" / filename
+                target.parent.mkdir(parents=True, exist_ok=True)
+                content = (SCRIPT.parents[1] / "src/lib" / filename).read_text()
+                if filename == "imboy_feature.erl":
+                    content = content.replace("Phase2Domains = [", "Phase2Domains = [rtc_future, ", 1)
+                target.write_text(content)
+            catalog = MODULE.runtime_catalog(repo)
+            contract = MODULE.validate(self.manifest(["rtc", "rtc_future"]), catalog)
+            self.assertEqual(["core", "rtc", "rtc_future"], contract["compiled_features"])
+
+    def test_source_catalog_rejects_missing_phase2_source(self):
+        with tempfile.TemporaryDirectory() as directory:
+            repo = Path(directory)
+            for filename in ("imboy_feature.erl", "imboy_plugin_registry.erl", "imboy_policy_catalog.erl"):
+                target = repo / "src/lib" / filename
+                target.parent.mkdir(parents=True, exist_ok=True)
+                content = (SCRIPT.parents[1] / "src/lib" / filename).read_text()
+                if filename == "imboy_feature.erl":
+                    content = content.replace("Phase2Domains =", "UnrecognisedDomains =", 1)
+                target.write_text(content)
+            with self.assertRaisesRegex(MODULE.ManifestError, "cannot bootstrap phase2"):
+                MODULE.source_catalog(repo)
+
+    def test_rtc_group_requires_explicit_rtc_parent(self):
+        catalog = MODULE.source_catalog(SCRIPT.parents[1])
+        self.assertEqual(["rtc"], catalog["dependencies"]["rtc_group"])
+        with self.assertRaisesRegex(MODULE.ManifestError, "missing dependency for rtc_group: rtc"):
+            MODULE.validate(self.manifest(["rtc_group"]), catalog)
+        contract = MODULE.validate(self.manifest(["rtc", "rtc_group"]), catalog)
+        self.assertEqual(["core", "rtc", "rtc_group"], contract["compiled_features"])
+
+    def test_delivery_manifests_select_only_one_to_one_rtc(self):
+        repo = SCRIPT.parents[1]
+        default = MODULE.read_manifest(repo / "config/product-feature-manifest.json")
+        delivery = MODULE.read_manifest(repo / "config/product-feature-manifests/phase1_delivery.json")
+        self.assertEqual(default, delivery)
+        self.assertEqual("phase1_delivery", default["profile"])
+        self.assertIn("rtc", default["selected_features"])
+        self.assertNotIn("rtc_group", default["selected_features"])
+        contract = MODULE.validate(default, MODULE.source_catalog(repo))
+        outputs = MODULE.render(contract)
+        hrl = next(value for path, value in outputs.items() if path.name == "imboy_product_features.hrl")
+        self.assertIn("-define(IMBOY_FEATURE_RTC, true).", hrl)
+        self.assertNotIn("-define(IMBOY_FEATURE_RTC_GROUP, true).", hrl)
+        dart = next(value for path, value in outputs.items() if path.name == "generated_product_features.dart")
+        self.assertIn('"rtc"', dart)
+        self.assertNotIn('"rtc_group"', dart)
+
     # ------------------------------------------------------------------
     # EB-10：enterprise_business / customer_service 入册（catalog + 生成器 + 依赖边）
     # ------------------------------------------------------------------

@@ -1,6 +1,6 @@
 # IMBoy 打包契约与运维指南（Packaging Contract & Operator Guide）
 
-> 版本：v1.1 | 最后更新：2026-10-07（v1.1 增补一期交付 profile `phase1_delivery`，见 §9）
+> 版本：v1.2 | 最后更新：2026-11-06（一期交付增加 App 一对一 RTC；群通话独立关闭，见 §9.5）
 > 任务：海外合规计划 **F-09 — Packaging Contract and Operator Documentation** 与 **F-08 — Migration and Stored-Data Compatibility**（兼容性 Runbook 见 §7）；一期交付收敛主计划 Q11 同步（`docs/design/2026-10-07-phase1-delivery-quality-plan.md`）
 > 受众：负责构建/发布 IMBoy 组合产物（Base-only / full-selected / overseas_baseline / agent_hub / **phase1_delivery** 等 profile）的运维与发布工程师
 > 关联：`scripts/generate_product_features.py`（契约源）、`scripts/verify_product_feature_artifacts.py`（产物验证）、`scripts/run_product_feature_matrix.sh`（三仓矩阵，支持 `phase1_delivery` preset）、[交付包清单](./delivery-package-manifest.md)。具体构建和验收记录保存在仓外，并绑定交付产物哈希。
@@ -13,17 +13,20 @@ Feature 全集的**唯一权威源**是代码：`imboy_feature:feature_names()`�
 
 | 类别 | feature | 裁剪性 |
 |---|---|---|
-| Base 固定 | `core`、`e2ee` | **不可裁剪**（任何 manifest 不得禁用；生成器 `disabled_base_features` 强制为空） |
+| Base 固定 | `core` | **不可裁剪**（生成器 `BASE_FEATURES = ("core",)`；`disabled_base_features` 必须为空） |
+| 可选加密域 | `e2ee` | 须在 manifest 显式选择；未选择时 `compiled(e2ee)=false` |
 | 插件管理（plugin-managed） | `channel`、`location`、`moment`、`channel_discover`、`channel_invitation`、`channel_order`、`group_vote`、`group_schedule`、`group_task` 及插件注册表追加键 | 可按 manifest 选择性编译/禁用 |
 | 平台内建 | `bot_webhook` | 可禁用（overseas_baseline 默认关） |
+| RTC 总域 | `rtc` | 后端保留运行时域语义；App 须在生成清单中选入，并读取运行时开关。一对一交付选入此键 |
+| RTC 子能力 | `rtc_group` | 依赖 `rtc`；须单独编入并运行时启用；`phase1_delivery` 交付锁保持关闭 |
 | 平台内建 | `project`（GZAPP-02/G6，Workspace 项目协作面：`project_handler`/`project_task_handler`/`project_member_handler`/`project_milestone_handler`/`project_channel_handler`） | 可禁用；**通用默认开启**（full-selected 兼容）。物理裁剪仅 API handler 家族（logic/ds/repo 保留编译——admin 概览/资源计数仍引用）；路由由 `imboy_feature:route_feature/3` + `compiled_routes/2` 运行时过滤 |
 
 依赖关系（如 `channel_discover`/`channel_order` 依赖 `channel`）由 `imboy_policy_catalog:dependencies/1` 与生成器 catalog 校验。
 
 ## 2. Immutable Base
 
-- `core` 与 `e2ee` 是组合产物的不变底座：**运行时 policy 可以进一步关闭 e2ee 的可选面（`e2ee_mode=disabled`），但代码永远物理在产物内**——"runtime can disable but cannot add absent"（F-01 定案）。
-- 契约测试：`test/lib/feature_composition_compat_tests.erl`（`compiled(e2ee)`/`compiled(core)` 恒真断言）。
+- `core` 是生成器的不变底座。`e2ee` 是可选 manifest 键；是否进入 `compiled_features` 以清单为准，运行时 policy 可进一步关闭已经编入的能力。
+- 契约真源与回归：`scripts/generate_product_features.py` 的 `BASE_FEATURES`、`test/scripts/test_generate_product_features.py` 与 `test/lib/imboy_feature_compiled_tests.erl`。
 
 ## 3. Manifest schema（v1）
 
@@ -37,11 +40,11 @@ Feature 全集的**唯一权威源**是代码：`imboy_feature:feature_names()`�
 }
 ```
 
-约束（`generate_product_features.py:validate` 强制）：schema_version=1；product_id=imboy；`base_ref` 固定；`disabled_base_features` 必须为空（Base 不可禁）；`selected_features` ⊆ 全集且满足依赖闭包；`compiled_features = selected + 依赖闭包 ∪ Base`，生成器输出 `manifest_hash`（sha256）。
+约束（`generate_product_features.py:validate` 强制）：schema_version=1；product_id=imboy；`base_ref` 固定；`disabled_base_features` 必须为空（Base 不可禁）；`selected_features` ⊆ 全集且已满足依赖闭包；`compiled_features = selected_features ∪ {core}`。生成器拒绝缺失依赖，不自动补选，并输出 `manifest_hash`（sha256）。
 
-**Tracked manifest 位置**：`config/product-feature-manifests/*.json`（如 `overseas_baseline.json`、一期交付 `phase1_delivery.json`——selected = `channel` + `moment` + `location` + `group_vote` + `group_schedule` + `group_task` + `enterprise_business` + `customer_service`）；`config/product-feature-manifest.json` 为 full-selected 默认清单。运行时镜像校验见 `feature_composition_compat_tests:tracked_manifests_within_catalog_test_`。
+**Tracked manifest 位置**：`config/product-feature-manifests/*.json`（如 `overseas_baseline.json`、一期交付 `phase1_delivery.json`——selected = `channel` + `moment` + `location` + `group_vote` + `group_schedule` + `group_task` + `enterprise_business` + `customer_service` + `rtc`）；`config/product-feature-manifest.json` 当前与 `phase1_delivery.json` 内容一致，均不选择 `rtc_group`。运行时镜像校验见 `feature_composition_compat_tests:tracked_manifests_within_catalog_test_`。
 
-**部署级（Git 外）关闭示例——广州企业版关 `project`（GZAPP-02/G6 定案：不建广州 profile，通用 manifest 默认开）**：
+**其它 full-selected 部署的 Git 外关闭示例——关 `project`（GZAPP-02/G6：不建地域 profile；当前 phase1 清单本身已不选择 `project`）**：
 
 1. 物理裁剪（编译期）：在部署机用 Git 外 manifest 重跑生成器，产物同样落仓内路径但不回传 Git——
    ```bash
@@ -54,7 +57,7 @@ Feature 全集的**唯一权威源**是代码：`imboy_feature:feature_names()`�
 
 ## 4. 构建命令（单 manifest 复现）
 
-生成器从 manifest 派生 **8 个确定性产物**（全部带 `do not edit` 头，`--check` 可校验陈旧）：
+生成器从 manifest 派生 **11 个确定性产物**（全部带 `do not edit` 头，`--check` 可校验陈旧）：
 
 | 端 | 产物 | 裁剪作用 |
 |---|---|---|
@@ -144,7 +147,7 @@ python3 imboy/scripts/verify_product_feature_artifacts.py \
 
 ### 9.1 白名单（运行时开启面）
 
-`phase1_delivery` 是**白名单语义** profile：运行时默认开启的特性键有 10 个——
+`phase1_delivery` 是**白名单语义** profile：运行时默认开启的特性键有 11 个——
 
 | 键 | 覆盖能力 |
 |---|---|
@@ -153,21 +156,22 @@ python3 imboy/scripts/verify_product_feature_artifacts.py \
 | `appeal` | 处置申诉链（R-04 operational baseline，治理保留） |
 | `enterprise_business` | 企业组织/部门/成员/工作区/RBAC 与企业业务底座 |
 | `customer_service` | 人工客服（坐席队列/认领/转接/关闭/历史/附件/SSE/Widget） |
+| `rtc` | 两个已登录 App 好友之间的一对一语音/视频；不包含访客/Web 坐席或群通话新增交付 |
 | `moment` | 朋友圈：发布、浏览、互动及内容可见性 |
 | `location` | 附近的人：定位授权、可见性与隐私控制 |
 | `group_vote` | 群投票及投票消息卡片 |
 | `group_schedule` | 群日程及日程消息卡片 |
 | `group_task` | 群作业、成员分配、提交及作业消息卡片 |
 
-`imboy_feature:feature_names()` 全集中的**其余键一律默认 false**；且 `fail_closed(phase1_delivery) = true`——未在 preset 枚举的键（含未来新增 plugin 键）默认关闭而不是默认开启，DB saved / 远端配置不能开启白名单之外的键。
+`imboy_feature:feature_names()` 全集中的**其余键一律默认 false**；且 `fail_closed(phase1_delivery) = true`——未在 preset 枚举的键（含未来新增 plugin 键）默认关闭。§9.2 列出的交付锁定键不能被 DB saved / 远端配置重新开启。
 
-编译裁剪维度与运行时白名单是两回事：manifest `config/product-feature-manifests/phase1_delivery.json` 的 `selected_features = [channel, moment, location, group_vote, group_schedule, group_task, enterprise_business, customer_service]`（`core`/`e2ee` 是 Base 恒在不可禁，`appeal` 是平台内建特性随 Base 语义保留在白名单内）；依赖边 `customer_service → enterprise_business` 由 `imboy_policy_catalog:dependencies/1` 在生成期强制（EB-10：不允许"先有客服、后补企业底座"）。
+编译裁剪维度与运行时白名单是两回事：manifest `config/product-feature-manifests/phase1_delivery.json` 的 `selected_features = [channel, moment, location, group_vote, group_schedule, group_task, enterprise_business, customer_service, rtc]`（`core` 是 Base；`e2ee` 未选入；`appeal` 是后端运行时域键并保留在白名单内）。依赖边 `customer_service → enterprise_business` 与 `rtc_group → rtc` 由 `imboy_policy_catalog:dependencies/1` 在生成期强制。
 
 ### 9.2 交付锁（delivery_locked_features）
 
-一期交付 profile 下，运行时（DB saved / 远端配置）**不得重新开启**的特性键，合并链最后强制压 `false`（与 e2ee `storage_mode` 硬闸同一时机），保证"旧缓存或远端全开配置不能绕过关闭面"（AC03）。共 13 键：
+一期交付 profile 下，运行时（DB saved / 远端配置）**不得重新开启**的特性键，合并链最后强制压 `false`（与 e2ee `storage_mode` 硬闸同一时机），保证"旧缓存或远端全开配置不能绕过关闭面"（AC03）。共 12 键：
 
-- **二期七域**：`e2ee`、`rtc`、`live_room`、`bot_webhook`、`ai_assistant`、`agent_hub`、`mcp`
+- **群通话及其余未交付能力**：`e2ee`、`rtc_group`、`live_room`、`bot_webhook`、`ai_assistant`、`agent_hub`、`mcp`
 - **一期默认不承诺的运营域**：`wallet`、`channel_discover`、`channel_invitation`、`channel_order`、`project`
 
 **OA 共享设施豁免（F08）**：`bot_delivery` outbox / worker / guard 不在锁内——`enterprise_webhook`（OA 对接）走独立门，Bot 产品关闭不影响合法企业事件投递。
@@ -192,3 +196,17 @@ bash scripts/run_product_feature_matrix.sh phase1_delivery
 # 单 manifest 复现：python3 scripts/generate_product_features.py \
 #   --manifest config/product-feature-manifests/phase1_delivery.json
 ```
+
+### 9.5 App 一对一 RTC 与群通话边界
+
+本次交付沿用 LiveKit SFU，只开放两个已登录 `imboyapp` 用户之间的 C2C 语音/视频。既有好友关系、信令黑名单校验和身份认证继续生效；访客、Web 坐席、C2S 会话及群通话不在新增交付范围。
+
+两份默认/一期清单只新增 `rtc`，不选择 `rtc_group`。`phase1_delivery` 的 `rtc` 白名单默认值为 `true`，仍接受显式运行时 `features.rtc=false`；`rtc_group` 仍受交付锁约束。实际运行时 profile 从配置读取，打包 manifest 的 `profile` 字段不会替现场自动切换运行时配置，因此发布前须读取实际 effective profile/features，确认有无持久化关闭覆盖。
+
+App 的 RTC 入口必须同时满足生成清单包含 `rtc`、服务端运行时 `features.rtc=true`。群入口另外要求 `rtc_group` 被编入并启用，且父级 `rtc` 开启。服务端 `rtc_room_logic:join/4` 在 `kind=group` 查询成员和签发令牌前复核两道门，关闭时复用 `ERR_FEATURE_DISABLED`（5190）；未改变 `kind` 取值或新增错误号。其它 profile 的 RTC 总域继续沿用既有运行时语义；群子能力须显式选择。
+
+无 BEAM 的新 checkout 由生成器 `source_catalog()` 读取 `imboy_feature.erl` 的 `Phase2Domains`，避免合法的 `rtc` 清单被误判为 unknown feature。新增 feature 与依赖仍从 Erlang 真源读取，不能手改任一端生成文件。三端须用同一 manifest 生成、构建并核对 hash/schema/compiled_features 后交付。
+
+对应回归为 Python 生成器目录/依赖/清单测试，以及 `imboy_feature_tests`、`imboy_feature_compiled_tests`、`imboy_profile_preset_tests`、`imboy_policy_tests`、`rtc_room_logic_tests`、`rtc_room_handler_tests`。这些回归与真实 App 的双向音视频、权限、网络切换、挂断释放验证分别记录；生成器通过不代表媒体通话验收通过。
+
+This delivery selects `rtc` for one-to-one calls between signed-in app friends. Group calls require the separate `rtc_group` feature, which remains excluded and delivery-locked. Existing friendship, blocklist and authentication rules still apply. Explicit runtime `features.rtc=false` remains effective; the manifest profile does not change the running server's profile. Generate all three products from the same manifest and verify the hash, schema and compiled features. Source and generator checks do not replace real-device call, lifecycle or cleanup acceptance.

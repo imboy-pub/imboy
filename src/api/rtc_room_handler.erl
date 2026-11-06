@@ -10,6 +10,8 @@
 
 -behaviour(cowboy_rest).
 
+-include("error_code.hrl").
+
 -export([init/2]).
 
 -spec init(cowboy_req:req(), map()) -> {ok, cowboy_req:req(), map()}.
@@ -46,6 +48,12 @@ join(<<"POST">>, Req0, State) ->
             case rtc_room_logic:join(Uid, Did, Kind, TargetId) of
                 {ok, Grant} ->
                     elib_response:success(Req0, Grant, "success.");
+                {error, feature_disabled} ->
+                    elib_response:error(
+                        Req0,
+                        imboy_error:error_msg(?ERR_FEATURE_DISABLED),
+                        ?ERR_FEATURE_DISABLED
+                    );
                 {error, Msg} ->
                     elib_response:error(Req0, Msg)
             end

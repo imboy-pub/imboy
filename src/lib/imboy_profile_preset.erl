@@ -26,15 +26,16 @@ supported_profiles() ->
 
 %% @doc 交付锁：一期交付 profile 下运行时（DB saved / 远端配置）不得重新
 %% 开启的特性键。合并链最后强制压 false（与 e2ee storage_mode 硬闸同一
-%% 时机），保证"旧缓存或远端全开配置不能绕过关闭面"（AC03）。二期七域
-%% （RTC/live_room/Bot 产品/AI 助手/Agent Hub/MCP/E2EE）+ 一期默认不
-%% 承诺的运营域；OA 共享投递设施（bot_delivery outbox / worker / guard）
+%% 时机），保证"旧缓存或远端全开配置不能绕过关闭面"（AC03）。RTC 一对一
+%% 已纳入白名单；群通话 rtc_group 仍锁定，与 live_room/Bot 产品/AI 助手/
+%% Agent Hub/MCP/E2EE 及一期默认不承诺的运营域保持关闭。
+%% OA 共享投递设施（bot_delivery outbox / worker / guard）
 %% 不在此列——enterprise_webhook 走独立门，不受 Bot 产品关闭影响（F08）。
 -spec delivery_locked_features(term()) -> [atom()].
 delivery_locked_features(phase1_delivery) ->
     [
         e2ee,
-        rtc,
+        rtc_group,
         live_room,
         bot_webhook,
         ai_assistant,
@@ -129,8 +130,8 @@ profile_defaults(enterprise) ->
 %% @doc 一期交付白名单（主计划 2026-10-07 §1/§3）：Core IM、组织/工作区/
 %% RBAC（enterprise_business）、人工客服（customer_service）、公告频道底座
 %% （channel，组织内部 General 群依赖）、处置申诉（appeal，治理保留）、
-%% 群投票、群日程与群作业（一期群协作消息）。
-%% 二期七域与一期默认不承诺的运营域显式关闭；未枚举键经 fail_closed/1
+%% 群投票、群日程与群作业（一期群协作消息）、已登录 App 好友间的一对一
+%% RTC 音视频。群通话 rtc_group 与其余未交付域保持关闭；未枚举键经 fail_closed/1
 %% 同样压 false。E2EE OFF 只针对产品能力：TLS、企业托管加密（body_cipher/
 %% keyring）、归档/检索/推送/保留合同全部保持（AC04）。
 profile_defaults(phase1_delivery) ->
@@ -140,6 +141,7 @@ profile_defaults(phase1_delivery) ->
         appeal,
         enterprise_business,
         customer_service,
+        rtc,
         moment,
         location,
         group_vote,

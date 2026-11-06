@@ -11,6 +11,7 @@
     "group_schedule",
     "group_task",
     "enterprise_business",
-    "customer_service"
+    "customer_service",
+    "rtc"
   ]
 }

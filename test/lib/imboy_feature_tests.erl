@@ -105,8 +105,9 @@ all_returns_binary_key_view_for_known_features_test_() ->
         enterprise_business => EnterpriseCompiled,
         customer_service => CustomerServiceCompiled,
         project => ProjectCompiled,
-        %% Q02 运行时域键（与 feature_names 的 Phase2Domains 同集）
+        %% 历史 Phase2Domains 目录；群通话另受编译集约束。
         rtc => true,
+        rtc_group => true,
         live_room => false,
         ai_assistant => true,
         agent_hub => false,
@@ -162,8 +163,9 @@ feature_names_contract_test() ->
             %% GZAPP-02/G6：project 是 Builtin 列表的末位（与
             %% src/lib/imboy_feature.erl 的 Builtin 字面量同序）
             project,
-            %% Q02 非一期运行时域键（与 Builtin 后的 Phase2Domains 同序）
+            %% 历史二期域目录（与 Builtin 后的 Phase2Domains 同序）
             rtc,
+            rtc_group,
             live_room,
             ai_assistant,
             agent_hub,
@@ -180,6 +182,9 @@ customer_service_depends_on_enterprise_business_test() ->
         [enterprise_business],
         imboy_policy_catalog:dependencies(customer_service)
     ).
+
+rtc_group_depends_on_rtc_test() ->
+    ?assertEqual([rtc], imboy_policy_catalog:dependencies(rtc_group)).
 
 enterprise_routes_gated_by_feature_test() ->
     %% 路由门：企业两张面的 Handler 必须映射到 enterprise_business，

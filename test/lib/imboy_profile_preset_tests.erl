@@ -98,16 +98,17 @@ phase1_delivery_whitelist_test_() ->
         ?assertEqual(true, maps:get(appeal, Features)),
         ?assertEqual(true, maps:get(enterprise_business, Features)),
         ?assertEqual(true, maps:get(customer_service, Features)),
+        ?assertEqual(true, maps:get(rtc, Features)),
         ?assertEqual(true, maps:get(moment, Features)),
         ?assertEqual(true, maps:get(location, Features)),
         ?assertEqual(true, maps:get(group_vote, Features)),
         ?assertEqual(true, maps:get(group_schedule, Features)),
         ?assertEqual(true, maps:get(group_task, Features)),
 
-        %% 二期七域全部关闭。
+        %% 群通话及其余未交付域保持关闭。
         lists:foreach(
             fun(K) -> ?assertEqual(false, maps:get(K, Features)) end,
-            [e2ee, rtc, live_room, bot_webhook, ai_assistant, agent_hub, mcp]
+            [e2ee, rtc_group, live_room, bot_webhook, ai_assistant, agent_hub, mcp]
         ),
 
         %% 一期默认不承诺域。
@@ -132,6 +133,7 @@ phase1_delivery_whitelist_test_() ->
                 appeal,
                 enterprise_business,
                 customer_service,
+                rtc,
                 moment,
                 location,
                 group_vote,
@@ -160,7 +162,8 @@ phase1_delivery_delivery_lock_test_() ->
         %% 交付锁：运行时（DB saved / 远端配置）不得重新开启被锁域。
         Locked = imboy_profile_preset:delivery_locked_features(phase1_delivery),
         ?assert(lists:member(e2ee, Locked)),
-        ?assert(lists:member(rtc, Locked)),
+        ?assert(lists:member(rtc_group, Locked)),
+        ?assertNot(lists:member(rtc, Locked)),
         ?assert(lists:member(live_room, Locked)),
         ?assert(lists:member(bot_webhook, Locked)),
         ?assert(lists:member(ai_assistant, Locked)),
