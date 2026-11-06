@@ -387,6 +387,12 @@ do_boot() ->
             %% enqueue 必发 kick，集成套件的真实异步转正不受影响；须在 app
             %% 启动前 set_env，worker init 读取后决定是否武装 tick 定时器。
             application:set_env(imboy, msg_store_worker_tick_ms, 0),
+            %% mock 轨道空 schema 免迁移启动：C10 起 ensure_table_exists 由
+            %% 动态建表改为只读校验（生产 fail-fast 正确），但 eunit-local
+            %% 全 mock 门（vanilla PG、AUTO_MIGRATE=false）会因此 boot 失败
+            %% （adm_moment_handler_tests 实证 staging_schema_unavailable →
+            %% eunit_app_boot_failed）。与 tick_ms 同款 test-env 让位。
+            application:set_env(imboy, msg_store_staging_verify, false),
             %% A1c（CP-TD-A02）：上一次启动中途夭折会遗留 ranch 监听孤儿——
             %% 黑名单（按原子名 whereis）够不到 {ranch_listener_sup, Ref} 元组名
             %% sup，残留 19980/19970 绑定 → 重试恒 eaddrinuse（run14/16 实证
