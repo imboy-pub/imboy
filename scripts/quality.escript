@@ -625,7 +625,7 @@ ct_critical_run(Repo, Ctrl, ConfigPath) ->
     %% erl/escript/peer 三处一致），imboy_app boot 的 product_terminology:init
     %% 必炸。建 runtime/ctlib/imboy-<vsn>/{ebin,priv} symlink 布局并置于
     %% -pa 首位，lib 索引命中后 priv_dir 落到真 priv（实测通过）。
-    Vsn = "1.0.0-alpha.83",
+    Vsn = "1.0.0-alpha.84",
     LibRoot = filename:join([Ctrl, "runtime", "ctlib"]),
     LibApp = filename:join(LibRoot, "imboy-" ++ Vsn),
     ok = filelib:ensure_dir(filename:join(LibApp, "x")),

@@ -1,6 +1,7 @@
 # Google Play 首发与内测轨清单 / Google Play First Release & Internal Testing
 
 > 核查日期 / Checked: 2026-11-05；Flutter GitHub main: `9f5d36e5b852f0a3dc20c94a0997fde82d9852d2`。本清单记录代码证据和待验证项，并非上架通过证明。
+> 2026-11-06：随 imboyapp bump `1.0.0-alpha.19` 同步版本引用（其余核查内容未重做）。
 > Source review only: signing material, actual release AAB, device behavior and Play Console have not been verified.
 
 ## 1. 当前状态 / Current status
@@ -8,7 +9,7 @@
 | 项目 / Item | 代码现状 / Evidence | 状态 / Status |
 |---|---|---|
 | 包名 / Package | `standard` 为 `pub.imboy.app`；`gzCustomer` 默认追加 `.gzcustomer`，供客户白标使用 | 首发固定 standard；Console 包名待核对 |
-| 版本 / Version | `pubspec.yaml` 为 `1.0.0-alpha.18`，没有 `+build`；Gradle 从 Flutter 读取 versionName/versionCode | 必须显式指定未使用且递增的正整数 versionCode；不得沿用旧清单的 1 或 3 |
+| 版本 / Version | `pubspec.yaml` 为 `1.0.0-alpha.19`，没有 `+build`；Gradle 从 Flutter 读取 versionName/versionCode | 必须显式指定未使用且递增的正整数 versionCode；不得沿用旧清单的 1 或 3 |
 | SDK | `minSdkVersion(24)` 后覆盖前面的 Flutter 默认；`targetSdk = flutter.targetSdkVersion`；`compileSdk = maxOf(flutter.compileSdkVersion, 37)` | 本机 Flutter 3.47.8 与 CI 固定的 3.47.5 标签源码均默认 target 36；最终 AAB 的实际值仍须检查 |
 | 签名 / Signing | `android/key.properties` 优先，四个字段分别回退至 `android/local.properties`；release 使用 release signingConfig | 有配置机制不代表真实密钥就绪；不得使用 CI 的 debug key 发版 |
 | 优化 / Shrinking | release 开启 R8 minify、资源压缩及现有 `proguard-rules.pro` | 构建和真机验证待做；不要盲目追加大范围 keep/dontwarn |
@@ -35,7 +36,7 @@ flutter pub get
 python3 scripts/check_sdk_compatibility.py
 python3 ../imboy/scripts/generate_product_features.py --check --require-profile full-selected
 
-BUILD_NAME='1.0.0-alpha.18'       # 发布负责人确认
+BUILD_NAME='1.0.0-alpha.19'       # 发布负责人确认
 BUILD_NUMBER='<未使用且递增的正整数>'
 SYMBOL_DIR="/安全保存目录/imboy-android-${BUILD_NUMBER}"
 mkdir -p "$SYMBOL_DIR"
