@@ -493,7 +493,7 @@ execute(Conn, Sql, Params) ->
         try
             case epgsql:parse(Conn, Sql) of
                 {ok, Stmt} ->
-                    case epgsql:execute_batch(Conn, [{Stmt, typed_params(Stmt, Params)}]) of
+                    case epgsql:execute_batch(Conn, [{Stmt, Params}]) of
                         [Res2] ->
                             Res2;
                         [] ->
@@ -512,44 +512,6 @@ execute(Conn, Sql, Params) ->
                 {error, {Class, CatchReason, Stacktrace}}
         end,
     retry_deadlock_result(Conn, Result).
-%% RFC3339 is our public timestamp input. epgsql's binary timestamptz codec
-%% requires a UTC calendar tuple; normalize only parameters typed by PostgreSQL.
-%% Text, NULL and already typed calendar tuples remain unchanged.
-typed_params(#statement{types = Types}, Params) when length(Types) =:= length(Params) ->
-    [typed_param(Type, Value) || {Type, Value} <- lists:zip(Types, Params)];
-typed_params(_, Params) ->
-    Params.
-
-typed_param(timestamptz, Value) when is_binary(Value) ->
-    Micros = calendar:rfc3339_to_system_time(binary_to_list(Value), [{unit, microsecond}]),
-    {Date, {Hour, Minute, Second}} = calendar:system_time_to_universal_time(Micros, microsecond),
-    Fraction = ((Micros rem 1000000) + 1000000) rem 1000000,
-    {Date, {Hour, Minute, Second + Fraction / 1000000}};
-typed_param(_, Value) ->
-    Value.
-
-%% Preserve the ordinary equery path unless a parameter could be RFC3339.
-%% Type inference, rather than its text shape, decides whether to convert it.
-typed_query(Conn, Sql, Params) ->
-    case lists:any(fun rfc3339_candidate/1, Params) of
-        false ->
-            epgsql:equery(Conn, Sql, Params);
-        true ->
-            case epgsql:parse(Conn, Sql) of
-                {ok, Statement} ->
-                    epgsql:prepared_query(Conn, Statement, typed_params(Statement, Params));
-                Error ->
-                    Error
-            end
-    end.
-
-rfc3339_candidate(<<_:4/binary, "-", _:2/binary, "-", _:2/binary, Sep, _/binary>>) when
-    Sep =:= $T; Sep =:= $t; Sep =:= $\s
-->
-    true;
-rfc3339_candidate(_) ->
-    false.
-
 % {ok, 1} | {ok, 1, {ReturningField}} | {ok,1,[{5}]}
 % 没有 RETURNING 子句：返回 {ok, 1} （二元组）
 % 有 RETURNING 子句：返回 {ok, 1, Result} （三元组），其中 Result 可能是 {Id} 或 [{Id}]
@@ -598,7 +560,7 @@ query(Sql, Params) ->
 query(C, Sql, Params) ->
     % ?INFO_LOG(["query ", iolist_to_binary(Sql), Params, epgsql:equery(C, iolist_to_binary(Sql), Params)]),
     Result =
-        case typed_query(C, iolist_to_binary(Sql), Params) of
+        case epgsql:equery(C, iolist_to_binary(Sql), Params) of
             {ok, Cols, Rows} ->
                 {ok, rows_to_maps(Cols, Rows)};
             {ok, _Count, Cols, Rows} ->
