@@ -26,14 +26,11 @@ define imboy_relx_check.erl
 	end.
 endef
 
-rel:: relx-config-check runtime-config
-relup:: relx-config-check runtime-config
-run:: relx-config-check runtime-config
+rel relup run:: relx-config-check runtime-config
 relx-rel relx-relup: relx-config-check runtime-config
 
-# 仅延迟 include 期间的 relx 元数据查询；发布目标执行时再读取。
-# Hex 等依赖配方在 include 期间由 dep_target/eval 展开，必须保留真实命令，
-# 否则下载会永久变成 ':'。Defer only the exact release metadata query.
+# 仅延迟 include 期间的 relx 元数据查询；其他调用保留原生 erlang.mk 命令。
+# Hex 下载配方经 dep_target/eval 提前展开，不能替换为 ':'。
 override define erlang
 $(if $(and $(if $(IMBOY_MAKE_READY),,1),$(call core_eq,$1,$(get_relx_release.erl))),:,$(ERL) $2 -pz $(ERLANG_MK_TMP)/rebar3/_build/prod/lib/*/ebin/ -eval "$(subst $(newline),,$(call escape_dquotes,$1))" -- erlang.mk)
 endef
@@ -52,6 +49,7 @@ run:: export BIGMODEL_API_KEY = $(or $(call _llm_key,BIGMODEL_API_KEY),$(_BIGMOD
 run:: export ARK_API_KEY = $(or $(call _llm_key,ARK_API_KEY),$(_ARK_KEY))
 run:: export BAILIAN_API_KEY = $(or $(call _llm_key,BAILIAN_API_KEY),$(_BAILIAN_KEY))
 
+# 依赖版本集中在 deps.mk；此处声明构建图与开发/测试工具。
 include include/deps.mk
 
 DEPS = ranch cowlib cowboy gun
@@ -80,7 +78,11 @@ EDOC_OPTS = {doclet, edown_doclet}
 
 # 全量排除 VM 全局状态、专属 PG/HIRD 与协议套件；专项门负责，t= 不过滤。
 ifndef t
-EUNIT_TEST_SPEC = (fun() -> Excl = [elib_tsid, agent_grant_pg, agent_run_pg, agent_grant_pg_tests, agent_recovery_pg_tests, agent_run_pg_tests, agent_tool_authorizer_pg_tests, cs_pg_widget, cs_seat_console_pg_tests, imboy_hird_acceptance_tests, imboy_hird_replay_offline_tests, agent_hird_mini_spike_tests, imboy_hird_p1_auth_tool_tests, imboy_hird_gates_tests, imboy_hird_p2_replay_tests, imboy_hird_p3_compare_tests, talk_record_cleanup_retry_pg_checks, talk_record_delete_tests, attachment_lifecycle_v5_w403_gateway_protocol_tests, attachment_lifecycle_v5_w403_driver_matrix_tests, attachment_ordinary_http_protocol_tests, eb_asset_frozen_storage_protocol_tests, enterprise_asset_driver_pg_tests, attachment_pending_location_pg_tests, message_result_pg_tests, group_schedule_remind_pg_tests, moment_delete_atomic_pg_tests], Tests = [talk_record_owned_eunit_fixture:entry(M) || M <- $1, not lists:member(M, Excl)], case Tests of [] -> erlang:error(empty_eunit_selection); _ -> Tests end end)()
+EUNIT_TEST_SPEC = (fun() -> \
+    Excl = [elib_tsid, agent_grant_pg, agent_run_pg, agent_grant_pg_tests, agent_recovery_pg_tests, agent_run_pg_tests, agent_tool_authorizer_pg_tests, cs_pg_widget, cs_seat_console_pg_tests, imboy_hird_acceptance_tests, imboy_hird_replay_offline_tests, agent_hird_mini_spike_tests, imboy_hird_p1_auth_tool_tests, imboy_hird_gates_tests, imboy_hird_p2_replay_tests, imboy_hird_p3_compare_tests, talk_record_cleanup_retry_pg_checks, talk_record_delete_tests, attachment_lifecycle_v5_w403_gateway_protocol_tests, attachment_lifecycle_v5_w403_driver_matrix_tests, attachment_ordinary_http_protocol_tests, eb_asset_frozen_storage_protocol_tests, enterprise_asset_driver_pg_tests, attachment_pending_location_pg_tests, message_result_pg_tests, group_schedule_remind_pg_tests, moment_delete_atomic_pg_tests], \
+    Tests = [talk_record_owned_eunit_fixture:entry(M) || M <- $1, not lists:member(M, Excl)], \
+    case Tests of [] -> erlang:error(empty_eunit_selection); _ -> Tests end \
+end)()
 endif
 
 # 特性清单必须早于 erlang.mk；ERLC_EXCLUDE 同时约束编译和发布。
@@ -111,6 +113,7 @@ C_SRC_OUTPUT :=
 ifeq ($(shell uname -s),Darwin)
 LDFLAGS += -undefined dynamic_lookup
 endif
+# quality.mk 必须先于 erlang.mk；原生变量与规则的覆盖放在 include 之后。
 include include/quality.mk
 include erlang.mk
 IMBOY_MAKE_READY := 1
@@ -127,8 +130,8 @@ override EUNIT_ERL_OPTS += -pa $(IMBOY_QUALITY_TEST_EBIN)
 test-build:: quality-test-support
 quality-test-support: $(IMBOY_QUALITY_TEST_BEAMS)
 $(IMBOY_QUALITY_TEST_EBIN)/%.beam: tools/imboy_quality/%.erl Makefile
-	$(verbose) mkdir -p $(IMBOY_QUALITY_TEST_EBIN)
-	$(verbose) erlc $(TEST_ERLC_OPTS) -o $(IMBOY_QUALITY_TEST_EBIN) $<
+	$(verbose) mkdir -p $(@D)
+	$(verbose) erlc $(TEST_ERLC_OPTS) -o $(@D) $<
 
 # GNU Make 4 写完整清单，xargs 限制参数长度；任一编译失败不写构建戳。
 TEST_COMPILE_JOBS ?= 4
@@ -187,16 +190,9 @@ beam-cache-restore-test:
 define compile_proto.erl
 	[begin
 		ok = gpb_compile:file(F, case filename:basename(F) of "textguard.proto" -> [use_packages]; _ -> [] end ++ [
-			{i, "src"},
-			{include_as_lib, true},
-			{module_name_suffix, "_pb"},
-			{o_hrl, "./include"},
-			{o_erl, "./src"},
-			maps,
-			strings_as_binaries,
-			{type_specs, true},
-			{maps_unset_optional, omitted},
-			{maps_oneof, flat}
+			{i, "src"}, {include_as_lib, true}, {module_name_suffix, "_pb"},
+			{o_hrl, "./include"}, {o_erl, "./src"}, maps, strings_as_binaries,
+			{type_specs, true}, {maps_unset_optional, omitted}, {maps_oneof, flat}
 		]),
 		ErlFile = filename:join("src", filename:basename(F, ".proto") ++ "_pb.erl"),
 		{ok, Code} = file:read_file(ErlFile),
@@ -225,7 +221,6 @@ export TEST_HTTP_PORT
 CT_CONFIG_BASE = $(patsubst %.config,%,$(CT_CONFIG))
 CT_CONFIG_BASE_ABS = $(abspath $(CT_CONFIG_BASE))
 CT_ERL_ARGS = -config $(CT_CONFIG_BASE_ABS) -eval 'application:load(imboy)' -eval 'application:set_env(imboy, env, test)' -eval 'application:set_env(imboy, http_port, $(TEST_HTTP_PORT))' -eval 'application:set_env(imboy, dsync_enabled, false)'
-CT_OPTS ?=
 CT_OPTS += -erl_args $(CT_ERL_ARGS)
 
 # REST 测试使用隔离数据库与随机 HTTP 端口；凭据来自 REST_*/IMBOY_* 环境。
@@ -248,22 +243,25 @@ FEATURE_SMOKE_INSECURE ?= 0
 FEATURE_SMOKE_SHOW_BODY ?= 0
 
 .PHONY: feature-smoke
+# 通过目标级环境变量传值，用位置参数组装选项，避免 eval 和打印认证头。
+feature-smoke: export IMBOY_FEATURE_BASE_URL = $(FEATURE_SMOKE_BASE_URL)
+feature-smoke: export IMBOY_FEATURE_PUBLIC_PATH = $(FEATURE_SMOKE_PUBLIC_PATH)
+feature-smoke: export IMBOY_FEATURE_ADMIN_PATH = $(FEATURE_SMOKE_ADMIN_PATH)
+feature-smoke: export IMBOY_FEATURE_TIMEOUT = $(FEATURE_SMOKE_TIMEOUT)
+feature-smoke: export IMBOY_FEATURE_ADMIN_HEADER = $(FEATURE_SMOKE_ADMIN_HEADER)
+feature-smoke: export IMBOY_FEATURE_FORBIDDEN_HEADER = $(FEATURE_SMOKE_FORBIDDEN_HEADER)
+feature-smoke: export IMBOY_FEATURE_EXPECTS = $(FEATURE_SMOKE_EXPECTS)
+feature-smoke: export IMBOY_FEATURE_INSECURE = $(FEATURE_SMOKE_INSECURE)
+feature-smoke: export IMBOY_FEATURE_SHOW_BODY = $(FEATURE_SMOKE_SHOW_BODY)
 feature-smoke:
-	@if [ -z "$(strip $(FEATURE_SMOKE_BASE_URL))" ]; then \
-		echo "FEATURE_SMOKE_BASE_URL is required."; \
-		echo "Example:"; \
-		echo "  make feature-smoke FEATURE_SMOKE_BASE_URL=https://dev.imboy.pub FEATURE_SMOKE_EXPECTS='core=true moment=false'"; \
-		exit 1; \
-	fi
-	@set -e; \
-		cmd="bash ./scripts/run_feature_flag_smoke.sh --base-url '$(FEATURE_SMOKE_BASE_URL)' --public-path '$(FEATURE_SMOKE_PUBLIC_PATH)' --admin-path '$(FEATURE_SMOKE_ADMIN_PATH)' --timeout '$(FEATURE_SMOKE_TIMEOUT)'"; \
-		if [ "$(FEATURE_SMOKE_INSECURE)" = "1" ]; then cmd="$$cmd --insecure"; fi; \
-		if [ "$(FEATURE_SMOKE_SHOW_BODY)" = "1" ]; then cmd="$$cmd --show-body"; fi; \
-		if [ -n "$(strip $(FEATURE_SMOKE_ADMIN_HEADER))" ]; then cmd="$$cmd --admin-header '$(FEATURE_SMOKE_ADMIN_HEADER)'"; fi; \
-		if [ -n "$(strip $(FEATURE_SMOKE_FORBIDDEN_HEADER))" ]; then cmd="$$cmd --forbidden-header '$(FEATURE_SMOKE_FORBIDDEN_HEADER)'"; fi; \
-		for item in $(FEATURE_SMOKE_EXPECTS); do cmd="$$cmd --expect $$item"; done; \
-		echo "$$cmd"; \
-		eval "$$cmd"
+	@set -eu; set -f; set --; \
+		case "$$IMBOY_FEATURE_BASE_URL" in *[![:space:]]*) ;; *) echo "FEATURE_SMOKE_BASE_URL is required." >&2; exit 1 ;; esac; \
+		if [ "$$IMBOY_FEATURE_INSECURE" = "1" ]; then set -- "$$@" --insecure; fi; \
+		if [ "$$IMBOY_FEATURE_SHOW_BODY" = "1" ]; then set -- "$$@" --show-body; fi; \
+		if [ -n "$$IMBOY_FEATURE_ADMIN_HEADER" ]; then set -- "$$@" --admin-header "$$IMBOY_FEATURE_ADMIN_HEADER"; fi; \
+		if [ -n "$$IMBOY_FEATURE_FORBIDDEN_HEADER" ]; then set -- "$$@" --forbidden-header "$$IMBOY_FEATURE_FORBIDDEN_HEADER"; fi; \
+		for item in $$IMBOY_FEATURE_EXPECTS; do set -- "$$@" --expect "$$item"; done; \
+		bash ./scripts/run_feature_flag_smoke.sh "$$@"
 
 # 冒烟与安装/升级门：make smoke、smoke-8step、golden-install、golden-upgrade。
 SMOKE_FROM ?= 1000000051
@@ -390,11 +388,10 @@ docs-stop:
 	docker compose -f docs/api-sandbox/docker-compose.yml down
 
 # 依赖审计/升级：mod-check；mod-up MOD="cowboy cowlib=2.17.0" 或 MOD=all。
-.PHONY: mod-check
+.PHONY: mod-check mod-up
 mod-check: ## 依赖审计: 检查 deps.mk 中哪些依赖可升级
 	@bash scripts/mod_check.sh check
 
-.PHONY: mod-up
 mod-up: ## 依赖升级: make mod-up MOD="name[=ver] ..." 或 MOD=all（图内全部）
 	@test -n "$(MOD)" || { echo "用法: make mod-up MOD=\"name[=ver] ...\"  例如 make mod-up MOD=\"cowboy cowlib=2.17.0\" 或 make mod-up MOD=all"; exit 1; }
 	@bash scripts/mod_check.sh up $(MOD)

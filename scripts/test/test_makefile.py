@@ -204,6 +204,53 @@ get_tarball(#{offline_fixture := true} = Config, <<"fixture">>, <<"1.0.0">>) ->
         self.environment["AUDIT_EXIT"] = "7"
         self.assertIn("Error 7", self.make("mod-check", success=False).stdout)
 
+    def test_feature_smoke_preserves_arguments_without_evaluation_or_secret_output(self):
+        self.write("scripts/run_feature_flag_smoke.sh", r'''for argument; do printf '%s\0' "$argument"; done > feature.args
+printf '%s\0' "$IMBOY_FEATURE_BASE_URL" "$IMBOY_FEATURE_PUBLIC_PATH" \
+    "$IMBOY_FEATURE_ADMIN_PATH" "$IMBOY_FEATURE_TIMEOUT" > feature.env
+''')
+        values = {
+            "FEATURE_SMOKE_BASE_URL": "http://127.0.0.1:9800",
+            "FEATURE_SMOKE_PUBLIC_PATH": "/custom/features",
+            "FEATURE_SMOKE_ADMIN_PATH": "/custom/admin/features",
+            "FEATURE_SMOKE_TIMEOUT": "7",
+            "FEATURE_SMOKE_ADMIN_HEADER": '''authorization: Bearer a'b"c;$(touch COMMAND_EXECUTED)''',
+            "FEATURE_SMOKE_FORBIDDEN_HEADER": "authorization: Bearer limited token",
+            "FEATURE_SMOKE_EXPECTS": "core=true moment=false",
+            "FEATURE_SMOKE_INSECURE": "1",
+            "FEATURE_SMOKE_SHOW_BODY": "1",
+        }
+        arguments = [name + "=" + value.replace("$", "$$") for name, value in values.items()]
+        result = self.make("feature-smoke", *arguments)
+        expected = ["--insecure", "--show-body", "--admin-header", values["FEATURE_SMOKE_ADMIN_HEADER"],
+                    "--forbidden-header", values["FEATURE_SMOKE_FORBIDDEN_HEADER"],
+                    "--expect", "core=true", "--expect", "moment=false"]
+        self.assertEqual((self.root / "feature.args").read_bytes().split(b"\0")[:-1],
+                         [value.encode() for value in expected])
+        self.assertEqual((self.root / "feature.env").read_bytes().split(b"\0")[:-1],
+                         [values[name].encode() for name in list(values)[:4]])
+        self.assertFalse((self.root / "COMMAND_EXECUTED").exists())
+        self.assertNotIn("authorization:", result.stdout)
+
+    def test_feature_smoke_defaults_missing_url_and_failure_propagation(self):
+        self.write("scripts/run_feature_flag_smoke.sh", (ROOT / "scripts/run_feature_flag_smoke.sh").read_text())
+        for base_url in ("", " \t "):
+            with self.subTest(base_url=base_url):
+                result = self.make("feature-smoke", "FEATURE_SMOKE_BASE_URL=" + base_url, success=False)
+                self.assertIn("FEATURE_SMOKE_BASE_URL is required.", result.stdout)
+        self.write("scripts/run_feature_flag_smoke.sh", r'''for argument; do printf '%s\0' "$argument"; done > feature.args
+printf '%s\0' "$IMBOY_FEATURE_PUBLIC_PATH" "$IMBOY_FEATURE_ADMIN_PATH" \
+    "$IMBOY_FEATURE_TIMEOUT" > feature.env
+exit "${SMOKE_EXIT:-0}"
+''')
+        arguments = ("feature-smoke", "FEATURE_SMOKE_BASE_URL=http://127.0.0.1:9800")
+        self.make(*arguments)
+        self.assertEqual((self.root / "feature.args").read_bytes(), b"")
+        self.assertEqual((self.root / "feature.env").read_bytes(),
+                         b"/v1/app/features\0/adm/admin/config/features\x0015\0")
+        self.environment["SMOKE_EXIT"] = "7"
+        self.assertIn("Error 7", self.make(*arguments, success=False).stdout)
+
     def test_release_rejects_missing_invalid_and_whitespace_paths(self):
         for target in ("rel", "run", "relx-rel", "relup", "relx-relup"):
             with self.subTest(target=target):
