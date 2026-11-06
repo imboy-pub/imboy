@@ -273,9 +273,17 @@ invalid_conversation_option_fails_closed_test() ->
 %%% 真 PG 行为验证：认证搜索的 expire_at 过滤谓词（dadc6aaf9 语义——
 %%% 普通行（expire_at NULL）命中；服务端已到期的阅后即焚行排除；
 %%% 未到期 burn 行按当前设计命中）。SQL 形状断言仅证明谓词存在，
-%%% 本用例用三行不同 expire_at 状态的夹具证明谓词的真实过滤行为。
+%%% 本用例用三行不同 expire_at 状态的夹具证明谓词的真实过滤行为，
+%%% 再贯穿真实 logic 与 REST 时间转换，防止格式化丢失期限。
 fts_expire_at_filter_two_states_pg_test_() ->
-    ?TEST_WITH_DB_TIMEOUT(30, fun() -> fts_expire_at_filter_body() end).
+    %% This is a required PostgreSQL contract: a missing database must fail.
+    {setup,
+        fun() ->
+            {ok, Conn} = eunit_runner:eunit_setup_with_db(),
+            Conn
+        end,
+        fun eunit_runner:eunit_cleanup_db/1,
+        fun(_) -> {timeout, 30, ?_test(fts_expire_at_filter_body())} end}.
 
 fts_expire_at_filter_body() ->
     A = elib_tsid:generate(user),
@@ -299,6 +307,11 @@ fts_expire_at_filter_body() ->
             A, KwPlain, 50, 0, <<"c2c">>, #{}
         ),
         ?assertEqual(lists:nth(1, MsgIds), maps:get(<<"msg_id">>, PlainRow)),
+        #{total := 1, list := [PlainItem]} = elib_cnv:convert_at_timestamps(
+            fts_logic:search_msg(A, 1, 50, KwPlain, <<"C2C">>)
+        ),
+        ?assertEqual(lists:nth(1, MsgIds), maps:get(<<"message_id">>, PlainItem)),
+        ?assertEqual(null, maps:get(<<"expire_at">>, PlainItem)),
         %% 未到期 burn 行按当前设计（dadc6aaf9）仍然可搜
         ?assertMatch(
             {ok, 1, [_]}, fts_user_repo:search_authorized_page(A, KwFuture, 50, 0, <<"c2c">>, #{})
@@ -307,9 +320,25 @@ fts_expire_at_filter_body() ->
             A, KwFuture, 50, 0, <<"c2c">>, #{}
         ),
         ?assertEqual(lists:nth(2, MsgIds), maps:get(<<"msg_id">>, FutureRow)),
+        {ok, [#{<<"expire_ms">> := ExpectedExpiry}]} = elib_pg:query(
+            <<"SELECT round(extract(epoch FROM expire_at) * 1000)::bigint AS expire_ms "
+              "FROM public.msg_c2c WHERE msg_id=$1">>,
+            [lists:nth(2, MsgIds)]
+        ),
+        #{total := 1, list := [FutureItem]} = elib_cnv:convert_at_timestamps(
+            fts_logic:search_msg(A, 1, 50, KwFuture, <<"C2C">>)
+        ),
+        ?assertEqual(lists:nth(2, MsgIds), maps:get(<<"message_id">>, FutureItem)),
+        ?assert(is_integer(ExpectedExpiry)),
+        ?assertEqual(ExpectedExpiry, maps:get(<<"expire_at">>, FutureItem)),
+        ?assert(ExpectedExpiry > maps:get(<<"created_at">>, FutureItem)),
         %% 已到期 burn 行必须被排除（服务端过期内容不再可搜）
         ?assertEqual(
             {ok, 0, []}, fts_user_repo:search_authorized_page(A, KwPast, 50, 0, <<"c2c">>, #{})
+        ),
+        ?assertMatch(
+            #{total := 0, list := []},
+            elib_cnv:convert_at_timestamps(fts_logic:search_msg(A, 1, 50, KwPast, <<"C2C">>))
         )
     after
         lists:foreach(
@@ -335,7 +364,9 @@ fts_expire_at_fixture(A, B, State, Kw) ->
     ExpireFragment =
         case State of
             plain -> <<"NULL">>;
-            future -> <<"now() + interval '1 hour'">>;
+            %% Exact milliseconds keep the wire comparison independent of PG
+            %% microsecond / floating-point half-millisecond rounding edges.
+            future -> <<"date_trunc('milliseconds', now()) + interval '1 hour'">>;
             past -> <<"now() - interval '1 hour'">>
         end,
     Sql = iolist_to_binary([

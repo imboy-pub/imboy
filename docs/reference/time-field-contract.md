@@ -1,6 +1,6 @@
 # 时间字段合同（Time Field Contract）
 
-> **状态**：长期协议契约文档 · **版本**：v1.0 · **最后更新**：2026-10-26（IMBOY-TIMEZONE-REPAIR-V1 / R22-B 登记）
+> **状态**：长期协议契约文档 · **版本**：v1.0 · **最后更新**：2026-11-06（FTS 绝对到期响应字段登记）
 >
 > **定位**：本文件是三端时间字段的**权威登记表**。它登记的是**已实现事实**（每条声明均附代码位置，见 §7 抽查记录），不发明新合同。与 [api-format.md](./api-format.md)（响应格式）、`docs/api-contracts/message_api_contract.md`（消息 API 字段级合同，未纳入 docs-site 内容同步）、[CONVENTIONS.md](../CONVENTIONS.md) §2 互为引用；冲突时以本文件与代码为准并回改文档。
 >
@@ -22,7 +22,7 @@
 **消费方铁律**：
 
 - 不得按"字段名猜单位"、不得按"位数猜单位"（秒 10 位 / 毫秒 13 位判别被 R08-FL 显式废弃——判别依据是**字符串形态**（RFC3339 vs 十进制整数），不是位数，FL_W3 报告 §字段类型决策）。
-- 解析必须走各端统一入口：AD `src/lib/apiInstant.ts`（`parseApiInstantMs(raw, unit)`，unit 由调用点显式声明）；FL `lib/util/api_time.dart`（`parseEpochSeconds` / `parseEpochMillis` / `parseIsoZoned`）；BE 无需解析（生成即正确）。
+- 解析必须走各端统一入口：AD `src/lib/apiInstant.ts`（`parseApiInstantMs(raw, unit)`，unit 由调用点显式声明）；FL `lib/component/helper/datetime.dart` 的 `ApiTime`（`parseEpochSeconds` / `parseEpochMillis` / `parseIsoZoned`）；BE 无需解析（生成即正确）。
 - 缺失/非法 → **null 或 0（=未知）**，**禁止回填 now()**（R08-5；FL/AD 三处实现均遵守）。
 
 ---
@@ -64,10 +64,17 @@
 |---|---|---|---|---|
 | EB 域全部 `ts` kind 列（consent_at / retain_until / created_at / acked_at / assigned_at / ended_at / released_at 等） | 企业业务（eb_pg_store_sql 出站的一切） | **秒** int | `eb_pg_store_sql.erl:447-479`（合同注释 + `rfc3339_to(Value, second)`） | 消费方：AD `toApiInstantIso(raw,'seconds')`（`pureFunctions.ts`）；FL `parseEpochSeconds`（`enterprise_models.dart:287-290`，本地统一毫秒、0=未知）。同一响应无双单位混用（W0 核对表） |
 | credential 四时间字段（created_at / updated_at / last_used_at / expires_at 类） | 企业应用凭证（`/enterprise_application` credentials） | **毫秒** int | `adm_enterprise_application_handler.erl:173-174` → `elib_response:success`（轨道 A；AD_W1 报告 §R08 表格互证） | AD `toCredentialMeta` 用 `'milliseconds'` |
+| `expire_at`（FTS 线上键名，无 `s`） | `/api/v1/fts/msg` 的 C2C/C2G `list[]` | **毫秒** int / null（轨道 A） | `fts_user_repo:page_rows/9` 保留 `m.*`；`fts_logic:format_c2c_msg_item/1` / `format_c2g_msg_item/1` 透传；`elib_response:success/2` → `elib_cnv:convert_at_timestamps/1` | PG tuple / RFC3339 由公共转换归一；NULL / 旧行缺字段 → null，不从创建或阅读时间补算。既有 SQL 排除 `expire_at <= NOW()`，未到期行继续可搜；消费方保留绝对期限，展示及打开时重验。服务端 TTL 与本地 burn 双层规则仍按 §2.2 |
 | moments `created_at` / `updated_at`、举报（report / moment_report / report_action 五时间字段） | 朋友圈/举报域 | **毫秒** int（SQL NULL → JSON null） | 全部走 `elib_response:success` 轨道 A；逐跳证据 AD_W3 报告 §1.1 表 | AD `normalizeMoment` / `normalizeMomentReport` / `normalizeReportAction` 归一，null 容忍（杜绝 `new Date(null)`=1970） |
 | `read_at` | 已读回执（c2c/c2g `action=read`） | 毫秒 int（REST 出站轨道 A） | `msg_c2c_logic.erl:1026`、`msg_c2g_logic.erl:665`（payload 可带、缺省服务器时间 `NowMs`） | 客户端传入值不校验钟面（同 created_at 旧语义，仅展示） |
 | WS 实时信封 | `server_ts`（无 `created_at` 键） | 毫秒 int | `message_ds.erl:216/305`（`elib_dt:millisecond()`） | 客户端时间基准用 `server_ts` |
 | WS 离线信封 | `created_at` / `server_ts` | 毫秒 int（组帧前 `elib_cnv:convert_at_timestamps/1` 归一） | `message_ds.erl:495-497` | 内部行 RFC3339 微秒形态在此归一（轨道 C → A 的边界） |
+
+**FTS expiry contract:** C2C and C2G search results expose the existing stored deadline as
+`expire_at` in epoch milliseconds or JSON `null`. Missing values stay unknown. This preserves
+the server TTL and separate local burn rules in §2.2; it neither starts nor extends a timer.
+See [消息 API 合同 / Message API contract §2.1](../api-contracts/message_api_contract.md#21-fts-消息结果的到期时间--fts-message-expiry)
+for response and PostgreSQL regression coverage.
 
 ### 2.5 非瞬间量
 
