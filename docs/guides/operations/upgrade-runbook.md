@@ -2,7 +2,7 @@
 # IMBoy Upgrade Runbook: 1.0.0-rc.1 → 1.0.0
 
 > ⚠️ **草案 / Draft**：本手册基于 rc.1 → 1.0.0 升级路径编写，但当前版本为
-> `1.0.0-alpha.46` 公测线，`rc.1` 尚未发布。alpha 线内部升级请参考
+> `1.0.0-alpha.84` 公测线，`rc.1` 尚未发布。alpha 线内部升级请参考
 > `RELEASES.md`。rc.1 正式发布后本手册生效。
 
 > **版本 / Version**: 1.0.0 | **最后更新 / Last Updated**: 2026-08-23

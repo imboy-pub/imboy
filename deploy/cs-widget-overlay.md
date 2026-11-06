@@ -114,7 +114,7 @@ docker compose --env-file .env -f docker-compose.prod.yml up -d --remove-orphans
 curl -fsS "https://${CS_WIDGET_DOMAIN}/" || echo "CS vhost 已下线（预期失败）"
 
 # 3) （可选）删除 widget 镜像与 .env 中的 CS_WIDGET_DOMAIN / IMBOY_WIDGET_IMAGE
-docker image rm "ghcr.io/imboy-pub/imboy-widget:${IMBOY_VERSION:-1.0.0-alpha.71}" || true
+docker image rm "ghcr.io/imboy-pub/imboy-widget:${IMBOY_VERSION:-1.0.0-alpha.84}" || true
 ```
 
 卸载不影响 backend / admin：客服域 API 与数据库表保留（静态面与网关面先下线，
@@ -130,7 +130,7 @@ docker image rm "ghcr.io/imboy-pub/imboy-widget:${IMBOY_VERSION:-1.0.0-alpha.71}
 
 | 项 | community（内置） | prod + 本 overlay | 等价 |
 |---|---|---|---|
-| `imboy_widget.image` | `${IMBOY_WIDGET_IMAGE:-ghcr.io/imboy-pub/imboy-widget:${IMBOY_VERSION:-1.0.0-alpha.71}}` | 同左（逐字节一致） | ✅ |
+| `imboy_widget.image` | `${IMBOY_WIDGET_IMAGE:-ghcr.io/imboy-pub/imboy-widget:${IMBOY_VERSION:-1.0.0-alpha.84}}` | 同左（逐字节一致） | ✅ |
 | `imboy_widget` 其余全部字段（container_name / hostname / restart / read_only / tmpfs / expose / healthcheck / deploy.resources / logging） | — | 渲染后 diff 为空集 | ✅ |
 | `imboy_nginx.environment.CS_WIDGET_DOMAIN` | `${CS_WIDGET_DOMAIN}` | `${CS_WIDGET_DOMAIN}`（overlay 注入） | ✅ |
 | `imboy_nginx.environment.NGINX_ENVSUBST_FILTER` | `^(API_DOMAIN\|ADMIN_DOMAIN\|S3_UPSTREAM\|CS_WIDGET_DOMAIN)$` | 同左（overlay 覆盖基线三变量 filter） | ✅ |

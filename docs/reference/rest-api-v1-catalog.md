@@ -23,7 +23,7 @@
 
 ## 概览 / Overview
 
-- 端点总数 / Total endpoints: **约 150+**（2026-08-30 增补项目协作域后） 个 `/api/v1/*` REST 端点，分布于 **30** 个 handler。
+- 端点总数 / Total endpoints: **500+**（2026-11-06 复核 `imboy_router.erl`） 个 `/api/v1/*` REST 端点，分布于 **140+** 个 handler；本目录按域收录主要端点，非逐条全量。
 - 鉴权模型 / Auth model: 三类 —— `公开 Open`（无需 token）、`可选 Optional`（有 token 才校验）、`JWT`（默认，必须 Authorization）。
 - 响应信封 / Response envelope: 绝大多数返回 `{code, msg, payload}`；少数特殊端点返回裸 body（已在对应行注明）。
 - TSID: 实体 ID（`id`/`uid`/`gid`/`channel_id` 等）为 **64 位 TSID**，以 **JSON integer** 传输；前端用 `safeParseBigIntJson` 转 string（详见 [tsid-field-convention.md](./tsid-field-convention.md)）。

@@ -147,8 +147,8 @@ tar xf _rel/imboy/imboy-1.0.0-rc.1.tar.gz -C /opt/imboy
 cd /opt/imboy && IMBOYENV=prod ./bin/imboy daemon
 ```
 
-> 中文：版本号通过 `RELX_REL_VSN=x.y.z make rel` 临时覆盖，不需要改 `relx.config`。
-> English: Override version with `RELX_REL_VSN=x.y.z make rel` without editing `relx.config`.
+> 中文：版本号以 `relx.config` 版本行为准（须与 `VERSION` 一致）；`RELX_REL_VSN` 环境变量不生效，临时改版请直接编辑 `relx.config` 后还原。
+> English: The release version comes from `relx.config` (keep it in sync with `VERSION`); the `RELX_REL_VSN` env var is not honored — for a one-off version, edit `relx.config` directly and revert afterwards.
 
 ---
 

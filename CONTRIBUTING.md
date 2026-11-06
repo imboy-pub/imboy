@@ -176,9 +176,9 @@ main                    <- 受保护，只接受 PR 合入
 
 | 仓 | github 上的 workflow |
 |----|----------------------|
-| imboy | `backend-ci.yml`、`contract-gate.yml`（API/枚举/EntityId 契约门）、`quality.yml`、`sonar.yml`、`docs.yml`、`codemap.yml`、`sbom-diff.yml`、`release.yml`（tag 触发发布链） |
-| imboyapp | `contract.yml`（错误码契约门）、`ci.yml`、`core-automation.yml`、`integration_test.yml`、`quality.yml`、`sonar.yml` |
-| imboyadmin | `admin-e2e.yml`、`ci.yml`、`quality.yml`、`sonar.yml` |
+| imboy | `backend-ci.yml`、`contract-gate.yml`（API/枚举/EntityId 契约门）、`quality.yml`、`docs.yml`、`codemap.yml`、`sbom-diff.yml`、`release.yml`（tag 触发发布链） |
+| imboyapp | `contract.yml`（错误码契约门）、`ci.yml`、`integration_test.yml`、`quality.yml` |
+| imboyadmin | `admin-e2e.yml`、`ci.yml`、`quality.yml` |
 
 **只推 gitee 不推 github = 门禁空转**：契约门（`contract-gate.yml` / `contract.yml`）不会执行，非法漂移无人拦截——等于门禁不存在；tag 漏推 github 则 `release.yml` 发布链不触发。
 
@@ -482,7 +482,7 @@ dart run scripts/generate_error_code.dart --check
 
 1. 更新根 `VERSION` 文件
 2. 更新根 `CHANGELOG.md`（`[Unreleased]` → 新版本）
-3. 三端同步版本：imboy 仓 `VERSION` 文件（`Makefile` 经 `cat VERSION` 读取，改 relx.config 无效）/ `imboyapp/pubspec.yaml` / `imboy-admin-frontend/package.json`
+3. 三端同步版本：imboy 仓 `VERSION` 文件与 `relx.config` 版本行（二者须一致；`Makefile` 经 `cat VERSION` 读取，release 打包版本以 `relx.config` 为准）/ `imboyapp/pubspec.yaml` / `imboy-admin-frontend/package.json`
 4. 打 tag `vX.Y.Z` 并推送
 5. CI 自动构建产物：`aab`、`ipa`、`docker image`、`source tarball`
 6. 创建 GitHub Release 并附带产物

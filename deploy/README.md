@@ -21,8 +21,8 @@ deploy/
 │                                # --edition community|business（默认 community）
 ├── preflight.sh                 # 前置检查（--edition 按版本切换检查口径）/ Pre-flight check
 ├── docker-compose.community.yml # 社区版编排，随仓分发 / Community stack, shipped in-repo
-│                                # 8 核心服务：pg18 + garage + backend + admin + widget
-│                                # + nginx + certbot + livekit；监控 5 服务走 --profile monitoring
+│                                # 9 核心服务：pg18 + garage + backend + admin + widget
+│                                # + edge + nginx + certbot + livekit；监控 5 服务走 --profile monitoring
 ├── docker-compose.uptrace.yml   # 可选 Uptrace overlay（默认关闭）
 ├── uptrace/                     # Uptrace / OTel Collector / nginx 配置
 ├── docker-compose.demo.yml      # 最小两服务演示栈（零配置评估）/ Minimal 2-service demo stack
@@ -496,7 +496,7 @@ On first login, the "IMBoy Overview" dashboard is available in the **Dashboards 
 告警规则位于 `deploy/prometheus/rules/imboy-alerts.yml`，随 Prometheus 启动时自动加载。
 Alert rules live in `deploy/prometheus/rules/imboy-alerts.yml`, auto-loaded when Prometheus starts.
 
-**56 条规则、19 个分组覆盖 / 56 rules in 19 groups：**（以 `imboy-alerts.yml` 为真源，2026-10-07 复核；下表为其中 14 组的阈值摘要，非全集——e2ee / license / online_users / red_packet / l4_sni 组未列出，全集以规则文件为准）
+**63 条规则、21 个分组覆盖 / 63 rules in 21 groups：**（以 `imboy-alerts.yml` 为真源，2026-11-06 复核；下表为其中 14 组的阈值摘要，非全集——e2ee / license / online_users / red_packet / l4_sni / tsid / cache_sync 组未列出，全集以规则文件为准）
 
 | 分组 / Group | 规则 / Rule | 触发条件（摘要）/ Threshold | 级别 |
 |---|---|---|---|
@@ -547,7 +547,7 @@ Prometheus is accessible at `http://<server-ip>:9090` (recommended: restrict to 
 | certbot 证书签发失败 / TLS cert fails | DNS 未指向本机 / 80 端口被占用 / Let's Encrypt 限流 / `CERTBOT_EMAIL` 未填；查 `docker compose logs imboy_certbot` / DNS not pointing here, port 80 blocked, LE rate-limit, missing CERTBOT_EMAIL |
 | 管理后台 404 或白屏 / Admin 404 or blank | 检查 `VITE_API_BASE` 是否指向 `https://${API_DOMAIN}` / Check `VITE_API_BASE` |
 | WebSocket 连接 403 / WS 403 | `JWT_KEY` 不一致 / nginx WS 升级（Upgrade/Connection）头未透传 / `JWT_KEY` mismatch, check nginx WebSocket upgrade headers |
-| PG 启动失败 / PG fails to start | 扩展安装失败：`bash ../script/preflight.sh` / Extension install failed |
+| PG 启动失败 / PG fails to start | 扩展安装失败：`bash preflight.sh` / Extension install failed |
 | Grafana 无数据 / Grafana no data | 检查 Prometheus target：`http://<ip>:9090/targets` / Check targets at `http://<ip>:9090/targets` |
 
 ## 下一步 / Next Steps

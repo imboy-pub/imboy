@@ -135,7 +135,7 @@ make eunit-local
 一个完整的前台运行 Erlang 节点：
 
 ```text
-你的终端 ──► Erlang 节点（:9800 HTTP / :9806 管理） ──► PostgreSQL 容器（宿主端口 4323）
+你的终端 ──► Erlang 节点（:9800 HTTP / :9706 管理） ──► PostgreSQL 容器（宿主端口 4323）
 ```
 
 - 数据库迁移在启动时自动执行，无需手动跑迁移

@@ -48,7 +48,8 @@ IMBOY_IMAGE_DIGEST=sha256:...
 
 - Docker Compose 部署（社区版 / 商务版）默认 `auto_migrate=true`：新镜像启动时
   自动执行数据库迁移（`imboy_migrate:migrate()`），**无需人工执行迁移命令**。
-- 蓝绿部署**必须**关闭自动迁移：`scripts/deploy.sh` 以 `IMBOY_AUTO_MIGRATE=false`
+- 蓝绿部署**必须**关闭自动迁移：`scripts/imboy-deploy.sh`（底层
+  `scripts/lib/blue_green_deploy.sh`）以 `IMBOY_AUTO_MIGRATE=false`
   启动新节点，切流完成后才显式执行 `imboy_ctl db migrate`（迁移时序详见
   [scripts/README.md](./scripts/README.md) 的「蓝绿发布的迁移时序」）。
 
@@ -70,9 +71,8 @@ docker compose -f docker-compose.community.yml logs -f imboy_backend
 #### 3. 蓝绿升级（零停机）
 
 ```bash
-# 底层脚本（HTTP 持续可用，旧 WebSocket 在迁移前短暂重连）
-bash scripts/deploy.sh <SERVER_HOST> <VSN> <NODE_NAME>
-# 或统一入口（all / api / admin / migrate / rollback）
+# 统一入口（HTTP 持续可用，旧 WebSocket 在迁移前短暂重连）
+# 组件：all / api / admin / cs / migrate / rollback
 bash scripts/imboy-deploy.sh all
 ```
 
@@ -97,7 +97,7 @@ bash scripts/backup_garage.sh
 - **Docker Compose**：把 `.env` 的 `IMBOY_VERSION` 改回上一版本，重跑
   `pull` + `up -d`。注意：升级时 `auto_migrate` 已执行的新数据库迁移**不会自动回滚**，
   降级前必须先核对本次升级是否包含不兼容迁移（见本版「兼容性」小节）。
-- **蓝绿**：`bash scripts/deploy.sh --rollback <SERVER_HOST> <VSN> <NODE_NAME>`
+- **蓝绿**：`bash scripts/imboy-deploy.sh rollback`
   只切回旧色节点，**不回滚数据库迁移**；迁移失败时按
   [scripts/README.md](./scripts/README.md) 的指引核对已应用 schema 后人工处置，
   不能自动切回。

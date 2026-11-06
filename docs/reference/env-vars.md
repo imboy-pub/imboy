@@ -65,7 +65,7 @@ V10 has five runtime overrides and no persistent cursor/fence directory. Unique 
 | `API_DOMAIN` | `api.example.com` | 后端 API + WebSocket 域名 |
 | `ADMIN_DOMAIN` | `admin.example.com` | 管理后台域名 |
 | `CS_WIDGET_DOMAIN` | `cs.example.com` | 客服 Widget 域名（fail-closed 三域之一，须与前两者两两不同） |
-| `IMBOY_BASE_URL` | `https://cs.example.com` | 附件 presign 公网基址，必须恰为 `https://<CS_WIDGET_DOMAIN>`（preflight 精确比对） |
+| `IMBOY_BASE_URL` | `https://api.example.com` | 对外 API origin，必须恰为 `https://<API_DOMAIN>`（preflight 精确比对）；presign 公网基址另见 `IMBOY_GARAGE_PUBLIC_ENDPOINT` |
 | `RTC_DOMAIN` | `rtc.example.com` | LiveKit RTC 信令域 |
 | `TURN_DOMAIN` | `turn.example.com` | LiveKit embedded TURN 域（TLS 固定 5349） |
 | `CERTBOT_EMAIL` | `ops@example.com` | Let's Encrypt 通知邮箱 |
@@ -85,6 +85,7 @@ V10 has five runtime overrides and no persistent cursor/fence directory. Unique 
 | `JWT_KEY` | 核心 JWT 密钥（32 字节） |
 | `POSTGRE_AES_KEY` | PG 列加密 AES 密钥 |
 | `ADM_COOKIE_SECRET` | 管理后台 Cookie 签名密钥 |
+| `IMBOY_EDGE_INTERNAL_TOKEN` | edge 下载回源内部令牌（社区 compose 以 `:?` 强制必填） |
 | `IMBOY_SOLIDIFIED_KEY` / `IMBOY_SOLIDIFIED_KEY_IV` | 客户端 init 握手密钥（32B / 16B） |
 | `RSA 登录密钥对` | install.sh 生成至 `data/backend_priv/keys/login_rsa_{pub,priv}.pem` |
 
@@ -92,7 +93,7 @@ V10 has five runtime overrides and no persistent cursor/fence directory. Unique 
 
 | 变量 | 默认值 | 说明 |
 |------|--------|------|
-| `IMBOY_VERSION` | `1.0.0-alpha.71` | 镜像版本。真源是仓根 `VERSION` 文件；此默认值抄自 `deploy/.env.example`，示例可能滞后（仓根现值更高），部署时以 `VERSION` 为准 |
+| `IMBOY_VERSION` | `1.0.0-alpha.84` | 镜像版本。真源是仓根 `VERSION` 文件；此默认值抄自 `deploy/.env.example`，示例可能滞后，部署时以 `VERSION` 为准 |
 | `IMBOY_EDITION` | `community` | `community` \| `professional` \| `enterprise` |
 | `IMBOY_PRODUCT_PROFILE` | `community` | 销售版产品策略档位 |
 | `IMBOY_PRODUCT_EXPERIENCE` | `chat` | 产品体验开关：`chat` \| `workspace`（改后需受控重启） |
@@ -118,6 +119,11 @@ V10 has five runtime overrides and no persistent cursor/fence directory. Unique 
 | `BACKEND_MEM_LIMIT` / `BACKEND_IMAGE` | `8192M` / GHCR 随版本 | 后端容器资源与镜像覆盖 |
 | `ADMIN_IMAGE` / `IMBOY_WIDGET_IMAGE` | GHCR 随版本 | admin / widget 镜像覆盖 |
 | `IMBOY_GARAGE_PUBLIC_ENDPOINT` | 未设置（回落 endpoint） | presign 公网基址（独立 s3 域名或外部存储时设置） |
+| `IMBOY_GARAGE_PUBLIC_BUCKET` | `imboy-public` | 公开读桶（scope=public 资源：头像/表情/频道公开图）；未设置时 public 上传会被拒 |
+| `IMBOY_ATTACHMENT_REGISTRY` | 未设置（注释模板） | 显式附件存储 registry（单行 JSON，优先级最高；生产推荐，发版替换 release 不会丢失） |
+| `IMBOY_ATTACHMENT_REGISTRY_FROM_GARAGE` | `true` | registry 无根时由 Garage 四键派生；更换 Garage 地址/桶必须改显式 registry |
+| `IMBOY_DIRECT_CLEANUP_PG_USER` / `IMBOY_DIRECT_CLEANUP_PG_PASSWORD` | 空 | direct-v1 清理任务专用 PG 账号（仅属 v5_worker，单独开通） |
+| `IMBOY_EB_DIRECT_ENABLED` 与 `EB_PROOF_*`（12 项） | `false` / 模板值 | 企业 direct 独立 proof 身份与探针（启用需 `COMPOSE_PROFILES=enterprise-direct`） |
 | `IMBOY_JVERIFICATION_RSA_PRIV_KEY_FILE` | 复用登录 RSA 私钥 | 极光认证私钥 |
 | `LIVEKIT_RECORDING_BUCKET` | 未设置 | 录制输出桶（egress 录制当前不可用） |
 | `IMBOY_LIVEKIT_WS_URL` | `wss://<RTC_DOMAIN>` | 客户端信令地址覆盖 |

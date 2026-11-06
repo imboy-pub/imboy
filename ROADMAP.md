@@ -3,7 +3,7 @@
 > 本文档记录 IMBoy 已完成的里程碑与近期 / 中期 / 长期规划。
 > This document records completed milestones and near / mid / long-term plans for IMBoy.
 >
-> **状态基线注记（2026-09-19）**：已完成清单对齐当前版本（`1.0.0-alpha.77`）；计划区完成状态已按代码/CI/文档证据逐项核对（勾选项附验证依据），**目标日期未重排**——GA「2026 Q2」与中期「Q3–Q4」已过期，新日期待产品决策后更新。
+> **状态基线注记（2026-09-19，版本号 2026-11-06 复核）**：已完成清单对齐 `1.0.0-alpha.77` 基线（当前版本 `1.0.0-alpha.84`，以 `VERSION` 为准）；计划区完成状态已按代码/CI/文档证据逐项核对（勾选项附验证依据），**目标日期未重排**——GA「2026 Q2」与中期「Q3–Q4」已过期，新日期待产品决策后更新。
 >
 > **版本策略 / Versioning strategy**：遵循 [Semantic Versioning](https://semver.org/)。
 > `1.0.0` 为首个生产就绪 GA 版本；`1.x` 聚焦稳定性与可运维性；`2.x` 引入架构扩展。
@@ -12,7 +12,7 @@
 
 ## 已完成 / Completed
 
-### 1.0.0-alpha.77（当前 · 公测中）
+### 1.0.0-alpha.84（当前 · 公测中，清单基线 alpha.77）
 
 **三端核心功能全部交付 / All three-component core features delivered**
 

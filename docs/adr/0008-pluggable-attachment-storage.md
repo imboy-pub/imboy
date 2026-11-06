@@ -1,6 +1,7 @@
 # ADR: 建立附件 Storage Boundary 并固化对象位置
 
-- Status: Accepted（V5.5 生命周期合同对齐；存储搬迁建议由 V5 proof 回填合同替代）
+- Status: Superseded（V3-20 起退役 disk 驱动与网关正文路径，现行 S3-only 合同见
+  `docs/architecture/attachment-s3-only-v3-contract.md`；V5.5 生命周期合同对齐已回填现行合同）
 - Date: 2026-09-25（V5 对齐修订 2026-10-14）
 - 关联：ADR 0001（四层单向依赖）、ADR 0007（Feature Slice）、
   `docs/architecture/2026-09-25-attachment-pluggable-storage-disk-phase1-plan.md`
