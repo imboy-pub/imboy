@@ -20,8 +20,8 @@ protocol_test_() ->
     end.
 
 protocol_units() ->
-    {setup, fun attachment_lifecycle_v5_w403_gateway_protocol_tests:setup/0,
-        fun attachment_lifecycle_v5_w403_gateway_protocol_tests:cleanup/1, fun(S) ->
+    {setup, fun attachment_w403_owned_fixture:setup/0, fun attachment_w403_owned_fixture:cleanup/1,
+        fun(S) ->
             [
                 {
                     atom_to_list(D) ++ "/" ++ binary_to_list(Kind),

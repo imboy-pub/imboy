@@ -272,15 +272,6 @@ jobs:
           set -euo pipefail
           bash scripts/test/cs_quick_reply_pg_gate.sh 2>&1 | tee cs-quick-reply-pg.log
 
-      - name: Upload quick reply PostgreSQL log
-        if: always()
-        uses: actions/upload-artifact@v7
-        with:
-          name: cs-quick-reply-pg-log
-          path: cs-quick-reply-pg.log
-          retention-days: 14
-          if-no-files-found: warn
-
   # ----------------------------------------------------------------
   # Dialyzer 递减基线门（CI-00，阻塞）—— make dialyze-check = 全量分析 +
   # dialyzer.baseline 指纹比对：基线外新增 1 条告警即红（棘轮：存量只准减
@@ -330,16 +321,7 @@ jobs:
         if: always()
         run: |
           echo "## Dialyzer baseline gate (ratchet: 0 new)" >> "$GITHUB_STEP_SUMMARY"
-          tail -5 dialyze-last.log >> "$GITHUB_STEP_SUMMARY" || true
-
-      - name: Upload dialyze log
-        if: always()
-        uses: actions/upload-artifact@v7
-        with:
-          name: dialyze-check-log
-          path: dialyze-last.log
-          retention-days: 14
-          if-no-files-found: ignore
+          echo "See the gate result in the job status." >> "$GITHUB_STEP_SUMMARY"
 
   # ----------------------------------------------------------------
   # Manifest (p5) — 插件清单契约门禁（阻塞，Golden Gates §7）
@@ -432,14 +414,6 @@ jobs:
           undef_count="$(grep -c 'Undefined function' xref.log || true)"
           echo "Undefined function calls: ${undef_count} (ratchet 目标 = 0；2026-06-13 从 42 全修)" >> "$GITHUB_STEP_SUMMARY"
           grep 'Undefined function' xref.log | sort -u >> "$GITHUB_STEP_SUMMARY" || true
-
-      - name: Upload Xref log
-        if: always()
-        uses: actions/upload-artifact@v7
-        with:
-          name: xref-log
-          path: xref.log
-          retention-days: 14
 
   # ----------------------------------------------------------------
   # E2EE Verify — 安全门禁（阻塞）
@@ -575,14 +549,6 @@ jobs:
             exit 1
           fi
 
-      - name: Upload E2EE verify log
-        if: always()
-        uses: actions/upload-artifact@v7
-        with:
-          name: e2ee-verify-log
-          path: e2ee-verify.log
-          retention-days: 14
-
       - name: Run FTS expiry contract on the migrated PostgreSQL fixture
         id: fts-expiry
         env:
@@ -634,15 +600,6 @@ jobs:
           Path('fts-eunit/summary.json').write_text(json.dumps(summary, indent=2) + '\n')
           print(json.dumps(summary))
           PY
-
-      - name: Upload FTS contract evidence
-        if: always()
-        uses: actions/upload-artifact@v7
-        with:
-          name: fts-expiry-contract
-          path: fts-eunit/
-          retention-days: 14
-          if-no-files-found: error
 
   # ----------------------------------------------------------------
   # DCO — 仅 PR 检查，验证所有 commits 带有 Signed-off-by

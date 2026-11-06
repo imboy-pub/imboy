@@ -96,6 +96,24 @@ receipt(Op) ->
     }.
 receipts() -> [receipt(Op) || Op <- ops()].
 complete_test() -> ?assertEqual(pass, imboy_quality_ci:gate(receipts(), context())).
+
+full_is_required_without_explicit_waiver_test() ->
+    Remaining = [R || R <- receipts(), maps:get(op, R) =/= <<"eunit_full">>],
+    Ctx = (context())#{artifacts := [{Op, true} || Op <- ops(), Op =/= <<"eunit_full">>]},
+    ?assertMatch({fail, _}, imboy_quality_ci:gate(Remaining, Ctx)),
+    Waived = Ctx#{
+        waived_ops => [{<<"eunit_full">>, <<"synthetic explicit authority">>}],
+        <<"waiver_ref">> => <<"synthetic source reference">>
+    },
+    ?assertEqual(pass, imboy_quality_ci:gate(Remaining, Waived)),
+    ?assertMatch({fail, _}, imboy_quality_ci:gate(Remaining, Waived#{<<"waiver_ref">> := <<>>})),
+    ?assertMatch(
+        {fail, _},
+        imboy_quality_ci:gate(
+            Remaining,
+            Waived#{waived_ops := [{<<"eunit_full">>, <<>>}]}
+        )
+    ).
 ordinary_cannot_use_sequence_budget_test() ->
     Id = <<"f01_frame_roundtrip_wire">>,
     BadContext = (context())#{expected_properties := (properties())#{Id := sequence}},

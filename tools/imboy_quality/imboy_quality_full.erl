@@ -16,6 +16,8 @@
     maybe_remove_lib_alias/3,
     run/3,
     root_identity_set/1,
+    observed_leaf_manifest/3,
+    compare_leaf_manifests/2,
     excluded/0,
     long_root_hints/0,
     run_group_rotating/6,
@@ -653,12 +655,19 @@ verified_counts(C) ->
         false -> error({invalid_counts, C})
     end.
 
-%% 身份集合：EQ01 等价对照（根集合 + 每根叶计数）
+%% Legacy count diagnostic only: this is NOT exact leaf equivalence evidence.
 root_identity_set(PerRoot) ->
     lists:sort([
         {M, lists:sum(tuple_to_list(verified_counts(C)))}
      || {M, #{counts := C}} <- maps:to_list(PerRoot), is_atom(M)
     ]).
+
+%% Roots here must be explicit obligations, not filename inventory helpers.
+observed_leaf_manifest(Context, Roots, PerRoot) ->
+    imboy_quality_leaf_identity:observed_manifest(Context, Roots, PerRoot).
+
+compare_leaf_manifests(Expected, Observed) ->
+    imboy_quality_leaf_identity:compare(Expected, Observed).
 
 code_paths(Repo) ->
     %% 与 legacy EUNIT_ERL_OPTS 同序（-pa 后者优先 → 列表尾部优先级最高，

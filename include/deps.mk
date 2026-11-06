@@ -46,8 +46,8 @@ dep_khepri = git https://gitee.com/imboy-tripartite-deps/khepri.git main
 # 纯 jose 方案：业务 JWT 签发/验签统一走 src/lib/imboy_jwt.erl（仅 HS256），
 # 原 jwerl 兼容 shim（src/jwerl.erl）已于 2026-09-28 移除。
 # OTP29 实证：IS_DEP=1 时 erlang.mk 剥离 -Werror，22 处 catch 弃用警告不阻断构建
-# gitee 镜像已核验：refs/tags/1.11.12 -> c8b669c86d73300d2af377c7c0f08b4df06fedbe（与上游 tag 同 commit）
-dep_jose = git https://gitee.com/imboy-tripartite-deps/erlang-jose.git 1.11.12
+# 上游 tag 1.11.12 指向 c8b669c86d73300d2af377c7c0f08b4df06fedbe。
+dep_jose = git https://github.com/potatosalad/erlang-jose.git 1.11.12
 
 # goldrush 提供了快速的事件流处理
 # 6years
@@ -122,10 +122,10 @@ dep_observer_cli = git https://github.com/zhongwencool/observer_cli.git v2.0.0
 dep_recon = git https://github.com/ferd/recon.git 2.5.6
 # fs Native Listener (Mac Windows Linux) 被 sync 依赖
 # 8months
-dep_fs = git https://gitee.com/imboy-tripartite-deps/fs.git 6.1
+dep_fs = git https://github.com/synrc/fs.git 6.1
 # Sync 是一个开发者工具。它会即时重新编译和重新加载您的 Erlang 代码。
 # https://github.com/rustyio/sync.git
-dep_sync = git https://gitee.com/imboy-tripartite-deps/sync.git v0.4.1
+dep_sync = git https://github.com/rustyio/sync.git v0.4.1
 # telemetry 用于指标和仪器的动态调度库。
 # 3months
 dep_telemetry = git https://github.com/beam-telemetry/telemetry.git v1.4.2
@@ -137,7 +137,7 @@ dep_system_monitor = git https://gitee.com/imboy-tripartite-deps/system_monitor.
 dep_redbug = git https://github.com/massemanet/redbug.git 2.0.10
 # PropEr：一个受 QuickCheck 启发的 Erlang 基于属性的测试工具
 # 6months https://github.com/proper-testing/proper.git
-dep_proper = git https://gitee.com/imboy-tripartite-deps/proper.git 5640d0715d4b346676267504d8e84398e2a29f75
+dep_proper = git https://github.com/proper-testing/proper.git 5640d0715d4b346676267504d8e84398e2a29f75
 dep_meck = git https://github.com/eproxus/meck.git v1.2.0
 # 第一个完整实现的 Aho-Corasick 算法的 erlang 版本。
 # 6years
@@ -160,7 +160,7 @@ dep_pg_types = ln ../../pg_types
 
 # erlang_pay：纯 Erlang 第三方支付库
 # https://gitee.com/imboy-pub/erlang_pay
-dep_erlang_pay = git https://gitee.com/imboy-pub/erlang_pay.git v0.3.2
+dep_erlang_pay = git https://github.com/imboy-pub/erlang_pay.git v0.3.2
 
 dep_pooler = git https://github.com/epgsql/pooler.git 1.7.0
 dep_epgsql = git https://github.com/epgsql/epgsql.git 4.8.0

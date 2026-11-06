@@ -73,7 +73,9 @@ erlc(Src, OutDir) ->
             exit_status,
             use_stdio,
             stderr_to_stdout,
-            {args, ["-pa", filename:absname("deps/proper/ebin"), "-o", OutDir, Src]}
+            %% Framework selftests call TEST-only helpers. This compiler builds
+            %% quality tooling/fixtures, never the production application BEAMs.
+            {args, ["-DTEST=1", "-pa", filename:absname("deps/proper/ebin"), "-o", OutDir, Src]}
         ]
     ),
     collect_port(Port, []).

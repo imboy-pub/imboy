@@ -169,11 +169,17 @@ write_msg_with_valid_data_test_() ->
             ?MOCK_ENV,
             ?MOCK_TSID,
             {personal_message_order_repo, [
-                {'execute_formal', 5, fun(_From, _To, _MsgId, _Sql, _Params) -> {ok, 1} end}
+                {'execute_formal', 5, fun(_From, _To, _MsgId, Sql, Params) ->
+                    Query = iolist_to_binary(Sql),
+                    ?assertNotEqual(nomatch, binary:match(Query, <<"$5::text::timestamptz">>)),
+                    ?assertNotEqual(nomatch, binary:match(Query, <<"$6::text::timestamptz">>)),
+                    ?assertEqual(<<"2024-01-01T08:00:00+08:00">>, lists:nth(5, Params)),
+                    {ok, 1}
+                end}
             ]}
         ],
         fun() ->
-            CreatedAt = <<"2024-01-01T00:00:00Z">>,
+            CreatedAt = <<"2024-01-01T08:00:00+08:00">>,
             MsgId = <<"test_msg_id_123">>,
             Payload = <<"{\"text\":\"hello\"}">>,
             FromId = 1,

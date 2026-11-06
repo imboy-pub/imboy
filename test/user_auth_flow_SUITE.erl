@@ -1,4 +1,5 @@
 -module(user_auth_flow_SUITE).
+-include_lib("public_key/include/public_key.hrl").
 
 %%%===================================================================
 %%% @doc
@@ -314,12 +315,10 @@ change_password_with_valid_old_password_succeeds(_Config) ->
     Uid = maps:get(<<"uid">>, LoginMap),
     OldHash = db_password(Uid),
 
-    %% change_password/2 对 existing_pwd/new_pwd 做 rsa_decrypt；测试环境未配
-    %% RSA 私钥，故 mock 为 identity，用明文经进程字典注入 post_vals 测真实改密
-    ok = mock_rsa_identity(),
-    put_post_vals(#{<<"existing_pwd">> => OldPassword, <<"new_pwd">> => NewPassword}),
-    Result = user_logic:change_password(Uid, #{headers => #{}}),
-    erase_post_vals(),
+    %% Exercise real OAEP encryption/decryption with a fresh local fixture key.
+    Result = with_rsa_post_vals(OldPassword, NewPassword, fun() ->
+        user_logic:change_password(Uid, #{headers => #{}})
+    end),
 
     ?assertMatch({ok, _}, Result),
 
@@ -327,7 +326,6 @@ change_password_with_valid_old_password_succeeds(_Config) ->
     %% 与 change_password 的 find_by_id 缓存键不同，跨缓存失效非本用例范围）
     ?assertNotEqual(OldHash, db_password(Uid)),
 
-    meck:unload(elib_cipher),
     cleanup_user_by_mobile(Mobile),
     {comment, "使用正确旧密码修改密码成功"}.
 
@@ -342,17 +340,15 @@ change_password_with_invalid_old_password_fails(_Config) ->
     Uid = maps:get(<<"uid">>, LoginMap),
     OldHash = db_password(Uid),
 
-    ok = mock_rsa_identity(),
-    put_post_vals(#{<<"existing_pwd">> => <<"Wrong@123456">>, <<"new_pwd">> => NewPassword}),
-    Result = user_logic:change_password(Uid, #{headers => #{}}),
-    erase_post_vals(),
+    Result = with_rsa_post_vals(<<"Wrong@123456">>, NewPassword, fun() ->
+        user_logic:change_password(Uid, #{headers => #{}})
+    end),
 
     ?assertMatch({error, _}, Result),
 
     %% 旧密码 hash 未变更（改密被拒未落库）
     ?assertEqual(OldHash, db_password(Uid)),
 
-    meck:unload(elib_cipher),
     cleanup_user_by_mobile(Mobile),
     {comment, "使用错误旧密码修改密码被拒绝"}.
 
@@ -435,11 +431,32 @@ logout_clears_device_session(_Config) ->
 %% 辅助函数
 %% ===================================================================
 
-%% 将 elib_cipher:rsa_decrypt mock 为 identity（测试环境无 RSA 私钥）
-mock_rsa_identity() ->
-    meck:new(elib_cipher, [unstick, passthrough]),
-    meck:expect(elib_cipher, rsa_decrypt, fun(X) -> X end),
-    ok.
+%% Fresh ephemeral keys never leave the test VM; restore app configuration even
+%% on failure. This avoids meck's inability to intercept local rsa_decrypt calls.
+with_rsa_post_vals(OldPassword, NewPassword, Fun) ->
+    Private = public_key:generate_key({rsa, 2048, 65537}),
+    Public = #'RSAPublicKey'{
+        modulus = Private#'RSAPrivateKey'.modulus,
+        publicExponent = Private#'RSAPrivateKey'.publicExponent
+    },
+    PrivatePem = public_key:pem_encode([public_key:pem_entry_encode('RSAPrivateKey', Private)]),
+    PublicPem = public_key:pem_encode([public_key:pem_entry_encode('RSAPublicKey', Public)]),
+    Previous = application:get_env(imboy, login_rsa_priv_key),
+    ok = application:set_env(imboy, login_rsa_priv_key, PrivatePem),
+    try
+        OldEncrypted = elib_cipher:rsa_encrypt(OldPassword, PublicPem),
+        NewEncrypted = elib_cipher:rsa_encrypt(NewPassword, PublicPem),
+        true = is_binary(OldEncrypted),
+        true = is_binary(NewEncrypted),
+        put_post_vals(#{<<"existing_pwd">> => OldEncrypted, <<"new_pwd">> => NewEncrypted}),
+        Fun()
+    after
+        erase_post_vals(),
+        case Previous of
+            {ok, Value} -> application:set_env(imboy, login_rsa_priv_key, Value);
+            undefined -> application:unset_env(imboy, login_rsa_priv_key)
+        end
+    end.
 
 %% 注入 elib_param:post 的进程字典缓存，绕开 cowboy_req 解析
 put_post_vals(Map) ->

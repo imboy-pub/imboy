@@ -24,10 +24,10 @@ gate(Results, Ctx) ->
         true = lists:all(fun(K) -> nonempty(maps:get(K, Ctx)) end, Keys),
         Artifacts = maps:get(artifacts, Ctx),
         true = is_list(Artifacts) andalso Artifacts =/= [],
-        true = lists:sort(Artifacts) =:= lists:sort([{Op, true} || Op <- required_ops()]),
         validate_waivers(Ctx),
+        Required = required_ops(Ctx),
+        true = lists:sort(Artifacts) =:= lists:sort([{Op, true} || Op <- Required]),
         validate_expectations(Ctx),
-        Required = required_ops(),
         Ops = [maps:get(op, R) || R <- Results],
         true = lists:sort(Ops) =:= lists:sort(Required),
         true = lists:all(fun(R) -> gate_result(R, Ctx) =:= [] end, Results),
@@ -36,21 +36,23 @@ gate(Results, Ctx) ->
         _:_ -> {fail, [invalid_or_incomplete_evidence]}
     end.
 
-%% D 项合同修订（2026-11-05 用户授权）：eunit_full 从必跑集移入豁免集——
-%% 豁免不是通过：Ctx.waived_ops 必须携带非空 authority（用户授权原文引用）
-%% 且 Ctx.waiver_ref 非空，判据器机械校验豁免的可追溯性；事实性 full 证据
-%% （r5）与豁免记录并存于 STATE，不伪造 all_passed。
-required_ops() ->
-    [
+%% Full EUnit is required by default. A task-specific historical waiver must
+%% remain explicit and traceable; it must not become a global default.
+required_ops(Ctx) ->
+    All = [
+        <<"eunit_full">>,
         <<"pbt_quick">>,
         <<"pbt_nightly">>,
         <<"critical_ct">>,
         <<"guard">>
-    ].
+    ],
+    Waived = [Op || {Op, _} <- maps:get(waived_ops, Ctx, [])],
+    All -- Waived.
 
 validate_waivers(Ctx) ->
-    Waived = maps:get(waived_ops, Ctx),
-    true = is_list(Waived) andalso Waived =/= [],
+    Waived = maps:get(waived_ops, Ctx, []),
+    true = is_list(Waived),
+    true = length(Waived) =:= length(lists:usort([Op || {Op, _} <- Waived])),
     lists:foreach(
         fun({Op, Authority}) ->
             true = lists:member(Op, waived_ops()),
@@ -58,7 +60,10 @@ validate_waivers(Ctx) ->
         end,
         Waived
     ),
-    nonempty(maps:get(<<"waiver_ref">>, Ctx)),
+    case Waived of
+        [] -> ok;
+        _ -> true = nonempty(maps:get(<<"waiver_ref">>, Ctx))
+    end,
     ok.
 
 waived_ops() ->
@@ -67,7 +72,8 @@ waived_ops() ->
 %% 收据字段无默认值：通过数量、失败/跳过/取消、清理及行为断言均显式给出。
 gate_result(R, Ctx) ->
     try
-        true = lists:member(maps:get(op, R), required_ops()),
+        validate_waivers(Ctx),
+        true = lists:member(maps:get(op, R), required_ops(Ctx)),
         true = nonempty(maps:get(candidate_sha, R)),
         true = maps:get(candidate_sha, R) =:= maps:get(head, Ctx),
         lists:foreach(

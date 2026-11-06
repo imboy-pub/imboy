@@ -252,7 +252,8 @@ prepare_started(Ctrl, Workers, Repo, Base, Args, ResourceRoot, Handle) ->
                     <<"name">> => list_to_binary(Template),
                     <<"digest">> => list_to_binary(maps:get(digest, Tpl)),
                     <<"migration_head">> => maps:get(head, Tpl),
-                    <<"status">> => atom_to_binary(maps:get(status, Tpl))
+                    <<"status">> => atom_to_binary(maps:get(status, Tpl)),
+                    <<"environment">> => maps:get(environment, Tpl)
                 },
                 <<"worker_db_clones">> => #{
                     <<"source">> => list_to_binary(Template),

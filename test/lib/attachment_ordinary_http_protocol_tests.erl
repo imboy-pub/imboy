@@ -31,7 +31,7 @@ http_protocol_units() ->
     end}.
 
 setup() ->
-    S = attachment_lifecycle_v5_w403_gateway_protocol_tests:setup(),
+    S = attachment_w403_owned_fixture:setup(),
     erlang:put(w403_ordinary_setup, S),
     try
         Owned = setup_owned(S),
@@ -108,7 +108,7 @@ cleanup(S) ->
         _ ->
             ok
     end,
-    attachment_lifecycle_v5_w403_gateway_protocol_tests:cleanup(S).
+    attachment_w403_owned_fixture:cleanup(S).
 
 roundtrip(S, D) ->
     %% V3-20：disk 驱动退役，上传命名空间仅剩 garage 根。

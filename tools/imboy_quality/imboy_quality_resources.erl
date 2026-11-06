@@ -3,7 +3,7 @@
 %% 候选模板库（EUNIT_120S §3.5）：共享 eunit 库 imboy_test_v1 是可变的、被同机
 %% 其他任务的迁移写过（opt-run8 现场：DEP-B 的 00000237 于 13:39Z 写入共享库，
 %% 候选最高 236，断言 236 的根因此失败）。模板必须由候选自己的 priv/migrations
-%% 与扩展清单构建，键为迁移内容 digest，可跨轮复用；worker/独占克隆一律从模板出。
+%% 与扩展清单构建，键绑定迁移、扩展版本和 locale，可跨轮复用；worker/独占克隆一律从模板出。
 %%
 %% 任务私有原生 Garage（§2.2/§3.7）：attv5/W403 与 talk_record 网关根需要真实 S3；
 %% 本机 Homebrew `garage` 原生拉起（独立数据目录/随机端口/随机密钥），跑完即停并清理。
@@ -59,28 +59,84 @@
 
 %% ---- 候选模板库 ----
 
-%% 返回 #{name, digest, head, status => built | reused}。Conn 连在 postgres 维护库。
+%% 返回 #{name, digest, head, environment, status => built | reused}。Conn 连在 postgres 维护库。
 ensure_candidate_template(Conn, Args, Repo) ->
     Head = migration_head(Repo),
-    Digest = template_digest(Repo, pg_version(Conn)),
+    Environment = template_environment(Conn, Args),
+    Digest = template_digest(Repo, Environment),
     Name = ?TEMPLATE_PREFIX ++ Digest,
     Exists = db_exists(Conn, Name),
-    Valid = Exists andalso template_valid(Args, Name, Digest, Head),
-    case template_action(Exists, Valid) of
-        reuse ->
-            #{name => Name, digest => Digest, head => Head, status => reused};
-        conflict ->
-            error({template_conflict_retained, Name});
-        create ->
-            build_template(Conn, Args, Repo, Name, Digest, Head),
-            #{name => Name, digest => Digest, head => Head, status => built}
+    %% Only reopen a template carrying our exact ownership comment.
+    case Exists of
+        true ->
+            {ok, _, [{Comment}]} = epgsql:equery(
+                Conn,
+                "SELECT shobj_description(oid, 'pg_database') FROM pg_database WHERE datname=$1",
+                [Name]
+            ),
+            Expected = list_to_binary("IMBOY_ERLANG_QUALITY:template:" ++ Digest),
+            Comment =:= Expected orelse error({template_owner_mismatch, Name}),
+            q(Conn, ["ALTER DATABASE \"", Name, "\" ALLOW_CONNECTIONS true"]);
+        false ->
+            ok
+    end,
+    Valid = Exists andalso template_valid(Args, Name, Digest, Head, Environment),
+    Result =
+        case template_action(Exists, Valid) of
+            reuse ->
+                #{
+                    name => Name,
+                    digest => Digest,
+                    head => Head,
+                    status => reused,
+                    environment => Environment
+                };
+            conflict ->
+                q(Conn, ["ALTER DATABASE \"", Name, "\" ALLOW_CONNECTIONS false"]),
+                error({template_conflict_retained, Name});
+            create ->
+                build_template(Conn, Args, Repo, Name, Digest, Head, Environment),
+                #{
+                    name => Name,
+                    digest => Digest,
+                    head => Head,
+                    status => built,
+                    environment => Environment
+                }
+        end,
+    %% A TimescaleDB scheduler can reconnect after migration even after our
+    %% client disconnects. Stop only this immutable template's scheduler;
+    %% cloned test databases retain normal background workers and durability.
+    imboy_quality_fixture:connect_db(Args, Name, fun(C) ->
+        %% Prevent a scheduler reconnect between the last check and CREATE
+        %% DATABASE TEMPLATE. The new database defaults to allowing connections.
+        q(Conn, ["ALTER DATABASE \"", Name, "\" ALLOW_CONNECTIONS false"]),
+        {ok, _, [{<<"t">>}]} = q(C, "SELECT _timescaledb_functions.stop_background_workers()")
+    end),
+    ok = wait_template_disconnected(Conn, Name, 20),
+    Result.
+
+wait_template_disconnected(Conn, Name, Left) ->
+    {ok, _, Rows} = epgsql:equery(
+        Conn,
+        "SELECT pid FROM pg_stat_activity WHERE datname=$1",
+        [Name]
+    ),
+    case {Rows, Left} of
+        {[], _} ->
+            ok;
+        {_, 0} ->
+            error({template_still_in_use, Name, length(Rows)});
+        _ ->
+            timer:sleep(100),
+            wait_template_disconnected(Conn, Name, Left - 1)
     end.
 
 template_action(true, true) -> reuse;
 template_action(true, false) -> conflict;
 template_action(false, false) -> create.
 
-build_template(Conn, Args, Repo, Name, Digest, Head) ->
+build_template(Conn, Args, Repo, Name, Digest, Head, Environment) ->
     q(Conn, ["CREATE DATABASE \"", Name, "\""]),
     try
         imboy_quality_fixture:connect_db(Args, Name, fun(C) ->
@@ -93,6 +149,7 @@ build_template(Conn, Args, Repo, Name, Digest, Head) ->
                 {error, Reason} -> error({template_migrate_failed, Reason})
             end,
             {ok, Head, false} = erlang_migrate:version(#{conn => C, dir => Dir}),
+            Environment = actual_template_environment(C),
             ok = imboy_quality_fixture:ensure_marker(C),
             q(C, [
                 "CREATE TABLE IF NOT EXISTS ",
@@ -120,7 +177,7 @@ build_template(Conn, Args, Repo, Name, Digest, Head) ->
             erlang:raise(Class, {template_build_failed_retained, Name, Reason}, Stack)
     end.
 
-template_valid(Args, Name, Digest, Head) ->
+template_valid(Args, Name, Digest, Head, Environment) ->
     try
         imboy_quality_fixture:connect_db(Args, Name, fun(C) ->
             {ok, _, Rows} = q(C, [
@@ -132,22 +189,91 @@ template_valid(Args, Name, Digest, Head) ->
                 integer_to_list(Head)
             ]),
             {ok, _, [{V}]} = q(C, "SELECT version::text FROM schema_migrations LIMIT 1"),
-            Rows =/= [] andalso binary_to_integer(V) =:= Head
+            Rows =/= [] andalso binary_to_integer(V) =:= Head andalso
+                actual_template_environment(C) =:= Environment
         end)
     catch
         _:_ -> false
     end.
 
-%% digest = sha256(迁移文件名+内容 ‖ 扩展清单 ‖ PG 版本) 前 12 位 hex。
-template_digest(Repo, PgVersion) ->
+%% The key binds migrations to the environment CREATE DATABASE inherits from
+%% template1, including installed extension versions (not just extension names).
+%% A map is mandatory: accepting a bare PG version would silently omit inputs.
+template_digest(Repo, #{pg_version := _, extension_versions := _, locale := _} = Environment) ->
     Files = lists:sort(filelib:wildcard(filename:join(Repo, "priv/migrations/*.sql"))),
     Parts = [
         [filename:basename(F), 0, element(2, file:read_file(F)), 0]
      || F <- Files
     ],
-    Bin = iolist_to_binary([Parts, "ext:", lists:join(",", ?EXTENSIONS), 0, "pg:", PgVersion]),
+    Bin = iolist_to_binary([
+        Parts, "template-environment-v2:", term_to_binary(Environment, [deterministic])
+    ]),
     Hex = string:lowercase(binary_to_list(binary:encode_hex(crypto:hash(sha256, Bin)))),
     lists:sublist(Hex, 12).
+
+template_environment(Conn, Args) ->
+    %% Inspect template1 rather than the maintenance connection: CREATE
+    %% EXTENSION IF NOT EXISTS retains any version inherited from template1.
+    Version = pg_version(Conn),
+    binary_to_integer(Version) >= 180000 orelse error({postgres_18_required, Version}),
+    imboy_quality_fixture:connect_db(Args, "template1", fun(C) ->
+        Installed = installed_extension_versions(C),
+        {ok, _, AvailableRows} = q(C, "SELECT name, default_version FROM pg_available_extensions"),
+        Available = maps:from_list(AvailableRows),
+        Expected = lists:foldl(
+            fun(E, Acc) ->
+                Key = list_to_binary(E),
+                case maps:is_key(Key, Acc) of
+                    true ->
+                        Acc;
+                    false ->
+                        case maps:find(Key, Available) of
+                            {ok, V} when is_binary(V) -> maps:put(Key, V, Acc);
+                            _ -> error({template_extension_unavailable, E})
+                        end
+                end
+            end,
+            Installed,
+            ?EXTENSIONS
+        ),
+        #{pg_version => Version, extension_versions => Expected, locale => database_locale(C)}
+    end).
+
+actual_template_environment(C) ->
+    #{
+        pg_version => pg_version(C),
+        extension_versions => installed_extension_versions(C),
+        locale => database_locale(C)
+    }.
+
+installed_extension_versions(C) ->
+    {ok, _, Rows} = q(C, "SELECT extname, extversion FROM pg_extension"),
+    maps:from_list(Rows).
+
+database_locale(C) ->
+    %% PG18: datlocale holds the builtin/ICU locale; libc uses collate/ctype.
+    %% Include recorded and current provider versions to invalidate on upgrades.
+    {ok, _, [Values]} = q(
+        C,
+        "SELECT pg_encoding_to_char(encoding), datlocprovider::text, datcollate, datctype, "
+        "datlocale, daticurules, datcollversion, pg_database_collation_actual_version(oid) "
+        "FROM pg_database WHERE datname=current_database()"
+    ),
+    maps:from_list(
+        lists:zip(
+            [
+                encoding,
+                provider,
+                collate,
+                ctype,
+                locale,
+                icu_rules,
+                collation_version,
+                actual_collation_version
+            ],
+            tuple_to_list(Values)
+        )
+    ).
 
 migration_head(Repo) ->
     Files = filelib:wildcard(filename:join(Repo, "priv/migrations/*.up.sql")),
@@ -167,7 +293,7 @@ migration_head(Repo) ->
 
 pg_version(Conn) ->
     {ok, _, [{V}]} = q(Conn, "SHOW server_version_num"),
-    binary_to_list(V).
+    V.
 
 db_exists(Conn, Name) ->
     {ok, _, Rows} = q(Conn, ["SELECT 1 FROM pg_database WHERE datname = '", Name, "'"]),

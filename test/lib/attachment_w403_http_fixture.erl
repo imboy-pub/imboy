@@ -40,7 +40,7 @@ setup() ->
     %% The common owner verifies a reused pool; evidence/listener remain ours.
     undefined = ets:whereis(?TABLE),
     try
-        S0 = attachment_lifecycle_v5_w403_gateway_protocol_tests:setup(),
+        S0 = attachment_w403_owned_fixture:setup(),
         erlang:put(w403_setup_resources, S0),
         true = ets:new(?TABLE, [named_table, public, ordered_set]) =:= ?TABLE,
         S = S0#{evidence_table_owned => ets:whereis(?TABLE)},
@@ -136,7 +136,7 @@ cleanup(S) ->
                 _ ->
                     ok
             end,
-            attachment_lifecycle_v5_w403_gateway_protocol_tests:cleanup(S),
+            attachment_w403_owned_fixture:cleanup(S),
             erase(w403_setup_resources)
         end
     end,

@@ -2065,3 +2065,4 @@ rows_to_maps_happy_paths_unchanged_test_() ->
         %% 零列 × 零行（非 SELECT 误入形态）合法空集
         ?assertEqual([], elib_pg:rows_to_maps([], []))
     end).
+
