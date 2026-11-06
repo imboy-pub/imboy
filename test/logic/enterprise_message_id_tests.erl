@@ -167,3 +167,73 @@ fetch_row_id_tx_semantics_test_() ->
             )
         end
     ).
+
+origin_lookup_preserves_database_errors_test_() ->
+    ?PURE_MOCKS(
+        [
+            {elib_pg, [
+                {'query', 3, fun
+                    (test_conn, _, [<<"known">>]) -> {ok, [#{<<"msg_id">> => <<"known">>}]};
+                    (test_conn, _, [<<"missing">>]) -> {ok, []};
+                    (test_conn, _, [<<"db-error">>]) -> {error, connection_lost}
+                end}
+            ]}
+        ],
+        fun() ->
+            ?assertEqual(
+                {ok, #{<<"msg_id">> => <<"known">>}},
+                enterprise_message_origin_repo:find_by_msg_id_tx(test_conn, <<"known">>)
+            ),
+            ?assertEqual(
+                {error, not_found},
+                enterprise_message_origin_repo:find_by_msg_id_tx(test_conn, <<"missing">>)
+            ),
+            ?assertEqual(
+                {error, connection_lost},
+                enterprise_message_origin_repo:find_by_msg_id_tx(test_conn, <<"db-error">>)
+            )
+        end
+    ).
+
+origin_lookup_failure_preserves_receipt_flow_test_() ->
+    ?PURE_MOCKS(
+        [
+            {elib_pg, [
+                {'with_tx', 1, fun(Fun) -> Fun(test_conn) end},
+                {'query', 3, fun(test_conn, _, [<<"db-error">>]) ->
+                    {error, connection_lost}
+                end}
+            ]},
+            {elib_log, [
+                {'internal_log', 5, fun(warning, _, [connection_lost], _, _) -> ok end}
+            ]},
+            {enterprise_application_repo, []},
+            {enterprise_webhook_repo, []}
+        ],
+        fun() ->
+            ?assertEqual(
+                ok, enterprise_webhook_logic:emit_delivered_for(<<"msg_c2c">>, <<"db-error">>)
+            ),
+            ?assertEqual(ok, enterprise_webhook_logic:emit_read_for([<<"db-error">>])),
+            ?assertEqual(2, meck:num_calls(elib_pg, query, 3)),
+            ?assertEqual(2, meck:num_calls(elib_log, internal_log, 5))
+        end
+    ).
+
+card_urls_reject_non_binary_input_test() ->
+    Ctx = #{organization_id => 1, application_id => 2},
+    lists:foreach(
+        fun(Type) ->
+            Input = #{
+                msg_type => Type,
+                title => <<"A card">>,
+                action_type => <<"open">>,
+                url => 123
+            },
+            ?assertEqual(
+                {error, {<<"invalid_request">>, {invalid_field, <<"url">>}}},
+                enterprise_message_logic:build_payload(test_conn, Ctx, Input, <<"application">>, 10)
+            )
+        end,
+        [<<"link_card">>, <<"business_action_card">>]
+    ).

@@ -9,6 +9,7 @@
     "/api/v1/app/manifest",
     "/api/v1/app/policy",
     "/api/v1/attachment/content",
+    "/api/v1/attachment/edge/authorize",
     "/api/v1/auth/oidc/authorize",
     "/api/v1/auth/oidc/callback",
     "/api/v1/auth/oidc/exchange",
@@ -677,6 +678,18 @@
         "action": "p_session_stats",
         "handler": "cs_platform_handler",
         "path": "/api/adm/customer-service/organizations/:org_id/stats/sessions",
+        "static": false
+      },
+      {
+        "action": "p_quick_replies",
+        "handler": "cs_platform_handler",
+        "path": "/api/adm/customer-service/quick-replies",
+        "static": false
+      },
+      {
+        "action": "p_quick_reply_mutate",
+        "handler": "cs_platform_handler",
+        "path": "/api/adm/customer-service/quick-replies/:id",
         "static": false
       },
       {
@@ -1942,6 +1955,12 @@
         "static": false
       },
       {
+        "action": "channel",
+        "handler": "enterprise_message_handler",
+        "path": "/api/internal/v1/channels/:channel_id/messages",
+        "static": false
+      },
+      {
         "action": "seats",
         "handler": "enterprise_cs_seat_handler",
         "path": "/api/internal/v1/customer-service/seats",
@@ -2265,6 +2284,12 @@
         "action": null,
         "handler": "attach_direct_handler",
         "path": "/api/v1/attachment/direct/:action",
+        "static": false
+      },
+      {
+        "action": null,
+        "handler": "attachment_edge_authorize_handler",
+        "path": "/api/v1/attachment/edge/authorize",
         "static": false
       },
       {
@@ -2871,6 +2896,12 @@
         "action": "seat_contexts",
         "handler": "cs_tenant_handler",
         "path": "/api/v1/cs/me/seat-contexts",
+        "static": false
+      },
+      {
+        "action": "quick_replies",
+        "handler": "cs_tenant_handler",
+        "path": "/api/v1/cs/organizations/:org_id/quick-replies",
         "static": false
       },
       {
@@ -6003,11 +6034,11 @@
           "src/logic/msg_c2c_logic.erl:885",
           "src/logic/msg_c2c_logic.erl:942",
           "src/logic/msg_c2c_logic.erl:978",
-          "src/logic/msg_c2c_logic.erl:1195",
-          "src/logic/msg_c2c_logic.erl:1245",
-          "src/logic/msg_c2c_logic.erl:1264",
-          "src/logic/msg_c2g_logic.erl:872",
-          "src/logic/msg_c2g_logic.erl:1058",
+          "src/logic/msg_c2c_logic.erl:1198",
+          "src/logic/msg_c2c_logic.erl:1248",
+          "src/logic/msg_c2c_logic.erl:1267",
+          "src/logic/msg_c2g_logic.erl:875",
+          "src/logic/msg_c2g_logic.erl:1061",
           "src/logic/msg_c2s_logic.erl:164",
           "src/logic/msg_s2c_logic.erl:62"
         ]
@@ -6021,7 +6052,7 @@
       {
         "action": "invalid_msgid",
         "sources": [
-          "src/logic/msg_c2g_logic.erl:1135"
+          "src/logic/msg_c2g_logic.erl:1138"
         ]
       },
       {
@@ -6037,8 +6068,8 @@
           "src/logic/msg_c2c_logic.erl:700",
           "src/logic/msg_c2c_logic.erl:801",
           "src/logic/msg_c2g_logic.erl:401",
-          "src/logic/msg_c2g_logic.erl:870",
-          "src/logic/msg_c2g_logic.erl:1055",
+          "src/logic/msg_c2g_logic.erl:873",
+          "src/logic/msg_c2g_logic.erl:1058",
           "src/logic/msg_s2c_logic.erl:145"
         ]
       },
@@ -6053,8 +6084,8 @@
       {
         "action": "not_group_member",
         "sources": [
-          "src/logic/msg_c2g_logic.erl:877",
-          "src/logic/msg_c2g_logic.erl:1065"
+          "src/logic/msg_c2g_logic.erl:880",
+          "src/logic/msg_c2g_logic.erl:1068"
         ]
       },
       {
@@ -6071,11 +6102,11 @@
           "src/logic/msg_c2c_logic.erl:799",
           "src/logic/msg_c2c_logic.erl:807",
           "src/logic/msg_c2c_logic.erl:1146",
-          "src/logic/msg_c2g_logic.erl:868",
-          "src/logic/msg_c2g_logic.erl:875",
-          "src/logic/msg_c2g_logic.erl:1050",
-          "src/logic/msg_c2g_logic.erl:1062",
-          "src/logic/msg_c2g_logic.erl:1137",
+          "src/logic/msg_c2g_logic.erl:871",
+          "src/logic/msg_c2g_logic.erl:878",
+          "src/logic/msg_c2g_logic.erl:1053",
+          "src/logic/msg_c2g_logic.erl:1065",
+          "src/logic/msg_c2g_logic.erl:1140",
           "src/logic/msg_s2c_logic.erl:88",
           "src/logic/msg_s2c_logic.erl:108",
           "src/logic/msg_s2c_logic.erl:140",
@@ -6097,8 +6128,8 @@
       {
         "action": "service_unavailable",
         "sources": [
-          "src/logic/msg_c2g_logic.erl:1150",
-          "src/logic/msg_c2g_logic.erl:1152"
+          "src/logic/msg_c2g_logic.erl:1153",
+          "src/logic/msg_c2g_logic.erl:1155"
         ]
       },
       {

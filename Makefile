@@ -31,9 +31,11 @@ relup:: relx-config-check runtime-config
 run:: relx-config-check runtime-config
 relx-rel relx-relup: relx-config-check runtime-config
 
-# include 期间抑制 relx 元数据的 Erlang 调用；发布目标执行时再读取。
+# 仅延迟 include 期间的 relx 元数据查询；发布目标执行时再读取。
+# Hex 等依赖配方在 include 期间由 dep_target/eval 展开，必须保留真实命令，
+# 否则下载会永久变成 ':'。Defer only the exact release metadata query.
 override define erlang
-$(if $(IMBOY_MAKE_READY),$(ERL) $2 -pz $(ERLANG_MK_TMP)/rebar3/_build/prod/lib/*/ebin/ -eval "$(subst $(newline),,$(call escape_dquotes,$1))" -- erlang.mk,:)
+$(if $(and $(if $(IMBOY_MAKE_READY),,1),$(call core_eq,$1,$(get_relx_release.erl))),:,$(ERL) $2 -pz $(ERLANG_MK_TMP)/rebar3/_build/prod/lib/*/ebin/ -eval "$(subst $(newline),,$(call escape_dquotes,$1))" -- erlang.mk)
 endef
 
 # 仅 run 读取 LLM 密钥：命令行 > .env.local > .env > 环境；保留字面值。

@@ -25,12 +25,12 @@ def registered_router():
 
 
 class DelegateTests(unittest.TestCase):
-    def test_real_delegate_is_exactly_37_routes(self):
+    def test_real_delegate_is_exactly_62_routes(self):
         repo = SCRIPTS.parent
         body = talk_record_delegate((repo / 'src/imboy_router.erl').read_text(), repo)
-        self.assertEqual(len(list(contract_gate.ROUTE_RE.finditer(body))), 37)
+        self.assertEqual(len(list(contract_gate.ROUTE_RE.finditer(body))), 62)
         paths = contract_gate.extract_routes((repo / 'src/imboy_router.erl').read_text())['api_v1']
-        self.assertEqual(sum(e['path'].startswith('/api/v1/talk-records') for e in paths), 37)
+        self.assertEqual(sum(e['path'].startswith('/api/v1/talk-records') for e in paths), 62)
 
     def test_unregistered_and_commented_calls_do_not_read_delegate(self):
         with tempfile.TemporaryDirectory() as directory:

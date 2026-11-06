@@ -44,27 +44,10 @@ reserve_tx(Conn, Source, Meta) ->
     end.
 
 write(Aid, Bytes) ->
-    case elib_pg:with_tx(fun(C) -> begin_write_tx(C, Aid) end, [{reraise, false}]) of
+    case begin_write(Aid) of
         {ok, I} ->
             Result = put_bytes(I, Bytes),
-            %% A failure is not proof that no bytes reached object storage.
-            State =
-                case Result of
-                    ok -> <<"complete">>;
-                    _ -> <<"unknown">>
-                end,
-            case
-                elib_pg:execute(
-                    <<
-                        "UPDATE attachment_derived_write SET state=$2,updated_at=now()"
-                        " WHERE attachment_id=$1 AND state='writing'"
-                    >>,
-                    [Aid, State]
-                )
-            of
-                {ok, 1} -> Result;
-                _ -> {error, artifact_write_quarantined}
-            end;
+            finish_write_result(Aid, Result =:= ok, Result);
         Error ->
             Error
     end.
@@ -78,10 +61,19 @@ begin_write(Aid) ->
 %% finish_write/2：Worker 结果收口（complete/unknown——与 write/2 同语义：
 %% 上传失败不是"无字节到达"的证明）。
 finish_write(Aid, Result) ->
-    State =
+    Succeeded =
         case Result of
-            {ok, _} -> <<"complete">>;
-            _ -> <<"unknown">>
+            {ok, _} -> true;
+            _ -> false
+        end,
+    finish_write_result(Aid, Succeeded, Result).
+
+finish_write_result(Aid, Succeeded, Result) ->
+    %% A failure is not proof that no bytes reached object storage.
+    State =
+        case Succeeded of
+            true -> <<"complete">>;
+            false -> <<"unknown">>
         end,
     case
         elib_pg:execute(

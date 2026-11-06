@@ -1121,13 +1121,14 @@ encode_value(_Key, Value) when is_list(Value) ->
 encode_value(_Key, Value) ->
     Value.
 
-%% @doc 该键承载的是 TSID 吗：`id` 或 `*_id`。排除长得像但不是 TSID 的键
+%% @doc 该键承载的是 TSID 吗：`id`、`*_id` 或快捷回复的 `created_by`。
+%% 排除长得像但不是 TSID 的键
 %% （device_id/client_msg_id 是字符串语义；key_ref 已从 HTTP 面整体删除，F6）。
 -spec is_tsid_key(term()) -> boolean().
 is_tsid_key(Key) when is_atom(Key) ->
     is_tsid_key(atom_to_binary(Key, utf8));
 is_tsid_key(Key) when is_binary(Key) ->
-    (Key =:= <<"id">> orelse has_tsid_suffix(Key)) andalso
+    (Key =:= <<"id">> orelse Key =:= <<"created_by">> orelse has_tsid_suffix(Key)) andalso
         not lists:member(Key, non_tsid_id_keys());
 is_tsid_key(_Key) ->
     false.

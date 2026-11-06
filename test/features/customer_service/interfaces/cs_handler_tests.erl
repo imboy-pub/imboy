@@ -994,6 +994,46 @@ platform_flow_tests(_) ->
             end)
         end},
 
+        {"quick reply create uses the authenticated admin and emits TSID strings (200)", fun() ->
+            cs_fake_facts:set(#{
+                adm_user_id => ?ADM, permissions => [<<"customer_service:write">>]
+            }),
+            meck:expect(customer_service_facade, quick_reply_create, fun(Org, Params) ->
+                ?assertEqual(?ORG, Org),
+                ?assertEqual(?WS, maps:get(workspace_id, Params)),
+                ?assertEqual(?ADM, maps:get(adm_user_id, Params)),
+                ?assertNot(maps:is_key(actor_id, Params)),
+                {ok, #{quick_reply => #{
+                    id => 9223372036854775807,
+                    organization_id => Org,
+                    workspace_id => ?WS,
+                    title => maps:get(title, Params),
+                    content => maps:get(content, Params),
+                    sort => 0,
+                    created_by => maps:get(adm_user_id, Params)
+                }}}
+            end),
+            ?S:with_listener(platform, p_quick_replies, platform_inject(), fun(Port) ->
+                Resp = ?S:request(
+                    Port,
+                    <<"POST">>,
+                    ?S:path(platform, p_quick_replies, #{}),
+                    #{
+                        <<"organization_id">> => int_bin(?ORG),
+                        <<"workspace_id">> => int_bin(?WS),
+                        <<"title">> => <<"greeting">>,
+                        <<"content">> => <<"hello">>
+                    }
+                ),
+                ?assertEqual(200, ?S:status(Resp)),
+                Row = maps:get(<<"quick_reply">>, ?S:payload(Resp)),
+                ?assertEqual(<<"9223372036854775807">>, maps:get(<<"id">>, Row)),
+                ?assertEqual(int_bin(?ORG), maps:get(<<"organization_id">>, Row)),
+                ?assertEqual(int_bin(?ADM), maps:get(<<"created_by">>, Row)),
+                ?assertNot(maps:is_key(<<"tenant_id">>, Row))
+            end)
+        end},
+
         {"platform close and tenant close hit the same facade function (A02)", fun() ->
             cs_fake_facts:set(#{
                 adm_user_id => ?ADM, permissions => [<<"customer_service:write">>]
@@ -1383,12 +1423,16 @@ contract_tests(_) ->
                 id => ?SESSION,
                 session_id => 12,
                 contact_id => 13,
+                created_by => ?ADM,
+                list => [#{<<"created_by">> => 9223372036854775807}],
                 client_msg_id => <<"cmid">>,
                 device_id => <<"dev-1">>,
                 rating => 5
             }),
             ?assertEqual(<<"12">>, maps:get(session_id, Out)),
             ?assertEqual(<<"13">>, maps:get(contact_id, Out)),
+            ?assertEqual(int_bin(?ADM), maps:get(created_by, Out)),
+            ?assertEqual([#{<<"created_by">> => <<"9223372036854775807">>}], maps:get(list, Out)),
             ?assertEqual(<<"cmid">>, maps:get(client_msg_id, Out)),
             ?assertEqual(<<"dev-1">>, maps:get(device_id, Out)),
             ?assertEqual(5, maps:get(rating, Out))

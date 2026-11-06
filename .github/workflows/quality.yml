@@ -151,9 +151,18 @@ jobs:
       - name: Install oasdiff
         run: |
           set -euo pipefail
-          curl -fsSL https://github.com/oasdiff/oasdiff/releases/download/v1.15.2/oasdiff_1.15.2_linux_amd64.tar.gz \
-            | tar -xz -C /tmp oasdiff
+          # v1.35.0 uses kin-openapi v0.151.0, which preserves OpenAPI 3.1
+          # boolean schemas. Keep full base/head semantics and --fail-on ERR.
+          curl -fsSL https://github.com/oasdiff/oasdiff/releases/download/v1.35.0/oasdiff_1.35.0_linux_amd64.tar.gz \
+            -o /tmp/oasdiff.tar.gz
+          echo 'a8023002fcb2eaa7f5758148a9303cb63d33b939886df312268bc0fc7b939140  /tmp/oasdiff.tar.gz' | sha256sum -c -
+          tar -xzf /tmp/oasdiff.tar.gz -C /tmp oasdiff
           /tmp/oasdiff --version
+
+      - name: Verify OpenAPI 3.1 diff semantics
+        env:
+          OASDIFF_BIN: /tmp/oasdiff
+        run: python3 head/test/scripts/test_api_oasdiff.py -v
 
       # T3.2 split (2026-05-16)：multi-file 适配 — oasdiff 不会自动解析跨文件 $ref，
       # 必须先用 redocly bundle 把 base/head 各自合并为单文件再做 diff，否则

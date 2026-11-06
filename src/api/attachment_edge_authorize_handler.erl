@@ -1,7 +1,7 @@
 -module(attachment_edge_authorize_handler).
--moduledoc "V3-08 下载边缘逐请求授权端点（仅 loopback 边缘调用，有界控制响应）".
+-moduledoc "V3-08 下载边缘逐请求授权端点（内部 token 鉴权，有界控制响应）".
 %%%
-%% POST /api/internal/attachment/edge/authorize
+%% POST /api/v1/attachment/edge/authorize
 %%   body: {"ticket":…,"method":"GET"|"HEAD"}
 %%   头:   x-edge-internal-token: <config edge_internal_token>
 %% 行为：
@@ -11,6 +11,8 @@
 %% 本端点只回有界 JSON，绝不接触正文（BEAM=0 合同）。
 
 -export([init/2]).
+
+-include("generated/imboy_product_features.hrl").
 
 -define(MAX_BODY, 8192).
 
@@ -65,15 +67,7 @@ authorize_target(Ticket) ->
         {ok, _} = Ok ->
             Ok;
         _ ->
-            case eb_edge_authorize(Ticket) of
-                {ok, _} = Ok1 ->
-                    Ok1;
-                _ ->
-                    case talk_record_target(Ticket) of
-                        {ok, _} = Ok2 -> Ok2;
-                        _ -> {error, forbidden}
-                    end
-            end
+            authorize_after_attachment(Ticket)
     end.
 
 %% EB 域分支（enterprise_business 裁剪档，铁律 F-EB10-1 同类保护）：
@@ -81,6 +75,12 @@ authorize_target(Ticket) ->
 %% EB 票据域恒不可达（fail-closed 落入 talk-record/拒绝分支，与选中档
 %% 「EB verify 失败」外部形状一致）；选中档语义不变。
 -ifdef(IMBOY_FEATURE_ENTERPRISE_BUSINESS).
+authorize_after_attachment(Ticket) ->
+    case eb_edge_authorize(Ticket) of
+        {ok, _} = Ok -> Ok;
+        _ -> authorize_talk_record(Ticket)
+    end.
+
 eb_edge_authorize(Ticket) ->
     case eb_asset_download_ticket:verify(Ticket) of
         {ok, Claims} ->
@@ -89,9 +89,15 @@ eb_edge_authorize(Ticket) ->
             {error, forbidden}
     end.
 -else.
-eb_edge_authorize(_Ticket) ->
-    {error, forbidden}.
+authorize_after_attachment(Ticket) ->
+    authorize_talk_record(Ticket).
 -endif.
+
+authorize_talk_record(Ticket) ->
+    case talk_record_target(Ticket) of
+        {ok, _} = Ok -> Ok;
+        _ -> {error, forbidden}
+    end.
 
 %% talk-record 回放/导出域：verify 逐请求重放完整 ACL（claims 自带
 %% uid/rid——边缘回调无请求者上下文，以票据 claim 为主体重验，撤权/

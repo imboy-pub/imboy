@@ -2736,6 +2736,100 @@
               }
             }
           ]
+        },
+        {
+          "name": "INT-50 企业频道消息",
+          "request": {
+            "method": "POST",
+            "url": {
+              "raw": "{{base_url}}/api/internal/v1/channels/{{channel_id}}/messages",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "internal",
+                "v1",
+                "channels",
+                "{{channel_id}}",
+                "messages"
+              ]
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{idempotency_key}}"
+              }
+            ],
+            "description": "向有效 Workspace 企业频道发送固定非 E2EE 消息。application 使用有效 principal；human 须传 sender_user_id（OA 外部标识）且为有效成员和频道订阅者。支持 text/file/image/link_card/business_action_card；响应为裸 JSON，sender_user_id 为非 null 平台 int64。重试同一业务操作须复用 idempotency_key。",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"sender_mode\": \"application\",\n  \"msg_type\": \"text\",\n  \"content\": \"项目频道通知\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "",
+                  "// HMAC-SHA256; Postman Web Crypto, no external package dependency.",
+                  "// Runs after this request's PKCE/body preparation scripts.",
+                  "const credential = pm.variables.get('credential');",
+                  "if (!credential || !/^ib_int_[0-9]+\\..+$/.test(credential)) {",
+                  "    pm.execution.skipRequest();",
+                  "    throw new Error('Set the issued credential in your private environment.');",
+                  "}",
+                  "const dot = credential.indexOf('.');",
+                  "const prefix = credential.slice(0, dot), secret = credential.slice(dot + 1);",
+                  "const algorithm = 'sha256';",
+                  "",
+                  "pm.request.headers.remove('Authorization');",
+                  "pm.request.url.update(pm.variables.replaceIn(pm.request.url.toString()));",
+                  "const target = pm.request.url.getPathWithQuery();",
+                  "const q = target.indexOf('?');",
+                  "const path = q < 0 ? target : target.slice(0, q);",
+                  "const query = q < 0 ? '' : target.slice(q + 1);",
+                  "const organization = pm.variables.get('target_organization_id') || '';",
+                  "pm.request.headers.remove('X-Imboy-Organization');",
+                  "if (organization) pm.request.headers.upsert({key: 'X-Imboy-Organization', value: String(organization)});",
+                  "const contentType = pm.variables.replaceIn(pm.request.headers.get('Content-Type') || 'application/json');",
+                  "pm.request.headers.upsert({key: 'Content-Type', value: contentType});",
+                  "const idem = pm.variables.replaceIn(pm.request.headers.get('Idempotency-Key') || '');",
+                  "if (idem) pm.request.headers.upsert({key: 'Idempotency-Key', value: idem});",
+                  "const body = pm.request.body && pm.request.body.mode === 'raw'",
+                  "    ? pm.variables.replaceIn(pm.request.body.raw || '') : '';",
+                  "if (pm.request.body && pm.request.body.mode === 'raw') pm.request.body.raw = body;",
+                  "const timestamp = String(Math.floor(Date.now() / 1000));",
+                  "const hex = bytes => Array.from(new Uint8Array(bytes), b => b.toString(16).padStart(2, '0')).join('');",
+                  "const nonce = hex(crypto.getRandomValues(new Uint8Array(24)));",
+                  "const utf8 = value => new TextEncoder().encode(value);",
+                  "const bodyHash = hex(await crypto.subtle.digest('SHA-256', utf8(body)));",
+                  "const canonical = ['IMBOY-INTERNAL-V1', algorithm, prefix, String(organization),",
+                  "    pm.request.method, path, query, contentType, idem, bodyHash, timestamp, nonce].join('\\n');",
+                  "const key = await crypto.subtle.importKey('raw', utf8(secret),",
+                  "    {name: 'HMAC', hash: 'SHA-256'}, false, ['sign']);",
+                  "const signature = hex(await crypto.subtle.sign('HMAC', key, utf8(canonical)));",
+                  "for (const [key, value] of Object.entries({'X-Imboy-Credential': prefix,",
+                  "    'X-Imboy-Timestamp': timestamp, 'X-Imboy-Nonce': nonce,",
+                  "    'X-Imboy-Signature': algorithm + '=' + signature})) pm.request.headers.upsert({key, value});"
+                ]
+              }
+            }
+          ]
         }
       ]
     },

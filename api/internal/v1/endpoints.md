@@ -1,4 +1,4 @@
-# Internal API v1 — 端点参考（49 个 Internal 操作）
+# Internal API v1 — 端点参考（50 个 Internal 操作）
 
 > 与代码冻结表（`src/api/enterprise_internal_routes.erl`）逐条一致；
 > 字段级机器契约见 `../../openapi-internal.yaml`（编辑真源，
@@ -17,7 +17,7 @@
 | 来源目录 | INT-43、45..49 | 可信来源显式增量、核对、成员离职检查及停用/恢复；无任意组织治理 |
 | Workspace | INT-24/25、37..39 | 分页、详情、创建、修改、软归档 |
 | 客服坐席 | INT-33..36 | 分页、详情、开通和配置调整；停用使用 PATCH enabled=false |
-| 企业频道 | INT-30/31、40..42 | 仅 Workspace 频道；分页、详情、创建、修改、软归档 |
+| 企业频道 | INT-30/31、40..42、50 | 仅 Workspace 频道；分页、详情、创建、修改、软归档及消息发送 |
 | 企业群 | INT-04..06、18..21、26/27 | 创建、成员与角色管理、资料修改、解散、分页与详情 |
 | 企业项目 | INT-28/29 | 只读分页与详情；当前不提供创建、修改或归档接口 |
 
@@ -107,7 +107,7 @@ Workspace keyset 列表与详情；签名请求按目标业务组织收窄行集
 | INT-31 | `GET /api/internal/v1/channels/{channel_id}` | read | — |
 
 工作区企业频道 keyset 列表与详情（V2.1 新增）；**仅 `scope=workspace` 的
-频道**（`status=1` 启用中），个人频道永久排除。写操作 INT-40..42 已实现，详见下文。
+频道**（`status=1` 启用中），个人频道永久排除。写管理 INT-40..42 与消息发送 INT-50 已实现，详见下文。
 
 ## 企业文件（直传）
 
@@ -126,14 +126,56 @@ Workspace keyset 列表与详情；签名请求按目标业务组织收窄行集
 |---|---|---|---|
 | INT-09 | `POST /api/internal/v1/messages/direct` | write | K |
 | INT-10 | `POST /api/internal/v1/groups/{group_id}/messages` | write | K |
+| INT-50 | `POST /api/internal/v1/channels/{channel_id}/messages` | write | K |
 
-- INT-09 单聊直发；INT-10 群发到企业群。
+- INT-09 单聊直发；INT-10 群发到企业群；INT-50 发送到有效 Workspace 企业频道。
 - 请求显式声明 `sender_mode=application | human`：
   两种模式均使用 HMAC；`human` 还必须指定本组织已映射、已启用的发送者
   （不接受别名参数，平台侧强制校验），不另设逐接口 scope 权限。
 - 消息为**企业托管、固定非端到端加密**；幂等窗口内相同请求重放首次结果。
 - 响应 `msg_id` 为 UUID v7 字符串，`webhook_resource_id` 为 JSON int64 行 ID；
   `accepted_at` 为 Unix 毫秒。三者不能互换。
+
+### INT-50 企业频道消息字段与身份
+
+`channel_id` 为频道 TSID。频道须业务归属匹配、`scope=workspace`、`status=1`，
+所属 Workspace 也须有效。个人频道、归属不匹配或已归档资源统一返回
+`resource_not_found`。`application` 使用本应用有效 principal，无订阅要求；
+`human` 的 `sender_user_id` 必须是本来源有效映射的 **OA 外部标识字符串**，
+映射用户须为有效 Human/企业成员且具有该频道 `status=1` 的订阅。
+`as_user_id`、`actor_user_id` 出现即 400，即使值为 null。
+
+| msg_type | 必填字段 | 可选字段及校验 |
+|---|---|---|
+| `text` | `content`：UTF-8 1..4000 字节 | — |
+| `file` | 非空 `object_key`，当前组织与应用已 confirm 的附件 | — |
+| `image` | 同 `file` | `width`、`height` 仅正整数被保留，其他值忽略 |
+| `link_card` | `title`：UTF-8 1..200 字节；`url`：有效 http(s) 地址 | `description`、`thumb` 见下文；当前处理器未给必填 `url` 设置 2048 字节上限 |
+| `business_action_card` | `title`：UTF-8 1..200 字节；`action_type`：UTF-8 1..100 字节 | `url` 出现时须有效且不超过 2048 UTF-8 字节；`action_params` 出现时须为 JSON 对象，编码后不超过 4000 字节 |
+
+两种卡片的可选 `description` 仅保留 UTF-8 1..2000 字节的字符串，`thumb`
+仅保留有效且不超过 2048 UTF-8 字节的 http(s) 地址；无效值忽略。
+地址检查要求 `http://` 或 `https://` 后、第一个 `/` 前的部分非空。
+除明确禁止的别名外，未知字段及不适用于当前消息类型的字段由当前处理器忽略。
+OpenAPI 的字符数上界不能代替服务端 UTF-8/JSON 字节数检查。
+
+HTTP 200 为裸对象，包含 `msg_id`、`webhook_resource_id`、`sender_kind`、
+`sender_user_id`、`origin_kind`、`origin_application_id`、`accepted_at` 七个字段。
+响应 `sender_user_id` 在 application 模式为 principal 的平台用户 ID，在 human
+模式为映射后平台用户 ID，均是非 null 的 JSON int64；与请求的外部标识字符串不同。
+`origin_kind=enterprise_application`。`webhook_resource_id` 是 `msg_channel` 行 ID；
+OA JavaScript 调用方须无损解析数值 ID，不能经由 `Number` 丢失精度。
+
+消息、origin、受理审计及幂等结果共用事务。相同 key、方法、具体频道路径与
+规范化正文重放原 HTTP 状态和正文，附带 `Idempotent-Replayed: true`。
+当前响应确认服务端已受理并持久化，不包含订阅端送达或展示确认。
+此入口不触发单聊/群聊离线推送。
+
+English: INT-50 supports text, file, image, link cards and business action cards.
+Human senders need an active source mapping, membership and channel subscription;
+application senders use the current principal. The bare response contains numeric
+platform IDs, distinct from the external sender string in a human-mode request.
+Acceptance does not confirm subscriber delivery or display.
 
 ## 好友申请（只发起，平台不自动通过）
 
@@ -157,7 +199,7 @@ Workspace keyset 列表与详情；签名请求按目标业务组织收窄行集
 测试投递（INT-32，v1.1.1）发出合成 `webhook.ping` 事件验证回调链路（该事件
 类型**不可订阅**，仅本端点产生）。
 你方回调端将收到 `x-imboy-delivery / x-imboy-event / x-imboy-timestamp /
-x-imboy-signature` 四个签名头；可订阅事件白名单（4 值）、回调正文信封
+x-imboy-signature` 四个签名头；可订阅事件白名单（8 值）、回调正文信封
 结构与 5/30/300s 重试节奏见 [README §8](./README.md#8-webhook-出站你方系统将收到的回调)。
 
 INT-23 分页为 CURSOR-V2 签名游标（`cursor` / `page_size`，缺省 20 上限 50；

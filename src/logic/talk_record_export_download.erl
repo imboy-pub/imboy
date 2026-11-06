@@ -38,6 +38,7 @@
     verify_ticket_ref/1,
     verify_ticket_ref/4,
     stream_url/3,
+    edge_target/1,
     ttl_seconds/0
 ]).
 
@@ -154,22 +155,16 @@ edge_target(Ticket) ->
             {error, Reason}
     end.
 
-verify_bound_ticket(Ticket, Expected) when is_binary(Ticket) ->
-    case download_signing_key() of
-        {ok, Secret} ->
-            case imboy_jwt:verify(Ticket, Secret) of
-                {ok, #{<<"aud">> := ?DOWNLOAD_AUDIENCE, <<"sub">> := ?DOWNLOAD_AUDIENCE} = Claims} ->
-                    recheck_expected(Claims, Expected);
-                {ok, _} ->
-                    {error, export_ticket_invalid};
-                {error, Reason} ->
-                    {error, Reason}
+verify_bound_ticket(Ticket, Expected) ->
+    case verify_bound_ref_ticket(Ticket, Expected) of
+        {ok, Row} ->
+            case talk_record_export_artifact:read(Row) of
+                {ok, Content} -> {ok, Row#{<<"content">> => Content}};
+                Error -> Error
             end;
-        {error, _} = Error ->
+        Error ->
             Error
-    end;
-verify_bound_ticket(_, _) ->
-    {error, export_ticket_invalid}.
+    end.
 
 %% @private 字节自由形态：同一 claim 校验链，止于导出行复核（不触工件）。
 verify_bound_ref_ticket(Ticket, Expected) when is_binary(Ticket) ->
@@ -196,7 +191,7 @@ recheck_ref_expected(#{<<"uid">> := U, <<"rid">> := R, <<"eid">> := E} = Claims,
 recheck_ref_expected(_, _) ->
     {error, export_ticket_invalid}.
 
-%% @private 与 recheck_claims 同构（ACL 重验 + 撤销版本比对），止于行复核。
+%% @private 统一 ACL 重验与撤销版本比对，止于行复核。
 recheck_ref_claims(#{<<"rid">> := RecordId, <<"uid">> := Uid, <<"acl">> := TicketAcl} = Claims) when
     is_integer(RecordId), is_integer(Uid), is_integer(TicketAcl)
 ->
@@ -216,7 +211,7 @@ recheck_ref_claims(#{<<"rid">> := RecordId, <<"uid">> := Uid, <<"acl">> := Ticke
 recheck_ref_claims(_) ->
     {error, export_ticket_invalid}.
 
-%% @private 导出行复核（同 recheck_export 的 state/到期裁决），**不读字节**，
+%% @private 统一导出行 state/到期裁决，**不读字节**，
 %% 返回行含 attachment_id（工件物理位置由调用方按需解析）。
 recheck_export_ref(#{<<"rid">> := RecordId, <<"eid">> := ExportId} = Claims) when
     is_integer(RecordId), is_integer(ExportId)
@@ -249,77 +244,6 @@ recheck_export_ref(#{<<"rid">> := RecordId, <<"eid">> := ExportId} = Claims) whe
             {error, Reason}
     end;
 recheck_export_ref(_) ->
-    {error, export_ticket_invalid}.
-
-%% Path and authenticated actor are checked before any artifact read.
-recheck_expected(Claims, any) ->
-    recheck_claims(Claims);
-recheck_expected(#{<<"uid">> := U, <<"rid">> := R, <<"eid">> := E} = Claims, {U, R, E}) ->
-    recheck_claims(Claims);
-recheck_expected(_, _) ->
-    {error, export_ticket_invalid}.
-
-%% @private 记录 ACL 重验 + 撤销版本比对（P1 修复：对齐 T17 recheck_claims
-%% 模式——票据必须携带签发时 acl_revision，验票时动态证实仍有效）。
-%% 无 acl claim 的票据（旧形态/伪造）→ export_ticket_invalid。
--spec recheck_claims(map()) -> {ok, map()} | {error, atom() | term()}.
-recheck_claims(#{<<"rid">> := RecordId, <<"uid">> := Uid, <<"acl">> := TicketAcl} = Claims) when
-    is_integer(RecordId), is_integer(Uid), is_integer(TicketAcl)
-->
-    case
-        elib_pg:with_tx(
-            fun(C) -> talk_record_export_logic:authorize_tx(C, Uid, RecordId) end,
-            [{reraise, false}]
-        )
-    of
-        {ok, #{<<"acl_revision">> := TicketAcl}} ->
-            recheck_export(Claims);
-        {ok, #{<<"acl_revision">> := _Other}} ->
-            {error, acl_stale};
-        {error, Reason} ->
-            {error, Reason}
-    end;
-recheck_claims(_) ->
-    {error, export_ticket_invalid}.
-
-%% @private 导出行复核（票据 rid/eid 复合匹配；state/到期裁决）。
--spec recheck_export(map()) -> {ok, map()} | {error, atom() | term()}.
-recheck_export(#{<<"rid">> := RecordId, <<"eid">> := ExportId} = Claims) when
-    is_integer(RecordId), is_integer(ExportId)
-->
-    Uid = maps:get(<<"uid">>, Claims),
-    case
-        elib_pg:with_conn(fun(Conn) -> talk_record_export_repo:find_tx(Conn, RecordId, ExportId) end)
-    of
-        {ok, #{<<"state">> := <<"ready">>, <<"requester_id">> := Uid} = Row} ->
-            case export_row_expired(Row) of
-                true ->
-                    _ = elib_pg:with_conn(
-                        fun(Conn) -> talk_record_export_repo:expire_tx(Conn, ExportId) end
-                    ),
-                    {error, export_expired};
-                false ->
-                    case talk_record_export_artifact:read(Row) of
-                        {ok, Content} ->
-                            {ok, Row#{<<"claims">> => Claims, <<"content">> => Content}};
-                        Error ->
-                            Error
-                    end;
-                _ ->
-                    {error, export_expired}
-            end;
-        {ok, #{<<"state">> := <<"ready">>}} ->
-            {error, export_ticket_invalid};
-        {ok, #{<<"state">> := <<"queued">>} = _Row} ->
-            {error, export_not_ready};
-        {ok, #{<<"state">> := <<"failed">>}} ->
-            {error, export_failed};
-        {ok, _} ->
-            {error, export_expired};
-        {error, Reason} ->
-            {error, Reason}
-    end;
-recheck_export(_) ->
     {error, export_ticket_invalid}.
 
 %% ===================================================================
@@ -362,9 +286,8 @@ export_row_expired(#{<<"expires_at">> := Sec}) when is_integer(Sec) ->
 export_row_expired(_) ->
     undefined.
 
-%% @private 导出剩余寿命（秒；解析失败/缺失 → 票据 TTL 全额——到期
-%% 裁决在 verify 的行复核兜底）。
--spec export_remaining_seconds(binary() | integer() | null, integer()) -> pos_integer().
+%% @private 导出剩余寿命（秒；解析失败、缺失或已到期均返回 0，拒绝开票）。
+-spec export_remaining_seconds(binary() | integer() | null, integer()) -> non_neg_integer().
 export_remaining_seconds(null, _Now) ->
     0;
 export_remaining_seconds(undefined, _Now) ->

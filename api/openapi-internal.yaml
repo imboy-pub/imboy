@@ -2,7 +2,7 @@
 # imboy/api/openapi-internal.yaml — IMBoy Internal API 编辑真源（surface internal）
 #
 # 三受众布局（2026-09-22 api-surface-reorg）：企业集成 internal v1 端点
-# （34 条 cowboy path / 49 端点（含 INT-43 directory/sync 与 INT-44 OA login），与
+# （35 条 cowboy path / 50 端点（含 INT-50 企业频道消息），与
 # src/api/enterprise_internal_routes.erl 冻结路由表逐条对应）。端点文件位于
 # paths/internal/v1/；认证方案
 # 人类集成文档：api/internal/v1/（README / endpoints / Postman）。
@@ -15,8 +15,8 @@ info:
   x-stability: stable
   summary: IMBoy 企业内部集成 API（Internal API v1，冻结）
   description: |
-    本文件是 IMBoy **surface internal**（企业集成）的编辑真源，桥接 34 条
-    path（49 个操作）。受众为企业 OA / 第三方集成系统开发者。
+    本文件是 IMBoy **surface internal**（企业集成）的编辑真源，桥接 35 条
+    path（50 个操作）。受众为企业 OA / 第三方集成系统开发者。
 
     **认证**：仅使用 HMAC-SHA256 请求签名。
     签名头为 X-Imboy-Credential、X-Imboy-Timestamp、X-Imboy-Nonce、X-Imboy-Signature；
@@ -128,6 +128,8 @@ paths:
     $ref: './paths/internal/v1/channel/list.yaml'
   /api/internal/v1/channels/{channel_id}:
     $ref: './paths/internal/v1/channel/detail.yaml'
+  /api/internal/v1/channels/{channel_id}/messages:
+    $ref: './paths/internal/v1/channel/messages.yaml'
 
   /api/internal/v1/customer-service/seats:
     $ref: './paths/internal/v1/customer-service/seats.yaml'

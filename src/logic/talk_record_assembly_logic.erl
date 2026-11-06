@@ -387,10 +387,8 @@ lock_job_tx(Conn, JobId, LeaseToken) ->
 finish_locked_tx(Conn, Job, RecordId, #{parts := Parts} = Prepared) ->
     case fencing_check_tx(Conn, Job, RecordId) of
         ok ->
-            case talk_record_assembly_artifact:publish_tx(Conn, RecordId, Prepared) of
-                ok -> publish_tx(Conn, Job, RecordId, Parts);
-                Error -> Error
-            end;
+            ok = talk_record_assembly_artifact:publish_tx(Conn, RecordId, Prepared),
+            publish_tx(Conn, Job, RecordId, Parts);
         {error, Reason} ->
             {error, Reason}
     end.

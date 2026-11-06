@@ -59,28 +59,30 @@ page_ok(#{organization_id := OrgId, workspace_id := WorkspaceId} = Params, Page,
             E
     end.
 
-%% Params: organization_id, workspace_id, title, content, sort?, at, actor_id
-%%（created_by=认证派生 admin id；body 申报 id 由 cs_actions 字段表拒绝）。
+%% Params: organization_id, workspace_id, title, content, sort?, at, adm_user_id
+%%（created_by 只取 handler 认证派生的 adm_user_id，缺失时拒绝创建）。
 create(
     #{
         organization_id := OrgId,
         workspace_id := WorkspaceId,
+        adm_user_id := AdmId,
         title := Title0,
         content := Content0
     } = Params
 ) when
-    is_integer(OrgId), is_integer(WorkspaceId)
+    is_integer(OrgId), is_integer(WorkspaceId), is_integer(AdmId), AdmId > 0
 ->
-    case validate_text(Title0, Content0) of
-        {ok, Title, Content} ->
+    Sort = maps:get(sort, Params, 0),
+    case {validate_text(Title0, Content0), valid_sort(Sort)} of
+        {{ok, Title, Content}, true} ->
             Row = #{
                 id => cs_tsid:new_id(cs_quick_reply),
                 organization_id => OrgId,
                 workspace_id => WorkspaceId,
                 title => Title,
                 content => Content,
-                sort => maps:get(sort, Params, 0),
-                created_by => maps:get(actor_id, Params, 0)
+                sort => Sort,
+                created_by => AdmId
             },
             case
                 cs_pg_quick_reply:with_tx(fun(C) ->
@@ -90,8 +92,8 @@ create(
                 {ok, Rec} -> {ok, #{quick_reply => view(Rec)}};
                 {error, _} = E -> E
             end;
-        {error, _} = E ->
-            E
+        _ ->
+            {error, invalid_argument}
     end;
 create(_Params) ->
     {error, invalid_argument}.
@@ -108,40 +110,20 @@ update(
 ) when
     is_integer(Id), is_integer(OrgId), is_integer(WorkspaceId)
 ->
-    case validate_text(Title0, Content0) of
-        {ok, Title, Content} ->
+    Sort = maps:get(sort, Params, 0),
+    case {validate_text(Title0, Content0), valid_sort(Sort)} of
+        {{ok, Title, Content}, true} ->
+            Fields = #{title => Title, content => Content, sort => Sort},
             case
                 cs_pg_quick_reply:with_tx(fun(C) ->
-                    case cs_pg_quick_reply:find_tx(C, Id) of
-                        {ok, Row} ->
-                            case
-                                maps:get(<<"organization_id">>, Row) =:= OrgId andalso
-                                    maps:get(<<"workspace_id">>, Row) =:= WorkspaceId
-                            of
-                                %% 合同 §4.3：跨 workspace/组织 → boundary（统一
-                                %% 403，不泄露存在性）。
-                                true ->
-                                    cs_pg_quick_reply:update_tx(C, Id, OrgId, WorkspaceId, #{
-                                        title => Title,
-                                        content => Content,
-                                        sort => maps:get(sort, Params, 0)
-                                    });
-                                false ->
-                                    {error, organization_boundary_violation}
-                            end;
-                        {error, not_found} ->
-                            %% 合同 §4.4：软删/不存在 → 404 not_found。
-                            {error, not_found};
-                        {error, _} = E ->
-                            E
-                    end
+                    update_tx(C, Id, OrgId, WorkspaceId, Fields)
                 end)
             of
                 {ok, Rec} -> {ok, #{quick_reply => view(Rec)}};
                 {error, _} = E -> E
             end;
-        {error, _} = E ->
-            E
+        _ ->
+            {error, invalid_argument}
     end;
 update(_Params) ->
     {error, invalid_argument}.
@@ -153,14 +135,10 @@ delete(#{id := Id, organization_id := OrgId, workspace_id := WorkspaceId}) when
     case
         cs_pg_quick_reply:with_tx(fun(C) ->
             case cs_pg_quick_reply:find_tx(C, Id) of
-                {ok, Row} ->
-                    case
-                        maps:get(<<"organization_id">>, Row) =:= OrgId andalso
-                            maps:get(<<"workspace_id">>, Row) =:= WorkspaceId
-                    of
-                        true -> cs_pg_quick_reply:soft_delete_tx(C, Id, OrgId, WorkspaceId);
-                        false -> {error, organization_boundary_violation}
-                    end;
+                {ok, #{<<"organization_id">> := OrgId, <<"workspace_id">> := WorkspaceId}} ->
+                    cs_pg_quick_reply:soft_delete_tx(C, Id, OrgId, WorkspaceId);
+                {ok, _Row} ->
+                    {error, organization_boundary_violation};
                 {error, not_found} ->
                     %% 合同 §2.4：对已删目标重复 DELETE 幂等成功。
                     ok;
@@ -219,6 +197,18 @@ seat_list(_Params) ->
     {error, invalid_argument}.
 
 %% ===== 内部 =====
+
+update_tx(C, Id, OrgId, WorkspaceId, Fields) ->
+    case cs_pg_quick_reply:find_tx(C, Id) of
+        {ok, #{<<"organization_id">> := OrgId, <<"workspace_id">> := WorkspaceId}} ->
+            cs_pg_quick_reply:update_tx(C, Id, OrgId, WorkspaceId, Fields);
+        {ok, _Row} ->
+            %% 合同 §4.3：跨 workspace/组织 → 403 boundary，不泄露行内容。
+            {error, organization_boundary_violation};
+        {error, _} = E ->
+            %% 合同 §4.4：软删/不存在保留 404 not_found。
+            E
+    end.
 
 validate_text(Title0, Content0) when is_binary(Title0), is_binary(Content0) ->
     Title = string:trim(Title0),

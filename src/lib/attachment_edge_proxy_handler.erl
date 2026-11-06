@@ -109,9 +109,6 @@ normalize_range(Value) when byte_size(Value) =< 100 ->
 normalize_range(_) ->
     invalid.
 
-start_stream(Req, Id) ->
-    start_stream(Req, Id, undefined).
-
 start_stream(Req, Id, Filename) ->
     receive
         {http, {Id, stream_start, Headers, Pid}} ->
