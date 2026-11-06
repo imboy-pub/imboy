@@ -13,6 +13,54 @@
 
 ---
 
+## [1.0.0-alpha.84] - 2026-11-06
+
+> 本条目汇总 `1.0.0-alpha.83` 之后并入 main 的变更：附件域 V5（S3-only 收编与 W0-W6 验收门）、质量基建（纯 Erlang 测试框架与 PropEr 属性测试）、面聊记录 FFmpeg 退役与直传收口、消息/会话合同治理（revoke/edit ACK、偏好 CAS、签名游标分页）、E2EE 加密封存收藏服务端、投递时区修复批次与分层重构。
+
+### Added
+
+**附件域 V5 / Attachments**
+- S3-only 退役收编：删除 Disk driver/NIF 并全面 fail-closed；C04 五面统一 direct-v1 直传迁移；C08 群文件/相册/头像及全部引用消费方迁至确认后逻辑绑定；C09 音频 BEAM body-path 收编为有界 worker；C10 退役 gateway body-path 与磁盘残留；C12 全套件修复与合同对齐
+- 生命周期 v5 验收门（W0-W6）：意图锁时序与竞态套件、运行时观测导出器、逐叶实测证据（intent-rollback 故障注入、真实 Garage 字节留存证明、企业 group-file 从生产数据行实证）与 fail-closed 治理门
+- confirm 生命周期 CAS 与 confirm-time provider 复核；purge/confirm 事务支持 deadlock-retry；原生磁盘锁 NIF；tenant presign 支持 upload_ttl_seconds 且 hash 不匹配返回 409
+
+**质量基建 / Quality**
+- 纯 Erlang 测试框架（P1 系列）：资源感知分片池、per-worker DB 克隆与所有权标记、专属资源车道、有界 VM 轮换、`make eunit` 委派 full runner（P1-12）
+- PropEr 属性测试体系（P2 系列）：TSID 位布局/区间预留/命令序列模型、canonical JSON 参考模型、帧 wire-layout 与分片、同候选 CI gate judge、反例持久化与重放
+- nightly 全量 EUnit 基线修复：PG behavior harness、pinned gate runner、夹具自愈与车道分类
+
+**面聊记录 / Talk Record**
+- 后端退役 FFmpeg：成品服务器读字节校验、直传附件原子发布、complete 合同强制成品准入与首件身份冻结；消费链读取权威切已发布成品
+- 客户端执行与录音恢复（client execution + recovery）；异步 ASR 托管与恢复（opt-in）；组装期间流式播放已确认音频分段
+
+**消息与会话 / Messaging & Conversation**
+- C2C 撤回/编辑 ACK 服务端接受事实落库，客户端 ACK 行为门控于服务端事实
+- 会话偏好合同：版本 CAS（W09.c）、代次绑定 pin/删除（W09.b）、手动 pending 用户闭环（W09.a）
+- FTS：服务端消息搜索单事务授权；过期正文从离线/历史/回填读取中过滤（D01）
+
+**频道与群组 / Channel & Group**
+- 签名游标分页（W07.b/c）覆盖频道订阅/管理列表、个人群列表与工作区目录；服务端 q 搜索与稳定排序（W07.a）
+- 单一视图边界水印（W08.a）；群/频道创建回执合同（W04.b/c）；严格订阅读区分缺失与失败
+
+**加密收藏与投递 / Collect & Delivery**
+- E2EE 加密封存收藏 v1 服务端（迁移 227）：sealed decode 附件 hash 列表、逗号拼接 hash 引用守卫
+- 投递时区修复批次 V1.1/V3.1（迁移 228/229）：DND 规则级 IANA time_zone（D02）、客服 natural_day 统计窗口显式时区（D03）、时间戳与系统发送者类型合同对齐
+
+### Changed
+
+- 分层收口：enterprise 域仓储直调下沉 logic 层 `*_tx`；QR 登录与附件域 handler 改经 DS 层访问仓储
+- 退役 teaching 域（moya）；internal 列表分页参数统一为 `page_size`
+- 构建链：Makefile 简化与四层模板、GNU Make 3.x 硬失败、测试编译有界并行（#32/#33）
+
+### Fixed
+
+- S3 控制面统一为 gun + TLS trust anchors；附件入口强制校验真实 HEAD metadata；edge 对未满足 range 保留安全头
+- 末页 next_cursor 返回 JSON null（原为空二进制）；peer_id 支持 2^53+1 十进制字符串；转发拒绝附件与密钥帧避免已读统计污染；转发消息复刻原内容不再产出空壳 forward 类型
+- Web 坐席免设备签名门修复（api_auth_switch=on 下 902 拦死坐席工作台）；挂件 CORS 预检补 PUT；`/api/v1/cs/widget/*` 前缀归 widget CORS 面
+- Docker PostGIS 3.6.4 二进制与脚本对齐（#34）；blue-green 部署先加载 prod env 层；群创建初始成员失败时整体回滚；confirm_friend 收紧至请求接收方并校验 int8 id
+
+---
+
 ## [1.0.0-alpha.83] - 2026-10-22
 
 > 本条目汇总 `1.0.0-alpha.82` 之后并入 main 的变更，含广州 Phase 1 后端收口、TextGuard 审核域、企业 OA 治理、附件 Garage 直传 v1 与 talk-record 域。
