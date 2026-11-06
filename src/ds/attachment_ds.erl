@@ -30,6 +30,7 @@
 -export([authorize_group_scope/2]).
 -export([ensure_upload_scope_tx/3]).
 -export([ensure_upload_scope_tx_retryable/3]).
+-export([resolve_avatar_snapshot/1]).
 
 %% ===================================================================
 %% API Functions
@@ -379,4 +380,22 @@ ensure_upload_scope_tx(Conn, {Kind, Ref}, Uid, Retryable) ->
             end;
         {error, _} = E ->
             E
+    end.
+
+%% V3-17 边缘头像授权：公开别名 → 冻结快照的 garage presign URL。
+%% API 层不得直连 repo（层边界 gate），resolve + frozen_location + presign
+%% 链统一收敛在此；非 garage 驱动与解析失败一律 fail-closed。
+-spec resolve_avatar_snapshot(Alias :: binary()) ->
+    {ok, binary()} | {error, forbidden | term()}.
+resolve_avatar_snapshot(Alias) ->
+    case attachment_avatar_alias_repo:resolve(Alias) of
+        {ok, #{<<"path">> := Path} = Row} ->
+            case attachment_storage:frozen_location(Path, Row) of
+                {ok, #{driver := garage} = Location} ->
+                    attachment_storage_garage:presign_snapshot(Location, 300);
+                _ ->
+                    {error, forbidden}
+            end;
+        _ ->
+            {error, forbidden}
     end.

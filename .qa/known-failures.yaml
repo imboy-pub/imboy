@@ -36,6 +36,15 @@
 # =============================================================================
 schema_version: 1
 updated: "2026-11-01"
+# 2026-11-06 回册 12 文件（CI imboy Quality Gate elvis 分类 NEW=12：ai-agent avatar/
+#   direct-upload 相关 ds/repo、attachment edge proxy/worker、talk_record_playback_stream、
+#   msg_forward/forward_attachment、eb_asset_download_ticket 等近期批次带入；规则为
+#   dont_repeat_yourself / no_deep_nesting / no_throw / guard_operators 等风格类，
+#   粒度按先例为 FAIL 文件路径）；同批移除 5 个 FIXED（gateway/disk 体面退役后
+#   违规清零：attachment_storage_gateway_handler / talk_record_playback_handler /
+#   talk_record_audio_render / attachment_storage_disk / attachment_upload_body）。
+#   elvis 段现 584 文件。
+
 # 2026-11-01 回册 eqwalizer-lib 21 模块（run 41360214828 分类 NEW=21；channel-group-ux /
 #   att-v5 / talk-record 等批次把 lib 层扩到 114 模块带出，预算重设 32→52，31+21=52）
 # 2026-11-01 回册 13 文件（CI imboy Quality Gate elvis 分类 NEW=13，talk-record-playback /
@@ -656,7 +665,6 @@ gates:
       - src/adm/adm_user_handler.erl
       - src/adm/adm_workspace_handler.erl
       - src/api/attach_handler.erl
-      - src/api/attachment_storage_gateway_handler.erl
       - src/api/auth_middleware.erl
       - src/api/auth_middleware_api_v1.erl
       - src/api/auth_oidc_handler.erl
@@ -707,7 +715,6 @@ gates:
       - src/api/qr_login_handler.erl
       - src/api/talk_record_capture_http.erl
       - src/api/talk_record_handler.erl
-      - src/api/talk_record_playback_handler.erl
       - src/api/talk_record_playback_parts_handler.erl
       - src/api/talk_record_routes.fragment.erl
       - src/api/talk_record_sharing_http.erl
@@ -725,11 +732,14 @@ gates:
       - src/domain/message_policy.erl
       - src/ds/adm_micro_community_ds.erl
       - src/ds/adm_operation_log_ds.erl
+      - src/ds/ai_agent_ds.erl
       - src/ds/ai_agent_role_ds.erl
       - src/ds/app_ddl_ds.erl
       - src/ds/attachment_artifact_reader.erl
       - src/ds/attachment_delete_reaper.erl
       - src/ds/attachment_delete_worker.erl
+      - src/ds/attachment_derived_artifact.erl
+      - src/ds/attachment_direct_cleanup_worker.erl
       - src/ds/attachment_ds.erl
       - src/ds/auth_session_ds.erl
       - src/ds/channel_ds.erl
@@ -764,7 +774,6 @@ gates:
       - src/ds/push_notification_ds.erl
       - src/ds/qr_login_event_ds.erl
       - src/ds/report_ticket_ds.erl
-      - src/ds/talk_record_audio_render.erl
       - src/ds/talk_record_capture_ds.erl
       - src/ds/talk_record_client_audio_ds.erl
       - src/ds/talk_record_client_claim.erl
@@ -841,6 +850,7 @@ gates:
       - src/features/customer_service/interfaces/cs_widget_handler.erl
       - src/features/enterprise_business/application/asset/eb_asset_app.erl
       - src/features/enterprise_business/application/asset/eb_asset_direct.erl
+      - src/features/enterprise_business/application/asset/eb_asset_download_ticket.erl
       - src/features/enterprise_business/application/asset/eb_asset_scope.erl
       - src/features/enterprise_business/application/asset/eb_asset_upload_ref.erl
       - src/features/enterprise_business/application/auth/eb_auth_app.erl
@@ -876,11 +886,11 @@ gates:
       - src/lib/alipay_openapi.erl
       - src/lib/attachment_content_receipt.erl
       - src/lib/attachment_content_worker.erl
+      - src/lib/attachment_edge_proxy_handler.erl
       - src/lib/attachment_guards_activation_check.erl
       - src/lib/attachment_storage/attachment_storage.erl
-      - src/lib/attachment_storage/attachment_storage_disk.erl
       - src/lib/attachment_storage/attachment_storage_garage.erl
-      - src/lib/attachment_storage/attachment_upload_body.erl
+      - src/lib/attachment_worker_port.erl
       - src/lib/auth_oidc_jwks.erl
       - src/lib/bot_webhook_delivery_sender.erl
       - src/lib/data_disposition.erl
@@ -1069,6 +1079,7 @@ gates:
       - src/logic/talk_record_model_job.erl
       - src/logic/talk_record_participant_logic.erl
       - src/logic/talk_record_playback_parts.erl
+      - src/logic/talk_record_playback_stream.erl
       - src/logic/talk_record_provider_contract.erl
       - src/logic/talk_record_transfer_logic.erl
       - src/logic/user_collect_logic.erl
@@ -1094,12 +1105,15 @@ gates:
       - src/push_provider_fcm_token.erl
       - src/repo/adm_micro_community_repo.erl
       - src/repo/adm_user_repo.erl
+      - src/repo/admin_avatar_session_repo.erl
       - src/repo/agent_hub_audit_repo.erl
       - src/repo/agent_payment_compensation_repo.erl
       - src/repo/agent_payment_mandate_repo.erl
       - src/repo/agent_task_repo.erl
+      - src/repo/ai_agent_repo.erl
       - src/repo/ai_agent_role_repo.erl
       - src/repo/attach_pending_repo.erl
+      - src/repo/attachment_avatar_alias_repo.erl
       - src/repo/attachment_gc_repo.erl
       - src/repo/attachment_repo.erl
       - src/repo/billing_invoice_repo.erl
@@ -1130,6 +1144,7 @@ gates:
       - src/repo/enterprise_source_person_repo.erl
       - src/repo/enterprise_webhook_repo.erl
       - src/repo/feedback_repo.erl
+      - src/repo/forward_attachment_repo.erl
       - src/repo/friend_repo.erl
       - src/repo/fts_user_repo.erl
       - src/repo/geo_people_nearby_repo.erl
@@ -1159,6 +1174,7 @@ gates:
       - src/repo/msg_c2c_repo.erl
       - src/repo/msg_c2g_repo.erl
       - src/repo/msg_c2g_timeline_repo.erl
+      - src/repo/msg_forward_repo.erl
       - src/repo/msg_reaction_repo.erl
       - src/repo/msg_s2c_repo.erl
       - src/repo/msg_store_repo.erl

@@ -91,17 +91,8 @@ authorize_target(<<"avatar:", Alias/binary>>) ->
         )
     of
         match ->
-            case attachment_avatar_alias_repo:resolve(Alias) of
-                {ok, #{<<"path">> := Path} = Row} ->
-                    case attachment_storage:frozen_location(Path, Row) of
-                        {ok, #{driver := garage} = Location} ->
-                            attachment_storage_garage:presign_snapshot(Location, 300);
-                        _ ->
-                            {error, forbidden}
-                    end;
-                _ ->
-                    {error, forbidden}
-            end;
+            %% 层边界：API 不直连 repo，resolve+冻结+presign 收敛在 DS。
+            attachment_ds:resolve_avatar_snapshot(Alias);
         _ ->
             {error, forbidden}
     end;
