@@ -222,6 +222,7 @@ format_c2c_msg_item(Msg) ->
         <<"msg_type">> => maps:get(<<"msg_type">>, Msg),
         <<"payload">> => maps:get(<<"payload">>, Msg),
         <<"created_at">> => maps:get(<<"created_at">>, Msg),
+        <<"expire_at">> => maps:get(<<"expire_at">>, Msg, null),
         <<"from">> => maps:get(<<"from_id">>, Msg),
         <<"to">> => maps:get(<<"to_id">>, Msg),
         <<"status">> => maps:get(<<"status">>, Msg, 0)
@@ -246,6 +247,7 @@ format_c2g_msg_item(Msg) ->
         <<"msg_type">> => maps:get(<<"msg_type">>, Msg),
         <<"payload">> => maps:get(<<"payload">>, Msg),
         <<"created_at">> => maps:get(<<"created_at">>, Msg),
+        <<"expire_at">> => maps:get(<<"expire_at">>, Msg, null),
         <<"from">> => maps:get(<<"from_id">>, Msg),
         <<"group_id">> => maps:get(<<"group_id">>, Msg),
         <<"status">> => maps:get(<<"status">>, Msg, 0)

@@ -753,3 +753,80 @@ search_msg_propagates_identity_and_failure_test_() ->
             )
         end
     ).
+
+%% FTS rows must keep the stored server deadline through the real REST envelope.
+%% Only the DS and HTTP transport are mocked; conversion and JSON encoding run.
+search_msg_expire_at_response_contract_test_() ->
+    [expire_at_response_case(Type) || Type <- [<<"c2c">>, <<"c2g">>]].
+
+expire_at_response_case(Type) ->
+    Base = #{
+        <<"msg_type">> => <<"text">>,
+        <<"payload">> => <<"{\"text\":\"hello\"}">>,
+        <<"created_at">> => {{2026, 11, 6}, {0, 0, 0.0}},
+        <<"from_id">> => 100
+    },
+    Recipient =
+        case Type of
+            <<"c2c">> -> #{<<"to_id">> => 200};
+            <<"c2g">> -> #{<<"group_id">> => 300}
+        end,
+    Rows = [
+        maps:merge(maps:merge(Base, Recipient), Fields)
+     || Fields <- [
+            #{
+                <<"msg_id">> => <<"tuple">>,
+                <<"expire_at">> => {{2099, 1, 1}, {0, 0, 0.25}}
+            },
+            #{
+                <<"msg_id">> => <<"iso">>,
+                <<"expire_at">> => <<"2099-01-02T08:00:00.125+08:00">>
+            },
+            #{<<"msg_id">> => <<"null">>, <<"expire_at">> => null},
+            #{<<"msg_id">> => <<"missing">>}
+        ]
+    ],
+    ?WITH_MECKS(
+        [
+            {fts_user_ds, [
+                {search_authorized_page, 6, fun(100, <<"hello">>, 10, 0, SearchType, #{}) ->
+                    ?assertEqual(Type, SearchType),
+                    {ok, 4, Rows}
+                end}
+            ]},
+            {cowboy_req, [
+                {reply, 4, fun(200, Headers, Body, Req) ->
+                    ?assertEqual(
+                        <<"application/json; charset=utf-8">>,
+                        maps:get(<<"content-type">>, Headers)
+                    ),
+                    Req#{response_body => Body}
+                end}
+            ]}
+        ],
+        fun() ->
+            Result = fts_logic:search_msg(100, 1, 10, <<"hello">>, Type),
+            #{response_body := Body} = elib_response:success(#{}, Result),
+            Envelope = jsone:decode(Body, [{object_format, map}]),
+            ?assertMatch(#{<<"code">> := 0, <<"msg">> := <<"success">>}, Envelope),
+            #{
+                <<"total">> := 4, <<"page">> := 1, <<"size">> := 10, <<"list">> := Items
+            } = maps:get(<<"payload">>, Envelope),
+            ?assertEqual(
+                [<<"tuple">>, <<"iso">>, <<"null">>, <<"missing">>],
+                [maps:get(<<"message_id">>, Item) || Item <- Items]
+            ),
+            ?assertEqual(
+                [4070908800250, 4070995200125, null, null],
+                [maps:get(<<"expire_at">>, Item) || Item <- Items]
+            ),
+            lists:foreach(
+                fun(Item) ->
+                    ?assertEqual(Type, maps:get(<<"conversation_type">>, Item)),
+                    ?assertEqual(1793923200000, maps:get(<<"created_at">>, Item)),
+                    ?assertEqual(maps:get(<<"payload">>, Base), maps:get(<<"payload">>, Item))
+                end,
+                Items
+            )
+        end
+    ).

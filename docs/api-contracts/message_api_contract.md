@@ -7,6 +7,7 @@
 | 端点 | 方法 | 说明 | 权威源 |
 |---|---|---|---|
 | `/api/v1/msg/history` | GET | 会话历史消息（conv_seq 游标分页，升序增量） | `src/api/msg_handler.erl:152-178` |
+| `/api/v1/fts/msg` | GET | 已授权的 C2C/C2G 消息全文搜索；响应保留服务端绝对到期时间 | `src/api/fts_handler.erl:msg/2`、`src/logic/fts_logic.erl:search_msg/6` |
 | WS 出站信封（实时） | — | 在线投递帧，字段 `from`/`to` | `src/ds/message_ds.erl:192-217` |
 | WS 出站信封（离线） | — | 离线补投帧，内部行字段 `from_id`/`to_id`，出站前归一为 `from`/`to` | `src/ds/message_ds.erl:479-520` |
 | `/api/v1/msg/offline` | GET | 离线消息 HTTP 拉取（pull 模式），行形状与离线信封一致 | `src/imboy_router.erl:104`、`src/ds/message_ds.erl:468-520` |
@@ -56,6 +57,41 @@
 | `payload` | object/string | 否 | 消息载荷（E2EE 时为密文字符串） | `msg_archive_repo.erl:160` |
 | `created_at` | int | 否 | **毫秒 int**（REST 信封统一转换，见 §5） | `msg_archive_repo.erl:161` |
 | `server_ts` | int | 否 | **毫秒 int**（bigint 列直通） | `msg_archive_repo.erl:161` |
+
+### 2.1 FTS 消息结果的到期时间 / FTS message expiry
+
+`GET /api/v1/fts/msg` 使用现有 `{code,msg,sv_ts,payload}` 信封，payload 为
+`{total,page,size,list}`（带筛选参数时另有 `filters`）。`type=C2C` 与 `type=C2G`
+的每个 `list[]` 项均携带以下时间字段：
+
+| 字段 | JSON 类型 | 语义 | 权威源 |
+|---|---|---|---|
+| `created_at` | int | 创建时间，UTC epoch **毫秒** | `fts_logic:format_c2c_msg_item/1` / `format_c2g_msg_item/1` → 通用 REST 转换 |
+| `expire_at` | int / null | 已持久化的服务端绝对期限，UTC epoch **毫秒**；SQL NULL 或内部旧行缺字段输出 `null` | `fts_user_repo:page_rows/9` 的 `m.*` → 两类 formatter → `elib_response:success/2` / `elib_cnv:convert_at_timestamps/1` |
+
+PG `timestamptz` 元组与 RFC3339 字符串统一由既有 REST 转换生成毫秒数；不返回秒数，
+不从 `created_at`、阅读时间或 payload 推算期限。历史服务端缺少该键时，消费方同样按
+“未知服务端期限”处理；`null` 不代表本地阅后即焚已经失效或可以无限展示。
+
+仓储查询继续以同一条件筛选计数与当前页：
+`m.e2ee IS NULL AND (m.expire_at IS NULL OR m.expire_at > NOW())`。
+因此普通 NULL 行与未到期行可以返回，服务端已经到期的正文不会返回。结果返回后也可能
+到期，客户端应保留这个绝对期限并在展示、恢复前台及打开结果时重新核验。此字段只是已有
+事实的透传，不改变[时间合同 §2.2](../reference/time-field-contract.md#22-消息核心时间四元组)
+冻结的双层语义：服务端期限仍为发送后 TTL；本地接收方已读起算、发送方发送起算及未读
+不销毁规则独立保留，不向服务端上传 `burn_read_at`。
+
+**English:** Both C2C and C2G FTS items preserve the stored `expire_at` as epoch milliseconds
+or JSON `null` through the existing REST serializer. Missing legacy values remain unknown;
+no deadline is inferred. Repository filtering still excludes expired rows and E2EE content.
+Clients retain the deadline when rendering or opening results. This does not change server
+send-time TTL or the separate local read-triggered burn rules.
+
+回归入口：`fts_logic_tests:search_msg_expire_at_response_contract_test_/0` 对 C2C/C2G
+执行真实 JSON 信封转换（PG 元组、带时区 RFC3339、NULL、缺字段）；
+`fts_user_repo_tests:fts_expire_at_filter_two_states_pg_test_/0` 在隔离 PostgreSQL 库中
+验证 C2C 普通/未来/过去三态，并贯穿真实查询、logic 与通用时间转换。后者缺数据库必须
+失败，不能用仅格式化测试或静态 SQL 检查代替真实库通过证据。
 
 ## 3. WebSocket 信封（实时路径）
 

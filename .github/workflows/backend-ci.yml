@@ -583,6 +583,67 @@ jobs:
           path: e2ee-verify.log
           retention-days: 14
 
+      - name: Run FTS expiry contract on the migrated PostgreSQL fixture
+        id: fts-expiry
+        env:
+          IMBOY_AUTO_MIGRATE: "false"
+          EUNIT_OPTS: 'verbose, {report, {eunit_surefire, [{dir, "fts-eunit"}]}}'
+        run: |
+          set -euo pipefail
+          mkdir fts-eunit
+          git rev-parse HEAD > fts-eunit/commit.txt
+          IMBOYENV=local make eunit-local EUNIT_CONFIG=config/sys EUNIT_USE_RELAY=0 \
+            EUNIT_MODS='fts_logic_tests fts_handler_tests fts_user_ds_tests fts_user_repo_tests' \
+            2>&1 | tee fts-eunit/run.log
+
+      - name: Verify every FTS module produced successful nonempty EUnit evidence
+        if: always()
+        env:
+          FTS_TEST_OUTCOME: ${{ steps.fts-expiry.outcome }}
+        run: |
+          python3 - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+          import xml.etree.ElementTree as ET
+
+          if os.environ.get('FTS_TEST_OUTCOME') != 'success':
+              raise SystemExit('FTS runner or its prerequisites did not succeed')
+          expected = {'fts_logic_tests', 'fts_handler_tests', 'fts_user_ds_tests', 'fts_user_repo_tests'}
+          reports = {}
+          for path in Path('fts-eunit').glob('TEST-*.xml'):
+              suite = ET.parse(path).getroot()
+              name = path.name.removeprefix('TEST-').removesuffix('.xml')
+              # OTP keeps the EUnit group description in XML, but strips it from the filename.
+              if (suite.tag != 'testsuite' or name not in expected or name in reports
+                      or suite.get('name') != f"module '{name}'"):
+                  raise SystemExit(f'Unexpected or duplicate FTS suite: {path}')
+              counts = {key: int(suite.attrib[key]) for key in ('tests', 'failures', 'errors', 'skipped')}
+              cases = suite.findall('testcase')
+              if counts['tests'] < 1 or len(cases) != counts['tests']:
+                  raise SystemExit(f'Missing or empty FTS case evidence: {path}')
+              if any(counts[key] for key in ('failures', 'errors', 'skipped')) or any(
+                  case.find(tag) is not None for case in cases for tag in ('failure', 'error', 'skipped')
+              ):
+                  raise SystemExit(f'FTS failure, cancellation or skip: {path}')
+              reports[name] = counts
+          if set(reports) != expected:
+              raise SystemExit(f'Missing FTS module results: {sorted(expected - set(reports))}')
+          summary = {'commit': Path('fts-eunit/commit.txt').read_text().strip(),
+                     'scope': 'FTS PostgreSQL contract', 'status': 'PASS', 'modules': reports}
+          Path('fts-eunit/summary.json').write_text(json.dumps(summary, indent=2) + '\n')
+          print(json.dumps(summary))
+          PY
+
+      - name: Upload FTS contract evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: fts-expiry-contract
+          path: fts-eunit/
+          retention-days: 14
+          if-no-files-found: error
+
   # ----------------------------------------------------------------
   # DCO — 仅 PR 检查，验证所有 commits 带有 Signed-off-by
   # ----------------------------------------------------------------
