@@ -175,7 +175,7 @@ with_existing_final_job(PinnedFinal, F) ->
                     {_, [Cid, 7, <<"1">>]} ->
                         {ok, [
                             #{
-                                <<"attachment_id">> => 190002,
+                                <<"attachment_id">> => maps:get(<<"attachment_id">>, Final),
                                 <<"file_hash256">> => maps:get(<<"sha256">>, Final),
                                 <<"size">> => maps:get(<<"byte_size">>, Final),
                                 <<"session_object_key">> => Key

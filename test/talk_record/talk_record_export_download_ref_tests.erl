@@ -5,7 +5,7 @@
 
 -define(SECRET, <<"export-reference-test-secret-32-bytes">>).
 
-reference_and_content_share_authorization_test() ->
+reference_authorization_does_not_read_content_test() ->
     with_fixture(fun() ->
         Ticket = ticket(),
         {ok, Ref} = talk_record_export_download:verify_ticket_ref(Ticket, 7, 1, 9),
@@ -79,16 +79,17 @@ bound_identity_checked_before_acl_or_byte_io_test_() ->
         ]
     ].
 
-presign_failure_is_preserved_test() ->
+presign_failure_is_preserved_without_reading_artifact_test() ->
     %% 工件字节不再内联读取（V3-18）；等价的失败透传点是 edge_target 的
     %% presign 错误——不得被吞掉或误报成其它错误。
     with_fixture(fun() ->
-        meck:expect(attachment_edge_redirect, presign_attachment, fun(21, 600) ->
-            {error, presign_unavailable}
+        meck:expect(attachment_edge_redirect, presign_attachment, fun(_, _) ->
+            {error, artifact_unavailable}
         end),
         ?assertEqual(
-            {error, presign_unavailable}, talk_record_export_download:edge_target(ticket())
-        )
+            {error, artifact_unavailable}, talk_record_export_download:edge_target(ticket())
+        ),
+        ?assertEqual(0, meck:num_calls(talk_record_export_artifact, read, '_'))
     end).
 
 expired_export_cannot_issue_ticket_test_() ->
