@@ -297,12 +297,6 @@
         "static": false
       },
       {
-        "action": "upload_avatar",
-        "handler": "adm_ai_agent_handler",
-        "path": "/api/adm/ai_agent/upload_avatar",
-        "static": false
-      },
-      {
         "action": "create",
         "handler": "adm_announcement_handler",
         "path": "/api/adm/announcement/create",
@@ -2293,12 +2287,6 @@
         "static": false
       },
       {
-        "action": "put",
-        "handler": "attachment_storage_gateway_handler",
-        "path": "/api/v1/attachment/gateway/:session_key",
-        "static": false
-      },
-      {
         "action": "presign",
         "handler": "attach_handler",
         "path": "/api/v1/attachment/presign",
@@ -3097,12 +3085,6 @@
         "static": false
       },
       {
-        "action": "widget_asset_put",
-        "handler": "cs_widget_handler",
-        "path": "/api/v1/cs/widget/sessions/:id/assets/upload",
-        "static": false
-      },
-      {
         "action": "widget_session_events",
         "handler": "cs_widget_handler",
         "path": "/api/v1/cs/widget/sessions/:id/events",
@@ -3625,12 +3607,6 @@
         "static": false
       },
       {
-        "action": "upload",
-        "handler": "group_file_handler",
-        "path": "/api/v1/group/file/upload",
-        "static": false
-      },
-      {
         "action": "hot",
         "handler": "group_discovery_handler",
         "path": "/api/v1/group/hot",
@@ -3871,12 +3847,6 @@
         "static": false
       },
       {
-        "action": "batch_upload",
-        "handler": "group_album_handler",
-        "path": "/api/v1/group_album/photo/batch",
-        "static": false
-      },
-      {
         "action": "bind_photo",
         "handler": "group_album_handler",
         "path": "/api/v1/group_album/photo/bind",
@@ -3928,12 +3898,6 @@
         "action": "unlike_photo",
         "handler": "group_album_handler",
         "path": "/api/v1/group_album/photo/unlike",
-        "static": false
-      },
-      {
-        "action": "upload_photo",
-        "handler": "group_album_handler",
-        "path": "/api/v1/group_album/photo/upload",
         "static": false
       },
       {

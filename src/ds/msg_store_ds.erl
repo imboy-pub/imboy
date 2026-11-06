@@ -730,7 +730,13 @@ status() ->
 
 %% @private
 init([]) ->
-    case msg_store_repo:ensure_table_exists() of
+    %% 生产保持 fail-fast（迁移未跑透就拒绝启动）；仅测试 VM 关闭校验
+    %% （eunit mock 轨道空 schema 免迁移启动，与 msg_store_worker_tick_ms
+    %% 同款 test-env 让位——C10 起 ensure_table_exists 不再动态建表）。
+    VerifyStaging = application:get_env(imboy, msg_store_staging_verify, true),
+    case VerifyStaging =:= false orelse msg_store_repo:ensure_table_exists() of
+        true ->
+            ok;
         ok ->
             ok;
         {ok, _} ->
