@@ -173,12 +173,14 @@ with_existing_final_job(PinnedFinal, F) ->
                     {_, [1, 2]} ->
                         {ok, [#{<<"id">> => 2, <<"status">> => <<"ended">>}]};
                     {_, [Cid, 7, <<"1">>]} ->
-                        {ok, [#{
-                            <<"attachment_id">> => 20,
-                            <<"file_hash256">> => maps:get(<<"sha256">>, Final),
-                            <<"size">> => maps:get(<<"byte_size">>, Final),
-                            <<"session_object_key">> => Key
-                        }]};
+                        {ok, [
+                            #{
+                                <<"attachment_id">> => 20,
+                                <<"file_hash256">> => maps:get(<<"sha256">>, Final),
+                                <<"size">> => maps:get(<<"byte_size">>, Final),
+                                <<"session_object_key">> => Key
+                            }
+                        ]};
                     {_, [Key]} ->
                         {ok, [#{<<"attempt_no">> => 1, <<"target_key">> => <<"physical/aac">>}]};
                     {<<"UPDATE talk_record_assembly SET", _/binary>>, [1, 9]} ->
