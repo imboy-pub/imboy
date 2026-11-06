@@ -3,6 +3,7 @@
 
 mapping_test() ->
     Expected = [
+        talk_record_direct_contract_tests,
         talk_record_assembly_relay_tests,
         talk_record_capture_tests,
         talk_record_content_tests,

@@ -1018,56 +1018,12 @@ a05_presign_resolves_server_side_keyring() ->
             ?assertEqual(200, maps:get(status, Resp)),
             ?assertEqual(0, ?S:code(Resp)),
             View = ?S:payload(Resp),
-            ?assert(is_binary(maps:get(<<"upload_ref">>, View, undefined))),
-            %% CS-BE-01B（契约放宽，取代旧「响应无 ://」判据）：presign 成功视图
-            %% 投影 `upload.url`——指向**本 API 自己**的 presign PUT 端点（短 TTL
-            %% 凭证在查询串），不是对象存储 URL。仍禁止一切**存储侧**能力：
-            %% object key / bucket / endpoint / S3 签名串一个都不许出现。
-            Upload = maps:get(<<"upload">>, View, undefined),
-            ?assert(is_map(Upload)),
-            ?assertEqual(<<"PUT">>, maps:get(<<"method">>, Upload, undefined)),
-            ?assert(is_integer(maps:get(<<"expires_at">>, Upload, undefined))),
-            Raw = ?S:raw(Resp),
-            %% 保留旧判据中仍然成立的三条（X-Amz/endpoint/bucket——注意
-            %% `object_key` 字面量会误撞 upload.rule 的契约声明文本
-            %% `opaque_token_no_url_no_object_key`，故 object key / 存储引用
-            %% 的零出站在 upload.url **值**上断言，见下方 ExpectedPrefix 分支）。
-            lists:foreach(
-                fun(Needle) ->
-                    ?assertEqual({Needle, nomatch}, {Needle, binary:match(Raw, Needle)})
-                end,
-                [<<"X-Amz-">>, <<"endpoint">>, <<"bucket">>]
-            ),
-            %% upload.url 的存在性按 base_url 装配判定（https 基址 → 必在；未配置
-            %% → fail-closed 不投影）。eunit 配置（sys.local/scratch）带 https
-            %% base_url 时断言其形状：绝对 https + 本 org 的 presign 路径 +
-            %% 查询串携带 workspace_id/upload_ref。
-            case config_ds:env(base_url, <<>>) of
-                <<"https://", _/binary>> = Base ->
-                    Url = maps:get(<<"url">>, Upload, undefined),
-                    ?assert(is_binary(Url)),
-                    ExpectedPrefix = <<
-                        Base/binary,
-                        "/api/v1/enterprise/organizations/",
-                        (integer_to_binary(Org))/binary,
-                        "/assets/presign?"
-                    >>,
-                    ?assertEqual(
-                        {match, 0},
-                        begin
-                            Size = byte_size(ExpectedPrefix),
-                            case Url of
-                                <<ExpectedPrefix:Size/binary, _/binary>> -> {match, 0};
-                                _ -> nomatch
-                            end
-                        end
-                    ),
-                    %% upload.url 值上零存储能力（object key / S3 签名串）。
-                    ?assertEqual(nomatch, binary:match(Url, <<"object_key">>)),
-                    ?assertEqual(nomatch, binary:match(Url, <<"X-Amz-">>));
-                _Unconfigured ->
-                    ?assert(not maps:is_key(<<"url">>, Upload))
-            end
+            ?assert(is_binary(maps:get(<<"upload_ref">>, View, undefined)))
+        %% C10（9f18d2b93）：CS-BE-01B 的 presign PUT 字节上传用例与
+        %% upload.url 本-API 投影随 S3-only 直传退役——presign 视图只发
+        %% direct descriptor（transport/url/required_headers），其合同由
+        %% C04 已验证的 enterprise S3-only 面断言；本用例仅保留 keyring
+        %% 服务端装配语义（200 + upload_ref 不透明凭证）。
         end)
     after
         %% env 是 VM 级：两面互不污染，也不外泄到其他用例/套件。

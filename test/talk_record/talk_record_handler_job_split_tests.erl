@@ -152,6 +152,8 @@ final_decl(Override) ->
         #{
             <<"object_key">> => <<"u1/talk_record/r1/final.aac">>,
             <<"client_upload_id">> => <<"0f0e0d0c-0b0a-49f8-8a7b-6c5d4e3f2a1b">>,
+            %% f67fbe677 起 attachment_id 必填（T3 准入证明）。
+            <<"attachment_id">> => 190001,
             <<"sha256">> => hash64(),
             <<"byte_size">> => 1024,
             <<"sample_rate">> => 16000,
@@ -166,9 +168,7 @@ final_parsed() ->
     #{
         object_key => <<"u1/talk_record/r1/final.aac">>,
         client_upload_id => <<"0f0e0d0c-0b0a-49f8-8a7b-6c5d4e3f2a1b">>,
-        %% 缺陷⑫：声明端 attachment_id 可选，缺省解析为 undefined（准入锚
-        %% 不变；存在时 resolve 仍严格比对）。本夹具即缺省形态。
-        attachment_id => undefined,
+        attachment_id => 190001,
         sha256 => hash64(),
         byte_size => 1024,
         sample_rate => 16000,

@@ -98,6 +98,8 @@ body() ->
         <<"final_audio">> => #{
             <<"object_key">> => <<"talk-record/final/synthetic.aac">>,
             <<"client_upload_id">> => <<"00000000-0000-0000-0000-000000000001">>,
+            %% f67fbe677 起 attachment_id 必填。
+            <<"attachment_id">> => 190002,
             <<"sha256">> => binary:copy(<<"b">>, 64),
             <<"byte_size">> => 39,
             <<"sample_rate">> => 16000,

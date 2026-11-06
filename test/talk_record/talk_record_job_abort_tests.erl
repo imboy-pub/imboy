@@ -29,7 +29,11 @@ export_paths() ->
         [talk_record_export_repo, talk_record_export_logic, talk_record_export_artifact], fun() ->
             J = job(<<"export">>),
             Ex = #{<<"requester_id">> => 8},
-            meck:expect(talk_record_export_repo, lock_record_tx, fun(_, _) -> {ok, #{}} end),
+            %% C08 起 prepare_tx 先锁记录元数据（lock_record_metadata_tx），
+            %% 快照/产物段移出事务（render_and_publish / reserve_tx）。
+            meck:expect(talk_record_export_repo, lock_record_metadata_tx, fun(_, _) ->
+                {ok, #{}}
+            end),
             meck:expect(talk_record_export_repo, lock_job_tx, fun(_, _) -> {error, sock_closed} end),
             ?assertThrow({talk_export_abort, sock_closed}, talk_record_export_job:prepare_tx(c, J)),
             ?assertNot(meck:called(talk_record_export_repo, find_by_job_tx, '_')),
@@ -37,17 +41,10 @@ export_paths() ->
             ?assertThrow({talk_export_abort, lease_lost}, talk_record_export_job:prepare_tx(c, J)),
             meck:expect(talk_record_export_repo, lock_job_tx, fun(_, _) -> {ok, J} end),
             meck:expect(talk_record_export_repo, find_by_job_tx, fun(_, _) -> {ok, Ex} end),
-            meck:expect(talk_record_export_logic, authorize_tx, fun(_, _, _) ->
+            meck:expect(talk_record_export_logic, authorize_metadata_tx, fun(_, _, _) ->
                 {ok, #{<<"content_revision">> => 3}}
             end),
-            meck:expect(talk_record_export_logic, snapshot_tx, fun(_, _) -> {ok, generated} end),
-            meck:expect(talk_record_export_artifact, prepare_tx, fun(_, _, _, _) ->
-                {ok, artifact}
-            end),
-            ?assertEqual(
-                {ok, #{export => Ex, generated => generated, artifact => artifact}},
-                talk_record_export_job:prepare_tx(c, J)
-            )
+            ?assertEqual({ok, Ex}, talk_record_export_job:prepare_tx(c, J))
         end
     ).
 

@@ -103,6 +103,10 @@ setup() ->
     %% pooler（sql_driver 亦未配置）而报 take_member noproc。
     meck:expect(elib_pg, with_tx, fun run_tx/1),
     meck:expect(elib_pg, with_deadlock_retry_tx, fun run_tx/1),
+    %% C08（525c85c33）起 queue_orphan 改用 with_physical_guard_retry_tx，
+    %% 同一替身合同（替身连接执行 F）；不替身会 passthrough 到真实现，
+    %% 测试 VM 无 pooler（sql_driver 未配置）报 take_member noproc。
+    meck:expect(elib_pg, with_physical_guard_retry_tx, fun run_tx/1),
     meck:expect(elib_pg, query, fun(_C, _Sql, _P) -> {ok, []} end),
     meck:expect(enterprise_asset_repo, find_confirmed_tx, fun(_C, _O, _A, _K) ->
         {ok, #{

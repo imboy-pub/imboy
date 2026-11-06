@@ -199,7 +199,10 @@ verified_garage() ->
     Ep = list_to_binary(os:getenv("A0_ENDPOINT")),
     Ak = list_to_binary(os:getenv("A0_AK")),
     Sk = list_to_binary(os:getenv("A0_SK")),
-    Bucket = list_to_binary(os:getenv("A0_BUCKET")),
+    %% closeout：A0_BUCKET 未随 run 脚本导出——回退 fixture 桶名
+    %% （W202_GARAGE_BUCKET 同值），与 attachment_worker_port_tests 的
+    %% getenv 默认值风格一致
+    Bucket = list_to_binary(os:getenv("A0_BUCKET", "imboy-closeout-v3")),
     Cfg = #{
         endpoint => Ep, bucket => Bucket, access_key => Ak, secret_key => Sk, region => <<"garage">>
     },

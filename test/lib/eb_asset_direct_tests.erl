@@ -631,6 +631,57 @@ eb_direct_reservation_atomic() ->
 eb_reservation_fixtures(User, Org, Ws, Contact, Conv) ->
     ok = elib_pg:with_tx(fun(Conn) ->
         {ok, _} = elib_pg:query(Conn, <<"SET LOCAL session_replication_role = replica">>, []),
+        %% 自愈：CONFIRMED 出口跳过清理会留下 fixture 行，先删后插保证幂等。
+        {ok, _} = elib_pg:query(
+            Conn, <<"DELETE FROM enterprise_conversation WHERE id=$1">>, [Conv]
+        ),
+        {ok, _} = elib_pg:query(
+            Conn, <<"DELETE FROM enterprise_contact WHERE id=$1">>, [Contact]
+        ),
+        {ok, _} = elib_pg:query(
+            Conn,
+            <<"DELETE FROM organization_business_identity_assignment WHERE id=99006108">>,
+            []
+        ),
+        {ok, _} = elib_pg:query(
+            Conn, <<"DELETE FROM organization_business_identity WHERE id=99006107">>, []
+        ),
+        {ok, _} = elib_pg:query(
+            Conn, <<"DELETE FROM organization_member WHERE organization_id=$1">>, [Org]
+        ),
+        {ok, _} = elib_pg:query(Conn, <<"DELETE FROM workspace WHERE id=$1">>, [Ws]),
+        {ok, _} = elib_pg:query(Conn, <<"DELETE FROM organization WHERE id=$1">>, [Org]),
+        {ok, _} = elib_pg:query(Conn, <<"DELETE FROM \"user\" WHERE id=$1">>, [User]),
+        %% 直传族残留（CONFIRMED 会话/尝试/附件/资产）按本用例 object_key
+        %% 前缀一并清——正常角色下守卫拦 DELETE，replica 模式下不触发。
+        {ok, _} = elib_pg:query(
+            Conn,
+            <<"DELETE FROM attach_pending WHERE object_key LIKE 'enterprise/99006101/%'">>,
+            []
+        ),
+        {ok, _} = elib_pg:query(
+            Conn,
+            <<"DELETE FROM enterprise_asset_direct_link WHERE object_key LIKE 'enterprise/99006101/%'">>,
+            []
+        ),
+        {ok, _} = elib_pg:query(
+            Conn,
+            <<"DELETE FROM attach_direct_attempt WHERE object_key LIKE 'enterprise/99006101/%'">>,
+            []
+        ),
+        {ok, _} = elib_pg:query(
+            Conn,
+            <<"DELETE FROM attach_direct_cleanup WHERE object_key LIKE 'enterprise/99006101/%'">>,
+            []
+        ),
+        {ok, _} = elib_pg:query(
+            Conn, <<"DELETE FROM attachment WHERE path LIKE 'enterprise/99006101/%'">>, []
+        ),
+        {ok, _} = elib_pg:query(
+            Conn,
+            <<"DELETE FROM enterprise_asset WHERE object_key LIKE 'enterprise/99006101/%'">>,
+            []
+        ),
         {ok, _} = elib_pg:query(
             Conn,
             <<"INSERT INTO public.\"user\"(id,password,account,reg_ip,reg_cosv) VALUES($1,'x','eb-direct-tx-fixture','127.0.0.1','x')">>,

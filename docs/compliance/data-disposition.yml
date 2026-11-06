@@ -23,6 +23,13 @@ meta:
   review_note: retain/anonymize 行为法律例外，需 owner 确认（见头部四项默认）
 
 tables:
+  admin_avatar_session_owner:
+    action: delete
+    owner: identity
+    reason: 管理端头像直传会话预登记（upload 会话 ID 与管理员 ID，无正文）
+    mechanism: 会话完成或过期后删除
+    review: self-evident
+    retention: n/a
   agent_payment_mandate:
     action: delete
     owner: payments
@@ -79,6 +86,41 @@ tables:
     mechanism: enqueue Garage object deletion
     review: self-evident
     retention: n/a
+  attachment_assembly_legacy_unresolved:
+    action: retain
+    owner: attachments
+    reason: 装配迁移未决身份台账（source_job_id 与处置证据，无用户正文）
+    mechanism: 运维 attest 结案，保留迁移审计轨迹
+    review: self-evident
+    retention: migration ledger
+  attachment_assembly_resume_audit:
+    action: retain
+    owner: attachments
+    reason: 装配任务人工恢复审计（job_id、时间与操作者），运维证据
+    mechanism: append-only
+    review: self-evident
+    retention: indefinite
+  attachment_assembly_staging:
+    action: retain
+    owner: attachments
+    reason: 装配暂存物理键墓碑，阻止 physical key 复用（迁移 272 守卫）
+    mechanism: tombstone 阻止键复用，不随个人注销删除
+    review: self-evident
+    retention: indefinite
+  attachment_avatar_alias:
+    action: delete
+    owner: attachments
+    reason: 头像别名绑定行
+    mechanism: FK ON DELETE CASCADE 随 attachment 行删除
+    review: self-evident
+    retention: n/a
+  attachment_avatar_publication:
+    action: delete
+    owner: attachments
+    reason: 头像公开副本登记行
+    mechanism: FK ON DELETE CASCADE 随 attachment 行删除
+    review: self-evident
+    retention: n/a
   attachment_derived_write:
     action: retain
     owner: attachments
@@ -86,6 +128,20 @@ tables:
     mechanism: 迁移215写入状态机保护附件生命周期，未排空写入阻断清理，不随账号级联删除，终态台账清理尚未实现
     review: pending-owner
     retention: unknown
+  attachment_export_write_receipt:
+    action: retain
+    owner: attachments
+    reason: 导出 PUT 确认回执（token/locator/sha256 digest，幂等与审计证据，无正文）
+    mechanism: 确认后仅追加，不随个人注销删除
+    review: self-evident
+    retention: indefinite
+  attachment_physical_rescan:
+    action: retain
+    owner: attachments
+    reason: 跨域物理对象重扫租约台账（domain 与 source_ref，无 PII）
+    mechanism: 扫描 settle 后随 GC 清理，租约期内阻止误删
+    review: self-evident
+    retention: until rescan settled
   billing_subscription:
     action: delete
     owner: payments
@@ -114,6 +170,34 @@ tables:
     mechanism: delete rows by actor/peer uid
     review: self-evident
     retention: n/a
+  c2c_forward_source_fact:
+    action: retain
+    owner: messages
+    reason: C2C 转发溯源事实（服务端接受的发送身份与序号，防伪证据）
+    mechanism: append-only，随消息治理域处置
+    review: self-evident
+    retention: follows message governance
+  c2g_forward_edit_fact:
+    action: retain
+    owner: messages
+    reason: C2G 编辑确认事实（旧内容不再权威，GC 保留至 revoke 或消息过期）
+    mechanism: append-only，随消息治理域处置
+    review: self-evident
+    retention: follows message governance
+  c2g_forward_source_fact:
+    action: retain
+    owner: messages
+    reason: C2G 转发溯源事实（服务端接受的发送身份与序号，防伪证据）
+    mechanism: append-only，随消息治理域处置
+    review: self-evident
+    retention: follows message governance
+  c2g_revoke_fact:
+    action: retain
+    owner: messages
+    reason: 群撤回接受事实（附件读权限判定的权威证据）
+    mechanism: append-only，随消息治理域处置
+    review: self-evident
+    retention: follows message governance
   channel:
     action: delete
     owner: channels
@@ -212,6 +296,13 @@ tables:
     mechanism: delete rows by user ownership column
     review: self-evident
     retention: n/a
+  cross_domain_delete_attempt:
+    action: retain
+    owner: attachments
+    reason: 跨域删除守卫台账（pending、settled、unknown 状态，防并发误删）
+    mechanism: settle 后随 GC 清理，unknown 保留取证
+    review: self-evident
+    retention: until deletion settled
   e2ee_key_backups:
     action: delete
     owner: e2ee
@@ -226,6 +317,55 @@ tables:
     mechanism: delete rows by user ownership column
     review: self-evident
     retention: n/a
+  enterprise_asset_direct_link:
+    action: delete
+    owner: enterprise
+    reason: 直传资产登记链接（asset、object_key 与组织工作区会话 ID，无正文）
+    mechanism: 随 enterprise_asset 生命周期删除
+    review: self-evident
+    retention: n/a
+  enterprise_direct_purge_wait:
+    action: delete
+    owner: enterprise
+    reason: 直传退役 purge 重试等待队列（无正文）
+    mechanism: purge 完成后清除，失败保留供重试
+    review: self-evident
+    retention: until purge settled
+  enterprise_direct_retire_guard:
+    action: delete
+    owner: enterprise
+    reason: 退役事务内守卫行（tx_id 与 pid，短生命周期）
+    mechanism: 事务结束即清除
+    review: self-evident
+    retention: n/a
+  enterprise_direct_retirement_audit:
+    action: retain
+    owner: enterprise
+    reason: 直传资产退役审计（asset、组织与时间，安全留存）
+    mechanism: append-only
+    review: self-evident
+    retention: indefinite
+  enterprise_direct_scan_proof:
+    action: retain
+    owner: enterprise
+    reason: 直传扫描证明（winner fence 与 digest，含 expires_at）
+    mechanism: 过期后随 GC 清理
+    review: self-evident
+    retention: until proof expiry
+  enterprise_direct_scan_retry:
+    action: delete
+    owner: enterprise
+    reason: 直传扫描重试计数（短台账）
+    mechanism: 扫描成功后清除
+    review: self-evident
+    retention: n/a
+  enterprise_direct_worker_heartbeat:
+    action: delete
+    owner: enterprise
+    reason: 直传 worker 心跳（namespace、locator 与 seen_at）
+    mechanism: 过期心跳清除
+    review: self-evident
+    retention: n/a
   feedback:
     action: delete
     owner: support
@@ -238,6 +378,13 @@ tables:
     owner: support
     reason: 反馈回复
     mechanism: delete rows by user ownership column
+    review: self-evident
+    retention: n/a
+  forward_attachment_reference:
+    action: delete
+    owner: messages
+    reason: 转发附件引用行
+    mechanism: FK ON DELETE CASCADE 随 attachment 行删除
     review: self-evident
     retention: n/a
   fts_channel:
@@ -1690,8 +1837,12 @@ exclusions:
     reason: 版本登记表
   app_version_policy:
     reason: 版本策略配置
+  attachment_export_receipt_grant_restore:
+    reason: 迁移 262 授权回填辅助表（一次性布尔与列清单，无业务数据）
   billing_plan:
     reason: 计费套餐目录（非用户数据）
+  c2g_revoke_capture_epoch:
+    reason: 撤回捕获纪元单例标记（迁移 254，无用户数据）
   channel_stats_daily:
     reason: 聚合计数统计，无用户 PII
   config:

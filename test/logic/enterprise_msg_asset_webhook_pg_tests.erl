@@ -684,8 +684,12 @@ confirm_cross_app(C, State) ->
     Key =
         <<"eoa/", (integer_to_binary(?ORG_B))/binary, "/",
             (integer_to_binary(maps:get(app_b, State)))/binary, "/20260921/file_1_ab/other.txt">>,
+    %% V3-14 两级裁决（同体不可见，HEAD 合同）：well-formed key 格式好但
+    %% 不属于本 (org, app) 时返回 resource_not_found/key_not_visible，
+    %% 不泄露 key 是否存在/归属（防归属泄露，比旧断言 invalid_confirm_input
+    %% 更安全；见 src/logic/enterprise_asset_logic.erl confirm_tx）。
     ?assertMatch(
-        {error, {<<"invalid_request">>, invalid_confirm_input}},
+        {error, {<<"resource_not_found">>, key_not_visible}},
         enterprise_asset_logic:confirm_tx(C, ctx_a(State), #{object_key => Key})
     ).
 
@@ -1916,16 +1920,32 @@ repair_int23_handler(C, State) ->
 %% Explicit owned mode never creates/drops databases or uses the default business database.
 attachment_fixture_database(Default) ->
     Prior = application:get_env(imboy, attachment_storage_registry),
+    %% storage root 必须是 garage driver：attachment_storage:registration_location/3
+    %% 是 S3-only 合同（唯一匹配 driver=garage 且 endpoint/container 与 elib_oss
+    %% 当前配置一致的单根），disk 根会让 presign 稳定 upload_root_unavailable。
+    %% endpoint/container 动态取 elib_oss 当前值防硬编码漂移；elib_oss 的 garage
+    %% env 同步指向 fixture 本地 Garage（127.0.0.1:56038 / imboy 桶，凭据取
+    %% fixture/garage-credentials.json）。用例不触网（head_object 由 meck 桩），
+    %% 凭据仅保证根声明指向真实可达的存储实例。
+    PriorGarage = application:get_env(imboy, garage),
+    application:set_env(imboy, garage, #{
+        endpoint => <<"http://127.0.0.1:56038">>,
+        region => <<"garage">>,
+        bucket => <<"imboy">>,
+        access_key => <<"GKde74e2d7bf635a356d86c2e6">>,
+        secret_key =>
+            <<"8782180b9cef58d46d04e562500152f196e963b8fe0bb9ae795aeb6b48b2f152">>
+    }),
     Ns = <<"attachment-internal-fixture">>,
     application:set_env(imboy, attachment_storage_registry, #{
         version => 1,
         upload_namespaces => #{<<"enterprise">> => Ns},
         roots => #{
             Ns => #{
-                driver => <<"disk">>,
+                driver => <<"garage">>,
                 namespace => Ns,
-                endpoint => <<"file:///private/tmp/attachment-internal-policy-fixture">>,
-                container => <<"fixture">>
+                endpoint => elib_oss:endpoint(),
+                container => elib_oss:get_bucket(<<"enterprise">>)
             }
         }
     }),
@@ -1946,8 +1966,13 @@ attachment_fixture_database(Default) ->
                 ),
                 #{conn => C, owned_connection => true}
         end,
-    State#{prior_storage_registry => Prior}.
+    State#{prior_storage_registry => Prior, prior_garage_env => PriorGarage}.
 attachment_fixture_release(State) ->
+    %% garage env 由本 fixture 拥有：沿 registry 同路径恢复，避免污染同进程后续套件。
+    case maps:get(prior_garage_env, State, undefined) of
+        {ok, G} -> application:set_env(imboy, garage, G);
+        _ -> application:unset_env(imboy, garage)
+    end,
     case maps:get(prior_storage_registry, State, undefined) of
         {ok, R} -> application:set_env(imboy, attachment_storage_registry, R);
         _ -> application:unset_env(imboy, attachment_storage_registry)

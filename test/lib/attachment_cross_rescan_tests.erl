@@ -94,7 +94,13 @@ supervisor_tick_dispatch_test() ->
         end),
         [Spec] = attachment_delete_reaper:child_specs(),
         {Mod, Fun, Args} = maps:get(start, Spec),
-        {ok, Pid} = apply(Mod, Fun, Args),
+        Pid =
+            case apply(Mod, Fun, Args) of
+                {ok, P} -> P;
+                %% 全量 eunit：eunit_setup 已启动 imboy app，reaper 同名
+                %% worker 可能已在 imboy_sup 下——收养现存进程（meck 进程全局，tick 同样命中）。
+                {error, {already_started, P}} -> P
+            end,
         try
             Pid ! tick,
             receive

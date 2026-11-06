@@ -2044,7 +2044,9 @@ seat_console_methods(cs_tenant_handler, Action) ->
 seat_console_methods(eb_tenant_handler, Action) ->
     case Action of
         conversation_messages -> [<<"GET">>, <<"POST">>];
-        presign -> [<<"POST">>, <<"PUT">>];
+        %% C10（9f18d2b93）：PUT 字节上传用例退役，presign 仅 POST 签发
+        %% （direct descriptor 下发）；与 eb_enterprise_actions 动作表对齐。
+        presign -> [<<"POST">>];
         confirm_asset -> [<<"POST">>];
         asset_content -> [<<"GET">>];
         _ -> []

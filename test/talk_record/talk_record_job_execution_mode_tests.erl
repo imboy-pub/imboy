@@ -107,6 +107,12 @@ server_worker_sql_fences_test_() ->
             with_mocks(fun() ->
                 meck:expect(elib_pg, query, fun(conn, Sql, _Params) ->
                     case Sql of
+                        %% claim_next_tx 的 CTE 形态（assembly_contract 物化 + UPDATE），
+                        %% 栅栏语义不变：仍必须携带 execution_mode='server_local'。
+                        <<"WITH", _/binary>> ->
+                            ?assertNotEqual(
+                                nomatch, binary:match(Sql, <<"execution_mode='server_local'">>)
+                            );
                         <<"UPDATE", _/binary>> ->
                             ?assertNotEqual(
                                 nomatch, binary:match(Sql, <<"execution_mode='server_local'">>)
@@ -125,15 +131,20 @@ server_worker_sql_fences_test_() ->
 
 reaper_uses_current_time_after_transaction_start_test() ->
     with_mocks(fun() ->
-        meck:expect(elib_pg, query, fun(conn, Sql, []) ->
-            ?assertNotEqual(
-                nomatch,
-                binary:match(
-                    Sql,
-                    <<"lease_until <= clock_timestamp()">>
-                )
-            ),
-            {ok, [#{<<"id">> => 31}]}
+        meck:expect(elib_pg, query, fun
+            (conn, Sql, []) ->
+                ?assertNotEqual(
+                    nomatch,
+                    binary:match(
+                        Sql,
+                        <<"lease_until <= clock_timestamp()">>
+                    )
+                ),
+                {ok, [#{<<"id">> => 31}]};
+            %% reap_locked_jobs 现以带参 UPDATE（$1=id）逐行收锁；
+            %% RETURNING 一行即计 1 个回收。
+            (conn, <<"UPDATE", _/binary>>, [_Id]) ->
+                {ok, [#{<<"id">> => 31}]}
         end),
         ?assertEqual({ok, 1}, talk_record_job_repo:reap_expired_tx(conn))
     end).

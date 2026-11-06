@@ -42,7 +42,8 @@ route(<<"POST">>, <<"register">>, Req0, State) ->
             reply_err(Req0, ?ERR_BAD_REQUEST, <<"unsupported_cipher">>, abort);
         {error, invalid_attachment_contract} ->
             reply_err(Req0, ?ERR_BAD_REQUEST, <<"invalid_attachment_contract">>, abort);
-        {error, _} ->
+        {error, Err3} ->
+            logger:error("C12DBG3 register ~0100p", [Err3]),
             reply_err(Req0, ?ERR_SERVICE_UNAVAILABLE, <<"service_unavailable">>, retry_session)
     end;
 route(<<"POST">>, <<"declare">>, Req0, State) ->

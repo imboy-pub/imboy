@@ -7,15 +7,15 @@
 %%%     body 与 asset_ids **皆空 = 422 invalid_body**（确定错误码）；
 %%%     同一 client_msg_id + 同一 asset_ids 重放幂等（replayed=true，同 message）；
 %%%     响应含 CS-BE-01 的 assets 回显投影（五键白名单）。
-%%%   * `presign`（POST /assets/presign）：成功视图投影 `upload.url`（指向本 API
-%%%     的 presign **PUT** 端点；查询串携带 workspace_id/upload_ref，百分号编码；
-%%%     短 TTL = 凭证 expires_at）+ `upload_ref`（不透明 token）。
-%%%   * `presign`（PUT，同路径第二用例）：请求体 = 原始字节；凭证复核
-%%%     （过期/篡改/同上传人/经办 ACL/hash/size/mime）全部在既有
-%%%     `eb_asset_app:put_object`，本套件零复制断言。
+%%%   * `presign`（POST /assets/presign）：C10（9f18d2b93）后**仅 POST 签发**，
+%%%     视图恒无 url 键（adapter=private_object_store / rule=
+%%%     opaque_token_no_url_no_object_key）；字节写入走私有对象存储适配器
+%%%     （`eb_asset_app:put_object`，凭证复核：过期/篡改/同上传人/经办
+%%%     ACL/hash/size/mime 全在 application 层），本套件零复制断言。
 %%%   * `confirm`（POST /assets/confirm {upload_ref}）：绑定资产（active）。
-%%%   * 跨租户：凭证 AAD 绑定 (Org, Workspace)——跨 Org / 跨 Workspace 的 PUT
-%%%     一律 422 invalid_upload_ref（确定错误码，无枚举面）。
+%%%   * 跨租户：凭证 AAD 绑定 (Org, Workspace)——跨 Org / 跨 Workspace 的
+%%%     字节写入一律 invalid_upload_ref（不进解密路径，无枚举面）。
+%%%   * presign 路径 PUT 已随 C10 退役：一律 405（防字节通道回归）。
 %%%
 %%% 装配口径：`probe`（真事实 + 补 asset.write/conversation.write 权限，缺口
 %%% 说明见 eb09_facts_probe）；密钥走 env keyring（F6 生产装配路径）。
@@ -107,7 +107,7 @@ cases({ok, _Conn}) ->
         {timeout, ?TIMEOUT_S, fun append_message_invalid_asset_element_400/0},
         {timeout, ?TIMEOUT_S, fun put_rejected_cross_workspace_and_cross_org/0},
         {timeout, ?TIMEOUT_S, fun presign_cross_org_conversation_404/0},
-        {timeout, ?TIMEOUT_S, fun put_requires_seat_authorization/0}
+        {timeout, ?TIMEOUT_S, fun put_method_retired_405/0}
     ];
 cases(Other) ->
     erlang:error({csbe01b_seat_send_db_unavailable, Other}).
@@ -134,17 +134,22 @@ full_chain_presign_put_confirm_send_assets() ->
         UploadRef = maps:get(<<"upload_ref">>, Presign),
         AssetIdBin = maps:get(<<"asset_id">>, Presign),
 
-        %% upload.url 形状（CS-BE-01B 冻结）：绝对 https + 本 org 的 presign
-        %% 路径 + 查询串 workspace_id/upload_ref；短 TTL 存在性（expires_at）。
+        %% upload 视图形状（C10 后冻结）：恒无 url 键——即使 base_url 已配置
+        %% https（本用例上面已 set），也不泄漏任何存储侧引用。
         assert_upload_url_shape(Presign, Org, Ws, UploadRef),
 
-        %% PUT 原始字节（按 upload.url 的 path+query 打到本监听器——权威基址
-        %% 属部署面，测试以同一路径/查询驱动同一路由）。
-        Url = maps:get(<<"url">>, maps:get(<<"upload">>, Presign)),
-        PutResp = put_raw(Actor, url_path_query(Url), Payload),
-        ?assertEqual(200, maps:get(status, PutResp)),
-        ?assertEqual(0, ?S:code(PutResp)),
-        ?assertEqual(<<"pending_confirm">>, maps:get(<<"status">>, ?S:payload(PutResp))),
+        %% C10：presign 不再签发 API PUT 端点——字节写入走私有对象存储
+        %% 适配器（application 层 put_object 直写隔离 Garage），凭证仍是
+        %% 不透明 upload_ref（同上传人复核在 put_object 内）。
+        {ok, PutView} = eb_asset_app:put_object(Org, #{
+            workspace_id => Ws,
+            conversation_id => Conv,
+            upload_ref => UploadRef,
+            payload => Payload,
+            actor_user_id => Actor,
+            key_ref => eb_asset_it_lib:key_ref(Scope)
+        }),
+        ?assertEqual(pending_confirm, maps:get(status, PutView)),
 
         %% confirm：绑定资产 → active。
         ConfirmResp = confirm_ref(Actor, Org, Ws, UploadRef),
@@ -289,7 +294,9 @@ append_message_invalid_asset_element_400() ->
     end.
 
 %% ===================================================================
-%% 4. 跨租户 PUT：凭证 AAD 绑定 (Org, Workspace)——跨 Ws / 跨 Org 均 422
+%% 4. 跨租户字节写入：凭证 AAD 绑定 (Org, Workspace)——跨 Ws / 跨 Org
+%%    在 eb_asset_app:put_object 复核层一律 invalid_upload_ref（C10 后
+%%    API 面 PUT 已退役，租户绑定改由字节写入复核层保证）
 %% ===================================================================
 
 put_rejected_cross_workspace_and_cross_org() ->
@@ -303,67 +310,36 @@ put_rejected_cross_workspace_and_cross_org() ->
         OtherWs = maps:get(other_workspace_id, Scope),
         Conv = maps:get(conversation_id, Scope),
         Payload = <<"CSBE01B-CROSS">>,
+        KeyRef = eb_asset_it_lib:key_ref(Scope),
 
         Presign = presign_ok(Actor, Org, Ws, Conv, Payload, undefined),
         UploadRef = maps:get(<<"upload_ref">>, Presign),
 
-        %% 跨 Workspace（同 Org）：授权门照过（成员/职能/权限都在本 Org），
-        %% 凭证 AAD 绑定 (Org, Ws) 不匹配 ⇒ 422 invalid_upload_ref。
-        CrossWsResp = put_query(
-            Actor,
-            presign_path(Org),
-            [
-                {<<"workspace_id">>, OtherWs}, {<<"upload_ref">>, UploadRef}
-            ],
-            Payload
+        %% 跨 Workspace（同 Org）：AAD 绑定 (Org, Ws) 不匹配 ⇒ 确定拒绝
+        %% （不进解密路径，无枚举面；成员/职能/权限门在本 Org 侧本可通过）。
+        ?assertEqual(
+            {error, invalid_upload_ref},
+            eb_asset_app:put_object(Org, #{
+                workspace_id => OtherWs,
+                conversation_id => Conv,
+                upload_ref => UploadRef,
+                payload => Payload,
+                actor_user_id => Actor,
+                key_ref => KeyRef
+            })
         ),
-        ?assertEqual(422, maps:get(status, CrossWsResp)),
-        ?assertEqual(<<"invalid_upload_ref">>, ?S:msg(CrossWsResp)),
-
-        %% 跨 Org：actor 先补上 OtherOrg 的成员行 + customer_service 经办
-        %% （授权门可过），再重放 Org1 的凭证 ⇒ 同一确定拒绝。
-        OtherIdentity = ?FIX:id(),
-        OtherAssignment = ?FIX:id(),
-        ok = sql(
-            <<
-                "INSERT INTO organization_business_identity"
-                " (id,organization_id,function_key,display_name,status,version,created_by_user_id)"
-                " VALUES ($1,$2,'customer_service',$3,'active',1,$4)"
-            >>,
-            [
-                OtherIdentity,
-                OtherOrg,
-                name(<<"csbe01b-ident-">>, OtherIdentity),
-                maps:get(
-                    owner_user_id, Scope
-                )
-            ]
-        ),
-        ok = sql(
-            <<
-                "INSERT INTO organization_member(organization_id,user_id,role,status)"
-                " VALUES ($1,$2,'member','active')"
-            >>,
-            [OtherOrg, Actor]
-        ),
-        ok = sql(
-            <<
-                "INSERT INTO organization_business_identity_assignment"
-                " (id,organization_id,business_identity_id,function_key,user_id,status,assigned_by,version)"
-                " VALUES ($1,$2,$3,'customer_service',$4,'active',$5,1)"
-            >>,
-            [OtherAssignment, OtherOrg, OtherIdentity, Actor, maps:get(owner_user_id, Scope)]
-        ),
-        CrossOrgResp = put_query(
-            Actor,
-            presign_path(OtherOrg),
-            [
-                {<<"workspace_id">>, OtherWs}, {<<"upload_ref">>, UploadRef}
-            ],
-            Payload
-        ),
-        ?assertEqual(422, maps:get(status, CrossOrgResp)),
-        ?assertEqual(<<"invalid_upload_ref">>, ?S:msg(CrossOrgResp))
+        %% 跨 Org 重放同一凭证 ⇒ 同一确定拒绝。
+        ?assertEqual(
+            {error, invalid_upload_ref},
+            eb_asset_app:put_object(OtherOrg, #{
+                workspace_id => OtherWs,
+                conversation_id => Conv,
+                upload_ref => UploadRef,
+                payload => Payload,
+                actor_user_id => Actor,
+                key_ref => KeyRef
+            })
+        )
     after
         _ = application:unset_env(imboy, eb_enterprise_keyring),
         ok = eb09_facts_probe:clear(),
@@ -403,10 +379,12 @@ presign_cross_org_conversation_404() ->
     end.
 
 %% ===================================================================
-%% 6. PUT 端点复走路由级坐席授权门：无凭证 401 / 非成员 403
+%% 6. C10 后：presign 路径 PUT 方法已退役——无凭证/非成员的 PUT 均 405
+%%    （方法门在授权门之前，字节通道不回归；401/403 授权门负例由
+%%    eb_tenant_handler_tests 的 A03 资产三面用例覆盖）
 %% ===================================================================
 
-put_requires_seat_authorization() ->
+put_method_retired_405() ->
     Scope = eb_asset_it_lib:new_scope(),
     try
         {Org, Ws} = eb_asset_it_lib:tenant(Scope),
@@ -418,8 +396,8 @@ put_requires_seat_authorization() ->
             ],
             <<"x">>
         ),
-        ?assertEqual(401, maps:get(status, Resp0)),
-        %% 无成员关系的真实 uid：授权门 403（no_member 面），字节不落桶。
+        ?assertEqual(405, maps:get(status, Resp0)),
+        %% 无成员关系的真实 uid：同样 405（字节不落桶）。
         Resp1 = put_query(
             maps:get(peer_user_id, Scope),
             presign_path(Org),
@@ -428,7 +406,7 @@ put_requires_seat_authorization() ->
             ],
             <<"x">>
         ),
-        ?assertEqual(403, maps:get(status, Resp1))
+        ?assertEqual(405, maps:get(status, Resp1))
     after
         ok = eb09_facts_probe:clear(),
         ?FIX:cleanup(Scope)
@@ -520,54 +498,26 @@ send_message(Actor, Org, Ws, Conv, ClientMsgId, Extra) ->
 qs_ws(Path, Ws) ->
     <<Path/binary, "?workspace_id=", (integer_to_binary(Ws))/binary>>.
 
-%% upload.url 形状断言：绝对 https、本 org 的 presign 路径、查询串（解码后）
-%% 恰为 workspace_id/upload_ref、expires_at 短 TTL 存在（≤ now + 1h 上界）。
-%% base_url 未配置（非 https）时 fail-closed：无 url 键（同形断言）。
-assert_upload_url_shape(Presign, Org, Ws, UploadRef) ->
+%% upload 视图形状断言（C10 后冻结契约）：presign 仅 POST 签发，字节写入
+%% 走私有对象存储适配器——视图**恒无 url 键**（adapter/rule 显式声明）；
+%% token 即 upload_ref（不透明：既非 URL 也不含对象 key / 签名参数）；
+%% expires_at 短 TTL 存在（≤ now + 1h 上界）。
+assert_upload_url_shape(Presign, _Org, _Ws, UploadRef) ->
     Upload = maps:get(<<"upload">>, Presign),
     ?assertEqual(<<"PUT">>, maps:get(<<"method">>, Upload)),
+    ?assertEqual(UploadRef, maps:get(<<"token">>, Upload)),
+    ?assertEqual(<<"private_object_store">>, maps:get(<<"adapter">>, Upload)),
+    ?assertEqual(
+        <<"opaque_token_no_url_no_object_key">>, maps:get(<<"rule">>, Upload)
+    ),
+    ?assert(not maps:is_key(<<"url">>, Upload)),
+    %% 存储引用零出站：凭证不透明，既不是 URL 也不携带对象 key / 签名参数。
+    ?assertEqual(nomatch, binary:match(UploadRef, <<"://">>)),
+    ?assertEqual(nomatch, binary:match(UploadRef, <<"object_key">>)),
+    ?assertEqual(nomatch, binary:match(UploadRef, <<"X-Amz-">>)),
     ExpiresAt = maps:get(<<"expires_at">>, Upload, undefined),
     ?assert(is_integer(ExpiresAt)),
-    ?assert(ExpiresAt =< eb_asset_it_lib:now_sec() + 3600),
-    case config_ds:env(base_url, <<>>) of
-        <<"https://", _/binary>> = Base ->
-            Url = maps:get(<<"url">>, Upload, undefined),
-            ?assert(is_binary(Url)),
-            Prefix = <<Base/binary, (presign_path(Org))/binary, "?">>,
-            ?assertEqual(
-                {match, 0},
-                begin
-                    Size = byte_size(Prefix),
-                    case Url of
-                        <<Prefix:Size/binary, _/binary>> -> {match, 0};
-                        _ -> nomatch
-                    end
-                end
-            ),
-            Query = binary:part(Url, byte_size(Prefix), byte_size(Url) - byte_size(Prefix)),
-            ?assertEqual(
-                [{<<"upload_ref">>, UploadRef}, {<<"workspace_id">>, integer_to_binary(Ws)}],
-                lists:sort(uri_string:dissect_query(Query))
-            ),
-            %% object key / 存储引用零出站（url 是本 API 代理路径）。
-            ?assertEqual(nomatch, binary:match(Url, <<"object_key">>)),
-            ?assertEqual(nomatch, binary:match(Url, <<"X-Amz-">>));
-        _Unconfigured ->
-            ?assert(not maps:is_key(<<"url">>, Upload))
-    end.
-
-%% 绝对 URL → path?query（打到本测试监听器；权威基址属部署面）。
-url_path_query(<<"https://", Rest/binary>>) ->
-    case binary:split(Rest, <<"/">>) of
-        [_Authority, PathQ] -> <<"/", PathQ/binary>>;
-        [_Authority] -> <<"/">>
-    end.
+    ?assert(ExpiresAt =< eb_asset_it_lib:now_sec() + 3600).
 
 to_bin(V) when is_binary(V) -> V;
 to_bin(V) when is_integer(V) -> integer_to_binary(V).
-
-sql(Sql, Params) ->
-    ok = ?FIX:exec(Sql, Params).
-
-name(Prefix, Id) ->
-    <<Prefix/binary, (integer_to_binary(Id))/binary>>.

@@ -5,17 +5,24 @@
 publish_message_duplicate_request_skips_side_effects_test_() ->
     ?WITH_MECKS(
         [
+            {moderation_business, [
+                {'inspect_channel', 4, fun(_, _, _, _) -> {queued, []} end},
+                %% duplicate 幂等短路不应触达 bind_version——直通便于意外调用即红。
+                {'bind_version', 2, fun(V, _) -> V end}
+            ]},
             {channel_admin_repo, [
                 {'get_role', 2, fun(11, 1001) -> 2 end}
             ]},
             {channel_ds, [
+                %% GZAPP-02/G4 状态门：do_publish 前 find_by_id/2 查 status。
+                {'find_by_id', 2, fun(_, _) -> #{<<"status">> => 1} end},
                 {'publish_message', 6, fun(
                     11, 1001, <<"hello"/utf8>>, <<"text">>, #{}, <<"req-1">>
                 ) ->
                     {ok, 99, duplicate}
                 end}
             ]},
-            {channel_message_repo, [
+            {channel_message_ds, [
                 {'find_by_id', 1, fun(99) ->
                     #{
                         <<"id">> => 99,

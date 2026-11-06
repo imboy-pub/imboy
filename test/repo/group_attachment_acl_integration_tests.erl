@@ -148,6 +148,10 @@ c2g_boundary_migration_matrix(Conn) ->
     ?assertEqual(Hash, ledger_hash(Conn)).
 
 seed_legacy_c2g_staging(Conn) ->
+    %% legacy 行模拟的是迁移 111 之前（conv_seq 尚不存在）的世界；迁移
+    %% 255/256 的 forward source capture 触发器后于该世界，会以 23514
+    %% 拒绝 NULL conv_seq 的 legacy 插入。种子期间临时停用用户触发器，
+    %% 插入后恢复（111 自身的触发器在 Up 时新创建，不受影响）。
     squery(Conn, <<
         "CREATE TABLE IF NOT EXISTS msg_store_staging ("
         "id bigint PRIMARY KEY,type varchar(10) NOT NULL,msg_id varchar(50) NOT NULL,"
@@ -157,6 +161,7 @@ seed_legacy_c2g_staging(Conn) ->
         "retry_count integer NOT NULL DEFAULT 0,processed_at timestamptz,"
         "available_at timestamptz NOT NULL DEFAULT now(),error_msg text,"
         "UNIQUE(type,msg_id));"
+        "ALTER TABLE msg_store_staging DISABLE TRIGGER USER;"
         "INSERT INTO msg_store_staging "
         "(id,type,msg_id,msg_type,action,e2ee,sender_did,conv_seq,payload,from_id,to_id,"
         "to_id_list,created_at,server_ts) VALUES "
@@ -164,7 +169,8 @@ seed_legacy_c2g_staging(Conn) ->
         "'{\"to\":\"91080201\",\"body\":\"same\",\"server_ts\":\"old-top\","
         "\"payload\":{\"server_ts\":\"old-nested\"}}'::jsonb,"
         "91080101,NULL,ARRAY[91080101,91080102]::bigint[],"
-        "'2026-09-11T00:00:00Z','2026-09-11T00:00:00Z')"
+        "'2026-09-11T00:00:00Z','2026-09-11T00:00:00Z');"
+        "ALTER TABLE msg_store_staging ENABLE TRIGGER USER;"
     >>).
 
 ledger_hash(Conn) ->

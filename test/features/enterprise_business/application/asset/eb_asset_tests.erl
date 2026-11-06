@@ -238,12 +238,19 @@ bes01b_visitor_content_linked_positive() ->
         MsgId = eb_asset_it_lib:seed_message(Scope, Contact),
         Payload = <<"s01b-linked-", (integer_to_binary(eb_pg_test_fixture:id()))/binary>>,
         AssetId = bes01b_visitor_upload(Scope, Conv, Contact, MsgId, Payload),
+        %% C08 起访客下载票据要求完整访客身份（session/token/installation 均
+        %% 正整数，生产由 CS 会话服务端派生）；本用例与 conversation_id 同为
+        %% 服务端派生事实的仿真——边缘 authorize 回放不在本用例范围。
+        VisId = eb_pg_test_fixture:id(),
         {ok, View} =
             enterprise_business_facade:content_stream(Org, #{
                 workspace_id => Ws,
                 asset_id => AssetId,
                 %% 绑定作用域（生产由 CS 会话服务端派生）：必须 == 资产行。
                 conversation_id => Conv,
+                visitor_session_id => VisId,
+                visitor_token_id => VisId + 1,
+                visitor_installation_id => VisId + 2,
                 actor_contact_id => Contact
             }),
         %% V3-17：正文读链切边缘——视图是 302 redirect（自家边缘 URL），

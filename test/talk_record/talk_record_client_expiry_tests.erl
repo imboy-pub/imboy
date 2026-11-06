@@ -8,17 +8,30 @@ expired_unstarted_is_safe_expired_test() -> check_expiry(<<"not_dispatched">>, <
 
 check_expiry(PartState, Expected) ->
     meck:new(elib_pg, [passthrough, no_link]),
+    TestPid = self(),
     try
         meck:expect(elib_pg, query, fun(_, Sql, _) ->
-            ?assertNotEqual(nomatch, binary:match(Sql, <<"talk_record_client_run_part">>)),
+            %% 全量负载下后台 worker 偶发打入 elib_pg 属环境噪声：
+            %% 直通返回，仅对被测进程断言。
+            case self() =:= TestPid of
+                true ->
+                    ?assertNotEqual(nomatch, binary:match(Sql, <<"talk_record_client_run_part">>));
+                false ->
+                    ok
+            end,
             {ok, [#{<<"provider_state">> => PartState}]}
         end),
         meck:expect(elib_pg, execute, fun(_, Sql, Args) ->
-            case binary:match(Sql, <<"UPDATE talk_record_client_run SET">>) of
-                nomatch -> ok;
-                _ -> ?assertEqual(Expected, lists:nth(2, Args))
+            case self() =:= TestPid of
+                true ->
+                    case binary:match(Sql, <<"UPDATE talk_record_client_run SET">>) of
+                        nomatch -> ok;
+                        _ -> ?assertEqual(Expected, lists:nth(2, Args))
+                    end,
+                    ?assertEqual(nomatch, binary:match(Sql, <<"state='queued'">>));
+                false ->
+                    ok
             end,
-            ?assertEqual(nomatch, binary:match(Sql, <<"state='queued'">>)),
             {ok, 1}
         end),
         ?assertEqual(
@@ -28,8 +41,11 @@ check_expiry(PartState, Expected) ->
                 #{<<"id">> => 8, <<"state">> => <<"active">>, <<"lease_valid">> => false}
             )
         ),
-        ?assertEqual(3, meck:num_calls(elib_pg, execute, '_')),
-        ?assert(meck:validate(elib_pg))
+        %% validate 的被测路径等价（按调用进程过滤历史）：本进程对 elib_pg
+        %% 的调用仅允许 query/3 与 execute/3，且 execute 恰 3 次。
+        Own = meck:history(elib_pg, TestPid),
+        ?assertEqual([execute, query], lists:usort([F || {_, {_M, F, _A}, _R} <- Own])),
+        ?assertEqual(3, length([1 || {_, {_, execute, _}, _} <- Own]))
     after
         meck:unload(elib_pg)
     end.

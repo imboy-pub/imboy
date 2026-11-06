@@ -13,8 +13,7 @@ resume_domain_test_() ->
         [
             ?_test(resume_surface(Ep))
          || Ep <-
-                %% V3-14：INT 面直传形态不经 gateway 恢复投影链，矩阵收敛三面。
-                [ordinary, enterprise_seat, cs_widget]
+                [ordinary, enterprise_internal, enterprise_seat, cs_widget]
         ] ++
             [
                 ?_test(provider_bypass_is_rejected()),
@@ -44,7 +43,8 @@ setup() ->
                 case ets:lookup(?TAB, bypass) of
                     [] ->
                         try
-                            %% V3-20：disk 驱动退役，provider 故障注入改走 garage 同名原语。
+                            %% V3-20 disk 退役：随 imm_scenario 的 driver 参数迁移
+                            %% garage（crash 注入由其模块级 meck 拦截，路径不变）。
                             attachment_storage_garage:put_snapshot(#{key => <<"key">>}, a, b, c)
                         catch
                             error:pin_committed_then_crash -> #{status => 500}
@@ -155,6 +155,7 @@ cleanup(_) ->
 identity(Row) ->
     Row#{
         <<"object_key">> => <<"key">>,
+        %% V3-20 disk 退役：身份行 driver 随场景参数迁移 garage。
         <<"storage_driver">> => <<"garage">>,
         <<"storage_namespace">> => <<"run">>,
         <<"storage_container">> => <<"bucket">>,

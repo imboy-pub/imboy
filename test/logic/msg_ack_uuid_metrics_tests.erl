@@ -9,14 +9,22 @@ ack_duration_accepts_uuid_v7_and_legacy_tsid_test_() ->
             Legacy = 123456789,
             pure_mock_fixture:with_mocks(
                 [
+                    %% V3-24 G-4：emit_enterprise_delivered 的 side_effect_tx 走
+                    %% elib_pg:with_tx（peer 隔离环境无 PG，fail-safe 合同是
+                    %% 返回 error 由 side_effect_tx 吞掉，恒 ok）。
+                    {elib_pg, [{with_tx, 1, fun(_) -> {error, no_pg_in_isolated_peer} end}]},
                     {msg_operation_ds, [{ack_c2c_msg, 3, fun(_, _, _) -> {ok, 1} end}]},
-                    {elib_dt, [{millisecond, 0, fun() -> Now end}]},
+                    {elib_dt, [
+                        {millisecond, 0, fun() -> Now end},
+                        %% V3-24 G-4 webhook 链的 delivered 时间戳序列化。
+                        {to_rfc3339, 2, fun(_, _) -> <<"2026-11-05T00:00:00Z">> end}
+                    ]},
                     {elib_tsid, [{timestamp, 1, fun(Id) when Id =:= Legacy -> Now - 2000 end}]},
-                    %% webhook 事件旁路：同 rejects 用例（emit_event_failed 对
-                    %% with_tx 异常自带 catch→ok，不执行事务体）。
-                    {elib_pg, [{with_tx, 1, fun(_Fun) -> ok end}]},
                     {elib_metric, [
                         {increment, 1, fun(_) -> ok end},
+                        %% V3-24 G-4：emit_enterprise_delivered → webhook 可观测
+                        %% 通道复用 elib_metric 的三参带 label 形态。
+                        {increment, 3, fun(_, _, _) -> ok end},
                         {record, 2, fun(_, _) -> ok end}
                     ]}
                 ],
@@ -64,13 +72,21 @@ ack_duration_rejects_invalid_uuid_and_out_of_window_test_() ->
             Now = 1800000000000,
             pure_mock_fixture:with_mocks(
                 [
+                    %% V3-24 G-4：emit_enterprise_delivered 的 side_effect_tx 走
+                    %% elib_pg:with_tx（peer 隔离环境无 PG，fail-safe 合同是
+                    %% 返回 error 由 side_effect_tx 吞掉，恒 ok）。
+                    {elib_pg, [{with_tx, 1, fun(_) -> {error, no_pg_in_isolated_peer} end}]},
                     {msg_operation_ds, [{ack_c2c_msg, 3, fun(_, _, _) -> {ok, 1} end}]},
-                    {elib_dt, [{millisecond, 0, fun() -> Now end}]},
-                    %% ack 成功路径的 webhook 事件旁路（emit_event_failed 对
-                    %% with_tx 异常自带 catch→ok）：不执行事务体，只消掉调用。
-                    {elib_pg, [{with_tx, 1, fun(_Fun) -> ok end}]},
+                    {elib_dt, [
+                        {millisecond, 0, fun() -> Now end},
+                        %% V3-24 G-4 webhook 链的 delivered 时间戳序列化。
+                        {to_rfc3339, 2, fun(_, _) -> <<"2026-11-05T00:00:00Z">> end}
+                    ]},
                     {elib_metric, [
                         {increment, 1, fun(_) -> ok end},
+                        %% V3-24 G-4：emit_enterprise_delivered → webhook 可观测
+                        %% 通道复用 elib_metric 的三参带 label 形态。
+                        {increment, 3, fun(_, _, _) -> ok end},
                         {record, 2, fun(_, _) -> ok end}
                     ]}
                 ],

@@ -59,7 +59,9 @@ root(Driver, Ns, Endpoint, Container) ->
     #{driver => Driver, namespace => Ns, endpoint => Endpoint, container => Container}.
 
 %% 同一 namespace/alias 属于两个根 = 未证明分离（namespace_contract）。
-%% V3-20：disk 驱动退役，场景改用两个 garage 根构造歧义。
+%% V3-20 disk 退役：disk root 会先命中 unsupported_driver，改用 endpoint
+%% 互异的双 garage 根（container 相同、namespace 同为 shared），才能命中
+%% ambiguous_namespace 而非 duplicate_physical_root。
 duplicate_namespace_is_ambiguous() ->
     application:set_env(imboy, attachment_storage_registry, #{
         version => 1,

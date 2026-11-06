@@ -32,6 +32,14 @@
 %% ------------------------------------------------------------------
 
 cleanup() ->
+    %% 迁移 255/256 起 staging 插入经触发器写 forward source fact 表；
+    %% msg_id 固定，中断运行残留的事实行会撞唯一键——先清事实行。
+    _ = elib_pg:execute(<<"DELETE FROM c2c_forward_source_fact WHERE msg_id LIKE $1">>, [
+        ?PREFIX
+    ]),
+    _ = elib_pg:execute(<<"DELETE FROM c2g_forward_source_fact WHERE msg_id LIKE $1">>, [
+        ?PREFIX
+    ]),
     _ = elib_pg:execute(<<"DELETE FROM public.msg_store WHERE msg_id LIKE $1">>, [?PREFIX]),
     _ = elib_pg:execute(<<"DELETE FROM public.msg_c2c WHERE msg_id LIKE $1">>, [?PREFIX]),
     _ = elib_pg:execute(<<"DELETE FROM public.msg_store_staging WHERE msg_id LIKE $1">>, [?PREFIX]),

@@ -44,6 +44,10 @@ cleanup_test_rows() ->
     lists:foreach(
         fun(Sql) -> _ = elib_pg:execute(Sql, [?CLEAN_PREFIX]) end,
         [
+            %% 迁移 255/256 起 staging 插入经触发器写 forward source fact 表；
+            %% msg_id 固定，中断运行残留的事实行会撞唯一键——先清事实行。
+            <<"DELETE FROM c2c_forward_source_fact WHERE msg_id LIKE $1">>,
+            <<"DELETE FROM c2g_forward_source_fact WHERE msg_id LIKE $1">>,
             <<"DELETE FROM public.msg_store WHERE msg_id LIKE $1">>,
             <<"DELETE FROM public.msg_c2c WHERE msg_id LIKE $1">>,
             <<"DELETE FROM public.msg_c2g WHERE msg_id LIKE $1">>,

@@ -48,10 +48,16 @@ paid_content_purchase_query_error_is_preserved_test_() ->
 publish_message_with_admin_role_succeeds_test_() ->
     ChannelIdBin = integer_to_binary(11),
     MockConfigs = [
+        {moderation_business, [
+            {'inspect_channel', 4, fun(_, _, _, _) -> {queued, []} end},
+            %% do_publish_after_images 以真实 verdict 调 bind_version——直通。
+            {'bind_version', 2, fun(V, _) -> V end}
+        ]},
         {channel_admin_ds, [
             {'get_role', 2, fun(11, 1001) -> 2 end}
         ]},
         {channel_ds, [
+            {'find_by_id', 2, fun(_, _) -> #{<<"status">> => 1} end},
             {'publish_message', 5, fun(
                 11, 1001, <<"hello"/utf8>>, <<"text">>, #{<<"ext">> := <<"1">>}
             ) ->
@@ -106,11 +112,18 @@ publish_message_with_admin_role_succeeds_test_() ->
 publish_message_creator_fallback_succeeds_test_() ->
     ChannelIdBin = integer_to_binary(11),
     MockConfigs = [
+        {moderation_business, [
+            {'inspect_channel', 4, fun(_, _, _, _) -> {queued, []} end},
+            %% do_publish_after_images 以真实 verdict 调 bind_version——直通。
+            {'bind_version', 2, fun(V, _) -> V end}
+        ]},
         {channel_admin_ds, [
             {'get_role', 2, fun(11, 1001) -> 0 end}
         ]},
         {channel_ds, [
-            {'find_by_id', 2, fun(11, <<"*">>) -> #{<<"creator_uid">> => 1001} end},
+            %% GZAPP-02/G4 状态门：do_publish 以 find_by_id/2 查 status；
+            %% 行含 creator_uid（creator fallback 用例语义）且 status=1 放行。
+            {'find_by_id', 2, fun(11, _) -> #{<<"status">> => 1, <<"creator_uid">> => 1001} end},
             {'publish_message', 5, fun(11, 1001, <<"first">>, <<"text">>, #{}) ->
                 {ok, 100}
             end},
@@ -145,10 +158,16 @@ publish_message_creator_fallback_succeeds_test_() ->
 publish_message_with_admin_role_still_returns_ok_when_broadcast_crashes_test_() ->
     ChannelIdBin = integer_to_binary(11),
     MockConfigs = [
+        {moderation_business, [
+            {'inspect_channel', 4, fun(_, _, _, _) -> {queued, []} end},
+            %% do_publish_after_images 以真实 verdict 调 bind_version——直通。
+            {'bind_version', 2, fun(V, _) -> V end}
+        ]},
         {channel_admin_ds, [
             {'get_role', 2, fun(11, 1001) -> 2 end}
         ]},
         {channel_ds, [
+            {'find_by_id', 2, fun(_, _) -> #{<<"status">> => 1} end},
             {'publish_message', 5, fun(11, 1001, <<"hello"/utf8>>, <<"text">>, #{}) ->
                 {ok, 109}
             end},
@@ -228,10 +247,16 @@ publish_message_with_non_admin_role_fails_test_() ->
 publish_message_when_storage_fails_returns_error_test_() ->
     ChannelIdBin = integer_to_binary(11),
     MockConfigs = [
+        {moderation_business, [
+            {'inspect_channel', 4, fun(_, _, _, _) -> {queued, []} end},
+            %% do_publish_after_images 以真实 verdict 调 bind_version——直通。
+            {'bind_version', 2, fun(V, _) -> V end}
+        ]},
         {channel_admin_ds, [
             {'get_role', 2, fun(11, 1001) -> 1 end}
         ]},
         {channel_ds, [
+            {'find_by_id', 2, fun(_, _) -> #{<<"status">> => 1} end},
             {'publish_message', 5, fun(11, 1001, <<"hello"/utf8>>, <<"text">>, #{}) ->
                 {error, <<"db_error">>}
             end}
@@ -262,10 +287,16 @@ publish_message_when_storage_fails_returns_error_test_() ->
 publish_message_returns_error_when_loading_new_message_fails_test_() ->
     ChannelIdBin = integer_to_binary(11),
     MockConfigs = [
+        {moderation_business, [
+            {'inspect_channel', 4, fun(_, _, _, _) -> {queued, []} end},
+            %% do_publish_after_images 以真实 verdict 调 bind_version——直通。
+            {'bind_version', 2, fun(V, _) -> V end}
+        ]},
         {channel_admin_ds, [
             {'get_role', 2, fun(11, 1001) -> 2 end}
         ]},
         {channel_ds, [
+            {'find_by_id', 2, fun(_, _) -> #{<<"status">> => 1} end},
             {'publish_message', 5, fun(11, 1001, <<"hello"/utf8>>, <<"text">>, #{}) ->
                 {ok, 99}
             end}
@@ -295,7 +326,13 @@ publish_message_returns_error_when_loading_new_message_fails_test_() ->
 
 publish_message_accepts_custom_id_fallback_test_() ->
     MockConfigs = [
+        {moderation_business, [
+            {'inspect_channel', 4, fun(_, _, _, _) -> {queued, []} end},
+            %% do_publish_after_images 以真实 verdict 调 bind_version——直通。
+            {'bind_version', 2, fun(V, _) -> V end}
+        ]},
         {channel_ds, [
+            {'find_by_id', 2, fun(_, _) -> #{<<"status">> => 1} end},
             {'find_by_custom_id', 1, fun(<<"tech_daily">>) ->
                 #{<<"id">> => 11}
             end},
@@ -344,6 +381,7 @@ publish_message_accepts_custom_id_fallback_test_() ->
 get_channel_by_custom_id_includes_role_for_admin_test_() ->
     MockConfigs = [
         {channel_ds, [
+            {'find_by_id', 2, fun(_, _) -> #{<<"status">> => 1} end},
             {'find_by_custom_id', 1, fun(<<"tech_daily">>) ->
                 #{
                     <<"id">> => 11,
@@ -374,6 +412,7 @@ get_channel_by_custom_id_includes_role_for_admin_test_() ->
 get_channel_by_custom_id_checks_subscription_for_non_admin_test_() ->
     MockConfigs = [
         {channel_ds, [
+            {'find_by_id', 2, fun(_, _) -> #{<<"status">> => 1} end},
             {'find_by_custom_id', 1, fun(<<"tech_daily">>) ->
                 #{
                     <<"id">> => 11,
@@ -407,6 +446,7 @@ get_channel_by_custom_id_checks_subscription_for_non_admin_test_() ->
 get_channel_by_custom_id_checks_subscription_when_admin_role_unexpected_test_() ->
     MockConfigs = [
         {channel_ds, [
+            {'find_by_id', 2, fun(_, _) -> #{<<"status">> => 1} end},
             {'find_by_custom_id', 1, fun(<<"tech_daily">>) ->
                 #{
                     <<"id">> => 11,
@@ -464,6 +504,7 @@ get_channel_returns_error_when_repo_returns_non_map_payload_test_() ->
 get_channel_by_custom_id_returns_error_when_repo_returns_non_map_payload_test_() ->
     MockConfigs = [
         {channel_ds, [
+            {'find_by_id', 2, fun(_, _) -> #{<<"status">> => 1} end},
             {'find_by_custom_id', 1, fun(<<"tech_daily">>) -> [] end}
         ]},
         {channel_admin_ds, [
@@ -488,6 +529,7 @@ get_channel_by_custom_id_returns_error_when_repo_returns_non_map_payload_test_()
 get_channel_by_custom_id_returns_error_when_channel_id_invalid_test_() ->
     MockConfigs = [
         {channel_ds, [
+            {'find_by_id', 2, fun(_, _) -> #{<<"status">> => 1} end},
             {'find_by_custom_id', 1, fun(<<"tech_daily">>) ->
                 #{
                     <<"id">> => <<"11">>,
@@ -3985,6 +4027,7 @@ mark_as_read_falls_back_to_custom_id_when_decode_returns_unexpected_term_test_()
 
     MockConfigs = [
         {channel_ds, [
+            {'find_by_id', 2, fun(_, _) -> #{<<"status">> => 1} end},
             {'find_by_custom_id', 1, fun(<<"tech_daily">>) ->
                 #{<<"id">> => ChannelId}
             end},
@@ -4037,6 +4080,7 @@ mark_as_read_returns_error_when_custom_id_payload_invalid_after_decode_unexpecte
 
     MockConfigs = [
         {channel_ds, [
+            {'find_by_id', 2, fun(_, _) -> #{<<"status">> => 1} end},
             {'find_by_custom_id', 1, fun(<<"tech_daily">>) ->
                 #{<<"id">> => <<"invalid">>}
             end},

@@ -129,11 +129,13 @@ stream_bytes_and_revocation_test_() ->
 edge_source_gate_test_() ->
     {setup, fun stream_setup/0, fun stream_cleanup/1, fun(_) ->
         ?_test(begin
+            %% closeout：attachment_edge_redirect 已在 stream_setup 里
+            %% meck（passthrough），此处只重设期望即可，重复 meck:new 会
+            %% already_started 崩溃；卸载统一留给 stream_cleanup
             Mods = [
                 attachment_repo,
                 attachment_storage,
-                attachment_storage_garage,
-                attachment_edge_redirect
+                attachment_storage_garage
             ],
             [meck:new(M, [passthrough, no_link]) || M <- Mods],
             try
@@ -197,8 +199,23 @@ stream_setup() ->
     put(revoke_after_chunk, false),
     ok = meck:new(elib_pg, [passthrough, no_link]),
     meck:expect(elib_pg, with_conn, fun(F) -> F(test_connection) end),
-    %% T5 读取权威：assembly 已发布成品行（published_audio_tx 查询）
-    meck:expect(elib_pg, query, fun(_C, _Sql, _Args) -> {ok, [published_row()]} end),
+    %% T5 读取权威：assembly 已发布成品行（published_audio_tx 查询）；
+    %% edge_target 现行链路先核 direct winner 台账（verify_direct_winner_tx
+    %% 的 AS verified / direct_absence_tx 的 AS direct 两条 SELECT EXISTS），
+    %% 按 SQL 形态分发：verified=false → direct=false → 判定 legacy_derived，
+    %% 才会回落 attachment_edge_redirect 预签（本用例的期望路径）
+    meck:expect(elib_pg, query, fun(_C, Sql, _Args) ->
+        case
+            {
+                binary:match(Sql, <<" AS verified">>),
+                binary:match(Sql, <<" AS direct">>)
+            }
+        of
+            {nomatch, nomatch} -> {ok, [published_row()]};
+            {_, nomatch} -> {ok, [#{<<"verified">> => false}]};
+            _ -> {ok, [#{<<"direct">> => false}]}
+        end
+    end),
     ok = meck:new(attachment_artifact_reader, [non_strict, no_link]),
     meck:expect(attachment_artifact_reader, with_range, fun(_Row, Offset, Length, F) ->
         attachment_upload_spool:with_source(

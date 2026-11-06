@@ -4,34 +4,7 @@
 -include("eunit_setup.hrl").
 -include("error_code.hrl").
 
-seat_upload_target_preserves_credential_boundary_test() ->
-    Previous = application:get_env(imboy, base_url),
-    application:set_env(imboy, base_url, <<"https://api.example.test">>),
-    try
-        View = #{upload_ref => <<"unit-ref">>, upload => #{}},
-        Req = #{
-            path => <<"/api/v1/seat/enterprise/organizations/1/assets/presign">>,
-            bindings => #{org_id => <<"1">>}
-        },
-        {ok, #{upload := #{url := SeatUrl, method := <<"PUT">>}}} =
-            eb_enterprise_http:with_seat_upload_url(Req, 2, {ok, View}),
-        ?assertEqual(
-            <<"/api/v1/seat/enterprise/organizations/1/assets/presign?workspace_id=2&upload_ref=unit-ref">>,
-            SeatUrl
-        ),
-        {ok, #{upload := #{url := HumanUrl}}} = eb_enterprise_http:with_seat_upload_url(
-            Req#{path := <<"/api/v1/enterprise/organizations/1/assets/presign">>}, 2, {ok, View}
-        ),
-        ?assertEqual(
-            <<"https://api.example.test/api/v1/enterprise/organizations/1/assets/presign?workspace_id=2&upload_ref=unit-ref">>,
-            HumanUrl
-        )
-    after
-        case Previous of
-            {ok, Value} -> application:set_env(imboy, base_url, Value);
-            undefined -> application:unset_env(imboy, base_url)
-        end
-    end.
+%% C10（9f18d2b93）随网关 body-path 退役删除 with_seat_upload_url/3；坐席代理上传凭据边界合同由 direct 链套件覆盖。
 
 %% 独立冻结 Console 路径，旧 Human 路由的完整冻结仍由 cs_route_contract_tests 覆盖。
 seat_console_route_set_and_metadata_test() ->

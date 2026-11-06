@@ -15,6 +15,16 @@ mixed_purge() ->
     %% production guards re-enabled before the actual purge transaction.
     ok = elib_pg:with_tx(fun(Conn) ->
         {ok, _} = elib_pg:query(Conn, <<"SET LOCAL session_replication_role=replica">>, []),
+        %% 自愈：克隆库若被复用，上一 run 的固定 id 行会撞唯一键/attempts
+        %% 累积——先删后插保证幂等。
+        {ok, _} = elib_pg:execute(
+            Conn, <<"DELETE FROM enterprise_message WHERE id IN ($1,$2)">>, [Deferred, Ready]
+        ),
+        {ok, _} = elib_pg:execute(
+            Conn,
+            <<"DELETE FROM enterprise_direct_purge_wait WHERE item_kind='message' AND item_id IN ($1,$2)">>,
+            [Deferred, Ready]
+        ),
         {ok, _} = elib_pg:execute(
             Conn,
             <<

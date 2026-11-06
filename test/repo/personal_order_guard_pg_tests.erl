@@ -91,6 +91,11 @@ race(#{conn := C, server := Server, db := Db}) ->
 legacy(#{conn := C}) ->
     exec(C, <<"BEGIN">>),
     exec(C, <<"DROP TRIGGER trg_00_c2c_order_guard ON msg_store_staging">>),
+    %% Migration 256 added the forward source capture (AFTER INSERT) which also
+    %% refuses pre-guard rows without an accepted sequence. A legacy row by
+    %% definition predates both guards, so simulate that window as well; the
+    %% whole test runs inside BEGIN..ROLLBACK so the drop is transactional.
+    exec(C, <<"DROP TRIGGER trg_c2c_forward_source_capture ON msg_store_staging">>),
     ok = write(C, staging, 30, <<"legacy">>, null),
     apply_up(C),
     exec(C, <<"UPDATE msg_store_staging SET retry_count=retry_count+1 WHERE msg_id='legacy'">>),

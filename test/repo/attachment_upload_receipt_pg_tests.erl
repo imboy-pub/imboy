@@ -187,6 +187,18 @@ enterprise_admission(C) ->
     ),
     ?assertMatch({ok, [#{<<"ok">> := 1}]}, elib_pg:query(<<"SELECT 1 AS ok">>, [])),
     T = seed_enterprise(C, 981203, 3600),
+    %% Migration 268 tightened fn_v5_intent_eb_delete: an enterprise delete
+    %% intent is refused (23510) while the upload capability is still live.
+    %% Expire the capability first so the intent can be admitted; the
+    %% delete_intent lifecycle must still block session renewal below.
+    q(
+        C,
+        <<
+            "UPDATE enterprise_asset SET upload_expires_at=clock_timestamp()-interval '1 second'"
+            " WHERE id=981203"
+        >>,
+        []
+    ),
     q(C, <<"SELECT fn_v5_intent_eb_delete(981010,981011,981203,'test')">>, []),
     ?assertEqual(
         {error, session_not_renewable}, eb_pg_asset_meta:reserve_registered_put(981010, 981011, T)
@@ -585,10 +597,21 @@ enterprise_intent_orders(C, State) ->
         fun({First, Id}) ->
             D = seed_enterprise(C, Id, 3600),
             q(C, <<"BEGIN">>, []),
+            %% Migration 268: fn_v5_intent_eb_delete refuses (23510) an asset
+            %% whose upload capability is still live, while fn_v5_pin_eb_content
+            %% requires it live. Expire the capability at the right moment so
+            %% both lock-order scenarios stay exercisable: pin-first expires
+            %% only after the pin took its locks; intent-first expires before
+            %% the intent is issued.
+            Expire = <<
+                "UPDATE enterprise_asset SET upload_expires_at=clock_timestamp()-interval '1 second'"
+                " WHERE id=$1"
+            >>,
             {Next, Expected} =
                 case First of
                     pin ->
                         eb_pin(C, Id, D),
+                        q(C, Expire, [Id]),
                         {
                             fun(Tx) ->
                                 elib_pg:query(
@@ -600,6 +623,7 @@ enterprise_intent_orders(C, State) ->
                             success
                         };
                     intent ->
+                        q(C, Expire, [Id]),
                         q(C, <<"SELECT fn_v5_intent_eb_delete(981010,981011,$1,'test')">>, [Id]),
                         {fun(Tx) -> eb_pin(Tx, Id, D) end, <<"55000">>}
                 end,

@@ -4,12 +4,38 @@
 
 %% Dedicated, freshly migrated marker DB and unique private/public Garage buckets only.
 avatar_pg_garage_test_() ->
-    Run =
-        case os:getenv("C08_AVATAR_RUNTIME_ONLY") of
-            "1" -> fun run_runtime/1;
-            _ -> fun run/1
-        end,
-    {setup, fun setup/0, fun teardown/1, fun(S) -> {timeout, 240, ?_test(Run(S))} end}.
+    %% 共享全量裸跑不经 C08 专用车道：缺钉名 env 时在生成器入口让位
+    %% （先例：TALK_OWNED/W403_STORAGE 的入口 yield）；车道在场（C08
+    %% record 门，含 C08_AVATAR_RUNTIME_ONLY 分支）语义零删减，
+    %% env 在场但错值仍由 setup fail-closed。
+    case avatar_lane_env_set() of
+        true ->
+            Run =
+                case os:getenv("C08_AVATAR_RUNTIME_ONLY") of
+                    "1" -> fun run_runtime/1;
+                    _ -> fun run/1
+                end,
+            {setup, fun setup/0, fun teardown/1, fun(S) -> {timeout, 240, ?_test(Run(S))} end};
+        false ->
+            io:format(
+                user,
+                "C08_AVATAR_EUNIT_YIELD module=attach_direct_avatar_alias_pg_tests"
+                " missing_env=\"c08_alias_ lane\"~n",
+                []
+            ),
+            []
+    end.
+
+avatar_lane_env_set() ->
+    Db = os:getenv("T05_PG_DB"),
+    is_list(Db) andalso lists:prefix("c08_alias_", Db) andalso
+        lists:all(
+            fun(Name) ->
+                V = os:getenv(Name),
+                is_list(V) andalso V =/= ""
+            end,
+            ["C08_AVATAR_PRIVATE", "C08_AVATAR_PUBLIC", "A0_ENDPOINT", "A0_AK", "A0_SK"]
+        ).
 
 run_runtime(S) ->
     {EdgePort, Edge} = start_edge(),

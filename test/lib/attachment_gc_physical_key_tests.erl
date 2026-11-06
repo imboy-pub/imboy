@@ -1,33 +1,40 @@
-%% No PostgreSQL: SQL-aware projection mock plus an injected delete boundary.
-%% V3-20：disk 驱动退役，物理删除边界由测试桩注入（ack/SQL 投影/physical key
-%% 选择逻辑保持原断言形态），真实 provider 删除链由 garage 车道套件验收。
+%% No PostgreSQL：SQL 投影 mock + meck 拦截的 Garage 删除边界。
+%% V3-20 disk 退役：根与行迁移 garage，真实落盘删除改为 meck delete_snapshot。
 -module(attachment_gc_physical_key_tests).
 -include_lib("eunit/include/eunit.hrl").
 
 physical_key_override_delete_test_() ->
-    {timeout, 30, fun() -> with_fixture(<<"physical/winner.aac">>) end}.
+    {timeout, 30, fun() -> with_garage(<<"physical/winner.aac">>) end}.
 legacy_null_physical_key_delete_test_() ->
-    {timeout, 30, fun() -> with_fixture(null) end}.
+    {timeout, 30, fun() -> with_garage(null) end}.
 
-with_fixture(RawPhysicalKey) ->
+with_garage(RawPhysicalKey) ->
     undefined = whereis(elib_pg_meck),
-    Previous = application:get_env(imboy, attachment_storage_registry),
-    PreviousGarage = application:get_env(imboy, garage),
+    Previous = {
+        application:get_env(imboy, attachment_storage_registry),
+        application:get_env(imboy, garage)
+    },
     Tab = ets:new(physical_key_test, [public]),
     try
-        run_case(Tab, RawPhysicalKey)
+        run_garage(Tab, RawPhysicalKey)
     after
         try
             meck:unload(elib_pg)
         catch
             _:_ -> ok
         end,
-        restore_registry(Previous),
-        restore_garage(PreviousGarage),
+        try
+            %% V3-20 disk 退役：garage 删除面同样在收尾卸载，避免污染后续用例。
+            meck:unload(attachment_storage_garage)
+        catch
+            _:_ -> ok
+        end,
+        restore_registry(element(1, Previous)),
+        restore_garage(element(2, Previous)),
         ets:delete(Tab)
     end.
 
-run_case(Tab, RawPhysicalKey) ->
+run_garage(Tab, RawPhysicalKey) ->
     Ns = <<"physical-key-unit">>,
     Container = <<"capture">>,
     Logical = <<"logical/reference.aac">>,
@@ -36,16 +43,9 @@ run_case(Tab, RawPhysicalKey) ->
             null -> Logical;
             _ -> RawPhysicalKey
         end,
-    %% garage env 与 registry 根同 endpoint/container：worker 的 frozen_location
-    %% garage 分支校验签名一致性，缺此 env 会 location_unverified → AckOk=false
-    %% → 与桩的 done 裁决冲突（ack_rejected）。
-    GarageConfig = #{
-        endpoint => <<"https://physical-key-unit.invalid">>,
-        bucket => Container,
-        access_key => <<"physical-key-access">>,
-        secret_key => <<"physical-key-secret">>
-    },
-    ok = application:set_env(imboy, garage, GarageConfig),
+    %% V3-20 disk 退役：root 与 out_storage_driver 迁移 garage（endpoint 指向
+    %% 不可达测试地址，删除由下方 meck 拦截，不真发网络）。
+    Endpoint = <<"http://garage.invalid:3900">>,
     ok = application:set_env(imboy, attachment_storage_registry, #{
         version => 1,
         roots => #{
@@ -53,10 +53,12 @@ run_case(Tab, RawPhysicalKey) ->
                 driver => <<"garage">>,
                 namespace => Ns,
                 container => Container,
-                endpoint => <<"https://physical-key-unit.invalid">>
+                endpoint => Endpoint
             }
         }
     }),
+    %% garage 分支的 frozen_location 校验要求应用 env endpoint 与 root 相等。
+    ok = application:set_env(imboy, garage, #{endpoint => Endpoint}),
     {ok, Rec} = attachment_storage:resolve(Ns),
     Row = #{
         <<"out_path">> => Logical,
@@ -70,6 +72,13 @@ run_case(Tab, RawPhysicalKey) ->
     },
     ets:insert(Tab, {claims, 0}),
     ok = meck:new(elib_pg, [non_strict, no_link]),
+    %% V3-20 disk 退役：真实落盘删除改为 meck garage delete_snapshot，
+    %% 记录收到的冻结身份供物理键断言。
+    ok = meck:new(attachment_storage_garage, [non_strict, no_link]),
+    ok = meck:expect(attachment_storage_garage, delete_snapshot, fun(I) ->
+        ets:insert(Tab, {garage_identity, I}),
+        ok
+    end),
     ok = meck:expect(elib_pg, query, fun(conn, Sql0, Params) ->
         Sql = iolist_to_binary(Sql0),
         case binary:match(Sql, <<"FROM fn_v5_claim_ordinary($1)">>) of
@@ -90,13 +99,17 @@ run_case(Tab, RawPhysicalKey) ->
         conn,
         fun(_Ns, _Container, LogicalKey, Identity) ->
             ets:insert(Tab, {delete_snapshot, LogicalKey, maps:get(key, Identity)}),
-            %% 注入桩：模拟物理删除成功（V3-20 后不直连已退役 disk 驱动）。
-            ok
+            attachment_storage:delete_snapshot(Identity)
         end
     ),
     ?assertEqual([{ack, Logical, true}], ets:lookup(Tab, ack)),
     ?assertEqual([{delete_snapshot, Logical, Physical}], ets:lookup(Tab, delete_snapshot)),
-    ?assert(meck:validate(elib_pg)).
+    %% 物理键≠逻辑键时删物理键：garage 收到的冻结身份 key 必须等于物理键
+    %% （磁盘 enoent/保留断言随 disk 退役一并移除）。
+    [{garage_identity, Got}] = ets:lookup(Tab, garage_identity),
+    ?assertEqual(Physical, maps:get(key, Got)),
+    ?assert(meck:validate(elib_pg)),
+    ?assert(meck:validate(attachment_storage_garage)).
 
 %% Mimic the driver's selected-column map, not an always-complete fixture row.
 sql_projection(Sql, Row) ->
@@ -114,6 +127,6 @@ sql_projection(Sql, Row) ->
 
 restore_registry(undefined) -> application:unset_env(imboy, attachment_storage_registry);
 restore_registry({ok, Value}) -> application:set_env(imboy, attachment_storage_registry, Value).
-
-restore_garage(undefined) -> ok = application:unset_env(imboy, garage);
-restore_garage({ok, V}) -> ok = application:set_env(imboy, garage, V).
+%% V3-20 disk 退役：garage 应用 env 也纳入保存/恢复（frozen_location 校验依赖）。
+restore_garage(undefined) -> application:unset_env(imboy, garage);
+restore_garage({ok, Value}) -> application:set_env(imboy, garage, Value).

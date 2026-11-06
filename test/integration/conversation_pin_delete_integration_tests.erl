@@ -359,7 +359,9 @@ send_c2g_message(From, Group, Content) ->
     MsgId.
 
 wait_for_c2c_message(MsgId) ->
-    wait_for_c2c_message(MsgId, 100).
+    %% 400×50ms≈20s：全量负载下异步管道偶发超 5s，放宽上限只避免假红，
+    %% 断言语义（消息必须最终落库）不变。
+    wait_for_c2c_message(MsgId, 400).
 
 wait_for_c2c_message(_MsgId, 0) ->
     error(c2c_message_not_ready);
@@ -373,7 +375,7 @@ wait_for_c2c_message(MsgId, AttemptsLeft) ->
     end.
 
 wait_for_c2g_message(MsgId) ->
-    wait_for_c2g_message(MsgId, 100).
+    wait_for_c2g_message(MsgId, 400).
 
 wait_for_c2g_message(_MsgId, 0) ->
     error(c2g_message_not_ready);

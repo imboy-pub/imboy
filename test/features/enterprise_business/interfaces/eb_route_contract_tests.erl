@@ -55,9 +55,10 @@ tenant_literal_routes() ->
             <<"GET">>, <<"POST">>
         ]},
         {<<P/binary, "/conversations/:id/messages/:message_id/ack">>, ack_delivery, [<<"POST">>]},
-        %% CS-BE-01B：presign 路径承载 POST（签发）+ PUT（字节上传）两个用例
-        %% （同路径方法分派，零路由变更；见 eb_enterprise_actions 的 presign 条目）。
-        {<<P/binary, "/assets/presign">>, presign, [<<"POST">>, <<"PUT">>]},
+        %% C10（9f18d2b93）：CS-BE-01B 的 PUT 字节上传用例随 S3-only 直传退役
+        %% （invoke 归并 invoke_json，正文不过 BEAM）——presign 只剩 POST 签发，
+        %% 视图发 direct descriptor。
+        {<<P/binary, "/assets/presign">>, presign, [<<"POST">>]},
         {<<P/binary, "/assets/confirm">>, confirm_asset, [<<"POST">>]},
         {<<P/binary, "/assets/:id/content">>, asset_content, [<<"GET">>]},
         {<<P/binary, "/members/:uid/suspend">>, suspend_member, [<<"POST">>]},
@@ -74,7 +75,8 @@ seat_literal_routes() ->
     P = <<"/api/v1/seat/enterprise/organizations/:org_id">>,
     [
         {<<P/binary, "/conversations/:id/messages">>, conversation_messages, [<<"GET">>, <<"POST">>]},
-        {<<P/binary, "/assets/presign">>, presign, [<<"POST">>, <<"PUT">>]},
+        %% C10：PUT 字节上传用例退役（同 tenant 面），presign 仅 POST。
+        {<<P/binary, "/assets/presign">>, presign, [<<"POST">>]},
         {<<P/binary, "/assets/confirm">>, confirm_asset, [<<"POST">>]},
         {<<P/binary, "/assets/:id/content">>, asset_content, [<<"GET">>]}
     ].

@@ -21,7 +21,6 @@
 avatar_test_() ->
     {foreach, fun setup/0, fun cleanup/1, [
         fun app_subject_full_chain_confirmed/0,
-        fun publish_copies_to_public_and_recovers/0,
         fun register_idempotent_same_declaration/0,
         fun human_session_rejected_on_admin_face/0
     ]}.
@@ -173,92 +172,7 @@ app_subject_full_chain_confirmed() ->
     ?assertEqual(<<"application">>, maps:get(<<"kind">>, Subject)),
     ok.
 
-publish_copies_to_public_and_recovers() ->
-    {Key, {ok, #{attempt_id := No}}} = prepare_to_granted(),
-    {ok, #{state := <<"CONFIRMED">>}} = finalize_in_mock(Key, No),
-    ok = meck:new(attachment_worker_port, [passthrough, no_link]),
-    ok = meck:expect(
-        attachment_worker_port,
-        scan_external,
-        1,
-        fun(_) -> {ok, #{verified => true, sha256 => hex64(16#AA), size => 10}} end
-    ),
-    %% V3-13（G13）：发布是服务端跨桶 Copy（private winner → 公开桶），
-    %% 正文零过 BEAM——read_snapshot/put_object 回环不存在（负向断言）。
-    ok = meck:new(attachment_storage_garage, [passthrough, no_link]),
-    ok = meck:expect(
-        attachment_storage_garage,
-        copy_cross,
-        5,
-        fun(_Ns, _SB, _SK, TB, TK) ->
-            ?assertEqual(elib_oss:get_bucket(<<"public">>), TB),
-            ?assert(is_binary(TK) andalso byte_size(TK) > 0),
-            {ok, #{etag => <<"synthetic-etag">>}}
-        end
-    ),
-    ok = meck:new(elib_oss, [passthrough, no_link]),
-    try
-        %% 扫描摘要不符时不得发起公开 Copy。
-        ok = meck:expect(
-            attachment_worker_port,
-            scan_external,
-            1,
-            fun(_) -> {ok, #{verified => true, sha256 => hex64(16#BB), size => 10}} end
-        ),
-        ?assertEqual(
-            {error, avatar_proof_mismatch},
-            attach_direct_logic:publish_avatar(Key, ?APP, <<>>)
-        ),
-        ?assertEqual(0, meck:num_calls(attachment_storage_garage, copy_cross, '_')),
-        ok = meck:expect(
-            attachment_worker_port,
-            scan_external,
-            1,
-            fun(_) -> {ok, #{verified => true, sha256 => hex64(16#AA), size => 10}} end
-        ),
-        %% 发布前：公开桶零 BEAM 写操作（T35/I13：验证与发布许可前匿名不可读）
-        ?assertEqual(0, meck:num_calls(elib_oss, put_object, '_')),
-        {ok, Pub} = attach_direct_logic:publish_avatar(Key, ?APP, <<>>),
-        ?assertMatch(
-            <<"https://s3.imboy.pub/app990910/avatar/", _/binary>>,
-            maps:get(public_url, Pub)
-        ),
-        %% 恰好一次服务端 Copy；全程零 BEAM 正文回环
-        ?assertEqual(1, meck:num_calls(attachment_storage_garage, copy_cross, '_')),
-        ?assertEqual(0, meck:num_calls(attachment_storage_garage, read_snapshot, '_')),
-        ?assertEqual(0, meck:num_calls(elib_oss, put_object, '_'))
-    after
-        meck:unload(elib_oss),
-        meck:unload(attachment_storage_garage)
-    end,
-    %% 公开复制失败：可恢复错误（winner 未动；重试语义）
-    ok = meck:new(attachment_storage_garage, [passthrough, no_link]),
-    ok = meck:expect(
-        attachment_storage_garage,
-        copy_cross,
-        5,
-        fun(_Ns, _SB, _SK, _TB, _TK) -> {error, storage_down} end
-    ),
-    try
-        ?assertMatch(
-            {error, {publish_failed, _}},
-            attach_direct_logic:publish_avatar(Key, ?APP, <<>>)
-        ),
-        %% 失败不重试（一次授权一次请求）；不写错误头像引用
-        ?assertEqual(1, meck:num_calls(attachment_storage_garage, copy_cross, '_'))
-    after
-        meck:unload(attachment_storage_garage)
-    end,
-    %% 未 confirm 会话不可 publish
-    {ok, #{object_key := Key2}} = attach_direct_logic:register_application(
-        ?APP, ?ORG, <<"public">>, undefined, <<"avatar2.png">>
-    ),
-    ?assertEqual(
-        {error, not_confirmed},
-        attach_direct_logic:publish_avatar(Key2, ?APP, <<>>)
-    ),
-    meck:unload(attachment_worker_port),
-    ok.
+%% C08（525c85c33）publish_avatar 改 edge/alias 合同，copy_cross 公开复制已删除；新合同由 attach_direct_avatar_alias_pg_tests 覆盖。
 
 register_idempotent_same_declaration() ->
     %% T02 幂等键 = client_upload_id（undefined 无幂等，key 随机）

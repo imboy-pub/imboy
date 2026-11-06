@@ -47,6 +47,8 @@ final_audio_decl() ->
     #{
         <<"object_key">> => <<"u1/talk_record/r1/final.aac">>,
         <<"client_upload_id">> => <<"0f0e0d0c-0b0a-49f8-8a7b-6c5d4e3f2a1b">>,
+        %% f67fbe677 起 attachment_id 必填（T3 准入证明：客户端声明=服务端解析）。
+        <<"attachment_id">> => 190001,
         <<"sha256">> => hash64(),
         <<"byte_size">> => 1024,
         <<"sample_rate">> => 16000,

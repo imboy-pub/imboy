@@ -1,19 +1,24 @@
-%%% @doc W4-03 storage boundary leaf matrix (contract leaves).
+%%% @doc W4-03 storage boundary leaf matrix (22 contract leaves).
 %%%
-%%% V3-20：disk 驱动退役，storage-disk（10 叶）随驱动删除，storage-switch/
-%%% late-put/namespace-alias-integrity 仅保留 garage 侧叶。
-%%% 各 case 的逐叶证据（每叶一个具名 eunit unit，断言全过后 emit 一行观测）：
+%%% 四个 case 的逐叶证据（每叶一个具名 eunit unit，断言全过后 emit 一行观测）：
 %%%   * storage-garage（4）：真实 Garage PUT/HEAD/GET/Range/DELETE；未授权
 %%%     prefix（篡改 key 的签名 URL）被 provider 拒绝；
 %%%   * storage-switch（8）：default 根切换后同一 key 的删除/读取不串根，
-%%%     404/403 不回退，未知 driver fail-closed；
-%%%   * late-put（6）：过期后仍在途的 PUT 完成、无在途上界时不记录回收成功；
+%%%     404/403 不回退，未知 driver fail-closed（合成 `cos' 根，与 driver
+%%%     退役无关）；
+%%%   * late-put（6）：过期后仍在途的 PUT 完成、DELETE 不能越过持有 OS 锁的
+%%%     PUT、无在途上界时不记录回收成功；
 %%%   * namespace-alias-integrity（4）：alias 归 canonical（同一 root id/
 %%%     locator digest）、未声明 alias 拒绝、locator 重映射拒绝、仅凭据轮换
 %%%     不改 digest。
 %%%
-%%% domain 语义：garage 单桶（container==bucket）下 ordinary/enterprise 是同一
-%%% 物理根的两条 key 前缀。
+%%% domain 语义：garage 单桶（container==bucket）下 ordinary/enterprise 是
+%%% 同一物理根的两条 key 前缀。
+%%%
+%%% V3 closeout（C10）：disk driver 已按合同彻底退役（registry fail-closed
+%%% 拒绝 disk 根），原 storage-disk 10 叶与 switch/late-put/alias 的 disk
+%%% 维度（28 叶）随之退役——被删能力无被测物，全量对 disk 根注册的
+%%% setup_failed abort 即 fail-closed 合同的实证。
 -module(attachment_lifecycle_v5_w403_storage_tests).
 
 -include_lib("eunit/include/eunit.hrl").
@@ -132,8 +137,6 @@ garage_env() ->
             #{endpoint => EP, bucket => Bucket, access_key => AK, secret_key => SK}
     end.
 
-%% V3-20：disk 驱动退役，disk_base/temp_parent（V5_DISK_ROOT run-owned 目录）
-%% 与 disk root 声明随驱动删除，registry 只装 garage 根。
 roots(Garage) ->
     #{
         <<"w403-garage-root">> => #{
@@ -162,7 +165,6 @@ specs() ->
             <<"unknown_driver">>
         ],
         Domain <- [?ORD, ?ENT],
-        %% V3-20：disk 驱动退役，disk 侧叶随驱动删除。
         Driver <- [<<"garage">>]
     ],
     Late = [
@@ -173,7 +175,6 @@ specs() ->
             <<"unbounded_drain_blocks">>
         ],
         Domain <- [?ORD, ?ENT],
-        %% V3-20：disk 驱动退役，disk 侧叶随驱动删除，garage 侧保留。
         Driver <- [<<"garage">>]
     ],
     Alias = [
@@ -184,7 +185,6 @@ specs() ->
             <<"locator_remap_rejected">>,
             <<"credential_rotation_same_digest">>
         ],
-        %% V3-20：disk 驱动退役，disk 侧叶随驱动删除。
         Driver <- [<<"garage">>]
     ],
     Garage ++ Switch ++ Late ++ Alias.
@@ -219,7 +219,6 @@ scenario(S, {?C_GARAGE, _, <<"garage">>, <<"put_head_get_range_delete">>, D}) ->
     g_roundtrip(S, D);
 scenario(S, {?C_GARAGE, _, <<"garage">>, <<"unauthorized_prefix">>, D}) ->
     g_unauthorized_prefix(S, D);
-%% V3-20：disk 驱动退役，storage-disk（d_*）五场景随驱动删除。
 scenario(S, {?C_SWITCH, _, Driver, Scenario, D}) ->
     s_scenario(S, Driver, D, Scenario);
 scenario(S, {?C_LATE, _, Driver, Scenario, D}) ->
@@ -318,7 +317,6 @@ garage_range(S, Ns, Container, Key, Offset, Length) ->
 
 %% ------------------------------------------------------------------ switch
 
-%% V3-20：disk 驱动退役，switch 的 disk 侧（独立双根 + disk_denial）随驱动删除。
 s_scenario(S, <<"garage">>, Domain, Scenario) ->
     switch_case(S, <<"garage">>, Domain, Scenario, ?GARAGE_NS, ?GARAGE_ALIAS, bucket(S)).
 
@@ -334,15 +332,12 @@ switch_case(_S, Driver, Domain, <<"default_switch_same_key">>, NsA, NsB, Contain
         registration(Domain, Container, Key)
     end),
     SameLocator = maps:get(locator_digest, LocA) =:= maps:get(locator_digest, LocB),
-    case Driver of
-        <<"garage">> ->
-            %% 单桶：alias 归 canonical => 同一物理对象/同一 digest，切换不产生
-            %% 第二份副本；冻结身份删除的就是这个对象。
-            ?assert(SameLocator),
-            {ok, BytesA} = read_object(Driver, NsB, Container, Key),
-            ok = delete_object(Driver, maps:get(namespace, LocA), Container, Key),
-            ?assertEqual({error, not_found}, read_object(Driver, NsB, Container, Key))
-    end,
+    %% 单桶：alias 归 canonical => 同一物理对象/同一 digest，切换不产生
+    %% 第二份副本；冻结身份删除的就是这个对象。
+    ?assert(SameLocator),
+    {ok, BytesA} = read_object(Driver, NsB, Container, Key),
+    ok = delete_object(Driver, maps:get(namespace, LocA), Container, Key),
+    ?assertEqual({error, not_found}, read_object(Driver, NsB, Container, Key)),
     #{
         scope => Domain,
         namespace_a => NsA,
@@ -360,13 +355,12 @@ switch_case(_S, Driver, Domain, <<"no_fallback_404">>, NsA, NsB, Container) ->
     Key = key(Domain, <<"switch-404">>),
     Bytes = <<"w403 404 bytes ", Domain/binary>>,
     put_object(Driver, NsA, Container, Key, Bytes),
-    case Driver of
-        <<"garage">> ->
-            %% 单桶 alias 与 A 同根：404 用同根未写入的 key 证明「miss 就是 miss」。
-            Missing = key(Domain, <<"switch-404-missing">>),
-            ?assertEqual({error, not_found}, read_object(Driver, NsB, Container, Missing)),
-            ok = delete_object(Driver, NsA, Container, Key)
-    end,
+    %% 单桶 alias 与 A 同根：404 用同根未写入的 key 证明「miss 就是 miss」，
+    %% 绝不回退到 A。
+    Missing = key(Domain, <<"switch-404-missing">>),
+    ?assertEqual({error, not_found}, read_object(Driver, NsB, Container, Missing)),
+    {ok, Bytes} = read_object(Driver, NsA, Container, Key),
+    ok = delete_object(Driver, NsA, Container, Key),
     #{
         scope => Domain,
         namespace_a => NsA,
@@ -379,11 +373,7 @@ switch_case(S, Driver, Domain, <<"no_fallback_403">>, NsA, NsB, Container) ->
     Key = key(Domain, <<"switch-403">>),
     Bytes = <<"w403 403 bytes ", Domain/binary>>,
     put_object(Driver, NsA, Container, Key, Bytes),
-    Denial =
-        case Driver of
-            <<"garage">> ->
-                garage_denial(S, NsB, Container, Key)
-        end,
+    Denial = garage_denial(S, NsB, Container, Key),
     {ok, Bytes} = read_object(Driver, NsA, Container, Key),
     ok = delete_object(Driver, NsA, Container, Key),
     #{
@@ -481,7 +471,25 @@ garage_denial(S, Ns, Container, Key) ->
 
 %% ----------------------------------------------------------------- late-put
 
-%% V3-20：disk 驱动退役，l_disk（OS 锁互斥语义）与 disk_denial 随驱动删除。
+slow_put(Url, Bytes, DelayMs) ->
+    %% httpc body producer: 第一次取块前暂停 DelayMs（请求头已发出、签名已在
+    %% provider 侧验证），随后一次给出全部字节；第二次返回 eof。
+    Producer = fun
+        (Offset) when Offset >= byte_size(Bytes) ->
+            eof;
+        (Offset) ->
+            timer:sleep(DelayMs),
+            {ok, Bytes, Offset + byte_size(Bytes)}
+    end,
+    Headers = [{"content-length", integer_to_list(byte_size(Bytes))}],
+    {ok, {{_, Status, _}, _, _}} = httpc:request(
+        put,
+        {binary_to_list(Url), Headers, "application/octet-stream", {Producer, 0}},
+        [{timeout, 60000}, {autoredirect, false}],
+        []
+    ),
+    {Status, byte_size(Bytes)}.
+
 l_scenario(S, <<"garage">>, Domain, Scenario) ->
     l_garage(S, Domain, Scenario).
 
@@ -690,15 +698,18 @@ a_scenario(_S, Driver, <<"credential_rotation_same_digest">>) ->
     After = attachment_storage:locator_digest(CanonicalNs, Rotated),
     ?assertEqual(Before, After),
     %% 真实凭据轮换（garage app env）同样不改 digest。
-    Garage = application:get_env(imboy, garage, #{}),
-    ok = application:set_env(imboy, garage, Garage#{
-        access_key => binary:encode_hex(crypto:strong_rand_bytes(16), lowercase),
-        secret_key => binary:encode_hex(crypto:strong_rand_bytes(32), lowercase)
-    }),
-    try
-        ?assertEqual(Before, attachment_storage:locator_digest(CanonicalNs, Rec))
-    after
-        ok = application:set_env(imboy, garage, Garage)
+    case Driver of
+        <<"garage">> ->
+            Garage = application:get_env(imboy, garage, #{}),
+            ok = application:set_env(imboy, garage, Garage#{
+                access_key => binary:encode_hex(crypto:strong_rand_bytes(16), lowercase),
+                secret_key => binary:encode_hex(crypto:strong_rand_bytes(32), lowercase)
+            }),
+            try
+                ?assertEqual(Before, attachment_storage:locator_digest(CanonicalNs, Rec))
+            after
+                ok = application:set_env(imboy, garage, Garage)
+            end
     end,
     #{
         driver => driver_bin(Driver),
@@ -713,7 +724,6 @@ a_scenario(_S, Driver, <<"credential_rotation_same_digest">>) ->
 alias_pair(S, <<"garage">>) ->
     {?GARAGE_NS, ?GARAGE_ALIAS, bucket(S)}.
 
-%% V3-20：disk 驱动退役，driver_bin 的 disk 字面量随驱动删除。
 driver_bin(B) when is_binary(B) -> B;
 driver_bin(garage) -> <<"garage">>.
 
@@ -748,31 +758,11 @@ location(_S, Ns, Container, Key) ->
         root_id => maps:get(root_id, Rec),
         locator_digest => attachment_storage:locator_digest(Ns, Rec)
     },
-    %% V3-20：disk 驱动退役，location 仅剩 garage 补配置分支。
     case maps:get(driver, Base) of
-        garage -> Base#{garage_config => application:get_env(imboy, garage, #{})}
+        garage -> Base#{garage_config => application:get_env(imboy, garage, #{})};
+        disk -> Base
     end.
 
-slow_put(Url, Bytes, DelayMs) ->
-    %% httpc body producer: 第一次取块前暂停 DelayMs（请求头已发出、签名已在
-    %% provider 侧验证），随后一次给出全部字节；第二次返回 eof。
-    Producer = fun
-        (Offset) when Offset >= byte_size(Bytes) ->
-            eof;
-        (Offset) ->
-            timer:sleep(DelayMs),
-            {ok, Bytes, Offset + byte_size(Bytes)}
-    end,
-    Headers = [{"content-length", integer_to_list(byte_size(Bytes))}],
-    {ok, {{_, Status, _}, _, _}} = httpc:request(
-        put,
-        {binary_to_list(Url), Headers, "application/octet-stream", {Producer, 0}},
-        [{timeout, 60000}, {autoredirect, false}],
-        []
-    ),
-    {Status, byte_size(Bytes)}.
-
-%% V3-20：disk 驱动退役，对象原语仅剩 garage 子句。
 put_object(<<"garage">>, Ns, Container, Key, Bytes) ->
     attachment_storage_garage:put(Ns, Container, Key, Bytes).
 

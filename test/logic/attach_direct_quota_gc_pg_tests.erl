@@ -30,6 +30,11 @@ setup() ->
     Booted = eunit_runner:eunit_setup(),
     State = #{booted => Booted, before_env => Before},
     try
+        %% 自净仅限无守卫的 live 会话表：迁移 270 跨域守卫（23510 physical
+        %% tombstone permanent）令 attach_direct_cleanup / attachment 行不可
+        %% DELETE——清理账残留由 cleanup_claim_ack_flow 的命名空间断言 +
+        %% 龄期排序吸收。
+        elib_pg:query(<<"DELETE FROM attach_pending WHERE creator_user_id = $1">>, [?UID]),
         garage_apply(),
         State
     catch
@@ -40,11 +45,10 @@ setup() ->
 
 cleanup(#{booted := Booted, before_env := Before}) ->
     try
-        elib_pg:query(
-            <<"DELETE FROM attach_direct_cleanup WHERE object_key LIKE 'u990702/%'">>, []
-        ),
+        %% 迁移 270 跨域守卫（23510 physical tombstone permanent）令
+        %% attach_direct_cleanup / attachment 行不可 DELETE——DELETE 被
+        %% elib_pg 收敛为 {error,_}，只清无守卫的 attach_pending。
         elib_pg:query(<<"DELETE FROM attach_pending WHERE creator_user_id = $1">>, [?UID]),
-        elib_pg:query(<<"DELETE FROM attachment WHERE creator_user_id = $1">>, [?UID]),
         eunit_runner:eunit_cleanup(Booted)
     after
         [
@@ -154,7 +158,9 @@ gc_claim_after_winner_rejected() ->
 
 gc_claim_then_winner_rejected() ->
     {Key, No1} = new_session(hex64(16#B1)),
-    {ok, #{attempt_id := No2}} = attach_direct_logic:renew_grant(Key, hex64(16#B2)),
+    %% C08 起期望值在 declare 冻结：renew 必须同 sha（幂等同值，异值
+    %% expected_conflict）。proof sha（B3）与 expected 是两回事，保持独立。
+    {ok, #{attempt_id := No2}} = attach_direct_logic:renew_grant(Key, hex64(16#B1)),
     bring_to_proof_verified(Key, No2, hex64(16#B3)),
     %% GC claim 先提交
     ?assertEqual(
@@ -194,7 +200,8 @@ gc_claim_then_winner_rejected() ->
 
 cancel_captures_physical_identities() ->
     {Key, No} = new_session(hex64(16#C1)),
-    {ok, #{attempt_id := No2}} = attach_direct_logic:renew_grant(Key, hex64(16#C2)),
+    %% 同上：expected 冻结后 renew 必须与 declare 同 sha。
+    {ok, #{attempt_id := No2}} = attach_direct_logic:renew_grant(Key, hex64(16#C1)),
     ok = cancel(Key),
     %% staging+candidate ×2 attempts 全部入账（去重后）
     {ok, Rows} = elib_pg:query(
@@ -237,20 +244,38 @@ session_quota_fail_closed() ->
 cleanup_claim_ack_flow() ->
     {Key, _No} = new_session(hex64(16#E1)),
     ok = cancel(Key),
-    %% 龄期预算：新行不可立即 claim
-    ?assertEqual(
-        {ok, []},
-        elib_pg:query(<<"SELECT * FROM fn_dv1_cleanup_claim($1)">>, [elib_uuid:gen_v7()])
+    %% 270 跨域守卫（23510 physical tombstone permanent）令清理账行不可
+    %% DELETE：中断运行留下的 ready 残留常驻全局队列（claim 按 created_at
+    %% 取最老一行）。龄期预算断言因此收敛到本 run 命名空间——本 run 新行
+    %% created_at 最新，不被立即领走。
+    {ok, [#{<<"target_namespace">> := OwnNs}]} =
+        elib_pg:query(
+            <<
+                "SELECT target_namespace FROM attach_direct_cleanup"
+                " WHERE object_key=$1 ORDER BY created_at DESC LIMIT 1"
+            >>,
+            [Key]
+        ),
+    {ok, Claimed0} = elib_pg:query(<<"SELECT * FROM fn_dv1_cleanup_claim($1)">>, [
+        elib_uuid:gen_v7()
+    ]),
+    ?assert(
+        lists:all(
+            fun(R) -> maps:get(<<"out_namespace">>, R) =/= OwnNs end,
+            Claimed0
+        )
     ),
+    %% 龄期预算：本 run 行置为一年前（immutable 守卫允许非身份列 UPDATE），
+    %% 循环 claim 直到领到本 run 行——先前 run 同样 1y 龄期的行 created_at
+    %% 更早会先被领走，每次被领都 +1 attempts（<8 才可领），有限步内退役。
     {ok, _} = elib_pg:query(
         <<
-            "UPDATE attach_direct_cleanup SET created_at = now() - interval '120 seconds'"
+            "UPDATE attach_direct_cleanup SET created_at = now() - interval '1 year'"
             " WHERE object_key=$1 RETURNING 1"
         >>,
         [Key]
     ),
-    T1 = elib_uuid:gen_v7(),
-    {ok, [#{<<"out_id">> := Id}]} = elib_pg:query(<<"SELECT * FROM fn_dv1_cleanup_claim($1)">>, [T1]),
+    {T1, Id} = claim_until_own(OwnNs, 256),
     %% lease 互斥语义：同一行不会被再次发出（其余 aged 行可被后续 claim 领走）
     {ok, All2} = elib_pg:query(<<"SELECT * FROM fn_dv1_cleanup_claim($1)">>, [elib_uuid:gen_v7()]),
     ?assert(lists:all(fun(R) -> maps:get(<<"out_id">>, R) =/= Id end, All2)),
@@ -264,3 +289,17 @@ cleanup_claim_ack_flow() ->
         elib_pg:query(<<"SELECT fn_dv1_cleanup_ack($1,$2,true)">>, [Id, T1])
     ),
     ok.
+
+%% @doc 循环 claim 直到领到本 run 命名空间的行；返回 {Token, Id}。
+claim_until_own(_OwnNs, 0) ->
+    erlang:error(claim_own_row_not_reached);
+claim_until_own(OwnNs, N) ->
+    Token = elib_uuid:gen_v7(),
+    case elib_pg:query(<<"SELECT * FROM fn_dv1_cleanup_claim($1)">>, [Token]) of
+        {ok, [#{<<"out_id">> := Id, <<"out_namespace">> := OwnNs}]} ->
+            {Token, Id};
+        {ok, _} ->
+            claim_until_own(OwnNs, N - 1);
+        {error, Reason} ->
+            erlang:error({cleanup_claim_failed, Reason})
+    end.

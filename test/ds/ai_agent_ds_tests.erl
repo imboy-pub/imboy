@@ -383,7 +383,12 @@ update_persists_extended_fields_test_() ->
 update_syncs_avatar_when_present_test_() ->
     ?WITH_MECKS(
         [
-            {elib_pg, [{'with_tx', 1, fun(F) -> F(fake_conn) end}]},
+            {elib_pg, [
+                {'with_tx', 1, fun(F) -> F(fake_conn) end},
+                %% legacy_avatar_tx 现行实现（无上传凭证时）会先直查 user 表
+                %% 确认 avatar 已存储——拦掉该 SQL，返回命中一行，放行同步路径
+                {'query', 3, fun(_Conn, _Sql, _Args) -> {ok, [#{<<"?column">> => 1}]} end}
+            ]},
             {user_repo, [{'update_tx', 3, fun(_, _, _) -> {ok, 1} end}]},
             {ai_agent_repo, [
                 {'patch_tx', 3, fun(_Conn, _Uid, _Data) ->

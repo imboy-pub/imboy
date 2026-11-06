@@ -9,7 +9,13 @@ unavailable_database_keeps_worker_alive_test() ->
     meck:new(epgsql, [non_strict, no_link, passthrough]),
     try
         meck:expect(epgsql, connect, fun(_) -> error(noproc) end),
-        {ok, Pid} = attachment_direct_cleanup_worker:start_link(),
+        Pid =
+            case attachment_direct_cleanup_worker:start_link() of
+                {ok, P} -> P;
+                %% 全量 eunit：eunit_setup 已启动 imboy app，imboy_sup 挂有同名
+                %% 常胜 worker——收养现存进程（meck 进程全局，tick 同样命中）。
+                {error, {already_started, P}} -> P
+            end,
         Pid ! tick,
         timer:sleep(50),
         ?assert(is_process_alive(Pid)),

@@ -423,10 +423,17 @@ a07_asset_retained_longer_than_message_blocks_purge() ->
         MessageId = maps:get(message_id, Appended),
         AssetId = attach_asset(Scope, MessageId, Now + 86400),
         Result = eb_retention_app:purge_batch(Org, #{workspace_id => Ws, now => Now}),
-        ?assertMatch({error, {sql, _, _}}, Result),
-        {error, {sql, Code, Constraint}} = Result,
-        ?assertEqual(<<"23514">>, Code),
-        ?assertEqual(<<"trg_enterprise_asset_purge_guard">>, Constraint),
+        %% C08 起 purge 在删除元数据前先落盘对象意图（enqueue_in →
+        %% fn_v5_intent_eb_delete）：附件 retain_until 未到时意图被 23510
+        %% 拒绝、整批回滚。与旧 trg_enterprise_asset_purge_guard(23514)
+        %% 同为 fail-closed，只是拦截点前移到意图阶段。
+        ?assertMatch(
+            {error,
+                {object_intent_failed,
+                    {error, error, <<"23510">>, undefined,
+                        <<"v5 intent enterprise retention active">>, _}}},
+            Result
+        ),
         ?assertEqual(1, alive_message(Org, Ws, MessageId)),
         ?assertEqual(1, alive_asset(Org, Ws, AssetId))
     after
