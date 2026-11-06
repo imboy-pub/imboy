@@ -7,10 +7,10 @@
 
 ## 1. 版本号机制 / Versioning
 
-**单一真相源：`imboy/VERSION`**（当前 `1.0.0-rc.1`）。
+**单一真相源：`imboy/VERSION`**（当前 `1.0.0-alpha.84`）。
 - `Makefile` 的 `PROJECT_VERSION` 读取 `VERSION`（`$(shell cat VERSION)`）。
 - `deploy/.env.example` 的 `IMBOY_VERSION` 与之保持一致；compose 镜像 tag 默认 `${IMBOY_VERSION}`。
-- `relx.config` 的版本号需手动与 `VERSION` 对齐；CI 打包时用 `RELX_REL_VSN=$(cat VERSION) make rel` 覆盖兜底。
+- `relx.config` 的版本号需手动与 `VERSION` 对齐（release 打包版本以 `relx.config` 为准）；`RELX_REL_VSN` 环境变量实测不生效（erlang.mk 直接传本文件给 relx），CI 亦不使用该变量。
 
 **升级版本（bump）**：改 `VERSION` 一处 → 同步 `relx.config` → 打 tag `v$(cat VERSION)`。
 

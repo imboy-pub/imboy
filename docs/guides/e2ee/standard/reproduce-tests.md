@@ -22,7 +22,7 @@
 | Erlang/OTP | 28+ |
 | PostgreSQL | 18+，需扩展 `pg_jieba` / `postgis` / `timescaledb` / `pgcrypto` |
 | 本地库 | 项目使用 docker 容器 `imboy_pg18`（端口 4323） |
-| 配置 | `config/sys.local.config`（由 `sys.local.config.example` 复制） |
+| 配置 | `config/sys.local.config`（由 `sys.config.example` 复制） |
 
 ### 命令
 
