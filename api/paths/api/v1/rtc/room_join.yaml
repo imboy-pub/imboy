@@ -8,9 +8,13 @@ post:
   description: |
     ## 中文 / English
     校验成员资格（group=群成员；c2c=好友）后签发 LiveKit 接入 token。
+    c2c 受 rtc 总开关控制；group 另外要求 rtc_group 编入并启用，且 rtc 开启。
+    phase1_delivery 交付一对一通话并锁定 rtc_group；功能关闭沿用错误码 5190。
     媒体面由 LiveKit SFU 承载，本接口只发入场券（有效期 600s）。
     Verifies membership (group member / friend) and issues a LiveKit access
     token (valid 600s). Media is carried by the LiveKit SFU.
+    C2C calls require rtc. Group calls also require rtc_group to be compiled and enabled.
+    The phase1_delivery profile keeps rtc_group locked; disabled features use existing error 5190.
   operationId: rtcRoomJoin
   requestBody:
     required: true

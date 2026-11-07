@@ -264,6 +264,12 @@ def source_catalog(repo: Path) -> dict:
         raise ManifestError("cannot bootstrap builtin feature keys from imboy_feature.erl")
     features = {"core", "e2ee"}
     features.update(re.findall(r"\b[a-z][a-z0-9_]*\b", builtin_match.group(1)))
+    # RTC 等非插件域同样来自 feature_names/0。全新 checkout 无 beam 时
+    # 不能漏掉 Phase2Domains，否则合法的 rtc manifest 会被判成 unknown。
+    phase2_match = re.search(r"Phase2Domains\s*=\s*\[([^\]]*)\]", feature_source)
+    if phase2_match is None:
+        raise ManifestError("cannot bootstrap phase2 feature keys from imboy_feature.erl")
+    features.update(re.findall(r"\b[a-z][a-z0-9_]*\b", phase2_match.group(1)))
     for values in plugin_features:
         features.update(re.findall(r"\b[a-z][a-z0-9_]*\b", values))
     order_match = re.search(r"Ordered\s*=\s*\[(.*?)\],\s*Extra", feature_source, re.S)

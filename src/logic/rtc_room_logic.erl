@@ -21,14 +21,22 @@
 %% @doc 加入 RTC 房间：校验资格并签发 LiveKit token
 %% Join an RTC room: verify membership and issue a LiveKit access token
 %% Kind: <<"group">> | <<"c2c">>
-%% @returns {ok, #{ws_url, token, room_name}} | {error, binary()}
--spec join(integer(), binary(), binary(), integer()) -> {ok, map()} | {error, binary()}.
+%% @returns {ok, #{ws_url, token, room_name}} | {error, binary() | feature_disabled}
+-spec join(integer(), binary(), binary(), integer()) ->
+    {ok, map()} | {error, binary() | feature_disabled}.
 join(Uid, Did, <<"group">> = Kind, Gid) ->
-    case group_member_ds:is_member(Gid, Uid) of
+    %% 群通话须单独编入并启用 rtc_group，同时受 RTC 总开关约束。
+    %% 在成员查询与 token 签发前拒绝，避免仅隐藏客户端入口。
+    case imboy_feature:enabled(rtc) andalso imboy_feature:enabled(rtc_group) of
         true ->
-            build_grant(Uid, Did, room_name(Kind, Gid), interactive_perms());
+            case group_member_ds:is_member(Gid, Uid) of
+                true ->
+                    build_grant(Uid, Did, room_name(Kind, Gid), interactive_perms());
+                false ->
+                    {error, <<"不是群成员，无权加入群通话"/utf8>>}
+            end;
         false ->
-            {error, <<"不是群成员，无权加入群通话"/utf8>>}
+            {error, feature_disabled}
     end;
 join(Uid, Did, <<"c2c">> = Kind, PeerUid) ->
     case friend_ds:is_friend(Uid, PeerUid) of

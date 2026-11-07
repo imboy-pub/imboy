@@ -259,6 +259,8 @@ request_shape_meta_catalog() ->
 dependencies(channel_discover) -> [channel];
 dependencies(channel_invitation) -> [channel];
 dependencies(channel_order) -> [channel];
+%% 群通话是 RTC 的独立子能力；一对一交付只选择 rtc。
+dependencies(rtc_group) -> [rtc];
 %% EB-10：客服（customer_service）复用企业业务的所有权与真源
 %% （enterprise_business_facade 的客户/会话/消息/附件），不得「先有客服、
 %% 后补企业底座」。生成器 validate/3 据此在**生成期**拒绝「选了

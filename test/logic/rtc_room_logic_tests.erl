@@ -10,12 +10,21 @@
 -define(TEST_SECRET, <<"testsecret_at_least_32_chars_long_x">>).
 
 setup() ->
+    PreviousLivekit = application:get_env(imboy, livekit),
     livekit_env_set(),
+    meck:new(imboy_feature, [passthrough]),
+    rtc_features(true, true),
     meck:new(group_member_ds, [passthrough]),
     meck:new(friend_ds, [passthrough]),
     meck:new(user_ds),
     meck:expect(user_ds, find_by_id, fun(_Uid, _Col) -> #{<<"nickname">> => <<"测试用户"/utf8>>} end),
-    ok.
+    PreviousLivekit.
+
+rtc_features(Rtc, RtcGroup) ->
+    meck:expect(imboy_feature, enabled, fun
+        (rtc) -> Rtc;
+        (rtc_group) -> RtcGroup
+    end).
 
 livekit_env_set() ->
     application:set_env(imboy, livekit, #{
@@ -24,16 +33,23 @@ livekit_env_set() ->
         api_secret => ?TEST_SECRET
     }).
 
-cleanup(_) ->
+cleanup(PreviousLivekit) ->
+    meck:unload(imboy_feature),
     meck:unload(group_member_ds),
     meck:unload(friend_ds),
     meck:unload(user_ds),
+    case PreviousLivekit of
+        {ok, Config} -> application:set_env(imboy, livekit, Config);
+        undefined -> application:unset_env(imboy, livekit)
+    end,
     ok.
 
 rtc_room_logic_test_() ->
     {setup, fun setup/0, fun cleanup/1, [
         fun test_group_member_ok/0,
         fun test_group_non_member_rejected/0,
+        fun test_group_feature_disabled_before_membership/0,
+        fun test_group_parent_disabled_before_membership/0,
         fun test_c2c_friend_ok/0,
         fun test_c2c_stranger_rejected/0,
         fun test_c2c_room_name_symmetric/0,
@@ -57,8 +73,35 @@ test_group_non_member_rejected() ->
 
 test_c2c_friend_ok() ->
     meck:expect(friend_ds, is_friend, fun(1, 2) -> true end),
-    {ok, Grant} = rtc_room_logic:join(1, <<"did1">>, <<"c2c">>, 2),
-    ?assertEqual(<<"rtc_c2c_1_2">>, maps:get(<<"room_name">>, Grant)).
+    rtc_features(true, false),
+    try
+        {ok, Grant} = rtc_room_logic:join(1, <<"did1">>, <<"c2c">>, 2),
+        ?assertEqual(<<"rtc_c2c_1_2">>, maps:get(<<"room_name">>, Grant))
+    after
+        rtc_features(true, true)
+    end.
+
+test_group_feature_disabled_before_membership() ->
+    assert_group_disabled_before_membership(true, false).
+
+test_group_parent_disabled_before_membership() ->
+    assert_group_disabled_before_membership(false, true).
+
+assert_group_disabled_before_membership(Rtc, RtcGroup) ->
+    rtc_features(Rtc, RtcGroup),
+    meck:reset(group_member_ds),
+    meck:expect(group_member_ds, is_member, fun(_, _) ->
+        erlang:error(unexpected_membership_lookup)
+    end),
+    try
+        ?assertEqual(
+            {error, feature_disabled},
+            rtc_room_logic:join(1, <<"did1">>, <<"group">>, 100)
+        ),
+        ?assertNot(meck:called(group_member_ds, is_member, ['_', '_']))
+    after
+        rtc_features(true, true)
+    end.
 
 test_c2c_stranger_rejected() ->
     meck:expect(friend_ds, is_friend, fun(1, 999) -> false end),

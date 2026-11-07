@@ -714,9 +714,10 @@ meta_view_returns_profiles_defaults_and_edit_options_test_() ->
                 %% GZAPP-02/G6：project 为 Builtin 末位（字面量契约，
                 %% 与 src/lib/imboy_feature.erl 的 Builtin 同序）
                 <<"project">>,
-                %% Q02 非一期域键（字面量契约，与 Builtin 后的
-                %% Phase2Domains 同序）：二期七域 + 钱包/支付。
+                %% 历史二期域目录（字面量契约，与 Builtin 后的
+                %% Phase2Domains 同序）；RTC 群子能力单独声明。
                 <<"rtc">>,
+                <<"rtc_group">>,
                 <<"live_room">>,
                 <<"ai_assistant">>,
                 <<"agent_hub">>,
@@ -2350,7 +2351,7 @@ phase1_delivery_full_open_overrides_still_locked_test_() ->
         %% 被锁域在"全开覆盖"下仍为 false。
         lists:foreach(
             fun(K) -> ?assertEqual(false, maps:get(K, Features)) end,
-            [e2ee, rtc, live_room, bot_webhook, ai_assistant, agent_hub, mcp] ++
+            [e2ee, rtc_group, live_room, bot_webhook, ai_assistant, agent_hub, mcp] ++
                 [
                     wallet,
                     channel_discover,
@@ -2369,6 +2370,7 @@ phase1_delivery_full_open_overrides_still_locked_test_() ->
                 appeal,
                 enterprise_business,
                 customer_service,
+                rtc,
                 moment,
                 location,
                 group_vote,
@@ -2395,6 +2397,8 @@ phase1_delivery_unknown_keys_default_false_test_() ->
         ?assertEqual(true, maps:get(channel, Features)),
         ?assertEqual(true, maps:get(moment, Features)),
         ?assertEqual(true, maps:get(location, Features)),
+        ?assertEqual(true, maps:get(rtc, Features)),
+        ?assertEqual(false, maps:get(rtc_group, Features)),
         ?assertEqual(false, maps:get(project, Features)),
         ?assertEqual(false, maps:get(e2ee, Features))
     end).
@@ -2414,3 +2418,37 @@ community_full_open_overrides_respected_test_() ->
         ?assertEqual(true, maps:get(rtc, Features)),
         ?assertEqual(true, maps:get(mcp, Features))
     end).
+
+phase1_delivery_rtc_explicit_off_is_respected_test_() ->
+    ?TEST_SIMPLE(fun() ->
+        Policy = imboy_policy:effective_view_from_configs(
+            phase1_delivery, #{}, #{rtc => false, rtc_group => true}
+        ),
+        Features = maps:get(<<"features">>, Policy),
+        ?assertEqual(false, maps:get(<<"rtc">>, Features)),
+        ?assertEqual(false, maps:get(<<"rtc_group">>, Features))
+    end).
+
+rtc_group_parent_and_delivery_lock_test_() ->
+    %% 模拟已编入群能力的组合包，证明拒绝来自父级/交付锁，
+    %% 而不是当前一对一 manifest 恰好未编入 rtc_group。
+    ?WITH_MECKS(
+        [{imboy_feature, [{compiled, 1, fun(_) -> true end}]}],
+        fun() ->
+            GroupEnabled = imboy_policy:effective_view_from_configs(
+                community, #{}, #{rtc => true, rtc_group => true}
+            ),
+            ParentDisabled = imboy_policy:effective_view_from_configs(
+                community, #{}, #{rtc => false, rtc_group => true}
+            ),
+            DeliveryLocked = imboy_policy:effective_view_from_configs(
+                phase1_delivery, #{}, #{rtc => true, rtc_group => true}
+            ),
+            ?assertEqual(true, maps:get(<<"rtc_group">>, maps:get(<<"features">>, GroupEnabled))),
+            ?assertEqual(
+                false, maps:get(<<"rtc_group">>, maps:get(<<"features">>, ParentDisabled))
+            ),
+            ?assertEqual(true, maps:get(<<"rtc">>, maps:get(<<"features">>, DeliveryLocked))),
+            ?assertEqual(false, maps:get(<<"rtc_group">>, maps:get(<<"features">>, DeliveryLocked)))
+        end
+    ).

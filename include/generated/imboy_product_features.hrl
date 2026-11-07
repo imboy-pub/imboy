@@ -9,6 +9,7 @@
 -define(IMBOY_FEATURE_GROUP_VOTE, true).
 -define(IMBOY_FEATURE_LOCATION, true).
 -define(IMBOY_FEATURE_MOMENT, true).
--define(IMBOY_PRODUCT_FEATURE_MANIFEST_HASH, <<"sha256:022090cbdac05698250905a34bad19b5be2b4c397b54cd5604ec880e6f8a9ebf">>).
--define(IMBOY_COMPILED_FEATURES, [channel, core, customer_service, enterprise_business, group_schedule, group_task, group_vote, location, moment]).
--define(IMBOY_PRODUCT_FEATURE_CONTRACT, #{<<"base_ref">> => <<"imboy-feature-inventory-v1">>, <<"compiled_features">> => [<<"channel">>, <<"core">>, <<"customer_service">>, <<"enterprise_business">>, <<"group_schedule">>, <<"group_task">>, <<"group_vote">>, <<"location">>, <<"moment">>], <<"manifest_hash">> => <<"sha256:022090cbdac05698250905a34bad19b5be2b4c397b54cd5604ec880e6f8a9ebf">>, <<"product_id">> => <<"imboy">>, <<"profile">> => <<"phase1_delivery">>, <<"schema_version">> => 1, <<"selected_features">> => [<<"channel">>, <<"customer_service">>, <<"enterprise_business">>, <<"group_schedule">>, <<"group_task">>, <<"group_vote">>, <<"location">>, <<"moment">>]}).
+-define(IMBOY_FEATURE_RTC, true).
+-define(IMBOY_PRODUCT_FEATURE_MANIFEST_HASH, <<"sha256:6169ea829d530502a4a92ccde65b8d515984257548f04eb21c7bf98de3cf71b2">>).
+-define(IMBOY_COMPILED_FEATURES, [channel, core, customer_service, enterprise_business, group_schedule, group_task, group_vote, location, moment, rtc]).
+-define(IMBOY_PRODUCT_FEATURE_CONTRACT, #{<<"base_ref">> => <<"imboy-feature-inventory-v1">>, <<"compiled_features">> => [<<"channel">>, <<"core">>, <<"customer_service">>, <<"enterprise_business">>, <<"group_schedule">>, <<"group_task">>, <<"group_vote">>, <<"location">>, <<"moment">>, <<"rtc">>], <<"manifest_hash">> => <<"sha256:6169ea829d530502a4a92ccde65b8d515984257548f04eb21c7bf98de3cf71b2">>, <<"product_id">> => <<"imboy">>, <<"profile">> => <<"phase1_delivery">>, <<"schema_version">> => 1, <<"selected_features">> => [<<"channel">>, <<"customer_service">>, <<"enterprise_business">>, <<"group_schedule">>, <<"group_task">>, <<"group_vote">>, <<"location">>, <<"moment">>, <<"rtc">>]}).

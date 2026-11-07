@@ -314,13 +314,11 @@ feature_names() ->
     %%   （admin workspace 概览/资源计数仍引用），裁剪面只到 API handler
     %%   与路由（compiled_routes 运行时过滤）。
     Builtin = [bot_webhook, appeal, enterprise_business, customer_service, project],
-    %% 非一期域键（Q02/主计划 §3）：二期七域 RTC/live_room/Bot 产品/AI
-    %% 助手/Agent Hub/MCP/E2EE（e2ee 在 CoreFixed），加一期默认不承诺的
-    %% 钱包/支付域（wallet）。尚未挂物理插件的纯
-    %% feature 键——路由门（route_feature/3）与运行时开关（imboy_policy）
-    %% 先于插件化存在；phase1_delivery 预设把它们全部压 false 并交付锁
-    %% （delivery_locked_features/1）。
-    Phase2Domains = [rtc, live_room, ai_assistant, agent_hub, mcp, wallet],
+    %% 历史二期域目录（Q02）：RTC 一对一已纳入 phase1_delivery；群通话
+    %% rtc_group 依赖 rtc，须在 manifest 单独选择，且仍受交付锁约束。
+    %% rtc 保留运行时域语义；rtc_group 不在 RUNTIME_DOMAIN_FEATURES，
+    %% 未编入客户端合同的群通话不得被运行时配置打开。其余域保持原交付边界。
+    Phase2Domains = [rtc, rtc_group, live_room, ai_assistant, agent_hub, mcp, wallet],
     CoreFixed ++ Ordered ++ Extra ++ Builtin ++ Phase2Domains.
 
 -spec normalize_feature_key(feature()) -> atom() | undefined.

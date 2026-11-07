@@ -19,6 +19,15 @@ generated_manifest_metadata_is_exposed_test() ->
     ?assertEqual(?IMBOY_PRODUCT_FEATURE_MANIFEST_HASH, imboy_feature:manifest_hash()),
     ?assertEqual(?IMBOY_PRODUCT_FEATURE_SCHEMA_VERSION, imboy_feature:manifest_schema_version()).
 
+rtc_group_requires_manifest_selection_test() ->
+    %% RTC 总域保留现有运行时域语义；群子能力不能继承该编译豁免。
+    ?assert(imboy_feature:compiled(rtc)),
+    Expected = lists:member(rtc_group, ?IMBOY_COMPILED_FEATURES),
+    lists:foreach(
+        fun(Key) -> ?assertEqual(Expected, imboy_feature:compiled(Key)) end,
+        [rtc_group, <<"rtc_group">>, "rtc_group"]
+    ).
+
 base_only_filters_and_selected_routes_are_annotated_test() ->
     Routes = [
         {"/base", user_handler, #{action => show}},
