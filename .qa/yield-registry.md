@@ -32,6 +32,13 @@
 | 6 | inttest_marker_db 直调批（各 `<PREFIX>_DB` + `<PREFIX>_PG_*`） | 各套件 `env_prefix` 对应 `<PREFIX>_DB` + `<PREFIX>_PG_*` | 同上 runner，按套件传模块名并导出该套件 PREFIX env（PREFIX 清单：FULL02/EPGZ03/FULL07/EPGZ04/FULL03/ADM_ORG_CREATE_INTTEST/GZAPP06/ATTACH_BIND_INTTEST/EPGZ05_INTTEST/IMBOY_INTTEST_MOMENT/CS_CONSOLE_MIGRATION/CS_WIDGET_MIGRATION/HIRDPOC） | 2026-11-02 adm 组实测 `All 14 tests passed.` ×2（t6_adm_demo@4323，双 PREFIX 同库代表）；其余组待按同款回填 | ✅ 通道实测（adm 组） |
 | 7 | oa_direct_cloud_retention_pg_tests | `OA_CLOUD_MARKER_PORT` + `INTBE02_INTTEST_*` | 导出入口已核实：`scripts/quality.escript:431`（钉本 run PG 端口）与 `scripts/ci/native-eunit-run.sh:151`（55432）；或经本 runner 导出后单跑 | 专项 C 取证（run 41393644512 日志） | ✅ 通道在仓 |
 | 8 | c2c_action_receipt_pg_tests | 无 env 让位（共享 PG 可跑）；问题为 pool 顺序耦合（修复中） | 同全量轨道 | run 41393644512 之前正常 | ✅ 修复后随全量执行 |
+| 9 | assembly_io_worker_tests（V3-18 P2 三原语） | `A0_ENDPOINT/A0_AK/A0_SK`（v3/fixture/garage-v3run1.env 真 Garage；nightly 导出的是 `W202_GARAGE_*`，命名不通） | `ASSEMBLY_IO_EUNIT_YIELD`；真链覆盖：`test/lib/attachment_g18_gate.erl` seg_direct_upload_then_assembly（upload→copy→fetch 全链） | 待回填（g18 gate 最近 run id） | ⚠️ 通道在仓 |
+| 10 | talk_record_part_upload_direct_tests（分片直传 direct s3_put） | 同上 `A0_*` | `TALK_PART_DIRECT_EUNIT_YIELD`；真链覆盖：`scripts/test/talk_record_g18_gate.sh` + attachment_g18_gate direct_part（presign PUT→confirm） | 待回填（g18 gate 最近 run id） | ⚠️ 通道在仓 |
+| 11 | attach_direct_avatar_real_tests（头像发布真 Garage） | `A0_ENDPOINT/A0_AK/A0_SK/A0_PUBLIC_BUCKET` | `AVATAR_REAL_EUNIT_YIELD`；独立通道：`test/lib/avatar_publish_gate.erl`（同 A0 env，带默认 ?GARAGE 兜底） | 待回填（avatar gate 最近 run id） | ⚠️ 通道在仓 |
+
+> 2026-11-07 登记（PR #42）：三套件在 nightly full-eunit（run 42314812455）因 `A0_*`
+> 缺失硬崩（badmatch/badarg，污染整轮判定）→ 按第 3 条让位约定改空生成器 +
+> `*_EUNIT_YIELD` 日志。通道首跑证据回填前状态 ⚠️（见待办）。
 
 ## 待办（通道补齐）
 

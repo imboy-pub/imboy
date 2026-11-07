@@ -66,9 +66,20 @@ with_input(Fun) ->
     Config = filename:join([Repo, "config", "sys.local.config"]),
     ok = filelib:ensure_dir(Config),
     ok = file:write_file(Config, <<"[].">>),
+    %% fingerprint 的选中配置解析对 EUNIT_CONFIG 敏感：runner 环境（如 nightly
+    %% 的 EUNIT_CONFIG=config/sys）会把 config/sys.config 解析进本夹具仓而不
+    %% 存在 → candidate_input_fingerprint {badmatch,false}。夹具仓按默认值
+    %% （config/sys.local.config，上面已物化）运行，环境变量先存后还原——
+    %% 与 selected_runtime_config_is_bound_test 的存取模式同构。
+    OldConfig = os:getenv("EUNIT_CONFIG"),
+    true = os:unsetenv("EUNIT_CONFIG"),
     try
         Fun(Repo, Src)
     after
+        case OldConfig of
+            false -> ok;
+            _ -> true = os:putenv("EUNIT_CONFIG", OldConfig)
+        end,
         file:delete(Src),
         file:delete(Config),
         file:del_dir(filename:join(Repo, "config")),

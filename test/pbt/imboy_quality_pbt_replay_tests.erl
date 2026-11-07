@@ -35,25 +35,23 @@ cross_vm_known_and_unknown_atoms_test() ->
     end).
 
 child_exit(BeamDir, Path, Eval) ->
+    %% imboy_quality_pbt 编译到独立 quality-test-ebin（Makefile
+    %% IMBOY_QUALITY_TEST_EBIN），与测试模块的 beam 目录不同——子 VM 必须
+    %% 同时挂载两者，否则 code:ensure_loaded(imboy_quality_pbt) 返回
+    %% {error,nofile} → eval 崩溃 exit 1（nightly 2026-11-07 NEW 失败根因）。
+    ToolDir = filename:dirname(code:which(imboy_quality_pbt)),
+    PaArgs = lists:foldl(
+        fun(D, Acc) -> ["-pa", D | Acc] end,
+        [],
+        lists:usort([BeamDir, ToolDir])
+    ),
     Port = open_port({spawn_executable, os:find_executable("erl")}, [
         exit_status,
         stderr_to_stdout,
         binary,
-        {args, [
-            "+S",
-            "1:1",
-            "+SDcpu",
-            "1",
-            "+SDio",
-            "1",
-            "+A",
-            "1",
-            "-noshell",
-            "-pa",
-            BeamDir,
-            "-eval",
-            Eval
-        ]},
+        {args,
+            ["+S", "1:1", "+SDcpu", "1", "+SDio", "1", "+A", "1", "-noshell"] ++
+                PaArgs ++ ["-eval", Eval]},
         {env, [{"PBT_TEST_FILE", Path}]}
     ]),
     child_wait(Port).

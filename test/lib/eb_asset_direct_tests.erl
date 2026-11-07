@@ -108,7 +108,7 @@ garage_binding_run() ->
     },
     Now = erlang:system_time(second),
     {ok, #{object_key := Key}} = eb_pg_asset_meta:register_direct_session_v5(
-        Org, Ws, D, <<"aba94340-99fa-4afb-8fe9-67e56c8c6123">>, Reg, {Now + 3600, Now + 1200}
+        Org, Ws, D, <<"aba94340-99fa-4afb-8fe9-67e56c8c6123">>, Reg, {Now + 7200, Now + 1200}
     ),
     ok = attach_direct_logic:declare(Key, Sha, byte_size(Body), <<"image/png">>),
     {ok, #{grant := Grant, attempt_id := Attempt}} = attach_direct_logic:grant(Key, Sha),
@@ -186,8 +186,10 @@ garage_visitor_binding(Org, Ws, Contact, Conv, User, Body, Sha) ->
         size_bytes => byte_size(Body)
     },
     Now = erlang:system_time(second),
+    %% deadline 留 grant 能力窗（now()+?GRANT_TTL_SECONDS 带微秒）裕量，同
+    %% eb_direct_reservation_atomic（ck_v5_pending_times 零裕量必溢出）。
     {ok, #{object_key := Key}} = eb_pg_asset_meta:register_direct_session_v5(
-        Org, Ws, D, <<"aba94340-99fa-4afb-8fe9-67e56c8c6125">>, Reg, {Now + 3600, Now + 1200}
+        Org, Ws, D, <<"aba94340-99fa-4afb-8fe9-67e56c8c6125">>, Reg, {Now + 7200, Now + 1200}
     ),
     ok = attach_direct_logic:declare(Key, Sha, byte_size(Body), <<"image/png">>),
     {ok, #{grant := Grant, attempt_id := Attempt}} = attach_direct_logic:grant(Key, Sha),
@@ -573,7 +575,11 @@ eb_direct_reservation_atomic() ->
             size_bytes => 12
         },
         Now = erlang:system_time(second),
-        Window = {Now + 3600, Now + 1200},
+        %% 会话 deadline 必须给 grant 能力窗（?GRANT_TTL_SECONDS=3600，now()+TTL
+        %% 带微秒）留出裕量：deadline=Now+3600（整秒）时，grant 时刻晚于取
+        %% Now 的时钟刻度，now()+3600 必然溢出 session_deadline → ck_v5_pending_times
+        %% check_violation（00000178）。+7200 保持会话语义不变且留 1h 裕量。
+        Window = {Now + 7200, Now + 1200},
         {ok, #{asset_id := Asset, object_key := Key}} =
             eb_pg_asset_meta:register_direct_session_v5(Org, Ws, D, Cid, Reg, Window),
         ?assertEqual(

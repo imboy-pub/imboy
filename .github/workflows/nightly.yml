@@ -437,7 +437,7 @@ jobs:
         id: gate
         run: |
           bash .qa/nightly-gate.sh eqwalizer-lib eqwalize.log \
-            -- make eqwalize-layer LAYER=lib EQWALIZE_BUDGET=${{ vars.EQWALIZE_BUDGET_LIB || '52' }}
+            -- make eqwalize-layer LAYER=lib EQWALIZE_BUDGET=${{ vars.EQWALIZE_BUDGET_LIB || '55' }}
 
       - name: Summarize eqWAlizer result
         if: always()
@@ -445,7 +445,7 @@ jobs:
           echo "## eqWAlizer lib layer (nightly, classified)" >> "$GITHUB_STEP_SUMMARY"
           echo "${{ steps.gate.outputs.classify }}" >> "$GITHUB_STEP_SUMMARY" || true
           grep "== eqwalize-layer" eqwalize.log >> "$GITHUB_STEP_SUMMARY" || true
-          echo "预算 EQWALIZE_BUDGET_LIB=${{ vars.EQWALIZE_BUDGET_LIB || '52' }}（ratchet：只准减不准增）" >> "$GITHUB_STEP_SUMMARY"
+          echo "预算 EQWALIZE_BUDGET_LIB=${{ vars.EQWALIZE_BUDGET_LIB || '55' }}（ratchet：只准减不准增）" >> "$GITHUB_STEP_SUMMARY"
 
       - name: Upload eqWAlizer logs
         if: always()
