@@ -35,7 +35,7 @@
 #   elvis          实测 308 条（elvis 5.0.4 homebrew, 10397 violations / 308 FAIL 文件）
 # =============================================================================
 schema_version: 1
-updated: "2026-11-01"
+updated: "2026-11-07"
 # 2026-11-06 回册 12 文件（CI imboy Quality Gate elvis 分类 NEW=12：ai-agent avatar/
 #   direct-upload 相关 ds/repo、attachment edge proxy/worker、talk_record_playback_stream、
 #   msg_forward/forward_attachment、eb_asset_download_ticket 等近期批次带入；规则为
@@ -45,6 +45,11 @@ updated: "2026-11-01"
 #   talk_record_audio_render / attachment_storage_disk / attachment_upload_body）。
 #   elvis 段现 584 文件。
 
+# 2026-11-07 回册 gradualizer 7 模块 + eqwalizer-lib 3 模块（nightly run 42314812455 首跑实测
+#   NEW=7/NEW=3；attachment-edge/worker-port + talk-record 批次带入，含两 gate 交叉的
+#   attachment_edge_redirect / attachment_worker_port）；eqwalizer 预算 52→55（nightly.yml
+#   fallback 同步）。同批移除 full-eunit 6 个 FIXED（该 run 全量实测通过，套件间干扰
+#   已随 #39 EUnit runner 加固消除，棘轮收紧为空册）。
 # 2026-11-01 回册 eqwalizer-lib 21 模块（run 41360214828 分类 NEW=21；channel-group-ux /
 #   att-v5 / talk-record 等批次把 lib 层扩到 114 模块带出，预算重设 32→52，31+21=52）
 # 2026-11-01 回册 13 文件（CI imboy Quality Gate elvis 分类 NEW=13，talk-record-playback /
@@ -82,12 +87,7 @@ gates:
       agent_task_logic_tests（concurrent 抖动）、cs_pg_widget / group_user_id_sum_p0
       （CI config/sys 口径单跑绿）均不入册。
     known_failures:
-      - push_provider_jpush_tests    # 套件间干扰，随跑序漂移（单跑 22/22 绿）
-      - push_notification_logic_tests  # 同上（单跑 32/32 绿）
-      - ai_agent_proactive_tests   # 同上（单跑 13/13 绿）
-      - agent_task_logic_tests     # 同上（单跑 8/8 绿；concurrent 用例全量负载下互斥失败）
-      - msg_store_repo_tests       # 同上（单跑 53/53 绿；四跑新面孔）
-      - cors_face_tests            # 同上（池冲突形态；断言债已修 8/8 绿）
+      []  # 2026-11-07 清册：nightly 42314812455 全量实测 6 项全过（#39 runner 加固后套件间干扰消除）
 
   # ---------------------------------------------------------------------------
   # pg-behavior-harnesses —— 失败标识粒度：harness 脚本路径（test/lib/.../*.escript）
@@ -115,9 +115,12 @@ gates:
   # eqwalizer-lib —— 失败标识粒度：模块名（make eqwalize-layer LAYER=lib 输出 "❌ <mod>" 行）
   # ---------------------------------------------------------------------------
   eqwalizer-lib:
-    source: "2026-11-01 回册：run 41360214828 实测 lib 层 modules=114 failing=52（KNOWN 31 + NEW 21，预算重设 52）；首版 2026-08-22 elp 1.1.0，lib 层 75 模块 failing 31（预算 32 内）"
+    source: "2026-11-07 回册：run 42314812455 NEW=3（attachment 批次），预算 52→55；2026-11-01 回册 21 后 52；首版 2026-08-22 elp 1.1.0 lib 层 31"
     known_failures:
       - alipay_openapi
+      - attachment_edge_proxy_handler
+      - attachment_edge_redirect
+      - attachment_worker_port
       - bot_webhook_guard
       - elib_async
       - elib_cipher
@@ -175,7 +178,7 @@ gates:
   # 提取依据：make gradualize-audit 输出 "❌ src/<dir>/<mod>.erl" 行取 basename
   # ---------------------------------------------------------------------------
   gradualizer:
-    source: "2026-11-01 回册：run 41362094143 首跑实测 NEW=85（批次演进 7-25 基线后积压）；首版 2026-08-22 gradualize-audit 507 模块 failing 277"
+    source: "2026-11-07 回册：run 42314812455 NEW=7（attachment-edge/worker-port + talk-record 批次）；上一版 2026-11-01 run 41362094143 NEW=85 回册；首版 2026-08-22 gradualize-audit 277"
     note: >-
       与入仓 .gradualizer-baseline.txt（2026-07-25, 247 条）相比 +31/-1：7-25
       基线重建后新增 31 个失败模块（pre-push 只查变更文件未拦住）。按"首版以
@@ -242,9 +245,12 @@ gates:
       - attach_direct_logic
       - attach_handler
       - attach_logic
+      - attachment_avatar_alias_repo
       - attachment_download_handler
+      - attachment_edge_redirect
       - attachment_repo
       - attachment_upload_logic
+      - attachment_worker_port
       - auth_ds
       - auth_oidc_handler
       - auth_oidc_jwks
@@ -348,6 +354,7 @@ gates:
       - feedback_handler
       - feedback_logic
       - finance_adm_logic
+      - forward_attachment_repo
       - friend_category_ds
       - friend_category_repo
       - friend_ds
@@ -543,8 +550,10 @@ gates:
       - sensitive_word_repo
       - sso_config_ds
       - sso_logic
+      - talk_record_assembly_logic
       - talk_record_attachment_adapter
       - talk_record_audio_render
+      - talk_record_audio_validate
       - talk_record_capture_ds
       - talk_record_capture_http
       - talk_record_capture_input
@@ -580,6 +589,7 @@ gates:
       - talk_record_processor_audio
       - talk_record_processor_config
       - talk_record_processor_runner
+      - talk_record_provider_prepare
       - talk_record_repo
       - talk_record_sharing_http
       - talk_record_transfer_logic

@@ -13,7 +13,16 @@
 -include_lib("eunit/include/eunit.hrl").
 
 assembly_io_test_() ->
-    {timeout, 120, fun assembly_io/0}.
+    %% 真 Garage 端到端（v3/fixture/garage-v3run1.env 的 A0_*）：full-suite/
+    %% nightly 无该 fixture 时让位（与 ATTACH_BIND_EUNIT_YIELD 同约定），不
+    %% 以 {badmatch,true} 硬崩污染整批结果。
+    case [N || N <- ["A0_ENDPOINT", "A0_AK", "A0_SK"], os:getenv(N) =:= false] of
+        [] ->
+            {timeout, 120, fun assembly_io/0};
+        Missing ->
+            io:format(user, "ASSEMBLY_IO_EUNIT_YIELD missing_env=~p~n", [Missing]),
+            []
+    end.
 
 assembly_io() ->
     false = os:getenv("A0_ENDPOINT") =:= false,

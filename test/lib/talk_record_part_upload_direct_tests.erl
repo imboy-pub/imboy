@@ -19,7 +19,15 @@
 -define(RECORD, 992020).
 
 part_upload_direct_test_() ->
-    {timeout, 120, fun part_upload_direct/0}.
+    %% 真 PG + 真 Garage 端到端（A0_*，见模块头）：full-suite/nightly 无该
+    %% fixture 时让位（与 ATTACH_BIND_EUNIT_YIELD 同约定）。
+    case [N || N <- ["A0_ENDPOINT", "A0_AK", "A0_SK"], os:getenv(N) =:= false] of
+        [] ->
+            {timeout, 120, fun part_upload_direct/0};
+        Missing ->
+            io:format(user, "TALK_PART_DIRECT_EUNIT_YIELD missing_env=~p~n", [Missing]),
+            []
+    end.
 
 part_upload_direct() ->
     false = os:getenv("A0_ENDPOINT") =:= false,

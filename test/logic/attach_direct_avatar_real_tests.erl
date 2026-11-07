@@ -1,7 +1,23 @@
 -module(attach_direct_avatar_real_tests).
 -include_lib("eunit/include/eunit.hrl").
 
-avatar_real_test_() -> {timeout, 120, fun avatar_real/0}.
+avatar_real_test_() ->
+    %% 真 Garage 端到端（A0_ENDPOINT/A0_AK/A0_SK/A0_PUBLIC_BUCKET）：缺 env
+    %% 时 list_to_binary(false) 直接 badarg 崩溃——按仓内让位约定打标记空跑
+    %% （与 ATTACH_BIND_EUNIT_YIELD 同构），真 fixture 环境全语义执行。
+    case
+        [
+            N
+         || N <- ["A0_ENDPOINT", "A0_AK", "A0_SK", "A0_PUBLIC_BUCKET"],
+            os:getenv(N) =:= false
+        ]
+    of
+        [] ->
+            {timeout, 120, fun avatar_real/0};
+        Missing ->
+            io:format(user, "AVATAR_REAL_EUNIT_YIELD missing_env=~p~n", [Missing]),
+            []
+    end.
 
 avatar_real() ->
     {ok, _} = application:ensure_all_started(inets),
