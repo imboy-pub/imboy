@@ -91,8 +91,10 @@ hash 后方可升级为长缓存。Widget 访客事件流（SSE）经 nginx 时�
 - Docker 24+ 与 `docker compose` v2 插件（社区版 compose 使用 configs 内联定义，
   需要 **Compose v2.23.1+**；Debian 13 经 get.docker.com 安装的 Docker 均满足。
   未安装 Docker 时 `install.sh` 会确认后引导安装）
-- 已解析到本机的三个域名：`api.example.com`、`admin.example.com`、
-  `cs.example.com`（客服托管 Widget，三域两两不同）；启用 Uptrace
+- 宿主机需要 Bash、`jq` 1.6+、`curl`、OpenSSL 及常规 Unix 工具；完整清单见下文。
+  安装、初始化和部署后自检不需要宿主机 Python、pip 或 Python WebSocket 包。
+- 已解析到本机的五个独立域名：`api.example.com`、`admin.example.com`、
+  `cs.example.com`（客服托管 Widget）、`rtc.example.com`、`turn.example.com`；启用 Uptrace
   时再准备独立的 `uptrace.example.com`
 - 80 / 443 端口可公网访问（certbot 通过 Let's Encrypt HTTP-01 签发）
 
@@ -181,6 +183,72 @@ Uptrace 默认关闭。启用时在 `.env` 设置 `UPTRACE_ENABLED=true`，填�
 `IMBOY_BASE_URL` 使用 `https://<API_DOMAIN>`，供 API、edge 回退及其他业务使用。社区 Compose 为旧 Widget/Seat 同源上传单独设置 `IMBOY_WIDGET_BASE_URL=https://<CS_WIDGET_DOMAIN>`；缺少该地址时旧上传不下发 URL。direct-v1 上传使用独立的存储授权。Helm 的 `widgetHost` 和 `widgetBaseUrl` 默认为空，启用旧同源上传时须配置同一实际 Widget 网关。
 
 安装器以 Compose 实际解析的域名执行 preflight，五个域名必须有效且互不相同。
+
+### Shell 交付依赖与验收边界 / Shell delivery dependencies and acceptance
+
+正式客户入口仍为 `bash deploy/install.sh --edition community`（商务版改为 `--edition business`）。宿主机编排只用
+Bash、Docker Compose 和 Unix 工具；Compose 环境按域名白名单读取，JSON 校验由 `jq`
+执行，不执行 Compose 输出，不把展开后的密钥 JSON 写入文件或输出到日志。
+
+The customer entry point remains `deploy/install.sh`. Host-side installation, initialization
+and sanity checks require no Python interpreter or Python packages. This does not describe
+the implementation languages inside third-party images (for example, Certbot), and does not
+remove development or CI dependencies elsewhere in the repository.
+
+| 宿主机依赖 / Host dependency | 用途与范围 / Purpose and scope |
+|---|---|
+| Bash | 执行安装器、preflight、TLS 初始化与 sanity；不能用 `sh install.sh` 代替 |
+| Docker 24+、Compose v2.23.1+ | 配置展开、镜像拉取与检查、服务编排；需有 daemon 访问权限 |
+| `jq` 1.6+ | 校验 Compose JSON 中的 origin、密钥、独立清理账号与镜像；缺失立即停止 |
+| OpenSSL、`curl`、系统 CA 证书 | 生成内部密钥/RSA/临时证书、HTTPS 与健康探测 |
+| `awk`、`grep`、`sed` 及 coreutils | 包括 `cat`、`chmod`、`cp`、`cut`、`date`、`df`、`dirname`、`head`、`mkdir`、`mktemp`、`mv`、`rm`、`seq`、`sleep`、`tail`、`touch`、`tr`；常规 Linux 基础工具 |
+| `ss` 或 `lsof`；`getent` 或 `host`/`dig`/`nslookup` | preflight 端口与 DNS 探测；交付机应提供这些工具，不能把缺工具的 WARN 当作该项已验证 |
+| Git（可选） | 输出源代码 SHA；散件交付应随包提供版本身份记录 |
+
+Debian/Ubuntu 可先安装宿主机工具（Docker/Compose 按上方版本要求另行准备）：
+
+```bash
+sudo apt-get update
+sudo apt-get install -y bash jq curl openssl ca-certificates coreutils grep sed gawk iproute2 libc-bin
+```
+
+`psql`、`pg_isready` 和 Erlang `escript` 由已有 PostgreSQL/backend 容器提供，客户宿主机
+不需要安装 PostgreSQL 客户端或 Erlang。数据库首次初始化与迁移继续使用原有镜像流程；
+超管可通过 `/setup` 或安装器的 `--admin-phone`/`--admin-password` 初始化。CLI 方式仍须
+提供与后端节点一致的 `IMBOY_CTL_COOKIE`，失败不能当作初始化成功。
+
+| 检查类别 / Check category | 必须执行的内容 / Required evidence |
+|---|---|
+| 安装器强制门禁 | preflight；社区版实际 Compose 的 API/Widget origin、密钥强度与互异、backend/edge/PG 一致性、独立清理账号；两版本的镜像可用性及 edge 文件检查；TLS 签发；`/healthz`；`scripts/sanity_check.sh`。缺少 sanity 脚本即停止，不能省略交付材料后继续安装 |
+| 初始化与数据保护 | 首次超管初始化/登录；重复安装保留已有非占位密钥、RSA 和正式证书；升级前执行备份与适用迁移验收。重跑安装器不代表可以删除数据目录或重新生成存储凭据 |
+| 客户业务验收 | 用客户验收账号在实际 App/管理后台验证注册或既定开户方式、登录、双端消息发送和接收、断线重连、附件上传和下载；按启用功能补做 Widget、RTC/TURN、短信/SMTP 等验收。不得用端口通或 WS 握手成功替代消息收发结果 |
+| 开发 / Golden / CI | `scripts/smoke_8step.sh`、`golden_install.sh` 及相关测试仍保留其既有 Python/测试依赖；8 步链使用开发验证码、测试账号和直接 RPC，Golden 准备步骤会切换 `IMBOYENV=dev`，不能拿到正式客户实例上当通用验收脚本 |
+
+`sanity_check.sh` 的成功只表示其既有基础设施检查通过。它不会验证真实用户 WS 往返、
+附件内容或外部证书信任链；其内部 nginx 探测使用 `--no-check-certificate`，部分管理页
+或日志问题仍记为 WARN。交付时须处理或记录 WARN，并从客户网络验证正式域名证书和
+上述业务流程，保存结果后再判定业务验收完成。正式安装不传 `--skip-tls`。
+
+Production acceptance includes infrastructure gates, administrator initialization and real
+client business checks. A successful sanity check is not evidence of a WebSocket message
+round trip or an attachment round trip. Keep the development smoke chain in an isolated
+test environment; do not enable development authentication shortcuts on a customer instance.
+
+**离线回归 / Offline regression**（不启动真实服务，不申请证书）：
+
+```bash
+for script in deploy/install.sh deploy/preflight.sh deploy/nginx/init-letsencrypt.sh \
+  scripts/sanity_check.sh scripts/test/install_one_click_test.sh; do
+  bash -n "$script" || exit 1
+done
+bash scripts/test/install_one_click_test.sh
+bash deploy/preflight.sh --self-test
+```
+
+安装回归使用真实 Bash/jq/OpenSSL 和本地 Docker/网络测试桩，验证解析、失败关闭、
+调用顺序和幂等保护；它不能证明真实 Docker、镜像发布、ACME、数据库迁移或客户网络
+已可用。在没有 Python 的干净测试机/隔离根目录中执行同样命令，可复核宿主机无 Python
+依赖。真实部署验收另按上表执行；开发与 CI 专用测试不属于此无 Python 承诺。
 
 ---
 

@@ -124,6 +124,12 @@ if [ -n "$ADMIN_PASSWORD" ]; then
   fi
 fi
 
+# 客户安装/验收仅依赖 Shell 工具；缺依赖或验收文件时在任何安装副作用前失败。
+# Fail before changing configuration or installing/starting Docker.
+command -v jq >/dev/null 2>&1 || die "需要 jq 校验 Compose 配置，请先安装 jq（无需 Python）"
+[ -f ../scripts/sanity_check.sh ] && [ -r ../scripts/sanity_check.sh ] \
+  || die "缺少或无法读取 ../scripts/sanity_check.sh；交付包不完整，服务尚未启动"
+
 # 需要随机密钥的字段（域名与邮箱不在内，必须人工填）
 # 长度约束来自 preflight.sh 与后端启动校验：
 #   *_KEY / IMBOY_SOLIDIFIED_KEY 需 32 字节 → rand -hex 16 得 32 个十六进制字符
@@ -387,68 +393,74 @@ for compose_file in $COMPOSE_FILES; do COMPOSE_DISPLAY="$COMPOSE_DISPLAY -f $com
 # ── 2) 前置检查 ──────────────────────────────────────────────────────────────
 say "前置检查 (preflight, edition=$EDITION)"
 if [ "$EDITION" = community ]; then
-  command -v python3 >/dev/null || die "需要 python3 校验 Compose 配置"
-  compose config --environment | python3 -c '
-import os, subprocess, sys
-names = {"API_DOMAIN", "ADMIN_DOMAIN", "CS_WIDGET_DOMAIN", "RTC_DOMAIN", "TURN_DOMAIN"}
-env = os.environ.copy()
-for line in sys.stdin:
-    key, sep, value = line.rstrip("\n").partition("=")
-    if sep and key in names:
-        env[key] = value
-if not names.issubset(env):
-    sys.exit("Compose 域名配置不完整")
-env["IMBOY_BASE_URL"] = "https://" + env["API_DOMAIN"]
-env["IMBOY_PREFLIGHT_RESOLVED_DOMAINS"] = "1"
-sys.exit(subprocess.call(["bash", "preflight.sh", "--docker", "--edition", "community"], env=env))
-' || die "preflight 未通过，修复 ERROR 后重跑"
+  # 先确认 Compose 成功，再按白名单读取字面赋值；不执行其输出。
+  # Capture status before parsing; never source/eval Compose output.
+  resolved_environment="$(compose config --environment)" \
+    || die "Compose 环境解析失败；服务尚未启动"
+  (
+    while IFS= read -r line; do
+      case "$line" in
+        API_DOMAIN=*|ADMIN_DOMAIN=*|CS_WIDGET_DOMAIN=*|RTC_DOMAIN=*|TURN_DOMAIN=*)
+          export "$line" || die "Compose 域名赋值失败" ;;
+      esac
+    done <<< "$resolved_environment"
+    for domain in API_DOMAIN ADMIN_DOMAIN CS_WIDGET_DOMAIN RTC_DOMAIN TURN_DOMAIN; do
+      [ -n "${!domain:-}" ] || die "Compose 域名配置不完整"
+    done
+    IMBOY_BASE_URL="https://$API_DOMAIN" IMBOY_PREFLIGHT_RESOLVED_DOMAINS=1 \
+      bash preflight.sh --docker --edition community
+  ) || die "preflight 未通过，修复 ERROR 后重跑"
+  unset resolved_environment
 else
   bash preflight.sh --docker --edition "$EDITION" || die "preflight 未通过，修复 ERROR 后重跑"
 fi
 
 # Compose 环境覆盖 .env；仅检查实际传入服务的值，不输出密钥。
 if [ "$EDITION" = community ]; then
-  command -v python3 >/dev/null || die "需要 python3 校验 Compose 密钥；服务尚未启动"
-  compose config --format json | python3 -c '
-import json, sys
-try:
-    services = json.load(sys.stdin)["services"]
-    backend = services["imboy_backend"]["environment"]
-    edge = services["imboy_edge"]["environment"]
-    nginx = services["imboy_nginx"]["environment"]
-    if (backend["IMBOY_BASE_URL"] != "https://" + nginx["API_DOMAIN"] or
-            backend["IMBOY_WIDGET_BASE_URL"] != "https://" + nginx["CS_WIDGET_DOMAIN"] or
-            backend["IMBOY_WIDGET_DOMAIN"] != nginx["CS_WIDGET_DOMAIN"]):
-        raise ValueError("origin mismatch")
-    def valid(value, minimum=1):
-        return (isinstance(value, str) and len(value) >= minimum and
-                "CHANGE_ME" not in value and "example" not in value.lower())
-    token = backend["IMBOY_EDGE_INTERNAL_TOKEN"]
-    core = [backend[name] for name in ("IMBOY_JWT_KEY", "IMBOY_POSTGRE_AES_KEY", "IMBOY_ADM_COOKIE_SECRET")]
-    if not all(valid(value, 32) for value in [token, *core]):
-        raise ValueError("invalid secret")
-    if edge["EDGE_INTERNAL_TOKEN"] != token or len(set([token, *core])) != 4:
-        raise ValueError("secret mismatch")
-    required = ("IMBOY_PG_USER", "IMBOY_PG_PASSWORD", "IMBOY_SOLIDIFIED_KEY",
-                "IMBOY_SOLIDIFIED_KEY_IV", "IMBOY_PASSWORD_SALT",
-                "IMBOY_LIVEKIT_API_KEY", "IMBOY_LIVEKIT_API_SECRET")
-    if any(not valid(backend[name]) for name in required):
-        raise ValueError("invalid required secret")
-    pg = services["imboy_pg18"]["environment"]
-    if pg["POSTGRES_USER"] != backend["IMBOY_PG_USER"] or pg["POSTGRES_PASSWORD"] != backend["IMBOY_PG_PASSWORD"]:
-        raise ValueError("database identity mismatch")
-    if "imboy_grafana" in services and not valid(services["imboy_grafana"]["environment"]["GF_SECURITY_ADMIN_PASSWORD"]):
-        raise ValueError("invalid monitoring secret")
-    cleanup_keys = ("IMBOY_DIRECT_CLEANUP_PG_USER", "IMBOY_DIRECT_CLEANUP_PG_PASSWORD")
-    if any(name in backend for name in cleanup_keys):
-        user, password = (backend[name] for name in cleanup_keys)
-        app_user, app_password = backend["IMBOY_PG_USER"], backend["IMBOY_PG_PASSWORD"]
-        if (not valid(user) or not valid(password, 32) or not valid(app_user) or
-                not valid(app_password) or user == app_user or password == app_password):
-            raise ValueError("invalid cleanup identity")
-except (KeyError, TypeError, ValueError):
-    sys.exit("Compose 密钥或清理账号无效、不独立或两服务不一致")
-' || die "Compose 密钥校验失败；服务尚未启动"
+  # -s 要求恰好一个 JSON 文档；-e 与 pipefail 同时传播解析/生产者失败。
+  # Suppress jq diagnostics because invalid values may contain secrets.
+  compose config --format json | jq -es '
+    def valid($minimum):
+      if type == "string" then
+        length >= $minimum and (contains("CHANGE_ME") | not)
+        and (ascii_downcase | contains("example") | not)
+      else false end;
+    if length != 1 then false else
+      .[0].services as $services |
+      $services.imboy_backend.environment as $backend |
+      $services.imboy_edge.environment as $edge |
+      $services.imboy_nginx.environment as $nginx |
+      $services.imboy_pg18.environment as $pg |
+      [$backend.IMBOY_EDGE_INTERNAL_TOKEN, $backend.IMBOY_JWT_KEY,
+       $backend.IMBOY_POSTGRE_AES_KEY, $backend.IMBOY_ADM_COOKIE_SECRET] as $core |
+      ($services | type == "object") and ($backend | type == "object")
+      and ($edge | type == "object") and ($nginx | type == "object")
+      and ($pg | type == "object")
+      and ($nginx.API_DOMAIN | type == "string")
+      and ($nginx.CS_WIDGET_DOMAIN | type == "string")
+      and ($backend.IMBOY_BASE_URL == "https://" + $nginx.API_DOMAIN)
+      and ($backend.IMBOY_WIDGET_BASE_URL == "https://" + $nginx.CS_WIDGET_DOMAIN)
+      and ($backend.IMBOY_WIDGET_DOMAIN == $nginx.CS_WIDGET_DOMAIN)
+      and all($core[]; valid(32)) and ($core | unique | length == 4)
+      and ($edge.EDGE_INTERNAL_TOKEN == $backend.IMBOY_EDGE_INTERNAL_TOKEN)
+      and all(["IMBOY_PG_USER", "IMBOY_PG_PASSWORD", "IMBOY_SOLIDIFIED_KEY",
+               "IMBOY_SOLIDIFIED_KEY_IV", "IMBOY_PASSWORD_SALT",
+               "IMBOY_LIVEKIT_API_KEY", "IMBOY_LIVEKIT_API_SECRET"][];
+              . as $key | $backend[$key] | valid(1))
+      and ($pg.POSTGRES_USER == $backend.IMBOY_PG_USER)
+      and ($pg.POSTGRES_PASSWORD == $backend.IMBOY_PG_PASSWORD)
+      and (if $services | has("imboy_grafana") then
+             $services.imboy_grafana.environment.GF_SECURITY_ADMIN_PASSWORD | valid(1)
+           else true end)
+      and (if $backend | has("IMBOY_DIRECT_CLEANUP_PG_USER")
+                         or has("IMBOY_DIRECT_CLEANUP_PG_PASSWORD") then
+             ($backend.IMBOY_DIRECT_CLEANUP_PG_USER | valid(1))
+             and ($backend.IMBOY_DIRECT_CLEANUP_PG_PASSWORD | valid(32))
+             and ($backend.IMBOY_DIRECT_CLEANUP_PG_USER != $backend.IMBOY_PG_USER)
+             and ($backend.IMBOY_DIRECT_CLEANUP_PG_PASSWORD != $backend.IMBOY_PG_PASSWORD)
+           else true end)
+    end
+  ' >/dev/null 2>&1 || die "Compose 密钥校验失败：密钥或清理账号无效、不独立或服务间不一致；服务尚未启动"
 fi
 
 # ── 3) 镜像 + 网络 + 启动 ────────────────────────────────────────────────────
@@ -463,18 +475,18 @@ compose pull --policy missing || die "镜像拉取失败，尚未启动任何服
 
 # Resolve exactly the images Compose will use, including environment overrides.
 # The JSON stays in the pipe; only image references leave the parser.
-command -v python3 >/dev/null || die "需要 python3 检查 Compose 镜像；服务尚未启动"
-resolved_edge_images="$(compose config --format json | python3 -c '
-import json, sys
-try:
-    services = json.load(sys.stdin)["services"]
-    images = [services[name]["image"] for name in ("imboy_backend", "imboy_edge")]
-    if any(not isinstance(image, str) or not image or "\n" in image for image in images):
-        raise ValueError("invalid image")
-    print("\n".join(dict.fromkeys(images)))
-except (KeyError, TypeError, ValueError):
-    sys.exit("无法确定 Compose 后端及 edge 镜像")
-')" || die "Compose 镜像解析失败；服务尚未启动"
+resolved_edge_images="$(compose config --format json | jq -ers '
+  if length != 1 or (.[0].services | type) != "object" then
+    error("invalid services")
+  else
+    [.[0].services.imboy_backend.image, .[0].services.imboy_edge.image] as $images |
+    if all($images[]; if type == "string" then
+                         length > 0 and (contains("\n") | not)
+                       else false end) then
+      $images[0], (if $images[1] != $images[0] then $images[1] else empty end)
+    else error("invalid images") end
+  end
+' 2>/dev/null)" || die "Compose 镜像解析失败；服务尚未启动"
 [ -n "$resolved_edge_images" ] || die "Compose 镜像为空；服务尚未启动"
 # Keep exited probe containers for diagnosis; they have no credentials or network.
 while IFS= read -r edge_image; do
@@ -520,14 +532,12 @@ for _ in $(seq 1 60); do
 done
 [ "$ok" = 1 ] || die "后端 120s 内未通过 /healthz，查日志：$COMPOSE_DISPLAY logs imboy_backend"
 
-# ── 6) 部署后自检（存在才跑）─────────────────────────────────────────────────
-if [ -f ../scripts/sanity_check.sh ]; then
-  say "部署后自检 (sanity_check)"
-  SANITY_ARGS=()
-  for compose_file in $COMPOSE_FILES; do SANITY_ARGS+=(--compose-file "$compose_file"); done
-  bash ../scripts/sanity_check.sh "${SANITY_ARGS[@]}" \
-    || die "sanity_check 未通过；部署未达到可交付状态，请按上方 ERROR 排查"
-fi
+# ── 6) 部署后自检（客户交付必跑 / mandatory delivery check）─────────────────
+say "部署后自检 (sanity_check)"
+SANITY_ARGS=()
+for compose_file in $COMPOSE_FILES; do SANITY_ARGS+=(--compose-file "$compose_file"); done
+bash ../scripts/sanity_check.sh "${SANITY_ARGS[@]}" \
+  || die "sanity_check 未通过；部署未达到可交付状态，请按上方 ERROR 排查"
 
 # ── 7) 超管创建（可选：--admin-phone/--admin-password 传入时）───────────────
 # 部署机只有 Docker 没有 Erlang，imboy_ctl（escript）在 backend 容器内执行：
