@@ -4,7 +4,7 @@
 
 ## 一期部署
 
-选择 `phase1_delivery` 时，E2EE、AI 助手、Bot 产品、RTC、直播、Agent Hub 和 MCP 属于关闭的二期能力。共享代码或编译产物中存在这些实现，不表示交付实例允许启用它们。
+选择 `phase1_delivery` 时，E2EE、AI 助手、Bot 产品、群通话（`rtc_group`）、直播、Agent Hub 和 MCP 仍受交付锁关闭。App 好友一对一 RTC（`rtc`）已选入编译清单且运行时预设默认允许，仍接受 `features.rtc=false`；访客/Web 坐席及 C2S 音视频不在本次开放范围。编译包含、运行时允许与真实双端验收须分别核对，见[打包契约 §9.5](../product/packaging-contract.md#95-app-一对一-rtc-与群通话边界)。
 
 一期预设的消息存储为 `archived`、`e2ee_mode=disabled`，允许消息检索和导出。这些设置来自 [imboy_profile_preset.erl](https://github.com/imboy-pub/imboy/blob/main/src/lib/imboy_profile_preset.erl)，有效策略由 [imboy_policy.erl](https://github.com/imboy-pub/imboy/blob/main/src/lib/imboy_policy.erl) 与功能授权共同决定。配置项不能替代 HTTP、WebSocket、后台任务和客户端入口的关闭验收。
 

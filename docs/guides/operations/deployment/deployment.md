@@ -3,7 +3,7 @@
 > - **Docker Compose 一键安装**：[deploy/README.md](../../../../deploy/README.md) — 客户交付入口 `deploy/install.sh`；五域、证书邮箱及其他人工字段见[配置要求](../../../../deploy/README.md#customer-input)
 > - **宿主机 / SSH release 发布**：[deploy-script.md](./deploy-script.md) — 使用 `scripts/.env.deploy` 完成全量或增量发布
 > - **裸机 / release 包快速上手**：[day1-quickstart.md](./day1-quickstart.md) — 配置后端运行时与外部依赖
-> - **LiveKit 通话运行手册**（二期域，一期 `phase1_delivery` 默认关闭）：[livekit-single-service-runbook.md](./livekit-single-service-runbook.md) — rtc WSS + SFU + embedded TURN 的部署/验证/升级/回滚（小白可逐行执行）
+> - **LiveKit 通话运行手册**（一期 `phase1_delivery` 的 App 好友一对一 `rtc` 默认允许、可显式关闭；群通话仍锁定）：[livekit-single-service-runbook.md](./livekit-single-service-runbook.md) — rtc WSS + SFU + embedded TURN 的部署/验证/升级/回滚。访客/Web 坐席及 C2S 音视频不在本次开放范围；须分别核对编译清单、现场 effective features 与真实双端验收，见[打包契约 §9.5](../../../product/packaging-contract.md#95-app-一对一-rtc-与群通话边界)。
 > - **生产架构图**：[production-architecture.md](./production-architecture.md) — 服务分布与端口一览
 >
 > 本文是裸机 / release 包与定制配置参考。下面的 `IMBOY_*` 运行时变量、`/etc/imboy/keys/`
