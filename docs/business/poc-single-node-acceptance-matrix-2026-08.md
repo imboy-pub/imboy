@@ -29,14 +29,14 @@
 
 ## A1 安装部署
 
-**前置**：服务器就绪（Linux x86_64、内存 ≥ 8 GB、Docker 24+ / Compose v2.23.1+）；两个域名已解析到本机；80/443 可公网访问。
+**前置**：服务器就绪（Linux x86_64、内存 ≥ 8 GB、Docker 24+ / Compose v2.23.1+）；API/Admin/Widget/RTC/TURN 五个互不相同的域名已解析到本机；80/443 可公网访问。证书邮箱、API origin、独立清理数据库账号及选配服务字段按[客户填写与自动生成](../../deploy/README.md#customer-input)准备，清理账号的创建与授权须由交付方落实。
 
 **步骤**：
 
 ```bash
 cd deploy
-cp .env.example .env && $EDITOR .env     # 人工仅填 API_DOMAIN / ADMIN_DOMAIN / CERTBOT_EMAIL
-bash preflight.sh                        # 前置检查全 PASS（注意：.env 缺失时 preflight 直接退出）
+cp .env.example .env && $EDITOR .env     # 五域 + CERTBOT_EMAIL；其他现场配置见上文
+# 安装器补齐内部密钥/RSA 后执行 preflight；不要先对占位模板跑 preflight
 bash install.sh --edition community      # 商务版：--edition business（prod.yml 需经商务渠道获取）
 ```
 

@@ -3,7 +3,7 @@
 一键将 IMBoy 部署到一台 Linux 服务器。
 One-command deployment of IMBoy to a Linux server.
 
-> 文档分工：本目录是**可执行部署栈**（compose/env/脚本）；完整手册见 [deployment.md](../docs/guides/operations/deployment/deployment.md)，5 分钟快速上手见 [day1-quickstart.md](../docs/guides/operations/deployment/day1-quickstart.md)，备份恢复见 [backup-restore.md](../docs/guides/operations/deployment/backup-restore.md)。
+> 文档分工：本页是 **Docker Compose 客户安装入口**，使用 `deploy/.env.example`；[day1-quickstart.md](../docs/guides/operations/deployment/day1-quickstart.md) 与 [deployment.md](../docs/guides/operations/deployment/deployment.md) 是裸机/release 或定制运行时参考，不能混用其配置模板和启动步骤。备份恢复见 [backup-restore.md](../docs/guides/operations/deployment/backup-restore.md)。
 
 ## 交付清单 / Deliverables
 
@@ -96,7 +96,51 @@ hash 后方可升级为长缓存。Widget 访客事件流（SSE）经 nginx 时�
 - 已解析到本机的五个独立域名：`api.example.com`、`admin.example.com`、
   `cs.example.com`（客服托管 Widget）、`rtc.example.com`、`turn.example.com`；启用 Uptrace
   时再准备独立的 `uptrace.example.com`
-- 80 / 443 端口可公网访问（certbot 通过 Let's Encrypt HTTP-01 签发）
+- 五域的公网 A 记录指向部署入口；若发布 AAAA，IPv6 也必须指向可达的同一入口。
+  五域的 TCP 80 都须允许公网 ACME HTTP-01 请求到达 `/.well-known/acme-challenge/`，
+  HTTPS/WSS 使用 TCP 443。即使 `LIVEKIT_TURN_ENABLED=false`，TURN 域仍必填并参与签证。
+- RTC 媒体还需 TCP 7881、UDP 50000–50200；启用 embedded TURN 后需 UDP 3478、
+  TCP 5349、UDP 50201–50500。默认 TURN/TLS 使用 5349，443 共用是下文独立切换路径。
+
+<a id="customer-input"></a>
+
+### 客户填写与自动生成 / Customer input and generated values
+
+以 [`install.sh`](install.sh)、[`preflight.sh`](preflight.sh) 和 [`.env.example`](.env.example)
+为准：五域及邮箱是两版本的共同要求，**不是全部人工配置**。请在 `deploy/.env` 中核对：
+
+| 客户字段 / Customer field | 要求 / Requirement |
+|---|---|
+| `API_DOMAIN` | API / WebSocket 纯域名，如 `api.example.com` |
+| `ADMIN_DOMAIN` | 管理后台纯域名，如 `admin.example.com` |
+| `CS_WIDGET_DOMAIN` | 托管 Widget 纯域名，如 `cs.example.com` |
+| `RTC_DOMAIN` | LiveKit 信令纯域名，如 `rtc.example.com` |
+| `TURN_DOMAIN` | TURN 纯域名，如 `turn.example.com`；关闭 TURN 时也不能省略 |
+| `CERTBOT_EMAIL` | 客户实际维护的证书账号邮箱 |
+| `IMBOY_BASE_URL` | 改为实际 `https://<API_DOMAIN>`，无路径、无尾斜杠；独立 preflight 和商务安装直接检查此值 |
+| `IMBOY_DIRECT_CLEANUP_PG_USER` | 必填的独立清理数据库 LOGIN，不能与 `POSTGRES_USER` 相同；由部署方单独开通，仅加入 `v5_worker` |
+| `IMBOY_DIRECT_CLEANUP_PG_PASSWORD` | 已开通账号须填其匹配的强密码（至少 32 字符，且不同于 `POSTGRES_PASSWORD`）；留空时安装器会生成，部署方仍须将同一密码用于该 LOGIN |
+
+所有示例域名、邮箱都要替换；五域两两不同，不带协议、端口或路径。`POSTGRES_USER`、
+`POSTGRES_DB`、`DATA_DIR` 等可保留适用的模板默认值，版本和镜像须与实际交付包一致。
+安装器**不创建清理 LOGIN 或授权**；预检只核对配置，不证明账号已存在、密码可登录或
+`v5_worker` 权限已就绪。新数据库也须由交付方安排该开通步骤后验收。
+
+安装器在已有 `.env` 后自动补齐空值或 `CHANGE_ME` 内部密钥，保留已有非占位值：
+数据库密码、JWT/AES、管理 Cookie、edge token、密码盐、握手密钥/IV、Grafana、
+LiveKit、Garage，以及启用 Uptrace 时的六项内部密钥；登录 RSA 文件生成到
+`${DATA_DIR}/backend_priv/keys/`，已有私钥保留。DNS、第三方账号/凭据、License 和
+数据库角色须由客户或交付方准备。正式 TLS 由 ACME 在网络条件满足后签发。
+
+| 安装路径 / Install path | 配置差异 / Configuration differences |
+|---|---|
+| `--edition community`（默认） | 使用随仓 `docker-compose.community.yml`；容器固定 `IMBOY_EDITION=community`、外部支付网关关闭，无需支付商户凭据，修改 `.env` 不能打开该网关 |
+| `--edition business` | 需另行取得 `docker-compose.prod.yml`，叠加随仓 `docker-compose-sales-policy.yml`；默认 `IMBOY_SALES_RELEASE=true` 时要求网关开启、`IMBOY_PAYMENT_MODE=live`，至少一个网关的完整凭据 |
+
+`--edition business` 是部署文件选择；授权级别 `IMBOY_EDITION=professional|enterprise`
+及对应 `IMBOY_LICENSE_FILE` 另按商务交付配置。两版本启用短信/SMTP 后均须补齐相应
+凭据；启用 Uptrace 另填 `UPTRACE_DOMAIN`、`UPTRACE_ADMIN_EMAIL` 并准备其 DNS/证书。
+支付开启时，安装器只为留空的微信/支付宝回调地址派生 API 域 HTTPS URL，不生成商户凭据。
 
 ## 推荐：一键部署
 
@@ -107,8 +151,8 @@ $EDITOR .env
 bash install.sh --edition community
 ```
 
-客户先填写域名及实际启用的支付宝/微信、短信、SMTP 等第三方配置。随后只运行一次
-`install.sh`：脚本会幂等补齐数据库口令、JWT、AES、LiveKit、Garage、Uptrace 等内部
+客户先按[配置表](#customer-input)准备五域、邮箱、API origin、独立清理数据库账号，
+以及实际启用的第三方配置，再运行 `install.sh`。脚本会幂等补齐数据库口令、JWT、AES、LiveKit、Garage、Uptrace 等内部
 随机密钥和 RSA 登录密钥，并自动派生支付宝/微信回调 URL。之后依次完成：前置检查
 → 拉齐缺失镜像 → 起服务 → 签发 TLS → 等待健康 → 部署后自检 →
 打印 Release Identity 三元组（`IMBOY_VERSION` / `IMBOY_GIT_SHA` /
@@ -123,8 +167,10 @@ bash install.sh --edition community
 安装器会在启动任何容器前统一检查；私有 GHCR 交付由客户先在部署机执行其获授权的
 `docker login ghcr.io`，安装器不会猜测、保存或输出客户的仓库账号。
 
-若尚未创建 `.env`，直接运行安装器只会生成权限为 `600` 的模板并退出，不会猜测或
-对外使用客户的域名、邮箱和第三方账号。
+若尚未创建 `.env`，安装器通过工具/Docker 前置检查后只复制权限为 `600` 的模板并退出；
+填写后重跑才生成内部密钥/RSA 并继续部署。没有 `--init-only` 或 `--dry-run` 参数，
+不要把安装命令当成仅生成配置的检查命令。首次保持 `LIVEKIT_TURN_ENABLED=false` 完成
+签证；确认 TURN 证书就绪、旧 TURN 已退场且 3478/5349 无占用后，再置 `true` 重跑。
 
 ### 单公网 IP 共用 TURN/TLS 443
 
@@ -182,7 +228,55 @@ Uptrace 默认关闭。启用时在 `.env` 设置 `UPTRACE_ENABLED=true`，填�
 
 `IMBOY_BASE_URL` 使用 `https://<API_DOMAIN>`，供 API、edge 回退及其他业务使用。社区 Compose 为旧 Widget/Seat 同源上传单独设置 `IMBOY_WIDGET_BASE_URL=https://<CS_WIDGET_DOMAIN>`；缺少该地址时旧上传不下发 URL。direct-v1 上传使用独立的存储授权。Helm 的 `widgetHost` 和 `widgetBaseUrl` 默认为空，启用旧同源上传时须配置同一实际 Widget 网关。
 
-安装器以 Compose 实际解析的域名执行 preflight，五个域名必须有效且互不相同。
+社区安装器以 Compose 实际解析的域名执行 preflight，并临时派生 API origin；商务安装
+与独立 preflight 读取 `.env`。因此仍须把 `.env` 的 `IMBOY_BASE_URL` 配成实际 API origin。
+
+### Shell 配置检查 / Configuration checks
+
+以下命令不启动服务、不申请证书。完整 preflight 需要已有内部密钥/RSA 的 `.env`；
+刚复制模板时出现密钥占位符或 RSA 缺失错误是预期，首次安装按上面的安装器流程执行。
+`preflight.sh` 单独运行默认是 **business**，必须显式选择版本：
+
+社区版：
+
+```bash
+cd /path/to/imboy/deploy
+# 社区版：配置、宿主机/Docker 与 RTC/TURN DNS 探测
+bash preflight.sh --edition community --docker --dns &&
+  docker compose --env-file .env -f docker-compose.community.yml config -q
+```
+
+商务版（与上面二选一，先取得对应的 `prod.yml`）：
+
+```bash
+cd /path/to/imboy/deploy
+bash preflight.sh --edition business --docker --dns &&
+  docker compose --env-file .env -f docker-compose.prod.yml \
+    -f docker-compose-sales-policy.yml config -q
+```
+
+启用 Uptrace/TURN 时，`config -q` 也须按安装器顺序追加对应 `-f` overlay；不要输出完整
+`compose config`（会展开密钥）。`config -q` 仅验证 Compose 展开；preflight 不连接数据库
+验证清理账号。已运行实例还可能报告端口占用，须核对监听者；TURN 开启时的 3478/5349
+占用会直接报错，不能据此要求删除正在工作的实例。
+
+`--dns` 仅探测 RTC/TURN 是否可解析，不能证明其公网 IP 正确，也不覆盖另外三域。
+在 Debian/Ubuntu 上可另检查五域 A 解析（字段沿用模板的无引号 `KEY=value` 格式）：
+
+```bash
+(
+  set -eu
+  for key in API_DOMAIN ADMIN_DOMAIN CS_WIDGET_DOMAIN RTC_DOMAIN TURN_DOMAIN; do
+    domain=$(awk -F= -v key="$key" '$1 == key {print $2; exit}' .env)
+    test -n "$domain"
+    printf '%s: %s\n' "$key" "$domain"
+    getent ahostsv4 "$domain"
+  done
+)
+```
+
+人工比对返回地址与客户公网入口，并从外网检查 AAAA、HTTP-01 路径和正式证书。
+缺解析工具的 WARN 不能记为通过；这些配置检查均不代表安装或业务验收成功。
 
 ### Shell 交付依赖与验收边界 / Shell delivery dependencies and acceptance
 
@@ -229,6 +323,11 @@ sudo apt-get install -y bash jq curl openssl ca-certificates coreutils grep sed 
 或日志问题仍记为 WARN。交付时须处理或记录 WARN，并从客户网络验证正式域名证书和
 上述业务流程，保存结果后再判定业务验收完成。正式安装不传 `--skip-tls`。
 
+RTC 还存在须现场核实的接线边界：社区 Compose 默认下发 `wss://<RTC_DOMAIN>`，但
+随仓 `nginx/templates/imboy.conf.template` 目前只有 API 域 `/livekit/` 路径，没有 RTC
+独立域 vhost。为 RTC 域签出证书不代表其 443/WSS 路由已经可用；交付方须确认实际反代
+接线，并完成客户网络的 WSS/双端通话/TURN 回退验收。不能以文档修正或离线通过销项。
+
 Production acceptance includes infrastructure gates, administrator initialization and real
 client business checks. A successful sanity check is not evidence of a WebSocket message
 round trip or an attachment round trip. Keep the development smoke chain in an isolated
@@ -252,70 +351,30 @@ bash deploy/preflight.sh --self-test
 
 ---
 
-## 手工五步部署（仅在需要逐步排查时使用）
+## 手工五步排查（仅已有完整配置的商务版）
 
-> 本节是**商务版**（`docker-compose.prod.yml` + sales-policy overlay）的手工路径。
-> 社区版没有手工多步的必要：`install.sh --edition community` 全自动，或参照
-> `docker-compose.community.yml` 文件头注释的手工命令。
+> 首次安装使用 `install.sh --edition community|business`。本节仅供已完成内部密钥/RSA
+> 初始化的**商务版**（`docker-compose.prod.yml` + sales-policy overlay）逐步排查；
+> 不能把刚复制的模板直接用于此流程，也不能以这些命令替代安装器的全部门禁和 sanity。
 
-> ⚠️ **顺序不可颠倒**：`preflight.sh` 在 `.env` 不存在时直接 `exit 1`，
-> 所以必须**先备好 `.env` 再跑前置检查**。此前本文档把前置检查写在第 1 步，
-> 照做必然失败。
-
-### 1. 准备配置
+### 1. 检查已有配置
 
 ```bash
 cd /path/to/imboy/deploy
-cp .env.example .env
+test -f .env
 $EDITOR .env
 ```
 
-**必须修改的字段 / Required fields to change:**
-
-> 用 `install.sh` 的话，下表中的内部密钥全部自动生成（含 Garage 凭据
-> `IMBOY_GARAGE_ACCESS_KEY` / `IMBOY_GARAGE_SECRET_KEY` / `GARAGE_RPC_SECRET`），无需手填。
-
-| 变量 / Variable | 说明 / Description |
-|------|------|
-| `API_DOMAIN` | 后端 API + WS 域名 / Backend API + WebSocket domain |
-| `ADMIN_DOMAIN` | 管理后台域名 / Admin console domain |
-| `POSTGRES_PASSWORD` | 强口令，至少 16 位 / Strong password, 16+ chars |
-| `JWT_KEY` | 32 字节随机：`openssl rand -hex 16` |
-| `POSTGRE_AES_KEY` | 32 字节随机：`openssl rand -hex 16` |
-| `ADM_COOKIE_SECRET` | 32 字节随机 / 32-byte random |
-| `GRAFANA_ADMIN_PASSWORD` | Grafana 仪表盘登录密码 / Grafana dashboard password |
-| `CERTBOT_EMAIL` | Let's Encrypt 账号邮箱（证书到期提醒）/ Let's Encrypt account email |
-| `IMBOY_SOLIDIFIED_KEY` | 32 字节随机：`openssl rand -hex 16` |
-| `IMBOY_SOLIDIFIED_KEY_IV` | 16 字节随机：`openssl rand -hex 8` |
-| `IMBOY_PASSWORD_SALT` | 32 字节随机。**一旦有用户注册就不可更改**，改了存量用户全部无法登录 |
-| `LIVEKIT_API_KEY` | 32 字节随机 / 32-byte random |
-| `LIVEKIT_API_SECRET` | ≥32 字符随机：`openssl rand -hex 24` |
-| `SENTRY_DSN` | 可选，生产错误监控 / Optional, production error monitoring |
-
-第三方配置是条件必填：SMTP 填任一项后必须补齐 relay/port/SSL/username/password；
-短信设置 `IMBOY_SMS_SWITCH=on` 后只支持 `yjsms` 或 `jsms` 并要求对应凭据完整；支付
-设置 `IMBOY_PAYMENT_GATEWAY_ENABLED=true` 后必须使用 `live` 并至少配置一个完整网关。
-支付宝与微信回调固定为
-`https://API_DOMAIN/api/v1/payment/callback/{alipay|wechat}`，留空时安装器自动写入。
-
-**还须生成 RSA 登录密钥对**（`.env` 里配的是容器内路径，宿主机要写到挂载点）：
-
-```bash
-mkdir -p ./data/backend_priv/keys
-openssl genrsa -out ./data/backend_priv/keys/login_rsa_priv.pem 2048
-openssl rsa -in ./data/backend_priv/keys/login_rsa_priv.pem -pubout \
-        -out ./data/backend_priv/keys/login_rsa_pub.pem
-chmod 600 ./data/backend_priv/keys/login_rsa_priv.pem
-```
-
-> 注意是 `data/backend_priv/keys/`，不是 `data/keys/` —— 后者没有被挂载进容器，
-> 写在那里后端读不到。
+逐项核对上方[客户填写与自动生成](#customer-input)：五域、邮箱、API origin、独立清理
+LOGIN/匹配密码及商务条件字段。内部密钥应已消除占位符，RSA 位于
+`${DATA_DIR}/backend_priv/keys/`。不要覆盖现有 `.env`、RSA 私钥或密码盐。
 
 **未启用外部支付网关时**（`IMBOY_PAYMENT_GATEWAY_ENABLED=false`）：充值、网关回调、
 提现端点会返回「功能未启用」，站内钱包账务（余额/流水/红包/转账）不受影响。
 需要对外收款时置为 `true`，此时 `IMBOY_PAYMENT_MODE` 必须是 `live` 且至少一个网关
 凭据完整，否则节点 fail-fast。销售版默认 `IMBOY_SALES_RELEASE=true`，前置检查会
-强制要求以上条件；仅钱包演示/社区部署需显式设置 `IMBOY_SALES_RELEASE=false`。
+强制要求以上条件。商务包仅作钱包演示时须显式设 `IMBOY_SALES_RELEASE=false`；社区版
+由其 Compose 固定关闭外部网关，且社区 preflight 跳过销售支付强校验。
 
 **动态插件生命周期写操作默认关闭**（`IMBOY_PLUGIN_LIFECYCLE_ENABLED=false`）：
 `/api/adm/plugin/*` 的 `install`/`enable`/`disable`/`upgrade`/`uninstall`/`reset`/
@@ -327,7 +386,9 @@ chmod 600 ./data/backend_priv/keys/login_rsa_priv.pem
 ### 2. 前置检查
 
 ```bash
-bash preflight.sh --docker
+bash preflight.sh --edition business --docker --dns
+docker compose --env-file .env -f docker-compose.prod.yml \
+  -f docker-compose-sales-policy.yml config -q
 ```
 
 任何 `ERROR` 都必须修复后再继续。
@@ -344,11 +405,14 @@ docker compose \
 
 销售版必须同时合并 `docker-compose-sales-policy.yml`，以显式开启严格 E2EE、频道和付费频道入口；该覆盖文件不含密钥。
 
-**首次部署需一次性签发 TLS 证书**（域名 A 记录须先指向本机，80 端口可公网访问）：
+**证书未完成时补做签发**（全部五域的 DNS/HTTP-01 条件均须满足；使用与启动相同的 Compose 组合）：
 
 ```bash
-bash nginx/init-letsencrypt.sh
+COMPOSE_FILES="docker-compose.prod.yml docker-compose-sales-policy.yml" \
+  bash nginx/init-letsencrypt.sh
 ```
+
+启用 Uptrace/TURN 时，启动、检查和签证命令均须追加相同 overlay；优先重跑安装器保持组合一致。
 
 签发成功后，`imboy_certbot` 会在后台自动续期，nginx 定期 reload 加载新证书，无需再手动执行。
 

@@ -114,22 +114,28 @@ to install it via get.docker.com after confirmation.
 # 1) Clone the repository and enter the deploy directory
 git clone <this repository> && cd imboy/deploy
 
-# 2) First run generates the config, then edit .env to fill in 3 required variables
+# 2) If .env is absent, the first run copies the template and exits; then edit it
 bash install.sh --edition community
-#    edit .env: API_DOMAIN / ADMIN_DOMAIN / CERTBOT_EMAIL
-#    (backend domain + admin console domain + certificate e-mail; every other
-#     secret is generated automatically)
+#    Five distinct bare hostnames: API_DOMAIN / ADMIN_DOMAIN / CS_WIDGET_DOMAIN / RTC_DOMAIN / TURN_DOMAIN
+#    Certificate email: CERTBOT_EMAIL; see the customer-input table below for other required fields
 
 # 3) Run the same command again to finish the installation
 bash install.sh --edition community
 ```
 
-The first run generates `.env`, all random secrets (database passwords, JWT,
-Garage object-storage credentials, …) and the RSA login key pair, then stops for
-you to fill in the three things a machine cannot know. The second run performs
-the pre-flight checks, starts the stack, issues the TLS certificate, waits for
-health, runs the post-install self-check, and prints the Release Identity
-triple with the access URLs.
+Prepare the [customer inputs](./deploy/README.md#customer-input) first: five distinct
+hostnames without schemes or paths, DNS pointing to the deployment ingress, public
+TCP 80 for HTTP-01 validation, and TCP 443 for HTTPS/WSS. Also set
+`IMBOY_BASE_URL=https://<API_DOMAIN>` and a dedicated `IMBOY_DIRECT_CLEANUP_PG_USER`.
+Provision that database LOGIN separately; for an existing account, supply its matching
+password. The installer does not create this account.
+
+When `.env` is absent, the first run checks dependencies, copies the template and
+exits. After you fill it in, the next run generates missing internal secrets and the
+RSA login key pair, runs preflight, starts the stack, requests TLS certificates,
+waits for health, runs the post-install self-check, and prints the Release Identity
+triple with the access URLs. Certificate issuance depends on real DNS and network
+conditions; customer business flows still require on-site acceptance.
 
 The first visit to the admin console opens the `/setup` wizard to create the
 super admin; or pass credentials as arguments for a headless, browser-free
@@ -167,11 +173,12 @@ verified (see [RELEASES.md](./RELEASES.md)).
   docker compose -f docker-compose.community.yml --profile monitoring up -d
   ```
 
-- **Business**: `deploy/docker-compose.prod.yml` plus the sales-policy overlay is
-  not distributed with the open-source repository; obtain it through the
-  commercial channel (leeyisoft@qq.com) and install with
-  `bash install.sh --edition business` (the script tells you exactly how to get
-  the file when it is missing).
+- **Business**: `deploy/docker-compose.prod.yml` is not distributed with the
+  open-source repository; obtain it through the commercial channel (leeyisoft@qq.com).
+  `deploy/docker-compose-sales-policy.yml` ships with the repository. Complete the
+  business-specific configuration and run `bash install.sh --edition business` to
+  combine both files (the script explains how to obtain missing files). Both editions
+  require the five hostnames and customer inputs described above.
 
 ### Upgrading
 

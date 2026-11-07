@@ -58,30 +58,33 @@ V10 has five runtime overrides and no persistent cursor/fence directory. Unique 
 
 ## deploy/.env.example 变量全表
 
-### 必填（部署前必须修改）
+### 客户填写与核对
+
+五个域名必须是互不相同的真实纯域名，`CERTBOT_EMAIL` 必须填写。`TURN_DOMAIN` 不因
+`LIVEKIT_TURN_ENABLED=false` 而变为可选。独立清理数据库账号及条件字段、预检命令见
+[客户填写与自动生成](../../deploy/README.md#customer-input)；下面的占位值不能用于正式部署。
 
 | 变量 | 默认值 | 说明 |
 |------|--------|------|
 | `API_DOMAIN` | `api.example.com` | 后端 API + WebSocket 域名 |
 | `ADMIN_DOMAIN` | `admin.example.com` | 管理后台域名 |
-| `CS_WIDGET_DOMAIN` | `cs.example.com` | 客服 Widget 域名（fail-closed 三域之一，须与前两者两两不同） |
+| `CS_WIDGET_DOMAIN` | `cs.example.com` | 客服 Widget 域名（五个必填域之一，须与其余四域互不相同） |
 | `IMBOY_BASE_URL` | `https://api.example.com` | 对外 API origin，必须恰为 `https://<API_DOMAIN>`（preflight 精确比对）；presign 公网基址另见 `IMBOY_GARAGE_PUBLIC_ENDPOINT` |
 | `RTC_DOMAIN` | `rtc.example.com` | LiveKit RTC 信令域 |
 | `TURN_DOMAIN` | `turn.example.com` | LiveKit embedded TURN 域（TLS 固定 5349） |
 | `CERTBOT_EMAIL` | `ops@example.com` | Let's Encrypt 通知邮箱 |
-| `POSTGRES_PASSWORD` | `CHANGE_ME_...` | PG 密码（不得为弱默认值，见上表 fail-fast） |
-| `IMBOY_PASSWORD_SALT` | `CHANGE_ME_...` | 密码哈希盐（见上表） |
-| `IMBOY_GARAGE_ACCESS_KEY` | `GK_CHANGE_ME_...` | Garage access key |
-| `IMBOY_GARAGE_SECRET_KEY` | `CHANGE_ME_...` | Garage secret key |
-| `GARAGE_RPC_SECRET` | `CHANGE_ME_...` | Garage 集群 RPC 密钥（**产生数据后不可更换**） |
-| `LIVEKIT_API_KEY` | `CHANGE_ME_...` | LiveKit API key |
-| `LIVEKIT_API_SECRET` | `CHANGE_ME_...` | LiveKit API secret（≥32 字符） |
-| `GRAFANA_ADMIN_PASSWORD` | `CHANGE_ME_...` | Grafana 管理口令 |
+| `IMBOY_DIRECT_CLEANUP_PG_USER` | 空 | 独立清理数据库 LOGIN；与业务账号不同，由交付方创建并授权，安装器不创建该账号 |
 
-### 安装器自动生成（勿手工复用旧值）
+### 安装器自动生成（新安装；已有有效值保留）
 
 | 变量 | 说明 |
 |------|------|
+| `POSTGRES_PASSWORD` | PG 密码 |
+| `IMBOY_DIRECT_CLEANUP_PG_PASSWORD` | 独立清理账号口令；已有 LOGIN 时须与其实际口令一致，生成值本身不创建数据库账号 |
+| `IMBOY_PASSWORD_SALT` | 密码哈希盐，已有用户后不可随意更换 |
+| `IMBOY_GARAGE_ACCESS_KEY` / `IMBOY_GARAGE_SECRET_KEY` / `GARAGE_RPC_SECRET` | Garage 凭据与集群 RPC 密钥；产生数据后不得随意更换 |
+| `LIVEKIT_API_KEY` / `LIVEKIT_API_SECRET` | LiveKit API 凭据 |
+| `GRAFANA_ADMIN_PASSWORD` | Grafana 管理口令 |
 | `JWT_KEY` | 核心 JWT 密钥（32 字节） |
 | `POSTGRE_AES_KEY` | PG 列加密 AES 密钥 |
 | `ADM_COOKIE_SECRET` | 管理后台 Cookie 签名密钥 |

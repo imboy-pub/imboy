@@ -17,13 +17,15 @@
 <script async src="https://cs.example.com/v1/loader.js" data-widget-id="1234567890123456789"></script>
 ```
 
-标准部署因此从两域升级为**三域**：
+当前标准一键部署要求**五个独立域名**，Widget 使用其中的客服域：
 
 | 域名 / Variable | 承载 | 上游 |
 |---|---|---|
 | `API_DOMAIN`（api.example.com） | 后端 API + WebSocket + LiveKit + S3 | `imboy_backend:9800` 等 |
 | `ADMIN_DOMAIN`（admin.example.com） | 管理后台 | `imboy_admin:80` |
 | `CS_WIDGET_DOMAIN`（cs.example.com） | 客服 Widget 网关（第三域） | 见下 |
+| `RTC_DOMAIN`（rtc.example.com） | LiveKit 信令域 | 现场验证该域 WSS 路由 |
+| `TURN_DOMAIN`（turn.example.com） | LiveKit embedded TURN 域 | 启用 TURN overlay 后由 LiveKit 监听 TLS 5349 |
 
 `CS_WIDGET_DOMAIN` vhost 的路由拓扑（`deploy/nginx/templates/cs-widget.conf.template`）：
 
@@ -47,11 +49,11 @@ https://cs.example.com/api/v1/cs/widget/*            -> imboy_backend:9800（同
 ## 2. DNS 前置 / DNS Prerequisites
 
 - `cs.example.com` 的 A/AAAA 记录必须指向本机（与 API/Admin 同一公网入口）。
-- 与 API/Admin 不同域、且三者**两两不同**；三域重复会被 preflight 直接拒绝
+- API/Admin/Widget/RTC/TURN 五域必须**两两不同**；重复会被 preflight 直接拒绝
   （重复会使 Nginx `server_name` 冲突、证书签发对象错乱）。
 - 80/443 端口公网可达（Let's Encrypt HTTP-01 校验用，与 API/Admin 共用同一机制）。
-- **fail-closed 口径**：标准部署三域必填。`CS_WIDGET_DOMAIN` 留空、占位符
-  （`cs.example.com`）或与另两域任一相同，`preflight.sh` / `install.sh` 都会
+- **fail-closed 口径**：标准部署五域必填，即使 TURN overlay 未启用也须填写 TURN 域。
+  `CS_WIDGET_DOMAIN` 留空、占位符（`cs.example.com`）或与其余四域任一相同，`preflight.sh` / `install.sh` 都会
   以非零退出拒绝部署 —— 不存在"没填也能装、Widget 静默半可用"的状态。
 
 ---
@@ -62,7 +64,7 @@ https://cs.example.com/api/v1/cs/widget/*            -> imboy_backend:9800（同
 
 | 变量 | 必填 | 说明 |
 |---|---|---|
-| `CS_WIDGET_DOMAIN` | 必填 | 客服 Widget 第三域。格式必须为纯域名（不带 `https://` 与路径），且与 `API_DOMAIN`/`ADMIN_DOMAIN` 两两不同 |
+| `CS_WIDGET_DOMAIN` | 必填 | 客服 Widget 域。格式必须为纯域名（不带 `https://` 与路径），且与 API/Admin/RTC/TURN 四域互不相同 |
 | `IMBOY_WIDGET_IMAGE` | 可选 | Widget 静态镜像，默认 `ghcr.io/imboy-pub/imboy-widget:${IMBOY_VERSION}`，与 backend/admin 同一发布流水线构建（源码与镜像定义在 imboyadmin 仓 `Dockerfile.widget`） |
 
 无其他配置项：Widget 静态容器不读取任何业务配置；第三方来源白名单
@@ -75,24 +77,25 @@ https://cs.example.com/api/v1/cs/widget/*            -> imboy_backend:9800（同
 ```bash
 cd /path/to/imboy/deploy
 cp .env.example .env
-$EDITOR .env        # 填写 API_DOMAIN / ADMIN_DOMAIN / CS_WIDGET_DOMAIN / CERTBOT_EMAIL 等
+$EDITOR .env        # 填写 API_DOMAIN / ADMIN_DOMAIN / CS_WIDGET_DOMAIN / RTC_DOMAIN / TURN_DOMAIN / CERTBOT_EMAIL
 bash install.sh --edition community
 ```
 
-`install.sh` 会依次完成：内部密钥生成 → preflight（含三域必填/两两不同校验，
-任一失败非零退出）→ 镜像拉取 → 启动（含 `imboy_widget`）→ **三域证书一次性签发**
-（`nginx/init-letsencrypt.sh` 的域清单已含 CS 域；任一域签发失败即整体中止，
+其他现场字段（API origin、独立清理数据库账号及授权、选配服务凭据）见
+[客户填写与自动生成](../../../../deploy/README.md#customer-input)。安装器不创建清理数据库 LOGIN。
+
+`install.sh` 会依次执行：内部密钥生成 → preflight（含五域必填/两两不同校验，
+任一失败非零退出）→ 镜像拉取 → 启动（含 `imboy_widget`）→ **五域证书签发**
+（`nginx/init-letsencrypt.sh` 的域清单已含 CS/RTC/TURN；任一域签发失败即整体中止，
 不会在 TLS 未就绪时宣称部署完成）→ 健康等待 → 打印访问地址（含
 `客服 Widget : https://cs.example.com`）。
 
-手工等价路径（逐步排查时）：
+独立配置预检（仅对已备齐密钥、RSA 及清理账号的 `.env`；不替代安装器其余门禁）：
 
 ```bash
 cd /path/to/imboy/deploy
 bash preflight.sh --docker --edition community
-docker network create imboy-network 2>/dev/null || true
-docker compose -f docker-compose.community.yml up -d
-bash nginx/init-letsencrypt.sh     # 三域证书签发（幂等：已签发的域自动跳过）
+docker compose --env-file .env -f docker-compose.community.yml config -q
 ```
 
 验证嵌入：在允许的第三方页面（origin 需在该 installation 的 `allowed_origins`
@@ -219,7 +222,7 @@ docker compose -f docker-compose.community.yml run --rm --entrypoint certbot imb
 
 | 现象 / Symptom | 排查 / Troubleshooting |
 |---|---|
-| `preflight.sh` 报 `CS_WIDGET_DOMAIN 与 ... 不能相同` | 三域必须两两不同；修改 `.env` 后重跑 |
+| `preflight.sh` 报 `CS_WIDGET_DOMAIN 与 ... 不能相同` | 五域必须两两不同；修改 `.env` 后重跑 |
 | preflight 报 `CS_WIDGET_DOMAIN 不是有效的纯域名` | 值里带了 `https://`、路径或结尾 `.`；只填 `cs.example.com` 形式的裸域名 |
 | `install.sh` 提示 `CS_WIDGET_DOMAIN 尚未填写真实值` | 占位符 `cs.example.com` 未替换；编辑 `.env` 后重跑 |
 | `install.sh` 证书签发失败且提到 CS 域 | 该域 A 记录未指向本机 / 80 端口不通 / Let's Encrypt 限流；与 API/Admin 域签发失败的排查方式一致 |

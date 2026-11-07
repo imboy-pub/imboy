@@ -21,13 +21,15 @@
 | 材料 | 位置 | 说明 |
 |---|---|---|
 | 一键安装脚本 | [deploy/install.sh](https://github.com/imboy-pub/imboy/blob/main/deploy/install.sh) | `--edition community\|business`；`--admin-phone/--admin-password` 可无浏览器建超管；装完打印 Release Identity 三元组 |
-| 前置检查 | [deploy/preflight.sh](https://github.com/imboy-pub/imboy/blob/main/deploy/preflight.sh) | **先填 `.env` 再跑**（缺失时直接退出）；`--edition` 切换检查口径 |
-| 部署栈说明 | [deploy/README.md](https://github.com/imboy-pub/imboy/blob/main/deploy/README.md) | 交付清单、前置条件（Debian 13 基准 / 8 GB 内存 / Compose v2.23.1+ / 双域名 / 80+443） |
-| 完整手册 | [deployment/deployment.md](./deployment/deployment.md) | compose 全量参考 |
+| 前置检查 | [deploy/preflight.sh](https://github.com/imboy-pub/imboy/blob/main/deploy/preflight.sh) | 安装器先补齐密钥/RSA 再预检；独立运行需已有完整 `.env`，并显式指定 `--edition community` 或 `business` |
+| 部署栈说明 | [deploy/README.md](https://github.com/imboy-pub/imboy/blob/main/deploy/README.md) | 交付清单、前置条件（Debian 13 基准 / 8 GB 内存 / Compose v2.23.1+ / 五个独立域名 / 80+443） |
+| 裸机参考手册 | [deployment/deployment.md](./deployment/deployment.md) | 裸机 / release 包与定制配置参考 |
 | 裸机快速上手 | [deployment/day1-quickstart.md](./deployment/day1-quickstart.md) | 路径 B 入口（5 分钟最小配置） |
 | 裸机部署脚本手册 | [deployment/deploy-script.md](./deployment/deploy-script.md) | `scripts/imboy-deploy.sh` 全量/增量部署 |
 
-健康验证口径：`curl -s https://<API_DOMAIN>/api/v1/init` 返回 `{"code":0,...}`；容器状态 `docker compose ps`。
+人工字段（五域、证书邮箱、API origin、独立清理账号与选配服务）及内部密钥的职责边界见[客户填写与自动生成](../../../deploy/README.md#customer-input)。安装器不创建或授权清理数据库 LOGIN，须由交付方落实。
+
+健康验证口径：`curl -s https://<API_DOMAIN>/api/v1/init` 返回 `{"code":0,...}`；容器状态 `docker compose ps`。这些基础检查不替代客户消息、附件及启用功能的业务验收。
 
 ## 2. 备份（Backup）
 
@@ -75,7 +77,7 @@
 ## 链路速查（PoC D7 运维验证日用）
 
 ```
-安装   deploy/.env 三变量 → preflight.sh → install.sh → 三元组抄录 → /api/v1/init 探活
+安装   deploy/.env 客户字段 → install.sh（密钥初始化 + preflight）→ 三元组抄录 → /api/v1/init 探活
 备份   backup_pg.sh --full → pg_restore --list 验证 → backup_garage.sh（附件）
 恢复   restore_pg.sh（含行数抽样）→ restore_smoke.sh → 抽验消息/附件
 升级   RELEASES.md 查版本说明 → 按小节执行 → 三元组复核 → 探活 + 消息冒烟
