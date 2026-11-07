@@ -111,7 +111,9 @@ sudo ss -lnup | grep -E ':(3478|5349)\b' || echo "TURN 端口空闲"
 #           此时必须保持 LIVEKIT_TURN_ENABLED=false（见 §5），不要试图同时开两套 TURN。
 ```
 
-**DNS（人工步骤，在域名服务商控制台完成）**：两条 A 记录都指向本机公网 IP——
+**DNS（人工步骤，在域名服务商控制台完成）**：下面是 RTC 专项的两条记录，均须指向本机公网 IP。
+形态 A 的全新整栈安装还须准备 API/Admin/Widget 域，共五个互不相同的域名；
+证书邮箱和其他客户字段见[一键安装配置要求](../../../../deploy/README.md#customer-input)。
 
 | 域名 | 用途 |
 |---|---|
@@ -145,14 +147,14 @@ cd /opt/imboy-stack/deploy
 ### 2.2 生成并填写 .env
 
 ```bash
-# [机器: 部署机] [目录: /opt/imboy-stack/deploy] 生成 600 权限的 .env 模板并自动补齐密钥
+# [机器: 部署机] [目录: /opt/imboy-stack/deploy] 首次生成 600 权限的 .env 模板
 bash install.sh --edition community
-# 预期输出: 首次运行会生成 .env（自动填好随机密钥，包括 LIVEKIT_API_KEY / LIVEKIT_API_SECRET），
-#           然后提示缺少人工变量并退出 —— 这是设计行为（不猜测域名/邮箱）。
+# 预期输出: 宿主机依赖满足且 .env 不存在时，只复制模板并退出。
+#           此时尚未生成内部密钥/RSA；填写客户字段后再次执行才会继续初始化与部署。
 ```
 
 ```bash
-# [机器: 部署机] [目录: /opt/imboy-stack/deploy] 人工填写 6 个必填项
+# [机器: 部署机] [目录: /opt/imboy-stack/deploy] 人工填写五域和证书邮箱
 # 用任意编辑器打开 .env，修改以下变量（示例域名请换成自己的）：
 #   API_DOMAIN=api.example.com
 #   ADMIN_DOMAIN=admin.example.com
@@ -163,33 +165,36 @@ bash install.sh --edition community
 ${EDITOR:-vi} .env
 ```
 
+还需按[客户字段表](../../../../deploy/README.md#customer-input)核对 `IMBOY_BASE_URL`，
+填写并由交付方创建/授权独立清理数据库 LOGIN，以及实际启用的第三方服务凭据。
+内部密钥由安装器生成；生成口令不会替代数据库账号创建。
+
 > 保持 `LIVEKIT_TURN_ENABLED=false`（默认）。全新机器没有旧 eturnal，也可以在证书签发完成后直接按 §5 开启 TURN overlay。
 
 ### 2.3 前置检查 + 启动
 
 ```bash
-# [机器: 部署机] [目录: /opt/imboy-stack/deploy] 前置检查
-bash preflight.sh --docker
-# 预期输出: 全部 ok。任何 err 都要先解决（域名格式、端口占用、密钥长度等），
-#           preflight 是 fail-closed 的：有 err 时直接退出非零。
-# 失败停止点: 按 err 提示修正 .env 后重跑，直到无 err。
+# [机器: 部署机] [目录: /opt/imboy-stack/deploy] 填写完成后重新运行安装器
+bash install.sh --edition community
+# 内部密钥/RSA 初始化 → 社区版 preflight → 镜像/服务 → 五域 TLS → 健康与 sanity。
+# 该命令会继续部署，不是仅检查；任何 ERROR 均须修复后再重跑。
 ```
 
 ```bash
-# [机器: 部署机] [目录: /opt/imboy-stack/deploy] 启动社区栈（含 imboy_livekit）
-docker network create imboy-network 2>/dev/null || true
-docker compose -f docker-compose.community.yml up -d
-# 预期输出: 各容器 Started，imboy_livekit 处于 running。
+# [机器: 部署机] [目录: /opt/imboy-stack/deploy] 检查 LiveKit 容器状态
 docker ps --format 'table {{.Names}}\t{{.Image}}\t{{.Status}}' | grep livekit
 # 预期输出: imboy_livekit  livekit/livekit-server:v1.13.7  Up ...
 # 失败停止点: 容器反复重启时先看日志: docker logs imboy_livekit --tail 50
 ```
 
-### 2.4 首次签发 TLS 证书（两域必签）
+### 2.4 五域 TLS 首签与排错
+
+首签由安装器在 §2.3 中执行；下面仅用于独立排查。启用其他 overlay 时，`COMPOSE_FILES`
+须包含与实际启动相同的完整文件集合。证书签发成功仍需现场验证 RTC vhost、WSS 和通话。
 
 ```bash
 # [机器: 部署机] [目录: /opt/imboy-stack/deploy] 一次性签发全部域名（含 RTC_DOMAIN 与 TURN_DOMAIN）
-bash nginx/init-letsencrypt.sh
+COMPOSE_FILES=docker-compose.community.yml bash nginx/init-letsencrypt.sh
 # 预期输出: 逐域签发，最后输出 "TLS 证书签发完成: ..."，其中包含 rtc 与 turn 两域。
 # 失败停止点: 常见原因是 DNS 未生效或 80 端口被占 —— 回到 §1 检查后再重跑（脚本幂等）。
 ```

@@ -4,17 +4,24 @@
 >
 > **要用 Docker Compose 部署（绝大多数人）→ 不要看本文**，直接：
 > ```bash
-> cd deploy && bash install.sh
+> cd deploy && bash install.sh --edition community
 > ```
-> 见 [`deploy/README.md`](https://github.com/imboy-pub/imboy/blob/main/deploy/README.md)。那条路径的密钥、RSA 密钥对与
-> TLS 证书全部自动生成，只需人工填两个域名 + 一个邮箱。
+> 先按 [`deploy/README.md` 客户配置表](../../../../deploy/README.md#customer-input)准备五个互不相同的纯域名：
+> `API_DOMAIN`、`ADMIN_DOMAIN`、`CS_WIDGET_DOMAIN`、`RTC_DOMAIN`、`TURN_DOMAIN`，以及 `CERTBOT_EMAIL`。
+> 另需填写 API origin（`IMBOY_BASE_URL`）与独立清理数据库账号；该 LOGIN 须另行开通，密码须与数据库一致。
+> `.env` 不存在时首跑在依赖检查后只复制模板并退出；填写后重跑才补齐内部随机密钥与 RSA 密钥对并继续部署。
+> TLS 证书在五域 DNS、公共 TCP 80 的 HTTP-01 验证等条件满足后申请，不能视为离线自动生成。
 >
 > **本文是裸机 / release 包部署路径**：变量名带 `IMBOY_` 前缀、密钥路径形如
 > `/etc/imboy/keys/`，与 compose 路径的 `.env` 字段名和挂载点**不通用**，照抄会配错。
 >
 > If you deploy with Docker Compose (most people), use `deploy/install.sh` instead —
-> this document covers the bare-metal / release-package path and its variable names
-> are **not** interchangeable with the compose `.env`.
+> prepare five distinct bare hostnames, the certificate email and the additional
+> [customer inputs](../../../../deploy/README.md#customer-input). The first run with no `.env`
+> checks dependencies and copies the template; the next run initializes internal secrets and deploys.
+> TLS issuance requires working public DNS and HTTP-01 reachability. This document
+> covers the bare-metal / release-package path; its variables are **not** interchangeable
+> with `deploy/.env`.
 
 > 简体中文 / English — bilingual
 > 适用版本 / Applies to: imboy v1.0.0-rc.1+
@@ -32,7 +39,7 @@
    - `IMBOY_*` 环境变量 — 部署期密钥与连接信息（Section C）
    - `IMBOYENV` 环境变量 — 运行环境标识（local / dev / prod）
 2. **生产 fail-fast** — 缺密钥就拒绝启动，不存在「上线后才发现没设」。
-3. **Docker 单文件** — 一个 `docker-compose.yml` + profile（dev / pro；原 `turn` profile 已随 coturn 移除，TURN 由 LiveKit embedded TURN 承载，见 [livekit-single-service-runbook.md](./livekit-single-service-runbook.md)）。
+3. **辅助 PostgreSQL 容器** — 仓库根目录 `docker-compose.yml` + profile（dev / pro）只为本路径提供数据库，不是 `deploy/` 的整栈一键安装；TURN 部署见 [livekit-single-service-runbook.md](./livekit-single-service-runbook.md)。
 
 English:
 
@@ -41,15 +48,15 @@ English:
    - `IMBOY_*` env vars — deploy-time secrets and connection info (Section C)
    - `IMBOYENV` env var — runtime tag (local / dev / prod)
 2. **Fail-fast in prod** — missing secrets refuse to boot; never discover after go-live.
-3. **One docker-compose file** — single `docker-compose.yml` with profiles (dev / pro). The old `turn` profile was removed along with coturn; TURN now lives in the LiveKit embedded TURN overlay — see the [LiveKit runbook](./livekit-single-service-runbook.md).
+3. **Supporting PostgreSQL containers** — the repository-root `docker-compose.yml` and its dev/pro profiles supply the database for this path, separate from the full-stack installer under `deploy/`. For TURN, see the [LiveKit runbook](./livekit-single-service-runbook.md).
 
 ---
 
 ## 1. 准备 .env / Prepare .env
 
-中文：复制 `.env.example` 为 `.env`，填入真实值。
+中文：在仓库根目录复制根级 `.env.example` 为 `.env`，填入真实值；此模板与 Compose 一键安装的 `deploy/.env.example` 不通用。
 
-English: Copy `.env.example` to `.env` and fill in real values.
+English: At the repository root, copy the root `.env.example` to `.env` and fill in real values. This is a different template from the Compose installer's `deploy/.env.example`.
 
 ```bash
 cp .env.example .env
@@ -66,8 +73,8 @@ $EDITOR .env
 | `IMBOY_JWT_KEY` | JWT 签名密钥 (32B) / JWT signing key | `openssl rand -base64 32` |
 | `IMBOY_POSTGRE_AES_KEY` | PG 字段 AES 密钥 (32B) / PG field AES key | `openssl rand -base64 32` |
 | `IMBOY_ADM_COOKIE_SECRET` | 管理后台 Cookie 签名密钥 / Admin cookie signing | `openssl rand -hex 32` |
-| `IMBOY_SOLIDIFIED_KEY` | 客户端 init 加密密钥 (32B) / Client init AES key | `openssl rand -base64 32` |
-| `IMBOY_SOLIDIFIED_KEY_IV` | 客户端 init AES IV (16B) / Client init AES IV | `openssl rand -base64 16` |
+| `IMBOY_SOLIDIFIED_KEY` | 客户端 init 加密密钥 (32B ASCII) / Client init AES key | `openssl rand -hex 16` |
+| `IMBOY_SOLIDIFIED_KEY_IV` | 客户端 init AES IV (16B ASCII) / Client init AES IV | `openssl rand -hex 8` |
 | `IMBOY_PASSWORD_SALT` | 旧密码 MD5 盐 (投产后不可改) / Legacy password salt (immutable after go-live) | `openssl rand -hex 16` |
 | `IMBOY_LOGIN_RSA_PUB_KEY_FILE` | RSA 公钥 PEM 路径 / RSA pub key PEM path | `/etc/imboy/keys/login_rsa_pub.pem` |
 | `IMBOY_LOGIN_RSA_PRIV_KEY_FILE` | RSA 私钥 PEM 路径 / RSA priv key PEM path | `/etc/imboy/keys/login_rsa_priv.pem` |
@@ -114,9 +121,9 @@ sudo chown -R imboy:imboy /etc/imboy/keys
 
 ## 5. 启动 PostgreSQL / Start PostgreSQL
 
-中文：使用统一的 `docker-compose.yml`，按 profile 选择 dev 或 pro 实例。
+中文：在仓库根目录使用辅助数据库 `docker-compose.yml`，按 profile 选择 dev 或 pro 实例；后端 release 仍按下一节单独启动。
 
-English: Use the unified `docker-compose.yml` and pick `dev` or `pro` profile.
+English: Use the repository-root database `docker-compose.yml` and pick the `dev` or `pro` profile. Start the backend release separately in the next section.
 
 ```bash
 # 开发 / Development (port 4323)

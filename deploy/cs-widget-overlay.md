@@ -30,8 +30,8 @@
 前置条件：
 
 1. 商务版基线栈已按 `deploy/README.md` 商务版路径正常运行（backend / admin / nginx / certbot）；
-2. `deploy/.env` 中 `CS_WIDGET_DOMAIN` 已填写（与 `API_DOMAIN` / `ADMIN_DOMAIN` 两两不同，
-   DNS A 记录指向本机；变量说明见 `deploy/.env.example`）；可选 `IMBOY_WIDGET_IMAGE`
+2. `deploy/.env` 中五个域名及证书邮箱已按[客户字段表](./README.md#customer-input)填写；
+   `CS_WIDGET_DOMAIN` 与 API/Admin/RTC/TURN 四域互不相同，DNS 指向本机；可选 `IMBOY_WIDGET_IMAGE`
    覆盖 widget 镜像（默认 `ghcr.io/imboy-pub/imboy-widget:${IMBOY_VERSION}`，与
    backend/admin 同一发布流水线）；
 3. 数据库已应用全部客服域迁移——用门脚本自检（CP-ASSET-01）：
@@ -41,7 +41,8 @@
    ```
    非 zero 退出时**不要继续安装**（后端起量前客服迁移必须全部落库）。
 
-安装步骤：
+安装步骤（若现场还使用 sales-policy、healthcheck 等 overlay，以下每条 Compose 命令
+及 `COMPOSE_FILES` 都须保留相同的完整文件集合）：
 
 ```bash
 cd deploy
@@ -56,9 +57,10 @@ docker compose --env-file .env \
 docker compose --env-file .env \
   -f docker-compose.prod.yml -f docker-compose.prod-cs.yml up -d
 
-# 3) 为 CS 第三域签发 TLS 证书：把 CS_WIDGET_DOMAIN 加入 init-letsencrypt.sh
-#    的域名清单后执行一次（后续续期由 certbot 容器自动覆盖）
-bash nginx/init-letsencrypt.sh
+# 3) TLS 脚本已包含 API/Admin/CS/RTC/TURN 五域，无需修改域名清单
+#    显式传入与启动时相同的 Compose 组合；已就绪的正式证书会保留
+COMPOSE_FILES='docker-compose.prod.yml docker-compose.prod-cs.yml' \
+  bash nginx/init-letsencrypt.sh
 
 # 4) 验收
 docker compose --env-file .env \

@@ -3,6 +3,8 @@
 > 适用版本：imboy v1.0.0-rc.1+
 > 脚本位置：`scripts/imboy-deploy.sh`
 > 配置模板：`scripts/.env.deploy.example`
+> 适用路径：宿主机 / SSH release 发布；首次 Docker Compose 客户安装使用
+> [`deploy/install.sh`](../../../../deploy/README.md)，配置放在 `deploy/.env`，两套配置不可互抄。
 
 ---
 

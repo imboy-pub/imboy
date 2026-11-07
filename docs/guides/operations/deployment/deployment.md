@@ -1,11 +1,13 @@
 # IMBoy 生产部署指南
 
-> - **自动化部署脚本**（推荐）：[deploy-script.md](./deploy-script.md) — 配置一次 `.env.deploy`，一条命令完成全量或增量部署
-> - **5 分钟快速上手**：[day1-quickstart.md](./day1-quickstart.md) — 从零搭建最小生产环境
+> - **Docker Compose 一键安装**：[deploy/README.md](../../../../deploy/README.md) — 客户交付入口 `deploy/install.sh`；五域、证书邮箱及其他人工字段见[配置要求](../../../../deploy/README.md#customer-input)
+> - **宿主机 / SSH release 发布**：[deploy-script.md](./deploy-script.md) — 使用 `scripts/.env.deploy` 完成全量或增量发布
+> - **裸机 / release 包快速上手**：[day1-quickstart.md](./day1-quickstart.md) — 配置后端运行时与外部依赖
 > - **LiveKit 通话运行手册**（二期域，一期 `phase1_delivery` 默认关闭）：[livekit-single-service-runbook.md](./livekit-single-service-runbook.md) — rtc WSS + SFU + embedded TURN 的部署/验证/升级/回滚（小白可逐行执行）
 > - **生产架构图**：[production-architecture.md](./production-architecture.md) — 服务分布与端口一览
 >
-> 本文是完整参考手册，适合定制化配置场景。
+> 本文是裸机 / release 包与定制配置参考。下面的 `IMBOY_*` 运行时变量、`/etc/imboy/keys/`
+> 路径与 Compose 的 `deploy/.env`、容器挂载路径不通用；Compose 客户按一键安装手册操作。
 
 ## 环境要求
 
@@ -39,8 +41,8 @@ CREATE EXTENSION IF NOT EXISTS pg_trgm;
 | `IMBOYENV` | 运行环境 | `pro` / `dev` / `local` |
 | `IMBOY_JWT_KEY` | JWT 签名密钥 (32 字节 binary) | `openssl rand -base64 32` |
 | `IMBOY_POSTGRE_AES_KEY` | PostgreSQL 字段级 AES 密钥 (32 字节) | `openssl rand -base64 32` |
-| `IMBOY_SOLIDIFIED_KEY` | 客户端 init 加密密钥 (32 字节) | `openssl rand -base64 32` |
-| `IMBOY_SOLIDIFIED_KEY_IV` | 客户端 init AES IV (16 字节) | `openssl rand -base64 16` |
+| `IMBOY_SOLIDIFIED_KEY` | 客户端 init 加密密钥 (32 字节 ASCII) | `openssl rand -hex 16` |
+| `IMBOY_SOLIDIFIED_KEY_IV` | 客户端 init AES IV (16 字节 ASCII) | `openssl rand -hex 8` |
 | `IMBOY_PASSWORD_SALT` | 历史 MD5 密码盐（投产后不可改） | `openssl rand -hex 16` |
 | `IMBOY_LOGIN_RSA_PUB_KEY_FILE` | RSA 公钥 PEM 文件路径 | `/etc/imboy/keys/login_rsa_pub.pem` |
 | `IMBOY_LOGIN_RSA_PRIV_KEY_FILE` | RSA 私钥 PEM 文件路径 | `/etc/imboy/keys/login_rsa_priv.pem` |

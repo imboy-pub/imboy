@@ -115,19 +115,24 @@ Docker 24+ 与 Compose v2 插件，未安装时 `install.sh` 会确认后经 get
 # 1) 克隆仓库并进入部署目录
 git clone <本仓库地址> && cd imboy/deploy
 
-# 2) 首跑生成配置，然后按提示编辑 .env 填 3 个必填变量
+# 2) .env 不存在时，首跑复制模板并退出；按客户配置表编辑 .env
 bash install.sh --edition community
-#    编辑 .env：API_DOMAIN / ADMIN_DOMAIN / CERTBOT_EMAIL
-#    （后端域名 + 管理后台域名 + 证书通知邮箱，其余密钥全部自动生成）
+#    五个独立纯域名：API_DOMAIN / ADMIN_DOMAIN / CS_WIDGET_DOMAIN / RTC_DOMAIN / TURN_DOMAIN
+#    证书邮箱：CERTBOT_EMAIL；API origin、独立清理账号等要求见下方链接
 
 # 3) 再跑一次同一条命令，完成安装
 bash install.sh --edition community
 ```
 
-第一次运行会生成 `.env`、全部随机密钥（数据库口令、JWT、Garage 对象存储凭据等）
-和 RSA 登录密钥对，然后停下来等人填上面 3 项机器无从知晓的信息。第二次运行依次
-完成：前置检查 → 拉起服务 → 签发 TLS 证书 → 等待健康 → 部署后自检，最后打印
-Release Identity 三元组与访问地址。
+先按[客户填写与自动生成字段表](./deploy/README.md#customer-input)准备配置：五域互不相同、
+不带协议或路径，DNS 指向部署入口，公网 TCP 80 可用于 HTTP-01 验证，443 可用于 HTTPS/WSS。
+另需设置 `IMBOY_BASE_URL=https://<API_DOMAIN>`、独立的 `IMBOY_DIRECT_CLEANUP_PG_USER`；
+该数据库 LOGIN 须另行开通，已有账号须填写匹配的密码，安装器不创建该账号。
+
+`.env` 不存在时，首次运行在依赖检查后仅复制模板并退出。填写后再次运行才会幂等补齐
+内部随机密钥与 RSA 登录密钥对，随后执行前置检查 → 拉起服务 → 申请 TLS 证书 →
+等待健康 → 部署后自检，最后打印 Release Identity 三元组与访问地址。
+TLS 签发依赖真实 DNS 与网络条件；客户业务仍须按部署手册现场验收。
 
 首次访问管理后台会自动进入 `/setup` 向导创建超级管理员；也可以直接用参数创建，
 实现无浏览器纯脚本部署：
@@ -162,9 +167,10 @@ IMBOY_IMAGE_DIGEST=sha256:...
   docker compose -f docker-compose.community.yml --profile monitoring up -d
   ```
 
-- **商务版**：`deploy/docker-compose.prod.yml` + sales-policy overlay 不随开源仓
-  分发，需通过商务交付渠道获取（leeyisoft@qq.com），安装命令为
-  `bash install.sh --edition business`（缺文件时脚本会明确提示索取方式）。
+- **商务版**：`deploy/docker-compose.prod.yml` 不随开源仓分发，需通过商务交付渠道
+  获取（leeyisoft@qq.com）；`deploy/docker-compose-sales-policy.yml` 随仓分发。
+  补齐商务版条件配置后执行 `bash install.sh --edition business`，安装器会组合两份文件
+  （缺文件时明确提示索取方式）。两种版本均要求上述五域与客户配置。
 
 ### 升级
 
