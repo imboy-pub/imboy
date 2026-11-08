@@ -1,0 +1,16 @@
+# Reference fragment for the dedicated PG18 cluster's imboy.conf.
+# The installer includes it from postgresql.conf; this is not a full cluster.
+listen_addresses = '127.0.0.1'
+port = 5432
+unix_socket_directories = '/run/imboy-pg'
+unix_socket_permissions = 0700
+password_encryption = 'scram-sha-256'
+shared_preload_libraries = 'pg_jieba,timescaledb,pg_stat_statements'
+timescaledb.telemetry_level = 'off'
+timezone = 'UTC'
+log_timezone = 'UTC'
+max_connections = 160
+fsync = on
+synchronous_commit = on
+log_statement = 'none'
+log_min_error_statement = 'panic'

@@ -1,0 +1,9 @@
+run_id	candidate_release_id	stage	start_time_with_timezone	end_time_with_timezone	elapsed_seconds	operator	command_or_action_redacted	exit_code_or_result	status	developer_intervention_count	intervention_reason_and_minutes	blocker_id	evidence_reference
+填写本次演练ID	填写发行标识	ENVIRONMENT_PREPARATION							NOT_RUN	0			
+填写本次演练ID	填写发行标识	INSTALL							NOT_RUN	0			
+填写本次演练ID	填写发行标识	BUSINESS_UAT							NOT_RUN	0			
+填写本次演练ID	填写发行标识	RESTART							NOT_RUN	0			
+填写本次演练ID	填写发行标识	BACKUP							NOT_RUN	0			
+填写本次演练ID	填写发行标识	RESTORE							NOT_RUN	0			
+填写本次演练ID	填写发行标识	UPGRADE							NOT_RUN	0			
+填写本次演练ID	填写发行标识	FAILURE_RECOVERY							NOT_RUN	0			

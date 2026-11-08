@@ -1,0 +1,23 @@
+[Unit]
+Description=IMBoy dedicated PostgreSQL 18
+After=network.target
+[Service]
+Type=simple
+User=imboy-pg
+Group=imboy-pg
+RuntimeDirectory=imboy-pg
+RuntimeDirectoryMode=0700
+ExecStart=/opt/imboy/runtime/postgresql/bin/postgres -D /var/lib/imboy/postgres
+ExecReload=/bin/kill -HUP $MAINPID
+KillSignal=SIGINT
+TimeoutStopSec=180
+Restart=on-failure
+RestartSec=5
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=strict
+ReadWritePaths=/var/lib/imboy/postgres /run/imboy-pg
+[Install]
+WantedBy=multi-user.target

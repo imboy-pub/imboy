@@ -1,0 +1,19 @@
+[Unit]
+Description=IMBoy single-node Garage
+After=network.target
+[Service]
+Type=simple
+User=imboy-garage
+Group=imboy-garage
+ExecStart=/opt/imboy/runtime/garage -c /etc/imboy/garage.toml server
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=180
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=strict
+ReadWritePaths=/var/lib/imboy/garage
+[Install]
+WantedBy=multi-user.target
