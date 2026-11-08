@@ -110,6 +110,6 @@ services:
   imboy_nginx:
     environment:
       UPTRACE_DOMAIN: ${UPTRACE_DOMAIN:?UPTRACE_DOMAIN is required}
-      NGINX_ENVSUBST_FILTER: "^(API_DOMAIN|ADMIN_DOMAIN|S3_UPSTREAM|UPTRACE_DOMAIN)$$"
+      NGINX_ENVSUBST_FILTER: "^(API_DOMAIN|ADMIN_DOMAIN|S3_UPSTREAM|CS_WIDGET_DOMAIN|RTC_DOMAIN|UPTRACE_DOMAIN)$$"
     volumes:
       - ./uptrace/nginx.conf.template:/etc/nginx/templates/uptrace.conf.template:ro

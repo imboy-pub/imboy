@@ -5,6 +5,29 @@ One-command deployment of IMBoy to a Linux server.
 
 > 文档分工：本页是 **Docker Compose 客户安装入口**，使用 `deploy/.env.example`；[day1-quickstart.md](../docs/guides/operations/deployment/day1-quickstart.md) 与 [deployment.md](../docs/guides/operations/deployment/deployment.md) 是裸机/release 或定制运行时参考，不能混用其配置模板和启动步骤。备份恢复见 [backup-restore.md](../docs/guides/operations/deployment/backup-restore.md)。
 
+## 独立社区版 ZIP / Standalone community ZIP
+
+交付客户时不要只压缩 `deploy/`：原安装器还会检查并调用
+`../scripts/sanity_check.sh`。维护者在仓库根目录使用以下入口，从固定 Git
+提交生成完整白名单包；客户只需解压该 ZIP，无需完整源码或宿主机 Python。
+
+```bash
+# 维护者制包；仅导出已提交文件，不读取工作区 .env、密钥或数据。
+# --output 必填；若文件已存在则拒绝覆盖。此命令不部署、不发布。
+bash scripts/package_community.sh --ref HEAD --output /tmp/imboy-community.zip
+```
+
+打包机需要 Git、Bash、GNU 文件工具、zip/unzip；客户依赖及步骤见
+[独立交付手册](standalone/README.md)。包内保留相邻的 `deploy/` 与 `scripts/`，
+补齐 Compose、Nginx、证书、自检、备份脚本及监控配置依赖，并附来源、哈希、权限
+清单和空白现场验收表。生成的包不含镜像、实际 `.env` 或商务版专有 Compose。
+完整性与离线回归通过不代表 Docker、TLS、迁移、登录、WebSocket 或附件验收通过。
+
+The packager exports a committed allowlist, including the sibling `scripts/`
+dependencies. The ZIP is an installation kit, not an image bundle or a verified
+server deployment. Use its root `install.sh` and manuals for the supported
+single-host community path; the repository installer remains available below.
+
 ## 交付清单 / Deliverables
 
 > 双轨分发 / Dual-track distribution：
@@ -34,6 +57,7 @@ deploy/
 │   ├── templates/
 │   │   ├── imboy.conf.template    # nginx 反向代理（envsubst 渲染）/ nginx reverse proxy (envsubst-rendered)
 │   │   └── cs-widget.conf.template # 客服 Widget 第三域 vhost（CSD-DEP-01）/ CS widget gateway vhost
+│   ├── rtc.conf.template        # 社区独立 RTC 域 HTTPS/WSS → LiveKit / Community RTC origin
 │   ├── prod-vhosts/             # 宿主机生产 vhost 快照（蓝绿单机形态）/ host-level prod vhost snapshots（见其 README）
 │   └── init-letsencrypt.sh      # 首次签发 Let's Encrypt 证书 / First-time Let's Encrypt issuance
 ├── prometheus/

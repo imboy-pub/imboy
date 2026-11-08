@@ -28,6 +28,51 @@ on:
   workflow_dispatch:
 
 jobs:
+  community-delivery:
+    name: Standalone Community Delivery
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v7
+      - name: Install offline test tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y jq openssl zip unzip gettext-base
+      - name: Check packaging and configuration contracts
+        run: |
+          bash scripts/test/package_community_test.sh
+          bash scripts/test/community_delivery_config_test.sh
+      - name: Build and test the extracted installation kit
+        shell: bash
+        run: |
+          set -euo pipefail
+          bash scripts/package_community.sh --output "$RUNNER_TEMP/imboy-community.zip"
+          unzip -q "$RUNNER_TEMP/imboy-community.zip" -d "$RUNNER_TEMP/imboy-community"
+          packages=("$RUNNER_TEMP"/imboy-community/IMBoy_Community_Standalone_*)
+          test "${#packages[@]}" -eq 1
+          cd "${packages[0]}"
+          bash install.sh --check
+          bash scripts/run_offline_checks.sh
+      - name: Validate Compose models without starting services
+        shell: bash
+        env:
+          # Non-secret model fixtures for deliberately blank customer settings.
+          IMBOY_DIRECT_CLEANUP_PG_USER: imboy_ci_cleanup
+          IMBOY_DIRECT_CLEANUP_PG_PASSWORD: CI_ONLY_NOT_A_REAL_PASSWORD_0000000000
+        run: |
+          set -euo pipefail
+          docker compose --env-file deploy/.env.example \
+            -f deploy/docker-compose.community.yml config --quiet
+          LIVEKIT_TURN_CERT_DIR=./data/certbot/conf/live/turn.example.com \
+            docker compose --env-file deploy/.env.example \
+            -f deploy/docker-compose.community.yml \
+            -f deploy/docker-compose.livekit-turn.yml config --quiet
+          docker compose --env-file deploy/.env.example \
+            -f deploy/docker-compose.community.yml \
+            -f deploy/docker-compose.uptrace.yml config --quiet
+
   compile:
     name: Compile Gate (OTP ${{ matrix.otp }})
     runs-on: ubuntu-latest

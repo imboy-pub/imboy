@@ -187,6 +187,7 @@ services:
       #   转发到 garage:3900，无需把 3900 发布公网。
       IMBOY_GARAGE_PUBLIC_ENDPOINT: ${IMBOY_GARAGE_PUBLIC_ENDPOINT:-https://${API_DOMAIN}/s3}
       IMBOY_GARAGE_BUCKET: ${IMBOY_GARAGE_BUCKET:-imboy}
+      IMBOY_GARAGE_PUBLIC_BUCKET: ${IMBOY_GARAGE_PUBLIC_BUCKET:-imboy-public}
       IMBOY_GARAGE_ACCESS_KEY: ${IMBOY_GARAGE_ACCESS_KEY:?IMBOY_GARAGE_ACCESS_KEY is required - see deploy/.env.example}
       IMBOY_GARAGE_SECRET_KEY: ${IMBOY_GARAGE_SECRET_KEY:?IMBOY_GARAGE_SECRET_KEY is required - see deploy/.env.example}
       # 附件存储注册表：镜像内 sys.config 的 roots 为空（fail-closed），按运行时
@@ -242,6 +243,11 @@ services:
       IMBOY_TSID_DC_BITS: ${IMBOY_TSID_DC_BITS:-3}
       IMBOY_TSID_CAPACITY_WAIT_TIMEOUT_MS: ${IMBOY_TSID_CAPACITY_WAIT_TIMEOUT_MS:-100}
       #IMBOY_TSID_MAX_CLOCK_DRIFT_MS: 5000
+    # 使用安装器在宿主机生成的 RSA；私有配置只读，日志单独持久化。
+    # Mount installer-generated RSA keys read-only and persist application logs.
+    volumes:
+      - ${DATA_DIR:-./data}/backend_priv:/opt/imboy/priv_runtime:ro
+      - ${DATA_DIR:-./data}/backend_log:/opt/imboy/log
     expose:
       - "9800"
     ports:
@@ -379,14 +385,18 @@ services:
       TZ: ${TZ:-Asia/Shanghai}
       API_DOMAIN: ${API_DOMAIN}
       ADMIN_DOMAIN: ${ADMIN_DOMAIN}
+      RTC_DOMAIN: ${RTC_DOMAIN}
       # 客服 Widget 第三域（渲染 nginx/templates/cs-widget.conf.template）
       CS_WIDGET_DOMAIN: ${CS_WIDGET_DOMAIN}
       # /s3/ 反代 upstream（附件公网直传/下载）：社区版 = compose 网络内 garage 服务
       S3_UPSTREAM: ${S3_UPSTREAM:-garage:3900}
-      # 仅替换这四个变量，保留 nginx 内置 $$host/$$remote_addr 等
-      NGINX_ENVSUBST_FILTER: "^(API_DOMAIN|ADMIN_DOMAIN|S3_UPSTREAM|CS_WIDGET_DOMAIN)$$"
+      # 仅替换部署域名/upstream，保留 nginx 内置 $$host/$$remote_addr 等
+      NGINX_ENVSUBST_FILTER: "^(API_DOMAIN|ADMIN_DOMAIN|S3_UPSTREAM|CS_WIDGET_DOMAIN|RTC_DOMAIN)$$"
     volumes:
-      - ./nginx/templates:/etc/nginx/templates:ro
+      # Only HTTP templates for this stack; host stream templates stay outside conf.d.
+      - ./nginx/templates/imboy.conf.template:/etc/nginx/templates/imboy.conf.template:ro
+      - ./nginx/templates/cs-widget.conf.template:/etc/nginx/templates/cs-widget.conf.template:ro
+      - ./nginx/rtc.conf.template:/etc/nginx/templates/rtc.conf.template:ro
       - ${DATA_DIR:-./data}/certbot/conf:/etc/letsencrypt:ro
       - ${DATA_DIR:-./data}/certbot/www:/var/www/certbot:ro
       - ${DATA_DIR:-./data}/nginx_log:/var/log/nginx
