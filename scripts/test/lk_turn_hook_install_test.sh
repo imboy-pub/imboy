@@ -226,9 +226,10 @@ assert_grep     "rtc vhost 有 ACME webroot" 'acme-challenge' "$RTC_SRC"
 echo "== A04 安装器故障注入（证书失败/LiveKit start 失败/TURN 装配） =="
 
 FIXTURE="$TMP_ROOT/install"; MOCK_BIN2="$TMP_ROOT/bin2"
-mkdir -p "$FIXTURE/nginx" "$MOCK_BIN2" "$TMP_ROOT/scripts"
-cp deploy/install.sh deploy/.env.example deploy/docker-compose.community.yml \
+mkdir -p "$FIXTURE/nginx" "$FIXTURE/cleanup-db" "$MOCK_BIN2" "$TMP_ROOT/scripts"
+cp deploy/install.sh deploy/init-cleanup-db.sh deploy/.env.example deploy/docker-compose.community.yml \
    deploy/docker-compose.livekit-turn.yml "$FIXTURE/"
+cp deploy/cleanup-db/bootstrap.sql deploy/cleanup-db/verify.sql "$FIXTURE/cleanup-db/"
 cp deploy/nginx/init-letsencrypt.sh "$FIXTURE/nginx/"
 touch "$TMP_ROOT/scripts/sanity_check.sh"
 MOCK_LOG2="$TMP_ROOT/install-events.log"
@@ -237,14 +238,57 @@ cat > "$MOCK_BIN2/docker" <<'MOCK'
 #!/bin/sh
 set -u
 printf 'docker %s\n' "$*" >>"${MOCK_LOG2:-/dev/null}"
+# Read the fixture assignments as data; current install.sh validates Compose's
+# effective domain, secret and image JSON before reaching the injected faults.
+resolved_env() {
+  jq -Rn '[inputs | select(test("^[A-Za-z_][A-Za-z0-9_]*=")) |
+    capture("^(?<key>[^=]+)=(?<value>.*)$")] | from_entries' < .env
+}
+config_json() {
+  resolved_env | jq '. as $e | {services: {
+    imboy_backend: {image: "registry.test/backend:fixture", environment: {
+      IMBOY_BASE_URL: ("https://" + $e.API_DOMAIN),
+      IMBOY_WIDGET_BASE_URL: ("https://" + $e.CS_WIDGET_DOMAIN),
+      IMBOY_WIDGET_DOMAIN: $e.CS_WIDGET_DOMAIN,
+      IMBOY_EDGE_INTERNAL_TOKEN: $e.IMBOY_EDGE_INTERNAL_TOKEN,
+      IMBOY_JWT_KEY: $e.JWT_KEY, IMBOY_POSTGRE_AES_KEY: $e.POSTGRE_AES_KEY,
+      IMBOY_ADM_COOKIE_SECRET: $e.ADM_COOKIE_SECRET,
+      IMBOY_PG_USER: $e.POSTGRES_USER, IMBOY_PG_PASSWORD: $e.POSTGRES_PASSWORD,
+      IMBOY_SOLIDIFIED_KEY: $e.IMBOY_SOLIDIFIED_KEY,
+      IMBOY_SOLIDIFIED_KEY_IV: $e.IMBOY_SOLIDIFIED_KEY_IV,
+      IMBOY_PASSWORD_SALT: $e.IMBOY_PASSWORD_SALT,
+      IMBOY_LIVEKIT_API_KEY: $e.LIVEKIT_API_KEY,
+      IMBOY_LIVEKIT_API_SECRET: $e.LIVEKIT_API_SECRET,
+      IMBOY_DIRECT_CLEANUP_PG_USER: $e.IMBOY_DIRECT_CLEANUP_PG_USER,
+      IMBOY_DIRECT_CLEANUP_PG_PASSWORD: $e.IMBOY_DIRECT_CLEANUP_PG_PASSWORD}},
+    imboy_edge: {image: "registry.test/backend:fixture",
+      environment: {EDGE_INTERNAL_TOKEN: $e.IMBOY_EDGE_INTERNAL_TOKEN}},
+    imboy_nginx: {environment: {API_DOMAIN: $e.API_DOMAIN,
+      CS_WIDGET_DOMAIN: $e.CS_WIDGET_DOMAIN, RTC_DOMAIN: $e.RTC_DOMAIN}},
+    imboy_pg18: {environment: {POSTGRES_USER: $e.POSTGRES_USER,
+      POSTGRES_PASSWORD: $e.POSTGRES_PASSWORD}}}}'
+}
 case " $* " in
   *" compose version "*) exit 0 ;;
+  *" compose "*" config --environment "*)
+    resolved_env | jq -r 'to_entries[] | select(.key | test("^(API|ADMIN|CS_WIDGET|RTC|TURN)_DOMAIN$")) | "\(.key)=\(.value)"'
+    exit ;;
+  *" compose "*" config --format json "*) config_json; exit ;;
+  *" create --network none --entrypoint /bin/sh "*) echo test-edge-probe; exit 0 ;;
   *" info "*) exit 0 ;;
   *" network create "*) exit 0 ;;
   *" compose "*" pull --policy missing "*)
     [ "${MOCK_PULL_FAIL:-0}" != 1 ]; exit ;;
   *" compose "*" up -d"*)
     [ "${MOCK_UP_FAIL:-0}" != 1 ]; exit ;;
+  *" compose "*" exec -T imboy_nginx wget "*)
+    url=""
+    for arg in "$@"; do
+      case "$arg" in http://127.0.0.1/.well-known/acme-challenge/*) url="$arg" ;; esac
+    done
+    [ -n "$url" ] || exit 2
+    cat "${DATA_DIR:-./data}/certbot/www/${url#http://127.0.0.1/}"
+    exit ;;
   *" compose "*" run "*" imboy_certbot "*)
     [ "${MOCK_CERT_FAIL:-0}" = 1 ] && exit 1
     previous=""; domain=""
@@ -263,7 +307,7 @@ case " $* " in
 esac
 exit 0
 MOCK
-# bash 桩：install.sh 本体真执行；preflight/sanity 记录即通过；
+# bash 桩：install.sh 本体真执行；preflight/cleanup/sanity 记录即通过；
 # init-letsencrypt 真执行（测证书故障路径）
 cat > "$MOCK_BIN2/bash" <<'MOCK'
 #!/bin/sh
@@ -291,6 +335,7 @@ reset_env() {
     "API_DOMAIN=api.test.invalid" "ADMIN_DOMAIN=admin.test.invalid" \
     "CS_WIDGET_DOMAIN=cs.test.invalid" "RTC_DOMAIN=rtc.test.invalid" \
     "TURN_DOMAIN=turn.test.invalid" "CERTBOT_EMAIL=certbot@test.invalid" \
+    "IMBOY_DIRECT_CLEANUP_PG_USER=imboy_cleanup" \
     "IMBOY_PAYMENT_GATEWAY_ENABLED=false"; do
     set_env2 "${kv%%=*}" "${kv#*=}"
   done
@@ -306,6 +351,7 @@ run_install() {
 reset_env; : >"$MOCK_LOG2"
 RC="$(MOCK_UP_FAIL=1 run_install)"
 [ "$RC" != 0 ] && ok "compose up 失败 → 安装非零退出" || bad "compose up 失败 → 安装非零退出" "exit=0"
+assert_grep "启动故障确实到达 compose up" 'docker compose.* up -d$' "$MOCK_LOG2"
 assert_not_grep "启动失败不进入 TLS 阶段" 'init-letsencrypt' "$MOCK_LOG2"
 assert_not_grep "启动失败不打印部署完成" '部署完成' "$TMP_ROOT/install.log"
 
@@ -313,8 +359,14 @@ assert_not_grep "启动失败不打印部署完成" '部署完成' "$TMP_ROOT/in
 reset_env; : >"$MOCK_LOG2"
 RC="$(MOCK_CERT_FAIL=1 run_install)"
 [ "$RC" != 0 ] && ok "certbot 失败 → 安装非零退出" || bad "certbot 失败 → 安装非零退出" "exit=0"
+assert_grep "签发故障确实到达 certbot" 'docker compose.*run.*certbot.* -d api\.test\.invalid' "$MOCK_LOG2"
 assert_grep "证书失败给出 TLS 修复指引" 'TLS 证书签发失败' "$TMP_ROOT/install.log"
-assert_file_absent "失败后不留半签发证书（api 域）" "$FIXTURE/data/certbot/conf/live/api.test.invalid/fullchain.pem"
+assert_file_present "失败后保留可重跑的临时证书（api 域）" "$FIXTURE/data/certbot/conf/live/api.test.invalid/fullchain.pem"
+if [ -f "$FIXTURE/data/certbot/conf/live/api.test.invalid/.imboy-selfsigned" ]; then
+  ok "失败恢复的临时证书必须有自签标记"
+else
+  bad "失败恢复的临时证书必须有自签标记" "不能把临时证书视为正式签发成功"
+fi
 # 恢复：同 fixture 重跑（幂等），certbot 桩恢复签发
 : >"$MOCK_LOG2"
 RC="$(run_install)"

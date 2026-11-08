@@ -449,17 +449,35 @@ sudo apt-get install -y bash jq curl openssl ca-certificates coreutils grep sed 
 或日志问题仍记为 WARN。交付时须处理或记录 WARN，并从客户网络验证正式域名证书和
 上述业务流程，保存结果后再判定业务验收完成。正式安装不传 `--skip-tls`。
 
-RTC 还存在须现场核实的接线边界：社区 Compose 默认下发 `wss://<RTC_DOMAIN>`，但
-随仓 `nginx/templates/imboy.conf.template` 目前只有 API 域 `/livekit/` 路径，没有 RTC
-独立域 vhost。为 RTC 域签出证书不代表其 443/WSS 路由已经可用；交付方须确认实际反代
-接线，并完成客户网络的 WSS/双端通话/TURN 回退验收。不能以文档修正或离线通过销项。
+社区 Compose 默认下发 `wss://<RTC_DOMAIN>`，由单独挂载的
+`nginx/rtc.conf.template` 终结 TLS，再经 Compose 内网反代到 `imboy_livekit:7880`。
+宿主 OpenResty vhost 使用的 `127.0.0.1:7880` 不能用于 Nginx 容器内部。
+API 域原有 `/livekit/` 路由保留；可选 L4/SNI stream 模板不挂入社区 HTTP 模板目录。
+Nginx 的 shell 启动包装必须重新调用 `/docker-entrypoint.sh nginx`，否则官方入口
+会跳过模板渲染，离线 `envsubst` 成功也不能证明容器实际加载了 vhost。
+
+首签为各域准备临时证书后，先逐域确认本机 HTTP-01 webroot 可读，再执行 Certbot；
+正式证书通过 `nginx -t` 后才 reload。临时证书保留自签标记，不能视为正式 TLS 就绪。
+若签发失败且尚无 Certbot archive/renewal 状态，会恢复临时证书供重跑；已有正式证书
+和部分签发的 archive/renewal 不覆盖，后者需人工修复。这个本机 IPv4 探针不证明公网
+DNS、AAAA、HTTP-01 可达性或证书信任链正确。交付仍须在客户网络验 WSS、双端音视频
+及 TURN 回退，WSS `101 Switching Protocols` 仅表示信令连接升级成功。
+
+Community RTC uses its dedicated TLS vhost and the Compose service `imboy_livekit:7880`.
+The shell wrapper re-enters the official Nginx entrypoint to render the explicitly mounted
+HTTP templates; optional host stream templates remain excluded. TLS bootstrap waits for
+every local HTTP-01 route before issuance and validates Nginx configuration before reload.
+Neither the local probe nor a successful WebSocket upgrade proves public TLS, two-client
+audio/video or TURN fallback acceptance.
 
 Production acceptance includes infrastructure gates, administrator initialization and real
 client business checks. A successful sanity check is not evidence of a WebSocket message
 round trip or an attachment round trip. Keep the development smoke chain in an isolated
 test environment; do not enable development authentication shortcuts on a customer instance.
 
-**离线回归 / Offline regression**（不启动真实服务，不申请证书）：
+**离线回归 / Offline regression**（源码仓库执行；不启动真实服务，不申请证书）：
+
+独立交付包使用其 `scripts/run_offline_checks.sh`；以下专项回归由源码仓库和 CI 执行。
 
 ```bash
 for script in deploy/install.sh deploy/init-cleanup-db.sh deploy/preflight.sh deploy/nginx/init-letsencrypt.sh \
@@ -467,6 +485,8 @@ for script in deploy/install.sh deploy/init-cleanup-db.sh deploy/preflight.sh de
   bash -n "$script" || exit 1
 done
 bash scripts/test/install_one_click_test.sh
+bash scripts/test/community_delivery_config_test.sh
+bash scripts/test/init_letsencrypt_test.sh
 bash deploy/preflight.sh --self-test
 ```
 
@@ -474,6 +494,28 @@ bash deploy/preflight.sh --self-test
 调用顺序和幂等保护；它不能证明真实 Docker、镜像发布、ACME、数据库迁移或客户网络
 已可用。在没有 Python 的干净测试机/隔离根目录中执行同样命令，可复核宿主机无 Python
 依赖。真实部署验收另按上表执行；开发与 CI 专用测试不属于此无 Python 承诺。
+
+**容器 RTC 回归 / Container RTC regression**（在源码仓库执行）：
+
+```bash
+bash scripts/test/community_rtc_wss_shell_test.sh
+bash scripts/test/community_rtc_wss_test.sh --docker
+```
+
+需要 Linux Docker/Compose、Bash、jq、curl、OpenSSL 和可拉取仓库锁定的 Nginx/LiveKit
+镜像。测试使用隔离容器网络、临时测试证书和合成短期凭据，读取实际社区 Compose 的
+镜像、启动命令、模板挂载和替换白名单，验证 `nginx -t`、严格 TLS 校验以及真实
+LiveKit `/rtc` 的 WSS 握手，并抽查已有 API 路由。缺少 Docker/Compose 时以
+`SKIP` 和退出码 `77` 结束，不能记为 PASS。该测试不申请公网证书，不执行真实用户
+登录或双端媒体验收，也不启用 TURN overlay。
+
+This isolated regression uses the pinned images and real startup command. It requires
+Docker/Compose; exit 77 means not run. It checks Nginx syntax and TLS/WebSocket signaling,
+not customer ACME issuance, product authorization, media connectivity or TURN.
+
+`community_rtc_wss_shell_test.sh` 只用 Docker 桩验证无换行 CID 的读取、失败诊断和
+容器/网络清理，不启动容器，不计作 TLS/WSS 通过。
+The Shell regression uses a Docker stub for CID/cleanup control flow only; it does not verify TLS/WSS.
 
 清理身份的 SQL、真实密码认证、角色授权、事务回滚、重复执行和服务端日志检查须从
 源码仓库在隔离 PostgreSQL 18 执行 `bash scripts/test/cleanup_db_postgres_test.sh`。

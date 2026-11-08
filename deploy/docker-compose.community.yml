@@ -403,9 +403,9 @@ services:
     ports:
       - "80:80"
       - "443:443"
-    # 官方 entrypoint 先 envsubst 渲染模板，再 exec 本 command；
-    # 每 6h reload 以加载 certbot 续期后的新证书。
-    command: ["/bin/sh", "-c", "while :; do sleep 6h & wait $${!}; nginx -s reload; done & exec nginx -g 'daemon off;'"]
+    # 官方 entrypoint 遇到 /bin/sh 会跳过模板处理；显式以 nginx 重新进入，
+    # 先渲染 HTTP 模板再启动 master。保留每 6h reload 加载续期证书。
+    command: ["/bin/sh", "-c", "while :; do sleep 6h & wait $${!}; nginx -s reload; done & exec /docker-entrypoint.sh nginx -g 'daemon off;'"]
     logging:
       driver: "json-file"
       options:

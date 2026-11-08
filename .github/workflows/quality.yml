@@ -42,9 +42,21 @@ jobs:
         uses: erlef/setup-beam@v1
         with:
           otp-version: '28'
-          # elvis 只能从源码 escriptize，必须有 rebar3。
-          # setup-beam 不给 rebar3-version 就不装它——这正是本步骤此前 exit 127 的原因。
-          rebar3-version: '3'
+
+      # Elvis 仍需 PATH 中的 rebar3；从同版本固定源码构建，避开 release 下载故障。
+      - name: Build pinned rebar3 for Elvis
+        timeout-minutes: 5
+        run: |
+          set -euo pipefail
+          rebar3_src=$(mktemp -d)
+          trap 'rm -rf "$rebar3_src"' EXIT
+          git clone --depth 1 --branch 3.28.0 https://github.com/erlang/rebar3.git "$rebar3_src"
+          test "$(git -C "$rebar3_src" rev-parse HEAD)" = '183065cc3f7ec5a9d9d4936f7e1df6246178df40'
+          (cd "$rebar3_src" && ./bootstrap --offline)
+          mkdir -p "$HOME/bin"
+          install -m 0755 "$rebar3_src/rebar3" "$HOME/bin/rebar3"
+          "$HOME/bin/rebar3" version
+          echo "$HOME/bin" >> "$GITHUB_PATH"
 
       - name: Install elvis
         run: |
@@ -153,7 +165,9 @@ jobs:
           set -euo pipefail
           # v1.35.0 uses kin-openapi v0.151.0, which preserves OpenAPI 3.1
           # boolean schemas. Keep full base/head semantics and --fail-on ERR.
-          curl -fsSL https://github.com/oasdiff/oasdiff/releases/download/v1.35.0/oasdiff_1.35.0_linux_amd64.tar.gz \
+          curl -fsSL --retry 3 --retry-delay 2 --retry-max-time 180 \
+            --connect-timeout 15 --max-time 60 \
+            https://github.com/oasdiff/oasdiff/releases/download/v1.35.0/oasdiff_1.35.0_linux_amd64.tar.gz \
             -o /tmp/oasdiff.tar.gz
           echo 'a8023002fcb2eaa7f5758148a9303cb63d33b939886df312268bc0fc7b939140  /tmp/oasdiff.tar.gz' | sha256sum -c -
           tar -xzf /tmp/oasdiff.tar.gz -C /tmp oasdiff
@@ -224,8 +238,16 @@ jobs:
           set -euo pipefail
           # 版本必须对应真实存在的 release 资产（trivy 那条就是栽在死版本号上）。
           ver=8.30.1
-          curl -sfL "https://github.com/gitleaks/gitleaks/releases/download/v${ver}/gitleaks_${ver}_linux_x64.tar.gz" \
-            | sudo tar -xz -C /usr/local/bin gitleaks
+          gitleaks_tmp=$(mktemp -d)
+          trap 'rm -rf "$gitleaks_tmp"' EXIT
+          # 先完整下载并验证官方摘要再解压；有限重试不掩盖安装失败。
+          curl -fsSL --retry 3 --retry-delay 2 --retry-max-time 180 \
+            --connect-timeout 15 --max-time 60 \
+            "https://github.com/gitleaks/gitleaks/releases/download/v${ver}/gitleaks_${ver}_linux_x64.tar.gz" \
+            -o "$gitleaks_tmp/gitleaks.tar.gz"
+          echo "551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb  $gitleaks_tmp/gitleaks.tar.gz" | sha256sum -c -
+          tar -xzf "$gitleaks_tmp/gitleaks.tar.gz" -C "$gitleaks_tmp" gitleaks
+          sudo install -m 0755 "$gitleaks_tmp/gitleaks" /usr/local/bin/gitleaks
           gitleaks version
 
       # 历史扫描（git 模式）——原先由 action 承担，不能因为换实现就悄悄丢掉。
