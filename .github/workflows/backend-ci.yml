@@ -51,6 +51,7 @@ jobs:
           bash scripts/test/release_contract_test.sh
           bash scripts/release_version.sh "v$(cat VERSION)"
           bash scripts/test/golden_image_contract_test.sh
+          bash scripts/test/golden_prepare_test.sh
           bash scripts/test/verify_community_images_test.sh
           bash scripts/test/community_rtc_wss_shell_test.sh
           bash scripts/test/init_letsencrypt_test.sh

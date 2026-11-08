@@ -39,6 +39,8 @@
 #     wrapper / hosts 注入 garage），报告中透明披露。
 #   · --keep 保留现场；默认清理（down -v 不删 bind mount 数据目录，但删 clone）。
 # -E(errtrace)：ERR trap 穿透函数，任何环节意外失败都能产出 FAIL 总结行
+set +x
+set +v
 set -euo pipefail -E
 
 # shellcheck disable=SC2034  # GOLDEN_TAG/GOLDEN_MARK/CURRENT_STAGE/STAGE_HINT 为跨文件接口变量，由 golden_common.sh 的 die()/hosts_* 消费
@@ -71,7 +73,8 @@ Golden Upgrade 升级门禁 / Usage: bash scripts/golden_upgrade.sh --to-image <
 
 模式:  --profile ci|host   ci=CI 容器（默认）：假域名+预置自签证书，冒烟直连
                            127.0.0.1:9800；host=云主机：真域名+certbot 真签发
-host 模式必填:  --api-domain <域名> / --admin-domain <域名> / --certbot-email <邮箱>
+host 模式必填:  --api-domain / --admin-domain / --cs-widget-domain / --rtc-domain
+               / --turn-domain <各自域名>（五域互异） / --certbot-email <邮箱>
 超管（vN 安装与升级后 8 步链步骤 4 共用，必填成对）:
   --admin-phone <手机号> / --admin-password <明文>（8-64 位含字母和数字）
 可选:  --admin-image-ref <ref>（admin 镜像 digest 引用；提供则在 vN 安装与升级后
@@ -83,6 +86,12 @@ host 模式必填:  --api-domain <域名> / --admin-domain <域名> / --certbot-
                                Pin the same Widget candidate in both stages; omission keeps defaults.
        --repo <url>（默认 https://github.com/imboy-pub/imboy.git）
        --workdir <dir>（默认 ./.golden-upgrade） / --keep（保留现场） / -h
+
+Golden cleanroom 准备与 Install 共用：五域、独立清理凭据、随机 release cookie。
+IMBOY_DIRECT_CLEANUP_PG_USER / IMBOY_DIRECT_CLEANUP_PG_PASSWORD 和
+IMBOY_CTL_NODE / IMBOY_CTL_COOKIE 可提供有效值。清理密码至少 32 位，cookie
+为 32–255 位，均仅含字母、数字、下划线或连字符；清理密码不接受占位值，升级时不换。
+Both source refs must support the installer's --compose-file / --init-cleanup-db contract.
 
 环境变量（干跑/测试口）:  GOLDEN_HOSTS_FILE（hosts 注入目标，默认 /etc/hosts）
                          GOLDEN_UP_MSG_COUNT（数据生成段 C2C 消息条数，默认 3，1-10）
@@ -101,6 +110,9 @@ WIDGET_IMAGE_REF=""
 PROFILE="ci"
 API_DOMAIN=""
 ADMIN_DOMAIN=""
+CS_WIDGET_DOMAIN=""
+RTC_DOMAIN=""
+TURN_DOMAIN=""
 CERTBOT_EMAIL=""
 ADMIN_PHONE=""
 ADMIN_PASSWORD=""
@@ -132,8 +144,16 @@ while [ $# -gt 0 ]; do
     --api-domain=*)   API_DOMAIN="${1#*=}"; shift ;;
     --admin-domain)   [ $# -ge 2 ] || die "--admin-domain 需要值"; ADMIN_DOMAIN="$2"; shift 2 ;;
     --admin-domain=*) ADMIN_DOMAIN="${1#*=}"; shift ;;
+    --cs-widget-domain) [ $# -ge 2 ] || die "--cs-widget-domain 需要值"; CS_WIDGET_DOMAIN="$2"; shift 2 ;;
+    --cs-widget-domain=*) CS_WIDGET_DOMAIN="${1#*=}"; shift ;;
+    --rtc-domain)      [ $# -ge 2 ] || die "--rtc-domain 需要值"; RTC_DOMAIN="$2"; shift 2 ;;
+    --rtc-domain=*)    RTC_DOMAIN="${1#*=}"; shift ;;
+    --turn-domain)     [ $# -ge 2 ] || die "--turn-domain 需要值"; TURN_DOMAIN="$2"; shift 2 ;;
+    --turn-domain=*)   TURN_DOMAIN="${1#*=}"; shift ;;
     --certbot-email)  [ $# -ge 2 ] || die "--certbot-email 需要值"; CERTBOT_EMAIL="$2"; shift 2 ;;
-    --certbot-email=*) CERTBOT_EMAIL="${1#*=}"; shift ;;
+    --certbot-email=*)
+      # shellcheck disable=SC2034 # consumed by golden_common.sh's shared preparation
+      CERTBOT_EMAIL="${1#*=}"; shift ;;
     --admin-phone)    [ $# -ge 2 ] || die "--admin-phone 需要值（手机号）"; ADMIN_PHONE="$2"; shift 2 ;;
     --admin-phone=*)  ADMIN_PHONE="${1#*=}"; shift ;;
     --admin-password) [ $# -ge 2 ] || die "--admin-password 需要值（明文密码）"; ADMIN_PASSWORD="$2"; shift 2 ;;
@@ -216,15 +236,7 @@ esac
 { [ "$MSG_COUNT" -ge 1 ] && [ "$MSG_COUNT" -le 10 ]; } \
   || die "GOLDEN_UP_MSG_COUNT 需在 1-10（当前: ${MSG_COUNT}）"
 
-if [ "$PROFILE" = "host" ]; then
-  { [ -n "$API_DOMAIN" ] && [ -n "$ADMIN_DOMAIN" ] && [ -n "$CERTBOT_EMAIL" ]; } \
-    || die "host 模式必须提供 --api-domain / --admin-domain / --certbot-email（真域名真签发）
-  （CI 无公网域名场景请用默认 --profile ci）"
-else
-  API_DOMAIN="${API_DOMAIN:-api.golden-ci.imboy.internal}"
-  ADMIN_DOMAIN="${ADMIN_DOMAIN:-admin.golden-ci.imboy.internal}"
-  CERTBOT_EMAIL="${CERTBOT_EMAIL:-golden-ci@imboy.invalid}"
-fi
+configure_golden_domains
 
 # ── 目录与全局状态 ───────────────────────────────────────────────────────────
 HOSTS_FILE="${GOLDEN_HOSTS_FILE:-/etc/hosts}"
@@ -232,6 +244,7 @@ WORKDIR="${WORKDIR:-$PWD/.golden-upgrade}"
 CLONE_DIR="$WORKDIR/imboy"
 DEPLOY_DIR="$CLONE_DIR/deploy"
 COMMUNITY_YML="$DEPLOY_DIR/docker-compose.community.yml"
+RUNTIME_YML="$DEPLOY_DIR/docker-compose.golden-runtime.yml"
 OVERRIDE_YML="$DEPLOY_DIR/docker-compose.golden-override.yml"
 RUN_DIR="$WORKDIR/run-$(date +%Y%m%d%H%M%S)"
 INSTALL_LOG="$RUN_DIR/install_vn.log"
@@ -246,8 +259,8 @@ WS_TOOL="$SCRIPT_DIR/smoke/ws_c2g_send.py"
 mkdir -p "$WORKDIR" "$RUN_DIR" "$BIN_DIR"
 : > "$INSTALL_LOG"
 
-COMPOSE="docker compose -f $COMMUNITY_YML"
-COMPOSE_O="docker compose -f $COMMUNITY_YML -f $OVERRIDE_YML"
+COMPOSE="docker compose -f $COMMUNITY_YML -f $RUNTIME_YML"
+COMPOSE_O="$COMPOSE -f $OVERRIDE_YML"
 BASE_URL="http://127.0.0.1:9800"
 WS_URL="ws://127.0.0.1:9800/api/v1/ws"
 DATA_DIR_RESOLVED=""
@@ -671,8 +684,8 @@ report() { # <verdict> <total> <data_retention> <smoke8>
     "$smoke8" "$retention" "${RET_FAILURES:+（失败项: ${RET_FAILURES}）}"
   if [ "$PROFILE" = "ci" ]; then
     printf '\n  ── ci 模式差异（客观约束，透明披露；同 G1 口径）──\n'
-    printf '  · 假域名 %s/%s + 预置自签证书（install.sh 幂等跳过签发）；冒烟直连 %s（nginx 443 未验证）\n' \
-      "$API_DOMAIN" "$ADMIN_DOMAIN" "$BASE_URL"
+    printf '  · 五域 CI 自签证书：%s/%s/%s/%s/%s；冒烟直连 %s，未验证公网 TLS\n' \
+      "$API_DOMAIN" "$ADMIN_DOMAIN" "$CS_WIDGET_DOMAIN" "$RTC_DOMAIN" "$TURN_DOMAIN" "$BASE_URL"
     printf '  · backend IMBOYENV=dev（override，仅冒烟阶段）：万能码/captcha 自动化前提\n'
     printf '  · vN 基线对数据生成端点的兼容性由数据生成段就地验证（不支持即 FAIL，不臆造）\n'
   fi
@@ -730,20 +743,8 @@ CURRENT_STAGE="env-init"
 STAGE_HINT="第一段 install.sh 失败看上方输出；常见: openssl 缺失 / .env.example 缺失"
 say "[init] 生成 .env 并配置（BACKEND_IMAGE 钉基线 vN 镜像）"
 t=$(now)
-bash "$DEPLOY_DIR/install.sh" --edition community --yes >/dev/null
-[ -f "$DEPLOY_DIR/.env" ] || die "install.sh 第一段未生成 .env"
-env_set_var API_DOMAIN "$API_DOMAIN"
-env_set_var ADMIN_DOMAIN "$ADMIN_DOMAIN"
-env_set_var CERTBOT_EMAIL "$CERTBOT_EMAIL"
-env_set_var BACKEND_IMAGE "$FROM_IMAGE"
-if [ -n "$ADMIN_IMAGE_REF" ]; then env_set_var ADMIN_IMAGE "$ADMIN_IMAGE_REF"; fi
-if [ -n "$PG_IMAGE_REF" ]; then env_set_var PG_IMAGE "$PG_IMAGE_REF"; fi
-if [ -n "$WIDGET_IMAGE_REF" ]; then env_set_var IMBOY_WIDGET_IMAGE "$WIDGET_IMAGE_REF"; fi
+prepare_golden_install "$FROM_IMAGE"
 DATA_DIR_RESOLVED="$(resolve_data_dir)"
-if [ "$PROFILE" = "ci" ]; then preset_ci_certs; fi
-write_compose_override
-install_ctl_wrapper
-make_psql_wrapper
 SEC_ENVINIT=$(( $(now) - t ))
 # 4) 拉基线镜像
 CURRENT_STAGE="pull"
@@ -802,6 +803,7 @@ STAGE_HINT="见上方首个 ❌；升级后日志: $COMPOSE_O logs --tail=200 im
 say "[upgrade] checkout ${TO_REF} → BACKEND_IMAGE=${TO_IMAGE} → compose up -d"
 t=$(now)
 gu_checkout_target || die "切换到 ${TO_REF} 失败"
+prepare_golden_control # 目标 VM 配置 + 同一 run 的节点/cookie；不沿用旧 VM flags。
 install_ctl_wrapper   # vN+1 代码内重装容器内转发 wrapper（checkout 还原了原文件）
 env_set_var BACKEND_IMAGE "$TO_IMAGE"
 # 旧基线可能没有 Widget 服务；在目标 checkout 后再次应用并显式拉取。
@@ -814,6 +816,10 @@ fi
 ( cd "$DEPLOY_DIR" && $COMPOSE_O pull "${upgrade_pull_services[@]}" ) || die "拉取 candidate 镜像失败（digest 是否已推送到 registry）"
 ( cd "$DEPLOY_DIR" && $COMPOSE_O up -d ) || die "docker compose up -d（升级）失败——数据未被动过，可安全重试"
 wait_healthz 300 "（vN+1 启动，含 auto_migrate）" || die "升级后 backend 300s 未就绪（迁移失败会 erlang:error 起不来：查 $COMPOSE_O logs imboy_backend）"
+# Recheck the target release's real cleanup identity and migration ledger.
+# Verification only: upgrading must not recreate or reset an existing LOGIN.
+verify_golden_cleanup \
+  || die "升级后清理账号验证失败；保留原账号/凭据与数据，不能判定升级成功"
 gu_observe_migration
 gu_assert_backend_replaced || true
 gu_assert_schema || true          # 失败已登记 RET_FAIL_COUNT，跑完全部断言统一判定

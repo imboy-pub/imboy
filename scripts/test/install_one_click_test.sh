@@ -120,6 +120,7 @@ case " $* " in
   *" compose "*" images -q imboy_backend "*) echo test-backend-image-id; exit 0 ;;
   *" inspect --format "*) echo 'ghcr.io/imboy-pub/imboy-backend@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'; exit 0 ;;
   *" compose "*" exec "*"imboy_ctl adm create "*)
+    printf '%s\n' "$IMBOY_CTL_NODE" > "$MOCK_LOG.ctl-node"
     [ "${MOCK_ADMIN_FAIL:-0}" != 1 ] || { echo 'mock admin setup failed'; exit 1; }
     printf 'ADMIN_ID=1000000001\nCREATED=true\n'; exit 0 ;;
   *" compose "*" exec -T imboy_nginx wget "*)
@@ -186,13 +187,13 @@ ok() { PASS=$((PASS + 1)); echo "  PASS $1"; }
 bad() { FAIL=$((FAIL + 1)); echo "  FAIL $1: ${2:-<无详情>}"; }
 assert_match() {
   local description="$1" pattern="$2" file="$3"
-  if grep -Eq "$pattern" "$file"; then ok "$description"; else bad "$description" "pattern=$pattern"; fi
+  if grep -Eq -- "$pattern" "$file"; then ok "$description"; else bad "$description" "pattern=$pattern"; fi
 }
 INSTALL_EXTRA_ARGS=()
 INSTALL_BASH_ARGS=()
 run_install() {
   : >"$MOCK_LOG"; : >"$MOCK_LOG.probes"
-  rm -f "$MOCK_LOG.count" "$MOCK_LOG.domains"
+  rm -f "$MOCK_LOG.count" "$MOCK_LOG.domains" "$MOCK_LOG.ctl-node"
   env -i PATH="$TEST_PATH" MOCK_LOG="$MOCK_LOG" \
     IMBOY_PASSWORD_SALT=TEST_SECRET_MUST_NOT_LEAK_000000000000 "$@" \
     /bin/bash "${INSTALL_BASH_ARGS[@]}" "$FIXTURE/install.sh" --edition community --yes "${INSTALL_EXTRA_ARGS[@]}" >"$OUTPUT" 2>&1
@@ -214,6 +215,7 @@ reject_before_start() {
 }
 
 echo "== 一键安装控制流（全离线 mock） =="
+# shellcheck disable=SC2016 # the child shell, not this test process, expands $bin
 if env -i PATH="$TEST_PATH" /bin/sh -c 'for bin in python python2 python3 pip pip3; do command -v "$bin" && exit 0; done; exit 1' >/dev/null 2>&1; then
   bad "无 Python 测试 PATH" "意外发现 Python"
 else
@@ -333,11 +335,13 @@ INSTALL_EXTRA_ARGS=()
 echo "== 解析与失败关闭（无服务启动） =="
 INSTALL_EXTRA_ARGS=(--edition business --init-cleanup-db)
 reject_before_start "商务版拒绝隐式使用社区库管理流程" '--init-cleanup-db'
+# shellcheck disable=SC2015 # ok always returns zero; this is an assertion
 [ ! -s "$MOCK_LOG" ] && ok "商务版初始化参数拒绝发生在 Docker 操作前" \
   || bad "商务版初始化参数拒绝过晚" "拒绝前已访问 Docker"
 INSTALL_EXTRA_ARGS=()
 mv "$TOOLS_BIN/jq" "$TMP_ROOT/jq.saved"
 reject_before_start "缺 jq 必须中止" 'jq'
+# shellcheck disable=SC2015 # ok always returns zero; this is an assertion
 [ ! -s "$MOCK_LOG" ] && ok "缺 jq 时尚未访问 Docker" || bad "缺 jq 时已访问 Docker"
 mv "$TMP_ROOT/jq.saved" "$TOOLS_BIN/jq"
 mv "$TMP_ROOT/scripts/sanity_check.sh" "$TMP_ROOT/sanity.saved"
@@ -425,6 +429,40 @@ reject_before_start "probe 创建失败不得启动服务" '无法创建 edge' M
 reject_before_start "probe 文件检查失败不得启动服务" '缺少可运行的 edge' MOCK_PROBE_FAIL=1
 
 echo "== Compose 环境覆盖与字面值解析 =="
+# Additive overlays must reach every original gate; invalid paths fail before
+# configuration changes, and a supplied overlay must not bypass preflight.
+printf 'services: {}\n' > "$FIXTURE/runtime-test.yml"
+printf 'services: {}\n' > "$FIXTURE/second-test.yml"
+INSTALL_EXTRA_ARGS=(--compose-file runtime-test.yml "--compose-file=$FIXTURE/second-test.yml")
+expected_files="docker-compose.community.yml docker-compose.uptrace.yml $FIXTURE/runtime-test.yml $FIXTURE/second-test.yml"
+expected_compose="docker compose -f docker-compose.community.yml -f docker-compose.uptrace.yml -f $FIXTURE/runtime-test.yml -f $FIXTURE/second-test.yml"
+if run_install; then
+  overlay_ok=1
+  for command in 'config --environment' 'config --format json' 'pull --policy missing' 'up -d'; do
+    grep -Fxq "$expected_compose $command" "$MOCK_LOG" || overlay_ok=0
+  done
+  grep -Fxq "bash COMPOSE_FILES=$expected_files args=nginx/init-letsencrypt.sh" "$MOCK_LOG" || overlay_ok=0
+  grep -Fxq "bash COMPOSE_FILES=$expected_files args=init-cleanup-db.sh" "$MOCK_LOG" || overlay_ok=0
+  grep -Fq "args=../scripts/sanity_check.sh --compose-file docker-compose.community.yml --compose-file docker-compose.uptrace.yml --compose-file $FIXTURE/runtime-test.yml --compose-file $FIXTURE/second-test.yml" "$MOCK_LOG" || overlay_ok=0
+  if [ "$overlay_ok" = 1 ]; then ok "两个附加 overlay 保留基准/强制集合并贯穿配置、拉取、启动、TLS、清理和自检";
+  else bad "附加 overlay 一致性" "至少一个阶段丢失原有或附加文件"; fi
+else bad "附加 overlay" "有效 overlay 被拒绝"; fi
+reject_before_start "附加 overlay 不绕过 preflight" 'preflight' MOCK_PREFLIGHT_FAIL=1
+cp "$FIXTURE/.env" "$TMP_ROOT/env.before-overlay-errors"
+for path in '' missing-overlay.yml 'path with spaces.yml'; do
+  INSTALL_EXTRA_ARGS=(--compose-file "$path")
+  if run_install || [ -s "$MOCK_LOG" ] || ! cmp -s "$FIXTURE/.env" "$TMP_ROOT/env.before-overlay-errors"; then
+    bad "无效 overlay 路径在副作用前失败" "路径=${path:-空}";
+  else ok "无效 overlay 路径在 Docker/配置变更前失败（${path:-空}）"; fi
+done
+INSTALL_EXTRA_ARGS=(--edition business --compose-file runtime-test.yml)
+if run_install || [ -s "$MOCK_LOG" ] \
+    || ! cmp -s "$FIXTURE/.env" "$TMP_ROOT/env.before-overlay-errors"; then
+  bad "商务版拒绝社区 overlay 入口" "发生副作用或错误放行";
+else
+  assert_match "商务版 overlay 在配置/Docker 副作用前明确拒绝" '--compose-file 仅支持 community' "$OUTPUT"
+fi
+INSTALL_EXTRA_ARGS=()
 if run_install API_DOMAIN=override.test.invalid; then
   if jq -e '.api == "override.test.invalid" and .base == "https://override.test.invalid" and .resolved == "1"' "$MOCK_LOG.domains" >/dev/null; then
     ok "Compose 环境覆盖正确传入 preflight"
@@ -436,10 +474,12 @@ if run_install "MOCK_ENV_FILE=$TMP_ROOT/env.empty" API_DOMAIN=api.test.invalid \
   ok "保留五个域名的已继承环境回退语义"
 else bad "域名环境回退" "完整继承环境被拒绝"; fi
 # 仅验证 parser 数据边界；真实域名合法性仍由真实 preflight 负责。
+# shellcheck disable=SC2016 # deliberate command syntax must remain literal fixture data
 literal='literal=$(printf should-not-run)=with spaces'
 printf '%s\n' "API_DOMAIN=$literal" ADMIN_DOMAIN=admin.test.invalid \
   CS_WIDGET_DOMAIN=cs.test.invalid RTC_DOMAIN=rtc.test.invalid TURN_DOMAIN=turn.test.invalid \
   'PATH=/invalid-path' 'IMBOY_TEST_UNEXPECTED=not-exported' 'unrelated multiline data' >"$TMP_ROOT/env.literal"
+# shellcheck disable=SC2016 # deliberate command syntax must remain literal fixture data
 if run_install "MOCK_ENV_FILE=$TMP_ROOT/env.literal" \
     'MOCK_JSON_FILTER=.services.imboy_backend.environment.IMBOY_JWT_KEY = "TEST_SECRET_MUST_NOT_LEAK=first\n$(printf data-only)"'; then
   if jq -e --arg literal "$literal" '.api == $literal and .unexpected == null' "$MOCK_LOG.domains" >/dev/null \
@@ -454,6 +494,10 @@ if run_install IMBOY_CTL_COOKIE=mock_cookie_only \
     && grep -q 'ADMIN_ID=1000000001' "$OUTPUT"; then
   ok "无 Python 环境经既有容器内 CLI 初始化管理员"
 else bad "管理员初始化" "未取得成功结果"; fi
+assert_match "管理员 CLI 默认使用镜像 release 节点名" '^imboy@127\.0\.0\.1$' "$MOCK_LOG.ctl-node"
+if run_install IMBOY_CTL_COOKIE=mock_cookie_only IMBOY_CTL_NODE=custom_node@127.0.0.1; then
+  assert_match "管理员 CLI 尊重显式控制节点身份" '^custom_node@127\.0\.0\.1$' "$MOCK_LOG.ctl-node"
+else bad "管理员显式节点身份" "有效身份被拒绝"; fi
 # Even an explicit bash -x -v must stop tracing before loading credentials.
 INSTALL_BASH_ARGS=(-x -v)
 INSTALL_EXTRA_ARGS=(--init-cleanup-db --admin-phone 13800000001 --admin-password DummyAdminPass123)

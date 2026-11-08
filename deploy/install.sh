@@ -55,6 +55,8 @@ IMBoy 一键部署 / Usage: bash install.sh [选项]
                                 创建缺失的独立清理 LOGIN；已有账号只验证、不改密/补权
                                 需 CREATEROLE、v5_worker ADMIN OPTION、数据库 CONNECT 授权权
                                 不加此参数时仅验证；权限不足停止，不自动提权
+  --compose-file <path>          仅社区版：追加 overlay，可重复（相对 deploy/ 或绝对路径；不含空白）
+                                保留基准与全部验证；同一组合用于起栈、TLS、清理和自检
   --yes, -y                     跳过所有确认（含 Docker 缺失时 get.docker.com 安装确认）
   --help, -h                    显示本帮助
 
@@ -77,6 +79,7 @@ ASSUME_YES=0
 ADMIN_PHONE=""
 ADMIN_PASSWORD=""
 INIT_CLEANUP_DB=0
+COMPOSE_EXTRA_FILES=()
 
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -89,6 +92,11 @@ while [ $# -gt 0 ]; do
       ASSUME_YES=1; shift ;;
     --init-cleanup-db)
       INIT_CLEANUP_DB=1; shift ;;
+    --compose-file)
+      [ $# -ge 2 ] || die "--compose-file 需要 overlay 路径"
+      COMPOSE_EXTRA_FILES+=("$2"); shift 2 ;;
+    --compose-file=*)
+      COMPOSE_EXTRA_FILES+=("${1#*=}"); shift ;;
     --admin-phone)
       [ $# -ge 2 ] || die "--admin-phone 需要值（手机号）"
       ADMIN_PHONE="$2"; shift 2 ;;
@@ -122,6 +130,9 @@ esac
 if [ "$INIT_CLEANUP_DB" = 1 ] && [ "$EDITION" != community ]; then
   die "--init-cleanup-db 仅支持 community；商务/外部数据库须由 DBA 按手册开通"
 fi
+if [ "${#COMPOSE_EXTRA_FILES[@]}" -gt 0 ] && [ "$EDITION" != community ]; then
+  die "--compose-file 仅支持 community；商务版必须沿用受控交付的 Compose 与策略组合"
+fi
 
 # 超管参数成对 + 本地前置校验（规则与 imboy_ctl adm create 一致，尽早失败
 # 而不是等整个栈起来之后才发现密码不合规）
@@ -136,6 +147,20 @@ if [ -n "$ADMIN_PASSWORD" ]; then
     die "--admin-password 强度不足：需 8-64 位且同时包含字母和数字"
   fi
 fi
+
+# 与下游 COMPOSE_FILES 的空格分隔合同一致；在任何安装副作用前校验。
+# Community overlays keep the base file; business policy composition is unchanged.
+for ((compose_extra_index=0; compose_extra_index<${#COMPOSE_EXTRA_FILES[@]}; compose_extra_index++)); do
+  compose_extra="${COMPOSE_EXTRA_FILES[$compose_extra_index]}"
+  case "$compose_extra" in
+    ""|*[[:space:]]*) die "--compose-file 路径不能为空或包含空白" ;;
+    /*) ;;
+    *) compose_extra="$PWD/$compose_extra" ;;
+  esac
+  [ -f "$compose_extra" ] && [ -r "$compose_extra" ] \
+    || die "--compose-file 文件不存在或不可读：$compose_extra"
+  COMPOSE_EXTRA_FILES[compose_extra_index]="$compose_extra"
+done
 
 # 客户安装/验收仅依赖 Shell 工具；缺依赖或验收文件时在任何安装副作用前失败。
 # Fail before changing configuration or installing/starting Docker.
@@ -405,6 +430,10 @@ if is_true "$TURN_ENABLED_VALUE"; then
   COMPOSE_ARGS+=(-f docker-compose.livekit-turn.yml)
   COMPOSE_FILES="$COMPOSE_FILES docker-compose.livekit-turn.yml"
 fi
+for compose_file in "${COMPOSE_EXTRA_FILES[@]}"; do
+  COMPOSE_ARGS+=(-f "$compose_file")
+  COMPOSE_FILES="$COMPOSE_FILES $compose_file"
+done
 compose() { docker compose "${COMPOSE_ARGS[@]}" "$@"; }
 COMPOSE_DISPLAY="docker compose"
 for compose_file in $COMPOSE_FILES; do COMPOSE_DISPLAY="$COMPOSE_DISPLAY -f $compose_file"; done
@@ -420,7 +449,7 @@ if [ "$EDITION" = community ]; then
     while IFS= read -r line; do
       case "$line" in
         API_DOMAIN=*|ADMIN_DOMAIN=*|CS_WIDGET_DOMAIN=*|RTC_DOMAIN=*|TURN_DOMAIN=*)
-          export "$line" || die "Compose 域名赋值失败" ;;
+          export "${line?}" || die "Compose 域名赋值失败" ;;
       esac
     done <<< "$resolved_environment"
     for domain in API_DOMAIN ADMIN_DOMAIN CS_WIDGET_DOMAIN RTC_DOMAIN TURN_DOMAIN; do
@@ -576,7 +605,7 @@ if [ -n "$ADMIN_PHONE" ]; then
   say "创建超级管理员 (imboy_ctl adm create)"
   : "${IMBOY_CTL_COOKIE:?未设置 IMBOY_CTL_COOKIE —— 需与后端镜像 vm.args 的 -setcookie 一致；生产部署必须使用随机值并经 secrets/env 注入，不得复用任何仓库样例值}"
   # shellcheck disable=SC2016  # 手机号/密码必须在容器内展开（不落宿主机命令行与进程表）
-  ctl_out="$(IMBOY_CTL_NODE='imboy_dev@127.0.0.1' \
+  ctl_out="$(IMBOY_CTL_NODE="${IMBOY_CTL_NODE:-imboy@127.0.0.1}" \
       IMBOY_CTL_COOKIE="$IMBOY_CTL_COOKIE" \
       IMBOY_CTL_PHONE="$ADMIN_PHONE" \
       IMBOY_CTL_PASSWORD="$ADMIN_PASSWORD" \
