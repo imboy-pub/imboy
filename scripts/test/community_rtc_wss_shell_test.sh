@@ -8,7 +8,7 @@ trap 'rm -rf -- "$TMP"' EXIT
 fail() { printf '[FAIL] %s\n' "$*" >&2; exit 1; }
 mkdir -p "$TMP/bin" "$TMP/runtime"
 cat > "$TMP/model.json" <<'JSON'
-{"services":{"imboy_nginx":{"image":"nginx@sha256:fixture","command":["nginx"],"environment":{},"volumes":[]},"imboy_livekit":{"image":"livekit@sha256:fixture","environment":{"LIVEKIT_CONFIG":"port: 7880"}}}}
+{"services":{"imboy_nginx":{"image":"nginx@sha256:fixture","command":["/bin/sh","-c","sleep 0 & wait $${!}"],"environment":{"NGINX_ENVSUBST_FILTER":"^API_DOMAIN$$","LITERAL_DOLLARS":"$$$$","LITERAL_VARIABLE":"$$RTC_TEST_LITERAL"},"volumes":[]},"imboy_livekit":{"image":"livekit@sha256:fixture","environment":{"LIVEKIT_CONFIG":"port: 7880\n# fixture: $$$$"}}}}
 JSON
 cat > "$TMP/bin/docker" <<'DOCKER'
 #!/usr/bin/env bash
@@ -25,6 +25,7 @@ case "${1:-}" in
     printf 'network %s\n' "$2" >> "$STATE/events" ;;
   run)
     shift
+    args=("$@")
     cidfile=
     while [[ $# -gt 0 ]]; do
       if [[ "$1" == --cidfile ]]; then cidfile=$2; break; fi
@@ -39,6 +40,18 @@ case "${1:-}" in
     printf '%s\n' "${cidfile%/*}" > "$STATE/runtime-dir"
     printf 'run %s\n' "$role" >> "$STATE/events"
     if [[ "$(<"$STATE/mode")" == partial-start && "$role" == livekit.cid ]]; then exit 125; fi
+    if [[ "$role" == nginx.cid ]]; then
+      # Execute the synthetic Compose command with a real POSIX shell. A leaked
+      # $$ expands to its PID and makes wait fail, just as in the real CI job.
+      count=${#args[@]}
+      "${args[count-3]}" "${args[count-2]}" "${args[count-1]}"
+      fixture_dir="${cidfile%/*}"
+      grep -Fxq 'NGINX_ENVSUBST_FILTER=^API_DOMAIN$' "$fixture_dir/nginx.env"
+      grep -Fxq 'LITERAL_DOLLARS=$$' "$fixture_dir/nginx.env"
+      grep -Fxq 'LITERAL_VARIABLE=$RTC_TEST_LITERAL' "$fixture_dir/nginx.env"
+      grep -Fxq '# fixture: $$' "$fixture_dir/livekit.yaml"
+      printf 'compose runtime values decoded once\n' >> "$STATE/events"
+    fi
     printf '%s\n' "$id" ;;
   port)
     printf 'port %s %s\n' "$2" "$3" >> "$STATE/events"
@@ -47,6 +60,9 @@ case "${1:-}" in
     printf '%s\n' "$*" >> "$STATE/events"
     printf 'fixture container log\n'
     exit 9 ;; # Diagnostics can fail; cleanup must still run and retain status.
+  inspect)
+    printf 'inspect %s\n' "${@: -1}" >> "$STATE/events"
+    exit 9 ;;
   rm)
     printf '%s\n' "$*" >> "$STATE/events" ;;
   *) printf 'Unexpected Docker stub call: %s\n' "$1" >&2; exit 93 ;;
@@ -59,7 +75,7 @@ for scenario in after-start partial-start; do
   rc=0
   # A separate Bash process retains its own errexit even when the parent records
   # its exit status. Only Docker is replaced; no production functions are copied.
-  PATH="$TMP/bin:$PATH" TMPDIR="$TMP/runtime" \
+  PATH="$TMP/bin:$PATH" TMPDIR="$TMP/runtime" RTC_TEST_LITERAL=must-not-expand \
     bash "$ROOT/scripts/test/community_rtc_wss_test.sh" --docker > "$TMP/output" 2>&1 || rc=$?
   if [[ "$scenario" == after-start ]]; then expected_rc=42; count=3; else expected_rc=125; count=2; fi
   if [[ "$rc" -ne "$expected_rc" ]]; then
@@ -69,11 +85,13 @@ for scenario in after-start partial-start; do
   if [[ "$scenario" == after-start ]]; then
     printf -v nginx_id '%064d' 3
     grep -Fxq "port $nginx_id 80/tcp" "$TMP/events" || fail 'No-newline Nginx CID stopped port lookup'
+    grep -Fxq 'compose runtime values decoded once' "$TMP/events" || fail 'Compose serialization leaked into runtime values'
   else
     ! grep -q '^run nginx.cid$' "$TMP/events" || fail 'Nginx started after the injected LiveKit failure'
   fi
   for ((number=1; number<=count; number++)); do
     printf -v id '%064d' "$number"
+    grep -Fxq "inspect $id" "$TMP/events" || fail "Missing state diagnostics for container $number"
     grep -Fxq "logs --tail 30 $id" "$TMP/events" || fail "Missing diagnostics for container $number"
     grep -Fxq "rm -f $id" "$TMP/events" || fail "Container $number was not cleaned up"
   done
@@ -82,4 +100,4 @@ for scenario in after-start partial-start; do
   grep -Fq "exited with status $expected_rc" "$TMP/output" || fail 'Original exit status was not diagnosed'
   printf '[PASS] %s: no-newline CIDs, diagnostics failure, cleanup and exit %s preserved\n' "$scenario" "$expected_rc"
 done
-printf '\n2 PASS; Docker stub control flow only. Container/TLS/WSS results are NOT verified.\n'
+printf '\n2 PASS; Compose decoding and Docker stub control flow only. Container/TLS/WSS results are NOT verified.\n'

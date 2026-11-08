@@ -40,9 +40,12 @@ cleanup() {
     for file in "$TMP/nginx.cid" "$TMP/livekit.cid" "$TMP/upstream.cid"; do
       if [[ -s "$file" ]]; then
         id="$(<"$file")"
+        "${DOCKER[@]}" inspect --format \
+          'state={{.State.Status}} exit={{.State.ExitCode}} ports={{json .NetworkSettings.Ports}}' "$id" >&2 || true
         "${DOCKER[@]}" logs --tail 30 "$id" >&2 || true
       fi
     done
+    [[ ! -s "$TMP/nginx_log/error.log" ]] || tail -n 30 "$TMP/nginx_log/error.log" >&2 || true
   fi
   for file in "$TMP/nginx.cid" "$TMP/livekit.cid" "$TMP/upstream.cid"; do
     if [[ -s "$file" ]]; then
@@ -71,7 +74,11 @@ COMPOSE_ENV+=("API_DOMAIN=api.test.invalid" "ADMIN_DOMAIN=admin.test.invalid"
   "IMBOY_DIRECT_CLEANUP_PG_USER=rtc_test_cleanup" "IMBOY_DIRECT_CLEANUP_PG_PASSWORD=rtc_test_unused"
   "S3_UPSTREAM=garage:3900" "COMPOSE_DISABLE_ENV_FILE=1")
 "${COMPOSE_ENV[@]}" docker --host=unix:///var/run/docker.sock compose \
-  --env-file "$ROOT/deploy/.env.example" -f "$BASE" config --format json > "$TMP/model.json"
+  --env-file "$ROOT/deploy/.env.example" -f "$BASE" config --format json > "$TMP/compose.json"
+# Compose escapes every $ as $$ so config output can be loaded by Compose again.
+# docker run needs runtime values: undo that serialization exactly once, without
+# evaluating variables or commands (including command, env and LiveKit config).
+sed 's/[$][$]/$/g' "$TMP/compose.json" > "$TMP/model.json"
 nginx_image="$(jq -er '.services.imboy_nginx.image' "$TMP/model.json")"
 livekit_image="$(jq -er '.services.imboy_livekit.image' "$TMP/model.json")"
 [[ "$nginx_image" == *@sha256:* && "$livekit_image" == *@sha256:* ]] || fail 'Images must retain repository digest pins'
@@ -124,7 +131,9 @@ server {
     return 200 "$server_port $request_uri\n";
 }
 NGINX
-"${DOCKER[@]}" network create --internal "$NETWORK" >/dev/null
+# Host port publication requires a default-gateway network. Use a dedicated
+# bridge; only Nginx publishes ports, explicitly bound to 127.0.0.1 below.
+"${DOCKER[@]}" network create --driver bridge "$NETWORK" >/dev/null
 network_created=true
 "${DOCKER[@]}" run -d --cidfile "$TMP/upstream.cid" --network "$NETWORK" \
   --network-alias imboy_backend --network-alias imboy_edge --network-alias imboy_admin \
