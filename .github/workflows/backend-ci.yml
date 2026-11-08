@@ -1,5 +1,8 @@
 name: Backend CI
 
+# Make-based jobs use erlang.mk's pinned .erlang.mk/rebar3 compatibility tools.
+# setup-beam installs OTP only; quality.yml retains global rebar3 for Elvis.
+
 # P4-Q3（Golden Gates §6.2/§7 CI Gate Matrix）：本 workflow = PR/push 快速门（<10min），
 # 全部 job 阻塞、零 continue-on-error（假门零容忍）。
 # 阻塞集：compile + xref + E2EE + moment + Manifest(p5) + dialyzer-baseline。
@@ -121,7 +124,6 @@ jobs:
         uses: erlef/setup-beam@v1
         with:
           otp-version: ${{ matrix.otp }}
-          rebar3-version: '3.27'
 
       - name: Cache dependencies and build artifacts
         uses: actions/cache@v6
@@ -188,7 +190,6 @@ jobs:
         uses: erlef/setup-beam@v1
         with:
           otp-version: "28"
-          rebar3-version: '3.27'
 
       - name: Cache dependencies and build artifacts
         uses: actions/cache@v6
@@ -264,7 +265,6 @@ jobs:
         uses: erlef/setup-beam@v1
         with:
           otp-version: "28"
-          rebar3-version: '3.27'
 
       - name: Cache dependencies and build artifacts
         uses: actions/cache@v6
@@ -364,7 +364,6 @@ jobs:
         uses: erlef/setup-beam@v1
         with:
           otp-version: "28"
-          rebar3-version: '3.27'
 
       - name: Cache dependencies, build artifacts and PLT
         uses: actions/cache@v6
@@ -449,7 +448,6 @@ jobs:
         uses: erlef/setup-beam@v1
         with:
           otp-version: "28"
-          rebar3-version: '3.27'
 
       - name: Cache dependencies and build artifacts
         uses: actions/cache@v6
@@ -515,7 +513,6 @@ jobs:
         uses: erlef/setup-beam@v1
         with:
           otp-version: "28"
-          rebar3-version: '3.27'
 
       - name: Cache dependencies and build artifacts
         uses: actions/cache@v6
