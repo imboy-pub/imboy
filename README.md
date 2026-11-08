@@ -123,25 +123,30 @@ bash install.sh --edition community
 #    五个独立纯域名：API_DOMAIN / ADMIN_DOMAIN / CS_WIDGET_DOMAIN / RTC_DOMAIN / TURN_DOMAIN
 #    证书邮箱：CERTBOT_EMAIL；API origin、独立清理账号等要求见下方链接
 
-# 3) 再跑一次同一条命令，完成安装
-bash install.sh --edition community
+# 3) 全新社区实例：显式授权迁移后创建缺失的独立清理 LOGIN
+bash install.sh --edition community --init-cleanup-db
 ```
 
 先按[客户填写与自动生成字段表](./deploy/README.md#customer-input)准备配置：五域互不相同、
 不带协议或路径，DNS 指向部署入口，公网 TCP 80 可用于 HTTP-01 验证，443 可用于 HTTPS/WSS。
 另需设置 `IMBOY_BASE_URL=https://<API_DOMAIN>`、独立的 `IMBOY_DIRECT_CLEANUP_PG_USER`；
-该数据库 LOGIN 须另行开通，已有账号须填写匹配的密码，安装器不创建该账号。
+已有账号须填写匹配的密码。社区安装默认只验证；显式 `--init-cleanup-db` 才使用现有
+`POSTGRES_USER` 的管理权限创建缺失 LOGIN，仅授目标库 CONNECT 和 `v5_worker` 成员资格。
+权限不足会停止，不自动提权或修改已有账号。商务/外部数据库及 DBA 操作见
+[清理数据库账号手册](./deploy/standalone/docs/DB_CLEANUP_ACCOUNT.md)。
 
 `.env` 不存在时，首次运行在依赖检查后仅复制模板并退出。填写后再次运行才会幂等补齐
 内部随机密钥与 RSA 登录密钥对，随后执行前置检查 → 拉起服务 → 申请 TLS 证书 →
-等待健康 → 部署后自检，最后打印 Release Identity 三元组与访问地址。
+等待健康 → 社区清理身份门禁（镜像迁移清单、正反密码、角色权限）→ 部署后自检，
+最后打印 Release Identity 三元组与访问地址。新 PG 镜像须包含初始化脚本停止密码
+xtrace 的修复；宿主机脚本更新不会修复旧镜像，交付方须确认镜像身份。
 TLS 签发依赖真实 DNS 与网络条件；客户业务仍须按部署手册现场验收。
 
 首次访问管理后台会自动进入 `/setup` 向导创建超级管理员；也可以直接用参数创建，
 实现无浏览器纯脚本部署：
 
 ```bash
-bash install.sh --edition community \
+bash install.sh --edition community --init-cleanup-db \
   --admin-phone 13800138000 --admin-password 'S3curePass2026' --yes
 ```
 

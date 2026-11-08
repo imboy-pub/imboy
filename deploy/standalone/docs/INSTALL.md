@@ -13,7 +13,7 @@
 | 部署形态 | 一台 Linux x86_64 服务器；Debian 13 为上游文档基准 |
 | 编排 | Docker 24+、Docker Compose v2.23.1+ |
 | 资源 | 上游最低要求 4 GB 内存、10 GB 可用磁盘；建议至少 8 GB / 20 GB，并另计业务数据、备份和日志增长 |
-| 安装入口 | 包根目录 `bash install.sh`，调用现有 `deploy/install.sh --edition community` |
+| 安装入口 | 包根目录 `bash install.sh`；全新实例显式加 `--init-cleanup-db` 创建缺失清理 LOGIN，透传给 `deploy/install.sh --edition community` |
 | 数据路径 | 保持 `DATA_DIR=./data`；实际位置为安装目录内的 `deploy/data/` |
 | 后端宿主端口 | 保持 `BACKEND_PORT=9800`，绑定 `127.0.0.1` |
 | 默认关闭 | Uptrace、enterprise-direct、embedded TURN；监控 profile 默认关闭 |
@@ -31,16 +31,17 @@
 | 公网入口 IP 与 DNS | 客户 / 网络管理员 | 五域 A 记录指向正确入口；若配置 AAAA，IPv6 路径也要可达 |
 | `CERTBOT_EMAIL` | 客户 | 实际维护的证书账号邮箱 |
 | `IMBOY_BASE_URL` | 部署人员 | 精确填写 `https://<API_DOMAIN>`，无尾斜杠 |
-| 发布镜像身份和拉取权限 | 交付方 | backend、admin、widget、pg18 四类镜像对应本次交付；记录实际 digest |
+| 发布镜像身份和拉取权限 | 交付方 | backend、admin、widget、pg18 四类镜像对应本次交付；记录实际 digest。PG 镜像须包含初始化脚本移除密码 xtrace 的修复，宿主机补丁不能修复旧镜像 |
 | 独立清理数据库 LOGIN | DBA / 部署人员 | 填写 `IMBOY_DIRECT_CLEANUP_PG_USER`；不能复用 `POSTGRES_USER` |
-| 清理 LOGIN 的密码 | DBA / 部署人员 | 已有账号填匹配密码；新账号按数据库清理账号说明开通 |
+| 清理 LOGIN 的密码 | DBA / 部署人员 | 已有账号填匹配密码；新账号可由安装器生成，再用显式初始化创建 |
+| 清理账号初始化的管理权限 | DBA / 部署人员 | `POSTGRES_USER` 已有 CREATEROLE、`v5_worker` ADMIN OPTION 和目标库 CONNECT 授权权，或由有权限的 DBA 另行执行；安装器不提权 |
 | 验收客户端和两个测试账号 | 交付方 / 客户 | 客户端能配置本实例地址；使用正式开户、登录流程 |
 | SMTP / 短信 | 客户 | 只在实际使用时填写完整配置；未配置时不要把验证码业务记为已验收 |
 | 维护窗口、备份位置、联系人 | 客户 | 安装失败、升级回滚和账号开通有明确负责人 |
 
 内部 JWT、AES、管理 Cookie、edge token、密码盐、LiveKit、Garage 等随机密钥及登录 RSA 由原安装器在客户机器上生成。不要在交付 ZIP 中预置真实值。已有实例必须沿用原 `.env`、RSA 和存储凭据，不能用新模板替换。
 
-独立清理 LOGIN 的数据库开通不是安装器自动完成的工作。首次数据库迁移后，按 [DB_CLEANUP_ACCOUNT.md](DB_CLEANUP_ACCOUNT.md) 完成最小授权和 TCP 密码登录验证，再判定这部分交付完成。
+社区安装默认只验证清理 LOGIN。显式 `--init-cleanup-db` 才在正常迁移后使用已有管理权限创建缺失账号；已有账号不改密、不补权。安装器会核对运行镜像的完整迁移清单，再从 backend 的网络路径完成正反密码和权限检查。权限不足或外部数据库走 [DB_CLEANUP_ACCOUNT.md](DB_CLEANUP_ACCOUNT.md) 的 DBA 路径，不能用生成密码或 `/healthz` 通过代替账号就绪。
 
 ## 3. 网络和端口
 
@@ -164,7 +165,7 @@ cd /opt/imboy-community/deploy
 
 ## 8. 执行一键安装
 
-在获准的目标服务器上，从包根目录执行：
+在获准的全新社区实例上，从包根目录执行；`--init-cleanup-db` 显式授权创建缺失的独立清理 LOGIN：
 
 ```bash
 cd /opt/imboy-community
@@ -173,11 +174,13 @@ cd /opt/imboy-community
   umask 077
   mkdir -p records
   chmod 700 records
-  bash install.sh 2>&1 | tee "records/install-$(date +%Y%m%d-%H%M%S).log"
+  bash install.sh --init-cleanup-db 2>&1 | tee "records/install-$(date +%Y%m%d-%H%M%S).log"
 )
 ```
 
-包入口先检查文件完整性、受支持配置、重复安装数据保护与并发锁，再交给原安装器。原流程为：补齐内部密钥 / RSA → preflight → 校验 Compose 实际配置 → 拉齐镜像 → 检查 edge 镜像文件 → 启动服务 → 签发 TLS → 等待 `/healthz` → 强制运行 `scripts/sanity_check.sh`。
+包入口先检查文件完整性、受支持配置、重复安装数据保护与并发锁，再交给原安装器。流程为：补齐内部密钥 / RSA → preflight → 校验 Compose 实际配置 → 拉齐镜像 → 检查 edge 镜像文件 → 启动服务 → 签发 TLS → 等待 `/healthz` → 清理账号迁移、认证与权限门禁 → 强制运行 `scripts/sanity_check.sh`。
+
+已有账号或只需验证时使用不带该参数的 `bash install.sh`。服务和迁移已就绪后，也可从 `deploy/` 单独执行 `bash init-cleanup-db.sh`，不会启动服务或代跑迁移。创建事务未提交时失败会回滚；提交后认证/权限检查失败则保留账号和 `.env`，由 DBA 修复后复验。详细执行、幂等和安全退役步骤见[清理账号手册](DB_CLEANUP_ACCOUNT.md)。
 
 任何 ERROR 或非零退出都必须先解决。失败发生在服务启动之后时，已有容器与数据可能已存在；不要删除目录或重置密钥来“重新开始”。重跑继续使用原配置。故障记录与处理见 [TROUBLESHOOTING.md](TROUBLESHOOTING.md)。
 
@@ -185,7 +188,7 @@ cd /opt/imboy-community
 
 ## 9. 安装后的必做工作
 
-1. 按 [DB_CLEANUP_ACCOUNT.md](DB_CLEANUP_ACCOUNT.md) 开通或核对独立清理 LOGIN，只授予所需的 `v5_worker` 成员资格；验证实际 TCP 密码登录。
+1. 保存清理账号门禁的退出码与非敏感结果；若采用 DBA 路径，按 [DB_CLEANUP_ACCOUNT.md](DB_CLEANUP_ACCOUNT.md) 完成实际迁移、正反密码和角色检查。确认运行 PG 镜像包含密码日志修复；账号门禁不代替真实附件清理验收。
 2. 按 [ACCEPTANCE_COMMANDS.md](ACCEPTANCE_COMMANDS.md) 检查 9 个核心服务、Nginx 配置、RSA 挂载、证书信任、数据库迁移和镜像身份。
 3. 在 `https://<ADMIN_DOMAIN>` 使用 `/setup` 首次初始化向导创建管理员并实际登录。已有管理员时验证不会再次开放初始化。建议由浏览器输入密码，避免在 Shell 命令历史中留下明文。
 4. 使用两个真实验收客户端完成登录、双向消息、断线恢复、附件往返；有对应交付承诺时再做 Widget、RTC / TURN、SMTP / 短信验收。
