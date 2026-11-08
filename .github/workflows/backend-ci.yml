@@ -45,6 +45,10 @@ jobs:
           bash scripts/test/cleanup_db_shell_test.sh
           bash scripts/test/package_community_test.sh
           bash scripts/test/community_delivery_config_test.sh
+          bash scripts/test/release_contract_test.sh
+          bash scripts/release_version.sh "v$(cat VERSION)"
+          bash scripts/test/golden_image_contract_test.sh
+          bash scripts/test/verify_community_images_test.sh
       - name: Build and test the extracted installation kit
         shell: bash
         run: |

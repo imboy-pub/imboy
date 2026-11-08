@@ -108,6 +108,8 @@ host 模式必填（ci 模式自动生成假域名，可覆盖）:
                           ——该镜像须已发布到 registry，否则起栈拉取失败
   --pg-image-ref <ref>    PostgreSQL 18 镜像 digest 引用（形如 ghcr.io/<owner>/imboy-pg18@sha256:…）。
                           提供则钉入 PG_IMAGE；缺省时 compose 回落与 IMBOY_VERSION 对应的公开镜像
+  --widget-image-ref <ref> Widget 镜像完整 sha256 digest 引用；提供则钉入 IMBOY_WIDGET_IMAGE。
+                          Pin the Widget candidate digest; omission keeps the Compose default.
   --budget <seconds>      计时预算，默认 900（计划 §4.2 钉死值）
   --repo <url>            clone 用的 git 仓库，默认 https://github.com/imboy-pub/imboy.git
   --workdir <dir>         工作目录（clone/日志所在），默认 ./.golden-install
@@ -123,6 +125,7 @@ EOF
 IMAGE_REF=""
 ADMIN_IMAGE_REF=""
 PG_IMAGE_REF=""
+WIDGET_IMAGE_REF=""
 GIT_REF=""
 PROFILE="host"
 API_DOMAIN=""
@@ -143,6 +146,8 @@ while [ $# -gt 0 ]; do
     --admin-image-ref=*) ADMIN_IMAGE_REF="${1#*=}"; shift ;;
     --pg-image-ref)     [ $# -ge 2 ] || die "--pg-image-ref 需要值（digest 引用）"; PG_IMAGE_REF="$2"; shift 2 ;;
     --pg-image-ref=*)   PG_IMAGE_REF="${1#*=}"; shift ;;
+    --widget-image-ref) [ $# -ge 2 ] && [ -n "$2" ] || die "--widget-image-ref 需要值（digest 引用）"; WIDGET_IMAGE_REF="$2"; shift 2 ;;
+    --widget-image-ref=*) WIDGET_IMAGE_REF="${1#*=}"; [ -n "$WIDGET_IMAGE_REF" ] || die "--widget-image-ref 需要值（digest 引用）"; shift ;;
     --git-ref)          [ $# -ge 2 ] || die "--git-ref 需要值（tag 或 40 位 sha）"; GIT_REF="$2"; shift 2 ;;
     --git-ref=*)        GIT_REF="${1#*=}"; shift ;;
     --profile)          [ $# -ge 2 ] || die "--profile 需要值：host|ci"; PROFILE="$2"; shift 2 ;;
@@ -192,6 +197,10 @@ if [ -n "$PG_IMAGE_REF" ]; then
     *@sha256:*) ;;
     *) die "--pg-image-ref 必须是 digest 引用（含 @sha256:…）：当前 ${PG_IMAGE_REF}" ;;
   esac
+fi
+if [ -n "$WIDGET_IMAGE_REF" ]; then
+  [[ "$WIDGET_IMAGE_REF" =~ ^[^[:space:]@]+@sha256:[0-9a-f]{64}$ ]] \
+    || die "--widget-image-ref 必须是完整 sha256 digest 引用 / a full SHA-256 digest reference is required"
 fi
 
 [ -n "$GIT_REF" ] || die "缺少 --git-ref（clone 哪个版本）
@@ -419,6 +428,7 @@ env_set_var CERTBOT_EMAIL "$CERTBOT_EMAIL"
 env_set_var BACKEND_IMAGE "$IMAGE_REF"
 if [ -n "$ADMIN_IMAGE_REF" ]; then env_set_var ADMIN_IMAGE "$ADMIN_IMAGE_REF"; fi
 if [ -n "$PG_IMAGE_REF" ]; then env_set_var PG_IMAGE "$PG_IMAGE_REF"; fi
+if [ -n "$WIDGET_IMAGE_REF" ]; then env_set_var IMBOY_WIDGET_IMAGE "$WIDGET_IMAGE_REF"; fi
 if [ "$PROFILE" = "ci" ]; then preset_ci_certs; fi
 write_compose_override
 install_ctl_wrapper

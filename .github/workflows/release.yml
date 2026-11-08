@@ -1,33 +1,9 @@
-# Release 流水线（Golden Gates Phase 1+2 / P1-A1 + P2-R1）
-#
-# 关联计划：.claude/plans/golden-gates-plan-2026-08.md
-#   - §3.1 发布链路（digest identity，钉死）：tag v* → Build Candidate →
-#     push GHCR candidate（immutable digest，:v<version>-rc）→ Golden Install /
-#     Golden Upgrade（拉该 digest 运行，不重新 build）→ 全绿 → 同一 digest
-#     打正式 semver tag → GitHub Release（三元组元数据）
-#   - §8 Release Gate Matrix：任何一步红 → 中止，不留半发布状态
-#     （candidate digest 可留存供调试，但不打正式 tag、不发 Release）
-#
-# Phase 2 已接入（P2-R1）：
-#   build-admin-candidate — 跨仓 checkout imboy-admin-frontend 构建 admin 镜像
-#                     candidate（ref 默认 main，可用 vars.ADMIN_REPO_REF 钉住）；
-#                     golden 门禁与 finalize 的 admin 侧输入（同 digest identity）
-#   build-pg-candidate — 构建带 TimescaleDB/PostGIS/pg_jieba 的 PostgreSQL 18
-#                     镜像；社区 compose 与 Golden 门禁均消费其不可变 digest
-#   golden-install  — P2-G1 脚本在 ubuntu runner（cleanroom 近似）全流程跑，
-#                     T0→T1 ≤900s + restart 幂等，FAIL 即中止发布链
-#   golden-upgrade  — P2-U1 脚本 vN→vN+1 数据保留断言；首个正式版前无 vN
-#                     时显式 SKIPPED_FIRST_RELEASE（计划 §5 的 --from 设计初衷）
-#   release-finalize — 双门禁全绿后：buildx imagetools create 把 candidate
-#                     digest 复打正式 semver tag（不重新 build）+ gh release
-#                     create（三元组元数据）。RELEASES.md 更新为人工后续步骤。
-#   golden-install-nightly — G4：每日 schedule 对最新正式镜像跑 golden install，
-#                     耗时进质量债务总账（vars.GOLDEN_NIGHTLY_ENABLED 开关控制成本）
-#
-# 需用户本人操作的开关（附录 C，AI 会话不代办）：
-#   RELEASE_FINALIZE_ENABLED  Actions 仓库变量置 true 才执行发布动作
-#   GOLDEN_NIGHTLY_ENABLED    Actions 仓库变量置 true 才跑 nightly golden
-#   GHCR package 可见性       首推后默认 private，社区分发需本人改 public
+# Community release contract / 社区版发布合同
+# Git tag v<VERSION> -> four image tags <VERSION> (prerelease preserved).
+# Build once, verify digests in Golden gates, anonymously pull all four, then
+# promote those exact digests. VERSION alone never proves image availability.
+# ADMIN_REPO_REF must be an approved full frontend commit SHA, shared by Admin
+# and Widget. RELEASE_FINALIZE_ENABLED and GHCR visibility are owner-controlled.
 
 name: Release
 
@@ -44,19 +20,46 @@ permissions:
   contents: read
   packages: write
 
-# 按 ref 隔离的 concurrency：不同 tag 互不阻塞可并行；同一 tag 重推
-# （tag 移动）时取消旧 run。否则新旧两个 run 会竞推同一个 `<version>-rc`
-# 镜像 tag，后完成者覆盖前者，candidate 可能指向旧 commit，
-# digest identity（验证什么就发布什么）随之失效。
+# Serialize each version; do not cancel halfway through four-image promotion.
 concurrency:
   group: release-${{ github.ref_name }}
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 jobs:
+  release-contract:
+    name: Validate release and immutable source identity
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    outputs:
+      RELEASE_TAG: ${{ steps.contract.outputs.RELEASE_TAG }}
+      IMBOY_VERSION: ${{ steps.contract.outputs.IMBOY_VERSION }}
+      IMBOY_GIT_SHA: ${{ steps.contract.outputs.IMBOY_GIT_SHA }}
+      CANDIDATE_TAG: ${{ steps.contract.outputs.CANDIDATE_TAG }}
+      PRERELEASE: ${{ steps.contract.outputs.PRERELEASE }}
+      FRONTEND_SHA: ${{ steps.contract.outputs.FRONTEND_SHA }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.sha }}
+      - name: Validate tag, VERSION, environment and frontend source
+        id: contract
+        env:
+          FRONTEND_SHA: ${{ vars.ADMIN_REPO_REF }}
+        run: |
+          set -euo pipefail
+          bash scripts/release_version.sh "$GITHUB_REF_NAME" >> "$GITHUB_OUTPUT"
+          [[ "$FRONTEND_SHA" =~ ^[0-9a-f]{40}$ ]] || {
+            echo '::error::ADMIN_REPO_REF must be an approved full frontend commit SHA'; exit 1;
+          }
+          echo "FRONTEND_SHA=$FRONTEND_SHA" >> "$GITHUB_OUTPUT"
+
   # ----------------------------------------------------------------
   # Build Candidate — 仓根 Dockerfile 构建 + 推 GHCR candidate
   #   * checkout 固定在 tag ref（构建源 = 打 tag 的那个 commit，不漂移）
-  #   * 镜像 tag：<semver>-rc（candidate 语义；正式 semver tag 由 finalize 复打）
+  #   * 候选标签含 VERSION、源码 SHA、run、attempt；最终标签保持完整 VERSION
   #   * digest（sha256:...）作为 job output —— 后续 Golden 门禁与
   #     Release 元数据的唯一镜像标识
   # 仅 tag push 触发（schedule 走 nightly job，不重复构建）。
@@ -64,6 +67,7 @@ jobs:
   build-candidate:
     name: Build & push candidate image
     if: github.event_name == 'push'
+    needs: [release-contract]
     runs-on: ubuntu-latest
     timeout-minutes: 60
     outputs:
@@ -78,24 +82,13 @@ jobs:
       - name: Checkout (pinned to tag ref)
         uses: actions/checkout@v7
         with:
-          ref: ${{ github.ref }} # 固定检出发 tag 的 commit；fetch-depth 默认 1 足够
-
-      - name: Verify semver tag
-        run: |
-          set -euo pipefail
-          # 触发虽已限定 v*，这里再做严格 semver 校验，拦截 v-foo / v1.2 这类
-          # tag 混入发布链路（IMBOY_VERSION 与 git tag 强一致是 §3.2
-          # compose pin semver、禁止 latest 的前提）。
-          if ! grep -Eq '^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-[0-9A-Za-z.-]+)?(\+[0-9A-Za-z.-]+)?$' <<<"${GITHUB_REF_NAME}"; then
-            echo "::error::tag '${GITHUB_REF_NAME}' 不是合法 semver（期望 vMAJOR.MINOR.PATCH[-prerelease][+build]）"
-            exit 1
-          fi
+          ref: ${{ github.sha }} # 固定检出发 tag 的 commit；fetch-depth 默认 1 足够
 
       - name: Resolve release identity
         id: identity
         run: |
           set -euo pipefail
-          version="${GITHUB_REF_NAME}"
+          version="${{ needs.release-contract.outputs.IMBOY_VERSION }}"
           # 用 rev-parse HEAD 而非 github.sha：annotated tag 场景下 HEAD
           # 一定是实际被检出构建的那个 commit。
           sha="$(git rev-parse HEAD)"
@@ -106,7 +99,7 @@ jobs:
             echo "IMBOY_VERSION=${version}"
             echo "IMBOY_GIT_SHA=${sha}"
             echo "IMAGE_NAME=${image}"
-            echo "IMAGE_REF=${image}:${version}-rc"
+            echo "IMAGE_REF=${image}:${{ needs.release-contract.outputs.CANDIDATE_TAG }}"
           } >> "$GITHUB_OUTPUT"
           echo "IMAGE_NAME=${image}" >> "$GITHUB_ENV"
 
@@ -130,13 +123,15 @@ jobs:
         with:
           context: .
           file: ./Dockerfile
+          platforms: linux/amd64
+          labels: |
+            org.opencontainers.image.source=https://github.com/${{ github.repository }}
+            org.opencontainers.image.revision=${{ needs.release-contract.outputs.IMBOY_GIT_SHA }}
+            org.opencontainers.image.version=${{ needs.release-contract.outputs.IMBOY_VERSION }}
           push: true
           tags: ${{ steps.identity.outputs.IMAGE_REF }}
-        # 仓根 Dockerfile 无 build-args（多阶段 erlang:28 builder → debian
-        # slim runtime，make rel 出自包含 release）：版本不注入镜像内部，
-        # 镜像 tag 即版本，candidate = 打 tag commit 的确定性构建产物。
-        # 未启用 gha layer cache：Dockerfile 是单层 `COPY . . && make rel`，
-        # 源码任一变动即整层 miss，缓存收益趋近于零，徒增导出时间与配额。
+        # Dockerfile embeds VERSION; preflight checks it equals the source
+        # Git tag without v. Do not confuse an OCI tag with the embedded version.
 
       - name: Resolve digest ref (immutable image reference)
         id: digest_ref
@@ -159,13 +154,14 @@ jobs:
   # 为什么需要本 job：golden install/upgrade 起栈时 compose 会拉全部服务镜像；
   # imboy/imboy-admin 从未发布到公共 registry（2026-08-23 实测 Docker Hub
   # object not found），不构建 admin candidate 则 compose up 在拉取阶段必挂。
-  # admin 仓独立版本化，candidate 默认取 main（可用仓库变量 ADMIN_REPO_REF
-  # 钉住分支/tag/sha）；digest identity 与 backend 同口径——golden 门禁拉
+  # admin 仓独立版本化；ADMIN_REPO_REF 必须是批准的完整 commit SHA。
+  # 交付版本标签不代表 admin package.json 版本；golden 门禁拉
   # digest、finalize 复打同一 digest 为正式 tag。
   # ----------------------------------------------------------------
   build-admin-candidate:
     name: Build & push admin candidate image
     if: github.event_name == 'push'
+    needs: [release-contract]
     runs-on: ubuntu-latest
     timeout-minutes: 30
     outputs:
@@ -180,7 +176,7 @@ jobs:
         uses: actions/checkout@v7
         with:
           repository: imboy-pub/imboy-admin-frontend
-          ref: ${{ vars.ADMIN_REPO_REF || 'main' }}
+          ref: ${{ needs.release-contract.outputs.FRONTEND_SHA }}
           path: imboyadmin
 
       - name: Resolve admin release identity
@@ -188,13 +184,13 @@ jobs:
         working-directory: imboyadmin
         run: |
           set -euo pipefail
-          version="${GITHUB_REF_NAME}"
           sha="$(git rev-parse HEAD)"
+          test "$sha" = "${{ needs.release-contract.outputs.FRONTEND_SHA }}"
           image="ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/imboy-admin"
           {
             echo "ADMIN_IMAGE_NAME=${image}"
-            echo "ADMIN_IMAGE_REF=${image}:${version}-rc"
-            echo "ADMIN_REPO_REF=${{ vars.ADMIN_REPO_REF || 'main' }}"
+            echo "ADMIN_IMAGE_REF=${image}:${{ needs.release-contract.outputs.CANDIDATE_TAG }}"
+            echo "ADMIN_REPO_REF=${{ needs.release-contract.outputs.FRONTEND_SHA }}"
             echo "ADMIN_GIT_SHA=${sha}"
           } >> "$GITHUB_OUTPUT"
 
@@ -214,6 +210,11 @@ jobs:
         with:
           context: imboyadmin
           file: imboyadmin/Dockerfile
+          platforms: linux/amd64
+          labels: |
+            org.opencontainers.image.source=https://github.com/imboy-pub/imboy-admin-frontend
+            org.opencontainers.image.revision=${{ needs.release-contract.outputs.FRONTEND_SHA }}
+            org.opencontainers.image.version=${{ needs.release-contract.outputs.IMBOY_VERSION }}
           push: true
           tags: ${{ steps.identity.outputs.ADMIN_IMAGE_REF }}
         # admin 镜像构建时 Vite 把 .env.production 里的占位符
@@ -245,6 +246,7 @@ jobs:
   build-pg-candidate:
     name: Build & push PostgreSQL 18 candidate image
     if: github.event_name == 'push'
+    needs: [release-contract]
     runs-on: ubuntu-latest
     timeout-minutes: 60
     outputs:
@@ -256,17 +258,16 @@ jobs:
       - name: Checkout (pinned to tag ref)
         uses: actions/checkout@v7
         with:
-          ref: ${{ github.ref }}
+          ref: ${{ github.sha }}
 
       - name: Resolve PostgreSQL release identity
         id: identity
         run: |
           set -euo pipefail
-          version="${GITHUB_REF_NAME}"
           image="ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/imboy-pg18"
           {
             echo "PG_IMAGE_NAME=${image}"
-            echo "PG_IMAGE_REF=${image}:${version}-rc"
+            echo "PG_IMAGE_REF=${image}:${{ needs.release-contract.outputs.CANDIDATE_TAG }}"
           } >> "$GITHUB_OUTPUT"
 
       - name: Set up Docker Buildx
@@ -285,6 +286,11 @@ jobs:
         with:
           context: .
           file: ./docker/pg18_Dockerfile
+          platforms: linux/amd64
+          labels: |
+            org.opencontainers.image.source=https://github.com/${{ github.repository }}
+            org.opencontainers.image.revision=${{ needs.release-contract.outputs.IMBOY_GIT_SHA }}
+            org.opencontainers.image.version=${{ needs.release-contract.outputs.IMBOY_VERSION }}
           push: true
           tags: ${{ steps.identity.outputs.PG_IMAGE_REF }}
 
@@ -304,6 +310,90 @@ jobs:
           esac
           echo "PG_IMAGE_DIGEST_REF=${PG_IMAGE_NAME}@${DIGEST}" >> "$GITHUB_OUTPUT"
 
+  build-widget-candidate:
+    name: Build, verify and push Widget candidate
+    if: github.event_name == 'push'
+    needs: [release-contract]
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    outputs:
+      WIDGET_IMAGE_NAME: ${{ steps.identity.outputs.WIDGET_IMAGE_NAME }}
+      WIDGET_IMAGE_DIGEST_REF: ${{ steps.digest.outputs.WIDGET_IMAGE_DIGEST_REF }}
+      FRONTEND_VERSION: ${{ steps.identity.outputs.FRONTEND_VERSION }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.sha }}
+      - uses: actions/checkout@v7
+        with:
+          repository: imboy-pub/imboy-admin-frontend
+          ref: ${{ needs.release-contract.outputs.FRONTEND_SHA }}
+          path: imboyadmin
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: '1.3.14' # Same pinned toolchain as frontend CI.
+      - name: Resolve Widget identity and check source pairing
+        id: identity
+        run: |
+          set -euo pipefail
+          test "$(git -C imboyadmin rev-parse HEAD)" = "${{ needs.release-contract.outputs.FRONTEND_SHA }}"
+          image="ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/imboy-widget"
+          echo "WIDGET_IMAGE_NAME=$image" >> "$GITHUB_OUTPUT"
+          echo "WIDGET_IMAGE_REF=$image:${{ needs.release-contract.outputs.CANDIDATE_TAG }}" >> "$GITHUB_OUTPUT"
+          echo "FRONTEND_VERSION=$(jq -r .version imboyadmin/package.json)" >> "$GITHUB_OUTPUT"
+          ADMIN_REPO_DIR="$GITHUB_WORKSPACE/imboyadmin" bash scripts/check_widget_asset_pairing.sh
+      - name: Build and verify the real Widget assets
+        working-directory: imboyadmin
+        run: |
+          set -euo pipefail
+          bun install --frozen-lockfile
+          bun run build:widget
+          bun run verify:widget
+      - uses: docker/setup-buildx-action@v4
+      - uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Build and push verified Widget assets
+        id: push
+        uses: docker/build-push-action@v7
+        with:
+          context: imboyadmin
+          file: imboyadmin/Dockerfile.widget
+          platforms: linux/amd64
+          push: true
+          tags: ${{ steps.identity.outputs.WIDGET_IMAGE_REF }}
+          labels: |
+            org.opencontainers.image.source=https://github.com/imboy-pub/imboy-admin-frontend
+            org.opencontainers.image.revision=${{ needs.release-contract.outputs.FRONTEND_SHA }}
+            org.opencontainers.image.version=${{ needs.release-contract.outputs.IMBOY_VERSION }}
+            pub.imboy.frontend.version=${{ steps.identity.outputs.FRONTEND_VERSION }}
+      - name: Verify the published Widget digest in its runtime contract
+        id: digest
+        env:
+          DIGEST: ${{ steps.push.outputs.digest }}
+          IMAGE_NAME: ${{ steps.identity.outputs.WIDGET_IMAGE_NAME }}
+        run: |
+          set -euo pipefail
+          [[ "$DIGEST" =~ ^sha256:[0-9a-f]{64}$ ]]
+          ref="$IMAGE_NAME@$DIGEST"
+          echo "WIDGET_IMAGE_DIGEST_REF=$ref" >> "$GITHUB_OUTPUT"
+          docker pull --platform linux/amd64 "$ref"
+          cid="$(docker run -d --read-only --tmpfs /tmp:rw,noexec,nosuid,size=16m \
+            -p 127.0.0.1:18081:8080 "$ref")"
+          trap 'docker rm -f "$cid" >/dev/null' EXIT
+          test "$(docker inspect --format '{{.Config.User}}' "$cid")" = 101
+          for attempt in $(seq 1 30); do
+            if curl -fsS --max-time 2 http://127.0.0.1:18081/health.txt >/dev/null; then break; fi
+            sleep 1
+          done
+          for asset in health.txt v1/loader.js manifest.json \
+            $(jq -r '.pairs[] | select(.admin != null) | .asset_path' priv/cs_widget_asset_pairing.json); do
+            curl -fsS --max-time 5 "http://127.0.0.1:18081/$asset" -o "$RUNNER_TEMP/widget-asset"
+            test -s "$RUNNER_TEMP/widget-asset"
+          done
+
   # ----------------------------------------------------------------
   # Golden Install 门禁（P2-G1 脚本 / 计划 §4，G2 接入本流水线）
   #
@@ -318,7 +408,7 @@ jobs:
   golden-install:
     name: Golden Install gate (<=900s + restart idempotent)
     if: github.event_name == 'push'
-    needs: [build-candidate, build-admin-candidate, build-pg-candidate]
+    needs: [build-candidate, build-admin-candidate, build-widget-candidate, build-pg-candidate]
     runs-on: ubuntu-latest
     timeout-minutes: 45 # 预算 900s + 拉镜像/克隆/重试余量
     env:
@@ -326,12 +416,13 @@ jobs:
       IMAGE_NAME: ${{ needs.build-candidate.outputs.IMAGE_NAME }}
       ADMIN_IMAGE_DIGEST_REF: ${{ needs.build-admin-candidate.outputs.ADMIN_IMAGE_DIGEST_REF }}
       PG_IMAGE_DIGEST_REF: ${{ needs.build-pg-candidate.outputs.PG_IMAGE_DIGEST_REF }}
+      WIDGET_IMAGE_DIGEST_REF: ${{ needs.build-widget-candidate.outputs.WIDGET_IMAGE_DIGEST_REF }}
 
     steps:
       - name: Checkout (scripts at tag)
         uses: actions/checkout@v7
         with:
-          ref: ${{ github.ref }}
+          ref: ${{ github.sha }}
 
       - name: Login to GHCR (compose pull digest)
         uses: docker/login-action@v4
@@ -354,6 +445,7 @@ jobs:
           IMAGE_DIGEST_REF: ${{ needs.build-candidate.outputs.IMAGE_DIGEST_REF }}
           ADMIN_IMAGE_DIGEST_REF: ${{ needs.build-admin-candidate.outputs.ADMIN_IMAGE_DIGEST_REF }}
           PG_IMAGE_DIGEST_REF: ${{ needs.build-pg-candidate.outputs.PG_IMAGE_DIGEST_REF }}
+          WIDGET_IMAGE_DIGEST_REF: ${{ needs.build-widget-candidate.outputs.WIDGET_IMAGE_DIGEST_REF }}
         run: |
           set -euo pipefail
           # Actions 的 env 值不做 shell 展开，密码须在 run 内生成（runner 一次性
@@ -363,7 +455,8 @@ jobs:
             --image-ref "${IMAGE_DIGEST_REF}" \
             --admin-image-ref "${ADMIN_IMAGE_DIGEST_REF}" \
             --pg-image-ref "${PG_IMAGE_DIGEST_REF}" \
-            --git-ref "${GITHUB_REF_NAME}" \
+            --widget-image-ref "${WIDGET_IMAGE_DIGEST_REF}" \
+            --git-ref "${{ needs.build-candidate.outputs.IMBOY_GIT_SHA }}" \
             --profile ci \
             --admin-phone 13800138000 \
             --admin-password "${pw}" \
@@ -390,7 +483,7 @@ jobs:
   golden-upgrade:
     name: Golden Upgrade gate (data retention)
     if: github.event_name == 'push'
-    needs: [build-candidate, build-admin-candidate, build-pg-candidate]
+    needs: [build-candidate, build-admin-candidate, build-widget-candidate, build-pg-candidate]
     runs-on: ubuntu-latest
     timeout-minutes: 60 # vN 全量安装 + 数据生成 + 迁移 + 双冒烟，无预算上限
     outputs:
@@ -401,7 +494,7 @@ jobs:
       - name: Checkout (scripts at tag)
         uses: actions/checkout@v7
         with:
-          ref: ${{ github.ref }}
+          ref: ${{ github.sha }}
           fetch-depth: 0 # 需要完整 tag 列表找 vN
 
       - name: Resolve previous stable tag (vN)
@@ -449,6 +542,7 @@ jobs:
           IMAGE_DIGEST_REF: ${{ needs.build-candidate.outputs.IMAGE_DIGEST_REF }}
           ADMIN_IMAGE_DIGEST_REF: ${{ needs.build-admin-candidate.outputs.ADMIN_IMAGE_DIGEST_REF }}
           PG_IMAGE_DIGEST_REF: ${{ needs.build-pg-candidate.outputs.PG_IMAGE_DIGEST_REF }}
+          WIDGET_IMAGE_DIGEST_REF: ${{ needs.build-widget-candidate.outputs.WIDGET_IMAGE_DIGEST_REF }}
         run: |
           set -euo pipefail
           pw="Golden$(openssl rand -hex 6)" # env 值不做 shell 展开，须 run 内生成
@@ -457,7 +551,8 @@ jobs:
             --to-image "${IMAGE_DIGEST_REF}" \
             --admin-image-ref "${ADMIN_IMAGE_DIGEST_REF}" \
             --pg-image-ref "${PG_IMAGE_DIGEST_REF}" \
-            --to-ref "${GITHUB_REF_NAME}" \
+            --widget-image-ref "${WIDGET_IMAGE_DIGEST_REF}" \
+            --to-ref "${{ needs.build-candidate.outputs.IMBOY_GIT_SHA }}" \
             --profile ci \
             --admin-phone 13800138000 \
             --admin-password "${pw}" \
@@ -512,119 +607,148 @@ jobs:
             echo "- digest 引用（Golden 门禁消费）：\`${IMAGE_DIGEST_REF}\`"
             echo ""
             echo "> Golden Install / Golden Upgrade 全绿后，由 release-finalize 将此"
-            echo "> digest 复打正式 semver tag 并发 GitHub Release（§8）。"
+            echo "> digest 复打完整 VERSION 镜像 tag，并在原 Git tag 创建 Release。"
           } >> "$GITHUB_STEP_SUMMARY"
 
-  # ----------------------------------------------------------------
-  # release-finalize — 双 Golden 门禁全绿后的发布动作（P2-R1）
-  #
-  # 开关：Actions 仓库变量 RELEASE_FINALIZE_ENABLED（外向发布控制，由仓库
-  # 管理员/用户本人设置，AI 会话不代办——附录 C 第 2 条）。未设置 → 恒
-  # skipped：门禁照跑（golden-* job 不受此开关影响），但不打正式 tag、
-  # 不发 Release，不留半发布状态（§8）。
-  #
-  # 动作：
-  #   1. docker buildx imagetools create 把 candidate digest 复打正式
-  #      semver tag（纯 registry 操作，不重新 build——digest identity：
-  #      验证什么就发布什么，§3.1）
-  #   2. gh release create：<tag> 指向打 tag 的 commit，正文写入三元组
-  #      + 门禁结果（sanity_check.sh 输出处亦打印三元组，用户可核验
-  #      “装的正是被验证过的那一个”）
-  #   3. RELEASES.md 更新为人工后续步骤（§8 step 6，不自动改文档）
-  # ----------------------------------------------------------------
-  release-finalize:
-    name: Finalize semver tag + GitHub Release
-    if: vars.RELEASE_FINALIZE_ENABLED == 'true'
-    needs: [build-candidate, build-admin-candidate, build-pg-candidate, golden-install, golden-upgrade] # needs 只暴露直接依赖，三元组须直连 build-candidate
+  # A writer's GITHUB_TOKEN cannot establish anonymous customer access.
+  community-image-access:
+    name: Anonymous pull and architecture gate (all four images)
+    if: github.event_name == 'push'
+    needs: [build-candidate, build-admin-candidate, build-widget-candidate, build-pg-candidate]
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 30
     permissions:
-      contents: write # gh release create（同时创建正式 git tag）
-      packages: write # buildx imagetools 复打镜像 tag
-
+      contents: read
     steps:
-      - name: Resolve official version
-        id: official
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.sha }}
+      - name: Pull every candidate anonymously by verified digest
         run: |
-          set -euo pipefail
-          # v1.2.3-rc.1 / v1.2.3+build → v1.2.3（剥 prerelease 与 build 元数据）
-          official="$(sed -E 's/^(v[0-9]+\.[0-9]+\.[0-9]+).*/\1/' <<<"${GITHUB_REF_NAME}")"
-          [ "${official}" = "${GITHUB_REF_NAME}" ] && note="（tag 本身即正式版）" || note="（自 candidate tag ${GITHUB_REF_NAME}）"
-          echo "OFFICIAL=${official}" >> "$GITHUB_OUTPUT"
-          echo "正式 semver tag：${official} ${note}"
+          bash scripts/verify_community_images.sh --platform linux/amd64 --pull \
+            --backend '${{ needs.build-candidate.outputs.IMAGE_DIGEST_REF }}' \
+            --admin '${{ needs.build-admin-candidate.outputs.ADMIN_IMAGE_DIGEST_REF }}' \
+            --widget '${{ needs.build-widget-candidate.outputs.WIDGET_IMAGE_DIGEST_REF }}' \
+            --pg '${{ needs.build-pg-candidate.outputs.PG_IMAGE_DIGEST_REF }}' \
+            --output "$RUNNER_TEMP/community-image-access"
+      - name: Preserve anonymous verification evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: community-image-access-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/community-image-access
+          retention-days: 30
 
-      - name: Login to GitHub Container Registry
-        uses: docker/login-action@v4
+  release-finalize:
+    name: Publish exact four-image bundle and GitHub Release
+    if: github.event_name == 'push' && vars.RELEASE_FINALIZE_ENABLED == 'true'
+    needs: [release-contract, build-candidate, build-admin-candidate, build-widget-candidate, build-pg-candidate, golden-install, golden-upgrade, community-image-access]
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: write
+      packages: write
+    env:
+      RELEASE_TAG: ${{ needs.release-contract.outputs.RELEASE_TAG }}
+      RELEASE_VERSION: ${{ needs.release-contract.outputs.IMBOY_VERSION }}
+      IMBOY_RELEASE_OWNER: ${{ github.repository_owner }}
+      BACKEND_SHA: ${{ needs.release-contract.outputs.IMBOY_GIT_SHA }}
+      FRONTEND_SHA: ${{ needs.release-contract.outputs.FRONTEND_SHA }}
+      FRONTEND_VERSION: ${{ needs.build-widget-candidate.outputs.FRONTEND_VERSION }}
+      BACKEND_REF: ${{ needs.build-candidate.outputs.IMAGE_DIGEST_REF }}
+      ADMIN_REF: ${{ needs.build-admin-candidate.outputs.ADMIN_IMAGE_DIGEST_REF }}
+      WIDGET_REF: ${{ needs.build-widget-candidate.outputs.WIDGET_IMAGE_DIGEST_REF }}
+      PG_REF: ${{ needs.build-pg-candidate.outputs.PG_IMAGE_DIGEST_REF }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.sha }}
+      - uses: docker/setup-buildx-action@v4
+      - uses: docker/login-action@v4
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Re-tag candidate digest as official semver (no rebuild)
-        env:
-          IMAGE_DIGEST_REF: ${{ needs.build-candidate.outputs.IMAGE_DIGEST_REF }}
-          IMAGE_NAME: ${{ needs.build-candidate.outputs.IMAGE_NAME }}
-          ADMIN_IMAGE_DIGEST_REF: ${{ needs.build-admin-candidate.outputs.ADMIN_IMAGE_DIGEST_REF }}
-          ADMIN_IMAGE_NAME: ${{ needs.build-admin-candidate.outputs.ADMIN_IMAGE_NAME }}
-          PG_IMAGE_DIGEST_REF: ${{ needs.build-pg-candidate.outputs.PG_IMAGE_DIGEST_REF }}
-          PG_IMAGE_NAME: ${{ needs.build-pg-candidate.outputs.PG_IMAGE_NAME }}
+      - name: Verify source tag still points to the approved commit
         run: |
           set -euo pipefail
-          official="${{ steps.official.outputs.OFFICIAL }}"
-          docker buildx imagetools create \
-            --tag "${IMAGE_NAME}:${official}" \
-            "${IMAGE_DIGEST_REF}"
-          echo "已复打 ${IMAGE_NAME}:${official} → ${IMAGE_DIGEST_REF}"
-          # admin 镜像同 digest 复打（与 backend 同一 digest identity 口径）
-          docker buildx imagetools create \
-            --tag "${ADMIN_IMAGE_NAME}:${official}" \
-            "${ADMIN_IMAGE_DIGEST_REF}"
-          echo "已复打 ${ADMIN_IMAGE_NAME}:${official} → ${ADMIN_IMAGE_DIGEST_REF}"
-          docker buildx imagetools create \
-            --tag "${PG_IMAGE_NAME}:${official}" \
-            "${PG_IMAGE_DIGEST_REF}"
-          echo "已复打 ${PG_IMAGE_NAME}:${official} → ${PG_IMAGE_DIGEST_REF}"
-
-      - name: Create GitHub Release (release identity metadata)
+          git fetch --no-tags origin "refs/tags/$RELEASE_TAG"
+          test "$(git rev-parse 'FETCH_HEAD^{commit}')" = "$BACKEND_SHA"
+          bash scripts/release_version.sh "$RELEASE_TAG"
+      - name: Record all source identities and candidate digests before promotion
+        run: |
+          set -euo pipefail
+          jq -n --arg version "$RELEASE_VERSION" --arg tag "$RELEASE_TAG" \
+            --arg backend_sha "$BACKEND_SHA" --arg frontend_sha "$FRONTEND_SHA" \
+            --arg frontend_version "$FRONTEND_VERSION" \
+            --arg backend "$BACKEND_REF" --arg admin "$ADMIN_REF" \
+            --arg widget "$WIDGET_REF" --arg pg18 "$PG_REF" \
+            --arg run "${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}" \
+            '{version:$version,git_tag:$tag,backend_commit:$backend_sha,frontend_commit:$frontend_sha,
+              frontend_package_version:$frontend_version,platforms:["linux/amd64"],workflow:$run,
+              images:{backend:$backend,admin:$admin,widget:$widget,pg18:$pg18}}' \
+            > "$RUNNER_TEMP/community-images.json"
+      - name: Preserve candidate receipt for resumable promotion
+        uses: actions/upload-artifact@v7
+        with:
+          name: community-release-receipt-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/community-images.json
+          if-no-files-found: error
+          retention-days: 90
+      - name: Promote exact digests without rebuilding or replacing existing tags
+        run: |
+          bash scripts/release_promote.sh --apply "$RELEASE_VERSION" \
+            "$BACKEND_REF" "$ADMIN_REF" "$WIDGET_REF" "$PG_REF"
+      - name: Verify final customer tags anonymously
+        run: |
+          bash scripts/verify_community_images.sh --platform linux/amd64 --pull \
+            --backend "${BACKEND_REF%@*}:$RELEASE_VERSION" \
+            --admin "${ADMIN_REF%@*}:$RELEASE_VERSION" \
+            --widget "${WIDGET_REF%@*}:$RELEASE_VERSION" \
+            --pg "${PG_REF%@*}:$RELEASE_VERSION" \
+            --output "$RUNNER_TEMP/community-final-images"
+      - name: Recheck final tag identity against the saved candidate receipt
+        run: |
+          set -euo pipefail
+          jq -e --arg backend "${BACKEND_REF##*@}" --arg admin "${ADMIN_REF##*@}" \
+            --arg widget "${WIDGET_REF##*@}" --arg pg "${PG_REF##*@}" '
+            .ok and (.images | length == 4)
+            and any(.images[]; .component == "backend" and .digest == $backend and .pull_verified)
+            and any(.images[]; .component == "admin" and .digest == $admin and .pull_verified)
+            and any(.images[]; .component == "widget" and .digest == $widget and .pull_verified)
+            and any(.images[]; .component == "pg" and .digest == $pg and .pull_verified)
+          ' "$RUNNER_TEMP/community-final-images/summary.json" >/dev/null
+          for ref in "$BACKEND_REF" "$ADMIN_REF" "$WIDGET_REF" "$PG_REF"; do
+            actual="$(docker buildx imagetools inspect "${ref%@*}:$RELEASE_VERSION" --format '{{.Manifest.Digest}}')"
+            test "$actual" = "${ref##*@}"
+          done
+      - name: Create traceable release on the existing source tag
         env:
           GH_TOKEN: ${{ github.token }}
-          IMBOY_VERSION: ${{ needs.build-candidate.outputs.IMBOY_VERSION }}
-          IMBOY_GIT_SHA: ${{ needs.build-candidate.outputs.IMBOY_GIT_SHA }}
-          IMBOY_IMAGE_DIGEST: ${{ needs.build-candidate.outputs.IMBOY_IMAGE_DIGEST }}
-          IMAGE_NAME: ${{ needs.build-candidate.outputs.IMAGE_NAME }}
-          IMAGE_REF: ${{ needs.build-candidate.outputs.IMAGE_REF }}
-          OFFICIAL: ${{ steps.official.outputs.OFFICIAL }}
+          PRERELEASE: ${{ needs.release-contract.outputs.PRERELEASE }}
           UPGRADE_RESULT: ${{ needs.golden-upgrade.outputs.RESULT }}
-          UPGRADE_FROM: ${{ needs.golden-upgrade.outputs.FROM_TAG }}
         run: |
           set -euo pipefail
-          if [ -z "${IMBOY_GIT_SHA}" ]; then
-            echo "::error::IMBOY_GIT_SHA 为空（needs 链断裂？）"; exit 1
-          fi
-          cat > /tmp/release-notes.md <<EOF
-          ## Release Identity（计划 §3.1，可核验"装的正是被验证过的那一个"）
-
-          \`\`\`
-          IMBOY_VERSION=${IMBOY_VERSION}
-          IMBOY_GIT_SHA=${IMBOY_GIT_SHA}
-          IMBOY_IMAGE_DIGEST=${IMBOY_IMAGE_DIGEST}
-          \`\`\`
-
-          - 正式镜像：\`${IMAGE_NAME}:${OFFICIAL}\`（= candidate \`${IMAGE_REF}\` 的同一 digest 复打，未重新构建）
-          - 管理后台镜像：\`${{ needs.build-admin-candidate.outputs.ADMIN_IMAGE_NAME }}:${OFFICIAL}\`（admin candidate 同 digest 复打；源 ref ${{ needs.build-admin-candidate.outputs.ADMIN_REPO_REF }}@${{ needs.build-admin-candidate.outputs.ADMIN_GIT_SHA }}）
-          - PostgreSQL 18 镜像：\`${{ needs.build-pg-candidate.outputs.PG_IMAGE_NAME }}:${OFFICIAL}\`（同一 candidate digest 复打，含社区版所需扩展）
-          - 升级指引与版本历史：见仓库 [RELEASES.md](./RELEASES.md)
-
-          ## 发布门禁（Golden Gates §8）
-
-          - Golden Install：PASS（cleanroom 全流程 ≤900s + 8 步冒烟链 + restart 幂等）
-          - Golden Upgrade：${UPGRADE_RESULT}${UPGRADE_FROM:+（${UPGRADE_FROM} → ${IMBOY_VERSION}，数据保留断言全绿）}
-          EOF
-          gh release create "${OFFICIAL}" \
-            --target "${IMBOY_GIT_SHA}" \
-            --title "${OFFICIAL}" \
-            --notes-file /tmp/release-notes.md
-          echo "::notice::GitHub Release ${OFFICIAL} 已创建（三元组元数据见正文）。后续人工步骤：更新 RELEASES.md（§8 step 6）。"
+          {
+            printf '## Community image bundle %s\n\n' "$RELEASE_VERSION"
+            printf 'Backend commit: `%s`\n\nFrontend commit: `%s` (package `%s`)\n\n' "$BACKEND_SHA" "$FRONTEND_SHA" "$FRONTEND_VERSION"
+            printf 'Four exact image digests and source identities: attached `community-images.json`.\n\n'
+            printf 'Golden Install: PASS; Golden Upgrade: %s; anonymous four-image pull: PASS.\n' "$UPGRADE_RESULT"
+            printf 'Verified platform: linux/amd64. Customer DNS/TLS/RTC acceptance remains separate.\n'
+          } > "$RUNNER_TEMP/release-notes.md"
+          flags=(--verify-tag --latest=false)
+          if [[ "$PRERELEASE" = true ]]; then flags+=(--prerelease); fi
+          gh release create "$RELEASE_TAG" "$RUNNER_TEMP/community-images.json" \
+            --title "$RELEASE_TAG" --notes-file "$RUNNER_TEMP/release-notes.md" "${flags[@]}"
+      - name: Preserve final image evidence even after partial failure
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: community-final-images-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            ${{ runner.temp }}/community-final-images
+            ${{ runner.temp }}/community-images.json
+          retention-days: 30
 
   # ----------------------------------------------------------------
   # Golden Install Nightly（G4：每日对最新正式镜像跑 golden install，
@@ -651,9 +775,13 @@ jobs:
           image="ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/imboy-backend"
           admin_image="ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/imboy-admin"
           pg_image="ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/imboy-pg18"
-          digest="$(docker buildx imagetools inspect "${image}:${stable}" --format '{{.Manifest.Digest}}')"
-          admin_digest="$(docker buildx imagetools inspect "${admin_image}:${stable}" --format '{{.Manifest.Digest}}')"
-          pg_digest="$(docker buildx imagetools inspect "${pg_image}:${stable}" --format '{{.Manifest.Digest}}')"
+          widget_image="ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/imboy-widget"
+          image_version="${stable#v}"
+          digest="$(docker buildx imagetools inspect "${image}:${image_version}" --format '{{.Manifest.Digest}}')"
+          admin_digest="$(docker buildx imagetools inspect "${admin_image}:${image_version}" --format '{{.Manifest.Digest}}')"
+          pg_digest="$(docker buildx imagetools inspect "${pg_image}:${image_version}" --format '{{.Manifest.Digest}}')"
+          widget_digest="$(docker buildx imagetools inspect "${widget_image}:${image_version}" --format '{{.Manifest.Digest}}')"
+          [[ "$widget_digest" =~ ^sha256:[0-9a-f]{64}$ ]]
           case "${digest}" in sha256:*) ;; *) echo "::error::digest 格式异常：${digest}"; exit 1 ;; esac
           case "${admin_digest}" in sha256:*) ;; *) echo "::error::admin digest 格式异常：${admin_digest}"; exit 1 ;; esac
           case "${pg_digest}" in sha256:*) ;; *) echo "::error::PostgreSQL digest 格式异常：${pg_digest}"; exit 1 ;; esac
@@ -662,8 +790,9 @@ jobs:
             echo "IMAGE_DIGEST_REF=${image}@${digest}"
             echo "ADMIN_IMAGE_DIGEST_REF=${admin_image}@${admin_digest}"
             echo "PG_IMAGE_DIGEST_REF=${pg_image}@${pg_digest}"
+            echo "WIDGET_IMAGE_DIGEST_REF=${widget_image}@${widget_digest}"
           } >> "$GITHUB_OUTPUT"
-          echo "nightly 对象：${image}:${stable}（${digest}）/ ${admin_image}:${stable}（${admin_digest}）/ ${pg_image}:${stable}（${pg_digest}）"
+          echo "nightly 对象：${image}:${image_version}（${digest}）/ ${admin_image}:${image_version}（${admin_digest}）/ ${pg_image}:${image_version}（${pg_digest}）"
 
       - name: Login to GHCR (compose pull digest)
         uses: docker/login-action@v4
@@ -684,6 +813,7 @@ jobs:
           IMAGE_DIGEST_REF: ${{ steps.latest.outputs.IMAGE_DIGEST_REF }}
           ADMIN_IMAGE_DIGEST_REF: ${{ steps.latest.outputs.ADMIN_IMAGE_DIGEST_REF }}
           PG_IMAGE_DIGEST_REF: ${{ steps.latest.outputs.PG_IMAGE_DIGEST_REF }}
+          WIDGET_IMAGE_DIGEST_REF: ${{ steps.latest.outputs.WIDGET_IMAGE_DIGEST_REF }}
         run: |
           set -euo pipefail
           pw="Golden$(openssl rand -hex 6)" # env 值不做 shell 展开，须 run 内生成
@@ -691,6 +821,7 @@ jobs:
             --image-ref "${IMAGE_DIGEST_REF}" \
             --admin-image-ref "${ADMIN_IMAGE_DIGEST_REF}" \
             --pg-image-ref "${PG_IMAGE_DIGEST_REF}" \
+            --widget-image-ref "${WIDGET_IMAGE_DIGEST_REF}" \
             --git-ref "${{ steps.latest.outputs.STABLE }}" \
             --profile ci \
             --admin-phone 13800138000 \
