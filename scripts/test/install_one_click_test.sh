@@ -120,6 +120,15 @@ case " $* " in
   *" compose "*" exec "*"imboy_ctl adm create "*)
     [ "${MOCK_ADMIN_FAIL:-0}" != 1 ] || { echo 'mock admin setup failed'; exit 1; }
     printf 'ADMIN_ID=1000000001\nCREATED=true\n'; exit 0 ;;
+  *" compose "*" exec -T imboy_nginx wget "*)
+    # Return only the challenge file requested by the bootstrap readiness probe.
+    url=""
+    for arg in "$@"; do
+      case "$arg" in http://127.0.0.1/.well-known/acme-challenge/*) url="$arg" ;; esac
+    done
+    [ -n "$url" ] || exit 2
+    cat "${DATA_DIR:-./data}/certbot/www/${url#http://127.0.0.1/}"
+    exit 0 ;;
   *" compose "*" run "*" imboy_certbot "*)
     previous=""
     domain=""

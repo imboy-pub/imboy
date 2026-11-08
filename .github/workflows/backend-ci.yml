@@ -39,11 +39,14 @@ jobs:
       - name: Install offline test tools
         run: |
           sudo apt-get update
-          sudo apt-get install -y jq openssl zip unzip gettext-base
+          sudo apt-get install -y jq curl openssl zip unzip gettext-base
       - name: Check packaging and configuration contracts
         run: |
           bash scripts/test/package_community_test.sh
           bash scripts/test/community_delivery_config_test.sh
+          bash scripts/test/init_letsencrypt_test.sh
+      - name: Validate community Nginx and RTC WSS in isolated containers
+        run: bash scripts/test/community_rtc_wss_test.sh --docker
       - name: Build and test the extracted installation kit
         shell: bash
         run: |

@@ -49,6 +49,12 @@ pass 'Public bucket setting reaches the backend'
 
 nginx="$(service_block imboy_nginx "$BASE")"
 [[ "$nginx" == *'RTC_DOMAIN: ${RTC_DOMAIN}'* ]] || fail 'Nginx does not receive RTC_DOMAIN'
+# Official hooks run only for nginx/nginx-debug; a shell wrapper must re-enter
+# the entrypoint with nginx. The companion --docker test exercises that command.
+nginx_command="$(printf '%s\n' "$nginx" | awk '/^    command:/ { print }')"
+[[ "$nginx_command" == *'command: ["nginx"'* || "$nginx_command" == *'exec /docker-entrypoint.sh nginx '* ]] \
+  || fail 'Nginx startup bypasses the official template-rendering entrypoint'
+pass 'Nginx startup enters the official template-rendering entrypoint'
 mapfile -t nginx_mounts < <(mounts imboy_nginx "$BASE")
 declare -A templates=()
 for spec in "${nginx_mounts[@]}"; do
@@ -71,6 +77,7 @@ export RTC_DOMAIN=rtc.example.test S3_UPSTREAM=garage:3900 UPTRACE_DOMAIN=trace.
 # Sentinels detect accidentally substituting Nginx built-in variables.
 export host=SHOULD_NOT_REPLACE remote_addr=SHOULD_NOT_REPLACE http_upgrade=SHOULD_NOT_REPLACE
 export connection_upgrade=SHOULD_NOT_REPLACE scheme=SHOULD_NOT_REPLACE
+export request_uri=SHOULD_NOT_REPLACE http_host=SHOULD_NOT_REPLACE proxy_add_x_forwarded_for=SHOULD_NOT_REPLACE
 for flavor in base uptrace; do
   filter_file="$BASE"
   [[ "$flavor" != uptrace ]] || filter_file="$ROOT/deploy/docker-compose.uptrace.yml"
@@ -78,7 +85,7 @@ for flavor in base uptrace; do
   filter="${filter//'$$'/'$'}" # Compose converts $$ to $ before container entrypoint.
   [[ -n "$filter" ]] || fail 'Nginx substitution filter is missing'
   substitutions=
-  for name in API_DOMAIN ADMIN_DOMAIN CS_WIDGET_DOMAIN RTC_DOMAIN S3_UPSTREAM UPTRACE_DOMAIN host remote_addr http_upgrade connection_upgrade scheme; do
+  for name in API_DOMAIN ADMIN_DOMAIN CS_WIDGET_DOMAIN RTC_DOMAIN S3_UPSTREAM UPTRACE_DOMAIN host remote_addr http_upgrade connection_upgrade scheme request_uri http_host proxy_add_x_forwarded_for; do
     [[ "$name" =~ $filter ]] && substitutions+="\${$name} "
   done
   for name in "${!templates[@]}"; do
@@ -97,7 +104,13 @@ rendered="$(cat "$TMP/rtc.conf.template")"
 [[ "$rendered" == *'server_name rtc.example.test;'* && "$rendered" == *'/etc/letsencrypt/live/rtc.example.test/fullchain.pem;'* ]] || fail 'RTC host/certificate does not match the domain'
 [[ "$rendered" == *'proxy_pass http://imboy_livekit:7880;'* ]] || fail 'RTC origin does not reach LiveKit'
 [[ "$rendered" == *'Upgrade $http_upgrade;'* && "$rendered" == *'Connection $connection_upgrade;'* ]] || fail 'RTC proxy lacks WebSocket upgrade headers'
+[[ "$rendered" == *'proxy_http_version 1.1;'* && "$rendered" == *'ssl_protocols TLSv1.2 TLSv1.3;'* ]] \
+  || fail 'RTC signaling must use HTTP/1.1 upgrades over TLS 1.2/1.3'
 pass 'RTC signaling uses its domain/certificate, LiveKit upstream and WebSocket upgrade headers'
+livekit="$(service_block imboy_livekit "$BASE")"
+[[ "$livekit" == *'"127.0.0.1:7880:7880"'* && "$livekit" != *'network_mode: host'* && "$nginx" != *'network_mode: host'* ]] \
+  || fail 'LiveKit signaling must keep its Compose service route and loopback-only host publish'
+pass 'Nginx reaches LiveKit inside Compose; host signaling stays on loopback'
 
 domain=turn.example.test
 data="$TMP/host data"
