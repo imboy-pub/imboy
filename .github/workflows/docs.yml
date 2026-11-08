@@ -6,6 +6,15 @@ on:
     paths:
       - 'docs/**'
       - 'docs-site/**'
+      - 'deploy/README.md'
+      - '.github/workflows/docs.yml'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'docs/**'
+      - 'docs-site/**'
+      - 'deploy/README.md'
+      - '.github/workflows/docs.yml'
   workflow_dispatch:
     inputs:
       deploy:
@@ -19,9 +28,9 @@ permissions:
   pages: write
   id-token: write
 
-# 只允许同时进行一次部署
+# 部署保持串行；PR 构建使用独立队列。
 concurrency:
-  group: pages
+  group: ${{ github.event_name == 'pull_request' && format('docs-pr-{0}', github.event.number) || 'pages' }}
   cancel-in-progress: false
 
 jobs:
@@ -45,13 +54,15 @@ jobs:
       - name: Sync content & build
         working-directory: docs-site
         run: |
-          bun test ./scripts/markdown-literals.test.ts
+          bun test ./scripts/*.test.ts
           bun run build
 
       - name: Setup Pages
+        if: github.event_name != 'pull_request'
         uses: actions/configure-pages@v6
 
       - name: Upload artifact
+        if: github.event_name != 'pull_request'
         uses: actions/upload-pages-artifact@v5
         with:
           path: docs-site/.vitepress/dist

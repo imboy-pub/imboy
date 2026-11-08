@@ -1,4 +1,33 @@
 import { defineConfig } from 'vitepress';
+import { statSync } from 'node:fs';
+import { dirname, isAbsolute, relative, resolve, sep } from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+const repoRoot = fileURLToPath(new URL('../../', import.meta.url));
+const docsRoot = resolve(repoRoot, 'docs');
+
+function outside(root: string, target: string) {
+  const path = relative(root, target);
+  return path === '..' || path.startsWith(`..${sep}`) || isAbsolute(path);
+}
+
+function repositoryLink(href: string, page?: string) {
+  if (!page || /^(?:[a-z][a-z\d+.-]*:|[/#?])/i.test(href)) return href;
+  const boundary = href.search(/[?#]/);
+  const pathname = boundary < 0 ? href : href.slice(0, boundary);
+  const suffix = boundary < 0 ? '' : href.slice(boundary);
+  let target: string;
+  try {
+    // Sync only renames README.md; its parent directory still matches docs/.
+    target = resolve(docsRoot, dirname(page), decodeURIComponent(pathname));
+  } catch {
+    return href;
+  }
+  if (!outside(docsRoot, target) || outside(repoRoot, target) ||
+      !statSync(target, { throwIfNoEntry: false })?.isFile()) return href;
+  const path = relative(repoRoot, target).split(sep).map(encodeURIComponent).join('/');
+  return `https://github.com/imboy-pub/imboy/blob/main/${path}${suffix}`;
+}
 
 export default defineConfig({
   title: 'IMBoy Docs',
@@ -11,6 +40,15 @@ export default defineConfig({
   outDir: '.vitepress/dist',
   markdown: {
     config(md) {
+      // Rewrite repository file links before VitePress collects internal links.
+      // Source Markdown and invalid/internal targets retain their existing behavior.
+      const link = md.renderer.rules.link_open!;
+      md.renderer.rules.link_open = (tokens, idx, options, env, self) => {
+        const token = tokens[idx];
+        const href = token.attrGet('href');
+        if (href) token.attrSet('href', repositoryLink(href, env.relativePath));
+        return link(tokens, idx, options, env, self);
+      };
       // Inline Erlang tuples are literal code, not Vue template expressions.
       const render = md.renderer.rules.code_inline!;
       md.renderer.rules.code_inline = (...args) => render(...args).replace('<code>', '<code v-pre>');
