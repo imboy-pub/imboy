@@ -63,7 +63,8 @@ Golden Upgrade 升级门禁 / Usage: bash scripts/golden_upgrade.sh --to-image <
 
 基线 vN（二选一）:
   --from <vN tag>      上一稳定 tag；基线镜像自动推导为与 --to-image 同
-                       registry/owner 的 imboy-backend:<tag>（如 ghcr.io/<owner>/imboy-backend:v1.0.0）
+                       registry/owner 的 imboy-backend:<version>（v1.0.0 → :1.0.0，仅去 v）
+                       Keep the Git tag; remove only its leading v for the image tag.
   --from-image <ref> + --from-ref <tag|sha>
                        显式指定基线镜像与代码（首个正式版发布前无上一稳定 tag 时
                        用；两者必须同时给出）。与 --from 互斥。
@@ -78,6 +79,8 @@ host 模式必填:  --api-domain <域名> / --admin-domain <域名> / --certbot-
                             从未发布过，CI 由 build-admin-candidate 供给）
        --pg-image-ref <ref>（PostgreSQL 18 镜像 digest 引用；提供则在 vN 安装与
                             升级后都钉入 PG_IMAGE，避免依赖未发布的 Docker Hub 镜像）
+       --widget-image-ref <ref>（Widget 完整 sha256 digest 引用；两个阶段均钉入 IMBOY_WIDGET_IMAGE）
+                               Pin the same Widget candidate in both stages; omission keeps defaults.
        --repo <url>（默认 https://github.com/imboy-pub/imboy.git）
        --workdir <dir>（默认 ./.golden-upgrade） / --keep（保留现场） / -h
 
@@ -94,6 +97,7 @@ TO_IMAGE=""
 TO_REF=""
 ADMIN_IMAGE_REF=""
 PG_IMAGE_REF=""
+WIDGET_IMAGE_REF=""
 PROFILE="ci"
 API_DOMAIN=""
 ADMIN_DOMAIN=""
@@ -118,6 +122,8 @@ while [ $# -gt 0 ]; do
     --admin-image-ref=*) ADMIN_IMAGE_REF="${1#*=}"; shift ;;
     --pg-image-ref)     [ $# -ge 2 ] || die "--pg-image-ref 需要值（digest 引用）"; PG_IMAGE_REF="$2"; shift 2 ;;
     --pg-image-ref=*)   PG_IMAGE_REF="${1#*=}"; shift ;;
+    --widget-image-ref) [ $# -ge 2 ] && [ -n "$2" ] || die "--widget-image-ref 需要值（digest 引用）"; WIDGET_IMAGE_REF="$2"; shift 2 ;;
+    --widget-image-ref=*) WIDGET_IMAGE_REF="${1#*=}"; [ -n "$WIDGET_IMAGE_REF" ] || die "--widget-image-ref 需要值（digest 引用）"; shift ;;
     --to-ref)         [ $# -ge 2 ] || die "--to-ref 需要值（升级目标 tag|sha）"; TO_REF="$2"; shift 2 ;;
     --to-ref=*)       TO_REF="${1#*=}"; shift ;;
     --profile)        [ $# -ge 2 ] || die "--profile 需要值：ci|host"; PROFILE="$2"; shift 2 ;;
@@ -165,6 +171,10 @@ if [ -n "$PG_IMAGE_REF" ]; then
     *) die "--pg-image-ref 必须是 digest 引用（含 @sha256:…）：当前 ${PG_IMAGE_REF}" ;;
   esac
 fi
+if [ -n "$WIDGET_IMAGE_REF" ]; then
+  [[ "$WIDGET_IMAGE_REF" =~ ^[^[:space:]@]+@sha256:[0-9a-f]{64}$ ]] \
+    || die "--widget-image-ref 必须是完整 sha256 digest 引用 / a full SHA-256 digest reference is required"
+fi
 
 [ -n "$TO_REF" ] || die "缺少 --to-ref（升级目标代码 tag 或 40 位 sha）
   升级需 checkout vN+1 的 deploy/ 与 priv/migrations；digest 不含 tag 信息，必须显式给出"
@@ -179,8 +189,9 @@ if [ -z "$FROM" ]; then
 else
   FROM_REF="$FROM"
   # 基线镜像与升级目标同 registry/owner（从 --to-image 推导，如 ghcr.io/<owner>）；
-  # --to-image 的 host 部分形如 ghcr.io/<owner>，取前两段拼 <owner>/imboy-backend:<tag>
-  FROM_IMAGE="$(printf '%s' "$TO_IMAGE" | cut -d/ -f1-2)/imboy-backend:${FROM}"
+  # Git tag 保持 v<version>；镜像仅去掉前导 v，保留完整版本后缀。
+  # Preserve the Git ref; image tags use the version without its leading v.
+  FROM_IMAGE="$(printf '%s' "$TO_IMAGE" | cut -d/ -f1-2)/imboy-backend:${FROM#v}"
 fi
 EXPECTED_FROM_DIGEST=""
 case "$FROM_IMAGE" in *@sha256:*) EXPECTED_FROM_DIGEST="${FROM_IMAGE#*@}" ;; esac
@@ -727,6 +738,7 @@ env_set_var CERTBOT_EMAIL "$CERTBOT_EMAIL"
 env_set_var BACKEND_IMAGE "$FROM_IMAGE"
 if [ -n "$ADMIN_IMAGE_REF" ]; then env_set_var ADMIN_IMAGE "$ADMIN_IMAGE_REF"; fi
 if [ -n "$PG_IMAGE_REF" ]; then env_set_var PG_IMAGE "$PG_IMAGE_REF"; fi
+if [ -n "$WIDGET_IMAGE_REF" ]; then env_set_var IMBOY_WIDGET_IMAGE "$WIDGET_IMAGE_REF"; fi
 DATA_DIR_RESOLVED="$(resolve_data_dir)"
 if [ "$PROFILE" = "ci" ]; then preset_ci_certs; fi
 write_compose_override
@@ -792,7 +804,14 @@ t=$(now)
 gu_checkout_target || die "切换到 ${TO_REF} 失败"
 install_ctl_wrapper   # vN+1 代码内重装容器内转发 wrapper（checkout 还原了原文件）
 env_set_var BACKEND_IMAGE "$TO_IMAGE"
-( cd "$DEPLOY_DIR" && $COMPOSE_O pull imboy_backend ) || die "拉取 candidate 镜像失败（digest 是否已推送到 registry）"
+# 旧基线可能没有 Widget 服务；在目标 checkout 后再次应用并显式拉取。
+# Reapply after checkout so a baseline without Widget still tests the target digest.
+upgrade_pull_services=(imboy_backend)
+if [ -n "$WIDGET_IMAGE_REF" ]; then
+  env_set_var IMBOY_WIDGET_IMAGE "$WIDGET_IMAGE_REF"
+  upgrade_pull_services+=(imboy_widget)
+fi
+( cd "$DEPLOY_DIR" && $COMPOSE_O pull "${upgrade_pull_services[@]}" ) || die "拉取 candidate 镜像失败（digest 是否已推送到 registry）"
 ( cd "$DEPLOY_DIR" && $COMPOSE_O up -d ) || die "docker compose up -d（升级）失败——数据未被动过，可安全重试"
 wait_healthz 300 "（vN+1 启动，含 auto_migrate）" || die "升级后 backend 300s 未就绪（迁移失败会 erlang:error 起不来：查 $COMPOSE_O logs imboy_backend）"
 gu_observe_migration

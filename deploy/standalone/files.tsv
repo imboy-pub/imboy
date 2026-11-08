@@ -30,6 +30,7 @@ deploy/uptrace/nginx.conf.template	deploy/uptrace/nginx.conf.template
 deploy/uptrace/otel-collector.yml	deploy/uptrace/otel-collector.yml
 deploy/uptrace/uptrace.yml	deploy/uptrace/uptrace.yml
 scripts/sanity_check.sh	scripts/sanity_check.sh
+scripts/verify_community_images.sh	scripts/verify_community_images.sh
 scripts/backup_pg.sh	scripts/backup_pg.sh
 scripts/lib/metrics_push.sh	scripts/lib/metrics_push.sh
 scripts/lib/backup_offsite.sh	scripts/lib/backup_offsite.sh
