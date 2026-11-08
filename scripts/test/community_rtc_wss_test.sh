@@ -36,16 +36,17 @@ network_created=false
 cleanup() {
   local status=$? id file
   if [[ "$status" -ne 0 ]]; then
-    for file in "$TMP/nginx.cid" "$TMP/livekit.cid"; do
+    printf '[FAIL] RTC container regression exited with status %s; collecting container logs.\n' "$status" >&2
+    for file in "$TMP/nginx.cid" "$TMP/livekit.cid" "$TMP/upstream.cid"; do
       if [[ -s "$file" ]]; then
-        read -r id < "$file"
+        id="$(<"$file")"
         "${DOCKER[@]}" logs --tail 30 "$id" >&2 || true
       fi
     done
   fi
   for file in "$TMP/nginx.cid" "$TMP/livekit.cid" "$TMP/upstream.cid"; do
     if [[ -s "$file" ]]; then
-      read -r id < "$file"
+      id="$(<"$file")"
       "${DOCKER[@]}" rm -f "$id" >/dev/null 2>&1 || true
     fi
   done
@@ -135,7 +136,10 @@ network_created=true
 "${DOCKER[@]}" run -d --cidfile "$TMP/nginx.cid" --network "$NETWORK" \
   --env-file "$TMP/nginx.env" "${nginx_mounts[@]}" \
   -p 127.0.0.1::80 -p 127.0.0.1::443 "$nginx_image" "${nginx_command[@]}" >/dev/null
-read -r nginx_id < "$TMP/nginx.cid"
+# Docker writes --cidfile without a trailing newline; read would return 1 at
+# EOF under set -e, including inside cleanup, before diagnostics or WSS checks.
+nginx_id="$(<"$TMP/nginx.cid")"
+[[ -n "$nginx_id" ]] || fail 'Docker did not write the Nginx container ID'
 http_address="$("${DOCKER[@]}" port "$nginx_id" 80/tcp)"
 https_address="$("${DOCKER[@]}" port "$nginx_id" 443/tcp)"
 http_port="${http_address##*:}"; https_port="${https_address##*:}"

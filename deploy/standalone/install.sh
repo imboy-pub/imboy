@@ -14,7 +14,7 @@ while [ "$#" -gt 0 ]; do
       shift 2 ;;
     --edition=community) shift ;;
     --edition=*) fail '此包仅支持 --edition community' ;;
-    --yes|-y|--admin-phone=*|--admin-password=*) args+=("$1"); shift ;;
+    --yes|-y|--init-cleanup-db|--admin-phone=*|--admin-password=*) args+=("$1"); shift ;;
     --admin-phone|--admin-password)
       [ "$#" -ge 2 ] || fail "$1 缺少参数"
       args+=("$1" "$2"); shift 2 ;;

@@ -142,19 +142,22 @@ hash 后方可升级为长缓存。Widget 访客事件流（SSE）经 nginx 时�
 | `TURN_DOMAIN` | TURN 纯域名，如 `turn.example.com`；关闭 TURN 时也不能省略 |
 | `CERTBOT_EMAIL` | 客户实际维护的证书账号邮箱 |
 | `IMBOY_BASE_URL` | 改为实际 `https://<API_DOMAIN>`，无路径、无尾斜杠；独立 preflight 和商务安装直接检查此值 |
-| `IMBOY_DIRECT_CLEANUP_PG_USER` | 必填的独立清理数据库 LOGIN，不能与 `POSTGRES_USER` 相同；由部署方单独开通，仅加入 `v5_worker` |
-| `IMBOY_DIRECT_CLEANUP_PG_PASSWORD` | 已开通账号须填其匹配的强密码（至少 32 字符，且不同于 `POSTGRES_PASSWORD`）；留空时安装器会生成，部署方仍须将同一密码用于该 LOGIN |
+| `IMBOY_DIRECT_CLEANUP_PG_USER` | 必填的独立清理数据库 LOGIN，不能与 `POSTGRES_USER` 相同；仅加入 `v5_worker`。社区版可显式 `--init-cleanup-db` 创建缺失账号，其他路径由 DBA 开通 |
+| `IMBOY_DIRECT_CLEANUP_PG_PASSWORD` | 已开通账号须填其匹配的强密码（至少 32 字符，且不同于 `POSTGRES_PASSWORD`）；新账号留空时安装器会生成，受控初始化使用同一密码 |
 
 所有示例域名、邮箱都要替换；五域两两不同，不带协议、端口或路径。`POSTGRES_USER`、
 `POSTGRES_DB`、`DATA_DIR` 等可保留适用的模板默认值，版本和镜像须与实际交付包一致。
-安装器**不创建清理 LOGIN 或授权**；预检只核对配置，不证明账号已存在、密码可登录或
-`v5_worker` 权限已就绪。新数据库也须由交付方安排该开通步骤后验收。
+预检只核对配置，不证明账号已存在、密码可登录或 `v5_worker` 权限已就绪。社区版在
+后端健康之后另做真实数据库门禁：默认只验证；显式 `--init-cleanup-db` 才创建缺失
+LOGIN，已有账号不改密、不补权。商务版、外部数据库或管理权限不足时由 DBA 按
+[清理数据库账号手册](https://github.com/imboy-pub/imboy/blob/main/deploy/standalone/docs/DB_CLEANUP_ACCOUNT.md) 初始化并验证。
+独立交付包的离线副本位于包根 `docs/DB_CLEANUP_ACCOUNT.md`。
 
 安装器在已有 `.env` 后自动补齐空值或 `CHANGE_ME` 内部密钥，保留已有非占位值：
 数据库密码、JWT/AES、管理 Cookie、edge token、密码盐、握手密钥/IV、Grafana、
 LiveKit、Garage，以及启用 Uptrace 时的六项内部密钥；登录 RSA 文件生成到
 `${DATA_DIR}/backend_priv/keys/`，已有私钥保留。DNS、第三方账号/凭据、License 和
-数据库角色须由客户或交付方准备。正式 TLS 由 ACME 在网络条件满足后签发。
+数据库管理权限须由客户或交付方准备；脚本不会自动提权。正式 TLS 由 ACME 在网络条件满足后签发。
 
 | 安装路径 / Install path | 配置差异 / Configuration differences |
 |---|---|
@@ -172,13 +175,14 @@ LiveKit、Garage，以及启用 Uptrace 时的六项内部密钥；登录 RSA �
 cd /path/to/imboy/deploy
 cp .env.example .env
 $EDITOR .env
-bash install.sh --edition community
+bash install.sh --edition community --init-cleanup-db
 ```
 
-客户先按[配置表](#customer-input)准备五域、邮箱、API origin、独立清理数据库账号，
+上例用于全新社区实例，显式授权创建缺失的清理 LOGIN；已有账号仍保持原样。
+客户先按[配置表](#customer-input)准备五域、邮箱、API origin、独立清理数据库账号配置，
 以及实际启用的第三方配置，再运行 `install.sh`。脚本会幂等补齐数据库口令、JWT、AES、LiveKit、Garage、Uptrace 等内部
 随机密钥和 RSA 登录密钥，并自动派生支付宝/微信回调 URL。之后依次完成：前置检查
-→ 拉齐缺失镜像 → 起服务 → 签发 TLS → 等待健康 → 部署后自检 →
+→ 拉齐缺失镜像 → 起服务 → 签发 TLS → 等待健康 → 清理数据库身份门禁 → 部署后自检 →
 打印 Release Identity 三元组（`IMBOY_VERSION` / `IMBOY_GIT_SHA` /
 `IMBOY_IMAGE_DIGEST`）与访问地址。证书签发失败会直接中止并列出常见原因，
 **不会在 TLS 没起来的情况下谎报"部署完成"**。
@@ -195,6 +199,28 @@ bash install.sh --edition community
 填写后重跑才生成内部密钥/RSA 并继续部署。没有 `--init-only` 或 `--dry-run` 参数，
 不要把安装命令当成仅生成配置的检查命令。首次保持 `LIVEKIT_TURN_ENABLED=false` 完成
 签证；确认 TURN 证书就绪、旧 TURN 已退场且 3478/5349 无占用后，再置 `true` 重跑。
+
+### 清理数据库身份 / Cleanup database identity
+
+社区门禁使用 [`init-cleanup-db.sh`](init-cleanup-db.sh)：按运行中的 backend 镜像精确
+比对全部迁移 history/head/dirty（须包含 179/267/270/271/274），再验证清理身份。
+只有 `--init-cleanup-db` 才使用现有 `POSTGRES_USER` 的管理权限，在单个事务内创建
+缺失 LOGIN、用 `psql \password` 设置 SCRAM 密码、授 `v5_worker` 和目标库 CONNECT。
+需要已有的 CREATEROLE、`v5_worker` ADMIN OPTION 和 CONNECT 授权权；不足时停止，
+不自动提升权限。工作账号保持非超级用户、NOINHERIT、无管理属性。
+
+验证客户端来自运行中 PG 的本地镜像，共用 backend 网络命名空间，先要求错误密码
+明确被拒绝，再用正确密码核验独立身份、成员关系、所有权及 SET ROLE/函数授权。
+不以 socket/loopback 的 trust 登录作证，不调用清理队列函数，不更改已有账号。
+服务与迁移已就绪时，从 `deploy/` 执行 `bash init-cleanup-db.sh` 可单独复验；
+显式创建用 `bash init-cleanup-db.sh --create`，overlay 通过实际 `COMPOSE_FILES` 传入。
+这两条命令不会启动服务或代跑迁移。完整 DBA 步骤、失败重跑和安全退役见
+[清理数据库账号手册](https://github.com/imboy-pub/imboy/blob/main/deploy/standalone/docs/DB_CLEANUP_ACCOUNT.md)。
+
+全新部署的 PG 镜像必须包含 `docker/pg-initdb-imboy.sh` / `docker/pg-update-imboy.sh`
+移除密码 xtrace 的修复。更新宿主机脚本不会修复旧镜像；交付方须重建或选择包含修复
+的镜像并核对 digest。迁移 190 合法提供的 SELECT 权限会保留；本门禁不全局撤销
+PUBLIC，也不等于整个数据库 ACL 或真实附件垃圾回收已经验收。
 
 ### 单公网 IP 共用 TURN/TLS 443
 
@@ -242,6 +268,8 @@ Uptrace 默认关闭。启用时在 `.env` 设置 `UPTRACE_ENABLED=true`，填�
 
 可选参数（`bash install.sh --help` 查看全部）：
 
+- `--init-cleanup-db`：仅社区版，迁移后以已有数据库管理权限创建缺失的清理 LOGIN；
+  默认只验证，已有账号不改密或补权。商务/外部数据库由 DBA 另行执行账号手册。
 - `--admin-phone` / `--admin-password`：装完后在 backend 容器内经
   `imboy_ctl adm create` 创建超管，无需浏览器走 `/setup` 向导（无浏览器纯脚本部署）
 - `--yes, -y`：跳过所有确认（含 Docker 缺失时的安装确认，适合自动化）
@@ -337,7 +365,7 @@ sudo apt-get install -y bash jq curl openssl ca-certificates coreutils grep sed 
 
 | 检查类别 / Check category | 必须执行的内容 / Required evidence |
 |---|---|
-| 安装器强制门禁 | preflight；社区版实际 Compose 的 API/Widget origin、密钥强度与互异、backend/edge/PG 一致性、独立清理账号；两版本的镜像可用性及 edge 文件检查；TLS 签发；`/healthz`；`scripts/sanity_check.sh`。缺少 sanity 脚本即停止，不能省略交付材料后继续安装 |
+| 安装器强制门禁 | preflight；社区版实际 Compose 的 API/Widget origin、密钥强度与互异、backend/edge/PG 一致性；两版本的镜像可用性及 edge 文件检查、TLS、`/healthz`；社区版迁移清单与清理账号的真实正反认证/权限检查；`scripts/sanity_check.sh`。缺少必需脚本/SQL 即停止，不能省略交付材料后继续安装 |
 | 初始化与数据保护 | 首次超管初始化/登录；重复安装保留已有非占位密钥、RSA 和正式证书；升级前执行备份与适用迁移验收。重跑安装器不代表可以删除数据目录或重新生成存储凭据 |
 | 客户业务验收 | 用客户验收账号在实际 App/管理后台验证注册或既定开户方式、登录、双端消息发送和接收、断线重连、附件上传和下载；按启用功能补做 Widget、RTC/TURN、短信/SMTP 等验收。不得用端口通或 WS 握手成功替代消息收发结果 |
 | 开发 / Golden / CI | `scripts/smoke_8step.sh`、`golden_install.sh` 及相关测试仍保留其既有 Python/测试依赖；8 步链使用开发验证码、测试账号和直接 RPC，Golden 准备步骤会切换 `IMBOYENV=dev`，不能拿到正式客户实例上当通用验收脚本 |
@@ -378,7 +406,7 @@ test environment; do not enable development authentication shortcuts on a custom
 独立交付包使用其 `scripts/run_offline_checks.sh`；以下专项回归由源码仓库和 CI 执行。
 
 ```bash
-for script in deploy/install.sh deploy/preflight.sh deploy/nginx/init-letsencrypt.sh \
+for script in deploy/install.sh deploy/init-cleanup-db.sh deploy/preflight.sh deploy/nginx/init-letsencrypt.sh \
   scripts/sanity_check.sh scripts/test/install_one_click_test.sh; do
   bash -n "$script" || exit 1
 done
@@ -396,6 +424,7 @@ bash deploy/preflight.sh --self-test
 **容器 RTC 回归 / Container RTC regression**（在源码仓库执行）：
 
 ```bash
+bash scripts/test/community_rtc_wss_shell_test.sh
 bash scripts/test/community_rtc_wss_test.sh --docker
 ```
 
@@ -409,6 +438,16 @@ LiveKit `/rtc` 的 WSS 握手，并抽查已有 API 路由。缺少 Docker/Compo
 This isolated regression uses the pinned images and real startup command. It requires
 Docker/Compose; exit 77 means not run. It checks Nginx syntax and TLS/WebSocket signaling,
 not customer ACME issuance, product authorization, media connectivity or TURN.
+
+`community_rtc_wss_shell_test.sh` 只用 Docker 桩验证无换行 CID 的读取、失败诊断和
+容器/网络清理，不启动容器，不计作 TLS/WSS 通过。
+The Shell regression uses a Docker stub for CID/cleanup control flow only; it does not verify TLS/WSS.
+
+清理身份的 SQL、真实密码认证、角色授权、事务回滚、重复执行和服务端日志检查须从
+源码仓库在隔离 PostgreSQL 18 执行 `bash scripts/test/cleanup_db_postgres_test.sh`。
+该开发专项不在独立交付包内；使用合成迁移台账和函数，不证明全量迁移或真实删除。
+其 Docker 前置以脚本为准，不能把生产实例作为故障注入目标。
+现场仍须验证实际镜像、网络/HBA、权限及附件生命周期；未执行项不记为通过。
 
 ---
 
@@ -741,6 +780,7 @@ Prometheus is accessible at `http://<server-ip>:9090` (recommended: restrict to 
 | 管理后台 404 或白屏 / Admin 404 or blank | 检查 `VITE_API_BASE` 是否指向 `https://${API_DOMAIN}` / Check `VITE_API_BASE` |
 | WebSocket 连接 403 / WS 403 | `JWT_KEY` 不一致 / nginx WS 升级（Upgrade/Connection）头未透传 / `JWT_KEY` mismatch, check nginx WebSocket upgrade headers |
 | PG 启动失败 / PG fails to start | 扩展安装失败：`bash preflight.sh` / Extension install failed |
+| `cleanup-db` 门禁失败 / Cleanup identity gate fails | 保留原 `.env`、账号和数据；按阶段核对迁移、现有管理权限、账号及 HBA，见[账号手册](https://github.com/imboy-pub/imboy/blob/main/deploy/standalone/docs/DB_CLEANUP_ACCOUNT.md)（独立包 `docs/DB_CLEANUP_ACCOUNT.md`）。未提交事务回滚；提交后验证失败不自动删角色 / Preserve credentials and data; investigate migration, authority and authentication failures |
 | Grafana 无数据 / Grafana no data | 检查 Prometheus target：`http://<ip>:9090/targets` / Check targets at `http://<ip>:9090/targets` |
 
 ## 下一步 / Next Steps

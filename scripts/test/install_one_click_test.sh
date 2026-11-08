@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# 一键安装控制流离线测试：Docker、网络、preflight/sanity 均使用本地桩。
+# 一键安装控制流离线测试：Docker、网络、preflight/cleanup/sanity 均使用本地桩。
 # Offline regression: no Docker daemon, network, deployment or Python.
 set -uo pipefail
 
@@ -17,7 +17,7 @@ cleanup() {
 }
 trap cleanup EXIT
 
-mkdir -p "$FIXTURE/nginx" "$TMP_ROOT/scripts" "$MOCK_BIN" "$TOOLS_BIN"
+mkdir -p "$FIXTURE/nginx" "$FIXTURE/cleanup-db" "$TMP_ROOT/scripts" "$MOCK_BIN" "$TOOLS_BIN"
 # 仅开放这些工具；宿主机即使有 Python，子进程 PATH 也找不到它。
 for bin in awk cat chmod cmp cp cut date dirname env grep head jq mkdir mktemp mv \
     openssl rm sed seq sh stat tail touch tr wc; do
@@ -25,8 +25,9 @@ for bin in awk cat chmod cmp cp cut date dirname env grep head jq mkdir mktemp m
   ln -s "$tool_path" "$TOOLS_BIN/$bin"
 done
 TEST_PATH="$MOCK_BIN:$TOOLS_BIN"
-cp deploy/install.sh deploy/.env.example deploy/docker-compose.community.yml \
+cp deploy/install.sh deploy/init-cleanup-db.sh deploy/.env.example deploy/docker-compose.community.yml \
   deploy/docker-compose.uptrace.yml "$FIXTURE/"
+cp deploy/cleanup-db/bootstrap.sql deploy/cleanup-db/verify.sql "$FIXTURE/cleanup-db/"
 cp deploy/nginx/init-letsencrypt.sh "$FIXTURE/nginx/"
 touch "$TMP_ROOT/scripts/sanity_check.sh"
 
@@ -73,6 +74,7 @@ config_json() {
         IMBOY_JWT_KEY: $e.JWT_KEY, IMBOY_POSTGRE_AES_KEY: $e.POSTGRE_AES_KEY,
         IMBOY_ADM_COOKIE_SECRET: $e.ADM_COOKIE_SECRET,
         IMBOY_PG_USER: $e.POSTGRES_USER, IMBOY_PG_PASSWORD: $e.POSTGRES_PASSWORD,
+        IMBOY_PG_HOST: "imboy_pg18", IMBOY_PG_PORT: "5432", IMBOY_PG_DB: $e.POSTGRES_DB,
         IMBOY_SOLIDIFIED_KEY: $e.IMBOY_SOLIDIFIED_KEY,
         IMBOY_SOLIDIFIED_KEY_IV: $e.IMBOY_SOLIDIFIED_KEY_IV,
         IMBOY_PASSWORD_SALT: $e.IMBOY_PASSWORD_SALT,
@@ -85,7 +87,7 @@ config_json() {
       imboy_nginx: {environment: {API_DOMAIN: $e.API_DOMAIN,
         CS_WIDGET_DOMAIN: $e.CS_WIDGET_DOMAIN}},
       imboy_pg18: {environment: {POSTGRES_USER: $e.POSTGRES_USER,
-        POSTGRES_PASSWORD: $e.POSTGRES_PASSWORD}},
+        POSTGRES_PASSWORD: $e.POSTGRES_PASSWORD, POSTGRES_DB: $e.POSTGRES_DB}},
       imboy_grafana: {environment: {GF_SECURITY_ADMIN_PASSWORD: $e.GRAFANA_ADMIN_PASSWORD}}
     }}' | jq "${MOCK_JSON_FILTER:-.}"
 }
@@ -149,6 +151,7 @@ MOCK
 
 cat >"$MOCK_BIN/curl" <<'MOCK'
 #!/bin/sh
+case " $* " in *'/healthz '*) printf 'curl healthz\n' >>"$MOCK_LOG" ;; esac
 [ "${MOCK_HEALTH_FAIL:-0}" != 1 ] || exit 1
 printf '{"status":"ok"}'
 MOCK
@@ -170,6 +173,7 @@ case "${1:-}" in
       unexpected: env.IMBOY_TEST_UNEXPECTED}' >"$MOCK_LOG.domains"
     [ "${MOCK_PREFLIGHT_FAIL:-0}" != 1 ] ;;
   *init-letsencrypt.sh) [ "${MOCK_TLS_FAIL:-0}" != 1 ] ;;
+  *init-cleanup-db.sh) [ "${MOCK_CLEANUP_FAIL:-0}" != 1 ] ;;
   *sanity_check.sh) [ "${MOCK_SANITY_FAIL:-0}" != 1 ] ;;
   *) exit 0 ;;
 esac
@@ -185,12 +189,13 @@ assert_match() {
   if grep -Eq "$pattern" "$file"; then ok "$description"; else bad "$description" "pattern=$pattern"; fi
 }
 INSTALL_EXTRA_ARGS=()
+INSTALL_BASH_ARGS=()
 run_install() {
   : >"$MOCK_LOG"; : >"$MOCK_LOG.probes"
   rm -f "$MOCK_LOG.count" "$MOCK_LOG.domains"
   env -i PATH="$TEST_PATH" MOCK_LOG="$MOCK_LOG" \
     IMBOY_PASSWORD_SALT=TEST_SECRET_MUST_NOT_LEAK_000000000000 "$@" \
-    /bin/bash "$FIXTURE/install.sh" --edition community --yes "${INSTALL_EXTRA_ARGS[@]}" >"$OUTPUT" 2>&1
+    /bin/bash "${INSTALL_BASH_ARGS[@]}" "$FIXTURE/install.sh" --edition community --yes "${INSTALL_EXTRA_ARGS[@]}" >"$OUTPUT" 2>&1
 }
 reject_before_start() {
   local description="$1" reason="$2"; shift 2
@@ -198,7 +203,7 @@ reject_before_start() {
     bad "$description" "安装器错误返回成功"
   elif grep -q ' up -d$' "$MOCK_LOG"; then
     bad "$description" "失败前启动了服务"
-  elif ! grep -q "$reason" "$OUTPUT"; then
+  elif ! grep -q -- "$reason" "$OUTPUT"; then
     bad "$description" "未命中预期失败阶段: $reason"
   else
     ok "$description"
@@ -235,6 +240,16 @@ else
 fi
 assert_match "TLS 使用同一 Compose 文件集合" 'bash COMPOSE_FILES=docker-compose\.community\.yml docker-compose\.uptrace\.yml args=nginx/init-letsencrypt\.sh' "$MOCK_LOG"
 assert_match "sanity 使用同一 Compose 文件集合" 'args=\.\./scripts/sanity_check\.sh --compose-file docker-compose\.community\.yml --compose-file docker-compose\.uptrace\.yml' "$MOCK_LOG"
+assert_match "默认只验证清理账号，沿用完整 Compose 文件集合" 'bash COMPOSE_FILES=docker-compose\.community\.yml docker-compose\.uptrace\.yml args=init-cleanup-db\.sh$' "$MOCK_LOG"
+health_line="$(grep -n '^curl healthz$' "$MOCK_LOG" | head -1 | cut -d: -f1)"
+cleanup_line="$(grep -n 'args=init-cleanup-db\.sh$' "$MOCK_LOG" | head -1 | cut -d: -f1)"
+sanity_line="$(grep -n 'args=\.\./scripts/sanity_check\.sh ' "$MOCK_LOG" | head -1 | cut -d: -f1)"
+if [ -n "$health_line" ] && [ -n "$cleanup_line" ] && [ -n "$sanity_line" ] \
+    && [ "$health_line" -lt "$cleanup_line" ] && [ "$cleanup_line" -lt "$sanity_line" ]; then
+  ok "清理账号门禁在后端健康之后、正式验收之前执行"
+else
+  bad "清理账号门禁顺序" "未满足 healthz → cleanup → sanity"
+fi
 
 : >"$MOCK_LOG"
 if env -i PATH="$TEST_PATH" MOCK_LOG="$MOCK_LOG" \
@@ -300,7 +315,27 @@ else
   bad "敏感文件权限" "不是 0600"
 fi
 
+# --init-cleanup-db 只授权 helper 的 create 模式，不改变凭据生成的幂等约定。
+# The helper itself is mocked here; real LOGIN/password/role checks need PostgreSQL.
+INSTALL_EXTRA_ARGS=(--init-cleanup-db)
+if run_install; then
+  assert_match "显式初始化传入 --create 并沿用 Compose 文件集合" 'bash COMPOSE_FILES=docker-compose\.community\.yml docker-compose\.uptrace\.yml args=init-cleanup-db\.sh --create$' "$MOCK_LOG"
+else
+  bad "显式清理账号初始化控制流" "安装器未成功调用 helper"
+fi
+if run_install && cmp -s "$FIXTURE/.env" "$TMP_ROOT/env.before"; then
+  ok "重复显式初始化保留清理账号及所有已有凭据"
+else
+  bad "重复显式初始化凭据保护" "重跑失败或既有配置变化"
+fi
+INSTALL_EXTRA_ARGS=()
+
 echo "== 解析与失败关闭（无服务启动） =="
+INSTALL_EXTRA_ARGS=(--edition business --init-cleanup-db)
+reject_before_start "商务版拒绝隐式使用社区库管理流程" '--init-cleanup-db'
+[ ! -s "$MOCK_LOG" ] && ok "商务版初始化参数拒绝发生在 Docker 操作前" \
+  || bad "商务版初始化参数拒绝过晚" "拒绝前已访问 Docker"
+INSTALL_EXTRA_ARGS=()
 mv "$TOOLS_BIN/jq" "$TMP_ROOT/jq.saved"
 reject_before_start "缺 jq 必须中止" 'jq'
 [ ! -s "$MOCK_LOG" ] && ok "缺 jq 时尚未访问 Docker" || bad "缺 jq 时已访问 Docker"
@@ -308,6 +343,11 @@ mv "$TMP_ROOT/jq.saved" "$TOOLS_BIN/jq"
 mv "$TMP_ROOT/scripts/sanity_check.sh" "$TMP_ROOT/sanity.saved"
 reject_before_start "缺正式验收脚本必须中止" 'sanity_check'
 mv "$TMP_ROOT/sanity.saved" "$TMP_ROOT/scripts/sanity_check.sh"
+for dependency in init-cleanup-db.sh cleanup-db/bootstrap.sql cleanup-db/verify.sql; do
+  mv "$FIXTURE/$dependency" "$TMP_ROOT/cleanup-dependency.saved"
+  reject_before_start "缺清理账号依赖 $dependency 必须中止" "$dependency"
+  mv "$TMP_ROOT/cleanup-dependency.saved" "$FIXTURE/$dependency"
+done
 reject_before_start "preflight 失败不得启动服务" 'preflight 未通过' MOCK_PREFLIGHT_FAIL=1
 reject_before_start "环境输出有效但 Compose 失败必须中止" 'Compose 环境解析失败' MOCK_ENV_RC=23
 : >"$TMP_ROOT/env.empty"
@@ -353,11 +393,13 @@ for key in IMBOY_PG_USER IMBOY_PG_PASSWORD IMBOY_SOLIDIFIED_KEY IMBOY_SOLIDIFIED
     "MOCK_JSON_FILTER=del(.services.imboy_backend.environment.$key)"
 done
 
-# 未声明的可选字段保持原语义，不能为了失败关闭误拒有效配置。
-if run_install 'MOCK_JSON_FILTER=del(.services.imboy_grafana, .services.imboy_backend.environment.IMBOY_DIRECT_CLEANUP_PG_USER, .services.imboy_backend.environment.IMBOY_DIRECT_CLEANUP_PG_PASSWORD)'; then
-  ok "未声明的可选监控和清理字段保持原语义"
+# 监控仍为可选；清理凭据不得同时缺失后绕过安装器校验。
+reject_before_start "清理用户与密码同时缺失必须中止" 'Compose 密钥校验失败' \
+  'MOCK_JSON_FILTER=del(.services.imboy_backend.environment.IMBOY_DIRECT_CLEANUP_PG_USER, .services.imboy_backend.environment.IMBOY_DIRECT_CLEANUP_PG_PASSWORD)'
+if run_install 'MOCK_JSON_FILTER=del(.services.imboy_grafana)'; then
+  ok "未声明的可选监控保持原语义"
 else
-  bad "可选字段兼容语义" "有效配置被拒绝"
+  bad "可选监控兼容语义" "有效配置被拒绝"
 fi
 
 echo "== 镜像识别与 probe =="
@@ -412,6 +454,30 @@ if run_install IMBOY_CTL_COOKIE=mock_cookie_only \
     && grep -q 'ADMIN_ID=1000000001' "$OUTPUT"; then
   ok "无 Python 环境经既有容器内 CLI 初始化管理员"
 else bad "管理员初始化" "未取得成功结果"; fi
+# Even an explicit bash -x -v must stop tracing before loading credentials.
+INSTALL_BASH_ARGS=(-x -v)
+INSTALL_EXTRA_ARGS=(--init-cleanup-db --admin-phone 13800000001 --admin-password DummyAdminPass123)
+if run_install IMBOY_CTL_COOKIE=mock_cookie_only; then
+  leaked=0
+  while IFS= read -r secret; do
+    [ -n "$secret" ] || continue
+    if grep -Fq -- "$secret" "$OUTPUT" "$MOCK_LOG"; then leaked=1; fi
+  done < <(
+    awk -F= '$1 == "POSTGRES_PASSWORD" || $1 == "IMBOY_DIRECT_CLEANUP_PG_PASSWORD" \
+      {sub(/^[^=]*=/, ""); print}' "$FIXTURE/.env"
+    printf '%s\n' TEST_SECRET_MUST_NOT_LEAK_000000000000 \
+      keep_existing_jwt_key_1234567890123456 DummyAdminPass123 mock_cookie_only
+  )
+  if [ "$leaked" -eq 0 ]; then
+    ok "bash -x -v 下清理/数据库/管理员凭据不进入输出或命令日志"
+  else
+    bad "Shell 跟踪脱敏" "输出或命令日志包含测试凭据（不回显）"
+  fi
+else
+  bad "Shell 跟踪模式" "安装控制流未完成"
+fi
+INSTALL_BASH_ARGS=()
+INSTALL_EXTRA_ARGS=(--admin-phone 13800000001 --admin-password DummyAdminPass123)
 if run_install; then
   bad "初始化缺 cookie 必须失败" "安装器错误返回成功"
 else
@@ -423,12 +489,37 @@ else
   assert_match "管理员初始化失败必须传播" '超管创建失败' "$OUTPUT"
 fi
 INSTALL_EXTRA_ARGS=()
+for mode in verify create; do
+  [ "$mode" != create ] || INSTALL_EXTRA_ARGS=(--init-cleanup-db)
+  if run_install MOCK_CLEANUP_FAIL=1; then
+    bad "清理账号 $mode 失败必须中止" "安装器错误返回成功"
+  elif ! grep -q 'args=init-cleanup-db\.sh' "$MOCK_LOG"; then
+    bad "清理账号 $mode 失败阶段" "未执行清理账号 helper"
+  elif grep -q 'args=\.\./scripts/sanity_check\.sh' "$MOCK_LOG" \
+      || grep -q '部署完成' "$OUTPUT"; then
+    bad "清理账号 $mode 失败不得继续验收或宣称完成" "失败后仍继续交付"
+  else
+    ok "清理账号 $mode 失败传播，不执行 sanity 或宣称完成"
+  fi
+done
+if run_install && cmp -s "$FIXTURE/.env" "$TMP_ROOT/env.before"; then
+  ok "清理账号步骤失败后可重跑，配置和凭据保持不变"
+else
+  bad "清理账号失败恢复控制流" "重跑失败或凭据被更换"
+fi
+INSTALL_EXTRA_ARGS=()
 for stage in TLS HEALTH; do
   if run_install "MOCK_${stage}_FAIL=1"; then
     bad "$stage 失败必须中止" "安装器错误返回成功"
   elif grep -q '部署完成' "$OUTPUT"; then
     bad "$stage 失败不得宣称完成" "出现部署完成文案"
   else ok "$stage 失败传播且不宣称完成"; fi
+  if grep -q 'args=init-cleanup-db\.sh' "$MOCK_LOG" \
+      || grep -q 'args=\.\./scripts/sanity_check\.sh' "$MOCK_LOG"; then
+    bad "$stage 失败不得执行清理账号步骤或 sanity" "前置失败后仍继续"
+  else
+    ok "$stage 失败时不执行清理账号步骤或 sanity"
+  fi
 done
 
 echo "== 结果：PASS=${PASS} FAIL=${FAIL} =="

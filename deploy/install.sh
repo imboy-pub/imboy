@@ -20,6 +20,8 @@
 #      再完成 preflight、服务启动、TLS、健康检查和初始化。
 # 幂等：密钥已生成（非占位符）不覆盖；证书已签发则跳过；
 #      重复运行只会确保服务在跑。
+set +x
+set +v
 set -euo pipefail
 cd "$(dirname "$0")"
 
@@ -49,6 +51,10 @@ IMBoy 一键部署 / Usage: bash install.sh [选项]
   --admin-phone <手机号>         安装完成后在 backend 容器内经 imboy_ctl adm create
                                 创建超管（无需浏览器走 /setup 向导）
   --admin-password <明文>        与 --admin-phone 成对使用；8-64 位且须含字母和数字
+  --init-cleanup-db              仅社区版：迁移后以已有 POSTGRES_USER 管理权限
+                                创建缺失的独立清理 LOGIN；已有账号只验证、不改密/补权
+                                需 CREATEROLE、v5_worker ADMIN OPTION、数据库 CONNECT 授权权
+                                不加此参数时仅验证；权限不足停止，不自动提权
   --yes, -y                     跳过所有确认（含 Docker 缺失时 get.docker.com 安装确认）
   --help, -h                    显示本帮助
 
@@ -70,6 +76,7 @@ EDITION="community"
 ASSUME_YES=0
 ADMIN_PHONE=""
 ADMIN_PASSWORD=""
+INIT_CLEANUP_DB=0
 
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -80,6 +87,8 @@ while [ $# -gt 0 ]; do
       EDITION="${1#*=}"; shift ;;
     -y|--yes)
       ASSUME_YES=1; shift ;;
+    --init-cleanup-db)
+      INIT_CLEANUP_DB=1; shift ;;
     --admin-phone)
       [ $# -ge 2 ] || die "--admin-phone 需要值（手机号）"
       ADMIN_PHONE="$2"; shift 2 ;;
@@ -110,6 +119,10 @@ case "$EDITION" in
     die "--edition 仅支持 community|business（当前: ${EDITION}）" ;;
 esac
 
+if [ "$INIT_CLEANUP_DB" = 1 ] && [ "$EDITION" != community ]; then
+  die "--init-cleanup-db 仅支持 community；商务/外部数据库须由 DBA 按手册开通"
+fi
+
 # 超管参数成对 + 本地前置校验（规则与 imboy_ctl adm create 一致，尽早失败
 # 而不是等整个栈起来之后才发现密码不合规）
 if { [ -n "$ADMIN_PHONE" ] && [ -z "$ADMIN_PASSWORD" ]; } \
@@ -129,6 +142,12 @@ fi
 command -v jq >/dev/null 2>&1 || die "需要 jq 校验 Compose 配置，请先安装 jq（无需 Python）"
 [ -f ../scripts/sanity_check.sh ] && [ -r ../scripts/sanity_check.sh ] \
   || die "缺少或无法读取 ../scripts/sanity_check.sh；交付包不完整，服务尚未启动"
+if [ "$EDITION" = community ]; then
+  for cleanup_file in init-cleanup-db.sh cleanup-db/bootstrap.sql cleanup-db/verify.sql; do
+    [ -f "$cleanup_file" ] && [ -r "$cleanup_file" ] \
+      || die "缺少或无法读取 $cleanup_file；交付包不完整，服务尚未启动"
+  done
+fi
 
 # 需要随机密钥的字段（域名与邮箱不在内，必须人工填）
 # 长度约束来自 preflight.sh 与后端启动校验：
@@ -452,13 +471,10 @@ if [ "$EDITION" = community ]; then
       and (if $services | has("imboy_grafana") then
              $services.imboy_grafana.environment.GF_SECURITY_ADMIN_PASSWORD | valid(1)
            else true end)
-      and (if $backend | has("IMBOY_DIRECT_CLEANUP_PG_USER")
-                         or has("IMBOY_DIRECT_CLEANUP_PG_PASSWORD") then
-             ($backend.IMBOY_DIRECT_CLEANUP_PG_USER | valid(1))
-             and ($backend.IMBOY_DIRECT_CLEANUP_PG_PASSWORD | valid(32))
-             and ($backend.IMBOY_DIRECT_CLEANUP_PG_USER != $backend.IMBOY_PG_USER)
-             and ($backend.IMBOY_DIRECT_CLEANUP_PG_PASSWORD != $backend.IMBOY_PG_PASSWORD)
-           else true end)
+      and ($backend.IMBOY_DIRECT_CLEANUP_PG_USER | valid(1))
+      and ($backend.IMBOY_DIRECT_CLEANUP_PG_PASSWORD | valid(32))
+      and ($backend.IMBOY_DIRECT_CLEANUP_PG_USER != $backend.IMBOY_PG_USER)
+      and ($backend.IMBOY_DIRECT_CLEANUP_PG_PASSWORD != $backend.IMBOY_PG_PASSWORD)
     end
   ' >/dev/null 2>&1 || die "Compose 密钥校验失败：密钥或清理账号无效、不独立或服务间不一致；服务尚未启动"
 fi
@@ -531,6 +547,15 @@ for _ in $(seq 1 60); do
   sleep 2
 done
 [ "$ok" = 1 ] || die "后端 120s 内未通过 /healthz，查日志：$COMPOSE_DISPLAY logs imboy_backend"
+
+# The helper compares the live release ledger; health alone is insufficient.
+if [ "$EDITION" = community ]; then
+  say "验证独立清理数据库账号（迁移后；已有账号不修改）"
+  CLEANUP_ARGS=()
+  [ "$INIT_CLEANUP_DB" = 0 ] || CLEANUP_ARGS+=(--create)
+  COMPOSE_FILES="$COMPOSE_FILES" bash init-cleanup-db.sh "${CLEANUP_ARGS[@]}" \
+    || die "清理数据库账号未就绪；部署未达到可交付状态。保留 .env 和数据，按手册修复后重跑"
+fi
 
 # ── 6) 部署后自检（客户交付必跑 / mandatory delivery check）─────────────────
 say "部署后自检 (sanity_check)"

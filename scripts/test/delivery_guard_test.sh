@@ -186,6 +186,14 @@ if run_entry --yes && grep -qx -- '--edition community --yes' "$CASE_LOG" \
 else bad 'explicit --yes delegation'; fi
 
 fixture
+if run_entry --init-cleanup-db && grep -qx -- '--edition community --init-cleanup-db' "$CASE_LOG"; then
+  ok 'explicit cleanup initialization is forwarded after delivery guards'
+else bad 'cleanup initialization delegation'; fi
+
+fixture
+reject '--check cannot create a cleanup LOGIN' '--check 不接受部署参数' --check --init-cleanup-db
+
+fixture
 exec 9>"$CASE_ROOT/.delivery-install.lock"
 flock -n 9 || { bad 'test could not acquire fixture lock'; exit 1; }
 reject 'concurrent installation is rejected before original installer' '本目录已有安装进程'

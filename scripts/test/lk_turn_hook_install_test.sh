@@ -226,9 +226,10 @@ assert_grep     "rtc vhost 有 ACME webroot" 'acme-challenge' "$RTC_SRC"
 echo "== A04 安装器故障注入（证书失败/LiveKit start 失败/TURN 装配） =="
 
 FIXTURE="$TMP_ROOT/install"; MOCK_BIN2="$TMP_ROOT/bin2"
-mkdir -p "$FIXTURE/nginx" "$MOCK_BIN2" "$TMP_ROOT/scripts"
-cp deploy/install.sh deploy/.env.example deploy/docker-compose.community.yml \
+mkdir -p "$FIXTURE/nginx" "$FIXTURE/cleanup-db" "$MOCK_BIN2" "$TMP_ROOT/scripts"
+cp deploy/install.sh deploy/init-cleanup-db.sh deploy/.env.example deploy/docker-compose.community.yml \
    deploy/docker-compose.livekit-turn.yml "$FIXTURE/"
+cp deploy/cleanup-db/bootstrap.sql deploy/cleanup-db/verify.sql "$FIXTURE/cleanup-db/"
 cp deploy/nginx/init-letsencrypt.sh "$FIXTURE/nginx/"
 touch "$TMP_ROOT/scripts/sanity_check.sh"
 MOCK_LOG2="$TMP_ROOT/install-events.log"
@@ -306,7 +307,7 @@ case " $* " in
 esac
 exit 0
 MOCK
-# bash 桩：install.sh 本体真执行；preflight/sanity 记录即通过；
+# bash 桩：install.sh 本体真执行；preflight/cleanup/sanity 记录即通过；
 # init-letsencrypt 真执行（测证书故障路径）
 cat > "$MOCK_BIN2/bash" <<'MOCK'
 #!/bin/sh

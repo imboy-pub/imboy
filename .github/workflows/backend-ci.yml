@@ -42,8 +42,10 @@ jobs:
           sudo apt-get install -y jq curl openssl zip unzip gettext-base
       - name: Check packaging and configuration contracts
         run: |
+          bash scripts/test/cleanup_db_shell_test.sh
           bash scripts/test/package_community_test.sh
           bash scripts/test/community_delivery_config_test.sh
+          bash scripts/test/community_rtc_wss_shell_test.sh
           bash scripts/test/init_letsencrypt_test.sh
       - name: Validate community Nginx and RTC WSS in isolated containers
         run: bash scripts/test/community_rtc_wss_test.sh --docker
@@ -75,6 +77,22 @@ jobs:
           docker compose --env-file deploy/.env.example \
             -f deploy/docker-compose.community.yml \
             -f deploy/docker-compose.uptrace.yml config --quiet
+
+  cleanup-db-postgres:
+    name: Cleanup Database Bootstrap (PG18)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v7
+      - name: Install Shell test dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y jq openssl
+      - name: Verify real PostgreSQL identity, authentication and rollback
+        # Isolated synthetic migration/role fixture; not full application UAT.
+        run: bash scripts/test/cleanup_db_postgres_test.sh
 
   compile:
     name: Compile Gate (OTP ${{ matrix.otp }})
