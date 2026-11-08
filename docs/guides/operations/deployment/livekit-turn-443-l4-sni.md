@@ -322,3 +322,14 @@ main 相同。cron 与日志轮转已有历史上线记录；preflight fixture �
 监控按用户决定仅完成默认关闭的配置开关与步骤，不启动、不对接；
 入口见 [监控 runbook](l4-sni-monitoring-deployment-runbook.md)。
 原 CL-TEST/CL-DEVICE 状态不变，RELEASE=NO_GO。
+
+### 2026-11-08 测试维护说明 / Regression maintenance
+
+上面的 3 项漂移与 48 项通过均为相应历史提交的结果，不代表后续 main 的验证状态。
+API origin、cleanup/edge 必填配置、发布版本和 TURN 证书挂载合同后续变化时，
+测试 fixture 与断言也必须同步。当前 RTC/TURN preflight、Compose 与 WSS 的执行
+分工、重跑命令和环境要求见[部署回归说明](../../../../deploy/README.md#rtc-turn-regression)。
+修复测试输入不改变生产预检约束，也不构成 TURN relay 或双端媒体验收。
+
+Historical pass counts apply only to their original revisions. See the deployment regression
+instructions for current ownership and prerequisites; fixture maintenance does not prove media acceptance.

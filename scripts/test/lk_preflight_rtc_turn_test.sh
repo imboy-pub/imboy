@@ -1,14 +1,15 @@
 #!/usr/bin/env bash
-# LK-DEP-01 preflight 两域正负例 + Compose 渲染合同 + secret 扫描（离线测试）。
+# LK-DEP-01 preflight 五域正负例 + Compose 渲染合同 + secret 扫描（离线测试）。
 #
-# 覆盖验收 A01（两域必填/格式/唯一性/DNS fail-closed、TURN 证书门）、
+# 覆盖验收 A01（五域配置中的 RTC/TURN 必填/格式/唯一性/DNS fail-closed、TURN 证书门）、
 # A02（渲染只有一份 LiveKit、无 coturn/eturnal/Redis/Egress、证书 :ro）、
 # A05 的 secret 占位符扫描部分。DNS/端口探测全部走 mock，不触网不占端口。
+# A02 使用真实 Docker Compose config；无需 daemon，不拉镜像、不启动容器。
+# Exit 0 = 全部通过；1 = 断言/渲染失败；77 = Compose 不可用（未完成，CI 阻塞）。
 set -uo pipefail
 
 cd "$(dirname "$0")/../.." || exit 1
 
-REPO="$(pwd)"
 TMP_ROOT="$(mktemp -d /tmp/imboy_lk_preflight.XXXXXX)"
 cleanup() { rm -rf -- "$TMP_ROOT"; }
 trap cleanup EXIT
@@ -40,16 +41,19 @@ cat > "$FIXTURE/.env" <<'ENV'
 API_DOMAIN=api.test.invalid
 ADMIN_DOMAIN=admin.test.invalid
 CS_WIDGET_DOMAIN=cs.test.invalid
-IMBOY_BASE_URL=https://cs.test.invalid
+IMBOY_BASE_URL=https://api.test.invalid
 RTC_DOMAIN=rtc.test.invalid
 TURN_DOMAIN=turn.test.invalid
 CERTBOT_EMAIL=ops@test.invalid
 POSTGRES_USER=imboy_user
 POSTGRES_PASSWORD=postgres_password_40_chars_ok_pad_pad
 POSTGRES_DB=imboy_pro
+IMBOY_DIRECT_CLEANUP_PG_USER=imboy_cleanup
+IMBOY_DIRECT_CLEANUP_PG_PASSWORD=jjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjj
 JWT_KEY=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
 POSTGRE_AES_KEY=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
 ADM_COOKIE_SECRET=cccccccccccccccccccccccccccccccccccccccc
+IMBOY_EDGE_INTERNAL_TOKEN=kkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkk
 # 低熵假值（单字符重复）只测长度/互异规则，避免 gitleaks generic-api-key 误报
 IMBOY_SOLIDIFIED_KEY=dddddddddddddddddddddddddddddddddddd
 IMBOY_SOLIDIFIED_KEY_IV=eeeeeeeeeeeeeeee
@@ -76,8 +80,6 @@ ENV
 # RSA 密钥文件（preflight 把容器路径翻译回 ${DATA_DIR}/backend_priv 再查存在性）
 KEYS_DIR="$FIXTURE/data/backend_priv/keys"
 mkdir -p "$KEYS_DIR"
-# TSID 状态目录（preflight: IMBOY_TSID_STORE_BOOTSTRAP=existing 缺省要求存在且可写）
-mkdir -p "$FIXTURE/data/backend_tsid"
 printf 'fake-pem\n' > "$KEYS_DIR/login_rsa_priv.pem"
 printf 'fake-pem\n' > "$KEYS_DIR/login_rsa_pub.pem"
 
@@ -93,12 +95,15 @@ del_env_line() {
 }
 run_preflight() {
   # 真实调用形态：在 deploy 目录内执行（DATA_DIR 的相对路径以此为基准）
-  ( cd "$FIXTURE" && env PATH="${MOCK_BIN:+$MOCK_BIN:}$PATH" ./preflight.sh --edition community "$@" ) \
+  # 只读 fixture；宿主导出的密钥不能填回负例删除的值，也不能开启真实 DNS。
+  ( cd "$FIXTURE" && env -i PATH="${MOCK_BIN:+$MOCK_BIN:}$PATH" \
+      MOCK_DNS_OK="${MOCK_DNS_OK:-0}" MOCK_SS_3478="${MOCK_SS_3478:-0}" \
+      ./preflight.sh --edition community "$@" ) \
     >"$TMP_ROOT/out.log" 2>&1
   echo $?
 }
 
-echo "== A01 preflight 两域正负例 =="
+echo "== A01 preflight 五域配置中的 RTC/TURN 正负例 =="
 
 RC="$(run_preflight)"
 assert_rc 0 "$RC" "正向：五域齐全 + TURN 关闭 → 通过（exit 0）"
@@ -118,6 +123,7 @@ assert_grep "两域相同有明确报错" 'RTC_DOMAIN 与 TURN_DOMAIN 不能相�
 set_env_line TURN_DOMAIN "api.test.invalid"
 RC="$(run_preflight)"
 assert_rc 1 "$RC" "负向：TURN_DOMAIN 撞 API_DOMAIN → 拒绝"
+assert_grep "TURN/API 域冲突有明确报错" 'TURN_DOMAIN 与 API_DOMAIN 不能相同' "$TMP_ROOT/out.log"
 
 set_env_line TURN_DOMAIN "turn.test.invalid"
 set_env_line RTC_DOMAIN "https://rtc.test.invalid"
@@ -128,6 +134,7 @@ assert_grep "非法域名格式有明确报错" 'RTC_DOMAIN 不是有效的纯�
 set_env_line RTC_DOMAIN "rtc.example.com"
 RC="$(run_preflight)"
 assert_rc 1 "$RC" "负向：RTC_DOMAIN 留占位符 example.com → 拒绝"
+assert_grep "RTC 占位域有明确报错" 'RTC_DOMAIN 仍为占位符值' "$TMP_ROOT/out.log"
 
 set_env_line RTC_DOMAIN "rtc.test.invalid"
 
@@ -156,6 +163,7 @@ RC="$(MOCK_DNS_OK=1 run_preflight --dns)"
 assert_rc 0 "$RC" "DNS 开关开启 + 解析成功 → 通过"
 
 RC="$(MOCK_DNS_OK=1 run_preflight)"
+assert_rc 0 "$RC" "DNS 开关默认关闭 → 通过"
 assert_grep "DNS 开关默认关闭只提示" 'DNS 检查未开启' "$TMP_ROOT/out.log"
 
 # ── TURN 开关门：开关值 / 端口双活 / 证书就绪 ────────────────────────────────
@@ -171,12 +179,12 @@ assert_grep "证书未就绪有指引" 'TURN TLS 证书未就绪' "$TMP_ROOT/out
 
 TURN_CERT_DIR="$FIXTURE/data/certbot/conf/live/turn.test.invalid"
 mkdir -p "$TURN_CERT_DIR"
+printf 'cert\n' > "$TURN_CERT_DIR/fullchain.pem"
+printf 'key\n'  > "$TURN_CERT_DIR/privkey.pem"
 RC="$(MOCK_SS_3478=1 run_preflight)"
 assert_rc 1 "$RC" "负向：TURN 开启 + 3478 被旧 TURN 占用 → 拒绝（不得双活）"
 assert_grep "双活有明确报错" '端口 3478.*已被占用' "$TMP_ROOT/out.log"
 
-printf 'cert\n' > "$TURN_CERT_DIR/fullchain.pem"
-printf 'key\n'  > "$TURN_CERT_DIR/privkey.pem"
 RC="$(run_preflight)"
 assert_rc 0 "$RC" "正向：TURN 开启 + 证书就绪 + 端口空闲 → 通过"
 assert_grep "证书就绪路径被确认" 'TURN TLS 证书就绪' "$TMP_ROOT/out.log"
@@ -184,105 +192,10 @@ assert_grep "证书就绪路径被确认" 'TURN TLS 证书就绪' "$TMP_ROOT/out
 del_env_line LIVEKIT_API_SECRET
 RC="$(run_preflight)"
 assert_rc 1 "$RC" "回归：LIVEKIT_API_SECRET 缺失仍拒绝（现有检查不回归）"
-set_env_line LIVEKIT_API_SECRET "livekit_api_secret_at_least_32_chars"
+assert_grep "LiveKit secret 缺失有明确报错" 'LIVEKIT_API_SECRET 未设置' "$TMP_ROOT/out.log"
+set_env_line LIVEKIT_API_SECRET "gggggggggggggggggggggggggggggggggggggggg"
 
-echo "== A02 Compose 渲染合同（干跑，不启动任何容器） =="
-command -v docker >/dev/null 2>&1 || { echo "  SKIP 本机无 docker，跳过渲染断言"; docker() { return 127; }; }
-
-ENV_FILE="$TMP_ROOT/compose.env"
-cat > "$ENV_FILE" <<'ENV'
-POSTGRES_USER=u
-POSTGRES_PASSWORD=p
-POSTGRES_DB=d
-JWT_KEY=k32chars________________________________!
-ADM_COOKIE_SECRET=a32chars________________________________!
-POSTGRE_AES_KEY=e32chars________________________________!
-IMBOY_SOLIDIFIED_KEY=s32chars________________________________!
-IMBOY_SOLIDIFIED_KEY_IV=iv16chars_________!
-IMBOY_PASSWORD_SALT=ps32chars________________________________!
-GRAFANA_ADMIN_PASSWORD=g32chars________________________________!
-API_DOMAIN=api.test.invalid
-ADMIN_DOMAIN=adm.test.invalid
-CS_WIDGET_DOMAIN=cs.test.invalid
-RTC_DOMAIN=rtc.test.invalid
-TURN_DOMAIN=turn.test.invalid
-LIVEKIT_API_KEY=lkkey0000000000000000000000000
-LIVEKIT_API_SECRET=lksecret_at_least_32_chars______!
-IMBOY_GARAGE_ACCESS_KEY=GKaccesskey0000000000000000
-IMBOY_GARAGE_SECRET_KEY=garagesecret0000000000000000
-GARAGE_RPC_SECRET=rpcsecret00000000000000000000000!
-LIVEKIT_TURN_CERT_DIR=/tmp/imboy-fake-turn-certs
-ENV
-
-BASE_YML="deploy/docker-compose.community.yml"
-TURN_YML="deploy/docker-compose.livekit-turn.yml"
-RENDER="$TMP_ROOT/render-full.yml"
-
-if COMPOSE_PROJECT_NAME=imboy_lk_test docker compose --env-file "$ENV_FILE" \
-    -f "$BASE_YML" -f "$TURN_YML" config >"$RENDER" 2>"$TMP_ROOT/render.err"; then
-  ok "base+TURN overlay 渲染成功"
-else
-  bad "base+TURN overlay 渲染成功" "$(tail -5 "$TMP_ROOT/render.err")"
-fi
-
-LK_DIGEST="sha256:5d3dcc475d064536d9948ebe4eeab8e3b24d6f07a46f6d71a3415a2901bbdc52"
-LK_IMAGE_COUNT="$(grep -c "image: livekit/livekit-server@${LK_DIGEST}\$" "$RENDER" || true)"
-[ "$LK_IMAGE_COUNT" = 1 ] && ok "有且只有一份 LiveKit（image@digest 锁定 v1.13.7 amd64）" \
-  || bad "有且只有一份 LiveKit（image@digest 锁定 v1.13.7 amd64）" "count=$LK_IMAGE_COUNT"
-# digest 锁定强断言：渲染结果不得残留裸 tag 引用（防回退浮动 tag）
-if grep -q 'image: livekit/livekit-server:v' "$RENDER"; then
-  bad "无裸 tag LiveKit 引用" "$(grep 'image: livekit/livekit-server:v' "$RENDER" | head -2)"
-else
-  ok "无裸 tag LiveKit 引用"
-fi
-
-assert_not_grep "渲染无 redis"     '(^|[^a-z])redis'  "$RENDER"
-assert_not_grep "渲染无 coturn"    'coturn'           "$RENDER"
-assert_not_grep "渲染无 eturnal"   'eturnal'          "$RENDER"
-assert_not_grep "渲染无 egress"    'egress'           "$RENDER"
-# TURN 证书只读挂载（compose config 结构化输出：target + read_only 相邻）
-if grep -A2 'target: /etc/livekit/certs' "$RENDER" | grep -q 'read_only: true'; then
-  ok "TURN 证书只读挂载（:ro）"
-else
-  bad "TURN 证书只读挂载（:ro）" "rendered=$(grep -A2 'target: /etc/livekit/certs' "$RENDER" | tr '\n' ' ')"
-fi
-assert_grep     "ws_url 默认收敛 rtc 域" 'wss://rtc\.test\.invalid' "$RENDER"
-assert_grep     "LIVEKIT_CONFIG turn 段启用" 'enabled: true' "$RENDER"
-assert_grep     "TURN TLS 固定 5349" 'tls_port: 5349' "$RENDER"
-assert_grep     "TURN UDP 3478"      'udp_port: 3478' "$RENDER"
-assert_grep     "TURN relay 段起点 50201" 'relay_range_start: 50201' "$RENDER"
-assert_grep     "TURN relay 段终点 50500" 'relay_range_end: 50500' "$RENDER"
-assert_grep     "媒体段维持 50000-50200" 'port_range_start: 50000' "$RENDER"
-assert_grep     "TURN 域来自 TURN_DOMAIN" 'domain: turn\.test\.invalid' "$RENDER"
-assert_grep     "容器内证书路径 fullchain" 'cert_file: /etc/livekit/certs/fullchain\.pem' "$RENDER"
-# 端口发布（结构化输出：target 与 protocol 相邻）；端口段展开为逐端口条目
-if grep -A3 'target: 3478' "$RENDER" | grep -q 'protocol: udp'; then
-  ok "3478 以 UDP 发布"
-else
-  bad "3478 以 UDP 发布" "未找到 target 3478 + udp"
-fi
-if grep -A3 'target: 5349' "$RENDER" | grep -q 'protocol: tcp'; then
-  ok "5349 以 TCP 发布"
-else
-  bad "5349 以 TCP 发布" "未找到 target 5349 + tcp"
-fi
-if grep -q 'target: 50201' "$RENDER" && grep -q 'target: 50500' "$RENDER"; then
-  ok "relay 段 50201-50500 完整展开发布"
-else
-  bad "relay 段 50201-50500 完整展开发布" "边界端口缺失"
-fi
-
-RENDER_BASE="$TMP_ROOT/render-base.yml"
-if COMPOSE_PROJECT_NAME=imboy_lk_test docker compose --env-file "$ENV_FILE" \
-    -f "$BASE_YML" config >"$RENDER_BASE" 2>"$TMP_ROOT/render-base.err"; then
-  ok "base（TURN 关闭）渲染成功"
-else
-  bad "base（TURN 关闭）渲染成功" "$(tail -5 "$TMP_ROOT/render-base.err")"
-fi
-assert_not_grep "base 渲染无 turn 段（W4 共存形态）" 'turn:' "$RENDER_BASE"
-assert_not_grep "base 渲染不发布 3478/5349（共存期归 eturnal）" 'target: (3478|5349)' "$RENDER_BASE"
-assert_grep     "base 渲染 ws_url 仍收敛 rtc 域" 'wss://rtc\.test\.invalid' "$RENDER_BASE"
-
+# 无 Docker 的机器也先完成独立的模板检查，A02 随后明确报告环境阻塞。
 echo "== A05 secret 占位符扫描（.env.example 不含真实密钥） =="
 SECRET_LEAKS="$(awk -F= '
 /^[A-Z0-9_]+=/ {
@@ -303,6 +216,130 @@ if grep -v '^[[:space:]]*#' deploy/.env.example | grep -qE 'BEGIN (RSA )?PRIVATE
 else
   ok "改动文件无未注释私钥块"
 fi
+
+echo "== A02 Compose 渲染合同（干跑，不启动任何容器） =="
+# 与真实 WSS 套件相同，只保留工具配置；shell 覆盖不得污染 --env-file。
+COMPOSE_ENV=(env -i "PATH=$PATH" COMPOSE_PROJECT_NAME=imboy_lk_test COMPOSE_DISABLE_ENV_FILE=1)
+for name in HOME DOCKER_CONFIG HTTP_PROXY HTTPS_PROXY NO_PROXY http_proxy https_proxy no_proxy SSL_CERT_FILE; do
+  [[ ! -v "$name" ]] || COMPOSE_ENV+=("$name=${!name}")
+done
+if ! "${COMPOSE_ENV[@]}" docker compose version >"$TMP_ROOT/compose-version.log" 2>&1; then
+  echo "  BLOCKED A02：Docker CLI / Compose 不可用，渲染合同未验证（不是 PASS）"
+  cat "$TMP_ROOT/compose-version.log"
+  echo "== 结果：PASS=${PASS} FAIL=${FAIL} COMPOSE=NOT_RUN =="
+  [ "$FAIL" -eq 0 ] || exit 1
+  exit 77
+fi
+cat "$TMP_ROOT/compose-version.log"
+
+ENV_FILE="$TMP_ROOT/compose.env"
+cat > "$ENV_FILE" <<'ENV'
+POSTGRES_USER=u
+POSTGRES_PASSWORD=p
+POSTGRES_DB=d
+IMBOY_DIRECT_CLEANUP_PG_USER=imboy_cleanup
+IMBOY_DIRECT_CLEANUP_PG_PASSWORD=jjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjj
+IMBOY_EDGE_INTERNAL_TOKEN=kkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkk
+JWT_KEY=k32chars________________________________!
+ADM_COOKIE_SECRET=a32chars________________________________!
+POSTGRE_AES_KEY=e32chars________________________________!
+IMBOY_SOLIDIFIED_KEY=s32chars________________________________!
+IMBOY_SOLIDIFIED_KEY_IV=iv16chars_________!
+IMBOY_PASSWORD_SALT=ps32chars________________________________!
+GRAFANA_ADMIN_PASSWORD=g32chars________________________________!
+API_DOMAIN=api.test.invalid
+ADMIN_DOMAIN=adm.test.invalid
+CS_WIDGET_DOMAIN=cs.test.invalid
+RTC_DOMAIN=rtc.test.invalid
+TURN_DOMAIN=turn.test.invalid
+LIVEKIT_API_KEY=lkkey0000000000000000000000000
+LIVEKIT_API_SECRET=lksecret_at_least_32_chars______!
+IMBOY_GARAGE_ACCESS_KEY=GKaccesskey0000000000000000
+IMBOY_GARAGE_SECRET_KEY=garagesecret0000000000000000
+GARAGE_RPC_SECRET=rpcsecret00000000000000000000000!
+LIVEKIT_TURN_CERT_DIR=/tmp/imboy-fake-turn-certs
+ENV
+printf 'IMBOY_VERSION=%s\n' "$(cat VERSION)" >> "$ENV_FILE"
+
+BASE_YML="deploy/docker-compose.community.yml"
+TURN_YML="deploy/docker-compose.livekit-turn.yml"
+RENDER="$TMP_ROOT/render-full.yml"
+
+if "${COMPOSE_ENV[@]}" docker compose --env-file "$ENV_FILE" \
+    -f "$BASE_YML" -f "$TURN_YML" config >"$RENDER" 2>"$TMP_ROOT/render.err" && [ -s "$RENDER" ]; then
+  ok "base+TURN overlay 渲染成功"
+else
+  bad "base+TURN overlay 渲染成功" "渲染失败或结果为空：$(tail -5 "$TMP_ROOT/render.err")"
+  echo "== 结果：PASS=${PASS} FAIL=${FAIL} COMPOSE=INVALID =="
+  exit 1 # 不能把空渲染结果的否定断言记为 PASS。
+fi
+
+LK_DIGEST="sha256:5d3dcc475d064536d9948ebe4eeab8e3b24d6f07a46f6d71a3415a2901bbdc52"
+LK_IMAGE_COUNT="$(grep -c "image: livekit/livekit-server@${LK_DIGEST}\$" "$RENDER" || true)"
+if [ "$LK_IMAGE_COUNT" = 1 ]; then
+  ok "有且只有一份 LiveKit（image@digest 锁定 v1.13.7 amd64）"
+else
+  bad "有且只有一份 LiveKit（image@digest 锁定 v1.13.7 amd64）" "count=$LK_IMAGE_COUNT"
+fi
+# digest 锁定强断言：渲染结果不得残留裸 tag 引用（防回退浮动 tag）
+if grep -q 'image: livekit/livekit-server:v' "$RENDER"; then
+  bad "无裸 tag LiveKit 引用" "$(grep 'image: livekit/livekit-server:v' "$RENDER" | head -2)"
+else
+  ok "无裸 tag LiveKit 引用"
+fi
+
+assert_not_grep "渲染无 redis"     '(^|[^a-z])redis'  "$RENDER"
+assert_not_grep "渲染无 coturn"    'coturn'           "$RENDER"
+assert_not_grep "渲染无 eturnal"   'eturnal'          "$RENDER"
+assert_not_grep "渲染无 egress"    'egress'           "$RENDER"
+# TURN 同域 live/archive 均只读，Certbot 的相对符号链接才能解引用。
+for cert_tree in live archive; do
+  target="target: /etc/letsencrypt/$cert_tree/turn.test.invalid"
+  if grep -F -A2 "$target" "$RENDER" | grep -q 'read_only: true'; then
+    ok "TURN $cert_tree 证书目录只读挂载（:ro）"
+  else
+    bad "TURN $cert_tree 证书目录只读挂载（:ro）" "rendered=$(grep -F -A2 "$target" "$RENDER" | tr '\n' ' ')"
+  fi
+done
+assert_grep     "ws_url 默认收敛 rtc 域" 'wss://rtc\.test\.invalid' "$RENDER"
+assert_grep     "LIVEKIT_CONFIG turn 段启用" 'enabled: true' "$RENDER"
+assert_grep     "TURN TLS 固定 5349" 'tls_port: 5349' "$RENDER"
+assert_grep     "TURN UDP 3478"      'udp_port: 3478' "$RENDER"
+assert_grep     "TURN relay 段起点 50201" 'relay_range_start: 50201' "$RENDER"
+assert_grep     "TURN relay 段终点 50500" 'relay_range_end: 50500' "$RENDER"
+assert_grep     "媒体段起点维持 50000" 'port_range_start: 50000' "$RENDER"
+assert_grep     "TURN 域来自 TURN_DOMAIN" 'domain: turn\.test\.invalid' "$RENDER"
+assert_grep     "容器内证书路径 fullchain" 'cert_file: /etc/letsencrypt/live/turn\.test\.invalid/fullchain\.pem' "$RENDER"
+assert_grep     "容器内私钥路径 privkey" 'key_file: /etc/letsencrypt/live/turn\.test\.invalid/privkey\.pem' "$RENDER"
+# 端口发布（结构化输出：target 与 protocol 相邻）；端口段展开为逐端口条目
+if grep -A3 'target: 3478' "$RENDER" | grep -q 'protocol: udp'; then
+  ok "3478 以 UDP 发布"
+else
+  bad "3478 以 UDP 发布" "未找到 target 3478 + udp"
+fi
+if grep -A3 'target: 5349' "$RENDER" | grep -q 'protocol: tcp'; then
+  ok "5349 以 TCP 发布"
+else
+  bad "5349 以 TCP 发布" "未找到 target 5349 + tcp"
+fi
+if grep -q 'target: 50201' "$RENDER" && grep -q 'target: 50500' "$RENDER"; then
+  ok "relay 段 50201-50500 边界端口发布"
+else
+  bad "relay 段 50201-50500 边界端口发布" "边界端口缺失"
+fi
+
+RENDER_BASE="$TMP_ROOT/render-base.yml"
+if "${COMPOSE_ENV[@]}" docker compose --env-file "$ENV_FILE" \
+    -f "$BASE_YML" config >"$RENDER_BASE" 2>"$TMP_ROOT/render-base.err" && [ -s "$RENDER_BASE" ]; then
+  ok "base（TURN 关闭）渲染成功"
+else
+  bad "base（TURN 关闭）渲染成功" "渲染失败或结果为空：$(tail -5 "$TMP_ROOT/render-base.err")"
+  echo "== 结果：PASS=${PASS} FAIL=${FAIL} COMPOSE=INVALID =="
+  exit 1
+fi
+assert_not_grep "base 渲染无 turn 段（W4 共存形态）" 'turn:' "$RENDER_BASE"
+assert_not_grep "base 渲染不发布 3478/5349（共存期归 eturnal）" 'target: (3478|5349)' "$RENDER_BASE"
+assert_grep     "base 渲染 ws_url 仍收敛 rtc 域" 'wss://rtc\.test\.invalid' "$RENDER_BASE"
 
 echo "== 结果：PASS=${PASS} FAIL=${FAIL} =="
 [ "$FAIL" -eq 0 ]

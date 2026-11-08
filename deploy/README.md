@@ -537,7 +537,38 @@ bash deploy/preflight.sh --self-test
 已可用。在没有 Python 的干净测试机/隔离根目录中执行同样命令，可复核宿主机无 Python
 依赖。真实部署验收另按上表执行；开发与 CI 专用测试不属于此无 Python 承诺。
 
-**容器 RTC 回归 / Container RTC regression**（在源码仓库执行）：
+<a id="rtc-turn-regression"></a>
+
+**RTC/TURN 回归归属 / RTC/TURN regression ownership**（在源码仓库执行）：
+
+以下套件均由 Backend CI 的 `Standalone Community Delivery` job 阻塞执行；
+preflight/Compose 和真实 WSS 各有独立步骤，便于区分配置失败与容器信令失败。
+
+| 套件 | 验证范围 | 执行环境与边界 |
+| --- | --- | --- |
+| `lk_preflight_rtc_turn_test.sh` | 五域配置中的 RTC/TURN 正负例、DNS 失败关闭、TURN 开关/证书/端口门；真实 Compose 渲染的唯一固定 LiveKit、禁用组件、同域 live/archive 只读挂载、TURN 参数与端口；模板占位符 | DNS/端口用桩；Compose 只渲染，不启动容器，不证明 TURN relay 或媒体可用 |
+| `community_delivery_config_test.sh` | 静态部署配置、Nginx 模板、TURN live/archive 相对链接、续期文件与外部平铺证书兼容 | 文件系统模拟，不替代真实 Compose 渲染或容器挂载 |
+| `init_letsencrypt_test.sh` | 首签前 HTTP-01 就绪、临时证书、失败恢复、`nginx -t` 与 reload 顺序 | Docker/OpenSSL 桩，不向公共 CA 申请证书 |
+| `community_rtc_wss_shell_test.sh` | WSS 测试运行器的 CID、Compose 转义、失败诊断与清理 | Docker 桩，不计为真实 TLS/WSS 通过 |
+| `community_rtc_wss_test.sh --docker` | 真实 Nginx/LiveKit 的启动、五域 HTTP-01 路由、严格 TLS、认证 WSS 握手和既有代理路由 | 需要 Docker daemon 与固定镜像；不启用 TURN overlay，不替代双端媒体验收 |
+
+```bash
+bash scripts/test/lk_preflight_rtc_turn_test.sh
+```
+
+预检套件的 Compose 阶段需要 Docker CLI 和 Compose（仓库最低要求 v2.23.1，
+支持 `configs.content`），无需 daemon 或镜像下载。preflight 仍检查真实宿主资源，
+至少需要 4 GiB 内存和 10 GiB 可用磁盘。测试只使用合成凭据，版本取根目录 `VERSION`，
+并隔离宿主配置覆盖。缺少 Compose 时先完成 preflight/模板检查，再报告
+`COMPOSE=NOT_RUN`、退出 77；已有断言失败则仍退出 1。渲染失败或空输出退出 1，
+不得把空模型上的否定匹配记为通过。CI 直接保留非零结果，不豁免或吞掉退出码。
+
+All suites above are blocking steps in the existing community delivery job. The preflight
+suite retains its configuration and TURN model checks; WSS tests do not replace them.
+Compose rendering needs the CLI/plugin only, while preflight still checks host resources.
+Exit 77 means the environment is unavailable, never a pass; failed or empty rendering exits 1.
+
+**容器 RTC 回归 / Container RTC regression**：
 
 ```bash
 bash scripts/test/community_rtc_wss_shell_test.sh
