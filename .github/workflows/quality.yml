@@ -224,8 +224,16 @@ jobs:
           set -euo pipefail
           # 版本必须对应真实存在的 release 资产（trivy 那条就是栽在死版本号上）。
           ver=8.30.1
-          curl -sfL "https://github.com/gitleaks/gitleaks/releases/download/v${ver}/gitleaks_${ver}_linux_x64.tar.gz" \
-            | sudo tar -xz -C /usr/local/bin gitleaks
+          gitleaks_tmp=$(mktemp -d)
+          trap 'rm -rf "$gitleaks_tmp"' EXIT
+          # 先完整下载并验证官方摘要再解压；有限重试不掩盖安装失败。
+          curl -fsSL --retry 3 --retry-delay 2 --retry-max-time 180 \
+            --connect-timeout 15 --max-time 60 \
+            "https://github.com/gitleaks/gitleaks/releases/download/v${ver}/gitleaks_${ver}_linux_x64.tar.gz" \
+            -o "$gitleaks_tmp/gitleaks.tar.gz"
+          echo "551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb  $gitleaks_tmp/gitleaks.tar.gz" | sha256sum -c -
+          tar -xzf "$gitleaks_tmp/gitleaks.tar.gz" -C "$gitleaks_tmp" gitleaks
+          sudo install -m 0755 "$gitleaks_tmp/gitleaks" /usr/local/bin/gitleaks
           gitleaks version
 
       # 历史扫描（git 模式）——原先由 action 承担，不能因为换实现就悄悄丢掉。
