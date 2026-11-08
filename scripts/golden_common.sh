@@ -10,7 +10,8 @@
 #   HOSTS_FILE    hosts 注入目标文件，默认 /etc/hosts（干跑可经 GOLDEN_HOSTS_FILE 重定向）
 #   DEPLOY_DIR    clone 副本的 deploy/ 目录（.env 读写与证书预置的作用目标）
 #   COMMUNITY_YML community compose 文件绝对路径（wrapper/执行 compose 的目标）
-#   COMPOSE / COMPOSE_O  compose 命令前缀（后者叠加 golden override）
+#   COMPOSE / COMPOSE_O  compose 命令前缀（均含 runtime overlay；后者再叠加 dev）
+#   RUNTIME_YML  release vm.args 路径与 CI Certbot 网络隔离（安装阶段仍为 pro）
 #   OVERRIDE_YML  golden override compose 输出路径
 #   CLONE_DIR     clone 目录（imboy_ctl wrapper 替换目标）
 #   BIN_DIR       运行期生成 bin（psql wrapper）目录
@@ -19,7 +20,8 @@
 #   WS_URL        WebSocket 冒烟基址（run_smoke8）
 #   WORKDIR       cleanroom 残留断言用工作目录
 #   ADMIN_PHONE / ADMIN_PASSWORD / GIT_REF  run_smoke8 透传超管凭据与 ref
-#   API_DOMAIN / ADMIN_DOMAIN  ci 模式证书预置域名
+#   API_DOMAIN / ADMIN_DOMAIN / CS_WIDGET_DOMAIN / RTC_DOMAIN / TURN_DOMAIN
+#                 五域；host 显式提供，ci 使用独立假域名
 #   CURRENT_STAGE / STAGE_HINT / KEEP / PROFILE  die() 排查提示与输出字段（可选）
 # 可选测试口（干跑/资源门槛覆盖，生产勿设）：
 #   GOLDEN_HOSTS_FILE / GOLDEN_MIN_MEM_GB / GOLDEN_MIN_DISK_GB
@@ -50,16 +52,151 @@ env_set_var() { # <key> <val>：键存在则替换；不存在则追加。
   # .env.example 里 BACKEND_IMAGE 等键默认是注释行 # KEY=…，仅替换语义会让
   # 写入静默丢失（该缺陷最先在 P2-U1 干跑暴露，G1 同源逻辑一并修复）。
   local key="$1" val="$2" tmp
+  # Golden writes only literal assignments: production helpers still read .env
+  # as shell input. Reject unsupported/newline bytes without echoing the value.
+  [[ "$key" =~ ^[A-Z][A-Z0-9_]*$ && "$val" =~ ^[A-Za-z0-9_./:@%+=-]+$ ]] \
+    || die "Golden .env 输入不能安全写为字面值（字段 $key；值未输出）"
   tmp="$(mktemp)"
-  if grep -qE "^${key}=" "$DEPLOY_DIR/.env" 2>/dev/null; then
-    awk -v k="$key" -v v="$val" 'BEGIN{FS=OFS="="} $1==k{print k"="v; next} {print}' \
-        "$DEPLOY_DIR/.env" > "$tmp"
-  else
-    awk -v k="$key" -v v="$val" '{print} END{print k"="v}' "$DEPLOY_DIR/.env" > "$tmp"
-  fi
+  # 值经环境传给 awk，不放进 argv，也不把反斜杠当 awk 转义处理。
+  # Never expose a generated credential in awk arguments or interpret its bytes.
+  GOLDEN_ENV_VALUE="$val" awk -v k="$key" '
+    BEGIN { v=ENVIRON["GOLDEN_ENV_VALUE"] }
+    index($0, k "=")==1 { print k "=" v; found=1; next }
+    { print }
+    END { if (!found) print k "=" v }
+  ' "$DEPLOY_DIR/.env" > "$tmp"
+  chmod 600 "$tmp"
   mv "$tmp" "$DEPLOY_DIR/.env"
 }
 env_get_var() { grep -E "^$1=" "$DEPLOY_DIR/.env" 2>/dev/null | head -1 | cut -d= -f2- || true; }
+
+configure_golden_domains() {
+  if [ "$PROFILE" = ci ]; then
+    API_DOMAIN="${API_DOMAIN:-api.golden-ci.imboy.internal}"
+    ADMIN_DOMAIN="${ADMIN_DOMAIN:-admin.golden-ci.imboy.internal}"
+    CS_WIDGET_DOMAIN="${CS_WIDGET_DOMAIN:-cs.golden-ci.imboy.internal}"
+    RTC_DOMAIN="${RTC_DOMAIN:-rtc.golden-ci.imboy.internal}"
+    TURN_DOMAIN="${TURN_DOMAIN:-turn.golden-ci.imboy.internal}"
+    CERTBOT_EMAIL="${CERTBOT_EMAIL:-golden-ci@imboy.invalid}"
+  fi
+  local key domain seen="|"
+  for key in API_DOMAIN ADMIN_DOMAIN CS_WIDGET_DOMAIN RTC_DOMAIN TURN_DOMAIN; do
+    domain="${!key:-}"
+    # 与 preflight 的纯域名合同一致；先验证，避免证书路径/主题含任意输入。
+    [[ "$domain" =~ ^[A-Za-z0-9]([A-Za-z0-9.-]*[A-Za-z0-9])$ ]] \
+      && [[ "$domain" == *.* && "$domain" != *..* ]] \
+      || die "$key 必须提供有效纯域名；host 模式须显式提供全部五域"
+    case "$domain" in *example.com*|*CHANGE_ME*) die "$key 仍为占位符" ;; esac
+    domain="$(printf '%s' "$domain" | tr '[:upper:]' '[:lower:]')"
+    case "$seen" in *"|$domain|"*) die "五域必须互不相同（$key 重复）" ;; esac
+    seen="$seen$domain|"
+  done
+  [[ "${CERTBOT_EMAIL:-}" =~ ^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$ ]] \
+    || die "必须提供有效 --certbot-email"
+  case "$CERTBOT_EMAIL" in *example.com*|*CHANGE_ME*) die "CERTBOT_EMAIL 仍为占位符" ;; esac
+}
+
+prepare_golden_cleanup() {
+  # cleanroom 专用：默认身份只加入现有 v5_worker，由安装器受控创建并验证。
+  # Preserve supplied credentials; never reset an existing database account.
+  local pg_user pg_password
+  pg_user="${POSTGRES_USER:-$(env_get_var POSTGRES_USER)}"
+  pg_password="${POSTGRES_PASSWORD:-$(env_get_var POSTGRES_PASSWORD)}"
+  IMBOY_DIRECT_CLEANUP_PG_USER="${IMBOY_DIRECT_CLEANUP_PG_USER:-$(env_get_var IMBOY_DIRECT_CLEANUP_PG_USER)}"
+  IMBOY_DIRECT_CLEANUP_PG_USER="${IMBOY_DIRECT_CLEANUP_PG_USER:-imboy_golden_cleanup}"
+  [[ "$IMBOY_DIRECT_CLEANUP_PG_USER" =~ ^[a-z_][a-z0-9_]{0,62}$ ]] \
+    && [[ "$IMBOY_DIRECT_CLEANUP_PG_USER" != pg_* && "$IMBOY_DIRECT_CLEANUP_PG_USER" != v5_worker \
+       && "$IMBOY_DIRECT_CLEANUP_PG_USER" != "$pg_user" ]] \
+    || die "Golden 清理用户名无效或与应用/内置角色不独立"
+  IMBOY_DIRECT_CLEANUP_PG_PASSWORD="${IMBOY_DIRECT_CLEANUP_PG_PASSWORD:-$(env_get_var IMBOY_DIRECT_CLEANUP_PG_PASSWORD)}"
+  if [ -z "$IMBOY_DIRECT_CLEANUP_PG_PASSWORD" ]; then
+    IMBOY_DIRECT_CLEANUP_PG_PASSWORD="$(openssl rand -hex 32)"
+  fi
+  # The production TLS helper reads .env as shell input. Golden accepts only
+  # literal-safe credentials here; reject supplied invalid values, never rewrite.
+  [[ "$IMBOY_DIRECT_CLEANUP_PG_PASSWORD" =~ ^[A-Za-z0-9_-]{32,}$ ]] \
+    && [ "$IMBOY_DIRECT_CLEANUP_PG_PASSWORD" != "$pg_password" ] \
+    || die "Golden 清理密码须独立、至少 32 位且仅含字母数字及 _-（值未输出）"
+  case "$(printf '%s' "$IMBOY_DIRECT_CLEANUP_PG_PASSWORD" | tr '[:upper:]' '[:lower:]')" in
+    *change_me*|*example*) die "Golden 清理密码仍为占位符，拒绝覆盖已提供值" ;;
+  esac
+  env_set_var IMBOY_DIRECT_CLEANUP_PG_USER "$IMBOY_DIRECT_CLEANUP_PG_USER"
+  env_set_var IMBOY_DIRECT_CLEANUP_PG_PASSWORD "$IMBOY_DIRECT_CLEANUP_PG_PASSWORD"
+  # Keep Compose's process environment and .env in agreement, including overrides.
+  export IMBOY_DIRECT_CLEANUP_PG_USER IMBOY_DIRECT_CLEANUP_PG_PASSWORD
+}
+
+prepare_golden_control() {
+  local source="$CLONE_DIR/config/vm.args" node data_dir target tmp
+  [ -r "$source" ] || die "固定源码缺 config/vm.args，不能推断 release 节点身份"
+  node="$(awk '$1=="-name" {print $2; n++} END {if(n!=1) exit 1}' "$source")" \
+    || die "release vm.args 必须恰含一个 -name"
+  IMBOY_CTL_NODE="${IMBOY_CTL_NODE:-$node}"
+  [[ "$IMBOY_CTL_NODE" =~ ^[A-Za-z0-9_.-]+@[A-Za-z0-9_.-]+$ ]] \
+    || die "IMBOY_CTL_NODE 必须为完整 release 节点名"
+  IMBOY_CTL_COOKIE="${IMBOY_CTL_COOKIE:-$(openssl rand -hex 32)}"
+  [[ "$IMBOY_CTL_COOKIE" =~ ^[A-Za-z0-9_-]{32,255}$ ]] \
+    || die "IMBOY_CTL_COOKIE 须为 32–255 位字母、数字、下划线或连字符（值未输出）"
+  data_dir="$(resolve_data_dir)"
+  target="$data_dir/backend_priv/golden-vm.args"
+  mkdir -p "$(dirname "$target")"
+  tmp="$(mktemp "${target}.XXXXXX")"
+  # relx reads VMARGS_PATH for foreground and ping/eval; changing only the CLI
+  # cookie would leave the server using the baked-in development value.
+  if ! GOLDEN_CTL_NODE="$IMBOY_CTL_NODE" GOLDEN_CTL_COOKIE="$IMBOY_CTL_COOKIE" awk '
+    $1=="-name" {print "-name " ENVIRON["GOLDEN_CTL_NODE"]; next}
+    $1=="-setcookie" {print "-setcookie " ENVIRON["GOLDEN_CTL_COOKIE"]; n++; next}
+    {print}
+    END {if(n!=1) exit 1}
+  ' "$source" > "$tmp"; then
+    rm -f "$tmp"
+    die "release vm.args 必须恰含一个 -setcookie"
+  fi
+  chmod 600 "$tmp"
+  mv "$tmp" "$target"
+  cat > "$RUNTIME_YML" <<'EOF'
+# Golden cleanroom runtime identity; the installation still starts in pro mode.
+# The existing backend_priv read-only mount supplies this file to relx.
+services:
+  imboy_backend:
+    environment:
+      VMARGS_PATH: /opt/imboy/priv_runtime/golden-vm.args
+EOF
+  if [ "$PROFILE" = ci ]; then
+    # No accidental public ACME traffic in CI, including the renewal sidecar.
+    cat >> "$RUNTIME_YML" <<'EOF'
+  imboy_certbot:
+    network_mode: none
+EOF
+  fi
+  export IMBOY_CTL_NODE IMBOY_CTL_COOKIE
+}
+
+prepare_golden_install() { # <backend image ref>; shared before either first pull
+  local backend_ref="$1" help key
+  help="$(bash "$DEPLOY_DIR/install.sh" --help)" \
+    || die "无法读取固定源码安装器的输入合同"
+  [[ "$help" == *--compose-file* && "$help" == *--init-cleanup-db* ]] \
+    || die "所选源码安装器不支持 runtime overlay/受控清理账号初始化；不能安全执行该 Golden 基线"
+  if [ ! -f "$DEPLOY_DIR/.env" ]; then
+    bash "$DEPLOY_DIR/install.sh" --edition community --yes >/dev/null
+  fi
+  [ -f "$DEPLOY_DIR/.env" ] || die "install.sh 第一段未生成 .env"
+  for key in API_DOMAIN ADMIN_DOMAIN CS_WIDGET_DOMAIN RTC_DOMAIN TURN_DOMAIN CERTBOT_EMAIL; do
+    env_set_var "$key" "${!key}"
+  done
+  env_set_var IMBOY_BASE_URL "https://$API_DOMAIN"
+  env_set_var BACKEND_IMAGE "$backend_ref"
+  if [ -n "$ADMIN_IMAGE_REF" ]; then env_set_var ADMIN_IMAGE "$ADMIN_IMAGE_REF"; fi
+  if [ -n "$PG_IMAGE_REF" ]; then env_set_var PG_IMAGE "$PG_IMAGE_REF"; fi
+  if [ -n "$WIDGET_IMAGE_REF" ]; then env_set_var IMBOY_WIDGET_IMAGE "$WIDGET_IMAGE_REF"; fi
+  prepare_golden_cleanup
+  prepare_golden_control
+  if [ "$PROFILE" = ci ]; then preset_ci_certs; fi
+  write_compose_override
+  install_ctl_wrapper
+  make_psql_wrapper
+}
 
 # 解析 DATA_DIR 为绝对路径（证书预置/数据目录断言共用；相对路径基于 DEPLOY_DIR）
 resolve_data_dir() {
@@ -130,6 +267,7 @@ run_install_phase2() {
   printf '\n'
   bash "$DEPLOY_DIR/install.sh" \
     --edition community --yes \
+    --compose-file "$RUNTIME_YML" --init-cleanup-db \
     --admin-phone "$ADMIN_PHONE" --admin-password "$ADMIN_PASSWORD" \
     2>&1 | while IFS= read -r line; do
         printf '%s\n' "$line"
@@ -140,21 +278,34 @@ run_install_phase2() {
       后端日志: $RUN_DIR/backend_failure.log"; return "$rc"; }
 }
 
+verify_golden_cleanup() {
+  # The controlled helper requires this exact base filename and changes into
+  # deploy/ itself. Overlay paths remain absolute and validation is read-only.
+  COMPOSE_FILES="docker-compose.community.yml $RUNTIME_YML $OVERRIDE_YML" \
+    bash "$DEPLOY_DIR/init-cleanup-db.sh"
+}
+
 # 从打点日志提取 install.sh 内部环节（say() 锚点行；缺失则记 0 并注明）
 # 结果写入调用方可见的 SEC_STACK/SEC_TLS/SEC_INITTAIL/TLS_NOTE
 # shellcheck disable=SC2034  # 计时变量由调用方（golden_install.sh report 等）读取
 parse_install_stages() {
   local a_stack a_tls a_tls_skip a_wait install_end
   a_stack="$(anchor_ts '创建网络并启动服务')"
-  a_tls="$(anchor_ts '签发 TLS 证书')"
+  a_tls="$(anchor_ts '校验并签发 TLS 证书')"
+  [ -n "$a_tls" ] || a_tls="$(anchor_ts '签发 TLS 证书')"
   a_tls_skip="$(anchor_ts 'TLS 证书已存在')"
-  a_wait="$(anchor_ts '等待后端启动')"
+  a_wait="$(anchor_ts '等待后端健康')"
+  [ -n "$a_wait" ] || a_wait="$(anchor_ts '等待后端启动')"
   install_end="${1:-0}"
 
   if [ -n "$a_stack" ] && { [ -n "$a_tls" ] || [ -n "$a_tls_skip" ]; }; then
     if [ -n "$a_tls" ]; then
       SEC_STACK=$(( a_tls - a_stack ))
-      TLS_NOTE="正式签发（Let's Encrypt）"
+      if [ "${PROFILE:-host}" = ci ]; then
+        TLS_NOTE="CI 自签 fixture：本地 HTTP-01/nginx 校验，未验证公网 TLS"
+      else
+        TLS_NOTE="证书校验/按需签发（Let's Encrypt）"
+      fi
     else
       SEC_STACK=$(( a_tls_skip - a_stack ))
       TLS_NOTE="SKIPPED（ci 预置自签证书，install.sh 幂等跳过）"
@@ -262,17 +413,24 @@ install_ctl_wrapper() {
     mv -f "$CLONE_DIR/scripts/imboy_ctl.golden-real" "$CLONE_DIR/scripts/imboy_ctl"
   fi
   mv "$CLONE_DIR/scripts/imboy_ctl" "$CLONE_DIR/scripts/imboy_ctl.golden-real"
-  cat > "$CLONE_DIR/scripts/imboy_ctl" <<EOF
+  cat > "$CLONE_DIR/scripts/imboy_ctl" <<'EOF'
 #!/usr/bin/env bash
-# ${GOLDEN_TAG:-golden} 生成的容器内转发 wrapper（原实现: imboy_ctl.golden-real）。
+# Golden 容器内转发 wrapper（原实现: imboy_ctl.golden-real）。
 # 原因：release 节点 vm.args 为 -kernel inet_dist_use_interface {127,0,0,1}，
 # 宿主机 escript 无法直连容器节点；与 install.sh 超管创建同款手法：容器内
 # ERTS 执行（镜像已 COPY /opt/imboy/bin/imboy_ctl）。
-exec docker compose -f '$COMMUNITY_YML' exec -T \\
-  -e IMBOY_CTL_NODE='imboy_dev@127.0.0.1' \\
-  -e IMBOY_CTL_COOKIE='imboy_local_dev_only' \\
-  imboy_backend \\
-  sh -c 'exec /opt/imboy/erts-*/bin/escript /opt/imboy/bin/imboy_ctl "\$@"' golden "\$@"
+set +x
+set +v
+set -euo pipefail
+: "${IMBOY_CTL_NODE:?Golden release node identity is required}"
+: "${IMBOY_CTL_COOKIE:?Golden release cookie is required}"
+EOF
+  printf 'exec docker compose -f %q -f %q exec -T \\\n' \
+    "$COMMUNITY_YML" "$RUNTIME_YML" >> "$CLONE_DIR/scripts/imboy_ctl"
+  cat >> "$CLONE_DIR/scripts/imboy_ctl" <<'EOF'
+  -e IMBOY_CTL_NODE -e IMBOY_CTL_COOKIE \
+  imboy_backend \
+  sh -c 'exec /opt/imboy/erts-*/bin/escript /opt/imboy/bin/imboy_ctl "$@"' golden "$@"
 EOF
   chmod +x "$CLONE_DIR/scripts/imboy_ctl"
 }
@@ -280,31 +438,53 @@ EOF
 make_psql_wrapper() {
   # smoke_8step.sh 的 C2C 落库断言用宿主机 psql；cleanroom 不强制安装
   # postgresql-client，改为转发到 pg 容器内执行（-e 从调用方 env 取值）。
-  cat > "$BIN_DIR/psql" <<EOF
+  cat > "$BIN_DIR/psql" <<'EOF'
 #!/usr/bin/env bash
-# ${GOLDEN_TAG:-golden} 生成：psql -> docker compose exec imboy_pg18 psql
-exec docker compose -f '$COMMUNITY_YML' exec -T \\
-  -e PGPASSWORD -e PGUSER -e PGDATABASE imboy_pg18 psql "\$@"
+# Golden: psql -> docker compose exec imboy_pg18 psql
+EOF
+  printf 'exec docker compose -f %q -f %q exec -T \\\n' \
+    "$COMMUNITY_YML" "$RUNTIME_YML" >> "$BIN_DIR/psql"
+  cat >> "$BIN_DIR/psql" <<'EOF'
+  -e PGPASSWORD -e PGUSER -e PGDATABASE imboy_pg18 psql "$@"
 EOF
   chmod +x "$BIN_DIR/psql"
 }
 
 preset_ci_certs() {
-  # ci 模式 TLS bypass：为两个假域名预置 1 天期自签证书，让 install.sh 走
-  # "TLS 证书已存在，跳过签发" 的幂等分支（不触发 certbot 向公网申请）。
-  # nginx 引用 /etc/letsencrypt/live/<domain>/{fullchain,privkey}.pem，两域名都要。
-  local data_dir base d
-  data_dir="$(resolve_data_dir)"
-  base="$data_dir"
-  for d in "$API_DOMAIN" "$ADMIN_DOMAIN"; do
-    mkdir -p "$base/certbot/conf/live/$d"
+  # CI 专用 fixture：无生产 bootstrap marker / ACME lineage，保留本地 HTTP-01
+  # 与 nginx 校验；不修改生产首签判定，不代表公网 TLS/RTC 已验证。
+  [ "$PROFILE" = ci ] || die "自签 fixture 仅允许在 --profile ci 使用"
+  local base d live
+  local domains=("$API_DOMAIN" "$ADMIN_DOMAIN" "$CS_WIDGET_DOMAIN" "$RTC_DOMAIN" "$TURN_DOMAIN")
+  base="$(resolve_data_dir)/certbot/conf"
+  case "$(env_get_var UPTRACE_ENABLED | tr '[:upper:]' '[:lower:]')" in
+    true|1)
+      d="$(env_get_var UPTRACE_DOMAIN)"
+      [[ "$d" =~ ^[A-Za-z0-9]([A-Za-z0-9.-]*[A-Za-z0-9])$ && "$d" == *.* && "$d" != *..* ]] \
+        || die "UPTRACE_ENABLED 要求有效 UPTRACE_DOMAIN"
+      case "$d" in *example.com*|*CHANGE_ME*) die "UPTRACE_DOMAIN 仍为占位符" ;; esac
+      domains+=("$d") ;;
+  esac
+  for d in "${domains[@]}"; do
+    live="$base/live/$d"
+    [ ! -e "$live/.imboy-selfsigned" ] && [ ! -e "$base/archive/$d" ] \
+      && [ ! -e "$base/renewal/$d.conf" ] \
+      || die "CI 证书目录含生产 bootstrap/ACME 状态，拒绝覆盖：$d"
+    if [ -s "$live/fullchain.pem" ] && [ -s "$live/privkey.pem" ]; then
+      continue
+    fi
+    [ ! -e "$live/fullchain.pem" ] && [ ! -e "$live/privkey.pem" ] \
+      || die "CI 证书 fixture 不完整，拒绝覆盖：$d"
+    mkdir -p "$live"
     openssl req -x509 -nodes -newkey rsa:2048 -days 1 \
-      -keyout "$base/certbot/conf/live/$d/privkey.pem" \
-      -out    "$base/certbot/conf/live/$d/fullchain.pem" \
-      -subj "/CN=$d" 2>/dev/null
+      -keyout "$live/privkey.pem" -out "$live/fullchain.pem" \
+      -subj "/CN=$d" -addext "subjectAltName=DNS:$d" 2>/dev/null \
+      || die "CI 证书 fixture 生成失败：$d"
+    chmod 600 "$live/privkey.pem"
+    [ -s "$live/fullchain.pem" ] && [ -s "$live/privkey.pem" ] \
+      || die "CI 证书 fixture 文件缺失：$d"
   done
-  printf '  ci 模式：已预置自签证书（%s/certbot/conf/live/{%s,%s}）\n' \
-    "$base" "$API_DOMAIN" "$ADMIN_DOMAIN"
+  printf '  ci 模式：%s 域自签 fixture 就绪；保留本地 HTTP-01/nginx 校验，未验证公网 TLS\n' "${#domains[@]}"
 }
 
 # ── cleanroom 断言（防脏环境假绿灯；各子断言 <50 行，行为与 G1 交付一致）────

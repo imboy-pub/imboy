@@ -47,6 +47,8 @@
 #     --image-ref ghcr.io/imboy-pub/imboy-backend@sha256:abc… \
 #     --git-ref v1.0.0-rc.1 --profile host \
 #     --api-domain api.example.com --admin-domain admin.example.com \
+#     --cs-widget-domain cs.example.com --rtc-domain rtc.example.com \
+#     --turn-domain turn.example.com \
 #     --certbot-email ops@example.com \
 #     --admin-phone 13800138000 --admin-password 'S3curePass2026'
 #
@@ -64,6 +66,8 @@
 # 公共函数库（2026-08-22 P2-U1 抽出）：日志/env 读写/hosts 注入/健康等待/
 # wrapper 生成/证书预置/cleanroom 断言/install 执行/8 步链执行统一在
 # scripts/golden_common.sh，本脚本与 golden_upgrade.sh 共用（GOLDEN_TAG 区分）。
+set +x
+set +v
 set -euo pipefail -E
 
 # shellcheck disable=SC2034  # GOLDEN_TAG/GOLDEN_MARK/CURRENT_STAGE/STAGE_HINT 为跨文件接口变量，由 golden_common.sh 的 die()/hosts_* 消费
@@ -95,6 +99,9 @@ Golden Install 金安装门禁 / Usage: bash scripts/golden_install.sh --image-r
 host 模式必填（ci 模式自动生成假域名，可覆盖）:
   --api-domain <domain>   后端 API 域名（A 记录须已指向本机）
   --admin-domain <domain> 管理后台域名
+  --cs-widget-domain <domain> 客服 Widget 域名
+  --rtc-domain <domain>   LiveKit 信令域名
+  --turn-domain <domain>  LiveKit TURN 域名（五域必须互不相同）
   --certbot-email <email> 证书到期通知邮箱
 
 超管（透传 install.sh，冒烟链步骤 4 需要凭据，必填成对）:
@@ -116,6 +123,12 @@ host 模式必填（ci 模式自动生成假域名，可覆盖）:
   --keep                  结束后保留现场（clone 目录 + compose 栈 + 日志）
   -h, --help              显示本帮助
 
+Golden cleanroom 自动生成独立清理凭据与随机 release cookie；只在临时现场保存。
+可通过 IMBOY_DIRECT_CLEANUP_PG_USER / IMBOY_DIRECT_CLEANUP_PG_PASSWORD 和
+IMBOY_CTL_NODE / IMBOY_CTL_COOKIE 提供有效值。已有值保持；清理密码至少 32 位，
+cookie 为 32–255 位，均仅含字母、数字、下划线或连字符；清理密码不接受占位值。
+The installer creates only a missing cleanup LOGIN and verifies its real privileges.
+
 环境变量（干跑/测试口）:
   GOLDEN_HOSTS_FILE       hosts 注入目标文件，默认 /etc/hosts
 EOF
@@ -130,6 +143,9 @@ GIT_REF=""
 PROFILE="host"
 API_DOMAIN=""
 ADMIN_DOMAIN=""
+CS_WIDGET_DOMAIN=""
+RTC_DOMAIN=""
+TURN_DOMAIN=""
 CERTBOT_EMAIL=""
 ADMIN_PHONE=""
 ADMIN_PASSWORD=""
@@ -156,8 +172,16 @@ while [ $# -gt 0 ]; do
     --api-domain=*)     API_DOMAIN="${1#*=}"; shift ;;
     --admin-domain)     [ $# -ge 2 ] || die "--admin-domain 需要值"; ADMIN_DOMAIN="$2"; shift 2 ;;
     --admin-domain=*)   ADMIN_DOMAIN="${1#*=}"; shift ;;
+    --cs-widget-domain) [ $# -ge 2 ] || die "--cs-widget-domain 需要值"; CS_WIDGET_DOMAIN="$2"; shift 2 ;;
+    --cs-widget-domain=*) CS_WIDGET_DOMAIN="${1#*=}"; shift ;;
+    --rtc-domain)       [ $# -ge 2 ] || die "--rtc-domain 需要值"; RTC_DOMAIN="$2"; shift 2 ;;
+    --rtc-domain=*)     RTC_DOMAIN="${1#*=}"; shift ;;
+    --turn-domain)      [ $# -ge 2 ] || die "--turn-domain 需要值"; TURN_DOMAIN="$2"; shift 2 ;;
+    --turn-domain=*)    TURN_DOMAIN="${1#*=}"; shift ;;
     --certbot-email)    [ $# -ge 2 ] || die "--certbot-email 需要值"; CERTBOT_EMAIL="$2"; shift 2 ;;
-    --certbot-email=*)  CERTBOT_EMAIL="${1#*=}"; shift ;;
+    --certbot-email=*)
+      # shellcheck disable=SC2034 # consumed by golden_common.sh's shared preparation
+      CERTBOT_EMAIL="${1#*=}"; shift ;;
     --admin-phone)      [ $# -ge 2 ] || die "--admin-phone 需要值（手机号）"; ADMIN_PHONE="$2"; shift 2 ;;
     --admin-phone=*)    ADMIN_PHONE="${1#*=}"; shift ;;
     --admin-password)   [ $# -ge 2 ] || die "--admin-password 需要值（明文密码）"; ADMIN_PASSWORD="$2"; shift 2 ;;
@@ -223,16 +247,7 @@ case "$BUDGET" in
   ''|*[!0-9]*) die "--budget 必须是正整数秒（当前: ${BUDGET}）" ;;
 esac
 
-if [ "$PROFILE" = "host" ]; then
-  { [ -n "$API_DOMAIN" ] && [ -n "$ADMIN_DOMAIN" ] && [ -n "$CERTBOT_EMAIL" ]; } \
-    || die "host 模式必须提供 --api-domain / --admin-domain / --certbot-email（真域名真签发）
-  （CI 无公网域名场景请用 --profile ci）"
-else
-  # ci 模式：假域名（.internal 保留 TLD 不可能被公网解析，防误伤真实域名）
-  API_DOMAIN="${API_DOMAIN:-api.golden-ci.imboy.internal}"
-  ADMIN_DOMAIN="${ADMIN_DOMAIN:-admin.golden-ci.imboy.internal}"
-  CERTBOT_EMAIL="${CERTBOT_EMAIL:-golden-ci@imboy.invalid}"
-fi
+configure_golden_domains
 
 # ── 目录与全局状态 ───────────────────────────────────────────────────────────
 HOSTS_FILE="${GOLDEN_HOSTS_FILE:-/etc/hosts}"
@@ -240,6 +255,7 @@ WORKDIR="${WORKDIR:-$PWD/.golden-install}"
 CLONE_DIR="$WORKDIR/imboy"
 DEPLOY_DIR="$CLONE_DIR/deploy"
 COMMUNITY_YML="$DEPLOY_DIR/docker-compose.community.yml"
+RUNTIME_YML="$DEPLOY_DIR/docker-compose.golden-runtime.yml"
 OVERRIDE_YML="$DEPLOY_DIR/docker-compose.golden-override.yml"
 RUN_DIR="$WORKDIR/run-$(date +%Y%m%d%H%M%S)"
 INSTALL_LOG="$RUN_DIR/install_run.log"
@@ -247,8 +263,8 @@ BIN_DIR="$RUN_DIR/bin"
 mkdir -p "$WORKDIR" "$RUN_DIR" "$BIN_DIR"
 : > "$INSTALL_LOG"
 
-COMPOSE="docker compose -f $COMMUNITY_YML"
-COMPOSE_O="docker compose -f $COMMUNITY_YML -f $OVERRIDE_YML"
+COMPOSE="docker compose -f $COMMUNITY_YML -f $RUNTIME_YML"
+COMPOSE_O="$COMPOSE -f $OVERRIDE_YML"
 BASE_URL="http://127.0.0.1:9800"
 
 CURRENT_STAGE=""
@@ -355,7 +371,7 @@ report() { # <verdict> <total> <idem: PASS|FAIL>
   printf '\033[1;36m════════════ Golden Install 分环节计时（§4.2）════════════\033[0m\n'
   printf '%-34s %8s  %s\n' '环节' '秒' '备注'
   printf '%-34s %8s  %s\n' 'clone'                    "$SEC_CLONE"    'git clone（--branch/--depth 1）'
-  printf '%-34s %8s  %s\n' 'init（env 配置）'          "$SEC_ENVINIT"  '.env 生成+3 变量+BACKEND_IMAGE+证书预置+wrapper'
+  printf '%-34s %8s  %s\n' 'init（env 配置）'          "$SEC_ENVINIT"  '五域+清理凭据+runtime 身份+镜像+CI 证书+wrapper'
   printf '%-34s %8s  %s\n' '拉镜像（pull）'            "$SEC_PULL"     'docker compose pull（7 核心镜像）'
   printf '%-34s %8s  %s\n' '起栈（stack up）'          "$SEC_STACK"    'install.sh: 创建网络并启动服务'
   printf '%-34s %8s  %s\n' 'TLS 签发'                  "$SEC_TLS"      "${TLS_NOTE:-—}"
@@ -375,7 +391,8 @@ report() { # <verdict> <total> <idem: PASS|FAIL>
   printf '  restart 幂等（§3.3）: %s\n' "$idem"
   if [ "$PROFILE" = "ci" ]; then
     printf '\n  ── ci 模式与 §4.1 的差异（客观约束，透明披露）──\n'
-    printf '  · 无公网域名：假域名 %s/%s + 预置自签证书（install.sh 幂等跳过签发）\n' "$API_DOMAIN" "$ADMIN_DOMAIN"
+    printf '  · 五域 CI 自签证书：%s/%s/%s/%s/%s；仅检查本地 HTTP-01/nginx，未验证公网 TLS\n' \
+      "$API_DOMAIN" "$ADMIN_DOMAIN" "$CS_WIDGET_DOMAIN" "$RTC_DOMAIN" "$TURN_DOMAIN"
     printf '  · 冒烟直连 %s（nginx 443 公网链路未验证；admin login 走 BASE_URL 等价路径）\n' "$BASE_URL"
     printf '  · backend IMBOYENV=dev（override，仅冒烟阶段）：万能码/captcha 自动化前提\n'
   fi
@@ -415,24 +432,12 @@ fi
 [ -f "$DEPLOY_DIR/install.sh" ] || die "clone 完成但缺少 deploy/install.sh（仓库不完整？）"
 SEC_CLONE=$(( $(now) - t ))
 
-# 3) init（env 配置）：两段式 install.sh 第一段生成 .env → 填变量 → 预置 → wrapper
+# 3) 共享现场准备：五域/清理身份/runtime/镜像在第一次 Compose 解析前就绪。
 CURRENT_STAGE="env-init"
 STAGE_HINT="第一段 install.sh 失败看上方输出；常见: openssl 缺失 / .env.example 缺失"
 say "[init] 生成 .env 并配置（install.sh 两段式第一段）"
 t=$(now)
-bash "$DEPLOY_DIR/install.sh" --edition community --yes >/dev/null
-[ -f "$DEPLOY_DIR/.env" ] || die "install.sh 第一段未生成 .env"
-env_set_var API_DOMAIN "$API_DOMAIN"
-env_set_var ADMIN_DOMAIN "$ADMIN_DOMAIN"
-env_set_var CERTBOT_EMAIL "$CERTBOT_EMAIL"
-env_set_var BACKEND_IMAGE "$IMAGE_REF"
-if [ -n "$ADMIN_IMAGE_REF" ]; then env_set_var ADMIN_IMAGE "$ADMIN_IMAGE_REF"; fi
-if [ -n "$PG_IMAGE_REF" ]; then env_set_var PG_IMAGE "$PG_IMAGE_REF"; fi
-if [ -n "$WIDGET_IMAGE_REF" ]; then env_set_var IMBOY_WIDGET_IMAGE "$WIDGET_IMAGE_REF"; fi
-if [ "$PROFILE" = "ci" ]; then preset_ci_certs; fi
-write_compose_override
-install_ctl_wrapper
-make_psql_wrapper
+prepare_golden_install "$IMAGE_REF"
 SEC_ENVINIT=$(( $(now) - t ))
 
 # 4) 拉镜像（独立环节，install.sh 的 up -d 复用本地镜像）

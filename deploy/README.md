@@ -87,6 +87,34 @@ pull; changing package visibility remains an owner-approved operation.
 当前 Golden 的现场前置、五域配置和清理数据库账号均须实际满足，不能为了发布
 跳过失败。源码或离线交付 CI 成功不等于这些门禁已通过。
 
+Golden Install/Upgrade 在首次拉取前共用现场准备：填齐五域及 API origin，
+准备独立清理 LOGIN 的用户名与随机凭据，并经安装器 `--init-cleanup-db`
+受控创建缺失账号、验证实际认证与权限；已有有效凭据保留，不重置已有账号。
+Golden 可通过 `IMBOY_DIRECT_CLEANUP_PG_USER` / `IMBOY_DIRECT_CLEANUP_PG_PASSWORD`
+提供清理凭据，通过 `IMBOY_CTL_NODE` / `IMBOY_CTL_COOKIE` 提供节点身份。
+清理密码至少 32 位、cookie 为 32–255 位，均只接受字母数字及 `_`、`-`；
+不合法的已提供值和占位的清理密码会被拒绝，不静默换值。此限制仅用于 Golden 的临时
+配置写入，生产安装器原有账号规则不变。
+`host` 模式须显式提供 `--api-domain`、`--admin-domain`、`--cs-widget-domain`、
+`--rtc-domain`、`--turn-domain` 和 `--certbot-email`。`ci` 模式使用五个假域名
+和完整自签 fixture（开启 Uptrace 时包括其域名），仍执行本地 HTTP-01 路由
+及 Nginx 配置检查；Certbot 的 CI 网络被隔离，不能视作公网 TLS/RTC 验证。
+
+Each Golden cleanroom creates a random release cookie, stored only in a mode
+`0600` runtime `vm.args` under its private working data. A separate runtime
+overlay selects that file through relx `VMARGS_PATH`; the server, health probes,
+installer and smoke CLI use the same node identity and cookie. Installation
+keeps `IMBOYENV=pro`; only the later smoke overlay enables `dev`. Upgrade
+refreshes VM flags from the target source while retaining the run's cookie.
+Never upload `.env`, runtime VM arguments, private keys or the cleanroom data.
+
+社区安装器可重复传入 `--compose-file <overlay>`，在社区基准和已选 overlay 之后追加，并将
+相同组合贯穿 preflight、拉取、起栈、TLS、清理账号验证和 sanity。文件须存在、
+可读且路径不含空白；这不会跳过任何生产检查。商务版拒绝此参数，继续沿用
+受控交付的原有 Compose/策略组合。Golden 的旧基线若不支持这个
+输入及 `--init-cleanup-db`，须明确阻断，不能修改基线源码后声称原版本升级
+已通过。无严格稳定标签时仍按 Release 原策略记录 `SKIPPED_FIRST_RELEASE`。
+
 首次写最终标签前，workflow 保存四镜像及来源 receipt。最终标签已存在且摘要
 一致则可重用；摘要不同、无法判断权限或网络错误时停止。写后再次比对摘要和
 匿名拉取证据，再以 `--verify-tag` 在原 Git 标签创建 Release；预发布标记为
