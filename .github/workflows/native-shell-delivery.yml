@@ -1,0 +1,47 @@
+name: Native Shell delivery contracts
+
+on:
+  pull_request:
+    branches: [main, dev]
+    paths:
+      - 'deploy/native-shell/**'
+      - '.github/workflows/native-shell-delivery.yml'
+  push:
+    branches: [main, dev]
+    paths:
+      - 'deploy/native-shell/**'
+      - '.github/workflows/native-shell-delivery.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  contracts:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Prepare local contract-test dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes --no-install-recommends \
+            bash curl jq openssl ca-certificates tar coreutils util-linux \
+            passwd iproute2 file imagemagick fonts-dejavu-core git
+      - name: Verify the frozen material package
+        working-directory: deploy/native-shell
+        shell: bash
+        run: |
+          set -euo pipefail
+          source lib/common.sh
+          verify_manifest .
+      - name: Run synthetic installer and publisher contracts
+        working-directory: deploy/native-shell
+        shell: bash
+        run: |
+          set -euo pipefail
+          bash tests/run.sh
+          bash tools/test-payload-tools.sh
+          bash tools/test-host-tools.sh

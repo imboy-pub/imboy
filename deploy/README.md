@@ -5,6 +5,20 @@ One-command deployment of IMBoy to a Linux server.
 
 > 文档分工：本页是 **Docker Compose 客户安装入口**，使用 `deploy/.env.example`；[day1-quickstart.md](../docs/guides/operations/deployment/day1-quickstart.md) 与 [deployment.md](../docs/guides/operations/deployment/deployment.md) 是裸机/release 或定制运行时参考，不能混用其配置模板和启动步骤。备份恢复见 [backup-restore.md](../docs/guides/operations/deployment/backup-restore.md)。
 
+## 原生 Shell 固定版本交付包 / Pinned native Shell kit
+
+[原生 Shell 安装材料](native-shell/README.md) 提供单机 systemd 的安装、升级、
+备份恢复、配置模板与陌生人验收步骤，安装工具不依赖 Python 或 Docker。
+该工具包固定于 `cb95fa72f9bc617d0f30ddd6b98da51f39cfd2af` /
+`1.0.0-alpha.83` / 迁移头 `243`，初始材料版为 `PAYLOAD_READY=no`。
+发布方须先供应原生产物并完成真实演练；当前 main / alpha.84 的新增安装合同
+需要单独适配，不能只修改版本号或模板哈希后使用。
+
+The native Shell kit is a separate, source-pinned installation toolkit for
+alpha.83. It contains no runtime binaries or site secrets. Publisher assembly
+and real-host acceptance are required; it does not certify current main or
+alpha.84. Follow its own templates and manuals for that frozen deployment scope.
+
 ## 独立社区版 ZIP / Standalone community ZIP
 
 交付客户时不要只压缩 `deploy/`：原安装器还会检查并调用

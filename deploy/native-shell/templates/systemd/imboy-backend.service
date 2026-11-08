@@ -1,0 +1,31 @@
+[Unit]
+Description=IMBoy backend (native relx)
+Requires=imboy-postgresql.service imboy-garage.service
+After=network.target imboy-postgresql.service imboy-garage.service
+StartLimitIntervalSec=300
+StartLimitBurst=3
+[Service]
+Type=simple
+User=imboy
+Group=imboy
+WorkingDirectory=/opt/imboy/current
+EnvironmentFile=/etc/imboy/backend.env
+Environment=RELX_CONFIG_PATH=/etc/imboy/sys.config
+Environment=VMARGS_PATH=/etc/imboy/vm.args
+Environment=RELX_REPLACE_OS_VARS=
+Environment=ERL_EPMD_ADDRESS=127.0.0.1
+Environment=ERL_CRASH_DUMP=/var/lib/imboy/backend/erl_crash.dump
+Environment=RUNNER_LOG_DIR=/var/lib/imboy/backend/log
+ExecStart=/opt/imboy/current/bin/imboy foreground
+Restart=on-failure
+RestartSec=10
+TimeoutStopSec=180
+LimitNOFILE=65536
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=strict
+ReadWritePaths=/var/lib/imboy/backend
+[Install]
+WantedBy=multi-user.target

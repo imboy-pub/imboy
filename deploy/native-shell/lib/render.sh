@@ -1,0 +1,1167 @@
+#!/usr/bin/env bash
+# Native IMBoy runtime configuration renderer; automation is Bash + awk only.
+# Source contract: imboy-pub/imboy@cb95fa72f9bc617d0f30ddd6b98da51f39cfd2af.
+# The complete upstream example is embedded below so its throttle/cron settings
+# survive rendering. Runtime configuration is separate from immutable releases.
+# Never source an operator-supplied .env. The caller supplies validated variables.
+#
+# Usage: render_backend_config RELEASE_ROOT OUTPUT_DIRECTORY
+# This function changes only OUTPUT_DIRECTORY. The installer applies ownership
+# and creates DATA_DIR/backend/log/sasl and DATA_DIR/backend/mnesia afterwards.
+
+# Changing the upstream config requires a reviewed renderer update and new UAT.
+IMBOY_NATIVE_CONFIG_SHA256=cf111ef0af8d713fdd6c80e4fcfbfcaf01fd3161b048eb31dc1a1bb5a2da4616
+
+render_backend_config() (
+    set -euo pipefail
+    umask 077
+    [[ $# == 2 ]] || { printf '%s\n' 'render: expected RELEASE_ROOT OUTPUT_DIRECTORY' >&2; exit 2; }
+    local release_path=$1 output_dir=$2 tmp name value label release_version
+    local -a labels
+    local conf_dir=${CONF_DIR:-/etc/imboy}
+    local data_dir=${DATA_DIR:-/var/lib/imboy}
+    local http_port=${HTTP_PORT:-9800} pg_port=${PG_PORT:-5432}
+    local pg_database=${PG_DATABASE:-imboy} pg_user=${PG_USER:-imboy}
+    local private_bucket=${PRIVATE_BUCKET:-imboy} public_bucket=${PUBLIC_BUCKET:-imboy-public}
+    local garage_region=${GARAGE_REGION:-garage}
+    local app_timezone=${APP_TIMEZONE:-Asia/Shanghai}
+    local cors_origins=${CORS_ORIGINS:-}
+    fail() { printf 'render: %s\n' "$*" >&2; exit 2; }
+
+    [[ -d "$release_path/releases" && -s "$release_path/releases/start_erl.data" ]] ||
+        fail 'release is missing releases/start_erl.data'
+    read -r _ release_version < "$release_path/releases/start_erl.data" || [[ -n ${release_version:-} ]]
+    [[ $release_version =~ ^[a-zA-Z0-9._-]+$ && $release_version != *..* ]] || fail 'invalid release version'
+    [[ -f $release_path/releases/$release_version/sys.config ]] || fail 'release configuration is missing'
+    [[ $(sha256sum "$release_path/releases/$release_version/sys.config" | cut -d ' ' -f1) == "$IMBOY_NATIVE_CONFIG_SHA256" ]] || fail 'upstream config changed; publisher must update and validate this renderer'
+    for value in "$conf_dir" "$data_dir"; do
+        [[ $value =~ ^/[A-Za-z0-9_./-]+$ && $value != */../* && $value != */.. ]] ||
+            fail 'configuration and data paths must be absolute, without whitespace or traversal'
+    done
+    for name in API_DOMAIN S3_DOMAIN FILES_DOMAIN; do
+        value=${!name:-}
+        [[ $value =~ ^[A-Za-z0-9]([A-Za-z0-9.-]*[A-Za-z0-9])?$ && $value == *.* ]] ||
+            fail "$name must be a hostname without scheme or path"
+        [[ ${#value} -le 253 && $value != *..* ]] || fail "$name has an invalid DNS name length or empty label"
+        IFS=. read -r -a labels <<< "$value"
+        for label in "${labels[@]}"; do
+            [[ $label =~ ^[A-Za-z0-9]([A-Za-z0-9-]{0,61}[A-Za-z0-9])?$ ]] || fail "$name has an invalid DNS label"
+        done
+    done
+    [[ $API_DOMAIN != "$S3_DOMAIN" && $API_DOMAIN != "$FILES_DOMAIN" && $S3_DOMAIN != "$FILES_DOMAIN" ]] ||
+        fail 'API, signed S3, and public files need distinct hostnames'
+    for value in "$http_port" "$pg_port"; do
+        [[ $value =~ ^[1-9][0-9]{1,4}$ ]] && (( value <= 65535 )) ||
+            fail 'port is outside the supported range'
+    done
+    for value in "$pg_database" "$pg_user"; do
+        [[ $value =~ ^[a-z][a-z0-9_]{0,62}$ ]] || fail 'invalid database or role name'
+    done
+    for value in "$private_bucket" "$public_bucket" "$garage_region"; do
+        [[ $value =~ ^[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]$ ]] ||
+            fail 'invalid bucket or region name'
+    done
+    [[ $private_bucket != "$public_bucket" ]] || fail 'public and private buckets must differ'
+    [[ $app_timezone =~ ^[A-Za-z_+-]+(/[A-Za-z0-9_+-]+)*$ ]] || fail 'invalid IANA timezone name'
+    [[ -z $cors_origins || $cors_origins =~ ^https://[A-Za-z0-9.-]+(,https://[A-Za-z0-9.-]+)*$ ]] || fail 'invalid CORS origin list'
+
+    # All generated secret values are single-line alphanumeric; no escaping,
+    # shell evaluation, command-line arguments or plaintext diagnostic output.
+    for name in PG_PASSWORD JWT_SECRET POSTGRE_AES_KEY ADM_COOKIE_SECRET SOLIDIFIED_KEY PASSWORD_SALT ERLANG_COOKIE; do
+        value=${!name:-}
+        [[ $value =~ ^[A-Za-z0-9]{32,128}$ ]] || fail "$name is missing or has an invalid generated-secret format"
+    done
+    [[ ${#SOLIDIFIED_KEY} == 32 && ${#POSTGRE_AES_KEY} == 32 ]] ||
+        fail 'SOLIDIFIED_KEY and POSTGRE_AES_KEY must be exactly 32 ASCII bytes'
+    [[ ${SOLIDIFIED_KEY_IV:-} =~ ^[A-Za-z0-9]{16}$ ]] ||
+        fail 'SOLIDIFIED_KEY_IV must be exactly 16 ASCII bytes'
+    [[ $JWT_SECRET != "$POSTGRE_AES_KEY" && $JWT_SECRET != "$ADM_COOKIE_SECRET" && $POSTGRE_AES_KEY != "$ADM_COOKIE_SECRET" ]] ||
+        fail 'JWT, PostgreSQL AES, and admin-cookie secrets must be independent'
+    [[ ${GARAGE_ACCESS_KEY:-} =~ ^[A-Za-z0-9]{16,128}$ ]] || fail 'GARAGE_ACCESS_KEY is missing or invalid'
+    [[ ${GARAGE_SECRET_KEY:-} =~ ^[A-Za-z0-9]{32,128}$ ]] || fail 'GARAGE_SECRET_KEY is missing or invalid'
+    if [[ -n ${CS_SIGNING_SECRET:-} ]]; then
+        [[ $CS_SIGNING_SECRET =~ ^[A-Za-z0-9]{32,128}$ ]] || fail 'CS_SIGNING_SECRET has an invalid format'
+    fi
+
+    mkdir -p -- "$output_dir"
+    [[ ! -L "$output_dir" ]] || fail 'output directory must not be a symlink'
+    for name in sys.config vm.args backend.env; do
+        [[ ! -L "$output_dir/$name" ]] || fail "refusing symlink output: $name"
+    done
+    for name in sys.config.src sys.config.orig vm.args.src vm.args.orig; do
+        [[ ! -e "$output_dir/$name" ]] || fail 'stale relx .src/.orig files must be reconciled before rendering'
+    done
+    tmp=$(mktemp -d -- "$output_dir/.render.XXXXXX")
+    trap 'rm -rf -- "$tmp"' EXIT
+
+    imboy_native_base_config | awk \
+        -v api="$API_DOMAIN" -v files="$FILES_DOMAIN" \
+        -v conf="$conf_dir" -v data="$data_dir" \
+        -v http="$http_port" -v pgp="$pg_port" -v pgdb="$pg_database" -v pgu="$pg_user" \
+        -v private_bucket="$private_bucket" -v public_bucket="$public_bucket" \
+        -v region="$garage_region" -v zone="$app_timezone" -v origins="$cors_origins" '
+      BEGIN { cors=0; llm=0; ice=0; }
+      cors {
+        if ($0 ~ /^        \]\},[[:space:]]*$/) cors=0;
+        next;
+      }
+      llm {
+        if ($0 ~ /^        \]\},[[:space:]]*$/) llm=0;
+        next;
+      }
+      ice {
+        if ($0 ~ /^        \]\},[[:space:]]*$/) ice=0;
+        next;
+      }
+      /^\[[[:space:]]*$/ {
+        print;
+        print "    {mnesia, [{dir, \"" data "/backend/mnesia\"}]},";
+        n["root"]++; next;
+      }
+      /^    \{imboy, \[/ {
+        print;
+        print "        {product_profile, phase1_delivery},";
+        print "        {dnd_fallback_zone, <<\"" zone "\">>},";
+        n["profile"]++; next;
+      }
+      /^        \{http_port,/ {
+        print "        {http_port, " http "},";
+        n["http"]++; next;
+      }
+      /^        % \{listen_ip,/ {
+        print "        {listen_ip, {127, 0, 0, 1}},";
+        n["listen"]++; next;
+      }
+      /^        \{base_url,/ {
+        print "        {base_url, <<\"https://" api "\">>},";
+        n["base"]++; next;
+      }
+      /^        \{ws_url,/ {
+        print "        {ws_url, <<\"wss://" api "/api/v1/ws\">>},";
+        n["ws"]++; next;
+      }
+      /^        \{cors_allowed_origins, \[/ {
+        line="        {cors_allowed_origins, [<<\"https://" api "\">>";
+        count=split(origins, allowed, ",");
+        for (j=1; j<=count; j++) if (allowed[j]!="") line=line ", <<\"" allowed[j] "\">>";
+        print line "]},";
+        cors=1; n["cors"]++; next;
+      }
+      /^        \{cors_allow_localhost,/ {
+        print "        {cors_allow_localhost, false},";
+        n["localhost"]++; next;
+      }
+      /^        \{cluster_nodes,/ {
+        print "        {cluster_nodes, []},";
+        n["cluster"]++; next;
+      }
+      /^        \{dsync_enabled,/ {
+        print "        {dsync_enabled, false},";
+        n["dsync"]++; next;
+      }
+      /^        \{api_auth_switch,/ {
+        print "        {api_auth_switch, <<\"on\">>},";
+        n["api_auth"]++; next;
+      }
+      /^        \{login_pwd_rsa_encrypt,/ {
+        print "        {login_pwd_rsa_encrypt, <<\"on\">>},";
+        n["rsa"]++; next;
+      }
+      /^            endpoint =>/ {
+        print "            endpoint => <<\"http://127.0.0.1:3900\">>,";
+        n["endpoint"]++; next;
+      }
+      /^            region =>/ {
+        print "            region => <<\"" region "\">>,";
+        n["region"]++; next;
+      }
+      /^            bucket =>/ {
+        print "            bucket => <<\"" private_bucket "\">>,";
+        n["bucket"]++; next;
+      }
+      /^            public_bucket =>/ {
+        print "            public_bucket => <<\"" public_bucket "\">>,";
+        n["public_bucket"]++; next;
+      }
+      /^            public_base_url =>/ {
+        print "            public_base_url => <<\"https://" files "\">>,";
+        n["public_base"]++; next;
+      }
+      /^            access_key =>/ { print "            access_key => <<>>,"; next; }
+      /^            secret_key =>/ { print "            secret_key => <<>>"; next; }
+      /^            ws_url =>/ { print "            ws_url => <<>>,"; next; }
+      /^            api_key =>/ { print "            api_key => <<>>,"; next; }
+      /^            api_secret =>/ { print "            api_secret => <<>>"; next; }
+      /^        \{llm_providers, \[/ { print "        {llm_providers, []},"; llm=1; n["llm"]++; next; }
+      /^        \{ice_servers, \[/ { print "        {ice_servers, []},"; ice=1; n["ice"]++; next; }
+      /^            \{relay,/ { print "            {relay, \"\"},"; next; }
+      /^[[:space:]]+password => "abc54321",/ { sub(/"abc54321"/, "\"\""); n["pg_password"]++; }
+      /^[[:space:]]+username => "imboy_user",/ { sub(/"imboy_user"/, "\"" pgu "\""); n["pg_user"]++; }
+      /^[[:space:]]+database => "imboy_v1",/ { sub(/"imboy_v1"/, "\"" pgdb "\""); n["pg_database"]++; }
+      /^[[:space:]]+port => 4323,/ { sub(/4323/, pgp); n["pg_port"]++; }
+      /^        \{sasl_error_logger,/ {
+        print "        {sasl_error_logger, {file, \"" data "/backend/log/sasl-error.log\"}},";
+        n["sasl_file"]++; next;
+      }
+      /^        \{error_logger_mf_dir,/ {
+        print "        {error_logger_mf_dir, \"" data "/backend/log/sasl\"},";
+        n["sasl_dir"]++; next;
+      }
+      /^        \{log_root,/ {
+        print "        {log_root, \"" data "/backend/log\"},";
+        n["log"]++; next;
+      }
+      { print; }
+      END {
+        split("root profile http listen base ws cors localhost cluster dsync api_auth rsa endpoint region bucket public_bucket public_base llm ice sasl_file sasl_dir log", keys, " ");
+        bad=0;
+        for (i in keys) {
+          k=keys[i];
+          if (n[k]!=1) { print "render: source-template anchor mismatch: " k > "/dev/stderr"; bad=1; }
+        }
+        split("pg_password pg_user pg_database pg_port", pairs, " ");
+        for (i in pairs) {
+          k=pairs[i];
+          if (n[k]!=2) { print "render: database-template anchor mismatch: " k > "/dev/stderr"; bad=1; }
+        }
+        if (cors || llm || ice) { print "render: unterminated template section" > "/dev/stderr"; bad=1; }
+        if (bad) exit 2;
+      }
+    ' > "$tmp/sys.config"
+
+    {
+        printf '%s\n' '-name imboy@127.0.0.1'
+        printf '%s %s\n' '-setcookie' "$ERLANG_COOKIE"
+        printf '%s\n' \
+            '-kernel inet_dist_use_interface {127,0,0,1}' \
+            '-kernel inet_dist_listen_min 9100 inet_dist_listen_max 9100' \
+            '+K true' '+A 16' '+P 262144' '+Q 65536'
+    } > "$tmp/vm.args"
+
+    {
+        printf '%s\n' '# Generated locally. Contains secrets. Mode 0600; never attach to support tickets.'
+        printf '%s\n' 'IMBOYENV=pro' 'IMBOY_EDITION=community' 'IMBOY_PRODUCT_PROFILE=phase1_delivery'
+        printf 'HTTP_PORT=%s\n' "$http_port"
+        printf 'TZ=%s\n' "$app_timezone"
+        printf '%s\n' 'ERL_EPMD_ADDRESS=127.0.0.1'
+        printf 'ERL_CRASH_DUMP=%s/backend/erl_crash.dump\n' "$data_dir"
+        printf '%s\n' 'IMBOY_PG_HOST=127.0.0.1'
+        printf 'IMBOY_PG_PORT=%s\nIMBOY_PG_USER=%s\nIMBOY_PG_DB=%s\n' "$pg_port" "$pg_user" "$pg_database"
+        printf 'IMBOY_PG_PASSWORD=%s\n' "$PG_PASSWORD"
+        printf 'IMBOY_BASE_URL=https://%s\nIMBOY_WS_URL=wss://%s/api/v1/ws\n' "$API_DOMAIN" "$API_DOMAIN"
+        printf 'IMBOY_JWT_KEY=%s\nIMBOY_POSTGRE_AES_KEY=%s\nIMBOY_ADM_COOKIE_SECRET=%s\n' "$JWT_SECRET" "$POSTGRE_AES_KEY" "$ADM_COOKIE_SECRET"
+        printf 'IMBOY_SOLIDIFIED_KEY=%s\nIMBOY_SOLIDIFIED_KEY_IV=%s\nIMBOY_PASSWORD_SALT=%s\n' "$SOLIDIFIED_KEY" "$SOLIDIFIED_KEY_IV" "$PASSWORD_SALT"
+        printf 'IMBOY_LOGIN_RSA_PUB_KEY_FILE=%s/keys/login_rsa_pub.pem\n' "$conf_dir"
+        printf 'IMBOY_LOGIN_RSA_PRIV_KEY_FILE=%s/keys/login_rsa_priv.pem\n' "$conf_dir"
+        printf 'IMBOY_JVERIFICATION_RSA_PRIV_KEY_FILE=%s/keys/login_rsa_priv.pem\n' "$conf_dir"
+        printf '%s\n' 'IMBOY_API_AUTH_SWITCH=on' 'IMBOY_AUTO_MIGRATE=true'
+        printf '%s\n' 'IMBOY_GARAGE_ENDPOINT=http://127.0.0.1:3900'
+        printf 'IMBOY_GARAGE_PUBLIC_ENDPOINT=https://%s\n' "$S3_DOMAIN"
+        printf 'IMBOY_GARAGE_BUCKET=%s\nIMBOY_GARAGE_PUBLIC_BUCKET=%s\n' "$private_bucket" "$public_bucket"
+        printf 'IMBOY_GARAGE_ACCESS_KEY=%s\nIMBOY_GARAGE_SECRET_KEY=%s\n' "$GARAGE_ACCESS_KEY" "$GARAGE_SECRET_KEY"
+        printf '%s\n' 'IMBOY_ATTACHMENT_REGISTRY_FROM_GARAGE=true'
+        printf '%s\n' 'IMBOY_TRUSTED_PROXY_IPS=127.0.0.1,::1'
+        printf '%s\n' 'IMBOY_FEATURE_E2EE=false' 'IMBOY_E2EE_MODE=disabled'
+        printf '%s\n' 'IMBOY_FEATURE_CHANNEL=true' 'IMBOY_FEATURE_CHANNEL_ORDER=false'
+        printf '%s\n' 'IMBOY_PAYMENT_GATEWAY_ENABLED=false' 'IMBOY_PAYMENT_MODE=live'
+        printf '%s\n' 'IMBOY_PLUGIN_LIFECYCLE_ENABLED=false' 'IMBOY_SMS_SWITCH=off'
+        printf '%s\n' 'IMBOY_TSID_DC_ID=1' 'IMBOY_TSID_NODE_ID=1' 'IMBOY_TSID_DC_BITS=3'
+        if [[ -n ${CS_SIGNING_SECRET:-} ]]; then
+            printf 'IMBOY_CS_WIDGET_SUBJECT_KEY=%s\n' "$CS_SIGNING_SECRET"
+        fi
+    } > "$tmp/backend.env"
+
+    chmod 600 "$tmp/sys.config" "$tmp/vm.args" "$tmp/backend.env"
+    for name in sys.config vm.args backend.env; do
+        [[ ! -L "$output_dir/$name" ]] || fail "refusing symlink output: $name"
+        mv -- "$tmp/$name" "$output_dir/$name"
+    done
+)
+
+# Frozen non-secret configuration from config/sys.config.example at the SHA
+# above. Values specific to this installer are changed by the guarded renderer.
+imboy_native_base_config() {
+    cat <<'IMBOY_NATIVE_BASE_CONFIG'
+%% ============================================================================
+%% imboy sys.config — 三段式结构（A. 网络 / B. 业务 / C. 敏感凭据）
+%% imboy sys.config — three sections (A. Network / B. Business / C. Secrets)
+%%
+%% 真相源（Source of Truth）：
+%%   1) 业务参数与端口默认值 → 本文件
+%%   2) 部署期覆盖（密钥、密码、域名）→ IMBOY_* 环境变量
+%%      → 由 src/lib/imboy_env.erl: override_from_env/0 在 boot 时统一注入
+%%   3) 运行环境标识（local/dev/prod）→ os env IMBOYENV
+%%      → 任何模块统一通过 imboy_env:current/0 获取，不再直接 os:getenv
+%%
+%% 生产环境只需：
+%%   - 设置 IMBOYENV=prod 与 IMBOY_* 必备变量
+%%   - 不要修改本文件；如有差异请在 IMBOY_* 中覆盖
+%% ============================================================================
+
+[
+    {imboy, [
+        %% ====================================================================
+        %% SECTION A — 网络与服务端口
+        %% Section A — Networking & service ports
+        %% （部署期可调，重启生效；非敏感）
+        %% ====================================================================
+
+        % HTTP 服务端口（蓝绿切换可用 9800/9801）
+        {http_port, 9800},
+        % 可选 HTTP/TLS 绑定地址；不配置保持所有网卡，本机联调可设 {127,0,0,1}。
+        % {listen_ip, {127, 0, 0, 1}},
+        %, {host, <<"local.imboy.pub">>}
+        {host, '_'},
+        % start_mode 包含的值 quic | tls | http
+        {start_mode, http},
+        % 启动时自动执行迁移；蓝绿部署通过 IMBOY_AUTO_MIGRATE=false 关闭，切流后显式迁移
+        {auto_migrate, true},
+        %% D02（2026-10-27 冻结）：免打扰旧规则（user_dnd_rule.time_zone IS NULL）
+        %% 的部署 fallback IANA zone。必须与本部署服务器 OS 时区/业务运营时区
+        %% 一致（本部署 = Asia/Shanghai，用户确认）；缺省即 Asia/Shanghai。
+        %%, {dnd_fallback_zone, <<"Asia/Shanghai">>}
+        % limiter-v1（C.5）：IP 维度限流规则——passport_per_ip / api_per_ip /
+        % oidc_request 三只 scope 的权威 owner 是 login_attempt_ds（唯一装配，
+        % 启动期经 imboy_app 校验）。**不得**再把这两只 HTTP IP scope 写回
+        % {throttle, rates}：旧 throttle worker 与新 owner 双权威混跑会被
+        % 启动校验拒绝。环境变量 IMBOY_THROTTLE_API_PER_IP /
+        % IMBOY_THROTTLE_PASSPORT_PER_IP 改写本表对应项（变量名与默认值不变）。
+        % 未配置 = 默认 true：每次完整应用启动均空态批准（缺此键不得拖垮认证）。
+        % 显式 false 仅供受控关闭/切换演练（关闭期认证 fail-closed 返回 503）；
+        % owner 自动重启始终关闭，须在可信节点控制台绑定实际 PID 调用
+        % login_attempt_ds:activate_empty(Pid)。
+        {limiter_allow_empty_start, true},
+        {limiter_ip_rates, #{
+            passport_per_ip => {10, 60000},
+            api_per_ip => {60, 60000},
+            oidc_request => {100, 3600000}
+        }},
+        %, {cacertfile, "/ssl/dev.imboy.pub_chain.csr"}
+        %, {certfile, "/ssl/dev.imboy.pub_public.crt"}
+        %, {keyfile, "/ssl/dev.imboy.pub.key"}
+        {cacertfile, "/ssl/chain.csr"},
+        {certfile, "/ssl/public.crt"},
+        {keyfile, "/ssl/server.key"},
+        {base_url, <<"https://dev.imboy.pub">>},
+
+        % CORS 白名单（仅这些 Origin 允许跨域携带凭证）
+        % 开发环境支持 localhost 任意端口
+        {cors_allowed_origins, [
+            <<"https://dev.imboy.pub">>,
+            <<"http://localhost:8082">>,
+            <<"http://localhost:56164">>
+        ]},
+        % 开发环境允许 localhost 任意端口（正则匹配）
+        {cors_allow_localhost, true},
+        % BE-W01：CORS 三面 origin 名单（IMBOY_CORS_WIDGET_ORIGINS /
+        % IMBOY_CORS_ADMIN_ORIGINS，逗号分隔注入）。
+        %   * cors_widget_origins —— Widget 应用 origin（dist-widget 部署域，
+        %     iframe 内 JS 的 Origin）：Widget API 面预检只精确校验本名单，
+        %     credentials 恒 false；不回退全局白名单（admin origin 不得混入）。
+        %   * cors_admin_origins —— admin origin：Admin API(/api/adm) 面与
+        %     Seat API 面（credentials false + Authorization/Last-Event-ID +
+        %     expose X-CS-Event-Retention-Seconds）共用；未配置回退全局白名单。
+        {cors_widget_origins, []},
+        {cors_admin_origins, []},
+
+        %% 客户端 /init 接口返回的 URL 及上传配置
+        %% ws_url: WebSocket 连接地址（wss:// 或 ws://）
+        {ws_url, <<"wss://dev.imboy.pub/ws">>},
+        {upload_url, <<>>},
+
+        %% 新上传必须冻结已登记的位置；空 registry 拒绝签发上传能力（presign 503
+        %% upload_root_unavailable，启动日志会打 ERROR 提示）。
+        %% New uploads require a registered immutable storage location.
+        %% roots: RootId => #{driver => <<"garage">> | <<"disk">>,
+        %%   namespace => <<"never-reused-location-id">>, aliases => [],
+        %%   endpoint => <<"http://garage:3900">> | <<"file:///srv/attachments">>,
+        %%   container => <<"bucket-or-logical-container">>}
+        %% upload_namespaces: scope => canonical namespace (Disk requires it).
+        %% Existing roots cannot be remapped; add a new namespace for a new location.
+        %%
+        %% 单 Garage 形态可直接抄下面这份（endpoint/container 必须与下方 garage 配置
+        %% 的 endpoint/bucket/public_bucket 完全一致，否则 presign 找不到根）：
+        %% {attachment_storage_registry, #{version => 1, upload_namespaces => #{}, roots => #{
+        %%     <<"garage-primary-private">> => #{driver => <<"garage">>,
+        %%         namespace => <<"garage-primary-private">>,
+        %%         endpoint => <<"http://127.0.0.1:3900">>, container => <<"imboy">>},
+        %%     <<"garage-primary-public">> => #{driver => <<"garage">>,
+        %%         namespace => <<"garage-primary-public">>,
+        %%         endpoint => <<"http://127.0.0.1:3900">>, container => <<"imboy-public">>}}}},
+        %% 容器部署（garage 由 IMBOY_GARAGE_* 覆盖，无法预写静态 endpoint）改用
+        %% IMBOY_ATTACHMENT_REGISTRY_FROM_GARAGE=true 按运行时 garage 配置登记同名两根。
+        %%
+        %% 生产推荐（2026-10-20 prod 事故加固）：registry 不写本文件——本文件随
+        %% release 发布，发版会被新包覆盖丢失。改设 IMBOY_ATTACHMENT_REGISTRY 环境
+        %% 变量（单行 JSON，形态同上，模板见 deploy/.env.example），优先级：
+        %% env 显式 > 本文件显式 > FROM_GARAGE 派生。strict 环境启动强校验：
+        %% 空 registry 或 garage 根 endpoint 与 {garage, endpoint} 不一致将拒启。
+        {attachment_storage_registry, #{version => 1, roots => #{}, upload_namespaces => #{}}},
+
+        %% Garage S3 兼容对象存储配置（占位符，实际值放 sys.local.config）
+        {garage, #{
+            endpoint => <<"http://127.0.0.1:3900">>,
+            region => <<"garage">>,
+            bucket => <<"imboy">>,
+            %% 公开读桶（scope=public 资源；Garage website 模式）+ 客户端可达基址
+            public_bucket => <<"imboy-public">>,
+            public_base_url => <<"https://s3.imboy.pub">>,
+            access_key => <<"GKxxxx">>,
+            secret_key => <<"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx">>
+        }},
+
+        %% LiveKit SFU 配置（群通话/屏幕共享；占位符，实际值走 IMBOY_LIVEKIT_* 环境变量）
+        %% LiveKit SFU config (group call/screen share; placeholders,
+        %% real values via IMBOY_LIVEKIT_* env vars)
+        %% ws_url: 客户端可达的 LiveKit WebSocket 信令地址。
+        %% 生产默认 = 独立 rtc 域（wss://rtc.imboy.pub，nginx 反代 127.0.0.1:7880）；
+        %% 本地/开发用 IMBOY_LIVEKIT_WS_URL 或 sys.local.config 覆盖。
+        {livekit, #{
+            ws_url => <<"wss://rtc.imboy.pub">>,
+            api_key => <<"devkey">>,
+            api_secret => <<"devsecret_at_least_32_chars_long_xx">>
+        }},
+
+        %% LLM provider 注册表（imboy_llm_registry）。火山方舟(Ark)/豆包/阿里云百炼
+        %% 均为 OpenAI 兼容端点，直接复用 imboy_llm_openai，无需新模块。密钥走环境
+        %% 变量占位 {env, <<"VAR">>}，绝不写死进配置：启动前 export ARK_API_KEY=
+        %% <你的 key>（百炼则 export BAILIAN_API_KEY=<你的 dashscope key>），可选
+        %% export ARK_MODEL / BAILIAN_MODEL 覆盖默认模型。
+        %% agent 建号时 provider 填 "ark" / "bailian" 即走对应通路；
+        %% agent 自带 model 覆盖 provider 默认。
+        %% LLM provider registry: Ark/Doubao/Bailian are OpenAI-compatible —
+        %% reuse imboy_llm_openai. Secrets via {env, <<"VAR">>} placeholders,
+        %% never hardcoded (export ARK_API_KEY / BAILIAN_API_KEY before boot).
+        {llm_providers, [
+            #{
+                name => <<"ark">>,
+                module => imboy_llm_openai,
+                base_url => <<"https://ark.cn-beijing.volces.com/api/v3">>,
+                api_key => {env, <<"ARK_API_KEY">>},
+                model => {env, <<"ARK_MODEL">>, <<"doubao-lite-4k">>}
+            },
+            #{
+                name => <<"bailian">>,
+                module => imboy_llm_openai,
+                %% 专属模型网关（MaaS dedicated，API key 以 sk-ws- 开头）：
+                %% 端点以 CSV 交付的 openAiCompatible 为准，勿用通用 dashscope 域名
+                base_url =>
+                    <<"https://llm-zyz63lgdmo1wvx8k.cn-beijing.maas.aliyuncs.com/compatible-mode/v1">>,
+                api_key => {env, <<"BAILIAN_API_KEY">>},
+                %% qwen3.7-flash 已在该网关 models 列表确认（2026-08-08）
+                model => {env, <<"BAILIAN_MODEL">>, <<"qwen3.7-flash">>}
+            },
+            %% 智谱原生多模态（输入模态：图片/视频/文件/文本）。
+            %% 密钥 export BIGMODEL_API_KEY=<id.secret>；模型 export BIGMODEL_MODEL 覆盖。
+            %% ⚠️ glm-5.3-flash 始终思考，勿配 thinking 开关：disabled/low/high/max
+            %% 一律被 400 拒绝（「该模型始终思考，不支持关闭思考」）；思考 token 计入输出计费。
+            %%
+            %% timeout（毫秒，可选）：单次请求超时。缺省 30s（imboy_llm_openai 的
+            %% ?DEFAULT_TIMEOUT_MS，与 elib_req 全局默认一致）。视频理解类请求会把
+            %% 30s 顶满甚至超时，需要放开到 60s 量级。
+            %% ⚠️ 服务端最坏路径 = timeout × 调用方最大尝试次数；
+            %% 客户端轮询预算必须大于它，两侧要成对修改。
+            #{
+                name => <<"bigmodel">>,
+                module => imboy_llm_openai,
+                base_url => <<"https://open.bigmodel.cn/api/paas/v4">>,
+                api_key => {env, <<"BIGMODEL_API_KEY">>},
+                model => {env, <<"BIGMODEL_MODEL">>, <<"glm-5.3-flash">>},
+                vision => true,
+                timeout => 60000
+            }
+        ]},
+
+        % 集群节点配置，用于节点间通信和集群管理
+        % 示例: ['imboy1@127.0.0.1', 'imboy2@127.0.0.1']
+        % 也可以通过环境变量 CLUSTER_NODES 设置
+        {cluster_nodes, ['node1@127.0.0.1', 'node2@127.0.0.1']},
+
+        %% ====================================================================
+        %% SECTION B — 业务参数（功能开关、阈值、运行时策略）
+        %% Section B — Business tunables (feature flags, thresholds, policies)
+        %% （跨环境基本一致，按业务需要调整；非敏感）
+        %% ====================================================================
+
+        %% EPGZ-02 企业 internal API（/api/internal/v1/*）专用限流
+        %% 每分钟每 application 配额。**配置缺失即 fail-closed 拒绝请求**
+        %% （INV-9，enterprise_internal_rate:check → security_gate_closed），
+        %% 不得为绕过限流删除本段；数值可按客户调整。
+        {enterprise_internal_rate_limits, #{
+            internal_read => 600,
+            internal_write => 300,
+            internal_sso => 60
+        }},
+
+        %% EPGZ-02 internal API 幂等窗口（秒，缺省 24h）：同 Idempotency-Key
+        %% 同 body 在窗口内重放原结果，窗口外按新请求处理。
+        {enterprise_internal_idempotency_ttl_seconds, 86400},
+
+        %% REVIEW-3 F-1：bounded purge 的孤儿 pending 资产清理年龄阈值（秒，缺省 24h）。
+        %% presign 每次调用都铸造 pending_confirm 资产行；status='pending_confirm' 且
+        %% message_id IS NULL 且 created_at 早于 now-本值 的孤儿资产由 eb_pg_purge
+        %% 随批清理（对象先删、元数据后删，retain_until 未到期 / active hold 覆盖仍不清理）。
+        %% 消费方：src/features/enterprise_business/infrastructure/eb_pg_purge.erl
+        %%（非法值 fail-closed：purge 整体拒绝，宁可多保留）。
+        {eb_purge_orphan_asset_age_seconds, 86400},
+
+        %% API 签名验证开关（<<"on">> | <<"off">>）
+        %% 生产环境建议设为 <<"on">>，开发/测试可留 <<"off">>
+        {api_auth_switch, <<"off">>},
+
+        %% login_pwd_rsa_encrypt: 客户端是否对密码做 RSA 加密（<<"on">> | <<"off">>）
+        {login_pwd_rsa_encrypt, <<"off">>},
+
+        %% TextGuard 内容安全检测器传输适配（T15，moderation_detector_*）。
+        %% transport 默认 legacy：走既有敏感词链路，不发起任何远程调用；
+        %% 切 http / grpc 前 base_url 或 host+port+transport 必须齐备，
+        %% 否则适配器 fail-closed 返回 not_ready（绝不静默放行）。
+        %% timeout_ms = 单次检测总预算（连接+请求，plan §5 默认 150ms），
+        %% 失败立即上抛、零自动重试；熔断/重试由调用方装配（T19）。
+        {moderation_detector, [
+            {transport, legacy}
+            , {timeout_ms, 150}
+            %% , {http_base_url, <<"http://127.0.0.1:7463">>}
+            %% , {grpc_host, <<"127.0.0.1">>}
+            %% , {grpc_port, 7464}
+            %% , {grpc_transport, {some_module, some_fun}}   %% T19 装配注入
+            %% , {token, <<"textguard-token-placeholder">>}  %% 占位符，部署时替换
+            %% , {max_response_bytes, 65536}
+            %% 发布面（T16 textguard_publisher → moderation_detector_http
+            %% 管理端点 /internal/v1/rulesets/active）：发布令牌独立于
+            %% 检测 token，缺失即 fail-closed not_ready（不出网）。
+            %% 占位符部署，不落真实 secret。
+            %% , {publish_token, <<"textguard-publish-token-placeholder">>}
+        ]},
+
+        %% TextGuard 规则包导出（T16，textguard_export）：
+        %% 从 sensitive_word 表（canonical 真源）+ 版本化增强文件产出
+        %% RuleSet v1 确定性字节包。t2s_table_id 必填（fail-closed）：
+        %% 生产必须换成 T07 生成且被二进制支持的真实表 ID，
+        %% 不拿 fixture 的 test-t2s-v1 冒充。
+        {textguard_export, [
+            {t2s_table_id, <<"REPLACE_WITH_T07_T2S_TABLE_ID">>}
+            %% 增强文件路径；文件不存在 = 空增强导出（文档化行为）
+            %% , {enhancement_file, <<"priv/textguard/enhancement.example.json">>}
+            %% , {normalization_id, <<"imboy-base-v1">>}
+            %% , {limit_profile_id, <<"mvp-default-v1">>}
+            %% , {semantics_by_scene, #{
+            %%     <<"channel_message">> => <<"enhanced-v1">>,
+            %%     <<"moment_post">> => <<"enhanced-v1">>,
+            %%     <<"profile_field">> => <<"compat-v1">>}}
+        ]},
+
+        %% TextGuard 指定发布者（T16，textguard_publisher，单例 gen_server）：
+        %% dirty 通知 + 周期对账把导出包 CAS 发布到 Rust TextGuard 服务。
+        %% 未接入 imboy_sup（G3 门：不启用自动规则发布生产功能），
+        %% 部署接线归 T19/T20。
+        {textguard_publisher, [
+            {transport, moderation_detector_http}
+            %% , {reconcile_interval_ms, 60000}     %% 周期对账（plan 默认 60s）
+            %% , {cas_max_retries, 1}               %% 409 后从全新导出重试次数
+            %% , {cas_retry_backoff_ms, 200}
+            %% , {publish_timeout_ms, 10000}        %% 发布预算（检测 150ms 不适用）
+        ]},
+
+        %% verification_master_code: 万能验证码（开发/测试环境使用，生产环境留空禁用）
+        %% 可通过环境变量 IMBOY_VERIFICATION_MASTER_CODE 覆盖
+        {verification_master_code, <<>>},
+
+        % 离线消息阈值配置 - 超过此数量的离线消息将发送pull通知而非直接推送
+        {offline_msg_threshold, 10},
+
+        % 消息永久存储开关（方案 B：conv_seq 游标）
+        % true  = 写入 msg_store 表，支持历史查询 / 审计
+        % false = 不写 msg_store，ACK 后投递表即删除（省存储）
+        {msg_archive_enabled, true},
+
+        % 频道消息撤回窗口（秒），默认 120 秒；设置为 0 表示不限制时间窗
+        {channel_revoke_window_seconds, 120},
+
+        % TSID V10 分布式ID生成器配置（由 imboy_sup init 消费；全部键可被
+        % IMBOY_TSID_* 环境变量覆盖，非法值启动即失败。无持久化状态：重启
+        % 后游标从当前时钟起跳，跨重启唯一性依赖系统时钟不回拨）
+
+        % 数据中心ID (0-7, dc_bits=3 时支持 8 个DC)
+        {tsid_dc_id, 1},
+        % 节点ID (0-127, dc_bits=3 时每DC支持 128 个节点；全集群唯一，
+        % 重复 = 同 CombinedNode 双写 = ID 碰撞，部署层必须保证不重)
+        {tsid_node_id, 1},
+        % DC位数 (全集群必须统一)
+        {tsid_dc_bits, 3},
+        % 容量等待预算（ms）：序列耗尽时等待真实时间推进的 deadline（无借支）
+        {tsid_capacity_wait_timeout_ms, 100},
+        % 时钟偏差阈值（ms）：固定 Offset 时钟与系统钟偏差超限即阻断发号
+        %{tsid_max_clock_drift_ms, 5000},
+
+        % 账号注销自动清理配置
+
+        % 启用自动删除（默认 false）
+        {user_deletion_enabled, false},
+        % 保留天数，申请注销后 60 天自动删除
+        {user_deletion_retention_days, 60},
+        % 扫描间隔，默认 24 小时
+        {user_deletion_interval, 86400000},
+        % 每批处理上限
+        {user_deletion_batch_size, 10},
+
+        % Olm OTK 已消费审计行清理（claim 语义 UPDATE-not-delete 见 ADR 03 §8.3）
+
+        % 启用定时清理（默认 false，不删任何审计行）
+        {olm_otk_cleanup_enabled, false},
+        % 扫描间隔，默认 24 小时
+        {olm_otk_cleanup_interval_ms, 86400000},
+        % 已消费 OTK 审计保留天数（Logic 层换算 seconds）
+        {olm_otk_retention_days, 7},
+
+        % 企业留存 bounded purge 定时 worker（R4-②；默认禁用 + 目标空 = 不清理
+        % 任何行。目标为显式 (org, workspace) 清单——运维按部署实际租户列出；
+        % 批次守卫语义全由 purge 端口 + DB 触发器裁决，purge 不可逆）
+        {eb_retention_purge_enabled, false},
+        % 扫批间隔，默认 24 小时（F-1 的按天 bounded purge 运维节奏）
+        {eb_retention_purge_interval_ms, 86400000},
+        % 显式目标清单，示例为非真实租户；非法条目被跳过并计数
+        % {eb_retention_purge_targets, [#{org_id => 501, workspace_id => 601}]},
+
+        % 推送通知配置（FCM / APNs / JPush）— 凭据走 SECTION C
+        {push, [
+            % 总开关，true 启用推送
+            {enabled, false},
+            {fcm_project_id, "your-firebase-project-id"},
+            {fcm_access_token, "your-oauth2-access-token"},
+            % APNs 配置（iOS 推送）
+            {apns_key_id, ""},
+            {apns_team_id, ""},
+            {apns_bundle_id, "pub.imboy.app"},
+            % JPush 配置（EPGZ-07，Android 一期）
+            % 真实凭据由客户提供后经 sys.local / 环境注入，严禁提交真实值
+            {jpush_app_key, "your-jpush-appkey"},
+            {jpush_master_secret, "your-jpush-secret"},
+            % REST API v3 端点，测试/代理可覆盖
+            {jpush_push_url, "https://api.jpush.cn/v3/push"}
+        ]},
+
+        % WebRTC ICE Server 配置
+        % 客户端通过 /config/ice_servers API 获取
+        {ice_servers, [
+            #{urls => "stun:stun.l.google.com:19302"},
+            #{urls => "stun:stun1.l.google.com:19302"}
+            % TURN 由 LiveKit embedded TURN 经信令自动下发(LiveKit 单服务合同),
+            % 此处不再手配 coturn/eturnal TURN 条目;1:1 链路无需客户端静态 ICE 配置。
+        ]},
+
+        {guanco, [
+            {ollama_api_url, "http://localhost:11434"},
+            {pool_size, 5},
+            {max_overflow, 10}
+        ]},
+
+        {sms, [
+            {switch, <<"off">>},
+            {default_code, <<"6666">>},
+            {platform, <<"yjsms">>},
+            {<<"aliyun">>, [
+                {sign_name, <<"xxx"/utf8>>},
+                {template_code, <<>>},
+                {key_id, <<>>},
+                {key_secret, <<>>},
+                {region_id, <<"cn-shenzhen">>}
+            ]}
+        ]},
+
+        %% 数据库配置（连接池/迁移路径）— 密码走 SECTION C
+        {sql_driver, pgsql},
+        %% PostgreSQL 单条语句上限（毫秒）；连接入池前设置，防慢查询长期占池。
+        {statement_timeout_ms, 15000},
+        {pg_conf, #{
+            name => pgsql,
+            max_count => 80,
+            init_count => 5,
+            start_mfa => {
+                epgsql,
+                connect,
+                [
+                    #{
+                        %% 指向 docker 容器 imboy_pg18（PG 18.1 + TimescaleDB 2.23.1 + pgcrypto 1.4）
+                        %% 取代 macOS homebrew 本地 5432（pgcrypto 动态库 18.1_1 vs 18.3 符号错位）
+                        host => "127.0.0.1",
+                        username => "imboy_user",
+                        %% 生产环境通过 IMBOY_PG_PASSWORD 环境变量设置
+                        password => "abc54321",
+                        database => "imboy_v1",
+                        port => 4323,
+                        ssl => false,
+                        timeout => 4000,
+                        codecs => [{epgsql_codec_rfc3339_bin, []}]
+                    }
+                ]
+            }
+        }},
+        %% 能够创建表删除表的超级数据库用户
+        %% 生产环境通过 IMBOY_PG_* 环境变量设置
+        {super_account, #{
+            host => "127.0.0.1",
+            username => "imboy_user",
+            password => "abc54321",
+            database => "imboy_v1",
+            port => 4323,
+            ssl => false,
+            timeout => 4000
+        }},
+        %% 这里用绝对路径
+        %% 注意：code:priv_dir(imboy) 已包含 /priv，所以只需 $PROJECT_DIR/migrations
+        {scripts_path, "$PROJECT_DIR/migrations"},
+
+        %% OPS-04：此处原有 {auto_load_configs, true} —— 已被删除（死键）。
+        %% 它属于「启动时合并额外配置文件」那套加载器（配合 {config_files,
+        %% [{cron_config,"config/cron.config"}]}），该加载器已在 T13
+        %% (fc687c44) 作为死代码移除：`git log -S auto_load_configs -- src/`
+        %% 为空，即 imboy 代码**从未**读过它，config/cron.config 里的
+        %% crontab_jobs 至今无任何模块读取。
+        %% 危险之处在于它会被误读成「配置合并生效中」——周期作业的真源因此
+        %% 长期被误认。现在周期作业只有唯一真源：本文件顶层的
+        %% {ecron,[{local_jobs,[...]}]} 段（见下方注释）。逐机运行配置
+        %% （config/sys.local.config / sys.pro.config / sys.dev.config，均被
+        %% .gitignore 忽略）不会从本模板同步，故用
+        %% `bash scripts/check_cron_config.sh` 校验它们与模板一致。
+        %%
+        %% 附件孤儿清理保留天数（ecron attachment_orphan_cleanup 用，下限 7，IMBOY_* 可覆盖）
+        {attachment_orphan_cleanup_age_days, 30},
+        %% #20：presign 签发后从未 confirm 的对象保留时长（小时，下限 2）。
+        %% presign 有效期是分钟级，24 小时足够覆盖"上传成功但 confirm 丢了、
+        %% 客户端稍后重试"的场景。与上面的 age_days 语义不同，勿混用。
+        {attachment_pending_cleanup_age_hours, 24},
+        % 启用分布式缓存同步功能
+        {dsync_enabled, true},
+        %% ---- 缓存 V2.2.1（W1~W5 本地实施轮新增；详见
+        %% docs/architecture/cache-v2.2.1/ 与 w1-w5-addendum-20261011.md）----
+        %% 同步协议：legacy（默认，未启用 V2）| v2（全局 ENABLE_V2 受 G-QR 等
+        %% 安全 gate 约束——QR 原子消费未完成前不得切 v2，见
+        %% g-qr-atomic-consumption-proposal.md）
+        {cache_sync_protocol, legacy},
+        %% replicate 预算候选（计划 6.1；生产值须按目标硬件另轮冻结）
+        {cache_replication, #{
+            max_ttl_sec => 600,
+            max_value_bytes => 32768,
+            batch_size => 256,
+            recovery_window_sec => 300,
+            %% 复制白名单：默认必须为空（19.5 fail-closed）。未来 Key 须先在
+            %% imboy_cache_policy Registry 登记 replicate 策略条目，再加白名单
+            whitelist => []
+        }},
+        %% 19.3 generation 栅栏 namespace（默认空 = 全部 Key 走 legacy 路径，
+        %% 行为与本轮之前完全一致；迁移逐 namespace 启用）
+        {cache_fenced_namespaces, []},
+        %% 测试/扩展用 Registry 覆盖（生产保持空）
+        {cache_registry_overrides, #{}},
+
+        %% Depcache settings,
+        {depcache, [
+            % maximum size in mbs
+            {depcache_memory_max, 1024}
+        ]},
+
+        % SMTP 邮件发送（用户名/密码走 SECTION C）
+        % smtp 配置参考 https://github.com/gen-smtp/gen_smtp
+        {smtp_option, [
+            {relay, "smtp.qq.com"},
+            {ssl, true},
+            {auth, always},
+            {trace_fun, fun io:format/2},
+            {username, ""},
+            {password, ""}
+        ]},
+
+        %% ====================================================================
+        %% SECTION C — 敏感凭据（默认留空；生产必须由 IMBOY_* 环境变量覆盖）
+        %% Section C — Secrets (default blank; prod MUST come from IMBOY_* env)
+        %%
+        %% 启动 fail-fast 校验：src/imboy_app.erl: validate_runtime_config/0
+        %% 环境变量映射：见 src/lib/imboy_env.erl 顶部注释
+        %% 不要在本文件填入真实凭据；不要把 production secrets 提交到 git
+        %% ====================================================================
+
+        % jwt_key binary 32 — IMBOY_JWT_KEY
+        {jwt_key, <<>>},
+
+        %% 管理后台 Cookie 签名密钥（独立于 jwt_key；缺失时 dev 派生，交付 profile fail-closed）
+%% 可选：管理后台 cookie 会话 TTL（秒），默认 28800=8h —— adm_session_ttl_sec
+        %% 生产环境通过 IMBOY_ADM_COOKIE_SECRET 环境变量设置
+        {adm_cookie_secret, ""},
+
+        % 用于postgresql 存储数据的AES密钥 Key binary 32 — IMBOY_POSTGRE_AES_KEY
+        {postgre_aes_key, <<>>},
+
+        %% Bot verify_token 轮换时的只读旧密钥；仅 bot_repo 解密迁移读取。
+        %% 正常运行必须留空，轮换完成后立即从环境和密管移除。
+        {postgre_aes_key_old, <<>>},
+
+        %% OpenTelemetry 遥测对接 Uptrace（trace.imboy.pub），见 src/lib/imboy_telemetry.erl
+        %% uptrace_dsn 含项目 token，属敏感凭据：只经 IMBOY_UPTRACE_DSN 环境变量注入
+        %% （格式 http://<token>@trace.imboy.pub/<project_id>），此处刻意无默认键。
+        %% uptrace_otlp_endpoint：OTLP/HTTP 上报地址，默认 http://127.0.0.1:14318
+        %% （prod/dev 与 Uptrace 同机）；可经 IMBOY_UPTRACE_OTLP_ENDPOINT 覆盖。
+        %% 两个变量都未设置时遥测完全关闭，节点行为与未对接时一致。
+
+        %% 客户端 init 响应加密 + HMAC 签名密钥
+        %% solidified_key : AES-256-CBC / HMAC-SHA512，必须 32 字节
+        %% solidified_key_iv: AES-256-CBC IV，必须 16 字节
+        %% dev/local 留空 — 使用 imboy_app:ensure_solidified_keys/0 的稳定默认值
+        %%           （与 Flutter 客户端硬编码一致，见 imboyapp/lib/service/encrypter.dart）
+        %% prod 必须通过 IMBOY_SOLIDIFIED_KEY / IMBOY_SOLIDIFIED_KEY_IV 注入，否则启动 fail-fast
+        {solidified_key, <<>>},
+        {solidified_key_iv, <<>>},
+
+        %% /api/v1/init 是否继续下发旧的 res 字段（AES-256-CBC + 固定 IV，无认证标签）
+        %% on  = 过渡期，res 与 res_v2（AES-256-GCM）同时下发，存量客户端不受影响
+        %% off = 只发 res_v2，关闭降级路径
+        %% ⚠️ 只要 res 还在，攻击者就能直接走旧路径，#94 不算真正闭合。
+        %% 客户端全量升级到读 res_v2 之后必须置 off。
+        {init_config_legacy_cbc, <<"on">>},
+
+        %% RSA 密钥文件路径（PEM 格式）
+        %% dev/local 留空 — 启动时自动落盘到 priv/dev_keys/login_rsa_{pub,priv}.pem
+        %%           （首次启动生成，后续复用，保证客户端缓存的公钥持续有效）
+        %% prod 必须通过 IMBOY_LOGIN_RSA_PUB_KEY_FILE / IMBOY_LOGIN_RSA_PRIV_KEY_FILE
+        %%      指向 release 外的持久路径，否则启动 fail-fast
+        %% 生产环境生成方式：
+        %%   openssl genrsa -out /etc/imboy/keys/login_rsa_priv.pem 2048
+        %%   openssl rsa -in /etc/imboy/keys/login_rsa_priv.pem -pubout -out /etc/imboy/keys/login_rsa_pub.pem
+        %% openssl rsa -pubin -in /etc/imboy/keys/login_rsa_pub.pem -outform DER | base64 -w0
+        {login_rsa_pub_key_file, ""},
+        {login_rsa_priv_key_file, ""},
+        %% 极光认证（一键登录）RSA 私钥，可选：
+        %%   留空 = 复用 login_rsa_priv_key_file 的私钥（默认，推荐）
+        %%   填写 = 使用独立私钥；路径不可读时启动告警并回退 login 私钥（不阻断启动）
+        %% 注意：不要在此处硬编码固定路径——若生产用 IMBOY_LOGIN_RSA_*_KEY_FILE
+        %%      指向其他目录，残留的默认路径会因文件缺失而误报（N-5）。
+        %% openssl rsa -pubin -in /etc/imboy/keys/login_rsa_pub.pem -outform DER | base64 -w0
+        {jverification_rsa_priv_key_file, ""},
+
+        %% 历史 MD5 密码盐值（仅用于旧密码回退验证，新密码使用 hmac_sha512 自带随机 salt）
+        %% ⚠️  一旦投产后不可更改，否则已存储的旧格式密码将永久失效
+        %% IMBOY_PASSWORD_SALT
+        {password_salt, <<>>},
+
+        %% 极光推送 / 极光短信 (jPush / jSMS) 凭据
+        %% IMBOY_JPUSH_APP_KEY / IMBOY_JPUSH_MASTER_SECRET
+        {jpush_app_key, <<>>},
+        {jpush_master_secret, <<>>},
+
+        %% 云极短信 (yjSMS) 凭据
+        %% IMBOY_YJSMS_ACCOUNT / IMBOY_YJSMS_SECRET
+        {yjsms_account, <<>>},
+        {yjsms_secret, <<>>},
+        {yjsms_url, <<>>},
+        {jsms_temp_id, <<>>},
+        {jsms_sign_id, <<>>},
+
+        %% ====================================================================
+        %% 企业托管主密钥环 / Enterprise managed keyring（F6，RULING-2026-09-15 §七）
+        %% 消费方：src/features/enterprise_business/infrastructure/eb_env_keyring.erl
+        %%   * 企业消息 / 客户资料 / 备注 / 附件凭证的企业托管加密（AES-256-GCM）
+        %%     全部经此密钥环装配；**HTTP/JSON 面不接受任何密钥参数**（客户端提交
+        %%     key_ref 等 → 422），密钥只来自本配置。
+        %%   * 缺配置 = 部署缺陷：相关写路径 fail-closed（HTTP 500 missing_key），
+        %%     绝不降级明文、绝不使用默认密钥。
+        %%   * 形状：#{active_version := 正整数, keys := #{版本 => 64 位 hex（32 字节）}}；
+        %%     轮换 = 追加新版本并把 active_version 指向它（旧版本保留可解历史密文）。
+        %%   * ⚠️ 真实密钥字节**永不入仓**：生产经部署环境注入后覆盖本键；
+        %%     BE-W01 文件装载：IMBOY_EB_ENTERPRISE_KEYRING_FILE（JSON
+        %%     {"active_version":1,"keys":{"1":"<64hex>"}}，权限 0600，读取/
+        %%     权限/形状失败启动 fail-fast；与 sys.config 同给报歧义错）。
+        %%     下方仅形状示意（注释态，勿在此填真实值）。
+        %% {eb_enterprise_keyring, #{
+        %%     active_version => 1,
+        %%     keys => #{
+        %%         1 => <<"64-hex-chars-from-secret-manager-not-from-git">>
+        %%     }
+        %% }},
+        %% ====================================================================
+
+        %% ====================================================================
+        %% 支付网关 / Payment gateways
+        %% 可插拔注册表：键=支付方式(binary)，值=实现 payment_gateway behaviour 的模块
+        %% mock/wallet 为内置默认（见 payment_gateway:registry/0），无需在此声明。
+        %% 真实商户号/密钥严禁写本文件，一律走 IMBOY_* 环境变量（SECTION C 约定）。
+        %% ====================================================================
+        {payment_gateways, #{
+            <<"alipay">> => payment_alipay_gateway,
+            <<"wechat">> => payment_wechat_gateway,
+            <<"stripe">> => payment_stripe_gateway
+        }},
+        %% 外部支付网关总开关（IMBOY_PAYMENT_GATEWAY_ENABLED，默认 false）
+        %% false 时：充值下单/支付/查单、网关回调、提现端点一律返回
+        %%           ?ERR_FEATURE_DISABLED，且 imboy_app 跳过网关凭据的启动校验。
+        %%           站内钱包账务（余额/流水/红包/转账）不受影响。
+        %% true  时：维持原有强约束（payment_mode 必须 live + 至少一个网关凭据完整）。
+        %% 见 payment_gateway:enabled/0 的说明。
+        {payment_gateway_enabled, false},
+        %% 动态插件生命周期写操作总开关（IMBOY_PLUGIN_LIFECYCLE_ENABLED，默认 false，A-28）
+        %% false 时：/api/adm/plugin/* 的 7 个写端点（install/enable/disable/upgrade/
+        %%           uninstall/reset/force_uninstall）返回 ?ERR_FEATURE_DISABLED。
+        %%           内置功能开关（channel/moment/location/group_collab）是纯 manifest、
+        %%           只读可见，不受影响。该子系统 @status FROZEN。
+        %% true  时：写端点放行（需自行承担动态加载的安全风险）。
+        %% 见 imboy_plugin_manager:lifecycle_enabled/0。
+        {plugin_lifecycle_enabled, false},
+        %% install Path 的受控插件根（SEC-02，审计 #43 收口；IMBOY_PLUGIN_ROOT 可覆盖）
+        %% adm plugin install 的 path 参数经 realpath 解析（消解 `..` 与 symlink）后
+        %% 必须位于该目录内，且必须是已存在目录；plugin.config/SIGNATURE 文件级同样
+        %% 不得 symlink 逃逸出根。默认仓内受控目录 priv/plugins（相对按 cwd）。
+        %% 见 imboy_plugin_path:resolve/1。
+        {plugin_root, <<"priv/plugins">>},
+        %% 插件签名可信公钥（SEC-02，审计 #44 收口）
+        %% plugin_trusted_public_keys：内联 32 字节 Ed25519 公钥列表（binary）
+        %% plugin_trusted_public_key_files：公钥文件路径列表（raw 32 字节公钥；
+        %%           逗号分隔环境变量 IMBOY_PLUGIN_TRUSTED_PUBLIC_KEY_FILES 可覆盖）
+        %% plugin_signature_required：强制签名开关（community 默认 false 宽松）
+        %% ⚠️ 商务版（IMBOY_PRODUCT_PROFILE=enterprise，与 deploy/preflight.sh 的
+        %%    商务口径一致）下强制签名无视 plugin_signature_required：无可信公钥
+        %%    → 生产启动 fail-fast + install 全部拒绝；缺 SIGNATURE / 验签失败
+        %%    → install 拒绝，不降级放行。见 imboy_plugin_signature:validate_config/0。
+        {plugin_trusted_public_keys, []},
+        {plugin_trusted_public_key_files, []},
+        {plugin_signature_required, false},
+        %% 支付回调来源 IP 白名单（纵深防御，默认 [] = 不启用，A-04）
+        %% 条目为字符串/binary，支持精确 IP 与前缀（"110.75." 匹配整段）。
+        %% 命中才放行，未命中回 403（不是 200 —— 后者会让网关停止重推变成静默丢单）。
+        %% ⚠️ 验签始终是唯一强制门；本白名单只是在验签前减少噪声。
+        %% ⚠️ 各网关出口 IP 段不承诺固定，配错会丢单，运维确认后再填。
+        {payment_callback_ip_allowlist, []},
+        %% 网关运行模式：sandbox（沙箱/测试凭证）| live（真实商户）
+        %% 上线由运维确认真实商户号后改 live 并注入凭据，否则保持 sandbox
+        {payment_mode, sandbox},
+        %% 支付宝凭据 IMBOY_ALIPAY_APP_ID / IMBOY_ALIPAY_PRIVATE_KEY / IMBOY_ALIPAY_PUBLIC_KEY
+        {alipay_app_id, <<>>},
+        %% /etc/imboy/keys/alipay_private_key.pem
+        %% /etc/imboy/keys/alipay_public_key.pem
+        {alipay_private_key, <<"/etc/imboy/keys/alipay_private_key.pem">>},
+        {alipay_public_key, <<"/etc/imboy/keys/alipay_public_key.pem">>},
+        %% 支付宝异步回调地址 IMBOY_ALIPAY_NOTIFY_URL（空则不下发 notify_url）
+        {alipay_notify_url, <<>>},
+        %% 支付宝证书模式 SN（IMBOY_ALIPAY_APP_CERT_SN / IMBOY_ALIPAY_ROOT_CERT_SN）
+        %% 登录(alipay_openapi)与证书加签方式必传；由部署脚本从证书 PEM 算好注入
+        {alipay_app_cert_sn, <<>>},
+        {alipay_root_cert_sn, <<>>},
+        %% 支付宝商户 PID（IMBOY_ALIPAY_PID，2088 开头；authinfo 签名串用）
+        {alipay_pid, <<>>},
+        %% 支付宝接口内容加密密钥（IMBOY_ALIPAY_AES_KEY，base64；空则 biz_content 明文）
+        {alipay_aes_key, <<>>},
+        %% 微信支付凭据 IMBOY_WECHAT_MCH_ID / IMBOY_WECHAT_APP_ID / IMBOY_WECHAT_API_V3_KEY
+        %% IMBOY_WECHAT_CERT_SERIAL / IMBOY_WECHAT_PRIVATE_KEY / IMBOY_WECHAT_PLATFORM_PUBLIC_KEY
+        {wechat_mch_id, <<>>},
+        {wechat_app_id, <<>>},
+        {wechat_api_v3_key, <<>>},
+        {wechat_cert_serial, <<>>},
+        {wechat_private_key, <<>>},
+        {wechat_platform_public_key, <<>>},
+        %% 微信异步回调地址 IMBOY_WECHAT_NOTIFY_URL（空则不下发 notify_url）
+        {wechat_notify_url, <<>>},
+        %% Stripe 凭据 IMBOY_STRIPE_SECRET_KEY / IMBOY_STRIPE_WEBHOOK_SECRET
+        {stripe_secret_key, <<>>},
+        {stripe_webhook_secret, <<>>},
+        %% 充值限额（单位：分）：默认最小 0.01 元、最大 50000 元
+        {recharge_min_amount, 1},
+        {recharge_max_amount, 5000000},
+        %% =========================================================
+        %% CSB-02R：customer_service widget 接入装配（缺配置时 widget 写路径
+        %% fail-closed，装配齐全后真链路可通；secret 一律经环境变量注入，
+        %% 严禁入仓）
+        %% =========================================================
+        %% 匿名 subject HMAC 材料（IMBOY_CS_WIDGET_SUBJECT_KEY；空 = bootstrap
+        %% 等写路径 fail-closed 422）。digest 不落库，本材料只驻服务端内存。
+        %% secret 文件变体：IMBOY_CS_WIDGET_SUBJECT_KEY_FILE（0600 持久化
+        %% mount，BE-W01：读内容为值；权限过宽/读取失败/与直接值同给一律
+        %% 启动 fail-fast）。
+        {cs_widget_subject_key, <<>>},
+        %% 签名身份断言验签材料（IMBOY_CS_WIDGET_IDENTITY_KEYS，形如 "1:k1,2:k2"；
+        %% DB identity key 行只存 sha256(key) digest，此处按 key_version 供真材料）
+        {cs_widget_identity_keys, []},
+        %% 接待 identity 覆写（0 = 由 store 派生：本 Org enabled 且
+        %% customer_service 职能的派单快照最小 business_identity_id）
+        %% （IMBOY_CS_WIDGET_INTAKE_BUSINESS_IDENTITY_ID）
+        {cs_widget_intake_business_identity_id, 0},
+        %% BE-W01：签名身份换绑第一阶段 capability_disabled（默认 false；
+        %% 端点返回 403 capability_disabled.identity_exchange）。true 时走既有
+        %% 签名断言验签链（代码保留未删除）。
+        {cs_widget_identity_exchange_enabled, false}
+    ]},
+
+    %% =============================================================
+    %% 基础设施依赖（throttle / sync / sasl / lager / kernel / ecron）
+    %% Infrastructure deps — 不属于业务配置，按 OTP 习惯单独放置
+    %% =============================================================
+
+    {throttle, [
+        {rates, [
+            {refreshtoken, 11, per_minute},
+            {refreshtoken, 5, per_second},
+            {throttle_ws, 22, per_minute},
+            {throttle_ws, 10, per_second},
+            % 3 秒 1次
+            {three_second_once, 1, 3000},
+            {per_hour_once, 1, per_hour},
+            {per_minute_once, 1, per_minute},
+            % 每用户每分钟 API 调用上限（活跃 IM 客户端列表/历史/离线分页
+            % 一轮就是十几个请求，原 120 偏紧致业务页频繁 429，2026-10 放宽至 3000）
+            {api_per_user, 30000, per_minute},
+            % 每用户每秒 API 突发上限：与分钟桶串联，挡住固定分钟窗口
+            % 边界处的请求突刺（中间件 throttle_middleware 双桶检查）
+            {api_per_user_burst, 3000, per_second},
+            % Widget 接入面：每 IP 每分钟请求上限（bootstrap/消息/SSE 共享；
+            % 访客无 UID 恒按 IP；代码级缺省同值，CSB-03）
+            {cs_widget_per_ip, 300, per_minute},
+            % 每用户每分钟消息发送上限
+            {msg_per_user, 60, per_minute},
+            % 密钥上报：每用户每小时最多 200 次
+            {e2ee_report_key, 200, per_hour},
+            % 加密密钥备份：每用户每小时最多 200 次（put/delete 共享）
+            {e2ee_backup, 200, per_hour},
+            % 分片创建：每用户每天最多 5 次（per_day = 86400000ms）
+            {e2ee_create_shards, 5, per_day},
+            % 分片解密：每用户每小时最多 200 次
+            {e2ee_decrypt_shard, 200, per_hour},
+            % 设备间密钥转移：每用户每小时最多 200 次（create/accept/confirm/cancel 共享）
+            {e2ee_transfer, 200, per_hour},
+            % OTK claim：每用户每分钟最多 30 次（claim_key + batch_claim 共享）
+            {olm_claim, 30, per_minute},
+            %% E2EE-062 续：目标级抗耗尽。键是**被领取方**，防「换账号 / 换 request_id」
+            %% 抽干同一目标的 OTK 池。60/min 远高于真实新会话速率，又把 100 条池的抽空
+            %% 时间抬到分钟级，给客户端低水位补传留窗口。耗尽本身不拒服务（fallback 兜底）。
+            {olm_claim_target, 60, per_minute}
+        ]}
+    ]},
+    %% sync 仅在 IMBOYENV=local 时进 DEPS（见 Makefile）：它会扫描源码自动
+    %% 重编译并热加载，生产机上任意 .erl 写入即升级为 RCE。生产 release 不含
+    %% 该应用，本配置块随之惰性无效，保留供本地开发使用。
+    {sync, [
+        {growl, all},
+        {log, all},
+        {non_descendants, fix},
+        {executable, auto},
+        {whitelisted_modules, []},
+        {excluded_modules, [
+            "deps/*"
+        ]},
+        {include, ["include"]}
+    ]},
+
+    %% Lager Begin %%%
+    {sasl, [
+        {utc_log, true},
+        {sasl_error_logger, {file, "log/sasl-error.log"}},
+        {errlog_type, error},
+        % Log directory
+        {error_logger_mf_dir, "log/sasl"},
+        % 100 MB max file size
+        {error_logger_mf_maxbytes, 104857600},
+        % 255 files max
+        {error_logger_mf_maxfiles, 255}
+    ]},
+    {lager, [
+        %% 日志根目录（注意：确保该目录有写入权限）
+        {log_root, "./log"},
+        %% What handlers to install with what arguments
+        {handlers, [
+            {lager_console_backend, [
+                {level, info},
+                {formatter, lager_default_formatter},
+                {formatter_config, [
+                    color, date, " ", time, " [", severity, "] ", node, "#", pid, " ", message, "\n"
+                ]}
+            ]},
+            {lager_file_backend, [
+                {file, "error.log"}, {level, error}, {size, 10485760}, {date, "$D0"}, {count, 999}
+            ]},
+            {lager_file_backend, [
+                {file, "debug.log"}, {level, info}, {size, 10485760}, {date, "$D0"}, {count, 999}
+            ]}
+        ]},
+        % 启用颜色
+        {colored, true},
+        %% 控制台日志颜色配置（仅对lager_default_formatter生效）
+        {colors, [
+            % 灰色
+            {debug, "\e[0;38m"},
+            % 绿色
+            {info, "\e[1;32m"},
+            % 青色
+            {notice, "\e[1;36m"},
+            % 黄色
+            {warning, "\e[1;33m"},
+            % 红色
+            {error, "\e[1;31m"},
+            % 紫色
+            {critical, "\e[1;35m"},
+            % 蓝底白字
+            {alert, "\e[1;44m"},
+            % 红底白字
+            {emergency, "\e[1;41m"}
+        ]}
+    ]},
+    {kernel, [
+        {start_timer, true},
+        {logger_level, info}
+    ]},
+    %% Lager End %%%
+
+    {ecron, [
+        %% local or utc
+        {time_zone, local},
+        {global_quorum_size, 1},
+        %% R7 修复（boot 冒烟发现）：ecron v1.1.0 只消费 local_jobs/global_jobs，
+        %% 从不读取 {jobs, ...}——原键下全部作业（含 B-06 支付对账）从未被调度。
+        %% 选 local_jobs：本仓全部周期作业均带幂等/守卫（AI Worker 认领=原子
+        %% UPDATE...SKIP LOCKED，多 worker 天然安全；清理类有 age+NOT EXISTS 守卫；
+        %% 支付对账本身是幂等补单设计），双节点重复执行安全；且不依赖 global
+        %% 注册/quorum，网络抖动不会静默停摆。见 STEP-11/notes.md §5。
+        {local_jobs, [
+            %% 附件孤儿清理：每日 03:00 扫描 referer_time=0 且超龄的附件，
+            %% 先物理删除 Garage 对象再删库行。age_days 由 imboy 环境
+            %% {attachment_orphan_cleanup_age_days, N} 控制（默认 30，下限 7）。
+            {attachment_orphan_cleanup, "0 3 * * *",
+                {attach_cleanup_logic, run_orphan_cleanup, []}},
+            %% #20 待确认 presign 回收：每小时 17 分扫描签发后从未 confirm 的
+            %% 对象，先删 Garage 对象再删登记行。age_hours 由 imboy 环境
+            %% {attachment_pending_cleanup_age_hours, N} 控制（默认 24，下限 2）。
+            %% 与上面的孤儿清理语义不同：那边是"已确认但无人引用"（天级），
+            %% 这边是"从未确认"（小时级），不可混用阈值。
+            {attachment_pending_cleanup, "17 * * * *",
+                {attach_cleanup_logic, run_pending_cleanup, []}},
+            %% B-06 支付对账：每小时 37 分核对 payment_transaction 与业务订单一致性，
+            %% 发现「已收款但业务侧没落地」就复用回调侧 credit/1 幂等补单，并推
+            %% payment_reconcile_* 指标供 Alertmanager 消费（见 imboy-alerts.yml）。
+            %% 回看窗口由 {payment_reconcile_lookback_hours, N} 控制（默认 25，下限 2）——
+            %% 故意大于运行间隔，窗口重叠防止跨边界漏单。
+            {payment_reconcile, "37 * * * *", {payment_reconcile_logic, run_hourly, []}},
+            %% B-10 红包过期退款：每小时 23 分把已过期(24h)且未领完的余额退回发送者。
+            %% 幂等两层：status='active' 的 CAS + wallet_transaction.reference_no
+            %% UNIQUE（refno 固定 RPE_<packet_id>）。单轮上限由
+            %% {red_packet_expire_batch, N} 控制（默认 500，下限 1），处理不完下一轮继续。
+            {red_packet_expire_refund, "23 * * * *", {red_packet_logic, run_expire_refund, []}},
+            %% A3-4 运营周报：每周一 09:00 统计上周新增/活跃/消息/举报并私信运营者。
+            %% 运营者 uid / 发送方 agent uid 经 config 表 ops_report.* 键配置。
+            {ops_weekly_report, "0 9 * * 1", {ops_report_logic, run_weekly_report, []}},
+            %% R18：日程提醒派发（每分钟扫 pending；claim CAS 幂等，多 worker 安全）
+            {group_schedule_remind, "* * * * *",
+                {group_schedule_logic, process_reminders, []}},
+            %% G3/Q09：推送过期 token 定期清理。把超过 N 天未更新的不活跃
+            %% token 行翻转为 status=0（不物理删除），补齐 cleanup_inactive_tokens
+            %% 的生产挂载点（此前仅 provider 404/410/1003 被动下线）。
+            %% N 由 imboy 环境 {push_token_cleanup_inactive_days, N} 控制
+            %% （默认 30，下限 7 强制钳制在 push_cleanup_logic 内）。
+            {push_token_cleanup, "43 4 * * *", {push_cleanup_logic, run_inactive_token_cleanup, []}}
+        ]},
+        {global_jobs, [
+            % 6个星号分别表示 秒，分钟、小时、日、月、周几
+            % {global_crontab_job, "*/1 * * * * *", {demo_cron_logic, inspect, ["Runs on 0, 15, 30, 45 seconds"]}}
+        ]}
+    ]}
+    %% OPS-03：删除此前重复的 {kernel,[{logger_level,all}]} 段——它会覆盖上方
+    %% logger_level=info 放开 debug 日志，且重复 kernel 键加载行为不确定。
+    %% 统一由上方 Lager 段的 {kernel,[{logger_level,info}]} 生效。
+].
+IMBOY_NATIVE_BASE_CONFIG
+}
+
