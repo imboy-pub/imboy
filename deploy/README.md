@@ -120,14 +120,31 @@ overlay selects that file through relx `VMARGS_PATH`; the server, health probes,
 installer and smoke CLI use the same node identity and cookie. Installation
 keeps `IMBOYENV=pro`; only the later smoke overlay enables `dev`. Upgrade
 refreshes VM flags from the target source while retaining the run's cookie.
-Never upload `.env`, runtime VM arguments, private keys or the cleanroom data.
+Never upload `.env`, runtime VM arguments, private keys, smoke overlays, run state
+or the cleanroom data.
+
+冒烟 overlay 另为每轮 cleanroom 生成随机 `GOLDEN_SMOKE_CODE`，仅在 `dev`
+阶段通过 `IMBOY_VERIFICATION_MASTER_CODE` 注入后端；注册冒烟、安装重启检查和
+升级数据生成共用同一值。它不写入 `.env` 或生产 runtime overlay，日志与账号
+状态保留在权限 `0700` 的 run 目录中。随机码保存在权限 `0600` 的 smoke overlay，
+保留现场后仍可在新 shell 中检查或清理 Compose 栈，该文件不得上传。Install
+会通过真实注册/登录 API 新建 C2C 双方，完成申请、接收方确认和双向好友列表检查后才发送消息；Upgrade 在
+基线生成消息前执行同样的好友步骤，并在升级后继续使用原基线 UID。
+
+Upgrade 的迁移验收分别检查两张表：`schema_migrations` 必须只有一行，
+`dirty=false` 且版本为预期最大值；`schema_migrations_history` 必须与运行
+release 和固定源码的迁移版本集合精确一致，并保留升级前的全部历史。新增
+迁移数按集合差统计，允许零新增迁移。`MIGRATION=PASS` 仅由账本断言产生，
+启动日志中的迁移完成字样不能替代该断言。相关 shell fixture 测试只验证编排
+和拒绝错误的行为，真实注册、好友、消息、数据库及容器升级仍需实际 Golden。
 
 社区安装器可重复传入 `--compose-file <overlay>`，在社区基准和已选 overlay 之后追加，并将
 相同组合贯穿 preflight、拉取、起栈、TLS、清理账号验证和 sanity。文件须存在、
 可读且路径不含空白；这不会跳过任何生产检查。商务版拒绝此参数，继续沿用
 受控交付的原有 Compose/策略组合。Golden 的旧基线若不支持这个
 输入及 `--init-cleanup-db`，须明确阻断，不能修改基线源码后声称原版本升级
-已通过。无严格稳定标签时仍按 Release 原策略记录 `SKIPPED_FIRST_RELEASE`。
+已通过。无严格稳定标签时仍按 Release 原策略记录 `SKIPPED_FIRST_RELEASE`；
+该结果表示未执行真实升级，不能记作升级验收成功。
 
 首次写最终标签前，workflow 保存四镜像及来源 receipt。最终标签已存在且摘要
 一致则可重用；摘要不同、无法判断权限或网络错误时停止。写后再次比对摘要和

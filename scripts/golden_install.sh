@@ -261,6 +261,7 @@ RUN_DIR="$WORKDIR/run-$(date +%Y%m%d%H%M%S)"
 INSTALL_LOG="$RUN_DIR/install_run.log"
 BIN_DIR="$RUN_DIR/bin"
 mkdir -p "$WORKDIR" "$RUN_DIR" "$BIN_DIR"
+chmod 700 "$RUN_DIR"
 : > "$INSTALL_LOG"
 
 COMPOSE="docker compose -f $COMMUNITY_YML -f $RUNTIME_YML"
@@ -300,7 +301,7 @@ idem_upload() { # restart 前：register→login→presign→PUT→confirm，凭
   code="$(idem_http POST "$BASE_URL/api/v1/passport/signup" \
     -H 'Content-Type: application/x-www-form-urlencoded' \
     --data-urlencode 'type=email' --data-urlencode "account=$email" \
-    --data-urlencode "pwd=$pwd" --data-urlencode 'code=abc12345' \
+    --data-urlencode "pwd=$pwd" --data-urlencode "code=${GOLDEN_SMOKE_CODE:?Golden smoke code is required}" \
     --data-urlencode 'rsa_encrypt=0' --data-urlencode 'nickname=golden-idem')"
   [ "$code" = "200" ] && [ "$(idem_json '.code')" = "0" ] \
     || { STAGE_HINT="幂等段 register HTTP $code body=$(head -c 200 "$idem_body")"; return 1; }
@@ -488,6 +489,7 @@ t=$(now)
 ( cd "$DEPLOY_DIR" && $COMPOSE_O up -d ) || die "override up 失败（backend IMBOYENV=dev 重建）"
 wait_healthz 180 "（backend 已按冒烟配置重建）" || die "backend 冒烟配置重建后未就绪"
 hosts_set_garage || die "hosts 注入 garage 解析失败"
+prepare_golden_smoke_users || die "冒烟用户/好友准备失败"
 say "[smoke8] 8 步链（Health→Register→Login→Admin Login→C2C→WebSocket→Upload→Download）"
 run_smoke8 || die "8 步冒烟链未全绿"
 T1=$(now)

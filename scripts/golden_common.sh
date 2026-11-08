@@ -25,8 +25,7 @@
 #   CURRENT_STAGE / STAGE_HINT / KEEP / PROFILE  die() 排查提示与输出字段（可选）
 # 可选测试口（干跑/资源门槛覆盖，生产勿设）：
 #   GOLDEN_HOSTS_FILE / GOLDEN_MIN_MEM_GB / GOLDEN_MIN_DISK_GB
-#   SMOKE_C2C_FROM / SMOKE_C2C_TO  run_smoke8 的 C2C 双方 uid 覆盖（默认走
-#   smoke_8step.sh 内置 1000000051→1000000056）
+#   SMOKE_C2C_FROM / SMOKE_C2C_TO  本轮创建并确认好友关系的 C2C 双方 uid
 
 # ── 颜色与日志（与 deploy/install.sh 同款风格）──────────────────────────────
 say()  { printf '\n\033[1;36m==> %s\033[0m\n' "$*"; }
@@ -358,9 +357,116 @@ sanity_equivalent() {
   fi
 }
 
+# ── cleanroom 冒烟身份：通过真实 API 注册、登录并建立双向好友 ──────────────
+golden_fixture_http() { # <method> <url> [curl 参数…]；响应仅落私有 run 目录
+  local method="$1" url="$2"; shift 2
+  curl -sS -m 15 -o "$RUN_DIR/golden_fixture.json" -w '%{http_code}' \
+    -X "$method" "$@" "$url" 2>/dev/null
+}
+
+golden_fixture_ok() {
+  [ "$1" = 200 ] && jq -e '.code == 0' "$RUN_DIR/golden_fixture.json" >/dev/null 2>&1
+}
+
+golden_json_id() { # <response file> <path key>…；JSON integer/string → 无损十进制 ID
+  python3 - "$@" <<'PY'
+import json, re, sys
+try:
+    with open(sys.argv[1], encoding="utf-8") as response:
+        value = json.load(response)
+    for key in sys.argv[2:]:
+        value = value[key]
+    if type(value) not in (int, str) or not re.fullmatch(r"[1-9][0-9]*", str(value)):
+        sys.exit(1)
+    print(value)
+except (OSError, ValueError, TypeError, KeyError):
+    sys.exit(1)
+PY
+}
+
+golden_register_login() { # <label>；输出 GOLDEN_USER_*，不覆盖调用方 TOKEN/UID
+  local label="$1" code
+  GOLDEN_USER_EMAIL="golden-${label}-$(date +%s)-$(openssl rand -hex 6)@smoke.local"
+  GOLDEN_USER_PASSWORD="Golden1-$(openssl rand -hex 12)"
+  GOLDEN_USER_UID=''; GOLDEN_USER_TOKEN=''
+  { code="$(golden_fixture_http POST "$BASE_URL/api/v1/passport/signup" \
+    -H 'Content-Type: application/x-www-form-urlencoded' \
+    --data-urlencode 'type=email' --data-urlencode "account=$GOLDEN_USER_EMAIL" \
+    --data-urlencode "pwd=$GOLDEN_USER_PASSWORD" \
+    --data-urlencode "code=${GOLDEN_SMOKE_CODE:?Golden smoke code is required}" \
+    --data-urlencode 'rsa_encrypt=0' --data-urlencode "nickname=golden-$label")" \
+    && golden_fixture_ok "$code"; } \
+    || { STAGE_HINT="Golden 用户 $label 注册失败（HTTP ${code:-000}；响应未输出）"; return 1; }
+  { code="$(golden_fixture_http POST "$BASE_URL/api/v1/passport/login" \
+    -H 'Content-Type: application/x-www-form-urlencoded' \
+    --data-urlencode 'type=email' --data-urlencode "account=$GOLDEN_USER_EMAIL" \
+    --data-urlencode "pwd=$GOLDEN_USER_PASSWORD" --data-urlencode 'rsa_encrypt=0')" \
+    && golden_fixture_ok "$code"; } \
+    || { STAGE_HINT="Golden 用户 $label 登录失败（HTTP ${code:-000}；响应未输出）"; return 1; }
+  # 当前 API 返回 bigint 数字，兼容字符串；Python 保留整数精度，避免 jq 舍入 UID。
+  GOLDEN_USER_UID="$(golden_json_id "$RUN_DIR/golden_fixture.json" payload uid)" \
+    || { STAGE_HINT="Golden 用户 $label 登录缺少有效 UID（响应未输出）"; return 1; }
+  GOLDEN_USER_TOKEN="$(jq -er '.payload.token | select(type == "string" and length > 0)' "$RUN_DIR/golden_fixture.json")" \
+    || { STAGE_HINT="Golden 用户 $label 登录缺少有效 UID/token（响应未输出）"; return 1; }
+}
+
+golden_friend_has() { # <token> <peer uid>
+  local code
+  { code="$(golden_fixture_http GET "$BASE_URL/api/v1/friend/list" -H "Authorization: Bearer $1")" \
+    && golden_fixture_ok "$code"; } || return 1
+  # friend/list 返回对方用户公开资料，主键是 id（不是关系表的 from/to_user_id）。
+  python3 - "$RUN_DIR/golden_fixture.json" "$2" <<'PY'
+import json, sys
+try:
+    with open(sys.argv[1], encoding="utf-8") as response:
+        friends = json.load(response)["payload"]["friend"]
+    if not isinstance(friends, list):
+        sys.exit(1)
+    found = any(isinstance(friend, dict) and type(friend.get("id")) in (int, str)
+                and str(friend["id"]) == sys.argv[2] for friend in friends)
+    sys.exit(0 if found else 1)
+except (OSError, ValueError, TypeError, KeyError):
+    sys.exit(1)
+PY
+}
+
+golden_friend_make() { # <tokenA> <uidA> <tokenB> <uidB>
+  local token_a="$1" uid_a="$2" token_b="$3" uid_b="$4" code payload
+  payload='{"from":{"source":"golden"},"msg":"golden cleanroom gate"}'
+  { code="$(golden_fixture_http POST "$BASE_URL/api/v1/friend/add" \
+    -H "Authorization: Bearer $token_a" -H 'Content-Type: application/x-www-form-urlencoded' \
+    --data-urlencode "to=$uid_b" --data-urlencode "payload=$payload" \
+    --data-urlencode "created_at=$(( $(date +%s) * 1000 ))")" \
+    && golden_fixture_ok "$code"; } \
+    || { STAGE_HINT="Golden 好友申请失败（HTTP ${code:-000}）"; return 1; }
+  { code="$(golden_fixture_http POST "$BASE_URL/api/v1/friend/confirm" \
+    -H "Authorization: Bearer $token_b" -H 'Content-Type: application/x-www-form-urlencoded' \
+    --data-urlencode "from=$uid_a" --data-urlencode "to=$uid_b" --data-urlencode "payload=$payload")" \
+    && golden_fixture_ok "$code"; } \
+    || { STAGE_HINT="Golden 好友确认失败（HTTP ${code:-000}）"; return 1; }
+  { golden_friend_has "$token_a" "$uid_b" && golden_friend_has "$token_b" "$uid_a"; } \
+    || { STAGE_HINT="Golden 双向好友列表尚未确认，不能生成 C2C 数据"; return 1; }
+}
+
+prepare_golden_smoke_users() {
+  local uid_a token_a uid_b token_b
+  golden_register_login smoke-a || return 1
+  uid_a="$GOLDEN_USER_UID"; token_a="$GOLDEN_USER_TOKEN"
+  golden_register_login smoke-b || return 1
+  uid_b="$GOLDEN_USER_UID"; token_b="$GOLDEN_USER_TOKEN"
+  [ "$uid_a" != "$uid_b" ] \
+    || { STAGE_HINT="Golden C2C 双方 UID 必须不同"; return 1; }
+  golden_friend_make "$token_a" "$uid_a" "$token_b" "$uid_b" || return 1
+  SMOKE_C2C_FROM="$uid_a"; SMOKE_C2C_TO="$uid_b"
+  ok "Golden C2C 双向好友已创建（$uid_a → $uid_b）"
+}
+
 # ── 8 步冒烟链执行（P3-C4 的 smoke_8step.sh；ENV_PASSTHROUGH 见函数体）───────
 run_smoke8() {
   local rc=0
+  [[ "${SMOKE_C2C_FROM:-}" =~ ^[1-9][0-9]*$ && "${SMOKE_C2C_TO:-}" =~ ^[1-9][0-9]*$ \
+    && "$SMOKE_C2C_FROM" != "$SMOKE_C2C_TO" ]] \
+    || { STAGE_HINT="Golden C2C 必须提供两个不同的有效用户 UID"; return 1; }
   printf '\n'
   ( cd "$CLONE_DIR" && \
     PATH="$BIN_DIR:$PATH" \
@@ -368,8 +474,9 @@ run_smoke8() {
     WS_URL="${WS_URL:-ws://127.0.0.1:9800/api/v1/ws}" \
     SMOKE_ADMIN_ACCOUNT="$ADMIN_PHONE" \
     SMOKE_ADMIN_PASSWORD="$ADMIN_PASSWORD" \
-    SMOKE_C2C_FROM="${SMOKE_C2C_FROM:-}" \
-    SMOKE_C2C_TO="${SMOKE_C2C_TO:-}" \
+    SMOKE_MASTER_CODE="${GOLDEN_SMOKE_CODE:?Golden smoke code is required}" \
+    SMOKE_C2C_FROM="${SMOKE_C2C_FROM:?Golden sender fixture is required}" \
+    SMOKE_C2C_TO="${SMOKE_C2C_TO:?Golden recipient fixture is required}" \
     PGHOST=127.0.0.1 PGPORT=5432 \
     PGUSER="$(env_get_var POSTGRES_USER)" \
     PGDATABASE="$(env_get_var POSTGRES_DB)" \
@@ -382,6 +489,11 @@ run_smoke8() {
 
 # ── 现场适配：override / wrapper / 证书预置 ──────────────────────────────────
 write_compose_override() {
+  # 每个 cleanroom 一次生成；同一轮注册、restart 与升级共用，生产起栈不注入。
+  GOLDEN_SMOKE_CODE="$(openssl rand -hex 16)" || return 1
+  export GOLDEN_SMOKE_CODE
+  : > "$OVERRIDE_YML"
+  chmod 600 "$OVERRIDE_YML"
   {
     cat <<EOF
 # ${GOLDEN_TAG:-golden} 自动生成（冒烟自动化前提，仅本 clone 副本内生效）。
@@ -393,6 +505,7 @@ services:
   imboy_backend:
     environment:
       IMBOYENV: dev
+      IMBOY_VERIFICATION_MASTER_CODE: "$GOLDEN_SMOKE_CODE"
 EOF
     if [ "${PROFILE:-host}" = "ci" ]; then
       cat <<EOF
@@ -403,6 +516,7 @@ EOF
 EOF
     fi
   } > "$OVERRIDE_YML"
+  # --keep/失败后可在新 shell 直接 compose logs/down；该 smoke 私有文件不得上传。
 }
 
 install_ctl_wrapper() {

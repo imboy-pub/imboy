@@ -257,6 +257,7 @@ MOUNTS_AFTER="$RUN_DIR/mounts_after.txt"
 ATTACH_FILE="$RUN_DIR/datagen_attach.txt"
 WS_TOOL="$SCRIPT_DIR/smoke/ws_c2g_send.py"
 mkdir -p "$WORKDIR" "$RUN_DIR" "$BIN_DIR"
+chmod 700 "$RUN_DIR"
 : > "$INSTALL_LOG"
 
 COMPOSE="docker compose -f $COMMUNITY_YML -f $RUNTIME_YML"
@@ -271,8 +272,9 @@ STAGE_HINT=""
 # 分环节秒数与断言结果（bash 3.2 兼容，不用关联数组）
 SEC_CLONE=0; SEC_ENVINIT=0; SEC_PULL=0; SEC_INSTALLVN=0; SEC_SANITY=0
 SEC_DATAGEN=0; SEC_UPGRADE=0; SEC_SMOKE8=0; SEC_VERIFY=0
-RET_FAIL_COUNT=0; RET_FAILURES=""; MIG_NOTE="未观察"; MIG_APPLIED_DELTA=0
+RET_FAIL_COUNT=0; RET_FAILURES=""; MIG_NOTE="未观察"; MIG_APPLIED_DELTA=unknown; MIGRATION_RESULT=NOT_RUN
 SCHEMA_BEFORE_ROWS=0; SCHEMA_BEFORE_VER=0; SCHEMA_AFTER_ROWS=0; SCHEMA_AFTER_VER=0; MIG_FILES=0
+HISTORY_BEFORE_ROWS=0; HISTORY_AFTER_ROWS=0; HISTORY_BEFORE_VERSIONS='[]'
 
 # ── HTTP / 状态文件 / DB helper ──────────────────────────────────────────────
 up_http() { # <method> <url> [curl 参数…] → HTTP 码；body 落 $UP_BODY
@@ -289,7 +291,7 @@ state_str() { jq -r --arg p "$1" 'getpath($p | split(".")) // empty' "$STATE_FIL
 up_pg() { # <sql> → 单值（经 psql wrapper → pg 容器）
   PGPASSWORD="$(env_get_var POSTGRES_PASSWORD)" PGUSER="$(env_get_var POSTGRES_USER)" \
     PGDATABASE="$(env_get_var POSTGRES_DB)" \
-    "$BIN_DIR/psql" -At -c "$1" 2>/dev/null || true
+    "$BIN_DIR/psql" -X -v ON_ERROR_STOP=1 -At -c "$1" 2>/dev/null
 }
 
 ret_fail() { # <断言名> <说明>：登记数据保留断言失败（跑完全部断言再判，不立即退出）
@@ -300,28 +302,12 @@ ret_fail() { # <断言名> <说明>：登记数据保留断言失败（跑完全
 
 # ── 数据生成段：账号 / 消息 / 附件 / 群 / 好友（vN 上执行并就地验证）─────────
 gu_register_login() { # <label>：成功后 UP_TOKEN/UP_UID，凭据入 state user_<label>
-  local label="$1" email pwd code token uid
-  email="golden-up-${label}-$(date +%s)@smoke.local"
-  pwd="GoldenUp1-$(openssl rand -hex 4)"
-  code="$(up_http POST "$BASE_URL/api/v1/passport/signup" \
-    -H 'Content-Type: application/x-www-form-urlencoded' \
-    --data-urlencode 'type=email' --data-urlencode "account=$email" \
-    --data-urlencode "pwd=$pwd" --data-urlencode 'code=abc12345' \
-    --data-urlencode 'rsa_encrypt=0' --data-urlencode "nickname=golden-up-$label")"
-  { [ "$code" = "200" ] && [ "$(up_jq '.code')" = "0" ]; } \
-    || { STAGE_HINT="注册 $label HTTP $code body=$(head -c 200 "$UP_BODY" 2>/dev/null)（402=License 配额满；vN 端点差异在此暴露）"; return 1; }
-  code="$(up_http POST "$BASE_URL/api/v1/passport/login" \
-    -H 'Content-Type: application/x-www-form-urlencoded' \
-    --data-urlencode 'type=email' --data-urlencode "account=$email" \
-    --data-urlencode "pwd=$pwd" --data-urlencode 'rsa_encrypt=0')"
-  token="$(up_jq '.payload.token // empty')"
-  uid="$(up_jq '.payload.uid // empty')"
-  { [ "$code" = "200" ] && [ -n "$token" ] && [ -n "$uid" ]; } \
-    || { STAGE_HINT="登录账号 $label HTTP ${code}（注册成功但登录被拒）"; return 1; }
-  UP_TOKEN="$token"; UP_UID="$uid"
+  local label="$1"
+  golden_register_login "$label" || return 1
+  UP_TOKEN="$GOLDEN_USER_TOKEN"; UP_UID="$GOLDEN_USER_UID"
   state_set_json "user_$label" \
-    "$(jq -nc --arg e "$email" --arg p "$pwd" --arg u "$uid" '{email:$e,pwd:$p,uid:$u}')"
-  ok "账号 ${label}：注册+登录成功（uid=${uid}）"
+    "$(jq -nc --arg e "$GOLDEN_USER_EMAIL" --arg p "$GOLDEN_USER_PASSWORD" --arg u "$UP_UID" '{email:$e,pwd:$p,uid:$u}')"
+  ok "账号 ${label}：注册+登录成功（uid=${UP_UID}）"
 }
 
 gu_send_c2c() { # <from-uid> <to-uid> <text> → stdout 输出 msg_id
@@ -391,9 +377,10 @@ gu_group_create() { # <tokenA> <uidB>：成功后 UP_GID
   code="$(up_http POST "$BASE_URL/api/v1/group/add" \
     -H "Authorization: Bearer $1" -H 'Content-Type: application/json' \
     -d "{\"member_uids\":[\"$2\"]}")"
-  gid="$(up_jq '.payload.group.id // .data.group.id // empty')"
+  gid="$(golden_json_id "$UP_BODY" payload group id)" \
+    || { STAGE_HINT="group/add 缺少有效群 ID（响应未输出）"; return 1; }
   { [ "$code" = "200" ] && [ "$(up_jq '.code')" = "0" ] && [ -n "$gid" ]; } \
-    || { STAGE_HINT="group/add HTTP $code body=$(head -c 200 "$UP_BODY" 2>/dev/null)（member_uids 须 JSON 字符串数组）"; return 1; }
+    || { STAGE_HINT="group/add HTTP $code 或业务请求失败（member_uids 须 JSON 字符串数组；响应未输出）"; return 1; }
   UP_GID="$gid"
   ok "群创建成功并拉 B 入群（gid=${gid}）"
 }
@@ -408,35 +395,20 @@ gu_send_group_msg() { # <token> <uid> <gid> <msg_id> <text>（WS C2G，帧契约
 }
 
 gu_friend_make() { # <tokenA> <uidA> <tokenB> <uidB>：A 申请 → B 确认
-  local payload ms code
-  payload='{"from":{"source":"golden"},"msg":"golden upgrade gate"}'
-  ms="$(python3 -c 'import time; print(int(time.time()*1000))')"
-  code="$(up_http POST "$BASE_URL/api/v1/friend/add" \
-    -H "Authorization: Bearer $1" -H 'Content-Type: application/x-www-form-urlencoded' \
-    --data-urlencode "to=$4" --data-urlencode "payload=$payload" --data-urlencode "created_at=$ms")"
-  { [ "$code" = "200" ] && [ "$(up_jq '.code')" = "0" ]; } \
-    || { STAGE_HINT="friend/add HTTP $code body=$(head -c 200 "$UP_BODY" 2>/dev/null)（to/payload/created_at 必填）"; return 1; }
-  code="$(up_http POST "$BASE_URL/api/v1/friend/confirm" \
-    -H "Authorization: Bearer $3" -H 'Content-Type: application/x-www-form-urlencoded' \
-    --data-urlencode "from=$2" --data-urlencode "to=$4" --data-urlencode "payload=$payload")"
-  { [ "$code" = "200" ] && [ "$(up_jq '.code')" = "0" ]; } \
-    || { STAGE_HINT="friend/confirm HTTP $code body=$(head -c 200 "$UP_BODY" 2>/dev/null)（需 B 的 token；accept gating）"; return 1; }
-  ok "好友关系建立成功（A↔B）"
+  golden_friend_make "$@"
 }
 
 gu_friend_has() { # <token> <uid>：0=好友列表含 uid
-  local code
-  code="$(up_http GET "$BASE_URL/api/v1/friend/list" -H "Authorization: Bearer $1")"
-  [ "$code" = "200" ] || { STAGE_HINT="friend/list HTTP $code"; return 1; }
-  jq -e --arg b "$2" \
-    '(.payload.friend // .data.friend // []) | any(.[]; ((.from_user_id // "") | tostring) == $b or ((.to_user_id // "") | tostring) == $b)' \
-    "$UP_BODY" >/dev/null 2>&1
+  golden_friend_has "$@"
 }
 
 gu_datagen() { # <tokenA> <uidA> <tokenB> <uidB>：编排数据生成（结果全落 state）
   local tokenA="$1" uidA="$2" tokenB="$3" uidB="$4"
   local i mid text gmsgid gtext runts
   runts="$(date +%s)"
+
+  say "[datagen] 好友关系（A 添加 B → B 确认 → 双向列表可见断言）"
+  gu_friend_make "$tokenA" "$uidA" "$tokenB" "$uidB" || die "好友关系建立失败（vN 基线）"
 
   say "[datagen] C2C 消息 ${MSG_COUNT} 条（A→B，imboy_ctl msg send + 归档可见断言）"
   i=1
@@ -465,19 +437,65 @@ gu_datagen() { # <tokenA> <uidA> <tokenB> <uidB>：编排数据生成（结果�
   state_set_json group "$(jq -nc --arg g "$UP_GID" --arg id "$gmsgid" --arg t "$gtext" '{gid:$g,msg_id:$id,text:$t}')"
   ok "群消息归档可见（gid=$UP_GID msg_id=${gmsgid}）"
 
-  say "[datagen] 好友关系（A 添加 B → B 确认 → 列表可见断言）"
-  gu_friend_make "$tokenA" "$uidA" "$tokenB" "$uidB" || die "好友关系建立失败（vN 基线）"
-  gu_friend_has "$tokenA" "$uidB" || die "好友列表未见 B（vN 上即不一致，断言基线不成立）"
 }
 
 # ── 升级前快照（数据保留断言的对照组）────────────────────────────────────────
+gu_migration_versions() { # stdin: release/source filenames' numeric prefixes
+  jq -Rces '
+    split("\n") | map(select(length > 0)) |
+    if length > 0 and all(.[]; test("^[0-9]{8}$")) then
+      map(tonumber) | sort |
+      if length == (unique | length) then . else error("duplicate migration versions") end
+    else error("empty or invalid migration versions") end
+  '
+}
+
+gu_schema_snapshot() { # stdout: validated head + exact history; no database writes
+  local release_versions source_versions ledger
+  # Match the cleanup helper's running-release oracle, then bind it to the
+  # immutable checkout as well. A filename count alone cannot establish identity.
+  release_versions="$(docker exec imboy_backend sh -c '
+    for f in /opt/imboy/lib/imboy-*/priv/migrations/*.up.sql; do
+      test -f "$f" || exit 1
+      f=${f##*/}; printf "%s\n" "${f%%_*}"
+    done
+  ' | gu_migration_versions)" \
+    || { printf '无法读取有效的运行 release 迁移清单\n' >&2; return 1; }
+  source_versions="$(
+    for file in "$CLONE_DIR"/priv/migrations/*.up.sql; do
+      [ -f "$file" ] || exit 1
+      file=${file##*/}; printf '%s\n' "${file%%_*}"
+    done | gu_migration_versions
+  )" || { printf '固定源码迁移清单为空、重号或格式无效\n' >&2; return 1; }
+  [ "$release_versions" = "$source_versions" ] \
+    || { printf '运行 release 与固定源码的迁移版本集合不一致\n' >&2; return 1; }
+
+  # One statement observes the head and history in the same database snapshot.
+  ledger="$(up_pg "SELECT json_build_object(
+    'head', (SELECT coalesce(json_agg(json_build_object('version', version, 'dirty', dirty)), '[]'::json)
+             FROM public.schema_migrations),
+    'history', (SELECT coalesce(json_agg(version ORDER BY version), '[]'::json)
+                FROM public.schema_migrations_history))")" \
+    || { printf '无法读取迁移版本头或历史表\n' >&2; return 1; }
+  # Slurp rejects extra JSON output; empty/error output must never become a pass.
+  jq -ces --argjson expected "$release_versions" '
+    if length == 1 then .[0] else error("expected one migration snapshot") end |
+    if type == "object" and (.head | type) == "array" and (.head | length) == 1
+       and .head[0].dirty == false and .head[0].version == ($expected | max)
+       and .history == $expected
+    then {head: .head[0], versions: .history}
+    else error("migration head/dirty/history differs from the release") end
+  ' <<< "$ledger"
+}
+
 gu_snapshot_before() {
-  local rows ver backend_ref
-  rows="$(up_pg 'SELECT count(*) FROM schema_migrations')"
-  ver="$(up_pg 'SELECT coalesce(max(version), 0) FROM schema_migrations')"
-  { [ -n "$rows" ] && [ "$rows" -gt 0 ] 2>/dev/null; } \
-    || { STAGE_HINT="schema_migrations 不可查/为空（vN 未跑迁移？psql wrapper 与 pg 容器）"; return 1; }
-  SCHEMA_BEFORE_ROWS="$rows"; SCHEMA_BEFORE_VER="$ver"
+  local schema backend_ref
+  schema="$(gu_schema_snapshot)" \
+    || { STAGE_HINT="vN 迁移头/历史未与实际 release 及固定源码精确对应；不能建立升级基线"; return 1; }
+  SCHEMA_BEFORE_ROWS=1
+  SCHEMA_BEFORE_VER="$(jq -r '.head.version' <<< "$schema")"
+  HISTORY_BEFORE_VERSIONS="$(jq -c '.versions' <<< "$schema")"
+  HISTORY_BEFORE_ROWS="$(jq '.versions | length' <<< "$schema")"
 
   backend_ref="$(docker inspect -f '{{.Config.Image}}' imboy_backend 2>/dev/null || true)"
   [ -n "$backend_ref" ] || { STAGE_HINT="docker inspect imboy_backend 取 Config.Image 失败"; return 1; }
@@ -489,9 +507,11 @@ gu_snapshot_before() {
     || { STAGE_HINT="docker inspect pg/garage 挂载快照失败"; return 1; }
 
   state_set_json snapshot_before \
-    "$(jq -nc --argjson r "$rows" --argjson v "$ver" --arg img "$backend_ref" \
-       '{schema_rows:$r,schema_max_version:$v,backend_image:$img}')"
-  ok "升级前快照：schema_migrations=${rows}（max ver=${ver}），backend=${backend_ref}"
+    "$(jq -nc --argjson schema "$schema" --arg img "$backend_ref" \
+       '{schema_rows:1,schema_max_version:$schema.head.version,schema_dirty:$schema.head.dirty,
+         history_count:($schema.versions | length),history_versions:$schema.versions,backend_image:$img}')" \
+    || { STAGE_HINT="无法保存升级前迁移历史快照"; return 1; }
+  ok "升级前快照：schema_migrations=1（ver=${SCHEMA_BEFORE_VER}，dirty=false），history=${HISTORY_BEFORE_ROWS}，backend=${backend_ref}"
 }
 
 # ── 升级段 ───────────────────────────────────────────────────────────────────
@@ -524,26 +544,25 @@ gu_observe_migration() { # 新 backend 容器日志的 auto_migrate 锚点 → M
   fi
 }
 
-gu_assert_schema() { # 迁移权威断言（to-ref 迁移文件数 vs schema_migrations）
-  local rows ver dirty files
-  rows="$(up_pg 'SELECT count(*) FROM schema_migrations')"
-  ver="$(up_pg 'SELECT coalesce(max(version), 0) FROM schema_migrations')"
-  dirty="$(up_pg 'SELECT count(*) FROM schema_migrations WHERE dirty')"
-  files="$(find "$CLONE_DIR/priv/migrations" -name '*.up.sql' 2>/dev/null | wc -l | tr -d ' ')"
-  SCHEMA_AFTER_ROWS="${rows:-0}"; SCHEMA_AFTER_VER="${ver:-0}"; MIG_FILES="$files"
-  MIG_APPLIED_DELTA=$(( SCHEMA_AFTER_ROWS - SCHEMA_BEFORE_ROWS ))
-
-  if [ "${rows:-0}" -lt "$SCHEMA_BEFORE_ROWS" ]; then
-    ret_fail schema_rows "schema_migrations 行数回退：升级前=${SCHEMA_BEFORE_ROWS} 升级后=${rows}（迁移历史丢失）"
+gu_assert_schema() { # 单行版本头 + 真实 release/source/history 精确集合 + 基线保留
+  local schema versions
+  MIGRATION_RESULT=FAIL
+  schema="$(gu_schema_snapshot)" \
+    || { ret_fail schema_ledger "目标迁移头/dirty/history 与实际 release 或固定源码不一致"; return 1; }
+  SCHEMA_AFTER_ROWS=1
+  SCHEMA_AFTER_VER="$(jq -r '.head.version' <<< "$schema")"
+  versions="$(jq -c '.versions' <<< "$schema")"
+  HISTORY_AFTER_ROWS="$(jq '.versions | length' <<< "$schema")"
+  MIG_FILES="$HISTORY_AFTER_ROWS"
+  if ! jq -en --argjson before "$HISTORY_BEFORE_VERSIONS" --argjson after "$versions" \
+      '($before | length) > 0 and ($before - $after | length) == 0' >/dev/null; then
+    ret_fail schema_history "升级前迁移历史缺失或有版本从目标历史中丢失"
+    return 1
   fi
-  if [ "${rows:-0}" -lt "$files" ]; then
-    ret_fail schema_pending "迁移未全部应用：${TO_REF} 迁移文件 ${files} 个，schema_migrations 仅 ${rows} 行"
-  fi
-  if [ "${dirty:-0}" != "0" ]; then
-    ret_fail schema_dirty "schema_migrations 存在 dirty=true 行（迁移中断，需人工 force 恢复）"
-  fi
-  [ "$RET_FAIL_COUNT" -eq 0 ] \
-    && ok "迁移断言：schema_migrations ${SCHEMA_BEFORE_ROWS}→${SCHEMA_AFTER_ROWS} 行（本次升级应用 ${MIG_APPLIED_DELTA} 个），max ver ${SCHEMA_BEFORE_VER}→${SCHEMA_AFTER_VER}，dirty=0，to-ref 文件数=${MIG_FILES}"
+  MIG_APPLIED_DELTA="$(jq -n --argjson before "$HISTORY_BEFORE_VERSIONS" --argjson after "$versions" \
+    '$after - $before | length')"
+  MIGRATION_RESULT=PASS
+  ok "迁移断言：schema_migrations=1，version ${SCHEMA_BEFORE_VER}→${SCHEMA_AFTER_VER}，dirty=false；history ${HISTORY_BEFORE_ROWS}→${HISTORY_AFTER_ROWS}（新增 ${MIG_APPLIED_DELTA}），与 release/source ${MIG_FILES} 个版本精确一致"
 }
 
 gu_assert_backend_replaced() { # backend 容器确实换成了 to-image
@@ -677,9 +696,9 @@ report() { # <verdict> <total> <data_retention> <smoke8>
     "$FROM_REF" "$FROM_IMAGE" "$TO_REF" "$TO_IMAGE" "$EXPECTED_TO_DIGEST"
   printf '  vN 三元组: VERSION=%s SHA=%s DIGEST=%s\n' \
     "${INST_VERSION:-unknown}" "${INST_GIT_SHA:-unknown}" "${INST_DIGEST:-unknown}"
-  printf '  auto_migrate: %s\n  schema_migrations: %s→%s 行（应用 +%s），max version %s→%s，to-ref 迁移文件 %s 个\n' \
-    "$MIG_NOTE" "$SCHEMA_BEFORE_ROWS" "$SCHEMA_AFTER_ROWS" "$MIG_APPLIED_DELTA" \
-    "$SCHEMA_BEFORE_VER" "$SCHEMA_AFTER_VER" "$MIG_FILES"
+  printf '  auto_migrate: %s\n  schema_migrations: %s→%s 行，version %s→%s\n  schema_migrations_history: %s→%s 个版本（新增 %s），release/source 迁移版本 %s 个，账本断言 %s\n' \
+    "$MIG_NOTE" "$SCHEMA_BEFORE_ROWS" "$SCHEMA_AFTER_ROWS" "$SCHEMA_BEFORE_VER" "$SCHEMA_AFTER_VER" \
+    "$HISTORY_BEFORE_ROWS" "$HISTORY_AFTER_ROWS" "$MIG_APPLIED_DELTA" "$MIG_FILES" "$MIGRATION_RESULT"
   printf '  8 步冒烟链（升级后）: %s\n  数据保留断言: %s%s\n' \
     "$smoke8" "$retention" "${RET_FAILURES:+（失败项: ${RET_FAILURES}）}"
   if [ "$PROFILE" = "ci" ]; then
@@ -692,7 +711,7 @@ report() { # <verdict> <total> <data_retention> <smoke8>
   printf '\n'
   printf 'GOLDEN_UPGRADE=%s TOTAL=%ss FROM=%s TO=%s PROFILE=%s MIGRATION=%s DATA_RETENTION=%s SMOKE8=%s\n' \
     "$verdict" "$total" "$FROM_REF" "$TO_REF" "$PROFILE" \
-    "$(printf '%s' "$MIG_NOTE" | cut -d: -f1)" "$retention" "$smoke8"
+    "$MIGRATION_RESULT" "$retention" "$smoke8"
 }
 
 cleanup() {
