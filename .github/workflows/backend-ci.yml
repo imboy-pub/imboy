@@ -42,7 +42,7 @@ jobs:
       - name: Install offline test tools
         run: |
           sudo apt-get update
-          sudo apt-get install -y jq curl openssl zip unzip gettext-base
+          sudo apt-get install -y jq curl openssl python3 zip unzip gettext-base
       - name: Check packaging and configuration contracts
         run: |
           bash scripts/test/cleanup_db_shell_test.sh
@@ -52,6 +52,8 @@ jobs:
           bash scripts/release_version.sh "v$(cat VERSION)"
           bash scripts/test/golden_image_contract_test.sh
           bash scripts/test/golden_prepare_test.sh
+          bash scripts/test/golden_smoke_test.sh
+          bash scripts/test/golden_migration_test.sh
           bash scripts/test/verify_community_images_test.sh
           bash scripts/test/community_rtc_wss_shell_test.sh
           bash scripts/test/init_letsencrypt_test.sh

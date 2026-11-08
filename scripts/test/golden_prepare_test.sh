@@ -41,6 +41,19 @@ vmargs="$GOLDEN_TEST_DEPLOY/data/backend_priv/golden-vm.args"
 runtime="$GOLDEN_TEST_DEPLOY/docker-compose.golden-runtime.yml"
 grep -Fq 'VMARGS_PATH: /opt/imboy/priv_runtime/golden-vm.args' "$runtime" || exit 90
 if grep -q 'IMBOYENV:' "$runtime"; then exit 90; fi
+if grep -qE 'IMBOY_VERIFICATION_MASTER_CODE|GOLDEN_SMOKE_CODE' "$runtime" \
+  "$GOLDEN_TEST_DEPLOY/.env" "$GOLDEN_TEST_DEPLOY/docker-compose.community.yml"; then exit 90; fi
+smoke="$GOLDEN_TEST_DEPLOY/docker-compose.golden-override.yml"
+[[ "$GOLDEN_SMOKE_CODE" =~ ^[0-9a-f]{32}$ && "$(stat -c %a "$smoke")" == 600 ]] || exit 90
+grep -Fq 'IMBOYENV: dev' "$smoke" || exit 90
+grep -Fq "IMBOY_VERIFICATION_MASTER_CODE: \"$GOLDEN_SMOKE_CODE\"" "$smoke" || exit 90
+if grep -q 'GOLDEN_SMOKE_CODE' "$smoke"; then exit 90; fi
+if [[ -e "$GOLDEN_TEST_EVENTS.code" ]]; then
+  [[ "$(cat "$GOLDEN_TEST_EVENTS.code")" == "$GOLDEN_SMOKE_CODE" ]] || exit 90
+else
+  printf '%s' "$GOLDEN_SMOKE_CODE" > "$GOLDEN_TEST_EVENTS.code"
+  chmod 600 "$GOLDEN_TEST_EVENTS.code"
+fi
 if [ "$GOLDEN_TEST_PROFILE" = ci ]; then
   grep -Fq 'network_mode: none' "$runtime" || exit 90
 else
@@ -167,12 +180,16 @@ run_cli() { # <name> <install|upgrade> <profile> <expected stage> [CLI options]
   if [[ "$stage" == install || "$stage" == install-vn ]]; then
     [[ "$(cat "$GOLDEN_TEST_EVENTS")" == $'CLONE\nINIT\nPULL_READY\nINSTALL_READY' ]] \
       || fail "$name: preparation/pull/install order or inputs are wrong"
-    local cookie password
+    local cookie password smoke_code
     cookie="$(awk '$1=="-setcookie" {print $2}' "$WORK/imboy/deploy/data/backend_priv/golden-vm.args")"
     password="$(sed -n 's/^IMBOY_DIRECT_CLEANUP_PG_PASSWORD=//p' "$WORK/imboy/deploy/.env")"
+    smoke_code="$(cat "$GOLDEN_TEST_EVENTS.code")"
     if grep -Fq "$cookie" "$WORK.out" "$GOLDEN_TEST_EVENTS" "$WORK/imboy/scripts/imboy_ctl" \
       "$WORK/imboy/deploy/docker-compose.golden-runtime.yml"; then fail "$name: cookie leaked"; fi
     if grep -Fq "$password" "$WORK.out" "$GOLDEN_TEST_EVENTS"; then fail "$name: cleanup password leaked"; fi
+    if grep -Fq "$smoke_code" "$WORK.out" "$GOLDEN_TEST_EVENTS"; then fail "$name: smoke code leaked"; fi
+    run_dirs=("$WORK"/run-*)
+    [[ "$(stat -c %a "${run_dirs[0]}")" == 700 ]] || fail "$name: response/state directory is not private"
   elif grep -Eq 'PULL_READY|INSTALL_READY' "$GOLDEN_TEST_EVENTS"; then
     fail "$name: invalid input reached pull/install"
   fi
@@ -187,6 +204,8 @@ first_cookie="$(awk '$1=="-setcookie" {print $2}' "$INSTALL_WORK/imboy/deploy/da
 second_cookie="$(awk '$1=="-setcookie" {print $2}' "$WORK/imboy/deploy/data/backend_priv/golden-vm.args")"
 [[ "$first_cookie" != "$second_cookie" ]] || fail 'independent runs reused a cookie'
 pass 'separate cleanrooms get separate cookies without putting them in logs or wrappers'
+[[ "$(cat "$INSTALL_WORK.events.code")" != "$(cat "$WORK.events.code")" ]] || fail 'independent runs reused a smoke code'
+pass 'smoke code is unique per cleanroom, exported consistently, absent from production overlays and logs'
 
 for kind in install upgrade; do
   run_cli "missing-host-$kind" "$kind" host arg \
