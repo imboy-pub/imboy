@@ -28,6 +28,80 @@ dependencies. The ZIP is an installation kit, not an image bundle or a verified
 server deployment. Use its root `install.sh` and manuals for the supported
 single-host community path; the repository installer remains available below.
 
+## 社区镜像发布合同 / Community image release contract
+
+`VERSION` 与 `.env.example` 记录交付版本，例如 `1.0.0-alpha.84`；对应 Git
+标签为 `v1.0.0-alpha.84`，四类最终镜像标签为 `1.0.0-alpha.84`。只去掉 Git
+标签开头的 `v`，完整保留 alpha/beta/rc 后缀。不能将预发布版本自动转成稳定版，
+不能用 `latest` 填补缺失版本。当前发布入口明确拒绝 `+build` 元数据，避免在
+Docker 标签中做有歧义的转换。
+
+The delivery version is not proof that images exist. Git tags retain `v`, image
+tags omit it, and both preserve the complete prerelease identity. The release
+workflow validates the Git tag against `VERSION` and the environment template
+before any candidate build. A missing version fails Compose configuration.
+
+| Component | Source | Default image |
+|---|---|---|
+| Backend | Tagged backend commit / 后端固定提交 | `ghcr.io/imboy-pub/imboy-backend:<VERSION>` |
+| Admin | Approved frontend commit / 批准的前端提交 | `ghcr.io/imboy-pub/imboy-admin:<VERSION>` |
+| Widget | Same frontend commit; `build:widget`, `verify:widget`, `Dockerfile.widget` | `ghcr.io/imboy-pub/imboy-widget:<VERSION>` |
+| PostgreSQL 18 | Backend commit, `docker/pg18_Dockerfile` | `ghcr.io/imboy-pub/imboy-pg18:<VERSION>` |
+
+发布者须将 `ADMIN_REPO_REF` 明确设置为批准的 **40 位前端 commit SHA**，不能
+使用浮动 `main`；Admin 与 Widget 共享该 SHA。前端自身 `package.json` 版本
+独立记录，不要求与后端源码版本相等。最终 `community-images.json` 附件记录两仓
+SHA、前端包版本、四镜像 digest、目标平台和 workflow 链接。
+
+The current release target is `linux/amd64`. ARM64 requires its own build and
+runtime evidence; an OCI attestation's `unknown/unknown` entry is not a CPU
+architecture. Mutable base images and upstream build inputs mean rebuilding the
+same source need not reproduce the same digest. Promotion reuses tested digests.
+
+### 部署前实际核验 / Verify before deployment
+
+在仓库根或独立 ZIP 根运行。该工具只读 Registry，不登录或推送；`--pull`
+使用空的临时 Docker 凭据配置，检验陌生人的匿名拉取路径。无需宿主机 Python。
+
+```bash
+bash scripts/verify_community_images.sh \
+  --version 1.0.0-alpha.84 --platform linux/amd64 --pull \
+  --output "./image-evidence-$(date -u +%Y%m%dT%H%M%SZ)-$$"
+```
+
+`--output` 必须为新目录；证据保留实际状态、摘要、架构和 pull 结果。去掉
+`--pull` 只验证 manifest/config 元数据，不能声称实际拉取成功。已有 Docker
+缓存可能复用 layer，空凭据配置不等于空镜像缓存；陌生人演练仍应使用干净主机。
+显式覆盖镜像时改用 `--backend`、`--admin`、`--widget`、`--pg` 四个完整引用。
+
+Only a `MANIFEST_UNKNOWN` response from a demonstrably readable repository is
+reported as missing. Authentication, visibility and network failures remain
+unconfirmed. A successful writer-authenticated CI build does not prove public
+access. Default community delivery requires all four images to pass anonymous
+pull; changing package visibility remains an owner-approved operation.
+
+### 发布门禁与失败恢复 / Gates and recovery
+
+既有 Golden Install/Upgrade 保留，且必须消费同一组四镜像 digest；另加 Widget
+资产配对/构建/运行检查和四镜像匿名拉取。`RELEASE_FINALIZE_ENABLED` 开关保留。
+当前 Golden 的现场前置、五域配置和清理数据库账号均须实际满足，不能为了发布
+跳过失败。源码或离线交付 CI 成功不等于这些门禁已通过。
+
+首次写最终标签前，workflow 保存四镜像及来源 receipt。最终标签已存在且摘要
+一致则可重用；摘要不同、无法判断权限或网络错误时停止。写后再次比对摘要和
+匿名拉取证据，再以 `--verify-tag` 在原 Git 标签创建 Release；预发布标记为
+prerelease，不创建另一个稳定 Git 标签。
+
+Four registry writes are not atomic and Buildx provides no compare-and-swap
+here. The release workflow serializes a version; external publishers must not
+write the same version concurrently. On partial promotion, do not announce a
+release or rebuild and overwrite it. Resume with the saved original four
+digests, verify all final tags again, then complete the approved release.
+
+客户回滚须使用上一份已验收的完整四镜像 receipt 和匹配配置；不要移动公共版本
+标签。涉及数据库迁移时，遵循 [升级恢复手册](standalone/docs/UPGRADE_AND_RECOVERY.md)
+的备份与恢复步骤，不能把换回 pg18 镜像当成数据库回滚。
+
 ## 交付清单 / Deliverables
 
 > 双轨分发 / Dual-track distribution：

@@ -46,7 +46,7 @@ services:
 
   # ========== PostgreSQL 18 + 扩展 ==========
   imboy_pg18:
-    image: ${PG_IMAGE:-ghcr.io/imboy-pub/imboy-pg18:${IMBOY_VERSION:-1.0.0-alpha.82}}
+    image: ${PG_IMAGE:-ghcr.io/imboy-pub/imboy-pg18:${IMBOY_VERSION:?Set IMBOY_VERSION to a verified release version}}
     container_name: imboy_pg18
     hostname: pg.docker.imboy.pub
     restart: unless-stopped
@@ -138,7 +138,7 @@ services:
 
   # ========== imboy 后端（Erlang/OTP + Cowboy）==========
   imboy_backend:
-    image: ${BACKEND_IMAGE:-ghcr.io/imboy-pub/imboy-backend:${IMBOY_VERSION:-1.0.0-alpha.82}}
+    image: ${BACKEND_IMAGE:-ghcr.io/imboy-pub/imboy-backend:${IMBOY_VERSION:?Set IMBOY_VERSION to a verified release version}}
     container_name: imboy_backend
     hostname: backend.docker.imboy.pub
     restart: unless-stopped
@@ -270,7 +270,7 @@ services:
 
   # ========== imboy-admin-frontend（React + Vite，静态）==========
   imboy_admin:
-    image: ${ADMIN_IMAGE:-ghcr.io/imboy-pub/imboy-admin:${IMBOY_VERSION:-1.0.0-alpha.82}}
+    image: ${ADMIN_IMAGE:-ghcr.io/imboy-pub/imboy-admin:${IMBOY_VERSION:?Set IMBOY_VERSION to a verified release version}}
     container_name: imboy_admin
     hostname: admin.docker.imboy.pub
     restart: unless-stopped
@@ -300,7 +300,7 @@ services:
   # nginx 的 CS_WIDGET_DOMAIN vhost（nginx/templates/cs-widget.conf.template）。
   # 运行时合同（CSD-IMG-01）：只读根文件系统 + tmpfs /tmp（pid/temp/日志全落 /tmp）。
   imboy_widget:
-    image: ${IMBOY_WIDGET_IMAGE:-ghcr.io/imboy-pub/imboy-widget:${IMBOY_VERSION:-1.0.0-alpha.82}}
+    image: ${IMBOY_WIDGET_IMAGE:-ghcr.io/imboy-pub/imboy-widget:${IMBOY_VERSION:?Set IMBOY_VERSION to a verified release version}}
     container_name: imboy_widget
     hostname: widget.docker.imboy.pub
     restart: unless-stopped
@@ -326,7 +326,7 @@ services:
         max-file: "30"
 
   imboy_edge:
-    image: ${BACKEND_IMAGE:-ghcr.io/imboy-pub/imboy-backend:${IMBOY_VERSION:-1.0.0-alpha.82}}
+    image: ${BACKEND_IMAGE:-ghcr.io/imboy-pub/imboy-backend:${IMBOY_VERSION:?Set IMBOY_VERSION to a verified release version}}
     restart: unless-stopped
     command: ["/bin/sh", "/opt/imboy/bin/start_download_edge.sh"]
     environment:
@@ -340,7 +340,7 @@ services:
   # Separate proof identity: credentials are never injected into the API container.
   imboy_enterprise_proof:
     profiles: ["enterprise-direct"]
-    image: ${BACKEND_IMAGE:-ghcr.io/imboy-pub/imboy-backend:${IMBOY_VERSION:-1.0.0-alpha.82}}
+    image: ${BACKEND_IMAGE:-ghcr.io/imboy-pub/imboy-backend:${IMBOY_VERSION:?Set IMBOY_VERSION to a verified release version}}
     restart: unless-stopped
     command: ["/bin/sh", "/opt/imboy/bin/start_enterprise_direct_proof.sh"]
     depends_on:
