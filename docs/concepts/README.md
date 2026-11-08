@@ -35,7 +35,7 @@
 
 三个业务切片（智能体 / 客服 / 企业业务）共享一个前置概念：**业务身份（Business Identity）**——组织的稳定经办主体，客服坐席与企业消息发送方都挂靠它。
 
-> **分期口径**：一期交付（`phase1_delivery` profile）仅开放核心 IM、频道底座、企业组织/企业业务、人工客服与 OA 对接；**端到端加密（E2EE）与智能体域（AI 助手 / Agent Hub / MCP / Bot）属二期七域**，一期 profile 下经交付锁 fail-closed 关闭，代码实现存在不等于一期可启用。分期白名单与交付锁清单见[打包契约](../product/packaging-contract.md) §9。
+> **分期口径**：一期交付（`phase1_delivery` profile）的完整白名单与交付锁以[打包契约](../product/packaging-contract.md) §9 为准，其中 App 好友一对一 RTC（`rtc`）已选入编译清单、运行时预设默认允许，仍可显式关闭；群通话（`rtc_group`）、端到端加密（E2EE）与智能体域（AI 助手 / Agent Hub / MCP / Bot）仍受交付锁关闭。访客/Web 坐席及 C2S 音视频不在本次开放范围，编译包含与运行时允许不代表真实双端验收通过。
 
 ## 阅读顺序建议
 

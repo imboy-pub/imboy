@@ -13,13 +13,17 @@ IMBoy is a self-hostable instant messaging platform. This repository contains th
 Phase-1 delivery capability surface (`phase1_delivery` profile):
 
 - One-on-one chat, group chat, and push notifications (Core IM: contacts, history/offline/multi-device sync, attachments and message governance)
+- One-to-one voice/video calls between signed-in app friends (`rtc` is selected in the build manifest and allowed by the runtime preset by default; explicit `features.rtc=false` can disable it)
 - Enterprise organizations/departments/members/workspaces with RBAC; human customer-service seats and visitor Widget; OA integration (internal API / SSO / Webhook)
 - Channel foundation (in-organization General groups and announcement channels)
+- Moments and nearby people (phase-1 scope; publishing, interactions, location and privacy controls require delivery-matrix acceptance)
 - HTTP APIs and persistent WebSocket connections
 - PostgreSQL persistence and direct uploads to Garage S3
 - Single-node production deployment with Docker Compose (Helm/Kubernetes is experimental and not validated on a production cluster)
 
-The full-selected build additionally includes moments, channel discovery/invitation/paid channels, end-to-end encryption (E2EE), RTC, Bots, the AI assistant, and other domains. Under the phase-1 delivery profile these domains are closed by delivery locks and fail-closed gates; stale caches or remote configuration cannot re-enable them. See the [packaging contract](./docs/product/packaging-contract.md) for phase boundaries, the whitelist, and delivery locks, and the [delivery package manifest](./docs/product/delivery-package-manifest.md) for package contents.
+The repository also retains channel discovery/invitation/paid channels, end-to-end encryption (E2EE), group calls (`rtc_group`), Bots, the AI assistant, and other domains; build inclusion depends on the target manifest. Under the phase-1 delivery profile these domains are closed by delivery locks and fail-closed gates; stale caches or remote configuration cannot re-enable them. See the [packaging contract](./docs/product/packaging-contract.md) for phase boundaries, the whitelist, and delivery locks, and the [delivery package manifest](./docs/product/delivery-package-manifest.md) for package contents.
+
+RTC build inclusion, effective runtime permission and real two-device media acceptance require separate evidence. The manifest profile does not switch the running server's profile. Visitor, web-seat and C2S audio/video are outside this delivery scope; group calls remain unselected and delivery-locked. See [packaging contract §9.5](./docs/product/packaging-contract.md#95-app-一对一-rtc-与群通话边界).
 
 ## System architecture
 
@@ -196,8 +200,12 @@ docker compose -f docker-compose.demo.yml up -d
 # after ~30s open http://127.0.0.1:9800/api/v1/init
 ```
 
-Minimal two-service stack (PostgreSQL + backend), zero configuration — meant for
-product evaluation and live demos.
+This example is for local product evaluation. Check configuration templates, ports
+and health checks in the [deployment guide](./deploy/README.md) before starting.
+Actual capabilities depend on the build manifest and effective runtime profile/features.
+`phase1_delivery` allows one-to-one app-friend RTC by default and accepts
+`features.rtc=false`; group calls, E2EE and AI remain disabled. A running demo does
+not establish LiveKit/TURN readiness or real two-device media acceptance.
 
 ## More documentation
 

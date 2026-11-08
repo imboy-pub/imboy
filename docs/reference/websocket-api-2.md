@@ -6,7 +6,7 @@
 > Source of truth: `src/imboy_router.erl` + `src/api/websocket_handler.erl` + `src/logic/websocket_logic.erl` + `src/ds/message_ds.erl` + `src/ds/websocket_ds.erl` + `src/lib/imboy_codec.erl` + `src/lib/imboy_frame.erl` + `include/imboy_frame.hrl`  
 > Note: 本文中的 `v2.0` 指消息结构版本，`imboy.v2` 指分层二进制帧协议版本，二者相互独立。  
 > Related docs: `docs/reference/rest-api.md`, `docs/reference/contracts/e2ee-server-persisted-shard-contract-v1.md`, `docs/guides/operations/security.md`, `proto/imboy.proto`, [`api/proto/README.md`](https://github.com/imboy-pub/imboy/blob/main/api/proto/README.md)`（帧协议真源）`  
-> 分期口径：本文是 full-selected 完整版的协议全貌。一期交付（`phase1_delivery` profile）下，`webrtcAudio`/`webrtcVideo` 等 RTC 信令消息与 E2EE 相关 action 属二期七域，经交付锁 fail-closed 关闭、默认不可用（见 `docs/product/packaging-contract.md` §9）。
+> 分期口径：本文描述仓库支持的协议，各产品组合的可用范围以目标 manifest 与现场运行时 profile/features 为准。一期交付（`phase1_delivery` profile）已将 App 好友一对一 `webrtcAudio`/`webrtcVideo` 通话纳入 `rtc`；运行时预设默认允许，显式 `features.rtc=false` 可关闭，身份、好友关系与黑名单门禁继续生效。群通话（`rtc_group`）和 E2EE 相关 action 仍受交付锁关闭；访客/Web 坐席及 C2S 音视频不在本次开放范围。信令可用不等于双向媒体已验收，见[打包契约 §9.5](../product/packaging-contract.md#95-app-一对一-rtc-与群通话边界)。
 
 ## 变更记录 (Changelog)
 

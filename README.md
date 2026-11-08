@@ -13,6 +13,7 @@ IMBoy 是可私有部署的即时通讯平台。本仓库包含 Erlang/OTP 后�
 一期交付（`phase1_delivery` profile）能力面：
 
 - 单聊、群聊与消息推送（Core IM：联系人、历史/离线/多端同步、附件与消息治理）
+- 已登录 App 好友之间的一对一语音/视频（`rtc` 已选入编译清单，运行时预设默认允许，可通过 `features.rtc=false` 显式关闭）
 - 企业组织/部门/成员/工作区与 RBAC；人工客服坐席与访客 Widget；OA 对接（internal API / SSO / Webhook）
 - 频道底座（组织内部 General 群与公告频道）
 - 朋友圈与附近的人（一期范围；发布、互动、定位及隐私控制须按交付矩阵验收）
@@ -20,7 +21,9 @@ IMBoy 是可私有部署的即时通讯平台。本仓库包含 Erlang/OTP 后�
 - PostgreSQL 持久化与 Garage S3 附件直传
 - Docker Compose 单节点生产部署（Helm/Kubernetes 为实验性，未经生产集群验证）
 
-完整版（full-selected）另含频道发现/邀请/付费频道、E2EE 端到端加密、RTC、Bot、AI 助手等域；一期交付 profile 下这些域经交付锁与 fail-closed 门禁关闭，旧缓存或远端配置不能重新打开。分期边界、白名单与交付锁清单见[打包契约](./docs/product/packaging-contract.md)，交付包内容见[交付包清单](./docs/product/delivery-package-manifest.md)。
+仓库还保留频道发现/邀请/付费频道、E2EE 端到端加密、群通话（`rtc_group`）、Bot、AI 助手等域，是否编入以目标 manifest 为准；一期交付 profile 下这些域经交付锁与 fail-closed 门禁关闭，旧缓存或远端配置不能重新打开。分期边界、白名单与交付锁清单见[打包契约](./docs/product/packaging-contract.md)，交付包内容见[交付包清单](./docs/product/delivery-package-manifest.md)。
+
+RTC 的编译包含、运行时允许与真实双端音视频验收须分别核对；manifest 的 profile 不会自动切换现场运行时 profile。访客、Web 坐席及 C2S 音视频不在本次开放范围，群通话仍未选入且受交付锁关闭。边界与验收要求见[打包契约 §9.5](./docs/product/packaging-contract.md#95-app-一对一-rtc-与群通话边界)。
 
 ## 系统架构
 
@@ -187,7 +190,7 @@ docker compose -f docker-compose.demo.yml up -d
 # 30 秒后访问 http://127.0.0.1:9800/api/v1/init
 ```
 
-该示例用于本地产品评估。启动前核对配置模板、端口和健康检查，详见[部署指南](./deploy/README.md)。实际能力以部署 profile 为准；一期不启用 E2EE、AI 或 RTC。
+该示例用于本地产品评估。启动前核对配置模板、端口和健康检查，详见[部署指南](./deploy/README.md)。实际能力以构建清单和现场运行时 profile/features 为准；`phase1_delivery` 默认允许 App 好友一对一 RTC，`features.rtc=false` 可关闭，群通话、E2EE 与 AI 仍关闭。演示服务启动不代表 LiveKit/TURN 已就绪或真实双端音视频已验收。
 
 ## 继续阅读
 
