@@ -1,0 +1,27 @@
+item	value	confirmed_by	confirmed_at_with_timezone	evidence_or_open_issue
+交付范围	待填写			
+最终RELEASE_ID	待填写			
+完整源码SHA	待填写			
+最终归档SHA256	待填写			
+产品profile及manifest哈希	待填写			
+OS_ID/OS_VERSION_ID/ARCH	待填写			
+OTP/ERTS版本	待填写			
+PostgreSQL及扩展版本	待填写			
+Garage版本	待填写			
+三域名及网络范围	待填写			
+配对客户端版本	待填写			
+首次管理员归属	待填写			不要填写口令
+必验项目结果汇总	NOT_RUN			
+条件项目适用性依据	待填写			
+干净机安装耗时	待实测			
+完整恢复耗时/RPO/RTO	待实测			
+升级及失败恢复耗时	待实测			
+开发者介入次数及修订证据	待记录			
+备份加密/离机位置/留存负责人	待填写			不要填写解密口令
+秘密保管及恢复责任人	待填写			不要附秘密文件
+TLS到期/续期责任人	待填写			
+监控告警/支持渠道	待填写			
+开放问题与拒绝签收原因	待填写			
+操作人签字	待签署			
+验收人签字	待签署			
+发布负责人签字	待签署			

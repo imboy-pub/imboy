@@ -1,0 +1,31 @@
+case_id	area	applicability	method	action	pass_oracle	status	evidence	elapsed_seconds	owner	notes
+A01	发行身份	REQUIRED	MANUAL	核对源码SHA/profile/平台/包哈希	全部与冻结记录一致	NOT_RUN				
+A02	现场准备	REQUIRED	MANUAL	核对主机三域名证书网络磁盘	准备表所有必填完成且真实可达	NOT_RUN				
+A03	只读预检	REQUIRED	SCRIPT	install.sh --check	预检通过且未修改数据或启动服务	NOT_RUN				
+A04	首装	REQUIRED	SCRIPT	在空主机运行install.sh --apply	同候选初始化完成，无隐含源码步骤	NOT_RUN				需装冻结主机依赖时加--prepare-host，记录软件源与实际包版本
+A05	中断续跑	REQUIRED	REHEARSAL	在受控中断后同包同配置resume	原数据和秘密保留，未重复初始化	NOT_RUN				仅在演练机执行
+A06	管理员	REQUIRED	SCRIPT_AND_MANUAL	本机隐藏输入创建首个管理员	创建成功且口令未进argv/日志/报告	NOT_RUN				
+A07	管理员幂等	REQUIRED	SCRIPT	重复运行admin-init.sh	不覆盖已有账号和口令	NOT_RUN				
+A08	本机技术检查	REQUIRED	SCRIPT	verify.sh	所有适用自动断言通过	NOT_RUN				记录脚本原始结果，勿篡改NOT_RUN
+A09	真实外网与TLS	REQUIRED	MANUAL	客户端网络访问三个域名	证书可信/域名匹配/路由正确	NOT_RUN				不使用-k
+A10	WSS登录	REQUIRED	CLIENT	两个测试用户合法登录	/api/v1/ws连接成功，身份正确	NOT_RUN				需要配对客户端和登录材料
+A11	双向消息	REQUIRED	CLIENT	A到B/B到A发送文字	消息内容及顺序正确，无意外重复	NOT_RUN				
+A12	离线重连	REQUIRED	CLIENT	B离线期间A发消息，B恢复	未丢消息，补发与去重符合合同	NOT_RUN				
+A13	S3基础往返	REQUIRED	SCRIPT	verify.sh --s3-write	唯一临时对象写读字节一致并成功删除	NOT_RUN				不等同应用预签名/确认业务通过
+A14	私有附件	REQUIRED	CLIENT	按APP真实上传确认下载流程	下载SHA256与源一致，引用状态正确	NOT_RUN				
+A15	私有权限	REQUIRED	CLIENT	使用未授权测试身份请求私有附件	拒绝访问，原授权身份仍可访问	NOT_RUN				不共享完整预签名URL
+A16	公开附件	REQUIRED	CLIENT	公开测试对象从FILES域读取	字节一致且没有公开私有桶	NOT_RUN				
+A17	附件边界	REQUIRED	CLIENT	过期/大小超限/上传中断重试	按合同失败或恢复，无静默损坏	NOT_RUN				记录批准的产品边界
+A18	浏览器CORS	CONDITIONAL	BROWSER	实际前端origin上传确认下载	OPTIONS和后续请求符合CORS合同	NOT_RUN				无Web范围须由验收人确认NOT_APPLICABLE
+A19	主机重启	REQUIRED	REHEARSAL	重启后复验登录消息附件	自动恢复，数据与秘密保持一致	NOT_RUN				仅按批准维护窗口操作
+A20	一致备份	REQUIRED	SCRIPT	backup.sh停服生成快照再恢复服务	归档及hash完整，服务恢复且readiness通过	NOT_RUN				归档含秘密，不上传报告
+A21	隔离恢复	REQUIRED	SCRIPT_AND_CLIENT	空隔离主机恢复完整备份	记录/计数/文件hash/权限/登录均符合源快照	NOT_RUN				记录实际RPO/RTO
+A22	升级预检	REQUIRED_FOR_UPGRADE	SCRIPT	upgrade.sh --package NEW --check	源目标路径明确，PG/Garage字节相同	NOT_RUN				首次交付需验证一条允许升级路径
+A23	实际升级	REQUIRED_FOR_UPGRADE	SCRIPT_AND_CLIENT	副本升级后复验同一测试集	迁移成功且旧消息附件保留	NOT_RUN				不能只凭服务active
+A24	升级失败恢复	REQUIRED_FOR_UPGRADE	REHEARSAL	按批准方案恢复旧完整快照	恢复后业务正确，不只切旧二进制	NOT_RUN				避免在真实生产制造故障
+A25	证书轮换	REQUIRED	REHEARSAL	演练新证书检查reload外网验证	三域链可信，无意外业务中断	NOT_RUN				
+A26	SSO组织	CONDITIONAL	CLIENT	免登组织切换退出到期停用	身份组织和撤权符合合同	NOT_RUN				缺IdP材料标BLOCKED
+A27	客服	CONDITIONAL	CLIENT	开通排队接单附件转交结束撤权	同一候选完整客服主流程通过	NOT_RUN				需管理前端/Widget
+A28	短信SMTP推送	CONDITIONAL	CLIENT	受控测试身份验证通知和失败	供应商回执与APP结果符合合同	NOT_RUN				不记录真实供应商秘密
+A29	陌生人独立完成	REQUIRED	REVIEW	核对计时和所有开发者介入	每次介入已记录，材料缺口已修订重验	NOT_RUN				
+A30	最终签收	REQUIRED	REVIEW	核对必验与适用条件项目	无未关闭FAIL/BLOCKED/NOT_RUN且交接完整	NOT_RUN				NOT_APPLICABLE必须有范围依据
