@@ -43,8 +43,8 @@ services:
         turn:
           enabled: true
           domain: ${TURN_DOMAIN:?TURN_DOMAIN is required - see deploy/.env.example}
-          cert_file: /etc/livekit/certs/fullchain.pem
-          key_file: /etc/livekit/certs/privkey.pem
+          cert_file: /etc/letsencrypt/live/${TURN_DOMAIN}/fullchain.pem
+          key_file: /etc/letsencrypt/live/${TURN_DOMAIN}/privkey.pem
           tls_port: 5349
           udp_port: 3478
           relay_range_start: 50201
@@ -54,11 +54,13 @@ services:
         logging:
           level: info
     volumes:
-      # TURN TLS 证书只读挂载（LK-01 §2.3 强制 :ro）。
-      # 默认指向 compose certbot 签发目录（install.sh 按 TURN_DOMAIN 展开写入 .env）；
-      # 宿主机 certbot 形态（宝塔/生产机）指向 /etc/imboy/livekit-certs —— 由
-      # deploy/nginx/livekit-turn-cert-deploy-hook.sh 在续期后原子分发。
-      - ${LIVEKIT_TURN_CERT_DIR:?LIVEKIT_TURN_CERT_DIR is required when LIVEKIT_TURN_ENABLED=true}:/etc/livekit/certs:ro
+      # 保留 LIVEKIT_TURN_CERT_DIR：默认是 Compose Certbot 的 live/<TURN_DOMAIN>；
+      # 宿主机部署仍可使用由 deploy hook 原子分发的平铺目录 /etc/imboy/livekit-certs。
+      # 对 Compose Certbot 补齐同域 archive，使 ../../archive/<TURN_DOMAIN> 链接可解引用；
+      # 不要求平铺目录改布局（其 archive 挂载可为空），不支持任意外部符号链接布局。
+      # Mount only this TURN domain's live/archive paths read-only.
+      - ${LIVEKIT_TURN_CERT_DIR:?LIVEKIT_TURN_CERT_DIR is required when LIVEKIT_TURN_ENABLED=true}:/etc/letsencrypt/live/${TURN_DOMAIN}:ro
+      - ${DATA_DIR:-./data}/certbot/conf/archive/${TURN_DOMAIN}:/etc/letsencrypt/archive/${TURN_DOMAIN}:ro
     ports:
       # W5 端口合同（LK-01 §2.2）：3478 仅 UDP（TCP 空置）；5349 TCP TLS；
       # relay 段 50201-50500/udp 与媒体段 50000-50200 一样走 docker-proxy 段映射。
