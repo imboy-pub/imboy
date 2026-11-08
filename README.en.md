@@ -123,22 +123,30 @@ bash install.sh --edition community
 #    Five distinct bare hostnames: API_DOMAIN / ADMIN_DOMAIN / CS_WIDGET_DOMAIN / RTC_DOMAIN / TURN_DOMAIN
 #    Certificate email: CERTBOT_EMAIL; see the customer-input table below for other required fields
 
-# 3) Run the same command again to finish the installation
-bash install.sh --edition community
+# 3) For a fresh community instance, explicitly authorize the missing cleanup LOGIN
+bash install.sh --edition community --init-cleanup-db
 ```
 
 Prepare the [customer inputs](./deploy/README.md#customer-input) first: five distinct
 hostnames without schemes or paths, DNS pointing to the deployment ingress, public
 TCP 80 for HTTP-01 validation, and TCP 443 for HTTPS/WSS. Also set
 `IMBOY_BASE_URL=https://<API_DOMAIN>` and a dedicated `IMBOY_DIRECT_CLEANUP_PG_USER`.
-Provision that database LOGIN separately; for an existing account, supply its matching
-password. The installer does not create this account.
+For an existing account, supply its matching password. Community installation verifies
+the account by default; `--init-cleanup-db` explicitly uses the existing `POSTGRES_USER`
+administrative authority to create a missing LOGIN with database CONNECT and membership
+in `v5_worker` only. Insufficient authority stops installation; it does not elevate
+privileges or change existing accounts. See the [cleanup account guide](./deploy/standalone/docs/DB_CLEANUP_ACCOUNT.md)
+for DBA steps, business deployments and external databases.
 
 When `.env` is absent, the first run checks dependencies, copies the template and
 exits. After you fill it in, the next run generates missing internal secrets and the
 RSA login key pair, runs preflight, starts the stack, requests TLS certificates,
-waits for health, runs the post-install self-check, and prints the Release Identity
-triple with the access URLs. Certificate issuance depends on real DNS and network
+waits for health, checks the community cleanup identity against the running image's
+migrations, positive/negative password authentication and role permissions, runs the
+post-install self-check, and prints the Release Identity triple with the access URLs.
+The PG image must include the initialization-script fix that disables password xtrace;
+updating host scripts does not fix an old image. The delivery owner must verify the image.
+Certificate issuance depends on real DNS and network
 conditions; customer business flows still require on-site acceptance.
 
 The first visit to the admin console opens the `/setup` wizard to create the
@@ -146,7 +154,7 @@ super admin; or pass credentials as arguments for a headless, browser-free
 deployment:
 
 ```bash
-bash install.sh --edition community \
+bash install.sh --edition community --init-cleanup-db \
   --admin-phone 13800138000 --admin-password 'S3curePass2026' --yes
 ```
 

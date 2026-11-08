@@ -27,13 +27,14 @@ bash scripts/check_delivery.sh
 # 已有实例保留原 .env、RSA、证书和数据，按升级/恢复手册处理。
 bash install.sh --check
 
-# 仅在已获准的目标服务器上执行实际安装。
-bash install.sh
+# 全新实例：授权使用已有数据库管理权限创建缺失的独立清理 LOGIN。
+# 已有账号只需 bash install.sh；它会验证且不会改密/补权。
+bash install.sh --init-cleanup-db
 ```
 
 包根入口检查完整性、已有数据与密钥保护、配置范围和安装锁，再调用原 `deploy/install.sh --edition community`。密钥生成、Compose、TLS、管理员初始化与部署后 sanity 继续由现有安装流程负责。`--check` 只做离线保护检查，不生成密钥，也不替代原 preflight 或真实 Compose 校验。
 
-安装后还须完成 [清理数据库 LOGIN](docs/DB_CLEANUP_ACCOUNT.md)、[Garage 桶与现场业务验收](docs/ACCEPTANCE_COMMANDS.md)，并把实际结果填写到 [验收记录](docs/ACCEPTANCE_TEMPLATE.md) 的副本中。基础健康通过不能代替登录、WebSocket 消息、附件和公开资源验收。
+清理身份门禁在安装完成前执行；权限不足、外部数据库与失败恢复见 [清理数据库 LOGIN](docs/DB_CLEANUP_ACCOUNT.md)。安装后继续 [Garage 桶与现场业务验收](docs/ACCEPTANCE_COMMANDS.md)，并把实际结果填写到 [验收记录](docs/ACCEPTANCE_TEMPLATE.md) 的副本中。基础健康与账号检查不能代替登录、WebSocket 消息、附件和公开资源验收。
 
 ## 包内材料 / Contents
 
@@ -41,6 +42,7 @@ bash install.sh
 |---|---|
 | `install.sh` | 社区版交付入口，带配置/旧数据检查和独占锁 |
 | `deploy/install.sh`、`preflight.sh`、`nginx/init-letsencrypt.sh` | 原有安装、预检与证书流程 |
+| `deploy/init-cleanup-db.sh`、`deploy/cleanup-db/*.sql` | 迁移后清理账号创建/验证；默认只验证，显式授权才创建缺失 LOGIN |
 | `deploy/docker-compose.community.yml`、`.env.example` | 社区编排与无真实密钥的配置模板 |
 | `deploy/nginx/templates/`、`deploy/nginx/rtc.conf.template` | API/Admin、Widget、RTC 三个 HTTP 模板，由社区 Compose 逐个挂载 |
 | monitoring 配置目录、可选 TURN / Uptrace 文件 | Compose 本地文件依赖；启用边界见可选组件说明 |

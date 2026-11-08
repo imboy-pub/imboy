@@ -6,6 +6,7 @@
 |---|---|---|
 | 包根入口 | `install.sh`、`scripts/check_delivery.sh`、`scripts/install_guard.sh`、清单文件 | 保护检查通过后调用原社区安装器 |
 | 原安装链 | `deploy/install.sh` → `.env.example`、社区 Compose、`preflight.sh`、`nginx/init-letsencrypt.sh`、`../scripts/sanity_check.sh` | 保持 `deploy/` 与 `scripts/` 同级 |
+| 清理身份门禁 | `deploy/init-cleanup-db.sh` → `deploy/cleanup-db/{bootstrap,verify}.sql`、运行中 backend/PG 镜像 | 迁移后真实认证与权限检查；显式 `--init-cleanup-db` 才创建缺失 LOGIN，复用已有管理权限 |
 | Nginx | `deploy/nginx/templates/{imboy,cs-widget}.conf.template`、`deploy/nginx/rtc.conf.template` | 社区 Compose 显式挂载这三个 HTTP 模板，不加载宿主机 stream 模板 |
 | 证书与数据 | `deploy/data/certbot/{conf,www}`、`backend_priv/keys`、`backend_log`、`pg18`、`garage`、`nginx_log` | 安装时生成或由客户提供；ZIP 不携带真实内容 |
 | PostgreSQL / backend | 迁移 SQL、sys.config、ERTS、escript、psql、pg_isready、edge worker | 由发布镜像提供；实际镜像内容另验，不要求客户源码编译 |

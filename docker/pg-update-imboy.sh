@@ -1,6 +1,7 @@
 #!/bin/bash
+set +x
+set +v
 set -euo pipefail
-set -x
 
 # ---------- 环境变量 ----------
 PGUSER="${POSTGRES_USER:-postgres}"
