@@ -664,7 +664,8 @@ jobs:
           } | grep '^QA_CLASSIFY ' | tee /tmp/qa-classify-all.txt || true
 
           total_new=$(awk '{for(i=1;i<=NF;i++) if($i ~ /^NEW=/){sub(/^NEW=/,"",$i); s+=$i}} END{print s+0}' /tmp/qa-classify-all.txt)
-          gates_new=$(grep -E 'NEW=[1-9]' /tmp/qa-classify-all.txt | awk '{print $2}' | sed 's/gate=//' | paste -sd, -)
+          # 无 NEW 时输出空列表；grep 的无匹配退出码会在 pipefail 下中断正常汇总。
+          gates_new=$(awk '/NEW=[1-9]/ {sub(/^gate=/, "", $2); printf "%s%s", sep, $2; sep=","} END{print ""}' /tmp/qa-classify-all.txt)
           {
             echo "total_new=${total_new}"
             echo "gates_new=${gates_new}"

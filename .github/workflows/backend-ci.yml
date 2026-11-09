@@ -157,6 +157,9 @@ jobs:
       - name: Check Makefile dependency and release evaluation
         run: python3 -m unittest discover -s scripts/test -p test_makefile.py -v
 
+      - name: Check nightly QA summary
+        run: python3 -m unittest discover -s scripts/test -p test_nightly_summary.py -v
+
       - name: Compile
         run: |
           IMBOYENV=local make test-build
