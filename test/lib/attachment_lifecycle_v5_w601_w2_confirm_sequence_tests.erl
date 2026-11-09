@@ -4,6 +4,7 @@
 
 -define(S, attachment_lifecycle_v5_w601_w2_support).
 -define(F, attachment_w403_http_fixture).
+-define(FW, attachment_w403_http_fixture_w601).
 -define(C, attachment_lifecycle_v5_w601_w2_confirm_tests).
 -define(TAB, w601_confirm_sequence_test).
 -define(BODY, <<"w601 confirmed immutable content">>).
@@ -21,7 +22,7 @@ old_put_sequence_test_() ->
 
 setup() ->
     ets:new(?TAB, [named_table, public, set]),
-    meck:new([?S, ?F], [passthrough, no_link]),
+    meck:new([?S, ?F, ?FW], [passthrough, no_link]),
     meck:expect(?F, register, fun(S, Ep, Driver, _) ->
         #{
             fixture => S,
@@ -32,7 +33,10 @@ setup() ->
             registration_request_id => <<"register">>
         }
     end),
-    meck:expect(?F, put, fun(_, Bytes) ->
+    %% C10 面分派后 ordinary 写路径改走 ?FW:upload_put（生产 multipart 端点），
+    %% 本单元的 provider I/O 桩必须同时钉在 ?F:put 与 ?FW:upload_put 两个缝上；
+    %% 否则真实 upload_put 会向 mock 的 T 取 headers（{badkey,headers}）。
+    PutStub = fun(_, Bytes) ->
         case Bytes of
             ?BODY ->
                 [] = ets:lookup(?TAB, barrier),
@@ -57,7 +61,21 @@ setup() ->
                         #{status => Status, request_id => <<"put-old">>}
                 end
         end
+    end,
+    meck:expect(?F, put, PutStub),
+    %% seat/widget 面经 ?FW:register → register_eb 直连，不落在 ?F:register 上；
+    %% 单元场景统一在 ?FW 缝返回同一份钉名上下文。
+    meck:expect(?FW, register, fun(S, Ep, Driver, _) ->
+        #{
+            fixture => S,
+            surface => Ep,
+            driver => Driver,
+            key => <<"test-key">>,
+            client_upload_id => <<"test-cid">>,
+            registration_request_id => <<"register">>
+        }
     end),
+    meck:expect(?FW, upload_put, fun(_S, T, Bytes) -> PutStub(T, Bytes) end),
     meck:expect(?F, confirm, fun(_) ->
         [] = ets:lookup(?TAB, barrier),
         #{status => 200, request_id => <<"confirm">>}
@@ -91,7 +109,7 @@ setup() ->
     ok.
 
 cleanup(_) ->
-    meck:unload([?S, ?F]),
+    meck:unload([?S, ?F, ?FW]),
     ets:delete(?TAB),
     ok.
 

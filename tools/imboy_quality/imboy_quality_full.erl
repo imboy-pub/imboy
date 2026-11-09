@@ -67,11 +67,23 @@
     %% 抬高 observed_head，本根 r02 断言 accept=1 实测得 4。字母序同库必复发；
     %% 独占车道专属克隆库无残留，断言恢复成立。
     msg_safe_boundary_pg_tests,
+    %% 2026-11-09 attempt13 全量红根接入（均已在独占车道单根复绿）：
+    %% - cs_first_reply_pg_tests / login_security_logic：普通分片共享克隆库残留致
+    %%   42501(trg_enterprise_message_purge_guard) 与 2 cancel；独立克隆库无残留。
+    %% - talk_record_assembly_relay_tests：普通 VM 内 owned 夹具 summary 不完整，
+    %%   独占 fresh VM 下 pass=1。
+    cs_first_reply_pg_tests,
+    login_security_logic,
+    talk_record_assembly_relay_tests,
     %% 2026-10-30 att-v5 集成接入：与 imboy_quality_env ?W403_ROOTS 同名追加
     %% （EXCL 缺→落普通车道拿不到 W403/garage 资源 env；清单缺→env overlay 为空
     %% 且回退共享库，均静默错配）。含 W6-01 W2/W3/W4 电池、w403_storage/
     %% w401_rollback（garage no_go）与 V5 marker provision 面 7 根。
     attachment_lifecycle_v5_w601_w2_confirm_tests,
+    %% 2026-11-09 attempt13 红根：W2 confirm 的两个变体同样依赖 W403 HTTP 夹具，
+    %% meck 缝已按 C10 字节链补齐（?FW register/put/upload_put），本车道复绿。
+    attachment_lifecycle_v5_w601_w2_confirm_sequence_tests,
+    attachment_lifecycle_v5_w601_w2_resume_surface_tests,
     attachment_lifecycle_v5_w601_w2_pending_tests,
     attachment_lifecycle_v5_w601_w2_upload_tests,
     attachment_lifecycle_v5_w601_w3_bind_tests,

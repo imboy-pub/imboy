@@ -4,6 +4,7 @@
 
 -define(S, attachment_lifecycle_v5_w601_w2_support).
 -define(F, attachment_w403_http_fixture).
+-define(FW, attachment_w403_http_fixture_w601).
 -define(C, attachment_lifecycle_v5_w601_w2_confirm_tests).
 -define(BODY, <<"w601 confirmed immutable content">>).
 -define(TAB, w601_resume_domain_test).
@@ -26,8 +27,8 @@ resume_domain_test_() ->
 
 setup() ->
     ets:new(?TAB, [named_table, public, set]),
-    meck:new([?S, ?F, elib_pg], [passthrough, no_link]),
-    meck:expect(?F, register, fun(S, Ep, Driver, _) ->
+    meck:new([?S, ?F, ?FW, elib_pg], [passthrough, no_link]),
+    RegStub = fun(S, Ep, Driver, _) ->
         ets:insert(?TAB, {surface, Ep}),
         #{
             fixture => S#{scope => #{org_id => 11, workspace_id => 22}},
@@ -36,8 +37,14 @@ setup() ->
             key => <<"key">>,
             registration => #{<<"asset_id">> => 33}
         }
-    end),
-    meck:expect(?F, put, fun(_, _) ->
+    end,
+    meck:expect(?F, register, RegStub),
+    %% seat/widget 面经 ?FW:register → register_eb（读 S 的 scope），不落在
+    %% ?F:register 上；单元场景统一在 ?FW 缝返回同一份钉名上下文。
+    meck:expect(?FW, register, RegStub),
+    %% C10 面分派后 ordinary 写路径改走 ?FW:upload_put（生产 multipart 端点），
+    %% provider I/O 桩需同时钉在 ?F:put 与 ?FW:upload_put 两个缝上。
+    PutStub = fun(_, _) ->
         case ets:update_counter(?TAB, put, 1, {put, 0}) of
             1 ->
                 case ets:lookup(?TAB, bypass) of
@@ -55,7 +62,12 @@ setup() ->
             2 ->
                 #{status => 200}
         end
-    end),
+    end,
+    meck:expect(?F, put, PutStub),
+    meck:expect(?FW, upload_put, fun(_S, T, Bytes) -> PutStub(T, Bytes) end),
+    %% seat/widget 面 put_bytes 落 ?FW:put/2 → put_eb/2（真实 eb 应用字节链，
+    %% 读 T.confirm_body 与 Scope.actor_*）；单元场景同样在 ?FW 缝桩掉。
+    meck:expect(?FW, put, fun(T, Bytes) -> PutStub(T, Bytes) end),
     meck:expect(?F, payload, fun(Resp) -> maps:get(payload, Resp) end),
     meck:expect(?F, success, fun(#{status := Status} = Resp) ->
         Status =:= 200 andalso not maps:is_key(body, Resp)
@@ -148,7 +160,7 @@ setup() ->
     ok.
 
 cleanup(_) ->
-    meck:unload([?S, ?F, elib_pg]),
+    meck:unload([?S, ?F, ?FW, elib_pg]),
     ets:delete(?TAB),
     ok.
 

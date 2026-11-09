@@ -49,6 +49,13 @@
     %% W6-01 W2/W3/W4 电池组（HTTP 面走 attachment_w403_http_fixture）与
     %% w403_storage/w401_rollback（显式 no_go garage_env_missing）。
     {attachment_lifecycle_v5_w601_w2_confirm_tests, "w601w2c"},
+    %% 2026-11-09 attempt13 全量红根补录：W2 confirm 的 sequence 变体与
+    %% resume_surface 变体同样经 attachment_lifecycle_v5_w601_w2_confirm_tests
+    %% → attachment_w403_http_fixture_w601:upload_put 走 HTTP presign/直传，
+    %% 普通车道无 W403_RESOURCE_MANIFEST 时 fixture 返回缺 headers 的 map
+    %% （{badkey,headers}，confirm_sequence 0P/4F、resume_surface 1P/8F）。
+    {attachment_lifecycle_v5_w601_w2_confirm_sequence_tests, "w601w2cs"},
+    {attachment_lifecycle_v5_w601_w2_resume_surface_tests, "w601w2rs"},
     {attachment_lifecycle_v5_w601_w2_pending_tests, "w601w2p"},
     {attachment_lifecycle_v5_w601_w2_upload_tests, "w601w2u"},
     {attachment_lifecycle_v5_w601_w3_bind_tests, "w601w3b"},
@@ -104,7 +111,12 @@
 -define(ISOLATED_ROOTS, [
     throttle_middleware,
     oa_direct_cloud_retention_pg_tests,
-    msg_safe_boundary_pg_tests
+    msg_safe_boundary_pg_tests,
+    %% 2026-11-09 attempt13 红根（普通分片共享克隆库残留致 42501 守卫拒绝 / cancel；
+    %% 独占 fresh VM + 专属克隆库下分别 13/13、17/17、1/1 复绿）。
+    cs_first_reply_pg_tests,
+    login_security_logic,
+    talk_record_assembly_relay_tests
 ]).
 
 %% ---- 准备 ----
