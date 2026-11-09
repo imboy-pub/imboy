@@ -35,11 +35,52 @@ cleanup({ConnPid, Before}) ->
     [
         case V of
             undefined -> application:unset_env(imboy, K);
-            _ -> application:set_env(imboy, K, V)
+            {ok, Value} -> application:set_env(imboy, K, Value)
         end
      || {K, V} <- Before
     ],
     eunit_runner:eunit_cleanup_db(ConnPid).
+
+%% Run without PG: cleanup({undefined, ...}) has no database connection to return.
+%% These consumers failed later in the nightly VM when cleanup stored {ok, Map}.
+environment_restore_test_() ->
+    [
+        ?_test(with_saved_environment(fun restore_configured_environment/0)),
+        ?_test(with_saved_environment(fun restore_unset_environment/0))
+    ].
+
+with_saved_environment(Test) ->
+    Before = [{K, application:get_env(imboy, K)} || K <- [garage, attachment_storage_registry]],
+    try
+        Test()
+    after
+        cleanup({undefined, Before})
+    end.
+
+restore_configured_environment() ->
+    Garage = #{access_key => <<"fixture-ak">>, secret_key => <<"fixture-sk">>},
+    Registry = #{version => 1, roots => #{}, upload_namespaces => #{}},
+    ok = application:set_env(imboy, garage, Garage),
+    ok = application:set_env(imboy, attachment_storage_registry, Registry),
+    Before = [{K, application:get_env(imboy, K)} || K <- [garage, attachment_storage_registry]],
+    ok = application:set_env(imboy, garage, #{fixture => changed}),
+    ok = application:set_env(imboy, attachment_storage_registry, #{fixture => changed}),
+    ok = cleanup({undefined, Before}),
+    ?assertEqual(Garage, application:get_env(imboy, garage, #{})),
+    ?assertEqual(Registry, attachment_storage:registry()),
+    Url = elib_s3_sign:presign_put(
+        <<"http://owned-storage.invalid">>, <<"fixture">>, <<"key">>, <<"image/jpeg">>, 60
+    ),
+    ?assertNotEqual(nomatch, binary:match(Url, <<"X-Amz-Signature=">>)).
+
+restore_unset_environment() ->
+    Before = [{garage, undefined}, {attachment_storage_registry, undefined}],
+    ok = application:set_env(imboy, garage, #{fixture => changed}),
+    ok = application:set_env(imboy, attachment_storage_registry, #{fixture => changed}),
+    ok = cleanup({undefined, Before}),
+    ?assertEqual(undefined, application:get_env(imboy, garage)),
+    ?assertEqual(undefined, application:get_env(imboy, attachment_storage_registry)),
+    ?assertEqual(#{version => 1, roots => #{}}, attachment_storage:registry()).
 
 mixed_purge() ->
     Org = 99006101,
