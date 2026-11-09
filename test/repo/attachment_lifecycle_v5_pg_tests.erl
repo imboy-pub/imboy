@@ -1189,11 +1189,18 @@ w301_seed_cross_pair(Conn, AttachmentId, AssetId, Logical, Physical) ->
 
 w301_cross_queue_race(#{conn := Conn, server := Server, db := Db}) ->
     Logical1 = <<"v5e2e/w301/cross-race-logical-1">>,
-    Physical1 = <<"v5e2e/w301/cross-race-physical-1">>,
     Logical2 = <<"v5e2e/w301/cross-race-logical-2">>,
-    Physical2 = <<"v5e2e/w301/cross-race-physical-2">>,
-    w301_seed_cross_pair(Conn, ?ASSET_ID + 71, 980016, Logical1, Physical1),
-    w301_seed_cross_pair(Conn, ?ASSET_ID + 72, 980017, Logical2, Physical2),
+    %% 迁移 237/270 物理键模型：跨队列同身份冲突以
+    %% coalesce(storage_physical_key, path/object_key) 为锁键与冲突键
+    %% （fn_v5_cross_queue_guard 23510 / fn_cross_domain_queue_lock）。
+    %% 两个 intent 面的锁序各含 1685 身份 advisory（fn_v5_lock_identity /
+    %% fn_v5_lock_eb_upload）——种子必须把两面对齐到同一物理身份键
+    %% （asset.object_key = attachment.path，普通队列行 coalesce 回退即
+    %% path），先提交者持 1685+1699 至 COMMIT，后到者 wait_lock 证阻塞、
+    %% 提交后在 237 cross-queue guard 处 23510；「先提交者唯一胜出、
+    %% 身份永不复用」断言保持。
+    w301_seed_cross_pair(Conn, ?ASSET_ID + 71, 980016, Logical1, Logical1),
+    w301_seed_cross_pair(Conn, ?ASSET_ID + 72, 980017, Logical2, Logical2),
     Opts = maps:merge(
         maps:without([maint_db, connect_extra], Server),
         (maps:get(connect_extra, Server, #{}))#{database => Db, timeout => 10000}
@@ -1256,6 +1263,27 @@ w301_cross_queue_race(#{conn := Conn, server := Server, db := Db}) ->
             Conn,
             "SELECT count(*) FROM enterprise_asset_delete_queue WHERE asset_id=980016",
             []
+        ),
+        %% 赢家行在场 + 败者状态不被改写（唯一胜出，迁移 237 物理键合同）。
+        {ok, _, [{1}]} = epgsql:equery(
+            Conn,
+            "SELECT count(*) FROM attachment_object_deletion WHERE path=$1",
+            [Logical1]
+        ),
+        {ok, _, [{1}]} = epgsql:equery(
+            Conn,
+            "SELECT count(*) FROM enterprise_asset_delete_queue WHERE asset_id=980017",
+            []
+        ),
+        {ok, _, [{<<"delete_intent">>}]} = epgsql:equery(
+            Conn,
+            "SELECT lifecycle_state FROM attachment WHERE path=$1",
+            [Logical1]
+        ),
+        {ok, _, [{<<"live">>}]} = epgsql:equery(
+            Conn,
+            "SELECT lifecycle_state FROM attachment WHERE path=$1",
+            [Logical2]
         ),
         ok
     after
@@ -1618,8 +1646,13 @@ w301_enterprise_direct_race(#{conn := Conn, server := Server, db := Db}) ->
         end),
         w301_wait_lock(Conn, Pid, 100),
         q(Conn, "COMMIT"),
+        %% 迁移 270（aa_cross_enterprise_guard → fn_cross_domain_key_guard）：
+        %% 非 live 资产的绑定改写先于旧 23510 域内守卫被物理键守卫拒绝
+        %% （key 已在本 asset 的 delete 队列行 → 23505 'physical key retired'，
+        %% 同 w301_direct_enterprise_message_after_intent 的 23510→23505 对齐）。
+        %% 绑定被拒 + message_id 保持 NULL 的场景语义不变。
         receive
-            {eb_bind_result, {error, #error{code = <<"23510">>}}} -> ok;
+            {eb_bind_result, {error, #error{code = <<"23505">>}}} -> ok;
             {eb_bind_result, Unexpected2} -> error({unexpected_eb_bind, Unexpected2})
         after 12000 -> error(eb_bind_timeout)
         end,
@@ -1637,7 +1670,7 @@ w301_enterprise_direct_race(#{conn := Conn, server := Server, db := Db}) ->
             measured => #{
                 asset_id => 980010,
                 intent_committed => true,
-                bind_rejected => <<"23510">>,
+                bind_rejected => <<"23505">>,
                 lifecycle_state => <<"delete_intent">>,
                 message_id_null => true
             }
