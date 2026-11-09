@@ -504,12 +504,23 @@ history_limit_clamp_case(InputLimit, ExpectedLimit) ->
 %% @doc 客户端可传超大 limit（如 10^6）；修复前 elib_param 默认值 1000
 %% 之外无上限，超大值直通 DS 查询（DB 压垮面）。修复后与 history 的
 %% min 100 范式对齐：上限夹 1000（App 离线拉取合同的单页上限）。
+%% IMBOY_AUTOTEST M03：补精确上边界 1001（首夹点），与 10^6 同判。
 offline_limit_clamped_upper_test_() ->
-    offline_limit_clamp_case(1000000, 1000).
+    [
+        offline_limit_clamp_case(Input, 1000)
+     || Input <- [1000000, 1001]
+    ].
+
+%% @doc IMBOY_AUTOTEST M03：恰好 1000 是合同允许的单页上限，不得被夹小。
+offline_limit_at_boundary_test_() ->
+    offline_limit_clamp_case(1000, 1000).
 
 %% @doc 下限保护：limit=0/负数不得产生空扫描或非法 LIMIT 参数
 offline_limit_clamped_lower_test_() ->
-    offline_limit_clamp_case(0, 1).
+    [
+        offline_limit_clamp_case(Input, 1)
+     || Input <- [0, -1]
+    ].
 
 offline_limit_clamp_case(InputLimit, ExpectedLimit) ->
     ?WITH_MECKS(

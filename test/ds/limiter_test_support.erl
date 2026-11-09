@@ -80,7 +80,10 @@ restart_owner() ->
                 erlang:error(limiter_owner_kill_timeout)
             end
     end,
-    await_owner(Old, 2400),
+    %% 2026-11-09 第三次放宽：attempt12 full（1943 根同 VM）login_security_logic
+    %% 第 8 组 await_owner 24s 预算耗尽 cancel→根判负。同前例仅放宽等待预算，
+    %% 监督重启合同与失败语义不变。
+    await_owner(Old, 6000),
     ok = login_attempt_ds:activate_empty(whereis(login_attempt_ds)),
     true = login_attempt_ds:ready(),
     ok.
