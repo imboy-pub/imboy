@@ -210,6 +210,11 @@ run(F) ->
         }
     ),
     true = maps:get(<<"may_submit">>, Submit),
+    %% app-less 测试 VM 无后台调度：提交后把就绪任务队列踢到静默（run_batch
+    %% 循环至 empty），装配管线各跳任务全部落定后 source 端点才可服务。
+    %% 只踢单条（run_once）有管线收尾竞态：exp5 首轮 GET 侥幸通过、exp6e
+    %% 同点失败（2026-11-08 双实证）。
+    {ok, _} = talk_record_job_worker:run_batch(50),
     Source = source_path(maps:get(<<"source_url">>, Submit)),
     Bytes = maps:get(assembly_bytes, F),
     positive(F, Source, Bytes),
@@ -234,13 +239,22 @@ run(F) ->
     ok.
 
 positive(F, Path, Bytes) ->
+    %% V3-18 P3 边缘承载契约（892351f62，2026-11-05）：GET 正文一律移交
+    %% 边缘域，BEAM 未配置边缘时 fail-closed 503（不回退 spool），206/416
+    %% 正文语义随正文一并移交边缘。HTTP 层不再断言 200 正文/206 切片——
+    %% 字节完整性由本夹具 available_source 的 frozen_location 读回覆盖；
+    %% HEAD 保留有界元数据（零字节 + 真实 content-length）。
     H = positive_stage(get_response, fun() ->
-        {200, Headers, Bytes} = request(F, get, Path, [], <<>>),
+        {503, Headers, <<>>} = request(F, get, Path, [], <<>>),
         Headers
     end),
     positive_stage(get_headers, fun() ->
-        ?assertEqual("audio/aac", proplists:get_value("content-type", H)),
-        ?assertEqual("private, no-store", proplists:get_value("cache-control", H))
+        %% 503 fail-closed 响应的缓存头与 deny 同款（"no-store"，见
+        %% handler reply(503, #{cache-control => no-store})）。
+        ?assertEqual("no-store", proplists:get_value("cache-control", H))
+    end),
+    positive_stage(range_refused, fun() ->
+        {503, _, <<>>} = request(F, get, Path, [{"range", "bytes=7-42"}], <<>>)
     end),
     HH = positive_stage(head_response, fun() ->
         {200, Headers, <<>>} = request(F, head, Path, [], <<>>),
@@ -248,17 +262,6 @@ positive(F, Path, Bytes) ->
     end),
     positive_stage(head_length, fun() ->
         ?assertEqual(integer_to_list(byte_size(Bytes)), proplists:get_value("content-length", HH))
-    end),
-    {HR, Slice} = positive_stage(range_response, fun() ->
-        {206, Headers, Part} = request(F, get, Path, [{"range", "bytes=7-42"}], <<>>),
-        {Headers, Part}
-    end),
-    positive_stage(range_content, fun() ->
-        ?assertEqual(binary:part(Bytes, 7, 36), Slice),
-        ?assertEqual(
-            "bytes 7-42/" ++ integer_to_list(byte_size(Bytes)),
-            proplists:get_value("content-range", HR)
-        )
     end).
 
 positive_stage(Stage, Fun) ->
@@ -276,10 +279,9 @@ safe_positive_stage(Stage) ->
     lists:member(Stage, [
         get_response,
         get_headers,
+        range_refused,
         head_response,
-        head_length,
-        range_response,
-        range_content
+        head_length
     ]).
 
 -ifdef(CLIENT_AUDIO_DIAGNOSTIC_UNIT).

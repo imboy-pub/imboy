@@ -636,17 +636,22 @@ rtc_join() { # token kind target_id did → writes body; echoes code
 
 stage1_contract() {
   say ""
-  say "== S1: join 签发契约（group/c2c 正例 + ACL 负例 + 受控错误）=="
+  say "== S1: join 签发契约（c2c 正例 + rtc_group 锁定负例 + ACL 负例 + 受控错误）=="
+  # IMBOY_AUTOTEST：广州 2.1 批准矩阵已锁定 rtc_group（rtc c2c 保持启用），
+  # join 契约正例改走 c2c 面；group join 作为锁定负例断言（S1.4）。
 
   local code
-  say "-- S1.1 group 成员正例"
-  code="$(rtc_join "$SEED_TOKEN1" group "$SEED_G" didA)"
+  say "-- S1.1 c2c 成员正例"
+  code="$(rtc_join "$SEED_TOKEN1" c2c "$SEED_U2" didA)"
   local room1 tok1
   room1="$(jqget '.payload.room_name // .data.room_name')"
   tok1="$(jqget '.payload.token // .data.token')"
   local ws1; ws1="$(jqget '.payload.ws_url // .data.ws_url')"
-  [ "$code" = 200 ] && ok "group join HTTP 200" || bad "group join HTTP=$code body=$(head -c 200 "$LOGDIR/last_body.json")"
-  [ "$room1" = "rtc_group_$SEED_G" ] && ok "群房间名 rtc_group_$SEED_G" || bad "群房间名=$room1"
+  [ "$code" = 200 ] && ok "c2c join HTTP 200" || bad "c2c join HTTP=$code body=$(head -c 200 "$LOGDIR/last_body.json")"
+  case "$room1" in
+    rtc_c2c_*) ok "c2c 房间名 $room1" ;;
+    *) bad "c2c 房间名=$room1" ;;
+  esac
   [ "$ws1" = "ws://$LK_HOST:$LK_SIGNAL_PORT" ] && ok "ws_url points to local SFU ($LK_HOST)" || bad "ws_url=$ws1"
   [ -n "$tok1" ] && [ "$tok1" != null ] && ok "返回 livekit token" || bad "token 缺失"
 
@@ -657,7 +662,7 @@ stage1_contract() {
     room="$(jq -r '.video.room' "$LOGDIR/jwt_claims.json")"
     exp="$(jq -r .exp "$LOGDIR/jwt_claims.json")"
     [ "$sub" = "${SEED_U1}_didA" ] && ok "sub=${SEED_U1}_didA（uid+did 设备后缀）" || bad "sub=$sub"
-    [ "$room" = "rtc_group_$SEED_G" ] && ok "video.room 一致" || bad "video.room=$room"
+    [ "$room" = "$room1" ] && ok "video.room 一致" || bad "video.room=$room 期望=$room1"
     jq -e '.video.roomJoin == true and .video.canPublish == true and .video.canSubscribe == true' \
       "$LOGDIR/jwt_claims.json" >/dev/null && ok "roomJoin/canPublish/canSubscribe 权限齐" \
       || bad "video grant 不完整: $(cat "$LOGDIR/jwt_claims.json")"
@@ -668,23 +673,25 @@ stage1_contract() {
   fi
 
   say "-- S1.3 did 维度：同 uid 异 did 得不同 identity（防同号互踢回归）"
-  rtc_join "$SEED_TOKEN1" group "$SEED_G" didB >/dev/null
+  rtc_join "$SEED_TOKEN1" c2c "$SEED_U2" didB >/dev/null
   local tok2; tok2="$(jqget '.payload.token // .data.token')"
   py jwt-verify "$tok2" "$LK_API_SECRET" > "$LOGDIR/jwt_claims2.json" 2>/dev/null \
     && [ "$(jq -r .sub "$LOGDIR/jwt_claims2.json")" = "${SEED_U1}_didB" ] \
     && ok "didB → sub=${SEED_U1}_didB" || bad "didB sub=$(jq -r .sub "$LOGDIR/jwt_claims2.json" 2>/dev/null)"
 
-  say "-- S1.4 ACL 负例：非群成员"
+  say "-- S1.4 rtc_group 锁定负例（E01：群 RTC 保持关闭）"
+  # 广州 2.1 批准矩阵：rtc_group locked。group join 必须被功能门拒绝
+  # （msg=功能未启用，未签发 token），先于任何 ACL 判定。
   # 注：elib_response:error 形态为 HTTP 200 + {code!=0, msg}（仓库口径），
   # 断言以业务 msg 文案 + 未签发 token 为准，不按 HTTP 状态码判死。
-  rtc_join "$SEED_TOKEN3" group "$SEED_G" didA >/dev/null
+  rtc_join "$SEED_TOKEN1" group "$SEED_G" didA >/dev/null
   local acl_msg acl_tok
   acl_msg="$(jqget '.msg // .message // empty')"
   acl_tok="$(jqget '.payload.token // .data.token // empty')"
-  if printf '%s' "$acl_msg" | grep -q "不是群成员" && [ -z "$acl_tok" ]; then
-    ok "非群成员被拒（msg 命中，未签发 token）"
+  if printf '%s' "$acl_msg" | grep -q "功能未启用" && [ -z "$acl_tok" ]; then
+    ok "rtc_group 锁定：group join 被功能门拒（未签发 token）"
   else
-    bad "非群成员未走 ACL 拒绝: msg=$acl_msg"
+    bad "rtc_group 锁定负例不符: msg=$acl_msg"
   fi
 
   say "-- S1.5 ACL 负例：非好友 c2c"
@@ -707,7 +714,7 @@ stage1_contract() {
 
   say "-- S1.7 受控错误：livekit 未配置"
   node_rpc application unset_env "[imboy, livekit]"
-  rtc_join "$SEED_TOKEN1" group "$SEED_G" didA >/dev/null
+  rtc_join "$SEED_TOKEN1" c2c "$SEED_U2" didA >/dev/null
   local msg nc_tok
   msg="$(jqget '.msg // .message // .error // empty')"
   nc_tok="$(jqget '.payload.token // .data.token // empty')"
@@ -718,14 +725,14 @@ stage1_contract() {
   fi
   # 恢复配置（节点 set_env 回原值）
   node_rpc application set_env "[imboy, livekit, #{ws_url => <<\"ws://$LK_HOST:$LK_SIGNAL_PORT\">>, api_key => <<\"$LK_API_KEY\">>, api_secret => <<\"$LK_API_SECRET\">>}]"
-  rtc_join "$SEED_TOKEN1" group "$SEED_G" didA >/dev/null
+  rtc_join "$SEED_TOKEN1" c2c "$SEED_U2" didA >/dev/null
   local rt_tok; rt_tok="$(jqget '.payload.token // .data.token // empty')"
   [ -n "$rt_tok" ] && [ "$rt_tok" != null ] && ok "恢复配置后 join 复通" || bad "恢复配置后 join 仍失败 msg=$(jqget '.msg')"
 
   say "-- S1.8 重复 join 幂等"
-  rtc_join "$SEED_TOKEN1" group "$SEED_G" didA >/dev/null
+  rtc_join "$SEED_TOKEN1" c2c "$SEED_U2" didA >/dev/null
   local ra; ra="$(jqget '.payload.room_name // .data.room_name')"
-  rtc_join "$SEED_TOKEN1" group "$SEED_G" didA >/dev/null
+  rtc_join "$SEED_TOKEN1" c2c "$SEED_U2" didA >/dev/null
   local rb; rb="$(jqget '.payload.room_name // .data.room_name')"
   [ "$ra" = "$rb" ] && [ -n "$ra" ] && ok "重复 join 同房间（${ra}）" || bad "重复 join 房间漂移: $ra/$rb"
 }
