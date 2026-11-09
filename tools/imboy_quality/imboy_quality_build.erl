@@ -256,8 +256,14 @@ write_receipt(Path, Receipt) ->
 file_shas(ProjectRoot, Dir) ->
     Path = filename:join(ProjectRoot, Dir),
     Files =
-        filelib:wildcard(filename:join(Path, "**/*.erl")) ++
-            filelib:wildcard(filename:join(Path, "**/*.hrl")),
+        lists:sort(
+            filelib:wildcard(filename:join(Path, "**/*.erl")) ++
+                filelib:wildcard(filename:join(Path, "**/*.hrl"))
+        ),
+    %% 2026-11-07 j01 收尾实证：>32 键 map 的 term_to_binary 序列化其物理
+    %% 布局，布局取决于插入顺序；wildcard 顺序跨进程不稳定曾使同树同输入
+    %% 算出不同 build_key（D9548884/60EE7F24/07000E63 三态漂移）。排序后
+    %% 插入序列确定，key 跨进程确定。
     maps:from_list([{relative(ProjectRoot, F), file_sha(F)} || F <- Files]).
 
 dependency_digest(ProjectRoot) ->

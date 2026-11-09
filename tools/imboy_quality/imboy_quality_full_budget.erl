@@ -121,9 +121,43 @@ full_transition(State, claim, _, RunId, Identity, TokenDigest, Options) ->
 
 verify_test_build(Repo, Options) ->
     require_test_build(Repo),
-    #{key := Key} = imboy_quality_build:build_key(Repo, maps:get(profile, Options)),
-    {hit, Key} = imboy_quality_build:receipt_verify(maps:get(receipt, Options), Repo, Key),
-    ok.
+    #{key := Key, inputs := _VtbInputs} = imboy_quality_build:build_key(
+        Repo, maps:get(profile, Options)
+    ),
+    %% 2026-11-07 排障转储（IMBOY_QUALITY_KEY_DIAG=1 时启用；默认零开销）：
+    %% 同树跨进程 build_key 漂移定位——转储本次计算 key 与收据 key 及
+    %% src/test 映射的规范化指纹。
+    case os:getenv("IMBOY_QUALITY_KEY_DIAG") of
+        "1" ->
+            SrcM = maps:get(src, _VtbInputs),
+            TestM = maps:get(test, _VtbInputs),
+            CanFp = crypto:hash(
+                sha256,
+                term_to_binary(
+                    {
+                        lists:sort(maps:to_list(SrcM)),
+                        lists:sort(maps:to_list(TestM)),
+                        maps:get(deps, _VtbInputs)
+                    }
+                )
+            ),
+            R = imboy_quality_build:receipt_verify(maps:get(receipt, Options), Repo, Key),
+            io:format(
+                "KEY-DIAG computed=~s receipt_cmp=~tp canon_fp=~ts src_n=~p test_n=~p~n",
+                [
+                    string:lowercase(binary:encode_hex(Key)),
+                    R,
+                    binary:encode_hex(CanFp),
+                    map_size(SrcM),
+                    map_size(TestM)
+                ]
+            ),
+            {hit, Key} = R,
+            ok;
+        _ ->
+            {hit, Key} = imboy_quality_build:receipt_verify(maps:get(receipt, Options), Repo, Key),
+            ok
+    end.
 
 verify_full_run(Run, Identity, TokenDigest) ->
     <<"started">> = maps:get(<<"status">>, Run),

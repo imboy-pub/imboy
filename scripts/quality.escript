@@ -421,6 +421,13 @@ with_resources(Prepared, Fun) ->
 %% deadline：普通组默认 90 分钟——talk_record 网关根真实等待 ~1h 的上传能力过期
 %% （imboy_quality_full ?LONG_ROOT_HINTS）；独占根默认 30 分钟。均可由环境变量覆盖。
 run_opts(Repo, Ctrl, Workers, Prepared, Excl, Extra) ->
+    %% 2026-11-09 r12 框架缺陷修复：worker_config(Repo, K, Prepared) 对同一 K
+    %% 确定性（同 clone/同端口），但一次 full 内会被多处重复调用——group 的
+    %% rotate(K)、run_standalone_fallback/direct 与 run_exclusive 兜底的 CfgFn(0)。
+    %% config_receipts 的 ets:insert_new 路径防重对同路径第二次写入以
+    %% {badmatch,false} 拒绝（attempt8 group 完成后死于 run_standalone_fallback
+    %% 实证）。按 K 记忆化：语义不变（同 K 同 clone），防重守卫保留。
+    WorkerCfg = worker_config_memo(Repo, Prepared),
     maps:merge(
         #{
             repo => Repo,
@@ -437,13 +444,26 @@ run_opts(Repo, Ctrl, Workers, Prepared, Excl, Extra) ->
             exclusive_config_fn => fun(M) ->
                 case maps:find(M, maps:get(exclusive_config, Prepared, #{})) of
                     {ok, Path} -> Path;
-                    error -> imboy_quality_env:worker_config(Repo, 0, Prepared)
+                    error -> WorkerCfg(0)
                 end
             end,
-            worker_config_fn => fun(K) -> imboy_quality_env:worker_config(Repo, K, Prepared) end
+            worker_config_fn => WorkerCfg
         },
         Extra
     ).
+
+worker_config_memo(Repo, Prepared) ->
+    fun(K) ->
+        Key = {quality_worker_config_memo, Repo, K},
+        case persistent_term:get(Key, undefined) of
+            undefined ->
+                Cfg = imboy_quality_env:worker_config(Repo, K, Prepared),
+                persistent_term:put(Key, Cfg),
+                Cfg;
+            Cfg ->
+                Cfg
+        end
+    end.
 
 %% ---- full/group 辅助 ----
 

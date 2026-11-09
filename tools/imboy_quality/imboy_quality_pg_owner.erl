@@ -46,13 +46,16 @@ start(Ctrl, Root, Register) when is_function(Register, 3) ->
     Parent = self(),
     Ref = make_ref(),
     ok = persist_launch_intent(Ctrl, Id, Meta),
-    {Owner, Mon} = spawn_monitor(fun() -> owner_start(Parent, Ref, Meta, Log, Args, Id, Ctrl, Root) end),
+    {Owner, Mon} = spawn_monitor(fun() ->
+        owner_start(Parent, Ref, Meta, Log, Args, Id, Ctrl, Root)
+    end),
     StartResult = await_start(Owner, Mon, Ref, Id, 10000),
     erlang:demonitor(Mon, [flush]),
-    {Port, Pid, StartReceipt} = case StartResult of
-        {ok, P, OsPid, Receipt} -> {P, OsPid, Receipt};
-        {error, Why} -> error(Why)
-    end,
+    {Port, Pid, StartReceipt} =
+        case StartResult of
+            {ok, P, OsPid, Receipt} -> {P, OsPid, Receipt};
+            {error, Why} -> error(Why)
+        end,
     Handle = Meta#{
         port_handle => Port,
         owner => Owner,
@@ -140,7 +143,20 @@ verify_handle(H, Ctrl, Args, Root) ->
         ok = wait_ready(H, 200),
         {ok, postgres_entry(read_state(Ctrl))}
     catch
-        _:_ -> {error, postgres_port_or_readiness_unverified}
+        Class:Reason:Stack ->
+            %% 2026-11-07 排障：此 catch-all 曾把真实抛点吞成单一原子，
+            %% IMBOY_QUALITY_KEY_DIAG=1 时输出完整抛点（默认零开销）。
+            case os:getenv("IMBOY_QUALITY_KEY_DIAG") of
+                "1" ->
+                    io:format("PG-VERIFY-DIAG ~tp:~tp~n~tp~n", [
+                        Class,
+                        Reason,
+                        lists:sublist(Stack, 6)
+                    ]);
+                _ ->
+                    ok
+            end,
+            {error, postgres_port_or_readiness_unverified}
     end.
 
 require_execution_gate(State) ->
@@ -159,15 +175,24 @@ execution_context(State) ->
     }.
 
 persist_launch_intent(Ctrl, Id, Meta) ->
-    Path = filename:join([Ctrl, "evidence", "postgres-intent-" ++ binary_to_list(nonce_hash(Id)) ++ ".json"]),
+    Path = filename:join([
+        Ctrl, "evidence", "postgres-intent-" ++ binary_to_list(nonce_hash(Id)) ++ ".json"
+    ]),
     {ok, F} = file:open(Path, [write, binary, raw, exclusive]),
     try
         ok = file:change_mode(Path, 8#600),
-        ok = file:write(F, json:encode(#{<<"status">> => <<"START_INTENT_EXIT_UNVERIFIED">>,
-            <<"data_dir">> => list_to_binary(maps:get(data_dir, Meta)),
-            <<"port">> => maps:get(port, Meta)})),
+        ok = file:write(
+            F,
+            json:encode(#{
+                <<"status">> => <<"START_INTENT_EXIT_UNVERIFIED">>,
+                <<"data_dir">> => list_to_binary(maps:get(data_dir, Meta)),
+                <<"port">> => maps:get(port, Meta)
+            })
+        ),
         ok = file:sync(F)
-    after file:close(F) end.
+    after
+        file:close(F)
+    end.
 
 persist_launch_receipt(H) ->
     Evidence = filename:join(maps:get(ctrl, H), "evidence"),
@@ -372,7 +397,10 @@ owner_start(Parent, Ref, Meta, Log, Args, Nonce, Ctrl, Root) ->
         {ok, F} = file:open(Log, [write, binary, raw, exclusive]),
         try
             ok = file:change_mode(Log, 8#600),
-            receive {pg_cancel_start, Ref} -> error(start_cancelled) after 0 -> ok end,
+            receive
+                {pg_cancel_start, Ref} -> error(start_cancelled)
+            after 0 -> ok
+            end,
             Port = open_port(
                 {spawn_executable, maps:get(executable, Meta)},
                 [binary, exit_status, stderr_to_stdout, {args, Args}]
@@ -383,16 +411,30 @@ owner_start(Parent, Ref, Meta, Log, Args, Nonce, Ctrl, Root) ->
             put(pg_owner_parent_monitor, Mon),
             put(pg_owner_parent, Parent),
             put(pg_owner_start_ref, Ref),
-            Handle = Meta#{port_handle => Port, owner => self(), pid => Pid,
-                ctrl => Ctrl, root => Root, log_path => Log, nonce => Nonce},
+            Handle = Meta#{
+                port_handle => Port,
+                owner => self(),
+                pid => Pid,
+                ctrl => Ctrl,
+                root => Root,
+                log_path => Log,
+                nonce => Nonce
+            },
             put(pg_owner_handle, Handle),
             case safe_call(fun() -> persist_launch_receipt(Handle) end) of
                 ok ->
                     Receipt = make_ref(),
                     Payload = registration_meta(Handle),
                     Parent ! {Ref, started, self(), Port, Pid, Receipt},
-                    owner_loop(Port, F, Meta, Pid, Nonce, ok,
-                        {Receipt, register, Payload});
+                    owner_loop(
+                        Port,
+                        F,
+                        Meta,
+                        Pid,
+                        Nonce,
+                        ok,
+                        {Receipt, register, Payload}
+                    );
                 Error ->
                     Parent ! {Ref, error, {launch_receipt_failed_exit_unverified, Pid, Error}},
                     owner_loop(Port, F, Meta, Pid, Nonce, ok, none)
@@ -412,17 +454,27 @@ require_exit_receipt(Pid, Nonce, Exit) ->
 
 persist_exit_receipt(Pid, Nonce, Exit) ->
     safe_call(fun() ->
-        Path = filename:join([get(pg_owner_ctrl), "evidence",
-            "postgres-exit-" ++ binary_to_list(nonce_hash(Nonce)) ++ ".json"]),
+        Path = filename:join([
+            get(pg_owner_ctrl),
+            "evidence",
+            "postgres-exit-" ++ binary_to_list(nonce_hash(Nonce)) ++ ".json"
+        ]),
         {ok, F} = file:open(Path, [write, binary, raw, exclusive]),
         try
             ok = file:change_mode(Path, 8#600),
-            ok = file:write(F, json:encode(#{<<"pid">> => Pid,
-                <<"postgres_exit">> => maps:get(postgres_exit, Exit),
-                <<"pg_ctl_exit">> => maps:get(pg_ctl_exit, Exit),
-                <<"log_ok">> => maps:get(log_ok, Exit)})),
+            ok = file:write(
+                F,
+                json:encode(#{
+                    <<"pid">> => Pid,
+                    <<"postgres_exit">> => maps:get(postgres_exit, Exit),
+                    <<"pg_ctl_exit">> => maps:get(pg_ctl_exit, Exit),
+                    <<"log_ok">> => maps:get(log_ok, Exit)
+                })
+            ),
             ok = file:sync(F)
-        after file:close(F) end
+        after
+            file:close(F)
+        end
     end).
 
 claim_receipt(Owner, Receipt, Action, Pid, Payload) ->
@@ -441,33 +493,49 @@ receipt_request(Operation, Owner, Receipt, Action, Pid, Payload) ->
             {'DOWN', Mon, process, Owner, _} -> {error, owner_unavailable}
         after 5000 -> {error, receipt_timeout}
         end
-    after erlang:demonitor(Mon, [flush]) end.
+    after
+        erlang:demonitor(Mon, [flush])
+    end.
 
 owner_loop(Port, F, Meta, Pid, Nonce, LogStatus, Pending) ->
     receive
         {Port, {data, Data}} ->
-            Next = case LogStatus of ok -> file:write(F, Data); Error -> Error end,
+            Next =
+                case LogStatus of
+                    ok -> file:write(F, Data);
+                    Error -> Error
+                end,
             owner_loop(Port, F, Meta, Pid, Nonce, Next, Pending);
         {Port, {exit_status, Code}} ->
             Sync = file:sync(F),
             Close = file:close(F),
-            Exit = #{postgres_exit => Code, pg_ctl_exit => <<"NOT_INVOKED">>,
-                log_ok => LogStatus =:= ok andalso Sync =:= ok andalso Close =:= ok},
+            Exit = #{
+                postgres_exit => Code,
+                pg_ctl_exit => <<"NOT_INVOKED">>,
+                log_ok => LogStatus =:= ok andalso Sync =:= ok andalso Close =:= ok
+            },
             RecordedExit = require_exit_receipt(Pid, Nonce, Exit),
             Receipt = make_ref(),
             Owner = self(),
-            spawn(fun() -> imboy_quality_pg_register:record_exit(Pid, RecordedExit, {Owner, Receipt}) end),
+            spawn(fun() ->
+                imboy_quality_pg_register:record_exit(Pid, RecordedExit, {Owner, Receipt})
+            end),
             owner_loop(Port, F, Meta, Pid, Nonce, LogStatus, {Receipt, record_exit, RecordedExit});
         {claim_receipt, From, Ref, Receipt, Action, Pid, Payload} ->
-            Result = case Pending of
-                {Receipt, Action, Payload} -> {ok, Port, Nonce};
-                _ -> {error, invalid_or_consumed_receipt}
-            end,
+            Result =
+                case Pending of
+                    {Receipt, Action, Payload} -> {ok, Port, Nonce};
+                    _ -> {error, invalid_or_consumed_receipt}
+                end,
             From ! {Ref, Result},
             owner_loop(Port, F, Meta, Pid, Nonce, LogStatus, Pending);
         {commit_receipt, From, Ref, Receipt, Action, Pid, Payload} ->
             Entry = {Receipt, Action, Payload},
-            Tombstones = case get(pg_receipt_tombstones) of undefined -> []; T -> T end,
+            Tombstones =
+                case get(pg_receipt_tombstones) of
+                    undefined -> [];
+                    T -> T
+                end,
             case {Pending =:= Entry, lists:member(Entry, Tombstones)} of
                 {true, _} ->
                     put(pg_receipt_tombstones, [Entry | Tombstones]),
@@ -506,13 +574,21 @@ owner_loop(Port, F, Meta, Pid, Nonce, LogStatus, Pending) ->
                     RecordedExit = require_exit_receipt(Pid, Nonce, Exit),
                     Receipt = make_ref(),
                     From ! {Ref, {ok, RecordedExit, Receipt}},
-                    owner_loop(Port, F, Meta, Pid, Nonce, LogStatus,
-                        {Receipt, record_exit, RecordedExit});
+                    owner_loop(
+                        Port,
+                        F,
+                        Meta,
+                        Pid,
+                        Nonce,
+                        LogStatus,
+                        {Receipt, record_exit, RecordedExit}
+                    );
                 _ ->
                     From ! {Ref, Response},
                     owner_loop(Port, F, Meta, Pid, Nonce, LogStatus, Pending)
             end;
-        _ -> owner_loop(Port, F, Meta, Pid, Nonce, LogStatus, Pending)
+        _ ->
+            owner_loop(Port, F, Meta, Pid, Nonce, LogStatus, Pending)
     end.
 
 cancel_owner(Port, F, Meta, Pid, Nonce, LogStatus, Pending) ->
@@ -524,7 +600,9 @@ cancel_owner(Port, F, Meta, Pid, Nonce, LogStatus, Pending) ->
             notify_start_cancel({stop_confirmed, RecordedExit}),
             Receipt = make_ref(),
             Owner = self(),
-            spawn(fun() -> imboy_quality_pg_register:record_exit(Pid, RecordedExit, {Owner, Receipt}) end),
+            spawn(fun() ->
+                imboy_quality_pg_register:record_exit(Pid, RecordedExit, {Owner, Receipt})
+            end),
             owner_loop(Port, F, Meta, Pid, Nonce, LogStatus, {Receipt, record_exit, RecordedExit});
         _ ->
             %% The launch receipt remains EXIT_UNVERIFIED; retain the Port and log.
@@ -535,8 +613,10 @@ cancel_owner(Port, F, Meta, Pid, Nonce, LogStatus, Pending) ->
 notify_start_cancel(Result) ->
     case {get(pg_owner_parent), get(pg_owner_start_ref)} of
         {Parent, Ref} when is_pid(Parent), is_reference(Ref) ->
-            Parent ! {Ref, cancel_result, self(), Result}, ok;
-        _ -> ok
+            Parent ! {Ref, cancel_result, self(), Result},
+            ok;
+        _ ->
+            ok
     end.
 
 request_stop(H) ->
@@ -640,7 +720,8 @@ validate_empty_pidfile(Dir) ->
                 {ok, _} -> {error, existing_postmaster_pidfile};
                 {error, Reason} -> {error, {pidfile_inspection_failed, Reason}}
             end;
-        _ -> {error, pgdata_directory_unverified}
+        _ ->
+            {error, pgdata_directory_unverified}
     end.
 
 wait_stop(H, CtlPort, PgExit, CtlExit, Deadline) ->
@@ -656,10 +737,11 @@ wait_stop(H, CtlPort, PgExit, CtlExit, Deadline) ->
             PgPort = maps:get(port_handle, H),
             receive
                 {PgPort, {data, Data}} ->
-                    Status = case maps:get(log_status, H) of
-                        ok -> file:write(maps:get(log_fd, H), Data);
-                        Error -> Error
-                    end,
+                    Status =
+                        case maps:get(log_status, H) of
+                            ok -> file:write(maps:get(log_fd, H), Data);
+                            Error -> Error
+                        end,
                     wait_stop(H#{log_status => Status}, CtlPort, PgExit, CtlExit, Deadline);
                 {PgPort, {exit_status, Code}} ->
                     wait_stop(H, CtlPort, Code, CtlExit, Deadline);

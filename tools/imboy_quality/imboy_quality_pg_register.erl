@@ -128,7 +128,15 @@ transaction(Action, Payload, Proof) ->
     try
         {ok, Repo} = file:get_cwd(),
         {0, Common0} = imboy_quality_guard:git(Repo, ["rev-parse", "--git-common-dir"]),
-        Common = string:trim(binary_to_list(Common0)),
+        CommonTrim = string:trim(binary_to_list(Common0)),
+        %% git 在仓库顶层 cwd 下对 --git-common-dir 的标准返回是相对的
+        %% （".git"）；子目录下才是绝对路径。2026-11-07 eunit --full 实证
+        %% {badmatch, relative} 卡死注册。这里按 cwd 归一化为绝对路径。
+        Common =
+            case filename:pathtype(CommonTrim) of
+                absolute -> CommonTrim;
+                relative -> filename:absname(filename:join(Repo, CommonTrim))
+            end,
         absolute = filename:pathtype(Common),
         Ctrl = filename:join(Common, "zcode-tasks/IMBOY_ERLANG_QUALITY"),
         Package =
