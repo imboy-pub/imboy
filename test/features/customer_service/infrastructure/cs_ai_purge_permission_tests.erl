@@ -141,8 +141,12 @@ f4_authorized_purge_audited(Scope, Baseline) ->
         Opts#{username => <<"cs_ai_purge">>, password => ?PURGE_PASS}
     ),
     try
+        %% cutoff 取 now+1s：RFC3339 毫秒精度会在同毫秒内向下载断（.123），
+        %% 而 created_at 是 PG 微秒（.123456）——seed 与 now_ts() 同毫秒时
+        %% `created_at < before_ts` 漏掉刚 seed 的行（实测 {ok,2} vs 3），
+        %% 留 1 秒余量使断言确定性通过（行数/审计断言均不变）。
         {ok, Expected} = cs_ai_purge_worker:purge(
-            Org, now_ts(), <<"retention-sweep">>, <<"req-f4">>
+            Org, now_ts(1000), <<"retention-sweep">>, <<"req-f4">>
         )
     after
         case OldConfig of
@@ -312,6 +316,10 @@ call_sql() ->
 
 now_ts() ->
     elib_dt:to_rfc3339(os:system_time(millisecond)).
+
+%% MsAhead 毫秒的未来时刻（f4 的确定性 purge cutoff，见调用处注释）。
+now_ts(MsAhead) when is_integer(MsAhead), MsAhead > 0 ->
+    elib_dt:to_rfc3339(os:system_time(millisecond) + MsAhead).
 
 turn_count(Org) ->
     ?FIX:scalar(
