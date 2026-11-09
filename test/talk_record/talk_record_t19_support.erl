@@ -43,6 +43,10 @@ teardown_all(State) ->
 
 -spec seed(map()) -> ok.
 seed(State) ->
+    %% 迁移 262：attachment_export_write_receipt 以 FK 引用 derived_write 的
+    %% attachment_id；上一个用例的导出收件未清时直接删 derived_write 会 23503
+    %% 连坐取消后续用例（at13 export 27-cancel 取证 /tmp/verify_export_c5.log）。
+    sql(maps:get(conn, State), "DELETE FROM attachment_export_write_receipt"),
     sql(maps:get(conn, State), "DELETE FROM attachment_derived_write"),
     ok = talk_record_upload_test_support:configure(),
     ok = talk_record_t17_support:seed(State),

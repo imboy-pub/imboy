@@ -153,13 +153,17 @@ run(S) ->
     ok.
 
 final_attachment_id(C, Rid) ->
+    %% 成品=真实客户端直传附件，按永久引用 role='transcoded_audio' 定位
+    %% （C08 确认逻辑绑定契约；attachment 表无 origin 列，旧查询 42703）。
     {ok, [#{<<"id">> := Aid}]} = elib_pg:query(
         C,
         <<
-            "SELECT id FROM attachment WHERE scope='talk_record' AND scope_ref=$1"
-            " AND origin='test_final'"
+            "SELECT a.id FROM attachment a"
+            " JOIN talk_record_attachment_ref r ON r.attachment_id=a.id"
+            " WHERE r.record_id=$1 AND r.role='transcoded_audio'"
+            " AND r.state='bound' AND r.lease_until IS NULL"
         >>,
-        [integer_to_binary(Rid)]
+        [Rid]
     ),
     Aid.
 
@@ -403,11 +407,15 @@ finish_cas(C, B, N) ->
 %% final_asset_mismatch，不进事务外校验段。
 final_asset_mismatch(C, B, N) ->
     {Rid, J} = fixture(C, B, N),
+    %% 成品行由 fixture 以 path 前缀 assembly-final/ 直传（C08 前测试用
+    %% 幽灵列 origin='test_final' 定位；attachment 表无该列，按现契约
+    %% 用确定性 path 前缀挑出同一行）。
     {ok, 1} = elib_pg:execute(
         C,
         <<
             "UPDATE attachment SET file_hash256=repeat('f',64)"
-            " WHERE scope='talk_record' AND scope_ref=$1 AND origin='test_final'"
+            " WHERE scope='talk_record' AND scope_ref=$1"
+            " AND path LIKE 'assembly-final/%'"
         >>,
         [integer_to_binary(Rid)]
     ),

@@ -125,11 +125,20 @@ run_module(Module) ->
     Opts = owned_options(),
     Identity = verify_server(Opts),
     %% Empty password must never fall back to inherited shared configuration.
+    %% Provision 阶段以维护库连接；运行原模块前必须把 pg_conf 重指到
+    %% 已供应的子库：worker port（talk_record_export_job 的 render 链）
+    %% 在调用时读 pg_conf 自行建连，维护库无业务表（42P01 取证见
+    %% runtime/runs/at13/diag_export_trace.log，position 146=find_by_id_tx）。
     ok = application:set_env(imboy, pg_conf, #{start_mfa => {epgsql, connect, [Opts]}}),
     Pg = inttest_marker_db:provision(#{
         env_prefix => <<"TALK_OWNED">>,
         connect_extra => #{codecs => [{epgsql_codec_rfc3339_bin, []}]}
     }),
+    ChildOpts = Opts#{
+        database => maps:get(db, Pg),
+        codecs => [{epgsql_codec_rfc3339_bin, []}]
+    },
+    ok = application:set_env(imboy, pg_conf, #{start_mfa => {epgsql, connect, [ChildOpts]}}),
     Outcome = capture(fun() ->
         bind_fixture(Pg, Identity),
         run_original(Module)
