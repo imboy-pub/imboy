@@ -40,7 +40,7 @@ base="$(git rev-parse HEAD)"
 git checkout -qb contribution
 git commit -q --allow-empty -s -m 'Signed contributor commit'
 signed="$(git rev-parse HEAD)"
-git -c user.name='Dependency Bot' -c user.email='49699333+dependabot[bot]@users.noreply.github.com' \
+git -c user.name='Dependency Bot' -c user.email='fixture+ci[bot]@example.invalid' \
   commit -q --allow-empty -s -m 'Signed bot commit'
 head="$(git rev-parse HEAD)"
 git checkout -qb target "$base"
@@ -62,9 +62,9 @@ expect_fail 'unsigned real contributor rejected' "$target" "$unsigned"
 git commit -q --allow-empty -s -m 'Signed tip after unsigned ancestor'
 expect_fail 'unsigned ancestor rejected despite signed PR tip' "$target" "$(git rev-parse HEAD)"
 git checkout -qb wrong-email "$head"
-git -c user.name='Dependency Bot' -c user.email='49699333+dependabot[bot]@users.noreply.github.com' \
+git -c user.name='Dependency Bot' -c user.email='fixture+ci[bot]@example.invalid' \
   commit -q --allow-empty -m 'Wrong literal signoff' \
-  -m 'Signed-off-by: Dependency Bot <49699333+dependabotb@usersXnoreplyXgithubXcom>'
+  -m 'Signed-off-by: Dependency Bot <fixture+cibot@exampleXinvalid>'
 expect_fail 'lookalike bot email rejected' "$head" "$(git rev-parse HEAD)"
 expect_fail 'missing base rejected' '' "$head"
 expect_fail 'missing head rejected' "$base" ''

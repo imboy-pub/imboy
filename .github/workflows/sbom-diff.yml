@@ -19,6 +19,7 @@ on:
 
 permissions:
   contents: read
+  actions: read
 
 jobs:
   sbom-diff:
@@ -53,31 +54,32 @@ jobs:
       # ── 3. 下载上一次 SBOM artifact（如有）────────────────────────
       - name: Download previous SBOM artifact
         id: prev-sbom
-        # v21 不存在（该 action 最新大版本为 v9），幻影 ref 使本 step 恒失败，
-        # 被 continue-on-error 吞掉后 diff 永远退化为"首次生成"模式。改用真实 v9，
-        # 所用 inputs（workflow/branch/run_id/name/path/search_artifacts/if_no_artifact_found）v9 全支持。
+        # 按 workflow/branch 找最近成功且有 artifact 的 run；run_id 与 branch 互斥。
+        # Find the latest successful run with an artifact; branch excludes run_id.
         uses: dawidd6/action-download-artifact@v28
         with:
+          github_token: ${{ github.token }}
           name: sbom-cyclonedx
           path: /tmp/sbom-prev/
           workflow: sbom-diff.yml
           branch: main
-          # 找最新一次成功的 run，不含本次
-          run_id: ${{ github.run_id }}
+          workflow_conclusion: success
           search_artifacts: true
           if_no_artifact_found: warn
-        continue-on-error: true
 
       # ── 4. 对比差异并写入 Job Summary ─────────────────────────────
       - name: Diff SBOM and write summary
+        env:
+          PREVIOUS_SBOM_FOUND: ${{ steps.prev-sbom.outputs.found_artifact }}
         run: |
           set -euo pipefail
 
-          PREV="/tmp/sbom-prev/sbom-cyclonedx.json"
+          PREV="/tmp/sbom-prev/sbom-current.json"
           CURR="/tmp/sbom-current.json"
 
-          # 如果没有上一次 SBOM，输出全量列表后退出
-          if [ ! -f "$PREV" ]; then
+          # 只有确认无基线才走首次生成；下载/解包错误必须失败。
+          # Only an explicitly missing baseline is a first run; errors must fail.
+          if [ "$PREVIOUS_SBOM_FOUND" = false ]; then
             echo "## SBOM 报告（首次生成，无基线可比对）" >> "$GITHUB_STEP_SUMMARY"
             echo "" >> "$GITHUB_STEP_SUMMARY"
             echo "当前依赖总数：**$(jq '.components | length' "$CURR")**" >> "$GITHUB_STEP_SUMMARY"
@@ -91,6 +93,11 @@ jobs:
             echo "" >> "$GITHUB_STEP_SUMMARY"
             echo "</details>" >> "$GITHUB_STEP_SUMMARY"
             exit 0
+          fi
+
+          if [ "$PREVIOUS_SBOM_FOUND" != true ] || [ ! -f "$PREV" ]; then
+            echo "::error::Previous SBOM download did not produce the expected baseline"
+            exit 1
           fi
 
           # 提取 "name@version" 集合，用于集合运算
