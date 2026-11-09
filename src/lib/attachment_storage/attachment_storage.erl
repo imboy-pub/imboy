@@ -38,11 +38,19 @@
 %% 一律拒绝——03：不同实现必须用同一规范）。
 -spec registry() -> map().
 registry() ->
-    R = application:get_env(imboy, attachment_storage_registry, #{}),
+    R = unwrap_env(application:get_env(imboy, attachment_storage_registry, #{})),
     case maps:get(version, R, undefined) of
         ?REGISTRY_VERSION -> R;
         _ -> #{version => ?REGISTRY_VERSION, roots => #{}}
     end.
+
+%% @doc app env 形态防呆：application:get_env/2-3 的返回是 {ok, Value}，
+%% 配置装载/测试夹具把该元组形态原样写回 env 时（full-eunit 夜间批量的
+%% 连坐根因，见 test/lib/app_env_shape_tolerance_tests.erl 取证），读侧
+%% 统一解包；非 map 的非法形态回落缺省（fail-closed 语义不变）。
+unwrap_env({ok, Map}) when is_map(Map) -> Map;
+unwrap_env(Map) when is_map(Map) -> Map;
+unwrap_env(_) -> #{}.
 
 %% @doc 启动期校验：roots 为空意味着所有新上传都会被拒绝（presign 503
 %% upload_root_unavailable）。fail-closed 本身是设计，但原因必须在启动日志里

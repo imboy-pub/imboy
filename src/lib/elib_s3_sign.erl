@@ -328,7 +328,14 @@ string_to_sign(AmzDate, DateStr, Region, CanonicalRequest) ->
 
 -spec garage_config() -> map().
 garage_config() ->
-    application:get_env(imboy, garage, #{}).
+    %% {ok, Map} 形态防呆：与 attachment_storage:unwrap_env/1 同口径。
+    %% 配置装载/测试夹具把 get_env 的返回元组原样写回 env 时（full-eunit
+    %% 夜间批量连坐根因），presign 链不再 badmap 崩溃；非法形态回落空 map。
+    case application:get_env(imboy, garage, #{}) of
+        {ok, Map} when is_map(Map) -> Map;
+        Map when is_map(Map) -> Map;
+        _ -> #{}
+    end.
 
 %% @doc 从 endpoint 提取 SigV4 签名用 host（保留显式端口，剥离路径前缀）。
 %% 支持反代形态的 public endpoint（如 https://api.example.com/s3 →
