@@ -496,3 +496,59 @@ dart run scripts/generate_error_code.dart --check
 - 其他联系：见根 `README.md` 或官网
 
 感谢你让 IMBoy 变得更好！
+
+## 自动安全扫描
+
+[Security Scan](./.github/workflows/security-scan.yml) 在推送到 `main` / `dev`、以这两个分支为目标的 PR，以及手动触发时运行。其他分支仅 push 不触发；开 PR 后会随 PR 更新扫描。扫描当前检出的完整工作区，不是只检查新增问题，也不扫描完整 Git 历史。
+
+- Semgrep CE 使用 `p/security-audit`、`p/secrets`、`p/owasp-top-ten`；所有规则级别进入报告，`HIGH` / `CRITICAL` 及旧格式 `ERROR` 级发现使检查失败。Semgrep 规则级别不等同于 CVSS 高危评分。
+- Trivy 显式启用 `vuln,misconfig,secret`，扫描依赖、受支持的配置及密钥；报告并阻断 `HIGH,CRITICAL`，包含开发依赖和暂无修复版本的漏洞。
+- 两个扫描 job 独立运行；安装失败、规则/数据库下载错误、扫描器致命错误或报告上传失败都使检查失败。汇总检查名称固定为 `security-scan`。
+- 两份 SARIF 使用独立 category 上传到 **Security → Code scanning**；PR 分析也显示在对应 PR 检查中。报告可能包含源码或密钥片段，因此不上传公开 Actions artifact，不把报告提交进仓库。
+- 保留既有 Gitleaks、测试和质量门。使用普通 `pull_request`，不需要业务密钥或 Semgrep 账号，不运行应用安装/构建脚本。
+
+Semgrep 的 `warn` / `warning` 级解析、规则匹配或超时诊断不单独阻断，但摘要会明确显示数量、类型和“部分文件或规则未完成分析”。其他级别（含未知级别）的诊断、报告无效或零文件扫描均失败。绿色只表示配置的门禁通过，不保证所有源码路径都被完整分析；不得把覆盖告警当成零问题。
+
+### 接入与维护
+
+工作流默认 `FINDINGS_EXIT_CODE: "1"`。存量发现也会让检查失败。若维护者明确选择观察期，可在评审后的变更中设为 `"0"`；仅发现问题不再阻断，扫描器执行/报告错误仍失败。这不自动提供“只拦新增”的基线能力，也不改变既有 Gitleaks 门。
+
+首次运行后，在目标分支保护或 ruleset 中把 **`security-scan`** 加入必需检查，才会强制阻止失败 PR 合并；仅合入 YAML 不会修改仓库设置。先确认三项 job 实际执行及 SARIF 可见，再启用必需检查。若 Code scanning 上传被权限或仓库功能设置拒绝，应修正配置，不能以忽略错误代替成功。
+
+Dependabot/fork 的普通 PR 可上传 SARIF。若 Dependabot authored 的 squash merge 使 `push` 运行只有只读 token，上传可能返回 403；由有权限维护者发起新的 `workflow_dispatch` 获取该提交的报告，并评估后续合并方式。不要为解决此问题改用 `pull_request_target` 执行 PR 代码或忽略上传错误。
+
+外部 Actions 固定到完整提交 SHA，注释保留版本；既有 Dependabot 的 `github-actions` 更新继续适用。Semgrep/Trivy 引擎版本固定在 workflow 中，需要随升级验证。Semgrep Registry 规则和 Trivy 漏洞数据库随上游更新，因此即使代码不变，发现也可能变化。误报或例外应逐项记录理由并审阅，不用排除整个业务目录压低数量。
+
+### 本仓覆盖边界
+
+Semgrep CE 没有原生 Erlang 语义分析；本次使用适用的通用规则以及受支持的脚本、配置和前端语言规则，不能替代 Erlang 业务逻辑安全审查。Trivy 能识别 `docs-site/bun.lock`（包含开发依赖），但不能直接把 `Makefile` / `include/deps.mk` 的 erlang.mk Git 依赖图当作可扫描的 Erlang 锁文件；根 `rebar.lock` 为空。现有 SBOM diff 继续保留，生成 SBOM 不等于已完成所有 Erlang 依赖漏洞检查。Helm chart 含必填渲染参数，默认扫描可能 WARN 跳过；完整配置审查还需提供脱敏的渲染参数，不能把跳过当成通过。
+
+参考：[Semgrep CE 语言](https://semgrep.dev/docs/semgrep-ce-languages)、[Trivy 依赖覆盖](https://trivy.dev/docs/latest/coverage/language/)、[Bun 开发依赖](https://trivy.dev/docs/latest/coverage/language/nodejs/)。
+
+## Automated security scanning
+
+[Security Scan](./.github/workflows/security-scan.yml) runs on pushes to `main` / `dev`, pull requests targeting either branch, and manual dispatch. A push to another branch alone does not trigger it; subsequent PR updates do. It scans the checked-out workspace, not only newly introduced findings or the entire Git history.
+
+- Semgrep CE uses `p/security-audit`, `p/secrets`, and `p/owasp-top-ten`. All rule severities are reported; `HIGH` / `CRITICAL` and legacy `ERROR` findings fail the check. Semgrep rule severity is not a CVSS rating.
+- Trivy explicitly enables `vuln,misconfig,secret` for dependencies, supported configurations, and secrets. It reports and blocks `HIGH,CRITICAL`, including development dependencies and vulnerabilities with no available fix.
+- The scanners run independently. Installation, rule/database download, fatal scanner, and report-upload errors fail the workflow. The aggregate check has the stable name `security-scan`.
+- Separate SARIF categories are uploaded to **Security → Code scanning**, with PR analyses also appearing in PR checks. Reports can contain source or secret snippets: they are not published as public Actions artifacts or committed.
+- Existing Gitleaks, tests, and quality gates remain in place. Ordinary `pull_request` events require no application secrets or Semgrep account, and no application install/build scripts are executed.
+
+Semgrep `warn` / `warning` diagnostics for parsing, rule matching, or timeouts do not independently block, but the summary shows their counts/types and explicitly states that some files or rules were not fully analyzed. Other or unknown diagnostic levels, invalid reports, and zero scanned files fail. A green check means the configured gate passed, not that every source path was fully analyzed; coverage warnings are not zero findings.
+
+### Rollout and maintenance
+
+The default is `FINDINGS_EXIT_CODE: "1"`, so existing findings also fail the check. If maintainers explicitly choose an observation period, change it to `"0"` through a reviewed change. Findings then become report-only, but scanner/report errors still fail. This does not implement a new-findings-only baseline or relax existing Gitleaks gates.
+
+After the first run, require **`security-scan`** in the target branch protection or ruleset to enforce merge blocking. Merging the YAML does not change repository settings. Verify that all three jobs run and SARIF reports are visible before requiring the check. Resolve permission or Code scanning availability errors instead of ignoring upload failures.
+
+Ordinary Dependabot/fork PR runs can upload SARIF. A Dependabot-authored squash merge may leave a push run with a read-only token and produce an upload 403. A maintainer can start a new `workflow_dispatch` to report that commit and review the merge strategy for future updates. Do not switch to `pull_request_target` to execute PR code or ignore upload errors.
+
+External Actions are pinned to full commit SHAs with version comments; existing Dependabot `github-actions` updates still apply. Engine versions are pinned in the workflow and need validation when upgraded. Semgrep Registry rules and the Trivy vulnerability database update independently, so findings may change without source changes. Review and document individual exceptions instead of excluding entire application directories.
+
+### Repository coverage limits
+
+Semgrep CE has no native Erlang semantic analysis. Applicable generic rules and supported script, configuration, and frontend-language rules do not replace an Erlang application security review. Trivy can read `docs-site/bun.lock`, including development dependencies. It does not resolve the erlang.mk Git dependency graph in `Makefile` / `include/deps.mk` as an Erlang lockfile; the root `rebar.lock` is empty. Existing SBOM diff remains useful, but generating an SBOM does not prove that all Erlang dependencies were vulnerability-scanned. Helm charts with required render values may be skipped with a warning; complete configuration review also needs sanitized render values. A skipped chart is not a passed check.
+
+References: [Semgrep CE languages](https://semgrep.dev/docs/semgrep-ce-languages), [Trivy dependency coverage](https://trivy.dev/docs/latest/coverage/language/), [Bun development dependencies](https://trivy.dev/docs/latest/coverage/language/nodejs/).
