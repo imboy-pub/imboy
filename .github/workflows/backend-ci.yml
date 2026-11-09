@@ -160,6 +160,9 @@ jobs:
       - name: Check nightly QA summary
         run: python3 -m unittest discover -s scripts/test -p test_nightly_summary.py -v
 
+      - name: Check SBOM baseline and failure handling
+        run: python3 -m unittest discover -s scripts/test -p test_sbom_workflow.py -v
+
       - name: Compile
         run: |
           IMBOYENV=local make test-build
@@ -688,6 +691,8 @@ jobs:
     name: DCO check
     runs-on: ubuntu-latest
     if: github.event_name == 'pull_request'
+    permissions:
+      contents: read
 
     steps:
       - name: Checkout
@@ -696,10 +701,13 @@ jobs:
           fetch-depth: 0
 
       - name: Test DCO range checks
-        run: bash scripts/test/check_pr_dco_test.sh
+        run: |
+          bash scripts/test/check_pr_dco_test.sh
+          python3 test/scripts/test_check_pr_dco.py
 
       - name: DCO check（shell 实现；dco-org/dco-action 仓库已下线）
         env:
+          GH_TOKEN: ${{ github.token }}
           PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
           PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         # HEAD can be GitHub's unsigned synthetic merge, not a contributor commit.
