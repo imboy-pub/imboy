@@ -205,6 +205,12 @@ seed_tenants(Conn) ->
     ),
     ok.
 
+%% confirmed 资产的真实形态：真实登记链路 fn_v5_register_eb（迁移 179）
+%% 必写 session_deadline + upload_expires_at（CHECK 要求
+%% upload_expires_at <= session_deadline）；迁移 268 起 fn_v5_intent_eb_delete
+%% 对 client_upload_id 在场且 upload_expires_at 为 NULL/未过期的资产拒
+%% 23510 "upload capability still live or unknown"。故 confirmed 种子须带
+%% 已耗尽的能力窗口（两个时间戳均在过去），意图删除方可入队。
 seed_eb_confirmed(Conn, Id, Key, Uuid) ->
     q(
         Conn,
@@ -212,9 +218,10 @@ seed_eb_confirmed(Conn, Id, Key, Uuid) ->
         " (id,organization_id,workspace_id,object_key,object_hash,mime,size_bytes,"
         "  status,storage_driver,storage_namespace,storage_container,"
         "  storage_locator_sha256,lifecycle_state,client_upload_id,"
-        "  upload_registration)"
+        "  upload_registration,session_deadline,upload_expires_at)"
         " VALUES ($1,9101,9102,$2,$3,'text/plain',8,'active','garage','ns1','c1',"
-        "  $4,'live',$5,$6::jsonb)",
+        "  $4,'live',$5,$6::jsonb,now() - interval '1 hour',"
+        "  now() - interval '2 hours')",
         [
             Id,
             Key,

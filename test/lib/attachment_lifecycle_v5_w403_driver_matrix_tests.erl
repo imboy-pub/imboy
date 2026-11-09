@@ -32,9 +32,7 @@ roundtrip_units() ->
                             <<"roundtrip/", (atom_to_binary(Surface))/binary, "/",
                                 (atom_to_binary(Driver))/binary>>,
                         try
-                            attachment_w403_http_fixture:roundtrip(
-                                S#{leaf => Leaf}, Surface, Driver
-                            )
+                            roundtrip(S#{leaf => Leaf}, Surface, Driver)
                         after
                             report_evidence(Leaf)
                         end
@@ -74,16 +72,11 @@ sealed_body_validation_units() ->
                         try
                             Prefix = binary:copy(<<"a">>, 65537),
                             Bytes = <<Prefix/binary, 1, "tail">>,
-                            T = attachment_w403_http_fixture:register(
-                                S#{leaf => Leaf},
-                                Surface,
-                                Driver,
-                                Bytes
-                            ),
+                            T = reg(S#{leaf => Leaf}, Surface, Driver, Bytes),
                             Mod = driver(Driver),
                             meck:new(Mod, [passthrough, no_link]),
                             try
-                                Result = attachment_w403_http_fixture:put(T, Bytes),
+                                Result = put_bytes(T, Bytes),
                                 ?assertNot(attachment_w403_http_fixture:success(Result)),
                                 ?assertEqual(0, put_calls(Mod)),
                                 ?assertEqual(
@@ -152,7 +145,46 @@ scenarios() ->
     ].
 
 -define(F, attachment_w403_http_fixture).
+-define(FW, attachment_w403_http_fixture_w601).
 -define(BODY, <<"w403 original registered content">>).
+
+%% C10 S3-only 面分派登记/字节链：seat/widget 的 presign 响应为 opaque
+%% token descriptor（无 upload.url，主 fixture 的 seat/widget 分支随字节
+%% 代理链退役已不可用）——登记走 ?FW:register；字节写走各面存留的生产
+%% 链（ordinary=multipart 上传端点 attachment_upload_logic:pin_and_put；
+%% seat/widget=eb 应用链 eb_asset_app:put_object），均经真实 driver
+%% put_snapshot（barrier/meck 观察面保持）。
+reg(S, Surface, Driver, Bytes) ->
+    ?FW:register(S, Surface, Driver, Bytes).
+
+put_bytes(T, Bytes) ->
+    S = maps:get(fixture, T),
+    case maps:get(surface, T) of
+        ordinary -> ?FW:upload_put(S, T, Bytes);
+        _ -> ?FW:put(T, Bytes)
+    end.
+
+%% C10：ordinary 面字节链仍为真实 HTTP（multipart 上传端点），Cowboy 派发
+%% 观察在场——overlap 双请求配对证据保持；seat/widget 字节链已随 HTTP
+%% 代理退役移到应用层（无派发观察），「两请求真实交叠」的 HTTP 配对证据
+%% 不再可表达——保留字节级断言（拒写/provider 零写/字节不变），不伪造。
+maybe_overlap(ordinary, Leaf, Worker, Competing) ->
+    ?F:overlap(Leaf, Worker, Competing);
+maybe_overlap(_Surface, _Leaf, _Worker, _Competing) ->
+    ok.
+
+%% C10 S3-only 真实往返：读回/确认/确认后换体拒写断言面原样，字节写走
+%% 上述生产链（确认后旧能力换体在会话状态门/凭证 hash 门被拒）。
+roundtrip(S, Surface, Driver) ->
+    Bytes = <<"w403 authenticated immutable content">>,
+    Session = reg(S, Surface, Driver, Bytes),
+    ?assertEqual({error, not_found}, ?F:read(Session)),
+    ?assert(?F:success(put_bytes(Session, Bytes))),
+    ?assertEqual({ok, Bytes}, ?F:read(Session)),
+    ?assert(?F:success(?F:confirm(Session))),
+    ?assertNot(?F:success(put_bytes(Session, <<"different bytes">>))),
+    ?assertEqual({ok, Bytes}, ?F:read(Session)),
+    Session.
 
 run_leaf(S0, Surface, Driver, Scenario) ->
     Leaf = <<
@@ -205,26 +237,26 @@ w403dm_domain(cs_widget) -> <<"enterprise">>;
 w403dm_domain(_) -> <<"ordinary">>.
 
 scenario(S, Surface, Driver, confirm_old_put_different_bytes) ->
-    T = ?F:register(S, Surface, Driver, ?BODY),
+    T = reg(S, Surface, Driver, ?BODY),
     Mod = driver(Driver),
     meck:new(Mod, [passthrough, no_link]),
     try
-        ?assert(?F:success(?F:put(T, ?BODY))),
+        ?assert(?F:success(put_bytes(T, ?BODY))),
         ?assert(?F:success(?F:confirm(T))),
         Before = put_calls(Mod),
-        ?assertNot(?F:success(?F:put(T, <<"different old capability content">>))),
+        ?assertNot(?F:success(put_bytes(T, <<"different old capability content">>))),
         ?assertEqual(Before, put_calls(Mod)),
         %% Fresh same-content PUT after confirmation is read-only/idempotent or
         %% rejected. Neither outcome permits another provider write.
-        _ = ?F:put(T, ?BODY),
+        _ = put_bytes(T, ?BODY),
         ?assertEqual(Before, put_calls(Mod)),
         ?assertEqual({ok, ?BODY}, ?F:read(T))
     after
         meck:unload(Mod)
     end;
 scenario(S, Surface, Driver, stat_then_different_put) ->
-    T = ?F:register(S, Surface, Driver, ?BODY),
-    ?assert(?F:success(?F:put(T, ?BODY))),
+    T = reg(S, Surface, Driver, ?BODY),
+    ?assert(?F:success(put_bytes(T, ?BODY))),
     with_read_barrier(T, fun(Barrier) ->
         Job = start_job(fun() -> ?F:confirm(T) end),
         Worker = await_barrier(Barrier),
@@ -232,23 +264,23 @@ scenario(S, Surface, Driver, stat_then_different_put) ->
             enterprise_internal ->
                 serialized_competing_put(T, Barrier, Worker, Job);
             _ ->
-                Competing = ?F:put(T, <<"replacement after observed bytes">>),
+                Competing = put_bytes(T, <<"replacement after observed bytes">>),
                 ?assertNot(?F:success(Competing)),
-                ?F:overlap(maps:get(leaf, T), Worker, Competing),
+                maybe_overlap(Surface, maps:get(leaf, T), Worker, Competing),
                 release(Barrier, Worker),
                 ?assert(?F:success(finish_job(Job)))
         end,
         ?assertEqual({ok, ?BODY}, ?F:read(T))
     end);
 scenario(S, Surface, Driver, inflight_same_bytes_after_confirm) ->
-    T = ?F:register(S, Surface, Driver, ?BODY),
-    ?assert(?F:success(?F:put(T, ?BODY))),
+    T = reg(S, Surface, Driver, ?BODY),
+    ?assert(?F:success(put_bytes(T, ?BODY))),
     with_put_barrier(T, fun(Barrier) ->
-        Job = start_job(fun() -> ?F:put(T, ?BODY) end),
+        Job = start_job(fun() -> put_bytes(T, ?BODY) end),
         Worker = await_barrier(Barrier),
         Confirmed = ?F:confirm(T),
         ?assert(?F:success(Confirmed)),
-        ?F:overlap(maps:get(leaf, T), Worker, Confirmed),
+        maybe_overlap(Surface, maps:get(leaf, T), Worker, Confirmed),
         release(Barrier, Worker),
         Result = finish_job(Job),
         ?assert(?F:success(Result) orelse lists:member(maps:get(status, Result), [409, 410])),
@@ -257,7 +289,7 @@ scenario(S, Surface, Driver, inflight_same_bytes_after_confirm) ->
 scenario(S, Surface, Driver, put_paused_before_dispatch_until_expiry) ->
     T = short_registration(S, Surface, Driver, ?BODY),
     with_put_barrier(T, fun(Barrier) ->
-        Job = start_job(fun() -> ?F:put(T, ?BODY) end),
+        Job = start_job(fun() -> put_bytes(T, ?BODY) end),
         Worker = await_barrier(Barrier),
         wait_expired(T),
         release(Barrier, Worker),
@@ -266,15 +298,15 @@ scenario(S, Surface, Driver, put_paused_before_dispatch_until_expiry) ->
         ?assertNot(?F:success(?F:confirm(T)))
     end);
 scenario(S, Surface, Driver, same_key_different_worker_payload) ->
-    T = ?F:register(S, Surface, Driver, ?BODY),
+    T = reg(S, Surface, Driver, ?BODY),
     with_put_barrier(T, fun(Barrier) ->
-        First = start_job(fun() -> ?F:put(T, ?BODY) end),
+        First = start_job(fun() -> put_bytes(T, ?BODY) end),
         Worker = await_barrier(Barrier),
         %% The first worker has committed its receipt, but not dispatched I/O.
-        Second = start_job(fun() -> ?F:put(T, <<"different competing worker payload">>) end),
+        Second = start_job(fun() -> put_bytes(T, <<"different competing worker payload">>) end),
         Competing = finish_job(Second),
         ?assertNot(?F:success(Competing)),
-        ?F:overlap(maps:get(leaf, T), Worker, Competing),
+        maybe_overlap(Surface, maps:get(leaf, T), Worker, Competing),
         ?assertEqual({error, not_found}, ?F:read(T)),
         release(Barrier, Worker),
         ?assert(?F:success(finish_job(First))),
@@ -282,15 +314,15 @@ scenario(S, Surface, Driver, same_key_different_worker_payload) ->
         ?assertEqual({ok, ?BODY}, ?F:read(T))
     end);
 scenario(S, Surface, Driver, provider_bypass_writer_denied) ->
-    T = ?F:register(S, Surface, Driver, ?BODY),
-    ?assert(?F:success(?F:put(T, ?BODY))),
+    T = reg(S, Surface, Driver, ?BODY),
+    ?assert(?F:success(put_bytes(T, ?BODY))),
     ?assert(?F:success(?F:confirm(T))),
     bypass_denied(T),
     ?assertEqual({ok, ?BODY}, ?F:read(T));
 scenario(S, Surface, Driver, max_supported_file_gateway_budget) ->
     Size = ?F:max_bytes(Surface),
     Bytes = binary:copy(<<"a">>, Size),
-    T = ?F:register(S, Surface, Driver, Bytes),
+    T = reg(S, Surface, Driver, Bytes),
     erlang:garbage_collect(),
     Baseline = erlang:memory(binary),
     Parent = self(),
@@ -299,7 +331,7 @@ scenario(S, Surface, Driver, max_supported_file_gateway_budget) ->
     Started = erlang:monotonic_time(millisecond),
     Response =
         try
-            ?F:put(T, Bytes)
+            put_bytes(T, Bytes)
         after
             Sampler ! {stop, Ref}
         end,
@@ -354,7 +386,7 @@ serialized_competing_put(T, Barrier, ConfirmWorker, ConfirmJob) ->
             end,
             meck:passthrough([K, Receipt])
         end),
-        PutJob = start_job(fun() -> ?F:put(T, Bytes) end),
+        PutJob = start_job(fun() -> put_bytes(T, Bytes) end),
         PutWorker =
             receive
                 {w403_admission_entered, Admission, Pid} -> Pid
@@ -532,7 +564,7 @@ short_registration(S, Surface, Driver, Bytes) ->
             meck:expect(elib_pg, query, fun(Conn, Sql, Params) ->
                 meck:passthrough([Conn, Sql, short_expiry(Sql, Params, Cid, Parent)])
             end),
-            ?F:register(S#{registration_cid => Cid}, Surface, Driver, Bytes)
+            reg(S#{registration_cid => Cid}, Surface, Driver, Bytes)
         after
             meck:unload(elib_pg)
         end,
@@ -669,7 +701,7 @@ garage_signed_expiry(T) ->
                 Url
             end
         ),
-        Job = start_job(fun() -> ?F:put(T, ?BODY) end),
+        Job = start_job(fun() -> put_bytes(T, ?BODY) end),
         Worker = await_barrier(Barrier),
         {Url, Mime} =
             receive

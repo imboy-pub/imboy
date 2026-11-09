@@ -297,7 +297,11 @@ eb_intent_replay(St, Conn, Key, Triple, N) ->
     {ok, _, _} = ?X:e(
         Conn, "SELECT fn_v5_intent_eb_delete($1,$2,$3,'w601q replay 1')", [9101, 9102, EbId]
     ),
-    {error, #error{code = <<"23510">>}} = ?X:e(
+    %% 幂等重放：迁移 268 enterprise_purge_intent_scope 将同身份重放从
+    %% 墓碑拒（23510）演进为幂等成功 RETURN（队列行身份 IS NOT DISTINCT
+    %% 才幂等；异身份仍 23505 identity conflict；非 live 23510 检查移至
+    %% queue 查重之后）。队列行保持 1（幂等 RETURN 不插第二行）。
+    {ok, _, _} = ?X:e(
         Conn, "SELECT fn_v5_intent_eb_delete($1,$2,$3,'w601q replay 2')", [9101, 9102, EbId]
     ),
     ok = epgsql:sync(Conn),
@@ -309,7 +313,7 @@ eb_intent_replay(St, Conn, Key, Triple, N) ->
     ),
     #{
         idempotent_replay => true,
-        replay_rejected => <<"23510">>,
+        replay_semantics => <<"268_identity_return">>,
         queue_rows => 1,
         scope_note => note(St)
     }.

@@ -486,7 +486,10 @@ rr_step(S, <<"direct_dml_intent_commits_first">>, <<"ordinary">>, Key, Id) ->
         cleanup => ok
     }};
 %% (8) direct_dml_intent_commits_first enterprise：intent 先提交 => 裸 UPDATE
-%% 绑定被墓碑触发器拒（23510），message_id 保持 NULL。
+%% 绑定被迁移 270 跨域物理键守卫拒——aa_cross_enterprise_guard（字母序先于
+%% 域内墓碑触发器）对非 live 资产的绑定改写按 physical key 复核，key 已随
+%% intent 进入 enterprise_asset_delete_queue 即 23505 'physical key retired'
+%% （旧域内 23510 墓碑拒绝面不再先达），message_id 保持 NULL。
 rr_step(S, <<"direct_dml_intent_commits_first">>, <<"enterprise">>, _Key, Id) ->
     #{conn := Conn} = S,
     Other = ?SUP:barrier_connect(S),
@@ -510,7 +513,7 @@ rr_step(S, <<"direct_dml_intent_commits_first">>, <<"enterprise">>, _Key, Id) ->
                 B = ?SUP:blocking_proof(Conn, Pids, 100),
                 ?SUP:q(Conn, "COMMIT"),
                 ?assertMatch(
-                    {error, #error{code = <<"23510">>}}, ?SUP:collect_step(Ref, 12000)
+                    {error, #error{code = <<"23505">>}}, ?SUP:collect_step(Ref, 12000)
                 ),
                 ok = epgsql:sync(Other),
                 B
@@ -524,7 +527,7 @@ rr_step(S, <<"direct_dml_intent_commits_first">>, <<"enterprise">>, _Key, Id) ->
     {ok, #{
         measured => #{
             intent_committed => true,
-            dml_bind_rejected => <<"23510">>,
+            dml_bind_rejected => <<"23505">>,
             lifecycle_state => <<"delete_intent">>,
             message_id_null => true
         },

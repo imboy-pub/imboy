@@ -241,12 +241,15 @@ adoption(<<"enterprise_intent_replay">> = Scenario, #{conn := Conn, root := Root
     ok = reset_eb(Conn),
     ok = seed_enterprise(Conn, AssetId, Key, false),
     ok = enqueue_eb(Conn, AssetId, <<"w403p replay 1">>),
-    {error, #error{code = <<"23510">>}} = epgsql:equery(
+    %% 幂等重放：迁移 268 enterprise_purge_intent_scope 将同身份重放从
+    %% 墓碑拒（23510）演进为幂等成功 RETURN（queue 行身份 IS NOT DISTINCT
+    %% 才幂等；异身份仍 23505 identity conflict；非 live 23510 检查移至
+    %% queue 查重之后）。队列行保持 1（幂等 RETURN 不插第二行）。
+    {ok, _, _} = epgsql:equery(
         Conn,
         "SELECT fn_v5_intent_eb_delete($1,$2,$3,'w403p replay 2')",
         [?ORG, ?WS, AssetId]
     ),
-    ok = epgsql:sync(Conn),
     {ok, _, [{1}]} = ?S:e(
         Conn,
         "SELECT COUNT(*) FROM enterprise_asset_delete_queue"
@@ -255,7 +258,7 @@ adoption(<<"enterprise_intent_replay">> = Scenario, #{conn := Conn, root := Root
     ),
     ok = ?S:assert_disk_intact(Root, Key, Body),
     base(Scenario, <<"enterprise">>, Key, Body, #{
-        idempotent_replay => true, replay_rejected => <<"23510">>, queue_rows => 1
+        idempotent_replay => true, replay_semantics => <<"268_identity_return">>, queue_rows => 1
     });
 adoption(<<"ordinary_pk_preserved">> = Scenario, #{conn := Conn, root := Root}) ->
     Key = ?S:unique_key(<<"v5e2e/w403p/adopt-pk">>),

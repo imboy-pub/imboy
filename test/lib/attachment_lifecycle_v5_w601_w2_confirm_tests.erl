@@ -170,7 +170,7 @@ scenario(S, {?C_OLD, _, Driver, Sc, <<"enterprise">>, _}) ->
 imm_scenario(S, Ep, Driver, <<"put_A_confirm_old_capability_put_B">>) ->
     T = reg(S, Ep, Driver),
     %% First write and confirmation complete before arming the provider barrier.
-    FirstPut = ?F:put(T, ?BODY),
+    FirstPut = put_bytes(S, T, ?BODY),
     ?assert(?F:success(FirstPut)),
     {ok, Pin} = ?S:content_pin_any(Ep, T),
     ?assertEqual(?S:sha(?BODY), maps:get(<<"sha256">>, Pin)),
@@ -179,7 +179,7 @@ imm_scenario(S, Ep, Driver, <<"put_A_confirm_old_capability_put_B">>) ->
     ?assert(?F:success(First)),
     DbBefore = confirmed_snapshot(Ep, T),
     ?S:with_put_barrier(T, fun(Barrier) ->
-        Job = ?S:start_job(fun() -> ?F:put(T, ?OTHER) end),
+        Job = ?S:start_job(fun() -> put_bytes(S, T, ?OTHER) end),
         Old = await_rejected_put(Barrier, Job),
         ?assertEqual(409, maps:get(status, Old)),
         ?assertEqual(0, ?S:put_calls(?S:driver_mod(Driver))),
@@ -204,7 +204,7 @@ imm_scenario(S, Ep, Driver, <<"put_A_confirm_old_capability_put_B">>) ->
     end);
 imm_scenario(S, Ep, Driver, <<"overwrite_between_stat_and_confirm">>) ->
     T = reg(S, Ep, Driver),
-    ?assert(?F:success(?F:put(T, ?BODY))),
+    ?assert(?F:success(put_bytes(S, T, ?BODY))),
     ?S:with_read_barrier(T, fun(Barrier) ->
         Confirm = ?S:start_job(fun() -> ?F:confirm(T) end),
         Worker = ?S:await_barrier(Barrier),
@@ -218,9 +218,9 @@ imm_scenario(S, Ep, Driver, <<"overwrite_between_stat_and_confirm">>) ->
     #{confirm_rejected => true, metadata_not_created => true};
 imm_scenario(S, Ep, Driver, <<"inflight_same_content_after_confirm">>) ->
     T = reg(S, Ep, Driver),
-    ?assert(?F:success(?F:put(T, ?BODY))),
+    ?assert(?F:success(put_bytes(S, T, ?BODY))),
     ?S:with_put_barrier(T, fun(Barrier) ->
-        Inflight = ?S:start_job(fun() -> ?F:put(T, ?BODY) end),
+        Inflight = ?S:start_job(fun() -> put_bytes(S, T, ?BODY) end),
         Worker = ?S:await_barrier(Barrier),
         Confirmed = ?F:confirm(T),
         ?assert(?F:success(Confirmed)),
@@ -234,7 +234,7 @@ imm_scenario(S, Ep, Driver, <<"inflight_same_content_after_confirm">>) ->
     #{confirmed_bytes => <<"unchanged">>};
 imm_scenario(S, Ep, Driver, <<"hash_mismatch_no_confirm">>) ->
     T = reg(S, Ep, Driver),
-    ?assert(?F:success(?F:put(T, ?BODY))),
+    ?assert(?F:success(put_bytes(S, T, ?BODY))),
     %% pin 之后 provider 字节被换（不经应用链路）：真实 hash 裁决拒绝确认。
     overwrite_object(T),
     Result = ?F:confirm(T),
@@ -244,7 +244,7 @@ imm_scenario(S, Ep, Driver, <<"hash_mismatch_no_confirm">>) ->
 imm_scenario(S, ordinary, Driver, <<"ciphertext_only_no_plaintext_hash">>) ->
     Cipher = <<"w601 ciphertext-only bytes (client encrypted)">>,
     T = reg(S, ordinary, Driver),
-    ?assert(?F:success(?F:put(T, Cipher))),
+    ?assert(?F:success(put_bytes(S, T, Cipher))),
     Ok = ?FW:confirm_with(maps:get(fixture, T), T, #{cipher => <<"AES-256-GCM">>}),
     ?assert(?F:success(Ok)),
     {ok, [#{<<"cipher">> := StoredCipher, <<"file_hash256">> := StoredHash}]} =
@@ -255,7 +255,7 @@ imm_scenario(S, ordinary, Driver, <<"ciphertext_only_no_plaintext_hash">>) ->
     ?assertEqual(?S:sha(Cipher), StoredHash),
     %% 未知套件 fail-closed：宁可拒绝 confirm 也不把密文对象标成明文。
     T2 = reg(S, ordinary, Driver),
-    ?assert(?F:success(?F:put(T2, Cipher))),
+    ?assert(?F:success(put_bytes(S, T2, Cipher))),
     Bad = ?FW:confirm_with(maps:get(fixture, T2), T2, #{cipher => <<"ROT13">>}),
     ?assertNot(?F:success(Bad)),
     ?assertEqual(0, ?S:attach_count(key(T2))),
@@ -277,7 +277,7 @@ imm_scenario(S, Ep, Driver, <<"crash_after_pin_before_put_resume">>) ->
                     meck:passthrough([I, A, B, C])
             end
         end),
-        ?assertNot(?F:success(?F:put(T, ?BODY))),
+        ?assertNot(?F:success(put_bytes(S, T, ?BODY))),
         receive
             {w601_put_fault, FaultRef, Key} -> ok
         after 1000 ->
@@ -295,7 +295,7 @@ imm_scenario(S, Ep, Driver, <<"crash_after_pin_before_put_resume">>) ->
     ?assertEqual(Before, unconfirmed_snapshot(Ep, T)),
     {ok, PinBeforeResume} = ?S:content_pin_any(Ep, T),
     ?assertEqual(Pin, PinBeforeResume),
-    ?assert(?F:success(?F:put(T, ?BODY))),
+    ?assert(?F:success(put_bytes(S, T, ?BODY))),
     First = ?F:confirm(T),
     ?assert(?F:success(First)),
     Id = confirm_id(First, Ep),
@@ -394,7 +394,7 @@ confirmed_hash(_, T) ->
 
 idem_scenario(S, Ep, Driver, <<"sequential_100_replays">>) ->
     T = reg(S, Ep, Driver),
-    ?assert(?F:success(?F:put(T, ?BODY))),
+    ?assert(?F:success(put_bytes(S, T, ?BODY))),
     First = ?F:confirm(T),
     ?assert(?F:success(First)),
     Id0 = confirm_id(First, Ep),
@@ -424,7 +424,7 @@ idem_scenario(S, Ep, Driver, <<"sequential_100_replays">>) ->
     };
 idem_scenario(S, Ep, Driver, <<"concurrent_two_confirms">>) ->
     T = reg(S, Ep, Driver),
-    ?assert(?F:success(?F:put(T, ?BODY))),
+    ?assert(?F:success(put_bytes(S, T, ?BODY))),
     ?S:with_sql_barrier([<<"fn_v5_confirm_pending">>], fun(Barrier) ->
         First = ?S:start_job(fun() -> ?F:confirm(T) end),
         Worker = ?S:await_barrier(Barrier),
@@ -448,7 +448,7 @@ idem_scenario(S, Ep, Driver, <<"concurrent_two_confirms">>) ->
 
 old_scenario(S, Ep, Driver, <<"confirmed_legacy_request">>) ->
     T = reg(S, Ep, Driver),
-    ?assert(?F:success(?F:put(T, ?BODY))),
+    ?assert(?F:success(put_bytes(S, T, ?BODY))),
     First = ?F:confirm(T),
     ?assert(?F:success(First)),
     Id0 = confirm_id(First, Ep),
@@ -501,7 +501,20 @@ old_scenario(S, enterprise_internal, Driver, <<"unknown_legacy_pending">>) ->
 
 %% ---------------------------------------------------------------- helpers
 
-reg(S, Ep, Driver) -> ?F:register(S, Ep, Driver, ?BODY).
+reg(S, Ep, Driver) ->
+    %% C10 面分派：seat/widget 走 ?FW:register（presign 响应为 opaque token
+    %% descriptor，无 upload.url——主 fixture 的 seat/widget 分支随字节代理
+    %% 链退役已不可用）；ordinary/internal 与 ?F:register 等价。
+    ?FW:register(S, Ep, Driver, ?BODY).
+
+%% C10 字节链分派：ordinary=生产 multipart 上传端点（pin COMMIT 先于
+%% provider PUT）；seat/widget=eb 应用字节链；internal=S3 直传原样
+%% （INT 面 confirm 以对象存储真值裁决，无 pin 链——V3-14 合同分裂）。
+put_bytes(S, T, Bytes) ->
+    case maps:get(surface, T) of
+        ordinary -> ?FW:upload_put(S, T, Bytes);
+        _ -> ?FW:put(T, Bytes)
+    end.
 
 key(T) -> maps:get(key, T).
 

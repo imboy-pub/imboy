@@ -200,51 +200,52 @@ random_id() ->
     binary:decode_unsigned(crypto:strong_rand_bytes(4)) rem 100000000.
 
 %% 真 registry 与规范 locator；只替换最后的删除回调，不绕过冻结位置校验。
+%% V3-20 起 disk 驱动退役（attachment_storage 快照派发对非 garage 一律
+%% unsupported_driver，run_batch 冻结校验失败 → ack 失败 → retry_wait），
+%% fixture 改挂合成 garage 根：registry 记录与 imboy garage env 的
+%% endpoint/container 绑定为真（frozen_location 全链路实测），字节面仍由
+%% 各叶自带 DeleteFun 桩掉，无需真实 Garage 凭证（gate 的 w404 车道不导出
+%% W202_GARAGE_*）。
 setup_storage_fixture() ->
-    Previous = application:get_env(imboy, attachment_storage_registry),
+    PreviousRegistry = application:get_env(imboy, attachment_storage_registry),
+    PreviousGarage = application:get_env(imboy, garage),
     Registry = attachment_storage:registry(),
     Namespace = <<"w404-", (binary:encode_hex(crypto:strong_rand_bytes(16), lowercase))/binary>>,
-    Root = filename:join(
-        case os:getenv("V5_DISK_ROOT") of
-            DiskRoot when is_list(DiskRoot), DiskRoot =/= "" -> DiskRoot;
-            _ -> "/tmp"
-        end,
-        binary_to_list(Namespace)
+    Endpoint = <<"w404-synthetic-garage/", Namespace/binary>>,
+    Record = #{
+        driver => <<"garage">>,
+        namespace => Namespace,
+        endpoint => Endpoint,
+        container => <<"w404-fixture">>
+    },
+    Roots = maps:get(roots, Registry, #{}),
+    ok = application:set_env(imboy, attachment_storage_registry, Registry#{
+        roots => Roots#{Namespace => Record}
+    }),
+    %% 快照派发（attachment_storage:snapshot garage 分支）校验 registry 根
+    %% endpoint 与 imboy garage env 一致且 container 相符——合成 garage 身份
+    %% 两个条件都为真，冻结位置校验全链路可达。
+    ok = application:set_env(
+        imboy, garage, #{endpoint => Endpoint, bucket => <<"w404-fixture">>}
     ),
-    ok = filelib:ensure_dir(filename:join(Root, "probe")),
-    try
-        Record = #{
-            driver => <<"disk">>,
-            namespace => Namespace,
-            endpoint => list_to_binary("file://" ++ Root),
-            container => <<"w404-fixture">>
-        },
-        Roots = maps:get(roots, Registry, #{}),
-        ok = application:set_env(imboy, attachment_storage_registry, Registry#{
-            roots => Roots#{Namespace => Record}
-        }),
-        #{
-            previous_registry => Previous,
-            root => Root,
-            namespace => Namespace,
-            container => <<"w404-fixture">>,
-            locator => attachment_storage:locator_digest(Namespace, Record#{root_id => Namespace})
-        }
-    catch
-        Class:Reason:Stack ->
-            cleanup_storage_fixture(#{previous_registry => Previous, root => Root}),
-            erlang:raise(Class, Reason, Stack)
-    end.
+    #{
+        previous_registry => PreviousRegistry,
+        previous_garage => PreviousGarage,
+        namespace => Namespace,
+        container => <<"w404-fixture">>,
+        locator => attachment_storage:locator_digest(Namespace, Record#{root_id => Namespace})
+    }.
 
-cleanup_storage_fixture(#{previous_registry := Previous, root := Root}) ->
-    try
-        case Previous of
-            undefined -> application:unset_env(imboy, attachment_storage_registry);
-            {ok, Registry} -> application:set_env(imboy, attachment_storage_registry, Registry)
-        end
-    after
-        ok = file:del_dir_r(Root)
-    end.
+cleanup_storage_fixture(#{
+    previous_registry := PreviousRegistry, previous_garage := PreviousGarage
+}) ->
+    restore_env(imboy, attachment_storage_registry, PreviousRegistry),
+    restore_env(imboy, garage, PreviousGarage).
+
+restore_env(App, Key, undefined) ->
+    ok = application:unset_env(App, Key);
+restore_env(App, Key, {ok, Value}) ->
+    ok = application:set_env(App, Key, Value).
 
 seed_tenants(Conn) ->
     q(
@@ -282,7 +283,7 @@ seed_job(Conn, Storage, Key, Attempts, State) ->
         "INSERT INTO attachment_object_deletion"
         " (path,bucket,storage_driver,storage_namespace,storage_container,"
         "  storage_locator_sha256,job_state,next_retry_at,attempts,last_error_code)"
-        " VALUES ($1,'w404-fixture','disk',$2,'w404-fixture',$3,$4,now(),$5,$6)"
+        " VALUES ($1,'w404-fixture','garage',$2,'w404-fixture',$3,$4,now(),$5,$6)"
         " ON CONFLICT (path) DO NOTHING",
         [
             Key,
@@ -304,7 +305,7 @@ seed_eb_asset(Conn, Storage, Id, Key, Lifecycle, PendingFlag) ->
         " (id,organization_id,workspace_id,object_key,object_hash,mime,size_bytes,"
         "  status,pending_object_delete,storage_driver,storage_namespace,"
         "  storage_container,storage_locator_sha256,lifecycle_state)"
-        " VALUES ($1,$2,$3,$4,$5,'text/plain',8,'deleted',$6,'disk',$7,"
+        " VALUES ($1,$2,$3,$4,$5,'text/plain',8,'deleted',$6,'garage',$7,"
         "  'w404-fixture',$8,$9)",
         [
             Id,

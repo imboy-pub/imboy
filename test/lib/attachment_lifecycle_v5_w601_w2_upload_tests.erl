@@ -25,8 +25,13 @@
 -define(BODY, <<"w601 upload controlled bytes">>).
 -define(OTHER, <<"w601 competing different payload">>).
 
--define(EP4, [ordinary, enterprise_internal, enterprise_seat, cs_widget]).
--define(DRV, [disk, garage]).
+%% V3-14 合同分裂：INT 面 files/presign 为 s3_put 直传（signed_s3_direct），
+%% 不经 gateway 会话/pin 链——W601 gateway 语义治理场景的被测对象在 INT 面
+%% 已不存在，矩阵收敛三面（INT 面由 enterprise_asset_garage_pg_checks 覆盖）。
+-define(EP4, [ordinary, enterprise_seat, cs_widget]).
+%% V3-20：disk 驱动退役，driver 维度仅剩 garage（attachment_storage_disk 已
+%% 删除，fixture register/4 仅保留 garage 注册面）。
+-define(DRV, [garage]).
 
 w601_w2_upload_test_() ->
     %% 受控让位（仓库先例：attachment_lifecycle_v5_pg_tests r20_test_/
@@ -72,7 +77,6 @@ pin_specs() ->
     ].
 
 pin_scenarios(ordinary) -> pin_all();
-pin_scenarios(enterprise_internal) -> pin_all();
 pin_scenarios(_) -> pin_all() -- [<<"multipart_uses_same_pin">>].
 
 pin_all() ->
@@ -136,8 +140,8 @@ scenario(S, {?C_REC, Ep, Driver, Sc, _, _}) -> rec_scenario(S, Ep, Driver, Sc).
 
 pin_scenario(S, Ep, Driver, <<"first_content_pin">>) ->
     T = reg(S, Ep, Driver),
-    ?assert(?F:success(?F:put(T, ?BODY))),
-    %% pin 快照按面取证：ordinary/internal 在 attach_pending.upload_content；
+    ?assert(?F:success(put_bytes(S, T, ?BODY))),
+    %% pin 快照按面取证：ordinary 在 attach_pending.upload_content；
     %% seat/widget（eb 面）在 enterprise_asset.upload_content——eb 面查
     %% attach_pending 恒 {error, not_found}（第二跑实证 badmatch）。
     {ok, Pin} = ?S:content_pin_any(Ep, T),
@@ -148,10 +152,10 @@ pin_scenario(S, Ep, Driver, <<"first_content_pin">>) ->
 pin_scenario(S, Ep, Driver, <<"two_different_payloads_race">>) ->
     T = reg(S, Ep, Driver),
     ?S:with_put_barrier(T, fun(Barrier) ->
-        First = ?S:start_job(fun() -> ?F:put(T, ?BODY) end),
+        First = ?S:start_job(fun() -> put_bytes(S, T, ?BODY) end),
         Worker = ?S:await_barrier(Barrier),
         %% 第一个 worker 已 COMMIT pin，尚未派发 provider I/O。
-        Second = ?S:start_job(fun() -> ?F:put(T, ?OTHER) end),
+        Second = ?S:start_job(fun() -> put_bytes(S, T, ?OTHER) end),
         Competing = ?S:finish_job(Second),
         ?assertNot(?F:success(Competing)),
         ?assertEqual(409, maps:get(status, Competing)),
@@ -164,8 +168,8 @@ pin_scenario(S, Ep, Driver, <<"two_different_payloads_race">>) ->
     #{winner => <<"first_pin">>, loser_provider_puts => 0};
 pin_scenario(S, Ep, Driver, <<"same_payload_retry">>) ->
     T = reg(S, Ep, Driver),
-    ?assert(?F:success(?F:put(T, ?BODY))),
-    Retry = ?F:put(T, ?BODY),
+    ?assert(?F:success(put_bytes(S, T, ?BODY))),
+    Retry = put_bytes(S, T, ?BODY),
     ?assert(?F:success(Retry)),
     ?assert(?F:success(?F:confirm(T))),
     ?assertEqual({ok, ?BODY}, ?F:read(T)),
@@ -178,7 +182,7 @@ pin_scenario(S, Ep, Driver, <<"pin_commit_unknown_no_put">>) ->
         ok = meck:expect(Mod, put_snapshot, fun(_, _, _, _) ->
             erlang:error(pin_committed_then_io_unknown)
         end),
-        Failed = ?F:put(T, ?BODY),
+        Failed = put_bytes(S, T, ?BODY),
         ?assertNot(?F:success(Failed)),
         %% pin 已 COMMIT、provider 无字节：同 receipt 重试是唯一合法恢复。
         %% pin 快照按面取证（first_content_pin 同口径）：seat/widget（eb 面）
@@ -199,11 +203,11 @@ pin_scenario(S, Ep, Driver, <<"pin_commit_recovered_same_hash">>) ->
         ok = meck:expect(Mod, put_snapshot, fun(_, _, _, _) ->
             erlang:error(pin_committed_then_io_unknown)
         end),
-        ?assertNot(?F:success(?F:put(T, ?BODY)))
+        ?assertNot(?F:success(put_bytes(S, T, ?BODY)))
     after
         meck:unload(Mod)
     end,
-    ?assert(?F:success(?F:put(T, ?BODY))),
+    ?assert(?F:success(put_bytes(S, T, ?BODY))),
     ?assert(?F:success(?F:confirm(T))),
     ?assertEqual({ok, ?BODY}, ?F:read(T)),
     #{recovered_same_hash => true, provider_puts_after_recovery => 1};
@@ -220,8 +224,8 @@ pin_scenario(S, Ep, Driver, <<"body_path_swap_rejected">>) ->
         ok = meck:expect(Mod, put_snapshot, fun(I, A, B, C) ->
             meck:passthrough([I, A, B, C])
         end),
-        ?assert(?F:success(?F:put(T, ?BODY))),
-        Swap = ?F:put(T, ?OTHER),
+        ?assert(?F:success(put_bytes(S, T, ?BODY))),
+        Swap = put_bytes(S, T, ?OTHER),
         ?assertNot(?F:success(Swap)),
         %% 换体 PUT 在 pin 哈希裁决处被拒：provider 不得发生第二次写。
         ?assertEqual(1, ?S:put_calls(?S:driver_mod(Driver))),
@@ -242,24 +246,6 @@ pin_scenario(S, ordinary, Driver, <<"multipart_uses_same_pin">>) ->
     ?assert(?F:success(?F:confirm(M))),
     ?assertEqual({ok, ?BODY}, ?F:read(M)),
     #{surface => <<"multipart">>, pin_sha256 => maps:get(<<"sha256">>, Pin)};
-pin_scenario(S, enterprise_internal, Driver, <<"multipart_uses_same_pin">>) ->
-    %% 企业面无 multipart/form-data 端点：同一 pin 函数的事务边界以受控网关
-    %% 证明——provider PUT 前栈内 pin 已 COMMIT（与 multipart 共用
-    %% fn_v5_pin_pending_content 一次固定语义）。
-    T = reg(S, enterprise_internal, Driver),
-    Mod = ?S:driver_mod(Driver),
-    meck:new(Mod, [passthrough, no_link]),
-    try
-        ok = meck:expect(Mod, put_snapshot, fun(I, A, B, C) ->
-            {ok, _} = ?S:content_pin(maps:get(key, I)),
-            meck:passthrough([I, A, B, C])
-        end),
-        ?assert(?F:success(?F:put(T, ?BODY)))
-    after
-        meck:unload(Mod)
-    end,
-    ?assert(?F:success(?F:confirm(T))),
-    #{surface => <<"gateway_same_pin">>, pin_before_provider_put => true};
 pin_scenario(S, Ep, Driver, <<"new_url_cannot_bypass_gateway">>) when
     Ep =:= ordinary; Ep =:= enterprise_internal
 ->
@@ -322,7 +308,7 @@ pin_scenario(S, Ep, Driver, <<"frozen_internal_signature_expiry">>) when
     %% 短 TTL 仅作为服务端 fixture 前置；客户端请求不携带 TTL。
     T = seeded_eb_http_session(S, Ep, Driver, 8),
     timer:sleep(9100),
-    Failed = ?F:put(T, ?BODY),
+    Failed = ?FW:put(T, ?BODY),
 
     ?assertNot(?F:success(Failed)),
     ?assertEqual(409, maps:get(status, Failed)),
@@ -346,12 +332,12 @@ pin_scenario(S, Ep, Driver, <<"frozen_internal_signature_expiry">>) when
 %% while held at that boundary. No fake clock or substituted driver result.
 frozen_driver_expiry(S, Ep, Driver) ->
     Control = reg(S, Ep, Driver),
-    ?assert(?F:success(?F:put(Control, ?BODY))),
+    ?assert(?F:success(put_bytes(S, Control, ?BODY))),
     ?assertEqual({ok, ?BODY}, ?F:read(Control)),
     {T, Issued, Expiry} = short_lived_session(S, Ep, Driver),
     ?assertEqual({error, not_found}, ?F:read(T)),
     {Failed, PinSha} = ?S:with_put_expiry_barrier(T, fun(Barrier) ->
-        Job = ?S:start_job(fun() -> ?F:put(T, ?BODY) end),
+        Job = ?S:start_job(fun() -> put_bytes(S, T, ?BODY) end),
         {B, C} = ?S:await_put_context(Barrier),
         Worker = ?S:await_barrier(Barrier),
         assert_frozen_context(Driver, B, C, Issued, Expiry),
@@ -386,26 +372,22 @@ frozen_driver_expiry(S, Ep, Driver) ->
         put_status => maps:get(status, Failed)
     }.
 
-short_lived_session(S, Ep, Driver) when Ep =:= ordinary; Ep =:= enterprise_internal ->
-    Original = reg(S, Ep, Driver),
-    %% Register a fresh run-owned short session through the production DB
-    %% function, then obtain its capability from the real HTTP presign path.
-    %% Existing session expiry and deadline remain immutable.
+short_lived_session(S, ordinary, Driver) ->
+    %% C10 S3-only：上传能力即冻结签名窗（会话 expiry），无 gateway
+    %% capability/JWT（imboy_jwt:issue/verify_upload_capability 已随通道
+    %% 物理退役）。短窗经生产登记函数 fn_v5_register_pending 显式登记，
+    %% 再以真实 HTTP presign 重放同 cid 取回会话视图（同 key 冻结值）。
+    Original = reg(S, ordinary, Driver),
     {ok, Key, Cid} = ?S:register_expired_pending(key(Original), {short, 20}),
     Start = erlang:system_time(second),
-    T = ?F:register(
+    T = ?FW:register(
         S#{registration_cid => Cid, leaf => maps:get(leaf, Original)},
-        Ep,
+        ordinary,
         Driver,
         ?BODY
     ),
     ?assertEqual(Key, key(T)),
     {ok, #{<<"expires_at">> := Expiry}} = ?S:pending_row(Key),
-    Registration = maps:get(registration, T),
-    Token = maps:get(<<"upload_capability">>, Registration),
-    {ok, #{<<"exp">> := Expiry}} = imboy_jwt:verify_upload_capability(Token),
-    ?assertEqual(Expiry, maps:get(<<"expires_at">>, Registration)),
-    ?assertNotEqual(nomatch, binary:match(maps:get(upload_url, T), Token)),
     {T, {gateway, Start}, Expiry};
 short_lived_session(S, Ep, Driver) ->
     T = seeded_eb_http_session(S, Ep, Driver, 20),
@@ -422,8 +404,7 @@ short_lived_session(S, Ep, Driver) ->
     end),
     {T, maps:get(issued_at, Claims), maps:get(expires_at, Claims)}.
 
-assert_frozen_context(disk, Expiry, _Recheck, _Issued, Expiry) ->
-    ok;
+%% V3-20：disk 驱动退役，冻结上下文断言仅剩 garage 形态。
 assert_frozen_context(
     garage,
     _Mime,
@@ -468,16 +449,33 @@ rec_scenario(S, Ep, Driver, <<"restart_before_put">>) ->
     ?assertEqual(true, maps:get(<<"can_resume">>, Data)),
     ?assert(is_map_key(<<"session_state">>, Data)),
     #{status_capability => <<"none">>, can_resume => maps:get(<<"can_resume">>, Data)};
+rec_scenario(S, Ep, Driver, <<"expired_capability_same_key_renew">>) when
+    Ep =:= enterprise_seat; Ep =:= cs_widget
+->
+    %% C10 S3-only 冻结：seat/widget 的 renew 视图为 opaque token
+    %% descriptor——无 put_url/upload.url（唯一能力是重 mint 的 upload_ref
+    %% token），「同 key 重签」以 token 在位 + 服务端行到期前移取证。
+    T0 = reg(S, Ep, Driver),
+    T = shorten_expiry(T0),
+    Renew = ?FW:renew(T),
+    ?assert(?F:success(Renew)),
+    Data = ?F:payload(Renew),
+    ?assertNot(maps:is_key(<<"put_url">>, Data)),
+    Upload = fetch(<<"upload">>, Data, #{}),
+    RenewedToken = fetch(<<"token">>, Upload, <<>>),
+    ?assert(is_binary(RenewedToken) andalso RenewedToken =/= <<>>),
+    ?assert(key_unchanged(T)),
+    assert_expiry_moved_forward(T),
+    #{renewed => true, same_key => true, expires_at_moved_forward => true};
 rec_scenario(S, Ep, Driver, <<"expired_capability_same_key_renew">>) ->
     T0 = reg(S, Ep, Driver),
     T = shorten_expiry(T0),
     Renew = ?FW:renew(T),
     ?assert(?F:success(Renew)),
     Data = ?F:payload(Renew),
-    %% F8：renew 必须真实重签上传能力（形态按面冻结，见 helper 注释）。
-    Capability = fetch(
-        <<"put_url">>, Data, fetch(<<"url">>, fetch(<<"upload">>, Data, #{}), <<>>)
-    ),
+    %% F8：renew 必须真实重签上传能力（C10 S3-only：重签的是真 Garage
+    %% presigned PUT，形态见 assert_renewed_capability 注释）。
+    Capability = fetch(<<"put_url">>, Data, <<>>),
     ?assert(is_binary(Capability) andalso byte_size(Capability) > 0),
     assert_renewed_capability(Ep, T, Capability),
     ?assert(key_unchanged(T)),
@@ -508,7 +506,7 @@ rec_scenario(S, Ep, Driver, <<"renew_races_intent">>) ->
     #{intent_won => true, renew_rejected => true};
 rec_scenario(S, Ep, Driver, <<"confirmed_no_new_capability">>) ->
     T = reg(S, Ep, Driver),
-    ?assert(?F:success(?F:put(T, ?BODY))),
+    ?assert(?F:success(put_bytes(S, T, ?BODY))),
     ?assert(?F:success(?F:confirm(T))),
     Renew = ?FW:renew(T),
     ?assertNot(?F:success(Renew)),
@@ -639,8 +637,13 @@ rec_scenario(S, ordinary, Driver, <<"internal_idempotency_postcommit_sign">>) ->
     %% 重放成功；对会话 map 断言 success/payload 恒错，第二跑实证）。
     ?assertMatch(#{key := K} when is_binary(K), Replay),
     Data = maps:get(registration, Replay),
-    ?assertNotEqual(nomatch, binary:match(fetch(<<"put_url">>, Data, <<>>), <<"gateway">>)),
-    #{replayed => true, postcommit_signed => true};
+    %% C10 S3-only：重放 post-commit 重签的是真 Garage presigned PUT（无
+    %% gateway URL、无 capability——通道已物理退役）。
+    ?assertNotEqual(nomatch, binary:match(fetch(<<"put_url">>, Data, <<>>), <<"X-Amz-Signature">>)),
+    ?assertEqual(
+        nomatch, binary:match(fetch(<<"put_url">>, Data, <<>>), <<"/api/v1/attachment/gateway/">>)
+    ),
+    #{replayed => true, postcommit_signed => <<"s3_presigned">>};
 rec_scenario(S, Ep, Driver, <<"internal_idempotency_postcommit_sign">>) ->
     T = reg(S, Ep, Driver),
     Replay = re_register(T, Ep, Driver),
@@ -654,11 +657,26 @@ rec_scenario(S, Ep, Driver, <<"internal_idempotency_postcommit_sign">>) ->
 %% ---------------------------------------------------------------- helpers
 
 reg(S, Ep, Driver) ->
-    ?F:register(S, Ep, Driver, ?BODY).
+    %% C10 面分派：seat/widget 走 ?FW:register（presign 响应为 opaque token
+    %% descriptor，无 upload.url——主 fixture 的 seat/widget 分支随字节代理
+    %% 链退役已不可用）；ordinary/internal 与 ?F:register 等价。
+    ?FW:register(S, Ep, Driver, ?BODY).
+
+%% C10 字节链分派：ordinary=生产 multipart 上传端点（attachment_upload_
+%% logic:pin_and_put——pin COMMIT 先于 provider PUT，冻结签名窗=会话
+%% expiry）；seat/widget=eb 应用字节链（?FW:put）。S3 直传（?F:put）不经
+%% 应用层，无 pin/驱动边界，仅供纯字节落盘步骤使用。
+put_bytes(S, T, Bytes) ->
+    case maps:get(surface, T) of
+        ordinary -> ?FW:upload_put(S, T, Bytes);
+        _ -> ?FW:put(T, Bytes)
+    end.
 
 re_register(T, Ep, Driver) ->
     S = maps:get(fixture, T),
-    ?F:register(S#{registration_cid => client_id(T), leaf => maps:get(leaf, T)}, Ep, Driver, ?BODY).
+    ?FW:register(
+        S#{registration_cid => client_id(T), leaf => maps:get(leaf, T)}, Ep, Driver, ?BODY
+    ).
 
 conflicting_register(T, Ep, Driver) ->
     %% 同 client_upload_id 重放但 file_name 漂移（快照等值复核拒绝）：原始
@@ -848,7 +866,7 @@ upload_ref_of(T) -> maps:get(upload_ref, maps:get(confirm_body, T), undefined).
 
 fetch(K, Map, Default) -> maps:get(K, Map, Default).
 
-ns_of(disk) -> <<"w403-disk">>;
+%% V3-20：disk 驱动退役，ns_of 仅剩 garage。
 ns_of(garage) -> <<"w403-garage">>.
 
 %% F6：重放响应同 key/同 id 的取证。ordinary/internal 面 payload 真实回显
@@ -869,13 +887,10 @@ assert_replay_same_session(Data, T, _) ->
     end),
     ok.
 
-%% F8：renew 重签形态按面冻结——gateway 面（ordinary/internal）重签受控
-%% 网关 URL（capability 参数在位）；seat/widget 面重签代理 PUT URL（查询串
-%% upload_ref 唯一凭证；冻结契约 opaque_token_no_url_no_object_key：代理
-%% URL 永不含 capability= 直传能力，也不含对象 key）。
-%% 生产 proxy URL 构造对账：eb_enterprise_http.erl:531-560 seat_put_target
-%% （workspace_id + upload_ref 查询串）、cs_widget_session_app.erl:402-432
-%% upload_proxy_url（organization_id + installation_id + upload_ref）。
+%% F8：renew 重签形态按面冻结——C10 S3-only 后 ordinary 面重签真 Garage
+%% presigned PUT（X-Amz-Signature 在位、无 capability= 直传能力、无对象
+%% key 泄漏面）；seat/widget 面为 opaque token descriptor（无 URL，token
+%% 在位即合同——场景内已断言）。
 assert_renewed_capability(Ep, _T, Capability) when
     Ep =:= ordinary; Ep =:= enterprise_internal
 ->
@@ -1013,9 +1028,7 @@ run_intent(T, Reason) ->
             end)
     end.
 
-%% provider 侧旁证：garage 拒绝未签名直传；disk 无网络写面（受控根专用）。
-provider_unsigned_denied(_S, disk, _T) ->
-    #{provider_unsigned_write => <<"no_http_surface">>};
+%% provider 侧旁证：garage 拒绝未签名直传（V3-20 disk 退役，无 disk 分支）。
 provider_unsigned_denied(_S, garage, T) ->
     I = maps:get(location, T),
     Key = maps:get(key, I),
@@ -1199,7 +1212,7 @@ seeded_eb_session(S, Ep, Driver, Ttl) ->
 seeded_eb_http_session(S, Ep, Driver, Ttl) ->
     {Source, Cid, ExpectedId} = seeded_eb_session(S, Ep, Driver, Ttl),
     Context = maps:get(fixture, Source),
-    T = ?F:register(
+    T = ?FW:register(
         Context#{registration_cid => Cid, leaf => maps:get(leaf, Source)},
         Ep,
         Driver,

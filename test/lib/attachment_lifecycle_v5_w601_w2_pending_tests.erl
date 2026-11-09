@@ -561,7 +561,7 @@ fc_scenario(S, Driver, <<"commit_unknown">>, Domain) ->
 race_scenario(S, Driver, <<"confirm_commits_first">>, Domain) ->
     Surface = race_surface_of(Domain),
     T = reg(S, Surface, Driver),
-    ?assert(?F:success(?F:put(T, ?BODY))),
+    ?assert(?F:success(put_bytes(S, T, ?BODY))),
     ?assert(?F:success(?F:confirm(T))),
     ?assertEqual({error, intent_conflict}, intent(T, <<"w601 race after confirm">>)),
     ?assertEqual({ok, ?BODY}, ?F:read(T)),
@@ -577,7 +577,7 @@ race_scenario(S, Driver, <<"confirm_commits_first">>, Domain) ->
 race_scenario(S, Driver, <<"intent_commits_first">>, Domain) ->
     Surface = race_surface_of(Domain),
     T0 = reg(S, Surface, Driver),
-    ?assert(?F:success(?F:put(T0, ?BODY))),
+    ?assert(?F:success(put_bytes(S, T0, ?BODY))),
     T = shorten_expiry(T0),
     ?assertEqual(ok, intent(T, <<"w601 race before confirm">>)),
     Late = ?F:confirm(T),
@@ -600,7 +600,19 @@ race_scenario(S, Driver, <<"intent_commits_first">>, Domain) ->
 
 %% ---------------------------------------------------------------- helpers
 
-reg(S, Ep, Driver) -> ?F:register(S, Ep, Driver, ?BODY).
+reg(S, Ep, Driver) ->
+    %% C10 面分派：seat/widget 走 ?FW:register（presign 响应为 opaque token
+    %% descriptor，无 upload.url——主 fixture 的 seat/widget 分支随字节代理
+    %% 链退役已不可用）；ordinary/internal 与 ?F:register 等价。
+    ?FW:register(S, Ep, Driver, ?BODY).
+
+%% C10 字节链分派：ordinary=生产 multipart 上传端点（pin COMMIT 先于
+%% provider PUT——confirm 前置）；seat/widget=eb 应用字节链。
+put_bytes(S, T, Bytes) ->
+    case maps:get(surface, T) of
+        ordinary -> ?FW:upload_put(S, T, Bytes);
+        _ -> ?FW:put(T, Bytes)
+    end.
 
 re_register(T, Ep, Driver) ->
     raw_register(maps:get(fixture, T), Ep, Driver, client_id(T), <<"w403.txt">>).

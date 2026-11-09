@@ -534,6 +534,20 @@ purge_sqls() ->
 cleanup_enterprise_asset(Conn, Id) ->
     cleanup_guarded(Conn, <<"enterprise_asset">>, <<"id">>, Id).
 cleanup_enterprise_queue(Conn, Id) ->
+    %% 迁移 270 fn_cross_enterprise_hold_guard：装 workspace hold 时对 pending
+    %% （ready/retry_wait/leased/blocked）企业队列行按 physical key 复核，若
+    %% key 已在删除队列（本叶 intent 留下的墓碑行即命中）必拒 23505——
+    %% hr(4)/(6) 留下的 ready 行会拖死 hr(8) 的 hold 安装。行本就是永久墓碑
+    %% （不可 DELETE），先按 job guard 合法 UPDATE 路径收敛到 done（同
+    %% clear_intents/purge_attachment_metadata 先例），done 行不进 hold_guard
+    %% 的 pending 投影；收敛后的拒删校验仍走 cleanup_guarded。
+    q(
+        Conn,
+        "UPDATE enterprise_asset_delete_queue SET job_state='done',"
+        " completed_at=now(), lease_token=NULL, lease_until=NULL"
+        " WHERE asset_id=$1 AND job_state IN ('ready','retry_wait','leased')",
+        [Id]
+    ),
     cleanup_guarded(Conn, <<"enterprise_asset_delete_queue">>, <<"asset_id">>, Id).
 
 %% Protected enterprise rows belong to the owned database lifetime.
@@ -553,8 +567,12 @@ cleanup_guarded(Conn, Table, Column, Value) ->
     end.
 
 cleanup_guard_matches(<<"enterprise_asset_delete_queue">>, #error{
-    code = <<"23510">>, message = <<"v5 job rows are permanent tombstones (no DELETE)">>
+    code = <<"23510">>, message = <<"physical tombstone permanent">>
 }) ->
+    %% 迁移 270 fn_cross_domain_queue_immutable（trigger
+    %% aa_cross_enterprise_queue_immutable）按字母序先于 179/235 的
+    %% trg_v5_ebdq_job_guard 执行，DELETE 现先抛本消息（旧
+    %% 'v5 job rows are permanent tombstones (no DELETE)' 不再可见）。
     true;
 cleanup_guard_matches(<<"enterprise_asset">>, #error{code = <<"23514">>, extra = Extra}) ->
     proplists:get_value(constraint_name, Extra) =:= <<"trg_enterprise_asset_purge_guard">>;

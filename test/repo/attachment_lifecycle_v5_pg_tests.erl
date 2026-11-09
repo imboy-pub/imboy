@@ -1045,14 +1045,18 @@ w301_direct_enterprise_message_after_intent(Conn) ->
         "SELECT fn_v5_intent_eb_delete(980002,980003,980007,'w301 direct bind')",
         []
     ),
-    {error, #error{code = <<"23510">>}} = e(
+    %% 迁移 270 cross_domain_delete_guard：aa_cross_enterprise_guard 触发器
+    %% 按名字典序先于 trg_v5_enterprise_message_reference_guard（237）执行，
+    %% 对已入 enterprise_asset_delete_queue 的物理键先拒——绑定/复活两类
+    %% 直接 DML 均被 23505 "physical key retired" 取代旧 23510。
+    {error, #error{code = <<"23505">>}} = e(
         Conn,
         "UPDATE enterprise_asset SET message_id=980006,retain_until=now()+interval '2 days'"
         " WHERE id=980007",
         []
     ),
     ok = epgsql:sync(Conn),
-    {error, #error{code = <<"23510">>}} = e(
+    {error, #error{code = <<"23505">>}} = e(
         Conn,
         "UPDATE enterprise_asset SET lifecycle_state='live',message_id=980006,"
         "retain_until=now()+interval '2 days' WHERE id=980007",
@@ -1073,7 +1077,7 @@ w301_direct_enterprise_message_after_intent(Conn) ->
         measured => #{
             asset_id => 980007,
             intent_committed => true,
-            dml_bind_rejected => <<"23510">>,
+            dml_bind_rejected => <<"23505">>,
             lifecycle_state => <<"delete_intent">>,
             message_id_null => true
         }

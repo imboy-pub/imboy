@@ -993,9 +993,11 @@ w402_enterprise_intent_replay(Conn) ->
         "SELECT fn_v5_intent_eb_delete($1,$2,$3,'w402 replay 1')",
         [9101, 9102, EbId]
     ),
-    %% 幂等重放：资产已转 delete_intent（非 live）→ 重放被墓碑拒（23510），
-    %% 队列行保持 1（拒绝即不产生第二行）
-    {error, #error{code = <<"23510">>}} = epgsql:equery(
+    %% 幂等重放：迁移 268 enterprise_purge_intent_scope 将同身份重放从
+    %% 墓碑拒（23510）演进为幂等成功 RETURN（queue 行身份 IS NOT DISTINCT
+    %% 才幂等；异身份仍 23505 identity conflict；非 live 23510 检查移至
+    %% queue 查重之后）。队列行保持 1（幂等 RETURN 不插第二行）。
+    {ok, _, _} = epgsql:equery(
         Conn,
         "SELECT fn_v5_intent_eb_delete($1,$2,$3,'w402 replay 2')",
         [9101, 9102, EbId]
@@ -1013,7 +1015,7 @@ w402_enterprise_intent_replay(Conn) ->
         queue_adoption,
         enterprise_intent_replay,
         <<"enterprise">>,
-        #{idempotent_replay => true, replay_rejected => <<"23510">>, queue_rows => N}
+        #{idempotent_replay => true, replay_semantics => <<"268_identity_return">>, queue_rows => N}
     ),
     ok.
 

@@ -293,12 +293,16 @@ ref_eb_step(St, Conn, <<"bind_commits_first">>, Id) ->
     #{bind_committed => true, intent_rejected => <<"23510">>};
 ref_eb_step(St, Conn, <<"intent_commits_first">>, Id) ->
     Result = lock_race(St, Conn, eb_intent_sql(Id), eb_bind_sql(Id)),
-    {error, #error{code = <<"23510">>}} = Result,
+    %% intent 先提交 => 绑定 UPDATE 被 270 跨域物理键守卫拒：aa_cross_
+    %% enterprise_guard（字母序先于域内墓碑触发器）对非 live 资产的绑定
+    %% 改写按 physical key 复核，key 已随 intent 进入企业删除队列即 23505
+    %% 'physical key retired'（旧域内 23510 墓碑面不再先达）。
+    {error, #error{code = <<"23505">>}} = Result,
     ok = epgsql:sync(Conn),
     {ok, _, [{<<"delete_intent">>, null}]} = ?X:e(
         Conn, "SELECT lifecycle_state,message_id FROM enterprise_asset WHERE id=$1", [Id]
     ),
-    #{intent_committed => true, bind_rejected => <<"23510">>, message_id_null => true};
+    #{intent_committed => true, bind_rejected => <<"23505">>, message_id_null => true};
 ref_eb_step(_St, Conn, <<"direct_dml_bind_commits_first">>, Id) ->
     ?X:q(Conn, eb_bind_sql(Id)),
     {error, #error{code = <<"23510">>}} = ?X:e(Conn, eb_intent_sql(Id)),
@@ -869,6 +873,28 @@ ent_wait_blocked(Chk, APid, BPid, Left) ->
 ent_pool_install(DefaultConn) ->
     ok = meck:new(elib_pg, [non_strict, no_link, passthrough]),
     ok = meck:expect(elib_pg, with_tx, fun(F) ->
+        C = ent_pool_conn(DefaultConn),
+        {ok, _, _} = epgsql:equery(C, "BEGIN", []),
+        try
+            R = F(C),
+            {ok, _, _} = epgsql:equery(C, "COMMIT", []),
+            R
+        catch
+            throw:{rollback, Reason} ->
+                _ = epgsql:equery(C, "ROLLBACK", []),
+                {rollback, Reason};
+            throw:{abort_tx, Reason} ->
+                _ = epgsql:equery(C, "ROLLBACK", []),
+                {error, Reason}
+        end
+    end),
+    %% C08（892351f62）后 eb_pg_asset_meta:claim_pending_cleanup 的事务
+    %% 包装从 with_tx 换成 with_physical_guard_retry_tx（先 workspace 行
+    %% FOR UPDATE 再 CAS）；未 mock 时 passthrough 落真实池（非本步库），
+    %% 落败方语句不再阻塞屏障行锁 => w601_ent_cas_block_unproven。此处按
+    %% with_tx 同型绑定 ent_pool_conn；屏障内落败路径只等行锁（非 40001
+    %% 死锁），真实 retry 循环不可达，事务边界语义与产品一致。
+    ok = meck:expect(elib_pg, with_physical_guard_retry_tx, fun(F) ->
         C = ent_pool_conn(DefaultConn),
         {ok, _, _} = epgsql:equery(C, "BEGIN", []),
         try

@@ -96,7 +96,10 @@ uuid_text() -> uuid_bin().
 eb_id(N) -> 951000000000 + N.
 
 %% confirmed 企业资产（client_upload_id/upload_registration 在位——purge
-%% 墓碑快照链的资格前提）。
+%% 墓碑快照链的资格前提）。迁移 268 fn_v5_intent_eb_delete 新增 upload
+%% capability 守卫：client_upload_id 在位时 upload_expires_at 必须已过期
+%% （NULL/未过期 => 23510 'v5 intent enterprise upload capability still
+%% live or unknown'），故种子显式给过去到期值，capability 状态确定为死。
 seed_eb_confirmed(Conn, Key, Triple, Id, Uuid) ->
     ?X:q(
         Conn,
@@ -104,9 +107,9 @@ seed_eb_confirmed(Conn, Key, Triple, Id, Uuid) ->
         " (id,organization_id,workspace_id,object_key,object_hash,mime,size_bytes,"
         "  status,storage_driver,storage_namespace,storage_container,"
         "  storage_locator_sha256,lifecycle_state,client_upload_id,"
-        "  upload_registration)"
+        "  upload_registration,upload_expires_at)"
         " VALUES ($1,9101,9102,$2,$3,'text/plain',8,'active',$4,$5,$6,$7,"
-        "  'live',$8,$9::jsonb)",
+        "  'live',$8,$9::jsonb,now() - interval '2 hours')",
         [
             Id,
             Key,
