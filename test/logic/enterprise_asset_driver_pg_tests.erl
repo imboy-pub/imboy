@@ -262,7 +262,7 @@ run(S, D, Fault) ->
     ok = attach_pending_repo:register_content_pin(Key, #{
         <<"version">> => 1,
         <<"sha256">> => Sha,
-        <<"size_bytes">> => integer_to_list(byte_size(Bytes)),
+        <<"size_bytes">> => integer_to_binary(byte_size(Bytes)),
         <<"mime">> => <<"text/plain">>
     }),
     case Fault of

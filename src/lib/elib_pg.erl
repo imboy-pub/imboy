@@ -559,6 +559,13 @@ query(Sql, Params) ->
     {ok, [map()]} | {error, term()}.
 query(C, Sql, Params) ->
     % ?INFO_LOG(["query ", iolist_to_binary(Sql), Params, epgsql:equery(C, iolist_to_binary(Sql), Params)]),
+    Trace = os:getenv("ELIB_PG_TRACE") =/= false,
+    Trace andalso
+        io:format(
+            user,
+            "[ELIB_PG_TRACE][q] conn=~p sql=~ts params=~0p~n",
+            [whereis(pgsql), iolist_to_binary(Sql), Params]
+        ),
     Result =
         case epgsql:equery(C, iolist_to_binary(Sql), Params) of
             {ok, Cols, Rows} ->
@@ -570,6 +577,12 @@ query(C, Sql, Params) ->
                 %% 按公开契约 {ok, [map()]} 收敛为空结果集，不向调用方泄漏计数形态。
                 {ok, []};
             Error ->
+                Trace andalso
+                    io:format(
+                        user,
+                        "[ELIB_PG_TRACE][q-err] sql=~ts params=~0p err=~0p~n",
+                        [iolist_to_binary(Sql), Params, Error]
+                    ),
                 Error
         end,
     retry_deadlock_result(C, Result).

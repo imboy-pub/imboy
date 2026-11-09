@@ -259,3 +259,5 @@ config/sys.cs-ai-accept.config
 
 # IMBOY_ERLANG_QUALITY 任务运行的外部时钟记录（prep/timer.escript 产物）
 prep/timer-*.term
+ct_run.nonode@nohost.*
+config/sys.quality.*.config

@@ -61,7 +61,11 @@ setup_owned(S) ->
     Dispatch = cowboy_router:compile([
         {'_', [
             {"/api/v1/attachment/presign", attach_handler, #{action => presign}},
-            {"/api/v1/attachment/confirm", attach_handler, #{action => confirm}}
+            {"/api/v1/attachment/confirm", attach_handler, #{action => confirm}},
+            %% C10 S3-only：「确认后不得换体」的会话门在生产写入通道
+            %% multipart 端点（session_context 无 confirmed 子句 →
+            %% session_not_renewable → 409），与生产 imboy_router 同款注册。
+            {"/api/v1/attachment/upload", attach_handler, #{action => upload}}
         ]}
     ]),
     {ok, Listener} = cowboy:start_clear(
@@ -204,10 +208,42 @@ roundtrip(S, D) ->
     ?assertEqual(<<"confirmed">>, maps:get(<<"session_state">>, ConfirmedSession)),
     ?assertNot(maps:is_key(<<"put_url">>, ConfirmedSession)),
     ?assertEqual([{Key, <<"confirmed">>}], pending_sessions(Cid)),
-    {ok, {{_, Rejected, _}, _, _}} = httpc:request(
-        put, {Url, [], "image/png", <<"replacement">>}, [{timeout, 30000}], [{body_format, binary}]
+    %% C10 S3-only：presigned put_url 是 bearer 存储直传（签名过期前技术上
+    %% 仍可用，属 Garage 存储合同，无应用层会话门）；「确认后不得换体」
+    %% 的会话门在生产写入通道 multipart 端点：confirmed 会话
+    %% attachment_upload_logic:session_context 无子句 → session_not_renewable
+    %% → 409（attach_handler upload_error 与 confirm 同口径）。
+    Boundary = <<"ordinaryrepl7f3a">>,
+    ReplacementBody =
+        <<
+            "--",
+            (Boundary)/binary,
+            "\r\n",
+            "Content-Disposition: form-data; name=\"file\"; filename=\"replacement.png\"\r\n",
+            "Content-Type: image/png\r\n\r\n",
+            <<"replacement">>/binary,
+            "\r\n--",
+            (Boundary)/binary,
+            "--\r\n"
+        >>,
+    UploadQ =
+        uri_string:compose_query([
+            {<<"object_key">>, Key}, {<<"mime_type">>, <<"image/png">>}
+        ]),
+    {ok, {{_, 409, _}, _, ReplacementResp}} = httpc:request(
+        post,
+        {
+            maps:get(base, S) ++ "/api/v1/attachment/upload?" ++ binary_to_list(UploadQ),
+            maps:get(headers, S),
+            "multipart/form-data; boundary=" ++ binary_to_list(Boundary),
+            ReplacementBody
+        },
+        [{timeout, 30000}],
+        [{body_format, binary}]
     ),
-    ?assertNotEqual(200, Rejected),
+    Replacement = jsone:decode(ReplacementResp),
+    ?assertEqual(409, maps:get(<<"code">>, Replacement)),
+    ?assertEqual(<<"session_not_renewable">>, maps:get(<<"msg">>, Replacement)),
     {ok, I} = attachment_storage:session_location(Key),
     Mod = attachment_storage:driver_module(atom_to_binary(maps:get(driver, I))),
     ?assertEqual({ok, Bytes}, Mod:read_snapshot(I)).

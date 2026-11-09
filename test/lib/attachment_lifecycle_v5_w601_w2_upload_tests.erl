@@ -259,12 +259,17 @@ pin_scenario(S, Ep, Driver, <<"new_url_cannot_bypass_gateway">>) when
     Url = fetch(<<"put_url">>, Data, <<>>),
     ?assertNotEqual(nomatch, binary:match(Url, <<"X-Amz-Signature">>)),
     ?assertEqual(nomatch, binary:match(Url, <<"/api/v1/attachment/gateway/">>)),
-    Bare = ?FW:bare_put(T, ?BODY),
-    ?assertNot(?F:success(Bare)),
-    ?assert(lists:member(maps:get(status, Bare), [400, 401, 403])),
+    %% C10 S3-only 后本地 listener 不路由 /bucket/key（fixture local_target
+    %% unexpected_upload_origin 守卫）——「剥离签名的裸 PUT 被拒」负例由真
+    %% Garage 认证拒绝承接（provider_unsigned_denied：401/403，F11），
+    %% 负例强度不降（404 伪响应 → 真 401/403 认证拒绝）。
+    ProviderEvidence = provider_unsigned_denied(S, Driver, T),
     maps:merge(
-        #{renew_put_url => <<"s3_presigned">>, bare_put_status => maps:get(status, Bare)},
-        provider_unsigned_denied(S, Driver, T)
+        #{
+            renew_put_url => <<"s3_presigned">>,
+            bare_put_status => maps:get(provider_unsigned_status, ProviderEvidence)
+        },
+        ProviderEvidence
     );
 pin_scenario(S, Ep, Driver, <<"new_url_cannot_bypass_gateway">>) when
     Ep =:= enterprise_seat; Ep =:= cs_widget
@@ -294,13 +299,15 @@ pin_scenario(S, Ep, Driver, <<"frozen_internal_signature_expiry">>) when
     %% C10 S3-only：gateway capability 过期裁决随通道退役；认证失败形态由
     %% 「剥离签名的直传」承接——Garage 403，绝不静默 5xx 或放行（F11）。
     T = reg(S, Ep, Driver),
-    Failed = ?FW:bare_put(T, ?BODY),
-    ?assertNot(?F:success(Failed)),
-    ?assert(lists:member(maps:get(status, Failed), [400, 401, 403])),
+    %% 同上：剥离签名直传负例改走真 Garage 认证拒绝（401/403，F11）。
+    ProviderEvidence = provider_unsigned_denied(S, Driver, T),
     {error, not_pinned} = ?S:content_pin(key(T)),
     ?assertEqual({error, not_found}, ?F:read(T)),
     DriverEvidence = frozen_driver_expiry(S, Ep, Driver),
-    DriverEvidence#{unsigned_direct => true, expired_status => maps:get(status, Failed)};
+    DriverEvidence#{
+        unsigned_direct => true,
+        expired_status => maps:get(provider_unsigned_status, ProviderEvidence)
+    };
 pin_scenario(S, Ep, Driver, <<"frozen_internal_signature_expiry">>) when
     Ep =:= enterprise_seat; Ep =:= cs_widget
 ->

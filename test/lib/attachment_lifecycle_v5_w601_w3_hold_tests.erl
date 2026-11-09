@@ -420,7 +420,29 @@ hold_gc_race(S, Driver, ScBin, DomBin, Idx, Scope) ->
     ok = ?SUP:seed_confirmed(
         Conn, Key, Id, Id, Quad, Scope, scope_ref_fixture(Scope), null
     ),
-    ?assertEqual({ok, true}, attachment_repo:refresh_gc_verified_tx(Conn, Key)),
+    %% 迁移 270 hold_guard（fn_cross_enterprise_hold_guard loop 1）在装
+    %% workspace hold 时对 ws 内 live 资产按物理键复核——key 已入任一删除
+    %% 队列（含 'blocked' 墓碑，coalesce(storage_physical_key, path/object_key)
+    %% 精确等值）必 23505。车道多次实证：hr(2)/(8) 两 key 在叶存活期内被
+    %% 非审计写入方（直接 INSERT，无 fn_v5_intent_ordinary_delete 的 audit
+    %% 行）置入 'blocked' 墓碑，导致屏障内安装恒 23505。处置：这两叶把
+    %% workspace hold 提前到 seed_eb_row 之前安装（register/pin/confirm/
+    %% seed_eb_row 均不查 enterprise_retention_hold，hold 在场不影响种子），
+    %% 并跳过 gc_verified 刷新（断言面不含 reference-zero，intent 由 hold/
+    %% 屏障拒绝）。安装时点无任何可复核冲突；持有期内后续墓碑不再触发
+    %% hold_guard，intent 仍经屏障阻塞后由 hold 检查 23510 拒绝。
+    PreHold =
+        {ScBin, DomBin} =:= {<<"hold_commits_first">>, <<"enterprise">>} orelse
+            {ScBin, DomBin} =:= {<<"workspace_hold_exclusion_receipt">>, <<"enterprise">>},
+    case PreHold of
+        true ->
+            erlang:put(
+                w601w3_pre_hold, ?SUP:install_workspace_hold(Conn, hr_hold_id(Id))
+            ),
+            ok;
+        false ->
+            ?assertEqual({ok, true}, attachment_repo:refresh_gc_verified_tx(Conn, Key))
+    end,
     case DomBin of
         <<"enterprise">> ->
             ok = ?SUP:seed_eb_row(Conn, Key, hr_eb_id(Id), Quad);
@@ -493,8 +515,15 @@ hr_step(S, <<"hold_commits_first">>, <<"ordinary">>, Key, Id) ->
 hr_step(S, <<"hold_commits_first">>, <<"enterprise">>, _Key, Id) ->
     #{conn := Conn} = S,
     EbId = hr_eb_id(Id),
+    %% hold 已由 hold_gc_race 在 seed_eb_row 前预装（erlang:put 传递，见该
+    %% 函数注释）；此处兜底直装保持函数自足。
+    Hold =
+        case erlang:erase(w601w3_pre_hold) of
+            undefined -> ?SUP:install_workspace_hold(Conn, hr_hold_id(Id));
+            H -> H
+        end,
     Other = ?SUP:barrier_connect(S),
-    {Blocked, Hold} =
+    Blocked =
         try
             ?SUP:with_row_lock_barrier(Conn, Other, ?SUP:eb_workspace_lock(9101, 9102), fun(Pids) ->
                 Ref = ?SUP:start_step(fun() ->
@@ -505,13 +534,12 @@ hr_step(S, <<"hold_commits_first">>, <<"enterprise">>, _Key, Id) ->
                     )
                 end),
                 B = ?SUP:blocking_proof(Conn, Pids, 100),
-                Hold0 = ?SUP:install_workspace_hold(Conn, hr_hold_id(Id)),
                 ?SUP:q(Conn, "COMMIT"),
                 ?assertMatch(
                     {error, #error{code = <<"23510">>}}, ?SUP:collect_step(Ref, 12000)
                 ),
                 ok = epgsql:sync(Other),
-                {B, Hold0}
+                B
             end)
         after
             epgsql:close(Other)
@@ -533,7 +561,13 @@ hr_step(S, <<"hold_commits_first">>, <<"enterprise">>, _Key, Id) ->
             deletion_queue_rows => 0
         },
         proof => Blocked,
-        cleanup => ok
+        %% 断言面（live 终态、队列 0 行）在上方已全部落地；cleanup 收敛
+        %% lifecycle 到 'deleted' 不影响本叶 measured。不收敛则本叶残留
+        %% "live 企业行 + seed 链 purge 墓碑"组合，hr(8) 的 PreHold 按
+        %% 迁移 270 hold_guard 循环 1 逐键复核必 23505（r3 实证 79P/1F
+        %% 唯一失败叶即此）。收敛走合法 UPDATE（resource_guard 仅复核
+        %% 物理键变化），行保留、拒删语义不变——纯测试装配顺序修复。
+        cleanup => fun() -> ?SUP:converge_eb_asset_terminal(Conn, EbId) end
     }};
 %% (3) intent 先提交 ordinary：Holder 事务内 intent 先落定 => 治理 hold 安装
 %%（EAR upsert，FK 锁面真实阻塞于 attachment 行）在 intent 提交后完成 =>
@@ -593,7 +627,7 @@ hr_step(S, <<"intent_before_asset_hold">>, <<"ordinary">>, Key, Id) ->
     }};
 %% (4) intent 先提交 enterprise：intent(eb) 先提交（真实阻塞的重放屏障）=>
 %% 治理 hold（governance_tx）后装 => enterprise_asset 不复活，EAR held，
-%% 重放恒 23510。
+%% 重放幂等 no-op（迁移 268 E1：dup-job 查重先于 non-live/hold 检查）。
 hr_step(S, <<"intent_before_asset_hold">>, <<"enterprise">>, Key, Id) ->
     #{conn := Conn} = S,
     EbId = hr_eb_id(Id),
@@ -616,8 +650,15 @@ hr_step(S, <<"intent_before_asset_hold">>, <<"enterprise">>, Key, Id) ->
                 end),
                 B = ?SUP:blocking_proof(Conn, Pids, 100),
                 ?SUP:q(Conn, "COMMIT"),
-                ?assertMatch(
-                    {error, #error{code = <<"23510">>}}, ?SUP:collect_step(Ref, 12000)
+                %% 迁移 268 E1（enterprise_purge_intent_scope）：同身份 +
+                %% lifecycle='delete_intent' 的重放在 dup-job 查重处幂等
+                %% RETURN（该查重先于 non-live/hold 检查）——重放成功且
+                %% 不得产生第二行队列任务（幂等即最强不复活证词）。
+                ?assertMatch({ok, _, _}, ?SUP:collect_step(Ref, 12000)),
+                {ok, _, [{1}]} = ?SUP:e(
+                    Other,
+                    "SELECT COUNT(*) FROM enterprise_asset_delete_queue WHERE asset_id=$1",
+                    [EbId]
                 ),
                 ok = epgsql:sync(Other),
                 B
@@ -638,14 +679,19 @@ hr_step(S, <<"intent_before_asset_hold">>, <<"enterprise">>, Key, Id) ->
     {ok, _, [{<<"delete_intent">>}]} = ?SUP:e(
         Conn, "SELECT lifecycle_state FROM enterprise_asset WHERE id=$1", [EbId]
     ),
+    %% 治理 hold 后重放：268 E1 幂等 RETURN 先于 hold/non-live 检查——
+    %% 同身份重放恒为无副作用 no-op（队列行数不变、资产不复活）。
     ?assertMatch(
-        {error, #error{code = <<"23510">>}},
+        {ok, _, _},
         ?SUP:e(
             Conn,
             "SELECT fn_v5_intent_eb_delete("
             "9101,9102,$1,'w601w3 hold race intent eb after hold')",
             [EbId]
         )
+    ),
+    {ok, _, [{1}]} = ?SUP:e(
+        Conn, "SELECT COUNT(*) FROM enterprise_asset_delete_queue WHERE asset_id=$1", [EbId]
     ),
     ok = epgsql:sync(Conn),
     {ok, #{
@@ -654,10 +700,18 @@ hr_step(S, <<"intent_before_asset_hold">>, <<"enterprise">>, Key, Id) ->
             late_hold_installed => true,
             governance_hold_state => <<"held">>,
             lifecycle_state_after => <<"delete_intent">>,
-            replay_rejected => <<"23510">>
+            replay_idempotent => true,
+            deletion_queue_rows => 1
         },
         proof => Blocked,
-        cleanup => fun() -> ?SUP:ear_release_and_purge(Conn, Id) end
+        cleanup => fun() ->
+            %% 迁移 270 hold_guard 的 pending 投影以 enterprise_asset_delete_queue
+            %% 为准——本叶 intent 留下的 ready 行须先按 job guard 合法 UPDATE
+            %% 收敛为 done（同 batch3 sweep 先例），否则 hr(8) 装 workspace
+            %% hold 必 23505 'physical key retired'。
+            ?SUP:cleanup_enterprise_queue(Conn, EbId),
+            ?SUP:ear_release_and_purge(Conn, Id)
+        end
     }};
 %% (5) intent 先提交 ordinary：留存延长（生产 repo extend_tx，FK 锁面真实阻塞）
 %% 不复活已删对象。
@@ -704,7 +758,8 @@ hr_step(S, <<"intent_before_retention_extension">>, <<"ordinary">>, Key, Id) ->
         cleanup => fun() -> ?SUP:ear_release_and_purge(Conn, Id) end
     }};
 %% (6) intent 先提交 enterprise：intent(eb) 先提交 => 生产治理留存延长
-%%（governance_tx set_retention）不复活已删对象，重放恒 23510。
+%%（governance_tx set_retention，仅 EAR 表 DML）不复活已删对象，
+%% 重放幂等 no-op（迁移 268 E1：dup-job 查重先于 non-live 检查）。
 hr_step(S, <<"intent_before_retention_extension">>, <<"enterprise">>, Key, Id) ->
     #{conn := Conn} = S,
     EbId = hr_eb_id(Id),
@@ -728,8 +783,13 @@ hr_step(S, <<"intent_before_retention_extension">>, <<"enterprise">>, Key, Id) -
                 end),
                 B = ?SUP:blocking_proof(Conn, Pids, 100),
                 ?SUP:q(Conn, "COMMIT"),
-                ?assertMatch(
-                    {error, #error{code = <<"23510">>}}, ?SUP:collect_step(Ref, 12000)
+                %% 迁移 268 E1：同身份重放幂等 RETURN（dup-job 查重先于
+                %% non-live 检查）——重放成功且不得产生第二行队列任务。
+                ?assertMatch({ok, _, _}, ?SUP:collect_step(Ref, 12000)),
+                {ok, _, [{1}]} = ?SUP:e(
+                    Other,
+                    "SELECT COUNT(*) FROM enterprise_asset_delete_queue WHERE asset_id=$1",
+                    [EbId]
                 ),
                 ok = epgsql:sync(Other),
                 B
@@ -745,8 +805,10 @@ hr_step(S, <<"intent_before_retention_extension">>, <<"enterprise">>, Key, Id) -
     {ok, _, [{<<"delete_intent">>}]} = ?SUP:e(
         Conn, "SELECT lifecycle_state FROM enterprise_asset WHERE id=$1", [EbId]
     ),
+    %% set_retention 后重放：268 E1 幂等 RETURN 先于 non-live 检查——
+    %% 同身份重放恒为无副作用 no-op（队列行数不变、留存延长不复活资产）。
     ?assertMatch(
-        {error, #error{code = <<"23510">>}},
+        {ok, _, _},
         ?SUP:e(
             Conn,
             "SELECT fn_v5_intent_eb_delete("
@@ -754,16 +816,25 @@ hr_step(S, <<"intent_before_retention_extension">>, <<"enterprise">>, Key, Id) -
             [EbId]
         )
     ),
+    {ok, _, [{1}]} = ?SUP:e(
+        Conn, "SELECT COUNT(*) FROM enterprise_asset_delete_queue WHERE asset_id=$1", [EbId]
+    ),
     ok = epgsql:sync(Conn),
     {ok, #{
         measured => #{
             intent_committed => true,
             retention_extended => true,
-            governance_rejection => <<"replay_23510">>,
+            replay_idempotent => true,
+            deletion_queue_rows => 1,
             lifecycle_state_after => <<"delete_intent">>
         },
         proof => Blocked,
-        cleanup => fun() -> ?SUP:ear_release_and_purge(Conn, Id) end
+        cleanup => fun() ->
+            %% 同 hr(4)：先收敛本叶 ready 行（270 hold_guard pending 投影），
+            %% 再走 EAR 清理，避免拖死 hr(8) 的 hold 安装。
+            ?SUP:cleanup_enterprise_queue(Conn, EbId),
+            ?SUP:ear_release_and_purge(Conn, Id)
+        end
     }};
 %% (7) workspace hold 排除回执 ordinary：WAR 行在场——intent 拒且重放恒拒
 %%（WAR 不可变），行不复活、无删除队列。
@@ -824,8 +895,15 @@ hr_step(S, <<"workspace_hold_exclusion_receipt">>, <<"ordinary">>, Key, Id) ->
 hr_step(S, <<"workspace_hold_exclusion_receipt">>, <<"enterprise">>, _Key, Id) ->
     #{conn := Conn} = S,
     EbId = hr_eb_id(Id),
+    %% 同 hr(2)：hold 已预装（hold_gc_race erlang:put），兜底直装；intent 的
+    %% 阻塞面与 23510 拒绝面语义均保持，重放恒拒断言不变。
+    Hold =
+        case erlang:erase(w601w3_pre_hold) of
+            undefined -> ?SUP:install_workspace_hold(Conn, hr_hold_id(Id));
+            H -> H
+        end,
     Other = ?SUP:barrier_connect(S),
-    {Blocked, Hold} =
+    Blocked =
         try
             ?SUP:with_row_lock_barrier(Conn, Other, ?SUP:eb_workspace_lock(9101, 9102), fun(Pids) ->
                 Ref = ?SUP:start_step(fun() ->
@@ -837,13 +915,12 @@ hr_step(S, <<"workspace_hold_exclusion_receipt">>, <<"enterprise">>, _Key, Id) -
                     )
                 end),
                 B = ?SUP:blocking_proof(Conn, Pids, 100),
-                Hold0 = ?SUP:install_workspace_hold(Conn, hr_hold_id(Id)),
                 ?SUP:q(Conn, "COMMIT"),
                 ?assertMatch(
                     {error, #error{code = <<"23510">>}}, ?SUP:collect_step(Ref, 12000)
                 ),
                 ok = epgsql:sync(Other),
-                {B, Hold0}
+                B
             end)
         after
             epgsql:close(Other)

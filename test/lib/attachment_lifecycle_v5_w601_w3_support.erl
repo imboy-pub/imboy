@@ -47,6 +47,7 @@
     purge_attachment_metadata/2,
     cleanup_enterprise_asset/2,
     cleanup_enterprise_queue/2,
+    converge_eb_asset_terminal/2,
     await_upload_expiry/2,
     hex64/1,
     loc/1,
@@ -533,6 +534,25 @@ purge_sqls() ->
 
 cleanup_enterprise_asset(Conn, Id) ->
     cleanup_guarded(Conn, <<"enterprise_asset">>, <<"id">>, Id).
+
+%% hr(2) 类"断言 live 终态"企业叶的装配收敛：lifecycle 走合法 UPDATE 到
+%% 终态 'deleted'（ck_v5_eb_lifecycle 合法值；迁移 270 fn_cross_domain_
+%% resource_guard 仅对物理键字段（object_key/storage_*）变化复核 key_guard，
+%% lifecycle 收敛不触发）。行本体保留——trg_enterprise_asset_purge_guard
+%% 的拒删语义与 cleanup_guarded 的校验面均不变。不收敛时：本叶 seed 链对
+%% attachment 键的幂等 purge 墓碑 + 残留 live 企业行的组合，会被本 run 内
+%% 后续任何 workspace hold 安装按 fn_cross_enterprise_hold_guard 循环 1
+%% （is_live 资产逐键复核 fn_cross_domain_key_guard → attachment_object_
+%% deletion 无状态过滤的精确等值 EXISTS）拒 23505 'physical key retired'
+%% ——eunit-local 车道 r3 实证：hr(2) PASS 后 hr(8) PreHold 恒为此挂。
+converge_eb_asset_terminal(Conn, Id) ->
+    q(
+        Conn,
+        "UPDATE enterprise_asset SET lifecycle_state='deleted', updated_at=now()"
+        " WHERE id=$1 AND lifecycle_state='live'",
+        [Id]
+    ),
+    ok.
 cleanup_enterprise_queue(Conn, Id) ->
     %% 迁移 270 fn_cross_enterprise_hold_guard：装 workspace hold 时对 pending
     %% （ready/retry_wait/leased/blocked）企业队列行按 physical key 复核，若
