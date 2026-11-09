@@ -177,6 +177,20 @@ roundtrip(S, D) ->
     ),
     ?assertEqual({ok, Bytes}, Mod0:read_snapshot(I0)),
     Body = jsone:encode(#{<<"object_key">> => Key, <<"scope">> => <<"private">>}),
+    %% V5 pin 门（02 §14，W2-02）：S3 直传只落物理字节，upload_content 未
+    %% 固定不得确认——先断言缺 pin 的 fail-closed 拒绝（400 契约文案），
+    %% 再按 attachment_upload_logic:pin_and_put 的 receipt 形状补 pin（与
+    %% attachment_lifecycle_v5_confirm_pg_tests seed_session 同惯例），
+    %% confirm 放行。
+    Pinless = post(S, "/api/v1/attachment/confirm", Body),
+    ?assertEqual(400, maps:get(<<"code">>, Pinless)),
+    ?assertEqual(<<"上传内容未固定，请先完成网关上传"/utf8>>, maps:get(<<"msg">>, Pinless)),
+    ok = attach_pending_repo:register_content_pin(Key, #{
+        <<"version">> => 1,
+        <<"sha256">> => binary:encode_hex(crypto:hash(sha256, Bytes), lowercase),
+        <<"size_bytes">> => integer_to_binary(byte_size(Bytes)),
+        <<"mime">> => <<"image/png">>
+    }),
     Confirmed = post(S, "/api/v1/attachment/confirm", Body),
     case maps:get(<<"code">>, Confirmed) of
         0 -> ok;

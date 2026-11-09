@@ -199,10 +199,14 @@ verified_garage() ->
     Ep = list_to_binary(os:getenv("A0_ENDPOINT")),
     Ak = list_to_binary(os:getenv("A0_AK")),
     Sk = list_to_binary(os:getenv("A0_SK")),
-    %% closeout：A0_BUCKET 未随 run 脚本导出——回退 fixture 桶名
-    %% （W202_GARAGE_BUCKET 同值），与 attachment_worker_port_tests 的
-    %% getenv 默认值风格一致
-    Bucket = list_to_binary(os:getenv("A0_BUCKET", "imboy-closeout-v3")),
+    %% A0_BUCKET 未随 run 脚本导出时回退 fixture 桶名 imboy：与
+    %% attachment_worker_port_tests 的 A0_BUCKET 默认值对齐。质量车道
+    %% harness Garage 只建 imboy-w403-*/talk-record-relay/imboy 三桶
+    %% （imboy_quality_env:garage/2 注明「真 Garage gate 链夹具固定
+    %% bucket=imboy 语义」）；旧回退 imboy-closeout-v3 是 closeout 私有
+    %% env 的桶名，该车道不存在——PUT 404 会经 uncertain_result 归并成
+    %% worker_outcome_unknown 假失败。
+    Bucket = list_to_binary(os:getenv("A0_BUCKET", "imboy")),
     Cfg = #{
         endpoint => Ep, bucket => Bucket, access_key => Ak, secret_key => Sk, region => <<"garage">>
     },
