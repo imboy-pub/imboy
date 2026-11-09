@@ -39,14 +39,15 @@ jobs:
 
       # ── 1. 安装 Trivy ─────────────────────────────────────────────
       - name: Install Trivy
-        run: |
-          set -euo pipefail
-          # 版本必须是仍存在的 release：v0.52.2 已被上游删除（tag 查询 404），
-          # 安装脚本只做字符串拼接、不校验 tag 是否存在，所以日志里会先打印
-          # "found version: 0.52.2" 再在下载那步 exit 1——看起来像权限问题，其实是 404。
-          curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh \
-            | sh -s -- -b /usr/local/bin v0.72.0
-          trivy --version
+        # 固定安装器提交并校验发布资产，保持现有 SBOM 工具版本。
+        # Pin the installer and verify release assets; keep the existing SBOM version.
+        uses: aquasecurity/setup-trivy@3fb12ec12f41e471780db15c232d5dd185dcb514 # v0.2.6
+        with:
+          version: v0.72.0
+          cache: false
+
+      - name: Verify Trivy installation
+        run: trivy --version
 
       - name: Check SBOM completeness regressions
         env:
