@@ -162,6 +162,11 @@ jobs:
           IMBOYENV=local make test-build
           IMBOYENV=local make terminology-check
 
+      - name: Check fixture environment restoration (no PostgreSQL)
+        run: |
+          erl -noshell -pa ebin test deps/*/ebin \
+            -eval 'case eunit:test({generator, fun eb_direct_purge_mixed_pg_tests:environment_restore_test_/0}, [verbose]) of ok -> halt(0); _ -> halt(1) end.'
+
   moment-eunit:
     name: Moment EUnit Gate
     runs-on: ubuntu-latest
