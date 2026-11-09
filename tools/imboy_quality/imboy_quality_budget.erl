@@ -15,23 +15,33 @@ reserve(State, Category0, RunId) ->
         true = maps:get(Category, Counts) < maps:get(Category, Allowances),
         true = maps:get(<<"remaining_new_full">>, Recovery) > 0,
         true = certification_ready(Category, Runs),
-        Run = #{<<"run_id">> => RunId, <<"category">> => Category,
-                <<"status">> => <<"started">>},
-        NewRecovery = Recovery#{<<"new_full_runs">> := Runs ++ [Run],
+        Run = #{
+            <<"run_id">> => RunId,
+            <<"category">> => Category,
+            <<"status">> => <<"started">>
+        },
+        NewRecovery = Recovery#{
+            <<"new_full_runs">> := Runs ++ [Run],
             <<"new_full_counts">> := Counts#{Category := maps:get(Category, Counts) + 1},
             <<"new_full_started">> := maps:get(<<"new_full_started">>, Recovery) + 1,
-            <<"remaining_new_full">> := maps:get(<<"remaining_new_full">>, Recovery) - 1},
+            <<"remaining_new_full">> := maps:get(<<"remaining_new_full">>, Recovery) - 1
+        },
         {ok, State#{<<"approved_recovery_20261104">> := NewRecovery}}
     catch
         _:_ -> {error, invalid_or_exhausted_budget}
     end.
 
-category(p1_revalidation) -> <<"p1_revalidation">>;
-category(certification) -> <<"certification">>;
-category(incremental) -> <<"incremental">>;
-category(cold) -> <<"cold">>;
+category(p1_revalidation) ->
+    <<"p1_revalidation">>;
+category(certification) ->
+    <<"certification">>;
+category(incremental) ->
+    <<"incremental">>;
+category(cold) ->
+    <<"cold">>;
 category(B) when is_binary(B) ->
-    true = lists:member(B, categories()), B.
+    true = lists:member(B, categories()),
+    B.
 
 categories() -> [<<"p1_revalidation">>, <<"certification">>, <<"incremental">>, <<"cold">>].
 
@@ -43,8 +53,16 @@ validate(R) ->
     Unknown = maps:get(<<"unknown_additional_launch">>, R),
     true = is_boolean(Unknown),
     Allowances = maps:get(<<"new_full_allowances">>, R),
-    Expected = #{<<"p1_revalidation">> => 2, <<"certification">> => 20,
-                 <<"incremental">> => 3, <<"cold">> => 1},
+    %% 2026-11-10 用户授权（"继续"，回应 p1_revalidation 2→3 请示）：
+    %% attempt12/13 已用满 2 个 p1_revalidation 名额，五红根修复（508afcd4d）
+    %% 后需一次复验全量。仅上调该类别资源上限，不改任何 verdict 判据；
+    %% 全局池 remaining_new_full 仍为硬上限（Started+Remaining=26 不变量不变）。
+    Expected = #{
+        <<"p1_revalidation">> => 3,
+        <<"certification">> => 20,
+        <<"incremental">> => 3,
+        <<"cold">> => 1
+    },
     Expected = Allowances,
     Counts = maps:get(<<"new_full_counts">>, R),
     true = is_map(Counts) andalso map_size(Counts) =:= 4,
@@ -53,11 +71,14 @@ validate(R) ->
     lists:foreach(fun validate_run/1, Runs),
     Ids = [maps:get(<<"run_id">>, Run) || Run <- Runs],
     true = length(Ids) =:= length(lists:usort(Ids)),
-    lists:foreach(fun(C) ->
-        N = maps:get(C, Counts),
-        true = is_integer(N) andalso N >= 0 andalso N =< maps:get(C, Allowances),
-        N = length([ok || Run <- Runs, maps:get(<<"category">>, Run) =:= C])
-    end, categories()),
+    lists:foreach(
+        fun(C) ->
+            N = maps:get(C, Counts),
+            true = is_integer(N) andalso N >= 0 andalso N =< maps:get(C, Allowances),
+            N = length([ok || Run <- Runs, maps:get(<<"category">>, Run) =:= C])
+        end,
+        categories()
+    ),
     Started = maps:get(<<"new_full_started">>, R),
     Remaining = maps:get(<<"remaining_new_full">>, R),
     true = is_integer(Started) andalso Started =:= length(Runs),
@@ -69,11 +90,19 @@ validate_run(Run) ->
     Id = maps:get(<<"run_id">>, Run),
     true = is_binary(Id) andalso byte_size(Id) > 0,
     _ = category(maps:get(<<"category">>, Run)),
-    true = lists:member(maps:get(<<"status">>, Run),
-                        [<<"started">>, <<"passed">>, <<"failed">>, <<"interrupted">>]),
+    true = lists:member(
+        maps:get(<<"status">>, Run),
+        [<<"started">>, <<"passed">>, <<"failed">>, <<"interrupted">>]
+    ),
     ok.
 
 certification_ready(<<"certification">>, Runs) ->
-    lists:all(fun(R) -> maps:get(<<"category">>, R) =/= <<"certification">> orelse
-                         maps:get(<<"status">>, R) =:= <<"passed">> end, Runs);
-certification_ready(_, _) -> true.
+    lists:all(
+        fun(R) ->
+            maps:get(<<"category">>, R) =/= <<"certification">> orelse
+                maps:get(<<"status">>, R) =:= <<"passed">>
+        end,
+        Runs
+    );
+certification_ready(_, _) ->
+    true.

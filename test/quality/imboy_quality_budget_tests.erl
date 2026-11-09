@@ -12,7 +12,7 @@ fixture() ->
                 <<"stop_on_certification_failure">> => true,
                 <<"unknown_additional_launch">> => false,
                 <<"new_full_allowances">> => #{
-                    <<"p1_revalidation">> => 2,
+                    <<"p1_revalidation">> => 3,
                     <<"certification">> => 20,
                     <<"incremental">> => 3,
                     <<"cold">> => 1
@@ -76,8 +76,8 @@ invalid_total_test() ->
 
 total_exhaustion_test() ->
     Categories =
-        lists:duplicate(2, p1_revalidation) ++
-            lists:duplicate(20, certification) ++ lists:duplicate(3, incremental) ++ [cold],
+        lists:duplicate(3, p1_revalidation) ++
+            lists:duplicate(19, certification) ++ lists:duplicate(3, incremental) ++ [cold],
     {Final, _} = lists:foldl(
         fun(C, {S, N}) ->
             Id = integer_to_binary(N),
