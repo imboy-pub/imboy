@@ -32,7 +32,7 @@ def classification(gate, new=0, known=0, fixed=0, flaky=0):
 
 
 class NightlySummaryTest(unittest.TestCase):
-    def run_collect(self, summaries, fail_awk=False):
+    def run_collect(self, summaries, fail_awk_at=None, tee_output=None):
         with tempfile.TemporaryDirectory(prefix="imboy-nightly-summary-") as temporary:
             root = Path(temporary)
             output = root / "github-output"
@@ -45,19 +45,33 @@ class NightlySummaryTest(unittest.TestCase):
                 "/tmp/qa-classify-all.txt", shlex.quote(str(root / "classifications"))
             )
             environment = {"PATH": os.environ["PATH"], "GITHUB_OUTPUT": str(output)}
-            if fail_awk:
-                # Fail gate-name extraction after the total count succeeds.
-                # A blanket `|| true` would hide this genuine command failure.
+            if fail_awk_at:
+                # awk stages: 1 = filter, 2 = total count, 3 = gate names.
                 executable = root / "awk"
                 executable.write_text(
-                    '#!/bin/sh\nif [ -e "$AWK_CALL_STATE" ]; then exit 47; fi\n'
-                    ': > "$AWK_CALL_STATE"\nexec ' + shlex.quote(shutil.which("awk")) + ' "$@"\n'
+                    '#!/bin/sh\nset -eu\ncount=0\n'
+                    '[ ! -e "$AWK_CALL_STATE" ] || read -r count < "$AWK_CALL_STATE"\n'
+                    'count=$((count + 1))\nprintf "%s\\n" "$count" > "$AWK_CALL_STATE"\n'
+                    'if [ "$count" -eq "$AWK_FAIL_AT" ]; then\n'
+                    '  printf "injected awk failure: %s\\n" "$1" >&2\n  exit 47\nfi\n'
+                    'exec ' + shlex.quote(shutil.which("awk")) + ' "$@"\n'
                 )
                 executable.chmod(0o755)
                 environment.update(
-                    PATH=str(root) + os.pathsep + environment["PATH"],
                     AWK_CALL_STATE=str(root / "awk-called"),
+                    AWK_FAIL_AT=str(fail_awk_at),
                 )
+            if tee_output is not None:
+                # Drain stdin to isolate the write error from an upstream SIGPIPE.
+                executable = root / "tee"
+                executable.write_text(
+                    '#!/bin/sh\nset -eu\ncat > /dev/null\n'
+                    'printf "%s" "$TEE_OUTPUT" > "$1"\nexit 48\n'
+                )
+                executable.chmod(0o755)
+                environment["TEE_OUTPUT"] = tee_output
+            if fail_awk_at or tee_output is not None:
+                environment["PATH"] = str(root) + os.pathsep + environment["PATH"]
             result = subprocess.run(
                 ["bash", "-c", script], env=environment, text=True,
                 stdout=subprocess.PIPE, stderr=subprocess.STDOUT, timeout=10,
@@ -98,11 +112,34 @@ class NightlySummaryTest(unittest.TestCase):
         self.assert_summary({}, 0, "")
 
     def test_gate_extraction_errors_remain_failures(self):
+        self.assert_collect_failure(47, fail_awk_at=3)
+
+    def test_filter_errors_remain_failures(self):
+        self.assert_collect_failure(47, fail_awk_at=1)
+
+    def test_total_count_errors_remain_failures(self):
+        self.assert_collect_failure(47, fail_awk_at=2)
+
+    def test_tee_errors_with_empty_file_remain_failures(self):
+        self.assert_collect_failure(48, tee_output="")
+
+    def test_tee_errors_with_partial_file_remain_failures(self):
+        self.assert_collect_failure(48, tee_output=classification("full-eunit") + "\n")
+
+    def assert_collect_failure(self, expected_rc, **fault):
         result, outputs = self.run_collect(
-            {"full-eunit": classification("full-eunit", new=1)}, fail_awk=True
+            {
+                "full-eunit": classification("full-eunit"),
+                "dialyze": classification("dialyze", new=1),
+            },
+            **fault,
         )
-        self.assertEqual(result.returncode, 47, result.stdout)
+        self.assertEqual(result.returncode, expected_rc, result.stdout)
         self.assertEqual(outputs, {})
+        if "fail_awk_at" in fault:
+            # Verify which program failed, not only its position in the call order.
+            expected_program = {1: "/^QA_CLASSIFY /", 2: "s+=$i", 3: 'printf "%s%s"'}
+            self.assertIn(expected_program[fault["fail_awk_at"]], result.stdout)
 
 
 if __name__ == "__main__":

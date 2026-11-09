@@ -661,7 +661,7 @@ jobs:
             echo '${{ needs.eqwalize.outputs.classify }}'
             echo '${{ needs.elvis.outputs.classify }}'
             echo '${{ needs.pg-behavior-harnesses.outputs.classify }}'
-          } | grep '^QA_CLASSIFY ' | tee /tmp/qa-classify-all.txt || true
+          } | awk '/^QA_CLASSIFY /' | tee /tmp/qa-classify-all.txt
 
           total_new=$(awk '{for(i=1;i<=NF;i++) if($i ~ /^NEW=/){sub(/^NEW=/,"",$i); s+=$i}} END{print s+0}' /tmp/qa-classify-all.txt)
           # 无 NEW 时输出空列表；grep 的无匹配退出码会在 pipefail 下中断正常汇总。
