@@ -29,7 +29,7 @@ jobs:
   release-contract:
     name: Validate release and immutable source identity
     if: github.event_name == 'push'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 5
     permissions:
       contents: read
@@ -68,7 +68,7 @@ jobs:
     name: Build & push candidate image
     if: github.event_name == 'push'
     needs: [release-contract]
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 60
     outputs:
       IMBOY_VERSION: ${{ steps.identity.outputs.IMBOY_VERSION }}
@@ -162,7 +162,7 @@ jobs:
     name: Build & push admin candidate image
     if: github.event_name == 'push'
     needs: [release-contract]
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 30
     outputs:
       ADMIN_IMAGE_NAME: ${{ steps.identity.outputs.ADMIN_IMAGE_NAME }}
@@ -247,7 +247,7 @@ jobs:
     name: Build & push PostgreSQL 18 candidate image
     if: github.event_name == 'push'
     needs: [release-contract]
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 60
     outputs:
       PG_IMAGE_NAME: ${{ steps.identity.outputs.PG_IMAGE_NAME }}
@@ -314,7 +314,7 @@ jobs:
     name: Build, verify and push Widget candidate
     if: github.event_name == 'push'
     needs: [release-contract]
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 30
     outputs:
       WIDGET_IMAGE_NAME: ${{ steps.identity.outputs.WIDGET_IMAGE_NAME }}
@@ -397,7 +397,7 @@ jobs:
   # ----------------------------------------------------------------
   # Golden Install 门禁（P2-G1 脚本 / 计划 §4，G2 接入本流水线）
   #
-  # ubuntu-latest = cleanroom 近似（一次性 VM：无既有 imboy 容器/卷/网络；
+  # ubuntu-24.04 = cleanroom 近似（一次性 VM：无既有 imboy 容器/卷/网络；
   # 脚本内 assert_cleanroom 仍会拒绝任何脏状态）。脚本以 sudo -E 运行：
   # /etc/hosts 注入 garage 解析需要 root；docker 对 runner 用户免 sudo。
   #
@@ -409,7 +409,7 @@ jobs:
     name: Golden Install gate (<=900s + restart idempotent)
     if: github.event_name == 'push'
     needs: [build-candidate, build-admin-candidate, build-widget-candidate, build-pg-candidate]
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 45 # 预算 900s + 拉镜像/克隆/重试余量
     env:
       IMAGE_DIGEST_REF: ${{ needs.build-candidate.outputs.IMAGE_DIGEST_REF }}
@@ -484,7 +484,7 @@ jobs:
     name: Golden Upgrade gate (data retention)
     if: github.event_name == 'push'
     needs: [build-candidate, build-admin-candidate, build-widget-candidate, build-pg-candidate]
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 60 # vN 全量安装 + 数据生成 + 迁移 + 双冒烟，无预算上限
     outputs:
       RESULT: ${{ steps.decide.outputs.RESULT }}
@@ -573,7 +573,7 @@ jobs:
   # ----------------------------------------------------------------
   release-identity:
     name: Release Identity (triple)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 5
     needs: [build-candidate]
     outputs:
@@ -615,7 +615,7 @@ jobs:
     name: Anonymous pull and architecture gate (all four images)
     if: github.event_name == 'push'
     needs: [build-candidate, build-admin-candidate, build-widget-candidate, build-pg-candidate]
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 30
     permissions:
       contents: read
@@ -643,7 +643,7 @@ jobs:
     name: Publish exact four-image bundle and GitHub Release
     if: github.event_name == 'push' && vars.RELEASE_FINALIZE_ENABLED == 'true'
     needs: [release-contract, build-candidate, build-admin-candidate, build-widget-candidate, build-pg-candidate, golden-install, golden-upgrade, community-image-access]
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 30
     permissions:
       contents: write
@@ -757,7 +757,7 @@ jobs:
   golden-install-nightly:
     name: Golden Install nightly (latest stable image)
     if: github.event_name == 'schedule' && vars.GOLDEN_NIGHTLY_ENABLED == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 45
 
     steps:

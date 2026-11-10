@@ -20,7 +20,7 @@ permissions:
 jobs:
   repository-hygiene:
     name: Repository hygiene
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-python@v7
@@ -34,7 +34,7 @@ jobs:
   # ----------------------------------------------------------------
   erlang-lint:
     name: Erlang lint (elvis)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v7
 
@@ -87,7 +87,7 @@ jobs:
   # ----------------------------------------------------------------
   contract-lint:
     name: Contract lint (redocly)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v7
 
@@ -146,7 +146,7 @@ jobs:
   # ----------------------------------------------------------------
   oasdiff-breaking:
     name: OpenAPI breaking change check
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     if: github.event_name == 'pull_request'
     steps:
       - name: Checkout PR head
@@ -222,7 +222,7 @@ jobs:
   # ----------------------------------------------------------------
   secrets-scan:
     name: Secrets scan (gitleaks)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v7
         with:
@@ -275,7 +275,7 @@ jobs:
   # ----------------------------------------------------------------
   architecture-gates:
     name: Architecture gates (layer / size / silent-catch)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v7
 
@@ -366,7 +366,7 @@ jobs:
 
   api-ds-ratchet:
     name: API→DS 层违规不得增长
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v7
       - name: 检查 API→DS 违规数(上限 131)
@@ -387,7 +387,7 @@ jobs:
   # ----------------------------------------------------------------
   third-party-inventory:
     name: Third-party data inventory (V-01)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     defaults:
       run:
         working-directory: imboy
@@ -420,7 +420,7 @@ jobs:
   # ----------------------------------------------------------------
   migrations:
     name: Migration files gate (ADR-0002)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v7
 
@@ -447,7 +447,7 @@ jobs:
   # ----------------------------------------------------------------
   feature-cross-repo:
     name: Cross-repo feature artifacts (ADR-0007)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - name: Checkout imboy
         uses: actions/checkout@v7

@@ -30,7 +30,7 @@ permissions:
 jobs:
   sbom-diff:
     name: Generate SBOM & diff
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 10
 
     steps:

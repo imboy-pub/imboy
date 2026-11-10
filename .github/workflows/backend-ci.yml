@@ -2,6 +2,8 @@ name: Backend CI
 
 # Make-based jobs use erlang.mk's pinned .erlang.mk/rebar3 compatibility tools.
 # setup-beam installs OTP only; quality.yml retains global rebar3 for Elvis.
+# Keep the existing Ubuntu gates on 24.04 during the ubuntu-latest migration.
+# Debian adds one blocking compile/core-EUnit job, not a second full matrix.
 
 # P4-Q3（Golden Gates §6.2/§7 CI Gate Matrix）：本 workflow = PR/push 快速门（<10min），
 # 全部 job 阻塞、零 continue-on-error（假门零容忍）。
@@ -33,7 +35,7 @@ on:
 jobs:
   community-delivery:
     name: Standalone Community Delivery
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 10
     permissions:
       contents: read
@@ -92,7 +94,7 @@ jobs:
 
   cleanup-db-postgres:
     name: Cleanup Database Bootstrap (PG18)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 15
     permissions:
       contents: read
@@ -108,7 +110,7 @@ jobs:
 
   compile:
     name: Compile Gate (OTP ${{ matrix.otp }})
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 20
     # OTP 29 与 OTP 28 均为阻塞编译门；缓存按 OTP 版本隔离。
     # 27.3 作为向后兼容观察项，不阻塞（experimental）。
@@ -127,6 +129,7 @@ jobs:
 
       - name: Setup Erlang/OTP toolchain
         uses: erlef/setup-beam@v1
+        id: beam
         with:
           otp-version: ${{ matrix.otp }}
 
@@ -139,7 +142,7 @@ jobs:
             .erlang.mk
             .dialyzer_plt
             ~/.cache/rebar3
-          key: ${{ runner.os }}-otp${{ matrix.otp }}-beam-${{ hashFiles('Makefile', 'include/deps.mk') }}
+          key: ubuntu-24.04-${{ runner.arch }}-otp${{ steps.beam.outputs.otp-version }}-beam-${{ hashFiles('Makefile', 'erlang.mk', 'include/*.mk') }}
 
       - name: Check duplicate module names
         run: bash scripts/check_duplicate_modules.sh
@@ -169,19 +172,75 @@ jobs:
           IMBOYENV=local make terminology-check
 
       - name: Check fixture environment restoration (no PostgreSQL)
+        run: bash scripts/ci/core-eunit.sh
+
+  debian-core:
+    name: Debian 13 compile and core EUnit (OTP 29.1.2)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    permissions:
+      contents: read
+    # Official Erlang slim image built on Debian 13 (trixie), pinned by digest.
+    # The user space is Debian; its kernel is shared with the Ubuntu host.
+    container:
+      image: erlang:29.1.2-slim@sha256:2110a9edc88a9788c07069e78fab3662fc91477b7902433a8b8bad9c852b0d1b
+    defaults:
+      run:
+        shell: bash
+    env:
+      LANG: C.UTF-8
+      LC_ALL: C.UTF-8
+    steps:
+      - name: Install Debian build tools before checkout
+        # Job containers run as root. Git is needed for checkout and erlang.mk.
         run: |
-          erl -noshell -pa ebin test deps/*/ebin \
-            -eval 'Tests = [
-              {generator, fun eb_direct_purge_mixed_pg_tests:environment_restore_test_/0},
-              {generator, fun enterprise_asset_driver_pg_tests:environment_isolation_test_/0},
-              elib_s3_sign_tests,
-              imboy_app_registry_validate_tests,
-              e2ee_presign_mime_binding_tests
-            ], case eunit:test(Tests, [verbose]) of ok -> halt(0); _ -> halt(1) end.'
+          apt-get update
+          apt-get install -y --no-install-recommends \
+            ca-certificates curl git build-essential pkg-config libssl-dev \
+            zlib1g-dev python3 ripgrep unzip
+          rm -rf /var/lib/apt/lists/*
+
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Verify Debian user space and pinned OTP runtime
+        run: |
+          source /etc/os-release
+          test "$ID:$VERSION_ID:$VERSION_CODENAME" = 'debian:13:trixie'
+          cat /etc/os-release
+          uname -r
+          dpkg-query -W libc6 libssl3t64 gcc make git python3
+          erl -noshell -eval '
+            "29" = erlang:system_info(otp_release),
+            {ok, Version} = file:read_file(filename:join([
+              code:root_dir(), "releases", "29", "OTP_VERSION"])),
+            "29.1.2" = string:trim(binary_to_list(Version)),
+            {ok, _} = application:ensure_all_started(ssl),
+            32 = byte_size(crypto:hash(sha256, <<"ci-runtime-probe">>)),
+            io:format("OTP ~s~nERTS ~s~nCrypto ~p~n", [
+              string:trim(Version), erlang:system_info(version), crypto:info_lib()]),
+            halt(0).'
+
+      - name: Cache Debian dependencies and build tools
+        uses: actions/cache@v6
+        with:
+          path: |
+            deps
+            _build
+            .erlang.mk
+            ~/.cache/rebar3
+          # Never restore Ubuntu-built artifacts into Debian, or vice versa.
+          key: debian-13-${{ runner.arch }}-otp29.1.2-2110a9edc88a-beam-${{ hashFiles('Makefile', 'erlang.mk', 'include/*.mk') }}
+
+      - name: Compile in Debian
+        run: IMBOYENV=local make test-build
+
+      - name: Run the shared core EUnit selection (no PostgreSQL)
+        run: bash scripts/ci/core-eunit.sh
 
   moment-eunit:
     name: Moment EUnit Gate
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 20
     needs: [compile]
     # WITH_MECKS 宏 setup 无条件 boot app（include/eunit_setup.hrl:234「先补 boot」），
@@ -210,6 +269,7 @@ jobs:
 
       - name: Setup Erlang/OTP toolchain
         uses: erlef/setup-beam@v1
+        id: beam
         with:
           otp-version: "28"
 
@@ -222,7 +282,7 @@ jobs:
             .erlang.mk
             .dialyzer_plt
             ~/.cache/rebar3
-          key: ${{ runner.os }}-otp28-beam-${{ hashFiles('Makefile', 'include/deps.mk') }}
+          key: ubuntu-24.04-${{ runner.arch }}-otp${{ steps.beam.outputs.otp-version }}-beam-${{ hashFiles('Makefile', 'erlang.mk', 'include/*.mk') }}
 
       - name: Materialize config/sys.config from example
         # sys.config 与 sys.local.config（*local*.config 被 gitignore）均不入仓，
@@ -275,7 +335,7 @@ jobs:
 
   quick-reply-pg:
     name: Quick reply native PostgreSQL Gate
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 35
     needs: [compile]
 
@@ -285,6 +345,7 @@ jobs:
 
       - name: Setup Erlang/OTP toolchain
         uses: erlef/setup-beam@v1
+        id: beam
         with:
           otp-version: "28"
 
@@ -296,7 +357,7 @@ jobs:
             _build
             .erlang.mk
             ~/.cache/rebar3
-          key: ${{ runner.os }}-otp28-beam-${{ hashFiles('Makefile', 'include/deps.mk') }}
+          key: ubuntu-24.04-${{ runner.arch }}-otp${{ steps.beam.outputs.otp-version }}-beam-${{ hashFiles('Makefile', 'erlang.mk', 'include/*.mk') }}
 
       - name: Compile
         run: IMBOYENV=local make test-build
@@ -374,7 +435,7 @@ jobs:
   # ----------------------------------------------------------------
   dialyzer-baseline:
     name: "Dialyzer baseline gate (ratchet: 0 new warnings)"
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 45
     needs: [compile]
 
@@ -384,6 +445,7 @@ jobs:
 
       - name: Setup Erlang/OTP toolchain
         uses: erlef/setup-beam@v1
+        id: beam
         with:
           otp-version: "28"
 
@@ -396,7 +458,7 @@ jobs:
             .erlang.mk
             .imboy.plt
             ~/.cache/rebar3
-          key: ${{ runner.os }}-otp28-dialyzer-${{ hashFiles('Makefile', 'include/deps.mk') }}
+          key: ubuntu-24.04-${{ runner.arch }}-otp${{ steps.beam.outputs.otp-version }}-dialyzer-${{ hashFiles('Makefile', 'erlang.mk', 'include/*.mk') }}
 
       - name: Run Dialyzer + baseline gate
         run: |
@@ -423,7 +485,7 @@ jobs:
   # ----------------------------------------------------------------
   p5-manifest:
     name: Plugin manifest (p5, blocking)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 10
 
     steps:
@@ -434,6 +496,7 @@ jobs:
       # （同 quality.yml erlang-lint 的 setup-beam 行为说明）
       - name: Setup Erlang/OTP toolchain
         uses: erlef/setup-beam@v1
+        id: beam
         with:
           otp-version: "28"
 
@@ -458,7 +521,7 @@ jobs:
   # ----------------------------------------------------------------
   xref:
     name: "Xref undefined-calls (ratchet: 0 allowed)"
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 30
     needs: [compile]
 
@@ -468,6 +531,7 @@ jobs:
 
       - name: Setup Erlang/OTP toolchain
         uses: erlef/setup-beam@v1
+        id: beam
         with:
           otp-version: "28"
 
@@ -480,7 +544,7 @@ jobs:
             .erlang.mk
             .dialyzer_plt
             ~/.cache/rebar3
-          key: ${{ runner.os }}-otp28-beam-${{ hashFiles('Makefile', 'include/deps.mk') }}
+          key: ubuntu-24.04-${{ runner.arch }}-otp${{ steps.beam.outputs.otp-version }}-beam-${{ hashFiles('Makefile', 'erlang.mk', 'include/*.mk') }}
 
       - name: Run Xref (erlang.mk 会先完整编译再 xref)
         run: |
@@ -513,7 +577,7 @@ jobs:
   # ----------------------------------------------------------------
   e2ee-verify:
     name: E2EE Verify Gate (security-gate + eunit)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 30
     needs: [compile]
     # WITH_MECKS 无条件 boot app（include/eunit_setup.hrl:234）需要 PG；且套件含
@@ -533,6 +597,7 @@ jobs:
 
       - name: Setup Erlang/OTP toolchain
         uses: erlef/setup-beam@v1
+        id: beam
         with:
           otp-version: "28"
 
@@ -544,7 +609,7 @@ jobs:
             _build
             .erlang.mk
             ~/.cache/rebar3
-          key: ${{ runner.os }}-otp28-beam-${{ hashFiles('Makefile', 'include/deps.mk') }}
+          key: ubuntu-24.04-${{ runner.arch }}-otp${{ steps.beam.outputs.otp-version }}-beam-${{ hashFiles('Makefile', 'erlang.mk', 'include/*.mk') }}
 
       - name: Compile
         run: IMBOYENV=local make test-build
@@ -695,7 +760,7 @@ jobs:
   # ----------------------------------------------------------------
   dco-check:
     name: DCO check
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     if: github.event_name == 'pull_request'
     permissions:
       contents: read
