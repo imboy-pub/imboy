@@ -48,7 +48,7 @@ trap cleanup EXIT
 echo "==> 1. 启动 dex ($DEX_IMAGE)"
 docker rm -f "$DEX_CONTAINER" >/dev/null 2>&1 || true
 docker run -d --name "$DEX_CONTAINER" \
-  -p "${DEX_PORT}:5556" \
+  -p "127.0.0.1:${DEX_PORT}:5556" \
   -v "${SCRIPT_DIR}/sso/dex-config.yaml:/etc/dex/config.yaml:ro" \
   "$DEX_IMAGE" dex serve /etc/dex/config.yaml >/dev/null || fail "dex 启动失败"
 
