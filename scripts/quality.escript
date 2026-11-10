@@ -73,7 +73,8 @@ load_admission_modules() ->
             imboy_quality_state,
             imboy_quality_task_owner,
             imboy_quality_full_budget,
-            imboy_quality_compile
+            imboy_quality_compile,
+            imboy_quality_u_leaves
         ]
     ).
 
@@ -815,12 +816,14 @@ ci_final_gate(Ctrl) ->
     Authority = maps:get(<<"authority">>, Auth, <<>>),
     WaiverRef = <<"STATE.approved_recovery_20261104.phase2_entry_authorization">>,
     %% 3) U 叶级期望表（r5 全景实测的候选 U：roots+leaves 同源）
-    {ok, LeafBin} = file:read_file(
-        filename:join([Ctrl, "evidence", "u-leaves-r5.term"])
-    ),
-    %% 本任务自产 ETF（evidence/u-leaves-r5.term，可信源；框架 §11 允许本任务
-    %% 可信数据直接解码——safe 标志会拒绝自产原子集合）。
-    LeafMap = binary_to_term(LeafBin),
+    %% HARDENING（2026-11-10 D1/D2/D3）：期望集必须就是被准入的那一份——
+    %% 文件字节 sha256 必须等于 current_admission.dynamic_U；缺失/不可读/
+    %% 未绑定/指纹不符/解码失败均为具名 reason，由 main/1 打印后 halt(2)。
+    LeafMap =
+        case imboy_quality_u_leaves:load(Ctrl, Adm) of
+            {ok, M} -> M;
+            {error, Reason} -> erlang:error(Reason)
+        end,
     Roots = lists:sort(maps:keys(LeafMap)),
     %% 4) Ctx 组装
     Ctx = #{
