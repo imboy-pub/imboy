@@ -9,7 +9,8 @@ import subprocess
 import sys
 import tempfile
 import unittest
-import xml.etree.ElementTree as ET
+# This test only constructs and serializes synthetic fixtures; it parses no XML.
+import xml.etree.ElementTree as ET  # nosemgrep: python.lang.security.use-defused-xml.use-defused-xml
 
 HERE = Path(__file__).resolve().parent
 ROOT = HERE.parent.parent

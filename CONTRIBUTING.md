@@ -556,3 +556,15 @@ External Actions are pinned to full commit SHAs with version comments; existing 
 Semgrep CE has no native Erlang semantic analysis. Applicable generic rules and supported script, configuration, and frontend-language rules do not replace an Erlang application security review. Trivy can read `docs-site/bun.lock`, including development dependencies. It does not resolve the erlang.mk Git dependency graph in `Makefile` / `include/deps.mk` as an Erlang lockfile; the root `rebar.lock` is empty. Existing SBOM diff remains useful, but generating an SBOM does not prove that all Erlang dependencies were vulnerability-scanned. Helm charts with required render values may be skipped with a warning; complete configuration review also needs sanitized render values. A skipped chart is not a passed check.
 
 References: [Semgrep CE languages](https://semgrep.dev/docs/semgrep-ce-languages), [Trivy dependency coverage](https://trivy.dev/docs/latest/coverage/language/), [Bun development dependencies](https://trivy.dev/docs/latest/coverage/language/nodejs/).
+
+### 已复核的局部边界 / Reviewed local boundaries
+
+`nosemgrep` 只标注已复核调用的完整规则 ID：操作者选择的本地工具链、固定测试/生成器入口及独立 argv 参数；当前运行已执行同一 checkout 后生成的私有 EUnit 报告；只构造 XML 的测试 fixture；Dex 端到端测试中的公开示例凭据。它们不是通用不可信命令或 XML 输入入口。改变输入来源、调用权限或部署用途时必须重新审查；不要把 Dex 测试配置用于生产。原始 SARIF 保留对应的 in-source suppression。
+
+`docker/pg18_Dockerfile` 继承官方 PostgreSQL entrypoint 的初始化流程和后续 `gosu postgres` 降权，仅对该行为添加局部说明。根 `Dockerfile` 的应用运行用户问题仍保留阻断，不能照搬数据库初始化的例外。修复根镜像前，需一起验证新安装和现有部署升级中的私钥/PEM 读取、只读 `backend_priv` 挂载、日志卷所有权以及 Erlang release 的 HOME/cookie/临时目录；不能只加 `USER` 后假定升级兼容。
+
+文档工具链的安全版本固定及 Vite/VitePress 兼容边界见 [docs-site/README.md](./docs-site/README.md)。这些逐项处理不降低 HIGH/CRITICAL/ERROR 门槛，也不把剩余扫描阻断标记为已解决。
+
+Exact-rule `nosemgrep` annotations cover reviewed operator-selected toolchains, fixed test/generator entry points with separate argv values, private EUnit reports produced after executing the same checkout, XML-construction fixtures, and the public Dex end-to-end test credential. They do not authorize untrusted command/XML inputs. Reassess them when input authority or deployment use changes; the Dex test configuration is not a production configuration. Original SARIF retains the in-source suppressions.
+
+The PostgreSQL image keeps its upstream initialization and subsequent `gosu postgres` privilege drop. That exception does not apply to the root application `Dockerfile`, whose runtime-user finding remains blocking. A change must validate both new installations and upgrades, including private-key/PEM access, the read-only `backend_priv` mount, log-volume ownership and Erlang release HOME/cookie/temporary paths. Adding `USER` alone does not establish upgrade compatibility. See [docs-site/README.md](./docs-site/README.md) for the documentation dependency pins and compatibility limits. HIGH/CRITICAL/ERROR gates remain strict, and unresolved findings remain unresolved.

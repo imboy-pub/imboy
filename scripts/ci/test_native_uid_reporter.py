@@ -44,7 +44,9 @@ def main():
         base = Path(temp)
         env = dict(PATH=str(erl.parent)+':'+os.defpath, HOME=temp,
                    LC_ALL='C.UTF-8', ERL_FLAGS='+S 2:2 +A 2')
-        version = subprocess.run([str(erl), '-noshell', '-boot', 'no_dot_erlang', '-eval',
+        # The operator explicitly selects the OTP installation; all commands use
+        # fixed argv and synthetic repository fixtures, without a shell.
+        version = subprocess.run([str(erl), '-noshell', '-boot', 'no_dot_erlang', '-eval',  # nosemgrep: python.lang.security.audit.dangerous-subprocess-use-tainted-env-args.dangerous-subprocess-use-tainted-env-args
             '{ok,V}=file:read_file(filename:join([code:root_dir(),"releases",erlang:system_info(otp_release),"OTP_VERSION"])),io:format("~s",[V]),halt().'],
             cwd=temp, env=env, text=True, capture_output=True, check=True, timeout=15).stdout.strip()
         assert version == '29.1.2', 'Reproduction requires audited OTP29.1.2'
@@ -55,10 +57,12 @@ def main():
             source = work/'native_eunit_uid_preflight.erl'
             source.write_text(adapter.replace(named, 'Tests') if mode == 'original_anonymous' else adapter)
             stub = work/'attachment_lifecycle_v5_w403_driver_matrix_tests.erl'; stub.write_text(STUB)
-            subprocess.run([str(erl.parent/'erlc'), '-o', str(work), str(stub), str(source)],
+            # Same operator-selected compiler; inputs are generated fixtures.
+            subprocess.run([str(erl.parent/'erlc'), '-o', str(work), str(stub), str(source)],  # nosemgrep: python.lang.security.audit.dangerous-subprocess-use-tainted-env-args.dangerous-subprocess-use-tainted-env-args
                 cwd=work, env=env, capture_output=True, check=True, timeout=15)
             run_env = dict(env, NATIVE_UID_XML=str(xml))
-            result = subprocess.run([str(erl), '-noshell', '-boot', 'no_dot_erlang', '-pa', str(work),
+            # Same selected OTP VM, fixed entrypoint, isolated fixture directory.
+            result = subprocess.run([str(erl), '-noshell', '-boot', 'no_dot_erlang', '-pa', str(work),  # nosemgrep: python.lang.security.audit.dangerous-subprocess-use-tainted-env-args.dangerous-subprocess-use-tainted-env-args
                 '-s', 'native_eunit_uid_preflight', 'run'], cwd=work, env=run_env,
                 text=True, capture_output=True, timeout=15)
             assert result.returncode == 0 and 'All 4 tests passed.' in result.stdout

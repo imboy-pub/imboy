@@ -3,7 +3,9 @@
 import json
 from pathlib import Path
 import sys
-import xml.etree.ElementTree as ET
+# Only the current run's private EUnit report is parsed, after the same checkout
+# has already executed at the reporter's UID. Do not use for external XML.
+import xml.etree.ElementTree as ET  # nosemgrep: python.lang.security.use-defused-xml.use-defused-xml
 
 SUITE = 'native_uid_preflight'
 EXPECTED = {surface + '/disk/provider_bypass_writer_denied' for surface in
@@ -21,7 +23,9 @@ def extract(directory):
     paths = sorted(Path(directory).glob('*.xml'))
     require(len(paths) == 1 and paths[0].name == 'TEST-' + SUITE + '.xml',
             'Expected exactly one named UID suite XML report')
-    suite = ET.parse(paths[0]).getroot()
+    # native-eunit-run.sh owns this fresh, private report directory; no downloaded
+    # artifact or user-uploaded XML crosses into this privileged extractor.
+    suite = ET.parse(paths[0]).getroot()  # nosemgrep: python.lang.security.use-defused-xml-parse.use-defused-xml-parse
     require(suite.tag == 'testsuite' and suite.get('name') == SUITE,
             'Unexpected UID reporter suite')
     require(all(suite.get(key) == value for key, value in
