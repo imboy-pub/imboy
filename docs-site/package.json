@@ -6,9 +6,16 @@
     "sync": "bash scripts/sync-content.sh",
     "dev": "bun run sync && DOCS_BASE='/' vitepress dev",
     "build": "bun run sync && vitepress build",
-    "preview": "DOCS_BASE='/' vitepress preview"
+    "preview": "vite preview --config .vitepress/preview.config.ts"
   },
   "devDependencies": {
     "vitepress": "^1.6.3"
+  },
+  "overrides": {
+    "@vue/shared": "3.5.42",
+    "nanoid": "3.3.18",
+    "source-map-js": "1.2.2",
+    "vite": "6.4.4",
+    "vue": "3.5.42"
   }
 }

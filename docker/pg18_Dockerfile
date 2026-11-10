@@ -157,6 +157,9 @@ ENV POSTGIS_VERSION=${POSTGIS_VERSION}
 # 官方 entrypoint 会先启动一个临时 PostgreSQL 来执行 initdb 脚本；
 # TimescaleDB 必须在该首次启动前预加载，不能仅由初始化脚本在运行后写入配置。
 # 此命令也会原样用于最终的 PostgreSQL 进程。
+# 保留上游入口的卷初始化；官方入口随后 exec gosu postgres，数据库不以 root 运行。
+# Keep upstream volume initialization; its entrypoint then execs gosu postgres.
+# nosemgrep: dockerfile.security.missing-user.missing-user
 CMD ["postgres", "-c", "shared_preload_libraries=pgcrypto, pg_jieba, timescaledb, vector, pg_stat_statements"]
 
 # ---------- 运行时权限和环境设置 ----------

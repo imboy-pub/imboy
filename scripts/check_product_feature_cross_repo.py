@@ -78,8 +78,10 @@ def main() -> int:
         )
         return 3
 
+    # The maintainer selects sibling directories; the interpreter and repository
+    # generator are fixed, and paths are separate argv values (no shell).
     result = subprocess.run(
-        [sys.executable, str(GENERATOR), "--check",
+        [sys.executable, str(GENERATOR), "--check",  # nosemgrep: python.lang.security.audit.dangerous-subprocess-use-tainted-env-args.dangerous-subprocess-use-tainted-env-args
          "--app-dir", str(app_dir), "--admin-dir", str(admin_dir)],
         cwd=ROOT,
         capture_output=True,

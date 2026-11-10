@@ -66,8 +66,10 @@ def send_via_escript(from_uid: str, to_uid: str) -> Optional[str]:
     """Spawn imboy_ctl msg send to send one C2C. Return MSG_ID or None."""
     cmd = [ESCRIPT_PATH, "msg", "send", from_uid, to_uid]
     try:
+        # The operator selects the local imboy_ctl executable; UIDs stay separate
+        # argv values. Received WebSocket frames never supply a command.
         res = subprocess.run(
-            cmd,
+            cmd,  # nosemgrep: python.lang.security.audit.dangerous-subprocess-use-tainted-env-args.dangerous-subprocess-use-tainted-env-args
             capture_output=True,
             text=True,
             timeout=10,
