@@ -112,14 +112,20 @@ init_create_success_test_() ->
                     ?assertEqual(<<"new_ops">>, maps:get(<<"account">>, Data)),
                     ?assertEqual([2], maps:get(<<"role_id">>, Data)),
                     ?assertEqual(1, maps:get(<<"status">>, Data)),
+                    %% ADM-CREATE-LOGIN-001：save 必须收到【解密后的明文】，
+                    %% 而不是前端 RSA 密文（修复前这里收到的是密文本体）。
+                    ?assertEqual(<<"123456">>, maps:get(<<"password">>, Data)),
                     {ok, 1}
                 end}
+            ]},
+            {elib_cipher, [
+                {'rsa_decrypt', 1, fun(<<"RSA_CT_123456">>) -> <<"123456">> end}
             ]},
             {elib_param, [
                 {'post', 1, fun(_Req) ->
                     #{
                         <<"account">> => <<"new_ops">>,
-                        <<"pwd">> => <<"123456">>,
+                        <<"pwd">> => <<"RSA_CT_123456">>,
                         <<"nickname">> => <<"运营新号"/utf8>>,
                         <<"role_id">> => 2,
                         <<"status">> => 1
@@ -139,6 +145,101 @@ init_create_success_test_() ->
             }),
             ?assertEqual(200, maps:get(response_status, RespReq)),
             ?assertEqual(1, meck:num_calls(adm_user_logic, save, 1))
+        end
+    ).
+
+%% ADM-CREATE-LOGIN-001（2026-11-10）：解密失败（未配置私钥/密文非法）
+%% 必须走参数错误分支且【不得入库】，绝不把密文或空值落库。
+create_admin_bad_cipher_rejected_test_() ->
+    ?WITH_MECKS(
+        [
+            {cowboy_req, [
+                {'method', 1, fun(_Req) -> <<"POST">> end}
+            ]},
+            {adm_user_logic, [
+                {'find', 3, fun(1001, <<"id,role_id">>, _Key) ->
+                    #{<<"id">> => 1001, <<"role_id">> => [1]}
+                end},
+                {'save', 1, fun(_Data) -> {error, <<"should_not_reach">>} end}
+            ]},
+            {elib_cipher, [
+                {'rsa_decrypt', 1, fun(_CipherText) -> undefined end}
+            ]},
+            {elib_param, [
+                {'post', 1, fun(_Req) ->
+                    #{
+                        <<"account">> => <<"new_ops">>,
+                        <<"pwd">> => <<"GARBAGE_CIPHERTEXT">>,
+                        <<"role_id">> => 2,
+                        <<"status">> => 1
+                    }
+                end}
+            ]},
+            {elib_response, [
+                {'error', 3, fun(Req, _Msg, _Code) ->
+                    Req#{response_status => 400}
+                end}
+            ]}
+        ],
+        fun() ->
+            Req = #{},
+            {ok, RespReq, _State} = adm_admin_handler:init(Req, #{
+                action => create, adm_user_id => 1001
+            }),
+            ?assertEqual(400, maps:get(response_status, RespReq)),
+            ?assertEqual(0, meck:num_calls(adm_user_logic, save, 1))
+        end
+    ).
+
+%% ADM-CREATE-LOGIN-001：真实往返——save 收到的解密明文经真实
+%% elib_password:generate/verify 必须能通过校验（修复前恒 errorPassword 的那条链）。
+create_admin_roundtrip_login_ok_test_() ->
+    Plaintext = <<"RoundTrip2026">>,
+    ?WITH_MECKS(
+        [
+            {cowboy_req, [
+                {'method', 1, fun(_Req) -> <<"POST">> end}
+            ]},
+            {adm_user_logic, [
+                {'find', 3, fun(1001, <<"id,role_id">>, _Key) ->
+                    #{<<"id">> => 1001, <<"role_id">> => [1]}
+                end},
+                {'save', 1, fun(Data) ->
+                    put(roundtrip_captured, Data),
+                    {ok, 1}
+                end}
+            ]},
+            {elib_cipher, [
+                {'rsa_decrypt', 1, fun(<<"RSA_CT_RT">>) -> Plaintext end}
+            ]},
+            {elib_param, [
+                {'post', 1, fun(_Req) ->
+                    #{
+                        <<"account">> => <<"rt_ops">>,
+                        <<"pwd">> => <<"RSA_CT_RT">>,
+                        <<"role_id">> => 2,
+                        <<"status">> => 1
+                    }
+                end}
+            ]},
+            {elib_response, [
+                {'success', 2, fun(Req, _Payload) ->
+                    Req#{response_status => 200}
+                end}
+            ]}
+        ],
+        fun() ->
+            Req = #{},
+            {ok, RespReq, _State} = adm_admin_handler:init(Req, #{
+                action => create, adm_user_id => 1001
+            }),
+            ?assertEqual(200, maps:get(response_status, RespReq)),
+            Data = erase(roundtrip_captured),
+            Pwd = maps:get(<<"password">>, Data, <<>>),
+            ?assertEqual(Plaintext, Pwd),
+            Hash = elib_password:generate(Pwd),
+            ?assertMatch({ok, _}, elib_password:verify(Pwd, Hash)),
+            ok
         end
     ).
 
@@ -210,79 +311,87 @@ config_product_experience_forbidden_without_settings_view_test_() ->
     ).
 
 config_product_experience_success_payload_test_() ->
-    with_product_experience(workspace, ?WITH_MECKS(
-        [
-            {cowboy_req, [
-                {'method', 1, fun(_Req) -> <<"GET">> end}
-            ]},
-            {adm_user_logic, [
-                {'find', 3, fun(1001, <<"id,role_id">>, _Key) ->
-                    #{<<"id">> => 1001, <<"role_id">> => [1]}
-                end}
-            ]},
-            {adm_index_handler, [
-                {'role_acl', 1, fun(1) -> {<<"super_admin">>, [<<"settings:view">>], []} end}
-            ]},
-            {elib_response, [
-                {'success', 2, fun(Req, Payload) ->
-                    Req#{response_status => 200, payload => Payload}
-                end}
-            ]},
-            {product_experience, [
-                {'effective_binary', 0, fun() -> <<"workspace">> end},
-                {'config_version', 0, fun() -> <<"abc123def456abc1">> end}
-            ]}
-        ],
-        fun() ->
-            {ok, RespReq, _} = adm_admin_handler:init(
-                #{}, #{action => config_product_experience, adm_user_id => 1001}
-            ),
-            ?assertEqual(200, maps:get(response_status, RespReq)),
-            Payload = maps:get(payload, RespReq),
-            ?assertEqual(<<"workspace">>, maps:get(<<"effective_product_experience">>, Payload)),
-            ?assertEqual(<<"abc123def456abc1">>, maps:get(<<"config_version">>, Payload)),
-            ?assertEqual(<<"workspace">>, maps:get(<<"configured_value">>, Payload)),
-            ?assertEqual(<<"workspace">>, maps:get(<<"configured_raw">>, Payload)),
-            ?assertEqual(<<"install_env">>, maps:get(<<"source">>, Payload)),
-            ?assertEqual(<<"install">>, maps:get(<<"level">>, Payload))
-        end
-    )).
+    with_product_experience(
+        workspace,
+        ?WITH_MECKS(
+            [
+                {cowboy_req, [
+                    {'method', 1, fun(_Req) -> <<"GET">> end}
+                ]},
+                {adm_user_logic, [
+                    {'find', 3, fun(1001, <<"id,role_id">>, _Key) ->
+                        #{<<"id">> => 1001, <<"role_id">> => [1]}
+                    end}
+                ]},
+                {adm_index_handler, [
+                    {'role_acl', 1, fun(1) -> {<<"super_admin">>, [<<"settings:view">>], []} end}
+                ]},
+                {elib_response, [
+                    {'success', 2, fun(Req, Payload) ->
+                        Req#{response_status => 200, payload => Payload}
+                    end}
+                ]},
+                {product_experience, [
+                    {'effective_binary', 0, fun() -> <<"workspace">> end},
+                    {'config_version', 0, fun() -> <<"abc123def456abc1">> end}
+                ]}
+            ],
+            fun() ->
+                {ok, RespReq, _} = adm_admin_handler:init(
+                    #{}, #{action => config_product_experience, adm_user_id => 1001}
+                ),
+                ?assertEqual(200, maps:get(response_status, RespReq)),
+                Payload = maps:get(payload, RespReq),
+                ?assertEqual(
+                    <<"workspace">>, maps:get(<<"effective_product_experience">>, Payload)
+                ),
+                ?assertEqual(<<"abc123def456abc1">>, maps:get(<<"config_version">>, Payload)),
+                ?assertEqual(<<"workspace">>, maps:get(<<"configured_value">>, Payload)),
+                ?assertEqual(<<"workspace">>, maps:get(<<"configured_raw">>, Payload)),
+                ?assertEqual(<<"install_env">>, maps:get(<<"source">>, Payload)),
+                ?assertEqual(<<"install">>, maps:get(<<"level">>, Payload))
+            end
+        )
+    ).
 
 config_product_experience_failsafe_visible_test_() ->
     %% 部署配置非法值 → effective fail-safe 为 chat，且 configured_raw 保留原始值可见
-    with_product_experience(<<"workspce-typo">>, ?WITH_MECKS(
-        [
-            {cowboy_req, [
-                {'method', 1, fun(_Req) -> <<"GET">> end}
-            ]},
-            {adm_user_logic, [
-                {'find', 3, fun(1001, <<"id,role_id">>, _Key) ->
-                    #{<<"id">> => 1001, <<"role_id">> => [1]}
-                end}
-            ]},
-            {adm_index_handler, [
-                {'role_acl', 1, fun(1) -> {<<"super_admin">>, [<<"settings:view">>], []} end}
-            ]},
-            {elib_response, [
-                {'success', 2, fun(Req, Payload) ->
-                    Req#{response_status => 200, payload => Payload}
-                end}
-            ]},
-            {product_experience, [
-                {'effective_binary', 0, fun() -> <<"chat">> end},
-                {'config_version', 0, fun() -> <<"0000000000000000">> end}
-            ]}
-        ],
-        fun() ->
-            {ok, RespReq, _} = adm_admin_handler:init(
-                #{}, #{action => config_product_experience, adm_user_id => 1001}
-            ),
-            Payload = maps:get(payload, RespReq),
-            ?assertEqual(<<"chat">>, maps:get(<<"effective_product_experience">>, Payload)),
-            ?assertEqual(<<"workspce-typo">>, maps:get(<<"configured_raw">>, Payload)),
-            ?assertEqual(<<"chat">>, maps:get(<<"configured_value">>, Payload))
-        end
-    )).
+    with_product_experience(
+        <<"workspce-typo">>,
+        ?WITH_MECKS(
+            [
+                {cowboy_req, [
+                    {'method', 1, fun(_Req) -> <<"GET">> end}
+                ]},
+                {adm_user_logic, [
+                    {'find', 3, fun(1001, <<"id,role_id">>, _Key) ->
+                        #{<<"id">> => 1001, <<"role_id">> => [1]}
+                    end}
+                ]},
+                {adm_index_handler, [
+                    {'role_acl', 1, fun(1) -> {<<"super_admin">>, [<<"settings:view">>], []} end}
+                ]},
+                {elib_response, [
+                    {'success', 2, fun(Req, Payload) ->
+                        Req#{response_status => 200, payload => Payload}
+                    end}
+                ]},
+                {product_experience, [
+                    {'effective_binary', 0, fun() -> <<"chat">> end},
+                    {'config_version', 0, fun() -> <<"0000000000000000">> end}
+                ]}
+            ],
+            fun() ->
+                {ok, RespReq, _} = adm_admin_handler:init(
+                    #{}, #{action => config_product_experience, adm_user_id => 1001}
+                ),
+                Payload = maps:get(payload, RespReq),
+                ?assertEqual(<<"chat">>, maps:get(<<"effective_product_experience">>, Payload)),
+                ?assertEqual(<<"workspce-typo">>, maps:get(<<"configured_raw">>, Payload)),
+                ?assertEqual(<<"chat">>, maps:get(<<"configured_value">>, Payload))
+            end
+        )
+    ).
 
 %% ===================================================================
 %% A-02 防自我提权（角色分配 / 停用）
@@ -449,8 +558,7 @@ with_product_experience(Value, Test) ->
         fun
             (undefined) -> application:unset_env(imboy, product_experience);
             ({ok, Previous}) -> application:set_env(imboy, product_experience, Previous)
-        end,
-        Test}.
+        end, Test}.
 
 assert_admin_cache_invalidated(AdminId) ->
     Namespaces = [

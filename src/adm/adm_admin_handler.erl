@@ -248,9 +248,11 @@ create_action(<<"POST">>, Req0, State) ->
         ok ->
             PostVals = elib_param:post(Req0),
             Account = normalize_binary(maps:get(<<"account">>, PostVals, <<>>)),
-            Password = normalize_binary(
-                maps:get(<<"pwd">>, PostVals, maps:get(<<"password">>, PostVals, <<>>))
-            ),
+            %% ADM-CREATE-LOGIN-001：前端 pwd 是 RSA-OAEP 密文，必须先解密再入库
+            %% （与 adm_setup_handler:decrypt_password/1 同口径；登录侧
+            %% adm_passport_handler:141 也是先 rsa_decrypt 再校验）。
+            PwdRaw = maps:get(<<"pwd">>, PostVals, maps:get(<<"password">>, PostVals, <<>>)),
+            Password = normalize_binary(decrypt_password(PwdRaw)),
             RoleId = normalize_positive_int(maps:get(<<"role_id">>, PostVals, 0)),
             Status = normalize_status(maps:get(<<"status">>, PostVals, 1)),
             Nickname0 = normalize_binary(maps:get(<<"nickname">>, PostVals, <<>>)),
@@ -288,6 +290,18 @@ create_action(<<"POST">>, Req0, State) ->
     end;
 create_action(_, Req0, _State) ->
     cowboy_req:reply(405, #{}, <<"Method Not Allowed">>, Req0).
+
+%% ADM-CREATE-LOGIN-001（2026-11-10）：创建管理员收到的 pwd 是前端 RSA-OAEP 密文，
+%% 必须先解密再做密码哈希；否则登录侧（adm_passport_handler 先 rsa_decrypt 再校验）
+%% 恒 errorPassword。与 adm_setup_handler:decrypt_password/1 同口径。
+-spec decrypt_password(term()) -> binary().
+decrypt_password(Pwd) ->
+    try elib_cipher:rsa_decrypt(Pwd) of
+        Password when is_binary(Password) -> Password;
+        _ -> <<>>
+    catch
+        _:_ -> <<>>
+    end.
 
 -spec assign_role_action(binary(), cowboy_req:req(), map()) -> cowboy_req:req().
 assign_role_action(<<"PUT">>, Req0, State) ->
