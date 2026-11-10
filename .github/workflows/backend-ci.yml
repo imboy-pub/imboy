@@ -171,7 +171,13 @@ jobs:
       - name: Check fixture environment restoration (no PostgreSQL)
         run: |
           erl -noshell -pa ebin test deps/*/ebin \
-            -eval 'case eunit:test({generator, fun eb_direct_purge_mixed_pg_tests:environment_restore_test_/0}, [verbose]) of ok -> halt(0); _ -> halt(1) end.'
+            -eval 'Tests = [
+              {generator, fun eb_direct_purge_mixed_pg_tests:environment_restore_test_/0},
+              {generator, fun enterprise_asset_driver_pg_tests:environment_isolation_test_/0},
+              elib_s3_sign_tests,
+              imboy_app_registry_validate_tests,
+              e2ee_presign_mime_binding_tests
+            ], case eunit:test(Tests, [verbose]) of ok -> halt(0); _ -> halt(1) end.'
 
   moment-eunit:
     name: Moment EUnit Gate

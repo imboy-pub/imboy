@@ -21,8 +21,8 @@ cleanup({EnvVar, Registry, Garage, Optional}) ->
     restore_app_env(imboy, garage, Garage),
     restore_app_env(imboy, attachment_registry_optional, Optional).
 
-restore_env_var(_Name, false) ->
-    ok;
+restore_env_var(Name, false) ->
+    os:unsetenv(Name);
 restore_env_var(Name, Value) ->
     os:putenv(Name, Value).
 
@@ -30,6 +30,23 @@ restore_app_env(App, Key, undefined) ->
     application:unset_env(App, Key);
 restore_app_env(App, Key, {ok, Value}) ->
     application:set_env(App, Key, Value).
+
+runtime_environment_restore_test_() ->
+    [
+        ?_test(begin
+            Saved = setup(),
+            try
+                restore_env_var("IMBOYENV", Initial),
+                Before = setup(),
+                true = os:putenv("IMBOYENV", "prod"),
+                cleanup(Before),
+                ?assertEqual(Initial, os:getenv("IMBOYENV"))
+            after
+                cleanup(Saved)
+            end
+        end)
+     || Initial <- [false, "local"]
+    ].
 
 registry_test_() ->
     {

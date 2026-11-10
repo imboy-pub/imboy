@@ -7,8 +7,61 @@
 %%% 纯函数，无 DB/网络依赖
 %%%===================================================================
 
+%% Signature inputs use VM-global application env; EUnit owns its restoration.
+garage_fixture(Test) ->
+    {setup, fun() -> [{garage, application:get_env(imboy, garage)}] end,
+        fun cache_fixture_helper:restore_env/1, fun(_) -> ?_test(Test()) end}.
+
+garage_environment_restore_test_() ->
+    [
+        {"configured",
+            garage_fixture(fun() -> assert_garage_restored({ok, #{fixture => original}}) end)},
+        {"unset", garage_fixture(fun() -> assert_garage_restored(undefined) end)},
+        {"failed body", garage_fixture(fun assert_failed_body_restores_garage/0)}
+    ].
+
+assert_garage_restored(Previous) ->
+    ok = cache_fixture_helper:restore_env([{garage, Previous}]),
+    Cases = [
+        presign_put_contains_amz_algorithm_test_(),
+        presign_put_contains_access_key_test_(),
+        presign_put_contains_expires_test_(),
+        presign_put_contains_signature_test_(),
+        presign_get_returns_binary_test_(),
+        authorization_header_starts_with_aws4_test_(),
+        authorization_header_delete_no_content_type_test_(),
+        presign_put_ctx_is_deterministic_test_(),
+        presign_put_ctx_uses_frozen_times_test_(),
+        presign_put_ctx_rejects_expired_window_test_(),
+        presign_put_ctx_rejects_over_7d_window_test_()
+    ],
+    lists:foreach(
+        fun(Case) ->
+            ?assertEqual(ok, eunit:test(Case, [no_tty])),
+            ?assertEqual(Previous, application:get_env(imboy, garage))
+        end,
+        Cases
+    ).
+
+assert_failed_body_restores_garage() ->
+    Previous = {ok, #{fixture => original}},
+    ok = cache_fixture_helper:restore_env([{garage, Previous}]),
+    Parent = self(),
+    Ref = make_ref(),
+    Test = garage_fixture(fun() ->
+        ok = application:set_env(imboy, garage, #{fixture => changed}),
+        Parent ! Ref,
+        error(injected_fixture_failure)
+    end),
+    ?assertEqual(error, eunit:test(Test, [no_tty])),
+    receive
+        Ref -> ok
+    after 1000 -> error(failed_body_not_executed)
+    end,
+    ?assertEqual(Previous, application:get_env(imboy, garage)).
+
 presign_put_contains_amz_algorithm_test_() ->
-    ?TEST_SIMPLE(fun() ->
+    garage_fixture(fun() ->
         application:set_env(imboy, garage, #{
             endpoint => <<"http://127.0.0.1:3900">>,
             region => <<"garage">>,
@@ -27,7 +80,7 @@ presign_put_contains_amz_algorithm_test_() ->
     end).
 
 presign_put_contains_access_key_test_() ->
-    ?TEST_SIMPLE(fun() ->
+    garage_fixture(fun() ->
         application:set_env(imboy, garage, #{
             region => <<"garage">>,
             access_key => <<"GKtestkey">>,
@@ -44,7 +97,7 @@ presign_put_contains_access_key_test_() ->
     end).
 
 presign_put_contains_expires_test_() ->
-    ?TEST_SIMPLE(fun() ->
+    garage_fixture(fun() ->
         application:set_env(imboy, garage, #{
             region => <<"garage">>,
             access_key => <<"GKtest">>,
@@ -61,7 +114,7 @@ presign_put_contains_expires_test_() ->
     end).
 
 presign_put_contains_signature_test_() ->
-    ?TEST_SIMPLE(fun() ->
+    garage_fixture(fun() ->
         application:set_env(imboy, garage, #{
             region => <<"garage">>,
             access_key => <<"GKtest">>,
@@ -96,7 +149,7 @@ format_date_pads_zeros_test_() ->
     end).
 
 presign_get_returns_binary_test_() ->
-    ?TEST_SIMPLE(fun() ->
+    garage_fixture(fun() ->
         application:set_env(imboy, garage, #{
             region => <<"garage">>,
             access_key => <<"GKtest">>,
@@ -110,7 +163,7 @@ presign_get_returns_binary_test_() ->
     end).
 
 authorization_header_starts_with_aws4_test_() ->
-    ?TEST_SIMPLE(fun() ->
+    garage_fixture(fun() ->
         application:set_env(imboy, garage, #{
             endpoint => <<"http://127.0.0.1:3900">>,
             region => <<"garage">>,
@@ -132,7 +185,7 @@ authorization_header_starts_with_aws4_test_() ->
     end).
 
 authorization_header_delete_no_content_type_test_() ->
-    ?TEST_SIMPLE(fun() ->
+    garage_fixture(fun() ->
         application:set_env(imboy, garage, #{
             endpoint => <<"http://127.0.0.1:3900">>,
             region => <<"garage">>,
@@ -170,7 +223,7 @@ ctx_sign() ->
     ).
 
 presign_put_ctx_is_deterministic_test_() ->
-    ?TEST_SIMPLE(fun() ->
+    garage_fixture(fun() ->
         application:set_env(imboy, garage, #{
             endpoint => <<"http://127.0.0.1:3900">>,
             region => <<"garage">>,
@@ -183,7 +236,7 @@ presign_put_ctx_is_deterministic_test_() ->
     end).
 
 presign_put_ctx_uses_frozen_times_test_() ->
-    ?TEST_SIMPLE(fun() ->
+    garage_fixture(fun() ->
         application:set_env(imboy, garage, #{
             region => <<"garage">>,
             access_key => <<"GKtest">>,
@@ -195,7 +248,7 @@ presign_put_ctx_uses_frozen_times_test_() ->
     end).
 
 presign_put_ctx_rejects_expired_window_test_() ->
-    ?TEST_SIMPLE(fun() ->
+    garage_fixture(fun() ->
         application:set_env(imboy, garage, #{
             region => <<"garage">>,
             access_key => <<"GKtest">>,
@@ -226,7 +279,7 @@ presign_put_ctx_rejects_expired_window_test_() ->
     end).
 
 presign_put_ctx_rejects_over_7d_window_test_() ->
-    ?TEST_SIMPLE(fun() ->
+    garage_fixture(fun() ->
         application:set_env(imboy, garage, #{
             region => <<"garage">>,
             access_key => <<"GKtest">>,
