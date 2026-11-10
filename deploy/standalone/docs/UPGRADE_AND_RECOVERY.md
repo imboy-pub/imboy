@@ -162,6 +162,26 @@ do not continue after a failure or assume custom mounts have been validated.
 
 数据库回退必须同时考虑业务数据和对象存储的一致时间点。恢复旧数据库但保留较新对象数据、或恢复 Garage 却使用另一套密钥，不能被视为已恢复。
 
+本节普通 `tar --numeric-owner -cpf` 备份不保存 POSIX ACL。从归档恢复 `backend_priv`
+后，先确认目标镜像与恢复的数据、配置兼容。启动目标非 root 镜像的任何 `up` 之前，
+用第 2 节相同的 Compose 参数拉取镜像并重新准备权限：
+
+```bash
+(
+  set -euo pipefail
+  dc pull imboy_backend
+  bash prepare-backend-runtime.sh "${IMBOY_MAINTENANCE_ARGS[@]}"
+)
+```
+
+权限准备失败时保持业务停止，先处理路径或 ACL 问题；保留恢复的密钥字节与所有者。
+The plain `tar --numeric-owner -cpf` backup above does not preserve POSIX ACLs.
+After restoring `backend_priv`, confirm the target image is compatible with the
+restored data and configuration. Before any `up` of a non-root image, use the
+same Compose arguments from section 2 to pull that image and rerun the helper,
+as shown above. Keep services stopped if preparation fails, preserving restored
+secret contents and ownership.
+
 保留失败现场，在独立数据目录 / 实例中验证备份恢复后，再按客户批准的切换方案恢复服务。恢复演练需要记录可接受的数据丢失窗口、实际耗时和客户端复验结果。本包不提供清空数据库、删除数据目录或强行执行历史 `down.sql` 的通用命令。
 
 仓库部署文档记录了破坏性迁移的 binary / DB 兼容禁区；该风险不能由“有备份”或“只改版本号”消除。依据见 [部署文档的升级章节](https://github.com/imboy-pub/imboy/blob/main/deploy/README.md#升级)，并核对本次目标版本的发布说明及 `SOURCE_COMMIT` 对应内容。

@@ -660,12 +660,21 @@ docker compose --env-file .env -f docker-compose.prod.yml \
 ### 3. 创建网络 & 启动
 
 ```bash
-docker network create imboy-network 2>/dev/null || true
-docker compose \
-  -f docker-compose.prod.yml \
-  -f docker-compose-sales-policy.yml \
-  up -d
+(
+  set -euo pipefail
+  IMBOY_START_ARGS=(--env-file .env -f docker-compose.prod.yml -f docker-compose-sales-policy.yml)
+  docker compose "${IMBOY_START_ARGS[@]}" pull
+  bash prepare-backend-runtime.sh "${IMBOY_START_ARGS[@]}"
+  docker network create imboy-network 2>/dev/null || true
+  docker compose "${IMBOY_START_ARGS[@]}" up -d
+)
 ```
+
+拉取、权限准备与启动共用 `IMBOY_START_ARGS`；权限准备失败时子 shell 立即退出，
+不会执行 `up`。启用其他 overlay 时，在此数组中追加与预检相同的参数。
+Pull, permission preparation and startup use the same `IMBOY_START_ARGS`. The
+subshell stops before `up` if preparation fails; add the same extra overlays as
+preflight to this array.
 
 销售版必须同时合并 `docker-compose-sales-policy.yml`，以显式开启严格 E2EE、频道和付费频道入口；该覆盖文件不含密钥。
 
@@ -752,10 +761,10 @@ docker compose -f docker-compose.prod.yml -f docker-compose-sales-policy.yml log
 
 ### 后端容器运行身份 / Backend container identity
 
-后端镜像默认以 `10001:10001` 运行。ERTS、启动脚本和 BEAM 目录保持 root 所有；
-`HOME=/home/imboy`、日志、relx 生成配置目录和应用 `priv` 运行数据可写。
-应用 `priv` 的写权限用于既有开发密钥和许可证流程；生产密钥仍从只读
-`/opt/imboy/priv_runtime` 挂载读取。
+后端镜像默认以 `10001:10001` 运行。ERTS、`bin` 下的启动脚本和 BEAM 目录
+保持 root 所有；`HOME=/home/imboy`、日志、relx 生成配置目录和应用 `priv` 目录可写。
+当前 `priv` 的可写范围也包含 `priv/workers/*.escript`。该目录写权限支持既有
+开发密钥、许可证与试用状态流程；生产密钥仍从只读 `/opt/imboy/priv_runtime` 挂载读取。
 
 安装器与 Golden 升级在拉取镜像之后、启动服务之前调用
 `prepare-backend-runtime.sh`。它读取实际 Compose 的镜像和两个 bind 目录，
@@ -771,9 +780,12 @@ root 日志无需改成全员可读写。安装器重复执行 `chmod 600` 后�
 两个标准 bind 之外的文件必须另外保证 UID 10001 可读，不能把预检成功当成
 所有外部挂载已验收。安装包与新镜像须一起升级。
 
-The backend image runs as UID/GID `10001:10001`. Executables and BEAM directories
-remain root-owned; only home, logs, relx-generated configuration and app-private
-runtime data are writable. The installer and Golden upgrade prepare the two
+The backend image runs as UID/GID `10001:10001`. ERTS, launch scripts under `bin`,
+and BEAM directories remain root-owned. Home, logs, relx-generated configuration
+and the app `priv` directory are writable, including `priv/workers/*.escript`.
+The `priv` ownership supports development-key, license and trial-state writes;
+production keys are read from the read-only `/opt/imboy/priv_runtime` mount.
+The installer and Golden upgrade prepare the two
 resolved bind mounts with narrowly scoped POSIX ACLs before starting services.
 This preserves host ownership, private-key contents and the read-only secret mount.
 Run the same helper between `pull` and `up` for manual upgrades. Unsupported ACLs,
