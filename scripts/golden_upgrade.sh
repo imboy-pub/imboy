@@ -833,6 +833,9 @@ if [ -n "$WIDGET_IMAGE_REF" ]; then
   upgrade_pull_services+=(imboy_widget)
 fi
 ( cd "$DEPLOY_DIR" && $COMPOSE_O pull "${upgrade_pull_services[@]}" ) || die "拉取 candidate 镜像失败（digest 是否已推送到 registry）"
+( cd "$DEPLOY_DIR" && bash prepare-backend-runtime.sh \
+    -f "$COMMUNITY_YML" -f "$RUNTIME_YML" -f "$OVERRIDE_YML" ) \
+  || die "candidate 后端目录权限准备失败；未重建服务"
 ( cd "$DEPLOY_DIR" && $COMPOSE_O up -d ) || die "docker compose up -d（升级）失败——数据未被动过，可安全重试"
 wait_healthz 300 "（vN+1 启动，含 auto_migrate）" || die "升级后 backend 300s 未就绪（迁移失败会 erlang:error 起不来：查 $COMPOSE_O logs imboy_backend）"
 # Recheck the target release's real cleanup identity and migration ledger.

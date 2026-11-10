@@ -115,6 +115,8 @@ dc config --images
 (
   set -euo pipefail
   dc pull imboy_backend imboy_admin imboy_widget imboy_edge
+  # 新镜像以 UID/GID 10001:10001 运行；保留既有私钥所有权并准备最小 ACL。
+  bash prepare-backend-runtime.sh "${IMBOY_MAINTENANCE_ARGS[@]}"
   dc start garage imboy_certbot imboy_livekit
   # --no-deps 防止本次定向应用升级顺带重建 PostgreSQL 等依赖。
   dc up -d --no-deps imboy_backend imboy_admin imboy_widget imboy_edge
@@ -126,6 +128,14 @@ dc config --images
 这段命令适用于本次只更换应用镜像、Compose / Nginx 等静态配置未改变的升级。若新交付包修改了这些静态配置，应先在新包暂存目录执行完整性检查和差异评审，再按该版本专门的升级说明替换静态文件 / 重建受影响服务。不能直接在新的解压目录启动第二套同名实例，也不能覆盖原 `.env`、`data/` 或验收记录。
 
 目标 backend 在启动阶段执行数据库迁移。`up -d` 返回并不代表迁移完成，必须执行下一节检查。
+
+新后端镜像必须配套新版 `prepare-backend-runtime.sh`。它保留私钥内容、宿主所有权
+和只读挂载，为 UID 10001 授予读取私钥及写入既有日志所需的 ACL；失败时不能继续
+`up`。自定义挂载、符号链接、非标准 UID 或不支持 POSIX ACL 的文件系统须单独迁移。
+The new non-root image requires the matching runtime-permission helper. Run it with
+the same Compose options after pulling and before starting containers. It preserves
+secret contents and ownership while granting the runtime UID narrowly scoped access;
+do not continue after a failure or assume custom mounts have been validated.
 
 ## 6. 升级后验收
 
