@@ -39,11 +39,11 @@ The `overrides` in `package.json` pin patched versions in the documentation tool
 | `vue`, `@vue/shared` | `3.5.42` | [Vue 3.5.42 changelog](https://github.com/vuejs/core/blob/v3.5.42/CHANGELOG.md): server-renderer attribute-name fix; keep the Vue packages aligned. |
 | `nanoid` | `3.3.18` | [Upstream release](https://github.com/ai/nanoid/releases/tag/3.3.18), CVE-2026-67213. |
 | `source-map-js` | `1.2.2` | [Upstream release](https://github.com/7rulnik/source-map-js/releases/tag/v1.2.2), CVE-2026-93749. |
-| `vite` | `6.4.4` | [Upstream advisory](https://github.com/vitejs/launch-editor/security/advisories/GHSA-587h-7wmj-h5pm), CVE-2026-112942. |
+| `vite` | `6.4.5` | [Upstream advisory](https://github.com/vitejs/launch-editor/security/advisories/GHSA-587h-7wmj-h5pm), CVE-2026-112942; [follow-up fix](https://github.com/vitejs/vite/security/advisories/GHSA-8g5g-mxqh-grgj) for the 6.4.4 `server.fs.deny` regression. |
 
-VitePress `1.6.4` 声明依赖 `vite: ^5.4.14`。这里显式使用范围之外的 Vite `6.4.4`，以采用该安全修复；这不是 VitePress 上游对该组合的兼容承诺。`@vitejs/plugin-vue` `5.2.4` 的 peer 范围包含 Vite 6，但仍须验证本站。单独固定 `@vue/shared` 可避免顶层保留旧版、Vue 内部再安装多份新版。
+VitePress `1.6.4` 声明依赖 `vite: ^5.4.14`。这里显式使用范围之外的 Vite `6.4.5`，以采用该安全修复；这不是 VitePress 上游对该组合的兼容承诺。`@vitejs/plugin-vue` `5.2.4` 的 peer 范围包含 Vite 6，但仍须验证本站。单独固定 `@vue/shared` 可避免顶层保留旧版、Vue 内部再安装多份新版。
 
-VitePress `1.6.4` declares `vite: ^5.4.14`. This explicit override uses Vite `6.4.4` outside that range to obtain the security fix; it is not an upstream compatibility guarantee from VitePress. The peer range of `@vitejs/plugin-vue` `5.2.4` includes Vite 6, but this site still requires validation. Pinning `@vue/shared` separately prevents an older top-level copy alongside newer nested copies.
+VitePress `1.6.4` declares `vite: ^5.4.14`. This explicit override uses Vite `6.4.5` outside that range to obtain the security fix; it is not an upstream compatibility guarantee from VitePress. The peer range of `@vitejs/plugin-vue` `5.2.4` includes Vite 6, but this site still requires validation. Pinning `@vue/shared` separately prevents an older top-level copy alongside newer nested copies.
 
 修改或移除这些固定值时，重新生成并审查锁文件，保持 Vue 组件版本一致；执行上述安装、测试和完整构建，检查开发/预览页面及其资源加载，再运行仓库安全门禁。上游发布包含修复且经本站验证的兼容依赖范围后，再移除不再需要的 override。Linux 构建成功不代表 Windows 运行已验证，也不证明这些依赖漏洞曾在本站生产环境可利用。
 
