@@ -279,23 +279,44 @@ dispatch(guard, _Ctx, Ctrl) ->
     {ok, Cwd} = file:get_cwd(),
     {0, HeadB} = imboy_quality_guard:git(Cwd, ["rev-parse", "HEAD"]),
     Head = string:trim(binary_to_list(HeadB)),
+    %% D6-Step1（2026-11-10）：guard 收据原生携带身份三元组。此前该收据只有
+    %% op/verdict/head/base 四键，且 head 是 charlist，被 json:encode 成
+    %% 40 元素整型数组；identity 三字段 0/3，gate 只能靠 enrich_receipt
+    %% 覆盖补齐（D6 短路，见 QUALITY_GATE_HARDENING_PROPOSAL_20261110 §D6）。
+    %% 取数口径：candidate_sha=实测 HEAD（binary，同时修 head 数组格式缺陷）；
+    %% input_fingerprint/u_fingerprint=STATE.current_admission 的
+    %% input_fingerprint/dynamic_U（与 ci_final_gate 的 Ctx 同源）。
+    %% 不做实时指纹比对——保持 guard 轻量、零新增失败路径；实时绑定
+    %% （VERIFIED/NOT_VERIFIED）仍由 pbt_cli:binding/3 与 ct_binding/3 承担。
+    HeadBin = unicode:characters_to_binary(Head),
+    {InputFp, UFp} = admission_identities(Ctrl),
+    Identity = #{
+        <<"head">> => HeadBin,
+        <<"candidate_sha">> => HeadBin,
+        <<"input_fingerprint">> => InputFp,
+        <<"u_fingerprint">> => UFp
+    },
     Result =
         case imboy_quality_guard:check(Cwd, auto, Head) of
             {ok, []} ->
-                #{
-                    <<"op">> => <<"guard">>,
-                    <<"verdict">> => <<"clean">>,
-                    <<"head">> => Head,
-                    <<"base">> => <<"auto">>
-                };
+                maps:merge(
+                    Identity,
+                    #{
+                        <<"op">> => <<"guard">>,
+                        <<"verdict">> => <<"clean">>,
+                        <<"base">> => <<"auto">>
+                    }
+                );
             {error, {violations, Vs}} ->
-                #{
-                    <<"op">> => <<"guard">>,
-                    <<"verdict">> => <<"violations">>,
-                    <<"head">> => Head,
-                    <<"base">> => <<"auto">>,
-                    <<"violations">> => [format_violation(V) || V <- Vs]
-                };
+                maps:merge(
+                    Identity,
+                    #{
+                        <<"op">> => <<"guard">>,
+                        <<"verdict">> => <<"violations">>,
+                        <<"base">> => <<"auto">>,
+                        <<"violations">> => [format_violation(V) || V <- Vs]
+                    }
+                );
             {error, {infrastructure, C, R}} ->
                 erlang:error({guard_infrastructure, C, R})
         end,
@@ -697,7 +718,7 @@ ct_critical_run(Repo, Ctrl, ConfigPath) ->
             ),
         ok = peer:stop(Peer),
         After = ct_head(Repo),
-        {Binding, Fingerprint} = ct_binding(Ctrl, Repo, After),
+        {Binding, Fingerprint, UFp} = ct_binding(Ctrl, Repo, After),
         Results = [ct_suite_receipt(S, M) || {S, M} <- Raw],
         Total = length(Results),
         Passed = length([R || R <- Results, maps:get(<<"verdict">>, R) =:= <<"pass">>]),
@@ -718,6 +739,7 @@ ct_critical_run(Repo, Ctrl, ConfigPath) ->
             <<"candidate_before">> => Before,
             <<"candidate_sha">> => After,
             <<"input_fingerprint">> => Fingerprint,
+            <<"u_fingerprint">> => UFp,
             <<"input_binding">> => Binding,
             <<"verdict">> => Verdict,
             <<"total">> => Total,
@@ -741,6 +763,9 @@ ct_head(Repo) ->
 
 %% 与 pbt_cli binding/3 同判据：准入指纹==实时指纹 且 准入 candidate_sha==HEAD
 %% 才发 VERIFIED；否则 NOT_VERIFIED（verdict 降级，不伪造 all_passed）。
+%% D6-Step1（2026-11-10）：额外带回 admission 的 dynamic_U（u_fingerprint），
+%% 使 critical_ct 收据原生携带完整身份三元组（此前只有 candidate_sha/
+%% input_fingerprint，2/3）。
 ct_binding(Ctrl, Repo, Head) ->
     case file:read_file(filename:join(Ctrl, "STATE.json")) of
         {ok, Bytes} ->
@@ -748,13 +773,32 @@ ct_binding(Ctrl, Repo, Head) ->
             Adm = maps:get(<<"current_admission">>, State, #{}),
             Stored = maps:get(<<"input_fingerprint">>, Adm, <<>>),
             StoredSha = maps:get(<<"candidate_sha">>, Adm, <<>>),
+            UFp = maps:get(<<"dynamic_U">>, Adm, <<>>),
             Live = imboy_quality_state:candidate_input_fingerprint(Repo),
             case Stored =:= Live andalso StoredSha =:= Head of
-                true -> {<<"VERIFIED">>, Live};
-                false -> {<<"NOT_VERIFIED">>, Live}
+                true -> {<<"VERIFIED">>, Live, UFp};
+                false -> {<<"NOT_VERIFIED">>, Live, UFp}
             end;
         _ ->
-            {<<"NOT_VERIFIED">>, <<>>}
+            {<<"NOT_VERIFIED">>, <<>>, <<>>}
+    end.
+
+%% D6-Step1（2026-11-10）：guard 收据身份取数口。只读 STATE.current_admission
+%% 的 input_fingerprint / dynamic_U（与 ci_final_gate 的 Ctx 同源），不做实时
+%% 指纹比对——实时绑定（VERIFIED/NOT_VERIFIED）仍由 pbt_cli:binding/3 与
+%% ct_binding/3 负责。STATE 缺失/不可读时返回空串，此时产出的 guard 收据
+%% 会被 identity-first 的 latest_receipt/4 排除（视为旧格式，见 D6 兼容矩阵）。
+admission_identities(Ctrl) ->
+    case file:read_file(filename:join(Ctrl, "STATE.json")) of
+        {ok, Bytes} ->
+            State = json:decode(Bytes),
+            Adm = maps:get(<<"current_admission">>, State, #{}),
+            {
+                maps:get(<<"input_fingerprint">>, Adm, <<>>),
+                maps:get(<<"dynamic_U">>, Adm, <<>>)
+            };
+        {error, _} ->
+            {<<>>, <<>>}
     end.
 
 ct_suite_receipt(S, M) ->
@@ -796,9 +840,15 @@ ci_final_gate(Ctrl) ->
     {0, HeadRaw} = imboy_quality_guard:git(Repo, ["rev-parse", "HEAD"]),
     Head = iolist_to_binary(string:trim(HeadRaw)),
     %% 1) 最新 gate 级收据（gate 形态候选：binding=VERIFIED + verdict=all_passed）
+    %% D6-Step1（2026-11-10）：选择依据从「mtime 最新」改为「身份匹配优先」——
+    %% 只在 candidate_sha == 当前 HEAD 且 input_fingerprint == admission 指纹的
+    %% 收据里取 mtime 最新（mtime 降级为同身份多份时的并列裁决）。异树/陈旧
+    %% 收据（含旧格式无身份字段者）不再能凭 touch 胜出；无任何匹配 → 具名
+    %% error {receipt_stale_or_legacy, Prefix}（旧收据作废，见 D6 兼容矩阵）。
+    ExpectFp = maps:get(<<"input_fingerprint">>, Adm, <<>>),
     Receipts0 = [
         begin
-            P = latest_receipt(Ctrl, Prefix),
+            P = latest_receipt(Ctrl, Prefix, Head, ExpectFp),
             true = is_list(P) orelse erlang:error({receipt_missing, Op}),
             {ok, JB} = file:read_file(P),
             {Op, json:decode(JB), P}
@@ -878,12 +928,39 @@ ci_final_gate(Ctrl) ->
     ok = file:write_file(Path, json:encode(GateReceipt)),
     {GateReceipt, Path}.
 
-latest_receipt(Ctrl, Prefix) ->
+%% D6-Step1（2026-11-10）：identity-first 选择。原实现按 mtime 取最新
+%% （秒级粒度，touch 即可操纵），陈旧/异树收据被选中后由 enrich_receipt
+%% 覆写成「绑定当前树」（D6 短路）。现改为：先按内容身份过滤
+%% （candidate_sha == 期望 HEAD 且 input_fingerprint == 期望 admission
+%% 指纹），仅在被过滤集合内用 mtime 做并列裁决；无任何匹配 →
+%% erlang:error({receipt_stale_or_legacy, Prefix})，经 main/1 打印后 halt(2)。
+%% 不可读/解码失败的候选文件跳过（不具身份资格）。旧格式收据（无
+%% candidate_sha/input_fingerprint，如 2026-11-10 前的 guard-latest.json）
+%% 会被排除，属预期行为：按 D6 兼容矩阵作废并重跑。
+latest_receipt(Ctrl, Prefix, ExpectSha, ExpectFp) ->
     Dir = filename:join(Ctrl, "evidence"),
     Files = filelib:wildcard(filename:join(Dir, Prefix ++ "*.json")),
     true = Files =/= [],
-    %% 字典序≠时间序（run_id 为随机 hex）——按修改时间取最新。
-    hd(lists:sort(fun(A, B) -> filelib:last_modified(A) >= filelib:last_modified(B) end, Files)).
+    Matching = lists:filter(
+        fun(F) ->
+            case file:read_file(F) of
+                {ok, JB} ->
+                    try
+                        R = json:decode(JB),
+                        maps:get(<<"candidate_sha">>, R, <<>>) =:= ExpectSha andalso
+                            maps:get(<<"input_fingerprint">>, R, <<>>) =:= ExpectFp
+                    catch
+                        _:_ -> false
+                    end;
+                {error, _} ->
+                    false
+            end
+        end,
+        Files
+    ),
+    true = Matching =/= [] orelse erlang:error({receipt_stale_or_legacy, Prefix}),
+    %% 同身份多份时仍按修改时间并列裁决（秒级粒度；字典序≠时间序）。
+    hd(lists:sort(fun(A, B) -> filelib:last_modified(A) >= filelib:last_modified(B) end, Matching)).
 
 %% 收据→gate 合同映射：gate 合同是 Erlang term 形态（atom 键），JSON 解码
 %% 产 binary 键——enrich 做键转换 + 补 u_fingerprint/evidence_ref/cleanup_ok/

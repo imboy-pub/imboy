@@ -30,7 +30,10 @@ run(Profile, Ctrl) when Profile =:= quick; Profile =:= nightly ->
     Before = head(Repo),
     {ok, Summary} = imboy_quality_pbt:run(Manifest, Profile, #{}),
     After = head(Repo),
-    {Binding, Fingerprint} = binding(Ctrl, Repo, After),
+    %% D6-Step1（2026-11-10）：binding/3 额外带回 admission 的 dynamic_U，
+    %% 使 pbt 收据原生携带 u_fingerprint（此前只有 candidate_sha/
+    %% input_fingerprint，2/3；u_fingerprint 连 token 都不出现）。
+    {Binding, Fingerprint, UFp} = binding(Ctrl, Repo, After),
     RunId = string:lowercase(binary:encode_hex(crypto:strong_rand_bytes(16))),
     Result = #{
         <<"op">> => <<"pbt">>,
@@ -39,6 +42,7 @@ run(Profile, Ctrl) when Profile =:= quick; Profile =:= nightly ->
         <<"candidate_before">> => Before,
         <<"candidate_sha">> => After,
         <<"input_fingerprint">> => Fingerprint,
+        <<"u_fingerprint">> => UFp,
         <<"input_binding">> => Binding,
         <<"verdict">> => verdict(Before, After, Summary, Binding),
         <<"total">> => maps:get(total, Summary),
@@ -105,6 +109,8 @@ verdict(_, _, _, _) ->
 %% 诊断级与 gate 级的分界：候选身份实测绑定。STATE 准入指纹与工作树实时
 %% 指纹一致、且 admission candidate_sha 与 HEAD 一致才发 VERIFIED；否则
 %% 保持 NOT_VERIFIED 并把 verdict 降级为 input_unverified（不伪造 all_passed）。
+%% D6-Step1（2026-11-10）：返回 {Binding, Fingerprint, UFingerprint} 三元组，
+%% 额外带回 admission 的 dynamic_U 供收据原生携带 u_fingerprint。
 binding(Ctrl, Repo, Head) ->
     case file:read_file(filename:join(Ctrl, "STATE.json")) of
         {ok, Bytes} ->
@@ -112,14 +118,15 @@ binding(Ctrl, Repo, Head) ->
             Adm = maps:get(<<"current_admission">>, State, #{}),
             Stored = maps:get(<<"input_fingerprint">>, Adm, <<>>),
             StoredSha = maps:get(<<"candidate_sha">>, Adm, <<>>),
+            UFp = maps:get(<<"dynamic_U">>, Adm, <<>>),
             Live = imboy_quality_state:candidate_input_fingerprint(Repo),
             HeadBin = unicode:characters_to_binary(Head),
             case Stored =:= Live andalso StoredSha =:= HeadBin of
-                true -> {<<"VERIFIED">>, Live};
-                false -> {<<"NOT_VERIFIED">>, Live}
+                true -> {<<"VERIFIED">>, Live, UFp};
+                false -> {<<"NOT_VERIFIED">>, Live, UFp}
             end;
         _ ->
-            {<<"NOT_VERIFIED">>, <<>>}
+            {<<"NOT_VERIFIED">>, <<>>, <<>>}
     end.
 
 format_result(R) ->
