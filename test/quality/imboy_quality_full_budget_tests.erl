@@ -53,7 +53,7 @@ fixture() ->
             <<"stop_on_certification_failure">> => true,
             <<"unknown_additional_launch">> => false,
             <<"new_full_allowances">> => #{
-                <<"p1_revalidation">> => 3,
+                <<"p1_revalidation">> => 4,
                 <<"certification">> => 20,
                 <<"incremental">> => 3,
                 <<"cold">> => 1

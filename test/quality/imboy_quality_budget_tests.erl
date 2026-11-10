@@ -12,7 +12,7 @@ fixture() ->
                 <<"stop_on_certification_failure">> => true,
                 <<"unknown_additional_launch">> => false,
                 <<"new_full_allowances">> => #{
-                    <<"p1_revalidation">> => 3,
+                    <<"p1_revalidation">> => 4,
                     <<"certification">> => 20,
                     <<"incremental">> => 3,
                     <<"cold">> => 1
@@ -75,9 +75,11 @@ invalid_total_test() ->
     ?assertMatch({error, _}, imboy_quality_budget:reserve(Bad, cold, <<"one">>)).
 
 total_exhaustion_test() ->
+    %% 合计仍为 26（全局池硬上限）：p1 上调到 4 后，certification 由 19 降为 18，
+    %% 否则总和变 27 会先撞全局池、测不到「分类额度耗尽」。
     Categories =
-        lists:duplicate(3, p1_revalidation) ++
-            lists:duplicate(19, certification) ++ lists:duplicate(3, incremental) ++ [cold],
+        lists:duplicate(4, p1_revalidation) ++
+            lists:duplicate(18, certification) ++ lists:duplicate(3, incremental) ++ [cold],
     {Final, _} = lists:foldl(
         fun(C, {S, N}) ->
             Id = integer_to_binary(N),

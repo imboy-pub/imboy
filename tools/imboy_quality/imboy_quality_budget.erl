@@ -53,12 +53,13 @@ validate(R) ->
     Unknown = maps:get(<<"unknown_additional_launch">>, R),
     true = is_boolean(Unknown),
     Allowances = maps:get(<<"new_full_allowances">>, R),
-    %% 2026-11-10 用户授权（"继续"，回应 p1_revalidation 2→3 请示）：
-    %% attempt12/13 已用满 2 个 p1_revalidation 名额，五红根修复（508afcd4d）
-    %% 后需一次复验全量。仅上调该类别资源上限，不改任何 verdict 判据；
+    %% 2026-11-10 用户授权（"授权 p1 3→4"，p1_revalidation 第三次上调）：
+    %% attempt12/13/14 已用满 3 个 p1_revalidation 名额；本次用于在框架加固
+    %% （u-leaves 与准入指纹硬绑定等）+ 新增测试后的树上重证全量零回归。
+    %% 仅上调该类别资源上限，不改任何 verdict 判据；
     %% 全局池 remaining_new_full 仍为硬上限（Started+Remaining=26 不变量不变）。
     Expected = #{
-        <<"p1_revalidation">> => 3,
+        <<"p1_revalidation">> => 4,
         <<"certification">> => 20,
         <<"incremental">> => 3,
         <<"cold">> => 1
