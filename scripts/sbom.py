@@ -104,8 +104,9 @@ def coverage_inputs(root):
     package = json_loads(texts["docs-site/package.json"])
     lock = jsonc(texts["docs-site/bun.lock"])
     require(isinstance(package, dict) and isinstance(lock, dict), "Invalid Bun manifests")
-    require(set(lock) == {"lockfileVersion", "configVersion", "workspaces", "packages"}
-            and not any(package.get(key) for key in ("workspaces", "overrides", "resolutions", "patchedDependencies")),
+    lock_fields = {"lockfileVersion", "configVersion", "workspaces", "packages"}
+    require(lock_fields <= set(lock) <= lock_fields | {"overrides"}
+            and not any(package.get(key) for key in ("workspaces", "resolutions", "patchedDependencies")),
             "Unsupported Bun manifest/lock fields require extending coverage")
     require(type(lock.get("lockfileVersion")) is int and lock["lockfileVersion"] == 1
             and type(lock.get("configVersion")) is int and lock["configVersion"] == 1,
@@ -117,9 +118,18 @@ def coverage_inputs(root):
             "Bun root workspace does not match package.json")
     requested = dependency_fields(package)
     require(requested == dependency_fields(workspace), "Bun lock root declarations are stale")
+    # Support only flat registry pins, not ranges, aliases or parent/version selectors.
+    overrides = package.get("overrides", {})
+    require(isinstance(overrides, dict) and isinstance(lock.get("overrides", {}), dict),
+            "Bun overrides must be flat objects")
+    require(overrides == lock.get("overrides", {}), "Bun lock overrides are stale")
+    for name, version in overrides.items():
+        require(re.fullmatch(NPM_NAME, name) and name not in (".", "..")
+                and isinstance(version, str) and re.fullmatch(VERSION, version),
+                f"Unsupported Bun override (requires a flat registry exact version): {name}")
     packages = lock.get("packages")
     require(isinstance(packages, dict), "Bun lock packages must be an object")
-    expected, package_names = set(), {}
+    expected, package_names, overridden = set(), {}, set()
     for key, entry in packages.items():
         require(isinstance(entry, list) and len(entry) == 4 and isinstance(entry[0], str)
                 and isinstance(entry[1], str) and isinstance(entry[2], dict)
@@ -130,8 +140,12 @@ def coverage_inputs(root):
         require(not entry[1] or entry[1].startswith("https://"),
                 f"Unsupported Bun package source: {key}")
         name, version = match.groups()
+        if name in overrides:
+            require(version == overrides[name], f"Bun locked version does not match override: {key}")
+            overridden.add(name)
         package_names[key] = name
         expected.add(f"pkg:npm/{quote(name, safe='/')}@{quote(version, safe='')}")
+    require(overridden == set(overrides), "Bun lock is missing override targets")
     for values in requested.values():
         for name in values:
             require(name in packages, f"Bun lock is missing root dependency: {name}")

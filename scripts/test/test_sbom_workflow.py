@@ -95,6 +95,13 @@ class SbomWorkflowTest(unittest.TestCase):
     def current(self):
         return inventory.prepare(self.root, raw_bom(self.packages))
 
+    def write_overrides(self, overrides):
+        for filename in ("docs-site/package.json", "docs-site/bun.lock"):
+            path = self.root / filename
+            value = json.loads(path.read_text())
+            value["overrides"] = overrides
+            path.write_text(json.dumps(value))
+
     def run_summary(self, found, previous=None, current=None, rebaseline=False):
         with tempfile.TemporaryDirectory(dir=self.root, prefix="artifacts-") as temporary:
             root = Path(temporary)
@@ -210,6 +217,115 @@ class SbomWorkflowTest(unittest.TestCase):
             (self.root / "docs-site/bun.lock").write_text(content)
             with self.subTest(content=content), self.assertRaises(ValueError):
                 self.current()
+
+    def test_flat_exact_overrides_cover_transitive_and_scoped_packages(self):
+        for filename in ("docs-site/package.json", "docs-site/bun.lock"):
+            path = self.root / filename
+            value = json.loads(path.read_text())
+            manifest = value["workspaces"][""] if filename.endswith("bun.lock") else value
+            del manifest["devDependencies"]["@vue/shared"]
+            path.write_text(json.dumps(value))
+        self.write_overrides({"@vue/shared": "3.5.13", "vitepress": "1.6.4"})
+        bom = self.current()
+        coverage = inventory.validate(bom, self.root)
+        self.assertEqual(coverage["domains"]["npm"]["count"], 2)
+        self.assertEqual(inventory.domains(bom)["npm"],
+                         {"pkg:npm/%40vue/shared@3.5.13", "pkg:npm/vitepress@1.6.4"})
+        with self.assertRaisesRegex(ValueError, "coverage differs"):
+            inventory.prepare(self.root, raw_bom({"vitepress": "1.6.4"}))
+
+    def test_manifest_and_lock_overrides_must_match(self):
+        for filename in ("docs-site/package.json", "docs-site/bun.lock"):
+            for overrides in (None, {}, {"@vue/shared": "3.5.14"}):
+                self.write_source()
+                self.write_overrides({"@vue/shared": "3.5.13"})
+                path = self.root / filename
+                value = json.loads(path.read_text())
+                if overrides is None:
+                    del value["overrides"]
+                else:
+                    value["overrides"] = overrides
+                path.write_text(json.dumps(value))
+                with self.subTest(filename=filename, overrides=overrides), self.assertRaisesRegex(ValueError, "overrides are stale"):
+                    self.current()
+
+    def test_unsupported_override_shapes_and_specifiers_fail_closed(self):
+        invalid = [None, [], True, "3.5.13", {"@vue/shared": None}, {"@vue/shared": 3},
+                   {"@vue/shared": {".": "3.5.13"}}, {"@vue/shared": "^3.5.13"},
+                   {"@vue/shared": "latest"}, {"@vue/shared": "$vue"},
+                   {"@vue/shared": "npm:shared@3.5.13"}, {"@vue/shared": "https://example.com/shared.tgz"},
+                   {"@vue/shared": "workspace:*"}, {"@vue/shared": "catalog:"},
+                   {"vitepress>@vue/shared": "3.5.13"}, {"@vue/shared@^3": "3.5.13"},
+                   {"vitepress/@vue/shared": "3.5.13"}, {".": "3.5.13"}]
+        for overrides in invalid:
+            self.write_source()
+            self.write_overrides(overrides)
+            with self.subTest(overrides=overrides), self.assertRaises(ValueError):
+                self.current()
+
+    def test_every_locked_override_target_must_have_the_pinned_version(self):
+        for extra in (None, ["@vue/shared@3.5.12", "", {}, "sha512-test-fixture"]):
+            self.write_source()
+            self.write_overrides({"@vue/shared": "3.5.14" if extra is None else "3.5.13"})
+            if extra is not None:
+                path = self.root / "docs-site/bun.lock"
+                lock = json.loads(path.read_text())
+                lock["packages"]["vitepress/@vue/shared"] = extra
+                path.write_text(json.dumps(lock))
+            with self.subTest(extra=extra), self.assertRaisesRegex(ValueError, "does not match override"):
+                self.current()
+        self.write_source()
+        self.write_overrides({"not-in-lock": "1.0.0"})
+        with self.assertRaisesRegex(ValueError, "missing override targets"):
+            self.current()
+
+    def test_overrides_do_not_allow_unknown_lock_fields_or_source_modes(self):
+        for field in ("lockfileVersion", "configVersion", "workspaces", "packages"):
+            self.write_source()
+            self.write_overrides({"@vue/shared": "3.5.13"})
+            path = self.root / "docs-site/bun.lock"
+            value = json.loads(path.read_text())
+            del value[field]
+            path.write_text(json.dumps(value))
+            with self.subTest(missing=field), self.assertRaises(ValueError):
+                self.current()
+        for filename, field, extra in (("docs-site/bun.lock", "unknown", {}),
+                                       ("docs-site/bun.lock", "lockfileVersion", 3),
+                                       ("docs-site/bun.lock", "configVersion", 2),
+                                       ("docs-site/bun.lock", "lockfileVersion", True),
+                                       ("docs-site/bun.lock", "configVersion", None),
+                                       ("docs-site/package.json", "workspaces", ["packages/*"]),
+                                       ("docs-site/package.json", "resolutions", {"@vue/shared": "3.5.13"}),
+                                       ("docs-site/package.json", "patchedDependencies", {"@vue/shared@3.5.13": "shared.patch"})):
+            self.write_source()
+            self.write_overrides({"@vue/shared": "3.5.13"})
+            path = self.root / filename
+            value = json.loads(path.read_text())
+            value[field] = extra
+            path.write_text(json.dumps(value))
+            with self.subTest(filename=filename, field=field), self.assertRaises(ValueError):
+                self.current()
+
+    def test_real_repository_manifests_match_the_coverage_contract(self):
+        # Always run in the existing PR suite, even without SBOM_TRIVY_BINARY.
+        expected, _, hashes = inventory.coverage_inputs(ROOT)
+        lock = json.loads(re.sub(r",(\s*[}\]])", r"\1", (ROOT / "docs-site/bun.lock").read_text()))
+        self.assertEqual({unquote(purl) for purl in expected},
+                         {"pkg:npm/" + entry[0] for entry in lock["packages"].values()})
+        self.assertEqual(set(hashes), set(inventory.MANIFESTS))
+
+    def test_adding_overrides_keeps_existing_baselines_and_real_differences(self):
+        previous = self.current()
+        for version in ("3.5.13", "3.5.14"):
+            self.write_source({"vitepress": "1.6.4", "@vue/shared": version})
+            self.write_overrides({"@vue/shared": version})
+            result, summary, output = self.run_summary("true", previous)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            changes = "0" if version == "3.5.13" else "1"
+            self.assertEqual(output, {"sbom_added": changes, "sbom_removed": changes, "sbom_changed": changes})
+            self.assertNotIn("首次生成", summary)
+            if changes == "1":
+                self.assertIn("@vue/shared", unquote(summary))
 
     def test_unhandled_erlang_overrides_or_missing_include_fail_closed(self):
         changes = (("Makefile", "dep_cowboy = git https://github.com/ninenines/cowboy.git 2.18.0\n"),
