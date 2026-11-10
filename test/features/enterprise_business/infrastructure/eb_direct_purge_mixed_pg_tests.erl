@@ -12,7 +12,11 @@ setup() ->
         {K, application:get_env(imboy, K)}
      || K <- [garage, attachment_storage_registry]
     ],
+    cache_fixture_helper:setup(Before, fun() -> setup_storage(Before) end).
+
+setup_storage(Before) ->
     {ok, ConnPid} = eunit_runner:eunit_setup_with_db(),
+    cache_fixture_helper:on_failure(fun() -> eunit_runner:eunit_cleanup_db(ConnPid) end),
     EP = <<"http://127.0.0.1:39999">>,
     ok = application:set_env(
         imboy, garage, #{
@@ -47,7 +51,20 @@ environment_restore_test_() ->
     [
         ?_test(with_saved_environment(fun restore_configured_environment/0)),
         ?_test(with_saved_environment(fun restore_unset_environment/0))
-    ].
+    ] ++
+        [
+            {
+                atom_to_list(Class) ++ "/" ++ atom_to_list(Initial),
+                {timeout, 30, fun() ->
+                    pure_mock_fixture:run(fun() ->
+                        with_saved_environment(fun() ->
+                            restore_after_setup_failure(Class, Initial)
+                        end)
+                    end)
+                end}
+            }
+         || Class <- [error, throw, exit], Initial <- [configured, unset]
+        ].
 
 with_saved_environment(Test) ->
     Before = [{K, application:get_env(imboy, K)} || K <- [garage, attachment_storage_registry]],
@@ -67,6 +84,7 @@ restore_configured_environment() ->
     ok = application:set_env(imboy, attachment_storage_registry, #{fixture => changed}),
     ok = cleanup({undefined, Before}),
     ?assertEqual(Garage, application:get_env(imboy, garage, #{})),
+    ?assertEqual({ok, Registry}, application:get_env(imboy, attachment_storage_registry)),
     ?assertEqual(Registry, attachment_storage:registry()),
     Url = elib_s3_sign:presign_put(
         <<"http://owned-storage.invalid">>, <<"fixture">>, <<"key">>, <<"image/jpeg">>, 60
@@ -81,6 +99,49 @@ restore_unset_environment() ->
     ?assertEqual(undefined, application:get_env(imboy, garage)),
     ?assertEqual(undefined, application:get_env(imboy, attachment_storage_registry)),
     ?assertEqual(#{version => 1, roots => #{}}, attachment_storage:registry()).
+
+%% Call the real setup after it has acquired a connection and overwritten garage.
+%% EUnit does not call cleanup/1 when setup itself raises, throws or exits.
+restore_after_setup_failure(Class, Initial) ->
+    Before =
+        case Initial of
+            configured ->
+                [
+                    {garage, {ok, #{fixture => original}}},
+                    {attachment_storage_registry, {ok, #{version => 1, roots => #{}}}}
+                ];
+            unset ->
+                [{garage, undefined}, {attachment_storage_registry, undefined}]
+        end,
+    ok = cache_fixture_helper:restore_env(Before),
+    Conn = self(),
+    ok = meck:new(eunit_runner, [passthrough, no_link]),
+    try
+        ok = meck:expect(eunit_runner, eunit_setup_with_db, fun() -> {ok, Conn} end),
+        ok = meck:expect(eunit_runner, eunit_cleanup_db, fun(Released) ->
+            ?assertEqual(Conn, Released),
+            ok
+        end),
+        ok = meck:new(attachment_storage, [passthrough, no_link]),
+        try
+            ok = meck:expect(attachment_storage, registry, fun() ->
+                ?assertEqual(
+                    <<"ak">>, maps:get(access_key, application:get_env(imboy, garage, #{}))
+                ),
+                erlang:raise(Class, injected_setup_failure, [])
+            end),
+            ?assertException(Class, injected_setup_failure, setup()),
+            ?assertEqual(Before, [
+                {K, application:get_env(imboy, K)}
+             || K <- [garage, attachment_storage_registry]
+            ]),
+            ?assertEqual(1, meck:num_calls(eunit_runner, eunit_cleanup_db, [Conn]))
+        after
+            meck:unload(attachment_storage)
+        end
+    after
+        meck:unload(eunit_runner)
+    end.
 
 mixed_purge() ->
     Org = 99006101,
