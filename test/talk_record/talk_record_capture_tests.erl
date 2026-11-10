@@ -747,9 +747,10 @@ capture_d7_t1_expired_device_residue_swept_test_() ->
             " WHERE id = " ++
                 integer_to_list(C1)
         ),
-        %% 同设备异记录 → 预检放行，INSERT 撞 uq_trc_device_active → sweep+重试
+        %% 同设备（t07-device-1，与 C1 的 4 参 helper 默认 device 同）异记录 →
+        %% 预检放行（lease 过期），INSERT 撞 uq_trc_device_active → sweep+重试
         {ok, C2} = talk_record_t07_support:create_capture(
-            U1, R2, ?DS2, <<"t07-d7t1-2">>, <<"t07-d7t1-dev">>
+            U1, R2, ?DS2, <<"t07-d7t1-2">>, <<"t07-device-1">>
         ),
         ?assert(is_integer(C2)),
         Old = talk_record_t07_support:one(
@@ -906,16 +907,19 @@ capture_d7_t7_null_lease_conservative_test_() ->
         ?assertEqual(<<"recording">>, maps:get(<<"status">>, Row))
     end).
 
-%% T-D7-8：并发注入——sweep 清到过期残留 X 后单次重试，再撞新鲜活跃行 Y
+%% T-D7-8：并发注入——sweep 命中过期残留 X 后单次重试，再撞新鲜活跃行 Y
 %% （A 连接提交窗内出现）→ 仍 409 capture_active_conflict，无无限重试；
-%% X 已收敛、Y 保持活跃。
+%% 失败路径的 sweep 随 B 事务回滚（X 保持活跃，Y 保持活跃）。
 capture_d7_t8_retry_once_then_conflict_test_() ->
     with_db(fun(State) ->
         C = maps:get(conn, State),
         Ids = talk_record_t07_support:ids(),
         U1 = maps:get(u1, Ids),
         {ok, Rid} = talk_record_t07_support:create_record(U1, <<"t07-d7t8-r">>, ?REC1),
-        %% X：过期残留（已提交，sweep 目标）
+        {ok, R2} = talk_record_t07_support:create_record(U1, <<"t07-d7t8-r2">>, ?REC2),
+        %% X：过期残留（已提交，sweep 目标）——异记录、与 B 的尝试同设备
+        %% （end_expired_conflicts_tx 按 record_id=$1 OR device_id=$2 匹配；
+        %%  同记录放两条活跃行会先撞 uq_trc_record_active，故走设备维匹配）
         {ok, 1} = epgsql:equery(
             C,
             "INSERT INTO talk_record_capture (id, record_id, device_session_id, device_id,"
@@ -923,7 +927,7 @@ capture_d7_t8_retry_once_then_conflict_test_() ->
             " VALUES ($1, $2, $3::uuid, $4, $5, 'recording', now() - interval '20 hours')",
             [
                 9199999000081,
-                Rid,
+                R2,
                 <<"d8000000-0000-0000-0000-000000000001">>,
                 <<"t07-d7t8-dev">>,
                 U1
@@ -953,7 +957,7 @@ capture_d7_t8_retry_once_then_conflict_test_() ->
                         Rid,
                         <<"d8000000-0000-0000-0000-000000000003">>,
                         <<"t07-d7t8-b">>,
-                        <<"t07-d7t8-dev3">>
+                        <<"t07-d7t8-dev">>
                     )}
         end),
         timer:sleep(400),
@@ -965,12 +969,13 @@ capture_d7_t8_retry_once_then_conflict_test_() ->
                 erlang:error(d7t8_result_timeout)
             end,
         ?assertEqual({error, capture_active_conflict}, Result),
-        %% sweep 清了 X（重试路径已走），Y 新鲜不被清、仍活跃
+        %% 失败路径 sweep 随 B 事务一并回滚（语义：不 fence 旧会话除非新采集
+        %% 真落地；残留仍过期，下次创建会再 sweep——无永久阻塞、无无限重试）
         X = talk_record_t07_support:one(
             C,
             "SELECT status FROM talk_record_capture WHERE id = 9199999000081"
         ),
-        ?assertEqual(<<"ended">>, maps:get(<<"status">>, X)),
+        ?assertEqual(<<"recording">>, maps:get(<<"status">>, X)),
         Y = talk_record_t07_support:one(
             C,
             "SELECT status FROM talk_record_capture WHERE id = 9199999000082"
