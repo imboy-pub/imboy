@@ -53,7 +53,7 @@ jobs:
   # ----------------------------------------------------------------
   compile:
     name: Compile Gate (OTP ${{ matrix.otp }})
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 20
     strategy:
       fail-fast: false
@@ -66,6 +66,7 @@ jobs:
 
       - name: Setup Erlang/OTP toolchain
         uses: erlef/setup-beam@v1
+        id: beam
         with:
           otp-version: ${{ matrix.otp }}
           rebar3-version: '3.27'
@@ -79,7 +80,7 @@ jobs:
             .erlang.mk
             .imboy.plt
             ~/.cache/rebar3
-          key: ${{ runner.os }}-otp${{ matrix.otp }}-beam-${{ hashFiles('Makefile', 'include/deps.mk') }}
+          key: ubuntu-24.04-${{ runner.arch }}-otp${{ steps.beam.outputs.otp-version }}-beam-${{ hashFiles('Makefile', 'erlang.mk', 'include/*.mk') }}
 
       - name: Compile
         run: IMBOYENV=local make test-build
@@ -103,7 +104,7 @@ jobs:
   # ----------------------------------------------------------------
   full-eunit:
     name: Full EUnit (nightly, classified)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 200
     needs: [compile]
     outputs:
@@ -116,6 +117,7 @@ jobs:
 
       - name: Setup Erlang/OTP toolchain
         uses: erlef/setup-beam@v1
+        id: beam
         with:
           otp-version: "28"
           rebar3-version: '3.27'
@@ -129,7 +131,7 @@ jobs:
             .erlang.mk
             .imboy.plt
             ~/.cache/rebar3
-          key: ${{ runner.os }}-otp28-beam-${{ hashFiles('Makefile', 'include/deps.mk') }}
+          key: ubuntu-24.04-${{ runner.arch }}-otp${{ steps.beam.outputs.otp-version }}-beam-${{ hashFiles('Makefile', 'erlang.mk', 'include/*.mk') }}
 
       - name: Build pinned Hird compiler for integration tests
         run: |
@@ -232,7 +234,7 @@ jobs:
   # ----------------------------------------------------------------
   dialyze:
     name: Dialyzer (nightly, baseline-gated)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 60
     needs: [compile]
     outputs:
@@ -245,6 +247,7 @@ jobs:
 
       - name: Setup Erlang/OTP toolchain
         uses: erlef/setup-beam@v1
+        id: beam
         with:
           otp-version: "28"
           rebar3-version: '3.27'
@@ -258,7 +261,7 @@ jobs:
             .erlang.mk
             .imboy.plt
             ~/.cache/rebar3
-          key: ${{ runner.os }}-otp28-dialyzer-${{ hashFiles('Makefile', 'include/deps.mk') }}
+          key: ubuntu-24.04-${{ runner.arch }}-otp${{ steps.beam.outputs.otp-version }}-dialyzer-${{ hashFiles('Makefile', 'erlang.mk', 'include/*.mk') }}
 
       - name: Regression test Dialyzer result transmission
         run: bash scripts/test/dialyzer_nightly_test.sh
@@ -299,7 +302,7 @@ jobs:
   # ----------------------------------------------------------------
   gradualize:
     name: Gradualizer (nightly, classified)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 50
     needs: [compile]
     outputs:
@@ -312,6 +315,7 @@ jobs:
 
       - name: Setup Erlang/OTP toolchain
         uses: erlef/setup-beam@v1
+        id: beam
         with:
           otp-version: "28"
           rebar3-version: '3.27'
@@ -324,13 +328,13 @@ jobs:
             _build
             .erlang.mk
             ~/.cache/rebar3
-          key: ${{ runner.os }}-otp28-beam-${{ hashFiles('Makefile', 'include/deps.mk') }}
+          key: ubuntu-24.04-${{ runner.arch }}-otp${{ steps.beam.outputs.otp-version }}-beam-${{ hashFiles('Makefile', 'erlang.mk', 'include/*.mk') }}
 
       - name: Cache Gradualizer escript
         uses: actions/cache@v6
         with:
           path: tools/gradualizer
-          key: ${{ runner.os }}-otp28-gradualizer-23533d7eb7541d8a146a507e837fdfff6499a202
+          key: ubuntu-24.04-${{ runner.arch }}-otp${{ steps.beam.outputs.otp-version }}-gradualizer-23533d7eb7541d8a146a507e837fdfff6499a202
 
       - name: Build Gradualizer (cache hit 时秒过)
         run: make gradualizer-setup
@@ -377,7 +381,7 @@ jobs:
   # ----------------------------------------------------------------
   eqwalize:
     name: eqWAlizer lib layer (nightly, classified)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 50
     needs: [compile]
     outputs:
@@ -390,6 +394,7 @@ jobs:
 
       - name: Setup Erlang/OTP toolchain
         uses: erlef/setup-beam@v1
+        id: beam
         with:
           otp-version: "28"
           rebar3-version: '3.27'
@@ -408,13 +413,13 @@ jobs:
             _build
             .erlang.mk
             ~/.cache/rebar3
-          key: ${{ runner.os }}-otp28-beam-${{ hashFiles('Makefile', 'include/deps.mk') }}
+          key: ubuntu-24.04-${{ runner.arch }}-otp${{ steps.beam.outputs.otp-version }}-beam-${{ hashFiles('Makefile', 'erlang.mk', 'include/*.mk') }}
 
       - name: Cache ELP binary and eqwalizer_support
         uses: actions/cache@v6
         with:
           path: .elp
-          key: ${{ runner.os }}-elp-2026-06-10-${{ hashFiles('.elp.toml', 'Makefile') }}
+          key: ubuntu-24.04-${{ runner.arch }}-elp-2026-06-10-${{ hashFiles('.elp.toml', 'Makefile') }}
 
       - name: Install ELP (pinned 2026-06-10, otp-28 build)
         run: |
@@ -465,7 +470,7 @@ jobs:
   # ----------------------------------------------------------------
   elvis:
     name: Elvis lint (nightly, classified)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 25
     outputs:
       classify: ${{ steps.gate.outputs.summary }}
@@ -477,6 +482,7 @@ jobs:
 
       - name: Setup Erlang/OTP
         uses: erlef/setup-beam@v1
+        id: beam
         with:
           otp-version: '28'
           # elvis 只能从源码 escriptize，必须有 rebar3（同 quality.yml）
@@ -541,7 +547,7 @@ jobs:
   # ----------------------------------------------------------------
   pg-behavior-harnesses:
     name: PG behavior harnesses (nightly, classified)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 120
     needs: [compile]
     outputs:
@@ -554,6 +560,7 @@ jobs:
 
       - name: Setup Erlang/OTP toolchain
         uses: erlef/setup-beam@v1
+        id: beam
         with:
           otp-version: "28"
           rebar3-version: '3.27'
@@ -565,7 +572,7 @@ jobs:
             deps
             _build
             .erlang.mk
-          key: ${{ runner.os }}-otp28-pgharness-${{ hashFiles('Makefile', 'include/deps.mk') }}
+          key: ubuntu-24.04-${{ runner.arch }}-otp${{ steps.beam.outputs.otp-version }}-pgharness-${{ hashFiles('Makefile', 'erlang.mk', 'include/*.mk') }}
 
       - name: Build PG image from docker/pg18_Dockerfile (no registry push)
         run: |
@@ -640,7 +647,7 @@ jobs:
   # ----------------------------------------------------------------
   qa-issue:
     name: QA summary + gitee issue on NEW_FAILURE
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 5
     needs: [full-eunit, dialyze, gradualize, eqwalize, elvis, pg-behavior-harnesses]
     if: always()

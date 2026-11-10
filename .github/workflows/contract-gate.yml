@@ -23,7 +23,7 @@ permissions:
 jobs:
   api-contract:
     name: API contract (router/enums/EntityId vs admin & flutter)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 10
 
     steps:
@@ -67,7 +67,7 @@ jobs:
 
   rest-contract:
     name: REST API contract coverage gate (router/OpenAPI/spec/suite/Case IDs)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 5
 
     steps:
