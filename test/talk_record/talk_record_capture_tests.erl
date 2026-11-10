@@ -11,6 +11,13 @@
 %%%     回执异 hash 409/附件未物化 202 verifying；
 %%%   * 失联恢复：lease 过期不阻断写、recover 原会话恢复/异设备 409/
 %%%     恢复后续写、abandon（owner+If-Match）后 capture_fenced 与解绑活跃；
+%%%   * D7 失联残留懒收敛（T-D7-1..8）：过期 lease 残留不阻塞新创建、
+%%%     insert 23505 兜底 sweep+单次重试、NULL 保守不清、旧会话复活得
+%%%     capture_ended 非 capture_fenced、无无限重试。
+%%%     映射：T-D7-1 d7_t1 / T-D7-2 d7_t2 / T-D7-3 d7_t3 /
+%%%     T-D7-4 capture_active_conflict_fallback_test_（既有，NULL 占位仍 409）/
+%%%     T-D7-5 d7_t5 / T-D7-6 lease_expiry_does_not_block_write_test_（既有）/
+%%%     T-D7-7 d7_t7 / T-D7-8 d7_t8。
 %%%   * 恢复视图 GET captures 分段汇总。
 -module(talk_record_capture_tests).
 
@@ -715,6 +722,260 @@ capture_active_conflict_fallback_test_() ->
                 <<"t07-race-dev">>
             )
         )
+    end).
+
+%%%===================================================================
+%%% D7：失联残留懒收敛（lease_until 预检放宽 + insert 23505 兜底 sweep+重试）
+%%%===================================================================
+
+%% T-D7-1：同设备异记录残留（status='recording'，lease 过期 20h）→
+%% 新创建 201；旧 capture 收敛为 ended 且 lease_epoch 不动（不 fencing）；
+%% 其记录投影清 active_capture_id=NULL。
+capture_d7_t1_expired_device_residue_swept_test_() ->
+    with_db(fun(State) ->
+        C = maps:get(conn, State),
+        Ids = talk_record_t07_support:ids(),
+        U1 = maps:get(u1, Ids),
+        {ok, R1} = talk_record_t07_support:create_record(U1, <<"t07-d7t1-r1">>, ?REC1),
+        {ok, R2} = talk_record_t07_support:create_record(U1, <<"t07-d7t1-r2">>, ?REC2),
+        {ok, C1} = talk_record_t07_support:create_capture(U1, R1, ?DS1, <<"t07-d7t1-1">>),
+        {ok, _} = ev(U1, R1, C1, 1, <<"start">>, 0),
+        %% 失联：lease 停在过去（进程被杀后不再续租）
+        talk_record_t07_support:sql(
+            C,
+            "UPDATE talk_record_capture SET lease_until = now() - interval '20 hours'"
+            " WHERE id = " ++
+                integer_to_list(C1)
+        ),
+        %% 同设备异记录 → 预检放行，INSERT 撞 uq_trc_device_active → sweep+重试
+        {ok, C2} = talk_record_t07_support:create_capture(
+            U1, R2, ?DS2, <<"t07-d7t1-2">>, <<"t07-d7t1-dev">>
+        ),
+        ?assert(is_integer(C2)),
+        Old = talk_record_t07_support:one(
+            C,
+            "SELECT status, lease_epoch FROM talk_record_capture WHERE id = " ++
+                integer_to_list(C1)
+        ),
+        ?assertEqual(<<"ended">>, maps:get(<<"status">>, Old)),
+        ?assertEqual(0, maps:get(<<"lease_epoch">>, Old)),
+        Proj = talk_record_t07_support:one(
+            C,
+            "SELECT active_capture_id, capture_status FROM talk_record WHERE id = " ++
+                integer_to_list(R1)
+        ),
+        ?assertEqual(null, maps:get(<<"active_capture_id">>, Proj)),
+        ?assertEqual(<<"ended">>, maps:get(<<"capture_status">>, Proj))
+    end).
+
+%% T-D7-2：同记录异设备残留 → 新创建 201，talk_record.active_capture_id
+%% 指向新 capture（NC5 r7「设备永久阻塞」的根场景回归）。
+capture_d7_t2_expired_record_resume_test_() ->
+    with_db(fun(State) ->
+        C = maps:get(conn, State),
+        Ids = talk_record_t07_support:ids(),
+        U1 = maps:get(u1, Ids),
+        {ok, Rid} = talk_record_t07_support:create_record(U1, <<"t07-d7t2-r">>, ?REC1),
+        {ok, C1} = talk_record_t07_support:create_capture(U1, Rid, ?DS1, <<"t07-d7t2-1">>),
+        {ok, _} = ev(U1, Rid, C1, 1, <<"start">>, 0),
+        talk_record_t07_support:sql(
+            C,
+            "UPDATE talk_record_capture SET lease_until = now() - interval '20 hours'"
+            " WHERE id = " ++
+                integer_to_list(C1)
+        ),
+        {ok, C2} = talk_record_t07_support:create_capture(
+            U1, Rid, ?DS2, <<"t07-d7t2-2">>, <<"t07-d7t2-dev">>
+        ),
+        ?assert(is_integer(C2)),
+        ?assertNotEqual(C1, C2),
+        Proj = talk_record_t07_support:one(
+            C,
+            "SELECT active_capture_id FROM talk_record WHERE id = " ++ integer_to_list(Rid)
+        ),
+        ?assertEqual(C2, maps:get(<<"active_capture_id">>, Proj))
+    end).
+
+%% T-D7-3：活 lease 新鲜冲突（lease_until=now()+5min）→ 预检仍判活跃，
+%% 同记录/同设备均 409（回归：D7 只放宽过期残留，语义不变）。
+capture_d7_t3_fresh_lease_still_conflicts_test_() ->
+    with_db(fun(State) ->
+        C = maps:get(conn, State),
+        Ids = talk_record_t07_support:ids(),
+        U1 = maps:get(u1, Ids),
+        {ok, R1} = talk_record_t07_support:create_record(U1, <<"t07-d7t3-r1">>, ?REC1),
+        {ok, R2} = talk_record_t07_support:create_record(U1, <<"t07-d7t3-r2">>, ?REC2),
+        {ok, C1} = talk_record_t07_support:create_capture(U1, R1, ?DS1, <<"t07-d7t3-1">>),
+        talk_record_t07_support:sql(
+            C,
+            "UPDATE talk_record_capture SET lease_until = now() + interval '5 minutes'"
+            " WHERE id = " ++
+                integer_to_list(C1)
+        ),
+        ?assertEqual(
+            {error, capture_active_on_record},
+            talk_record_t07_support:create_capture(U1, R1, ?DS2, <<"t07-d7t3-2">>, <<"t07-d7t3-a">>)
+        ),
+        ?assertEqual(
+            {error, capture_active_on_device},
+            talk_record_t07_support:create_capture(
+                U1, R2, ?DS3, <<"t07-d7t3-3">>, <<"t07-device-1">>
+            )
+        )
+    end).
+
+%% T-D7-5：sweep 收敛（epoch 不动）后旧会话复活写 events → 409 capture_ended
+%% （对照：abandon 路径 epoch 推进 → capture_fenced）。
+capture_d7_t5_swept_session_revival_capture_ended_test_() ->
+    with_db(fun(State) ->
+        C = maps:get(conn, State),
+        Ids = talk_record_t07_support:ids(),
+        U1 = maps:get(u1, Ids),
+        {ok, Rid} = talk_record_t07_support:create_record(U1, <<"t07-d7t5-r">>, ?REC1),
+        {ok, C1} = talk_record_t07_support:create_capture(U1, Rid, ?DS1, <<"t07-d7t5-1">>),
+        {ok, _} = ev(U1, Rid, C1, 1, <<"start">>, 0),
+        talk_record_t07_support:sql(
+            C,
+            "UPDATE talk_record_capture SET lease_until = now() - interval '20 hours'"
+            " WHERE id = " ++
+                integer_to_list(C1)
+        ),
+        %% 新创建触发 sweep（同记录新设备会话）
+        {ok, _C2} = talk_record_t07_support:create_capture(
+            U1, Rid, ?DS2, <<"t07-d7t5-2">>, <<"t07-d7t5-dev">>
+        ),
+        %% 旧会话复活写 → ended 语义拒（非 fenced）
+        ?assertEqual({error, capture_ended}, ev(U1, Rid, C1, 2, <<"pause">>, 10_000)),
+        %% 对照：abandon 推进 epoch → capture_fenced
+        {ok, R3} = talk_record_t07_support:create_record(U1, <<"t07-d7t5-r3">>, ?REC2),
+        {ok, C3} = talk_record_t07_support:create_capture(
+            U1, R3, ?DS3, <<"t07-d7t5-3">>, <<"t07-d7t5-dev3">>
+        ),
+        {ok, _} = ev(U1, R3, C3, 1, <<"start">>, 0),
+        Row = talk_record_t07_support:one(
+            C,
+            "SELECT revision FROM talk_record_capture WHERE id = " ++ integer_to_list(C3)
+        ),
+        {ok, _} = talk_record_ds:abandon_capture(
+            U1, R3, C3, maps:get(<<"revision">>, Row)
+        ),
+        ?assertEqual({error, capture_fenced}, ev(U1, R3, C3, 2, <<"pause">>, 10_000))
+    end).
+
+%% T-D7-7：lease_until IS NULL 的活跃行 → 预检保守视为活跃 409；
+%% sweep 不清（end_expired_conflicts_tx 返回空、行保持活跃）。
+capture_d7_t7_null_lease_conservative_test_() ->
+    with_db(fun(State) ->
+        C = maps:get(conn, State),
+        Ids = talk_record_t07_support:ids(),
+        U1 = maps:get(u1, Ids),
+        {ok, Rid} = talk_record_t07_support:create_record(U1, <<"t07-d7t7-r">>, ?REC1),
+        {ok, [], []} = epgsql:squery(C, "BEGIN"),
+        {ok, 1} = epgsql:equery(
+            C,
+            "INSERT INTO talk_record_capture (id, record_id, device_session_id, device_id,"
+            " started_by, status) VALUES ($1, $2, $3::uuid, $4, $5, 'recording')",
+            [
+                9199999000071,
+                Rid,
+                <<"d7000000-0000-0000-0000-000000000001">>,
+                <<"t07-d7t7-dev">>,
+                U1
+            ]
+        ),
+        {ok, [], []} = epgsql:squery(C, "COMMIT"),
+        %% NULL → 预检保守活跃
+        ?assertEqual(
+            {error, capture_active_on_record},
+            talk_record_t07_support:create_capture(
+                U1,
+                Rid,
+                <<"d7000000-0000-0000-0000-000000000002">>,
+                <<"t07-d7t7-1">>,
+                <<"t07-d7t7-dev2">>
+            )
+        ),
+        %% sweep 不清 NULL 行
+        {ok, []} = talk_record_capture_repo:end_expired_conflicts_tx(
+            C, Rid, <<"t07-d7t7-dev">>
+        ),
+        Row = talk_record_t07_support:one(
+            C,
+            "SELECT status FROM talk_record_capture WHERE id = 9199999000071"
+        ),
+        ?assertEqual(<<"recording">>, maps:get(<<"status">>, Row))
+    end).
+
+%% T-D7-8：并发注入——sweep 清到过期残留 X 后单次重试，再撞新鲜活跃行 Y
+%% （A 连接提交窗内出现）→ 仍 409 capture_active_conflict，无无限重试；
+%% X 已收敛、Y 保持活跃。
+capture_d7_t8_retry_once_then_conflict_test_() ->
+    with_db(fun(State) ->
+        C = maps:get(conn, State),
+        Ids = talk_record_t07_support:ids(),
+        U1 = maps:get(u1, Ids),
+        {ok, Rid} = talk_record_t07_support:create_record(U1, <<"t07-d7t8-r">>, ?REC1),
+        %% X：过期残留（已提交，sweep 目标）
+        {ok, 1} = epgsql:equery(
+            C,
+            "INSERT INTO talk_record_capture (id, record_id, device_session_id, device_id,"
+            " started_by, status, lease_until)"
+            " VALUES ($1, $2, $3::uuid, $4, $5, 'recording', now() - interval '20 hours')",
+            [
+                9199999000081,
+                Rid,
+                <<"d8000000-0000-0000-0000-000000000001">>,
+                <<"t07-d7t8-dev">>,
+                U1
+            ]
+        ),
+        %% Y：A 连接未提交的新鲜活跃行（B 预检不可见）
+        {ok, [], []} = epgsql:squery(C, "BEGIN"),
+        {ok, 1} = epgsql:equery(
+            C,
+            "INSERT INTO talk_record_capture (id, record_id, device_session_id, device_id,"
+            " started_by, status, lease_until)"
+            " VALUES ($1, $2, $3::uuid, $4, $5, 'recording', now() + interval '5 minutes')",
+            [
+                9199999000082,
+                Rid,
+                <<"d8000000-0000-0000-0000-000000000002">>,
+                <<"t07-d7t8-dev2">>,
+                U1
+            ]
+        ),
+        Self = self(),
+        spawn(fun() ->
+            Self !
+                {d7t8_result,
+                    talk_record_t07_support:create_capture(
+                        U1,
+                        Rid,
+                        <<"d8000000-0000-0000-0000-000000000003">>,
+                        <<"t07-d7t8-b">>,
+                        <<"t07-d7t8-dev3">>
+                    )}
+        end),
+        timer:sleep(400),
+        {ok, [], []} = epgsql:squery(C, "COMMIT"),
+        Result =
+            receive
+                {d7t8_result, R} -> R
+            after 15000 ->
+                erlang:error(d7t8_result_timeout)
+            end,
+        ?assertEqual({error, capture_active_conflict}, Result),
+        %% sweep 清了 X（重试路径已走），Y 新鲜不被清、仍活跃
+        X = talk_record_t07_support:one(
+            C,
+            "SELECT status FROM talk_record_capture WHERE id = 9199999000081"
+        ),
+        ?assertEqual(<<"ended">>, maps:get(<<"status">>, X)),
+        Y = talk_record_t07_support:one(
+            C,
+            "SELECT status FROM talk_record_capture WHERE id = 9199999000082"
+        ),
+        ?assertEqual(<<"recording">>, maps:get(<<"status">>, Y))
     end).
 
 %%%===================================================================

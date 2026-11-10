@@ -187,11 +187,42 @@ insert_new_capture(Conn, Uid, RecordId, Validated, IdemKey, Resource) ->
         {ok, CaptureId} ->
             finish_capture_create(Conn, Uid, RecordId, CaptureId, IdemKey, Resource);
         {error, unique_violation} ->
-            %% 并发撞活跃唯一索引 → 409（不重放：并发窗内语义即冲突）
-            throw({talk_record_rollback, {error, capture_active_conflict}});
+            %% D7：预检已放行（活跃冲突均 lease 过期），但活跃唯一索引仍按
+            %% status 判定 → 残留行撞 23505。先同事务懒清本记录/本设备的
+            %% 失联残留（end_expired_conflicts_tx/3：status='ended'，epoch
+            %% 不动不凭时间 fencing，§11.1），清到行才重试一次；未清到行 =
+            %% 并发窗内新鲜冲突 → 维持原 409 语义（不重放）。
+            case
+                talk_record_capture_repo:end_expired_conflicts_tx(
+                    Conn, RecordId, maps:get(device_id, Validated)
+                )
+            of
+                {ok, [_ | _] = Swept} ->
+                    retry_capture_insert_after_sweep(
+                        Conn, Uid, RecordId, IdemKey, Resource, Data, Swept
+                    );
+                _ ->
+                    %% 并发撞活跃唯一索引 → 409（不重放：并发窗内语义即冲突）
+                    throw({talk_record_rollback, {error, capture_active_conflict}})
+            end;
         {error, Reason} ->
             ?ERROR_LOG([talk_record_capture_insert_failed, RecordId, Reason]),
             throw({talk_record_rollback, {error, db_error}})
+    end.
+
+%% @private D7：失联残留已收敛后重试插入（仅一次；再次 unique_violation
+%% 视为并发冲突收敛为 409，不无限重试）。
+-spec retry_capture_insert_after_sweep(
+    any(), integer(), integer(), binary(), binary(), map(), [term()]
+) ->
+    {ok, created, map()} | {error, term()}.
+retry_capture_insert_after_sweep(Conn, Uid, RecordId, IdemKey, Resource, Data, Swept) ->
+    ?ERROR_LOG([talk_record_capture_stale_swept_retry, RecordId, Swept]),
+    case talk_record_capture_repo:insert_capture_tx(Conn, Data) of
+        {ok, CaptureId} ->
+            finish_capture_create(Conn, Uid, RecordId, CaptureId, IdemKey, Resource);
+        _Error ->
+            throw({talk_record_rollback, {error, capture_active_conflict}})
     end.
 
 -spec finish_capture_create(any(), integer(), integer(), integer(), binary(), binary()) ->

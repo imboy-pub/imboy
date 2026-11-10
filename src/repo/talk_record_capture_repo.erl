@@ -22,6 +22,7 @@
 -export([insert_capture_tx/2]).
 -export([find_tx/4, find_by_record_device_tx/3, find_recent_by_record_tx/2]).
 -export([active_conflict_tx/4]).
+-export([end_expired_conflicts_tx/3]).
 -export([insert_event_tx/2, list_events_tx/2, find_event_tx/3, find_event_by_seq_tx/3]).
 -export([apply_status_tx/5]).
 -export([touch_lease_tx/2]).
@@ -115,6 +116,12 @@ find_recent_by_record_tx(Conn, RecordId) ->
 
 %% @doc 活跃唯一预检（§4 POST captures 409 判据）：同记录活跃 → {ok, record}；
 %% 同设备活跃（任意记录）→ {ok, device}；无冲突 → {ok, none}。
+%% D7：lease_until < now() 的失联残留（capture 进程被杀后不再续租）不视为
+%% 活跃、不阻塞新创建；lease_until IS NULL 保守视为仍活跃（schema 允许
+%% NULL，race 兜底测试的占位行即无 lease）。注意本函数只放宽预检——活跃
+%% 唯一索引 uq_trc_record_active / uq_trc_device_active 仍按 status 判定，
+%% 失效残留的清理由 insert 23505 兜底路径的 end_expired_conflicts_tx/3
+%% 完成（见下）。
 %% ExcludeCaptureId 用于更新场景排除自身（V1 未用，传 undefined）。
 -spec active_conflict_tx(any(), integer(), binary(), integer() | undefined) ->
     {ok, none | record | device} | {error, term()}.
@@ -123,10 +130,12 @@ active_conflict_tx(Conn, RecordId, DeviceId, ExcludeCaptureId) ->
     Sql =
         <<"SELECT", "  EXISTS (SELECT 1 FROM talk_record_capture r",
             "   WHERE r.record_id = $1 AND r.id <> $3",
-            "     AND r.status IN ('draft','recording','paused','interrupted')) AS on_record,",
+            "     AND r.status IN ('draft','recording','paused','interrupted')",
+            "     AND (r.lease_until IS NULL OR r.lease_until >= now())) AS on_record,",
             "  EXISTS (SELECT 1 FROM talk_record_capture d",
             "   WHERE d.device_id = $2 AND d.id <> $3",
-            "     AND d.status IN ('draft','recording','paused','interrupted')) AS on_device">>,
+            "     AND d.status IN ('draft','recording','paused','interrupted')",
+            "     AND (d.lease_until IS NULL OR d.lease_until >= now())) AS on_device">>,
     case elib_pg:query(Conn, Sql, [RecordId, DeviceId, Exclude]) of
         {ok, [#{<<"on_record">> := true}]} -> {ok, record};
         {ok, [#{<<"on_device">> := true}]} -> {ok, device};
@@ -137,6 +146,35 @@ active_conflict_tx(Conn, RecordId, DeviceId, ExcludeCaptureId) ->
 -spec exclude_id(integer() | undefined) -> integer().
 exclude_id(undefined) -> 0;
 exclude_id(Id) -> Id.
+
+%% @doc D7：本记录/本设备上 lease 已过期的失联残留懒收敛（insert 23505
+%% 兜底路径专用，§11.1）。lease_until < now() 视为失效；lease_until IS NULL
+%% 保守视为仍活跃不清。只置 status='ended'+ended_at，lease_epoch 不动——
+%% 不凭 lease 过期 fencing 旧会话（过期不证明停录）；旧会话复活写按既有
+%% ended 语义得 capture_ended，而非 capture_fenced。同时把受影响记录的
+%% talk_record 投影清为 ended/NULL（与 NC5 r7 人工修复动作一致）。
+%% 返回被收敛的 {CaptureId, RecordId} 列表（空列表 = 无失效残留）。
+-spec end_expired_conflicts_tx(any(), integer(), binary()) ->
+    {ok, [{integer(), integer()}]} | {error, term()}.
+end_expired_conflicts_tx(Conn, RecordId, DeviceId) ->
+    Sql =
+        <<"UPDATE talk_record_capture c SET",
+            " status = 'ended', ended_at = now(), revision = revision + 1, updated_at = now()",
+            " WHERE c.status IN ('draft','recording','paused','interrupted')",
+            "   AND c.lease_until IS NOT NULL AND c.lease_until < now()",
+            "   AND (c.record_id = $1 OR c.device_id = $2)", " RETURNING c.id, c.record_id">>,
+    case elib_pg:query(Conn, Sql, [RecordId, DeviceId]) of
+        {ok, Rows} ->
+            lists:foreach(
+                fun(#{<<"record_id">> := Rid}) ->
+                    _ = update_record_projection_tx(Conn, Rid, null, <<"ended">>)
+                end,
+                Rows
+            ),
+            {ok, [{maps:get(<<"id">>, R), maps:get(<<"record_id">>, R)} || R <- Rows]};
+        {error, Reason} ->
+            {error, Reason}
+    end.
 
 %% ===================================================================
 %% capture_event
