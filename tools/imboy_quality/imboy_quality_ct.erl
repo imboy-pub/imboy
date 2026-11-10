@@ -10,16 +10,35 @@
 ]).
 
 run_suites(Suites, TestDir) ->
+    LogDir = ct_logdir(TestDir),
     [
-        {S, classify(ct:run_test([{dir, TestDir}, {suite, atom_to_list(S)}]))}
+        {S,
+            classify(
+                ct:run_test([{dir, TestDir}, {suite, atom_to_list(S)}, {logdir, LogDir}])
+            )}
      || S <- Suites
     ].
 
 run_suites_detailed(Suites, TestDir) ->
+    LogDir = ct_logdir(TestDir),
     [
-        {S, classify_detailed(ct:run_test([{dir, TestDir}, {suite, atom_to_list(S)}]))}
+        {S,
+            classify_detailed(
+                ct:run_test([{dir, TestDir}, {suite, atom_to_list(S)}, {logdir, LogDir}])
+            )}
      || S <- Suites
     ].
+
+%% D5（QUALITY_GATE_HARDENING_PROPOSAL_20261110 §D5）：CT 日志/资产落 TMPDIR
+%% 隔离目录，不再落 peer 继承的仓根 cwd（index.html/all_runs.html 等污染源）。
+ct_logdir(TestDir) ->
+    Dir =
+        filename:join(
+            os:getenv("TMPDIR", "/tmp"),
+            "imboy_ct_" ++ integer_to_list(erlang:phash2([TestDir, os:timestamp()]))
+        ),
+    ok = filelib:ensure_dir(filename:join(Dir, "x")),
+    Dir.
 
 classify(Raw) ->
     case classify_detailed(Raw) of
