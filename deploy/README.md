@@ -750,6 +750,42 @@ docker compose -f docker-compose.prod.yml -f docker-compose-sales-policy.yml log
 
 ## 运维
 
+### 后端容器运行身份 / Backend container identity
+
+后端镜像默认以 `10001:10001` 运行。ERTS、启动脚本和 BEAM 目录保持 root 所有；
+`HOME=/home/imboy`、日志、relx 生成配置目录和应用 `priv` 运行数据可写。
+应用 `priv` 的写权限用于既有开发密钥和许可证流程；生产密钥仍从只读
+`/opt/imboy/priv_runtime` 挂载读取。
+
+安装器与 Golden 升级在拉取镜像之后、启动服务之前调用
+`prepare-backend-runtime.sh`。它读取实际 Compose 的镜像和两个 bind 目录，
+用无网络、只读根文件系统的临时初始化容器，给 UID 10001 设置最小 POSIX ACL：
+私钥目录只读、日志可读写。宿主所有权和密钥字节不变，既有 `root:600` 私钥及
+root 日志无需改成全员可读写。安装器重复执行 `chmod 600` 后会重新准备 ACL；
+`stat` 显示的组位是 ACL mask，实际授权应以 `getfacl` 为准。
+
+手工 Compose 升级也必须在 `pull` 后、`up` 前，用相同 `-f`/`--env-file`
+参数执行该脚本。新镜像拒绝 Compose 的 root/自定义 UID 覆盖；旧 root 镜像
+回滚时保持原行为。脚本拒绝重叠目录、符号链接、非 bind 挂载和不可用的 ACL。
+商务版、自定义 Secret/PEM 挂载或其他 UID 的部署须先审核其实际路径和权限；
+两个标准 bind 之外的文件必须另外保证 UID 10001 可读，不能把预检成功当成
+所有外部挂载已验收。安装包与新镜像须一起升级。
+
+The backend image runs as UID/GID `10001:10001`. Executables and BEAM directories
+remain root-owned; only home, logs, relx-generated configuration and app-private
+runtime data are writable. The installer and Golden upgrade prepare the two
+resolved bind mounts with narrowly scoped POSIX ACLs before starting services.
+This preserves host ownership, private-key contents and the read-only secret mount.
+Run the same helper between `pull` and `up` for manual upgrades. Unsupported ACLs,
+symlinks, overlapping mounts or custom runtime-user overrides stop the upgrade;
+review custom/business mounts separately. Upgrade the installation kit with the image.
+
+`Backend Container Runtime` 在 PR 中构建实际镜像，并验证非 root relx/ERTS 启动、
+旧私钥/日志权限、只读挂载、HOME/cookie/临时目录和重复准备。其 `console_clean`
+不启动业务应用或数据库；完整安装/升级及业务验收仍由发布 Golden 门完成。
+The real-image PR smoke uses `console_clean`; it verifies runtime permissions and
+release startup, while full application/database acceptance remains in the release Golden gates.
+
 ### 升级
 
 版本历史、每版升级说明与回滚指引见仓库根 [RELEASES.md](../RELEASES.md)。
@@ -765,6 +801,7 @@ cd deploy
 # 1) 改 .env 的 IMBOY_VERSION 为目标版本（单一版本来源）
 # 2) 拉新镜像并滚动更新（PG 不动，只重启 backend/admin）
 docker compose -f docker-compose.community.yml pull
+bash prepare-backend-runtime.sh -f docker-compose.community.yml
 docker compose -f docker-compose.community.yml up -d imboy_backend imboy_admin
 # 3) 查日志确认迁移成功（看到 started on port 9800 即就绪）
 docker compose -f docker-compose.community.yml logs -f imboy_backend
@@ -776,6 +813,7 @@ docker compose -f docker-compose.community.yml logs -f imboy_backend
 cd deploy
 # 1) 拉新镜像
 docker compose -f docker-compose.prod.yml -f docker-compose-sales-policy.yml pull
+bash prepare-backend-runtime.sh -f docker-compose.prod.yml -f docker-compose-sales-policy.yml
 # 2) 滚动更新（PG 不动，只重启 backend/admin）
 docker compose -f docker-compose.prod.yml -f docker-compose-sales-policy.yml up -d imboy_backend imboy_admin
 # 3) 查日志确认迁移成功

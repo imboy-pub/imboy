@@ -25,7 +25,7 @@ for bin in awk cat chmod cmp cp cut date dirname env grep head jq mkdir mktemp m
   ln -s "$tool_path" "$TOOLS_BIN/$bin"
 done
 TEST_PATH="$MOCK_BIN:$TOOLS_BIN"
-cp deploy/install.sh deploy/init-cleanup-db.sh deploy/.env.example deploy/docker-compose.community.yml \
+cp deploy/install.sh deploy/init-cleanup-db.sh deploy/prepare-backend-runtime.sh deploy/.env.example deploy/docker-compose.community.yml \
   deploy/docker-compose.uptrace.yml "$FIXTURE/"
 cp deploy/cleanup-db/bootstrap.sql deploy/cleanup-db/verify.sql "$FIXTURE/cleanup-db/"
 cp deploy/nginx/init-letsencrypt.sh "$FIXTURE/nginx/"
@@ -175,6 +175,7 @@ case "${1:-}" in
     [ "${MOCK_PREFLIGHT_FAIL:-0}" != 1 ] ;;
   *init-letsencrypt.sh) [ "${MOCK_TLS_FAIL:-0}" != 1 ] ;;
   *init-cleanup-db.sh) [ "${MOCK_CLEANUP_FAIL:-0}" != 1 ] ;;
+  *prepare-backend-runtime.sh) [ "${MOCK_RUNTIME_FAIL:-0}" != 1 ] ;;
   *sanity_check.sh) [ "${MOCK_SANITY_FAIL:-0}" != 1 ] ;;
   *) exit 0 ;;
 esac
@@ -240,6 +241,13 @@ if [ -n "$pull_line" ] && [ -n "$up_line" ] && [ "$pull_line" -lt "$up_line" ]; 
 else
   bad "缺失镜像在启动服务前拉齐" "pull=${pull_line:-无} up=${up_line:-无}"
 fi
+runtime_line="$(grep -n 'args=prepare-backend-runtime.sh ' "$MOCK_LOG" | head -1 | cut -d: -f1)"
+if [ -n "$runtime_line" ] && [ "$pull_line" -lt "$runtime_line" ] && [ "$runtime_line" -lt "$up_line" ]; then
+  ok "后端目录权限在拉镜像后、服务启动前准备"
+else
+  bad "后端目录权限准备顺序" "未满足 pull → permissions → up"
+fi
+assert_match "权限准备沿用同一 Compose 文件集合" 'args=prepare-backend-runtime.sh -f docker-compose\.community\.yml -f docker-compose\.uptrace\.yml$' "$MOCK_LOG"
 assert_match "TLS 使用同一 Compose 文件集合" 'bash COMPOSE_FILES=docker-compose\.community\.yml docker-compose\.uptrace\.yml args=nginx/init-letsencrypt\.sh' "$MOCK_LOG"
 assert_match "sanity 使用同一 Compose 文件集合" 'args=\.\./scripts/sanity_check\.sh --compose-file docker-compose\.community\.yml --compose-file docker-compose\.uptrace\.yml' "$MOCK_LOG"
 assert_match "默认只验证清理账号，沿用完整 Compose 文件集合" 'bash COMPOSE_FILES=docker-compose\.community\.yml docker-compose\.uptrace\.yml args=init-cleanup-db\.sh$' "$MOCK_LOG"
@@ -347,6 +355,10 @@ mv "$TMP_ROOT/jq.saved" "$TOOLS_BIN/jq"
 mv "$TMP_ROOT/scripts/sanity_check.sh" "$TMP_ROOT/sanity.saved"
 reject_before_start "缺正式验收脚本必须中止" 'sanity_check'
 mv "$TMP_ROOT/sanity.saved" "$TMP_ROOT/scripts/sanity_check.sh"
+mv "$FIXTURE/prepare-backend-runtime.sh" "$TMP_ROOT/runtime.saved"
+reject_before_start "缺权限准备脚本必须中止" 'prepare-backend-runtime.sh'
+mv "$TMP_ROOT/runtime.saved" "$FIXTURE/prepare-backend-runtime.sh"
+reject_before_start "权限准备失败不得启动服务" '后端运行目录权限准备失败' MOCK_RUNTIME_FAIL=1
 for dependency in init-cleanup-db.sh cleanup-db/bootstrap.sql cleanup-db/verify.sql; do
   mv "$FIXTURE/$dependency" "$TMP_ROOT/cleanup-dependency.saved"
   reject_before_start "缺清理账号依赖 $dependency 必须中止" "$dependency"

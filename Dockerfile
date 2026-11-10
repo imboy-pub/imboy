@@ -87,15 +87,18 @@ RUN set -eu; \
 # 勿用 alpine：ERTS 针对 glibc 编译，musl 会崩
 #
 # release 启动脚本在输出第一条日志前就用 awk 解析 vm.args；debian:slim 不保证
-# 提供它，缺失会静默以 127 退出。因此在镜像构建期装最小运行工具 mawk。私有化
+# 提供它，缺失会静默以 127 退出。构建期安装 mawk 和安装权限准备所需的 acl。私有化
 # 用户只拉取已构建镜像，不依赖其现场网络。其余 ERTS 库与 CA 从 builder 拷贝：
 # ① builder/runtime 同为 trixie/glibc 基线；② glibc 自带 C.UTF-8，无需 locales。
 # ─────────────────────────────────────────────────────────────
 FROM debian:trixie-slim AS runtime
 
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends mawk \
-    && rm -rf /var/lib/apt/lists/*
+    && apt-get install -y --no-install-recommends mawk acl \
+    && rm -rf /var/lib/apt/lists/* \
+    && groupadd --gid 10001 imboy \
+    && useradd --uid 10001 --gid 10001 --create-home --home-dir /home/imboy \
+       --shell /usr/sbin/nologin imboy
 
 # ERTS 运行所需系统库 + CA 证书（builder 已按本机架构暂存到 /runtime-libs）
 # crypto NIF 需 libssl/libcrypto；erlang shell 需 ncurses/tinfo；出站 TLS 需 CA 证书
@@ -104,15 +107,13 @@ COPY --from=builder /runtime-libs/ /
 ENV LANG=C.UTF-8 \
     LC_ALL=C.UTF-8 \
     TZ=Asia/Shanghai \
-    IMBOYENV=pro
+    IMBOYENV=pro \
+    HOME=/home/imboy \
+    RELX_OUT_FILE_PATH=/opt/imboy/var \
+    ERL_CRASH_DUMP=/opt/imboy/log/erl_crash.dump
 
 # 复制自包含 release
 COPY --from=builder /imboy/_rel/imboy /opt/imboy
-
-# 在最终运行层执行 ERTS 二进制，防止构建绿但运行时因缺动态加载器/共享库以
-# 127 静默退出。该自检不启动应用、不依赖 PostgreSQL；它失败时构建日志会保留
-# 底层加载器报错，避免把问题拖到 Golden Install 的 120 秒健康超时才发现。
-RUN /opt/imboy/erts-*/bin/erlexec -version
 
 # imboy_ctl 管理 CLI（escript）。install.sh 的 --admin-phone/--admin-password
 # 在 backend 容器内调用它创建超管（部署机只有 Docker 没有 Erlang，escript 由
@@ -122,6 +123,19 @@ RUN /opt/imboy/erts-*/bin/erlexec -version
 COPY scripts/imboy_ctl /opt/imboy/bin/imboy_ctl
 COPY scripts/start_download_edge.sh /opt/imboy/bin/start_download_edge.sh
 COPY scripts/start_enterprise_direct_proof.sh /opt/imboy/bin/start_enterprise_direct_proof.sh
+
+# 仅日志、relx 生成配置和应用 priv（开发密钥/许可证）可写；BEAM/ERTS 保持 root 所有。
+# Limit writable release paths to logs, relx output and app-private runtime data.
+# Bind mounts are prepared by deploy/prepare-backend-runtime.sh before startup.
+RUN mkdir -p /opt/imboy/log /opt/imboy/var \
+    && chown 10001:10001 /opt/imboy/log /opt/imboy/var \
+    && chown -R 10001:10001 /opt/imboy/lib/imboy-*/priv
+USER 10001:10001
+
+# 使用真实运行身份验证打包的 ERTS；不启动应用或连接 PostgreSQL。
+# Validate bundled ERTS as the actual runtime user, without starting the app/DB.
+# 缺失加载器/系统库会在构建期失败，不拖到 Golden 健康检查才暴露。
+RUN /opt/imboy/erts-*/bin/erlexec -version
 
 WORKDIR /opt/imboy
 EXPOSE 9800

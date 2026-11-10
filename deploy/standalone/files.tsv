@@ -4,6 +4,7 @@ VERSION	VERSION
 deploy/standalone/README.md	README.md
 deploy/standalone/install.sh	install.sh
 deploy/install.sh	deploy/install.sh
+deploy/prepare-backend-runtime.sh	deploy/prepare-backend-runtime.sh
 deploy/init-cleanup-db.sh	deploy/init-cleanup-db.sh
 deploy/cleanup-db/bootstrap.sql	deploy/cleanup-db/bootstrap.sql
 deploy/cleanup-db/verify.sql	deploy/cleanup-db/verify.sql

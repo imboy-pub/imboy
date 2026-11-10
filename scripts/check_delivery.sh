@@ -8,7 +8,7 @@ for tool in sha256sum stat bash; do
     command -v "$tool" >/dev/null 2>&1 || fail "缺少离线检查工具: $tool"
 done
 for path in MANIFEST.sha256 FILE_MODES.tsv SOURCE_COMMIT install.sh \
-    deploy/install.sh deploy/preflight.sh deploy/.env.example \
+    deploy/install.sh deploy/prepare-backend-runtime.sh deploy/preflight.sh deploy/.env.example \
     deploy/docker-compose.community.yml deploy/nginx/init-letsencrypt.sh \
     deploy/nginx/templates/imboy.conf.template \
     deploy/nginx/templates/cs-widget.conf.template \

@@ -167,6 +167,8 @@ done
 command -v jq >/dev/null 2>&1 || die "需要 jq 校验 Compose 配置，请先安装 jq（无需 Python）"
 [ -f ../scripts/sanity_check.sh ] && [ -r ../scripts/sanity_check.sh ] \
   || die "缺少或无法读取 ../scripts/sanity_check.sh；交付包不完整，服务尚未启动"
+[ -f prepare-backend-runtime.sh ] && [ -r prepare-backend-runtime.sh ] \
+  || die "缺少 prepare-backend-runtime.sh；交付包不完整，服务尚未启动"
 if [ "$EDITION" = community ]; then
   for cleanup_file in init-cleanup-db.sh cleanup-db/bootstrap.sql cleanup-db/verify.sql; do
     [ -f "$cleanup_file" ] && [ -r "$cleanup_file" ] \
@@ -545,6 +547,10 @@ while IFS= read -r edge_image; do
   docker start -a "$edge_probe_id" >/dev/null || die "所选后端镜像缺少可运行的 edge 文件；服务尚未启动（检查容器: $edge_probe_id）"
   say "edge 镜像文件检查通过（检查容器: $edge_probe_id）"
 done <<< "$resolved_edge_images"
+
+say "准备后端非 root 运行目录权限"
+bash prepare-backend-runtime.sh "${COMPOSE_ARGS[@]}" \
+  || die "后端运行目录权限准备失败；服务尚未启动"
 
 say "创建网络并启动服务"
 docker network create imboy-network 2>/dev/null || true

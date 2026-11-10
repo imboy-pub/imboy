@@ -1,0 +1,42 @@
+name: Backend Container Runtime
+
+on:
+  pull_request:
+    branches: [main, dev]
+    paths:
+      - Dockerfile
+      - .github/workflows/backend-runtime.yml
+      - deploy/prepare-backend-runtime.sh
+      - deploy/install.sh
+      - scripts/golden_upgrade.sh
+      - scripts/test/backend_runtime_test.sh
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: backend-runtime-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  runtime:
+    name: Non-root release and mount permissions
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4
+      - name: Build the real backend release image without publishing
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7
+        with:
+          context: .
+          file: ./Dockerfile
+          platforms: linux/amd64
+          load: true
+          push: false
+          tags: imboy-backend:runtime-test
+          cache-from: type=gha,scope=backend-runtime
+          cache-to: type=gha,scope=backend-runtime,mode=max
+      - name: Verify new-install and upgrade mount permissions with the real release
+        run: bash scripts/test/backend_runtime_test.sh imboy-backend:runtime-test
