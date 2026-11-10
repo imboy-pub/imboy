@@ -52,7 +52,18 @@ event(CurrentUid, ToUid, MsgId, Msg) when
                     MsgMap = message_ds:assemble_s2c(MsgId, <<"peer_offline">>, ToUid),
                     {reply, MsgMap};
                 false ->
-                    do_send_next(ToUid, MsgId, Msg)
+                    do_send_next(ToUid, MsgId, Msg),
+                    %% D2=B（W7_DECISIONS_20261110.md 属主拍板）：同账号多设备
+                    %% 「多设备同响、先接先赢」。answer 到达即本设备已接听——向
+                    %% 被叫(CurrentUid)的其他在线设备投递合成 WEBRTC_BYE（同
+                    %% msgId、from=主叫），客户端既有终态收敛逻辑
+                    %% （message_webrtc.dart BUSY/BYE 分支）会关闭来电页并停止
+                    %% 响铃，无双房间、无误踢。仅后端改动：复用现有信令类型，
+                    %% 零前端改动。
+                    case is_webrtc_answer(Msg) of
+                        true -> notify_answered_elsewhere(CurrentUid, ToUid, MsgId);
+                        false -> ok
+                    end
             end;
         {_, InDenylist2} when InDenylist2 > 0 ->
             MsgMap = message_ds:assemble_s2c(MsgId, <<"in_denylist">>, ToUid),
@@ -96,6 +107,41 @@ is_webrtc_offer(Msg) when is_binary(Msg) ->
     catch
         _:_ ->
             false
+    end.
+
+%% @doc 判断信令是否为接听应答（answer）。
+is_webrtc_answer(Msg) when is_binary(Msg) ->
+    try jsone:decode(Msg) of
+        #{<<"type">> := Type} when is_binary(Type) ->
+            cowboy_bstr:to_lower(Type) =:= <<"webrtc_answer">>;
+        _ ->
+            false
+    catch
+        _:_ ->
+            false
+    end.
+
+%% @doc 一台设备接听后，通知被叫同账号的其他设备停止响铃（D2=B 先接先赢）。
+%% 合成 WEBRTC_BYE（from=主叫 ToUid、同 msgId）复用客户端既有终态收敛逻辑；
+%% DID 黑名单排除接听设备自身，避免误杀本机进行中的通话。
+%% 本机不在注册表（竞态/刚下线）时跳过：宁可不收敛，不误伤。
+notify_answered_elsewhere(CurrentUid, ToUid, MsgId) ->
+    Members = imboy_syn:list_by_uid(CurrentUid),
+    case lists:keyfind(self(), 1, Members) of
+        {_Pid, {_DType, MyDID}} ->
+            Bye = #{
+                <<"id">> => MsgId,
+                <<"type">> => <<"WEBRTC_BYE">>,
+                <<"from">> => ToUid,
+                <<"to">> => CurrentUid,
+                <<"payload">> => #{<<"reason">> => <<"answered_elsewhere">>},
+                <<"server_ts">> => elib_dt:millisecond()
+            },
+            message_ds:send_next(
+                CurrentUid, MsgId, jsone:encode(Bye, [native_utf8]), [0], [MyDID], false
+            );
+        false ->
+            ok
     end.
 
 %% ===================================================================
