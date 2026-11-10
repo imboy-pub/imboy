@@ -43,6 +43,9 @@ jobs:
       - name: Install Semgrep CE
         run: python -m pip install --disable-pip-version-check "semgrep==${SEMGREP_VERSION}"
 
+      - name: Test Semgrep SARIF reconciliation
+        run: python3 -m unittest discover -s .github/scripts -p 'test_prepare_semgrep_sarif.py'
+
       - name: Run Semgrep
         id: semgrep_scan
         run: |
@@ -163,6 +166,26 @@ jobs:
               raise SystemExit(int(os.environ["FINDINGS_EXIT_CODE"]))
           PY
 
+      - name: Reconcile verified Semgrep findings for Code scanning
+        id: semgrep_sarif
+        if: ${{ !cancelled() && steps.semgrep_report.outputs.inventory_ready == 'true' }}
+        run: |
+          python3 .github/scripts/prepare_semgrep_sarif.py \
+            --json .security-reports/semgrep.json \
+            --sarif .security-reports/semgrep.sarif \
+            --output .security-reports/semgrep-upload.sarif \
+            --inventory .security-reports/semgrep-suppressions.json
+
+      - name: Upload sanitized Semgrep exceptions
+        if: ${{ !cancelled() && steps.semgrep_sarif.outcome == 'success' }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: semgrep-suppressions-${{ github.run_id }}-${{ github.run_attempt }}
+          path: .security-reports/semgrep-suppressions.json
+          include-hidden-files: true
+          if-no-files-found: error
+          retention-days: 14
+
       - name: Upload sanitized Semgrep inventory
         if: ${{ !cancelled() && steps.semgrep_report.outputs.inventory_ready == 'true' && hashFiles('.security-reports/semgrep-inventory.json') != '' }}
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
@@ -174,10 +197,10 @@ jobs:
           retention-days: 14
 
       - name: Upload Semgrep results
-        if: ${{ !cancelled() && hashFiles('.security-reports/semgrep.sarif') != '' }}
+        if: ${{ !cancelled() && steps.semgrep_sarif.outcome == 'success' }}
         uses: github/codeql-action/upload-sarif@33d7b85da1a04171e211befe2c739303b9a4c066 # v4.39.3
         with:
-          sarif_file: .security-reports/semgrep.sarif
+          sarif_file: .security-reports/semgrep-upload.sarif
           category: semgrep
 
   trivy:
