@@ -11,6 +11,37 @@
 
 ## [Unreleased]
 
+> 本条目汇总 `1.0.0-alpha.84`（2026-11-06）之后并入 main 的变更。
+
+### Fixed
+
+**群组**
+- 面对面建群匹配原子化（避免并发竞态）并校验入群入口。
+
+**RTC 通话**
+- 同账号多设备接听仲裁：被叫应答后向同账号其他在线设备投递合成 BYE（同 msgId、from=主叫），多设备同响先接先赢；复用现有信令类型，零前端改动。
+
+**扫码登录**
+- confirmed 事件（SSE 与轮询）携带与登录 token 配对的权威 UID（保留数值 uid 并新增 uid_str），权威身份无效时拒绝发布凭据。
+
+**管理后台**
+- 新增管理员先 RSA 解密再哈希入库，修复 UI 建号无法登录的 P0（ADM-CREATE-LOGIN-001，由 J02-c e2e 发现）。
+
+**通话记录**
+- capture 进程失联后的过期租约残留改为预检放宽 + 唯一冲突懒清扫，不再对记录/设备产生永久 409 阻塞（需人工修库解锁）。
+
+### Security
+
+- 后端 release 容器以专用非 root 用户运行；安装/升级期准备带作用域 ACL 的 secret/log bind mount，secrets 只读、release 二进制不可变，并新增运行时与迁移权限检查（含部署文档配套：手动启动/恢复前先准备非 root 挂载）。
+- OIDC 测试 Dex fixture 仅绑定 loopback 发布。
+- SBOM 生成校验精确 Bun overrides 与真实 PR manifest，防依赖混淆。
+- Semgrep 源例外在 SARIF 上传前完成对账。
+
+### 质量/测试基建（内部）
+
+- 质量框架缺陷修复批次：CT logdir 隔离进 TMPDIR（不再污染仓根）、收据身份原生绑定与 identity-first 选择、talk-record 测试构造修复。
+- P1 再验证第 3/4 次全量运行窗口授权与 attempt13 红根分流/收编。
+
 ---
 
 ## [1.0.0-alpha.84] - 2026-11-06
