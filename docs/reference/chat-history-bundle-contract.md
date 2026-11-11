@@ -4,7 +4,7 @@
 > 信封与通道规范见 [ws-protocol-contract.md](./ws-protocol-contract.md) 与
 > [websocket-api-2.md](./websocket-api-2.md)；本文只定义 bundle 内容合同。
 
-最后更新：2026-11-11（W1-D 冻结 v1）
+最后更新：2026-11-11（W1-D 冻结 v1；W2-H 补充 §3 注入跳过与 §3.1 尺寸口径说明）
 
 ---
 
@@ -61,6 +61,28 @@ chat_history_bundle` 且**明文**）→ `chat_history_bundle_ds:validate_payloa
 发生在 decode → convert → **validate** → inject → route → store 链条的
 validate 步骤，即 staging 落库与广播之前。
 
+W2-H 补充：bundle 的 payload 在 inject 步骤**跳过** sender 设备注入
+（`websocket_handler:inject_payload_sender_device/3`）——注入会把 §4 禁止字段
+`sender_did`/`sender_dtype` 种进 payload 顶层，且发生在 256KiB 校验之后，
+恰边界 bundle 落库/出网会实际超限；发送设备信息由信封顶层
+`stamp_sender_device/2` 提供（ADR15 context binding 比对信封层，绑定不丢失）。
+其他 msg_type 的 payload 注入行为不变。
+
+### 3.1 尺寸口径补充（W2-H 审查 LOW）
+
+- **E2EE 包裹的 bundle 受 E2EE 信封上限约束**：§3 的 256KiB 是明文 payload
+  口径；走 E2EE 时 bundle 位于密文内部，外层受 `e2ee_envelope_max_bytes`
+  （默认 **1 MiB**，`message_ds:validate_e2ee_envelope/1`）约束。密文膨胀
+  （nonce/认证头/base64）与 v3 **per-device fan-out**（`e2ee.devices` 按接收
+  设备逐份加密）会放大体积——名义 256KiB 以下的 bundle 也可能触发
+  `e2ee_envelope_too_large`；客户端构建大 bundle 时应按目标设备数预留
+  膨胀余量。
+- **字节口径权威性**：以服务端 `jsone:encode/1`（`native_utf8`）后的
+  `byte_size` 为准；客户端序列化（浮点最短表示、`\uXXXX` 转义规范化等）
+  可能与该口径存在数字节残差，恰边界判定两端可漂移。建议客户端预留
+  安全边（如 **64KiB**，即按 ≤192KiB 自查），避免客户端自判合法、服务端
+  按 256KiB 拒绝的边界抖动。
+
 ## 4. 禁止字段清单（客户端构建合同）
 
 payload 及任意嵌套层**禁止**包含以下字段（泄露原会话上下文 / 服务端内部标识 /
@@ -78,6 +100,9 @@ burn_read_at
 服务端内部主键       （数据库 TSID 行 id 等）
 原会话成员列表       （member list / receivers 等）
 ```
+
+服务端对应责任（W2-H）：入站管道对 bundle payload **不做** sender 设备注入，
+明文 bundle 落库/出网形态即客户端构建形态（见 §3 W2-H 补充）。
 
 ## 5. E2EE 语义
 
