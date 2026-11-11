@@ -261,3 +261,4 @@ config/sys.cs-ai-accept.config
 prep/timer-*.term
 ct_run.nonode@nohost.*
 config/sys.quality.*.config
+*.pyc
