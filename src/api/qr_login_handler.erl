@@ -208,12 +208,12 @@ pg_handle_status(Req, SessionToken) ->
             case maps:get(<<"status">>, Session, <<"waiting">>) of
                 <<"confirmed">> ->
                     case qr_login_session_ds:claim_login_token(SessionToken) of
-                        {ok, #{login_token := LoginToken, scanned_by := Uid}} ->
-                            elib_response:success(Req, #{
-                                <<"status">> => <<"confirmed">>,
-                                <<"token">> => LoginToken,
-                                <<"uid">> => Uid
-                            });
+                        {ok, Claim} ->
+                            confirmed_response(
+                                Req,
+                                maps:get(login_token, Claim, undefined),
+                                maps:get(scanned_by, Claim, undefined)
+                            );
                         {error, not_claimable} ->
                             %% 已消费/过期：既有兼容非成功响应（C08 oracle）
                             elib_response:error(
@@ -245,15 +245,24 @@ cache_handle_status(Req, SessionToken) ->
                     %% 带上 uid：客户端 QR 登录落地需要写 currentUid
                     %% 建立登录态（路由守卫 isLoggedIn 依据），
                     %% token 是加密串客户端自己解不出 uid（批次126）。
-                    Payload = #{
-                        <<"status">> => <<"confirmed">>,
-                        <<"token">> => LoginToken,
-                        <<"uid">> => maps:get(<<"scanned_by">>, Session, 0)
-                    },
-                    elib_response:success(Req, Payload);
+                    confirmed_response(
+                        Req, LoginToken, maps:get(<<"scanned_by">>, Session, undefined)
+                    );
                 _ ->
                     elib_response:success(Req, #{<<"status">> => Status})
             end
+    end.
+
+%% @doc 与 SSE 使用同一 UID/token 合同，不发送缺失或非法身份的凭据。
+%% Share the confirmed payload with SSE; never publish an unowned token.
+-spec confirmed_response(cowboy_req:req(), term(), term()) -> cowboy_req:req().
+confirmed_response(Req, Token, Uid) ->
+    case qr_login_event_ds:confirmed(Token, Uid) of
+        {ok, Payload} -> elib_response:success(Req, Payload);
+        {error, invalid_credentials} ->
+            elib_response:error(
+                Req, <<"二维码已确认，请刷新"/utf8>>, ?ERR_QR_LOGIN_ALREADY_USED
+            )
     end.
 
 %% @doc 扫码（手机端调用）
@@ -526,12 +535,15 @@ cache_handle_confirm(Req, SessionToken, Uid) ->
                                         <<"login_token">> => LoginToken,
                                         <<"confirmed_at">> => erlang:system_time(millisecond)
                                     },
+                                    %% 身份与 token 来自刚确认的同一会话；不读取客户端 UID。
+                                    %% This cache path retains its legacy broadcast semantics.
+                                    {ok, ConfirmedEvent} = qr_login_event_ds:confirmed(
+                                        maps:get(<<"login_token">>, UpdatedSession),
+                                        maps:get(<<"scanned_by">>, UpdatedSession)
+                                    ),
                                     cache_session(SessionToken, UpdatedSession),
-                                    %% PR-2β: 广播 confirmed + login_token 给 SSE 订阅者
-                                    %% Web 端收到后调 _completeLogin 落地 token，无需轮询。
                                     _ = qr_login_event_ds:notify(
-                                        SessionToken,
-                                        qr_login_event_ds:event(confirmed, LoginToken)
+                                        SessionToken, ConfirmedEvent
                                     ),
                                     elib_response:success(
                                         Req, #{<<"status">> => <<"confirmed">>}

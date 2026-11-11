@@ -78,6 +78,9 @@ concurrent_claim_rounds(N) ->
     %% 恰好 1 个赢家、其余明确失败；无 token 残留
     ?assertEqual(1, Winners),
     ?assertEqual(3, Losers),
+    [{ok, #{login_token := Token, scanned_by := ?UID}}] =
+        [Result || {ok, _} = Result <- Results],
+    ?assertEqual(<<"tok_race">>, Token),
     #{<<"token_claimable">> := false} =
         qr_login_session_repo:find_by_session_token(ST),
     cleanup_session(ST),
@@ -113,6 +116,10 @@ sse_vs_status_race_single_claim_test_() ->
         Winners = length([ok || {ok, _} <- Results]),
         ?assertEqual(1, Winners),
         ?assertEqual(1, length([error || {error, _} <- Results])),
+        ?assertMatch(
+            [{ok, #{login_token := <<"tok_race">>, scanned_by := ?UID}}],
+            [Result || {ok, _} = Result <- Results]
+        ),
         cleanup_session(ST)
     end).
 

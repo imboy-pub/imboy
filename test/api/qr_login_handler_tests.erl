@@ -123,7 +123,8 @@ status_returns_confirmed_with_login_token_test_() ->
                 {success, #{
                     <<"status">> => <<"confirmed">>,
                     <<"token">> => <<"jwt-token-1">>,
-                    <<"uid">> => 111174215241304064
+                    <<"uid">> => 111174215241304064,
+                    <<"uid_str">> => <<"111174215241304064">>
                 }},
                 response_result(Req1)
             ),
@@ -560,7 +561,7 @@ scan_does_not_broadcast_when_expired_test_() ->
         end
     ).
 
-%% confirm 成功后必须以 confirmed + login_token 事件 broadcast
+%% confirm 成功后广播同会话的 token + 权威 UID / Same-session token and UID.
 confirm_broadcasts_confirmed_event_with_token_on_success_test_() ->
     SessionToken = <<"session-broadcast-confirm">>,
     QRToken = make_qr_token(SessionToken),
@@ -590,9 +591,6 @@ confirm_broadcasts_confirmed_event_with_token_on_success_test_() ->
                     {'save', 4, fun(_, _, _, _) -> ok end}
                 ]},
                 {qr_login_event_ds, [
-                    {'event', 2, fun(confirmed, <<"login-token-1001">>) ->
-                        #{<<"status">> => <<"confirmed">>, <<"token">> => <<"login-token-1001">>}
-                    end},
                     {'notify', 2, fun(_KeyToken, _Event) -> {ok, 1} end}
                 ]}
             ],
@@ -614,7 +612,9 @@ confirm_broadcasts_confirmed_event_with_token_on_success_test_() ->
             [[K, E] | _] = Notifies,
             ?assertEqual(SessionToken, K),
             ?assertEqual(<<"confirmed">>, maps:get(<<"status">>, E)),
-            ?assertEqual(<<"login-token-1001">>, maps:get(<<"token">>, E))
+            ?assertEqual(<<"login-token-1001">>, maps:get(<<"token">>, E)),
+            ?assertEqual(1001, maps:get(<<"uid">>, E)),
+            ?assertEqual(<<"1001">>, maps:get(<<"uid_str">>, E))
         end
     ).
 

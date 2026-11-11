@@ -72,9 +72,10 @@ init(Req0, _State) ->
 
 %% @doc 接收 syn:publish 投递的 Event map，推 SSE chunk。
 %%
-%% Event 来自 qr_login_event_ds:event/2 构造，约束字段：
+%% Event 来自 qr_login_event_ds:event/2 或 confirmed/2 构造，约束字段：
 %%   - <<"status">> :: binary()  必须存在（waiting|scanned|confirmed|expired|cancelled）
 %%   - <<"token">>  :: binary()  仅 confirmed 时存在
+%%   - <<"uid">> / <<"uid_str">>：confirmed 的同源权威身份 / authoritative identity
 %%
 %% 终态判断：
 %%   - status=confirmed → stop（Web 端已拿到 token，无需保持连接）
@@ -101,8 +102,14 @@ info(Event, Req0, State) when is_map(Event) ->
             %% （客户端 EventSource onerror → 降级轮询 → ALREADY_USED 兼容响应）。
             SessionToken = maps:get(session_token, State, undefined),
             case qr_login_session_ds:claim_login_token(SessionToken) of
-                {ok, #{login_token := Token}} ->
-                    push_event(Req0, #{<<"status">> => <<"confirmed">>, <<"token">> => Token}),
+                {ok, Claim} ->
+                    %% Token 与 UID 必须来自同次原子领取，不能再读会话或信任信号。
+                    %% Both fields come from the same atomic claim, never the signal.
+                    push_confirmed(
+                        Req0,
+                        maps:get(login_token, Claim, undefined),
+                        maps:get(scanned_by, Claim, undefined)
+                    ),
                     {stop, Req0, State};
                 {error, not_claimable} ->
                     %% token 已被其他消费者领取（status 轮询/另一连接）：
@@ -111,8 +118,12 @@ info(Event, Req0, State) when is_map(Event) ->
                     {stop, Req0, State}
             end;
         <<"confirmed">> ->
-            %% cache 权威路径：事件自带 token（原行为保持）
-            push_map(Req0, Event),
+            %% cache 确认端由同一 UpdatedSession 构造 token + scanned_by。
+            %% Legacy token-only events fail closed; do not guess the owner.
+            push_confirmed(
+                Req0, maps:get(<<"token">>, Event, undefined),
+                maps:get(<<"uid">>, Event, undefined)
+            ),
             {stop, Req0, State};
         <<"expired">> ->
             push_map(Req0, Event),
@@ -132,10 +143,17 @@ push_map(Req0, Event) ->
     Chunk = <<"data: ", Json/binary, "\n\n">>,
     ok = cowboy_req:stream_body(Chunk, nofin, Req0).
 
-%% @doc 推送事件（同 push_map；显式 map 参数版，供 claim 成功路径）。
--spec push_event(cowboy_req:req(), map()) -> ok.
-push_event(Req0, Event) ->
-    push_map(Req0, Event).
+%% @doc 没有完整权威身份时不发送凭据 / Never emit credentials without identity.
+-spec push_confirmed(cowboy_req:req(), term(), term()) -> ok.
+push_confirmed(Req0, Token, Uid) ->
+    case qr_login_event_ds:confirmed(Token, Uid) of
+        {ok, Event} -> push_map(Req0, Event);
+        {error, invalid_credentials} -> push_invalid_credentials(Req0)
+    end.
+
+-spec push_invalid_credentials(cowboy_req:req()) -> ok.
+push_invalid_credentials(Req0) ->
+    cowboy_req:stream_body(<<": invalid_credentials\n\n">>, nofin, Req0).
 
 %% @doc 连接关闭时 syn:leave 释放订阅，防僵尸 group 成员。
 %%

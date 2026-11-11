@@ -78,12 +78,48 @@
 | POST | /api/v1/passport/findpassword | 公开 Open | passport_handler#find_password | 验证码重置密码 / Reset password | Body: `type`,`account`,`pwd`(RSA),`code` | `{}` |
 | GET | /api/v1/passport/bind_mail | 公开 Open | passport_handler#bind_mail | 邮件链接确认绑定邮箱 / Confirm email bind | Query: `ts`,`tk`(HMAC),`uin`,`mail` | `{}` |
 | POST | /api/v1/passport/qr_login/create | 公开 Open | qr_login_handler#create | 创建扫码登录会话（60s）/ Create QR session | Body: `device_id`*,`device_name`,`platform` | `qr_token`、`session_token`、`expires_in`=60 |
-| GET | /api/v1/passport/qr_login/status | 公开 Open | qr_login_handler#status | 轮询扫码状态 / Poll QR status | Query: `session_token` | `status`(waiting/scanned/confirmed/cancelled)；confirmed 附 `token` |
+| GET | /api/v1/passport/qr_login/status | 公开 Open | qr_login_handler#status | 轮询扫码状态 / Poll QR status | Query: `session_token` | `status`(waiting/scanned/confirmed/cancelled)；confirmed 附 `token`、`uid`(number)、`uid_str`(精确十进制 string) |
 | POST | /api/v1/passport/qr_login/scan | 公开*（实需登录）| qr_login_handler#scan | 手机端扫码 / Phone scans | Body: `qr_token`；State: `current_uid` | `status`=scanned、`device_name`、`platform` |
 | POST | /api/v1/passport/qr_login/confirm | 公开*（实需登录）| qr_login_handler#confirm | 手机端确认登录 / Phone confirms | Body: `qr_token`；State: `current_uid` | `status`=confirmed |
 | POST | /api/v1/passport/qr_login/cancel | 公开 Open | qr_login_handler#cancel | 取消扫码会话 / Cancel QR | Body: `session_token` | `status`=cancelled |
-| GET | /api/v1/passport/qr_login/subscribe | 公开 Open | qr_login_sse_handler | SSE 推送扫码状态 / SSE status push | Query: `session_token`* | SSE 帧 `data:{status[,token]}`（30s 心跳） |
+| GET | /api/v1/passport/qr_login/subscribe | 公开 Open | qr_login_sse_handler | SSE 推送扫码状态 / SSE status push | Query: `session_token`* | SSE 帧 `data:{status[,token,uid,uid_str]}`（30s 心跳；身份字段仅 confirmed） |
 > 注：`qr_login/scan`、`qr_login/confirm` 路由列为公开，但 handler 依赖 `State.current_uid`，手机端须携带 JWT 才能取到非 0 uid。
+
+### QR confirmed 身份合同 / QR confirmed identity contract
+
+2026-11-11：SSE confirmed 与轮询 confirmed payload 使用同一构造函数
+`qr_login_event_ds:confirmed/2`；增加身份字段，不修改现有 `status`、`token` 或
+轮询 `uid` 的类型。`uid_str` 是服务器从同一个正整数 UID 生成的精确十进制字符串，
+浏览器客户端应优先使用它，避免 TSID 超过 JavaScript 安全整数范围后发生舍入。
+不得从 token、历史账号、本机资料或其他会话推断 UID；缺失或非法身份不发布登录凭据。
+
+SSE and polling share the confirmed payload builder. The existing numeric `uid`
+remains compatible; additive `uid_str` preserves the exact identity in browsers.
+Clients must use authoritative identity and reject credentials without it.
+
+```json
+{"status":"confirmed","token":"<opaque login token>","uid":111174215241304065,"uid_str":"111174215241304065"}
+```
+
+| 路径 / Path | UID 与 token 的绑定 / Binding | 一次性与回退边界 / Claim and fallback |
+|---|---|---|
+| PostgreSQL SSE / polling | 同一次 `claim_login_token` 的 `login_token` 与 `scanned_by`；不使用通知或领取前查询中的 UID / Same atomic claim result | 仍使用原 `UPDATE … RETURNING`。SSE/轮询只有一个领取者；失败 SSE 发送 `claimed_elsewhere` 注释并关闭，轮询返回 5203 / Existing atomic claim remains unchanged |
+| cache SSE | 确认时同一个 `UpdatedSession` 的 `login_token` 与 `scanned_by` / Same confirmed session | 保留既有广播行为；多个 SSE 订阅者和轮询之间没有原子一次性保证 / Legacy broadcast does not provide atomic single-consumer delivery |
+| cache polling | 同一次会话读取的 `login_token` 与 `scanned_by` / Same session read | 读取后删除，顺序重复轮询返回 NOT_FOUND；并发 get→delete 仍不是原子领取 / Sequential consumption only; concurrent reads remain non-atomic |
+
+PG 断线发生在领取前时可由轮询领取；发生在领取成功后、客户端落地前时，凭据已经消费，
+不能再次发放，须重新生成二维码。缺失/非法 UID 的 SSE 只发送 `invalid_credentials`
+注释并关闭，不发送 token；轮询返回既有 5203 非成功信封。旧后端 token-only SSE 事件
+不会由新 handler 猜测补齐身份。
+
+Polling can recover a disconnect before the PG claim. After a successful claim,
+delivery failure requires a new QR session; the token is never reissued. Invalid
+identity produces no credential-bearing event. Cache concurrency, multi-node
+deployment and browser-to-backend acceptance are not established by these unit tests.
+
+本次字段补丁不切换 `qr_login_authority`、不修改 PG SQL、不增加 cache 锁或迁移。
+cache 的上述历史限制仍需单独解决；不能把本次 UID 单元回归称为两条路径均已通过严格
+一次性验收。旧版收口记录 `qr-wire-contract-check.md` 是其原基线证据，不代表本合同已联调验收。
 
 ---
 
