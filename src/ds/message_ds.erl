@@ -852,16 +852,17 @@ validate_bundle_contract(Msg) ->
 %% validate_v3_envelope_shape/1 通过（与 validate_e2ee_envelope/1 的 v3
 %% 判定同口径）。尺寸上界不在此列——超大 v3 信封仍由调用方按
 %% e2ee_envelope_too_large 拒绝，对真 v3 E2EE bundle 行为零变化。
--spec is_v3_e2ee_envelope(term()) -> boolean().
+%% 定义域仅 map()：唯一调用侧已用 is_map 守卫，非 map 非 null/<<>>
+%% 形态在 validate_msg_type_payload 处按既有行为交由调用方以
+%% e2ee_envelope_invalid 拒绝，不进入本判定。
+-spec is_v3_e2ee_envelope(map()) -> boolean().
 is_v3_e2ee_envelope(E2EE) when is_map(E2EE) ->
     case maps:get(<<"meta_version">>, E2EE, 0) of
         V when is_integer(V), V >= 3 ->
             validate_v3_envelope_shape(E2EE) =:= ok;
         _ ->
             false
-    end;
-is_v3_e2ee_envelope(_) ->
-    false.
+    end.
 
 %% @private
 %% @doc 外层 E2EE 信封校验（E2EE-060 / ADR 15 §10）
