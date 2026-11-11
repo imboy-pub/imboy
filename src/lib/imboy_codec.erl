@@ -438,14 +438,17 @@ content_type_from_enum(_) -> <<>>.
 
 %% @doc JSON 通道专属 msg_type 识别
 %%
-%% agent_task / a2a_task_update / stream_delta 均为 JSON 通道消息类型，
-%% 不进入 protobuf enum（无 proto 变更），在 JSON 通道由 msg_type binary
-%% 原样透传。业务层可据此判定是否为 JSON-only 内容类型（渲染/路由 gate）。
+%% agent_task / a2a_task_update / stream_delta / chat_history_bundle 均为
+%% JSON 通道消息类型，不进入 protobuf enum（无 proto 变更），在 JSON 通道
+%% 由 msg_type binary 原样透传。业务层可据此判定是否为 JSON-only 内容类型
+%% （渲染/路由 gate）。chat_history_bundle 的 payload 合同见
+%% docs/reference/chat-history-bundle-contract.md。
 -spec is_json_channel_type(binary()) -> boolean().
 is_json_channel_type(<<"talk_record_card">>) -> true;
 is_json_channel_type(<<"agent_task">>) -> true;
 is_json_channel_type(<<"a2a_task_update">>) -> true;
 is_json_channel_type(<<"stream_delta">>) -> true;
+is_json_channel_type(<<"chat_history_bundle">>) -> true;
 is_json_channel_type(_) -> false.
 
 %% --- Payload type mapping ---

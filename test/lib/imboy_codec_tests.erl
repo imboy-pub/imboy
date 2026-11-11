@@ -35,7 +35,9 @@ codec_test_() ->
         {"C2S_SERVER_ACK 在 v2 帧内保留 id/in_reply_to", fun c2s_server_ack_v2_lossless/0},
         {"C2G_ERROR 在 v2 帧内保留 id/error/code", fun c2g_error_v2_lossless/0},
         {"普通 C2C 消息仍走 protobuf 编码", fun c2c_still_protobuf/0},
-        {"语音 voice 映射 AUDIO 且 protobuf 往返不丢类型", fun voice_content_type_roundtrip/0}
+        {"语音 voice 映射 AUDIO 且 protobuf 往返不丢类型", fun voice_content_type_roundtrip/0},
+        {"chat_history_bundle JSON 通道识别与原样往返", fun chat_history_bundle_json_channel/0},
+        {"chat_history_bundle protobuf 连接回退 JSON 四象限无损", fun chat_history_bundle_pb_fallback/0}
     ]}.
 
 %%%===================================================================
@@ -314,6 +316,50 @@ voice_content_type_roundtrip() ->
     ?assertEqual(<<"msg-test-001">>, maps:get(<<"id">>, DecodedMsg)),
     ?assertEqual(<<"C2C">>, maps:get(<<"type">>, DecodedMsg)).
 
+%% @doc chat_history_bundle（多选消息合并转发快照，W1-D）在 JSON 通道被识别
+%% 并原样透传（仿 a2a_task_update 先例；合同见
+%% docs/reference/chat-history-bundle-contract.md）。
+chat_history_bundle_json_channel() ->
+    %% JSON-only 内容类型识别（精确匹配，无前缀放行）
+    ?assert(imboy_codec:is_json_channel_type(<<"chat_history_bundle">>)),
+    ?assertNot(imboy_codec:is_json_channel_type(<<"chat_history_bundle_x">>)),
+
+    %% JSON 通道 msg_type / bundle payload 原样往返，不落 protobuf enum
+    Msg = test_chat_history_bundle_msg(),
+    Encoded = imboy_codec:encode(json, Msg),
+    ?assert(is_binary(Encoded)),
+    Decoded = imboy_codec:decode(json, Encoded),
+    ?assertEqual(<<"chat_history_bundle">>, maps:get(<<"msg_type">>, Decoded)),
+    Payload = maps:get(<<"payload">>, Decoded),
+    ?assertEqual(1, maps:get(<<"bundle_version">>, Payload)),
+    ?assertEqual(1, length(maps:get(<<"entries">>, Payload))).
+
+%% @doc protobuf 连接上 chat_history_bundle 回退 JSON：C2C/C2G × none/v2
+%% 四象限往返无损（仿 talk_record_card 四象限先例——JSON-only 类型不进
+%% protobuf enum，pb_lossless 自动回退 JSON 帧）。
+chat_history_bundle_pb_fallback() ->
+    [
+        begin
+            Msg = test_chat_history_bundle_msg(Direction),
+            FrameType =
+                case Direction of
+                    <<"C2C">> -> ?FRAME_TYPE_MSG_C2C;
+                    _ -> ?FRAME_TYPE_MSG_C2G
+                end,
+            Wire = imboy_codec:encode_ws_msg(protobuf, Framing, FrameType, Msg),
+            Json =
+                case {Framing, Wire} of
+                    {none, {text, Binary}} ->
+                        Binary;
+                    {v2, {binary, Binary}} ->
+                        {ok, Frame} = imboy_codec:unwrap_v2_frame(Binary),
+                        imboy_frame:payload(Frame)
+                end,
+            ?assertEqual(Msg, jsone:decode(Json, [{object_format, map}]))
+        end
+     || Direction <- [<<"C2C">>, <<"C2G">>], Framing <- [none, v2]
+    ].
+
 %% @doc v2 frame unwrap 错误用例
 v2_frame_unwrap_error() ->
     %% 魔数不对
@@ -487,5 +533,29 @@ test_e2ee_megolm_message() ->
             <<"session_id">> => <<"megolm-sess-001">>
         },
         <<"payload">> => <<"megolm-ciphertext-binary">>,
+        <<"created_at">> => 1710000000000
+    }.
+
+test_chat_history_bundle_msg() ->
+    test_chat_history_bundle_msg(<<"C2C">>).
+
+test_chat_history_bundle_msg(Direction) ->
+    #{
+        <<"id">> => <<"msg-bundle-codec-001">>,
+        <<"type">> => Direction,
+        <<"from">> => 123456789,
+        <<"to">> => 987654321,
+        <<"msg_type">> => <<"chat_history_bundle">>,
+        <<"action">> => <<>>,
+        <<"e2ee">> => null,
+        <<"payload">> => #{
+            <<"bundle_version">> => 1,
+            <<"entries">> => [
+                #{
+                    <<"msg_type">> => <<"text">>,
+                    <<"payload">> => #{<<"text">> => <<"hello bundle">>}
+                }
+            ]
+        },
         <<"created_at">> => 1710000000000
     }.

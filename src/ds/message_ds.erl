@@ -779,12 +779,45 @@ validate_content_message(_Type, Msg) ->
                 <<>> ->
                     {error, <<"non_s2c_message_missing_msg_type">>};
                 _ ->
-                    case validate_e2ee_envelope(maps:get(<<"e2ee">>, Msg, null)) of
-                        ok -> {ok, Msg};
-                        {error, _} = Err2 -> Err2
+                    case validate_msg_type_payload(MsgType, Msg) of
+                        {error, _} = Err3 ->
+                            Err3;
+                        ok ->
+                            case validate_e2ee_envelope(maps:get(<<"e2ee">>, Msg, null)) of
+                                ok -> {ok, Msg};
+                                {error, _} = Err2 -> Err2
+                            end
                     end
             end
     end.
+
+%% @private
+%% @doc msg_type 专属 payload 合同校验（W1-D：chat_history_bundle）
+%%
+%% 目前仅 chat_history_bundle 携带服务端侧 payload 硬合同（bundle_version /
+%% 条目数 1..50 / 序列化 ≤ 256 KiB，真源
+%% docs/reference/chat-history-bundle-contract.md）。校验发生在 staging
+%% 落库与广播之前。
+%%
+%% E2EE 消息的 payload 对服务端不透明（v3 外层 payload 恒为空串，v1/v2 为
+%% 密文 base64），bundle 合同由客户端在加密前自查——此处仅对明文 bundle
+%% 做守护；E2EE 走既有外层信封形态校验（validate_e2ee_envelope/1），
+%% 不解密、不重建。
+-spec validate_msg_type_payload(binary(), map()) -> ok | {error, binary()}.
+validate_msg_type_payload(<<"chat_history_bundle">>, Msg) ->
+    case maps:get(<<"e2ee">>, Msg, null) of
+        E2EE when E2EE =:= null; E2EE =:= <<>> ->
+            case chat_history_bundle_ds:validate_payload(maps:get(<<"payload">>, Msg, undefined)) of
+                ok ->
+                    ok;
+                {error, Reason} when is_atom(Reason) ->
+                    {error, atom_to_binary(Reason, utf8)}
+            end;
+        _Encrypted ->
+            ok
+    end;
+validate_msg_type_payload(_OtherMsgType, _Msg) ->
+    ok.
 
 %% @private
 %% @doc 外层 E2EE 信封校验（E2EE-060 / ADR 15 §10）
