@@ -84,76 +84,59 @@ face2face_with_undefined_lat_returns_error_test_() ->
         ?assertEqual({error, <<"latitude 必须"/utf8>>}, Result)
     end).
 
-face2face_creates_new_group_when_no_nearby_test_() ->
-    ?WITH_MECKS(
-        [
-            {group_ds, [
-                {'nearby_gid', 6, fun(_Lng, _Lat, _Radius, _Unit, _Limit, _Code) ->
-                    {ok, []}
-                end},
-                {'face2face_create', 5, fun(_Conn, _Uid, _Code, _Lng, _Lat) ->
-                    {ok, 999}
-                end}
-            ]},
-            {elib_pg, [
-                {'with_tx', 1, fun(Fun) -> Fun(self()) end}
-            ]}
-        ],
-        fun() ->
-            Uid = 123,
-            Code = <<"ABC123">>,
-            Lng = <<"116.4074">>,
-            Lat = <<"39.9042">>,
-
-            Result = group_logic:face2face(Uid, Code, Lng, Lat),
-            ?assertMatch({ok, 999}, Result)
-        end
-    ).
-
-face2face_joins_existing_group_test_() ->
-    ?WITH_MECKS(
-        [
-            {group_ds, [
-                {'nearby_gid', 6, fun(_Lng, _Lat, _Radius, _Unit, _Limit, _Code) ->
-                    {ok, [#{<<"group_id">> => 888}]}
-                end}
-            ]},
-            {group_member_logic, [
-                {'join_group', 4, fun(_JoinMode, _Uid, _Gid, _Data) -> ok end}
-            ]}
-        ],
-        fun() ->
-            Uid = 123,
-            Code = <<"ABC123">>,
-            Lng = <<"116.4074">>,
-            Lat = <<"39.9042">>,
-
-            Result = group_logic:face2face(Uid, Code, Lng, Lat),
-            ?assertMatch({ok, 888}, Result)
-        end
-    ).
-
-face2face_with_multiple_nearby_groups_fails_test_() ->
+face2face_matches_atomically_test_() ->
     ?WITH_MECK(
         group_ds,
         [
-            {'nearby_gid', 6, fun(_Lng, _Lat, _Radius, _Unit, _Limit, _Code) ->
-                {ok, [
-                    #{<<"group_id">> => 888},
-                    #{<<"group_id">> => 999}
-                ]}
-            end}
+            {face2face, 4, fun(123, <<"0123">>, 116.4074, 39.9042) -> {ok, 999} end}
         ],
         fun() ->
-            Uid = 123,
-            Code = <<"ABC123">>,
-            Lng = <<"116.4074">>,
-            Lat = <<"39.9042">>,
-
-            Result = group_logic:face2face(Uid, Code, Lng, Lat),
-            ?assertEqual({error, "error"}, Result)
+            ?assertEqual(
+                {ok, 999}, group_logic:face2face(123, <<"0123">>, <<"116.4074">>, <<"39.9042">>)
+            )
         end
     ).
+
+face2face_storage_failure_is_error_test_() ->
+    ?WITH_MECK(
+        group_ds,
+        [
+            {face2face, 4, fun(_, _, _, _) -> {error, database_unavailable} end}
+        ],
+        fun() ->
+            ?assertMatch(
+                {error, _}, group_logic:face2face(123, <<"1234">>, <<"116.4">>, <<"39.9">>)
+            )
+        end
+    ).
+
+face2face_rejects_invalid_inputs_test_() ->
+    [
+        ?_assertMatch({error, _}, group_logic:face2face(123, Code, Lng, Lat))
+     || {Code, Lng, Lat} <- [
+            {<<"123">>, <<"116.4">>, <<"39.9">>},
+            {<<"12345">>, <<"116.4">>, <<"39.9">>},
+            {<<"12a4">>, <<"116.4">>, <<"39.9">>},
+            {<<"１２３４"/utf8>>, <<"116.4">>, <<"39.9">>},
+            {null, <<"116.4">>, <<"39.9">>},
+            {<<"1234">>, <<"0.0">>, <<"0.0">>},
+            {<<"1234">>, <<"181.0">>, <<"39.9">>},
+            {<<"1234">>, <<"116.4">>, <<"91.0">>},
+            {<<"1234">>, <<"NaN">>, <<"39.9">>},
+            {<<"1234">>, <<"bad">>, <<"39.9">>}
+        ]
+    ].
+
+face2face_save_rejects_invalid_inputs_test_() ->
+    [
+        ?_assertMatch({error, _}, group_logic:face2face_save(Code, Gid, 123))
+     || {Code, Gid} <- [
+            {<<"123">>, 999},
+            {<<"1234">>, 0},
+            {<<"1234">>, undefined},
+            {<<"1234">>, 9223372036854775808}
+        ]
+    ].
 
 %% ===================================================================
 %% face2face_save/3 测试
@@ -166,7 +149,7 @@ face2face_save_success_test_() ->
             {'face2face_save', 3, fun(_Code, _Gid, _Uid) -> {ok, <<"saved">>} end}
         ],
         fun() ->
-            Code = <<"ABC123">>,
+            Code = <<"1234">>,
             Gid = 999,
             Uid = 123,
 

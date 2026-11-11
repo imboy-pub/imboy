@@ -7,8 +7,10 @@ post:
   summary: 保存面对面建群的成员关系
   description: |
     ## 中文 / English
-    面对面建群匹配成功后，调用本接口完成入群登记。返回完整群资料 + 成员列表。
-    Finalize face-to-face group membership; returns full group + member list.
+    匹配成功后确认进入聊天。必须已通过有效暗号匹配并成为成员，过期暗号及非成员拒绝。
+    重复确认幂等；返回完整群资料 + 成员列表，不重建已删除群。
+    Confirm entry after matching; requires existing membership and an unexpired code.
+    Repeated confirmation is idempotent; returns group + members without recreating deleted groups.
   operationId: face2faceSave
   requestBody:
     required: true
@@ -20,10 +22,12 @@ post:
           properties:
             code:
               type: string
+              pattern: '^[0-9]{4}$'
               description: 同 face2face 的 4 位验证码 / Same 4-digit code.
             gid:
               type: integer
               minimum: 1
+              maximum: 9223372036854775807
   responses:
     '200':
       description: 保存成功；payload { group, member_list }

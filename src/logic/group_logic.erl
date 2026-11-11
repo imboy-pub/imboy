@@ -84,35 +84,48 @@ face2face(_, _, _, undefined) ->
 face2face(_, _, _, <<"null">>) ->
     {error, <<"latitude 必须"/utf8>>};
 face2face(Uid, Code, Lng, Lat) ->
-    LngFloat = ec_cnv:to_float(Lng),
-    LatFloat = ec_cnv:to_float(Lat),
-    case nearby_gid(LngFloat, LatFloat, <<"50">>, <<"m">>, <<"1">>, Code) of
-        {ok, []} ->
-            % 创建新的面对面建群
-            TxRes = elib_pg:with_tx(fun(Conn) ->
-                group_ds:face2face_create(Conn, Uid, Code, LngFloat, LatFloat)
-            end),
-            %% with_tx 可能返回 {rollback,_}；ds 层错误可能为 atom。
-            %% 统一归一到本函数的 {error, binary()} 契约，防止向调用方泄漏。
-            case TxRes of
-                {ok, Gid} ->
-                    {ok, Gid};
-                {error, Reason} when is_binary(Reason) ->
-                    {error, Reason};
-                {error, Reason} ->
-                    {error, atom_to_binary(Reason, utf8)};
-                {rollback, RollbackReason} ->
-                    ?ERROR_LOG([face2face_create_rollback, Uid, Code, RollbackReason]),
-                    {error, <<"面对面建群事务回滚"/utf8>>}
-            end;
-        {ok, [#{<<"group_id">> := Gid}]} ->
-            JoinMode = <<"face2face_join">>,
-            case group_member_logic:join_group(JoinMode, Uid, Gid, #{}) of
-                ok -> {ok, Gid};
-                {error, Reason} -> {error, Reason}
-            end;
-        _ ->
-            {error, "error"}
+    case valid_face2face_code(Code) of
+        false ->
+            {error, <<"请输入四位数字暗号"/utf8>>};
+        true ->
+            case face2face_coordinates(Lng, Lat) of
+                {ok, LngFloat, LatFloat} ->
+                    try group_ds:face2face(Uid, Code, LngFloat, LatFloat) of
+                        {ok, Gid} ->
+                            {ok, Gid};
+                        {error, group_limit_reached} ->
+                            {error, <<"每人最多创建100个群"/utf8>>};
+                        Failure ->
+                            ?ERROR_LOG([face2face_failed, Uid, Failure]),
+                            {error, <<"面对面匹配失败，请重试"/utf8>>}
+                    catch
+                        Class:Reason ->
+                            ?ERROR_LOG([face2face_exception, Uid, Class, Reason]),
+                            {error, <<"面对面匹配失败，请重试"/utf8>>}
+                    end;
+                error ->
+                    {error, <<"无法获取有效位置，请开启定位后重试"/utf8>>}
+            end
+    end.
+
+valid_face2face_code(<<A, B, C, D>>) ->
+    lists:all(fun(N) -> N >= $0 andalso N =< $9 end, [A, B, C, D]);
+valid_face2face_code(_) ->
+    false.
+
+face2face_coordinates(Lng, Lat) ->
+    try
+        X = ec_cnv:to_float(Lng),
+        Y = ec_cnv:to_float(Lat),
+        case
+            X >= -180 andalso X =< 180 andalso Y >= -90 andalso Y =< 90 andalso
+                not (X == 0 andalso Y == 0)
+        of
+            true -> {ok, X, Y};
+            false -> error
+        end
+    catch
+        _:_ -> error
     end.
 
 %% @doc 面对面建群保存
@@ -123,7 +136,27 @@ face2face(Uid, Code, Lng, Lat) ->
 -spec face2face_save(binary(), integer(), integer()) ->
     {ok, binary()} | {error, binary() | atom()} | {rollback, term()}.
 face2face_save(Code, Gid, Uid) ->
-    group_ds:face2face_save(Code, Gid, Uid).
+    case
+        valid_face2face_code(Code) andalso is_integer(Gid) andalso Gid > 0 andalso
+            Gid =< 9223372036854775807
+    of
+        true ->
+            try group_ds:face2face_save(Code, Gid, Uid) of
+                {ok, _} = Result ->
+                    Result;
+                {error, face2face_expired} ->
+                    {error, <<"暗号已失效或尚未匹配，请重新输入"/utf8>>};
+                Failure ->
+                    ?ERROR_LOG([face2face_save_failed, Uid, Gid, Failure]),
+                    {error, <<"入群失败，请重试"/utf8>>}
+            catch
+                Class:Reason ->
+                    ?ERROR_LOG([face2face_save_exception, Uid, Gid, Class, Reason]),
+                    {error, <<"入群失败，请重试"/utf8>>}
+            end;
+        false ->
+            {error, <<"暗号或群组无效，请重新匹配"/utf8>>}
+    end.
 
 %% @doc 创建群组
 %% 创建新群组并邀请成员加入

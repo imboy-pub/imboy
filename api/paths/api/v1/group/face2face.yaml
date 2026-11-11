@@ -8,27 +8,32 @@ get:
   description: |
     ## 中文 / English
     面对面建群：附近的用户输入相同 4 位 code 即可被匹配到同一群。
-    限流：3 秒一次。第一个调用者创建群组，后续匹配者直接加入。
+    匹配半径 50 米，暗号有效期 60 分钟。必须提供有效实时位置，不支持 (0,0) 降级。
+    限流：3 秒一次。首位用户在同一事务内创建群组及成员关系；同码并发匹配到同一群。
+    匹配成功即已加入群组，返回输入页不会自动退群；创建数量遵循每人 100 群上限。
     Face-to-face group creation: nearby users entering the same 4-digit
     code join the same group. Rate-limited to once every 3 seconds.
-    The first caller creates; subsequent callers join.
+    The first caller atomically creates the group and its membership; concurrent
+    matches join the same group within 50 metres. Codes expire after 60 minutes.
+    Valid location is required; (0,0) is rejected. Matching joins the group; going
+    back does not leave it. Creation is limited to 100 active owned groups.
   operationId: face2faceGroup
   parameters:
     - in: query
       name: code
       required: true
-      schema: { type: string, minLength: 4, maxLength: 4 }
+      schema: { type: string, minLength: 4, maxLength: 4, pattern: '^[0-9]{4}$' }
       description: 4 位数字验证码 / 4-digit code.
     - in: query
       name: longitude
       required: true
       description: 经度 / Longitude
-      schema: { type: number, format: float }
+      schema: { type: number, format: float, minimum: -180, maximum: 180 }
     - in: query
       name: latitude
       required: true
       description: 纬度 / Latitude
-      schema: { type: number, format: float }
+      schema: { type: number, format: float, minimum: -90, maximum: 90 }
   responses:
     '200':
       description: 匹配成功；payload 含 gid + member_list

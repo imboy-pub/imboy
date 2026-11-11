@@ -7,6 +7,7 @@
 -export([create_group/6]).
 -export([create_scoped_group/7]).
 -export([nearby_gid/6]).
+-export([face2face/4]).
 -export([face2face_create/5]).
 -export([face2face_save/3]).
 -export([dissolve_group/4]).
@@ -387,6 +388,9 @@ do_create_group(Conn, GMap, Uid, _Now) ->
 ) ->
     {ok, list(map())} | {error, term()}.
 nearby_gid(Lng, Lat, Radius, _Unit, Limit, Code) ->
+    elib_pg:with_conn(fun(Conn) -> nearby_gid_tx(Conn, Lng, Lat, Radius, Limit, Code) end).
+
+nearby_gid_tx(Conn, Lng, Lat, Radius, Limit, Code) ->
     Now = elib_dt:now(),
     Sql = <<
         "select\n        id,\n        group_id,\n        ST_AsText(location) "
@@ -394,6 +398,7 @@ nearby_gid(Lng, Lat, Radius, _Unit, Limit, Code) ->
         "int($1::float8, $2::float8), 4326)::geography,\n           "
         " location\n        ) as distance\n    from public.group_random_code\n "
         "   where code = $3\n      and validity_at > $4::timestamptz\n "
+        "     and EXISTS (SELECT 1 FROM public.\"group\" g WHERE g.id = group_id AND g.status = 1) "
         "     and ST_DWithin(\n            location::geography,\n   "
         "         ST_SetSRID(ST_MakePoint($1::float8, $2::float8), 4326)::geo"
         "graphy,\n            $5::int\n      )\n    order by distance "
@@ -403,13 +408,44 @@ nearby_gid(Lng, Lat, Radius, _Unit, Limit, Code) ->
     LatFloat = ec_cnv:to_float(Lat),
     RadiusInt = ec_cnv:to_integer(Radius),
     LimitInt = ec_cnv:to_integer(Limit),
-    elib_pg:query(Sql, [LngFloat, LatFloat, Code, Now, RadiusInt, LimitInt]).
+    elib_pg:query(Conn, Sql, [LngFloat, LatFloat, Code, Now, RadiusInt, LimitInt]).
+
+%% 同码匹配串行化，查询与创建共用事务，避免两人同时输入时各自建群。
+-spec face2face(integer(), binary(), float(), float()) -> {ok, integer()} | {error, term()}.
+face2face(Uid, Code, Lng, Lat) ->
+    elib_pg:with_tx(fun(Conn) ->
+        case
+            elib_pg:query(
+                Conn,
+                <<"SELECT pg_advisory_xact_lock(192837, $1::int)">>,
+                [binary_to_integer(Code)]
+            )
+        of
+            {ok, _} -> ok;
+            {error, LockError} -> throw({abort_tx, LockError})
+        end,
+        case nearby_gid_tx(Conn, Lng, Lat, 50, 1, Code) of
+            {ok, []} ->
+                face2face_create(Conn, Uid, Code, Lng, Lat);
+            {ok, [#{<<"group_id">> := Gid}]} ->
+                ok = workspace_guard:abort_on_error(
+                    workspace_guard:ensure_writable_tx(Conn, {group, Gid})
+                ),
+                case group_member_ds:join_group(Conn, <<"face2face_join">>, Uid, Gid, #{}) of
+                    {ok, _} -> {ok, Gid};
+                    {error, JoinError} -> throw({abort_tx, JoinError})
+                end;
+            {error, Reason} ->
+                throw({abort_tx, Reason})
+        end
+    end).
 
 %% @doc 面对面建群 - 创建随机码（事务版本）
 %% @return {ok, Gid} | {error, Reason}
 -spec face2face_create(pid(), integer(), binary(), float(), float()) ->
     {ok, integer()} | {error, binary() | atom()}.
 face2face_create(Conn, Uid, Code, Lng, Lat) ->
+    ok = ensure_face2face_quota(Conn, Uid),
     Now = elib_dt:now(),
     Gid = gid(),
     Id = elib_tsid:generate(group_random_code),
@@ -431,10 +467,29 @@ face2face_create(Conn, Uid, Code, Lng, Lat) ->
         ),
     case elib_pg:execute(Conn, Sql, Params) of
         {ok, _} ->
-            join(Uid, Gid),
+            %% 匹配成功即建立真实成员关系，资料、成员同步与历史授权使用同一事实。
+            Gid = create_group(Conn, Gid, Uid, Now, 2, 1),
             {ok, Gid};
         {error, Reason} ->
-            {error, Reason}
+            throw({abort_tx, Reason})
+    end.
+
+ensure_face2face_quota(Conn, Uid) ->
+    %% 锁住创建者，跨暗号的并发请求也不能绕过普通建群的100群上限。
+    case elib_pg:query(Conn, <<"SELECT id FROM public.\"user\" WHERE id=$1 FOR UPDATE">>, [Uid]) of
+        {ok, [_]} -> ok;
+        _ -> throw({abort_tx, user_not_found})
+    end,
+    case
+        elib_pg:query(
+            Conn,
+            <<"SELECT count(*) AS count FROM public.\"group\" WHERE owner_uid=$1 AND status=1">>,
+            [Uid]
+        )
+    of
+        {ok, [#{<<"count">> := Count}]} when Count < 100 -> ok;
+        {ok, _} -> throw({abort_tx, group_limit_reached});
+        {error, Reason} -> throw({abort_tx, Reason})
     end.
 
 %% @doc 面对面建群 - 保存（事务版本）
@@ -443,47 +498,21 @@ face2face_create(Conn, Uid, Code, Lng, Lat) ->
     {ok, binary()} | {error, binary() | atom()} | {rollback, term()}.
 face2face_save(Code, Gid, Uid) ->
     elib_pg:with_tx(fun(Conn) ->
-        % 读取随机码记录
-        RowCode =
-            case group_random_code_repo:find_by_gid(Gid, <<"code,user_id">>) of
-                #{<<"code">> := RC} -> RC;
-                _ -> throw({abort_tx, <<"gid not exist">>})
-            end,
-
-        % 校验 code
-        case RowCode =:= Code of
-            true -> ok;
-            false -> throw({abort_tx, <<"code error">>})
+        Sql = <<
+            "SELECT rc.group_id FROM public.group_random_code rc "
+            "JOIN public.group_member gm ON gm.group_id = rc.group_id "
+            "JOIN public.\"group\" g ON g.id = rc.group_id "
+            "WHERE rc.group_id = $1 AND rc.code = $2 AND rc.validity_at > now() "
+            "AND gm.user_id = $3 AND gm.status = 1 AND g.status = 1 FOR UPDATE OF rc"
+        >>,
+        case elib_pg:query(Conn, Sql, [Gid, Code, Uid]) of
+            {ok, [_ | _]} -> ok;
+            {ok, []} -> throw({abort_tx, face2face_expired});
+            {error, Reason} -> throw({abort_tx, Reason})
         end,
-
-        % 群不存在就创建
-        _ =
-            case group_repo:find_by_id(Gid, <<"id">>) of
-                #{<<"id">> := _} ->
-                    ok;
-                {error, Reason1} ->
-                    ?ERROR_LOG([group_find_by_id_failed, Gid, Reason1]),
-                    Now = elib_dt:now(),
-                    create_group(Conn, Gid, Uid, Now, 2, 1);
-                _ ->
-                    Now = elib_dt:now(),
-                    create_group(Conn, Gid, Uid, Now, 2, 1)
-            end,
-
-        % 不是群成员则加入
-        _ =
-            case group_member_repo:find(Gid, Uid, <<"id">>) of
-                #{<<"id">> := _} ->
-                    ok;
-                _ ->
-                    group_member_ds:join_group(
-                        Conn,
-                        <<"face2face_join">>,
-                        Uid,
-                        Gid,
-                        #{}
-                    )
-            end,
+        ok = workspace_guard:abort_on_error(
+            workspace_guard:ensure_writable_tx(Conn, {group, Gid})
+        ),
         {ok, <<"success">>}
     end).
 
