@@ -1194,3 +1194,121 @@ revoked_group_retry_is_denied_without_send_test_() ->
             ?assertEqual(0, meck:num_calls(message_ds, send_next, 6))
         end
     ).
+
+%% ===================================================================
+%% W2-H（RUN chat-multi-20261111）：chat_history_bundle 明文 payload
+%% 禁止 sender 设备注入（冻结合同 §4.5 禁止字段 + 256KiB 校验后膨胀）
+%%
+%% 完整入站路径走真实 decode/convert/validate/inject/stamp，仅在
+%% message_router_logic:route（存储边界）捕获 route 前形态。
+%% ===================================================================
+
+%% 恰 256KiB 的合法明文 bundle：payload 顶层不得被注入 sender_did/
+%% sender_dtype（接收端 sanitizer 按合同 §4.5 拒收），序列化尺寸不得因
+%% 注入膨胀超 256KiB；信封顶层设备 stamp 保留（ADR15 绑定不丢失）。
+w2h_bundle_skips_payload_injection_test_() ->
+    MaxBytes = 256 * 1024,
+    Bundle = w2h_sized_bundle(MaxBytes),
+    ?assertEqual(MaxBytes, byte_size(jsone:encode(Bundle, [native_utf8]))),
+    ?WITH_MECKS(
+        log_mocks() ++
+            [
+                {throttle, [
+                    {'check', 2, fun(msg_per_user, _) -> ok end}
+                ]},
+                {message_router_logic, [
+                    {'route', 5, fun(_MsgId, _Uid, Data, _Type, _Raw) ->
+                        put(w2h_captured_data, Data),
+                        ok
+                    end}
+                ]}
+            ],
+        fun() ->
+            State = #{did => <<"did_w2h">>, dtype => <<"ios">>, current_uid => 123},
+            Msg = jsone:encode(
+                #{
+                    <<"id">> => <<"msg-bundle-w2h-1">>,
+                    <<"type">> => <<"C2C">>,
+                    <<"from">> => <<"111">>,
+                    <<"to">> => <<"222">>,
+                    <<"msg_type">> => <<"chat_history_bundle">>,
+                    <<"payload">> => Bundle
+                },
+                [native_utf8]
+            ),
+            ?assertEqual(
+                {ok, State, hibernate}, websocket_handler:websocket_handle({text, Msg}, State)
+            ),
+            ?assertEqual(1, meck:num_calls(message_router_logic, route, 5)),
+            Data2 = erase(w2h_captured_data),
+            %% payload 顶层：合同 §4.5 禁止字段不得出现
+            Payload = maps:get(<<"payload">>, Data2),
+            ?assertNot(maps:is_key(<<"sender_did">>, Payload)),
+            ?assertNot(maps:is_key(<<"sender_dtype">>, Payload)),
+            %% 尺寸：恰 256KiB 合法 bundle 落库形态不得超限
+            ?assert(byte_size(jsone:encode(Payload, [native_utf8])) =< MaxBytes),
+            %% 信封顶层：ADR15 context binding 所需设备信息保留
+            ?assertEqual(<<"did_w2h">>, maps:get(<<"sender_did">>, Data2)),
+            ?assertEqual(<<"ios">>, maps:get(<<"sender_dtype">>, Data2))
+        end
+    ).
+
+%% 回归锚：非 bundle 明文消息（text）payload 注入行为不变。
+w2h_text_payload_injection_unchanged_test_() ->
+    ?WITH_MECKS(
+        log_mocks() ++
+            [
+                {throttle, [
+                    {'check', 2, fun(msg_per_user, _) -> ok end}
+                ]},
+                {message_router_logic, [
+                    {'route', 5, fun(_MsgId, _Uid, Data, _Type, _Raw) ->
+                        put(w2h_captured_data, Data),
+                        ok
+                    end}
+                ]}
+            ],
+        fun() ->
+            State = #{did => <<"did_w2h">>, dtype => <<"ios">>, current_uid => 123},
+            Msg = jsone:encode(
+                #{
+                    <<"id">> => <<"msg-text-w2h-1">>,
+                    <<"type">> => <<"C2C">>,
+                    <<"from">> => <<"111">>,
+                    <<"to">> => <<"222">>,
+                    <<"msg_type">> => <<"text">>,
+                    <<"payload">> => #{<<"text">> => <<"hi">>}
+                },
+                [native_utf8]
+            ),
+            ?assertEqual(
+                {ok, State, hibernate}, websocket_handler:websocket_handle({text, Msg}, State)
+            ),
+            Data2 = erase(w2h_captured_data),
+            %% payload 顶层注入保留（回归锚：W2-H 只跳过 bundle）
+            Payload = maps:get(<<"payload">>, Data2),
+            ?assertEqual(<<"did_w2h">>, maps:get(<<"sender_did">>, Payload)),
+            ?assertEqual(<<"ios">>, maps:get(<<"sender_dtype">>, Payload)),
+            %% 信封顶层 stamp 同样在
+            ?assertEqual(<<"did_w2h">>, maps:get(<<"sender_did">>, Data2))
+        end
+    ).
+
+%% 构造序列化后恰为 Target 字节的合法单条 bundle（同
+%% test/ds/chat_history_bundle_tests.erl 的 sized_bundle：filler 全 ASCII，
+%% 每加 1 字符编码恰好 +1 字节）。
+w2h_sized_bundle(Target) ->
+    Base = w2h_sized_bundle_payload(0),
+    BaseSize = byte_size(jsone:encode(Base, [native_utf8])),
+    w2h_sized_bundle_payload(Target - BaseSize).
+
+w2h_sized_bundle_payload(FillerLen) ->
+    #{
+        <<"bundle_version">> => 1,
+        <<"entries">> => [
+            #{
+                <<"msg_type">> => <<"text">>,
+                <<"payload">> => #{<<"filler">> => binary:copy(<<"a">>, FillerLen)}
+            }
+        ]
+    }.

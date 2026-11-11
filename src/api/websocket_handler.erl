@@ -546,7 +546,9 @@ handle_json_message(Msg, State) ->
                 Payload0 = maps:get(<<"payload">>, ValidatedData, #{}),
 
                 % 将发送者的设备信息（sender_did 和 sender_dtype）注入到消息的 payload 中。
-                Payload = websocket_logic:inject_sender_device(Payload0, State),
+                % W2-H：chat_history_bundle 跳过 payload 级注入（见
+                % inject_payload_sender_device/3 注释）。
+                Payload = inject_payload_sender_device(ValidatedData, Payload0, State),
                 % 同时盖到信封顶层：E2EE 消息的 payload 对服务端不透明
                 % （v1/v2 是密文串、v3 恒为空串），注入拿不到落脚点。
                 % 接收侧 context binding 比对的正是信封顶层这一份。
@@ -815,7 +817,9 @@ handle_protobuf_message_decoded(Data0, State) ->
                 Type = maps:get(<<"type">>, ValidatedData, <<>>),
 
                 Payload0 = maps:get(<<"payload">>, ValidatedData, #{}),
-                Payload = websocket_logic:inject_sender_device(Payload0, State),
+                % W2-H：chat_history_bundle 跳过 payload 级注入（JSON 分支同理，
+                % 见 inject_payload_sender_device/3 注释）
+                Payload = inject_payload_sender_device(ValidatedData, Payload0, State),
                 % 与 JSON 分支同理：payload 不透明时信封顶层是唯一有效落脚点
                 Data2 = websocket_logic:stamp_sender_device(
                     maps:put(<<"payload">>, Payload, ValidatedData), State
@@ -837,6 +841,30 @@ handle_protobuf_message_decoded(Data0, State) ->
             ok = ?ERROR_LOG({protobuf_message_error, Class, CatchReason, Stacktrace}),
             ErrorMsg2 = ws_validation_error(<<>>, <<"invalid_protobuf">>, <<"decode_error">>),
             {reply, reply_frame(ErrorMsg2, State), State, hibernate}
+    end.
+
+%% @doc W2-H（RUN chat-multi-20261111）：msg_type=chat_history_bundle 的
+%% payload 跳过 sender 设备注入，其余消息类型照常注入（零行为变化）。
+%%
+%% 两个硬约束（冻结合同 docs/reference/chat-history-bundle-contract.md）：
+%%   1. §4 禁止字段清单：payload 顶层及任意嵌套层禁止 sender_did/sender_dtype
+%%      ——服务端注入等于亲手制造接收端 sanitizer（BND-03/SEC-01）必拒的明文
+%%      bundle；
+%%   2. §3 尺寸边界：256KiB 校验发生在 validate_content_message（注入之前），
+%%      恰 256KiB 的合法 bundle 注入 sender_did/sender_dtype 后落库/出网实际
+%%      超限。
+%% bundle 的发送设备信息不丢失：信封顶层 stamp_sender_device/2 照常盖章，
+%% ADR15 §3.3 context binding 比对的正是信封层这一份。E2EE bundle 的 payload
+%% 对服务端不透明（v3 恒为空串 / v1-v2 密文串），注入本就是 no-op，按
+%% msg_type 统一跳过对 E2EE 零行为变化。
+-spec inject_payload_sender_device(map(), map() | binary() | [binary()] | term(), map()) ->
+    map() | binary() | [binary()] | term().
+inject_payload_sender_device(ValidatedData, Payload0, State) ->
+    case maps:get(<<"msg_type">>, ValidatedData, <<>>) of
+        <<"chat_history_bundle">> ->
+            Payload0;
+        _ ->
+            websocket_logic:inject_sender_device(Payload0, State)
     end.
 
 %% @doc 根据客户端子协议列表确定编码协议与 framing
