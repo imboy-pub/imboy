@@ -118,6 +118,18 @@ trusted(State) ->
         owner_verified => imboy_quality_full_budget:owner_verified(State)
     }.
 
+%% Validate signed STATE and the live owner/admission at both boundaries.
+full_input_snapshot(Ctrl, Repo) ->
+    {ok, State, _Sha} = imboy_state_read(filename:join(Ctrl, "STATE.json")),
+    {0, HeadRaw} = imboy_quality_guard:git(Repo, ["rev-parse", "HEAD"]),
+    Head = unicode:characters_to_binary(string:trim(HeadRaw)),
+    Snapshot = imboy_quality_state:full_binding_snapshot(State, Repo, Head),
+    Ctx = trusted(State),
+    case imboy_quality_cli:permit(Ctx, eunit_full) of
+        ok -> Snapshot;
+        _ -> Snapshot#{<<"input_binding">> => <<"NOT_VERIFIED">>}
+    end.
+
 %% ---- 参数与许可 ----
 
 parse(["inspect"]) -> inspect;
@@ -342,10 +354,8 @@ dispatch(full_reserve, _Ctx, Ctrl) ->
 dispatch(full_build_complete, _Ctx, Ctrl) ->
     {imboy_quality_full_budget:transaction(Ctrl, build_complete, full_budget_options()), undefined};
 dispatch(eunit_full, _Ctx, Ctrl) ->
-    %% P1-10/P1-12 真实接线：分片执行完整 U（普通根 + 独占车道）。G-HEAVY 已由
-    %% enforce 校验。环境：IMBOY_QUALITY_WORKERS（默认 2）、EUNIT_CONFIG
-    %% （默认 config/sys.local）。每 worker 独立 http 端口副本（19980+K / 19970+K）。
-    %% 资源准备（模板/克隆/独占资源/Garage 等）在整条命令计时之内（EUNIT_120S §2）。
+    %% Every full root remains required; admission is checked before and after.
+    FullStarted = erlang:monotonic_time(millisecond),
     {ok, Repo} = file:get_cwd(),
     imboy_quality_full_budget:require_test_build(Repo),
     RunId = erase(claimed_full_run_id),
@@ -353,14 +363,28 @@ dispatch(eunit_full, _Ctx, Ctrl) ->
     Workers = env_int("IMBOY_QUALITY_WORKERS", 2),
     #{ordinary := Ordinary, excluded := Excl} = imboy_quality_full:inventory(Repo),
     Est = load_estimates(Ctrl),
+    Before = full_input_snapshot(Ctrl, Repo),
     with_config_receipts(Ctrl, RunId, fun() ->
+        PrepareStarted = erlang:monotonic_time(millisecond),
         Prepared = imboy_quality_env:prepare(Repo, Ctrl, Workers),
+        PrepareMs = erlang:monotonic_time(millisecond) - PrepareStarted,
         Opts = run_opts(Repo, Ctrl, Workers, Prepared, Excl, #{estimates => Est}),
         with_resources(Prepared, fun() ->
+            TestStarted = erlang:monotonic_time(millisecond),
             {Result0, OutDir} = imboy_quality_full:run(Ordinary, Opts, RunId),
+            TestMs = erlang:monotonic_time(millisecond) - TestStarted,
+            After = full_input_snapshot(Ctrl, Repo),
+            Binding = imboy_quality_state:full_binding_verdict(Before, After),
             Result = Result0#{
                 <<"resources">> => maps:get(report, Prepared),
-                <<"input_binding">> => <<"NOT_VERIFIED">>
+                <<"input_binding">> => Binding,
+                <<"candidate_sha">> => maps:get(<<"candidate_sha">>, After),
+                <<"input_fingerprint">> => maps:get(<<"input_fingerprint">>, After),
+                <<"phase_timings_ms">> => #{
+                    <<"resource_prepare">> => PrepareMs,
+                    <<"actual_eunit">> => TestMs
+                },
+                <<"_quality_full_started_ms">> => FullStarted
             },
             {Result, OutDir}
         end)

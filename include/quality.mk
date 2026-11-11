@@ -115,10 +115,10 @@ quality-test-build:
 IMBOY_QUALITY_WORKERS ?= 4
 
 quality-full:
-	escript scripts/quality.escript full-reserve
-	$(MAKE) quality-test-build
-	escript scripts/quality.escript full-build-complete
-	IMBOY_QUALITY_WORKERS=$(IMBOY_QUALITY_WORKERS) escript scripts/quality.escript eunit --full
+	@sh scripts/quality_timed.sh full_reserve escript scripts/quality.escript full-reserve
+	@sh scripts/quality_timed.sh test_build $(MAKE) quality-test-build
+	@sh scripts/quality_timed.sh full_build_complete escript scripts/quality.escript full-build-complete
+	@sh scripts/quality_timed.sh eunit_full env IMBOY_QUALITY_WORKERS=$(IMBOY_QUALITY_WORKERS) escript scripts/quality.escript eunit --full
 
 eunit-all: quality-full
 

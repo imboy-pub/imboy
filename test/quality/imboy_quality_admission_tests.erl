@@ -39,6 +39,36 @@ admission_binding(Repo) ->
         )
     ).
 
+full_result_binding_requires_unchanged_admission_test() ->
+    with_input(fun(Repo, Src) ->
+        Head = <<"0123456789012345678901234567890123456789">>,
+        State = #{
+            <<"worktree">> => unicode:characters_to_binary(Repo),
+            <<"current_gate_status">> => #{<<"G-IMPL">> => <<"ADMITTED">>},
+            <<"current_admission">> => #{
+                <<"status">> => <<"ADMITTED">>,
+                <<"candidate_sha">> => Head,
+                <<"profile">> => <<"PHASE2_INTEGRATED">>,
+                <<"input_fingerprint">> => imboy_quality_state:candidate_input_fingerprint(Repo)
+            }
+        },
+        Before = imboy_quality_state:full_binding_snapshot(State, Repo, Head),
+        ?assertEqual(<<"VERIFIED">>, maps:get(<<"input_binding">>, Before)),
+        ?assertEqual(<<"VERIFIED">>, imboy_quality_state:full_binding_verdict(Before, Before)),
+        ChangedHead = <<"9999999999999999999999999999999999999999">>,
+        ?assertEqual(
+            <<"NOT_VERIFIED">>,
+            imboy_quality_state:full_binding_verdict(
+                Before, imboy_quality_state:full_binding_snapshot(State, Repo, ChangedHead)
+            )
+        ),
+        ok = file:write_file(Src, <<"changed source">>),
+        After = imboy_quality_state:full_binding_snapshot(State, Repo, Head),
+        ?assertEqual(<<"NOT_VERIFIED">>, maps:get(<<"input_binding">>, After)),
+        ?assertEqual(<<"NOT_VERIFIED">>, imboy_quality_state:full_binding_verdict(Before, After)),
+        ?assertEqual(<<"NOT_VERIFIED">>, imboy_quality_state:full_binding_verdict(#{}, #{}))
+    end).
+
 same_head_changed_input_is_rejected_test() ->
     with_input(fun(Repo, Src) ->
         Head = <<"0123456789012345678901234567890123456789">>,
