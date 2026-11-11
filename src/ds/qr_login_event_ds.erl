@@ -4,7 +4,8 @@
 %%% 锚定 `imboy/src/api/qr_login_handler.erl` 的会话状态机，定义两类纯函数：
 %%%
 %%%   1. `topic_for/1`：根据 SessionToken 构造 syn 广播 topic 名（base64 安全）
-%%%   2. `event/2`：根据 Status + 可选 Token 构造客户端可消费的事件 map
+%%%   2. `event/2`：构造状态通知；旧 token-only confirmed 仅保留兼容 API
+%%%   3. `confirmed/2`：从同一权威 Token/UID 构造 SSE/轮询确认载荷
 %%%
 %%% 本 PR 是**纯加法**：不动任何现有路由 / handler / cache / syn 调用。
 %%% 后续 PR-2 才会在 `qr_login_handler:handle_scan/2` 等位点调用 `event/2`
@@ -23,7 +24,7 @@
 -include("chat.hrl").
 
 -export([topic_for/1]).
--export([event/2]).
+-export([event/2, confirmed/2]).
 -export([subscribe/2, unsubscribe/2, notify/2]).
 
 %% ===================================================================
@@ -59,6 +60,8 @@ topic_for(_) ->
 %%     （由调用方在调 `event/2` 前已校验，此处兜底防御）
 %%   - 未知 status → throw `unknown_status`
 %%
+%% 新确认路径必须使用 confirmed/2，event(confirmed, Token) 不能证明身份。
+%% New confirmation paths use confirmed/2; the legacy event cannot prove ownership.
 %% 与客户端 `parseQrStatusResponse` 字段对齐（dart sealed `QrStatusEvent`）：
 %%   - waiting/scanned/expired/cancelled → 单 status 字段
 %%   - confirmed → status + token 两字段
@@ -84,6 +87,22 @@ event(cancelled, _) ->
     #{<<"status">> => <<"cancelled">>};
 event(_, _) ->
     erlang:error(unknown_status).
+
+%% @doc SSE 与轮询共用的确认载荷；身份只能来自与 token 同一权威记录。
+%% Keep the legacy numeric uid; uid_str preserves the exact TSID in browsers.
+-spec confirmed(term(), term()) -> {ok, map()} | {error, invalid_credentials}.
+confirmed(Token, Uid) when
+    is_binary(Token), byte_size(Token) > 0,
+    is_integer(Uid), Uid > 0, Uid =< 9223372036854775807
+->
+    {ok, #{
+        <<"status">> => <<"confirmed">>,
+        <<"token">> => Token,
+        <<"uid">> => Uid,
+        <<"uid_str">> => integer_to_binary(Uid)
+    }};
+confirmed(_, _) ->
+    {error, invalid_credentials}.
 
 %% ===================================================================
 %% syn 集成（带 try/catch 兜底，scope 未注册时 silent 返回 ok / 0）

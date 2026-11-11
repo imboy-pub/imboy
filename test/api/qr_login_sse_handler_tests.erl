@@ -177,7 +177,8 @@ info_scanned_event_streams_chunk_and_keeps_loop_test_() ->
     end).
 
 info_confirmed_event_streams_chunk_and_stops_test_() ->
-    Event = #{<<"status">> => <<"confirmed">>, <<"token">> => <<"jwt_xyz">>},
+    Event = #{<<"status">> => <<"confirmed">>, <<"token">> => <<"jwt_xyz">>,
+        <<"uid">> => 111174215241304065},
     ?WITH_MECKS(cowboy_req_mocks(), fun() ->
         Req0 = req([]),
         State = #{session_token => <<"s1">>},
@@ -187,7 +188,8 @@ info_confirmed_event_streams_chunk_and_stops_test_() ->
         {stop, Req1, _} = Result,
         ?assertEqual(Req0, Req1),
         [Chunk] = sent_chunks(),
-        ?assert(binary:match(Chunk, <<"\"token\":\"jwt_xyz\"">>) =/= nomatch)
+        ?assert(binary:match(Chunk, <<"\"token\":\"jwt_xyz\"">>) =/= nomatch),
+        ?assert(binary:match(Chunk, <<"\"uid_str\":\"111174215241304065\"">>) =/= nomatch)
     end).
 
 info_expired_event_streams_chunk_and_stops_test_() ->
@@ -391,6 +393,8 @@ info_confirmed_ready_claims_token_once_and_stops_test_() ->
             [Chunk] = Chunks,
             ?assert(binary:match(Chunk, <<"\"status\":\"confirmed\"">>) =/= nomatch),
             ?assert(binary:match(Chunk, <<"\"token\":\"jwt_ready_1\"">>) =/= nomatch),
+            ?assert(binary:match(Chunk, <<"\"uid\":7">>) =/= nomatch),
+            ?assert(binary:match(Chunk, <<"\"uid_str\":\"7\"">>) =/= nomatch),
             %% DS 转发体真跑：repo 收到 State 里的原 SessionToken
             ?assert(meck:called(qr_login_session_repo, claim_login_token, [SessionToken]))
         end
