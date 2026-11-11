@@ -7,7 +7,9 @@
 %%   2. 挂点：message_ds:validate_message 在落库前拒绝非法明文 bundle，
 %%      错误码转 binary 进 WS 校验错误帧；
 %%   3. E2EE：不解密、不重建——bundle + E2EE 外层信封原样透传（{ok, Msg}
-%%      返回值与输入逐字节相等），外层信封形态校验仍生效；
+%%      返回值与输入逐字节相等），外层信封形态校验仍生效；仅形状合法的
+%%      v3 信封（meta_version>=3 且必填字段齐全）豁免明文合同，空 map /
+%%      legacy（meta_version<3）map 形态仍走明文合同校验（W3-L F-1）；
 %%   4. offline envelope：msg_type / payload 原样透传（无 bundle 专属分支）。
 %%
 %% 本文件只调纯函数（validate / offline_envelope），无 PG / meck 依赖。
@@ -204,6 +206,48 @@ e2ee_bundle_devices_fanout_passthrough_test() ->
 e2ee_bundle_invalid_envelope_still_rejected_test() ->
     Msg = (c2c_bundle_msg(<<>>))#{<<"e2ee">> => #{<<"meta_version">> => 3}},
     ?assertEqual({error, <<"e2ee_envelope_invalid">>}, message_ds:validate_message(Msg)).
+
+%% ===================================================================
+%% 3b. W3-L F-1：空 / legacy e2ee map 不是真 v3 信封，不豁免明文合同
+%% ===================================================================
+%%
+%% e2ee 为 map 即跳过 bundle 合同的历史行为构成绕过：e2ee=#{} 或
+%% legacy（meta_version<3）map 在 validate_e2ee_envelope/1 处恒为 ok，
+%% 51 条 / bundle_version!=1 / >256KiB 的明文 payload 可一路落库广播。
+%% 仅形状合法的 v3 信封（meta_version>=3 且必填字段齐全）才豁免合同。
+
+e2ee_empty_map_does_not_exempt_entries_contract_test() ->
+    Msg = (c2c_bundle_msg(bundle(51)))#{<<"e2ee">> => #{}},
+    ?assertEqual({error, <<"bundle_entries_out_of_range">>}, message_ds:validate_message(Msg)).
+
+e2ee_empty_map_does_not_exempt_version_contract_test() ->
+    Msg = (c2c_bundle_msg((bundle(1))#{<<"bundle_version">> => 2}))#{<<"e2ee">> => #{}},
+    ?assertEqual({error, <<"invalid_bundle_version">>}, message_ds:validate_message(Msg)).
+
+e2ee_empty_map_does_not_exempt_size_contract_test() ->
+    Msg = (c2c_bundle_msg(sized_bundle(?MAX_PAYLOAD_BYTES + 1)))#{<<"e2ee">> => #{}},
+    ?assertEqual({error, <<"bundle_payload_too_large">>}, message_ds:validate_message(Msg)).
+
+%% legacy（meta_version<3）map 同样不豁免（豁免判定与
+%% validate_e2ee_envelope/1 的 v3 判定同口径）
+e2ee_legacy_map_does_not_exempt_entries_contract_test() ->
+    Msg = (c2c_bundle_msg(bundle(51)))#{<<"e2ee">> => #{<<"meta_version">> => 1}},
+    ?assertEqual({error, <<"bundle_entries_out_of_range">>}, message_ds:validate_message(Msg)).
+
+e2ee_legacy_map_does_not_exempt_version_contract_test() ->
+    Msg = (c2c_bundle_msg((bundle(1))#{<<"bundle_version">> => 2}))#{
+        <<"e2ee">> => #{<<"meta_version">> => 2}
+    },
+    ?assertEqual({error, <<"invalid_bundle_version">>}, message_ds:validate_message(Msg)).
+
+%% 空 map / legacy map 本身仍被 envelope 视为未加密：合法明文 bundle 不受影响
+e2ee_empty_map_valid_bundle_still_ok_test() ->
+    Msg = (c2c_bundle_msg(bundle(1)))#{<<"e2ee">> => #{}},
+    ?assertEqual({ok, Msg}, message_ds:validate_message(Msg)).
+
+e2ee_legacy_map_valid_bundle_still_ok_test() ->
+    Msg = (c2c_bundle_msg(bundle(2)))#{<<"e2ee">> => #{<<"meta_version">> => 1}},
+    ?assertEqual({ok, Msg}, message_ds:validate_message(Msg)).
 
 %% ===================================================================
 %% 4. offline envelope：msg_type / payload 原样透传

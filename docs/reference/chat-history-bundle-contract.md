@@ -112,6 +112,10 @@ burn_read_at
   尺寸上界 + v3 必填字段形态），通过后原样透传，不重建、不裁剪。
 - 明文 bundle 才做 §3 的 DS 层合同校验；E2EE bundle 的合同自查由客户端在
   加密前完成（同 §4 责任方）。
+- 豁免明文合同校验的**唯一**条件是 `e2ee` 为形状合法的 v3 信封
+  （`meta_version >= 3` 且必填字段齐全，与 `validate_e2ee_envelope/1` 的 v3
+  判定同口径）；`e2ee` 为空 map 或 legacy（`meta_version < 3`）map 形态
+  **不豁免**，payload 仍按明文 bundle 走 §3 合同校验（W3-L F-1）。
 
 ## 6. 通道与离线行为
 
