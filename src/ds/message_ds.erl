@@ -801,23 +801,67 @@ validate_content_message(_Type, Msg) ->
 %%
 %% E2EE 消息的 payload 对服务端不透明（v3 外层 payload 恒为空串，v1/v2 为
 %% 密文 base64），bundle 合同由客户端在加密前自查——此处仅对明文 bundle
-%% 做守护；E2EE 走既有外层信封形态校验（validate_e2ee_envelope/1），
-%% 不解密、不重建。
+%% 做守护。豁免明文合同的唯一条件是 e2ee 为形状合法的 v3 信封
+%% （is_v3_e2ee_envelope/1，与 validate_e2ee_envelope/1 的 v3 判定同口径）；
+%% 空 map / legacy（meta_version<3）map 形态不是真 v3 信封，仍按明文 bundle
+%% 走合同校验（W3-L F-1：map 形态不得绕过 256KiB / 1..50 / bundle_version）。
+%% 真 v3 E2EE bundle 走既有外层信封形态校验（validate_e2ee_envelope/1），
+%% 不解密、不重建，行为不变。
 -spec validate_msg_type_payload(binary(), map()) -> ok | {error, binary()}.
 validate_msg_type_payload(<<"chat_history_bundle">>, Msg) ->
     case maps:get(<<"e2ee">>, Msg, null) of
         E2EE when E2EE =:= null; E2EE =:= <<>> ->
-            case chat_history_bundle_ds:validate_payload(maps:get(<<"payload">>, Msg, undefined)) of
-                ok ->
+            validate_bundle_contract(Msg);
+        E2EE when is_map(E2EE) ->
+            case is_v3_e2ee_envelope(E2EE) of
+                true ->
+                    %% 真 v3 信封：payload 对服务端不透明，豁免明文合同；
+                    %% 外层信封校验（尺寸上界 + v3 形态）由调用方继续。
                     ok;
-                {error, Reason} when is_atom(Reason) ->
-                    {error, atom_to_binary(Reason, utf8)}
+                false ->
+                    %% 空 map / legacy map：按明文 bundle 走合同校验。畸形
+                    %% 信封（meta_version>=3 但缺必填字段）保留既有
+                    %% e2ee_envelope_invalid 优先语义（信封错误先于合同）。
+                    case validate_e2ee_envelope(E2EE) of
+                        {error, _} = EnvErr -> EnvErr;
+                        ok -> validate_bundle_contract(Msg)
+                    end
             end;
         _Encrypted ->
+            %% 非 map 非 null/<<>> 形态：交由调用方 validate_e2ee_envelope/1
+            %% 以 e2ee_envelope_invalid 拒绝（既有行为不变）。
             ok
     end;
 validate_msg_type_payload(_OtherMsgType, _Msg) ->
     ok.
+
+%% @private
+%% @doc chat_history_bundle 明文合同（bundle_version / 1..50 条 / 256 KiB），
+%% 错误码原子转 binary 进 WS 校验错误帧
+-spec validate_bundle_contract(map()) -> ok | {error, binary()}.
+validate_bundle_contract(Msg) ->
+    case chat_history_bundle_ds:validate_payload(maps:get(<<"payload">>, Msg, undefined)) of
+        ok ->
+            ok;
+        {error, Reason} when is_atom(Reason) ->
+            {error, atom_to_binary(Reason, utf8)}
+    end.
+
+%% @private
+%% @doc e2ee map 是否为形状合法的 v3 信封：meta_version>=3 且
+%% validate_v3_envelope_shape/1 通过（与 validate_e2ee_envelope/1 的 v3
+%% 判定同口径）。尺寸上界不在此列——超大 v3 信封仍由调用方按
+%% e2ee_envelope_too_large 拒绝，对真 v3 E2EE bundle 行为零变化。
+-spec is_v3_e2ee_envelope(term()) -> boolean().
+is_v3_e2ee_envelope(E2EE) when is_map(E2EE) ->
+    case maps:get(<<"meta_version">>, E2EE, 0) of
+        V when is_integer(V), V >= 3 ->
+            validate_v3_envelope_shape(E2EE) =:= ok;
+        _ ->
+            false
+    end;
+is_v3_e2ee_envelope(_) ->
+    false.
 
 %% @private
 %% @doc 外层 E2EE 信封校验（E2EE-060 / ADR 15 §10）
