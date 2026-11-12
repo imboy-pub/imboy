@@ -240,6 +240,45 @@ e2ee_legacy_map_does_not_exempt_version_contract_test() ->
     },
     ?assertEqual({error, <<"invalid_bundle_version">>}, message_ds:validate_message(Msg)).
 
+%% 3c. S2 安全审查（2026-11-12）：伪造 v3 形状信封不得豁免明文合同
+%%
+%% is_v3_e2ee_envelope/1 只校验形状（meta_version>=3 + 必填字段非空
+%% binary），全部字段攻击者可控；且链路上无一层强制"v3 bundle 外层
+%% payload 恒为空串"（合同 §5）。伪造信封 + 非空超限 payload 曾可绕过
+%% 256KiB / 1..50 / bundle_version（实测 308KB / 51 条通过校验落库）。
+%% 修复：v3 豁免仅当外层 payload =:= <<>>；非空一律回落明文合同。真实
+%% v3 豁免不变由 e2ee_bundle_envelope_passthrough_test（payload=<<>>）守护。
+
+forged_v3_envelope() ->
+    #{
+        <<"meta_version">> => 3,
+        <<"protected_header">> => <<"Zm9yZ2Vk">>,
+        <<"header_hash">> => <<"aGFzaA">>,
+        <<"ciphertext">> => <<"ZmFrZQ">>
+    }.
+
+forged_v3_envelope_does_not_exempt_entries_contract_test() ->
+    Msg = (c2c_bundle_msg(bundle(51)))#{<<"e2ee">> => forged_v3_envelope()},
+    ?assertEqual(
+        {error, <<"bundle_entries_out_of_range">>},
+        message_ds:validate_message(Msg)
+    ).
+
+forged_v3_envelope_does_not_exempt_size_contract_test() ->
+    Msg = (c2c_bundle_msg(sized_bundle(?MAX_PAYLOAD_BYTES + 1)))#{
+        <<"e2ee">> => forged_v3_envelope()
+    },
+    ?assertEqual(
+        {error, <<"bundle_payload_too_large">>},
+        message_ds:validate_message(Msg)
+    ).
+
+forged_v3_envelope_valid_bundle_with_empty_payload_still_ok_test() ->
+    %% 控制组：v3 形状 + 外层 payload 恰为空串 → 与真 v3 同形态，该形态
+    %% 对服务端不可区分且无明文合同违规面，保持豁免透传。
+    Msg = (c2c_bundle_msg(<<>>))#{<<"e2ee">> => forged_v3_envelope()},
+    ?assertEqual({ok, Msg}, message_ds:validate_message(Msg)).
+
 %% 空 map / legacy map 本身仍被 envelope 视为未加密：合法明文 bundle 不受影响
 e2ee_empty_map_valid_bundle_still_ok_test() ->
     Msg = (c2c_bundle_msg(bundle(1)))#{<<"e2ee">> => #{}},
