@@ -289,6 +289,15 @@ build_forward_content(OriginalMsg) ->
                     %% Megolm 群会话密钥分发帧：不是用户内容，且密钥材料不应跨会话
                     %% 搬运（服务端库里确有该类行，见 msg_c2g e2ee_room_key）。
                     {error, {invalid_param, <<"群会话密钥帧不可转发"/utf8>>}};
+                <<"chat_history_bundle">> ->
+                    %% 合同 §1：bundle 由发送端按目标会话逐目标构建（快照 + 附件
+                    %% 按目标重传），服务端"整体复刻"语义未定义；且转发标记会把
+                    %% §4 禁止字段族（original_msg_id）注入 bundle 顶层，恰
+                    %% 256KiB 边界的 bundle 附加标记后实际出网即超限
+                    %% （S2 安全审查 2026-11-12）。加密 bundle 已被上方
+                    %% is_encrypted_message 拒绝，此处拦的是明文 bundle 的
+                    %% 服务端转发路径。
+                    {error, {invalid_param, <<"聊天记录打包不可整体转发，请在会话内重新合并转发"/utf8>>}};
                 _ ->
                     MsgType = forwardable_msg_type(RawType),
                     Payload = decode_forward_payload(maps:get(<<"payload">>, OriginalMsg, #{})),

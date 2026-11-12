@@ -112,10 +112,22 @@ burn_read_at
   尺寸上界 + v3 必填字段形态），通过后原样透传，不重建、不裁剪。
 - 明文 bundle 才做 §3 的 DS 层合同校验；E2EE bundle 的合同自查由客户端在
   加密前完成（同 §4 责任方）。
-- 豁免明文合同校验的**唯一**条件是 `e2ee` 为形状合法的 v3 信封
+- 豁免明文合同校验的条件是 `e2ee` 为形状合法的 v3 信封
   （`meta_version >= 3` 且必填字段齐全，与 `validate_e2ee_envelope/1` 的 v3
-  判定同口径）；`e2ee` 为空 map 或 legacy（`meta_version < 3`）map 形态
-  **不豁免**，payload 仍按明文 bundle 走 §3 合同校验（W3-L F-1）。
+  判定同口径）**且外层 `payload` 恒为空串**（合同不变量，服务端执法——
+  v3 形状字段全部攻击者可控，仅凭形状不得豁免；非空 payload 的"v3 信封"
+  回落 §3 明文合同校验。S2 安全审查 2026-11-12）；`e2ee` 为空 map 或
+  legacy（`meta_version < 3`）map 形态**不豁免**，payload 仍按明文 bundle
+  走 §3 合同校验（W3-L F-1）。
+- bundle **仅支持明文或 v3 信封包裹**：legacy（meta_version < 3）信封携带
+  的 bundle（payload 为密文 base64，不满足明文 bundle 形状）在 §3 合同
+  校验处被拒（`invalid_bundle_shape`），为有意的 fail-closed——legacy 端
+  不可达加密 bundle 通道；客户端构建侧不得以"加密失败后重试明文"作为
+  降级路径（避免制造降级为明文的激励，S2 安全审查 2026-11-12）。
+- 服务端转发 API（`msg_forward_logic`）**拒绝整体转发** `chat_history_bundle`：
+  §1 构建责任在发送端（按目标逐目标构建），转发复刻会向 bundle 顶层注入
+  §4 禁止字段族（`original_msg_id`）；需要转发聊天记录时由客户端在目标
+  会话内重新执行合并转发（S2 安全审查 2026-11-12）。
 
 ## 6. 通道与离线行为
 
