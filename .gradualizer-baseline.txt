@@ -137,7 +137,9 @@ group_album_ds
 group_album_handler
 group_album_logic
 group_category_ds
+group_ds
 group_handler
+group_logic
 group_member_ds
 group_member_logic
 group_notice_ds
