@@ -5986,7 +5986,7 @@
         "sources": [
           "src/logic/msg_c2c_logic.erl:113",
           "src/logic/msg_c2c_logic.erl:1138",
-          "src/logic/webrtc_ws_logic.erl:58"
+          "src/logic/webrtc_ws_logic.erl:69"
         ]
       },
       {
@@ -6042,7 +6042,7 @@
         "sources": [
           "src/logic/msg_c2c_logic.erl:116",
           "src/logic/msg_c2c_logic.erl:1141",
-          "src/logic/webrtc_ws_logic.erl:61"
+          "src/logic/webrtc_ws_logic.erl:72"
         ]
       },
       {

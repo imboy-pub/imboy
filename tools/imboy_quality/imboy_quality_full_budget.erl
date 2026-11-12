@@ -5,12 +5,12 @@
     require_test_build/1,
     run_id/0,
     build_profile/0,
-    owner_verified/1
+    owner_verified/1,
+    package_lock_path/0
 ]).
 
 transaction(Ctrl, Action, Options) ->
-    PackageLock =
-        "/Users/leeyi/project/imboy.pub/_task_packages/IMBOY_ERLANG_QUALITY/.package.lock",
+    PackageLock = package_lock_path(),
     TaskLock = filename:join(Ctrl, "owner.lock"),
     ok = file:make_dir(PackageLock),
     try
@@ -22,6 +22,29 @@ transaction(Ctrl, Action, Options) ->
         end
     after
         ok = file:del_dir(PackageLock)
+    end.
+
+%% Preserve the established local lock, and require an explicit absolute lock
+%% path on other runners. Invalid paths fail closed rather than switching locks.
+package_lock_path() ->
+    case os:getenv("IMBOY_QUALITY_PACKAGE_LOCK") of
+        false ->
+            "/Users/leeyi/project/imboy.pub/_task_packages/IMBOY_ERLANG_QUALITY/.package.lock";
+        Path when is_list(Path), Path =/= [] ->
+            case filename:pathtype(Path) of
+                absolute ->
+                    case {
+                        filename:absname(Path) =:= Path,
+                        filelib:is_dir(filename:dirname(Path))
+                    } of
+                        {true, true} -> Path;
+                        _ -> erlang:error({invalid_quality_package_lock, Path})
+                    end;
+                _ ->
+                    erlang:error({invalid_quality_package_lock, Path})
+            end;
+        _ ->
+            erlang:error(invalid_quality_package_lock)
     end.
 
 full_transaction_locked(Ctrl, Action, Options) ->

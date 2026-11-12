@@ -357,6 +357,7 @@ combine_cleanup(Other, ConfigResult) ->
     }.
 
 finalize_run(OutDir, Result0, Release, CleanupConfigs) ->
+    CleanupStarted = erlang:monotonic_time(millisecond),
     ResourceCleanup = try_cleanup(Release),
     ConfigCleanup = try_cleanup(CleanupConfigs),
     BaseCleanup = combine_cleanup(ResourceCleanup, ConfigCleanup),
@@ -370,7 +371,21 @@ finalize_run(OutDir, Result0, Release, CleanupConfigs) ->
         <<"ok">> => maps:get(<<"ok">>, BaseCleanup) andalso AliasOk,
         <<"alias">> => AliasCleanup
     },
-    Result = Result0#{<<"cleanup">> => Cleanup},
+    CleanupFinished = erlang:monotonic_time(millisecond),
+    Result =
+        case maps:take(<<"_quality_full_started_ms">>, Result0) of
+            {FullStarted, PublicResult} when is_integer(FullStarted) ->
+                Timings = maps:get(<<"phase_timings_ms">>, PublicResult, #{}),
+                PublicResult#{
+                    <<"cleanup">> => Cleanup,
+                    <<"phase_timings_ms">> => Timings#{
+                        <<"resource_cleanup">> => CleanupFinished - CleanupStarted,
+                        <<"eunit_dispatch">> => CleanupFinished - FullStarted
+                    }
+                };
+            error ->
+                Result0#{<<"cleanup">> => Cleanup}
+        end,
     ok = write_terminal_result(OutDir, Result),
     {Result, OutDir}.
 

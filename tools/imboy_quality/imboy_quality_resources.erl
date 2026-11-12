@@ -18,6 +18,7 @@
     template_digest/2,
     migration_head/1,
     start_garage/3,
+    garage_executable/0,
     create_garage_dir/2,
     owned_port_identity/3,
     close_owned_port/1,
@@ -302,12 +303,28 @@ db_exists(Conn, Name) ->
 %% ---- 任务私有原生 Garage ----
 
 %% Buckets 在本实例内创建并授权给同一密钥。失败即 error（调用方决定是否降级为归属失败）。
+%% Never silently substitute a Docker/S3 mock for the real Garage process.
+garage_executable() ->
+    case os:getenv("IMBOY_QUALITY_GARAGE_BIN") of
+        false ->
+            case os:find_executable("garage") of
+                false -> error({garage_binary_missing, "garage"});
+                P -> P
+            end;
+        Path when is_list(Path), Path =/= [] ->
+            case filename:pathtype(Path) of
+                absolute ->
+                    case os:find_executable(Path) of
+                        false -> error({garage_binary_missing, Path});
+                        P -> P
+                    end;
+                _ -> error({garage_binary_must_be_absolute, Path})
+            end;
+        _ -> error(invalid_garage_binary_override)
+    end.
+
 start_garage(Ctrl, Tag, Buckets) ->
-    Exe =
-        case os:find_executable("garage") of
-            false -> error({garage_binary_missing, "garage"});
-            P -> P
-        end,
+    Exe = garage_executable(),
     {Dir, Identity, Token} = create_garage_dir(Ctrl, Tag),
     [S3, Rpc, Admin] = [free_port() || _ <- [1, 2, 3]],
     case length(lists:usort([S3, Rpc, Admin])) of

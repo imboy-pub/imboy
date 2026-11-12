@@ -7,7 +7,9 @@
     new_path/2,
     trusted_context/1,
     admission_profile/2,
-    candidate_input_fingerprint/1
+    candidate_input_fingerprint/1,
+    full_binding_snapshot/3,
+    full_binding_verdict/2
 ]).
 -include_lib("kernel/include/file.hrl").
 
@@ -56,6 +58,38 @@ admission_profile(State, Head) ->
     catch
         _:_ -> not_admitted
     end.
+
+%% Full admission evidence is computed on both sides of actual EUnit.
+full_binding_snapshot(State, Repo, Head) when is_map(State), is_list(Repo), is_binary(Head) ->
+    Fingerprint = candidate_input_fingerprint(Repo),
+    Worktree = unicode:characters_to_binary(Repo),
+    Binding =
+        case {maps:get(<<"worktree">>, State, undefined), admission_profile(State, Head)} of
+            {Worktree, phase1_snapshot} -> <<"VERIFIED">>;
+            {Worktree, phase2_integrated} -> <<"VERIFIED">>;
+            _ -> <<"NOT_VERIFIED">>
+        end,
+    #{
+        <<"candidate_sha">> => Head,
+        <<"input_fingerprint">> => Fingerprint,
+        <<"input_binding">> => Binding
+    }.
+
+full_binding_verdict(
+    #{
+        <<"input_binding">> := <<"VERIFIED">>,
+        <<"candidate_sha">> := Head,
+        <<"input_fingerprint">> := Fingerprint
+    },
+    #{
+        <<"input_binding">> := <<"VERIFIED">>,
+        <<"candidate_sha">> := Head,
+        <<"input_fingerprint">> := Fingerprint
+    }
+) when is_binary(Head), byte_size(Head) =:= 40, is_binary(Fingerprint), byte_size(Fingerprint) > 0 ->
+    <<"VERIFIED">>;
+full_binding_verdict(_, _) ->
+    <<"NOT_VERIFIED">>.
 
 candidate_input_fingerprint(Repo) ->
     Patterns = [

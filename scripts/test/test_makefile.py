@@ -30,6 +30,8 @@ main(Args) ->
     {ok, F} = file:open("quality.calls", [append]),
     io:format(F, "~p~n", [Args]), file:close(F), halt(0).
 ''')
+        # The quality-full Make recipe invokes this wrapper in its temporary repo.
+        self.write("scripts/quality_timed.sh", (ROOT / "scripts/quality_timed.sh").read_text())
         self.write("probe.mk", '''.PHONY: probe
 probe:
 	@printf 'route=[%s] relx=[%s] sys=[%s] default=[%s] mods=[%s]\\n' '$(IMBOY_EUNIT_ROUTE)' '$(RELX_CONFIG)' '$(_SYS_RUNTIME_SRC)' '$(.DEFAULT_GOAL)' '$(EUNIT_MODS)'
