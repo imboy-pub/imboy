@@ -133,8 +133,9 @@ face2face_coordinates(Lng, Lat) ->
 %% @param Gid 群组ID
 %% @param Uid 用户ID
 %% @return {ok, binary()}
+%% try/catch 全量转译：事务体（with_tx 可能返回 {rollback, _}）不会透传到本层。
 -spec face2face_save(binary(), integer(), integer()) ->
-    {ok, binary()} | {error, binary() | atom()} | {rollback, term()}.
+    {ok, binary()} | {error, binary() | atom()}.
 face2face_save(Code, Gid, Uid) ->
     case
         valid_face2face_code(Code) andalso is_integer(Gid) andalso Gid > 0 andalso

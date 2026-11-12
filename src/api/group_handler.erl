@@ -224,9 +224,7 @@ face2face_save(Req0, State) ->
                     end
             end;
         {error, Reason} ->
-            elib_response:error(Req0, Reason);
-        {rollback, _} ->
-            elib_response:error(Req0, <<"入群失败，请重试"/utf8>>)
+            elib_response:error(Req0, Reason)
     end.
 
 %% @doc 创建群组

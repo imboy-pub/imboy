@@ -431,9 +431,10 @@ face2face(Uid, Code, Lng, Lat) ->
                 ok = workspace_guard:abort_on_error(
                     workspace_guard:ensure_writable_tx(Conn, {group, Gid})
                 ),
+                %% join_group 内部错误路径以 throw({abort_tx, _}) 表达，
+                %% success typing 证明返回值域为 {ok, integer()}（87e9ed15 同判定）。
                 case group_member_ds:join_group(Conn, <<"face2face_join">>, Uid, Gid, #{}) of
-                    {ok, _} -> {ok, Gid};
-                    {error, JoinError} -> throw({abort_tx, JoinError})
+                    {ok, _} -> {ok, Gid}
                 end;
             {error, Reason} ->
                 throw({abort_tx, Reason})
