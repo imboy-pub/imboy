@@ -478,6 +478,39 @@ forward_msg_not_found_fails_test_() ->
         end
     ).
 
+forward_rejects_chat_history_bundle_test_() ->
+    ?WITH_MECKS(
+        [
+            {msg_c2c_ds, [
+                {'find_msg_by_id', 1, fun(_MsgId) ->
+                    {ok, #{
+                        <<"from_id">> => 123,
+                        <<"to_id">> => 456,
+                        <<"msg_type">> => <<"chat_history_bundle">>,
+                        <<"payload">> => #{
+                            <<"bundle_version">> => 1,
+                            <<"entries">> => []
+                        }
+                    }}
+                end}
+            ]},
+            {msg_c2c_logic, [
+                {'c2c', 3, fun(_MsgId, _FromUid, _Data) -> ok end}
+            ]},
+            {friend_ds, [
+                {'check_relationship', 2, fun(_ToId, _FromUid) -> {true, false} end}
+            ]}
+        ],
+        fun() ->
+            %% S2 安全审查（2026-11-12）：bundle 由客户端按目标逐目标构建
+            %% （合同 §1），服务端整体复刻会注入 §4 禁止字段族
+            %% （original_msg_id）并使 256KiB 边界超限——必须稳定拒绝，
+            %% 引导用户在目标会话内重新合并转发。
+            Result = msg_forward_logic:forward([<<"msg_123">>], 123, 789, <<"c2c">>),
+            ?assertMatch({error, {invalid_param, _}}, Result)
+        end
+    ).
+
 %% ===================================================================
 %% 边界条件测试
 %% ===================================================================
