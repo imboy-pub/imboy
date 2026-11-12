@@ -815,9 +815,20 @@ validate_msg_type_payload(<<"chat_history_bundle">>, Msg) ->
         E2EE when is_map(E2EE) ->
             case is_v3_e2ee_envelope(E2EE) of
                 true ->
-                    %% 真 v3 信封：payload 对服务端不透明，豁免明文合同；
-                    %% 外层信封校验（尺寸上界 + v3 形态）由调用方继续。
-                    ok;
+                    case maps:get(<<"payload">>, Msg, <<>>) of
+                        <<>> ->
+                            %% 真 v3 信封且外层 payload 恒为空串（合同 §5）：
+                            %% payload 对服务端不透明，豁免明文合同；外层
+                            %% 信封校验（尺寸上界 + v3 形态）由调用方继续。
+                            ok;
+                        _NonEmpty ->
+                            %% S2 安全审查（2026-11-12）：v3 形状字段全部
+                            %% 攻击者可控，仅凭形状不得豁免合同。真 v3
+                            %% bundle 外层 payload 恒为空串；非空 payload
+                            %% 的"v3 信封"是合同外组合，回落明文 bundle
+                            %% 合同（256KiB / 1..50 / bundle_version）。
+                            validate_bundle_contract(Msg)
+                    end;
                 false ->
                     %% 空 map / legacy map：按明文 bundle 走合同校验。畸形
                     %% 信封（meta_version>=3 但缺必填字段）保留既有
