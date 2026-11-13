@@ -75,7 +75,9 @@ rename_error_aborts() ->
     meck:expect(user_tag_relation_repo, update_tag, fun(_, _, _, _, _) -> {error, failed} end),
     ?assertEqual({error, failed}, call(rename)),
     ?assertEqual(undefined, get(tag_commit_flushed)),
-    ?assertEqual(0, meck:num_calls(epgsql, get_cmd_status, 1)),
+    %% safe_rollback/1（elib_pg WIP 2026-11-13）新增 get_cmd_status 验证
+    %% ROLLBACK 真实生效（reusable/discard 归还判定）：中断路径恰 1 次。
+    ?assertEqual(1, meck:num_calls(epgsql, get_cmd_status, 1)),
     ?assertEqual(0, meck:num_calls(user_tag_relation_repo, flush_subtitle, 1)).
 
 relation_read_error_prevents_transaction() ->

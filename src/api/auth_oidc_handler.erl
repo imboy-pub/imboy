@@ -79,6 +79,9 @@ handle_authorize(Req) ->
             case auth_oidc_logic:authorize(Client) of
                 {redirect, Url} ->
                     redirect(Req, Url);
+                %% 旧 {error, service_unavailable} 死分支已删：authorize/1 的
+                %% 依赖失败走进程退出（onetime_put badmatch），不返回该原子；
+                %% 503 语义仅属下方 limiter owner 故障分支与 callback 路径。
                 {error, Msg} ->
                     elib_response:error(Req, Msg, ?ERR_BAD_REQUEST)
             end;
@@ -114,6 +117,10 @@ handle_callback(Req) ->
                     elib_response:success(Req, Payload);
                 {redirect, Url} ->
                     redirect(Req, Url);
+                {error, service_unavailable} ->
+                    elib_response:error_with_status(
+                        Req, 503, <<"服务暂不可用，请稍后重试"/utf8>>, 503
+                    );
                 {error, Msg, Code} ->
                     elib_response:error(Req, Msg, Code);
                 {error, Msg} ->

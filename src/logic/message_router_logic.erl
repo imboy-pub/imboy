@@ -31,8 +31,21 @@
 %% @param OriginalMsg 原始消息 JSON（用于 WebRTC 等特殊处理）
 %% @return ok | {reply, map()}
 %% @end
--spec route(binary(), integer(), map(), binary(), binary()) -> ok | {reply, map()}.
+-spec route(binary(), integer(), map(), binary(), binary()) ->
+    ok | {reply, map()} | {close, 1012, binary()}.
 route(MsgId, CurrentUid, Data, Type, OriginalMsg) ->
+    Action = maps:get(<<"action">>, Data, <<>>),
+    Ack =
+        lists:member(cowboy_bstr:to_lower(Type), [<<"c2c">>, <<"c2g">>]) andalso
+            lists:member(Action, [
+                <<"message_revoke_ack">>, <<"message_edit_ack">>, <<"message_read_ack">>
+            ]),
+    case imboy_app:accepting_requests() orelse Ack of
+        true -> route_accepted(MsgId, CurrentUid, Data, Type, OriginalMsg);
+        false -> {close, 1012, <<"service_restart">>}
+    end.
+
+route_accepted(MsgId, CurrentUid, Data, Type, OriginalMsg) ->
     %% v2.0: action 在顶层
     Action = maps:get(<<"action">>, Data, <<>>),
     TypeLower = cowboy_bstr:to_lower(Type),

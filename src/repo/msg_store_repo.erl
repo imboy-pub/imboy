@@ -43,6 +43,13 @@
 -export([mark_processed/2, mark_processed/3]).
 -export([mark_failed/4]).
 -export([mark_terminal/3]).
+%% 租约 fencing（T06）：claim RETURNING 的 available_at::text 作为行级
+%% token；续租与终态/完成/失败写回都以 token 做 CAS 条件，stale owner 的
+%% 写回不得成功、更不得触发 ACK 清理。旧的非 claim 接口全部保留。
+-export([renew_lease/3]).
+-export([mark_processed/4]).
+-export([mark_failed/5]).
+-export([mark_terminal/4]).
 -export([delete_processed/1]).
 -export([delete_expired_c2g_ledgers/2]).
 -export([truncate_processed/0]).
@@ -51,6 +58,7 @@
 %% 查询操作
 -export([get_unstaged/1]).
 -export([get_staging_stats/0]).
+-export([get_staging_stats/1]).
 -export([find_by_msg_id/2]).
 -export([authorize_group_session_history/3]).
 
@@ -1394,7 +1402,13 @@ unstage(Type, MsgId) ->
     Sql = <<"DELETE FROM ", Tb/binary, " WHERE type = $1 AND msg_id = $2">>,
     elib_pg:execute(Sql, [Type, MsgId]).
 
-%% @doc 抢占未处理消息（FOR UPDATE SKIP LOCKED），并设置 lease（available_at）
+%% @doc 抢占未处理消息（FOR UPDATE SKIP LOCKED），并设置 lease（available_at）。
+%%
+%% T06 租约 fencing：lease UPDATE 不再忽略返回结果——带 RETURNING id,
+%% available_at::text AS lease_token，核对 RETURNING 行数与 claim 行数一致后，
+%% 把原始精度 token 合并进每个返回行（`lease_token` 字段）。worker 侧对该
+%% token 做逐行 CAS 续租与带条件完成/失败/终态写回；stale owner 写回 0 行。
+%% 消费方不识别 `lease_token` 时按普通多余字段忽略，旧行为不受影响。
 -spec claim_pending(pos_integer(), pos_integer()) -> {ok, list(map())} | {error, term()}.
 claim_pending(Limit, LeaseSeconds) ->
     Tb = tablename(),
@@ -1420,14 +1434,75 @@ claim_pending(Limit, LeaseSeconds) ->
                         LeaseSql =
                             <<"UPDATE ", Tb/binary,
                                 " SET available_at = NOW() + INTERVAL '1 second' * $1 ",
-                                " WHERE id = ANY($2)">>,
-                        _ = elib_pg:execute(Conn, LeaseSql, [LeaseSeconds, Ids]),
-                        {ok, Rows}
+                                " WHERE id = ANY($2) ", "RETURNING id, available_at::text">>,
+                        case elib_pg:execute(Conn, LeaseSql, [LeaseSeconds, Ids]) of
+                            {ok, Count, TokenTuples} when
+                                is_integer(Count), is_list(TokenTuples)
+                            ->
+                                case Count =:= length(Rows) andalso TokenTuples =/= [] of
+                                    true ->
+                                        TokenMap = maps:from_list([
+                                            {Id, Token}
+                                         || {Id, Token} <- TokenTuples
+                                        ]),
+                                        case map_size(TokenMap) =:= length(Rows) of
+                                            true ->
+                                                {ok, [
+                                                    Row#{
+                                                        <<"lease_token">> =>
+                                                            maps:get(
+                                                                maps:get(<<"id">>, Row), TokenMap
+                                                            )
+                                                    }
+                                                 || Row <- Rows
+                                                ]};
+                                            false ->
+                                                {error, lease_token_mismatch}
+                                        end;
+                                    false ->
+                                        {error, lease_returning_mismatch}
+                                end;
+                            {ok, _NoReturningShape} ->
+                                %% 驱动/桩未携带 RETURNING 行（旧形态）：降级返回
+                                %% 不带 token 的行，worker 按无 token 旧路径处理。
+                                {ok, Rows};
+                            {error, Reason} ->
+                                {error, Reason}
+                        end
                 end;
             {error, Reason} ->
                 {error, Reason}
         end
     end).
+
+%% @doc 逐行 CAS 续租：仅当行仍由本 claim 持有（available_at 未变）时延长
+%% lease，并 RETURNING 续租后的新 token（新 available_at 原始精度文本）——
+%% 续租成功即意味着旧 token 失效，调用方必须用返回的新 token 做后续
+%% 完成/失败/终态写回。返回 {ok, 0} 表示租约已过期被其他 worker 重领或
+%% 行已进入终态，调用方必须跳过该行，不得继续写正式表或 ACK 清理。
+-spec renew_lease(integer(), binary(), pos_integer()) ->
+    {ok, binary()} | {ok, 0} | {error, term()}.
+renew_lease(Id, LeaseToken, LeaseSeconds) ->
+    Tb = tablename(),
+    Sql = <<
+        "UPDATE ",
+        Tb/binary,
+        " SET available_at = NOW() + INTERVAL '1 second' * $1 ",
+        "WHERE id = $2 AND processed_at IS NULL AND available_at = $3::timestamptz ",
+        "RETURNING available_at::text"
+    >>,
+    case elib_pg:execute(Sql, [LeaseSeconds, Id, LeaseToken]) of
+        {ok, 1, [{NewToken}]} when is_binary(NewToken) ->
+            {ok, NewToken};
+        {ok, 0} ->
+            {ok, 0};
+        {ok, 0, []} ->
+            {ok, 0};
+        {ok, Unexpected} ->
+            {error, {renew_unexpected_result, Unexpected}};
+        {error, Reason} ->
+            {error, Reason}
+    end.
 
 %% @doc 仅标记同类型、同 ID 的待处理消息，保留终态错误供审计。
 %% Complete only the claimed type and ID; preserve terminal failure evidence.
@@ -1440,6 +1515,21 @@ mark_processed(Type, MsgId) ->
 
 mark_processed(Conn, Type, MsgId) ->
     elib_pg:execute(Conn, mark_processed_sql(), [Type, MsgId]).
+
+%% @doc 带 token CAS 的完成写回：stale owner（租约被重领）更新 0 行，
+%% 完成事务必须因此中止，绝不能继续触发 ACK 清理。
+-spec mark_processed(pid(), binary(), binary(), binary()) ->
+    {ok, non_neg_integer()} | {error, term()}.
+mark_processed(Conn, Type, MsgId, LeaseToken) ->
+    Tb = tablename(),
+    Sql = <<
+        "UPDATE ",
+        Tb/binary,
+        " SET processed_at = NOW(), error_msg = NULL ",
+        " WHERE type = $1 AND msg_id = $2 AND processed_at IS NULL ",
+        " AND available_at = $3::timestamptz"
+    >>,
+    elib_pg:execute_count(Conn, Sql, [Type, MsgId, LeaseToken]).
 
 mark_processed_sql() ->
     Tb = tablename(),
@@ -1456,6 +1546,18 @@ mark_failed(Type, MsgId, ErrorMsg, DelaySeconds) ->
             " WHERE type = $1 AND msg_id = $2 AND processed_at IS NULL">>,
     elib_pg:execute(Sql, [Type, MsgId, ErrorMsg, DelaySeconds]).
 
+%% @doc 带 token CAS 的失败写回：stale owner 更新 0 行，不覆盖新 owner 状态。
+-spec mark_failed(binary(), binary(), binary(), pos_integer(), binary()) ->
+    {ok, non_neg_integer()} | {error, term()}.
+mark_failed(Type, MsgId, ErrorMsg, DelaySeconds, LeaseToken) ->
+    Tb = tablename(),
+    Sql =
+        <<"UPDATE ", Tb/binary, " SET retry_count = retry_count + 1, ", " error_msg = $3, ",
+            " available_at = NOW() + INTERVAL '1 second' * $4 ",
+            " WHERE type = $1 AND msg_id = $2 AND processed_at IS NULL ",
+            " AND available_at = $5::timestamptz">>,
+    elib_pg:execute_count(Sql, [Type, MsgId, ErrorMsg, DelaySeconds, LeaseToken]).
+
 %% @doc 结构性不可恢复的 staging 失败进入终态，保留 error_msg 供审计。
 -spec mark_terminal(binary(), binary(), binary()) -> {ok, integer()} | {error, any()}.
 mark_terminal(Type, MsgId, ErrorMsg) ->
@@ -1464,6 +1566,17 @@ mark_terminal(Type, MsgId, ErrorMsg) ->
         <<"UPDATE ", Tb/binary, " SET processed_at = NOW(), error_msg = $3 ",
             " WHERE type = $1 AND msg_id = $2 AND processed_at IS NULL">>,
     elib_pg:execute(Sql, [Type, MsgId, ErrorMsg]).
+
+%% @doc 带 token CAS 的终态写回：stale owner 更新 0 行，不得替新 owner 终结。
+-spec mark_terminal(binary(), binary(), binary(), binary()) ->
+    {ok, non_neg_integer()} | {error, term()}.
+mark_terminal(Type, MsgId, ErrorMsg, LeaseToken) ->
+    Tb = tablename(),
+    Sql =
+        <<"UPDATE ", Tb/binary, " SET processed_at = NOW(), error_msg = $3 ",
+            " WHERE type = $1 AND msg_id = $2 AND processed_at IS NULL ",
+            " AND available_at = $4::timestamptz">>,
+    elib_pg:execute_count(Sql, [Type, MsgId, ErrorMsg, LeaseToken]).
 
 %% @doc 主消息一年 retention 完成后再清理 C2G 请求账本与收件人快照。
 -spec delete_expired_c2g_ledgers(pos_integer(), pos_integer()) ->
@@ -1553,6 +1666,23 @@ get_staging_stats() ->
             "COUNT(*) FILTER (WHERE error_msg IS NOT NULL) as failed, ", "COUNT(*) as total ",
             "FROM ", Tb/binary>>,
     elib_pg:query(Sql, []).
+
+%% @doc 连接版 staging 统计（T06 采样指标用）：在既有连接（通常是采样
+%% 事务，已用 set_config 设置有界 statement_timeout）上返回 pending 数量
+%% 与最老待处理年龄（秒）。空表时 oldest 为 0。返回形态与 query/3 一致：
+%% {ok, [#{<<"pending">> => N, <<"oldest_pending_seconds">> => S}]}。
+-spec get_staging_stats(pid()) -> {ok, [map()]} | {error, any()}.
+get_staging_stats(Conn) ->
+    Tb = tablename(),
+    Sql = <<
+        "SELECT COUNT(*) FILTER (WHERE processed_at IS NULL) AS pending, ",
+        "COALESCE(EXTRACT(EPOCH FROM (NOW() - MIN(created_at) ",
+        "FILTER (WHERE processed_at IS NULL))), 0)::bigint "
+        "AS oldest_pending_seconds ",
+        "FROM ",
+        Tb/binary
+    >>,
+    elib_pg:query(Conn, Sql, []).
 
 %% @doc 清空备份表（慎用！）
 -spec truncate_processed() -> {ok, integer()} | {error, any()}.

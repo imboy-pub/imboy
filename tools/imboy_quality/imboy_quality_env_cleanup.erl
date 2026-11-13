@@ -96,6 +96,12 @@ garage_resource_root(Ctrl) ->
     {ok, Hash} = file:read_file(filename:join(Ctrl, "STATE.json.sha256")),
     true = string:lowercase(binary:encode_hex(crypto:hash(sha256, Bytes))) =:= string:trim(Hash),
     State = json:decode(Bytes),
+    case imboy_quality_backend:is_state(State) of
+        true -> imboy_quality_backend:resource_root(filename:absname(Ctrl), State);
+        false -> legacy_resource_root(Ctrl, State)
+    end.
+
+legacy_resource_root(Ctrl, State) ->
     Volumes = [
         V
      || #{<<"kind">> := <<"ISOLATED_APFS_VOLUME">>} = V <-
@@ -254,6 +260,7 @@ with_transaction(J, Cleanup, Finalize, Fun) ->
     put(imboy_prepare_transaction, #{
         journal => J, cleanup => Cleanup, tracked => [], pending => #{}
     }),
+    imboy_quality_backend:track_prepare(get(imboy_prepare_transaction)),
     try
         Value = Fun(),
         Tx = get(imboy_prepare_transaction),
@@ -284,6 +291,7 @@ with_transaction(J, Cleanup, Finalize, Fun) ->
                 Stack
             )
     after
+        imboy_quality_backend:clear_prepare(),
         erase(imboy_prepare_transaction),
         case erase(imboy_prepare_finalized) of
             true -> ok;
@@ -305,6 +313,7 @@ transaction_intent(Type, Name) when is_atom(Type), is_binary(Name), byte_size(Na
         pg => maps:get(pg, J)
     }),
     put(imboy_prepare_transaction, Tx#{pending := Pending#{Key => true}}),
+    imboy_quality_backend:track_prepare(get(imboy_prepare_transaction)),
     ok.
 
 transaction_confirm(Type, Name, Resource) ->
@@ -326,6 +335,7 @@ transaction_confirm(Type, Name, Resource) ->
         pending := maps:remove(Key, Pending),
         tracked := [{Type, Name, Resource} | maps:get(tracked, Tx)]
     }),
+    imboy_quality_backend:track_prepare(get(imboy_prepare_transaction)),
     ok.
 
 recover_item(J, Cleanup, {Type, Name, Resource}) ->

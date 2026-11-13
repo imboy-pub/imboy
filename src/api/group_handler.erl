@@ -225,6 +225,8 @@ face2face_save(Req0, State) ->
             end;
         {error, Reason} ->
             elib_response:error(Req0, Reason)
+        %% 旧 {rollback,_} 分支已删：group_logic:face2face_save/3 将一切失败
+        %% （含事务回滚形状）规约为 {error, Binary}，文案兜底在 logic 层。
     end.
 
 %% @doc 创建群组

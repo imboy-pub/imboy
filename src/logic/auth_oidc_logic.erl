@@ -56,7 +56,8 @@
 %% API
 %% ===================================================================
 
-%% @doc 构造 IdP authorize 跳转 URL；Client ∈ app | test（存进 state，callback 分流）
+%% @doc 构造 IdP authorize 跳转 URL；Client ∈ app | test（存进 state，callback 分流）。
+%% 依赖失败（如 state 表不可用）以进程退出呈现，不返回 service_unavailable。
 -spec authorize(binary()) -> {redirect, binary()} | {error, binary()}.
 authorize(Client) ->
     case enabled_provider() of
@@ -100,7 +101,10 @@ authorize(Client) ->
 %% 任何失败锁状态（D7：无消费者的 oidc 失败 ETS 写已移除，fail/2 仅保留
 %% 有界审计日志）。
 -spec callback(map(), binary()) ->
-    {ok, map()} | {redirect, binary()} | {error, binary()} | {error, binary(), integer()}.
+    {ok, map()}
+    | {redirect, binary()}
+    | {error, binary() | service_unavailable}
+    | {error, binary(), integer()}.
 callback(Params, Ip) ->
     do_callback(Params, Ip).
 
@@ -153,6 +157,8 @@ callback_with_config(Code, StData, Cfg, Ip) ->
                                 {error, {quota, Msg, ErrCode}} ->
                                     %% License 满额：402 语义对外可见（非敏感信息）
                                     {error, Msg, ErrCode};
+                                {error, service_unavailable} ->
+                                    {error, service_unavailable};
                                 {error, Reason} ->
                                     fail(Ip, {mapping_failed, Reason})
                             end;
@@ -475,13 +481,15 @@ map_or_provision(Sub, Email, Name, Verified) ->
 link_or_provision(Sub, Email, Name, Verified) ->
     ExistingId =
         case {Verified, Email} of
-            {true, E} when E =/= <<>> -> user_ds:find_id_by_email(E);
-            _ -> 0
+            {true, E} when E =/= <<>> -> verified_email_id(E);
+            _ -> {ok, 0}
         end,
     case ExistingId of
-        Id when is_integer(Id), Id > 0 ->
+        {error, _} ->
+            {error, service_unavailable};
+        {ok, Id} when is_integer(Id), Id > 0 ->
             bind_identity(Sub, Id, Email);
-        _ ->
+        {ok, 0} ->
             provision(Sub, Email, Name, Verified)
     end.
 
@@ -508,8 +516,15 @@ provision(Sub, Email, Name, Verified) ->
                     bind_identity(Sub, Uid, Email);
                 {error, {error, error, <<"23505">>, unique_violation, _Msg, _Details}} ->
                     %% 唯一键冲突不提升邮箱可信度；回读仍须满足初次关联的验证条件。
-                    case Verified andalso Email =/= <<>> andalso user_ds:find_id_by_email(Email) of
-                        Id2 when is_integer(Id2), Id2 > 0 ->
+                    Existing =
+                        case Verified andalso Email =/= <<>> of
+                            true -> verified_email_id(Email);
+                            false -> {ok, 0}
+                        end,
+                    case Existing of
+                        {error, _} ->
+                            {error, service_unavailable};
+                        {ok, Id2} when is_integer(Id2), Id2 > 0 ->
                             bind_identity(Sub, Id2, Email);
                         _ ->
                             {error, provision_conflict}
@@ -517,6 +532,13 @@ provision(Sub, Email, Name, Verified) ->
                 {error, Reason} ->
                     {error, Reason}
             end
+    end.
+
+verified_email_id(Email) ->
+    case user_ds:lookup(email, Email, <<"id">>) of
+        {ok, #{<<"id">> := Id}} when is_integer(Id), Id > 0 -> {ok, Id};
+        {ok, Row} when map_size(Row) =:= 0 -> {ok, 0};
+        _ -> {error, service_unavailable}
     end.
 
 bind_identity(Sub, Uid, Email) ->
@@ -547,7 +569,12 @@ nickname(Name, _Sub) ->
 %% ===================================================================
 
 finish_login(Uid, Client, Ip) ->
-    User = user_ds:find_by_id(Uid, ?LOGIN_COLUMN),
+    case user_ds:lookup(id, Uid, ?LOGIN_COLUMN) of
+        {error, _} -> {error, service_unavailable};
+        {ok, User} -> finish_login_user(User, Uid, Client, Ip)
+    end.
+
+finish_login_user(User, Uid, Client, Ip) ->
     Status = maps:get(<<"status">>, User, -2),
     case map_size(User) > 0 andalso (Status =:= 1 orelse Status =:= 2) of
         true ->

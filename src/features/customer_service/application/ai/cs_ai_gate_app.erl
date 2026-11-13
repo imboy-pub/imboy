@@ -33,7 +33,9 @@ grounding_gate(OrgId, Evidence) when is_integer(OrgId), is_map(Evidence) ->
         Impl = cs_ai_port:impl(#{}),
         %% gate 只消费 v4 列（auto_reply_mode/faq_require_hit），走 gate 窄读取；
         %% v1 fetch_config 的字段对齐属 P0-8，不在此处混改。
-        case Impl:fetch_gate_config(OrgId) of
+        %% _tx 版：gate 在 canonical 事务体内执行，必须复用本事务 Conn
+        %%（elib_pg nested_connection_unsupported 守卫，2026-11-13 R1）。
+        case Impl:fetch_gate_config_tx(Conn, OrgId) of
             {ok, Config} ->
                 evaluate_gates(Conn, Impl, OrgId, Config, Job, Evidence);
             {error, not_found} ->
@@ -47,7 +49,7 @@ grounding_gate(_OrgId, _Evidence) ->
 
 evaluate_gates(Conn, Impl, OrgId, Config, Job, Evidence) ->
     %% gate_1 mode_ok
-    case mode_gate(Impl, OrgId, Config, Job) of
+    case mode_gate(Conn, Impl, OrgId, Config, Job) of
         ok ->
             %% gate_3 faq_require_hit
             Cited = maps:get(cited_faq_ids, Evidence, []),
@@ -87,13 +89,15 @@ evaluate_gates(Conn, Impl, OrgId, Config, Job, Evidence) ->
             Err
     end.
 
-mode_gate(Impl, OrgId, Config, Job) ->
+mode_gate(Conn, Impl, OrgId, Config, Job) ->
     case mode_of(Config) of
         enabled ->
             ok;
         canary ->
             case
-                Impl:canary_covers(OrgId, maps:get(workspace_id, Job), maps:get(session_id, Job))
+                Impl:canary_covers_tx(
+                    Conn, OrgId, maps:get(workspace_id, Job), maps:get(session_id, Job)
+                )
             of
                 {ok, true} -> ok;
                 {ok, false} -> {error, {skipped, superseded}};

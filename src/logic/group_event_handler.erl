@@ -8,24 +8,68 @@
 %%% gen_event subscriber bridging domain events to S2C notifications.
 %%% 通知语义镜像 group_member_logic 的 join/leave 现状（SOURCE 权威）。
 %%%
-%%% 渐进策略（NOT Building）：本 task 仅新增订阅者并挂载；现有 join/leave
-%%% 仍走直调通知（handler 暂空载，行为零变化），T2.3 再切 publish + 删直调。
+%%% 入群提示沿用 best-effort 总线；退群/转让由业务事务调用 stage_tx，
+%%% 与状态变更同连接落 staging，不能依赖提交后的进程内事件。
 -module(group_event_handler).
 -moduledoc "群组领域事件订阅者（DDD Phase 2 T2.0h）—— 领域事件的默认 handler。".
 -behaviour(gen_event).
 
 -export([attach/0, detach/0]).
+-export([stage_tx/3]).
 -export([init/1, handle_event/2, handle_call/2, handle_info/2, terminate/2, code_change/3]).
 
 %% @doc 挂载到领域事件总线（由 imboy_app 启动时、总线就绪后调用）。
 -spec attach() -> ok | {error, term()}.
 attach() ->
-    imboy_domain_event:subscribe(?MODULE, []).
+    case whereis(group_event_subscription) of
+        undefined ->
+            gen_event:swap_handler(imboy_domain_event, {?MODULE, reinstall}, {?MODULE, []});
+        _ ->
+            group_event_subscription:attach()
+    end.
 
 %% @doc 从总线摘除（运维/测试用）。
 -spec detach() -> term().
 detach() ->
     imboy_domain_event:unsubscribe(?MODULE, []).
+
+-spec stage_tx(pid(), tuple(), pos_integer()) -> ok | {error, term()}.
+stage_tx(Conn, {member_removed, Gid, Uid}, EffectId) ->
+    stage_notice_tx(
+        Conn,
+        Gid,
+        Uid,
+        <<"group_member_leave">>,
+        #{<<"gid">> => Gid, <<"leave_uid">> => Uid},
+        EffectId,
+        [Uid]
+    );
+stage_tx(Conn, {owner_transferred, Gid, FromUid, ToUid}, EffectId) ->
+    stage_notice_tx(
+        Conn,
+        Gid,
+        FromUid,
+        <<"group_transfer">>,
+        #{
+            <<"gid">> => Gid,
+            <<"from_owner_uid">> => FromUid,
+            <<"to_owner_uid">> => ToUid
+        },
+        EffectId,
+        []
+    ).
+
+stage_notice_tx(Conn, Gid, FromUid, Action, Payload, EffectId, ExtraRecipients) ->
+    case group_member_ds:member_uids_tx(Conn, Gid) of
+        {ok, Members} ->
+            Recipients = lists:usort(ExtraRecipients ++ Members),
+            EffectKey =
+                <<Action/binary, $|, (integer_to_binary(Gid))/binary, $|,
+                    (integer_to_binary(EffectId))/binary>>,
+            msg_s2c_ds:send_tx(Conn, FromUid, Recipients, Action, Payload, EffectKey);
+        {error, _} = Error ->
+            Error
+    end.
 
 %% ===================================================================
 %% gen_event 回调
@@ -104,8 +148,7 @@ notify_member_leave(Gid, Uid) ->
     ok.
 
 %% @doc 群主转让通知（save，离线可补）。
-%% 事件 {owner_transferred, Gid, From, To} 由 group_logic:do_transfer 在
-%% 事务提交成功后 publish；From 为旧群主（S2C from 字段），To 为新群主。
+%% 兼容旧事件发布方；当前转让业务使用 stage_tx，不再经总线重复投递。
 -spec notify_owner_transferred(integer(), integer(), integer()) -> ok.
 notify_owner_transferred(Gid, FromUid, ToUid) ->
     ToUidLi = group_ds:member_uids(Gid),

@@ -1,7 +1,5 @@
 %%% @doc group_member_logic T2.3 领域事件契约 eunit 测试。
-%%% 验证 join_group/leave 退化外壳产出正确的成员变更领域事件
-%%% （{member_added|member_removed, Gid, Uid}），替代原直调通知。
-%%% 通知投递由 group_event_handler（T2.0h）消费事件完成，此处只验证 publish 契约。
+%%% 入群提示保留 member_added best-effort 事件；退群通知随业务事务持久入队。
 -module(group_member_logic_event_tests).
 -include_lib("eunit/include/eunit.hrl").
 -include("eunit_setup.hrl").
@@ -32,8 +30,8 @@ join_publishes_member_added_test_() ->
         end
     ).
 
-%% leave 成功 → publish {member_removed, Gid, Uid}。
-leave_publishes_member_removed_test_() ->
+%% leave 的持久通知必须在成员变更事务内 staging，不能再经总线双发。
+leave_stages_member_removed_test_() ->
     ?WITH_MECKS(
         [
             %% T7 归档写守卫桩：with_tx 内 ensure_writable_tx 直通（守卫行为由 workspace 域测试覆盖）
@@ -41,7 +39,9 @@ leave_publishes_member_removed_test_() ->
                 {'ensure_writable_tx', 2, fun(_Conn, _Target) -> ok end}
             ]},
             {group_member_ds, [
-                {'leave', 4, fun(_Conn, _Uid, _Gid, _CurrentUid) -> {ok, 999, #{}} end}
+                {'leave', 4, fun(_Conn, _Uid, _Gid, _CurrentUid) ->
+                    {ok, 999, #{<<"id">> => 77}}
+                end}
             ]},
             {group_ds, [
                 {'leave', 2, fun(_Uid, _Gid) -> ok end}
@@ -49,9 +49,10 @@ leave_publishes_member_removed_test_() ->
             {elib_pg, [
                 {'with_tx', 1, fun(Fun) -> Fun(self()) end}
             ]},
-            {imboy_domain_event, [
-                {'publish', 1, fun(Events) ->
-                    ?assertEqual([{member_removed, 1, 100}], Events),
+            {group_event_handler, [
+                {'stage_tx', 3, fun(_Conn, Event, EffectId) ->
+                    ?assertEqual({member_removed, 1, 100}, Event),
+                    ?assertEqual(77, EffectId),
                     ok
                 end}
             ]}

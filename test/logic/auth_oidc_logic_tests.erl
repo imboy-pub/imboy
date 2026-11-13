@@ -31,7 +31,8 @@
 %% ===================================================================
 
 %% These tests mock every external service; do not boot the database-backed app.
-with_oidc_mocks(Configs, TestFun) ->
+with_oidc_mocks(Configs0, TestFun) ->
+    Configs = identity_lookup_test_support:mocks(Configs0),
     {setup,
         fun() ->
             lists:foreach(
@@ -257,6 +258,50 @@ callback_state_replay_test_() ->
             ?assertEqual({error, ?FAIL_MSG}, auth_oidc_logic:callback(Params, <<"1.2.3.4">>))
         end
     ).
+
+callback_identity_database_failure_test_() ->
+    [
+        with_oidc_mocks(
+            [
+                sso_config_mock(),
+                rate_limit_mock(),
+                dyn_httpc_mock(),
+                {sso_identity_ds, [
+                    {find_uid, 2, fun(_, _) ->
+                        case Mode of
+                            mapped -> {ok, 55};
+                            unlinked -> not_found
+                        end
+                    end},
+                    {bind, 4, fun(_, _, _, _) -> error(must_not_bind) end}
+                ]},
+                {user_ds, [
+                    {lookup, 3, fun(_, _, _) -> {error, synthetic_database_failure} end},
+                    {insert_and_get_id, 1, fun(_) -> error(must_not_provision) end}
+                ]},
+                {passport_logic, [
+                    {login_resp, 2, fun(_, _) -> error(must_not_issue_credentials) end},
+                    {quota_guard, 0, fun() -> error(must_not_provision) end}
+                ]}
+            ],
+            fun() ->
+                {State, _, _} = prime_flow(<<"test">>, #{
+                    <<"sub">> => <<"sub-001">>,
+                    <<"email">> => <<"synthetic@invalid.test">>,
+                    <<"email_verified">> => true
+                }),
+                ?assertEqual(
+                    {error, service_unavailable},
+                    auth_oidc_logic:callback(
+                        #{<<"code">> => <<"synthetic-code">>, <<"state">> => State}, <<"127.0.0.1">>
+                    )
+                ),
+                ?assertEqual(0, meck:num_calls(user_ds, insert_and_get_id, 1)),
+                ?assertEqual(0, meck:num_calls(passport_logic, login_resp, 2))
+            end
+        )
+     || Mode <- [mapped, unlinked]
+    ].
 
 callback_subject_consistency_test_() ->
     [

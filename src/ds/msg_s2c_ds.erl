@@ -17,6 +17,10 @@
 -export([stage_schedule_remind_tx/3]).
 %% W04.b（channel-group-ux v2.2 §6.4）：受理事务内持久入队 + 提交后投递。
 -export([send_tx/6]).
+%% T04：事务内通知的幂等效果身份派生。调用方（stage_tx 链）与持久化
+%% 验收（真实 PG helper 重放核对）需要跨模块复算同一 MsgId；不导出时
+%% 外部调用在运行时即 undef。
+-export([deterministic_msg_id/2]).
 -export([delete_by_msg_ids_and_to_id/2]).
 -export([count_since/2, count_since/3]).
 
@@ -108,23 +112,35 @@ stage_schedule_remind_tx(Conn, ToUid, Payload) ->
             Error
     end.
 
-%% @doc W04.b（channel-group-ux v2.2 §6.4）：创建受理通知的事务版持久投递。
+%% @doc 创建受理与群成员变更共用的事务内持久通知。
 %%
 %% 与 send/7 的 save 模式分工：这里把 staging 行写入**调用方受理事务**的
 %% Conn（提交前无任何对外可见投递），提交后经 after_commit kick worker
 %% drain staging 并走既有 send_next 在线通道——镜像 stage_schedule_remind_tx
 %% 的链路，不建通用任务/Outbox 平台。
 %%
-%% 消息身份固定（J23.c）：MsgId 由逻辑效果身份 (创建者,操作,请求键,
-%% effect_kind,目标) 确定性派生（EffectKey 由调用方拼好前三段），同一
-%% 逻辑效果永远映射同一 MsgId；受理 receipt 是唯一入队闸门（重放不再
-%% 入队），staging UNIQUE(type,msg_id) 对意外重复入队兜底中止。网络层
-%% 重投可重复到达，接收方不产生第二份邀请/成员动作。
+%% MsgId 由调用方的 EffectKey 与收件人固定派生；创建回执、成员删除身份
+%% 或转让审计身份负责各自的效果身份与重放闸门。staging UNIQUE(type,msg_id)
+%% 对意外重复入队兜底中止，网络重投仍沿用相同 MsgId。
 -spec send_tx(pid(), integer(), [integer()], binary(), map(), binary()) ->
     ok | {error, term()}.
 send_tx(_Conn, _FromId, [], _Action, _Payload, _EffectKey) ->
     ok;
-send_tx(Conn, FromId, [ToUid | Tail], Action, Payload, EffectKey) ->
+send_tx(Conn, FromId, Recipients, Action, Payload, EffectKey) ->
+    case stage_recipients(Conn, FromId, Recipients, Action, Payload, EffectKey, []) of
+        {ok, [{_, FirstMsgId, _} | _] = Messages} ->
+            %% One action owns the complete fanout; large groups must not exhaust the 2048-action cap.
+            elib_pg:after_commit(Conn, {create_receipt_notify, FirstMsgId}, fun() ->
+                ok = msg_store_ds:enqueue(<<"s2c">>, FirstMsgId, #{}),
+                deliver_recipients(Messages)
+            end);
+        {error, _} = Error ->
+            Error
+    end.
+
+stage_recipients(_Conn, _FromId, [], _Action, _Payload, _EffectKey, Acc) ->
+    {ok, lists:reverse(Acc)};
+stage_recipients(Conn, FromId, [ToUid | Tail], Action, Payload, EffectKey, Acc) ->
     MsgId = deterministic_msg_id(EffectKey, ToUid),
     CreatedAt = elib_dt:now(),
     case msg_store_repo:stage_s2c_tx(Conn, MsgId, Action, Payload, FromId, ToUid, CreatedAt) of
@@ -133,13 +149,39 @@ send_tx(Conn, FromId, [ToUid | Tail], Action, Payload, EffectKey) ->
                 <<"S2C">>, FromId, ToUid, Payload, MsgId, <<>>, Action, null
             ),
             Encoded = jsone:encode(Msg, [native_utf8]),
-            ok = elib_pg:after_commit(Conn, {create_receipt_notify, MsgId}, fun() ->
-                ok = msg_store_ds:enqueue(<<"s2c">>, MsgId, #{}),
-                message_ds:send_next(ToUid, MsgId, Encoded, [0, 1_000_000, 1_000_000])
-            end),
-            send_tx(Conn, FromId, Tail, Action, Payload, EffectKey);
+            stage_recipients(
+                Conn,
+                FromId,
+                Tail,
+                Action,
+                Payload,
+                EffectKey,
+                [{ToUid, MsgId, Encoded} | Acc]
+            );
         {error, _} = Error ->
             Error
+    end.
+
+deliver_recipients(Messages) ->
+    Failures = lists:foldl(
+        fun({ToUid, MsgId, Encoded}, Acc) ->
+            Result =
+                try
+                    message_ds:send_next(ToUid, MsgId, Encoded, [0, 1_000_000, 1_000_000])
+                catch
+                    Class:Reason -> {error, {Class, Reason}}
+                end,
+            case Result of
+                ok -> Acc;
+                Other -> [{MsgId, Other} | Acc]
+            end
+        end,
+        [],
+        Messages
+    ),
+    case Failures of
+        [] -> ok;
+        _ -> {error, {online_delivery_failed, lists:reverse(Failures)}}
     end.
 
 %% 逻辑效果身份 → 稳定 MsgId：sha256 前 16 字节的小写 hex（32 字符）。

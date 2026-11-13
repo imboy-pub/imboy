@@ -103,7 +103,11 @@
     %% 不消费 TG19/TG20/TEXTGUARD_* 与服务二进制，textguard/4 对其按根差异化
     %% 仅注入 TG16 服务器连接（最小资源面）；缺连接参数仍 fail-closed
     %% （marker_db_missing_pg_user/password，eunit no-skip 铁律不变）。
-    textguard_export
+    %% 2026-11-13 第五根（export 同口径）：textguard_publisher_tests 的
+    %% pg_only_setup 同走 owned_pg_setup → inttest_marker_db:provision(env_prefix
+    %% TG16)，只吃 TG16 服务器连接；textguard/4 对其按根差异化仅注入 TG16。
+    textguard_export,
+    textguard_publisher
 ]).
 %% 顺序依赖根：独占车道 fresh VM + 本根专属克隆（imboy_quality_full ?EXCL 同列）。
 %% msg_safe：共享 UID 对 920001/920002 的姊妹根直插残留抬高 observed_head（2026-10-30
@@ -509,7 +513,9 @@ v5_bind_env(Slot, RunDir, Args, Db, Prefixes) ->
             {binary_to_list(P) ++ "_PG_HOST", v5_val(maps:get(host, Args))},
             {binary_to_list(P) ++ "_PG_PORT", v5_val(maps:get(port, Args))},
             {binary_to_list(P) ++ "_PG_USER", v5_val(maps:get(username, Args))},
-            {binary_to_list(P) ++ "_PG_PASSWORD", v5_val(maps:get(password, Args))},
+            %% password 可缺省（trust 认证的隔离 PG 无此键）：门八实证
+            %% {prepare_failed, {badkey, password}}，与 801 行的默认 "" 对齐
+            {binary_to_list(P) ++ "_PG_PASSWORD", v5_val(maps:get(password, Args, ""))},
             {binary_to_list(P) ++ "_MAINT_DB", "postgres"}
         ]
      || P <- Prefixes
@@ -539,9 +545,9 @@ textguard(Repo, Ctrl, Args, Pid) ->
             Env = maps:from_list([
                 begin
                     case R of
-                        textguard_export ->
-                            %% 最小资源面：provision 自建一次性 marker 库，只吃
-                            %% 服务器连接；无 evidence 目录/密钥/二进制消费面。
+                        %% 最小资源面（src 伴随根，provision 自建一次性 marker 库，
+                        %% 只吃服务器连接；无 evidence 目录/密钥/二进制消费面）：
+                        R when R =:= textguard_export; R =:= textguard_publisher ->
                             {R, Tg16};
                         _ ->
                             Dir = filename:join(Root, atom_to_list(R)),

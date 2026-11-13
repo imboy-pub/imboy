@@ -20,6 +20,7 @@
 ]).
 -export([find_by_id/1, find_by_id/2]).
 -export([list_by_ids/2]).
+-export([lookup/3]).
 -export([select_by_where/4]).
 -export([select_by_where/5]).
 -export([select_by_where_safe/6]).
@@ -165,9 +166,7 @@ select_by_where_safe(Column, WhereMap, Limit, Offset, OrderSpec, ValidFields) ->
 %% <<"id,account,mobile,password,nickname,avatar,role_id,email,status">>).
 -spec find_by_email(binary(), binary()) -> map().
 find_by_email(Email, Column) ->
-    Tb = tablename(),
-    Sql = <<"SELECT ", Column/binary, " FROM ", Tb/binary, " WHERE email = $1">>,
-    elib_pg_sql:value_or_empty(elib_pg:one(Sql, [Email])).
+    elib_pg_sql:value_or_empty(lookup(email, Email, Column)).
 
 %% @doc 根据手机号查找管理员用户
 %% @param Mobile 用户手机号码，支持binary或string类型
@@ -178,9 +177,7 @@ find_by_email(Email, Column) ->
 %% <<"id,account,mobile,password,nickname,avatar,role_id,email,status">>).
 -spec find_by_mobile(binary() | string(), binary()) -> map().
 find_by_mobile(Mobile, Column) when is_binary(Mobile); is_list(Mobile) ->
-    Tb = tablename(),
-    Sql = <<"SELECT ", Column/binary, " FROM ", Tb/binary, " WHERE mobile = $1">>,
-    elib_pg_sql:value_or_empty(elib_pg:one(Sql, [Mobile])).
+    elib_pg_sql:value_or_empty(lookup(mobile, Mobile, Column)).
 
 %% @doc 根据用户账号查找管理员用户
 %% @param Account 用户账号（字符串或binary类型）
@@ -189,9 +186,7 @@ find_by_mobile(Mobile, Column) when is_binary(Mobile); is_list(Mobile) ->
 %% <<"id,account,mobile,password,nickname,avatar,role_id,email,status">>).
 -spec find_by_account(binary() | string(), binary()) -> map().
 find_by_account(Account, Column) ->
-    Tb = tablename(),
-    Sql = <<"SELECT ", Column/binary, " FROM ", Tb/binary, " WHERE account = $1">>,
-    elib_pg_sql:value_or_empty(elib_pg:one(Sql, [Account])).
+    elib_pg_sql:value_or_empty(lookup(account, Account, Column)).
 
 %% @doc 根据管理员用户ID查找用户基本信息（使用默认列）
 %% @param Uid 管理员用户ID
@@ -207,9 +202,24 @@ find_by_id(Uid) ->
 %% @return 查询成功返回用户信息 map；查询失败或不存在返回空 map
 -spec find_by_id(integer(), binary()) -> map().
 find_by_id(Uid, Column) ->
+    elib_pg_sql:value_or_empty(lookup(id, Uid, Column)).
+
+%% 登录与授权读取不得把数据库错误当成不存在。
+-spec lookup(id | account | email | mobile, term(), binary()) -> {ok, map()} | {error, term()}.
+lookup(Field, Value, Column) when
+    Field =:= id; Field =:= account; Field =:= email; Field =:= mobile
+->
     Tb = tablename(),
-    Sql = <<"SELECT ", Column/binary, " FROM ", Tb/binary, " WHERE id = $1">>,
-    elib_pg_sql:value_or_empty(elib_pg:one(Sql, [Uid])).
+    Sql =
+        <<"SELECT ", Column/binary, " FROM ", Tb/binary, " WHERE ",
+            (atom_to_binary(Field, utf8))/binary, " = $1 LIMIT 1">>,
+    try
+        elib_pg:one(Sql, [Value])
+    catch
+        Class:Reason ->
+            ?ERROR_LOG([identity_lookup_failed, Class, Reason]),
+            {error, {identity_lookup_failed, Class, Reason}}
+    end.
 
 %% @doc 根据管理员用户ID列表批量查询用户信息
 %% @param Uids 管理员用户ID列表，元素类型为integer或binary

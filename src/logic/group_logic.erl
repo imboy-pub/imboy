@@ -197,13 +197,13 @@ add(_, Uid, Type, MemberUids) ->
     end).
 
 join_initial_member(Conn, JoinMode, Uid, Gid) ->
-    %% join_group/5 的失败路径返回 {error, Reason}（group_member_ds 直返，
-    %% 并非事务内 throw——恢复 096327610 的防御分支；6f61ae095 的
-    %% dialyzer 清理误删后，error 路径在此 badmatch）。
-    case group_member_logic:join_group(Conn, JoinMode, Uid, Gid, #{}) of
-        {ok, _} -> ok;
-        {error, Reason} -> throw({abort_tx, Reason})
-    end.
+    %% join_group/5 的失败路径已统一 throw({abort_tx, Reason})（资格类失败与
+    %% upsert/统计 DB 失败同在 group_member_ds 内转 abort）——历史上此处
+    %% 曾因 6f61ae095 删防御分支导致 error 路径 badmatch（096327610），
+    %% 现失败语义由 join_group 内部 throw 完整保留，此处不再匹配不可达的
+    %% {error,_} 返回。
+    {ok, _} = group_member_logic:join_group(Conn, JoinMode, Uid, Gid, #{}),
+    ok.
 
 %% @doc 解散群组
 %% 解散指定群组，通知所有成员并清理相关数据
@@ -262,57 +262,52 @@ do_transfer(CurrentUid, Gid, NewOwnerUid, OwnerUid, _G) ->
                         ),
                         case group_ds:update_owner_tx(Conn, Gid, NewOwnerUid, OwnerUid) of
                             ok ->
-                                case
-                                    group_member_ds:update_role(Conn, Gid, OwnerUid, ?ROLE_MEMBER)
-                                of
-                                    ok ->
-                                        case
-                                            group_member_ds:update_role(
-                                                Conn, Gid, NewOwnerUid, ?ROLE_OWNER
-                                            )
-                                        of
-                                            ok ->
-                                                % 记录群转让日志
-                                                Now = elib_dt:now(),
-                                                LogData = #{
-                                                    % 群转让操作类型
-                                                    <<"type">> => 9,
-                                                    <<"option_uid">> => CurrentUid,
-                                                    <<"group_id">> => Gid,
-                                                    <<"body">> => jsone:encode(#{
-                                                        <<"from_owner_uid">> => OwnerUid,
-                                                        <<"to_owner_uid">> => NewOwnerUid,
-                                                        <<"changed_by">> => CurrentUid,
-                                                        <<"remark">> => <<"群转让"/utf8>>
-                                                    }),
-                                                    <<"created_at">> => Now
-                                                },
-                                                save_transfer_log(Conn, LogData);
-                                            {error, Reason} ->
-                                                {error, Reason}
-                                        end;
-                                    {error, Reason} ->
-                                        {error, Reason}
-                                end;
+                                %% update_transfer_role_tx 将成员变更失败转为
+                                %% throw({abort_tx,...})（其正常返回只可能是 ok），
+                                %% 外层 {error,_} 分支不可达已删；失败语义仍经
+                                %% abort_tx 整体回滚，不吞错误。
+                                ok = update_transfer_role_tx(Conn, Gid, OwnerUid, ?ROLE_MEMBER),
+                                ok = update_transfer_role_tx(
+                                    Conn, Gid, NewOwnerUid, ?ROLE_OWNER
+                                ),
+                                % 记录群转让日志
+                                Now = elib_dt:now(),
+                                LogData = #{
+                                    % 群转让操作类型
+                                    <<"type">> => 9,
+                                    <<"option_uid">> => CurrentUid,
+                                    <<"group_id">> => Gid,
+                                    <<"body">> => jsone:encode(#{
+                                        <<"from_owner_uid">> => OwnerUid,
+                                        <<"to_owner_uid">> => NewOwnerUid,
+                                        <<"changed_by">> => CurrentUid,
+                                        <<"remark">> => <<"群转让"/utf8>>
+                                    }),
+                                    <<"created_at">> => Now
+                                },
+                                save_transfer_log(Conn, LogData, Gid, OwnerUid, NewOwnerUid);
                             {error, Reason} ->
                                 {error, Reason}
                         end
                     end),
-                    %% with_tx 可能返回 {rollback,_}；ds 层错误可能为 atom。
-                    %% 统一归一到 {error, binary()} 契约，防止向调用方泄漏。
+                    %% with_tx 可能返回 {rollback,_}；ds 层错误可能为 atom 或
+                    %% 复合 term（如 {db_exception,Class,Reason}——回调内异常
+                    %% 由 elib_pg 包装）。统一归一到 {error, binary()} 契约；
+                    %% atom_to_binary 只接受 atom，复合 reason 必须走安全转换
+                    %% （t04-real-pg3.log：{db_exception,error,undef} 曾在此 badarg）。
                     case TxRes of
                         ok ->
-                            %% Q05/F07：转让事务提交成功后发布领域事件，由
-                            %% group_event_handler 投递 group_transfer 通知
-                            %% （save，离线可补）——补齐四场景唯一"零通知"缺口。
-                            imboy_domain_event:publish([
-                                {owner_transferred, Gid, OwnerUid, NewOwnerUid}
-                            ]),
+                            ok;
+                        {error, {after_commit_failed, ok, Failures}} ->
+                            ?ERROR_LOG([group_transfer_online_delivery_failed, Gid, Failures]),
                             ok;
                         {error, Reason} when is_binary(Reason) ->
                             {error, Reason};
-                        {error, Reason} ->
+                        {error, Reason} when is_atom(Reason) ->
                             {error, atom_to_binary(Reason, utf8)};
+                        {error, Reason} ->
+                            ?ERROR_LOG([group_transfer_error_shape, Gid, Reason]),
+                            {error, elib_cnv:safe_to_binary(Reason)};
                         {rollback, RollbackReason} ->
                             ?ERROR_LOG([group_transfer_rollback, Gid, RollbackReason]),
                             {error, <<"群转让事务回滚"/utf8>>}
@@ -324,12 +319,33 @@ do_transfer(CurrentUid, Gid, NewOwnerUid, OwnerUid, _G) ->
             {error, <<"只有群主可以转让群组"/utf8>>}
     end.
 
+%% A stale preflight read must not commit an owner change without both active roles.
+update_transfer_role_tx(Conn, Gid, Uid, Role) ->
+    case group_member_ds:update_active_role_tx(Conn, Gid, Uid, Role) of
+        ok ->
+            ok;
+        {error, Reason} ->
+            ?ERROR_LOG([group_transfer_member_changed, Gid, Uid, Reason]),
+            throw({abort_tx, <<"群成员已变更，请刷新后重试"/utf8>>})
+    end.
+
 %% Audit is part of the ownership transaction; failure must roll back roles too.
--spec save_transfer_log(epgsql:connection() | pid(), map()) -> ok | no_return().
-save_transfer_log(Conn, Data) ->
+-spec save_transfer_log(epgsql:connection() | pid(), map(), integer(), integer(), integer()) ->
+    ok | no_return().
+save_transfer_log(Conn, Data, Gid, FromUid, ToUid) ->
     case group_log_ds:add(Conn, Data) of
-        {ok, _} -> ok;
-        {error, _Reason} -> throw({abort_tx, <<"群转让审计写入失败"/utf8>>})
+        {ok, LogId} ->
+            case
+                group_event_handler:stage_tx(Conn, {owner_transferred, Gid, FromUid, ToUid}, LogId)
+            of
+                ok ->
+                    ok;
+                {error, Reason} ->
+                    ?ERROR_LOG([group_transfer_notice_stage_failed, Gid, Reason]),
+                    throw({abort_tx, <<"群通知持久化失败"/utf8>>})
+            end;
+        {error, _Reason} ->
+            throw({abort_tx, <<"群转让审计写入失败"/utf8>>})
     end.
 
 %% @doc 查询附近的群组
@@ -359,8 +375,7 @@ nearby_gid(Lng, Lat, Radius, Unit, Limit, Code) ->
 %%
 %% **@deprecated 无生产调用方**（Q05 盘点确认，仅集成测试引用）。生产路径
 %% 是 transfer/3 → do_transfer/5。保留供 KeepAsAdmin 语义将来启用时参考；
-%% 启用前须与 do_transfer/5 对齐 Q05 通知契约（事务成功后 publish
-%% owner_transferred）。
+%% 两条事务路径均通过 save_transfer_log 在同事务持久入队转让通知。
 %%
 %% @param CurrentUid 当前用户ID
 %% @param Gid 群组ID
@@ -415,53 +430,50 @@ do_transfer(CurrentUid, Gid, NewOwnerUid, OwnerUid, KeepAsAdmin, _G) ->
                                         % 变为普通成员
                                         false -> ?ROLE_MEMBER
                                     end,
-                                case
-                                    group_member_ds:update_role(Conn, Gid, OwnerUid, OldOwnerRole)
-                                of
-                                    ok ->
-                                        % 更新新群主角色
-                                        case
-                                            group_member_ds:update_role(
-                                                Conn, Gid, NewOwnerUid, ?ROLE_OWNER
-                                            )
-                                        of
-                                            ok ->
-                                                % 记录群转让日志
-                                                Now = elib_dt:now(),
-                                                LogData = #{
-                                                    % 群转让操作类型
-                                                    <<"type">> => 9,
-                                                    <<"option_uid">> => CurrentUid,
-                                                    <<"group_id">> => Gid,
-                                                    <<"body">> => jsone:encode(#{
-                                                        <<"from_owner_uid">> => OwnerUid,
-                                                        <<"to_owner_uid">> => NewOwnerUid,
-                                                        <<"changed_by">> => CurrentUid,
-                                                        <<"keep_as_admin">> => KeepAsAdmin,
-                                                        <<"remark">> => <<"群转让"/utf8>>
-                                                    }),
-                                                    <<"created_at">> => Now
-                                                },
-                                                save_transfer_log(Conn, LogData);
-                                            {error, Reason} ->
-                                                {error, Reason}
-                                        end;
-                                    {error, Reason} ->
-                                        {error, Reason}
-                                end;
+                                %% update_transfer_role_tx 失败即 throw({abort_tx,...})
+                                %% （正常返回只可能是 ok）；不可达 {error,_} 分支已删，
+                                %% 失败语义仍经 abort_tx 整体回滚。
+                                ok = update_transfer_role_tx(Conn, Gid, OwnerUid, OldOwnerRole),
+                                ok = update_transfer_role_tx(
+                                    Conn, Gid, NewOwnerUid, ?ROLE_OWNER
+                                ),
+                                % 记录群转让日志
+                                Now = elib_dt:now(),
+                                LogData = #{
+                                    % 群转让操作类型
+                                    <<"type">> => 9,
+                                    <<"option_uid">> => CurrentUid,
+                                    <<"group_id">> => Gid,
+                                    <<"body">> => jsone:encode(#{
+                                        <<"from_owner_uid">> => OwnerUid,
+                                        <<"to_owner_uid">> => NewOwnerUid,
+                                        <<"changed_by">> => CurrentUid,
+                                        <<"keep_as_admin">> => KeepAsAdmin,
+                                        <<"remark">> => <<"群转让"/utf8>>
+                                    }),
+                                    <<"created_at">> => Now
+                                },
+                                save_transfer_log(Conn, LogData, Gid, OwnerUid, NewOwnerUid);
                             {error, Reason} ->
                                 {error, Reason}
                         end
                     end),
-                    %% with_tx 可能返回 {rollback,_}；ds 层错误可能为 atom。
-                    %% 统一归一到 {error, binary()} 契约，防止向调用方泄漏。
+                    %% with_tx 可能返回 {rollback,_}；ds 层错误可能为 atom 或
+                    %% 复合 term（{db_exception,Class,Reason} 等）。归一逻辑
+                    %% 与 do_transfer/5 同源（见该处注释）。
                     case TxRes of
                         ok ->
                             ok;
+                        {error, {after_commit_failed, ok, Failures}} ->
+                            ?ERROR_LOG([group_transfer_online_delivery_failed, Gid, Failures]),
+                            ok;
                         {error, Reason} when is_binary(Reason) ->
                             {error, Reason};
-                        {error, Reason} ->
+                        {error, Reason} when is_atom(Reason) ->
                             {error, atom_to_binary(Reason, utf8)};
+                        {error, Reason} ->
+                            ?ERROR_LOG([group_transfer_error_shape, Gid, Reason]),
+                            {error, elib_cnv:safe_to_binary(Reason)};
                         {rollback, RollbackReason} ->
                             ?ERROR_LOG([group_transfer_rollback, Gid, RollbackReason]),
                             {error, <<"群转让事务回滚"/utf8>>}

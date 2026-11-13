@@ -279,6 +279,10 @@ create_action(<<"POST">>, Req0, State) ->
                     case adm_user_logic:save(Data2) of
                         {ok, _} ->
                             elib_response:success(Req0, #{});
+                        {error, service_unavailable} ->
+                            elib_response:error_with_status(
+                                Req0, 503, <<"服务暂不可用，请稍后重试"/utf8>>, 503
+                            );
                         {error, Reason} ->
                             elib_response:error(Req0, to_error_binary(Reason), ?ERR_BAD_REQUEST)
                     end;
@@ -842,6 +846,10 @@ disable_action(<<"POST">>, Req0, State) ->
                                 ok ->
                                     flush_admin_permission_cache(AdminId),
                                     elib_response:success(Req0, #{});
+                                {error, service_unavailable} ->
+                                    elib_response:error_with_status(
+                                        Req0, 503, <<"服务暂不可用，请稍后重试"/utf8>>, 503
+                                    );
                                 {error, Reason} ->
                                     elib_response:error(
                                         Req0, to_error_binary(Reason), ?ERR_BAD_REQUEST

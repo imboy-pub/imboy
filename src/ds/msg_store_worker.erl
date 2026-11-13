@@ -38,6 +38,7 @@
 
 -ifdef(TEST).
 -export([do_write/2, process_row/1, terminal_write_reason/1]).
+-export([complete_staged/1, renew_row_lease/1]).
 -endif.
 
 -include("log.hrl").
@@ -53,10 +54,18 @@
 -define(LEASE_SECONDS, 30).
 % 最大重试延迟（秒）
 -define(MAX_BACKOFF_SECONDS, 60).
+% staging 采样指标默认周期（毫秒）；app env msg_store_worker_sample_interval_ms 覆盖
+-define(SAMPLE_INTERVAL_MS, 10000).
+% 采样查询 statement_timeout 默认（毫秒）；app env msg_store_worker_stats_timeout_ms 覆盖
+-define(STATS_TIMEOUT_MS, 2000).
 
 -record(state, {
     % 定时器引用
-    tick_timer = undefined
+    tick_timer = undefined,
+    % 上次 staging 指标采样的 monotonic 毫秒时间；undefined 表示从未采样
+    % （首次 drain 必采，不能用 0 当哨兵：peer/测试 VM 的 monotonic 时钟
+    % 可能从接近 0 的小值起步，`Now - 0 < 间隔` 会把首次采样吞掉）
+    last_sample_ms = undefined
 }).
 
 %% ==================== Types ====================
@@ -92,7 +101,7 @@ callback_mode() ->
 
 %% @private
 -spec idle(gen_statem:event_type(), term(), state()) ->
-    {next_state, state_name(), state(), [gen_statem:action()]}
+    {next_state, state_name(), state()}
     | {keep_state, state()}.
 %% gen_statem state_functions 回调的实参形态是 idle(EventType原子, Content,
 %% State)——kick 子句头此前误写为 idle({cast, kick}, _Content, State)，第一
@@ -100,9 +109,9 @@ callback_mode() ->
 %% 吞掉（probe6l 铁证：P ! tick 走 idle(info,tick) 转运成功，cast kick
 %% consume 记录 {consume,{cast,kick},idle,idle} 状态不变）。
 idle(cast, kick, State) ->
-    {next_state, draining, cancel_tick(State), [{next_event, internal, drain}]};
+    {next_state, draining, schedule_drain(cancel_tick(State))};
 idle(info, tick, State) ->
-    {next_state, draining, cancel_tick(State), [{next_event, internal, drain}]};
+    {next_state, draining, schedule_drain(cancel_tick(State))};
 idle(_EventType, _Event, State) ->
     {keep_state, State}.
 
@@ -111,24 +120,22 @@ idle(_EventType, _Event, State) ->
     {next_state, idle, state()}
     | {keep_state, state(), [gen_statem:action()]}
     | {keep_state, state()}.
-draining(internal, drain, State) ->
+draining(info, drain, State) ->
     case claim_and_process_batch() of
         {ok, 0} ->
-            {next_state, idle, maybe_start_tick(tick_interval_ms(), State)};
+            {next_state, idle, maybe_start_tick(tick_interval_ms(), finish_drain(State))};
         {ok, N} when N >= ?BATCH_SIZE ->
-            {keep_state, State, [{next_event, internal, drain}]};
+            {keep_state, finish_drain(schedule_drain(State))};
         {ok, _N} ->
-            {next_state, idle, maybe_start_tick(tick_interval_ms(), State)};
+            {next_state, idle, maybe_start_tick(tick_interval_ms(), finish_drain(State))};
         {error, Reason} ->
             _ = ?ERROR_LOG([msg_store_worker, drain_error, Reason]),
-            {next_state, idle, maybe_start_tick(tick_interval_ms(), State)}
+            {next_state, idle, maybe_start_tick(tick_interval_ms(), finish_drain(State))}
     end;
 draining(cast, kick, State) ->
-    %% 批处理进行中到达的 kick 重新排队一次 drain：当前 claim 是事务时点
-    %% 快照，可能未覆盖 kick 前后才落库的行；若吞掉，该批消息要等下一个
-    %% kick/tick（测试模式 tick=0 时会永久滞留）。子句头同 idle 的教训：
-    %% 必须 idle/draining(原子 EventType, Content, State) 形态。
-    {keep_state, State, [{next_event, internal, drain}]};
+    %% 已有唯一 drain 排在邮箱尾，覆盖此前落库的 kick；批中到达的 kick
+    %% 在本批返回后才处理，若已 idle 会重新排空，不能丢失唤醒。
+    {keep_state, State};
 draining(info, tick, State) ->
     {keep_state, State};
 draining(_EventType, _Event, State) ->
@@ -143,10 +150,25 @@ terminate(_Reason, _StateName, State) ->
 
 %% @private
 -spec code_change(term(), state_name(), state(), term()) -> {ok, state_name(), state()}.
+%% record 扩字段后的热升级：旧版单字段 {state, Timer} 必须升级到新 tuple，
+%% tick_timer 语义原样保留（该 Timer 是既存 send_after 引用，不能丢，否则
+%% 旧 timer 泄漏且无法 cancel）。未知形态原样返回（由 gen_statem 层兜底）。
 code_change(_OldVsn, StateName, State, _Extra) ->
-    {ok, StateName, State}.
+    {ok, StateName, upgrade_state(State)}.
+
+upgrade_state(#state{} = State) ->
+    State;
+upgrade_state({state, Timer}) ->
+    #state{tick_timer = Timer, last_sample_ms = undefined};
+upgrade_state(State) ->
+    State.
 
 %% ==================== Internal Functions ====================
+
+%% 邮箱事件让持续满批也能处理系统消息，并合并排空前的重复唤醒。
+schedule_drain(State) ->
+    self() ! drain,
+    State.
 
 %% tick 间隔可经 app env 覆盖；<=0 或非整数表示禁用周期 tick（纯 kick
 %% 驱动）。测试 VM（eunit_runner do_boot）设 0：每秒 tick 的异步 drain
@@ -177,22 +199,157 @@ claim_and_process_batch() ->
     %% 防崩包裹：elib_pg 被测试 meck 的窗口内，worker 的 tick/kick 仍会
     %% 触发 drain，with_tx 返回 meck 桩值 → case_clause 崩溃 → permanent
     %% 子进程每秒重启风暴。包住后仅记 drain_error，窗口过后自然恢复。
-    try
-        case msg_store_repo:claim_pending(?BATCH_SIZE, ?LEASE_SECONDS) of
-            {ok, []} ->
-                {ok, 0};
-            {ok, Rows} ->
-                _ = [process_row(Row) || Row <- Rows],
-                {ok, length(Rows)};
-            {error, Reason} ->
-                {error, Reason}
-        end
-    catch
-        _Class:_Reason ->
-            {error, drain_crash}
+    StartedUs = erlang:monotonic_time(microsecond),
+    Result =
+        try
+            T0 = erlang:monotonic_time(microsecond),
+            Claim = msg_store_repo:claim_pending(?BATCH_SIZE, ?LEASE_SECONDS),
+            T1 = erlang:monotonic_time(microsecond),
+            _ = elib_metric:record(
+                imboy_msg_store_claim_seconds, elapsed_seconds(T0, T1)
+            ),
+            case Claim of
+                {ok, []} ->
+                    {ok, 0};
+                {ok, Rows} ->
+                    _ = [process_row(Row) || Row <- Rows],
+                    {ok, length(Rows)};
+                {error, Reason} ->
+                    {error, Reason}
+            end
+        catch
+            %% 崩溃原因必须进 drain_error 日志：只记 drain_crash 原子会让
+            %% 防崩包裹变成黑洞（自审 R3：观测不到根因的兜底不是兜底）。
+            %% 另起命名：Reason 在 try 体内已被上方 case 分支绑定。
+            CrashClass:CrashReason ->
+                {error, {drain_crash, CrashClass, CrashReason}}
+        end,
+    _ = elib_metric:record(
+        imboy_msg_store_batch_seconds,
+        elapsed_seconds(StartedUs, erlang:monotonic_time(microsecond))
+    ),
+    Result.
+
+%% 每批 drain 收尾：记录本进程 mailbox 长度 gauge，并按周期节流采样
+%% staging 积压指标（首次必采；PG 不可达时记 -1，不假装 0）。
+finish_drain(State) ->
+    _ = record_mailbox_gauge(),
+    maybe_sample_staging(State).
+
+record_mailbox_gauge() ->
+    case erlang:process_info(self(), message_queue_len) of
+        {message_queue_len, Len} when is_integer(Len) ->
+            _ = elib_metric:set_gauge(imboy_msg_store_mailbox, Len),
+            ok;
+        _ ->
+            ok
     end.
 
+sample_interval_ms() ->
+    application:get_env(imboy, msg_store_worker_sample_interval_ms, ?SAMPLE_INTERVAL_MS).
+
+maybe_sample_staging(#state{last_sample_ms = undefined} = State) ->
+    sample_staging_metrics(),
+    State#state{last_sample_ms = erlang:monotonic_time(millisecond)};
+maybe_sample_staging(State = #state{last_sample_ms = Last}) when is_integer(Last) ->
+    Now = erlang:monotonic_time(millisecond),
+    case Now - Last >= sample_interval_ms() of
+        true ->
+            sample_staging_metrics(),
+            State#state{last_sample_ms = Now};
+        false ->
+            State
+    end.
+
+%% 采样在有界 statement_timeout 的事务内执行；任何失败（连接不可达、
+%% 查询错误、超时、崩溃）都收敛为 -1 两个 gauge，绝不把失败记成 0。
+sample_staging_metrics() ->
+    TimeoutMs = application:get_env(
+        imboy, msg_store_worker_stats_timeout_ms, ?STATS_TIMEOUT_MS
+    ),
+    TimeoutBin = integer_to_binary(TimeoutMs),
+    Result =
+        try
+            elib_pg:with_tx(fun(Conn) ->
+                case
+                    elib_pg:query(
+                        Conn,
+                        <<"SELECT set_config('statement_timeout', '", TimeoutBin/binary,
+                            "', true)">>,
+                        []
+                    )
+                of
+                    {ok, _} ->
+                        msg_store_repo:get_staging_stats(Conn);
+                    Other ->
+                        {error, {stats_timeout_setup, Other}}
+                end
+            end)
+        catch
+            Class:Reason ->
+                {error, {stats_crash, Class, Reason}}
+        end,
+    {Pending, Oldest} = staging_gauges(Result),
+    _ = elib_metric:set_gauge(imboy_msg_staging_pending, Pending),
+    _ = elib_metric:set_gauge(imboy_msg_staging_oldest_seconds, Oldest),
+    ok.
+
+staging_gauges({ok, [Row | _]}) when is_map(Row) ->
+    {
+        gauge_int(maps:get(<<"pending">>, Row, null)),
+        gauge_int(maps:get(<<"oldest_pending_seconds">>, Row, null))
+    };
+staging_gauges(_) ->
+    {-1, -1}.
+
+gauge_int(I) when is_integer(I) ->
+    I;
+gauge_int(F) when is_float(F) ->
+    trunc(F);
+gauge_int(B) when is_binary(B) ->
+    try
+        binary_to_integer(B)
+    catch
+        _:_ -> -1
+    end;
+gauge_int(_) ->
+    -1.
+
+elapsed_seconds(FromUs, ToUs) when is_integer(FromUs), is_integer(ToUs) ->
+    (ToUs - FromUs) / 1_000_000.
+
+%% ==================== 租约 fencing ====================
+
+%% 处理前逐行 CAS 续租：token 仍是本 claim 写入的 available_at 原始精度
+%% 文本才续期；续租成功返回**新 token**（续租已改写 available_at，旧 token
+%% 随之失效），后续完成/失败/终态写回必须用新 token。0 行（过期被重领 /
+%% 已终态）跳过该行，本 worker 不得再对它做任何写回。无 token 的行
+%% （旧调用方 / 降级 claim）走旧路径。
+renew_row_lease(#{<<"id">> := Id, <<"lease_token">> := Token} = Row) ->
+    case msg_store_repo:renew_lease(Id, Token, ?LEASE_SECONDS) of
+        {ok, NewToken} when is_binary(NewToken) ->
+            {ok, Row#{<<"lease_token">> => NewToken}};
+        {ok, 0} ->
+            _ = ?INFO_LOG([msg_store_worker, lease_lost_skip, Id]),
+            skip;
+        {error, Reason} ->
+            %% 续租失败（DB 错误）时归属未知：保守跳过，lease 到期后可被
+            %% 重新 claim，不产生滞留；不冒领写回。
+            _ = ?ERROR_LOG([msg_store_worker, lease_renew_error, Id, Reason]),
+            skip
+    end;
+renew_row_lease(RowWithoutToken) ->
+    {ok, RowWithoutToken}.
+
 process_row(Row) ->
+    case renew_row_lease(Row) of
+        {ok, RenewedRow} ->
+            process_claimed_row(RenewedRow);
+        skip ->
+            ok
+    end.
+
+process_claimed_row(Row) ->
     TypeBin = maps:get(<<"type">>, Row),
     MsgId = maps:get(<<"msg_id">>, Row),
     RetryCount = maps:get(<<"retry_count">>, Row, 0),
@@ -207,13 +364,23 @@ process_row(Row) ->
     case WriteResult of
         ok ->
             _ = ?DEBUG_LOG([msg_store_worker, write_success, TypeAtom, MsgId]);
+        {error, {stale_lease, TypeBin, MsgId}} ->
+            %% mark_processed 被 token CAS 拒绝（0 行）：行已被新 owner 重领，
+            %% 本 worker 已做的正式表写入有幂等键兜底；绝不 mark_failed、
+            %% 绝不触发 ACK 清理（complete_staged 事务已回滚）。
+            _ = ?INFO_LOG([msg_store_worker, write_stale_skip, TypeBin, MsgId]);
         {error, Reason} ->
             ErrorMsg = list_to_binary(io_lib:format("~p", [Reason])),
             case terminal_write_reason(Reason) of
                 true ->
-                    case msg_store_repo:mark_terminal(TypeBin, MsgId, ErrorMsg) of
-                        {ok, _} ->
+                    case mark_terminal_row(Row, TypeBin, MsgId, ErrorMsg) of
+                        {ok, 1} ->
                             ok;
+                        {ok, 0} ->
+                            %% stale owner 的终态写回被 CAS 拒绝：新 owner 接管。
+                            _ = ?INFO_LOG([
+                                msg_store_worker, mark_terminal_stale, TypeBin, MsgId
+                            ]);
                         {error, MarkReason} ->
                             ?ERROR_LOG([msg_mark_terminal_error, TypeBin, MsgId, MarkReason])
                     end,
@@ -222,9 +389,13 @@ process_row(Row) ->
                     ]);
                 false ->
                     BackoffSeconds = backoff_seconds(RetryCount),
-                    case msg_store_repo:mark_failed(TypeBin, MsgId, ErrorMsg, BackoffSeconds) of
-                        {ok, _} ->
+                    case mark_failed_row(Row, TypeBin, MsgId, ErrorMsg, BackoffSeconds) of
+                        {ok, 1} ->
                             ok;
+                        {ok, 0} ->
+                            _ = ?INFO_LOG([
+                                msg_store_worker, mark_failed_stale, TypeBin, MsgId
+                            ]);
                         {error, MarkReason} ->
                             ?ERROR_LOG([msg_mark_failed_error, TypeBin, MsgId, MarkReason])
                     end,
@@ -232,14 +403,51 @@ process_row(Row) ->
             end
     end.
 
+mark_terminal_row(#{<<"lease_token">> := Token}, Type, MsgId, ErrorMsg) ->
+    msg_store_repo:mark_terminal(Type, MsgId, ErrorMsg, Token);
+mark_terminal_row(_, Type, MsgId, ErrorMsg) ->
+    normalize_mark(msg_store_repo:mark_terminal(Type, MsgId, ErrorMsg)).
+
+mark_failed_row(#{<<"lease_token">> := Token}, Type, MsgId, ErrorMsg, BackoffSeconds) ->
+    msg_store_repo:mark_failed(Type, MsgId, ErrorMsg, BackoffSeconds, Token);
+mark_failed_row(_, Type, MsgId, ErrorMsg, BackoffSeconds) ->
+    normalize_mark(msg_store_repo:mark_failed(Type, MsgId, ErrorMsg, BackoffSeconds)).
+
+%% 旧 arity 接口（mark_terminal/3、mark_failed/4）返回 {ok, Count} ——
+%% 两条 UPDATE 均无 RETURNING，elib_pg:execute 契约下恒为二元 {ok, Count}
+%% （三元 {ok, Count, Rows} 仅 RETURNING 语句可达）；token 版走
+%% execute_count 同为二元。归一仅透传，便于上层按 0/1 行判 stale。
+normalize_mark({ok, Count}) when is_integer(Count) ->
+    {ok, Count};
+normalize_mark({error, Reason}) ->
+    {error, Reason}.
+
 %% 完成与 ACK 清理同事务；失败回滚使 staging 仍可被 worker 重试。
+%% T06 fencing：带 token 的行先做 CAS 完成（available_at 必须仍是本
+%% claim 写入的值）。0 行 = stale：整事务回滚并返回 {error,{stale_lease,
+%% ...}}，绝不能继续 reconcile/删除 delivered（stale worker 的完成不得
+%% 触发 ACK 清理）；无 token 行保持旧行为。
 complete_staged(Row) ->
     Type = maps:get(<<"type">>, Row),
     MsgId = maps:get(<<"msg_id">>, Row),
+    LeaseToken = maps:get(<<"lease_token">>, Row, undefined),
     Result = elib_pg:with_tx(fun(Conn) ->
-        case msg_store_repo:mark_processed(Conn, Type, MsgId) of
-            {ok, _} -> ok;
-            {error, Reason} -> throw({rollback, {mark_processed_failed, Reason}})
+        MarkResult =
+            case LeaseToken of
+                undefined ->
+                    msg_store_repo:mark_processed(Conn, Type, MsgId);
+                Token ->
+                    msg_store_repo:mark_processed(Conn, Type, MsgId, Token)
+            end,
+        case MarkResult of
+            {ok, Count} when Count >= 1 ->
+                ok;
+            {ok, 0} ->
+                throw({rollback, {stale_lease, Type, MsgId}});
+            {ok, _Unexpected} ->
+                ok;
+            {error, Reason} ->
+                throw({rollback, {mark_processed_failed, Reason}})
         end,
         case Type of
             <<"c2c">> ->

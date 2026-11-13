@@ -12,6 +12,7 @@
 -export([active_generation_id_tx/3]).
 -export([list_member/2]).
 -export([list_members/1]).
+-export([member_uids_tx/2]).
 -export([list_members_with_info/1]).
 -export([add_member/2]).
 -export([join_group/5]).
@@ -22,6 +23,7 @@
 -export([alias/4]).
 -export([update_role/4]).
 -export([update_role/5]).
+-export([update_active_role_tx/4]).
 -export([update_mute/4]).
 -export([get_member_info/3]).
 -export([find_by_gid_and_uid/3]).
@@ -125,9 +127,11 @@ list_member(_Gid, _) ->
 %% @param Uid 用户ID
 %% @param Gid 群组ID
 %% @param OptData 选项数据
-%% @return {ok, UidSum} | {error, Reason}
+%% @return {ok, UidSum}；失败统一 throw({abort_tx, Reason})（资格类失败与
+%%   upsert/统计 DB 失败同走事务回滚——全部既有调用方对 {error,_} 的处理
+%%   本就是转 abort，前移到此处消除调用方对不可达 error 分支的匹配）
 -spec join_group(pid(), binary(), integer(), integer(), map()) ->
-    {ok, integer()} | {error, binary()}.
+    {ok, integer()}.
 join_group(Conn, JoinMode, Uid, Gid, OptData) ->
     Role = maps:get(role, OptData, 1),
     % T5（双体验 v2.5.2）：Group Member ⊆ Workspace Member 应用层同事务校验。
@@ -166,10 +170,10 @@ join_group(Conn, JoinMode, Uid, Gid, OptData) ->
                     ),
                     {ok, UidSum};
                 {error, Reason} ->
-                    {error, Reason}
+                    throw({abort_tx, {group_statistics_failed, Reason}})
             end;
         {error, Reason} ->
-            {error, Reason}
+            throw({abort_tx, {group_member_upsert_failed, Reason}})
     end.
 
 %% ===================================================================
@@ -323,16 +327,19 @@ ensure_workspace_membership(Conn, Gid, Uid) ->
     {ok, integer(), map()} | {ok, absent} | {error, any()}.
 leave(Conn, Uid, Gid, CurrentUid) ->
     ok = micro_community_access_repo:lock_group_tx(Conn, Gid),
-    GMTb = group_member_repo:tablename(),
-    GM = group_member_repo:find(Gid, Uid, <<"*">>),
+    case group_member_repo:find_tx(Conn, Gid, Uid, <<"*">>) of
+        {ok, GM} -> leave_found_member(Conn, Uid, Gid, CurrentUid, GM);
+        {error, _} = Error -> Error
+    end.
 
+leave_found_member(Conn, Uid, Gid, CurrentUid, GM) ->
     case maps:size(GM) of
         0 ->
             %% Q05/F07：成员行不存在时显式返回 {ok, absent}，供 logic 层
             %% 区分"真实删除"与"重复请求"——避免重复 publish 通知全群。
             {ok, absent};
         _ ->
-            Now = elib_dt:now(),
+            GMTb = group_member_repo:tablename(),
             Id = maps:get(<<"id">>, GM, 0),
 
             % 删除成员
@@ -348,20 +355,7 @@ leave(Conn, Uid, Gid, CurrentUid) ->
                 end,
             ok = close_history_generation(Conn, Gid, Uid, CloseReason),
 
-            % 写日志
-            {ok, Body} = jsone_encode:encode(GM, [native_utf8]),
-            Type =
-                case true of
-                    _ when CurrentUid == Uid -> 200;
-                    _ -> 202
-                end,
-            _ = group_log_repo:add(Conn, #{
-                type => Type,
-                option_uid => CurrentUid,
-                group_id => Gid,
-                body => Body,
-                created_at => Now
-            }),
+            _ = log_leave(Conn, Uid, Gid, CurrentUid, GM),
 
             % 更新群组统计
             case update_statistics(Conn, Gid) of
@@ -370,6 +364,28 @@ leave(Conn, Uid, Gid, CurrentUid) ->
                 {error, Reason} ->
                     {error, Reason}
             end
+    end.
+
+log_leave(Conn, Uid, Gid, CurrentUid, GM) ->
+    {ok, Body} = jsone_encode:encode(GM, [native_utf8]),
+    Type =
+        case CurrentUid =:= Uid of
+            true -> 200;
+            false -> 202
+        end,
+    group_log_repo:add(Conn, #{
+        type => Type,
+        option_uid => CurrentUid,
+        group_id => Gid,
+        body => Body,
+        created_at => elib_dt:now()
+    }).
+
+-spec member_uids_tx(pid(), integer()) -> {ok, [integer()]} | {error, term()}.
+member_uids_tx(Conn, Gid) ->
+    case group_member_repo:member_uids_tx(Conn, Gid) of
+        {ok, Rows} -> {ok, [maps:get(<<"user_id">>, Row) || Row <- Rows]};
+        {error, _} = Error -> Error
     end.
 
 %% @doc 设置群成员昵称/别名
@@ -510,6 +526,22 @@ update_role(Conn, Gid, UserId, Role, UpdatedAt) ->
     case elib_pg:update(Conn, GMTb, Data, <<"group_id = $1 AND user_id = $2">>, [Gid, UserId]) of
         {ok, _} -> ok;
         {error, Reason} -> {error, Reason}
+    end.
+
+%% A transfer must update exactly one active member, on the ownership transaction's Conn.
+%% The UPDATE locks the row and rechecks status after a concurrent leave/deactivation.
+-spec update_active_role_tx(pid(), integer(), integer(), integer()) -> ok | {error, term()}.
+update_active_role_tx(Conn, Gid, UserId, Role) ->
+    Tb = group_member_repo:tablename(),
+    Data = #{role => Role, updated_at => elib_dt:now()},
+    case
+        elib_pg:update(Conn, Tb, Data, <<"group_id = $1 AND user_id = $2 AND status = 1">>, [
+            Gid, UserId
+        ])
+    of
+        {ok, 1} -> ok;
+        {ok, _} -> {error, <<"群成员已变更，请刷新后重试"/utf8>>};
+        {error, _} = Error -> Error
     end.
 
 %% G3: group_member_handler 不应直调 group_member_repo

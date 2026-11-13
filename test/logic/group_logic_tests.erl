@@ -427,9 +427,9 @@ set_e2ee_mode_one_way_error_kept_without_hard_off_test_() ->
 %% transfer/3 群转让通知链（Q05/F07/AC10）
 %% ===================================================================
 
-%% 转让事务成功 → publish {owner_transferred, Gid, From, To} 恰一次。
+%% 转让事务成功前持久入队，提交后不能再经总线产生另一份随机消息身份。
 %% 修复前该场景事务成功后无任何通知（设计文档 Q05 §1.1 唯一"零通知"缺口）。
-transfer_success_publishes_owner_transferred_test_() ->
+transfer_success_stages_owner_transferred_test_() ->
     ?WITH_MECKS(
         [
             {group_ds, [
@@ -438,7 +438,7 @@ transfer_success_publishes_owner_transferred_test_() ->
             ]},
             {group_member_ds, [
                 {'find_by_gid_and_uid', 3, fun(1, 200, _Col) -> #{<<"id">> => 9} end},
-                {'update_role', 4, fun(_Conn, 1, _Uid, _Role) -> ok end}
+                {'update_active_role_tx', 4, fun(_Conn, 1, _Uid, _Role) -> ok end}
             ]},
             {workspace_guard, [
                 {'ensure_writable_tx', 2, fun(_Conn, _Target) -> ok end}
@@ -449,16 +449,17 @@ transfer_success_publishes_owner_transferred_test_() ->
             {elib_pg, [
                 {'with_tx', 1, fun(Fun) -> Fun(self()) end}
             ]},
-            {imboy_domain_event, [
-                {'publish', 1, fun(Events) ->
-                    ?assertEqual([{owner_transferred, 1, 100, 200}], Events),
+            {group_event_handler, [
+                {'stage_tx', 3, fun(_Conn, Event, EffectId) ->
+                    ?assertEqual({owner_transferred, 1, 100, 200}, Event),
+                    ?assertEqual(1, EffectId),
                     ok
                 end}
             ]}
         ],
         fun() ->
             ?assertEqual(ok, group_logic:transfer(100, 1, 200)),
-            ?assertEqual(1, meck:num_calls(imboy_domain_event, publish, 1))
+            ?assertEqual(1, meck:num_calls(group_event_handler, stage_tx, 3))
         end
     ).
 

@@ -367,7 +367,7 @@ do_add(Scene, Uid, ObjectId, []) ->
             end,
         Sql = <<"UPDATE ", Table/binary, " SET tag = '' WHERE ", WhereSql/binary>>,
         % elib_log:info(io_lib:format("user_tag_relation_logic:do_add/4 sql ~p; ~n", [Sql])),
-        {ok, _} = elib_pg:execute(Sql, WhereParams),
+        {ok, _} = elib_pg:execute(Conn, Sql, WhereParams),
         % 删除 public.user_tag_relation
         delete_object_tag(Conn, Scene, Uid, ObjectId),
         ok

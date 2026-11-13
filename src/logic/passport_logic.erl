@@ -48,7 +48,7 @@ refresh_session_epoch_valid(Uid, _Did, Epoch) ->
 %% @param PostVals 请求参数
 %% @returns {ok, Data} | {error, Msg}
 -spec quick_login(binary(), binary() | undefined, binary(), map()) ->
-    {ok, map()} | {error, binary() | map()} | {error, binary(), integer()}.
+    {ok, map()} | {error, binary() | map() | service_unavailable} | {error, binary(), integer()}.
 
 quick_login(<<>>, _, _, _) ->
     {error, <<"未指定登录服务"/utf8>>};
@@ -62,46 +62,44 @@ quick_login(<<"jverify">>, _Operator, Token, PostVals) ->
             {error, Msg};
         {ok, Mobile} ->
             Mobile2 = <<"+86", Mobile/binary>>,
-            User = user_ds:find_by_mobile(Mobile2, ?LOGIN_COLUMN),
-            Uid = maps:get(<<"id">>, User, 0),
-            case Uid of
-                0 ->
-                    %% License 规模 gate：用户数达授权上限时拒绝新注册（402）。
-                    %% 只挡"号码首次出现即注册"这一条分支——已存在用户走下面的
-                    %% login_resp，配额满时不能把老用户一起锁在门外。
-                    case quota_guard() of
-                        {error, _, _} = QErr ->
-                            QErr;
-                        ok ->
-                            Data = pick_data_for_insert(
-                                #{
-                                    <<"source">> => <<"jverify">>,
-                                    <<"mobile">> => Mobile2,
-                                    <<"password">> => <<>>
-                                },
-                                PostVals
-                            ),
-                            case user_ds:insert_and_get_id(Data) of
-                                {ok, Uid2} ->
-                                    case user_ds:find_by_id(Uid2, ?LOGIN_COLUMN) of
-                                        User2 when map_size(User2) =:= 0 ->
-                                            {error, <<"注册异常，请稍后重试"/utf8>>};
-                                        User2 ->
-                                            {ok,
-                                                login_resp(User2, Did, #{
-                                                    <<"action">> => <<"need_set_password">>
-                                                })}
-                                    end;
-                                {error, Reason} ->
-                                    {error, Reason}
-                            end
-                    end;
-                _ ->
-                    {ok, login_resp(User, Did, #{})}
-            end
+            quick_mobile_login(Mobile2, Did, PostVals)
     end;
 quick_login(_, _, _, _) ->
     {error, <<"不支持的登录服务"/utf8>>}.
+
+quick_mobile_login(Mobile, Did, PostVals) ->
+    case user_ds:lookup(mobile, Mobile, ?LOGIN_COLUMN) of
+        {error, _} -> {error, service_unavailable};
+        {ok, #{<<"id">> := _} = User} -> {ok, login_resp(User, Did, #{})};
+        {ok, _} -> quick_provision_mobile(Mobile, Did, PostVals)
+    end.
+
+quick_provision_mobile(Mobile, Did, PostVals) ->
+    %% 配额只挡首次建号，已有用户继续登录。
+    case quota_guard() of
+        {error, _, _} = Error ->
+            Error;
+        ok ->
+            Data = pick_data_for_insert(
+                #{
+                    <<"source">> => <<"jverify">>, <<"mobile">> => Mobile, <<"password">> => <<>>
+                },
+                PostVals
+            ),
+            case user_ds:insert_and_get_id(Data) of
+                {ok, Uid} ->
+                    case user_ds:lookup(id, Uid, ?LOGIN_COLUMN) of
+                        {error, _} ->
+                            {error, service_unavailable};
+                        {ok, User} when map_size(User) =:= 0 ->
+                            {error, <<"注册异常，请稍后重试"/utf8>>};
+                        {ok, User} ->
+                            {ok, login_resp(User, Did, #{<<"action">> => <<"need_set_password">>})}
+                    end;
+                {error, _} = Error ->
+                    Error
+            end
+    end.
 
 %%%===================================================================
 %%% APP 支付宝登录：auth_code → oauth.token → user.info.share → 映射/建号 → 签发
@@ -115,7 +113,7 @@ quick_login(_, _, _, _) ->
 %% @doc 支付宝登录。AuthCode 为客户端 SDK 授权码；PostVals 带 did/ip/cosv。
 %% 返回 {ok, 登录态 map} | {error, Msg} | {error, Msg, Code}（402=配额满）。
 -spec alipay_login(binary(), map()) ->
-    {ok, map()} | {error, binary()} | {error, binary(), integer()}.
+    {ok, map()} | {error, binary() | service_unavailable} | {error, binary(), integer()}.
 alipay_login(AuthCode, PostVals) ->
     Did = maps:get(<<"did">>, PostVals, <<>>),
     case alipay_cfg() of
@@ -178,13 +176,13 @@ alipay_cfg() ->
             {error, <<"支付宝登录未配置凭据"/utf8>>}
     end.
 
+%% service_unavailable：find_uid 命中后走 alipay_finish（user_ds:lookup 依赖故障）。
 -spec alipay_map_or_provision(binary(), map(), binary(), map()) ->
-    {ok, map()} | {error, binary()} | {error, binary(), integer()}.
+    {ok, map()} | {error, binary() | service_unavailable} | {error, binary(), integer()}.
 alipay_map_or_provision(AlipayUid, Info, Did, PostVals) ->
     case sso_identity_ds:find_uid(?ALIPAY_PROVIDER, AlipayUid) of
         {ok, Uid} ->
-            auto_bind_alipay(Uid, Info, AlipayUid),
-            alipay_finish(Uid, Did);
+            alipay_finish_and_bind_setting(Uid, Did, Info, AlipayUid);
         not_found ->
             alipay_provision(AlipayUid, Info, Did, PostVals);
         {error, Reason} ->
@@ -192,8 +190,9 @@ alipay_map_or_provision(AlipayUid, Info, Did, PostVals) ->
             {error, <<"支付宝登录失败，请稍后再试"/utf8>>}
     end.
 
+%% service_unavailable：注册后收口走 alipay_finish（user_ds:lookup 依赖故障）。
 -spec alipay_provision(binary(), map(), binary(), map()) ->
-    {ok, map()} | {error, binary()} | {error, binary(), integer()}.
+    {ok, map()} | {error, binary() | service_unavailable} | {error, binary(), integer()}.
 alipay_provision(AlipayUid, Info, Did, PostVals) ->
     case quota_guard() of
         {error, _, _} = QErr ->
@@ -217,8 +216,7 @@ alipay_provision(AlipayUid, Info, Did, PostVals) ->
             case user_ds:insert_and_get_id(Data) of
                 {ok, Uid2} ->
                     ok = sso_identity_ds:bind(?ALIPAY_PROVIDER, AlipayUid, Uid2, <<>>),
-                    auto_bind_alipay(Uid2, Info, AlipayUid),
-                    alipay_finish(Uid2, Did);
+                    alipay_finish_and_bind_setting(Uid2, Did, Info, AlipayUid);
                 {error, {error, error, <<"23505">>, unique_violation, _Msg, _Details}} ->
                     %% 并发建号竞态：回读映射，命中即直登（与 OIDC 同款兜底）
                     case sso_identity_ds:find_uid(?ALIPAY_PROVIDER, AlipayUid) of
@@ -232,10 +230,24 @@ alipay_provision(AlipayUid, Info, Did, PostVals) ->
             end
     end.
 
+alipay_finish_and_bind_setting(Uid, Did, Info, AlipayUid) ->
+    case alipay_finish(Uid, Did) of
+        {ok, _} = Result ->
+            auto_bind_alipay(Uid, Info, AlipayUid),
+            Result;
+        Error ->
+            Error
+    end.
+
 %% 签发收口：status 1 启用 / 2 申请注销中 放行，其余拒绝（与 OIDC finish_login 同严）
--spec alipay_finish(integer(), binary()) -> {ok, map()} | {error, binary()}.
+-spec alipay_finish(integer(), binary()) -> {ok, map()} | {error, binary() | service_unavailable}.
 alipay_finish(Uid, Did) ->
-    User = user_ds:find_by_id(Uid, ?LOGIN_COLUMN),
+    case user_ds:lookup(id, Uid, ?LOGIN_COLUMN) of
+        {error, _} -> {error, service_unavailable};
+        {ok, User} -> alipay_finish_user(User, Did)
+    end.
+
+alipay_finish_user(User, Did) ->
     case maps:get(<<"status">>, User, -2) of
         1 ->
             {ok, login_resp(User, Did, #{})};
@@ -309,52 +321,65 @@ signup(Mobile, Pwd, Email, PostVals) when
     case validate_compat_password(Pwd) of
         ok ->
             case prepare_compat_mobile(Mobile) of
-                ok ->
-                    case quota_guard() of
-                        {error, _, _} = QErr ->
-                            QErr;
-                        ok ->
-                            Nickname = compat_signup_nickname(Mobile, PostVals),
-                            Email2 = compat_signup_email(Email),
-                            PostVals2 = PostVals#{
-                                <<"nickname">> => Nickname
-                            },
-                            BaseData0 = #{
-                                <<"password">> => elib_password:generate(Pwd),
-                                <<"mobile">> => Mobile,
-                                <<"account">> => Mobile
-                            },
-                            BaseData =
-                                case Email2 of
-                                    undefined ->
-                                        BaseData0;
-                                    _ ->
-                                        BaseData0#{<<"email">> => Email2}
-                                end,
-                            Data = pick_data_for_insert(BaseData, PostVals2),
-                            case user_ds:insert_and_get_id(Data) of
-                                {ok, Uid} ->
-                                    case user_ds:find_by_id(Uid, ?LOGIN_COLUMN) of
-                                        User when map_size(User) =:= 0 ->
-                                            {error, <<"注册异常，请稍后重试"/utf8>>, 500};
-                                        User ->
-                                            {ok, login_resp(User, #{})}
-                                    end;
-                                {error,
-                                    {error, error, <<"23505">>, unique_violation, _Msg, _Details}} ->
-                                    {error, <<"账号已被占用"/utf8>>, 400};
-                                {error, Reason} ->
-                                    {error, compat_error_message(Reason), 400}
+                {ok, MobileCleanup} ->
+                    case compat_signup_email(Email) of
+                        {error, _, _} = Error ->
+                            Error;
+                        {ok, Email2, EmailCleanup} ->
+                            case quota_guard() of
+                                ok ->
+                                    lists:foreach(
+                                        fun(Id) ->
+                                            ok = user_ds:delete_all_related_data(Id)
+                                        end,
+                                        lists:usort(MobileCleanup ++ EmailCleanup)
+                                    ),
+                                    compat_signup_insert(Mobile, Pwd, Email2, PostVals);
+                                {error, _, _} = Error ->
+                                    Error
                             end
                     end;
-                {error, Msg, Code} ->
-                    {error, Msg, Code}
+                {error, _, _} = Error ->
+                    Error
             end;
         {error, Msg} ->
             {error, Msg, 400}
     end.
 
-%% @doc 兼容旧测试入口：使用明文账号密码登录
+compat_signup_insert(Mobile, Pwd, Email2, PostVals) ->
+    Nickname = compat_signup_nickname(Mobile, PostVals),
+    PostVals2 = PostVals#{
+        <<"nickname">> => Nickname
+    },
+    BaseData0 = #{
+        <<"password">> => elib_password:generate(Pwd),
+        <<"mobile">> => Mobile,
+        <<"account">> => Mobile
+    },
+    BaseData =
+        case Email2 of
+            undefined ->
+                BaseData0;
+            _ ->
+                BaseData0#{<<"email">> => Email2}
+        end,
+    Data = pick_data_for_insert(BaseData, PostVals2),
+    case user_ds:insert_and_get_id(Data) of
+        {ok, Uid} ->
+            case user_ds:lookup(id, Uid, ?LOGIN_COLUMN) of
+                {error, _} ->
+                    {error, <<"服务暂不可用，请稍后重试"/utf8>>, 503};
+                {ok, User} when map_size(User) =:= 0 ->
+                    {error, <<"注册异常，请稍后重试"/utf8>>, 500};
+                {ok, User} ->
+                    {ok, login_resp(User, #{})}
+            end;
+        {error, {error, error, <<"23505">>, unique_violation, _Msg, _Details}} ->
+            {error, <<"账号已被占用"/utf8>>, 400};
+        {error, Reason} ->
+            {error, compat_error_message(Reason), 400}
+    end.
+
 -spec login(binary(), binary(), map()) -> {ok, map()} | {error, binary(), integer()}.
 login(Account, Pwd, PostVals) when is_binary(Account), is_binary(Pwd), is_map(PostVals) ->
     Type = compat_login_type(Account),
@@ -382,7 +407,8 @@ login(Account, Pwd, PostVals) when is_binary(Account), is_binary(Pwd), is_map(Po
             {error, compat_error_message(Msg), 400}
     end.
 
--spec do_login(binary(), binary(), binary()) -> {ok, map()} | {error, binary() | map()}.
+-spec do_login(binary(), binary(), binary()) ->
+    {ok, map()} | {error, binary() | map() | service_unavailable}.
 do_login(Type, Account, Pwd) ->
     do_login(Type, Account, Pwd, <<>>, <<>>).
 
@@ -394,12 +420,12 @@ do_login(_Type, _Email, <<>>, _DType, _Did) ->
     %% 空密码属格式非法提前返回（C.2）：不进入校验、不计数
     {error, <<"密码有误"/utf8>>};
 do_login(Type, Mobile, Pwd, DType, Did) when Type == <<"mobile">> ->
-    User = user_ds:find_by_mobile(Mobile, ?LOGIN_COLUMN),
+    User = user_ds:lookup(mobile, Mobile, ?LOGIN_COLUMN),
     do_login_verify(Type, Mobile, User, Pwd, DType, Did);
 do_login(Type, Email, Pwd, DType, Did) when Type == <<"email">> ->
     case elib_type:is_email(Email) of
         true ->
-            User = user_ds:find_by_email(Email, ?LOGIN_COLUMN),
+            User = user_ds:lookup(email, Email, ?LOGIN_COLUMN),
             do_login_verify(Type, Email, User, Pwd, DType, Did);
         false ->
             %% Email 格式非法提前返回（C.2）：不产生身份、不计数
@@ -409,21 +435,18 @@ do_login(Type, Account, Pwd, DType, Did) when Type == <<"account">> ->
     User =
         case elib_type:is_email(Account) of
             true ->
-                user_ds:find_by_email(Account, ?LOGIN_COLUMN);
+                user_ds:lookup(email, Account, ?LOGIN_COLUMN);
             false ->
                 %% 批次123（2026-09-07）：account 查无时回退 mobile 查询。
                 %% UI 登录恒发 type=account（login_page 按 @ 判定邮箱，其余
                 %% 全走 account），而手机号注册用户的 account 字段是系统
                 %% 分配号（≠手机号）——不回退则手机号+密码登录恒报
                 %% 「账号不存在」，新注册用户无法用密码登录（GF9 实证）。
-                case user_ds:find_by_account(Account, ?LOGIN_COLUMN) of
-                    #{} = U when map_size(U) > 0 ->
-                        U;
-                    _ ->
-                        case user_ds:find_by_mobile(Account, ?LOGIN_COLUMN) of
-                            #{} = U2 when map_size(U2) > 0 -> U2;
-                            _ -> #{}
-                        end
+                case user_ds:lookup(account, Account, ?LOGIN_COLUMN) of
+                    {ok, U} when map_size(U) =:= 0 ->
+                        user_ds:lookup(mobile, Account, ?LOGIN_COLUMN);
+                    Result ->
+                        Result
                 end
         end,
     do_login_verify(Type, Account, User, Pwd, DType, Did).
@@ -445,9 +468,14 @@ do_login(Type, Account, Pwd, DType, Did) when Type == <<"account">> ->
     | {{error, conflict}, map()}
     | {error, binary() | map() | service_unavailable}.
 do_login_by_code(Type, Account, Code, DType, Did) ->
+    case find_user_by_type(Type, Account) of
+        {error, _} -> {error, service_unavailable};
+        {ok, User} -> do_code_login_lookup(Type, Account, Code, DType, Did, User)
+    end.
+
+do_code_login_lookup(Type, Account, Code, DType, Did, User) ->
     %% 身份先于锁定门解析：已知用户用稳定 {user, Uid}，未知输入用
     %% 有界 {unknown, Kind, Norm}（C.1），consume 失败按同一键记账。
-    User = find_user_by_type(Type, Account),
     Identity = identity_of(Type, Account, User),
     case login_attempt_ds:begin_attempt(Identity, self(), default) of
         {error, _Unavailable} ->
@@ -573,11 +601,15 @@ code_login_success(User, DType, Did) ->
 %%   - 凭据正确且 status 允许：reset 确认成功才 login_resp 签发；
 %%     reset 失败 → 丢弃响应 Data、不返回凭据，服务不可用。
 %% Ip 在此层不可用也无需伪造：账户域跨 IP（C.1）。
--spec do_login_verify(binary(), binary(), map(), binary(), binary(), binary()) ->
+-spec do_login_verify(
+    binary(), binary(), {ok, map()} | {error, term()}, binary(), binary(), binary()
+) ->
     {ok, map()}
     | {{error, conflict}, map()}
     | {error, binary() | map() | service_unavailable}.
-do_login_verify(Type, Account, User, Pwd, DType, Did) ->
+do_login_verify(_Type, _Account, {error, _}, _Pwd, _DType, _Did) ->
+    {error, service_unavailable};
+do_login_verify(Type, Account, {ok, User}, Pwd, DType, Did) ->
     Identity = identity_of(Type, Account, User),
     case login_attempt_ds:begin_attempt(Identity, self(), default) of
         {error, _Unavailable} ->
@@ -707,28 +739,20 @@ login_conflict_result(Uid, DType, Data) ->
     Code :: binary(),
     PostVals :: map()
 ) ->
-    {ok, map()} | {error, binary()}.
+    {ok, map()} | {error, binary() | service_unavailable}.
 do_signup(<<"email">>, Email, Pwd, Code, PostVals) ->
     case elib_type:is_email(Email) of
         true ->
-            % 校验验证码
-            case consume_code(Email, Code) of
-                {ok, _} ->
-                    do_signup_by_email(Email, Pwd, PostVals);
-                {error, Msg} ->
-                    {error, Msg}
-            end;
+            with_code_identity(email, Email, Code, fun(Id) ->
+                do_signup_by_email(Email, Pwd, PostVals, Id)
+            end);
         false ->
             {error, <<"Email格式有误.."/utf8>>}
     end;
 do_signup(<<"mobile">>, Mobile, Pwd, Code, PostVals) ->
-    % 校验验证码
-    case consume_code(Mobile, Code) of
-        {ok, _} ->
-            do_signup_by_mobile(Mobile, Pwd, PostVals);
-        {error, Msg} ->
-            {error, Msg}
-    end;
+    with_code_identity(mobile, Mobile, Code, fun(Id) ->
+        do_signup_by_mobile(Mobile, Pwd, PostVals, Id)
+    end);
 do_signup(_Type, _Account, _Pwd, _Code, _PostVals) ->
     {error, <<"不支持的注册类型"/utf8>>}.
 
@@ -739,18 +763,14 @@ do_signup(_Type, _Account, _Pwd, _Code, _PostVals) ->
     Code :: binary(),
     PostVals :: map()
 ) ->
-    {ok, map()} | {error, binary()}.
+    {ok, map()} | {error, binary() | service_unavailable}.
 find_password(Type, Email, Pwd, Code, PostVals) when Type == <<"email">> ->
     ok = ?DEBUG_LOG(["Email ", Email, elib_type:is_email(Email)]),
     case elib_type:is_email(Email) of
         true ->
-            % 校验验证码
-            case consume_code(Email, Code) of
-                {ok, _} ->
-                    find_password_by_email(Email, Pwd, PostVals);
-                {error, Msg} ->
-                    {error, Msg}
-            end;
+            with_code_identity(email, Email, Code, fun(Id) ->
+                find_password_by_email(Id, Pwd, PostVals)
+            end);
         false ->
             {error, <<"Email格式有误..."/utf8>>}
     end;
@@ -761,12 +781,9 @@ find_password(Type, Email, Pwd, Code, PostVals) when Type == <<"email">> ->
 %% （如 <<"+86199...">>），is_mobile 的 ^1[0-9]{10}$ 不匹配，加了反而挡住
 %% 合法链路；查无此号由 find_password_by_mobile 的 Id=0 分支兜底。
 find_password(Type, Mobile, Pwd, Code, PostVals) when Type == <<"mobile">>; Type == <<"sms">> ->
-    case consume_code(Mobile, Code) of
-        {ok, _} ->
-            find_password_by_mobile(Mobile, Pwd, PostVals);
-        {error, Msg} ->
-            {error, Msg}
-    end;
+    with_code_identity(mobile, Mobile, Code, fun(Id) ->
+        find_password_by_mobile(Id, Pwd, PostVals)
+    end);
 find_password(_Type, _Account, _Pwd, _Code, _PostVals) ->
     {error, <<"不支持的注册类型"/utf8>>}.
 
@@ -875,9 +892,9 @@ send_sms_code(Mobile) ->
 consume_code(Id, Code) ->
     verification_code_ds:consume(Id, Code).
 
--spec do_signup_by_email(binary(), binary(), map()) ->
+-spec do_signup_by_email(binary(), binary(), map(), non_neg_integer()) ->
     {ok, map()} | {error, binary()} | {error, binary(), Code :: integer()}.
-do_signup_by_email(Email, Pwd, PostVals) ->
+do_signup_by_email(Email, Pwd, PostVals, Id) ->
     % 验证 nickname 不为空
     Nickname = maps:get(<<"nickname">>, PostVals, <<>>),
     case byte_size(Nickname) of
@@ -889,7 +906,6 @@ do_signup_by_email(Email, Pwd, PostVals) ->
                 {error, _, _} = QErr ->
                     QErr;
                 ok ->
-                    Id = user_ds:find_id_by_email(Email),
                     case Id of
                         0 ->
                             Data = pick_data_for_insert(
@@ -921,9 +937,9 @@ do_signup_by_email(Email, Pwd, PostVals) ->
             end
     end.
 
--spec do_signup_by_mobile(binary(), binary(), map()) ->
+-spec do_signup_by_mobile(binary(), binary(), map(), non_neg_integer()) ->
     {ok, map()} | {error, binary() | any()} | {error, binary(), integer()}.
-do_signup_by_mobile(Mobile, Pwd, PostVals) ->
+do_signup_by_mobile(Mobile, Pwd, PostVals, Id) ->
     % 验证 nickname 不为空
     Nickname = maps:get(<<"nickname">>, PostVals, <<>>),
     case byte_size(Nickname) of
@@ -935,7 +951,6 @@ do_signup_by_mobile(Mobile, Pwd, PostVals) ->
                 {error, _, _} = QErr ->
                     QErr;
                 ok ->
-                    Id = user_ds:find_id_by_mobile(Mobile),
                     case Id of
                         0 ->
                             Data = pick_data_for_insert(
@@ -1019,10 +1034,9 @@ pick_data_for_insert(Data, PostVals) ->
         Data
     ).
 
--spec find_password_by_email(Email :: binary(), Pwd :: binary(), PostVals :: map()) ->
+-spec find_password_by_email(Id :: non_neg_integer(), Pwd :: binary(), PostVals :: map()) ->
     {ok, map()} | {error, Msg :: binary()}.
-find_password_by_email(Email, Pwd, _PostVals) ->
-    Id = user_ds:find_id_by_email(Email),
+find_password_by_email(Id, Pwd, _PostVals) ->
     case Id of
         0 ->
             {error, <<"Email不存在或已被删除"/utf8>>};
@@ -1040,8 +1054,7 @@ find_password_by_email(Email, Pwd, _PostVals) ->
             end
     end.
 
-find_password_by_mobile(Mobile, Pwd, _PostVals) ->
-    Id = user_ds:find_id_by_mobile(Mobile),
+find_password_by_mobile(Id, Pwd, _PostVals) ->
     case Id of
         0 ->
             {error, <<"手机号不存在或已被删除"/utf8>>};
@@ -1143,15 +1156,34 @@ trim_norm(_) ->
     <<>>.
 
 %% @private 验证码路径的用户查询（先于锁定门，仅只读；供 identity_of 用）。
--spec find_user_by_type(binary(), binary()) -> map().
+-spec find_user_by_type(binary(), binary()) -> {ok, map()} | {error, term()}.
 find_user_by_type(<<"mobile">>, Account) ->
-    user_ds:find_by_mobile(Account, ?LOGIN_COLUMN);
+    user_ds:lookup(mobile, Account, ?LOGIN_COLUMN);
 find_user_by_type(<<"email">>, Account) ->
-    user_ds:find_by_email(Account, ?LOGIN_COLUMN);
+    user_ds:lookup(email, Account, ?LOGIN_COLUMN);
 find_user_by_type(<<"account">>, Account) ->
-    user_ds:find_by_account(Account, ?LOGIN_COLUMN);
+    user_ds:lookup(account, Account, ?LOGIN_COLUMN);
 find_user_by_type(_, _) ->
-    #{}.
+    {ok, #{}}.
+
+%% 依赖故障先于一次性验证码消费，防止重试时凭据已失效。
+with_code_identity(Field, Account, Code, Fun) ->
+    case lookup_user_id(Field, Account) of
+        {error, _} = Error ->
+            Error;
+        {ok, Id} ->
+            case consume_code(Account, Code) of
+                {ok, _} -> Fun(Id);
+                {error, _} = Error -> Error
+            end
+    end.
+
+lookup_user_id(Field, Value) ->
+    case user_ds:lookup(Field, Value, <<"id">>) of
+        {ok, #{<<"id">> := Id}} when is_integer(Id), Id > 0 -> {ok, Id};
+        {ok, Row} when map_size(Row) =:= 0 -> {ok, 0};
+        _ -> {error, service_unavailable}
+    end.
 
 %% @doc 锁定错误对外消息：保持现有 HTTP200 + code1 envelope，锁定详情
 %% 不以内部 map 结构外泄（C.6：LockInfo 字符串化为 msg）。
@@ -1244,29 +1276,31 @@ compat_signup_nickname(Mobile, PostVals) ->
     end.
 
 prepare_compat_mobile(Mobile) ->
-    case user_ds:find_by_mobile(Mobile, <<"id,status">>) of
-        #{<<"id">> := Id, <<"status">> := Status} when Status < 0 ->
-            ok = user_ds:delete_all_related_data(Id),
-            ok;
-        #{<<"id">> := _Id} ->
+    case user_ds:lookup(mobile, Mobile, <<"id,status">>) of
+        {error, _} ->
+            {error, <<"服务暂不可用，请稍后重试"/utf8>>, 503};
+        {ok, #{<<"id">> := Id, <<"status">> := Status}} when Status < 0 ->
+            {ok, [Id]};
+        {ok, #{<<"id">> := _Id}} ->
             {error, <<"手机号已经被占用了"/utf8>>, 400};
         _ ->
-            ok
+            {ok, []}
     end.
 
 compat_signup_email(Email) ->
     case elib_type:is_email(Email) of
         false ->
-            undefined;
+            {ok, undefined, []};
         true ->
-            case user_ds:find_by_email(Email, <<"id,status">>) of
-                #{<<"id">> := Id, <<"status">> := Status} when Status < 0 ->
-                    ok = user_ds:delete_all_related_data(Id),
-                    Email;
-                #{<<"id">> := _Id} ->
-                    undefined;
+            case user_ds:lookup(email, Email, <<"id,status">>) of
+                {error, _} ->
+                    {error, <<"服务暂不可用，请稍后重试"/utf8>>, 503};
+                {ok, #{<<"id">> := Id, <<"status">> := Status}} when Status < 0 ->
+                    {ok, Email, [Id]};
+                {ok, #{<<"id">> := _Id}} ->
+                    {ok, undefined, []};
                 _ ->
-                    Email
+                    {ok, Email, []}
             end
     end.
 
@@ -1343,9 +1377,12 @@ find_user_setting(Uid) ->
 %% @doc 检查邮箱是否已被注册
 %% @param Email 邮箱地址
 %% @return boolean()
--spec email_in_use(binary()) -> boolean().
+-spec email_in_use(binary()) -> boolean() | {error, service_unavailable}.
 email_in_use(Email) ->
-    user_ds:find_id_by_email(Email) > 0.
+    case lookup_user_id(email, Email) of
+        {ok, Id} -> Id > 0;
+        {error, _} = Error -> Error
+    end.
 
 %% @doc 绑定邮箱到指定用户
 %% @param Uid 用户ID
@@ -1358,9 +1395,12 @@ bind_email(Uid, Email) ->
 %% @doc 检查手机号是否已注册
 %% @param Mobile 手机号
 %% @return boolean()
--spec mobile_registered(binary()) -> boolean().
+-spec mobile_registered(binary()) -> boolean() | {error, service_unavailable}.
 mobile_registered(Mobile) ->
-    user_ds:find_id_by_mobile(Mobile) > 0.
+    case lookup_user_id(mobile, Mobile) of
+        {ok, Id} -> Id > 0;
+        {error, _} = Error -> Error
+    end.
 
 compat_error_message(#{<<"reason">> := Reason}) when is_binary(Reason) ->
     Reason;

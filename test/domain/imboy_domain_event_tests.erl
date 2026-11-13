@@ -55,14 +55,14 @@ publish2_builds_tuple(_Pid) ->
     fun() ->
         ok = imboy_domain_event:subscribe(de_test_handler, self()),
         ok = imboy_domain_event:publish(
-            owner_transferred, [<<"g1">>, <<"u1">>, <<"u2">>]
+            de_probe_owner_transferred, [<<"g1">>, <<"u1">>, <<"u2">>]
         ),
         Got =
             receive
                 {domain_event, E} -> E
             after 1000 -> timeout
             end,
-        ?assertEqual({owner_transferred, <<"g1">>, <<"u1">>, <<"u2">>}, Got)
+        ?assertEqual({de_probe_owner_transferred, <<"g1">>, <<"u1">>, <<"u2">>}, Got)
     end.
 
 %% 空事件列表不应报错。

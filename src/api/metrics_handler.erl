@@ -371,7 +371,8 @@ license_metrics() ->
 %% 支持带标签的计数器：metric_name{plugin="channel"} 42
 -spec format_prometheus(map()) -> iodata().
 format_prometheus(Metrics) ->
-    Counters0 = maps:get(counters, Metrics, #{}),
+    Gauges = maps:merge(maps:get(gauges, Metrics, #{}), maps:get(metric_gauges, Metrics, #{})),
+    Counters0 = maps:merge(maps:get(counters, Metrics, #{}), Gauges),
     TimeoutKey = {cache_sync_recovery_timeout_total, #{reason => deadline_timeout}},
     %% Export zero until an event; increase() needs a pre-event scrape to see the transition.
     Counters = maps:put(TimeoutKey, maps:get(TimeoutKey, Counters0, 0), Counters0),
@@ -379,7 +380,7 @@ format_prometheus(Metrics) ->
 
     %% Application counters and system gauges share the JSON-compatible sample map.
     %% Keep one TYPE per family, including families with multiple label sets.
-    Types = format_counter_types(Counters, maps:get(metric_gauges, Metrics, #{})),
+    Types = format_counter_types(Counters, Gauges),
     CounterLines = maps:fold(
         fun
             ({Name, Labels}, Value, Acc) when is_map(Labels) ->

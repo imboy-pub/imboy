@@ -44,7 +44,12 @@ publish(Events) when is_list(Events) ->
             try
                 gen_event:notify(?MGR, E)
             catch
-                _:_ -> ok
+                _:_ ->
+                    try
+                        elib_metric:increment(domain_event_publish_failed)
+                    catch
+                        _:_ -> ok
+                    end
             end
         end,
         Events
