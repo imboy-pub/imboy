@@ -5,7 +5,7 @@
 #
 # 使用：
 #   cd deploy
-#   cp .env.demo .env.demo.local   # 可选：覆盖默认值
+#   可选：设置 IMBOY_VERSION / PG_IMAGE / BACKEND_IMAGE 覆盖默认镜像
 #   docker compose -f docker-compose.demo.yml up -d
 #   curl http://127.0.0.1:9800/api/v1/init
 #
@@ -56,7 +56,7 @@ services:
       IMBOY_PG_PASSWORD: demo_secret_2026
       IMBOY_PG_DB: imboy_demo
       IMBOY_BASE_URL: http://127.0.0.1:9800
-      IMBOY_WS_URL: ws://127.0.0.1:9800/api/ws
+      IMBOY_WS_URL: ws://127.0.0.1:9800/api/v1/ws
       IMBOY_JWT_KEY: demo_jwt_key_32_bytes_placeholder_
       IMBOY_POSTGRE_AES_KEY: demo_aes_key_32_bytes_placeholder_
       IMBOY_ADM_COOKIE_SECRET: demo_adm_cookie_secret___________

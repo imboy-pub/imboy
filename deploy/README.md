@@ -696,7 +696,7 @@ docker compose -f docker-compose.prod.yml -f docker-compose-sales-policy.yml ps
 docker compose -f docker-compose.prod.yml -f docker-compose-sales-policy.yml logs -f imboy_backend
 ```
 
-等待看到 `imboy started on port 9800` 字样。首次启动需要等待 PG 健康检查 + DB 迁移，约 30-60 秒。
+首次启动需要等待 PG 健康检查 + DB 迁移，约 30-60 秒；就绪判定以 `/healthz` 探测（`curl -fsS http://127.0.0.1:9800/healthz` 返回 ok）为准，后端不承诺输出固定的启动成功日志文案（`install.sh` 同样以 `/healthz` 判定）。
 
 ### 5. 首启初始化向导（P0-5）
 
@@ -815,7 +815,7 @@ cd deploy
 docker compose -f docker-compose.community.yml pull
 bash prepare-backend-runtime.sh -f docker-compose.community.yml
 docker compose -f docker-compose.community.yml up -d imboy_backend imboy_admin
-# 3) 查日志确认迁移成功（看到 started on port 9800 即就绪）
+# 3) 确认迁移成功（curl http://127.0.0.1:9800/healthz 返回 ok 即就绪，不依赖固定启动日志文案）
 docker compose -f docker-compose.community.yml logs -f imboy_backend
 ```
 
@@ -1001,6 +1001,6 @@ Prometheus is accessible at `http://<server-ip>:9090` (recommended: restrict to 
 
 - ✅ G3 `scripts/sanity_check.sh` — 部署后 8 项自动验证 / Post-deploy 8-item sanity check _(done)_
 - ✅ G5 `prometheus/rules/imboy-alerts.yml` — SLO 告警规则 / SLO alerting rules _(done)_
-- ✅ G1 `.github/workflows/release.yml` — 镜像构建发布自动化 / Image build-push automation _(done — Phase 1：tag `v*` → 构建 candidate 镜像推 GHCR `<version>-rc` digest 并输出 Release Identity 三元组；Golden Install / Golden Upgrade 门禁与正式 semver tag / GitHub Release 属 Phase 2（P2-R1）接入)_
-- ⏳ G4 `.github/dependabot.yml` + Trivy SBOM 扫描 / Dependabot + Trivy SBOM scan _(pending)_
+- ✅ G1 `.github/workflows/release.yml` — 镜像构建发布自动化 / Image build-push automation _(done — Phase 1：tag `v*` → 构建 candidate 镜像推 GHCR `<version>-rc` digest 并输出 Release Identity 三元组；Golden Install / Golden Upgrade 门禁已接入本流水线（push 触发），正式 semver tag / GitHub Release 属 Phase 2（P2-R1）)_
+- ✅ G4 `.github/dependabot.yml` + Trivy SBOM 扫描 / Dependabot + Trivy SBOM scan _(done — Dependabot 配置与 Semgrep/Trivy 扫描已接入 CI：`sbom-diff.yml`、`security-scan.yml`)_
 - ⏳ P0-8 Sentry DSN 生产注入文档化 / Sentry DSN production injection docs _(pending)_
