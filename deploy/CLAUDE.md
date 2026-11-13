@@ -21,7 +21,7 @@ deploy/
 │                                # 商务版 overlay：按序 -f 叠加（就绪检查/观测组件/钉钉告警/Uptrace/无密钥策略）
 ├── .env.example / ops.env.example
 ├── nginx/                       # 反代模板（envsubst）+ init-letsencrypt.sh 首签 + prod-vhosts/ 宿主机生产 vhost 快照
-├── prometheus/                  # prometheus.yml（4 job）+ rules/imboy-alerts.yml（33 条规则 14 组）
+├── prometheus/                  # prometheus.yml（4 job）+ rules/imboy-alerts.yml（63 条规则 21 组）
 ├── alertmanager/                # 告警路由
 ├── grafana/                     # provisioning + dashboards/imboy-overview.json（9 panel）
 ├── loki/ · promtail/            # 日志聚合与采集
@@ -93,7 +93,7 @@ helm uninstall imboy --namespace imboy
 | `.env.example` | 必填变量模板；**不要提交含真实密钥的 .env** |
 | `preflight.sh` | 配置/依赖/端口检查；`--dns` 仅检查 RTC/TURN 域是否可解析 |
 | `nginx/templates/imboy.conf.template` | 反代规则（envsubst）：后端 → `api.*`（含 WS 升级），管理后台 → `admin.*`；入口拦截 `/metrics` 返回 403 |
-| `prometheus/rules/imboy-alerts.yml` | 告警规则 33 条 14 组（可用性/延迟/HTTP/VM/PG/消息/WS/主机/连接池/备份/TLS/支付） |
+| `prometheus/rules/imboy-alerts.yml` | 告警规则 63 条 21 组（可用性/延迟/HTTP/VM/PG/消息/WS/主机/连接池/备份/TLS/支付 等，全集以规则文件为准） |
 | `grafana/dashboards/imboy-overview.json` | 9-panel 总览 |
 
 ## 注意事项 / Notes
