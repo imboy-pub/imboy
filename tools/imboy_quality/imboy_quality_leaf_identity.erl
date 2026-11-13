@@ -3,7 +3,11 @@
 %% otp/erts bind the runtime; root_contract binds the root selection, generator
 %% and fixture wrapper contract. Callers supply these independently of results.
 -module(imboy_quality_leaf_identity).
--export([observed_manifest/3, compare/2, global_id/2]).
+-export([observed_manifest/3, compare/2, global_id/2, validate_expected/1]).
+
+validate_expected(#{schema := 1, kind := expected} = E) ->
+    try manifest(E) catch C:R -> {error,{invalid_expected_manifest,C,R}} end;
+validate_expected(_) -> {error,invalid_expected_manifest}.
 
 observed_manifest(Context, Roots, PerRoot) ->
     try

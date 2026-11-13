@@ -42,6 +42,18 @@ create_post(AuthorUid, Data) ->
     MediaJson = encode_json(Media, <<"[]">>),
     AtUidsJson = encode_json(AtUids, <<"[]">>),
     Now = elib_dt:now(),
+    %% 2026-11-13（F4，门二十三 textguard business/shadow 两根实证）：时间线收件人
+    %% 解析原先在 with_tx 体内求值，其归属读经 friend_ds:list_by_uid →
+    %% friend_repo:list_by_uid（elib_pg 自动提交 SELECT）与
+    %% user_denylist_repo:in_denylist（elib_pg:pluck 自动提交）——R1
+    %% nested-connection 守卫（elib_pg:with_conn/2 在任意事务作用域内拒绝第二
+    %% 连接）下必抛 {abort_tx, nested_connection_unsupported}，create_post 经
+    %% normalize_error 归一为 {error,<<"发布动态失败">>}。解析仅依赖发帖者
+    %% 好友/黑名单快照，与业务写行无锁序交互，提至事务体前语义等价（快照点
+    %% 从写后提前到写前，收件人集合不受本事务影响），且事务体内不再有
+    %% 自动提交读。visibility=2 时 Friends 虽不消费仍被严格求值的问题一并
+    %% 消除（结果不变，失败面收窄）。
+    Recipients = resolve_timeline_recipients(AuthorUid, Visibility, AllowUids, DenyUids),
     case
         elib_pg:with_tx(fun(Conn) ->
             PostData0 = #{
@@ -71,12 +83,6 @@ create_post(AuthorUid, Data) ->
                     end,
                     case moment_post_acl_repo:replace_for_post(Conn, PostId, AllowUids, DenyUids) of
                         ok ->
-                            Recipients = resolve_timeline_recipients(
-                                AuthorUid,
-                                Visibility,
-                                AllowUids,
-                                DenyUids
-                            ),
                             case
                                 moment_timeline_repo:upsert_batch(
                                     Conn, Recipients, PostId, AuthorUid, Now

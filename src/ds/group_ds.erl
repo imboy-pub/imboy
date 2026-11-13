@@ -369,10 +369,9 @@ do_create_group(Conn, GMap, Uid, _Now) ->
     %% history generation 原子建立；禁止再旁路手写 group_member INSERT。
     case group_member_ds:join_group(Conn, <<"group_create">>, Uid, Gid2, #{role => 4}) of
         {ok, _} ->
-            ok;
-        {error, Reason2} ->
-            ?ERROR_LOG([group_member_insert_failed, Gid2, Uid, Reason2]),
-            throw({error, group_member_create_failed, Reason2})
+            ok
+        %% 旧 {error,_} 分支已删：join_group/5 失败统一 throw({abort_tx,…})
+        %% 整体回滚（与 face2face_save_tx 同款，语义保留）。
     end,
     Gid2.
 

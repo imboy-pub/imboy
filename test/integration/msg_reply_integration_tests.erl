@@ -20,13 +20,19 @@ msg_reply_test_() ->
     application:set_env(imboy, env, test),
     case eunit_runner:eunit_try_db() of
         {ok, _Driver, _Conn} ->
+            %% 组级预算 30s（照 msg_forward_integration_tests 同款样板）：
+            %% 轮询自有预算 5.1-6.5s 恒大于 eunit 默认 5s 单测超时，负载下
+            %% eunit 必先开枪（门十七 blame [1,2,1,1] = test_c2g_reply 超时）。
+            %% 放宽预算不弱化断言：超预算仍失败并给出明确诊断。
             {foreach, fun setup/0, fun cleanup/1, [
-                {"单聊引用回复", fun test_c2c_reply/0},
-                {"群聊引用回复", fun test_c2g_reply/0},
-                {"引用消息摘要生成", fun test_reply_snippet/0},
-                {"引用不存在的消息", fun test_reply_nonexistent_msg/0},
-                {"引用回复消息列表查询", fun test_get_reply_chain/0},
-                {"批量引用回复", fun test_batch_reply/0}
+                {timeout, 30, [
+                    {"单聊引用回复", fun test_c2c_reply/0},
+                    {"群聊引用回复", fun test_c2g_reply/0},
+                    {"引用消息摘要生成", fun test_reply_snippet/0},
+                    {"引用不存在的消息", fun test_reply_nonexistent_msg/0},
+                    {"引用回复消息列表查询", fun test_get_reply_chain/0},
+                    {"批量引用回复", fun test_batch_reply/0}
+                ]}
             ]};
         {error, _Reason} ->
             %% eunit 无 skip 语义：{skip,...} 被计 cancel 使整轮失败

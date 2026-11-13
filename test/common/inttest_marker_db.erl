@@ -502,6 +502,21 @@ connect_retry(Server, Db, Attempts, SleepMs, CapMs, _LastReason, Idx) ->
         ->
             timer:sleep(min(SleepMs * (1 bsl min(Idx, 4)), CapMs)),
             connect_retry(Server, Db, Attempts - 1, SleepMs, CapMs, Reason, Idx + 1);
+        %% PG 53300（连接槽瞬时耗尽）与 econnrefused 同类的瞬态资源拒绝：全量并发
+        %% 窗口内 marker provision / boot 迁移争抢 max_connections（门十七/十八
+        %% 实证 40+72 处）。epgsql fatal 元组形态 {error,Sev,Code,Name,Msg,Pos}，
+        %% 纳入同一条退避预算（默认 4 次 3s 起步 15s 封顶）。
+        {error, {error, _, <<"53300">>, _, _, _}} ->
+            timer:sleep(min(SleepMs * (1 bsl min(Idx, 4)), CapMs)),
+            connect_retry(
+                Server,
+                Db,
+                Attempts - 1,
+                SleepMs,
+                CapMs,
+                too_many_connections,
+                Idx + 1
+            );
         {error, Reason} ->
             erlang:error({marker_db_connect_failed, Db, Reason})
     end.

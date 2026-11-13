@@ -59,6 +59,33 @@ cleanup_metric({Pid, Preempted}) ->
 %% 1. 无标签计数器（向后兼容）
 %% ===================================================================
 
+gauge_replaces_previous_sample_test_() ->
+    {setup, fun setup_metric/0, fun cleanup_metric/1, fun(_) ->
+        ?_test(begin
+            ok = elib_metric:set_gauge(imboy_msg_staging_pending, 20),
+            ok = elib_metric:set_gauge(imboy_msg_staging_pending, 0),
+            ok = elib_metric:increment(imboy_msg_store_retry_total),
+            Metrics = elib_metric:get_all_metrics(),
+            ?assertEqual(0, maps:get(imboy_msg_staging_pending, maps:get(gauges, Metrics))),
+            Body = metrics_handler:format_prometheus(Metrics),
+            ?assertNotEqual(
+                nomatch,
+                binary:match(
+                    Body,
+                    <<"# TYPE imboy_msg_staging_pending gauge">>
+                )
+            ),
+            ?assertNotEqual(nomatch, binary:match(Body, <<"imboy_msg_staging_pending 0\n">>)),
+            ?assertNotEqual(
+                nomatch,
+                binary:match(
+                    Body,
+                    <<"# TYPE imboy_msg_store_retry_total counter">>
+                )
+            )
+        end)
+    end}.
+
 metric_increment_no_labels_test_() ->
     {setup, fun setup_metric/0, fun cleanup_metric/1, fun(_) ->
         [

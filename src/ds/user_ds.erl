@@ -13,6 +13,7 @@
 -export([find_by_mobile/2]).
 -export([find_by_email/2]).
 -export([find_by_account/2]).
+-export([lookup/3]).
 -export([list_by_ids/2]).
 -export([count/0]).
 -export([insert/2]).
@@ -123,6 +124,10 @@ find_by_email(Email, Column) ->
 -spec find_by_account(binary() | string(), binary()) -> map().
 find_by_account(Account, Column) ->
     user_repo:find_by_account(Account, Column).
+
+-spec lookup(id | account | email | mobile, term(), binary()) -> {ok, map()} | {error, term()}.
+lookup(Field, Value, Column) ->
+    user_repo:lookup(Field, Value, Column).
 
 %% @doc 批量查找用户
 -spec list_by_ids([integer()], binary()) -> {ok, list(map())} | {error, any()}.

@@ -164,6 +164,29 @@ websocket_handle({text, <<"PING">>}, State) ->
 websocket_handle({text, <<"CLIENT_ACK,", Tail/binary>>}, State) ->
     handle_client_ack(Tail, State);
 websocket_handle({text, Msg}, State) ->
+    case split_ci_client_ack(Msg) of
+        {ok, Tail} ->
+            %% T02：wire 规范形态是大写 "CLIENT_ACK,"（imboyapp ack_manager
+            %% generateAckMessage），但历史/第三方客户端存在 "client_ack,"
+            %% 等变体——协议含义相同（设备投递确认），大小写不敏感放行，
+            %% 不改变帧格式与回执语义。
+            handle_client_ack(Tail, State);
+        error ->
+            handle_throttled_text(Msg, State)
+    end;
+websocket_handle({binary, Msg}, State) ->
+    Framing = maps:get(framing, State, none),
+    Protocol = maps:get(protocol, State, json),
+    case Framing of
+        v2 ->
+            handle_v2_binary(Msg, State);
+        _ ->
+            handle_legacy_binary(Msg, Protocol, State)
+    end;
+websocket_handle(_Frame, State) ->
+    {ok, State, hibernate}.
+
+handle_throttled_text(Msg, State) ->
     %% 对用户发送的业务消息进行速率限制（CLIENT_ACK 不受限）
     CurrentUid = auth_ds:current_uid(State),
     case ws_throttle_check(CurrentUid, Msg) of
@@ -177,18 +200,7 @@ websocket_handle({text, Msg}, State) ->
             {reply, {text, jsone:encode(RateLimitMsg, [native_utf8])}, State, hibernate};
         _ ->
             handle_json_message(Msg, State)
-    end;
-websocket_handle({binary, Msg}, State) ->
-    Framing = maps:get(framing, State, none),
-    Protocol = maps:get(protocol, State, json),
-    case Framing of
-        v2 ->
-            handle_v2_binary(Msg, State);
-        _ ->
-            handle_legacy_binary(Msg, Protocol, State)
-    end;
-websocket_handle(_Frame, State) ->
-    {ok, State, hibernate}.
+    end.
 
 %% @doc WS 业务消息限流：webrtc_* 信令走独立高限额桶。
 %% ICE trickle 一次通话可发 8~20 条 candidate，与普通聊天消息共用
@@ -224,9 +236,11 @@ is_webrtc_signaling_json(Msg) when is_binary(Msg) ->
     catch
         _:_ ->
             false
-    end;
-is_webrtc_signaling_json(_) ->
-    false.
+    end.
+%% T02 dialyzer 棘轮：唯一调用点 ws_throttle_check/2 的 Msg 恒为 binary
+%% （websocket_handle text/binary 帧载荷），覆盖全部输入的兜底子句
+%% is_webrtc_signaling_json(_) 已不可达，删除。未来若引入非 binary 调用方，
+%% 应在调用点显式归一为 binary，而不是放宽本函数契约。
 
 has_webrtc_signaling_field(Data) when is_map(Data) ->
     lists:any(fun(Field) -> maps:is_key(Field, Data) end, ?WEBRTC_SIGNALING_FIELDS).
@@ -323,15 +337,30 @@ dispatch_v2_frame(?FRAME_TYPE_ACK, Flags, <<MsgIdInt:64/big-unsigned>>, State) -
 dispatch_v2_frame(?FRAME_TYPE_NACK, _Flags, <<MsgIdInt:64/big-unsigned>>, State) ->
     ok = ?WARN_LOG({v2_nack_received, MsgIdInt}),
     {ok, State, hibernate};
-dispatch_v2_frame(?FRAME_TYPE_MSG_C2S, _Flags, <<"CLIENT_ACK,", Tail/binary>>, State) ->
+dispatch_v2_frame(?FRAME_TYPE_MSG_C2S, _Flags, Payload, State) ->
     %% msg_c2s 帧中的纯文本 CLIENT_ACK（Dart 客户端兼容路径）
-    %% 等价于老的 websocket_handle({text, <<"CLIENT_ACK,...">>}, State)
-    handle_client_ack(Tail, State);
+    %% 等价于老的 websocket_handle({text, <<"CLIENT_ACK,...">>}, State)。
+    %% T02：前缀大小写不敏感（与 v1 文本帧同口径）。
+    case split_ci_client_ack(Payload) of
+        {ok, Tail} ->
+            handle_client_ack(Tail, State);
+        error ->
+            v2_throttled_business(?FRAME_TYPE_MSG_C2S, Payload, State)
+    end;
 dispatch_v2_frame(Type, _Flags, Payload, State) when
     Type =:= ?FRAME_TYPE_MSG_C2C;
-    Type =:= ?FRAME_TYPE_MSG_C2G;
-    Type =:= ?FRAME_TYPE_MSG_C2S
+    Type =:= ?FRAME_TYPE_MSG_C2G
 ->
+    v2_throttled_business(Type, Payload, State);
+dispatch_v2_frame(Type, _Flags, _Payload, State) ->
+    %% 【T14/P1-3】未知帧类型回 ERROR 帧（原为静默丢弃）
+    ok = ?WARN_LOG({v2_frame_unsupported_type, Type}),
+    Reason = <<"unsupported_frame_type:", (integer_to_binary(Type))/binary>>,
+    {reply, {binary, imboy_frame:error_frame(Reason)}, State, hibernate}.
+
+%% v2 业务帧的限流 + 宽容解码分派（原 C2C/C2G/C2S 统一子句抽出；
+%% C2S 的 CLIENT_ACK 分流后仍汇入此处）。
+v2_throttled_business(Type, Payload, State) ->
     CurrentUid = auth_ds:current_uid(State),
     case ws_throttle_check(CurrentUid, Payload) of
         {limit_exceeded, _, _} ->
@@ -344,12 +373,19 @@ dispatch_v2_frame(Type, _Flags, Payload, State) when
             {reply, ws_reply(protobuf, v2, RateLimitMsg), State, hibernate};
         _ ->
             dispatch_v2_business_payload(Type, Payload, State)
+    end.
+
+%% "CLIENT_ACK,"（11 字节）前缀的大小写不敏感拆分。
+%% 协议规范形态是大写（imboyapp）；宽容输入变体但不改变帧语义：
+%% 返回的 Tail 始终取自原文，后续解析/回显不受归一化影响。
+-spec split_ci_client_ack(binary()) -> {ok, binary()} | error.
+split_ci_client_ack(Msg) when is_binary(Msg), byte_size(Msg) > 11 ->
+    case cowboy_bstr:to_lower(binary:part(Msg, 0, 11)) =:= <<"client_ack,">> of
+        true -> {ok, binary:part(Msg, 11, byte_size(Msg) - 11)};
+        false -> error
     end;
-dispatch_v2_frame(Type, _Flags, _Payload, State) ->
-    %% 【T14/P1-3】未知帧类型回 ERROR 帧（原为静默丢弃）
-    ok = ?WARN_LOG({v2_frame_unsupported_type, Type}),
-    Reason = <<"unsupported_frame_type:", (integer_to_binary(Type))/binary>>,
-    {reply, {binary, imboy_frame:error_frame(Reason)}, State, hibernate}.
+split_ci_client_ack(_) ->
+    error.
 
 %% @doc ACK 方向 atom → 处理管道使用的 type binary
 -spec ack_dir_to_binary(imboy_frame:ack_dir()) -> binary().
@@ -560,6 +596,8 @@ handle_json_message(Msg, State) ->
                 Result = message_router_logic:route(MsgId, CurrentUid, Data2, Type, Msg),
 
                 case Result of
+                    {close, _, _} = Close ->
+                        {reply, Close, State};
                     ok ->
                         {ok, State, hibernate};
                     {reply, Msg2} ->
@@ -724,8 +762,9 @@ validate_ack_params(Type, MsgId, DID, State) ->
     %% WEBRTC：客户端对入站 webrtc 信令回 CLIENT_ACK,WEBRTC,... 缺此项会被判
     %% invalid_type，客户端便无法收敛 ACK。WebRTC 信令是 [0] 单次投递，且同一
     %% 通话的 ringing/answer/bye 共用 MsgId，因此只回 CONFIRM，不写通用 ACK 去重缓存。
-    ValidTypes = [<<"C2C">>, <<"C2G">>, <<"S2C">>, <<"C2S">>, <<"WEBRTC">>],
-    case lists:member(Type, ValidTypes) of
+    %% T02：type 匹配大小写不敏感（wire 规范为大写，宽容 "c2c" 等变体）。
+    ValidTypes = [<<"c2c">>, <<"c2g">>, <<"s2c">>, <<"c2s">>, <<"webrtc">>],
+    case lists:member(cowboy_bstr:to_lower(Type), ValidTypes) of
         false ->
             {error, <<"invalid_type">>};
         true ->
@@ -830,6 +869,8 @@ handle_protobuf_message_decoded(Data0, State) ->
                 Result = message_router_logic:route(MsgId, CurrentUid, Data2, Type, RawJson),
 
                 case Result of
+                    {close, _, _} = Close ->
+                        {reply, Close, State};
                     ok ->
                         {ok, State, hibernate};
                     {reply, Msg2} ->
@@ -1037,28 +1078,36 @@ complete_client_ack(Type, MsgId, CurrentUid, DID, State) ->
     },
     {reply, reply_frame(Msg, State), State, hibernate}.
 
-%% @doc 处理 ACK 消息类型
+%% @doc 处理 ACK 消息类型。入口先做大小写归一（T02：wire 规范为大写，
+%% 宽容 "c2c"/"S2c" 等变体；分派与清理路径统一按小写比较）。
 -spec process_ack_type(binary(), binary(), integer(), binary()) -> ok | {error, binary()}.
-process_ack_type(<<"C2C">>, MsgId, CurrentUid, DID) ->
+process_ack_type(Type0, MsgId, CurrentUid, DID) ->
+    process_ack_type_norm(cowboy_bstr:to_lower(Type0), MsgId, CurrentUid, DID).
+
+process_ack_type_norm(<<"c2c">>, MsgId, CurrentUid, DID) ->
     ok = ?DEBUG_LOG({client_ack_processing_c2c, MsgId}),
     msg_c2c_logic:c2c_client_ack(MsgId, CurrentUid, DID);
-process_ack_type(<<"C2G">>, MsgId, CurrentUid, DID) ->
+process_ack_type_norm(<<"c2g">>, MsgId, CurrentUid, DID) ->
     ok = ?DEBUG_LOG({client_ack_processing_c2g, MsgId}),
     msg_c2g_logic:c2g_client_ack(MsgId, CurrentUid, DID);
-process_ack_type(<<"S2C">>, MsgId, CurrentUid, DID) ->
+process_ack_type_norm(<<"s2c">>, MsgId, CurrentUid, DID) ->
     ok = ?DEBUG_LOG({client_ack_processing_s2c, MsgId}),
     msg_s2c_logic:s2c_client_ack(MsgId, CurrentUid, DID);
-process_ack_type(<<"C2S">>, MsgId, _CurrentUid, _DID) ->
+process_ack_type_norm(<<"c2s">>, MsgId, _CurrentUid, _DID) ->
     ok = ?DEBUG_LOG({client_ack_processing_c2s, MsgId});
-process_ack_type(<<"WEBRTC">>, MsgId, _CurrentUid, _DID) ->
+process_ack_type_norm(<<"webrtc">>, MsgId, _CurrentUid, _DID) ->
     ok = ?DEBUG_LOG({client_ack_processing_webrtc, MsgId});
-process_ack_type(Type, MsgId, _CurrentUid, _DID) ->
+process_ack_type_norm(Type, MsgId, _CurrentUid, _DID) ->
     ok = ?WARN_LOG({client_ack_unknown_type, Type, MsgId}).
 
 %% WebRTC 的多个阶段有意复用通话 MsgId；若写入 ack_received，ringing 的 ACK
 %% 会把紧随其后的 answer 当成重复投递过滤掉。其投递列表固定为 [0]，无需取消重试。
+%% T02：与 process_ack_type 同口径按小写归一比较。
 -spec maybe_cancel_delivery(binary(), integer(), binary(), binary()) -> ok.
-maybe_cancel_delivery(<<"WEBRTC">>, _CurrentUid, _DID, _MsgId) ->
-    ok;
-maybe_cancel_delivery(_Type, CurrentUid, DID, MsgId) ->
-    websocket_logic:cancel_timer(CurrentUid, DID, MsgId).
+maybe_cancel_delivery(Type, CurrentUid, DID, MsgId) ->
+    case cowboy_bstr:to_lower(Type) of
+        <<"webrtc">> ->
+            ok;
+        _ ->
+            websocket_logic:cancel_timer(CurrentUid, DID, MsgId)
+    end.

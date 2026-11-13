@@ -201,7 +201,31 @@ a07_check_then_use_window_is_closed_by_db_guard() ->
         scrub(Scope)
     end.
 
+%% 会话 B 必须「真的在另一条池连接上」写入：elib_pg 自 2026-11-13（R1）起
+%% 拒绝同一进程在事务作用域内再取池连接（nested_connection_unsupported）。
+%% 用独立进程承载第二连接——进程字典互不可见 ⇒ 守卫放行；该写仍是探针
+%% 事务「检查」与「使用」两语句之间的 autocommit 提交，时序语义与原实现
+%% 一致（模块头「两个真实连接」的窗口复现不变）。负例用例（事务外）同样成立。
 bind_identity_via_pool(Scope, Identity, FunctionKey, To) ->
+    Parent = self(),
+    Ref = make_ref(),
+    Worker =
+        spawn(fun() ->
+            Parent !
+                {Ref, (catch do_bind_identity_via_pool(Scope, Identity, FunctionKey, To))}
+        end),
+    receive
+        {Ref, ok} ->
+            ok;
+        {Ref, {'EXIT', ClassReason}} ->
+            %% 失败原样抛出，调用方 `ok = …` 处可读清原因，不静默吞掉
+            erlang:error({bind_identity_via_pool_failed, ClassReason})
+    after 30000 ->
+        exit(Worker, kill),
+        erlang:error(bind_identity_via_pool_timeout)
+    end.
+
+do_bind_identity_via_pool(Scope, Identity, FunctionKey, To) ->
     {Org, Ws} = tenant(Scope),
     ok = end_active_assignment(Scope, Identity),
     {ok, _} = eb_pg_store:insert_assignment(Org, Ws, #{

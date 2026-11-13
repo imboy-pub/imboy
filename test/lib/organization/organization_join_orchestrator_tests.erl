@@ -345,13 +345,15 @@ join_tx_guards_test_() ->
                 [
                     {group_member_ds, [
                         {'join_group', 5, fun(_C, _M, _U, _G, _O) ->
-                            {error, membership_required}
+                            %% T01 契约：join_group/5 失败统一 throw({abort_tx, …})，
+                            %% 不再返回 {error, _}（group_member_ds:join_group/5 文档）。
+                            throw({abort_tx, {group_member_upsert_failed, membership_required}})
                         end}
                     ]}
                 ],
                 fun() ->
                     ?assertThrow(
-                        {abort_tx, {internal, {general_group_join, ?GID, membership_required}}},
+                        {abort_tx, {group_member_upsert_failed, membership_required}},
                         organization_join_orchestrator:join_tx(
                             fake_conn, ?ORG_ID, ?TARGET, ?OWNER, <<"member">>
                         )

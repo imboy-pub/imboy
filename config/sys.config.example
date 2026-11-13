@@ -391,6 +391,15 @@
         {sql_driver, pgsql},
         %% PostgreSQL 单条语句上限（毫秒）；连接入池前设置，防慢查询长期占池。
         {statement_timeout_ms, 15000},
+        %% T02 生命周期三键（毫秒；imboy_app 启动期 fail-fast 校验）：
+        %%   drain_timeout_ms：SIGTERM 后等在途连接排空的预算（0..60000，
+        %%     只覆盖 drain 段——其后还有监听器关闭与监督树逆序关闭，
+        %%     部署侧 terminationGracePeriod/stop_grace_period 必须预留余量）；
+        %%   readyz_*：/readyz 探针独立预算（取连接/单查询各自 0..600000），
+        %%     与业务池耗尽退避解耦，误配负数会在启动期被拒。
+        {drain_timeout_ms, 5000},
+        {readyz_take_conn_timeout_ms, 2000},
+        {readyz_query_timeout_ms, 2000},
         {pg_conf, #{
             name => pgsql,
             max_count => 80,

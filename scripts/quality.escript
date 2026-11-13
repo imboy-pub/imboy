@@ -8,6 +8,19 @@
 main(Args) ->
     try
         load_admission_modules(),
+        case imboy_quality_backend:selection(os:getenv("IMBOY_BACKEND_ACCEPTANCE"),Args) of
+            legacy -> legacy_main(Args);
+            backend -> backend_main();
+            backend_build -> backend_build_main(Args)
+        end
+    catch Class:Reason:Stack ->
+        io:format(standard_error,"quality.escript error ~tp:~tp~n~tp~n",[Class,Reason,Stack]),
+        erlang:halt(2)
+    end.
+
+legacy_main(Args) ->
+    try
+        load_admission_modules(),
         CtxDir = resolve_control_dir(),
         Op = parse(Args),
         {Ctx, _StatePath} = load_context(CtxDir),
@@ -74,9 +87,81 @@ load_admission_modules() ->
             imboy_quality_task_owner,
             imboy_quality_full_budget,
             imboy_quality_compile,
-            imboy_quality_u_leaves
+            imboy_quality_u_leaves,
+            imboy_quality_backend,
+            imboy_quality_leaf_identity
         ]
     ).
+
+%% Explicit, independent acceptance; legacy_main retains its original admission.
+backend_main() ->
+    "local" = os:getenv("IMBOYENV"),
+    lists:foreach(fun(N)-> case os:getenv(N) of false->ok; ""->ok; _->error({partial_backend_selection,N}) end end,
+        ["t","EUNIT_MODS","IMBOY_EUNIT_INNER"]),
+    {ok,Repo}=file:get_cwd(),
+    Ctrl=filename:join(required_backend_env("IMBOY_BACKEND_RUN_ROOT"),"control"),
+    Workers=env_int("IMBOY_QUALITY_WORKERS",2),
+    lists:foreach(fun required_backend_env/1,
+        ["IMBOY_BACKEND_EXPECTED","IMBOY_BACKEND_RUN_REASON","IMBOY_BACKEND_PG_SYSTEM_IDENTIFIER","IMBOY_BACKEND_MAKE"]),
+    Token=string:lowercase(binary:encode_hex(crypto:strong_rand_bytes(32))),
+    {ok,Owner,Identity}=imboy_quality_task_owner:start(Token,unicode:characters_to_binary(Repo)),
+    true=os:putenv("IMBOY_QUALITY_CTRL",Ctrl),
+    true=os:putenv("IMBOY_QUALITY_OWNER_TOKEN",binary_to_list(Token)),
+    try
+        {Ctrl,State}=imboy_quality_backend:reserve(Repo,Identity,Workers),
+        BuildDir=filename:join(Ctrl,"prep/build"),
+        ok=filelib:ensure_dir(filename:join(BuildDir,"x")),
+        imboy_quality_compile:compile_all(BuildDir),
+        true=code:add_patha(BuildDir),
+        %% The existing receipt-aware Make recipe owns test-build and sealing.
+        Make=os:find_executable(required_backend_env("IMBOY_BACKEND_MAKE")),
+        true=is_list(Make),
+        0=backend_command(Make,["quality-test-build"]),
+        Frozen=maps:get(<<"frozen_inputs">>,State),
+        ok=imboy_quality_backend:require_build(Repo,maps:get(<<"build_key">>,Frozen)),
+        #{ordinary:=Ordinary,excluded:=Excl}=imboy_quality_full:inventory(Repo),
+        RunId=binary_to_list(maps:get(<<"run_id">>,State)),
+        ok=imboy_quality_backend:begin_resources(Ctrl),
+        {Result,OutPath}=with_config_receipts(Ctrl,RunId,fun()->
+            Prepared0=imboy_quality_env:prepare(Repo,Ctrl,Workers),
+            Prepared=Prepared0#{backend_state=>State},
+            with_resources(Prepared,fun()->
+                Opts=run_opts(Repo,Ctrl,Workers,Prepared,Excl,#{estimates=>load_estimates(Ctrl)}),
+                {Result0,OutDir}=imboy_quality_full:run(Ordinary,Opts,RunId),
+                {Result0#{<<"scope">>=><<"BACKEND_ACCEPTANCE">>,
+                    <<"input_binding">>=><<"NOT_VERIFIED">>,
+                    <<"resources">>=>maps:get(report,Prepared)},OutDir}
+            end)
+        end),
+        io:put_chars(encode(Result)),io:nl(),io:format("artifact: ~ts~n",[OutPath]),
+        put(backend_exit_code,exit_code(Result,undefined))
+    after
+        case code:is_loaded(imboy_quality_signal) of false->ok; _->imboy_quality_signal:uninstall() end,
+        imboy_quality_backend:end_resources(),
+        ok=imboy_quality_task_owner:stop(Owner),
+        os:unsetenv("IMBOY_QUALITY_OWNER_TOKEN")
+    end,
+    erlang:halt(erase(backend_exit_code)).
+
+backend_build_main(Args) ->
+    Ctrl=required_backend_env("IMBOY_QUALITY_CTRL"),
+    State=imboy_quality_backend:read_state(Ctrl),
+    ok=imboy_quality_backend:authorize(State,build),
+    {Result,_}=dispatch(parse(Args),#{},Ctrl),
+    io:put_chars(encode(Result)),io:nl(),
+    erlang:halt(exit_code(Result,undefined)).
+
+required_backend_env(Name) ->
+    case os:getenv(Name) of V when is_list(V),V=/=[]->V; _->error({required_environment,Name}) end.
+
+backend_command(Exe,Args) ->
+    P=open_port({spawn_executable,Exe},[binary,exit_status,stderr_to_stdout,{args,Args}]),
+    backend_command_wait(P).
+backend_command_wait(P) ->
+    receive
+        {P,{data,Data}} -> io:put_chars(Data),backend_command_wait(P);
+        {P,{exit_status,Code}} -> Code
+    end.
 
 %% ---- 控制目录与上下文 ----
 
@@ -438,17 +523,34 @@ with_config_receipts(Ctrl, RunId, Fun) ->
     end.
 
 with_resources(Prepared, Fun) ->
-    ok = imboy_quality_signal:install(fun() ->
-        imboy_quality_full:fallback_config_cleanup(),
-        imboy_quality_env:release_once(Prepared)
-    end),
+    %% Installation/phase admission belongs inside the same finally as Prepared.
+    %% Backend acceptance keeps its original handler; only its stage changes.
+    Backend=maps:is_key(backend_state,Prepared),
     try
+        ok = case Backend of
+            true -> imboy_quality_backend:enter_run(fun()->imboy_quality_env:release(Prepared) end);
+            false -> imboy_quality_signal:install(fun() ->
+                case maps:find(pg_handle,Prepared) of
+                    {ok,H}->put(imboy_pg_owner,H);
+                    error->ok
+                end,
+                imboy_quality_full:fallback_config_cleanup(),
+                imboy_quality_env:release_once(Prepared)
+            end)
+        end,
         {Result0, OutDir} = Fun(),
         Final = imboy_quality_full:finalize_run(
             OutDir,
             Result0,
             fun() -> imboy_quality_env:release(Prepared) end,
-            fun imboy_quality_resources:cleanup_config_receipts/0
+            fun imboy_quality_resources:cleanup_config_receipts/0,
+            fun(Cleaned) ->
+                case maps:find(backend_state,Prepared) of
+                    {ok,State} ->
+                        {_,Bound}=imboy_quality_backend:verify_result(State,OutDir,Cleaned), Bound;
+                    error -> Cleaned
+                end
+            end
         ),
         put(quality_cleanup_finalized, true),
         Final
@@ -460,7 +562,7 @@ with_resources(Prepared, Fun) ->
                 imboy_quality_full:fallback_config_cleanup(),
                 imboy_quality_env:release_once(Prepared)
         end,
-        imboy_quality_signal:uninstall()
+        case Backend of true->ok; false->imboy_quality_signal:uninstall() end
     end.
 
 %% full/group 共用执行选项：独占根按根 env 与按根 -config（无专属配置则沿用 worker 0）。
@@ -1276,6 +1378,8 @@ exit_code(#{op := build_seal, ok := true}, _) ->
     0;
 exit_code(#{op := build_seal}, _) ->
     2;
+exit_code(#{<<"scope">> := <<"BACKEND_ACCEPTANCE">>} = Result, _) ->
+    imboy_quality_backend:result_exit(Result);
 exit_code(#{<<"op">> := <<"eunit_group">>} = Result, _) ->
     imboy_quality_cli:group_result_exit_code(Result);
 %% full：资源回收失败 → 2（协议/资源异常，优先于测试结果）；根缺失 → 3；

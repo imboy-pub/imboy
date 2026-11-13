@@ -1,6 +1,6 @@
 # Imboy 数据库访问层规范
 
-> Last Updated: 2026-03-09  
+> Last Updated: 2026-11-12  
 > Status: 长期架构文档  
 > Scope: `src/repo/`、`src/ds/` 与 `elib_pg` / `elib_pg_sql` 的数据库访问约束  
 > Source of truth: `src/repo/`, `src/ds/`, `src/lib/elib_pg.erl`, `src/lib/elib_pg_sql.erl`  
@@ -122,11 +122,16 @@ elib_pg:query("SELECT * FROM users WHERE id = $1", [UserId])
 elib_pg:query("SELECT * FROM users WHERE id = " ++ integer_to_list(UserId))
 ```
 
-### 2. 区分"没找到"和"错误"
+### 2. 区分"没找到"和"错误"（身份敏感路径必须 tagged）
 ```erlang
-% FIND 类：没找到返回空 Map，不是 error
-find_by_id(999) -> #{}
-find_by_id(abc) -> {error, syntax_error}  % 这才是真正的错误
+% 身份/鉴权敏感路径（user_repo / adm_user_repo 的 lookup 族）：
+% 返回 {ok, Row} | {error, term()}，查无与依赖故障可区分，鉴权 fail-closed。
+user_repo:lookup(id, 999, Cols) -> {ok, #{}}        %% elib_pg:one 零行默认
+user_ds:lookup(id, 999, Cols)  -> {ok, #{}}        %% 调用方按业务判空
+
+% 非关键展示路径（列表页、可选字段渲染）可用 value_or_empty 兼容旧形态，
+% 但它会把 DB 错误也折叠成 #{}——只允许用于"错误时展示为空"可接受的场景，
+% 新代码禁止在鉴权/登录/管理端身份查询中使用。
 ```
 
 ### 3. 返回值要一致
@@ -149,15 +154,19 @@ all() ->
 
 ### FIND 类
 ```erlang
-%% @doc 根据 ID 查找用户
+%% @doc 根据 ID 查找用户（身份敏感路径：tagged 返回）
 find_by_id(Id) ->
     Sql = "SELECT id, name, email FROM users WHERE id = $1",
-    elib_pg_sql:value_or_empty(elib_pg:one(Sql, [Id])).
+    elib_pg:one(Sql, [Id]).
 
 %% 返回
-% 找到：#{<<"id">> => 1, <<"name">> => <<"Alice">>}
-% 找不到：#{}
-% 错误：#{}
+% 找到：{ok, #{<<"id">> => 1, <<"name">> => <<"Alice">>}}
+% 找不到（零行，one 默认 Default）：{ok, #{}}
+% 依赖故障：{error, Reason} —— 调用方必须区分，鉴权路径 fail-closed
+
+%% @doc 非关键展示路径（错误折叠为空可接受时）才使用兼容包装
+find_by_id_display(Id) ->
+    elib_pg_sql:value_or_empty(elib_pg:one(Sql_of(Id))).
 ```
 
 ### EXECUTE 类
@@ -204,6 +213,31 @@ page_by_account(Account, Page, Size) ->
 
 ---
 
+## 6a. 执行语义与重试边界（`elib_pg`）
+
+`elib_pg` 的执行语义按"回调是否已开始执行"划界，调用方据此判断副作用安全：
+
+1. **连接获取失败 ≠ 回调执行失败**。取连接阶段允许有界重试（默认退避若干秒）；
+   一旦回调已开始执行（`with_conn` / `with_tx` 的 Fun 已被调用），失败**不再隐式重放**，
+   错误原样返回 `{error, {db_exception, ...}}`。非幂等回调的副作用因此不会被基础库重复执行。
+2. **事务默认不重试**。`with_tx/1,2` 的回调单次执行；只有显式的
+   `with_deadlock_retry_tx/1`（同连接、确认回滚、限定错误集合与次数）才重试事务。
+   嵌套口径：事务体内**禁止** `with_conn/2`（第二连接独立提交会存活于外层
+   回滚之外，elib_pg 直接抛 `nested_connection_unsupported`）；普通 `with_tx`
+   内嵌套 `with_tx` 是有意支持的语义（独立事务 + commit_actions 队列
+   保存/恢复），重放型 retry-tx 作用域内则连嵌套 `with_tx` 也拒绝。
+   事务体禁止不经 `abort/1` 直接返回 `{rollback, _}` 形态（该形态保留给
+   abort 通道）。
+3. **回滚不能确认或事务状态异常的连接会被淘汰**，不回池复用；不能仅以连接进程存活判定可复用。
+4. **COMMIT/写入响应不确定**（连接中断等）保留"结果未知"语义，由调用方用业务幂等键
+   （如 `msg_id`、`GM.id`、`group_log.id`）回查确认；基础库不擅自生成新键重发。
+5. `with_conn(Fun, Timeout)` 的第二参数是**初始重试 sleep**，不是总 deadline；
+   请求级总超时由调用方（探针/HTTP 层）自行约束。
+6. 独立探针路径（如 `healthz_handler` 的 `/readyz` DB 探测）有自己的取连接等待上限，
+   不与业务池耗尽退避耦合；`/livez` 不依赖 PG。
+
+---
+
 ## 7. 安全规则
 
 ### 必须参数化的情况
@@ -240,7 +274,12 @@ Sql = "SELECT * FROM users ORDER BY " ++ UserInput.
 - SELECT 返回 0 行
 - UPDATE 影响 0 行
 - DELETE 影响 0 行
-- FIND 找不到记录
+- FIND 找不到记录（tagged 路径表现为 `{ok, #{}}`/`{ok, Default}`）
+
+### 错误必须透传（不得折叠）
+- 连接失败/池耗尽/依赖故障：身份与鉴权链路返回 `{error, _}` 并拒绝访问
+  （登录、OIDC、管理端在依赖错误时映射 503，不伪装成"用户不存在"）；
+- `value_or_empty/1` 只用于非关键展示路径，禁止在鉴权/登录/管理端身份查询中使用。
 
 ---
 
@@ -260,8 +299,11 @@ Sql = "SELECT * FROM users ORDER BY " ++ UserInput.
 
 1. **是否使用参数化？** 所有外部参数都用 `$1, $2...`
 2. **返回值一致吗？** 同一函数不会返回不同形态
-3. **区分了"没找到"和"错误"吗？** FIND 类返回 `#{}` 而不是 error
+3. **区分了"没找到"和"错误"吗？** 身份敏感路径用 tagged 返回（`{ok,_} | {error,_}`）；
+   `#{}` 折叠只用于非关键展示
 4. **错误信息保留了吗？** `{error, Reason}` 包含足够信息
+5. **副作用幂等吗？** 非幂等回调不依赖 `with_conn` 重试语义（回调单次执行），
+   结果未知时用业务幂等键回查
 
 ---
 

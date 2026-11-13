@@ -207,8 +207,10 @@ leave_success_test_() ->
                 {'tablename', 0, fun() ->
                     <<"group_member">>
                 end},
-                {'find', 3, fun(1, 100, <<"*">>) ->
-                    #{<<"id">> => 1, <<"group_id">> => 1, <<"user_id">> => 100, <<"role">> => 2}
+                {'find_tx', 4, fun(_Conn, 1, 100, <<"*">>) ->
+                    {ok, #{
+                        <<"id">> => 1, <<"group_id">> => 1, <<"user_id">> => 100, <<"role">> => 2
+                    }}
                 end}
             ]},
             {elib_dt, [
@@ -293,8 +295,8 @@ leave_absent_member_returns_absent_test_() ->
                 {'tablename', 0, fun() ->
                     <<"group_member">>
                 end},
-                {'find', 3, fun(_Gid, _Uid, <<"*">>) ->
-                    #{}
+                {'find_tx', 4, fun(_Conn, _Gid, _Uid, <<"*">>) ->
+                    {ok, #{}}
                 end}
             ]},
             {elib_pg, [

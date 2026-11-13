@@ -199,6 +199,16 @@ archive_mocks(CurrStatus, Self) ->
             {'query', 3, fun
                 (fake_conn, <<"SELECT status FROM workspace", _/binary>>, _) ->
                     {ok, [#{<<"status">> => ws_status_of(CurrStatus)}]};
+                %% 频道发布走 ensure_writable_tx_retryable（channel_ds:311）：
+                %% 14:35 双臂版 retryable 臂仍经 resolve_workspace_tx 查归属行，
+                %% 须在此应答 workspace scope 才能命中归档守卫
+                (fake_conn, <<"SELECT scope, workspace_id FROM ", _/binary>>, _) ->
+                    {ok, [
+                        #{
+                            <<"scope">> => <<"workspace">>,
+                            <<"workspace_id">> => ?WS_ID
+                        }
+                    ]};
                 %% C05/ORG-05：归档交接需事务内读归属 Org（本 mock 返回 null=个人域）
                 (
                     fake_conn,

@@ -45,6 +45,7 @@
     consume_batch/5,
     consume_sweep/5,
     fetch_consume_cursor/3,
+    fetch_consume_cursor_tx/4,
     list_consume_cursors/0,
     derive_job_tx/5,
     %% B 组（v4 02-B）：租约四操作 + 投递数据面（02-B.4/B.5）。
@@ -62,7 +63,9 @@
     %% D 组（v4 02-D）：gate 数据面（config 窄读取 / canary / 引用复核 /
     %% session_open）。非 cs_ai_port 冻结 callback，经 impl/1 动态调用。
     fetch_gate_config/1,
+    fetch_gate_config_tx/2,
     canary_covers/3,
+    canary_covers_tx/4,
     citations_current/4,
     session_open_tx/3,
     session_open/2,
@@ -174,11 +177,20 @@ fetch_config(OrgId) ->
 %% 对齐后本函数可由对齐版 fetch_config 取代。
 -spec fetch_gate_config(integer()) -> {ok, map()} | {error, term()}.
 fetch_gate_config(OrgId) ->
+    %% 池连接版（事务外独立读）。canonical 事务内一律走 fetch_gate_config_tx/2：
+    %% elib_pg 自 2026-11-13（R1）起拒绝事务作用域内的隐式第二连接
+    %%（nested_connection_unsupported），gate 读必须复用调用方 Conn。
+    elib_pg:with_conn(fun(Conn) -> fetch_gate_config_tx(Conn, OrgId) end).
+
+%% gate 事务内窄读取：与 citations_current/4、session_open_tx/3 同约定，
+%% 在调用方（grounding_gate）的 canonical 事务连接上执行。
+-spec fetch_gate_config_tx(term(), integer()) -> {ok, map()} | {error, term()}.
+fetch_gate_config_tx(Conn, OrgId) ->
     Sql = <<
         "SELECT auto_reply_mode, faq_require_hit, config_version, seat_identity_id "
         "FROM customer_service_ai_agent WHERE organization_id=$1 ORDER BY id LIMIT 1"
     >>,
-    case elib_pg:query(Sql, [OrgId]) of
+    case elib_pg:query(Conn, Sql, [OrgId]) of
         {ok, [Row]} ->
             {ok, #{
                 auto_reply_mode => maps:get(<<"auto_reply_mode">>, Row, <<"disabled">>),
@@ -854,7 +866,10 @@ consume_sweep(OrgId, WsId, Consumer, ApplyEvent, Opts) ->
     Backscan = int_opt(Opts, backscan_event_count, ?BACKSCAN_EVENT_COUNT),
     elib_pg:with_tx(
         fun(Conn) ->
-            {ok, #{last_event_id := LastId}} = fetch_consume_cursor(OrgId, WsId, Consumer),
+            %% 游标读必须复用 sweep 事务的 Conn：fetch_consume_cursor/3 是
+            %% 池连接版，事务内调用会触发 nested_connection_unsupported。
+            {ok, #{last_event_id := LastId}} =
+                fetch_consume_cursor_tx(Conn, OrgId, WsId, Consumer),
             Lo = max(0, LastId - Backscan),
             Missing0 = consume_missing(Conn, OrgId, WsId, Consumer, Lo),
             {Applied, _} = consume_apply(Conn, OrgId, WsId, Consumer, Missing0, ApplyEvent),
@@ -876,13 +891,20 @@ consume_missing(Conn, OrgId, WsId, Consumer, Lo) ->
 -spec fetch_consume_cursor(integer(), integer(), binary()) ->
     {ok, map()} | {error, not_found | term()}.
 fetch_consume_cursor(OrgId, WsId, Consumer) ->
+    %% 池连接版（事务外观测面，cs_pg_ai_consume_tests:267 契约保持）；
+    %% 事务体内（consume_sweep）一律走 fetch_consume_cursor_tx/4。
+    elib_pg:with_conn(fun(Conn) -> fetch_consume_cursor_tx(Conn, OrgId, WsId, Consumer) end).
+
+-spec fetch_consume_cursor_tx(term(), integer(), integer(), binary()) ->
+    {ok, map()} | {error, not_found | term()}.
+fetch_consume_cursor_tx(Conn, OrgId, WsId, Consumer) ->
     Sql = <<
         "SELECT last_event_id, last_xmin_horizon,"
         " extract(epoch from last_consumed_at)::bigint AS last_consumed_at"
         "  FROM customer_service_ai_consume_cursor"
         " WHERE organization_id=$1 AND workspace_id=$2 AND consumer=$3"
     >>,
-    case elib_pg:query(Sql, [OrgId, WsId, Consumer]) of
+    case elib_pg:query(Conn, Sql, [OrgId, WsId, Consumer]) of
         {ok, [Row]} ->
             {ok, #{
                 last_event_id => maps:get(<<"last_event_id">>, Row),
@@ -1083,6 +1105,13 @@ identity_actor(OrgId, IdentityId) ->
 %% workspace 或 session 粒度；空集 = canary 不投任何会话（迁移 180 注释）。
 -spec canary_covers(integer(), integer(), integer()) -> {ok, boolean()} | {error, term()}.
 canary_covers(OrgId, WsId, SessionId) ->
+    elib_pg:with_conn(fun(Conn) -> canary_covers_tx(Conn, OrgId, WsId, SessionId) end).
+
+%% canary 判定的事务内版本：grounding_gate 在 canonical 事务体内调用，
+%% 必须复用同一 Conn（禁隐式第二连接）。
+-spec canary_covers_tx(term(), integer(), integer(), integer()) ->
+    {ok, boolean()} | {error, term()}.
+canary_covers_tx(Conn, OrgId, WsId, SessionId) ->
     Sql = <<
         "SELECT EXISTS ("
         "  SELECT 1 FROM customer_service_ai_canary"
@@ -1092,7 +1121,7 @@ canary_covers(OrgId, WsId, SessionId) ->
         "   WHERE organization_id=$1 AND scope_kind='session' AND scope_id=$3"
         ") AS covers"
     >>,
-    case elib_pg:query(Sql, [OrgId, WsId, SessionId]) of
+    case elib_pg:query(Conn, Sql, [OrgId, WsId, SessionId]) of
         {ok, [#{<<"covers">> := V}]} when is_boolean(V) -> {ok, V};
         {ok, _} -> {ok, false};
         {error, Reason} -> {error, Reason}

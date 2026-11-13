@@ -1,12 +1,18 @@
 # 路由与 imboy_quality_build:entry_route/1 同序；必须早于 EUNIT_CONFIG 默认值。
 IMBOY_EUNIT_ROUTE := quality_full
-ifneq ($(IMBOY_EUNIT_INNER),)
+ifeq ($(IMBOY_BACKEND_ACCEPTANCE),1)
+IMBOY_EUNIT_ROUTE := backend_acceptance
+else ifneq ($(IMBOY_EUNIT_INNER),)
 IMBOY_EUNIT_ROUTE := native
 else ifneq ($(filter-out undefined,$(foreach name,t EUNIT_CONFIG EUNIT_MODS EUNIT_USE_RELAY,$(origin $(name)))),)
 IMBOY_EUNIT_ROUTE := legacy
 endif
 
 ifeq ($(IMBOYENV):$(IMBOY_EUNIT_ROUTE),local:quality_full)
+EUNIT = imboy_quality
+tests:: eunit
+endif
+ifeq ($(IMBOY_EUNIT_ROUTE),backend_acceptance)
 EUNIT = imboy_quality
 tests:: eunit
 endif
@@ -83,6 +89,8 @@ EUNIT_HTTP_ADM_PORT ?= 19970
 eunit-legacy: eunit-local-legacy
 ifeq ($(IMBOYENV):$(IMBOY_EUNIT_ROUTE),local:quality_full)
 eunit eunit-local: quality-full
+else ifeq ($(IMBOY_EUNIT_ROUTE),backend_acceptance)
+eunit eunit-local: backend-acceptance
 else ifneq ($(IMBOYENV):$(IMBOY_EUNIT_ROUTE),local:native)
 eunit-local: eunit-local-legacy
 endif
@@ -113,6 +121,15 @@ quality-test-build:
 
 # 全量 worker 默认 4，可用 IMBOY_QUALITY_WORKERS 覆盖。
 IMBOY_QUALITY_WORKERS ?= 4
+
+# One foreground controller owns reservation, build, resources and final cleanup.
+# No implicit fallback is allowed when a selector or manifest is invalid.
+.PHONY: backend-acceptance
+export IMBOY_BACKEND_ACCEPTANCE
+backend-acceptance:
+	@test "$(IMBOYENV)" = local || { echo "backend acceptance requires IMBOYENV=local" >&2; exit 2; }
+	@test -z "$(t)$(EUNIT_MODS)$(IMBOY_EUNIT_INNER)" || { echo "backend acceptance requires the complete root universe" >&2; exit 2; }
+	IMBOY_BACKEND_MAKE="$(MAKE)" IMBOY_QUALITY_WORKERS=$(IMBOY_QUALITY_WORKERS) EUNIT_CONFIG="$(EUNIT_CONFIG)" escript scripts/quality.escript backend-acceptance
 
 quality-full:
 	@sh scripts/quality_timed.sh full_reserve escript scripts/quality.escript full-reserve
@@ -164,7 +181,7 @@ gradualize-layer: ## 分层门禁（单发模式，用于转绿层）: make grad
 .PHONY: gradualize-audit
 gradualize-audit: ## 全仓逐模块审计（预算制，基线期）: make gradualize-audit
 	@mkdir -p .gradualizer/logs; rm -f .gradualizer/logs/*.log; fail=0; total=0; \
-	for f in $(filter-out $(GRADUALIZE_EXCLUDE),$(wildcard src/*.erl src/*/*.erl)); do \
+	for f in $(filter-out $(GRADUALIZE_EXCLUDE),$(shell find src -name '*.erl' -type f | LC_ALL=C sort)); do \
 		case "$$f" in *_tests.erl) continue;; esac; \
 		total=$$((total+1)); \
 		log=.gradualizer/logs/$$(basename $$f .erl).log; \

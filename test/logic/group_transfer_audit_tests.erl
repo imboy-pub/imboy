@@ -27,7 +27,7 @@ assert_audit_failure(Mode) ->
             find_by_gid_and_uid,
             fun(1, 200, _) -> #{<<"id">> => 9} end
         ),
-        meck:expect(group_member_ds, update_role, fun(_, 1, _, _) -> ok end),
+        meck:expect(group_member_ds, update_active_role_tx, fun(_, 1, _, _) -> ok end),
         meck:expect(workspace_guard, ensure_writable_tx, fun(_, _) -> ok end),
         meck:expect(workspace_guard, abort_on_error, fun(ok) -> ok end),
         meck:expect(group_log_ds, add, fun(_, _) -> {error, audit_insert_failed} end),

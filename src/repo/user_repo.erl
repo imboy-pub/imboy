@@ -21,6 +21,7 @@
 ]).
 -export([find_by_id/1, find_by_id/2]).
 -export([list_by_ids/2]).
+-export([lookup/3]).
 
 -export([update_friends_last_seen_at/2]).
 -export([update_moderated_field/4]).
@@ -168,9 +169,7 @@ find_by_uid(Uid) ->
 %% <<"id,account,mobile,password,nickname,avatar,gender,region,sign">>).
 -spec find_by_email(binary(), binary()) -> map().
 find_by_email(Email, Column) ->
-    Tb = tablename(),
-    {Sql, Params} = elib_pg_sql:build_select(Tb, Column, #{email => Email}, #{limit => 1}),
-    elib_pg_sql:value_or_empty(elib_pg:one(Sql, Params)).
+    elib_pg_sql:value_or_empty(lookup(email, Email, Column)).
 
 %% @doc 根据手机号查找用户
 %% @param Mobile 用户手机号码，支持binary或string类型
@@ -180,9 +179,7 @@ find_by_email(Email, Column) ->
 %% @example user_repo:find_by_mobile("13692177080", <<"*">>).
 -spec find_by_mobile(binary() | string(), binary()) -> map().
 find_by_mobile(Mobile, Column) when is_binary(Mobile); is_list(Mobile) ->
-    Tb = tablename(),
-    {Sql, Params} = elib_pg_sql:build_select(Tb, Column, #{mobile => Mobile}, #{limit => 1}),
-    elib_pg_sql:value_or_empty(elib_pg:one(Sql, Params)).
+    elib_pg_sql:value_or_empty(lookup(mobile, Mobile, Column)).
 
 %% @doc 根据用户账号查找用户
 %% @param Account 用户账号（字符串或binary类型）
@@ -191,9 +188,7 @@ find_by_mobile(Mobile, Column) when is_binary(Mobile); is_list(Mobile) ->
 %% @example user_repo:find_by_account("550138", <<"id,account,mobile,password,nickname,avatar,gender,region,sign">>).
 -spec find_by_account(binary() | string(), binary()) -> map().
 find_by_account(Account, Column) ->
-    Tb = tablename(),
-    {Sql, Params} = elib_pg_sql:build_select(Tb, Column, #{account => Account}, #{limit => 1}),
-    elib_pg_sql:value_or_empty(elib_pg:one(Sql, Params)).
+    elib_pg_sql:value_or_empty(lookup(account, Account, Column)).
 
 %% @doc 根据用户ID查找用户基本信息（使用默认列）
 %% @param Uid 用户ID
@@ -209,9 +204,24 @@ find_by_id(Uid) ->
 %% @return map() 用户信息，未找到时返回空map
 -spec find_by_id(integer(), binary()) -> map().
 find_by_id(Uid, Column) ->
+    elib_pg_sql:value_or_empty(lookup(id, Uid, Column)).
+
+%% 身份敏感路径必须区分查无与依赖故障；旧展示接口继续返回 map。
+-spec lookup(id | account | email | mobile, term(), binary()) -> {ok, map()} | {error, term()}.
+lookup(Field, Value, Column) when
+    Field =:= id; Field =:= account; Field =:= email; Field =:= mobile
+->
     Tb = tablename(),
-    Sql = <<"SELECT ", Column/binary, " FROM ", Tb/binary, " WHERE id = $1">>,
-    elib_pg_sql:value_or_empty(elib_pg:one(Sql, [Uid])).
+    Sql =
+        <<"SELECT ", Column/binary, " FROM ", Tb/binary, " WHERE ",
+            (atom_to_binary(Field, utf8))/binary, " = $1 LIMIT 1">>,
+    try
+        elib_pg:one(Sql, [Value])
+    catch
+        Class:Reason ->
+            ?ERROR_LOG([identity_lookup_failed, Class, Reason]),
+            {error, {identity_lookup_failed, Class, Reason}}
+    end.
 
 %% @doc 根据用户ID列表批量查询用户信息
 %% @param Uids 用户ID列表，元素类型为integer或binary，不能为空列表

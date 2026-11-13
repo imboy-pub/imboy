@@ -1,14 +1,15 @@
 # Imboy 架构总览
 
-> Last Updated: 2026-03-15  
+> Last Updated: 2026-11-12  
 > Status: 长期架构文档  
 > Scope: 当前仓库的分层职责、调用链路与设计边界  
-> Source of truth: `src/imboy_router.erl`, `src/api/`, `src/adm/`, `src/logic/`, `src/ds/`, `src/repo/`, `src/lib/`  
+> Source of truth: `src/imboy_router.erl`, `src/api/`, `src/adm/`, `src/logic/`, `src/ds/`, `src/repo/`, `src/lib/`, `src/features/`  
 > Related docs: `docs/architecture/database-access.md`, `docs/reference/api-format.md`, `docs/README.md`
 
 ## 相关 ADR / Related Decisions
 
 - [ADR-0005 模块化单体边界（Modular Monolith Boundaries）](https://github.com/imboy-pub/imboy/blob/main/docs/adr/0005-modular-monolith-boundaries.md): 明确后端继续保持 modular monolith，并仅在高变化扩展点引入轻量插件化。
+- [ADR-0007 Feature Slice 架构](https://github.com/imboy-pub/imboy/blob/main/docs/adr/0007-feature-slice-architecture.md): 新业务能力按纵切（slice）组织，存量四层不整体迁移。
 
 ## 扩展点与兼容接口
 
@@ -41,6 +42,7 @@
 | DS | `src/ds/` | 领域数据服务、缓存/消息/组合读写、通用数据侧能力 | 不直接处理页面或接口语义 |
 | Repo | `src/repo/` | SQL、持久化、查询与数据映射 | 不写协议判断，不承载业务叙事 |
 | Lib | `src/lib/` | 通用工具、响应包装、时间/加密/数据库公共能力 | 不写具体业务功能分支 |
+| Feature Slice | `src/features/<slice>/{application,infrastructure,domain,interfaces}`、`src/lib/organization/` | 按 ADR-0007 纵切组织的新业务能力（客服、企业、Agent 等）；slice 内部再分应用/基础设施/领域/接口 | 不绕过既有四层另起调用链；跨 slice 复用走 Logic/DS/lib |
 
 ## 3. 典型请求流转
 

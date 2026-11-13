@@ -9,6 +9,7 @@
     summarize/2,
     combine_cleanup/2,
     finalize_run/4,
+    finalize_run/5,
     fallback_config_cleanup/0,
     write_terminal_result/2,
     ensure_lib_alias/1,
@@ -126,6 +127,17 @@
     %% cancel（单跑 fresh VM 十 case 全过，evidence/group-20261031T002355Z）。
     %% 独占车道 fresh VM 消除瞬态窗口；资源面按根差异化（env.erl textguard/4）。
     textguard_export
+    %% 2026-11-13 textguard_publisher 接入（export 同口径第五根）：src/moderation/
+    %% textguard_publisher.erl 的 src 伴随根，inventory/1 下根名不带 _tests。
+    %% 资源面与 textguard_export 完全一致（test/lib/textguard_publisher_tests.erl
+    %% pg_only_setup → textguard_export_tests:owned_pg_setup → TG16 marker 一次性库，
+    %% 不消费 TG19/TG20/TEXTGUARD_*/服务二进制）。门十七实证未登记时落普通车道：
+    %% TG16_* 无 overlay + pg_conf 无 password fallback → isolated cancel
+    %% （textguard_publisher_tests:publisher_fixture）；门十八 fallback 生效后可跑但
+    %% 仍受 53300 容量牵连。EXCL 登记后照常在独占车道真实执行（根集合/roots_total
+    %% 不变，不缩分母），失败归 exclusive_failed_roots。
+    ,
+    textguard_publisher
 ]).
 
 %% 已知与 peer 宿主不兼容的根：直接走独立非 peer VM（imboy_quality_runner:run_standalone）。
@@ -332,6 +344,7 @@ run_locked(Roots0, Opts, RunId, Repo, OutDir, T0, Est) ->
         <<"vm_killer_roots">> => [atom_to_binary(M) || M <- Killers],
         <<"standalone_fallback">> => Standalone
     },
+    ok = file:write_file(filename:join(OutDir, "per_root.etf"), term_to_binary(PerRoot), [exclusive]),
     ok = file:write_file(
         filename:join(OutDir, "per_root.term"),
         io_lib:format("~p.~n", [PerRoot]),
@@ -357,8 +370,17 @@ combine_cleanup(Other, ConfigResult) ->
     }.
 
 finalize_run(OutDir, Result0, Release, CleanupConfigs) ->
+    finalize_run(OutDir, Result0, Release, CleanupConfigs, fun(R) -> R end).
+
+%% Verification runs after resource/config cleanup and before the immutable terminal receipt.
+finalize_run(OutDir, Result0, Release, CleanupConfigs, Verify) ->
+    %% 2026-11-13（门二十四/二十五实证）：资源收尾（PG 收停）存在停止竞态
+    %% （idle backend 断开慢/fast shutdown 等待），曾使 verify 与 result.json
+    %% 被无限期阻断（普通车道完赛后主进程静默挂死 68/23 分钟）。收尾步骤
+    %% 套 60s 超时壳：超时即降级为 cleanup_error（诚实呈现收尾失败），
+    %% verify 与 terminal receipt 照常执行——verdict 不再被收尾竞态劫持。
     CleanupStarted = erlang:monotonic_time(millisecond),
-    ResourceCleanup = try_cleanup(Release),
+    ResourceCleanup = try_cleanup_timeout(Release, 60000),
     ConfigCleanup = try_cleanup(CleanupConfigs),
     BaseCleanup = combine_cleanup(ResourceCleanup, ConfigCleanup),
     AliasCleanup = maps:get(
@@ -372,7 +394,7 @@ finalize_run(OutDir, Result0, Release, CleanupConfigs) ->
         <<"alias">> => AliasCleanup
     },
     CleanupFinished = erlang:monotonic_time(millisecond),
-    Result =
+    Cleaned =
         case maps:take(<<"_quality_full_started_ms">>, Result0) of
             {FullStarted, PublicResult} when is_integer(FullStarted) ->
                 Timings = maps:get(<<"phase_timings_ms">>, PublicResult, #{}),
@@ -386,6 +408,10 @@ finalize_run(OutDir, Result0, Release, CleanupConfigs) ->
             error ->
                 Result0#{<<"cleanup">> => Cleanup}
         end,
+    Result = try Verify(Cleaned) catch Class:Reason ->
+        Cleaned#{<<"input_binding">> => <<"NOT_VERIFIED">>,
+            <<"binding_error">> => unicode:characters_to_binary(io_lib:format("~tp:~tp",[Class,Reason]))}
+    end,
     ok = write_terminal_result(OutDir, Result),
     {Result, OutDir}.
 
@@ -394,6 +420,36 @@ try_cleanup(Fun) ->
         Fun()
     catch
         Class:Reason -> {error, {Class, Reason}}
+    end.
+
+%% 资源收尾的硬超时壳（见 finalize_run 注释）：Cleanup 进程挂死（如 PG
+%% fast shutdown 对 idle backend 的停止竞态）不再阻断 verify 与 terminal
+%% receipt。超时后 kill 子进程并返回结构化 error，由 result 的 cleanup
+%% 字段如实呈现。
+try_cleanup_timeout(Fun, TimeoutMs) ->
+    Parent = self(),
+    Ref = make_ref(),
+    %% pdict 快照传递（门二十六 full_summary_tests 实证）：Cleanup fun 可读写
+    %% 调用方进程字典（如 cleanup_order），spawn 子进程不继承——启动前把父
+    %% 进程 pdict 全量注入，完成后把子进程最终 pdict 回传，由父进程还原，
+    %% 保持与直调完全一致的进程字典可见性。
+    Snapshot = get(),
+    Worker =
+        spawn_link(fun() ->
+            lists:foreach(fun({K, V}) -> put(K, V) end, Snapshot),
+            Result = try_cleanup(Fun),
+            Parent ! {Ref, Result, get()}
+        end),
+    receive
+        {Ref, Result, FinalPdict} ->
+            lists:foreach(fun({K, _}) -> erase(K) end, get()),
+            lists:foreach(fun({K, V}) -> put(K, V) end, FinalPdict),
+            Result;
+        {'EXIT', Worker, Reason} ->
+            {error, {cleanup_crashed, Reason}}
+    after TimeoutMs ->
+        exit(Worker, kill),
+        erlang:error(resource_cleanup_timeout)
     end.
 
 fallback_config_cleanup() ->

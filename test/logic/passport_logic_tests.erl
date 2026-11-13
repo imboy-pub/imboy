@@ -1,6 +1,9 @@
 -module(passport_logic_tests).
 -include_lib("eunit/include/eunit.hrl").
 -include("eunit_setup.hrl").
+-define(WITH_IDENTITY_MECKS(Configs, Fun),
+    ?WITH_MECKS(identity_lookup_test_support:mocks(Configs), Fun)
+).
 
 %%%===================================================================
 %%% @doc
@@ -21,7 +24,7 @@
 %% ===================================================================
 
 signup_with_valid_data_succeeds_test_() ->
-    ?WITH_MECKS(
+    ?WITH_IDENTITY_MECKS(
         [
             {elib_password, [
                 {'generate', 1, fun(_Pwd) -> <<"$2a$12$hash">> end}
@@ -81,7 +84,7 @@ signup_with_short_password_fails_test_() ->
 %% ===================================================================
 
 login_with_valid_credentials_succeeds_test_() ->
-    ?WITH_MECKS(
+    ?WITH_IDENTITY_MECKS(
         [
             {elib_type, [
                 {'is_email', 1, fun(_) -> false end}
@@ -146,7 +149,7 @@ login_with_empty_password_fails_test_() ->
 %% ===================================================================
 
 do_login_delegates_to_5_test_() ->
-    ?WITH_MECKS(
+    ?WITH_IDENTITY_MECKS(
         [
             {elib_type, [
                 {'is_email', 1, fun(_) -> false end}
@@ -210,7 +213,7 @@ verify_user_with_empty_user_map_returns_error_test() ->
     ?assertEqual({error, <<"账号不存在"/utf8>>}, Result).
 
 verify_user_with_valid_password_succeeds_test_() ->
-    ?WITH_MECKS(
+    ?WITH_IDENTITY_MECKS(
         [
             {elib_password, [
                 {'verify', 2, fun(_Pwd, _Hash) -> {ok, true} end}
@@ -239,7 +242,7 @@ verify_user_with_valid_password_succeeds_test_() ->
     ).
 
 verify_user_with_wrong_password_fails_test_() ->
-    ?WITH_MECKS(
+    ?WITH_IDENTITY_MECKS(
         [
             {elib_password, [
                 {'verify', 2, fun(_Pwd, _Hash) -> {error, <<"密码有误"/utf8>>} end}
@@ -264,7 +267,7 @@ verify_user_with_wrong_password_fails_test_() ->
     ).
 
 verify_user_with_disabled_account_fails_test_() ->
-    ?WITH_MECKS(
+    ?WITH_IDENTITY_MECKS(
         [
             {elib_password, [
                 {'verify', 2, fun(_Pwd, _Hash) -> {ok, true} end}
@@ -289,7 +292,7 @@ verify_user_with_disabled_account_fails_test_() ->
     ).
 
 verify_user_with_deleted_account_fails_test_() ->
-    ?WITH_MECKS(
+    ?WITH_IDENTITY_MECKS(
         [
             {elib_password, [
                 {'verify', 2, fun(_Pwd, _Hash) -> {ok, true} end}
@@ -339,7 +342,7 @@ quick_login_with_unsupported_service_fails_test_() ->
 %% ===================================================================
 
 send_code_with_sms_type_calls_throttle_test_() ->
-    ?WITH_MECKS(
+    ?WITH_IDENTITY_MECKS(
         [
             {throttle, [
                 {'check', 2, fun(_Type, _Key) -> ok end}
@@ -383,7 +386,7 @@ send_code_with_sms_type_calls_throttle_test_() ->
     ).
 
 send_code_with_email_type_succeeds_test_() ->
-    ?WITH_MECKS(
+    ?WITH_IDENTITY_MECKS(
         [
             {verification_code_ds, [
                 {'find_by_id', 1, fun(_Id) -> #{} end},
@@ -422,7 +425,7 @@ send_code_with_invalid_type_fails_test_() ->
 %% ===================================================================
 
 do_signup_with_email_succeeds_test_() ->
-    ?WITH_MECKS(
+    ?WITH_IDENTITY_MECKS(
         [
             {elib_type, [
                 {'is_email', 1, fun(_) -> true end}
@@ -476,7 +479,7 @@ do_signup_with_email_succeeds_test_() ->
 
 %% 回归测试：rsa_encrypt=off 时密码为 MD5 明文，不应再调 rsa_decrypt
 do_signup_email_with_rsa_encrypt_off_test_() ->
-    ?WITH_MECKS(
+    ?WITH_IDENTITY_MECKS(
         [
             {elib_type, [
                 {'is_email', 1, fun(_) -> true end}
@@ -530,7 +533,7 @@ do_signup_email_with_rsa_encrypt_off_test_() ->
     ).
 
 do_signup_with_mobile_succeeds_test_() ->
-    ?WITH_MECKS(
+    ?WITH_IDENTITY_MECKS(
         [
             {verification_code_ds, [
                 {'find_by_id', 1, fun(_Id) ->
@@ -595,7 +598,7 @@ do_signup_with_unsupported_type_fails_test_() ->
 %% ===================================================================
 
 find_password_with_email_succeeds_test_() ->
-    ?WITH_MECKS(
+    ?WITH_IDENTITY_MECKS(
         [
             {elib_type, [
                 {'is_email', 1, fun(_) -> true end}
@@ -638,7 +641,7 @@ find_password_with_email_succeeds_test_() ->
     ).
 
 find_password_email_not_found_fails_test_() ->
-    ?WITH_MECKS(
+    ?WITH_IDENTITY_MECKS(
         [
             {elib_type, [
                 {'is_email', 1, fun(_) -> true end}
@@ -704,7 +707,7 @@ quick_login_did_user_row() ->
     }.
 
 quick_login_binds_did_into_token_test_() ->
-    ?WITH_MECKS(
+    ?WITH_IDENTITY_MECKS(
         [
             {imboy_sms, [
                 {'jverification', 1, fun(_Token) -> {ok, <<"13800138000">>} end}
@@ -731,7 +734,7 @@ quick_login_binds_did_into_token_test_() ->
 
 %% 调用方未上报 did（当前 passport_handler 即如此）→ 仍签发空 did token，不报错
 quick_login_without_did_issues_legacy_token_test_() ->
-    ?WITH_MECKS(
+    ?WITH_IDENTITY_MECKS(
         [
             {imboy_sms, [
                 {'jverification', 1, fun(_Token) -> {ok, <<"13800138000">>} end}
@@ -754,7 +757,7 @@ quick_login_without_did_issues_legacy_token_test_() ->
     ).
 
 record_login_device_failure_test_() ->
-    ?WITH_MECKS(
+    ?WITH_IDENTITY_MECKS(
         [
             {user_device_ds, [
                 {'save', 4, fun(_Now, 995011, <<"synthetic-device">>, _Post) ->
@@ -884,7 +887,7 @@ limiter_code_locked_test_() ->
         (?L0_ACCT) -> l3_user_map();
         (_) -> #{}
     end,
-    ?WITH_MECKS(
+    ?WITH_IDENTITY_MECKS(
         l3_base_mocks(FindEmail, FindAccount) ++
             [l3_code_consume_mock(fun(_Id, _Code) -> {ok, <<"verified">>} end)],
         fun() ->
@@ -937,7 +940,7 @@ limiter_identity_key_fork_test_() ->
         (?L0_ACCT) -> l3_user_map();
         (_) -> #{}
     end,
-    ?WITH_MECKS(
+    ?WITH_IDENTITY_MECKS(
         l3_base_mocks(FindEmail, FindAccount) ++ [l3_pwd_mocks({error, <<"密码有误"/utf8>>})],
         fun() ->
             ok = ensure_l3_ds(),
@@ -1008,7 +1011,7 @@ limiter_code_reset_before_status_test_() ->
         (?L0_ID) -> l3_user_map();
         (_) -> #{}
     end,
-    ?WITH_MECKS(
+    ?WITH_IDENTITY_MECKS(
         l3_base_mocks(FindEmail, FindAccount) ++
             [l3_code_consume_mock(fun(_Id, _Code) -> {ok, <<"verified">>} end)],
         fun() ->
@@ -1076,7 +1079,7 @@ limiter_password_reset_fail_no_token_test_() ->
         (?L0_ACCT) -> l3_user_map();
         (_) -> #{}
     end,
-    ?WITH_MECKS(
+    ?WITH_IDENTITY_MECKS(
         l3_base_mocks(FindEmail, FindAccount) ++ [l3_pwd_mocks({ok, true})],
         fun() ->
             ok = ensure_l3_ds(),
@@ -1125,7 +1128,7 @@ limiter_password_lock_after_f_test_() ->
         (?L0_ACCT) -> l3_user_map();
         (_) -> #{}
     end,
-    ?WITH_MECKS(
+    ?WITH_IDENTITY_MECKS(
         l3_base_mocks(FindEmail, FindAccount) ++ [l3_pwd_mocks({error, <<"密码有误"/utf8>>})],
         fun() ->
             ok = ensure_l3_ds(),
@@ -1181,7 +1184,7 @@ limiter_exports_compat_test_() ->
         (?L0_ACCT) -> l3_user_map();
         (_) -> #{}
     end,
-    ?WITH_MECKS(
+    ?WITH_IDENTITY_MECKS(
         l3_base_mocks(FindEmail, FindAccount) ++ [l3_pwd_mocks({ok, true})],
         fun() ->
             ok = ensure_l3_ds(),

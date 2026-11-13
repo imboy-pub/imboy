@@ -37,7 +37,31 @@ build_key(ProjectRoot, Profile) ->
         test => file_shas(ProjectRoot, "test"),
         deps => dependency_digest(ProjectRoot)
     },
-    #{key => crypto:hash(sha256, term_to_binary(All)), inputs => All}.
+    #{key => crypto:hash(sha256, key_iolist(All)), inputs => All}.
+
+%% 2026-11-13 自审：键哈希输入禁用 term_to_binary(All)——嵌套大 map
+%% （src/include/test 各 >1000 键 HAMT）的序列化字节在同一 VM 内确定，
+%% 但跨 VM 对可观察等价的输入实测漂移出 7 个不同键值（backend
+%% acceptance reserve 的 context 比对与构建收据跨 VM 校验都被它打挂；
+%% j01 的"排序插入"只定了插入序，未覆盖本形态）。规范编码：全部展开
+%% 为排序 iolist——字段名定界、map 键按字典序、值直写字节——哈希输入
+%% 不含任何 map 项，键值只由 (文件字节 × profile 令牌 × 系统三元组)
+%% 决定，跨 VM/跨加载口径复现。
+key_iolist(All) ->
+    Field = fun(K) ->
+        V = maps:get(K, All),
+        [atom_to_list(K), $= | value_iolist(V)]
+    end,
+    [[Field(K), $\n]
+     || K <- [otp, erts, arch, compiler_opts, erlc_opts,
+              test_mode, features, src, include, test, deps]].
+
+value_iolist(V) when is_map(V) ->
+    Entries = lists:sort(maps:to_list(V)),
+    [[Key, 0, Val, 10] || {Key, Val} <- Entries];
+%% 标量/列表字段：不含 map 项的项其外部项式是确定的
+value_iolist(V) ->
+    iolist_to_binary(io_lib:format("~w", [V])).
 
 %% up_to_date(BuildDir, ExpectedMods)：产物完整性——每个期望模块的
 %% BEAM 存在（缺失判定需重建；BUILD03 白盒导出真实可用）。
@@ -69,6 +93,7 @@ up_to_date(BuildDir, ExpectedMods) ->
 %%   3) 其余（裸 make eunit / 裸 make eunit-local）→ quality_full
 %% eunit-legacy 目标不进入本函数：它在 Makefile 两条分支都落
 %% eunit-local-legacy（强制 legacy，无需读取 MAKECMDGOALS）。
+entry_route(#{backend_acceptance := "1"}) -> backend_acceptance;
 entry_route(Org) when is_map(Org) ->
     case defined(inner, Org) of
         true ->

@@ -83,10 +83,28 @@
 -include("error_code.hrl").
 -include("log.hrl").
 
-%% Attachment V5 only: resolve the two supported scopes on its transaction
-%% connection, so a database error belongs to the same rollback boundary.
--spec resolve_workspace_tx(any(), {group | channel, integer() | binary()}) ->
-    {ok, integer()} | personal | {error, not_found}.
+%% Resolve the supported scopes on the caller's transaction connection, so a
+%% database error belongs to the same rollback boundary.
+%% 2026-11-13（A2 收口）：elib_pg:with_conn/2 拒绝任意事务作用域内的自动提交查询后，
+%% workspace_guard:ensure_writable_tx 的归属解析统一切换到本函数。新增
+%% {workspace, _} 子句（事务内调用点：project_channel_ds link / project_milestone_ds
+%% create / project_ds create 等）；未知资源类型按 SEC-03 显式 unsupported_resource
+%% （守卫归一 503 fail-closed），不再 function_clause 抛穿。
+-spec resolve_workspace_tx(any(), {group | channel | workspace, integer() | binary()}) ->
+    {ok, integer()}
+    | personal
+    | {error, not_found}
+    | {error, {unsupported_resource, term()}}.
+resolve_workspace_tx(Conn, {workspace, WsId}) ->
+    %% workspace 目标即 workspace 主键，归属恒为自身；存在性检查与 autocommit
+    %% 版 resolve_workspace({workspace, _}) 语义一致（零行 not_found 放行，
+    %% 走既有 404 流程；DB 错误抛 resolver_db_error 交守卫归一 503）。
+    Id = elib_cnv:safe_to_integer(WsId),
+    case elib_pg:query(Conn, <<"SELECT id FROM workspace WHERE id = $1">>, [Id]) of
+        {ok, [_ | _]} -> {ok, Id};
+        {ok, []} -> {error, not_found};
+        {error, Reason} -> erlang:error({resolver_db_error, Reason})
+    end;
 resolve_workspace_tx(Conn, {Kind, Id}) when Kind =:= group; Kind =:= channel ->
     Id2 = elib_cnv:safe_to_integer(Id),
     case Id2 > 0 of
@@ -111,7 +129,12 @@ resolve_workspace_tx(Conn, {Kind, Id}) when Kind =:= group; Kind =:= channel ->
                 {error, Reason} ->
                     erlang:error({resolver_db_error, Reason})
             end
-    end.
+    end;
+resolve_workspace_tx(_Conn, Target) ->
+    %% 与 resolve_workspace/1 的 SEC-03 收紧一致：未知资源类型显式错误，
+    %% 由 workspace_guard:ensure_writable_tx 的 unsupported_resource 臂归一
+    %% 503 fail-closed（此前 function_clause 直接抛穿事务体）。
+    {error, {unsupported_resource, Target}}.
 
 %% ===================================================================
 %% 1. 统一资源归属解析

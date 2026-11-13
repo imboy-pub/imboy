@@ -9,6 +9,8 @@ commit_actions_test_() ->
         fun(C) -> ?_test(confirmed_rollback_preserves_sql_error(C)) end,
         fun(C) -> ?_test(confirmed_rollback_never_retries_error_body(C)) end,
         fun(C) -> ?_test(unknown_receipt_does_not_preserve_error_as_confirmed(C)) end,
+        fun(C) -> ?_test(throwing_receipt_discards_connection(C)) end,
+        fun(C) -> ?_test(returned_rollback_failure_discards_connection(C)) end,
         fun(C) -> ?_test(commit_exception_discards_actions(C)) end,
         fun(C) -> ?_test(action_failure_is_not_a_rollback(C)) end,
         fun(C) -> ?_test(nested_transactions_restore_outer_queue(C)) end,
@@ -28,6 +30,7 @@ setup() ->
     meck:new(pooler, [no_link, passthrough]),
     meck:expect(pooler, take_member, fun(pgsql) -> hd(Conns) end),
     meck:expect(pooler, return_member, fun(pgsql, _) -> ok end),
+    meck:expect(pooler, return_member, fun(pgsql, _, fail) -> ok end),
     meck:new(config_ds, [no_link, passthrough]),
     meck:expect(config_ds, env, fun(sql_driver) -> pgsql end),
     meck:new(epgsql, [no_link, passthrough]),
@@ -73,7 +76,7 @@ rollback_discards_actions(_Conns) ->
     ),
     ?assertEqual([], get(commit_test_events)),
     ?assertEqual(undefined, get(elib_pg_commit_actions)),
-    ?assertEqual(0, meck:num_calls(epgsql, get_cmd_status, 1)).
+    ?assertEqual(1, meck:num_calls(epgsql, get_cmd_status, 1)).
 
 silent_rollback_does_not_run_actions(_Conns) ->
     meck:expect(epgsql, get_cmd_status, fun(_) -> {ok, rollback} end),
@@ -109,7 +112,33 @@ unknown_receipt_does_not_preserve_error_as_confirmed(_Conns) ->
         returned_error(Unknown, Error, 2)
     ),
     ?assertEqual(1, meck:num_calls(epgsql, with_transaction, 3)),
-    ?assertEqual([], get(commit_test_events)).
+    ?assertEqual([], get(commit_test_events)),
+    ?assertEqual(1, meck:num_calls(pooler, return_member, 3)),
+    ?assertEqual(0, meck:num_calls(pooler, return_member, 2)).
+
+throwing_receipt_discards_connection(_Conns) ->
+    meck:expect(epgsql, get_cmd_status, fun(_) -> error(synthetic_receipt_error) end),
+    put(commit_test_events, []),
+    ?assertMatch(
+        {error, {commit_not_confirmed, _, {error, {error, synthetic_receipt_error}}}},
+        elib_pg:with_tx(fun(_) -> {ok, body} end)
+    ),
+    ?assertEqual(1, meck:num_calls(epgsql, with_transaction, 3)),
+    ?assertEqual(1, meck:num_calls(pooler, return_member, 3)),
+    ?assertEqual(0, meck:num_calls(pooler, return_member, 2)).
+
+returned_rollback_failure_discards_connection(_Conns) ->
+    meck:expect(epgsql, with_transaction, fun(_, _, _) -> {rollback, synthetic_abort} end),
+    meck:expect(epgsql, squery, fun(_, _) -> {error, synthetic_rollback_failure} end),
+    ?assertEqual(
+        {rollback, synthetic_abort},
+        elib_pg:with_tx(
+            fun(_) -> error(must_not_run) end,
+            [{reraise, false}]
+        )
+    ),
+    ?assertEqual(1, meck:num_calls(pooler, return_member, 3)),
+    ?assertEqual(0, meck:num_calls(pooler, return_member, 2)).
 
 returned_error(Status, Error, RetryBudget) ->
     meck:expect(epgsql, get_cmd_status, fun(_) -> Status end),
@@ -194,7 +223,8 @@ action_capacity_aborts_before_commit(_Conns) ->
     ?assertEqual({error, commit_actions_full}, Result),
     ?assertEqual([], get(commit_test_events)),
     ?assertEqual(undefined, get(elib_pg_commit_actions)),
-    ?assertEqual(0, meck:num_calls(epgsql, get_cmd_status, 1)).
+    ?assertEqual(1, meck:num_calls(epgsql, get_cmd_status, 1)),
+    ?assertEqual(1, meck:num_calls(pooler, return_member, 3)).
 
 record_action(Tag) ->
     put(commit_test_events, get(commit_test_events) ++ [Tag]),

@@ -4,7 +4,6 @@
 % adm_passport business logic module
 %%%
 
-
 -export([do_login/2]).
 
 -include_lib("eunit/include/eunit.hrl").
@@ -18,31 +17,31 @@
 %% API
 %% ===================================================================
 
-
 %% @doc 运营管理员登录
 %% 验证管理员账号和密码，返回管理员信息
 %% @param Mobile 管理员账号（手机号或账号名）
 %% @param Pwd 密码（明文）
 %% @return {ok, AdminUser} | {error, Reason} 登录结果
 %%% 运营管理员登录
--spec do_login(binary(), binary()) -> {ok, map()} | {error, binary()}.
+-spec do_login(binary(), binary()) -> {ok, map()} | {error, binary() | service_unavailable}.
 do_login(_Email, <<>>) ->
     {error, <<"密码有误"/utf8>>};
 do_login(Mobile, Pwd) ->
-    User = case elib_type:is_mobile(Mobile) of
-        true ->
-            adm_user_ds:find_by_mobile(Mobile, ?ADM_LOGIN_COLUMN);
-        false ->
-            adm_user_ds:find_by_account(Mobile, ?ADM_LOGIN_COLUMN)
-    end,
-    verify_user(Pwd, User).
-
-
+    User =
+        case elib_type:is_mobile(Mobile) of
+            true ->
+                adm_user_ds:lookup(mobile, Mobile, ?ADM_LOGIN_COLUMN);
+            false ->
+                adm_user_ds:lookup(account, Mobile, ?ADM_LOGIN_COLUMN)
+        end,
+    case User of
+        {ok, Row} -> verify_user(Pwd, Row);
+        {error, _} -> {error, service_unavailable}
+    end.
 
 %% ===================================================================
 %% Internal Function Definitions
 %% ===================================================================-
-
 
 -spec verify_user(binary(), map()) -> {ok, map()} | {error, any()}.
 verify_user(Pwd, User) ->
@@ -59,18 +58,17 @@ verify_user(Pwd, User) ->
         {ok, _} when Status == 1 ->
             Id = maps:get(<<"id">>, User),
             {ok, #{
-               <<"id">> => Id,
-               <<"mobile">> => maps:get(<<"mobile">>, User),
-               <<"email">> => maps:get(<<"email">>, User),
-               <<"nickname">> => maps:get(<<"nickname">>, User),
-               <<"avatar">> => maps:get(<<"avatar">>, User),
-               <<"account">> => maps:get(<<"account">>, User),
-               <<"role_id">> => maps:get(<<"role_id">>, User, 0)
-              }};
+                <<"id">> => Id,
+                <<"mobile">> => maps:get(<<"mobile">>, User),
+                <<"email">> => maps:get(<<"email">>, User),
+                <<"nickname">> => maps:get(<<"nickname">>, User),
+                <<"avatar">> => maps:get(<<"avatar">>, User),
+                <<"account">> => maps:get(<<"account">>, User),
+                <<"role_id">> => maps:get(<<"role_id">>, User, 0)
+            }};
         {error, Msg} ->
             {error, Msg}
     end.
-
 
 %% ===================================================================
 %% EUnit tests.

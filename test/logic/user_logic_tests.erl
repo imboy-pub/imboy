@@ -1,6 +1,9 @@
 -module(user_logic_tests).
 -include_lib("eunit/include/eunit.hrl").
 -include("eunit_setup.hrl").
+-define(WITH_IDENTITY_MECKS(Configs, Fun),
+    ?WITH_MECKS(identity_lookup_test_support:mocks(Configs), Fun)
+).
 
 %%%===================================================================
 %%% @doc
@@ -77,7 +80,7 @@ is_online_with_dtype_returns_false_when_offline_test_() ->
 %% ===================================================================
 
 online_state_returns_online_when_user_online_test_() ->
-    ?WITH_MECKS(
+    ?WITH_IDENTITY_MECKS(
         [
             {imboy_syn, [
                 {'count_user', 1, fun(_Uid) -> 1 end}
@@ -115,7 +118,7 @@ online_state_returns_offline_when_user_offline_test_() ->
     ).
 
 online_state_returns_offline_when_hide_status_test_() ->
-    ?WITH_MECKS(
+    ?WITH_IDENTITY_MECKS(
         [
             {imboy_syn, [
                 {'count_user', 1, fun(_Uid) -> 1 end}
@@ -140,7 +143,7 @@ online_state_returns_offline_when_hide_status_test_() ->
 %% ===================================================================
 
 batch_online_state_processes_multiple_users_test_() ->
-    ?WITH_MECKS(
+    ?WITH_IDENTITY_MECKS(
         [
             {imboy_syn, [
                 {'count_user', 1, fun
@@ -425,7 +428,7 @@ update_allow_search_with_invalid_value_fails_test_() ->
     end).
 
 update_email_with_valid_format_test_() ->
-    ?WITH_MECKS(
+    ?WITH_IDENTITY_MECKS(
         [
             {user_ds, [
                 {'find_by_email', 2, fun(_Email, _Column) -> #{} end},
@@ -483,7 +486,7 @@ update_email_with_invalid_format_fails_test_() ->
     ).
 
 update_email_already_in_use_fails_test_() ->
-    ?WITH_MECKS(
+    ?WITH_IDENTITY_MECKS(
         [
             {elib_type, [
                 {'is_email', 1, fun(_Email) -> true end}
@@ -512,7 +515,7 @@ update_unsupported_field_fails_test_() ->
 %% ===================================================================
 
 online_joins_syn_and_casts_online_test_() ->
-    ?WITH_MECKS(
+    ?WITH_IDENTITY_MECKS(
         [
             {imboy_syn, [
                 {'join', 4, fun(_Uid, _DType, _Pid, _DID) -> ok end}
@@ -536,7 +539,7 @@ online_joins_syn_and_casts_online_test_() ->
 %% ===================================================================
 
 offline_leaves_syn_and_casts_offline_test_() ->
-    ?WITH_MECKS(
+    ?WITH_IDENTITY_MECKS(
         [
             {imboy_syn, [
                 {'leave', 2, fun(_Uid, _Pid) -> ok end}
@@ -559,7 +562,7 @@ offline_leaves_syn_and_casts_offline_test_() ->
 %% ===================================================================
 
 apply_logout_sets_status_to_pending_test_() ->
-    ?WITH_MECKS(
+    ?WITH_IDENTITY_MECKS(
         [
             %% 模拟真 with_tx 的 rollback 约定：拦截 throw({rollback,_})
             %% 转返回 {rollback, Reason}（钱路径同款，见 elib_pg:with_tx/1）
@@ -600,7 +603,7 @@ apply_logout_sets_status_to_pending_test_() ->
 %% ===================================================================
 
 cancel_logout_restores_status_to_active_test_() ->
-    ?WITH_MECKS(
+    ?WITH_IDENTITY_MECKS(
         [
             {elib_pg, [
                 {'with_tx', 1, fun(Fun) ->
@@ -626,7 +629,7 @@ cancel_logout_restores_status_to_active_test_() ->
     ).
 
 cancel_logout_with_error_returns_error_test_() ->
-    ?WITH_MECKS(
+    ?WITH_IDENTITY_MECKS(
         [
             {elib_pg, [
                 {'with_tx', 1, fun(Fun) ->
@@ -690,7 +693,7 @@ update_with_empty_value_test_() ->
 
 %% high 命中词：拒绝保存，字段零落库
 profile_nickname_blocked_by_high_hit_test_() ->
-    ?WITH_MECKS(
+    ?WITH_IDENTITY_MECKS(
         [
             {user_ds, [
                 {'update_field_checked', 4, fun(_Uid, _Key, _Val, _Version) -> {ok, 1} end}
@@ -712,7 +715,7 @@ profile_nickname_blocked_by_high_hit_test_() ->
 
 %% medium/low 命中：先保存后入复核队列（enqueue 带 {profile_field, Field}）
 profile_sign_queued_saves_and_enqueues_test_() ->
-    ?WITH_MECKS(
+    ?WITH_IDENTITY_MECKS(
         [
             {user_ds, [
                 {'update_field_checked', 4, fun(_Uid, _Key, _Val, _Version) -> {ok, 1} end}
@@ -739,7 +742,7 @@ profile_sign_queued_saves_and_enqueues_test_() ->
 
 %% 无命中：正常保存，零入队
 profile_allow_saves_without_enqueue_test_() ->
-    ?WITH_MECKS(
+    ?WITH_IDENTITY_MECKS(
         [
             {user_ds, [
                 {'update_field_checked', 4, fun(_Uid, _Key, _Val, _Version) -> {ok, 1} end}
@@ -757,7 +760,7 @@ profile_allow_saves_without_enqueue_test_() ->
 
 %% 非文本公开字段（avatar）：不进审核门直接落库
 profile_non_text_field_skips_review_test_() ->
-    ?WITH_MECKS(
+    ?WITH_IDENTITY_MECKS(
         [
             {user_ds, [
                 {'update_field', 3, fun(_Uid, _Key, _Val) -> {ok, 1} end}
@@ -777,7 +780,7 @@ profile_non_text_field_skips_review_test_() ->
 
 %% 入队失败 fail-open：资料照常保存，不阻断
 profile_enqueue_failure_fail_open_test_() ->
-    ?WITH_MECKS(
+    ?WITH_IDENTITY_MECKS(
         [
             {user_ds, [
                 {'update_field_checked', 4, fun(_Uid, _Key, _Val, _Version) -> {ok, 1} end}

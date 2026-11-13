@@ -111,6 +111,16 @@ archived_mocks() ->
             {'query', 3, fun
                 (fake_conn, <<"SELECT status FROM workspace", _/binary>>, _) ->
                     {ok, [#{<<"status">> => <<"archived">>}]};
+                %% attachment confirm（attachment_ds:359）走 ensure_writable_tx_retryable：
+                %% retryable 臂经 resolve_workspace_tx 查归属行 → workspace scope
+                %% 命中 FOR UPDATE 归档守卫（personal_mocks 已有同型子句可参照）
+                (fake_conn, <<"SELECT scope, workspace_id FROM ", _/binary>>, _) ->
+                    {ok, [
+                        #{
+                            <<"scope">> => <<"workspace">>,
+                            <<"workspace_id">> => ?WS_ID
+                        }
+                    ]};
                 (fake_conn, _Sql, _Params) ->
                     {ok, []}
             end},

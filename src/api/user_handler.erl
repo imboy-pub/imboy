@@ -116,6 +116,8 @@ change_password(Req0, State) ->
     case user_logic:change_password(CurrentUid, Req0) of
         {ok, _Msg} ->
             elib_response:success(Req0);
+        {error, service_unavailable} ->
+            elib_response:error_with_status(Req0, 503, <<"服务暂不可用，请稍后重试"/utf8>>, 503);
         {error, Msg} ->
             elib_response:error(Req0, Msg)
     end.
@@ -133,6 +135,8 @@ set_password(Req0, State) ->
     case user_logic:set_password(CurrentUid, Req0) of
         {ok, _Msg} ->
             elib_response:success(Req0);
+        {error, service_unavailable} ->
+            elib_response:error_with_status(Req0, 503, <<"服务暂不可用，请稍后重试"/utf8>>, 503);
         {error, Msg} ->
             elib_response:error(Req0, Msg)
     end.
@@ -294,6 +298,8 @@ update(Req0, State) ->
     Code = maps:get(<<"code">>, PostVals, <<>>),
 
     case user_logic:update(CurrentUid, Field, ec_cnv:to_binary(Value), Code) of
+        {error, {503, _, ErrorMsg}} ->
+            elib_response:error_with_status(Req0, 503, ErrorMsg, 503);
         {error, {_, _, ErrorMsg}} ->
             elib_response:error(Req0, ErrorMsg);
         {ok, _} ->

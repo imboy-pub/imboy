@@ -25,6 +25,7 @@
 -export([increment/2]).
 -export([increment/3]).
 -export([record/2]).
+-export([set_gauge/2]).
 -export([get_all_metrics/0]).
 -export([reset/0]).
 -export([reset_counter/1]).
@@ -77,6 +78,10 @@ increment(_Name, Delta, _Labels) when is_integer(Delta), Delta =< 0 ->
 -spec record(atom(), number()) -> ok.
 record(Name, Value) when is_atom(Name), is_number(Value) ->
     gen_server:cast(?MODULE, {record, Name, Value}).
+
+-spec set_gauge(atom(), integer()) -> ok.
+set_gauge(Name, Value) when is_atom(Name), is_integer(Value) ->
+    gen_server:cast(?MODULE, {gauge, Name, Value}).
 
 %% @doc 获取所有指标
 -spec get_all_metrics() ->
@@ -215,7 +220,15 @@ handle_call(get_all_metrics, _From, State) ->
         ?METRICS_ETS
     ),
 
-    {reply, #{counters => AllCounters, histograms => Histograms}, State};
+    Gauges = ets:foldl(
+        fun
+            ({{gauge, Name}, Value}, Acc) -> Acc#{Name => Value};
+            (_, Acc) -> Acc
+        end,
+        #{},
+        ?METRICS_ETS
+    ),
+    {reply, #{counters => AllCounters, histograms => Histograms, gauges => Gauges}, State};
 handle_call(reset, _From, State) ->
     ets:delete_all_objects(?METRICS_ETS),
     {reply, ok, State};
@@ -246,6 +259,9 @@ handle_cast({increment_labeled, Name, Delta, Labels}, State) ->
             [] -> Delta
         end,
     ets:insert(?METRICS_ETS, {Key, NewValue}),
+    {noreply, State};
+handle_cast({gauge, Name, Value}, State) ->
+    ets:insert(?METRICS_ETS, {{gauge, Name}, Value}),
     {noreply, State};
 handle_cast({record, Name, Value}, State) ->
     Key = {histogram, Name},

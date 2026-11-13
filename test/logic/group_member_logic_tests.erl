@@ -224,17 +224,17 @@ leave_success_test_() ->
                 {'ensure_writable_tx', 2, fun(_Conn, _Target) -> ok end}
             ]},
             {group_member_ds, [
-                {'leave', 4, fun(_Conn, _Uid, _Gid, _CurrentUid) -> {ok, 123456, #{}} end},
+                {'leave', 4, fun(_Conn, _Uid, _Gid, _CurrentUid) ->
+                    {ok, 123456, #{<<"id">> => 77}}
+                end},
                 {'get_member_info', 3, fun(1, 999, <<"role">>) -> {ok, #{<<"role">> => 2}} end}
             ]},
             {group_ds, [
                 {'leave', 2, fun(_Uid, _Gid) -> ok end},
                 {'member_uids', 1, fun(_Gid) -> [123, 456] end}
             ]},
-            {msg_s2c_ds, [
-                {'send', 7, fun(_FromUid, _ToUidLi, _Action, _MsgId, _Code, _Payload, _Save) ->
-                    ok
-                end}
+            {group_event_handler, [
+                {'stage_tx', 3, fun(_Conn, {member_removed, 1, 100}, 77) -> ok end}
             ]},
             {elib_pg, [
                 {'with_tx', 1, fun(Fun) -> Fun(self()) end}
@@ -254,17 +254,17 @@ leave_with_different_current_uid_test_() ->
     ?WITH_MECKS(
         [
             {group_member_ds, [
-                {'leave', 4, fun(_Conn, _Uid, _Gid, _CurrentUid) -> {ok, 123456, #{}} end},
+                {'leave', 4, fun(_Conn, _Uid, _Gid, _CurrentUid) ->
+                    {ok, 123456, #{<<"id">> => 77}}
+                end},
                 {'get_member_info', 3, fun(1, 999, <<"role">>) -> {ok, #{<<"role">> => 2}} end}
             ]},
             {group_ds, [
                 {'leave', 2, fun(_Uid, _Gid) -> ok end},
                 {'member_uids', 1, fun(_Gid) -> [123, 456] end}
             ]},
-            {msg_s2c_ds, [
-                {'send', 7, fun(_FromUid, _ToUidLi, _Action, _MsgId, _Code, _Payload, _Save) ->
-                    ok
-                end}
+            {group_event_handler, [
+                {'stage_tx', 3, fun(_Conn, {member_removed, 1, 100}, 77) -> ok end}
             ]},
             {elib_pg, [
                 {'with_tx', 1, fun(Fun) -> Fun(self()) end}

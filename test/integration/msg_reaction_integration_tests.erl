@@ -277,7 +277,9 @@ get_context() ->
     persistent_term:get({?MODULE, test_context}).
 
 wait_for_c2c_message(MsgId) ->
-    wait_for_c2c_message(MsgId, 40).
+    %% 400×50ms=20s：与 conversation_pin_delete_integration_tests 的等待预算
+    %% 对齐（原 40=2s 在跑批负载下偶发不足）。
+    wait_for_c2c_message(MsgId, 400).
 
 wait_for_c2c_message(_MsgId, 0) ->
     error(c2c_message_not_ready);
@@ -291,7 +293,8 @@ wait_for_c2c_message(MsgId, AttemptsLeft) ->
     end.
 
 wait_for_c2g_message(MsgId) ->
-    wait_for_c2g_message(MsgId, 40).
+    %% 同 wait_for_c2c_message：预算 400×50ms 对齐仓内惯例。
+    wait_for_c2g_message(MsgId, 400).
 
 wait_for_c2g_message(_MsgId, 0) ->
     error(c2g_message_not_ready);

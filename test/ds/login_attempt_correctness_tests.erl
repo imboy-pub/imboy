@@ -196,7 +196,7 @@ credential_failure(Mode, Fault) ->
         end
     end,
     try
-        ok = meck:expect(user_ds, find_by_account, fun(_, _) -> User end),
+        ok = meck:expect(user_ds, lookup, fun(account, _, _) -> {ok, User} end),
         ok = meck:expect(elib_password, verify, fun(_, _) -> Inject() end),
         ok = meck:expect(verification_code_ds, consume, fun(_, _) -> Inject() end),
         ok = meck:expect(token_ds, encrypt_token, fun(_, _) -> error(unexpected_token) end),

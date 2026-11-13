@@ -244,7 +244,9 @@ concurrent_rejoin(Fixture) ->
             Parent ! {context_reader_result, self(), repo_context(Fixture, 7, 5)}
         end),
         try
-            wait_for_blocker(WriterPid, erlang:monotonic_time(millisecond) + 3000),
+            %% 探测查询复用写者事务连接（query/3 Conn 版）：原 query/2 隐式取
+            %% 第二连接，在 with_tx 作用域内触发嵌套连接守卫。
+            wait_for_blocker(Conn, WriterPid, erlang:monotonic_time(millisecond) + 3000),
             rejoin_tx(Conn, Fixture),
             {ok, {Child, Ref}}
         catch
@@ -267,8 +269,9 @@ concurrent_rejoin(Fixture) ->
         erlang:demonitor(Monitor, [flush])
     end.
 
-wait_for_blocker(WriterPid, Deadline) ->
+wait_for_blocker(Conn, WriterPid, Deadline) ->
     {ok, [#{<<"blocked">> := Blocked}]} = elib_pg:query(
+        Conn,
         <<"SELECT EXISTS(SELECT 1 FROM pg_stat_activity WHERE $1=ANY(pg_blocking_pids(pid))) AS blocked">>,
         [WriterPid]
     ),
@@ -279,7 +282,7 @@ wait_for_blocker(WriterPid, Deadline) ->
             case erlang:monotonic_time(millisecond) < Deadline of
                 true ->
                     timer:sleep(20),
-                    wait_for_blocker(WriterPid, Deadline);
+                    wait_for_blocker(Conn, WriterPid, Deadline);
                 false ->
                     error(context_reader_did_not_wait_for_generation_lock)
             end

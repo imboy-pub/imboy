@@ -11,7 +11,9 @@ transition(Action, State, Payload) ->
         Resources = maps:get(<<"owned_resources">>, State),
         true = is_list(Resources),
         [PG] = [R || #{<<"kind">> := <<"ISOLATED_POSTGRESQL">>} = R <- Resources],
-        [Volume] = [R || #{<<"kind">> := <<"ISOLATED_APFS_VOLUME">>} = R <- Resources],
+        Kind = case imboy_quality_backend:is_state(State) of
+            true -> <<"OWNED_DIRECTORY">>; false -> <<"ISOLATED_APFS_VOLUME">> end,
+        [Volume] = [R || #{<<"kind">> := K} = R <- Resources, K =:= Kind],
         NewPG = update(Action, PG, Volume, Payload),
         {ok, State#{
             <<"owned_resources">> := [
@@ -125,6 +127,24 @@ identity(_) ->
     false.
 
 transaction(Action, Payload, Proof) ->
+    case os:getenv("IMBOY_BACKEND_ACCEPTANCE") of
+        "1" -> backend_transaction(Action, Payload, Proof);
+        false -> legacy_transaction(Action, Payload, Proof);
+        _ -> {error, invalid_backend_selector}
+    end.
+
+backend_transaction(Action, Payload, Proof) ->
+    try
+        Ctrl = os:getenv("IMBOY_QUALITY_CTRL"),
+        true = is_list(Ctrl) andalso Ctrl =/= [],
+        State = imboy_quality_backend:read_state(Ctrl),
+        true = imboy_quality_backend:is_state(State),
+        Lock = filename:join(Ctrl,"owner.lock"),
+        ok = file:make_dir(Lock),
+        try locked(Ctrl,Action,Payload,Proof) after ok=file:del_dir(Lock) end
+    catch Class:Reason -> {error,{backend_registration_failed,Class,Reason}} end.
+
+legacy_transaction(Action, Payload, Proof) ->
     try
         {ok, Repo} = file:get_cwd(),
         {0, Common0} = imboy_quality_guard:git(Repo, ["rev-parse", "--git-common-dir"]),
@@ -166,15 +186,22 @@ locked(Ctrl, Action, Payload, Proof) ->
     Sha = string:trim(maps:get("STATE.json.sha256", Files)),
     Sha = string:trim(maps:get("checkpoint.json.sha256", Files)),
     State = json:decode(Bytes),
-    true = imboy_quality_full_budget:owner_verified(State),
-    Ctx = (imboy_quality_state:trusted_context(State))#{owner_verified => true},
-    %% An already registered process must remain recoverable after resource admission closes.
-    Operation =
-        case Action of
-            register -> eunit_group;
-            record_exit -> inspect
-        end,
-    ok = imboy_quality_cli:permit(Ctx, Operation),
+    case imboy_quality_backend:is_state(State) of
+        true ->
+            BackendOp = case Action of register -> start_pg; record_exit -> cleanup end,
+            ok = imboy_quality_backend:authorize(State,BackendOp);
+        false ->
+        true = imboy_quality_full_budget:owner_verified(State),
+        Ctx = (imboy_quality_state:trusted_context(State))#{owner_verified => true},
+        %% An already registered process must remain recoverable after resource admission closes.
+        Operation =
+            case Action of
+                register -> eunit_group;
+                record_exit -> inspect
+            end,
+        ok = imboy_quality_cli:permit(Ctx, Operation),
+            ok
+    end,
     {ok, Changed} = transition(Action, State, Payload),
     {Pid, Details} = Payload,
     {OwnerPid, Ref} = Proof,
@@ -297,7 +324,10 @@ backup(Ctrl, Names, Files) ->
     Id = binary_to_list(hex(crypto:strong_rand_bytes(16))),
     Rel = filename:join("state-patches", "pg-registration-" ++ Id),
     {ok, Dir} = imboy_quality_state:new_path(Ctrl, Rel),
-    ok = file:make_dir(Dir),
+    %% 二级路径首次注册即触雷：fresh control 无 state-patches 父目录，
+    %% make_dir 只建一层（2026-11-13 全量门实证 enoent）。ensure_path
+    %% 建全路径，首次注册自种该目录。
+    ok = filelib:ensure_path(Dir),
     ok = file:change_mode(Dir, 8#700),
     lists:foreach(
         fun(Name) -> exclusive(filename:join(Dir, Name), maps:get(Name, Files)) end, Names

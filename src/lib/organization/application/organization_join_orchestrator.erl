@@ -181,9 +181,8 @@ join_general_tx(_Conn, _Uid, none) ->
 join_general_tx(Conn, Uid, Gid) ->
     case group_member_ds:join_group(Conn, <<"org_join">>, Uid, Gid, #{role => 1}) of
         {ok, _} ->
-            ok;
-        {error, Reason} ->
-            throw({abort_tx, {internal, {general_group_join, Gid, Reason}}})
+            ok
+        %% 旧 {error,_} 分支已删：join_group/5 失败统一 throw({abort_tx,…})。
     end.
 
 %% 公告频道订阅：行缺失跳过；upsert 幂等（已订阅 → {ok, false}）。

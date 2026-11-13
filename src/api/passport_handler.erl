@@ -86,6 +86,8 @@ bind_mail(Req0) ->
 
     % 验证参数
     case validate_bind_mail_params(Ts, Tk, Uid, Mail) of
+        {error, service_unavailable} ->
+            identity_unavailable_response(Req0);
         {error, Msg} ->
             elib_response:error(Req0, Msg);
         {ok, Params} ->
@@ -136,11 +138,13 @@ parse_ts(Ts) ->
     end.
 
 %% @doc 验证绑定邮箱缓存状态
--spec validate_bind_mail_cache(term(), binary()) -> ok | {error, binary()}.
+-spec validate_bind_mail_cache(term(), binary()) ->
+    ok | {error, binary() | string() | service_unavailable}.
 validate_bind_mail_cache(undefined, Mail) ->
     case passport_logic:email_in_use(Mail) of
         true -> {error, "抱歉，该邮箱地址验证已失效\n造成此情况可能是您更改了邮箱，也可能是您已确认过该邮箱不是您的。"};
-        false -> ok
+        false -> ok;
+        {error, service_unavailable} = Error -> Error
     end;
 validate_bind_mail_cache(_CacheVal, _Mail) ->
     {error, "抱歉，该邮箱地址验证已失效\n造成此情况可能是您更改了邮箱，也可能是您已确认过该邮箱不是您的。"}.
@@ -235,6 +239,8 @@ quick_login(Req0) ->
     case passport_logic:quick_login(Service, Operator, Token, Post2) of
         {ok, Data} ->
             login_success_response(Req0, Data, Post2);
+        {error, service_unavailable} ->
+            identity_unavailable_response(Req0);
         %% quota_guard 返回三元组（402 用户数达授权上限），必须显式接住：
         %% 只匹配 {error, Msg} 会在配额满时 case_clause 崩溃。
         {error, Msg, Code} ->
@@ -266,6 +272,8 @@ alipay_login(Req0) ->
             case passport_logic:alipay_login(AuthCode, Post2) of
                 {ok, Data} ->
                     login_success_response(Req0, Data, Post2);
+                {error, service_unavailable} ->
+                    identity_unavailable_response(Req0);
                 %% quota_guard 三元组（402 用户数达授权上限）
                 {error, Msg, Code} ->
                     elib_response:error(Req0, Msg, Code);
@@ -368,10 +376,12 @@ getcode(Req0) ->
                 false
         end,
     % ?DEBUG_LOG([Type, Account, "MobileExists ", MobileExists, Type == <<"sms">>, Scene == <<"signup">>]),
-    case true of
-        _ when MobileExists ->
+    case MobileExists of
+        {error, service_unavailable} ->
+            identity_unavailable_response(Req0);
+        true ->
             elib_response:error(Req0, <<"该手机号已注册"/utf8>>);
-        _ ->
+        false ->
             % elib_response:success(Req0, #{}, "success.")
             case passport_logic:send_code(Account, Type) of
                 {ok, _} ->
@@ -401,7 +411,7 @@ signup(Req0) ->
     Pwd = elib_cipher:safe_rsa_decrypt(Password, RsaEncrypt),
     Post2 = PostVals#{<<"cosv">> => Cosv, <<"ip">> => Ip},
     % 使用统一的结果处理函数
-    elib_response:handle_logic_result(
+    identity_logic_response(
         Req0,
         passport_logic:do_signup(Type, Account, Pwd, Code, Post2)
     ).
@@ -426,10 +436,18 @@ find_password(Req0) ->
     Pwd = elib_cipher:safe_rsa_decrypt(Password, RsaEncrypt),
     Post2 = PostVals#{<<"cosv">> => Cosv, <<"ip">> => Ip},
     % 使用统一的结果处理函数
-    elib_response:handle_logic_result(
+    identity_logic_response(
         Req0,
         passport_logic:find_password(Type, Account, Pwd, Code, Post2)
     ).
+
+identity_logic_response(Req, {error, service_unavailable}) ->
+    identity_unavailable_response(Req);
+identity_logic_response(Req, Result) ->
+    elib_response:handle_logic_result(Req, Result).
+
+identity_unavailable_response(Req) ->
+    elib_response:error_with_status(Req, 503, <<"服务暂不可用，请稍后重试"/utf8>>, 503).
 
 %% Device registration is an authentication prerequisite, not an async side effect.
 login_success_response(Req, Data, PostVals) ->
