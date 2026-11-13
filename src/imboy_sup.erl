@@ -61,9 +61,14 @@ init([]) ->
     %     , shutdown => 1000
     % },
 
-    % 启动 pooler 应用和连接池
-    _ = application:start(pooler),
     PgConf = configure_pg_pool(config_ds:env(pg_conf)),
+    %% pooler 池保持独立于本监督树（pooler_sup 托管）：本仓 34 个套件通过
+    %% pooler:rm_pool/new_pool 接管名为 'pgsql' 的应用池（如
+    %% adm_organization_handler_tests:setup_db）。若把池挂进本树
+    %% （permanent child），套件的 rm_pool 会被 sup 重启复活、new_pool 恒
+    %% already_started，池接管机制整体失效（2026-11-13 实测）。池启动失败
+    %% 可见性由 pooler_sup 自身的监督与日志承担。
+    _ = application:ensure_all_started(pooler),
     _ = pooler:new_pool(PgConf),
 
     % https://blog.csdn.net/Dylan_2018/article/details/110150142
@@ -78,7 +83,7 @@ init([]) ->
         id => user_server,
         start => {user_server, start_link, []},
         restart => permanent,
-        shutdown => infinity,
+        shutdown => 5000,
         type => worker,
         modules => [user_server]
     },
@@ -118,13 +123,21 @@ init([]) ->
         type => worker,
         modules => dynamic
     },
+    GroupEventSubscription = #{
+        id => group_event_subscription,
+        start => {group_event_subscription, start_link, []},
+        restart => permanent,
+        shutdown => 5000,
+        type => worker,
+        modules => [group_event_subscription]
+    },
 
     % 消息写入队列监督树
     MsgWriteQueueSup = #{
         id => msg_store_sup,
         start => {msg_store_sup, start_link, []},
         restart => permanent,
-        shutdown => 5000,
+        shutdown => infinity,
         type => supervisor,
         modules => [msg_store_sup]
     },
@@ -330,6 +343,7 @@ init([]) ->
             IMBoyCache,
             % , PgoChildSpec
             DomainEventBus,
+            GroupEventSubscription,
             MetricWorker,
             PluginLoader,
             PluginSup,

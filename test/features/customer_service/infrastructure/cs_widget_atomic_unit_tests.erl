@@ -210,6 +210,13 @@ commit_confirmation(Operation, Status) ->
             ?assertEqual(Conn, Conn0),
             ok
         end),
+        %% elib_pg Health=discard 路径走 3 元 fail 归还（死连接剔除契约）：
+        %% 假 Conn 让 safe_rollback 的 squery 超时 → discard → 3 元调用。
+        %% 不补期望会 passthrough 到真 pooler → pure_mock VM 无 pgsql 池 → noproc。
+        meck:expect(pooler, return_member, fun(pgsql, Conn0, fail) ->
+            ?assertEqual(Conn, Conn0),
+            ok
+        end),
         meck:expect(config_ds, env, fun(sql_driver) -> pgsql end),
         %% Keep real epgsql:with_transaction/3; mock only the socket boundary.
         meck:expect(epgsql_sock, sync_command, fun(C, epgsql_cmd_squery, _) ->
@@ -266,14 +273,20 @@ commit_confirmation(Operation, Status) ->
                     {error, {db_exception, error, {badmatch, Status}}}
             end,
         ?assertEqual(Expected, Actual),
-        %% 成功时驱动 ensure_committed 与通用事务保护分别确认；失败提前退出。
-        StatusChecks =
-            case Status of
-                {ok, commit} -> 2;
-                _ -> 1
-            end,
+        %% ensure_committed 与 elib_pg 通用事务保护（transaction_with_actions
+        %% → confirm_actions，elib_pg.erl:437）各自读取一次命令状态；后者在
+        %% 事务返回后无条件执行（含 ensure_committed 已失败的 rollback/
+        %% disconnected 路径），故全部状态均为 2 次。
+        StatusChecks = 2,
         ?assertEqual(StatusChecks, meck:num_calls(epgsql_sock, get_cmd_status, 1)),
-        ?assertEqual(1, meck:num_calls(pooler, return_member, 2))
+        %% 归还契约（elib_pg run_with_conn {Result, Health}）：每路径恰归还
+        %% 一次，2 元（reusable）与 3 元 fail（discard）互补。失败态下
+        %% epgsql_sock mock 让 safe_rollback 立即成功 → get_cmd_status 命中
+        %% Status → reusable → 2 元（门二十六实证 expected=0 value=1）。
+        TotalReturns =
+            meck:num_calls(pooler, return_member, 2) +
+                meck:num_calls(pooler, return_member, 3),
+        ?assertEqual(1, TotalReturns)
     after
         lists:foreach(fun meck:unload/1, Mods),
         Conn ! stop

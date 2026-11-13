@@ -1,6 +1,10 @@
 -module(passport_alipay_login_tests).
 -include_lib("eunit/include/eunit.hrl").
 -include("eunit_setup.hrl").
+-define(WITH_IDENTITY_MECKS(Configs, Fun),
+    ?WITH_MECKS(identity_lookup_test_support:mocks(Configs), Fun)
+).
+
 -include("common.hrl").
 -include("error_code.hrl").
 
@@ -104,7 +108,7 @@ save_credentials() ->
 
 existing_user_login_test_() ->
     {setup, fun env_setup/0, fun env_cleanup/1, fun(_) ->
-        ?WITH_MECKS(
+        ?WITH_IDENTITY_MECKS(
             [
                 oauth_ok_mock(),
                 token_mock(),
@@ -138,7 +142,7 @@ existing_user_login_test_() ->
 
 new_user_provision_test_() ->
     {setup, fun env_setup/0, fun env_cleanup/1, fun(_) ->
-        ?WITH_MECKS(
+        ?WITH_IDENTITY_MECKS(
             [
                 oauth_ok_mock(),
                 token_mock(),
@@ -184,7 +188,7 @@ new_user_provision_test_() ->
 
 nickname_fallback_test_() ->
     {setup, fun env_setup/0, fun env_cleanup/1, fun(_) ->
-        ?WITH_MECKS(
+        ?WITH_IDENTITY_MECKS(
             [
                 {alipay_openapi, [
                     {'oauth_token', 2, fun(_C, _Code) ->
@@ -229,7 +233,7 @@ nickname_fallback_test_() ->
 
 gender_map_female_test_() ->
     {setup, fun env_setup/0, fun env_cleanup/1, fun(_) ->
-        ?WITH_MECKS(
+        ?WITH_IDENTITY_MECKS(
             [
                 {alipay_openapi, [
                     {'oauth_token', 2, fun(_C, _Code) ->
@@ -274,7 +278,7 @@ gender_map_female_test_() ->
 
 invalid_auth_code_test_() ->
     {setup, fun env_setup/0, fun env_cleanup/1, fun(_) ->
-        ?WITH_MECKS(
+        ?WITH_IDENTITY_MECKS(
             [
                 {alipay_openapi, [
                     {'oauth_token', 2, fun(_C, <<"badcode">>) ->
@@ -291,7 +295,7 @@ invalid_auth_code_test_() ->
 
 userinfo_failed_test_() ->
     {setup, fun env_setup/0, fun env_cleanup/1, fun(_) ->
-        ?WITH_MECKS(
+        ?WITH_IDENTITY_MECKS(
             [
                 {alipay_openapi, [
                     {'oauth_token', 2, fun(_C, _Code) ->
@@ -313,7 +317,7 @@ userinfo_failed_test_() ->
 %% bind——(alipay, <<>>) 映射会让所有同类登录撞进同一账号（账号混淆）
 empty_alipay_uid_never_binds_test_() ->
     {setup, fun env_setup/0, fun env_cleanup/1, fun(_) ->
-        ?WITH_MECKS(
+        ?WITH_IDENTITY_MECKS(
             [
                 {alipay_openapi, [
                     {'oauth_token', 2, fun(_C, _Code) ->
@@ -343,7 +347,7 @@ empty_alipay_uid_never_binds_test_() ->
 
 disabled_user_rejected_test_() ->
     {setup, fun env_setup/0, fun env_cleanup/1, fun(_) ->
-        ?WITH_MECKS(
+        ?WITH_IDENTITY_MECKS(
             [
                 oauth_ok_mock(),
                 user_setting_mock(),
@@ -367,7 +371,7 @@ disabled_user_rejected_test_() ->
 
 quota_exceeded_test_() ->
     {setup, fun env_setup/0, fun env_cleanup/1, fun(_) ->
-        ?WITH_MECKS(
+        ?WITH_IDENTITY_MECKS(
             [
                 oauth_ok_mock(),
                 user_setting_mock(),
@@ -394,7 +398,7 @@ quota_exceeded_test_() ->
 
 provision_conflict_rebind_test_() ->
     {setup, fun env_setup/0, fun env_cleanup/1, fun(_) ->
-        ?WITH_MECKS(
+        ?WITH_IDENTITY_MECKS(
             [
                 oauth_ok_mock(),
                 token_mock(),

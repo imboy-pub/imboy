@@ -159,6 +159,15 @@ ensure_writable_tx(Conn, Target, Retryable) ->
             {error, {503, <<"工作区状态检查失败，请稍后重试"/utf8>>}}
     end.
 
+%% 2026-11-13（R1 收口终版，全量门二十三实证）：双路径恢复——
+%% retryable（附件 V5 死锁重试事务）：解析与写入同事务连接
+%% resolve_workspace_tx/2（A2 语义，消除 TOCTOU）；
+%% 非 retryable（普通 with_tx 守卫）：恢复 main 等价的 autocommit 解析
+%% resolve_workspace/1——其归属读经 one_row → elib_pg:one/2，one/2 内部
+%% 已切 query_ro 只读 seam（纯 SELECT 无独立提交，事务作用域内豁免守卫，
+%% 见 elib_pg:one/3 注释），不再触发 {abort_tx, nested_connection_unsupported}
+%% 的 503 归一，且单测 mock 面（elib_pg:one）保持原状。40P01 死锁重试仍由
+%% 上方 catch 臂按 Retryable 承接。
 resolve_tx(Conn, Target, true) -> workspace_resolver:resolve_workspace_tx(Conn, Target);
 resolve_tx(_Conn, Target, false) -> workspace_resolver:resolve_workspace(Target).
 

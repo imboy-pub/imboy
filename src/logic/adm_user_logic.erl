@@ -28,7 +28,10 @@
 -spec find(integer(), binary(), tuple()) -> map().
 find(Uid, Column, Key) ->
     Fun = fun() ->
-        adm_user_ds:find_by_id(Uid, Column)
+        case adm_user_ds:lookup(id, Uid, Column) of
+            {ok, User} -> User;
+            {error, _} -> imboy_cache:uncached(#{})
+        end
     end,
     imboy_cache:memo(Fun, Key, 7200).
 
@@ -39,10 +42,12 @@ save(#{<<"id">> := Id} = Data) when is_integer(Id), Id > 0 ->
 save(Data) ->
     % 检查账号是否已存在
     Account = maps:get(<<"account">>, Data),
-    case adm_user_ds:find_by_account(Account, <<"id">>) of
-        #{<<"id">> := _} ->
+    case adm_user_ds:lookup(account, Account, <<"id">>) of
+        {error, _} ->
+            {error, service_unavailable};
+        {ok, #{<<"id">> := _}} ->
             {error, <<"账号已存在"/utf8>>};
-        _ ->
+        {ok, _} ->
             % 密码加密
             Password = maps:get(<<"password">>, Data),
             PasswordHash = elib_password:generate(Password),
@@ -60,14 +65,16 @@ save(Data) ->
 update(Id, Data) ->
     % 检查账号是否重复
     Account = maps:get(<<"account">>, Data, <<>>),
-    case adm_user_ds:find_by_account(Account, <<"id">>) of
-        #{<<"id">> := Id} ->
+    case adm_user_ds:lookup(account, Account, <<"id">>) of
+        {error, _} ->
+            {error, service_unavailable};
+        {ok, #{<<"id">> := Id}} ->
             % 账号相同，可以更新
             UpdateData = maps:without([<<"id">>], Data),
             adm_user_ds:update(Id, UpdateData);
-        #{<<"id">> := _} ->
+        {ok, #{<<"id">> := _}} ->
             {error, <<"账号已存在"/utf8>>};
-        _ ->
+        {ok, _} ->
             UpdateData = maps:without([<<"id">>], Data),
             adm_user_ds:update(Id, UpdateData)
     end.
@@ -76,8 +83,10 @@ update(Id, Data) ->
 -spec delete(integer()) -> {ok, integer()} | {error, any()}.
 delete(Id) ->
     % 不允许删除超级管理员（role_id 包含 1）
-    case adm_user_ds:find_by_id(Id, <<"id,role_id">>) of
-        #{<<"role_id">> := RoleIds} when is_list(RoleIds) ->
+    case adm_user_ds:lookup(id, Id, <<"id,role_id">>) of
+        {error, _} ->
+            {error, service_unavailable};
+        {ok, #{<<"role_id">> := RoleIds}} when is_list(RoleIds) ->
             case lists:member(1, RoleIds) of
                 true -> {error, <<"不能删除超级管理员"/utf8>>};
                 false -> adm_user_ds:delete(Id)
@@ -101,8 +110,10 @@ assign_roles(_, _) ->
 -spec update_status(integer(), integer()) -> ok | {error, any()}.
 update_status(UserId, Status) when Status >= 0, Status =< 1 ->
     % 不允许禁用超级管理员
-    case adm_user_ds:find_by_id(UserId, <<"id,role_id">>) of
-        #{<<"role_id">> := RoleIds} when is_list(RoleIds) ->
+    case adm_user_ds:lookup(id, UserId, <<"id,role_id">>) of
+        {error, _} ->
+            {error, service_unavailable};
+        {ok, #{<<"role_id">> := RoleIds}} when is_list(RoleIds) ->
             case lists:member(1, RoleIds) of
                 true when Status =:= 0 -> {error, <<"不能禁用超级管理员"/utf8>>};
                 _ ->

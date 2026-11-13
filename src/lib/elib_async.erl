@@ -38,6 +38,8 @@ async(Fun) ->
 %% @doc 异步执行函数（带超时监控）
 %%
 %% 如果 Fun 执行超过 TimeoutMs，进程会被杀死
+%% 返回实际任务 PID；监控进程负责记录失败并确认超时任务退出。
+%% 先校验 receive timeout 范围，避免启动任务后监控进程因非法超时值退出。
 %%
 %% 示例：
 %% ```
@@ -47,27 +49,41 @@ async(Fun) ->
 %% end, 1000).
 %% ```
 -spec async(fun(() -> term()), timeout()) -> pid().
-async(Fun, TimeoutMs) ->
-    spawn(fun() ->
-        Pid = spawn_link(fun() ->
-            exit(Fun())
-        end),
+async(Fun, TimeoutMs) when
+    is_function(Fun, 0),
+    TimeoutMs =:= infinity orelse
+        (is_integer(TimeoutMs) andalso TimeoutMs >= 0 andalso TimeoutMs =< 16#ffffffff)
+->
+    Caller = self(),
+    Tag = make_ref(),
+    {Watcher, Ref} = spawn_monitor(fun() ->
+        {Pid, Monitor} = spawn_monitor(Fun),
+        Caller ! {Tag, Pid},
+        watch_task(Pid, Monitor, TimeoutMs)
+    end),
+    receive
+        {Tag, Pid} ->
+            demonitor(Ref, [flush]),
+            Pid;
+        {'DOWN', Ref, process, Watcher, Reason} ->
+            exit(Reason)
+    end;
+async(_, _) ->
+    error(badarg).
+
+watch_task(Pid, Monitor, TimeoutMs) ->
+    receive
+        {'DOWN', Monitor, process, Pid, normal} ->
+            ok;
+        {'DOWN', Monitor, process, Pid, Reason} ->
+            ?ERROR_LOG("[ASYNC_FAILED] Fun 异常退出: ~p", [Reason])
+    after TimeoutMs ->
+        exit(Pid, kill),
         receive
-            {'EXIT', Pid, Result} ->
-                case Result of
-                    normal ->
-                        ok;
-                    _ ->
-                        ok = ?ERROR_LOG("[ASYNC_FAILED] Fun 异常退出: ~p", [Result]),
-                        Result
-                end
-        after TimeoutMs ->
-            erlang:unlink(Pid),
-            erlang:exit(Pid, kill),
-            ok = ?ERROR_LOG("[ASYNC_TIMEOUT] Fun 执行超时: ~pms", [TimeoutMs]),
-            exit(timeout)
+            {'DOWN', Monitor, process, Pid, _} ->
+                ?ERROR_LOG("[ASYNC_TIMEOUT] Fun 执行超时: ~pms", [TimeoutMs])
         end
-    end).
+    end.
 
 %% @doc 异步执行函数（带重试，使用默认参数）
 %%

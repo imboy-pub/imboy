@@ -4,6 +4,9 @@
 %% test/ 子目录平铺编译到 test/，同名 beam 互相覆盖导致本文件用例从不被执行。
 %% 改名恢复发现执行（用例内容未改动，非 skip 非删除）。
 -include("eunit_setup.hrl").
+-define(WITH_IDENTITY_MECKS(Configs, Fun),
+    ?WITH_MECKS(identity_lookup_test_support:mocks(Configs), Fun)
+).
 
 %%%===================================================================
 %%% @doc
@@ -18,7 +21,7 @@
 %% ===================================================================
 
 find_user_test_() ->
-    ?WITH_MECKS(
+    ?WITH_IDENTITY_MECKS(
         [
             {adm_user_repo, [
                 {'find_by_id', 2, fun(_Uid, _Column) ->

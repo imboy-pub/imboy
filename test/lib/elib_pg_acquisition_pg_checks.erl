@@ -23,9 +23,63 @@ run(ConnOpts) ->
         2 = atomics:get(Count, 1),
         0 = proplists:get_value(in_use_count, pooler:pool_utilization(pgsql)),
         io:format("PG_ACQUISITION_ROLLBACK_ONCE=PASS~n"),
+        committed_callback_is_not_replayed(ConnOpts),
+        failed_rollback_discards_live_connection(ConnOpts),
         ok
     after
         pooler:rm_pool(pgsql)
+    end.
+
+committed_callback_is_not_replayed(ConnOpts) ->
+    {ok, Verify} = epgsql:connect(ConnOpts),
+    try
+        {ok, _, []} = epgsql:squery(
+            Verify,
+            "CREATE TABLE otp_callback_probe(id integer GENERATED ALWAYS AS IDENTITY)"
+        ),
+        {error, {db_exception, error, synthetic_after_commit}} = elib_pg:with_conn(
+            fun(C) ->
+                {ok, 1} = elib_pg:execute(
+                    C, <<"INSERT INTO otp_callback_probe DEFAULT VALUES">>, []
+                ),
+                error(synthetic_after_commit)
+            end,
+            1
+        ),
+        {ok, _, [{1}]} = epgsql:equery(Verify, "SELECT count(*) FROM otp_callback_probe", []),
+        io:format("PG_COMMITTED_CALLBACK_NO_REPLAY=PASS~n")
+    after
+        epgsql:close(Verify)
+    end.
+
+failed_rollback_discards_live_connection(ConnOpts) ->
+    {ok, Verify} = epgsql:connect(ConnOpts),
+    ok = meck:new(epgsql, [passthrough, no_link]),
+    ok = meck:expect(epgsql, squery, fun(C, Sql) ->
+        case Sql of
+            <<"ROLLBACK">> -> {error, synthetic_receipt_loss};
+            _ -> meck:passthrough([C, Sql])
+        end
+    end),
+    try
+        {error, synthetic_abort} = elib_pg:with_conn(fun(C) ->
+            {ok, [], []} = epgsql:squery(C, <<"BEGIN">>),
+            {ok, 1} = elib_pg:execute(C, <<"INSERT INTO otp_callback_probe DEFAULT VALUES">>, []),
+            put(rollback_probe_conn, C),
+            throw({abort_tx, synthetic_abort})
+        end),
+        Conn = erase(rollback_probe_conn),
+        Ref = monitor(process, Conn),
+        receive
+            {'DOWN', Ref, process, Conn, _} -> ok
+        after 3000 -> error(unconfirmed_connection_not_evicted)
+        end,
+        {ok, _, [{1}]} = epgsql:equery(Verify, "SELECT count(*) FROM otp_callback_probe", []),
+        0 = proplists:get_value(in_use_count, pooler:pool_utilization(pgsql)),
+        io:format("PG_UNCONFIRMED_ROLLBACK_EVICTED=PASS~n")
+    after
+        meck:unload(epgsql),
+        epgsql:close(Verify)
     end.
 
 waiting_transaction(Count) ->

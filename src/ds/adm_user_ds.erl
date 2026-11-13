@@ -14,6 +14,7 @@
 -export([count_by_role/1]).
 -export([find_by_id/1, find_by_id/2]).
 -export([find_by_mobile/2, find_by_account/2]).
+-export([lookup/3]).
 -export([save/1, save/2, update/2, delete/1]).
 -export([page_with_where_sql/4]).
 
@@ -53,6 +54,10 @@ find_by_mobile(Mobile, Column) ->
 -spec find_by_account(binary() | string(), binary()) -> map().
 find_by_account(Account, Column) ->
     adm_user_repo:find_by_account(Account, Column).
+
+-spec lookup(id | account | email | mobile, term(), binary()) -> {ok, map()} | {error, term()}.
+lookup(Field, Value, Column) ->
+    adm_user_repo:lookup(Field, Value, Column).
 
 %% @doc 保存管理员用户
 -spec save(map()) -> {ok, 1} | {error, any()}.

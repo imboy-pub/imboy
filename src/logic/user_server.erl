@@ -175,9 +175,15 @@ stop_workers(Workers) ->
             end
          || #{pid := Pid} <- Workers
         ],
+    Deadline = erlang:monotonic_time(millisecond) + 1000,
     [
         receive
             {'DOWN', Ref, process, Pid, _} -> ok
+        after max(0, Deadline - erlang:monotonic_time(millisecond)) ->
+            exit(Pid, kill),
+            receive
+                {'DOWN', Ref, process, Pid, _} -> ok
+            end
         end
      || {Pid, Ref} <- Monitors
     ],

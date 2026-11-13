@@ -369,10 +369,9 @@ do_create_group(Conn, GMap, Uid, _Now) ->
     %% history generation 原子建立；禁止再旁路手写 group_member INSERT。
     case group_member_ds:join_group(Conn, <<"group_create">>, Uid, Gid2, #{role => 4}) of
         {ok, _} ->
-            ok;
-        {error, Reason2} ->
-            ?ERROR_LOG([group_member_insert_failed, Gid2, Uid, Reason2]),
-            throw({error, group_member_create_failed, Reason2})
+            ok
+        %% 旧 {error,_} 分支已删：join_group/5 失败统一 throw({abort_tx,…})
+        %% 整体回滚（与 face2face_save_tx 同款，语义保留）。
     end,
     Gid2.
 
@@ -431,10 +430,11 @@ face2face(Uid, Code, Lng, Lat) ->
                 ok = workspace_guard:abort_on_error(
                     workspace_guard:ensure_writable_tx(Conn, {group, Gid})
                 ),
-                case group_member_ds:join_group(Conn, <<"face2face_join">>, Uid, Gid, #{}) of
-                    {ok, _} -> {ok, Gid};
-                    {error, JoinError} -> throw({abort_tx, JoinError})
-                end;
+                %% join_group/5 失败统一 throw({abort_tx, Reason})（T04：
+                %% 原此处对 {error,JoinError} 的转 throw 分支不可达已删，
+                %% 失败语义由 join_group 内部 abort 保留）。成功即完成加入。
+                {ok, _} = group_member_ds:join_group(Conn, <<"face2face_join">>, Uid, Gid, #{}),
+                {ok, Gid};
             {error, Reason} ->
                 throw({abort_tx, Reason})
         end

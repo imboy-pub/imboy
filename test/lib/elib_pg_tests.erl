@@ -36,6 +36,7 @@ setup_pooler_mock() ->
         (_) -> error_no_members
     end),
     meck:expect(pooler, return_member, 2, fun(_Driver, _Conn) -> ok end),
+    meck:expect(pooler, return_member, 3, fun(_Driver, _Conn, fail) -> ok end),
     FakeConn.
 
 setup_pooler_mock_with_error() ->
@@ -1886,6 +1887,8 @@ with_tx_rollback_test_() ->
                     {rollback, force_rollback}
                 end
             ),
+            meck:expect(epgsql, squery, fun(_, <<"ROLLBACK">>) -> {ok, [], []} end),
+            meck:expect(epgsql, get_cmd_status, fun(_) -> {ok, rollback} end),
             FakeConn
         end,
         fun(FakeConn) ->
@@ -1975,6 +1978,7 @@ with_tx_business_rollback_surfaces_test_() ->
                 end
             ),
             meck:expect(epgsql, squery, 2, fun(_Conn, _Sql) -> {ok, [], []} end),
+            meck:expect(epgsql, get_cmd_status, fun(_) -> {ok, rollback} end),
             FakeConn
         end,
         fun(FakeConn) ->
@@ -2065,4 +2069,3 @@ rows_to_maps_happy_paths_unchanged_test_() ->
         %% 零列 × 零行（非 SELECT 误入形态）合法空集
         ?assertEqual([], elib_pg:rows_to_maps([], []))
     end).
-

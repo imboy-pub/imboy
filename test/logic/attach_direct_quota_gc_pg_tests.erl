@@ -178,6 +178,11 @@ gc_claim_then_winner_rejected() ->
         )
     ),
     %% winner 后到：PROOF_VERIFIED 前置不满足 → winner_conflict fail-closed
+    %% attempt_target/2 走 elib_pg:query/2（隐式取连接），必须留在 with_tx 外求值：
+    %% with_tx 作用域内隐式取第二连接触发 nested_connection_unsupported 守卫
+    %% （elib_pg:with_conn/1 + in_pg_tx_scope）。target_key 是 attempt 建行时
+    %% 冻结的静态列，事务外读取与事务内读取等价，winner_pin_tx 收到的值不变。
+    TargetKey = attempt_target(Key, No2),
     ?assertEqual(
         {error, winner_conflict},
         elib_pg:with_tx(fun(Conn) ->
@@ -185,7 +190,7 @@ gc_claim_then_winner_rejected() ->
                 Conn,
                 Key,
                 No2,
-                attempt_target(Key, No2),
+                TargetKey,
                 hex64(16#B3)
             )
         end)

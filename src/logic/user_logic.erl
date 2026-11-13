@@ -43,11 +43,17 @@
 %% @param Uid 用户ID
 %% @param Req0 HTTP请求对象
 %% @returns 操作结果：成功返回{ok, <<"success">>}，失败返回错误信息
--spec set_password(integer(), map()) -> {ok, binary()} | {error, binary() | string()}.
+-spec set_password(integer(), map()) ->
+    {ok, binary()} | {error, binary() | string() | service_unavailable}.
 set_password(Uid, Req0) ->
     PostVals = elib_param:post(Req0),
     NewPwd = maps:get(<<"new_pwd">>, PostVals, undefined),
-    User = user_ds:find_by_id(Uid, ?LOGIN_COLUMN),
+    case user_ds:lookup(id, Uid, ?LOGIN_COLUMN) of
+        {error, _} -> {error, service_unavailable};
+        {ok, User} -> set_password_user(Uid, Req0, PostVals, NewPwd, User)
+    end.
+
+set_password_user(Uid, Req0, PostVals, NewPwd, User) ->
     OldPwd = maps:get(<<"password">>, User, not_find),
     case OldPwd of
         not_find ->
@@ -75,13 +81,19 @@ set_password(Uid, Req0) ->
 %% @param Uid 用户ID
 %% @param Req0 Cowboy请求对象，包含当前密码和新密码
 %% @returns 操作结果：成功返回{ok, <<"success">>}，失败返回错误信息
--spec change_password(pos_integer(), map()) -> {ok, binary()} | {error, binary()}.
+-spec change_password(pos_integer(), map()) ->
+    {ok, binary()} | {error, binary() | service_unavailable}.
 change_password(Uid, Req0) ->
     PostVals = elib_param:post(Req0),
     RsaEncrypt = maps:get(<<"rsa_encrypt">>, PostVals, <<"1">>),
     ExistingPwd = maps:get(<<"existing_pwd">>, PostVals, <<>>),
     NewPwd = maps:get(<<"new_pwd">>, PostVals, <<>>),
-    User = user_ds:find_by_id(Uid, ?LOGIN_COLUMN),
+    case user_ds:lookup(id, Uid, ?LOGIN_COLUMN) of
+        {error, _} -> {error, service_unavailable};
+        {ok, User} -> change_password_user(Uid, Req0, RsaEncrypt, ExistingPwd, NewPwd, User)
+    end.
+
+change_password_user(Uid, Req0, RsaEncrypt, ExistingPwd, NewPwd, User) ->
     ExistingPwd2 = elib_cipher:safe_rsa_decrypt(ExistingPwd, RsaEncrypt),
     %% E2EE-013 将 verify_user/2 改为 /3（新增 Did 绑定 token）；改密不签发
     %% 登录 token，传空 Did 即可（verify_user 的返回 map 此处仅用于校验成败）。
@@ -353,36 +365,9 @@ find_by_ids(Ids, Column) ->
 -spec update(integer(), binary(), binary(), binary()) ->
     ok | {ok, integer() | binary() | boolean()} | {error, any()}.
 update(Uid, <<"email">>, Email, Code) when Code =/= <<>> ->
-    case passport_logic:consume_code(Email, Code) of
-        {ok, _} ->
-            case maps:size(user_ds:find_by_email(Email, <<"id">>)) of
-                0 ->
-                    %% bind_email/update 失败时不得向用户报 success（P1：错误路径吞没）
-                    case user_ds:bind_email(Uid, Email) of
-                        {ok, _} -> {ok, <<"success">>};
-                        {error, _} -> {error, {1, <<"">>, <<"绑定失败，请稍后重试"/utf8>>}}
-                    end;
-                _ ->
-                    {error, {1, <<"">>, <<"Email 被占用"/utf8>>}}
-            end;
-        {error, ErrMsg} ->
-            {error, {1, <<"">>, ErrMsg}}
-    end;
+    update_identity(Uid, email, Email, Code);
 update(Uid, <<"mobile">>, Mobile, Code) when Code =/= <<>> ->
-    case passport_logic:consume_code(Mobile, Code) of
-        {ok, _} ->
-            case maps:size(user_ds:find_by_mobile(Mobile, <<"id">>)) of
-                0 ->
-                    case user_ds:update_field(Uid, <<"mobile">>, Mobile) of
-                        {ok, _} -> {ok, <<"success">>};
-                        {error, _} -> {error, {1, <<"">>, <<"绑定失败，请稍后重试"/utf8>>}}
-                    end;
-                _ ->
-                    {error, {1, <<"">>, <<"手机号被占用"/utf8>>}}
-            end;
-        {error, ErrMsg} ->
-            {error, {1, <<"">>, ErrMsg}}
-    end;
+    update_identity(Uid, mobile, Mobile, Code);
 update(Uid, Field, Val, _Code) ->
     update(Uid, Field, Val).
 
@@ -596,15 +581,45 @@ all_digits(<<C, Rest/binary>>) when C >= $0, C =< $9 -> all_digits(Rest);
 all_digits(<<>>) -> true;
 all_digits(_) -> false.
 
+update_identity(Uid, Field, Value, Code) ->
+    case user_ds:lookup(Field, Value, <<"id">>) of
+        {error, _} ->
+            {error, {503, <<>>, <<"服务暂不可用，请稍后重试"/utf8>>}};
+        {ok, Row} when map_size(Row) =:= 0 ->
+            case passport_logic:consume_code(Value, Code) of
+                {ok, _} ->
+                    Result =
+                        case Field of
+                            email -> user_ds:bind_email(Uid, Value);
+                            mobile -> user_ds:update_field(Uid, <<"mobile">>, Value)
+                        end,
+                    case Result of
+                        {ok, _} -> {ok, <<"success">>};
+                        {error, _} -> {error, {1, <<>>, <<"绑定失败，请稍后重试"/utf8>>}}
+                    end;
+                {error, Msg} ->
+                    {error, {1, <<>>, Msg}}
+            end;
+        {ok, _} ->
+            Msg =
+                case Field of
+                    email -> <<"Email 被占用"/utf8>>;
+                    mobile -> <<"手机号被占用"/utf8>>
+                end,
+            {error, {1, <<>>, Msg}}
+    end.
+
 %% @doc email 占用查询 + 绑定（I/O 外壳）。格式已由 user_agg 裁定为合法，
 %% 此处仅查占用：无占用则发绑定邮件，已占用返回错误。
 %% @private
 bind_email_if_available(Uid, Email) ->
-    case maps:size(user_ds:find_by_email(Email, <<"id">>)) of
-        0 ->
+    case user_ds:lookup(email, Email, <<"id">>) of
+        {error, _} ->
+            {error, {503, <<>>, <<"服务暂不可用，请稍后重试"/utf8>>}};
+        {ok, Row} when map_size(Row) =:= 0 ->
             send_bind_email(Uid, Email);
-        _ ->
-            {error, {1, <<"">>, <<"Email 被占用"/utf8>>}}
+        {ok, _} ->
+            {error, {1, <<>>, <<"Email 被占用"/utf8>>}}
     end.
 
 %% ===================================================================

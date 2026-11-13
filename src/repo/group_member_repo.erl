@@ -9,6 +9,7 @@
 -export([add/2]).
 -export([upsert_active/5]).
 -export([find/3]).
+-export([find_tx/4, member_uids_tx/2]).
 -export([list_same_group/2]).
 % -export ([list_same_group/2]).
 -export([list_by_gid/2, list_by_gid/3]).
@@ -96,19 +97,39 @@ upsert_active(Conn, Gid, Uid, Role, JoinMode) ->
 %% @example group_member_repo:find(6, 1, <<"*">>).
 -spec find(integer(), integer(), binary()) -> map().
 find(Gid, Uid, Column) ->
+    case elib_pg:one(find_sql(Column), [Gid, Uid]) of
+        {ok, Row} -> Row;
+        _ -> #{}
+    end.
+
+-spec find_tx(pid(), integer(), integer(), binary()) -> {ok, map()} | {error, term()}.
+find_tx(Conn, Gid, Uid, Column) ->
+    case elib_pg:query(Conn, find_sql(Column), [Gid, Uid]) of
+        {ok, [Row | _]} -> {ok, Row};
+        {ok, []} -> {ok, #{}};
+        {error, _} = Error -> Error
+    end.
+
+find_sql(Column) ->
     Tb = tablename(),
     Entitlement = micro_community_access_repo:predicate_sql(<<"gm.group_id">>, <<"gm.user_id">>),
     % use index uk_Gid_Uid
     % 使用安全的参数化查询，避免SQL注入
-    Sql =
-        <<"SELECT ", Column/binary, " FROM ", Tb/binary,
-            " gm WHERE gm.group_id = $1 AND gm.user_id = $2 AND gm.status = 1 AND ",
+    <<"SELECT ", Column/binary, " FROM ", Tb/binary,
+        " gm WHERE gm.group_id = $1 AND gm.user_id = $2 AND gm.status = 1 AND ",
+        Entitlement/binary>>.
+
+%% A durable notice snapshots every eligible recipient in the business transaction.
+-spec member_uids_tx(pid(), integer()) -> {ok, [map()]} | {error, term()}.
+member_uids_tx(Conn, Gid) ->
+    Tb = tablename(),
+    Entitlement = micro_community_access_repo:predicate_sql(<<"gm.group_id">>, <<"gm.user_id">>),
+    elib_pg:query(
+        Conn,
+        <<"SELECT gm.user_id FROM ", Tb/binary, " gm WHERE gm.group_id = $1 AND gm.status = 1 AND ",
             Entitlement/binary>>,
-    % ?DEBUG_LOG([Sql]),
-    case elib_pg:one(Sql, [Gid, Uid]) of
-        {ok, Row} -> Row;
-        _ -> #{}
-    end.
+        [Gid]
+    ).
 
 %% Cache relation facts only; group_ds rechecks live ACL on every use.
 -spec list_active_relation_uids(integer()) -> {ok, [map()]} | {error, term()}.

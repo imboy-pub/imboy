@@ -182,6 +182,10 @@ login(<<"POST">>, Req0, _State) ->
                                                 Req0, <<"登录态服务暂不可用，请稍后重试"/utf8>>
                                             )
                                     end;
+                                {error, service_unavailable} ->
+                                    elib_response:error_with_status(
+                                        Req0, 503, <<"服务暂不可用，请稍后重试"/utf8>>, 503
+                                    );
                                 {error, Msg} ->
                                     elib_response:error(Req0, Msg)
                             end

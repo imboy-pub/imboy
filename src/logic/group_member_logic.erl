@@ -94,6 +94,8 @@ join_group(JoinMode, Uid, Gid, OptData) when is_map(OptData) ->
                     end
                 )
             of
+                {ok, 0} ->
+                    ok;
                 {ok, _UidSum} ->
                     %% T2.3: 成员变更产出领域事件，由 group_event_handler 投递通知
                     %% （替代原 group_member_join_notice 直调，逻辑已迁 handler）
@@ -159,9 +161,11 @@ leave_execute(Uid, Gid, CurrentUid) ->
         {ok, _UidSum, _GM} ->
             % 更新内存缓存
             group_ds:leave(Uid, Gid),
-            %% T2.3: 成员变更产出领域事件，由 group_event_handler 投递通知
-            %% （替代原 msg_s2c_ds:send 直调，逻辑已迁 handler）
-            imboy_domain_event:publish([{member_removed, Gid, Uid}]),
+            ok;
+        {error, {after_commit_failed, {ok, _UidSum, _GM}, Failures}} ->
+            %% 持久化通知已与成员删除提交；在线推送失败不能伪装成回滚。
+            ?ERROR_LOG([group_leave_online_delivery_failed, Gid, Failures]),
+            group_ds:leave(Uid, Gid),
             ok;
         _ ->
             ok
@@ -171,8 +175,22 @@ leave_execute(Uid, Gid, CurrentUid) ->
 -spec leave_internal(pid(), integer(), integer(), integer()) ->
     {ok, integer(), map()} | {error, any()}.
 leave_internal(Conn, Uid, Gid, CurrentUid) ->
-    % 使用 DS 层接口
-    group_member_ds:leave(Conn, Uid, Gid, CurrentUid).
+    case group_member_ds:leave(Conn, Uid, Gid, CurrentUid) of
+        {ok, _Count, GM} = Result ->
+            case
+                group_event_handler:stage_tx(
+                    Conn, {member_removed, Gid, Uid}, maps:get(<<"id">>, GM)
+                )
+            of
+                ok ->
+                    Result;
+                {error, Reason} ->
+                    ?ERROR_LOG([group_leave_notice_stage_failed, Gid, Reason]),
+                    throw({abort_tx, <<"群通知持久化失败"/utf8>>})
+            end;
+        Other ->
+            Other
+    end.
 
 %% ===================================================================
 %% alias 设置群成员昵称/别名

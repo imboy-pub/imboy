@@ -70,6 +70,9 @@
 
     escape_like/1,
 
+    %% 只读单行 seam：one/2 内部消费（2026-11-13 R1 收口，见 one/3 注释）
+    query_ro/2,
+
     %% 内部测试 seam：结果形态守卫直调（elib_tsid reserve_candidate 同款惯例）
     rows_to_maps/2
 ]).
@@ -81,7 +84,7 @@
 %% 从 pooler 获取连接并执行 Fun
 %%--------------------------------------------------------------------
 %% ===================================================================
-%% 统一的安全封装：带重试 + 异常捕获 + 连接回收
+%% 连接获取可重试；取得连接后回调只执行一次。
 %% ===================================================================
 %% @doc 简化版本的with_conn，使用默认重试参数
 -spec with_conn(fun((epgsql:connection()) -> R)) ->
@@ -97,10 +100,17 @@ when
 with_conn(Fun, Timeout) ->
     %% A retryable transaction must use its supplied connection. An implicit
     %% checkout here could commit separately and survive an outer rollback.
-    case get(elib_pg_retry_tx_active) of
+    %% 2026-11-13（R1 review）：守卫扩展到普通事务——commit_actions 在任意
+    %% 事务路径置位，体内取第二连接独立提交同样破坏外层原子性。
+    case in_pg_tx_scope() of
         true -> throw({abort_tx, nested_connection_unsupported});
         _ -> with_conn(pgsql, Fun, 3, Timeout)
     end.
+
+%% 任意事务（retry 或普通 with_tx）作用域内返回 true。
+in_pg_tx_scope() ->
+    get(elib_pg_retry_tx_active) =:= true orelse
+        get(elib_pg_commit_actions) =/= undefined.
 
 %% Fun    : (Conn -> Result)
 %% Retries: 最大重试次数
@@ -134,76 +144,73 @@ with_conn(Driver, Fun, Retries, Delay) ->
                     pooler:return_member(Driver, Conn, fail),
                     {error, dead_connection};
                 true ->
-                    run_with_conn(Driver, Conn, Fun, Retries, Delay)
+                    run_with_conn(Driver, Conn, Fun)
             end
     end.
 
-run_with_conn(Driver, Conn, Fun, Retries, Delay) ->
-    Result =
+run_with_conn(Driver, Conn, Fun) ->
+    {Result, Health} =
         try
-            Fun(Conn)
+            connection_result(Conn, Fun)
         catch
-            %% 接受 throw({abort_tx, Reason})
-            %% 业务主动失败：不重试
-            throw:{abort_tx, Reason} ->
-                %% 回滚事务，使得调用方返回二元组 {error, Reason};
-                %% CI-00 加固：连接已死时 ROLLBACK 自身抛 noproc exit，
-                %% 会从 catch 分支逃逸崩掉调用方 —— 回滚尽力而为。
-                safe_rollback(Conn),
-                {error, Reason};
-            %% 业务回滚原样传播，不进入通用异常重试或改变返回形态。
-            throw:{rollback, Reason} ->
-                safe_rollback(Conn),
-                {rollback, Reason};
-            %% 结果形态不匹配（rows_to_maps 守卫抛出）：确定性错误，重试无意义
-            throw:{result_shape_mismatch, Details} ->
-                safe_rollback(Conn),
-                {error, {result_shape_mismatch, Details}};
-            %% 其他 DB / 运行时异常
-            Class:Reason:Stacktrace ->
-                ok = ?ERROR_LOG(
-                    "DB operation failed: ~p:~p stack=~p~n",
-                    [Class, Reason, Stacktrace]
-                ),
-                %% 异常连接尽力回滚，避免 aborted transaction 回到池中。
-                safe_rollback(Conn),
-                %% 归一为二元组。此前返回 {error, Class, Reason} 三元组，
-                %% 而 query/2、execute/3 与全项目调用方一律按 {error, Reason}
-                %% 二元组匹配 —— 三元组必然 case_clause 崩溃（本文件
-                %% 109-118 行记录过 {rollback, _} 的同类事故，当时只修了
-                %% throw 分支，这一条漏了）。
+            Class:Reason:Stack ->
+                pooler:return_member(Driver, Conn, fail),
+                erlang:raise(Class, Reason, Stack)
+        end,
+    return_connection(Driver, Conn, Health),
+    Result.
+
+connection_result(Conn, Fun) ->
+    try
+        {Fun(Conn), reusable}
+    catch
+        throw:{discard_connection, Result} ->
+            {Result, discard};
+        throw:{abort_tx, Reason} ->
+            {{error, Reason}, safe_rollback(Conn)};
+        throw:{rollback, Reason} ->
+            {{rollback, Reason}, safe_rollback(Conn)};
+        throw:{result_shape_mismatch, Details} ->
+            {{error, {result_shape_mismatch, Details}}, safe_rollback(Conn)};
+        Class:Reason:Stacktrace ->
+            ok = ?ERROR_LOG("DB operation failed: ~p:~p stack=~p~n", [Class, Reason, Stacktrace]),
+            Health = safe_rollback(Conn),
+            Result =
                 case is_process_alive(Conn) of
                     true -> {error, {db_exception, Class, Reason}};
                     false -> {error, dead_connection}
-                end
-        after
-            return_connection(Driver, Conn)
-        end,
-    case Result of
-        {error, {db_exception, _Class, _Reason}} when Retries > 0 ->
-            timer:sleep(Delay),
-            with_conn(Driver, Fun, Retries - 1, Delay + 1000);
-        _ ->
-            Result
+                end,
+            {Result, Health}
     end.
 
-%% @doc 尽力而为的回滚：连接已死时 epgsql:squery 抛 noproc exit，吞掉。
+%% @doc 回滚未确认时淘汰连接，保留原始业务错误。
 %% @private
+%% 依赖 epgsql 4.8.0（deps.mk pin）的原子 ROLLBACK 返回形态
+%% {ok, [], []} + get_cmd_status {ok, rollback}；升级 epgsql 前必须复核。
 safe_rollback(Conn) ->
     try
-        _ = epgsql:squery(Conn, <<"ROLLBACK">>),
-        ok
+        case epgsql:squery(Conn, <<"ROLLBACK">>) of
+            {ok, _, _} ->
+                case epgsql:get_cmd_status(Conn) of
+                    {ok, rollback} -> reusable;
+                    _ -> discard
+                end;
+            _ ->
+                discard
+        end
     catch
         _:_:_ ->
-            ok
+            discard
     end.
 
 %% 死连接必须以 fail 归还，让 pooler 剔除并补建，避免后续请求重复命中 noproc。
-return_connection(Driver, Conn) ->
+return_connection(Driver, Conn, reusable) ->
     case is_process_alive(Conn) of
         true -> pooler:return_member(Driver, Conn);
         false -> pooler:return_member(Driver, Conn, fail)
-    end.
+    end;
+return_connection(Driver, Conn, discard) ->
+    pooler:return_member(Driver, Conn, fail).
 
 %%--------------------------------------------------------------------
 %% @doc
@@ -212,7 +219,7 @@ return_connection(Driver, Conn) ->
 %%--------------------------------------------------------------------
 
 %% @doc Abort the transaction using the existing business-failure protocol.
-%% Preserve both the exception class and tag consumed by run_with_conn/5.
+%% Preserve both the exception class and tag consumed by connection_result/2.
 -spec abort({abort_tx | rollback, term()}) -> no_return().
 abort({Tag, _} = Failure) when Tag =:= abort_tx; Tag =:= rollback ->
     throw(Failure).
@@ -228,7 +235,7 @@ with_tx(F) ->
 %% 连接获取可有界等待；取得连接后的事务体只执行一次。
 %% 网络中断时 COMMIT 是否成功可能未知，禁止通用重试重放写操作。
 -spec with_tx(fun((epgsql:connection() | pid()) -> R), epgsql:transaction_opts()) ->
-    R | {error, term()} | {rollback, term()} | no_return()
+    R | {error, term()} | {rollback, term()}
 when
     R :: term().
 with_tx(F, Opts0) ->
@@ -246,6 +253,10 @@ with_tx(F, Opts0) ->
 with_tx(F, Opts0, RetriesLeft, Delay) ->
     case get(elib_pg_retry_tx_active) of
         true -> {error, nested_transaction_unsupported};
+        %% 2026-11-13（R1 review 后裁决）：普通 with_tx 内嵌套 with_tx 保持
+        %% T01 已钉住的语义——独立事务 + commit_actions 队列保存/恢复
+        %% （nested_transactions_restore_outer_queue 测试）；仅 retry-tx
+        %% 作用域拒绝嵌套（重放体必须用传入连接）。
         _ -> with_tx_unchecked(F, Opts0, RetriesLeft, Delay)
     end.
 
@@ -411,6 +422,11 @@ transaction_with_actions(Conn, F, Opts, Tag) ->
             {Ref, Result} ->
                 {Conn, Actions} = erase(elib_pg_commit_actions),
                 confirm_actions(Conn, Result, Actions, Tag);
+            {rollback, _} = RolledBack ->
+                case safe_rollback(Conn) of
+                    reusable -> RolledBack;
+                    discard -> throw({discard_connection, RolledBack})
+                end;
             Other ->
                 Other
         end
@@ -436,7 +452,7 @@ confirm_actions(Conn, Result, Actions, Tag) ->
             %% 已确认回滚时保留业务错误；内部封装防止连接层重试，丢弃提交动作。
             {Tag, Result, #{}};
         _ ->
-            {error, {commit_not_confirmed, Result, Status}}
+            throw({discard_connection, {error, {commit_not_confirmed, Result, Status}}})
     end.
 
 %% 连接已归还池；动作不得使用旧 Conn，只执行有界提交后操作。
@@ -620,11 +636,28 @@ one(Sql, Params) ->
 when
     D :: term().
 one(Sql, Params, Default) ->
-    case query(Sql, Params) of
+    %% 2026-11-13 R1 收口（全量门二十三实证）：one/2 是只读单行 SELECT，
+    %% 无独立 COMMIT、不破坏外层事务原子性——内部走 query_ro 直连
+    %% （query_ro 绕过 with_conn/2 的 nested-connection 作用域守卫，该守卫
+    %% 针对事务体内第二连接的写/独立提交）。守卫自测负例全部以 query/2
+    %% 钉住，不受本豁免影响；mock 面保持 one/2 原名（workspace_guard
+    %% 归属解析 autocommit 路径经此恢复 main 等价行为）。
+    case query_ro(Sql, Params) of
         {ok, [Row | _Rest]} -> {ok, Row};
         {ok, []} -> {ok, Default};
         Error -> Error
     end.
+
+%% @doc 只读自动提交查询：语义同 query/2，但不受 with_conn/2 的
+%% nested-connection 守卫拦截（守卫针对事务体内第二连接的写/独立提交；
+%% 纯 SELECT 无独立提交，不破坏外层原子性）。仅供"纯 SELECT 且读取对象
+%% 落库不可变"的路径使用（当前消费者：elib_pg:one/2,3 与
+%% workspace_resolver 归属解析 autocommit 路径）；事务体内的写路径仍
+%% 必须使用传入连接或 with_tx，守卫对它们保持收紧。
+-spec query_ro(iodata(), [term()]) ->
+    {ok, [map()]} | {error, term()}.
+query_ro(Sql, Params) ->
+    with_conn(pgsql, fun(C) -> query(C, Sql, Params) end, 3, ?DEFAULT_TIMEOUT).
 
 -spec pluck(
     Table :: binary(),

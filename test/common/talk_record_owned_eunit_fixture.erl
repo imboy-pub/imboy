@@ -348,18 +348,119 @@ assert_owned_database(C, Db) ->
     Actual = maps:without([host, port], Proof),
     ok.
 
+%% The inner module run previously had no deadline of its own: it ran
+%% inline on the fixture process while the outer peer:call budget
+%% (Seconds - 20) exceeded every operator observation window. A wedge
+%% anywhere inside the child VM therefore held the whole exclusive lane
+%% forever (final-gate 18/19/21/22: {start, Root} frame with no done).
+%% Run the module under a linked runner with a hard deadline so any wedge
+%% variant becomes a red root with a stack dump instead of a lane-wide
+%% hang. Default deadline 7200s; TALK_OWNED_HARD_DEADLINE_S overrides
+%% (>= 60s enforced; absent/invalid values fall back to the default).
+%% Existing success/report-failure semantics are unchanged: the listener
+%% still reports to this process and assert_summary/2,2 still gates the
+%% final verdict.
 run_original(Module) ->
+    DeadlineMs = watchdog_deadline_ms(),
     Ref = make_ref(),
-    Result = eunit:test({module, Module}, [verbose, {report, {?MODULE, [{owner, {self(), Ref}}]}}]),
+    Parent = self(),
+    Runner =
+        spawn_link(fun() ->
+            Result =
+                eunit:test(
+                    {module, Module},
+                    [verbose, {report, {?MODULE, [{owner, {Parent, Ref}}]}}]
+                ),
+            Parent ! {owned_talk_runner_done, Ref, Result}
+        end),
     receive
-        {Ref, {ok, Summary}} ->
-            %% Preserve an original failed result even if cleanup also fails.
-            ok = assert_summary(Module, Result, Summary),
-            {Result, Summary};
-        {Ref, Other} ->
-            error({owned_talk_report_failed, Module, Other})
-    after 1000 -> error({owned_talk_report_missing, Module})
+        {owned_talk_runner_done, Ref, Result} ->
+            receive
+                {Ref, {ok, Summary}} ->
+                    %% Preserve an original failed result even if cleanup also fails.
+                    ok = assert_summary(Module, Result, Summary),
+                    {Result, Summary};
+                {Ref, Other} ->
+                    error({owned_talk_report_failed, Module, Other})
+            after 1000 -> error({owned_talk_report_missing, Module})
+            end;
+        {'EXIT', Runner, Reason} ->
+            error({owned_talk_runner_died, Module, Reason})
+    after DeadlineMs ->
+        stuck_process_dump(Module, DeadlineMs),
+        exit(Runner, kill),
+        error({owned_talk_watchdog_deadline, Module, DeadlineMs})
     end.
+
+%% Hard ceiling for one mapped module's inner eunit run. The entry/1 budgets
+%% are ceilings, not waits; this bound only fires when something inside the
+%% child VM stops making progress (no DB wait active, no eunit timeout
+%% reached) and would otherwise hold the exclusive lane until the 9280s
+%% peer:call budget expires - far beyond any operator observation window.
+watchdog_deadline_ms() ->
+    case os:getenv("TALK_OWNED_HARD_DEADLINE_S") of
+        false ->
+            7200000;
+        "" ->
+            7200000;
+        Raw ->
+            case string:to_integer(string:trim(Raw)) of
+                {N, []} when N >= 60 -> N * 1000;
+                _ -> 7200000
+            end
+    end.
+
+%% Post-mortem for the wedged run: every process in this child VM with its
+%% current function and a bounded stack, written to user output so the
+%% runner capture keeps it in the gate log. Bounded to the first 400
+%% processes and 12 stack lines each; the dump is evidence, not a result
+%% channel, and printable-ASCII filtered.
+stuck_process_dump(Module, DeadlineMs) ->
+    Procs = lists:sublist(processes(), 400),
+    Rows = [
+        begin
+            Info = process_info(Pid, [registered_name, current_function, backtrace]),
+            Name =
+                case proplists:get_value(registered_name, Info, undefined) of
+                    Atom when is_atom(Atom) -> [Atom];
+                    _ -> []
+                end,
+            {Pid, Name, proplists:get_value(current_function, Info),
+                proplists:get_value(backtrace, Info)}
+        end
+     || Pid <- Procs
+    ],
+    io:format(
+        user,
+        "TALK_OWNED_WATCHDOG_FIRED module=~p deadline_ms=~p procs=~p~n~ts~n",
+        [Module, DeadlineMs, length(Procs), format_dump(Rows)]
+    ),
+    ok.
+
+format_dump(Rows) ->
+    unicode:characters_to_binary([
+        io_lib:format("~p ~ts cur=~p~n~ts", [
+            Pid,
+            [io_lib:format("~p ", [A]) || A <- Name],
+            Cur,
+            sanitize_trace(Trace)
+        ])
+     || {Pid, Name, Cur, Trace} <- Rows
+    ]).
+
+sanitize_trace(Trace) when is_binary(Trace) ->
+    %% backtrace/0 is a tokenized binary; keep only printable ASCII lines
+    %% and cap the depth so the dump cannot flood logs with opaque terms.
+    Lines = string:split(unicode:characters_to_list(Trace, utf8), "\n", all),
+    Printable = [
+        Line
+     || Line <- lists:sublist(Lines, 24),
+        Line =/= [],
+        lists:all(fun(C) -> C >= $\s andalso C =< $~ end, Line)
+    ],
+    [io_lib:format("~ts~n", [L]) || L <- lists:sublist(Printable, 12)];
+sanitize_trace(_) ->
+    <<>>.
 
 %% The frozen T20 handler module has exactly four original generators.
 %% Check inside the peer and again after its result crosses the VM boundary.

@@ -2,13 +2,15 @@
 -behaviour(application).
 
 -export([start/2]).
--export([stop/1]).
+-export([prep_stop/1, stop/1, accepting_requests/0, readiness/0]).
 -export([maybe_migrate/0]).
 
 %% 导出供守护测试直调（e2ee_throttle_scope_config_tests：RT-P3-02 兜底注册）
 -export([init_throttle_rates/0]).
 %% 导出供启动装配校验测试直调（throttle_middleware_tests：C.8 旧配置拒绝 ready）
 -export([validate_limiter_ip_migration/0]).
+%% T02：导出供 drain 配置校验测试直调（负数/非数/超上界启动即拒）。
+-export([validate_drain_config/0]).
 %% 导出供测试直调（registry 启动校验：strict 拒启/豁免/一致性）。
 -export([validate_attachment_registry/0]).
 %% 导出供纯 HTTP 链套件复刻启动语义（enterprise_mobile_bootstrap_http_tests
@@ -16,7 +18,7 @@
 -export([ensure_rsa_keys/0]).
 
 -ifdef(TEST).
--export([start_clear/2, start_tls/2]).
+-export([start_clear/2, start_tls/2, start_runtime/2]).
 -endif.
 
 % -include("log.hrl").
@@ -27,6 +29,7 @@
 %% @doc 启动 application 回调
 -spec start(term(), term()) -> {ok, pid()} | {ok, pid(), term()} | {error, term()}.
 start(_Type, _Args) ->
+    ok = application:set_env(imboy, lifecycle, starting),
     _ = inets:start(),
     ok = imboy_env:override_from_env(),
     %% BE-W01 A02：企业密钥环 _FILE 装载（IMBOY_EB_ENTERPRISE_KEYRING_FILE，
@@ -39,6 +42,11 @@ start(_Type, _Args) ->
     %% prime IMBOYENV 缓存：所有运行时模块统一走 imboy_env:current/0
     _ = imboy_env:current(),
     ok = validate_runtime_config(),
+    %% T02：drain 预算非法（负数/非整数/超上界）必须启动即拒——带非法停机
+    %% 预算进入运行态，会在下次停机时才爆炸（prep_stop 崩溃），故障被推迟
+    %% 到最不适合排查的时刻。
+    ok = validate_drain_config(),
+    ok = validate_probe_budgets(),
     ok = validate_attachment_registry(),
     %% OTP 28 原生 json 在启动期一次性校验术语映射；请求期从
     %% persistent_term 只读，业务权限、路由和状态机不依赖这些展示词。
@@ -59,9 +67,7 @@ start(_Type, _Args) ->
     %% 内部异常自吞，不阻断主启动链
     ok = imboy_telemetry:init(),
     _ = imboy_syn:init(),
-    %% TSID V10：初始化移交 imboy_sup（纯内存 init：fixed offset +
-    %% atomics 游标）。监听器先于 sup 启动的窗口内 generate 会 fail-closed
-    %% 报 not_initialized，流量由 /readyz（elib_tsid:readiness/0）挡住。
+    %% TSID 在 imboy_sup 初始化；核心监督树完成后才开放监听器。
     % 初始化集群管理（join_cluster 内部已含 License 节点数告警）
     _ = imboy_cluster:init(),
     % 初始化验证码 ETS 表
@@ -92,7 +98,9 @@ start(_Type, _Args) ->
     Routes = imboy_router:get_routes(),
     % cowboy_router:dispatch_rules()
     Dispatch = cowboy_router:compile(Routes),
-    StartMode = config_ds:env(start_mode, http),
+    start_runtime(Dispatch, config_ds:env(start_mode, http)).
+
+start_listener(Dispatch, StartMode) ->
     ListenerResult =
         case true of
             _ when StartMode == quic ->
@@ -107,6 +115,7 @@ start(_Type, _Args) ->
                         cors_middleware,
                         % 安全响应头中间件
                         security_headers_middleware,
+                        lifecycle_middleware,
                         % 认证中间件
                         auth_middleware,
                         % 构建上限内的运行时功能只允许继续关闭
@@ -146,23 +155,93 @@ start(_Type, _Args) ->
         end,
     %% 监听器绑定失败必须阻断启动：此前 `_ =` 吞掉 start_clear/tls 的
     %% {error,...}，端口被占/证书缺失时节点会以"无监听器的僵尸"状态上线。
-    ok = ensure_listener_started(ListenerResult, StartMode),
+    ensure_listener_started(ListenerResult, StartMode).
+
+start_runtime(Dispatch, StartMode) ->
+    ok = application:set_env(imboy, lifecycle, starting),
     case imboy_sup:start_link() of
         {ok, Sup} ->
-            %% 启动空态批准（默认开，显式 false 关闭）仅在完整应用 start 时
-            %% 执行；child 重启不走此处。
-            ok = maybe_activate_limiter(),
-            %% T2.0h: 总线就绪后挂载群组领域事件订阅者（通知桥接）。
-            %% 容错：挂载失败不阻断 app 启动（总线为 sup child，通常已就绪）。
-            _ = group_event_handler:attach(),
-            %% M0（ADR 2026-10-12 定位修订）：默认 OA 应用部署引导——
-            %% IMBOY_OA_REDIRECT_URI 配置时自动登记（幂等，自吞异常不阻断
-            %% 启动）；未配置零动作。credential 不在此签发（明文不进日志），
-            %% 由 scripts/seed_default_oa_application.escript 运维通道补齐。
-            _ = enterprise_oa_bootstrap:maybe_seed(),
-            {ok, Sup};
+            try
+                ok = maybe_activate_limiter(),
+                ok = await_group_subscription(erlang:monotonic_time(millisecond) + 5000),
+                _ = enterprise_oa_bootstrap:maybe_seed(),
+                ok = start_listener(Dispatch, StartMode),
+                ok = application:set_env(imboy, lifecycle, ready),
+                {ok, Sup}
+            catch
+                Class:Reason:Stack ->
+                    %% 仅关闭本次创建的监督树；绑定失败不能停止别人的监听器。
+                    %% Sup 若已被重启风暴带走，stop 抛 noproc——不得覆盖
+                    %% 原始启动异常（R2 review P3）。
+                    unlink(Sup),
+                    try
+                        gen_server:stop(Sup, shutdown, infinity)
+                    catch
+                        _:_ -> ok
+                    end,
+                    erlang:raise(Class, Reason, Stack)
+            end;
         Other ->
             Other
+    end.
+
+await_group_subscription(Deadline) ->
+    case group_event_handler:attach() of
+        ok ->
+            ok;
+        {error, not_ready} ->
+            case erlang:monotonic_time(millisecond) < Deadline of
+                true ->
+                    timer:sleep(25),
+                    await_group_subscription(Deadline);
+                false ->
+                    error(group_subscription_not_ready)
+            end;
+        {error, Reason} ->
+            error({group_subscription_failed, Reason})
+    end.
+
+%% 独立协议测试未启动 application；真实启动始终先显式写 starting。
+-spec accepting_requests() -> boolean().
+accepting_requests() ->
+    application:get_env(imboy, lifecycle, ready) =:= ready.
+
+-spec readiness() -> ready | starting | draining | degraded.
+readiness() ->
+    case application:get_env(imboy, lifecycle, starting) of
+        ready ->
+            Required = [
+                imboy_sup,
+                imboy_cache,
+                imboy_cache_sync,
+                login_attempt_ds,
+                user_server,
+                msg_store_sup,
+                msg_store_ds,
+                msg_store_worker,
+                imboy_domain_event,
+                group_event_subscription
+            ],
+            Available = lists:all(fun(Name) -> is_pid(whereis(Name)) end, Required),
+            case
+                Available andalso imboy_cache_sync:status() =:= ready andalso limiter_ready() andalso
+                    group_event_subscription:ready()
+            of
+                true -> ready;
+                false -> degraded
+            end;
+        draining ->
+            draining;
+        _ ->
+            starting
+    end.
+
+limiter_ready() ->
+    try gen_server:call(login_attempt_ds, ready, 100) of
+        true -> true;
+        _ -> false
+    catch
+        _:_ -> false
     end.
 
 %% 缺配置时默认空态批准：限流器未激活会让认证链路 fail-closed 全量 503，
@@ -200,26 +279,129 @@ maybe_migrate() ->
 %    end.
 
 %% @doc 停止 application 回调
--spec stop(term()) -> ok.
-stop(_State) ->
-    StartMode = config_ds:env(start_mode, http),
-    case StartMode of
-        http_tls ->
-            stop_listener(imboy_listener),
-            stop_listener(imboy_listener_tls);
-        tls ->
-            stop_listener(imboy_listener_tls);
-        _ ->
-            stop_listener(imboy_listener)
+-spec prep_stop(term()) -> term().
+prep_stop(State) ->
+    ok = application:set_env(imboy, lifecycle, draining),
+    Names = listener_names(),
+    %% T02：逐个挂起监听器拒新连接（drain 第一步）。ranch:suspend_listener/1
+    %% 返回 ok | {error, not_found} | {error, simple_one_for_one}：失败仅
+    %% already_suspended（重复 drain，幂等无害）或监听器形态不适用两类，
+    %% 均不影响停机正确性 —— 显式 `_ =` 丢弃返回值；裸 list comprehension
+    %% 会让 dialyzer -Wunmatched_returns 报 ['ok'|{'error',...}] unmatched。
+    %% 后续 stop_listener/1 仍会兜底真正关闭。
+    lists:foreach(
+        fun(Name) -> _ = ranch:suspend_listener(Name) end,
+        [Name || Name <- Names, listener_exists(Name)]
+    ),
+    %% 启动期已 fail-fast 校验；此处复验防御运行期被注入非法值
+    %% （热升级/测试脚本直接 set_env），非法即崩——drain 预算不可知时
+    %% 盲目等待比立即失败更危险。
+    ok = validate_drain_config(),
+    ok = validate_probe_budgets(),
+    Timeout = application:get_env(imboy, drain_timeout_ms, 5000),
+    ok = wait_for_connections(Names, erlang:monotonic_time(millisecond) + Timeout),
+    ok = stop(State),
+    State.
+
+%% @doc T02：drain 配置启动期校验。drain_timeout_ms 必须是
+%% 0..60000 的整数（毫秒）。上界 60000 与停机预算的部署总预算对齐：
+%% drain 只是停机的第一段，其后还有监督树逆序关闭；超过 60s 的 drain
+%% 等于把整台机器的停止 deadline 全部吃掉。非法值 fail-fast 拒启，
+%% 报错信息带合法范围，避免带病进入运行态（计划 §4.2.4）。
+-spec validate_drain_config() -> ok.
+validate_drain_config() ->
+    case application:get_env(imboy, drain_timeout_ms, 5000) of
+        N when is_integer(N), N >= 0, N =< 60000 ->
+            ok;
+        Bad ->
+            logger:error(
+                "[imboy] invalid {imboy, drain_timeout_ms} = ~p: expected an integer "
+                "in 0..60000 (milliseconds). Refusing to start with an unusable "
+                "drain budget.",
+                [Bad]
+            ),
+            erlang:error({invalid_config, drain_timeout_ms, Bad})
     end.
 
-%% @doc cowboy:stop_listener/1 返回 ok | {error, not_found}；
-%% 停止时监听器不存在（如 http 模式从未启动 tls 监听器）视为已停止。
+%% @doc T02（R2 review）：/readyz 探针预算键启动期校验。两键为
+%% 0..600000 的整数（毫秒）；负数会让 pooler:take_member 的
+%% non_neg_integer guard function_clause、被探针 catch 吞成恒 503
+%% 且零日志（LB 无差别摘节点）。fail-fast 拒启，与 drain 校验同款。
+-spec validate_probe_budgets() -> ok.
+validate_probe_budgets() ->
+    Keys = [readyz_take_conn_timeout_ms, readyz_query_timeout_ms],
+    lists:foreach(
+        fun(Key) ->
+            case application:get_env(imboy, Key) of
+                undefined ->
+                    ok;
+                {ok, N} when is_integer(N), N >= 0, N =< 600000 ->
+                    ok;
+                {ok, Bad} ->
+                    logger:error(
+                        "[imboy] invalid {imboy, ~p} = ~p: expected an integer "
+                        "in 0..600000 (milliseconds). Refusing to start with an "
+                        "unusable probe budget.",
+                        [Key, Bad]
+                    ),
+                    erlang:error({invalid_config, Key, Bad})
+            end
+        end,
+        Keys
+    ).
+
+listener_exists(Name) ->
+    try ranch:info(Name) of
+        Info when is_map(Info) -> true
+    catch
+        error:badarg -> false
+    end.
+
+wait_for_connections(Names, Deadline) ->
+    Active = lists:any(
+        fun(Name) ->
+            try
+                maps:get(all_connections, ranch:info(Name)) > 0
+            catch
+                error:badarg -> false
+            end
+        end,
+        Names
+    ),
+    Remaining = Deadline - erlang:monotonic_time(millisecond),
+    case Active andalso Remaining > 0 of
+        true ->
+            timer:sleep(min(25, Remaining)),
+            wait_for_connections(Names, Deadline);
+        false ->
+            ok
+    end.
+
+-spec stop(term()) -> ok.
+stop(_State) ->
+    lists:foreach(fun stop_listener/1, listener_names()),
+    ok.
+
+listener_names() ->
+    case config_ds:env(start_mode, http) of
+        http_tls -> [imboy_listener, imboy_listener_tls];
+        tls -> [imboy_listener_tls];
+        _ -> [imboy_listener]
+    end.
+
+%% @doc cowboy:stop_listener/1 的 success typing 是 ok | {error, not_found}
+%% （ranch 侧监听器不存在即 not_found，如 http 模式从未启动 tls 监听器）——
+%% 两者都视为已停止：stop/1 是幂等尾部清理（计划 §4.2.4），此时监督树已在
+%% 关闭，raise 只会把正常停机变成崩溃退出。不再保留 {error, Reason} 兜底
+%% 分支：该形态在 cowboy 2.19 中不可达（dialyzer -Wunmatched_returns 判定
+%% "can never match"），真正的新错误形态出现时应显式扩类型而非静默吞掉。
 -spec stop_listener(atom()) -> ok.
 stop_listener(Name) ->
     case cowboy:stop_listener(Name) of
-        ok -> ok;
-        {error, not_found} -> ok
+        ok ->
+            ok;
+        {error, not_found} ->
+            ok
     end.
 
 %% @doc code:priv_dir/1 返回 string() | {error, bad_name}；

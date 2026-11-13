@@ -224,8 +224,8 @@ do_create_template(Conn, OwnerUid, OrgId, Name, RequestId) ->
             Conn, <<"workspace_template">>, OwnerUid, Gid, #{role => 4}
         )
     of
-        {ok, _} -> ok;
-        {error, Reason2} -> throw({abort_tx, {group_member_create_failed, Reason2}})
+        {ok, _} -> ok
+        %% 旧 {error,_} 分支已删：join_group/5 失败统一 throw({abort_tx,…})。
     end,
     %% 4. 默认 Channel（Announcements，scope=workspace；创建者成为
     %%    Channel Admin（role 3，镜像 channel_ds:create_channel/3 的创建者写法）

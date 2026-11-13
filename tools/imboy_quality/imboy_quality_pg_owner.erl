@@ -11,7 +11,8 @@
     validate_empty_pidfile/1,
     execution_context/1,
     claim_receipt/5,
-    commit_receipt/5
+    commit_receipt/5,
+    cancel_start/3
 ]).
 
 -ifdef(TEST).
@@ -39,6 +40,12 @@ start(Ctrl, Root, Register) when is_function(Register, 3) ->
         "-c",
         "logging_collector=off",
         "-c",
+        %% 门十七/十八实证：默认 max_connections=100 在 4 worker × (worker 池 +
+        %% 隔离夹具 fresh peer 池 + marker provision + boot 迁移) 并发下被打满
+        %% （too_many_connections 53300 共 40+72 处）。run 独占 PG 提高连接槽；
+        %% 启动参数不在 provision_digest 输入内，不改 provision 身份。
+        "max_connections=400",
+        "-c",
         "log_statement=none",
         "-c",
         "log_min_duration_statement=-1"
@@ -47,8 +54,10 @@ start(Ctrl, Root, Register) when is_function(Register, 3) ->
     Ref = make_ref(),
     ok = persist_launch_intent(Ctrl, Id, Meta),
     {Owner, Mon} = spawn_monitor(fun() ->
-        owner_start(Parent, Ref, Meta, Log, Args, Id, Ctrl, Root)
+        receive {pg_launch, Ref} -> owner_start(Parent, Ref, Meta, Log, Args, Id, Ctrl, Root) end
     end),
+    imboy_quality_backend:track_launch(Owner,Ref,Id),
+    Owner ! {pg_launch,Ref},
     StartResult = await_start(Owner, Mon, Ref, Id, 10000),
     erlang:demonitor(Mon, [flush]),
     {Port, Pid, StartReceipt} =
@@ -72,7 +81,7 @@ start(Ctrl, Root, Register) when is_function(Register, 3) ->
     case Registration of
         ok ->
             case safe_call(fun() -> verify_registered(Handle, Ctrl, Root) end) of
-                ok -> {ok, Handle};
+                ok -> imboy_quality_backend:track_pg(Handle), {ok, Handle};
                 Error -> fail_start(Handle, {registration_mismatch, Error})
             end;
         Error ->
@@ -159,6 +168,8 @@ verify_handle(H, Ctrl, Args, Root) ->
             {error, postgres_port_or_readiness_unverified}
     end.
 
+require_execution_gate(#{<<"schema">> := <<"IMBOY_BACKEND_ACCEPTANCE_V1">>} = State) ->
+    imboy_quality_backend:authorize(State, start_pg);
 require_execution_gate(State) ->
     {ok, Repo} = file:get_cwd(),
     true = unicode:characters_to_binary(Repo) =:= maps:get(<<"worktree">>, State),
@@ -398,6 +409,9 @@ owner_start(Parent, Ref, Meta, Log, Args, Nonce, Ctrl, Root) ->
         try
             ok = file:change_mode(Log, 8#600),
             receive
+                {pg_cancel_start_from, From, ObserverRef, Ref, Nonce} ->
+                    From ! {ObserverRef,{not_started,start_cancelled}},
+                    error(start_cancelled);
                 {pg_cancel_start, Ref} -> error(start_cancelled)
             after 0 -> ok
             end,
@@ -548,6 +562,13 @@ owner_loop(Port, F, Meta, Pid, Nonce, LogStatus, Pending) ->
                     From ! {Ref, {error, invalid_receipt}},
                     owner_loop(Port, F, Meta, Pid, Nonce, LogStatus, Pending)
             end;
+        {pg_cancel_start_from, From, ObserverRef, Ref, Nonce} ->
+            case Ref =:= get(pg_owner_start_ref) of
+                true ->
+                    put(pg_cancel_observer,{From,ObserverRef}),
+                    cancel_owner(Port,F,Meta,Pid,Nonce,LogStatus,Pending);
+                false -> owner_loop(Port,F,Meta,Pid,Nonce,LogStatus,Pending)
+            end;
         {pg_cancel_start, Ref} ->
             case Ref =:= get(pg_owner_start_ref) of
                 true -> cancel_owner(Port, F, Meta, Pid, Nonce, LogStatus, Pending);
@@ -611,6 +632,10 @@ cancel_owner(Port, F, Meta, Pid, Nonce, LogStatus, Pending) ->
     end.
 
 notify_start_cancel(Result) ->
+    case erase(pg_cancel_observer) of
+        {Observer,ObserverRef} -> Observer ! {ObserverRef,Result};
+        _ -> ok
+    end,
     case {get(pg_owner_parent), get(pg_owner_start_ref)} of
         {Parent, Ref} when is_pid(Parent), is_reference(Ref) ->
             Parent ! {Ref, cancel_result, self(), Result},
@@ -618,6 +643,13 @@ notify_start_cancel(Result) ->
         _ ->
             ok
     end.
+
+%% Cancellation uses the original launch reference and the owner's verified stop
+%% path. A timeout is explicitly unconfirmed and leaves launch evidence intact.
+cancel_start(Owner,StartRef,Nonce) when is_pid(Owner),is_reference(StartRef),is_binary(Nonce) ->
+    Ref=make_ref(),
+    Owner ! {pg_cancel_start_from,self(),Ref,StartRef,Nonce},
+    receive {Ref,Result}->Result after 25000->{error,postgres_cancel_exit_unverified} end.
 
 request_stop(H) ->
     Owner = maps:get(owner, H),

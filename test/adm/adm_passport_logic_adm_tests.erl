@@ -4,6 +4,9 @@
 %% test/ 子目录平铺编译到 test/，同名 beam 互相覆盖导致本文件用例从不被执行。
 %% 改名恢复发现执行（用例内容未改动，非 skip 非删除）。
 -include("eunit_setup.hrl").
+-define(WITH_IDENTITY_MECKS(Configs, Fun),
+    ?WITH_MECKS(identity_lookup_test_support:mocks(Configs), Fun)
+).
 
 %%%===================================================================
 %%% @doc
@@ -19,7 +22,7 @@
 
 %% @doc 测试空密码登录失败
 do_login_with_empty_password_fails_test_() ->
-    ?WITH_MECKS(
+    ?WITH_IDENTITY_MECKS(
         [
             {elib_type, [
                 {'is_mobile', 1, fun(_Mobile) -> true end}
@@ -40,7 +43,7 @@ do_login_with_mobile_and_mock_test_() ->
     % 使用固定的密码哈希，避免在测试中调用复杂函数
     % 这是一个伪造的哈希值，仅用于测试
     PwdHash = <<"fake_hash_for_testing_only">>,
-    ?WITH_MECKS(
+    ?WITH_IDENTITY_MECKS(
         [
             {elib_type, [
                 {'is_mobile', 1, fun(_Mobile) -> true end}
@@ -78,7 +81,7 @@ do_login_with_mobile_and_mock_test_() ->
 %% @doc 测试使用账号登录（需要 Mock）
 do_login_with_account_and_mock_test_() ->
     PwdHash = <<"fake_hash_for_testing_only">>,
-    ?WITH_MECKS(
+    ?WITH_IDENTITY_MECKS(
         [
             {elib_type, [
                 {'is_mobile', 1, fun(_Account) -> false end}
@@ -114,7 +117,7 @@ do_login_with_account_and_mock_test_() ->
 
 %% @doc 测试使用不存在账号登录失败
 do_login_with_nonexistent_account_test_() ->
-    ?WITH_MECKS(
+    ?WITH_IDENTITY_MECKS(
         [
             {elib_type, [
                 {'is_mobile', 1, fun(_Account) -> false end}
@@ -140,7 +143,7 @@ do_login_with_nonexistent_account_test_() ->
 
 %% @doc 测试使用错误密码登录失败
 do_login_with_wrong_password_test_() ->
-    ?WITH_MECKS(
+    ?WITH_IDENTITY_MECKS(
         [
             {elib_type, [
                 {'is_mobile', 1, fun(_Mobile) -> true end}
@@ -172,7 +175,7 @@ do_login_with_wrong_password_test_() ->
 %% @doc 测试禁用用户登录失败
 do_login_with_disabled_account_test_() ->
     PwdHash = <<"fake_hash_for_testing_only">>,
-    ?WITH_MECKS(
+    ?WITH_IDENTITY_MECKS(
         [
             {elib_type, [
                 {'is_mobile', 1, fun(_Mobile) -> true end}

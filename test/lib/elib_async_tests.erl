@@ -65,7 +65,8 @@ async_retry_failed_test() ->
     ?assert(is_pid(Pid)),
 
     receive
-        after 500 -> ok  % 等待异步完成
+    % 等待异步完成
+    after 500 -> ok
     end.
 
 %% @doc 测试默认参数的异步重试
@@ -89,13 +90,171 @@ async_retry_default_test() ->
 %%% async/2 测试（带超时）
 %%%===================================================================
 
+async_success_lifecycle_test_() ->
+    [
+        ?_test(
+            with_running_task(fun() -> Value end, infinity, fun(Pid, Ref, Task) ->
+                Task ! run,
+                ?assertEqual(normal, wait_down(Pid, Ref)),
+                ?assertNot(is_process_alive(Task))
+            end)
+        )
+     || Value <- [ok, normal, 42, <<>>, [], #{}, {ok, done}]
+    ].
+
+async_failure_is_logged_test() ->
+    pure_mock_fixture:run(fun() ->
+        Parent = self(),
+        ok = meck:new(elib_log, [no_link, passthrough]),
+        ok = meck:expect(elib_log, internal_log, fun(error, Format, Args, elib_async, _) ->
+            Parent ! {async_log, Format, Args},
+            ok
+        end),
+        try
+            with_running_task(
+                fun() -> error(synthetic_task_failure) end,
+                1000,
+                fun(Pid, Ref, Task) ->
+                    Task ! run,
+                    _ = wait_down(Pid, Ref),
+                    receive
+                        {async_log, "[ASYNC_FAILED] Fun 异常退出: ~p", [_]} -> ok
+                    after 1000 -> error(async_failure_not_logged)
+                    end,
+                    ?assertNot(is_process_alive(Task))
+                end
+            )
+        after
+            meck:unload(elib_log)
+        end
+    end).
+
+async_timeout_confirms_task_exit_test() ->
+    with_running_task(
+        fun() ->
+            receive
+                never -> ok
+            end
+        end,
+        50,
+        fun(Pid, Ref, Task) ->
+            Task ! run,
+            _ = wait_down(Pid, Ref),
+            ?assertNot(is_process_alive(Task))
+        end
+    ).
+
+async_returned_process_killed_leaves_no_task_test() ->
+    with_running_task(
+        fun() ->
+            receive
+                never -> ok
+            end
+        end,
+        infinity,
+        fun(Pid, Ref, Task) ->
+            exit(Pid, kill),
+            ?assertEqual(killed, wait_down(Pid, Ref)),
+            ?assertNot(is_process_alive(Task))
+        end
+    ).
+
+async_completion_timeout_race_test() ->
+    lists:foreach(
+        fun(_) ->
+            Count = atomics:new(1, []),
+            with_running_task(
+                fun() -> atomics:add(Count, 1, 1) end,
+                10,
+                fun(Pid, Ref, Task) ->
+                    erlang:send_after(10, Task, run),
+                    _ = wait_down(Pid, Ref),
+                    ?assertNot(is_process_alive(Task)),
+                    ?assert(atomics:get(Count, 1) =< 1)
+                end
+            )
+        end,
+        lists:seq(1, 20)
+    ).
+
+async_zero_timeout_confirms_task_exit_test() ->
+    Pid = elib_async:async(
+        fun() ->
+            receive
+                never -> ok
+            end
+        end,
+        0
+    ),
+    Ref = monitor(process, Pid),
+    ?assert(lists:member(wait_down(Pid, Ref), [killed, noproc])),
+    ?assertNot(is_process_alive(Pid)).
+
+async_invalid_arguments_do_not_start_task_test() ->
+    Count = atomics:new(1, []),
+    Fun = fun() -> atomics:add(Count, 1, 1) end,
+    [?assertError(badarg, elib_async:async(Fun, Timeout)) || Timeout <- [-1, invalid, 1 bsl 32]],
+    ?assertError(badarg, elib_async:async(not_a_function, 100)),
+    ?assertEqual(0, atomics:get(Count, 1)).
+
+async_maximum_timeout_test() ->
+    with_running_task(fun() -> ok end, 16#ffffffff, fun(Pid, Ref, Task) ->
+        Task ! run,
+        ?assertEqual(normal, wait_down(Pid, Ref))
+    end).
+
+with_running_task(Fun, Timeout, Check) ->
+    Parent = self(),
+    Tag = make_ref(),
+    Pid = elib_async:async(
+        fun() ->
+            process_flag(trap_exit, true),
+            Parent ! {Tag, self()},
+            receive
+                run -> Fun()
+            end
+        end,
+        Timeout
+    ),
+    Ref = monitor(process, Pid),
+    receive
+        {Tag, Task} ->
+            Watchers =
+                case process_info(Task, monitored_by) of
+                    {monitored_by, Pids} -> [{P, monitor(process, P)} || P <- Pids, P =/= self()];
+                    undefined -> []
+                end,
+            try
+                Check(Pid, Ref, Task),
+                [?assert(lists:member(wait_down(P, M), [normal, noproc])) || {P, M} <- Watchers]
+            after
+                exit(Pid, kill),
+                exit(Task, kill),
+                demonitor(Ref, [flush]),
+                [demonitor(M, [flush]) || {_, M} <- Watchers]
+            end
+    after 1000 ->
+        exit(Pid, kill),
+        demonitor(Ref, [flush]),
+        error(async_task_not_started)
+    end.
+
+wait_down(Pid, Ref) ->
+    receive
+        {'DOWN', Ref, process, Pid, Reason} -> Reason
+    after 1500 -> error(async_process_did_not_exit)
+    end.
+
 %% @doc 测试带超时的异步执行（成功）
 async_with_timeout_success_test() ->
     Parent = self(),
 
-    Pid = elib_async:async(fun() ->
-        Parent ! {async_result, success}
-    end, 500),
+    Pid = elib_async:async(
+        fun() ->
+            Parent ! {async_result, success}
+        end,
+        500
+    ),
 
     ?assert(is_pid(Pid)),
 
@@ -109,27 +268,34 @@ async_with_timeout_success_test() ->
 async_with_timeout_fail_test() ->
     Parent = self(),
 
-    Pid = elib_async:async(fun() ->
-        timer:sleep(1000),
-        Parent ! {async_result, should_not_reach}
-    end, 100),
+    Pid = elib_async:async(
+        fun() ->
+            timer:sleep(1000),
+            Parent ! {async_result, should_not_reach}
+        end,
+        100
+    ),
 
     ?assert(is_pid(Pid)),
 
     receive
         {async_result, should_not_reach} -> ?assert(false, should_timeout)
     after 300 ->
-        ok  % 超时是预期行为
+        % 超时是预期行为
+        ok
     end.
 
 %% @doc 测试带超时的异步执行（刚好在超时前完成）
 async_with_timeout_just_in_time_test() ->
     Parent = self(),
 
-    Pid = elib_async:async(fun() ->
-        timer:sleep(80),
-        Parent ! {async_result, just_in_time}
-    end, 100),
+    Pid = elib_async:async(
+        fun() ->
+            timer:sleep(80),
+            Parent ! {async_result, just_in_time}
+        end,
+        100
+    ),
 
     ?assert(is_pid(Pid)),
 
@@ -147,10 +313,13 @@ async_with_timeout_just_in_time_test() ->
 async_with_timeout_api_success_test() ->
     Parent = self(),
 
-    Pid = elib_async:async_with_timeout(fun() ->
-        Parent ! {api_result, api_success},
-        api_success
-    end, 500),
+    Pid = elib_async:async_with_timeout(
+        fun() ->
+            Parent ! {api_result, api_success},
+            api_success
+        end,
+        500
+    ),
 
     ?assert(is_pid(Pid)),
 
@@ -187,9 +356,12 @@ async_with_timeout_api_retry_test() ->
 async_with_callback_success_test() ->
     Parent = self(),
 
-    elib_async:async_with_callback(fun() ->
-        callback_result
-    end, Parent),
+    elib_async:async_with_callback(
+        fun() ->
+            callback_result
+        end,
+        Parent
+    ),
 
     receive
         {async_result, {ok, callback_result}} -> ok;
@@ -202,9 +374,12 @@ async_with_callback_success_test() ->
 async_with_callback_error_test() ->
     Parent = self(),
 
-    elib_async:async_with_callback(fun() ->
-        erlang:error(test_error)
-    end, Parent),
+    elib_async:async_with_callback(
+        fun() ->
+            erlang:error(test_error)
+        end,
+        Parent
+    ),
 
     receive
         {async_result, {error, test_error}} -> ok;
@@ -227,20 +402,23 @@ async_return_different_types_test_() ->
         {fun() -> {tuple, ok} end, {tuple, ok}}
     ],
 
-    lists:map(fun({Fun, Expected}) ->
-        ?_test(begin
-            Parent = self(),
-            elib_async:async(fun() ->
-                Parent ! {result, Fun()}
-            end),
+    lists:map(
+        fun({Fun, Expected}) ->
+            ?_test(begin
+                Parent = self(),
+                elib_async:async(fun() ->
+                    Parent ! {result, Fun()}
+                end),
 
-            receive
-                {result, Result} -> ?assertEqual(Expected, Result)
-            after 1000 ->
-                ?assert(false, timeout)
-            end
-        end)
-    end, TestCases).
+                receive
+                    {result, Result} -> ?assertEqual(Expected, Result)
+                after 1000 ->
+                    ?assert(false, timeout)
+                end
+            end)
+        end,
+        TestCases
+    ).
 
 %% @doc 测试异步函数抛出不同类型的异常
 async_throw_different_exceptions_test_() ->
@@ -250,19 +428,22 @@ async_throw_different_exceptions_test_() ->
         {fun() -> exit(normal) end, normal}
     ],
 
-    lists:map(fun({Fun, ExpectedError}) ->
-        ?_test(begin
-            Parent = self(),
-            elib_async:async_with_callback(Fun, Parent),
+    lists:map(
+        fun({Fun, ExpectedError}) ->
+            ?_test(begin
+                Parent = self(),
+                elib_async:async_with_callback(Fun, Parent),
 
-            receive
-                {async_result, {error, Error}} -> ?assertEqual(ExpectedError, Error);
-                {async_result, {ok, _}} -> ?assert(false, should_have_failed)
-            after 1000 ->
-                ?assert(false, timeout)
-            end
-        end)
-    end, TestCases).
+                receive
+                    {async_result, {error, Error}} -> ?assertEqual(ExpectedError, Error);
+                    {async_result, {ok, _}} -> ?assert(false, should_have_failed)
+                after 1000 ->
+                    ?assert(false, timeout)
+                end
+            end)
+        end,
+        TestCases
+    ).
 
 %% @doc 测试立即返回的函数
 async_immediate_return_test() ->
@@ -282,27 +463,34 @@ async_immediate_return_test() ->
 async_zero_timeout_test() ->
     Parent = self(),
 
-    Pid = elib_async:async(fun() ->
-        timer:sleep(10),
-        Parent ! {result, delayed}
-    end, 0),
+    Pid = elib_async:async(
+        fun() ->
+            timer:sleep(10),
+            Parent ! {result, delayed}
+        end,
+        0
+    ),
 
     ?assert(is_pid(Pid)),
 
     receive
         {result, delayed} -> ?assert(false, should_timeout)
     after 50 ->
-        ok  % 超时是预期行为
+        % 超时是预期行为
+        ok
     end.
 
 %% @doc 测试长超时时间
 async_long_timeout_test() ->
     Parent = self(),
 
-    Pid = elib_async:async(fun() ->
-        timer:sleep(100),
-        Parent ! {result, long_timeout_ok}
-    end, 5000),
+    Pid = elib_async:async(
+        fun() ->
+            timer:sleep(100),
+            Parent ! {result, long_timeout_ok}
+        end,
+        5000
+    ),
 
     ?assert(is_pid(Pid)),
 
@@ -316,10 +504,14 @@ async_long_timeout_test() ->
 async_retry_negative_count_test() ->
     Parent = self(),
 
-    Pid = elib_async:async_retry(fun() ->
-        Parent ! retry_negative_count_executed,
-        ok
-    end, -1, 10),
+    Pid = elib_async:async_retry(
+        fun() ->
+            Parent ! retry_negative_count_executed,
+            ok
+        end,
+        -1,
+        10
+    ),
     ?assert(is_pid(Pid)),
 
     receive
@@ -352,16 +544,21 @@ async_retry_zero_delay_test() ->
 async_very_large_timeout_test() ->
     Parent = self(),
 
-    Pid = elib_async:async(fun() ->
-        Parent ! {result, quick}
-    end, 999999999),  % 非常大的超时值
+    Pid = elib_async:async(
+        fun() ->
+            Parent ! {result, quick}
+        % 非常大的超时值
+        end,
+        999999999
+    ),
 
     ?assert(is_pid(Pid)),
 
     receive
         {result, quick} -> ok
     after 100 ->
-        ok  % 应该快速完成
+        % 应该快速完成
+        ok
     end.
 
 %%%===================================================================
@@ -373,10 +570,13 @@ async_concurrent_tasks_test() ->
     Parent = self(),
     TaskCount = 10,
 
-    Pids = [elib_async:async(fun() ->
-        timer:sleep(10),
-        Parent ! {task_result, TaskId}
-    end) || TaskId <- lists:seq(1, TaskCount)],
+    Pids = [
+        elib_async:async(fun() ->
+            timer:sleep(10),
+            Parent ! {task_result, TaskId}
+        end)
+     || TaskId <- lists:seq(1, TaskCount)
+    ],
 
     ?assertEqual(TaskCount, length(Pids)),
 
@@ -389,9 +589,16 @@ async_concurrent_retry_tasks_test() ->
     Parent = self(),
     TaskCount = 5,
 
-    [elib_async:async_retry(fun() ->
-        Parent ! {retry_task, ok}
-    end, 2, 10) || _ <- lists:seq(1, TaskCount)],
+    [
+        elib_async:async_retry(
+            fun() ->
+                Parent ! {retry_task, ok}
+            end,
+            2,
+            10
+        )
+     || _ <- lists:seq(1, TaskCount)
+    ],
 
     Results = receive_retry_results(TaskCount, []),
     ?assertEqual(TaskCount, length(Results)).
@@ -401,9 +608,15 @@ async_concurrent_callback_tasks_test() ->
     Parent = self(),
     TaskCount = 5,
 
-    [elib_async:async_with_callback(fun() ->
-        {ok, ok}
-    end, Parent) || _ <- lists:seq(1, TaskCount)],
+    [
+        elib_async:async_with_callback(
+            fun() ->
+                {ok, ok}
+            end,
+            Parent
+        )
+     || _ <- lists:seq(1, TaskCount)
+    ],
 
     Results = receive_callback_results(TaskCount, []),
     ?assertEqual(TaskCount, length(Results)).
@@ -447,55 +660,58 @@ receive_callback_results(Count, Acc) ->
 
 %% @doc 模拟真实场景：异步发送消息
 async_send_message_simulation_test_() ->
-    {setup,
-     fun() -> ok end,
-     fun(_) -> ok end,
-     fun(_) ->
-         [
-          ?_test(begin
-              Parent = self(),
-              MsgId = <<"msg123">>,
-              ToId = 12345,
+    {setup, fun() -> ok end, fun(_) -> ok end, fun(_) ->
+        [
+            ?_test(begin
+                Parent = self(),
+                MsgId = <<"msg123">>,
+                ToId = 12345,
 
-              % 模拟发送消息
-              elib_async:async_retry(fun() ->
-                  % 模拟消息发送
-                  Parent ! {msg_sent, MsgId, ToId},
-                  ok
-              end, 3, 50),
+                % 模拟发送消息
+                elib_async:async_retry(
+                    fun() ->
+                        % 模拟消息发送
+                        Parent ! {msg_sent, MsgId, ToId},
+                        ok
+                    end,
+                    3,
+                    50
+                ),
 
-              receive
-                  {msg_sent, MsgId, ToId} -> ok
-              after 1000 ->
-                  ?assert(false, timeout)
-              end
-          end)]
-     end}.
+                receive
+                    {msg_sent, MsgId, ToId} -> ok
+                after 1000 ->
+                    ?assert(false, timeout)
+                end
+            end)
+        ]
+    end}.
 
 %% @doc 模拟真实场景：异步带回调处理结果
 async_callback_simulation_test_() ->
-    {setup,
-     fun() -> ok end,
-     fun(_) -> ok end,
-     fun(_) ->
-         [
-          ?_test(begin
-              Parent = self(),
-              Uid = 123,
+    {setup, fun() -> ok end, fun(_) -> ok end, fun(_) ->
+        [
+            ?_test(begin
+                Parent = self(),
+                Uid = 123,
 
-              % 模拟异步查找用户并回调
-              elib_async:async_with_callback(fun() ->
-                  % 模拟数据库查询
-                  {ok, #{id => Uid, name => <<"Alice">>}}
-              end, Parent),
+                % 模拟异步查找用户并回调
+                elib_async:async_with_callback(
+                    fun() ->
+                        % 模拟数据库查询
+                        {ok, #{id => Uid, name => <<"Alice">>}}
+                    end,
+                    Parent
+                ),
 
-              receive
-                  {async_result, {ok, {ok, User}}} ->
-                      ?assertEqual(Uid, maps:get(id, User));
-                  {async_result, {error, _}} ->
-                      ?assert(false, unexpected_error)
-              after 1000 ->
-                  ?assert(false, timeout)
-              end
-          end)]
-     end}.
+                receive
+                    {async_result, {ok, {ok, User}}} ->
+                        ?assertEqual(Uid, maps:get(id, User));
+                    {async_result, {error, _}} ->
+                        ?assert(false, unexpected_error)
+                after 1000 ->
+                    ?assert(false, timeout)
+                end
+            end)
+        ]
+    end}.
