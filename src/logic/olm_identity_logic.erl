@@ -876,10 +876,10 @@ ensure_claim_authorized(_, _) ->
 -spec share_common_group(integer(), integer()) -> boolean().
 share_common_group(Uid1, Uid2) ->
     try
-        {ok, _, _, Rows} = elib_pg:query(
+        {ok, Rows} = elib_pg:query(
             "SELECT 1 FROM group_member a "
             "JOIN group_member b ON a.group_id = b.group_id "
-            "WHERE a.uid = $1 AND b.uid = $2 AND a.status = 'active' AND b.status = 'active' "
+            "WHERE a.user_id = $1 AND b.user_id = $2 AND a.status = 1 AND b.status = 1 "
             "LIMIT 1",
             [Uid1, Uid2]
         ),
