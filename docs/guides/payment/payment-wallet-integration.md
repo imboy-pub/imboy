@@ -62,9 +62,9 @@ Flutter 端使用 `safeParseBigIntJson` 转换，类型声明使用 `EntityId`�
 | 场景 | 单位 | 举例 |
 |------|------|------|
 | 钱包余额、充值订单、SaaS 账单 | **分（fen，integer）** | 5999 = 59.99 元 |
-| 频道订单 amount | **元（yuan，numeric(10,2)）** | 59.99 = 59.99 元 |
+| 频道订单 amount | **元（yuan，numeric(10,2)）**，JSON 固定两位非负十进制字符串 | `"59.99"` = 59.99 元 |
 
-> **注意**：`channel_order.amount` 是元而不是分，和其他订单的分单位不同，前端显示时不要除以 100。
+> **注意**：`channel_order.amount` 是元而不是分，和其他订单的分单位不同，前端显示时不要除以 100。创建、详情及列表接口均返回字符串，范围为 `"0.00"` 至 `"99999999.99"`，不含符号、指数或千位分隔符。
 
 ---
 
@@ -592,7 +592,7 @@ BillingSubscription 字段：
 |------|------|------|
 | `order_no` | string | 订单号 |
 | `channel_id` | integer | 频道 TSID |
-| `amount` | number | 金额，**元**（非分），如 `59.99` |
+| `amount` | string | 金额，**元**（非分），固定两位非负十进制字符串，如 `"59.99"`；范围 `"0.00"`–`"99999999.99"`（numeric(10,2)） |
 | `status` | integer | 0=待支付 |
 | `payment_method` | string | 初始默认 `wallet` |
 
