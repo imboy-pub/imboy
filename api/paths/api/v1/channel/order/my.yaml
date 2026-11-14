@@ -25,10 +25,15 @@ get:
                         description: 我的订单列表 / My orders
                         items:
                           type: object
+                          required: [amount]
                           properties:
                             order_no: { type: string }
                             channel_id: { type: integer, format: int64 }
-                            amount: { type: integer, description: 金额（分） }
+                            amount:
+                              type: string
+                              pattern: '^(0|[1-9][0-9]{0,7})[.][0-9]{2}(?![\s\S])'
+                              example: '9.90'
+                              description: '金额（元），固定两位非负十进制字符串；numeric(10,2)，范围 0.00–99999999.99 / Amount in yuan, fixed two decimals'
                             status: { type: integer, description: "0=待支付 1=已支付 2=已退款" }
                             created_at: { type: integer, description: Unix 毫秒时间戳 }
     '4XX':
