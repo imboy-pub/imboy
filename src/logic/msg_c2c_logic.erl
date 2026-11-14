@@ -474,7 +474,8 @@ stage_and_send_c2c(
                             % protected_header.sender_did 硬比对；不带 = 每条
                             % C2C v3 消息都判 context_mismatch_sender_did。
                             Msg = (message_ds:with_sender_device(Msg0, Data))#{
-                                <<"conv_seq">> => ConvSeq
+                                <<"conv_seq">> => ConvSeq,
+                                <<"created_at">> => maps:get(<<"created_at">>, Data)
                             },
                             imboy_message_helper:encode_and_send(ToId, MsgId, Msg, <<"c2c">>),
                             msg_c2c_delivery_ds:send_other_devices(

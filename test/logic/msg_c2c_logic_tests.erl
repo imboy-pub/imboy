@@ -60,11 +60,15 @@ c2c_success_sends_server_ack_and_dispatch_test_() ->
                     ?assertEqual(123, maps:get(<<"from">>, Msg)),
                     ?assertEqual(<<"456">>, maps:get(<<"to">>, Msg)),
                     ?assertEqual(<<"server-device">>, maps:get(<<"sender_did">>, Msg)),
+                    ?assertEqual(1708768700000, maps:get(<<"created_at">>, Msg)),
                     ok
                 end}
             ]},
             {imboy_message_helper, [
-                {'encode_and_send', 4, fun(_, _, _, _) -> ok end}
+                {'encode_and_send', 4, fun(_, _, Msg, _) ->
+                    ?assertEqual(1708768700000, maps:get(<<"created_at">>, Msg)),
+                    ok
+                end}
             ]}
         ],
         fun() ->
