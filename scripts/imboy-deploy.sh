@@ -27,6 +27,8 @@
 #   bash scripts/imboy-deploy.sh cs -v -l --env-file ~/.config/imboy/acme.env
 #   bash scripts/imboy-deploy.sh migrate
 #   bash scripts/imboy-deploy.sh rollback
+#   bash scripts/imboy-deploy.sh web
+#   bash scripts/imboy-deploy.sh web -l
 # =============================================================================
 set -Eeuo pipefail
 
@@ -35,12 +37,12 @@ ENV_FILE="$SCRIPT_DIR/.env.deploy"
 COMPONENT="${1:-all}"
 
 usage() {
-  echo "用法: bash scripts/imboy-deploy.sh <all|api|admin|cs|migrate|rollback> [-v|--verbose] [-l|--local] [--env-file PATH]"
+  echo "用法: bash scripts/imboy-deploy.sh <all|api|admin|cs|web|migrate|rollback> [-v|--verbose] [-l|--local] [--env-file PATH]"
   echo "      bash scripts/imboy-deploy.sh cs --skip-backend          # 仅发布 CS 面（后端不动）"
 }
 
 case "$COMPONENT" in
-  all|api|admin|cs|migrate|rollback) ;;
+  all|api|admin|cs|web|migrate|rollback) ;;
   *) usage; exit 1 ;;
 esac
 
@@ -96,6 +98,14 @@ fi
 ENV_FILE="$(cd "$(dirname "$ENV_FILE")" && pwd -P)/$(basename "$ENV_FILE")"
 # shellcheck source=/dev/null
 source "$ENV_FILE"
+
+# Web is an independent local Flutter build, before backend/version/SSH setup.
+if [[ "$COMPONENT" == web ]]; then
+  # shellcheck source=lib/web_deploy.sh
+  source "$SCRIPT_DIR/lib/web_deploy.sh"
+  web_deploy "$LOCAL_MODE"
+  exit $?
+fi
 
 # 必填项校验
 for var in SERVER_HOST SERVER_PORT SERVER_USER \
