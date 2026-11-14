@@ -333,7 +333,7 @@ transition_tx(Conn, OrderNo, FromStatus, {ToStatus, Reason}) ->
     elib_pg:execute_count(
         Conn,
         <<
-            "UPDATE public.channel_order SET status=$1, refund_reason=$2, "
+            "UPDATE public.channel_order SET status=$1::smallint, refund_reason=$2, "
             "refund_at=CASE WHEN $1=2 THEN NOW() ELSE refund_at END, updated_at=NOW() "
             "WHERE order_no=$3 AND status=$4"
         >>,
