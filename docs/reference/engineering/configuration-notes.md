@@ -13,6 +13,23 @@
 
 **Flutter**:`example.env`、`flutter_options.yaml`、build flavor;**Admin**:vite env(`VITE_API_BASE_URL` 等 build-arg)。
 
+## App 消息操作灰度开关
+
+`GET /api/v1/app/features` 在产品域开关之外，下发三个独立的 App 灰度键。
+在实际加载的 `sys.config` 的 `imboy` 配置段中显式启用，例如：
+
+```erlang
+{client_rollout_flags, #{
+    <<"chat_multi_select_v1">> => true,
+    <<"chat_history_bundle_v1">> => true,
+    <<"chat_export_share_v1">> => true
+}}
+```
+
+仅上述 binary 键的布尔 `true` 开启；缺省、非 map、字符串和数字均关闭，未知键不回显。
+这些键不改变编译产品域、产品清单或 Admin 域开关。隔离验收环境应明确配置并检查真实响应，
+不能用客户端测试覆盖代替服务端下发；示例不表示自动开启生产灰度。
+
 ## 优点
 
 - 三层 + env 覆盖的优先级清晰,本地/生产隔离良好。

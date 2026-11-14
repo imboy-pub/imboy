@@ -25,7 +25,7 @@ init(Req0, State0) ->
 
 -spec features(binary(), cowboy_req:req()) -> cowboy_req:req().
 features(<<"GET">>, Req0) ->
-    elib_response:success(Req0, imboy_feature:all());
+    elib_response:success(Req0, imboy_feature:client_snapshot());
 features(_, Req0) ->
     cowboy_req:reply(405, #{}, <<"Method Not Allowed">>, Req0).
 

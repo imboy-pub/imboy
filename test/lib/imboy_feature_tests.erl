@@ -175,6 +175,68 @@ feature_names_contract_test() ->
         imboy_feature:feature_names()
     ).
 
+client_snapshot_rollout_contract_test_() ->
+    Off = #{
+        <<"chat_multi_select_v1">> => false,
+        <<"chat_history_bundle_v1">> => false,
+        <<"chat_export_share_v1">> => false
+    },
+    On = maps:map(fun(_, _) -> true end, Off),
+    MockConfigs = [
+        {imboy_policy, [
+            {'effective_features', 0, fun() -> #{core => true, e2ee => false} end}
+        ]}
+    ],
+    ?WITH_MOCKS(MockConfigs, fun() ->
+        lists:foreach(
+            fun({Config, Expected}) ->
+                assert_client_snapshot(Config, Expected)
+            end,
+            [
+                {undefined, Off},
+                {On, On},
+                {#{<<"chat_multi_select_v1">> => true}, Off#{<<"chat_multi_select_v1">> => true}},
+                {[], Off},
+                {true, Off},
+                {
+                    #{
+                        <<"chat_multi_select_v1">> => <<"true">>,
+                        <<"chat_history_bundle_v1">> => 1,
+                        <<"chat_export_share_v1">> => "true"
+                    },
+                    Off
+                },
+                {#{chat_multi_select_v1 => true}, Off},
+                {#{<<"unknown">> => true, <<"core">> => false, <<"e2ee">> => true}, Off}
+            ]
+        )
+    end).
+
+assert_client_snapshot(Config, Expected) ->
+    Previous = application:get_env(imboy, client_rollout_flags),
+    Baseline = imboy_feature:all(),
+    Names = imboy_feature:feature_names(),
+    Compiled = imboy_feature:compiled_features(),
+    Hash = imboy_feature:manifest_hash(),
+    try
+        case Config of
+            undefined -> application:unset_env(imboy, client_rollout_flags);
+            _ -> application:set_env(imboy, client_rollout_flags, Config)
+        end,
+        Snapshot = imboy_feature:client_snapshot(),
+        ?assertEqual(Expected, maps:with(maps:keys(Expected), Snapshot)),
+        ?assertEqual(Baseline, maps:without(maps:keys(Expected), Snapshot)),
+        ?assertEqual(Baseline, imboy_feature:all()),
+        ?assertEqual(Names, imboy_feature:feature_names()),
+        ?assertEqual(Compiled, imboy_feature:compiled_features()),
+        ?assertEqual(Hash, imboy_feature:manifest_hash())
+    after
+        case Previous of
+            undefined -> application:unset_env(imboy, client_rollout_flags);
+            {ok, Value} -> application:set_env(imboy, client_rollout_flags, Value)
+        end
+    end.
+
 %% --- EB-10: 企业业务依赖边 + 裁剪门 ---
 
 customer_service_depends_on_enterprise_business_test() ->
