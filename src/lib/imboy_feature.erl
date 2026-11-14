@@ -4,6 +4,7 @@
     enabled/1,
     ensure_enabled/2,
     all/0,
+    client_snapshot/0,
     feature_names/0,
     compiled/1,
     compiled_features/0,
@@ -258,6 +259,17 @@ all() ->
         {atom_to_binary(Name, utf8), enabled(Name)}
      || Name <- feature_names()
     ]).
+
+%% App 灰度开关独立于产品编译域，仅允许明确配置的布尔 true。
+-spec client_snapshot() -> map().
+client_snapshot() ->
+    Flags =
+        case application:get_env(imboy, client_rollout_flags, #{}) of
+            Value when is_map(Value) -> Value;
+            _ -> #{}
+        end,
+    Keys = [<<"chat_multi_select_v1">>, <<"chat_history_bundle_v1">>, <<"chat_export_share_v1">>],
+    maps:merge(all(), maps:from_list([{Key, maps:get(Key, Flags, false) =:= true} || Key <- Keys])).
 
 -spec ensure_enabled(cowboy_req:req(), feature()) -> ok | {error, cowboy_req:req()}.
 ensure_enabled(Req, Feature) ->
