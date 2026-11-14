@@ -1,9 +1,14 @@
-# G-QR：QR 登录一次性消费原子迁移独立方案（BLOCKED）
+# G-QR：QR 登录一次性消费原子迁移独立方案（已实施落地）
 
-> 状态：**G-QR_BLOCKED**（须 Schema 迁移，超出 CACHE_V2_2_1_W1_W5_LOCAL_IMPLEMENTATION 写入范围）
-> 本文档为计划 19.2 要求的独立方案，不是已完成实现。QR 两类 Key（`{qr_login,_}`、`{qr_login_qr,_}`）
-> 在 `imboy_cache_policy` 中标记 `blocked`，永不进入 V2 replicate；全局 ENABLE_V2 与整体安全 PASS
-> 被 G-QR 阻塞（本文件不解除）。
+> 状态：**已实施（LEE-5，2026-11-14）**——PostgreSQL 成为 QR 登录唯一权威领取源；cache_* 非原子
+> 路径整体删除；SSE/轮询统一 `claim_login_token` 原子领取；默认 `qr_login_authority=pg`；PG18
+> 运行时门禁（`RETURNING OLD` 能力）；过期行周期清扫。审计/实施/验收全记录见
+> [`docs/security/LEE-5-qr-login-claim-audit-and-fix.md`](../../security/LEE-5-qr-login-claim-audit-and-fix.md)。
+> 本文件保留为原提案与验收 oracle 出处（§6 验收 oracle 已由真实 PG 套件 + 双节点脚本全量执行）。
+>
+> 历史状态：**G-QR_BLOCKED**（须 Schema 迁移，超出 CACHE_V2_2_1_W1_W5_LOCAL_IMPLEMENTATION 写入范围）。
+> QR 两类 Key（`{qr_login,_}`、`{qr_login_qr,_}`）在 `imboy_cache_policy` 中标记 `blocked`，
+> 永不进入 V2 replicate；全局 ENABLE_V2 与整体安全 PASS 被 G-QR 阻塞（本文件不解除）。
 
 ## 1. 现状取证（2026-10-11，候选 6a28632f 的基线代码）
 

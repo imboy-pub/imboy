@@ -32,6 +32,12 @@
         {start_mode, http},
         % 启动时自动执行迁移；蓝绿部署通过 IMBOY_AUTO_MIGRATE=false 关闭，切流后显式迁移
         {auto_migrate, true},
+        % LEE-5：QR 扫码登录唯一权威 = PostgreSQL（仅接受 pg|postgres；其他值
+        % 触发节点级告警并按 pg 处理，绝不降级 cache）。claim 依赖 PG18 的
+        % UPDATE ... RETURNING OLD——server_version_num < 180000 或 PG 不可用时
+        % QR 登录 fail closed 明确拒绝（HTTP 200 信封业务码 503）。
+        % 迁移前提：00000170_qr_login_session。
+        {qr_login_authority, pg},
         %% D02（2026-10-27 冻结）：免打扰旧规则（user_dnd_rule.time_zone IS NULL）
         %% 的部署 fallback IANA zone。必须与本部署服务器 OS 时区/业务运营时区
         %% 一致（本部署 = Asia/Shanghai，用户确认）；缺省即 Asia/Shanghai。

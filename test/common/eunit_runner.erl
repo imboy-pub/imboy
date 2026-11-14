@@ -684,7 +684,12 @@ cleanup_start_orphans() ->
     {imboy_sup, moderation_sweep_logic},
     {imboy_sup, user_deletion_logic},
     {imboy_sup, credential_retention_worker},
-    {imboy_sup, agent_payment_compensation_worker}
+    {imboy_sup, agent_payment_compensation_worker},
+    %% LEE-5：QR 过期会话清扫（5min 周期真 DELETE qr_login_session）——
+    %% 常驻实例会干扰 repo 套件 delete_expired 的精确计数断言，且
+    %% qr_login_cleanup_worker_tests 的 start_link 唯一名用例在全量跑
+    %% 必撞 sup 已注册实例；静默后两者均直调/自建，不受影响。
+    {imboy_sup, qr_login_cleanup_worker}
 ]).
 
 quiesce_periodic_workers() ->

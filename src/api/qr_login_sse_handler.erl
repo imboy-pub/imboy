@@ -27,6 +27,8 @@
 
 -export([init/2, info/3, terminate/3]).
 
+-include("log.hrl").
+
 %% Heartbeat 间隔，cowboy 默认 idle_timeout=60s，30s 心跳留一倍余量
 %% Heartbeat interval; cowboy default idle_timeout=60s, 30s leaves 2x margin
 -define(HEARTBEAT_INTERVAL_MS, 30000).
@@ -95,11 +97,14 @@ info(qr_sse_heartbeat, Req0, State) ->
     {ok, Req0, State#{heartbeat_timer => NewTimer}};
 info(Event, Req0, State) when is_map(Event) ->
     case maps:get(<<"status">>, Event, undefined) of
-        <<"confirmed_ready">> ->
-            %% G-QR（收口 C08）：PG 权威信号不含 token——本连接服务端原子
-            %% claim（与 status 轮询同一 UPDATE...RETURNING 消费路径）；
-            %% 恰好一个订阅连接/轮询者拿到 token，其余得到明确失败并关连接
-            %% （客户端 EventSource onerror → 降级轮询 → ALREADY_USED 兼容响应）。
+        Status when Status =:= <<"confirmed_ready">>; Status =:= <<"confirmed">> ->
+            %% LEE-5 / G-QR（收口 C08）：confirmed 信号一律只是"有凭据可领取"
+            %% 的通知，不含可采信凭据——包括滚动升级期旧节点可能广播的含
+            %% token legacy confirmed 事件（事件内嵌 token/uid 永不直接交付）。
+            %% 本连接服务端经 claim_login_token 原子领取（与 status 轮询同一
+            %% UPDATE...RETURNING 消费路径）；恰好一个订阅连接/轮询者拿到
+            %% token，其余得到明确失败并关连接（客户端 EventSource onerror
+            %% → 降级轮询 → ALREADY_USED 兼容响应）。
             SessionToken = maps:get(session_token, State, undefined),
             case qr_login_session_ds:claim_login_token(SessionToken) of
                 {ok, Claim} ->
@@ -115,16 +120,15 @@ info(Event, Req0, State) when is_map(Event) ->
                     %% token 已被其他消费者领取（status 轮询/另一连接）：
                     %% 无法无损重试——关闭连接，客户端走轮询兜底（G-QR 语义）
                     _ = cowboy_req:stream_body(<<": claimed_elsewhere\n\n">>, nofin, Req0),
+                    {stop, Req0, State};
+                {error, {claim_gate, Reason}} ->
+                    %% LEE-5：PG18 门禁/PG 故障——明确拒绝，绝无 token。
+                    ?WARN_LOG(
+                        "[lee-5] qr_login sse claim gate rejected: ~p", [Reason]
+                    ),
+                    _ = cowboy_req:stream_body(<<": service_unavailable\n\n">>, nofin, Req0),
                     {stop, Req0, State}
             end;
-        <<"confirmed">> ->
-            %% cache 确认端由同一 UpdatedSession 构造 token + scanned_by。
-            %% Legacy token-only events fail closed; do not guess the owner.
-            push_confirmed(
-                Req0, maps:get(<<"token">>, Event, undefined),
-                maps:get(<<"uid">>, Event, undefined)
-            ),
-            {stop, Req0, State};
         <<"expired">> ->
             push_map(Req0, Event),
             {stop, Req0, State};

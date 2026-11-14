@@ -211,6 +211,18 @@ init([]) ->
         modules => [olm_otk_cleanup_worker]
     },
 
+    % QR 登录过期会话行清理定时 worker（LEE-5：cache 权威删除后 PG 为唯一
+    % 存储，默认启用；单批限量、失败仅 WARN、崩溃不影响 QR 登录——claim
+    % 的过期安全由语句内联 expires_at 谓词保证，从不依赖本清扫）
+    QrLoginCleanupWorker = #{
+        id => qr_login_cleanup_worker,
+        start => {qr_login_cleanup_worker, start_link, []},
+        restart => permanent,
+        shutdown => 5000,
+        type => worker,
+        modules => [qr_login_cleanup_worker]
+    },
+
     % 过期凭证（验证码，含 PII）保留清理 worker（T-02；默认禁用，需 sys.config 显式启用）
     % WH-01：Bot 出站 webhook 交付 worker（outbox 拉取+有界重试+死信）
     BotDeliveryWorker = #{
@@ -357,6 +369,7 @@ init([]) ->
             LicenseNoticeWorker,
             BillingInvoiceWorker,
             OlmOtkCleanupWorker,
+            QrLoginCleanupWorker,
             BotDeliveryWorker,
             CredentialRetentionWorker,
             AgentPaymentCompensationWorker,

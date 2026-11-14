@@ -9,7 +9,8 @@
 -export([create/1]).
 -export([find_by_session_token/1, find_by_qr_token/1]).
 -export([transition_scan/2, transition_confirm/3, transition_cancel/1]).
--export([claim_login_token/1]).
+-export([claim_login_token/1, ensure_claim_compatible/0]).
+-export([delete_expired/0, delete_expired/1]).
 
 %% @doc 创建登录会话（waiting 初始态）
 -spec create(map()) -> ok | {error, term()}.
@@ -40,8 +41,27 @@ transition_confirm(SessionToken, Uid, LoginToken) ->
 transition_cancel(SessionToken) ->
     qr_login_session_repo:transition_cancel(SessionToken).
 
-%% @doc 原子领取 login_token（恰好一个消费者）
+%% @doc 原子领取 login_token（恰好一个消费者）。LEE-5：门禁失败返回
+%% 可区分的 {error, {claim_gate, _}}（调用方映射明确拒绝），PG 故障
+%% fail closed 为 {error, not_claimable}。
 -spec claim_login_token(binary()) ->
-    {ok, #{login_token := binary(), scanned_by := integer()}} | {error, not_claimable}.
+    {ok, #{login_token := binary(), scanned_by := integer()}}
+    | {error, not_claimable}
+    | {error, {claim_gate, term()}}.
 claim_login_token(SessionToken) ->
     qr_login_session_repo:claim_login_token(SessionToken).
+
+%% @doc PG18 能力门禁（claim 依赖 RETURNING OLD）。薄转发 repo。
+-spec ensure_claim_compatible() -> ok | {error, term()}.
+ensure_claim_compatible() ->
+    qr_login_session_repo:ensure_claim_compatible().
+
+%% @doc 过期会话批量清扫（qr_login_cleanup_worker 调用；批量限量）。
+%% PG 错误透传（worker 记 WARN；清扫失败不影响 QR 登录安全）。
+-spec delete_expired() -> {ok, non_neg_integer()} | {error, term()}.
+delete_expired() ->
+    qr_login_session_repo:delete_expired().
+
+-spec delete_expired(pos_integer()) -> {ok, non_neg_integer()} | {error, term()}.
+delete_expired(Batch) ->
+    qr_login_session_repo:delete_expired(Batch).

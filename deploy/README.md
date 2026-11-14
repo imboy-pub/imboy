@@ -243,6 +243,14 @@ hash 后方可升级为长缓存。Widget 访客事件流（SSE）经 nginx 时�
 ## 前置条件
 
 - Linux x86_64，文档基准环境 **Debian 13 (Trixie)**（其他发行版同样适用）
+- **PostgreSQL ≥ 18（QR 扫码登录硬性要求，LEE-5）**：QR 登录凭据的原子领取
+  依赖 PG18 的 `UPDATE ... RETURNING OLD` 语法；自带数据库（Helm/自建）部署
+  必须满足 `server_version_num >= 180000`，否则后端在首次使用时明确
+  拒绝 QR 登录（HTTP 200 + 信封业务码 503 `ERR_SERVICE_UNAVAILABLE`，
+  fail closed，绝不降级缓存——监控告警挂业务码而非 5xx）。社区 compose 栈默认
+  使用带扩展的 PG18 镜像（`ghcr.io/imboy-pub/imboy-pg18`），并要求库内预装
+  timescaledb/postgis/pg_jieba/pgcrypto/pg_trgm 扩展。PG 大版本原地升级
+  （如 17→18）后须滚动重启后端节点，版本门禁结果按节点缓存、不随库升级自动刷新。
 - 核心栈内存 ≥ 4 GB、磁盘 ≥ 10 GB（建议 8 GB / 20 GB）；启用 Uptrace 后
   至少 8 GB / 20 GB，建议 16 GB / 40 GB
 - Docker 24+ 与 `docker compose` v2 插件（社区版 compose 使用 configs 内联定义，

@@ -1,9 +1,15 @@
 %%%-------------------------------------------------------------------
-%%% @doc QR 登录 SSE Handler EUnit（Phase 2 PR-3α RED）
+%%% @doc QR 登录 SSE Handler EUnit（Phase 2 PR-3α RED；LEE-5 修订）
+%%%
+%%% 【测试分类】本文件全部为 **MOCK 测试**（meck cowboy_req /
+%%% qr_login_event_ds / qr_login_session_repo）。仅证明 SSE handler 接线
+%%% 与帧合同；并发领取/跨节点原子性见真实 PG 套件。
 %%%
 %%% 测试 cowboy_loop 三个 callback：
 %%%   - init/2: 参数解析 + stream_reply + subscribe
-%%%   - info/3: Event → SSE chunk + 终态判断
+%%%   - info/3: Event → SSE chunk + 终态判断；LEE-5：confirmed/confirmed_ready
+%%%     统一经 claim_login_token 服务端代领——**事件内嵌 token/uid 永不
+%%%     直接交付**（含滚动升级期旧节点广播的 legacy 含 token 事件）
 %%%   - terminate/3: unsubscribe
 %%%
 %%% 不依赖真实 cowboy / syn，全部 mock。
@@ -176,21 +182,82 @@ info_scanned_event_streams_chunk_and_keeps_loop_test_() ->
         ?assert(binary:match(Chunk, <<"\n\n">>) =/= nomatch)
     end).
 
-info_confirmed_event_streams_chunk_and_stops_test_() ->
-    Event = #{<<"status">> => <<"confirmed">>, <<"token">> => <<"jwt_xyz">>,
-        <<"uid">> => 111174215241304065},
-    ?WITH_MECKS(cowboy_req_mocks(), fun() ->
-        Req0 = req([]),
-        State = #{session_token => <<"s1">>},
-        Result = qr_login_sse_handler:info(Event, Req0, State),
-        %% confirmed 终态 → stop
-        ?assertMatch({stop, _, _}, Result),
-        {stop, Req1, _} = Result,
-        ?assertEqual(Req0, Req1),
-        [Chunk] = sent_chunks(),
-        ?assert(binary:match(Chunk, <<"\"token\":\"jwt_xyz\"">>) =/= nomatch),
-        ?assert(binary:match(Chunk, <<"\"uid_str\":\"111174215241304065\"">>) =/= nomatch)
-    end).
+%% LEE-5：legacy 含 token confirmed 事件（仅滚动升级期旧节点可能广播）——
+%% 事件内嵌 token/uid 永不直接交付；本连接服务端经 claim 原子领取，
+%% 交付的必须是 **claim 结果**（与 status 轮询同一消费语义）。
+info_legacy_confirmed_event_delivers_claim_token_not_event_token_test_() ->
+    SessionToken = <<"sess_legacy_confirmed">>,
+    Event = #{
+        <<"status">> => <<"confirmed">>,
+        <<"token">> => <<"jwt_from_old_node_event">>,
+        <<"uid">> => 111174215241304065
+    },
+    ?WITH_MECKS(
+        cowboy_req_mocks() ++
+            [
+                {qr_login_session_repo, [
+                    {claim_login_token, 1, fun(ST) when ST =:= SessionToken ->
+                        %% claim 结果与事件内嵌值不同——交付只能来自 claim
+                        {ok, #{login_token => <<"jwt_from_claim">>, scanned_by => 42}}
+                    end}
+                ]}
+            ],
+        fun() ->
+            Req0 = req([]),
+            State = #{session_token => SessionToken},
+            Result = qr_login_sse_handler:info(Event, Req0, State),
+            ?assertMatch({stop, _, _}, Result),
+            [Chunk] = sent_chunks(),
+            ?assert(binary:match(Chunk, <<"\"token\":\"jwt_from_claim\"">>) =/= nomatch),
+            ?assert(binary:match(Chunk, <<"\"uid\":42">>) =/= nomatch),
+            ?assert(binary:match(Chunk, <<"\"uid_str\":\"42\"">>) =/= nomatch),
+            %% 事件内嵌凭据绝不出现在帧里
+            ?assertEqual(nomatch, binary:match(Chunk, <<"jwt_from_old_node_event">>)),
+            ?assertEqual(nomatch, binary:match(Chunk, <<"111174215241304065">>)),
+            ?assert(meck:called(qr_login_session_repo, claim_login_token, [SessionToken]))
+        end
+    ).
+
+%% legacy confirmed 事件但 token 已被别处领取 → claimed_elsewhere 关连接
+info_legacy_confirmed_event_claimed_elsewhere_closes_test_() ->
+    Event = #{<<"status">> => <<"confirmed">>, <<"token">> => <<"jwt_stale">>},
+    ?WITH_MECKS(
+        cowboy_req_mocks() ++
+            [
+                {qr_login_session_repo, [
+                    {claim_login_token, 1, fun(_) -> {error, not_claimable} end}
+                ]}
+            ],
+        fun() ->
+            Req0 = req([]),
+            State = #{session_token => <<"sess_legacy_taken">>},
+            Result = qr_login_sse_handler:info(Event, Req0, State),
+            ?assertMatch({stop, _, _}, Result),
+            ?assertEqual([<<": claimed_elsewhere\n\n">>], sent_chunks())
+        end
+    ).
+
+%% LEE-5：claim 门禁失败（PG18 以下/PG 故障）→ service_unavailable 注释帧
+%% 明确拒绝并关连接，绝无 token
+info_confirmed_ready_claim_gate_service_unavailable_test_() ->
+    ?WITH_MECKS(
+        cowboy_req_mocks() ++
+            [
+                {qr_login_session_repo, [
+                    {claim_login_token, 1, fun(_) ->
+                        {error, {claim_gate, {pg_version_unsupported, 170004}}}
+                    end}
+                ]}
+            ],
+        fun() ->
+            Event = #{<<"status">> => <<"confirmed_ready">>},
+            Req0 = req([]),
+            State = #{session_token => <<"sess_gate">>},
+            Result = qr_login_sse_handler:info(Event, Req0, State),
+            ?assertMatch({stop, _, _}, Result),
+            ?assertEqual([<<": service_unavailable\n\n">>], sent_chunks())
+        end
+    ).
 
 info_expired_event_streams_chunk_and_stops_test_() ->
     Event = #{<<"status">> => <<"expired">>},

@@ -34,8 +34,8 @@
 %% @doc 由 SessionToken 构造 syn 广播 topic（atom 形式）。
 %%
 %% syn:join/syn:publish 要求 topic 为 atom 或 {atom, term()}，本函数返回
-%% `{qr_login, SessionToken}` 元组，与现有 `imboy_cache:set({qr_login, ...})`
-%% 的 key 结构同源，便于排查。
+%% `{qr_login, SessionToken}` 元组（LEE-5：cache 权威已删除，此命名仅保留
+%% 与历史排查文档/日志的连续性）。
 %%
 %% **关键守卫**：SessionToken 必须为非空 binary，否则 throw `badarg`（Let It
 %% Crash —— 调用方不应传非法值，正常路径不触发）。
@@ -92,8 +92,11 @@ event(_, _) ->
 %% Keep the legacy numeric uid; uid_str preserves the exact TSID in browsers.
 -spec confirmed(term(), term()) -> {ok, map()} | {error, invalid_credentials}.
 confirmed(Token, Uid) when
-    is_binary(Token), byte_size(Token) > 0,
-    is_integer(Uid), Uid > 0, Uid =< 9223372036854775807
+    is_binary(Token),
+    byte_size(Token) > 0,
+    is_integer(Uid),
+    Uid > 0,
+    Uid =< 9223372036854775807
 ->
     {ok, #{
         <<"status">> => <<"confirmed">>,

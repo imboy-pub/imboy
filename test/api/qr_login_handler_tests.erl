@@ -5,28 +5,30 @@
 
 %%%===================================================================
 %%% @doc
-%%% qr_login_handler 模块的 EUnit 测试
+%%% qr_login_handler 模块的 EUnit 测试（LEE-5：PG 唯一权威版）
 %%%
-%%% 目标：覆盖 create/status/scan/confirm/cancel 五个接口及关键边界场景
+%%% 【测试分类】本文件全部为 **MOCK 测试**（meck qr_login_session_repo /
+%%% token_ds / user_device_repo / cowboy_req / elib_response；imboy_cache
+%%% 以 throw 断言"绝不触碰"）。仅证明 handler 接线、响应合同、门禁/故障
+%%% fail-closed 语义；**跨节点原子性与并发领取证明见真实 PG 套件**
+%%%（qr_login_session_repo_tests / qr_login_claim_acceptance_tests /
+%%% scripts/cache_v221_qr_entry_dcheck.erl）。
+%%%
+%%% 目标：覆盖 create/status/scan/confirm/cancel 五个接口及关键边界场景：
+%%% - 默认 authority=pg；显式 cache 被覆盖并告警（绝不触碰 cache）；
+%%% - PG 不可用/PG18 门禁不过/迁移缺失 → create/claim 一律 503 fail closed；
+%%% - 领取成功响应丢失（客户端重试）→ 5203，绝不重发 token；
+%%% - confirm 广播 confirmed_ready（无 token）；
+%%% - REST 响应合同与既有错误码完全保持。
 %%%===================================================================
+
+%% ===================================================================
+%% create
+%% ===================================================================
 
 create_stores_session_and_returns_tokens_test_() ->
     ?WITH_MECKS(
-        common_mocks() ++
-            [
-                {imboy_cache, [
-                    {'set', 3, fun
-                        ({qr_login_qr, _QRToken}, _SessionToken, 60) ->
-                            ok;
-                        ({qr_login, SessionToken}, SessionData, 60) ->
-                            ?assertEqual(SessionToken, maps:get(<<"session_token">>, SessionData)),
-                            ?assertEqual(<<"waiting">>, maps:get(<<"status">>, SessionData)),
-                            ?assertEqual(<<"human">>, maps:get(<<"purpose">>, SessionData)),
-                            ?assertMatch(<<_/binary>>, maps:get(<<"qr_token">>, SessionData)),
-                            ok
-                    end}
-                ]}
-            ],
+        common_mocks() ++ repo_ok_mocks(),
         fun() ->
             Body = jsone:encode(
                 #{
@@ -45,49 +47,54 @@ create_stores_session_and_returns_tokens_test_() ->
             QRTok = maps:get(<<"qr_token">>, Payload),
             ?assertMatch(<<_/binary>>, SessTok),
             ?assertMatch(<<_/binary>>, QRTok),
-            %% 反转断言（Rule 7）：旧实现 qr_token = base64(session_token ++ ":" ++ ts)，
-            %% 截屏二维码即可反解 session_token 并窃取 login_token。现在必须不可反解。
+            %% 反转断言（Rule 7）：qr_token 必须不可反解 session_token
+            %% （截屏二维码不得推出 session_token 窃取 login_token）。
             ?assertEqual(nomatch, binary:match(QRTok, SessTok)),
-            ?assertEqual(nomatch, binary:match(base64:decode(QRTok), base64:decode(SessTok)))
+            ?assertEqual(nomatch, binary:match(base64:decode(QRTok), base64:decode(SessTok))),
+            %% 会话行入 PG（waiting/human；device 字段原样落库）
+            ?assert(meck:called(qr_login_session_repo, create, ['_'])),
+            [[CreateParams]] = call_args(qr_login_session_repo, create, 1),
+            ?assertEqual(SessTok, maps:get(session_token, CreateParams)),
+            ?assertEqual(QRTok, maps:get(qr_token, CreateParams)),
+            ?assertEqual(<<"web-device-1">>, maps:get(device_id, CreateParams)),
+            ?assertEqual(<<"human">>, maps:get(purpose, CreateParams))
         end
     ).
 
 create_seat_purpose_stored_in_session_test_() ->
     ?WITH_MECKS(
-        common_mocks() ++
-            [
-                {imboy_cache, [
-                    {'set', 3, fun
-                        ({qr_login_qr, _}, _, 60) ->
-                            ok;
-                        ({qr_login, _}, Session, 60) ->
-                            ?assertEqual(<<"seat">>, maps:get(<<"purpose">>, Session)),
-                            ok
-                    end}
-                ]}
-            ],
+        common_mocks() ++ repo_ok_mocks(),
         fun() ->
             Body = jsone:encode(#{<<"device_id">> => <<"seat-device">>, <<"purpose">> => <<"seat">>}),
-            {stop, Req1, _} = qr_login_handler:handle_request(req(<<"POST">>, Body, []), #{
+            {stop, Req1, _State} = qr_login_handler:handle_request(req(<<"POST">>, Body, []), #{
                 action => create
             }),
-            ?assertMatch({success, _}, response_result(Req1))
+            ?assertMatch({success, _}, response_result(Req1)),
+            [[CreateParams]] = call_args(qr_login_session_repo, create, 1),
+            ?assertEqual(<<"seat">>, maps:get(purpose, CreateParams))
         end
     ).
 
-create_rejects_invalid_identity_or_purpose_before_cache_write_test_() ->
+create_rejects_invalid_identity_or_purpose_before_repo_write_test_() ->
     ?WITH_MECKS(
         common_mocks() ++
-            [{imboy_cache, [{'set', 3, fun(_, _, _) -> error(unexpected_cache_write) end}]}],
+            [
+                {qr_login_session_repo, [
+                    {'create', 1, fun(_) -> error(unexpected_repo_write) end},
+                    {'ensure_claim_compatible', 0, fun() -> error(unexpected_gate_call) end}
+                ]}
+            ],
         fun() ->
             lists:foreach(
                 fun({Did, Purpose}) ->
                     Body = jsone:encode(#{
                         <<"device_id">> => Did, <<"purpose">> => Purpose
                     }),
-                    {stop, Req1, _} = qr_login_handler:handle_request(req(<<"POST">>, Body, []), #{
-                        action => create
-                    }),
+                    {stop, Req1, _State} = qr_login_handler:handle_request(
+                        req(<<"POST">>, Body, []), #{
+                            action => create
+                        }
+                    ),
                     ?assertMatch({error, _, ?ERR_BAD_REQUEST}, response_result(Req1))
                 end,
                 [{<<"seat-device">>, P} || P <- [<<"admin">>, <<>>, null, 1]] ++
@@ -96,26 +103,55 @@ create_rejects_invalid_identity_or_purpose_before_cache_write_test_() ->
         end
     ).
 
-status_returns_confirmed_with_login_token_test_() ->
-    SessionToken = <<"session-status-1">>,
+%% LEE-5：PG18 门禁不过（如 PG17）→ create 明确拒绝 503，不崩溃不降级
+create_rejected_when_pg_version_gate_fails_test_() ->
     ?WITH_MECKS(
         common_mocks() ++
             [
-                {imboy_cache, [
-                    {'get', 1,
-                        qr_lookup(SessionToken, fun({qr_login, KeyToken}) when
-                            KeyToken =:= SessionToken
-                        ->
-                            {ok, #{
-                                <<"status">> => <<"confirmed">>,
-                                <<"login_token">> => <<"jwt-token-1">>,
-                                <<"scanned_by">> => 111174215241304064
-                            }}
-                        end)},
-                    {'delete', 1, fun({qr_login, KeyToken}) when KeyToken =:= SessionToken -> ok
-                    end}
+                {qr_login_session_repo, [
+                    {'ensure_claim_compatible', 0, fun() ->
+                        {error, {pg_version_unsupported, 170004}}
+                    end},
+                    {'create', 1, fun(_) -> error(unexpected_repo_write) end}
                 ]}
             ],
+        fun() ->
+            Body = jsone:encode(#{<<"device_id">> => <<"web-device-1">>}),
+            {stop, Req1, _State} = qr_login_handler:handle_request(req(<<"POST">>, Body, []), #{
+                action => create
+            }),
+            ?assertMatch({error, _, ?ERR_SERVICE_UNAVAILABLE}, response_result(Req1))
+        end
+    ).
+
+%% LEE-5：PG 不可用/迁移缺失（repo create 报错）→ create 明确拒绝 503
+create_rejected_when_pg_unavailable_or_migration_missing_test_() ->
+    ?WITH_MECKS(
+        common_mocks() ++
+            [
+                {qr_login_session_repo, [
+                    {'ensure_claim_compatible', 0, fun() -> ok end},
+                    {'create', 1, fun(_) -> {error, #{<<"severity">> => <<"ERROR">>}} end}
+                ]}
+            ],
+        fun() ->
+            Body = jsone:encode(#{<<"device_id">> => <<"web-device-1">>}),
+            {stop, Req1, _State} = qr_login_handler:handle_request(req(<<"POST">>, Body, []), #{
+                action => create
+            }),
+            ?assertMatch({error, _, ?ERR_SERVICE_UNAVAILABLE}, response_result(Req1))
+        end
+    ).
+
+%% ===================================================================
+%% status（轮询领取入口）
+%% ===================================================================
+
+status_returns_confirmed_with_login_token_test_() ->
+    SessionToken = <<"session-status-1">>,
+    Uid = 111174215241304064,
+    ?WITH_MECKS(
+        common_mocks() ++ confirmed_session_mocks(SessionToken, Uid, <<"jwt-token-1">>),
         fun() ->
             Req0 = req(<<"GET">>, <<>>, [{<<"session_token">>, SessionToken}]),
             {stop, Req1, _State} = qr_login_handler:handle_request(Req0, #{action => status}),
@@ -123,80 +159,133 @@ status_returns_confirmed_with_login_token_test_() ->
                 {success, #{
                     <<"status">> => <<"confirmed">>,
                     <<"token">> => <<"jwt-token-1">>,
-                    <<"uid">> => 111174215241304064,
+                    <<"uid">> => Uid,
                     <<"uid_str">> => <<"111174215241304064">>
                 }},
                 response_result(Req1)
             ),
-            %% 反转断言（Rule 7）：旧实现取走 token 后仍保留会话，会话剩余 TTL 内
-            %% 任何知道 session_token 的人都能重复取到同一个可登录 token。
-            ?assert(
-                meck:called(imboy_cache, delete, [{qr_login, SessionToken}]),
-                "confirmed 分支必须一次性消费会话"
+            %% token/uid 均来自同一次原子领取（claim_login_token），
+            %% 不读会话、不信任任何信号
+            ?assert(meck:called(qr_login_session_repo, claim_login_token, [SessionToken]))
+        end
+    ).
+
+%% LEE-5：领取成功但响应丢失（客户端重试）→ 5203，绝不重发 token
+status_claim_success_then_response_lost_retry_gets_5203_test_() ->
+    SessionToken = <<"session-status-retry">>,
+    Uid = 111174215241304064,
+    ?WITH_MECKS(
+        common_mocks() ++
+            [
+                {qr_login_session_repo, [
+                    {'find_by_session_token', 1, fun(ST) when ST =:= SessionToken ->
+                        #{<<"status">> => <<"confirmed">>, <<"scanned_by">> => Uid}
+                    end},
+                    {'claim_login_token', 1, fun(ST) when ST =:= SessionToken ->
+                        %% 第一次领取成功，此后一律 not_claimable
+                        Claimed = length(call_args(qr_login_session_repo, claim_login_token, 1)),
+                        case Claimed >= 1 of
+                            true -> {error, not_claimable};
+                            false -> {ok, #{login_token => <<"jwt-once">>, scanned_by => Uid}}
+                        end
+                    end}
+                ]}
+            ],
+        fun() ->
+            Req0 = req(<<"GET">>, <<>>, [{<<"session_token">>, SessionToken}]),
+            {stop, Req1, _} = qr_login_handler:handle_request(Req0, #{action => status}),
+            ?assertMatch({success, #{<<"token">> := <<"jwt-once">>}}, response_result(Req1)),
+            {stop, Req2, _} = qr_login_handler:handle_request(Req0, #{action => status}),
+            ?assertEqual(
+                {error, <<"二维码已确认，请刷新"/utf8>>, ?ERR_QR_LOGIN_ALREADY_USED},
+                response_result(Req2)
             )
         end
     ).
 
-%% 非 confirmed 状态（如 scanned）不得销毁会话，否则 Web 端下一轮轮询会误判过期
-status_does_not_delete_session_when_not_confirmed_test_() ->
+%% 非 confirmed 状态（scanned）不触发领取
+status_does_not_claim_when_not_confirmed_test_() ->
     SessionToken = <<"session-status-scanned">>,
     ?WITH_MECKS(
         common_mocks() ++
             [
-                {imboy_cache, [
-                    {'get', 1,
-                        qr_lookup(SessionToken, fun({qr_login, KeyToken}) when
-                            KeyToken =:= SessionToken
-                        ->
-                            {ok, #{<<"status">> => <<"scanned">>}}
-                        end)},
-                    {'delete', 1, fun(_Key) -> ok end}
+                {qr_login_session_repo, [
+                    {'find_by_session_token', 1, fun(ST) when ST =:= SessionToken ->
+                        #{<<"status">> => <<"scanned">>}
+                    end},
+                    {'claim_login_token', 1, fun(_) -> error(unexpected_claim) end}
                 ]}
             ],
         fun() ->
             Req0 = req(<<"GET">>, <<>>, [{<<"session_token">>, SessionToken}]),
             {stop, Req1, _State} = qr_login_handler:handle_request(Req0, #{action => status}),
-            ?assertEqual({success, #{<<"status">> => <<"scanned">>}}, response_result(Req1)),
-            ?assertNot(
-                meck:called(imboy_cache, delete, ['_']),
-                "scanned 状态不应删除会话"
+            ?assertEqual({success, #{<<"status">> => <<"scanned">>}}, response_result(Req1))
+        end
+    ).
+
+%% 会话不存在/PG 查询失败 → 404 fail closed（绝无 token）
+status_not_found_fail_closed_test_() ->
+    ?WITH_MECKS(
+        common_mocks() ++
+            [
+                {qr_login_session_repo, [
+                    {'find_by_session_token', 1, fun
+                        (<<"session-gone">>) -> undefined;
+                        (<<"session-pg-err">>) -> {error, closed}
+                    end},
+                    {'claim_login_token', 1, fun(_) -> error(unexpected_claim) end}
+                ]}
+            ],
+        fun() ->
+            lists:foreach(
+                fun(ST) ->
+                    Req0 = req(<<"GET">>, <<>>, [{<<"session_token">>, ST}]),
+                    {stop, Req1, _} = qr_login_handler:handle_request(Req0, #{action => status}),
+                    ?assertMatch({error, _, ?ERR_NOT_FOUND}, response_result(Req1))
+                end,
+                [<<"session-gone">>, <<"session-pg-err">>]
             )
         end
     ).
 
-scan_updates_status_to_scanned_test_() ->
-    SessionToken = <<"session-scan-1">>,
-    QRToken = make_qr_token(SessionToken),
+%% LEE-5：claim 门禁失败（PG18 以下/PG 故障）→ 503 明确拒绝，绝不降级
+status_claim_gate_rejected_503_test_() ->
+    SessionToken = <<"session-gate">>,
     ?WITH_MECKS(
         common_mocks() ++
             [
-                {imboy_cache, [
-                    {'get', 1,
-                        qr_lookup(SessionToken, fun({qr_login, KeyToken}) when
-                            KeyToken =:= SessionToken
-                        ->
-                            {ok, #{
-                                <<"status">> => <<"waiting">>,
-                                <<"expires_at">> => future_ms(),
-                                <<"device_name">> => <<"Chrome 120"/utf8>>,
-                                <<"platform">> => <<"web">>
-                            }}
-                        end)},
-                    {'set', 3, fun({qr_login, KeyToken}, SessionData, 60) when
-                        KeyToken =:= SessionToken
-                    ->
-                        ?assertEqual(<<"scanned">>, maps:get(<<"status">>, SessionData)),
-                        ?assertEqual(1001, maps:get(<<"scanned_by">>, SessionData)),
-                        ok
+                {qr_login_session_repo, [
+                    {'find_by_session_token', 1, fun(ST) when ST =:= SessionToken ->
+                        #{<<"status">> => <<"confirmed">>}
+                    end},
+                    {'claim_login_token', 1, fun(_) ->
+                        {error, {claim_gate, {pg_version_unsupported, 170004}}}
                     end}
                 ]}
             ],
         fun() ->
+            Req0 = req(<<"GET">>, <<>>, [{<<"session_token">>, SessionToken}]),
+            {stop, Req1, _} = qr_login_handler:handle_request(Req0, #{action => status}),
+            ?assertMatch({error, _, ?ERR_SERVICE_UNAVAILABLE}, response_result(Req1))
+        end
+    ).
+
+%% ===================================================================
+%% scan
+%% ===================================================================
+
+scan_updates_status_to_scanned_test_() ->
+    SessionToken = <<"session-scan-1">>,
+    QRToken = make_qr_token(SessionToken),
+    Uid = 111174215241304064,
+    ?WITH_MECKS(
+        common_mocks() ++ scan_ok_mocks(SessionToken, QRToken, Uid),
+        fun() ->
             Body = jsone:encode(#{<<"qr_token">> => QRToken}, [native_utf8]),
             Req0 = req(<<"POST">>, Body, []),
-            State = #{action => scan, current_uid => 1001},
+            State = #{action => scan, current_uid => Uid},
             {stop, Req1, _State} = qr_login_handler:handle_request(Req0, State),
-            %% 响应携带设备信息（slice-5b：手机端 UI 展示"哪台设备要登录"）。
+            %% 响应携带设备信息（手机端 UI 展示"哪台设备要登录"）
             ?assertEqual(
                 {success, #{
                     <<"status">> => <<"scanned">>,
@@ -204,190 +293,32 @@ scan_updates_status_to_scanned_test_() ->
                     <<"platform">> => <<"web">>
                 }},
                 response_result(Req1)
-            )
-        end
-    ).
-
-scan_returns_empty_device_fields_when_session_lacks_them_test_() ->
-    %% 老 session（在补丁前生成）可能缺 device_name / platform；
-    %% 此时响应字段以空 binary 兜底，前端解析层视为 deviceInfo=null。
-    SessionToken = <<"session-scan-legacy">>,
-    QRToken = make_qr_token(SessionToken),
-    ?WITH_MECKS(
-        common_mocks() ++
-            [
-                {imboy_cache, [
-                    {'get', 1,
-                        qr_lookup(SessionToken, fun({qr_login, KeyToken}) when
-                            KeyToken =:= SessionToken
-                        ->
-                            {ok, #{
-                                <<"status">> => <<"waiting">>,
-                                <<"expires_at">> => future_ms()
-                            }}
-                        end)},
-                    {'set', 3, fun(_Key, _Data, 60) -> ok end}
-                ]}
-            ],
-        fun() ->
-            Body = jsone:encode(#{<<"qr_token">> => QRToken}, [native_utf8]),
-            Req0 = req(<<"POST">>, Body, []),
-            State = #{action => scan, current_uid => 1001},
-            {stop, Req1, _State} = qr_login_handler:handle_request(Req0, State),
-            ?assertEqual(
-                {success, #{
-                    <<"status">> => <<"scanned">>,
-                    <<"device_name">> => <<>>,
-                    <<"platform">> => <<>>
-                }},
-                response_result(Req1)
-            )
-        end
-    ).
-
-confirm_marks_session_confirmed_and_records_device_test_() ->
-    confirm_purpose_test(<<"human">>).
-
-confirm_uses_cached_seat_purpose_ignoring_request_override_test_() ->
-    confirm_purpose_test(<<"seat">>).
-
-confirm_purpose_test(Purpose) ->
-    SessionToken = <<"session-confirm-1">>,
-    QRToken = make_qr_token(SessionToken),
-    ?WITH_MECKS(
-        common_mocks() ++
-            [
-                {imboy_cache, [
-                    {'get', 1,
-                        qr_lookup(SessionToken, fun({qr_login, KeyToken}) when
-                            KeyToken =:= SessionToken
-                        ->
-                            {ok,
-                                maps:merge(
-                                    case Purpose of
-                                        <<"seat">> -> #{<<"purpose">> => Purpose};
-                                        _ -> #{}
-                                    end,
-                                    #{
-                                        <<"status">> => <<"scanned">>,
-                                        <<"scanned_by">> => 1001,
-                                        <<"expires_at">> => future_ms(),
-                                        <<"device_id">> => <<"web-device-1">>,
-                                        <<"device_name">> => <<"Safari">>,
-                                        <<"platform">> => <<"web">>
-                                    }
-                                )}
-                        end)},
-                    {'set', 3, fun({qr_login, KeyToken}, SessionData, 60) when
-                        KeyToken =:= SessionToken
-                    ->
-                        ?assertEqual(<<"confirmed">>, maps:get(<<"status">>, SessionData)),
-                        ?assertEqual(
-                            <<"login-token-1001">>, maps:get(<<"login_token">>, SessionData)
-                        ),
-                        ok
-                    end}
-                ]},
-                {token_ds, [
-                    %% E2EE-013：签发的 token 必须绑定 create 时上报的 device_id，
-                    %% 且 user_device 行必须已经落库（否则设备级校验会 401）
-                    {
-                        case Purpose of
-                            <<"seat">> -> encrypt_seat_token;
-                            _ -> encrypt_token
-                        end,
-                        2,
-                        fun(1001, <<"web-device-1">>) ->
-                            true = meck:called(
-                                user_device_repo, save, ['_', 1001, <<"web-device-1">>, '_']
-                            ),
-                            <<"login-token-1001">>
-                        end
-                    }
-                ]},
-                {user_device_repo, [
-                    {'save', 4, fun(_Now, 1001, <<"web-device-1">>, PostVals) ->
-                        ?assertEqual(<<"Safari">>, maps:get(<<"device_name">>, PostVals)),
-                        ?assertEqual(<<"web">>, maps:get(<<"platform">>, PostVals)),
-                        ?assertEqual(<<"qr_scan">>, maps:get(<<"login_type">>, PostVals)),
-                        ok
-                    end}
-                ]}
-            ],
-        fun() ->
-            Body = jsone:encode(
-                #{
-                    <<"qr_token">> => QRToken,
-                    <<"purpose">> =>
-                        case Purpose of
-                            <<"seat">> -> <<"human">>;
-                            _ -> <<"seat">>
-                        end
-                },
-                [native_utf8]
             ),
-            Req0 = req(<<"POST">>, Body, []),
-            State = #{action => confirm, current_uid => 1001},
-            {stop, Req1, _State} = qr_login_handler:handle_request(Req0, State),
-            ?assertEqual({success, #{<<"status">> => <<"confirmed">>}}, response_result(Req1))
-        end
-    ).
-
-cancel_updates_status_to_cancelled_test_() ->
-    SessionToken = <<"session-cancel-1">>,
-    ?WITH_MECKS(
-        common_mocks() ++
-            [
-                {imboy_cache, [
-                    {'get', 1,
-                        qr_lookup(SessionToken, fun({qr_login, KeyToken}) when
-                            KeyToken =:= SessionToken
-                        ->
-                            {ok, #{
-                                <<"status">> => <<"waiting">>,
-                                <<"expires_at">> => future_ms()
-                            }}
-                        end)},
-                    {'set', 3, fun({qr_login, KeyToken}, SessionData, 60) when
-                        KeyToken =:= SessionToken
-                    ->
-                        ?assertEqual(<<"cancelled">>, maps:get(<<"status">>, SessionData)),
-                        ok
-                    end}
-                ]}
-            ],
-        fun() ->
-            Body = jsone:encode(#{<<"session_token">> => SessionToken}, [native_utf8]),
-            Req0 = req(<<"POST">>, Body, []),
-            {stop, Req1, _State} = qr_login_handler:handle_request(Req0, #{action => cancel}),
-            ?assertEqual({success, #{<<"status">> => <<"cancelled">>}}, response_result(Req1))
+            ?assert(meck:called(qr_login_session_repo, find_by_qr_token, [QRToken])),
+            ?assert(meck:called(qr_login_session_repo, transition_scan, [SessionToken, Uid]))
         end
     ).
 
 scan_returns_expired_when_session_outdated_test_() ->
     SessionToken = <<"session-expired-1">>,
     QRToken = make_qr_token(SessionToken),
+    Uid = 111174215241304064,
     ?WITH_MECKS(
         common_mocks() ++
             [
-                {imboy_cache, [
-                    {'get', 1,
-                        qr_lookup(SessionToken, fun({qr_login, KeyToken}) when
-                            KeyToken =:= SessionToken
-                        ->
-                            {ok, #{
-                                <<"status">> => <<"waiting">>,
-                                <<"expires_at">> => past_ms()
-                            }}
-                        end)},
-                    {'delete', 1, fun({qr_login, KeyToken}) when KeyToken =:= SessionToken -> ok
-                    end}
-                ]}
+                {qr_login_session_repo, [
+                    {'find_by_qr_token', 1, fun(Token) when Token =:= QRToken ->
+                        #{<<"session_token">> => SessionToken}
+                    end},
+                    {'transition_scan', 2, fun(_, _) -> {error, not_transitioned} end},
+                    {'find_by_session_token', 1, fun(ST) when ST =:= SessionToken -> undefined end}
+                ]},
+                {qr_login_event_ds, [{'notify', 2, fun(_, _) -> {ok, 0} end}]}
             ],
         fun() ->
             Body = jsone:encode(#{<<"qr_token">> => QRToken}, [native_utf8]),
             Req0 = req(<<"POST">>, Body, []),
-            State = #{action => scan, current_uid => 1001},
+            State = #{action => scan, current_uid => Uid},
             {stop, Req1, _State} = qr_login_handler:handle_request(Req0, State),
             ?assertEqual(
                 {error, <<"二维码已过期，请刷新"/utf8>>, ?ERR_QR_LOGIN_EXPIRED},
@@ -396,71 +327,13 @@ scan_returns_expired_when_session_outdated_test_() ->
         end
     ).
 
-confirm_returns_already_used_for_duplicate_confirm_test_() ->
-    SessionToken = <<"session-dup-confirm-1">>,
-    QRToken = make_qr_token(SessionToken),
-    ?WITH_MECKS(
-        common_mocks() ++
-            [
-                {imboy_cache, [
-                    {'get', 1,
-                        qr_lookup(SessionToken, fun({qr_login, KeyToken}) when
-                            KeyToken =:= SessionToken
-                        ->
-                            {ok, #{
-                                <<"status">> => <<"confirmed">>,
-                                <<"scanned_by">> => 1001,
-                                <<"expires_at">> => future_ms()
-                            }}
-                        end)}
-                ]}
-            ],
-        fun() ->
-            Body = jsone:encode(#{<<"qr_token">> => QRToken}, [native_utf8]),
-            Req0 = req(<<"POST">>, Body, []),
-            State = #{action => confirm, current_uid => 1001},
-            {stop, Req1, _State} = qr_login_handler:handle_request(Req0, State),
-            ?assertEqual(
-                {error, <<"二维码已确认，请刷新"/utf8>>, ?ERR_QR_LOGIN_ALREADY_USED},
-                response_result(Req1)
-            )
-        end
-    ).
-
-confirm_returns_forbidden_for_cross_user_test_() ->
-    SessionToken = <<"session-cross-user-1">>,
-    QRToken = make_qr_token(SessionToken),
-    ?WITH_MECKS(
-        common_mocks() ++
-            [
-                {imboy_cache, [
-                    {'get', 1,
-                        qr_lookup(SessionToken, fun({qr_login, KeyToken}) when
-                            KeyToken =:= SessionToken
-                        ->
-                            {ok, #{
-                                <<"status">> => <<"scanned">>,
-                                <<"scanned_by">> => 2002,
-                                <<"expires_at">> => future_ms()
-                            }}
-                        end)}
-                ]}
-            ],
-        fun() ->
-            Body = jsone:encode(#{<<"qr_token">> => QRToken}, [native_utf8]),
-            Req0 = req(<<"POST">>, Body, []),
-            State = #{action => confirm, current_uid => 1001},
-            {stop, Req1, _State} = qr_login_handler:handle_request(Req0, State),
-            ?assertEqual({error, <<"无权限操作"/utf8>>, ?ERR_FORBIDDEN}, response_result(Req1))
-        end
-    ).
-
 scan_returns_invalid_qr_token_for_illegal_token_test_() ->
     ?WITH_MECKS(
         common_mocks() ++
             [
-                %% 未登记的 qr_token 在缓存里查不到映射
-                {imboy_cache, [{'get', 1, fun({qr_login_qr, _QRToken}) -> undefined end}]}
+                {qr_login_session_repo, [
+                    {'find_by_qr_token', 1, fun(_) -> undefined end}
+                ]}
             ],
         fun() ->
             Body = jsone:encode(#{<<"qr_token">> => <<"not_a_valid_base64_token">>}, [native_utf8]),
@@ -474,6 +347,19 @@ scan_returns_invalid_qr_token_for_illegal_token_test_() ->
         end
     ).
 
+scan_requires_login_test_() ->
+    ?WITH_MECKS(
+        common_mocks(),
+        fun() ->
+            Body = jsone:encode(#{<<"qr_token">> => <<"any-token">>}, [native_utf8]),
+            Req0 = req(<<"POST">>, Body, []),
+            {stop, Req1, _State} = qr_login_handler:handle_request(Req0, #{
+                action => scan, current_uid => 0
+            }),
+            ?assertMatch({error, _, ?ERR_UNAUTHORIZED}, response_result(Req1))
+        end
+    ).
+
 %% ===================================================================
 %% PR-2β: handle_scan/handle_confirm 成功路径必须广播事件
 %% ===================================================================
@@ -482,39 +368,15 @@ scan_returns_invalid_qr_token_for_illegal_token_test_() ->
 scan_broadcasts_scanned_event_on_success_test_() ->
     SessionToken = <<"session-broadcast-scan">>,
     QRToken = make_qr_token(SessionToken),
+    Uid = 111174215241304064,
     ?WITH_MECKS(
-        common_mocks() ++
-            [
-                {imboy_cache, [
-                    {'get', 1,
-                        qr_lookup(SessionToken, fun({qr_login, KeyToken}) when
-                            KeyToken =:= SessionToken
-                        ->
-                            {ok, #{
-                                <<"status">> => <<"waiting">>,
-                                <<"expires_at">> => future_ms(),
-                                <<"device_name">> => <<"Chrome">>,
-                                <<"platform">> => <<"web">>
-                            }}
-                        end)},
-                    {'set', 3, fun(_Key, _Data, 60) -> ok end}
-                ]},
-                {qr_login_event_ds, [
-                    {'event', 2, fun(scanned, undefined) ->
-                        #{<<"status">> => <<"scanned">>}
-                    end},
-                    {'notify', 2, fun(_KeyToken, _Event) ->
-                        {ok, 1}
-                    end}
-                ]}
-            ],
+        common_mocks() ++ scan_ok_mocks(SessionToken, QRToken, Uid),
         fun() ->
             Body = jsone:encode(#{<<"qr_token">> => QRToken}, [native_utf8]),
             Req0 = req(<<"POST">>, Body, []),
-            State = #{action => scan, current_uid => 1001},
+            State = #{action => scan, current_uid => Uid},
             {stop, _Req1, _State} = qr_login_handler:handle_request(Req0, State),
-            %% 使用 meck:history 跨进程验证 notify 调用（消息发送在 mock 闭包中
-            %% 跨进程不可达，必须走 meck 内置的 ETS 历史记录）。
+            %% meck:history 跨进程验证 notify 事件形状（scanned，无凭据）
             ?assert(
                 meck:called(qr_login_event_ds, notify, [SessionToken, '_']),
                 "qr_login_event_ds:notify/2 未被 scan 调用"
@@ -529,30 +391,27 @@ scan_broadcasts_scanned_event_on_success_test_() ->
         end
     ).
 
-%% scan 失败路径（如已过期）禁止 broadcast
+%% scan 失败路径（会话已过期）禁止 broadcast
 scan_does_not_broadcast_when_expired_test_() ->
     SessionToken = <<"session-no-broadcast-expired">>,
     QRToken = make_qr_token(SessionToken),
+    Uid = 111174215241304064,
     ?WITH_MECKS(
         common_mocks() ++
             [
-                {imboy_cache, [
-                    {'get', 1,
-                        qr_lookup(SessionToken, fun({qr_login, KeyToken}) when
-                            KeyToken =:= SessionToken
-                        ->
-                            {ok, #{<<"status">> => <<"waiting">>, <<"expires_at">> => past_ms()}}
-                        end)},
-                    {'delete', 1, fun(_) -> ok end}
+                {qr_login_session_repo, [
+                    {'find_by_qr_token', 1, fun(Token) when Token =:= QRToken ->
+                        #{<<"session_token">> => SessionToken}
+                    end},
+                    {'transition_scan', 2, fun(_, _) -> {error, not_transitioned} end},
+                    {'find_by_session_token', 1, fun(_) -> undefined end}
                 ]},
-                {qr_login_event_ds, [
-                    {'notify', 2, fun(_, _) -> {ok, 1} end}
-                ]}
+                {qr_login_event_ds, [{'notify', 2, fun(_, _) -> {ok, 0} end}]}
             ],
         fun() ->
             Body = jsone:encode(#{<<"qr_token">> => QRToken}, [native_utf8]),
             Req0 = req(<<"POST">>, Body, []),
-            State = #{action => scan, current_uid => 1001},
+            State = #{action => scan, current_uid => Uid},
             {stop, _Req1, _State} = qr_login_handler:handle_request(Req0, State),
             ?assertNot(
                 meck:called(qr_login_event_ds, notify, ['_', '_']),
@@ -561,44 +420,20 @@ scan_does_not_broadcast_when_expired_test_() ->
         end
     ).
 
-%% confirm 成功后广播同会话的 token + 权威 UID / Same-session token and UID.
-confirm_broadcasts_confirmed_event_with_token_on_success_test_() ->
+%% LEE-5：confirm 成功广播 confirmed_ready——**无 token 信号**（token 一律
+%% 经 SSE 服务端代领或 status 原子领取）
+confirm_broadcasts_confirmed_ready_event_without_token_test_() ->
     SessionToken = <<"session-broadcast-confirm">>,
     QRToken = make_qr_token(SessionToken),
+    Uid = 111174215241304064,
     ?WITH_MECKS(
-        common_mocks() ++
-            [
-                {imboy_cache, [
-                    {'get', 1,
-                        qr_lookup(SessionToken, fun({qr_login, KeyToken}) when
-                            KeyToken =:= SessionToken
-                        ->
-                            {ok, #{
-                                <<"status">> => <<"scanned">>,
-                                <<"scanned_by">> => 1001,
-                                <<"expires_at">> => future_ms(),
-                                <<"device_id">> => <<"web-d1">>,
-                                <<"device_name">> => <<"Safari">>,
-                                <<"platform">> => <<"web">>
-                            }}
-                        end)},
-                    {'set', 3, fun(_Key, _Data, 60) -> ok end}
-                ]},
-                {token_ds, [
-                    {'encrypt_token', 2, fun(1001, <<"web-d1">>) -> <<"login-token-1001">> end}
-                ]},
-                {user_device_repo, [
-                    {'save', 4, fun(_, _, _, _) -> ok end}
-                ]},
-                {qr_login_event_ds, [
-                    {'notify', 2, fun(_KeyToken, _Event) -> {ok, 1} end}
-                ]}
-            ],
+        common_mocks() ++ confirm_ok_mocks(SessionToken, QRToken, Uid, <<"login-token-x">>),
         fun() ->
             Body = jsone:encode(#{<<"qr_token">> => QRToken}, [native_utf8]),
             Req0 = req(<<"POST">>, Body, []),
-            State = #{action => confirm, current_uid => 1001},
-            {stop, _Req1, _State} = qr_login_handler:handle_request(Req0, State),
+            State = #{action => confirm, current_uid => Uid},
+            {stop, Req1, _State} = qr_login_handler:handle_request(Req0, State),
+            ?assertEqual({success, #{<<"status">> => <<"confirmed">>}}, response_result(Req1)),
             ?assert(
                 meck:called(qr_login_event_ds, notify, [SessionToken, '_']),
                 "qr_login_event_ds:notify/2 未被 confirm 调用"
@@ -611,10 +446,11 @@ confirm_broadcasts_confirmed_event_with_token_on_success_test_() ->
             ],
             [[K, E] | _] = Notifies,
             ?assertEqual(SessionToken, K),
-            ?assertEqual(<<"confirmed">>, maps:get(<<"status">>, E)),
-            ?assertEqual(<<"login-token-1001">>, maps:get(<<"token">>, E)),
-            ?assertEqual(1001, maps:get(<<"uid">>, E)),
-            ?assertEqual(<<"1001">>, maps:get(<<"uid_str">>, E))
+            %% confirmed_ready：仅通知"有凭据可领取"，不含 token/uid 任何凭据
+            ?assertEqual(<<"confirmed_ready">>, maps:get(<<"status">>, E)),
+            ?assertEqual(undefined, maps:get(<<"token">>, E, undefined)),
+            ?assertEqual(undefined, maps:get(<<"uid">>, E, undefined)),
+            ?assertEqual(1, maps:size(E))
         end
     ).
 
@@ -625,27 +461,22 @@ confirm_does_not_broadcast_when_forbidden_test_() ->
     ?WITH_MECKS(
         common_mocks() ++
             [
-                {imboy_cache, [
-                    {'get', 1,
-                        qr_lookup(SessionToken, fun({qr_login, KeyToken}) when
-                            KeyToken =:= SessionToken
-                        ->
-                            {ok, #{
-                                <<"status">> => <<"scanned">>,
-                                <<"scanned_by">> => 2002,
-                                <<"expires_at">> => future_ms()
-                            }}
-                        end)}
+                {qr_login_session_repo, [
+                    {'find_by_qr_token', 1, fun(Token) when Token =:= QRToken ->
+                        #{<<"session_token">> => SessionToken}
+                    end},
+                    {'find_by_session_token', 1, fun(ST) when ST =:= SessionToken ->
+                        #{<<"status">> => <<"scanned">>, <<"scanned_by">> => 2002}
+                    end}
                 ]},
-                {qr_login_event_ds, [
-                    {'notify', 2, fun(_, _) -> {ok, 1} end}
-                ]}
+                {qr_login_event_ds, [{'notify', 2, fun(_, _) -> {ok, 0} end}]}
             ],
         fun() ->
             Body = jsone:encode(#{<<"qr_token">> => QRToken}, [native_utf8]),
             Req0 = req(<<"POST">>, Body, []),
             State = #{action => confirm, current_uid => 1001},
-            {stop, _Req1, _State} = qr_login_handler:handle_request(Req0, State),
+            {stop, Req1, _State} = qr_login_handler:handle_request(Req0, State),
+            ?assertEqual({error, <<"无权限操作"/utf8>>, ?ERR_FORBIDDEN}, response_result(Req1)),
             ?assertNot(
                 meck:called(qr_login_event_ds, notify, ['_', '_']),
                 "跨用户 forbidden 路径不应调 notify/2"
@@ -654,13 +485,24 @@ confirm_does_not_broadcast_when_forbidden_test_() ->
     ).
 
 %% ===================================================================
-%% PG 权威分支（改道 qr_login_session_ds 后的真链路；§1.4-4 既有用例全走 cache）
+%% confirm
 %% ===================================================================
 
-scan_pg_authority_transitions_via_ds_test_() ->
-    SessionToken = <<"session-pg-scan-1">>,
+confirm_marks_session_confirmed_and_records_device_test_() ->
+    confirm_purpose_test(<<"human">>).
+
+confirm_uses_stored_seat_purpose_ignoring_request_override_test_() ->
+    confirm_purpose_test(<<"seat">>).
+
+confirm_purpose_test(Purpose) ->
+    SessionToken = <<"session-confirm-1">>,
     QRToken = make_qr_token(SessionToken),
     Uid = 111174215241304064,
+    EncryptFun =
+        case Purpose of
+            <<"seat">> -> encrypt_seat_token;
+            _ -> encrypt_token
+        end,
     ?WITH_MECKS(
         common_mocks() ++
             [
@@ -668,40 +510,274 @@ scan_pg_authority_transitions_via_ds_test_() ->
                     {'find_by_qr_token', 1, fun(Token) when Token =:= QRToken ->
                         #{<<"session_token">> => SessionToken}
                     end},
-                    {'transition_scan', 2, fun(Token, U) when Token =:= SessionToken, U =:= Uid ->
-                        {ok, #{
-                            <<"session_token">> => Token,
+                    {'find_by_session_token', 1, fun(ST) when ST =:= SessionToken ->
+                        #{
                             <<"status">> => <<"scanned">>,
-                            <<"device_name">> => <<"Chrome">>,
-                            <<"platform">> => <<"web">>
-                        }}
+                            <<"scanned_by">> => Uid,
+                            <<"device_id">> => <<"web-device-1">>,
+                            <<"device_name">> => <<"Safari">>,
+                            <<"platform">> => <<"web">>,
+                            <<"purpose">> => Purpose
+                        }
+                    end},
+                    {'transition_confirm', 3, fun(ST, U, LoginToken) when
+                        ST =:= SessionToken, U =:= Uid
+                    ->
+                        ?assertMatch(<<_/binary>>, LoginToken),
+                        {ok, #{<<"status">> => <<"confirmed">>}}
                     end}
                 ]},
-                {qr_login_event_ds, [
-                    {'notify', 2, fun(_Topic, _Event) -> ok end}
+                {token_ds, [
+                    %% E2EE-013：token 绑定 create 时上报的 device_id，
+                    %% 且 user_device 行必须已落库（否则设备级校验会 401）
+                    {EncryptFun, 2, fun(U, <<"web-device-1">>) when U =:= Uid ->
+                        true = meck:called(
+                            user_device_repo, save, ['_', Uid, <<"web-device-1">>, '_']
+                        ),
+                        <<"login-token-confirm">>
+                    end}
+                ]},
+                {user_device_repo, [
+                    {'save', 4, fun(_Now, U, _Did, PostVals) when U =:= Uid ->
+                        ?assertEqual(<<"Safari">>, maps:get(<<"device_name">>, PostVals)),
+                        ?assertEqual(<<"web">>, maps:get(<<"platform">>, PostVals)),
+                        ?assertEqual(<<"qr_scan">>, maps:get(<<"login_type">>, PostVals)),
+                        ok
+                    end}
+                ]},
+                {qr_login_event_ds, [{'notify', 2, fun(_, _) -> {ok, 1} end}]}
+            ],
+        fun() ->
+            Body = jsone:encode(
+                #{
+                    <<"qr_token">> => QRToken,
+                    %% 请求体的 purpose 覆盖必须被忽略（以存储值为准）
+                    <<"purpose">> =>
+                        case Purpose of
+                            <<"seat">> -> <<"human">>;
+                            _ -> <<"seat">>
+                        end
+                },
+                [native_utf8]
+            ),
+            Req0 = req(<<"POST">>, Body, []),
+            State = #{action => confirm, current_uid => Uid},
+            {stop, Req1, _State} = qr_login_handler:handle_request(Req0, State),
+            ?assertEqual({success, #{<<"status">> => <<"confirmed">>}}, response_result(Req1)),
+            %% token 经 transition_confirm 原子写入会话行（不广播）
+            ?assert(meck:called(qr_login_session_repo, transition_confirm, ['_', '_', '_']))
+        end
+    ).
+
+confirm_returns_already_used_for_duplicate_confirm_test_() ->
+    SessionToken = <<"session-dup-confirm-1">>,
+    QRToken = make_qr_token(SessionToken),
+    ?WITH_MECKS(
+        common_mocks() ++
+            [
+                {qr_login_session_repo, [
+                    {'find_by_qr_token', 1, fun(Token) when Token =:= QRToken ->
+                        #{<<"session_token">> => SessionToken}
+                    end},
+                    {'find_by_session_token', 1, fun(ST) when ST =:= SessionToken ->
+                        #{<<"status">> => <<"confirmed">>, <<"scanned_by">> => 1001}
+                    end},
+                    {'transition_confirm', 3, fun(_, _, _) -> error(unexpected_confirm) end}
                 ]}
             ],
         fun() ->
-            application:set_env(imboy, qr_login_authority, pg),
+            Body = jsone:encode(#{<<"qr_token">> => QRToken}, [native_utf8]),
+            Req0 = req(<<"POST">>, Body, []),
+            State = #{action => confirm, current_uid => 1001},
+            {stop, Req1, _State} = qr_login_handler:handle_request(Req0, State),
+            ?assertEqual(
+                {error, <<"二维码已确认，请刷新"/utf8>>, ?ERR_QR_LOGIN_ALREADY_USED},
+                response_result(Req1)
+            )
+        end
+    ).
+
+confirm_returns_not_scanned_when_waiting_test_() ->
+    SessionToken = <<"session-confirm-waiting">>,
+    QRToken = make_qr_token(SessionToken),
+    ?WITH_MECKS(
+        common_mocks() ++
+            [
+                {qr_login_session_repo, [
+                    {'find_by_qr_token', 1, fun(Token) when Token =:= QRToken ->
+                        #{<<"session_token">> => SessionToken}
+                    end},
+                    {'find_by_session_token', 1, fun(ST) when ST =:= SessionToken ->
+                        #{<<"status">> => <<"waiting">>}
+                    end}
+                ]}
+            ],
+        fun() ->
+            Body = jsone:encode(#{<<"qr_token">> => QRToken}, [native_utf8]),
+            Req0 = req(<<"POST">>, Body, []),
+            State = #{action => confirm, current_uid => 1001},
+            {stop, Req1, _State} = qr_login_handler:handle_request(Req0, State),
+            ?assertEqual(
+                {error, <<"二维码尚未扫码"/utf8>>, ?ERR_QR_LOGIN_NOT_SCANNED},
+                response_result(Req1)
+            )
+        end
+    ).
+
+confirm_concurrent_cas_rejected_test_() ->
+    SessionToken = <<"session-confirm-race">>,
+    QRToken = make_qr_token(SessionToken),
+    Uid = 111174215241304064,
+    ?WITH_MECKS(
+        common_mocks() ++ confirm_ok_mocks(SessionToken, QRToken, Uid, <<"tok">>),
+        fun() ->
+            %% 并发 confirm：transition_confirm CAS 失败 → 兼容 5203
+            meck:expect(
+                qr_login_session_repo,
+                transition_confirm,
+                3,
+                fun(_, _, _) -> {error, not_transitioned} end
+            ),
+            Body = jsone:encode(#{<<"qr_token">> => QRToken}, [native_utf8]),
+            Req0 = req(<<"POST">>, Body, []),
+            State = #{action => confirm, current_uid => Uid},
+            {stop, Req1, _State} = qr_login_handler:handle_request(Req0, State),
+            ?assertEqual(
+                {error, <<"二维码已确认，请刷新"/utf8>>, ?ERR_QR_LOGIN_ALREADY_USED},
+                response_result(Req1)
+            )
+        end
+    ).
+
+%% ===================================================================
+%% cancel
+%% ===================================================================
+
+cancel_updates_status_to_cancelled_test_() ->
+    SessionToken = <<"session-cancel-1">>,
+    ?WITH_MECKS(
+        common_mocks() ++
+            [
+                {qr_login_session_repo, [
+                    {'transition_cancel', 1, fun(ST) when ST =:= SessionToken -> ok end}
+                ]}
+            ],
+        fun() ->
+            Body = jsone:encode(#{<<"session_token">> => SessionToken}, [native_utf8]),
+            Req0 = req(<<"POST">>, Body, []),
+            {stop, Req1, _State} = qr_login_handler:handle_request(Req0, #{action => cancel}),
+            ?assertEqual({success, #{<<"status">> => <<"cancelled">>}}, response_result(Req1))
+        end
+    ).
+
+%% 已确认后不可取消（G-QR：结果唯一）；不存在/过期幂等成功
+cancel_after_confirm_rejected_but_missing_idempotent_test_() ->
+    ?WITH_MECKS(
+        common_mocks() ++
+            [
+                {qr_login_session_repo, [
+                    {'transition_cancel', 1, fun
+                        (<<"session-cancel-confirmed">>) -> {error, not_transitioned};
+                        (<<"session-cancel-gone">>) -> {error, not_transitioned}
+                    end},
+                    {'find_by_session_token', 1, fun
+                        (<<"session-cancel-confirmed">>) ->
+                            #{<<"status">> => <<"confirmed">>};
+                        (<<"session-cancel-gone">>) ->
+                            undefined
+                    end}
+                ]}
+            ],
+        fun() ->
+            Body1 = jsone:encode(#{<<"session_token">> => <<"session-cancel-confirmed">>}, [
+                native_utf8
+            ]),
+            {stop, Req1, _} = qr_login_handler:handle_request(
+                req(<<"POST">>, Body1, []), #{action => cancel}
+            ),
+            ?assertEqual(
+                {error, <<"二维码已确认，请刷新"/utf8>>, ?ERR_QR_LOGIN_ALREADY_USED},
+                response_result(Req1)
+            ),
+            Body2 = jsone:encode(#{<<"session_token">> => <<"session-cancel-gone">>}, [native_utf8]),
+            {stop, Req2, _} = qr_login_handler:handle_request(
+                req(<<"POST">>, Body2, []), #{action => cancel}
+            ),
+            ?assertEqual({success, #{<<"status">> => <<"cancelled">>}}, response_result(Req2))
+        end
+    ).
+
+%% ===================================================================
+%% LEE-5 权威语义：默认 pg；显式 cache 被覆盖并告警；绝不触碰 imboy_cache
+%% ===================================================================
+
+%% 未设置 qr_login_authority（默认）→ 直接走 PG（repo 被调，cache 零调用）
+default_authority_is_pg_test_() ->
+    SessionToken = <<"session-default-pg">>,
+    QRToken = make_qr_token(SessionToken),
+    Uid = 111174215241304064,
+    ?WITH_MECKS(
+        common_mocks() ++ no_cache_mocks() ++ scan_ok_mocks(SessionToken, QRToken, Uid),
+        fun() ->
+            application:unset_env(imboy, qr_login_authority),
+            Body = jsone:encode(#{<<"qr_token">> => QRToken}, [native_utf8]),
+            {stop, Req1, _} = qr_login_handler:handle_request(
+                req(<<"POST">>, Body, []), #{action => scan, current_uid => Uid}
+            ),
+            ?assertMatch({success, _}, response_result(Req1)),
+            ?assert(meck:called(qr_login_session_repo, transition_scan, [SessionToken, Uid]))
+        end
+    ).
+
+%% 显式 qr_login_authority=cache → 告警并按 pg 处理（cache 路径已删除；
+%% imboy_cache 任何调用都会触发 throw）
+explicit_cache_overridden_with_warning_test_() ->
+    SessionToken = <<"session-explicit-cache">>,
+    QRToken = make_qr_token(SessionToken),
+    Uid = 111174215241304064,
+    ?WITH_MECKS(
+        common_mocks() ++ no_cache_mocks() ++ scan_ok_mocks(SessionToken, QRToken, Uid),
+        fun() ->
+            persistent_term:erase({imboy, qr_login_authority_warned}),
+            application:set_env(imboy, qr_login_authority, cache),
             try
                 Body = jsone:encode(#{<<"qr_token">> => QRToken}, [native_utf8]),
                 {stop, Req1, _} = qr_login_handler:handle_request(
-                    req(<<"POST">>, Body, []),
-                    #{action => scan, current_uid => Uid}
+                    req(<<"POST">>, Body, []), #{action => scan, current_uid => Uid}
                 ),
-                ?assertEqual(
-                    {success, #{
-                        <<"status">> => <<"scanned">>,
-                        <<"device_name">> => <<"Chrome">>,
-                        <<"platform">> => <<"web">>
-                    }},
-                    response_result(Req1)
-                ),
-                %% DS 转发体真跑：repo 收到 handler 原始参数
-                ?assert(meck:called(qr_login_session_repo, find_by_qr_token, [QRToken])),
-                ?assert(meck:called(qr_login_session_repo, transition_scan, [SessionToken, Uid]))
+                %% 仍走 PG 权威（服务不中断），绝不触碰 cache
+                ?assertMatch({success, _}, response_result(Req1)),
+                ?assert(meck:called(qr_login_session_repo, transition_scan, [SessionToken, Uid])),
+                %% 节点级一次告警已置位
+                ?assertEqual(true, persistent_term:get({imboy, qr_login_authority_warned}, false))
             after
-                application:unset_env(imboy, qr_login_authority)
+                application:unset_env(imboy, qr_login_authority),
+                persistent_term:erase({imboy, qr_login_authority_warned})
+            end
+        end
+    ).
+
+%% postgres 别名同样合法
+postgres_alias_accepted_test_() ->
+    SessionToken = <<"session-postgres-alias">>,
+    QRToken = make_qr_token(SessionToken),
+    Uid = 111174215241304064,
+    ?WITH_MECKS(
+        common_mocks() ++ no_cache_mocks() ++ scan_ok_mocks(SessionToken, QRToken, Uid),
+        fun() ->
+            persistent_term:erase({imboy, qr_login_authority_warned}),
+            application:set_env(imboy, qr_login_authority, postgres),
+            try
+                Body = jsone:encode(#{<<"qr_token">> => QRToken}, [native_utf8]),
+                {stop, Req1, _} = qr_login_handler:handle_request(
+                    req(<<"POST">>, Body, []), #{action => scan, current_uid => Uid}
+                ),
+                ?assertMatch({success, _}, response_result(Req1)),
+                %% postgres 别名不触发告警
+                ?assertEqual(false, persistent_term:get({imboy, qr_login_authority_warned}, false))
+            after
+                application:unset_env(imboy, qr_login_authority),
+                persistent_term:erase({imboy, qr_login_authority_warned})
             end
         end
     ).
@@ -723,6 +799,88 @@ common_mocks() ->
         ]}
     ].
 
+%% LEE-5 反证：QR 全链路绝不触碰 imboy_cache（任何调用即 throw 测试失败）
+no_cache_mocks() ->
+    [
+        {imboy_cache, [
+            {'set', 3, fun(_, _, _) -> error(unexpected_cache_set) end},
+            {'set', 4, fun(_, _, _, _) -> error(unexpected_cache_set) end},
+            {'get', 1, fun(_) -> error(unexpected_cache_get) end},
+            {'get_wait', 1, fun(_) -> error(unexpected_cache_get) end},
+            {'delete', 1, fun(_) -> error(unexpected_cache_delete) end}
+        ]}
+    ].
+
+%% create 成功路径：门禁通过 + 会话行入库
+repo_ok_mocks() ->
+    [
+        {qr_login_session_repo, [
+            {'ensure_claim_compatible', 0, fun() -> ok end},
+            {'create', 1, fun(_) -> ok end}
+        ]}
+    ].
+
+%% status confirmed：claim 一次成功
+confirmed_session_mocks(SessionToken, Uid, Token) ->
+    [
+        {qr_login_session_repo, [
+            {'find_by_session_token', 1, fun(ST) when ST =:= SessionToken ->
+                #{<<"status">> => <<"confirmed">>, <<"scanned_by">> => Uid}
+            end},
+            {'claim_login_token', 1, fun(ST) when ST =:= SessionToken ->
+                {ok, #{login_token => Token, scanned_by => Uid}}
+            end}
+        ]}
+    ].
+
+%% scan 成功：qr 反查 + waiting→scanned CAS + scanned 广播
+scan_ok_mocks(SessionToken, QRToken, Uid) ->
+    [
+        {qr_login_session_repo, [
+            {'find_by_qr_token', 1, fun(Token) when Token =:= QRToken ->
+                #{<<"session_token">> => SessionToken}
+            end},
+            {'transition_scan', 2, fun(ST, U) when ST =:= SessionToken, U =:= Uid ->
+                {ok, #{
+                    <<"session_token">> => ST,
+                    <<"status">> => <<"scanned">>,
+                    <<"device_name">> => <<"Chrome 120"/utf8>>,
+                    <<"platform">> => <<"web">>
+                }}
+            end}
+        ]},
+        {qr_login_event_ds, [{'notify', 2, fun(_, _) -> {ok, 1} end}]}
+    ].
+
+%% confirm 成功：scanned 会话 + token 签发 + confirmed_ready 广播
+confirm_ok_mocks(SessionToken, QRToken, Uid, Token) ->
+    [
+        {qr_login_session_repo, [
+            {'find_by_qr_token', 1, fun(T) when T =:= QRToken ->
+                #{<<"session_token">> => SessionToken}
+            end},
+            {'find_by_session_token', 1, fun(ST) when ST =:= SessionToken ->
+                #{
+                    <<"status">> => <<"scanned">>,
+                    <<"scanned_by">> => Uid,
+                    <<"device_id">> => <<"web-device-1">>,
+                    <<"device_name">> => <<"Safari">>,
+                    <<"platform">> => <<"web">>,
+                    <<"purpose">> => <<"human">>
+                }
+            end},
+            {'transition_confirm', 3, fun(_, _, _) -> {ok, #{<<"status">> => <<"confirmed">>}} end}
+        ]},
+        {token_ds, [
+            {'encrypt_token', 2, fun(_, _) -> Token end},
+            {'encrypt_seat_token', 2, fun(_, _) -> Token end}
+        ]},
+        {user_device_repo, [
+            {'save', 4, fun(_, _, _, _) -> ok end}
+        ]},
+        {qr_login_event_ds, [{'notify', 2, fun(_, _) -> {ok, 1} end}]}
+    ].
+
 req(Method, Body, Qs) ->
     #{
         method => Method,
@@ -733,21 +891,17 @@ req(Method, Body, Qs) ->
 response_result(Req) ->
     maps:get(response_result, Req).
 
-future_ms() ->
-    erlang:system_time(millisecond) + 60000.
+%% meck 历史中提取某函数的参数列表（跨进程）
+call_args(Mod, Fun, Arity) ->
+    [
+        Args
+     || {_Pid, {M, F, Args}, _Ret} <- meck:history(Mod),
+        M =:= Mod,
+        F =:= Fun,
+        length(Args) =:= Arity
+    ].
 
-past_ms() ->
-    erlang:system_time(millisecond) - 1000.
-
-%% 测试用 qr_token：只是一个不透明串。真实实现是随机值 + 缓存映射，
-%% **不可**由 session_token 推导（见 qr_login_handler:generate_qr_token/1）。
+%% 测试用 qr_token：不透明串（真实实现为随机值入 PG UNIQUE 反查，
+%% 不可由 session_token 推导）。
 make_qr_token(SessionToken) ->
     <<"qr-opaque-", SessionToken/binary>>.
-
-%% 给 imboy_cache:get/1 的 mock 包一层 qr_token → session_token 反查，
-%% 使各用例保留原有的 {qr_login, SessionToken} 子句不必逐个改写。
-qr_lookup(SessionToken, SessionGet) ->
-    fun
-        ({qr_login_qr, _QRToken}) -> {ok, SessionToken};
-        (Key) -> SessionGet(Key)
-    end.
