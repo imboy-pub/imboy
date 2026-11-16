@@ -5978,29 +5978,29 @@
       {
         "action": "feature_disabled",
         "sources": [
-          "src/logic/message_router_logic.erl:92"
+          "src/logic/message_router_logic.erl:105"
         ]
       },
       {
         "action": "in_denylist",
         "sources": [
           "src/logic/msg_c2c_logic.erl:113",
-          "src/logic/msg_c2c_logic.erl:1138",
+          "src/logic/msg_c2c_logic.erl:1139",
           "src/logic/webrtc_ws_logic.erl:69"
         ]
       },
       {
         "action": "internal_error",
         "sources": [
-          "src/logic/msg_c2c_logic.erl:703",
-          "src/logic/msg_c2c_logic.erl:803",
-          "src/logic/msg_c2c_logic.erl:882",
-          "src/logic/msg_c2c_logic.erl:885",
-          "src/logic/msg_c2c_logic.erl:942",
-          "src/logic/msg_c2c_logic.erl:978",
-          "src/logic/msg_c2c_logic.erl:1198",
-          "src/logic/msg_c2c_logic.erl:1248",
-          "src/logic/msg_c2c_logic.erl:1267",
+          "src/logic/msg_c2c_logic.erl:704",
+          "src/logic/msg_c2c_logic.erl:804",
+          "src/logic/msg_c2c_logic.erl:883",
+          "src/logic/msg_c2c_logic.erl:886",
+          "src/logic/msg_c2c_logic.erl:943",
+          "src/logic/msg_c2c_logic.erl:979",
+          "src/logic/msg_c2c_logic.erl:1199",
+          "src/logic/msg_c2c_logic.erl:1249",
+          "src/logic/msg_c2c_logic.erl:1268",
           "src/logic/msg_c2g_logic.erl:875",
           "src/logic/msg_c2g_logic.erl:1061",
           "src/logic/msg_c2s_logic.erl:164",
@@ -6010,7 +6010,7 @@
       {
         "action": "invalid_message_type",
         "sources": [
-          "src/logic/message_router_logic.erl:123"
+          "src/logic/message_router_logic.erl:136"
         ]
       },
       {
@@ -6022,15 +6022,15 @@
       {
         "action": "invalid_operation",
         "sources": [
-          "src/logic/msg_c2c_logic.erl:1125"
+          "src/logic/msg_c2c_logic.erl:1126"
         ]
       },
       {
         "action": "msg_not_found",
         "sources": [
           "src/logic/msg_c2c_logic.erl:325",
-          "src/logic/msg_c2c_logic.erl:700",
-          "src/logic/msg_c2c_logic.erl:801",
+          "src/logic/msg_c2c_logic.erl:701",
+          "src/logic/msg_c2c_logic.erl:802",
           "src/logic/msg_c2g_logic.erl:401",
           "src/logic/msg_c2g_logic.erl:873",
           "src/logic/msg_c2g_logic.erl:1058",
@@ -6041,7 +6041,7 @@
         "action": "not_a_friend",
         "sources": [
           "src/logic/msg_c2c_logic.erl:116",
-          "src/logic/msg_c2c_logic.erl:1141",
+          "src/logic/msg_c2c_logic.erl:1142",
           "src/logic/webrtc_ws_logic.erl:72"
         ]
       },
@@ -6061,11 +6061,11 @@
       {
         "action": "permission_denied",
         "sources": [
-          "src/logic/msg_c2c_logic.erl:695",
-          "src/logic/msg_c2c_logic.erl:707",
-          "src/logic/msg_c2c_logic.erl:799",
-          "src/logic/msg_c2c_logic.erl:807",
-          "src/logic/msg_c2c_logic.erl:1146",
+          "src/logic/msg_c2c_logic.erl:696",
+          "src/logic/msg_c2c_logic.erl:708",
+          "src/logic/msg_c2c_logic.erl:800",
+          "src/logic/msg_c2c_logic.erl:808",
+          "src/logic/msg_c2c_logic.erl:1147",
           "src/logic/msg_c2g_logic.erl:871",
           "src/logic/msg_c2g_logic.erl:878",
           "src/logic/msg_c2g_logic.erl:1053",
@@ -6099,7 +6099,7 @@
       {
         "action": "unknown_action",
         "sources": [
-          "src/logic/message_router_logic.erl:157",
+          "src/logic/message_router_logic.erl:170",
           "src/logic/msg_s2c_logic.erl:185"
         ]
       }

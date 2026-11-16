@@ -47,13 +47,8 @@ handle_info({timeout, Timer, install}, #{deadline := Timer, installer := Pid} = 
     {noreply, State#{deadline := undefined, ready := false}};
 handle_info({'DOWN', Ref, process, Pid, _}, #{monitor := Ref, installer := Pid} = State) ->
     cancel(maps:get(deadline, State)),
-    {noreply,
-        retry(State#{
-            installer := undefined,
-            monitor := undefined,
-            deadline := undefined,
-            ready := false
-        })};
+    Reset = installer_state(State, undefined, undefined, undefined),
+    {noreply, retry(Reset#{ready := false})};
 handle_info({timeout, Timer, retry}, #{retry := Timer} = State) ->
     {noreply, install(State#{retry := undefined})};
 handle_info(_, State) ->
@@ -71,8 +66,12 @@ install(State) ->
                 ?MODULE, supervise_handler, [self(), Bus], [link, monitor]
             ),
             Timer = erlang:start_timer(1000, self(), install),
-            State#{installer := Pid, monitor := Ref, deadline := Timer}
+            installer_state(State, Pid, Ref, Timer)
     end.
+
+%% Keep installer identity, monitor and deadline transitions in one place.
+installer_state(State, Pid, Ref, Timer) ->
+    State#{installer := Pid, monitor := Ref, deadline := Timer}.
 
 %% Resident installer process: gen_event removes supervised handlers when
 %% their installing process exits, so this loop never returns normally —

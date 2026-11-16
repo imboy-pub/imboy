@@ -19,7 +19,7 @@
 %%% - PG 不可用/PG18 门禁不过/迁移缺失 → create/claim 一律 503 fail closed；
 %%% - 领取成功响应丢失（客户端重试）→ 5203，绝不重发 token；
 %%% - confirm 广播 confirmed_ready（无 token）；
-%%% - REST 响应合同与既有错误码完全保持。
+%%% - REST 成功响应及业务拒绝保持；存储故障单独映射 503。
 %%%===================================================================
 
 %% ===================================================================
@@ -223,7 +223,8 @@ status_does_not_claim_when_not_confirmed_test_() ->
         end
     ).
 
-%% 会话不存在/PG 查询失败 → 404 fail closed（绝无 token）
+%% 会话确实不存在返回 404；PG 查询失败返回 503，两者均不领取/返回凭据。
+%% A database failure must not masquerade as a missing session.
 status_not_found_fail_closed_test_() ->
     ?WITH_MECKS(
         common_mocks() ++
@@ -238,16 +239,18 @@ status_not_found_fail_closed_test_() ->
             ],
         fun() ->
             lists:foreach(
-                fun(ST) ->
+                fun({ST, ExpectedCode}) ->
                     Req0 = req(<<"GET">>, <<>>, [{<<"session_token">>, ST}]),
                     {stop, Req1, _} = qr_login_handler:handle_request(Req0, #{action => status}),
-                    ?assertMatch({error, _, ?ERR_NOT_FOUND}, response_result(Req1))
+                    ?assertMatch({error, _, ExpectedCode}, response_result(Req1))
                 end,
-                [<<"session-gone">>, <<"session-pg-err">>]
+                [
+                    {<<"session-gone">>, ?ERR_NOT_FOUND},
+                    {<<"session-pg-err">>, ?ERR_SERVICE_UNAVAILABLE}
+                ]
             )
         end
     ).
-
 %% LEE-5：claim 门禁失败（PG18 以下/PG 故障）→ 503 明确拒绝，绝不降级
 status_claim_gate_rejected_503_test_() ->
     SessionToken = <<"session-gate">>,

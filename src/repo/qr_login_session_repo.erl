@@ -127,7 +127,8 @@ find_by_qr_token(QRToken) ->
 
 %% @doc scan CAS：waiting → scanned（绑定扫码人）。0 行 = 已扫/已取消/
 %% 已确认/过期/不存在（调用方映射既有错误码）。
--spec transition_scan(binary(), integer()) -> {ok, map()} | {error, not_transitioned}.
+-spec transition_scan(binary(), integer()) ->
+    {ok, map()} | {error, not_transitioned} | {error, {pg_error, term()}}.
 transition_scan(SessionToken, Uid) ->
     Sql = <<
         "UPDATE public.qr_login_session "
@@ -141,7 +142,7 @@ transition_scan(SessionToken, Uid) ->
 %% @doc confirm CAS：scanned → confirmed + 原子写入 login_token（单语句，
 %% 消除"confirmed 但 token 未写"中间态窗口）。仅 scanned_by = Uid 行可转移。
 -spec transition_confirm(binary(), integer(), binary()) ->
-    {ok, map()} | {error, not_transitioned}.
+    {ok, map()} | {error, not_transitioned} | {error, {pg_error, term()}}.
 transition_confirm(SessionToken, Uid, LoginToken) ->
     Sql = <<
         "UPDATE public.qr_login_session "
@@ -154,7 +155,8 @@ transition_confirm(SessionToken, Uid, LoginToken) ->
     one_or_none(Sql, [SessionToken, Uid, LoginToken]).
 
 %% @doc cancel CAS：waiting|scanned → cancelled（幂等：已 cancelled 返回 ok）。
--spec transition_cancel(binary()) -> ok | {error, not_transitioned}.
+-spec transition_cancel(binary()) ->
+    ok | {error, not_transitioned} | {error, {pg_error, term()}}.
 transition_cancel(SessionToken) ->
     Sql = <<
         "UPDATE public.qr_login_session "
@@ -166,16 +168,20 @@ transition_cancel(SessionToken) ->
     case one_or_none(Sql, [SessionToken]) of
         {ok, _} ->
             ok;
+        {error, {pg_error, _}} = Error ->
+            Error;
         {error, not_transitioned} ->
-            %% 幂等：已 cancelled / 已消费视为成功取消（与 cache 路径
-            %% handle_cancel 的"不存在也返回 cancelled"语义对齐）
+            %% 仅 cancelled 幂等成功；数据库故障不等于已取消或不存在。
+            %% Only a confirmed cancelled state is an idempotent success.
             case find_by_session_token(SessionToken) of
                 #{<<"status">> := <<"cancelled">>} -> ok;
+                {error, Reason} -> {error, {pg_error, Reason}};
                 _ -> {error, not_transitioned}
             end
     end.
 
--spec one_or_none(binary(), [term()]) -> {ok, map()} | {error, not_transitioned}.
+-spec one_or_none(binary(), [term()]) ->
+    {ok, map()} | {error, not_transitioned} | {error, {pg_error, term()}}.
 one_or_none(Sql, Params) ->
     case elib_pg:query(Sql, Params) of
         {ok, [Row]} ->
@@ -183,12 +189,12 @@ one_or_none(Sql, Params) ->
         {ok, []} ->
             {error, not_transitioned};
         {error, Reason} ->
-            %% PG 故障与"状态不允许转移"在返回值上同形（fail closed），
-            %% 但必须可区分地留痕，否则数据库故障会被误读为业务拒绝。
+            %% SQL 故障与零行 CAS 分开；提交结果不确定时不重试、不补偿发 token。
+            %% A storage error is not a rejected CAS; never retry an uncertain write here.
             ?WARN_LOG(
                 "[lee-5] qr_login transition PG error (fail closed): ~p", [Reason]
             ),
-            {error, not_transitioned}
+            {error, {pg_error, Reason}}
     end.
 
 %% @doc PG18 能力门禁：claim 依赖 UPDATE ... RETURNING OLD.*（PG 18 起）。
@@ -229,11 +235,13 @@ version_verdict(Num) ->
 %% LEE-5 门禁：入口过 ensure_claim_compatible（repo 层兜底——Polling/SSE/
 %% 任何未来入口都无法绕过）；门禁失败返回可区分的 {error,{claim_gate,_}}
 %% 供调用方映射为明确拒绝（503 / service_unavailable 注释），绝无 token。
-%% PG 执行错误与"已消费"同形 fail closed，但 WARN 留痕可区分。
+%% PG 执行错误返回 pg_error，不冒充已消费；不重试、不恢复已消费 token。
+%% Storage errors are distinct from zero rows, including an uncertain commit outcome.
 -spec claim_login_token(SessionToken :: binary()) ->
     {ok, #{login_token := binary(), scanned_by := integer()}}
     | {error, not_claimable}
-    | {error, {claim_gate, term()}}.
+    | {error, {claim_gate, term()}}
+    | {error, {pg_error, term()}}.
 claim_login_token(SessionToken) ->
     case ensure_claim_compatible() of
         ok ->
@@ -243,7 +251,9 @@ claim_login_token(SessionToken) ->
     end.
 
 -spec do_claim_login_token(binary()) ->
-    {ok, #{login_token := binary(), scanned_by := integer()}} | {error, not_claimable}.
+    {ok, #{login_token := binary(), scanned_by := integer()}}
+    | {error, not_claimable}
+    | {error, {pg_error, term()}}.
 do_claim_login_token(SessionToken) ->
     Sql = <<
         "UPDATE public.qr_login_session "
@@ -261,7 +271,7 @@ do_claim_login_token(SessionToken) ->
             ?WARN_LOG(
                 "[lee-5] qr_login claim PG error (fail closed): ~p", [Reason]
             ),
-            {error, not_claimable}
+            {error, {pg_error, Reason}}
     end.
 
 -spec num(integer() | binary() | null) -> integer().
