@@ -5,9 +5,12 @@ import json
 import os
 from pathlib import Path
 import subprocess
+import sys
 import tempfile
 import unittest
 import xml.etree.ElementTree as ET
+from defusedxml import ElementTree as SafeET
+from defusedxml.common import DefusedXmlException
 
 ROOT = Path(__file__).resolve().parents[2]
 SPEC = importlib.util.spec_from_file_location("lee5_guard", ROOT / "scripts/ci/verify_lee5_evidence.py")
@@ -58,7 +61,7 @@ class EvidenceTests(unittest.TestCase):
     def test_valid_evidence_and_output_allowlist(self):
         # Raw failure output must never be copied into the sanitized summary.
         path = self.first_report()
-        suite = ET.parse(path).getroot()
+        suite = SafeET.parse(path).getroot()
         ET.SubElement(suite, "system-out").text = "DO_NOT_PUBLISH_RAW_TOKEN"
         ET.ElementTree(suite).write(path)
         summary = self.validate()
@@ -102,7 +105,7 @@ class EvidenceTests(unittest.TestCase):
         for key, value in (("tests", "0"), ("tests", "2"), ("failures", "1"),
                            ("errors", "1"), ("skipped", "1"), ("errors", "-1")):
             with self.subTest(key=key):
-                suite = ET.fromstring(original)
+                suite = SafeET.fromstring(original)
                 suite.set(key, value)
                 ET.ElementTree(suite).write(path)
                 with self.assertRaises(ValueError):
@@ -114,7 +117,7 @@ class EvidenceTests(unittest.TestCase):
         original = path.read_bytes()
         for tag in ("failure", "error", "skipped"):
             with self.subTest(tag=tag):
-                suite = ET.fromstring(original)
+                suite = SafeET.fromstring(original)
                 ET.SubElement(suite.find("testcase"), tag)
                 ET.ElementTree(suite).write(path)
                 with self.assertRaises(ValueError):
@@ -122,7 +125,7 @@ class EvidenceTests(unittest.TestCase):
 
     def test_wrong_suite_or_malformed_xml(self):
         path = self.first_report()
-        suite = ET.parse(path).getroot()
+        suite = SafeET.parse(path).getroot()
         suite.set("name", "wrong module")
         ET.ElementTree(suite).write(path)
         with self.assertRaises(ValueError):
@@ -155,11 +158,52 @@ class EvidenceTests(unittest.TestCase):
 
     def test_cli_writes_failure_not_stale_pass(self):
         (self.root / "summary.json").write_text('{"status":"PASS"}')
-        result = subprocess.run(["python3", str(ROOT / "scripts/ci/verify_lee5_evidence.py"),
+        result = subprocess.run([sys.executable, str(ROOT / "scripts/ci/verify_lee5_evidence.py"),
                                  str(self.root), "--commit", SHA, "--outcome", "failure"],
                                 capture_output=True, text=True)
         self.assertEqual(1, result.returncode)
         self.assertEqual("FAIL", json.loads((self.root / "summary.json").read_text())["status"])
+
+    def test_dtd_is_rejected_in_utf8_and_utf16(self):
+        original = self.first_report().read_text()
+        xml = '<!DOCTYPE testsuite>' + original
+        for encoding in ("utf-8", "utf-16"):
+            with self.subTest(encoding=encoding):
+                self.first_report().write_bytes(xml.encode(encoding))
+                with self.assertRaises(DefusedXmlException):
+                    self.validate()
+
+    def test_internal_entities_are_rejected(self):
+        original = self.first_report().read_text()
+        xml = ('<!DOCTYPE testsuite [<!ENTITY a "DO_NOT_PUBLISH_ENTITY">'
+               '<!ENTITY b "&a;&a;">]>' + original.replace("synthetic", "&b;"))
+        self.first_report().write_text(xml)
+        with self.assertRaises(DefusedXmlException):
+            self.validate()
+
+    def test_external_entities_are_rejected(self):
+        original = self.first_report().read_text()
+        secret = self.root / "secret.txt"
+        secret.write_text("DO_NOT_PUBLISH_EXTERNAL_FILE")
+        for target in (secret.as_uri(), "https://example.invalid/forbidden.dtd"):
+            with self.subTest(target=target):
+                xml = ('<!DOCTYPE testsuite [<!ENTITY ext SYSTEM "' + target + '">]>'
+                       + original.replace('name="synthetic"', 'name="&ext;"'))
+                self.first_report().write_text(xml)
+                with self.assertRaises(DefusedXmlException):
+                    self.validate()
+
+    def test_cli_rejects_dtd_and_writes_sanitized_failure(self):
+        self.first_report().write_text(
+            '<!DOCTYPE testsuite SYSTEM "file:///DO_NOT_PUBLISH_PATH"><testsuite/>')
+        (self.root / "summary.json").write_text('{"status":"PASS"}')
+        result = subprocess.run([sys.executable, str(ROOT / "scripts/ci/verify_lee5_evidence.py"),
+                                 str(self.root), "--commit", SHA, "--outcome", "success"],
+                                capture_output=True, text=True)
+        summary = (self.root / "summary.json").read_text()
+        self.assertEqual(1, result.returncode)
+        self.assertEqual("FAIL", json.loads(summary)["status"])
+        self.assertNotIn("DO_NOT_PUBLISH", summary + result.stdout + result.stderr)
 
     def test_ci_runner_refuses_unapproved_environment(self):
         env = os.environ.copy()

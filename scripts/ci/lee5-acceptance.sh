@@ -36,7 +36,19 @@ erl -noshell -pa ebin deps/*/ebin -eval '
   true = SystemId =:= list_to_binary(os:getenv("LEE5_PG_SYSTEM_ID")),
   true = Version >= 180000,
   ok = epgsql:close(Conn),
-  SafeImboy = lists:keystore(auto_migrate, 1, Imboy, {auto_migrate, false}),
+  %% QR DB fixtures boot the real app; provide valid synthetic storage roots
+  %% instead of weakening the production registry validator. No S3 IO is needed.
+  Garage = proplists:get_value(garage, Imboy),
+  Root = fun(Namespace, BucketKey) ->
+    #{driver => <<"garage">>, namespace => Namespace,
+      endpoint => maps:get(endpoint, Garage), container => maps:get(BucketKey, Garage)}
+  end,
+  Registry = #{version => 1, upload_namespaces => #{}, roots => #{
+    <<"garage-primary-private">> => Root(<<"garage-primary-private">>, bucket),
+    <<"garage-primary-public">> => Root(<<"garage-primary-public">>, public_bucket)}},
+  NoMigration = lists:keystore(auto_migrate, 1, Imboy, {auto_migrate, false}),
+  SafeImboy = lists:keystore(attachment_storage_registry, 1, NoMigration,
+    {attachment_storage_registry, Registry}),
   SafeTerms = lists:keystore(imboy, 1, Terms, {imboy, SafeImboy}),
   ok = file:write_file(os:getenv("IMBOY_TEST_CONFIG"),
     unicode:characters_to_binary(io_lib:format("~tp.~n", [SafeTerms]))),

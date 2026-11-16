@@ -164,7 +164,10 @@ jobs:
         run: python3 -m unittest discover -s scripts/test -p test_nightly_summary.py -v
 
       - name: Check LEE-5 evidence guard regressions (no PostgreSQL)
-        run: python3 -m unittest discover -s scripts/test -p test_lee5_ci_evidence.py -v
+        run: |
+          python3 -m venv "$RUNNER_TEMP/lee5-python"
+          "$RUNNER_TEMP/lee5-python/bin/python" -m pip install --disable-pip-version-check defusedxml==0.7.1
+          "$RUNNER_TEMP/lee5-python/bin/python" -m unittest discover -s scripts/test -p test_lee5_ci_evidence.py -v
 
       - name: Check SBOM baseline and failure handling
         run: python3 -m unittest discover -s scripts/test -p test_sbom_workflow.py -v
@@ -762,7 +765,9 @@ jobs:
         env:
           LEE5_OUTCOME: ${{ steps.lee5.outcome }}
         run: |
-          python3 scripts/ci/verify_lee5_evidence.py lee5-evidence \
+          python3 -m venv "$RUNNER_TEMP/lee5-python"
+          "$RUNNER_TEMP/lee5-python/bin/python" -m pip install --disable-pip-version-check defusedxml==0.7.1
+          "$RUNNER_TEMP/lee5-python/bin/python" scripts/ci/verify_lee5_evidence.py lee5-evidence \
             --commit "$(git rev-parse HEAD)" --outcome "$LEE5_OUTCOME"
 
       - name: Upload sanitized LEE-5 summary only

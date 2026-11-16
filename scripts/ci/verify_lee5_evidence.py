@@ -7,7 +7,8 @@ import json
 import re
 import sys
 from pathlib import Path
-import xml.etree.ElementTree as ET
+from defusedxml import ElementTree as ET
+from defusedxml.common import DefusedXmlException
 
 MODULES = (
     "qr_login_handler_tests", "qr_login_sse_handler_tests", "qr_login_uid_contract_tests",
@@ -33,7 +34,9 @@ def validate(root: Path, commit: str, outcome: str) -> dict:
         paths = list((root / "raw" / module).glob("TEST-*.xml"))
         if len(paths) != 1 or paths[0].name != f"TEST-{module}.xml":
             raise ValueError(f"missing, duplicate or unexpected report: {module}")
-        suite = ET.parse(paths[0]).getroot()
+        suite = ET.parse(
+            paths[0], forbid_dtd=True, forbid_entities=True, forbid_external=True
+        ).getroot()
         if suite.tag != "testsuite" or suite.get("name") != f"module '{module}'":
             raise ValueError(f"wrong EUnit suite: {module}")
         counts = {key: int(suite.attrib[key]) for key in ("tests", "failures", "errors", "skipped")}
@@ -86,7 +89,7 @@ def main() -> int:
     args.root.mkdir(parents=True, exist_ok=True)
     try:
         summary = validate(args.root, args.commit, args.outcome)
-    except (OSError, ValueError, KeyError, TypeError, ET.ParseError) as exc:
+    except (OSError, ValueError, KeyError, TypeError, ET.ParseError, DefusedXmlException) as exc:
         # Exception class only: XML/log/config contents may contain credentials.
         summary = {"commit": args.commit, "status": "FAIL", "reason": type(exc).__name__,
                    "scope": "LEE-5 acceptance evidence incomplete or unsuccessful"}
