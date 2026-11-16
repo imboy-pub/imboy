@@ -73,7 +73,7 @@ list_member(Gid, MemberUids) ->
 %% join_group/4
 %% 自动获取事务连接并调用 join_group/5
 %% ===================================================================
--spec join_group(binary(), integer(), integer(), map()) -> ok | {error, binary()}.
+-spec join_group(binary(), integer(), integer(), map()) -> ok | {error, term()}.
 join_group(JoinMode, Uid, Gid, OptData) when is_map(OptData) ->
     % 验证群组限制
     Max = maps:get(max_members, OptData, undefined),

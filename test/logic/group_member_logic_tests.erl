@@ -104,6 +104,24 @@ join_group_success_test_() ->
         end
     ).
 
+join_group_preserves_transaction_errors_test_() ->
+    [
+        ?WITH_MECKS(
+            [
+                {elib_pg, [{with_tx, 1, fun(_Fun) -> {error, Reason} end}]},
+                {imboy_domain_event, [{publish, 1, fun(_Events) -> ok end}]}
+            ],
+            fun() ->
+                ?assertEqual(
+                    {error, Reason},
+                    group_member_logic:join_group(<<"invite">>, 100, 1, #{})
+                ),
+                ?assertNot(meck:called(imboy_domain_event, publish, ['_']))
+            end
+        )
+     || Reason <- [invalid_group_invitation, {group_member_upsert_failed, synthetic_db_error}]
+    ].
+
 join_group_with_max_members_limit_returns_error_test_() ->
     ?WITH_MECKS(
         [
