@@ -74,15 +74,17 @@ eligible_tx(Conn, Gid, Uid) ->
 %% looking up a nullable binding so a concurrent bind cannot become a phantom.
 lock_group_tx(Conn, Gid) ->
     _ = checked(Conn, <<"LOCK TABLE public.channel IN ROW EXCLUSIVE MODE">>, []),
-    case
+    Binding =
         checked(Conn, <<"SELECT id FROM public.channel WHERE discussion_group_id=$1 FOR UPDATE">>, [
             Gid
-        ])
-    of
+        ]),
+    %% Membership writes, invitation checks and message staging must all take
+    %% the group lock before member/sequence locks, including unbound groups.
+    _ = checked(Conn, <<"SELECT id FROM public.\"group\" WHERE id=$1 FOR UPDATE">>, [Gid]),
+    case Binding of
         [] ->
             ok;
         [_] ->
-            _ = checked(Conn, <<"SELECT id FROM public.\"group\" WHERE id=$1 FOR UPDATE">>, [Gid]),
             lock_sequence(Conn, Gid)
     end.
 

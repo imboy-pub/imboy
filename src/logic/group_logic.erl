@@ -35,6 +35,7 @@
 -export([find_member/2]).
 -export([get_remark/2]).
 -export([update_remark/3]).
+-export([issue_qrcode_invite/2, redeem_qrcode_invite/3]).
 
 %% ==================== T5 scope 感知（双体验 v2.5.2 WP3/T5）====================
 %% 新增函数，不改上方任何既有函数签名；personal 路径行为零变化。
@@ -54,6 +55,10 @@
 -include("log.hrl").
 -include("group_role.hrl").
 -include("error_code.hrl").
+
+%% Stable API facade for server-authorized group invitations.
+issue_qrcode_invite(Uid, Gid) -> group_invite_logic:issue(Uid, Gid).
+redeem_qrcode_invite(Uid, Gid, Token) -> group_invite_logic:redeem(Uid, Gid, Token).
 
 %% @doc 群行出站 DTO 边界（ID 已直接以 integer 返回，无需转换）。
 %% 统一剥除 chat_aes_key（群消息密钥列）：detail 等端点走 SELECT *，

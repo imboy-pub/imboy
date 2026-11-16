@@ -8,12 +8,9 @@
 %%% 缺陷：join 原本零鉴权——任何持有效 JWT 的用户都能把**任意 uid** 塞进
 %%% **任意有容量的群**，不需要自己是该群成员。修复见 commit 4e3a0f87。
 %%%
-%%% 这道门不能一刀切成"必须是群成员"：`/api/v1/group_member/join` 是唯一的
-%%% 入群端点，扫码入群与面对面建群最终都走它，那时用户当然还不是成员。
-%%% 所以放行条件是 `member_uids == [自己]`（自加入）**或** 自己已是群成员。
-%%%
-%%% 下面用"越过鉴权门后撞到 get_group_capacity 返回群不存在"来断言放行，
-%%% 免得把整条下游都打桩——只要错误文案不是"你不是群成员"，就说明过了门。
+%%% 非成员自行加入仅允许服务端标记为公开且无需审核的群。
+%%% 扫码 / 面对面有独立的服务端授权入口，不能以 member_uids=[自己]
+%%% 或客户端传入 join_mode 为凭据。群邀请在落成员行的事务内再次校验。
 %%%===================================================================
 
 -define(UID, 12345).
@@ -37,7 +34,8 @@ mocks(MemberUids, MembershipRow) ->
             {'build_invite_join_mode', 1, fun(?UID) -> <<"invite_12345_x">> end},
             {'find_by_gid_and_uid', 3, fun(?GID, ?UID, <<"id">>) -> MembershipRow end},
             %% 过了鉴权门才会走到这里；返回 error 让流程在此收口
-            {'get_group_capacity', 1, fun(?GID) -> {error, not_found} end}
+            {'get_group_capacity', 1, fun(?GID) -> {error, not_found} end},
+            {'allows_public_join', 1, fun(?GID) -> false end}
         ]},
         {elib_response, [
             {'error', 2, fun(Req, Msg) -> Req#{err => Msg} end}
@@ -69,19 +67,25 @@ non_member_cannot_invite_others_test_() ->
 member_can_invite_others_test_() ->
     assert_join([999], is_member(), <<"群组不存在"/utf8>>).
 
-%% 自己加自己 → 放行，即使还不是成员（扫码入群 / 面对面建群的正常路径）
-self_join_allowed_for_non_member_test_() ->
-    assert_join([?UID], not_member(), <<"群组不存在"/utf8>>).
+%% Knowing a private group's ID is not authorization to join it.
+self_join_denied_for_non_member_test_() ->
+    assert_join([?UID], not_member(), <<"你不是群成员"/utf8>>).
+
+public_open_self_join_allowed_test_() ->
+    ?WITH_MECKS(mocks([?UID], not_member()), fun() ->
+        meck:expect(group_member_logic, allows_public_join, fun(?GID) -> true end),
+        {ok, Req, _} = group_member_handler:init(#{}, #{action => join}),
+        ?assertEqual(<<"群组不存在"/utf8>>, maps:get(err, Req))
+    end).
 
 %% 边界：自己 + 他人 不算自加入，非成员仍须拒绝。
 %% 少了这条，攻击者只要在 member_uids 里捎带上自己就能绕过整道门。
 self_plus_other_is_not_self_join_test_() ->
     assert_join([?UID, 999], not_member(), <<"你不是群成员"/utf8>>).
 
-%% TSID 在 JSON 里可能是整数也可能是字符串，自加入判定必须归一化后比较，
-%% 否则客户端传字符串 uid 时扫码入群会被误判成"邀请他人"而拒绝。
-self_join_matches_when_uid_is_binary_test_() ->
-    assert_join([<<"12345">>], not_member(), <<"群组不存在"/utf8>>).
+%% String IDs do not restore the former self-join bypass.
+self_join_denied_when_uid_is_binary_test_() ->
+    assert_join([<<"12345">>], not_member(), <<"你不是群成员"/utf8>>).
 
 %% ===================================================================
 %% 既有参数校验不得被鉴权门顶掉（顺序回归）
@@ -130,12 +134,10 @@ membership_query_skipped_on_invalid_params_test_() ->
         )
     end).
 
-%% 自加入路径也不该查库（member_uids == [自己] 直接放行）
-membership_query_skipped_on_self_join_test_() ->
+%% Self-join must pass the same membership/policy authorization boundary.
+membership_and_policy_checked_on_self_join_test_() ->
     ?WITH_MECKS(mocks([?UID], not_member()), fun() ->
         {ok, _Req, _} = group_member_handler:init(#{}, #{action => join}),
-        ?assertNot(
-            meck:called(group_member_logic, find_by_gid_and_uid, ['_', '_', '_']),
-            "自加入不需要成员身份查询"
-        )
+        ?assert(meck:called(group_member_logic, find_by_gid_and_uid, ['_', '_', '_'])),
+        ?assert(meck:called(group_member_logic, allows_public_join, [?GID]))
     end).

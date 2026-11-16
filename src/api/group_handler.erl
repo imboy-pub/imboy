@@ -72,6 +72,8 @@ handle_action(msg_page, Req, State) ->
     msg_page(Req, State);
 handle_action(qrcode, Req, State) ->
     qrcode(Req, State);
+handle_action(qrcode_token, Req, State) ->
+    qrcode_token(Req, State);
 handle_action(remark, Req, State) ->
     remark(Req, State);
 handle_action(false, Req, _State) ->
@@ -727,92 +729,49 @@ transfer(Req0, State) ->
 %% @param State 状态映射，包含 current_uid
 %% @return 返回包含群组信息的响应
 %% @end
--spec qrcode(cowboy_req:req(), map()) -> cowboy_req:req().
-qrcode(Req0, State) ->
-    Qs4 = cowboy_req:parse_qs(Req0),
-    Gid = proplists:get_value(<<"id">>, Qs4, undefined),
-    ExpiredAt = proplists:get_value(<<"exp">>, Qs4, undefined),
-    Tk = proplists:get_value(<<"tk">>, Qs4, undefined),
+-spec qrcode_token(cowboy_req:req(), map()) -> cowboy_req:req().
+qrcode_token(Req, State) ->
+    case cowboy_req:method(Req) of
+        <<"POST">> ->
+            Values = elib_param:post(Req),
+            Gid = elib_cnv:safe_to_integer(maps:get(<<"gid">>, Values, 0)),
+            case group_logic:issue_qrcode_invite(auth_ds:current_uid(State), Gid) of
+                {ok, Invite} -> elib_response:success(Req, Invite);
+                {error, {Code, Msg}} -> elib_response:error(Req, Msg, Code)
+            end;
+        _ -> elib_response:error(Req, <<"method not allowed">>, 405)
+    end.
 
-    Key = config_ds:env(solidified_key),
-    ExpiredAt2 = ec_cnv:to_binary(ExpiredAt),
-    % 非法/缺失 exp 参数时安全返回 0，避免 binary_to_integer badarg 崩溃
-    ExpiredAtInt = elib_cnv:safe_to_integer(ExpiredAt2),
-    Verified =
-        elib_hasher:md5(<<ExpiredAt2/binary, "_", (ec_cnv:to_binary(Key))/binary>>) == Tk,
-    Now = elib_dt:now(),
-    NowInt = elib_dt:rfc3339_to(Now),
-    CurrentUid = auth_ds:current_uid(State),
-    % ?DEBUG_LOG([" Verified", Verified, "ExpiredAt2 ", ExpiredAt2, "Key ", Key, " Tk ", Tk, Now > ExpiredAt]),
-    case {CurrentUid, Verified} of
-        {0, _} ->
-            Req = cowboy_req:reply(
-                302,
-                #{<<"Location">> => config_ds:env(redirect_url, <<"http://www.imboy.pub">>)},
-                Req0
-            ),
-            {ok, Req, State};
-        {_, false} ->
-            Req = cowboy_req:reply(
-                302,
-                #{<<"Location">> => config_ds:env(redirect_url, <<"http://www.imboy.pub">>)},
-                Req0
-            ),
-            {ok, Req, State};
-        {_, true} when NowInt > ExpiredAtInt ->
-            elib_response:error(Req0, "验证码已过期");
-        _ ->
-            Gid2 = elib_cnv:safe_to_integer(Gid),
-            % ?DEBUG_LOG(["Gid2", Gid2, "CurrentUid ", CurrentUid]),
-            Column = <<"id,title,avatar,member_count, member_max">>,
-            case group_logic:find_by_id(Gid2, Column) of
-                {error, Reason} ->
-                    elib_response:error(Req0, Reason);
-                G ->
-                    Res = group_member_logic:join_group(
-                        <<"scan_qr_code">>,
-                        CurrentUid,
-                        Gid2,
-                        #{
-                            max_members =>
-                                maps:get(<<"member_max">>, G, 10),
-                            current_count =>
-                                maps:get(<<"member_count">>, G, 0)
-                        }
-                    ),
-                    % ?DEBUG_LOG(["Gid2", Gid2, "CurrentUid ", CurrentUid, " Res ", Res]),
-                    case Res of
-                        ok ->
-                            case group_logic:find_by_id(Gid2, Column) of
-                                {error, Reason2} ->
-                                    elib_response:error(Req0, Reason2);
-                                G2 ->
-                                    Gm = group_logic:find_member(
-                                        Gid2, CurrentUid
-                                    ),
-                                    [Gm2] = group_member_transfer:member_list([Gm]),
-                                    G3 = G2#{
-                                        <<"member_count">> := maps:get(<<"member_count">>, G2),
-                                        <<"type">> => <<"group">>,
-                                        <<"group_member">> => Gm2
-                                    },
-                                    % ?DEBUG_LOG(["Gid2", Gid2, "CurrentUid ", CurrentUid, " Res ", Res, " G3 ",
-                                    % group_logic:group_transfer(G3)]),
-                                    elib_response:success(Req0, group_logic:group_transfer(G3))
-                            end;
-                        %% T5（双体验 v2.5.2）：workspace 群扫码加入被 DS 层
-                        %% 子集校验拒绝（abort_tx 回滚）时返回稳定 409；
-                        %% 其余错误原样透出，不再 case_clause 崩溃。
-                        {error, workspace_membership_required} ->
-                            elib_response:error(
-                                Req0,
-                                <<"workspace_membership_required：群成员必须先是该工作区的 active 工作区成员"/utf8>>,
-                                409
-                            );
-                        {error, JoinErr} ->
-                            elib_response:error(Req0, JoinErr)
-                    end
-            end
+-spec qrcode(cowboy_req:req(), map()) -> cowboy_req:req().
+qrcode(Req, State) ->
+    Qs = cowboy_req:parse_qs(Req),
+    Gid = elib_cnv:safe_to_integer(proplists:get_value(<<"id">>, Qs, 0)),
+    Token = proplists:get_value(<<"tk">>, Qs, <<>>),
+    Uid = auth_ds:current_uid(State),
+    %% Legacy md5(exp + app key) is deliberately rejected. The query's exp is
+    %% only a display hint; signed claims are the sole expiration authority.
+    case group_logic:redeem_qrcode_invite(Uid, Gid, Token) of
+        ok -> qrcode_group_card(Req, Gid, Uid);
+        {error, {Code, Msg}} when is_integer(Code) ->
+            elib_response:error(Req, Msg, Code);
+        {error, workspace_membership_required} ->
+            elib_response:error(Req, <<"workspace_membership_required"/utf8>>, 409);
+        {error, JoinError} -> elib_response:error(Req, JoinError)
+    end.
+
+qrcode_group_card(Req, Gid, Uid) ->
+    Columns = <<"id,title,avatar,member_count,member_max">>,
+    case group_logic:find_by_id(Gid, Columns) of
+        Group when is_map(Group), map_size(Group) > 0 ->
+            case group_logic:find_member(Gid, Uid) of
+                Member when is_map(Member), map_size(Member) > 0 ->
+                    [Card] = group_member_transfer:member_list([Member]),
+                    elib_response:success(Req, group_logic:group_transfer(
+                        Group#{<<"type">> => <<"group">>, <<"group_member">> => Card}
+                    ));
+                _ -> elib_response:error(Req, <<"群成员状态暂不可用"/utf8>>, 503)
+            end;
+        _ -> elib_response:error(Req, <<"群组不存在"/utf8>>, 404)
     end.
 
 %% @doc 获取或更新群备注（仅自己可见）

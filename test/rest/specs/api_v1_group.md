@@ -24,7 +24,7 @@
 
 1. **缺行 ≠ 错误**：`group/detail` 对不存在的 gid 返回 HTTP 200 + `code=0` + `payload={}`（handler 只把 SQL 失败 `{error,_}` 映射为 `"群组不存在"`，缺行走 `elib_pg:one` 默认空 map → success 空载荷）。
 2. **dissolve 不存在 gid**：`owner_uid` 取默认 0 ≠ 操作者 → `code=1`，`msg="只有拥有者才能够解散该群，或者群已解散"`（与"非群主解散"同一错误）。
-3. **join 不存在 gid**：空群行使 `member_max=0/member_count=0`，容量差 0 → `code=1`，`msg="群成员已满。"`（不是 `"群组不存在"`）。
+3. **join 不存在 gid**：无有效成员关系，也无公开且自由加入的群策略 → `code=1`，`msg="你不是群成员"`。Self-join requires an active public/open group policy; a missing group fails authorization.
 4. **重复 join 幂等**：handler 先查 `list_member` 命中已有成员 → 直接回 `code=0` + 现有成员列表；DS 层 `upsert_active` 亦幂等。
 5. **leave 恒成功**：`group_member/leave` 无论自退还是被踢（无权限时被吞）都回 `code=0`；退群效果通过后续 `group_member/page` 的 `"你不是群成员"` 证明。
 6. **非成员可读 detail**：personal 群的 `group/detail` 无成员门（代码注释 P1-7b 明示任何持 JWT 用户可读，仅 workspace 群有 403 守卫）——因此群域的 Authorization 断言落在 dissolve/role/join 上，不对 detail 臆造 403。
@@ -79,7 +79,7 @@ owner 建群并邀请 member；outsider 已登录但不在群内。
 
 #### Then
 
-- 步骤 1：`code=1`，`msg="你不是群成员"`（邀请他人必须自己是成员；outsider 邀的是 member 而非自己，故触发成员门而非 self-join 通道）。
+- 步骤 1：`code=1`，`msg="你不是群成员"`（邀请他人必须自己是成员；私有群的 self-join 同样不能绕过授权）。Inviting others requires membership; private-group self-join has the same authorization boundary.
 - 步骤 2：`code=1`，`msg="只有拥有者才能够解散该群，或者群已解散"`，`payload={}`。
 - 步骤 3：`code=0`，`payload.id` 仍为该 gid —— 被拒绝的解散未删除群。
 
@@ -93,13 +93,13 @@ owner 已登录；gid 为当次随机生成（< 2^62）。
 
 1. `GET /api/v1/group/detail?gid=<ghost>`；
 2. owner `POST /api/v1/group/dissolve` `{gid: <ghost>}`；
-3. owner `POST /api/v1/group_member/join` `{gid: <ghost>, member_uids: [<owner>]}`（self-join 通道）。
+3. owner `POST /api/v1/group_member/join` `{gid: <ghost>, member_uids: [<owner>]}`（无邀请的 self-join 请求 / self-join without invitation）。
 
 #### Then
 
 - 步骤 1：HTTP 200，`code=0`，`payload={}`（真实契约：缺群返回空成功）。
 - 步骤 2：`code=1`，`msg="只有拥有者才能够解散该群，或者群已解散"`。
-- 步骤 3：`code=1`，`msg="群成员已满。"`（容量门落到空群行）。
+- 步骤 3：`code=1`，`msg="你不是群成员"`（缺群不能提供公开自由加入授权 / a missing group cannot authorize public self-join）。
 
 ### GROUP-005: Role 管理 — 成员越权 / 群主提权 / 角色值越界
 
@@ -143,6 +143,7 @@ owner 建群并邀请 member（role=1）；stranger 已登录、不在群内。
 
 ## 无法覆盖项（本批不做及原因）
 
-- `group/qrcode`（302 重定向 + `exp/tk` md5 签名依赖 `solidified_key` 配置）与 `face2face/face2face_save`：涉及二维码签名与地理位置，留待专门任务。
+- `group/qrcode_token` / `group/qrcode`：服务端签发绑定 gid、邀请者及有效期的 token；旧客户端 MD5 群码拒绝，先部署后端，再更新客户端并重新生成群码。合成回归见 `group_invite_logic_tests` / `group_handler_tests`。Server-issued invitations only; deploy the backend first and regenerate group codes with the updated client. This REST suite does not yet exercise QR redemption.
+- `face2face/face2face_save`：地理位置场景留待专门任务 / geolocation flows remain outside this suite.
 - workspace 群（scope=workspace 的 403/409/980 语义）：依赖 workspace 域 fixture，超出 RTF-07 范围。
 - `group/edit`、`group/page`、`transfer`、`mute/unmute`、`alias`：首批最小闭环不含；角色 Authorization 已由 `role`/`dissolve` 覆盖。

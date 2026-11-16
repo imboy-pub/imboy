@@ -112,8 +112,8 @@ join(Req0, State) ->
             _ ->
                 JoinMode
         end,
-    %% 邀请他人入群必须自己先是群成员；自己加入自己（扫码 / 面对面入群）除外。
-    %% 缺这道门则任何持 token 的用户都能把任意 uid 塞进任意有容量的群。
+    %% Client-supplied join_mode and self-join are not invitation credentials.
+    %% QR and face-to-face have their own server-authorized entry points.
     IsSelfJoin =
         is_list(MemberUids) andalso
             [ec_cnv:to_binary(U) || U <- MemberUids] ==
@@ -127,19 +127,19 @@ join(Req0, State) ->
             elib_response:error(Req0, <<"member_uids 必须是list"/utf8>>);
         _ when MemberUids == [] ->
             elib_response:error(Req0, <<"member_uids 不能为空"/utf8>>);
-        %% 邀请他人入群必须自己先是群成员；自己加入自己（扫码 / 面对面入群）除外。
-        %% 成员身份查询刻意放在**限流与参数校验之后**惰性求值：早先版本把它
-        %% 提到 case 之前，导致被限流拒绝的请求也照打一次 DB 查询，
-        %% 等于限流挡不住数据库放大。
-        _ when not IsSelfJoin ->
-            case is_group_member(Gid2, CurrentUid) of
-                false ->
-                    elib_response:error(Req0, <<"你不是群成员"/utf8>>);
-                true ->
-                    join_with_capacity(Req0, Gid, Gid2, MemberUids, JoinMode2)
-            end;
         _ ->
-            join_with_capacity(Req0, Gid, Gid2, MemberUids, JoinMode2)
+            case is_group_member(Gid2, CurrentUid) of
+                true ->
+                    join_with_capacity(Req0, Gid, Gid2, MemberUids, JoinMode2,
+                        #{invite_issuer => CurrentUid});
+                false ->
+                    case IsSelfJoin andalso group_member_logic:allows_public_join(Gid2) of
+                        true ->
+                            join_with_capacity(Req0, Gid, Gid2, MemberUids,
+                                <<"public">>, #{public_self_join => true});
+                        false -> elib_response:error(Req0, <<"你不是群成员"/utf8>>)
+                    end
+            end
     end.
 
 %% @private 自己是否已在群内
@@ -148,7 +148,7 @@ is_group_member(Gid, Uid) ->
         maps:size(group_member_logic:find_by_gid_and_uid(Gid, Uid, <<"id">>)) > 0.
 
 %% @private 通过成员身份门之后的容量校验与入群
-join_with_capacity(Req0, Gid, Gid2, MemberUids, JoinMode2) ->
+join_with_capacity(Req0, Gid, Gid2, MemberUids, JoinMode2, JoinAuthorization) ->
     case group_member_logic:get_group_capacity(Gid2) of
         {error, _Reason} ->
             elib_response:error(Req0, <<"群组不存在"/utf8>>);
@@ -192,7 +192,7 @@ join_with_capacity(Req0, Gid, Gid2, MemberUids, JoinMode2) ->
                                             JoinMode2,
                                             Uid2,
                                             Gid2,
-                                            #{}
+                                            JoinAuthorization
                                         )
                                      || Uid2 <- MemberUids2
                                     ]

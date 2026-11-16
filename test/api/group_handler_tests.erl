@@ -2,6 +2,35 @@
 -include_lib("eunit/include/eunit.hrl").
 -include("eunit_setup.hrl").
 
+qrcode_issue_uses_authenticated_member_test_() ->
+    ?WITH_MECKS([
+        {cowboy_req, [{method, 1, fun(req0) -> <<"POST">> end}]},
+        {auth_ds, [{current_uid, 1, fun(_) -> 7 end}]},
+        {elib_param, [{post, 1, fun(req0) -> #{<<"gid">> => <<"101">>} end}]},
+        {group_logic, [{issue_qrcode_invite, 2, fun(7, 101) ->
+            {ok, #{<<"token">> => <<"server-token">>}}
+        end}]},
+        {elib_response, [{success, 2, fun(_, Payload) -> Payload end}]}
+    ], fun() ->
+        ?assertEqual(#{<<"token">> => <<"server-token">>},
+            group_handler:handle_action(qrcode_token, req0, #{}))
+    end).
+
+qrcode_legacy_token_has_no_join_fallback_test_() ->
+    ?WITH_MECKS([
+        {cowboy_req, [{parse_qs, 1, fun(req0) ->
+            [{<<"id">>, <<"101">>}, {<<"tk">>, <<"legacy-checksum">>},
+                {<<"exp">>, <<"4102444800000">>}]
+        end}]},
+        {auth_ds, [{current_uid, 1, fun(_) -> 8 end}]},
+        {group_logic, [{redeem_qrcode_invite, 3, fun(8, 101, <<"legacy-checksum">>) ->
+            {error, {403, <<"invalid invitation">>}}
+        end}]},
+        {elib_response, [{error, 3, fun(_, _, Code) -> Code end}]}
+    ], fun() ->
+        ?assertEqual(403, group_handler:handle_action(qrcode, req0, #{}))
+    end).
+
 action_contract_contains_current_actions_test() ->
     Source = read_group_handler_source(),
     lists:foreach(

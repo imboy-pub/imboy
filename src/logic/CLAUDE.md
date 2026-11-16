@@ -39,6 +39,7 @@
 |------|------|
 | `group_logic` | 群组管理 |
 | `group_member_logic` | 群成员管理 |
+| `group_invite_logic` | 群二维码服务端签发、群/邀请者/有效期绑定；兑换时同事务复核邀请者 / Server-issued group QR authorization |
 | `group_notice_logic` | 群公告 |
 
 ### 消息

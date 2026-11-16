@@ -15,9 +15,8 @@
 %%     predicate rejects it before the old empty lookup-success path.
 %%   * dissolve uses the same lookup, so a nonexistent gid or a
 %%     non-owner both end in "只有拥有者才能够解散该群，或者群已解散".
-%%   * group_member/join against a nonexistent gid falls through the
-%%     capacity check (member_max defaults to 0 from an empty row) and
-%%     answers "群成员已满。" instead of "群组不存在".
+%%   * group_member/join requires current membership or an explicit
+%%     public/open group policy, so a nonexistent gid fails authorization.
 %%   * elib_response:error/4 places the human message in a TOP-LEVEL
 %%     "field" envelope key, not inside payload.
 
@@ -229,8 +228,7 @@ group_003_dissolve_requires_owner_outider_join_denied(Config) ->
 %%   * detail answers success with an EMPTY payload (missing row is an
 %%     empty map, not an error),
 %%   * dissolve ends in the owner-only error (owner_uid defaults to 0),
-%%   * join ends in "群成员已满。" because the empty group row yields
-%%     member_max=0 (capacity diff 0).
+%%   * join ends in "你不是群成员": a missing group has no open policy.
 %% ===================================================================
 group_004_missing_gid_semantics(Config) ->
     Owner = login_user(Config),
@@ -269,7 +267,7 @@ group_004_missing_gid_semantics(Config) ->
             ),
             common_assertions(SelfJoinResp),
             rest_assert:json_contains(
-                #{<<"code">> => 1, <<"msg">> => <<"群成员已满。"/utf8>>}, SelfJoinResp
+                #{<<"code">> => 1, <<"msg">> => <<"你不是群成员"/utf8>>}, SelfJoinResp
             )
         end
     ).

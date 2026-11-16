@@ -9,8 +9,16 @@ post:
     ## 中文 / English
     把 member_uids 列表加入到指定群组。`join_mode` 为空时服务端自动生成
     `invite_<inviter>_<title>` 形式标记。限流：3 秒一次。
+    邀请者必须是现役群成员；自己加入也不豁免，只有服务端标记为公开且
+    无需审核（type=1, join_limit=1）的群允许免邀请自行加入。
+    授权会在写成员行的同一事务内再次校验；join_mode 只是来源标记。
+    扫码须使用 /group/qrcode 的服务端签名邀请，不能通过本端点绕过。
     Invite users to a group; if `join_mode` is empty, server stamps an
     `invite_<inviter>_<title>` marker. Rate-limited 3s per inviter.
+    An active member must authorize invitations. Non-members may self-join only
+    explicitly public/open groups (type=1, join_limit=1); authorization is checked
+    again in the membership transaction. Client-supplied join_mode grants no rights.
+    QR redemption uses the signed /group/qrcode flow, not a self-join bypass.
   operationId: groupMemberJoin
   requestBody:
     required: true

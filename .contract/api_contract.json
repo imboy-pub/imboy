@@ -3667,6 +3667,12 @@
         "static": false
       },
       {
+        "action": "qrcode_token",
+        "handler": "group_handler",
+        "path": "/api/v1/group/qrcode_token",
+        "static": false
+      },
+      {
         "action": "remark",
         "handler": "group_handler",
         "path": "/api/v1/group/remark",
