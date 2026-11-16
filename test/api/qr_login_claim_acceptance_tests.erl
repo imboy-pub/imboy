@@ -210,35 +210,39 @@ pg_failure_fail_closed_real_dead_connection_test_() ->
         end
     end).
 
-%% SELECT 成功后第二次借连接（claim UPDATE）失败；不只测试初始查询失败。
-%% Real successful lookup followed by a real dead connection at the claim boundary.
+%% SELECT 查找真实成功后，在 claim SQL 边界注入存储错误。
+%% A separate test above exercises a real dead epgsql connection; this test
+%% isolates the second-query failure without depending on pooler retry counts.
 poll_claim_sql_failure_after_lookup_test_() ->
     ?ACCEPT_WITH_DB(60, fun() ->
         ST = unique_token(<<"st_acc_claim_dead">>),
         setup_confirmed_session(ST),
-        {ok, Live} = open_pg_conn(),
-        {ok, Dead} = open_pg_conn(),
-        epgsql:close(Dead),
-        Counter = atomics:new(1, []),
+        ClaimFailures = atomics:new(1, []),
         try
-            meck:new(pooler, [no_link, passthrough]),
-            meck:expect(pooler, take_member, fun(pgsql) ->
-                case atomics:add_get(Counter, 1, 1) of
-                    1 -> Live;
-                    _ -> Dead
+            install_transport_observer(),
+            meck:new(elib_pg, [no_link, passthrough]),
+            meck:expect(elib_pg, query, fun(Sql, Params) ->
+                case binary:match(iolist_to_binary(Sql),
+                    <<"UPDATE public.qr_login_session SET login_token = NULL">>) of
+                    {0, _} ->
+                        atomics:add(ClaimFailures, 1, 1),
+                        {error, synthetic_claim_query_failure};
+                    nomatch ->
+                        meck:passthrough([Sql, Params])
                 end
             end),
-            meck:expect(pooler, return_member, fun(_, _) -> ok end),
-            install_transport_observer(),
+            %% The status lookup is a real PG SELECT; only the subsequent
+            %% atomic claim statement is failed at the storage boundary.
             ?assertEqual({loser, ?ERR_SERVICE_UNAVAILABLE}, poll_once(ST)),
-            ?assertEqual(2, atomics:get(Counter, 1)),
-            meck:unload(pooler),
+            ?assertEqual(1, atomics:get(ClaimFailures, 1)),
+            meck:unload(elib_pg),
+            %% No write occurred: after storage recovers the still-unconsumed
+            %% credential may be claimed once, and only through the PG CAS.
             ?assertEqual({winner, ?TOKEN, ?UID}, poll_once(ST)),
             assert_consumed(ST)
         after
-            catch meck:unload(pooler),
+            catch meck:unload(elib_pg),
             catch meck:unload(cowboy_req),
-            epgsql:close(Live),
             cleanup_session(ST)
         end
     end).
