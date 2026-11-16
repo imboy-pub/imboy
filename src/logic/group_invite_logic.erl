@@ -87,7 +87,10 @@ verify(Gid, Token) ->
                     try binary_to_integer(IssuerBin) of
                         Issuer when Issuer > 0 -> {ok, Issuer};
                         _ -> denied()
-                    catch _:_ -> denied()
+                    catch
+                        error:badarg ->
+                            logger:warning("Invalid group invitation issuer claim"),
+                            denied()
                     end;
                 _ -> denied()
             end

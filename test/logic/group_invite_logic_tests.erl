@@ -59,6 +59,7 @@ invalid_claims_and_signatures_test_() ->
             imboy_jwt:sign(Claims#{<<"exp">> => Now - 1}, invite_key()),
             imboy_jwt:sign(Claims#{<<"aud">> => <<"tk">>}, invite_key()),
             imboy_jwt:sign(Claims#{<<"inviter_uid">> => <<"0">>}, invite_key()),
+            imboy_jwt:sign(Claims#{<<"inviter_uid">> => <<"not-an-integer">>}, invite_key()),
             imboy_jwt:sign(Claims#{<<"exp">> => Now + 604801}, invite_key()),
             imboy_jwt:sign(Claims, ?KEY),
             imboy_jwt:sign(Claims, <<"synthetic-app-shipped-key-is-not-server-key">>)
