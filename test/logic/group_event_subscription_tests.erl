@@ -13,7 +13,9 @@ subscription_test_() ->
             fun failed_best_effort_publish_is_counted/0,
             fun probe_suite_does_not_invoke_group_business/0,
             fun blocked_manager_does_not_block_owner_start/0,
-            fun owner_shutdown_cleans_up_late_registration/0
+            fun owner_shutdown_cleans_up_late_registration/0,
+            fun shutdown_observes_installer_down/0,
+            fun shutdown_missing_monitor_is_bounded/0
         ]
     ].
 
@@ -193,6 +195,35 @@ owner_shutdown_cleans_up_late_registration() ->
         resume(Bus),
         stop(Owner),
         stop(Bus)
+    end.
+
+shutdown_observes_installer_down() ->
+    {Pid, Ref} = spawn_monitor(timer, sleep, [infinity]),
+    State = #{deadline => undefined, retry => undefined, installer => Pid, monitor => Ref},
+    try
+        ?assertEqual(ok, group_event_subscription:terminate(normal, State)),
+        ?assertNot(is_process_alive(Pid))
+    after
+        exit(Pid, kill),
+        demonitor(Ref, [flush])
+    end.
+
+shutdown_missing_monitor_is_bounded() ->
+    {Pid, Ref} = spawn_monitor(timer, sleep, [infinity]),
+    State = #{deadline => undefined, retry => undefined, installer => Pid, monitor => make_ref()},
+    try
+        ?assertExit(
+            {installer_shutdown_timeout, Pid},
+            group_event_subscription:terminate(normal, State)
+        ),
+        ?assertNot(is_process_alive(Pid)),
+        receive
+            {'DOWN', Ref, process, Pid, killed} -> ok
+        after 1000 -> error(installer_not_stopped)
+        end
+    after
+        exit(Pid, kill),
+        demonitor(Ref, [flush])
     end.
 
 start_bus() ->

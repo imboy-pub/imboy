@@ -26,28 +26,31 @@ find_by_qr_token(QRToken) ->
     qr_login_session_repo:find_by_qr_token(QRToken).
 
 %% @doc scan CAS：waiting → scanned
--spec transition_scan(binary(), integer()) -> {ok, map()} | {error, not_transitioned}.
+-spec transition_scan(binary(), integer()) ->
+    {ok, map()} | {error, not_transitioned} | {error, {pg_error, term()}}.
 transition_scan(SessionToken, Uid) ->
     qr_login_session_repo:transition_scan(SessionToken, Uid).
 
 %% @doc confirm CAS：scanned → confirmed + 原子写入 login_token
 -spec transition_confirm(binary(), integer(), binary()) ->
-    {ok, map()} | {error, not_transitioned}.
+    {ok, map()} | {error, not_transitioned} | {error, {pg_error, term()}}.
 transition_confirm(SessionToken, Uid, LoginToken) ->
     qr_login_session_repo:transition_confirm(SessionToken, Uid, LoginToken).
 
 %% @doc cancel CAS：waiting|scanned → cancelled（幂等）
--spec transition_cancel(binary()) -> ok | {error, not_transitioned}.
+-spec transition_cancel(binary()) ->
+    ok | {error, not_transitioned} | {error, {pg_error, term()}}.
 transition_cancel(SessionToken) ->
     qr_login_session_repo:transition_cancel(SessionToken).
 
-%% @doc 原子领取 login_token（恰好一个消费者）。LEE-5：门禁失败返回
-%% 可区分的 {error, {claim_gate, _}}（调用方映射明确拒绝），PG 故障
-%% fail closed 为 {error, not_claimable}。
+%% @doc 原子领取 login_token（恰好一个消费者）。门禁失败返回 claim_gate，
+%% PG 执行失败返回 pg_error；仅成功执行但零行才是 not_claimable。
+%% Distinguish storage failures from zero rows; never retry or reset a consumed token.
 -spec claim_login_token(binary()) ->
     {ok, #{login_token := binary(), scanned_by := integer()}}
     | {error, not_claimable}
-    | {error, {claim_gate, term()}}.
+    | {error, {claim_gate, term()}}
+    | {error, {pg_error, term()}}.
 claim_login_token(SessionToken) ->
     qr_login_session_repo:claim_login_token(SessionToken).
 

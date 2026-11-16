@@ -121,6 +121,11 @@ info(Event, Req0, State) when is_map(Event) ->
                     %% 无法无损重试——关闭连接，客户端走轮询兜底（G-QR 语义）
                     _ = cowboy_req:stream_body(<<": claimed_elsewhere\n\n">>, nofin, Req0),
                     {stop, Req0, State};
+                {error, {pg_error, _}} ->
+                    %% 查询失败不等于他人已领取；不重试、不使用通知内凭据。
+                    %% Storage failure is not another winner; do not retry or trust the event.
+                    _ = cowboy_req:stream_body(<<": service_unavailable\n\n">>, nofin, Req0),
+                    {stop, Req0, State};
                 {error, {claim_gate, Reason}} ->
                     %% LEE-5：PG18 门禁/PG 故障——明确拒绝，绝无 token。
                     ?WARN_LOG(

@@ -11,7 +11,9 @@ erl -noshell -pa ebin test deps/*/ebin \
     {generator, fun enterprise_asset_driver_pg_tests:environment_isolation_test_/0},
     elib_s3_sign_tests,
     imboy_app_registry_validate_tests,
-    e2ee_presign_mime_binding_tests
+    e2ee_presign_mime_binding_tests,
+    qr_login_pg_failure_tests,
+    group_event_subscription_tests
   ], case eunit:test(Tests, [verbose]) of ok -> halt(0); _ -> halt(1) end.' \
   2>&1 | tee "$log_file"
 

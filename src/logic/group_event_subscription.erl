@@ -47,13 +47,8 @@ handle_info({timeout, Timer, install}, #{deadline := Timer, installer := Pid} = 
     {noreply, State#{deadline := undefined, ready := false}};
 handle_info({'DOWN', Ref, process, Pid, _}, #{monitor := Ref, installer := Pid} = State) ->
     cancel(maps:get(deadline, State)),
-    {noreply,
-        retry(State#{
-            installer := undefined,
-            monitor := undefined,
-            deadline := undefined,
-            ready := false
-        })};
+    Reset = installer_state(State, undefined, undefined, undefined),
+    {noreply, retry(Reset#{ready := false})};
 handle_info({timeout, Timer, retry}, #{retry := Timer} = State) ->
     {noreply, install(State#{retry := undefined})};
 handle_info(_, State) ->
@@ -71,8 +66,18 @@ install(State) ->
                 ?MODULE, supervise_handler, [self(), Bus], [link, monitor]
             ),
             Timer = erlang:start_timer(1000, self(), install),
-            State#{installer := Pid, monitor := Ref, deadline := Timer}
+            installer_state(State, Pid, Ref, Timer)
     end.
+
+%% Keep installer identity, monitor and deadline transitions in one place.
+-spec installer_state(
+    State :: map(),
+    Pid :: pid() | undefined,
+    Ref :: reference() | undefined,
+    Timer :: reference() | undefined
+) -> map().
+installer_state(State, Pid, Ref, Timer) ->
+    State#{installer := Pid, monitor := Ref, deadline := Timer}.
 
 %% Resident installer process: gen_event removes supervised handlers when
 %% their installing process exits, so this loop never returns normally —
@@ -86,10 +91,17 @@ supervise_handler(Owner, Bus) ->
         {group_event_handler, []}
     ),
     Owner ! {installed, self()},
-    %% Stay alive: gen_event removes supervised handlers when their installer exits.
+    wait_for_handler_exit(Bus, Ref).
+
+-spec wait_for_handler_exit(Bus :: pid(), Ref :: reference()) -> no_return().
+wait_for_handler_exit(Bus, Ref) ->
     receive
         {gen_event_EXIT, group_event_handler, _} -> exit(handler_removed);
         {'DOWN', Ref, process, Bus, _} -> exit(manager_stopped)
+    after 60000 ->
+        %% An idle handler must stay installed. Reuse the same monitor and
+        %% installer process instead of reinstalling or declaring failure.
+        wait_for_handler_exit(Bus, Ref)
     end.
 
 retry(#{retry := undefined} = State) ->
@@ -114,5 +126,8 @@ terminate(_, State) ->
             Ref = maps:get(monitor, State),
             receive
                 {'DOWN', Ref, process, Pid, _} -> ok
+            after 1000 ->
+                %% Bound cleanup below the supervisor's five-second budget.
+                exit({installer_shutdown_timeout, Pid})
             end
     end.

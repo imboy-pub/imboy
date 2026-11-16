@@ -128,7 +128,7 @@ parse_qr_token(QRToken) ->
     case qr_login_session_ds:find_by_qr_token(QRToken) of
         #{<<"session_token">> := ST} -> {ok, ST};
         undefined -> {error, invalid_format};
-        {error, Reason} -> {error, Reason}
+        {error, Reason} -> {error, {pg_error, Reason}}
     end.
 
 %% ===================================================================
@@ -225,15 +225,15 @@ handle_status(Req) ->
 
 %% @doc PG 权威 status：confirmed 时原子 claim（UPDATE...RETURNING 行锁
 %% 保证并发/SSE 双读竞争下恰好一个消费者拿到 token，G-QR oracle）。
-%% LEE-5：claim 门禁失败（PG18 以下/PG 故障）→ 可区分 {claim_gate,_}
-%% 映射 503 明确拒绝；已消费/过期 → 既有兼容 5203。
+%% LEE-5：查询/claim 执行故障与门禁失败均映射 503；正常零行仍返回 5203。
+%% Storage failures never masquerade as a missing or already-consumed session.
 -spec pg_handle_status(cowboy_req:req(), binary()) -> cowboy_req:req().
 pg_handle_status(Req, SessionToken) ->
     case qr_login_session_ds:find_by_session_token(SessionToken) of
         undefined ->
             elib_response:error(Req, <<"会话不存在或已过期"/utf8>>, ?ERR_NOT_FOUND);
         {error, _} ->
-            elib_response:error(Req, <<"会话不存在或已过期"/utf8>>, ?ERR_NOT_FOUND);
+            service_unavailable(Req);
         Session ->
             case maps:get(<<"status">>, Session, <<"waiting">>) of
                 <<"confirmed">> ->
@@ -249,6 +249,8 @@ pg_handle_status(Req, SessionToken) ->
                             elib_response:error(
                                 Req, <<"二维码已确认，请刷新"/utf8>>, ?ERR_QR_LOGIN_ALREADY_USED
                             );
+                        {error, {pg_error, _}} ->
+                            service_unavailable(Req);
                         {error, {claim_gate, Reason}} ->
                             ?ERROR_LOG(
                                 "[lee-5] qr_login status claim gate rejected: ~p", [Reason]
@@ -277,6 +279,14 @@ confirmed_response(Req, Token, Uid) ->
             )
     end.
 
+%% @doc 数据库故障不冒充业务状态；不回传 SQL/凭据，也不重试未知结果的写入。
+%% Report availability only; never expose storage details or replay an uncertain write.
+-spec service_unavailable(cowboy_req:req()) -> cowboy_req:req().
+service_unavailable(Req) ->
+    elib_response:error(
+        Req, <<"服务暂不可用，请稍后再试"/utf8>>, ?ERR_SERVICE_UNAVAILABLE
+    ).
+
 %% @doc 扫码（手机端调用）
 %% POST /api/v1/passport/qr_login/scan
 %% Body: {"qr_token": "xxx"}
@@ -296,8 +306,10 @@ handle_scan(Req, State) ->
             elib_response:error(Req, <<"参数错误"/utf8>>, ?ERR_BAD_REQUEST);
         _ ->
             case parse_qr_token(QRToken) of
-                {error, _} ->
+                {error, invalid_format} ->
                     elib_response:error(Req, <<"无效的二维码"/utf8>>, ?ERR_INVALID_QR_TOKEN);
+                {error, {pg_error, _}} ->
+                    service_unavailable(Req);
                 {ok, SessionToken} ->
                     pg_handle_scan(Req, SessionToken, Uid)
             end
@@ -317,6 +329,8 @@ pg_handle_scan(Req, SessionToken, Uid) ->
                 <<"device_name">> => maps:get(<<"device_name">>, Row, <<>>),
                 <<"platform">> => maps:get(<<"platform">>, Row, <<>>)
             });
+        {error, {pg_error, _}} ->
+            service_unavailable(Req);
         {error, not_transitioned} ->
             pg_scan_error(Req, SessionToken, Uid)
     end.
@@ -324,6 +338,8 @@ pg_handle_scan(Req, SessionToken, Uid) ->
 -spec pg_scan_error(cowboy_req:req(), binary(), integer()) -> cowboy_req:req().
 pg_scan_error(Req, SessionToken, Uid) ->
     case qr_login_session_ds:find_by_session_token(SessionToken) of
+        {error, _} ->
+            service_unavailable(Req);
         undefined ->
             elib_response:error(Req, <<"二维码已过期，请刷新"/utf8>>, ?ERR_QR_LOGIN_EXPIRED);
         #{<<"status">> := <<"confirmed">>} ->
@@ -354,8 +370,10 @@ handle_confirm(Req, State) ->
             elib_response:error(Req, <<"参数错误"/utf8>>, ?ERR_BAD_REQUEST);
         _ ->
             case parse_qr_token(QRToken) of
-                {error, _} ->
+                {error, invalid_format} ->
                     elib_response:error(Req, <<"无效的二维码"/utf8>>, ?ERR_INVALID_QR_TOKEN);
+                {error, {pg_error, _}} ->
+                    service_unavailable(Req);
                 {ok, SessionToken} ->
                     pg_handle_confirm(Req, SessionToken, Uid)
             end
@@ -369,7 +387,7 @@ pg_handle_confirm(Req, SessionToken, Uid) ->
         undefined ->
             elib_response:error(Req, <<"二维码已过期，请刷新"/utf8>>, ?ERR_QR_LOGIN_EXPIRED);
         {error, _} ->
-            elib_response:error(Req, <<"二维码已过期，请刷新"/utf8>>, ?ERR_QR_LOGIN_EXPIRED);
+            service_unavailable(Req);
         #{<<"status">> := <<"waiting">>} ->
             elib_response:error(Req, <<"二维码尚未扫码"/utf8>>, ?ERR_QR_LOGIN_NOT_SCANNED);
         #{<<"status">> := <<"cancelled">>} ->
@@ -410,12 +428,16 @@ pg_confirm_as_scanner(Req, SessionToken, Uid) ->
                         qr_login_event_ds:event(confirmed_ready, undefined)
                     ),
                     elib_response:success(Req, #{<<"status">> => <<"confirmed">>});
+                {error, {pg_error, _}} ->
+                    service_unavailable(Req);
                 {error, not_transitioned} ->
                     %% 并发 confirm/会话过期：既有兼容非成功响应
                     elib_response:error(
                         Req, <<"二维码已确认，请刷新"/utf8>>, ?ERR_QR_LOGIN_ALREADY_USED
                     )
             end;
+        {error, _} ->
+            service_unavailable(Req);
         _ ->
             elib_response:error(Req, <<"二维码已过期，请刷新"/utf8>>, ?ERR_QR_LOGIN_EXPIRED)
     end.
@@ -445,11 +467,15 @@ pg_handle_cancel(Req, SessionToken) ->
     case qr_login_session_ds:transition_cancel(SessionToken) of
         ok ->
             elib_response:success(Req, #{<<"status">> => <<"cancelled">>});
+        {error, {pg_error, _}} ->
+            service_unavailable(Req);
         {error, not_transitioned} ->
             case qr_login_session_ds:find_by_session_token(SessionToken) of
                 undefined ->
                     %% 不存在/过期：幂等成功（与 cache 路径对齐）
                     elib_response:success(Req, #{<<"status">> => <<"cancelled">>});
+                {error, _} ->
+                    service_unavailable(Req);
                 _ ->
                     elib_response:error(
                         Req, <<"二维码已确认，请刷新"/utf8>>, ?ERR_QR_LOGIN_ALREADY_USED
