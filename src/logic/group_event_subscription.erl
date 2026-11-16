@@ -91,10 +91,17 @@ supervise_handler(Owner, Bus) ->
         {group_event_handler, []}
     ),
     Owner ! {installed, self()},
-    %% Stay alive: gen_event removes supervised handlers when their installer exits.
+    wait_for_handler_exit(Bus, Ref).
+
+-spec wait_for_handler_exit(Bus :: pid(), Ref :: reference()) -> no_return().
+wait_for_handler_exit(Bus, Ref) ->
     receive
         {gen_event_EXIT, group_event_handler, _} -> exit(handler_removed);
         {'DOWN', Ref, process, Bus, _} -> exit(manager_stopped)
+    after 60000 ->
+        %% An idle handler must stay installed. Reuse the same monitor and
+        %% installer process instead of reinstalling or declaring failure.
+        wait_for_handler_exit(Bus, Ref)
     end.
 
 retry(#{retry := undefined} = State) ->
@@ -119,5 +126,8 @@ terminate(_, State) ->
             Ref = maps:get(monitor, State),
             receive
                 {'DOWN', Ref, process, Pid, _} -> ok
+            after 1000 ->
+                %% Bound cleanup below the supervisor's five-second budget.
+                exit({installer_shutdown_timeout, Pid})
             end
     end.
