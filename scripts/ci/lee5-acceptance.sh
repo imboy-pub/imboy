@@ -29,10 +29,10 @@ erl -noshell -pa ebin deps/*/ebin -eval '
   "127.0.0.1" = maps:get(host, Opts), 4323 = maps:get(port, Opts),
   "imboy_v1" = maps:get(database, Opts), "imboy_user" = maps:get(username, Opts),
   {ok, Conn} = epgsql:connect(Opts),
-  {ok, _, [{SystemId, Version, <<"imboy_v1">>, true}]} = epgsql:squery(Conn,
+  {ok, _, [{SystemId, Version, <<"imboy_v1">>, true}]} = epgsql:equery(Conn,
     "SELECT system_identifier::text, current_setting('\''server_version_num'\'')::int, "
     "current_database()::text, to_regclass('\''public.qr_login_session'\'') IS NOT NULL "
-    "FROM pg_control_system()"),
+    "FROM pg_control_system()", []),
   true = SystemId =:= list_to_binary(os:getenv("LEE5_PG_SYSTEM_ID")),
   true = Version >= 180000,
   ok = epgsql:close(Conn),
