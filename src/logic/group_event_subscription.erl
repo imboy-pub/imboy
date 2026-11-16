@@ -70,6 +70,7 @@ install(State) ->
     end.
 
 %% Keep installer identity, monitor and deadline transitions in one place.
+-spec installer_state(map(), pid() | undefined, reference() | undefined, reference() | undefined) -> map().
 installer_state(State, Pid, Ref, Timer) ->
     State#{installer := Pid, monitor := Ref, deadline := Timer}.
 
