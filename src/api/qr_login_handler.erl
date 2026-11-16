@@ -65,8 +65,8 @@ handle_request(Req0, State) ->
 
     Req1 =
         case {Method, Action} of
-            {<<"POST">>, create} -> handle_create(Req0);
-            {<<"GET">>, status} -> handle_status(Req0);
+            {<<"POST">>, create} -> handle_create(Req0, State);
+            {<<"GET">>, status} -> handle_status(Req0, State);
             {<<"POST">>, scan} -> handle_scan(Req0, State);
             {<<"POST">>, confirm} -> handle_confirm(Req0, State);
             {<<"POST">>, cancel} -> handle_cancel(Req0, State);
@@ -112,17 +112,27 @@ parse_qr_token_by_authority(QRToken) ->
 %% @doc 创建登录二维码
 %% POST /api/v1/passport/qr_login/create
 %% Body: {"device_id": "xxx", "device_name": "Web Browser", "platform": "web", "purpose": "human"|"seat"}
-handle_create(Req) ->
+handle_create(Req, State) ->
     {ok, Body, _} = cowboy_req:read_body(Req),
-    Data = jsone:decode(Body),
+    Data = try jsone:decode(Body) of
+        Parsed when is_map(Parsed) -> Parsed;
+        _ -> #{}
+    catch _:_ -> #{} end,
     DeviceId = maps:get(<<"device_id">>, Data, <<>>),
     DeviceName = maps:get(<<"device_name">>, Data, <<"Web Browser">>),
-    Platform = maps:get(<<"platform">>, Data, <<"web">>),
+    IsWeb = maps:get(jwt_purpose, State, human) =:= web_human,
+    Platform = case IsWeb of
+        true -> <<"web">>;
+        false -> maps:get(<<"platform">>, Data, <<"web">>)
+    end,
     Purpose = maps:get(<<"purpose">>, Data, <<"human">>),
+    WebValid = not IsWeb orelse (
+        Purpose =:= <<"human">> andalso valid_utf8_length(DeviceId, 128)
+            andalso valid_utf8_length(DeviceName, 80)),
 
     case
         is_binary(DeviceId) andalso DeviceId =/= <<>> andalso
-            (Purpose =:= <<"human">> orelse Purpose =:= <<"seat">>)
+            (Purpose =:= <<"human">> orelse Purpose =:= <<"seat">>) andalso WebValid
     of
         false ->
             elib_response:error(Req, <<"参数错误"/utf8>>, ?ERR_BAD_REQUEST);
@@ -181,7 +191,7 @@ cache_create_session(SessionToken, SessionData) ->
 
 %% @doc 查询扫码状态
 %% GET /api/v1/passport/qr_login/status?session_token=xxx
-handle_status(Req) ->
+handle_status(Req, State) ->
     Qs = cowboy_req:parse_qs(Req),
     SessionToken = proplists:get_value(<<"session_token">>, Qs, <<>>),
 
@@ -189,10 +199,12 @@ handle_status(Req) ->
         <<>> ->
             elib_response:error(Req, <<"参数错误"/utf8>>, ?ERR_BAD_REQUEST);
         _ ->
-            case authority() of
-                pg -> pg_handle_status(Req, SessionToken);
-                cache -> cache_handle_status(Req, SessionToken)
-            end
+            with_web_session(Req, State, SessionToken, fun() ->
+                case authority() of
+                    pg -> pg_handle_status(Req, SessionToken);
+                    cache -> cache_handle_status(Req, SessionToken)
+                end
+            end)
     end.
 
 %% @doc PG 权威 status：confirmed 时原子 claim（UPDATE...RETURNING 行锁
@@ -235,6 +247,10 @@ cache_handle_status(Req, SessionToken) ->
             Status = maps:get(<<"status">>, Session, <<"waiting">>),
             LoginToken = maps:get(<<"login_token">>, Session, null),
             case Status of
+                <<"confirmed">> when LoginToken =/= null,
+                    map_get(<<"purpose">>, Session) =:= <<"human">>,
+                    map_get(<<"platform">>, Session) =:= <<"web">> ->
+                    cache_web_claim_response(Req, SessionToken);
                 <<"confirmed">> when LoginToken =/= null ->
                     %% login_token 一次性消费：取走即销毁会话，
                     %% 否则会话剩余 TTL 内任何知道 session_token 的人
@@ -251,6 +267,13 @@ cache_handle_status(Req, SessionToken) ->
                 _ ->
                     elib_response:success(Req, #{<<"status">> => Status})
             end
+    end.
+
+cache_web_claim_response(Req, SessionToken) ->
+    case qr_login_logic:claim_web_cache_token(SessionToken) of
+        {ok, #{login_token := Token, scanned_by := Uid}} -> confirmed_response(Req, Token, Uid);
+        {error, unavailable} -> session_unavailable(Req);
+        {error, _} -> elib_response:error(Req, <<"二维码已确认，请刷新"/utf8>>, ?ERR_QR_LOGIN_ALREADY_USED)
     end.
 
 %% @doc 与 SSE 使用同一 UID/token 合同，不发送缺失或非法身份的凭据。
@@ -458,25 +481,36 @@ pg_confirm_as_scanner(Req, SessionToken, Uid) ->
             <<"purpose">> := Purpose
         } ->
             %% E2EE-013：先写设备行再签发 token（批次约束保持）
-            log_device_login(Uid, DeviceId, DeviceName, Platform),
-            LoginToken = generate_login_token(Uid, DeviceId, Purpose),
-            case qr_login_session_ds:transition_confirm(SessionToken, Uid, LoginToken) of
-                {ok, _} ->
-                    %% C08：syn 只发事件通知，不广播 login_token；
-                    %% Web 端落地 token 经 SSE 服务端代领或 status 原子领取
-                    _ = qr_login_event_ds:notify(
-                        SessionToken,
-                        qr_login_event_ds:event(confirmed_ready, undefined)
-                    ),
-                    elib_response:success(Req, #{<<"status">> => <<"confirmed">>});
-                {error, not_transitioned} ->
-                    %% 并发 confirm/会话过期：既有兼容非成功响应
-                    elib_response:error(
-                        Req, <<"二维码已确认，请刷新"/utf8>>, ?ERR_QR_LOGIN_ALREADY_USED
-                    )
+            case log_device_login(Uid, DeviceId, DeviceName, Platform) of
+                ok -> pg_confirm_registered(Req, SessionToken, Uid, DeviceId, Purpose, Platform, undefined);
+                {ok, DeviceRowId} -> pg_confirm_registered(Req, SessionToken, Uid, DeviceId, Purpose, Platform, DeviceRowId);
+                {error, _} -> device_registration_error(Req)
             end;
         _ ->
             elib_response:error(Req, <<"二维码已过期，请刷新"/utf8>>, ?ERR_QR_LOGIN_EXPIRED)
+    end.
+
+pg_confirm_registered(Req, SessionToken, Uid, DeviceId, Purpose, Platform, DeviceRowId) ->
+    case generate_login_token(Uid, DeviceId, Purpose, Platform, DeviceRowId) of
+        {ok, LoginToken} -> pg_confirm_token(Req, SessionToken, Uid, LoginToken);
+        {error, _} -> session_unavailable(Req)
+    end.
+
+pg_confirm_token(Req, SessionToken, Uid, LoginToken) ->
+    case qr_login_session_ds:transition_confirm(SessionToken, Uid, LoginToken) of
+        {ok, _} ->
+            %% C08：syn 只发事件通知，不广播 login_token；
+            %% Web 端落地 token 经 SSE 服务端代领或 status 原子领取
+            _ = qr_login_event_ds:notify(
+                SessionToken,
+                qr_login_event_ds:event(confirmed_ready, undefined)
+            ),
+            elib_response:success(Req, #{<<"status">> => <<"confirmed">>});
+        {error, not_transitioned} ->
+            %% 并发 confirm/会话过期：既有兼容非成功响应
+            elib_response:error(
+                Req, <<"二维码已确认，请刷新"/utf8>>, ?ERR_QR_LOGIN_ALREADY_USED
+            )
     end.
 
 %% @doc 原 cache 路径 confirm（行为保持）。
@@ -524,30 +558,11 @@ cache_handle_confirm(Req, SessionToken, Uid) ->
                                     DeviceId = maps:get(<<"device_id">>, Session),
                                     DeviceName = maps:get(<<"device_name">>, Session),
                                     Platform = maps:get(<<"platform">>, Session),
-                                    log_device_login(Uid, DeviceId, DeviceName, Platform),
-                                    LoginToken = generate_login_token(
-                                        Uid,
-                                        DeviceId,
-                                        maps:get(<<"purpose">>, Session, <<"human">>)
-                                    ),
-                                    UpdatedSession = Session#{
-                                        <<"status">> => <<"confirmed">>,
-                                        <<"login_token">> => LoginToken,
-                                        <<"confirmed_at">> => erlang:system_time(millisecond)
-                                    },
-                                    %% 身份与 token 来自刚确认的同一会话；不读取客户端 UID。
-                                    %% This cache path retains its legacy broadcast semantics.
-                                    {ok, ConfirmedEvent} = qr_login_event_ds:confirmed(
-                                        maps:get(<<"login_token">>, UpdatedSession),
-                                        maps:get(<<"scanned_by">>, UpdatedSession)
-                                    ),
-                                    cache_session(SessionToken, UpdatedSession),
-                                    _ = qr_login_event_ds:notify(
-                                        SessionToken, ConfirmedEvent
-                                    ),
-                                    elib_response:success(
-                                        Req, #{<<"status">> => <<"confirmed">>}
-                                    );
+                                    case log_device_login(Uid, DeviceId, DeviceName, Platform) of
+                                        ok -> cache_confirm_registered(Req, SessionToken, Uid, DeviceId, Session, undefined);
+                                        {ok, DeviceRowId} -> cache_confirm_registered(Req, SessionToken, Uid, DeviceId, Session, DeviceRowId);
+                                        {error, _} -> device_registration_error(Req)
+                                    end;
                                 _ ->
                                     elib_response:error(Req, <<"无权限操作"/utf8>>, ?ERR_FORBIDDEN)
                             end;
@@ -557,10 +572,42 @@ cache_handle_confirm(Req, SessionToken, Uid) ->
             end
     end.
 
+cache_confirm_registered(Req, SessionToken, Uid, DeviceId, Session, DeviceRowId) ->
+    case generate_login_token(Uid, DeviceId, maps:get(<<"purpose">>, Session, <<"human">>),
+            maps:get(<<"platform">>, Session, <<>>), DeviceRowId) of
+        {ok, LoginToken} -> cache_confirm_token(Req, SessionToken, Session, LoginToken);
+        {error, _} -> session_unavailable(Req)
+    end.
+
+cache_confirm_token(Req, SessionToken, Session, LoginToken) ->
+    UpdatedSession = Session#{
+        <<"status">> => <<"confirmed">>,
+        <<"login_token">> => LoginToken,
+        <<"confirmed_at">> => erlang:system_time(millisecond)
+    },
+    %% 身份与 token 来自刚确认的同一会话；不读取客户端 UID。
+    %% This cache path retains its legacy broadcast semantics.
+    {ok, Payload} = qr_login_event_ds:confirmed(
+        maps:get(<<"login_token">>, UpdatedSession),
+        maps:get(<<"scanned_by">>, UpdatedSession)
+    ),
+    ConfirmedEvent = case {maps:get(<<"purpose">>, Session, undefined),
+            maps:get(<<"platform">>, Session, <<>>)} of
+        {<<"human">>, <<"web">>} -> Payload#{web_human => true};
+        _ -> Payload
+    end,
+    cache_session(SessionToken, UpdatedSession),
+    _ = qr_login_event_ds:notify(
+        SessionToken, ConfirmedEvent
+    ),
+    elib_response:success(
+        Req, #{<<"status">> => <<"confirmed">>}
+    ).
+
 %% @doc 取消登录
 %% POST /api/v1/passport/qr_login/cancel
 %% Body: {"session_token": "xxx"}
-handle_cancel(Req, _State) ->
+handle_cancel(Req, State) ->
     {ok, Body, _} = cowboy_req:read_body(Req),
     Data = jsone:decode(Body),
 
@@ -570,10 +617,12 @@ handle_cancel(Req, _State) ->
         <<>> ->
             elib_response:error(Req, <<"参数错误"/utf8>>, ?ERR_BAD_REQUEST);
         _ ->
-            case authority() of
-                pg -> pg_handle_cancel(Req, SessionToken);
-                cache -> cache_handle_cancel(Req, SessionToken)
-            end
+            with_web_session(Req, State, SessionToken, fun() ->
+                case authority() of
+                    pg -> pg_handle_cancel(Req, SessionToken);
+                    cache -> cache_handle_cancel(Req, SessionToken)
+                end
+            end)
     end.
 
 %% @doc PG cancel：waiting|scanned→cancelled CAS。
@@ -584,6 +633,11 @@ handle_cancel(Req, _State) ->
 pg_handle_cancel(Req, SessionToken) ->
     case qr_login_session_ds:transition_cancel(SessionToken) of
         ok ->
+            %% 广播 cancelled 事件给该会话的 SSE 订阅者（Web 端立即感知，
+            %% 无需等下一轮轮询）；notify/2 内部已 try/catch 兜底，不影响主流程。
+            _ = qr_login_event_ds:notify(
+                SessionToken, qr_login_event_ds:event(cancelled, undefined)
+            ),
             elib_response:success(Req, #{<<"status">> => <<"cancelled">>});
         {error, not_transitioned} ->
             case qr_login_session_ds:find_by_session_token(SessionToken) of
@@ -608,6 +662,12 @@ cache_handle_cancel(Req, SessionToken) ->
                 <<"status">> => <<"cancelled">>
             },
             cache_session(SessionToken, UpdatedSession),
+            %% 广播 cancelled 事件给该会话的 SSE 订阅者（Web 端立即感知），
+            %% 与 cache 扫码路径的 scanned notify 同风格；
+            %% notify/2 内部已 try/catch 兜底，不影响主流程。
+            _ = qr_login_event_ds:notify(
+                SessionToken, qr_login_event_ds:event(cancelled, undefined)
+            ),
             elib_response:success(Req, #{<<"status">> => <<"cancelled">>})
     end.
 
@@ -651,11 +711,18 @@ parse_qr_token(QRToken) ->
     end.
 
 %% @doc 生成登录 Token（E2EE-013：绑定被登录设备的 DID）
--spec generate_login_token(integer(), binary(), binary()) -> binary().
-generate_login_token(Uid, Did, <<"human">>) ->
-    token_ds:encrypt_token(Uid, Did);
-generate_login_token(Uid, Did, <<"seat">>) ->
-    token_ds:encrypt_seat_token(Uid, Did).
+-spec generate_login_token(integer(), binary(), binary(), binary(), term()) ->
+    {ok, binary()} | {error, term()}.
+generate_login_token(Uid, Did, <<"human">>, <<"web">>, DeviceRowId) ->
+    try auth_session_ds:current_epoch(Uid) of
+        {ok, Ep} when is_integer(Ep), Ep >= 1 ->
+            {ok, token_ds:encrypt_web_token(Uid, Did, Ep, DeviceRowId)};
+        _ -> {error, unavailable}
+    catch _:_ -> {error, unavailable} end;
+generate_login_token(Uid, Did, <<"human">>, _, _) ->
+    {ok, token_ds:encrypt_token(Uid, Did)};
+generate_login_token(Uid, Did, <<"seat">>, _, _) ->
+    {ok, token_ds:encrypt_seat_token(Uid, Did)}.
 
 %% @doc 缓存会话
 -spec cache_session(binary(), map()) -> ok.
@@ -682,6 +749,31 @@ delete_session(SessionToken) ->
     ok.
 
 %% @doc 记录设备登录
--spec log_device_login(integer(), binary(), binary(), binary()) -> ok.
+-spec log_device_login(integer(), binary(), binary(), binary()) -> ok | {ok, pos_integer()} | {error, term()}.
 log_device_login(Uid, DeviceId, DeviceName, Platform) ->
     qr_login_logic:log_device_login(Uid, DeviceId, DeviceName, Platform).
+
+with_web_session(Req, State, SessionToken, Next) ->
+    case maps:get(jwt_purpose, State, human) of
+        web_human ->
+            case qr_login_logic:web_session(SessionToken) of
+                {ok, _} -> Next();
+                {error, unavailable} ->
+                    elib_response:error_with_status(Req, 503, <<"QR session unavailable">>, 503);
+                {error, _} -> elib_response:error(Req, <<"Forbidden QR session">>, ?ERR_FORBIDDEN)
+            end;
+        _ -> Next()
+    end.
+
+device_registration_error(Req) ->
+    elib_response:error_with_status(Req, 503, <<"设备登记失败，请重试"/utf8>>, 503).
+
+valid_utf8_length(Value, Max) when is_binary(Value), byte_size(Value) =< Max * 4 ->
+    case unicode:characters_to_list(Value) of
+        Chars when is_list(Chars) -> length(Chars) =< Max;
+        _ -> false
+    end;
+valid_utf8_length(_, _) -> false.
+
+session_unavailable(Req) ->
+    elib_response:error_with_status(Req, 503, <<"会话服务暂不可用，请重试"/utf8>>, 503).

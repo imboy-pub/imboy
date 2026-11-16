@@ -96,6 +96,11 @@ authorize_target(<<"avatar:", Alias/binary>>) ->
         _ ->
             {error, forbidden}
     end;
+authorize_target(<<"web.", Ticket/binary>>) ->
+    case attach_logic:web_download(Ticket) of
+        {ok, Url} when is_binary(Url) -> {ok, Url};
+        _ -> {error, forbidden}
+    end;
 authorize_target(Ticket) ->
     case attach_logic:download(Ticket) of
         {ok, _} = Ok ->

@@ -999,7 +999,11 @@ descriptor(ObjectKey, Row, AttemptNo, StagingKey, Sha256Hex) ->
             {error, Reason} -> throw({abort_tx, {location_unverified, Reason}});
             _ -> throw({abort_tx, location_unverified})
         end,
-    Endpoint = maps:get(endpoint, Cfg),
+    %% 物理位置仍绑定内部 endpoint；仅对客户端 PUT 使用配置快照中的公共地址。
+    Endpoint = case elib_s3_sign:client_endpoint(Cfg) of
+        {ok, E} -> E;
+        {error, _} -> throw({abort_tx, public_endpoint_unavailable})
+    end,
     case {maps:get(access_key, Cfg, undefined), maps:get(secret_key, Cfg, undefined)} of
         {Access, Secret} when
             is_binary(Access),

@@ -291,26 +291,29 @@ confirm_purpose_test(Purpose) ->
                 {token_ds, [
                     %% E2EE-013：签发的 token 必须绑定 create 时上报的 device_id，
                     %% 且 user_device 行必须已经落库（否则设备级校验会 401）
-                    {
-                        case Purpose of
-                            <<"seat">> -> encrypt_seat_token;
-                            _ -> encrypt_token
-                        end,
-                        2,
-                        fun(1001, <<"web-device-1">>) ->
-                            true = meck:called(
-                                user_device_repo, save, ['_', 1001, <<"web-device-1">>, '_']
-                            ),
-                            <<"login-token-1001">>
-                        end
-                    }
+                    {'encrypt_seat_token', 2, fun(1001, <<"web-device-1">>) ->
+                        ?assert(meck:called(user_device_ds, register_web,
+                            ['_', 1001, <<"web-device-1">>, '_'])),
+                        <<"login-token-1001">>
+                    end},
+                    {'encrypt_web_token', 4, fun(1001, <<"web-device-1">>, 7, 456) ->
+                        ?assert(meck:called(user_device_ds, register_web,
+                            ['_', 1001, <<"web-device-1">>, '_'])),
+                        <<"login-token-1001">>
+                    end}
                 ]},
-                {user_device_repo, [
-                    {'save', 4, fun(_Now, 1001, <<"web-device-1">>, PostVals) ->
-                        ?assertEqual(<<"Safari">>, maps:get(<<"device_name">>, PostVals)),
-                        ?assertEqual(<<"web">>, maps:get(<<"platform">>, PostVals)),
+                {auth_session_ds, [{'current_epoch', 1, fun(1001) -> {ok, 7} end}]},
+                {user_ds, [
+                    {'find_by_id', 2, fun(1001, <<"status,account_type">>) ->
+                        #{<<"status">> => 1, <<"account_type">> => 0}
+                    end}
+                ]},
+                {user_device_ds, [
+                    {'register_web', 4, fun(_Now, 1001, <<"web-device-1">>, PostVals) ->
+                        ?assertEqual(<<"Safari">>, maps:get(<<"dname">>, PostVals)),
+                        ?assertEqual(<<"web">>, maps:get(<<"cos">>, PostVals)),
                         ?assertEqual(<<"qr_scan">>, maps:get(<<"login_type">>, PostVals)),
-                        ok
+                        {ok, 456}
                     end}
                 ]}
             ],
@@ -585,10 +588,16 @@ confirm_broadcasts_confirmed_event_with_token_on_success_test_() ->
                     {'set', 3, fun(_Key, _Data, 60) -> ok end}
                 ]},
                 {token_ds, [
-                    {'encrypt_token', 2, fun(1001, <<"web-d1">>) -> <<"login-token-1001">> end}
+                    {'encrypt_web_token', 4, fun(1001, <<"web-d1">>, 7, 456) -> <<"login-token-1001">> end}
                 ]},
-                {user_device_repo, [
-                    {'save', 4, fun(_, _, _, _) -> ok end}
+                {auth_session_ds, [{'current_epoch', 1, fun(1001) -> {ok, 7} end}]},
+                {user_ds, [
+                    {'find_by_id', 2, fun(1001, <<"status,account_type">>) ->
+                        #{<<"status">> => 1, <<"account_type">> => 0}
+                    end}
+                ]},
+                {user_device_ds, [
+                    {'register_web', 4, fun(_, _, _, _) -> {ok, 456} end}
                 ]},
                 {qr_login_event_ds, [
                     {'notify', 2, fun(_KeyToken, _Event) -> {ok, 1} end}

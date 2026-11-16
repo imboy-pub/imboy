@@ -26,7 +26,7 @@
 %% is_active 被调用即失败——用于断言 legacy 空 did token 根本不做设备校验
 never_called_is_active() ->
     {user_device_ds, [
-        {'is_active', 2, fun(_Uid, _Did) ->
+        {'is_active_native', 2, fun(_Uid, _Did) ->
             erlang:error(is_active_must_not_be_called_for_legacy_token)
         end}
     ]}.
@@ -44,7 +44,7 @@ http_revoked_device_token_rejected_test_() ->
                 end}
             ]},
             {user_device_ds, [
-                {'is_active', 2, fun(?UID, ?DID) -> false end}
+                {'is_active_native', 2, fun(?UID, ?DID) -> false end}
             ]}
         ],
         fun() ->
@@ -64,7 +64,7 @@ http_active_device_token_accepted_test_() ->
                 end}
             ]},
             {user_device_ds, [
-                {'is_active', 2, fun(?UID, ?DID) -> true end}
+                {'is_active_native', 2, fun(?UID, ?DID) -> true end}
             ]},
             {auth_session_ds, [
                 {'revoked', 2, fun(_Uid, _Ep) -> false end}
@@ -144,7 +144,7 @@ do_refresh() ->
 refresh_with_revoked_device_rejected_test_() ->
     ?WITH_MECKS(
         refresh_mocks(?DID, [
-            {user_device_logic, [{'is_active', 2, fun(?UID, ?DID) -> false end}]}
+            {user_device_ds, [{'is_active_native', 2, fun(?UID, ?DID) -> false end}]}
         ]),
         fun() ->
             {StatusCode, _, _} = do_refresh(),
@@ -155,7 +155,7 @@ refresh_with_revoked_device_rejected_test_() ->
 refresh_with_active_device_ok_test_() ->
     ?WITH_MECKS(
         refresh_mocks(?DID, [
-            {user_device_logic, [{'is_active', 2, fun(?UID, ?DID) -> true end}]}
+            {user_device_ds, [{'is_active_native', 2, fun(?UID, ?DID) -> true end}]}
         ]),
         fun() ->
             {StatusCode, _, Body} = do_refresh(),
@@ -168,8 +168,8 @@ refresh_with_active_device_ok_test_() ->
 refresh_legacy_didless_unaffected_test_() ->
     ?WITH_MECKS(
         refresh_mocks(<<>>, [
-            {user_device_logic, [
-                {'is_active', 2, fun(_Uid, _Did) ->
+            {user_device_ds, [
+                {'is_active_native', 2, fun(_Uid, _Did) ->
                     erlang:error(is_active_must_not_be_called_for_legacy_token)
                 end}
             ]}
@@ -220,7 +220,7 @@ ws_access_token_accepted_test_() ->
             {auth_session_ds, [
                 {'revoked', 2, fun(_Uid, _Ep) -> false end}
             ]},
-            {user_device_ds, [{'is_active', 2, fun(?UID, ?DID) -> true end}]}
+            {user_device_ds, [{'is_active_native', 2, fun(?UID, ?DID) -> true end}]}
         ],
         fun() ->
             {cowboy_websocket, req, State, _Opt} = ws_auth(<<"tk">>),
@@ -237,7 +237,7 @@ ws_revoked_device_rejected_test_() ->
             {token_ds, [
                 {'decrypt_token', 1, fun(<<"tk">>) -> {ok, ?UID, ?EXP, <<"tk">>, ?DID, 1} end}
             ]},
-            {user_device_ds, [{'is_active', 2, fun(?UID, ?DID) -> false end}]},
+            {user_device_ds, [{'is_active_native', 2, fun(?UID, ?DID) -> false end}]},
             ws_cowboy_mock()
         ],
         fun() ->

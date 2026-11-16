@@ -73,8 +73,16 @@ select_first_match([P | Rest], Subprotocols) ->
 %% @param State 请求状态
 %% @param Opt 额外选项
 %% @returns any() 认证结果
--spec auth(binary(), cowboy_req:req(), map(), map()) ->
+-spec auth(binary() | undefined, cowboy_req:req(), map(), map()) ->
     {ok, cowboy_req:req(), map()} | {cowboy_websocket, cowboy_req:req(), map(), map()}.
+auth(_, Req, #{surface := web_human} = State, Opt) ->
+    case session_still_valid(State) of
+        true ->
+            auth_after(maps:get(current_uid, State), Req,
+                State#{did => maps:get(current_did, State), dtype => <<"web">>, token_type => <<"tk">>}, Opt);
+        false ->
+            {ok, cowboy_req:reply(401, Req), State#{error => 401, msg => <<"web_session_invalid">>}}
+    end;
 auth(Token, Req, State, Opt) when is_binary(Token) ->
     % ?DEBUG_LOG(["token", Token, token_ds:decrypt_token(Token)]),
     case token_ds:decrypt_token(Token) of
@@ -146,8 +154,7 @@ auth(Token, Req, State, Opt) when is_binary(Token) ->
             ),
             {ok, Req2, State#{error => Code, msg => elib_cnv:safe_to_binary(Msg)}}
     end;
-auth(Auth, Req0, State0, _Opt) ->
-    ok = ?DEBUG_LOG(["Auth", Auth]),
+auth(_Auth, Req0, State0, _Opt) ->
     % HTTP 412 - 先决条件失败 缺少token参数
     Req1 = cowboy_req:reply(412, Req0),
     {ok, Req1, State0}.
@@ -169,7 +176,7 @@ auth(Auth, Req0, State0, _Opt) ->
 auth_device(Uid, <<>>, Req, State, Opt) ->
     auth_after(Uid, Req, State, Opt);
 auth_device(Uid, Did, Req, State, Opt) when is_binary(Did) ->
-    case user_device_ds:is_active(Uid, Did) of
+    case user_device_ds:is_active_native(Uid, Did) of
         true ->
             %% Task 10 / LT-04：会话 epoch 共享校验（与 auth_ds:verify_token
             %% 同一谓词；unknown fail-closed）。
@@ -233,6 +240,8 @@ auth_after(Uid, Req, State, Opt) ->
 %% 60s 上界）；legacy 会话（无 token did / 无 ep）豁免，与握手侧同口径。
 %% 该函数只读不踢；关闭由调用方执行。
 -spec session_still_valid(map()) -> boolean().
+session_still_valid(#{surface := web_human} = State) ->
+    web_session_still_valid(State);
 session_still_valid(State) when is_map(State) ->
     Did = maps:get(auth_did, State, maps:get(did, State, <<>>)),
     Ep = maps:get(session_epoch, State, undefined),
@@ -241,10 +250,20 @@ session_still_valid(State) when is_map(State) ->
             true;
         false ->
             Uid = maps:get(current_uid, State, 0),
-            user_device_ds:is_active(Uid, Did) andalso not auth_session_ds:revoked(Uid, Ep)
+            user_device_ds:is_active_native(Uid, Did) andalso not auth_session_ds:revoked(Uid, Ep)
     end;
 session_still_valid(_) ->
     true.
+
+web_session_still_valid(#{jwt_purpose := web_human, web_auth := ws,
+    current_uid := Uid, current_did := Did, session_epoch := Ep, token_expire_at := Exp,
+    device_session_id := DeviceRowId})
+    when is_integer(Uid), Uid > 0, is_binary(Did), byte_size(Did) > 0,
+        is_integer(Ep), Ep >= 1, is_integer(Exp) ->
+    try
+        Exp > erlang:system_time(second) andalso auth_ds:web_session_valid(Uid, Did, Ep, DeviceRowId) =:= true
+    catch _:_ -> false end;
+web_session_still_valid(_) -> false.
 
 %% @doc 设置用户WebSocket超时时间
 %%

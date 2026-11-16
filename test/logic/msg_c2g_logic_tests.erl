@@ -4,6 +4,12 @@
 -include("chat.hrl").
 
 c2g_success_sends_server_ack_and_dispatch_test_() ->
+    c2g_sender_sync_case(<<"native-a">>, 1).
+
+c2g_unbound_sender_never_echoes_test_() ->
+    [c2g_sender_sync_case(Did, 0) || Did <- [undefined, <<>>, 42]].
+
+c2g_sender_sync_case(SenderDid, ExpectedEchoes) ->
     ?WITH_MECKS(
         [
             {group_member_logic, [
@@ -35,7 +41,8 @@ c2g_success_sends_server_ack_and_dispatch_test_() ->
                 {'intervals', 1, fun(<<"c2g">>) -> [0, 200] end}
             ]},
             {message_ds, [
-                {'send_next', 4, fun(_, _, _, _) -> ok end}
+                {'send_next', 4, fun(_, _, _, _) -> ok end},
+                {'send_next', 6, fun(_, _, _, _, _, _) -> ok end}
             ]},
             {mention_logic, [
                 {'create_mentions', 4, fun(_, 100, Mentions, 1001) ->
@@ -53,7 +60,7 @@ c2g_success_sends_server_ack_and_dispatch_test_() ->
         fun() ->
             MsgId = <<"msg_c2g_ok_001">>,
             CurrentUid = 1001,
-            Data = #{
+            InputData = #{
                 <<"to">> => <<"100">>,
                 <<"payload">> => #{
                     <<"content">> => <<"hello group">>, <<"mentions">> => [<<"all">>]
@@ -64,6 +71,13 @@ c2g_success_sends_server_ack_and_dispatch_test_() ->
                 <<"e2ee">> => null
             },
 
+            Data = case SenderDid of
+                undefined -> InputData;
+                _ -> message_ds:stamp_sender_device(
+                    InputData#{<<"sender_did">> => <<"client-spoof">>},
+                    #{did => SenderDid, dtype => <<"macos">>}
+                )
+            end,
             ok = msg_c2g_logic:c2g(MsgId, CurrentUid, Data),
 
             Reply =
@@ -87,7 +101,12 @@ c2g_success_sends_server_ack_and_dispatch_test_() ->
             SentMsg = meck:capture(first, message_ds, send_next, ['_', '_', '_', '_'], 3),
             Decoded = jsone:decode(SentMsg),
             ?assertEqual(?CUR_MSG_VER, maps:get(<<"ver">>, Decoded)),
-            ?assertEqual(7, maps:get(<<"conv_seq">>, Decoded))
+            ?assertEqual(7, maps:get(<<"conv_seq">>, Decoded)),
+            ?assertEqual(ExpectedEchoes, meck:num_calls(message_ds, send_next, 6)),
+            case ExpectedEchoes of
+                1 -> assert_sender_echo(1001, <<"native-a">>, SentMsg);
+                0 -> ok
+            end
         end
     ).
 
@@ -120,7 +139,8 @@ c2g_duplicate_only_acks_without_downstream_side_effects_test_() ->
                 {'set_expire_at', 2, fun(_, _) -> {ok, 0} end}
             ]},
             {message_ds, [
-                {'send_next', 4, fun(_, _, _, _) -> ok end}
+                {'send_next', 4, fun(_, _, _, _) -> ok end},
+                {'send_next', 6, fun(_, _, _, _, _, _) -> erlang:error(sender_echo_must_not_run) end}
             ]},
             {push_notification_logic, [
                 {'maybe_push_for_c2g', 4, fun(_, _, _, _) -> ok end}
@@ -138,6 +158,7 @@ c2g_duplicate_only_acks_without_downstream_side_effects_test_() ->
         fun() ->
             MsgId = <<"msg_c2g_duplicate_001">>,
             Data = #{
+                <<"sender_did">> => <<"native-a">>,
                 <<"to">> => <<"100">>,
                 <<"payload">> => #{
                     <<"content">> => <<"duplicate">>,
@@ -171,7 +192,8 @@ c2g_duplicate_only_acks_without_downstream_side_effects_test_() ->
             ?assertEqual(0, meck:num_calls(push_notification_logic, maybe_push_for_c2g, 4)),
             ?assertEqual(0, meck:num_calls(mention_logic, create_mentions, 4)),
             ?assertEqual(0, meck:num_calls(ai_agent_group_reply, maybe_dispatch, 4)),
-            ?assertEqual(0, meck:num_calls(bot_webhook_logic, dispatch_group_mention, 5))
+            ?assertEqual(0, meck:num_calls(bot_webhook_logic, dispatch_group_mention, 5)),
+            ?assertEqual(0, meck:num_calls(message_ds, send_next, 6))
         end
     ).
 
@@ -665,7 +687,8 @@ c2g_revoke_stages_with_committed_snapshot_test_() ->
                 {'intervals', 1, fun(<<"c2g">>) -> [0, 200] end}
             ]},
             {message_ds, [
-                {'send_next', 4, fun(_, _, _, _) -> ok end}
+                {'send_next', 4, fun(_, _, _, _) -> ok end},
+                {'send_next', 6, fun(_, _, _, _, _, _) -> ok end}
             ]},
             {user_device_logic, [
                 {'online_dids', 1, fun(_) -> [] end}
@@ -673,6 +696,7 @@ c2g_revoke_stages_with_committed_snapshot_test_() ->
         ],
         fun() ->
             Data = #{
+                <<"sender_did">> => <<"native-a">>,
                 <<"to">> => <<"88">>,
                 <<"from">> => <<"1001">>,
                 <<"payload">> => #{<<"original_msg_id">> => <<"orig_c2g_revoke_001">>}
@@ -685,6 +709,9 @@ c2g_revoke_stages_with_committed_snapshot_test_() ->
             ?assertEqual(9, maps:get(<<"conv_seq">>, Reply)),
             ?assert(maps:is_key(<<"revoked_at">>, ReplyPayload)),
             ?assertEqual(2, meck:num_calls(message_ds, send_next, 4)),
+            ?assertEqual(1, meck:num_calls(message_ds, send_next, 6)),
+            SentToMember = meck:capture(1, message_ds, send_next, 4, 3),
+            assert_sender_echo(1001, <<"native-a">>, SentToMember),
             ?assertEqual(1, meck:num_calls(msg_store_ds, stage_action, 13)),
             ?assertEqual(1, meck:num_calls(msg_store_ds, enqueue, 3)),
             ?assertEqual(0, meck:num_calls(group_ds, member_uids, 1))
@@ -722,7 +749,8 @@ c2g_revoke_duplicate_returns_payload_free_ack_test_() ->
                 {'rfc3339_to', 2, fun(_, millisecond) -> 1700000000000 end}
             ]},
             {message_ds, [
-                {'send_next', 4, fun(_, _, _, _) -> erlang:error(send_must_not_run) end}
+                {'send_next', 4, fun(_, _, _, _) -> erlang:error(send_must_not_run) end},
+                {'send_next', 6, fun(_, _, _, _, _, _) -> erlang:error(sender_echo_must_not_run) end}
             ]},
             {user_device_logic, [
                 {'online_dids', 1, fun(_) -> erlang:error(cancel_must_not_run) end}
@@ -730,6 +758,7 @@ c2g_revoke_duplicate_returns_payload_free_ack_test_() ->
         ],
         fun() ->
             Data = #{
+                <<"sender_did">> => <<"native-a">>,
                 <<"to">> => <<"88">>,
                 <<"from">> => <<"1001">>,
                 <<"payload">> => #{<<"original_msg_id">> => <<"different-target">>}
@@ -740,7 +769,8 @@ c2g_revoke_duplicate_returns_payload_free_ack_test_() ->
             ?assertNot(maps:is_key(<<"payload">>, Reply)),
             ?assertNot(maps:is_key(<<"action">>, Reply)),
             ?assertEqual(0, meck:num_calls(msg_store_ds, enqueue, 3)),
-            ?assertEqual(0, meck:num_calls(message_ds, send_next, 4))
+            ?assertEqual(0, meck:num_calls(message_ds, send_next, 4)),
+            ?assertEqual(0, meck:num_calls(message_ds, send_next, 6))
         end
     ).
 
@@ -866,11 +896,13 @@ c2g_revoke_stage_forbidden_has_no_downstream_effects_test_() ->
                 {'assemble_s2c', 3, fun(_, <<"permission_denied">>, <<"88">>) ->
                     #{<<"error">> => <<"permission_denied">>}
                 end},
-                {'send_next', 4, fun(_, _, _, _) -> erlang:error(send_must_not_run) end}
+                {'send_next', 4, fun(_, _, _, _) -> erlang:error(send_must_not_run) end},
+                {'send_next', 6, fun(_, _, _, _, _, _) -> erlang:error(sender_echo_must_not_run) end}
             ]}
         ],
         fun() ->
             Data = #{
+                <<"sender_did">> => <<"native-a">>,
                 <<"to">> => <<"88">>,
                 <<"from">> => <<"1001">>,
                 <<"payload">> => #{<<"original_msg_id">> => <<"old-generation-original">>}
@@ -879,7 +911,8 @@ c2g_revoke_stage_forbidden_has_no_downstream_effects_test_() ->
             ?assertEqual(<<"permission_denied">>, maps:get(<<"error">>, Reply)),
             ?assertEqual(1, meck:num_calls(msg_store_ds, stage_action, 13)),
             ?assertEqual(0, meck:num_calls(msg_store_ds, enqueue, 3)),
-            ?assertEqual(0, meck:num_calls(message_ds, send_next, 4))
+            ?assertEqual(0, meck:num_calls(message_ds, send_next, 4)),
+            ?assertEqual(0, meck:num_calls(message_ds, send_next, 6))
         end
     ).
 
@@ -935,11 +968,13 @@ c2g_edit_stages_with_committed_snapshot_test_() ->
                 {'intervals', 1, fun(<<"c2g">>) -> [0, 200] end}
             ]},
             {message_ds, [
-                {'send_next', 4, fun(_, _, _, _) -> ok end}
+                {'send_next', 4, fun(_, _, _, _) -> ok end},
+                {'send_next', 6, fun(_, _, _, _, _, _) -> ok end}
             ]}
         ],
         fun() ->
             Data = #{
+                <<"sender_did">> => <<"native-a">>,
                 <<"to">> => <<"88">>,
                 <<"from">> => <<"1001">>,
                 <<"payload">> => #{
@@ -955,6 +990,9 @@ c2g_edit_stages_with_committed_snapshot_test_() ->
             ?assertEqual(<<"text">>, maps:get(<<"msg_type">>, Reply)),
             ?assertEqual(<<"new content">>, maps:get(<<"content">>, ReplyPayload)),
             ?assertEqual(2, meck:num_calls(message_ds, send_next, 4)),
+            ?assertEqual(1, meck:num_calls(message_ds, send_next, 6)),
+            SentToMember = meck:capture(1, message_ds, send_next, 4, 3),
+            assert_sender_echo(1001, <<"native-a">>, SentToMember),
             ?assertEqual(1, meck:num_calls(msg_store_ds, stage_action, 13)),
             ?assertEqual(1, meck:num_calls(msg_store_ds, enqueue, 3)),
             ?assertEqual(0, meck:num_calls(group_ds, member_uids, 1)),
@@ -1374,7 +1412,8 @@ c2g_edit_e2ee_payload_is_opaque_and_relayed_test_() ->
                 {'intervals', 1, fun(<<"c2g">>) -> [0, 200] end}
             ]},
             {message_ds, [
-                {'send_next', 4, fun(1002, <<"c2g_edit_e2ee_001">>, _Json, [0, 200]) -> ok end}
+                {'send_next', 4, fun(1002, <<"c2g_edit_e2ee_001">>, _Json, [0, 200]) -> ok end},
+                {'send_next', 6, fun(_, _, _, _, _, _) -> ok end}
             ]}
         ],
         fun() ->
@@ -1398,6 +1437,9 @@ c2g_edit_e2ee_payload_is_opaque_and_relayed_test_() ->
             ?assertEqual(<<"did-1001">>, maps:get(<<"sender_did">>, Reply)),
             ?assertEqual(13, maps:get(<<"conv_seq">>, Reply)),
             ?assertEqual(1, meck:num_calls(message_ds, send_next, 4)),
+            ?assertEqual(1, meck:num_calls(message_ds, send_next, 6)),
+            SentToMember = meck:capture(1, message_ds, send_next, 4, 3),
+            assert_sender_echo(1001, <<"did-1001">>, SentToMember),
             ?assertEqual(1, meck:num_calls(msg_store_ds, stage_action, 13)),
             ?assertEqual(1, meck:num_calls(msg_store_ds, enqueue, 3))
         end
@@ -1747,3 +1789,9 @@ r04g_4_legacy_fallback_and_fail_closed_test_() ->
             end
         )
     ].
+
+assert_sender_echo(SenderUid, SenderDid, ExpectedBytes) ->
+    ?assertEqual(SenderUid, meck:capture(1, message_ds, send_next, 6, 1)),
+    ?assertEqual(ExpectedBytes, meck:capture(1, message_ds, send_next, 6, 3)),
+    ?assertEqual([SenderDid], meck:capture(1, message_ds, send_next, 6, 5)),
+    ?assertEqual(false, meck:capture(1, message_ds, send_next, 6, 6)).

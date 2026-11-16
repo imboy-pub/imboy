@@ -10,9 +10,62 @@
 -module(message_policy).
 
 -moduledoc "消息策略纯函数 / Message Policy (pure functions)。".
--export([send_decision/2, encode_payload/1, reply_mode/1, build_server_ack/2]).
+-export([send_decision/2, encode_payload/1, reply_mode/1, build_server_ack/2, validate_text_size/4]).
 
 -export_type([send_decision/0, reply_mode/0]).
+
+-define(MAX_PLAINTEXT_TEXT_BYTES, 65536).
+
+%% UTF-8 正文字节，不计 JSON 转义或信封字段 / UTF-8 body bytes, excluding JSON/envelope overhead.
+-spec validate_text_size(binary(), binary(), term(), boolean()) -> ok | {error, binary()}.
+validate_text_size(<<"text">>, Action, Payload, Encrypted) when
+    Action =:= <<>>; Action =:= <<"message_edit">>
+->
+    validate_text_fields(text_fields(Payload, Encrypted));
+validate_text_size(_, _, _, _) ->
+    ok.
+
+validate_text_fields([]) -> ok;
+validate_text_fields([Text | Rest]) when is_binary(Text) ->
+    case unicode:characters_to_binary(Text, utf8, utf8) of
+        Valid when is_binary(Valid), byte_size(Text) =< ?MAX_PLAINTEXT_TEXT_BYTES ->
+            validate_text_fields(Rest);
+        Valid when is_binary(Valid) -> {error, <<"message_text_too_large">>};
+        _ -> {error, <<"invalid_message_format">>}
+    end;
+validate_text_fields([_ | _]) ->
+    {error, <<"invalid_message_format">>}.
+
+text_fields(Payload, Encrypted) when is_binary(Payload) ->
+    case text_json_prefix(Payload) of
+        false -> raw_text_fields(Payload, Encrypted);
+        true ->
+            try jsone:decode(Payload, [{object_format, map}]) of
+                Decoded when is_map(Decoded) -> text_fields(Decoded, Encrypted);
+                Text when is_binary(Text) -> raw_text_fields(Text, Encrypted);
+                _ -> raw_text_fields(Payload, Encrypted)
+            catch _:_ -> raw_text_fields(Payload, Encrypted) end
+    end;
+text_fields(Payload, Encrypted) when is_map(Payload) ->
+    % 显式明文字段不能因 e2ee 声明绕过 / An e2ee claim cannot exempt visible plaintext.
+    Keys = case Encrypted of true -> [<<"text">>, <<"content">>];
+        false -> [<<"text">>, <<"content">>, <<"body">>] end,
+    Texts = [maps:get(Key, Payload) || Key <- Keys, maps:is_key(Key, Payload)],
+    case maps:find(<<"payload">>, Payload) of
+        {ok, Inner} -> Texts ++ text_fields(Inner, Encrypted);
+        error -> Texts
+    end;
+text_fields(_, true) -> [];
+text_fields(Payload, false) -> [Payload].
+
+raw_text_fields(_, true) -> [];
+raw_text_fields(Payload, false) -> [Payload].
+
+%% 不把数值正文或密文二次解析为 bigint / Do not parse raw numeric bodies/ciphertext as bigints.
+text_json_prefix(<<C, Rest/binary>>) when C =:= 32; C =:= 9; C =:= 10; C =:= 13 ->
+    text_json_prefix(Rest);
+text_json_prefix(<<C, _/binary>>) when C =:= ${; C =:= $" -> true;
+text_json_prefix(_) -> false.
 
 %% 可发决策结果。
 -type send_decision() ::

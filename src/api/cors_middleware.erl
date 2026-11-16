@@ -5,6 +5,7 @@
 
 %% BE-W01 A03：三面 CORS 判定（纯函数，测试直调）。
 -export([classify_face/2]).
+-export([web_origin_allowed/1]).
 
 %% @doc CORS 中间件
 %% 处理跨域资源共享 (CORS) 预检请求和响应头
@@ -35,6 +36,8 @@ execute(Req0, Env) ->
     Path = cowboy_req:path(Req0),
     HandlerOpts = maps:get(handler_opts, Env, #{}),
     case classify_face(Path, HandlerOpts) of
+        web_human ->
+            web_execute(Req0, Env, Method, Origin, HandlerOpts);
         undefined ->
             legacy_execute(Req0, Env, Method, Origin);
         Face ->
@@ -47,7 +50,7 @@ execute(Req0, Env) ->
 
 %% @doc 按 route metadata（surface/auth_context，cowboy_router 已先于本中间件
 %% 解析进 Env）+ 路径前缀判定 CORS 面。未标注返回 undefined（既有全局行为）。
--spec classify_face(binary(), map()) -> widget | admin | seat | undefined.
+-spec classify_face(binary(), map()) -> widget | admin | seat | web_human | undefined.
 classify_face(Path, HandlerOpts) when is_binary(Path) ->
     case
         imboy_route_shape:is_cs_widget_frame_path(Path) orelse
@@ -67,6 +70,8 @@ classify_face(_Path, _HandlerOpts) ->
 
 classify_by_metadata(#{surface := Surface} = Opts, Path) ->
     case Surface of
+        web_human ->
+            web_human;
         widget ->
             widget;
         tenant ->
@@ -81,6 +86,62 @@ classify_by_metadata(#{surface := Surface} = Opts, Path) ->
     end;
 classify_by_metadata(_Opts, Path) ->
     classify_by_prefix(Path).
+
+%% Human Web 只复用精确名单，不套用 legacy 的 localhost 任意端口例外。
+-spec web_origin_allowed(term()) -> boolean().
+web_origin_allowed(Origin) when is_binary(Origin), Origin =/= <<>>, Origin =/= <<"null">> ->
+    is_face_origin_allowed(Origin, allowed_origins());
+web_origin_allowed(_) -> false.
+
+web_execute(Req, Env, Method, Origin, Opts) ->
+    Allowed = web_origin_allowed(Origin),
+    case Allowed orelse (Origin =:= undefined andalso Method =:= <<"GET">>) of
+        false -> web_cors_denied(Req);
+        true ->
+            Req1 = case Allowed of
+                true ->
+                    R = cowboy_req:set_resp_header(<<"access-control-allow-origin">>, Origin, Req),
+                    cowboy_req:set_resp_header(<<"vary">>, <<"Origin">>, R);
+                false -> Req
+            end,
+            case Method of
+                <<"OPTIONS">> -> web_preflight(Req1, Opts);
+                _ -> {ok, Req1, Env}
+            end
+    end.
+
+web_preflight(Req, Opts) ->
+    Method = cowboy_req:header(<<"access-control-request-method">>, Req),
+    Action = cowboy_req:binding(action, Req, undefined),
+    case imboy_router:web_methods(Opts, Action) of
+        {ok, Methods} ->
+            case lists:member(Method, Methods) andalso web_headers_allowed(Req) of
+                true ->
+                    Req1 = cowboy_req:set_resp_header(<<"access-control-allow-methods">>,
+                        iolist_to_binary(lists:join(<<", ">>, Methods)), Req),
+                    Req2 = cowboy_req:set_resp_header(<<"access-control-allow-headers">>,
+                        <<"Content-Type, Authorization, Accept, did, dname, vsn, pkg, "
+                          "terminology-profile, tz_offset, imboy-refreshtoken">>, Req1),
+                    {stop, cowboy_req:reply(204, Req2)};
+                false -> web_cors_denied(Req)
+            end;
+        _ -> web_cors_denied(Req)
+    end.
+
+web_headers_allowed(Req) ->
+    Allowed = [<<"content-type">>, <<"authorization">>, <<"accept">>, <<"did">>, <<"dname">>,
+        <<"vsn">>, <<"pkg">>, <<"terminology-profile">>, <<"tz_offset">>, <<"imboy-refreshtoken">>],
+    case cowboy_req:header(<<"access-control-request-headers">>, Req) of
+        undefined -> true;
+        <<>> -> true;
+        Raw when is_binary(Raw) ->
+            lists:all(fun(H) -> lists:member(string:lowercase(string:trim(H)), Allowed) end,
+                binary:split(Raw, <<",">>, [global]));
+        _ -> false
+    end.
+
+web_cors_denied(Req) ->
+    {stop, elib_response:error_with_status(Req, 403, <<"CORS request not allowed">>, 403)}.
 
 classify_by_prefix(Path) ->
     case Path of
@@ -276,7 +337,7 @@ legacy_execute(Req0, Env, Method, Origin) ->
         <<"access-control-allow-headers">>,
         <<
             "Content-Type, Authorization, Accept, Origin, X-Requested-With, "
-            "cos, vsn, pkg, terminology-profile, did, tz_offset, method, sk, sign, token, x-refresh-token, "
+            "cos, vsn, pkg, terminology-profile, did, dname, tz_offset, method, sk, sign, token, x-refresh-token, "
             "imboy-refreshtoken, "
             "device-type, device-type-vsn, device-id, device-name, device-name-vsn, "
             "platform, user-agent, content-length, X-Auth-Token, referer, Referrer-Policy, "

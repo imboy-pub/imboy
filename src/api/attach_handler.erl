@@ -399,7 +399,7 @@ view_url(<<"GET">>, Req0, State) ->
         <<>> ->
             elib_response:error(Req0, <<"缺少 object_key"/utf8>>, ?ERR_BAD_REQUEST);
         ObjectKey ->
-            case attach_logic:view_url(Uid, ObjectKey) of
+            case view_url_for_surface(State, Uid, ObjectKey) of
                 {ok, Url} ->
                     elib_response:success(Req0, #{<<"url">> => Url}, "success.");
                 {error, forbidden} ->
@@ -655,3 +655,7 @@ tmp_path() ->
         "attach_upload_" ++ integer_to_list(erlang:unique_integer([positive])) ++ "_" ++ Rand ++
             ".part"
     ]).
+
+%% Native view_url keeps its existing behaviour.
+view_url_for_surface(#{surface := web_human}, Uid, Key) -> attach_logic:web_view_url(Uid, Key);
+view_url_for_surface(_, Uid, Key) -> attach_logic:view_url(Uid, Key).

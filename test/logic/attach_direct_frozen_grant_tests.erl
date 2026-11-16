@@ -3,7 +3,8 @@
 
 frozen_grant_test_() ->
     {setup, fun setup/0, fun cleanup/1, fun(_) ->
-        [?_test(frozen_location_used()), ?_test(unverified_location_aborts())]
+        [?_test(frozen_location_used()), ?_test(public_location_used()),
+         ?_test(invalid_public_aborts()), ?_test(unverified_location_aborts())]
     end}.
 
 setup() ->
@@ -74,3 +75,26 @@ unverified_location_aborts() ->
         {error, {location_unverified, locator_mismatch}},
         attach_direct_logic:grant(<<"tenant/object">>, binary:copy(<<"a">>, 64))
     ).
+
+public_location_used() ->
+    C = #{endpoint => <<"http://internal.test:3900">>,
+          public_endpoint => <<"https://public.test:19484/s3">>,
+          access_key => <<"testkey">>, secret_key => <<"testsecret">>},
+    meck:expect(attachment_storage, frozen_location, fun(_, _) ->
+        {ok, #{driver => garage, container => <<"bucket-a">>, garage_config => C}}
+    end),
+    {ok, _} = attach_direct_logic:grant(<<"tenant/object">>, binary:copy(<<"a">>, 64)),
+    ?assertEqual({<<"https://public.test:19484/s3">>, <<"bucket-a">>, C}, get(signed_location)).
+
+invalid_public_aborts() ->
+    lists:foreach(fun(E) ->
+        C = #{endpoint => <<"http://internal.test:3900">>, public_endpoint => E,
+              access_key => <<"testkey">>, secret_key => <<"testsecret">>},
+        meck:expect(attachment_storage, frozen_location, fun(_, _) ->
+            {ok, #{driver => garage, container => <<"bucket-a">>, garage_config => C}}
+        end),
+        ?assertEqual({error, public_endpoint_unavailable},
+                     attach_direct_logic:grant(<<"tenant/object">>, binary:copy(<<"a">>, 64)))
+    end, [<<>>, <<"ftp://public.test">>, <<"https://public.test:443">>,
+          <<"http://user@public.test">>, <<"https://public.test/%2e">>,
+          <<"https://public.test?x=1">>, <<"https://public.test#x">>, <<"https://public.test:99999">>]).

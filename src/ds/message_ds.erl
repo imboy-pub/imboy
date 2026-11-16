@@ -352,7 +352,7 @@ decode_websocket_message(Data) ->
             _ -> undefined
         end,
 
-    #{
+    Decoded = #{
         <<"ver">> => Ver,
         <<"id">> => maps:get(<<"id">>, Msg, <<>>),
         <<"type">> => Type,
@@ -368,7 +368,15 @@ decode_websocket_message(Data) ->
         %% 白名单不透传 reply_to，extract_reply_info 永远拿不到，回复三列自
         %% 上线以来从未落库。undefined 由 extract_reply_info 兜底为无引用。
         <<"reply_to">> => maps:get(<<"reply_to">>, Msg, undefined)
-    }.
+    },
+    case Type of
+        <<"C2C">> ->
+            %% Capture raw JSON intent before compatibility defaults add null.
+            CurrentFormat = maps:is_key(<<"msg_type">>, Msg) orelse maps:is_key(<<"action">>, Msg),
+            Decoded#{sender_sync_plain_eligible =>
+                CurrentFormat andalso maps:find(<<"e2ee">>, Msg) =:= {ok, null}};
+        _ -> Decoded
+    end.
 
 %% @doc 检查并通知离线消息
 %% 检查用户的所有类型离线消息（C2C、C2G、S2C），根据消息数量决定

@@ -13,13 +13,14 @@
 -export([do_login/3]).
 -export([do_login/5]).
 -export([do_login_by_code/5]).
+-export([do_web_login/4, do_web_login_by_code/4]).
 -export([do_signup/5]).
 -export([find_password/5]).
 -export([verify_user/3]).
 -export([quick_login/4]).
 -export([alipay_login/2]).
 -export([alipay_authinfo/0]).
--export([find_user_setting/1]).
+-export([find_user_setting/1, find_web_user_setting/1]).
 -export([record_login_device/2]).
 -export([email_in_use/1]).
 -export([bind_email/2]).
@@ -386,9 +387,18 @@ login(Account, Pwd, PostVals) when is_binary(Account), is_binary(Pwd), is_map(Po
 do_login(Type, Account, Pwd) ->
     do_login(Type, Account, Pwd, <<>>, <<>>).
 
+%% Only these server-selected entrypoints carry the private Web continuation.
+-spec do_web_login(binary(), binary(), binary(), map()) -> {ok, map()} | {error, term()}.
+do_web_login(Type, Account, Pwd, Values) ->
+    do_login(Type, Account, Pwd, {web_login, Values}, maps:get(<<"did">>, Values)).
+
+-spec do_web_login_by_code(binary(), binary(), binary(), map()) -> {ok, map()} | {error, term()}.
+do_web_login_by_code(Type, Account, Code, Values) ->
+    do_login_by_code(Type, Account, Code, {web_login, Values}, maps:get(<<"did">>, Values)).
+
 %% @doc 账号密码登录（带设备信息）
 %% 检查设备冲突，如果同类型设备已登录则返回冲突信息
--spec do_login(binary(), binary(), binary(), binary(), binary()) ->
+-spec do_login(binary(), binary(), binary(), binary() | {web_login, map()}, binary()) ->
     {ok, map()} | {{error, conflict}, map()} | {error, binary() | map() | service_unavailable}.
 do_login(_Type, _Email, <<>>, _DType, _Did) ->
     %% 空密码属格式非法提前返回（C.2）：不进入校验、不计数
@@ -440,7 +450,7 @@ do_login(Type, Account, Pwd, DType, Did) when Type == <<"account">> ->
 %%     {user, Uid}，与输入别名无关），不再按输入/User.account 分叉；
 %%   - AC-17 成功点：reset 在 status 检查**之后**、签发之前，且必须确认
 %%     ok 才 login_resp；reset 失败 → 丢弃凭据，返回服务不可用。
--spec do_login_by_code(binary(), binary(), binary(), binary(), binary()) ->
+-spec do_login_by_code(binary(), binary(), binary(), binary() | {web_login, map()}, binary()) ->
     {ok, map()}
     | {{error, conflict}, map()}
     | {error, binary() | map() | service_unavailable}.
@@ -473,7 +483,7 @@ do_login_by_code(Type, Account, Code, DType, Did) ->
     Account :: binary(),
     Code :: binary(),
     User :: map(),
-    DType :: binary(),
+    DType :: binary() | {web_login, map()},
     Did :: binary()
 ) -> {ok, map()} | {{error, conflict}, map()} | {error, binary() | service_unavailable}.
 do_code_auth(Ref, Identity, Account, Code, User, DType, Did) ->
@@ -495,7 +505,7 @@ do_code_auth(Ref, Identity, Account, Code, User, DType, Did) ->
     Account :: binary(),
     Code :: binary(),
     User :: map(),
-    DType :: binary(),
+    DType :: binary() | {web_login, map()},
     Did :: binary()
 ) -> {ok, map()} | {{error, conflict}, map()} | {error, binary() | service_unavailable}.
 do_code_consume(Ref, Identity, Account, Code, User, DType, Did) ->
@@ -512,7 +522,7 @@ do_code_consume(Ref, Identity, Account, Code, User, DType, Did) ->
     Ref :: term(),
     Identity :: login_attempt_state:identity(),
     User :: map(),
-    DType :: binary(),
+    DType :: binary() | {web_login, map()},
     Did :: binary()
 ) -> {ok, map()} | {{error, conflict}, map()} | {error, binary() | service_unavailable}.
 do_code_finish(Ref, _Identity, User, DType, Did) ->
@@ -536,8 +546,10 @@ do_code_finish(Ref, _Identity, User, DType, Did) ->
     end.
 
 %% @doc 验证码登录成功链：签发 + 审计 + 设备冲突检查。
--spec code_login_success(map(), binary(), binary()) ->
+-spec code_login_success(map(), binary() | {web_login, map()}, binary()) ->
     {ok, map()} | {{error, conflict}, map()}.
+code_login_success(User, {web_login, Values}, Did) ->
+    web_login_success(User, Did, Values);
 code_login_success(User, DType, Did) ->
     Account = maps:get(
         <<"account">>, User, maps:get(<<"mobile">>, User, maps:get(<<"email">>, User, <<>>))
@@ -573,7 +585,7 @@ code_login_success(User, DType, Did) ->
 %%   - 凭据正确且 status 允许：reset 确认成功才 login_resp 签发；
 %%     reset 失败 → 丢弃响应 Data、不返回凭据，服务不可用。
 %% Ip 在此层不可用也无需伪造：账户域跨 IP（C.1）。
--spec do_login_verify(binary(), binary(), map(), binary(), binary(), binary()) ->
+-spec do_login_verify(binary(), binary(), map(), binary(), binary() | {web_login, map()}, binary()) ->
     {ok, map()}
     | {{error, conflict}, map()}
     | {error, binary() | map() | service_unavailable}.
@@ -600,7 +612,7 @@ do_login_verify(Type, Account, User, Pwd, DType, Did) ->
     Identity :: login_attempt_state:identity(),
     User :: map(),
     Pwd :: binary(),
-    DType :: binary(),
+    DType :: binary() | {web_login, map()},
     Did :: binary()
 ) ->
     {ok, map()}
@@ -624,7 +636,7 @@ do_login_auth(Ref, Identity, User, Pwd, DType, Did) ->
     Identity :: login_attempt_state:identity(),
     User :: map(),
     Pwd :: binary(),
-    DType :: binary(),
+    DType :: binary() | {web_login, map()},
     Did :: binary()
 ) ->
     {ok, map()}
@@ -655,8 +667,10 @@ finish_login_error(Ref, Outcome, Msg) ->
     end.
 
 %% @private 密码登录成功链：签发 + 审计 + 设备类型/冲突检查。
--spec password_login_success(map(), binary(), binary()) ->
+-spec password_login_success(map(), binary() | {web_login, map()}, binary()) ->
     {ok, map()} | {{error, conflict}, map()}.
+password_login_success(User, {web_login, Values}, Did) ->
+    web_login_success(User, Did, Values);
 password_login_success(User, DType, Did) ->
     Account = maps:get(
         <<"account">>, User, maps:get(<<"mobile">>, User, maps:get(<<"email">>, User, <<>>))
@@ -683,6 +697,52 @@ password_login_success(User, DType, Did) ->
             {ok, Data};
         _ ->
             login_conflict_result(Uid, DType, Data)
+    end.
+
+%% Validate credentials first; persist before kicking, then issue against the current epoch.
+web_login_success(User, Did, Values) ->
+    Uid = maps:get(<<"id">>, User),
+    try user_ds:find_by_id(Uid, <<"status,account_type">>) of
+        #{<<"status">> := Status, <<"account_type">> := 0} when Status =:= 1; Status =:= 2 ->
+            case find_web_user_setting(Uid) of
+              {ok, Settings} ->
+                case user_device_logic:check_login_conflict(Uid, <<"web">>) of
+                {ok, no_conflict} -> web_register_and_issue(User, Did, Values, none, Settings);
+                {ok, conflict, #{<<"device_id">> := ConflictDid}} ->
+                    web_register_and_issue(User, Did, Values, ConflictDid, Settings);
+                _ -> {error, service_unavailable}
+                end;
+              {error, _} -> {error, service_unavailable}
+            end;
+        _ -> {error, <<"Invalid Web account">>}
+    catch _:_ -> {error, service_unavailable} end.
+
+web_register_and_issue(User, Did, Values, ConflictDid, Settings) ->
+    Uid = maps:get(<<"id">>, User),
+    case user_device_ds:register_web(elib_dt:now(), Uid, Did, Values) of
+        {ok, DeviceRowId} ->
+            case ConflictDid =:= none orelse
+                user_device_logic:kick_device(Uid, <<"web">>, ConflictDid) =:= ok of
+                true -> web_issue_session(User, Did, DeviceRowId, Settings);
+                false -> {error, service_unavailable}
+            end;
+        {error, _} -> {error, service_unavailable}
+    end.
+
+web_issue_session(User, Did, DeviceRowId, Settings) ->
+    Uid = maps:get(<<"id">>, User),
+    case auth_session_ds:current_epoch(Uid) of
+        {ok, Ep} when is_integer(Ep), Ep >= 1 ->
+            Tokens = token_ds:issue_web_session(Uid, Did, Ep, DeviceRowId),
+            Data = login_resp_with_tokens(User, Tokens, #{<<"setting">> => Settings}),
+            _ = elib_async:async(fun() ->
+                {ok, LogBody} = jsone_encode:encode(#{
+                    <<"account">> => maps:get(<<"account">>, User), <<"dtype">> => <<"web">>
+                }, [native_utf8]),
+                user_log_ds:add_internal(undefined, 100, Uid, LogBody, elib_dt:now())
+            end),
+            {ok, Data};
+        _ -> {error, service_unavailable}
     end.
 
 %% @private 设备冲突检查收口（成功链共用）。
@@ -1193,6 +1253,14 @@ login_resp(User, Resp) ->
 %% @doc E2EE-013：签发绑定设备 DID 的 token/refreshtoken。
 login_resp(User, Did, Resp) ->
     Id = maps:get(<<"id">>, User),
+    Tokens = #{
+        <<"token">> => token_ds:encrypt_token(Id, Did),
+        <<"refreshtoken">> => token_ds:encrypt_refreshtoken(Id, Did)
+    },
+    login_resp_with_tokens(User, Tokens, Resp).
+
+login_resp_with_tokens(User, Tokens, Resp) ->
+    Id = maps:get(<<"id">>, User),
     % 从 User 数据中读取 role 字段；user 表暂未设置 role 列，默认为 1（普通用户）
     % 待 user 表添加 role 列后，LOGIN_COLUMN 中需加入 role，届时可自动生效
     Role = maps:get(<<"role">>, User, 1),
@@ -1200,8 +1268,8 @@ login_resp(User, Did, Resp) ->
         #{
             <<"uid">> => Id,
             <<"user_id">> => Id,
-            <<"token">> => token_ds:encrypt_token(Id, Did),
-            <<"refreshtoken">> => token_ds:encrypt_refreshtoken(Id, Did),
+            <<"token">> => maps:get(<<"token">>, Tokens),
+            <<"refreshtoken">> => maps:get(<<"refreshtoken">>, Tokens),
             <<"email">> => maps:get(<<"email">>, User),
             %% 兼容窄列 User map（测试桩/旧调用方）：无 mobile 键时回退空串
             <<"mobile">> => maps:get(<<"mobile">>, User, <<>>),
@@ -1383,3 +1451,7 @@ record_login_device(Uid, PostVals) ->
         {ok, _} -> ok;
         {error, _} = Error -> Error
     end.
+
+-spec find_web_user_setting(pos_integer()) -> {ok, map()} | {error, unavailable}.
+find_web_user_setting(Uid) ->
+    user_setting_ds:find_web_by_uid(Uid).

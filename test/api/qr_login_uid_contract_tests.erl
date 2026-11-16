@@ -9,7 +9,7 @@
 -define(UID, 111174215241304065).
 -define(TOKEN, <<"synthetic-qr-contract-token">>).
 -define(MOCKS, [cowboy_req, imboy_cache, qr_login_session_repo,
-    qr_login_logic, token_ds, syn]).
+    qr_login_logic, token_ds, auth_session_ds, syn]).
 
 confirmed_payload_preserves_exact_identity_test() ->
     {ok, Payload} = qr_login_event_ds:confirmed(?TOKEN, ?UID),
@@ -138,10 +138,11 @@ cache_confirmation_carries_same_session_identity(#{table := Table}) ->
     ?assertEqual(0, maps:get(<<"code">>, jsone:decode(maps:get(response_body, Req)))),
     [Event] = [E || {_, {syn, publish, [_, {qr_login, ST0}, E]}, _} <- meck:history(syn),
         ST0 =:= ST],
-    ?assertEqual(expected_payload(), Event),
+    ?assertEqual(true, maps:get(web_human, Event)),
+    ?assertEqual(expected_payload(), maps:remove(web_human, Event)),
     _ = qr_login_sse_handler:info(Event, #{}, #{session_token => ST}),
     ?assertEqual([expected_payload()], sse_payloads()),
-    ?assert(meck:called(token_ds, encrypt_token, [?UID, <<"web-device">>])).
+    ?assert(meck:called(token_ds, encrypt_web_token, [?UID, <<"web-device">>, 7])).
 
 cache_polling_has_exact_identity_and_sequential_consumption(#{table := Table}) ->
     application:set_env(imboy, qr_login_authority, cache),
@@ -208,14 +209,16 @@ setup() ->
             end}
         ]},
         {imboy_cache, [
+            {flush_process_dict, 0, fun() -> ok end},
             {get, 1, fun(Key) ->
                 case ets:lookup(Table, Key) of [{_, Value}] -> {ok, Value}; [] -> undefined end
             end},
             {set, 3, fun(Key, Value, 60) -> true = ets:insert(Table, {Key, Value}), ok end},
             {delete, 1, fun(Key) -> true = ets:delete(Table, Key), ok end}
         ]},
-        {token_ds, [{encrypt_token, 2, fun(?UID, <<"web-device">>) -> ?TOKEN end}]},
-        {qr_login_logic, [{log_device_login, 4, fun(_, _, _, _) -> ok end}]},
+        {auth_session_ds, [{current_epoch, 1, fun(?UID) -> {ok, 7} end}]},
+        {token_ds, [{encrypt_web_token, 4, fun(?UID, <<"web-device">>, 7, 456) -> ?TOKEN end}]},
+        {qr_login_logic, [{log_device_login, 4, fun(_, _, _, _) -> {ok, 456} end}]},
         {syn, [
             {publish, 3, fun(_, _, _) -> {ok, 1} end},
             {join, 3, fun(_, _, _) -> ok end},

@@ -212,15 +212,23 @@ e2ee_enabled() ->
 -spec validate_message_write(binary(), binary(), binary(), term(), term()) ->
     ok | {error, binary()}.
 validate_message_write(Type, MsgType, Action, E2EE, Payload) ->
-    case policy_managed_content_write(Type, Action) andalso message_encryption_required() of
-        false ->
-            ok;
-        true ->
-            case encrypted_message_body(MsgType, E2EE, Payload) of
-                true ->
-                    ok;
+    TextCheck = case policy_managed_content_write(Type, Action) of
+        true -> message_policy:validate_text_size(MsgType, Action, Payload,
+            encrypted_message_body(MsgType, E2EE, Payload));
+        false -> ok
+    end,
+    % 先检查正文，避免 AI 明文豁免绕过限额 / Check before the AI plaintext exemption.
+    case TextCheck of
+        {error, _} = TextError -> TextError;
+        ok ->
+            case policy_managed_content_write(Type, Action) andalso message_encryption_required() of
                 false ->
-                    {error, <<"encrypted_message_required">>}
+                    ok;
+                true ->
+                    case encrypted_message_body(MsgType, E2EE, Payload) of
+                        true -> ok;
+                        false -> {error, <<"encrypted_message_required">>}
+                    end
             end
     end.
 

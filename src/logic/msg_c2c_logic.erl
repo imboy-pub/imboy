@@ -15,6 +15,8 @@
 -export([c2c_read_ack/3]).
 -export([c2c_input/3]).
 -export([extract_reply_info/1]).
+%% 透明 AI 豁免明文门（导出供 EUnit 直测）
+-export([validate_agent_peer_c2c_write/5]).
 
 -include("chat.hrl").
 -include("log.hrl").
@@ -474,11 +476,13 @@ stage_and_send_c2c(
                             % protected_header.sender_did 硬比对；不带 = 每条
                             % C2C v3 消息都判 context_mismatch_sender_did。
                             Msg = (message_ds:with_sender_device(Msg0, Data))#{
+                                <<"created_at">> => maps:get(<<"created_at">>, Data),
                                 <<"conv_seq">> => ConvSeq
                             },
                             imboy_message_helper:encode_and_send(ToId, MsgId, Msg, <<"c2c">>),
                             msg_c2c_delivery_ds:send_other_devices(
-                                CurrentUid, SenderDid, MsgId, Msg
+                                CurrentUid, SenderDid, MsgId, Msg,
+                                maps:get(sender_sync_plain_eligible, Data, false)
                             ),
                             % 离线推送（异步，不阻塞消息投递）
                             push_notification_logic:maybe_push_for_c2c(
