@@ -163,6 +163,12 @@ jobs:
       - name: Check nightly QA summary
         run: python3 -m unittest discover -s scripts/test -p test_nightly_summary.py -v
 
+      - name: Check LEE-5 evidence guard regressions (no PostgreSQL)
+        run: |
+          python3 -m venv "$RUNNER_TEMP/lee5-python"
+          "$RUNNER_TEMP/lee5-python/bin/python" -m pip install --disable-pip-version-check defusedxml==0.7.1
+          "$RUNNER_TEMP/lee5-python/bin/python" -m unittest discover -s scripts/test -p test_lee5_ci_evidence.py -v
+
       - name: Check SBOM baseline and failure handling
         run: python3 -m unittest discover -s scripts/test -p test_sbom_workflow.py -v
 
@@ -546,28 +552,21 @@ jobs:
             ~/.cache/rebar3
           key: ubuntu-24.04-${{ runner.arch }}-otp${{ steps.beam.outputs.otp-version }}-beam-${{ hashFiles('Makefile', 'erlang.mk', 'include/*.mk') }}
 
-      - name: Run Xref (erlang.mk 会先完整编译再 xref)
-        run: |
-          set -o pipefail
-          IMBOYENV=local make xref 2>&1 | tee xref.log || true
+      - name: Test Xref failure handling
+        run: bash scripts/test/xref_gate_test.sh
 
-      - name: Enforce zero undefined calls
-        run: |
-          undef_count="$(grep -c 'Undefined function' xref.log || true)"
-          echo "Undefined function calls: ${undef_count}"
-          if [ "${undef_count}" -gt 0 ]; then
-            echo "ERROR: xref ratchet failed — ${undef_count} undefined call(s) detected:" >&2
-            grep 'Undefined function' xref.log | sort -u >&2
-            exit 1
-          fi
+      - name: Run Xref and enforce successful execution / zero undefined calls
+        id: xref
+        run: bash scripts/ci/xref-gate.sh xref.log
 
       - name: Summarize Xref result
         if: always()
+        env:
+          XREF_OUTCOME: ${{ steps.xref.outcome }}
         run: |
-          echo "## Xref undefined-calls (ratchet: 0 allowed)" >> "$GITHUB_STEP_SUMMARY"
-          undef_count="$(grep -c 'Undefined function' xref.log || true)"
-          echo "Undefined function calls: ${undef_count} (ratchet 目标 = 0；2026-06-13 从 42 全修)" >> "$GITHUB_STEP_SUMMARY"
-          grep 'Undefined function' xref.log | sort -u >> "$GITHUB_STEP_SUMMARY" || true
+          echo "## Xref gate" >> "$GITHUB_STEP_SUMMARY"
+          echo "Execution outcome: ${XREF_OUTCOME:-not_run}" >> "$GITHUB_STEP_SUMMARY"
+          echo "PASS requires make exit 0, writable nonempty evidence and zero undefined calls." >> "$GITHUB_STEP_SUMMARY"
 
   # ----------------------------------------------------------------
   # E2EE Verify — 安全门禁（阻塞）
@@ -754,6 +753,31 @@ jobs:
           Path('fts-eunit/summary.json').write_text(json.dumps(summary, indent=2) + '\n')
           print(json.dumps(summary))
           PY
+
+      - name: Run LEE-5 real PostgreSQL and two-peer acceptance
+        id: lee5
+        env:
+          LEE5_CI_DISPOSABLE: "1"
+        run: bash scripts/ci/lee5-acceptance.sh
+
+      - name: Require complete LEE-5 evidence at this checkout
+        if: always()
+        env:
+          LEE5_OUTCOME: ${{ steps.lee5.outcome }}
+        run: |
+          python3 -m venv "$RUNNER_TEMP/lee5-python"
+          "$RUNNER_TEMP/lee5-python/bin/python" -m pip install --disable-pip-version-check defusedxml==0.7.1
+          "$RUNNER_TEMP/lee5-python/bin/python" scripts/ci/verify_lee5_evidence.py lee5-evidence \
+            --commit "$(git rev-parse HEAD)" --outcome "$LEE5_OUTCOME"
+
+      - name: Upload sanitized LEE-5 summary only
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: lee5-acceptance-${{ github.sha }}-${{ github.run_attempt }}
+          path: lee5-evidence/summary.json
+          retention-days: 14
+          if-no-files-found: error
 
   # ----------------------------------------------------------------
   # DCO — 仅 PR 检查，验证所有 commits 带有 Signed-off-by

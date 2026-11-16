@@ -3,7 +3,7 @@
 %%%
 %%% 【测试分类】除显式标注 MOCK 的用例外，本文件全部为**真实 PostgreSQL
 %%% 集成测试**（专属临时库 imboy_cache_closeout_v1，迁移 00000170 已 apply，
-%%% 多进程经 pooler 多连接并发——跨连接行锁仲裁即跨节点语义）。
+%%% 多进程经 pooler 多连接并发；实际双节点入口由 dcheck 另行验收）。
 %%%
 %%% 并发 claim 竞争 oracle（g-qr-atomic-consumption-proposal.md 第 6 节 +
 %%% LEE-5 最终实施补充要求第 1/3 项）：
@@ -27,12 +27,37 @@
 
 -define(UID, 990001).
 
+%% Formal acceptance must never turn a failed DB fixture into an empty test list.
+-define(LEE5_DB(TimeoutSec, TestFun),
+    {setup, fun setup_db/0,
+        fun
+            ({ok, Conn}) -> eunit_runner:eunit_cleanup_db(Conn);
+            (skip) -> ok
+        end,
+        fun
+            ({ok, _}) -> {timeout, TimeoutSec, ?_test((TestFun)())};
+            (skip) -> []
+        end}
+).
+
+setup_db() ->
+    db_setup_result(eunit_runner:eunit_setup_with_db(), os:getenv("LEE5_ACCEPTANCE")).
+
+db_setup_result({ok, Conn}, _) -> {ok, Conn};
+db_setup_result({error, _}, "1") -> error(lee5_postgresql_unavailable);
+db_setup_result({error, _}, _) -> skip.
+
+formal_mode_rejects_missing_database_test() ->
+    ?assertError(lee5_postgresql_unavailable, db_setup_result({error, closed}, "1")),
+    ?assertEqual(skip, db_setup_result({error, closed}, false)),
+    ?assertEqual({ok, self()}, db_setup_result({ok, self()}, "1")).
+
 %% ===================================================================
 %% 基础流程：create → scan → confirm → claim
 %% ===================================================================
 
 pg_session_roundtrip_test_() ->
-    ?TEST_WITH_DB_TIMEOUT(30, fun() ->
+    ?LEE5_DB(30, fun() ->
         ST = unique_token(<<"st_rt">>),
         QT = unique_token(<<"qt_rt">>),
         ok = qr_login_session_repo:create(#{
@@ -67,7 +92,7 @@ pg_session_roundtrip_test_() ->
 %% ===================================================================
 
 concurrent_claim_exactly_one_test_() ->
-    ?TEST_WITH_DB_TIMEOUT(60, fun() ->
+    ?LEE5_DB(60, fun() ->
         Rounds = 100,
         Winners = concurrent_claim_rounds(Rounds),
         ?assertEqual(Rounds, Winners)
@@ -79,11 +104,10 @@ concurrent_claim_rounds(0) ->
 concurrent_claim_rounds(N) ->
     ST = unique_token(<<"st_cc">>),
     setup_confirmed_session(ST),
-    %% 4 个并发消费者（两个后端节点的 status/status + SSE/SSE 等价竞争：
-    %% PG 行锁是唯一仲裁点，多连接竞争即跨节点语义）
+    %% 4 个并发连接竞争同一 PG 行；不把它描述为实际双节点入口验证。
     Results = concurrent_claim(ST, 4),
     Winners = length([ok || {ok, _} <- Results]),
-    Losers = length([error || {error, _} <- Results]),
+    Losers = length([error || {error, not_claimable} <- Results]),
     %% 恰好 1 个赢家、其余明确失败；无 token 残留
     ?assertEqual(1, Winners),
     ?assertEqual(3, Losers),
@@ -107,6 +131,7 @@ concurrent_claim(SessionToken, N) ->
     [
         receive
             {Pid, R} -> R
+        after 10000 -> error(claim_result_timeout)
         end
      || Pid <- Pids
     ].
@@ -116,7 +141,7 @@ concurrent_claim(SessionToken, N) ->
 %% ===================================================================
 
 sse_vs_status_race_single_claim_test_() ->
-    ?TEST_WITH_DB_TIMEOUT(30, fun() ->
+    ?LEE5_DB(30, fun() ->
         ST = unique_token(<<"st_sse">>),
         setup_confirmed_session(ST),
         %% SSE 服务端代领（qr_login_sse_handler 的 claim 路径）与
@@ -124,7 +149,7 @@ sse_vs_status_race_single_claim_test_() ->
         Results = concurrent_claim(ST, 2),
         Winners = length([ok || {ok, _} <- Results]),
         ?assertEqual(1, Winners),
-        ?assertEqual(1, length([error || {error, _} <- Results])),
+        ?assertEqual(1, length([error || {error, not_claimable} <- Results])),
         ?assertMatch(
             [{ok, #{login_token := <<"tok_race">>, scanned_by := ?UID}}],
             [Result || {ok, _} = Result <- Results]
@@ -137,7 +162,7 @@ sse_vs_status_race_single_claim_test_() ->
 %% ===================================================================
 
 concurrent_scan_single_winner_test_() ->
-    ?TEST_WITH_DB_TIMEOUT(30, fun() ->
+    ?LEE5_DB(30, fun() ->
         ST = unique_token(<<"st_cscan">>),
         QT = unique_token(<<"qt_cscan">>),
         ok = qr_login_session_repo:create(#{
@@ -159,7 +184,7 @@ concurrent_scan_single_winner_test_() ->
         ?assertEqual(1, length([ok || {ok, _} <- Results])),
         ?assertEqual(
             1,
-            length([E || {error, _} = E <- Results])
+            length([E || {error, not_transitioned} = E <- Results])
         ),
         #{<<"scanned_by">> := Winner} =
             qr_login_session_repo:find_by_session_token(ST),
@@ -168,7 +193,7 @@ concurrent_scan_single_winner_test_() ->
     end).
 
 concurrent_confirm_cancel_unique_outcome_test_() ->
-    ?TEST_WITH_DB_TIMEOUT(30, fun() ->
+    ?LEE5_DB(30, fun() ->
         ST = unique_token(<<"st_cc2">>),
         setup_scanned_session(ST),
         %% 并发 confirm 与 cancel：恰好一个成功（状态转移唯一）
@@ -183,16 +208,17 @@ concurrent_confirm_cancel_unique_outcome_test_() ->
         %% 已 confirmed 后 cancel 被拒（结果唯一：已确认即生效）
         case ConfirmR of
             {ok, _} ->
+                {error, not_transitioned} = CancelR,
                 {error, not_transitioned} =
                     qr_login_session_repo:transition_cancel(ST);
-            _ ->
-                ok
+            {error, not_transitioned} ->
+                ok = CancelR
         end,
         cleanup_session(ST)
     end).
 
 duplicate_confirm_is_idempotent_reject_test_() ->
-    ?TEST_WITH_DB_TIMEOUT(30, fun() ->
+    ?LEE5_DB(30, fun() ->
         ST = unique_token(<<"st_dc">>),
         setup_scanned_session(ST),
         {ok, _} = qr_login_session_repo:transition_confirm(ST, ?UID, <<"tok3">>),
@@ -212,7 +238,7 @@ duplicate_confirm_is_idempotent_reject_test_() ->
 %% ===================================================================
 
 expired_session_all_rejected_test_() ->
-    ?TEST_WITH_DB_TIMEOUT(30, fun() ->
+    ?LEE5_DB(30, fun() ->
         ST = unique_token(<<"st_exp">>),
         QT = unique_token(<<"qt_exp">>),
         ok = qr_login_session_repo:create(#{
@@ -240,12 +266,12 @@ expired_session_all_rejected_test_() ->
 %% ===================================================================
 
 single_round_100_way_claim_exactly_one_test_() ->
-    ?TEST_WITH_DB_TIMEOUT(60, fun() ->
+    ?LEE5_DB(60, fun() ->
         ST = unique_token(<<"st_c100">>),
         setup_confirmed_session(ST),
         Results = concurrent_claim(ST, 100),
         Winners = length([ok || {ok, _} <- Results]),
-        Losers = length([error || {error, _} <- Results]),
+        Losers = length([error || {error, not_claimable} <- Results]),
         %% 恰好 1 个赢家、99 个明确失败；无 token 残留；二次领取拒绝
         ?assertEqual(1, Winners),
         ?assertEqual(99, Losers),
@@ -263,15 +289,16 @@ single_round_100_way_claim_exactly_one_test_() ->
 
 %% 竞争 1：confirm vs cancel（已有用例断言恰一成功；此处补最终状态裁决）
 confirm_vs_cancel_final_state_test_() ->
-    ?TEST_WITH_DB_TIMEOUT(30, fun() ->
+    ?LEE5_DB(30, fun() ->
         ST = unique_token(<<"st_fc">>),
         setup_scanned_session(ST),
-        {[ConfirmR, _CancelR], _} = race_two(
+        {[ConfirmR, CancelR], _} = race_two(
             fun() -> qr_login_session_repo:transition_confirm(ST, ?UID, <<"tok_fc">>) end,
             fun() -> qr_login_session_repo:transition_cancel(ST) end
         ),
         case ConfirmR of
             {ok, _} ->
+                {error, not_transitioned} = CancelR,
                 %% 裁决规则 A：confirm 赢——status=confirmed，token 恰好可领取一次，
                 %% cancel 不可逆（已确认即生效）
                 #{<<"status">> := <<"confirmed">>, <<"token_claimable">> := true} =
@@ -282,7 +309,8 @@ confirm_vs_cancel_final_state_test_() ->
                     qr_login_session_repo:claim_login_token(ST),
                 {error, not_claimable} =
                     qr_login_session_repo:claim_login_token(ST);
-            _ ->
+            {error, not_transitioned} ->
+                ok = CancelR,
                 %% 裁决规则 B：cancel 赢——status=cancelled，token 永不可领取
                 #{<<"status">> := <<"cancelled">>, <<"token_claimable">> := false} =
                     qr_login_session_repo:find_by_session_token(ST),
@@ -295,7 +323,7 @@ confirm_vs_cancel_final_state_test_() ->
 %% 竞争 2：confirm vs expire（expire = 仅 status='scanned' 时强制过期的
 %% 竞争 UPDATE——过期只能阻止 confirm，不能撤销已完成的 confirm）
 confirm_vs_expire_unique_outcome_test_() ->
-    ?TEST_WITH_DB_TIMEOUT(30, fun() ->
+    ?LEE5_DB(30, fun() ->
         ST = unique_token(<<"st_ce">>),
         setup_scanned_session(ST),
         {[ConfirmR, ExpireR], _} = race_two(
@@ -330,7 +358,7 @@ confirm_vs_expire_unique_outcome_test_() ->
 %% 竞争 3：claim vs cancel——confirmed 会话上 cancel 必败（CAS 仅
 %% waiting|scanned），claim 恒可领取；已取消会话绝不允许领取（负向断言）
 claim_vs_cancel_and_negative_states_test_() ->
-    ?TEST_WITH_DB_TIMEOUT(30, fun() ->
+    ?LEE5_DB(30, fun() ->
         ST = unique_token(<<"st_clc">>),
         setup_confirmed_session(ST),
         {[ClaimR, CancelR], _} = race_two(
@@ -366,7 +394,7 @@ claim_vs_cancel_and_negative_states_test_() ->
 %% 任一交错：cancel 恒成功、终态恒 cancelled、login_token 永不可领取
 %% ——这才是安全不变式（间歇暴露过我此前的假 XOR 断言）。
 scan_vs_cancel_unique_outcome_test_() ->
-    ?TEST_WITH_DB_TIMEOUT(30, fun() ->
+    ?LEE5_DB(30, fun() ->
         ST = unique_token(<<"st_sxc">>),
         QT = unique_token(<<"qt_sxc">>),
         ok = qr_login_session_repo:create(#{
@@ -405,7 +433,7 @@ scan_vs_cancel_unique_outcome_test_() ->
 %% 竞争 6：claim vs expire——双方对 (confirmed, token 未消费) CAS，恰一赢家；
 %% 任何交错都绝不交付过期凭据
 claim_vs_expire_never_expired_credential_test_() ->
-    ?TEST_WITH_DB_TIMEOUT(30, fun() ->
+    ?LEE5_DB(30, fun() ->
         ST = unique_token(<<"st_cle">>),
         setup_confirmed_session(ST),
         {[ClaimR, ExpireR], _} = race_two(
@@ -437,7 +465,7 @@ claim_vs_expire_never_expired_credential_test_() ->
 %% 活跃（未过期）会话：清扫与 claim 并发——清扫 0 行（谓词严格分区），
 %% claim 恰好成功一次；过期安全从不依赖清扫
 cleanup_vs_claim_live_session_test_() ->
-    ?TEST_WITH_DB_TIMEOUT(30, fun() ->
+    ?LEE5_DB(30, fun() ->
         ST = unique_token(<<"st_cul">>),
         setup_confirmed_session(ST),
         {[ClaimR, CleanupR], _} = race_two(
@@ -452,15 +480,16 @@ cleanup_vs_claim_live_session_test_() ->
 
 %% 已过期会话：清扫与 claim 并发——claim 不论交错一律拒绝，绝不交付过期凭据
 cleanup_vs_claim_expired_session_test_() ->
-    ?TEST_WITH_DB_TIMEOUT(30, fun() ->
+    ?LEE5_DB(30, fun() ->
         ST = unique_token(<<"st_cue">>),
         setup_confirmed_session(ST),
         {ok, 1} = force_expire_confirmed(ST),
-        {[ClaimR, _CleanupR], _} = race_two(
+        {[ClaimR, CleanupR], _} = race_two(
             fun() -> qr_login_session_repo:claim_login_token(ST) end,
             fun() -> qr_login_session_repo:delete_expired(1) end
         ),
         {error, not_claimable} = ClaimR,
+        {ok, _} = CleanupR,
         %% 行可能已被清扫删除或仍在（过期态）——两者对领取语义等价
         {error, not_claimable} = qr_login_session_repo:claim_login_token(ST),
         cleanup_session(ST)
@@ -470,7 +499,7 @@ cleanup_vs_claim_expired_session_test_() ->
 %% 前置基线排空：共享库可能有前轮失败用例泄漏的过期行（60s 后过期），
 %% 先清到 0 再插桩，计数断言才不受残留影响。
 delete_expired_only_expired_and_batch_limit_test_() ->
-    ?TEST_WITH_DB_TIMEOUT(30, fun() ->
+    ?LEE5_DB(30, fun() ->
         drain_expired(),
         Live = [unique_token(<<"st_dxl">>) || _ <- lists:seq(1, 2)],
         Expired = [unique_token(<<"st_dxe">>) || _ <- lists:seq(1, 3)],
