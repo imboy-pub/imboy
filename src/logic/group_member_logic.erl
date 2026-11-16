@@ -32,6 +32,7 @@
     build_invite_join_mode/1,
     % 获取群组容量信息
     get_group_capacity/1,
+    allows_public_join/1,
     % 查询指定群成员记录
     find_by_gid_and_uid/3,
     % 分页获取群成员列表（含用户信息）
@@ -55,6 +56,8 @@
 %% 公共方法
 %% ===================================================================
 
+allows_public_join(Gid) -> group_invite_logic:allows_public_join(Gid).
+
 %% 获取群成员列表（最多 50000）
 -spec list_member(integer()) -> {ok, [map()]} | {error, term()}.
 list_member(Gid) when is_integer(Gid) ->
@@ -70,7 +73,7 @@ list_member(Gid, MemberUids) ->
 %% join_group/4
 %% 自动获取事务连接并调用 join_group/5
 %% ===================================================================
--spec join_group(binary(), integer(), integer(), map()) -> ok | {error, binary()}.
+-spec join_group(binary(), integer(), integer(), map()) -> ok | {error, term()}.
 join_group(JoinMode, Uid, Gid, OptData) when is_map(OptData) ->
     % 验证群组限制
     Max = maps:get(max_members, OptData, undefined),

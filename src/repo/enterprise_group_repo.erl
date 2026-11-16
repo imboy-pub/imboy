@@ -103,6 +103,7 @@ create_workspace_group_tx(Conn, Gid, OwnerUid, Title, Introduction, WorkspaceId,
 activate_member_tx(Conn, Gid, Uid, Role, JoinMode) when
     is_integer(Gid), Gid > 0, is_integer(Uid), Uid > 0, is_integer(Role)
 ->
+    ok = micro_community_access_repo:lock_group_tx(Conn, Gid),
     case group_member_repo:upsert_active(Conn, Gid, Uid, Role, JoinMode) of
         {ok, false} ->
             {ok, false};
@@ -123,6 +124,7 @@ activate_member_tx(Conn, Gid, Uid, Role, JoinMode) when
 deactivate_member_tx(Conn, Gid, Uid, Reason) when
     is_integer(Gid), Gid > 0, is_integer(Uid), Uid > 0
 ->
+    ok = micro_community_access_repo:lock_group_tx(Conn, Gid),
     Sql =
         <<"UPDATE group_member SET status = 0, updated_at = $1 ",
             "WHERE group_id = $2 AND user_id = $3 AND status = 1 RETURNING id">>,

@@ -1,0 +1,47 @@
+post:
+  tags: [user]
+  summary: 签发群二维码邀请 / Issue a group QR invitation
+  description: |
+    仅当前有效群成员可以签发。服务端使用独立签名域的 HS256 JWT，绑定群 ID、
+    邀请者 UID、签发时间和到期时间，有效期为 7 天。签名密钥只在服务端；
+    客户端内置 SOLIDIFIED_KEY 不参与授权。邀请者离群或被移除后，旧二维码
+    兑换失败。响应 exp 为毫秒，供客户端展示，不能由客户端延长有效期。
+
+    Only an active member can issue an invitation. A server-signed, domain-separated
+    HS256 JWT binds the group, inviter, issue time and expiry for seven days.
+    The signing key never ships in the client. Inviter removal revokes redemption.
+    The response exp is in milliseconds for display; clients cannot extend it.
+  operationId: groupQrcodeIssue
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          type: object
+          required: [gid]
+          properties:
+            gid:
+              type: string
+              pattern: '^[1-9][0-9]*$'
+              description: 群 TSID 十进制字符串 / Decimal group TSID.
+  responses:
+    '200':
+      description: 成功签发 / Invitation issued.
+      content:
+        application/json:
+          schema:
+            allOf:
+              - $ref: '../../../../components/schemas/Envelope.yaml'
+              - type: object
+                properties:
+                  payload:
+                    type: object
+                    required: [gid, exp, token]
+                    properties:
+                      gid: {type: string}
+                      exp: {type: integer, format: int64}
+                      token: {type: string}
+    '403':
+      description: 非群成员或未登录 / Membership or authentication required.
+    '503':
+      description: 服务端签名密钥未配置 / Server signing key unavailable.

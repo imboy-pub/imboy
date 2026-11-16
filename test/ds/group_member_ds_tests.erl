@@ -2,6 +2,33 @@
 -include_lib("eunit/include/eunit.hrl").
 -include("eunit_setup.hrl").
 
+join_rejects_removed_inviter_before_membership_write_test_() ->
+    ?WITH_MECKS([{group_member_repo, [
+        {lock_inviter_tx, 3, fun(conn, 101, 7) -> {ok, []} end}
+    ]}], fun() ->
+        ?assertThrow({abort_tx, invalid_group_invitation},
+            group_member_ds:join_group(conn, <<"scan_qr_code">>, 8, 101,
+                #{invite_issuer => 7}))
+    end).
+
+join_rechecks_public_policy_in_transaction_test_() ->
+    ?WITH_MECKS([{group_member_repo, [
+        {lock_public_join_policy_tx, 2, fun(conn, 101) -> {ok, []} end}
+    ]}], fun() ->
+        ?assertThrow({abort_tx, invalid_group_invitation},
+            group_member_ds:join_group(conn, <<"public">>, 8, 101,
+                #{public_self_join => true}))
+    end).
+
+join_authorization_database_error_fails_closed_test_() ->
+    ?WITH_MECKS([{group_member_repo, [
+        {lock_inviter_tx, 3, fun(conn, 101, 7) -> {error, unavailable} end}
+    ]}], fun() ->
+        ?assertThrow({abort_tx, invalid_group_invitation},
+            group_member_ds:join_group(conn, <<"scan_qr_code">>, 8, 101,
+                #{invite_issuer => 7}))
+    end).
+
 list_member_all_success_test_() ->
     ?WITH_MECKS(
         [
@@ -295,20 +322,18 @@ leave_absent_member_returns_absent_test_() ->
                 {'tablename', 0, fun() ->
                     <<"group_member">>
                 end},
-                {'find_tx', 4, fun(_Conn, _Gid, _Uid, <<"*">>) ->
+                {'find_tx', 4, fun(_Conn, 1, 100, <<"*">>) ->
+                    ?assertEqual(group_locked, get(t_access_lock)),
                     {ok, #{}}
-                end}
-            ]},
-            {elib_pg, [
-                %% discussion 访问锁（791b8817）：无 discussion 绑定 → 放行
-                {'query', 3, fun
-                    (_Conn, <<"LOCK TABLE public.channel", _/binary>>, []) -> {ok, []};
-                    (_Conn, <<"SELECT id FROM public.channel", _/binary>>, _) -> {ok, []}
                 end}
             ]}
         ],
         fun() ->
-            ?assertEqual({ok, absent}, group_member_ds:leave(self(), 100, 1, 100))
+            erase(t_access_lock),
+            ?assertEqual({ok, absent}, group_member_ds:leave(self(), 100, 1, 100)),
+            ?assertEqual(group_locked, erase(t_access_lock)),
+            ?assertEqual(3, meck:num_calls(elib_pg, query, '_')),
+            ?assertEqual(0, meck:num_calls(elib_pg, execute, '_'))
         end
     ).
 
@@ -375,8 +400,12 @@ personal_access_query(
     ?assertEqual(table_locked, get(t_access_lock)),
     put(t_access_lock, binding_checked),
     {ok, []};
-personal_access_query(Sql, [1, 100]) ->
+personal_access_query(<<"SELECT id FROM public.\"group\" WHERE id=$1 FOR UPDATE">>, [1]) ->
     ?assertEqual(binding_checked, get(t_access_lock)),
+    put(t_access_lock, group_locked),
+    {ok, [#{<<"id">> => 1}]};
+personal_access_query(Sql, [1, 100]) ->
+    ?assertEqual(group_locked, get(t_access_lock)),
     Predicate = micro_community_access_repo:predicate_sql(<<"request.gid">>, <<"request.uid">>),
     ?assertEqual(
         <<"SELECT (", Predicate/binary,
@@ -408,6 +437,8 @@ join_guard_failure(Kind) ->
                         [1]
                     ) ->
                         personal_access_query(Sql, [1]);
+                    (_Conn, Sql = <<"SELECT id FROM public.\"group\" WHERE id=$1 FOR UPDATE">>, [1]) ->
+                        personal_access_query(Sql, [1]);
                     (_Conn, Sql, [1, 100]) ->
                         {ok, [#{<<"allowed">> := true}]} = personal_access_query(Sql, [1, 100]),
                         {ok, [#{<<"allowed">> => false}]}
@@ -418,6 +449,7 @@ join_guard_failure(Kind) ->
             ]}
         ],
         fun() ->
+            erase(t_access_lock),
             Reason =
                 case Kind of
                     lock -> {discussion_access_query_failed, lock_unavailable};
@@ -428,6 +460,10 @@ join_guard_failure(Kind) ->
             ),
             ?assertEqual(0, meck:num_calls(group_member_repo, upsert_active, '_')),
             ?assertEqual(0, meck:num_calls(elib_pg, execute, '_')),
-            ?assertEqual(0, meck:num_calls(elib_pg, update, '_'))
+            ?assertEqual(0, meck:num_calls(elib_pg, update, '_')),
+            case Kind of
+                lock -> ?assertEqual(undefined, erase(t_access_lock));
+                denied -> ?assertEqual(group_locked, erase(t_access_lock))
+            end
         end
     ).

@@ -133,6 +133,7 @@ list_member(_Gid, _) ->
 -spec join_group(pid(), binary(), integer(), integer(), map()) ->
     {ok, integer()}.
 join_group(Conn, JoinMode, Uid, Gid, OptData) ->
+    ok = ensure_join_authorization(Conn, Gid, OptData),
     Role = maps:get(role, OptData, 1),
     % T5（双体验 v2.5.2）：Group Member ⊆ Workspace Member 应用层同事务校验。
     % scope=workspace 的群，加入者必须是同 workspace 的 active workspace_member，
@@ -175,6 +176,17 @@ join_group(Conn, JoinMode, Uid, Gid, OptData) ->
         {error, Reason} ->
             throw({abort_tx, {group_member_upsert_failed, Reason}})
     end.
+
+%% API/QR callers carry server-resolved authorization, never raw client fields.
+%% Internal creation/workspace flows already authorize their own transaction.
+ensure_join_authorization(Conn, Gid, #{invite_issuer := Issuer}) ->
+    require_join_authorization(group_member_repo:lock_inviter_tx(Conn, Gid, Issuer));
+ensure_join_authorization(Conn, Gid, #{public_self_join := true}) ->
+    require_join_authorization(group_member_repo:lock_public_join_policy_tx(Conn, Gid));
+ensure_join_authorization(_Conn, _Gid, _Options) -> ok.
+
+require_join_authorization({ok, [_ | _]}) -> ok;
+require_join_authorization(_) -> throw({abort_tx, invalid_group_invitation}).
 
 %% ===================================================================
 %% E2EE-2026-012 群历史世代开关（Task 8 / LT-03）

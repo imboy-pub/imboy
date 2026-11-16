@@ -47,7 +47,7 @@
 | `/api/v1/metrics` | `accept: text/plain` 时返回 Prometheus 文本，否则 JSON |
 | `/api/v1/passport/qr_login/subscribe` | SSE `text/event-stream` 长连接 |
 | `/api/v1/group/file/download` | HTTP 302 重定向到文件 URL |
-| `/api/v1/uqrcode`、`/api/v1/group/qrcode` | 无 token / 校验失败时 302 重定向 |
+| `/api/v1/uqrcode` | 无 token / 校验失败时 302 重定向 / Redirects on missing or invalid token |
 
 ---
 
@@ -279,7 +279,8 @@ cache 的上述历史限制仍需单独解决；不能把本次 UID 单元回归
 | 方法 Method | 路径 Path | 鉴权 Auth | Handler#action | 用途 Purpose（中 / EN） | 请求参数 Request | 响应载荷 Response payload |
 |---|---|---|---|---|---|---|
 | GET / POST | /api/v1/group/remark | JWT | group_handler#remark | 获取/更新群备注 / Get or set remark | GET: `gid`(TSID)；POST: `gid`,`remark` | `{remark,gid}` / `{gid}` |
-| GET | /api/v1/group/qrcode | JWT | group_handler#qrcode | 扫群二维码加入 / Join via QR | `id`(TSID),`exp`,`tk` | 群对象 `id`(TSID),`title`,`avatar`,`member_count`,`member_max`,`type`,`group_member`；校验失败 302 |
+| POST | /api/v1/group/qrcode_token | JWT + 有效群成员 / active member | group_handler#qrcode_token | 签发群二维码邀请 / Issue group QR invitation | `gid`(TSID) | `{gid,exp,token}`；`exp` 为毫秒，有效期 7 天 / milliseconds, seven-day validity |
+| GET | /api/v1/group/qrcode | JWT + 服务端签发邀请 / server-issued invitation | group_handler#qrcode | 扫群二维码加入 / Join via QR | `id`(TSID),`tk`（服务端签发的 `token` / server-issued token）；`exp` 仅供展示，旧 MD5 校验和无效 / display hint only, legacy MD5 rejected | 群对象 `id`(TSID),`title`,`avatar`,`member_count`,`member_max`,`type`,`group_member`；无效/过期/邀请者离群返回 403 / invalid, expired or revoked inviter returns 403 |
 | GET | /api/v1/group/face2face | JWT | group_handler#face2face | 面对面建群 / Face-to-face | `longitude`,`latitude`,`code` | `gid`(TSID),`member_list` |
 | POST | /api/v1/group/face2face_save | JWT | group_handler#face2face_save | 保存面对面建群 / Save F2F | `code`,`gid`(TSID) | `group`,`member_list` |
 | POST | /api/v1/group/add | JWT | group_handler#add | 创建群（type=2 私有）/ Create group | `member_uids`(list[TSID]) | `group`,`member_list` |
@@ -308,7 +309,7 @@ cache 的上述历史限制仍需单独解决；不能把本次 UID 单元回归
 
 | 方法 Method | 路径 Path | 鉴权 Auth | Handler#action | 用途 Purpose（中 / EN） | 请求参数 Request | 响应载荷 Response payload |
 |---|---|---|---|---|---|---|
-| POST | /api/v1/group_member/join | JWT | group_member_handler#join | 邀请成员加入 / Invite | `gid`(TSID),`member_uids`(list[TSID])*,`join_mode` | `{gid,member_list}` |
+| POST | /api/v1/group_member/join | JWT + 群成员；公开免审核群允许自加入 / member, or public open self-join | group_member_handler#join | 邀请成员加入 / Invite | `gid`(TSID),`member_uids`(list[TSID])*,`join_mode`（不作为授权凭据 / not an authorization credential） | `{gid,member_list}` |
 | POST | /api/v1/group_member/leave | JWT | group_member_handler#leave | 离群/移除成员 / Leave or remove | `gid`(TSID),`member_uids`(list[TSID]) | `{gid}` |
 | GET | /api/v1/group_member/page | JWT | group_member_handler#page | 群成员分页 / Paged members | `gid`(TSID),`page`,`size` | `total`,`page`,`size`,`list`（成员含 `id`,`role`,`alias`,`mute_until` 等） |
 | POST | /api/v1/group_member/alias | JWT | group_member_handler#alias | 设置群内昵称 / Set alias | `gid`(TSID),`alias`,`description` | `{gid}` |

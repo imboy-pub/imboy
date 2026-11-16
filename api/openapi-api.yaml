@@ -235,6 +235,7 @@ paths:
   /api/v1/group/categories: { $ref: './paths/api/v1/group/categories.yaml' }
   /api/v1/group/preview: { $ref: './paths/api/v1/group/preview.yaml' }
   /api/v1/group/msg_page: { $ref: './paths/api/v1/group/msg-page.yaml' }
+  /api/v1/group/qrcode_token: { $ref: './paths/api/v1/group/qrcode_token.yaml' }
   /api/v1/group/qrcode: { $ref: './paths/api/v1/group/qrcode.yaml' }
   /api/v1/group/face2face: { $ref: './paths/api/v1/group/face2face.yaml' }
   /api/v1/group/face2face_save: { $ref: './paths/api/v1/group/face2face-save.yaml' }

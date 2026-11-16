@@ -282,6 +282,7 @@ get_routes() ->
 
                 {"/api/v1/group/remark", group_handler, #{action => remark}},
                 {"/api/v1/group/qrcode", group_handler, #{action => qrcode}},
+                {"/api/v1/group/qrcode_token", group_handler, #{action => qrcode_token}},
                 {"/api/v1/group/face2face", group_handler, #{action => face2face}},
                 {"/api/v1/group/face2face_save", group_handler, #{action => face2face_save}},
                 {"/api/v1/group/add", group_handler, #{action => add}},

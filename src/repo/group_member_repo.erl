@@ -10,6 +10,7 @@
 -export([upsert_active/5]).
 -export([find/3]).
 -export([find_tx/4, member_uids_tx/2]).
+-export([lock_inviter_tx/3, lock_public_join_policy_tx/2]).
 -export([list_same_group/2]).
 % -export ([list_same_group/2]).
 -export([list_by_gid/2, list_by_gid/3]).
@@ -109,6 +110,28 @@ find_tx(Conn, Gid, Uid, Column) ->
         {ok, []} -> {ok, #{}};
         {error, _} = Error -> Error
     end.
+
+%% Keep inviter revocation serialized with the authorized membership write.
+lock_inviter_tx(Conn, Gid, Uid) ->
+    %% Preserve the established channel -> group order for discussion groups.
+    ok = micro_community_access_repo:lock_group_tx(Conn, Gid),
+    GroupTb = group_repo:tablename(),
+    case elib_pg:query(Conn,
+        <<"SELECT id FROM ", GroupTb/binary, " WHERE id = $1 AND status = 1 FOR UPDATE">>,
+        [Gid]) of
+        {ok, [_ | _]} ->
+            Sql = <<(find_sql(<<"gm.id">>))/binary, " FOR SHARE OF gm">>,
+            elib_pg:query(Conn, Sql, [Gid, Uid]);
+        Other -> Other
+    end.
+
+lock_public_join_policy_tx(Conn, Gid) ->
+    ok = micro_community_access_repo:lock_group_tx(Conn, Gid),
+    Tb = group_repo:tablename(),
+    elib_pg:query(Conn,
+        <<"SELECT id FROM ", Tb/binary,
+          " WHERE id = $1 AND status = 1 AND type = 1 AND join_limit = 1 FOR UPDATE">>,
+        [Gid]).
 
 find_sql(Column) ->
     Tb = tablename(),

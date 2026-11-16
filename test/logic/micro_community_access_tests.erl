@@ -146,29 +146,28 @@ eligible_database_error_denied_test_() ->
         fun() -> ?assertNot(micro_community_access_repo:eligible(20, 7)) end
     ).
 
-unbound_lock_does_not_touch_group_or_sequence_test_() ->
+unbound_lock_takes_group_before_membership_or_sequence_test_() ->
     ?MC_WITH_MECKS(
         [
             {elib_pg, [
                 {query, 3, fun(conn, Sql, Params) ->
-                    case binary:match(Sql, <<"LOCK TABLE public.channel">>) of
-                        {0, _} ->
+                    case Sql of
+                        <<"LOCK TABLE public.channel IN ROW EXCLUSIVE MODE">> ->
                             ?assertEqual([], Params),
                             {ok, []};
-                        nomatch ->
-                            ?assertNotEqual(
-                                nomatch, binary:match(Sql, <<"WHERE discussion_group_id=$1">>)
-                            ),
+                        <<"SELECT id FROM public.channel WHERE discussion_group_id=$1 FOR UPDATE">> ->
                             ?assertEqual([20], Params),
-                            ?assertEqual(nomatch, binary:match(Sql, <<"msg_store_seq">>)),
-                            {ok, []}
+                            {ok, []};
+                        <<"SELECT id FROM public.\"group\" WHERE id=$1 FOR UPDATE">> ->
+                            ?assertEqual([20], Params),
+                            {ok, [#{<<"id">> => 20}]}
                     end
                 end}
             ]}
         ],
         fun() ->
             ?assertEqual(ok, micro_community_access_repo:lock_group_tx(conn, 20)),
-            ?assertEqual(2, meck:num_calls(elib_pg, query, '_'))
+            ?assertEqual(3, meck:num_calls(elib_pg, query, '_'))
         end
     ).
 
