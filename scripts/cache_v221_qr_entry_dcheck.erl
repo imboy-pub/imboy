@@ -6,6 +6,7 @@
 -export([main/1, init_peer/1, close_peer/0, prepare/2, spawn_entry/5, consumed/1, cleanup/1]).
 -define(CONN, {?MODULE, conn}).
 -define(WORKERS, {?MODULE, workers}).
+-define(UID, 850000000000000001).
 
 main([Out]) ->
     main([Out, "config/sys.closeout-local.config"]);
@@ -13,7 +14,7 @@ main([Out, Profile]) ->
     logger:set_primary_config(level, none),
     application:ensure_all_started(crypto),
     Suffix = binary_to_list(binary:encode_hex(crypto:strong_rand_bytes(5), lowercase)),
-    {ok, _} = net_kernel:start([list_to_atom("qrcheck" ++ Suffix), longnames]),
+    {ok, _} = net_kernel:start([list_to_atom("qrcheck" ++ Suffix ++ "@127.0.0.1"), longnames]),
     true = erlang:set_cookie(node(), list_to_atom("qrck" ++ Suffix)),
     Args =
         [
@@ -168,8 +169,8 @@ prepare(ST, Token) ->
         purpose => <<"human">>,
         expires_at_ms => erlang:system_time(millisecond) + 60000
     }),
-    {ok, _} = qr_login_session_repo:transition_scan(ST, 850000000000000001),
-    {ok, _} = qr_login_session_repo:transition_confirm(ST, 850000000000000001, Token),
+    {ok, _} = qr_login_session_repo:transition_scan(ST, ?UID),
+    {ok, _} = qr_login_session_repo:transition_confirm(ST, ?UID, Token),
     ok.
 
 scenario(A, B, Lock, APid, BPid, {EntryA, EntryB}, ST) ->
@@ -200,7 +201,8 @@ scenario(A, B, Lock, APid, BPid, {EntryA, EntryB}, ST) ->
         entries => [EntryA, EntryB],
         synchronized_pg_waiters => 2,
         consumers => [R1, R2],
-        credentials => 1
+        credentials => 1,
+        winner_identity_checked => true
     }.
 
 ready(Ref, Node, Pid) ->
@@ -263,7 +265,9 @@ entry(status, ST, Token, Controller, Ref) ->
     Code = maps:get(<<"code">>, Json),
     Count =
         case Credential of
-            Token -> 1;
+            Token ->
+                true = authoritative_identity(Payload),
+                1;
             undefined -> 0;
             _ -> error(unexpected_credential)
         end,
@@ -306,9 +310,21 @@ entry(sse, ST, Token, Controller, Ref) ->
     end.
 chunk_credential(<<"data: ", Rest/binary>>) ->
     Body = binary:part(Rest, 0, byte_size(Rest) - 2),
-    maps:get(<<"token">>, jsone:decode(Body), undefined);
+    Event = jsone:decode(Body),
+    case maps:get(<<"token">>, Event, undefined) of
+        undefined -> undefined;
+        Token ->
+            true = authoritative_identity(Event),
+            Token
+    end;
 chunk_credential(_) ->
     undefined.
+
+%% Validate the actual response, including an ID above JavaScript's safe integer range.
+authoritative_identity(#{<<"uid">> := ?UID, <<"uid_str">> := UidString}) ->
+    UidString =:= integer_to_binary(?UID);
+authoritative_identity(_) ->
+    false.
 
 consumed(ST) ->
     {ok, _, [{null, true}]} = epgsql:equery(
