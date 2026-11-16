@@ -28,7 +28,7 @@ get:
     - in: query
       name: exp
       required: false
-      schema: { type: integer, format: int64 }
+      schema: { type: integer }
       description: 毫秒展示提示，授权以 JWT exp 为准 / Display hint in milliseconds; signed expiry is authoritative.
     - in: query
       name: tk
