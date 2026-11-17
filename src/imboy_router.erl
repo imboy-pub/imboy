@@ -1506,43 +1506,73 @@ web_human_routes(Sources) ->
         {"channel/:channel_id/messages", [<<"GET">>], access},
         {"ws", [<<"GET">>], ws}
     ],
-    [{"/api/v1/web/user/me", user_handler, #{action => web_me,
-        surface => web_human, jwt_purpose => web_human,
-        jwt_methods => [<<"GET">>], web_auth => access}} |
-        lists:flatmap(fun(Spec) -> web_human_alias(Spec, Sources) end, Specs)].
+    [
+        {"/api/v1/web/user/me", user_handler, #{
+            action => web_me,
+            surface => web_human,
+            jwt_purpose => web_human,
+            jwt_methods => [<<"GET">>],
+            web_auth => access
+        }}
+        | lists:flatmap(fun(Spec) -> web_human_alias(Spec, Sources) end, Specs)
+    ].
 
 web_human_alias({Suffix, Methods, Mode}, Sources) ->
     case lists:keyfind("/api/v1/" ++ Suffix, 1, Sources) of
-        false -> [];
+        false ->
+            [];
         {_, Handler, Opts} ->
             {WebSuffix, WebOpts} = web_human_opts(Suffix, Opts),
-            [{"/api/v1/web/" ++ WebSuffix, Handler, WebOpts#{
-                surface => web_human, jwt_purpose => web_human,
-                jwt_methods => Methods, web_auth => Mode
-            }}]
+            [
+                {"/api/v1/web/" ++ WebSuffix, Handler, WebOpts#{
+                    surface => web_human,
+                    jwt_purpose => web_human,
+                    jwt_methods => Methods,
+                    web_auth => Mode
+                }}
+            ]
     end.
 
 web_human_opts("init", Opts) ->
     {"bootstrap", Opts#{action => web_bootstrap}};
 web_human_opts("attachment/direct/:action" = Suffix, Opts) ->
-    {Suffix, Opts#{web_actions => #{
-        <<"register">> => [<<"POST">>], <<"declare">> => [<<"POST">>],
-        <<"grant">> => [<<"POST">>], <<"renew">> => [<<"POST">>],
-        <<"finalize">> => [<<"POST">>], <<"status">> => [<<"GET">>]
-    }}};
+    {Suffix, Opts#{
+        web_actions => #{
+            <<"register">> => [<<"POST">>],
+            <<"declare">> => [<<"POST">>],
+            <<"grant">> => [<<"POST">>],
+            <<"renew">> => [<<"POST">>],
+            <<"finalize">> => [<<"POST">>],
+            <<"status">> => [<<"GET">>]
+        }
+    }};
 web_human_opts(Suffix, Opts) ->
     {Suffix, Opts}.
 
 %% CORS 与认证必须使用同一逐动作 method 门，不能只检查 GET/POST 并集。
-web_methods(#{surface := web_human, jwt_purpose := web_human,
-    web_auth := Mode, jwt_methods := [_ | _] = Methods} = Opts, Action)
-    when Mode =:= bootstrap; Mode =:= login; Mode =:= qr;
-        Mode =:= refresh; Mode =:= access; Mode =:= ws ->
+web_methods(
+    #{
+        surface := web_human,
+        jwt_purpose := web_human,
+        web_auth := Mode,
+        jwt_methods := [_ | _] = Methods
+    } = Opts,
+    Action
+) when
+    Mode =:= bootstrap;
+    Mode =:= login;
+    Mode =:= qr;
+    Mode =:= refresh;
+    Mode =:= access;
+    Mode =:= ws
+->
     case lists:all(fun(M) -> M =:= <<"GET">> orelse M =:= <<"POST">> end, Methods) of
-        false -> {error, invalid_metadata};
+        false ->
+            {error, invalid_metadata};
         true ->
             case maps:find(web_actions, Opts) of
-                error -> {ok, Methods};
+                error ->
+                    {ok, Methods};
                 {ok, Actions} when is_map(Actions) ->
                     case maps:find(Action, Actions) of
                         {ok, [_ | _] = ActionMethods} ->
@@ -1550,9 +1580,11 @@ web_methods(#{surface := web_human, jwt_purpose := web_human,
                                 true -> {ok, ActionMethods};
                                 false -> {error, invalid_metadata}
                             end;
-                        _ -> {error, unknown_action}
+                        _ ->
+                            {error, unknown_action}
                     end;
-                _ -> {error, invalid_metadata}
+                _ ->
+                    {error, invalid_metadata}
             end
     end;
 web_methods(_, _) ->
