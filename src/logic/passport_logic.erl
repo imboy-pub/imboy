@@ -705,28 +705,37 @@ web_login_success(User, Did, Values) ->
     try user_ds:find_by_id(Uid, <<"status,account_type">>) of
         #{<<"status">> := Status, <<"account_type">> := 0} when Status =:= 1; Status =:= 2 ->
             case find_web_user_setting(Uid) of
-              {ok, Settings} ->
-                case user_device_logic:check_login_conflict(Uid, <<"web">>) of
-                {ok, no_conflict} -> web_register_and_issue(User, Did, Values, none, Settings);
-                {ok, conflict, #{<<"device_id">> := ConflictDid}} ->
-                    web_register_and_issue(User, Did, Values, ConflictDid, Settings);
-                _ -> {error, service_unavailable}
-                end;
-              {error, _} -> {error, service_unavailable}
+                {ok, Settings} ->
+                    case user_device_logic:check_login_conflict(Uid, <<"web">>) of
+                        {ok, no_conflict} ->
+                            web_register_and_issue(User, Did, Values, none, Settings);
+                        {ok, conflict, #{<<"device_id">> := ConflictDid}} ->
+                            web_register_and_issue(User, Did, Values, ConflictDid, Settings);
+                        _ ->
+                            {error, service_unavailable}
+                    end;
+                {error, _} ->
+                    {error, service_unavailable}
             end;
-        _ -> {error, <<"Invalid Web account">>}
-    catch _:_ -> {error, service_unavailable} end.
+        _ ->
+            {error, <<"Invalid Web account">>}
+    catch
+        _:_ -> {error, service_unavailable}
+    end.
 
 web_register_and_issue(User, Did, Values, ConflictDid, Settings) ->
     Uid = maps:get(<<"id">>, User),
     case user_device_ds:register_web(elib_dt:now(), Uid, Did, Values) of
         {ok, DeviceRowId} ->
-            case ConflictDid =:= none orelse
-                user_device_logic:kick_device(Uid, <<"web">>, ConflictDid) =:= ok of
+            case
+                ConflictDid =:= none orelse
+                    user_device_logic:kick_device(Uid, <<"web">>, ConflictDid) =:= ok
+            of
                 true -> web_issue_session(User, Did, DeviceRowId, Settings);
                 false -> {error, service_unavailable}
             end;
-        {error, _} -> {error, service_unavailable}
+        {error, _} ->
+            {error, service_unavailable}
     end.
 
 web_issue_session(User, Did, DeviceRowId, Settings) ->
@@ -736,13 +745,17 @@ web_issue_session(User, Did, DeviceRowId, Settings) ->
             Tokens = token_ds:issue_web_session(Uid, Did, Ep, DeviceRowId),
             Data = login_resp_with_tokens(User, Tokens, #{<<"setting">> => Settings}),
             _ = elib_async:async(fun() ->
-                {ok, LogBody} = jsone_encode:encode(#{
-                    <<"account">> => maps:get(<<"account">>, User), <<"dtype">> => <<"web">>
-                }, [native_utf8]),
+                {ok, LogBody} = jsone_encode:encode(
+                    #{
+                        <<"account">> => maps:get(<<"account">>, User), <<"dtype">> => <<"web">>
+                    },
+                    [native_utf8]
+                ),
                 user_log_ds:add_internal(undefined, 100, Uid, LogBody, elib_dt:now())
             end),
             {ok, Data};
-        _ -> {error, service_unavailable}
+        _ ->
+            {error, service_unavailable}
     end.
 
 %% @private 设备冲突检查收口（成功链共用）。
