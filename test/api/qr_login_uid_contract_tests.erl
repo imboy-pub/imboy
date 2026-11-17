@@ -142,7 +142,9 @@ cache_confirmation_carries_same_session_identity(#{table := Table}) ->
     ?assertEqual(expected_payload(), maps:remove(web_human, Event)),
     _ = qr_login_sse_handler:info(Event, #{}, #{session_token => ST}),
     ?assertEqual([expected_payload()], sse_payloads()),
-    ?assert(meck:called(token_ds, encrypt_web_token, [?UID, <<"web-device">>, 7])).
+    %% encrypt_web_token 是 4 参（Uid, Did, Epoch, DeviceRowId）；旧断言写成
+    %% 3 参永不匹配（基线既有 fail），按 setup mock 的真实签名断言。
+    ?assert(meck:called(token_ds, encrypt_web_token, [?UID, <<"web-device">>, 7, 456])).
 
 cache_polling_has_exact_identity_and_sequential_consumption(#{table := Table}) ->
     application:set_env(imboy, qr_login_authority, cache),
@@ -213,7 +215,13 @@ setup() ->
             {get, 1, fun(Key) ->
                 case ets:lookup(Table, Key) of [{_, Value}] -> {ok, Value}; [] -> undefined end
             end},
-            {set, 3, fun(Key, Value, 60) -> true = ets:insert(Table, {Key, Value}), ok end},
+            {set, 3, fun
+                (Key, Value, 60) -> true = ets:insert(Table, {Key, Value}), ok;
+                %% DEF-F6：web claim 消费改写无 token 的 confirmed 墓碑（TTL 120s
+                %% 宽限窗），login_token 必须已抹除（null）。
+                ({qr_login, _} = Key, #{<<"login_token">> := null} = Value, 120) ->
+                    true = ets:insert(Table, {Key, Value}), ok
+            end},
             {delete, 1, fun(Key) -> true = ets:delete(Table, Key), ok end}
         ]},
         {auth_session_ds, [{current_epoch, 1, fun(?UID) -> {ok, 7} end}]},

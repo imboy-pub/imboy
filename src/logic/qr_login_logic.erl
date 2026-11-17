@@ -71,9 +71,19 @@ claim_web_cache_token(SessionToken) ->
         case imboy_cache:get({qr_login, SessionToken}) of
             {ok, #{<<"purpose">> := <<"human">>, <<"platform">> := <<"web">>,
                     <<"status">> := <<"confirmed">>, <<"login_token">> := Token,
-                    <<"scanned_by">> := Uid}} ->
+                    <<"scanned_by">> := Uid} = Session} when is_binary(Token) ->
+                %% is_binary(Token)：墓碑（DEF-F6 R2）的 login_token 是 null 原子，
+                %% map 模式不做类型过滤，缺此守卫二次领取会照常放行。
+                %% DEF-F6-QR-STATUS-403-FREEZE：领取后不删除会话，改写为无 token
+                %% 的 confirmed 墓碑（TTL 120s ≥ App 2s 轮询宽限窗）。一次性交付
+                %% 语义不变：login_token 字段已抹除，二次领取走下方 not_claimable；
+                %% status 轮询在宽限窗内拿到 200 {status: "confirmed"}（幂等终态），
+                %% 不再踩 "Forbidden QR session" 403 冻结已扫描态。
                 %% delete/1 -> depcache:flush/2 uses gen_server:call and replies after deletion.
-                ok = imboy_cache:delete({qr_login, SessionToken}),
+                Tombstone = Session#{<<"status">> => <<"confirmed">>,
+                                     <<"login_token">> => null,
+                                     <<"claimed_at">> => erlang:system_time(millisecond)},
+                ok = imboy_cache:set({qr_login, SessionToken}, Tombstone, 120),
                 {ok, #{login_token => Token, scanned_by => Uid}};
             _ -> {error, not_claimable}
         end

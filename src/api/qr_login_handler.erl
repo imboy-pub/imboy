@@ -760,6 +760,16 @@ with_web_session(Req, State, SessionToken, Next) ->
                 {ok, _} -> Next();
                 {error, unavailable} ->
                     elib_response:error_with_status(Req, 503, <<"QR session unavailable">>, 503);
+                %% DEF-F6-QR-STATUS-403-FREEZE：轮询幂等——已领取（墓碑）或已过期
+                %% （TTL 蒸发/PG 行过期）的 confirmed 会话返回既有 5203
+                %% （二维码已确认，请刷新），不再泛化 403。状态机位点：confirmed
+                %% 交付后的 App 2s 轮询必达此分支，403 会让端上 StopSilently
+                %% 冻结"已扫描"态、QR 登录全链死。
+                {error, not_found} ->
+                    elib_response:error(
+                        Req, <<"二维码已确认，请刷新"/utf8>>, ?ERR_QR_LOGIN_ALREADY_USED
+                    );
+                %% 403 仅保留给 purpose/platform 不匹配的真 forbidden。
                 {error, _} -> elib_response:error(Req, <<"Forbidden QR session">>, ?ERR_FORBIDDEN)
             end;
         _ -> Next()

@@ -289,8 +289,11 @@ web_cache_sse_consumes_authoritative_session_once_test() ->
         try
             meck:expect(imboy_cache, get, fun({qr_login, <<"session">>}) ->
                 case get(web_qr_session) of undefined -> undefined; Value -> {ok, Value} end end),
-            meck:expect(imboy_cache, delete, fun({qr_login, <<"session">>}) ->
-                erase(web_qr_session), ok end),
+            %% DEF-F6：claim 消费 = 写无 token 墓碑（TTL 120s），不再删除会话。
+            meck:expect(imboy_cache, set, fun({qr_login, <<"session">>}, Tombstone, 120) ->
+                ?assertEqual(<<"confirmed">>, maps:get(<<"status">>, Tombstone)),
+                ?assertEqual(null, maps:get(<<"login_token">>, Tombstone)),
+                put(web_qr_session, Tombstone), ok end),
             meck:expect(qr_login_event_ds, confirmed, fun(<<"authoritative-tk">>, ?UID) ->
                 {ok, #{<<"status">> => <<"confirmed">>, <<"uid">> => ?UID}} end),
             meck:expect(cowboy_req, stream_body, fun(_, nofin, _) -> ok end),
@@ -298,6 +301,7 @@ web_cache_sse_consumes_authoritative_session_once_test() ->
             State = #{session_token => <<"session">>, web_human => true},
             ?assertMatch({stop, _, _}, qr_login_sse_handler:info(Event, #{}, State)),
             ?assertMatch({stop, _, _}, qr_login_sse_handler:info(Event, #{}, State)),
+            %% 墓碑无 token：第二次 info 走 not_claimable，不再发放凭据。
             ?assertEqual(1, meck:num_calls(qr_login_event_ds, confirmed, '_'))
         after erase(web_qr_session) end
     end).
@@ -342,8 +346,9 @@ web_cache_concurrent_consumers_have_one_credential_winner_test() ->
                     end,
                     Value
                 end),
-                meck:expect(imboy_cache, delete, fun({qr_login, <<"session">>}) ->
-                    true = ets:delete(Table, session), ok end),
+                meck:expect(imboy_cache, set, fun({qr_login, <<"session">>}, Tombstone, 120) ->
+                    ?assertEqual(null, maps:get(<<"login_token">>, Tombstone)),
+                    true = ets:insert(Table, {session, Tombstone}), ok end),
                 meck:expect(qr_login_event_ds, confirmed, fun(<<"authoritative-tk">>, ?UID) ->
                     {ok, #{<<"status">> => <<"confirmed">>, <<"token">> => <<"authoritative-tk">>,
                         <<"uid">> => ?UID}} end),
@@ -369,18 +374,21 @@ web_cache_concurrent_consumers_have_one_credential_winner_test() ->
                     maps:is_key(<<"token">>, P)],
                 SseWinners = [B || {{frame, _}, B} <- ets:tab2list(Table)],
                 ?assertEqual(1, length(HttpWinners) + length(SseWinners)),
-                ?assertEqual(1, meck:num_calls(imboy_cache, delete, '_')),
+                %% DEF-F6：唯一赢家写一次墓碑（无 token），不再有 delete。
+                ?assertEqual(1, meck:num_calls(imboy_cache, set, '_')),
                 ?assertEqual(2, meck:num_calls(imboy_cache, flush_process_dict, '_'))
             after ets:delete(Table) end
         end)
     end, [[sse, sse], [sse, legacy_status], [legacy_sse, legacy_status]]).
 
-web_cache_claim_delete_failure_does_not_emit_credentials_test() ->
+web_cache_claim_tombstone_write_failure_does_not_emit_credentials_test() ->
     with_qr(cache, #{}, fun() ->
         Session = (qr_session(<<"human">>, <<"web">>))#{
             <<"status">> => <<"confirmed">>, <<"login_token">> => <<"old-tk">>},
         mock_session(cache, Session),
-        meck:expect(imboy_cache, delete, fun(_) -> {error, unavailable} end),
+        %% DEF-F6：墓碑写失败必须整体失败——若照常发放凭据而墓碑未落，
+        %% 原 token 会话仍在缓存内可重复领取（一次性交付被击穿）。
+        meck:expect(imboy_cache, set, fun(_, _, _) -> {error, unavailable} end),
         ?assertEqual({error, unavailable}, qr_login_logic:claim_web_cache_token(<<"session">>)),
         ?assertEqual(0, meck:num_calls(cowboy_req, stream_body, '_'))
     end).
@@ -392,6 +400,9 @@ web_cache_real_depcache_atomic_claim_test_() ->
 real_cache_setup() ->
     ?assertNot(lists:keymember(imboy, 1, application:which_applications())),
     ?assertEqual(undefined, whereis(imboy_cache)),
+    %% claim 的 global:trans 互斥依赖 global_name_server（eunit VM 极简引导
+    %% 不随内核启动；生产 vm.args 分布式启动时在线）——并发领取轮次前置。
+    _ = (catch global:start()),
     lists:foreach(fun(Name) -> ?assertEqual(undefined, ets:info(Name)) end,
         ['m:imboy_cache', 'p:imboy_cache', 'd:imboy_cache']),
     Values = [{dsync_enabled, false}, {cache_fenced_namespaces, []},
@@ -477,7 +488,9 @@ real_cache_round(Kinds) ->
         end, HttpWins ++ Frames),
         ?assertEqual([], [Payload || {_, {stop, #{payload := Payload}, _}} <- Results,
             maps:is_key(<<"token">>, Payload)]),
-        ?assertEqual(undefined, imboy_cache:get({qr_login, ST}))
+        %% DEF-F6：claim 后保留无 token 墓碑（宽限窗内轮询幂等 confirmed）。
+        ?assertMatch({ok, #{<<"status">> := <<"confirmed">>, <<"login_token">> := null}},
+            imboy_cache:get({qr_login, ST}))
     after
         lists:foreach(fun({P, Monitor}) ->
             case is_process_alive(P) of true -> exit(P, kill); false -> ok end,
@@ -495,7 +508,9 @@ real_cache_caller(Parent, Ref, ST, Session, Kind) ->
     Req = #{method => <<"GET">>, qs => [{<<"session_token">>, ST}],
         test_parent => Parent, test_ref => Ref},
     First = real_cache_request(Kind, Req, ST),
-    ?assertEqual(undefined, imboy_cache:get({qr_login, ST})),
+    %% DEF-F6：claim 后是墓碑而非删除；Replay 在宽限窗内幂等、不得重发 token。
+    ?assertMatch({ok, #{<<"status">> := <<"confirmed">>, <<"login_token">> := null}},
+        imboy_cache:get({qr_login, ST})),
     Replay = real_cache_request(Kind, Req, ST),
     Parent ! {Ref, done, self(), First, Replay}.
 
@@ -621,6 +636,10 @@ credential_case(Registration, Test) ->
 with_qr(Authority, Body, Test) ->
     Old = application:get_env(imboy, qr_login_authority),
     application:set_env(imboy, qr_login_authority, Authority),
+    %% claim 的 global:trans 互斥依赖 global_name_server；eunit VM 极简引导
+    %% （no_dot_erlang）不随内核启动 global，而生产 vm.args 分布式启动时在线。
+    %% 并发领取类用例（唯一赢家）需该契约在线。幂等：已启动则直通。
+    _ = (catch global:start()),
     try with_mocks([
         {cowboy_req, [{method, fun(Req) -> maps:get(method, Req) end},
             {read_body, fun(Req) ->
