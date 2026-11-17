@@ -1490,6 +1490,16 @@ web_human_routes(Sources) ->
         {"user/setting", [<<"POST">>], access},
         {"group/page", [<<"GET">>], access},
         {"group/detail", [<<"GET">>], access},
+        %% JNY-06（web 建群修复窗）：群创建/加入族 web 别名——缺此路由时
+        %% /api/v1/web/group/add、/api/v1/web/group/face2face(_save)、
+        %% /api/v1/web/group_member/join 404，web 面建群四路径全败
+        %% （UI 建群无请求、面对面 Web Human request rejected 双侧、
+        %% group add 404、native /api/v1/group/add 902 签名门）。
+        %% 双重阻断定位见 syn03-jny06-web-20261116 R3b 证据。
+        {"group/add", [<<"POST">>], access},
+        {"group/face2face", [<<"GET">>], access},
+        {"group/face2face_save", [<<"POST">>], access},
+        {"group_member/join", [<<"POST">>], access},
         {"group_member/page", [<<"GET">>], access},
         {"group_notice/page", [<<"GET">>], access},
         {"attachment/direct/:action", [<<"GET">>, <<"POST">>], access},

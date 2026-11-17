@@ -376,6 +376,64 @@ route_aliases_keep_exact_existing_handlers_and_features_test() ->
         ])
     end).
 
+%% JNY-06：群创建/加入族 web 别名——私有 JWT 面、逐方法门、不入 open/option、
+%% 不触发 native 902 签名门（auth_ds:verify_sign 零调用）。
+group_creation_family_web_aliases_test() ->
+    with_mocks(fun() ->
+        [{_, All}] = imboy_router:get_routes(),
+        Family = [
+            {"/api/v1/web/group/add", group_handler, add, [<<"POST">>]},
+            {"/api/v1/web/group/face2face", group_handler, face2face, [<<"GET">>]},
+            {"/api/v1/web/group/face2face_save", group_handler, face2face_save, [<<"POST">>]},
+            {"/api/v1/web/group_member/join", group_member_handler, join, [<<"POST">>]}
+        ],
+        lists:foreach(
+            fun({Path, Handler, Action, Methods}) ->
+                {Path, Handler, Opts} = lists:keyfind(Path, 1, All),
+                ?assertEqual(Action, maps:get(action, Opts)),
+                ?assertEqual(web_human, maps:get(surface, Opts)),
+                ?assertEqual(web_human, maps:get(jwt_purpose, Opts)),
+                ?assertEqual(access, maps:get(web_auth, Opts)),
+                ?assertEqual(Methods, maps:get(jwt_methods, Opts)),
+                ?assertNot(lists:member(list_to_binary(Path), imboy_router:open())),
+                ?assertNot(lists:member(list_to_binary(Path), imboy_router:option())),
+                Allowed = hd(Methods),
+                %% 未带 web token 一律 401（绝不落入 native 902 签名分支）
+                ?assertMatch(
+                    {stop, #{status := 401}},
+                    auth_middleware_api_v1:execute(
+                        #{method => Allowed, path => list_to_binary(Path)},
+                        #{handler_opts => Opts}
+                    )
+                ),
+                %% 逐方法门：GET-only 别名拒 POST，POST-only 别名拒 GET
+                lists:foreach(
+                    fun(M) ->
+                        ?assertMatch(
+                            {stop, #{status := 405}},
+                            auth_middleware_api_v1:execute(
+                                #{method => M, path => list_to_binary(Path)},
+                                #{handler_opts => Opts}
+                            )
+                        )
+                    end,
+                    [M || M <- [<<"GET">>, <<"POST">>], not lists:member(M, Methods)]
+                ),
+                %% 带 web token 放行且零签名校验
+                H = #{<<"authorization">> => <<"Bearer synthetic-web">>},
+                ?assertMatch(
+                    {ok, _, #{handler_opts := #{current_uid := 123}}},
+                    auth_middleware_api_v1:execute(
+                        #{method => Allowed, path => list_to_binary(Path), headers => H},
+                        #{handler_opts => Opts}
+                    )
+                )
+            end,
+            Family
+        ),
+        ?assertEqual(0, meck:num_calls(auth_ds, verify_sign, '_'))
+    end).
+
 %% 从冻结契约显式抄录；不从实现函数生成期望集合。
 expected_routes() ->
     [
@@ -420,6 +478,12 @@ expected_routes() ->
         {"user/setting", "user/setting", user_handler, setting, [<<"POST">>], access},
         {"group/page", "group/page", group_handler, page, [<<"GET">>], access},
         {"group/detail", "group/detail", group_handler, detail, [<<"GET">>], access},
+        {"group/add", "group/add", group_handler, add, [<<"POST">>], access},
+        {"group/face2face", "group/face2face", group_handler, face2face, [<<"GET">>], access},
+        {"group/face2face_save", "group/face2face_save", group_handler, face2face_save,
+            [<<"POST">>], access},
+        {"group_member/join", "group_member/join", group_member_handler, join, [<<"POST">>],
+            access},
         {"group_member/page", "group_member/page", group_member_handler, page, [<<"GET">>], access},
         {"group_notice/page", "group_notice/page", group_notice_handler, page, [<<"GET">>], access},
         {"attachment/view_url", "attachment/view_url", attach_handler, view_url, [<<"GET">>],
