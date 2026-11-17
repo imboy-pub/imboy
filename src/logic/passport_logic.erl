@@ -853,11 +853,10 @@ send_email_code(undefined) ->
 send_email_code(ToEmail) ->
     Now = elib_dt:now(),
     NowP1M = elib_dt:minus(Now, {1, minute}),
-    case verification_code_ds:find_by_id(ToEmail) of
+    case created_at_in_resend_window(NowP1M, verification_code_ds:find_by_id(ToEmail)) of
         % 60000 = 60 * 1000 = 1分钟
-        % #{<<"created_at">> := CreatedAt} when (Now - CreatedAt) < 60000 ->
-        %  Now - 1m < CreatedAt
-        #{<<"created_at">> := CreatedAt} when NowP1M < CreatedAt ->
+        % 语义同旧 guard：Now - 1m < CreatedAt → 一分钟内不重发
+        true ->
             {ok, <<"一分钟内重复请求不发送Email"/utf8>>};
         %% 【已移除】原先这里有一条"有效期内重发同一个码"的分支，且重发时
         %% 不调用 save/4 刷新 created_at。后果有两个：
@@ -889,9 +888,9 @@ send_sms_code(Mobile) ->
     Now = elib_dt:now(),
     NowP2M = elib_dt:minus(Now, {2, minute}),
 
-    case verification_code_ds:find_by_id(Mobile) of
+    case created_at_in_resend_window(NowP2M, verification_code_ds:find_by_id(Mobile)) of
         % 120000 = 120 * 1000 = 2分钟
-        #{<<"created_at">> := CreatedAt} when NowP2M < CreatedAt ->
+        true ->
             {ok, <<"两分钟内重复请求不会重复发送"/utf8>>};
         %% 【已移除】同 send_email_code/1：原"有效期内重发同一个码"分支不刷新
         %% created_at，使码存活 10 分钟且两分钟守卫过期后可无限触发真实短信
@@ -936,6 +935,28 @@ send_sms_code(Mobile) ->
                     {error, <<"invalid_datetime"/utf8>>}
             end
     end.
+
+%% @private DEF-SOCSET-Vcode-TZ 同族修复：NowX（elib_dt:now/minus 输出 BEAM
+%% 本地时区偏移的 RFC3339，如 "2026-11-17T08:30:00.000000+08:00"）与 DB
+%% created_at（epgsql_codec_rfc3339_bin decode 显式输出 UTC "Z"）不可字典序
+%% 比较：+08 主机上 '...+08:00' > '...Z' 恒成立 → NowX < CreatedAt 恒 false，
+%% 一分钟/两分钟防重发守卫永久失效（fail-open），可无限触发真实发信。
+%% 统一折算为微秒系统时间（elib_dt:rfc3339_to/2，calendar 按 offset 换算）
+%% 后比较，惯式同 elib_dt:compare_rfc3339/3（enterprise_internal_auth 同款）。
+%% 解析失败 fail-open 返回 false：守卫只防骚扰、不涉权限变更，不可解析的
+%% created_at 放行重发，与旧 guard 对怪异值的取向一致；created_at 缺失
+%% （首次请求）同样放行。
+-spec created_at_in_resend_window(binary(), map()) -> boolean().
+created_at_in_resend_window(NowX, #{<<"created_at">> := CreatedAt}) ->
+    NowXUs = elib_dt:rfc3339_to(NowX, microsecond),
+    case elib_dt:rfc3339_to(CreatedAt, microsecond) of
+        CreatedAtUs when is_integer(CreatedAtUs), is_integer(NowXUs) ->
+            NowXUs < CreatedAtUs;
+        _ ->
+            false
+    end;
+created_at_in_resend_window(_NowX, _NoCreatedAt) ->
+    false.
 
 %% 校验验证码，委托给 verification_code_ds:verify_code/2
 %% 万能码通过 {imboy, verification_master_code} 配置，不再硬编码
