@@ -23,7 +23,7 @@ FIELDS = {"schema_version", "product_id", "profile", "base_ref", "selected_featu
 # 映射只需逐步覆盖有物理裁剪意义的模块；其余 feature 由 BUILD-01 补齐。
 FEATURE_BACKEND_MODULES = {
     "enterprise_business": (
-        # EB-10：src/features/enterprise_business/** 的 61 个模块（含 facade）。
+        # EB-10：src/features/enterprise_business/** 的 71 个模块（含 facade）。
         # 未选中 enterprise_business 时按 ERLC_EXCLUDE 不参与编译，并自动退出
         # .app modules 与 release 包；路由段的编译期剔除另见 src/imboy_router.erl
         # 的 -ifdef(IMBOY_FEATURE_ENTERPRISE_BUSINESS) helper。清单与目录的
@@ -32,12 +32,14 @@ FEATURE_BACKEND_MODULES = {
         "eb_asset_app",
         "eb_asset_content",
         "eb_asset_direct",
+        "eb_asset_download_ticket",
         "eb_asset_object_garage",
         "eb_asset_object_stub",
         "eb_asset_port",
         "eb_asset_scope",
         "eb_asset_store",
         "eb_asset_upload_ref",
+        "eb_asset_visitor_access",
         "eb_audit_port",
         "eb_auth_app",
         "eb_auth_permission",
@@ -50,6 +52,7 @@ FEATURE_BACKEND_MODULES = {
         "eb_conversation",
         "eb_conversation_app",
         "eb_crypto_port",
+        "eb_edge_asset_port",
         "eb_enterprise_actions",
         "eb_enterprise_facade_call",
         "eb_enterprise_http",
@@ -345,6 +348,30 @@ def _validate_catalog_graph(known: set[str], dependencies: dict) -> None:
         visit(feature)
 
 
+def _uses_standalone_cupertino(app_dir: Path) -> bool:
+    """Read pub's generated lockfile fields, never the emitted route source."""
+    lockfile = app_dir / "pubspec.lock"
+    if not lockfile.is_file():
+        return False
+    in_packages = in_cupertino = False
+    for line in lockfile.read_text(encoding="utf-8").splitlines():
+        if not line.strip() or line.lstrip().startswith("#"):
+            continue
+        if not line.startswith(" "):
+            in_packages = re.fullmatch(r"packages:(?:[ \t]+#.*)?[ \t]*", line) is not None
+            in_cupertino = False
+        elif in_packages and re.match(r"^  \S", line):
+            in_cupertino = re.fullmatch(r"  cupertino_ui:(?:[ \t]+#.*)?[ \t]*", line) is not None
+        elif in_packages and in_cupertino:
+            dependency = re.fullmatch(r"    dependency:[ \t]*(.*)", line)
+            if dependency is not None:
+                return re.fullmatch(
+                    r'''(?:"direct main"|'direct main'|direct main)(?:[ \t]+#.*)?[ \t]*''',
+                    dependency.group(1),
+                ) is not None
+    return False
+
+
 def render(
     contract: dict, *, app_dir: Path | None = None, admin_dir: Path | None = None
 ) -> dict[Path, str]:
@@ -382,8 +409,13 @@ def render(
     # manifest hash 行按 dart format 的 80 列规则换行（与 TS 发射器同一处理），
     # 否则 lefthook dart-fmt 门会改写生成物、与 generate_product_features --check 冲突
     dart = f"// {header}\nconst productFeatureSchemaVersion = {SCHEMA_VERSION};\nconst productFeatureManifestHash =\n    {json.dumps(contract['manifest_hash'])};\nconst compiledProductFeatures = <String>[\n  {dart_items},\n];\n"
+    cupertino_uri = (
+        "package:cupertino_ui/cupertino_ui.dart"
+        if _uses_standalone_cupertino(app_dir)
+        else "package:flutter/cupertino.dart"
+    )
     route_imports = [
-        "import 'package:flutter/cupertino.dart';",
+        f"import '{cupertino_uri}';",
         "import 'package:flutter_riverpod/flutter_riverpod.dart';",
         "import 'package:go_router/go_router.dart';",
     ]
