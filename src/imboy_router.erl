@@ -1482,6 +1482,10 @@ web_human_routes(Sources) ->
         {"friend/list", [<<"GET">>], access},
         {"friend/add", [<<"POST">>], access},
         {"friend/confirm", [<<"POST">>], access},
+        %% 候选B（owner-batch4 #8）：「新注册的人」页 web 别名——缺此路由时
+        %% /api/v1/web/fts/recently_user 404，web 面恒渲染空态（wire 行数
+        %% oracle total=1，双重阻断定位见 candidateB-recently-registered 证据）。
+        {"fts/recently_user", [<<"GET">>], access},
         {"user/show", [<<"GET">>], access},
         {"user/setting", [<<"POST">>], access},
         {"group/page", [<<"GET">>], access},

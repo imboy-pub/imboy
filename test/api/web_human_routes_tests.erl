@@ -214,6 +214,7 @@ expected_routes() ->
         {"friend/list", "friend/list", friend_handler, list, [<<"GET">>], access},
         {"friend/add", "friend/add", friend_handler, add_friend, [<<"POST">>], access},
         {"friend/confirm", "friend/confirm", friend_handler, confirm, [<<"POST">>], access},
+        {"fts/recently_user", "fts/recently_user", fts_handler, recently_user, [<<"GET">>], access},
         {"user/show", "user/show", user_handler, show, [<<"GET">>], access},
         {"user/setting", "user/setting", user_handler, setting, [<<"POST">>], access},
         {"group/page", "group/page", group_handler, page, [<<"GET">>], access},
