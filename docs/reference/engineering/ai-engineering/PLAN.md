@@ -1,6 +1,6 @@
 # AI 工程体系增量实施计划（AI Engineering Plan）
 
-> 版本 1.0 · 2026-11-18 · 隶属 [ai-engineering](./) · 输入：[ASSESSMENT.md](./ASSESSMENT.md)
+> 版本 1.1（P1 收口）· 2026-11-19 · 隶属 [ai-engineering](./) · 输入：[ASSESSMENT.md](./ASSESSMENT.md)
 > 与已有计划的关系：本计划只覆盖 **AI 工程交付体系** 维度；业务功能、质量工程 LP、AUTOTEST、geo_regions 等既有车道不在此重复（见 ASSESSMENT §6 在途快照）。
 
 ---
@@ -17,15 +17,15 @@
 
 **P0 验收标准**：新任务有模板可抄；三个历史失效点消除；在途风险全部有登记与属主出口。
 
-## P1（能力建设，待授权排期）
+## P1（能力建设，2026-11-19 属主令后开工）
 
-| # | 项 | 现状→问题 | 位置 | 依赖 | 可自动实施 |
-|---|---|---|---|---|---|
-| P1-1 | 验证证据机器可读化 | receipts/ledger/log 三格式无法汇总 Verified Delivery Rate | 任务包 evidence/ 增加 `verdict.json`（最小 schema：task/verdict/sha/cmd/exit_code/counts） | P0-1 | ✅ 低风险 |
-| P1-2 | 园丁机制成文+首批规则 | 缺陷→规则闭环靠人脑；重复错误（bun --isolate、批次连坐、陈旧 beam）已有解法但未固化入 CI | `…/AGENT_OPERATING_MODEL.md` §1 已定义角色；首批候选：验证反假通过清单进 PR 模板自查 | 属主批准 PR 模板改动 | ◻ 需 review |
-| P1-3 | 跨端契约扩展 | error_code 逐字门已冻结；API 行为/WS 契约无自动门 | imboy contract-gate.yml 扩展（参考 AUTOTEST 车道用例） | AUTOTEST v2.1 解 BLOCKED | ◻ 依赖在途 |
-| P1-4 | 工程地图活文档化 | 本批 ENGINEERING_MAP 是快照；需随大版本刷新 | 修订责任 = 每次三仓版本 bump 的 PR 自查项（加进 PR 模板一行） | P1-2 | ◻ 需 review |
-| P1-5 | 每日/每批交付报告 | 属主需要高频盘面（已证偏好） | 任务包 evidence/ + 决策队列生成 markdown 摘要 | P1-1 | ✅ 脚本级 |
+| # | 项 | 现状→问题 | 位置 | 依赖 | 可自动实施 | 实施状态 |
+|---|---|---|---|---|---|---|
+| P1-1 | 验证证据机器可读化 | receipts/ledger/log 三格式无法汇总 Verified Delivery Rate | 任务包 evidence/ 增加 `verdict.json`（最小 schema：task/verdict/sha/cmd/exit_code/counts） | P0-1 | ✅ 低风险 | ✅ 本批落地（schema 入 VERIFICATION_POLICY §verdict.json；示范包 verdict.json 合规） |
+| P1-2 | 园丁机制成文+首批规则 | 缺陷→规则闭环靠人脑；重复错误（bun --isolate、批次连坐、陈旧 beam）已有解法但未固化入 CI | `…/AGENT_OPERATING_MODEL.md` §1 已定义角色；首批候选：验证反假通过清单进 PR 模板自查 | 属主批准 PR 模板改动 | ◻ 需 review | ✅ 属主令后落地（三仓 PR 模板各 +2 项，分支 task/ai-eng-p1） |
+| P1-3 | 跨端契约扩展 | error_code 逐字门已冻结；API 行为/WS 契约无自动门 | imboy contract-gate.yml 扩展（参考 AUTOTEST 车道用例） | AUTOTEST v2.1 解 BLOCKED | ◻ 依赖在途 | ⛔ BLOCKED（依赖=属主侧 AUTOTEST 前置证据义务 CALL-08 复测；解封后另立任务实施，本体系内不伪造推进） |
+| P1-4 | 工程地图活文档化 | 本批 ENGINEERING_MAP 是快照；需随大版本刷新 | 修订责任 = 每次三仓版本 bump 的 PR 自查项（加进 PR 模板一行） | P1-2 | ◻ 需 review | ✅ 属主令后落地（三仓 PR 模板版本 bump 自查行，与 P1-2 同批次） |
+| P1-5 | 每日/每批交付报告 | 属主需要高频盘面（已证偏好） | 任务包 evidence/ + 决策队列生成 markdown 摘要 | P1-1 | ✅ 脚本级 | ✅ 本批落地+实测（`_task_packages/AI_ENGINEERING_V1/tools/delivery_report.sh` exit 0；首份报告 `_task_packages/AI_ENGINEERING_P1/evidence/delivery-report-20261119.md`） |
 
 ## P2（自动化扩展，全部待属主授权后另立任务）
 
