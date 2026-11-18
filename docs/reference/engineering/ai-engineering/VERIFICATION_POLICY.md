@@ -36,6 +36,27 @@ Task ID / PR / Git SHA
 - 陈旧 beam/pcm 缓存：指纹不符必须现编译，不引用旧产物。
 - 收据/验证禁止并发跑同一环境；双 env（local/test）口径不得混。
 
+### verdict.json 最小 schema（机器可读判定，P1-1）
+
+每次验证除人读记录外，在任务包 `evidence/verdict.json` 落一份机器可读判定，供交付报告脚本（PLAN P1-5 `delivery_report.sh`）跨包聚合 Verified Delivery Rate：
+
+```json
+{
+  "task_id": "…",
+  "verdict": "PASS | FAIL | NEEDS_MANUAL_REVIEW",
+  "verdict_at": "ISO8601",
+  "verifier": "独立验证者标识（Worker 不得自证）",
+  "commits": ["git sha…"], "branch": "…", "base": "…",
+  "levels": {"level1_static": "PASS|FAIL|N/A", "level2_dynamic": "…", "level3_acceptance": "…"},
+  "level_selection_rationale": "选级依据（VERIFICATION_POLICY §1）",
+  "evidence": [{"cmd": "…", "exit_code": 0, "result": "…"}],
+  "not_covered": "未覆盖范围与理由",
+  "counts": {"tests_total": 0, "pass": 0, "fail": 0, "skipped": 0}
+}
+```
+
+规则：`verdict` 只能取三值；`N/A` 必须在 `level_selection_rationale` 给依据；`counts` 可全零但 `evidence[].cmd/exit_code` 必须真实。示范实现：`_task_packages/AI_ENGINEERING_V1/evidence/verdict.json`。
+
 ## 3. 独立性规则
 
 1. **Verification Agent 不得复用 Worker 的工作目录**：在独立 worktree（或至少 `git stash` 隔离后的干净检出）执行验证。
