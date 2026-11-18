@@ -1,6 +1,6 @@
 # 统一任务契约（Task Contract）
 
-> 版本 1.0 · 2026-11-18 · 隶属 [ai-engineering](./README.md)
+> 版本 1.0 · 2026-11-18 · 隶属 [ai-engineering](./)
 > 定位：三仓所有 AI Agent 任务的**最小统一契约**。不是新状态系统——它收敛既有的 AUTOTEST v2.1 STATE schema v3（`_task_packages/IMBOY_AUTOTEST_V2.1/runtime/STATE.json`）与 .task-state 实践，补齐历史包缺失的 `execution-log.md`。
 
 ---

@@ -1,6 +1,6 @@
 # 工程知识地图（Engineering Map）
 
-> 版本 1.0 · 2026-11-18 · 隶属 [ai-engineering](./README.md)
+> 版本 1.0 · 2026-11-18 · 隶属 [ai-engineering](./)
 > 原则：**每项只留指针+一句话**，事实活在源头（代码/CI/专项文档）。区分 ✅事实 / 📐约定 / ❓待确认。适用基线：imboy `259f5f480` / imboyapp `5ae7b5f2b` / imboyadmin `5a8925a`。
 
 ---

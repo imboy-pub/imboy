@@ -1,6 +1,6 @@
 # AI 工程体系增量实施计划（AI Engineering Plan）
 
-> 版本 1.0 · 2026-11-18 · 隶属 [ai-engineering](./README.md) · 输入：[ASSESSMENT.md](./ASSESSMENT.md)
+> 版本 1.0 · 2026-11-18 · 隶属 [ai-engineering](./) · 输入：[ASSESSMENT.md](./ASSESSMENT.md)
 > 与已有计划的关系：本计划只覆盖 **AI 工程交付体系** 维度；业务功能、质量工程 LP、AUTOTEST、geo_regions 等既有车道不在此重复（见 ASSESSMENT §6 在途快照）。
 
 ---

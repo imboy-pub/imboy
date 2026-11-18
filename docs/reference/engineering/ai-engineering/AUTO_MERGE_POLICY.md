@@ -1,6 +1,6 @@
 # 自动合并政策（Auto Merge Policy）
 
-> 版本 1.0 · 2026-11-18 · 隶属 [ai-engineering](./README.md)
+> 版本 1.0 · 2026-11-18 · 隶属 [ai-engineering](./)
 > 现状声明：**当前唯一已授权的自动合并 = 三仓 dependabot 白名单**（dependabot-auto-merge.yml，属主既定配置）。本文将其成文并定义扩展前提；**不启用新的自动合并，不改分支保护**。
 
 ---

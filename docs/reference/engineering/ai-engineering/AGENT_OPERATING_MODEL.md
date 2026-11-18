@@ -1,6 +1,6 @@
 # Agent 运营模型（Agent Operating Model）
 
-> 版本 1.0 · 2026-11-18 · 隶属 [ai-engineering](./README.md)
+> 版本 1.0 · 2026-11-18 · 隶属 [ai-engineering](./)
 > 精简组织：不追求 50 个 Bot。一个 Agent 会话可在不同任务阶段承担多角色，唯 Worker/Verification 在验证阶段必须独立（见 [VERIFICATION_POLICY.md](./VERIFICATION_POLICY.md) §3）。
 
 ---

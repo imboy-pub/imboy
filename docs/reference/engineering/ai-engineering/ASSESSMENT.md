@@ -2,7 +2,7 @@
 
 > 版本 1.0 · 2026-11-18 · 审计基线：imboy `259f5f480` / imboyapp `5ae7b5f2b` / imboyadmin `5a8925a`
 > 审计方式：现场只读核查（git 状态、目录清点、CI workflow 逐个阅读、任务包结构比对），非文档推断。
-> 上级索引：[README.md](./README.md) · 后续计划：[PLAN.md](./PLAN.md)
+> 上级索引：[README.md](./) · 后续计划：[PLAN.md](./PLAN.md)
 
 ---
 
