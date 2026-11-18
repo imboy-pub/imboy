@@ -42,8 +42,8 @@
 
 ## Test Map
 
-- ✅ imboy：1259 eunit + 19 CT + 33 quality 模块（`tools/imboy_quality/`）+ dialyzer 基线 ratchet（188）+ nightly 慢门零豁免
-- ✅ imboyapp：`test/auto_test/execution_contract.json` 机器合同；`run_test_suite.sh --profile pr|full`；integration_test 9 profiles 手动；golden 零跟踪 PNG 约定（`5ae7b5f2b`）
+- ✅ imboy：1259 eunit + 19 CT + 32 quality 模块（`tools/imboy_quality/`）+ dialyzer 基线 ratchet（184 条指纹）+ nightly 慢门零豁免
+- ✅ imboyapp：`test/auto_test/execution_contract.json` 机器合同；`run_test_suite.sh --profile pr|full`；integration_test 8 profiles 手动；golden 零跟踪 PNG 约定（`5ae7b5f2b`）
 - ✅ imboyadmin：`bun run test`（--isolate 必须）；Playwright 主配置 + 7 专属配置；admin-e2e CI 仅 setup-flow
 - ✅ 真机 E2E 手册与坑库：`.task-state/`、`_task_packages/IMBOY_AUTOTEST_V2.1/`（W7/RCT 车道沉淀）
 - ❓ 覆盖率数字以最近一次 quality 收据为准（仓外维护），本文不复制以免漂移
@@ -66,7 +66,7 @@
 | 目录 | 职责 | 生命周期 |
 |---|---|---|
 | `_task_packages/` | 15 任务包（跨会话接力真源） | 任务收口后归档（如 closeout-archive-*） |
-| `_task_worktrees/` | 任务 worktree（现存：imboy-ai-eng-v1 本任务、imboyapp-pr76-merge 悬空、2 个空壳目录待属主确认删除） | 任务结束即删 |
+| `_task_worktrees/` | 任务 worktree（现存：imboy-ai-eng-v1 本任务、imboyapp-pr76-merge 悬空、**slimdown-v1=三仓 linked worktree 属在途另一车道勿动**、IMBOY_APP_UIUX_V10 与 IMBOY_WEB_MVP 2 个空壳待属主确认删除） | 任务结束即删（属主拍板前不清理） |
 | `.task-state/` | 已收口任务控制目录/证据（garage、otp-opt） | 长期只读 |
 | `.Codex/` | AI 工程资料：coordination（锁）、handoffs（交接 tar+sha256）、plans、runs、evidence | 长期 |
 | 根级 `AGENTS.md`/`CLAUDE.md` | 工作区上下文（umbrella，非 git） | 属主维护，agent 勿擅改 |

@@ -14,7 +14,7 @@
 ├── README.md            # 任务一句话定位 + 契约字段摘要（人读入口）
 ├── runtime/
 │   ├── state.json       # 唯一活跃状态（单写权，见 §3）
-│   └── .state-writer.lock
+│   └── .state-writer.lock  # 运行时生成（executor 加锁时创建），不属必备交付物
 ├── execution-log.md     # 追加式执行流水（每原子动作一行，禁改写历史行）
 ├── evidence/            # 验证证据（命令、退出码、日志路径、判定），按 VERIFICATION_POLICY.md 归档
 └── RESUME_PROMPT.md     # 接力提示词（可引用本仓 ai-engineering/RESUME_PROMPT.md 通用部分）

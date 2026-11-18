@@ -11,7 +11,7 @@
 |---|---|---|---|---|
 | **L1 静态** | 格式/lint/编译/类型/静态分析/安全依赖扫描 | erlfmt、elvis、compile、dialyzer 基线门、xref-strict、semgrep/trivy、sbom-diff、p5-manifest | dart format、flutter analyze ratchet、gitleaks、secrets-scan | eslint --max-warnings=0、typecheck、knip、gitleaks |
 | **L2 动态** | 单元/集成/API/WS/DB/跨端契约测试 | quality_full 路由（`IMBOYENV=local make eunit`）、CT 19 套件、contract-gate（OpenAPI）、nightly 慢门 | `run_test_suite.sh --profile pr\|full`、SQLite 迁移门、contract.yml（error_code 逐字+SHA 锁） | `bun run test`（--isolate）、admin-e2e（setup-flow）、widget-pairing |
-| **L3 真实业务验收** | Playwright/Flutter 集成/真机/多端链路 | smoke 脚本（`make ctl ARGS="smoke all"`）、release golden-install/upgrade | integration_test 9 profiles（device-pair/golden/web 等，手动+真机优先）、Patrol | Playwright 专属 8 配置（customer-service-real/p2/hosted 等，需真实后端） |
+| **L3 真实业务验收** | Playwright/Flutter 集成/真机/多端链路 | smoke 脚本（`make ctl ARGS="smoke all"`）、release golden-install/upgrade | integration_test 8 profiles（device-single/device-pair/native-ui/backend/golden/routes/web/web-shell，手动+真机优先）、Patrol | Playwright 专属 8 配置（customer-service-real/p2/hosted 等，需真实后端） |
 
 **选择规则**：按变更影响面选级——docs-only → L1；代码 → L1+L2 起步；跨端协议/DB/权限 → 必须含跨端契约证据；UI/链路行为 → L3 采样。**每次验证必须记录选择依据与未覆盖风险**，未覆盖不等于 PASS。
 
