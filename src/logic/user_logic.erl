@@ -30,12 +30,17 @@
 -export([get_status/1]).
 -export([change_chat_state/2]).
 -export([save_settings/2]).
+-export([find_web_user_setting/1]).
 -export([find_by_keyword/1]).
 -export([export/2]).
 
 %% ===================================================================
 %% API
 %% ===================================================================
+
+-spec find_web_user_setting(pos_integer()) -> {ok, map()} | {error, unavailable}.
+find_web_user_setting(Uid) ->
+    user_setting_ds:find_web_by_uid(Uid).
 
 %% @doc 设置用户密码
 %% 为未设置密码的用户设置登录密码。用户密码为空时才能设置。

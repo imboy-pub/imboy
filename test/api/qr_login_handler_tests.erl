@@ -519,7 +519,7 @@ confirm_purpose_test(Purpose) ->
                             <<"scanned_by">> => Uid,
                             <<"device_id">> => <<"web-device-1">>,
                             <<"device_name">> => <<"Safari">>,
-                            <<"platform">> => <<"web">>,
+                            <<"platform">> => <<"ios">>,
                             <<"purpose">> => Purpose
                         }
                     end},
@@ -542,10 +542,10 @@ confirm_purpose_test(Purpose) ->
                 ]},
                 {user_device_repo, [
                     {'save', 4, fun(_Now, U, _Did, PostVals) when U =:= Uid ->
-                        ?assertEqual(<<"Safari">>, maps:get(<<"device_name">>, PostVals)),
-                        ?assertEqual(<<"web">>, maps:get(<<"platform">>, PostVals)),
+                        ?assertEqual(<<"Safari">>, maps:get(<<"dname">>, PostVals)),
+                        ?assertEqual(<<"ios">>, maps:get(<<"cos">>, PostVals)),
                         ?assertEqual(<<"qr_scan">>, maps:get(<<"login_type">>, PostVals)),
-                        ok
+                        {ok, 456}
                     end}
                 ]},
                 {qr_login_event_ds, [{'notify', 2, fun(_, _) -> {ok, 1} end}]}
@@ -868,7 +868,7 @@ confirm_ok_mocks(SessionToken, QRToken, Uid, Token) ->
                     <<"scanned_by">> => Uid,
                     <<"device_id">> => <<"web-device-1">>,
                     <<"device_name">> => <<"Safari">>,
-                    <<"platform">> => <<"web">>,
+                    <<"platform">> => <<"ios">>,
                     <<"purpose">> => <<"human">>
                 }
             end},
@@ -879,7 +879,7 @@ confirm_ok_mocks(SessionToken, QRToken, Uid, Token) ->
             {'encrypt_seat_token', 2, fun(_, _) -> Token end}
         ]},
         {user_device_repo, [
-            {'save', 4, fun(_, _, _, _) -> ok end}
+            {'save', 4, fun(_, _, _, _) -> {ok, 456} end}
         ]},
         {qr_login_event_ds, [{'notify', 2, fun(_, _) -> {ok, 1} end}]}
     ].

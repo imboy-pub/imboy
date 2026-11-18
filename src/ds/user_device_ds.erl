@@ -111,15 +111,15 @@ save(Now, Uid, DID, PostVals) ->
 %% @doc Web 登录必须同步落库，服务端固定类型并兼容 QR 的设备名称字段。
 -spec register_web(binary() | integer(), integer(), binary(), map()) ->
     {ok, pos_integer()} | {error, term()}.
-register_web(Now, Uid, Did, PostVals) when
+register_web(Now, Uid, DID, PostVals) when
     is_integer(Uid),
     Uid > 0,
-    is_binary(Did),
-    byte_size(Did) > 0,
+    is_binary(DID),
+    byte_size(DID) > 0,
     is_map(PostVals)
 ->
     %% varchar(128) 按 Unicode 码点计数，畸形 UTF-8 不进入持久化。
-    case unicode:characters_to_list(Did) of
+    case unicode:characters_to_list(DID) of
         Chars when is_list(Chars), length(Chars) =< 128 ->
             Values = PostVals#{
                 <<"cos">> => <<"web">>,
@@ -127,9 +127,9 @@ register_web(Now, Uid, Did, PostVals) when
                     <<"dname">>, PostVals, maps:get(<<"device_name">>, PostVals, <<>>)
                 )
             },
-            try user_device_repo:save_web(Now, Uid, Did, Values) of
+            try user_device_repo:save_web(Now, Uid, DID, Values) of
                 {ok, Id} when is_integer(Id), Id > 0 ->
-                    case is_active_web(Uid, Did, Id) of
+                    case is_active_web(Uid, DID, Id) of
                         true -> {ok, Id};
                         false -> {error, unavailable}
                     end;
@@ -148,17 +148,17 @@ register_web(_, _, _, _) ->
 
 %% @doc Web 活跃性直查精确 UID/DID/type/status，不共享 Native 正缓存。
 -spec is_active_web(integer(), binary(), integer()) -> boolean().
-is_active_web(Uid, Did, DeviceRowId) when
+is_active_web(Uid, DID, DeviceRowId) when
     is_integer(Uid),
     Uid > 0,
-    is_binary(Did),
-    byte_size(Did) > 0,
+    is_binary(DID),
+    byte_size(DID) > 0,
     is_integer(DeviceRowId),
     DeviceRowId > 0
 ->
     try
-        true = length(unicode:characters_to_list(Did)) =< 128,
-        user_device_repo:is_active_web(Uid, Did, DeviceRowId)
+        true = length(unicode:characters_to_list(DID)) =< 128,
+        user_device_repo:is_active_web(Uid, DID, DeviceRowId)
     of
         {ok, true} -> true;
         _ -> false
@@ -329,8 +329,8 @@ normalize_compat_device(Row) ->
 get_public_by_uid(Uid) -> user_device_repo:get_public_by_uid(Uid).
 
 -spec is_active_native(integer(), binary()) -> boolean().
-is_active_native(Uid, Did) ->
-    try user_device_repo:is_active_native(Uid, Did) of
+is_active_native(Uid, DID) ->
+    try user_device_repo:is_active_native(Uid, DID) of
         {ok, true} -> true;
         _ -> false
     catch

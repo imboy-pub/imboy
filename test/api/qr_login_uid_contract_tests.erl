@@ -14,6 +14,7 @@
     qr_login_session_repo,
     qr_login_logic,
     token_ds,
+    auth_session_ds,
     syn
 ]).
 
@@ -177,7 +178,7 @@ explicit_cache_authority_confirm_uses_pg_identity(#{table := Table}) ->
     ],
     %% 广播是 confirmed_ready 通知（无 token/uid），凭据一律经原子领取
     ?assertEqual(#{<<"status">> => <<"confirmed_ready">>}, Event),
-    ?assert(meck:called(token_ds, encrypt_token, [?UID, <<"web-device">>])),
+    ?assert(meck:called(token_ds, encrypt_web_token, [?UID, <<"web-device">>, 7, 456])),
     %% cache 全程零写入（cache 不再保存 QR 会话/凭据）
     ?assertEqual([], [K || {_, {imboy_cache, set, [K | _]}, _} <- meck:history(imboy_cache)]).
 

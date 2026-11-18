@@ -75,7 +75,14 @@ def registered_talk_record(source):
     expected = 'customer_service_wire(enterprise_wire(imboy_feature:compiled_routes(api,ApiV1Routes++talk_record_routes:routes())))'
     if values['CompiledApiRoutes'] != expected:
         raise ValueError('Delegate is not the unconditional compiled API assignment')
-    if values['CoreRoutes'] != 'MainRoutes++CompiledApiRoutes++CompiledAdmRoutes++enterprise_internal_routes()':
+    # Web human routes augment the same compiled API list. Keep accepting only
+    # the two explicit, unconditional chains: finding a variable name somewhere
+    # in a helper call is not proof that the delegate reaches the dispatch table.
+    core_routes = {
+        'MainRoutes++CompiledApiRoutes++CompiledAdmRoutes++enterprise_internal_routes()',
+        'MainRoutes++CompiledApiRoutes++web_human_routes(CompiledApiRoutes)++CompiledAdmRoutes++enterprise_internal_routes()',
+    }
+    if values['CoreRoutes'] not in core_routes:
         raise ValueError('CoreRoutes does not consume the compiled API routes')
     if re.sub(r'\s+', '', expressions[-1]) != '[{Host,CoreRoutes++CompiledPluginRoutes}]':
         raise ValueError('Final return does not consume CoreRoutes')

@@ -2,7 +2,7 @@
 
 > 版本 1.0 · 2026-11-18 · 审计基线：imboy `259f5f480` / imboyapp `5ae7b5f2b` / imboyadmin `5a8925a`
 > 审计方式：现场只读核查（git 状态、目录清点、CI workflow 逐个阅读、任务包结构比对），非文档推断。
-> 上级索引：[README.md](./) · 后续计划：[PLAN.md](./PLAN.md)
+> 上级索引：[README.md](./) · 实施与恢复契约：[TASK_CONTRACT.md](./TASK_CONTRACT.md)
 
 ---
 
@@ -92,7 +92,7 @@
 - ❌ 不要新建跨端契约门：contract.yml/widget-pairing 已运行，扩展走同模式。
 - ❌ 不要把任务状态迁入 git 仓（_task_packages 瞬态约定是既定架构决策）。
 
-## 8. 优先级建议（进入 PLAN.md 的输入）
+## 8. 优先级建议（任务包实施计划的输入）
 
 - **P0**：统一任务契约模板落地；RUNTIME_LOCATION.json 失效指针修复；quality-loop 引用漂移修复；验证证据最小 schema。
 - **P1**：验证独立性规则成文；工程知识地图锚定仓库外结构；园丁机制（缺陷→规则闭环，复用 ratchet 模式）。
