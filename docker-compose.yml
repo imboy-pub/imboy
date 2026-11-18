@@ -97,4 +97,8 @@ networks:
     name: imboy-network
 
 volumes:
+  # name: 钉死实际卷名（不带 compose 项目前缀 imboy_）：
+  # 2026-10 迁移时手工建的活数据卷就是裸名 imboy_pg18_data（26G），
+  # 不钉名 compose 会解析成 imboy_imboy_pg18_data 并在空卷上 initdb 新库。
   imboy_pg18_data:
+    name: imboy_pg18_data
