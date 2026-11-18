@@ -274,6 +274,7 @@ setup() ->
             end}
         ]},
         {imboy_cache, [
+            {flush_process_dict, 0, fun() -> ok end},
             {get, 1, fun(Key) ->
                 case ets:lookup(Table, Key) of
                     [{_, Value}] -> {ok, Value};
@@ -289,8 +290,9 @@ setup() ->
                 ok
             end}
         ]},
-        {token_ds, [{encrypt_token, 2, fun(?UID, <<"web-device">>) -> ?TOKEN end}]},
-        {qr_login_logic, [{log_device_login, 4, fun(_, _, _, _) -> ok end}]},
+        {auth_session_ds, [{current_epoch, 1, fun(?UID) -> {ok, 7} end}]},
+        {token_ds, [{encrypt_web_token, 4, fun(?UID, <<"web-device">>, 7, 456) -> ?TOKEN end}]},
+        {qr_login_logic, [{log_device_login, 4, fun(_, _, _, _) -> {ok, 456} end}]},
         {syn, [
             {publish, 3, fun(_, _, _) -> {ok, 1} end},
             {join, 3, fun(_, _, _) -> ok end},

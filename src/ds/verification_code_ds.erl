@@ -47,8 +47,13 @@ verify_code(Id, Code) ->
         false ->
             Now = elib_dt:now(),
             case verification_code_repo:find_by_id(Id) of
-                #{<<"code">> := Code, <<"validity_at">> := ValidityAt} when Now < ValidityAt ->
-                    {ok, <<"验证码有效"/utf8>>};
+                #{<<"code">> := Code, <<"validity_at">> := ValidityAt} ->
+                    case validity_at_valid(Now, ValidityAt) of
+                        true ->
+                            {ok, <<"验证码有效"/utf8>>};
+                        false ->
+                            {error, <<"验证码无效"/utf8>>}
+                    end;
                 _ ->
                     {error, <<"验证码无效"/utf8>>}
             end
@@ -79,6 +84,25 @@ consume(Id, Code) ->
 %% ===================================================================
 %% Internal Function Definitions
 %% ===================================================================
+
+%% @private DEF-SOCSET-Vcode-TZ：Now（elib_dt:now() 输出 BEAM 本地时区偏移的
+%% RFC3339，如 "2026-11-17T12:00:00.000000+08:00"）与 DB validity_at
+%% （epgsql_codec_rfc3339_bin decode 显式输出 UTC "Z"）不可字典序比较：
+%% +08 主机上 '...+08:00' > '...Z' 恒成立 → Now < ValidityAt 恒为 false，
+%% 验证码恒『验证码无效』，注册/找回密码邮箱+短信链路全断。
+%% 统一两侧解析为微秒级系统时间（calendar:rfc3339_to_system_time 按 offset
+%% 折算到同一时基）再比较；惯式同 elib_dt:compare_rfc3339/3
+%% （enterprise_internal_auth 同款）。无法解析的 validity_at fail-closed
+%% 视同过期。边界语义保持 strict <：Now == ValidityAt 即过期（与旧 guard 一致）。
+-spec validity_at_valid(binary(), binary()) -> boolean().
+validity_at_valid(Now, ValidityAt) ->
+    NowUs = elib_dt:rfc3339_to(Now, microsecond),
+    case elib_dt:rfc3339_to(ValidityAt, microsecond) of
+        ValidityUs when is_integer(ValidityUs), is_integer(NowUs) ->
+            NowUs < ValidityUs;
+        _ ->
+            false
+    end.
 
 %% @private 使验证码立即失效。万能码不落库，无需（也无法）失效。
 -spec invalidate(binary(), binary()) -> ok.

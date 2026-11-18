@@ -7,7 +7,7 @@
 -include("log.hrl").
 
 -export([tablename/0]).
--export([find_by_uid/1, find_by_uid/2]).
+-export([find_by_uid/1, find_by_uid/2, find_web_raw_by_uid/1]).
 -export([get/2]).
 -export([save/3]).
 -export([update/2]).
@@ -243,3 +243,10 @@ execute_compat(Sql, Params) ->
         _ ->
             elib_pg:execute(Sql, Params)
     end.
+
+%% Read-only raw JSON preserves value types and errors for Web privacy hydration.
+-spec find_web_raw_by_uid(pos_integer()) -> {ok, list()} | {error, term()}.
+find_web_raw_by_uid(Uid) ->
+    Tb = tablename(),
+    Sql = <<"SELECT user_id, setting FROM ", Tb/binary, " WHERE user_id = $1">>,
+    elib_pg:query(Sql, [Uid]).

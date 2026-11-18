@@ -50,9 +50,9 @@ init(Req0, State0) ->
             bind_mail ->
                 bind_mail(Req0);
             refreshtoken ->
-                refreshtoken(Req0);
+                refreshtoken(Req0, State);
             login ->
-                login(Req0);
+                login(Req0, State);
             quick_login ->
                 quick_login(Req0);
             alipay_login ->
@@ -168,8 +168,28 @@ process_bind_mail(Req0, #{uid := Uid, mail := Mail, cache_key := CacheKey}) ->
 %% @param Req0 Cowboy请求对象，包含登录信息
 %% @return 返回包含用户信息和token的响应
 %% @end
--spec login(cowboy_req:req()) -> cowboy_req:req().
-login(Req0) ->
+-spec login(cowboy_req:req(), map()) -> cowboy_req:req().
+login(Req, State) ->
+    Did = cowboy_req:header(<<"did">>, Req, <<>>),
+    DName = cowboy_req:header(<<"dname">>, Req, <<>>),
+    IsWeb = maps:get(jwt_purpose, State, human) =:= web_human,
+    case not IsWeb orelse valid_web_device(Did, DName) of
+        true -> login(Req, State, Did, DName);
+        false -> elib_response:error(Req, <<"Invalid Web device">>, ?ERR_BAD_REQUEST)
+    end.
+
+valid_web_device(Did, DName) ->
+    Did =/= <<>> andalso valid_utf8_length(Did, 128) andalso valid_utf8_length(DName, 80).
+
+valid_utf8_length(Value, Max) when is_binary(Value), byte_size(Value) =< Max * 4 ->
+    case unicode:characters_to_list(Value) of
+        Chars when is_list(Chars) -> length(Chars) =< Max;
+        _ -> false
+    end;
+valid_utf8_length(_, _) ->
+    false.
+
+login(Req0, State, Did, DName) ->
     PostVals = elib_param:post(Req0),
     Type = maps:get(<<"type">>, PostVals, ?TYPE_EMAIL),
     RsaEncrypt = maps:get(<<"rsa_encrypt">>, PostVals, ?RSA_ENCRYPT_YES),
@@ -180,24 +200,31 @@ login(Req0) ->
     Ip = get_real_ip(Req0),
 
     % 提取设备信息
-    DType = cowboy_req:header(<<"cos">>, Req0, <<>>),
-    Did = cowboy_req:header(<<"did">>, Req0, <<>>),
-    DName = cowboy_req:header(<<"dname">>, Req0, <<>>),
-
-    Post2 = PostVals#{<<"ip">> => Ip, <<"dtype">> => DType, <<"did">> => Did, <<"dname">> => DName},
+    IsWeb = maps:get(jwt_purpose, State, human) =:= web_human,
+    DType =
+        case IsWeb of
+            true -> <<"web">>;
+            false -> cowboy_req:header(<<"cos">>, Req0, <<>>)
+        end,
+    Post1 = PostVals#{<<"ip">> => Ip, <<"dtype">> => DType, <<"did">> => Did, <<"dname">> => DName},
+    Post2 =
+        case IsWeb of
+            true -> Post1#{<<"cos">> => <<"web">>};
+            false -> Post1
+        end,
 
     %% 验证码登录：客户端发送 code 字段（无 pwd）
     Code = maps:get(<<"code">>, PostVals, <<>>),
     LoginResult =
-        case Code of
-            <<>> ->
-                passport_logic:do_login(Type, Account, Pwd, DType, Did);
-            _ ->
-                passport_logic:do_login_by_code(Type, Account, Code, DType, Did)
+        case {IsWeb, Code} of
+            {true, <<>>} -> passport_logic:do_web_login(Type, Account, Pwd, Post2);
+            {true, _} -> passport_logic:do_web_login_by_code(Type, Account, Code, Post2);
+            {false, <<>>} -> passport_logic:do_login(Type, Account, Pwd, DType, Did);
+            {false, _} -> passport_logic:do_login_by_code(Type, Account, Code, DType, Did)
         end,
     case LoginResult of
         {ok, Data} ->
-            login_success_response(Req0, Data, Post2);
+            login_success_response(Req0, Data, Post2, State);
         {{error, conflict}, ConflictInfo} ->
             % 返回设备冲突信息
             elib_response:error(Req0, ConflictInfo, 5100);
@@ -298,8 +325,8 @@ alipay_authinfo(Req0) ->
 %% @param Req0 Cowboy请求对象，包含refresh token
 %% @return 返回包含新token的响应或错误
 %% @end
--spec refreshtoken(cowboy_req:req()) -> cowboy_req:req().
-refreshtoken(Req0) ->
+-spec refreshtoken(cowboy_req:req(), map()) -> cowboy_req:req().
+refreshtoken(Req0, State) ->
     % Token = cowboy_req:header(<<"authorization">>, Req0),
     Refreshtoken = cowboy_req:header(<<"imboy-refreshtoken">>, Req0),
     % ?DEBUG_LOG(["refreshtoken ", Refreshtoken]),
@@ -314,6 +341,20 @@ refreshtoken(Req0) ->
                 <<"刷新过于频繁，请稍后再试"/utf8>>,
                 429
             );
+        _ when map_get(jwt_purpose, State) =:= web_human ->
+            case auth_ds:verify_web_refresh_token(Refreshtoken) of
+                {ok, Uid, Did, Ep, _ExpiresAt, DeviceRowId} ->
+                    elib_response:success(Req0, #{
+                        <<"token">> => token_ds:encrypt_web_token(Uid, Did, Ep, DeviceRowId)
+                    });
+                {error, Code, Msg} ->
+                    Status =
+                        case Code of
+                            503 -> 503;
+                            _ -> 401
+                        end,
+                    elib_response:error_with_status(Req0, Status, Msg, Code)
+            end;
         _ ->
             case token_ds:decrypt_token(Refreshtoken) of
                 {ok, Id, _ExpireDAt, <<"rtk">>, Did, Ep} ->
@@ -321,7 +362,7 @@ refreshtoken(Req0) ->
                     Status = user_logic:get_status(Id),
                     % 设备被移除 → 拒绝刷新。这是真正切断 refresh token 356 天窗口
                     % 的地方；did 为空的 legacy refresh token 原样放行（零全端登出）。
-                    DeviceActive = Did =:= <<>> orelse user_device_logic:is_active(Id, Did),
+                    DeviceActive = Did =:= <<>> orelse user_device_ds:is_active_native(Id, Did),
                     % Task 10 / LT-04：rtk 同受会话 epoch 门——改密/禁用/全端登出
                     % 后旧 rtk 不得再换新 tk（否则 356 天窗口从后门重开）。
                     EpochOk = passport_logic:refresh_session_epoch_valid(Id, Did, Ep),
@@ -451,12 +492,33 @@ identity_unavailable_response(Req) ->
 
 %% Device registration is an authentication prerequisite, not an async side effect.
 login_success_response(Req, Data, PostVals) ->
+    login_success_response(Req, Data, PostVals, #{}).
+
+login_success_response(Req, Data, PostVals, State) ->
     Uid = ec_cnv:to_integer(maps:get(<<"uid">>, Data)),
-    case passport_logic:record_login_device(Uid, PostVals) of
+    Registration =
+        case maps:get(jwt_purpose, State, human) of
+            web_human -> ok;
+            _ -> passport_logic:record_login_device(Uid, PostVals)
+        end,
+    case Registration of
         ok ->
-            gen_server:cast(user_server, {login_success, Uid, PostVals}),
-            Setting = passport_logic:find_user_setting(Uid),
-            elib_response:success(Req, Data#{<<"setting">> => Setting}, "success.");
+            case maps:get(jwt_purpose, State, human) of
+                web_human ->
+                    case maps:get(<<"setting">>, Data, undefined) of
+                        Setting when is_map(Setting) ->
+                            gen_server:cast(user_server, {login_success, Uid, PostVals}),
+                            elib_response:success(Req, Data, "success.");
+                        _ ->
+                            elib_response:error_with_status(
+                                Req, 503, <<"Profile unavailable">>, 503
+                            )
+                    end;
+                _ ->
+                    gen_server:cast(user_server, {login_success, Uid, PostVals}),
+                    Setting = passport_logic:find_user_setting(Uid),
+                    elib_response:success(Req, Data#{<<"setting">> => Setting}, "success.")
+            end;
         {error, _} ->
             elib_response:error_with_status(Req, 503, <<"设备登记失败，请重试"/utf8>>, 503)
     end.

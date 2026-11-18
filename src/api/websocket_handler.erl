@@ -22,6 +22,8 @@
 %% @end
 -spec init(cowboy_req:req(), map()) ->
     {ok, cowboy_req:req(), map()} | {cowboy_websocket, cowboy_req:req(), map(), map()}.
+init(Req0, #{surface := web_human} = State0) ->
+    init_web(Req0, State0);
 init(Req0, State0) ->
     % Env = os:getenv("IMBOYENV"),
     % DID device id
@@ -53,17 +55,7 @@ init(Req0, State0) ->
     % [<<"sip">>,<<"text">>] = Subprotocols
 
     % ?DEBUG_LOG([Env, DID, DType, Auth, SubPt]),
-    Opt0 = #{
-        num_acceptors => infinity,
-        max_connections => infinity,
-        % since Cowboy 2.11 set to true in order to use Websocket over HTTP/2 for the time being.
-        enable_connect_protocol => true,
-        % 2MB
-        max_frame_size => 2097152,
-        % Cowboy关闭连接空闲180秒（客户端心跳60秒，3倍余量） 默认值为 60000
-        % ./apps/imds/src/websocket_ds.erl 里面的 idle_timeout 方法会覆盖该值
-        idle_timeout => 180000
-    },
+    Opt0 = websocket_options(),
     % DID 缺失时使用对端 IP 作为限流 fallback key，防止所有无 DID 客户端聚合限流
     {PeerIp, _PeerPort} = cowboy_req:peer(Req0),
     PeerIpBin = list_to_binary(inet:ntoa(PeerIp)),
@@ -93,6 +85,47 @@ init(Req0, State0) ->
             end
     end.
 
+init_web(Req, State0) ->
+    case cowboy_req:header(<<"sec-websocket-protocol">>, Req) of
+        <<"imboy.v2">> ->
+            State = State0#{
+                dtype => <<"web">>,
+                did => maps:get(current_did, State0, <<>>),
+                vsn => cowboy_req:header(<<"vsn">>, Req, undefined),
+                protocol => protobuf,
+                framing => v2
+            },
+            case websocket_ds:auth(undefined, Req, State, websocket_options()) of
+                {cowboy_websocket, Req1, State1, Opt} ->
+                    case throttle:check(throttle_ws, maps:get(did, State1)) of
+                        {limit_exceeded, _, _} ->
+                            {ok, cowboy_req:reply(429, Req1), State1};
+                        _ ->
+                            Req2 = cowboy_req:set_resp_header(
+                                <<"sec-websocket-protocol">>, <<"imboy.v2">>, Req1
+                            ),
+                            {cowboy_websocket, Req2, State1, Opt}
+                    end;
+                Rejected ->
+                    Rejected
+            end;
+        _ ->
+            {ok, cowboy_req:reply(400, Req), State0}
+    end.
+
+websocket_options() ->
+    #{
+        num_acceptors => infinity,
+        max_connections => infinity,
+        % since Cowboy 2.11 set to true in order to use Websocket over HTTP/2 for the time being.
+        enable_connect_protocol => true,
+        % 2MB
+        max_frame_size => 2097152,
+        % Cowboy关闭连接空闲180秒（客户端心跳60秒，3倍余量） 默认值为 60000
+        % ./apps/imds/src/websocket_ds.erl 里面的 idle_timeout 方法会覆盖该值
+        idle_timeout => 180000
+    }.
+
 %% @doc WebSocket连接初始化
 %% 连接建立后的初始化处理，用户上线
 %%
@@ -100,8 +133,18 @@ init(Req0, State0) ->
 %% @return {ok, State, hibernate} 或 {reply, [{text, binary()}, close], State, hibernate}
 %% @end
 -spec websocket_init(map()) ->
-    {ok, map(), hibernate} | {reply, [{text, binary()} | close], map(), hibernate}.
+    {ok, map(), hibernate}
+    | {reply, [{text, binary()} | close], map(), hibernate}
+    | {reply, {close, integer(), binary()}, map()}.
+websocket_init(#{surface := web_human} = State) ->
+    case websocket_ds:session_still_valid(State) of
+        true -> initialize_socket(State);
+        false -> {reply, {close, 4001, <<"session_revoked">>}, State}
+    end;
 websocket_init(State) ->
+    initialize_socket(State).
+
+initialize_socket(State) ->
     case is_error_state(State) of
         true ->
             Code = maps:get(error, State),
@@ -134,22 +177,31 @@ websocket_init(State) ->
 ) ->
     {ok, map(), hibernate} | {reply, {text, binary()} | {binary, binary()}, map(), hibernate}.
 
+%% Web 的任意入站流量都不能越过会话有效期或吊销门而刷新 idle timeout。
+websocket_handle(Frame, #{surface := web_human} = State) ->
+    case websocket_ds:session_still_valid(State) of
+        true -> dispatch_frame(Frame, State);
+        false -> {reply, {close, 4001, <<"session_revoked">>}, State}
+    end;
+websocket_handle(Frame, State) ->
+    dispatch_frame(Frame, State).
+
 %% WebSocket 协议层 Ping 帧（RFC 6455 标准）
 %% Cowboy 会自动回复 Pong，这里仅用于监控/日志
 %% 注意：不需要显式返回 {reply, pong, ...}，因为 Cowboy 已经自动回复了
-websocket_handle(ping, State) ->
+dispatch_frame(ping, State) ->
     ok = ?DEBUG_LOG({websocket_ping, no_payload}),
     {ok, State, hibernate};
 %% WebSocket 协议层 Ping 帧（带 payload）
 %% Cowboy 会自动回复 Pong，这里仅用于监控/日志
-websocket_handle({ping, Payload}, State) ->
+dispatch_frame({ping, Payload}, State) ->
     ok = ?DEBUG_LOG({websocket_ping, byte_size(Payload)}),
     {ok, State, hibernate};
 %% 应用层心跳消息（文本格式，用于业务层面的心跳检测）
 %% 支持大小写，但不建议混用，建议统一使用小写
 %% Task 10 / LT-04：心跳点重校验会话（设备+epoch 现势），
 %% 改密/禁用/全端登出后于下一心跳关闭（冻结时限 = 心跳间隔 + epoch 缓存 60s 上界）
-websocket_handle({text, <<"ping">>}, State) ->
+dispatch_frame({text, <<"ping">>}, State) ->
     case websocket_ds:session_still_valid(State) of
         true ->
             {reply, {text, <<"pong">>}, State, hibernate};
@@ -157,13 +209,13 @@ websocket_handle({text, <<"ping">>}, State) ->
             ok = ?WARN_LOG({ws_session_revoked_close, auth_ds:current_uid(State)}),
             {reply, {close, 4001, <<"session_revoked">>}, State}
     end;
-websocket_handle({text, <<"PING">>}, State) ->
+dispatch_frame({text, <<"PING">>}, State) ->
     {reply, {text, <<"PONG">>}, State, hibernate};
 % 客户端确认消息
 % CLIENT_ACK,type,msgid,did
-websocket_handle({text, <<"CLIENT_ACK,", Tail/binary>>}, State) ->
+dispatch_frame({text, <<"CLIENT_ACK,", Tail/binary>>}, State) ->
     handle_client_ack(Tail, State);
-websocket_handle({text, Msg}, State) ->
+dispatch_frame({text, Msg}, State) ->
     case split_ci_client_ack(Msg) of
         {ok, Tail} ->
             %% T02：wire 规范形态是大写 "CLIENT_ACK,"（imboyapp ack_manager
@@ -174,7 +226,7 @@ websocket_handle({text, Msg}, State) ->
         error ->
             handle_throttled_text(Msg, State)
     end;
-websocket_handle({binary, Msg}, State) ->
+dispatch_frame({binary, Msg}, State) ->
     Framing = maps:get(framing, State, none),
     Protocol = maps:get(protocol, State, json),
     case Framing of
@@ -183,7 +235,7 @@ websocket_handle({binary, Msg}, State) ->
         _ ->
             handle_legacy_binary(Msg, Protocol, State)
     end;
-websocket_handle(_Frame, State) ->
+dispatch_frame(_Frame, State) ->
     {ok, State, hibernate}.
 
 handle_throttled_text(Msg, State) ->
@@ -625,8 +677,17 @@ handle_json_message(Msg, State) ->
     | {ok, map(), hibernate}
     | {reply, {text, binary()} | {binary, binary()} | {close, integer(), binary()} | list(), map(),
         hibernate}
+    | {reply, {close, integer(), binary()}, map()}
     | {stop, map()}.
+websocket_info(Info, #{surface := web_human} = State) ->
+    case websocket_ds:session_still_valid(State) of
+        true -> dispatch_info(Info, State);
+        false -> {reply, {close, 4001, <<"session_revoked">>}, State}
+    end;
 websocket_info(Info, State) ->
+    dispatch_info(Info, State).
+
+dispatch_info(Info, State) ->
     websocket_delivery_guard:run(
         Info, State, fun websocket_info_authorized/2, fun websocket_info_binary/3
     ).
@@ -843,7 +904,19 @@ handle_protobuf_message_decoded(Data0, State) ->
 
         %% 将 integer ID 转为 binary 以兼容现有消息管道
         Data1 = normalize_protobuf_ids(Data0#{<<"payload">> => PayloadMap}),
-        Data = websocket_logic:convert_v1_to_v2(Data1),
+        %% Only this branch has successfully decoded typed protobuf.
+        %% An absent E2EEMeta is the protocol's legitimate plaintext none.
+        TrustedData =
+            case maps:get(<<"type">>, Data0, <<>>) of
+                <<"C2C">> ->
+                    Data1#{
+                        sender_sync_plain_eligible =>
+                            maps:find(<<"e2ee">>, Data0) =:= {ok, null}
+                    };
+                _ ->
+                    Data1
+            end,
+        Data = websocket_logic:convert_v1_to_v2(TrustedData),
 
         case websocket_logic:validate_message(Data) of
             {error, Reason} ->
@@ -865,7 +938,7 @@ handle_protobuf_message_decoded(Data0, State) ->
                 ),
 
                 %% 路由（当前投递管道使用 JSON，迭代4 将适配 protobuf）
-                RawJson = jsone:encode(Data2, [native_utf8]),
+                RawJson = jsone:encode(maps:remove(sender_sync_plain_eligible, Data2), [native_utf8]),
                 Result = message_router_logic:route(MsgId, CurrentUid, Data2, Type, RawJson),
 
                 case Result of

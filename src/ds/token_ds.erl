@@ -5,10 +5,10 @@
 % token_ds 是 token domain service 缩写
 %%%
 
--export([encrypt_token/1, encrypt_token/2, encrypt_seat_token/2]).
+-export([encrypt_token/1, encrypt_token/2, encrypt_seat_token/2, encrypt_web_token/4]).
 -export([encrypt_refreshtoken/1, encrypt_refreshtoken/2]).
--export([decrypt_token/1]).
--export([issue_device_session/3]).
+-export([decrypt_token/1, decrypt_web_token/2]).
+-export([issue_device_session/3, issue_web_session/4]).
 
 % -export ([get_uid/1]).
 
@@ -45,6 +45,22 @@ encrypt_token(ID) ->
 encrypt_token(ID, Did) ->
     do_encrypt_token(ID, Did, ?TOKEN_VALID, <<"tk">>).
 
+%% @doc Web 刷新仅继承已验证 rtk 的 epoch，防止撤销竞态将旧票升级为新会话。
+-spec encrypt_web_token(pos_integer(), binary(), pos_integer(), pos_integer()) -> binary().
+encrypt_web_token(Uid, Did, VerifiedEp, DeviceRowId) ->
+    Claims = #{
+        <<"uid">> => Uid,
+        <<"did">> => Did,
+        <<"ep">> => VerifiedEp,
+        <<"dsid">> => DeviceRowId,
+        <<"sub">> => <<"tk">>,
+        <<"exp">> => erlang:system_time(second) + ?TOKEN_VALID
+    },
+    case web_token_claims(Claims, <<"tk">>) of
+        {ok, _, _, _, _, _, _} -> imboy_jwt:sign(Claims, config_ds:env(jwt_key, <<>>));
+        _ -> erlang:error(badarg)
+    end.
+
 %% @doc 坐席控制台专用凭证，不签发无设备绑定的 legacy 形态。
 -spec encrypt_seat_token(pos_integer(), binary()) -> binary().
 encrypt_seat_token(ID, Did) when is_integer(ID), ID > 0, is_binary(Did), Did =/= <<>> ->
@@ -61,19 +77,22 @@ encrypt_seat_token(ID, Did) when is_integer(ID), ID > 0, is_binary(Did), Did =/=
     {ok, integer(), integer(), binary(), binary(), integer() | malformed | undefined}
     | {error, integer(), binary() | string(), map()}.
 decrypt_token(Token) ->
+    decrypt_token(Token, fun token_claims/1).
+
+%% @doc 严格 Web 入口消费同一验签/时间校验结果，原 claims 不做 legacy 转换。
+-spec decrypt_web_token(binary(), binary()) ->
+    {ok, pos_integer(), integer(), binary(), binary(), pos_integer(), pos_integer()}
+    | {error, integer(), binary() | string(), map()}.
+decrypt_web_token(Token, ExpectedSub) when ExpectedSub =:= <<"tk">>; ExpectedSub =:= <<"rtk">> ->
+    decrypt_token(Token, fun(Claims) -> web_token_claims(Claims, ExpectedSub) end);
+decrypt_web_token(_, _) ->
+    {error, 706, <<"Invalid web token">>, #{}}.
+
+decrypt_token(Token, ParseClaims) ->
     JwtKey = config_ds:env(jwt_key, <<>>),
     try imboy_jwt:verify(Token, JwtKey) of
         {ok, Payload} ->
-            Uid = maps:get(<<"uid">>, Payload, 0),
-            ID = ec_cnv:to_integer(Uid),
-            ExpireDAt = maps:get(<<"exp">>, Payload, 0),
-            Sub = maps:get(<<"sub">>, Payload, <<"tk">>),
-            % E2EE-013：绑定的设备 DID；legacy token 无此 claim → <<>>。
-            Did = to_did(maps:get(<<"did">>, Payload, <<>>)),
-            % Task 10 / LT-04：会话 epoch claim；无 = undefined（legacy 豁免），
-            % 存在但非整数 = malformed（消费侧 fail-closed）。
-            Ep = to_epoch_claim(maps:get(<<"ep">>, Payload, undefined)),
-            {ok, ID, ExpireDAt, Sub, Did, Ep};
+            ParseClaims(Payload);
         %% exp 严格判定在 imboy_jwt 内完成（默认 leeway 0，与旧链路净语义一致）。
         %% 过期属于"可刷新"，返回 705 避免客户端把 expired 当作 invalid 处理。
         {error, expired} = JWT_ERR ->
@@ -97,6 +116,47 @@ decrypt_token(Token) ->
 %% ===================================================================
 %% Internal Function Definitions
 %% ===================================================================
+
+%% Native 保留缺 sub/DID/epoch 的既有兼容与归一化行为。
+token_claims(#{<<"dsid">> := _}) ->
+    {error, 706, <<"Web token requires Web authentication">>, #{}};
+token_claims(Payload) ->
+    ID = ec_cnv:to_integer(maps:get(<<"uid">>, Payload, 0)),
+    ExpireDAt = maps:get(<<"exp">>, Payload, 0),
+    Sub = maps:get(<<"sub">>, Payload, <<"tk">>),
+    Did = to_did(maps:get(<<"did">>, Payload, <<>>)),
+    Ep = to_epoch_claim(maps:get(<<"ep">>, Payload, undefined)),
+    {ok, ID, ExpireDAt, Sub, Did, Ep}.
+
+web_token_claims(
+    #{
+        <<"uid">> := Uid,
+        <<"exp">> := ExpiresAt,
+        <<"sub">> := ExpectedSub,
+        <<"did">> := Did,
+        <<"ep">> := Ep,
+        <<"dsid">> := DeviceRowId
+    },
+    ExpectedSub
+) when
+    is_integer(Uid),
+    Uid > 0,
+    is_integer(ExpiresAt),
+    is_binary(Did),
+    byte_size(Did) > 0,
+    is_integer(Ep),
+    Ep >= 1,
+    is_integer(DeviceRowId),
+    DeviceRowId > 0
+->
+    case unicode:characters_to_list(Did) of
+        Chars when is_list(Chars), length(Chars) =< 128 ->
+            {ok, Uid, ExpiresAt, ExpectedSub, Did, Ep, DeviceRowId};
+        _ ->
+            {error, 706, <<"Invalid web token">>, #{}}
+    end;
+web_token_claims(_, _) ->
+    {error, 706, <<"Invalid web token">>, #{}}.
 
 %% @doc 内部token生成函数
 %% 根据用户ID、有效时间和主题类型生成JWT token。
@@ -169,4 +229,21 @@ issue_device_session(Uid, Did, Epoch) when
         <<"refreshtoken">> => imboy_jwt:sign(
             Claims#{<<"sub">> => <<"rtk">>, <<"exp">> => Now + ?REFRESHTOKEN_VALID}, Key
         )
+    }.
+
+%% Preserve the exact device row returned by registration, never a replacement row.
+-spec issue_web_session(pos_integer(), binary(), pos_integer(), pos_integer()) -> map().
+issue_web_session(Uid, Did, Epoch, DeviceRowId) ->
+    Access = encrypt_web_token(Uid, Did, Epoch, DeviceRowId),
+    Claims = #{
+        <<"uid">> => Uid,
+        <<"did">> => Did,
+        <<"ep">> => Epoch,
+        <<"dsid">> => DeviceRowId,
+        <<"sub">> => <<"rtk">>,
+        <<"exp">> => erlang:system_time(second) + ?REFRESHTOKEN_VALID
+    },
+    #{
+        <<"token">> => Access,
+        <<"refreshtoken">> => imboy_jwt:sign(Claims, config_ds:env(jwt_key, <<>>))
     }.

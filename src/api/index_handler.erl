@@ -19,6 +19,8 @@ init(Req0, State0) ->
         case Action of
             init ->
                 api_init(Req0);
+            web_bootstrap ->
+                web_bootstrap(Req0);
             help ->
                 get_help(Req0);
             false ->
@@ -40,8 +42,6 @@ api_init(Req0) ->
     DType = cowboy_req:header(<<"cos">>, Req0, <<>>),
     Pkg = cowboy_req:header(<<"pkg">>, Req0, <<>>),
     SignKeyVsn = cowboy_req:header(<<"sk">>, Req0, Vsn),
-    TerminologyProfile = cowboy_req:header(<<"terminology-profile">>, Req0, <<"generic">>),
-
     SolKey = config_ds:env(solidified_key),
     SignKey =
         case app_version_logic:sign_key(DType, SignKeyVsn, Pkg) of
@@ -50,49 +50,17 @@ api_init(Req0) ->
             SK when is_binary(SK) ->
                 SK
         end,
-    Data =
-        #{
-            <<"ws_url">> => ws_url_for(Req0),
-            %% 旧字段保留空值，供旧版 Flutter 客户端过渡期使用
-            <<"upload_url">> => config_ds:env(upload_url, <<"https://s3.imboy.pub">>),
-            <<"upload_key">> => <<>>,
-            <<"upload_scene">> => <<>>,
-            %% 新附件直传接口（Garage S3 presigned URL）
-            %% 2026-07-07 43224c1f/4cc20e81 硬切换 /api 前缀后此处漏改，
-            %% 真实路由是 /api/v1/attachment/presign（见 imboy_router.erl），
-            %% 客户端拿到的旧值会 404。
-            <<"attach_presign_endpoint">> => <<"/api/v1/attachment/presign">>,
-            %% 公开资源（scope=public，如头像）直读基址，客户端直拼 object_key（见 resource-access-control.md §9）
-            <<"public_base_url">> => elib_oss:public_base_url(),
-            %% #100 契约修复：客户端与服务端的加解密开关只认 <<"1">>（见
-            %% passport_handler ?RSA_ENCRYPT_YES 与客户端 rsaEncrypt == "1"
-            %% 判定），配置值却是 on/off——配置为 on 时加密分支静默失效。
-            %% 此处把配置归一为线协议 1/0，旧客户端（同样判 "1"）一并打通。
-            <<"login_pwd_rsa_encrypt">> =>
-                case config_ds:env(login_pwd_rsa_encrypt, <<"off">>) of
-                    <<"on">> -> <<"1">>;
-                    <<"1">> -> <<"1">>;
-                    _ -> <<"0">>
-                end,
-            <<"login_rsa_pub_key">> => config_ds:env(login_rsa_pub_key),
-            %% L-01：三端可见性数据源——effective features（键转 binary，
-            %% 布尔值）。overseas_baseline 等预设关闭的功能据此在客户端
-            %% 隐藏入口/拦截 deep link；未列出的键客户端按自身默认处理。
-            <<"features">> => maps:from_list(
-                [
-                    {atom_to_binary(K, utf8), V}
-                 || {K, V} <- maps:to_list(imboy_policy:effective_features())
-                ]
-            ),
-            %% T1 双体验（§4.1）：产品体验服务端唯一真相源。仅此两个白名单
-            %% 字段，不暴露其他 application env；客户端 AppInitializer 缓存并
-            %% 按 config_version 比对失效（experience 或后端版本变化必变化）。
-            <<"effective_product_experience">> =>
-                product_experience:effective_binary(),
-            <<"config_version">> => product_experience:config_version(),
-            %% 仅下发展示词；权限、路由和状态机不读取该配置。
-            <<"terminology">> => product_terminology:public(TerminologyProfile)
-        },
+    Data = maps:merge(public_config(Req0, ws_url_for(Req0)), #{
+        %% 旧字段保留空值，供旧版 Flutter 客户端过渡期使用
+        <<"upload_url">> => config_ds:env(upload_url, <<"https://s3.imboy.pub">>),
+        <<"upload_key">> => <<>>,
+        <<"upload_scene">> => <<>>,
+        %% 新附件直传接口（Garage S3 presigned URL）
+        %% 2026-07-07 43224c1f/4cc20e81 硬切换 /api 前缀后此处漏改，
+        %% 真实路由是 /api/v1/attachment/presign（见 imboy_router.erl），
+        %% 客户端拿到的旧值会 404。
+        <<"attach_presign_endpoint">> => <<"/api/v1/attachment/presign">>
+    }),
     % ?DEBUG_LOG([DType, Vsn, Pkg, SignKey, Data]),
     % elib_response:success(Req0, Data, "success.").
     IV = config_ds:env(solidified_key_iv),
@@ -163,6 +131,80 @@ api_init(Req0) ->
             _ -> #{}
         end,
     elib_response:success(Req0, Payload#{test => Test}, "success.").
+
+%% Web bootstrap never enters the Native encryption or diagnostic path.
+web_bootstrap(Req) ->
+    case web_ws_url() of
+        {ok, WsUrl} ->
+            Payload = (public_config(Req, WsUrl))#{
+                <<"attachment_download_targets">> => web_attachment_targets:bootstrap()
+            },
+            elib_response:success(Req, Payload, "success.");
+        error ->
+            elib_response:error_with_status(Req, 503, <<"Web configuration unavailable">>, 503)
+    end.
+
+public_config(Req0, WsUrl) ->
+    TerminologyProfile = cowboy_req:header(<<"terminology-profile">>, Req0, <<"generic">>),
+    #{
+        <<"ws_url">> => WsUrl,
+        %% 公开资源（scope=public，如头像）直读基址，客户端直拼 object_key（见 resource-access-control.md §9）
+        <<"public_base_url">> => elib_oss:public_base_url(),
+        %% #100 契约修复：客户端与服务端的加解密开关只认 <<"1">>（见
+        %% passport_handler ?RSA_ENCRYPT_YES 与客户端 rsaEncrypt == "1"
+        %% 判定），配置值却是 on/off——配置为 on 时加密分支静默失效。
+        %% 此处把配置归一为线协议 1/0，旧客户端（同样判 "1"）一并打通。
+        <<"login_pwd_rsa_encrypt">> =>
+            case config_ds:env(login_pwd_rsa_encrypt, <<"off">>) of
+                <<"on">> -> <<"1">>;
+                <<"1">> -> <<"1">>;
+                _ -> <<"0">>
+            end,
+        <<"login_rsa_pub_key">> => config_ds:env(login_rsa_pub_key),
+        %% L-01：三端可见性数据源——effective features（键转 binary，
+        %% 布尔值）。overseas_baseline 等预设关闭的功能据此在客户端
+        %% 隐藏入口/拦截 deep link；未列出的键客户端按自身默认处理。
+        <<"features">> => maps:from_list(
+            [
+                {atom_to_binary(K, utf8), V}
+             || {K, V} <- maps:to_list(imboy_policy:effective_features())
+            ]
+        ),
+        %% T1 双体验（§4.1）：产品体验服务端唯一真相源。仅此两个白名单
+        %% 字段，不暴露其他 application env；客户端 AppInitializer 缓存并
+        %% 按 config_version 比对失效（experience 或后端版本变化必变化）。
+        <<"effective_product_experience">> =>
+            product_experience:effective_binary(),
+        <<"config_version">> => product_experience:config_version(),
+        %% 仅下发展示词；权限、路由和状态机不读取该配置。
+        <<"terminology">> => product_terminology:public(TerminologyProfile)
+    }.
+
+%% Use trusted configuration, never request Host/forwarded headers, for the Web URL.
+web_ws_url() ->
+    Config =
+        case config_ds:env(ws_url, <<>>) of
+            <<>> -> config_ds:env(base_url, <<>>);
+            Ws -> Ws
+        end,
+    try uri_string:parse(Config) of
+        #{scheme := Scheme, host := Host} = Parts when is_binary(Host), byte_size(Host) > 0 ->
+            case {Scheme, maps:is_key(userinfo, Parts)} of
+                {<<"wss">>, false} -> web_ws_url(Parts, <<"wss">>);
+                {<<"ws">>, false} -> web_ws_url(Parts, <<"ws">>);
+                {<<"https">>, false} -> web_ws_url(Parts, <<"wss">>);
+                {<<"http">>, false} -> web_ws_url(Parts, <<"ws">>);
+                _ -> error
+            end;
+        _ ->
+            error
+    catch
+        _:_ -> error
+    end.
+
+web_ws_url(Parts, Scheme) ->
+    Clean = maps:without([query, fragment, userinfo], Parts),
+    {ok, uri_string:recompose(Clean#{scheme => Scheme, path => <<"/api/v1/web/ws">>})}.
 
 %% ===================================================================
 %% Internal Function Definitions

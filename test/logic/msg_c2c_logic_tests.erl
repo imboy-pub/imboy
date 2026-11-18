@@ -56,7 +56,9 @@ c2c_success_sends_server_ack_and_dispatch_test_() ->
                 end}
             ]},
             {msg_c2c_delivery_ds, [
-                {'send_other_devices', 4, fun(123, <<"server-device">>, <<"msg_c2c_ok_001">>, Msg) ->
+                {'send_other_devices', 5, fun(
+                    123, <<"server-device">>, <<"msg_c2c_ok_001">>, Msg, false
+                ) ->
                     ?assertEqual(123, maps:get(<<"from">>, Msg)),
                     ?assertEqual(<<"456">>, maps:get(<<"to">>, Msg)),
                     ?assertEqual(<<"server-device">>, maps:get(<<"sender_did">>, Msg)),
@@ -115,7 +117,15 @@ c2c_success_sends_server_ack_and_dispatch_test_() ->
             ),
             ?assertEqual(1, meck:num_calls(msg_store_ds, enqueue, 3)),
             ?assertEqual(1, meck:num_calls(imboy_message_helper, encode_and_send, 4)),
-            ?assertEqual(1, meck:num_calls(msg_c2c_delivery_ds, send_other_devices, 4))
+            ?assertEqual(1, meck:num_calls(msg_c2c_delivery_ds, send_other_devices, 5)),
+            RecipientMsg = meck:capture(1, imboy_message_helper, encode_and_send, 4, 3),
+            OtherDeviceMsg = meck:capture(1, msg_c2c_delivery_ds, send_other_devices, 5, 4),
+            ?assertEqual(1708768700000, maps:get(<<"created_at">>, RecipientMsg, missing)),
+            ?assertEqual(1708768700000, maps:get(<<"created_at">>, OtherDeviceMsg, missing)),
+            ?assertEqual(
+                <<"2026-02-24T09:58:20Z">>,
+                meck:capture(1, msg_store_ds, stage_with_sequence, 13, 9)
+            )
         end
     ).
 

@@ -6,6 +6,7 @@
 -export([option/0]).
 %% Phase 2 切片 2：供测试与 admin introspection
 -export([plugin_routes/0]).
+-export([web_methods/2]).
 
 %% BUILD-00R：编译期 feature 门。未选中的 feature 其专属路由子句被预处理
 %% 剔除，路由路径字符串不进 beam（物理裁剪），与 imboy_feature:compiled_routes
@@ -1449,10 +1450,156 @@ get_routes() ->
     %% 匿名可达性由 auth_middleware 的前缀分支 + enterprise_internal_middleware
     %% 认证链保证（open()/option() 均不含该前缀）。
     CoreRoutes =
-        MainRoutes ++ CompiledApiRoutes ++ CompiledAdmRoutes ++ enterprise_internal_routes(),
+        MainRoutes ++ CompiledApiRoutes ++ web_human_routes(CompiledApiRoutes) ++
+            CompiledAdmRoutes ++ enterprise_internal_routes(),
     %% 源路由已统一在 /api 命名空间下（双路过渡已撤，无存量老客户端）。
     %% 网站白名单（/、/help、/brand、/privacy-policy、/account-deletion、/metrics、/static/*）保留根路径。
     [{Host, CoreRoutes ++ CompiledPluginRoutes}].
+
+%% 只为实际已编译的原路由生成有限别名，沿用其 feature 与业务 ACL。
+web_human_routes(Sources) ->
+    Specs = [
+        {"init", [<<"GET">>], bootstrap},
+        {"passport/login", [<<"POST">>], login},
+        {"refreshtoken", [<<"POST">>], refresh},
+        {"user_device/delete", [<<"POST">>], access},
+        {"passport/qr_login/create", [<<"POST">>], qr},
+        {"passport/qr_login/status", [<<"GET">>], qr},
+        {"passport/qr_login/cancel", [<<"POST">>], qr},
+        {"passport/qr_login/subscribe", [<<"GET">>], qr},
+        {"msg/offline", [<<"GET">>], access},
+        {"msg/offline_ack", [<<"POST">>], access},
+        {"msg/history", [<<"GET">>], access},
+        {"msg", [<<"GET">>], access},
+        {"msg/result", [<<"GET">>], access},
+        {"conversation/mine", [<<"GET">>], access},
+        {"conversation/pin", [<<"POST">>], access},
+        {"conversation/unpin", [<<"POST">>], access},
+        {"conversation/delete", [<<"POST">>], access},
+        {"conversation/restore", [<<"POST">>], access},
+        {"conversation/pinned", [<<"GET">>], access},
+        {"conversation/manual_pending", [<<"POST">>], access},
+        {"conversation/manual_pending/list", [<<"GET">>], access},
+        {"friend/list", [<<"GET">>], access},
+        {"friend/add", [<<"POST">>], access},
+        {"friend/confirm", [<<"POST">>], access},
+        %% 候选B（owner-batch4 #8）：「新注册的人」页 web 别名——缺此路由时
+        %% /api/v1/web/fts/recently_user 404，web 面恒渲染空态（wire 行数
+        %% oracle total=1，双重阻断定位见 candidateB-recently-registered 证据）。
+        {"fts/recently_user", [<<"GET">>], access},
+        {"user/show", [<<"GET">>], access},
+        {"user/setting", [<<"POST">>], access},
+        {"group/page", [<<"GET">>], access},
+        {"group/detail", [<<"GET">>], access},
+        %% JNY-06（web 建群修复窗）：群创建/加入族 web 别名——缺此路由时
+        %% /api/v1/web/group/add、/api/v1/web/group/face2face(_save)、
+        %% /api/v1/web/group_member/join 404，web 面建群四路径全败
+        %% （UI 建群无请求、面对面 Web Human request rejected 双侧、
+        %% group add 404、native /api/v1/group/add 902 签名门）。
+        %% 双重阻断定位见 syn03-jny06-web-20261116 R3b 证据。
+        {"group/add", [<<"POST">>], access},
+        {"group/face2face", [<<"GET">>], access},
+        {"group/face2face_save", [<<"POST">>], access},
+        {"group_member/join", [<<"POST">>], access},
+        {"group_member/page", [<<"GET">>], access},
+        {"group_notice/page", [<<"GET">>], access},
+        {"attachment/direct/:action", [<<"GET">>, <<"POST">>], access},
+        {"attachment/view_url", [<<"GET">>], access},
+        {"organizations/mine", [<<"GET">>], access},
+        {"workspaces/mine", [<<"GET">>], access},
+        {"workspaces/:workspace_id", [<<"GET">>], access},
+        {"workspaces/:workspace_id/branding", [<<"GET">>], access},
+        {"workspaces/:workspace_id/channels", [<<"GET">>], access},
+        {"workspaces/:workspace_id/groups", [<<"GET">>], access},
+        {"channels/subscribed", [<<"GET">>], access},
+        {"channels/unread/summary", [<<"GET">>], access},
+        {"channel/:channel_id", [<<"GET">>], access},
+        {"channel/:channel_id/messages", [<<"GET">>], access},
+        {"ws", [<<"GET">>], ws}
+    ],
+    [
+        {"/api/v1/web/user/me", user_handler, #{
+            action => web_me,
+            surface => web_human,
+            jwt_purpose => web_human,
+            jwt_methods => [<<"GET">>],
+            web_auth => access
+        }}
+        | lists:flatmap(fun(Spec) -> web_human_alias(Spec, Sources) end, Specs)
+    ].
+
+web_human_alias({Suffix, Methods, Mode}, Sources) ->
+    case lists:keyfind("/api/v1/" ++ Suffix, 1, Sources) of
+        false ->
+            [];
+        {_, Handler, Opts} ->
+            {WebSuffix, WebOpts} = web_human_opts(Suffix, Opts),
+            [
+                {"/api/v1/web/" ++ WebSuffix, Handler, WebOpts#{
+                    surface => web_human,
+                    jwt_purpose => web_human,
+                    jwt_methods => Methods,
+                    web_auth => Mode
+                }}
+            ]
+    end.
+
+web_human_opts("init", Opts) ->
+    {"bootstrap", Opts#{action => web_bootstrap}};
+web_human_opts("attachment/direct/:action" = Suffix, Opts) ->
+    {Suffix, Opts#{
+        web_actions => #{
+            <<"register">> => [<<"POST">>],
+            <<"declare">> => [<<"POST">>],
+            <<"grant">> => [<<"POST">>],
+            <<"renew">> => [<<"POST">>],
+            <<"finalize">> => [<<"POST">>],
+            <<"status">> => [<<"GET">>]
+        }
+    }};
+web_human_opts(Suffix, Opts) ->
+    {Suffix, Opts}.
+
+%% CORS 与认证必须使用同一逐动作 method 门，不能只检查 GET/POST 并集。
+web_methods(
+    #{
+        surface := web_human,
+        jwt_purpose := web_human,
+        web_auth := Mode,
+        jwt_methods := [_ | _] = Methods
+    } = Opts,
+    Action
+) when
+    Mode =:= bootstrap;
+    Mode =:= login;
+    Mode =:= qr;
+    Mode =:= refresh;
+    Mode =:= access;
+    Mode =:= ws
+->
+    case lists:all(fun(M) -> M =:= <<"GET">> orelse M =:= <<"POST">> end, Methods) of
+        false ->
+            {error, invalid_metadata};
+        true ->
+            case maps:find(web_actions, Opts) of
+                error ->
+                    {ok, Methods};
+                {ok, Actions} when is_map(Actions) ->
+                    case maps:find(Action, Actions) of
+                        {ok, [_ | _] = ActionMethods} ->
+                            case lists:all(fun(M) -> lists:member(M, Methods) end, ActionMethods) of
+                                true -> {ok, ActionMethods};
+                                false -> {error, invalid_metadata}
+                            end;
+                        _ ->
+                            {error, unknown_action}
+                    end;
+                _ ->
+                    {error, invalid_metadata}
+            end
+    end;
+web_methods(_, _) ->
+    {error, invalid_metadata}.
 
 %% @doc Phase 2 切片 2：从 imboy_router_registry ETS 读取所有插件路由并转 cowboy 格式。
 %% Phase 2 slice 2: read all plugin routes from imboy_router_registry ETS and convert.

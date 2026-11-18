@@ -49,6 +49,7 @@ handle_action(change_state, Req, State) -> change_state(Req, State);
 handle_action(setting, Req, State) -> setting(Req, State);
 handle_action(update, Req, State) -> update(Req, State);
 handle_action(show, Req, State) -> show(Req, State);
+handle_action(web_me, Req, State) -> web_me(Req, State);
 handle_action(qrcode, Req, State) -> qrcode(Req, State);
 handle_action(change_password, Req, State) -> change_password(Req, State);
 handle_action(set_password, Req, State) -> set_password(Req, State);
@@ -401,4 +402,55 @@ export_data(Req0, State) ->
             end;
         _ ->
             elib_response:error(Req0, <<"未登录"/utf8>>, ?ERR_FORBIDDEN)
+    end.
+
+%% A self projection is separate from the intentionally public user/show contract.
+web_me(Req, #{surface := web_human, jwt_purpose := web_human, current_uid := Uid}) when
+    is_integer(Uid), Uid > 0
+->
+    try
+        User = user_logic:find_by_id(
+            Uid, <<"id,account,email,nickname,avatar,gender,region,sign">>
+        ),
+        case User of
+            #{<<"id">> := Uid} ->
+                Profile = maps:with(
+                    [
+                        <<"account">>,
+                        <<"email">>,
+                        <<"nickname">>,
+                        <<"avatar">>,
+                        <<"gender">>,
+                        <<"region">>,
+                        <<"sign">>
+                    ],
+                    User
+                ),
+                Settings = maps:with(
+                    [
+                        <<"allow_search">>,
+                        <<"enable_visibility_read">>,
+                        <<"visibility_read_fraction">>,
+                        <<"visibility_read_delay_ms">>,
+                        <<"font_size">>
+                    ],
+                    web_profile_settings(Uid)
+                ),
+                elib_response:success(Req, Profile#{
+                    <<"uid">> => integer_to_binary(Uid),
+                    <<"setting">> => Settings
+                });
+            _ ->
+                elib_response:error_with_status(Req, 404, <<"Profile unavailable">>, 404)
+        end
+    catch
+        _:_ -> elib_response:error_with_status(Req, 503, <<"Profile unavailable">>, 503)
+    end;
+web_me(Req, _) ->
+    elib_response:error_with_status(Req, 401, <<"Web authentication required">>, 401).
+
+web_profile_settings(Uid) ->
+    case passport_logic:find_web_user_setting(Uid) of
+        {ok, Settings} -> Settings;
+        {error, _} -> erlang:error(profile_settings_unavailable)
     end.

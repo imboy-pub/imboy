@@ -4,7 +4,7 @@
 %%%
 % user_setting_ds 是 user_setting domain service 缩写
 %%%
--export([find_by_uid/1]).
+-export([find_by_uid/1, find_web_by_uid/1]).
 -export([chat_state_hide/1]).
 -export([batch_chat_state_hide/1]).
 -export([save/3]).
@@ -382,3 +382,28 @@ priv_save(Uid, Key, State) ->
     % ?DEBUG_LOG(Setting2),
     user_setting_repo:update(Uid, Setting2),
     ok.
+
+%% Preserve read/JSON failure and original JSON types; Native stays unchanged.
+-spec find_web_by_uid(pos_integer()) -> {ok, map()} | {error, unavailable}.
+find_web_by_uid(Uid) when is_integer(Uid), Uid > 0 ->
+    try
+        Raw =
+            case user_setting_repo:find_web_raw_by_uid(Uid) of
+                {ok, []} -> #{};
+                {ok, [#{<<"user_id">> := Uid, <<"setting">> := Value}]} -> Value;
+                _ -> erlang:error(settings_read_failed)
+            end,
+        Settings =
+            case Raw of
+                null -> #{};
+                <<>> -> #{};
+                Map when is_map(Map) -> Map;
+                Bin when is_binary(Bin) -> jsone:decode(Bin, [{object_format, map}])
+            end,
+        true = is_map(Settings),
+        {ok, Settings#{<<"allow_search">> => fts_user_repo:allow_search(Uid)}}
+    catch
+        _:_ -> {error, unavailable}
+    end;
+find_web_by_uid(_) ->
+    {error, unavailable}.

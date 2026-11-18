@@ -100,8 +100,21 @@ delete(Req0, State) ->
     PostVals = elib_param:post(Req0),
     % ?DEBUG_LOG(PostVals),
     DID = maps:get(<<"did">>, PostVals, <<"">>),
-    user_device_logic:delete(CurrentUid, DID),
-    elib_response:success(Req0).
+    Allowed =
+        case maps:get(surface, State, undefined) of
+            web_human ->
+                is_binary(DID) andalso DID =/= <<>> andalso
+                    maps:get(current_did, State, undefined) =:= DID;
+            _ ->
+                true
+        end,
+    case Allowed of
+        true ->
+            user_device_logic:delete(CurrentUid, DID),
+            elib_response:success(Req0);
+        false ->
+            elib_response:error(Req0, <<"Invalid Web device">>, ?ERR_BAD_REQUEST)
+    end.
 
 %% ===================================================================
 %% Device Session Actions

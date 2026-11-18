@@ -15,7 +15,7 @@
 % 详见 docs/architecture/resource-access-control.md。
 %%%
 
--export([presign/5, presign/6, confirm/5, view_url/2, download/1]).
+-export([presign/5, presign/6, confirm/5, view_url/2, web_view_url/2, download/1, web_download/1]).
 -export([reauthorize_upload_session/2, recheck_content_pin/3]).
 -export([authorize/2]).
 -export([normalize_cipher/1]).
@@ -934,6 +934,116 @@ view_url(Uid, ObjectKey) ->
             {error, forbidden}
     end.
 
+%% Web never treats a legacy record URL as a trusted Garage location.
+%% Reuse the same authorization and frozen location as the Native view path.
+web_view_url(Uid, ObjectKey) ->
+    case attachment_ds:find_by_path(ObjectKey) of
+        {ok, Rec} ->
+            case authorize(Uid, Rec) of
+                true -> web_authorized_view(Uid, Rec, ObjectKey);
+                false -> {error, forbidden}
+            end;
+        _ ->
+            {error, forbidden}
+    end.
+
+web_authorized_view(
+    Uid, #{<<"storage_driver">> := <<"garage">>, <<"scope">> := Scope} = Rec, Key
+) when
+    Scope =:= <<"group">>;
+    Scope =:= <<"channel">>;
+    Scope =:= <<"moment">>;
+    Scope =:= <<"talk_record">>
+->
+    case trusted_frozen_garage(Key, Rec) of
+        {ok, _} -> web_ticket_view(Uid, Key);
+        _ -> {error, forbidden}
+    end;
+web_authorized_view(_, #{<<"storage_driver">> := <<"garage">>} = Rec, Key) ->
+    case attachment_storage:frozen_location(Key, Rec) of
+        {ok, #{
+            driver := garage,
+            container := Bucket,
+            key := PhysicalKey,
+            garage_config := Cfg
+        }} ->
+            case elib_s3_sign:client_endpoint(Cfg) of
+                {ok, Endpoint} ->
+                    Url = elib_s3_sign:presign_url_at(
+                        <<"GET">>,
+                        Endpoint,
+                        Bucket,
+                        PhysicalKey,
+                        <<>>,
+                        calendar:universal_time(),
+                        ?GET_EXPIRES,
+                        Cfg
+                    ),
+                    web_attachment_targets:resolve_garage(Url, Bucket, PhysicalKey);
+                _ ->
+                    {error, forbidden}
+            end;
+        _ ->
+            {error, forbidden}
+    end;
+web_authorized_view(_, _, _) ->
+    {error, forbidden}.
+
+web_ticket_view(Uid, Key) ->
+    Secret = config_ds:env(jwt_key, <<>>),
+    case attachment_download_ticket:issue_web(Uid, Key, Secret) of
+        {ok, Ticket} -> web_attachment_targets:web_ticket_url(Ticket);
+        _ -> {error, forbidden}
+    end.
+
+%% Called by edge for every Web GET/HEAD. Never fall back to a legacy URL.
+web_download(Ticket) ->
+    case attachment_download_ticket:verify_web(Ticket, config_ds:env(jwt_key, <<>>)) of
+        {ok, Uid, Key} ->
+            case attachment_ds:find_by_path(Key) of
+                {ok, #{<<"storage_driver">> := <<"garage">>} = Rec} ->
+                    case authorize(Uid, Rec) of
+                        true ->
+                            case trusted_frozen_garage(Key, Rec) of
+                                {ok, Frozen} ->
+                                    attachment_storage_garage:presign_snapshot(
+                                        Frozen, ?GET_EXPIRES
+                                    );
+                                _ ->
+                                    {error, forbidden}
+                            end;
+                        false ->
+                            {error, forbidden}
+                    end;
+                _ ->
+                    {error, forbidden}
+            end;
+        _ ->
+            {error, forbidden}
+    end.
+
+trusted_frozen_garage(Key, Rec) ->
+    case attachment_storage:frozen_location(Key, Rec) of
+        {ok,
+            #{
+                driver := garage,
+                container := Bucket,
+                key := PhysicalKey,
+                garage_config := Cfg
+            } = Frozen} ->
+            case elib_s3_sign:client_endpoint(Cfg) of
+                {ok, Endpoint} ->
+                    case web_attachment_targets:matches_garage(Endpoint, Bucket, PhysicalKey) of
+                        true -> {ok, Frozen};
+                        false -> {error, forbidden}
+                    end;
+                _ ->
+                    {error, forbidden}
+            end;
+        _ ->
+            {error, forbidden}
+    end.
+
 %% Group/channel/moment URLs are checked again on every HTTP read.
 %% talk_record（T06/DESIGN §10.3 回听行）：同样逐次续票重验撤销版本——
 %% 记录撤权/删除后票据续签即失败，不签发长期直读地址。
@@ -947,7 +1057,38 @@ authorized_view(Uid, #{<<"scope">> := Scope}, ObjectKey) when
 ->
     ticket_view(Uid, ObjectKey);
 authorized_view(_, Rec, ObjectKey) ->
-    sign_view(Rec, ObjectKey).
+    client_sign_view(Rec, ObjectKey).
+
+%% 仅客户端直读使用公共 endpoint；下载票据/edge 继续使用内部签名。
+client_sign_view(#{<<"storage_driver">> := <<"garage">>} = Rec, Key) ->
+    case attachment_storage:frozen_location(Key, Rec) of
+        {ok, #{
+            driver := garage,
+            container := Bucket,
+            key := PhysicalKey,
+            garage_config := Cfg
+        }} ->
+            case elib_s3_sign:client_endpoint(Cfg) of
+                {ok, Endpoint} ->
+                    {ok,
+                        elib_s3_sign:presign_url_at(
+                            <<"GET">>,
+                            Endpoint,
+                            Bucket,
+                            PhysicalKey,
+                            <<>>,
+                            calendar:universal_time(),
+                            ?GET_EXPIRES,
+                            Cfg
+                        )};
+                _ ->
+                    {error, forbidden}
+            end;
+        _ ->
+            {error, forbidden}
+    end;
+client_sign_view(Rec, Key) ->
+    sign_view(Rec, Key).
 
 ticket_view(Uid, ObjectKey) ->
     case attachment_download_ticket:issue(Uid, ObjectKey, config_ds:env(jwt_key, <<>>)) of

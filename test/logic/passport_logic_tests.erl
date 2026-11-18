@@ -421,6 +421,169 @@ send_code_with_invalid_type_fails_test_() ->
     end).
 
 %% ===================================================================
+%% DEF-SOCSET-Vcode-TZ 同族反例：+08 主机上重发守卫应生效
+%% elib_dt:now/minus 输出本地偏移 RFC3339（+08:00），DB created_at 经
+%% epgsql_codec_rfc3339_bin decode 输出 UTC "Z"；旧实现字典序比较
+%% '...+08:00' > '...Z' 恒成立 → 一分钟/两分钟防重发守卫永久失效。
+%% 注意：elib_dt 仅 stub now/0，minus/2 走真实现（passthrough），故本组
+%% 反例在 +08 与 UTC 主机上都成立（时基折算在 helper 内完成）。
+%% ===================================================================
+
+%% email：窗口内（created_at = 00:29:30Z = 08:29:30+08，Now-1m = 00:29:00Z）
+%% → 必须命中守卫，不落库不外发。
+send_code_email_resend_within_one_minute_blocked_on_plus08_test_() ->
+    ?WITH_MECKS(
+        [
+            {throttle, [
+                {'check', 2, fun(_Type, _Key) -> ok end}
+            ]},
+            {verification_code_ds, [
+                {'find_by_id', 1, fun(_Id) ->
+                    #{
+                        <<"code">> => <<"123456">>,
+                        <<"created_at">> => <<"2023-01-01T00:29:30Z">>,
+                        <<"validity_at">> => <<"2023-01-01T00:40:00Z">>
+                    }
+                end},
+                {'save', 4, fun(_Id, _Code, _Validity, _Now) ->
+                    error(unexpected_save_in_resend_window)
+                end}
+            ]},
+            {elib_dt, [
+                {'now', 0, fun() -> <<"2023-01-01T08:30:00.000000+08:00">> end}
+            ]},
+            {elib_cipher, [
+                {'num_random', 1, fun(_N) -> error(unexpected_new_code) end}
+            ]},
+            {elib_email, [
+                {'send', 2, fun(_To, _Msg) -> error(unexpected_email_send) end}
+            ]}
+        ],
+        fun() ->
+            Result = passport_logic:send_code(<<"resend@example.com">>, <<"email">>),
+            ?assertEqual({ok, <<"一分钟内重复请求不发送Email"/utf8>>}, Result)
+        end
+    ).
+
+%% email：窗口外（created_at = 00:28:59Z 早于 Now-1m = 00:29:00Z）
+%% → 守卫不得过拦，正常重发。
+send_code_email_resend_after_window_proceeds_on_plus08_test_() ->
+    ?WITH_MECKS(
+        [
+            {throttle, [
+                {'check', 2, fun(_Type, _Key) -> ok end}
+            ]},
+            {verification_code_ds, [
+                {'find_by_id', 1, fun(_Id) ->
+                    #{
+                        <<"code">> => <<"123456">>,
+                        <<"created_at">> => <<"2023-01-01T00:28:59Z">>
+                    }
+                end},
+                {'save', 4, fun(_Id, _Code, _Validity, _Now) -> ok end}
+            ]},
+            {elib_dt, [
+                {'now', 0, fun() -> <<"2023-01-01T08:30:00.000000+08:00">> end},
+                {'add', 2, fun(_Now, _Dur) -> <<"2023-01-01T08:40:00.000000+08:00">> end}
+            ]},
+            {elib_cipher, [
+                {'num_random', 1, fun(_N) -> 654321 end}
+            ]},
+            {elib_email, [
+                {'send', 2, fun(_To, _Msg) -> ok end}
+            ]}
+        ],
+        fun() ->
+            Result = passport_logic:send_code(<<"resend@example.com">>, <<"email">>),
+            ?assertEqual({ok, <<"验证码已发送"/utf8>>}, Result)
+        end
+    ).
+
+%% sms：窗口内（created_at = 00:28:30Z = 08:28:30+08，Now-2m = 00:28:00Z）
+%% → 必须命中守卫，不落库不外发。
+send_code_sms_resend_within_two_minutes_blocked_on_plus08_test_() ->
+    ?WITH_MECKS(
+        [
+            {throttle, [
+                {'check', 2, fun(_Type, _Key) -> ok end}
+            ]},
+            {verification_code_ds, [
+                {'find_by_id', 1, fun(_Id) ->
+                    #{
+                        <<"code">> => <<"123456">>,
+                        <<"created_at">> => <<"2023-01-01T00:28:30Z">>
+                    }
+                end},
+                {'save', 4, fun(_Id, _Code, _Validity, _Now) ->
+                    error(unexpected_save_in_resend_window)
+                end}
+            ]},
+            {elib_dt, [
+                {'now', 0, fun() -> <<"2023-01-01T08:30:00.000000+08:00">> end}
+            ]},
+            {elib_cipher, [
+                {'num_random', 1, fun(_N) -> error(unexpected_new_code) end}
+            ]},
+            {imboy_sms, [
+                {'send', 3, fun(_Mobile, _Content, _Type) ->
+                    error(unexpected_sms_send)
+                end}
+            ]}
+        ],
+        fun() ->
+            Result = passport_logic:send_code(<<"+8613800138000">>, <<"sms">>),
+            ?assertEqual({ok, <<"两分钟内重复请求不会重复发送"/utf8>>}, Result)
+        end
+    ).
+
+%% sms：窗口外（created_at = 00:27:59Z 早于 Now-2m = 00:28:00Z）
+%% → 守卫不得过拦，正常重发。
+send_code_sms_resend_after_window_proceeds_on_plus08_test_() ->
+    ?WITH_MECKS(
+        [
+            {throttle, [
+                {'check', 2, fun(_Type, _Key) -> ok end}
+            ]},
+            {verification_code_ds, [
+                {'find_by_id', 1, fun(_Id) ->
+                    #{
+                        <<"code">> => <<"123456">>,
+                        <<"created_at">> => <<"2023-01-01T00:27:59Z">>
+                    }
+                end},
+                {'save', 4, fun(_Id, _Code, _Validity, _Now) -> ok end}
+            ]},
+            {elib_dt, [
+                {'now', 0, fun() -> <<"2023-01-01T08:30:00.000000+08:00">> end},
+                {'add', 2, fun(_Now, _Dur) -> <<"2023-01-01T08:40:00.000000+08:00">> end}
+            ]},
+            {elib_cipher, [
+                {'num_random', 1, fun(_N) -> 123456 end}
+            ]},
+            {ec_cnv, [
+                {'to_binary', 1, fun(X) -> integer_to_binary(X) end}
+            ]},
+            {config_ds, [
+                {'env', 2, fun
+                    ([sms, switch], _Default) -> <<"on">>;
+                    ([sms, platform], _Default) -> <<"jsms">>
+                end}
+            ]},
+            {imboy_sms, [
+                {'send', 3, fun(_Mobile, Content, Type) ->
+                    ?assertEqual(<<"jsms">>, Type),
+                    ?assertEqual(<<"123456">>, Content),
+                    {ok, #{<<"msg_id">> => <<"message-1">>}}
+                end}
+            ]}
+        ],
+        fun() ->
+            Result = passport_logic:send_code(<<"+8613800138000">>, <<"sms">>),
+            ?assertEqual({ok, <<"验证码已发送"/utf8>>}, Result)
+        end
+    ).
+
+%% ===================================================================
 %% do_signup/5 测试
 %% ===================================================================
 

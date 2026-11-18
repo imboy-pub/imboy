@@ -14,6 +14,7 @@
 -export([verify_sign/2]).
 -export([do_verify_sign/4]).
 -export([verify_token/1, verify_seat_token/1]).
+-export([verify_web_token/1, verify_web_refresh_token/1, web_session_valid/4]).
 -export([parse_authorization_header/1]).
 -export([remove_last_forward_slash/1]).
 -export([strip_version_prefix/2]).
@@ -109,6 +110,70 @@ verify_token(Authorization) ->
 verify_seat_token(Authorization) ->
     verify_token(Authorization, <<"seat_tk">>).
 
+%% @doc Web 仅接收已绑定服务端 Web 设备的 Human tk/rtk，不使用 legacy 豁免。
+-spec verify_web_token(binary()) ->
+    {ok, pos_integer(), binary(), pos_integer(), integer(), pos_integer()}
+    | {error, integer(), binary()}.
+verify_web_token(Authorization) ->
+    verify_web_token(Authorization, <<"tk">>).
+
+-spec verify_web_refresh_token(binary()) ->
+    {ok, pos_integer(), binary(), pos_integer(), integer(), pos_integer()}
+    | {error, integer(), binary()}.
+verify_web_refresh_token(Authorization) ->
+    verify_web_token(Authorization, <<"rtk">>).
+
+verify_web_token(Authorization, Purpose) ->
+    try token_ds:decrypt_web_token(parse_authorization_header(Authorization), Purpose) of
+        {ok, Uid, ExpiresAt, Purpose, Did, Ep, DeviceRowId} when
+            is_integer(Uid),
+            Uid > 0,
+            is_binary(Did),
+            byte_size(Did) > 0,
+            is_integer(Ep),
+            Ep >= 1,
+            is_integer(ExpiresAt),
+            is_integer(DeviceRowId),
+            DeviceRowId > 0
+        ->
+            case web_session_valid(Uid, Did, Ep, DeviceRowId) of
+                true -> {ok, Uid, Did, Ep, ExpiresAt, DeviceRowId};
+                false -> {error, ?ERR_TOKEN_INVALID, <<"WEB SESSION INVALID">>}
+            end;
+        {error, Code, Msg, _} ->
+            {error, Code, Msg};
+        _ ->
+            {error, ?ERR_TOKEN_INVALID, <<"TOKEN PURPOSE OR BINDING INVALID">>}
+    catch
+        _:_ -> {error, ?ERR_TOKEN_INVALID, <<"WEB SESSION INVALID">>}
+    end.
+
+%% @doc status=2 为申请注销中，沿现有 Human 签发语义允许；未知态全部拒绝。
+-spec web_session_valid(integer(), binary(), term(), term()) -> boolean().
+web_session_valid(Uid, Did, Ep, DeviceRowId) when
+    is_integer(Uid),
+    Uid > 0,
+    is_binary(Did),
+    byte_size(Did) > 0,
+    is_integer(Ep),
+    Ep >= 1,
+    is_integer(DeviceRowId),
+    DeviceRowId > 0
+->
+    try
+        true = length(unicode:characters_to_list(Did)) =< 128,
+        User = user_ds:find_by_id(Uid, <<"status,account_type">>),
+        Status = maps:get(<<"status">>, User, undefined),
+        maps:get(<<"account_type">>, User, undefined) =:= 0 andalso
+            (Status =:= 1 orelse Status =:= 2) andalso
+            user_device_ds:is_active_web(Uid, Did, DeviceRowId) andalso
+            auth_session_ds:current_epoch(Uid) =:= {ok, Ep}
+    catch
+        _:_ -> false
+    end;
+web_session_valid(_, _, _, _) ->
+    false.
+
 verify_token(Authorization, Purpose) ->
     Token = parse_authorization_header(Authorization),
     case token_ds:decrypt_token(Token) of
@@ -139,7 +204,7 @@ verify_token(Authorization, Purpose) ->
     end.
 
 verify_bound_token(Id, Did, Ep) ->
-    case user_device_ds:is_active(Id, Did) of
+    case user_device_ds:is_active_native(Id, Did) of
         true ->
             case auth_session_ds:revoked(Id, Ep) of
                 true ->
@@ -244,9 +309,22 @@ do_authorization(Authorization, Req, Env) ->
         case maps:get(jwt_purpose, RouteOpts, human) of
             human -> verify_token(Authorization);
             seat -> verify_seat_token(Authorization);
+            web_human -> verify_web_token(Authorization);
             _ -> {error, ?ERR_TOKEN_INVALID, <<"TOKEN PURPOSE NOT ALLOWED">>}
         end,
     case Verification of
+        {ok, UserId, Did, Ep, ExpiresAt, DeviceRowId} ->
+            HandlerOpts = maps:get(handler_opts, Env),
+            Env2 = Env#{
+                handler_opts := HandlerOpts#{
+                    current_uid => UserId,
+                    current_did => Did,
+                    session_epoch => Ep,
+                    token_expire_at => ExpiresAt,
+                    device_session_id => DeviceRowId
+                }
+            },
+            {ok, Req, Env2};
         {ok, UserId, Did} ->
             #{handler_opts := HandlerOpts} = Env,
             % E2EE-013：把 token 绑定的设备 DID 注入认证上下文，
@@ -260,7 +338,9 @@ do_authorization(Authorization, Req, Env) ->
             {ok, Req, Env2};
         {error, Code, Msg} ->
             Req1 =
-                case Code of
+                case {maps:get(jwt_purpose, RouteOpts, human), Code} of
+                    {web_human, _} ->
+                        elib_response:error_with_status(Req, 401, Msg, Code);
                     %% MFS3-F01/F02：token 过期(705)/无效(706)与 401 同属
                     %% 认证边界，必须返回真实 HTTP 401（envelope code 保留
                     %% 原值供客户端细分），否则 客户端的 401 单飞
@@ -268,11 +348,11 @@ do_authorization(Authorization, Req, Env) ->
                     %% token 失效无法自动恢复。管理面 /api/adm 走
                     %% adm_auth_middleware（自带 unauthorized_api_response
                     %% 同款 401+code 形态），不受此分支影响。
-                    ?ERR_UNAUTHORIZED ->
+                    {_, ?ERR_UNAUTHORIZED} ->
                         elib_response:error_with_status(Req, 401, Msg, Code);
-                    ?ERR_TOKEN_EXPIRED_REFRESHABLE ->
+                    {_, ?ERR_TOKEN_EXPIRED_REFRESHABLE} ->
                         elib_response:error_with_status(Req, 401, Msg, Code);
-                    ?ERR_TOKEN_MALFORMED ->
+                    {_, ?ERR_TOKEN_MALFORMED} ->
                         elib_response:error_with_status(Req, 401, Msg, Code);
                     _ ->
                         elib_response:error(Req, Msg, Code)

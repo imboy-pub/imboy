@@ -7,6 +7,8 @@
 -export([c2g/3]).
 %% 群级 E2EE fail-closed 门（导出供 EUnit 直测）
 -export([group_e2ee_gate/5]).
+%% 群消息明文动作门（导出供 EUnit 直测）
+-export([validate_plain_group_action/5]).
 -export([c2g_client_ack/3]).
 -export([c2g_read/3]).
 -export([c2g_revoke/3]).
@@ -500,6 +502,7 @@ do_stage_and_send_c2g(
                 user_logic:is_online(Uid)
             ],
             [message_ds:send_next(Uid, MsgId, RealtimeMsg, MsLi) || Uid <- OnlineUids],
+            send_sender_other_devices(CurrentUid, SenderDid, MsgId, RealtimeMsg, MsLi),
 
             % ③.5 离线推送（异步，不阻塞消息投递）
             push_notification_logic:maybe_push_for_c2g(CurrentUid, ToGID, MsgType, MemberUids),
@@ -1126,6 +1129,9 @@ stage_and_deliver_group_action(
                 message_ds:send_next(Uid, MsgId, RealtimeActionJson, MsLi)
              || Uid <- MemberUids, Uid =/= CurrentUid
             ],
+            send_sender_other_devices(
+                CurrentUid, SenderDid, MsgId, RealtimeActionJson, MsLi
+            ),
             {reply, RealtimeAction};
         {ok, duplicate} ->
             {reply, #{
@@ -1283,3 +1289,12 @@ extract_snippet_plain(OriginalMsg) ->
     {ok, non_neg_integer()} | {error, term()}.
 set_c2g_expire_at(MsgId, ExpireAt) ->
     msg_c2g_ds:set_expire_at(MsgId, ExpireAt).
+
+%% SenderDid is stamped from the authenticated WebSocket state; never echo its originating device.
+-spec send_sender_other_devices(integer(), term(), binary(), binary(), [non_neg_integer()]) -> ok.
+send_sender_other_devices(SenderUid, SenderDid, MsgId, Bytes, Intervals) when
+    is_binary(SenderDid), byte_size(SenderDid) > 0
+->
+    message_ds:send_next(SenderUid, MsgId, Bytes, Intervals, [SenderDid], false);
+send_sender_other_devices(_SenderUid, _SenderDid, _MsgId, _Bytes, _Intervals) ->
+    ok.

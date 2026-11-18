@@ -89,7 +89,20 @@ dispatch_rest_action(false, Req0, _State) ->
 %% @return 返回包含各种类型离线消息的响应
 %% @end
 -spec offline(cowboy_req:req(), map()) -> cowboy_req:req().
+offline(Req0, #{jwt_purpose := web_human} = State) ->
+    ClientDid = proplists:get_value(<<"did">>, cowboy_req:parse_qs(Req0), undefined),
+    case message_device(ClientDid, State) of
+        {ok, Did} ->
+            offline_for_device(Req0, State, Did);
+        error ->
+            elib_response:error_with_status(
+                Req0, 400, <<"Invalid message device">>, ?ERR_BAD_REQUEST
+            )
+    end;
 offline(Req0, State) ->
+    offline_for_device(Req0, State, undefined).
+
+offline_for_device(Req0, State, TrustedDid) ->
     case maps:get(current_uid, State, undefined) of
         undefined ->
             elib_response:error(Req0, <<"未授权"/utf8>>, ?ERR_UNAUTHORIZED);
@@ -101,7 +114,11 @@ offline(Req0, State) ->
             {ok, C2CLastMsgAtInt} = elib_param:int(c2c_last_msg_at, Req0, 0),
             {ok, C2GLastMsgAtInt} = elib_param:int(c2g_last_msg_at, Req0, 0),
             {ok, S2CLastMsgAtInt} = elib_param:int(s2c_last_msg_at, Req0, 0),
-            DID = proplists:get_value(<<"did">>, cowboy_req:parse_qs(Req0), <<>>),
+            DID =
+                case TrustedDid of
+                    undefined -> proplists:get_value(<<"did">>, cowboy_req:parse_qs(Req0), <<>>);
+                    _ -> TrustedDid
+                end,
             Token = proplists:get_value(<<"c2g_cursor">>, cowboy_req:parse_qs(Req0), <<>>),
             case msg_offline_cursor:decode(Token) of
                 {ok, Cursor} ->
@@ -135,13 +152,35 @@ offline_ack(Req0, State) ->
     MsgIds = maps:get(<<"msg_ids">>, PostVals, []),
     %% 【P0-1】可选 did：携带时 C2C/S2C 走按设备送达标记（不按 uid 删行），
     %% 缺省保持旧删行语义（旧客户端不受影响，但存在多端丢消息风险，客户端应尽快带 did）
-    DID = maps:get(<<"did">>, PostVals, <<>>),
-    case messaging_logic:offline_ack(CurrentUid, Type, MsgIds, DID) of
+    case message_device(maps:get(<<"did">>, PostVals, undefined), State) of
+        {ok, Did} ->
+            offline_ack_for_device(Req0, CurrentUid, Type, MsgIds, Did);
+        error ->
+            elib_response:error_with_status(
+                Req0, 400, <<"Invalid message device">>, ?ERR_BAD_REQUEST
+            )
+    end.
+
+offline_ack_for_device(Req0, CurrentUid, Type, MsgIds, Did) ->
+    case messaging_logic:offline_ack(CurrentUid, Type, MsgIds, Did) of
         {ok, Payload} ->
             elib_response:success(Req0, Payload);
         {error, Reason} ->
             elib_response:error(Req0, Reason)
     end.
+
+%% Web 不可省略设备退化为按 UID ACK，也不可自报其它设备。
+message_device(ClientDid, #{jwt_purpose := web_human, current_did := Did}) when
+    is_binary(Did), byte_size(Did) > 0, ClientDid =:= undefined;
+    is_binary(Did), byte_size(Did) > 0, ClientDid =:= Did
+->
+    {ok, Did};
+message_device(_, #{jwt_purpose := web_human}) ->
+    error;
+message_device(undefined, _) ->
+    {ok, <<>>};
+message_device(Did, _) ->
+    {ok, Did}.
 
 %% @doc 处理群消息已读统计请求
 %% 获取指定群消息的已读人数和总人数

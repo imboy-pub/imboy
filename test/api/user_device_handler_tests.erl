@@ -138,3 +138,71 @@ init_check_login_no_conflict_test_() ->
             ?assertEqual(false, maps:get(<<"conflict">>, Payload))
         end
     ).
+
+%% Pure boundary tests: deliberately avoid WITH_MECKS, which boots the app.
+web_delete_bound_device_test_() ->
+    [
+        ?_test(web_delete_probe(Body, State, Expected))
+     || {Body, State, Expected} <- [
+            {
+                #{<<"did">> => <<"web-self">>},
+                #{surface => web_human, current_uid => 12345, current_did => <<"web-self">>},
+                ok
+            },
+            {
+                #{<<"did">> => <<>>},
+                #{surface => web_human, current_uid => 12345, current_did => <<"web-self">>},
+                denied
+            },
+            {
+                #{},
+                #{surface => web_human, current_uid => 12345, current_did => <<"web-self">>},
+                denied
+            },
+            {
+                #{<<"did">> => 123},
+                #{surface => web_human, current_uid => 12345, current_did => <<"web-self">>},
+                denied
+            },
+            {
+                #{<<"did">> => <<"other-device">>},
+                #{surface => web_human, current_uid => 12345, current_did => <<"web-self">>},
+                denied
+            },
+            {#{<<"did">> => <<"web-self">>}, #{surface => web_human, current_uid => 12345}, denied},
+            {
+                #{<<"did">> => <<"web-self">>, <<"uid">> => 99999},
+                #{surface => web_human, current_uid => 12345, current_did => <<"web-self">>},
+                ok
+            },
+            {#{<<"did">> => <<"native-other">>}, #{current_uid => 12345}, ok}
+        ]
+    ].
+
+web_delete_probe(Body, State, Expected) ->
+    Modules = [auth_ds, elib_param, user_device_logic, elib_response],
+    lists:foreach(fun(M) -> meck:new(M, [non_strict, no_link]) end, Modules),
+    try
+        meck:expect(auth_ds, current_uid, fun(S) -> maps:get(current_uid, S) end),
+        meck:expect(elib_param, post, fun(_) -> Body end),
+        meck:expect(user_device_logic, delete, fun(12345, _) -> ok end),
+        meck:expect(elib_response, success, fun(R) -> R#{result => ok} end),
+        meck:expect(elib_response, error, fun(R, _, 400) -> R#{result => denied} end),
+        Result = user_device_handler:handle_action(delete, #{}, State),
+        ?assertEqual(Expected, maps:get(result, Result)),
+        case Expected of
+            ok ->
+                ?assert(
+                    meck:called(
+                        user_device_logic,
+                        delete,
+                        [12345, maps:get(<<"did">>, Body)]
+                    )
+                ),
+                ?assertEqual(1, meck:num_calls(user_device_logic, delete, '_'));
+            denied ->
+                ?assertEqual(0, meck:num_calls(user_device_logic, delete, '_'))
+        end
+    after
+        lists:foreach(fun meck:unload/1, lists:reverse(Modules))
+    end.

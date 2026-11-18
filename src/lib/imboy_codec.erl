@@ -349,8 +349,8 @@ to_pb_map(Msg) ->
         action => to_binary(maps:get(<<"action">>, Msg, <<>>)),
         e2ee => e2ee_to_pb(maps:get(<<"e2ee">>, Msg, null)),
         payload => ensure_binary(maps:get(<<"payload">>, Msg, <<>>)),
-        created_at => to_int64(maps:get(<<"created_at">>, Msg, 0)),
-        server_ts => to_int64(maps:get(<<"server_ts">>, Msg, 0)),
+        created_at => to_int64(elib_dt:rfc3339_to(maps:get(<<"created_at">>, Msg, 0))),
+        server_ts => to_int64(elib_dt:rfc3339_to(maps:get(<<"server_ts">>, Msg, 0))),
         expire_secs => to_int32(maps:get(<<"expire_secs">>, Msg, 0)),
         conv_seq => to_int64(maps:get(<<"conv_seq">>, Msg, 0))
     }.

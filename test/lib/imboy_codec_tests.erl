@@ -40,6 +40,36 @@ codec_test_() ->
         {"chat_history_bundle protobuf 连接回退 JSON 四象限无损", fun chat_history_bundle_pb_fallback/0}
     ]}.
 
+timestamp_fields_protobuf_roundtrip_test_() ->
+    Cases = [
+        {integer_ms, 1700000000123, 1700000000123},
+        {numeric_binary_ms, <<"1700000000123">>, 1700000000123},
+        {utc_rfc3339, <<"2023-11-14T22:13:20.123Z">>, 1700000000123},
+        {offset_rfc3339, <<"2023-11-15T06:13:20.123+08:00">>, 1700000000123},
+        {epoch_zero, 0, 0},
+        {negative_epoch_ms, -1, -1},
+        {missing_zone, <<"2023-11-14T22:13:20.123">>, 0},
+        {invalid_timestamp, <<"not-a-time">>, 0},
+        {absent_timestamp, undefined, 0}
+    ],
+    [
+        {atom_to_list(Name), fun() ->
+            Base = test_c2c_message(),
+            Fields =
+                case Value of
+                    undefined -> maps:without([<<"created_at">>, <<"server_ts">>], Base);
+                    _ -> Base#{<<"created_at">> => Value, <<"server_ts">> => Value}
+                end,
+            Msg = Fields#{<<"from">> => 9007199254740993, <<"conv_seq">> => 37},
+            Decoded = imboy_codec:decode(protobuf, imboy_codec:encode(protobuf, Msg)),
+            ?assertEqual(Expected, maps:get(<<"created_at">>, Decoded)),
+            ?assertEqual(Expected, maps:get(<<"server_ts">>, Decoded)),
+            ?assertEqual(9007199254740993, maps:get(<<"from">>, Decoded)),
+            ?assertEqual(37, maps:get(<<"conv_seq">>, Decoded))
+        end}
+     || {Name, Value, Expected} <- Cases
+    ].
+
 %%%===================================================================
 %%% Setup / Cleanup
 %%%===================================================================

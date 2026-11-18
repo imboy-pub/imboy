@@ -112,14 +112,14 @@ insert_attachment(Id, Path, Creator, Scope, ScopeRef, PhysicalKey) ->
     ok.
 
 with_presign_capture(Inner) ->
-    ok = meck:new(attachment_storage_garage, [passthrough, no_link]),
+    ok = meck:new(elib_s3_sign, [passthrough, no_link]),
     ok = meck:expect(
-        attachment_storage_garage,
-        presign_snapshot,
-        2,
-        fun(#{key := K}, Ttl) ->
+        elib_s3_sign,
+        presign_url_at,
+        8,
+        fun(<<"GET">>, _Endpoint, _Bucket, K, _Mime, _Now, Ttl, _Cfg) ->
             put(captured_key, {K, Ttl}),
-            {ok, <<"https://s3.example/get">>}
+            <<"https://s3.example/get">>
         end
     ),
     try
@@ -127,7 +127,7 @@ with_presign_capture(Inner) ->
         {ok, get(captured_key), Result}
     after
         erase(captured_key),
-        meck:unload(attachment_storage_garage)
+        meck:unload(elib_s3_sign)
     end.
 
 captured_key() ->
@@ -142,9 +142,10 @@ direct_row_signs_physical_key() ->
     ok = insert_attachment(990801001, LogicalKey, 990801, <<"private">>, <<>>, PhysicalKey),
     {ok, Rec} = attachment_repo:find_by_path(LogicalKey),
     %% 导出面 view_url（逐请求 authorize → authorized_view → sign_view）
-    {ok, {CapturedKey, Ttl}, _} = with_presign_capture(fun() ->
+    {ok, {CapturedKey, Ttl}, {ok, Url}} = with_presign_capture(fun() ->
         attach_logic:view_url(990801, LogicalKey)
     end),
+    ?assert(is_binary(Url)),
     ?assertEqual(PhysicalKey, CapturedKey),
     ?assertEqual(600, Ttl),
     ok.
@@ -152,9 +153,10 @@ direct_row_signs_physical_key() ->
 legacy_row_falls_back_to_logical_key() ->
     LogicalKey = <<"u990802/file/legacy">>,
     ok = insert_attachment(990802001, LogicalKey, 990802, <<"private">>, <<>>, null),
-    {ok, {CapturedKey, Ttl}, _} = with_presign_capture(fun() ->
+    {ok, {CapturedKey, Ttl}, {ok, Url}} = with_presign_capture(fun() ->
         attach_logic:view_url(990802, LogicalKey)
     end),
+    ?assert(is_binary(Url)),
     ?assertEqual(LogicalKey, CapturedKey, '历史行必须回落逻辑键'),
     ?assertEqual(600, Ttl),
     ok.
@@ -166,7 +168,7 @@ ticket_download_per_request_acl() ->
     ok = insert_attachment(990803001, Path, 990801, <<"c2c">>, ScopeRef, null),
     with_presign_capture(fun() ->
         %% 成员 11：每请求复核通过，签出短 GET
-        ?assertMatch({ok, _}, attach_logic:view_url(11, Path)),
+        ?assertMatch({ok, Url} when is_binary(Url), attach_logic:view_url(11, Path)),
         %% 非成员 33：下一请求即拒绝（撤权窗口 = 下一请求，T23 本地语义）
         ?assertEqual({error, forbidden}, attach_logic:view_url(33, Path)),
         ok

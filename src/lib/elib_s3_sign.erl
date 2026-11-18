@@ -11,7 +11,88 @@
 -export([presign_put_ctx/6, presign_url_at/8]).
 -export([presign_signed_url_at/8, authorization_header_extra/8]).
 -export([format_date/1, format_amz_date/1]).
+-export([client_endpoint/1]).
 -export([uri_encode_path/1]).
+
+%% Browser-facing explicit endpoints must be canonical origins with an optional
+%% static proxy prefix, which the proxy removes before forwarding to S3.
+%% If absent, preserve the previous single-endpoint behavior.
+-spec client_endpoint(map()) -> {ok, binary()} | {error, invalid_public_endpoint}.
+client_endpoint(Cfg) ->
+    case maps:find(public_endpoint, Cfg) of
+        error ->
+            {ok, maps:get(endpoint, Cfg)};
+        {ok, E} ->
+            case valid_client_endpoint(E) of
+                true -> {ok, E};
+                false -> {error, invalid_public_endpoint}
+            end
+    end.
+
+valid_client_endpoint(E) when is_binary(E), byte_size(E) > 0 ->
+    try uri_string:parse(E) of
+        #{scheme := Scheme, host := Host, path := Path} = U when
+            (Scheme =:= <<"http">> orelse Scheme =:= <<"https">>),
+            is_binary(Host),
+            byte_size(Host) > 0
+        ->
+            not maps:is_key(userinfo, U) andalso not maps:is_key(query, U) andalso
+                not maps:is_key(fragment, U) andalso valid_origin_port(Scheme, U) andalso
+                valid_origin_host(Host) andalso valid_public_prefix(Path) andalso
+                uri_string:recompose(U) =:= E;
+        _ ->
+            false
+    catch
+        _:_ -> false
+    end;
+valid_client_endpoint(_) ->
+    false.
+
+valid_public_prefix(<<>>) ->
+    true;
+valid_public_prefix(<<"/", Rest/binary>>) when byte_size(Rest) > 0 ->
+    lists:all(fun valid_prefix_segment/1, binary:split(Rest, <<"/">>, [global]));
+valid_public_prefix(_) ->
+    false.
+
+valid_prefix_segment(<<".">>) ->
+    false;
+valid_prefix_segment(<<"..">>) ->
+    false;
+valid_prefix_segment(Segment) when byte_size(Segment) > 0 ->
+    re:run(Segment, <<"^[A-Za-z0-9._~-]+$">>, [{capture, none}]) =:= match;
+valid_prefix_segment(_) ->
+    false.
+
+valid_origin_port(Scheme, U) ->
+    case maps:find(port, U) of
+        error ->
+            true;
+        {ok, P} when is_integer(P), P >= 1, P =< 65535 ->
+            not ((Scheme =:= <<"http">> andalso P =:= 80) orelse
+                (Scheme =:= <<"https">> andalso P =:= 443));
+        _ ->
+            false
+    end.
+
+valid_origin_host(Host) ->
+    case inet:parse_address(binary_to_list(Host)) of
+        {ok, Address} -> list_to_binary(inet:ntoa(Address)) =:= Host;
+        _ -> valid_origin_dns(Host)
+    end.
+
+valid_origin_dns(Host) when byte_size(Host) =< 253 ->
+    case re:run(Host, <<"^[0-9.]+$">>, [{capture, none}]) of
+        match -> false;
+        nomatch -> lists:all(fun valid_origin_label/1, binary:split(Host, <<".">>, [global]))
+    end;
+valid_origin_dns(_) ->
+    false.
+
+valid_origin_label(L) when byte_size(L) >= 1, byte_size(L) =< 63 ->
+    re:run(L, <<"^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$">>, [{capture, none}]) =:= match;
+valid_origin_label(_) ->
+    false.
 
 %% @doc 生成 presigned PUT URL（Flutter 直传用）
 %% Expires 单位：秒，最大 604800（7天）

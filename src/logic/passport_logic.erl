@@ -13,13 +13,14 @@
 -export([do_login/3]).
 -export([do_login/5]).
 -export([do_login_by_code/5]).
+-export([do_web_login/4, do_web_login_by_code/4]).
 -export([do_signup/5]).
 -export([find_password/5]).
 -export([verify_user/3]).
 -export([quick_login/4]).
 -export([alipay_login/2]).
 -export([alipay_authinfo/0]).
--export([find_user_setting/1]).
+-export([find_user_setting/1, find_web_user_setting/1]).
 -export([record_login_device/2]).
 -export([email_in_use/1]).
 -export([bind_email/2]).
@@ -412,9 +413,18 @@ login(Account, Pwd, PostVals) when is_binary(Account), is_binary(Pwd), is_map(Po
 do_login(Type, Account, Pwd) ->
     do_login(Type, Account, Pwd, <<>>, <<>>).
 
+%% Only these server-selected entrypoints carry the private Web continuation.
+-spec do_web_login(binary(), binary(), binary(), map()) -> {ok, map()} | {error, term()}.
+do_web_login(Type, Account, Pwd, Values) ->
+    do_login(Type, Account, Pwd, {web_login, Values}, maps:get(<<"did">>, Values)).
+
+-spec do_web_login_by_code(binary(), binary(), binary(), map()) -> {ok, map()} | {error, term()}.
+do_web_login_by_code(Type, Account, Code, Values) ->
+    do_login_by_code(Type, Account, Code, {web_login, Values}, maps:get(<<"did">>, Values)).
+
 %% @doc 账号密码登录（带设备信息）
 %% 检查设备冲突，如果同类型设备已登录则返回冲突信息
--spec do_login(binary(), binary(), binary(), binary(), binary()) ->
+-spec do_login(binary(), binary(), binary(), binary() | {web_login, map()}, binary()) ->
     {ok, map()} | {{error, conflict}, map()} | {error, binary() | map() | service_unavailable}.
 do_login(_Type, _Email, <<>>, _DType, _Did) ->
     %% 空密码属格式非法提前返回（C.2）：不进入校验、不计数
@@ -463,7 +473,7 @@ do_login(Type, Account, Pwd, DType, Did) when Type == <<"account">> ->
 %%     {user, Uid}，与输入别名无关），不再按输入/User.account 分叉；
 %%   - AC-17 成功点：reset 在 status 检查**之后**、签发之前，且必须确认
 %%     ok 才 login_resp；reset 失败 → 丢弃凭据，返回服务不可用。
--spec do_login_by_code(binary(), binary(), binary(), binary(), binary()) ->
+-spec do_login_by_code(binary(), binary(), binary(), binary() | {web_login, map()}, binary()) ->
     {ok, map()}
     | {{error, conflict}, map()}
     | {error, binary() | map() | service_unavailable}.
@@ -501,7 +511,7 @@ do_code_login_lookup(Type, Account, Code, DType, Did, User) ->
     Account :: binary(),
     Code :: binary(),
     User :: map(),
-    DType :: binary(),
+    DType :: binary() | {web_login, map()},
     Did :: binary()
 ) -> {ok, map()} | {{error, conflict}, map()} | {error, binary() | service_unavailable}.
 do_code_auth(Ref, Identity, Account, Code, User, DType, Did) ->
@@ -523,7 +533,7 @@ do_code_auth(Ref, Identity, Account, Code, User, DType, Did) ->
     Account :: binary(),
     Code :: binary(),
     User :: map(),
-    DType :: binary(),
+    DType :: binary() | {web_login, map()},
     Did :: binary()
 ) -> {ok, map()} | {{error, conflict}, map()} | {error, binary() | service_unavailable}.
 do_code_consume(Ref, Identity, Account, Code, User, DType, Did) ->
@@ -540,7 +550,7 @@ do_code_consume(Ref, Identity, Account, Code, User, DType, Did) ->
     Ref :: term(),
     Identity :: login_attempt_state:identity(),
     User :: map(),
-    DType :: binary(),
+    DType :: binary() | {web_login, map()},
     Did :: binary()
 ) -> {ok, map()} | {{error, conflict}, map()} | {error, binary() | service_unavailable}.
 do_code_finish(Ref, _Identity, User, DType, Did) ->
@@ -564,8 +574,10 @@ do_code_finish(Ref, _Identity, User, DType, Did) ->
     end.
 
 %% @doc 验证码登录成功链：签发 + 审计 + 设备冲突检查。
--spec code_login_success(map(), binary(), binary()) ->
+-spec code_login_success(map(), binary() | {web_login, map()}, binary()) ->
     {ok, map()} | {{error, conflict}, map()}.
+code_login_success(User, {web_login, Values}, Did) ->
+    web_login_success(User, Did, Values);
 code_login_success(User, DType, Did) ->
     Account = maps:get(
         <<"account">>, User, maps:get(<<"mobile">>, User, maps:get(<<"email">>, User, <<>>))
@@ -602,7 +614,12 @@ code_login_success(User, DType, Did) ->
 %%     reset 失败 → 丢弃响应 Data、不返回凭据，服务不可用。
 %% Ip 在此层不可用也无需伪造：账户域跨 IP（C.1）。
 -spec do_login_verify(
-    binary(), binary(), {ok, map()} | {error, term()}, binary(), binary(), binary()
+    binary(),
+    binary(),
+    {ok, map()} | {error, term()},
+    binary(),
+    binary() | {web_login, map()},
+    binary()
 ) ->
     {ok, map()}
     | {{error, conflict}, map()}
@@ -632,7 +649,7 @@ do_login_verify(Type, Account, {ok, User}, Pwd, DType, Did) ->
     Identity :: login_attempt_state:identity(),
     User :: map(),
     Pwd :: binary(),
-    DType :: binary(),
+    DType :: binary() | {web_login, map()},
     Did :: binary()
 ) ->
     {ok, map()}
@@ -656,7 +673,7 @@ do_login_auth(Ref, Identity, User, Pwd, DType, Did) ->
     Identity :: login_attempt_state:identity(),
     User :: map(),
     Pwd :: binary(),
-    DType :: binary(),
+    DType :: binary() | {web_login, map()},
     Did :: binary()
 ) ->
     {ok, map()}
@@ -687,8 +704,10 @@ finish_login_error(Ref, Outcome, Msg) ->
     end.
 
 %% @private 密码登录成功链：签发 + 审计 + 设备类型/冲突检查。
--spec password_login_success(map(), binary(), binary()) ->
+-spec password_login_success(map(), binary() | {web_login, map()}, binary()) ->
     {ok, map()} | {{error, conflict}, map()}.
+password_login_success(User, {web_login, Values}, Did) ->
+    web_login_success(User, Did, Values);
 password_login_success(User, DType, Did) ->
     Account = maps:get(
         <<"account">>, User, maps:get(<<"mobile">>, User, maps:get(<<"email">>, User, <<>>))
@@ -715,6 +734,65 @@ password_login_success(User, DType, Did) ->
             {ok, Data};
         _ ->
             login_conflict_result(Uid, DType, Data)
+    end.
+
+%% Validate credentials first; persist before kicking, then issue against the current epoch.
+web_login_success(User, Did, Values) ->
+    Uid = maps:get(<<"id">>, User),
+    try user_ds:find_by_id(Uid, <<"status,account_type">>) of
+        #{<<"status">> := Status, <<"account_type">> := 0} when Status =:= 1; Status =:= 2 ->
+            case find_web_user_setting(Uid) of
+                {ok, Settings} ->
+                    case user_device_logic:check_login_conflict(Uid, <<"web">>) of
+                        {ok, no_conflict} ->
+                            web_register_and_issue(User, Did, Values, none, Settings);
+                        {ok, conflict, #{<<"device_id">> := ConflictDid}} ->
+                            web_register_and_issue(User, Did, Values, ConflictDid, Settings);
+                        _ ->
+                            {error, service_unavailable}
+                    end;
+                {error, _} ->
+                    {error, service_unavailable}
+            end;
+        _ ->
+            {error, <<"Invalid Web account">>}
+    catch
+        _:_ -> {error, service_unavailable}
+    end.
+
+web_register_and_issue(User, Did, Values, ConflictDid, Settings) ->
+    Uid = maps:get(<<"id">>, User),
+    case user_device_ds:register_web(elib_dt:now(), Uid, Did, Values) of
+        {ok, DeviceRowId} ->
+            case
+                ConflictDid =:= none orelse
+                    user_device_logic:kick_device(Uid, <<"web">>, ConflictDid) =:= ok
+            of
+                true -> web_issue_session(User, Did, DeviceRowId, Settings);
+                false -> {error, service_unavailable}
+            end;
+        {error, _} ->
+            {error, service_unavailable}
+    end.
+
+web_issue_session(User, Did, DeviceRowId, Settings) ->
+    Uid = maps:get(<<"id">>, User),
+    case auth_session_ds:current_epoch(Uid) of
+        {ok, Ep} when is_integer(Ep), Ep >= 1 ->
+            Tokens = token_ds:issue_web_session(Uid, Did, Ep, DeviceRowId),
+            Data = login_resp_with_tokens(User, Tokens, #{<<"setting">> => Settings}),
+            _ = elib_async:async(fun() ->
+                {ok, LogBody} = jsone_encode:encode(
+                    #{
+                        <<"account">> => maps:get(<<"account">>, User), <<"dtype">> => <<"web">>
+                    },
+                    [native_utf8]
+                ),
+                user_log_ds:add_internal(undefined, 100, Uid, LogBody, elib_dt:now())
+            end),
+            {ok, Data};
+        _ ->
+            {error, service_unavailable}
     end.
 
 %% @private 设备冲突检查收口（成功链共用）。
@@ -797,11 +875,10 @@ send_email_code(undefined) ->
 send_email_code(ToEmail) ->
     Now = elib_dt:now(),
     NowP1M = elib_dt:minus(Now, {1, minute}),
-    case verification_code_ds:find_by_id(ToEmail) of
+    case created_at_in_resend_window(NowP1M, verification_code_ds:find_by_id(ToEmail)) of
         % 60000 = 60 * 1000 = 1分钟
-        % #{<<"created_at">> := CreatedAt} when (Now - CreatedAt) < 60000 ->
-        %  Now - 1m < CreatedAt
-        #{<<"created_at">> := CreatedAt} when NowP1M < CreatedAt ->
+        % 语义同旧 guard：Now - 1m < CreatedAt → 一分钟内不重发
+        true ->
             {ok, <<"一分钟内重复请求不发送Email"/utf8>>};
         %% 【已移除】原先这里有一条"有效期内重发同一个码"的分支，且重发时
         %% 不调用 save/4 刷新 created_at。后果有两个：
@@ -833,9 +910,9 @@ send_sms_code(Mobile) ->
     Now = elib_dt:now(),
     NowP2M = elib_dt:minus(Now, {2, minute}),
 
-    case verification_code_ds:find_by_id(Mobile) of
+    case created_at_in_resend_window(NowP2M, verification_code_ds:find_by_id(Mobile)) of
         % 120000 = 120 * 1000 = 2分钟
-        #{<<"created_at">> := CreatedAt} when NowP2M < CreatedAt ->
+        true ->
             {ok, <<"两分钟内重复请求不会重复发送"/utf8>>};
         %% 【已移除】同 send_email_code/1：原"有效期内重发同一个码"分支不刷新
         %% created_at，使码存活 10 分钟且两分钟守卫过期后可无限触发真实短信
@@ -880,6 +957,28 @@ send_sms_code(Mobile) ->
                     {error, <<"invalid_datetime"/utf8>>}
             end
     end.
+
+%% @private DEF-SOCSET-Vcode-TZ 同族修复：NowX（elib_dt:now/minus 输出 BEAM
+%% 本地时区偏移的 RFC3339，如 "2026-11-17T08:30:00.000000+08:00"）与 DB
+%% created_at（epgsql_codec_rfc3339_bin decode 显式输出 UTC "Z"）不可字典序
+%% 比较：+08 主机上 '...+08:00' > '...Z' 恒成立 → NowX < CreatedAt 恒 false，
+%% 一分钟/两分钟防重发守卫永久失效（fail-open），可无限触发真实发信。
+%% 统一折算为微秒系统时间（elib_dt:rfc3339_to/2，calendar 按 offset 换算）
+%% 后比较，惯式同 elib_dt:compare_rfc3339/3（enterprise_internal_auth 同款）。
+%% 解析失败 fail-open 返回 false：守卫只防骚扰、不涉权限变更，不可解析的
+%% created_at 放行重发，与旧 guard 对怪异值的取向一致；created_at 缺失
+%% （首次请求）同样放行。
+-spec created_at_in_resend_window(binary(), map()) -> boolean().
+created_at_in_resend_window(NowX, #{<<"created_at">> := CreatedAt}) ->
+    NowXUs = elib_dt:rfc3339_to(NowX, microsecond),
+    case elib_dt:rfc3339_to(CreatedAt, microsecond) of
+        CreatedAtUs when is_integer(CreatedAtUs), is_integer(NowXUs) ->
+            NowXUs < CreatedAtUs;
+        _ ->
+            false
+    end;
+created_at_in_resend_window(_NowX, _NoCreatedAt) ->
+    false.
 
 %% 校验验证码，委托给 verification_code_ds:verify_code/2
 %% 万能码通过 {imboy, verification_master_code} 配置，不再硬编码
@@ -1225,6 +1324,14 @@ login_resp(User, Resp) ->
 %% @doc E2EE-013：签发绑定设备 DID 的 token/refreshtoken。
 login_resp(User, Did, Resp) ->
     Id = maps:get(<<"id">>, User),
+    Tokens = #{
+        <<"token">> => token_ds:encrypt_token(Id, Did),
+        <<"refreshtoken">> => token_ds:encrypt_refreshtoken(Id, Did)
+    },
+    login_resp_with_tokens(User, Tokens, Resp).
+
+login_resp_with_tokens(User, Tokens, Resp) ->
+    Id = maps:get(<<"id">>, User),
     % 从 User 数据中读取 role 字段；user 表暂未设置 role 列，默认为 1（普通用户）
     % 待 user 表添加 role 列后，LOGIN_COLUMN 中需加入 role，届时可自动生效
     Role = maps:get(<<"role">>, User, 1),
@@ -1232,8 +1339,8 @@ login_resp(User, Did, Resp) ->
         #{
             <<"uid">> => Id,
             <<"user_id">> => Id,
-            <<"token">> => token_ds:encrypt_token(Id, Did),
-            <<"refreshtoken">> => token_ds:encrypt_refreshtoken(Id, Did),
+            <<"token">> => maps:get(<<"token">>, Tokens),
+            <<"refreshtoken">> => maps:get(<<"refreshtoken">>, Tokens),
             <<"email">> => maps:get(<<"email">>, User),
             %% 兼容窄列 User map（测试桩/旧调用方）：无 mobile 键时回退空串
             <<"mobile">> => maps:get(<<"mobile">>, User, <<>>),
@@ -1423,3 +1530,7 @@ record_login_device(Uid, PostVals) ->
         {ok, _} -> ok;
         {error, _} = Error -> Error
     end.
+
+-spec find_web_user_setting(pos_integer()) -> {ok, map()} | {error, unavailable}.
+find_web_user_setting(Uid) ->
+    user_setting_ds:find_web_by_uid(Uid).

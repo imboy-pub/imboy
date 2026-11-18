@@ -9,12 +9,12 @@
 
 %% ==================== API ====================
 
--export([save/4]).
+-export([save/4, register_web/4, is_active_web/3]).
 -export([list/1]).
 -export([login_count/2]).
 -export([device_name/2]).
 -export([delete/2]).
--export([is_active/2]).
+-export([is_active/2, is_active_native/2]).
 -export([bump_identity_version/2]).
 -export([reconcile_olm_material/0]).
 -export([update_by_did/4]).
@@ -107,6 +107,66 @@ login_count(Uid, DID) ->
 -spec save(binary() | integer(), integer(), binary(), map()) -> {ok, term()} | {error, any()}.
 save(Now, Uid, DID, PostVals) ->
     user_device_repo:save(Now, Uid, DID, PostVals).
+
+%% @doc Web 登录必须同步落库，服务端固定类型并兼容 QR 的设备名称字段。
+-spec register_web(binary() | integer(), integer(), binary(), map()) ->
+    {ok, pos_integer()} | {error, term()}.
+register_web(Now, Uid, Did, PostVals) when
+    is_integer(Uid),
+    Uid > 0,
+    is_binary(Did),
+    byte_size(Did) > 0,
+    is_map(PostVals)
+->
+    %% varchar(128) 按 Unicode 码点计数，畸形 UTF-8 不进入持久化。
+    case unicode:characters_to_list(Did) of
+        Chars when is_list(Chars), length(Chars) =< 128 ->
+            Values = PostVals#{
+                <<"cos">> => <<"web">>,
+                <<"dname">> => maps:get(
+                    <<"dname">>, PostVals, maps:get(<<"device_name">>, PostVals, <<>>)
+                )
+            },
+            try user_device_repo:save_web(Now, Uid, Did, Values) of
+                {ok, Id} when is_integer(Id), Id > 0 ->
+                    case is_active_web(Uid, Did, Id) of
+                        true -> {ok, Id};
+                        false -> {error, unavailable}
+                    end;
+                {error, _} = Error ->
+                    Error;
+                _ ->
+                    {error, unavailable}
+            catch
+                _:_ -> {error, unavailable}
+            end;
+        _ ->
+            {error, invalid_device}
+    end;
+register_web(_, _, _, _) ->
+    {error, invalid_device}.
+
+%% @doc Web 活跃性直查精确 UID/DID/type/status，不共享 Native 正缓存。
+-spec is_active_web(integer(), binary(), integer()) -> boolean().
+is_active_web(Uid, Did, DeviceRowId) when
+    is_integer(Uid),
+    Uid > 0,
+    is_binary(Did),
+    byte_size(Did) > 0,
+    is_integer(DeviceRowId),
+    DeviceRowId > 0
+->
+    try
+        true = length(unicode:characters_to_list(Did)) =< 128,
+        user_device_repo:is_active_web(Uid, Did, DeviceRowId)
+    of
+        {ok, true} -> true;
+        _ -> false
+    catch
+        _:_ -> false
+    end;
+is_active_web(_, _, _) ->
+    false.
 
 %% @doc 删除设备
 %% @param Uid 用户ID
@@ -267,3 +327,12 @@ normalize_compat_device(Row) ->
 %% G3 thin wrappers: e2ee handlers 不应直调 user_device_repo
 -spec get_public_by_uid(integer()) -> {ok, [map()]} | {error, term()}.
 get_public_by_uid(Uid) -> user_device_repo:get_public_by_uid(Uid).
+
+-spec is_active_native(integer(), binary()) -> boolean().
+is_active_native(Uid, Did) ->
+    try user_device_repo:is_active_native(Uid, Did) of
+        {ok, true} -> true;
+        _ -> false
+    catch
+        _:_ -> false
+    end.

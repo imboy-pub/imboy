@@ -44,33 +44,44 @@
 %%   - 非法/缺失 → reply 400 → {ok, ...}（普通 handler 退出，不进 loop）
 -spec init(cowboy_req:req(), any()) ->
     {ok, cowboy_req:req(), any()} | {cowboy_loop, cowboy_req:req(), any()}.
-init(Req0, _State) ->
+init(Req0, State) ->
     Qs = cowboy_req:parse_qs(Req0),
     case proplists:get_value(<<"session_token">>, Qs) of
         SessionToken when is_binary(SessionToken), byte_size(SessionToken) > 0 ->
-            Req = cowboy_req:stream_reply(
-                200,
-                #{
-                    <<"content-type">> => <<"text/event-stream">>,
-                    <<"cache-control">> => <<"no-cache">>,
-                    <<"connection">> => <<"keep-alive">>
-                },
-                Req0
-            ),
-            %% 加入 syn group。失败也继续 loop（订阅丢失 ≈ 0 投递，与 PR-2α
-            %% notify 兜底语义一致；客户端有降级轮询兜底）。
-            _ = qr_login_event_ds:subscribe(SessionToken, self()),
-            %% 启动 heartbeat 防 cowboy idle_timeout 自动断连
-            %% Start heartbeat to prevent cowboy idle_timeout disconnect
-            Timer = erlang:send_after(?HEARTBEAT_INTERVAL_MS, self(), qr_sse_heartbeat),
-            {cowboy_loop, Req, #{
-                session_token => SessionToken,
-                heartbeat_timer => Timer
-            }};
+            IsWeb = is_map(State) andalso maps:get(jwt_purpose, State, human) =:= web_human,
+            case IsWeb andalso qr_login_logic:web_session(SessionToken) of
+                {error, _} ->
+                    Req = cowboy_req:reply(403, #{}, <<"Forbidden QR session">>, Req0),
+                    {ok, Req, #{}};
+                _ ->
+                    start_stream(Req0, SessionToken, IsWeb)
+            end;
         _ ->
             Req = cowboy_req:reply(400, #{}, <<"missing session_token">>, Req0),
             {ok, Req, #{}}
     end.
+
+start_stream(Req0, SessionToken, IsWeb) ->
+    Req = cowboy_req:stream_reply(
+        200,
+        #{
+            <<"content-type">> => <<"text/event-stream">>,
+            <<"cache-control">> => <<"no-cache">>,
+            <<"connection">> => <<"keep-alive">>
+        },
+        Req0
+    ),
+    %% 加入 syn group。失败也继续 loop（订阅丢失 ≈ 0 投递，与 PR-2α
+    %% notify 兜底语义一致；客户端有降级轮询兜底）。
+    _ = qr_login_event_ds:subscribe(SessionToken, self()),
+    %% 启动 heartbeat 防 cowboy idle_timeout 自动断连
+    %% Start heartbeat to prevent cowboy idle_timeout disconnect
+    Timer = erlang:send_after(?HEARTBEAT_INTERVAL_MS, self(), qr_sse_heartbeat),
+    {cowboy_loop, Req, #{
+        session_token => SessionToken,
+        heartbeat_timer => Timer,
+        web_human => IsWeb
+    }}.
 
 %% @doc 接收 syn:publish 投递的 Event map，推 SSE chunk。
 %%
@@ -95,7 +106,44 @@ info(qr_sse_heartbeat, Req0, State) ->
     ok = cowboy_req:stream_body(<<": heartbeat\n\n">>, nofin, Req0),
     NewTimer = erlang:send_after(?HEARTBEAT_INTERVAL_MS, self(), qr_sse_heartbeat),
     {ok, Req0, State#{heartbeat_timer => NewTimer}};
-info(Event, Req0, State) when is_map(Event) ->
+info(#{web_human := true} = Event, Req, State) ->
+    web_event(Event, Req, State);
+info(Event, Req, #{web_human := true} = State) when is_map(Event) ->
+    web_event(Event, Req, State);
+info(Event, Req, State) when is_map(Event) ->
+    handle_event(Event, Req, State);
+info(_Other, Req, State) ->
+    {ok, Req, State}.
+
+web_event(Event, Req, State) ->
+    SessionToken = maps:get(session_token, State),
+    case qr_login_logic:web_session(SessionToken) of
+        {ok, _Session} ->
+            case
+                {
+                    application:get_env(imboy, qr_login_authority, cache),
+                    maps:get(<<"status">>, Event, undefined)
+                }
+            of
+                {cache, <<"confirmed">>} ->
+                    %% Consume the authoritative cache session instead of replaying an event token.
+                    case qr_login_logic:claim_web_cache_token(SessionToken) of
+                        {ok, #{login_token := Token, scanned_by := Uid}} ->
+                            push_confirmed(Req, Token, Uid),
+                            {stop, Req, State};
+                        {error, _} ->
+                            {stop, Req, State}
+                    end;
+                {pg, <<"confirmed">>} ->
+                    {stop, Req, State};
+                _ ->
+                    handle_event(Event, Req, State)
+            end;
+        {error, _} ->
+            {stop, Req, State}
+    end.
+
+handle_event(Event, Req0, State) ->
     case maps:get(<<"status">>, Event, undefined) of
         Status when Status =:= <<"confirmed_ready">>; Status =:= <<"confirmed">> ->
             %% LEE-5 / G-QR（收口 C08）：confirmed 信号一律只是"有凭据可领取"
@@ -140,10 +188,7 @@ info(Event, Req0, State) when is_map(Event) ->
         _ ->
             push_map(Req0, Event),
             {ok, Req0, State}
-    end;
-info(_Other, Req, State) ->
-    %% 非 map 消息（system / tcp / 其他）容错：保持 loop，不中断
-    {ok, Req, State}.
+    end.
 
 %% @doc 推送事件 map 为 SSE data 帧。
 -spec push_map(cowboy_req:req(), map()) -> ok.

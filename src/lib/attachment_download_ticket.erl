@@ -1,6 +1,6 @@
 -module(attachment_download_ticket).
 -moduledoc "附件下载票据 —— 下载能力使用 purpose-derived key，绝不复用 Human 访问令牌。".
--export([issue/3, verify/2]).
+-export([issue/3, verify/2, issue_web/3, verify_web/2]).
 
 %% Download capabilities use a purpose-derived key, never a Human access token.
 -define(TTL, 600).
@@ -62,3 +62,17 @@ verify(_, _) ->
 
 key(Secret) ->
     crypto:mac(hmac, sha256, Secret, <<"imboy:attachment-download:v1">>).
+
+%% A separate derived key prevents downgrading a Web capability to Native.
+issue_web(Uid, ObjectKey, Secret) when is_binary(Secret), byte_size(Secret) > 0 ->
+    case issue(Uid, ObjectKey, web_key(Secret)) of
+        {ok, Ticket} -> {ok, Ticket};
+        Error -> Error
+    end;
+issue_web(_, _, _) ->
+    {error, invalid}.
+verify_web(Ticket, Secret) when is_binary(Secret), byte_size(Secret) > 0 ->
+    verify(Ticket, web_key(Secret));
+verify_web(_, _) ->
+    {error, invalid}.
+web_key(Secret) -> crypto:mac(hmac, sha256, Secret, <<"imboy:web-attachment-download:v1">>).

@@ -6,6 +6,184 @@
 default_config_get(_Key, Default) ->
     Default.
 
+plaintext_text_size_in_policy_test_() ->
+    {setup, fun setup_text_policy_mock/0, fun(_) -> meck:unload(config_ds) end, fun(_) ->
+        [
+            {"plaintext boundary through C2C and C2G policy", fun plaintext_wire_boundaries/0},
+            {"encrypted content keeps its existing envelope policy", fun opaque_text_envelope/0},
+            {"visible plaintext cannot use a forged e2ee claim to bypass its limit",
+                fun visible_e2ee_text_limit/0},
+            {"malformed visible text is refused at the shared policy boundary",
+                fun malformed_policy_text/0},
+            {"text limit cannot be bypassed by required-mode AI exemption",
+                fun required_text_limit/0},
+            {"actual C2C AI exemption cannot release an oversized edit",
+                fun agent_edit_text_limit/0},
+            {"actual C2G edit rejects oversized content before group lookup",
+                fun group_edit_text_limit/0}
+        ]
+    end}.
+
+setup_text_policy_mock() ->
+    meck:new(config_ds, [non_strict]),
+    meck:expect(config_ds, get, fun default_config_get/2),
+    meck:expect(config_ds, env, fun(_, Default) -> Default end).
+
+plaintext_wire_boundaries() ->
+    lists:foreach(
+        fun(Type) ->
+            lists:foreach(
+                fun({Size, Expected}) ->
+                    Text = binary:copy(<<"a">>, Size),
+                    Payload = #{<<"text">> => Text},
+                    Wire =
+                        case Type of
+                            <<"C2C">> ->
+                                jsone:encode(Payload);
+                            <<"C2G">> ->
+                                jsone:encode(#{
+                                    <<"type">> => <<"C2G">>,
+                                    <<"msg_type">> => <<"text">>,
+                                    <<"payload">> => Payload
+                                })
+                        end,
+                    ?assertEqual(
+                        Expected,
+                        imboy_policy:validate_message_write(Type, <<"text">>, <<>>, null, Wire)
+                    )
+                end,
+                [{65535, ok}, {65536, ok}, {65537, {error, <<"message_text_too_large">>}}]
+            )
+        end,
+        [<<"C2C">>, <<"C2G">>]
+    ).
+
+opaque_text_envelope() ->
+    Large = binary:copy(<<"a">>, 65537),
+    ?assertEqual(
+        ok,
+        imboy_policy:validate_message_write(
+            <<"C2C">>, <<"text">>, <<>>, #{<<"alg">> => <<"opaque">>}, Large
+        )
+    ),
+    ?assertEqual(
+        ok,
+        imboy_policy:validate_message_write(
+            <<"C2G">>,
+            <<"text">>,
+            <<>>,
+            #{<<"alg">> => <<"opaque">>},
+            jsone:encode(#{<<"type">> => <<"C2G">>, <<"payload">> => Large})
+        )
+    ),
+    ?assertEqual(
+        ok,
+        imboy_policy:validate_message_write(
+            <<"C2C">>, <<"text">>, <<>>, #{<<"devices">> => #{<<"d1">> => #{}}}, <<>>
+        )
+    ),
+    ?assertEqual(
+        {error, <<"message_text_too_large">>},
+        imboy_policy:validate_message_write(<<"C2C">>, <<"text">>, <<>>, #{}, Large)
+    ).
+
+visible_e2ee_text_limit() ->
+    E2EE = #{<<"alg">> => <<"opaque-claim">>},
+    lists:foreach(
+        fun({Type, Action, Payload}) ->
+            ?assertEqual(
+                {error, <<"message_text_too_large">>},
+                imboy_policy:validate_message_write(Type, <<"text">>, Action, E2EE, Payload)
+            )
+        end,
+        [
+            {<<"C2C">>, <<>>, jsone:encode(#{<<"text">> => binary:copy(<<"a">>, 65537)})},
+            {<<"C2G">>, <<>>,
+                jsone:encode(#{<<"payload">> => #{<<"text">> => binary:copy(<<"a">>, 65537)}})},
+            {<<"C2C">>, <<"message_edit">>,
+                jsone:encode(#{<<"content">> => binary:copy(<<"a">>, 65537)})}
+        ]
+    ).
+
+malformed_policy_text() ->
+    lists:foreach(
+        fun(E2EE) ->
+            ?assertEqual(
+                {error, <<"invalid_message_format">>},
+                imboy_policy:validate_message_write(
+                    <<"C2C">>,
+                    <<"text">>,
+                    <<>>,
+                    E2EE,
+                    jsone:encode(#{<<"text">> => 7})
+                )
+            ),
+            ?assertEqual(
+                {error, <<"invalid_message_format">>},
+                imboy_policy:validate_message_write(
+                    <<"C2G">>,
+                    <<"text">>,
+                    <<>>,
+                    E2EE,
+                    jsone:encode(#{<<"payload">> => #{<<"content">> => null}})
+                )
+            )
+        end,
+        [null, #{<<"alg">> => <<"opaque-claim">>}]
+    ).
+
+require_text_encryption() ->
+    meck:expect(config_ds, env, fun
+        (capabilities, _) -> #{storage_mode => secure_e2ee};
+        (_, Default) -> Default
+    end).
+
+required_text_limit() ->
+    require_text_encryption(),
+    Small = jsone:encode(#{<<"text">> => <<"small">>}),
+    Large = jsone:encode(#{<<"text">> => binary:copy(<<"a">>, 65537)}),
+    ?assertEqual(
+        {error, <<"encrypted_message_required">>},
+        imboy_policy:validate_message_write(<<"C2C">>, <<"text">>, <<>>, null, Small)
+    ),
+    ?assertEqual(
+        {error, <<"message_text_too_large">>},
+        imboy_policy:validate_message_write(<<"C2C">>, <<"text">>, <<>>, null, Large)
+    ).
+
+agent_edit_text_limit() ->
+    require_text_encryption(),
+    meck:new(ai_agent_ds, [non_strict]),
+    meck:expect(ai_agent_ds, is_agent, fun(_) -> {true, #{}} end),
+    try
+        Small = jsone:encode(#{<<"content">> => <<"small">>}),
+        Large = jsone:encode(#{<<"content">> => binary:copy(<<"a">>, 65537)}),
+        ?assertEqual(
+            ok,
+            msg_c2c_logic:validate_agent_peer_c2c_write(
+                123, <<"text">>, <<"message_edit">>, null, Small
+            )
+        ),
+        meck:reset(ai_agent_ds),
+        ?assertEqual(
+            {error, <<"message_text_too_large">>},
+            msg_c2c_logic:validate_agent_peer_c2c_write(
+                123, <<"text">>, <<"message_edit">>, null, Large
+            )
+        ),
+        ?assertEqual(0, meck:num_calls(ai_agent_ds, is_agent, '_'))
+    after
+        meck:unload(ai_agent_ds)
+    end.
+
+group_edit_text_limit() ->
+    require_text_encryption(),
+    Payload = jsone:encode(#{<<"content">> => binary:copy(<<"a">>, 65537)}),
+    ?assertEqual(
+        {error, <<"message_text_too_large">>},
+        msg_c2g_logic:validate_plain_group_action(edit, 123, <<"text">>, #{}, Payload)
+    ).
+
 plugin_manifest_fixture(FeatureKeys) ->
     #{
         kind => plugin,

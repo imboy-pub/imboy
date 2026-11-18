@@ -190,7 +190,7 @@ verify_token_with_valid_token_test_() ->
             ]},
             %% did 绑定的 token 需设备仍在（设备被移除 = token 吊销）
             {user_device_ds, [
-                {'is_active', 2, fun(123, <<"dev-9">>) -> true end}
+                {'is_active_native', 2, fun(123, <<"dev-9">>) -> true end}
             ]},
             %% Task 10 / LT-04：epoch=2 未被 bump（现势=2）→ 未吊销
             {auth_session_ds, [
@@ -252,7 +252,7 @@ seat_token_purpose_isolation_test_() ->
     ?WITH_MECKS(
         [
             {config_ds, [{'env', 2, fun(jwt_key, _) -> <<"unit-seat-purpose-key">> end}]},
-            {user_device_ds, [{'is_active', 2, fun(123, <<"seat-device">>) -> true end}]},
+            {user_device_ds, [{'is_active_native', 2, fun(123, <<"seat-device">>) -> true end}]},
             {auth_session_ds, [
                 {'current_epoch', 1, fun(123) -> {ok, 2} end},
                 {'revoked', 2, fun(123, 2) -> false end}
@@ -310,13 +310,13 @@ seat_token_device_and_epoch_revocation_test_() ->
     ?WITH_MECKS(
         [
             {config_ds, [{'env', 2, fun(jwt_key, _) -> <<"unit-seat-purpose-key">> end}]},
-            {user_device_ds, [{'is_active', 2, fun(123, <<"seat-device">>) -> false end}]},
+            {user_device_ds, [{'is_active_native', 2, fun(123, <<"seat-device">>) -> false end}]},
             {auth_session_ds, [{'revoked', 2, fun(123, 2) -> true end}]}
         ],
         fun() ->
             Seat = signed_seat_token(123, <<"seat-device">>, 2, 2000000000),
             ?assertMatch({error, ?ERR_TOKEN_INVALID, _}, auth_ds:verify_seat_token(Seat)),
-            meck:expect(user_device_ds, is_active, fun(123, <<"seat-device">>) -> true end),
+            meck:expect(user_device_ds, is_active_native, fun(123, <<"seat-device">>) -> true end),
             ?assertMatch({error, ?ERR_TOKEN_INVALID, _}, auth_ds:verify_seat_token(Seat)),
             meck:expect(auth_session_ds, revoked, fun(123, 2) -> false end),
             ?assertEqual({ok, 123, <<"seat-device">>}, auth_ds:verify_seat_token(Seat))

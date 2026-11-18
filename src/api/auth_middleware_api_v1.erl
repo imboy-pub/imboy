@@ -22,6 +22,12 @@
     {ok, cowboy_req:req(), map()} | {stop, cowboy_req:req()}.
 execute(Req, Env) ->
     RouteOpts = maps:get(handler_opts, Env, #{}),
+    case maps:get(surface, RouteOpts, undefined) of
+        web_human -> execute_web(Req, Env, RouteOpts);
+        _ -> execute_native(Req, Env, RouteOpts)
+    end.
+
+execute_native(Req, Env, RouteOpts) ->
     case maps:get(jwt_methods, RouteOpts, undefined) of
         Methods when is_list(Methods) ->
             case lists:member(cowboy_req:method(Req), Methods) of
@@ -41,6 +47,125 @@ execute(Req, Env) ->
         _ ->
             execute_authorized(Req, Env)
     end.
+
+execute_web(Req, Env, Opts) ->
+    Action = cowboy_req:binding(action, Req, undefined),
+    case imboy_router:web_methods(Opts, Action) of
+        {error, invalid_metadata} ->
+            web_error(Req, 401, <<"Invalid Web route">>);
+        {error, unknown_action} ->
+            web_error(Req, 404, <<"Unknown action">>);
+        {ok, Methods} ->
+            case lists:member(cowboy_req:method(Req), Methods) of
+                false ->
+                    Req1 = cowboy_req:set_resp_header(
+                        <<"allow">>, iolist_to_binary(lists:join(<<", ">>, Methods)), Req
+                    ),
+                    web_error(Req1, 405, <<"Method Not Allowed">>);
+                true ->
+                    web_action(Req, Env, Opts)
+            end
+    end.
+
+web_action(Req, Env, #{action := history_backfill} = Opts) ->
+    Actions = [V || {<<"action">>, V} <- cowboy_req:parse_qs(Req)],
+    case Actions =:= [] orelse Actions =:= [<<"history_backfill">>] of
+        true -> web_authorize(Req, Env, Opts);
+        false -> web_error(Req, 400, <<"Invalid action">>)
+    end;
+web_action(Req, Env, Opts) ->
+    web_authorize(Req, Env, Opts).
+
+web_authorize(Req, Env, #{web_auth := access}) ->
+    auth_ds:condition(false, false, cowboy_req:header(<<"authorization">>, Req), Req, Env);
+web_authorize(Req, Env, #{web_auth := ws}) ->
+    case cors_middleware:web_origin_allowed(cowboy_req:header(<<"origin">>, Req)) of
+        false -> web_error(Req, 403, <<"CORS origin not allowed">>);
+        true -> web_ws_authorize(Req, Env)
+    end;
+web_authorize(Req, Env, #{web_auth := Mode}) when
+    Mode =:= bootstrap; Mode =:= login; Mode =:= qr; Mode =:= refresh
+->
+    %% 这些真实 handler 自行验证密码、QR capability 或 refresh token。
+    {ok, Req, Env}.
+
+web_ws_authorize(Req, Env) ->
+    QueryKeys = [
+        <<"token">>,
+        <<"auth">>,
+        <<"authorization">>,
+        <<"did">>,
+        <<"cos">>,
+        <<"tk">>,
+        <<"rtk">>,
+        <<"access_token">>,
+        <<"refresh_token">>,
+        <<"imboy-refreshtoken">>
+    ],
+    HeaderKeys = [<<"authorization">>, <<"token">>, <<"auth">>, <<"imboy-refreshtoken">>],
+    HasCredential =
+        lists:any(fun(K) -> cowboy_req:header(K, Req) =/= undefined end, HeaderKeys) orelse
+            lists:any(
+                fun({K, _}) -> lists:member(string:lowercase(K), QueryKeys) end,
+                cowboy_req:parse_qs(Req)
+            ),
+    case {HasCredential, web_ws_token(cowboy_req:header(<<"sec-websocket-protocol">>, Req))} of
+        {false, {ok, Token}} ->
+            Headers = maps:get(headers, Req, #{}),
+            CleanReq = Req#{headers => Headers#{<<"sec-websocket-protocol">> => <<"imboy.v2">>}},
+            auth_ds:condition(false, false, <<"Bearer ", Token/binary>>, CleanReq, Env);
+        _ ->
+            web_error(Req, 400, <<"Invalid WebSocket credentials">>)
+    end.
+
+web_ws_token(Raw) when is_binary(Raw), byte_size(Raw) =< 8224 ->
+    Parts = [string:trim(P) || P <- binary:split(Raw, <<",">>, [global])],
+    case lists:sort(Parts) of
+        [<<"imboy.auth.", Encoded/binary>> = Auth, <<"imboy.v2">>] when byte_size(Auth) =< 8192 ->
+            web_ws_decode(Encoded);
+        _ ->
+            error
+    end;
+web_ws_token(_) ->
+    error.
+
+web_ws_decode(Encoded) ->
+    try
+        match = re:run(Encoded, <<"^[A-Za-z0-9_-]+$">>, [{capture, none}]),
+        Standard = binary:replace(
+            binary:replace(Encoded, <<"-">>, <<"+">>, [global]),
+            <<"_">>,
+            <<"/">>,
+            [global]
+        ),
+        Padding = binary:copy(<<"=">>, (4 - byte_size(Standard) rem 4) rem 4),
+        Token = base64:decode(<<Standard/binary, Padding/binary>>),
+        true = byte_size(Token) > 0,
+        Token = unicode:characters_to_binary(Token, utf8, utf8),
+        Canonical = binary:replace(
+            binary:replace(
+                binary:replace(
+                    base64:encode(Token),
+                    <<"=">>,
+                    <<>>,
+                    [global]
+                ),
+                <<"+">>,
+                <<"-">>,
+                [global]
+            ),
+            <<"/">>,
+            <<"_">>,
+            [global]
+        ),
+        Encoded = Canonical,
+        {ok, Token}
+    catch
+        _:_ -> error
+    end.
+
+web_error(Req, Status, Msg) ->
+    {stop, elib_response:error_with_status(Req, Status, Msg, ?ERR_BAD_REQUEST)}.
 
 execute_authorized(Req, Env) ->
     IsSeatConsoleRoute = maps:get(jwt_purpose, maps:get(handler_opts, Env, #{}), human) =:= seat,

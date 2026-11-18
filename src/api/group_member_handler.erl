@@ -130,14 +130,27 @@ join(Req0, State) ->
         _ ->
             case is_group_member(Gid2, CurrentUid) of
                 true ->
-                    join_with_capacity(Req0, Gid, Gid2, MemberUids, JoinMode2,
-                        #{invite_issuer => CurrentUid});
+                    join_with_capacity(
+                        Req0,
+                        Gid,
+                        Gid2,
+                        MemberUids,
+                        JoinMode2,
+                        #{invite_issuer => CurrentUid}
+                    );
                 false ->
                     case IsSelfJoin andalso group_member_logic:allows_public_join(Gid2) of
                         true ->
-                            join_with_capacity(Req0, Gid, Gid2, MemberUids,
-                                <<"public">>, #{public_self_join => true});
-                        false -> elib_response:error(Req0, <<"你不是群成员"/utf8>>)
+                            join_with_capacity(
+                                Req0,
+                                Gid,
+                                Gid2,
+                                MemberUids,
+                                <<"public">>,
+                                #{public_self_join => true}
+                            );
+                        false ->
+                            elib_response:error(Req0, <<"你不是群成员"/utf8>>)
                     end
             end
     end.
@@ -322,7 +335,7 @@ page(Req0, State) ->
             {Page, Size} = elib_param:page(Req0),
             case group_member_logic:page_with_user_info(Gid2, Page, Size) of
                 {ok, #{total := Total, list := Rows}} ->
-                    Rows2 = group_member_transfer:member_list(Rows),
+                    Rows2 = page_member_rows(group_member_transfer:member_list(Rows), State),
                     Payload = #{
                         total => Total,
                         page => Page,
@@ -340,6 +353,14 @@ page(Req0, State) ->
                     elib_response:error(Req0, <<"获取群成员列表失败"/utf8>>)
             end
     end.
+
+%% Web reads do not expose login aliases: account can contain a phone number.
+%% Keep the existing native member contract and pagination/identity fields.
+page_member_rows(Rows, #{surface := web_human}) ->
+    PrivateKeys = [<<"account">>, <<"mobile">>, <<"email">>, account, mobile, email],
+    [maps:without(PrivateKeys, Row) || Row <- Rows];
+page_member_rows(Rows, _State) ->
+    Rows.
 
 %% @doc 群成员禁言
 %% 禁言指定群成员

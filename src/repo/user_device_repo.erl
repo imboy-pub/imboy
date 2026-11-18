@@ -5,11 +5,11 @@
 %%%
 
 -export([tablename/0]).
--export([save/4]).
+-export([save/4, save_web/4, is_active_web/3]).
 -export([login_count/2]).
 -export([device_name/2]).
 -export([delete/2]).
--export([is_active/2]).
+-export([is_active/2, is_active_native/2]).
 -export([bump_identity_version/2]).
 -export([update_by_did/4]).
 -export([
@@ -146,6 +146,89 @@ is_active(Uid, DID) ->
         {ok, Rows} when is_list(Rows) -> {ok, Rows =/= []};
         {error, Reason} -> {error, Reason}
     end.
+
+%% @doc Web 白名单必须同时匹配类型与活跃状态；异常与未知返回失败。
+-spec is_active_web(integer(), binary(), integer()) -> {ok, boolean()} | {error, term()}.
+is_active_web(Uid, Did, DeviceRowId) when
+    is_integer(Uid),
+    Uid > 0,
+    is_binary(Did),
+    byte_size(Did) > 0,
+    is_integer(DeviceRowId),
+    DeviceRowId > 0
+->
+    try
+        true = length(unicode:characters_to_list(Did)) =< 128,
+        Tb = tablename(),
+        Sql =
+            <<"SELECT 1 AS active FROM ", Tb/binary,
+                " WHERE status = 1 AND user_id = $1 AND device_id = $2",
+                " AND device_type = 'web' AND id = $3 LIMIT 1">>,
+        case elib_pg:query(Sql, [Uid, Did, DeviceRowId]) of
+            {ok, [#{<<"active">> := 1}]} -> {ok, true};
+            {ok, []} -> {ok, false};
+            {error, _} = Error -> Error;
+            _ -> {error, unavailable}
+        end
+    catch
+        _:_ -> {error, unavailable}
+    end;
+is_active_web(_, _, _) ->
+    {ok, false}.
+
+%% @doc 单条 upsert 原子登记；已有 Native/未知类型/非活跃行绝不升级或复活。
+-spec save_web(binary() | integer(), integer(), binary(), map()) ->
+    {ok, pos_integer()} | {error, term()}.
+save_web(Now, Uid, Did, PostVals) when
+    is_integer(Uid),
+    Uid > 0,
+    is_binary(Did),
+    byte_size(Did) > 0,
+    is_map(PostVals)
+->
+    %% varchar(128) 按 Unicode 码点计数，畸形 UTF-8 不进入持久化。
+    case unicode:characters_to_list(Did) of
+        Chars when is_list(Chars), length(Chars) =< 128 ->
+            try
+                Tb = tablename(),
+                Sql =
+                    <<"INSERT INTO ", Tb/binary, " AS existing",
+                        " (id, user_id, device_id, device_type, device_vsn, device_name,",
+                        " login_count, last_login_ip, last_login_at, last_active_at, status, created_at)",
+                        " VALUES ($1, $2, $3, 'web', $4, $5, 1, $6, $7, $7, 1, $7)",
+                        " ON CONFLICT (user_id, device_id) DO UPDATE SET",
+                        " device_vsn = EXCLUDED.device_vsn, device_name = EXCLUDED.device_name,",
+                        " login_count = existing.login_count + 1, last_login_ip = EXCLUDED.last_login_ip,",
+                        " last_login_at = EXCLUDED.last_login_at, last_active_at = EXCLUDED.last_active_at",
+                        " WHERE existing.device_type = 'web' AND existing.status = 1 RETURNING existing.id">>,
+                Ip =
+                    case maps:get(<<"ip">>, PostVals, <<>>) of
+                        undefined -> <<>>;
+                        Value -> Value
+                    end,
+                Params = [
+                    elib_tsid:generate(user_device),
+                    Uid,
+                    Did,
+                    maps:get(<<"dvsn">>, PostVals, <<>>),
+                    maps:get(<<"dname">>, PostVals, <<>>),
+                    Ip,
+                    Now
+                ],
+                case elib_pg:query(Sql, Params) of
+                    {ok, [#{<<"id">> := Id}]} when is_integer(Id), Id > 0 -> {ok, Id};
+                    {ok, []} -> {error, device_conflict};
+                    {error, _} = Error -> Error;
+                    _ -> {error, unavailable}
+                end
+            catch
+                _:_ -> {error, unavailable}
+            end;
+        _ ->
+            {error, invalid_device}
+    end;
+save_web(_, _, _, _) ->
+    {error, invalid_device}.
 
 -spec delete(integer(), binary()) -> ok.
 delete(Uid, DID) ->
@@ -301,4 +384,19 @@ save(Now, Uid, PostVals, DID, _LoginCount) when bit_size(DID) > 0 ->
     case elib_pg:query(Sql, Params) of
         {ok, _Count} -> {ok, GenId};
         {error, _} = Err -> Err
+    end.
+
+%% Pre-upgrade Web tokens have no marker; trust the stored device type.
+-spec is_active_native(integer(), binary()) -> {ok, boolean()} | {error, term()}.
+is_active_native(Uid, Did) ->
+    Tb = tablename(),
+    Sql =
+        <<"SELECT 1 AS active FROM ", Tb/binary,
+            " WHERE status = 1 AND user_id = $1 AND device_id = $2",
+            " AND device_type IS DISTINCT FROM 'web' LIMIT 1">>,
+    case elib_pg:query(Sql, [Uid, Did]) of
+        {ok, [#{<<"active">> := 1}]} -> {ok, true};
+        {ok, []} -> {ok, false};
+        {error, _} = Error -> Error;
+        _ -> {error, unavailable}
     end.

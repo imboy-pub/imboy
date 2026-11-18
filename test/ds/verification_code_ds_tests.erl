@@ -288,6 +288,102 @@ verify_code_just_before_expiry_succeeds_test_() ->
     ).
 
 %% ===================================================================
+%% DEF-SOCSET-Vcode-TZ 反例：+08 主机上 elib_dt:now() 输出本地偏移 RFC3339
+%% （如 +08:00），DB validity_at 经 epgsql_codec_rfc3339_bin decode 显式输出
+%% UTC "Z"。两者不可字典序比较（'...+08:00' > '...Z' 恒成立 → 验证码恒无效），
+%% 必须按 offset 折算到同一时基后再比较。
+%% ===================================================================
+
+%% 未过期：Now = 08:30+08:00（= 00:30 UTC）< validity_at 01:00Z。
+%% 旧实现字典序比较 "08:30..." < "01:00..." 恒 false → 误判过期。
+verify_code_plus08_now_before_utc_z_validity_succeeds_test_() ->
+    ?WITH_MECKS(
+        [
+            {elib_dt, [
+                {'now', 0, fun() -> <<"2023-01-01T08:30:00.000000+08:00">> end}
+            ]},
+            {verification_code_repo, [
+                {'find_by_id', 1, fun(_Id) ->
+                    #{
+                        <<"code">> => <<"123456">>,
+                        <<"validity_at">> => <<"2023-01-01T01:00:00Z">>
+                    }
+                end}
+            ]}
+        ],
+        fun() ->
+            Result = verification_code_ds:verify_code(<<"user@example.com">>, <<"123456">>),
+            ?assertEqual({ok, <<"验证码有效"/utf8>>}, Result)
+        end
+    ).
+
+%% 已过期：Now = 09:30+08:00（= 01:30 UTC）> validity_at 01:00Z → 无效。
+verify_code_plus08_now_after_utc_z_validity_returns_error_test_() ->
+    ?WITH_MECKS(
+        [
+            {elib_dt, [
+                {'now', 0, fun() -> <<"2023-01-01T09:30:00.000000+08:00">> end}
+            ]},
+            {verification_code_repo, [
+                {'find_by_id', 1, fun(_Id) ->
+                    #{
+                        <<"code">> => <<"654321">>,
+                        <<"validity_at">> => <<"2023-01-01T01:00:00Z">>
+                    }
+                end}
+            ]}
+        ],
+        fun() ->
+            Result = verification_code_ds:verify_code(<<"user@example.com">>, <<"654321">>),
+            ?assertEqual({error, <<"验证码无效"/utf8>>}, Result)
+        end
+    ).
+
+%% 边界秒：Now = 08:59:59+08:00（= 00:59:59 UTC，过期前 1 秒）→ 有效。
+verify_code_plus08_one_second_before_utc_z_expiry_succeeds_test_() ->
+    ?WITH_MECKS(
+        [
+            {elib_dt, [
+                {'now', 0, fun() -> <<"2023-01-01T08:59:59+08:00">> end}
+            ]},
+            {verification_code_repo, [
+                {'find_by_id', 1, fun(_Id) ->
+                    #{
+                        <<"code">> => <<"123456">>,
+                        <<"validity_at">> => <<"2023-01-01T01:00:00Z">>
+                    }
+                end}
+            ]}
+        ],
+        fun() ->
+            Result = verification_code_ds:verify_code(<<"user@example.com">>, <<"123456">>),
+            ?assertEqual({ok, <<"验证码有效"/utf8>>}, Result)
+        end
+    ).
+
+%% 边界相等：Now = 09:00:00+08:00 恰等于 validity_at 01:00:00Z（strict <）→ 无效。
+verify_code_plus08_now_equals_utc_z_expiry_returns_error_test_() ->
+    ?WITH_MECKS(
+        [
+            {elib_dt, [
+                {'now', 0, fun() -> <<"2023-01-01T09:00:00+08:00">> end}
+            ]},
+            {verification_code_repo, [
+                {'find_by_id', 1, fun(_Id) ->
+                    #{
+                        <<"code">> => <<"654321">>,
+                        <<"validity_at">> => <<"2023-01-01T01:00:00Z">>
+                    }
+                end}
+            ]}
+        ],
+        fun() ->
+            Result = verification_code_ds:verify_code(<<"user@example.com">>, <<"654321">>),
+            ?assertEqual({error, <<"验证码无效"/utf8>>}, Result)
+        end
+    ).
+
+%% ===================================================================
 %% 边界条件测试
 %% ===================================================================
 
