@@ -133,6 +133,12 @@ $(IMBOY_QUALITY_TEST_EBIN)/%.beam: tools/imboy_quality/%.erl Makefile
 	$(verbose) mkdir -p $(@D)
 	$(verbose) erlc $(TEST_ERLC_OPTS) -o $(@D) $<
 
+# eunit config 注入门（2026-11-18）：ebin 版 eunit_runner（src/lib，只等 -config）
+# 会以 -pa 后加在前顺序遮蔽 test/common 版（load_test_config 补缺）；与 CT 同口径
+# -config 注入（无扩展名 abspath），runtime-config 从 sys.config 物化新副本。
+override EUNIT_ERL_OPTS += -config $(abspath config/sys.runtime)
+test-build:: runtime-config
+
 # GNU Make 4 写完整清单，xargs 限制参数长度；任一编译失败不写构建戳。
 TEST_COMPILE_JOBS ?= 4
 define compile_test_erl
