@@ -263,3 +263,11 @@ ct_run.nonode@nohost.*
 config/sys.quality.*.config
 *.pyc
 .plans/2026-11-18-imboy-master-plan
+
+# 预防性：patch/编辑器残留不入库（2026-11-18 瘦身 V1 补）
+*.orig
+*.rej
+*.swp
+*~
+# erl_crash.dump 轮转变体（erl_crash.dump.1 等）
+erl_crash.dump.*
