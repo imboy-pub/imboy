@@ -235,6 +235,8 @@ handle_status(Req, State) ->
         <<>> ->
             elib_response:error(Req, <<"参数错误"/utf8>>, ?ERR_BAD_REQUEST);
         _ ->
+            %% DEF-F6-QR-STATUS-403-FREEZE（合并恢复，task 分支原版语义）：
+            %% web_human 会话门先于权威查询——web 端轮询冻结缺陷的前置防线。
             with_web_session(Req, State, SessionToken, fun() ->
                 pg_handle_status(Req, SessionToken)
             end)
@@ -491,6 +493,7 @@ handle_cancel(Req, State) ->
         <<>> ->
             elib_response:error(Req, <<"参数错误"/utf8>>, ?ERR_BAD_REQUEST);
         _ ->
+            %% DEF-F6 同族（task 分支原版语义）：web_human 会话门先于取消。
             with_web_session(Req, State, SessionToken, fun() ->
                 pg_handle_cancel(Req, SessionToken)
             end)

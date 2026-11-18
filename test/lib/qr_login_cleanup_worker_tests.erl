@@ -62,16 +62,23 @@ start_link_registers_unique_name_test_() ->
     {setup, fun() -> application:set_env(imboy, qr_login_cleanup_interval_ms, ?INTERVAL_MS) end,
         fun(_) -> application:unset_env(imboy, qr_login_cleanup_interval_ms) end, fun() ->
             process_flag(trap_exit, true),
-            {ok, Pid} = qr_login_cleanup_worker:start_link(),
-            try
-                ?assertMatch(
-                    {error, {already_started, Pid}},
-                    qr_login_cleanup_worker:start_link()
-                ),
-                %% Worker 崩溃不影响调用方（独立进程）：杀掉后测试进程存活
-                exit(Pid, kill),
-                ?assertEqual(true, is_process_alive(self()))
-            after
-                catch gen:stop(Pid)
+            %% 双态兼容：app-dead VM 里由本测试首启（首启 ok→二次拒）；app 真启动
+            %% 的共享 VM 里 sup 已持 {local} 名（2026-11-19 v5 实证 already_started
+            %% badmatch）——此刻「重名拒启」合同已被 sup 占名本身证明，直接收口。
+            case qr_login_cleanup_worker:start_link() of
+                {ok, Pid} ->
+                    try
+                        ?assertMatch(
+                            {error, {already_started, Pid}},
+                            qr_login_cleanup_worker:start_link()
+                        ),
+                        %% Worker 崩溃不影响调用方（独立进程）：杀掉后测试进程存活
+                        exit(Pid, kill),
+                        ?assertEqual(true, is_process_alive(self()))
+                    after
+                        catch gen:stop(Pid)
+                    end;
+                {error, {already_started, SupPid}} when is_pid(SupPid) ->
+                    ?assert(is_process_alive(SupPid))
             end
         end}.

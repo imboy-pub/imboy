@@ -86,7 +86,9 @@ seat_and_human_routes_enforce_opposite_purposes_test_() ->
                     (api_auth_switch, _) -> <<"on">>
                 end}
             ]},
-            {user_device_ds, [{'is_active', 2, fun(123, <<"console-device">>) -> true end}]},
+            %% auth_ds:verify_bound_token 现行契约调 ds 层 is_active_native/2
+            %% （曾错钉 is_active/2 未命中 → 真查 PG 无行 → 401 假拒）
+            {user_device_ds, [{'is_active_native', 2, fun(123, <<"console-device">>) -> true end}]},
             {auth_session_ds, [
                 {'current_epoch', 1, fun(123) -> {ok, 1} end},
                 {'revoked', 2, fun(123, 1) -> false end}
@@ -147,7 +149,9 @@ real_http_purpose_gate_before_handler_test_() ->
                     (_, Default) -> Default
                 end}
             ]},
-            {user_device_ds, [{'is_active', 2, fun(123, <<"http-console-device">>) -> true end}]},
+            {user_device_ds, [
+                {'is_active_native', 2, fun(123, <<"http-console-device">>) -> true end}
+            ]},
             {auth_session_ds, [
                 {'current_epoch', 1, fun(123) -> {ok, 1} end},
                 {'revoked', 2, fun(123, 1) -> false end}

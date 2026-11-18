@@ -339,7 +339,11 @@ adm_org_journeys_test_() ->
 
 setup_db() ->
     %% 纯套件初始化静态 TSID 实体清单，供审计和邀请写入。
-    _ = (catch elib_tsid:init(#{dc_id => 1, node_id => 1, dc_bits => 3})),
+    %% 走 eunit_runner 自愈（readiness 检查 + 幂等 init）：裸 catch 在
+    %% global_name_server 未就绪窗口把 init 错误静默吞掉，runtime 不发布，
+    %% 写链（审计/邀请 TSID 生成）后续全部 elib_tsid_not_initialized → 500
+    %% 连坐（2026-11-18 全量 11 failed 实证）。
+    ok = eunit_runner:ensure_tsid_runtime(),
 
     State =
         inttest_marker_db:provision(#{

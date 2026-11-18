@@ -15,7 +15,8 @@
     ensure_boot_coordinator/0,
     ensure_default_pool/0,
     ensure_cache/0,
-    ensure_limiter_ip_authority/1
+    ensure_limiter_ip_authority/1,
+    ensure_tsid_runtime/0
 ]).
 
 -ifdef(TEST).

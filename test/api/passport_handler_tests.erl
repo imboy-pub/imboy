@@ -262,8 +262,11 @@ refresh_token_test_() ->
                     1
                 end}
             ]},
-            %% 刷新须校验 token 绑定的设备仍在（设备被移除 = token 吊销）
-            {user_device_logic, [
+            %% 刷新须校验 token 绑定的设备仍在（设备被移除 = token 吊销）。
+            %% handler 现行契约调 ds 层 is_active_native（E2EE-013），mock 必须钉同层——
+            %% 曾错钉 user_device_logic:is_active 未命中，真查 PG 无行 → 「设备已被移除」
+            %% 假 401（2026-11-19 config 门修复后套件首次真跑暴露）。
+            {user_device_ds, [
                 {'is_active_native', 2, fun(12345, <<"dev-1">>) -> true end}
             ]},
             %% Task 10 / LT-04：rtk epoch 门（未 bump = 未吊销）

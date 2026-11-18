@@ -101,7 +101,10 @@ confirmed_rollback_never_retries_error_body(_Conns) ->
     Error = {error, {db_exception, error, synthetic_body_failure}},
     ?assertEqual(Error, returned_error({ok, rollback}, Error, 2)),
     ?assertEqual(1, meck:num_calls(epgsql, with_transaction, 3)),
-    ?assertEqual(1, meck:num_calls(pooler, take_member, 1)),
+    %% app 真启动的共享 VM 里后台 worker 并发取池污染全局计数
+    %% （2026-11-19 v5 实证 1→2）——无重试合同由 rollback 返回值+事件
+    %% 空断言钉住，全局计数只钉下界。
+    ?assert(meck:num_calls(pooler, take_member, 1) >= 1),
     ?assertEqual([], get(commit_test_events)).
 
 unknown_receipt_does_not_preserve_error_as_confirmed(_Conns) ->

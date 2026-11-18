@@ -519,7 +519,7 @@ confirm_purpose_test(Purpose) ->
                             <<"scanned_by">> => Uid,
                             <<"device_id">> => <<"web-device-1">>,
                             <<"device_name">> => <<"Safari">>,
-                            <<"platform">> => <<"ios">>,
+                            <<"platform">> => <<"web">>,
                             <<"purpose">> => Purpose
                         }
                     end},
@@ -530,22 +530,34 @@ confirm_purpose_test(Purpose) ->
                         {ok, #{<<"status">> => <<"confirmed">>}}
                     end}
                 ]},
+                %% 设备行链路对齐现行契约：log_device_login(web) →
+                %% user_ds:find_by_id（status=1/account_type=0 放行）→
+                %% user_device_ds:register_web → user_device_repo:save_web/4。
+                %% 曾错钉 save/4 且缺 find_by_id mock——真查 PG 无行 →
+                %% invalid_account 短路 → save 从未发生 → token mock 内
+                %% `true = meck:called(save,...)` badmatch false
+                %% （2026-11-19 config 门修复后套件首次真跑暴露）。
+                {user_ds, [
+                    {'find_by_id', 2, fun(U, _Fields) when U =:= Uid ->
+                        #{<<"status">> => 1, <<"account_type">> => 0}
+                    end}
+                ]},
                 {token_ds, [
                     %% E2EE-013：token 绑定 create 时上报的 device_id，
                     %% 且 user_device 行必须已落库（否则设备级校验会 401）
                     {EncryptFun, 2, fun(U, <<"web-device-1">>) when U =:= Uid ->
                         true = meck:called(
-                            user_device_repo, save, ['_', Uid, <<"web-device-1">>, '_']
+                            user_device_repo, save_web, ['_', Uid, <<"web-device-1">>, '_']
                         ),
                         <<"login-token-confirm">>
                     end}
                 ]},
                 {user_device_repo, [
-                    {'save', 4, fun(_Now, U, _Did, PostVals) when U =:= Uid ->
+                    {'save_web', 4, fun(_Now, U, _Did, PostVals) when U =:= Uid ->
                         ?assertEqual(<<"Safari">>, maps:get(<<"dname">>, PostVals)),
-                        ?assertEqual(<<"ios">>, maps:get(<<"cos">>, PostVals)),
+                        ?assertEqual(<<"web">>, maps:get(<<"cos">>, PostVals)),
                         ?assertEqual(<<"qr_scan">>, maps:get(<<"login_type">>, PostVals)),
-                        {ok, 456}
+                        {ok, 9001}
                     end}
                 ]},
                 {qr_login_event_ds, [{'notify', 2, fun(_, _) -> {ok, 1} end}]}
@@ -868,7 +880,7 @@ confirm_ok_mocks(SessionToken, QRToken, Uid, Token) ->
                     <<"scanned_by">> => Uid,
                     <<"device_id">> => <<"web-device-1">>,
                     <<"device_name">> => <<"Safari">>,
-                    <<"platform">> => <<"ios">>,
+                    <<"platform">> => <<"web">>,
                     <<"purpose">> => <<"human">>
                 }
             end},
@@ -879,7 +891,7 @@ confirm_ok_mocks(SessionToken, QRToken, Uid, Token) ->
             {'encrypt_seat_token', 2, fun(_, _) -> Token end}
         ]},
         {user_device_repo, [
-            {'save', 4, fun(_, _, _, _) -> {ok, 456} end}
+            {'save', 4, fun(_, _, _, _) -> ok end}
         ]},
         {qr_login_event_ds, [{'notify', 2, fun(_, _) -> {ok, 1} end}]}
     ].
