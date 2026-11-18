@@ -1,6 +1,6 @@
 # imboy codemap 周更新提醒
 #
-# 关联：.claude/plans/quality-loop.md v1.3 T4.4（v1.1 §303: 仅 imboy 仓维护 codemap）
+# 历史：源出 .claude/plans/quality-loop.md v1.3 T4.4（计划已收编归档于 commit 209004c0e；现行工程体系见 docs/reference/engineering/ai-engineering/）
 # 创建：2026-05-09 / iteration 79 / T4.4
 # 目的：每周一 09:00 UTC（北京时间 17:00）检查 codemap 是否过期；
 #       超期则创建 issue 提醒人工跑 claude doc-updater agent 更新
@@ -106,7 +106,7 @@ jobs:
 
           ## 关联
 
-          - 主计划：\`.claude/plans/quality-loop.md\` v1.3 T4.4
+          - 历史主计划：\`.claude/plans/quality-loop.md\` v1.3 T4.4（已收编归档于 commit 209004c0e）
           - codemap 真源：\`imboy/docs/CODEMAPS/\`
           - 触发：本 workflow（cron 周一 09:00 UTC）
           EOF
