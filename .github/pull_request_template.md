@@ -1,6 +1,6 @@
 # Pull Request — imboy (Erlang Backend)
 
-> 关联：`.claude/plans/quality-loop.md` v1.3 T4.5 / v1.1 §304 三仓各一份
+> 历史：源出 `.claude/plans/quality-loop.md` v1.3 T4.5（计划已收编归档于 commit 209004c0e；现行工程体系见 `docs/reference/engineering/ai-engineering/`）
 
 ## 摘要 / Summary
 
