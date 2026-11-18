@@ -33,6 +33,8 @@
 - [ ] `make xref-strict` 通过
 - [ ] `make eunit` 全绿
 - [ ] `make format-check` 通过
+- [ ] 验证证据合规：SKIP/空测试集/测试未执行/环境不完整不判 PASS；独立验证判定落 `evidence/verdict.json`（最小 schema 见 `docs/reference/engineering/ai-engineering/VERIFICATION_POLICY.md`）
+- [ ] 版本 bump PR：核对 `docs/reference/engineering/ai-engineering/ENGINEERING_MAP.md` 是否需随版本刷新（工程地图修订责任）
 
 ### 契约变更（如适用）
 
