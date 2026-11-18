@@ -125,7 +125,9 @@ IMBOY_QUALITY_WORKERS ?= 4
 # One foreground controller owns reservation, build, resources and final cleanup.
 # No implicit fallback is allowed when a selector or manifest is invalid.
 .PHONY: backend-acceptance
+ifneq ($(origin IMBOY_BACKEND_ACCEPTANCE),undefined)
 export IMBOY_BACKEND_ACCEPTANCE
+endif
 backend-acceptance:
 	@test "$(IMBOYENV)" = local || { echo "backend acceptance requires IMBOYENV=local" >&2; exit 2; }
 	@test -z "$(t)$(EUNIT_MODS)$(IMBOY_EUNIT_INNER)" || { echo "backend acceptance requires the complete root universe" >&2; exit 2; }
