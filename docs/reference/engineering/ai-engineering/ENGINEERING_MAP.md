@@ -59,14 +59,14 @@
 
 - ✅ 工程总览与债务索引 → `imboy/docs/reference/engineering/engineering-overview.md`（10 个专项 md）
 - ✅ 收口计划存档 → `imboy/docs/plans/`（37 条目 = 30 md + 7 sha256；**仅 2 份入 git**，其余为主工作树未跟踪文件——对买家/CI 不可见，最新三端 CI 收口 v2 2026-10-14）
-- ❓ 在途：AUTOTEST v2.1（BLOCKED）、geo_regions PR#4/#5（待合）、PR#76 悬空 worktree（待属主）、OTP 收尾（待 push 授权）→ 明细见 [ASSESSMENT.md](./ASSESSMENT.md) §6
+- ❓ 在途：AUTOTEST v2.1（BLOCKED）、geo_regions PR#4/#5（待合）、PR#76 悬空 worktree（待属主）、OTP 收尾（车道载体待属主核实）→ 明细见 [ASSESSMENT.md](./ASSESSMENT.md) §6
 
 ## 仓库外结构锚定（瞬态目录，2026-11-18 实测）
 
 | 目录 | 职责 | 生命周期 |
 |---|---|---|
-| `_task_packages/` | 15 任务包（跨会话接力真源） | 任务收口后归档（如 closeout-archive-*） |
-| `_task_worktrees/` | 任务 worktree（现存：imboy-ai-eng-v1 本任务、imboyapp-pr76-merge 悬空、**slimdown-v1=三仓 linked worktree 属在途另一车道勿动**、IMBOY_APP_UIUX_V10 与 IMBOY_WEB_MVP 2 个空壳待属主确认删除） | 任务结束即删（属主拍板前不清理） |
+| `_task_packages/` | 16 项 = 15 任务包目录（含本体系示范包 AI_ENGINEERING_V1）+ 散置 Eunit_plan.md（跨会话接力真源） | 任务收口后归档（如 closeout-archive-*） |
+| `_task_worktrees/` | 任务 worktree（现存：imboy-ai-eng-v1 本任务、imboyapp-pr76-merge 悬空、**slimdown-v1=三仓 linked worktree 属在途另一车道勿动**、IMBOY_WEB_MVP 非空（6431 文件，待属主甄别，勿当空壳清理）、IMBOY_APP_UIUX_V10 空壳待属主确认删除） | 任务结束即删（属主拍板前不清理） |
 | `.task-state/` | 已收口任务控制目录/证据（garage、otp-opt） | 长期只读 |
 | `.Codex/` | AI 工程资料：coordination（锁）、handoffs（交接 tar+sha256）、plans、runs、evidence | 长期 |
 | 根级 `AGENTS.md`/`CLAUDE.md` | 工作区上下文（umbrella，非 git） | 属主维护，agent 勿擅改 |

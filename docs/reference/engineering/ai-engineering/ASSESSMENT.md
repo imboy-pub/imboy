@@ -10,7 +10,7 @@
 
 | 仓库 | HEAD | 工作区 | worktree | 主线在途 |
 |---|---|---|---|---|
-| imboy (Erlang) | main `259f5f480` | 1 处 staged `docker-compose.yml`（属主工作，勿动） | 主 + `/private/tmp/imboy-uiux-final-…-20261115`（detached `57fd8b10f`） | web-mvp 后端车道已并入 main；QR 登录 LEE-5、UTC 修复、OTP 运行时优化已落 |
+| imboy (Erlang) | main `2b215c6f3`（2026-11-18 晚前进 1 笔 Makefile 修复） | 5 个未暂存修改（docker 系 4 文件 + postgres-read-replica.md）+ 未跟踪 `.plans/`（属主工作，勿动） | 主 + `/private/tmp/imboy-uiux-final-…-20261115`（detached）+ `_task_worktrees/slimdown-v1/imboy`（在途车道） | web-mvp 后端车道已并入 main；QR 登录 LEE-5、UTC 修复、OTP 运行时优化已落 |
 | imboyapp (Flutter) | main `5ae7b5f2b` | 干净 | 主 + `_task_worktrees/imboyapp-pr76-merge`（detached `98dcde66c`，13 个生成文件 M，7 commits 领先 origin/main，**PR#76 closed 悬空待属主拍板**） | v1.0.0-alpha.19；WebMVP V3.0 已收口并入 main |
 | imboyadmin (React) | main `5a8925a` | 干净 | 主 + `/private/tmp/imboy-uiux-final-admin-20261114`（detached `eb4e24c`） | dependabot 6 PR 全合并终态 |
 
@@ -31,7 +31,7 @@
 
 ### 2.2 任务执行与状态管理（真实运行，但结构不统一）
 
-- **任务包体系** `_task_packages/`（15 包）：从早期 `TASKS.md + state.json + evidence/`（Timezone/Garage 系）演化到 `runtime/STATE.json` 模式（AUTOTEST v2.1 最成熟：schema v3、rev150、receipts 100 条、history 133 条、`.state-writer.lock` 单写权、SHA256SUMS、快照链）。
+- **任务包体系** `_task_packages/`（16 项 = 15 目录 + 散置 Eunit_plan.md）：从早期 `TASKS.md + state.json + evidence/`（Timezone/Garage 系）演化到 `runtime/STATE.json` 模式（AUTOTEST v2.1 最成熟：schema v3、rev150、receipts 100 条、history 133 条、`.state-writer.lock` 单写权、SHA256SUMS、快照链）。
 - **控制目录** `.task-state/`：imboy-garage-direct-v1（state.json rev39、resume.md 45KB、evidence/ 63 项）、otp-opt-20261112-evidence（review-ledger.md 29 轮审查台账、final-gate-28.log、patches A1–F4）。
 - **协调机制** `.Codex/coordination/`：heavy-backend.lock、migration-reservations（迁移号锁）、three-track 会话目录（多 agent 分轨 + 请求-追踪文件）。
 - **工程交付边界**：三仓 AGENTS/CLAUDE.md 统一段落——仅授权时 commit、一次提交=完整可回滚逻辑单元、禁盲目 `git add ./-A`、多 agent 由主集成者控制共享分支提交、不绕 hooks/CI；imboy 另有"子 agent 不跑全量 EUnit，最终集成候选由主集成者统一跑"的验证节奏。
@@ -46,7 +46,7 @@
 
 | 项 | 现状 | 证据 |
 |---|---|---|
-| 统一任务契约 | **缺失**。15 个任务包 4 种结构模式并存；`execution-log.md` 在所有历史包中不存在 | `_task_packages/` 结构比对（2026-11-18） |
+| 统一任务契约 | **缺失**。16 项（15 目录 + 1 散文件）4 种结构模式并存；`execution-log.md` 在所有历史包中不存在 | `_task_packages/` 结构比对（2026-11-18） |
 | 独立验证政策成文 | **缺失**。语义散落于 AUTOTEST STATE.json receipts、otp-opt review-ledger、TEST_PLAN.md §5 | 全域无 verification-policy 文件 |
 | 工程知识地图 | **部分**。`docs/reference/engineering/` 10 个专项索引存在，但自述"实施计划与执行证据在仓库外维护"——仓库外结构（_task_packages/.task-state/.Codex）无锚定文档 | engineering-overview.md 头注 |
 | Agent 角色与并发模型成文 | **缺失**。仅有"主集成者"表述与 .Codex/coordination 事实实践 | 三仓 AGENTS.md |
@@ -82,7 +82,7 @@
 | IMBOY_AUTOTEST_V2.1 | rev150 BLOCKED_PREDECESSOR_REQUIRED_EVIDENCE（CALL-08 复测） | 前任证据义务 | 不干预，登记 |
 | geo_regions Phase 2 | PR#4/#5 绿待合 | 属主合并决策 | 不干预 |
 | imboyapp PR#76 | closed 悬空，worktree 存活 | 属主拍板（重建或放弃） | 不清理，登记 |
-| OTP 优化收尾 | 已 rebase 到 github/main `ebc705b5b`，未推三远程 | 属主 push 授权 | 不干预 |
+| OTP 优化收尾 | 车道载体待属主核实（2026-11-18 晚本轮 ref 下本地无 OTP 分支；证据在 `.task-state/otp-opt-20261112-evidence/`） | 属主核实 + push 授权 | 不干预 |
 | web-mvp 运行面 | beam 96275@52392 存活（PG fixture 严禁重启） | — | 环境冲突登记 |
 
 ## 7. 重复建设风险清单

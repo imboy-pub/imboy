@@ -10,8 +10,8 @@
 
 1. 读 `_task_packages/AI_ENGINEERING_V1/runtime/state.json` 与 `execution-log.md` 末 20 行。
 2. 读 `imboy/docs/reference/engineering/ai-engineering/PLAN.md` 的实施状态表（✅/◻ 即进度）。
-3. 核三仓 git 状态：`imboy`（注意主 worktree 有属主 staged 的 docker-compose.yml，勿动）、`imboyapp`、`imboyadmin`。
-4. 核 worktree：`_task_worktrees/imboy-ai-eng-v1`（分支 task/ai-engineering-v1）；`imboyapp-pr76-merge`（悬空，勿动）。
+3. 核三仓 git 状态：`imboy`（注意主 worktree 有属主未提交修改，勿动）、`imboyapp`、`imboyadmin`。
+4. 核 worktree：`_task_worktrees/imboy-ai-eng-v1`（本车道）；`imboyapp-pr76-merge`（悬空，勿动）；`slimdown-v1`（三仓 linked，在途车道，勿动）。
 5. 判读：已完成→SKIP_ALREADY_PASS；代码与记录不符→DRIFT 先分析；依赖未满足→BLOCKED 存现场换任务。
 
 ## 铁律（违反任何一条即停止）

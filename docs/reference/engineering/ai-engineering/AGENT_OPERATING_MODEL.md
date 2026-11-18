@@ -53,7 +53,7 @@
 当前挂起项（2026-11-18）：
 1. imboyapp PR#76 closed 悬空：worktree `_task_worktrees/imboyapp-pr76-merge`（7 commits 领先 origin/main）——重建 PR 或放弃，二选一。
 2. geo_regions PR#4/#5 绿待合。
-3. OTP 优化本地 main（领先上游 10 签收 commit）push 三远程授权。
+3. OTP 优化收尾：车道载体待属主核实（2026-11-18 晚本轮 ref 下本地无 OTP 分支，"领先 10 签收 commit"不可核实；证据在 `.task-state/otp-opt-20261112-evidence/`），push 需授权。
 4. AUTOTEST v2.1 CALL-08 复测排期（依赖前任证据义务）。
 
 新决策项由 Verification/Coordinator 追加到此表（附任务 ID 与证据路径）。
