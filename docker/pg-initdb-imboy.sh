@@ -9,7 +9,7 @@ PGPASSWORD="${POSTGRES_PASSWORD:-}"
 PGDATA="${PGDATA:-/var/lib/postgresql/18/docker}"
 POSTGRES_DB="${POSTGRES_DB:-$PGUSER}"
 # 如果环境变量未设置，使用官方标准版本号
-POSTGIS_VERSION="${POSTGIS_VERSION:-3.6.1+dfsg-1.pgdg13+1}"
+POSTGIS_VERSION="${POSTGIS_VERSION:-3.7.0+dfsg-1.pgdg13+2}"
 
 export PGUSER PGPASSWORD PGDATA
 
@@ -37,9 +37,9 @@ psql -v ON_ERROR_STOP=1 --dbname="$DB" -c "
         CREATE EXTENSION IF NOT EXISTS postgis_topology VERSION '$POSTGIS_VERSION';
         ALTER EXTENSION postgis_topology UPDATE TO '$POSTGIS_VERSION';
 
-        -- Install Tiger dependencies in case not already installed
+        -- 字符串相似度/距离函数（soundex、levenshtein 等，通用扩展；
+        -- 原为 Tiger Geocoder 前置依赖，Tiger 移除后保留）
         CREATE EXTENSION IF NOT EXISTS fuzzystrmatch;
-        -- Upgrade US Tiger Geocoder
-        CREATE EXTENSION IF NOT EXISTS postgis_tiger_geocoder VERSION '$POSTGIS_VERSION';
-        ALTER EXTENSION postgis_tiger_geocoder UPDATE TO '$POSTGIS_VERSION';
+        -- PostGIS 3.7 移除了 postgis_tiger_geocoder（upstream NEWS #6052），
+        -- pgdg 包不再提供该扩展，故不再安装。
 "

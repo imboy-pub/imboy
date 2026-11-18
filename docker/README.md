@@ -15,6 +15,25 @@
 - `pg_jieba_userdict.txt.big`
   `pg_jieba` 使用的自定义词典。
 
+## 当前版本基线（imboy/pg18:3.7.0-1）
+
+对齐上游 [postgis/docker-postgis 18-3.7](https://github.com/postgis/docker-postgis/tree/master/18-3.7)：
+
+| 组件 | 版本 |
+|---|---|
+| PostgreSQL | 18（trixie） |
+| PostGIS | 3.7.0（pgdg `3.7.0+dfsg-1.pgdg13+2`） |
+| TimescaleDB | 2.32.0 |
+| pgRouting | 4.0.2 |
+| pg_roaringbitmap | 1.3.0 |
+| pgvector | 0.8.7（pgdg 包） |
+| pg_jieba | master（上游 2022 年后无发布，v2.0.1 tag 早于 master） |
+
+PostGIS 3.7.0 破坏性变更：`postgis_tiger_geocoder`（NEWS #6052）与
+`address_standardizer`（NEWS #6053）被移出核心发行版，pgdg 不再打包，
+镜像与初始化脚本已同步移除（业务代码无引用）。旧数据卷升级到本镜像后，
+已存在的同名扩展对象不受影响，但无法在新建库中安装这两个扩展。
+
 ## 常用构建命令
 
 ### 1. 构建 Erlang 开发镜像
@@ -35,7 +54,7 @@ docker build -f docker/pg18_Dockerfile -t imboy/pg18:dev .
 docker build \
   -f docker/pg18_Dockerfile \
   --build-arg PG_MAJOR=18 \
-  --build-arg POSTGIS_VERSION='3.6.1+dfsg-1.pgdg13+1' \
+  --build-arg POSTGIS_VERSION='3.7.0+dfsg-1.pgdg13+2' \
   -t imboy/pg18:dev .
 ```
 

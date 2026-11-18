@@ -547,7 +547,7 @@ existing primary healthcheck style):
 
 ```yaml
 imboy_pg18_replica:
-  image: ${PG_IMAGE:-imboy/pg18:3.6.1-2}
+  image: ${PG_IMAGE:-imboy/pg18:3.7.0-1}
   container_name: imboy_pg18_replica
   hostname: pg-replica.docker.imboy.pub
   restart: unless-stopped

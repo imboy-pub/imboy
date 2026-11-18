@@ -12,7 +12,9 @@ for pkg in "$package" "${package}-scripts"; do
 done
 
 extension_dir="/usr/share/postgresql/${pg_major}/extension"
-for ext in postgis postgis_topology postgis_tiger_geocoder; do
+# PostGIS 3.7 removed postgis_tiger_geocoder from the core distribution
+# (upstream NEWS #6052); pgdg packages no longer ship its control files.
+for ext in postgis postgis_topology; do
   # -s follows Debian's update-alternatives symlinks and rejects dangling links.
   test -s "$extension_dir/$ext.control"
   test -s "$extension_dir/$ext--$sql_version.sql"
@@ -34,12 +36,11 @@ gosu postgres "$pg_bin/pg_ctl" -D "$tmp/data" -l "$tmp/server.log" \
 psql_check() {
   gosu postgres "$pg_bin/psql" -X -h "$tmp" -d postgres -v ON_ERROR_STOP=1 -At "$@"
 }
-for ext in postgis postgis_topology postgis_tiger_geocoder; do
+for ext in postgis postgis_topology; do
   test "$(psql_check -c "SELECT default_version FROM pg_available_extensions WHERE name='$ext'")" = "$sql_version"
   test "$(psql_check -c "SELECT count(*) FROM pg_available_extension_versions WHERE name='$ext' AND version='$sql_version'")" = 1
 done
-psql_check -c "CREATE EXTENSION fuzzystrmatch;"
-for ext in postgis postgis_topology postgis_tiger_geocoder; do
+for ext in postgis postgis_topology; do
   psql_check -c "CREATE EXTENSION $ext VERSION '$sql_version'; ALTER EXTENSION $ext UPDATE TO '$sql_version';"
   test "$(psql_check -c "SELECT extversion FROM pg_extension WHERE extname='$ext'")" = "$sql_version"
 done

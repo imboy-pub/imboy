@@ -26,7 +26,7 @@
 services:
   imboy_pg18:
     profiles: ["dev"]
-    image: imboy/pg18:3.6.1-2
+    image: imboy/pg18:3.7.0-1
     container_name: imboy_pg18
     hostname: pg.docker.imboy.pub
     restart: unless-stopped
@@ -63,7 +63,7 @@ services:
 
   pro_imboy_pg18:
     profiles: ["pro"]
-    image: imboy/pg18:3.6.1-2
+    image: imboy/pg18:3.7.0-1
     container_name: pro_imboy_pg18
     hostname: pg18pro.docker.imboy.pub
     restart: unless-stopped

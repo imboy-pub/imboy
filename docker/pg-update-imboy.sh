@@ -24,8 +24,8 @@ psql -v ON_ERROR_STOP=1 --username "$PGUSER" --dbname "$DB" <<-EOSQL
         CREATE EXTENSION IF NOT EXISTS postgis_topology;
         -- 提供了几个函数来确定字符串之间的相似性和距离
         CREATE EXTENSION IF NOT EXISTS fuzzystrmatch;
-        CREATE EXTENSION IF NOT EXISTS postgis_tiger_geocoder;
-        CREATE EXTENSION IF NOT EXISTS address_standardizer;
+        -- PostGIS 3.7 将 postgis_tiger_geocoder（NEWS #6052）与
+        -- address_standardizer（NEWS #6053）移出核心发行版，pgdg 不再打包。
         -- 中文分词
         CREATE EXTENSION IF NOT EXISTS pg_jieba;
         CREATE EXTENSION IF NOT EXISTS pg_trgm;

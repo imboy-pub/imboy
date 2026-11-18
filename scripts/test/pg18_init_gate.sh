@@ -11,7 +11,11 @@ trap 'docker logs "$name" >&2 || true' ERR
 # Keep the temporary socket server alive long enough to check the old probe.
 printf '%s\n' 'touch /tmp/imboy-init-started' 'sleep 5' > "$tmp/05_delay.sh"
 chmod 755 "$tmp"
-chmod 644 "$tmp/05_delay.sh"
+# 755 使官方 entrypoint 走 exec 分支。不能为 644 走 source 分支：
+# macOS Docker Desktop 的 bind mount 上 [ -x ] 对 644 文件假阳性，
+# entrypoint 尝试 exec 必 Permission denied（2026-11-18 本地实锤）；
+# CI Linux 上 exec 与 source 对本无状态探针语义等价。
+chmod 755 "$tmp/05_delay.sh"
 wait_tcp() {
   for ((i=0; i<120; i++)); do
     if docker exec "$name" pg_isready -h 127.0.0.1 -U imboy_user -d imboy_v1 >/dev/null 2>&1; then
@@ -45,7 +49,8 @@ for round in 1 2 3; do
   wait_tcp
   package_version=$(docker exec "$name" printenv POSTGIS_VERSION)
   postgis_version=${package_version%%+*}
-  for ext in postgis postgis_topology postgis_tiger_geocoder; do
+  # PostGIS 3.7 removed postgis_tiger_geocoder from core (NEWS #6052).
+  for ext in postgis postgis_topology; do
     test "$(psql_db imboy_v1 "SELECT extversion FROM pg_extension WHERE extname='$ext'")" = "$postgis_version"
     test "$(psql_db imboy_v1 "SELECT default_version FROM pg_available_extensions WHERE name='$ext'")" = "$postgis_version"
   done
@@ -59,7 +64,7 @@ for round in 1 2 3; do
     for pass in 1 2; do
       echo "Extension creation/update: round=$round db=$db pass=$pass"
       psql_db "$db" 'CREATE EXTENSION IF NOT EXISTS fuzzystrmatch;'
-      for ext in postgis postgis_topology postgis_tiger_geocoder; do
+      for ext in postgis postgis_topology; do
         psql_db "$db" "CREATE EXTENSION IF NOT EXISTS $ext VERSION '$postgis_version'; ALTER EXTENSION $ext UPDATE TO '$postgis_version';"
         test "$(psql_db "$db" "SELECT extversion FROM pg_extension WHERE extname='$ext'")" = "$postgis_version"
       done
