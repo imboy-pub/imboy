@@ -12,7 +12,7 @@
 | P0-1 | 统一任务契约模板 | 15 任务包 4 种模式、execution-log.md 全缺 → 断点恢复成本高 | `docs/reference/engineering/ai-engineering/TASK_CONTRACT.md` + 示范包 `_task_packages/AI_ENGINEERING_V1/` | ✅ 本批落地 |
 | P0-2 | 独立验证政策 | Worker 自证风险、证据格式三种并存 | `…/VERIFICATION_POLICY.md` | ✅ 本批落地 |
 | P0-3 | 失效指针修复 | IMBOY_ERLANG_QUALITY/RUNTIME_LOCATION.json 指向已删目录 → 未来会话按错指针找状态 | `_task_packages/IMBOY_ERLANG_QUALITY/RUNTIME_LOCATION.json` | ✅ 本批修复 |
-| P0-4 | quality-loop 引用漂移 | 4 处注释引用已收编删除的计划文件 | `quality.yml:3`、`pull_request_template.md:3`、`codemap.yml:3,109`（sonar.yml 已禁用不动） | ✅ 本批修复（注释级，行为零变化） |
+| P0-4 | quality-loop 引用漂移 | 4 处注释引用已收编删除的计划文件 | `quality.yml:3`、`pull_request_template.md:3`、`codemap.yml:3,109`（sonar.yml 已禁用不动） | ✅ 本批修复（YAML 语义零变化；codemap 周报 issue 文案按预期更新） |
 | P0-5 | 保护在途任务与用户工作 | PR#76 悬空 worktree、AUTOTEST BLOCKED 态、staged docker-compose.yml | 登记于本计划 + AGENT_OPERATING_MODEL §5 决策队列 | ✅ 登记完成；处置 ◻ 待属主 |
 
 **P0 验收标准**：新任务有模板可抄；三个历史失效点消除；在途风险全部有登记与属主出口。

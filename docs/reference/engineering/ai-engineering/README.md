@@ -18,7 +18,7 @@
 
 ## 与现有文档的关系
 
-- 本目录**不取代** `docs/reference/engineering/` 既有 11 个工程专项（ci-notes 等）——ENGINEERING_MAP 以指针引用它们。
+- 本目录**不取代** `docs/reference/engineering/` 既有 10 个工程专项 md（ci-notes 等）——ENGINEERING_MAP 以指针引用它们。
 - 三仓各自 AGENTS.md/CLAUDE.md 的技术规范与"工程交付边界"优先级更高；本层是跨仓统一层。
 - 任务包瞬态目录（`_task_packages/` 等）不入 git；其结构约定见 TASK_CONTRACT §1。
 

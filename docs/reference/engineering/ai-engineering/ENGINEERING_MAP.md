@@ -28,7 +28,7 @@
 
 ## Protocol / Data Map
 
-- ✅ SQLite 迁移唯一真源：`imboyapp/lib/service/migrations/manifest_all.dart`（schema v40；降级必须先降库——无 40→39 二进制边）
+- ✅ SQLite 迁移唯一真源：`imboyapp/lib/service/migrations/manifest_all.dart`（schema v40）。40→39 降级边**只存在于 v40 新二进制**（`downgrade_edges_v40.dart`）；已安装的旧版本二进制不含该代码，故回退安装旧包前必须先用 v40 二进制把库降到 39（或快照恢复）
 - ✅ PG 迁移：`imboy/priv/migrations/`（编号锁 `.Codex/coordination/migration-reservations/`）；erlang_migrate 独立库
 - ✅ 跨端消息同步/协议对齐归 AUTOTEST v2.1 车道（BLOCKED 中，状态在 `_task_packages/IMBOY_AUTOTEST_V2.1/runtime/STATE.json` rev150）
 - 📐 平行迁移 PR 冲突多取 main 侧；envied 生成物走 `ci_gen_env.sh`
@@ -57,8 +57,8 @@
 
 ## Debt Map（技术债与在途）
 
-- ✅ 工程总览与债务索引 → `imboy/docs/reference/engineering/engineering-overview.md`（11 专项）
-- ✅ 收口计划存档 → `imboy/docs/plans/`（36 份；最新三端 CI 收口 v2 2026-10-14）
+- ✅ 工程总览与债务索引 → `imboy/docs/reference/engineering/engineering-overview.md`（10 个专项 md）
+- ✅ 收口计划存档 → `imboy/docs/plans/`（37 条目 = 30 md + 7 sha256；**仅 2 份入 git**，其余为主工作树未跟踪文件——对买家/CI 不可见，最新三端 CI 收口 v2 2026-10-14）
 - ❓ 在途：AUTOTEST v2.1（BLOCKED）、geo_regions PR#4/#5（待合）、PR#76 悬空 worktree（待属主）、OTP 收尾（待 push 授权）→ 明细见 [ASSESSMENT.md](./ASSESSMENT.md) §6
 
 ## 仓库外结构锚定（瞬态目录，2026-11-18 实测）
