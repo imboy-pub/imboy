@@ -19,7 +19,7 @@
 | `prodadm.imboy.pub.conf` | 管理后台（静态 + `:9800` admin API；含 IPv6 listener） | 宝塔 `.../cert/prodadm.imboy.pub/` | 宝塔面板（未迁移，仍走宝塔续期） | 由 `admin` 组件部署静态产物，vhost 手工 |
 | `cs.imboy.pub.conf` | 客服 Widget 网关（CSD-CLI-01 工具托管，**禁止手改线上**，改 `scripts/lib/cs_deploy.sh` 后重跑 `cs -v -l`） | `/etc/letsencrypt/live/cs.imboy.pub/` | certbot webroot `/var/www/certbot` + `reload-openresty.sh` 钩子 | **工具托管** |
 | `www.imboy.pub.conf` | 官网静态（`server_name` 含裸域 `imboy.pub`） | `/etc/letsencrypt/live/www.imboy.pub/`（SAN 含裸域） | certbot webroot `/var/www/certbot`（cs 模式） | 手工 |
-| `s3.imboy.pub.conf` | Garage S3（`$s3_pass` 3900/3902 自包含） | `/etc/letsencrypt/live/s3.imboy.pub/` | certbot webroot `/var/www/certbot`（cs 模式） | 手工 |
+| `s3.imboy.pub.conf` | Garage S3（`$s3_pass` 3900/3902 自包含；2026-11-19 起含 CORS 注入：Garage website 200 不带 ACAO，nginx 统一单发 `*` + OPTIONS 204，支撑 web.imboy.pub 浏览器媒体直读） | `/etc/letsencrypt/live/s3.imboy.pub/` | certbot webroot `/var/www/certbot`（cs 模式） | 手工 |
 | `trace.imboy.pub.conf` | Uptrace UI（`127.0.0.1:14318`） | `/etc/letsencrypt/live/trace.imboy.pub/` | certbot webroot `/var/www/certbot`（cs 模式；原站点根 webroot 已停用） | 手工 |
 | `dev.imboy.pub.conf` | 9700 开发节点 | `/etc/letsencrypt/live/dev.imboy.pub/` | certbot webroot `/var/www/certbot`（cs 模式） | 手工 |
 | `turn.imboy.pub.conf` | 纯 80 ACME webroot（**仅**承载本域证书签发/续期；TURN/TLS 5349 由 LiveKit embedded TURN 直接承载，无 443 —— TURN_443=BLOCKED，LK-01 §3） | `/etc/letsencrypt/live/turn.imboy.pub/` | certbot webroot + `../livekit-turn-cert-deploy-hook.sh`（原子分发到 `/etc/imboy/livekit-certs/` 并安全重启 LiveKit） | 手工 |
