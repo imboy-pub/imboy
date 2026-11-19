@@ -24,6 +24,9 @@ self_profile_projection_test_() ->
                     }
                 ]}
             end),
+            meck:expect(user_logic, find_web_user_setting, fun(Uid) ->
+                user_setting_ds:find_web_by_uid(Uid)
+            end),
             meck:expect(fts_user_repo, allow_search, fun(123) -> false end),
             meck:expect(elib_response, success, fun(R, P) -> R#{payload => P} end),
             meck:expect(elib_response, error_with_status, fun(R, S, _, _) -> R#{status => S} end)

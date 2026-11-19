@@ -67,7 +67,7 @@ eligible_metadata(SenderUid, SenderDid, Msg, AllowPlain) ->
                 false -> skip
             end;
         {<<"C2C">>, SenderDid, {ok, null}} when
-            AllowPlain =:= true, is_binary(SenderDid), byte_size(SenderDid) > 0
+            AllowPlain, is_binary(SenderDid), byte_size(SenderDid) > 0
         ->
             case From =:= SenderUid orelse From =:= integer_to_binary(SenderUid) of
                 true -> plain;

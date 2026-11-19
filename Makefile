@@ -114,6 +114,7 @@ ifeq ($(shell uname -s),Darwin)
 LDFLAGS += -undefined dynamic_lookup
 endif
 # quality.mk 必须先于 erlang.mk；原生变量与规则的覆盖放在 include 之后。
+_EUNIT_CONFIG_SRC := $(EUNIT_CONFIG)
 include include/quality.mk
 include erlang.mk
 IMBOY_MAKE_READY := 1
@@ -133,11 +134,16 @@ $(IMBOY_QUALITY_TEST_EBIN)/%.beam: tools/imboy_quality/%.erl Makefile
 	$(verbose) mkdir -p $(@D)
 	$(verbose) erlc $(TEST_ERLC_OPTS) -o $(@D) $<
 
-# eunit config 注入门（2026-11-18）：ebin 版 eunit_runner（src/lib，只等 -config）
-# 会以 -pa 后加在前顺序遮蔽 test/common 版（load_test_config 补缺）；与 CT 同口径
-# -config 注入（无扩展名 abspath），runtime-config 从 sys.config 物化新副本。
+# 显式 -config（含 owned PG/relay）优先，不能再追加默认配置覆盖它。
+# bare eunit 仍需为 src/lib/eunit_runner 注入配置；EUNIT_CONFIG 只取调用方值。
+ifeq ($(filter -config,$(EUNIT_ERL_OPTS)),)
+ifneq ($(strip $(_EUNIT_CONFIG_SRC)$(IMBOY_TEST_CONFIG)),)
+override EUNIT_ERL_OPTS += -config $(abspath $(patsubst %.config,%,$(or $(_EUNIT_CONFIG_SRC),$(IMBOY_TEST_CONFIG))))
+else
 override EUNIT_ERL_OPTS += -config $(abspath config/sys.runtime)
 test-build:: runtime-config
+endif
+endif
 
 # GNU Make 4 写完整清单，xargs 限制参数长度；任一编译失败不写构建戳。
 TEST_COMPILE_JOBS ?= 4

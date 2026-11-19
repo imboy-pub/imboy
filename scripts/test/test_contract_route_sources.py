@@ -6,7 +6,7 @@ import unittest
 
 SCRIPTS = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(SCRIPTS))
-from contract_route_sources import talk_record_delegate
+from contract_route_sources import registered_talk_record, talk_record_delegate
 import contract_gate
 
 
@@ -25,6 +25,25 @@ def registered_router():
 
 
 class DelegateTests(unittest.TestCase):
+    def test_web_human_routes_preserve_unconditional_delegate_registration(self):
+        source = registered_router().replace(
+            'CompiledApiRoutes ++ CompiledAdmRoutes',
+            'CompiledApiRoutes ++ web_human_routes(CompiledApiRoutes) ++ CompiledAdmRoutes',
+        )
+        self.assertTrue(registered_talk_record(source))
+
+    def test_web_route_augmentation_cannot_hide_missing_or_changed_core_routes(self):
+        for chain in [
+            'MainRoutes ++ web_human_routes(CompiledApiRoutes) ++ CompiledAdmRoutes',
+            'MainRoutes ++ CompiledApiRoutes ++ web_human_routes(ApiV1Routes) ++ CompiledAdmRoutes',
+            'MainRoutes ++ CompiledApiRoutes ++ unknown_routes(CompiledApiRoutes) ++ CompiledAdmRoutes',
+            'MainRoutes ++ CompiledApiRoutes ++ web_human_routes(CompiledApiRoutes)',
+        ]:
+            with self.subTest(chain=chain), self.assertRaises(ValueError):
+                registered_talk_record(registered_router().replace(
+                    'MainRoutes ++ CompiledApiRoutes ++ CompiledAdmRoutes', chain,
+                ))
+
     def test_real_delegate_is_exactly_62_routes(self):
         repo = SCRIPTS.parent
         body = talk_record_delegate((repo / 'src/imboy_router.erl').read_text(), repo)

@@ -38,7 +38,7 @@ Task ID / PR / Git SHA
 
 ### verdict.json 最小 schema（机器可读判定，P1-1）
 
-每次验证除人读记录外，在任务包 `evidence/verdict.json` 落一份机器可读判定，供交付报告脚本（PLAN P1-5 `delivery_report.sh`）跨包聚合 Verified Delivery Rate：
+每次验证除人读记录外，在任务包 `evidence/verdict.json` 落一份机器可读判定，供交付报告脚本 `delivery_report.sh` 跨包聚合 Verified Delivery Rate：
 
 ```json
 {
@@ -75,3 +75,23 @@ Task ID / PR / Git SHA
 - PASS → 任务状态机推进 VERIFIED。
 - FAIL → 回 Worker，附失败证据路径；重试上限 3 次。
 - NEEDS_MANUAL_REVIEW → 附待决问题清单，进属主决策队列（见 AGENT_OPERATING_MODEL.md §5）。
+
+## 6. 行为契约门扩展设计
+
+本节保留 P1-3 在 2026-11-19 经属主裁决②确认的设计就绪交付物。实施须另立任务包；本节不表示 `behavior-contract` 已上线。
+
+### 设计边界
+
+1. 在 `.github/workflows/contract-gate.yml` 增加 `behavior-contract` job，与现有 `api-contract`、`rest-contract` 并列。范围限定为 L1 静态契约样本校验，不引入运行时依赖、不改业务代码。
+2. 样本采用机器可读的 request/response 断言对，来源为 AUTOTEST 已通过用例的子集；先覆盖 WS 消息封套与 error_code 行为，其余域后续增量。
+3. CI 配置变更按 R2 管理，实施须属主 review；回滚范围为新增 job。
+
+### 输入与实施条件
+
+| AUTOTEST 产出 | 设计输入 |
+|---|---|
+| r13/r14 双端真机 CALL-08 复测 PASS 收据（入 STATE receipts） | 样本源有效性凭证 |
+| STATE receipts 中 API/WS 断言型用例清单 | behavior-contract 样本抽取池 |
+| DEF-W7-04 等未决缺陷裁决 | 样本排除清单 |
+
+实施须满足以下任一条件：CALL-08 复测收据落入 STATE；或属主另行指定样本源，例如 `rest/suites` 已有 CT 断言。实施任务不得复用已结束的 `AI_ENGINEERING_P1`，应按 TASK_CONTRACT 建立独立任务包。

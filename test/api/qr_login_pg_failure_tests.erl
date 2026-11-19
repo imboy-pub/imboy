@@ -150,8 +150,10 @@ sse_storage_errors_never_echo_event_credentials() ->
 %% A subsequent request still claims atomically and observes the consumed state.
 uncertain_claim_is_not_retried_or_reissued() ->
     Counter = query_sequence([
-        {ok, [confirmed()]}, {error, closed},
-        {ok, [confirmed()]}, {ok, []}
+        {ok, [confirmed()]},
+        {error, closed},
+        {ok, [confirmed()]},
+        {ok, []}
     ]),
     ?assertMatch({error, _, ?ERR_SERVICE_UNAVAILABLE}, request(status)),
     ?assertEqual(2, atomics:get(Counter, 1)),
@@ -177,7 +179,11 @@ query_sequence(Replies) ->
     Counter.
 
 request(Action) ->
-    Method = case Action of status -> <<"GET">>; _ -> <<"POST">> end,
+    Method =
+        case Action of
+            status -> <<"GET">>;
+            _ -> <<"POST">>
+        end,
     Req = #{
         method => Method,
         body => jsone:encode(#{<<"qr_token">> => ?QT, <<"session_token">> => ?ST}),
@@ -194,7 +200,10 @@ confirmed() ->
 
 scanned() ->
     #{
-        <<"status">> => <<"scanned">>, <<"scanned_by">> => ?UID,
-        <<"device_id">> => <<"fault-device">>, <<"device_name">> => <<"Fault Test">>,
-        <<"platform">> => <<"web">>, <<"purpose">> => <<"human">>
+        <<"status">> => <<"scanned">>,
+        <<"scanned_by">> => ?UID,
+        <<"device_id">> => <<"fault-device">>,
+        <<"device_name">> => <<"Fault Test">>,
+        <<"platform">> => <<"ios">>,
+        <<"purpose">> => <<"human">>
     }.

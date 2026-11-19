@@ -119,26 +119,7 @@ web_event(Event, Req, State) ->
     SessionToken = maps:get(session_token, State),
     case qr_login_logic:web_session(SessionToken) of
         {ok, _Session} ->
-            case
-                {
-                    application:get_env(imboy, qr_login_authority, cache),
-                    maps:get(<<"status">>, Event, undefined)
-                }
-            of
-                {cache, <<"confirmed">>} ->
-                    %% Consume the authoritative cache session instead of replaying an event token.
-                    case qr_login_logic:claim_web_cache_token(SessionToken) of
-                        {ok, #{login_token := Token, scanned_by := Uid}} ->
-                            push_confirmed(Req, Token, Uid),
-                            {stop, Req, State};
-                        {error, _} ->
-                            {stop, Req, State}
-                    end;
-                {pg, <<"confirmed">>} ->
-                    {stop, Req, State};
-                _ ->
-                    handle_event(Event, Req, State)
-            end;
+            handle_event(Event, Req, State);
         {error, _} ->
             {stop, Req, State}
     end.

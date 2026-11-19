@@ -342,18 +342,13 @@ refreshtoken(Req0, State) ->
                 429
             );
         _ when map_get(jwt_purpose, State) =:= web_human ->
-            case auth_ds:verify_web_refresh_token(Refreshtoken) of
+            case passport_logic:verify_web_refresh_token(Refreshtoken) of
                 {ok, Uid, Did, Ep, _ExpiresAt, DeviceRowId} ->
                     elib_response:success(Req0, #{
                         <<"token">> => token_ds:encrypt_web_token(Uid, Did, Ep, DeviceRowId)
                     });
                 {error, Code, Msg} ->
-                    Status =
-                        case Code of
-                            503 -> 503;
-                            _ -> 401
-                        end,
-                    elib_response:error_with_status(Req0, Status, Msg, Code)
+                    elib_response:error_with_status(Req0, 401, Msg, Code)
             end;
         _ ->
             case token_ds:decrypt_token(Refreshtoken) of
@@ -362,7 +357,7 @@ refreshtoken(Req0, State) ->
                     Status = user_logic:get_status(Id),
                     % 设备被移除 → 拒绝刷新。这是真正切断 refresh token 356 天窗口
                     % 的地方；did 为空的 legacy refresh token 原样放行（零全端登出）。
-                    DeviceActive = Did =:= <<>> orelse user_device_ds:is_active_native(Id, Did),
+                    DeviceActive = Did =:= <<>> orelse user_device_logic:is_active_native(Id, Did),
                     % Task 10 / LT-04：rtk 同受会话 epoch 门——改密/禁用/全端登出
                     % 后旧 rtk 不得再换新 tk（否则 356 天窗口从后门重开）。
                     EpochOk = passport_logic:refresh_session_epoch_valid(Id, Did, Ep),

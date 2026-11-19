@@ -149,27 +149,22 @@ is_active(Uid, DID) ->
 
 %% @doc Web 白名单必须同时匹配类型与活跃状态；异常与未知返回失败。
 -spec is_active_web(integer(), binary(), integer()) -> {ok, boolean()} | {error, term()}.
-is_active_web(Uid, Did, DeviceRowId) when
+is_active_web(Uid, DID, DeviceRowId) when
     is_integer(Uid),
     Uid > 0,
-    is_binary(Did),
-    byte_size(Did) > 0,
+    is_binary(DID),
+    byte_size(DID) > 0,
     is_integer(DeviceRowId),
     DeviceRowId > 0
 ->
     try
-        true = length(unicode:characters_to_list(Did)) =< 128,
+        true = length(unicode:characters_to_list(DID)) =< 128,
         Tb = tablename(),
         Sql =
             <<"SELECT 1 AS active FROM ", Tb/binary,
                 " WHERE status = 1 AND user_id = $1 AND device_id = $2",
                 " AND device_type = 'web' AND id = $3 LIMIT 1">>,
-        case elib_pg:query(Sql, [Uid, Did, DeviceRowId]) of
-            {ok, [#{<<"active">> := 1}]} -> {ok, true};
-            {ok, []} -> {ok, false};
-            {error, _} = Error -> Error;
-            _ -> {error, unavailable}
-        end
+        active_device_result(elib_pg:query(Sql, [Uid, DID, DeviceRowId]))
     catch
         _:_ -> {error, unavailable}
     end;
@@ -179,15 +174,15 @@ is_active_web(_, _, _) ->
 %% @doc 单条 upsert 原子登记；已有 Native/未知类型/非活跃行绝不升级或复活。
 -spec save_web(binary() | integer(), integer(), binary(), map()) ->
     {ok, pos_integer()} | {error, term()}.
-save_web(Now, Uid, Did, PostVals) when
+save_web(Now, Uid, DID, PostVals) when
     is_integer(Uid),
     Uid > 0,
-    is_binary(Did),
-    byte_size(Did) > 0,
+    is_binary(DID),
+    byte_size(DID) > 0,
     is_map(PostVals)
 ->
     %% varchar(128) 按 Unicode 码点计数，畸形 UTF-8 不进入持久化。
-    case unicode:characters_to_list(Did) of
+    case unicode:characters_to_list(DID) of
         Chars when is_list(Chars), length(Chars) =< 128 ->
             try
                 Tb = tablename(),
@@ -209,7 +204,7 @@ save_web(Now, Uid, Did, PostVals) when
                 Params = [
                     elib_tsid:generate(user_device),
                     Uid,
-                    Did,
+                    DID,
                     maps:get(<<"dvsn">>, PostVals, <<>>),
                     maps:get(<<"dname">>, PostVals, <<>>),
                     Ip,
@@ -388,15 +383,15 @@ save(Now, Uid, PostVals, DID, _LoginCount) when bit_size(DID) > 0 ->
 
 %% Pre-upgrade Web tokens have no marker; trust the stored device type.
 -spec is_active_native(integer(), binary()) -> {ok, boolean()} | {error, term()}.
-is_active_native(Uid, Did) ->
+is_active_native(Uid, DID) ->
     Tb = tablename(),
     Sql =
         <<"SELECT 1 AS active FROM ", Tb/binary,
             " WHERE status = 1 AND user_id = $1 AND device_id = $2",
             " AND device_type IS DISTINCT FROM 'web' LIMIT 1">>,
-    case elib_pg:query(Sql, [Uid, Did]) of
-        {ok, [#{<<"active">> := 1}]} -> {ok, true};
-        {ok, []} -> {ok, false};
-        {error, _} = Error -> Error;
-        _ -> {error, unavailable}
-    end.
+    active_device_result(elib_pg:query(Sql, [Uid, DID])).
+
+active_device_result({ok, [#{<<"active">> := 1}]}) -> {ok, true};
+active_device_result({ok, []}) -> {ok, false};
+active_device_result({error, _} = Error) -> Error;
+active_device_result(_) -> {error, unavailable}.

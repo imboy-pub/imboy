@@ -13,7 +13,8 @@
     device_name/2,
     change_name/3,
     delete/2,
-    is_active/2
+    is_active/2,
+    is_active_native/2
 ]).
 -export([page/3]).
 
@@ -92,6 +93,11 @@ change_name(Uid, DID, Name) ->
 -spec is_active(integer(), binary()) -> boolean().
 is_active(Uid, DID) ->
     user_device_ds:is_active(Uid, DID).
+
+%% Native refresh must retain the stored device-type check.
+-spec is_active_native(integer(), binary()) -> boolean().
+is_active_native(Uid, DID) ->
+    user_device_ds:is_active_native(Uid, DID).
 
 %% @doc 删除设备
 %% 删除指定设备记录，并联动断开该设备的 WS 会话（在线时）。
