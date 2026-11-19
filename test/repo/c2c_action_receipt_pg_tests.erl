@@ -10,7 +10,8 @@ c2c_action_receipt_pg_test_() ->
                 ?_test(forward_revoke_serializes()),
                 ?_test(concurrent_single_consumer()),
                 ?_test(missing_target_keeps_receipt()),
-                ?_test(worker_reconciles_stale_snapshot())
+                ?_test(worker_reconciles_stale_snapshot()),
+                ?_test(edit_revoke_ordering_and_replay())
             ]
         end}}.
 
@@ -268,3 +269,82 @@ receive_result() ->
 
 hash(Content) ->
     binary:encode_hex(crypto:hash(sha256, Content), lowercase).
+
+%% BE-03（IMBOY_MASTER_V2_2_20261118）：同一 original 的编辑/撤回动作序与
+%% 重放幂等（真库）。权威语义：advisory lock 按 original 串行 accept；
+%% request_id 幂等（同参重放=duplicate，异参拒绝）；consume 后 replayed。
+%% 「接受提交后崩溃恢复」= 状态全部在库（receipt 行+consumed_at），不依赖
+%% 原进程内存——本用例全程独立连接/事务即证明。
+edit_revoke_ordering_and_replay() ->
+    Original = <<"be03-order-original">>,
+    %% consume_locked 按 (msg_id, actor, peer) 更新 msg_c2c 正文——先落正式行
+    insert_formal(Original, <<"old">>),
+    EditReq = <<"be03-order-edit-req">>,
+    RevokeReq = <<"be03-order-revoke-req">>,
+    EditHash = hash(<<"edited content v2">>),
+    EditResult = <<"{\"action\":\"message_edit_ack\",\"content\":\"edited content v2\"}">>,
+    %% 1) 编辑受理（新 request；repo 层动作枚举 = 'edit'）→ 幂等重放同参 = duplicate
+    ?assertEqual(
+        {ok, new},
+        c2c_action_receipt_repo:accept(
+            EditReq, Original, 101, 202, <<"edit">>, EditHash
+        )
+    ),
+    ?assertEqual(
+        {ok, duplicate},
+        c2c_action_receipt_repo:accept(
+            EditReq, Original, 101, 202, <<"edit">>, EditHash
+        )
+    ),
+    %% 2) 同 request 异内容 = 拒绝（真实性校验，不静默覆盖）
+    ?assertMatch(
+        {error, _},
+        c2c_action_receipt_repo:accept(
+            EditReq, Original, 101, 202, <<"edit">>, hash(<<"forged">>)
+        )
+    ),
+    %% 3) 同 request 异 action = 同样拒绝（request 绑定动作语义）
+    ?assertMatch(
+        {error, _},
+        c2c_action_receipt_repo:accept(EditReq, Original, 101, 202, <<"revoke">>, EditHash)
+    ),
+    %% 4) 撤回后到（异 request 同 original）：advisory lock 串行下正常受理
+    ?assertEqual(
+        {ok, new}, c2c_action_receipt_repo:accept(RevokeReq, Original, 101, 202, <<"revoke">>, null)
+    ),
+    %% 5) consume：编辑生效 → 重复 consume = replayed（不重复业务效果）
+    ?assertEqual(
+        ok,
+        c2c_action_receipt_repo:consume(
+            EditReq, Original, 202, <<"edit">>, EditHash, EditResult
+        )
+    ),
+    ?assertEqual(
+        {error, replayed},
+        c2c_action_receipt_repo:consume(
+            EditReq, Original, 202, <<"edit">>, EditHash, EditResult
+        )
+    ),
+    %% 6) 撤回 consume 生效；编辑与撤回互不覆盖对方收据行（独立 request）
+    ?assertEqual(
+        ok,
+        c2c_action_receipt_repo:consume(
+            RevokeReq, Original, 202, <<"revoke">>, null, <<"{\"action\":\"revoke_ack\"}">>
+        )
+    ),
+    {ok, Rows} = elib_pg:query(
+        <<
+            "SELECT request_id, action, consumed_at FROM public.c2c_action_receipt "
+            "WHERE original_msg_id=$1 ORDER BY request_id"
+        >>,
+        [Original]
+    ),
+    ?assertEqual(2, length(Rows)),
+    %% 7) 断线恢复语义：收据与消费状态全在库——新连接按库态可判 replayed
+    ?assertEqual(
+        {error, replayed},
+        c2c_action_receipt_repo:consume(
+            RevokeReq, Original, 202, <<"revoke">>, null, <<"{\"action\":\"revoke_ack\"}">>
+        )
+    ),
+    ok.
