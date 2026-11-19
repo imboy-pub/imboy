@@ -262,3 +262,4 @@ prep/timer-*.term
 ct_run.nonode@nohost.*
 config/sys.quality.*.config
 *.pyc
+.plans/2026-11-18-imboy-master-plan
