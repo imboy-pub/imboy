@@ -490,3 +490,269 @@ response_payload(Action) ->
     after 1000 ->
         erlang:error(response_not_emitted)
     end.
+
+%% ===================================================================
+%% BE-02（IMBOY_MASTER_V2_2_20261118）补齐断言：成员世代历史边界、
+%% 重入新世代、同时间戳多页与重启重同步。真库（隔离 marker 库）。
+%% 现有实现（E2EE-2026-012/LT-03 join boundary）语义验证；不修生产码。
+%% ===================================================================
+
+-define(C2GGID, 930001).
+-define(C2GKEY, <<"c2g:930001">>).
+
+c2g_cleanup() ->
+    _ = elib_pg:execute(
+        <<"DELETE FROM public.group_member_generation WHERE group_id = $1">>, [?C2GGID]
+    ),
+    _ = elib_pg:execute(
+        <<"DELETE FROM public.group_member WHERE group_id = $1">>, [?C2GGID]
+    ),
+    _ = elib_pg:execute(<<"DELETE FROM public.\"group\" WHERE id = $1">>, [?C2GGID]),
+    _ = elib_pg:execute(<<"DELETE FROM public.msg_store WHERE conv_key = $1">>, [?C2GKEY]),
+    _ = elib_pg:execute(<<"DELETE FROM public.msg_store_seq WHERE conv_key = $1">>, [?C2GKEY]),
+    ok.
+
+c2g_group_fixture() ->
+    {ok, _} =
+        elib_pg:execute(
+            <<
+                "INSERT INTO public.\"group\" (id, owner_uid, creator_uid, title, status, scope) "
+                "VALUES ($1, $2, $2, 'be02-r02-c2g', 1, 'personal') "
+                "ON CONFLICT (id) DO UPDATE SET status = 1, scope = 'personal'"
+            >>,
+            [?C2GGID, ?UA]
+        ),
+    ok = c2g_member_up(?UA, 1),
+    ok = c2g_generation_open(?UA, 1, 1).
+
+c2g_member_up(Uid, Status) ->
+    %% group_member.id 为 NOT NULL 且无默认（生产经 repo 生成 TSID）；
+    %% fixture 用确定性整数 id（谓词查询只依赖 group_id/user_id/status）。
+    MemberId = 93000000 + Uid,
+    {ok, _} =
+        elib_pg:execute(
+            <<
+                "INSERT INTO public.group_member (id, group_id, user_id, status, role) "
+                "VALUES ($4, $1, $2, $3, 0) "
+                "ON CONFLICT (group_id, user_id) DO UPDATE SET status = $3, id = $4"
+            >>,
+            [?C2GGID, Uid, Status, MemberId]
+        ),
+    ok.
+
+%% 关闭该成员当前 open 世代并新开一代（重入语义：R2 每次重入新世代）
+c2g_generation_open(Uid, GenNo, StartSeq) ->
+    {ok, _} =
+        elib_pg:execute(
+            <<
+                "UPDATE public.group_member_generation SET end_seq = "
+                " GREATEST((SELECT COALESCE(MAX(seq), 0) FROM public.msg_store_seq WHERE conv_key = $3), start_seq - 1), "
+                " close_reason = 'fixture_rejoin' "
+                "WHERE group_id = $1 AND user_id = $2 AND end_seq IS NULL"
+            >>,
+            [?C2GGID, Uid, ?C2GKEY]
+        ),
+    {ok, _} =
+        elib_pg:execute(
+            <<
+                "INSERT INTO public.group_member_generation "
+                "(group_id, user_id, generation_no, start_seq, end_seq) "
+                "VALUES ($1, $2, $3, $4, NULL)"
+            >>,
+            [?C2GGID, Uid, GenNo, StartSeq]
+        ),
+    ok.
+
+c2g_seed_seq(Seq) ->
+    {ok, _} =
+        elib_pg:execute(
+            <<
+                "INSERT INTO public.msg_store_seq (conv_key, seq) VALUES ($1, $2) "
+                "ON CONFLICT (conv_key) DO UPDATE SET seq = GREATEST(msg_store_seq.seq, $2)"
+            >>,
+            [?C2GKEY, Seq]
+        ),
+    ok.
+
+c2g_archive(MsgId, FromId, Seq, N) ->
+    Ts = elib_dt:to_rfc3339(1789700000000 + N * 1000, millisecond, "Z"),
+    {ok, _} =
+        elib_pg:execute(
+            <<
+                "INSERT INTO public.msg_store "
+                "(id, chat_type, conv_key, conv_seq, msg_id, msg_type, from_id, to_id, "
+                "group_id, payload, created_at, server_ts) "
+                "VALUES ($7, 'c2g', $6, $5, $1, 'text', $2, $3, $3, '{\"m\":1}', "
+                " $4, $4) "
+            >>,
+            [MsgId, FromId, ?C2GGID, Ts, Seq, ?C2GKEY, 93100000 + Seq]
+        ),
+    ok = c2g_seed_seq(Seq),
+    Seq.
+
+c2g_sync(Uid, CursorSeq, Limit) ->
+    Cursors = [#{<<"conv_key">> => ?C2GKEY, <<"seq">> => CursorSeq}],
+    #{<<"results">> := Results} = msg_c2s_logic:handle_sync(Uid, Cursors, Limit),
+    case Results of
+        [] ->
+            #{messages => [], next_seq => CursorSeq};
+        [R] ->
+            #{
+                messages => lists:sort([
+                    maps:get(<<"msg_id">>, M)
+                 || M <- maps:get(<<"messages">>, R)
+                ]),
+                next_seq => maps:get(<<"next_seq">>, R)
+            }
+    end.
+
+%% R02-7：后来成员不获入群前历史（F2 语义），老成员仍见全量
+r02_7_c2g_late_member_no_prejoin_history_test_() ->
+    ?TEST_WITH_DB(fun() ->
+        c2g_cleanup(),
+        c2g_group_fixture(),
+        lists:foreach(
+            fun(N) -> c2g_archive(<<"tzv1_r02_g", (integer_to_binary(N))/binary>>, ?UA, N, N) end,
+            lists:seq(1, 3)
+        ),
+        %% B（迟到成员）入群：join boundary = 当前计数器+1 = 4
+        ok = c2g_member_up(?UB, 1),
+        ok = c2g_generation_open(?UB, 1, 4),
+        {ok, #{start_seq := StartSeq}} = group_ds:authorize_group_history(?UB, ?C2GGID),
+        ?assertEqual(4, StartSeq),
+        %% 老成员全量
+        #{messages := OwnerMsgs} = c2g_sync(?UA, 0, 50),
+        ?assertEqual(
+            lists:sort([<<"tzv1_r02_g1">>, <<"tzv1_r02_g2">>, <<"tzv1_r02_g3">>]),
+            OwnerMsgs
+        ),
+        %% B 游标 0 被 clamp 到 start_seq-1=3：入群前 3 条不可见
+        #{messages := LateMsgs, next_seq := NextSeq} = c2g_sync(?UB, 0, 50),
+        ?assertEqual([], LateMsgs),
+        %% 空窗口会话被过滤：next_seq 不下发，客户端保持自身游标（clamp
+        %% 语义已由上方 authorize start_seq=4 断言钉住——查询侧从 seq>3 起）
+        ?assertEqual(0, NextSeq),
+        %% 入群后新消息 seq4：B 可见；仍不可见 seq1..3
+        _ = c2g_archive(<<"tzv1_r02_g4">>, ?UA, 4, 4),
+        #{messages := LateMsgs2, next_seq := NextSeq2} = c2g_sync(?UB, 0, 50),
+        ?assertEqual([<<"tzv1_r02_g4">>], LateMsgs2),
+        ?assertEqual(4, NextSeq2)
+    end).
+
+%% R02-8：退出后 fail-closed；重入新世代只获新窗口（无旧权限继承/游标串用）
+r02_8_c2g_rejoin_new_generation_test_() ->
+    ?TEST_WITH_DB(fun() ->
+        c2g_cleanup(),
+        c2g_group_fixture(),
+        lists:foreach(
+            fun(N) -> c2g_archive(<<"tzv1_r02_j", (integer_to_binary(N))/binary>>, ?UA, N, N) end,
+            lists:seq(1, 6)
+        ),
+        ok = c2g_member_up(?UB, 1),
+        ok = c2g_generation_open(?UB, 1, 4),
+        %% 第一代内可见 g4..g6
+        #{messages := Gen1} = c2g_sync(?UB, 0, 50),
+        ?assertEqual(
+            lists:sort([<<"tzv1_r02_j4">>, <<"tzv1_r02_j5">>, <<"tzv1_r02_j6">>]),
+            Gen1
+        ),
+        %% 退出：成员行 status=0 + 世代关闭 → fail-closed 无结果
+        ok = c2g_member_up(?UB, 0),
+        {ok, _} =
+            elib_pg:execute(
+                <<
+                    "UPDATE public.group_member_generation SET end_seq = 6, close_reason = 'fixture_leave' "
+                    "WHERE group_id = $1 AND user_id = $2 AND end_seq IS NULL"
+                >>,
+                [?C2GGID, ?UB]
+            ),
+        #{messages := AfterLeave} = c2g_sync(?UB, 0, 50),
+        ?assertEqual([], AfterLeave),
+        %% 期间新消息 seq7,8
+        lists:foreach(
+            fun(N) -> c2g_archive(<<"tzv1_r02_j", (integer_to_binary(N))/binary>>, ?UA, N, N) end,
+            lists:seq(7, 8)
+        ),
+        %% 重入：新世代 gen2 start_seq=7（R2 每次重入新世代）→ 不获 gen1 窗口
+        ok = c2g_member_up(?UB, 1),
+        ok = c2g_generation_open(?UB, 2, 7),
+        {ok, #{generation_no := GenNo, start_seq := StartSeq2}} =
+            group_ds:authorize_group_history(?UB, ?C2GGID),
+        ?assertEqual(2, GenNo),
+        ?assertEqual(7, StartSeq2),
+        #{messages := Gen2, next_seq := NextSeq2} = c2g_sync(?UB, 0, 50),
+        ?assertEqual(
+            lists:sort([<<"tzv1_r02_j7">>, <<"tzv1_r02_j8">>]),
+            Gen2
+        ),
+        ?assertEqual(8, NextSeq2),
+        %% B 携带第一代旧游标（如 6）也不越权：clamp 后仍从 7 起
+        #{messages := WithStaleCursor} = c2g_sync(?UB, 6, 50),
+        ?assertEqual(
+            lists:sort([<<"tzv1_r02_j7">>, <<"tzv1_r02_j8">>]),
+            WithStaleCursor
+        )
+    end).
+
+%% R02-9：同时间戳多页完整、重启重同步一致、空页不推进不循环
+r02_9_same_timestamp_pagination_restart_test_() ->
+    ?TEST_WITH_DB(fun() ->
+        cleanup(),
+        MsgIds = [<<"tzv1_r02_s", (integer_to_binary(N))/binary>> || N <- lists:seq(1, 4)],
+        %% 四条同 server_ts（仅 msg_id/seq 不同）
+        SameTs = elib_dt:to_rfc3339(1789600000000, millisecond, "Z"),
+        lists:foldl(
+            fun(MsgId, Idx) ->
+                {ok, _Id, Seq} =
+                    msg_store_repo:stage_with_sequence(
+                        <<"c2c">>,
+                        MsgId,
+                        <<"text">>,
+                        <<>>,
+                        null,
+                        <<"{\"m\":1}">>,
+                        ?UA,
+                        ?UB,
+                        SameTs,
+                        SameTs,
+                        null,
+                        SameTs,
+                        null
+                    ),
+                ?assertEqual(Idx, Seq),
+                ?assertEqual(Idx, archive(MsgId)),
+                Idx + 1
+            end,
+            1,
+            MsgIds
+        ),
+        %% 同时间戳整段一次取全（next_seq=4）
+        P1 = history(0),
+        ?assertEqual(lists:sort(MsgIds), ids(P1)),
+        ?assertEqual(4, maps:get(<<"next_seq">>, P1)),
+        %% 模拟重启：全新进程/连接重放同一游标 → 集合一致、游标不回退
+        P2 = history(0),
+        ?assertEqual(ids(P1), ids(P2)),
+        %% 逐条翻页（limit=1，同时间戳不跳不重）：handle_sync 语义
+        Walk = lists:foldl(
+            fun(Idx, {Seen, Cursor}) ->
+                Cursors = [#{<<"conv_key">> => ?KEY, <<"seq">> => Cursor}],
+                #{<<"results">> := [R]} = msg_c2s_logic:handle_sync(?UA, Cursors, 1),
+                [M] = maps:get(<<"messages">>, R),
+                MsgId = maps:get(<<"msg_id">>, M),
+                ?assert(maps:get(<<"msg_id">>, M) =/= <<>>),
+                Next = maps:get(<<"next_seq">>, R),
+                ?assertEqual(Idx, Next),
+                ?assertNot(lists:member(MsgId, Seen)),
+                {Seen ++ [MsgId], Next}
+            end,
+            {[], 0},
+            lists:seq(1, 4)
+        ),
+        {SeenAll, _} = Walk,
+        ?assertEqual(lists:sort(MsgIds), lists:sort(SeenAll)),
+        %% 空页：cursor=4（头部）→ 结果过滤，无伪推进、无循环入口
+        CursorsEnd = [#{<<"conv_key">> => ?KEY, <<"seq">> => 4}],
+        #{<<"results">> := EndResults} = msg_c2s_logic:handle_sync(?UA, CursorsEnd, 1),
+        ?assertEqual([], EndResults)
+    end).
