@@ -80,7 +80,9 @@ expect_pg_error(Conn, Sql, Params, WantCode) ->
 
 fresh_full_chain(#{conn := Conn} = _S) ->
     Head = inttest_marker_db:migration_head(),
-    ?assertEqual(279, Head),
+    %% 协调者修复（2026-11-20）：M-01/M-02 落地 280/281 后 head 推进，本卡锚点
+    %% 放宽为 >=279；不变式保持「库版本==目录 head」+ 下方 276-279 台账行齐全。
+    ?assert(Head >= 279, {migration_head_moved, Head}),
     ?assertEqual(Head, current_version(Conn)),
     lists:foreach(
         fun(V) ->
@@ -343,8 +345,9 @@ rollback_rehearsal(#{conn := Conn} = S) ->
     ),
     ?assert(table_exists(Conn, <<"msg_delivery">>)),
     ?assert(table_exists(Conn, <<"enterprise_message_delivery">>)),
-    %% 再 up：恢复到 279
-    case erlang_migrate:up(mig_conf(S)) of
+    %% 再 up：恢复到 279（协调者修复：up 会迁到 head，head 已推进到 280/281，
+    %% 演练意图是回到本卡末端 279，改用显式 goto 锚定）
+    case erlang_migrate:goto(mig_conf(S), 279) of
         ok -> ok;
         {ok, _} -> ok;
         {error, Reason3} -> erlang:error({up_after_down_failed, Reason3})
