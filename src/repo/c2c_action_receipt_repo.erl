@@ -13,23 +13,30 @@ accept(RequestId, OriginalMsgId, ActorUid, PeerUid, Action, ContentHash) ->
             {ok, _} -> ok;
             {error, Reason0} -> throw({rollback, {revoke_lock_failed, Reason0}})
         end,
-        Sql =
-            <<"INSERT INTO public.c2c_action_receipt ",
-                "(request_id,original_msg_id,actor_uid,peer_uid,action,content_sha256) ",
-                "VALUES ($1,$2,$3,$4,$5,$6) ON CONFLICT (request_id) DO NOTHING">>,
-        case
-            elib_pg:execute_count(Conn, Sql, [
-                RequestId, OriginalMsgId, ActorUid, PeerUid, Action, ContentHash
-            ])
-        of
-            {ok, 1} ->
-                {ok, new};
-            {ok, 0} ->
-                verify_duplicate(
-                    Conn, RequestId, OriginalMsgId, ActorUid, PeerUid, Action, ContentHash
-                );
-            {error, Reason} ->
-                throw({rollback, Reason})
+        %% BE-04 撤回终态守卫：该 original 已被撤回消费（权威终态）后，
+        %% 任何新的编辑/撤回受理一律显式拒绝——正文不得复活。
+        case consumed_revoke_exists(Conn, OriginalMsgId) of
+            true ->
+                {error, revoked};
+            false ->
+                Sql =
+                    <<"INSERT INTO public.c2c_action_receipt ",
+                        "(request_id,original_msg_id,actor_uid,peer_uid,action,content_sha256) ",
+                        "VALUES ($1,$2,$3,$4,$5,$6) ON CONFLICT (request_id) DO NOTHING">>,
+                case
+                    elib_pg:execute_count(Conn, Sql, [
+                        RequestId, OriginalMsgId, ActorUid, PeerUid, Action, ContentHash
+                    ])
+                of
+                    {ok, 1} ->
+                        {ok, new};
+                    {ok, 0} ->
+                        verify_duplicate(
+                            Conn, RequestId, OriginalMsgId, ActorUid, PeerUid, Action, ContentHash
+                        );
+                    {error, Reason} ->
+                        throw({rollback, Reason})
+                end
         end
     end).
 
@@ -37,6 +44,15 @@ accept(RequestId, OriginalMsgId, ActorUid, PeerUid, Action, ContentHash) ->
     ok | {error, not_found | replayed | term()}.
 consume(RequestId, OriginalMsgId, AckUid, Action, ContentHash, PayloadJson) ->
     Result = elib_pg:with_tx(fun(Conn) ->
+        %% BE-04：与 accept 同键的 per-original 事务级 advisory lock——
+        %% 受理序与消费序在库内全串行，终态守卫与 fence 判定无竞态。
+        Lock = <<"c2c_forward_revoke:", OriginalMsgId/binary>>,
+        case
+            elib_pg:query(Conn, <<"SELECT pg_advisory_xact_lock(hashtextextended($1,0))">>, [Lock])
+        of
+            {ok, _} -> ok;
+            {error, Reason0} -> throw({rollback, {revoke_lock_failed, Reason0}})
+        end,
         case lock_receipt(Conn, RequestId) of
             {ok, #{
                 <<"original_msg_id">> := OriginalMsgId,
@@ -46,9 +62,14 @@ consume(RequestId, OriginalMsgId, AckUid, Action, ContentHash, PayloadJson) ->
                 <<"content_sha256">> := StoredHash,
                 <<"consumed_at">> := null
             }} when PeerUid =:= AckUid, StoredHash =:= ContentHash ->
-                consume_locked(
-                    Conn, RequestId, OriginalMsgId, ActorUid, PeerUid, PayloadJson
-                );
+                case edit_consume_guards(Conn, Action, OriginalMsgId, RequestId) of
+                    ok ->
+                        consume_locked(
+                            Conn, RequestId, OriginalMsgId, ActorUid, PeerUid, PayloadJson
+                        );
+                    {error, _} = GuardError ->
+                        GuardError
+                end;
             {ok, #{<<"consumed_at">> := ConsumedAt}} when ConsumedAt =/= null ->
                 {error, replayed};
             {ok, _} ->
@@ -110,8 +131,8 @@ lock_receipt(Conn, RequestId) ->
 
 consume_locked(Conn, RequestId, OriginalMsgId, ActorUid, PeerUid, PayloadJson) ->
     FormalSql =
-        <<"UPDATE public.msg_c2c SET payload=$1,server_ts=clock_timestamp() ",
-            "WHERE msg_id=$2 AND from_id=$3 AND to_id=$4">>,
+        <<"UPDATE public.msg_c2c SET payload=$1,server_ts=clock_timestamp(),",
+            "action_version=action_version+1 ", "WHERE msg_id=$2 AND from_id=$3 AND to_id=$4">>,
     StagingSql =
         <<"UPDATE public.msg_store_staging SET payload=$1::jsonb,server_ts=clock_timestamp() ",
             "WHERE type='c2c' AND msg_id=$2 AND from_id=$3 AND to_id=$4 ",
@@ -139,6 +160,48 @@ consume_locked(Conn, RequestId, OriginalMsgId, ActorUid, PeerUid, PayloadJson) -
 execute_count_or_rollback(Conn, Sql, Params) ->
     case elib_pg:execute_count(Conn, Sql, Params) of
         {ok, Count} -> Count;
+        {error, Reason} -> throw({rollback, Reason})
+    end.
+
+%% BE-04 编辑消费守卫（仅 edit；revoke 是权威终态动作，不受 fence 约束）：
+%% ① 撤回终态：已消费的撤回存在时，编辑消费一律 {error, revoked}（正文不复活）；
+%% ② 受理序 fence：同 original 存在受理序更晚的动作时，更早受理的编辑 ACK
+%%    视为过期 {error, stale}——权威最新状态 = 受理序最新动作，冲突显式返回
+%%    不静默覆盖。两判定均在 per-original advisory lock 串行域内，无竞态。
+edit_consume_guards(Conn, Action, OriginalMsgId, RequestId) ->
+    case Action of
+        <<"edit">> ->
+            case consumed_revoke_exists(Conn, OriginalMsgId) of
+                true ->
+                    {error, revoked};
+                false ->
+                    FenceSql =
+                        <<
+                            "SELECT 1 FROM public.c2c_action_receipt "
+                            "WHERE original_msg_id=$1 AND request_id<>$2 "
+                            "AND (accepted_at, request_id) > "
+                            "(SELECT accepted_at, request_id FROM public.c2c_action_receipt "
+                            "WHERE request_id=$2) LIMIT 1"
+                        >>,
+                    case elib_pg:query(Conn, FenceSql, [OriginalMsgId, RequestId]) of
+                        {ok, []} -> ok;
+                        {ok, [_]} -> {error, stale};
+                        {error, Reason} -> throw({rollback, Reason})
+                    end
+            end;
+        _ ->
+            ok
+    end.
+
+consumed_revoke_exists(Conn, OriginalMsgId) ->
+    Sql =
+        <<
+            "SELECT 1 FROM public.c2c_action_receipt "
+            "WHERE original_msg_id=$1 AND action='revoke' AND consumed_at IS NOT NULL LIMIT 1"
+        >>,
+    case elib_pg:query(Conn, Sql, [OriginalMsgId]) of
+        {ok, []} -> false;
+        {ok, [_]} -> true;
         {error, Reason} -> throw({rollback, Reason})
     end.
 

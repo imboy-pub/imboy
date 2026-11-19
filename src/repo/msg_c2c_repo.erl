@@ -334,7 +334,8 @@ revoke_offline_atomic(CreatedAt, Id, OriginalId, Payload, FromId, ToId, ServerTS
     Update = [
         <<"UPDATE ">>,
         Table,
-        <<" SET payload = $1, server_ts = CURRENT_TIMESTAMP ">>,
+        <<" SET payload = $1, server_ts = CURRENT_TIMESTAMP, ">>,
+        <<" action_version = action_version + 1 ">>,
         <<"WHERE msg_id = $2 AND from_id = $3 AND to_id = $4 ">>,
         <<"AND (expire_at IS NULL OR expire_at > CURRENT_TIMESTAMP)">>
     ],
@@ -590,6 +591,8 @@ update_pinned(MsgId, ToUid, Pinned) ->
     end.
 
 %% @doc 根据消息ID更新消息 payload（用于编辑/撤回 ack 持久化）
+%% BE-04：每次正文变更原子递增 action_version（服务器权威版本号，000280 基座）；
+%% accepted_at 不触碰（R03-4 合同：编辑不得重置受理时间基准）。
 %% @param MsgId 原消息ID
 %% @param PayloadJson JSON binary payload
 %% @return {ok, AffectedRows} | {error, Reason}
@@ -598,7 +601,8 @@ update_payload_by_msg_id(MsgId, PayloadJson) ->
     Tb = tablename(),
     Sql =
         <<"UPDATE ", Tb/binary,
-            " SET payload = $1, server_ts = CURRENT_TIMESTAMP "
+            " SET payload = $1, server_ts = CURRENT_TIMESTAMP, "
+            " action_version = action_version + 1 "
             " WHERE msg_id = $2">>,
     case elib_pg:execute(Sql, [PayloadJson, MsgId]) of
         {ok, AffectedRows} ->

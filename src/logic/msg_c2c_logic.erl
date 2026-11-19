@@ -17,6 +17,9 @@
 -export([extract_reply_info/1]).
 %% 透明 AI 豁免明文门（导出供 EUnit 直测）
 -export([validate_agent_peer_c2c_write/5]).
+%% BE-04:LOCAL:03 服务端可信时间窗规则的唯一判定点；导出供真库测试
+%% 直接约束边界语义（== 窗口在窗内，> 窗口过期）与低可信回退行为。
+-export([trusted_window_decision/2]).
 
 -include("chat.hrl").
 -include("log.hrl").
@@ -885,6 +888,10 @@ do_c2c_edit_plain(MsgId, CurrentUid, Data) ->
                                 ToId, MsgId, EditMsg, <<"c2s">>
                             ),
                             {reply, EditMsg};
+                        %% BE-04：撤回终态后受理被拒 = 显式冲突，非内部错误
+                        {error, revoked} ->
+                            {reply,
+                                revoked_edit_error_reply(MsgId, From, To, OriginalMsgId, NowMS)};
                         {error, _} ->
                             {reply, message_ds:assemble_s2c(MsgId, <<"internal_error">>, To)}
                     end;
@@ -945,6 +952,10 @@ do_c2c_encrypted_edit(MsgId, CurrentUid, Data, OriginalMsgId) ->
                                 ToId, MsgId, EditMsg, <<"c2s">>
                             ),
                             {reply, EditMsg};
+                        %% BE-04：撤回终态后受理被拒 = 显式冲突，非内部错误
+                        {error, revoked} ->
+                            {reply,
+                                revoked_edit_error_reply(MsgId, From, To, OriginalMsgId, NowMS)};
                         {error, _} ->
                             {reply, message_ds:assemble_s2c(MsgId, <<"internal_error">>, To)}
                     end;
@@ -975,6 +986,12 @@ do_c2c_encrypted_edit(MsgId, CurrentUid, Data, OriginalMsgId) ->
                             of
                                 ok ->
                                     {reply, EditMsg};
+                                %% BE-04：撤回终态后受理被拒 = 显式冲突，非内部错误
+                                {error, revoked} ->
+                                    {reply,
+                                        revoked_edit_error_reply(
+                                            MsgId, From, To, OriginalMsgId, NowMS
+                                        )};
                                 {error, _} ->
                                     {reply,
                                         message_ds:assemble_s2c(
@@ -1400,6 +1417,29 @@ persist_action_accept(OriginalMsgId, RequestId, RequestUid, PeerUid, Action, Con
     msg_c2c_ds:accept_action(
         RequestId, OriginalMsgId, RequestUid, PeerUid, Action, ContentHash
     ).
+
+%% BE-04：编辑撞撤回终态的显式冲突回执（受理被拒 ≠ 内部错误，两端交互一致）。
+%% error_code.hrl 不在本卡写集；code 复用撤回语义族 409（?ERR_REVOKE_TIMEOUT），
+%% payload.error 文本区分场景（与 ERR_MSG_TIME_SOURCE_MISSING 的先例一致）。
+-spec revoked_edit_error_reply(
+    binary(), binary() | integer(), binary() | integer(), binary(), integer()
+) -> map().
+revoked_edit_error_reply(MsgId, From, To, OriginalMsgId, NowMS) ->
+    #{
+        <<"id">> => MsgId,
+        <<"type">> => <<"C2C">>,
+        <<"from">> => From,
+        <<"to">> => To,
+        <<"msg_type">> => <<"custom">>,
+        <<"action">> => <<"message_edit_error">>,
+        <<"payload">> => #{
+            <<"content">> => <<>>,
+            <<"original_msg_id">> => OriginalMsgId,
+            <<"error">> => <<"消息已撤回，无法编辑"/utf8>>,
+            <<"code">> => ?ERR_REVOKE_TIMEOUT
+        },
+        <<"server_ts">> => NowMS
+    }.
 
 content_sha256(Content) when is_binary(Content) ->
     binary:encode_hex(crypto:hash(sha256, Content), lowercase);
