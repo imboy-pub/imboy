@@ -23,6 +23,7 @@ high_concurrency_test_() ->
 
 setup() ->
     _ = eunit_runner:eunit_setup(),
+    persistent_term:erase({?MODULE, first_send_failure}),
     application:set_env(imboy, env, test),
     case eunit_runner:eunit_try_db() of
         {ok, _Driver, _Conn} -> ok;
@@ -128,8 +129,11 @@ test_high_concurrency_messages() ->
                                     <<"to">> => integer_to_binary(FriendId)
                                 })
                             of
-                                ok -> success;
-                                _ -> failure
+                                ok ->
+                                    success;
+                                Other ->
+                                    note_send_failure(Other),
+                                    failure
                             end
                         catch
                             _:_ -> error
@@ -178,6 +182,7 @@ test_high_concurrency_messages() ->
     io:format("  错误数: ~p~n", [ErrorCount]),
     io:format("  失败率: ~.2f%~n", [FailureRate * 100]),
     io:format("  吞吐量: ~.2f msg/s~n", [Throughput]),
+    print_failure_sample(),
     io:format("========================================~n~n"),
 
     % 验证
@@ -264,6 +269,7 @@ test_sustained_message_load() ->
     io:format("  失败数: ~p~n", [FailureCount]),
     io:format("  错误数: ~p~n", [ErrorCount]),
     io:format("  平均吞吐量: ~.2f msg/s~n", [Throughput]),
+    print_failure_sample(),
     io:format("========================================~n~n"),
 
     ?assert(SuccessCount > 0, "没有成功的消息"),
@@ -331,8 +337,11 @@ do_burst_messages() ->
                                 <<"to">> => integer_to_binary(User2)
                             })
                         of
-                            ok -> success;
-                            _ -> failure
+                            ok ->
+                                success;
+                            Other ->
+                                note_send_failure(Other),
+                                failure
                         end
                     catch
                         C:R:ST ->
@@ -375,6 +384,7 @@ do_burst_messages() ->
     io:format("  失败数: ~p~n", [FailureCount]),
     io:format("  错误数: ~p~n", [ErrorCount]),
     io:format("  峰值吞吐量: ~.2f msg/s~n", [Throughput]),
+    print_failure_sample(),
     io:format("========================================~n~n"),
 
     ?assert(SuccessCount >= BurstSize * 0.9, "爆发测试成功率低于90%"),
@@ -405,8 +415,11 @@ sustain_send_loop(User1, User2, StartTime, DurationMs, Stats) ->
                             <<"to">> => integer_to_binary(User2)
                         })
                     of
-                        ok -> success;
-                        _ -> failure
+                        ok ->
+                            success;
+                        Other ->
+                            note_send_failure(Other),
+                            failure
                     end
                 catch
                     _:_ -> error
@@ -421,6 +434,23 @@ sustain_send_loop(User1, User2, StartTime, DurationMs, Stats) ->
 
 get_context() ->
     persistent_term:get({?MODULE, test_context}).
+
+%% 首个非 ok 返回样本：成功率骤降时计数报表无原因，本采样是唯一取证点。
+note_send_failure(Other) ->
+    case persistent_term:get({?MODULE, first_send_failure}, undefined) of
+        undefined ->
+            persistent_term:put({?MODULE, first_send_failure}, Other);
+        _ ->
+            ok
+    end.
+
+print_failure_sample() ->
+    case persistent_term:get({?MODULE, first_send_failure}, undefined) of
+        undefined ->
+            ok;
+        Sample ->
+            io:format("  首个失败样本: ~0p~n", [Sample])
+    end.
 
 ensure_friends(User1, User2) ->
     NowTs = elib_dt:now(),

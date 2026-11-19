@@ -267,7 +267,10 @@ offline_paging_real_db_test_() ->
         try
             lists:foreach(
                 fun({I, MsgId}) ->
-                    {ok, 1} = personal_message_order_repo:execute_formal(FromUid, Uid, MsgId,
+                    {ok, 1} = personal_message_order_repo:execute_formal(
+                        FromUid,
+                        Uid,
+                        MsgId,
                         <<
                             "INSERT INTO msg_c2c (id, from_id, to_id, msg_id, msg_type, "
                             "payload, created_at, conv_seq) VALUES ($1, $2, $3, $4, 'text', "
@@ -327,7 +330,9 @@ session_still_valid_flips_after_bump_real_db_test_() ->
     ?WITH_MECKS(
         [
             {user_device_ds, [
-                {'is_active', 2, fun(_Uid, _Did) -> true end}
+                %% E2EE-013：session_still_valid 原生路径走 ds 层 is_active_native/2
+                %%（旧 is_active/2 已不被该链消费，mock 钉错层→真查 PG 缺行→恒 false）
+                {'is_active_native', 2, fun(_Uid, _Did) -> true end}
             ]}
         ],
         fun() ->

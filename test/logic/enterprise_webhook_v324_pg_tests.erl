@@ -121,6 +121,10 @@ setup_conn() ->
         _:_ -> ok
     end,
     {ok, _} = application:ensure_all_started(throttle),
+    %% G-6 真实 loopback 接收器依赖 bot_webhook_guard 对 http://127.0.0.1 的
+    %% SSRF 放行（契约=imboy env ∈ test|local|dev）。聚焦跑 boot 配置不保证
+    %% 该值，套件自洽声明 test（勿依赖同 VM 前序套件遗留）。
+    ok = application:set_env(imboy, env, test),
     State0 = inttest_marker_db:provision(#{
         env_prefix => <<"V324_INTTEST">>,
         connect_extra => #{codecs => [{epgsql_codec_rfc3339_bin, []}]}
@@ -1271,9 +1275,13 @@ g6_t12(State) ->
             {ok, _} = enterprise_identity_logic:bind_mapping_tx(
                 C, Ctx, <<"ext-v24-journey">>, ?H_A3
             ),
-            %% group（有实际变更）
+            %% group（有实际变更）。add_members_tx 首条 LOCK TABLE 需真事务——
+            %% 本旅程 configure 之后 C 已被 direct_tx COMMIT 回 autocommit，
+            %% 必须为事务必需调用单独开桥（g6_t12 25P01 修复）。
             seed_group_member(C, 994331, ?GRP_A1, ?OWNER_A),
-            _ = enterprise_group_logic:add_members_tx(C, Ctx, ?GRP_A1, [?EXT_A1]),
+            _ = direct_tx(C, fun(Conn) ->
+                enterprise_group_logic:add_members_tx(Conn, Ctx, ?GRP_A1, [?EXT_A1])
+            end),
             %% cs
             with_side_effect_conn(C, fun() ->
                 ok = enterprise_webhook_logic:emit_cs_session_changed(?ORG_A, #{

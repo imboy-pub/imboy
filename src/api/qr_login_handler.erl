@@ -433,16 +433,22 @@ pg_confirm_as_scanner(Req, SessionToken, Uid) ->
             <<"device_id">> := DeviceId,
             <<"device_name">> := DeviceName,
             <<"platform">> := Platform,
-            <<"purpose">> := _Purpose
-        } = Session ->
-            %% Register before signing. Web tokens bind to this exact device row.
+            <<"purpose">> := Purpose
+        } ->
+            %% E2EE-013：先写设备行再签发 token（批次约束保持）——写入失败
+            %% fail-closed（与 cache/web confirm 路径 log_device_login case 同契约）；
+            %% 原实现丢弃返回值继续签发，设备行未落库即发 token=孤儿 token。
             case log_device_login(Uid, DeviceId, DeviceName, Platform) of
-                ok ->
-                    pg_confirm_registered(Req, SessionToken, Uid, Session, undefined);
-                {ok, DeviceRowId} ->
-                    pg_confirm_registered(Req, SessionToken, Uid, Session, DeviceRowId);
                 {error, _} ->
-                    device_registration_error(Req)
+                    device_registration_error(Req);
+                {ok, DeviceRowId} ->
+                    confirm_and_reply_pg(
+                        Req, SessionToken, Uid, DeviceId, Purpose, Platform, DeviceRowId
+                    );
+                ok ->
+                    confirm_and_reply_pg(
+                        Req, SessionToken, Uid, DeviceId, Purpose, Platform, undefined
+                    )
             end;
         {error, _} ->
             service_unavailable(Req);
@@ -450,34 +456,34 @@ pg_confirm_as_scanner(Req, SessionToken, Uid) ->
             elib_response:error(Req, <<"二维码已过期，请刷新"/utf8>>, ?ERR_QR_LOGIN_EXPIRED)
     end.
 
-pg_confirm_registered(Req, SessionToken, Uid, Session, DeviceRowId) ->
-    case
-        generate_login_token(
-            Uid,
-            maps:get(<<"device_id">>, Session),
-            maps:get(<<"purpose">>, Session),
-            maps:get(<<"platform">>, Session),
-            DeviceRowId
-        )
-    of
-        {ok, LoginToken} -> pg_confirm_token(Req, SessionToken, Uid, LoginToken);
-        {error, _} -> session_unavailable(Req)
+%% @doc 签发+确认流转+通知（设备行写成功后的收尾段，自 pg_confirm_as_scanner 拆出）。
+%% LEE-5：签发必须走 generate_login_token/5（web 平台 epoch 门）——原 /3 调用
+%% 对 web 平台完全绕过 auth_session epoch 校验，坏 epoch 也会签出 token。
+confirm_and_reply_pg(Req, SessionToken, Uid, DeviceId, Purpose, Platform, DeviceRowId) ->
+    case generate_login_token(Uid, DeviceId, Purpose, Platform, DeviceRowId) of
+        {ok, LoginToken} ->
+            confirm_transition_pg(Req, SessionToken, Uid, LoginToken);
+        {error, _} ->
+            %% epoch 门拒发等签发失败：fail-closed 带 503 状态（session_unavailable，
+            %% 非 200+code 的 service_unavailable——坏 epoch 必须让客户端可见失败）。
+            session_unavailable(Req)
     end.
 
-pg_confirm_token(Req, SessionToken, Uid, LoginToken) ->
+confirm_transition_pg(Req, SessionToken, Uid, LoginToken) ->
     case qr_login_session_ds:transition_confirm(SessionToken, Uid, LoginToken) of
         {ok, _} ->
-            %% Notify without credentials; SSE and polling share the atomic PG claim.
+            %% C08：syn 只发事件通知，不广播 login_token；
+            %% Web 端落地 token 经 SSE 服务端代领或 status 原子领取
             _ = qr_login_event_ds:notify(
-                SessionToken, qr_login_event_ds:event(confirmed_ready, undefined)
+                SessionToken,
+                qr_login_event_ds:event(confirmed_ready, undefined)
             ),
             elib_response:success(Req, #{<<"status">> => <<"confirmed">>});
         {error, {pg_error, _}} ->
             service_unavailable(Req);
         {error, not_transitioned} ->
-            elib_response:error(
-                Req, <<"二维码已确认，请刷新"/utf8>>, ?ERR_QR_LOGIN_ALREADY_USED
-            )
+            %% 并发 confirm/会话过期：既有兼容非成功响应
+            elib_response:error(Req, <<"二维码已确认，请刷新"/utf8>>, ?ERR_QR_LOGIN_ALREADY_USED)
     end.
 
 %% @doc 取消登录

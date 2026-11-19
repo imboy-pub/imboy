@@ -708,8 +708,19 @@ login_case(Registration, Assert) ->
             {elib_response, response_mocks()}
         ],
         fun() ->
-            %% This suite is intentionally run without the application or its real user_server.
-            ?assertEqual(undefined, whereis(user_server)),
+            %% This suite owns the user_server name for the test scope. In the
+            %% app-booted shared eunit VM the real user_server may already be
+            %% registered — take over the name (never assert it absent) and
+            %% restore the original registration afterwards, so login_success
+            %% casts always land on this process, never on the real server.
+            RealUs =
+                case whereis(user_server) of
+                    undefined ->
+                        none;
+                    Pid when is_pid(Pid) ->
+                        unregister(user_server),
+                        Pid
+                end,
             true = register(user_server, self()),
             try
                 {ok, Req, _} = passport_handler:init(#{}, ?WEB#{action => login}),
@@ -717,6 +728,10 @@ login_case(Registration, Assert) ->
                 Assert(Req)
             after
                 unregister(user_server),
+                case RealUs of
+                    none -> ok;
+                    RealPid -> catch register(user_server, RealPid)
+                end,
                 _ = login_cast_count()
             end
         end

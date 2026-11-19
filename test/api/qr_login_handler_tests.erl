@@ -501,10 +501,13 @@ confirm_purpose_test(Purpose) ->
     SessionToken = <<"session-confirm-1">>,
     QRToken = make_qr_token(SessionToken),
     Uid = 111174215241304064,
-    EncryptFun =
+    %% LEE-5+epoch 门：pg confirm 走 generate_login_token/5——web+human
+    %% 为 4 元 encrypt_web_token(Uid, Did, Ep, DeviceRowId)；seat 仍 2 元
+    %% encrypt_seat_token（/5 seat 子句无 epoch 门）。
+    {EncryptFun, EncryptArity} =
         case Purpose of
-            <<"seat">> -> encrypt_seat_token;
-            _ -> encrypt_token
+            <<"seat">> -> {encrypt_seat_token, 2};
+            _ -> {encrypt_web_token, 4}
         end,
     ?WITH_MECKS(
         common_mocks() ++
@@ -542,15 +545,36 @@ confirm_purpose_test(Purpose) ->
                         #{<<"status">> => 1, <<"account_type">> => 0}
                     end}
                 ]},
+                %% LEE-5+设备行 fail-closed：log_device_login 链终点确定性
+                %% mock（register_web 整链含真 PG 活跃性查询；mock 后原
+                %% save_web 内嵌断言改为 register_web 边界断言）。
+                {user_device_ds, [
+                    {'register_web', 4, fun(_, _, _, _) -> {ok, 9001} end}
+                ]},
                 {token_ds, [
-                    %% E2EE-013：token 绑定 create 时上报的 device_id，
+                    %% E2EE-013：token 绑定 create 时上报的 device_id,
                     %% 且 user_device 行必须已落库（否则设备级校验会 401）
-                    {EncryptFun, 2, fun(U, <<"web-device-1">>) when U =:= Uid ->
-                        true = meck:called(
-                            user_device_repo, save_web, ['_', Uid, <<"web-device-1">>, '_']
-                        ),
-                        <<"login-token-confirm">>
-                    end}
+                    {EncryptFun, EncryptArity,
+                        if
+                            EncryptArity =:= 2 ->
+                                fun(U, <<"web-device-1">>) when U =:= Uid ->
+                                    true = meck:called(
+                                        user_device_ds,
+                                        register_web,
+                                        ['_', Uid, <<"web-device-1">>, '_']
+                                    ),
+                                    <<"login-token-confirm">>
+                                end;
+                            true ->
+                                fun(U, <<"web-device-1">>, _Ep, _RowId) when U =:= Uid ->
+                                    true = meck:called(
+                                        user_device_ds,
+                                        register_web,
+                                        ['_', Uid, <<"web-device-1">>, '_']
+                                    ),
+                                    <<"login-token-confirm">>
+                                end
+                        end}
                 ]},
                 {user_device_repo, [
                     {'save_web', 4, fun(_Now, U, _Did, PostVals) when U =:= Uid ->
@@ -811,7 +835,10 @@ common_mocks() ->
         {elib_response, [
             {'success', 2, fun(Req, Payload) -> Req#{response_result => {success, Payload}} end},
             {'error', 3, fun(Req, Msg, Code) -> Req#{response_result => {error, Msg, Code}} end}
-        ]}
+        ]},
+        %% LEE-5+epoch 门：pg web confirm 签发前读 auth_session epoch——
+        %% mock 固定 {ok, 7}，勿依赖宿主 PG 的 user_auth_epoch 行。
+        {auth_session_ds, [{'current_epoch', 1, fun(_) -> {ok, 7} end}]}
     ].
 
 %% LEE-5 反证：QR 全链路绝不触碰 imboy_cache（任何调用即 throw 测试失败）
@@ -888,7 +915,19 @@ confirm_ok_mocks(SessionToken, QRToken, Uid, Token) ->
         ]},
         {token_ds, [
             {'encrypt_token', 2, fun(_, _) -> Token end},
+            {'encrypt_web_token', 4, fun(_, _, _, _) -> Token end},
             {'encrypt_seat_token', 2, fun(_, _) -> Token end}
+        ]},
+        %% LEE-5+设备行 fail-closed：pg confirm 校验 log_device_login 返回值——
+        %% 链首关 user_ds:find_by_id（真查 PG 无行→invalid_account→503）与
+        %% 链内 register_web 均须确定性 mock。
+        {user_ds, [
+            {'find_by_id', 2, fun(U, _Fields) when U =:= Uid ->
+                #{<<"status">> => 1, <<"account_type">> => 0}
+            end}
+        ]},
+        {user_device_ds, [
+            {'register_web', 4, fun(_, _, _, _) -> {ok, 9001} end}
         ]},
         {user_device_repo, [
             {'save', 4, fun(_, _, _, _) -> ok end}

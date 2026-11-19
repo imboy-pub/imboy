@@ -27,10 +27,14 @@ setup() ->
         {ok, _} ->
             Previous = eb_pg_test_fixture:select_asset_stub(),
             PreviousJwt = application:get_env(imboy, jwt_key),
+            PreviousEdge = application:get_env(imboy, edge_base_url),
             try
                 Registry = eb_pg_test_fixture:install_asset_registry(),
                 ok = application:set_env(imboy, jwt_key, <<"synthetic-eb-asset-test-key-only">>),
-                {asset_stub, Previous, Registry, PreviousJwt, Result}
+                %% content 端点边缘视图 fail-closed：edge_base()/base_url() 皆空 →
+                %% edge_not_configured；本套件供给专用基址（勿依赖宿主 env）。
+                ok = application:set_env(imboy, edge_base_url, <<"http://eb-edge.eunit.test">>),
+                {asset_stub, Previous, Registry, PreviousJwt, PreviousEdge, Result}
             catch
                 Class:Reason:Stack ->
                     try
@@ -47,7 +51,7 @@ setup() ->
 setup_db() ->
     eunit_runner:eunit_setup_with_db().
 
-cleanup_db({asset_stub, Previous, Registry, PreviousJwt, Result}) ->
+cleanup_db({asset_stub, Previous, Registry, PreviousJwt, PreviousEdge, Result}) ->
     try
         cleanup_db(Result)
     after
@@ -57,9 +61,16 @@ cleanup_db({asset_stub, Previous, Registry, PreviousJwt, Result}) ->
             try
                 eb_pg_test_fixture:restore_asset_store(Previous)
             after
-                case PreviousJwt of
-                    undefined -> application:unset_env(imboy, jwt_key);
-                    {ok, Key} -> application:set_env(imboy, jwt_key, Key)
+                try
+                    case PreviousEdge of
+                        undefined -> application:unset_env(imboy, edge_base_url);
+                        {ok, Edge} -> application:set_env(imboy, edge_base_url, Edge)
+                    end
+                after
+                    case PreviousJwt of
+                        undefined -> application:unset_env(imboy, jwt_key);
+                        {ok, Key} -> application:set_env(imboy, jwt_key, Key)
+                    end
                 end
             end
         end
@@ -70,7 +81,7 @@ cleanup_db({ok, Conn}) ->
 cleanup_db(_Other) ->
     ok.
 
-cases({asset_stub, _Previous, _Registry, _PreviousJwt, Result}) ->
+cases({asset_stub, _Previous, _Registry, _PreviousJwt, _PreviousEdge, Result}) ->
     cases(Result);
 cases({ok, _Conn}) ->
     [
