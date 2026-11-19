@@ -37,7 +37,12 @@ codec_test_() ->
         {"普通 C2C 消息仍走 protobuf 编码", fun c2c_still_protobuf/0},
         {"语音 voice 映射 AUDIO 且 protobuf 往返不丢类型", fun voice_content_type_roundtrip/0},
         {"chat_history_bundle JSON 通道识别与原样往返", fun chat_history_bundle_json_channel/0},
-        {"chat_history_bundle protobuf 连接回退 JSON 四象限无损", fun chat_history_bundle_pb_fallback/0}
+        {"chat_history_bundle protobuf 连接回退 JSON 四象限无损", fun chat_history_bundle_pb_fallback/0},
+        {"顶层扩展字段 sender_did/sender_dtype/topic_id 回退 JSON 不丢字段",
+            fun toplevel_extra_fields_pb_fallback/0},
+        {"控制帧 in_reply_to/reason 白名单化后仍回退 JSON（回归）", fun ctrl_fields_pb_fallback_regression/0},
+        {"垃圾 protobuf 字节解码得空 map 哨兵（不崩溃）", fun garbage_pb_decode_sentinel/0},
+        {"未知 MsgDirection 枚举解码为空串哨兵（不崩溃）", fun unknown_direction_enum_sentinel/0}
     ]}.
 
 timestamp_fields_protobuf_roundtrip_test_() ->
@@ -589,3 +594,82 @@ test_chat_history_bundle_msg(Direction) ->
         },
         <<"created_at">> => 1710000000000
     }.
+
+%% ===================================================================
+%% BE-01：C-01 deviation_register 关闭断言
+%% 顶层扩展字段不再被 to_pb_map 静默丢弃：白名单漏斗判不可无损 →
+%% JSON 回退 / encode(protobuf) fail-closed 拒绝（ADR 15 同款）。
+%% ===================================================================
+
+toplevel_extra_fields_pb_fallback() ->
+    Msg0 = test_c2c_message(),
+    Msg = Msg0#{
+        <<"sender_did">> => <<"did-123">>,
+        <<"sender_dtype">> => 1,
+        <<"topic_id">> => <<"topic-42">>
+    },
+    %% 漏斗判定（行为面）：直接 encode(protobuf) fail-closed 拒绝，
+    %% 不产出裁剪帧（pb_lossless/1 为内部函数，经 encode/2 出口验证）
+    ?assertEqual(<<>>, imboy_codec:encode(protobuf, Msg)),
+    %% auto 通道：JSON 回退后全字段保留（none 与 v2 两种 framing）
+    [
+        begin
+            Wire = imboy_codec:encode_ws_msg(protobuf, Framing, ?FRAME_TYPE_MSG_C2C, Msg),
+            Json =
+                case {Framing, Wire} of
+                    {none, {text, Binary}} ->
+                        Binary;
+                    {v2, {binary, Binary}} ->
+                        {ok, Frame} = imboy_codec:unwrap_v2_frame(Binary),
+                        imboy_frame:payload(Frame)
+                end,
+            Decoded = jsone:decode(Json, [{object_format, map}]),
+            ?assertEqual(<<"did-123">>, maps:get(<<"sender_did">>, Decoded)),
+            ?assertEqual(1, maps:get(<<"sender_dtype">>, Decoded)),
+            ?assertEqual(<<"topic-42">>, maps:get(<<"topic_id">>, Decoded))
+        end
+     || Framing <- [none, v2]
+    ].
+
+%% @doc 原 ctrl_fields 检查被顶层白名单覆盖的回归锚：
+%% in_reply_to / reason 仍判不可无损并回退 JSON（client_ack_error 语义不变）。
+ctrl_fields_pb_fallback_regression() ->
+    Msg0 = test_c2c_message(),
+    Msg = Msg0#{
+        <<"type">> => <<"CLIENT_ACK_ERROR">>,
+        <<"in_reply_to">> => <<"msg-ack-target">>,
+        <<"reason">> => <<"rate_limited">>
+    },
+    ?assertEqual(<<>>, imboy_codec:encode(protobuf, Msg)),
+    {binary, Frame} = imboy_codec:encode_ws_msg(protobuf, v2, ?FRAME_TYPE_MSG_C2C, Msg),
+    {ok, Unwrapped} = imboy_codec:unwrap_v2_frame(Frame),
+    Decoded = jsone:decode(imboy_frame:payload(Unwrapped), [{object_format, map}]),
+    ?assertEqual(<<"msg-ack-target">>, maps:get(<<"in_reply_to">>, Decoded)),
+    ?assertEqual(<<"rate_limited">>, maps:get(<<"reason">>, Decoded)),
+    ?assertEqual(<<"CLIENT_ACK_ERROR">>, maps:get(<<"type">>, Decoded)).
+
+%% @doc 垃圾 protobuf 字节：decode 落空 map 哨兵并告警（不崩溃、不投毒）。
+garbage_pb_decode_sentinel() ->
+    ?assertEqual(#{}, imboy_codec:decode(protobuf, <<"garbage-bytes-not-proto", 0, 1, 2>>)),
+    %% 空二进制是合法 proto 帧全默认值（非错误路径）：解码不崩溃、字段为哨兵默认
+    Defaults = imboy_codec:decode(protobuf, <<>>),
+    ?assertEqual(<<>>, maps:get(<<"id">>, Defaults)),
+    ?assertEqual(0, maps:get(<<"conv_seq">>, Defaults)).
+
+%% @doc 外部服务器发来未知 MsgDirection 枚举：from_pb_map 落空串哨兵，
+%% 上层按未知类型处置（router 记日志），不崩溃、不伪装成已知方向。
+unknown_direction_enum_sentinel() ->
+    PbBin = imboy_pb:encode_msg(
+        #{
+            id => <<"msg-unknown-enum">>,
+            type => 'MSG_DIRECTION_UNSPECIFIED',
+            from => 1,
+            to => 2,
+            payload => <<"hello">>
+        },
+        'IMBoyMessage'
+    ),
+    Decoded = imboy_codec:decode(protobuf, PbBin),
+    ?assertEqual(<<"msg-unknown-enum">>, maps:get(<<"id">>, Decoded)),
+    ?assertEqual(<<>>, maps:get(<<"type">>, Decoded)),
+    ?assertEqual(<<"hello">>, maps:get(<<"payload">>, Decoded)).
