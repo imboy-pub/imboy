@@ -11,7 +11,8 @@ c2c_action_receipt_pg_test_() ->
                 ?_test(concurrent_single_consumer()),
                 ?_test(missing_target_keeps_receipt()),
                 ?_test(worker_reconciles_stale_snapshot()),
-                ?_test(edit_revoke_ordering_and_replay())
+                ?_test(edit_revoke_ordering_and_replay()),
+                ?_test(action_version_migration_compat())
             ]
         end}}.
 
@@ -347,4 +348,52 @@ edit_revoke_ordering_and_replay() ->
             RevokeReq, Original, 202, <<"revoke">>, null, <<"{\"action\":\"revoke_ack\"}">>
         )
     ),
+    ok.
+
+%% M-01（IMBOY_MASTER_V2_2_20261118）：000280 c2c_action_version 迁移
+%% 兼容断言（真库，marker 已含全链至 280）。
+action_version_migration_compat() ->
+    %% 列在位（NOT NULL DEFAULT 0）
+    {ok, Cols} = elib_pg:query(
+        <<
+            "SELECT column_name, is_nullable, column_default FROM information_schema.columns "
+            "WHERE table_schema='public' AND table_name='msg_c2c' AND column_name='action_version'"
+        >>,
+        []
+    ),
+    ?assertEqual(1, length(Cols)),
+    %% 旧式 INSERT（不带 action_version）成功 = 旧端兼容写；读回默认 0
+    LegacyId = <<"m01-legacy-row">>,
+    insert_formal(LegacyId, <<"legacy payload">>),
+    {ok, [#{<<"action_version">> := Ver}]} = elib_pg:query(
+        <<"SELECT action_version FROM public.msg_c2c WHERE msg_id=$1">>, [LegacyId]
+    ),
+    ?assertEqual(0, Ver),
+    %% down：列移除（与 000280 down 文件语义逐字等价的真回退），旧式读写仍通
+    {ok, _} =
+        elib_pg:execute(
+            <<"ALTER TABLE public.msg_c2c DROP COLUMN IF EXISTS action_version">>, []
+        ),
+    {ok, []} = elib_pg:query(
+        <<
+            "SELECT 1 FROM information_schema.columns "
+            "WHERE table_schema='public' AND table_name='msg_c2c' AND column_name='action_version'"
+        >>,
+        []
+    ),
+    LegacyId2 = <<"m01-legacy-after-down">>,
+    insert_formal(LegacyId2, <<"post-down payload">>),
+    {ok, [#{<<"payload">> := <<"post-down payload">>}]} = elib_pg:query(
+        <<"SELECT payload FROM public.msg_c2c WHERE msg_id=$1">>, [LegacyId2]
+    ),
+    %% 再 up：列恢复（与 000280 up 文件语义逐字等价），存量行默认 0
+    {ok, _} =
+        elib_pg:execute(
+            <<"ALTER TABLE public.msg_c2c ADD COLUMN IF NOT EXISTS action_version bigint NOT NULL DEFAULT 0">>,
+            []
+        ),
+    {ok, [#{<<"action_version">> := Ver2}]} = elib_pg:query(
+        <<"SELECT action_version FROM public.msg_c2c WHERE msg_id=$1">>, [LegacyId2]
+    ),
+    ?assertEqual(0, Ver2),
     ok.
