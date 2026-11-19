@@ -58,6 +58,50 @@ docker build \
   -t imboy/pg18:dev .
 ```
 
+## 发布镜像到 Docker Hub（imboy org）
+
+pg18 镜像采用双架构发布：`linux/amd64`（prod 服务器 x86_64）+
+`linux/arm64`（Apple Silicon 开发机）。**单一架构的镜像对另一半平台不可用**
+（Apple Silicon 上直接 `docker build` 只产出 arm64，勿直接 push）。
+
+**执行目录：必须在 imboy 仓根**（Dockerfile 内 `COPY ./docker/...` 相对构建
+上下文解析，上下文=仓根；`-f docker/pg18_Dockerfile` 指定配方）。
+
+```bash
+cd /path/to/imboy            # 仓根，不是 docker/ 子目录
+
+# 1. 登录（账号须有 imboy org 的 push 权限；仓不存在时首次 push 自动建仓）
+docker login
+
+# 2. 双架构一次构建+推送（本机 arm64 命中缓存，amd64 走 Rosetta 模拟编译，
+#    首次约 1-2 小时；建议先用单架构 --load 预热再推，见下方"预热"）
+docker buildx build \
+  --platform linux/amd64,linux/arm64 \
+  -f docker/pg18_Dockerfile \
+  -t imboy/pg18:3.7.0-1 \
+  --push .
+
+# 3. 校验 Hub 上的 manifest（审计留档：记录 digest 与平台清单）
+docker buildx imagetools inspect imboy/pg18:3.7.0-1
+```
+
+多架构构建耗时过长时，可先预热 amd64 再推（构建缓存共享）：
+
+```bash
+# 预热（免登录）：amd64 模拟编译全部走一遍
+docker buildx build --platform linux/amd64 \
+  -f docker/pg18_Dockerfile -t imboy/pg18:amd64-warmup --load .
+# 登录后正式推：双平台均命中缓存，分钟级完成
+```
+
+发布纪律：
+
+- tag 沿用 `<PostGIS 版本>-<序号>` 惯例（如 `3.7.0-1`），与 compose 引用一致
+- **禁止推 `latest` 等浮动 tag**（镜像审计红线：不可复现、无法钉 digest）
+- prod 部署侧可用 digest 钉扎：`imboy/pg18:3.7.0-1@sha256:<digest>`
+- 与 release CI（tag 触发构建 `ghcr.io/imboy-pub/imboy-pg18`，仅 amd64）
+  是两条独立通道；Hub 为多架构人工发布通道
+
 ## 常用运行示例
 
 ### 1. 创建本地网络
