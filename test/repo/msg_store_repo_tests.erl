@@ -1406,11 +1406,18 @@ c2g_action_stage_uses_original_snapshot_and_generation_test_() ->
                 ]},
                 {elib_pg, [
                     {'with_tx', 1, fun(Tx) -> Tx(fake_conn) end},
-                    {'execute', 3, fun(
-                        fake_conn, Sql, [100, <<"original-msg">>, <<"action-msg">>, 50, 8]
-                    ) ->
-                        ?assertNotEqual(nomatch, binary:match(Sql, <<"c2g_revoke_fact">>)),
-                        {ok, 1}
+                    {'execute', 3, fun
+                        (
+                            fake_conn, Sql, [100, <<"original-msg">>, <<"action-msg">>, 50, 8]
+                        ) ->
+                            ?assertNotEqual(nomatch, binary:match(Sql, <<"c2g_revoke_fact">>)),
+                            {ok, 1};
+                        %% BE-05：撤回事实后同事务 tombstone 正式行（payload/original/gid）
+                        (fake_conn, Sql, [_, <<"original-msg">>, 100]) ->
+                            ?assertNotEqual(
+                                nomatch, binary:match(Sql, <<"UPDATE public.msg_store">>)
+                            ),
+                            {ok, 1}
                     end},
                     {'query', 3, fun
                         %% discussion 访问锁（791b8817）：无 discussion 绑定语义 → 放行

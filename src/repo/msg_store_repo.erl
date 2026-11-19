@@ -1159,8 +1159,36 @@ persist_c2g_revoke_fact(Conn, <<"message_revoke_ack">>, Gid, Original, ActionId,
             [Gid, Original, ActionId, Uid, Seq]
         )
     of
-        {ok, _} -> ok;
-        {error, Reason2} -> throw({rollback, {revoke_fact_failed, Reason2}})
+        {ok, _} ->
+            %% BE-05:LOCAL:04/05 撤回事实与正文 tombstone 同事务落地——历史重拉
+            %% 只见控制事实，不重新显示被限制内容（对齐 c2c revoke_offline_atomic
+            %% 语义；00000258 的编辑事实仍不重写正文，仅撤回收敛正式行）。
+            %% ON CONFLICT 重放时幂等重刷同一 tombstone。
+            TombPayload =
+                jsone:encode(
+                    #{
+                        <<"action">> => <<"message_revoke_ack">>,
+                        <<"original_msg_id">> => Original,
+                        <<"content">> => <<>>
+                    },
+                    [native_utf8]
+                ),
+            case
+                elib_pg:execute(
+                    Conn,
+                    <<
+                        "UPDATE public.msg_store SET payload=$1::jsonb,"
+                        "server_ts=clock_timestamp() "
+                        "WHERE chat_type='c2g' AND msg_id=$2 AND group_id=$3"
+                    >>,
+                    [TombPayload, Original, Gid]
+                )
+            of
+                {ok, _} -> ok;
+                {error, Reason3} -> throw({rollback, {revoke_tombstone_failed, Reason3}})
+            end;
+        {error, Reason2} ->
+            throw({rollback, {revoke_fact_failed, Reason2}})
     end;
 persist_c2g_revoke_fact(_, _, _, _, _, _, _) ->
     ok.
