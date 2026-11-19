@@ -6,9 +6,12 @@ message_result_pg_test_() ->
 
 message_result_fixture() ->
     {setup, fun setup/0, fun cleanup/1, fun(_) ->
-        {timeout, 30, fun() ->
+        {timeout, 180, fun() ->
             scoped_result(),
-            group_result()
+            group_result(),
+            s2c_notice_retry_replay(),
+            c2s_accept_complete_retry(),
+            four_channel_encoding_equivalence()
         end}
     end}.
 
@@ -573,4 +576,358 @@ scoped_result() ->
         {ok, _} = elib_pg:execute(
             <<"DELETE FROM public.msg_store_seq WHERE conv_key=$1">>, [ConvKey]
         )
+    end.
+
+%% ===================================================================
+%% BE-10（IMBOY_MASTER_V2_2_20261118）：S2C 及实际 C2S 最终结果恢复核验。
+%% 真库（attv5_chain_be10；isolated peer VM）。
+%% ===================================================================
+
+insert_be10_user(Uid) ->
+    {ok, _} = elib_pg:execute(
+        <<"INSERT INTO public.\"user\"(id,account,nickname,password,reg_ip,reg_cosv) ",
+            "VALUES($1,$2,'be10','test','127.0.0.1','be10')">>,
+        [Uid, <<"be10-", (integer_to_binary(Uid))/binary>>]
+    ),
+    ok.
+
+%% BE-10:LOCAL:01 S2C 状态事件重复、延迟和断线：当前状态可恢复，
+%% 不被旧事件覆盖。受理（事务内持久通知）→ 重试（同 EffectKey ⇒ 同
+%% deterministic MsgId ⇒ staging UNIQUE 幂等，无重复任务）→ worker 完成
+%% （staging 搬运 msg_s2c）→ 恢复读（read_msg_for_device，ORDER BY id ASC）
+%% 顺序稳定、旧事件行不被新事件行改写、重读恒定。
+s2c_notice_retry_replay() ->
+    <<Seed:48, _/binary>> = crypto:strong_rand_bytes(8),
+    Uid = Seed + 1,
+    FromId = Seed + 4,
+    EffectOld = <<"be10-old-", (integer_to_binary(Seed))/binary>>,
+    EffectNew = <<"be10-new-", (integer_to_binary(Seed))/binary>>,
+    OldId = msg_s2c_ds:deterministic_msg_id(EffectOld, Uid),
+    NewId = msg_s2c_ds:deterministic_msg_id(EffectNew, Uid),
+    try
+        ok = insert_be10_user(Uid),
+        Accept = fun(Effect, State) ->
+            elib_pg:with_tx(fun(Conn) ->
+                case
+                    msg_store_repo:stage_s2c_tx(
+                        Conn,
+                        msg_s2c_ds:deterministic_msg_id(Effect, Uid),
+                        <<"be10_state">>,
+                        #{<<"state">> => State},
+                        FromId,
+                        Uid,
+                        elib_dt:now()
+                    )
+                of
+                    {ok, _} -> ok;
+                    {error, Reason} -> erlang:error({be10_accept_failed, Effect, Reason})
+                end
+            end)
+        end,
+        %% 受理：旧状态事件先落库
+        ok = Accept(EffectOld, <<"off">>),
+        %% 断线重发（同 EffectKey 重试）：同 MsgId ⇒ staging UNIQUE 幂等
+        {error, _} = Accept(EffectOld, <<"off">>),
+        {ok, CntRows} = elib_pg:query(
+            <<
+                "SELECT count(*)::bigint AS v FROM public.msg_store_staging "
+                "WHERE type='s2c' AND msg_id=$1"
+            >>,
+            [OldId]
+        ),
+        ?assertEqual(1, maps:get(<<"v">>, hd(CntRows))),
+        %% 新状态事件后落库；worker 完成（staging → msg_s2c）
+        ok = Accept(EffectNew, <<"on">>),
+        ArchiveNotice = fun(MsgId0) ->
+            {ok, [Row]} = elib_pg:query(
+                <<
+                    "SELECT type, msg_id, msg_type, action, e2ee, payload, from_id, to_id, "
+                    "created_at, server_ts, conv_seq, accepted_at, expire_at "
+                    "FROM public.msg_store_staging WHERE type='s2c' AND msg_id=$1"
+                >>,
+                [MsgId0]
+            ),
+            ToId = maps:get(<<"to_id">>, Row),
+            {ok, _} = elib_pg:execute(
+                <<"INSERT INTO public.msg_s2c(id,from_id,to_id,msg_id,payload,action,msg_type,created_at,server_ts) ",
+                    "SELECT id,from_id,to_id,msg_id,payload,action,msg_type,created_at,server_ts "
+                    "FROM public.msg_store_staging WHERE type='s2c' AND msg_id=$1">>,
+                [MsgId0]
+            ),
+            {ok, _} = msg_store_repo:unstage(<<"s2c">>, MsgId0),
+            ToId
+        end,
+        _ = ArchiveNotice(OldId),
+        _ = ArchiveNotice(NewId),
+        %% 恢复读（断线后重连同源谓词）：顺序稳定 = [old, new]；重读恒定；
+        %% 旧事件行保持原 payload（不被新事件改写）
+        Rows1 = msg_s2c_ds:read_msg_for_device(Uid, <<>>, 50, undefined),
+        Ids1 = [maps:get(<<"id">>, R) || R <- Rows1],
+        ?assertEqual([OldId, NewId], Ids1),
+        Rows2 = msg_s2c_ds:read_msg_for_device(Uid, <<>>, 50, undefined),
+        ?assertEqual(Ids1, [maps:get(<<"id">>, R) || R <- Rows2]),
+        {ok, [OldRow]} = elib_pg:query(
+            <<"SELECT payload::text AS v FROM public.msg_s2c WHERE msg_id=$1">>, [OldId]
+        ),
+        ?assertEqual(nomatch, binary:match(maps:get(<<"v">>, OldRow), <<"\"on\"">>))
+    after
+        elib_pg:execute(
+            <<"DELETE FROM public.msg_s2c WHERE msg_id IN ($1,$2)">>, [OldId, NewId]
+        ),
+        elib_pg:execute(
+            <<"DELETE FROM public.msg_store_staging WHERE type='s2c' AND msg_id IN ($1,$2)">>,
+            [OldId, NewId]
+        ),
+        elib_pg:execute(<<"DELETE FROM public.msg_c2g_request_ledger WHERE msg_id IN ($1,$2)">>, [
+            OldId, NewId
+        ]),
+        elib_pg:execute(<<"DELETE FROM public.\"user\" WHERE id=$1">>, [Uid])
+    end.
+
+%% BE-10:LOCAL:02 C2S 请求重试与既有流式最终结果：受理（staging 唯一约束）
+%% 与完成（归档+结果查询）区分；同 MsgId 重试无重复任务；最终状态可查询
+%% 且重复查询恒定。
+c2s_accept_complete_retry() ->
+    <<Seed:62, _:2>> = crypto:strong_rand_bytes(8),
+    Id = Seed + 1,
+    FromId = Seed + 2,
+    ToId = Seed + 3,
+    MsgId = <<"be10-c2s-", (integer_to_binary(Seed))/binary>>,
+    ConvKey = msg_archive_repo:conv_key(<<"c2c">>, FromId, ToId),
+    Ts = elib_dt:to_rfc3339(1789600000000, millisecond, "Z"),
+    try
+        %% 受理：seq 分配 + staging 持久
+        {ok, _Id, Seq} =
+            msg_store_repo:stage_with_sequence(
+                <<"c2c">>,
+                MsgId,
+                <<"text">>,
+                <<>>,
+                null,
+                <<"{\"m\":1}">>,
+                FromId,
+                ToId,
+                Ts,
+                Ts,
+                null,
+                Ts,
+                null
+            ),
+        ?assert(is_integer(Seq) andalso Seq > 0),
+        %% 受理中（未完成）即已可查询（with_staging 命中 staging 行）
+        ?assertMatch(
+            {ok, [_]},
+            msg_archive_repo:message_result_with_staging(
+                <<"c2c">>, FromId, ToId, MsgId, ConvKey, 0
+            )
+        ),
+        %% 重试：同 MsgId 受理 = 幂等 {ok, duplicate, 原 Seq}——无重复任务，
+        %% 权威位置不因重试漂移
+        ?assertEqual(
+            {ok, duplicate, Seq},
+            msg_store_repo:stage_with_sequence(
+                <<"c2c">>,
+                MsgId,
+                <<"text">>,
+                <<>>,
+                null,
+                <<"{\"m\":1}">>,
+                FromId,
+                ToId,
+                Ts,
+                Ts,
+                null,
+                Ts,
+                null
+            )
+        ),
+        {ok, [Row]} = elib_pg:query(
+            <<
+                "SELECT type, msg_id, msg_type, from_id, to_id, e2ee, sender_did, payload, "
+                "created_at, server_ts, conv_seq, accepted_at, expire_at "
+                "FROM public.msg_store_staging WHERE type='c2c' AND msg_id=$1"
+            >>,
+            [MsgId]
+        ),
+        ok = msg_archive_repo:archive(Row),
+        {ok, _} = msg_store_repo:unstage(<<"c2c">>, MsgId),
+        %% 完成：最终状态可查询且重复查询恒定
+        R1 = msg_archive_repo:message_result(ConvKey, MsgId, FromId, 0),
+        ?assertMatch({ok, [_]}, R1),
+        R2 = msg_archive_repo:message_result(ConvKey, MsgId, FromId, 0),
+        ?assertEqual(R1, R2)
+    after
+        elib_pg:execute(
+            <<"DELETE FROM public.msg_store WHERE conv_key=$1 AND msg_id=$2">>, [ConvKey, MsgId]
+        ),
+        elib_pg:execute(
+            <<"DELETE FROM public.msg_store_staging WHERE type='c2c' AND msg_id=$1">>, [MsgId]
+        ),
+        elib_pg:execute(
+            <<"DELETE FROM public.msg_store_seq WHERE conv_key=$1">>, [ConvKey]
+        )
+    end.
+
+%% BE-10:LOCAL:03 四通道经各支持编码完成相同操作：身份（conv_seq/msg_id
+%% 对应）、关联（conv_key 归属）、权限（成员撤权后同判 denied）与业务
+%% 结果（可见性）在 plain-JSON 与 E2EE 形（二进制负载）两种编码下等价。
+four_channel_encoding_equivalence() ->
+    <<Seed:48, _/binary>> = crypto:strong_rand_bytes(8),
+    Uid = Seed + 1,
+    Peer = Seed + 2,
+    Gid = Seed + 3,
+    MemberId = Seed + 4,
+    ConvC2C = msg_archive_repo:conv_key(<<"c2c">>, Uid, Peer),
+    ConvG = msg_archive_repo:conv_key(<<"c2g">>, Uid, Gid),
+    try
+        ok = insert_be10_user(Uid),
+        {ok, _} = elib_pg:execute(
+            <<"INSERT INTO public.\"user\"(id,account,nickname,password,reg_ip,reg_cosv) ",
+                "VALUES($1,$2,'be10','test','127.0.0.1','be10')">>,
+            [Peer, <<"be10p-", (integer_to_binary(Peer))/binary>>]
+        ),
+        {ok, _} = elib_pg:execute(
+            <<"INSERT INTO public.\"group\"(id,owner_uid,creator_uid,scope,status) ",
+                "VALUES($1,$2,$2,'personal',1)">>,
+            [Gid, Uid]
+        ),
+        %% role=3：stage_c2g 的 RequiredRole 上界（caller.role >= RequiredRole）
+        {ok, _} = elib_pg:execute(
+            <<"INSERT INTO public.group_member(id,group_id,user_id,role,is_join,status) ",
+                "VALUES($1,$2,$3,3,true,1)">>,
+            [MemberId, Gid, Uid]
+        ),
+        %% open 世代：群读谓词（authorize/世代下界）必需
+        {ok, _} = elib_pg:execute(
+            <<"INSERT INTO public.group_member_generation(group_id,user_id,start_seq) ",
+                "VALUES($1,$2,1)">>,
+            [Gid, Uid]
+        ),
+        Stage = fun(ChatType, MsgId, Payload, ConvKey, ToKey) ->
+            Now = elib_dt:to_rfc3339(1789700000000, millisecond, "Z"),
+            case ChatType of
+                <<"c2c">> ->
+                    {ok, _Id, Seq} = msg_store_repo:stage_with_sequence(
+                        <<"c2c">>,
+                        MsgId,
+                        <<"text">>,
+                        <<>>,
+                        null,
+                        Payload,
+                        Uid,
+                        Peer,
+                        Now,
+                        Now,
+                        null,
+                        Now,
+                        null
+                    ),
+                    Seq;
+                <<"c2g">> ->
+                    {ok, _Id2, Seq2, _} = msg_store_repo:stage(
+                        <<"c2g">>,
+                        MsgId,
+                        <<"text">>,
+                        <<>>,
+                        null,
+                        Payload,
+                        Uid,
+                        Gid,
+                        Now,
+                        Now,
+                        <<>>,
+                        3,
+                        null
+                    ),
+                    Seq2,
+                    _ = ToKey,
+                    Seq2
+            end
+        end,
+        %% 编码 A = plain JSON 对象；编码 B = E2EE 形（二进制负载，服务端
+        %% 不解码仅透传）——同一操作两编码各发一条，身份/关联/业务结果等价
+        PlainC = <<"{\"m\":\"plain\"}">>,
+        E2EEC = <<"base64-ciphertext-payload">>,
+        SeqCP = Stage(
+            <<"c2c">>, <<"be10-c2c-p-", (integer_to_binary(Seed))/binary>>, PlainC, ConvC2C, none
+        ),
+        SeqCE = Stage(
+            <<"c2c">>, <<"be10-c2c-e-", (integer_to_binary(Seed))/binary>>, E2EEC, ConvC2C, none
+        ),
+        ?assert(is_integer(SeqCP) andalso is_integer(SeqCE) andalso SeqCE > SeqCP),
+        {ok, _} = elib_pg:execute(
+            <<"INSERT INTO public.msg_store_seq(conv_key,seq) VALUES($1,$2) ",
+                "ON CONFLICT(conv_key) DO UPDATE SET seq=GREATEST(msg_store_seq.seq,$2)">>,
+            [ConvG, 1]
+        ),
+        SeqGP = Stage(
+            <<"c2g">>, <<"be10-g-p-", (integer_to_binary(Seed))/binary>>, PlainC, ConvG, none
+        ),
+        SeqGE = Stage(
+            <<"c2g">>, <<"be10-g-e-", (integer_to_binary(Seed))/binary>>, E2EEC, ConvG, none
+        ),
+        ?assert(is_integer(SeqGP) andalso is_integer(SeqGE) andalso SeqGE > SeqGP),
+        %% 业务结果等价：两编码的消息最终结果均可查询（各自 conv_seq）
+        {ok, [_]} =
+            msg_archive_repo:message_result_with_staging(
+                <<"c2c">>,
+                Uid,
+                Peer,
+                <<"be10-c2c-p-", (integer_to_binary(Seed))/binary>>,
+                ConvC2C,
+                0
+            ),
+        {ok, [_]} =
+            msg_archive_repo:message_result_with_staging(
+                <<"c2c">>,
+                Uid,
+                Peer,
+                <<"be10-c2c-e-", (integer_to_binary(Seed))/binary>>,
+                ConvC2C,
+                0
+            ),
+        {ok, [_]} =
+            msg_archive_repo:message_result_with_staging(
+                <<"c2g">>, Uid, Gid, <<"be10-g-p-", (integer_to_binary(Seed))/binary>>, ConvG, 0
+            ),
+        {ok, [_]} =
+            msg_archive_repo:message_result_with_staging(
+                <<"c2g">>, Uid, Gid, <<"be10-g-e-", (integer_to_binary(Seed))/binary>>, ConvG, 0
+            ),
+        %% 权限等价：群成员撤权后，两编码同判 permission_denied
+        {ok, _} = elib_pg:execute(
+            <<"UPDATE public.group_member SET status=0 WHERE group_id=$1 AND user_id=$2">>,
+            [Gid, Uid]
+        ),
+        ?assertEqual(
+            {error, permission_denied},
+            msg_archive_repo:message_result_with_staging(
+                <<"c2g">>, Uid, Gid, <<"be10-g-p-", (integer_to_binary(Seed))/binary>>, ConvG, 0
+            )
+        ),
+        ?assertEqual(
+            {error, permission_denied},
+            msg_archive_repo:message_result_with_staging(
+                <<"c2g">>, Uid, Gid, <<"be10-g-e-", (integer_to_binary(Seed))/binary>>, ConvG, 0
+            )
+        )
+    after
+        elib_pg:execute(
+            <<
+                "DELETE FROM public.msg_store_staging WHERE type IN ('c2c','c2g') AND "
+                "(msg_id LIKE $1 OR msg_id LIKE $2)"
+            >>,
+            [<<"be10-c2c-%">>, <<"be10-g-%">>]
+        ),
+        elib_pg:execute(
+            <<"DELETE FROM public.msg_store_seq WHERE conv_key IN ($1,$2)">>, [ConvC2C, ConvG]
+        ),
+        elib_pg:execute(
+            <<"DELETE FROM public.group_member_generation WHERE group_id=$1">>, [Gid]
+        ),
+        elib_pg:execute(
+            <<"DELETE FROM public.group_member WHERE group_id=$1">>, [Gid]
+        ),
+        elib_pg:execute(<<"DELETE FROM public.\"group\" WHERE id=$1">>, [Gid]),
+        elib_pg:execute(<<"DELETE FROM public.\"user\" WHERE id IN ($1,$2)">>, [Uid, Peer])
     end.
