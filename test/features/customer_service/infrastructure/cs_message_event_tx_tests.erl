@@ -35,7 +35,8 @@ cases({ok, _Conn}) ->
     [
         {timeout, 60, fun f2_message_and_event_commit_together/0},
         {timeout, 60, fun f2_event_write_failure_rolls_back_everything/0},
-        {timeout, 60, fun f2_replay_does_not_duplicate_event/0}
+        {timeout, 60, fun f2_replay_does_not_duplicate_event/0},
+        {timeout, 60, fun be15_both_directions_commit_and_notify/0}
     ];
 cases({error, Reason}) ->
     erlang:error({cs_f2_pg_suite_db_unavailable, Reason}).
@@ -231,3 +232,84 @@ accept_audits(Org) ->
 org(Scope) -> maps:get(org_id, Scope).
 
 ws(Scope) -> maps:get(workspace_id, Scope).
+
+%% ===================================================================
+%% BE-15:LOCAL:01 双向消息：客户（visitor 方向）发→坐席侧收到、坐席回复
+%% →客户收到——同一 canonical 事务口径、事件 actor_kind 区分方向、
+%% notify 投递点收到同一 canonical message id（真库，不只 mock）。
+%% ===================================================================
+
+be15_both_directions_commit_and_notify() ->
+    Scope = ?FIX:new_scope(),
+    Org = org(Scope),
+    Ws = ws(Scope),
+    Tid = self(),
+    Notify = fun(Msg) -> Tid ! {be15_notify, Msg} end,
+    try
+        SessionId = open_claimed_session(Scope),
+        MsgsBefore = ?FIX:count(Org, messages),
+        %% 客户发（visitor 方向：无 business_identity_id ⇒ actor_kind_of=visitor）
+        {ok, Inbound} = cs_session_app:append_session_message(Org, #{
+            workspace_id => Ws,
+            session_id => SessionId,
+            contact_id => maps:get(contact_id, Scope),
+            %% FK fk_cse_actor 要求真实 user 行：访客侧 actor 用 fixture 的 peer 用户
+            actor_user_id => maps:get(peer_user_id, Scope),
+            client_msg_id => <<"be15-in-1">>,
+            body => <<"customer hello">>,
+            key_ref => ?FIX:key_ref(),
+            accepted_at => 1700000010,
+            notify => Notify
+        }),
+        InMsgId = maps:get(message_id, Inbound),
+        receive
+            {be15_notify, N1} ->
+                %% notify 投递封装：resource_id = canonical message id
+                ?assertEqual(InMsgId, maps:get(resource_id, N1)),
+                ?assertEqual(<<"enterprise_message">>, maps:get(resource_type, N1))
+        after 5000 -> error(inbound_notify_missing)
+        end,
+        ?assertEqual(MsgsBefore + 1, ?FIX:count(Org, messages)),
+        ?assertEqual(
+            1,
+            events_with_message_id(Org, <<"message.appended">>, InMsgId)
+        ),
+        {ok, VisitorRows} = elib_pg:query(
+            <<
+                "SELECT actor_kind FROM customer_service_event"
+                " WHERE organization_id=$1 AND detail->>'message_id'=$2::text"
+            >>,
+            [Org, integer_to_binary(InMsgId)]
+        ),
+        ?assertEqual([#{<<"actor_kind">> => <<"visitor">>}], VisitorRows),
+        %% 坐席回复（seat 方向）
+        {ok, Outbound} = cs_session_app:append_session_message(Org, #{
+            workspace_id => Ws,
+            session_id => SessionId,
+            business_identity_id => maps:get(service_identity_id, Scope),
+            actor_user_id => maps:get(actor_user_id, Scope),
+            client_msg_id => <<"be15-out-1">>,
+            body => <<"seat reply">>,
+            key_ref => ?FIX:key_ref(),
+            accepted_at => 1700000011,
+            notify => Notify
+        }),
+        OutMsgId = maps:get(message_id, Outbound),
+        receive
+            {be15_notify, N2} -> ?assertEqual(OutMsgId, maps:get(resource_id, N2))
+        after 5000 -> error(outbound_notify_missing)
+        end,
+        {ok, SeatRows} = elib_pg:query(
+            <<
+                "SELECT actor_kind FROM customer_service_event"
+                " WHERE organization_id=$1 AND detail->>'message_id'=$2::text"
+            >>,
+            [Org, integer_to_binary(OutMsgId)]
+        ),
+        ?assertEqual([#{<<"actor_kind">> => <<"seat">>}], SeatRows),
+        %% 两端结果一致：两方向消息各一行 canonical + 各一条事件 + 各一次 notify
+        ?assertEqual(MsgsBefore + 2, ?FIX:count(Org, messages)),
+        ?assertEqual(2, message_events(Org))
+    after
+        ?FIX:cleanup(Scope)
+    end.

@@ -29,6 +29,11 @@ run(ConnectOptions) ->
         meck:new(config_ds, [non_strict, no_link]),
         meck:expect(config_ds, env, fun(sql_driver) -> pgsql end),
         meck:new(pooler, [non_strict, no_link]),
+        %% elib_pg:123 的重试路径走 take_member/2——必须同盖，否则落到真
+        %% pooler（无 pgsql 池）即 gen crash。
+        meck:expect(pooler, take_member, fun(pgsql, _Timeout) ->
+            meck:passthrough([])
+        end),
         meck:expect(pooler, take_member, fun(pgsql) ->
             undefined = get(seat_tx_connection),
             {ok, Conn} = Connect(),
@@ -411,3 +416,74 @@ sql(C, Query) ->
             false -> [Results]
         end
     ).
+
+%% ===================================================================
+%% BE-15（IMBOY_MASTER_V2_2_20261118）：把孤儿 run/1 harness 接进
+%% eunit-local——marker 库（CS15TX）承载 run/1 的最小 CS oracle schema，
+%% 复用同一 meck 集与既有 cases/audit_cases/governance_cases 全量真库
+%% 用例（此前无任何仓库内调用方，eunit-local 报 no tests to run）。
+%% ===================================================================
+
+cs_seat_tx_eunit_test_() ->
+    {timeout, 600,
+        {setup, fun cs_seat_tx_setup/0, fun cs_seat_tx_cleanup/1, fun({C, _Db}) ->
+            cases(C) ++ audit_cases(C) ++ governance_cases(C)
+        end}}.
+
+cs_seat_tx_setup() ->
+    % 真 pooler 池指向 attv5_chain_cs15tx（裸库 DROP+CREATE 幂等）；生产代码
+    % 经 elib_pg→pooler 正常取连；仅保留 sql_driver / cs_tsid harness meck。
+    Base = #{host => "127.0.0.1", port => 4323, username => "imboy_user", password => "abc54321"},
+    Db = <<"attv5_chain_cs15tx">>,
+    {ok, Maint} = epgsql:connect(Base#{database => "postgres"}),
+    {ok, _, _} = epgsql:squery(Maint, <<"DROP DATABASE IF EXISTS ", Db/binary>>),
+    {ok, _, _} = epgsql:squery(Maint, <<"CREATE DATABASE ", Db/binary>>),
+    epgsql:close(Maint),
+    application:ensure_all_started(pooler),
+    _ = pooler:rm_pool(pgsql),
+    {ok, _} = pooler:new_pool(#{
+        name => pgsql,
+        init_count => 2,
+        max_count => 6,
+        start_mfa =>
+            {epgsql, connect, [
+                Base#{
+                    database => binary_to_list(Db),
+                    codecs => [{epgsql_codec_rfc3339_bin, []}]
+                }
+            ]}
+    }),
+    Connect = fun() -> epgsql:connect(Base#{database => binary_to_list(Db)}) end,
+    {ok, C} = Connect(),
+    sql(C, <<
+        "CREATE TABLE customer_service_seat (organization_id bigint, business_identity_id bigint PRIMARY KEY,"
+        " function_key text, enabled boolean, max_concurrent integer, created_by_user_id bigint,"
+        " version integer DEFAULT 1, created_at timestamptz DEFAULT now(), updated_at timestamptz DEFAULT now());"
+        "CREATE TABLE customer_service_seat_limit (organization_id bigint PRIMARY KEY, seat_limit integer);"
+        "CREATE TABLE organization_business_identity(organization_id bigint,id bigint,function_key text,status text DEFAULT 'active');"
+        "INSERT INTO organization_business_identity VALUES(1,1,'customer_service','active'),(1,2,'customer_service','active');"
+        "CREATE TABLE organization(id bigint PRIMARY KEY,status text); INSERT INTO organization VALUES(1,'active'),(2,'active');"
+        "CREATE TABLE workspace(id bigint,organization_id bigint,status text); INSERT INTO workspace VALUES(10,1,'active'),(20,2,'active');"
+        "CREATE TABLE customer_service_event(id bigint PRIMARY KEY,organization_id bigint,workspace_id bigint NOT NULL,"
+        "session_id bigint,business_identity_id bigint,actor_user_id bigint,actor_kind text,action text,detail jsonb);"
+    >>),
+    meck:new(config_ds, [non_strict, no_link]),
+    meck:expect(config_ds, env, fun(sql_driver) -> pgsql end),
+    meck:new(cs_tsid, [non_strict, no_link]),
+    meck:expect(cs_tsid, new_id, fun(_) -> erlang:unique_integer([positive, monotonic]) end),
+    {C, Db}.
+
+cs_seat_tx_cleanup({C, Db}) ->
+    meck:unload(),
+    epgsql:close(C),
+    _ = pooler:rm_pool(pgsql),
+    {ok, Maint} = epgsql:connect(#{
+        host => "127.0.0.1",
+        port => 4323,
+        username => "imboy_user",
+        password => "abc54321",
+        database => "postgres"
+    }),
+    {ok, _, _} = epgsql:squery(Maint, <<"DROP DATABASE IF EXISTS ", Db/binary>>),
+    epgsql:close(Maint),
+    ok.
