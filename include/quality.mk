@@ -125,7 +125,14 @@ IMBOY_QUALITY_WORKERS ?= 4
 # One foreground controller owns reservation, build, resources and final cleanup.
 # No implicit fallback is allowed when a selector or manifest is invalid.
 .PHONY: backend-acceptance
+## 仅当调用方显式给出 IMBOY_BACKEND_ACCEPTANCE 时才导出：GNU make 对
+## `export VAR`（VAR 未定义）会以空串注入全部子进程环境，而
+## imboy_quality_pg_register 的选择器只接受 "1"/false——空串触发
+## invalid_backend_selector 使 full_reserve exit 2（2026-11-19 实证）。
+## 显式空值/非法值仍原样导出、仍被选择器拒绝（fail-closed 不变）。
+ifneq ($(origin IMBOY_BACKEND_ACCEPTANCE),undefined)
 export IMBOY_BACKEND_ACCEPTANCE
+endif
 backend-acceptance:
 	@test "$(IMBOYENV)" = local || { echo "backend acceptance requires IMBOYENV=local" >&2; exit 2; }
 	@test -z "$(t)$(EUNIT_MODS)$(IMBOY_EUNIT_INNER)" || { echo "backend acceptance requires the complete root universe" >&2; exit 2; }
