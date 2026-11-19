@@ -10,11 +10,12 @@
 > 回填本目录**；从本目录恢复时须 `nginx -t && nginx -s reload`。
 > 各文件与服务器逐字节一致（仅统一补了行尾换行）。
 
-## 文件清单 / Files（10 个域；8 个生产活跃 + 2 个 LK-01 新增目标形态）
+## 文件清单 / Files（11 个域；9 个生产活跃 + 2 个 LK-01 新增目标形态）
 
 | 文件 | 角色 / Role | 证书来源 / Cert | 续期 / Renewal | 管理方式 |
 |---|---|---|---|---|
 | `pro.imboy.pub.conf` | API 主域（蓝绿 upstream、WS、LiveKit 旧 /livekit location） | `/etc/letsencrypt/live/pro.imboy.pub/` | certbot webroot `/var/www/certbot`（cs 模式） | 手工 |
+| `web.imboy.pub.conf` | Flutter Web 独立域（2026-11-19 新增）：`releases/<id>` + `current` 符号链接布局（契约见 `scripts/lib/web_deploy.sh`，`.imboy-web-root` 标记）+ 同源 `/api/` 与四形态 WS 反代（复用 `pro_imboy_api` upstream）；CSS/wasm 长缓存、HTML no-store、passport/api 限速 zone 独立（`web_*_per_ip`） | `/etc/letsencrypt/live/web.imboy.pub/` | certbot webroot `/var/www/certbot`（cs 模式 + `reload-openresty.sh` 钩子） | 手工；静态产物由 `web_deploy.sh` 发布 |
 | `prodadm.imboy.pub.conf` | 管理后台（静态 + `:9800` admin API；含 IPv6 listener） | 宝塔 `.../cert/prodadm.imboy.pub/` | 宝塔面板（未迁移，仍走宝塔续期） | 由 `admin` 组件部署静态产物，vhost 手工 |
 | `cs.imboy.pub.conf` | 客服 Widget 网关（CSD-CLI-01 工具托管，**禁止手改线上**，改 `scripts/lib/cs_deploy.sh` 后重跑 `cs -v -l`） | `/etc/letsencrypt/live/cs.imboy.pub/` | certbot webroot `/var/www/certbot` + `reload-openresty.sh` 钩子 | **工具托管** |
 | `www.imboy.pub.conf` | 官网静态（`server_name` 含裸域 `imboy.pub`） | `/etc/letsencrypt/live/www.imboy.pub/`（SAN 含裸域） | certbot webroot `/var/www/certbot`（cs 模式） | 手工 |
