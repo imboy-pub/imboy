@@ -1585,21 +1585,21 @@ web_methods(
                 error ->
                     {ok, Methods};
                 {ok, Actions} when is_map(Actions) ->
-                    case maps:find(Action, Actions) of
-                        {ok, [_ | _] = ActionMethods} ->
-                            case lists:all(fun(M) -> lists:member(M, Methods) end, ActionMethods) of
-                                true -> {ok, ActionMethods};
-                                false -> {error, invalid_metadata}
-                            end;
-                        _ ->
-                            {error, unknown_action}
-                    end;
+                    web_action_methods(maps:find(Action, Actions), Methods);
                 _ ->
                     {error, invalid_metadata}
             end
     end;
 web_methods(_, _) ->
     {error, invalid_metadata}.
+
+web_action_methods({ok, [_ | _] = ActionMethods}, Methods) ->
+    case lists:all(fun(M) -> lists:member(M, Methods) end, ActionMethods) of
+        true -> {ok, ActionMethods};
+        false -> {error, invalid_metadata}
+    end;
+web_action_methods(_, _) ->
+    {error, unknown_action}.
 
 %% @doc Phase 2 切片 2：从 imboy_router_registry ETS 读取所有插件路由并转 cowboy 格式。
 %% Phase 2 slice 2: read all plugin routes from imboy_router_registry ETS and convert.

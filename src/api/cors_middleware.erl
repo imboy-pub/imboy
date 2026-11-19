@@ -166,9 +166,7 @@ web_headers_allowed(Req) ->
             lists:all(
                 fun(H) -> lists:member(string:lowercase(string:trim(H)), Allowed) end,
                 binary:split(Raw, <<",">>, [global])
-            );
-        _ ->
-            false
+            )
     end.
 
 web_cors_denied(Req) ->

@@ -109,7 +109,7 @@ safe_path(<<"/", Rest/binary>>) when byte_size(Rest) > 0 ->
     lists:all(
         fun(S) ->
             S =/= <<>> andalso S =/= <<".">> andalso S =/= <<"..">> andalso
-                re:run(S, <<"^[A-Za-z0-9._~-]+$">>, [{capture, none}]) =:= match
+                valid_url_token(S)
         end,
         binary:split(Rest, <<"/">>, [global])
     );
@@ -150,25 +150,30 @@ garage_url(Url, Garage) ->
             try uri_string:parse(Url) of
                 #{scheme := _, host := _, path := Path, query := Query} = U ->
                     Prefix = <<Garage/binary, "/">>,
-                    case Url of
-                        <<Prefix:(byte_size(Prefix))/binary, _/binary>> ->
-                            case
-                                safe_object_path(Path) andalso byte_size(Query) > 0 andalso
-                                    not maps:is_key(userinfo, U) andalso
-                                    not maps:is_key(fragment, U)
-                            of
-                                true -> {ok, Url};
-                                false -> {error, forbidden}
-                            end;
-                        _ ->
-                            {error, forbidden}
-                    end;
+                    Valid =
+                        safe_object_path(Path) andalso byte_size(Query) > 0 andalso
+                            not maps:is_key(userinfo, U) andalso not maps:is_key(fragment, U),
+                    garage_url_result(Url, Prefix, Valid);
                 _ ->
                     {error, forbidden}
             catch
                 _:_ -> {error, forbidden}
             end
     end.
+
+garage_url_result(Url, Prefix, true) ->
+    case Url of
+        <<Prefix:(byte_size(Prefix))/binary, _/binary>> -> {ok, Url};
+        _ -> {error, forbidden}
+    end;
+garage_url_result(_, _, false) ->
+    {error, forbidden}.
+
+valid_url_token(Value) ->
+    re:run(Value, <<"^[A-Za-z0-9._~-]+$">>, [{capture, none}]) =:= match.
+
+invalid_key_byte(B) ->
+    B =:= $\\ orelse B < 32 orelse B =:= 127.
 
 %% Match SigV4 path-style encoding exactly without rewriting the signed URL.
 %% A decoded percent followed by hex is rejected to prevent double-decode drift.
@@ -184,7 +189,7 @@ safe_object_segment(Segment) ->
         Decoded when is_binary(Decoded) ->
             Decoded =/= <<".">> andalso Decoded =/= <<"..">> andalso
                 not lists:any(
-                    fun(B) -> B =:= $/ orelse B =:= $\\ orelse B < 32 orelse B =:= 127 end,
+                    fun(B) -> B =:= $/ orelse invalid_key_byte(B) end,
                     binary_to_list(Decoded)
                 ) andalso
                 re:run(Decoded, <<"%[0-9A-Fa-f]{2}">>, [{capture, none}]) =:= nomatch andalso
@@ -243,7 +248,7 @@ valid_raw_key(Key) when byte_size(Key) > 0 ->
         fun(S) ->
             S =/= <<>> andalso S =/= <<".">> andalso S =/= <<"..">> andalso
                 not lists:any(
-                    fun(B) -> B =:= $\\ orelse B < 32 orelse B =:= 127 end, binary_to_list(S)
+                    fun invalid_key_byte/1, binary_to_list(S)
                 )
         end,
         binary:split(Key, <<"/">>, [global])
@@ -261,7 +266,7 @@ web_ticket_url(Ticket) when is_binary(Ticket), byte_size(Ticket) > 0 ->
     Edge = attachment_edge_redirect:edge_base(),
     case
         valid_base(Base) andalso valid_base(Edge) andalso
-            re:run(Ticket, <<"^[A-Za-z0-9._~-]+$">>, [{capture, none}]) =:= match
+            valid_url_token(Ticket)
     of
         true -> {ok, <<Edge/binary, "?ticket=web.", Ticket/binary>>};
         false -> {error, forbidden}

@@ -27,6 +27,7 @@
 -export([mobile_registered/1]).
 -export([consume_code/2]).
 -export([refresh_session_epoch_valid/3]).
+-export([verify_web_refresh_token/1]).
 %% P0-C: OIDC 登录流复用（auth_oidc_logic）——签发收口 + License 配额闸门 + 建号数据组装
 -export([login_resp/2]).
 -export([quota_guard/0]).
@@ -35,6 +36,12 @@
 -include("log.hrl").
 -include("common.hrl").
 -include("error_code.hrl").
+
+-spec verify_web_refresh_token(binary()) ->
+    {ok, pos_integer(), binary(), pos_integer(), integer(), pos_integer()}
+    | {error, integer(), binary()}.
+verify_web_refresh_token(Token) ->
+    auth_ds:verify_web_refresh_token(Token).
 
 -spec refresh_session_epoch_valid(integer(), binary(), term()) -> boolean().
 refresh_session_epoch_valid(_Uid, <<>>, _Epoch) ->
@@ -1533,4 +1540,4 @@ record_login_device(Uid, PostVals) ->
 
 -spec find_web_user_setting(pos_integer()) -> {ok, map()} | {error, unavailable}.
 find_web_user_setting(Uid) ->
-    user_setting_ds:find_web_by_uid(Uid).
+    user_logic:find_web_user_setting(Uid).

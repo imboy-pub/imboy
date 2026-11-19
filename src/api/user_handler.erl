@@ -450,7 +450,7 @@ web_me(Req, _) ->
     elib_response:error_with_status(Req, 401, <<"Web authentication required">>, 401).
 
 web_profile_settings(Uid) ->
-    case passport_logic:find_web_user_setting(Uid) of
+    case user_logic:find_web_user_setting(Uid) of
         {ok, Settings} -> Settings;
         {error, _} -> erlang:error(profile_settings_unavailable)
     end.

@@ -340,6 +340,57 @@ fails_test() -> ?assert(false).
         (self.root / "config/sys.local.config").unlink()
         self.make("eunit-local", "EUNIT_USE_RELAY=0", success=False)
 
+    def test_eunit_keeps_explicit_config_options(self):
+        self.write("probe.mk", '''.PHONY: config-probe
+config-probe:
+	@printf '%s\\0' $(EUNIT_ERL_OPTS) > eunit.args
+''')
+        for options in ("-config config/owned", "-config config/base config/owned"):
+            with self.subTest(options=options):
+                self.make("config-probe", "EUNIT_ERL_OPTS=" + options)
+                arguments = (self.root / "eunit.args").read_bytes().split(b"\0")[:-1]
+                self.assertEqual(arguments.count(b"-config"), 1)
+                self.assertEqual(arguments[:len(options.split())],
+                                 [value.encode() for value in options.split()])
+                self.assertNotIn(str(self.root / "config/sys.runtime").encode(), arguments)
+
+    def test_eunit_config_precedence_and_owned_wrapper(self):
+        self.pure_tests()
+        self.write("src/make_probe.erl", "-module(make_probe).\n-export([value/0]).\nvalue() -> ok.\n")
+        self.write("test/make_probe_tests.erl", '''-module(make_probe_tests).
+-include_lib("eunit/include/eunit.hrl").
+configuration_test() ->
+    _ = application:load(imboy),
+    Expected = list_to_atom(os:getenv("EXPECTED_CONFIG")),
+    ?assertEqual({ok, Expected}, application:get_env(imboy, make_config)),
+    {ok, ConfigArgs} = init:get_argument(config),
+    ?assertEqual(1, length(lists:append(ConfigArgs))).
+''')
+        self.write("config/sys.config.example", "[{imboy, [{make_config, default}]}].\n")
+        owned = self.write("config/owned.config", "[{imboy, [{make_config, owned}]}].\n")
+        self.environment["EXPECTED_CONFIG"] = "default"
+        self.make("eunit", "t=make_probe_tests")
+        runtime = self.root / "config/sys.runtime.config"
+        self.assertEqual(runtime.read_text(), "[{imboy, [{make_config, default}]}].\n")
+        runtime.unlink()
+
+        # A caller-owned config must neither be overwritten nor require the default source.
+        (self.root / "config/sys.config.example").unlink()
+        self.environment["EXPECTED_CONFIG"] = "owned"
+        self.environment["IMBOY_TEST_CONFIG"] = "config/missing.config"
+        self.make("eunit", "t=make_probe_tests", "EUNIT_CONFIG=config/missing",
+                  "EUNIT_ERL_OPTS=-config config/owned -pa test ebin")
+        self.make("eunit", "t=make_probe_tests", "EUNIT_CONFIG=config/owned")
+        self.environment["EUNIT_CONFIG"] = "config/owned"
+        self.make("eunit", "t=make_probe_tests")
+        del self.environment["EUNIT_CONFIG"]
+        self.environment["IMBOY_TEST_CONFIG"] = str(owned)
+        self.make("eunit", "t=make_probe_tests")
+        self.make("eunit-local", "t=make_probe_tests", "EUNIT_CONFIG=config/owned",
+                  "EUNIT_USE_RELAY=0")
+        self.assertFalse(runtime.exists())
+        self.assertFalse(list((self.root / "config").glob("sys.eunit-relay.*.config")))
+
     def test_beam_recovery_test_mode_and_recursive_exclusions(self):
         self.write("src/make_probe.erl", '''-module(make_probe).
 -export([mode/0]).

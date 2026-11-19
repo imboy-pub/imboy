@@ -160,48 +160,42 @@ web_credential_login_registers_then_kicks_then_signs_test() ->
         )
     end).
 
-web_initial_login_epoch_unknown_never_signs_or_reports_success_test() ->
-    lists:foreach(
-        fun(EpochResult) ->
-            lists:foreach(
-                fun(Method) ->
-                    credential_case(ok, fun() ->
-                        with_mocks(
-                            [{auth_session_ds, [{current_epoch, fun(?UID) -> EpochResult end}]}],
-                            fun() ->
-                                Result =
-                                    case Method of
-                                        password ->
-                                            passport_logic:do_web_login(
-                                                <<"email">>,
-                                                <<"synthetic@example.test">>,
-                                                <<"pwd">>,
-                                                web_values()
-                                            );
-                                        code ->
-                                            passport_logic:do_web_login_by_code(
-                                                <<"email">>,
-                                                <<"synthetic@example.test">>,
-                                                <<"123456">>,
-                                                web_values()
-                                            )
-                                    end,
-                                ?assertEqual({error, service_unavailable}, Result),
-                                ?assertEqual(0, meck:num_calls(token_ds, encrypt_token, '_')),
-                                ?assertEqual(
-                                    0, meck:num_calls(token_ds, encrypt_refreshtoken, '_')
-                                ),
-                                ?assertEqual(0, meck:num_calls(token_ds, issue_web_session, '_')),
-                                ?assertEqual(0, meck:num_calls(elib_async, async, '_'))
-                            end
-                        )
-                    end)
-                end,
-                [password, code]
-            )
-        end,
-        [{error, db_down}, undefined, {ok, 0}, {ok, <<"7">>}, {ok, 1.0}]
-    ).
+web_initial_login_epoch_unknown_never_signs_or_reports_success_test_() ->
+    [
+        ?_test(
+            credential_case(ok, fun() ->
+                with_mocks(
+                    [{auth_session_ds, [{current_epoch, fun(?UID) -> EpochResult end}]}],
+                    fun() ->
+                        Result =
+                            case Method of
+                                password ->
+                                    passport_logic:do_web_login(
+                                        <<"email">>,
+                                        <<"synthetic@example.test">>,
+                                        <<"pwd">>,
+                                        web_values()
+                                    );
+                                code ->
+                                    passport_logic:do_web_login_by_code(
+                                        <<"email">>,
+                                        <<"synthetic@example.test">>,
+                                        <<"123456">>,
+                                        web_values()
+                                    )
+                            end,
+                        ?assertEqual({error, service_unavailable}, Result),
+                        ?assertEqual(0, meck:num_calls(token_ds, encrypt_token, '_')),
+                        ?assertEqual(0, meck:num_calls(token_ds, encrypt_refreshtoken, '_')),
+                        ?assertEqual(0, meck:num_calls(token_ds, issue_web_session, '_')),
+                        ?assertEqual(0, meck:num_calls(elib_async, async, '_'))
+                    end
+                )
+            end)
+        )
+     || EpochResult <- [{error, db_down}, undefined, {ok, 0}, {ok, <<"7">>}, {ok, 1.0}],
+        Method <- [password, code]
+    ].
 
 web_login_invalid_did_rejected_before_authentication_test() ->
     lists:foreach(
@@ -323,13 +317,10 @@ web_qr_create_fixes_platform_and_bounds_device_fields_test() ->
             <<"platform">> => <<"ios">>
         },
         fun() ->
-            meck:expect(imboy_cache, set, fun
-                ({qr_login, _}, Session, 60) ->
-                    ?assertEqual(<<"web">>, maps:get(<<"platform">>, Session)),
-                    ?assertEqual(<<"human">>, maps:get(<<"purpose">>, Session)),
-                    ok;
-                (_, _, 60) ->
-                    ok
+            meck:expect(qr_login_session_ds, create, fun(Session) ->
+                ?assertEqual(<<"web">>, maps:get(platform, Session)),
+                ?assertEqual(<<"human">>, maps:get(purpose, Session)),
+                ok
             end),
             {stop, Req, _} = qr_login_handler:handle_request(
                 #{method => <<"POST">>},
@@ -390,7 +381,7 @@ web_qr_consumers_reject_mixed_session_test() ->
         [cache, pg]
     ).
 
-qr_registration_failure_precedes_signing_for_both_authorities_test() ->
+qr_registration_failure_precedes_signing_despite_authority_setting_test() ->
     lists:foreach(
         fun(Authority) ->
             with_qr(Authority, #{<<"qr_token">> => <<"qr">>}, fun() ->
@@ -404,6 +395,7 @@ qr_registration_failure_precedes_signing_for_both_authorities_test() ->
                 ),
                 ?assertEqual(503, maps:get(status, Req)),
                 ?assertEqual(0, meck:num_calls(token_ds, encrypt_token, '_')),
+                ?assertEqual(0, meck:num_calls(token_ds, encrypt_web_token, '_')),
                 ?assertEqual(0, meck:num_calls(qr_login_session_ds, transition_confirm, '_')),
                 ?assertEqual(0, meck:num_calls(qr_login_event_ds, notify, '_')),
                 ?assertEqual(0, meck:num_calls(imboy_cache, set, '_'))
@@ -447,405 +439,192 @@ web_qr_epoch_unknown_never_signs_confirms_or_notifies_test() ->
         [cache, pg]
     ).
 
-web_cache_sse_consumes_authoritative_session_once_test() ->
-    with_qr(cache, #{}, fun() ->
-        Session = (qr_session(<<"human">>, <<"web">>))#{
-            <<"status">> => <<"confirmed">>, <<"login_token">> => <<"authoritative-tk">>
-        },
-        put(web_qr_session, Session),
-        try
-            meck:expect(imboy_cache, get, fun({qr_login, <<"session">>}) ->
-                case get(web_qr_session) of
-                    undefined -> undefined;
-                    Value -> {ok, Value}
-                end
-            end),
-            %% DEF-F6：claim 消费 = 写无 token 墓碑（TTL 120s），不再删除会话。
-            meck:expect(imboy_cache, set, fun({qr_login, <<"session">>}, Tombstone, 120) ->
-                ?assertEqual(<<"confirmed">>, maps:get(<<"status">>, Tombstone)),
-                ?assertEqual(null, maps:get(<<"login_token">>, Tombstone)),
-                put(web_qr_session, Tombstone),
-                ok
-            end),
-            meck:expect(qr_login_event_ds, confirmed, fun(<<"authoritative-tk">>, ?UID) ->
-                {ok, #{<<"status">> => <<"confirmed">>, <<"uid">> => ?UID}}
-            end),
-            meck:expect(cowboy_req, stream_body, fun(_, nofin, _) -> ok end),
-            Event = #{<<"status">> => <<"confirmed">>, <<"token">> => <<"untrusted-event">>},
-            State = #{session_token => <<"session">>, web_human => true},
-            ?assertMatch({stop, _, _}, qr_login_sse_handler:info(Event, #{}, State)),
-            ?assertMatch({stop, _, _}, qr_login_sse_handler:info(Event, #{}, State)),
-            %% 墓碑无 token：第二次 info 走 not_claimable，不再发放凭据。
-            ?assertEqual(1, meck:num_calls(qr_login_event_ds, confirmed, '_'))
-        after
-            erase(web_qr_session)
-        end
-    end).
+%% Web and legacy consumers share the PG claim even with a stale cache setting.
+%% These DS mocks verify handler routing; PG atomicity is covered by
+%% qr_login_claim_acceptance_tests and the multi-node LEE-5 acceptance gate.
+web_sse_claims_pg_credentials_once_for_every_authority_test() ->
+    lists:foreach(
+        fun(Authority) ->
+            with_qr(Authority, #{}, fun() ->
+                mock_session(Authority, confirmed_web_session()),
+                Calls = atomics:new(1, []),
+                meck:expect(qr_login_session_ds, claim_login_token, fun(<<"session">>) ->
+                    case atomics:add_get(Calls, 1, 1) of
+                        1 -> {ok, #{login_token => <<"authoritative-tk">>, scanned_by => ?UID}};
+                        _ -> {error, not_claimable}
+                    end
+                end),
+                meck:expect(cowboy_req, stream_body, fun(_, _, _) -> ok end),
+                Event = #{
+                    <<"status">> => <<"confirmed">>,
+                    <<"token">> => <<"untrusted-event-token">>,
+                    <<"uid">> => 999
+                },
+                State = #{session_token => <<"session">>, web_human => true},
+                ?assertMatch({stop, _, _}, qr_login_sse_handler:info(Event, #{}, State)),
+                ?assertMatch({stop, _, _}, qr_login_sse_handler:info(Event, #{}, State)),
+                [Payload] = web_sse_payloads(),
+                ?assertEqual(<<"authoritative-tk">>, maps:get(<<"token">>, Payload)),
+                ?assertEqual(?UID, maps:get(<<"uid">>, Payload)),
+                ?assertEqual(2, atomics:get(Calls, 1)),
+                ?assertEqual(0, meck:num_calls(imboy_cache, get, '_')),
+                ?assertEqual(0, meck:num_calls(imboy_cache, set, '_'))
+            end)
+        end,
+        [cache, pg, postgres, invalid]
+    ).
 
-web_cache_sse_cancelled_session_does_not_emit_old_credentials_test() ->
+web_sse_cancelled_session_does_not_emit_old_credentials_test() ->
     with_qr(cache, #{}, fun() ->
-        Session = (qr_session(<<"human">>, <<"web">>))#{
-            <<"status">> => <<"cancelled">>, <<"login_token">> => <<"old-tk">>
-        },
+        Session = (confirmed_web_session())#{<<"status">> => <<"cancelled">>},
         mock_session(cache, Session),
+        meck:expect(qr_login_session_ds, claim_login_token, fun(_) -> {error, not_claimable} end),
+        meck:expect(cowboy_req, stream_body, fun(_, _, _) -> ok end),
         ?assertMatch(
             {stop, _, _},
             qr_login_sse_handler:info(
-                #{<<"status">> => <<"confirmed">>},
+                #{<<"status">> => <<"confirmed">>, <<"token">> => <<"old-token">>},
                 #{},
                 #{session_token => <<"session">>, web_human => true}
             )
         ),
-        ?assertEqual(0, meck:num_calls(cowboy_req, stream_body, '_'))
+        ?assertEqual([], web_sse_payloads())
     end).
 
-web_cache_concurrent_consumers_have_one_credential_winner_test() ->
+web_sse_pg_claim_failure_does_not_emit_credentials_test() ->
     lists:foreach(
-        fun(Kinds) ->
+        fun(Failure) ->
             with_qr(cache, #{}, fun() ->
-                Table = ets:new(qr_web_claim_race, [set, public]),
-                Ref = make_ref(),
-                Parent = self(),
-                Session = (qr_session(<<"human">>, <<"web">>))#{
-                    <<"status">> => <<"confirmed">>, <<"login_token">> => <<"authoritative-tk">>
-                },
-                true = ets:insert(Table, {session, Session}),
-                try
-                    meck:expect(imboy_cache, flush_process_dict, fun() ->
-                        erase(qr_claim_cached_value),
-                        ok
-                    end),
-                    meck:expect(imboy_cache, get, fun({qr_login, <<"session">>}) ->
-                        Value =
-                            case get(qr_claim_cached_value) of
-                                {cached, Cached} ->
-                                    Cached;
-                                undefined ->
-                                    case ets:lookup(Table, session) of
-                                        [{_, S}] -> {ok, S};
-                                        [] -> undefined
-                                    end
-                            end,
-                        put(qr_claim_cached_value, {cached, Value}),
-                        case get(qr_claim_stale_read) of
-                            undefined ->
-                                put(qr_claim_stale_read, true),
-                                %% Both callers hold the same stale pre-lock copy before claiming.
-                                Parent ! {Ref, ready, self()},
-                                receive
-                                    {Ref, release} -> ok
-                                after 2000 -> error(claim_barrier_timeout)
-                                end;
-                            _ ->
-                                ok
-                        end,
-                        Value
-                    end),
-                    meck:expect(imboy_cache, set, fun({qr_login, <<"session">>}, Tombstone, 120) ->
-                        ?assertEqual(null, maps:get(<<"login_token">>, Tombstone)),
-                        true = ets:insert(Table, {session, Tombstone}),
-                        ok
-                    end),
-                    meck:expect(qr_login_event_ds, confirmed, fun(<<"authoritative-tk">>, ?UID) ->
-                        {ok, #{
-                            <<"status">> => <<"confirmed">>,
-                            <<"token">> => <<"authoritative-tk">>,
-                            <<"uid">> => ?UID
-                        }}
-                    end),
-                    meck:expect(cowboy_req, stream_body, fun(Body, nofin, _) ->
-                        true = ets:insert(Table, {{frame, make_ref()}, Body}),
-                        ok
-                    end),
-                    Pids = [
-                        spawn_link(fun() ->
-                            Result =
-                                case Kind of
-                                    sse ->
-                                        qr_login_sse_handler:info(
-                                            #{<<"status">> => <<"confirmed">>},
-                                            #{},
-                                            #{session_token => <<"session">>, web_human => true}
-                                        );
-                                    legacy_sse ->
-                                        qr_login_sse_handler:info(
-                                            #{<<"status">> => <<"confirmed">>, web_human => true},
-                                            #{},
-                                            #{session_token => <<"session">>}
-                                        );
-                                    legacy_status ->
-                                        qr_login_handler:handle_request(
-                                            #{method => <<"GET">>},
-                                            #{action => status}
-                                        )
-                                end,
-                            Parent ! {Ref, done, self(), Result}
-                        end)
-                     || Kind <- Kinds
-                    ],
-                    [
-                        receive
-                            {Ref, ready, Pid} -> ok
-                        after 2000 -> error(claim_not_ready)
-                        end
-                     || Pid <- Pids
-                    ],
-                    [Pid ! {Ref, release} || Pid <- Pids],
-                    Results = [
-                        receive
-                            {Ref, done, Pid, Result} -> Result
-                        after 2000 -> error(claim_not_done)
-                        end
-                     || Pid <- Pids
-                    ],
-                    HttpWinners = [
-                        P
-                     || {stop, #{payload := P}, _} <- Results,
-                        maps:is_key(<<"token">>, P)
-                    ],
-                    SseWinners = [B || {{frame, _}, B} <- ets:tab2list(Table)],
-                    ?assertEqual(1, length(HttpWinners) + length(SseWinners)),
-                    %% DEF-F6：唯一赢家写一次墓碑（无 token），不再有 delete。
-                    ?assertEqual(1, meck:num_calls(imboy_cache, set, '_')),
-                    ?assertEqual(2, meck:num_calls(imboy_cache, flush_process_dict, '_'))
-                after
-                    ets:delete(Table)
-                end
+                mock_session(cache, confirmed_web_session()),
+                meck:expect(qr_login_session_ds, claim_login_token, fun(_) -> Failure end),
+                meck:expect(cowboy_req, stream_body, fun(_, _, _) -> ok end),
+                ?assertMatch(
+                    {stop, _, _},
+                    qr_login_sse_handler:info(
+                        #{<<"status">> => <<"confirmed_ready">>, <<"token">> => <<"old-token">>},
+                        #{},
+                        #{session_token => <<"session">>, web_human => true}
+                    )
+                ),
+                ?assertEqual([], web_sse_payloads()),
+                ?assertEqual(1, meck:num_calls(qr_login_session_ds, claim_login_token, '_')),
+                ?assertEqual(0, meck:num_calls(imboy_cache, get, '_'))
             end)
         end,
-        [[sse, sse], [sse, legacy_status], [legacy_sse, legacy_status]]
+        [{error, {pg_error, closed}}, {error, {claim_gate, unavailable}}]
     ).
 
-web_cache_claim_tombstone_write_failure_does_not_emit_credentials_test() ->
-    with_qr(cache, #{}, fun() ->
-        Session = (qr_session(<<"human">>, <<"web">>))#{
-            <<"status">> => <<"confirmed">>, <<"login_token">> => <<"old-tk">>
-        },
-        mock_session(cache, Session),
-        %% DEF-F6：墓碑写失败必须整体失败——若照常发放凭据而墓碑未落，
-        %% 原 token 会话仍在缓存内可重复领取（一次性交付被击穿）。
-        meck:expect(imboy_cache, set, fun(_, _, _) -> {error, unavailable} end),
-        ?assertEqual({error, unavailable}, qr_login_logic:claim_web_cache_token(<<"session">>)),
-        ?assertEqual(0, meck:num_calls(cowboy_req, stream_body, '_'))
+web_qr_confirm_binds_device_row_before_pg_transition_test() ->
+    with_qr(cache, #{<<"qr_token">> => <<"qr">>}, fun() ->
+        mock_session(cache, qr_session(<<"human">>, <<"web">>)),
+        meck:expect(qr_login_logic, log_device_login, fun(?UID, <<"web-did">>, _, <<"web">>) ->
+            {ok, 456}
+        end),
+        with_mocks([{auth_session_ds, [{current_epoch, fun(?UID) -> {ok, 7} end}]}], fun() ->
+            meck:expect(token_ds, encrypt_web_token, fun(?UID, <<"web-did">>, 7, 456) ->
+                ?assertEqual(1, meck:num_calls(qr_login_logic, log_device_login, '_')),
+                <<"bound-web-token">>
+            end),
+            meck:expect(
+                qr_login_session_ds,
+                transition_confirm,
+                fun(<<"session">>, ?UID, <<"bound-web-token">>) ->
+                    ?assertEqual(1, meck:num_calls(token_ds, encrypt_web_token, '_')),
+                    {ok, #{<<"status">> => <<"confirmed">>}}
+                end
+            ),
+            meck:expect(
+                qr_login_event_ds,
+                notify,
+                fun(<<"session">>, #{<<"status">> := <<"confirmed_ready">>} = Event) ->
+                    ?assertEqual(1, map_size(Event)),
+                    ?assertEqual(1, meck:num_calls(qr_login_session_ds, transition_confirm, '_')),
+                    {ok, 1}
+                end
+            ),
+            {stop, Req, _} = qr_login_handler:handle_request(
+                #{method => <<"POST">>}, #{action => confirm, current_uid => ?UID}
+            ),
+            ?assertEqual(#{<<"status">> => <<"confirmed">>}, maps:get(payload, Req)),
+            ?assertEqual(0, meck:num_calls(token_ds, encrypt_token, '_')),
+            ?assertEqual(0, meck:num_calls(imboy_cache, set, '_'))
+        end)
     end).
 
-web_cache_real_depcache_atomic_claim_test_() ->
-    {setup, fun real_cache_setup/0, fun real_cache_cleanup/1, fun(Context) ->
-        {timeout, 15, ?_test(real_cache_consumers(Context))}
-    end}.
+web_qr_missing_device_row_never_signs_test() ->
+    with_qr(pg, #{<<"qr_token">> => <<"qr">>}, fun() ->
+        mock_session(pg, qr_session(<<"human">>, <<"web">>)),
+        meck:expect(qr_login_logic, log_device_login, fun(_, _, _, _) -> ok end),
+        {stop, Req, _} = qr_login_handler:handle_request(
+            #{method => <<"POST">>}, #{action => confirm, current_uid => ?UID}
+        ),
+        ?assertEqual(503, maps:get(status, Req)),
+        ?assertEqual(0, meck:num_calls(token_ds, encrypt_web_token, '_')),
+        ?assertEqual(0, meck:num_calls(qr_login_session_ds, transition_confirm, '_'))
+    end).
 
-real_cache_setup() ->
-    ?assertNot(lists:keymember(imboy, 1, application:which_applications())),
-    ?assertEqual(undefined, whereis(imboy_cache)),
-    %% claim 的 global:trans 互斥依赖 global_name_server（eunit VM 极简引导
-    %% 不随内核启动；生产 vm.args 分布式启动时在线）——并发领取轮次前置。
-    _ = (catch global:start()),
-    lists:foreach(
-        fun(Name) -> ?assertEqual(undefined, ets:info(Name)) end,
-        ['m:imboy_cache', 'p:imboy_cache', 'd:imboy_cache']
-    ),
-    Values = [
-        {dsync_enabled, false},
-        {cache_fenced_namespaces, []},
-        {cache_registry_overrides, #{}},
-        {qr_login_authority, cache}
-    ],
-    Saved = [{K, application:get_env(imboy, K)} || {K, _} <- Values],
-    lists:foreach(fun({K, V}) -> application:set_env(imboy, K, V) end, Values),
-    try depcache:start_link(imboy_cache, #{memory_max => 1}) of
-        {ok, Pid} ->
-            unlink(Pid),
-            {links, Linked} = process_info(Pid, links),
-            Children = lists:delete(self(), Linked),
-            #{cache_pid => Pid, children => Children, saved_env => Saved}
-    catch
-        Class:Reason:Stack ->
-            restore_real_cache_env(Saved),
-            erlang:raise(Class, Reason, Stack)
-    end.
-
-real_cache_cleanup(#{cache_pid := Pid, children := Children, saved_env := Saved}) ->
-    %% Stop only the exact process returned by this fixture, never a process found by name.
-    Refs = [{P, erlang:monitor(process, P)} || P <- [Pid | Children]],
-    try
-        ok = gen_server:stop(Pid, shutdown, 5000),
-        lists:foreach(
-            fun({P, Ref}) ->
-                receive
-                    {'DOWN', Ref, process, P, shutdown} -> ok
-                after 5000 -> error({owned_cache_process_not_stopped, P})
+web_sse_and_polling_share_one_pg_claim_test() ->
+    with_qr(cache, #{}, fun() ->
+        mock_session(cache, confirmed_web_session()),
+        Table = ets:new(web_pg_claim, [set, public]),
+        ets:insert(Table, {claim, #{login_token => <<"one-token">>, scanned_by => ?UID}}),
+        try
+            meck:expect(qr_login_session_ds, claim_login_token, fun(<<"session">>) ->
+                case ets:take(Table, claim) of
+                    [{claim, Claim}] -> {ok, Claim};
+                    [] -> {error, not_claimable}
                 end
-            end,
-            Refs
-        ),
-        ?assertEqual(undefined, whereis(imboy_cache)),
-        lists:foreach(
-            fun(Name) -> ?assertEqual(undefined, ets:info(Name)) end,
-            ['m:imboy_cache', 'p:imboy_cache', 'd:imboy_cache']
-        )
-    after
-        restore_real_cache_env(Saved)
-    end.
-
-restore_real_cache_env(Saved) ->
-    lists:foreach(
-        fun
-            ({K, undefined}) -> application:unset_env(imboy, K);
-            ({K, {ok, V}}) -> application:set_env(imboy, K, V)
-        end,
-        Saved
-    ).
-
-real_cache_consumers(#{cache_pid := Pid, children := Children}) ->
-    ?assertEqual(Pid, whereis(imboy_cache)),
-    ?assertEqual(1, length(Children)),
-    lists:foreach(
-        fun(Child) ->
-            ?assertEqual({initial_call, {depcache, cleanup, 1}}, process_info(Child, initial_call))
-        end,
-        Children
-    ),
-    lists:foreach(
-        fun(Name) -> ?assertEqual(Pid, ets:info(Name, owner)) end,
-        ['m:imboy_cache', 'p:imboy_cache', 'd:imboy_cache']
-    ),
-    %% Mock transport only: cache, wrapper, authority helper and global lock all run unchanged.
-    with_mocks(
-        [
-            {cowboy_req, [
-                {method, fun(Req) -> maps:get(method, Req) end},
-                {parse_qs, fun(Req) -> maps:get(qs, Req) end},
-                {stream_body, fun(Body, nofin, #{test_parent := Parent, test_ref := Ref}) ->
-                    Parent ! {Ref, real_cache_frame, Body},
-                    ok
-                end}
-            ]},
-            {elib_response, response_mocks()}
-        ],
-        fun() ->
-            lists:foreach(fun real_cache_round/1, [
-                [old_status, new_status],
-                [old_status, sse],
-                [new_status, old_sse],
-                [sse, old_sse]
-            ])
+            end),
+            meck:expect(cowboy_req, stream_body, fun(_, _, _) -> ok end),
+            Parent = self(),
+            Ref = make_ref(),
+            Pids = [
+                spawn_link(fun() ->
+                    receive
+                        {go, Ref} -> Parent ! {Ref, self(), web_pg_consumer(Kind)}
+                    end
+                end)
+             || Kind <- [sse, web_status, native_status]
+            ],
+            [Pid ! {go, Ref} || Pid <- Pids],
+            Results = [
+                receive
+                    {Ref, Pid, Result} -> Result
+                after 3000 -> error(pg_claim_routing_timeout)
+                end
+             || Pid <- Pids
+            ],
+            PollPayloads = [Payload || {stop, #{payload := Payload}, _} <- Results],
+            [Winner] = web_sse_payloads() ++ PollPayloads,
+            ?assertEqual(<<"one-token">>, maps:get(<<"token">>, Winner)),
+            ?assertEqual(?UID, maps:get(<<"uid">>, Winner)),
+            ?assertEqual(3, meck:num_calls(qr_login_session_ds, claim_login_token, '_')),
+            ?assertEqual(0, meck:num_calls(imboy_cache, get, '_'))
+        after
+            ets:delete(Table)
         end
-    ).
+    end).
 
-real_cache_round(Kinds) ->
-    Ref = make_ref(),
-    Parent = self(),
-    ST = <<"real-cache-", (integer_to_binary(erlang:unique_integer([positive])))/binary>>,
-    Session = (qr_session(<<"human">>, <<"web">>))#{
-        <<"status">> => <<"confirmed">>, <<"login_token">> => <<"real-cache-synthetic-tk">>
-    },
-    ok = imboy_cache:set({qr_login, ST}, Session, 60),
-    Workers = [
-        spawn_monitor(fun() -> real_cache_caller(Parent, Ref, ST, Session, Kind) end)
-     || Kind <- Kinds
-    ],
-    try
-        [
-            receive
-                {Ref, ready, P} -> ok
-            after 2000 -> error(real_cache_not_ready)
-            end
-         || {P, _} <- Workers
-        ],
-        [P ! {Ref, claim} || {P, _} <- Workers],
-        Results = [
-            receive
-                {Ref, done, P, First, Replay} -> {First, Replay}
-            after 3000 -> error(real_cache_claim_timeout)
-            end
-         || {P, _} <- Workers
-        ],
-        Frames = real_cache_frames(Ref),
-        HttpWins = [
-            Payload
-         || {{stop, #{payload := Payload}, _}, _} <- Results,
-            maps:is_key(<<"token">>, Payload)
-        ],
-        ?assertEqual(1, length(HttpWins) + length(Frames)),
-        lists:foreach(
-            fun(Payload) ->
-                ?assertEqual(<<"real-cache-synthetic-tk">>, maps:get(<<"token">>, Payload)),
-                ?assertEqual(?UID, maps:get(<<"uid">>, Payload)),
-                ?assertNot(maps:is_key(<<"web_human">>, Payload))
-            end,
-            HttpWins ++ Frames
-        ),
-        ?assertEqual([], [
-            Payload
-         || {_, {stop, #{payload := Payload}, _}} <- Results,
-            maps:is_key(<<"token">>, Payload)
-        ]),
-        %% DEF-F6：claim 后保留无 token 墓碑（宽限窗内轮询幂等 confirmed）。
-        ?assertMatch(
-            {ok, #{<<"status">> := <<"confirmed">>, <<"login_token">> := null}},
-            imboy_cache:get({qr_login, ST})
-        )
-    after
-        lists:foreach(
-            fun({P, Monitor}) ->
-                case is_process_alive(P) of
-                    true -> exit(P, kill);
-                    false -> ok
-                end,
-                erlang:demonitor(Monitor, [flush])
-            end,
-            Workers
-        )
-    end.
-
-real_cache_caller(Parent, Ref, ST, Session, Kind) ->
-    _ = depcache:in_process(true),
-    ?assertEqual({ok, Session}, imboy_cache:get({qr_login, ST})),
-    %% This is the real library's memo entry, not a simulated stale-cache flag.
-    ?assertEqual({memo, {ok, Session}}, get({depcache, {qr_login, ST}})),
-    Parent ! {Ref, ready, self()},
-    receive
-        {Ref, claim} -> ok
-    after 3000 -> error(real_cache_not_released)
-    end,
-    Req = #{
-        method => <<"GET">>,
-        qs => [{<<"session_token">>, ST}],
-        test_parent => Parent,
-        test_ref => Ref
-    },
-    First = real_cache_request(Kind, Req, ST),
-    %% DEF-F6：claim 后是墓碑而非删除；Replay 在宽限窗内幂等、不得重发 token。
-    ?assertMatch(
-        {ok, #{<<"status">> := <<"confirmed">>, <<"login_token">> := null}},
-        imboy_cache:get({qr_login, ST})
-    ),
-    Replay = real_cache_request(Kind, Req, ST),
-    Parent ! {Ref, done, self(), First, Replay}.
-
-real_cache_request(old_status, Req, _) ->
-    qr_login_handler:handle_request(Req, #{action => status});
-real_cache_request(new_status, Req, _) ->
-    qr_login_handler:handle_request(Req, ?WEB#{action => status});
-real_cache_request(sse, Req, ST) ->
+web_pg_consumer(sse) ->
     qr_login_sse_handler:info(
-        #{<<"status">> => <<"confirmed">>},
-        Req,
-        #{session_token => ST, web_human => true}
+        #{<<"status">> => <<"confirmed_ready">>},
+        #{},
+        #{session_token => <<"session">>, web_human => true}
     );
-real_cache_request(old_sse, Req, ST) ->
-    qr_login_sse_handler:info(
-        #{<<"status">> => <<"confirmed">>, web_human => true},
-        Req,
-        #{session_token => ST}
-    ).
+web_pg_consumer(web_status) ->
+    qr_login_handler:handle_request(#{method => <<"GET">>}, ?WEB#{action => status});
+web_pg_consumer(native_status) ->
+    qr_login_handler:handle_request(#{method => <<"GET">>}, #{action => status}).
 
-real_cache_frames(Ref) ->
-    receive
-        {Ref, real_cache_frame, <<"data: ", Json/binary>>} ->
-            [jsone:decode(binary:part(Json, 0, byte_size(Json) - 2)) | real_cache_frames(Ref)]
-    after 0 -> []
-    end.
+confirmed_web_session() ->
+    (qr_session(<<"human">>, <<"web">>))#{<<"status">> => <<"confirmed">>}.
+
+web_sse_payloads() ->
+    [
+        jsone:decode(binary:part(Json, 0, byte_size(Json) - 2))
+     || {_, {cowboy_req, stream_body, [<<"data: ", Json/binary>>, _, _]}, _} <-
+            meck:history(cowboy_req)
+    ].
 
 qr_logic_maps_device_fields_and_propagates_errors_test() ->
     with_mocks(
@@ -975,7 +754,7 @@ credential_case(Registration, Test) ->
             {elib_type, [{is_email, fun(_) -> true end}]},
             {elib_async, [{async, fun(_) -> ok end}]},
             {user_ds, [
-                {find_by_email, fun(_, _) -> User end},
+                {lookup, fun(email, <<"synthetic@example.test">>, _) -> {ok, User} end},
                 {find_by_id, fun(?UID, <<"status,account_type">>) ->
                     #{<<"status">> => 1, <<"account_type">> => 0}
                 end}
@@ -1040,10 +819,6 @@ credential_case(Registration, Test) ->
 with_qr(Authority, Body, Test) ->
     Old = application:get_env(imboy, qr_login_authority),
     application:set_env(imboy, qr_login_authority, Authority),
-    %% claim 的 global:trans 互斥依赖 global_name_server；eunit VM 极简引导
-    %% （no_dot_erlang）不随内核启动 global，而生产 vm.args 分布式启动时在线。
-    %% 并发领取类用例（唯一赢家）需该契约在线。幂等：已启动则直通。
-    _ = (catch global:start()),
     try
         with_mocks(
             [
@@ -1061,10 +836,11 @@ with_qr(Authority, Body, Test) ->
                     {reply, fun(Status, _, _, Req) -> Req#{status => Status} end}
                 ]},
                 {imboy_cache, [
-                    {get, fun({qr_login_qr, <<"qr">>}) -> {ok, <<"session">>} end},
-                    {flush_process_dict, fun() -> ok end}
+                    {get, fun(_) -> error(unexpected_cache_read) end},
+                    {set, fun(_, _, _) -> error(unexpected_cache_write) end}
                 ]},
                 {qr_login_session_ds, [
+                    {ensure_claim_compatible, fun() -> ok end},
                     {find_by_qr_token, fun(<<"qr">>) ->
                         #{<<"session_token">> => <<"session">>}
                     end}
@@ -1083,12 +859,7 @@ with_qr(Authority, Body, Test) ->
         end
     end.
 
-mock_session(cache, Session) ->
-    meck:expect(imboy_cache, get, fun
-        ({qr_login_qr, <<"qr">>}) -> {ok, <<"session">>};
-        ({qr_login, <<"session">>}) -> {ok, Session}
-    end);
-mock_session(pg, Session) ->
+mock_session(_ConfiguredAuthority, Session) ->
     meck:expect(qr_login_session_ds, find_by_session_token, fun(<<"session">>) -> Session end).
 
 qr_session(Purpose, Platform) ->
@@ -1117,6 +888,7 @@ with_mocks(Mocks, Test) ->
                 Options =
                     case Module of
                         qr_login_logic -> [passthrough, no_link, non_strict, unstick];
+                        qr_login_event_ds -> [passthrough, no_link, non_strict, unstick];
                         _ -> [no_link, non_strict, unstick]
                     end,
                 meck:new(Module, Options),
