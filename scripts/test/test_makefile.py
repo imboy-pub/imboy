@@ -470,6 +470,25 @@ proto-probe:
         result = self.make(*arguments, success=False)
         self.assertIn("invalid_proto", result.stdout)
 
+    def test_erlang_default_and_command_line_override_preserve_vm_arguments(self):
+        self.write("probe.mk", '''.PHONY: erlang-probe
+erlang-probe:
+	@$(call erlang,halt(0).,-pa fixtures)
+''')
+        default = self.make("--dry-run", "erlang-probe").stdout
+        self.assertIn("erl -noinput -boot no_dot_erlang +P 32768 +Q 1024", default)
+        self.assertNotIn("start_distribution false", default)
+        executable = self.write("bin/erl-probe", r'''#!/bin/sh
+printf '%s\0' "$@" > erlang.args
+''')
+        executable.chmod(0o755)
+        self.make("erlang-probe", "ERL=bin/erl-probe +S 1:1")
+        self.assertTrue((self.root / "erlang.args").exists(), "caller-selected ERL was not invoked")
+        arguments = (self.root / "erlang.args").read_bytes().split(b"\0")[:-1]
+        self.assertEqual(arguments[:4], [b"+S", b"1:1", b"-pa", b"fixtures"])
+        self.assertIn(b"-eval", arguments)
+        self.assertIn(b"halt(0).", arguments)
+
     def test_native_clean_preserves_dependency_beams(self):
         self.write("src/make_probe.erl", "-module(make_probe).\n")
         products = ("ebin/make_probe.beam", "test/make_probe_tests.beam",

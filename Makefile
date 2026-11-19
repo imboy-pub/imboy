@@ -149,7 +149,8 @@ endif
 # 令 global_name_server 不启动 → elib_tsid:init 必败（81062eaa7 已为
 # eunit-local 轨道去旗，本行补齐裸 eunit 轨道同语义）。+P 上限同步
 # eunit-local 的 EUNIT_PROCESS_LIMIT 惯例（默认 1024 偏小）。
-override ERL := erl -noinput -boot no_dot_erlang +P 32768 +Q 1024
+# 保留命令行 ERL 指定的工具链和参数 / Respect caller-selected ERL and flags.
+ERL := erl -noinput -boot no_dot_erlang +P 32768 +Q 1024
 
 # GNU Make 4 写完整清单，xargs 限制参数长度；任一编译失败不写构建戳。
 TEST_COMPILE_JOBS ?= 4
