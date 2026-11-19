@@ -99,6 +99,32 @@ docker buildx build --platform linux/amd64 \
 # 登录后正式推：双平台均命中缓存，分钟级完成
 ```
 
+**docker driver 限制的实测替代配方（2026-11-19 首发实证）**：Docker Desktop
+默认 `desktop-linux` builder（docker driver）不支持 `--platform a,b` 多平台
+（开启 containerd image store 可解，但需重启 Docker）。替代：单平台分推 +
+manifest 合并：
+
+```bash
+CTX='--build-context postgres:18-trixie=docker-image://docker.1ms.run/library/postgres:18-trixie'
+# 1) arm64 推送（记录 digest_A）
+docker buildx build --platform linux/arm64 $CTX \
+  -f docker/pg18_Dockerfile -t imboy/pg18:3.7.0-1 --push .
+docker buildx imagetools inspect imboy/pg18:3.7.0-1   # 记下 Digest
+# 2) amd64 推送（同 tag 覆盖，记录 digest_B）
+docker buildx build --platform linux/amd64 $CTX \
+  -f docker/pg18_Dockerfile -t imboy/pg18:3.7.0-1 --push .
+docker buildx imagetools inspect imboy/pg18:3.7.0-1   # 记下 Digest
+# 3) 合并为 manifest list（tag 指向 list，双平台齐备）
+docker buildx imagetools create -t imboy/pg18:3.7.0-1 \
+  imboy/pg18@sha256:<digest_A> imboy/pg18@sha256:<digest_B>
+```
+
+`$CTX` 重定向基础镜像解析到可用 mirror：Docker Desktop 的 registry-mirrors
+配置（如 docker.zhai.cm）失效时 BuildKit 元数据解析会整体超时，`--build-context`
+可绕开。匿名拉取验证（模拟 prod）：`curl auth.docker.io/token...` 换 token 后
+GET `registry-1.docker.io/v2/imboy/pg18/manifests/3.7.0-1` 应返回
+manifest list 且含双平台。
+
 发布纪律：
 
 - tag 沿用 `<PostGIS 版本>-<序号>` 惯例（如 `3.7.0-1`），与 compose 引用一致
