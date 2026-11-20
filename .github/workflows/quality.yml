@@ -250,8 +250,11 @@ jobs:
           sudo install -m 0755 "$gitleaks_tmp/gitleaks" /usr/local/bin/gitleaks
           gitleaks version
 
+      - name: Check secret gate failure propagation and historical exemptions
+        run: python3 -m unittest discover -s scripts/test -p test_gitleaks_gate.py -v
+
       # 历史扫描（git 模式）——原先由 action 承担，不能因为换实现就悄悄丢掉。
-      # .gitleaksignore 里的 9 条历史豁免是指纹级的，git 模式下才对得上。
+      # 指纹绑定历史 commit；删除工作树文件不会删除 Git 历史中的扫描对象。
       - name: Scan git history (ratchet — baseline 0)
         run: |
           set -euo pipefail
@@ -260,14 +263,8 @@ jobs:
       - name: Verify no new leaks
         run: |
           set -euo pipefail
-          gitleaks detect --no-git --config .gitleaks.toml --redact --no-banner \
-            --report-format json --report-path /tmp/leaks.json || true
-          count=$(jq '. | length' /tmp/leaks.json 2>/dev/null || echo 0)
-          echo "leaks=$count"
-          if [ "$count" -gt 0 ]; then
-            echo "::error::Gitleaks found $count leaks, baseline is 0 (see docs/guides/security/security-hardening.md)"
-            exit 1
-          fi
+          # 泄露或执行错误均阻断 / Findings and scanner errors must both fail.
+          gitleaks detect --no-git --config .gitleaks.toml --redact --no-banner
 
   # ----------------------------------------------------------------
   # 5) Architecture gates — 层边界 + 文件大小 + 静默吞错检查

@@ -76,6 +76,59 @@ regexes = [
     '\beb09_facts_probe\b',
 ]
 
+# 冻结源码哈希：仅限此清单路径和37个已审查的精确值同时匹配。
+# Frozen source hashes: exact manifest path AND 37 reviewed values only.
+# One value is the documented dirty foreign-WIP hash at lines 896/1494;
+# it was previously reviewed but could not be independently recomputed.
+# Extend the built-in rule; retain its detection regex, entropy and keywords.
+[[rules]]
+id = "generic-api-key"
+
+[[rules.allowlists]]
+description = "冻结源码SHA256清单 / Exact frozen source SHA256 values"
+condition = "AND"
+regexTarget = "secret"
+paths = ['''^docs/architecture/attachment-lifecycle-v5/evidence/current-baseline\.json$''']
+regexes = [
+    '''^042915733d532680d74402e97d47c5c73b1261a8cc1386a121c905732d00bf40$''',
+    '''^06785c48bf6d2c6aa5d6b7d9bb8e219915125a0f2b20fb787529e169d7642dff$''',
+    '''^09f33f4847239e31b20ed77bee5a5a2488d32097c88e291b9ca02f44cce2e544$''',
+    '''^11dd3b422320285f755f5beb8c3ca170915f5ac3121aa81d5973f875d211071c$''',
+    '''^1dc6335301ef79418b9a124eab003707dbc80d322b5dbb47dad2b2ac6fd5c2d9$''',
+    '''^29e530b2159a93dc112632508571bf93a4daf228cf25294e90c4c5e5f8ea36fb$''',
+    '''^307b5da1d8c7b520accaac9c91af280f3a8ec08a623d2a284e5c85c967628466$''',
+    '''^362462ca58da3b7d92b2a0f62d6e5a7ee56f9fd2597fffea20a24a7725d636c5$''',
+    '''^3abc5ec820235c487cc775e53f26d2aa187500ff2b58e52563e25a25baf79f7e$''',
+    '''^3b6a7f964d11bf7b0ec0b27ddc5f770dbf75fa15675d07ee771b65cfaf5eb03f$''',
+    '''^3c5ee3a6751c57830e32b9ed48f2f9c2fd7423bf09bf0875b307db6628ee76b0$''',
+    '''^3ea9f8f511b18e994645c7e88f5c786fbccaf63f9d1607fafa38aa1dc5069536$''',
+    '''^40899d1a32c89671659598fc6340db1700a01e4019b964536540d55e780c24df$''',
+    '''^45c4d56c72b0baff60b0e17bfa116214d550886a2cfd9bbfc298c35c918064c8$''',
+    '''^47a7ac39a071a3d76fe3a5e5063ae3d0d5b236e5b216df72e9d16f844e262c52$''',
+    '''^47bca4669f5661e3a79fe8eb20ae9e2743791dd03ebb1c61ebd28431da1707ad$''',
+    '''^487e375efdeb03b628656fac6ead5de2c90454d69c9c725e820d9f679d2730a2$''',
+    '''^4d173f17f74accd0010b947840a5abb543f2b24158a615d3c7f04f9c862372c6$''',
+    '''^6f2c513605e36a679eb12f881798b375ed4dc4c3f50e2f54c5731041c5e467ef$''',
+    '''^75376b5fe417a05eab6a0940ab7e1ec0dff4c92573ba5a5e31a8b10a87b2ade9$''',
+    '''^77c2b4239444249ccda0cf24ad3a7c154fee280a7d6a6fc28977888fc0afbcd0$''',
+    '''^7b3734d2f15c11d4b5eb5265088f1fb651a7c88be5f5d7f3ecb8322e70c9c712$''',
+    '''^8639e946ecdc04c7e93741e75409b6b54d7573ea31e44beeedcd20e0af86bff1$''',
+    '''^98e9f77cfd65368fb7bc38d7a0ddd7bb56a709f444046d0c8b25c3ffd5b512ad$''',
+    '''^9f716ce258e0f4930b265bd25af0ef46a5ebc272df8b27617e291badfeb1a11e$''',
+    '''^a09f08ebb38de3d2236be769b72e754723d3729a264a442425a4780c3d58b3d1$''',
+    '''^a0ee9a2674a394b6809a8e62ecfd586f1ed2656526aae11240034473a385a4de$''',
+    '''^a3aefd0f22a6e80b702a1f06127c3a84e869d547bdcb6decd3774c739ba36269$''',
+    '''^a4da67b877ca974a89883110ffcaa43e70f3c1c630df5c9527a96806bda59795$''',
+    '''^b155e5ccbf37d70e328ed30bf8d5e86a6c0e7652e3bf89d3b39c235f5b116b62$''',
+    '''^c0ba2ea244cb07c13ac1ff5853d251dc1c1c6c40aae20eb6aaaeb0dcd50e6b68$''',
+    '''^c903c898a768c939cf3bd0128aaf2717e161d6e27b3b31849a3eaefbcef3f33f$''',
+    '''^d22db48e834daed8a865b2f4e8e92ba4863a65af7a8bbfc0b4266159c33a40f3$''',
+    '''^e6265eb621925a5a5357e8da7047d127405b9a6892ac2b12be6cac5575271532$''',
+    '''^ecfcda1381264b0c6421d306fa97c2421447f6b0f192ed74a95f13536799f41e$''',
+    '''^fab015eafd5ba12565b281c2678311f6267e5f7d4a0d2d127b7aad8408b4a92c$''',
+    '''^fcdd95b45375de6b1e1be05fd21f1263aa71a2424dd570140fb14b10eb580577$''',
+]
+
 # ---------------------------------------------------------------------------
 # 项目特定规则（在内置规则之上叠加）
 # ---------------------------------------------------------------------------
