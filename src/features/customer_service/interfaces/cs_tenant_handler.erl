@@ -31,9 +31,6 @@
 -define(SSE_POLL_MS, 1000).
 -define(SSE_MAX_MS, 300000).
 -define(SSE_KEEPALIVE_EVERY, 3).
-%% 撤权复查节奏：每 N 次轮询做一次逐请求认证复查（cs_auth 全链——facts +
-%% seat enabled 门），撤权后发最小 revoked 帧并关流。
--define(SSE_RECHECK_EVERY, 5).
 
 %% cowboy 普通 handler：State = route Opts（含 route metadata + 中间件会话键）。
 -spec init(cowboy_req:req(), map()) -> {ok, cowboy_req:req(), map()}.
@@ -264,6 +261,9 @@ events_invoke(Entry, Case, Req0, Body, OrgId, State, Metadata, AuthContext) ->
 %% 非法头值 400（不静默回退——与 widget 面补偿读不同，这里合同明文要求）。
 event_cursor(Req, Params) ->
     case cowboy_req:header(<<"last-event-id">>, Req) of
+        <<"0">> ->
+            %% 重连时重新取快照水位，0 只可作为活跃流的内部游标。
+            {ok, no_cursor};
         Raw when is_binary(Raw), Raw =/= <<>> ->
             case cs_http:tsid(Raw) of
                 {ok, Id} -> {ok, {cursor, Id}};
@@ -286,44 +286,71 @@ stream(Req0, OrgId, Params, State) ->
     case cs_facade_call:call(seat_events, OrgId, Params) of
         {error, Reason} ->
             cs_http:reply_error(Req0, Reason);
-        {ok, #{events := Events, cursor := Cursor, resync_required := Resync} = Page} ->
-            Req1 = cowboy_req:stream_reply(200, stream_headers(), Req0),
-            First = [
-                retry_frame(?SSE_RETRY_MS),
-                case Resync of
-                    true ->
-                        resync_frame(
-                            OrgId,
-                            maps:get(workspace_id, Params),
-                            Cursor,
-                            reason_bin(Page)
-                        );
-                    false ->
-                        <<>>
-                end,
-                event_frames(Events)
-            ],
-            case send(Req1, First) of
+        {ok, #{events := _, cursor := _, resync_required := _} = Page} ->
+            case stream_authorization(Req0, State, Params) of
                 ok ->
-                    stream_loop(
-                        Req1,
-                        OrgId,
-                        Params,
-                        State,
-                        #{
-                            cursor => Cursor,
-                            deadline => erlang:monotonic_time(millisecond) + max_ms(State),
-                            empty => 0,
-                            polls => 0,
-                            poll_ms => poll_ms(State)
-                        }
-                    );
-                {error, _} ->
-                    %% 客户端在首帧前即断开：静默收流。
-                    Req1
+                    case stream_expiry(Req0, State) of
+                        {ok, ExpiresAt} ->
+                            open_stream(Req0, OrgId, Params, State, Page, ExpiresAt);
+                        error ->
+                            cs_http:reply_error(Req0, credential_invalid)
+                    end;
+                {error, Reason} ->
+                    cs_http:reply_error(Req0, Reason)
             end;
         {ok, _Other} ->
             cs_http:reply_error(Req0, {unknown_action, seat_events})
+    end.
+
+open_stream(
+    Req0,
+    OrgId,
+    Params,
+    State,
+    #{events := Events, cursor := Cursor, resync_required := Resync} = Page,
+    ExpiresAt
+) ->
+    Req1 = cowboy_req:stream_reply(200, stream_headers(), Req0),
+    First = [
+        retry_frame(?SSE_RETRY_MS),
+        case Resync of
+            true ->
+                resync_frame(
+                    OrgId,
+                    maps:get(workspace_id, Params),
+                    Cursor,
+                    reason_bin(Page)
+                );
+            false ->
+                <<>>
+        end,
+        event_frames(Events)
+    ],
+    case send(Req1, First) of
+        ok ->
+            stream_loop(
+                Req1,
+                OrgId,
+                Params,
+                State,
+                #{
+                    cursor => Cursor,
+                    deadline => erlang:monotonic_time(millisecond) + max_ms(State),
+                    empty => 0,
+                    poll_ms => poll_ms(State),
+                    expires_at => ExpiresAt
+                }
+            );
+        {error, _} ->
+            %% 客户端在首帧前即断开：静默收流。
+            Req1
+    end.
+
+stream_expiry(Req, #{current_uid := Uid}) ->
+    Token = auth_ds:parse_authorization_header(cowboy_req:header(<<"authorization">>, Req)),
+    case token_ds:decrypt_token(Token) of
+        {ok, Uid, ExpiresAt, _Purpose, _Did, _Epoch} -> {ok, ExpiresAt};
+        _ -> error
     end.
 
 stream_loop(Req, OrgId, Params, State, #{deadline := Deadline} = Ctx) ->
@@ -332,29 +359,26 @@ stream_loop(Req, OrgId, Params, State, #{deadline := Deadline} = Ctx) ->
             finish(Req);
         false ->
             timer:sleep(maps:get(poll_ms, Ctx)),
-            recheck_or_poll(Req, OrgId, Params, State, Ctx)
+            case erlang:system_time(second) < maps:get(expires_at, Ctx) of
+                true -> poll(Req, OrgId, Params, State, Ctx);
+                false -> finish(Req)
+            end
     end.
 
-%% 周期性逐请求复查（cs_auth 全链：active member + assignment + seat enabled）。
-%% 每 ?SSE_RECHECK_EVERY 次轮询复查一次；其余轮询只读事件页。
-recheck_or_poll(Req, OrgId, Params, State, Ctx = #{polls := Polls}) ->
-    case (Polls + 1) rem ?SSE_RECHECK_EVERY of
-        0 ->
-            Identity = maps:get(business_identity_id, Params),
-            case cs_auth:authorize(recheck_metadata(State), Req, State) of
-                {ok, #{business_identity_id := Identity}} ->
-                    poll(Req, OrgId, Params, State, Ctx#{polls := Polls + 1});
-                {ok, _NewIdentity} ->
-                    revocation_close(Req, OrgId, Params, identity_assignment_missing);
-                {error, Reason} ->
-                    revocation_close(Req, OrgId, Params, Reason)
-            end;
-        _ ->
-            poll(Req, OrgId, Params, State, Ctx#{polls := Polls + 1})
-    end.
-
-recheck_metadata(State) ->
-    metadata(State).
+stream_token_valid(Req, #{current_uid := Uid} = State) ->
+    Authorization = cowboy_req:header(<<"authorization">>, Req),
+    Verification =
+        case maps:get(jwt_purpose, State, human) of
+            human -> auth_ds:verify_token(Authorization);
+            seat -> auth_ds:verify_seat_token(Authorization);
+            _ -> invalid_purpose
+        end,
+    case Verification of
+        {ok, Uid, _Did} -> true;
+        _ -> false
+    end;
+stream_token_valid(_Req, _State) ->
+    false.
 
 poll(Req, OrgId, Params, State, Ctx) ->
     case
@@ -363,10 +387,39 @@ poll(Req, OrgId, Params, State, Ctx) ->
         )
     of
         {ok, #{events := Events, cursor := Cursor}} ->
-            deliver(Req, OrgId, Params, State, Ctx, event_frames(Events), Cursor);
+            deliver_authorized(Req, OrgId, Params, State, Ctx, Events, Cursor);
         _ ->
-            %% 单次轮询失败（瞬态）不终止流；也不推进保活计数。
-            stream_loop(Req, OrgId, Params, State, Ctx)
+            case stream_authorization(Req, State, Params) of
+                ok -> stream_loop(Req, OrgId, Params, State, Ctx);
+                {error, Reason} -> revocation_close(Req, OrgId, Params, Reason)
+            end
+    end.
+
+%% 坐席授权可能在查页期间变化，发出帧前以当前归属为准。
+deliver_authorized(Req, OrgId, Params, State, Ctx, Events, Cursor) ->
+    case stream_authorization(Req, State, Params) of
+        ok ->
+            case erlang:system_time(second) < maps:get(expires_at, Ctx) of
+                true -> deliver(Req, OrgId, Params, State, Ctx, event_frames(Events), Cursor);
+                false -> finish(Req)
+            end;
+        {error, Reason} ->
+            revocation_close(Req, OrgId, Params, Reason)
+    end.
+
+stream_authorization(Req, #{cursor_state := #{metadata := Metadata}} = State, #{
+    business_identity_id := Identity
+}) ->
+    Authorization = cs_auth:authorize(Metadata, Req, State),
+    case {stream_token_valid(Req, State), Authorization} of
+        {false, _} ->
+            {error, credential_invalid};
+        {true, {ok, #{business_identity_id := Identity}}} ->
+            ok;
+        {true, {ok, _NewIdentity}} ->
+            {error, identity_assignment_missing};
+        {true, {error, _} = Error} ->
+            Error
     end.
 
 deliver(Req, OrgId, Params, State, Ctx = #{empty := Empty0}, <<>>, Cursor) ->

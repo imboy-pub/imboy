@@ -521,7 +521,7 @@ seat_events_placeholder_tests(_) ->
                     <<"/api/v1/cs/organizations/", (int_bin(?ORG))/binary,
                         "/seats/me/events?workspace_id=", (int_bin(?WS))/binary>>,
                     <<>>,
-                    #{<<"authorization">> => <<"Bearer x">>},
+                    #{<<"authorization">> => stream_authorization()},
                     1800
                 ),
                 ?assert(string:find(Raw, <<"retry: 2000">>) =/= nomatch),
@@ -560,7 +560,7 @@ seat_events_placeholder_tests(_) ->
                             <<"/api/v1/cs/organizations/", (int_bin(?ORG))/binary,
                                 "/seats/me/events?workspace_id=", (int_bin(?WS))/binary>>,
                             <<>>,
-                            #{<<"authorization">> => <<"Bearer x">>},
+                            #{<<"authorization">> => stream_authorization()},
                             600
                         ),
                         {Head, Body} = sse_parts(Raw),
@@ -620,7 +620,7 @@ seat_events_placeholder_tests(_) ->
                             "&after_id=1">>,
                         <<>>,
                         #{
-                            <<"authorization">> => <<"Bearer x">>,
+                            <<"authorization">> => stream_authorization(),
                             <<"last-event-id">> => <<"880001">>
                         },
                         600
@@ -648,7 +648,7 @@ seat_events_placeholder_tests(_) ->
                         "/seats/me/events?workspace_id=", (int_bin(?WS))/binary>>,
                     <<>>,
                     #{
-                        <<"authorization">> => <<"Bearer x">>,
+                        <<"authorization">> => stream_authorization(),
                         <<"last-event-id">> => <<"880002">>
                     }
                 ),
@@ -670,7 +670,7 @@ seat_events_placeholder_tests(_) ->
                         "/seats/me/events?workspace_id=", (int_bin(?WS))/binary>>,
                     <<>>,
                     #{
-                        <<"authorization">> => <<"Bearer x">>,
+                        <<"authorization">> => stream_authorization(),
                         <<"last-event-id">> => <<"not-a-tsid">>
                     }
                 ),
@@ -690,7 +690,7 @@ seat_events_placeholder_tests(_) ->
                     <<"GET">>,
                     <<"/api/v1/cs/organizations/", (int_bin(?ORG))/binary, "/seats/me/events">>,
                     <<>>,
-                    #{<<"authorization">> => <<"Bearer x">>}
+                    #{<<"authorization">> => stream_authorization()}
                 ),
                 ?assertEqual(422, ?S:status(Resp))
             end)
@@ -736,6 +736,13 @@ sse_parts(Raw) ->
 
 %% SSE 流式用例的注入集：短轮询/短 deadline（流循环在 deadline 正常 fin，
 %% 测试客户端限时读 600ms 后主动断开，不拖慢套件）。
+stream_authorization() ->
+    Token = imboy_jwt:sign(
+        #{<<"uid">> => ?UID, <<"sub">> => <<"tk">>, <<"exp">> => erlang:system_time(second) + 30},
+        config_ds:env(jwt_key, <<>>)
+    ),
+    <<"Bearer ", Token/binary>>.
+
 stream_inject() ->
     maps:merge(seat_inject(), #{sse_max_ms => 250, sse_poll_ms => 50}).
 
