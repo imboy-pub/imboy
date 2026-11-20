@@ -4,7 +4,7 @@
 #
 # 关联:    .claude/plans/quality-loop.md v1.3 T3.2 (split phase 13 / D-msg)
 # 调用方:  api/openapi.yaml#/paths/~1v1~1msg~1forward
-# Handler: src/api/msg_handler.erl#forward/2 → msg_forward_logic:forward/4
+# Handler: src/api/msg_handler.erl#forward/2 → msg_forward_logic:forward/4 and /5
 # ----------------------------------------------------------------------------
 post:
   tags: [msg]
@@ -13,7 +13,9 @@ post:
     ## 中文
     把 msg_ids 列表中的消息批量转发到 (to_type, to) 标识的会话。
     服务端会校验：好友关系 / 群成员身份 / denylist / 转发权限 / 源消息存在。
-    payload 返回新生成的 forward_msg_ids 与 forward_count。
+    payload 返回受理的 forward_msg_ids、forward_count 和逐条失败明细。
+    重试复用相同 request_id、完整有序源列表和目标。已受理条目返回原消息 ID。
+    部分成功时保留成功 ID，条目冲突记录在 failed 明细中。
     ## English
     Bulk-forward `msg_ids` to the conversation identified by
     (to_type, to). The server validates friendship / group membership /
@@ -32,6 +34,12 @@ post:
               items:
                 type: string
               description: 要转发的源消息 TSID 列表 / Source message TSIDs.
+            request_id:
+              type: string
+              minLength: 16
+              maxLength: 64
+              pattern: '^[A-Za-z0-9_-]+$'
+              description: 客户端生成并在同一批重试时复用的标识。
             to:
               type: string
               description: 目标会话 ID（user TSID for c2c / group TSID for c2g）/ Target id.
@@ -60,12 +68,19 @@ post:
                       forward_msg_ids:
                         type: array
                         items:
-                          type: integer
-                          format: int64
-                        description: 新生成的转发消息 TSID 列表 / TSIDs of newly created forwarded messages
+                          type: string
+                        description: 已受理的目标消息 ID。重试返回原 ID。
                       forward_count:
                         type: integer
                         description: 实际转发条数 / Number of messages actually forwarded
+    '409':
+      description: 批次绑定与原目标或有序源列表冲突，或全部条目失败且其中有内容冲突。
+      content:
+        application/json:
+          schema:
+            $ref: '../../../../components/schemas/Envelope.yaml'
+    '429':
+      description: 同一操作者的新批次超过每分钟限额。已绑定批次重试不消耗新名额。
     '4XX':
       description: |
         参数非法 (invalid_param) / 非好友 (not_friends) / 非群成员

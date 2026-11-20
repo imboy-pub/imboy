@@ -11,13 +11,7 @@ forward_generation() ->
     Db = os:getenv("C08_FORWARD_PG_DB"),
     true = lists:prefix("c08_clean_", Db),
     {ok, _} = application:ensure_all_started(epgsql),
-    {ok, Conn} = epgsql:connect(#{
-        host => "127.0.0.1",
-        port => 49320,
-        username => os:getenv("C08_FORWARD_PG_USER"),
-        password => os:getenv("C08_FORWARD_PG_PASSWORD"),
-        database => Db
-    }),
+    {ok, Conn} = epgsql:connect(connection_opts(Db)),
     try
         {ok, _, [{<<"c08-clean-candidate-owned">>}]} = epgsql:squery(
             Conn,
@@ -137,13 +131,7 @@ c2c_fixture(C, Base, Uid) ->
     ?assertEqual({error, forbidden}, forward_attachment_source_repo:c2c_tx(C, Msg, Uid)).
 
 lock_excluded(Key) ->
-    {ok, Other} = epgsql:connect(#{
-        host => "127.0.0.1",
-        port => 49320,
-        username => os:getenv("C08_FORWARD_PG_USER"),
-        password => os:getenv("C08_FORWARD_PG_PASSWORD"),
-        database => os:getenv("C08_FORWARD_PG_DB")
-    }),
+    {ok, Other} = epgsql:connect(connection_opts(os:getenv("C08_FORWARD_PG_DB"))),
     try
         {ok, [#{<<"acquired">> := false}]} = elib_pg:query(
             Other,
@@ -153,6 +141,18 @@ lock_excluded(Key) ->
     after
         epgsql:close(Other)
     end.
+
+connection_opts(Db) ->
+    true = lists:prefix("c08_clean_", Db),
+    Port = list_to_integer(os:getenv("C08_FORWARD_PG_PORT", "49320")),
+    true = Port > 0 andalso Port =< 65535,
+    #{
+        host => "127.0.0.1",
+        port => Port,
+        username => os:getenv("C08_FORWARD_PG_USER"),
+        password => os:getenv("C08_FORWARD_PG_PASSWORD"),
+        database => Db
+    }.
 
 %% ---------------------------------------------------------------- M-02 追加
 %% 转发请求稳定身份迁移的真库验证（00000281；复占改号 277→281）。

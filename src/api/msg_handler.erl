@@ -462,7 +462,22 @@ forward(Req0, State) ->
                     ToId = ec_cnv:to_integer(To),
 
                     % 调用逻辑层处理转发
-                    case msg_forward_logic:forward(MsgIds, CurrentUid, ToId, ToType) of
+                    Result =
+                        case maps:find(<<"request_id">>, Body) of
+                            error ->
+                                msg_forward_logic:forward(MsgIds, CurrentUid, ToId, ToType);
+                            {ok, Token} ->
+                                msg_forward_logic:forward(MsgIds, CurrentUid, ToId, ToType, Token)
+                        end,
+                    case Result of
+                        {error, forward_request_rate_limited} ->
+                            elib_response:error_with_status(
+                                Req0, 429, <<"转发请求过于频繁"/utf8>>, ?ERR_TOO_MANY_REQUESTS
+                            );
+                        {error, forward_request_conflict} ->
+                            elib_response:error_with_status(
+                                Req0, 409, <<"转发请求与已绑定内容冲突"/utf8>>, ?ERR_CONFLICT
+                            );
                         {ok, ForwardMsgIds} ->
                             elib_response:success(
                                 Req0,
@@ -490,8 +505,10 @@ forward(Req0, State) ->
                             elib_response:error(Req0, Msg, ?ERR_MESSAGE_NOT_FOUND);
                         {error, {forward_rejected, Msg}} ->
                             elib_response:error(Req0, Msg, ?ERR_FORBIDDEN);
-                        {error, Reason} ->
-                            elib_response:error(Req0, Reason, ?ERR_INTERNAL_SERVER_ERROR)
+                        {error, _Reason} ->
+                            elib_response:error(
+                                Req0, <<"转发失败，请稍后重试"/utf8>>, ?ERR_INTERNAL_SERVER_ERROR
+                            )
                     end
             end
     end.

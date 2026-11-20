@@ -11,6 +11,7 @@
 -export([find_by_original_msg_id/1]).
 -export([find_by_forward_from_id/2]).
 -export([count_by_original_msg_id/1]).
+-export([bind_batch/5, batch_result/3, settle_batch_tx/10]).
 
 %% ===================================================================
 %% API functions
@@ -21,6 +22,61 @@
 -spec tablename() -> binary().
 tablename() ->
     elib_pg_sql:public_tablename(<<"msg_forward">>).
+
+%% 持久绑定整批请求；在发送任意条目之前执行。
+-spec bind_batch(pos_integer(), binary(), binary(), pos_integer(), [binary()]) ->
+    ok | {error, term()}.
+bind_batch(Uid, Token, TargetType, TargetId, SourceIds) ->
+    Sql = <<"SELECT public.fn_forward_batch_bind($1,$2,$3,$4,$5::text[]) AS status">>,
+    case elib_pg:query(Sql, [Uid, Token, TargetType, TargetId, SourceIds]) of
+        {ok, [#{<<"status">> := <<"bound">>}]} -> ok;
+        {ok, [#{<<"status">> := <<"conflict">>}]} -> {error, forward_request_conflict};
+        {ok, [#{<<"status">> := <<"rate_limited">>}]} -> {error, forward_request_rate_limited};
+        {ok, _} -> {error, invalid_forward_batch_status};
+        {error, _} = Error -> Error
+    end.
+
+%% 只有已结算条目有结果；其它成功查询返回 SQL NULL。
+-spec batch_result(pos_integer(), binary(), pos_integer()) ->
+    {ok, binary()} | {error, term()}.
+batch_result(Uid, Token, Position) ->
+    Sql = <<"SELECT public.fn_forward_batch_result($1,$2,$3) AS result_msg_id">>,
+    case elib_pg:query(Sql, [Uid, Token, Position]) of
+        {ok, [#{<<"result_msg_id">> := MsgId}]} when is_binary(MsgId), MsgId =/= <<>> ->
+            {ok, MsgId};
+        {ok, [#{<<"result_msg_id">> := null}]} ->
+            {error, not_found};
+        {ok, _} ->
+            {error, invalid_forward_batch_result};
+        {error, _} = Error ->
+            Error
+    end.
+
+%% 已有赢家时返回 replay，调用方回滚本次暂存并在事务外查原结果。
+-spec settle_batch_tx(
+    epgsql:connection(),
+    pos_integer(),
+    binary(),
+    pos_integer(),
+    binary(),
+    binary(),
+    binary(),
+    binary(),
+    pos_integer(),
+    binary()
+) -> ok | {error, term()}.
+settle_batch_tx(
+    Conn, Uid, Token, Position, SourceType, SourceId, Digest, TargetType, TargetId, MsgId
+) ->
+    Sql = <<"SELECT public.fn_forward_batch_settle($1,$2,$3,$4,$5,$6,$7,$8,$9) AS status">>,
+    Params = [Uid, Token, Position, SourceType, SourceId, Digest, TargetType, TargetId, MsgId],
+    case elib_pg:query(Conn, Sql, Params) of
+        {ok, [#{<<"status">> := <<"accepted">>}]} -> ok;
+        {ok, [#{<<"status">> := <<"replay">>}]} -> {error, forward_request_replay};
+        {ok, [#{<<"status">> := <<"conflict">>}]} -> {error, forward_request_conflict};
+        {ok, _} -> {error, invalid_forward_batch_status};
+        {error, _} = Error -> Error
+    end.
 
 %% Current membership alone does not grant access to messages from an older generation.
 source_group_visible(MsgId, Gid, Uid) ->

@@ -16,6 +16,7 @@ with_context(Context, Fun) when is_map(Context), is_function(Fun, 0) ->
             try
                 Result = Fun(),
                 case {Result, get(?CONTEXT)} of
+                    {_, #{batch_error := Reason}} -> {error, Reason};
                     {{ok, MsgId}, #{committed := MsgId}} -> Result;
                     {{ok, _}, _} -> {error, forward_reference_not_committed};
                     _ -> Result
@@ -80,10 +81,41 @@ accept_tx(Conn, Type, MsgId, Sender, Target, Seq) ->
                 lists:usort(maps:get(keys, Ctx))
             ),
             ensure_forward_record(Conn, Ctx, Type, MsgId, Sender, Target),
-            ok;
+            settle_batch(Conn, Ctx, Type, MsgId, Sender, Target);
         _ ->
             throw({rollback, forward_context_mismatch})
     end.
+
+settle_batch(
+    Conn,
+    #{
+        batch := #{token := Token, ordinal := Ordinal, content_sha256 := Hash},
+        source_type := SourceType,
+        source_id := SourceId
+    } = Ctx,
+    Type,
+    MsgId,
+    Sender,
+    Target
+) ->
+    case
+        msg_forward_repo:settle_batch_tx(
+            Conn, Sender, Token, Ordinal, SourceType, SourceId, Hash, Type, Target, MsgId
+        )
+    of
+        {error, Reason} when
+            Reason =:= forward_request_replay; Reason =:= forward_request_conflict
+        ->
+            %% The send layer normalizes failures into reply frames.
+            put(?CONTEXT, Ctx#{batch_error => Reason}),
+            throw({rollback, Reason});
+        Result ->
+            ensure(Result)
+    end;
+settle_batch(_Conn, #{batch := _}, _Type, _MsgId, _Sender, _Target) ->
+    throw({rollback, invalid_forward_batch_context});
+settle_batch(_Conn, _Ctx, _Type, _MsgId, _Sender, _Target) ->
+    ok.
 
 ensure_forward_record(Conn, Ctx, Type, MsgId, Sender, Target) ->
     Record = #{
@@ -110,8 +142,8 @@ source_validate(Conn, #{
     source_msg_type := Type,
     source_payload := Payload
 }) ->
-    case normalized(Payload) of
-        M when is_map(M) ->
+    case source_payload(Type, Payload) of
+        M when is_map(M); Type =:= <<"text">>, is_binary(M) ->
             case
                 elib_pg:query(
                     Conn,
@@ -135,8 +167,8 @@ source_validate(Conn, #{
     source_msg_type := Type,
     source_payload := Payload
 }) ->
-    case normalized(Payload) of
-        M when is_map(M) ->
+    case source_payload(Type, Payload) of
+        M when is_map(M); Type =:= <<"text">>, is_binary(M) ->
             Discussion = discussion_enabled(),
             case
                 elib_pg:query(
@@ -154,6 +186,14 @@ source_validate(Conn, #{
     end;
 source_validate(_, _) ->
     {error, forbidden}.
+
+source_payload(<<"text">>, Payload) when is_binary(Payload), Payload =/= <<>> ->
+    case normalized(Payload) of
+        Decoded when is_map(Decoded); is_binary(Decoded) -> Decoded;
+        _ -> Payload
+    end;
+source_payload(_Type, Payload) ->
+    normalized(Payload).
 
 normalized(Value) when is_map(Value) -> Value;
 normalized(Value) when is_binary(Value) ->
