@@ -411,7 +411,16 @@ unmark_logout_apply_in_tx(Conn, Uid) ->
             " WHERE id = $1 AND status = 2"
             " RETURNING id">>,
     case elib_pg:execute_count(Conn, Sql, [Uid]) of
-        {ok, Count} -> {ok, Count};
+        {ok, 1} -> {ok, 1};
+        {ok, 0} -> check_cancelled_user_tx(Conn, Tb, Uid);
+        {error, Reason} -> {error, Reason}
+    end.
+
+check_cancelled_user_tx(Conn, Table, Uid) ->
+    Sql = <<"SELECT status FROM ", Table/binary, " WHERE id = $1 FOR UPDATE">>,
+    case elib_pg:query(Conn, Sql, [Uid]) of
+        {ok, [#{<<"status">> := 1}]} -> {ok, 0};
+        {ok, _} -> {error, deletion_cancellation_unavailable};
         {error, Reason} -> {error, Reason}
     end.
 
@@ -592,36 +601,44 @@ reject_logout_apply(Uid) when is_integer(Uid), Uid > 0 ->
                 %% 并发守卫命中：已不在申请中，原样返回空
                 {ok, []};
             {ok, Rows} ->
-                _ = user_deletion_request_repo:cancel_request_tx(Conn, Uid),
-                {ok, Rows};
+                case user_deletion_request_repo:cancel_request_tx(Conn, Uid) of
+                    {ok, _} -> {ok, Rows};
+                    {error, Reason} -> elib_pg:abort({abort_tx, Reason})
+                end;
             {error, Reason} ->
                 {error, Reason}
         end
     end).
 
-%% @doc 审批通过注销申请：仅当 status=2 时将用户状态设为 -1（已注销）
-%% 2026-09-05（D-01）：升级为事务，同步注销请求记录（approved）；
-%% 记录侧 0 行视为存量旗标用户，不阻断。
--spec approve_logout_apply(integer()) ->
-    {ok, [map()]} | {ok, []} | {error, any()} | {rollback, term()}.
+%% @doc 原子审批并为宽限期到期后的执行建立持久任务。
+-spec approve_logout_apply(integer()) -> {ok, [map()]} | {error, term()}.
 approve_logout_apply(Uid) when is_integer(Uid), Uid > 0 ->
     Tb = user_repo:tablename(),
     Sql =
         <<"UPDATE ", Tb/binary,
             " SET status = -1"
             " WHERE id = $1 AND status = 2"
-            " RETURNING id">>,
+            " RETURNING account">>,
     elib_pg:with_tx(fun(Conn) ->
         case elib_pg:query(Conn, Sql, [Uid]) of
             {ok, []} ->
                 {ok, []};
-            {ok, Rows} ->
-                _ = user_deletion_request_repo:approve_request_tx(Conn, Uid),
-                {ok, Rows};
+            {ok, [#{<<"account">> := Account}]} ->
+                case user_deletion_request_repo:approve_request_tx(Conn, Uid) of
+                    {ok, 1} -> ensure_approved_deletion_job(Conn, Uid, Account);
+                    {ok, 0} -> elib_pg:abort({abort_tx, formal_deletion_request_not_pending});
+                    {error, Reason} -> elib_pg:abort({abort_tx, Reason})
+                end;
             {error, Reason} ->
                 {error, Reason}
         end
     end).
+
+ensure_approved_deletion_job(Conn, Uid, Account) ->
+    case user_deletion_job_repo:ensure_job_tx(Conn, Uid, Account) of
+        {ok, _} -> {ok, [#{<<"id">> => Uid}]};
+        {error, Reason} -> elib_pg:abort({abort_tx, Reason})
+    end.
 
 %% @doc 批量获取用户在线状态，避免 N+1 查询
 %%

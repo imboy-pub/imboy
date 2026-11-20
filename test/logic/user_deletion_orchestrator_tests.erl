@@ -154,9 +154,8 @@ multi_domain_e2e_test_() ->
             ok = seed_expired_request(Uid),
             ok = ensure_sweeper(),
             %% [ORG-02 裁决A] 计数语义：preflight 拒后 mark_failed 回 pending，
-            %% 同一轮批处理内重试直至 failed 终态（max_attempts=5），
-            %% cleanup_now 返回处理任务数 5。
-            {ok, 5} = user_deletion_logic:cleanup_now(),
+            %% 同一轮重试至 failed，失败尝试不计入完成数。
+            {ok, 0} = user_deletion_logic:cleanup_now(),
 
             %% [ORG-02 裁决A] 期望翻转：计划 §1.6 冻结原文「禁止给未实现域
             %% 默认空 blocker（未注册域=facts 不可得=拒）」——EB/CS/Agent 域
@@ -183,7 +182,9 @@ multi_domain_e2e_test_() ->
             ),
             %% 任务被稳定拒绝：pending（attempts<max 待重试），last_error 含
             %% 稳定原因 DEPENDENCY_FACTS_UNAVAILABLE
-            {ok, #{<<"status">> := <<"failed">>, <<"last_error">> := LastError}} =
+            {ok, #{
+                <<"status">> := <<"failed">>, <<"attempts">> := 5, <<"last_error">> := LastError
+            }} =
                 user_deletion_job_repo:find_by_user(Uid),
             {_Pos, _Len} = binary:match(LastError, <<"DEPENDENCY_FACTS_UNAVAILABLE">>)
         after
@@ -225,8 +226,8 @@ balance_gate_and_retry_test_() ->
             {ok, _} = elib_pg:query(
                 <<"UPDATE public.wallet SET balance = 0 WHERE user_id = $1">>, [Uid]
             ),
-            %% [ORG-02 裁决A] 计数语义：同轮重试至 failed 终态 → 处理数 5。
-            {ok, 5} = user_deletion_logic:cleanup_now(),
+            %% 同轮重试至 failed，完成数仍为 0。
+            {ok, 0} = user_deletion_logic:cleanup_now(),
             %% [ORG-02 裁决A] 期望翻转：计划 §1.6「未注册域=facts 不可得=拒」
             %% （EB/CS/Agent provider 未注册）→ preflight 整体拒
             %% （DEPENDENCY_FACTS_UNAVAILABLE），删除事务回滚，零部分删除。
@@ -235,7 +236,9 @@ balance_gate_and_retry_test_() ->
             {ok, [_]} = elib_pg:query(
                 <<"SELECT id FROM public.\"user\" WHERE id = $1">>, [Uid]
             ),
-            {ok, #{<<"status">> := <<"failed">>, <<"last_error">> := LastError}} =
+            {ok, #{
+                <<"status">> := <<"failed">>, <<"attempts">> := 5, <<"last_error">> := LastError
+            }} =
                 user_deletion_job_repo:find_by_user(Uid),
             {_Pos, _Len} = binary:match(LastError, <<"DEPENDENCY_FACTS_UNAVAILABLE">>)
         after
@@ -262,15 +265,168 @@ all_providers_allow_test_() ->
         try
             ok = create_user(Uid),
             ok = seed_expired_request(Uid),
-            ok = ensure_sweeper(ok_all),
+            {ok, _} = elib_pg:query(
+                <<"INSERT INTO public.user_log (type, uid, body) VALUES (102, $1, '{}'::jsonb)">>,
+                [Uid]
+            ),
+            assert_deletion_log_status(Uid, <<"requested">>, <<"not_started">>, null),
+            assert_approval_waits_for_grace_period(Uid),
             {ok, 1} = user_deletion_logic:cleanup_now(),
             {ok, []} = elib_pg:query(
                 <<"SELECT id FROM public.\"user\" WHERE id = $1">>, [Uid]
             ),
-            {ok, #{<<"status">> := <<"completed">>}} =
-                user_deletion_job_repo:find_by_user(Uid)
+            {ok, []} = elib_pg:query(
+                <<"SELECT id FROM public.user_deletion_request WHERE user_id = $1">>, [Uid]
+            ),
+            {ok, #{<<"status">> := <<"completed">>, <<"finished_at">> := FinishedAt}} =
+                user_deletion_job_repo:find_by_user(Uid),
+            ?assert(FinishedAt =/= null),
+            ?assert(FinishedAt =/= undefined),
+            assert_deletion_log_status(Uid, <<"approved">>, <<"completed">>, FinishedAt),
+            {ok, #{
+                execution := #{
+                    status := <<"completed">>,
+                    finished_at := FinishedAt,
+                    request_status_at_execution := <<"approved">>,
+                    request_approved_at := ApprovalAt
+                }
+            }} =
+                user_logic:deletion_status(Uid),
+            ?assert(is_binary(ApprovalAt)),
+            {error, <<"deletion_cancellation_unavailable">>} = user_logic:cancel_logout(Uid, #{})
         after
+            {ok, _} = elib_pg:execute(<<"DELETE FROM public.user_log WHERE uid = $1">>, [Uid]),
             reset_preflight_stub(),
+            cleanup_user(Uid)
+        end
+    end).
+
+assert_approval_waits_for_grace_period(Uid) ->
+    {ok, _} = elib_pg:execute(
+        <<"UPDATE public.user_deletion_request SET requested_at = NOW() WHERE user_id = $1">>, [Uid]
+    ),
+    {ok, [#{<<"id">> := Uid}]} = user_ds:approve_logout_apply(Uid),
+    {ok, []} = user_ds:approve_logout_apply(Uid),
+    {ok, []} = user_ds:reject_logout_apply(Uid),
+    {error, <<"deletion_cancellation_unavailable">>} = user_logic:cancel_logout(Uid, #{}),
+    assert_deletion_log_status(Uid, <<"approved">>, <<"pending">>, null),
+    {ok, #{status := <<"approved">>, execution := #{status := <<"pending">>}}} =
+        user_logic:deletion_status(Uid),
+    ok = ensure_sweeper(ok_all),
+    {ok, 0} = user_deletion_logic:cleanup_now(),
+    {ok, _} = elib_pg:execute(
+        <<"UPDATE public.user_deletion_request SET requested_at = NOW() - interval '61 days' WHERE user_id = $1">>,
+        [Uid]
+    ),
+    ok.
+
+assert_deletion_log_status(Uid, Request, Execution, FinishedAt) ->
+    Filter = <<" AND l.uid = $1">>,
+    {ok, #{total := 1, list := [Row]}} = user_log_ds:page_logout_apply_log(Filter, [Uid], 1, 20),
+    ?assertMatch(
+        #{
+            <<"request_status">> := Request,
+            <<"execution_status">> := Execution,
+            <<"execution_finished_at">> := FinishedAt
+        },
+        Row
+    ),
+    ?assertNot(maps:is_key(<<"last_error">>, Row)),
+    {ok, [Export]} = user_log_ds:list_logout_apply_log_chunk(Filter, [Uid], 20, 0),
+    ?assertNot(maps:is_key(<<"execution_status">>, Export)).
+
+approve_without_formal_request_rolls_back_test_() ->
+    ?TEST_WITH_DB(fun() ->
+        Uid = new_uid(),
+        try
+            ok = create_user(Uid),
+            {ok, 1} = elib_pg:execute(
+                <<"UPDATE public.\"user\" SET status = 2 WHERE id = $1">>, [Uid]
+            ),
+            {error, formal_deletion_request_not_pending} = user_ds:approve_logout_apply(Uid),
+            2 = user_status(Uid),
+            {ok, undefined} = user_deletion_request_repo:find_latest(Uid),
+            {ok, undefined} = user_deletion_job_repo:find_by_user(Uid)
+        after
+            cleanup_user(Uid)
+        end
+    end).
+
+complete_job_only_while_running_test_() ->
+    ?TEST_WITH_DB(fun() ->
+        Uid = new_uid(),
+        JobId = new_uid(),
+        try
+            {ok, _} = elib_pg:query(
+                <<"INSERT INTO public.user_deletion_job (id, user_id, status) VALUES ($1, $2, 'pending')">>,
+                [JobId, Uid]
+            ),
+            Complete = fun() ->
+                elib_pg:with_tx(fun(Conn) ->
+                    user_deletion_job_repo:mark_completed_tx(
+                        Conn, JobId, #{<<"status">> => <<"requested">>, <<"approved_at">> => null}
+                    )
+                end)
+            end,
+            {error, job_not_running} = Complete(),
+            {ok, _} = elib_pg:query(
+                <<"UPDATE public.user_deletion_job SET status = 'running' WHERE id = $1">>,
+                [JobId]
+            ),
+            ok = Complete(),
+            {error, job_not_running} = Complete(),
+            {error, job_not_running} = user_deletion_job_repo:mark_failed(JobId, <<"stale">>, 5),
+            {ok, #{<<"status">> := <<"completed">>}} = user_deletion_job_repo:find_by_user(Uid)
+        after
+            cleanup_user(Uid)
+        end
+    end).
+
+cancel_after_claim_preserves_user_test_() ->
+    ?TEST_WITH_DB(fun() ->
+        Uid = new_uid(),
+        try
+            ok = create_user(Uid),
+            ok = seed_expired_request(Uid),
+            {ok, #{requested_at := PreviousRequestAt}} = user_logic:deletion_status(Uid),
+            {ok, _} = elib_pg:with_tx(fun(Conn) ->
+                user_deletion_job_repo:ensure_job_tx(Conn, Uid, <<"fixture">>)
+            end),
+            {ok, #{<<"user_id">> := Uid} = Job} =
+                user_deletion_job_repo:claim_pending_expired(?GRACE, <<"cancel-race">>),
+            Parent = self(),
+            Ref = make_ref(),
+            Worker = spawn(fun() ->
+                receive
+                    {execute, Ref} -> Parent ! {Ref, user_deletion_logic:execute_job(Job, ?GRACE)}
+                end
+            end),
+            try
+                ok = elib_pg:with_tx(fun(Conn) ->
+                    {ok, 1} = user_ds:unmark_logout_apply_in_tx(Conn, Uid),
+                    Worker ! {execute, Ref},
+                    {ok, 1} = user_deletion_request_repo:cancel_request_tx(Conn, Uid),
+                    ok
+                end),
+                receive
+                    {Ref, Result} -> ?assertEqual(failed_attempt, Result)
+                after 3000 -> error(deletion_worker_timeout)
+                end,
+                1 = user_status(Uid),
+                {ok, #{status := <<"cancelled">>}} = user_logic:deletion_status(Uid),
+                {ok, #{<<"status">> := <<"pending">>, <<"attempts">> := 0}} =
+                    user_deletion_job_repo:find_by_user(Uid),
+                {ok, none} = user_deletion_job_repo:claim_pending_expired(?GRACE, <<"next">>),
+                {ok, "success"} = user_logic:apply_logout(Uid, #{headers => #{}}),
+                {ok, #{status := <<"requested">>, requested_at := NewRequestAt}} =
+                    user_logic:deletion_status(Uid),
+                ?assert(PreviousRequestAt =/= NewRequestAt),
+                {ok, none} = user_deletion_job_repo:claim_pending_expired(?GRACE, <<"reapply">>)
+            after
+                exit(Worker, kill)
+            end
+        after
+            {ok, _} = elib_pg:execute(<<"DELETE FROM public.user_log WHERE uid = $1">>, [Uid]),
             cleanup_user(Uid)
         end
     end).
@@ -329,8 +485,8 @@ garage_enqueue_best_effort_test_() ->
             ),
             ok = seed_expired_request(Uid),
             ok = ensure_sweeper(),
-            %% [ORG-02 裁决A] 计数语义：同轮重试至 failed 终态 → 处理数 5。
-            {ok, 5} = user_deletion_logic:cleanup_now(),
+            %% 同轮重试至 failed，完成数仍为 0。
+            {ok, 0} = user_deletion_logic:cleanup_now(),
             %% [ORG-02 裁决A] 期望翻转：计划 §1.6「未注册域=facts 不可得=拒」
             %% （EB/CS/Agent provider 未注册）→ preflight 整体拒
             %% （DEPENDENCY_FACTS_UNAVAILABLE），事务回滚：附件行与用户行俱在。
@@ -341,7 +497,9 @@ garage_enqueue_best_effort_test_() ->
                 <<"SELECT id FROM public.attachment WHERE creator_user_id = $1">>,
                 [Uid]
             ),
-            {ok, #{<<"status">> := <<"failed">>, <<"last_error">> := LastError}} =
+            {ok, #{
+                <<"status">> := <<"failed">>, <<"attempts">> := 5, <<"last_error">> := LastError
+            }} =
                 user_deletion_job_repo:find_by_user(Uid),
             {_Pos, _Len} = binary:match(LastError, <<"DEPENDENCY_FACTS_UNAVAILABLE">>),
             {ok, [_]} = elib_pg:query(

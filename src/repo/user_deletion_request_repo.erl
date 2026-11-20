@@ -52,6 +52,7 @@ upsert_request_tx(Conn, Uid) ->
             " VALUES ($1, $2, 'requested')"
             " ON CONFLICT (user_id) DO UPDATE"
             " SET status = 'requested',"
+            "     requested_at = CURRENT_TIMESTAMP,"
             "     cancelled_at = NULL,"
             "     approved_at = NULL,"
             "     updated_at = CURRENT_TIMESTAMP"

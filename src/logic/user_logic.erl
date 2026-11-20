@@ -131,15 +131,17 @@ apply_logout(Uid, Req0) ->
     %% elib_pg:with_tx 约定：{error,_} 返回值会穿透并 COMMIT，
     %% 业务失败必须 throw({rollback, Reason}) 触发回滚（钱路径同款）
     Ret = elib_pg:with_tx(fun(Conn) ->
-        case user_deletion_request_repo:upsert_request_tx(Conn, Uid) of
-            {ok, _} ->
-                case user_ds:mark_logout_apply_in_tx(Conn, Uid) of
+        case user_ds:mark_logout_apply_in_tx(Conn, Uid) of
+            {ok, 1} ->
+                case user_deletion_request_repo:upsert_request_tx(Conn, Uid) of
                     {ok, _} ->
                         _ = user_log_ds:add_logout_apply_log(Conn, Uid, Req0),
                         ok;
                     {error, Reason} ->
                         throw({rollback, Reason})
                 end;
+            {ok, 0} ->
+                throw({rollback, invalid_user_state});
             {error, Reason} ->
                 throw({rollback, Reason})
         end
@@ -154,21 +156,21 @@ apply_logout(Uid, Req0) ->
 %% @doc 撤销注销申请（D-01）
 %% 事务内：请求记录 requested → cancelled（仅对 requested 态生效）+
 %% 用户旗标守卫式恢复（仅 2 → 1，-1 已注销账号绝不复活）。
-%% 无活跃请求时为幂等 no-op（返回成功，语义=目标态已达成）。
+%% 正常用户重复撤销为幂等 no-op，审批或执行胜出时返回错误。
 %% @param Uid 用户ID
 %% @param _Req0 HTTP请求对象（当前未使用）
 %% @returns {ok, <<"success">>} | {error, binary()}
 -spec cancel_logout(integer(), any()) -> {ok, binary()} | {error, binary()}.
 cancel_logout(Uid, _Req0) ->
     Ret = elib_pg:with_tx(fun(Conn) ->
-        case user_deletion_request_repo:cancel_request_tx(Conn, Uid) of
-            {ok, _} ->
-                case user_ds:unmark_logout_apply_in_tx(Conn, Uid) of
-                    {ok, _} ->
-                        ok;
-                    {error, Reason} ->
-                        throw({rollback, Reason})
+        case user_ds:unmark_logout_apply_in_tx(Conn, Uid) of
+            {ok, 1} ->
+                case user_deletion_request_repo:cancel_request_tx(Conn, Uid) of
+                    {ok, _} -> ok;
+                    {error, Reason} -> throw({rollback, Reason})
                 end;
+            {ok, 0} ->
+                ok;
             {error, Reason} ->
                 throw({rollback, Reason})
         end
@@ -188,31 +190,46 @@ cancel_logout(Uid, _Req0) ->
 -spec deletion_status(integer()) -> {ok, map()} | {error, binary()}.
 deletion_status(Uid) ->
     GraceDays = application:get_env(imboy, user_deletion_retention_days, 60),
-    case user_deletion_request_repo:find_latest(Uid) of
-        {ok, undefined} ->
-            {ok, #{
-                status => not_requested,
-                grace_days => GraceDays,
-                retained_categories => retained_categories()
-            }};
+    case user_deletion_job_repo:read_status(Uid) of
         {ok, Row} ->
             Status = maps:get(<<"status">>, Row),
-            ReqAt = maps:get(<<"requested_at">>, Row),
             Base = #{
-                status => Status,
-                requested_at => ReqAt,
                 grace_days => GraceDays,
-                retained_categories => retained_categories()
+                retained_categories => retained_categories(),
+                execution => deletion_execution(Row)
             },
-            case Status of
-                <<"requested">> ->
-                    {ok, Base#{expected_deletion_at => expected_deletion_at(ReqAt, GraceDays)}};
-                _ ->
-                    {ok, Base}
-            end;
-        {error, Reason} ->
-            {error, elib_cnv:safe_to_binary(Reason)}
+            {ok, deletion_request_status(Status, Row, Base, GraceDays)};
+        {error, _Reason} ->
+            {error, <<"暂时无法读取注销状态"/utf8>>}
     end.
+
+deletion_request_status(<<"not_requested">>, _Row, Base, _GraceDays) ->
+    Base#{status => not_requested};
+deletion_request_status(Status, Row, Base, GraceDays) ->
+    ReqAt = maps:get(<<"requested_at">>, Row),
+    Response = Base#{status => Status, requested_at => ReqAt},
+    case Status of
+        <<"requested">> ->
+            Response#{expected_deletion_at => expected_deletion_at(ReqAt, GraceDays)};
+        _ ->
+            Response
+    end.
+
+deletion_execution(#{<<"execution_status">> := Status} = Row) ->
+    ExtraFields = [
+        {<<"execution_finished_at">>, finished_at},
+        {<<"request_status_at_execution">>, request_status_at_execution},
+        {<<"request_approved_at">>, request_approved_at}
+    ],
+    maps:merge(
+        #{status => Status},
+        maps:from_list([
+            {Dest, Value}
+         || {Source, Dest} <- ExtraFields,
+            Value <- [maps:get(Source, Row, undefined)],
+            is_binary(Value)
+        ])
+    ).
 
 %% @doc 删除时保留的数据类别（D-02 data-disposition 决策的对外呈现），
 %% 供 D-04 端上"保留类别公示"与 Web 说明页共用同一事实源。

@@ -25,6 +25,27 @@ get:
                         - requested
                         - cancelled
                         - approved
+                      execution:
+                        type: object
+                        properties:
+                          status:
+                            type: string
+                            enum: [not_started, pending, running, completed, failed]
+                            description: 持久执行状态。completed 仅表示注销事务已完成。
+                          finished_at:
+                            type: integer
+                            format: int64
+                            description: 终态时间，Unix 毫秒。
+                          request_status_at_execution:
+                            type: string
+                            enum: [requested, approved]
+                            description: 删除事务中持久保存的申请状态。旧记录无此字段。
+                          request_approved_at:
+                            type: integer
+                            format: int64
+                            description: 有持久审批记录时返回审批 Unix 毫秒。
+                        required:
+                        - status
                       grace_days:
                         type: integer
                       retained_categories:
