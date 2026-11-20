@@ -18,6 +18,19 @@ sudo -n apt-get install -y --no-install-recommends \
   libssl-dev zlib1g-dev libicu-dev libxml2-dev uuid-dev libgeos-dev libproj-dev \
   libjson-c-dev libprotobuf-c-dev protobuf-c-compiler protobuf-compiler libpcre2-dev liblz4-dev \
   libzstd-dev libedit-dev xsltproc unzip xz-utils
+pg_version=$(python3 - <<'PYTHON'
+import json
+from pathlib import Path
+import re
+
+sources = json.loads(Path("scripts/ci/native-eunit-pins.json").read_text())["sources"]
+[pin] = [entry for entry in sources if entry.get("file", "").startswith("postgresql-")]
+version = pin["version"]
+if not re.fullmatch(r"18\.[0-9]+", version) or pin["file"] != f"postgresql-{version}.tar.bz2":
+    raise SystemExit("Invalid PostgreSQL source pin")
+print(version)
+PYTHON
+)
 python3 scripts/ci/native-eunit-fetch.py
 PREFIX="$NATIVE_CI_ROOT/prefix"
 export PATH="$PREFIX/otp/bin:$PREFIX/pg/bin:$PREFIX/rust/bin:$PREFIX/bin:$PATH:/usr/sbin"
@@ -31,12 +44,13 @@ make install
 cd "$NATIVE_CI_ROOT/sources/rebar3-3.27.3"
 env -u http_proxy -u https_proxy ./bootstrap
 cp rebar3 "$PREFIX/bin/rebar3"
-cd "$NATIVE_CI_ROOT/sources/postgresql-18.6"
+cd "$NATIVE_CI_ROOT/sources/postgresql-$pg_version"
 ./configure --prefix="$PREFIX/pg" --with-openssl --with-libxml --with-icu --with-uuid=e2fs --without-llvm
 make -j"$JOBS"
 make install
 make -C contrib -j"$JOBS"
 make -C contrib install
+[[ $("$PG_CONFIG" --version) == "PostgreSQL $pg_version" ]] || { echo "Built PostgreSQL differs from source pin"; exit 2; }
 cd "$NATIVE_CI_ROOT/sources/pgvector-0.8.7"
 make -j"$JOBS" PG_CONFIG="$PG_CONFIG" OPTFLAGS=''
 make install PG_CONFIG="$PG_CONFIG"

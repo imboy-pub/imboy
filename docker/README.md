@@ -21,13 +21,18 @@
 
 | 组件 | 版本 |
 |---|---|
-| PostgreSQL | 18（trixie） |
+| PostgreSQL | 18.7（Trixie，pgdg `18.7-1.pgdg13+2`） |
 | PostGIS | 3.7.0（pgdg `3.7.0+dfsg-1.pgdg13+2`） |
 | TimescaleDB | 2.32.0 |
 | pgRouting | 4.0.2 |
 | pg_roaringbitmap | 1.3.0 |
 | pgvector | 0.8.7（pgdg 包） |
 | pg_jieba | master（上游 2022 年后无发布，v2.0.1 tag 早于 master） |
+
+以上 PostgreSQL 版本来自已发布镜像的 amd64/arm64 配置；`3.7.0-1` 是 PostGIS 标签，不是 PostgreSQL 小版本。
+已核对的多架构摘要为 `sha256:367c1affeee9afc2d46705d65bee5af8294cbda2159b2be96c0393fdec6c41bb`。
+Dockerfile 仍从浮动的 `postgres:18-trixie` 构建；重建的镜像须重新核验版本和摘要，不能沿用本次证据。
+原生源码构建使用独立的 [版本及校验和锁](../scripts/ci/native-eunit-pins.json)，不等同于镜像扩展组合。
 
 PostGIS 3.7.0 破坏性变更：`postgis_tiger_geocoder`（NEWS #6052）与
 `address_standardizer`（NEWS #6053）被移出核心发行版，pgdg 不再打包，

@@ -46,6 +46,8 @@ bash tools/build-native-dependencies.sh \
 
 该流程依据固定源码的原生 CI pins，提供 OTP 29.1.2、PG 18.6、PostGIS 3.6.4、TimescaleDB 2.23.1、pgvector 0.8.7、固定 pg_jieba 与 Garage 2.4.1 的构建/供应配方；其中档案 SHA-256、Git commit、子模块和词典均按 pin 核对。具体锁定值以固定源码和输出元数据为准。[原生 pins](https://github.com/imboy-pub/imboy/blob/cb95fa72f9bc617d0f30ddd6b98da51f39cfd2af/scripts/ci/native-eunit-pins.json)。
 
+上述冻结示例仍使用旧 SHA 的 PostgreSQL 18.6。当前原生构建已改用 18.7 源码 pin；发布方工具从指定 SHA 读取该版本，而不改旧材料包的 `metadata/release.env` 或验收边界。新运行时必须重新组装并验收，不能直接把当前 main 标为已支持。
+
 脚本不自动提权、不执行系统包安装、不启动服务。源码构建可能耗时较长，且本次未在目标构建机实际跑完整链；不可把该配方的存在当作产物已经供应。
 
 使用新构建的 OTP 生成后端：

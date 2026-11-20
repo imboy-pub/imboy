@@ -51,6 +51,13 @@
 
 ## 前置条件（T-1 天检查）
 
+已发布的 `imboy/pg18:3.7.0-1` 中 amd64/arm64 镜像配置均为 PostgreSQL `18.7-1.pgdg13+2`；
+这不是生产已升级的证据。准备切换时以实测通过的镜像摘要为准，不用浮动标签代替。
+在隔离环境用拟部署的同一摘要记录 `SHOW server_version;`、已加载扩展和恢复结果。
+依 [PostgreSQL 18.7 发布说明](https://www.postgresql.org/docs/release/18.7/)，确认 C 扩展已按目标版本构建；
+只对受影响的索引制定重建方案。若依赖 PostgreSQL 的物理增量备份，升级后做新的全量基线并独立演练恢复；
+这与本手册提到的单库逻辑备份是两条不同的路径。
+
 ```bash
 # 以下是批准升级后的检查示例；本审查未在生产执行
 # 事先核定 COMPOSE_FILE、绝对 DATA_DIR、PG_OLD_IMAGE、PG_NEW_IMAGE、BACKEND_SERVICE

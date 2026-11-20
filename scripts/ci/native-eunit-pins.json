@@ -1,12 +1,12 @@
 {
-  "provenance": "Audited source-manifest.json, installed-manifest.json, garage/garage-manifest.json and rust/manifest.json from the 2026-10-17/18 native rebuild. Archive hashes pin HTTPS-fetched bytes; only PostgreSQL additionally matched the publisher checksum. Ubuntu prerequisite libraries are supplied by signed Ubuntu apt repositories, not claimed source-built or byte-identical to Debian13.",
+  "provenance": "Audited source-manifest.json, installed-manifest.json, garage/garage-manifest.json and rust/manifest.json from the 2026-10-17/18 native rebuild. Archive hashes pin HTTPS-fetched bytes. The PostgreSQL archive was updated to 18.7 and matched the PostgreSQL Global Development Group publisher checksum. Ubuntu prerequisite libraries are supplied by signed Ubuntu apt repositories, not claimed source-built or byte-identical to Debian13.",
   "sources": [
     {
       "kind": "archive",
-      "file": "postgresql-18.6.tar.bz2",
-      "url": "https://ftp.postgresql.org/pub/source/v18.6/postgresql-18.6.tar.bz2",
-      "version": "18.6",
-      "sha256": "555610c24d53e4316da5b7d3fc25c279d96856d5e0e23ee308c328c5fa881d9f"
+      "file": "postgresql-18.7.tar.bz2",
+      "url": "https://ftp.postgresql.org/pub/source/v18.7/postgresql-18.7.tar.bz2",
+      "version": "18.7",
+      "sha256": "441dfae4280cae3e0425e5f876f80559fb0731c140f1aae22b3e5a54d0411bfd"
     },
     {
       "kind": "archive",
