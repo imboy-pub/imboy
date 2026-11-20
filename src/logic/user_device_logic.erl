@@ -112,7 +112,7 @@ is_active_native(Uid, DID) ->
 %% @return ok
 -spec delete(integer(), binary()) -> ok.
 delete(Uid, DID) ->
-    user_device_ds:delete(Uid, DID),
+    ok = user_device_ds:delete(Uid, DID),
     Key = {user_device_name, 2, Uid, DID},
     imboy_cache:invalidate(Key),
     %% 吊销判据缓存必须立刻失效；W5-01 迁移后 user_device_name 也走统一
@@ -123,14 +123,17 @@ delete(Uid, DID) ->
     %% invalidate 内部对 syn 失败自带兜底，不再需要调用方 try/catch）
     ActiveKey = {user_device_active, Uid, DID},
     _ = imboy_cache:invalidate(ActiveKey),
-    case find_device_by_did(imboy_syn:list_by_uid(Uid), DID) of
-        {ok, Pid, _DType} ->
-            send_kick_message(Pid, #{<<"reason">> => <<"设备已被移除"/utf8>>}),
-            _ = imboy_syn:leave(Uid, Pid),
-            ok;
-        not_found ->
-            ok
-    end.
+    lists:foreach(
+        fun
+            ({Pid, {_DType, DeviceId}}) when DeviceId =:= DID ->
+                send_kick_message(Pid, #{<<"reason">> => <<"设备已被移除"/utf8>>}),
+                _ = imboy_syn:leave(Uid, Pid),
+                ok;
+            (_) ->
+                ok
+        end,
+        imboy_syn:list_by_uid(Uid)
+    ).
 
 %% @doc 获取用户设备列表（分页）
 %% 获取用户的所有设备，包含在线状态
