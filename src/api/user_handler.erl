@@ -298,7 +298,12 @@ update(Req0, State) ->
     Value = maps:get(<<"value">>, PostVals, <<>>),
     Code = maps:get(<<"code">>, PostVals, <<>>),
 
-    case user_logic:update(CurrentUid, Field, ec_cnv:to_binary(Value), Code) of
+    UpdateValue =
+        case Field of
+            <<"regionSelection">> -> Value;
+            _ -> ec_cnv:to_binary(Value)
+        end,
+    case user_logic:update(CurrentUid, Field, UpdateValue, Code) of
         {error, {503, _, ErrorMsg}} ->
             elib_response:error_with_status(Req0, 503, ErrorMsg, 503);
         {error, {_, _, ErrorMsg}} ->
@@ -410,7 +415,7 @@ web_me(Req, #{surface := web_human, jwt_purpose := web_human, current_uid := Uid
 ->
     try
         User = user_logic:find_by_id(
-            Uid, <<"id,account,email,nickname,avatar,gender,region,sign">>
+            Uid, <<"id,account,email,nickname,avatar,gender,region,sign,region_selection">>
         ),
         case User of
             #{<<"id">> := Uid} ->
@@ -436,10 +441,16 @@ web_me(Req, #{surface := web_human, jwt_purpose := web_human, current_uid := Uid
                     ],
                     web_profile_settings(Uid)
                 ),
-                elib_response:success(Req, Profile#{
-                    <<"uid">> => integer_to_binary(Uid),
-                    <<"setting">> => Settings
-                });
+                Selection = user_logic:profile_region_selection(
+                    maps:get(<<"region">>, User, <<>>), maps:get(<<"region_selection">>, User, null)
+                ),
+                elib_response:success(
+                    Req,
+                    maps:merge(Profile, Selection#{
+                        <<"uid">> => integer_to_binary(Uid),
+                        <<"setting">> => Settings
+                    })
+                );
             _ ->
                 elib_response:error_with_status(Req, 404, <<"Profile unavailable">>, 404)
         end

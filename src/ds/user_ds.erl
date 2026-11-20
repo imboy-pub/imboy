@@ -18,7 +18,7 @@
 -export([count/0]).
 -export([insert/2]).
 -export([update/2]).
--export([update_field/3]).
+-export([update_field/3, update_region_selection/3]).
 -export([update_field_checked/4]).
 -export([update_status/2]).
 -export([update_friends_last_seen_at/2]).
@@ -160,6 +160,9 @@ update(Uid, Data) ->
 update_field(Uid, Field, Val) when is_binary(Val); is_integer(Val) ->
     Tb = user_repo:tablename(),
     elib_pg:update(Tb, #{Field => Val}, <<"id = $1">>, [Uid]).
+
+update_region_selection(Uid, Region, Selection) ->
+    user_repo:update_region_selection(Uid, Region, Selection).
 
 update_field_checked(Uid, Field, Value, Expected) when is_map(Expected) ->
     user_repo:update_moderated_field(Uid, Field, Value, Expected);

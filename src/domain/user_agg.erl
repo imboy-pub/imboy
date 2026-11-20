@@ -23,7 +23,7 @@
 -module(user_agg).
 
 -moduledoc "用户资料校验策略 / User profile validation policy (pure functions)。".
--export([validate_update/2]).
+-export([validate_update/2, region_selection_status/2]).
 -export([is_valid_email/1, validate_gender/1, validate_allow_search/1, validate_bool/1]).
 
 -export_type([update_cmd/0, reject/0]).
@@ -31,6 +31,7 @@
 %% 校验通过后交给外壳执行的归一化命令。
 -type update_cmd() ::
     {set_field, Field :: binary(), Val :: binary()}
+    | {set_region_selection, binary(), map()}
     | {set_gender, 1..3}
     | {set_allow_search, 1..2}
     | {check_email, Email :: binary()}
@@ -44,6 +45,7 @@
     | bad_gender
     | bad_allow_search
     | bad_bool
+    | bad_region_selection
     | unsupported_field.
 
 %% 透传字段白名单（无格式约束，原样落库）。
@@ -67,6 +69,22 @@
 %% 子句顺序逐字镜像 user_logic:update/3。
 -spec validate_update(Field :: binary(), Val :: term()) ->
     {ok, update_cmd()} | {error, reject()}.
+validate_update(
+    <<"regionSelection">>, #{<<"region">> := Region, <<"selection">> := Selection} = Value
+) when
+    is_binary(Region), is_map(Selection), map_size(Value) =:= 2
+->
+    case unicode:characters_to_list(Region) of
+        Chars when is_list(Chars), length(Chars) =< 80 ->
+            case not lists:member(0, Chars) andalso valid_snapshot_text(Selection) of
+                true -> {ok, {set_region_selection, Region, Selection}};
+                false -> {error, bad_region_selection}
+            end;
+        _ ->
+            {error, bad_region_selection}
+    end;
+validate_update(<<"regionSelection">>, _) ->
+    {error, bad_region_selection};
 validate_update(<<"email">>, <<>>) ->
     {ok, {set_field, <<"email">>, <<>>}};
 validate_update(<<"email">>, Val) when is_binary(Val) ->
@@ -131,6 +149,28 @@ validate_update(Field, Val) ->
 %% ===================================================================
 %% 纯谓词 / 归一化（可独立复用）
 %% ===================================================================
+
+%% PostgreSQL JSONB rejects NUL even when the JSON representation escapes it.
+valid_snapshot_text(Selection) ->
+    valid_display_text(maps:get(<<"displayLocale">>, Selection, <<>>)) andalso
+        valid_display_names(maps:get(<<"displaySnapshot">>, Selection, [])).
+
+valid_display_names([]) -> true;
+valid_display_names([Name | Rest]) -> valid_display_text(Name) andalso valid_display_names(Rest);
+valid_display_names(_) -> false.
+
+valid_display_text(Value) when is_binary(Value) ->
+    binary:match(Value, <<0>>) =:= nomatch;
+valid_display_text(_) ->
+    false.
+
+%% Passive reads preserve unresolved data without guessing names or changing identity.
+region_selection_status(_, ok) ->
+    <<"resolved">>;
+region_selection_status(<<>>, absent) ->
+    <<"empty">>;
+region_selection_status(_, _) ->
+    <<"unresolved">>.
 
 %% @doc 邮箱格式校验。逐字保留原 `elib_type:is_email([Val])` 调用形态
 %% （以单元素 list 作 iodata 传入正则）。

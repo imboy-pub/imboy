@@ -12,6 +12,7 @@
 
 %% 注意：优先使用 Erlang 原生类型，不新增自定义类型
 
+-export([profile_region_selection/2]).
 -export([online/4]).
 -export([offline/3]).
 -export([is_online/1, is_online/2]).
@@ -367,7 +368,7 @@ find_by_ids(Ids, Column) ->
             []
     end.
 
--spec update(integer(), binary(), binary(), binary()) ->
+-spec update(integer(), binary(), binary() | map(), binary()) ->
     ok | {ok, integer() | binary() | boolean()} | {error, any()}.
 update(Uid, <<"email">>, Email, Code) when Code =/= <<>> ->
     update_identity(Uid, email, Email, Code);
@@ -376,7 +377,7 @@ update(Uid, <<"mobile">>, Mobile, Code) when Code =/= <<>> ->
 update(Uid, Field, Val, _Code) ->
     update(Uid, Field, Val).
 
--spec update(integer(), binary(), list() | binary()) ->
+-spec update(integer(), binary(), list() | binary() | map()) ->
     ok | {ok, integer() | binary() | boolean()} | {error, any()}.
 %% T3.2 退化外壳：资料字段校验委托 user_agg:validate_update/2（纯决策），
 %% 本函数仅执行 I/O（落库 / email 占用查询 / 绑定邮件）与 reject→线格式映射。
@@ -391,6 +392,8 @@ update(Uid, Field, Val) ->
         {ok, {set_allow_search, N}} ->
             %% allow_search 字段在 fts_user 表中，需要特殊处理
             user_ds:update_allow_search(Uid, N);
+        {ok, {set_region_selection, Region, Selection}} ->
+            update_region_selection(Uid, Region, Selection);
         {ok, {set_field, F, V}} ->
             update_profile(Uid, F, V);
         %% 隐私布尔开关（QA #19）：落 user_setting.setting JSONB
@@ -425,9 +428,76 @@ update(Uid, Field, Val) ->
             {error, {1, <<"">>, <<"允许搜索值必须是 1 或 2"/utf8>>}};
         {error, bad_bool} ->
             {error, {1, <<"">>, <<"值必须是 true 或 false"/utf8>>}};
+        {error, bad_region_selection} ->
+            {error, {1, <<>>, <<"Invalid region selection">>}};
         {error, unsupported_field} ->
             {error, {1, <<"">>, <<"Unsupported field">>}}
     end.
+
+%% ===================================================================
+%% Account region selection
+%% ===================================================================
+
+update_region_selection(Uid, Region, Selection) ->
+    case authoritative_region(Selection) of
+        {ok, Region} ->
+            case user_ds:update_region_selection(Uid, Region, Selection) of
+                {ok, 1} = Updated -> Updated;
+                _ -> {error, {503, <<>>, <<"Region selection unavailable">>}}
+            end;
+        {ok, _} ->
+            {error, {1, <<>>, <<"Region display does not match the authoritative path">>}};
+        {error, display_too_long} ->
+            {error, {1, <<>>, <<"Region display exceeds the compatibility length">>}};
+        {error, Error} when Error =:= unavailable; Error =:= invalid_artifact ->
+            {error, {503, <<>>, <<"Region selection unavailable">>}};
+        {error, unsupported_version} ->
+            {error, {1, <<>>, <<"Unsupported region selection version">>}};
+        {error, invalid_selection} ->
+            {error, {1, <<>>, <<"Invalid region selection">>}}
+    end.
+
+authoritative_region(Selection) ->
+    case geo_regions_ds:source_names(Selection, region_release_pin()) of
+        {ok, Names} ->
+            Trimmed = [string:trim(Name) || Name <- Names],
+            Region = iolist_to_binary(lists:join(<<" ">>, Trimmed)),
+            case lists:member(<<>>, Trimmed) orelse binary:match(Region, <<0>>) =/= nomatch of
+                true -> {error, invalid_artifact};
+                false -> check_region_length(Region)
+            end;
+        {error, _} = Error ->
+            Error
+    end.
+
+check_region_length(Region) ->
+    case length(unicode:characters_to_list(Region)) =< 80 of
+        true -> {ok, Region};
+        false -> {error, display_too_long}
+    end.
+
+profile_region_selection(Region, EncodedSelection) ->
+    Selection = decode_region_selection(EncodedSelection),
+    Check =
+        case Selection of
+            null -> absent;
+            _ -> validate_region_selection(Selection)
+        end,
+    #{
+        <<"regionSelection">> => Selection,
+        <<"regionSelectionStatus">> => user_agg:region_selection_status(Region, Check)
+    }.
+
+decode_region_selection(Selection) when is_map(Selection); Selection =:= null ->
+    Selection;
+decode_region_selection(Selection) when is_binary(Selection) ->
+    jsone:decode(Selection).
+
+validate_region_selection(Selection) ->
+    geo_regions_ds:validate(Selection, region_release_pin()).
+
+region_release_pin() ->
+    config_ds:env(geo_regions_pin, #{}).
 
 %% ===================================================================
 %% R-03.1：profile 文本公开面审核门

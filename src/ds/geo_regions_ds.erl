@@ -1,6 +1,6 @@
 -module(geo_regions_ds).
 -moduledoc "Validate an account region selection against a server-pinned GeoRegions release.".
--export([validate/2]).
+-export([validate/2, source_names/2]).
 
 -define(PROTOCOL, <<"1.0">>).
 
@@ -8,9 +8,27 @@
     invalid_selection | unsupported_version | unavailable | invalid_artifact.
 
 -spec validate(map(), map()) -> ok | {error, validation_error()}.
-validate(#{<<"protocolVersion">> := Protocol}, _) when Protocol =/= ?PROTOCOL ->
+validate(Selection, Pin) ->
+    case validated_path(Selection, Pin) of
+        {ok, _} -> ok;
+        {error, _} = Error -> Error
+    end.
+
+-spec source_names(map(), map()) -> {ok, [binary()]} | {error, validation_error()}.
+source_names(Selection, Pin) ->
+    case validated_path(Selection, Pin) of
+        {ok, Names} ->
+            case lists:all(fun nonempty_string/1, Names) of
+                true -> {ok, Names};
+                false -> {error, invalid_artifact}
+            end;
+        {error, _} = Error ->
+            Error
+    end.
+
+validated_path(#{<<"protocolVersion">> := Protocol}, _) when Protocol =/= ?PROTOCOL ->
     {error, unsupported_version};
-validate(
+validated_path(
     #{
         <<"protocolVersion">> := ?PROTOCOL,
         <<"datasetId">> := Dataset,
@@ -33,7 +51,7 @@ validate(
         true -> validate_pin(Pin, Dataset, Country, Revision, Path);
         false -> {error, invalid_selection}
     end;
-validate(_, _) ->
+validated_path(_, _) ->
     {error, invalid_selection}.
 
 valid_selection(Selection, Root, Country, Revision, Path) ->
@@ -158,31 +176,33 @@ validate_structure(
     Revision,
     Path
 ) when is_list(Nodes) ->
-    case parents(Nodes, #{}) of
-        {ok, Index} -> validate_edges(Path, null, Index);
+    case index_nodes(Nodes, #{}) of
+        {ok, Index} -> validate_edges(Path, null, Index, []);
         {error, _} = Error -> Error
     end;
 validate_structure(_, _, _, _, _) ->
     {error, invalid_artifact}.
 
-parents([], Index) ->
+index_nodes([], Index) ->
     {ok, Index};
-parents([#{<<"id">> := Id, <<"parentId">> := Parent} | Tail], Index) when
+index_nodes([#{<<"id">> := Id, <<"parentId">> := Parent} = Node | Tail], Index) when
     is_binary(Id), byte_size(Id) > 0, is_binary(Parent) orelse Parent =:= null
 ->
     case maps:is_key(Id, Index) of
         true -> {error, invalid_artifact};
-        false -> parents(Tail, Index#{Id => Parent})
+        false -> index_nodes(Tail, Index#{Id => Node})
     end;
-parents(_, _) ->
+index_nodes(_, _) ->
     {error, invalid_artifact}.
 
-validate_edges([], _, _) ->
-    ok;
-validate_edges([Id | Tail], Parent, Index) ->
+validate_edges([], _, _, Names) ->
+    {ok, lists:reverse(Names)};
+validate_edges([Id | Tail], Parent, Index, Names) ->
     case maps:find(Id, Index) of
-        {ok, Parent} -> validate_edges(Tail, Id, Index);
-        _ -> {error, invalid_selection}
+        {ok, #{<<"parentId">> := Parent} = Node} ->
+            validate_edges(Tail, Id, Index, [maps:get(<<"name">>, Node, undefined) | Names]);
+        _ ->
+            {error, invalid_selection}
     end.
 
 read_pinned(Path, Digest, Bytes) ->
