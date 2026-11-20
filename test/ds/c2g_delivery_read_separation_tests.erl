@@ -83,6 +83,10 @@ timeline_client_ack(MsgId) ->
     end.
 
 cleanup_fixture() ->
+    _ = elib_pg:execute(
+        <<"DELETE FROM public.c2g_revoke_fact WHERE action_msg_id = ANY($1::varchar[])">>,
+        [[<<"f05-revoke-other-group">>, <<"f05m-revoke-control">>]]
+    ),
     _ = elib_pg:execute(<<"DELETE FROM msg_c2g_timeline WHERE to_gid = $1">>, [?F05_GID]),
     _ = elib_pg:execute(
         <<"DELETE FROM msg_c2g WHERE to_id = $1 AND msg_id LIKE 'f05m%'">>, [?F05_GID]
@@ -228,6 +232,44 @@ i4_unread_excludes_own_messages_test_() ->
             %% 阅读到 seq2 后未读归零（seq3 是自己发的）
             {ok, [_]} = group_ds:mark_read(?F05_UID, ?F05_GID, [<<"f05m2">>]),
             ?assertEqual(0, msg_c2g_ds:count_unread_by_uid(?F05_UID, ?F05_GID))
+        end)
+    end).
+
+i4_unread_excludes_revoke_fact_without_delivery_tombstone_test_() ->
+    ?TEST_WITH_DB(fun() ->
+        with_fixture(fun() ->
+            MsgId = <<"f05m-revoked">>,
+            ok = insert_msg(MsgId, ?F05_SENDER, 1),
+            ok = insert_msg(<<"f05m-unaffected">>, ?F05_SENDER, 2),
+            Sql =
+                <<"INSERT INTO public.c2g_revoke_fact ",
+                    "(group_id, original_msg_id, action_msg_id, actor_uid, accepted_seq) ",
+                    "VALUES ($1, $2, $3, $4, 3)">>,
+            {ok, 1} = elib_pg:execute(
+                Sql, [?F05_GID + 1, MsgId, <<"f05-revoke-other-group">>, ?F05_SENDER]
+            ),
+            ?assertEqual(2, msg_c2g_ds:count_unread_by_uid(?F05_UID, ?F05_GID)),
+            {ok, 1} = elib_pg:execute(
+                Sql, [?F05_GID, MsgId, <<"f05m-revoke-control">>, ?F05_SENDER]
+            ),
+            ok = insert_msg(<<"f05m-revoke-control">>, ?F05_SENDER, 3),
+            ok = insert_msg(<<"f05m-edit-control">>, ?F05_SENDER, 4),
+            try
+                {ok, 1} = elib_pg:execute(
+                    <<
+                        "INSERT INTO public.c2g_forward_edit_fact "
+                        "(group_id, original_msg_id, action_msg_id, actor_uid, accepted_seq) "
+                        "VALUES ($1, $2, $3, $4, 4)"
+                    >>,
+                    [?F05_GID, MsgId, <<"f05m-edit-control">>, ?F05_SENDER]
+                ),
+                ?assertEqual(1, msg_c2g_ds:count_unread_by_uid(?F05_UID, ?F05_GID))
+            after
+                elib_pg:execute(
+                    <<"DELETE FROM public.c2g_forward_edit_fact WHERE group_id=$1 AND action_msg_id=$2">>,
+                    [?F05_GID, <<"f05m-edit-control">>]
+                )
+            end
         end)
     end).
 
