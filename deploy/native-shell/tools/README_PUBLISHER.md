@@ -34,6 +34,8 @@ bash tools/build-native-dependencies.sh \
 
 配方依据当前源码的 `scripts/ci/native-eunit-pins.json`，固定 OTP29.1.2、PG18.6、PostGIS3.6.4、TimescaleDB2.23.1、pgvector0.8.7、pg_jieba commit/子模块、词典及 Garage2.4.1 哈希。下载校验失败即停止。只取后端必要依赖，不构建 Agent、Textguard 或 RTC 服务。原生 CI 调用的 Python 获取器没有进入本包。
 
+上述冻结示例仍使用旧 SHA 的 PostgreSQL 18.6。当前原生构建已改用 18.7 源码 pin；发布方工具从指定 SHA 读取该版本，而不改旧材料包的 `metadata/release.env` 或验收边界。新运行时必须重新组装并验收，不能直接把当前 main 标为已支持。
+
 PG必需扩展为：`pgcrypto`、`pg_jieba`、`timescaledb`、`vector`、`postgis`、`pg_trgm`、`btree_gin`、`btree_gist`、`citext`、`unaccent`、`intarray`、`pg_stat_statements`，并需默认分词词典和源码中的 `docker/pg_jieba_userdict.txt.big`。配方只构建文件，不启动数据库；扩展SQL和业务迁移由客户安装流程执行、验收。
 
 ## 2. 构建后端

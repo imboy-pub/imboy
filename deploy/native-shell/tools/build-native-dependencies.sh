@@ -107,9 +107,19 @@ run_build() {
   (cd "$directory" && "$@") > "$work/$label.txt" 2>&1 || payload_die "构建失败: $label；查看对应日志（分享前脱敏）"
 }
 
+# Consume the PostgreSQL pin from the requested source SHA, not the caller's checkout.
+pg_version=$(jq -er '
+  [.sources[] | select((.file // "") | startswith("postgresql-"))]
+  | if length == 1 then .[0] else error("expected one PostgreSQL source pin") end
+  | select(.version | test("^18[.][0-9]+$"))
+  | select(.file == ("postgresql-" + .version + ".tar.bz2"))
+  | .version
+' "$work/pins.json") || payload_die 'PostgreSQL 源码 pin 非法'
+pg_source="postgresql-$pg_version"
+
 # Versions deliberately match the pinned native CI; never silently use latest.
 fetch_archive otp_src_29.1.2.tar.gz otp_src_29.1.2
-fetch_archive postgresql-18.6.tar.bz2 postgresql-18.6
+fetch_archive "$pg_source.tar.bz2" "$pg_source"
 fetch_archive postgis-3.6.4.tar.gz postgis-3.6.4
 fetch_git pgvector-0.8.7
 fetch_git timescaledb-2.23.1
@@ -118,13 +128,14 @@ run_build otp-configure "$work/sources/otp_src_29.1.2" ./configure --prefix="$ot
 run_build otp-build "$work/sources/otp_src_29.1.2" make -j "$jobs"
 run_build otp-install "$work/sources/otp_src_29.1.2" make install
 export PATH="$otp_prefix/bin:$PATH"
-run_build pg-configure "$work/sources/postgresql-18.6" ./configure --prefix="$pg_prefix" --with-openssl --with-libxml --with-icu --with-uuid=e2fs --without-llvm
-run_build pg-build "$work/sources/postgresql-18.6" make -j "$jobs"
-run_build pg-install "$work/sources/postgresql-18.6" make install
-run_build pg-contrib-build "$work/sources/postgresql-18.6" make -C contrib -j "$jobs"
-run_build pg-contrib-install "$work/sources/postgresql-18.6" make -C contrib install
+run_build pg-configure "$work/sources/$pg_source" ./configure --prefix="$pg_prefix" --with-openssl --with-libxml --with-icu --with-uuid=e2fs --without-llvm
+run_build pg-build "$work/sources/$pg_source" make -j "$jobs"
+run_build pg-install "$work/sources/$pg_source" make install
+run_build pg-contrib-build "$work/sources/$pg_source" make -C contrib -j "$jobs"
+run_build pg-contrib-install "$work/sources/$pg_source" make -C contrib install
 export PATH="$pg_prefix/bin:$PATH"
 export PG_CONFIG="$pg_prefix/bin/pg_config"
+[[ $("$PG_CONFIG" --version) == "PostgreSQL $pg_version" ]] || payload_die '构建的 PostgreSQL 版本与源码 pin 不同'
 export LD_LIBRARY_PATH="$pg_prefix/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
 run_build pgvector-build "$work/sources/pgvector-0.8.7" make -j "$jobs" PG_CONFIG="$PG_CONFIG" OPTFLAGS=
 run_build pgvector-install "$work/sources/pgvector-0.8.7" make install PG_CONFIG="$PG_CONFIG"
@@ -153,14 +164,14 @@ chmod 755 "$work/garage"
 "$work/garage" --version
 mkdir -p "$pg_prefix/delivery-build/licenses"
 cp "$work/pins.json" "$pg_prefix/delivery-build/native-pins.json"
-cp "$work/sources/postgresql-18.6/COPYRIGHT" "$pg_prefix/delivery-build/licenses/PostgreSQL-COPYRIGHT"
+cp "$work/sources/$pg_source/COPYRIGHT" "$pg_prefix/delivery-build/licenses/PostgreSQL-COPYRIGHT"
 for source in "$work/sources/postgis-3.6.4/COPYING" "$work/sources/timescaledb-2.23.1/LICENSE" "$work/sources/timescaledb-2.23.1/tsl/LICENSE-TIMESCALE" "$work/sources/pgvector-0.8.7/LICENSE" "$work/sources/pg_jieba/LICENSE"; do
   [[ -f $source ]] || continue
   component=$(basename "$(dirname "$source")")
   cp "$source" "$pg_prefix/delivery-build/licenses/$component-$(basename "$source")"
 done
-printf 'SOURCE_SHA=%s\nOS_ID=%s\nOS_VERSION_ID=%s\nARCH=%s\nPG_VERSION=18.6\nBUILD_TEST_STATUS=NOT_RUN\n' \
-  "$sha" "$PAYLOAD_OS_ID" "$PAYLOAD_OS_VERSION_ID" "$PAYLOAD_ARCH" > "$pg_prefix/delivery-build/build.env"
+printf 'SOURCE_SHA=%s\nOS_ID=%s\nOS_VERSION_ID=%s\nARCH=%s\nPG_VERSION=%s\nBUILD_TEST_STATUS=NOT_RUN\n' \
+  "$sha" "$PAYLOAD_OS_ID" "$PAYLOAD_OS_VERSION_ID" "$PAYLOAD_ARCH" "$pg_version" > "$pg_prefix/delivery-build/build.env"
 payload_check_dynamic_libraries "$pg_prefix"
 printf '依赖构建完成。OTP: %s；PG prefix: %s；Garage: %s/garage\n' "$otp_prefix" "$pg_prefix" "$work"
 printf '接下来把OTP的bin加入PATH，执行 build-backend.sh，再执行 prepare-payload.sh。未运行真实安装验收。\n'
