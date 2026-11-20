@@ -58,12 +58,18 @@ list(<<"GET">>, Req0, _State) ->
 
 %% @doc 用户详情
 -spec detail(binary(), cowboy_req:req(), map()) -> cowboy_req:req().
-detail(<<"GET">>, Req0, _State) ->
+detail(<<"GET">>, Req0, State) ->
+    case adm_acl:ensure_permission(State, <<"users:read">>, Req0, 403) of
+        {error, RespReq} -> RespReq;
+        ok -> user_detail(Req0)
+    end.
+
+user_detail(Req0) ->
     Uid = parse_uid_param(Req0),
     case Uid > 0 of
         true ->
             Column =
-                <<"id,account,nickname,mobile,email,avatar,gender,region,sign,status,experience,created_at">>,
+                <<"id,account,nickname,mobile,email,avatar,gender,region,region_selection,sign,status,experience,created_at">>,
             User = user_ds:find_by_id(Uid, Column),
             case map_size(User) > 0 of
                 true ->
@@ -78,7 +84,15 @@ detail(<<"GET">>, Req0, _State) ->
                         friend_count => FriendCount,
                         group_count => GroupCount
                     },
-                    Result2 = normalize_user(Result),
+                    Selection = user_logic:profile_region_selection(
+                        maps:get(<<"region">>, User, <<>>),
+                        maps:get(<<"region_selection">>, User, null)
+                    ),
+                    Result2 = normalize_user(
+                        maps:merge(
+                            maps:remove(<<"region_selection">>, Result), Selection
+                        )
+                    ),
                     elib_response:success(Req0, Result2);
                 false ->
                     elib_response:error(Req0, "用户不存在")
