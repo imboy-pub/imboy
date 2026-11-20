@@ -19,7 +19,7 @@
 -export([write_msg_if_absent_with_sender/9]).
 -export([write_msg_with_reply/11]).
 -export([write_msg_with_reply/12]).
--export([write_msg_with_reply/13]).
+-export([write_msg_with_reply/13, write_msg_with_reply/14]).
 -export([delete_msg/1]).
 -export([delete_msg/2]).
 -export([count_by_to_id/1]).
@@ -29,7 +29,7 @@
 -export([delete_overflow_msg/2]).
 -export([update_pinned/3]).
 -export([update_payload_by_msg_id/2]).
--export([find_by_reply_to_msg_id/1]).
+-export([find_by_reply_to_msg_id/1, visible_reply_snippet_sql/0, visible_reply_snippets/1]).
 -export([count_unread_since/1, count_unread_since/2, count_unread_since/3]).
 -export([set_expire_at/2]).
 -export([delete_expired/1]).
@@ -355,6 +355,14 @@ revoke_offline_atomic(CreatedAt, Id, OriginalId, Payload, FromId, ToId, ServerTS
             {ok, _} = personal_message_order_repo:execute_formal_tx(
                 Conn, FromId, ToId, Id, Insert, Params
             ),
+            case
+                c2c_action_receipt_repo:accept_tx(
+                    Conn, Id, OriginalId, FromId, ToId, <<"revoke">>, null
+                )
+            of
+                {ok, _} -> ok;
+                {error, ReceiptError} -> throw({rollback, ReceiptError})
+            end,
             case elib_pg:execute(Conn, Update, [Payload, OriginalId, FromId, ToId]) of
                 {ok, _} -> ok;
                 {ok, _, _} -> ok;
@@ -766,6 +774,39 @@ write_msg_with_reply(
     AcceptedAt,
     ExpireAt
 ) ->
+    write_msg_with_reply(
+        CreatedAt,
+        Id,
+        Payload,
+        FromId,
+        ToId,
+        ServerTS,
+        MsgType,
+        E2EE,
+        ReplyToMsgId,
+        ReplyToFromId,
+        ReplySnippet,
+        AcceptedAt,
+        ExpireAt,
+        null
+    ).
+
+write_msg_with_reply(
+    CreatedAt,
+    Id,
+    Payload,
+    FromId,
+    ToId,
+    ServerTS,
+    MsgType,
+    E2EE,
+    ReplyToMsgId,
+    ReplyToFromId,
+    ReplySnippet,
+    AcceptedAt,
+    ExpireAt,
+    SenderDid
+) ->
     Tb = tablename(),
     E2EEValue =
         case E2EE of
@@ -791,35 +832,58 @@ write_msg_with_reply(
         end,
     GenId = elib_tsid:generate(msg_c2c),
     {TsCol, TsPh, SeqPh} = optional_ts_sql_fragments(
-        [{<<"accepted_at">>, AcceptedAt}, {<<"expire_at">>, ExpireAt}], 12
+        [{<<"accepted_at">>, AcceptedAt}, {<<"expire_at">>, ExpireAt}], 13
     ),
     Sql = [
         <<"INSERT INTO ">>,
         Tb,
         <<
             " (id, payload, from_id, to_id, created_at, server_ts, msg_id, msg_type, e2ee,"
-            " reply_to_msg_id, reply_to_from_id, reply_snippet",
+            " reply_to_msg_id, reply_to_from_id, reply_snippet, sender_did",
             TsCol/binary,
             ", conv_seq)"
         >>,
-        <<" VALUES ($1, $2, $3, $4, $5::text::timestamptz, $6::text::timestamptz, $7, $8, $9, $10, $11, $12",
+        <<" VALUES ($1, $2, $3, $4, $5::text::timestamptz, $6::text::timestamptz, $7, $8, $9, $10, $11, $12, $13",
             TsPh/binary, ", ", SeqPh/binary, ")">>,
-        %% RT-P3-03（2026-08-27）：本写入与 staging worker 双写并发存在竞态——
-        %% 若 worker 先插入无引用行，原 DO NOTHING 让本次 reply 直写变 no-op，
-        %% 引用元数据静默丢失。改为条件补洞：仅当既有行尚未携带引用时回填三列；
-        %% 正常重放（reply 已有值）WHERE 不满足 → 0 行变更，
-        %% 上游 conflict_no_insert 幂等语义保持不变。
-        %% R03/D04：补洞子句不更新 accepted_at / server_ts——首次接受时间
-        %% 由先插入者固定。
+        %% Keep the accepted snapshot; a legacy direct writer can lack the device binding.
         <<
             " ON CONFLICT (msg_id, created_at) DO UPDATE SET "
-            "reply_to_msg_id = EXCLUDED.reply_to_msg_id, "
-            "reply_to_from_id = EXCLUDED.reply_to_from_id, "
-            "reply_snippet = EXCLUDED.reply_snippet "
+            "reply_to_msg_id = COALESCE("
+        >>,
+        Tb,
+        <<
+            ".reply_to_msg_id, EXCLUDED.reply_to_msg_id), "
+            "reply_to_from_id = CASE WHEN "
+        >>,
+        Tb,
+        <<
+            ".reply_to_msg_id IS NULL "
+            "THEN EXCLUDED.reply_to_from_id ELSE "
+        >>,
+        Tb,
+        <<
+            ".reply_to_from_id END, "
+            "reply_snippet = CASE WHEN "
+        >>,
+        Tb,
+        <<
+            ".reply_to_msg_id IS NULL "
+            "THEN EXCLUDED.reply_snippet ELSE "
+        >>,
+        Tb,
+        <<
+            ".reply_snippet END, "
+            "sender_did = COALESCE("
+        >>,
+        Tb,
+        <<
+            ".sender_did, EXCLUDED.sender_did) "
             "WHERE "
         >>,
         Tb,
-        <<".reply_to_msg_id IS NULL">>
+        <<".reply_to_msg_id IS NULL OR (">>,
+        Tb,
+        <<".sender_did IS NULL AND EXCLUDED.sender_did IS NOT NULL)">>
     ],
     case
         personal_message_order_repo:execute_formal(FromId, ToId, Id, Sql, [
@@ -834,7 +898,8 @@ write_msg_with_reply(
             E2EEValue,
             ReplyToMsgId,
             ReplyToFromIdVal,
-            ReplySnippetVal
+            ReplySnippetVal,
+            null_if_empty(SenderDid)
             | optional_ts_params([{<<"accepted_at">>, AcceptedAt}, {<<"expire_at">>, ExpireAt}])
         ])
     of
@@ -843,6 +908,52 @@ write_msg_with_reply(
         {ok, _Count, _Returning} -> ok;
         {error, Reason} -> {error, Reason}
     end.
+
+%% A snapshot survives edits, but its source must still belong to this conversation.
+-spec visible_reply_snippet_sql() -> binary().
+visible_reply_snippet_sql() ->
+    <<
+        "CASE WHEN msg_c2c.reply_to_msg_id IS NOT NULL AND EXISTS ("
+        "SELECT 1 FROM ("
+        "SELECT from_id, to_id, expire_at FROM public.msg_c2c AS formal WHERE formal.msg_id = msg_c2c.reply_to_msg_id "
+        "UNION ALL SELECT from_id, to_id, expire_at FROM public.msg_store_staging "
+        "WHERE type = 'c2c' AND msg_id = msg_c2c.reply_to_msg_id AND processed_at IS NULL AND conv_seq > 0 "
+        "UNION ALL SELECT from_id, to_id, expire_at FROM public.msg_store "
+        "WHERE chat_type = 'c2c' AND msg_id = msg_c2c.reply_to_msg_id) AS source "
+        "WHERE source.from_id = msg_c2c.reply_to_from_id "
+        "AND ((source.from_id = msg_c2c.from_id AND source.to_id = msg_c2c.to_id) "
+        "OR (source.from_id = msg_c2c.to_id AND source.to_id = msg_c2c.from_id)) "
+        "AND (source.expire_at IS NULL OR source.expire_at > statement_timestamp()) "
+        "AND NOT EXISTS (SELECT 1 FROM public.c2c_action_receipt AS action "
+        "WHERE action.original_msg_id = msg_c2c.reply_to_msg_id AND action.action = 'revoke')) "
+        "THEN msg_c2c.reply_snippet ELSE NULL END AS reply_snippet"
+    >>.
+
+-spec visible_reply_snippets([binary()]) -> {ok, [map()]} | {error, term()}.
+visible_reply_snippets(Ids) ->
+    Columns = <<"msg_id, from_id, to_id, reply_to_msg_id, reply_to_from_id, reply_snippet">>,
+    elib_pg:query(
+        <<
+            "SELECT DISTINCT ON (msg_id, from_id, to_id) "
+            "msg_id, from_id, to_id, reply_to_msg_id, reply_to_from_id, ",
+            (visible_reply_snippet_sql())/binary,
+            " FROM (SELECT ",
+            Columns/binary,
+            ", 0 AS priority FROM public.msg_store "
+            "WHERE chat_type = 'c2c' AND msg_id = ANY($1::varchar[]) AND reply_to_msg_id IS NOT NULL "
+            "UNION ALL SELECT ",
+            Columns/binary,
+            ", 1 AS priority FROM public.msg_c2c "
+            "WHERE msg_id = ANY($1::varchar[]) AND reply_to_msg_id IS NOT NULL "
+            "UNION ALL SELECT ",
+            Columns/binary,
+            ", 2 AS priority FROM public.msg_store_staging "
+            "WHERE type = 'c2c' AND msg_id = ANY($1::varchar[]) AND reply_to_msg_id IS NOT NULL "
+            "AND processed_at IS NULL AND conv_seq > 0) AS msg_c2c "
+            "ORDER BY msg_id, from_id, to_id, priority"
+        >>,
+        [Ids]
+    ).
 
 %% @doc 根据被引用消息ID查找所有回复消息
 %% 使用 idx_msg_c2c_reply 索引（00000054_msg_reply.sql 中创建）
@@ -854,7 +965,8 @@ find_by_reply_to_msg_id(ReplyToMsgId) when ReplyToMsgId =:= <<>>; ReplyToMsgId =
 find_by_reply_to_msg_id(ReplyToMsgId) ->
     Tb = tablename(),
     Sql = <<
-        "SELECT msg_id, from_id, to_id, payload, created_at, reply_to_msg_id, reply_to_from_id, reply_snippet"
+        "SELECT msg_id, from_id, to_id, payload, created_at, reply_to_msg_id, reply_to_from_id, ",
+        (visible_reply_snippet_sql())/binary,
         " FROM ",
         Tb/binary,
         " WHERE reply_to_msg_id = $1 ORDER BY id ASC"

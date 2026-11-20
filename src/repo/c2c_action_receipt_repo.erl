@@ -1,44 +1,45 @@
 -module(c2c_action_receipt_repo).
 
--export([accept/6, consume/6, reconcile_consumed_tx/2]).
+-export([accept/6, accept_tx/7, consume/6, reconcile_consumed_tx/2]).
 
 -spec accept(binary(), binary(), integer(), integer(), binary(), binary() | null) ->
     {ok, new | duplicate} | {error, conflict | term()}.
 accept(RequestId, OriginalMsgId, ActorUid, PeerUid, Action, ContentHash) ->
     elib_pg:with_tx(fun(Conn) ->
-        Lock = <<"c2c_forward_revoke:", OriginalMsgId/binary>>,
-        case
-            elib_pg:query(Conn, <<"SELECT pg_advisory_xact_lock(hashtextextended($1,0))">>, [Lock])
-        of
-            {ok, _} -> ok;
-            {error, Reason0} -> throw({rollback, {revoke_lock_failed, Reason0}})
-        end,
-        %% BE-04 撤回终态守卫：该 original 已被撤回消费（权威终态）后，
-        %% 任何新的编辑/撤回受理一律显式拒绝——正文不得复活。
-        case consumed_revoke_exists(Conn, OriginalMsgId) of
-            true ->
-                {error, revoked};
-            false ->
-                Sql =
-                    <<"INSERT INTO public.c2c_action_receipt ",
-                        "(request_id,original_msg_id,actor_uid,peer_uid,action,content_sha256) ",
-                        "VALUES ($1,$2,$3,$4,$5,$6) ON CONFLICT (request_id) DO NOTHING">>,
-                case
-                    elib_pg:execute_count(Conn, Sql, [
-                        RequestId, OriginalMsgId, ActorUid, PeerUid, Action, ContentHash
-                    ])
-                of
-                    {ok, 1} ->
-                        {ok, new};
-                    {ok, 0} ->
-                        verify_duplicate(
-                            Conn, RequestId, OriginalMsgId, ActorUid, PeerUid, Action, ContentHash
-                        );
-                    {error, Reason} ->
-                        throw({rollback, Reason})
-                end
-        end
+        accept_tx(Conn, RequestId, OriginalMsgId, ActorUid, PeerUid, Action, ContentHash)
     end).
+
+accept_tx(Conn, RequestId, OriginalMsgId, ActorUid, PeerUid, Action, ContentHash) ->
+    Lock = <<"c2c_forward_revoke:", OriginalMsgId/binary>>,
+    case elib_pg:query(Conn, <<"SELECT pg_advisory_xact_lock(hashtextextended($1,0))">>, [Lock]) of
+        {ok, _} -> ok;
+        {error, Reason0} -> throw({rollback, {revoke_lock_failed, Reason0}})
+    end,
+    %% BE-04 撤回终态守卫：该 original 已被撤回消费（权威终态）后，
+    %% 任何新的编辑/撤回受理一律显式拒绝——正文不得复活。
+    case consumed_revoke_exists(Conn, OriginalMsgId) of
+        true ->
+            {error, revoked};
+        false ->
+            Sql =
+                <<"INSERT INTO public.c2c_action_receipt ",
+                    "(request_id,original_msg_id,actor_uid,peer_uid,action,content_sha256) ",
+                    "VALUES ($1,$2,$3,$4,$5,$6) ON CONFLICT (request_id) DO NOTHING">>,
+            case
+                elib_pg:execute_count(Conn, Sql, [
+                    RequestId, OriginalMsgId, ActorUid, PeerUid, Action, ContentHash
+                ])
+            of
+                {ok, 1} ->
+                    {ok, new};
+                {ok, 0} ->
+                    verify_duplicate(
+                        Conn, RequestId, OriginalMsgId, ActorUid, PeerUid, Action, ContentHash
+                    );
+                {error, Reason} ->
+                    throw({rollback, Reason})
+            end
+    end.
 
 -spec consume(binary(), binary(), integer(), binary(), binary() | null, binary()) ->
     ok | {error, not_found | replayed | term()}.

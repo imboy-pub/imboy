@@ -449,6 +449,8 @@ create_schema(C) ->
         "ALTER TABLE msg_store_staging ADD COLUMN accepted_at timestamptz,ADD COLUMN expire_at timestamptz",
         []
     ),
+    {ok, ReplyDdl} = file:read_file("priv/migrations/00000282_c2c_reply_staging.up.sql"),
+    {ok, [], []} = epgsql:squery(C, ReplyDdl),
     ok.
 
 sql(C, Sql, Params) ->

@@ -510,10 +510,24 @@ same_archive(Conn, Data) ->
         server_ts
     ],
     Params = [archive_parameter(K, maps:get(K, Data)) || K <- Keys],
+    {SnapshotSql, SnapshotParams} = archive_reply_match(Data),
+    Query = <<Sql/binary, SnapshotSql/binary>>,
     case Conn of
-        undefined -> elib_pg:query(Sql, Params);
-        _ -> elib_pg:query(Conn, Sql, Params)
+        undefined -> elib_pg:query(Query, Params ++ SnapshotParams);
+        _ -> elib_pg:query(Conn, Query, Params ++ SnapshotParams)
     end.
+
+archive_reply_match(#{reply_to_msg_id := Id, reply_to_from_id := Author, reply_snippet := Snippet}) ->
+    {
+        <<
+            " AND reply_to_msg_id IS NOT DISTINCT FROM $14::varchar "
+            "AND reply_to_from_id IS NOT DISTINCT FROM $15::bigint "
+            "AND reply_snippet IS NOT DISTINCT FROM $16::text"
+        >>,
+        [Id, Author, Snippet]
+    };
+archive_reply_match(_Data) ->
+    {<<>>, []}.
 
 archive_parameter(K, Value) when (K =:= payload orelse K =:= e2ee), is_map(Value) ->
     jsone:encode(Value);
@@ -922,7 +936,7 @@ build_archive_data(<<"c2c">>, Row) ->
         %% R05-A：自毁绝对期限随行搬运（旧行/无自毁缺失为 null，不伪造）。
         expire_at => maps:get(<<"expire_at">>, Row, null)
     },
-    {ok, ConvKey, Data};
+    {ok, ConvKey, maps:merge(Data, archive_reply_fields(Row))};
 build_archive_data(<<"c2g">>, Row) ->
     FromId = maps:get(<<"from_id">>, Row),
     MsgId = maps:get(<<"msg_id">>, Row),
@@ -961,6 +975,15 @@ build_archive_data(<<"c2g">>, Row) ->
 build_archive_data(_OtherType, _Row) ->
     %% s2c / c2s 不归档
     skip.
+
+archive_reply_fields(#{<<"reply_to_msg_id">> := Id} = Row) when is_binary(Id), Id =/= <<>> ->
+    #{
+        reply_to_msg_id => Id,
+        reply_to_from_id => maps:get(<<"reply_to_from_id">>, Row, null),
+        reply_snippet => maps:get(<<"reply_snippet">>, Row, null)
+    };
+archive_reply_fields(_Row) ->
+    #{}.
 
 %% @private 从 payload JSON 解析 group_id
 safe_decode_group_id(Payload) ->

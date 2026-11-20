@@ -30,7 +30,7 @@
 -export([stage/12]).
 -export([stage_with_sequence/12]).
 %% R05-A：带自毁绝对期限的 staging 入口。
--export([stage/13, stage_with_sequence/13]).
+-export([stage/13, stage_with_sequence/13, stage_with_sequence/14]).
 -export([stage_action/13]).
 %% 真库回归直接执行生产 SQL，避免 mock 只验证字符串形状。
 -export([action_recipient_sql/0]).
@@ -352,6 +352,39 @@ stage_with_sequence(
     AcceptedAt,
     ExpireAt
 ) when is_integer(ToId) ->
+    stage_with_sequence(
+        Type,
+        MsgId,
+        MsgType,
+        Action,
+        E2EE,
+        Payload,
+        FromId,
+        ToId,
+        CreatedAt,
+        ServerTs,
+        SenderDid,
+        AcceptedAt,
+        ExpireAt,
+        undefined
+    ).
+
+stage_with_sequence(
+    <<"c2c">> = Type,
+    MsgId,
+    MsgType,
+    Action,
+    E2EE,
+    Payload,
+    FromId,
+    ToId,
+    CreatedAt,
+    ServerTs,
+    SenderDid,
+    AcceptedAt,
+    ExpireAt,
+    Reply
+) when is_integer(ToId) ->
     Data = single_staging_row(
         Type,
         MsgId,
@@ -367,7 +400,7 @@ stage_with_sequence(
         AcceptedAt,
         ExpireAt
     ),
-    personal_message_order_repo:stage_c2c_ordered(tablename(), Data).
+    personal_message_order_repo:stage_c2c_ordered(tablename(), Data, Reply).
 
 -spec single_staging_row(
     binary(),
@@ -1443,7 +1476,8 @@ claim_pending(Limit, LeaseSeconds) ->
     elib_pg:with_tx(fun(Conn) ->
         Sql = <<
             "SELECT id, type, msg_id, payload, from_id, to_id, to_id_list, created_at, server_ts, retry_count, "
-            "msg_type, action, e2ee, sender_did, conv_seq, accepted_at, expire_at "
+            "msg_type, action, e2ee, sender_did, conv_seq, accepted_at, expire_at, "
+            "reply_to_msg_id, reply_to_from_id, reply_snippet "
             "FROM ",
             Tb/binary,
             " WHERE processed_at IS NULL ",

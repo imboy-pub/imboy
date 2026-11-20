@@ -1,0 +1,1 @@
+DROP INDEX public.i_c2c_action_receipt_accepted_revoke;
