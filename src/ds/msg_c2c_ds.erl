@@ -840,6 +840,6 @@ count_unread_since(ToId, Since, _DID) ->
 set_expire_at(MsgId, ExpireAt) ->
     msg_c2c_repo:set_expire_at(MsgId, ExpireAt).
 
--spec delete_expired(binary(), pos_integer()) -> non_neg_integer().
+-spec delete_expired(binary(), non_neg_integer()) -> non_neg_integer() | {error, term()}.
 delete_expired(_Now, BatchSize) ->
     msg_c2c_repo:delete_expired(BatchSize).

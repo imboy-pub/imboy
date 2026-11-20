@@ -455,3 +455,114 @@ r05_c2g_archive_carries_expire_at_test_() ->
         ?assertEqual(?FIXED_MS, to_ms(A)),
         cleanup_test_rows()
     end).
+
+l01_history_queries_keep_only_unexpired_rows_test_() ->
+    ?TEST_WITH_DB_TIMEOUT(60, fun() ->
+        cleanup_test_rows(),
+        try
+            Conv = msg_archive_repo:conv_key(<<"c2c">>, 910001, 910002),
+            MsgId = <<"tzv1x_l01_history_live">>,
+            NowMs = erlang:system_time(millisecond),
+            Now = elib_dt:to_rfc3339(NowMs, millisecond, "Z"),
+            Future = elib_dt:to_rfc3339(NowMs + 600000, millisecond, "Z"),
+            Past = elib_dt:to_rfc3339(NowMs - 600000, millisecond, "Z"),
+            Row = #{
+                <<"type">> => <<"c2c">>,
+                <<"msg_id">> => MsgId,
+                <<"msg_type">> => <<"text">>,
+                <<"from_id">> => 910001,
+                <<"to_id">> => 910002,
+                <<"payload">> => <<"{\"t\":\"synthetic history\"}">>,
+                <<"created_at">> => Now,
+                <<"accepted_at">> => Now,
+                <<"conv_seq">> => 2,
+                <<"expire_at">> => Future
+            },
+            ok = msg_archive_repo:archive(Row#{
+                <<"msg_id">> => <<"tzv1x_l01_history_past">>,
+                <<"conv_seq">> => 1,
+                <<"expire_at">> => Past
+            }),
+            ok = msg_archive_repo:archive(Row),
+            {ok, [#{<<"msg_id">> := MsgId}]} = msg_archive_ds:history(Conv, 0, 1),
+            {ok, [#{<<"msg_id">> := MsgId}]} = msg_archive_ds:history(Conv, 3, 2, desc),
+            {ok, [#{<<"msg_id">> := MsgId}]} = msg_archive_ds:history_batch([{Conv, 0}], 1)
+        after
+            cleanup_test_rows()
+        end
+    end).
+
+l01_cleanup_reports_failure_and_recovers_test_() ->
+    ?TEST_WITH_DB_TIMEOUT(60, fun() ->
+        cleanup_test_rows(),
+        MsgId = <<"tzv1x_l01_cleanup">>,
+        AcceptedAt = accepted_rfc(),
+        {ok, _, _} = msg_store_repo:stage_with_sequence(
+            <<"c2c">>,
+            MsgId,
+            <<"text">>,
+            <<>>,
+            null,
+            <<"{\"t\":\"cleanup\"}">>,
+            910001,
+            910002,
+            AcceptedAt,
+            AcceptedAt,
+            null,
+            AcceptedAt,
+            AcceptedAt
+        ),
+        with_archive_enabled(false, fun() ->
+            ok = msg_store_worker:process_row(fetch_staging(MsgId))
+        end),
+        {ok, Pid} = msg_burn_logic:start_link(),
+        try
+            {ok, _} = elib_pg:execute(
+                <<"CREATE FUNCTION public.l01_cleanup_failure() RETURNS trigger LANGUAGE plpgsql ",
+                    "AS $$BEGIN RAISE EXCEPTION 'synthetic cleanup failure'; END$$">>,
+                []
+            ),
+            {ok, _} = elib_pg:execute(
+                <<"CREATE TRIGGER l01_cleanup_failure BEFORE DELETE ON public.msg_c2c ",
+                    "FOR EACH STATEMENT EXECUTE FUNCTION public.l01_cleanup_failure()">>,
+                []
+            ),
+            try
+                Report = #{
+                    status => partial,
+                    c2c => #{status => failed},
+                    c2g => #{status => ok, cleaned => 0}
+                },
+                ?assertEqual({error, Report}, msg_burn_logic:cleanup_now()),
+                ?assertMatch(
+                    #{
+                        last_cleanup_result := Report,
+                        total_cleaned := 0,
+                        last_cleanup := undefined,
+                        last_attempt := {_, _, _}
+                    },
+                    msg_burn_logic:get_status()
+                ),
+                ?assertEqual(?FIXED_MS, to_ms(fetch_c2c_expire(MsgId)))
+            after
+                {ok, _} = elib_pg:execute(
+                    <<"DROP TRIGGER l01_cleanup_failure ON public.msg_c2c">>, []
+                ),
+                {ok, _} = elib_pg:execute(<<"DROP FUNCTION public.l01_cleanup_failure()">>, [])
+            end,
+            ?assertEqual({ok, 1}, msg_burn_logic:cleanup_now()),
+            ?assertMatch(
+                #{
+                    last_cleanup_result := #{status := ok},
+                    total_cleaned := 1,
+                    last_cleanup := {_, _, _}
+                },
+                msg_burn_logic:get_status()
+            ),
+            ?assertEqual({ok, 0}, msg_burn_logic:cleanup_now()),
+            ?assertMatch(#{total_cleaned := 1}, msg_burn_logic:get_status())
+        after
+            gen_server:stop(Pid),
+            cleanup_test_rows()
+        end
+    end).

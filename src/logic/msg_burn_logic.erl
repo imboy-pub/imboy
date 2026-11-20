@@ -38,7 +38,9 @@
     interval :: pos_integer(),
     batch_size :: non_neg_integer(),
     last_cleanup :: erlang:timestamp() | undefined,
-    total_cleaned :: non_neg_integer()
+    total_cleaned :: non_neg_integer(),
+    last_attempt = undefined :: erlang:timestamp() | undefined,
+    last_cleanup_result = undefined :: map() | undefined
 }).
 
 %%%===================================================================
@@ -136,7 +138,9 @@ handle_call(get_status, _From, State) ->
         interval => State#state.interval,
         batch_size => State#state.batch_size,
         last_cleanup => State#state.last_cleanup,
-        total_cleaned => State#state.total_cleaned
+        total_cleaned => State#state.total_cleaned,
+        last_attempt => State#state.last_attempt,
+        last_cleanup_result => State#state.last_cleanup_result
     },
     {reply, Status, State};
 handle_call(_Request, _From, State) ->
@@ -158,6 +162,13 @@ handle_info(_Info, State) ->
 terminate(_Reason, _State) ->
     ok.
 
+code_change(_OldVsn, {state, Interval, BatchSize, LastCleanup, TotalCleaned}, _Extra) ->
+    {ok, #state{
+        interval = Interval,
+        batch_size = BatchSize,
+        last_cleanup = LastCleanup,
+        total_cleaned = TotalCleaned
+    }};
 code_change(_OldVsn, State, _Extra) ->
     {ok, State}.
 
@@ -166,37 +177,48 @@ code_change(_OldVsn, State, _Extra) ->
 %%%===================================================================
 
 do_cleanup_internal(State) ->
-    try
-        BatchSize = State#state.batch_size,
-        Now = elib_dt:now(),
-        %% 清理 C2C 过期消息
-        C2CCount = cleanup_expired_c2c(Now, BatchSize),
-        %% 清理 C2G 过期消息
-        C2GCount = cleanup_expired_c2g(Now, BatchSize),
-        Total = C2CCount + C2GCount,
-        case Total > 0 of
-            true ->
-                ok = ?INFO_LOG([
-                    msg_burn_cleanup, #{c2c => C2CCount, c2g => C2GCount, total => Total}
-                ]);
-            false ->
-                ok
+    BatchSize = State#state.batch_size,
+    Now = elib_dt:now(),
+    {C2CCount, C2CResult} = cleanup_channel(c2c, msg_c2c_ds, Now, BatchSize),
+    {C2GCount, C2GResult} = cleanup_channel(c2g, msg_c2g_ds, Now, BatchSize),
+    Total = C2CCount + C2GCount,
+    Attempt = erlang:timestamp(),
+    Outcome =
+        case {C2CResult, C2GResult} of
+            {#{status := ok}, #{status := ok}} -> ok;
+            {#{status := failed}, #{status := failed}} -> failed;
+            _ -> partial
         end,
-        NewState = State#state{
-            last_cleanup = erlang:timestamp(),
-            total_cleaned = State#state.total_cleaned + Total
-        },
-        {{ok, Total}, NewState}
-    catch
-        _:Error ->
-            ok = ?ERROR_LOG([msg_burn_cleanup_error, Error]),
-            {{error, Error}, State}
+    Report = #{status => Outcome, c2c => C2CResult, c2g => C2GResult},
+    case Total > 0 of
+        true ->
+            ok = ?INFO_LOG([msg_burn_cleanup, #{c2c => C2CCount, c2g => C2GCount, total => Total}]);
+        false ->
+            ok
+    end,
+    NewState = State#state{
+        last_attempt = Attempt,
+        last_cleanup_result = Report,
+        total_cleaned = State#state.total_cleaned + Total
+    },
+    case Outcome of
+        ok -> {{ok, Total}, NewState#state{last_cleanup = Attempt}};
+        _ -> {{error, Report}, NewState}
     end.
 
-%% @doc 删除 msg_c2c 中已过期的消息
-cleanup_expired_c2c(Now, BatchSize) ->
-    msg_c2c_ds:delete_expired(Now, BatchSize).
+cleanup_channel(Channel, Module, Now, BatchSize) ->
+    try Module:delete_expired(Now, BatchSize) of
+        Count when is_integer(Count), Count >= 0 ->
+            {Count, #{status => ok, cleaned => Count}};
+        {error, _Reason} ->
+            cleanup_failed(Channel, storage_error);
+        _ ->
+            cleanup_failed(Channel, invalid_result)
+    catch
+        Class:_Reason ->
+            cleanup_failed(Channel, Class)
+    end.
 
-%% @doc 删除 msg_c2g 中已过期的消息
-cleanup_expired_c2g(Now, BatchSize) ->
-    msg_c2g_ds:delete_expired(Now, BatchSize).
+cleanup_failed(Channel, Category) ->
+    ok = ?ERROR_LOG([msg_burn_cleanup_error, Channel, Category]),
+    {0, #{status => failed}}.

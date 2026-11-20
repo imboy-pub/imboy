@@ -1038,6 +1038,7 @@ set_expire_at(MsgId, ExpireAt) ->
 %% 升级触发：无升级路径（设计约束，非延期）——NOW() 在 PG 侧求值，天然绕开
 %%   参数编码这一环；只有在需要「按指定时刻清理」时才该改传 $N::timestamptz，
 %%   那是新需求而不是本简化的欠账。
+-spec delete_expired(non_neg_integer()) -> non_neg_integer() | {error, term()}.
 delete_expired(BatchSize) ->
     Tb = tablename(),
     Sql =
@@ -1047,6 +1048,7 @@ delete_expired(BatchSize) ->
             "  WHERE expire_at IS NOT NULL AND expire_at <= NOW()"
             "  ORDER BY expire_at ASC LIMIT $1)">>,
     case elib_pg:execute(Sql, [BatchSize]) of
-        {ok, Count} when is_integer(Count) -> Count;
-        _ -> 0
+        {ok, Count} when is_integer(Count), Count >= 0 -> Count;
+        {error, _} = Error -> Error;
+        _ -> {error, invalid_cleanup_result}
     end.

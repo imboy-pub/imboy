@@ -568,7 +568,8 @@ get_history(ConvKey, AfterSeq, Limit, Order) ->
         <<"SELECT msg_id, chat_type, conv_seq, msg_type, from_id, to_id, group_id, ",
             "e2ee, sender_did, payload, created_at, server_ts, accepted_at ", "FROM ",
             ?TABLE/binary, " WHERE conv_key = $1 AND conv_seq", Cmp/binary, "$2 ",
-            "ORDER BY conv_seq ", OrderBin/binary, " LIMIT $3">>,
+            "AND (expire_at IS NULL OR expire_at > NOW()) ", "ORDER BY conv_seq ", OrderBin/binary,
+            " LIMIT $3">>,
     elib_pg:query(Sql, [ConvKey, AfterSeq, Limit]).
 
 %%-------------------------------------------------------------------
@@ -601,6 +602,7 @@ get_history_batch(Cursors, Limit) ->
         ?TABLE/binary,
         " m "
         "WHERE m.conv_key = c.conv_key AND m.conv_seq > c.after_seq "
+        "AND (m.expire_at IS NULL OR m.expire_at > NOW()) "
         "ORDER BY m.conv_seq ASC LIMIT ",
         (integer_to_binary(LimitInt))/binary,
         ") h "
