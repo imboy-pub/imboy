@@ -14,6 +14,11 @@
 %% BUILD-00R：moment 未编译时举报 moment 目标 fail-closed（类型无效）
 -include("generated/imboy_product_features.hrl").
 
+%% S-03: 入站数字 ID 上限 = PG int8。epgsql int codec 对 >2^63-1 的整数在
+%% 编码阶段直接 crash 连接进程（{integer_overflow,int8,_} 实测），任何
+%% 举报/工单入参 ID 必须在此钳制，超大 payload 以业务错误明确失败。
+-define(MAX_INT64, 9223372036854775807).
+
 %% R-01: 消息举报 reason 白名单（客户端 complaintReason 枚举 + 常见扩展）。
 -define(REPORT_MESSAGE_REASONS, [
     <<"spam">>,
@@ -619,7 +624,7 @@ decode_evidence(_) ->
 -spec decode_positive_id(term()) -> integer().
 decode_positive_id(Value) ->
     case to_int(Value) of
-        Int when Int > 0 ->
+        Int when Int > 0, Int =< ?MAX_INT64 ->
             Int;
         _ ->
             case Value of
@@ -635,7 +640,7 @@ decode_positive_id(Value) ->
 -spec safe_hash_decode(binary()) -> integer().
 safe_hash_decode(Hash) ->
     try ec_cnv:to_integer(Hash) of
-        Int when is_integer(Int), Int > 0 ->
+        Int when is_integer(Int), Int > 0, Int =< ?MAX_INT64 ->
             Int;
         _ ->
             0
