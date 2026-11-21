@@ -2,6 +2,9 @@
 -include_lib("eunit/include/eunit.hrl").
 -include("eunit_setup.hrl").
 
+%% L-03 shell 演练钩子（eunit 不自动发现；见文末第 7 节注释）
+-export([l03_seed_drill_user/0, l03_delete_drill_user/1, l03_state/1]).
+
 %%% 账号删除合规链 D-03 —— 编排器真 PostgreSQL 测试
 %%% （Implementation Plan Task D-03 Tests：多域种子用户、外部失败重试、
 %%%  并发 worker 认领、支付余额门、E2EE 密钥、Garage 对象删除 mock）
@@ -47,6 +50,8 @@ cleanup_user(Uid) ->
         <<"DELETE FROM public.msg_c2c WHERE from_id = $1 OR to_id = $1">>,
         <<"DELETE FROM public.moment_post WHERE author_uid = $1">>,
         <<"DELETE FROM public.attachment WHERE creator_user_id = $1">>,
+        <<"DELETE FROM public.push_token WHERE user_id = $1">>,
+        <<"DELETE FROM public.user_device WHERE user_id = $1">>,
         <<"DELETE FROM public.wallet WHERE user_id = $1">>,
         <<"DELETE FROM public.group_member WHERE user_id = $1">>,
         <<"DELETE FROM public.\"group\" WHERE id = $1">>,
@@ -510,3 +515,280 @@ garage_enqueue_best_effort_test_() ->
             cleanup_user(Uid)
         end
     end).
+
+%% ===================================================================
+%% 5. L-03:LOCAL:01 备份恢复不复活已删除数据或旧权限（模拟旧备份
+%%    恢复 → 墓碑重放）。旧备份是删除前时点快照：恢复后、重放前
+%%    旧数据/旧令牌在场是**如实残留**（不宣称备份不含已删数据）；
+%%    防线是「先重放删除编排再开放访问」——重放后被删数据不复现、
+%%    撤权（设备绑定/推送令牌）不复活。
+%% ===================================================================
+
+l03_insert_grants(Uid) ->
+    %% 旧权限载体：设备绑定 + 推送令牌（都在删除清单内）
+    {ok, _} = elib_pg:query(
+        <<
+            "INSERT INTO public.user_device (id, user_id, device_id, device_type)"
+            " VALUES ($1, $2, 'l03-dev', 'phone')"
+        >>,
+        [new_uid(), Uid]
+    ),
+    {ok, _} = elib_pg:query(
+        <<
+            "INSERT INTO public.push_token"
+            " (id, user_id, device_id, device_type, platform, token)"
+            " VALUES ($1, $2, 'l03-dev', 'android', 'fcm', 'l03tok')"
+        >>,
+        [new_uid(), Uid]
+    ),
+    ok.
+
+l03_insert_message(Uid, Member, MsgId) ->
+    MsgKey = <<"l03-", (integer_to_binary(MsgId))/binary>>,
+    personal_message_order_repo:execute_formal(
+        Uid,
+        Member,
+        MsgKey,
+        <<
+            "INSERT INTO public.msg_c2c (id, from_id, to_id, msg_id, msg_type, payload, conv_seq)"
+            " VALUES ($1, $2, $3, $4, 't', 'p', $5)"
+        >>,
+        [MsgId, Uid, Member, MsgKey]
+    ).
+
+l03_insert_olm(Uid) ->
+    {ok, _} = elib_pg:query(
+        <<
+            "INSERT INTO public.olm_identity (id, user_id, device_id,"
+            " ed25519_key, curve25519_key, signature)"
+            " VALUES ($1, $2, 'd1', 'ek', 'ck', 'sig')"
+        >>,
+        [new_uid(), Uid]
+    ),
+    ok.
+
+l03_assert_all_gone(Uid, MsgId) ->
+    {ok, []} = elib_pg:query(<<"SELECT id FROM public.\"user\" WHERE id = $1">>, [Uid]),
+    {ok, []} = elib_pg:query(
+        <<"SELECT id FROM public.user_device WHERE user_id = $1">>, [Uid]
+    ),
+    {ok, []} = elib_pg:query(
+        <<"SELECT id FROM public.push_token WHERE user_id = $1">>, [Uid]
+    ),
+    {ok, []} = elib_pg:query(<<"SELECT id FROM public.msg_c2c WHERE id = $1">>, [MsgId]),
+    {ok, []} = elib_pg:query(
+        <<"SELECT id FROM public.olm_identity WHERE user_id = $1">>, [Uid]
+    ),
+    {ok, []} = elib_pg:query(
+        <<"SELECT id FROM public.user_deletion_request WHERE user_id = $1">>, [Uid]
+    ),
+    ok.
+
+restore_replay_no_revival_test_() ->
+    ?TEST_WITH_DB(fun() ->
+        Uid = new_uid(),
+        Member = new_uid(),
+        MsgId = new_uid(),
+        ResurrectedMsgId = new_uid(),
+        try
+            %% --- 删除前（= 旧备份时点）：数据 + 权限载体 + 过期注销申请 ---
+            ok = create_user(Uid),
+            ok = create_user(Member),
+            ok = seed_expired_request(Uid),
+            ok = l03_insert_grants(Uid),
+            {ok, 1} = l03_insert_message(Uid, Member, MsgId),
+            ok = l03_insert_olm(Uid),
+            %% --- 首次删除编排（BE-18 语义，五域放行）---
+            ok = ensure_sweeper(ok_all),
+            {ok, 1} = user_deletion_logic:cleanup_now(),
+            ok = l03_assert_all_gone(Uid, MsgId),
+            {ok, #{<<"status">> := <<"completed">>}} =
+                user_deletion_job_repo:find_by_user(Uid),
+            %% --- 模拟恢复旧备份（删除前时点）：被删行原样回到库里 ---
+            %% 旧备份先于任务行存在：清掉 completed 任务，恢复 request/
+            %% 数据/权限行，等价于 pg_restore 一份删除前 dump 的内容效果。
+            {ok, _} = elib_pg:query(
+                <<"DELETE FROM public.user_deletion_job WHERE user_id = $1">>, [Uid]
+            ),
+            ok = create_user(Uid),
+            {ok, _} = elib_pg:query(
+                <<"UPDATE public.\"user\" SET status = 2 WHERE id = $1">>, [Uid]
+            ),
+            ok = seed_expired_request(Uid),
+            ok = l03_insert_grants(Uid),
+            {ok, _} = elib_pg:query(
+                <<
+                    "INSERT INTO public.msg_c2c (id, from_id, to_id, msg_id, msg_type, payload, conv_seq)"
+                    " VALUES ($1, $2, $3, $4, 't', 'p', 2)"
+                >>,
+                [
+                    ResurrectedMsgId,
+                    Uid,
+                    Member,
+                    <<"l03r-", (integer_to_binary(ResurrectedMsgId))/binary>>
+                ]
+            ),
+            ok = l03_insert_olm(Uid),
+            %% 重放前如实断言：旧数据/旧令牌确实随恢复回来了（残留可见，
+            %% 这是备份时点语义，不是缺陷；防线在下面的重放）
+            {ok, [_]} = elib_pg:query(
+                <<"SELECT id FROM public.\"user\" WHERE id = $1">>, [Uid]
+            ),
+            {ok, [_]} = elib_pg:query(
+                <<"SELECT id FROM public.user_device WHERE user_id = $1">>, [Uid]
+            ),
+            {ok, [_]} = elib_pg:query(
+                <<"SELECT id FROM public.push_token WHERE user_id = $1">>, [Uid]
+            ),
+            {ok, [_]} = elib_pg:query(
+                <<"SELECT id FROM public.msg_c2c WHERE from_id = $1">>, [Uid]
+            ),
+            %% --- 墓碑重放：恢复后、开放访问前，同一编排再执行 ---
+            {ok, 1} = user_deletion_logic:cleanup_now(),
+            %% --- 防复活断言：被删数据不复现、撤权不复活 ---
+            ok = l03_assert_all_gone(Uid, ResurrectedMsgId),
+            {ok, #{<<"status">> := <<"completed">>, <<"finished_at">> := FinishedAt}} =
+                user_deletion_job_repo:find_by_user(Uid),
+            ?assert(FinishedAt =/= null),
+            ?assert(FinishedAt =/= undefined)
+        after
+            reset_preflight_stub(),
+            cleanup_user(Uid),
+            cleanup_user(Member),
+            {ok, _} = elib_pg:execute(
+                <<"DELETE FROM public.msg_store_seq WHERE conv_key=$1">>,
+                [msg_archive_repo:conv_key(<<"c2c">>, Uid, Member)]
+            )
+        end
+    end).
+
+%% ===================================================================
+%% 6. L-03:LOCAL:02 Legal Hold 不支持时不宣称支持
+%%    注册表显式 unsupported；导出面显式 supported=false（不静默
+%%    省略、不宣称支持）；无隐藏开关可翻转；合成演练 ≠ 生产恢复
+%%    验收（口径见 scripts/restore_pg.sh 恢复完成提示）。
+%% ===================================================================
+
+l03_retention_policy_path() ->
+    Cwd = filename:absname(""),
+    Candidates = [
+        filename:join(Cwd, "docs/compliance/retention-policy.yml"),
+        filename:join(filename:dirname(Cwd), "docs/compliance/retention-policy.yml")
+    ],
+    case [P || P <- Candidates, filelib:is_regular(P)] of
+        [P | _] -> P;
+        [] -> erlang:error({retention_policy_not_found, Candidates})
+    end.
+
+legal_hold_unsupported_not_claimed_test_() ->
+    ?TEST_WITH_APP(fun() ->
+        %% 注册表口径：counsel 设计落地前全仓不支持
+        {ok, Bin} = file:read_file(l03_retention_policy_path()),
+        {_, _} = binary:match(Bin, <<"legal_hold: unsupported">>),
+        %% 运行时导出面：显式 supported=false，不静默省略也不宣称支持
+        #{<<"supported">> := false} = user_export_logic:legal_hold_status(),
+        %% 不存在能把「不支持」翻转成「支持」的隐藏开关
+        undefined = application:get_env(imboy, legal_hold),
+        undefined = application:get_env(imboy, legal_hold_enabled)
+    end).
+
+%% ===================================================================
+%% 7. L-03 shell 演练钩子（eunit 不自动发现非 _test 函数；仅供
+%%    .task-state 演练脚本以 erl -eval 驱动真实编排的种子/删除/
+%%    重放/状态探针。绝不在 eunit 轨道内调用——它们会 halt/写标记）
+%% ===================================================================
+
+-define(L03_STATE_QUERIES, [
+    {user, <<"SELECT count(*) FROM public.\"user\" WHERE id = $1">>},
+    {user_device, <<"SELECT count(*) FROM public.user_device WHERE user_id = $1">>},
+    {push_token, <<"SELECT count(*) FROM public.push_token WHERE user_id = $1">>},
+    {msg_c2c, <<"SELECT count(*) FROM public.msg_c2c WHERE from_id = $1 OR to_id = $1">>},
+    {olm_identity, <<"SELECT count(*) FROM public.olm_identity WHERE user_id = $1">>},
+    {deletion_request, <<"SELECT count(*) FROM public.user_deletion_request WHERE user_id = $1">>},
+    {deletion_job, <<"SELECT count(*) FROM public.user_deletion_job WHERE user_id = $1">>}
+]).
+
+l03_count(Sql, Uid) ->
+    {ok, [#{<<"count">> := N}]} = elib_pg:query(Sql, [Uid]),
+    N.
+
+l03_run(Fun) ->
+    try
+        ok =
+            case persistent_term:get({?MODULE, l03_booted}, false) of
+                true ->
+                    ok;
+                false ->
+                    {ok, _} = eunit_runner:eunit_setup_with_db(),
+                    persistent_term:put({?MODULE, l03_booted}, true),
+                    ok
+            end,
+        Fun()
+    catch
+        Class:Reason:Stack ->
+            io:format("L03_ERROR ~p:~p~n~p~n", [Class, Reason, Stack]),
+            halt(2)
+    end.
+
+%% 演练种子：可证明归属的合成用户（数据 + 权限 + 过期注销申请），
+%% 无任务行 = 删除前时点（等价于“即将被备份的旧状态”）。
+l03_seed_drill_user() ->
+    l03_run(fun() ->
+        Uid = new_uid(),
+        Member = new_uid(),
+        MsgId = new_uid(),
+        ok = create_user(Uid),
+        ok = create_user(Member),
+        {ok, _} = elib_pg:query(
+            <<"UPDATE public.\"user\" SET status = 2 WHERE id = $1">>, [Uid]
+        ),
+        ok = l03_insert_grants(Uid),
+        {ok, 1} = l03_insert_message(Uid, Member, MsgId),
+        ok = l03_insert_olm(Uid),
+        {ok, _} = elib_pg:query(
+            <<
+                "INSERT INTO public.user_deletion_request (id, user_id, status, requested_at)"
+                " VALUES ($1, $2, 'requested', NOW() - interval '61 days')"
+            >>,
+            [new_uid(), Uid]
+        ),
+        io:format("L03_SEEDED uid=~b member=~b msg=~b~n", [Uid, Member, MsgId]),
+        ok
+    end),
+    halt(0).
+
+%% 演练删除/墓碑重放：真实 BE-18 编排（五域放行），成功以退出码表达。
+l03_delete_drill_user(Uid) when is_integer(Uid) ->
+    l03_run(fun() ->
+        ok = ensure_sweeper(ok_all),
+        Result = user_deletion_logic:cleanup_now(),
+        Job = user_deletion_job_repo:find_by_user(Uid),
+        lists:foreach(
+            fun({K, Sql}) ->
+                io:format("L03_STATE ~b ~s=~b~n", [Uid, K, l03_count(Sql, Uid)])
+            end,
+            ?L03_STATE_QUERIES
+        ),
+        io:format("L03_DELETE uid=~b result=~p job=~p~n", [Uid, Result, Job]),
+        case {Result, Job} of
+            {{ok, N}, {ok, #{<<"status">> := <<"completed">>}}} when N >= 1 ->
+                ok;
+            Other ->
+                io:format("L03_DELETE_UNEXPECTED ~p~n", [Other]),
+                halt(3)
+        end
+    end),
+    halt(0).
+
+%% 演练状态探针：逐表打印 key=value，供 bash 断言。
+l03_state(Uid) when is_integer(Uid) ->
+    l03_run(fun() ->
+        lists:foreach(
+            fun({K, Sql}) ->
+                io:format("L03_STATE ~b ~s=~b~n", [Uid, K, l03_count(Sql, Uid)])
+            end,
+            ?L03_STATE_QUERIES
+        ),
+        ok
+    end),
+    halt(0).
