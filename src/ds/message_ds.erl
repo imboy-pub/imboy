@@ -78,6 +78,11 @@ send_next_loop(_ToUid, _MsgId, _Msg, [], _DIDLi, _IncludeDIDLi) ->
 send_next_loop(ToUid, MsgId, Msg, [Delay | Tail], DIDLi, IncludeDIDLi) ->
     Members = imboy_syn:list_by_uid(ToUid),
 
+    %% BE-14：投递通道与帧字节数，每条消息只解码一次（非逐设备）：
+    %% C2G 实时扇出 = bulk（热点群，须让出 direct 预留），其余
+    %% （C2C/S2C/C2S/离线补拉）= direct。解码失败按 direct（legacy 帧）。
+    {Lane, FrameBytes} = delivery_lane_and_bytes(Msg),
+
     ok = ?DEBUG_LOG({send_next_loop_start, MsgId, Delay, length(Members)}),
 
     Filtered =
@@ -121,9 +126,11 @@ send_next_loop(ToUid, MsgId, Msg, [Delay | Tail], DIDLi, IncludeDIDLi) ->
                     ok;
                 _ ->
                     ok = ?DEBUG_LOG({immediate_publish, MsgId, length(Filtered2)}),
-                    %% 仅向未 ACK 的设备发送，避免同 UID 下已 ACK 设备被重复投递
+                    %% 仅向未 ACK 的设备发送，避免同 UID 下已 ACK 设备被重复投递；
+                    %% BE-14：发送前过慢端预算门——超预算设备不入队（降级为合并
+                    %% 轻通知，事实在库由 pull 补齐，不丢事实、不虚增已读）。
                     [
-                        imboy_syn:start_delivery_timer(0, Pid, Msg)
+                        budgeted_immediate(Pid, ToUid, Msg, Lane, FrameBytes)
                      || {Pid, {_Dtype, _DID}} <- Filtered2
                     ],
                     send_next_loop(ToUid, MsgId, Msg, Tail, DIDLi, IncludeDIDLi)
@@ -146,18 +153,58 @@ send_next_loop(ToUid, MsgId, Msg, [Delay | Tail], DIDLi, IncludeDIDLi) ->
             ],
             [
                 begin
-                    TimerKey = {ToUid, DID, MsgId},
-                    %% 专用 ACK ETS 的 TTL 单位为毫秒：覆盖 timer 存活期并额外保留 5s，
-                    %% 供已 fire/ACK 交错时的取消与精确清理使用。
-                    imboy_syn:schedule_ack_retry(
-                        Delay, Pid, TimerKey, {Tail, TimerKey, Msg}, Delay + 5000
-                    ),
-                    ok = ?DEBUG_LOG({timer_set, MsgId, Delay, DID})
+                    %% BE-14：重试跳续排同样过预算门——慢端不积压重试 timer、
+                    %% 不留僵尸链（defer 即停链，补齐由轻通知引导的 pull 覆盖）。
+                    budgeted_retry(Pid, ToUid, DID, MsgId, Delay, Tail, Msg, Lane, FrameBytes)
                 end
              || {Pid, {_Dtype, DID}} <- Filtered3
             ],
             ok
     end.
+
+%% BE-14：立即帧的预算化投递：allow 直投；defer 降级（合并轻通知）。
+budgeted_immediate(Pid, ToUid, Msg, Lane, FrameBytes) ->
+    case imboy_syn:delivery_budget_check(Pid, FrameBytes, Lane) of
+        allow ->
+            imboy_syn:start_delivery_timer(0, Pid, Msg);
+        defer ->
+            ok = imboy_syn:defer_delivery(Pid, ToUid)
+    end.
+
+%% BE-14：重试跳的预算化续排：allow 续排 timer；defer 停链降级。
+budgeted_retry(Pid, ToUid, DID, MsgId, Delay, Tail, Msg, Lane, FrameBytes) ->
+    case imboy_syn:delivery_budget_check(Pid, FrameBytes, Lane) of
+        allow ->
+            TimerKey = {ToUid, DID, MsgId},
+            %% 专用 ACK ETS 的 TTL 单位为毫秒：覆盖 timer 存活期并额外保留 5s，
+            %% 供已 fire/ACK 交错时的取消与精确清理使用。
+            imboy_syn:schedule_ack_retry(
+                Delay, Pid, TimerKey, {Tail, TimerKey, Msg}, Delay + 5000
+            ),
+            ok = ?DEBUG_LOG({timer_set, MsgId, Delay, DID});
+        defer ->
+            ok = imboy_syn:defer_delivery(Pid, ToUid)
+    end.
+
+%% BE-14：投递通道判定。bulk 仅指 C2G 实时扇出（热点群扇出主体）；
+%% ephemeral 流（imboy_syn:publish 直推的 stream_delta 等）不经
+%% send_next，本就不受预算门影响（瞬态设计，定稿仍走持久通道）。
+-spec delivery_lane_and_bytes(binary() | term()) -> {bulk | direct, non_neg_integer()}.
+delivery_lane_and_bytes(Msg) when is_binary(Msg) ->
+    Bytes = byte_size(Msg),
+    Lane =
+        try jsone:decode(Msg, [{object_format, map}]) of
+            #{<<"type">> := <<"C2G">>} ->
+                bulk;
+            _ ->
+                direct
+        catch
+            _:_ ->
+                direct
+        end,
+    {Lane, Bytes};
+delivery_lane_and_bytes(_Msg) ->
+    {direct, 0}.
 
 %% @doc 组装系统消息（v2.0 格式）
 %% 为系统到客户端的消息创建标准格式。

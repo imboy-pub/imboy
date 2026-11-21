@@ -28,6 +28,11 @@ run(Info, State, Continue, ContinueBinary) ->
                 end,
             case Allowed of
                 true ->
+                    %% BE-14：连接消费到 pull_offline_msg 触发帧（登录阈值或
+                    %% 预算降级轻通知）即释放合并通知槽——客户端将拉取补齐，
+                    %% 后续新滞留可再通知。授权在前、通知槽释放在后：
+                    %% 被拒投递不清槽（未到达客户端）。
+                    _ = maybe_release_backlog_notice(Decoded),
                     Fresh = refresh_quote(Decoded),
                     FreshInfo =
                         case Fresh =:= Decoded of
@@ -152,3 +157,11 @@ cancel_ack(Uid, DID, MsgId, Timestamp, State) ->
             ok
     end,
     {ok, State, hibernate}.
+
+%% BE-14：pull_offline_msg 触发帧的消费即合并通知槽释放（见 run/4 调用点
+%% 注释）。仅识别解码成功的 map 帧；invalid_json 保持槽位不变。
+maybe_release_backlog_notice(#{<<"action">> := <<"pull_offline_msg">>}) ->
+    _ = imboy_syn:clear_backlog_notice(self()),
+    ok;
+maybe_release_backlog_notice(_) ->
+    ok.

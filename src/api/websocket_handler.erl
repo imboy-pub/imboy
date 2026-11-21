@@ -768,6 +768,9 @@ websocket_info_authorized(_Info, State) ->
 -spec terminate(term(), cowboy_req:req(), map()) -> ok.
 terminate(Reason, _Req, State) ->
     ok = ?DEBUG_LOG({terminate, Reason}),
+    %% BE-14：连接终止清理投递预算/轻通知槽（pid 键行不残留；聚合计数
+    %% 保留——接受事实仍可解释）。drop 对表缺失/行缺失均幂等。
+    ok = imboy_syn:drop_delivery_budget(self()),
     case maps:find(current_uid, State) of
         {ok, Uid} when is_integer(Uid) ->
             DID = maps:get(did, State, <<>>),
