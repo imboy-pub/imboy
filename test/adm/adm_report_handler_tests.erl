@@ -269,3 +269,93 @@ init_list_accepts_message_target_type_test_() ->
             ?assertEqual(200, maps:get(response_status, RespReq))
         end
     ).
+
+%% G-01:LOCAL:01 —— 越权拒绝（写侧）：无 reports:handle 权限的角色
+%% 调用 resolve / batch_resolve，立即拒绝且处置逻辑零调用（不吞拒绝、
+%% 不回退到无权限执行）。
+init_resolve_denies_without_permission_test_() ->
+    ?WITH_MECKS(
+        [
+            {cowboy_req, [
+                {'method', 1, fun(_Req) -> <<"POST">> end}
+            ]},
+            {elib_param, [
+                {'post', 1, fun(_Req) ->
+                    #{
+                        <<"report_id">> => <<"424243">>,
+                        <<"result">> => <<"2">>,
+                        <<"note">> => <<"越权尝试"/utf8>>
+                    }
+                end}
+            ]},
+            {adm_user_logic, [
+                {'find', 3, fun(9005, <<"id,role_id">>, _Key) ->
+                    #{<<"id">> => 9005, <<"role_id">> => [2]}
+                end}
+            ]},
+            {adm_index_handler, [
+                {'role_acl', 1, fun(2) ->
+                    {<<"viewer">>, [<<"reports:read">>], []}
+                end}
+            ]},
+            {elib_response, [
+                {'error', 3, fun(Req, _Msg, _Code) -> {replied, Req} end}
+            ]},
+            {report_logic, [
+                {'admin_resolve', 5, fun(_, _, _, _, _) ->
+                    erlang:error(should_not_be_called)
+                end}
+            ]}
+        ],
+        fun() ->
+            {ok, RespReq, _State} = adm_report_handler:init(#{}, #{
+                action => resolve, adm_user_id => 9005
+            }),
+            ?assertEqual({replied, #{}}, RespReq),
+            ?assertEqual(0, meck:num_calls(report_logic, admin_resolve, 5))
+        end
+    ).
+
+init_batch_resolve_denies_without_permission_test_() ->
+    ?WITH_MECKS(
+        [
+            {cowboy_req, [
+                {'method', 1, fun(_Req) -> <<"POST">> end}
+            ]},
+            {elib_param, [
+                {'post', 1, fun(_Req) ->
+                    #{
+                        <<"target_type">> => <<"message">>,
+                        <<"report_ids">> => [<<"1">>, <<"2">>],
+                        <<"result">> => <<"1">>,
+                        <<"note">> => <<"越权批量尝试"/utf8>>
+                    }
+                end}
+            ]},
+            {adm_user_logic, [
+                {'find', 3, fun(9006, <<"id,role_id">>, _Key) ->
+                    #{<<"id">> => 9006, <<"role_id">> => [2]}
+                end}
+            ]},
+            {adm_index_handler, [
+                {'role_acl', 1, fun(2) ->
+                    {<<"viewer">>, [<<"reports:read">>], []}
+                end}
+            ]},
+            {elib_response, [
+                {'error', 3, fun(Req, _Msg, _Code) -> {replied, Req} end}
+            ]},
+            {report_logic, [
+                {'admin_batch_resolve', 5, fun(_, _, _, _, _) ->
+                    erlang:error(should_not_be_called)
+                end}
+            ]}
+        ],
+        fun() ->
+            {ok, RespReq, _State} = adm_report_handler:init(#{}, #{
+                action => batch_resolve, adm_user_id => 9006
+            }),
+            ?assertEqual({replied, #{}}, RespReq),
+            ?assertEqual(0, meck:num_calls(report_logic, admin_batch_resolve, 5))
+        end
+    ).
