@@ -1,0 +1,79 @@
+# PUT /api/v1/personal-history/key-package
+put:
+  tags: [msg]
+  summary: 上传个人历史用途密钥包 / Put personal-history key package
+  description: |
+    ## 中文 / English
+    「账号历史用途」独立密钥包（HKDF info="imboy/personal-history/v1"，
+    与投递 E2EE 密钥树用途隔离，§4/§10.4）。仅存版本化 wrapped 密文与
+    KDF 元数据；kdf_meta 迭代下限 ≥310000；PEM 明文拒收（§10.5）。
+    同 key_version 重复上传 → 409 version_conflict。Web N1 面挂 POST。
+    Purpose-separated wrapped key package; iterations >= 310000; plaintext
+    PEM rejected; duplicate key_version → 409.
+  operationId: personalHistoryKeyPackage
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          type: object
+          required: [key_version, wrapped_key, kdf_meta, integrity_hash]
+          properties:
+            key_version:
+              type: integer
+              format: int64
+              minimum: 1
+            wrapped_key:
+              type: string
+              maxLength: 1048576
+              description: base64 封装密钥密文（PEM 明文拒收）。 / base64 wrapped key ciphertext.
+            kdf_meta:
+              type: object
+              required: [algorithm, iterations]
+              properties:
+                algorithm:
+                  type: string
+                  description: KDF 算法标识（如 pbkdf2-sha256）。 / KDF algorithm id.
+                iterations:
+                  type: integer
+                  minimum: 310000
+                  description: 迭代下限钉 ≥310000（§10.4）。 / Iterations floor.
+            integrity_hash:
+              type: string
+              maxLength: 128
+              description: 完整性哈希（非 MAC 的边界在恢复 UI 说明）。 / Integrity hash.
+  responses:
+    '200':
+      description: 密钥包落库。 / Stored.
+      content:
+        application/json:
+          schema:
+            allOf:
+              - $ref: '../../../../components/schemas/Envelope.yaml'
+              - type: object
+                properties:
+                  payload:
+                    type: object
+                    required: [key_version, generation]
+                    properties:
+                      key_version:
+                        type: integer
+                        format: int64
+                      generation:
+                        type: integer
+                        format: int64
+                      created_at:
+                        type: integer
+                        format: int64
+    '403':
+      description: not_enabled
+    '409':
+      description: version_conflict
+    '410':
+      description: generation_expired
+    '422':
+      description: malformed_package
+    '503':
+      description: transient_failure
+    '401':
+      description: 未认证 / Unauthenticated

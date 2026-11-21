@@ -255,6 +255,24 @@ paths:
     $ref: './paths/api/v1/msg/reaction-remove.yaml'
   /api/v1/msg/reaction/list:
     $ref: './paths/api/v1/msg/reaction-list.yaml'
+  /api/v1/personal-history/status:
+    $ref: './paths/api/v1/msg/personal-history-status.yaml'
+  /api/v1/personal-history/opt-in:
+    $ref: './paths/api/v1/msg/personal-history-opt-in.yaml'
+  /api/v1/personal-history/upload:
+    $ref: './paths/api/v1/msg/personal-history-upload.yaml'
+  /api/v1/personal-history/changes:
+    $ref: './paths/api/v1/msg/personal-history-changes.yaml'
+  /api/v1/personal-history/ack-cursor:
+    $ref: './paths/api/v1/msg/personal-history-ack-cursor.yaml'
+  /api/v1/personal-history/page:
+    $ref: './paths/api/v1/msg/personal-history-page.yaml'
+  /api/v1/personal-history/key-package:
+    $ref: './paths/api/v1/msg/personal-history-key-package.yaml'
+  /api/v1/personal-history/disable:
+    $ref: './paths/api/v1/msg/personal-history-disable.yaml'
+  /api/v1/personal-history/delete-status:
+    $ref: './paths/api/v1/msg/personal-history-delete-status.yaml'
   /api/v1/conversation/online:
     $ref: './paths/api/v1/conversation/online.yaml'
   /api/v1/conversation/mine:

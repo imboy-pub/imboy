@@ -1,0 +1,55 @@
+# GET /api/v1/personal-history/delete-status
+get:
+  tags: [msg]
+  summary: 查询本人历史清理进度 / Query my history purge progress
+  description: |
+    ## 中文 / English
+    phase：idle（未开启/无可清理）/ pending（清理进行中，可重入）/
+    online_done（在线清理完成）。诚实化（§10.6）：purge 为逻辑删除+密钥
+    封装销毁，非密码学擦除；PITR/备份窗口内存在回卷可能，窗口内读闸门
+    保持关闭；备份到期由运维侧 backup_window_hint 提示。
+    phase: idle / pending / online_done. Honest purge semantics: logical
+    delete, PITR window advisory included.
+  operationId: personalHistoryDeleteStatus
+  responses:
+    '200':
+      description: 清理进度。 / Purge progress.
+      content:
+        application/json:
+          schema:
+            allOf:
+              - $ref: '../../../../components/schemas/Envelope.yaml'
+              - type: object
+                properties:
+                  payload:
+                    type: object
+                    required: [phase, state, failures]
+                    properties:
+                      phase:
+                        type: string
+                        enum: [idle, pending, online_done]
+                      state:
+                        type: string
+                        enum: [OFF, ON, OFF_PURGE_PENDING, OFF_PURGED]
+                      generation:
+                        type: integer
+                        format: int64
+                      purged_at:
+                        type: integer
+                        format: int64
+                        description: 在线清理完成 Unix 毫秒。 / Unix ms when online purge finished.
+                      failures:
+                        type: array
+                        items:
+                          type: string
+                        description: 清理失败分项（在线段为空）。 / Failure items; empty when online segment done.
+                      retry:
+                        type: boolean
+                        description: pending 时可重入（重放删账）。 / Re-enterable purge when pending.
+                      backup_window_hint:
+                        type: string
+                        description: 在线清理完成后的 PITR/备份窗口提示。 / PITR/backup window advisory.
+    '503':
+      description: transient_failure
+    '401':
+      description: 未认证 / Unauthenticated

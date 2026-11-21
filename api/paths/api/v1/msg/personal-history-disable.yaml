@@ -1,0 +1,48 @@
+# POST /api/v1/personal-history/disable
+post:
+  tags: [msg]
+  summary: 关闭并删除本人云端历史 / Disable and purge my cloud history
+  description: |
+    ## 中文 / English
+    原子 generation++ → OFF_PURGE_PENDING：删除全部归档密文与游标、销毁
+    本用途密钥封装，保留最小防复活标记（account/domain/generation/purged_at）。
+    返回 202 purge_ticket；旧代次上传/页令牌此后全部 410（W4）。本机历史
+    与对方独立副本不受影响。purge=逻辑删除+封装销毁，非密码学擦除（§10.6）。
+    Atomic generation++ then purge ciphertext/key wrappings; keeps the
+    minimal anti-revival marker; 202 with purge_ticket; stale generations
+    get 410 afterwards. Logical delete, not cryptographic erasure.
+  operationId: personalHistoryDisable
+  responses:
+    '202':
+      description: 已受理；purge_ticket 供 delete-status 查询。 / Accepted; ticket for delete-status.
+      content:
+        application/json:
+          schema:
+            allOf:
+              - $ref: '../../../../components/schemas/Envelope.yaml'
+              - type: object
+                properties:
+                  payload:
+                    type: object
+                    required: [state, purge_ticket, generation]
+                    properties:
+                      state:
+                        type: string
+                        enum: [OFF_PURGE_PENDING]
+                      purge_ticket:
+                        type: string
+                        description: 清理追踪票据（幂等重入同代次）。 / Purge tracking ticket.
+                      generation:
+                        type: integer
+                        format: int64
+                        description: 关闭后的新代次（旧代次写全 410）。 / New generation after disable.
+                      phase:
+                        type: string
+                        enum: [pending]
+                        description: 在线段未即时完成时出现（可重入补齐）。 / Present when online purge still pending.
+    '403':
+      description: not_enabled（未开启无可关闭）
+    '503':
+      description: transient_failure
+    '401':
+      description: 未认证 / Unauthenticated
