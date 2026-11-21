@@ -746,7 +746,11 @@ protobuf_client_ack_success_test_() ->
                 #{
                     <<"id">> => <<"msg_pb_1">>,
                     <<"type">> => <<"CLIENT_ACK">>,
-                    <<"msg_type">> => <<"client_ack">>,
+                    %% BE-01 fail-closed 漏斗后 client_ack 无 ContentType 枚举值，
+                    %% 真实线上 protobuf 客户端走 encode_ws_msg 自动 JSON 回退；
+                    %% 本夹具保留二进制 protobuf ACK 路径覆盖，msg_type 置空串
+                    %% （与漏斗合同一致的可编码形态）。
+                    <<"msg_type">> => <<>>,
                     <<"payload">> => AckPayload
                 }
             ),
@@ -788,7 +792,11 @@ protobuf_client_ack_did_mismatch_test_() ->
                 #{
                     <<"id">> => <<"msg_pb_2">>,
                     <<"type">> => <<"CLIENT_ACK">>,
-                    <<"msg_type">> => <<"client_ack">>,
+                    %% BE-01 fail-closed 漏斗后 client_ack 无 ContentType 枚举值，
+                    %% 真实线上 protobuf 客户端走 encode_ws_msg 自动 JSON 回退；
+                    %% 本夹具保留二进制 protobuf ACK 路径覆盖，msg_type 置空串
+                    %% （与漏斗合同一致的可编码形态）。
+                    <<"msg_type">> => <<>>,
                     <<"payload">> => AckPayload
                 }
             ),
@@ -1042,7 +1050,11 @@ protobuf_client_ack_bypasses_throttle_test_() ->
                 #{
                     <<"id">> => <<"msg_th">>,
                     <<"type">> => <<"CLIENT_ACK">>,
-                    <<"msg_type">> => <<"client_ack">>,
+                    %% BE-01 fail-closed 漏斗后 client_ack 无 ContentType 枚举值，
+                    %% 真实线上 protobuf 客户端走 encode_ws_msg 自动 JSON 回退；
+                    %% 本夹具保留二进制 protobuf ACK 路径覆盖，msg_type 置空串
+                    %% （与漏斗合同一致的可编码形态）。
+                    <<"msg_type">> => <<>>,
                     <<"payload">> => AckPayload
                 }
             ),
