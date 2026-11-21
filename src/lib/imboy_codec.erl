@@ -290,12 +290,14 @@ toplevel_pb_lossless(_) ->
 %%
 %% 判据是白名单：e2ee map（含 keys 列表元素）出现任何 E2EEMeta 没有的字段，
 %% 即视为不可无损表达。这样 PFv3 字段与一切未来扩展字段都被自动覆盖，
-%% 不需要随协议演进逐个补判断。
+%% 两个 proto3 标量的显式零会被序列化省略，需回退 JSON 保留字段存在性。
 -spec e2ee_pb_lossless(map()) -> boolean().
 e2ee_pb_lossless(Msg) when is_map(Msg) ->
     case maps:get(<<"e2ee">>, Msg, null) of
         E2EE when is_map(E2EE) ->
             no_extra_keys(E2EE, ?E2EE_PB_FIELDS) andalso
+                maps:get(<<"message_type">>, E2EE, undefined) =/= 0 andalso
+                maps:get(<<"message_index">>, E2EE, undefined) =/= 0 andalso
                 keys_pb_lossless(maps:get(<<"keys">>, E2EE, []));
         _ ->
             true
