@@ -19,6 +19,7 @@
 -export([ack_cursor/2]).
 -export([page/2]).
 -export([put_key_package/2]).
+-export([get_key_package/2]).
 -export([disable/1]).
 -export([delete_status/1]).
 
@@ -411,6 +412,100 @@ key_package_item(Params) ->
         true ->
             decode_wrapped_key(WrappedB64, KdfMeta, IntegrityHash, KeyVersion)
     end.
+
+%% ===================================================================
+%% 2.5b GET key-package（mh04-key-package-read-addendum：恢复读取入口）
+%% ===================================================================
+
+%% JS 安全整数上界（与 276-279 DDL / addendum 同域）。
+-define(PH_SAFE_INT_MAX, 9007199254740991).
+
+%% @doc 读取已封装密钥包：参数 → 授权（ON + 当前代次）→ 行级读取。
+%%
+%% 校验顺序（addendum）：参数无效 422 malformed_package_request →
+%% 未开启 403 not_enabled → 代次失效 410 generation_expired →
+%% 指定包缺失 422 key_package_missing → 暂时无法读取 503 transient_failure。
+%% retired_at 不自动否定历史旧版本可读性（是否已销毁按当前授权及删账判定）。
+-spec get_key_package(integer(), map()) -> {ok, map()} | {error, binary(), integer()}.
+get_key_package(AccountId, Params) ->
+    Domain = personal_history_ds:domain(),
+    case key_package_read_params(Params) of
+        {error, Code} ->
+            {error, Code, 422};
+        {ok, {KeyVersion, Generation}} ->
+            get_key_package_authorized(AccountId, Domain, KeyVersion, Generation)
+    end.
+
+get_key_package_authorized(AccountId, Domain, KeyVersion, Generation) ->
+    case personal_history_repo:find_authorization(AccountId, Domain) of
+        {ok, #{<<"state">> := <<"ON">>, <<"generation">> := G}} ->
+            case G =:= Generation of
+                false ->
+                    %% 代次比对当前 ON 授权：旧代次读一律 410（防复活/跨代读）。
+                    {error, <<"generation_expired">>, 410};
+                true ->
+                    read_key_package(AccountId, Domain, KeyVersion, G)
+            end;
+        {ok, #{<<"state">> := State}} when
+            State =:= <<"OFF_PURGE_PENDING">>; State =:= <<"OFF_PURGED">>
+        ->
+            {error, <<"generation_expired">>, 410};
+        {ok, _} ->
+            {error, <<"not_enabled">>, 403};
+        {error, _Reason} ->
+            {error, <<"transient_failure">>, 503}
+    end.
+
+read_key_package(AccountId, Domain, KeyVersion, Generation) ->
+    case
+        personal_history_repo:find_key_package_for_generation(
+            AccountId, Domain, KeyVersion, Generation
+        )
+    of
+        {ok, undefined} ->
+            {error, <<"key_package_missing">>, 422};
+        {ok, Row} ->
+            {ok, #{
+                <<"key_version">> => maps:get(<<"key_version">>, Row),
+                <<"generation">> => maps:get(<<"generation">>, Row),
+                <<"wrapped_key">> => base64:encode(maps:get(<<"wrapped_key">>, Row)),
+                <<"kdf_meta">> => decode_jsonb(maps:get(<<"kdf_meta">>, Row)),
+                <<"integrity_hash">> => maps:get(<<"integrity_hash">>, Row),
+                <<"created_at">> => maps:get(<<"created_at">>, Row)
+            }};
+        {error, _Reason} ->
+            {error, <<"transient_failure">>, 503}
+    end.
+
+%% @doc 查询参数恰好一份 key_version 与一份 generation，十进制 ASCII 数字
+%% （无符号、无前导零、无指数/浮点）；generation 0..?PH_SAFE_INT_MAX、
+%% version 1..?PH_SAFE_INT_MAX。重复份数由 HTTP 层（parse_qs 计数）裁决。
+key_package_read_params(Params) ->
+    KeyVersionRaw = maps:get(key_version, Params, undefined),
+    GenerationRaw = maps:get(generation, Params, undefined),
+    case {decimal_domain_int(KeyVersionRaw, 1), decimal_domain_int(GenerationRaw, 0)} of
+        {{ok, KeyVersion}, {ok, Generation}} ->
+            {ok, {KeyVersion, Generation}};
+        _ ->
+            {error, <<"malformed_package_request">>}
+    end.
+
+decimal_domain_int(Raw, Min) when is_binary(Raw), byte_size(Raw) > 0 ->
+    case re:run(Raw, <<"^(0|[1-9][0-9]*)$">>, [{capture, none}]) of
+        match ->
+            try binary_to_integer(Raw) of
+                Value when Value >= Min, Value =< ?PH_SAFE_INT_MAX ->
+                    {ok, Value};
+                _ ->
+                    {error, out_of_domain}
+            catch
+                _:_ -> {error, out_of_domain}
+            end;
+        _ ->
+            {error, malformed}
+    end;
+decimal_domain_int(_, _) ->
+    {error, malformed}.
 
 decode_wrapped_key(WrappedB64, KdfMeta, IntegrityHash, KeyVersion) ->
     case decode_b64(WrappedB64) of

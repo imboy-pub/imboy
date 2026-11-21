@@ -692,3 +692,137 @@ malformed_upload_rejected_test_() ->
         ?assertEqual(0, archive_count(?A1)),
         cleanup_test_rows()
     end).
+
+%%%-------------------------------------------------------------------
+%%% §2.5b GET key-package（mh04-key-package-read-addendum：恢复读取入口）
+%%%-------------------------------------------------------------------
+
+get_key_package_roundtrip_test_() ->
+    ?TEST_WITH_DB_TIMEOUT(60, fun() ->
+        cleanup_test_rows(),
+        _ = opt_in(?OTHER1),
+        {ok, _} = put_key_package(?OTHER1, 1),
+        %% 正常读取：字段沿用 PUT 丰富度（wrapped_key b64 原样、kdf_meta、
+        %% integrity_hash、created_at），代次/版本同域。
+        {ok, Pkg} = personal_history_logic:get_key_package(?OTHER1, #{
+            key_version => <<"1">>, generation => <<"1">>
+        }),
+        ?assertEqual(1, maps:get(<<"key_version">>, Pkg)),
+        ?assertEqual(1, maps:get(<<"generation">>, Pkg)),
+        ?assertEqual(
+            base64:encode(<<"wrapped-v1">>),
+            maps:get(<<"wrapped_key">>, Pkg)
+        ),
+        ?assertEqual(
+            #{<<"algorithm">> => <<"pbkdf2-sha256">>, <<"iterations">> => 310000},
+            maps:get(<<"kdf_meta">>, Pkg)
+        ),
+        ?assertEqual(<<"aabbccdd1">>, maps:get(<<"integrity_hash">>, Pkg)),
+        ?assert(maps:is_key(<<"created_at">>, Pkg)),
+        %% retired_at 不自动否定历史旧版本可读性（addendum）。
+        {ok, _} = elib_pg:execute(
+            <<"UPDATE public.personal_history_key_package SET retired_at = now()",
+                " WHERE account_id = $1 AND domain = $2 AND key_version = 1">>,
+            [?OTHER1, domain()]
+        ),
+        ?assertMatch(
+            {ok, #{<<"key_version">> := 1}},
+            personal_history_logic:get_key_package(?OTHER1, #{
+                key_version => <<"1">>, generation => <<"1">>
+            })
+        ),
+        cleanup_test_rows()
+    end).
+
+get_key_package_param_domain_test_() ->
+    ?TEST_WITH_DB_TIMEOUT(60, fun() ->
+        cleanup_test_rows(),
+        %% 参数无效在授权检查之前（addendum 校验顺序）——OFF 账号同样 422。
+        Malformed = [
+            {<<"1">>, <<"x">>},
+            {<<"1">>, <<>>},
+            {<<"01">>, <<"1">>},
+            {<<"1e3">>, <<"1">>},
+            {<<"-1">>, <<"1">>},
+            {<<"+1">>, <<"1">>},
+            {<<" 1">>, <<"1">>},
+            {<<"0">>, <<"1">>},
+            {<<"1">>, <<"-0">>},
+            {<<"1">>, <<"9007199254740992">>},
+            {<<"9007199254740992">>, <<"1">>},
+            {<<>>, <<>>},
+            {not_a_binary, <<"1">>},
+            {<<"1">>, not_a_binary}
+        ],
+        lists:foreach(
+            fun({Version, Generation}) ->
+                ?assertEqual(
+                    {error, <<"malformed_package_request">>, 422},
+                    personal_history_logic:get_key_package(?OTHER2, #{
+                        key_version => Version, generation => Generation
+                    })
+                )
+            end,
+            Malformed
+        ),
+        %% 域上界含端点：版本/代次 9007199254740991 合法（解析层通过）。
+        ?assertNotEqual(
+            {error, <<"malformed_package_request">>, 422},
+            personal_history_logic:get_key_package(?OTHER2, #{
+                key_version => <<"9007199254740991">>,
+                generation => <<"9007199254740991">>
+            })
+        ),
+        cleanup_test_rows()
+    end).
+
+get_key_package_authorization_test_() ->
+    ?TEST_WITH_DB_TIMEOUT(60, fun() ->
+        cleanup_test_rows(),
+        %% 未开启（默认 OFF）：403 not_enabled。
+        ?assertEqual(
+            {error, <<"not_enabled">>, 403},
+            personal_history_logic:get_key_package(?OTHER2, #{
+                key_version => <<"1">>, generation => <<"1">>
+            })
+        ),
+        _ = opt_in(?OTHER2),
+        {ok, _} = put_key_package(?OTHER2, 1),
+        %% 代次比对当前 ON 授权：旧代次读 410 generation_expired。
+        ?assertEqual(
+            {error, <<"generation_expired">>, 410},
+            personal_history_logic:get_key_package(?OTHER2, #{
+                key_version => <<"1">>, generation => <<"0">>
+            })
+        ),
+        %% 指定包缺失（当前代次、未知版本）：422 key_package_missing。
+        ?assertEqual(
+            {error, <<"key_package_missing">>, 422},
+            personal_history_logic:get_key_package(?OTHER2, #{
+                key_version => <<"7">>, generation => <<"1">>
+            })
+        ),
+        %% 不能以不含 generation 的唯一索引代替代次条件：手工注入
+        %% key_version=9/generation=9 的行，按 (9, 当前 g=1) 查询必须落空。
+        {ok, _} = elib_pg:execute(
+            <<"INSERT INTO public.personal_history_key_package",
+                " (account_id, domain, key_version, generation, wrapped_key, kdf_meta, integrity_hash)",
+                " VALUES ($1, $2, 9, 9, $3, '{\"algorithm\":\"pbkdf2-sha256\",\"iterations\":310000}'::jsonb, 'x')">>,
+            [?OTHER2, domain(), <<"cross-gen">>]
+        ),
+        ?assertEqual(
+            {error, <<"key_package_missing">>, 422},
+            personal_history_logic:get_key_package(?OTHER2, #{
+                key_version => <<"9">>, generation => <<"1">>
+            })
+        ),
+        %% 关闭后（OFF_PURGED + 代次提升）：跨代读一律 410。
+        {ok, _} = personal_history_logic:disable(?OTHER2),
+        ?assertMatch(
+            {error, <<"generation_expired">>, 410},
+            personal_history_logic:get_key_package(?OTHER2, #{
+                key_version => <<"1">>, generation => <<"1">>
+            })
+        ),
+        cleanup_test_rows()
+    end).

@@ -157,7 +157,8 @@ get_routes() ->
                 %% 副本。默认 OFF 零写入；域+账号+代次三元隔离；服务端零解密。
                 %% Web N1 面别名（/api/v1/web/personal-history/*，§10.1）见
                 %% web_human_routes/1 Specs；opt-in/key-package Web 面按 Web 认证链
-                %% 惯例走 POST（web_methods 只收 GET/POST）。
+                %% 惯例走 POST（web_methods 只收 GET/POST）；key-package 读端点
+                %% 依 mh04 addendum 另开 GET（web 别名 jwt_methods 加 GET）。
                 {"/api/v1/personal-history/status", personal_history_handler, #{action => status}},
                 {"/api/v1/personal-history/opt-in", personal_history_handler, #{action => opt_in}},
                 {"/api/v1/personal-history/upload", personal_history_handler, #{action => upload}},
@@ -1494,14 +1495,15 @@ web_human_routes(Sources) ->
         {"msg", [<<"GET">>], access},
         {"msg/result", [<<"GET">>], access},
         %% 个人消息历史域 Web N1 面（MH-01 §10.1：两面同合同同权限谓词；
-        %% opt-in/key-package 原生面为 PUT，Web 认证链只收 GET/POST 故挂 POST）
+        %% opt-in/key-package 原生面为 PUT，Web 认证链只收 GET/POST 故挂 POST；
+        %% key-package 读端点依 mh04 addendum 挂 GET——FL-04 客户端 GET 读取）
         {"personal-history/status", [<<"GET">>], access},
         {"personal-history/opt-in", [<<"POST">>], access},
         {"personal-history/upload", [<<"POST">>], access},
         {"personal-history/changes", [<<"GET">>], access},
         {"personal-history/ack-cursor", [<<"POST">>], access},
         {"personal-history/page", [<<"GET">>], access},
-        {"personal-history/key-package", [<<"POST">>], access},
+        {"personal-history/key-package", [<<"GET">>, <<"POST">>], access},
         {"personal-history/disable", [<<"POST">>], access},
         {"personal-history/delete-status", [<<"GET">>], access},
         {"conversation/mine", [<<"GET">>], access},

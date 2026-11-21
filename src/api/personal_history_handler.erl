@@ -113,12 +113,43 @@ page(Req0, State) ->
 
 %% ===================================================================
 %% 2.5 PUT /personal-history/key-package
+%% 2.5b GET /personal-history/key-package（mh04-key-package-read-addendum）
 %% ===================================================================
 
 -spec key_package(cowboy_req:req(), map()) -> cowboy_req:req().
 key_package(Req0, State) ->
-    PostVals = elib_param:post(Req0),
-    reply(Req0, personal_history_logic:put_key_package(auth_ds:current_uid(State), PostVals)).
+    case cowboy_req:method(Req0) of
+        <<"GET">> ->
+            get_key_package(Req0, State);
+        _ ->
+            PostVals = elib_param:post(Req0),
+            reply(
+                Req0, personal_history_logic:put_key_package(auth_ds:current_uid(State), PostVals)
+            )
+    end.
+
+%% @doc 恢复读取入口：查询参数恰好一份 key_version 与一份 generation
+%% （十进制 ASCII 数字，无符号/前导零/指数/浮点；域 0..9007199254740991）。
+%% 所有响应（含错误）带 Cache-Control: no-store；错误同域固定包络。
+-spec get_key_package(cowboy_req:req(), map()) -> cowboy_req:req().
+get_key_package(Req0, State) ->
+    Qs = cowboy_req:parse_qs(Req0),
+    Req1 = cowboy_req:set_resp_header(<<"cache-control">>, <<"no-store">>, Req0),
+    KeyVersions = proplists:get_all_values(<<"key_version">>, Qs),
+    Generations = proplists:get_all_values(<<"generation">>, Qs),
+    case {KeyVersions, Generations} of
+        {[KeyVersion], [Generation]} ->
+            reply(
+                Req1,
+                personal_history_logic:get_key_package(
+                    auth_ds:current_uid(State),
+                    #{key_version => KeyVersion, generation => Generation}
+                )
+            );
+        _ ->
+            %% 重复/缺失份数：与参数无效同型（422 malformed_package_request）。
+            reply_error(Req1, <<"malformed_package_request">>)
+    end.
 
 %% ===================================================================
 %% 2.6 POST /personal-history/disable | GET delete-status
@@ -183,6 +214,7 @@ http_status(<<"page_token_expired">>) -> 410;
 http_status(<<"rescan_bound_exceeded">>) -> 410;
 http_status(<<"key_package_missing">>) -> 422;
 http_status(<<"malformed_package">>) -> 422;
+http_status(<<"malformed_package_request">>) -> 422;
 http_status(<<"malformed_request">>) -> 422;
 http_status(<<"transient_failure">>) -> 503;
 http_status(_) -> 500.
@@ -199,6 +231,7 @@ envelope_code(<<"page_token_expired">>) -> ?ERR_GONE;
 envelope_code(<<"rescan_bound_exceeded">>) -> ?ERR_GONE;
 envelope_code(<<"key_package_missing">>) -> ?ERR_MISSING_PARAM;
 envelope_code(<<"malformed_package">>) -> ?ERR_UNPROCESSABLE_ENTITY;
+envelope_code(<<"malformed_package_request">>) -> ?ERR_UNPROCESSABLE_ENTITY;
 envelope_code(<<"malformed_request">>) -> ?ERR_UNPROCESSABLE_ENTITY;
 envelope_code(<<"transient_failure">>) -> 503;
 envelope_code(_) -> ?ERR_ERROR.
@@ -216,6 +249,7 @@ human_msg(<<"page_token_expired">>) -> <<"分页令牌已过期，请重新扫�
 human_msg(<<"rescan_bound_exceeded">>) -> <<"重扫链长超限，请从头分页"/utf8>>;
 human_msg(<<"key_package_missing">>) -> <<"缺少对应版本的密钥包"/utf8>>;
 human_msg(<<"malformed_package">>) -> <<"密钥包格式非法"/utf8>>;
+human_msg(<<"malformed_package_request">>) -> <<"密钥包查询参数非法"/utf8>>;
 human_msg(<<"malformed_request">>) -> <<"请求参数非法"/utf8>>;
 human_msg(<<"transient_failure">>) -> <<"服务暂时不可用，请安全重试"/utf8>>;
 human_msg(_) -> <<"操作失败"/utf8>>.

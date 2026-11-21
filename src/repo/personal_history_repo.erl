@@ -28,6 +28,7 @@
 -export([record_issued_tx/6, ack_cursor_tx/6, delete_cursors_by_account_tx/3]).
 % key package
 -export([find_key_package/3, find_key_package_tx/4, insert_key_package/2]).
+-export([find_key_package_for_generation/4]).
 -export([delete_key_packages_by_account_tx/3]).
 
 -ifdef(EUNIT).
@@ -461,6 +462,22 @@ find_key_package_tx(Conn, AccountId, Domain, KeyVersion) ->
         <<"SELECT key_version, generation, retired_at FROM ", (key_package_tablename())/binary,
             " WHERE account_id = $1 AND domain = $2 AND key_version = $3">>,
     case elib_pg:query(Conn, Sql, [AccountId, Domain, KeyVersion]) of
+        {ok, [Row]} -> {ok, Row};
+        {ok, []} -> {ok, undefined};
+        {error, Reason} -> {error, Reason}
+    end.
+
+%% @doc 按当前代次读密钥包（mh04-key-package-read-addendum：查询必须同时
+%% 含 account_id/domain/generation/key_version，不能以不含 generation 的
+%% uq_phk_version 唯一索引代替当前代次条件）。retired_at 不否定可读性。
+-spec find_key_package_for_generation(integer(), binary(), integer(), integer()) ->
+    {ok, map() | undefined} | {error, term()}.
+find_key_package_for_generation(AccountId, Domain, KeyVersion, Generation) ->
+    Sql =
+        <<"SELECT key_version, generation, wrapped_key, kdf_meta, integrity_hash,",
+            " retired_at, created_at FROM ", (key_package_tablename())/binary,
+            " WHERE account_id = $1 AND domain = $2 AND key_version = $3 AND generation = $4">>,
+    case elib_pg:query(Sql, [AccountId, Domain, KeyVersion, Generation]) of
         {ok, [Row]} -> {ok, Row};
         {ok, []} -> {ok, undefined};
         {error, Reason} -> {error, Reason}
