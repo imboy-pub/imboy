@@ -96,23 +96,29 @@ dead_borrowed_conn_is_unhealthy() ->
 %% T02 核心：池耗尽时探针必须在**取连接预算内**返回 false，
 %% 不得沿 elib_pg 公共路径长挂 1+2+3 秒。
 pool_exhaustion_returns_false_within_budget() ->
-    meck:expect(pooler, take_member, fun(pgsql, Ms) when is_integer(Ms), Ms > 0, Ms =< 1000 ->
-        error_no_members
+    %% 预算合同断言的是「probe_db 把配置的预算原样下传」。sys.config
+    %% （CI nightly 从 example 物化）会把 readyz_take_conn_timeout_ms
+    %% 覆写成 2000：不钉扎的话 take_member 收到 2000，落不进下面的
+    %% Ms=<1000 guard，精确参数断言恒 0 次（nightly 2026-11-21/22 实测）。
+    with_take_budget(1000, fun() ->
+        meck:expect(pooler, take_member, fun(pgsql, Ms) when is_integer(Ms), Ms > 0, Ms =< 1000 ->
+            error_no_members
+        end),
+        Start = erlang:monotonic_time(millisecond),
+        ?assertNot(healthz_handler:probe_db()),
+        Elapsed = erlang:monotonic_time(millisecond) - Start,
+        %% take_member 立即返回 error_no_members（真实池里这一等待由 pooler
+        %% 的排队超时承担，上限即传入的 Ms<=1000）：探针自身零额外 sleep。
+        ?assert(Elapsed < 1000, {probe_took_too_long, Elapsed}),
+        %% 取连接预算参数必须真实下传（区别于旧 with_conn 的初始重试 sleep）。
+        ?assertEqual(1, meck:num_calls(pooler, take_member, [pgsql, 1000])),
+        %% 探针自身不得使用无预算 arity-1 变体。曾断言全局
+        %% num_calls(take_member,1)==0——app 真启动的共享 VM 里后台 worker
+        %% （attachment lease recovery 等）合法经 elib_pg:with_conn/1 调
+        %% arity-1 take_member，全局计数恒被污染（2026-11-19 v5 实证）；
+        %% 预算合同由上面的精确参数断言 + Elapsed<1000 界钉住。
+        true = meck:validate(pooler)
     end),
-    Start = erlang:monotonic_time(millisecond),
-    ?assertNot(healthz_handler:probe_db()),
-    Elapsed = erlang:monotonic_time(millisecond) - Start,
-    %% take_member 立即返回 error_no_members（真实池里这一等待由 pooler
-    %% 的排队超时承担，上限即传入的 Ms<=1000）：探针自身零额外 sleep。
-    ?assert(Elapsed < 1000, {probe_took_too_long, Elapsed}),
-    %% 取连接预算参数必须真实下传（区别于旧 with_conn 的初始重试 sleep）。
-    ?assertEqual(1, meck:num_calls(pooler, take_member, [pgsql, 1000])),
-    %% 探针自身不得使用无预算 arity-1 变体。曾断言全局
-    %% num_calls(take_member,1)==0——app 真启动的共享 VM 里后台 worker
-    %% （attachment lease recovery 等）合法经 elib_pg:with_conn/1 调
-    %% arity-1 take_member，全局计数恒被污染（2026-11-19 v5 实证）；
-    %% 预算合同由上面的精确参数断言 + Elapsed<1000 界钉住。
-    true = meck:validate(pooler),
     ok.
 
 %% 探针不得触碰 elib_pg 公共重试路径（否则预算合同失效）。
@@ -286,6 +292,17 @@ with_conn(Fun) ->
         Fun()
     after
         Conn ! stop
+    end.
+
+%% 预算合同钉扎：probe_db/0 每次现读 application env，用例内显式钉住
+%% take_conn 预算并必然还原，杜绝 sys.config 覆写（example 物化 2000）
+%% 或前序用例残留对精确参数断言的污染。
+with_take_budget(Ms, Fun) ->
+    application:set_env(imboy, readyz_take_conn_timeout_ms, Ms),
+    try
+        Fun()
+    after
+        application:unset_env(imboy, readyz_take_conn_timeout_ms)
     end.
 
 %%%===================================================================

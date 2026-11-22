@@ -61,10 +61,45 @@ owner_and_schema_test() ->
     ),
     ?assertError(_, imboy_quality_backend:resource_root("/private/tmp", #{})).
 
+%% 便携 scratch 根：原实现硬编码 /private/tmp/imboy-otp-opt-backend-entry-*
+%% （macOS 开发机路径），Linux CI runner 上父目录不存在且无人创建，
+%% nightly 全量跑必 enoent 连坐（2026-11-22 run 44964456492 实测 7 用例）。
+%% 基目录按候选序取首个「全组件实链目录」：TMPDIR（沙箱环境优先）→ /tmp
+%% （Linux 实目录）→ /private/tmp（macOS 兜底——/tmp 与 /var 均为 symlink，
+%% safe_directory 的反 symlink 合同会拒，这正是原硬编码 /private/tmp 的原因）。
+scratch_dir(Prefix) ->
+    Root = filename:join(scratch_base(), "imboy-quality-backend-tests"),
+    ok = filelib:ensure_dir(filename:join(Root, "x")),
+    filename:join(
+        Root, Prefix ++ "-" ++ integer_to_list(erlang:unique_integer([positive]))
+    ).
+
+scratch_base() ->
+    Override = os:getenv("IMBOY_QUALITY_TEST_TMP"),
+    Candidates =
+        [C || C <- [Override, "/tmp", "/private/tmp"], is_list(C)],
+    Safe = [C || C <- Candidates, scratch_components_real(C)],
+    case Safe of
+        [C | _] -> C;
+        [] -> "/tmp"
+    end.
+
+%% 自根而下逐组件 read_link_info（不跟随末级符号链接）：任一层非实目录
+%% 即不安全。与 imboy_quality_backend:safe_directory/1 的合同对齐。
+scratch_components_real(Path) ->
+    scratch_components_real("/", [C || C <- filename:split(Path), C =/= "/"]).
+
+scratch_components_real(_Acc, []) ->
+    true;
+scratch_components_real(Acc, [Comp | Rest]) ->
+    Next = filename:join(Acc, Comp),
+    case file:read_link_info(Next) of
+        {ok, #file_info{type = directory}} -> scratch_components_real(Next, Rest);
+        _ -> false
+    end.
+
 reservation_test() ->
-    Base =
-        "/private/tmp/imboy-otp-opt-backend-entry-20261111/reserve-" ++
-            integer_to_list(erlang:unique_integer([positive])),
+    Base = scratch_dir("reserve"),
     ok = file:make_dir(Base),
     try
         ?assertEqual(ok, imboy_quality_backend:reserve_directory(Base ++ "/control")),
@@ -85,9 +120,7 @@ route_test() ->
     ?assertEqual(native, imboy_quality_build:entry_route(#{inner => environment})).
 
 owned_directory_identity_test() ->
-    Base =
-        "/private/tmp/imboy-otp-opt-backend-entry-20261111/directory-" ++
-            integer_to_list(erlang:unique_integer([positive])),
+    Base = scratch_dir("directory"),
     Ctrl = Base ++ "/control",
     Root = Base ++ "/resources",
     Marker = Root ++ "/.imboy-quality-owned",
@@ -196,9 +229,7 @@ postgres_exit_and_terminal_gate_test() ->
     ).
 
 post_cleanup_verification_precedes_terminal_receipt_test() ->
-    Dir =
-        "/private/tmp/imboy-otp-opt-backend-entry-20261111/terminal-" ++
-            integer_to_list(erlang:unique_integer([positive])),
+    Dir = scratch_dir("terminal"),
     ok = file:make_dir(Dir),
     Path = Dir ++ "/result.json",
     try
@@ -228,9 +259,7 @@ post_cleanup_verification_precedes_terminal_receipt_test() ->
     end.
 
 corrupt_legacy_context_never_becomes_backend_test() ->
-    Dir =
-        "/private/tmp/imboy-otp-opt-backend-entry-20261111/corrupt-" ++
-            integer_to_list(erlang:unique_integer([positive])),
+    Dir = scratch_dir("corrupt"),
     ok = file:make_dir(Dir),
     Path = Dir ++ "/STATE.json",
     Sha = Path ++ ".sha256",
@@ -321,9 +350,7 @@ signal_stage_handoff_test_() ->
     {timeout, 30, fun() -> lists:foreach(fun signal_stage/1, [prepare, run]) end}.
 
 signal_stage(Stage) ->
-    Dir =
-        "/private/tmp/imboy-otp-opt-backend-entry-20261111/signal-" ++ atom_to_list(Stage) ++ "-" ++
-            integer_to_list(erlang:unique_integer([positive])),
+    Dir = scratch_dir("signal-" ++ atom_to_list(Stage)),
     ok = file:make_dir(Dir),
     ok = file:make_dir(Dir ++ "/evidence"),
     %% 子 VM 代码路径必须同时含测试 beam 目录与 quality 工具 beam 目录
@@ -442,9 +469,7 @@ provision_drift_refuses_start_and_final_binding_test() ->
     end).
 
 with_provision_fixture(Fun) ->
-    Root =
-        "/private/tmp/imboy-otp-opt-backend-entry-20261111/provision-" ++
-            integer_to_list(erlang:unique_integer([positive])),
+    Root = scratch_dir("provision"),
     Paths = [
         Root ++ "/selected.config",
         Root ++ "/postgres-toolchain/bin/postgres",
