@@ -391,9 +391,23 @@ changes_issue_and_ack_watermark_test_() ->
         }),
         ?assertEqual(1, length(maps:get(<<"events">>, C2))),
         Next2 = maps:get(<<"next_cursor">>, C2),
+        ?assertMatch(
+            {ok, #{<<"generation">> := 1, <<"events">> := [], <<"next_cursor">> := null}},
+            personal_history_logic:changes(?A1, #{
+                cursor => Next2, client_instance => <<"inst-1">>
+            })
+        ),
+        ?assertEqual(
+            {error, <<"generation_expired">>, 410},
+            personal_history_logic:ack_cursor(?A1, #{
+                cursor => Next2, client_instance => <<"inst-1">>, generation => 2
+            })
+        ),
+        {ok, #{<<"acked_cursor">> := 0, <<"change_cursor">> := Next2}} =
+            personal_history_repo:find_cursor(?A1, domain(), 1, <<"inst-1">>),
         %% ack：推进 ≤ 已发放最大值；重复 ack 幂等（W5 不影响历史）
         {ok, Ack1} = personal_history_logic:ack_cursor(?A1, #{
-            cursor => Next2, client_instance => <<"inst-1">>
+            cursor => Next2, client_instance => <<"inst-1">>, generation => 1
         }),
         ?assertEqual(true, maps:get(<<"accepted">>, Ack1)),
         ?assertEqual(Next2, maps:get(<<"advanced_to">>, Ack1)),

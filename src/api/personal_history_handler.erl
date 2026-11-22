@@ -97,6 +97,7 @@ ack_cursor(Req0, State) ->
     PostVals = elib_param:post(Req0),
     Opts = #{
         cursor => maps:get(<<"cursor">>, PostVals, -1),
+        generation => maps:get(<<"generation">>, PostVals, undefined),
         client_instance => maps:get(<<"client_instance">>, PostVals, <<>>)
     },
     reply(Req0, personal_history_logic:ack_cursor(auth_ds:current_uid(State), Opts)).

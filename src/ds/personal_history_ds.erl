@@ -29,6 +29,7 @@
     % 变更流
     issue_changes/5,
     ack_cursor/4,
+    ack_cursor/5,
     % 分页快照
     page/5,
     encode_page_token/3,
@@ -456,9 +457,27 @@ issue_mark(Conn, AccountId, Domain, G, ClientInstance, Events) ->
 -spec ack_cursor(integer(), binary(), binary(), integer()) ->
     {ok, integer(), boolean(), integer(), integer()} | {error, atom()}.
 ack_cursor(AccountId, Domain, ClientInstance, Cursor) ->
-    case personal_history_repo:find_authorization(AccountId, Domain) of
-        {ok, #{<<"state">> := <<"ON">>, <<"generation">> := G}} ->
-            ack_cursor_tx(AccountId, Domain, G, ClientInstance, Cursor);
+    ack_cursor(AccountId, Domain, ClientInstance, Cursor, undefined).
+
+-spec ack_cursor(integer(), binary(), binary(), integer(), pos_integer() | undefined) ->
+    {ok, integer(), boolean(), integer(), integer()} | {error, atom()}.
+ack_cursor(AccountId, Domain, ClientInstance, Cursor, ExpectedGeneration) ->
+    normalize_tx(
+        elib_pg:with_tx(fun(Conn) ->
+            ack_authorized_cursor(
+                Conn, AccountId, Domain, ClientInstance, Cursor, ExpectedGeneration
+            )
+        end)
+    ).
+
+ack_authorized_cursor(Conn, AccountId, Domain, ClientInstance, Cursor, ExpectedGeneration) ->
+    case personal_history_repo:lock_authorization_tx(Conn, AccountId, Domain) of
+        {ok, #{<<"state">> := <<"ON">>, <<"generation">> := G}} when
+            ExpectedGeneration =:= undefined; ExpectedGeneration =:= G
+        ->
+            ack_cursor_tx(Conn, AccountId, Domain, G, ClientInstance, Cursor);
+        {ok, #{<<"state">> := <<"ON">>}} ->
+            {error, generation_expired};
         {ok, #{<<"state">> := State}} when
             State =:= <<"OFF_PURGE_PENDING">>; State =:= <<"OFF_PURGED">>
         ->
@@ -469,24 +488,16 @@ ack_cursor(AccountId, Domain, ClientInstance, Cursor) ->
             {error, Reason}
     end.
 
-ack_cursor_tx(AccountId, Domain, G, ClientInstance, Cursor) ->
-    normalize_tx(
-        elib_pg:with_tx(fun(Conn) ->
-            ok = personal_history_repo:ensure_cursor_tx(Conn, AccountId, Domain, G, ClientInstance),
-            case
-                personal_history_repo:ack_cursor_tx(
-                    Conn, AccountId, Domain, G, ClientInstance, Cursor
-                )
-            of
-                {ok, #{<<"acked_cursor">> := Acked, <<"change_cursor">> := Issued}} ->
-                    {ok, G, true, Acked, Issued};
-                {ok, none} ->
-                    ack_reject(Conn, AccountId, Domain, G, ClientInstance, Cursor);
-                {error, Reason} ->
-                    {error, Reason}
-            end
-        end)
-    ).
+ack_cursor_tx(Conn, AccountId, Domain, G, ClientInstance, Cursor) ->
+    ok = personal_history_repo:ensure_cursor_tx(Conn, AccountId, Domain, G, ClientInstance),
+    case personal_history_repo:ack_cursor_tx(Conn, AccountId, Domain, G, ClientInstance, Cursor) of
+        {ok, #{<<"acked_cursor">> := Acked, <<"change_cursor">> := Issued}} ->
+            {ok, G, true, Acked, Issued};
+        {ok, none} ->
+            ack_reject(Conn, AccountId, Domain, G, ClientInstance, Cursor);
+        {error, Reason} ->
+            {error, Reason}
+    end.
 
 ack_reject(Conn, AccountId, Domain, G, ClientInstance, _Cursor) ->
     {ok, Slot} = personal_history_repo:find_cursor_tx(

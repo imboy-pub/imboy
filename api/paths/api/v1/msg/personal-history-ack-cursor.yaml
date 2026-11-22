@@ -21,6 +21,11 @@ post:
               type: integer
               format: int64
               minimum: 0
+            generation:
+              type: integer
+              format: int64
+              minimum: 1
+              description: 授权代次，取发放变更页返回值，过期返回 410。 / Generation returned by the change page. A mismatch returns 410.
             client_instance:
               type: string
               maxLength: 128

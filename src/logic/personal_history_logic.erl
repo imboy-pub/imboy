@@ -234,10 +234,15 @@ changes(AccountId, Opts) ->
     ClientInstance = maps:get(client_instance, Opts, <<>>),
     case personal_history_ds:issue_changes(AccountId, Domain, ClientInstance, Cursor, Limit) of
         {ok, Generation, Events, NextCursor, ResetHint} ->
+            WireCursor =
+                case NextCursor of
+                    undefined -> null;
+                    _ -> NextCursor
+                end,
             {ok, #{
                 <<"generation">> => Generation,
                 <<"events">> => [change_event(Row) || Row <- Events],
-                <<"next_cursor">> => NextCursor,
+                <<"next_cursor">> => WireCursor,
                 <<"reset_hint">> => ResetHint
             }};
         {error, Reason} ->
@@ -262,16 +267,24 @@ change_event(Row) ->
 ack_cursor(AccountId, Opts) ->
     Domain = personal_history_ds:domain(),
     Cursor = maps:get(cursor, Opts, -1),
+    Generation = maps:get(generation, Opts, undefined),
     ClientInstance = maps:get(client_instance, Opts, <<>>),
-    case is_integer(Cursor) andalso Cursor >= 0 of
+    ValidGeneration =
+        Generation =:= undefined orelse
+            (is_integer(Generation) andalso Generation > 0),
+    case is_integer(Cursor) andalso Cursor >= 0 andalso ValidGeneration of
         false ->
             {error, <<"malformed_request">>, 422};
         true ->
-            do_ack_cursor(AccountId, Domain, ClientInstance, Cursor)
+            do_ack_cursor(AccountId, Domain, ClientInstance, Cursor, Generation)
     end.
 
-do_ack_cursor(AccountId, Domain, ClientInstance, Cursor) ->
-    case personal_history_ds:ack_cursor(AccountId, Domain, ClientInstance, Cursor) of
+do_ack_cursor(AccountId, Domain, ClientInstance, Cursor, ExpectedGeneration) ->
+    case
+        personal_history_ds:ack_cursor(
+            AccountId, Domain, ClientInstance, Cursor, ExpectedGeneration
+        )
+    of
         {ok, Generation, Accepted, Acked, Issued} ->
             {ok, #{
                 <<"accepted">> => Accepted,
