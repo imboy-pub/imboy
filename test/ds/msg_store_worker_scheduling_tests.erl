@@ -141,6 +141,57 @@ code_change_preserves_existing_timer_test() ->
     ?assertEqual(Timer, element(2, State)),
     ?assert(tuple_size(State) > 2).
 
+materialized_c2g_archives_on_retry_before_completing_under_current_lease_test() ->
+    pure_mock_fixture:run(fun() ->
+        with_worker(fun(_, _) -> {ok, []} end, fun(_) ->
+            application:set_env(imboy, msg_archive_enabled, true),
+            meck:new(msg_archive_repo, [passthrough, no_link]),
+            try
+                exercise_materialized_archive_retry()
+            after
+                meck:unload(msg_archive_repo),
+                application:unset_env(imboy, msg_archive_enabled)
+            end
+        end)
+    end).
+
+exercise_materialized_archive_retry() ->
+    MsgId = <<"materialized-c2g">>,
+    Type = <<"c2g">>,
+    Row = #{
+        <<"id">> => 123,
+        <<"type">> => Type,
+        <<"msg_id">> => MsgId,
+        <<"c2g_materialized">> => true
+    },
+    meck:expect(msg_store_repo, renew_lease, fun
+        (123, <<"claim-one">>, _) -> {ok, <<"renewed-one">>};
+        (123, <<"claim-two">>, _) -> {ok, <<"renewed-two">>};
+        (123, <<"stale">>, _) -> {ok, 0}
+    end),
+    meck:expect(msg_archive_repo, archive, fun
+        (#{<<"lease_token">> := <<"renewed-one">>}) -> {error, synthetic_storage_failure};
+        (#{<<"lease_token">> := <<"renewed-two">>}) -> ok
+    end),
+    meck:expect(msg_store_repo, mark_failed, fun(Type0, MsgId0, Reason, _, Token) ->
+        ?assertEqual({Type, MsgId, <<"renewed-one">>}, {Type0, MsgId0, Token}),
+        ?assertNotEqual(nomatch, binary:match(Reason, <<"synthetic_storage_failure">>)),
+        {ok, 1}
+    end),
+    meck:expect(msg_store_repo, mark_processed, fun(_, Type0, MsgId0, Token) ->
+        ?assertEqual({Type, MsgId, <<"renewed-two">>}, {Type0, MsgId0, Token}),
+        {ok, 1}
+    end),
+    _ = msg_store_worker:process_row(Row#{<<"lease_token">> => <<"claim-one">>}),
+    ?assertEqual(1, meck:num_calls(msg_store_repo, mark_failed, 5)),
+    ?assertEqual(0, meck:num_calls(msg_store_repo, mark_processed, 4)),
+    ok = msg_store_worker:process_row(Row#{<<"lease_token">> => <<"stale">>}),
+    ?assertEqual(1, meck:num_calls(msg_archive_repo, archive, 1)),
+    _ = msg_store_worker:process_row(Row#{<<"lease_token">> => <<"claim-two">>}),
+    ?assertEqual(2, meck:num_calls(msg_archive_repo, archive, 1)),
+    ?assertEqual(1, meck:num_calls(msg_store_repo, mark_processed, 4)),
+    ?assertEqual(1, meck:num_calls(msg_store_repo, mark_failed, 5)).
+
 with_worker(Claim, Test) ->
     application:set_env(imboy, msg_store_worker_tick_ms, 0),
     meck:new(msg_store_repo, [passthrough, no_link, non_strict]),

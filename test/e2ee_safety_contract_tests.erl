@@ -101,7 +101,7 @@ c2c_pipeline_mecks() ->
 c2g_pipeline_mecks() ->
     [
         {group_member_logic, [
-            {'check_mute', 2, fun(100, 1001) -> false end}
+            {'send_precheck', 2, fun(100, 1001) -> member end}
         ]},
         {group_ds, [
             %% 群级 fail-closed 门默认关；部署级 required 门由真实 imboy_policy 承担

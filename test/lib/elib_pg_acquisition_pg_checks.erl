@@ -14,6 +14,7 @@ run(ConnOpts) ->
     }),
     Count = atomics:new(1, []),
     try
+        waiting_autocommit(),
         waiting_transaction(Count),
         exhausted_transaction(Count),
         {rollback, synthetic_rollback} = elib_pg:with_tx(fun(_Conn) ->
@@ -82,6 +83,37 @@ failed_rollback_discards_live_connection(ConnOpts) ->
         epgsql:close(Verify)
     end.
 
+waiting_autocommit() ->
+    Held = pooler:take_member(pgsql, 1000),
+    true = is_pid(Held),
+    Parent = self(),
+    Calls = atomics:new(1, []),
+    {Pid, Ref} = spawn_monitor(fun() ->
+        Result = elib_pg:with_conn(fun(Conn) ->
+            atomics:add(Calls, 1, 1),
+            epgsql:equery(Conn, "SELECT 1", [])
+        end),
+        Parent ! {autocommit_result, self(), Result}
+    end),
+    try
+        wait_for_queue(50),
+        0 = atomics:get(Calls, 1)
+    after
+        ok = pooler:return_member(pgsql, Held)
+    end,
+    receive
+        {autocommit_result, Pid, {ok, _, [{1}]}} -> ok
+    after 1000 -> error(waiting_autocommit_failed)
+    end,
+    receive
+        {'DOWN', Ref, process, Pid, normal} -> ok
+    after 1000 -> error(waiting_autocommit_worker_failed)
+    end,
+    1 = atomics:get(Calls, 1),
+    0 = proplists:get_value(queued_count, pooler:pool_utilization(pgsql)),
+    0 = proplists:get_value(in_use_count, pooler:pool_utilization(pgsql)),
+    io:format("PG_AUTOCOMMIT_QUEUED_RELEASE_ONCE=PASS~n").
+
 waiting_transaction(Count) ->
     Held = pooler:take_member(pgsql, 1000),
     true = is_pid(Held),
@@ -129,7 +161,7 @@ exhausted_transaction(Count) ->
     end.
 
 wait_for_queue(0) ->
-    error(transaction_not_queued);
+    error(connection_request_not_queued);
 wait_for_queue(Attempts) ->
     case proplists:get_value(queued_count, pooler:pool_utilization(pgsql)) of
         1 ->

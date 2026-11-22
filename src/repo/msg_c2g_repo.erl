@@ -12,7 +12,7 @@
 -export([write_msg/9]).
 -export([write_msg/10]).
 -export([write_accepted_msg/11]).
--export([write_accepted_msg/12]).
+-export([write_accepted_msg/12, write_staged_msg_tx/4, write_staged_msg_tx/6]).
 -export([write_msg_with_reply/11]).
 -export([write_msg_with_reply/12]).
 -export([write_msg_with_reply/13]).
@@ -41,8 +41,10 @@ tablename() ->
 %% 与 msg_c2c 主表对齐，防止 msg_store_worker 写入成功后、标记 processed_at
 %% 前崩溃，重启重新处理 staging 行导致主表重复入库。
 %% 依赖唯一索引 uk_c2g_msgid_createdat (msg_id, created_at)（见迁移 00000016）。
--spec insert_msg_idempotent(term(), binary(), map()) -> ok.
-insert_msg_idempotent(Conn, TbMsg, MsgData) ->
+%% @private Q-03 性能收口：幂等插入生成 (Sql, Params) 供 CTE 合并形态使用；
+%% ON CONFLICT「条件补洞」子句与历史行为逐位一致。
+-spec msg_insert_idempotent_sql(binary(), map()) -> {binary(), [term()]}.
+msg_insert_idempotent_sql(TbMsg, MsgData) ->
     {Sql0, Params} = elib_pg_sql:insert(TbMsg, MsgData),
     Sql = iolist_to_binary([
         Sql0,
@@ -51,15 +53,14 @@ insert_msg_idempotent(Conn, TbMsg, MsgData) ->
         TbMsg,
         <<".sender_did IS NULL AND EXCLUDED.sender_did IS NOT NULL">>
     ]),
-    {ok, _} =
-        elib_pg:execute(Conn, Sql, Params),
-    ok.
+    {Sql, Params}.
 
-%% @private RT-P3-03（2026-08-27）：带引用回复的幂等插入。
+%% @private RT-P3-03（2026-08-27）：带引用回复的幂等插入（生成形态）。
 %% 冲突子句为「条件补洞」：仅当既有行 reply_to_msg_id IS NULL 时才回填三列；
 %% 正常重放（已有引用值）WHERE 不满足 → 0 行变更 → 上层按 conflict 处理，
 %% 原 DO NOTHING 幂等语义不变，但 worker 无引用行先行时不再吞掉引用元数据。
-insert_msg_with_reply_idempotent(Conn, TbMsg, MsgData) ->
+-spec msg_insert_with_reply_idempotent_sql(binary(), map()) -> {binary(), [term()]}.
+msg_insert_with_reply_idempotent_sql(TbMsg, MsgData) ->
     {Sql0, Params} = elib_pg_sql:insert(TbMsg, MsgData),
     Sql = iolist_to_binary([
         Sql0,
@@ -73,9 +74,7 @@ insert_msg_with_reply_idempotent(Conn, TbMsg, MsgData) ->
         TbMsg,
         <<".reply_to_msg_id IS NULL">>
     ]),
-    {ok, _} =
-        elib_pg:execute(Conn, Sql, Params),
-    ok.
+    {Sql, Params}.
 
 % msg_c2g_repo:write_msg(1707686743435, <<"msg_id_1">>,  <<"{\"a\":1}">>,  1, [2,3,107], 7, <<"text">>, <<>>).
 % msg_c2g_repo:write_msg(<<"2026-01-01 05:50:28.465444+00:00">>, <<"msg_id_1">>, <<"{\"a\":1}">>, 1, [2,3,107], 7,
@@ -305,6 +304,153 @@ write_msg_impl(
     AcceptanceMode,
     AcceptedAt
 ) ->
+    elib_pg:with_tx(fun(Conn) ->
+        write_msg_tx(
+            Conn,
+            CreatedAtRaw,
+            MsgId,
+            Payload,
+            FromId,
+            ToUids,
+            Gid,
+            MsgType,
+            E2EE,
+            ExpireAt,
+            ConvSeq,
+            ReplyMeta,
+            SenderDid,
+            AcceptanceMode,
+            AcceptedAt
+        )
+    end).
+
+%% Normal C2G acceptance commits both rows before the producer can fan out.
+%%
+%% Q-03 性能收口：/6 形态由接受链上游直接携带已编码的 payload JSON 与信封
+%% to 标记，跳过整信封 decode + payload re-encode；组 ID 核对语义保留。
+%% /4 形态保留为信封自校验回退（仅离线/诊断路径使用）。
+-spec write_staged_msg_tx(
+    pid(),
+    map(),
+    undefined | {binary(), integer(), binary()},
+    map(),
+    binary(),
+    binary() | integer()
+) -> ok.
+write_staged_msg_tx(
+    Conn,
+    #{
+        msg_id := MsgId,
+        from_id := FromId,
+        to_id := Gid,
+        to_id_list := ToUids,
+        created_at := CreatedAt,
+        conv_seq := ConvSeq,
+        msg_type := MsgType,
+        e2ee := E2EE,
+        accepted_at := AcceptedAt
+    } = Stage,
+    ReplyMeta,
+    InsertedSnapshot,
+    PayloadJson,
+    ToToken
+) ->
+    case delivery_gid_matches(ToToken, Gid) of
+        true -> ok;
+        false -> throw({rollback, invalid_c2g_delivery_envelope})
+    end,
+    write_msg_tx(
+        Conn,
+        CreatedAt,
+        MsgId,
+        PayloadJson,
+        FromId,
+        ToUids,
+        Gid,
+        MsgType,
+        E2EE,
+        maps:get(expire_at, Stage, null),
+        ConvSeq,
+        ReplyMeta,
+        maps:get(sender_did, Stage, null),
+        {inserted_snapshot, InsertedSnapshot},
+        AcceptedAt
+    ).
+
+-spec write_staged_msg_tx(
+    pid(), map(), undefined | {binary(), integer(), binary()}, map()
+) -> ok.
+write_staged_msg_tx(
+    Conn,
+    #{
+        payload := Envelope,
+        msg_id := MsgId,
+        from_id := FromId,
+        to_id := Gid,
+        to_id_list := ToUids,
+        created_at := CreatedAt,
+        conv_seq := ConvSeq,
+        msg_type := MsgType,
+        e2ee := E2EE,
+        accepted_at := AcceptedAt
+    } = Stage,
+    ReplyMeta,
+    InsertedSnapshot
+) ->
+    case jsone:decode(Envelope, [{object_format, map}]) of
+        #{<<"to">> := To, <<"payload">> := Payload} ->
+            case delivery_gid_matches(To, Gid) of
+                true -> ok;
+                false -> throw({rollback, invalid_c2g_delivery_envelope})
+            end,
+            write_msg_tx(
+                Conn,
+                CreatedAt,
+                MsgId,
+                jsone:encode(Payload, [native_utf8]),
+                FromId,
+                ToUids,
+                Gid,
+                MsgType,
+                E2EE,
+                maps:get(expire_at, Stage, null),
+                ConvSeq,
+                ReplyMeta,
+                maps:get(sender_did, Stage, null),
+                {inserted_snapshot, InsertedSnapshot},
+                AcceptedAt
+            );
+        _ ->
+            throw({rollback, invalid_c2g_delivery_envelope})
+    end.
+
+-spec delivery_gid_matches(term(), integer()) -> boolean().
+delivery_gid_matches(To, Gid) when is_binary(To) ->
+    try
+        binary_to_integer(To) =:= Gid
+    catch
+        error:badarg -> false
+    end;
+delivery_gid_matches(To, Gid) ->
+    To =:= Gid.
+
+write_msg_tx(
+    Conn,
+    CreatedAtRaw,
+    MsgId,
+    Payload,
+    FromId,
+    ToUids,
+    Gid,
+    MsgType,
+    E2EE,
+    ExpireAt,
+    ConvSeq,
+    ReplyMeta,
+    SenderDid,
+    AcceptanceMode,
+    AcceptedAt
+) ->
     %% ---------- 统一转换 CreatedAt ----------
     CreatedAt = elib_dt:to_rfc3339(CreatedAtRaw),
     %% R03/D04：接受时间存在时 server_ts 对齐 accepted_at（新行止污）；
@@ -320,90 +466,156 @@ write_msg_impl(
     %% 群消息时间线表
     TbTimeline = msg_c2g_timeline_repo:tablename(),
 
-    elib_pg:with_tx(fun(Conn) ->
-        ok = authorize_c2g_write_tx(
-            Conn, AcceptanceMode, MsgId, FromId, Gid, ConvSeq, ToUids
+    ok = authorize_c2g_write_tx(
+        Conn, AcceptanceMode, MsgId, FromId, Gid, ConvSeq, ToUids
+    ),
+    %% ---------- 插入群离线消息 ----------
+    MsgData0 = #{
+        payload => Payload,
+        to_id => Gid,
+        from_id => FromId,
+        created_at => CreatedAt,
+        server_ts => ServerTs,
+        topic_id => 0,
+        msg_id => MsgId,
+        msg_type => MsgType,
+        e2ee =>
+            case E2EE of
+                <<>> -> null;
+                null -> null;
+                Map when is_map(Map) -> jsone:encode(Map, [native_utf8]);
+                Bin when is_binary(Bin) -> Bin;
+                _ -> null
+            end
+    },
+    MsgData1 =
+        case AcceptedAt of
+            AcceptedRfc2 when is_binary(AcceptedRfc2), AcceptedRfc2 =/= <<>> ->
+                MsgData0#{accepted_at => AcceptedRfc2};
+            _ ->
+                MsgData0
+        end,
+    MsgData = put_sender_did(MsgData1, SenderDid),
+    %% 仅当 ExpireAt 非 null 时添加字段
+    MsgData2 =
+        case ExpireAt of
+            null -> MsgData;
+            _ -> MsgData#{expire_at => ExpireAt}
+        end,
+    %% RT-P3-03：仅当带引用回复元数据时添加三列
+    MsgDataR =
+        case ReplyMeta of
+            undefined ->
+                MsgData2;
+            {RTMId, RTFromId, RSnip} ->
+                MsgData2#{
+                    reply_to_msg_id => RTMId,
+                    reply_to_from_id => RTFromId,
+                    reply_snippet => RSnip
+                }
+        end,
+    GenId = elib_tsid:generate(msg_c2g),
+    MsgData3 = MsgDataR#{id => GenId},
+    %% ---------- 正文与时间线单语句提交（data-modifying CTE） ----------
+    %% Q-03 性能收口：原实现两条独立 INSERT 各占一次扩展协议往返；接受事务
+    %% 因此多付一次往返+解析。合并后语义逐位保留：两个 ON CONFLICT「条件补洞」
+    %% 子句原样内联，未引用的 data-modifying CTE 由 PG 保证恰好执行一次。
+    {SqlMsg, ParamsMsg} =
+        case ReplyMeta of
+            undefined -> msg_insert_idempotent_sql(TbMsg, MsgData3);
+            _ -> msg_insert_with_reply_idempotent_sql(TbMsg, MsgData3)
+        end,
+    Vals = [[MsgId, ToId, Gid, CreatedAt, ConvSeq] || ToId <- ToUids],
+    %% 【ON CONFLICT 修复】表上唯一约束是 uk_c2g_timeline_touid_msgid_createdat
+    %% (to_uid, msg_id, created_at)，原 SQL 只列 (to_uid, msg_id) → PG 42P10
+    %% invalid_column_reference，导致 msg_store_worker 在群消息批写时反复 crash，
+    %% msg_c2g 写不进库、群消息无法投递。列必须与索引完全一致。
+    {SqlTimeline, ParamsTimeline} =
+        timeline_batch_sql_offset(TbTimeline, Vals, length(ParamsMsg)),
+    SqlCte = iolist_to_binary([
+        <<"WITH ins_msg AS (">>,
+        SqlMsg,
+        <<" RETURNING msg_id) ">>,
+        SqlTimeline,
+        <<" ON CONFLICT (to_uid, msg_id, created_at) DO UPDATE SET ",
+            "conv_seq = EXCLUDED.conv_seq WHERE ">>,
+        TbTimeline,
+        <<".conv_seq IS NULL AND EXCLUDED.conv_seq IS NOT NULL">>
+    ]),
+    {ok, _} = elib_pg:execute(Conn, SqlCte, ParamsMsg ++ ParamsTimeline),
+    ok.
+
+%% @private 生成时间线 multi-VALUES batch SQL；占位符编号从 Offset+1 起，
+%% 以便与 CTE 内正文参数段拼接（避免依赖 insert_batch 的内部编号行为）。
+%% 列序固定为 (msg_id, to_uid, to_gid, created_at, conv_seq)，与调用点一致。
+-spec timeline_batch_sql_offset(binary(), [[term(), ...]], non_neg_integer()) ->
+    {binary(), [term(), ...]}.
+timeline_batch_sql_offset(TbTimeline, Vals, Offset) ->
+    {RowsRev, Params, _Num} =
+        lists:foldl(
+            fun([A, B, C, D, E], {RowsAcc, ParamsAcc, N}) ->
+                RowSql = [
+                    $(,
+                    $$,
+                    integer_to_binary(N + 1),
+                    $,,
+                    $$,
+                    integer_to_binary(N + 2),
+                    $,,
+                    $$,
+                    integer_to_binary(N + 3),
+                    $,,
+                    $$,
+                    integer_to_binary(N + 4),
+                    $,,
+                    $$,
+                    integer_to_binary(N + 5),
+                    $)
+                ],
+                %% 参数尾追保持行内顺序（行数 ≤ 群成员上限，追加成本可忽略）。
+                {[RowSql | RowsAcc], ParamsAcc ++ [A, B, C, D, E], N + 5}
+            end,
+            {[], [], Offset},
+            Vals
         ),
-        %% ---------- 插入群离线消息 ----------
-        MsgData0 = #{
-            payload => Payload,
-            to_id => Gid,
-            from_id => FromId,
-            created_at => CreatedAt,
-            server_ts => ServerTs,
-            topic_id => 0,
-            msg_id => MsgId,
-            msg_type => MsgType,
-            e2ee =>
-                case E2EE of
-                    <<>> -> null;
-                    null -> null;
-                    Map when is_map(Map) -> jsone:encode(Map, [native_utf8]);
-                    Bin when is_binary(Bin) -> Bin;
-                    _ -> null
-                end
-        },
-        MsgData1 =
-            case AcceptedAt of
-                AcceptedRfc2 when is_binary(AcceptedRfc2), AcceptedRfc2 =/= <<>> ->
-                    MsgData0#{accepted_at => AcceptedRfc2};
-                _ ->
-                    MsgData0
-            end,
-        MsgData = put_sender_did(MsgData1, SenderDid),
-        %% 仅当 ExpireAt 非 null 时添加字段
-        MsgData2 =
-            case ExpireAt of
-                null -> MsgData;
-                _ -> MsgData#{expire_at => ExpireAt}
-            end,
-        %% RT-P3-03：仅当带引用回复元数据时添加三列
-        MsgDataR =
-            case ReplyMeta of
-                undefined ->
-                    MsgData2;
-                {RTMId, RTFromId, RSnip} ->
-                    MsgData2#{
-                        reply_to_msg_id => RTMId,
-                        reply_to_from_id => RTFromId,
-                        reply_snippet => RSnip
-                    }
-            end,
-        GenId = elib_tsid:generate(msg_c2g),
-        MsgData3 = MsgDataR#{id => GenId},
-        ok =
-            case ReplyMeta of
-                undefined ->
-                    insert_msg_idempotent(Conn, TbMsg, MsgData3);
-                _ ->
-                    insert_msg_with_reply_idempotent(Conn, TbMsg, MsgData3)
-            end,
-        %% ---------- 批量插入时间线表 ----------
-        Vals = [[MsgId, ToId, Gid, CreatedAt, ConvSeq] || ToId <- ToUids],
-        {SqlTimeline0, ParamsTimeline} =
-            elib_pg_sql:insert_batch(
-                TbTimeline, [msg_id, to_uid, to_gid, created_at, conv_seq], Vals
-            ),
-        %% 【ON CONFLICT 修复】表上唯一约束是 uk_c2g_timeline_touid_msgid_createdat
-        %% (to_uid, msg_id, created_at)，原 SQL 只列 (to_uid, msg_id) → PG 42P10
-        %% invalid_column_reference，导致 msg_store_worker 在群消息批写时反复 crash，
-        %% msg_c2g 写不进库、群消息无法投递。列必须与索引完全一致。
-        SqlTimeline = iolist_to_binary([
-            SqlTimeline0,
-            <<" ON CONFLICT (to_uid, msg_id, created_at) DO UPDATE SET ",
-                "conv_seq = EXCLUDED.conv_seq WHERE ">>,
-            TbTimeline,
-            <<".conv_seq IS NULL AND EXCLUDED.conv_seq IS NOT NULL">>
-        ]),
-        {ok, _} = elib_pg:execute(Conn, SqlTimeline, ParamsTimeline),
-        ok
-    end).
+    Sql = iolist_to_binary([
+        <<"INSERT INTO ">>,
+        TbTimeline,
+        <<" (msg_id, to_uid, to_gid, created_at, conv_seq) VALUES ">>,
+        lists:join($,, lists:reverse(RowsRev))
+    ]),
+    {Sql, Params}.
 
 -spec authorize_c2g_write_tx(
-    term(), current_state | accepted, binary(), integer(), integer(), term(), [integer()]
+    term(),
+    current_state | accepted | {inserted_snapshot, map()},
+    binary(),
+    integer(),
+    integer(),
+    term(),
+    [integer()]
 ) -> ok.
 authorize_c2g_write_tx(Conn, current_state, _MsgId, _FromId, Gid, _ConvSeq, _ToUids) ->
     workspace_guard:abort_on_error(workspace_guard:ensure_writable_tx(Conn, {group, Gid}));
+%% The acceptance caller passes the row just inserted on this connection.
+authorize_c2g_write_tx(
+    _Conn,
+    {inserted_snapshot, #{
+        <<"msg_id">> := MsgId,
+        <<"from_id">> := FromId,
+        <<"to_gid">> := Gid,
+        <<"conv_seq">> := ConvSeq,
+        <<"recipient_uids">> := ToUids
+    }},
+    MsgId,
+    FromId,
+    Gid,
+    ConvSeq,
+    ToUids
+) ->
+    ok;
+authorize_c2g_write_tx(_Conn, {inserted_snapshot, _}, _MsgId, _FromId, _Gid, _ConvSeq, _ToUids) ->
+    throw({abort_tx, accepted_snapshot_mismatch});
 authorize_c2g_write_tx(Conn, accepted, MsgId, FromId, Gid, ConvSeq, ToUids) ->
     Sql =
         <<"SELECT 1 FROM public.msg_c2g_recipient_snapshot ",

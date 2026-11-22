@@ -566,3 +566,94 @@ web_self_profile_route_is_private_get_only_test() ->
             [<<"POST">>, <<"PUT">>, <<"PATCH">>, <<"DELETE">>]
         )
     end).
+
+geo_region_selection_route_is_local_preview_only_test() ->
+    with_mocks(fun() ->
+        meck:new(imboy_env, [passthrough, no_link]),
+        try
+            Path = "/api/v1/web/user/region-selection",
+            meck:expect(imboy_env, current, fun() -> <<"local">> end),
+            ?assertEqual(false, geo_preview_route(Path)),
+            Pin = #{data_root => <<"/geo-preview">>, manifest_sha256 => binary:copy(<<"a">>, 64)},
+            set_geo_preview_route_config({127, 0, 0, 1}, Pin),
+            ?assertMatch(
+                {Path, user_handler, #{
+                    action := web_region_selection,
+                    surface := web_human,
+                    jwt_purpose := web_human,
+                    jwt_methods := [<<"POST">>],
+                    web_auth := access
+                }},
+                geo_preview_route(Path)
+            ),
+            ?assertNot(lists:member(list_to_binary(Path), imboy_router:open())),
+            meck:expect(imboy_env, current, fun() -> <<"production">> end),
+            ?assertEqual(false, geo_preview_route(Path)),
+            meck:expect(imboy_env, current, fun() -> <<"local">> end),
+            set_geo_preview_route_config({0, 0, 0, 0}, Pin),
+            ?assertEqual(false, geo_preview_route(Path)),
+            set_geo_preview_route_config({127, 0, 0, 1}, Pin#{manifest_sha256 => <<"short">>}),
+            ?assertEqual(false, geo_preview_route(Path))
+        after
+            meck:unload(imboy_env)
+        end
+    end).
+
+geo_preview_route(Path) ->
+    [{_, Routes}] = imboy_router:get_routes(),
+    lists:keyfind(Path, 1, Routes).
+
+set_geo_preview_route_config(IP, Pin) ->
+    meck:expect(config_ds, env, fun
+        (geo_web_preview_enabled, _) -> true;
+        (listen_ip, _) -> IP;
+        (geo_regions_pin, _) -> Pin;
+        (_, Default) -> Default
+    end).
+
+geo_preview_save_rejects_nonlocal_origin_and_returns_validated_fields_test() ->
+    with_mocks(fun() ->
+        Modules = [elib_param, user_logic],
+        lists:foreach(fun(M) -> meck:new(M, [passthrough, no_link]) end, Modules),
+        try
+            State = (opts(access, [<<"POST">>]))#{current_uid => 123},
+            Region = <<"Synthetic region">>,
+            Selection = #{<<"pathIds">> => [<<"cc:XX">>]},
+            Value = #{<<"region">> => Region, <<"selection">> => Selection},
+            meck:expect(elib_param, post, fun(_) -> Value end),
+            meck:expect(user_logic, update, fun(123, <<"regionSelection">>, V, <<>>) when
+                V =:= Value
+            ->
+                {ok, 1}
+            end),
+            meck:expect(elib_response, success, fun(_Req, Payload, _) -> Payload end),
+            Origin = fun(O) -> #{headers => #{<<"origin">> => O}} end,
+            [
+                ?assertMatch(
+                    #{status := 403},
+                    user_handler:handle_action(
+                        web_region_selection, Origin(O), State
+                    )
+                )
+             || O <- [
+                    <<"https://example.org">>,
+                    <<"http://localhost@example.org">>,
+                    <<"http://localhost/path">>,
+                    undefined
+                ]
+            ],
+            ?assertEqual(0, meck:num_calls(user_logic, update, 4)),
+            ?assertEqual(
+                #{
+                    <<"region">> => Region,
+                    <<"regionSelection">> => Selection,
+                    <<"regionSelectionStatus">> => <<"resolved">>
+                },
+                user_handler:handle_action(
+                    web_region_selection, Origin(<<"http://127.0.0.1:9815">>), State
+                )
+            )
+        after
+            lists:foreach(fun meck:unload/1, lists:reverse(Modules))
+        end
+    end).

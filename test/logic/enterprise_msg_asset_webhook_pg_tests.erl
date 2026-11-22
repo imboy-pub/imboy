@@ -1127,7 +1127,7 @@ human_e2ee_regression_test_() ->
                 {'is_bot', 1, fun(_) -> false end}
             ]},
             {group_member_logic, [
-                {'check_mute', 2, fun(100, 1001) -> false end}
+                {'send_precheck', 2, fun(100, 1001) -> member end}
             ]},
             {group_ds, [
                 {'e2ee_mode', 1, fun(_) -> {ok, 0} end},

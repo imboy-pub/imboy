@@ -296,7 +296,12 @@ stage(
     binary(),
     binary(),
     1 | 3,
-    binary() | null
+    binary()
+    | null
+    | {delivery, binary() | null, undefined | {binary(), integer(), binary()}}
+    | {delivery, binary() | null, undefined | {binary(), integer(), binary()}, {
+        binary(), binary() | integer()
+    }}
 ) ->
     {ok, new, [integer()]}
     | {ok, new, pos_integer(), [integer()]}
@@ -352,7 +357,7 @@ stage(
     binary(),
     binary(),
     1 | 3,
-    binary()
+    binary() | {binary(), delivery} | {binary(), delivery, {binary(), binary() | integer()}}
 ) ->
     {ok, new, [integer()]}
     | {ok, new, pos_integer(), [integer()]}

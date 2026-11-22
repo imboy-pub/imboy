@@ -1559,8 +1559,47 @@ web_human_routes(Sources) ->
             jwt_methods => [<<"GET">>],
             web_auth => access
         }}
-        | lists:flatmap(fun(Spec) -> web_human_alias(Spec, Sources) end, Specs)
+        | lists:flatmap(fun(Spec) -> web_human_alias(Spec, Sources) end, Specs) ++
+            web_geo_preview_routes()
     ].
+
+web_geo_preview_routes() ->
+    case
+        {
+            config_ds:env(geo_web_preview_enabled, false),
+            imboy_env:current(),
+            config_ds:env(listen_ip, undefined),
+            config_ds:env(geo_regions_pin, undefined)
+        }
+    of
+        {true, <<"local">>, IP, #{data_root := Root, manifest_sha256 := Digest}} when
+            IP =:= {127, 0, 0, 1}; IP =:= {0, 0, 0, 0, 0, 0, 0, 1}
+        ->
+            case valid_geo_preview_pin(Root, Digest) of
+                true ->
+                    [
+                        {"/api/v1/web/user/region-selection", user_handler, #{
+                            action => web_region_selection,
+                            surface => web_human,
+                            jwt_purpose => web_human,
+                            jwt_methods => [<<"POST">>],
+                            web_auth => access
+                        }}
+                    ];
+                false ->
+                    []
+            end;
+        _ ->
+            []
+    end.
+
+valid_geo_preview_pin(Root, Digest) when
+    is_binary(Root), is_binary(Digest), byte_size(Digest) =:= 64
+->
+    filename:pathtype(Root) =:= absolute andalso
+        re:run(Digest, <<"^[a-f0-9]{64}$">>, [{capture, none}, dollar_endonly]) =:= match;
+valid_geo_preview_pin(_, _) ->
+    false.
 
 web_human_alias({Suffix, Methods, Mode}, Sources) ->
     case lists:keyfind("/api/v1/" ++ Suffix, 1, Sources) of

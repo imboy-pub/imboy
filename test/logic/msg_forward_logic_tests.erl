@@ -593,7 +593,7 @@ forward_c2g_send_rejected_propagates_error_test_() ->
                 {'check_and_record', 1, fun(_Uid) -> ok end}
             ]},
             {group_member_logic, [
-                {'check_mute', 2, fun(_Gid, _Uid) -> true end}
+                {'send_precheck', 2, fun(_Gid, _Uid) -> muted end}
             ]},
             {elib_uuid, [{'gen_v7', 0, fun() -> <<"018f0000-0000-7000-8000-000987654321">> end}]},
             {elib_dt, [

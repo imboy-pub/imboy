@@ -139,6 +139,194 @@ i1_delivery_ack_keeps_unread_test_() ->
         end)
     end).
 
+accepted_c2g_can_ack_before_worker_test_() ->
+    ?TEST_WITH_DB(fun() ->
+        with_fixture(fun() ->
+            MsgId = <<"f05m-stage-", (integer_to_binary(erlang:system_time(microsecond)))/binary>>,
+            Body = #{<<"content">> => <<"accepted before fanout">>},
+            Envelope = jsone:encode(#{
+                <<"to">> => integer_to_binary(?F05_GID), <<"payload">> => Body
+            }),
+            CreatedAt = elib_dt:now(),
+            ExpireAt = elib_dt:to_rfc3339(
+                erlang:system_time(millisecond) + 3600000, millisecond, "Z"
+            ),
+            Reply = {<<"f05-original">>, ?F05_SENDER, <<"original snippet">>},
+            LegacyId = <<MsgId/binary, "-legacy">>,
+            try
+                {ok, StagingId, Seq, Recipients} = msg_store_repo:stage(
+                    <<"c2g">>,
+                    MsgId,
+                    <<"text">>,
+                    <<>>,
+                    null,
+                    Envelope,
+                    ?F05_SENDER,
+                    ?F05_GID,
+                    CreatedAt,
+                    CreatedAt,
+                    <<>>,
+                    3,
+                    %% Q-03 收口：4 元组携带已编码 payload 与 to 标记，
+                    %% 覆盖 write_staged_msg_tx/6 快速物化路径。
+                    {delivery, ExpireAt, Reply, {jsone:encode(Body), integer_to_binary(?F05_GID)}}
+                ),
+                ?assert(lists:member(?F05_UID, Recipients)),
+                {ok, [
+                    #{
+                        <<"body">> := <<"accepted before fanout">>,
+                        <<"reply_to_msg_id">> := <<"f05-original">>,
+                        <<"reply_to_from_id">> := ?F05_SENDER,
+                        <<"reply_snippet">> := <<"original snippet">>,
+                        <<"accepted">> := true,
+                        <<"expiry">> := true
+                    }
+                ]} = elib_pg:query(
+                    <<"SELECT payload->>'content' AS body, reply_to_msg_id, reply_to_from_id, ",
+                        "reply_snippet, accepted_at=$2::timestamptz AS accepted, ",
+                        "expire_at=$3::timestamptz AS expiry ",
+                        "FROM public.msg_c2g WHERE msg_id=$1">>,
+                    [MsgId, CreatedAt, ExpireAt]
+                ),
+                ?assertEqual(false, timeline_client_ack(MsgId)),
+                {ok, 1} = msg_operation_ds:ack_c2g_timeline(MsgId, ?F05_UID),
+                {ok, [#{<<"c2g_materialized">> := true} = Staged]} = elib_pg:query(
+                    <<"SELECT * FROM public.msg_store_staging WHERE id=$1">>, [StagingId]
+                ),
+                assert_accepted_snapshot(MsgId, Seq, Recipients),
+                assert_archive_keeps_accepted_counter(MsgId, Seq, Staged),
+                ok = msg_store_worker:do_write(c2g, Staged),
+                ?assertEqual(true, timeline_client_ack(MsgId)),
+                {ok, 0} = msg_operation_ds:ack_c2g_timeline(MsgId, ?F05_UID),
+                ?assertEqual(0, read_seq_of(?F05_UID, ?F05_GID)),
+                ?assertEqual(1, msg_c2g_ds:count_unread_by_uid(?F05_UID, ?F05_GID)),
+                assert_materialized_retry_does_not_restore(MsgId, Staged),
+                assert_legacy_staging_materializes(LegacyId, Envelope, CreatedAt),
+                FailedId = <<MsgId/binary, "-f">>,
+                {error, invalid_c2g_delivery_envelope} = msg_store_repo:stage(
+                    <<"c2g">>,
+                    FailedId,
+                    <<"text">>,
+                    <<>>,
+                    null,
+                    <<"{}">>,
+                    ?F05_SENDER,
+                    ?F05_GID,
+                    CreatedAt,
+                    CreatedAt,
+                    <<>>,
+                    3,
+                    {delivery, null, undefined}
+                ),
+                %% Q-03 收口：/6 快速路径的组 ID 核对——to 标记不匹配同样
+                %% fail-closed 拒收，且不落任何表。
+                FailedFastId = <<MsgId/binary, "-ff">>,
+                {error, invalid_c2g_delivery_envelope} = msg_store_repo:stage(
+                    <<"c2g">>,
+                    FailedFastId,
+                    <<"text">>,
+                    <<>>,
+                    null,
+                    Envelope,
+                    ?F05_SENDER,
+                    ?F05_GID,
+                    CreatedAt,
+                    CreatedAt,
+                    <<>>,
+                    3,
+                    {delivery, null, undefined, {
+                        jsone:encode(Body), integer_to_binary(?F05_GID + 1)
+                    }}
+                ),
+                {error, not_found} = msg_store_repo:find_by_msg_id(<<"c2g">>, FailedId),
+                {error, not_found} = msg_store_repo:find_by_msg_id(<<"c2g">>, FailedFastId),
+                ?assertEqual(not_found, timeline_client_ack(FailedId)),
+                {ok, []} = elib_pg:query(
+                    <<"SELECT 1 FROM public.msg_c2g WHERE msg_id = ANY($1) ",
+                        "UNION ALL SELECT 1 FROM public.msg_c2g_recipient_snapshot WHERE msg_id = ANY($1) ",
+                        "UNION ALL SELECT 1 FROM public.msg_c2g_request_ledger WHERE msg_id = ANY($1)">>,
+                    [[FailedId, FailedFastId]]
+                )
+            after
+                _ = elib_pg:execute(
+                    <<"DELETE FROM public.msg_store WHERE chat_type='c2g' AND msg_id=$1">>,
+                    [MsgId]
+                ),
+                _ = [msg_store_repo:unstage(<<"c2g">>, Id) || Id <- [MsgId, LegacyId]],
+                _ = elib_pg:execute(
+                    <<"DELETE FROM public.msg_c2g_recipient_snapshot WHERE msg_id = ANY($1)">>,
+                    [[MsgId, LegacyId]]
+                ),
+                _ = elib_pg:execute(
+                    <<"DELETE FROM public.msg_c2g_request_ledger WHERE msg_id = ANY($1)">>,
+                    [[MsgId, LegacyId]]
+                )
+            end
+        end)
+    end).
+
+assert_accepted_snapshot(MsgId, Seq, Recipients) ->
+    {ok, [
+        #{
+            <<"msg_id">> := MsgId,
+            <<"from_id">> := ?F05_SENDER,
+            <<"to_gid">> := ?F05_GID,
+            <<"conv_seq">> := Seq,
+            <<"recipient_uids">> := Recipients
+        }
+    ]} = elib_pg:query(
+        <<"SELECT msg_id, from_id, to_gid, conv_seq, recipient_uids ",
+            "FROM public.msg_c2g_recipient_snapshot WHERE msg_id=$1">>,
+        [MsgId]
+    ),
+    ok.
+
+assert_archive_keeps_accepted_counter(MsgId, Seq, Staged) ->
+    Key = <<"c2g:", (integer_to_binary(?F05_GID))/binary>>,
+    Counter =
+        <<"SELECT seq, xmin::text AS row_version FROM public.msg_store_seq WHERE conv_key=$1">>,
+    {ok, [#{<<"seq">> := Seq} = Before]} = elib_pg:query(Counter, [Key]),
+    ok = msg_archive_repo:archive(Staged),
+    {ok, [Before]} = elib_pg:query(Counter, [Key]),
+    {ok, [#{<<"conv_seq">> := Seq}]} = elib_pg:query(
+        <<"SELECT conv_seq FROM public.msg_store WHERE chat_type='c2g' AND msg_id=$1">>, [MsgId]
+    ),
+    ok.
+
+assert_materialized_retry_does_not_restore(MsgId, Staged) ->
+    {ok, N} = elib_pg:execute(
+        <<"DELETE FROM public.msg_c2g_timeline WHERE msg_id=$1">>, [MsgId]
+    ),
+    ?assert(N > 0),
+    {ok, 1} = elib_pg:execute(<<"DELETE FROM public.msg_c2g WHERE msg_id=$1">>, [MsgId]),
+    ok = msg_store_worker:do_write(c2g, Staged),
+    {ok, []} = elib_pg:query(<<"SELECT 1 FROM public.msg_c2g WHERE msg_id=$1">>, [MsgId]),
+    {ok, []} = elib_pg:query(
+        <<"SELECT 1 FROM public.msg_c2g_timeline WHERE msg_id=$1">>, [MsgId]
+    ).
+
+assert_legacy_staging_materializes(MsgId, Envelope, CreatedAt) ->
+    {ok, Id, _, _} = msg_store_repo:stage(
+        <<"c2g">>,
+        MsgId,
+        <<"text">>,
+        <<>>,
+        null,
+        Envelope,
+        ?F05_SENDER,
+        ?F05_GID,
+        CreatedAt,
+        CreatedAt,
+        <<>>,
+        3
+    ),
+    {ok, [#{<<"c2g_materialized">> := false} = Staged]} = elib_pg:query(
+        <<"SELECT * FROM public.msg_store_staging WHERE id=$1">>, [Id]
+    ),
+    ?assertEqual(not_found, timeline_client_ack(MsgId)),
+    ok = msg_store_worker:do_write(c2g, Staged),
+    ?assertEqual(false, timeline_client_ack(MsgId)).
+
 %% ===================================================================
 %% I2：已读游标单调；重复/逆序不回退、不误清新消息未读
 %% ===================================================================

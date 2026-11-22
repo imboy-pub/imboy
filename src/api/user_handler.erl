@@ -50,6 +50,7 @@ handle_action(setting, Req, State) -> setting(Req, State);
 handle_action(update, Req, State) -> update(Req, State);
 handle_action(show, Req, State) -> show(Req, State);
 handle_action(web_me, Req, State) -> web_me(Req, State);
+handle_action(web_region_selection, Req, State) -> web_region_selection(Req, State);
 handle_action(qrcode, Req, State) -> qrcode(Req, State);
 handle_action(change_password, Req, State) -> change_password(Req, State);
 handle_action(set_password, Req, State) -> set_password(Req, State);
@@ -311,6 +312,77 @@ update(Req0, State) ->
         {ok, _} ->
             elib_response:success(Req0, #{}, "success.")
     end.
+
+web_region_selection(Req, #{surface := web_human, jwt_purpose := web_human} = State) ->
+    case is_geo_preview_origin(cowboy_req:header(<<"origin">>, Req)) of
+        true -> save_web_region_selection(Req, auth_ds:current_uid(State));
+        false -> elib_response:error_with_status(Req, 403, <<"Local preview origin required">>, 403)
+    end;
+web_region_selection(Req, _) ->
+    elib_response:error_with_status(Req, 401, <<"Web access required">>, 401).
+
+is_geo_preview_origin(Origin) when is_binary(Origin) ->
+    case uri_string:parse(Origin) of
+        #{scheme := Scheme, host := Host, path := <<>>} = Parsed ->
+            (Scheme =:= <<"http">> orelse Scheme =:= <<"https">>) andalso
+                lists:member(Host, [<<"localhost">>, <<"127.0.0.1">>, <<"::1">>]) andalso
+                maps:without([scheme, host, path, port], Parsed) =:= #{};
+        _ ->
+            false
+    end;
+is_geo_preview_origin(_) ->
+    false.
+
+save_web_region_selection(Req, Uid) ->
+    case {Uid, cowboy_req:parse_qs(Req)} of
+        {Uid, []} when is_integer(Uid), Uid > 0 ->
+            case web_region_value(elib_param:post(Req)) of
+                {ok, #{<<"region">> := Region, <<"selection">> := Selection} = Value} ->
+                    case user_logic:update(Uid, <<"regionSelection">>, Value, <<>>) of
+                        {ok, _} ->
+                            elib_response:success(
+                                Req,
+                                #{
+                                    <<"region">> => Region,
+                                    <<"regionSelection">> => Selection,
+                                    <<"regionSelectionStatus">> => <<"resolved">>
+                                },
+                                "success."
+                            );
+                        {error, {503, _, Msg}} ->
+                            elib_response:error_with_status(Req, 503, Msg, 503);
+                        {error, {_, _, Msg}} ->
+                            elib_response:error(Req, Msg)
+                    end;
+                unavailable ->
+                    elib_response:error_with_status(
+                        Req, 503, <<"Region selection unavailable">>, 503
+                    );
+                error ->
+                    elib_response:error_with_status(Req, 400, <<"Invalid region selection">>, 400)
+            end;
+        _ ->
+            elib_response:error_with_status(Req, 400, <<"Invalid region selection request">>, 400)
+    end.
+
+web_region_value(#{<<"selection">> := Selection, <<"region">> := Region} = V) when
+    is_map(Selection), is_binary(Region), map_size(V) =:= 2
+->
+    {ok, V};
+web_region_value(#{<<"selection">> := Selection} = V) when
+    is_map(Selection), map_size(V) =:= 1
+->
+    case geo_regions_ds:source_names(Selection, config_ds:env(geo_regions_pin, #{})) of
+        {ok, Names} ->
+            Region = iolist_to_binary(lists:join(<<" ">>, [string:trim(Name) || Name <- Names])),
+            {ok, V#{<<"region">> => Region}};
+        {error, Error} when Error =:= unavailable; Error =:= invalid_artifact ->
+            unavailable;
+        {error, _} ->
+            error
+    end;
+web_region_value(_) ->
+    error.
 
 %% @doc 获取用户公开信息
 %% 获取用户的网络公开信息

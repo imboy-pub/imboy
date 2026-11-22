@@ -625,6 +625,11 @@ do_write(c2c, Row) ->
                 ExpireAt
             )
     end;
+do_write(c2g, #{<<"c2g_materialized">> := true}) ->
+    %% The same acceptance transaction wrote the formal rows. Replaying here
+    %% could recreate rows that have since been removed. Archive and CAS
+    %% completion still happen in process_claimed_row/1.
+    ok;
 do_write(c2g, Row) ->
     PayloadBin = unwrap_staging_payload(maps:get(<<"payload">>, Row)),
     FromId = maps:get(<<"from_id">>, Row),

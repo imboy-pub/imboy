@@ -473,7 +473,7 @@ private_message(Type) ->
     meck:expect(msg_rate_logic, check_and_record, fun(_) -> ok end),
     meck:expect(friend_ds, check_relationship, fun(_, _) -> {true, false} end),
     meck:expect(ai_agent_ds, is_agent, fun(_) -> false end),
-    meck:expect(group_member_logic, check_mute, fun(_, _) -> false end),
+    meck:expect(group_member_logic, send_precheck, fun(_, _) -> member end),
     meck:expect(group_ds, is_member, fun(_, _) -> true end),
     meck:expect(group_ds, e2ee_mode, fun(_) -> {ok, 1} end),
     meck:expect(msg_store_ds, stage_with_sequence, fun(

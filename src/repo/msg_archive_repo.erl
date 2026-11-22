@@ -395,24 +395,12 @@ finish_c2g_archive(Conn, Key, Row, Data, Previous, Existing) ->
             FinalData = Data#{id => elib_tsid:generate(msg_store), conv_seq => Seq},
             {Sql, Params} = elib_pg_sql:insert(?TABLE, FinalData),
             archive_execute(Conn, Sql, Params),
-            archive_execute(Conn, <<"UPDATE public.msg_store_seq SET seq=$2 WHERE conv_key=$1">>, [
-                Key, max(Previous, Seq)
-            ]),
-            ok;
+            advance_c2g_archive_counter(Conn, Key, Previous, Seq);
         [#{<<"conv_seq">> := ExistingSeq}] ->
             Seq = c2g_archive_sequence(Conn, Row, Data, ExistingSeq),
             case same_archive(Conn, Data#{conv_seq => Seq}) of
                 {ok, [_]} ->
-                    case Seq > Previous of
-                        true ->
-                            archive_execute(
-                                Conn,
-                                <<"UPDATE public.msg_store_seq SET seq=$2 WHERE conv_key=$1">>,
-                                [Key, Seq]
-                            );
-                        false ->
-                            ok
-                    end;
+                    advance_c2g_archive_counter(Conn, Key, Previous, Seq);
                 {ok, _} ->
                     throw({rollback, archive_replay_conflict});
                 {error, Reason} ->
@@ -421,6 +409,13 @@ finish_c2g_archive(Conn, Key, Row, Data, Previous, Existing) ->
         _ ->
             throw({rollback, archive_replay_conflict})
     end.
+
+advance_c2g_archive_counter(Conn, Key, Previous, Seq) when Seq > Previous ->
+    archive_execute(Conn, <<"UPDATE public.msg_store_seq SET seq=$2 WHERE conv_key=$1">>, [
+        Key, Seq
+    ]);
+advance_c2g_archive_counter(_Conn, _Key, _Previous, _Seq) ->
+    ok.
 
 c2g_archive_sequence(Conn, Row, Data, Default) ->
     Rows = archive_query(

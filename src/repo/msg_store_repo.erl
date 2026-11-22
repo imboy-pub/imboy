@@ -530,7 +530,12 @@ stage(
     binary(),
     binary(),
     1 | 3,
-    binary() | null
+    binary()
+    | null
+    | {delivery, binary() | null, undefined | {binary(), integer(), binary()}}
+    | {delivery, binary() | null, undefined | {binary(), integer(), binary()}, {
+        binary(), binary() | integer()
+    }}
 ) -> {ok, term(), pos_integer(), [integer()]} | {error, term()}.
 stage(
     <<"c2g">> = Type,
@@ -547,6 +552,15 @@ stage(
     RequiredRole,
     ExpireAt
 ) when is_integer(ToId), (RequiredRole =:= 1 orelse RequiredRole =:= 3) ->
+    {Expiry, Delivery} =
+        case ExpireAt of
+            {delivery, Deadline, ReplyMeta} ->
+                {Deadline, {delivery, ReplyMeta}};
+            {delivery, Deadline, ReplyMeta, DeliveryPayload} ->
+                {Deadline, {delivery, ReplyMeta, DeliveryPayload}};
+            Deadline ->
+                {Deadline, stage_only}
+        end,
     case valid_c2g_msg_id(MsgId) of
         true ->
             stage_c2g(
@@ -563,7 +577,8 @@ stage(
                 SenderDid,
                 RequiredRole,
                 undefined,
-                ExpireAt
+                Expiry,
+                Delivery
             );
         false ->
             {error, invalid_msgid}
@@ -585,7 +600,7 @@ stage(
     binary(),
     binary(),
     1 | 3,
-    binary()
+    binary() | {binary(), delivery} | {binary(), delivery, {binary(), binary() | integer()}}
 ) -> {ok, term(), pos_integer(), [integer()]} | {error, term()}.
 stage_action(
     <<"c2g">> = Type,
@@ -600,14 +615,15 @@ stage_action(
     ServerTs,
     SenderDid,
     RequiredRole,
-    OriginalMsgId
-) when
-    is_integer(ToId),
-    (RequiredRole =:= 1 orelse RequiredRole =:= 3),
-    is_binary(OriginalMsgId),
-    OriginalMsgId =/= <<>>
-->
-    case valid_c2g_msg_id(MsgId) of
+    Target
+) when is_integer(ToId), (RequiredRole =:= 1 orelse RequiredRole =:= 3) ->
+    {OriginalMsgId, Delivery} =
+        case Target of
+            {Id, delivery} -> {Id, {delivery, undefined}};
+            {Id, delivery, DeliveryPayload} -> {Id, {delivery, undefined, DeliveryPayload}};
+            Id -> {Id, stage_only}
+        end,
+    case valid_c2g_msg_id(MsgId) andalso is_binary(OriginalMsgId) andalso OriginalMsgId =/= <<>> of
         true ->
             stage_c2g(
                 Type,
@@ -624,7 +640,8 @@ stage_action(
                 RequiredRole,
                 OriginalMsgId,
                 %% R05-A：编辑/撤回 action 行不自毁。
-                null
+                null,
+                Delivery
             );
         false ->
             {error, invalid_msgid}
@@ -654,7 +671,10 @@ valid_c2g_msg_id(_) ->
     binary(),
     1 | 3,
     undefined | binary(),
-    binary() | null
+    binary() | null,
+    stage_only
+    | {delivery, undefined | {binary(), integer(), binary()}}
+    | {delivery, undefined | {binary(), integer(), binary()}, {binary(), binary() | integer()}}
 ) -> {ok, term(), pos_integer(), [integer()]} | {error, term()}.
 stage_c2g(
     Type,
@@ -670,7 +690,8 @@ stage_c2g(
     SenderDid,
     RequiredRole,
     OriginalMsgId,
-    ExpireAt
+    ExpireAt,
+    Delivery
 ) ->
     %% Sequence、发送权限、recipient snapshot 与 staging INSERT 位于同一事务。
     %% 重复 msg_id 会整体回滚，不改变原行 conv_seq，也不制造序号 gap。
@@ -747,10 +768,16 @@ stage_c2g(
                 maps:get(sender_did, Data, null),
                 CreatedAt
             ),
-            ok = persist_c2g_recipient_snapshot(
-                Conn, MsgId, FromId, ToId, Seq, MemberUids, CreatedAt
+            InsertedSnapshot = persist_c2g_recipient_snapshot(
+                Conn, MsgId, FromId, ToId, Seq, MemberUids, CreatedAt, Delivery
             ),
-            StagedData = Data#{id => GenId, conv_seq => Seq, to_id_list => MemberUids},
+            StagedData0 = Data#{id => GenId, conv_seq => Seq, to_id_list => MemberUids},
+            StagedData =
+                case Delivery of
+                    stage_only -> StagedData0;
+                    {delivery, _, _} -> StagedData0#{c2g_materialized => true};
+                    {delivery, _} -> StagedData0#{c2g_materialized => true}
+                end,
             {Sql, Params} = elib_pg_sql:insert(Tb, StagedData),
             %% 普通返回值会提交，所有失败都必须显式抛 rollback。
             case elib_pg:query(Conn, Sql, Params) of
@@ -764,6 +791,18 @@ stage_c2g(
                         _ ->
                             ok = persist_c2g_revoke_fact(
                                 Conn, Action, ToId, OriginalMsgId, MsgId, FromId, Seq
+                            )
+                    end,
+                    case Delivery of
+                        stage_only ->
+                            ok;
+                        {delivery, ReplyMeta} ->
+                            ok = msg_c2g_repo:write_staged_msg_tx(
+                                Conn, StagedData, ReplyMeta, InsertedSnapshot
+                            );
+                        {delivery, ReplyMeta, {PayloadJson, ToToken}} ->
+                            ok = msg_c2g_repo:write_staged_msg_tx(
+                                Conn, StagedData, ReplyMeta, InsertedSnapshot, PayloadJson, ToToken
                             )
                     end,
                     {ok, Seq, MemberUids};
@@ -1227,17 +1266,35 @@ persist_c2g_revoke_fact(_, _, _, _, _, _, _) ->
     ok.
 
 -spec persist_c2g_recipient_snapshot(
-    pid(), binary(), integer(), integer(), integer(), [integer()], binary()
-) -> ok.
-persist_c2g_recipient_snapshot(Conn, MsgId, FromId, Gid, Seq, RecipientUids, CreatedAt) ->
-    Sql =
+    pid(), binary(), integer(), integer(), integer(), [integer()], binary(), term()
+) -> undefined | map().
+persist_c2g_recipient_snapshot(Conn, MsgId, FromId, Gid, Seq, RecipientUids, CreatedAt, Delivery) ->
+    Insert =
         <<"INSERT INTO public.msg_c2g_recipient_snapshot ",
             "(msg_id, from_id, to_gid, conv_seq, recipient_uids, created_at) ",
             "VALUES ($1, $2, $3, $4, $5, $6) ",
             "ON CONFLICT (msg_id) DO NOTHING RETURNING msg_id">>,
+    Sql =
+        case Delivery of
+            stage_only -> Insert;
+            {delivery, _, _} -> <<Insert/binary, ", from_id, to_gid, conv_seq, recipient_uids">>;
+            {delivery, _} -> <<Insert/binary, ", from_id, to_gid, conv_seq, recipient_uids">>
+        end,
     case elib_pg:query(Conn, Sql, [MsgId, FromId, Gid, Seq, RecipientUids, CreatedAt]) of
+        {ok, [_]} when Delivery =:= stage_only ->
+            undefined;
+        {ok, [
+            #{
+                <<"msg_id">> := MsgId,
+                <<"from_id">> := FromId,
+                <<"to_gid">> := Gid,
+                <<"conv_seq">> := Seq,
+                <<"recipient_uids">> := RecipientUids
+            } = Snapshot
+        ]} ->
+            Snapshot;
         {ok, [_]} ->
-            ok;
+            throw({rollback, accepted_snapshot_mismatch});
         {ok, []} ->
             throw({rollback, {recipient_snapshot_conflict, MsgId}});
         {error, Reason} ->
@@ -1477,7 +1534,7 @@ claim_pending(Limit, LeaseSeconds) ->
         Sql = <<
             "SELECT id, type, msg_id, payload, from_id, to_id, to_id_list, created_at, server_ts, retry_count, "
             "msg_type, action, e2ee, sender_did, conv_seq, accepted_at, expire_at, "
-            "reply_to_msg_id, reply_to_from_id, reply_snippet "
+            "reply_to_msg_id, reply_to_from_id, reply_snippet, c2g_materialized "
             "FROM ",
             Tb/binary,
             " WHERE processed_at IS NULL ",
@@ -1700,7 +1757,7 @@ get_unstaged(Limit) ->
     Tb = tablename(),
     Sql = <<
         "SELECT type, msg_type, msg_id, payload, from_id, to_id, to_id_list, created_at, "
-        "server_ts, retry_count, action, e2ee, sender_did, conv_seq "
+        "server_ts, retry_count, action, e2ee, sender_did, conv_seq, c2g_materialized "
         "FROM ",
         Tb/binary,
         " WHERE processed_at IS NULL ",
@@ -1767,6 +1824,9 @@ ensure_table_exists() ->
         "has_table_privilege(current_user, to_regclass('public.msg_store_staging'), 'INSERT') AND "
         "has_table_privilege(current_user, to_regclass('public.msg_store_staging'), 'UPDATE') AND "
         "has_table_privilege(current_user, to_regclass('public.msg_store_staging'), 'DELETE') AND "
+        "EXISTS (SELECT 1 FROM pg_catalog.pg_attribute "
+        "WHERE attrelid=to_regclass('public.msg_store_staging') AND attname='c2g_materialized' "
+        "AND atttypid='boolean'::regtype AND attnotnull AND NOT attisdropped) AND "
         "NOT EXISTS (SELECT 1 FROM unnest(ARRAY["
         "'msg_store_staging_processed_at_idx','msg_store_staging_available_at_idx',"
         "'msg_store_staging_created_at_idx']) AS expected(name) WHERE NOT EXISTS ("

@@ -219,7 +219,6 @@ identity_expect_pg_error(Conn, Sql, Params, WantCode) ->
 %% M-02:LOCAL:01 旧数据不破坏、旧端不伪造新结构
 identity_full_chain(#{conn := Conn} = _S) ->
     Head = inttest_marker_db:migration_head(),
-    ?assertEqual(281, Head),
     ?assertEqual(Head, identity_current_version(Conn)),
     {ok, _, [{N}]} = epgsql:equery(
         Conn, "SELECT count(*)::bigint FROM schema_migrations_history WHERE version=$1", [281]
@@ -262,7 +261,7 @@ identity_full_chain(#{conn := Conn} = _S) ->
             erlang:unique_integer([positive, monotonic])
         ]
     ),
-    {comment, <<"fresh chain to head 281; legacy forward writes intact">>}.
+    {comment, <<"fresh chain includes migration 281; legacy forward writes intact">>}.
 
 %% 稳定身份语义守卫：request_id 幂等键（23505）+ 结算事实 CHECK（23514）+ 枚举/哈希格式
 identity_schema_guards(#{conn := Conn} = _S) ->
@@ -321,7 +320,7 @@ identity_up_down_rehearsal(#{conn := Conn} = S) ->
     ?assert(identity_table_exists(Conn, <<"msg_c2c">>)),
     ?assert(identity_table_exists(Conn, <<"forward_attachment_reference">>)),
     %% up：真实应用 00000281
-    case erlang_migrate:up(identity_mig_conf(S)) of
+    case erlang_migrate:up(identity_mig_conf(S), 1) of
         ok -> ok;
         {ok, _} -> ok;
         {error, Reason} -> erlang:error({up_281_failed, Reason})
@@ -350,7 +349,7 @@ identity_up_down_rehearsal(#{conn := Conn} = S) ->
         ]
     ),
     %% 再 up：恢复 281，新表回归
-    case erlang_migrate:up(identity_mig_conf(S)) of
+    case erlang_migrate:up(identity_mig_conf(S), 1) of
         ok -> ok;
         {ok, _} -> ok;
         {error, Reason3} -> erlang:error({reup_281_failed, Reason3})
