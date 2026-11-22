@@ -551,7 +551,7 @@ write_msg_tx(
 -spec timeline_batch_sql_offset(binary(), [[term(), ...]], non_neg_integer()) ->
     {binary(), [term(), ...]}.
 timeline_batch_sql_offset(TbTimeline, Vals, Offset) ->
-    {RowsRev, Params, _Num} =
+    {RowsRev, ParamsRev, _Num} =
         lists:foldl(
             fun([A, B, C, D, E], {RowsAcc, ParamsAcc, N}) ->
                 RowSql = [
@@ -572,8 +572,7 @@ timeline_batch_sql_offset(TbTimeline, Vals, Offset) ->
                     integer_to_binary(N + 5),
                     $)
                 ],
-                %% 参数尾追保持行内顺序（行数 ≤ 群成员上限，追加成本可忽略）。
-                {[RowSql | RowsAcc], ParamsAcc ++ [A, B, C, D, E], N + 5}
+                {[RowSql | RowsAcc], [E, D, C, B, A | ParamsAcc], N + 5}
             end,
             {[], [], Offset},
             Vals
@@ -584,7 +583,7 @@ timeline_batch_sql_offset(TbTimeline, Vals, Offset) ->
         <<" (msg_id, to_uid, to_gid, created_at, conv_seq) VALUES ">>,
         lists:join($,, lists:reverse(RowsRev))
     ]),
-    {Sql, Params}.
+    {Sql, lists:reverse(ParamsRev)}.
 
 -spec authorize_c2g_write_tx(
     term(),
