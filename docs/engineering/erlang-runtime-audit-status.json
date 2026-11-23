@@ -1,0 +1,97 @@
+{
+  "task": "IMBoy Erlang Runtime Engineering Audit",
+  "doc_version": "1.0",
+  "updated_at": "2026-11-23",
+  "phase": "ROUND1_COMPLETE_AWAITING_AUTHORIZATION",
+  "r0_followup": {
+    "added": "2026-11-23",
+    "note": "Round-1 content below is retained unchanged. P1-1 mechanism/numbers were corrected in Phase B of R0; see r0-capacity-remediation-design.md section 11.",
+    "current_entry_point": "RESUME-R0.md",
+    "status_file": "r0-capacity-status.json"
+  },
+  "baseline": {
+    "repo": "imboy",
+    "branch": "main",
+    "commit": "a5c74219f",
+    "ahead_of_origin": 56,
+    "dirty": ["docs/research/ (untracked, pre-existing, untouched)"],
+    "otp_local": "29 / ERTS 17.0.2",
+    "otp_ci_matrix": ["29", "28"],
+    "cowboy": "2.19.0",
+    "ranch": "2.3.0",
+    "src_erl_files": 1098,
+    "test_erl_files": 1467,
+    "worktrees_note": "6 external task-lane worktrees exist under .task-state/ and _task_worktrees/; audit used main checkout only"
+  },
+  "source_material": {
+    "tutorial": "https://github.com/ayarodionov/Learning-Erlang-from-Claude",
+    "chapters_read": ["00","01","02","03","04","05","06","07","08","09","10","11","12","13","14"],
+    "chapters_key_focus": ["01","02","03","04","05","06","07","08","09","10","13","14"],
+    "tutorial_otp_check": "OTP 29.1.1 (compatible with project OTP 28/29 floor)"
+  },
+  "otp_doc_verifications": [
+    {"claim": "+P default = 1048576, +Q default = 65536", "source": "https://www.erlang.org/doc/apps/erts/erl_cmd.html", "verdict": "CONFIRMED"},
+    {"claim": "gen_server terminate/2 requires trap_exit for shutdown path", "source": "https://www.erlang.org/doc/apps/stdlib/gen_server.html", "verdict": "CONFIRMED"},
+    {"claim": "cowboy_websocket terminate/3 IS called on handler callback crash", "source": "vendored deps/cowboy/src/cowboy_websocket.erl:647-648 (terminate_reason type :46-49)", "verdict": "CONFIRMED (contradicts naive tutorial-ch1 extrapolation)"}
+  ],
+  "phases": {
+    "A_baseline": "DONE",
+    "material_reading": "DONE (15/15 chapters)",
+    "B_supervision_processes": "DONE -> erlang-process-health-audit.md",
+    "C_binary_ets": "DONE -> erlang-memory-ets-audit.md",
+    "D_testing": "DONE -> erlang-testing-gap-analysis.md",
+    "E_observability": "DONE -> erlang-observability-audit.md",
+    "F_performance": "DONE -> erlang-performance-audit.md",
+    "deliverables": "DONE (10/10 files in docs/engineering/)"
+  },
+  "findings": {
+    "P0": [],
+    "P1": [
+      {
+        "id": "P1-1",
+        "title": "VM process/port cap +P/+Q 20480 combined with cowboy max_connections=infinity = capacity cliff at ~19k WS connections; release template ships same values",
+        "evidence": ["config/vm.args:12-13", "src/api/websocket_handler.erl:118-119", "_rel/imboy/releases/1.0.0-alpha.75/vm.args (diff vs repo = name/cookie only)"],
+        "fix_effort": "S",
+        "report": "erlang-performance-audit.md#2"
+      }
+    ],
+    "P2": [
+      {"id": "P2-1", "title": "no erlang:system_monitor sentinel (long_gc/long_schedule/large_heap/long_msgq)", "report": "erlang-observability-audit.md#3.1"},
+      {"id": "P2-2", "title": "metrics missing 8 BEAM dimensions (run_queue, sched util, binary mem, atom_count, MQL topN, ETS per-table, sup restarts, log drops)", "report": "erlang-observability-audit.md#3.2"},
+      {"id": "P2-3", "title": "restart-storm observability gap vs intensity 50/60 (zombie worker undetected)", "report": "erlang-process-health-audit.md#PB-1"},
+      {"id": "P2-4", "title": "synchronous DB migration in start/2 (auto_migrate default true) = boot crash-loop on slow DB", "report": "erlang-process-health-audit.md#PB-2"},
+      {"id": "P2-5", "title": "+S 2 clamps scheduler parallelism; must be co-reviewed with P1-1 fix", "report": "erlang-performance-audit.md#2"},
+      {"id": "P2-6", "title": "per-frame hibernate CPU cost unmeasured; active message throughput bench absent", "report": "erlang-performance-audit.md#3.2"}
+    ],
+    "P3": [
+      {"id": "P3-1", "title": "message_ds:140 gateway chunk spawn: crash outside remote_group_batch catch skips remaining targets (offline pull covers; latency only)", "report": "erlang-process-health-audit.md#1.2"},
+      {"id": "P3-2", "title": "group_file_ds:298 download counter spawn without catch", "report": "erlang-process-health-audit.md#1.2"},
+      {"id": "P3-3", "title": "user_server worker_loop receive lacks catch-all (single-sender premise)", "report": "erlang-process-health-audit.md#2"},
+      {"id": "P3-4", "title": "agent_run_pg binary_to_atom on DB enum values (bounded)", "report": "erlang-memory-ets-audit.md#1.3"},
+      {"id": "P3-5", "title": "WS crash orphan ETS rows (accepted by design; kill-level events only)", "report": "erlang-process-health-audit.md#2"},
+      {"id": "P3-6", "title": "lager+logger dual stack; no drop-count metric; no formatter depth", "report": "erlang-observability-audit.md#3.3"},
+      {"id": "P3-7", "title": "Ch.6 distribution checklist N/A (single node, loopback-locked dist)", "report": "erlang-review-checklist.md#Ch6"}
+    ],
+    "strengths_confirmed": 8,
+    "false_positives_rejected": [
+      "cowboy terminate not called on crash (REFUTED by vendored 2.19 source)",
+      "persistent_term as cache (all 17 puts are startup/rare-event)",
+      "atom-from-input (all whitelisted before conversion)"
+    ]
+  },
+  "code_changes": "NONE (round 1 is review-only; deliverables are the only new files, all under docs/engineering/)",
+  "tests_run_this_session": "NONE (review-only round; no build/test executed, no production config touched)",
+  "next_actions_pending_authorization": [
+    "1. P1-1 fix: vm.args +P/+Q lift + cowboy max_connections bound + bench_websocket.sh CONNS ladder (S)",
+    "2. OBS batch: system_monitor worker + metrics dimensions + supervisor restart counter + Grafana/alert rules (M)",
+    "3. P2-4: production default auto_migrate=false via install.sh/runbook (S)",
+    "4. P2-5/6: scheduler utilization sampling + bench_ws_throughput.sh before any tuning (M)",
+    "5. P3 micro-fixes (2x catch, worker_loop catch-all) opportunistically",
+    "6. Round-2 extras: static call-graph for 15 nested-call candidates; binary:part referenced_byte_size sampling"
+  ],
+  "session_continuity": {
+    "resume_file": "docs/engineering/RESUME.md",
+    "checkpoint_file": "docs/engineering/erlang-runtime-audit-checkpoint.md",
+    "rule": "read RESUME.md + this file + checkpoint before any follow-up execution; never redo completed phases; never overwrite uncommitted owner changes"
+  }
+}
