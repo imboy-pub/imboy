@@ -27,7 +27,11 @@ setup() ->
     %% 本套件不经 eunit_runner boot，直调 msg_store_worker:process_row 会走到
     %% elib_tsid:generate(msg_c2c)；TSID runtime 未初始化时写入报
     %% elib_tsid_not_initialized。按仓库测试惯例幂等初始化（已初始化则保留）。
-    _ = (catch elib_tsid:init(#{dc_id => 0, node_id => 0, dc_bits => 3})),
+    try
+        elib_tsid:init(#{dc_id => 0, node_id => 0, dc_bits => 3})
+    catch
+        _:_ -> ok
+    end,
     {ok, _} = application:ensure_all_started(lager),
     State = inttest_marker_db:provision(#{
         env_prefix => <<"C2C_ACTION_ACK">>,
@@ -590,11 +594,11 @@ server_time_authority_and_window_boundary() ->
     %% 时间窗边界（服务端时钟 vs 可信基准；== 窗口在窗内，> 窗口过期）
     Win = 100000,
     NowMs = elib_dt:millisecond(),
-    ?assertEqual(ok, msg_c2c_logic:trusted_window_decision(time_row(NowMs - Win), Win)),
+    ?assertEqual(ok, msg_c2c_logic:trusted_window_decision(time_row(NowMs - Win), Win, NowMs)),
     ?assertMatch(
-        {expired, _}, msg_c2c_logic:trusted_window_decision(time_row(NowMs - Win - 1), Win)
+        {expired, _}, msg_c2c_logic:trusted_window_decision(time_row(NowMs - Win - 1), Win, NowMs)
     ),
-    ?assertEqual(ok, msg_c2c_logic:trusted_window_decision(time_row(NowMs - Win + 1), Win)),
+    ?assertEqual(ok, msg_c2c_logic:trusted_window_decision(time_row(NowMs - Win + 1), Win, NowMs)),
     ok.
 
 %% BE-04:LOCAL:04 撤回/个人删除/自毁后历史重拉：不重新显示被限制内容，

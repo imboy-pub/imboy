@@ -20,6 +20,9 @@
 %% BE-04:LOCAL:03 服务端可信时间窗规则的唯一判定点；导出供真库测试
 %% 直接约束边界语义（== 窗口在窗内，> 窗口过期）与低可信回退行为。
 -export([trusted_window_decision/2]).
+-ifdef(TEST).
+-export([trusted_window_decision/3]).
+-endif.
 
 -include("chat.hrl").
 -include("log.hrl").
@@ -932,7 +935,11 @@ c2c_edit_window_check(OriginalMsgId, CurrentUid, Recipient) ->
 -spec trusted_window_decision(map(), integer()) ->
     ok | {expired, integer()} | {no_time_source, integer()}.
 trusted_window_decision(MsgData, WindowMs) when WindowMs > 0 ->
-    NowMs = elib_dt:millisecond(),
+    trusted_window_decision(MsgData, WindowMs, elib_dt:millisecond());
+trusted_window_decision(_MsgData, _WindowMs) ->
+    ok.
+
+trusted_window_decision(MsgData, WindowMs, NowMs) ->
     case msg_store_repo:resolve_accepted_ms(MsgData) of
         {ok, BaseMs, _Trust} ->
             case NowMs - BaseMs > WindowMs of
@@ -941,9 +948,7 @@ trusted_window_decision(MsgData, WindowMs) when WindowMs > 0 ->
             end;
         {error, no_time_source} ->
             {no_time_source, NowMs}
-    end;
-trusted_window_decision(_MsgData, _WindowMs) ->
-    ok.
+    end.
 
 %% @private 编辑时间窗（毫秒），env msg_edit_window_seconds，默认 86400 秒；<=0 不限
 -spec msg_edit_window_ms() -> integer().
