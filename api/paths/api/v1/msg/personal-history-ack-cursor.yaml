@@ -29,6 +29,7 @@ post:
             client_instance:
               type: string
               maxLength: 128
+              description: Web 请求须传当前登录设备的 DID，其他入口沿用客户端实例 ID。
   responses:
     '200':
       description: 确认结果。 / Ack result.

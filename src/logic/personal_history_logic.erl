@@ -44,7 +44,7 @@ status(AccountId) ->
     Domain = personal_history_ds:domain(),
     case personal_history_repo:find_authorization(AccountId, Domain) of
         {ok, undefined} ->
-            {ok, #{<<"state">> => <<"OFF">>, <<"generation">> => 0}};
+            {ok, #{<<"state">> => <<"OFF">>, <<"generation">> => 0, <<"domain">> => Domain}};
         {ok, Row} ->
             {ok, status_payload(AccountId, Domain, Row)};
         {error, _Reason} ->
@@ -54,6 +54,7 @@ status(AccountId) ->
 status_payload(AccountId, Domain, Row) ->
     Base = #{
         <<"state">> => maps:get(<<"state">>, Row),
+        <<"domain">> => Domain,
         <<"generation">> => maps:get(<<"generation">>, Row)
     },
     Optional =
@@ -139,6 +140,7 @@ upload_error(not_enabled) -> {error, <<"not_enabled">>, 403};
 upload_error(generation_expired) -> {error, <<"generation_expired">>, 410};
 upload_error(nonce_reused) -> {error, <<"nonce_reused">>, 409};
 upload_error(version_conflict) -> {error, <<"version_conflict">>, 409};
+upload_error(backfill_evidence_missing) -> {error, <<"backfill_evidence_missing">>, 422};
 upload_error(key_package_missing) -> {error, <<"key_package_missing">>, 422};
 upload_error(_Reason) -> {error, <<"transient_failure">>, 503}.
 
@@ -250,16 +252,9 @@ changes(AccountId, Opts) ->
     end.
 
 change_event(Row) ->
-    #{
+    (archive_wire_item(Row))#{
         <<"conversation_id">> => maps:get(<<"conversation_id">>, Row),
-        <<"msg_id">> => maps:get(<<"msg_id">>, Row),
-        <<"action_version">> => maps:get(<<"action_version">>, Row),
-        <<"conv_seq">> => maps:get(<<"conv_seq">>, Row),
-        <<"event_seq">> => maps:get(<<"event_seq">>, Row),
-        <<"key_version">> => maps:get(<<"key_version">>, Row),
-        <<"ciphertext">> => base64:encode(maps:get(<<"ciphertext">>, Row)),
-        <<"envelope_meta">> => decode_jsonb(maps:get(<<"envelope_meta">>, Row)),
-        <<"deleted">> => maps:get(<<"deleted_at">>, Row) =/= null
+        <<"event_seq">> => maps:get(<<"event_seq">>, Row)
     }.
 
 %% @doc durably 确认游标（幂等；仅推进 ≤ 已发放最大值）。
@@ -341,16 +336,31 @@ do_page_fetch(AccountId, Domain, Canonical, Before, Token) ->
     end.
 
 page_item(Row) ->
-    #{
+    (archive_wire_item(Row))#{<<"created_at">> => maps:get(<<"created_at">>, Row)}.
+
+archive_wire_item(Row) ->
+    Identity = #{
         <<"msg_id">> => maps:get(<<"msg_id">>, Row),
         <<"action_version">> => maps:get(<<"action_version">>, Row),
         <<"conv_seq">> => maps:get(<<"conv_seq">>, Row),
-        <<"key_version">> => maps:get(<<"key_version">>, Row),
-        <<"ciphertext">> => base64:encode(maps:get(<<"ciphertext">>, Row)),
-        <<"envelope_meta">> => decode_jsonb(maps:get(<<"envelope_meta">>, Row)),
-        <<"deleted">> => maps:get(<<"deleted_at">>, Row) =/= null,
-        <<"created_at">> => maps:get(<<"created_at">>, Row)
-    }.
+        <<"key_version">> => maps:get(<<"key_version">>, Row)
+    },
+    case maps:get(<<"deleted_at">>, Row) of
+        null ->
+            with_accepted_message(Row, Identity#{
+                <<"ciphertext">> => base64:encode(maps:get(<<"ciphertext">>, Row)),
+                <<"envelope_meta">> => decode_jsonb(maps:get(<<"envelope_meta">>, Row)),
+                <<"deleted">> => false
+            });
+        _ ->
+            Identity#{<<"deleted">> => true}
+    end.
+
+with_accepted_message(Row, Item) ->
+    case decode_jsonb(maps:get(<<"accepted_message">>, Row, null)) of
+        Fact when is_map(Fact) -> Item#{<<"accepted_message">> => Fact};
+        _ -> Item
+    end.
 
 read_error(not_enabled) -> {error, <<"not_enabled">>, 403};
 read_error(generation_expired) -> {error, <<"generation_expired">>, 410};
@@ -367,19 +377,22 @@ read_error(_Reason) -> {error, <<"transient_failure">>, 503}.
 -spec put_key_package(integer(), map()) -> {ok, map()} | {error, binary(), integer()}.
 put_key_package(AccountId, Params) ->
     Domain = personal_history_ds:domain(),
+    Expected = maps:get(<<"generation">>, Params, undefined),
     case key_package_item(Params) of
-        {error, Code} ->
-            {error, Code, 422};
-        {ok, {KeyVersion, Pkg}} ->
-            put_key_package_authorized(AccountId, Domain, KeyVersion, Pkg)
+        {ok, {KeyVersion, Pkg}} when Expected =:= undefined; is_integer(Expected), Expected > 0 ->
+            put_key_package_authorized(AccountId, Domain, KeyVersion, Pkg, Expected);
+        _ ->
+            {error, <<"malformed_package">>, 422}
     end.
 
-put_key_package_authorized(AccountId, Domain, KeyVersion, Pkg) ->
+put_key_package_authorized(AccountId, Domain, KeyVersion, Pkg, Expected) ->
     case personal_history_repo:find_authorization(AccountId, Domain) of
-        {ok, #{<<"state">> := <<"ON">>, <<"generation">> := G}} ->
+        {ok, #{<<"state">> := <<"ON">>, <<"generation">> := G}} when
+            Expected =:= undefined; Expected =:= G
+        ->
             save_key_package(AccountId, Domain, KeyVersion, G, Pkg);
         {ok, #{<<"state">> := State}} when
-            State =:= <<"OFF_PURGE_PENDING">>; State =:= <<"OFF_PURGED">>
+            State =:= <<"ON">>; State =:= <<"OFF_PURGE_PENDING">>; State =:= <<"OFF_PURGED">>
         ->
             {error, <<"generation_expired">>, 410};
         {ok, _} ->
@@ -411,20 +424,25 @@ key_package_item(Params) ->
     WrappedB64 = maps:get(<<"wrapped_key">>, Params, <<>>),
     KdfMeta = maps:get(<<"kdf_meta">>, Params, #{}),
     IntegrityHash = maps:get(<<"integrity_hash">>, Params, <<>>),
-    Iterations = maps:get(<<"iterations">>, KdfMeta, 0),
-    KdfAlgo = maps:get(<<"algorithm">>, KdfMeta, <<>>),
     case
         is_integer(KeyVersion) andalso KeyVersion >= 1 andalso
             is_binary(IntegrityHash) andalso byte_size(IntegrityHash) > 0 andalso
-            is_map(KdfMeta) andalso
-            is_integer(Iterations) andalso Iterations >= ?MIN_KDF_ITERATIONS andalso
-            is_binary(KdfAlgo) andalso byte_size(KdfAlgo) > 0
+            valid_key_package_kdf(KdfMeta)
     of
         false ->
             {error, <<"malformed_package">>};
         true ->
             decode_wrapped_key(WrappedB64, KdfMeta, IntegrityHash, KeyVersion)
     end.
+
+valid_key_package_kdf(#{<<"iterations">> := Iterations} = Meta) when
+    is_integer(Iterations), Iterations >= ?MIN_KDF_ITERATIONS
+->
+    Algorithm = maps:get(<<"alg">>, Meta, maps:get(<<"algorithm">>, Meta, <<>>)),
+    is_binary(Algorithm) andalso byte_size(Algorithm) > 0 andalso
+        maps:get(<<"algorithm">>, Meta, Algorithm) =:= Algorithm;
+valid_key_package_kdf(_) ->
+    false.
 
 %% ===================================================================
 %% 2.5b GET key-package（mh04-key-package-read-addendum：恢复读取入口）

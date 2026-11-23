@@ -36,7 +36,7 @@ get:
       schema:
         type: string
         maxLength: 128
-      description: 游标 slot 的客户端实例标识。 / Client instance for the cursor slot.
+      description: 游标实例标识。Web 请求须传当前登录设备的 DID。
   responses:
     '200':
       description: 变更事件列表。 / Change events.
@@ -78,9 +78,12 @@ get:
                               format: int64
                             ciphertext:
                               type: string
-                              description: base64。 / base64.
+                              description: base64。墓碑不返回密文。
                             envelope_meta:
                               type: object
+                            accepted_message:
+                              type: object
+                              description: 权威接受元数据，包含十进制字符串 from_id、to_id，以及 conv_seq、action_version、accepted_at_ms。墓碑不返回。
                             deleted:
                               type: boolean
                               description: 墓碑投影（MSG-H15）。 / Tombstone projection.
@@ -92,7 +95,7 @@ get:
                         type: boolean
                         description: true=游标已出窗口，须走 page 重扫。 / Cursor outside window; rescan via page.
     '403':
-      description: not_enabled
+      description: not_enabled / identity_rejected
     '410':
       description: generation_expired
     '503':

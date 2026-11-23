@@ -1,20 +1,18 @@
 -module(c2c_action_receipt_repo).
 
--export([accept/6, accept_tx/7, consume/6, reconcile_consumed_tx/2]).
+-export([accept/6, accept_tx/7, consume/6, lock_original_tx/2, reconcile_consumed_tx/2]).
 
 -spec accept(binary(), binary(), integer(), integer(), binary(), binary() | null) ->
     {ok, new | duplicate} | {error, conflict | term()}.
 accept(RequestId, OriginalMsgId, ActorUid, PeerUid, Action, ContentHash) ->
-    elib_pg:with_tx(fun(Conn) ->
-        accept_tx(Conn, RequestId, OriginalMsgId, ActorUid, PeerUid, Action, ContentHash)
-    end).
+    tx_result(
+        elib_pg:with_tx(fun(Conn) ->
+            accept_tx(Conn, RequestId, OriginalMsgId, ActorUid, PeerUid, Action, ContentHash)
+        end)
+    ).
 
 accept_tx(Conn, RequestId, OriginalMsgId, ActorUid, PeerUid, Action, ContentHash) ->
-    Lock = <<"c2c_forward_revoke:", OriginalMsgId/binary>>,
-    case elib_pg:query(Conn, <<"SELECT pg_advisory_xact_lock(hashtextextended($1,0))">>, [Lock]) of
-        {ok, _} -> ok;
-        {error, Reason0} -> throw({rollback, {revoke_lock_failed, Reason0}})
-    end,
+    ok = lock_original_tx(Conn, OriginalMsgId),
     %% BE-04 撤回终态守卫：该 original 已被撤回消费（权威终态）后，
     %% 任何新的编辑/撤回受理一律显式拒绝——正文不得复活。
     case consumed_revoke_exists(Conn, OriginalMsgId) of
@@ -31,15 +29,32 @@ accept_tx(Conn, RequestId, OriginalMsgId, ActorUid, PeerUid, Action, ContentHash
                 ])
             of
                 {ok, 1} ->
-                    {ok, new};
+                    finish_accept(Conn, OriginalMsgId, ActorUid, PeerUid, Action, {ok, new});
                 {ok, 0} ->
-                    verify_duplicate(
+                    Duplicate = verify_duplicate(
                         Conn, RequestId, OriginalMsgId, ActorUid, PeerUid, Action, ContentHash
-                    );
+                    ),
+                    finish_accept(Conn, OriginalMsgId, ActorUid, PeerUid, Action, Duplicate);
                 {error, Reason} ->
                     throw({rollback, Reason})
             end
     end.
+
+-spec lock_original_tx(any(), binary()) -> ok.
+lock_original_tx(Conn, OriginalMsgId) ->
+    Lock = <<"c2c_forward_revoke:", OriginalMsgId/binary>>,
+    case elib_pg:query(Conn, <<"SELECT pg_advisory_xact_lock(hashtextextended($1,0))">>, [Lock]) of
+        {ok, _} -> ok;
+        {error, Reason} -> throw({rollback, {revoke_lock_failed, Reason}})
+    end.
+
+finish_accept(Conn, OriginalMsgId, ActorUid, PeerUid, <<"revoke">>, {ok, _} = Accepted) ->
+    case personal_history_repo:mark_revoked_tx(Conn, ActorUid, PeerUid, OriginalMsgId) of
+        ok -> Accepted;
+        {error, Reason} -> throw({rollback, {history_tombstone_failed, Reason}})
+    end;
+finish_accept(_Conn, _OriginalMsgId, _ActorUid, _PeerUid, _Action, Result) ->
+    Result.
 
 -spec consume(binary(), binary(), integer(), binary(), binary() | null, binary()) ->
     ok | {error, not_found | replayed | term()}.
@@ -47,13 +62,7 @@ consume(RequestId, OriginalMsgId, AckUid, Action, ContentHash, PayloadJson) ->
     Result = elib_pg:with_tx(fun(Conn) ->
         %% BE-04：与 accept 同键的 per-original 事务级 advisory lock——
         %% 受理序与消费序在库内全串行，终态守卫与 fence 判定无竞态。
-        Lock = <<"c2c_forward_revoke:", OriginalMsgId/binary>>,
-        case
-            elib_pg:query(Conn, <<"SELECT pg_advisory_xact_lock(hashtextextended($1,0))">>, [Lock])
-        of
-            {ok, _} -> ok;
-            {error, Reason0} -> throw({rollback, {revoke_lock_failed, Reason0}})
-        end,
+        ok = lock_original_tx(Conn, OriginalMsgId),
         case lock_receipt(Conn, RequestId) of
             {ok, #{
                 <<"original_msg_id">> := OriginalMsgId,
@@ -87,11 +96,14 @@ consume(RequestId, OriginalMsgId, AckUid, Action, ContentHash, PayloadJson) ->
 reconcile_consumed_tx(Conn, OriginalMsgId) ->
     Sql =
         <<"UPDATE public.msg_c2c m SET payload=r.result_payload::text, ",
-            "server_ts=clock_timestamp() FROM (",
-            "SELECT actor_uid,peer_uid,result_payload FROM public.c2c_action_receipt ",
+            "server_ts=clock_timestamp(), action_version=r.action_version FROM (",
+            "SELECT DISTINCT ON (actor_uid,peer_uid) actor_uid,peer_uid,result_payload, ",
+            "count(*) OVER (PARTITION BY actor_uid,peer_uid) AS action_version ",
+            "FROM public.c2c_action_receipt ",
             "WHERE original_msg_id=$1 AND consumed_at IS NOT NULL ",
-            "ORDER BY consumed_at DESC,request_id DESC LIMIT 1",
-            ") r WHERE m.msg_id=$1 AND m.from_id=r.actor_uid AND m.to_id=r.peer_uid">>,
+            "ORDER BY actor_uid,peer_uid,consumed_at DESC,request_id DESC",
+            ") r WHERE m.msg_id=$1 AND m.from_id=r.actor_uid AND m.to_id=r.peer_uid ",
+            "AND m.action_version<=r.action_version">>,
     case elib_pg:execute_count(Conn, Sql, [OriginalMsgId]) of
         {ok, _} -> ok;
         {error, Reason} -> {error, Reason}
@@ -138,11 +150,12 @@ consume_locked(Conn, RequestId, OriginalMsgId, ActorUid, PeerUid, PayloadJson) -
         <<"UPDATE public.msg_store_staging SET payload=$1::jsonb,server_ts=clock_timestamp() ",
             "WHERE type='c2c' AND msg_id=$2 AND from_id=$3 AND to_id=$4 ",
             "AND processed_at IS NULL">>,
-    FormalCount = execute_count_or_rollback(
-        Conn, FormalSql, [PayloadJson, OriginalMsgId, ActorUid, PeerUid]
-    ),
+    %% The staging worker completes staging before it locks the formal row.
     StagingCount = execute_count_or_rollback(
         Conn, StagingSql, [PayloadJson, OriginalMsgId, ActorUid, PeerUid]
+    ),
+    FormalCount = execute_count_or_rollback(
+        Conn, FormalSql, [PayloadJson, OriginalMsgId, ActorUid, PeerUid]
     ),
     case FormalCount + StagingCount of
         0 ->

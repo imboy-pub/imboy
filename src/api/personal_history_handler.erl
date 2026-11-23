@@ -90,7 +90,7 @@ changes(Req0, State) ->
         limit => int_qs(<<"limit">>, Qs, 50),
         client_instance => proplists:get_value(<<"client_instance">>, Qs, <<>>)
     },
-    reply(Req0, personal_history_logic:changes(auth_ds:current_uid(State), Opts)).
+    reply_cursor(Req0, State, Opts, fun personal_history_logic:changes/2).
 
 -spec ack_cursor(cowboy_req:req(), map()) -> cowboy_req:req().
 ack_cursor(Req0, State) ->
@@ -100,7 +100,19 @@ ack_cursor(Req0, State) ->
         generation => maps:get(<<"generation">>, PostVals, undefined),
         client_instance => maps:get(<<"client_instance">>, PostVals, <<>>)
     },
-    reply(Req0, personal_history_logic:ack_cursor(auth_ds:current_uid(State), Opts)).
+    reply_cursor(Req0, State, Opts, fun personal_history_logic:ack_cursor/2).
+
+reply_cursor(Req0, State, #{client_instance := Instance} = Opts, Run) ->
+    case valid_client_instance(State, Instance) of
+        true -> reply(Req0, Run(auth_ds:current_uid(State), Opts));
+        false -> reply_error(Req0, <<"identity_rejected">>)
+    end.
+
+valid_client_instance(#{surface := web_human} = State, Instance) ->
+    is_binary(Instance) andalso byte_size(Instance) > 0 andalso
+        Instance =:= auth_ds:current_did(State);
+valid_client_instance(_State, _Instance) ->
+    true.
 
 -spec page(cowboy_req:req(), map()) -> cowboy_req:req().
 page(Req0, State) ->
@@ -214,6 +226,7 @@ http_status(<<"generation_expired">>) -> 410;
 http_status(<<"page_token_expired">>) -> 410;
 http_status(<<"rescan_bound_exceeded">>) -> 410;
 http_status(<<"key_package_missing">>) -> 422;
+http_status(<<"backfill_evidence_missing">>) -> 422;
 http_status(<<"malformed_package">>) -> 422;
 http_status(<<"malformed_package_request">>) -> 422;
 http_status(<<"malformed_request">>) -> 422;
@@ -231,6 +244,7 @@ envelope_code(<<"generation_expired">>) -> ?ERR_GONE;
 envelope_code(<<"page_token_expired">>) -> ?ERR_GONE;
 envelope_code(<<"rescan_bound_exceeded">>) -> ?ERR_GONE;
 envelope_code(<<"key_package_missing">>) -> ?ERR_MISSING_PARAM;
+envelope_code(<<"backfill_evidence_missing">>) -> ?ERR_UNPROCESSABLE_ENTITY;
 envelope_code(<<"malformed_package">>) -> ?ERR_UNPROCESSABLE_ENTITY;
 envelope_code(<<"malformed_package_request">>) -> ?ERR_UNPROCESSABLE_ENTITY;
 envelope_code(<<"malformed_request">>) -> ?ERR_UNPROCESSABLE_ENTITY;
@@ -249,6 +263,7 @@ human_msg(<<"generation_expired">>) -> <<"授权代次已失效"/utf8>>;
 human_msg(<<"page_token_expired">>) -> <<"分页令牌已过期，请重新扫描"/utf8>>;
 human_msg(<<"rescan_bound_exceeded">>) -> <<"重扫链长超限，请从头分页"/utf8>>;
 human_msg(<<"key_package_missing">>) -> <<"缺少对应版本的密钥包"/utf8>>;
+human_msg(<<"backfill_evidence_missing">>) -> <<"缺少消息受理证明"/utf8>>;
 human_msg(<<"malformed_package">>) -> <<"密钥包格式非法"/utf8>>;
 human_msg(<<"malformed_package_request">>) -> <<"密钥包查询参数非法"/utf8>>;
 human_msg(<<"malformed_request">>) -> <<"请求参数非法"/utf8>>;
@@ -258,3 +273,12 @@ human_msg(_) -> <<"操作失败"/utf8>>.
 %% ===================================================================
 %% EUnit tests.
 %% ===================================================================
+
+-ifdef(EUNIT).
+web_cursor_device_binding_test() ->
+    Web = #{surface => web_human, current_did => <<"did-a">>},
+    ?assert(valid_client_instance(Web, <<"did-a">>)),
+    ?assertNot(valid_client_instance(Web, <<"did-b">>)),
+    ?assertNot(valid_client_instance(maps:remove(current_did, Web), <<>>)),
+    ?assert(valid_client_instance(#{current_did => <<"did-a">>}, <<"legacy-instance">>)).
+-endif.

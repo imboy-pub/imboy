@@ -50,6 +50,24 @@ cleanup_test_rows() ->
         end,
         Tables
     ),
+    lists:foreach(
+        fun({Table, IdColumn, From, To}) ->
+            Sql =
+                <<"DELETE FROM ", Table/binary, " WHERE ", IdColumn/binary, " LIKE 'mh02-%' AND ",
+                    From/binary, " BETWEEN $1 AND $2 AND ", To/binary, " BETWEEN $1 AND $2">>,
+            {ok, _} = elib_pg:execute(Sql, [?TEST_ACCOUNTS_MIN, ?TEST_ACCOUNTS_MAX])
+        end,
+        [
+            {<<"public.c2c_action_receipt">>, <<"original_msg_id">>, <<"actor_uid">>,
+                <<"peer_uid">>},
+            {<<"public.msg_c2c">>, <<"msg_id">>, <<"from_id">>, <<"to_id">>},
+            {<<"public.msg_store_staging">>, <<"msg_id">>, <<"from_id">>, <<"to_id">>},
+            {<<"public.msg_store">>, <<"msg_id">>, <<"from_id">>, <<"to_id">>}
+        ]
+    ),
+    {ok, _} = elib_pg:execute(<<"DELETE FROM public.msg_store_seq WHERE conv_key=$1">>, [
+        conv(?A1, ?A2)
+    ]),
     ok.
 
 domain() ->
@@ -99,6 +117,48 @@ put_key_package(AccountId, KeyVersion) ->
         <<"integrity_hash">> => <<"aabbccdd", (integer_to_binary(KeyVersion))/binary>>
     }).
 
+seed_c2c(MsgId, Seq) ->
+    seed_c2c(MsgId, ?A1, ?A2, Seq, 0).
+
+seed_c2c(MsgId, From, To, Seq, OffsetSeconds) ->
+    {ok, 1} = elib_pg:execute_count(
+        <<
+            "INSERT INTO public.msg_c2c (id,from_id,to_id,msg_id,msg_type,payload,conv_seq,accepted_at) "
+            "VALUES ($1,$2,$3,$4,'text','{}',$5,clock_timestamp()+$6::integer*interval '1 second')"
+        >>,
+        [elib_tsid:generate(msg_c2c), From, To, MsgId, Seq, OffsetSeconds]
+    ),
+    ok.
+
+seed_other_source(staging, MsgId, Seq) ->
+    {ok, 1} = elib_pg:execute_count(
+        <<
+            "INSERT INTO public.msg_store_staging "
+            "(id,type,from_id,to_id,msg_id,msg_type,payload,conv_seq,accepted_at,available_at) "
+            "VALUES ($1,'c2c',$2,$3,$4,'text','{}',$5,clock_timestamp(),clock_timestamp()+interval '1 day')"
+        >>,
+        [elib_tsid:generate(msg_store), ?A1, ?A2, MsgId, Seq]
+    ),
+    ok;
+seed_other_source(retained, MsgId, Seq) ->
+    {ok, 1} = elib_pg:execute_count(
+        <<
+            "INSERT INTO public.msg_store (id,chat_type,conv_key,from_id,to_id,msg_id,msg_type,payload,conv_seq,accepted_at) "
+            "VALUES ($1,'c2c',$2,$3,$4,$5,'text','{}',$6,clock_timestamp())"
+        >>,
+        [elib_tsid:generate(msg_store), conv(?A1, ?A2), ?A1, ?A2, MsgId, Seq]
+    ),
+    ok.
+
+consume_action(MsgId, Action, RequestId, From, To) ->
+    Hash =
+        case Action of
+            <<"edit">> -> binary:copy(<<"a">>, 64);
+            <<"revoke">> -> null
+        end,
+    {ok, new} = c2c_action_receipt_repo:accept(RequestId, MsgId, From, To, Action, Hash),
+    ok = c2c_action_receipt_repo:consume(RequestId, MsgId, To, Action, Hash, <<"{}">>).
+
 upload_params(AccountId, Peer, MsgId, Nonce, Seq) ->
     upload_params(AccountId, Peer, MsgId, Nonce, Seq, 0, undefined).
 
@@ -134,6 +194,7 @@ default_off_rejects_upload_and_key_package_test_() ->
         {ok, Status} = personal_history_logic:status(?A1),
         ?assertEqual(<<"OFF">>, maps:get(<<"state">>, Status)),
         ?assertEqual(0, maps:get(<<"generation">>, Status)),
+        ?assertEqual(domain(), maps:get(<<"domain">>, Status)),
         %% 未开启上传 → 403 not_enabled
         ?assertEqual(
             {error, <<"not_enabled">>, 403},
@@ -164,6 +225,8 @@ opt_in_idempotent_same_generation_test_() ->
         ?assertEqual(<<"ON">>, maps:get(<<"state">>, First)),
         ?assertEqual(<<"created">>, maps:get(<<"result">>, First)),
         ?assertEqual(1, maps:get(<<"generation">>, First)),
+        {ok, EnabledStatus} = personal_history_logic:status(?A1),
+        ?assertEqual(domain(), maps:get(<<"domain">>, EnabledStatus)),
         Second = opt_in(?A1),
         ?assertEqual(<<"idempotent">>, maps:get(<<"result">>, Second)),
         ?assertEqual(maps:get(<<"generation">>, First), maps:get(<<"generation">>, Second)),
@@ -183,26 +246,208 @@ upload_idempotent_returns_original_test_() ->
         cleanup_test_rows(),
         _ = opt_in(?A1),
         {ok, _} = put_key_package(?A1, 1),
+        ok = seed_c2c(<<"mh02-m-dup">>, 7),
         {ok, Stored} = personal_history_logic:upload(
-            ?A1, upload_params(?A1, ?A2, <<"m-dup">>, <<"nonce-dup">>, 7)
+            ?A1, upload_params(?A1, ?A2, <<"mh02-m-dup">>, <<"nonce-dup">>, 7)
         ),
         ?assertEqual(<<"stored">>, maps:get(<<"result">>, Stored)),
         StoredSeq = maps:get(<<"event_seq">>, Stored),
         %% 同键重试：返回原结果（同 event_seq），不产生第二语义记录
         {ok, Dup} = personal_history_logic:upload(
-            ?A1, upload_params(?A1, ?A2, <<"m-dup">>, <<"nonce-dup">>, 7)
+            ?A1, upload_params(?A1, ?A2, <<"mh02-m-dup">>, <<"nonce-dup">>, 7)
         ),
         ?assertEqual(<<"duplicate">>, maps:get(<<"result">>, Dup)),
         ?assertEqual(StoredSeq, maps:get(<<"event_seq">>, Dup)),
         ?assertEqual(1, archive_count(?A1)),
         %% 未排序 conv_key 规范化后同键（与投递链 conv_key 同源）
-        Unsorted = (upload_params(?A1, ?A2, <<"m-dup">>, <<"nonce-dup">>, 7))#{
+        Unsorted = (upload_params(?A1, ?A2, <<"mh02-m-dup">>, <<"nonce-dup">>, 7))#{
             <<"conversation_id">> => conv(?A2, ?A1)
         },
         {ok, Dup2} = personal_history_logic:upload(?A1, Unsorted),
         ?assertEqual(<<"duplicate">>, maps:get(<<"result">>, Dup2)),
         ?assertEqual(1, archive_count(?A1)),
         cleanup_test_rows()
+    end).
+
+upload_requires_accepted_message_provenance_test_() ->
+    ?TEST_WITH_DB_TIMEOUT(60, fun() ->
+        cleanup_test_rows(),
+        ok = seed_c2c(<<"mh02-before-enable">>, ?A1, ?A2, 1, -60),
+        _ = opt_in(?A1),
+        _ = opt_in(?A2),
+        {ok, _} = put_key_package(?A1, 1),
+        {ok, _} = put_key_package(?A2, 1),
+        ok = seed_c2c(<<"mh02-different-pair">>, ?OTHER1, ?OTHER2, 2, 0),
+        ok = seed_c2c(<<"mh02-real-inbound">>, ?A2, ?A1, 3, 0),
+        Missing = {error, <<"backfill_evidence_missing">>, 422},
+        lists:foreach(
+            fun({Msg, Seq}) ->
+                ?assertEqual(
+                    Missing,
+                    personal_history_logic:upload(
+                        ?A1, upload_params(?A1, ?A2, Msg, <<"n-provenance">>, Seq)
+                    )
+                )
+            end,
+            [{<<"mh02-no-fact">>, 1}, {<<"mh02-before-enable">>, 1}, {<<"mh02-different-pair">>, 2}]
+        ),
+        Base = upload_params(?A1, ?A2, <<"mh02-real-inbound">>, <<"n-provenance">>, 3),
+        ?assertEqual(
+            {error, <<"version_conflict">>, 409},
+            personal_history_logic:upload(
+                ?A1, Base#{<<"conv_seq">> => 4}
+            )
+        ),
+        Meta = maps:get(<<"envelope_meta">>, Base),
+        {ok, _} = personal_history_logic:upload(?A1, Base#{
+            <<"envelope_meta">> => Meta#{
+                <<"accepted_message">> => #{<<"from_id">> => <<"untrusted">>}
+            }
+        }),
+        {ok, _} = personal_history_logic:upload(?A2, Base),
+        {ok, Changes} = personal_history_logic:changes(?A1, #{}),
+        [#{<<"accepted_message">> := Proof}] = maps:get(<<"events">>, Changes),
+        ?assertMatch(
+            #{
+                <<"from_id">> := <<"98600102">>,
+                <<"to_id">> := <<"98600101">>,
+                <<"conv_seq">> := 3,
+                <<"action_version">> := 0
+            },
+            Proof
+        ),
+        ?assert(is_integer(maps:get(<<"accepted_at_ms">>, Proof))),
+        {ok, SenderChanges} = personal_history_logic:changes(?A2, #{}),
+        SenderCursor = maps:get(<<"next_cursor">>, SenderChanges),
+        RecipientCursor = maps:get(<<"next_cursor">>, Changes),
+        Revoke = fun() ->
+            c2c_action_receipt_repo:accept(
+                <<"mh02-revoke">>, <<"mh02-real-inbound">>, ?A2, ?A1, <<"revoke">>, null
+            )
+        end,
+        {ok, new} = Revoke(),
+        {ok, duplicate} = Revoke(),
+        lists:foreach(
+            fun({Account, Before}) ->
+                {ok, After} = personal_history_logic:changes(Account, #{cursor => Before}),
+                [#{<<"deleted">> := true, <<"event_seq">> := Tombstone} = Revocation] = maps:get(
+                    <<"events">>, After
+                ),
+                ?assert(Tombstone > Before),
+                ?assertNot(maps:is_key(<<"accepted_message">>, Revocation)),
+                ?assertNot(maps:is_key(<<"ciphertext">>, Revocation)),
+                ?assertNot(maps:is_key(<<"envelope_meta">>, Revocation)),
+                {ok, NoDuplicate} = personal_history_logic:changes(Account, #{cursor => Tombstone}),
+                ?assertEqual([], maps:get(<<"events">>, NoDuplicate))
+            end,
+            [{?A1, RecipientCursor}, {?A2, SenderCursor}]
+        ),
+        ?assertEqual(Missing, personal_history_logic:upload(?A1, Base)),
+        {ok, Page} = personal_history_logic:page(?A1, #{conversation_id => conv(?A1, ?A2)}),
+        [#{<<"deleted">> := true} = RevokedRow] = maps:get(<<"messages">>, Page),
+        ?assertNot(maps:is_key(<<"accepted_message">>, RevokedRow)),
+        ?assertNot(maps:is_key(<<"ciphertext">>, RevokedRow)),
+        ?assertNot(maps:is_key(<<"envelope_meta">>, RevokedRow)),
+        cleanup_test_rows()
+    end).
+
+upload_uses_staging_and_retained_accepted_facts_test_() ->
+    ?TEST_WITH_DB_TIMEOUT(60, fun() ->
+        cleanup_test_rows(),
+        _ = opt_in(?A1),
+        {ok, _} = put_key_package(?A1, 1),
+        RunId = integer_to_binary(elib_tsid:generate(msg_store)),
+        Staging = <<"mh02-staging-", RunId/binary>>,
+        Retained = <<"mh02-retained-", RunId/binary>>,
+        ok = seed_other_source(staging, Staging, 1),
+        {ok, [OldSnapshot]} = elib_pg:query(
+            <<"SELECT * FROM public.msg_store_staging WHERE type='c2c' AND msg_id=$1">>, [
+                Staging
+            ]
+        ),
+        ok = consume_action(Staging, <<"edit">>, <<"mh02-edit-a-", RunId/binary>>, ?A1, ?A2),
+        ok = consume_action(Staging, <<"edit">>, <<"mh02-edit-b-", RunId/binary>>, ?A1, ?A2),
+        {ok, _} = personal_history_logic:upload(
+            ?A1, upload_params(?A1, ?A2, Staging, <<"n-staging">>, 1, 2, 1)
+        ),
+        ok = seed_other_source(retained, Retained, 2),
+        {ok, _} = personal_history_logic:upload(
+            ?A1, upload_params(?A1, ?A2, Retained, <<"n-retained">>, 2)
+        ),
+        ok = msg_store_worker:process_row(OldSnapshot),
+        {ok, [#{<<"action_version">> := 2, <<"processed_at">> := Processed}]} = elib_pg:query(
+            <<
+                "SELECT m.action_version,s.processed_at FROM public.msg_c2c m JOIN public.msg_store_staging s "
+                "ON s.type='c2c' AND s.msg_id=m.msg_id WHERE m.msg_id=$1"
+            >>,
+            [Staging]
+        ),
+        ?assert(Processed =/= null),
+        {ok, #{<<"result">> := <<"duplicate">>}} = personal_history_logic:upload(
+            ?A1, upload_params(?A1, ?A2, Staging, <<"n-staging">>, 1, 2, 1)
+        ),
+        {ok, 1} = elib_pg:execute_count(
+            <<"UPDATE public.msg_c2c SET action_version=3 WHERE msg_id=$1 AND from_id=$2 AND to_id=$3">>,
+            [Staging, ?A1, ?A2]
+        ),
+        ?assertEqual(
+            {error, <<"backfill_evidence_missing">>, 422},
+            personal_history_logic:upload(
+                ?A1, upload_params(?A1, ?A2, Staging, <<"n-staging">>, 1, 2, 1)
+            )
+        ),
+        cleanup_test_rows()
+    end).
+
+enterprise_direct_origin_is_excluded_test_() ->
+    ?TEST_WITH_DB_TIMEOUT(60, fun() ->
+        Account = elib_tsid:generate(user),
+        Peer = elib_tsid:generate(user),
+        Org = elib_tsid:generate(organization),
+        Id = <<"mh02-oa-", (integer_to_binary(Account))/binary>>,
+        Domain = domain(),
+        Conv = conv(Account, Peer),
+        Result = elib_pg:with_tx(fun(Conn) ->
+            {ok, 1} = elib_pg:execute_count(
+                Conn,
+                <<"INSERT INTO public.\"user\" (id,password,account,reg_ip,reg_cosv) VALUES ($1,'x',$2,'127.0.0.1','x')">>,
+                [Account, Id]
+            ),
+            {ok, 1} = elib_pg:execute_count(
+                Conn,
+                <<"INSERT INTO public.organization (id,name,owner_id,status) VALUES ($1,$2,$3,'active')">>,
+                [Org, Id, Account]
+            ),
+            {ok, #{<<"id">> := App}} = enterprise_application_repo:create_tx(Conn, Org, Id, Id),
+            {ok, _} = personal_history_repo:insert_authorization_tx(
+                Conn, Account, Domain, 1, <<"test-oa">>
+            ),
+            {ok, Row} = enterprise_message_repo:insert_direct_tx(
+                Conn, Id, Account, Peer, <<"text">>, #{}
+            ),
+            Verify = fun() ->
+                personal_history_repo:find_accepted_message_tx(Conn, Account, Domain, Conv, Id)
+            end,
+            ?assertMatch({ok, #{<<"conv_seq">> := 1}}, Verify()),
+            {ok, _} = enterprise_message_origin_repo:insert_tx(
+                Conn, direct, Org, App, human, Account, Row, Id
+            ),
+            ?assertEqual({ok, undefined}, Verify()),
+            {ok, 1} = elib_pg:execute_count(
+                Conn, <<"DELETE FROM public.msg_c2c WHERE id=$1 AND msg_id=$2">>, [Row, Id]
+            ),
+            ?assertMatch(
+                {ok, [#{<<"conv_seq">> := 1}]},
+                elib_pg:query(
+                    Conn,
+                    <<"SELECT conv_seq FROM public.msg_store WHERE conv_key=$1 AND msg_id=$2">>,
+                    [Conv, Id]
+                )
+            ),
+            ?assertEqual({ok, undefined}, Verify()),
+            throw({rollback, origin_checks_complete})
+        end),
+        ?assertEqual({rollback, origin_checks_complete}, Result)
     end).
 
 %%%-------------------------------------------------------------------
@@ -214,14 +459,16 @@ nonce_reuse_rejected_test_() ->
         cleanup_test_rows(),
         _ = opt_in(?A1),
         {ok, _} = put_key_package(?A1, 1),
+        ok = seed_c2c(<<"mh02-m-n1">>, 1),
+        ok = seed_c2c(<<"mh02-m-n2">>, 2),
         {ok, _} = personal_history_logic:upload(
-            ?A1, upload_params(?A1, ?A2, <<"m-n1">>, <<"shared-nonce">>, 1)
+            ?A1, upload_params(?A1, ?A2, <<"mh02-m-n1">>, <<"shared-nonce">>, 1)
         ),
         %% 不同 msg_id 复用同 (key_version, nonce) → 409，第二行不落库
         ?assertEqual(
             {error, <<"nonce_reused">>, 409},
             personal_history_logic:upload(
-                ?A1, upload_params(?A1, ?A2, <<"m-n2">>, <<"shared-nonce">>, 2)
+                ?A1, upload_params(?A1, ?A2, <<"mh02-m-n2">>, <<"shared-nonce">>, 2)
             )
         ),
         ?assertEqual(1, archive_count(?A1)),
@@ -274,22 +521,35 @@ action_version_conflict_and_advance_test_() ->
         cleanup_test_rows(),
         _ = opt_in(?A1),
         {ok, _} = put_key_package(?A1, 1),
-        {ok, _} = personal_history_logic:upload(
-            ?A1, upload_params(?A1, ?A2, <<"m-ver">>, <<"n-v2">>, 5, 2, undefined)
+        ok = seed_c2c(<<"mh02-m-ver">>, 5),
+        ok = consume_action(<<"mh02-m-ver">>, <<"edit">>, <<"mh02-edit-v1">>, ?A1, ?A2),
+        ok = consume_action(<<"mh02-m-ver">>, <<"edit">>, <<"mh02-edit-v2">>, ?A1, ?A2),
+        {ok, #{<<"event_seq">> := FirstEvent}} = personal_history_logic:upload(
+            ?A1, upload_params(?A1, ?A2, <<"mh02-m-ver">>, <<"n-v2">>, 5, 2, undefined)
         ),
         %% 旧版本迟到：不得按重试覆盖已有终态
         ?assertEqual(
             {error, <<"version_conflict">>, 409},
             personal_history_logic:upload(
-                ?A1, upload_params(?A1, ?A2, <<"m-ver">>, <<"n-v1">>, 5, 1, undefined)
+                ?A1, upload_params(?A1, ?A2, <<"mh02-m-ver">>, <<"n-v1">>, 5, 1, undefined)
             )
         ),
-        %% 更高版本 = 编辑/撤回终态推进（同一语义记录更新）
+        %% 只允许接受并消费的编辑推进归档版本。
+        ?assertEqual(
+            {error, <<"version_conflict">>, 409},
+            personal_history_logic:upload(
+                ?A1, upload_params(?A1, ?A2, <<"mh02-m-ver">>, <<"n-v3">>, 5, 3, undefined)
+            )
+        ),
+        ok = consume_action(<<"mh02-m-ver">>, <<"edit">>, <<"mh02-edit-v3">>, ?A1, ?A2),
         {ok, Advanced} = personal_history_logic:upload(
-            ?A1, upload_params(?A1, ?A2, <<"m-ver">>, <<"n-v3">>, 5, 3, undefined)
+            ?A1, upload_params(?A1, ?A2, <<"mh02-m-ver">>, <<"n-v3">>, 5, 3, undefined)
         ),
         ?assertEqual(<<"advanced">>, maps:get(<<"result">>, Advanced)),
         ?assertEqual(3, maps:get(<<"action_version">>, Advanced)),
+        {ok, 1, [#{<<"action_version">> := 3}], EditEvent, false} =
+            personal_history_ds:issue_changes(?A1, domain(), <<"inst-ver">>, FirstEvent, 10),
+        ?assert(EditEvent > FirstEvent),
         ?assertEqual(1, archive_count(?A1)),
         {ok, [#{<<"action_version">> := 3}]} = elib_pg:query(
             <<"SELECT action_version FROM public.personal_history_archive",
@@ -368,7 +628,8 @@ changes_issue_and_ack_watermark_test_() ->
         lists:foreach(
             fun(Seq) ->
                 Nonce = <<"n-chg-", (integer_to_binary(Seq))/binary>>,
-                MsgId = <<"m-chg-", (integer_to_binary(Seq))/binary>>,
+                MsgId = <<"mh02-m-chg-", (integer_to_binary(Seq))/binary>>,
+                ok = seed_c2c(MsgId, Seq),
                 {ok, _} = personal_history_logic:upload(
                     ?A1, upload_params(?A1, ?A2, MsgId, Nonce, Seq)
                 )
@@ -437,12 +698,18 @@ changes_reset_hint_when_out_of_window_test_() ->
         cleanup_test_rows(),
         _ = opt_in(?A1),
         {ok, _} = put_key_package(?A1, 1),
-        {ok, _} = personal_history_logic:upload(
-            ?A1, upload_params(?A1, ?A2, <<"m-win">>, <<"n-win">>, 1)
+        Window = personal_history_ds:change_window(),
+        insert_window_rows(?OTHER1, Window + 1),
+        ok = seed_c2c(<<"mh02-m-win">>, 1),
+        {ok, #{<<"event_seq">> := OwnEvent}} = personal_history_logic:upload(
+            ?A1, upload_params(?A1, ?A2, <<"mh02-m-win">>, <<"n-win">>, 1)
         ),
-        %% ds 层直证：游标落后超过窗口 → reset_hint，不发放事件
+        ?assert(OwnEvent > Window),
+        {ok, 1, [#{<<"msg_id">> := <<"mh02-m-win">>}], OwnEvent, false} =
+            personal_history_ds:issue_changes(?A1, domain(), <<"fresh-instance">>, 0, 10),
+        insert_window_rows(?A1, Window),
         {ok, G, Events, NextCursor, ResetHint} = personal_history_ds:issue_changes(
-            ?A1, domain(), <<"inst-win">>, -20000, 10
+            ?A1, domain(), <<"inst-win">>, 0, 10
         ),
         ?assertEqual(1, G),
         ?assertEqual([], Events),
@@ -450,6 +717,18 @@ changes_reset_hint_when_out_of_window_test_() ->
         ?assertEqual(true, ResetHint),
         cleanup_test_rows()
     end).
+
+insert_window_rows(Account, Size) ->
+    {ok, Size} = elib_pg:execute_count(
+        <<
+            "INSERT INTO public.personal_history_archive "
+            "(account_id, domain, conversation_id, msg_id, conv_seq, generation, key_version, nonce, ciphertext, envelope_meta) "
+            "SELECT $1, $2, $3, 'window-' || n, n + 1, 1, 1, convert_to('window-' || n, 'UTF8'), "
+            "decode('aa', 'hex'), '{}'::jsonb FROM generate_series(1, $4::integer) AS n"
+        >>,
+        [Account, domain(), conv(?A1, ?A2), Size]
+    ),
+    ok.
 
 %%%-------------------------------------------------------------------
 %%% §2.4/MSG-H15 page conv_seq DESC 分页 + tombstone（deleted_at）
@@ -463,17 +742,25 @@ page_desc_and_tombstone_test_() ->
         lists:foreach(
             fun(Seq) ->
                 Nonce = <<"n-pg-", (integer_to_binary(Seq))/binary>>,
-                MsgId = <<"m-pg-", (integer_to_binary(Seq))/binary>>,
+                MsgId = <<"mh02-m-pg-", (integer_to_binary(Seq))/binary>>,
+                ok = seed_c2c(MsgId, Seq),
                 {ok, _} = personal_history_logic:upload(
                     ?A1, upload_params(?A1, ?A2, MsgId, Nonce, Seq)
                 )
             end,
             [1, 2, 3]
         ),
+        {ok, 1, [_, _, _], Issued, false} =
+            personal_history_ds:issue_changes(?A1, domain(), <<"inst-delete">>, 0, 10),
         %% 撤回终态投影：msg2 墓碑化（保留行，deleted_at 置位）
         {ok, 1} = personal_history_ds:mark_deleted(
-            ?A1, domain(), conv(?A1, ?A2), <<"m-pg-2">>
+            ?A1, domain(), conv(?A1, ?A2), <<"mh02-m-pg-2">>
         ),
+        {ok, 1, [#{<<"msg_id">> := <<"mh02-m-pg-2">>, <<"deleted_at">> := DeletedAt}], Tombstone,
+            false} =
+            personal_history_ds:issue_changes(?A1, domain(), <<"inst-delete">>, Issued, 10),
+        ?assert(Tombstone > Issued),
+        ?assert(DeletedAt =/= null),
         {ok, Page} = personal_history_logic:page(?A1, #{
             conversation_id => conv(?A1, ?A2), before => 0
         }),
@@ -554,8 +841,9 @@ disable_purges_and_stale_writes_410_test_() ->
         cleanup_test_rows(),
         _ = opt_in(?A1),
         {ok, _} = put_key_package(?A1, 1),
+        ok = seed_c2c(<<"mh02-m-del">>, 1),
         {ok, _} = personal_history_logic:upload(
-            ?A1, upload_params(?A1, ?A2, <<"m-del">>, <<"n-del">>, 1)
+            ?A1, upload_params(?A1, ?A2, <<"mh02-m-del">>, <<"n-del">>, 1)
         ),
         ?assertEqual(1, archive_count(?A1)),
         %% disable：202 语义载荷（state + purge_ticket + 新代次）
@@ -634,8 +922,9 @@ reenable_uses_new_generation_test_() ->
         cleanup_test_rows(),
         _ = opt_in(?A1),
         {ok, _} = put_key_package(?A1, 1),
+        ok = seed_c2c(<<"mh02-m-old">>, 1),
         {ok, _} = personal_history_logic:upload(
-            ?A1, upload_params(?A1, ?A2, <<"m-old">>, <<"n-old">>, 1)
+            ?A1, upload_params(?A1, ?A2, <<"mh02-m-old">>, <<"n-old">>, 1)
         ),
         {ok, _} = personal_history_logic:disable(?A1),
         %% 重开：新代次（g3），不回填（旧归档已随 purge 删除）
@@ -651,9 +940,10 @@ reenable_uses_new_generation_test_() ->
             )
         ),
         {ok, _} = put_key_package(?A1, 2),
+        ok = seed_c2c(<<"mh02-m-fresh">>, 10),
         {ok, Fresh} = personal_history_logic:upload(
             ?A1,
-            (upload_params(?A1, ?A2, <<"m-fresh">>, <<"n-fresh">>, 10, 0, 3))#{
+            (upload_params(?A1, ?A2, <<"mh02-m-fresh">>, <<"n-fresh">>, 10, 0, 3))#{
                 <<"envelope_meta">> => #{
                     <<"alg">> => <<"aes-256-gcm">>,
                     <<"key_version">> => 2,
@@ -733,6 +1023,35 @@ get_key_package_roundtrip_test_() ->
         ),
         ?assertEqual(<<"aabbccdd1">>, maps:get(<<"integrity_hash">>, Pkg)),
         ?assert(maps:is_key(<<"created_at">>, Pkg)),
+        ClientMeta = #{<<"alg">> => <<"PBKDF2-HMAC-SHA256">>, <<"iterations">> => 310000},
+        ClientPackage = #{
+            <<"key_version">> => 2,
+            <<"generation">> => 1,
+            <<"wrapped_key">> => base64:encode(<<"wrapped-v2">>),
+            <<"integrity_hash">> => <<"aabbccdd2">>,
+            <<"kdf_meta">> => ClientMeta
+        },
+        ?assertEqual(
+            {error, <<"malformed_package">>, 422},
+            personal_history_logic:put_key_package(?OTHER1, ClientPackage#{
+                <<"kdf_meta">> => ClientMeta#{<<"algorithm">> => <<"conflicting">>}
+            })
+        ),
+        ?assertEqual(
+            {error, <<"malformed_package">>, 422},
+            personal_history_logic:put_key_package(?OTHER1, ClientPackage#{<<"kdf_meta">> => []})
+        ),
+        ?assertEqual(
+            {error, <<"generation_expired">>, 410},
+            personal_history_logic:put_key_package(?OTHER1, ClientPackage#{<<"generation">> => 2})
+        ),
+        {ok, _} = personal_history_logic:put_key_package(?OTHER1, ClientPackage),
+        ?assertMatch(
+            {ok, #{<<"key_version">> := 2, <<"kdf_meta">> := ClientMeta}},
+            personal_history_logic:get_key_package(?OTHER1, #{
+                key_version => <<"2">>, generation => <<"1">>
+            })
+        ),
         %% retired_at 不自动否定历史旧版本可读性（addendum）。
         {ok, _} = elib_pg:execute(
             <<"UPDATE public.personal_history_key_package SET retired_at = now()",

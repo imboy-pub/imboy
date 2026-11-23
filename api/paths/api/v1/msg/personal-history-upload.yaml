@@ -4,7 +4,7 @@ post:
   summary: 上传一条个人历史密文 / Upload one personal history ciphertext
   description: |
     ## 中文 / English
-    仅 ON 态、本人为会话参与方、且 key_version 密钥包已就绪时接受。
+    仅 ON 态、本人为会话参与方、且 key_version 密钥包已就绪时接受。上传按服务端首次受理时间、会话序号与消息版本核对。
     幂等键 (account, domain, conversation_id, msg_id)：重复上传返回原结果
     不覆盖；action_version 更低迟到 → 409 version_conflict；更高为终态推进。
     nonce 在 (account, domain, key_version, nonce) 上唯一，重用 → 409。
@@ -107,7 +107,7 @@ post:
     '410':
       description: generation_expired（旧代次迟到写，W4） / Stale generation write
     '422':
-      description: key_package_missing / malformed_request
+      description: key_package_missing / malformed_request / backfill_evidence_missing
     '503':
       description: transient_failure（客户端安全重试） / Transient failure
     '401':

@@ -22,7 +22,7 @@ get:
                     properties:
                       payload:
                         type: object
-                        required: [state, generation]
+                        required: [state, generation, domain]
                         properties:
                           state:
                             type: string
@@ -32,6 +32,9 @@ get:
                             type: integer
                             format: int64
                             description: 当前授权代次；无授权为 0。 / Current generation; 0 when never enabled.
+                          domain:
+                            type: string
+                            description: 服务端部署域，用于密钥与密文绑定。 / Server deployment domain bound to keys and ciphertext.
                           enabled_at:
                             type: integer
                             format: int64

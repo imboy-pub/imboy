@@ -23,14 +23,26 @@ put:
               type: integer
               format: int64
               minimum: 1
+            generation:
+              type: integer
+              format: int64
+              minimum: 1
+              description: 密钥包密文所绑定的授权代次。提供时必须与当前代次相同。
             wrapped_key:
               type: string
               maxLength: 1048576
               description: base64 封装密钥密文（PEM 明文拒收）。 / base64 wrapped key ciphertext.
             kdf_meta:
               type: object
-              required: [algorithm, iterations]
+              required: [iterations]
+              anyOf:
+                - required: [alg]
+                - required: [algorithm]
+              description: 同时提供 alg 和 algorithm 时，两值必须相同。
               properties:
+                alg:
+                  type: string
+                  description: Flutter 密钥包算法标识（PBKDF2-HMAC-SHA256）。
                 algorithm:
                   type: string
                   description: KDF 算法标识（如 pbkdf2-sha256）。 / KDF algorithm id.

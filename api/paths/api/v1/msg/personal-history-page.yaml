@@ -72,9 +72,12 @@ get:
                               format: int64
                             ciphertext:
                               type: string
-                              description: base64。 / base64.
+                              description: base64。墓碑不返回密文。
                             envelope_meta:
                               type: object
+                            accepted_message:
+                              type: object
+                              description: 权威接受元数据，包含十进制字符串 from_id、to_id，以及 conv_seq、action_version、accepted_at_ms。墓碑不返回。
                             deleted:
                               type: boolean
                               description: 墓碑（deleted_at 非空）。 / Tombstone.

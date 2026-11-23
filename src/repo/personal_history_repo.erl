@@ -20,9 +20,10 @@
 -export([enable_authorization_tx/5, cas_disable_tx/4, mark_purged_tx/4, reenter_purge_tx/3]).
 % archive
 -export([insert_archive_tx/2, find_archive_tx/5, find_msg_id_by_nonce_tx/5]).
--export([advance_archive_tx/2, mark_deleted/4]).
--export([changes_since/4, changes_since_tx/5, page_archive/5, max_event_seq/2]).
--export([max_event_seq_tx/3, delete_archive_by_account_tx/3]).
+-export([find_accepted_message_tx/5]).
+-export([advance_archive_tx/2, mark_deleted_tx/5, mark_revoked_tx/4]).
+-export([changes_since/4, changes_since_tx/6, page_archive/6, max_event_seq/2]).
+-export([changes_exceed_window_tx/6, delete_archive_by_account_tx/3]).
 % cursor
 -export([find_cursor/4, find_cursor_tx/5, ensure_cursor_tx/5]).
 -export([record_issued_tx/6, ack_cursor_tx/6, delete_cursors_by_account_tx/3]).
@@ -174,6 +175,81 @@ reenter_purge_tx(Conn, AccountId, Domain) ->
 %% Archive（§2.3 幂等键 / §10.4 nonce / event_seq 锚）
 %% ===================================================================
 
+-spec find_accepted_message_tx(pid(), integer(), binary(), binary(), binary()) ->
+    {ok, map() | undefined} | {error, term()}.
+find_accepted_message_tx(Conn, AccountId, Domain, ConversationId, MsgId) ->
+    Sql = <<
+        "SELECT fact.conv_seq, fact.action_version FROM (",
+        (accepted_message_sql(<<"$1">>))/binary,
+        ") fact JOIN ",
+        (auth_tablename())/binary,
+        " auth ON auth.account_id = $2 AND auth.domain = $3 AND auth.state='ON'",
+        " WHERE $2 IN (fact.from_id, fact.to_id) AND fact.conversation_id = $4",
+        " AND fact.accepted_at >= auth.enabled_at"
+    >>,
+    case elib_pg:query(Conn, Sql, [MsgId, AccountId, Domain, ConversationId]) of
+        {ok, [Row]} -> {ok, Row};
+        {ok, []} -> {ok, undefined};
+        {error, _} = Error -> Error
+    end.
+
+%% Only the immutable accept time qualifies. Conflicting copies or edit versions fail closed.
+accepted_message_sql(MsgRef) ->
+    <<
+        "SELECT f.from_id, f.to_id, f.conv_seq, f.accepted_at, r.action_version,",
+        " 'c2c:' || least(f.from_id,f.to_id) || ':' || greatest(f.from_id,f.to_id) AS conversation_id",
+        " FROM (SELECT min(from_id) AS from_id, min(to_id) AS to_id, min(conv_seq) AS conv_seq,",
+        " min(accepted_at) AS accepted_at, min(formal_version) AS formal_version",
+        " FROM (SELECT from_id,to_id,conv_seq,accepted_at,expire_at,action_version AS formal_version",
+        " FROM public.msg_c2c WHERE msg_id=",
+        MsgRef/binary,
+        " UNION ALL SELECT from_id,to_id,conv_seq,accepted_at,expire_at,NULL::bigint",
+        " FROM public.msg_store_staging WHERE type='c2c' AND processed_at IS NULL AND msg_id=",
+        MsgRef/binary,
+        " UNION ALL SELECT from_id,to_id,conv_seq,accepted_at,expire_at,NULL::bigint",
+        " FROM public.msg_store WHERE chat_type='c2c' AND msg_id=",
+        MsgRef/binary,
+        ") copies HAVING count(from_id)=count(*) AND count(to_id)=count(*)",
+        " AND min(from_id)=max(from_id) AND min(to_id)=max(to_id)",
+        " AND min(conv_seq)=max(conv_seq) AND min(conv_seq)>0 AND min(accepted_at)=max(accepted_at)",
+        " AND min(formal_version) IS NOT DISTINCT FROM max(formal_version)",
+        " AND (min(expire_at) IS NULL OR min(expire_at)>statement_timestamp())) f",
+        " CROSS JOIN LATERAL (SELECT count(*) AS action_version FROM public.c2c_action_receipt",
+        " WHERE original_msg_id=",
+        MsgRef/binary,
+        " AND actor_uid=f.from_id AND peer_uid=f.to_id AND action='edit' AND consumed_at IS NOT NULL) r",
+        " WHERE (f.formal_version IS NULL OR f.formal_version=r.action_version)",
+        " AND NOT EXISTS (SELECT 1 FROM public.c2c_action_receipt WHERE original_msg_id=",
+        MsgRef/binary,
+        " AND actor_uid=f.from_id AND peer_uid=f.to_id AND action='revoke')",
+        " AND NOT EXISTS (SELECT 1 FROM public.enterprise_message_origin",
+        " WHERE conversation_kind='direct' AND msg_id=",
+        MsgRef/binary,
+        ")"
+    >>.
+
+with_archive_proof(Sql, Order) ->
+    <<
+        "SELECT a.*, CASE WHEN fact.from_id IS NOT NULL THEN jsonb_build_object(",
+        " 'from_id',fact.from_id::text, 'to_id',fact.to_id::text,",
+        " 'conv_seq',fact.conv_seq, 'action_version',fact.action_version,",
+        " 'accepted_at_ms',floor(extract(epoch FROM fact.accepted_at)*1000)::bigint)",
+        " END AS accepted_message FROM (",
+        Sql/binary,
+        ") a",
+        " LEFT JOIN ",
+        (auth_tablename())/binary,
+        " auth ON auth.account_id=a.account_id",
+        " AND auth.domain=a.domain AND auth.generation=a.generation AND auth.state='ON'",
+        " LEFT JOIN LATERAL (",
+        (accepted_message_sql(<<"a.msg_id">>))/binary,
+        ") fact ON a.deleted_at IS NULL",
+        " AND a.account_id IN (fact.from_id,fact.to_id) AND fact.conversation_id=a.conversation_id",
+        " AND fact.conv_seq=a.conv_seq AND fact.action_version=a.action_version AND fact.accepted_at>=auth.enabled_at",
+        " ORDER BY a.",
+        Order/binary
+    >>.
+
 %% @doc 事务内插入归档行；幂等键与归档同一 INSERT（W1）。
 %% 语义键冲突经 ON CONFLICT DO NOTHING 吸收（0 行=已存在，禁止在事务内
 %% 撞 23505 中止后续命令）；仅 nonce 约束仍可能抛 unique_violation
@@ -226,7 +302,7 @@ find_msg_id_by_nonce_tx(Conn, AccountId, Domain, KeyVersion, Nonce) ->
 
 archive_select() ->
     <<
-        "SELECT id, conversation_id, msg_id, action_version, conv_seq, generation,",
+        "SELECT id, account_id, domain, conversation_id, msg_id, action_version, conv_seq, generation,",
         " key_version, nonce, ciphertext, envelope_meta, event_seq, deleted_at,",
         " created_at, updated_at FROM ",
         (archive_tablename())/binary
@@ -248,17 +324,17 @@ find_archive_tx(Conn, AccountId, Domain, ConversationId, MsgId) ->
     end.
 
 %% @doc 终态推进（编辑/撤回走 action_version 终态）：仅当已有版本更低时
-%% 更新，保持 event_seq 锚不变；nonce 唯一性冲突原样返回。
+%% 更新，并发放新的事件序；nonce 唯一性冲突原样返回。
 -spec advance_archive_tx(pid(), map()) ->
     {ok, map()} | {ok, none} | {error, unique_violation} | {error, term()}.
 advance_archive_tx(Conn, Row) ->
     Sql =
         <<"UPDATE ", (archive_tablename())/binary,
             " SET action_version = $5, conv_seq = $6, key_version = $7, nonce = $8,",
-            " ciphertext = $9, envelope_meta = $10::jsonb, deleted_at = NULL,",
+            " ciphertext = $9, envelope_meta = $10::jsonb, event_seq = DEFAULT,",
             " updated_at = CURRENT_TIMESTAMP"
             " WHERE account_id = $1 AND domain = $2 AND conversation_id = $3 AND msg_id = $4"
-            " AND action_version < $5"
+            " AND action_version < $5 AND deleted_at IS NULL"
             " RETURNING id, action_version, conv_seq, event_seq, created_at">>,
     Params = [
         maps:get(account_id, Row),
@@ -280,15 +356,38 @@ advance_archive_tx(Conn, Row) ->
     end.
 
 %% @doc 墓碑（MSG-H15）：按幂等键置 deleted_at（撤回终态在归档侧的投影）。
--spec mark_deleted(integer(), binary(), binary(), binary()) ->
+-spec mark_deleted_tx(pid(), integer(), binary(), binary(), binary()) ->
     {ok, non_neg_integer()} | {error, term()}.
-mark_deleted(AccountId, Domain, ConversationId, MsgId) ->
+mark_deleted_tx(Conn, AccountId, Domain, ConversationId, MsgId) ->
     Sql =
         <<"UPDATE ", (archive_tablename())/binary,
-            " SET deleted_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP"
+            " SET deleted_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP, event_seq = DEFAULT"
             " WHERE account_id = $1 AND domain = $2 AND conversation_id = $3 AND msg_id = $4"
             " AND deleted_at IS NULL">>,
-    elib_pg:execute_count(Sql, [AccountId, Domain, ConversationId, MsgId]).
+    elib_pg:execute_count(Conn, Sql, [AccountId, Domain, ConversationId, MsgId]).
+
+%% Caller holds the C2C original lock; account locks preserve commit order for each cursor.
+-spec mark_revoked_tx(pid(), integer(), integer(), binary()) -> ok | {error, term()}.
+mark_revoked_tx(Conn, ActorUid, PeerUid, MsgId) ->
+    Conv = msg_archive_repo:conv_key(<<"c2c">>, ActorUid, PeerUid),
+    Archive = archive_tablename(),
+    Sql = <<
+        "WITH enabled AS MATERIALIZED (SELECT a.account_id,a.domain,a.generation FROM ",
+        (auth_tablename())/binary,
+        " a WHERE a.account_id IN ($1,$2) AND a.state='ON' AND EXISTS (SELECT 1 FROM ",
+        Archive/binary,
+        " p WHERE p.account_id=a.account_id AND p.domain=a.domain AND p.generation=a.generation",
+        " AND p.conversation_id=$3 AND p.msg_id=$4 AND p.deleted_at IS NULL)",
+        " ORDER BY a.account_id,a.domain FOR UPDATE OF a) UPDATE ",
+        Archive/binary,
+        " p SET deleted_at=CURRENT_TIMESTAMP,updated_at=CURRENT_TIMESTAMP,event_seq=DEFAULT",
+        " FROM enabled a WHERE p.account_id=a.account_id AND p.domain=a.domain AND p.generation=a.generation",
+        " AND p.conversation_id=$3 AND p.msg_id=$4 AND p.deleted_at IS NULL"
+    >>,
+    case elib_pg:execute_count(Conn, Sql, [ActorUid, PeerUid, Conv, MsgId]) of
+        {ok, _} -> ok;
+        {error, _} = Error -> Error
+    end.
 
 %% @doc changes 源：event_seq 单调锚（W2：只读已 commit 行，天然满足）。
 %% 含墓碑行（删除事件进变更流）。
@@ -304,35 +403,44 @@ changes_since(AccountId, Domain, AfterEventSeq, Limit) ->
     elib_pg:query(Sql, [AccountId, Domain, AfterEventSeq, Limit]).
 
 %% @doc 事务内版 changes 源（与授权锁同一快照）。
--spec changes_since_tx(pid(), integer(), binary(), integer(), pos_integer()) ->
+-spec changes_since_tx(pid(), integer(), binary(), integer(), integer(), pos_integer()) ->
     {ok, [map()]} | {error, term()}.
-changes_since_tx(Conn, AccountId, Domain, AfterEventSeq, Limit) ->
+changes_since_tx(Conn, AccountId, Domain, Generation, AfterEventSeq, Limit) ->
     Sql =
         <<
             (archive_select())/binary,
-            " WHERE account_id = $1 AND domain = $2 AND event_seq > $3"
-            " ORDER BY event_seq ASC LIMIT $4"
+            " WHERE account_id = $1 AND domain = $2 AND generation = $3 AND event_seq > $4"
+            " ORDER BY event_seq ASC LIMIT $5"
         >>,
-    elib_pg:query(Conn, Sql, [AccountId, Domain, AfterEventSeq, Limit]).
+    elib_pg:query(Conn, with_archive_proof(Sql, <<"event_seq ASC">>), [
+        AccountId, Domain, Generation, AfterEventSeq, Limit
+    ]).
 
 %% @doc page 分页快照：conv_seq DESC；墓碑行一并返回（稳定合并版本+tombstone）。
--spec page_archive(integer(), binary(), binary(), integer(), pos_integer()) ->
+-spec page_archive(integer(), binary(), integer(), binary(), integer(), pos_integer()) ->
     {ok, [map()]} | {error, term()}.
-page_archive(AccountId, Domain, ConversationId, Before, Limit) ->
+page_archive(AccountId, Domain, Generation, ConversationId, Before, Limit) ->
     Sql =
         <<
             (archive_select())/binary,
-            " WHERE account_id = $1 AND domain = $2 AND conversation_id = $3",
-            " AND ($4::bigint = 0 OR conv_seq < $4)"
-            " ORDER BY conv_seq DESC LIMIT $5"
+            " WHERE account_id = $1 AND domain = $2 AND generation = $3 AND conversation_id = $4",
+            " AND ($5::bigint = 0 OR conv_seq < $5)"
+            " ORDER BY conv_seq DESC LIMIT $6"
         >>,
-    elib_pg:query(Sql, [AccountId, Domain, ConversationId, Before, Limit]).
+    elib_pg:query(with_archive_proof(Sql, <<"conv_seq DESC">>), [
+        AccountId, Domain, Generation, ConversationId, Before, Limit
+    ]).
 
-%% @doc 事务内版最大事件序（changes 窗口裁决用，与授权行同快照）。
--spec max_event_seq_tx(pid(), integer(), binary()) -> {ok, integer()} | {error, term()}.
-max_event_seq_tx(Conn, AccountId, Domain) ->
-    case elib_pg:query(Conn, max_event_seq_sql(), [AccountId, Domain]) of
-        {ok, [#{<<"max_seq">> := MaxSeq}]} -> {ok, MaxSeq};
+%% The identity sequence is global. A cursor window is measured in this account's pending rows.
+-spec changes_exceed_window_tx(pid(), integer(), binary(), integer(), integer(), pos_integer()) ->
+    {ok, boolean()} | {error, term()}.
+changes_exceed_window_tx(Conn, AccountId, Domain, Generation, Cursor, Window) ->
+    Sql =
+        <<"SELECT EXISTS (SELECT 1 FROM ", (archive_tablename())/binary,
+            " WHERE account_id = $1 AND domain = $2 AND generation = $3 AND event_seq > $4",
+            " ORDER BY event_seq OFFSET $5 LIMIT 1) AS outside_window">>,
+    case elib_pg:query(Conn, Sql, [AccountId, Domain, Generation, Cursor, Window]) of
+        {ok, [#{<<"outside_window">> := Outside}]} -> {ok, Outside};
         {error, Reason} -> {error, Reason}
     end.
 

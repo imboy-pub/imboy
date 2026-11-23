@@ -249,10 +249,11 @@ purge_rows(Conn, AccountId, Domain, Generation) ->
 upload(AccountId, Domain, Item) ->
     normalize_tx(elib_pg:with_tx(fun(Conn) -> upload_tx(Conn, AccountId, Domain, Item) end)).
 
-upload_tx(Conn, AccountId, Domain, Item) ->
+upload_tx(Conn, AccountId, Domain, #{msg_id := MsgId} = Item) ->
+    ok = c2c_action_receipt_repo:lock_original_tx(Conn, MsgId),
     case personal_history_repo:lock_authorization_tx(Conn, AccountId, Domain) of
-        {ok, #{<<"state">> := <<"ON">>} = Auth} ->
-            guard_generation(Auth, Item, Conn, AccountId, Domain);
+        {ok, #{<<"state">> := <<"ON">>, <<"generation">> := G}} ->
+            guard_generation(G, Item, Conn, AccountId, Domain);
         {ok, #{<<"state">> := State}} when
             State =:= <<"OFF_PURGE_PENDING">>; State =:= <<"OFF_PURGED">>
         ->
@@ -264,23 +265,41 @@ upload_tx(Conn, AccountId, Domain, Item) ->
     end.
 
 %% W4：客户端视角代次（Item.generation，可选）与授权代次不一致 → 410。
-guard_generation(#{<<"generation">> := G} = Auth, Item, Conn, AccountId, Domain) ->
+guard_generation(G, Item, Conn, AccountId, Domain) ->
     ClientGen = maps:get(generation, Item, undefined),
     case ClientGen =:= undefined orelse ClientGen =:= G of
-        true -> guard_key_package(Auth, Item, Conn, AccountId, Domain, G);
+        true -> guard_key_package(Item, Conn, AccountId, Domain, G);
         false -> {error, generation_expired}
     end.
 
 %% §2.3 422：上传所用 key_version 的用途密钥包必须已就绪（fail-closed）。
-guard_key_package(Auth, Item, Conn, AccountId, Domain, G) ->
+guard_key_package(Item, Conn, AccountId, Domain, G) ->
     KeyVersion = maps:get(key_version, Item),
     case personal_history_repo:find_key_package_tx(Conn, AccountId, Domain, KeyVersion) of
         {ok, undefined} -> {error, key_package_missing};
-        {ok, _} -> insert_archive(Auth, Item, Conn, AccountId, Domain, G);
+        {ok, _} -> guard_message_fact(Item, Conn, AccountId, Domain, G);
         {error, Reason} -> {error, Reason}
     end.
 
-insert_archive(_Auth, Item, Conn, AccountId, Domain, G) ->
+guard_message_fact(
+    #{conversation_id := Conv, msg_id := MsgId, conv_seq := Seq, action_version := V} = Item,
+    Conn,
+    AccountId,
+    Domain,
+    G
+) ->
+    case personal_history_repo:find_accepted_message_tx(Conn, AccountId, Domain, Conv, MsgId) of
+        {ok, #{<<"conv_seq">> := Seq, <<"action_version">> := V}} ->
+            insert_archive(Item, Conn, AccountId, Domain, G);
+        {ok, undefined} ->
+            {error, backfill_evidence_missing};
+        {ok, _} ->
+            {error, version_conflict};
+        {error, Reason} ->
+            {error, Reason}
+    end.
+
+insert_archive(Item, Conn, AccountId, Domain, G) ->
     Row = archive_row(AccountId, Domain, G, Item),
     KeyVersion = maps:get(key_version, Item),
     Nonce = maps:get(nonce, Item),
@@ -396,7 +415,20 @@ advance_terminal(Conn, Row) ->
 -spec mark_deleted(integer(), binary(), binary(), binary()) ->
     {ok, non_neg_integer()} | {error, atom()}.
 mark_deleted(AccountId, Domain, ConversationId, MsgId) ->
-    personal_history_repo:mark_deleted(AccountId, Domain, ConversationId, MsgId).
+    normalize_tx(
+        elib_pg:with_tx(fun(Conn) ->
+            case personal_history_repo:lock_authorization_tx(Conn, AccountId, Domain) of
+                {ok, #{<<"state">> := <<"ON">>}} ->
+                    personal_history_repo:mark_deleted_tx(
+                        Conn, AccountId, Domain, ConversationId, MsgId
+                    );
+                {ok, _} ->
+                    {ok, 0};
+                {error, _} = Error ->
+                    Error
+            end
+        end)
+    ).
 
 %% ===================================================================
 %% changes / ack-cursor（§2.4 / §10.2 / W2）
@@ -430,14 +462,16 @@ issue_changes_tx(Conn, AccountId, Domain, ClientInstance, Cursor, Limit) ->
     end.
 
 issue_window(Conn, AccountId, Domain, G, ClientInstance, Cursor, Limit) ->
-    {ok, MaxSeq} = personal_history_repo:max_event_seq_tx(Conn, AccountId, Domain),
-    case MaxSeq - Cursor > ?CHANGE_WINDOW of
+    {ok, OutsideWindow} = personal_history_repo:changes_exceed_window_tx(
+        Conn, AccountId, Domain, G, Cursor, ?CHANGE_WINDOW
+    ),
+    case OutsideWindow of
         true ->
             %% 窗口外：压缩为 tombstone+水位语义 → 客户端全量重扫
             {ok, G, [], undefined, true};
         false ->
             {ok, Events} = personal_history_repo:changes_since_tx(
-                Conn, AccountId, Domain, Cursor, Limit
+                Conn, AccountId, Domain, G, Cursor, Limit
             ),
             issue_mark(Conn, AccountId, Domain, G, ClientInstance, Events)
     end.
@@ -539,7 +573,7 @@ page_authorized(AccountId, Domain, ConversationId, Before0, Token, G) ->
     case resolve_page_anchor(Token, G, Before0) of
         {ok, Hop, Before} ->
             {ok, Rows} = personal_history_repo:page_archive(
-                AccountId, Domain, ConversationId, Before, ?PAGE_SIZE
+                AccountId, Domain, G, ConversationId, Before, ?PAGE_SIZE
             ),
             build_page_result(Rows, G, Hop);
         {error, Reason} ->
@@ -666,13 +700,25 @@ put_key_package(AccountId, Domain, KeyVersion, Generation, Pkg) ->
     },
     normalize_tx(
         elib_pg:with_tx(fun(Conn) ->
-            case personal_history_repo:insert_key_package(Conn, Row) of
-                {ok, Inserted} -> {ok, Inserted};
-                {error, unique_violation} -> {error, version_conflict};
-                {error, _Reason} -> {error, transient_failure}
+            case personal_history_repo:lock_authorization_tx(Conn, AccountId, Domain) of
+                {ok, #{<<"state">> := <<"ON">>, <<"generation">> := Generation}} ->
+                    insert_key_package_tx(Conn, Row);
+                {ok, #{<<"generation">> := _}} ->
+                    {error, generation_expired};
+                {ok, _} ->
+                    {error, not_enabled};
+                {error, _} ->
+                    {error, transient_failure}
             end
         end)
     ).
+
+insert_key_package_tx(Conn, Row) ->
+    case personal_history_repo:insert_key_package(Conn, Row) of
+        {ok, Inserted} -> {ok, Inserted};
+        {error, unique_violation} -> {error, version_conflict};
+        {error, _Reason} -> {error, transient_failure}
+    end.
 
 %% ===================================================================
 %% 常量导出（handler/openapi 契约对齐）
