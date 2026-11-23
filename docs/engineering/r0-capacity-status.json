@@ -1,0 +1,90 @@
+{
+  "task": "IMBoy Runtime Risk Remediation R0 — P1-1 VM capacity & WebSocket connection limits",
+  "doc_version": "0.9-review-gate",
+  "updated_at": "2026-11-23",
+  "phase": "GATE_D_WAITING_OWNER_APPROVAL",
+  "gate_rule": "Do NOT enter Phase E until the owner explicitly approves decision points D0-D8 in r0-capacity-remediation-design.md §12.",
+  "git": {
+    "repo": "imboy",
+    "base_commit": "a5c74219f",
+    "base_still_main": true,
+    "main_ahead_of_remotes": {"origin": "56/0", "github": "56/0", "gitcode": "56/0"},
+    "branch": "fix/r0-capacity-limits-20261123",
+    "worktree": "/Users/leeyi/project/imboy.pub/_task_worktrees/R0_CAPACITY_20261123/imboy",
+    "commits_on_branch": "docs-only commits on top of a5c74219f (verify with: git log --oneline main..HEAD); NO code or config change yet",
+    "pushed": false,
+    "pr": null,
+    "main_checkout": "untouched: still on main @ a5c74219f with untracked docs/engineering/ and docs/research/; a prodready_e2e release node is running from its _rel/ so no build may run there",
+    "other_worktrees": "6 task-lane worktrees exist; all clean on R0 files (vm.args, relx*.config, websocket_handler.erl, websocket_ds.erl, imboy_app.erl, deploy/install.sh, docker/)"
+  },
+  "completed_steps": [
+    "A: read 5 audit state files; verified git baseline (main == audit anchor a5c74219f); conflict scan across 7 worktrees; created isolated branch+worktree; copied round-1 audit docs byte-identical",
+    "B1: traced VM flags through all deployment entry points (5 sources, 3 value sets) and override precedence (ERL_FLAGS > args_file > ERL_AFLAGS > ERL_MAX_PORTS)",
+    "B2: production verification labelled PRODUCTION_NOT_VERIFIED (no authorized entry; no connection attempted)",
+    "B3: capacity model measured via isolated bare-cowboy probes (per-WS 1 process + 1 port, ~9 KB; +P rounding; +P exhaustion behaviour; full-scale 16,201 WS over nominal cap)",
+    "C: design produced (application-level WS admission, derived +P/+Q, +S candidates, install.sh injection, capacity formula)",
+    "D (partial): design doc + evidence + R0 state files written; awaiting owner approval"
+  ],
+  "approval_status": {
+    "D0_app_level_ws_admission_scope_change": "PENDING",
+    "D1_ws_cap_W": "PENDING (recommended C2 = 20000)",
+    "D2_default_+P/+Q_65536": "PENDING",
+    "D3_+S_policy": "PENDING (recommended S-B: keep, make injectable)",
+    "D4_http_phase_cap": "PENDING (recommended H-A: pin explicit 1024x10)",
+    "D5_rejection_mode": "PENDING (recommended HTTP 503 + Retry-After before upgrade)",
+    "D6_fix_ws_metric_and_alert": "PENDING",
+    "D7_remove_dead_ERL_MAX_PORTS": "PENDING",
+    "D8_cookie_placeholder_separate_task": "PENDING"
+  },
+  "modified_files": {
+    "code_or_config": "NONE",
+    "docs_added": [
+      "docs/engineering/r0-capacity-remediation-design.md",
+      "docs/engineering/r0-capacity-status.json",
+      "docs/engineering/r0-capacity-checkpoint.md",
+      "docs/engineering/RESUME-R0.md",
+      "docs/engineering/r0-probe-evidence/*"
+    ],
+    "docs_carried_from_round1": "10 round-1 audit files copied byte-identical from the main checkout; errata appended as additions, original text retained",
+    "planned_after_approval": [
+      "config/vm.args, config/vm_local.args, scripts/start_node.sh (derived +P/+Q)",
+      "src/imboy_app.erl (explicit listener transport opts), src/api/websocket_handler.erl (remove dead keys; WS admission gate)",
+      "src/api/metrics_handler.erl, deploy/grafana/dashboards/imboy-overview.json, deploy/prometheus/rules/imboy-alerts.yml",
+      "deploy/install.sh, deploy/.env.example, deploy/docker-compose.{prod,community,demo}.yml",
+      "tests (T1-T8), scripts/bench_websocket.sh ladder"
+    ]
+  },
+  "test_results": {
+    "make_or_eunit_or_release_build": "NOT RUN (phases A-D are read-only review/design)",
+    "probe_runs": [
+      {"run": "cap300-192159", "exit": 0, "result": "380/380 established under nominal ranch cap 300 -> upgraded WebSockets are not counted"},
+      {"run": "pcliff-192625", "exit": 0, "result": "+P 1024: 937 up / 163 rejected; 2378 server error lines; recovered after teardown"},
+      {"run": "pcliff2-192829", "exit": 0, "result": "+P 1024 full table: plain HTTP API 20/20 -> 500; established WS unaffected"},
+      {"run": "fullscale-192949", "exit": 0, "result": "imboy shape +P 20480 -> effective 32768; 16201 up / 4799 client-side connect failures"}
+    ],
+    "evidence": "docs/engineering/r0-probe-evidence/"
+  },
+  "key_corrections_to_round1_audit": [
+    "max_connections/num_acceptors => infinity in websocket_options/0 are dead stream-level options (never effective)",
+    "ranch max_connections cannot bound established WebSockets: cowboy_websocket:takeover/7 calls ranch:remove_connection/1",
+    "+P/+Q are rounded up to a power of two: 20480 -> 32768",
+    "VM caps are overridden on blue-green (1048576) and native-shell (262144/65536); only the docker image path ships config/vm.args",
+    "compose ERL_MAX_PORTS is dead config (overridden by baked +Q)",
+    "imboy_ws_connections_current excludes all established WebSockets (uses ranch active_connections)"
+  ],
+  "open_issues": [
+    "PRODUCTION_NOT_VERIFIED: owner must run the read-only commands in design §2 and report back",
+    "Docker image artifact not inspected locally (no backend image on this machine); scheduled for Phase G",
+    "Real imboy idle baseline (processes/ports) not yet measured; first step of Phase F",
+    "Local load generator ceiling ~16.2k concurrent connections from one client node; >16k ladder rungs need multiple client nodes or a Linux load machine",
+    "scripts/bench_websocket.sh requires python3 'websockets', which is not installed on this machine",
+    "Adjacent (out of R0): docker path ships the committed placeholder cookie (W6-A02)",
+    "Not all authenticated WS surfaces confirmed to register in syn CHAT_SCOPE; verify in Phase E before relying on imboy_syn:count()"
+  ],
+  "next_actions": [
+    "WAIT for owner approval of D0-D8 (do not self-approve)",
+    "After approval: Phase E in order — (E1) vm.args sources, (E2) listener opts + dead keys + WS admission, (E3) install.sh/compose injection, (E4) tests T1-T8; each logical unit as its own commit",
+    "Phase F: capacity ladder in an isolated local environment (never production); record all required fields",
+    "Phase G: acceptance (make compile, targeted EUnit, release build, release config check, install.sh tests, ladder, over-limit rejection, release+reconnect) then report/rollback docs and PR request"
+  ]
+}
