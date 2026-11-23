@@ -366,6 +366,7 @@ counter_key(direct, defer) -> {c, direct_deferred}.
 %% 通知只携带合并计数与原因，不携带业务载荷/密文，不写任何库表。
 -spec defer_delivery(pid(), integer() | binary(), delivery_lane()) -> ok.
 defer_delivery(Pid, ToUid, Lane) ->
+    ok = ensure_budget_table(),
     ok = bump_budget_counter(counter_key(Lane, defer)),
     defer_delivery(Pid, ToUid).
 

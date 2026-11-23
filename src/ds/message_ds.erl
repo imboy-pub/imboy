@@ -207,24 +207,46 @@ remote_delivery(Node, Operation, Args, Legacy) ->
     end.
 
 deliver_with_budget(Pid, ToUid, Lane, FrameBytes, Deliver) ->
-    %% Admission and enqueue are one destination-local critical section. Never
-    %% wait behind a busy sender; the durable message is recovered by pull.
+    %% Admission and enqueue are one destination-local critical section.
+    %% Bulk never waits. Direct can outlast a short bulk lock handoff so that
+    %% lock contention alone does not immediately consume its reserved lane.
     Admission = fun() ->
         case imboy_syn:delivery_budget_check(Pid, FrameBytes, Lane) of
-            allow -> Deliver();
-            defer -> imboy_syn:defer_delivery(Pid, ToUid)
+            allow ->
+                _ = Deliver(),
+                ok;
+            defer ->
+                imboy_syn:defer_delivery(Pid, ToUid)
         end
     end,
     Lock = {{?MODULE, Pid}, self()},
+    Result =
+        case Lane of
+            bulk ->
+                global:trans(Lock, Admission, [node()], 0);
+            direct ->
+                retry_direct_admission(Lock, Admission, erlang:monotonic_time(millisecond) + 16)
+        end,
+    case Result of
+        aborted -> imboy_syn:defer_delivery(Pid, ToUid, Lane);
+        ok -> ok
+    end.
+
+retry_direct_admission(Lock, Admission, Deadline) ->
     case global:trans(Lock, Admission, [node()], 0) of
-        aborted when Lane =:= direct ->
-            erlang:yield(),
-            case global:trans(Lock, Admission, [node()], 0) of
-                aborted -> imboy_syn:defer_delivery(Pid, ToUid, Lane);
-                ok -> ok
-            end;
         aborted ->
-            imboy_syn:defer_delivery(Pid, ToUid, Lane);
+            case erlang:monotonic_time(millisecond) < Deadline of
+                true ->
+                    receive
+                    after 1 -> ok
+                    end,
+                    case erlang:monotonic_time(millisecond) < Deadline of
+                        true -> retry_direct_admission(Lock, Admission, Deadline);
+                        false -> aborted
+                    end;
+                false ->
+                    aborted
+            end;
         ok ->
             ok
     end.

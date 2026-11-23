@@ -172,6 +172,37 @@ hot_group_vs_direct_fairness_test_() ->
         end)
     end}.
 
+direct_admission_waits_before_deferring_under_contention_test_() ->
+    {"BE-14:LOCAL:02 direct can wait for the same connection's lock", fun() ->
+        run_budget_case(#{max_count => 8, reserve_count => 3}, fun(Members) ->
+            Slow = member_pid(?UID_SLOW, Members),
+            stuff(Slow, 5),
+            Lock = {{message_ds, Slow}, self()},
+            true = global:set_lock(Lock, [node()], 0),
+            {Id, Json} = direct_msg(<<"direct-while-locked">>),
+            {Sender, Monitor} = spawn_monitor(fun() ->
+                Start = erlang:monotonic_time(millisecond),
+                ok = message_ds:send_next(?UID_SLOW, Id, Json, [0]),
+                exit({elapsed, erlang:monotonic_time(millisecond) - Start})
+            end),
+            try
+                receive
+                    {'DOWN', Monitor, process, Sender, {elapsed, Elapsed}} ->
+                        ?assert(Elapsed >= 16);
+                    {'DOWN', Monitor, process, Sender, Reason} ->
+                        error({direct_delivery_failed, Reason})
+                after 500 -> error(direct_delivery_timeout)
+                end,
+                ?assertEqual([], data_frames(Slow)),
+                ?assertEqual(1, length(notice_frames(Slow)))
+            after
+                exit(Sender, kill),
+                erlang:demonitor(Monitor, [flush]),
+                global:del_lock(Lock, [node()])
+            end
+        end)
+    end}.
+
 %% LOCAL:02：轻通知合并——多条降级合并为单条；无库写、无已读/送达虚增。
 %% ePG 全程 meck raise 硬禁（run_budget_case）：用例通过即证明零库写。
 notice_merge_single_frame_no_side_effects_test_() ->
