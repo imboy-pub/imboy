@@ -20,6 +20,7 @@
 -export([
     delivery_budget_check/3,
     supports_remote_delivery_budget/1,
+    supports_remote_delivery_batch/1,
     defer_delivery/3,
     defer_delivery/2,
     clear_backlog_notice/1,
@@ -60,9 +61,20 @@ init() ->
         ?CACHE_SCOPE,
         ?QR_LOGIN_SCOPE
     ]),
-    case supports_remote_delivery_budget(node()) of
-        false -> syn:register(?CACHE_SCOPE, {delivery_budget, node()}, self());
-        true -> ok
+    ok = announce_delivery_capability(delivery_budget, undefined),
+    _ = code:ensure_loaded(message_ds),
+    case erlang:function_exported(message_ds, deliver_group_batch, 3) of
+        true ->
+            announce_delivery_capability(delivery_batch_v1, {message_ds, deliver_group_batch, 3});
+        false ->
+            ok
+    end.
+
+announce_delivery_capability(Name, Metadata) ->
+    Key = {Name, node()},
+    case syn:lookup(?CACHE_SCOPE, Key) of
+        undefined -> syn:register(?CACHE_SCOPE, Key, self(), Metadata);
+        _ -> ok
     end.
 
 -spec join(integer(), binary(), pid(), binary()) -> ok | {error, term()}.
@@ -326,6 +338,17 @@ local_ack_cancel(Uid, DID, MsgId) ->
 -spec supports_remote_delivery_budget(node()) -> boolean().
 supports_remote_delivery_budget(Node) ->
     syn:lookup(?CACHE_SCOPE, {delivery_budget, Node}) =/= undefined.
+
+%% A bound registry PID advertises the loaded batch entry point for this node
+%% incarnation. Do not reuse a separate node-name capability cache on reconnect.
+-spec supports_remote_delivery_batch(node()) -> boolean().
+supports_remote_delivery_batch(Node) ->
+    case syn:lookup(?CACHE_SCOPE, {delivery_batch_v1, Node}) of
+        {Pid, {message_ds, deliver_group_batch, 3}} when node(Pid) =:= Node ->
+            lists:member(Node, nodes(connected));
+        _ ->
+            false
+    end.
 
 %% @doc 投递预算门：allow=按原路径投递；defer=超预算降级（不入队）。
 %% 判定与计数在此完成——计数即"调用数 oracle"（delivered+deferred==尝试数）。

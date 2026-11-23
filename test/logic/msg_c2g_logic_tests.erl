@@ -43,7 +43,7 @@ c2g_sender_sync_case(SenderDid, ExpectedEchoes) ->
                 {'intervals', 1, fun(<<"c2g">>) -> [0, 200] end}
             ]},
             {message_ds, [
-                {'send_next', 4, fun(_, _, _, _) -> ok end},
+                {'send_group_next', 4, fun([1002, 1003], _, _, [0, 200]) -> ok end},
                 {'send_next', 6, fun(_, _, _, _, _, _) -> ok end}
             ]},
             {mention_logic, [
@@ -51,9 +51,6 @@ c2g_sender_sync_case(SenderDid, ExpectedEchoes) ->
                     ?assertEqual([<<"1001">>, <<"1002">>, <<"1003">>], Mentions),
                     ok
                 end}
-            ]},
-            {user_logic, [
-                {'is_online', 1, fun(_Uid) -> true end}
             ]},
             {push_notification_logic, [
                 {'maybe_push_for_c2g', 4, fun(_, _, _, _) -> ok end}
@@ -97,13 +94,13 @@ c2g_sender_sync_case(SenderDid, ExpectedEchoes) ->
             ?assertEqual(<<"C2G_SERVER_ACK">>, maps:get(<<"type">>, Reply)),
             ?assertEqual(1, meck:num_calls(msg_store_ds, stage, 13)),
             ?assertEqual(1, meck:num_calls(msg_store_ds, enqueue, 3)),
-            ?assertEqual(2, meck:num_calls(message_ds, send_next, 4)),
+            ?assertEqual(1, meck:num_calls(message_ds, send_group_next, 4)),
             ?assertEqual(1, meck:num_calls(mention_logic, create_mentions, 4)),
             ?assertEqual(0, meck:num_calls(group_ds, member_uids, 1)),
             ?assertEqual(0, meck:num_calls(group_ds, member_uids_strict, 1)),
 
             %% S0-1: C2G 独立信封路径带当前版本 ver（解码投递出的 JSON 断言）
-            SentMsg = meck:capture(first, message_ds, send_next, ['_', '_', '_', '_'], 3),
+            SentMsg = meck:capture(first, message_ds, send_group_next, ['_', '_', '_', '_'], 3),
             Decoded = jsone:decode(SentMsg),
             ?assertEqual(?CUR_MSG_VER, maps:get(<<"ver">>, Decoded)),
             ?assertEqual(7, maps:get(<<"conv_seq">>, Decoded)),
@@ -170,7 +167,9 @@ c2g_duplicate_only_acks_without_downstream_side_effects_test_() ->
                 {'set_expire_at', 2, fun(_, _) -> {ok, 0} end}
             ]},
             {message_ds, [
-                {'send_next', 4, fun(_, _, _, _) -> ok end},
+                {'send_group_next', 4, fun(_, _, _, _) ->
+                    erlang:error(duplicate_group_delivery)
+                end},
                 {'send_next', 6, fun(_, _, _, _, _, _) ->
                     erlang:error(sender_echo_must_not_run)
                 end}
@@ -221,7 +220,7 @@ c2g_duplicate_only_acks_without_downstream_side_effects_test_() ->
             ?assertEqual(0, meck:num_calls(msg_store_ds, enqueue, 3)),
             ?assertEqual(0, meck:num_calls(msg_c2g_ds, write_msg_with_reply, 13)),
             ?assertEqual(0, meck:num_calls(msg_c2g_ds, set_expire_at, 2)),
-            ?assertEqual(0, meck:num_calls(message_ds, send_next, 4)),
+            ?assertEqual(0, meck:num_calls(message_ds, send_group_next, 4)),
             ?assertEqual(0, meck:num_calls(push_notification_logic, maybe_push_for_c2g, 4)),
             ?assertEqual(0, meck:num_calls(mention_logic, create_mentions, 4)),
             ?assertEqual(0, meck:num_calls(ai_agent_group_reply, maybe_dispatch, 4)),
@@ -1588,13 +1587,10 @@ c2g_e2ee_room_key_relayed_opaque_and_skips_gate_test_() ->
                 {'intervals', 1, fun(<<"c2g">>) -> [0, 200] end}
             ]},
             {message_ds, [
-                {'send_next', 4, fun(_, _, _, _) -> ok end}
+                {'send_group_next', 4, fun([1002, 1003], _, _, [0, 200]) -> ok end}
             ]},
             {mention_logic, [
                 {'create_mentions', 4, fun(_, _, _, _) -> ok end}
-            ]},
-            {user_logic, [
-                {'is_online', 1, fun(_Uid) -> true end}
             ]},
             {push_notification_logic, [
                 {'maybe_push_for_c2g', 4, fun(_, _, _, _) -> ok end}
@@ -1658,7 +1654,7 @@ c2g_e2ee_room_key_relayed_opaque_and_skips_gate_test_() ->
                 6
             ),
             EnqueuedMap = meck:capture(first, msg_store_ds, enqueue, ['_', '_', '_'], 3),
-            SentMsg = meck:capture(first, message_ds, send_next, ['_', '_', '_', '_'], 3),
+            SentMsg = meck:capture(first, message_ds, send_group_next, ['_', '_', '_', '_'], 3),
             ?assertEqual(SentMsg, maps:get(payload, EnqueuedMap)),
 
             %% ③ 密钥材料逐字段透传：解码后 payload 与入参完全一致

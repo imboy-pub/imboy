@@ -14,9 +14,9 @@
 -export([decode_websocket_message/1]).
 -export([validate_message/1]).
 -export([convert_v1_to_v2/1]).
--export([send_next/4, send_next/6]).
+-export([send_next/4, send_next/6, send_group_next/4]).
 %% 跨节点投递使用 erpc 在连接所在节点执行预算检查和定时器调度。
--export([budgeted_immediate/5, budgeted_retry/9]).
+-export([budgeted_immediate/5, budgeted_retry/9, deliver_group_batch/3]).
 -export([check_and_notify_offline_msgs/1, check_and_notify_offline_msgs/2]).
 -export([inject_sender_device/2]).
 -export([stamp_sender_device/2, with_sender_device/2]).
@@ -24,6 +24,11 @@
 -export([build_adm_union_sql/1]).
 -export([envelope_id_to_binary/1]).
 -export([encode_websocket_message/1]).
+
+-define(GROUP_BATCH_MAX_TARGETS, 64).
+-define(GROUP_BATCH_MAX_BYTES, 65536).
+-define(GROUP_BATCH_RPC_OVERHEAD, 256).
+-define(GROUP_BATCH_RPC_WINDOW_MS, 100).
 
 %% ===================================================================
 %% API
@@ -72,6 +77,190 @@ send_next(ToUid, MsgId, Msg, MsLi, DIDLi, IncludeDIDLi) ->
         true ->
             send_next_loop(ToUid, MsgId, Msg, MsLi, DIDLi, IncludeDIDLi)
     end.
+
+%% The accepted group envelope is shared across devices. Delayed sends keep the
+%% per-device continuation so a retry can resolve its current route.
+-spec send_group_next([pos_integer()], binary(), binary(), [non_neg_integer()]) -> ok.
+send_group_next([], _MsgId, _Msg, _Intervals) ->
+    ok;
+send_group_next(Uids, MsgId, Msg, [0]) ->
+    {Online, Gateways} = lists:foldl(
+        fun(Uid, {Count, ByNode}) ->
+            case imboy_syn:list_by_uid(Uid) of
+                [] -> {Count, ByNode};
+                Devices -> {Count + 1, group_targets(Uid, MsgId, Devices, ByNode)}
+            end
+        end,
+        {0, #{}},
+        Uids
+    ),
+    case Online of
+        0 -> ok;
+        _ -> ok = elib_metric:increment(msg_sent_total, Online)
+    end,
+    maps:foreach(
+        fun(Node, Targets) -> send_gateway_targets(Node, MsgId, Msg, lists:reverse(Targets)) end,
+        Gateways
+    );
+send_group_next(Uids, MsgId, Msg, Intervals) ->
+    [send_next(Uid, MsgId, Msg, Intervals) || Uid <- Uids, imboy_syn:count_user(Uid) > 0],
+    ok.
+
+group_targets(Uid, MsgId, Devices, ByNode) ->
+    UniqueDids = lists:foldl(
+        fun({_Pid, {_Platform, Did}}, Acc) ->
+            maps:update_with(Did, fun(_) -> false end, true, Acc)
+        end,
+        #{},
+        Devices
+    ),
+    lists:foldl(
+        fun({Pid, {_Platform, Did}}, Acc) ->
+            case ack_retry_cache:get({ack_received, Uid, Did, MsgId}) of
+                {ok, true} ->
+                    Acc;
+                _ ->
+                    Target = {Pid, Uid, Did, maps:get(Did, UniqueDids)},
+                    maps:update_with(node(Pid), fun(L) -> [Target | L] end, [Target], Acc)
+            end
+        end,
+        ByNode,
+        Devices
+    ).
+
+send_gateway_targets(Node, MsgId, Msg, Targets) when Node =:= node() ->
+    deliver_group_batch(MsgId, Msg, Targets);
+send_gateway_targets(Node, MsgId, Msg, Targets) ->
+    case imboy_syn:supports_remote_delivery_batch(Node) of
+        true ->
+            Budget =
+                ?GROUP_BATCH_MAX_BYTES - ?GROUP_BATCH_RPC_OVERHEAD -
+                    erlang:external_size({MsgId, Msg, []}),
+            Deadline = erlang:monotonic_time(millisecond) + ?GROUP_BATCH_RPC_WINDOW_MS,
+            _ = spawn(fun() -> send_gateway_chunks(Node, MsgId, Msg, Targets, Budget, Deadline) end),
+            ok;
+        false ->
+            [send_group_target_if_pending(MsgId, Msg, Target) || Target <- Targets],
+            ok
+    end.
+
+send_gateway_chunks(_Node, _MsgId, _Msg, [], _Budget, _Deadline) ->
+    ok;
+send_gateway_chunks(Node, MsgId, Msg, Targets, Budget, Deadline) ->
+    case erlang:monotonic_time(millisecond) < Deadline of
+        true ->
+            send_gateway_chunk(Node, MsgId, Msg, Targets, Budget, Deadline);
+        false ->
+            send_unexecuted_group_targets(MsgId, Msg, Targets)
+    end.
+
+send_gateway_chunk(Node, MsgId, Msg, [Target | Rest] = Targets, Budget, Deadline) ->
+    case take_group_chunk(Targets, ?GROUP_BATCH_MAX_TARGETS, Budget, []) of
+        {[], _} ->
+            send_group_target_if_pending(MsgId, Msg, Target),
+            send_gateway_chunks(Node, MsgId, Msg, Rest, Budget, Deadline);
+        {Chunk, Remaining} ->
+            case remote_group_batch(Node, [MsgId, Msg, Chunk], Deadline) of
+                ok ->
+                    send_gateway_chunks(Node, MsgId, Msg, Remaining, Budget, Deadline);
+                unsupported ->
+                    send_unexecuted_group_targets(MsgId, Msg, Targets);
+                unknown ->
+                    send_unexecuted_group_targets(MsgId, Msg, Remaining)
+            end
+    end.
+
+%% A registry hint may still describe an earlier incarnation of a gateway.
+%% Connection loss or timeout cannot prove that admission was never attempted.
+remote_group_batch(Node, Args, Deadline) ->
+    try erpc:call(Node, ?MODULE, deliver_group_batch, Args, {abs, Deadline}) of
+        ok -> ok;
+        _ -> unknown
+    catch
+        error:{exception, undef, [{?MODULE, deliver_group_batch, Args, _}]} ->
+            unsupported;
+        error:{erpc, notsup} ->
+            unsupported;
+        Class:_Reason ->
+            _ = ?WARN_LOG({group_batch_outcome_unknown, Node, Class}),
+            unknown
+    end.
+
+send_unexecuted_group_targets(MsgId, Msg, Targets) ->
+    lists:foreach(
+        fun
+            ({_Pid, Uid, Did, true}) ->
+                reroute_group_target(MsgId, Msg, Uid, Did, undefined);
+            (Target) ->
+                send_group_target_if_pending(MsgId, Msg, Target)
+        end,
+        Targets
+    ).
+
+take_group_chunk([], _Slots, _Budget, Acc) ->
+    {lists:reverse(Acc), []};
+take_group_chunk(Targets, 0, _Budget, Acc) ->
+    {lists:reverse(Acc), Targets};
+take_group_chunk([Target | Rest] = Targets, Slots, Budget, Acc) ->
+    Bytes = erlang:external_size(Target),
+    case Bytes =< Budget of
+        true -> take_group_chunk(Rest, Slots - 1, Budget - Bytes, [Target | Acc]);
+        false -> {lists:reverse(Acc), Targets}
+    end.
+
+%% One bad target must not suppress delivery to the rest of the group.
+-spec deliver_group_batch(binary(), binary(), [{pid(), pos_integer(), binary(), boolean()}]) -> ok.
+deliver_group_batch(MsgId, Msg, Targets) ->
+    lists:foreach(
+        fun(Target) ->
+            try
+                {Pid, Uid, Did, CanReroute} = Target,
+                case node(Pid) =:= node() of
+                    true ->
+                        case is_process_alive(Pid) of
+                            true ->
+                                send_group_target_if_pending(MsgId, Msg, Target);
+                            false when CanReroute ->
+                                reroute_group_target(MsgId, Msg, Uid, Did, Pid);
+                            false ->
+                                ok
+                        end;
+                    false ->
+                        ok
+                end
+            catch
+                Class:_Reason ->
+                    _ = ?WARN_LOG({group_delivery_target_failed, Class}),
+                    ok
+            end
+        end,
+        Targets
+    ).
+
+%% Retry one exact device route. An absent or ambiguous route can pull from
+%% the durable acceptance, and must not turn into a user-wide fanout.
+reroute_group_target(MsgId, Msg, Uid, Did, OldPid) ->
+    case
+        [
+            Pid
+         || {Pid, {_, RouteDid}} <- imboy_syn:list_by_uid(Uid),
+            RouteDid =:= Did,
+            Pid =/= OldPid,
+            node(Pid) =/= node() orelse is_process_alive(Pid)
+        ]
+    of
+        [Pid] -> send_group_target_if_pending(MsgId, Msg, {Pid, Uid, Did, false});
+        _ -> ok
+    end.
+
+send_group_target_if_pending(MsgId, Msg, {Pid, Uid, Did, _CanReroute}) ->
+    case ack_retry_cache:get({ack_received, Uid, Did, MsgId}) of
+        {ok, true} -> ok;
+        _ -> send_group_target(Pid, Uid, Msg)
+    end.
+
+send_group_target(Pid, Uid, Msg) ->
+    budgeted_immediate(Pid, Uid, Msg, bulk, byte_size(Msg)).
 
 %% 实际消息分发和定时重发控制
 send_next_loop(_ToUid, _MsgId, _Msg, [], _DIDLi, _IncludeDIDLi) ->

@@ -466,13 +466,8 @@ do_stage_and_send_c2g(
             % ③ 后投递消息（仅推送在线成员，离线成员通过 sync 拉取）
             % sender_did 与权威 conv_seq 均在实时信封内；后者来自已提交的
             % staging 事务，客户端不得从密文 payload 自报历史范围。
-            OnlineUids = [
-                Uid
-             || Uid <- MemberUids,
-                CurrentUid /= Uid,
-                user_logic:is_online(Uid)
-            ],
-            [message_ds:send_next(Uid, MsgId, RealtimeMsg, MsLi) || Uid <- OnlineUids],
+            Recipients = [Uid || Uid <- MemberUids, Uid =/= CurrentUid],
+            ok = message_ds:send_group_next(Recipients, MsgId, RealtimeMsg, MsLi),
             send_sender_other_devices(CurrentUid, SenderDid, MsgId, RealtimeMsg, MsLi),
 
             % ③.5 离线推送（异步，不阻塞消息投递）
