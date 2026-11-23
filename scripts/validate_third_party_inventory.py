@@ -11,7 +11,7 @@
                    (b) active 行 endpoint host 必须在源文本中命中（防清单漂移/编造）
   4. 海外发布门 --overseas-gate：任何真实出站行（非 dev-only、非 self-hosted）
                    若 DPA/SCC 未签署或 region=unknown 则报错退出——
-                   unknown DPA/region blocks operated overseas release。
+                   unknown DPA/region blocks operated overseas release。可选 dpa_expires_at 使用 YYYY-MM-DD，到期日当天仍有效。
 
 用法：
   python3 scripts/validate_third_party_inventory.py                 # 常规校验
@@ -24,6 +24,7 @@ from __future__ import annotations
 import argparse
 import re
 import sys
+from datetime import date
 from pathlib import Path
 
 DEFAULT_INVENTORY = Path("docs/compliance/third-party-data-inventory.yml")
@@ -259,6 +260,7 @@ def validate(
     # 门 4：海外发布门
     blocked = []
     if overseas_gate:
+        today = date.today()
         for name, row in providers.items():
             if not is_active_row(row):
                 continue
@@ -268,9 +270,22 @@ def validate(
                 continue
             if row.get("dpa_status") != "executed" or row.get("region") == "unknown":
                 blocked.append(f"{name} (region={row.get('region')}, dpa={row.get('dpa_status')})")
+                continue
+            expires = row.get("dpa_expires_at")
+            if expires is None:
+                continue
+            try:
+                expiry = date.fromisoformat(expires)
+                if expiry.isoformat() != expires:
+                    raise ValueError
+            except ValueError:
+                blocked.append(f"{name} (invalid dpa_expires_at)")
+                continue
+            if expiry < today:
+                blocked.append(f"{name} (expired DPA/SCC)")
         if blocked:
             errors.append(
-                "overseas release BLOCKED — DPA/SCC not executed for: " + "; ".join(blocked)
+                "overseas release BLOCKED — missing, invalid or expired DPA/SCC for: " + "; ".join(blocked)
             )
 
     return (not errors), errors, warnings
@@ -283,7 +298,7 @@ def main(argv=None) -> int:
     parser.add_argument(
         "--overseas-gate",
         action="store_true",
-        help="block when any real outbound row lacks executed DPA/SCC (overseas release check)",
+        help="block when a real outbound row lacks valid executed DPA/SCC (overseas release check)",
     )
     args = parser.parse_args(argv)
 
