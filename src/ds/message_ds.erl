@@ -15,6 +15,8 @@
 -export([validate_message/1]).
 -export([convert_v1_to_v2/1]).
 -export([send_next/4, send_next/6]).
+%% 跨节点投递使用 erpc 在连接所在节点执行预算检查和定时器调度。
+-export([budgeted_immediate/5, budgeted_retry/9]).
 -export([check_and_notify_offline_msgs/1, check_and_notify_offline_msgs/2]).
 -export([inject_sender_device/2]).
 -export([stamp_sender_device/2, with_sender_device/2]).
@@ -163,27 +165,68 @@ send_next_loop(ToUid, MsgId, Msg, [Delay | Tail], DIDLi, IncludeDIDLi) ->
     end.
 
 %% BE-14：立即帧的预算化投递：allow 直投；defer 降级（合并轻通知）。
+budgeted_immediate(Pid, ToUid, Msg, Lane, FrameBytes) when node(Pid) =/= node() ->
+    remote_delivery(
+        node(Pid), budgeted_immediate, [Pid, ToUid, Msg, Lane, FrameBytes], fun() ->
+            imboy_syn:start_delivery_timer(0, Pid, Msg)
+        end
+    );
 budgeted_immediate(Pid, ToUid, Msg, Lane, FrameBytes) ->
-    case imboy_syn:delivery_budget_check(Pid, FrameBytes, Lane) of
-        allow ->
-            imboy_syn:start_delivery_timer(0, Pid, Msg);
-        defer ->
-            ok = imboy_syn:defer_delivery(Pid, ToUid)
-    end.
+    deliver_with_budget(Pid, ToUid, Lane, FrameBytes, fun() ->
+        imboy_syn:start_delivery_timer(0, Pid, Msg)
+    end).
 
 %% BE-14：重试跳的预算化续排：allow 续排 timer；defer 停链降级。
+budgeted_retry(Pid, ToUid, DID, MsgId, Delay, Tail, Msg, Lane, FrameBytes) when
+    node(Pid) =/= node()
+->
+    remote_delivery(
+        node(Pid),
+        budgeted_retry,
+        [
+            Pid, ToUid, DID, MsgId, Delay, Tail, Msg, Lane, FrameBytes
+        ],
+        fun() ->
+            schedule_budgeted_retry(Pid, ToUid, DID, MsgId, Delay, Tail, Msg)
+        end
+    );
 budgeted_retry(Pid, ToUid, DID, MsgId, Delay, Tail, Msg, Lane, FrameBytes) ->
-    case imboy_syn:delivery_budget_check(Pid, FrameBytes, Lane) of
-        allow ->
-            TimerKey = {ToUid, DID, MsgId},
-            %% 专用 ACK ETS 的 TTL 单位为毫秒：覆盖 timer 存活期并额外保留 5s，
-            %% 供已 fire/ACK 交错时的取消与精确清理使用。
-            imboy_syn:schedule_ack_retry(
-                Delay, Pid, TimerKey, {Tail, TimerKey, Msg}, Delay + 5000
-            ),
-            ok = ?DEBUG_LOG({timer_set, MsgId, Delay, DID});
-        defer ->
-            ok = imboy_syn:defer_delivery(Pid, ToUid)
+    deliver_with_budget(Pid, ToUid, Lane, FrameBytes, fun() ->
+        schedule_budgeted_retry(Pid, ToUid, DID, MsgId, Delay, Tail, Msg)
+    end).
+
+schedule_budgeted_retry(Pid, ToUid, DID, MsgId, Delay, Tail, Msg) ->
+    TimerKey = {ToUid, DID, MsgId},
+    imboy_syn:schedule_ack_retry(Delay, Pid, TimerKey, {Tail, TimerKey, Msg}, Delay + 5000),
+    ok = ?DEBUG_LOG({timer_set, MsgId, Delay, DID}).
+
+remote_delivery(Node, Operation, Args, Legacy) ->
+    case imboy_syn:supports_remote_delivery_budget(Node) of
+        true -> erpc:cast(Node, ?MODULE, Operation, Args);
+        false -> Legacy()
+    end.
+
+deliver_with_budget(Pid, ToUid, Lane, FrameBytes, Deliver) ->
+    %% Admission and enqueue are one destination-local critical section. Never
+    %% wait behind a busy sender; the durable message is recovered by pull.
+    Admission = fun() ->
+        case imboy_syn:delivery_budget_check(Pid, FrameBytes, Lane) of
+            allow -> Deliver();
+            defer -> imboy_syn:defer_delivery(Pid, ToUid)
+        end
+    end,
+    Lock = {{?MODULE, Pid}, self()},
+    case global:trans(Lock, Admission, [node()], 0) of
+        aborted when Lane =:= direct ->
+            erlang:yield(),
+            case global:trans(Lock, Admission, [node()], 0) of
+                aborted -> imboy_syn:defer_delivery(Pid, ToUid, Lane);
+                ok -> ok
+            end;
+        aborted ->
+            imboy_syn:defer_delivery(Pid, ToUid, Lane);
+        ok ->
+            ok
     end.
 
 %% BE-14：投递通道判定。bulk 仅指 C2G 实时扇出（热点群扇出主体）；

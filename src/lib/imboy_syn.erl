@@ -19,6 +19,8 @@
 %% BE-14 慢端预算与热点公平调度
 -export([
     delivery_budget_check/3,
+    supports_remote_delivery_budget/1,
+    defer_delivery/3,
     defer_delivery/2,
     clear_backlog_notice/1,
     drop_delivery_budget/1,
@@ -48,6 +50,8 @@
 %% @doc 初始化 syn 模块，添加节点到 scopes
 -spec init() -> ok.
 init() ->
+    %% 与 ACK 缓存一样由应用启动进程持表，避免首个投递进程退出时删表。
+    ok = ensure_budget_table(),
     _ = application:ensure_all_started(syn),
     ok = syn:add_node_to_scopes([
         ?CHAT_SCOPE,
@@ -56,7 +60,10 @@ init() ->
         ?CACHE_SCOPE,
         ?QR_LOGIN_SCOPE
     ]),
-    ok.
+    case supports_remote_delivery_budget(node()) of
+        false -> syn:register(?CACHE_SCOPE, {delivery_budget, node()}, self());
+        true -> ok
+    end.
 
 -spec join(integer(), binary(), pid(), binary()) -> ok | {error, term()}.
 join(Uid, DType, Pid, DID) ->
@@ -287,7 +294,7 @@ local_ack_cancel(Uid, DID, MsgId) ->
 %% ===================================================================
 %% BE-14 慢端投递预算与热点公平调度
 %% ===================================================================
-%% 节点本地 ETS（与 ack_retry_cache 同风格：懒建表、public；行由
+%% 节点本地 ETS（应用启动时创建、public；行由
 %% websocket_handler:terminate 显式 drop，孤儿行无害且可被 reset 清理）。
 %%
 %% 语义（BE-14:LOCAL:01/02/03）：
@@ -314,6 +321,11 @@ local_ack_cancel(Uid, DID, MsgId) ->
 -define(DEFAULT_BUDGET_RESERVE_BYTES, 1048576).
 
 -type delivery_lane() :: bulk | direct.
+
+%% A mixed-version peer advertises this before accepting WebSocket sessions.
+-spec supports_remote_delivery_budget(node()) -> boolean().
+supports_remote_delivery_budget(Node) ->
+    syn:lookup(?CACHE_SCOPE, {delivery_budget, Node}) =/= undefined.
 
 %% @doc 投递预算门：allow=按原路径投递；defer=超预算降级（不入队）。
 %% 判定与计数在此完成——计数即"调用数 oracle"（delivered+deferred==尝试数）。
@@ -352,6 +364,11 @@ counter_key(direct, defer) -> {c, direct_deferred}.
 %% @doc 超预算降级收尾：累计该连接滞留计数，并按"单连接至多一条在途轻
 %% 通知"合并投递一条 S2C pull_offline_msg（绕过预算门，否则永饿死）。
 %% 通知只携带合并计数与原因，不携带业务载荷/密文，不写任何库表。
+-spec defer_delivery(pid(), integer() | binary(), delivery_lane()) -> ok.
+defer_delivery(Pid, ToUid, Lane) ->
+    ok = bump_budget_counter(counter_key(Lane, defer)),
+    defer_delivery(Pid, ToUid).
+
 -spec defer_delivery(pid(), integer() | binary()) -> ok.
 defer_delivery(Pid, Uid) when is_pid(Pid) ->
     ok = ensure_budget_table(),
