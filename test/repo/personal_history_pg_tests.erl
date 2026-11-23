@@ -527,6 +527,8 @@ action_version_conflict_and_advance_test_() ->
         {ok, #{<<"event_seq">> := FirstEvent}} = personal_history_logic:upload(
             ?A1, upload_params(?A1, ?A2, <<"mh02-m-ver">>, <<"n-v2">>, 5, 2, undefined)
         ),
+        {ok, 1, [_], FirstEvent, false} =
+            personal_history_ds:issue_changes(?A1, domain(), <<"inst-ver">>, 0, 10),
         %% 旧版本迟到：不得按重试覆盖已有终态
         ?assertEqual(
             {error, <<"version_conflict">>, 409},
@@ -717,6 +719,289 @@ changes_reset_hint_when_out_of_window_test_() ->
         ?assertEqual(true, ResetHint),
         cleanup_test_rows()
     end).
+
+account_snapshot_preserves_cut_and_issues_only_completed_watermark_test_() ->
+    ?TEST_WITH_DB_TIMEOUT(60, fun() ->
+        with_snapshot_key(fun account_snapshot_cut/0)
+    end).
+
+account_snapshot_cut() ->
+    cleanup_test_rows(),
+    try
+        _ = opt_in(?A1),
+        _ = opt_in(?OTHER1),
+        {ok, _} = put_key_package(?A1, 1),
+        %% Accept the oldest source in order and archive it only after the snapshot cut.
+        ok = seed_c2c(snapshot_id(1), 1),
+        lists:foreach(fun(Seq) -> snapshot_upload(?A2, Seq) end, lists:seq(2, 52)),
+        _ = snapshot_upload(?A2, 53),
+        Watermark = snapshot_upload(?OTHER2, 54),
+        Did = <<"snapshot-did-a">>,
+        {ok, Empty} = snapshot_page(?OTHER1, Did, undefined),
+        ?assertMatch(
+            #{
+                <<"events">> := [],
+                <<"has_more">> := false,
+                <<"recovery_cursor">> := 0,
+                <<"completion_token">> := _
+            },
+            Empty
+        ),
+        ?assertMatch(
+            {ok, #{<<"accepted">> := true, <<"advanced_to">> := 0}},
+            snapshot_confirm(?OTHER1, Did, 0, maps:get(<<"completion_token">>, Empty))
+        ),
+        {ok, First} = snapshot_page(?A1, Did, undefined),
+        #{<<"events">> := Initial, <<"has_more">> := true, <<"page_token">> := Next} = First,
+        ?assertEqual(50, length(Initial)),
+        ?assert(lists:all(fun(Row) -> maps:is_key(<<"accepted_message">>, Row) end, Initial)),
+        ?assertNot(maps:is_key(<<"completion_token">>, First)),
+        ?assertNot(maps:is_key(<<"recovery_cursor">>, First)),
+        assert_snapshot_unissued(Did, Watermark, Next),
+        ?assertEqual({error, <<"page_token_expired">>, 410}, snapshot_page(?OTHER1, Did, Next)),
+        ?assertEqual(
+            {error, <<"page_token_expired">>, 410},
+            snapshot_page(?A1, <<"snapshot-did-b">>, Next)
+        ),
+        {ok, 1} = personal_history_ds:mark_deleted(
+            ?A1, domain(), conv(?A1, ?A2), snapshot_id(52)
+        ),
+        ok = consume_action(
+            snapshot_id(53), <<"edit">>, <<"mh02-snapshot-edit-53">>, ?A1, ?A2
+        ),
+        PostCut = snapshot_upload(?A2, 55),
+        ok = consume_action(
+            snapshot_id(55), <<"edit">>, <<"mh02-snapshot-edit-55">>, ?A1, ?A2
+        ),
+        Late = snapshot_upload_accepted(?A2, 1),
+        {ok, End} = snapshot_page(?A1, Did, Next),
+        #{
+            <<"events">> := [Tombstone, MissingProof, OtherConversation],
+            <<"has_more">> := false,
+            <<"page_token">> := null,
+            <<"recovery_cursor">> := Watermark,
+            <<"completion_token">> := Proof
+        } = End,
+        ?assertMatch(#{<<"deleted">> := true, <<"msg_id">> := <<"mh02-snapshot-52">>}, Tombstone),
+        ?assertNot(maps:is_key(<<"ciphertext">>, Tombstone)),
+        ?assert(maps:get(<<"event_seq">>, Tombstone) > Watermark),
+        ?assertMatch(
+            #{
+                <<"msg_id">> := <<"mh02-snapshot-53">>,
+                <<"action_version">> := 0,
+                <<"deleted">> := false,
+                <<"suppressed">> := true
+            },
+            MissingProof
+        ),
+        ?assertNot(maps:is_key(<<"ciphertext">>, MissingProof)),
+        ?assertNot(maps:is_key(<<"envelope_meta">>, MissingProof)),
+        ?assertNot(maps:is_key(<<"accepted_message">>, MissingProof)),
+        ?assertMatch(#{<<"accepted_message">> := _}, OtherConversation),
+        ?assertEqual(conv(?A1, ?OTHER2), maps:get(<<"conversation_id">>, OtherConversation)),
+        assert_wrong_completions(Did, Watermark, Proof),
+        Ack =
+            {ok, #{
+                <<"accepted">> => true,
+                <<"advanced_to">> => Watermark,
+                <<"issued_cursor">> => Watermark,
+                <<"generation">> => 1
+            }},
+        ?assertEqual(Ack, snapshot_confirm(?A1, Did, Watermark, Proof)),
+        ?assertEqual(Ack, snapshot_confirm(?A1, Did, Watermark, Proof)),
+        assert_snapshot_delta(Did, Watermark, Tombstone, PostCut, Late),
+        {ok, _} = personal_history_logic:disable(?A1),
+        ?assertEqual({error, <<"generation_expired">>, 410}, snapshot_page(?A1, Did, Next)),
+        ?assertEqual(
+            {error, <<"generation_expired">>, 410},
+            snapshot_confirm(?A1, Did, Watermark, Proof)
+        )
+    after
+        cleanup_test_rows()
+    end.
+
+assert_snapshot_delta(Did, Watermark, Tombstone, PostCut, Late) ->
+    Opts = #{client_instance => Did, cursor => Watermark, limit => 50},
+    {ok, Changes} = personal_history_logic:changes(?A1, Opts#{snapshot => account}),
+    #{
+        <<"events">> := [Tombstone, Suppressed, VerifiedLate],
+        <<"next_cursor">> := Late,
+        <<"reset_hint">> := false
+    } = Changes,
+    ?assertMatch(
+        #{
+            <<"event_seq">> := PostCut,
+            <<"msg_id">> := <<"mh02-snapshot-55">>,
+            <<"deleted">> := false,
+            <<"suppressed">> := true
+        },
+        Suppressed
+    ),
+    ?assertNot(maps:is_key(<<"ciphertext">>, Suppressed)),
+    ?assertNot(maps:is_key(<<"envelope_meta">>, Suppressed)),
+    ?assertNot(maps:is_key(<<"accepted_message">>, Suppressed)),
+    ?assertMatch(
+        #{
+            <<"conv_seq">> := 1,
+            <<"accepted_message">> := _,
+            <<"event_seq">> := Late
+        },
+        VerifiedLate
+    ),
+    ?assertMatch(
+        {ok, #{
+            <<"accepted">> := true,
+            <<"issued_cursor">> := Late,
+            <<"advanced_to">> := Late
+        }},
+        personal_history_logic:ack_cursor(
+            ?A1, #{client_instance => Did, cursor => Late, generation => 1}
+        )
+    ),
+    {ok, #{<<"events">> := [Tombstone, Legacy, VerifiedLate], <<"next_cursor">> := Late}} =
+        personal_history_logic:changes(?A1, Opts),
+    ?assertNot(maps:is_key(<<"suppressed">>, Legacy)),
+    ?assertMatch(#{<<"ciphertext">> := _, <<"deleted">> := false}, Legacy),
+    ?assertNot(maps:is_key(<<"accepted_message">>, Legacy)).
+
+assert_snapshot_unissued(Did, Watermark, PageToken) ->
+    ?assertEqual(
+        {error, <<"page_token_expired">>, 410},
+        snapshot_confirm(?A1, Did, Watermark, PageToken)
+    ),
+    assert_unissued_account_cursor(Did, Watermark).
+
+assert_wrong_completions(Did, Watermark, Proof) ->
+    assert_unissued_account_cursor(Did, Watermark),
+    ?assertEqual(
+        {error, <<"page_token_expired">>, 410},
+        snapshot_confirm(?A1, <<"snapshot-did-b">>, Watermark, Proof)
+    ),
+    ?assertEqual(
+        {error, <<"page_token_expired">>, 410},
+        snapshot_confirm(?OTHER1, Did, Watermark, Proof)
+    ),
+    ?assertEqual(
+        {error, <<"malformed_request">>, 422},
+        snapshot_confirm(?A1, Did, Watermark + 1, Proof)
+    ).
+
+assert_unissued_account_cursor(Did, Watermark) ->
+    {ok, Early} = personal_history_logic:ack_cursor(?A1, #{
+        client_instance => Did, generation => 1, cursor => Watermark
+    }),
+    ?assertMatch(
+        #{<<"accepted">> := false, <<"issued_cursor">> := 0, <<"advanced_to">> := 0}, Early
+    ),
+    ?assertEqual(
+        {ok, 1, [], undefined, true},
+        personal_history_ds:issue_changes(?A1, domain(), Did, Watermark, 50)
+    ).
+
+snapshot_page(Account, Did, Token) ->
+    personal_history_logic:account_snapshot(Account, #{client_instance => Did, page_token => Token}).
+
+snapshot_confirm(Account, Did, Watermark, Proof) ->
+    personal_history_logic:ack_cursor(Account, #{
+        client_instance => Did, cursor => Watermark, generation => 1, completion_token => Proof
+    }).
+
+snapshot_id(Seq) ->
+    <<"mh02-snapshot-", (integer_to_binary(Seq))/binary>>.
+
+snapshot_upload(Peer, Seq) ->
+    ok = seed_c2c(snapshot_id(Seq), ?A1, Peer, Seq, 0),
+    snapshot_upload_accepted(Peer, Seq).
+
+snapshot_upload_accepted(Peer, Seq) ->
+    MsgId = snapshot_id(Seq),
+    {ok, #{<<"event_seq">> := Event}} = personal_history_logic:upload(
+        ?A1, upload_params(?A1, Peer, MsgId, <<"nonce-", MsgId/binary>>, Seq)
+    ),
+    Event.
+
+with_snapshot_key(Run) ->
+    OldKey = application:get_env(imboy, postgre_aes_key),
+    application:set_env(imboy, postgre_aes_key, <<"synthetic-history-pg-test-key-32b">>),
+    try
+        Run()
+    after
+        case OldKey of
+            {ok, Key} -> application:set_env(imboy, postgre_aes_key, Key);
+            undefined -> application:unset_env(imboy, postgre_aes_key)
+        end
+    end.
+
+account_snapshot_scans_beyond_change_window_and_rechecks_tail_on_ack_test_() ->
+    ?TEST_WITH_DB_TIMEOUT(120, fun() ->
+        with_snapshot_key(fun account_snapshot_window/0)
+    end).
+
+account_snapshot_window() ->
+    cleanup_test_rows(),
+    try
+        _ = opt_in(?A1),
+        Did = <<"snapshot-window-device">>,
+        Count = personal_history_ds:change_window() + 1,
+        insert_window_rows(?A1, Count),
+        ?assertEqual(
+            {ok, 1, [], undefined, true},
+            personal_history_ds:issue_changes(?A1, domain(), Did, 0, 50)
+        ),
+        #{<<"recovery_cursor">> := W, <<"completion_token">> := Proof} =
+            scan_account_snapshot(Did, undefined, Count),
+        {ok, 1} = elib_pg:execute_count(
+            <<"UPDATE public.personal_history_archive SET event_seq=DEFAULT",
+                " WHERE account_id=$1 AND domain=$2 AND msg_id='window-1'">>,
+            [?A1, domain()]
+        ),
+        ?assertMatch(
+            {ok, #{<<"accepted">> := true, <<"advanced_to">> := W}},
+            snapshot_confirm(?A1, Did, W, Proof)
+        ),
+        %% Same cut for a different registered device, but its recovery tail is now too large.
+        OtherDid = <<"snapshot-window-other-did">>,
+        #{<<"recovery_cursor">> := OtherW, <<"completion_token">> := OtherProof} =
+            scan_account_snapshot(OtherDid, undefined, Count),
+        {ok, Count} = elib_pg:execute_count(
+            <<"UPDATE public.personal_history_archive SET event_seq=DEFAULT",
+                " WHERE account_id=$1 AND domain=$2">>,
+            [?A1, domain()]
+        ),
+        ?assertEqual(
+            {error, <<"rescan_bound_exceeded">>, 410},
+            snapshot_confirm(?A1, OtherDid, OtherW, OtherProof)
+        ),
+        assert_unissued_account_cursor(OtherDid, OtherW),
+        ?assertMatch(
+            {ok, #{<<"accepted">> := true, <<"advanced_to">> := W}},
+            snapshot_confirm(?A1, Did, W, Proof)
+        )
+    after
+        cleanup_test_rows()
+    end.
+
+scan_account_snapshot(Did, Token, Remaining) when Remaining > 0 ->
+    {ok, Page} = snapshot_page(?A1, Did, Token),
+    #{<<"events">> := Rows, <<"has_more">> := HasMore, <<"page_token">> := Next} = Page,
+    ?assert(
+        lists:all(
+            fun(Row) ->
+                maps:get(<<"suppressed">>, Row) =:= true andalso
+                    not maps:is_key(<<"ciphertext">>, Row)
+            end,
+            Rows
+        )
+    ),
+    case HasMore of
+        true when Remaining > 50 ->
+            ?assertEqual(50, length(Rows)),
+            ?assertNot(maps:is_key(<<"completion_token">>, Page)),
+            scan_account_snapshot(Did, Next, Remaining - 50);
+        false when Remaining =< 50 ->
+            ?assertEqual(Remaining, length(Rows)),
+            Page
+    end.
 
 insert_window_rows(Account, Size) ->
     {ok, Size} = elib_pg:execute_count(

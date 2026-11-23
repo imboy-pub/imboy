@@ -17,7 +17,7 @@
 -export([upload/2]).
 -export([changes/2]).
 -export([ack_cursor/2]).
--export([page/2]).
+-export([page/2, account_snapshot/2]).
 -export([put_key_package/2]).
 -export([get_key_package/2]).
 -export([disable/1]).
@@ -228,7 +228,15 @@ upload_item_from(
 %% @doc 拉取变更事件（cursor 单调；窗口外 reset_hint 触发有界重扫）。
 %% Opts: cursor(integer), limit(integer), client_instance(binary)
 -spec changes(integer(), map()) -> {ok, map()} | {error, binary(), integer()}.
+changes(AccountId, #{snapshot := account} = Opts) ->
+    case valid_snapshot_instance(maps:get(client_instance, Opts, <<>>)) of
+        true -> do_changes(AccountId, Opts, fun snapshot_event/1);
+        false -> read_error(malformed_request)
+    end;
 changes(AccountId, Opts) ->
+    do_changes(AccountId, Opts, fun change_event/1).
+
+do_changes(AccountId, Opts, FormatEvent) ->
     Domain = personal_history_ds:domain(),
     Cursor = maps:get(cursor, Opts, 0),
     Limit0 = maps:get(limit, Opts, 50),
@@ -243,7 +251,7 @@ changes(AccountId, Opts) ->
                 end,
             {ok, #{
                 <<"generation">> => Generation,
-                <<"events">> => [change_event(Row) || Row <- Events],
+                <<"events">> => lists:map(FormatEvent, Events),
                 <<"next_cursor">> => WireCursor,
                 <<"reset_hint">> => ResetHint
             }};
@@ -259,6 +267,8 @@ change_event(Row) ->
 
 %% @doc durably 确认游标（幂等；仅推进 ≤ 已发放最大值）。
 -spec ack_cursor(integer(), map()) -> {ok, map()} | {error, binary(), integer()}.
+ack_cursor(AccountId, #{completion_token := Token} = Opts) ->
+    confirm_account_snapshot(AccountId, Opts, Token);
 ack_cursor(AccountId, Opts) ->
     Domain = personal_history_ds:domain(),
     Cursor = maps:get(cursor, Opts, -1),
@@ -275,11 +285,33 @@ ack_cursor(AccountId, Opts) ->
     end.
 
 do_ack_cursor(AccountId, Domain, ClientInstance, Cursor, ExpectedGeneration) ->
-    case
+    ack_result(
         personal_history_ds:ack_cursor(
             AccountId, Domain, ClientInstance, Cursor, ExpectedGeneration
         )
+    ).
+
+confirm_account_snapshot(AccountId, Opts, Token) ->
+    Cursor = maps:get(cursor, Opts, -1),
+    Generation = maps:get(generation, Opts, undefined),
+    Instance = maps:get(client_instance, Opts, <<>>),
+    case
+        is_integer(Cursor) andalso Cursor >= 0 andalso
+            is_integer(Generation) andalso Generation > 0 andalso
+            valid_snapshot_instance(Instance) andalso is_binary(Token) andalso byte_size(Token) > 0
     of
+        true ->
+            ack_result(
+                personal_history_snapshot_ds:confirm_snapshot(
+                    AccountId, personal_history_ds:domain(), Instance, Cursor, Generation, Token
+                )
+            );
+        false ->
+            read_error(malformed_request)
+    end.
+
+ack_result(Result) ->
+    case Result of
         {ok, Generation, Accepted, Acked, Issued} ->
             {ok, #{
                 <<"accepted">> => Accepted,
@@ -290,6 +322,59 @@ do_ack_cursor(AccountId, Domain, ClientInstance, Cursor, ExpectedGeneration) ->
         {error, Reason} ->
             read_error(Reason)
     end.
+
+-spec account_snapshot(integer(), map()) -> {ok, map()} | {error, binary(), integer()}.
+account_snapshot(AccountId, #{client_instance := Instance, page_token := Token}) ->
+    case valid_snapshot_instance(Instance) of
+        true ->
+            case
+                personal_history_snapshot_ds:account_snapshot(
+                    AccountId, personal_history_ds:domain(), Instance, Token
+                )
+            of
+                {ok, Generation, Events, Position} ->
+                    {ok, (snapshot_position(Position))#{
+                        <<"generation">> => Generation,
+                        <<"events">> => [snapshot_event(Row) || Row <- Events]
+                    }};
+                {error, Reason} ->
+                    read_error(Reason)
+            end;
+        false ->
+            read_error(malformed_request)
+    end.
+
+snapshot_event(#{<<"deleted_at">> := null} = Row) ->
+    case decode_jsonb(maps:get(<<"accepted_message">>, Row, null)) of
+        Fact when is_map(Fact) -> change_event(Row);
+        _ ->
+            Identity = maps:with(
+                [
+                    <<"conversation_id">>,
+                    <<"msg_id">>,
+                    <<"action_version">>,
+                    <<"conv_seq">>,
+                    <<"event_seq">>
+                ],
+                Row
+            ),
+            Identity#{<<"deleted">> => false, <<"suppressed">> => true}
+    end;
+snapshot_event(Row) ->
+    change_event(Row).
+
+snapshot_position({more, Token}) ->
+    #{<<"has_more">> => true, <<"page_token">> => Token};
+snapshot_position({complete, Watermark, Token}) ->
+    #{
+        <<"has_more">> => false,
+        <<"page_token">> => null,
+        <<"recovery_cursor">> => Watermark,
+        <<"completion_token">> => Token
+    }.
+
+valid_snapshot_instance(Instance) ->
+    is_binary(Instance) andalso byte_size(Instance) > 0 andalso byte_size(Instance) =< 128.
 
 %% @doc 会话分页快照（conv_seq DESC；page_token 过期 410 触发有界重扫）。
 %% Opts: conversation_id(binary), before(integer), page_token(binary)
@@ -362,6 +447,7 @@ with_accepted_message(Row, Item) ->
         _ -> Item
     end.
 
+read_error(malformed_request) -> {error, <<"malformed_request">>, 422};
 read_error(not_enabled) -> {error, <<"not_enabled">>, 403};
 read_error(generation_expired) -> {error, <<"generation_expired">>, 410};
 read_error(page_token_expired) -> {error, <<"page_token_expired">>, 410};

@@ -10,7 +10,11 @@ get:
     禁止以空页宣告齐全。
     Monotonic per-account/domain/generation/instance cursor anchored on
     event_seq; only committed archives are visible. Bounded retention window:
-    stale cursors get reset_hint for a bounded page rescan.
+    stale or beyond-issued cursors get reset_hint for an account snapshot rescan.
+    客户端提交的游标若超过该设备的已发放水位，也返回 reset_hint=true。
+    显式传 snapshot=account 时沿用账号快照的严格设备绑定；缺乏等版受理凭证的
+    活跃行只返回临时隐藏标记，保留事件水位。 / Opt-in account mode suppresses
+    unproven archived versions with the same authenticated DID and cursor semantics.
   operationId: personalHistoryChanges
   parameters:
     - in: query
@@ -37,6 +41,13 @@ get:
         type: string
         maxLength: 128
       description: 游标实例标识。Web 请求须传当前登录设备的 DID。
+    - in: query
+      name: snapshot
+      required: false
+      schema:
+        type: string
+        enum: [account]
+      description: 账号快照兼容增量模式，client_instance 必须等于当前认证设备 DID。 / Opt in to account snapshot event semantics; requires the authenticated DID.
   responses:
     '200':
       description: 变更事件列表。 / Change events.
@@ -84,6 +95,9 @@ get:
                             accepted_message:
                               type: object
                               description: 权威接受元数据，包含十进制字符串 from_id、to_id，以及 conv_seq、action_version、accepted_at_ms。墓碑不返回。
+                            suppressed:
+                              type: boolean
+                              description: 仅账号模式。等版受理证明缺失时为 true，仅返回标识与原版信息，无密文，仍可接受后续已验证新版。 / Account mode only. Hide this unproven archived version; a later verified version may still arrive.
                             deleted:
                               type: boolean
                               description: 墓碑投影（MSG-H15）。 / Tombstone projection.
@@ -93,7 +107,7 @@ get:
                         nullable: true
                       reset_hint:
                         type: boolean
-                        description: true=游标已出窗口，须走 page 重扫。 / Cursor outside window; rescan via page.
+                        description: true=游标已出窗口或超过已发放水位，须走 page?snapshot=account 重扫。 / Cursor outside window or beyond issued watermark; rescan via account snapshot.
     '403':
       description: not_enabled / identity_rejected
     '410':

@@ -149,3 +149,62 @@ report_key_matching_device_allowed_test_() ->
             ?assertEqual({responded, success}, Result)
         end
     ).
+
+web_report_key_requires_exact_session_device_test_() ->
+    ?WITH_MOCKS(
+        [
+            {imboy_policy, [{'e2ee_enabled', 0, fun() -> true end}]},
+            {throttle, [{'check', 2, fun(e2ee_report_key, 123) -> ok end}]},
+            {elib_param, [
+                {'post', 1, fun(DeviceType) ->
+                    #{
+                        <<"device_id">> => <<"web-device">>,
+                        <<"device_type">> => DeviceType,
+                        <<"public_key">> => <<"key">>,
+                        <<"key_id">> => <<"kid">>
+                    }
+                end}
+            ]},
+            {e2ee_logic, [
+                {'report_web_device_key', 5, fun
+                    (123, <<"web-device">>, 17, <<"key">>, <<"kid">>) -> {ok, 2};
+                    (123, <<"web-device">>, 18, <<"key">>, <<"kid">>) -> {error, device_revoked}
+                end}
+            ]},
+            {elib_response, [
+                {'success', 2, fun(_, Payload) -> {ok, Payload} end},
+                {'error', 3, fun(_, Msg, Code) -> {error, Code, Msg} end},
+                {'error_with_status', 4, fun(_, Status, Msg, _) -> {error, Status, Msg} end}
+            ]}
+        ],
+        fun() ->
+            State = #{
+                action => report_device_key,
+                surface => web_human,
+                current_uid => 123,
+                current_did => <<"web-device">>,
+                device_session_id => 17
+            },
+            ?assertMatch(
+                {ok, {ok, #{<<"other_device_count">> := 2}}, _},
+                e2ee_handler:init(<<"web">>, State)
+            ),
+            ?assertMatch(
+                {ok, {error, 403, <<"device_mismatch">>}, _},
+                e2ee_handler:init(<<"web">>, maps:remove(device_session_id, State))
+            ),
+            ?assertMatch(
+                {ok, {error, 403, <<"device_mismatch">>}, _},
+                e2ee_handler:init(<<"android">>, State)
+            ),
+            ?assertMatch(
+                {ok, {error, 403, _}, _},
+                e2ee_handler:init(<<"web">>, State#{current_did := <<"another-device">>})
+            ),
+            ?assertMatch(
+                {ok, {error, 401, <<"web_device_revoked">>}, _},
+                e2ee_handler:init(<<"web">>, State#{device_session_id := 18})
+            ),
+            ?assertNot(meck:called(e2ee_logic, report_device_key, '_'))
+        end
+    ).

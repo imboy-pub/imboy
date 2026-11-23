@@ -8,6 +8,9 @@ post:
     幂等：重复 ACK 同值不影响历史（W5）；仅接受 ≤ 服务端已发放最大值。
     Ack watermark advances only after durable client confirmation; idempotent;
     accepts cursors not exceeding the issued maximum.
+    账号恢复末页的 completion_token 允许同一认证设备原子发放并确认对应水位。
+    提交该凭证之前必须完整持久化快照。 / A final account recovery token
+    permits atomic issue and acknowledgement of its exact watermark after durable apply.
   operationId: personalHistoryAckCursor
   requestBody:
     required: true
@@ -26,6 +29,9 @@ post:
               format: int64
               minimum: 1
               description: 授权代次，取发放变更页返回值，过期返回 410。 / Generation returned by the change page. A mismatch returns 410.
+            completion_token:
+              type: string
+              description: 选填。存在时必须同时提供对应末页的恢复 cursor、generation 与认证设备 client_instance。 / Requires the final recovery cursor, generation, and authenticated DID.
             client_instance:
               type: string
               maxLength: 128
@@ -58,8 +64,10 @@ post:
                       generation:
                         type: integer
                         format: int64
+    '403':
+      description: identity_rejected
     '410':
-      description: generation_expired
+      description: generation_expired / page_token_expired / rescan_bound_exceeded
     '422':
       description: malformed_request
     '503':

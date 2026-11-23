@@ -10,14 +10,36 @@ get:
     410 generation_expired。空页≠归档齐全（稀疏规则）。
     conv_seq DESC paged snapshot incl. tombstones; page_token is expirable
     and hop-bounded; empty page never implies completeness.
+
+    snapshot=account 启动同账号同设备同代次的恢复扫描。每页至多 50 条，
+    包含墓碑和权威受理信息；按稳定归档行位置连续分页。仅在末页返回
+    recovery_cursor 与 completion_token；完整持久化后才确认水位。
+    Account mode returns change-format events, including tombstones.
+    Continue with the opaque token; each continuation token lasts ten minutes.
+    Confirm the final recovery cursor and completion token after durable apply.
   operationId: personalHistoryPage
   parameters:
     - in: query
       name: conversation_id
-      required: true
+      required: false
       schema:
         type: string
-      description: 会话键（c2c:{min_uid}:{max_uid}）。 / Conversation key.
+      description: 会话模式必填的会话键（c2c:{min_uid}:{max_uid}）。 / Required conversation key in conversation mode.
+    - in: query
+      name: snapshot
+      required: false
+      schema:
+        type: string
+        enum: [account]
+      description: 全账号恢复模式。 / Account recovery mode.
+    - in: query
+      name: client_instance
+      required: false
+      schema:
+        type: string
+        minLength: 1
+        maxLength: 128
+      description: 账号模式必填，必须等于当前认证设备 DID。 / Required authenticated DID in account mode.
     - in: query
       name: before
       required: false
@@ -45,11 +67,26 @@ get:
                 properties:
                   payload:
                     type: object
-                    required: [generation, conversation_id, messages, has_more]
+                    required: [generation, has_more]
+                    oneOf:
+                      - required: [conversation_id, messages]
+                      - required: [events, page_token]
                     properties:
                       generation:
                         type: integer
                         format: int64
+                      events:
+                        type: array
+                        items:
+                          $ref: './personal-history-changes.yaml#/get/responses/200/content/application~1json/schema/allOf/1/properties/payload/properties/events/items'
+                      recovery_cursor:
+                        type: integer
+                        format: int64
+                        minimum: 0
+                        description: 仅账号末页返回。 / Only returned on the final account page.
+                      completion_token:
+                        type: string
+                        description: 仅账号末页返回，完整持久化后用于确认恢复水位。 / Final-page proof for durable acknowledgement.
                       conversation_id:
                         type: string
                         description: 服务端规范化后的会话键。 / Canonical conversation key.
@@ -91,7 +128,7 @@ get:
                       has_more:
                         type: boolean
     '403':
-      description: not_enabled / not_participant
+      description: not_enabled / not_participant / identity_rejected
     '410':
       description: generation_expired / page_token_expired / rescan_bound_exceeded
     '422':

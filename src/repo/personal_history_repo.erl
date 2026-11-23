@@ -24,6 +24,7 @@
 -export([advance_archive_tx/2, mark_deleted_tx/5, mark_revoked_tx/4]).
 -export([changes_since/4, changes_since_tx/6, page_archive/6, max_event_seq/2]).
 -export([changes_exceed_window_tx/6, delete_archive_by_account_tx/3]).
+-export([snapshot_bounds_tx/4, snapshot_rows_tx/7]).
 % cursor
 -export([find_cursor/4, find_cursor_tx/5, ensure_cursor_tx/5]).
 -export([record_issued_tx/6, ack_cursor_tx/6, delete_cursors_by_account_tx/3]).
@@ -429,6 +430,31 @@ page_archive(AccountId, Domain, Generation, ConversationId, Before, Limit) ->
         >>,
     elib_pg:query(with_archive_proof(Sql, <<"conv_seq DESC">>), [
         AccountId, Domain, Generation, ConversationId, Before, Limit
+    ]).
+
+%% Holding the authorization row makes the cut independent of uncommitted mutations.
+-spec snapshot_bounds_tx(pid(), integer(), binary(), integer()) ->
+    {ok, non_neg_integer(), non_neg_integer()} | {error, term()}.
+snapshot_bounds_tx(Conn, AccountId, Domain, Generation) ->
+    Sql =
+        <<"SELECT COALESCE(MAX(id), 0) AS cut, COALESCE(MAX(event_seq), 0) AS watermark FROM ",
+            (archive_tablename())/binary, " WHERE account_id=$1 AND domain=$2 AND generation=$3">>,
+    case elib_pg:query(Conn, Sql, [AccountId, Domain, Generation]) of
+        {ok, [#{<<"cut">> := Cut, <<"watermark">> := Watermark}]} -> {ok, Cut, Watermark};
+        {error, _} = Error -> Error
+    end.
+
+-spec snapshot_rows_tx(pid(), integer(), binary(), integer(), integer(), integer(), pos_integer()) ->
+    {ok, [map()]} | {error, term()}.
+snapshot_rows_tx(Conn, AccountId, Domain, Generation, Cut, After, Limit) ->
+    Sql =
+        <<
+            (archive_select())/binary,
+            " WHERE account_id=$1 AND domain=$2 AND generation=$3 AND id>$4 AND id<=$5",
+            " ORDER BY id ASC LIMIT $6"
+        >>,
+    elib_pg:query(Conn, with_archive_proof(Sql, <<"id ASC">>), [
+        AccountId, Domain, Generation, After, Cut, Limit
     ]).
 
 %% The identity sequence is global. A cursor window is measured in this account's pending rows.

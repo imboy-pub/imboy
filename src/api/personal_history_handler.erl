@@ -90,7 +90,21 @@ changes(Req0, State) ->
         limit => int_qs(<<"limit">>, Qs, 50),
         client_instance => proplists:get_value(<<"client_instance">>, Qs, <<>>)
     },
-    reply_cursor(Req0, State, Opts, fun personal_history_logic:changes/2).
+    case
+        {
+            proplists:get_all_values(<<"snapshot">>, Qs),
+            proplists:get_all_values(<<"client_instance">>, Qs)
+        }
+    of
+        {[], _} ->
+            reply_cursor(Req0, State, Opts, fun personal_history_logic:changes/2);
+        {[<<"account">>], [_Instance]} ->
+            reply_snapshot_cursor(
+                Req0, State, Opts#{snapshot => account}, fun personal_history_logic:changes/2
+            );
+        _ ->
+            reply_error(Req0, <<"malformed_request">>)
+    end.
 
 -spec ack_cursor(cowboy_req:req(), map()) -> cowboy_req:req().
 ack_cursor(Req0, State) ->
@@ -100,7 +114,17 @@ ack_cursor(Req0, State) ->
         generation => maps:get(<<"generation">>, PostVals, undefined),
         client_instance => maps:get(<<"client_instance">>, PostVals, <<>>)
     },
-    reply_cursor(Req0, State, Opts, fun personal_history_logic:ack_cursor/2).
+    case maps:find(<<"completion_token">>, PostVals) of
+        {ok, Token} ->
+            reply_snapshot_cursor(
+                Req0,
+                State,
+                Opts#{completion_token => Token},
+                fun personal_history_logic:ack_cursor/2
+            );
+        error ->
+            reply_cursor(Req0, State, Opts, fun personal_history_logic:ack_cursor/2)
+    end.
 
 reply_cursor(Req0, State, #{client_instance := Instance} = Opts, Run) ->
     case valid_client_instance(State, Instance) of
@@ -109,14 +133,52 @@ reply_cursor(Req0, State, #{client_instance := Instance} = Opts, Run) ->
     end.
 
 valid_client_instance(#{surface := web_human} = State, Instance) ->
-    is_binary(Instance) andalso byte_size(Instance) > 0 andalso
-        Instance =:= auth_ds:current_did(State);
+    matched_snapshot_device(State, Instance);
 valid_client_instance(_State, _Instance) ->
     true.
+
+matched_snapshot_device(State, Instance) ->
+    is_binary(Instance) andalso byte_size(Instance) > 0 andalso
+        Instance =:= auth_ds:current_did(State).
+
+reply_snapshot_cursor(Req0, State, #{client_instance := Instance} = Opts, Run) ->
+    Req = cowboy_req:set_resp_header(<<"cache-control">>, <<"no-store">>, Req0),
+    case matched_snapshot_device(State, Instance) of
+        true -> reply(Req, Run(auth_ds:current_uid(State), Opts));
+        false -> reply_error(Req, <<"identity_rejected">>)
+    end.
 
 -spec page(cowboy_req:req(), map()) -> cowboy_req:req().
 page(Req0, State) ->
     Qs = cowboy_req:parse_qs(Req0),
+    case proplists:get_all_values(<<"snapshot">>, Qs) of
+        [] -> conversation_page(Req0, State, Qs);
+        [<<"account">>] -> account_snapshot_page(Req0, State, Qs);
+        _ -> reply_error(Req0, <<"malformed_request">>)
+    end.
+
+account_snapshot_page(Req0, State, Qs) ->
+    Instances = proplists:get_all_values(<<"client_instance">>, Qs),
+    Tokens = proplists:get_all_values(<<"page_token">>, Qs),
+    case {Instances, Tokens} of
+        {[Instance], []} ->
+            reply_account_snapshot(Req0, State, Instance, undefined);
+        {[Instance], [Token]} when is_binary(Token), byte_size(Token) > 0 ->
+            reply_account_snapshot(Req0, State, Instance, Token);
+        _ ->
+            Req = cowboy_req:set_resp_header(<<"cache-control">>, <<"no-store">>, Req0),
+            reply_error(Req, <<"malformed_request">>)
+    end.
+
+reply_account_snapshot(Req0, State, Instance, Token) ->
+    reply_snapshot_cursor(
+        Req0,
+        State,
+        #{client_instance => Instance, page_token => Token},
+        fun personal_history_logic:account_snapshot/2
+    ).
+
+conversation_page(Req0, State, Qs) ->
     Opts = #{
         conversation_id => proplists:get_value(<<"conversation_id">>, Qs, <<>>),
         before => int_qs(<<"before">>, Qs, 0),
@@ -281,4 +343,15 @@ web_cursor_device_binding_test() ->
     ?assertNot(valid_client_instance(Web, <<"did-b">>)),
     ?assertNot(valid_client_instance(maps:remove(current_did, Web), <<>>)),
     ?assert(valid_client_instance(#{current_did => <<"did-a">>}, <<"legacy-instance">>)).
+
+account_snapshot_requires_authenticated_device_on_both_surfaces_test() ->
+    lists:foreach(
+        fun(State) ->
+            ?assert(matched_snapshot_device(State, <<"did-a">>)),
+            ?assertNot(matched_snapshot_device(State, <<"did-b">>)),
+            ?assertNot(matched_snapshot_device(State, <<>>)),
+            ?assertNot(matched_snapshot_device(maps:remove(current_did, State), <<"did-a">>))
+        end,
+        [#{current_did => <<"did-a">>}, #{surface => web_human, current_did => <<"did-a">>}]
+    ).
 -endif.

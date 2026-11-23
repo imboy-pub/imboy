@@ -86,12 +86,12 @@ do_report_identity(Req0, State) ->
         {error, Req1} ->
             Req1;
         ok ->
-            do_report_identity1(Req0, CurrentUid, DeviceId, PostVals)
+            do_report_identity1(Req0, State, CurrentUid, DeviceId, PostVals)
     end.
 
--spec do_report_identity1(cowboy_req:req(), integer(), binary(), map()) ->
+-spec do_report_identity1(cowboy_req:req(), map(), integer(), binary(), map()) ->
     cowboy_req:req().
-do_report_identity1(Req0, CurrentUid, DeviceId, PostVals) ->
+do_report_identity1(Req0, State, CurrentUid, DeviceId, PostVals) ->
     DeviceType = maps:get(<<"device_type">>, PostVals, <<>>),
     Ed25519Key = maps:get(<<"ed25519_key">>, PostVals, <<>>),
     Curve25519Key = maps:get(<<"curve25519_key">>, PostVals, <<>>),
@@ -105,12 +105,25 @@ do_report_identity1(Req0, CurrentUid, DeviceId, PostVals) ->
     %% fallback signature 同款 to_bin（接受 binary/list 形态）。
     TransitionSignature = to_bin(maps:get(<<"transition_signature">>, PostVals, <<>>)),
     Result =
-        case TransitionSignature of
-            <<>> ->
+        case {web_device_row(State), TransitionSignature} of
+            {{ok, RowId}, _} ->
+                olm_identity_logic:report_web_identity(
+                    CurrentUid,
+                    DeviceId,
+                    RowId,
+                    Ed25519Key,
+                    Curve25519Key,
+                    Signature,
+                    TransitionSignature,
+                    <<"web">>
+                );
+            {unbound, _} ->
+                {error, <<"device_revoked">>};
+            {native, <<>>} ->
                 olm_identity_logic:report_identity(
                     CurrentUid, DeviceId, Ed25519Key, Curve25519Key, Signature, DeviceType
                 );
-            _NonEmpty ->
+            {native, _NonEmpty} ->
                 olm_identity_logic:report_identity(
                     CurrentUid,
                     DeviceId,
@@ -151,19 +164,28 @@ do_report_prekeys(Req0, State) ->
         {error, Req1} ->
             Req1;
         ok ->
-            do_report_prekeys1(Req0, CurrentUid, DeviceId, PostVals)
+            do_report_prekeys1(Req0, State, CurrentUid, DeviceId, PostVals)
     end.
 
--spec do_report_prekeys1(cowboy_req:req(), integer(), binary(), map()) ->
+-spec do_report_prekeys1(cowboy_req:req(), map(), integer(), binary(), map()) ->
     cowboy_req:req().
-do_report_prekeys1(Req0, CurrentUid, DeviceId, PostVals) ->
+do_report_prekeys1(Req0, State, CurrentUid, DeviceId, PostVals) ->
     KeysRaw = maps:get(<<"keys">>, PostVals, []),
     Keys = normalize_key_pairs(KeysRaw),
-    case
-        olm_identity_logic:report_one_time_keys(
-            CurrentUid, DeviceId, Keys, ?MAX_OTK_PER_REPORT
-        )
-    of
+    Result =
+        case web_device_row(State) of
+            {ok, RowId} ->
+                olm_identity_logic:report_web_prekeys(
+                    CurrentUid, DeviceId, RowId, Keys, ?MAX_OTK_PER_REPORT
+                );
+            unbound ->
+                {error, <<"device_revoked">>};
+            native ->
+                olm_identity_logic:report_one_time_keys(
+                    CurrentUid, DeviceId, Keys, ?MAX_OTK_PER_REPORT
+                )
+        end,
+    case Result of
         {ok, Count} ->
             elib_response:success(Req0, #{<<"count">> => Count});
         {error, Msg} ->
@@ -193,12 +215,12 @@ do_report_fallback(Req0, State) ->
         {error, Req1} ->
             Req1;
         ok ->
-            do_report_fallback1(Req0, CurrentUid, DeviceId, PostVals)
+            do_report_fallback1(Req0, State, CurrentUid, DeviceId, PostVals)
     end.
 
--spec do_report_fallback1(cowboy_req:req(), integer(), binary(), map()) ->
+-spec do_report_fallback1(cowboy_req:req(), map(), integer(), binary(), map()) ->
     cowboy_req:req().
-do_report_fallback1(Req0, CurrentUid, DeviceId, PostVals) ->
+do_report_fallback1(Req0, State, CurrentUid, DeviceId, PostVals) ->
     KeyId = maps:get(<<"key_id">>, PostVals, <<>>),
     KeyB64 = maps:get(<<"key_base64">>, PostVals, <<>>),
     %% E2EE-062：签名（由设备已注册的 ed25519 身份键签发）。
@@ -207,7 +229,20 @@ do_report_fallback1(Req0, CurrentUid, DeviceId, PostVals) ->
     %% 验签通过才内部复用 /4。已 grep 核实全仓无任何测试按 arity mock
     %% report_fallback_key，故此处统一调 /5 不会造成静默穿透。
     Signature = to_bin(maps:get(<<"signature">>, PostVals, <<>>)),
-    case olm_identity_logic:report_fallback_key(CurrentUid, DeviceId, KeyId, KeyB64, Signature) of
+    Result =
+        case web_device_row(State) of
+            {ok, RowId} ->
+                olm_identity_logic:report_web_fallback(
+                    CurrentUid, DeviceId, RowId, KeyId, KeyB64, Signature
+                );
+            unbound ->
+                {error, <<"device_revoked">>};
+            native ->
+                olm_identity_logic:report_fallback_key(
+                    CurrentUid, DeviceId, KeyId, KeyB64, Signature
+                )
+        end,
+    case Result of
         ok ->
             elib_response:success(Req0, #{<<"success">> => true});
         {error, Msg} ->
@@ -359,8 +394,37 @@ do_claim_key(Req0, State) ->
         true ->
             elib_response:error(Req0, <<"rate_limited">>, 429);
         false ->
-            do_claim_key1(Req0, CurrentUid)
+            case web_device_row(State) of
+                {ok, RowId} -> do_web_claim_key(Req0, State, CurrentUid, RowId);
+                unbound -> web_device_revoked(Req0);
+                native -> do_claim_key1(Req0, CurrentUid)
+            end
     end.
+
+do_web_claim_key(Req0, State, CurrentUid, RowId) ->
+    PostVals = elib_param:post(Req0),
+    TargetUid = elib_cnv:safe_to_integer(maps:get(<<"target_uid">>, PostVals, <<>>)),
+    TargetDid = maps:get(<<"device_id">>, PostVals, <<>>),
+    RequestId = normalize_request_id(maps:get(<<"request_id">>, PostVals, <<>>)),
+    case
+        olm_identity_logic:claim_web_key(
+            CurrentUid,
+            auth_ds:current_did(State),
+            RowId,
+            TargetUid,
+            TargetDid,
+            RequestId,
+            fun target_rate_limited/1
+        )
+    of
+        {ok, Payload} -> elib_response:success(Req0, Payload);
+        {error, <<"rate_limited">>} -> elib_response:error(Req0, <<"rate_limited">>, 429);
+        {error, <<"bad_request">>} -> elib_response:error(Req0, <<"bad_request">>, 400);
+        {error, Msg} -> elib_response:error(Req0, Msg, ?ERR_NOT_FOUND)
+    end.
+
+web_device_revoked(Req0) ->
+    elib_response:error_with_status(Req0, 401, <<"device_revoked">>, ?ERR_UNAUTHORIZED).
 
 -spec do_claim_key1(cowboy_req:req(), integer()) -> cowboy_req:req().
 do_claim_key1(Req0, CurrentUid) ->
@@ -454,6 +518,15 @@ ensure_device_owner(Req0, State, BodyDeviceId) ->
                     Req0, <<"device_mismatch">>, ?ERR_FORBIDDEN
                 )}
     end.
+
+web_device_row(#{surface := web_human, device_session_id := RowId}) when
+    is_integer(RowId), RowId > 0
+->
+    {ok, RowId};
+web_device_row(#{surface := web_human}) ->
+    unbound;
+web_device_row(_) ->
+    native.
 
 %% @doc 纯谓词：crypto 写端点设备所有权判定（E2EE-013 / DT-01/02）。
 %% - CurrentDid=<<>>（legacy token 未绑定）→ device_binding_required（fail-closed）。

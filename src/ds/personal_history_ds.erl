@@ -450,7 +450,14 @@ issue_changes_tx(Conn, AccountId, Domain, ClientInstance, Cursor, Limit) ->
     case personal_history_repo:lock_authorization_tx(Conn, AccountId, Domain) of
         {ok, #{<<"state">> := <<"ON">>, <<"generation">> := G}} ->
             ok = personal_history_repo:ensure_cursor_tx(Conn, AccountId, Domain, G, ClientInstance),
-            issue_window(Conn, AccountId, Domain, G, ClientInstance, Cursor, Limit);
+            case personal_history_repo:find_cursor_tx(Conn, AccountId, Domain, G, ClientInstance) of
+                {ok, #{<<"change_cursor">> := Issued}} when Cursor =< Issued ->
+                    issue_window(Conn, AccountId, Domain, G, ClientInstance, Cursor, Limit);
+                {ok, _} ->
+                    {ok, G, [], undefined, true};
+                {error, _} = Error ->
+                    Error
+            end;
         {ok, #{<<"state">> := State}} when
             State =:= <<"OFF_PURGE_PENDING">>; State =:= <<"OFF_PURGED">>
         ->
