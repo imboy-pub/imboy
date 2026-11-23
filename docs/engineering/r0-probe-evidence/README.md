@@ -23,10 +23,6 @@
 | `src/probe_client.erl` | 探针客户端：**独立节点**（不污染服务端计数），分批建连 → 统计 → 满载 ping → 释放配额 → 拆除 |
 | `src/probe_debug.erl` | 一次性排障用（在升级完成前就发帧，属已知瑕疵），仅用于暴露 gun 2.6 的 5 元组 `gun_upgrade` 消息格式 |
 | `src/run_probe.sh` | 编排脚本：起服务端 → 起客户端 → 停服务端 |
-| `runs/*.log` | 4 轮关键运行的报告行（每轮头部记录命令、时间、退出码） |
-
-重跑：`erlc -o ebin -pa <deps>/cowlib/ebin -pa <deps>/ranch/ebin -pa <deps>/cowboy/ebin src/*.erl` 后
-`bash run_probe.sh <name> <shape> <N> <phase1_timeout_ms> <close_k> <phase2_wait_ms> "<erl flag>" [trickle_n] [trickle_gap_ms]`。
 
 ## 结果
 
@@ -56,4 +52,4 @@
 
 - 服务端为裸 cowboy：真实 imboy 的空闲基线（进程/端口）、握手期 DB 成本未测，留待阶段 F。
 - 本机单客户端节点并发上限约 16.2k（`fullscale` 的 4,799 条 `connect_failed` 为客户端/OS 侧限制，服务端当时仅用 16.3k/32768）→ 阶段 F 的 >16k 档需多客户端节点或 Linux 压测机。
-- 原始完整日志在 `/tmp/r0-capacity-probe-20261123/run/`（易失目录），本目录只保留报告行。
+- 本文保留历史运行摘要。原始日志未随仓库归档，编排脚本仍引用原执行机的固定目录。

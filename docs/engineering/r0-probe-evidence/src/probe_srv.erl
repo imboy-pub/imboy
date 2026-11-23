@@ -1,12 +1,11 @@
 -module(probe_srv).
 -export([main/1]).
 
-%% R0 capacity probe server: bare cowboy listener shaped exactly like
-%% imboy_app:start_listener/2 (src/imboy_app.erl:103-158), isolated in /tmp.
+%% R0 capacity probe server: loopback Cowboy listener based on imboy_app:start_listener/2.
 %%
 %% usage (erl -s probe_srv main -- Args):
 %%   DepsRoot Port ShapeSpec ReadyFile LifetimeMs
-%%   ShapeSpec "imboy"            -> TransportOpts = [{port, Port}] (imboy today)
+%%   ShapeSpec "imboy"            -> default Ranch limits with loopback binding
 %%   ShapeSpec "cap=N,sups=K,acc=K" -> explicit ranch transport options
 
 main(Args0) ->
@@ -55,8 +54,8 @@ main(Args0) ->
     end.
 
 transport_opts("imboy", Port) ->
-    %% imboy_app:listener_socket_opts/1 returns a plain list.
-    [{port, Port}];
+    %% Match the product listener's list form while restricting the probe address.
+    [{ip, {127, 0, 0, 1}}, {port, Port}];
 transport_opts(Spec, Port) ->
     lists:foldl(
         fun(Token, Acc) ->
@@ -69,7 +68,7 @@ transport_opts(Spec, Port) ->
                 end,
             Acc#{Key => list_to_integer(V)}
         end,
-        #{socket_opts => [{port, Port}]},
+        #{socket_opts => [{ip, {127, 0, 0, 1}}, {port, Port}]},
         string:split(Spec, ",", all)
     ).
 
