@@ -83,6 +83,7 @@
 ]).
 
 -define(DEFAULT_TIMEOUT, 1000).
+-define(NAMED_STMT_TABLE, elib_pg_named_stmt).
 
 %%--------------------------------------------------------------------
 %% @doc
@@ -627,17 +628,20 @@ query(C, Sql, Params) ->
 
 %%--------------------------------------------------------------------
 %% @doc
-%% 命名 prepared 快路径：同一调用进程内按 {连接, SQL 文本} 缓存命名语句
-%% （pdict 键，与 elib_pg_retry_tx_active/commit_actions 同一惯例），
-%% 复用服务端语句与计划，省去每次匿名 Parse+Describe 往返。
+%% 命名 prepared 快路径：按 {连接, SQL 文本} 缓存命名语句（ETS，同一条连接的
+%% 语句句柄跨进程共享），复用服务端语句与计划，省去每次匿名 Parse+Describe 往返。
 %%
-%% 错误边界：
+%% 适用范围：仅自动提交路径。事务作用域内一律走 query/3 匿名往返——真库探针
+%% （PG 18.4 + epgsql 4.8.0，2026-11-24）实证：事务内失败的 Parse/Bind（重名
+%% 42P05、语句丢失 26000）都会把整个事务置于 25P02 中止态，重新 Parse 也无法
+%% 自愈；而池化连接会被不同进程先后使用，进程级缓存必然遇到“语句已在、缓存不在”。
+%%
+%% 错误边界（自动提交下单条失败语句不污染连接）：
 %% - 语句丢失（26000）：清缓存重建一次，重建后仍失败则如实返回；
-%% - 重名（42P05，跨进程竞态/服务端语句仍在）：describe 复用；
+%% - 重名（42P05）：describe 复用；
 %% - prepare 阶段其余失败：按原匿名 equery 回退一次并告警，不改变结果契约；
-%% - 名字 = SQL 文本 sha256 前 50 hex（策略切换产生新文本即新名，服务端
-%%   语句按连接有界：每连接每 SQL 变体一条，不 DEALLOCATE，随连接回收）。
-%% 非事务性：命名语句不随事务回滚失效，回滚后可继续复用。
+%% - 名字 = SQL 文本 sha256 前 50 hex（策略切换产生新文本即新名；服务端语句
+%%   按连接有界：每连接每 SQL 变体一条，随连接回收）。
 %%--------------------------------------------------------------------
 -spec query_named(iodata(), [term()]) ->
     {ok, [map()]} | {error, term()}.
@@ -653,56 +657,55 @@ query_named(Sql, Params) ->
     {ok, [map()]} | {error, term()}.
 query_named(Conn, Sql0, Params) ->
     Sql = iolist_to_binary(Sql0),
-    Key = {elib_pg_named_stmt, Conn, Sql},
-    case get(Key) of
-        undefined ->
-            case prepare_named(Conn, Sql) of
-                {ok, #statement{} = S} ->
-                    put(Key, S),
-                    named_run(Conn, Key, S, Sql, Params);
-                {error, _} = PrepareError ->
-                    ?LOG_WARNING(#{
-                        msg => "elib_pg_named_prepare_fallback",
-                        sql => Sql,
-                        error => PrepareError
-                    }),
-                    query(Conn, Sql, Params)
-            end;
-        #statement{} = S ->
-            named_run(Conn, Key, S, Sql, Params)
+    case in_pg_tx_scope() of
+        true ->
+            query(Conn, Sql, Params);
+        false ->
+            named_query(Conn, Sql, Params)
     end.
 
-named_run(Conn, Key, S, Sql, Params) ->
-    Result =
-        case epgsql:prepared_query(Conn, S, Params) of
-            {ok, _Cols, _Rows} = Ok ->
-                Ok;
-            {error, Reason} = Lost when element(3, Reason) =:= <<"26000">> ->
-                %% 服务端语句丢失（连接换代/人工 DEALLOCATE）：清缓存重建一次。
-                %% 守卫兼容 #error{} 记录（element(3)=code）与历史原始元组
-                %% {error, error, <<"26000">>, ...} 两种形态（真库探针实证后者）。
-                erase(Key),
-                case prepare_named(Conn, Sql) of
-                    {ok, #statement{} = S2} ->
-                        put(Key, S2),
-                        epgsql:prepared_query(Conn, S2, Params);
-                    _ ->
-                        Lost
-                end;
-            Other ->
-                Other
-        end,
-    case Result of
-        {ok, Cols, Rows} ->
-            retry_deadlock_result(Conn, {ok, rows_to_maps(Cols, Rows)});
-        {ok, _Count, Cols, Rows} ->
-            retry_deadlock_result(Conn, {ok, rows_to_maps(Cols, Rows)});
-        {ok, _Count} ->
-            %% 与 query/3 的 {ok, []} 收敛语义一致（非 SELECT 经此属调用方误用）。
-            retry_deadlock_result(Conn, {ok, []});
-        _ ->
-            retry_deadlock_result(Conn, Result)
+named_query(Conn, Sql, Params) ->
+    Key = {Conn, Sql},
+    case named_cache_get(Key) of
+        #statement{} = S ->
+            case epgsql:prepared_query(Conn, S, Params) of
+                {error, #error{code = <<"26000">>}} = Lost ->
+                    %% 服务端语句丢失（连接换代/人工 DEALLOCATE）：清缓存重建一次。
+                    named_cache_del(Key),
+                    named_rebuild(Conn, Key, Sql, Params, Lost);
+                Other ->
+                    named_result(Conn, Other)
+            end;
+        undefined ->
+            named_rebuild(Conn, Key, Sql, Params, undefined)
     end.
+
+named_rebuild(Conn, Key, Sql, Params, Lost) ->
+    case prepare_named(Conn, Sql) of
+        {ok, #statement{} = S} ->
+            named_cache_put(Key, S),
+            named_result(Conn, epgsql:prepared_query(Conn, S, Params));
+        {error, _} = PrepareError when Lost =:= undefined ->
+            ?LOG_WARNING(#{
+                msg => "elib_pg_named_prepare_fallback",
+                sql => Sql,
+                error => PrepareError
+            }),
+            query(Conn, Sql, Params);
+        {error, _} ->
+            %% 丢失后重建仍失败：如实返回最初的丢失错误。
+            retry_deadlock_result(Conn, Lost)
+    end.
+
+named_result(Conn, {ok, Cols, Rows}) ->
+    retry_deadlock_result(Conn, {ok, rows_to_maps(Cols, Rows)});
+named_result(Conn, {ok, _Count, Cols, Rows}) ->
+    retry_deadlock_result(Conn, {ok, rows_to_maps(Cols, Rows)});
+named_result(Conn, {ok, _Count}) ->
+    %% 与 query/3 的 {ok, []} 收敛语义一致（非 SELECT 经此属调用方误用）。
+    retry_deadlock_result(Conn, {ok, []});
+named_result(Conn, Other) ->
+    retry_deadlock_result(Conn, Other).
 
 prepare_named(Conn, Sql) ->
     Name = named_stmt_name(Sql),
@@ -722,6 +725,43 @@ prepare_named(Conn, Sql) ->
 named_stmt_name(Sql) ->
     <<Hex:50/binary, _/binary>> = binary:encode_hex(crypto:hash(sha256, Sql)),
     binary_to_list(<<"elib_pg_", Hex/binary>>).
+
+%% 命名语句缓存表：公开命名 ETS。表随创建进程消亡时缓存自然清空，之后首次调用
+%% 经 42P05 → describe 重新取回句柄，正确性不依赖表的存活。
+named_cache_get(Key) ->
+    try ets:lookup(?NAMED_STMT_TABLE, Key) of
+        [{_, #statement{} = S}] -> S;
+        _ -> undefined
+    catch
+        _:badarg ->
+            undefined
+    end.
+
+named_cache_put(Key, S) ->
+    ensure_named_table(),
+    ets:insert(?NAMED_STMT_TABLE, {Key, S}).
+
+named_cache_del(Key) ->
+    try
+        ets:delete(?NAMED_STMT_TABLE, Key)
+    catch
+        _:badarg ->
+            ok
+    end.
+
+ensure_named_table() ->
+    case ets:info(?NAMED_STMT_TABLE) of
+        undefined ->
+            try
+                ets:new(?NAMED_STMT_TABLE, [named_table, public, set, {read_concurrency, true}])
+            catch
+                _:badarg ->
+                    %% 并发首用：另一进程已建表。
+                    ok
+            end;
+        _ ->
+            ok
+    end.
 
 %% Only the active retry transaction's own connection can abort the entire
 %% transaction on a PostgreSQL deadlock. Other modes retain their old result.
