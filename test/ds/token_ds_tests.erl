@@ -192,3 +192,28 @@ wrong_key_token_returns_706_test_() ->
             token_ds:decrypt_token(Token)
         )
     end).
+
+web_seat_token_strict_claims_test_() ->
+    ?WITH_MECK(
+        config_ds,
+        [{'env', 2, fun(jwt_key, _) -> <<"unit-web-seat-strict-key">> end}],
+        fun() ->
+            Key = <<"unit-web-seat-strict-key">>,
+            Token = token_ds:encrypt_web_seat_token(123, <<"web-seat">>, 7, 9001),
+            ?assertMatch(
+                {ok, 123, _, <<"seat_tk">>, <<"web-seat">>, 7, 9001},
+                token_ds:decrypt_seat_token(Token)
+            ),
+            ?assertMatch({error, 706, _, _}, token_ds:decrypt_web_token(Token, <<"tk">>)),
+            ?assertMatch({error, 706, _, _}, token_ds:decrypt_token(Token)),
+            {ok, Claims} = imboy_jwt:verify(Token, Key),
+            lists:foreach(
+                fun(InvalidValue) ->
+                    Invalid = imboy_jwt:sign(Claims#{<<"dsid">> => InvalidValue}, Key),
+                    ?assertMatch({error, 706, _, _}, token_ds:decrypt_seat_token(Invalid))
+                end,
+                [0, -1, null, <<"9001">>]
+            ),
+            ?assertError(badarg, token_ds:encrypt_web_seat_token(123, <<"web-seat">>, 7, 0))
+        end
+    ).

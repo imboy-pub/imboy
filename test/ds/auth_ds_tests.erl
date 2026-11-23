@@ -323,6 +323,54 @@ seat_token_device_and_epoch_revocation_test_() ->
         end
     ).
 
+web_seat_token_requires_its_active_row_and_epoch_test_() ->
+    ?WITH_MOCKS(
+        [
+            {config_ds, [{'env', 2, fun(jwt_key, _) -> <<"unit-seat-purpose-key">> end}]},
+            {user_ds, [
+                {'find_by_id', 2, fun(123, <<"status,account_type">>) ->
+                    #{<<"status">> => 1, <<"account_type">> => 0}
+                end}
+            ]},
+            {user_device_ds, [
+                {'is_active_web', 3, fun
+                    (123, <<"seat-browser">>, 9001) -> true;
+                    (_, _, _) -> false
+                end},
+                {'is_active_native', 2, fun
+                    (123, <<"native-seat">>) -> true;
+                    (_, _) -> false
+                end}
+            ]},
+            {auth_session_ds, [
+                {'current_epoch', 1, fun(123) -> {ok, 7} end},
+                {'revoked', 2, fun(123, 7) -> false end}
+            ]}
+        ],
+        fun() ->
+            Seat = token_ds:encrypt_web_seat_token(123, <<"seat-browser">>, 7, 9001),
+            Human = token_ds:encrypt_web_token(123, <<"seat-browser">>, 7, 9001),
+            ?assertEqual({ok, 123, <<"seat-browser">>}, auth_ds:verify_seat_token(Seat)),
+            ?assertMatch(
+                {ok, 123, <<"seat-browser">>, 7, _, 9001}, auth_ds:verify_web_token(Human)
+            ),
+            ?assertMatch({error, ?ERR_TOKEN_MALFORMED, _}, auth_ds:verify_web_token(Seat)),
+            ?assertMatch({error, ?ERR_TOKEN_MALFORMED, _}, auth_ds:verify_token(Seat)),
+            ?assertMatch({error, ?ERR_TOKEN_MALFORMED, _}, auth_ds:verify_seat_token(Human)),
+            WrongRow = token_ds:encrypt_web_seat_token(123, <<"seat-browser">>, 7, 9002),
+            ?assertMatch({error, ?ERR_TOKEN_INVALID, _}, auth_ds:verify_seat_token(WrongRow)),
+            ?assertNot(meck:called(user_device_ds, is_active_native, ['_', '_'])),
+            UnboundSeat = token_ds:encrypt_seat_token(123, <<"seat-browser">>),
+            ?assertMatch({error, ?ERR_TOKEN_INVALID, _}, auth_ds:verify_seat_token(UnboundSeat)),
+            NativeSeat = token_ds:encrypt_seat_token(123, <<"native-seat">>),
+            ?assertEqual({ok, 123, <<"native-seat">>}, auth_ds:verify_seat_token(NativeSeat)),
+            NativeHuman = token_ds:encrypt_token(123, <<"native-seat">>),
+            ?assertMatch({error, ?ERR_TOKEN_INVALID, _}, auth_ds:verify_seat_token(NativeHuman)),
+            meck:expect(auth_session_ds, current_epoch, fun(123) -> {ok, 8} end),
+            ?assertMatch({error, ?ERR_TOKEN_INVALID, _}, auth_ds:verify_seat_token(Seat))
+        end
+    ).
+
 signed_seat_token(Uid, Did, Ep, Exp) ->
     Payload = #{
         <<"uid">> => Uid,

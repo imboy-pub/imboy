@@ -6,6 +6,7 @@
 %%%
 
 -export([encrypt_token/1, encrypt_token/2, encrypt_seat_token/2, encrypt_web_token/4]).
+-export([encrypt_web_seat_token/4, decrypt_seat_token/1]).
 -export([encrypt_refreshtoken/1, encrypt_refreshtoken/2]).
 -export([decrypt_token/1, decrypt_web_token/2]).
 -export([issue_device_session/3, issue_web_session/4]).
@@ -48,15 +49,23 @@ encrypt_token(ID, Did) ->
 %% @doc Web 刷新仅继承已验证 rtk 的 epoch，防止撤销竞态将旧票升级为新会话。
 -spec encrypt_web_token(pos_integer(), binary(), pos_integer(), pos_integer()) -> binary().
 encrypt_web_token(Uid, Did, VerifiedEp, DeviceRowId) ->
+    encrypt_bound_web_token(Uid, Did, VerifiedEp, DeviceRowId, <<"tk">>).
+
+%% @doc Web Seat 凭证沿用严格设备行绑定，主体仍是 Seat。
+-spec encrypt_web_seat_token(pos_integer(), binary(), pos_integer(), pos_integer()) -> binary().
+encrypt_web_seat_token(Uid, Did, VerifiedEp, DeviceRowId) ->
+    encrypt_bound_web_token(Uid, Did, VerifiedEp, DeviceRowId, <<"seat_tk">>).
+
+encrypt_bound_web_token(Uid, Did, VerifiedEp, DeviceRowId, Sub) ->
     Claims = #{
         <<"uid">> => Uid,
         <<"did">> => Did,
         <<"ep">> => VerifiedEp,
         <<"dsid">> => DeviceRowId,
-        <<"sub">> => <<"tk">>,
+        <<"sub">> => Sub,
         <<"exp">> => erlang:system_time(second) + ?TOKEN_VALID
     },
-    case web_token_claims(Claims, <<"tk">>) of
+    case web_token_claims(Claims, Sub) of
         {ok, _, _, _, _, _, _} -> imboy_jwt:sign(Claims, config_ds:env(jwt_key, <<>>));
         _ -> erlang:error(badarg)
     end.
@@ -78,6 +87,17 @@ encrypt_seat_token(ID, Did) when is_integer(ID), ID > 0, is_binary(Did), Did =/=
     | {error, integer(), binary() | string(), map()}.
 decrypt_token(Token) ->
     decrypt_token(Token, fun token_claims/1).
+
+%% @doc Web Seat 绑定存在时按严格格式解析，旧 Seat 仅保留原生形态。
+-spec decrypt_seat_token(binary()) ->
+    {ok, integer(), integer(), binary(), binary(), integer() | malformed | undefined}
+    | {ok, pos_integer(), integer(), binary(), binary(), pos_integer(), pos_integer()}
+    | {error, integer(), binary() | string(), map()}.
+decrypt_seat_token(Token) ->
+    decrypt_token(Token, fun
+        (#{<<"dsid">> := _} = Claims) -> web_token_claims(Claims, <<"seat_tk">>);
+        (Claims) -> token_claims(Claims)
+    end).
 
 %% @doc 严格 Web 入口消费同一验签/时间校验结果，原 claims 不做 legacy 转换。
 -spec decrypt_web_token(binary(), binary()) ->

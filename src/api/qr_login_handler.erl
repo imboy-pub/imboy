@@ -561,18 +561,27 @@ generate_qr_token_value() ->
 %% @doc 生成登录 Token（E2EE-013：绑定被登录设备的 DID）
 -spec generate_login_token(integer(), binary(), binary(), binary(), term()) ->
     {ok, binary()} | {error, term()}.
-generate_login_token(Uid, Did, <<"human">>, <<"web">>, DeviceRowId) when
-    is_integer(DeviceRowId), DeviceRowId > 0
+generate_login_token(Uid, Did, Purpose, <<"web">>, DeviceRowId) when
+    (Purpose =:= <<"human">> orelse Purpose =:= <<"seat">>),
+    is_integer(DeviceRowId),
+    DeviceRowId > 0
 ->
-    try auth_session_ds:current_epoch(Uid) of
-        {ok, Ep} when is_integer(Ep), Ep >= 1 ->
-            {ok, token_ds:encrypt_web_token(Uid, Did, Ep, DeviceRowId)};
-        _ ->
-            {error, unavailable}
+    try
+        case auth_session_ds:current_epoch(Uid) of
+            {ok, Ep} when is_integer(Ep), Ep >= 1 ->
+                Token =
+                    case Purpose of
+                        <<"human">> -> token_ds:encrypt_web_token(Uid, Did, Ep, DeviceRowId);
+                        <<"seat">> -> token_ds:encrypt_web_seat_token(Uid, Did, Ep, DeviceRowId)
+                    end,
+                {ok, Token};
+            _ ->
+                {error, unavailable}
+        end
     catch
         _:_ -> {error, unavailable}
     end;
-generate_login_token(_, _, <<"human">>, <<"web">>, _) ->
+generate_login_token(_, _, _, <<"web">>, _) ->
     {error, invalid_device};
 generate_login_token(Uid, Did, <<"human">>, _, _) ->
     {ok, token_ds:encrypt_token(Uid, Did)};
