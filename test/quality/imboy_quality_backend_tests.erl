@@ -64,30 +64,45 @@ owner_and_schema_test() ->
 %% 便携 scratch 根：原实现硬编码 /private/tmp/imboy-otp-opt-backend-entry-*
 %% （macOS 开发机路径），Linux CI runner 上父目录不存在且无人创建，
 %% nightly 全量跑必 enoent 连坐（2026-11-22 run 44964456492 实测 7 用例）。
-%% 基目录按候选序取首个「全组件实链目录」：TMPDIR（沙箱环境优先）→ /tmp
+%% 显式指定测试目录时要求它可用，其余选择 TMPDIR → /tmp
 %% （Linux 实目录）→ /private/tmp（macOS 兜底——/tmp 与 /var 均为 symlink，
 %% safe_directory 的反 symlink 合同会拒，这正是原硬编码 /private/tmp 的原因）。
 scratch_dir(Prefix) ->
-    Root = filename:join(scratch_base(), "imboy-quality-backend-tests"),
-    ok = filelib:ensure_dir(filename:join(Root, "x")),
     filename:join(
-        Root, Prefix ++ "-" ++ integer_to_list(erlang:unique_integer([positive]))
+        scratch_base(),
+        "imboy-quality-backend-" ++ Prefix ++ "-" ++ os:getpid() ++ "-" ++
+            integer_to_list(erlang:unique_integer([positive]))
     ).
 
 scratch_base() ->
-    Override = os:getenv("IMBOY_QUALITY_TEST_TMP"),
     Candidates =
-        [C || C <- [Override, "/tmp", "/private/tmp"], is_list(C)],
-    Safe = [C || C <- Candidates, scratch_components_real(C)],
+        case os:getenv("IMBOY_QUALITY_TEST_TMP") of
+            false -> [os:getenv("TMPDIR"), "/tmp", "/private/tmp"];
+            Override -> [Override]
+        end,
+    Safe = [C || C <- Candidates, is_list(C), scratch_components_real(C)],
     case Safe of
         [C | _] -> C;
-        [] -> "/tmp"
+        [] -> error(no_safe_quality_test_scratch_directory)
     end.
 
 %% 自根而下逐组件 read_link_info（不跟随末级符号链接）：任一层非实目录
 %% 即不安全。与 imboy_quality_backend:safe_directory/1 的合同对齐。
 scratch_components_real(Path) ->
-    scratch_components_real("/", [C || C <- filename:split(Path), C =/= "/"]).
+    case filename:split(Path) of
+        ["/", _ | _] = Components ->
+            Parts = tl(Components),
+            not lists:member(".", Parts) andalso not lists:member("..", Parts) andalso
+                scratch_components_real("/", Parts);
+        _ ->
+            false
+    end.
+
+scratch_rejects_missing_and_relative_paths_test() ->
+    ?assertNot(scratch_components_real("")),
+    ?assertNot(scratch_components_real("relative")),
+    ?assertNot(scratch_components_real("/tmp/..")),
+    ?assert(scratch_components_real(scratch_base())).
 
 scratch_components_real(_Acc, []) ->
     true;
