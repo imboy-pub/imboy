@@ -298,12 +298,23 @@ with_conn(Fun) ->
 %% take_conn 预算并必然还原，杜绝 sys.config 覆写（example 物化 2000）
 %% 或前序用例残留对精确参数断言的污染。
 with_take_budget(Ms, Fun) ->
-    application:set_env(imboy, readyz_take_conn_timeout_ms, Ms),
+    Key = readyz_take_conn_timeout_ms,
+    Previous = application:get_env(imboy, Key),
+    application:set_env(imboy, Key, Ms),
     try
         Fun()
     after
-        application:unset_env(imboy, readyz_take_conn_timeout_ms)
+        case Previous of
+            undefined -> application:unset_env(imboy, Key);
+            {ok, Value} -> application:set_env(imboy, Key, Value)
+        end
     end.
+
+take_budget_restores_configured_value_on_failure_test() ->
+    with_take_budget(2000, fun() ->
+        ?assertError(probe_failed, with_take_budget(1000, fun() -> error(probe_failed) end)),
+        ?assertEqual({ok, 2000}, application:get_env(imboy, readyz_take_conn_timeout_ms))
+    end).
 
 %%%===================================================================
 %%% T02：真实 pooler + 真实 PG 的池耗尽集成用例（peer VM 内独占执行，
@@ -340,6 +351,7 @@ real_pg_opts() ->
                 host => Host,
                 port => Port,
                 username => User,
+                password => os:getenv("T02_REAL_PG_PASSWORD", ""),
                 database => Db,
                 ssl => false,
                 timeout => 4000
