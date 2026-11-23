@@ -80,12 +80,15 @@ r5_true_forbidden_preserved_test_() ->
         with_mocks(
             handler_mocks() ++
                 [
-                    {imboy_cache, [
-                        {get, fun({qr_login, _ST}) ->
+                    {qr_login_session_ds, [
+                        {find_by_session_token, fun(_ST) ->
                             %% purpose=seat：web_human 面不匹配 → 真 forbidden。
-                            {ok, (confirmed_session(<<"seat-only">>))#{
+                            %% LEE-5 合并后权威恒 pg，会话门读 DS 行而非 cache，
+                            %% 原 imboy_cache mock 已是死路径（nightly 2026-11-21/22
+                            %% 实测 403 退化为 5203 的根因）。
+                            (confirmed_session(<<"seat-only">>))#{
                                 <<"purpose">> => <<"seat">>
-                            }}
+                            }
                         end}
                     ]}
                 ],

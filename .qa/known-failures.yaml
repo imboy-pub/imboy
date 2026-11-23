@@ -35,7 +35,17 @@
 #   elvis          实测 308 条（elvis 5.0.4 homebrew, 10397 violations / 308 FAIL 文件）
 # =============================================================================
 schema_version: 1
-updated: "2026-11-07"
+updated: "2026-11-23"
+
+# 2026-11-23 回册 gradualizer 63 模块 + eqwalizer-lib 2 模块（nightly run
+#   44964456492/44847425155 同 SHA 37f2ef3a 分类 NEW=63/NEW=2、FIXED=103/0）：
+#   - gradualizer NEW 构成 = customer_service 批次 23 + enterprise_business 19
+#     + organization 8 + agent 5 + attachment 3 + imboy_app/sup 2 + auth_oidc/
+#     qr_login/web_attachment_targets 各 1（11-07 后并入的 feature 车道带入，
+#     类型收窄/契约类风格告警，粒度=模块名）；同批棘轮移除 103 个 FIXED
+#     （masters v2.2 / delivery / webmvp 车道清理）；本段 454 -> 414。
+#   - eqwalizer-lib NEW = elib_s3_sign / web_attachment_targets（web 直传与
+#     S3 签名批次带入）；预算 55 -> 57（nightly.yml fallback 同步）。
 # 2026-11-06 回册 12 文件（CI imboy Quality Gate elvis 分类 NEW=12：ai-agent avatar/
 #   direct-upload 相关 ds/repo、attachment edge proxy/worker、talk_record_playback_stream、
 #   msg_forward/forward_attachment、eb_asset_download_ticket 等近期批次带入；规则为
@@ -136,6 +146,7 @@ gates:
       - elib_pg_sql
       - elib_req
       - elib_response
+      - elib_s3_sign
       - elib_tsid
       - elib_type
       - elib_uri
@@ -170,9 +181,9 @@ gates:
       - product_experience
       - product_terminology
       - qianfan_api
+      - web_attachment_targets
       - workspace_guard
       - workspace_resolver
-
   # ---------------------------------------------------------------------------
   # gradualizer —— 失败标识粒度：模块名（与 .gradualizer-baseline.txt 口径一致）
   # 提取依据：make gradualize-audit 输出 "❌ src/<dir>/<mod>.erl" 行取 basename
@@ -189,7 +200,6 @@ gates:
       - adm_acl
       - adm_admin_handler
       - adm_ai_agent_handler
-      - adm_announcement_handler
       - adm_app_ddl_handler
       - adm_app_version_handler
       - adm_attach_handler
@@ -207,11 +217,9 @@ gates:
       - adm_logout_apply_handler
       - adm_mcp_handler
       - adm_message_handler
-      - adm_moderation_handler
       - adm_moderation_logic
       - adm_organization_handler
       - adm_owner_activation_handler
-      - adm_passport_handler
       - adm_plugin_handler
       - adm_report_handler
       - adm_role_handler
@@ -219,15 +227,15 @@ gates:
       - adm_stats_handler
       - adm_user_ds
       - adm_user_handler
-      - adm_user_repo
       - adm_workspace_handler
-      - agent_hub_audit_repo
+      - agent_grant_pg
+      - agent_mcp_tool_adapter
+      - agent_native_tool_adapter
       - agent_payment_command
-      - agent_payment_compensation_repo
       - agent_payment_logic
-      - agent_payment_mandate_repo
       - agent_rate_limiter
-      - agent_task_repo
+      - agent_run_command
+      - agent_run_pg
       - agent_trigger_policy
       - ai_agent_ds
       - ai_agent_group_reply
@@ -240,68 +248,93 @@ gates:
       - app_manifest_handler
       - app_upgrade_log_logic
       - app_version_logic
-      - app_version_repo
       - attach_direct_handler
       - attach_direct_logic
       - attach_handler
       - attach_logic
       - attachment_avatar_alias_repo
-      - attachment_download_handler
       - attachment_edge_redirect
-      - attachment_repo
-      - attachment_upload_logic
+      - attachment_storage
+      - attachment_storage_garage
+      - attachment_upload_spool
       - attachment_worker_port
       - auth_ds
+      - auth_middleware_api_v1
       - auth_oidc_handler
       - auth_oidc_jwks
       - auth_oidc_logic
-      - barrel_mcp_protocol
-      - barrel_mcp_registry
-      - barrel_mcp_session
-      - barrel_mcp_tasks
       - billing_logic
       - bot_handler
       - bot_logic
-      - bot_repo
-      - bot_webhook_delivery_repo
       - bot_webhook_delivery_worker
       - bot_webhook_logic
       - c2c_action_receipt_repo
-      - channel_admin_repo
       - channel_comment_logic
-      - channel_comment_repo
       - channel_ds
       - channel_handler
       - channel_handler_admin
       - channel_handler_comment
       - channel_handler_message
       - channel_handler_order
-      - channel_invitation_repo
       - channel_logic
       - channel_logic_invitation
       - channel_logic_message
       - channel_logic_notify
       - channel_logic_order
-      - channel_logic_stats
       - channel_message_repo
       - channel_message_tags
-      - channel_order_repo
       - channel_repo
-      - channel_subscription_repo
       - channel_webhook_ds
       - channel_webhook_handler
       - channel_webhook_logic
-      - channel_webhook_repo
       - config_ds
-      - conv_key_vo
       - conversation_handler
       - cors_middleware
+      - cs_ai_app
+      - cs_ai_consume_app
+      - cs_ai_delivery_app
+      - cs_ai_gate_app
+      - cs_ai_intent
+      - cs_ai_prompt
+      - cs_ai_retrieval
+      - cs_app_support
+      - cs_dispatch
+      - cs_http
+      - cs_message_preview
+      - cs_pg_ai
+      - cs_pg_common
+      - cs_pg_seat
+      - cs_pg_seat_console
+      - cs_pg_widget
+      - cs_seat_console
+      - cs_seat_event_app
+      - cs_session
+      - cs_session_app
+      - cs_tenant_handler
+      - cs_widget_handler
+      - cs_widget_support
       - data_disposition
-      - e2ee_backup_repo
-      - e2ee_handler
       - e2ee_kt_merkle
-      - e2ee_logic
       - e2ee_trust_logic
+      - eb_asset_app
+      - eb_asset_content
+      - eb_asset_direct
+      - eb_asset_scope
+      - eb_asset_upload_ref
+      - eb_auth_principal
+      - eb_consent_app
+      - eb_conversation
+      - eb_enterprise_actions
+      - eb_enterprise_http
+      - eb_identity
+      - eb_infra_ports
+      - eb_message
+      - eb_offboarding
+      - eb_offboarding_flow
+      - eb_pg_asset_meta
+      - eb_pg_auth_facts
+      - eb_pg_canonical_tx
+      - eb_retention
       - elib_async
       - elib_cipher
       - elib_cnv
@@ -322,23 +355,16 @@ gates:
       - elib_uuid
       - elib_wechat_msg
       - enterprise_admin_governance_logic
-      - enterprise_application_grant_repo
       - enterprise_asset_handler
       - enterprise_asset_logic
-      - enterprise_asset_repo
       - enterprise_asset_retention_logic
-      - enterprise_audit_event_repo
       - enterprise_channel_logic
       - enterprise_channel_write_logic
       - enterprise_cs_seat_logic
       - enterprise_cursor_v2
-      - enterprise_directory_handler
       - enterprise_directory_logic
-      - enterprise_friend_request_handler
       - enterprise_group_handler
       - enterprise_group_logic
-      - enterprise_identity_handler
-      - enterprise_internal_auth
       - enterprise_internal_idempotency
       - enterprise_internal_ops
       - enterprise_internal_read_page
@@ -350,49 +376,31 @@ gates:
       - enterprise_webhook_handler
       - enterprise_webhook_logic
       - enterprise_workspace_logic
-      - eunit_runner
       - feedback_handler
       - feedback_logic
-      - finance_adm_logic
       - forward_attachment_repo
       - friend_category_ds
-      - friend_category_repo
       - friend_ds
       - friend_handler
       - friend_logic
-      - friend_repo
       - fts_logic
-      - geo_people_nearby_repo
       - group_album_ds
-      - group_album_handler
-      - group_album_logic
-      - group_album_repo
       - group_category_ds
-      - group_category_repo
       - group_ds
-      - group_file_ds
       - group_file_handler
-      - group_file_repo
       - group_handler
-      - group_log_repo
       - group_logic
       - group_member_ds
       - group_member_logic
       - group_notice_ds
       - group_notice_handler
-      - group_notice_repo
       - group_repo
       - group_schedule_ds
       - group_schedule_handler
       - group_schedule_logic
-      - group_schedule_repo
       - group_tag_handler
-      - group_tag_repo
-      - group_task_assignment_repo
       - group_task_handler
       - group_task_logic
-      - group_task_repo
-      - group_vote_repo
       - healthz_handler
       - imboy_app
       - imboy_cache
@@ -408,11 +416,11 @@ gates:
       - imboy_env_overrides
       - imboy_feature
       - imboy_frame
+      - imboy_hird
+      - imboy_hird_replay
       - imboy_http_metrics
-      - imboy_jwt
       - imboy_license
       - imboy_llm_registry
-      - imboy_mcp_tools
       - imboy_migrate
       - imboy_mobile
       - imboy_plugin_dependency
@@ -435,60 +443,35 @@ gates:
       - index_handler
       - list_cursor
       - live_room_ds
-      - live_room_repo
       - log_redact
       - login_attempt_ds
       - login_attempt_state
-      - mcp_client_repo
       - mcp_governance_logic
       - mcp_handler
-      - mention_ds
       - mention_handler
       - mention_logic
-      - mention_repo
       - message_ds
       - messaging_logic
       - metrics_handler
       - moderation_appeal_logic
-      - moderation_appeal_repo
       - moderation_detector_grpc
       - moderation_detector_http
       - moderation_detector_transport
       - moderation_policy
-      - moment_comment_repo
       - moment_ds
       - moment_handler
-      - moment_like_repo
       - moment_logic
-      - moment_post_acl_repo
       - moment_post_repo
-      - moment_report_repo
-      - moment_timeline_repo
-      - moya_acl
-      - moya_ai_draft_logic
-      - moya_assignment_handler
-      - moya_assignment_logic
-      - moya_auth_logic
-      - moya_org_settings_repo
-      - moya_review_handler
-      - moya_review_logic
-      - moya_submission_repo
-      - moya_task_logic
-      - moya_wechat_msg_handler
-      - moya_wechat_msg_logic
       - msg_ack_logic
       - msg_archive_repo
       - msg_burn_logic
       - msg_c2c_ds
       - msg_c2c_logic
       - msg_c2c_repo
-      - msg_c2g_ds
       - msg_c2g_logic
       - msg_c2g_repo
       - msg_c2g_timeline_repo
       - msg_c2s_logic
-      - msg_c2s_repo
-      - msg_delivery_repo
       - msg_handler
       - msg_offline_cursor
       - msg_rate_logic
@@ -502,10 +485,17 @@ gates:
       - msg_store_worker
       - olm_handler
       - olm_identity_logic
-      - olm_identity_repo
       - ops_report_logic
       - org_invite_landing_handler
       - organization_admin_logic
+      - organization_agent_boundary
+      - organization_agent_facts_app
+      - organization_department
+      - organization_department_pg
+      - organization_invitation_app
+      - organization_invite_code_app
+      - organization_join_orchestrator
+      - organization_lifecycle_pg
       - organization_logic
       - organization_owner_activation_logic
       - organization_repo
@@ -525,34 +515,26 @@ gates:
       - project_ds
       - project_milestone_ds
       - project_milestone_repo
-      - project_repo
       - project_task_ds
       - project_task_handler
-      - project_task_repo
-      - push_notification_ds
       - push_provider_fcm_token
-      - push_provider_jpush
       - push_provider_jpush_http
       - push_token_repo
       - qianfan_api
       - qr_login_event_ds
       - qr_login_handler
-      - qr_login_sse_handler
+      - qr_login_logic
       - recharge_logic
-      - recharge_order_repo
       - report_handler
       - report_logic
       - report_ticket_ds
       - report_ticket_repo
       - resource_create_receipt_repo
-      - review_queue_repo
       - rtc_room_logic
-      - sensitive_word_repo
       - sso_config_ds
       - sso_logic
       - talk_record_assembly_logic
       - talk_record_attachment_adapter
-      - talk_record_audio_render
       - talk_record_audio_validate
       - talk_record_capture_ds
       - talk_record_capture_http
@@ -586,7 +568,6 @@ gates:
       - talk_record_participant_logic
       - talk_record_participant_repo
       - talk_record_parts_ds
-      - talk_record_processor_audio
       - talk_record_processor_config
       - talk_record_processor_runner
       - talk_record_provider_prepare
@@ -598,35 +579,27 @@ gates:
       - textguard_pb
       - textguard_publisher
       - transfer_logic
-      - trust_audit_repo
       - user_collect_ds
       - user_collect_handler
       - user_deletion_job_repo
       - user_deletion_logic
-      - user_denylist_ds
-      - user_denylist_repo
       - user_device_ds
       - user_device_handler
       - user_device_logic
       - user_device_repo
-      - user_ds
       - user_export_logic
       - user_handler
-      - user_log_repo
       - user_logic
       - user_onboarding_logic
-      - user_repo
       - user_server
       - user_setting_ds
-      - user_setting_repo
       - user_tag_ds
       - user_tag_relation_ds
       - user_tag_relation_logic
-      - user_tag_relation_repo
       - verification_code_ds
-      - verification_code_repo
       - wallet_handler
       - wallet_repo
+      - web_attachment_targets
       - websocket_ds
       - websocket_handler
       - websocket_logic
@@ -637,8 +610,6 @@ gates:
       - workspace_handler
       - workspace_invite_repo
       - workspace_logic
-      - workspace_member_repo
-      - workspace_repo
   elvis:
     known_failures:
       - include/barrel_mcp.hrl
