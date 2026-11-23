@@ -1,0 +1,102 @@
+# GET /api/v1/personal-history/page
+get:
+  tags: [msg]
+  summary: 会话个人历史分页快照 / Paged personal history snapshot
+  description: |
+    ## 中文 / English
+    按 conv_seq DESC 分页读取会话个人历史快照（含墓碑行，MSG-H15 稳定
+    合并版本+tombstone）。page_token 有时效与链长上限：过期 → 410
+    page_token_expired；链长超界 → 410 rescan_bound_exceeded；代次失效 →
+    410 generation_expired。空页≠归档齐全（稀疏规则）。
+    conv_seq DESC paged snapshot incl. tombstones; page_token is expirable
+    and hop-bounded; empty page never implies completeness.
+  operationId: personalHistoryPage
+  parameters:
+    - in: query
+      name: conversation_id
+      required: true
+      schema:
+        type: string
+      description: 会话键（c2c:{min_uid}:{max_uid}）。 / Conversation key.
+    - in: query
+      name: before
+      required: false
+      schema:
+        type: integer
+        format: int64
+        minimum: 0
+        default: 0
+      description: 起扫 conv_seq 上界（0=最新）。 / Upper conv_seq bound; 0 = newest.
+    - in: query
+      name: page_token
+      required: false
+      schema:
+        type: string
+      description: 上一页返回的令牌（优先于 before）。 / Token from previous page.
+  responses:
+    '200':
+      description: 分页结果。 / Page result.
+      content:
+        application/json:
+          schema:
+            allOf:
+              - $ref: '../../../../components/schemas/Envelope.yaml'
+              - type: object
+                properties:
+                  payload:
+                    type: object
+                    required: [generation, conversation_id, messages, has_more]
+                    properties:
+                      generation:
+                        type: integer
+                        format: int64
+                      conversation_id:
+                        type: string
+                        description: 服务端规范化后的会话键。 / Canonical conversation key.
+                      messages:
+                        type: array
+                        items:
+                          type: object
+                          required: [msg_id, conv_seq, deleted]
+                          properties:
+                            msg_id:
+                              type: string
+                            action_version:
+                              type: integer
+                              format: int64
+                            conv_seq:
+                              type: integer
+                              format: int64
+                            key_version:
+                              type: integer
+                              format: int64
+                            ciphertext:
+                              type: string
+                              description: base64。墓碑不返回密文。
+                            envelope_meta:
+                              type: object
+                            accepted_message:
+                              type: object
+                              description: 权威接受元数据，包含十进制字符串 from_id、to_id，以及 conv_seq、action_version、accepted_at_ms。墓碑不返回。
+                            deleted:
+                              type: boolean
+                              description: 墓碑（deleted_at 非空）。 / Tombstone.
+                            created_at:
+                              type: integer
+                              format: int64
+                      page_token:
+                        type: string
+                        nullable: true
+                        description: 下一页令牌（has_more=false 时为 null）。 / Next-page token.
+                      has_more:
+                        type: boolean
+    '403':
+      description: not_enabled / not_participant
+    '410':
+      description: generation_expired / page_token_expired / rescan_bound_exceeded
+    '422':
+      description: malformed_request
+    '503':
+      description: transient_failure
+    '401':
+      description: 未认证 / Unauthenticated

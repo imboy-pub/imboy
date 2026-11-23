@@ -16,7 +16,9 @@
 
 -define(EXPORT_CHUNK_SIZE, 1000).
 
--ifdef(EUNIT).
+%% 测试钩子导出走 TEST 宏（eunit-local 轨道 src beam 仅带 -DTEST，同
+%% imboy_app 惯例）；生产编译两宏均未定义。
+-ifdef(TEST).
 -export([normalize_ts/1, build_where_sql/1, csv_escape/1, row_to_csv_line/1]).
 -endif.
 
@@ -55,7 +57,7 @@ list(<<"GET">>, Req0, State) ->
 
             case user_log_ds:page_logout_apply_log(WhereSql, Params, Page, Size) of
                 {ok, #{total := Total, list := Rows}} ->
-                    Items = [normalize_row(Row) || Row <- Rows],
+                    Items = [normalize_list_row(Row) || Row <- Rows],
                     elib_response:success(Req0, #{
                         list => Items,
                         total => Total,
@@ -102,7 +104,7 @@ reject(<<"POST">>, Req0, State) ->
 reject(_, Req0, _State) ->
     Req0.
 
-%% @doc 审批通过注销申请：将用户状态设为 -1（已注销）
+%% @doc 批准已有正式申请，持久任务随后按宽限期执行。
 -spec approve(binary(), cowboy_req:req(), map()) -> cowboy_req:req().
 approve(<<"POST">>, Req0, State) ->
     case adm_acl:ensure_permission(State, <<"logout_applications:approve">>, Req0) of
@@ -129,6 +131,8 @@ approve(<<"POST">>, Req0, State) ->
                             elib_response:success(Req1, #{uid => Uid, status => <<"approved">>});
                         {ok, []} ->
                             elib_response:error(Req1, <<"用户不在注销申请状态"/utf8>>);
+                        {error, formal_deletion_request_not_pending} ->
+                            elib_response:error(Req1, <<"缺少待审批的正式注销申请"/utf8>>);
                         {error, _Reason} ->
                             elib_response:error(Req1, <<"操作失败"/utf8>>)
                     end;
@@ -312,6 +316,22 @@ keyword_like(<<>>) ->
     <<>>;
 keyword_like(Keyword) ->
     <<"%", Keyword/binary, "%">>.
+
+-spec normalize_list_row(map()) -> map().
+normalize_list_row(Row) ->
+    Base = (normalize_row(Row))#{
+        request_status => row_get(Row, <<"request_status">>, <<"unknown">>),
+        execution_status => row_get(Row, <<"execution_status">>, <<"not_started">>)
+    },
+    maps:merge(
+        Base,
+        maps:from_list([
+            {Key, Time}
+         || Key <- [execution_finished_at, request_approved_at],
+            Time <- [row_get(Row, atom_to_binary(Key, utf8), undefined)],
+            is_binary(Time)
+        ])
+    ).
 
 %% Admin API 将 TSID 整数转为字符串，避免 JS 精度丢失。
 -spec normalize_row(map()) -> map().

@@ -14,7 +14,7 @@
 -export([write_msg/11]).
 -export([write_msg_with_reply/11]).
 -export([write_msg_with_reply/12]).
--export([write_msg_with_reply/13]).
+-export([write_msg_with_reply/13, write_msg_with_reply/14]).
 -export([revoke_offline_msg/5]).
 -export([revoke_offline_msg/9]).
 -export([edit_offline_msg/5]).
@@ -27,7 +27,12 @@
 -export([find_msg_by_id/1]).
 -export([delete_msg/1]).
 -export([update_pinned/3]).
--export([update_payload_by_msg_id/2]).
+-export([
+    update_payload_by_msg_id/2,
+    visible_reply_snippets/1,
+    redact_reply_payload/2,
+    public_reply_source/2
+]).
 -export([accept_action/6, consume_action/6]).
 -export([delete_by_msg_ids_and_to_id/2]).
 -export([count_unread_since/2, count_unread_since/3]).
@@ -508,7 +513,8 @@ read_msg_filter(Where0, Limit, Params) ->
     %% protected_header.sender_did 硬比对。漏列 = 离线拉取的 v3 消息永久判
     %% context_mismatch_sender_did 不可读。见 evidence/E2EE-A2-a-offline-sender-did.md
     Column =
-        <<"id, payload, from_id, to_id, created_at, server_ts, msg_id, msg_type, e2ee, sender_did, conv_seq">>,
+        <<"id, payload, from_id, to_id, created_at, server_ts, msg_id, msg_type, e2ee, sender_did, conv_seq, reply_to_msg_id, reply_to_from_id, ",
+            (msg_c2c_repo:visible_reply_snippet_sql())/binary>>,
     Res = msg_c2c_repo:read_msg(Where, Column, Limit, Params),
     % ?DEBUG_LOG([Res]),
     case Res of
@@ -525,6 +531,74 @@ read_msg_filter(Where0, Limit, Params) ->
         _ ->
             []
     end.
+
+visible_reply_snippets([]) ->
+    #{};
+visible_reply_snippets(Ids) ->
+    case msg_c2c_repo:visible_reply_snippets(Ids) of
+        {ok, Rows} ->
+            maps:from_list([
+                {{Id, From, To}, {SourceId, Author, Snippet}}
+             || #{
+                    <<"msg_id">> := Id,
+                    <<"from_id">> := From,
+                    <<"to_id">> := To,
+                    <<"reply_to_msg_id">> := SourceId,
+                    <<"reply_to_from_id">> := Author,
+                    <<"reply_snippet">> := Snippet
+                } <- Rows
+            ]);
+        {error, _} ->
+            #{}
+    end.
+
+public_reply_source(<<"quote">>, {Id, _Author, Snippet}) when
+    is_binary(Id), Id =/= <<>>, is_binary(Snippet)
+->
+    #{<<"reply_source_id">> => Id};
+public_reply_source(<<"quote">>, _Snapshot) ->
+    #{<<"reply_source_id">> => null};
+public_reply_source(_MsgType, _Snapshot) ->
+    #{}.
+
+redact_reply_payload(Payload, Snippet) when is_map(Payload) ->
+    Redacted = redact_reply_fields(Payload, Snippet),
+    case maps:get(<<"metadata">>, Redacted, null) of
+        Metadata when is_map(Metadata) ->
+            Redacted#{<<"metadata">> := redact_reply_fields(Metadata, Snippet)};
+        _ ->
+            Redacted
+    end;
+redact_reply_payload(Payload, Snippet) when is_binary(Payload) ->
+    case jsone:try_decode(Payload, [{object_format, map}]) of
+        {ok, Map, <<>>} when is_map(Map) ->
+            jsone:encode(redact_reply_payload(Map, Snippet), [native_utf8]);
+        _ ->
+            Payload
+    end;
+redact_reply_payload(Payload, _Snippet) ->
+    Payload.
+
+redact_reply_fields(
+    #{<<"quote_msg">> := Quote} = Payload, {Id, Author, Snippet}
+) when
+    is_map(Quote),
+    is_binary(Id),
+    Id =/= <<>>,
+    is_integer(Author),
+    is_binary(Snippet),
+    Snippet =/= <<>>
+->
+    (maps:without([<<"quote_msg_author_name">>], Payload))#{
+        <<"quote_msg">> := #{
+            <<"id">> => Id,
+            <<"authorId">> => message_ds:envelope_id_to_binary(Author),
+            <<"type">> => <<"text">>,
+            <<"text">> => Snippet
+        }
+    };
+redact_reply_fields(Payload, _Snippet) ->
+    maps:without([<<"quote_msg">>, <<"quote_msg_author_name">>], Payload).
 
 %% ===================================================================
 %% 引用回复功能
@@ -654,6 +728,39 @@ write_msg_with_reply(
     AcceptedAt,
     ExpireAt
 ) ->
+    write_msg_with_reply(
+        CreatedAt,
+        Id,
+        Payload,
+        From,
+        To,
+        ServerTS,
+        MsgType,
+        E2EE,
+        ReplyToMsgId,
+        ReplyToFromId,
+        ReplySnippet,
+        AcceptedAt,
+        ExpireAt,
+        null
+    ).
+
+write_msg_with_reply(
+    CreatedAt,
+    Id,
+    Payload,
+    From,
+    To,
+    ServerTS,
+    MsgType,
+    E2EE,
+    ReplyToMsgId,
+    ReplyToFromId,
+    ReplySnippet,
+    AcceptedAt,
+    ExpireAt,
+    SenderDid
+) ->
     % 统一转换时间戳为 RFC3339 binary 格式（timestamptz 列需要）
     CreatedAt2 = elib_dt:to_rfc3339(CreatedAt),
     ServerTS2 = elib_dt:to_rfc3339(ServerTS),
@@ -672,7 +779,8 @@ write_msg_with_reply(
         ReplyToFromId,
         ReplySnippet,
         AcceptedAt,
-        ExpireAt
+        ExpireAt,
+        SenderDid
     ).
 
 %% G3: msg_reaction_logic / msg_pinned_logic 不应直调 msg_c2c_repo
@@ -732,6 +840,6 @@ count_unread_since(ToId, Since, _DID) ->
 set_expire_at(MsgId, ExpireAt) ->
     msg_c2c_repo:set_expire_at(MsgId, ExpireAt).
 
--spec delete_expired(binary(), pos_integer()) -> non_neg_integer().
+-spec delete_expired(binary(), non_neg_integer()) -> non_neg_integer() | {error, term()}.
 delete_expired(_Now, BatchSize) ->
     msg_c2c_repo:delete_expired(BatchSize).

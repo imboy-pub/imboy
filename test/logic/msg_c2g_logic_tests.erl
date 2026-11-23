@@ -13,7 +13,7 @@ c2g_sender_sync_case(SenderDid, ExpectedEchoes) ->
     ?WITH_MECKS(
         [
             {group_member_logic, [
-                {'check_mute', 2, fun(100, 1001) -> false end}
+                {'send_precheck', 2, fun(100, 1001) -> member end}
             ]},
             {group_ds, [
                 %% B4 群级 fail-closed 门默认关（{ok,0}），门行为专测见 group_e2ee_logic_tests
@@ -32,7 +32,9 @@ c2g_sender_sync_case(SenderDid, ExpectedEchoes) ->
                 {'to_rfc3339', 1, fun(1708768700000) -> <<"2026-02-24T09:58:20Z">> end}
             ]},
             {msg_store_ds, [
-                {'stage', 13, fun(_, _, _, _, _, _, FromId, 100, _, _, _, 3, _) ->
+                {'stage', 13, fun(
+                    _, _, _, _, _, _, FromId, 100, _, _, _, 3, {delivery, null, undefined, _}
+                ) ->
                     {ok, new, 7, [FromId, 1002, 1003]}
                 end},
                 {'enqueue', 3, fun(_, _, _) -> ok end}
@@ -41,7 +43,7 @@ c2g_sender_sync_case(SenderDid, ExpectedEchoes) ->
                 {'intervals', 1, fun(<<"c2g">>) -> [0, 200] end}
             ]},
             {message_ds, [
-                {'send_next', 4, fun(_, _, _, _) -> ok end},
+                {'send_group_next', 4, fun([1002, 1003], _, _, [0, 200]) -> ok end},
                 {'send_next', 6, fun(_, _, _, _, _, _) -> ok end}
             ]},
             {mention_logic, [
@@ -49,9 +51,6 @@ c2g_sender_sync_case(SenderDid, ExpectedEchoes) ->
                     ?assertEqual([<<"1001">>, <<"1002">>, <<"1003">>], Mentions),
                     ok
                 end}
-            ]},
-            {user_logic, [
-                {'is_online', 1, fun(_Uid) -> true end}
             ]},
             {push_notification_logic, [
                 {'maybe_push_for_c2g', 4, fun(_, _, _, _) -> ok end}
@@ -95,13 +94,13 @@ c2g_sender_sync_case(SenderDid, ExpectedEchoes) ->
             ?assertEqual(<<"C2G_SERVER_ACK">>, maps:get(<<"type">>, Reply)),
             ?assertEqual(1, meck:num_calls(msg_store_ds, stage, 13)),
             ?assertEqual(1, meck:num_calls(msg_store_ds, enqueue, 3)),
-            ?assertEqual(2, meck:num_calls(message_ds, send_next, 4)),
+            ?assertEqual(1, meck:num_calls(message_ds, send_group_next, 4)),
             ?assertEqual(1, meck:num_calls(mention_logic, create_mentions, 4)),
             ?assertEqual(0, meck:num_calls(group_ds, member_uids, 1)),
             ?assertEqual(0, meck:num_calls(group_ds, member_uids_strict, 1)),
 
             %% S0-1: C2G 独立信封路径带当前版本 ver（解码投递出的 JSON 断言）
-            SentMsg = meck:capture(first, message_ds, send_next, ['_', '_', '_', '_'], 3),
+            SentMsg = meck:capture(first, message_ds, send_group_next, ['_', '_', '_', '_'], 3),
             Decoded = jsone:decode(SentMsg),
             ?assertEqual(?CUR_MSG_VER, maps:get(<<"ver">>, Decoded)),
             ?assertEqual(7, maps:get(<<"conv_seq">>, Decoded)),
@@ -117,7 +116,7 @@ c2g_duplicate_only_acks_without_downstream_side_effects_test_() ->
     ?WITH_MECKS(
         [
             {group_member_logic, [
-                {'check_mute', 2, fun(100, 1001) -> false end}
+                {'send_precheck', 2, fun(100, 1001) -> member end}
             ]},
             {group_ds, [
                 {'e2ee_mode', 1, fun(100) -> {ok, 0} end},
@@ -126,10 +125,36 @@ c2g_duplicate_only_acks_without_downstream_side_effects_test_() ->
             {elib_dt, [
                 {'now', 0, fun() -> <<"2026-09-11T10:00:00Z">> end},
                 {'millisecond', 0, fun() -> 1789092000000 end},
-                {'to_rfc3339', 1, fun(1789091900000) -> <<"2026-09-11T09:58:20Z">> end}
+                {'to_rfc3339', 1, fun(1789091900000) -> <<"2026-09-11T09:58:20Z">> end},
+                {'to_rfc3339', 3, fun
+                    (1789092000000, millisecond, "Z") -> <<"2026-09-11T10:00:00Z">>;
+                    (1789092060000, millisecond, "Z") -> <<"2026-09-11T10:01:00Z">>
+                end},
+                {'rfc3339_to', 2, fun(<<"2026-09-11T10:00:00Z">>, millisecond) ->
+                    1789092000000
+                end}
             ]},
             {msg_store_ds, [
-                {'stage', 13, fun(_, _, _, _, _, _, 1001, 100, _, _, _, 1, _) ->
+                {'stage', 13, fun(
+                    _,
+                    _,
+                    _,
+                    _,
+                    _,
+                    _,
+                    1001,
+                    100,
+                    _,
+                    _,
+                    _,
+                    1,
+                    {
+                        delivery,
+                        <<"2026-09-11T10:01:00Z">>,
+                        {<<"original_msg_001">>, 1002, <<"original">>},
+                        _
+                    }
+                ) ->
                     {ok, duplicate}
                 end},
                 {'enqueue', 3, fun(_, _, _) -> ok end}
@@ -142,7 +167,9 @@ c2g_duplicate_only_acks_without_downstream_side_effects_test_() ->
                 {'set_expire_at', 2, fun(_, _) -> {ok, 0} end}
             ]},
             {message_ds, [
-                {'send_next', 4, fun(_, _, _, _) -> ok end},
+                {'send_group_next', 4, fun(_, _, _, _) ->
+                    erlang:error(duplicate_group_delivery)
+                end},
                 {'send_next', 6, fun(_, _, _, _, _, _) ->
                     erlang:error(sender_echo_must_not_run)
                 end}
@@ -191,9 +218,9 @@ c2g_duplicate_only_acks_without_downstream_side_effects_test_() ->
             end,
             ?assertEqual(1, meck:num_calls(msg_store_ds, stage, 13)),
             ?assertEqual(0, meck:num_calls(msg_store_ds, enqueue, 3)),
-            ?assertEqual(0, meck:num_calls(msg_c2g_ds, write_msg_with_reply, 12)),
+            ?assertEqual(0, meck:num_calls(msg_c2g_ds, write_msg_with_reply, 13)),
             ?assertEqual(0, meck:num_calls(msg_c2g_ds, set_expire_at, 2)),
-            ?assertEqual(0, meck:num_calls(message_ds, send_next, 4)),
+            ?assertEqual(0, meck:num_calls(message_ds, send_group_next, 4)),
             ?assertEqual(0, meck:num_calls(push_notification_logic, maybe_push_for_c2g, 4)),
             ?assertEqual(0, meck:num_calls(mention_logic, create_mentions, 4)),
             ?assertEqual(0, meck:num_calls(ai_agent_group_reply, maybe_dispatch, 4)),
@@ -206,7 +233,7 @@ c2g_muted_user_gets_error_reply_test_() ->
     ?WITH_MECKS(
         [
             {group_member_logic, [
-                {'check_mute', 2, fun(100, 1001) -> true end}
+                {'send_precheck', 2, fun(100, 1001) -> muted end}
             ]}
         ],
         fun() ->
@@ -232,11 +259,87 @@ c2g_muted_user_gets_error_reply_test_() ->
         end
     ).
 
+c2g_one_joined_precheck_test_() ->
+    {setup, fun() -> meck:new(group_member_ds, [passthrough, no_link]) end,
+        fun(_) -> meck:unload(group_member_ds) end, fun() ->
+            ?assertEqual(
+                member,
+                precheck_with_member_read(
+                    {ok, #{
+                        <<"id">> => 7, <<"mute_until">> => null
+                    }}
+                )
+            ),
+            ?assertEqual(
+                muted,
+                precheck_with_member_read(
+                    {ok, #{
+                        <<"id">> => 7, <<"mute_until">> => elib_dt:millisecond() + 60000
+                    }}
+                )
+            ),
+            ?assertEqual(
+                member,
+                precheck_with_member_read(
+                    {ok, #{
+                        <<"id">> => 7, <<"mute_until">> => 1
+                    }}
+                )
+            ),
+            assert_c2g_precheck_denied({error, not_found}),
+            assert_c2g_precheck_denied({error, connection_unavailable})
+        end}.
+
+precheck_with_member_read(Result) ->
+    install_precheck_member_read(Result),
+    Reply = group_member_logic:send_precheck(100, 1001),
+    assert_single_member_read(),
+    Reply.
+
+assert_c2g_precheck_denied(Result) ->
+    install_precheck_member_read(Result),
+    Id = <<"msg_c2g_precheck_denied">>,
+    ok = msg_c2g_logic:c2g(Id, 1001, #{<<"to">> => <<"100">>}),
+    receive
+        {reply, Reply} ->
+            ?assertMatch(
+                #{
+                    <<"id">> := Id,
+                    <<"type">> := <<"C2G_ERROR">>,
+                    <<"code">> := 403,
+                    <<"error">> := <<"Not a group member">>
+                },
+                Reply
+            )
+    after 1000 ->
+        ?assert(false)
+    end,
+    assert_single_member_read().
+
+install_precheck_member_read(Result) ->
+    ok = meck:expect(
+        group_member_ds,
+        get_member_info,
+        fun(100, 1001, <<"gm.id, gm.mute_until">>) -> Result end
+    ),
+    ok = meck:reset(group_member_ds).
+
+assert_single_member_read() ->
+    ?assertEqual(
+        1,
+        meck:num_calls(
+            group_member_ds,
+            get_member_info,
+            [100, 1001, <<"gm.id, gm.mute_until">>]
+        )
+    ),
+    ?assertEqual(1, meck:num_calls(group_member_ds, get_member_info, 3)).
+
 c2g_non_member_gets_error_reply_test_() ->
     ?WITH_MECKS(
         [
             {group_member_logic, [
-                {'check_mute', 2, fun(100, 1001) -> false end}
+                {'send_precheck', 2, fun(100, 1001) -> not_member end}
             ]},
             {group_ds, [
                 %% B4 群级 fail-closed 门默认关（{ok,0}），门行为专测见 group_e2ee_logic_tests
@@ -271,7 +374,7 @@ c2g_mention_all_requires_admin_role_test_() ->
     ?WITH_MECKS(
         [
             {group_member_logic, [
-                {'check_mute', 2, fun(100, 1001) -> false end}
+                {'send_precheck', 2, fun(100, 1001) -> member end}
             ]},
             {group_ds, [
                 %% B4 群级 fail-closed 门默认关（{ok,0}），门行为专测见 group_e2ee_logic_tests
@@ -309,7 +412,7 @@ c2g_mention_all_rechecks_admin_in_staging_transaction_test_() ->
     ?WITH_MECKS(
         [
             {group_member_logic, [
-                {'check_mute', 2, fun(100, 1001) -> false end}
+                {'send_precheck', 2, fun(100, 1001) -> member end}
             ]},
             {group_ds, [
                 {'e2ee_mode', 1, fun(100) -> {ok, 0} end},
@@ -356,7 +459,7 @@ c2g_staging_failure_returns_retryable_error_test_() ->
     ?WITH_MECKS(
         [
             {group_member_logic, [
-                {'check_mute', 2, fun(100, 1001) -> false end}
+                {'send_precheck', 2, fun(100, 1001) -> member end}
             ]},
             {group_ds, [
                 {'e2ee_mode', 1, fun(100) -> {ok, 0} end},
@@ -399,7 +502,7 @@ c2g_session_conflict_reply_identifies_group_for_rotation_test_() ->
     ?WITH_MECKS(
         [
             {group_member_logic, [
-                {'check_mute', 2, fun(100, 1001) -> false end}
+                {'send_precheck', 2, fun(100, 1001) -> member end}
             ]},
             {group_ds, [
                 {'e2ee_mode', 1, fun(100) -> {ok, 0} end},
@@ -447,7 +550,7 @@ c2g_reply_to_missing_message_emits_msg_not_found_reply_test_() ->
     ?WITH_MECKS(
         [
             {group_member_logic, [
-                {'check_mute', 2, fun(100, 1001) -> false end}
+                {'send_precheck', 2, fun(100, 1001) -> member end}
             ]},
             {group_ds, [
                 %% B4 群级 fail-closed 门默认关（{ok,0}），门行为专测见 group_e2ee_logic_tests
@@ -675,7 +778,7 @@ c2g_revoke_stages_with_committed_snapshot_test_() ->
                     _,
                     _,
                     1,
-                    <<"orig_c2g_revoke_001">>
+                    {<<"orig_c2g_revoke_001">>, delivery, _}
                 ) ->
                     {ok, new, 9, [1001, 1002, 1003]}
                 end},
@@ -963,7 +1066,7 @@ c2g_edit_stages_with_committed_snapshot_test_() ->
                     _,
                     _,
                     1,
-                    <<"orig_c2g_edit_001">>
+                    {<<"orig_c2g_edit_001">>, delivery, _}
                 ) ->
                     {ok, new, 10, [1001, 1002, 1003]}
                 end},
@@ -1157,7 +1260,7 @@ c2g_plaintext_blocked_when_encryption_required_test_() ->
     ?WITH_MECKS(
         [
             {group_member_logic, [
-                {'check_mute', 2, fun(100, 1001) -> false end}
+                {'send_precheck', 2, fun(100, 1001) -> member end}
             ]},
             {group_ds, [
                 %% B4 群级 fail-closed 门默认关（{ok,0}），门行为专测见 group_e2ee_logic_tests
@@ -1206,7 +1309,7 @@ c2g_e2ee_message_allowed_when_encryption_required_test_() ->
     ?WITH_MECKS(
         [
             {group_member_logic, [
-                {'check_mute', 2, fun(100, 1001) -> false end}
+                {'send_precheck', 2, fun(100, 1001) -> member end}
             ]},
             {group_ds, [
                 %% B4 群级 fail-closed 门默认关（{ok,0}），门行为专测见 group_e2ee_logic_tests
@@ -1408,7 +1511,7 @@ c2g_edit_e2ee_payload_is_opaque_and_relayed_test_() ->
                     _,
                     _,
                     1,
-                    <<"orig_c2g_edit_e2ee_001">>
+                    {<<"orig_c2g_edit_e2ee_001">>, delivery, _}
                 ) ->
                     {ok, new, 13, [1001, 1002]}
                 end},
@@ -1460,7 +1563,7 @@ c2g_e2ee_room_key_relayed_opaque_and_skips_gate_test_() ->
     ?WITH_MECKS(
         [
             {group_member_logic, [
-                {'check_mute', 2, fun(100, 1001) -> false end}
+                {'send_precheck', 2, fun(100, 1001) -> member end}
             ]},
             {group_ds, [
                 {'e2ee_mode', 1, fun(_) -> {ok, 1} end},
@@ -1484,13 +1587,10 @@ c2g_e2ee_room_key_relayed_opaque_and_skips_gate_test_() ->
                 {'intervals', 1, fun(<<"c2g">>) -> [0, 200] end}
             ]},
             {message_ds, [
-                {'send_next', 4, fun(_, _, _, _) -> ok end}
+                {'send_group_next', 4, fun([1002, 1003], _, _, [0, 200]) -> ok end}
             ]},
             {mention_logic, [
                 {'create_mentions', 4, fun(_, _, _, _) -> ok end}
-            ]},
-            {user_logic, [
-                {'is_online', 1, fun(_Uid) -> true end}
             ]},
             {push_notification_logic, [
                 {'maybe_push_for_c2g', 4, fun(_, _, _, _) -> ok end}
@@ -1554,7 +1654,7 @@ c2g_e2ee_room_key_relayed_opaque_and_skips_gate_test_() ->
                 6
             ),
             EnqueuedMap = meck:capture(first, msg_store_ds, enqueue, ['_', '_', '_'], 3),
-            SentMsg = meck:capture(first, message_ds, send_next, ['_', '_', '_', '_'], 3),
+            SentMsg = meck:capture(first, message_ds, send_group_next, ['_', '_', '_', '_'], 3),
             ?assertEqual(SentMsg, maps:get(payload, EnqueuedMap)),
 
             %% ③ 密钥材料逐字段透传：解码后 payload 与入参完全一致

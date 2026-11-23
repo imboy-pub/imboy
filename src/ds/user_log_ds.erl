@@ -166,22 +166,21 @@ page_group_governance_log(WhereSql, Params, Page, Size) ->
             Err
     end.
 
-%% @doc 分页查询注销申请日志（JOIN user）
+%% @doc 分页查询注销申请日志及该用户当前的申请、执行状态。
 -spec page_logout_apply_log(binary(), list(), pos_integer(), pos_integer()) ->
     {ok, map()} | {error, term()}.
 page_logout_apply_log(WhereSql, Params, Page, Size) ->
     TbLog = user_log_repo:tablename(),
     TbUser = user_repo:tablename(),
-    BaseFrom = iolist_to_binary([
+    LogFrom = [
         <<" FROM ">>,
         TbLog,
         <<" l LEFT JOIN ">>,
         TbUser,
-        <<" u ON u.id = l.uid ">>,
-        <<"WHERE l.type = 102">>,
-        WhereSql
-    ]),
-    CountSql = iolist_to_binary([<<"SELECT COUNT(*) AS count">>, BaseFrom]),
+        <<" u ON u.id = l.uid ">>
+    ],
+    Filter = [<<"WHERE l.type = 102">>, WhereSql],
+    CountSql = iolist_to_binary([<<"SELECT COUNT(*) AS count">>, LogFrom, Filter]),
     case elib_pg:one(CountSql, Params) of
         {ok, CountRow} ->
             Total =
@@ -193,8 +192,20 @@ page_logout_apply_log(WhereSql, Params, Page, Size) ->
             LimitPos = integer_to_binary(length(Params) + 1),
             OffsetPos = integer_to_binary(length(Params) + 2),
             DataSql = iolist_to_binary([
-                <<"SELECT l.uid, u.account, u.nickname, u.status AS user_status, l.body, l.created_at ">>,
-                BaseFrom,
+                <<
+                    "SELECT l.uid, u.account, u.nickname, u.status AS user_status, l.body, l.created_at,"
+                    " COALESCE(r.status, j.request_status_at_execution, 'unknown') AS request_status,"
+                    " COALESCE(r.approved_at, j.request_approved_at) AS request_approved_at,"
+                    " COALESCE(j.status, 'not_started') AS execution_status,"
+                    " CASE WHEN j.status IN ('completed', 'failed') THEN j.finished_at END AS execution_finished_at"
+                >>,
+                LogFrom,
+                <<" LEFT JOIN ">>,
+                user_deletion_request_repo:tablename(),
+                <<" r ON r.user_id = l.uid LEFT JOIN ">>,
+                user_deletion_job_repo:tablename(),
+                <<" j ON j.user_id = l.uid ">>,
+                Filter,
                 <<" ORDER BY l.created_at DESC, l.uid DESC ">>,
                 <<"LIMIT $">>,
                 LimitPos,

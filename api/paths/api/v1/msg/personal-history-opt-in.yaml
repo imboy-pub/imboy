@@ -1,0 +1,59 @@
+# PUT /api/v1/personal-history/opt-in
+put:
+  tags: [msg]
+  summary: 开启本人个人云端历史副本 / Opt in to personal cloud history
+  description: |
+    ## 中文 / English
+    开启个人 C2C 消息云端历史副本（授权四格：仅本人）。幂等：同代次重复
+    opt-in 返回同状态；purge 进行中返回 409 purge_in_progress。开启自当前
+    时刻起向前同步新消息，不回填旧历史。Web N1 面挂 POST
+    （/api/v1/web/personal-history/opt-in）。
+    Enable the personal C2C history copy (per-account switch). Idempotent per
+    generation; 409 while purge in progress. No backfill of old history.
+  operationId: personalHistoryOptIn
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          type: object
+          required: [client_instance_id]
+          properties:
+            client_instance_id:
+              type: string
+              maxLength: 128
+              description: 客户端实例标识（变更游标 slot 维度）。 / Client instance id (cursor slot dimension).
+  responses:
+    '200':
+      description: 成功返回开启后状态。 / Enabled state.
+      content:
+        application/json:
+          schema:
+            allOf:
+              - $ref: '../../../../components/schemas/Envelope.yaml'
+              - type: object
+                properties:
+                  payload:
+                    type: object
+                    required: [state, generation, result]
+                    properties:
+                      state:
+                        type: string
+                        enum: [ON]
+                      generation:
+                        type: integer
+                        format: int64
+                        description: 开启代次（首开=1；重开=递增）。 / Enabled generation.
+                      enabled_at:
+                        type: integer
+                        format: int64
+                      result:
+                        type: string
+                        enum: [created, idempotent, reenabled]
+                        description: 首开/同代次幂等/新代次重开。 / created / idempotent / reenabled.
+    '409':
+      description: purge_in_progress 或 generation_stale / Purge in progress or stale generation
+    '401':
+      description: 未认证 / Unauthenticated
+    '403':
+      description: identity_rejected / Identity rejected

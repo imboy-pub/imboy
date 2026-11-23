@@ -1173,3 +1173,81 @@ c2s_to_external_with_utf8_text_succeeds_test_() ->
             ?assertEqual(ok, Result)
         end
     ).
+
+%% ===================================================================
+%% BE-02（IMBOY_MASTER_V2_2_20261118）补齐断言（逻辑层，mock 口径与邻测一致）
+%% ===================================================================
+
+c2s_client_ack_duplicate_calls_idempotent_test_() ->
+    ?WITH_MECKS(
+        [
+            {msg_ack_logic, [
+                {'client_ack', 4, fun(_Type, _MsgId, _Uid, _DID) -> ok end}
+            ]}
+        ],
+        fun() ->
+            MsgId = <<"msg_ack_dup">>,
+            CurrentUid = 321,
+            DID = <<"device_dup">>,
+            %% 重试/重复 ACK：两次同参调用均成功，底层各收到一次同参 client_ack
+            ?assertEqual(ok, msg_c2s_logic:c2s_client_ack(MsgId, CurrentUid, DID)),
+            ?assertEqual(ok, msg_c2s_logic:c2s_client_ack(MsgId, CurrentUid, DID)),
+            ?assertEqual(
+                2, meck:num_calls(msg_ack_logic, client_ack, [<<"c2s">>, MsgId, CurrentUid, DID])
+            ),
+            %% 底层幂等由 msg_delivery_repo 打标语义保证（真库覆盖见
+            %% msg_safe_boundary_pg_tests 的归档/游标家族）；本断言钉住
+            %% 逻辑层不因重复 ACK 产生第二类业务效果或报错。
+            ?assert(meck:validate(msg_ack_logic))
+        end
+    ).
+
+handle_sync_clamps_c2g_cursor_to_open_generation_test_() ->
+    ?WITH_MECKS(
+        [
+            {group_ds, [
+                {'authorize_group_history', 2, fun(_Uid, _Gid) ->
+                    {ok, #{generation_no => 2, start_seq => 10, end_seq => undefined}}
+                end}
+            ]},
+            {msg_archive_ds, [
+                {'history_batch', 2, fun(Authed, _Limit) ->
+                    {ok, [#{<<"conv_key">> => <<"c2g:777">>, <<"capture">> => Authed}]}
+                end}
+            ]},
+            {messaging_logic, [
+                {'encode_history_msg', 2, fun(_Uid, R) -> R end},
+                {'next_seq_from_rows', 2, fun(_Rows, Seq) -> Seq end}
+            ]}
+        ],
+        fun() ->
+            %% 成员世代 open：start_seq=10 → 客户端旧游标 0/3 均被钳到 9，
+            %% 入群前历史（seq<=9）不可越权拉取
+            Cursors = [#{<<"conv_key">> => <<"c2g:777">>, <<"seq">> => 3}],
+            #{<<"results">> := [R]} = msg_c2s_logic:handle_sync(777, Cursors, 50),
+            %% clamp：客户端旧游标 3 → max(3, start_seq-1)=9，下游以此查询
+            ?assertEqual(9, maps:get(<<"next_seq">>, R)),
+            ?assertEqual(
+                1, meck:num_calls(msg_archive_ds, history_batch, [[{<<"c2g:777">>, 9}], 50])
+            )
+        end
+    ).
+
+handle_sync_drops_denied_c2g_session_test_() ->
+    ?WITH_MECKS(
+        [
+            {group_ds, [
+                {'authorize_group_history', 2, fun(_Uid, _Gid) -> {error, denied} end}
+            ]},
+            {msg_archive_ds, [
+                {'history_batch', 2, fun(_Authed, _Limit) -> {ok, []} end}
+            ]}
+        ],
+        fun() ->
+            %% deny fail-closed：该会话被整条丢弃，不进入下游查询
+            Cursors = [#{<<"conv_key">> => <<"c2g:888">>, <<"seq">> => 0}],
+            ?assertEqual(#{<<"results">> => []}, msg_c2s_logic:handle_sync(888, Cursors, 50)),
+            %% deny 后 Authed=[]：批量查询仅以空授权表调用（fail-closed 下游零会话）
+            ?assertEqual(1, meck:num_calls(msg_archive_ds, history_batch, [[], 50]))
+        end
+    ).

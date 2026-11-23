@@ -1,7 +1,11 @@
 -module(personal_message_order_repo).
 -moduledoc "个人消息持久接受顺序 / durable acceptance order for personal messages".
 -export([
-    stage_c2c/2, stage_c2c_ordered/2, execute_formal/5, execute_formal_tx/6, accepted_sequence/3
+    stage_c2c/2,
+    stage_c2c_ordered/2, stage_c2c_ordered/3,
+    execute_formal/5,
+    execute_formal_tx/6,
+    accepted_sequence/3
 ]).
 
 %% 分配序号与 staging INSERT 同事务；回滚/重复请求不消耗序号。
@@ -16,8 +20,13 @@ stage_c2c(Table, Data) ->
 
 %% Same transaction returns the trusted seq; delivery never rereads after ACK.
 stage_c2c_ordered(Table, Data) ->
+    stage_c2c_ordered(Table, Data, undefined).
+
+stage_c2c_ordered(Table, Data, Reply) ->
     Key = msg_archive_repo:conv_key(<<"c2c">>, maps:get(from_id, Data), maps:get(to_id, Data)),
-    case forward_attachment_repo:transaction(fun(Conn) -> stage_tx(Conn, Table, Key, Data) end) of
+    case
+        forward_attachment_repo:transaction(fun(Conn) -> stage_tx(Conn, Table, Key, Data, Reply) end)
+    of
         {rollback, {accepted_duplicate, Seq}} ->
             {ok, duplicate, Seq};
         {rollback, {message_id_collision, OriginalError}} ->
@@ -31,13 +40,14 @@ stage_c2c_ordered(Table, Data) ->
             Result
     end.
 
-stage_tx(Conn, Table, Key, Data) ->
+stage_tx(Conn, Table, Key, Data, Reply) ->
     MsgId = maps:get(msg_id, Data),
     Previous = lock_order(Conn, Key, Data),
     case query(Conn, identity_sql(), [MsgId]) of
         [] ->
             Seq = Previous + 1,
-            {Sql, Params} = elib_pg_sql:insert(Table, Data#{conv_seq => Seq}),
+            Row = stage_reply(Conn, Data#{conv_seq => Seq}, Reply),
+            {Sql, Params} = elib_pg_sql:insert(Table, Row),
             insert_staging(Conn, Sql, Params),
             ok = forward_attachment_repo:accept_tx(
                 Conn, <<"c2c">>, MsgId, maps:get(from_id, Data), maps:get(to_id, Data), Seq
@@ -47,6 +57,44 @@ stage_tx(Conn, Table, Key, Data) ->
         Rows ->
             Seq = existing_sequence(Data, Rows),
             throw({rollback, {accepted_duplicate, Seq}})
+    end.
+
+stage_reply(_Conn, Data, undefined) ->
+    Data;
+stage_reply(Conn, #{from_id := From, to_id := To} = Data, {Id, ExtractSnippet}) ->
+    _ = query(Conn, <<"SELECT pg_advisory_xact_lock(hashtextextended($1, 0))">>, [
+        <<"c2c_forward_revoke:", Id/binary>>
+    ]),
+    Sql = <<
+        "WITH formal AS MATERIALIZED ("
+        "SELECT from_id, to_id, payload, e2ee, expire_at, created_at "
+        "FROM public.msg_c2c WHERE msg_id = $1), "
+        "pending AS MATERIALIZED ("
+        "SELECT from_id, to_id, payload::text, e2ee, expire_at, created_at "
+        "FROM public.msg_store_staging WHERE type = 'c2c' AND msg_id = $1 "
+        "AND processed_at IS NULL AND conv_seq > 0), "
+        "archived AS MATERIALIZED ("
+        "SELECT from_id, to_id, payload, e2ee, expire_at, created_at "
+        "FROM public.msg_store WHERE chat_type = 'c2c' AND msg_id = $1 AND conv_seq > 0) "
+        "SELECT from_id, payload, e2ee FROM ("
+        "SELECT formal.*, 0 AS priority FROM formal "
+        "UNION ALL SELECT pending.*, 1 FROM pending "
+        "UNION ALL SELECT archived.*, 2 FROM archived) AS source "
+        "WHERE ((from_id = $2 AND to_id = $3) OR (from_id = $3 AND to_id = $2)) "
+        "AND (expire_at IS NULL OR expire_at > clock_timestamp()) "
+        "AND NOT EXISTS (SELECT 1 FROM public.c2c_action_receipt AS action "
+        "WHERE action.original_msg_id = $1 AND action.action = 'revoke') "
+        "ORDER BY priority, created_at DESC LIMIT 1"
+    >>,
+    case query(Conn, Sql, [Id, From, To]) of
+        [#{<<"from_id">> := Author} = Source] ->
+            Data#{
+                reply_to_msg_id => Id,
+                reply_to_from_id => Author,
+                reply_snippet => ExtractSnippet(Source)
+            };
+        [] ->
+            throw({rollback, reply_source_not_found})
     end.
 
 %% Conversation -> counter -> msg_id matches the formal dedup trigger's existing namespace.

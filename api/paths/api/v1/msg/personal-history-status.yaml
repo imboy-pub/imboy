@@ -1,0 +1,54 @@
+get:
+  tags:
+    - msg
+  summary: 读取本人个人云端历史授权状态 / Read personal history authorization
+  description: |
+    ## 中文 / English
+    个人默认 OFF：无授权行时返回 OFF/generation=0，服务端零归档写入（MSG-H01）。
+    认证主体为 JWT uid；部署域+账号+授权代次三元隔离（MSG-H11）。
+    Personal history is OFF by default; no authorization row means zero writes.
+    Identity = JWT uid; isolation = domain + account + generation.
+  operationId: personalHistoryStatus
+  responses:
+    '200':
+      description: 成功 code=0 返回授权状态；业务失败 code 非零返回通用错误信封。 / Authorization state or business error.
+      content:
+        application/json:
+          schema:
+            oneOf:
+              - allOf:
+                  - $ref: ../../../../components/schemas/Envelope.yaml
+                  - type: object
+                    properties:
+                      payload:
+                        type: object
+                        required: [state, generation, domain]
+                        properties:
+                          state:
+                            type: string
+                            enum: [OFF, ON, OFF_PURGE_PENDING, OFF_PURGED]
+                            description: 授权四态（§1 状态机）。 / Authorization state machine.
+                          generation:
+                            type: integer
+                            format: int64
+                            description: 当前授权代次；无授权为 0。 / Current generation; 0 when never enabled.
+                          domain:
+                            type: string
+                            description: 服务端部署域，用于密钥与密文绑定。 / Server deployment domain bound to keys and ciphertext.
+                          enabled_at:
+                            type: integer
+                            format: int64
+                            description: 最近开启 Unix 毫秒。 / Unix ms when last enabled.
+                          upload_cursor:
+                            type: integer
+                            format: int64
+                            description: 账号已归档最大事件序（changes 起点）。 / Max archived event_seq.
+                  - type: object
+                    required: [code]
+                    properties:
+                      code:
+                        type: integer
+                        const: 0
+              - $ref: ../../../../components/schemas/BusinessErrorEnvelope.yaml
+    '401':
+      description: 未认证 / Unauthenticated

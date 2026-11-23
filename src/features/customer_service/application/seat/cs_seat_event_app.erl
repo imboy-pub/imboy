@@ -63,6 +63,9 @@ cursor_scope(OrgId, WorkspaceId, Params) ->
     case maps:get(after_id, Params, undefined) of
         undefined ->
             watermark(OrgId, WorkspaceId, Params, true, <<"unknown">>);
+        0 ->
+            %% 空 Workspace 的首连水位为 0，后续必须从头补读。
+            {ok, 0, false, <<"unknown">>};
         AfterId when is_integer(AfterId), AfterId > 0 ->
             with_store(Params, fun(Store) ->
                 case Store:fetch_event_scope(OrgId, AfterId) of

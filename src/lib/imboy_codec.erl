@@ -83,14 +83,14 @@ encode(json, Msg) when is_map(Msg) ->
             <<"{}">>
     end;
 encode(protobuf, Msg) when is_map(Msg) ->
-    case e2ee_pb_lossless(Msg) of
+    case pb_lossless(Msg) of
         false ->
-            %% ADR 15 §10 fail-closed：protobuf 的 E2EEMeta schema 装不下该
-            %% e2ee 信封（PFv3 的 protected_header/header_hash/ciphertext/
-            %% protocol_metadata/devices 均无对应字段）。宁可拒绝编码，也不
-            %% 投递被裁剪的信封——服务端不持有密钥，接收端一旦收到裁剪结果
-            %% 即永久不可解密，且无法事后修复。调用方须退回 JSON。
-            ok = ?WARN_LOG({codec_pb_encode_refused_lossy_e2ee, maps:get(<<"id">>, Msg, unknown)}),
+            %% ADR 15 §10 fail-closed（BE-01 扩展到全漏斗）：protobuf schema
+            %% 装不下该消息时宁可拒绝编码，也不投递被裁剪的结果——E2EE 信封
+            %% 被裁剪即永久不可解密；顶层字段（sender_did / sender_dtype /
+            %% topic_id / 控制帧 in_reply_to / reason / 未来扩展）被裁剪则
+            %% 客户端收到无法关联/无法认领的空壳帧。调用方须退回 JSON。
+            ok = ?WARN_LOG({codec_pb_encode_refused_lossy, maps:get(<<"id">>, Msg, unknown)}),
             <<>>;
         true ->
             try
@@ -239,7 +239,7 @@ pb_lossless(Msg) when is_map(Msg) ->
     e2ee_pb_lossless(Msg) andalso
         direction_pb_lossless(Msg) andalso
         content_pb_lossless(Msg) andalso
-        ctrl_fields_pb_lossless(Msg).
+        toplevel_pb_lossless(Msg).
 
 %% Unknown content types (including record cards) must retain their wire name.
 %% Existing JSON fallback carries the complete payload without a protobuf change.
@@ -256,22 +256,48 @@ direction_pb_lossless(Msg) ->
         Type -> msg_direction_to_enum(Type) =/= 'MSG_DIRECTION_UNSPECIFIED'
     end.
 
-%% @private to_pb_map 没有对应字段、会被丢弃的控制帧键
-%% ponytail: 只列当前已知被丢的两个键；将来 to_pb_map 增字段时同步维护，
-%% 若丢字段的场景变多，改成对 schema 字段做白名单更省心。
-ctrl_fields_pb_lossless(Msg) ->
-    not (maps:is_key(<<"in_reply_to">>, Msg) orelse maps:is_key(<<"reason">>, Msg)).
+%% @private to_pb_map 没有对应字段、会被静默丢弃的顶层键检查（BE-01/C-01）
+%%
+%% ponytail 演进为 schema 白名单：除 here 列出的键（to_pb_map 实际消费的
+%% 字段与 from/to 别名）外，任何顶层键——已知的 sender_did / sender_dtype /
+%% topic_id / in_reply_to / reason，以及一切未来扩展字段——都判不可无损，
+%% 走 JSON 回退；encode(protobuf) 侧同判 fail-closed 拒绝（ADR 15 同款）。
+%% 依据：IMBOY_MASTER_V2_2_20261118 C-01 deviation_register（静默丢字段
+%% 合同禁止项），由 BE-01 关闭。
+-define(PB_TOPLEVEL_FIELDS, [
+    <<"id">>,
+    <<"type">>,
+    <<"from">>,
+    <<"from_id">>,
+    <<"to">>,
+    <<"to_id">>,
+    <<"msg_type">>,
+    <<"action">>,
+    <<"e2ee">>,
+    <<"payload">>,
+    <<"created_at">>,
+    <<"server_ts">>,
+    <<"expire_secs">>,
+    <<"conv_seq">>
+]).
+
+toplevel_pb_lossless(Msg) when is_map(Msg) ->
+    no_extra_keys(Msg, ?PB_TOPLEVEL_FIELDS);
+toplevel_pb_lossless(_) ->
+    true.
 
 %% @doc protobuf 的 E2EEMeta 能否无损承载该消息的 e2ee 信封
 %%
 %% 判据是白名单：e2ee map（含 keys 列表元素）出现任何 E2EEMeta 没有的字段，
 %% 即视为不可无损表达。这样 PFv3 字段与一切未来扩展字段都被自动覆盖，
-%% 不需要随协议演进逐个补判断。
+%% 两个 proto3 标量的显式零会被序列化省略，需回退 JSON 保留字段存在性。
 -spec e2ee_pb_lossless(map()) -> boolean().
 e2ee_pb_lossless(Msg) when is_map(Msg) ->
     case maps:get(<<"e2ee">>, Msg, null) of
         E2EE when is_map(E2EE) ->
             no_extra_keys(E2EE, ?E2EE_PB_FIELDS) andalso
+                maps:get(<<"message_type">>, E2EE, undefined) =/= 0 andalso
+                maps:get(<<"message_index">>, E2EE, undefined) =/= 0 andalso
                 keys_pb_lossless(maps:get(<<"keys">>, E2EE, []));
         _ ->
             true

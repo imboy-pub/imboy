@@ -23,6 +23,7 @@ codec_test_() ->
         {"E2EE metadata conversion", fun e2ee_conversion/0},
         {"E2EE Olm metadata protobuf roundtrip", fun e2ee_olm_roundtrip/0},
         {"E2EE Megolm metadata protobuf roundtrip", fun e2ee_megolm_roundtrip/0},
+        {"E2EE explicit zero survives WebSocket encoding", fun e2ee_explicit_zero_ws/0},
         {"Empty/null field handling", fun empty_field_handling/0},
         {"Payload encode/decode", fun payload_encode_decode/0},
         {"Large UID handling (TSID)", fun large_uid_handling/0},
@@ -37,7 +38,15 @@ codec_test_() ->
         {"普通 C2C 消息仍走 protobuf 编码", fun c2c_still_protobuf/0},
         {"语音 voice 映射 AUDIO 且 protobuf 往返不丢类型", fun voice_content_type_roundtrip/0},
         {"chat_history_bundle JSON 通道识别与原样往返", fun chat_history_bundle_json_channel/0},
-        {"chat_history_bundle protobuf 连接回退 JSON 四象限无损", fun chat_history_bundle_pb_fallback/0}
+        {"chat_history_bundle protobuf 连接回退 JSON 四象限无损", fun chat_history_bundle_pb_fallback/0},
+        {"顶层扩展字段 sender_did/sender_dtype/topic_id 回退 JSON 不丢字段",
+            fun toplevel_extra_fields_pb_fallback/0},
+        {"控制帧 in_reply_to/reason 白名单化后仍回退 JSON（回归）", fun ctrl_fields_pb_fallback_regression/0},
+        {"垃圾 protobuf 字节解码得空 map 哨兵（不崩溃）", fun garbage_pb_decode_sentinel/0},
+        {"未知 MsgDirection 枚举解码为空串哨兵（不崩溃）", fun unknown_direction_enum_sentinel/0},
+        {"FL-05 四通道操作等价（C2C/C2G/S2C/C2S × json none/pb none/pb v2）",
+            fun four_channel_operation_equivalence/0},
+        {"FL-05 双向版本兼容（协商矩阵 + 新旧端组合等价 + 回退组合明确）", fun bidirectional_version_compat/0}
     ]}.
 
 timestamp_fields_protobuf_roundtrip_test_() ->
@@ -390,6 +399,254 @@ chat_history_bundle_pb_fallback() ->
      || Direction <- [<<"C2C">>, <<"C2G">>], Framing <- [none, v2]
     ].
 
+e2ee_explicit_zero_ws() ->
+    lists:foreach(
+        fun({Msg, FrameType, Key}) ->
+            E2EE = maps:get(<<"e2ee">>, Msg),
+            WithZero = Msg#{<<"e2ee">> := E2EE#{Key := 0}},
+            Missing = Msg#{<<"e2ee">> := maps:remove(Key, E2EE)},
+            ?assertEqual(<<>>, imboy_codec:encode(protobuf, WithZero)),
+            {text, Json} = imboy_codec:encode_ws_msg(protobuf, none, FrameType, WithZero),
+            ?assertEqual(WithZero, imboy_codec:decode(json, Json)),
+            {binary, Packet} = imboy_codec:encode_ws_msg(protobuf, v2, FrameType, WithZero),
+            {ok, Frame} = imboy_codec:unwrap_v2_frame(Packet),
+            ?assertEqual(WithZero, imboy_codec:decode(json, imboy_frame:payload(Frame))),
+            {binary, NonzeroPb} = imboy_codec:encode_ws_msg(protobuf, none, FrameType, Msg),
+            Nonzero = imboy_codec:decode(protobuf, NonzeroPb),
+            ?assertEqual(maps:get(Key, E2EE), maps:get(Key, maps:get(<<"e2ee">>, Nonzero))),
+            {binary, MissingPb} = imboy_codec:encode_ws_msg(protobuf, none, FrameType, Missing),
+            WithoutKey = imboy_codec:decode(protobuf, MissingPb),
+            ?assertNot(maps:is_key(Key, maps:get(<<"e2ee">>, WithoutKey)))
+        end,
+        e2ee_zero_cases()
+    ).
+
+e2ee_zero_cases() ->
+    [
+        {test_e2ee_olm_message(), ?FRAME_TYPE_MSG_C2C, <<"message_type">>},
+        {test_e2ee_megolm_message(), ?FRAME_TYPE_MSG_C2G, <<"message_index">>}
+    ].
+
+%%%===================================================================
+%%% FL-05：四通道操作等价与双向版本兼容
+%%%===================================================================
+
+%% @doc FL-05:LOCAL:01 四通道（C2C/C2G/S2C/C2S）经各支持编码完成同一操作：
+%% 身份（from/to）、关联（id/type/action/conv_seq/v2 帧类型）、业务结果
+%% （msg_type/payload/e2ee）在三条支持传输组合上解码等价：
+%%   json+none（text 帧）＝老 JSON 通道；
+%%   protobuf+none（裸 binary 帧）＝老 protobuf 子协议连接；
+%%   protobuf+v2（v2 帧）＝新分层二进制连接（pb 不可无损时载荷回退 JSON）。
+four_channel_operation_equivalence() ->
+    lists:foreach(
+        fun({Channel, FrameType, Msg}) ->
+            Views = channel_views(FrameType, Msg),
+            ?assertEqual(3, length(Views)),
+            lists:foreach(
+                fun({Combo, _Effective, Decoded, FrameTypeObserved}) ->
+                    Core = view_core(Decoded),
+                    lists:foreach(
+                        fun(Field) ->
+                            ?assertEqual(
+                                {Channel, Combo, Field, maps:get(Field, Msg)},
+                                {Channel, Combo, Field, maps:get(Field, Core)}
+                            )
+                        end,
+                        view_core_fields()
+                    ),
+                    case Combo of
+                        pb_v2 ->
+                            %% 帧级关联：v2 帧类型按通道保持
+                            ?assertEqual(FrameType, FrameTypeObserved);
+                        _ ->
+                            ok
+                    end
+                end,
+                Views
+            ),
+            %% 各通道彼此等价：三视图核心字段两两相等
+            [V1, V2, V3] = [view_core(D) || {_, _, D, _} <- Views],
+            ?assertEqual(V1, V2),
+            ?assertEqual(V1, V3)
+        end,
+        four_channel_cases()
+    ).
+
+%% @doc FL-05:LOCAL:02 旧端/新端双向版本兼容：
+%%   1) 子协议协商矩阵——老端组合（text/imboy-json/imboy-protobuf/缺省）永远
+%%      落在既有 json|protobuf + none；新端 imboy.v2 → protobuf+v2；未知子协议
+%%      可理解回退 json+none，不产生无法解释的拒绝组合；
+%%   2) 服务端→客户端：同一 S2C 操作发给老端（json+none）与新端（protobuf+v2），
+%%      两端解码结果等价；
+%%   3) 客户端→服务端：老端 text JSON 请求与新端 v2 protobuf 请求解码等价；
+%%   4) 回退组合明确：pb 不可无损的控制帧在全部组合都回退 JSON 载荷，
+%%      新老两端收到语义一致的字段。
+bidirectional_version_compat() ->
+    %% 1) 协商矩阵
+    Neg = fun(Sub) ->
+        {imboy_codec:protocol_atom(Sub), imboy_codec:framing_atom(Sub)}
+    end,
+    ?assertEqual({json, none}, Neg(undefined)),
+    ?assertEqual({json, none}, Neg(<<"text">>)),
+    ?assertEqual({json, none}, Neg(<<"imboy-json">>)),
+    ?assertEqual({protobuf, none}, Neg(<<"imboy-protobuf">>)),
+    ?assertEqual({protobuf, v2}, Neg(<<"imboy.v2">>)),
+    ?assertEqual({json, none}, Neg(<<"future-subprotocol-9">>)),
+
+    %% 2) 服务端→客户端方向
+    S2CMsg = four_channel_message(<<"S2C">>),
+    S2CViews = channel_views(?FRAME_TYPE_MSG_S2C, S2CMsg),
+    ?assertEqual(
+        view_core(view_of(json_none, S2CViews)),
+        view_core(view_of(pb_v2, S2CViews))
+    ),
+
+    %% 3) 客户端→服务端方向（同一请求身份/游标语义）
+    C2SMsg = four_channel_message(<<"C2S">>),
+    C2SViews = channel_views(?FRAME_TYPE_MSG_C2S, C2SMsg),
+    ?assertEqual(
+        view_core(view_of(json_none, C2SViews)),
+        view_core(view_of(pb_v2, C2SViews))
+    ),
+
+    %% 4) 回退组合明确：控制帧（in_reply_to/reason 不可 pb 无损）
+    Ctrl = #{
+        <<"id">> => <<"msg-vc-ctrl-001">>,
+        <<"type">> => <<"CLIENT_ACK_ERROR">>,
+        <<"in_reply_to">> => <<"msg-vc-ctrl-001">>,
+        <<"reason">> => <<"stale_did">>,
+        <<"server_ts">> => 1785312537582
+    },
+    CtrlViews = channel_views(?FRAME_TYPE_MSG_S2C, Ctrl),
+    lists:foreach(
+        fun({Combo, Effective, Decoded, _FT}) ->
+            ?assertEqual({Combo, json}, {Combo, Effective}),
+            ?assertEqual(<<"CLIENT_ACK_ERROR">>, maps:get(<<"type">>, Decoded)),
+            ?assertEqual(<<"msg-vc-ctrl-001">>, maps:get(<<"in_reply_to">>, Decoded)),
+            ?assertEqual(<<"stale_did">>, maps:get(<<"reason">>, Decoded))
+        end,
+        CtrlViews
+    ),
+    ?assertEqual(
+        view_core(view_of(json_none, CtrlViews)),
+        view_core(view_of(pb_v2, CtrlViews))
+    ).
+
+%% @private 三条支持传输组合的解码视图。
+%% 返回 [{Combo, 生效编码, 解码 map, v2 帧类型|undefined}]；v2 载荷按首字节
+%% '{' 判 JSON 回退（与客户端分发规则一致），否则按 protobuf 解码。
+channel_views(FrameType, Msg) ->
+    Combos = [
+        {json_none, json, none},
+        {pb_none, protobuf, none},
+        {pb_v2, protobuf, v2}
+    ],
+    lists:map(
+        fun({Combo, Protocol, Framing}) ->
+            Wire = imboy_codec:encode_ws_msg(Protocol, Framing, FrameType, Msg),
+            {Effective, Payload, FrameTypeObserved} =
+                case {Framing, Wire} of
+                    {none, {text, T}} ->
+                        {json, T, undefined};
+                    {none, {binary, B}} ->
+                        {protobuf, B, undefined};
+                    {v2, {binary, B}} ->
+                        {ok, Frame} = imboy_codec:unwrap_v2_frame(B),
+                        P = imboy_frame:payload(Frame),
+                        E =
+                            case P of
+                                <<16#7B, _/binary>> -> json;
+                                _ -> protobuf
+                            end,
+                        {E, P, imboy_frame:type(Frame)}
+                end,
+            {Combo, Effective, imboy_codec:decode(Effective, Payload), FrameTypeObserved}
+        end,
+        Combos
+    ).
+
+view_core_fields() ->
+    [
+        <<"id">>,
+        <<"type">>,
+        <<"from">>,
+        <<"to">>,
+        <<"msg_type">>,
+        <<"action">>,
+        <<"e2ee">>,
+        <<"payload">>,
+        <<"created_at">>,
+        <<"server_ts">>,
+        <<"expire_secs">>,
+        <<"conv_seq">>
+    ].
+
+view_core(Decoded0) ->
+    Decoded = normalize_view_payload(Decoded0),
+    lists:foldl(
+        fun(F, M) -> M#{F => maps:get(F, Decoded, undefined)} end,
+        #{},
+        view_core_fields()
+    ).
+
+%% protobuf 通道的 map payload 会以 JSON binary 传输；归一化回 map 再比较
+normalize_view_payload(#{<<"payload">> := P} = M) when is_binary(P), byte_size(P) > 0 ->
+    try
+        M#{<<"payload">> => jsone:decode(P, [{object_format, map}])}
+    catch
+        _:_ -> M
+    end;
+normalize_view_payload(M) ->
+    M.
+
+view_of(Combo, Views) ->
+    [Decoded] = [D || {C, _, D, _} <- Views, C =:= Combo],
+    Decoded.
+
+four_channel_cases() ->
+    [
+        {<<"C2C">>, ?FRAME_TYPE_MSG_C2C, four_channel_message(<<"C2C">>)},
+        {<<"C2G">>, ?FRAME_TYPE_MSG_C2G, four_channel_message(<<"C2G">>)},
+        {<<"S2C">>, ?FRAME_TYPE_MSG_S2C, four_channel_message(<<"S2C">>)},
+        {<<"C2S">>, ?FRAME_TYPE_MSG_C2S, four_channel_message(<<"C2S">>)}
+    ].
+
+%% @private 四通道同一操作的代表性消息：字段全集与 protobuf schema 白名单一致，
+%% 保证三条传输组合都走真实编码路径（不触发整帧回退）。
+four_channel_message(<<"C2C">>) ->
+    base_four_channel_message(<<"C2C">>, <<"text">>, #{<<"body">> => <<"Hello IMBoy">>});
+four_channel_message(<<"C2G">>) ->
+    M = base_four_channel_message(
+        <<"C2G">>, <<"text">>, #{<<"body">> => <<"Hello group">>}
+    ),
+    M#{<<"conv_seq">> := 42};
+four_channel_message(<<"S2C">>) ->
+    M = base_four_channel_message(
+        <<"S2C">>, <<>>, #{<<"msg_ids">> => [<<"m-1">>, <<"m-2">>]}
+    ),
+    M#{<<"action">> := <<"message_read_sync">>};
+four_channel_message(<<"C2S">>) ->
+    M = base_four_channel_message(
+        <<"C2S">>, <<>>, #{<<"cursors">> => #{<<"c2g:123">> => 7}}
+    ),
+    M#{<<"action">> := <<"sync">>}.
+
+base_four_channel_message(Direction, MsgType, Payload) ->
+    #{
+        <<"id">> => <<"msg-four-channel-001">>,
+        <<"type">> => Direction,
+        <<"from">> => 123456789,
+        <<"to">> => 987654321,
+        <<"msg_type">> => MsgType,
+        <<"action">> => <<>>,
+        <<"e2ee">> => null,
+        <<"payload">> => Payload,
+        <<"created_at">> => 1710000000000,
+        <<"server_ts">> => 0,
+        <<"expire_secs">> => 0,
+        <<"conv_seq">> => 0
+    }.
+
 %% @doc v2 frame unwrap 错误用例
 v2_frame_unwrap_error() ->
     %% 魔数不对
@@ -589,3 +846,82 @@ test_chat_history_bundle_msg(Direction) ->
         },
         <<"created_at">> => 1710000000000
     }.
+
+%% ===================================================================
+%% BE-01：C-01 deviation_register 关闭断言
+%% 顶层扩展字段不再被 to_pb_map 静默丢弃：白名单漏斗判不可无损 →
+%% JSON 回退 / encode(protobuf) fail-closed 拒绝（ADR 15 同款）。
+%% ===================================================================
+
+toplevel_extra_fields_pb_fallback() ->
+    Msg0 = test_c2c_message(),
+    Msg = Msg0#{
+        <<"sender_did">> => <<"did-123">>,
+        <<"sender_dtype">> => 1,
+        <<"topic_id">> => <<"topic-42">>
+    },
+    %% 漏斗判定（行为面）：直接 encode(protobuf) fail-closed 拒绝，
+    %% 不产出裁剪帧（pb_lossless/1 为内部函数，经 encode/2 出口验证）
+    ?assertEqual(<<>>, imboy_codec:encode(protobuf, Msg)),
+    %% auto 通道：JSON 回退后全字段保留（none 与 v2 两种 framing）
+    [
+        begin
+            Wire = imboy_codec:encode_ws_msg(protobuf, Framing, ?FRAME_TYPE_MSG_C2C, Msg),
+            Json =
+                case {Framing, Wire} of
+                    {none, {text, Binary}} ->
+                        Binary;
+                    {v2, {binary, Binary}} ->
+                        {ok, Frame} = imboy_codec:unwrap_v2_frame(Binary),
+                        imboy_frame:payload(Frame)
+                end,
+            Decoded = jsone:decode(Json, [{object_format, map}]),
+            ?assertEqual(<<"did-123">>, maps:get(<<"sender_did">>, Decoded)),
+            ?assertEqual(1, maps:get(<<"sender_dtype">>, Decoded)),
+            ?assertEqual(<<"topic-42">>, maps:get(<<"topic_id">>, Decoded))
+        end
+     || Framing <- [none, v2]
+    ].
+
+%% @doc 原 ctrl_fields 检查被顶层白名单覆盖的回归锚：
+%% in_reply_to / reason 仍判不可无损并回退 JSON（client_ack_error 语义不变）。
+ctrl_fields_pb_fallback_regression() ->
+    Msg0 = test_c2c_message(),
+    Msg = Msg0#{
+        <<"type">> => <<"CLIENT_ACK_ERROR">>,
+        <<"in_reply_to">> => <<"msg-ack-target">>,
+        <<"reason">> => <<"rate_limited">>
+    },
+    ?assertEqual(<<>>, imboy_codec:encode(protobuf, Msg)),
+    {binary, Frame} = imboy_codec:encode_ws_msg(protobuf, v2, ?FRAME_TYPE_MSG_C2C, Msg),
+    {ok, Unwrapped} = imboy_codec:unwrap_v2_frame(Frame),
+    Decoded = jsone:decode(imboy_frame:payload(Unwrapped), [{object_format, map}]),
+    ?assertEqual(<<"msg-ack-target">>, maps:get(<<"in_reply_to">>, Decoded)),
+    ?assertEqual(<<"rate_limited">>, maps:get(<<"reason">>, Decoded)),
+    ?assertEqual(<<"CLIENT_ACK_ERROR">>, maps:get(<<"type">>, Decoded)).
+
+%% @doc 垃圾 protobuf 字节：decode 落空 map 哨兵并告警（不崩溃、不投毒）。
+garbage_pb_decode_sentinel() ->
+    ?assertEqual(#{}, imboy_codec:decode(protobuf, <<"garbage-bytes-not-proto", 0, 1, 2>>)),
+    %% 空二进制是合法 proto 帧全默认值（非错误路径）：解码不崩溃、字段为哨兵默认
+    Defaults = imboy_codec:decode(protobuf, <<>>),
+    ?assertEqual(<<>>, maps:get(<<"id">>, Defaults)),
+    ?assertEqual(0, maps:get(<<"conv_seq">>, Defaults)).
+
+%% @doc 外部服务器发来未知 MsgDirection 枚举：from_pb_map 落空串哨兵，
+%% 上层按未知类型处置（router 记日志），不崩溃、不伪装成已知方向。
+unknown_direction_enum_sentinel() ->
+    PbBin = imboy_pb:encode_msg(
+        #{
+            id => <<"msg-unknown-enum">>,
+            type => 'MSG_DIRECTION_UNSPECIFIED',
+            from => 1,
+            to => 2,
+            payload => <<"hello">>
+        },
+        'IMBoyMessage'
+    ),
+    Decoded = imboy_codec:decode(protobuf, PbBin),
+    ?assertEqual(<<"msg-unknown-enum">>, maps:get(<<"id">>, Decoded)),
+    ?assertEqual(<<>>, maps:get(<<"type">>, Decoded)),
+    ?assertEqual(<<"hello">>, maps:get(<<"payload">>, Decoded)).

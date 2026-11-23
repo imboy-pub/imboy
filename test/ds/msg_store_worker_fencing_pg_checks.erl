@@ -9,6 +9,7 @@
 %%  - stale owner 的 complete_staged 回滚，绝不触发 ACK 清理
 %%  - 新 owner 完成成功且 ACK 清理恰好执行（游标与 ACK 一致）
 %%  - 全程无永久滞留、无重复业务效果
+%%  - 持久受理进程退出且从未发 kick，新 worker 仅依靠周期 tick 恢复
 -module(msg_store_worker_fencing_pg_checks).
 -export([run/1]).
 -include_lib("eunit/include/eunit.hrl").
@@ -40,6 +41,7 @@ run(ConnOpts0) ->
         new_owner_completes_and_cleans_ack(Verify, Slow),
         worker_skips_expired_row_entirely(Verify),
         assert_no_permanent_stall(Verify),
+        committed_stage_recovers_without_kick(Verify),
         io:format("MSG_STORE_WORKER_FENCING_PG_CHECKS=PASS~n"),
         ok
     after
@@ -242,6 +244,68 @@ drain_all(N) ->
             drain_all(N - 1)
     end.
 
+committed_stage_recovers_without_kick(C) ->
+    MsgId = <<"fence-no-kick-1">>,
+    undefined = whereis(msg_store_worker),
+    Timestamp = elib_dt:to_rfc3339(elib_dt:millisecond(), millisecond, "Z"),
+    {Sender, Monitor} = spawn_monitor(fun() ->
+        Result = msg_store_repo:stage(
+            <<"s2c">>, MsgId, <<>>, <<"probe">>, null, <<"{}">>, 1, 79, Timestamp, Timestamp
+        ),
+        exit({accept_result, Result})
+    end),
+    receive
+        {'DOWN', Monitor, process, Sender, {accept_result, {ok, Id}}} when is_integer(Id) ->
+            ok;
+        {'DOWN', Monitor, process, Sender, Reason} ->
+            error({unexpected_accept_result, Reason})
+    after 5000 ->
+        exit(Sender, kill),
+        demonitor(Monitor, [flush]),
+        error(accept_timeout)
+    end,
+    ?assertEqual(
+        [{true, true}],
+        rows(
+            C,
+            "SELECT processed_at IS NULL,accepted_at IS NOT NULL FROM msg_store_staging WHERE msg_id=$1",
+            [MsgId]
+        )
+    ),
+    ?assertEqual(0, scalar(C, "SELECT count(*) FROM msg_s2c WHERE msg_id=$1", [MsgId])),
+    ok = application:set_env(imboy, msg_store_worker_tick_ms, 50),
+    try
+        {ok, _Worker} = msg_store_worker:start_link(),
+        await_completed(C, MsgId, 100),
+        ?assertEqual(1, scalar(C, "SELECT count(*) FROM msg_s2c WHERE msg_id=$1", [MsgId])),
+        io:format("FENCING_COMMITTED_STAGE_RECOVERS_WITHOUT_KICK=PASS~n")
+    after
+        try
+            stop_worker()
+        after
+            ok = application:set_env(imboy, msg_store_worker_tick_ms, 0)
+        end
+    end.
+
+await_completed(_C, _MsgId, 0) ->
+    error(periodic_recovery_timeout);
+await_completed(C, MsgId, Attempts) ->
+    case
+        rows(
+            C, "SELECT processed_at IS NOT NULL,error_msg FROM msg_store_staging WHERE msg_id=$1", [
+                MsgId
+            ]
+        )
+    of
+        [{true, null}] ->
+            ok;
+        [{false, null}] ->
+            timer:sleep(50),
+            await_completed(C, MsgId, Attempts - 1);
+        Other ->
+            error({unexpected_periodic_recovery_state, Other})
+    end.
+
 %% ================= fixtures =================
 
 create_schema(C) ->
@@ -283,6 +347,8 @@ create_schema(C) ->
         "ALTER TABLE msg_store_staging ADD COLUMN accepted_at timestamptz,ADD COLUMN expire_at timestamptz",
         []
     ),
+    {ok, ReplyDdl} = file:read_file("priv/migrations/00000282_c2c_reply_staging.up.sql"),
+    {ok, [], []} = epgsql:squery(C, ReplyDdl),
     ok.
 
 seed_staging_rows(C, N, Prefix) ->

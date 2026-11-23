@@ -145,7 +145,12 @@ cleanup_now_with_expired_test() ->
                 {ok, none}
             ]
         ),
-        meck:expect(user_deletion_job_repo, mark_completed, fun(_Id) -> {ok, 1} end),
+        meck:expect(user_deletion_job_repo, lock_execution_tx, fun(mock_conn, _Uid, _Id, _Job, 60) ->
+            {ok, #{<<"status">> => <<"requested">>, <<"approved_at">> => null}}
+        end),
+        meck:expect(user_deletion_job_repo, mark_completed_tx, fun(mock_conn, _Id, _Snapshot) ->
+            ok
+        end),
         meck:expect(
             user_deletion_executor,
             collect_attachment_keys_tx,
@@ -175,7 +180,7 @@ cleanup_now_with_expired_test() ->
                     ?assertEqual(2, Count),
                     %% 验证核心删除与主事务各被调用两次（两个任务）
                     ?assertEqual(2, meck:num_calls(user_deletion_executor, execute_main_tx, 2)),
-                    ?assertEqual(2, meck:num_calls(user_deletion_job_repo, mark_completed, 1))
+                    ?assertEqual(2, meck:num_calls(user_deletion_job_repo, mark_completed_tx, 3))
                 after
                     gen_server:stop(Pid)
                 end;

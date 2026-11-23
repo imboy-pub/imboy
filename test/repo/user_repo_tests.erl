@@ -725,3 +725,79 @@ select_by_where_large_offset_test_() ->
             end
         end
     ).
+
+region_selection_migration_test_() ->
+    {timeout, 1800,
+        {setup,
+            fun() ->
+                inttest_marker_db:provision(#{
+                    env_prefix => <<"M03REGION">>, migration_target => 285
+                })
+            end,
+            fun inttest_marker_db:release/1, fun(#{conn := Conn}) ->
+                ?_test(region_selection_roundtrip(Conn))
+            end}}.
+
+region_selection_roundtrip(Conn) ->
+    Version = 286,
+    Migrations = #{conn => Conn, dir => "priv/migrations", strict => true},
+    {ok, 285, false} = erlang_migrate:version(Migrations),
+    Uid = 124707737620973568,
+    Old = <<"  oldregiontoken  ">>,
+    New = <<"newregiontoken">>,
+    Legacy = <<"legacyregiontoken">>,
+    Choice =
+        <<
+            "{\"protocolVersion\":\"1.0\",\"datasetId\":\"synthetic\",\"countryCode\":\"CN\","
+            "\"dataRevision\":\"s-0123456789abcdef\",\"pathIds\":[\"cc:CN\"]}"
+        >>,
+    {ok, 1} = epgsql:equery(
+        Conn,
+        <<
+            "INSERT INTO public.\"user\"(id,account,nickname,password,reg_ip,reg_cosv,region) "
+            "VALUES ($1,'m03-migration-probe','m03probe','unused','127.0.0.1','qa-probe',$2)"
+        >>,
+        [Uid, Old]
+    ),
+    ok = region_selection_migration_result(erlang_migrate:goto(Migrations, Version)),
+    {ok, Version, false} = erlang_migrate:version(Migrations),
+    StateSql = <<
+        "SELECT region, region_selection IS NOT NULL, region_selection_legacy "
+        "FROM public.\"user\" WHERE id=$1"
+    >>,
+    {ok, _, [{Old, false, null}]} = epgsql:equery(Conn, StateSql, [Uid]),
+    {ok, 1} = epgsql:equery(
+        Conn,
+        <<"UPDATE public.\"user\" SET region=$2, region_selection=$3::jsonb, region_selection_legacy=$2 WHERE id=$1">>,
+        [Uid, New, Choice]
+    ),
+    WriteLegacy = <<"UPDATE public.\"user\" SET region=$2 WHERE id=$1">>,
+    {ok, 1} = epgsql:equery(Conn, WriteLegacy, [Uid, New]),
+    {ok, _, [{New, true, New}]} = epgsql:equery(Conn, StateSql, [Uid]),
+    {error, {error, error, <<"23514">>, check_violation, _, Fields}} =
+        epgsql:equery(
+            Conn,
+            <<"UPDATE public.\"user\" SET region_selection_legacy='badbinding' WHERE id=$1">>,
+            [Uid]
+        ),
+    ?assertEqual(
+        <<"ck_user_region_selection_binding">>, proplists:get_value(constraint_name, Fields)
+    ),
+    {ok, _, [{New, true, New}]} = epgsql:equery(Conn, StateSql, [Uid]),
+    FtsSql = <<"SELECT token @@ to_tsquery('simple',$2) FROM public.fts_user WHERE user_id=$1">>,
+    {ok, _, [{true}]} = epgsql:equery(Conn, FtsSql, [Uid, New]),
+    {ok, 1} = epgsql:equery(Conn, WriteLegacy, [Uid, Legacy]),
+    {ok, _, [{Legacy, false, null}]} = epgsql:equery(Conn, StateSql, [Uid]),
+    ok = region_selection_migration_result(erlang_migrate:down(Migrations, 1)),
+    {ok, 285, false} = erlang_migrate:version(Migrations),
+    {ok, _, [{Legacy}]} = epgsql:equery(
+        Conn, <<"SELECT region FROM public.\"user\" WHERE id=$1">>, [Uid]
+    ),
+    {ok, _, [{true}]} = epgsql:equery(Conn, FtsSql, [Uid, Legacy]),
+    ok = region_selection_migration_result(erlang_migrate:goto(Migrations, Version)),
+    {ok, Version, false} = erlang_migrate:version(Migrations),
+    {ok, _, [{Legacy, false, null}]} = epgsql:equery(Conn, StateSql, [Uid]),
+    ok.
+
+region_selection_migration_result(ok) -> ok;
+region_selection_migration_result({ok, _}) -> ok.

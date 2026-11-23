@@ -24,7 +24,7 @@
 -export([lookup/3]).
 
 -export([update_friends_last_seen_at/2]).
--export([update_moderated_field/4]).
+-export([update_moderated_field/4, update_region_selection/3]).
 -export([may_exist/1]).
 
 %% ===================================================================
@@ -307,6 +307,15 @@ save(Data) ->
 update(Id, Data) ->
     Tb = tablename(),
     elib_pg:update(Tb, Data, <<"id = $1">>, [Id]).
+
+%% The old string and its validated selection share one SQL statement.
+-spec update_region_selection(pos_integer(), binary(), map()) ->
+    {ok, non_neg_integer()} | {error, term()}.
+update_region_selection(Uid, Region, Selection) ->
+    Sql =
+        <<"UPDATE ", (tablename())/binary,
+            " SET region=$2,region_selection_legacy=$2,region_selection=$3::jsonb WHERE id=$1">>,
+    elib_pg:execute_count(Sql, [Uid, Region, jsone:encode(Selection)]).
 
 %% @doc 删除用户（软删除）
 %% @param Id 用户ID

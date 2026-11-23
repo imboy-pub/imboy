@@ -17,6 +17,12 @@
 -export([extract_reply_info/1]).
 %% 透明 AI 豁免明文门（导出供 EUnit 直测）
 -export([validate_agent_peer_c2c_write/5]).
+%% BE-04:LOCAL:03 服务端可信时间窗规则的唯一判定点；导出供真库测试
+%% 直接约束边界语义（== 窗口在窗内，> 窗口过期）与低可信回退行为。
+-export([trusted_window_decision/2]).
+-ifdef(TEST).
+-export([trusted_window_decision/3]).
+-endif.
 
 -include("chat.hrl").
 -include("log.hrl").
@@ -28,7 +34,7 @@
 %% 抑制 Dialyzer 警告 - 内部辅助函数
 -dialyzer(
     {nowarn_function, [
-        c2c/3, c2c/4, c2c_send/5, prepare_c2c_data/2, stage_and_send_c2c/11, set_c2c_expire_at/2
+        c2c/3, c2c/4, c2c_send/5, prepare_c2c_data/2, stage_and_send_c2c/11
     ]}
 ).
 
@@ -279,93 +285,44 @@ stage_and_send_c2c(
     %% 的 C2C 路径必须同步补门（含 agent 豁免语义），否则又是一个绕过口。
     case validate_agent_peer_c2c_write(ToId, MsgType, Action, E2EE, PayloadJson) of
         ok ->
-            % 提取引用回复信息
-            {ReplyToMsgId, ReplyToFromId, ReplySnippet} = extract_reply_info(Data),
-
-            % 【关键修复】先备份到 staging 表（同步，确保消息安全）
-            % T1.2：暂存路径决策退化为外壳调用 message_policy:reply_mode/1
+            StageArgs = [
+                <<"c2c">>,
+                MsgId,
+                MsgType,
+                Action,
+                E2EE,
+                PayloadJson,
+                CurrentUid,
+                ToId,
+                CreatedAtRfc,
+                NowTs,
+                SenderDid,
+                AcceptedAtRfc,
+                ExpireAtRfc
+            ],
+            ReplyReference = reply_reference(Data, MsgType, Payload),
             StageResult =
-                case message_policy:reply_mode({ReplyToMsgId, ReplyToFromId, ReplySnippet}) of
+                case ReplyReference of
                     none ->
-                        % 没有引用信息，使用常规方式
-                        msg_store_ds:stage_with_sequence(
-                            <<"c2c">>,
-                            MsgId,
-                            MsgType,
-                            Action,
-                            E2EE,
-                            PayloadJson,
-                            CurrentUid,
-                            ToId,
-                            CreatedAtRfc,
-                            NowTs,
-                            SenderDid,
-                            AcceptedAtRfc,
-                            ExpireAtRfc
-                        );
-                    {reply, _, _, _} ->
-                        % 有引用信息，需要先验证被引用的消息是否存在
-                        case msg_c2c_ds:find_msg_by_id(ReplyToMsgId) of
-                            {ok, _OriginalMsg} ->
-                                msg_store_ds:stage_with_sequence(
-                                    <<"c2c">>,
-                                    MsgId,
-                                    MsgType,
-                                    Action,
-                                    E2EE,
-                                    PayloadJson,
-                                    CurrentUid,
-                                    ToId,
-                                    CreatedAtRfc,
-                                    NowTs,
-                                    SenderDid,
-                                    AcceptedAtRfc,
-                                    ExpireAtRfc
-                                );
-                            {error, not_found} ->
-                                % 被引用的消息不存在，直接返回错误 reply（不使用 self() ! 副作用）
+                        apply(msg_store_ds, stage_with_sequence, StageArgs);
+                    {ok, Id} ->
+                        case
+                            apply(
+                                msg_store_ds,
+                                stage_with_sequence,
+                                StageArgs ++ [{Id, fun reply_snippet/1}]
+                            )
+                        of
+                            {error, reply_source_not_found} ->
                                 {reply, message_ds:assemble_s2c(MsgId, <<"msg_not_found">>, To)};
-                            {error, Reason} ->
-                                % 兼容旧库结构：回复校验查询失败时降级为“跳过严格校验”，避免消息发送流程崩溃
-                                ok = ?ERROR_LOG(
-                                    "[C2C_REPLY_LOOKUP_FAILED] MsgId=~s, ReplyToMsgId=~s, Reason=~p~n",
-                                    [MsgId, ReplyToMsgId, Reason]
-                                ),
-                                msg_store_ds:stage_with_sequence(
-                                    <<"c2c">>,
-                                    MsgId,
-                                    MsgType,
-                                    Action,
-                                    E2EE,
-                                    PayloadJson,
-                                    CurrentUid,
-                                    ToId,
-                                    CreatedAtRfc,
-                                    NowTs,
-                                    SenderDid,
-                                    AcceptedAtRfc,
-                                    ExpireAtRfc
-                                );
-                            Other ->
-                                ok = ?ERROR_LOG(
-                                    "[C2C_REPLY_LOOKUP_UNEXPECTED] MsgId=~s, ReplyToMsgId=~s, Result=~p~n",
-                                    [MsgId, ReplyToMsgId, Other]
-                                ),
-                                msg_store_ds:stage_with_sequence(
-                                    <<"c2c">>,
-                                    MsgId,
-                                    MsgType,
-                                    Action,
-                                    E2EE,
-                                    PayloadJson,
-                                    CurrentUid,
-                                    ToId,
-                                    CreatedAtRfc,
-                                    NowTs,
-                                    SenderDid,
-                                    AcceptedAtRfc
-                                )
-                        end
+                            {error, ReplyError} ->
+                                _ = ?ERROR_LOG([c2c_reply_stage_failed, MsgId, ReplyError]),
+                                {error, reply_stage_failed};
+                            Stage ->
+                                Stage
+                        end;
+                    invalid ->
+                        {reply, message_ds:assemble_s2c(MsgId, <<"msg_not_found">>, To)}
                 end,
 
             elib_log:info(["stage_and_send_c2c", StageResult]),
@@ -389,93 +346,27 @@ stage_and_send_c2c(
                             <<"conv_seq">> => ConvSeq
                         }},
 
-                    % 持久化侧（可安全重放：staging/正式表写入均幂等）
-                    elib_async:async_retry(
-                        fun() ->
-                            % ① 先入队（异步，立即返回）
-                            EnqueueData = #{
-                                payload => Payload,
-                                from_id => CurrentUid,
-                                to_id => ToId,
-                                created_at => CreatedAtRfc,
-                                server_ts => NowTs
-                            },
-                            msg_store_ds:enqueue(<<"c2c">>, MsgId, EnqueueData),
-
-                            % ② 如果有引用信息，使用 write_msg_with_reply 存储
-                            % T1.2：复用纯函数 message_policy:reply_mode/1 判定
-                            case
-                                message_policy:reply_mode(
-                                    {ReplyToMsgId, ReplyToFromId, ReplySnippet}
-                                )
-                            of
-                                none ->
-                                    % 没有引用信息，使用常规入队
-                                    ok;
-                                {reply, _, _, _} ->
-                                    % 有引用信息，存储到数据库
-                                    %% RT-P3-03 续：CreatedAt 必须与 enqueue/staging 使用同一时间串（CreatedAtRfc）。
-                                    % 此前传 NowTs 毫秒经 to_rfc3339 与 staging 的精度不一致，
-                                    % 唯一键 (msg_id, created_at) 永不碰撞，双写各插一行。
-                                    % 复用同一 RFC 串后两路碰撞，由补洞子句收敛为一行。
-                                    %% R03/D04：AcceptedAtRfc 与 staging 行同一值——无论 reply
-                                    %% 直写与 worker 转正谁先落库，(msg_id, created_at) 冲突
-                                    %% 子句只补 reply 三列/sender_did，accepted_at 均保持首次
-                                    %% 插入者的同一接受值（两种先后顺序同结果，R03-3）。
-                                    msg_c2c_ds:write_msg_with_reply(
-                                        CreatedAtRfc,
-                                        MsgId,
-                                        PayloadJson,
-                                        CurrentUid,
-                                        ToId,
-                                        CreatedAtRfc,
-                                        MsgType,
-                                        E2EE,
-                                        ReplyToMsgId,
-                                        ReplyToFromId,
-                                        ReplySnippet,
-                                        AcceptedAtRfc,
-                                        ExpireAtRfc
-                                    )
-                            end,
-
-                            % ③ 消息自毁兜底：staging 行已在接受事务内携带期限
-                            % （ExpireAtRfc），worker 转正时搬运；本 UPDATE 只兜底
-                            % 补齐"reply 直写先落正式表"的窄窗（R05-A）。期限不再
-                            % 用客户端 created_at 重算——重试/重复不延长期限。
-                            case ExpireAtRfc of
-                                null ->
-                                    ok;
-                                _ ->
-                                    case set_c2c_expire_at(MsgId, ExpireAtRfc) of
-                                        {ok, _} ->
-                                            ok;
-                                        {error, SetReason} ->
-                                            %% 不吞错：staging/worker 主路径仍会
-                                            %% 搬运期限，但此处显式记录失败。
-                                            ?ERROR_LOG([
-                                                msg_c2c_set_expire_at_failed, MsgId, SetReason
-                                            ]),
-                                            ok
-                                    end
-                            end
-                        end,
-                        3,
-                        1000
-                    ),
+                    msg_store_ds:enqueue(<<"c2c">>, MsgId, #{}),
 
                     % 投递侧（不纳入重放边界：QoS 有自己的 ACK 重试链，
                     % 与持久化同闭包整体重放会把已成功的实时投递再推一次）
                     elib_async:async(
                         fun() ->
+                            Snapshot = c2c_delivery_snapshot(
+                                MsgId, CurrentUid, ToId, MsgType, ReplyReference
+                            ),
+                            DeliveryPayload = delivery_reply_payload(Payload, Snapshot),
+                            ReplySource = msg_c2c_ds:public_reply_source(MsgType, Snapshot),
                             Msg0 = message_ds:assemble_msg(
-                                <<"C2C">>, From, To, Payload, MsgId, MsgType, Action, E2EE
+                                <<"C2C">>, From, To, DeliveryPayload, MsgId, MsgType, Action, E2EE
                             ),
                             % 带上服务端验证过的发送者设备标识（信封顶层）。
                             % 接收侧 PFv3 context binding 第 6 项拿它与受认证的
                             % protected_header.sender_did 硬比对；不带 = 每条
                             % C2C v3 消息都判 context_mismatch_sender_did。
-                            Msg = (message_ds:with_sender_device(Msg0, Data))#{
+                            Msg = (maps:merge(
+                                message_ds:with_sender_device(Msg0, Data), ReplySource
+                            ))#{
                                 <<"conv_seq">> => ConvSeq,
                                 <<"created_at">> => maps:get(<<"created_at">>, Data)
                             },
@@ -489,7 +380,7 @@ stage_and_send_c2c(
                             ),
                             % 离线推送（异步，不阻塞消息投递）
                             push_notification_logic:maybe_push_for_c2c(
-                                CurrentUid, ToId, MsgType, Payload
+                                CurrentUid, ToId, MsgType, DeliveryPayload
                             )
                         end
                     ),
@@ -668,27 +559,10 @@ c2c_revoke(MsgId, CurrentUid, Data) ->
                                                 )
                                             of
                                                 ok ->
-                                                    case
-                                                        persist_action_accept(
-                                                            OriginalMsgId,
-                                                            MsgId,
-                                                            CurrentUid,
-                                                            ToId,
-                                                            <<"revoke">>,
-                                                            null
-                                                        )
-                                                    of
-                                                        ok ->
-                                                            cancel_revoke_delivery_timers(
-                                                                ToId, OriginalMsgId
-                                                            ),
-                                                            {reply, RevokeMsg};
-                                                        {error, _} ->
-                                                            {reply,
-                                                                message_ds:assemble_s2c(
-                                                                    MsgId, <<"internal_error">>, To
-                                                                )}
-                                                    end;
+                                                    cancel_revoke_delivery_timers(
+                                                        ToId, OriginalMsgId
+                                                    ),
+                                                    {reply, RevokeMsg};
                                                 {error, _} ->
                                                     {reply,
                                                         message_ds:assemble_s2c(
@@ -885,6 +759,10 @@ do_c2c_edit_plain(MsgId, CurrentUid, Data) ->
                                 ToId, MsgId, EditMsg, <<"c2s">>
                             ),
                             {reply, EditMsg};
+                        %% BE-04：撤回终态后受理被拒 = 显式冲突，非内部错误
+                        {error, revoked} ->
+                            {reply,
+                                revoked_edit_error_reply(MsgId, From, To, OriginalMsgId, NowMS)};
                         {error, _} ->
                             {reply, message_ds:assemble_s2c(MsgId, <<"internal_error">>, To)}
                     end;
@@ -945,6 +823,10 @@ do_c2c_encrypted_edit(MsgId, CurrentUid, Data, OriginalMsgId) ->
                                 ToId, MsgId, EditMsg, <<"c2s">>
                             ),
                             {reply, EditMsg};
+                        %% BE-04：撤回终态后受理被拒 = 显式冲突，非内部错误
+                        {error, revoked} ->
+                            {reply,
+                                revoked_edit_error_reply(MsgId, From, To, OriginalMsgId, NowMS)};
                         {error, _} ->
                             {reply, message_ds:assemble_s2c(MsgId, <<"internal_error">>, To)}
                     end;
@@ -975,6 +857,12 @@ do_c2c_encrypted_edit(MsgId, CurrentUid, Data, OriginalMsgId) ->
                             of
                                 ok ->
                                     {reply, EditMsg};
+                                %% BE-04：撤回终态后受理被拒 = 显式冲突，非内部错误
+                                {error, revoked} ->
+                                    {reply,
+                                        revoked_edit_error_reply(
+                                            MsgId, From, To, OriginalMsgId, NowMS
+                                        )};
                                 {error, _} ->
                                     {reply,
                                         message_ds:assemble_s2c(
@@ -1047,7 +935,11 @@ c2c_edit_window_check(OriginalMsgId, CurrentUid, Recipient) ->
 -spec trusted_window_decision(map(), integer()) ->
     ok | {expired, integer()} | {no_time_source, integer()}.
 trusted_window_decision(MsgData, WindowMs) when WindowMs > 0 ->
-    NowMs = elib_dt:millisecond(),
+    trusted_window_decision(MsgData, WindowMs, elib_dt:millisecond());
+trusted_window_decision(_MsgData, _WindowMs) ->
+    ok.
+
+trusted_window_decision(MsgData, WindowMs, NowMs) ->
     case msg_store_repo:resolve_accepted_ms(MsgData) of
         {ok, BaseMs, _Trust} ->
             case NowMs - BaseMs > WindowMs of
@@ -1056,9 +948,7 @@ trusted_window_decision(MsgData, WindowMs) when WindowMs > 0 ->
             end;
         {error, no_time_source} ->
             {no_time_source, NowMs}
-    end;
-trusted_window_decision(_MsgData, _WindowMs) ->
-    ok.
+    end.
 
 %% @private 编辑时间窗（毫秒），env msg_edit_window_seconds，默认 86400 秒；<=0 不限
 -spec msg_edit_window_ms() -> integer().
@@ -1315,6 +1205,51 @@ c2c_input(MsgId, CurrentUid, Data) ->
 %% Internal Function Definitions
 %% ===================================================================
 
+c2c_delivery_snapshot(MsgId, From, To, MsgType, ReplyReference) when
+    MsgType =:= <<"quote">>; ReplyReference =/= none
+->
+    Snapshots = msg_c2c_ds:visible_reply_snippets([MsgId]),
+    maps:get({MsgId, From, To}, Snapshots, null);
+c2c_delivery_snapshot(_MsgId, _From, _To, _MsgType, _ReplyReference) ->
+    not_a_reply.
+
+delivery_reply_payload(Payload, not_a_reply) ->
+    Payload;
+delivery_reply_payload(Payload, Snapshot) ->
+    msg_c2c_ds:redact_reply_payload(Payload, Snapshot).
+
+reply_reference(Data, MsgType, Payload) ->
+    case maps:get(<<"reply_to">>, Data, undefined) of
+        undefined when MsgType =:= <<"quote">> ->
+            legacy_quote_reference(Payload);
+        undefined ->
+            none;
+        #{<<"msg_id">> := Id} when is_binary(Id), byte_size(Id) > 0, byte_size(Id) =< 50 ->
+            {ok, Id};
+        _ ->
+            invalid
+    end.
+
+legacy_quote_reference(#{<<"quote_msg">> := #{<<"id">> := Id}}) when
+    is_binary(Id), byte_size(Id) > 0, byte_size(Id) =< 50
+->
+    {ok, Id};
+legacy_quote_reference(Bin) when is_binary(Bin) ->
+    case jsone:try_decode(Bin, [{object_format, map}]) of
+        {ok, Payload, <<>>} when is_map(Payload) -> legacy_quote_reference(Payload);
+        _ -> none
+    end;
+legacy_quote_reference(_Payload) ->
+    none.
+
+reply_snippet(Source) ->
+    case maps:get(<<"e2ee">>, Source, null) of
+        Value when Value =:= null; Value =:= undefined; Value =:= <<>> ->
+            extract_snippet_plain(Source);
+        _ ->
+            <<"[encrypted]"/utf8>>
+    end.
+
 %% @doc 从消息数据中提取引用回复信息
 %% @param Data 消息数据
 %% @return {ReplyToMsgId, ReplyToFromId, ReplySnippet}
@@ -1336,21 +1271,7 @@ extract_reply_info(Data) ->
                     _ ->
                         case msg_c2c_ds:find_msg_by_id(ReplyToMsgId) of
                             {ok, OriginalMsg} ->
-                                %% RT-P2-05 / RT-P3-03（2026-08-27）：引用的若为
-                                %% E2EE 消息，摘要一律落固定占位，不再依赖能否
-                                %% 解码（decode 成功的外壳 JSON 也无明文 content）。
-                                %% jsonb 经驱动可能返回文本 binary 或 map，
-                                %% 故用「存在且非空」而非结构判定。
-                                case maps:get(<<"e2ee">>, OriginalMsg, undefined) of
-                                    Undefined when
-                                        Undefined =:= undefined;
-                                        Undefined =:= null;
-                                        Undefined =:= <<>>
-                                    ->
-                                        extract_snippet_plain(OriginalMsg);
-                                    _ ->
-                                        <<"[encrypted]"/utf8>>
-                                end;
+                                reply_snippet(OriginalMsg);
                             _ ->
                                 <<>>
                         end
@@ -1360,38 +1281,31 @@ extract_reply_info(Data) ->
             {<<>>, 0, <<>>}
     end.
 
-%% @private 非 E2EE 行的原有摘要提取逻辑（decode 失败退回 payload 头部截取，
-%% 仅适用于历史遗留的非加密行）
+%% Only plain messages can contribute a server-side quote preview.
 extract_snippet_plain(OriginalMsg) ->
     Payload = maps:get(<<"payload">>, OriginalMsg, <<>>),
-    try jsone:decode(Payload) of
-        PayloadMap when is_map(PayloadMap) ->
-            Content = maps:get(<<"content">>, PayloadMap, <<>>),
-            Snippet = binary:part(Content, {0, min(byte_size(Content), 50)}),
-            case byte_size(Content) > 50 of
-                true -> <<Snippet/binary, "..."/utf8>>;
-                false -> Snippet
-            end;
+    Content =
+        try jsone:decode(Payload) of
+            PayloadMap when is_map(PayloadMap) ->
+                maps:get(<<"content">>, PayloadMap, maps:get(<<"text">>, PayloadMap, <<>>));
+            Plain when is_binary(Plain) -> Plain;
+            _ ->
+                <<>>
+        catch
+            _:_ -> Payload
+        end,
+    case is_binary(Content) andalso unicode:characters_to_list(Content) of
+        Chars when is_list(Chars) ->
+            {Prefix, Rest} = lists:split(min(length(Chars), 50), Chars),
+            unicode:characters_to_binary(
+                case Rest of
+                    [] -> Prefix;
+                    _ -> Prefix ++ "..."
+                end
+            );
         _ ->
             <<>>
-    catch
-        _:_ ->
-            Snippet = binary:part(Payload, {0, min(byte_size(Payload), 50)}),
-            case byte_size(Payload) > 50 of
-                true -> <<Snippet/binary, "..."/utf8>>;
-                false -> Snippet
-            end
     end.
-
-%% @doc 设置C2C消息的自毁时间
-%% @param MsgId 消息ID
-%% @param ExpireAt 过期时间（RFC3339 binary）
-%% R05-A：返回 {ok, Count} | {error, Reason}——Count=0 表示未命中或已有
-%% 期限（不覆盖）；错误由调用方记录（不再吞成 ok）。
--spec set_c2c_expire_at(binary(), binary()) ->
-    {ok, non_neg_integer()} | {error, term()}.
-set_c2c_expire_at(MsgId, ExpireAt) ->
-    msg_c2c_ds:set_expire_at(MsgId, ExpireAt).
 
 %% @doc 持久化服务端受理事实。只有成功落库后才把 action 视为已受理。
 -spec persist_action_accept(binary(), binary(), integer(), integer(), binary(), binary() | null) ->
@@ -1400,6 +1314,29 @@ persist_action_accept(OriginalMsgId, RequestId, RequestUid, PeerUid, Action, Con
     msg_c2c_ds:accept_action(
         RequestId, OriginalMsgId, RequestUid, PeerUid, Action, ContentHash
     ).
+
+%% BE-04：编辑撞撤回终态的显式冲突回执（受理被拒 ≠ 内部错误，两端交互一致）。
+%% error_code.hrl 不在本卡写集；code 复用撤回语义族 409（?ERR_REVOKE_TIMEOUT），
+%% payload.error 文本区分场景（与 ERR_MSG_TIME_SOURCE_MISSING 的先例一致）。
+-spec revoked_edit_error_reply(
+    binary(), binary() | integer(), binary() | integer(), binary(), integer()
+) -> map().
+revoked_edit_error_reply(MsgId, From, To, OriginalMsgId, NowMS) ->
+    #{
+        <<"id">> => MsgId,
+        <<"type">> => <<"C2C">>,
+        <<"from">> => From,
+        <<"to">> => To,
+        <<"msg_type">> => <<"custom">>,
+        <<"action">> => <<"message_edit_error">>,
+        <<"payload">> => #{
+            <<"content">> => <<>>,
+            <<"original_msg_id">> => OriginalMsgId,
+            <<"error">> => <<"消息已撤回，无法编辑"/utf8>>,
+            <<"code">> => ?ERR_REVOKE_TIMEOUT
+        },
+        <<"server_ts">> => NowMS
+    }.
 
 content_sha256(Content) when is_binary(Content) ->
     binary:encode_hex(crypto:hash(sha256, Content), lowercase);

@@ -395,24 +395,12 @@ finish_c2g_archive(Conn, Key, Row, Data, Previous, Existing) ->
             FinalData = Data#{id => elib_tsid:generate(msg_store), conv_seq => Seq},
             {Sql, Params} = elib_pg_sql:insert(?TABLE, FinalData),
             archive_execute(Conn, Sql, Params),
-            archive_execute(Conn, <<"UPDATE public.msg_store_seq SET seq=$2 WHERE conv_key=$1">>, [
-                Key, max(Previous, Seq)
-            ]),
-            ok;
+            advance_c2g_archive_counter(Conn, Key, Previous, Seq);
         [#{<<"conv_seq">> := ExistingSeq}] ->
             Seq = c2g_archive_sequence(Conn, Row, Data, ExistingSeq),
             case same_archive(Conn, Data#{conv_seq => Seq}) of
                 {ok, [_]} ->
-                    case Seq > Previous of
-                        true ->
-                            archive_execute(
-                                Conn,
-                                <<"UPDATE public.msg_store_seq SET seq=$2 WHERE conv_key=$1">>,
-                                [Key, Seq]
-                            );
-                        false ->
-                            ok
-                    end;
+                    advance_c2g_archive_counter(Conn, Key, Previous, Seq);
                 {ok, _} ->
                     throw({rollback, archive_replay_conflict});
                 {error, Reason} ->
@@ -421,6 +409,13 @@ finish_c2g_archive(Conn, Key, Row, Data, Previous, Existing) ->
         _ ->
             throw({rollback, archive_replay_conflict})
     end.
+
+advance_c2g_archive_counter(Conn, Key, Previous, Seq) when Seq > Previous ->
+    archive_execute(Conn, <<"UPDATE public.msg_store_seq SET seq=$2 WHERE conv_key=$1">>, [
+        Key, Seq
+    ]);
+advance_c2g_archive_counter(_Conn, _Key, _Previous, _Seq) ->
+    ok.
 
 c2g_archive_sequence(Conn, Row, Data, Default) ->
     Rows = archive_query(
@@ -510,10 +505,24 @@ same_archive(Conn, Data) ->
         server_ts
     ],
     Params = [archive_parameter(K, maps:get(K, Data)) || K <- Keys],
+    {SnapshotSql, SnapshotParams} = archive_reply_match(Data),
+    Query = <<Sql/binary, SnapshotSql/binary>>,
     case Conn of
-        undefined -> elib_pg:query(Sql, Params);
-        _ -> elib_pg:query(Conn, Sql, Params)
+        undefined -> elib_pg:query(Query, Params ++ SnapshotParams);
+        _ -> elib_pg:query(Conn, Query, Params ++ SnapshotParams)
     end.
+
+archive_reply_match(#{reply_to_msg_id := Id, reply_to_from_id := Author, reply_snippet := Snippet}) ->
+    {
+        <<
+            " AND reply_to_msg_id IS NOT DISTINCT FROM $14::varchar "
+            "AND reply_to_from_id IS NOT DISTINCT FROM $15::bigint "
+            "AND reply_snippet IS NOT DISTINCT FROM $16::text"
+        >>,
+        [Id, Author, Snippet]
+    };
+archive_reply_match(_Data) ->
+    {<<>>, []}.
 
 archive_parameter(K, Value) when (K =:= payload orelse K =:= e2ee), is_map(Value) ->
     jsone:encode(Value);
@@ -554,7 +563,8 @@ get_history(ConvKey, AfterSeq, Limit, Order) ->
         <<"SELECT msg_id, chat_type, conv_seq, msg_type, from_id, to_id, group_id, ",
             "e2ee, sender_did, payload, created_at, server_ts, accepted_at ", "FROM ",
             ?TABLE/binary, " WHERE conv_key = $1 AND conv_seq", Cmp/binary, "$2 ",
-            "ORDER BY conv_seq ", OrderBin/binary, " LIMIT $3">>,
+            "AND (expire_at IS NULL OR expire_at > NOW()) ", "ORDER BY conv_seq ", OrderBin/binary,
+            " LIMIT $3">>,
     elib_pg:query(Sql, [ConvKey, AfterSeq, Limit]).
 
 %%-------------------------------------------------------------------
@@ -587,6 +597,7 @@ get_history_batch(Cursors, Limit) ->
         ?TABLE/binary,
         " m "
         "WHERE m.conv_key = c.conv_key AND m.conv_seq > c.after_seq "
+        "AND (m.expire_at IS NULL OR m.expire_at > NOW()) "
         "ORDER BY m.conv_seq ASC LIMIT ",
         (integer_to_binary(LimitInt))/binary,
         ") h "
@@ -922,7 +933,7 @@ build_archive_data(<<"c2c">>, Row) ->
         %% R05-A：自毁绝对期限随行搬运（旧行/无自毁缺失为 null，不伪造）。
         expire_at => maps:get(<<"expire_at">>, Row, null)
     },
-    {ok, ConvKey, Data};
+    {ok, ConvKey, maps:merge(Data, archive_reply_fields(Row))};
 build_archive_data(<<"c2g">>, Row) ->
     FromId = maps:get(<<"from_id">>, Row),
     MsgId = maps:get(<<"msg_id">>, Row),
@@ -961,6 +972,15 @@ build_archive_data(<<"c2g">>, Row) ->
 build_archive_data(_OtherType, _Row) ->
     %% s2c / c2s 不归档
     skip.
+
+archive_reply_fields(#{<<"reply_to_msg_id">> := Id} = Row) when is_binary(Id), Id =/= <<>> ->
+    #{
+        reply_to_msg_id => Id,
+        reply_to_from_id => maps:get(<<"reply_to_from_id">>, Row, null),
+        reply_snippet => maps:get(<<"reply_snippet">>, Row, null)
+    };
+archive_reply_fields(_Row) ->
+    #{}.
 
 %% @private 从 payload JSON 解析 group_id
 safe_decode_group_id(Payload) ->

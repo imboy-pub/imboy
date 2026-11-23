@@ -209,7 +209,7 @@ delete_kicks_online_device_test_() ->
                 {delete, 2, fun(42, <<"did-1">>) -> ok end}
             ]},
             {imboy_cache, [
-                {flush, 1, fun(_) -> ok end}
+                {invalidate, 1, fun(_) -> ok end}
             ]},
             {imboy_syn, [
                 {list_by_uid, 1, fun(42) -> [{self(), {<<"ios">>, <<"did-1">>}}] end},
@@ -236,7 +236,7 @@ delete_offline_device_is_noop_kick_test_() ->
                 {delete, 2, fun(42, <<"did-2">>) -> ok end}
             ]},
             {imboy_cache, [
-                {flush, 1, fun(_) -> ok end}
+                {invalidate, 1, fun(_) -> ok end}
             ]},
             {imboy_syn, [
                 {list_by_uid, 1, fun(42) -> [] end},
@@ -248,3 +248,122 @@ delete_offline_device_is_noop_kick_test_() ->
             ?assertEqual(0, meck:num_calls(imboy_syn, leave, 2))
         end
     ).
+
+delete_disconnects_every_session_for_the_removed_device_test_() ->
+    ?WITH_MECKS(
+        [
+            {user_device_ds, [{delete, 2, fun(42, <<"removed">>) -> ok end}]},
+            {imboy_cache, [{invalidate, 1, fun(_) -> ok end}]},
+            {imboy_syn, [
+                {list_by_uid, 1, fun(42) ->
+                    erlang:get(device_removal_sessions)
+                end},
+                {leave, 2, fun(42, _Pid) -> ok end}
+            ]}
+        ],
+        fun() ->
+            Parent = self(),
+            StartSession = fun(Tag) ->
+                spawn(fun() ->
+                    receive
+                        {kick_device, _} -> Parent ! {kicked, Tag}
+                    end
+                end)
+            end,
+            First = StartSession(first),
+            Second = StartSession(second),
+            Other = StartSession(other),
+            put(device_removal_sessions, [
+                {First, {<<"ios">>, <<"removed">>}},
+                {Other, {<<"android">>, <<"retained">>}},
+                {Second, {<<"ios">>, <<"removed">>}}
+            ]),
+            try
+                ok = user_device_logic:delete(42, <<"removed">>),
+                receive
+                    {kicked, first} -> ok
+                after 1000 -> error(first_not_disconnected)
+                end,
+                receive
+                    {kicked, second} -> ok
+                after 1000 -> error(second_not_disconnected)
+                end,
+                ?assertEqual(2, meck:num_calls(imboy_syn, leave, 2)),
+                ?assertEqual(0, meck:num_calls(imboy_syn, leave, [42, Other]))
+            after
+                erase(device_removal_sessions),
+                exit(First, shutdown),
+                exit(Second, shutdown),
+                exit(Other, shutdown)
+            end
+        end
+    ).
+
+device_removal_state_pg_test_() ->
+    {setup,
+        fun() ->
+            {ok, Conn} = eunit_runner:eunit_setup_with_db(),
+            Conn
+        end,
+        fun eunit_runner:eunit_cleanup_db/1, fun(_) -> fun device_removal_state_pg/0 end}.
+
+device_removal_state_pg() ->
+    Uid = erlang:unique_integer([positive, monotonic]) + 1000000,
+    Target = <<"be20-remove">>,
+    Other = <<"be20-retain">>,
+    [
+        begin
+            Id = erlang:unique_integer([positive, monotonic]) + 1000000,
+            {ok, 1} = elib_pg:execute(
+                <<"INSERT INTO public.user_device(id,user_id,device_id,device_type) VALUES ($1,$2,$3,'android')">>,
+                [Id, Uid, DID]
+            )
+        end
+     || DID <- [Target, Other]
+    ],
+    Parent = self(),
+    StartSession = fun(DID) ->
+        Pid = spawn(fun() -> device_removal_session(Parent) end),
+        ok = imboy_syn:join(Uid, <<"android">>, Pid, DID),
+        Pid
+    end,
+    First = StartSession(Target),
+    Second = StartSession(Target),
+    Retained = StartSession(Other),
+    try
+        ?assert(user_device_logic:is_active(Uid, Target)),
+        ?assert(user_device_logic:is_active(Uid, Other)),
+        ok = user_device_logic:delete(Uid, Target),
+        receive
+            {removed, First} -> ok
+        after 1000 -> error(first_not_removed)
+        end,
+        receive
+            {removed, Second} -> ok
+        after 1000 -> error(second_not_removed)
+        end,
+        ?assertNot(user_device_logic:is_active(Uid, Target)),
+        ?assert(user_device_logic:is_active(Uid, Other)),
+        ?assertEqual([Other], user_device_logic:online_dids(Uid)),
+        ok = user_device_logic:delete(Uid, Target),
+        ?assertEqual([Other], user_device_logic:online_dids(Uid)),
+        Request = make_ref(),
+        Retained ! {test_message, Request},
+        receive
+            {removed, Retained} -> error(retained_device_disconnected);
+            {test_message_received, Request} -> ok
+        after 1000 -> error(retained_device_unresponsive)
+        end
+    after
+        [exit(Pid, shutdown) || Pid <- [First, Second, Retained]],
+        ok = user_device_logic:delete(Uid, Other)
+    end.
+
+device_removal_session(Parent) ->
+    receive
+        {kick_device, _} ->
+            Parent ! {removed, self()};
+        {test_message, Request} ->
+            Parent ! {test_message_received, Request},
+            device_removal_session(Parent)
+    end.

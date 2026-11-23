@@ -593,7 +593,7 @@ forward_c2g_send_rejected_propagates_error_test_() ->
                 {'check_and_record', 1, fun(_Uid) -> ok end}
             ]},
             {group_member_logic, [
-                {'check_mute', 2, fun(_Gid, _Uid) -> true end}
+                {'send_precheck', 2, fun(_Gid, _Uid) -> muted end}
             ]},
             {elib_uuid, [{'gen_v7', 0, fun() -> <<"018f0000-0000-7000-8000-000987654321">> end}]},
             {elib_dt, [
@@ -1060,5 +1060,55 @@ forward_rejects_room_key_frame_test_() ->
         fun() ->
             Result = msg_forward_logic:forward([<<"msg_123">>], 123, 789, <<"c2c">>),
             ?assertMatch({error, {invalid_param, _}}, Result)
+        end
+    ).
+
+batch_replay_returns_settled_ids_without_loading_sources_test_() ->
+    ?WITH_MECKS(
+        [
+            {friend_ds, [
+                {'check_relationship', 2, fun(789, 123) -> {true, false} end}
+            ]},
+            {msg_forward_repo, [
+                {'bind_batch', 5, fun(123, <<"batch-retry-token">>, <<"c2c">>, 789, [<<"src">>]) ->
+                    ok
+                end},
+                {'batch_result', 3, fun(123, <<"batch-retry-token">>, 1) ->
+                    {ok, <<"settled-result">>}
+                end}
+            ]},
+            {msg_c2c_ds, [
+                {'find_msg_by_id', 1, fun(_) -> error(replay_loaded_source) end}
+            ]}
+        ],
+        fun() ->
+            ?assertEqual(
+                {ok, [<<"settled-result">>]},
+                msg_forward_logic:forward([<<"src">>], 123, 789, <<"c2c">>, <<"batch-retry-token">>)
+            )
+        end
+    ).
+
+batch_conflict_stops_before_loading_sources_test_() ->
+    ?WITH_MECKS(
+        [
+            {friend_ds, [
+                {'check_relationship', 2, fun(789, 123) -> {true, false} end}
+            ]},
+            {msg_forward_repo, [
+                {'bind_batch', 5, fun(_, _, _, _, _) -> {error, forward_request_conflict} end},
+                {'batch_result', 3, fun(_, _, _) -> error(conflict_loaded_result) end}
+            ]},
+            {msg_c2c_ds, [
+                {'find_msg_by_id', 1, fun(_) -> error(conflict_loaded_source) end}
+            ]}
+        ],
+        fun() ->
+            ?assertEqual(
+                {error, forward_request_conflict},
+                msg_forward_logic:forward(
+                    [<<"changed">>], 123, 789, <<"c2c">>, <<"batch-retry-token">>
+                )
+            )
         end
     ).

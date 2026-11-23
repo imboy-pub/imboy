@@ -1,131 +1,116 @@
 -module(msg_ack_uuid_metrics_tests).
 -include_lib("eunit/include/eunit.hrl").
 
-%% No application or database: exercise the public ACK boundary in an isolated peer.
-ack_duration_accepts_uuid_v7_and_legacy_tsid_test_() ->
+ack_metrics_require_trusted_acceptance_test_() ->
     {timeout, 30, fun() ->
         pure_mock_fixture:run(fun() ->
             Now = 1800000000000,
-            Legacy = 123456789,
+            UUID = <<"01a3185c-3c78-7000-8000-000000000000">>,
             pure_mock_fixture:with_mocks(
                 [
-                    %% V3-24 G-4：emit_enterprise_delivered 的 side_effect_tx 走
-                    %% elib_pg:with_tx（peer 隔离环境无 PG，fail-safe 合同是
-                    %% 返回 error 由 side_effect_tx 吞掉，恒 ok）。
                     {elib_pg, [{with_tx, 1, fun(_) -> {error, no_pg_in_isolated_peer} end}]},
-                    {msg_operation_ds, [{ack_c2c_msg, 3, fun(_, _, _) -> {ok, 1} end}]},
+                    {msg_operation_ds, [
+                        {ack_c2c_msg, 3, fun
+                            (<<"duplicate">>, _, _) -> {ok, 0};
+                            (<<"failed">>, _, _) -> {error, <<"persistence_failed">>};
+                            (_, _, _) -> {ok, 1}
+                        end}
+                    ]},
+                    {msg_store_repo, [
+                        {find_by_msg_id, 2, fun
+                            (_, <<"staged">>) ->
+                                put(be11_ack_clock_ms, Now + 5000),
+                                row(7, Now - 1000);
+                            (_, <<"duplicate">>) ->
+                                row(7, Now - 1000);
+                            (_, <<"failed">>) ->
+                                row(7, Now - 1000);
+                            (_, <<"foreign">>) ->
+                                row(8, Now - 1000);
+                            (_, <<"read-error">>) ->
+                                erlang:error(read_unavailable);
+                            (_, _) ->
+                                {error, not_found}
+                        end},
+                        {resolve_accepted_ms, 1, fun
+                            (#{<<"accepted_at">> := null, <<"server_ts">> := Ts}) ->
+                                {ok, Ts, low_trust};
+                            (#{<<"accepted_at">> := Ts}) ->
+                                {ok, Ts, trusted}
+                        end}
+                    ]},
+                    {msg_c2c_repo, [
+                        {read_msg, 4, fun
+                            (_, _, _, [<<"persisted">>, 7]) ->
+                                formal_row(7, Now - 2000);
+                            (_, _, _, [<<"future">>, 7]) ->
+                                formal_row(7, Now + 1);
+                            (_, _, _, [<<"too-old">>, 7]) ->
+                                formal_row(7, Now - 3600001);
+                            (_, _, _, [<<"legacy">>, 7]) ->
+                                {ok, [
+                                    #{
+                                        <<"to_id">> => 7,
+                                        <<"accepted_at">> => null,
+                                        <<"server_ts">> => Now - 3000
+                                    }
+                                ]};
+                            (_, _, _, _) ->
+                                {ok, []}
+                        end}
+                    ]},
                     {elib_dt, [
-                        {millisecond, 0, fun() -> Now end},
-                        %% V3-24 G-4 webhook 链的 delivered 时间戳序列化。
+                        {millisecond, 0, fun() ->
+                            case get(be11_ack_clock_ms) of
+                                undefined -> Now;
+                                Changed -> Changed
+                            end
+                        end},
                         {to_rfc3339, 2, fun(_, _) -> <<"2026-11-05T00:00:00Z">> end}
                     ]},
-                    {elib_tsid, [{timestamp, 1, fun(Id) when Id =:= Legacy -> Now - 2000 end}]},
                     {elib_metric, [
                         {increment, 1, fun(_) -> ok end},
-                        %% V3-24 G-4：emit_enterprise_delivered → webhook 可观测
-                        %% 通道复用 elib_metric 的三参带 label 形态。
                         {increment, 3, fun(_, _, _) -> ok end},
                         {record, 2, fun(_, _) -> ok end}
                     ]}
                 ],
                 fun() ->
-                    UUID = uuid_at(Now - 1000, 7, 2),
                     Ids = [
-                        UUID,
-                        list_to_binary(string:uppercase(binary_to_list(UUID))),
-                        integer_to_binary(Legacy),
-                        Legacy
+                        <<"staged">>,
+                        <<"persisted">>,
+                        <<"duplicate">>,
+                        <<"foreign">>,
+                        <<"read-error">>,
+                        <<"future">>,
+                        <<"too-old">>,
+                        <<"legacy">>,
+                        UUID
                     ],
                     lists:foreach(
                         fun(Id) ->
-                            ok = msg_ack_logic:client_ack(<<"c2c">>, Id, 7, <<"device">>),
+                            ok = ack(Id),
                             ?assert(
                                 meck:called(msg_operation_ds, ack_c2c_msg, [Id, 7, <<"device">>])
                             )
                         end,
                         Ids
                     ),
-                    ?assertEqual(
-                        2,
-                        meck:num_calls(
-                            elib_metric,
-                            record,
-                            [imboy_msg_deliver_duration_seconds, 1.0]
-                        )
-                    ),
-                    ?assertEqual(
-                        2,
-                        meck:num_calls(
-                            elib_metric,
-                            record,
-                            [imboy_msg_deliver_duration_seconds, 2.0]
-                        )
-                    )
+                    ?assertEqual({error, <<"persistence_failed">>}, ack(<<"failed">>)),
+                    Metric = imboy_msg_deliver_duration_seconds,
+                    ?assertEqual(2, meck:num_calls(elib_metric, record, 2)),
+                    ?assert(meck:called(elib_metric, record, [Metric, 1.0])),
+                    ?assert(meck:called(elib_metric, record, [Metric, 2.0]))
                 end
             )
         end)
     end}.
 
-ack_duration_rejects_invalid_uuid_and_out_of_window_test_() ->
-    {timeout, 30, fun() ->
-        pure_mock_fixture:run(fun() ->
-            Now = 1800000000000,
-            pure_mock_fixture:with_mocks(
-                [
-                    %% V3-24 G-4：emit_enterprise_delivered 的 side_effect_tx 走
-                    %% elib_pg:with_tx（peer 隔离环境无 PG，fail-safe 合同是
-                    %% 返回 error 由 side_effect_tx 吞掉，恒 ok）。
-                    {elib_pg, [{with_tx, 1, fun(_) -> {error, no_pg_in_isolated_peer} end}]},
-                    {msg_operation_ds, [{ack_c2c_msg, 3, fun(_, _, _) -> {ok, 1} end}]},
-                    {elib_dt, [
-                        {millisecond, 0, fun() -> Now end},
-                        %% V3-24 G-4 webhook 链的 delivered 时间戳序列化。
-                        {to_rfc3339, 2, fun(_, _) -> <<"2026-11-05T00:00:00Z">> end}
-                    ]},
-                    {elib_metric, [
-                        {increment, 1, fun(_) -> ok end},
-                        %% V3-24 G-4：emit_enterprise_delivered → webhook 可观测
-                        %% 通道复用 elib_metric 的三参带 label 形态。
-                        {increment, 3, fun(_, _, _) -> ok end},
-                        {record, 2, fun(_, _) -> ok end}
-                    ]}
-                ],
-                fun() ->
-                    Valid = uuid_at(Now - 1000, 7, 2),
-                    <<Prefix:35/binary, _>> = Valid,
-                    Ids = [
-                        uuid_at(Now - 1000, 4, 2),
-                        uuid_at(Now - 1000, 7, 0),
-                        uuid_at(Now - 1000, 7, 3),
-                        <<Prefix/binary, "z">>,
-                        uuid_at(Now + 1, 7, 2),
-                        uuid_at(Now - 3600001, 7, 2),
-                        <<"d2q9i6rvp1dc73i5hhvg">>,
-                        <<"invalid">>
-                    ],
-                    lists:foreach(
-                        fun(Id) ->
-                            ok = msg_ack_logic:client_ack(<<"c2c">>, Id, 7, <<"device">>),
-                            ?assert(
-                                meck:called(msg_operation_ds, ack_c2c_msg, [Id, 7, <<"device">>])
-                            )
-                        end,
-                        Ids
-                    ),
-                    ?assertEqual(0, meck:num_calls(elib_metric, record, 2)),
-                    ?assertEqual(length(Ids), meck:num_calls(elib_metric, increment, 1))
-                end
-            )
-        end)
-    end}.
+ack(Id) ->
+    erase(be11_ack_clock_ms),
+    msg_ack_logic:client_ack(<<"c2c">>, Id, 7, <<"device">>).
 
-uuid_at(Ts, Version, Variant) ->
-    Hex = binary:encode_hex(<<Ts:48, Version:4, 0:12, Variant:2, 0:62>>),
-    <<A:8/binary, B:4/binary, C:4/binary, D:4/binary, E:12/binary>> = Hex,
-    list_to_binary(
-        string:lowercase(
-            binary_to_list(
-                <<A/binary, "-", B/binary, "-", C/binary, "-", D/binary, "-", E/binary>>
-            )
-        )
-    ).
+row(Uid, AcceptedAt) ->
+    {ok, #{<<"to_id">> => Uid, <<"accepted_at">> => AcceptedAt}}.
+
+formal_row(Uid, AcceptedAt) ->
+    {ok, [#{<<"to_id">> => Uid, <<"accepted_at">> => AcceptedAt}]}.

@@ -592,20 +592,44 @@ do_write(c2c, Row) ->
     %% R05-A：自毁绝对期限同样从 staging 行搬运（接受事务内落库）；
     %% 旧行/无自毁缺失为 null（不自毁）。
     ExpireAt = maps:get(<<"expire_at">>, Row, null),
-    Res = msg_c2c_ds:write_msg(
-        CreatedAt,
-        MsgId,
-        PayloadBin,
-        FromId,
-        ToId,
-        ServerTs,
-        MsgType,
-        E2EE,
-        SenderDid,
-        AcceptedAt,
-        ExpireAt
-    ),
-    Res;
+    case maps:get(<<"reply_to_msg_id">>, Row, null) of
+        ReplyId when is_binary(ReplyId), ReplyId =/= <<>> ->
+            msg_c2c_ds:write_msg_with_reply(
+                CreatedAt,
+                MsgId,
+                PayloadBin,
+                FromId,
+                ToId,
+                ServerTs,
+                MsgType,
+                E2EE,
+                ReplyId,
+                maps:get(<<"reply_to_from_id">>, Row, null),
+                maps:get(<<"reply_snippet">>, Row, null),
+                AcceptedAt,
+                ExpireAt,
+                SenderDid
+            );
+        _ ->
+            msg_c2c_ds:write_msg(
+                CreatedAt,
+                MsgId,
+                PayloadBin,
+                FromId,
+                ToId,
+                ServerTs,
+                MsgType,
+                E2EE,
+                SenderDid,
+                AcceptedAt,
+                ExpireAt
+            )
+    end;
+do_write(c2g, #{<<"c2g_materialized">> := true}) ->
+    %% The same acceptance transaction wrote the formal rows. Replaying here
+    %% could recreate rows that have since been removed. Archive and CAS
+    %% completion still happen in process_claimed_row/1.
+    ok;
 do_write(c2g, Row) ->
     PayloadBin = unwrap_staging_payload(maps:get(<<"payload">>, Row)),
     FromId = maps:get(<<"from_id">>, Row),

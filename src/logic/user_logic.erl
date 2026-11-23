@@ -12,6 +12,7 @@
 
 %% 注意：优先使用 Erlang 原生类型，不新增自定义类型
 
+-export([profile_region_selection/2]).
 -export([online/4]).
 -export([offline/3]).
 -export([is_online/1, is_online/2]).
@@ -130,15 +131,17 @@ apply_logout(Uid, Req0) ->
     %% elib_pg:with_tx 约定：{error,_} 返回值会穿透并 COMMIT，
     %% 业务失败必须 throw({rollback, Reason}) 触发回滚（钱路径同款）
     Ret = elib_pg:with_tx(fun(Conn) ->
-        case user_deletion_request_repo:upsert_request_tx(Conn, Uid) of
-            {ok, _} ->
-                case user_ds:mark_logout_apply_in_tx(Conn, Uid) of
+        case user_ds:mark_logout_apply_in_tx(Conn, Uid) of
+            {ok, 1} ->
+                case user_deletion_request_repo:upsert_request_tx(Conn, Uid) of
                     {ok, _} ->
                         _ = user_log_ds:add_logout_apply_log(Conn, Uid, Req0),
                         ok;
                     {error, Reason} ->
                         throw({rollback, Reason})
                 end;
+            {ok, 0} ->
+                throw({rollback, invalid_user_state});
             {error, Reason} ->
                 throw({rollback, Reason})
         end
@@ -153,21 +156,21 @@ apply_logout(Uid, Req0) ->
 %% @doc 撤销注销申请（D-01）
 %% 事务内：请求记录 requested → cancelled（仅对 requested 态生效）+
 %% 用户旗标守卫式恢复（仅 2 → 1，-1 已注销账号绝不复活）。
-%% 无活跃请求时为幂等 no-op（返回成功，语义=目标态已达成）。
+%% 正常用户重复撤销为幂等 no-op，审批或执行胜出时返回错误。
 %% @param Uid 用户ID
 %% @param _Req0 HTTP请求对象（当前未使用）
 %% @returns {ok, <<"success">>} | {error, binary()}
 -spec cancel_logout(integer(), any()) -> {ok, binary()} | {error, binary()}.
 cancel_logout(Uid, _Req0) ->
     Ret = elib_pg:with_tx(fun(Conn) ->
-        case user_deletion_request_repo:cancel_request_tx(Conn, Uid) of
-            {ok, _} ->
-                case user_ds:unmark_logout_apply_in_tx(Conn, Uid) of
-                    {ok, _} ->
-                        ok;
-                    {error, Reason} ->
-                        throw({rollback, Reason})
+        case user_ds:unmark_logout_apply_in_tx(Conn, Uid) of
+            {ok, 1} ->
+                case user_deletion_request_repo:cancel_request_tx(Conn, Uid) of
+                    {ok, _} -> ok;
+                    {error, Reason} -> throw({rollback, Reason})
                 end;
+            {ok, 0} ->
+                ok;
             {error, Reason} ->
                 throw({rollback, Reason})
         end
@@ -187,31 +190,46 @@ cancel_logout(Uid, _Req0) ->
 -spec deletion_status(integer()) -> {ok, map()} | {error, binary()}.
 deletion_status(Uid) ->
     GraceDays = application:get_env(imboy, user_deletion_retention_days, 60),
-    case user_deletion_request_repo:find_latest(Uid) of
-        {ok, undefined} ->
-            {ok, #{
-                status => not_requested,
-                grace_days => GraceDays,
-                retained_categories => retained_categories()
-            }};
+    case user_deletion_job_repo:read_status(Uid) of
         {ok, Row} ->
             Status = maps:get(<<"status">>, Row),
-            ReqAt = maps:get(<<"requested_at">>, Row),
             Base = #{
-                status => Status,
-                requested_at => ReqAt,
                 grace_days => GraceDays,
-                retained_categories => retained_categories()
+                retained_categories => retained_categories(),
+                execution => deletion_execution(Row)
             },
-            case Status of
-                <<"requested">> ->
-                    {ok, Base#{expected_deletion_at => expected_deletion_at(ReqAt, GraceDays)}};
-                _ ->
-                    {ok, Base}
-            end;
-        {error, Reason} ->
-            {error, elib_cnv:safe_to_binary(Reason)}
+            {ok, deletion_request_status(Status, Row, Base, GraceDays)};
+        {error, _Reason} ->
+            {error, <<"暂时无法读取注销状态"/utf8>>}
     end.
+
+deletion_request_status(<<"not_requested">>, _Row, Base, _GraceDays) ->
+    Base#{status => not_requested};
+deletion_request_status(Status, Row, Base, GraceDays) ->
+    ReqAt = maps:get(<<"requested_at">>, Row),
+    Response = Base#{status => Status, requested_at => ReqAt},
+    case Status of
+        <<"requested">> ->
+            Response#{expected_deletion_at => expected_deletion_at(ReqAt, GraceDays)};
+        _ ->
+            Response
+    end.
+
+deletion_execution(#{<<"execution_status">> := Status} = Row) ->
+    ExtraFields = [
+        {<<"execution_finished_at">>, finished_at},
+        {<<"request_status_at_execution">>, request_status_at_execution},
+        {<<"request_approved_at">>, request_approved_at}
+    ],
+    maps:merge(
+        #{status => Status},
+        maps:from_list([
+            {Dest, Value}
+         || {Source, Dest} <- ExtraFields,
+            Value <- [maps:get(Source, Row, undefined)],
+            is_binary(Value)
+        ])
+    ).
 
 %% @doc 删除时保留的数据类别（D-02 data-disposition 决策的对外呈现），
 %% 供 D-04 端上"保留类别公示"与 Web 说明页共用同一事实源。
@@ -367,7 +385,7 @@ find_by_ids(Ids, Column) ->
             []
     end.
 
--spec update(integer(), binary(), binary(), binary()) ->
+-spec update(integer(), binary(), binary() | map(), binary()) ->
     ok | {ok, integer() | binary() | boolean()} | {error, any()}.
 update(Uid, <<"email">>, Email, Code) when Code =/= <<>> ->
     update_identity(Uid, email, Email, Code);
@@ -376,7 +394,7 @@ update(Uid, <<"mobile">>, Mobile, Code) when Code =/= <<>> ->
 update(Uid, Field, Val, _Code) ->
     update(Uid, Field, Val).
 
--spec update(integer(), binary(), list() | binary()) ->
+-spec update(integer(), binary(), list() | binary() | map()) ->
     ok | {ok, integer() | binary() | boolean()} | {error, any()}.
 %% T3.2 退化外壳：资料字段校验委托 user_agg:validate_update/2（纯决策），
 %% 本函数仅执行 I/O（落库 / email 占用查询 / 绑定邮件）与 reject→线格式映射。
@@ -391,6 +409,8 @@ update(Uid, Field, Val) ->
         {ok, {set_allow_search, N}} ->
             %% allow_search 字段在 fts_user 表中，需要特殊处理
             user_ds:update_allow_search(Uid, N);
+        {ok, {set_region_selection, Region, Selection}} ->
+            update_region_selection(Uid, Region, Selection);
         {ok, {set_field, F, V}} ->
             update_profile(Uid, F, V);
         %% 隐私布尔开关（QA #19）：落 user_setting.setting JSONB
@@ -425,9 +445,76 @@ update(Uid, Field, Val) ->
             {error, {1, <<"">>, <<"允许搜索值必须是 1 或 2"/utf8>>}};
         {error, bad_bool} ->
             {error, {1, <<"">>, <<"值必须是 true 或 false"/utf8>>}};
+        {error, bad_region_selection} ->
+            {error, {1, <<>>, <<"Invalid region selection">>}};
         {error, unsupported_field} ->
             {error, {1, <<"">>, <<"Unsupported field">>}}
     end.
+
+%% ===================================================================
+%% Account region selection
+%% ===================================================================
+
+update_region_selection(Uid, Region, Selection) ->
+    case authoritative_region(Selection) of
+        {ok, Region} ->
+            case user_ds:update_region_selection(Uid, Region, Selection) of
+                {ok, 1} = Updated -> Updated;
+                _ -> {error, {503, <<>>, <<"Region selection unavailable">>}}
+            end;
+        {ok, _} ->
+            {error, {1, <<>>, <<"Region display does not match the authoritative path">>}};
+        {error, display_too_long} ->
+            {error, {1, <<>>, <<"Region display exceeds the compatibility length">>}};
+        {error, Error} when Error =:= unavailable; Error =:= invalid_artifact ->
+            {error, {503, <<>>, <<"Region selection unavailable">>}};
+        {error, unsupported_version} ->
+            {error, {1, <<>>, <<"Unsupported region selection version">>}};
+        {error, invalid_selection} ->
+            {error, {1, <<>>, <<"Invalid region selection">>}}
+    end.
+
+authoritative_region(Selection) ->
+    case geo_regions_ds:source_names(Selection, region_release_pin()) of
+        {ok, Names} ->
+            Trimmed = [string:trim(Name) || Name <- Names],
+            Region = iolist_to_binary(lists:join(<<" ">>, Trimmed)),
+            case lists:member(<<>>, Trimmed) orelse binary:match(Region, <<0>>) =/= nomatch of
+                true -> {error, invalid_artifact};
+                false -> check_region_length(Region)
+            end;
+        {error, _} = Error ->
+            Error
+    end.
+
+check_region_length(Region) ->
+    case length(unicode:characters_to_list(Region)) =< 80 of
+        true -> {ok, Region};
+        false -> {error, display_too_long}
+    end.
+
+profile_region_selection(Region, EncodedSelection) ->
+    Selection = decode_region_selection(EncodedSelection),
+    Check =
+        case Selection of
+            null -> absent;
+            _ -> validate_region_selection(Selection)
+        end,
+    #{
+        <<"regionSelection">> => Selection,
+        <<"regionSelectionStatus">> => user_agg:region_selection_status(Region, Check)
+    }.
+
+decode_region_selection(Selection) when is_map(Selection); Selection =:= null ->
+    Selection;
+decode_region_selection(Selection) when is_binary(Selection) ->
+    jsone:decode(Selection).
+
+validate_region_selection(Selection) ->
+    geo_regions_ds:validate(Selection, region_release_pin()).
+
+region_release_pin() ->
+    config_ds:env(geo_regions_pin, #{}).
 
 %% ===================================================================
 %% R-03.1：profile 文本公开面审核门

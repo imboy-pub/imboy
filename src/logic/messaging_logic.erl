@@ -89,7 +89,16 @@ offline(CurrentUid, Limit, C2CLastMsgAtInt, C2GLastMsgAtInt, S2CLastMsgAtInt, DI
         end,
     S2CMsgs = msg_s2c_ds:read_msg_for_device(CurrentUid, DID, Limit, S2CLastMsgAt),
 
-    ProcessedC2CMsgs = [process_message(Msg) || Msg <- C2CMsgs],
+    ProcessedC2CMsgs = [
+        process_message(
+            redact_c2c_quote(Msg, {
+                maps:get(<<"reply_to_msg_id">>, Msg, null),
+                maps:get(<<"reply_to_from_id">>, Msg, null),
+                maps:get(<<"reply_snippet">>, Msg, null)
+            })
+        )
+     || Msg <- C2CMsgs
+    ],
     ProcessedC2GMsgs = [process_message(Msg) || Msg <- C2GMsgs],
     ProcessedS2CMsgs = [process_message(Msg) || Msg <- S2CMsgs],
 
@@ -426,7 +435,42 @@ run_history_scope(CurrentUid, ChatType, PeerIdEnc, Fun) ->
 %% P1：两路径共同的下发行编码（路径2 DID 信封过滤 + 历史消息编码）。
 history_deliver_msgs(Rows, DID, CurrentUid) ->
     RowsDeliver = filter_c2c_history_for_device(Rows, DID, CurrentUid),
-    [encode_history_msg(CurrentUid, Row) || Row <- RowsDeliver].
+    Snippets = msg_c2c_ds:visible_reply_snippets([
+        Id
+     || #{<<"chat_type">> := <<"c2c">>, <<"msg_id">> := Id} <- RowsDeliver
+    ]),
+    [
+        encode_history_msg(CurrentUid, redact_history_quote(Row, Snippets))
+     || Row <- RowsDeliver
+    ].
+
+redact_history_quote(
+    #{
+        <<"chat_type">> := <<"c2c">>,
+        <<"msg_id">> := Id,
+        <<"from_id">> := From,
+        <<"to_id">> := To,
+        <<"payload">> := Payload
+    } = Row,
+    Snippets
+) ->
+    redact_c2c_quote(
+        Row#{<<"payload">> := decode_history_jsonb(Payload)},
+        maps:get({Id, From, To}, Snippets, null)
+    );
+redact_history_quote(Row, _Snippets) ->
+    Row.
+
+redact_c2c_quote(#{<<"payload">> := Payload} = Row, Snippet) ->
+    PublicRow = maps:without(
+        [<<"reply_to_from_id">>, <<"reply_to_msg_id">>, <<"reply_snippet">>], Row
+    ),
+    Source = msg_c2c_ds:public_reply_source(maps:get(<<"msg_type">>, Row, <<>>), Snippet),
+    maps:merge(
+        PublicRow#{<<"payload">> := msg_c2c_ds:redact_reply_payload(Payload, Snippet)}, Source
+    );
+redact_c2c_quote(Row, _Snippet) ->
+    Row.
 
 %% P1：两路径共同响应键（messages/next_seq/has_more/conv_key），差异键经 Extra 合并。
 history_payload(Messages, NextSeq, HasMore, ConvKey, Extra) ->

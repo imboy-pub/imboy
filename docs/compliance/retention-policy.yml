@@ -123,6 +123,7 @@ classes:
     evidence: scripts/backup_pg.sh RETENTION_DAYS=7（默认）
     status: evidence-backed
     owner: ops
+    notes: 备份为时点快照，含备份点之前未删除的数据；恢复开放访问前须重放删除编排/墓碑并核对撤权不复活（L-03）；对合成 QA 数据的恢复演练不构成生产恢复验收
 
   - id: backups_imboy_db
     description: 全库逻辑备份（pg_dump 排除敏感表，轮换）

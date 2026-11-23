@@ -170,3 +170,34 @@ get_status_test() ->
                 ?assert(is_map(Status))
         end
     end).
+
+cleanup_independent_channel_counts_test() ->
+    ?WITH_MECKS([msg_c2c_ds, msg_c2g_ds], fun() ->
+        meck:expect(msg_c2c_ds, delete_expired, fun(_, _) -> {error, synthetic_db_error} end),
+        meck:expect(msg_c2g_ds, delete_expired, fun(_, _) -> 2 end),
+        {ok, Pid} = msg_burn_logic:start_link(),
+        try
+            Report = #{
+                status => partial,
+                c2c => #{status => failed},
+                c2g => #{status => ok, cleaned => 2}
+            },
+            ?assertEqual({error, Report}, msg_burn_logic:cleanup_now()),
+            ?assertMatch(
+                #{last_cleanup_result := Report, total_cleaned := 2},
+                msg_burn_logic:get_status()
+            ),
+            meck:expect(msg_c2g_ds, delete_expired, fun(_, _) -> error(synthetic_unavailable) end),
+            ?assertMatch(
+                {error, #{
+                    status := failed,
+                    c2c := #{status := failed},
+                    c2g := #{status := failed}
+                }},
+                msg_burn_logic:cleanup_now()
+            ),
+            ?assertMatch(#{total_cleaned := 2}, msg_burn_logic:get_status())
+        after
+            gen_server:stop(Pid)
+        end
+    end).

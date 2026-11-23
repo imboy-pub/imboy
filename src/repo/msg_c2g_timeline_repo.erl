@@ -13,7 +13,7 @@
 -export([list_by_uid_since/4, list_by_uid_after/4, count_pending_after/2]).
 -export([list_by_uid_after_seq/4, count_after_seq/3]).
 -export([count_pending_by_uid/2]).
--export([count_unread_by_uid/2]).
+-export([count_unread_by_uid/2, unread_message_predicate/0]).
 -export([check_msg/1]).
 -export([count_by_to_id/1]).
 -export([delete_by_msg_id/1]).
@@ -149,6 +149,7 @@ authorized_pending_sql(Tb, Column, SinceSql, LimitParam) ->
 -spec count_unread_by_uid(integer(), integer()) -> non_neg_integer().
 count_unread_by_uid(Uid, Gid) ->
     Entitlement = micro_community_access_repo:predicate_sql(<<"grp.id">>, <<"tl.to_uid">>),
+    Visible = unread_message_predicate(),
     Tb = tablename(),
     Sql =
         <<"SELECT count(DISTINCT tl.msg_id)::integer AS count FROM ", Tb/binary, " tl ",
@@ -163,13 +164,25 @@ count_unread_by_uid(Uid, Gid) ->
             "WHERE tl.to_uid = $1 AND tl.to_gid = $2 ",
             "AND tl.conv_seq IS NOT NULL AND tl.conv_seq >= gmg.start_seq ",
             "AND tl.conv_seq > COALESCE(r.read_seq, 0) AND m.from_id <> $1 ",
-            "AND (m.expire_at IS NULL OR m.expire_at > NOW()) ",
-            "AND m.payload->>'action' IS DISTINCT FROM 'message_revoke_ack' AND ",
+            "AND (m.expire_at IS NULL OR m.expire_at > NOW()) ", "AND ", Visible/binary, " AND ",
             Entitlement/binary>>,
     case elib_pg:query(Sql, [Uid, Gid]) of
         {ok, [#{<<"count">> := Count}]} when is_integer(Count) -> Count;
         _ -> 0
     end.
+
+%% Both unread counts and read advancement use timeline alias tl and message alias m.
+-spec unread_message_predicate() -> binary().
+unread_message_predicate() ->
+    <<
+        "m.payload->>'action' IS DISTINCT FROM 'message_revoke_ack' "
+        "AND NOT EXISTS (SELECT 1 FROM public.c2g_revoke_fact rf "
+        "WHERE rf.group_id=tl.to_gid AND rf.original_msg_id=tl.msg_id) "
+        "AND NOT EXISTS (SELECT 1 FROM public.c2g_revoke_fact rf "
+        "WHERE rf.group_id=tl.to_gid AND rf.action_msg_id=tl.msg_id) "
+        "AND NOT EXISTS (SELECT 1 FROM public.c2g_forward_edit_fact ef "
+        "WHERE ef.group_id=tl.to_gid AND ef.action_msg_id=tl.msg_id)"
+    >>.
 
 % msg_c2g_timeline_repo:client_ack(109, <<"cor1aup1a20rgjtl5t8g">>).
 -spec client_ack(integer(), binary()) -> {ok, non_neg_integer()} | {error, term()}.

@@ -168,8 +168,10 @@ filter_deleted_conversations_test_() ->
         MsgList = [
             #{<<"from_id">> => 1001, <<"payload">> => <<"message1">>},
             #{<<"from_id">> => 1002, <<"payload">> => <<"message2">>},
-            #{<<"from_id">> => 1003, <<"payload">> => <<"message3">>}
+            #{<<"from_id">> => 1003, <<"payload">> => <<"message3">>},
+            #{<<"conversation_id">> => 1002, <<"conversation_type">> => <<"c2c">>}
         ],
+        SameIdGroup = #{<<"conversation_id">> => 1002, <<"conversation_type">> => <<"c2g">>},
 
         %% conversation_id must be integer (TSID bigint)
         ConversationId2 = 1002,
@@ -179,6 +181,12 @@ filter_deleted_conversations_test_() ->
         ?assertEqual(2, length(FilteredList)),
         FromIds = [maps:get(<<"from_id">>, Msg) || Msg <- FilteredList],
         ?assertEqual(false, lists:member(1002, FromIds)),
+        ?assertEqual(
+            [SameIdGroup],
+            conversation_logic:filter_deleted_conversations(Uid, [
+                lists:last(MsgList), SameIdGroup
+            ])
+        ),
 
         cleanup_mock_state()
     end).

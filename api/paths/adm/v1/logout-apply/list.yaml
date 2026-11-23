@@ -45,6 +45,22 @@ get:
                               type: string
                             user_status:
                               type: integer
+                            request_status:
+                              type: string
+                              enum: [requested, cancelled, approved, unknown]
+                              description: 优先返回当前申请状态。删除后使用保存的申请状态，无证据时为 unknown。
+                            request_approved_at:
+                              type: integer
+                              format: int64
+                              description: 有持久审批记录时返回审批 Unix 毫秒。
+                            execution_status:
+                              type: string
+                              enum: [not_started, pending, running, completed, failed]
+                              description: 用户当前的持久执行状态。completed 仅表示注销事务已完成。
+                            execution_finished_at:
+                              type: integer
+                              format: int64
+                              description: 持久执行记录终态时间，Unix 毫秒。
                             app_vsn:
                               type: string
                             did:

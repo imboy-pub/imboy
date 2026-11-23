@@ -110,9 +110,8 @@ c2g(MsgId, CurrentUid, Data) ->
 
 -spec c2g_send(binary(), integer(), binary(), integer(), map()) -> ok | {reply, map()}.
 c2g_send(MsgId, CurrentUid, Gid, ToGID, Data) ->
-    % 检查是否被禁言
-    case group_member_logic:check_mute(ToGID, CurrentUid) of
-        true ->
+    case group_member_logic:send_precheck(ToGID, CurrentUid) of
+        muted ->
             _ = ?WARN_LOG("用户 ~p 在群组 ~p 中被禁言，无法发送消息", [CurrentUid, ToGID]),
             self() !
                 {reply, #{
@@ -122,48 +121,38 @@ c2g_send(MsgId, CurrentUid, Gid, ToGID, Data) ->
                     <<"code">> => 403
                 }},
             ok;
-        false ->
-            % 检查是否是群成员
-            case group_ds:is_member(CurrentUid, ToGID) of
+        not_member ->
+            _ = ?WARN_LOG("用户 ~p 尝试向非成员群组 ~p 发送消息", [CurrentUid, ToGID]),
+            self() !
+                {reply, #{
+                    <<"id">> => MsgId,
+                    <<"type">> => <<"C2G_ERROR">>,
+                    <<"error">> => <<"Not a group member"/utf8>>,
+                    <<"code">> => 403
+                }},
+            ok;
+        member ->
+            Payload = maps:get(<<"payload">>, Data, #{}),
+            Mentions = mentions_from_payload(Payload),
+            case lists:member(<<"all">>, Mentions) of
                 true ->
-                    % 解析 mentions 字段
-                    Payload = maps:get(<<"payload">>, Data, #{}),
-                    Mentions = mentions_from_payload(Payload),
-                    HasMentionAll = lists:member(<<"all">>, Mentions),
-
-                    % @所有人需要管理员权限
-                    case HasMentionAll of
+                    case group_member_ds:check_admin(CurrentUid, ToGID) of
                         true ->
-                            case group_member_ds:check_admin(CurrentUid, ToGID) of
-                                true ->
-                                    send_c2g_fail_closed(
-                                        MsgId, CurrentUid, Data, Gid, ToGID, 3
-                                    );
-                                false ->
-                                    _ = ?WARN_LOG("用户 ~p 尝试使用 @所有人功能但没有管理员权限", [CurrentUid]),
-                                    self() !
-                                        {reply, #{
-                                            <<"id">> => MsgId,
-                                            <<"type">> => <<"C2G_ERROR">>,
-                                            <<"error">> =>
-                                                <<"Permission denied: @all mentions require admin role"/utf8>>,
-                                            <<"code">> => 403
-                                        }},
-                                    ok
-                            end;
+                            send_c2g_fail_closed(MsgId, CurrentUid, Data, Gid, ToGID, 3);
                         false ->
-                            send_c2g_fail_closed(MsgId, CurrentUid, Data, Gid, ToGID, 1)
+                            _ = ?WARN_LOG("用户 ~p 尝试使用 @所有人功能但没有管理员权限", [CurrentUid]),
+                            self() !
+                                {reply, #{
+                                    <<"id">> => MsgId,
+                                    <<"type">> => <<"C2G_ERROR">>,
+                                    <<"error">> =>
+                                        <<"Permission denied: @all mentions require admin role"/utf8>>,
+                                    <<"code">> => 403
+                                }},
+                            ok
                     end;
                 false ->
-                    _ = ?WARN_LOG("用户 ~p 尝试向非成员群组 ~p 发送消息", [CurrentUid, ToGID]),
-                    self() !
-                        {reply, #{
-                            <<"id">> => MsgId,
-                            <<"type">> => <<"C2G_ERROR">>,
-                            <<"error">> => <<"Not a group member"/utf8>>,
-                            <<"code">> => 403
-                        }},
-                    ok
+                    send_c2g_fail_closed(MsgId, CurrentUid, Data, Gid, ToGID, 1)
             end
     end.
 
@@ -353,6 +342,12 @@ do_stage_and_send_c2g(
     % PFv3 context binding（ADR 15 §3.3）：离线/worker 投递路径从 staging
     % 行读 sender_did，必须在入栈时落列（与 msg_c2c_logic 的 stage/11 同款）。
     SenderDid = maps:get(<<"sender_did">>, Data, <<>>),
+    %% Q-03 性能收口：把已编码的 payload JSON 与信封 to 标记随接受链传给
+    %% 物化事务，跳过 write_staged_msg_tx 内的整信封 decode + payload re-encode。
+    DeliveryPayload = {
+        jsone:encode(maps:get(<<"payload">>, MsgFull), [native_utf8]),
+        maps:get(<<"to">>, MsgFull)
+    },
 
     % 检查是否有引用信息
     StageResult =
@@ -375,7 +370,7 @@ do_stage_and_send_c2g(
                     SenderDid,
                     RequiredRole,
                     %% R05-A：自毁绝对期限随接受事务落 staging 行。
-                    ExpireAtRfc
+                    {delivery, ExpireAtRfc, undefined, DeliveryPayload}
                 );
             _ ->
                 % 有引用信息，需要先验证被引用的消息是否存在
@@ -396,7 +391,8 @@ do_stage_and_send_c2g(
                             SenderDid,
                             RequiredRole,
                             %% R05-A：自毁绝对期限随接受事务落 staging 行。
-                            ExpireAtRfc
+                            {delivery, ExpireAtRfc, {ReplyToMsgId, ReplyToFromId, ReplySnippet},
+                                DeliveryPayload}
                         );
                     {error, not_found} ->
                         % 被引用的消息不存在，返回错误
@@ -423,7 +419,8 @@ do_stage_and_send_c2g(
                             SenderDid,
                             RequiredRole,
                             %% R05-A：自毁绝对期限随接受事务落 staging 行。
-                            ExpireAtRfc
+                            {delivery, ExpireAtRfc, {ReplyToMsgId, ReplyToFromId, ReplySnippet},
+                                DeliveryPayload}
                         )
                 end
         end,
@@ -466,62 +463,15 @@ do_stage_and_send_c2g(
                 server_ts => NowMS
             }),
 
-            % ② 如果有引用信息，存储到数据库
-            case {ReplyToMsgId, ReplyToFromId, ReplySnippet} of
-                {<<>>, 0, <<>>} ->
-                    % 没有引用信息，使用常规处理
-                    ok;
-                _ ->
-                    % 有引用信息，存储到数据库
-                    %% R03/D04：AcceptedAtRfc 与 staging 行同一值——双写先后
-                    %% 均收敛为同一首次接受值（R03-3）。
-                    msg_c2g_ds:write_msg_with_reply(
-                        CreatedAtRfc,
-                        MsgId,
-                        RealtimeMsg,
-                        CurrentUid,
-                        MemberUids,
-                        ToGID,
-                        MsgType,
-                        E2EE,
-                        ReplyToMsgId,
-                        ReplyToFromId,
-                        ReplySnippet,
-                        AcceptedAtRfc,
-                        ExpireAtRfc
-                    )
-            end,
-
             % ③ 后投递消息（仅推送在线成员，离线成员通过 sync 拉取）
             % sender_did 与权威 conv_seq 均在实时信封内；后者来自已提交的
             % staging 事务，客户端不得从密文 payload 自报历史范围。
-            OnlineUids = [
-                Uid
-             || Uid <- MemberUids,
-                CurrentUid /= Uid,
-                user_logic:is_online(Uid)
-            ],
-            [message_ds:send_next(Uid, MsgId, RealtimeMsg, MsLi) || Uid <- OnlineUids],
+            Recipients = [Uid || Uid <- MemberUids, Uid =/= CurrentUid],
+            ok = message_ds:send_group_next(Recipients, MsgId, RealtimeMsg, MsLi),
             send_sender_other_devices(CurrentUid, SenderDid, MsgId, RealtimeMsg, MsLi),
 
             % ③.5 离线推送（异步，不阻塞消息投递）
             push_notification_logic:maybe_push_for_c2g(CurrentUid, ToGID, MsgType, MemberUids),
-
-            % ③.6 消息自毁兜底：staging 行已在接受事务内携带期限（ExpireAtRfc，
-            % 基于可信接受时间），worker 转正时搬运；本 UPDATE 只兜底补齐
-            % "reply 直写先落正式表"的窄窗（R05-A）。重复请求不延长期限。
-            case ExpireAtRfc of
-                null ->
-                    ok;
-                _ ->
-                    case set_c2g_expire_at(MsgId, ExpireAtRfc) of
-                        {ok, _} ->
-                            ok;
-                        {error, SetReason} ->
-                            ?ERROR_LOG([msg_c2g_set_expire_at_failed, MsgId, SetReason]),
-                            ok
-                    end
-            end,
 
             % ④ 创建@提及记录（如果有）
             Payload = maps:get(<<"payload">>, Data, #{}),
@@ -1109,7 +1059,10 @@ stage_and_deliver_group_action(
             ActionCreatedAt,
             SenderDid,
             1,
-            OriginalMsgId
+            {OriginalMsgId, delivery, {
+                jsone:encode(maps:get(<<"payload">>, TrustedActionMsg), [native_utf8]),
+                maps:get(<<"to">>, TrustedActionMsg)
+            }}
         )
     of
         {ok, new, ConvSeq, MemberUids} ->
@@ -1279,16 +1232,7 @@ extract_snippet_plain(OriginalMsg) ->
                 true -> <<Snippet/binary, "..."/utf8>>;
                 false -> Snippet
             end
-        %% @doc 设置C2G消息的自毁时间
     end.
-%% @param MsgId 消息ID
-%% @param ExpireAt 过期时间（RFC3339 binary）
-%% R05-A：返回 {ok, Count} | {error, Reason}——Count=0 表示未命中或已有
-%% 期限（不覆盖）；错误由调用方记录（不再吞成 ok）。
--spec set_c2g_expire_at(binary(), binary()) ->
-    {ok, non_neg_integer()} | {error, term()}.
-set_c2g_expire_at(MsgId, ExpireAt) ->
-    msg_c2g_ds:set_expire_at(MsgId, ExpireAt).
 
 %% SenderDid is stamped from the authenticated WebSocket state; never echo its originating device.
 -spec send_sender_other_devices(integer(), term(), binary(), binary(), [non_neg_integer()]) -> ok.

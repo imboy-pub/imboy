@@ -380,7 +380,7 @@ normalize_payload(Payload) when is_binary(Payload) ->
 normalize_payload(_) ->
     #{}.
 
--spec resolve_conversation_key(map()) -> {ok, {binary(), binary()}} | error.
+-spec resolve_conversation_key(map()) -> {ok, {pos_integer() | binary(), binary()}} | error.
 resolve_conversation_key(Item) ->
     case
         {
@@ -389,8 +389,8 @@ resolve_conversation_key(Item) ->
         }
     of
         {ConversationId, ConversationType} when
-            is_binary(ConversationId),
-            ConversationId =/= <<>>,
+            (is_integer(ConversationId) andalso ConversationId > 0) orelse
+                (is_binary(ConversationId) andalso ConversationId =/= <<>>),
             is_binary(ConversationType),
             ConversationType =/= <<>>
         ->

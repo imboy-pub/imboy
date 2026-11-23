@@ -35,7 +35,7 @@ setup() ->
         database => os:getenv("ACK_FIX_MAINT_DB")
     },
     {ok, Guard} = epgsql:connect(Opts),
-    {ok, _, [{<<"7700547928978026537">>}]} = epgsql:squery(
+    {ok, _, [{<<"7687028249998217257">>}]} = epgsql:squery(
         Guard,
         <<"SELECT system_identifier::text FROM pg_control_system()">>
     ),
@@ -97,7 +97,14 @@ stage(K, M, U, Processed) ->
         %% conv_seq 带 monotonic：c2c 行过 trg_00_c2c_order_guard 时要求新 seq
         %% 严格大于同 pair 既有最大值，无 monotonic 不保证递增，概率性触发
         %% c2c_order_conflict（run 41424669122 同型实证）。
-        [erlang:unique_integer([positive]), K, M, U, erlang:unique_integer([positive, monotonic]), Processed]
+        [
+            erlang:unique_integer([positive]),
+            K,
+            M,
+            U,
+            erlang:unique_integer([positive, monotonic]),
+            Processed
+        ]
     ),
     ok.
 main(K, M, U) ->
@@ -261,7 +268,9 @@ worker_retry(_) ->
     ack(<<"c2c">>, <<"worker">>, 9, <<"a">>),
     application:set_env(imboy, msg_archive_enabled, true),
     meck:new(msg_c2c_ds, [no_link]),
-    meck:expect(msg_c2c_ds, write_msg, fun(_, M, _, _, U, _, _, _, _) ->
+    %% write_msg 已扩至 /11（sender_did/accepted_at/expire_at 搬运，A2-a/R03/R05-A）；
+    %% meck 面同步全 arity，passthrough 语义不变。
+    meck:expect(msg_c2c_ds, write_msg, fun(_, M, _, _, U, _, _, _, _, _, _) ->
         case get(write_failure) of
             true -> {error, timeout};
             _ -> main(<<"c2c">>, M, U)

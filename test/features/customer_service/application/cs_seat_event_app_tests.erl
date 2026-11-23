@@ -39,6 +39,7 @@ cleanup(_) ->
 cases(_State) ->
     [
         {timeout, 30, fun first_connect_resyncs_from_watermark/0},
+        {timeout, 30, fun empty_watermark_continues_with_first_event/0},
         {timeout, 30, fun valid_cursor_continues_without_resync/0},
         {timeout, 30, fun cross_org_cursor_is_rejected/0},
         {timeout, 30, fun cross_workspace_cursor_is_rejected/0},
@@ -68,6 +69,18 @@ first_connect_resyncs_from_watermark() ->
     W = watermark_of(?ORG, ?WS),
     ?assert(W > 0),
     ?assertEqual(W, maps:get(cursor, Page)).
+
+empty_watermark_continues_with_first_event() ->
+    ok = ?FAKE:init(),
+    ?assertMatch(
+        {ok, #{resync_required := true, cursor := 0, events := []}},
+        cs_seat_event_app:events(?ORG, params(#{}))
+    ),
+    First = seed_event(?ORG, ?WS, <<"session.opened">>, #{<<"session_id">> => ?SESSION}),
+    ?assertMatch(
+        {ok, #{resync_required := false, cursor := First, events := [#{event_id := First}]}},
+        cs_seat_event_app:events(?ORG, params(#{after_id => 0}))
+    ).
 
 valid_cursor_continues_without_resync() ->
     ok = ?FAKE:init(),
@@ -163,8 +176,10 @@ envelope_projection_maps_six_types() ->
         {<<"session.rated">>, <<"session.changed">>, <<"session">>, <<"updated">>},
         {<<"seat.suspended">>, <<"seat.changed">>, <<"seat">>, <<"revoked">>}
     ],
-    [seed_event(?ORG, ?WS, Action, #{<<"session_id">> => ?SESSION})
-     || {Action, _, _, _} <- Expectations],
+    [
+        seed_event(?ORG, ?WS, Action, #{<<"session_id">> => ?SESSION})
+     || {Action, _, _, _} <- Expectations
+    ],
     {ok, Page} = cs_seat_event_app:events(?ORG, params(#{after_id => Sentinel})),
     Events = maps:get(events, Page),
     ?assertEqual(length(Expectations), length(Events)),
@@ -214,8 +229,10 @@ envelope_carries_no_payload_body() ->
     ?assertEqual(?MSG, maps:get(resource_id, E)),
     ?assertMatch(<<"message.appended">>, maps:get(type, E)),
     %% occurred_at = RFC3339（YYYY-MM-DDThh:mm:ssZ 形状）。
-    ?assertMatch(<<_:4/binary, "-", _:2/binary, "-", _:2/binary, "T", _/binary>>,
-        maps:get(occurred_at, E)),
+    ?assertMatch(
+        <<_:4/binary, "-", _:2/binary, "-", _:2/binary, "T", _/binary>>,
+        maps:get(occurred_at, E)
+    ),
     true.
 
 resync_envelope_shape() ->

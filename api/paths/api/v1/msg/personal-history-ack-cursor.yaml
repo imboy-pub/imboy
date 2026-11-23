@@ -1,0 +1,68 @@
+# POST /api/v1/personal-history/ack-cursor
+post:
+  tags: [msg]
+  summary: 确认个人历史变更游标 / Durably ack the change cursor
+  description: |
+    ## 中文 / English
+    客户端 durably 确认游标后服务端才推进 acked 水位（§2.4/§10.2）；
+    幂等：重复 ACK 同值不影响历史（W5）；仅接受 ≤ 服务端已发放最大值。
+    Ack watermark advances only after durable client confirmation; idempotent;
+    accepts cursors not exceeding the issued maximum.
+  operationId: personalHistoryAckCursor
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          type: object
+          required: [cursor]
+          properties:
+            cursor:
+              type: integer
+              format: int64
+              minimum: 0
+            generation:
+              type: integer
+              format: int64
+              minimum: 1
+              description: 授权代次，取发放变更页返回值，过期返回 410。 / Generation returned by the change page. A mismatch returns 410.
+            client_instance:
+              type: string
+              maxLength: 128
+              description: Web 请求须传当前登录设备的 DID，其他入口沿用客户端实例 ID。
+  responses:
+    '200':
+      description: 确认结果。 / Ack result.
+      content:
+        application/json:
+          schema:
+            allOf:
+              - $ref: '../../../../components/schemas/Envelope.yaml'
+              - type: object
+                properties:
+                  payload:
+                    type: object
+                    required: [accepted, advanced_to]
+                    properties:
+                      accepted:
+                        type: boolean
+                        description: false=游标越界（大于已发放最大值）未推进。 / false when beyond issued max.
+                      advanced_to:
+                        type: integer
+                        format: int64
+                        description: 推进后的 acked 水位。 / Advanced ack watermark.
+                      issued_cursor:
+                        type: integer
+                        format: int64
+                        description: 服务端已发放最大值。 / Issued maximum.
+                      generation:
+                        type: integer
+                        format: int64
+    '410':
+      description: generation_expired
+    '422':
+      description: malformed_request
+    '503':
+      description: transient_failure
+    '401':
+      description: 未认证 / Unauthenticated

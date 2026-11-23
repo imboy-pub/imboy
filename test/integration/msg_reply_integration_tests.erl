@@ -27,6 +27,7 @@ msg_reply_test_() ->
             {foreach, fun setup/0, fun cleanup/1, [
                 {timeout, 30, [
                     {"单聊引用回复", fun test_c2c_reply/0},
+                    {"单聊客户端引用格式", fun test_c2c_client_quote/0},
                     {"群聊引用回复", fun test_c2g_reply/0},
                     {"引用消息摘要生成", fun test_reply_snippet/0},
                     {"引用不存在的消息", fun test_reply_nonexistent_msg/0},
@@ -99,6 +100,32 @@ test_c2c_reply() ->
     ?assertEqual(User2, maps:get(<<"from_id">>, ReplyMsg)),
     ?assertEqual(<<"这是回复内容"/utf8>>, maps:get(<<"payload">>, ReplyMsg)).
 
+test_c2c_client_quote() ->
+    #{user1 := User1, user2 := User2} = get_context(),
+    OriginalId = integer_to_binary(elib_tsid:generate(msg_c2c)),
+    ReplyId = integer_to_binary(elib_tsid:generate(msg_c2c)),
+    Stamp = elib_dt:millisecond(),
+    Common = #{<<"action">> => <<"send">>, <<"created_at">> => Stamp},
+    ok = msg_c2c_logic:c2c(OriginalId, User1, Common#{
+        <<"to">> => integer_to_binary(User2),
+        <<"msg_type">> => <<"text">>,
+        <<"payload">> => #{<<"text">> => <<"server original">>}
+    }),
+    ok = wait_for_c2c_message(OriginalId),
+    ok = msg_c2c_logic:c2c(ReplyId, User2, Common#{
+        <<"to">> => integer_to_binary(User1),
+        <<"msg_type">> => <<"quote">>,
+        <<"payload">> => #{
+            <<"quote_msg">> => #{<<"id">> => OriginalId, <<"text">> => <<"client copy">>},
+            <<"quote_text">> => <<"reply body">>
+        }
+    }),
+    ok = wait_for_c2c_message(ReplyId),
+    ?assertMatch(
+        {ok, [#{<<"msg_id">> := ReplyId, <<"reply_snippet">> := <<"server original">>}]},
+        msg_c2c_repo:find_by_reply_to_msg_id(OriginalId)
+    ).
+
 test_c2g_reply() ->
     Context = get_context(),
     User1 = maps:get(user1, Context),
@@ -163,12 +190,14 @@ test_reply_snippet() ->
     {ReplyToMsgId, ReplyToFromId, ReplySnippet} = msg_c2c_logic:extract_reply_info(ReplyData),
 
     % 3. 验证摘要提取结果
-    ExpectedSnippet0 = binary:part(LongContent, {0, min(byte_size(LongContent), 50)}),
-    ExpectedSnippet =
-        case byte_size(LongContent) > 50 of
-            true -> <<ExpectedSnippet0/binary, "..."/utf8>>;
-            false -> ExpectedSnippet0
-        end,
+    OriginalChars = unicode:characters_to_list(LongContent),
+    {Prefix, Rest} = lists:split(min(length(OriginalChars), 50), OriginalChars),
+    ExpectedSnippet = unicode:characters_to_binary(
+        case Rest of
+            [] -> Prefix;
+            _ -> Prefix ++ "..."
+        end
+    ),
     ?assertEqual(OriginalMsgId, ReplyToMsgId),
     ?assertEqual(User1, ReplyToFromId),
     ?assertEqual(ExpectedSnippet, ReplySnippet).

@@ -564,7 +564,7 @@ set_expire_at(MsgId, ExpireAt) ->
 
 %% G3: msg_burn_logic 不应直调 msg_c2g_repo:tablename()
 %% 使用 NOW() 替代参数化时间戳，避免 epgsql 无法编码 RFC3339 binary 为 timestamptz
--spec delete_expired(binary(), pos_integer()) -> non_neg_integer().
+-spec delete_expired(binary(), non_neg_integer()) -> non_neg_integer() | {error, term()}.
 delete_expired(_Now, BatchSize) ->
     Tb = msg_c2g_repo:tablename(),
     Sql =
@@ -574,8 +574,9 @@ delete_expired(_Now, BatchSize) ->
             "  WHERE expire_at IS NOT NULL AND expire_at <= NOW()"
             "  ORDER BY expire_at ASC LIMIT $1)">>,
     case elib_pg:execute(Sql, [BatchSize]) of
-        {ok, Count} when is_integer(Count) -> Count;
-        _ -> 0
+        {ok, Count} when is_integer(Count), Count >= 0 -> Count;
+        {error, _} = Error -> Error;
+        _ -> {error, invalid_cleanup_result}
     end.
 
 %% @doc 分页查询群组消息

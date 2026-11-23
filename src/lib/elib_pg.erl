@@ -118,6 +118,9 @@ in_pg_tx_scope() ->
 with_conn(Driver, Fun, Retries, Delay) ->
     Member =
         case pooler:take_member(Driver) of
+            error_no_members when Retries > 0 ->
+                %% Let the pool wake this borrower as soon as a member returns.
+                take_member_with_retry_delay(Driver, Delay);
             error_no_members when Retries =:= 0, Delay =:= 0 ->
                 %% 等待连接不重放事务；池异步扩容时允许现成队列接住请求。
                 pooler:take_member(Driver, ?DEFAULT_TIMEOUT);
@@ -126,7 +129,6 @@ with_conn(Driver, Fun, Retries, Delay) ->
         end,
     case Member of
         error_no_members when Retries > 0 ->
-            timer:sleep(Delay),
             with_conn(Driver, Fun, Retries - 1, Delay + 1000);
         error_no_members ->
             {error, no_connection};
@@ -146,6 +148,21 @@ with_conn(Driver, Fun, Retries, Delay) ->
                 true ->
                     run_with_conn(Driver, Conn, Fun)
             end
+    end.
+
+take_member_with_retry_delay(Driver, Delay) ->
+    Deadline = erlang:monotonic_time(millisecond) + Delay,
+    case pooler:take_member(Driver, Delay) of
+        error_no_members ->
+            %% A full or disabled queue may reject immediately. Keep the
+            %% remaining retry window without sleeping after a full wait.
+            case Deadline - erlang:monotonic_time(millisecond) of
+                Remaining when Remaining > 0 -> timer:sleep(Remaining);
+                _ -> ok
+            end,
+            error_no_members;
+        Conn ->
+            Conn
     end.
 
 run_with_conn(Driver, Conn, Fun) ->

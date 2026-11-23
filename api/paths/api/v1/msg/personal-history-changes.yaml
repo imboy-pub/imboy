@@ -1,0 +1,104 @@
+# GET /api/v1/personal-history/changes
+get:
+  tags: [msg]
+  summary: 拉取个人历史变更事件 / Pull personal history change events
+  description: |
+    ## 中文 / English
+    变更游标按 账号/域/代次/客户端实例 原子发放、单调（event_seq 锚）；
+    仅归档 commit 后的事件可见（W2）。游标落后有界窗口时返回
+    reset_hint=true 触发 page 全量重扫（§10.2）。稀疏规则：空页≠归档齐全，
+    禁止以空页宣告齐全。
+    Monotonic per-account/domain/generation/instance cursor anchored on
+    event_seq; only committed archives are visible. Bounded retention window:
+    stale cursors get reset_hint for a bounded page rescan.
+  operationId: personalHistoryChanges
+  parameters:
+    - in: query
+      name: cursor
+      required: false
+      schema:
+        type: integer
+        format: int64
+        minimum: 0
+        default: 0
+      description: 上次收到的 next_cursor。 / Last received next_cursor.
+    - in: query
+      name: limit
+      required: false
+      schema:
+        type: integer
+        default: 50
+        minimum: 1
+        maximum: 100
+    - in: query
+      name: client_instance
+      required: false
+      schema:
+        type: string
+        maxLength: 128
+      description: 游标实例标识。Web 请求须传当前登录设备的 DID。
+  responses:
+    '200':
+      description: 变更事件列表。 / Change events.
+      content:
+        application/json:
+          schema:
+            allOf:
+              - $ref: '../../../../components/schemas/Envelope.yaml'
+              - type: object
+                properties:
+                  payload:
+                    type: object
+                    required: [generation, events, reset_hint]
+                    properties:
+                      generation:
+                        type: integer
+                        format: int64
+                      events:
+                        type: array
+                        items:
+                          type: object
+                          required: [conversation_id, msg_id, event_seq, conv_seq, deleted]
+                          properties:
+                            conversation_id:
+                              type: string
+                            msg_id:
+                              type: string
+                            action_version:
+                              type: integer
+                              format: int64
+                            conv_seq:
+                              type: integer
+                              format: int64
+                            event_seq:
+                              type: integer
+                              format: int64
+                            key_version:
+                              type: integer
+                              format: int64
+                            ciphertext:
+                              type: string
+                              description: base64。墓碑不返回密文。
+                            envelope_meta:
+                              type: object
+                            accepted_message:
+                              type: object
+                              description: 权威接受元数据，包含十进制字符串 from_id、to_id，以及 conv_seq、action_version、accepted_at_ms。墓碑不返回。
+                            deleted:
+                              type: boolean
+                              description: 墓碑投影（MSG-H15）。 / Tombstone projection.
+                      next_cursor:
+                        type: integer
+                        format: int64
+                        nullable: true
+                      reset_hint:
+                        type: boolean
+                        description: true=游标已出窗口，须走 page 重扫。 / Cursor outside window; rescan via page.
+    '403':
+      description: not_enabled / identity_rejected
+    '410':
+      description: generation_expired
+    '503':
+      description: transient_failure
+    '401':
+      description: 未认证 / Unauthenticated

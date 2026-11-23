@@ -23,6 +23,12 @@
 -include("log.hrl").
 
 %% API
+%% 测试钩子导出走 TEST 宏（eunit-local 轨道 src beam 仅带 -DTEST，
+%% 见 imboy_app/msg_store_worker 同款惯例）；生产编译两宏均未定义。
+-ifdef(TEST).
+-export([execute_job/2]).
+-endif.
+
 -export([start_link/0]).
 -export([cleanup_now/0]).
 -export([get_status/0]).
@@ -225,12 +231,13 @@ claim_loop(RetentionDays, ClaimedBy, Budget, Done) ->
         {ok, none} ->
             {ok, Done};
         {ok, Job} ->
-            case execute_job(Job) of
-                ok ->
+            case execute_job(Job, RetentionDays) of
+                completed ->
                     claim_loop(RetentionDays, ClaimedBy, Budget - 1, Done + 1);
+                failed_attempt ->
+                    claim_loop(RetentionDays, ClaimedBy, Budget - 1, Done);
                 {error, Reason} ->
-                    ?ERROR_LOG([user_deletion_execute_failed, Reason]),
-                    {ok, Done}
+                    {error, Reason}
             end;
         {error, Reason} ->
             ?ERROR_LOG([user_deletion_claim_failed, Reason]),
@@ -239,31 +246,36 @@ claim_loop(RetentionDays, ClaimedBy, Budget, Done) ->
 
 %% 单任务执行：钱包门 → 转移 + 主事务（同事务发删除意图）→ 终态。
 %% W4-01：字节删除全部由删除队列 Worker 执行，本入口不触存储。
-execute_job(Job) ->
+execute_job(Job, RetentionDays) ->
     #{<<"id">> := JobId, <<"user_id">> := Uid} = Job,
     MaxAttempts = application:get_env(imboy, user_deletion_max_attempts, 5),
     case balance_gate(Uid) of
         ok ->
-            case execute_deletion(Uid) of
+            case execute_deletion(Uid, JobId, Job, RetentionDays) of
                 {ok, _QueuedKeys} ->
-                    _ = user_deletion_job_repo:mark_completed(JobId),
-                    ok;
+                    completed;
+                {error, request_no_longer_eligible} ->
+                    case
+                        user_deletion_job_repo:release_ineligible(
+                            JobId, maps:get(<<"attempts">>, Job)
+                        )
+                    of
+                        ok -> failed_attempt;
+                        {error, Reason} -> {error, Reason}
+                    end;
+                {error, job_not_running} ->
+                    failed_attempt;
                 {error, Reason} ->
-                    _ = user_deletion_job_repo:mark_failed(
-                        JobId,
-                        elib_cnv:safe_to_binary(Reason),
-                        MaxAttempts
-                    ),
-                    ok
+                    record_failed_attempt(JobId, Reason, MaxAttempts)
             end;
         {error, Reason} ->
-            %% 余额门未过：转 pending 重试，达上限转 failed 终态（运营介入）
-            _ = user_deletion_job_repo:mark_failed(
-                JobId,
-                elib_cnv:safe_to_binary(Reason),
-                MaxAttempts
-            ),
-            ok
+            record_failed_attempt(JobId, Reason, MaxAttempts)
+    end.
+
+record_failed_attempt(JobId, Reason, MaxAttempts) ->
+    case user_deletion_job_repo:mark_failed(JobId, elib_cnv:safe_to_binary(Reason), MaxAttempts) of
+        {ok, _Status} -> failed_attempt;
+        {error, PersistReason} -> {error, {deletion_job_failure_not_recorded, PersistReason}}
     end.
 
 %% 钱包余额门（D-02：余额必须为 0）
@@ -287,8 +299,13 @@ balance_gate(Uid) ->
 %% W4-01 入口收口（02 §4/§5）：不再 DELETE 行/事务后直接删字节——个人可证明
 %% 附件在同事务发 metadata 域删除意图（fn 锁后复核资格），字节由 Worker 删；
 %% 资格不满足（intent_conflict）= 保守保留（行在=隔离记录），不阻塞注销。
-execute_deletion(Uid) ->
+execute_deletion(Uid, JobId, Job, RetentionDays) ->
     elib_pg:with_tx(fun(Conn) ->
+        Snapshot =
+            case user_deletion_job_repo:lock_execution_tx(Conn, Uid, JobId, Job, RetentionDays) of
+                {ok, Request} -> Request;
+                {error, LockReason} -> elib_pg:abort({abort_tx, LockReason})
+            end,
         {ok, Keys} = user_deletion_executor:collect_attachment_keys_tx(Conn, Uid),
         Queued = lists:filter(
             fun(Key) ->
@@ -305,5 +322,10 @@ execute_deletion(Uid) ->
         ),
         ok = user_deletion_executor:transfer_ownerships_tx(Conn, Uid),
         ok = user_deletion_executor:execute_main_tx(Conn, Uid),
-        {ok, Queued}
+        case user_deletion_job_repo:mark_completed_tx(Conn, JobId, Snapshot) of
+            ok ->
+                {ok, Queued};
+            {error, Reason} ->
+                elib_pg:abort({abort_tx, {deletion_job_completion_not_recorded, Reason}})
+        end
     end).

@@ -22,6 +22,7 @@
     unmute/3,
     % 检查禁言状态
     check_mute/2,
+    send_precheck/2,
     list_member/1,
     list_member/2,
     % 查询两用户共同群组 ID 列表
@@ -345,17 +346,26 @@ unmute(CurrentUid, Gid, UserId) ->
 -spec check_mute(integer(), integer()) -> boolean().
 check_mute(Gid, UserId) ->
     case group_member_ds:get_member_info(Gid, UserId, <<"mute_until">>) of
-        {ok, MemberInfo} ->
-            MuteUntilRaw = maps:get(<<"mute_until">>, MemberInfo, null),
-            case to_millisecond(MuteUntilRaw) of
-                null ->
-                    false;
-                MuteUntil when is_integer(MuteUntil) ->
-                    % 如果未到期则返回 true
-                    MuteUntil >= elib_dt:millisecond()
+        {ok, MemberInfo} -> muted_now(MemberInfo);
+        {error, _} -> false
+    end.
+
+-spec send_precheck(integer(), integer()) -> member | muted | not_member.
+send_precheck(Gid, UserId) ->
+    case group_member_ds:get_member_info(Gid, UserId, <<"gm.id, gm.mute_until">>) of
+        {ok, #{<<"id">> := _} = MemberInfo} ->
+            case muted_now(MemberInfo) of
+                true -> muted;
+                false -> member
             end;
-        {error, _} ->
-            false
+        _ ->
+            not_member
+    end.
+
+muted_now(MemberInfo) ->
+    case to_millisecond(maps:get(<<"mute_until">>, MemberInfo, null)) of
+        null -> false;
+        MuteUntil when is_integer(MuteUntil) -> MuteUntil >= elib_dt:millisecond()
     end.
 
 %% @doc 内部禁言操作（事务内）

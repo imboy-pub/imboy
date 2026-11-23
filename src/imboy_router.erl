@@ -153,6 +153,28 @@ get_routes() ->
                 {"/api/v1/msg/history", msg_handler, #{action => history}},
                 {"/api/v1/msg/result", msg_handler, #{action => message_result}},
 
+                %% 个人消息历史域（MH-01 合同 v1.1 / MH-02）：账号级 opt-in 云端
+                %% 副本。默认 OFF 零写入；域+账号+代次三元隔离；服务端零解密。
+                %% Web N1 面别名（/api/v1/web/personal-history/*，§10.1）见
+                %% web_human_routes/1 Specs；opt-in/key-package Web 面按 Web 认证链
+                %% 惯例走 POST（web_methods 只收 GET/POST）；key-package 读端点
+                %% 依 mh04 addendum 另开 GET（web 别名 jwt_methods 加 GET）。
+                {"/api/v1/personal-history/status", personal_history_handler, #{action => status}},
+                {"/api/v1/personal-history/opt-in", personal_history_handler, #{action => opt_in}},
+                {"/api/v1/personal-history/upload", personal_history_handler, #{action => upload}},
+                {"/api/v1/personal-history/changes", personal_history_handler, #{action => changes}},
+                {"/api/v1/personal-history/ack-cursor", personal_history_handler, #{
+                    action => ack_cursor
+                }},
+                {"/api/v1/personal-history/page", personal_history_handler, #{action => page}},
+                {"/api/v1/personal-history/key-package", personal_history_handler, #{
+                    action => key_package
+                }},
+                {"/api/v1/personal-history/disable", personal_history_handler, #{action => disable}},
+                {"/api/v1/personal-history/delete-status", personal_history_handler, #{
+                    action => delete_status
+                }},
+
                 %% AI 助手发现：供客户端列出可发起 C2S 会话的助手（JWT 认证，owner 无关）
                 {"/api/v1/agent/list", ai_agent_handler, #{action => list}},
                 {"/api/v1/agent/discover", ai_agent_handler, #{action => discover}},
@@ -1472,6 +1494,18 @@ web_human_routes(Sources) ->
         {"msg/history", [<<"GET">>], access},
         {"msg", [<<"GET">>], access},
         {"msg/result", [<<"GET">>], access},
+        %% 个人消息历史域 Web N1 面（MH-01 §10.1：两面同合同同权限谓词；
+        %% opt-in/key-package 原生面为 PUT，Web 认证链只收 GET/POST 故挂 POST；
+        %% key-package 读端点依 mh04 addendum 挂 GET——FL-04 客户端 GET 读取）
+        {"personal-history/status", [<<"GET">>], access},
+        {"personal-history/opt-in", [<<"POST">>], access},
+        {"personal-history/upload", [<<"POST">>], access},
+        {"personal-history/changes", [<<"GET">>], access},
+        {"personal-history/ack-cursor", [<<"POST">>], access},
+        {"personal-history/page", [<<"GET">>], access},
+        {"personal-history/key-package", [<<"GET">>, <<"POST">>], access},
+        {"personal-history/disable", [<<"POST">>], access},
+        {"personal-history/delete-status", [<<"GET">>], access},
         {"conversation/mine", [<<"GET">>], access},
         {"conversation/pin", [<<"POST">>], access},
         {"conversation/unpin", [<<"POST">>], access},
@@ -1525,8 +1559,47 @@ web_human_routes(Sources) ->
             jwt_methods => [<<"GET">>],
             web_auth => access
         }}
-        | lists:flatmap(fun(Spec) -> web_human_alias(Spec, Sources) end, Specs)
+        | lists:flatmap(fun(Spec) -> web_human_alias(Spec, Sources) end, Specs) ++
+            web_geo_preview_routes()
     ].
+
+web_geo_preview_routes() ->
+    case
+        {
+            config_ds:env(geo_web_preview_enabled, false),
+            imboy_env:current(),
+            config_ds:env(listen_ip, undefined),
+            config_ds:env(geo_regions_pin, undefined)
+        }
+    of
+        {true, <<"local">>, IP, #{data_root := Root, manifest_sha256 := Digest}} when
+            IP =:= {127, 0, 0, 1}; IP =:= {0, 0, 0, 0, 0, 0, 0, 1}
+        ->
+            case valid_geo_preview_pin(Root, Digest) of
+                true ->
+                    [
+                        {"/api/v1/web/user/region-selection", user_handler, #{
+                            action => web_region_selection,
+                            surface => web_human,
+                            jwt_purpose => web_human,
+                            jwt_methods => [<<"POST">>],
+                            web_auth => access
+                        }}
+                    ];
+                false ->
+                    []
+            end;
+        _ ->
+            []
+    end.
+
+valid_geo_preview_pin(Root, Digest) when
+    is_binary(Root), is_binary(Digest), byte_size(Digest) =:= 64
+->
+    filename:pathtype(Root) =:= absolute andalso
+        re:run(Digest, <<"^[a-f0-9]{64}$">>, [{capture, none}, dollar_endonly]) =:= match;
+valid_geo_preview_pin(_, _) ->
+    false.
 
 web_human_alias({Suffix, Methods, Mode}, Sources) ->
     case lists:keyfind("/api/v1/" ++ Suffix, 1, Sources) of

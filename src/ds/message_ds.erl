@@ -14,7 +14,9 @@
 -export([decode_websocket_message/1]).
 -export([validate_message/1]).
 -export([convert_v1_to_v2/1]).
--export([send_next/4, send_next/6]).
+-export([send_next/4, send_next/6, send_group_next/4]).
+%% 跨节点投递使用 erpc 在连接所在节点执行预算检查和定时器调度。
+-export([budgeted_immediate/5, budgeted_retry/9, deliver_group_batch/3]).
 -export([check_and_notify_offline_msgs/1, check_and_notify_offline_msgs/2]).
 -export([inject_sender_device/2]).
 -export([stamp_sender_device/2, with_sender_device/2]).
@@ -22,6 +24,11 @@
 -export([build_adm_union_sql/1]).
 -export([envelope_id_to_binary/1]).
 -export([encode_websocket_message/1]).
+
+-define(GROUP_BATCH_MAX_TARGETS, 64).
+-define(GROUP_BATCH_MAX_BYTES, 65536).
+-define(GROUP_BATCH_RPC_OVERHEAD, 256).
+-define(GROUP_BATCH_RPC_WINDOW_MS, 100).
 
 %% ===================================================================
 %% API
@@ -71,12 +78,201 @@ send_next(ToUid, MsgId, Msg, MsLi, DIDLi, IncludeDIDLi) ->
             send_next_loop(ToUid, MsgId, Msg, MsLi, DIDLi, IncludeDIDLi)
     end.
 
+%% The accepted group envelope is shared across devices. Delayed sends keep the
+%% per-device continuation so a retry can resolve its current route.
+-spec send_group_next([pos_integer()], binary(), binary(), [non_neg_integer()]) -> ok.
+send_group_next([], _MsgId, _Msg, _Intervals) ->
+    ok;
+send_group_next(Uids, MsgId, Msg, [0]) ->
+    {Online, Gateways} = lists:foldl(
+        fun(Uid, {Count, ByNode}) ->
+            case imboy_syn:list_by_uid(Uid) of
+                [] -> {Count, ByNode};
+                Devices -> {Count + 1, group_targets(Uid, MsgId, Devices, ByNode)}
+            end
+        end,
+        {0, #{}},
+        Uids
+    ),
+    case Online of
+        0 -> ok;
+        _ -> ok = elib_metric:increment(msg_sent_total, Online)
+    end,
+    maps:foreach(
+        fun(Node, Targets) -> send_gateway_targets(Node, MsgId, Msg, lists:reverse(Targets)) end,
+        Gateways
+    );
+send_group_next(Uids, MsgId, Msg, Intervals) ->
+    [send_next(Uid, MsgId, Msg, Intervals) || Uid <- Uids, imboy_syn:count_user(Uid) > 0],
+    ok.
+
+group_targets(Uid, MsgId, Devices, ByNode) ->
+    UniqueDids = lists:foldl(
+        fun({_Pid, {_Platform, Did}}, Acc) ->
+            maps:update_with(Did, fun(_) -> false end, true, Acc)
+        end,
+        #{},
+        Devices
+    ),
+    lists:foldl(
+        fun({Pid, {_Platform, Did}}, Acc) ->
+            case ack_retry_cache:get({ack_received, Uid, Did, MsgId}) of
+                {ok, true} ->
+                    Acc;
+                _ ->
+                    Target = {Pid, Uid, Did, maps:get(Did, UniqueDids)},
+                    maps:update_with(node(Pid), fun(L) -> [Target | L] end, [Target], Acc)
+            end
+        end,
+        ByNode,
+        Devices
+    ).
+
+send_gateway_targets(Node, MsgId, Msg, Targets) when Node =:= node() ->
+    deliver_group_batch(MsgId, Msg, Targets);
+send_gateway_targets(Node, MsgId, Msg, Targets) ->
+    case imboy_syn:supports_remote_delivery_batch(Node) of
+        true ->
+            Budget =
+                ?GROUP_BATCH_MAX_BYTES - ?GROUP_BATCH_RPC_OVERHEAD -
+                    erlang:external_size({MsgId, Msg, []}),
+            Deadline = erlang:monotonic_time(millisecond) + ?GROUP_BATCH_RPC_WINDOW_MS,
+            _ = spawn(fun() -> send_gateway_chunks(Node, MsgId, Msg, Targets, Budget, Deadline) end),
+            ok;
+        false ->
+            [send_group_target_if_pending(MsgId, Msg, Target) || Target <- Targets],
+            ok
+    end.
+
+send_gateway_chunks(_Node, _MsgId, _Msg, [], _Budget, _Deadline) ->
+    ok;
+send_gateway_chunks(Node, MsgId, Msg, Targets, Budget, Deadline) ->
+    case erlang:monotonic_time(millisecond) < Deadline of
+        true ->
+            send_gateway_chunk(Node, MsgId, Msg, Targets, Budget, Deadline);
+        false ->
+            send_unexecuted_group_targets(MsgId, Msg, Targets)
+    end.
+
+send_gateway_chunk(Node, MsgId, Msg, [Target | Rest] = Targets, Budget, Deadline) ->
+    case take_group_chunk(Targets, ?GROUP_BATCH_MAX_TARGETS, Budget, []) of
+        {[], _} ->
+            send_group_target_if_pending(MsgId, Msg, Target),
+            send_gateway_chunks(Node, MsgId, Msg, Rest, Budget, Deadline);
+        {Chunk, Remaining} ->
+            case remote_group_batch(Node, [MsgId, Msg, Chunk], Deadline) of
+                ok ->
+                    send_gateway_chunks(Node, MsgId, Msg, Remaining, Budget, Deadline);
+                unsupported ->
+                    send_unexecuted_group_targets(MsgId, Msg, Targets);
+                unknown ->
+                    send_unexecuted_group_targets(MsgId, Msg, Remaining)
+            end
+    end.
+
+%% A registry hint may still describe an earlier incarnation of a gateway.
+%% Connection loss or timeout cannot prove that admission was never attempted.
+remote_group_batch(Node, Args, Deadline) ->
+    try erpc:call(Node, ?MODULE, deliver_group_batch, Args, {abs, Deadline}) of
+        ok -> ok;
+        _ -> unknown
+    catch
+        error:{exception, undef, [{?MODULE, deliver_group_batch, Args, _}]} ->
+            unsupported;
+        error:{erpc, notsup} ->
+            unsupported;
+        Class:_Reason ->
+            _ = ?WARN_LOG({group_batch_outcome_unknown, Node, Class}),
+            unknown
+    end.
+
+send_unexecuted_group_targets(MsgId, Msg, Targets) ->
+    lists:foreach(
+        fun
+            ({_Pid, Uid, Did, true}) ->
+                reroute_group_target(MsgId, Msg, Uid, Did, undefined);
+            (Target) ->
+                send_group_target_if_pending(MsgId, Msg, Target)
+        end,
+        Targets
+    ).
+
+take_group_chunk([], _Slots, _Budget, Acc) ->
+    {lists:reverse(Acc), []};
+take_group_chunk(Targets, 0, _Budget, Acc) ->
+    {lists:reverse(Acc), Targets};
+take_group_chunk([Target | Rest] = Targets, Slots, Budget, Acc) ->
+    Bytes = erlang:external_size(Target),
+    case Bytes =< Budget of
+        true -> take_group_chunk(Rest, Slots - 1, Budget - Bytes, [Target | Acc]);
+        false -> {lists:reverse(Acc), Targets}
+    end.
+
+%% One bad target must not suppress delivery to the rest of the group.
+-spec deliver_group_batch(binary(), binary(), [{pid(), pos_integer(), binary(), boolean()}]) -> ok.
+deliver_group_batch(MsgId, Msg, Targets) ->
+    lists:foreach(
+        fun(Target) ->
+            try
+                {Pid, Uid, Did, CanReroute} = Target,
+                case node(Pid) =:= node() of
+                    true ->
+                        case is_process_alive(Pid) of
+                            true ->
+                                send_group_target_if_pending(MsgId, Msg, Target);
+                            false when CanReroute ->
+                                reroute_group_target(MsgId, Msg, Uid, Did, Pid);
+                            false ->
+                                ok
+                        end;
+                    false ->
+                        ok
+                end
+            catch
+                Class:_Reason ->
+                    _ = ?WARN_LOG({group_delivery_target_failed, Class}),
+                    ok
+            end
+        end,
+        Targets
+    ).
+
+%% Retry one exact device route. An absent or ambiguous route can pull from
+%% the durable acceptance, and must not turn into a user-wide fanout.
+reroute_group_target(MsgId, Msg, Uid, Did, OldPid) ->
+    case
+        [
+            Pid
+         || {Pid, {_, RouteDid}} <- imboy_syn:list_by_uid(Uid),
+            RouteDid =:= Did,
+            Pid =/= OldPid,
+            node(Pid) =/= node() orelse is_process_alive(Pid)
+        ]
+    of
+        [Pid] -> send_group_target_if_pending(MsgId, Msg, {Pid, Uid, Did, false});
+        _ -> ok
+    end.
+
+send_group_target_if_pending(MsgId, Msg, {Pid, Uid, Did, _CanReroute}) ->
+    case ack_retry_cache:get({ack_received, Uid, Did, MsgId}) of
+        {ok, true} -> ok;
+        _ -> send_group_target(Pid, Uid, Msg)
+    end.
+
+send_group_target(Pid, Uid, Msg) ->
+    budgeted_immediate(Pid, Uid, Msg, bulk, byte_size(Msg)).
+
 %% 实际消息分发和定时重发控制
 send_next_loop(_ToUid, _MsgId, _Msg, [], _DIDLi, _IncludeDIDLi) ->
     % ?DEBUG_LOG(["message_ds:send_next_loop/6 no more retries"]),
     ok;
 send_next_loop(ToUid, MsgId, Msg, [Delay | Tail], DIDLi, IncludeDIDLi) ->
     Members = imboy_syn:list_by_uid(ToUid),
+
+    %% BE-14：投递通道与帧字节数，每条消息只解码一次（非逐设备）：
+    %% C2G 实时扇出 = bulk（热点群，须让出 direct 预留），其余
+    %% （C2C/S2C/C2S/离线补拉）= direct。解码失败按 direct（legacy 帧）。
+    {Lane, FrameBytes} = delivery_lane_and_bytes(Msg),
 
     ok = ?DEBUG_LOG({send_next_loop_start, MsgId, Delay, length(Members)}),
 
@@ -121,9 +317,11 @@ send_next_loop(ToUid, MsgId, Msg, [Delay | Tail], DIDLi, IncludeDIDLi) ->
                     ok;
                 _ ->
                     ok = ?DEBUG_LOG({immediate_publish, MsgId, length(Filtered2)}),
-                    %% 仅向未 ACK 的设备发送，避免同 UID 下已 ACK 设备被重复投递
+                    %% 仅向未 ACK 的设备发送，避免同 UID 下已 ACK 设备被重复投递；
+                    %% BE-14：发送前过慢端预算门——超预算设备不入队（降级为合并
+                    %% 轻通知，事实在库由 pull 补齐，不丢事实、不虚增已读）。
                     [
-                        imboy_syn:start_delivery_timer(0, Pid, Msg)
+                        budgeted_immediate(Pid, ToUid, Msg, Lane, FrameBytes)
                      || {Pid, {_Dtype, _DID}} <- Filtered2
                     ],
                     send_next_loop(ToUid, MsgId, Msg, Tail, DIDLi, IncludeDIDLi)
@@ -146,18 +344,121 @@ send_next_loop(ToUid, MsgId, Msg, [Delay | Tail], DIDLi, IncludeDIDLi) ->
             ],
             [
                 begin
-                    TimerKey = {ToUid, DID, MsgId},
-                    %% 专用 ACK ETS 的 TTL 单位为毫秒：覆盖 timer 存活期并额外保留 5s，
-                    %% 供已 fire/ACK 交错时的取消与精确清理使用。
-                    imboy_syn:schedule_ack_retry(
-                        Delay, Pid, TimerKey, {Tail, TimerKey, Msg}, Delay + 5000
-                    ),
-                    ok = ?DEBUG_LOG({timer_set, MsgId, Delay, DID})
+                    %% BE-14：重试跳续排同样过预算门——慢端不积压重试 timer、
+                    %% 不留僵尸链（defer 即停链，补齐由轻通知引导的 pull 覆盖）。
+                    budgeted_retry(Pid, ToUid, DID, MsgId, Delay, Tail, Msg, Lane, FrameBytes)
                 end
              || {Pid, {_Dtype, DID}} <- Filtered3
             ],
             ok
     end.
+
+%% BE-14：立即帧的预算化投递：allow 直投；defer 降级（合并轻通知）。
+budgeted_immediate(Pid, ToUid, Msg, Lane, FrameBytes) when node(Pid) =/= node() ->
+    remote_delivery(
+        node(Pid), budgeted_immediate, [Pid, ToUid, Msg, Lane, FrameBytes], fun() ->
+            imboy_syn:start_delivery_timer(0, Pid, Msg)
+        end
+    );
+budgeted_immediate(Pid, ToUid, Msg, Lane, FrameBytes) ->
+    deliver_with_budget(Pid, ToUid, Lane, FrameBytes, fun() ->
+        imboy_syn:start_delivery_timer(0, Pid, Msg)
+    end).
+
+%% BE-14：重试跳的预算化续排：allow 续排 timer；defer 停链降级。
+budgeted_retry(Pid, ToUid, DID, MsgId, Delay, Tail, Msg, Lane, FrameBytes) when
+    node(Pid) =/= node()
+->
+    remote_delivery(
+        node(Pid),
+        budgeted_retry,
+        [
+            Pid, ToUid, DID, MsgId, Delay, Tail, Msg, Lane, FrameBytes
+        ],
+        fun() ->
+            schedule_budgeted_retry(Pid, ToUid, DID, MsgId, Delay, Tail, Msg)
+        end
+    );
+budgeted_retry(Pid, ToUid, DID, MsgId, Delay, Tail, Msg, Lane, FrameBytes) ->
+    deliver_with_budget(Pid, ToUid, Lane, FrameBytes, fun() ->
+        schedule_budgeted_retry(Pid, ToUid, DID, MsgId, Delay, Tail, Msg)
+    end).
+
+schedule_budgeted_retry(Pid, ToUid, DID, MsgId, Delay, Tail, Msg) ->
+    TimerKey = {ToUid, DID, MsgId},
+    imboy_syn:schedule_ack_retry(Delay, Pid, TimerKey, {Tail, TimerKey, Msg}, Delay + 5000),
+    ok = ?DEBUG_LOG({timer_set, MsgId, Delay, DID}).
+
+remote_delivery(Node, Operation, Args, Legacy) ->
+    case imboy_syn:supports_remote_delivery_budget(Node) of
+        true -> erpc:cast(Node, ?MODULE, Operation, Args);
+        false -> Legacy()
+    end.
+
+deliver_with_budget(Pid, ToUid, Lane, FrameBytes, Deliver) ->
+    %% Admission and enqueue are one destination-local critical section.
+    %% Bulk never waits. Direct can outlast a short bulk lock handoff so that
+    %% lock contention alone does not immediately consume its reserved lane.
+    Admission = fun() ->
+        case imboy_syn:delivery_budget_check(Pid, FrameBytes, Lane) of
+            allow ->
+                _ = Deliver(),
+                ok;
+            defer ->
+                imboy_syn:defer_delivery(Pid, ToUid)
+        end
+    end,
+    Lock = {{?MODULE, Pid}, self()},
+    Result =
+        case Lane of
+            bulk ->
+                global:trans(Lock, Admission, [node()], 0);
+            direct ->
+                retry_direct_admission(Lock, Admission, erlang:monotonic_time(millisecond) + 16)
+        end,
+    case Result of
+        aborted -> imboy_syn:defer_delivery(Pid, ToUid, Lane);
+        ok -> ok
+    end.
+
+retry_direct_admission(Lock, Admission, Deadline) ->
+    case global:trans(Lock, Admission, [node()], 0) of
+        aborted ->
+            case erlang:monotonic_time(millisecond) < Deadline of
+                true ->
+                    receive
+                    after 1 -> ok
+                    end,
+                    case erlang:monotonic_time(millisecond) < Deadline of
+                        true -> retry_direct_admission(Lock, Admission, Deadline);
+                        false -> aborted
+                    end;
+                false ->
+                    aborted
+            end;
+        ok ->
+            ok
+    end.
+
+%% BE-14：投递通道判定。bulk 仅指 C2G 实时扇出（热点群扇出主体）；
+%% ephemeral 流（imboy_syn:publish 直推的 stream_delta 等）不经
+%% send_next，本就不受预算门影响（瞬态设计，定稿仍走持久通道）。
+-spec delivery_lane_and_bytes(binary() | term()) -> {bulk | direct, non_neg_integer()}.
+delivery_lane_and_bytes(Msg) when is_binary(Msg) ->
+    Bytes = byte_size(Msg),
+    Lane =
+        try jsone:decode(Msg, [{object_format, map}]) of
+            #{<<"type">> := <<"C2G">>} ->
+                bulk;
+            _ ->
+                direct
+        catch
+            _:_ ->
+                direct
+        end,
+    {Lane, Bytes};
+delivery_lane_and_bytes(_Msg) ->
+    {direct, 0}.
 
 %% @doc 组装系统消息（v2.0 格式）
 %% 为系统到客户端的消息创建标准格式。

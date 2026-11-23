@@ -8,7 +8,7 @@
 -include("log.hrl").
 -include("error_code.hrl").
 
--export([forward/4]).
+-export([forward/4, forward/5]).
 
 -export_type([forward_result/0]).
 
@@ -45,6 +45,87 @@ forward(MsgIds, CurrentUid, ToId, ToType) when is_list(MsgIds), length(MsgIds) >
 forward(_MsgIds, _CurrentUid, _ToId, _ToType) ->
     {error, {invalid_param, <<"消息ID列表不能为空"/utf8>>}}.
 
+%% Retrying callers reuse the same request token and the original ordered batch.
+-spec forward([binary()], integer(), integer(), binary(), binary()) -> forward_result().
+forward(MsgIds, Uid, ToId, ToType, Token) ->
+    case valid_request(MsgIds, Uid, ToId, Token) of
+        true ->
+            case validate_params(MsgIds, Uid, ToId, ToType) of
+                ok -> do_forward_batch(MsgIds, Uid, ToId, ToType, Token);
+                {error, _} = Error -> Error
+            end;
+        false ->
+            {error, {invalid_param, <<"无效的转发请求参数"/utf8>>}}
+    end.
+
+valid_request(MsgIds, Uid, ToId, Token) when
+    is_list(MsgIds),
+    MsgIds =/= [],
+    length(MsgIds) =< ?MAX_FORWARD_BATCH,
+    is_integer(Uid),
+    Uid > 0,
+    is_integer(ToId),
+    ToId > 0,
+    is_binary(Token),
+    byte_size(Token) >= 16,
+    byte_size(Token) =< 64
+->
+    re:run(Token, <<"^[A-Za-z0-9_-]+$">>, [{capture, none}, dollar_endonly]) =:= match andalso
+        lists:all(
+            fun(Id) -> is_binary(Id) andalso byte_size(Id) >= 1 andalso byte_size(Id) =< 40 end,
+            MsgIds
+        );
+valid_request(_, _, _, _) ->
+    false.
+
+do_forward_batch(MsgIds, Uid, ToId, ToType, Token) ->
+    case validate_target_permission(Uid, ToId, ToType) of
+        ok ->
+            case msg_forward_repo:bind_batch(Uid, Token, ToType, ToId, MsgIds) of
+                ok ->
+                    Items = lists:enumerate(MsgIds),
+                    forward_messages(
+                        Items,
+                        fun({Position, Id}) ->
+                            forward_batch_item(Id, Uid, ToId, ToType, Token, Position)
+                        end,
+                        [],
+                        []
+                    );
+                {error, _} = Error ->
+                    Error
+            end;
+        {error, _} = Error ->
+            Error
+    end.
+
+forward_batch_item(Id, Uid, ToId, ToType, Token, Position) ->
+    case msg_forward_repo:batch_result(Uid, Token, Position) of
+        {error, not_found} ->
+            Batch = #{token => Token, ordinal => Position},
+            case forward_single_message(Id, Uid, ToId, ToType, Batch) of
+                {ok, _} = Accepted ->
+                    Accepted;
+                {error, forward_request_conflict} = Conflict ->
+                    Conflict;
+                {error, _} = Error ->
+                    recover_batch_result(Uid, ToId, ToType, Token, Position, Error)
+            end;
+        Result ->
+            Result
+    end.
+
+recover_batch_result(Uid, ToId, ToType, Token, Position, Error) ->
+    case validate_target_permission(Uid, ToId, ToType) of
+        ok ->
+            case msg_forward_repo:batch_result(Uid, Token, Position) of
+                {error, not_found} -> Error;
+                Result -> Result
+            end;
+        {error, _} = AccessError ->
+            AccessError
+    end.
+
 %% ===================================================================
 %% Internal Functions
 %% ===================================================================
@@ -71,7 +152,14 @@ do_forward(MsgIds, CurrentUid, ToId, ToType) ->
     % 验证目标权限
     case validate_target_permission(CurrentUid, ToId, ToType) of
         ok ->
-            forward_messages(MsgIds, CurrentUid, ToId, ToType, [], []);
+            forward_messages(
+                [{undefined, Id} || Id <- MsgIds],
+                fun({_Position, Id}) ->
+                    forward_single_message(Id, CurrentUid, ToId, ToType, undefined)
+                end,
+                [],
+                []
+            );
         {error, Reason} ->
             {error, Reason}
     end.
@@ -97,34 +185,32 @@ validate_target_permission(CurrentUid, ToId, <<"c2g">>) ->
     end.
 
 %% @doc 转发消息列表：逐条转发，成败分别累积，结果按条可区分
--spec forward_messages(
-    [binary()], integer(), integer(), binary(), [binary()], [{binary(), term()}]
-) ->
-    forward_result().
-forward_messages([], _CurrentUid, _ToId, _ToType, Acc, Failed) ->
+forward_messages([], _Forward, Acc, Failed) ->
     build_result(lists:reverse(Acc), lists:reverse(Failed));
-forward_messages([MsgId | Rest], CurrentUid, ToId, ToType, Acc, Failed) ->
-    case forward_single_message(MsgId, CurrentUid, ToId, ToType) of
+forward_messages([{_Position, MsgId} = Item | Rest], Forward, Acc, Failed) ->
+    case Forward(Item) of
         {ok, ForwardMsgId} ->
-            forward_messages(Rest, CurrentUid, ToId, ToType, [ForwardMsgId | Acc], Failed);
+            forward_messages(Rest, Forward, [ForwardMsgId | Acc], Failed);
         {error, Reason} ->
-            % 继续转发下一条消息，按原消息ID记录失败原因
-            forward_messages(Rest, CurrentUid, ToId, ToType, Acc, [{MsgId, Reason} | Failed])
+            forward_messages(Rest, Forward, Acc, [{MsgId, Reason} | Failed])
     end.
 
 %% @doc 汇总批量转发结果
 -spec build_result([binary()], [{binary(), term()}]) -> forward_result().
-build_result([], [{_MsgId, Reason} | _]) ->
-    {error, Reason};
+build_result([], [{_MsgId, Reason} | _] = Failed) ->
+    case lists:keymember(forward_request_conflict, 2, Failed) of
+        true -> {error, forward_request_conflict};
+        false -> {error, Reason}
+    end;
 build_result(Acc, []) ->
     {ok, Acc};
 build_result(Acc, Failed) ->
     {partial, Acc, Failed}.
 
 %% @doc 转发单条消息
--spec forward_single_message(binary(), integer(), integer(), binary()) ->
+-spec forward_single_message(binary(), integer(), integer(), binary(), map() | undefined) ->
     {ok, binary()} | {error, term()}.
-forward_single_message(MsgId, CurrentUid, ToId, ToType) ->
+forward_single_message(MsgId, CurrentUid, ToId, ToType, Batch) ->
     % 获取原始消息
     case get_original_message(MsgId) of
         {ok, OriginalMsg, OriginalType} ->
@@ -133,7 +219,7 @@ forward_single_message(MsgId, CurrentUid, ToId, ToType) ->
                 ok ->
                     % 创建转发消息
                     create_forward_message(
-                        OriginalMsg, OriginalType, MsgId, CurrentUid, ToId, ToType
+                        OriginalMsg, OriginalType, MsgId, CurrentUid, ToId, ToType, Batch
                     );
                 {error, Reason} ->
                     {error, Reason}
@@ -201,9 +287,11 @@ validate_forward_permission(Msg, MsgId, CurrentUid) ->
 %%
 %% 加密消息（E2EE）不在此复刻：密文只对原会话密钥有效，复制给第三方等于
 %% 投递一条永远解不开的消息，因此按参数错误拒收，由发送方给出明确提示。
--spec create_forward_message(map(), binary(), binary(), integer(), integer(), binary()) ->
+-spec create_forward_message(
+    map(), binary(), binary(), integer(), integer(), binary(), map() | undefined
+) ->
     {ok, binary()} | {error, term()}.
-create_forward_message(OriginalMsg, OriginalType, OriginalMsgId, CurrentUid, ToId, ToType) ->
+create_forward_message(OriginalMsg, OriginalType, OriginalMsgId, CurrentUid, ToId, ToType, Batch) ->
     NowMs = elib_dt:millisecond(),
     case build_forward_content(OriginalMsg) of
         {ok, MsgType, OriginalPayload, Keys} ->
@@ -228,8 +316,8 @@ create_forward_message(OriginalMsg, OriginalType, OriginalMsgId, CurrentUid, ToI
             % A forwarded message gets a new UUIDv7; retain the source ID only as a reference.
             Send = fun() -> send_forward_message(ToType, CurrentUid, ForwardData) end,
             Result =
-                case Keys of
-                    [] ->
+                case {Keys, Batch} of
+                    {[], undefined} ->
                         Send();
                     _ ->
                         Context = #{
@@ -244,12 +332,12 @@ create_forward_message(OriginalMsg, OriginalType, OriginalMsgId, CurrentUid, ToI
                             sender => CurrentUid,
                             keys => Keys
                         },
-                        forward_attachment_repo:with_context(Context, Send)
+                        forward_attachment_repo:with_context(batch_context(Context, Batch), Send)
                 end,
             case Result of
                 {ok, ForwardMsgId} ->
-                    case Keys of
-                        [] ->
+                    case {Keys, Batch} of
+                        {[], undefined} ->
                             ok = msg_forward_ds:save_forward_record(
                                 OriginalMsgId,
                                 OriginalFromId,
@@ -270,6 +358,15 @@ create_forward_message(OriginalMsg, OriginalType, OriginalMsgId, CurrentUid, ToI
         {error, Reason} ->
             {error, Reason}
     end.
+
+batch_context(Context, undefined) ->
+    Context;
+batch_context(
+    #{source_type := Type, source_msg_type := MsgType, source_payload := Payload} = Context, Batch
+) ->
+    Fingerprint = term_to_binary({forward_content_v1, Type, MsgType, Payload}, [deterministic]),
+    Hash = binary:encode_hex(crypto:hash(sha256, Fingerprint), lowercase),
+    Context#{batch => Batch#{content_sha256 => Hash}}.
 
 %% @doc 提取可复刻的消息类型与内容
 -spec build_forward_content(map()) -> {ok, binary(), map(), [binary()]} | {error, term()}.

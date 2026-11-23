@@ -21,6 +21,50 @@ module_loaded_test_() ->
         ?assertMatch({file, _}, code:is_loaded(adm_passport_handler))
     end).
 
+logout_requires_verified_session_test() ->
+    Mocks = [
+        {elib_req, [
+            {cookie, 2, fun
+                (<<"adm_user_id">>, _) -> <<"12">>;
+                (<<"adm_user_sig">>, Req) -> maps:get(test_signature, Req, undefined)
+            end}
+        ]},
+        {adm_session_ds, [
+            {verify, 2, fun
+                (<<"12">>, <<"verified-fixture">>) -> {ok, 12};
+                (_, _) -> {error, malformed}
+            end},
+            {bump, 1, fun(12) -> ok end},
+            {cookie_opts, 1, fun(0) -> #{max_age => 0} end}
+        ]},
+        {cowboy_req, [
+            {set_resp_cookie, 4, fun(Name, <<>>, Req, _) -> Req#{Name => cleared} end}
+        ]},
+        {elib_response, [
+            {success, 3, fun(Req, _, _) -> Req end}
+        ]}
+    ],
+    try
+        lists:foreach(
+            fun({Module, Expectations}) ->
+                {ok, _} = meck_helper:setup_mock(Module, Expectations)
+            end,
+            Mocks
+        ),
+        Req = cowboy_req_h:new(#{method => <<"POST">>}),
+        {ok, NoSession, _} = adm_passport_handler:init(Req, #{action => logout}),
+        ?assertEqual(cleared, maps:get(<<"adm_user_sig">>, NoSession)),
+        ?assertEqual(0, meck:num_calls(adm_session_ds, bump, [12])),
+        {ok, Verified, _} = adm_passport_handler:init(
+            Req#{test_signature => <<"verified-fixture">>},
+            #{action => logout}
+        ),
+        ?assertEqual(cleared, maps:get(<<"adm_user_sig">>, Verified)),
+        ?assertEqual(1, meck:num_calls(adm_session_ds, bump, [12]))
+    after
+        meck_helper:cleanup_mocks([Module || {Module, _} <- Mocks])
+    end.
+
 %% ===================================================================
 %% 验证码测试
 %% ===================================================================

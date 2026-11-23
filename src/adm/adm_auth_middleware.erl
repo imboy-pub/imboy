@@ -94,12 +94,11 @@ handle_unauthorized(<<"GET">>, Req) ->
     Path = remove_last_forward_slash(cowboy_req:path(Req)),
     case should_redirect_to_login(Path) of
         true ->
-            Req0 = clear_auth_cookies(Req),
             Uri = cowboy_req:uri(Req),
             Req1 = cowboy_req:set_resp_cookie(
                 <<"back_uri">>,
                 Uri,
-                Req0,
+                Req,
                 #{
                     path => <<"/">>,
                     http_only => true,
@@ -121,16 +120,6 @@ handle_unauthorized(<<"POST">>, Req) ->
     unauthorized_api_response(Req);
 handle_unauthorized(_, Req) ->
     unauthorized_api_response(Req).
-
--spec clear_auth_cookies(cowboy_req:req()) -> cowboy_req:req().
-clear_auth_cookies(Req) ->
-    Req1 = clear_cookie(<<"adm_user_id">>, Req),
-    clear_cookie(<<"adm_user_sig">>, Req1).
-
--spec clear_cookie(binary(), cowboy_req:req()) -> cowboy_req:req().
-clear_cookie(Name, Req) ->
-    %% LT-06：清除属性与签发同源（max_age=0 立即过期）
-    cowboy_req:set_resp_cookie(Name, <<>>, Req, adm_session_ds:cookie_opts(0)).
 
 %% @doc 管理后台 Cookie 授权校验
 -spec authorize_admin_cookie(binary() | false | undefined, binary() | false | undefined) ->
@@ -292,7 +281,8 @@ should_redirect_to_login(_) ->
 %% @doc 未授权 API 响应（401 + JSON envelope）
 -spec unauthorized_api_response(cowboy_req:req()) -> {stop, cowboy_req:req()}.
 unauthorized_api_response(Req) ->
-    Req0 = clear_auth_cookies(Req),
+    %% An old request's 401 may arrive after a fresh login. Only logout may
+    %% clear the SPA's session cookies; this response reports its own failure.
     Body = jsone:encode(
         #{
             <<"code">> => 706,
@@ -309,6 +299,6 @@ unauthorized_api_response(Req) ->
             <<"Referrer-Policy">> => <<"strict-origin-when-cross-origin">>
         },
         Body,
-        Req0
+        Req
     ),
     {stop, Req1}.

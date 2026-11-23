@@ -76,6 +76,7 @@
     stage_with_sequence/11,
     stage_with_sequence/12,
     stage_with_sequence/13,
+    stage_with_sequence/14,
     enqueue/3,
     unstage/2,
     find_staged/2
@@ -295,7 +296,12 @@ stage(
     binary(),
     binary(),
     1 | 3,
-    binary() | null
+    binary()
+    | null
+    | {delivery, binary() | null, undefined | {binary(), integer(), binary()}}
+    | {delivery, binary() | null, undefined | {binary(), integer(), binary()}, {
+        binary(), binary() | integer()
+    }}
 ) ->
     {ok, new, [integer()]}
     | {ok, new, pos_integer(), [integer()]}
@@ -351,7 +357,7 @@ stage(
     binary(),
     binary(),
     1 | 3,
-    binary()
+    binary() | {binary(), delivery} | {binary(), delivery, {binary(), binary() | integer()}}
 ) ->
     {ok, new, [integer()]}
     | {ok, new, pos_integer(), [integer()]}
@@ -515,6 +521,39 @@ stage_with_sequence(
     AcceptedAt,
     ExpireAt
 ) ->
+    stage_with_sequence(
+        Type,
+        MsgId,
+        MsgType,
+        Action,
+        E2EE,
+        Payload,
+        FromId,
+        ToId,
+        CreatedAt,
+        ServerTs,
+        SenderDid,
+        AcceptedAt,
+        ExpireAt,
+        undefined
+    ).
+
+stage_with_sequence(
+    <<"c2c">> = Type,
+    MsgId,
+    MsgType,
+    Action,
+    E2EE,
+    Payload,
+    FromId,
+    ToId,
+    CreatedAt,
+    ServerTs,
+    SenderDid,
+    AcceptedAt,
+    ExpireAt,
+    Reply
+) ->
     case
         msg_store_repo:stage_with_sequence(
             Type,
@@ -529,7 +568,8 @@ stage_with_sequence(
             ServerTs,
             SenderDid,
             AcceptedAt,
-            ExpireAt
+            ExpireAt,
+            Reply
         )
     of
         {ok, duplicate, Seq} -> {ok, duplicate, Seq};

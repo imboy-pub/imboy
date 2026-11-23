@@ -353,17 +353,18 @@ workspace_latest_message_sql() ->
         " ORDER BY tl.conv_seq DESC,tl.created_at DESC LIMIT 1">>.
 
 workspace_unread_sql() ->
+    Visible = msg_c2g_timeline_repo:unread_message_predicate(),
     <<"SELECT count(DISTINCT tl.msg_id)::integer AS unread_count",
         " FROM msg_c2g_timeline tl JOIN msg_c2g m",
         " ON m.msg_id=tl.msg_id AND m.created_at=tl.created_at AND m.to_id=tl.to_gid",
         " WHERE tl.to_uid=$2 AND tl.to_gid=g.id AND tl.conv_seq>=g.member_start_seq",
         " AND tl.conv_seq>COALESCE(r.read_seq,0) AND m.from_id<>$2",
-        " AND (m.expire_at IS NULL OR m.expire_at>NOW())",
-        " AND m.payload->>'action' IS DISTINCT FROM 'message_revoke_ack'">>.
+        " AND (m.expire_at IS NULL OR m.expire_at>NOW())", " AND ", Visible/binary>>.
 
 %% Lock the exact active authorization/generation before writing a read fact.
 %% Only actually delivered, live message IDs may advance it; never a guessed seq.
 mark_workspace_group_read(Conn, Uid, GroupId, MsgIds) ->
+    Visible = msg_c2g_timeline_repo:unread_message_predicate(),
     Sql =
         <<"WITH eligible AS MATERIALIZED (SELECT gen.id,gen.start_seq",
             " FROM \"group\" g JOIN workspace w ON w.id=g.workspace_id",
@@ -384,7 +385,7 @@ mark_workspace_group_read(Conn, Uid, GroupId, MsgIds) ->
             " AND tl.conv_seq>=e.start_seq JOIN msg_c2g m",
             " ON m.msg_id=tl.msg_id AND m.created_at=tl.created_at AND m.to_id=tl.to_gid",
             " WHERE tl.msg_id=ANY($3::text[]) AND (m.expire_at IS NULL OR m.expire_at>NOW())",
-            " AND m.payload->>'action' IS DISTINCT FROM 'message_revoke_ack'",
+            " AND ", Visible/binary,
             " GROUP BY e.id HAVING count(DISTINCT tl.msg_id)=cardinality($3::text[]))",
             " INSERT INTO workspace_group_read_cursor (generation_id,read_seq)",
             " SELECT id,seq FROM observed ON CONFLICT (generation_id) DO UPDATE",

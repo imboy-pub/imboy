@@ -1,0 +1,114 @@
+# POST /api/v1/personal-history/upload
+post:
+  tags: [msg]
+  summary: 上传一条个人历史密文 / Upload one personal history ciphertext
+  description: |
+    ## 中文 / English
+    仅 ON 态、本人为会话参与方、且 key_version 密钥包已就绪时接受。上传按服务端首次受理时间、会话序号与消息版本核对。
+    幂等键 (account, domain, conversation_id, msg_id)：重复上传返回原结果
+    不覆盖；action_version 更低迟到 → 409 version_conflict；更高为终态推进。
+    nonce 在 (account, domain, key_version, nonce) 上唯一，重用 → 409。
+    服务端零解密：仅存版本化密文与路由元数据（§0/§10.4）。
+    Requires ON state, conversation participation and a ready key package.
+    Idempotent on (account, domain, conversation_id, msg_id); nonce unique;
+    server never decrypts.
+  operationId: personalHistoryUpload
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          type: object
+          required: [conversation_id, msg_id, action_version, conv_seq, ciphertext, envelope_meta]
+          properties:
+            conversation_id:
+              type: string
+              description: 会话键（与投递链 conv_key 同源：c2c:{min_uid}:{max_uid}）。 / Conversation key, same construction as delivery chain.
+            msg_id:
+              type: string
+              maxLength: 40
+            action_version:
+              type: integer
+              format: int64
+              minimum: 0
+              description: 消息终态版本（编辑/撤回按版本终态推进）。 / Terminal action version.
+            conv_seq:
+              type: integer
+              format: int64
+              minimum: 0
+              description: 服务端权威会话序号。 / Server-authoritative conversation sequence.
+            generation:
+              type: integer
+              format: int64
+              minimum: 0
+              description: 客户端视角授权代次（可选；不一致 → 410 generation_expired）。 / Client generation view; mismatch → 410.
+            ciphertext:
+              type: string
+              maxLength: 1048576
+              description: base64 密文。 / base64 ciphertext.
+            client_ts:
+              type: integer
+              format: int64
+            envelope_meta:
+              type: object
+              required: [alg, key_version, nonce]
+              properties:
+                alg:
+                  type: string
+                key_version:
+                  type: integer
+                  format: int64
+                  minimum: 1
+                nonce:
+                  type: string
+                  description: base64 nonce；服务端校验唯一。 / base64 nonce; uniqueness enforced.
+                aad:
+                  type: string
+                  description: base64 AAD（恢复端本地重算，不信任服务端回显）。 / base64 AAD; recomputed client-side.
+  responses:
+    '200':
+      description: 成功返回归档锚点。 / Stored anchor.
+      content:
+        application/json:
+          schema:
+            allOf:
+              - $ref: '../../../../components/schemas/Envelope.yaml'
+              - type: object
+                properties:
+                  payload:
+                    type: object
+                    required: [result, conversation_id, msg_id, event_seq, generation]
+                    properties:
+                      result:
+                        type: string
+                        enum: [stored, duplicate, advanced]
+                        description: 首存/幂等重试回原结果/终态推进。 / stored / duplicate (original returned) / advanced.
+                      conversation_id:
+                        type: string
+                      msg_id:
+                        type: string
+                      action_version:
+                        type: integer
+                        format: int64
+                      conv_seq:
+                        type: integer
+                        format: int64
+                      event_seq:
+                        type: integer
+                        format: int64
+                        description: 变更流事件锚（仅 commit 后可见，W2）。 / Change-log anchor.
+                      generation:
+                        type: integer
+                        format: int64
+    '403':
+      description: not_enabled / not_participant / identity_rejected
+    '409':
+      description: version_conflict / nonce_reused
+    '410':
+      description: generation_expired（旧代次迟到写，W4） / Stale generation write
+    '422':
+      description: key_package_missing / malformed_request / backfill_evidence_missing
+    '503':
+      description: transient_failure（客户端安全重试） / Transient failure
+    '401':
+      description: 未认证 / Unauthenticated

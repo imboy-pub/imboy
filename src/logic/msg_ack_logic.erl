@@ -25,6 +25,7 @@ client_ack(Type, MsgId, CurrentUid, DID) ->
     % 【P0-1】C2C/S2C 按设备送达：DID 有效时只标记该设备已确认，
     % 主行等全部活跃设备确认后才删，避免"一端 ACK、另一端离线永丢"。
     % C2G timeline 仍为 per-uid 标记（V7 多端未读串扰另行立项）。
+    Timing = delivery_timing(Type, MsgId, CurrentUid, DID),
     AckResult =
         case Type of
             <<"c2c">> -> msg_operation_ds:ack_c2c_msg(MsgId, CurrentUid, DID);
@@ -43,7 +44,7 @@ client_ack(Type, MsgId, CurrentUid, DID) ->
             ok;
         _ ->
             elib_metric:increment(msg_delivered_total),
-            record_deliver_duration(MsgId),
+            record_deliver_duration(AckResult, Timing),
             %% V3-24 G-4：企业托管行送达事件（按 origin 归属解析，Human 消息
             %% 零外发；独立小事务，失败只留痕不阻断 ACK 主链）。
             emit_enterprise_delivered(Type, MsgId),
@@ -64,58 +65,59 @@ emit_enterprise_delivered(_Type, _MsgId) ->
 %% Internal Function Definitions
 %% ===================================================================
 
-%% @doc B-27：记录投递延迟（秒），供 imboy_msg_deliver_duration_seconds_bucket
-%% 的 p50/p95/p99 面板消费。
-%%
-%% 从服务端 UUIDv7 或历史 TSID 提取毫秒时间戳，保持 ACK 的原始 ID 不变。
-%% Read UUIDv7 or legacy TSID timestamps without changing the acknowledged ID.
-%% 服务端生成消息 id 时已编码时间戳，
-%% 不需要另建一套"发送时刻"的埋点管道或查库。
-%%
-%% ponytail: 只覆盖可解析的 UUIDv7 / 历史 TSID。客户端自带 id 的消息 parse 不出
-%%   合法时间戳，直接跳过不记 —— 记一个假的比不记更糟（分位数会被污染）。
-%%   上限：跨机时钟漂移会体现在这个值里；要精确到端到端就得客户端回传收到时刻。
--spec record_deliver_duration(binary()) -> ok.
-record_deliver_duration(MsgId) ->
-    case msg_created_ms(MsgId) of
-        0 ->
-            ok;
-        CreatedMs ->
-            DeltaMs = elib_dt:millisecond() - CreatedMs,
-            %% 负数(时钟回拨)与超过 1 小时的一律丢弃：那不是投递延迟，
-            %% 是脏数据，混进直方图会把 p99 拉到毫无意义的量级。
-            case DeltaMs >= 0 andalso DeltaMs =< 3600000 of
-                true -> elib_metric:record(imboy_msg_deliver_duration_seconds, DeltaMs / 1000);
-                false -> ok
-            end
-    end.
-
--spec msg_created_ms(term()) -> integer().
-msg_created_ms(
-    <<T0:8/binary, "-", T1:4/binary, "-", V:4/binary, "-", R:4/binary, "-", T2:12/binary>>
-) ->
-    %% Decode the entire canonical UUID, then require version 7 and RFC 9562 variant 10.
-    %% 校验所有十六进制字符及版本/variant，不能把任意 UUID 当作时间戳。
+%% ACK can remove the delivery row, so read the immutable acceptance time first.
+delivery_timing(Type, MsgId, Uid, DID) when
+    is_binary(MsgId),
+    (Type =:= <<"c2g">> orelse
+        ((Type =:= <<"c2c">> orelse Type =:= <<"s2c">>) andalso is_binary(DID) andalso DID =/= <<>>))
+->
     try
-        <<Ts:48, 7:4, _:12, 2:2, _:62>> = binary:decode_hex(
-            <<T0/binary, T1/binary, V/binary, R/binary, T2/binary>>
-        ),
-        Ts
-    catch
-        _:_ -> 0
-    end;
-msg_created_ms(MsgId) ->
-    try
-        Id =
-            case MsgId of
-                I when is_integer(I) -> I;
-                B when is_binary(B) -> binary_to_integer(B)
+        AckMs = elib_dt:millisecond(),
+        AcceptedMs =
+            case trusted_time(Type, Uid, msg_store_repo:find_by_msg_id(Type, MsgId)) of
+                undefined -> trusted_time(Type, Uid, accepted_delivery_row(Type, MsgId, Uid));
+                StagedMs -> StagedMs
             end,
-        %% 用 timestamp/1 而非 parse/1：只要那一个字段，不必构造整个 map
-        case elib_tsid:timestamp(Id) of
-            Ts when is_integer(Ts), Ts > 0 -> Ts;
-            _ -> 0
-        end
+        {AckMs, AcceptedMs}
     catch
-        _:_ -> 0
-    end.
+        %% A metrics read must never prevent the ACK from being persisted.
+        _:_ -> undefined
+    end;
+delivery_timing(_Type, _MsgId, _Uid, _DID) ->
+    undefined.
+
+accepted_delivery_row(<<"c2c">>, MsgId, Uid) ->
+    msg_c2c_repo:read_msg(
+        <<"msg_id = $1 AND to_id = $2">>, <<"to_id, accepted_at">>, 1, [MsgId, Uid]
+    );
+accepted_delivery_row(<<"c2g">>, MsgId, _Uid) ->
+    msg_c2g_repo:list_by_ids([MsgId], <<"accepted_at">>);
+accepted_delivery_row(<<"s2c">>, _MsgId, _Uid) ->
+    {error, not_found}.
+
+trusted_time(Type, Uid, {ok, [Row]}) ->
+    trusted_time(Type, Uid, {ok, Row});
+trusted_time(Type, Uid, {ok, Row}) when is_map(Row) ->
+    case Type =:= <<"c2g">> orelse maps:get(<<"to_id">>, Row, undefined) =:= Uid of
+        true ->
+            case msg_store_repo:resolve_accepted_ms(Row) of
+                {ok, Ms, trusted} when Ms > 0 -> Ms;
+                _ -> undefined
+            end;
+        false ->
+            undefined
+    end;
+trusted_time(_Type, _Uid, _Result) ->
+    undefined.
+
+%% Legacy ACKs only return ok; they cannot prove that a new delivery was recorded.
+record_deliver_duration({ok, Count}, {AckMs, AcceptedMs}) when
+    is_integer(Count), Count > 0, is_integer(AcceptedMs)
+->
+    DeltaMs = AckMs - AcceptedMs,
+    case DeltaMs >= 0 andalso DeltaMs =< 3600000 of
+        true -> elib_metric:record(imboy_msg_deliver_duration_seconds, DeltaMs / 1000);
+        false -> ok
+    end;
+record_deliver_duration(_AckResult, _Timing) ->
+    ok.

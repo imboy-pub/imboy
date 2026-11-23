@@ -153,11 +153,11 @@ execute_without_uid_cookie_get_test_() ->
                 {'path', 1, fun(_Req) -> <<"/adm/index">> end},
                 {'method', 1, fun(_Req) -> <<"GET">> end},
                 {'uri', 1, fun(_Req) -> <<"https://example.com/adm/index">> end},
-                {'set_resp_cookie', 4, fun(_name, _value, _Req, _opts) ->
-                    #{cookie_set => true}
+                {'set_resp_cookie', 4, fun(Name, _Value, Req, _Opts) ->
+                    Req#{set_cookies => [Name | maps:get(set_cookies, Req, [])]}
                 end},
-                {'reply', 3, fun(_Code, _Headers, _Req) ->
-                    #{response_status => 302}
+                {'reply', 3, fun(_Code, _Headers, Req) ->
+                    Req#{response_status => 302}
                 end}
             ]},
             {elib_req, [
@@ -168,7 +168,7 @@ execute_without_uid_cookie_get_test_() ->
             Req = mock_request(),
             Env = #{handler_opts => #{}},
             Result = adm_auth_middleware:execute(Req, Env),
-            ?assertMatch({stop, #{response_status := 302}}, Result)
+            ?assertMatch({stop, #{response_status := 302, set_cookies := [<<"back_uri">>]}}, Result)
         end
     ).
 
@@ -180,7 +180,9 @@ execute_without_uid_cookie_post_test_() ->
             {cowboy_req, [
                 {'path', 1, fun(_Req) -> <<"/api/adm/api/data">> end},
                 {'method', 1, fun(_Req) -> <<"POST">> end},
-                {'set_resp_cookie', 4, fun(_Name, _Value, Req, _Opts) -> Req end},
+                {'set_resp_cookie', 4, fun(_Name, _Value, Req, _Opts) ->
+                    Req#{cookie_set => true}
+                end},
                 {'reply', 4, fun(Code, Headers, Body, Req) ->
                     Req#{
                         response_status => Code, response_headers => Headers, response_body => Body
@@ -194,8 +196,8 @@ execute_without_uid_cookie_post_test_() ->
         fun() ->
             Req = mock_request(),
             Env = #{handler_opts => #{}},
-            Result = adm_auth_middleware:execute(Req, Env),
-            ?assertMatch({stop, #{response_status := 401}}, Result)
+            {stop, #{response_status := 401} = Response} = adm_auth_middleware:execute(Req, Env),
+            ?assertNot(maps:is_key(cookie_set, Response))
         end
     ).
 

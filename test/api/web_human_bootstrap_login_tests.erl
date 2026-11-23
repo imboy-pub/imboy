@@ -294,6 +294,105 @@ web_refresh_does_not_upgrade_verified_epoch_after_revocation_test() ->
         end
     ).
 
+%% BE-22:LOCAL:02 —— 缺头与存储失败都是确定性拒绝，绝不签发（无假成功）。
+web_refresh_missing_header_yields_deterministic_rejection_test() ->
+    with_mocks(
+        [
+            {cowboy_req, [{header, fun(<<"imboy-refreshtoken">>, _) -> undefined end}]},
+            {throttle, [{check, fun(refreshtoken, undefined) -> ok end}]},
+            {auth_ds, [
+                {verify_web_refresh_token, fun(undefined) -> {error, 706, <<"invalid">>} end}
+            ]},
+            {token_ds, []},
+            {elib_response, response_mocks()}
+        ],
+        fun() ->
+            {ok, Req, _} = passport_handler:init(#{}, ?WEB#{action => refreshtoken}),
+            ?assertEqual(401, maps:get(status, Req)),
+            ?assertNot(maps:is_key(payload, Req)),
+            ?assertEqual(0, meck:num_calls(token_ds, encrypt_web_token, '_')),
+            ?assertEqual(0, meck:num_calls(token_ds, encrypt_token, '_')),
+            ?assertEqual(0, meck:num_calls(token_ds, encrypt_refreshtoken, '_'))
+        end
+    ).
+
+web_refresh_storage_failure_is_rejection_not_fake_success_test() ->
+    lists:foreach(
+        fun(Failure) ->
+            with_mocks(
+                [
+                    {cowboy_req, [
+                        {header, fun(<<"imboy-refreshtoken">>, _) -> <<"synthetic-rtk">> end}
+                    ]},
+                    {throttle, [{check, fun(_, _) -> ok end}]},
+                    {auth_ds, [{verify_web_refresh_token, fun(_) -> Failure end}]},
+                    {token_ds, []},
+                    {elib_response, response_mocks()}
+                ],
+                fun() ->
+                    {ok, Req, _} = passport_handler:init(#{}, ?WEB#{action => refreshtoken}),
+                    ?assertEqual(401, maps:get(status, Req)),
+                    ?assertNot(maps:is_key(payload, Req)),
+                    ?assertEqual(0, meck:num_calls(token_ds, encrypt_web_token, '_')),
+                    ?assertEqual(0, meck:num_calls(token_ds, encrypt_token, '_')),
+                    ?assertEqual(0, meck:num_calls(token_ds, encrypt_refreshtoken, '_'))
+                end
+            )
+        end,
+        [{error, 705, <<"device_storage_unavailable">>}, {error, 503, <<"refresh_db_down">>}]
+    ).
+
+%% BE-22:LOCAL:05 —— features 全关（发布配置漂移）时 bootstrap 载荷键集稳定：
+%% 无身份/凭据残留键，ws_url 改写与 RSA 开关归一不漂移，关闭能力无从旁路重开。
+web_bootstrap_payload_stable_under_feature_drift_test() ->
+    with_mocks(
+        [
+            {cowboy_req, [{header, fun(_, _, Default) -> Default end}]},
+            {config_ds, [
+                {env, fun(login_rsa_pub_key) -> <<"public-key">> end},
+                {env, fun
+                    (ws_url, _) -> <<"wss://trusted.test/old?credential=redacted#fragment">>;
+                    (login_pwd_rsa_encrypt, _) -> <<"on">>;
+                    (_, Default) -> Default
+                end}
+            ]},
+            {elib_oss, [{public_base_url, fun() -> <<"https://assets.test">> end}]},
+            {imboy_policy, [{effective_features, fun() -> #{} end}]},
+            {product_experience, [
+                {effective_binary, fun() -> <<"community">> end},
+                {config_version, fun() -> <<"test-version">> end}
+            ]},
+            {product_terminology, [{public, fun(_) -> #{} end}]},
+            {elib_response, response_mocks()}
+        ],
+        fun() ->
+            {ok, Req, _} = index_handler:init(#{}, #{action => web_bootstrap}),
+            ?assertEqual(200, maps:get(status, Req)),
+            Payload = maps:get(payload, Req),
+            ?assertEqual(
+                lists:sort([
+                    <<"ws_url">>,
+                    <<"login_pwd_rsa_encrypt">>,
+                    <<"login_rsa_pub_key">>,
+                    <<"public_base_url">>,
+                    <<"attachment_download_targets">>,
+                    <<"features">>,
+                    <<"effective_product_experience">>,
+                    <<"config_version">>,
+                    <<"terminology">>
+                ]),
+                lists:sort(maps:keys(Payload))
+            ),
+            ?assertEqual(#{}, maps:get(<<"features">>, Payload)),
+            ?assertEqual(<<"wss://trusted.test/api/v1/web/ws">>, maps:get(<<"ws_url">>, Payload)),
+            ?assertEqual(<<"1">>, maps:get(<<"login_pwd_rsa_encrypt">>, Payload)),
+            lists:foreach(
+                fun(Key) -> ?assertNot(maps:is_key(Key, Payload)) end,
+                [<<"uid">>, <<"token">>, <<"refreshtoken">>, <<"did">>, <<"device_session_id">>]
+            )
+        end
+    ).
+
 web_qr_create_rejects_seat_before_storage_test() ->
     with_qr(
         cache,

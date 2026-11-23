@@ -490,3 +490,684 @@ response_payload(Action) ->
     after 1000 ->
         erlang:error(response_not_emitted)
     end.
+
+%% ===================================================================
+%% BE-02（IMBOY_MASTER_V2_2_20261118）补齐断言：成员世代历史边界、
+%% 重入新世代、同时间戳多页与重启重同步。真库（隔离 marker 库）。
+%% 现有实现（E2EE-2026-012/LT-03 join boundary）语义验证；不修生产码。
+%% ===================================================================
+
+-define(C2GGID, 930001).
+-define(C2GKEY, <<"c2g:930001">>).
+
+c2g_cleanup() ->
+    _ = elib_pg:execute(
+        <<"DELETE FROM public.group_member_generation WHERE group_id = $1">>, [?C2GGID]
+    ),
+    _ = elib_pg:execute(
+        <<"DELETE FROM public.group_member WHERE group_id = $1">>, [?C2GGID]
+    ),
+    _ = elib_pg:execute(<<"DELETE FROM public.\"group\" WHERE id = $1">>, [?C2GGID]),
+    _ = elib_pg:execute(<<"DELETE FROM public.msg_store WHERE conv_key = $1">>, [?C2GKEY]),
+    _ = elib_pg:execute(<<"DELETE FROM public.msg_store_seq WHERE conv_key = $1">>, [?C2GKEY]),
+    %% BE-05：群动作事实与 staging 清理（触发器捕获行不随成员清理消失）
+    _ = elib_pg:execute(
+        <<"DELETE FROM public.c2g_revoke_fact WHERE group_id = $1">>, [?C2GGID]
+    ),
+    _ = elib_pg:execute(
+        <<"DELETE FROM public.c2g_forward_edit_fact WHERE group_id = $1">>, [?C2GGID]
+    ),
+    _ = elib_pg:execute(
+        <<"DELETE FROM public.msg_store_staging WHERE type = 'c2g' AND to_id = $1">>, [?C2GGID]
+    ),
+    _ = elib_pg:execute(
+        <<"DELETE FROM public.msg_store_staging WHERE type = 'c2g' AND to_id = $1">>, [?C2GGID]
+    ),
+    %% 共享库 imboy_test_v1：请求台账 UNIQUE(msg_id) 跨 run 残留会使重放
+    %% 被判 msg_id_conflict（hash 含 payload），必须随本套件清理。
+    _ = elib_pg:execute(
+        <<"DELETE FROM public.msg_c2g_request_ledger WHERE to_gid = $1">>, [?C2GGID]
+    ),
+    ok.
+
+c2g_group_fixture() ->
+    {ok, _} =
+        elib_pg:execute(
+            <<
+                "INSERT INTO public.\"group\" (id, owner_uid, creator_uid, title, status, scope) "
+                "VALUES ($1, $2, $2, 'be02-r02-c2g', 1, 'personal') "
+                "ON CONFLICT (id) DO UPDATE SET status = 1, scope = 'personal'"
+            >>,
+            [?C2GGID, ?UA]
+        ),
+    ok = c2g_member_up(?UA, 1),
+    %% BE-05 动作卡需要 caller.role >= RequiredRole（撤回 1 / 编辑 3）
+    {ok, _} =
+        elib_pg:execute(
+            <<"UPDATE public.group_member SET role = 3 WHERE group_id=$1 AND user_id=$2">>,
+            [?C2GGID, ?UA]
+        ),
+    ok = c2g_generation_open(?UA, 1, 1).
+
+c2g_member_up(Uid, Status) ->
+    %% group_member.id 为 NOT NULL 且无默认（生产经 repo 生成 TSID）；
+    %% fixture 用确定性整数 id（谓词查询只依赖 group_id/user_id/status）。
+    MemberId = 93000000 + Uid,
+    {ok, _} =
+        elib_pg:execute(
+            <<
+                "INSERT INTO public.group_member (id, group_id, user_id, status, role) "
+                "VALUES ($4, $1, $2, $3, 0) "
+                "ON CONFLICT (group_id, user_id) DO UPDATE SET status = $3, id = $4"
+            >>,
+            [?C2GGID, Uid, Status, MemberId]
+        ),
+    ok.
+
+%% 关闭该成员当前 open 世代并新开一代（重入语义：R2 每次重入新世代）
+c2g_generation_open(Uid, GenNo, StartSeq) ->
+    {ok, _} =
+        elib_pg:execute(
+            <<
+                "UPDATE public.group_member_generation SET end_seq = "
+                " GREATEST((SELECT COALESCE(MAX(seq), 0) FROM public.msg_store_seq WHERE conv_key = $3), start_seq - 1), "
+                " close_reason = 'fixture_rejoin' "
+                "WHERE group_id = $1 AND user_id = $2 AND end_seq IS NULL"
+            >>,
+            [?C2GGID, Uid, ?C2GKEY]
+        ),
+    {ok, _} =
+        elib_pg:execute(
+            <<
+                "INSERT INTO public.group_member_generation "
+                "(group_id, user_id, generation_no, start_seq, end_seq) "
+                "VALUES ($1, $2, $3, $4, NULL)"
+            >>,
+            [?C2GGID, Uid, GenNo, StartSeq]
+        ),
+    ok.
+
+c2g_seed_seq(Seq) ->
+    {ok, _} =
+        elib_pg:execute(
+            <<
+                "INSERT INTO public.msg_store_seq (conv_key, seq) VALUES ($1, $2) "
+                "ON CONFLICT (conv_key) DO UPDATE SET seq = GREATEST(msg_store_seq.seq, $2)"
+            >>,
+            [?C2GKEY, Seq]
+        ),
+    ok.
+
+c2g_archive(MsgId, FromId, Seq, N) ->
+    Ts = elib_dt:to_rfc3339(1789700000000 + N * 1000, millisecond, "Z"),
+    {ok, _} =
+        elib_pg:execute(
+            <<
+                "INSERT INTO public.msg_store "
+                "(id, chat_type, conv_key, conv_seq, msg_id, msg_type, from_id, to_id, "
+                "group_id, payload, created_at, server_ts) "
+                "VALUES ($7, 'c2g', $6, $5, $1, 'text', $2, $3, $3, '{\"m\":1}', "
+                " $4, $4) "
+            >>,
+            [MsgId, FromId, ?C2GGID, Ts, Seq, ?C2GKEY, 93100000 + Seq]
+        ),
+    ok = c2g_seed_seq(Seq),
+    Seq.
+
+c2g_sync(Uid, CursorSeq, Limit) ->
+    Cursors = [#{<<"conv_key">> => ?C2GKEY, <<"seq">> => CursorSeq}],
+    #{<<"results">> := Results} = msg_c2s_logic:handle_sync(Uid, Cursors, Limit),
+    case Results of
+        [] ->
+            #{messages => [], next_seq => CursorSeq};
+        [R] ->
+            #{
+                messages => lists:sort([
+                    maps:get(<<"msg_id">>, M)
+                 || M <- maps:get(<<"messages">>, R)
+                ]),
+                next_seq => maps:get(<<"next_seq">>, R)
+            }
+    end.
+
+%% R02-7：后来成员不获入群前历史（F2 语义），老成员仍见全量
+r02_7_c2g_late_member_no_prejoin_history_test_() ->
+    ?TEST_WITH_DB(fun() ->
+        c2g_cleanup(),
+        c2g_group_fixture(),
+        lists:foreach(
+            fun(N) -> c2g_archive(<<"tzv1_r02_g", (integer_to_binary(N))/binary>>, ?UA, N, N) end,
+            lists:seq(1, 3)
+        ),
+        %% B（迟到成员）入群：join boundary = 当前计数器+1 = 4
+        ok = c2g_member_up(?UB, 1),
+        ok = c2g_generation_open(?UB, 1, 4),
+        {ok, #{start_seq := StartSeq}} = group_ds:authorize_group_history(?UB, ?C2GGID),
+        ?assertEqual(4, StartSeq),
+        %% 老成员全量
+        #{messages := OwnerMsgs} = c2g_sync(?UA, 0, 50),
+        ?assertEqual(
+            lists:sort([<<"tzv1_r02_g1">>, <<"tzv1_r02_g2">>, <<"tzv1_r02_g3">>]),
+            OwnerMsgs
+        ),
+        %% B 游标 0 被 clamp 到 start_seq-1=3：入群前 3 条不可见
+        #{messages := LateMsgs, next_seq := NextSeq} = c2g_sync(?UB, 0, 50),
+        ?assertEqual([], LateMsgs),
+        %% 空窗口会话被过滤：next_seq 不下发，客户端保持自身游标（clamp
+        %% 语义已由上方 authorize start_seq=4 断言钉住——查询侧从 seq>3 起）
+        ?assertEqual(0, NextSeq),
+        %% 入群后新消息 seq4：B 可见；仍不可见 seq1..3
+        _ = c2g_archive(<<"tzv1_r02_g4">>, ?UA, 4, 4),
+        #{messages := LateMsgs2, next_seq := NextSeq2} = c2g_sync(?UB, 0, 50),
+        ?assertEqual([<<"tzv1_r02_g4">>], LateMsgs2),
+        ?assertEqual(4, NextSeq2)
+    end).
+
+%% R02-8：退出后 fail-closed；重入新世代只获新窗口（无旧权限继承/游标串用）
+r02_8_c2g_rejoin_new_generation_test_() ->
+    ?TEST_WITH_DB(fun() ->
+        c2g_cleanup(),
+        c2g_group_fixture(),
+        lists:foreach(
+            fun(N) -> c2g_archive(<<"tzv1_r02_j", (integer_to_binary(N))/binary>>, ?UA, N, N) end,
+            lists:seq(1, 6)
+        ),
+        ok = c2g_member_up(?UB, 1),
+        ok = c2g_generation_open(?UB, 1, 4),
+        %% 第一代内可见 g4..g6
+        #{messages := Gen1} = c2g_sync(?UB, 0, 50),
+        ?assertEqual(
+            lists:sort([<<"tzv1_r02_j4">>, <<"tzv1_r02_j5">>, <<"tzv1_r02_j6">>]),
+            Gen1
+        ),
+        %% 退出：成员行 status=0 + 世代关闭 → fail-closed 无结果
+        ok = c2g_member_up(?UB, 0),
+        {ok, _} =
+            elib_pg:execute(
+                <<
+                    "UPDATE public.group_member_generation SET end_seq = 6, close_reason = 'fixture_leave' "
+                    "WHERE group_id = $1 AND user_id = $2 AND end_seq IS NULL"
+                >>,
+                [?C2GGID, ?UB]
+            ),
+        #{messages := AfterLeave} = c2g_sync(?UB, 0, 50),
+        ?assertEqual([], AfterLeave),
+        %% 期间新消息 seq7,8
+        lists:foreach(
+            fun(N) -> c2g_archive(<<"tzv1_r02_j", (integer_to_binary(N))/binary>>, ?UA, N, N) end,
+            lists:seq(7, 8)
+        ),
+        %% 重入：新世代 gen2 start_seq=7（R2 每次重入新世代）→ 不获 gen1 窗口
+        ok = c2g_member_up(?UB, 1),
+        ok = c2g_generation_open(?UB, 2, 7),
+        {ok, #{generation_no := GenNo, start_seq := StartSeq2}} =
+            group_ds:authorize_group_history(?UB, ?C2GGID),
+        ?assertEqual(2, GenNo),
+        ?assertEqual(7, StartSeq2),
+        #{messages := Gen2, next_seq := NextSeq2} = c2g_sync(?UB, 0, 50),
+        ?assertEqual(
+            lists:sort([<<"tzv1_r02_j7">>, <<"tzv1_r02_j8">>]),
+            Gen2
+        ),
+        ?assertEqual(8, NextSeq2),
+        %% B 携带第一代旧游标（如 6）也不越权：clamp 后仍从 7 起
+        #{messages := WithStaleCursor} = c2g_sync(?UB, 6, 50),
+        ?assertEqual(
+            lists:sort([<<"tzv1_r02_j7">>, <<"tzv1_r02_j8">>]),
+            WithStaleCursor
+        )
+    end).
+
+%% R02-9：同时间戳多页完整、重启重同步一致、空页不推进不循环
+r02_9_same_timestamp_pagination_restart_test_() ->
+    ?TEST_WITH_DB(fun() ->
+        cleanup(),
+        MsgIds = [<<"tzv1_r02_s", (integer_to_binary(N))/binary>> || N <- lists:seq(1, 4)],
+        %% 四条同 server_ts（仅 msg_id/seq 不同）
+        SameTs = elib_dt:to_rfc3339(1789600000000, millisecond, "Z"),
+        lists:foldl(
+            fun(MsgId, Idx) ->
+                {ok, _Id, Seq} =
+                    msg_store_repo:stage_with_sequence(
+                        <<"c2c">>,
+                        MsgId,
+                        <<"text">>,
+                        <<>>,
+                        null,
+                        <<"{\"m\":1}">>,
+                        ?UA,
+                        ?UB,
+                        SameTs,
+                        SameTs,
+                        null,
+                        SameTs,
+                        null
+                    ),
+                ?assertEqual(Idx, Seq),
+                ?assertEqual(Idx, archive(MsgId)),
+                Idx + 1
+            end,
+            1,
+            MsgIds
+        ),
+        %% 同时间戳整段一次取全（next_seq=4）
+        P1 = history(0),
+        ?assertEqual(lists:sort(MsgIds), ids(P1)),
+        ?assertEqual(4, maps:get(<<"next_seq">>, P1)),
+        %% 模拟重启：全新进程/连接重放同一游标 → 集合一致、游标不回退
+        P2 = history(0),
+        ?assertEqual(ids(P1), ids(P2)),
+        %% 逐条翻页（limit=1，同时间戳不跳不重）：handle_sync 语义
+        Walk = lists:foldl(
+            fun(Idx, {Seen, Cursor}) ->
+                Cursors = [#{<<"conv_key">> => ?KEY, <<"seq">> => Cursor}],
+                #{<<"results">> := [R]} = msg_c2s_logic:handle_sync(?UA, Cursors, 1),
+                [M] = maps:get(<<"messages">>, R),
+                MsgId = maps:get(<<"msg_id">>, M),
+                ?assert(maps:get(<<"msg_id">>, M) =/= <<>>),
+                Next = maps:get(<<"next_seq">>, R),
+                ?assertEqual(Idx, Next),
+                ?assertNot(lists:member(MsgId, Seen)),
+                {Seen ++ [MsgId], Next}
+            end,
+            {[], 0},
+            lists:seq(1, 4)
+        ),
+        {SeenAll, _} = Walk,
+        ?assertEqual(lists:sort(MsgIds), lists:sort(SeenAll)),
+        %% 空页：cursor=4（头部）→ 结果过滤，无伪推进、无循环入口
+        CursorsEnd = [#{<<"conv_key">> => ?KEY, <<"seq">> => 4}],
+        #{<<"results">> := EndResults} = msg_c2s_logic:handle_sync(?UA, CursorsEnd, 1),
+        ?assertEqual([], EndResults)
+    end).
+
+%% ===================================================================
+%% BE-05（IMBOY_MASTER_V2_2_20261118）：群控制事件与成员世代专项重验。
+%% 真库（隔离 marker 库）；生产入口（stage_with_sequence/stage_action/
+%% safe_head/messaging_logic:history/authorize_group_history）全链验证。
+%% ===================================================================
+
+%% c2g staging 归档（镜像 archive/1，type='c2g'）
+c2g_archive_row(MsgId) ->
+    {ok, [Row]} =
+        elib_pg:query(
+            <<
+                "SELECT type, msg_id, msg_type, from_id, to_id, e2ee, sender_did, payload, "
+                "created_at, server_ts, conv_seq, accepted_at, expire_at "
+                "FROM public.msg_store_staging WHERE type='c2g' AND msg_id=$1"
+            >>,
+            [MsgId]
+        ),
+    ok = msg_archive_repo:archive(Row),
+    Seq = maps:get(<<"conv_seq">>, Row),
+    {ok, _} = msg_store_repo:unstage(<<"c2g">>, MsgId),
+    Seq.
+
+%% c2g 普通发送的生产接受入口（seq 由 msg_store_seq 分配器权威分配；
+%% stage_c2g 同事务固化 recipient snapshot——动作卡的 target 谓词依赖它）。
+%% payload 携带 to：msg_archive_repo c2g 归档解码 group_id 的合同字段。
+c2g_stage(MsgId) ->
+    Ts = elib_dt:to_rfc3339(
+        1789800000000 + erlang:unique_integer([positive]) rem 1000000,
+        millisecond,
+        "Z"
+    ),
+    Payload = <<"{\"m\":1,\"to\":", (integer_to_binary(?C2GGID))/binary, "}">>,
+    Res =
+        msg_store_repo:stage(
+            <<"c2g">>,
+            MsgId,
+            <<"text">>,
+            <<>>,
+            null,
+            Payload,
+            ?UA,
+            ?C2GGID,
+            Ts,
+            Ts,
+            <<>>,
+            3,
+            null
+        ),
+    case Res of
+        {ok, _Id, Seq, _MemberUids} when is_integer(Seq) ->
+            Seq;
+        _ ->
+            erlang:error({be05_stage_unexpected, MsgId, Res})
+    end.
+
+%% 共享库 imboy_test_v1 跨 run 残留（msg_c2g_request_ledger UNIQUE(msg_id)+
+%% request_hash 含 payload）：本卡全部消息 id 用 run 内唯一后缀，杜绝
+%% 跨 run 的 msg_id_conflict / unique_violation 假失败。
+be05_uq() ->
+    integer_to_binary(erlang:unique_integer([positive])).
+
+%% BE-05:LOCAL:01 同会话并发发送、回滚及乱序：seq 分配器权威位置稳定；
+%% 接受后未归档（in-flight）形成的安全边界使读取进度不越过未完成范围。
+be05_01_c2g_seq_authority_hole_test_() ->
+    ?TEST_WITH_DB(fun() ->
+        c2g_cleanup(),
+        c2g_group_fixture(),
+        %% 生产分配器：连续接受 seq 严格递增（并发/乱序到达不改权威位置）
+        Uq = be05_uq(),
+        S1 = c2g_stage(<<"be05_seq1_", Uq/binary>>),
+        S2 = c2g_stage(<<"be05_seq2_", Uq/binary>>),
+        S3 = c2g_stage(<<"be05_seq3_", Uq/binary>>),
+        ?assertEqual([1, 2, 3], [S1, S2, S3]),
+        %% o1/o2 归档；o3 卡 staging（回滚/重试中）；o4 已分配且归档
+        ?assertEqual(1, c2g_archive_row(<<"be05_seq1_", Uq/binary>>)),
+        ?assertEqual(2, c2g_archive_row(<<"be05_seq2_", Uq/binary>>)),
+        S4 = c2g_stage(<<"be05_seq4_", Uq/binary>>),
+        ?assertEqual(4, S4),
+        ?assertEqual(4, c2g_archive_row(<<"be05_seq4_", Uq/binary>>)),
+        %% 安全边界 = min(正式 max=4, staging 非终态 min=3 - 1) = 2
+        {ok, B} = msg_archive_repo:safe_head(?C2GKEY, <<"c2g">>, ?C2GGID, 0),
+        ?assertEqual(2, B),
+        %% 一致快照历史：安全边界 B=2；行查询含 >B 的已归档行（1,2,4），
+        %% 但消费方 next_seq 被钳在 B——读取进度不越过未完成范围
+        {ok, Rows, SafeHead, Gaps} =
+            msg_archive_repo:safe_history(?C2GKEY, 0, 50, <<"c2g">>, ?C2GGID, 0),
+        ?assertEqual(2, SafeHead),
+        ?assertEqual([], Gaps),
+        ?assertEqual(
+            [
+                <<"be05_seq1_", Uq/binary>>,
+                <<"be05_seq2_", Uq/binary>>,
+                <<"be05_seq4_", Uq/binary>>
+            ],
+            [maps:get(<<"msg_id">>, R) || R <- Rows]
+        ),
+        %% 消费面（messaging_logic:history 同源谓词）：next_seq 钳在 2
+        {ok, HistP} = messaging_logic:history(?UA, <<"c2g">>, <<"930001">>, 0, 50, <<>>),
+        ?assertEqual(2, maps:get(<<"next_seq">>, HistP)),
+        ?assertEqual(true, maps:get(<<"blocked">>, HistP)),
+        %% 恢复：o3 归档后边界推进、全量齐、blocked 解除
+        ?assertEqual(3, c2g_archive_row(<<"be05_seq3_", Uq/binary>>)),
+        {ok, Rows2, SafeHead2, _} =
+            msg_archive_repo:safe_history(?C2GKEY, 0, 50, <<"c2g">>, ?C2GGID, 0),
+        ?assertEqual(4, SafeHead2),
+        ?assertEqual(
+            [
+                <<"be05_seq1_", Uq/binary>>,
+                <<"be05_seq2_", Uq/binary>>,
+                <<"be05_seq3_", Uq/binary>>,
+                <<"be05_seq4_", Uq/binary>>
+            ],
+            [maps:get(<<"msg_id">>, R) || R <- Rows2]
+        ),
+        {ok, HistP2} = messaging_logic:history(?UA, <<"c2g">>, <<"930001">>, 0, 50, <<>>),
+        ?assertEqual(4, maps:get(<<"next_seq">>, HistP2)),
+        ?assertEqual(false, maps:get(<<"blocked">>, HistP2))
+    end).
+
+%% BE-05:LOCAL:02 入群/退出/踢人/转让/解散：读写权限一致，
+%% 后来成员不获未授权历史；路径不影响其他成员的授权状态。
+be05_02_membership_transitions_test_() ->
+    ?TEST_WITH_DB(fun() ->
+        c2g_cleanup(),
+        c2g_group_fixture(),
+        UC = 920003,
+        lists:foreach(
+            fun(N) -> c2g_archive(<<"be05_mt", (integer_to_binary(N))/binary>>, ?UA, N, N) end,
+            lists:seq(1, 3)
+        ),
+        %% B、C 先后入群（join boundary = 4）
+        ok = c2g_member_up(?UB, 1),
+        ok = c2g_generation_open(?UB, 1, 4),
+        ok = c2g_member_up(UC, 1),
+        ok = c2g_generation_open(UC, 1, 4),
+        ?assertMatch({ok, #{start_seq := 4}}, group_ds:authorize_group_history(?UB, ?C2GGID)),
+        %% 转让：owner A→B、角色互换——世代边界与历史授权不变（后来成员
+        %% 不因角色变化获得更早历史，原 owner 不丢失全量）
+        {ok, _} =
+            elib_pg:execute(
+                <<"UPDATE public.\"group\" SET owner_uid = $1 WHERE id = $2">>, [?UB, ?C2GGID]
+            ),
+        {ok, _} =
+            elib_pg:execute(
+                <<"UPDATE public.group_member SET role = 2 WHERE group_id=$1 AND user_id=$2">>,
+                [?C2GGID, ?UB]
+            ),
+        ?assertMatch({ok, #{start_seq := 4}}, group_ds:authorize_group_history(?UB, ?C2GGID)),
+        ?assertMatch({ok, #{start_seq := 1}}, group_ds:authorize_group_history(?UA, ?C2GGID)),
+        %% B 退出：status→0 + 世代关闭 → 授权 fail-closed denied
+        {ok, _} =
+            elib_pg:execute(
+                <<"UPDATE public.group_member SET status = 0 WHERE group_id=$1 AND user_id=$2">>,
+                [?C2GGID, ?UB]
+            ),
+        {ok, _} =
+            elib_pg:execute(
+                <<
+                    "UPDATE public.group_member_generation SET end_seq = 999, "
+                    "close_reason = 'be05_quit' WHERE group_id=$1 AND user_id=$2 AND end_seq IS NULL"
+                >>,
+                [?C2GGID, ?UB]
+            ),
+        ?assertEqual({error, denied}, group_ds:authorize_group_history(?UB, ?C2GGID)),
+        %% C 被踢：status→-1 + 世代关闭 → denied；A 不受影响（不误删他人授权）
+        {ok, _} =
+            elib_pg:execute(
+                <<"UPDATE public.group_member SET status = -1 WHERE group_id=$1 AND user_id=$2">>,
+                [?C2GGID, UC]
+            ),
+        {ok, _} =
+            elib_pg:execute(
+                <<
+                    "UPDATE public.group_member_generation SET end_seq = 999, "
+                    "close_reason = 'be05_kick' WHERE group_id=$1 AND user_id=$2 AND end_seq IS NULL"
+                >>,
+                [?C2GGID, UC]
+            ),
+        ?assertEqual({error, denied}, group_ds:authorize_group_history(UC, ?C2GGID)),
+        {ok, #{start_seq := 1}} = group_ds:authorize_group_history(?UA, ?C2GGID),
+        %% 解散：group.status→0 → 全体 denied（fail-closed）
+        {ok, _} =
+            elib_pg:execute(
+                <<"UPDATE public.\"group\" SET status = 0 WHERE id = $1">>, [?C2GGID]
+            ),
+        ?assertEqual({error, denied}, group_ds:authorize_group_history(?UA, ?C2GGID)),
+        %% 重入语义复核：复活群 + C 重入新世代 → 只见入群后内容
+        {ok, _} =
+            elib_pg:execute(
+                <<"UPDATE public.\"group\" SET status = 1 WHERE id = $1">>, [?C2GGID]
+            ),
+        {ok, _} =
+            elib_pg:execute(
+                <<"UPDATE public.group_member SET status = 1 WHERE group_id=$1 AND user_id=$2">>,
+                [?C2GGID, UC]
+            ),
+        ok = c2g_generation_open(UC, 2, 4),
+        {ok, #{start_seq := 4}} = group_ds:authorize_group_history(UC, ?C2GGID),
+        #{messages := CMs} = c2g_sync(UC, 0, 50),
+        ?assertEqual([], CMs)
+    end).
+
+%% 群编辑/撤回动作的 staging 生产入口（触发器在同 INSERT 内捕获事实）
+c2g_stage_action(ActionMsgId, Action, PayloadMap, RequiredRole, OriginalMsgId) ->
+    Ts = elib_dt:to_rfc3339(
+        1789900000000 + erlang:unique_integer([positive]) rem 1000000,
+        millisecond,
+        "Z"
+    ),
+    msg_store_repo:stage_action(
+        <<"c2g">>,
+        ActionMsgId,
+        <<"custom">>,
+        Action,
+        null,
+        PayloadMap,
+        ?UA,
+        ?C2GGID,
+        Ts,
+        Ts,
+        <<>>,
+        RequiredRole,
+        OriginalMsgId
+    ).
+
+scalar_first(Sql, Params, Key) ->
+    {ok, [Row]} = elib_pg:query(Sql, Params),
+    maps:get(Key, Row).
+
+%% BE-05:LOCAL:03 两次编辑反序/并发/旧设备重放（群域）：受理序 = 事实序
+%% 权威；同 action 重放 = 唯一冲突显式拒绝；编辑事实不重写正文。
+be05_03_c2g_edit_facts_test_() ->
+    ?TEST_WITH_DB(fun() ->
+        c2g_cleanup(),
+        c2g_group_fixture(),
+        Uq3 = be05_uq(),
+        Orig = <<"be05_ef_orig_", Uq3/binary>>,
+        %% original 走生产链（stage_c2g 同事务固化 recipient snapshot——动作 target 谓词依赖）
+        _SeqOrig = c2g_stage(Orig),
+        _ = c2g_archive_row(Orig),
+        %% 编辑 E1（先受理）：staging INSERT 同步触发事实捕获
+        P1 = #{
+            <<"action">> => <<"message_edit_ack">>,
+            <<"content">> => <<"v2">>,
+            <<"original_msg_id">> => Orig
+        },
+        {ok, _, Seq1, _} = c2g_stage_action(
+            <<"be05_ef_e1_", Uq3/binary>>, <<"message_edit_ack">>, P1, 3, Orig
+        ),
+        ?assert(is_integer(Seq1)),
+        ?assertEqual(
+            1,
+            scalar_first(
+                <<
+                    "SELECT count(*)::bigint AS v FROM public.c2g_forward_edit_fact "
+                    "WHERE group_id=$1 AND original_msg_id=$2 AND action_msg_id = $3"
+                >>,
+                [?C2GGID, Orig, <<"be05_ef_e1_", Uq3/binary>>],
+                <<"v">>
+            )
+        ),
+        %% 编辑事实不重写正文（00000258 设计）：正式行 payload 保持原文
+        %% 编辑事实不重写正文：原行不含任何编辑痕迹（content/original_msg_id 均未出现）
+        NoEditPayload = scalar_first(
+            <<"SELECT payload::text AS v FROM public.msg_store WHERE msg_id=$1">>,
+            [Orig],
+            <<"v">>
+        ),
+        ?assertEqual(nomatch, binary:match(NoEditPayload, <<"v2">>)),
+        ?assertEqual(nomatch, binary:match(NoEditPayload, <<"v3">>)),
+        ?assertEqual(nomatch, binary:match(NoEditPayload, <<"original_msg_id">>)),
+        %% 旧设备重放：同 action_msg_id 再投 → UNIQUE(action_msg_id) 冲突显式拒绝
+        ?assertMatch(
+            {error, {unique_violation, <<"be05_ef_e1_", Uq3/binary>>}},
+            c2g_stage_action(<<"be05_ef_e1_", Uq3/binary>>, <<"message_edit_ack">>, P1, 3, Orig)
+        ),
+        %% 后受理 E2（反序到达）：事实行 accepted_seq 严格大于 E1——受理序可恢复
+        P2 = #{
+            <<"action">> => <<"message_edit_ack">>,
+            <<"content">> => <<"v3">>,
+            <<"original_msg_id">> => Orig
+        },
+        {ok, _, Seq2, _} = c2g_stage_action(
+            <<"be05_ef_e2_", Uq3/binary>>, <<"message_edit_ack">>, P2, 3, Orig
+        ),
+        ?assert(Seq2 > Seq1),
+        {ok, Rows} = elib_pg:query(
+            <<
+                "SELECT action_msg_id, accepted_seq FROM public.c2g_forward_edit_fact "
+                "WHERE group_id=$1 AND original_msg_id=$2 ORDER BY accepted_seq"
+            >>,
+            [?C2GGID, Orig]
+        ),
+        ?assertEqual([<<"be05_ef_e1_", Uq3/binary>>, <<"be05_ef_e2_", Uq3/binary>>], [
+            maps:get(<<"action_msg_id">>, R)
+         || R <- Rows
+        ]),
+        %% 正文仍未被任何编辑重写（事实权威，非 payload 权威）
+        NoEditPayload2 = scalar_first(
+            <<"SELECT payload::text AS v FROM public.msg_store WHERE msg_id=$1">>,
+            [Orig],
+            <<"v">>
+        ),
+        ?assertEqual(nomatch, binary:match(NoEditPayload2, <<"v2">>)),
+        ?assertEqual(nomatch, binary:match(NoEditPayload2, <<"v3">>)),
+        ?assertEqual(nomatch, binary:match(NoEditPayload2, <<"original_msg_id">>))
+    end).
+
+%% BE-05:LOCAL:04/05 撤回先到、编辑后到：正文不复活，控制事实可恢复；
+%% 撤回后历史重拉只见 tombstone（本轮 msg_store_repo tombstone 修复）。
+be05_04_c2g_revoke_first_test_() ->
+    ?TEST_WITH_DB(fun() ->
+        c2g_cleanup(),
+        c2g_group_fixture(),
+        Uq4 = be05_uq(),
+        Orig = <<"be05_rf_orig_", Uq4/binary>>,
+        %% original 走生产链（同 be05_03）
+        _SeqOrig = c2g_stage(Orig),
+        _ = c2g_archive_row(Orig),
+        %% 撤回先到：事实 + 正式行 tombstone 同事务落地
+        PR = #{
+            <<"action">> => <<"message_revoke_ack">>,
+            <<"content">> => <<"">>,
+            <<"original_msg_id">> => Orig
+        },
+        {ok, _, _, _} = c2g_stage_action(
+            <<"be05_rf_r1_", Uq4/binary>>, <<"message_revoke_ack">>, PR, 1, Orig
+        ),
+        ?assertEqual(
+            1,
+            scalar_first(
+                <<
+                    "SELECT count(*)::bigint AS v FROM public.c2g_revoke_fact "
+                    "WHERE group_id=$1 AND original_msg_id=$2"
+                >>,
+                [?C2GGID, Orig],
+                <<"v">>
+            )
+        ),
+        Tomb = scalar_first(
+            <<"SELECT payload::text AS v FROM public.msg_store WHERE msg_id=$1">>,
+            [Orig],
+            <<"v">>
+        ),
+        ?assertEqual(nomatch, binary:match(Tomb, <<"\"m\":1">>)),
+        ?assert(nomatch =/= binary:match(Tomb, <<"message_revoke_ack">>)),
+        %% 编辑后到：事实照常捕获，但正文保持 tombstone——不复活
+        PE = #{
+            <<"action">> => <<"message_edit_ack">>,
+            <<"content">> => <<"late">>,
+            <<"original_msg_id">> => Orig
+        },
+        {ok, _, _, _} = c2g_stage_action(
+            <<"be05_rf_e1_", Uq4/binary>>, <<"message_edit_ack">>, PE, 3, Orig
+        ),
+        Tomb2 = scalar_first(
+            <<"SELECT payload::text AS v FROM public.msg_store WHERE msg_id=$1">>,
+            [Orig],
+            <<"v">>
+        ),
+        ?assertEqual(nomatch, binary:match(Tomb2, <<"late">>)),
+        %% 转发可见性权威：撤回事实生效 → 源消息不可再转发
+        ?assertEqual(
+            {error, forbidden},
+            elib_pg:with_tx(fun(C) ->
+                forward_attachment_source_repo:c2g_tx(C, Orig, ?C2GGID, ?UA)
+            end)
+        ),
+        %% 控制事实可恢复：两条事实行均在库可查（撤回 + 迟到编辑）
+        {ok, RevRow} = elib_pg:query(
+            <<
+                "SELECT accepted_seq, action_msg_id FROM public.c2g_revoke_fact "
+                "WHERE group_id=$1 AND original_msg_id=$2"
+            >>,
+            [?C2GGID, Orig]
+        ),
+        ?assertEqual(1, length(RevRow)),
+        {ok, EditRow} = elib_pg:query(
+            <<
+                "SELECT action_msg_id FROM public.c2g_forward_edit_fact "
+                "WHERE group_id=$1 AND original_msg_id=$2"
+            >>,
+            [?C2GGID, Orig]
+        ),
+        ?assertEqual(1, length(EditRow)),
+        %% 历史重拉：行仍存在（控制事实可见）但正文= tombstone，原内容不重现
+        {ok, Payload} = messaging_logic:history(?UA, <<"c2g">>, <<"930001">>, 0, 50, <<>>),
+        HistBin = jsone:encode(Payload, [native_utf8]),
+        ?assertEqual(nomatch, binary:match(HistBin, <<"\"m\":1">>))
+    end).

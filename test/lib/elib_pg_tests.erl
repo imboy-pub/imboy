@@ -42,6 +42,7 @@ setup_pooler_mock() ->
 setup_pooler_mock_with_error() ->
     meck:new(pooler, [no_link, passthrough]),
     meck:expect(pooler, take_member, 1, fun(_Driver) -> error_no_members end),
+    meck:expect(pooler, take_member, 2, fun(_Driver, _Timeout) -> error_no_members end),
     meck:expect(pooler, return_member, 2, fun(_Driver, _Conn) -> ok end),
     ok.
 
@@ -1790,14 +1791,54 @@ with_conn_no_members_test_() ->
             meck:expect(timer, sleep, 1, fun(_Ms) -> ok end)
         end,
         fun(_) ->
-            catch meck:unload(timer),
+            meck:unload(timer),
             code:stick_mod(timer),
-            catch meck:unload(pooler)
+            teardown_pooler_mock(ok)
         end,
         fun(_) ->
             ?_test(begin
-                Result = elib_pg:with_conn(fun(_Conn) -> ok end),
-                ?assertEqual({error, no_connection}, Result)
+                Result = elib_pg:with_conn(fun(_Conn) -> error(callback_must_not_run) end),
+                ?assertEqual({error, no_connection}, Result),
+                Waits = [
+                    Timeout
+                 || {_, {pooler, take_member, [pgsql, Timeout]}, _} <- meck:history(pooler)
+                ],
+                ?assertEqual([1000, 2000, 3000], Waits),
+                Sleeps = [Ms || {_, {timer, sleep, [Ms]}, _} <- meck:history(timer)],
+                ?assertEqual(length(Waits), length(Sleeps)),
+                ?assert(
+                    lists:all(
+                        fun({Sleep, Wait}) -> Sleep > 0 andalso Sleep =< Wait end,
+                        lists:zip(Sleeps, Waits)
+                    )
+                ),
+                ?assertEqual(4, meck:num_calls(pooler, take_member, [pgsql]))
+            end)
+        end}.
+
+with_conn_uses_returned_member_without_replaying_callback_test_() ->
+    {setup,
+        fun() ->
+            setup_pooler_mock_with_error(),
+            Conn = spawn_fake_conn(),
+            meck:expect(pooler, take_member, 2, fun(pgsql, 1000) -> Conn end),
+            Conn
+        end,
+        fun(Conn) ->
+            stop_fake_conn(Conn),
+            teardown_pooler_mock(Conn)
+        end,
+        fun(Conn) ->
+            ?_test(begin
+                Counter = atomics:new(1, []),
+                Returned = elib_pg:with_conn(fun(Acquired) ->
+                    atomics:add(Counter, 1, 1),
+                    Acquired
+                end),
+                ?assertEqual(Conn, Returned),
+                ?assertEqual(1, atomics:get(Counter, 1)),
+                ?assertEqual(1, meck:num_calls(pooler, take_member, [pgsql, 1000])),
+                ?assertEqual(1, meck:num_calls(pooler, return_member, [pgsql, Conn]))
             end)
         end}.
 

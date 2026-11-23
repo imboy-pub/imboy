@@ -455,6 +455,26 @@ expected_routes() ->
         {"msg/history", "msg/history", msg_handler, history, [<<"GET">>], access},
         {"msg", "msg", msg_handler, history_backfill, [<<"GET">>], access},
         {"msg/result", "msg/result", msg_handler, message_result, [<<"GET">>], access},
+        %% 个人消息历史域 Web N1 面（MH-01 §10.1 合同 + MH-02 路由落地；
+        %% key-package 读端点 GET 依 mh04 addendum/FL-04 裁决，写面 Web 惯例 POST）
+        {"personal-history/status", "personal-history/status", personal_history_handler, status,
+            [<<"GET">>], access},
+        {"personal-history/opt-in", "personal-history/opt-in", personal_history_handler, opt_in,
+            [<<"POST">>], access},
+        {"personal-history/upload", "personal-history/upload", personal_history_handler, upload,
+            [<<"POST">>], access},
+        {"personal-history/changes", "personal-history/changes", personal_history_handler, changes,
+            [<<"GET">>], access},
+        {"personal-history/ack-cursor", "personal-history/ack-cursor", personal_history_handler,
+            ack_cursor, [<<"POST">>], access},
+        {"personal-history/page", "personal-history/page", personal_history_handler, page,
+            [<<"GET">>], access},
+        {"personal-history/key-package", "personal-history/key-package", personal_history_handler,
+            key_package, [<<"GET">>, <<"POST">>], access},
+        {"personal-history/disable", "personal-history/disable", personal_history_handler, disable,
+            [<<"POST">>], access},
+        {"personal-history/delete-status", "personal-history/delete-status",
+            personal_history_handler, delete_status, [<<"GET">>], access},
         {"conversation/mine", "conversation/mine", conversation_handler, mine, [<<"GET">>], access},
         {"conversation/pin", "conversation/pin", conversation_handler, pin_conversation,
             [<<"POST">>], access},
@@ -545,4 +565,95 @@ web_self_profile_route_is_private_get_only_test() ->
             end,
             [<<"POST">>, <<"PUT">>, <<"PATCH">>, <<"DELETE">>]
         )
+    end).
+
+geo_region_selection_route_is_local_preview_only_test() ->
+    with_mocks(fun() ->
+        meck:new(imboy_env, [passthrough, no_link]),
+        try
+            Path = "/api/v1/web/user/region-selection",
+            meck:expect(imboy_env, current, fun() -> <<"local">> end),
+            ?assertEqual(false, geo_preview_route(Path)),
+            Pin = #{data_root => <<"/geo-preview">>, manifest_sha256 => binary:copy(<<"a">>, 64)},
+            set_geo_preview_route_config({127, 0, 0, 1}, Pin),
+            ?assertMatch(
+                {Path, user_handler, #{
+                    action := web_region_selection,
+                    surface := web_human,
+                    jwt_purpose := web_human,
+                    jwt_methods := [<<"POST">>],
+                    web_auth := access
+                }},
+                geo_preview_route(Path)
+            ),
+            ?assertNot(lists:member(list_to_binary(Path), imboy_router:open())),
+            meck:expect(imboy_env, current, fun() -> <<"production">> end),
+            ?assertEqual(false, geo_preview_route(Path)),
+            meck:expect(imboy_env, current, fun() -> <<"local">> end),
+            set_geo_preview_route_config({0, 0, 0, 0}, Pin),
+            ?assertEqual(false, geo_preview_route(Path)),
+            set_geo_preview_route_config({127, 0, 0, 1}, Pin#{manifest_sha256 => <<"short">>}),
+            ?assertEqual(false, geo_preview_route(Path))
+        after
+            meck:unload(imboy_env)
+        end
+    end).
+
+geo_preview_route(Path) ->
+    [{_, Routes}] = imboy_router:get_routes(),
+    lists:keyfind(Path, 1, Routes).
+
+set_geo_preview_route_config(IP, Pin) ->
+    meck:expect(config_ds, env, fun
+        (geo_web_preview_enabled, _) -> true;
+        (listen_ip, _) -> IP;
+        (geo_regions_pin, _) -> Pin;
+        (_, Default) -> Default
+    end).
+
+geo_preview_save_rejects_nonlocal_origin_and_returns_validated_fields_test() ->
+    with_mocks(fun() ->
+        Modules = [elib_param, user_logic],
+        lists:foreach(fun(M) -> meck:new(M, [passthrough, no_link]) end, Modules),
+        try
+            State = (opts(access, [<<"POST">>]))#{current_uid => 123},
+            Region = <<"Synthetic region">>,
+            Selection = #{<<"pathIds">> => [<<"cc:XX">>]},
+            Value = #{<<"region">> => Region, <<"selection">> => Selection},
+            meck:expect(elib_param, post, fun(_) -> Value end),
+            meck:expect(user_logic, update, fun(123, <<"regionSelection">>, V, <<>>) when
+                V =:= Value
+            ->
+                {ok, 1}
+            end),
+            meck:expect(elib_response, success, fun(_Req, Payload, _) -> Payload end),
+            Origin = fun(O) -> #{headers => #{<<"origin">> => O}} end,
+            [
+                ?assertMatch(
+                    #{status := 403},
+                    user_handler:handle_action(
+                        web_region_selection, Origin(O), State
+                    )
+                )
+             || O <- [
+                    <<"https://example.org">>,
+                    <<"http://localhost@example.org">>,
+                    <<"http://localhost/path">>,
+                    undefined
+                ]
+            ],
+            ?assertEqual(0, meck:num_calls(user_logic, update, 4)),
+            ?assertEqual(
+                #{
+                    <<"region">> => Region,
+                    <<"regionSelection">> => Selection,
+                    <<"regionSelectionStatus">> => <<"resolved">>
+                },
+                user_handler:handle_action(
+                    web_region_selection, Origin(<<"http://127.0.0.1:9815">>), State
+                )
+            )
+        after
+            lists:foreach(fun meck:unload/1, lists:reverse(Modules))
+        end
     end).

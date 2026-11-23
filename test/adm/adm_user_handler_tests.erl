@@ -48,8 +48,13 @@ init_list_with_status_and_keyword_test_() ->
     ).
 
 init_detail_success_includes_relation_counters_test_() ->
-    ?WITH_MECKS(
+    ?WITH_MOCKS(
         [
+            {adm_acl, [
+                {'ensure_permission', 4, fun(#{adm_user_id := 5001}, <<"users:read">>, _Req, 403) ->
+                    ok
+                end}
+            ]},
             {elib_param, [
                 {'int', 3, fun(uid, _Req, _Default) -> {ok, 1001} end}
             ]},
@@ -80,7 +85,9 @@ init_detail_success_includes_relation_counters_test_() ->
         ],
         fun() ->
             Req = #{method => <<"GET">>},
-            {ok, RespReq, _State} = adm_user_handler:init(Req, #{action => detail}),
+            {ok, RespReq, _State} = adm_user_handler:init(Req, #{
+                action => detail, adm_user_id => 5001
+            }),
             ?assertEqual(200, maps:get(response_status, RespReq)),
             Payload = maps:get(payload, RespReq),
             ?assertEqual(2, maps:get(device_count, Payload)),
@@ -90,8 +97,13 @@ init_detail_success_includes_relation_counters_test_() ->
     ).
 
 init_detail_accepts_legacy_uid_test_() ->
-    ?WITH_MECKS(
+    ?WITH_MOCKS(
         [
+            {adm_acl, [
+                {'ensure_permission', 4, fun(#{adm_user_id := 5001}, <<"users:read">>, _Req, 403) ->
+                    ok
+                end}
+            ]},
             {elib_param, [
                 {'int', 3, fun(uid, _Req, _Default) -> {ok, 0} end},
                 {'binary', 3, fun(uid, _Req, _Default) -> {ok, <<"1001">>} end}
@@ -125,11 +137,35 @@ init_detail_accepts_legacy_uid_test_() ->
         ],
         fun() ->
             Req = #{method => <<"GET">>},
-            {ok, RespReq, _State} = adm_user_handler:init(Req, #{action => detail}),
+            {ok, RespReq, _State} = adm_user_handler:init(Req, #{
+                action => detail, adm_user_id => 5001
+            }),
             ?assertEqual(200, maps:get(response_status, RespReq)),
             Payload = maps:get(payload, RespReq),
             ?assertEqual(2, maps:get(device_count, Payload)),
             ?assert(is_binary(maps:get(<<"id">>, Payload)))
+        end
+    ).
+
+init_detail_denies_without_users_read_test_() ->
+    ?WITH_MOCKS(
+        [
+            {adm_acl, [
+                {'ensure_permission', 4, fun(#{adm_user_id := 5002}, <<"users:read">>, Req, 403) ->
+                    {error, Req#{response_status => 403}}
+                end}
+            ]},
+            {user_repo, [
+                {'find_by_id', 2, fun(_Uid, _Column) -> error(user_lookup_must_follow_acl) end}
+            ]}
+        ],
+        fun() ->
+            Req = #{method => <<"GET">>},
+            {ok, RespReq, _State} = adm_user_handler:init(Req, #{
+                action => detail, adm_user_id => 5002
+            }),
+            ?assertEqual(403, maps:get(response_status, RespReq)),
+            ?assertNot(maps:is_key(payload, RespReq))
         end
     ).
 

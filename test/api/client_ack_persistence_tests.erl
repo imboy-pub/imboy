@@ -51,6 +51,10 @@ ws_case(Mode, Result) ->
             ?assertEqual(<<"mid">>, maps:get(<<"id">>, Msg)),
             ?assertEqual(<<"mid">>, maps:get(<<"in_reply_to">>, Msg)),
             ?assertEqual(<<"ack_persistence_failed">>, maps:get(<<"reason">>, Msg)),
+            ?assertEqual(
+                1,
+                meck:num_calls(msg_c2c_logic, c2c_client_ack, [<<"mid">>, 123, <<"did">>])
+            ),
             ?assertEqual(0, meck:num_calls(websocket_logic, cancel_timer, 3))
         end
     ).
@@ -68,13 +72,14 @@ input(protobuf) ->
         },
         'PayloadClientAck'
     ),
-    {binary,
-        imboy_codec:encode(protobuf, #{
-            <<"id">> => <<"mid">>,
-            <<"type">> => <<"CLIENT_ACK">>,
-            <<"msg_type">> => <<"client_ack">>,
-            <<"payload">> => Payload
-        })}.
+    %% CLIENT_ACK names the envelope direction; PayloadClientAck is not a ContentType.
+    Frame = imboy_codec:encode(protobuf, #{
+        <<"id">> => <<"mid">>,
+        <<"type">> => <<"CLIENT_ACK">>,
+        <<"payload">> => Payload
+    }),
+    ?assert(byte_size(Frame) > 0),
+    {binary, Frame}.
 
 logic_failure_has_no_success_metric_test_() ->
     [

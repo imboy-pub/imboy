@@ -256,30 +256,20 @@ logout(_, Req0, _State) ->
 %% 均不阻断登出（客户端 cookie 照常清除；bump 失败仅记日志）。
 -spec revoke_server_session(cowboy_req:req()) -> ok.
 revoke_server_session(Req) ->
-    case safe_adm_id(elib_req:cookie(<<"adm_user_id">>, Req)) of
-        0 ->
-            ok;
-        AdmId ->
+    Uid = elib_req:cookie(<<"adm_user_id">>, Req),
+    Signature = elib_req:cookie(<<"adm_user_sig">>, Req),
+    case adm_session_ds:verify(Uid, Signature) of
+        {ok, AdmId} ->
             case adm_session_ds:bump(AdmId) of
                 ok ->
                     ok;
                 {error, Reason} ->
                     ok = ?WARN_LOG({adm_logout_bump_failed, AdmId, Reason}),
                     ok
-            end
+            end;
+        {error, _} ->
+            ok
     end.
-
--spec safe_adm_id(term()) -> 0 | pos_integer().
-safe_adm_id(Uid) when is_binary(Uid) ->
-    try binary_to_integer(Uid) of
-        N when N > 0 -> N;
-        _ -> 0
-    catch
-        _:_ ->
-            0
-    end;
-safe_adm_id(_) ->
-    0.
 
 -spec clear_cookie(binary(), cowboy_req:req(), binary()) -> cowboy_req:req().
 clear_cookie(Name, Req, _Path) ->
