@@ -41,6 +41,11 @@
     query/2,
     query/3,
 
+    %% 命名 prepared 快路径（Q-03 v5 修复：省每次匿名 Parse+Describe 往返，
+    %% 并让 PG 复用通用计划；结果与 query/3 同形）
+    query_named/2,
+    query_named/3,
+
     one/2,
     one/3,
 
@@ -619,6 +624,104 @@ query(C, Sql, Params) ->
                 Error
         end,
     retry_deadlock_result(C, Result).
+
+%%--------------------------------------------------------------------
+%% @doc
+%% 命名 prepared 快路径：同一调用进程内按 {连接, SQL 文本} 缓存命名语句
+%% （pdict 键，与 elib_pg_retry_tx_active/commit_actions 同一惯例），
+%% 复用服务端语句与计划，省去每次匿名 Parse+Describe 往返。
+%%
+%% 错误边界：
+%% - 语句丢失（26000）：清缓存重建一次，重建后仍失败则如实返回；
+%% - 重名（42P05，跨进程竞态/服务端语句仍在）：describe 复用；
+%% - prepare 阶段其余失败：按原匿名 equery 回退一次并告警，不改变结果契约；
+%% - 名字 = SQL 文本 sha256 前 50 hex（策略切换产生新文本即新名，服务端
+%%   语句按连接有界：每连接每 SQL 变体一条，不 DEALLOCATE，随连接回收）。
+%% 非事务性：命名语句不随事务回滚失效，回滚后可继续复用。
+%%--------------------------------------------------------------------
+-spec query_named(iodata(), [term()]) ->
+    {ok, [map()]} | {error, term()}.
+query_named(Sql, Params) ->
+    with_conn(
+        fun(C) ->
+            query_named(C, Sql, Params)
+        end,
+        ?DEFAULT_TIMEOUT
+    ).
+
+-spec query_named(epgsql:connection(), iodata(), [term()]) ->
+    {ok, [map()]} | {error, term()}.
+query_named(Conn, Sql0, Params) ->
+    Sql = iolist_to_binary(Sql0),
+    Key = {elib_pg_named_stmt, Conn, Sql},
+    case get(Key) of
+        undefined ->
+            case prepare_named(Conn, Sql) of
+                {ok, #statement{} = S} ->
+                    put(Key, S),
+                    named_run(Conn, Key, S, Sql, Params);
+                {error, _} = PrepareError ->
+                    ?LOG_WARNING(#{
+                        msg => "elib_pg_named_prepare_fallback",
+                        sql => Sql,
+                        error => PrepareError
+                    }),
+                    query(Conn, Sql, Params)
+            end;
+        #statement{} = S ->
+            named_run(Conn, Key, S, Sql, Params)
+    end.
+
+named_run(Conn, Key, S, Sql, Params) ->
+    Result =
+        case epgsql:prepared_query(Conn, S, Params) of
+            {ok, _Cols, _Rows} = Ok ->
+                Ok;
+            {error, Reason} = Lost when element(3, Reason) =:= <<"26000">> ->
+                %% 服务端语句丢失（连接换代/人工 DEALLOCATE）：清缓存重建一次。
+                %% 守卫兼容 #error{} 记录（element(3)=code）与历史原始元组
+                %% {error, error, <<"26000">>, ...} 两种形态（真库探针实证后者）。
+                erase(Key),
+                case prepare_named(Conn, Sql) of
+                    {ok, #statement{} = S2} ->
+                        put(Key, S2),
+                        epgsql:prepared_query(Conn, S2, Params);
+                    _ ->
+                        Lost
+                end;
+            Other ->
+                Other
+        end,
+    case Result of
+        {ok, Cols, Rows} ->
+            retry_deadlock_result(Conn, {ok, rows_to_maps(Cols, Rows)});
+        {ok, _Count, Cols, Rows} ->
+            retry_deadlock_result(Conn, {ok, rows_to_maps(Cols, Rows)});
+        {ok, _Count} ->
+            %% 与 query/3 的 {ok, []} 收敛语义一致（非 SELECT 经此属调用方误用）。
+            retry_deadlock_result(Conn, {ok, []});
+        _ ->
+            retry_deadlock_result(Conn, Result)
+    end.
+
+prepare_named(Conn, Sql) ->
+    Name = named_stmt_name(Sql),
+    case epgsql:parse(Conn, Name, Sql, []) of
+        {ok, #statement{} = S} ->
+            {ok, S};
+        {error, #error{code = <<"42P05">>}} ->
+            %% 同一连接已有同名语句：describe 复用，不重复 Parse。
+            case epgsql:describe(Conn, statement, Name) of
+                {ok, #statement{} = S} -> {ok, S};
+                Error -> Error
+            end;
+        {error, _} = Error ->
+            Error
+    end.
+
+named_stmt_name(Sql) ->
+    <<Hex:50/binary, _/binary>> = binary:encode_hex(crypto:hash(sha256, Sql)),
+    binary_to_list(<<"elib_pg_", Hex/binary>>).
 
 %% Only the active retry transaction's own connection can abort the entire
 %% transaction on a PostgreSQL deadlock. Other modes retain their old result.
