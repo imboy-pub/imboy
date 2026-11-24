@@ -324,8 +324,10 @@ r02_5_backfill_recovers_overshot_cursor_test_() ->
 %% ------------------------------------------------------------------
 %% R02-5b：跨窗口完整恢复（真实 PG 合成数据注入 1001 行）
 %% ------------------------------------------------------------------
+%% 合成 1001 行、21 页回填：共享测试库的 TimescaleDB 分块多，历史回填约 0.8s/页，
+%% 超出默认 5s 预算（专用隔离库仅 0.3s）。按已登记裁决给足真实预算，不缩减数据。
 r02_5b_backfill_restores_full_history_test_() ->
-    ?TEST_WITH_DB(fun() ->
+    ?TEST_WITH_DB_TIMEOUT(120, fun() ->
         cleanup(),
         try
             Sequences = lists:seq(1, 1001),
@@ -527,6 +529,11 @@ c2g_cleanup() ->
     %% 被判 msg_id_conflict（hash 含 payload），必须随本套件清理。
     _ = elib_pg:execute(
         <<"DELETE FROM public.msg_c2g_request_ledger WHERE to_gid = $1">>, [?C2GGID]
+    ),
+    %% 接受事实的收件人快照按 msg_id 唯一；不清会与后续 run 的同号 id 撞出
+    %% recipient_snapshot_conflict（共享库实测 118 行历史残留）。
+    _ = elib_pg:execute(
+        <<"DELETE FROM public.msg_c2g_recipient_snapshot WHERE to_gid = $1">>, [?C2GGID]
     ),
     ok.
 
@@ -840,7 +847,12 @@ c2g_stage(MsgId) ->
 %% request_hash 含 payload）：本卡全部消息 id 用 run 内唯一后缀，杜绝
 %% 跨 run 的 msg_id_conflict / unique_violation 假失败。
 be05_uq() ->
-    integer_to_binary(erlang:unique_integer([positive])).
+    %% unique_integer 只在单个 VM 内唯一：每次 eunit 都是新 VM，序列从头开始，
+    %% 跨 run 会撞号。前置微秒时间戳保证跨 run 唯一（列宽 40，实际 ≤ 35）。
+    <<
+        (integer_to_binary(os:system_time(microsecond)))/binary,
+        (integer_to_binary(erlang:unique_integer([positive])))/binary
+    >>.
 
 %% BE-05:LOCAL:01 同会话并发发送、回滚及乱序：seq 分配器权威位置稳定；
 %% 接受后未归档（in-flight）形成的安全边界使读取进度不越过未完成范围。

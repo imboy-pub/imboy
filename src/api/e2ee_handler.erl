@@ -186,6 +186,7 @@ do_report_device_key(Req0, State) ->
                                 ok ->
                                     do_report_device_key1(
                                         Req0,
+                                        State,
                                         CurrentUid,
                                         DeviceId,
                                         DeviceType,
@@ -204,21 +205,34 @@ do_report_device_key(Req0, State) ->
 
 %% @doc 设备所有权校验通过后，执行实际上报逻辑。
 -spec do_report_device_key1(
-    cowboy_req:req(), integer(), binary(), binary(), binary() | undefined, binary(), binary()
+    cowboy_req:req(), map(), integer(), binary(), binary(), binary() | undefined, binary(), binary()
 ) ->
     cowboy_req:req().
-do_report_device_key1(Req0, CurrentUid, DeviceId, DeviceType, DeviceName, PublicKey, KeyId) ->
-    case
-        e2ee_logic:report_device_key(
-            CurrentUid, DeviceId, DeviceType, DeviceName, PublicKey, KeyId
-        )
-    of
+do_report_device_key1(Req0, State, CurrentUid, DeviceId, DeviceType, DeviceName, PublicKey, KeyId) ->
+    Result =
+        case State of
+            #{surface := web_human, device_session_id := RowId} when
+                DeviceType =:= <<"web">>, is_integer(RowId), RowId > 0
+            ->
+                e2ee_logic:report_web_device_key(CurrentUid, DeviceId, RowId, PublicKey, KeyId);
+            #{surface := web_human} ->
+                {error, device_mismatch};
+            _ ->
+                e2ee_logic:report_device_key(
+                    CurrentUid, DeviceId, DeviceType, DeviceName, PublicKey, KeyId
+                )
+        end,
+    case Result of
         {ok, OtherDeviceCount} ->
             elib_response:success(Req0, #{
                 <<"success">> => true,
                 <<"other_device_count">> => OtherDeviceCount,
                 <<"has_other_device">> => OtherDeviceCount > 0
             });
+        {error, device_revoked} ->
+            elib_response:error_with_status(Req0, 401, <<"web_device_revoked">>, ?ERR_UNAUTHORIZED);
+        {error, device_mismatch} ->
+            elib_response:error_with_status(Req0, 403, <<"device_mismatch">>, ?ERR_FORBIDDEN);
         {error, Reason} ->
             elib_response:error(Req0, e2ee_msg(Reason), 500)
     end.

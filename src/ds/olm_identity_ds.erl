@@ -5,6 +5,10 @@
 %% 与 compliance_key_ds 同模式：仅做 G3 治理（handler 不直调 repo）。
 %%%
 
+-export([with_web_device/4, bump_web_identity_version/3, active_target/3]).
+-export([claim_one_time_key/5, claim_fallback_key/3]).
+-export([upsert_identity/7, find_identity/3, upsert_one_time_keys/5, upsert_fallback_key/5]).
+
 -export([upsert_identity/6]).
 -export([find_identity/2]).
 -export([list_identity_by_uids/1]).
@@ -16,6 +20,35 @@
 -export([upsert_fallback_key/4]).
 -export([claim_fallback_key/2]).
 -export([cleanup_consumed_one_time_keys/1]).
+
+with_web_device(UserId, DeviceId, RowId, Operation) ->
+    olm_identity_repo:with_web_device(UserId, DeviceId, RowId, Operation).
+
+bump_web_identity_version(Conn, UserId, DeviceId) ->
+    olm_identity_repo:bump_web_identity_version(Conn, UserId, DeviceId).
+
+upsert_identity(Conn, UserId, DeviceId, Ed25519Key, Curve25519Key, Signature, DeviceType) ->
+    olm_identity_repo:upsert_identity(
+        Conn, UserId, DeviceId, Ed25519Key, Curve25519Key, Signature, DeviceType
+    ).
+
+find_identity(Conn, UserId, DeviceId) ->
+    olm_identity_repo:find_identity(Conn, UserId, DeviceId).
+
+upsert_one_time_keys(Conn, UserId, DeviceId, Keys, MaxKeys) ->
+    olm_identity_repo:upsert_one_time_keys(Conn, UserId, DeviceId, Keys, MaxKeys).
+
+upsert_fallback_key(Conn, UserId, DeviceId, KeyId, KeyB64) ->
+    olm_identity_repo:upsert_fallback_key(Conn, UserId, DeviceId, KeyId, KeyB64).
+
+active_target(Conn, UserId, DeviceId) ->
+    olm_identity_repo:active_target(Conn, UserId, DeviceId).
+
+claim_one_time_key(Conn, UserId, DeviceId, ClaimedBy, RequestId) ->
+    olm_identity_repo:claim_one_time_key(Conn, UserId, DeviceId, ClaimedBy, RequestId).
+
+claim_fallback_key(Conn, UserId, DeviceId) ->
+    olm_identity_repo:claim_fallback_key(Conn, UserId, DeviceId).
 
 -spec upsert_identity(integer(), binary(), binary(), binary(), binary(), binary()) ->
     {ok, term()} | {error, term()}.

@@ -492,24 +492,24 @@ confirm_does_not_broadcast_when_forbidden_test_() ->
 %% ===================================================================
 
 confirm_marks_session_confirmed_and_records_device_test_() ->
-    confirm_purpose_test(<<"human">>).
+    confirm_purpose_test(<<"human">>, success).
 
 confirm_uses_stored_seat_purpose_ignoring_request_override_test_() ->
-    confirm_purpose_test(<<"seat">>).
+    confirm_purpose_test(<<"seat">>, success).
 
-confirm_purpose_test(Purpose) ->
+confirm_web_seat_requires_binding_before_confirm_test_() ->
+    [confirm_purpose_test(<<"seat">>, Outcome) || Outcome <- [invalid_row, bad_epoch, mint_failed]].
+
+confirm_purpose_test(Purpose, Outcome) ->
     SessionToken = <<"session-confirm-1">>,
     QRToken = make_qr_token(SessionToken),
     Uid = 111174215241304064,
-    %% LEE-5+epoch 门：pg confirm 走 generate_login_token/5——web+human
-    %% 为 4 元 encrypt_web_token(Uid, Did, Ep, DeviceRowId)；seat 仍 2 元
-    %% encrypt_seat_token（/5 seat 子句无 epoch 门）。
-    {EncryptFun, EncryptArity} =
+    EncryptFun =
         case Purpose of
-            <<"seat">> -> {encrypt_seat_token, 2};
-            _ -> {encrypt_web_token, 4}
+            <<"seat">> -> encrypt_web_seat_token;
+            <<"human">> -> encrypt_web_token
         end,
-    ?WITH_MECKS(
+    ?WITH_MOCKS(
         common_mocks() ++
             [
                 {qr_login_session_repo, [
@@ -526,67 +526,68 @@ confirm_purpose_test(Purpose) ->
                             <<"purpose">> => Purpose
                         }
                     end},
-                    {'transition_confirm', 3, fun(ST, U, LoginToken) when
-                        ST =:= SessionToken, U =:= Uid
+                    {'transition_confirm', 3, fun(ST, U, <<"login-token-confirm">>) when
+                        ST =:= SessionToken, U =:= Uid, Outcome =:= success
                     ->
-                        ?assertMatch(<<_/binary>>, LoginToken),
+                        ?assert(
+                            meck:called(token_ds, EncryptFun, [Uid, <<"web-device-1">>, 7, 9001])
+                        ),
                         {ok, #{<<"status">> => <<"confirmed">>}}
                     end}
                 ]},
-                %% 设备行链路对齐现行契约：log_device_login(web) →
-                %% user_ds:find_by_id（status=1/account_type=0 放行）→
-                %% user_device_ds:register_web → user_device_repo:save_web/4。
-                %% 曾错钉 save/4 且缺 find_by_id mock——真查 PG 无行 →
-                %% invalid_account 短路 → save 从未发生 → token mock 内
-                %% `true = meck:called(save,...)` badmatch false
-                %% （2026-11-19 config 门修复后套件首次真跑暴露）。
                 {user_ds, [
                     {'find_by_id', 2, fun(U, _Fields) when U =:= Uid ->
                         #{<<"status">> => 1, <<"account_type">> => 0}
                     end}
                 ]},
-                %% LEE-5+设备行 fail-closed：log_device_login 链终点确定性
-                %% mock（register_web 整链含真 PG 活跃性查询；mock 后原
-                %% save_web 内嵌断言改为 register_web 边界断言）。
                 {user_device_ds, [
-                    {'register_web', 4, fun(_, _, _, _) -> {ok, 9001} end}
-                ]},
-                {token_ds, [
-                    %% E2EE-013：token 绑定 create 时上报的 device_id,
-                    %% 且 user_device 行必须已落库（否则设备级校验会 401）
-                    {EncryptFun, EncryptArity,
-                        if
-                            EncryptArity =:= 2 ->
-                                fun(U, <<"web-device-1">>) when U =:= Uid ->
-                                    true = meck:called(
-                                        user_device_ds,
-                                        register_web,
-                                        ['_', Uid, <<"web-device-1">>, '_']
-                                    ),
-                                    <<"login-token-confirm">>
-                                end;
-                            true ->
-                                fun(U, <<"web-device-1">>, _Ep, _RowId) when U =:= Uid ->
-                                    true = meck:called(
-                                        user_device_ds,
-                                        register_web,
-                                        ['_', Uid, <<"web-device-1">>, '_']
-                                    ),
-                                    <<"login-token-confirm">>
-                                end
-                        end}
-                ]},
-                {user_device_repo, [
-                    {'save_web', 4, fun(_Now, U, _Did, PostVals) when U =:= Uid ->
+                    {'register_web', 4, fun(_Now, U, <<"web-device-1">>, PostVals) when U =:= Uid ->
                         ?assertEqual(<<"Safari">>, maps:get(<<"dname">>, PostVals)),
                         ?assertEqual(<<"web">>, maps:get(<<"cos">>, PostVals)),
                         ?assertEqual(<<"qr_scan">>, maps:get(<<"login_type">>, PostVals)),
-                        {ok, 9001}
+                        case Outcome of
+                            invalid_row -> {ok, 0};
+                            _ -> {ok, 9001}
+                        end
                     end}
                 ]},
-                {qr_login_event_ds, [{'notify', 2, fun(_, _) -> {ok, 1} end}]}
+                {token_ds, [
+                    {EncryptFun, 4, fun(U, <<"web-device-1">>, 7, 9001) when U =:= Uid ->
+                        ?assert(
+                            meck:called(user_device_ds, register_web, [
+                                '_', Uid, <<"web-device-1">>, '_'
+                            ])
+                        ),
+                        case Outcome of
+                            mint_failed -> error(mint_failed);
+                            _ -> <<"login-token-confirm">>
+                        end
+                    end}
+                ]},
+                {qr_login_event_ds, [
+                    {'notify', 2, fun(ST, Event) when ST =:= SessionToken ->
+                        ?assert(
+                            meck:called(
+                                qr_login_session_repo,
+                                transition_confirm,
+                                [SessionToken, Uid, <<"login-token-confirm">>]
+                            )
+                        ),
+                        ?assertEqual(qr_login_event_ds:event(confirmed_ready, undefined), Event),
+                        {ok, 1}
+                    end}
+                ]}
             ],
         fun() ->
+            meck:expect(elib_response, error_with_status, fun(Req, Http, _Message, Code) ->
+                Req#{response_result => {http_error, Http, Code}}
+            end),
+            case Outcome of
+                bad_epoch ->
+                    meck:expect(auth_session_ds, current_epoch, fun(U) when U =:= Uid -> {ok, 0} end);
+                _ ->
+                    ok
+            end,
             Body = jsone:encode(
                 #{
                     <<"qr_token">> => QRToken,
@@ -602,9 +603,24 @@ confirm_purpose_test(Purpose) ->
             Req0 = req(<<"POST">>, Body, []),
             State = #{action => confirm, current_uid => Uid},
             {stop, Req1, _State} = qr_login_handler:handle_request(Req0, State),
-            ?assertEqual({success, #{<<"status">> => <<"confirmed">>}}, response_result(Req1)),
-            %% token 经 transition_confirm 原子写入会话行（不广播）
-            ?assert(meck:called(qr_login_session_repo, transition_confirm, ['_', '_', '_']))
+            case Outcome of
+                success ->
+                    ?assertEqual(
+                        {success, #{<<"status">> => <<"confirmed">>}}, response_result(Req1)
+                    ),
+                    ?assertEqual(
+                        1,
+                        meck:num_calls(qr_login_session_repo, transition_confirm, ['_', '_', '_'])
+                    ),
+                    ?assertEqual(1, meck:num_calls(qr_login_event_ds, notify, ['_', '_']));
+                _ ->
+                    ?assertEqual({http_error, 503, 503}, response_result(Req1)),
+                    ?assertNot(
+                        meck:called(qr_login_session_repo, transition_confirm, ['_', '_', '_'])
+                    ),
+                    ?assertNot(meck:called(qr_login_event_ds, notify, ['_', '_']))
+            end,
+            ?assertNot(meck:called(qr_login_session_repo, claim_login_token, ['_']))
         end
     ).
 

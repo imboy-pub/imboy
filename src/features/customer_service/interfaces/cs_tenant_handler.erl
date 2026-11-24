@@ -346,6 +346,13 @@ open_stream(
             Req1
     end.
 
+stream_expiry(Req, #{current_uid := Uid, jwt_purpose := seat}) ->
+    Token = auth_ds:parse_authorization_header(cowboy_req:header(<<"authorization">>, Req)),
+    case token_ds:decrypt_seat_token(Token) of
+        {ok, Uid, ExpiresAt, <<"seat_tk">>, _Did, _Epoch, _DeviceRowId} -> {ok, ExpiresAt};
+        {ok, Uid, ExpiresAt, <<"seat_tk">>, _Did, _Epoch} -> {ok, ExpiresAt};
+        _ -> error
+    end;
 stream_expiry(Req, #{current_uid := Uid}) ->
     Token = auth_ds:parse_authorization_header(cowboy_req:header(<<"authorization">>, Req)),
     case token_ds:decrypt_token(Token) of

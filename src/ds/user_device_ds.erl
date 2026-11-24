@@ -24,6 +24,7 @@
 -export([count_other_device_keys/2]).
 -export([get_default_device/1]).
 -export([update_public_key/5]).
+-export([update_web_public_key/6]).
 %% G3 thin wrappers: e2ee handlers 不应直调 user_device_repo
 -export([get_public_by_uid/1]).
 
@@ -312,6 +313,17 @@ update_public_key(Uid, DeviceId, PublicKey, KeyId, Now) ->
             " SET public_key = $1, key_id = $2, last_active_at = $3"
             " WHERE status = 1 AND user_id = $4 AND device_id = $5">>,
     elib_pg:execute(Sql, [PublicKey, KeyId, Now, Uid, DeviceId]).
+
+-spec update_web_public_key(integer(), binary(), pos_integer(), binary(), binary(), binary()) ->
+    {ok, non_neg_integer()} | {error, term()}.
+update_web_public_key(Uid, DeviceId, DeviceRowId, PublicKey, KeyId, Now) ->
+    Tb = user_device_repo:tablename(),
+    Sql =
+        <<"UPDATE ", Tb/binary,
+            " SET public_key = $1, key_id = $2, last_active_at = $3"
+            " WHERE status = 1 AND user_id = $4 AND device_id = $5"
+            " AND device_type = 'web' AND id = $6">>,
+    elib_pg:execute(Sql, [PublicKey, KeyId, Now, Uid, DeviceId, DeviceRowId]).
 
 %% ===================================================================
 %% Internal Functions

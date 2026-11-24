@@ -1494,6 +1494,15 @@ web_human_routes(Sources) ->
         {"msg/history", [<<"GET">>], access},
         {"msg", [<<"GET">>], access},
         {"msg/result", [<<"GET">>], access},
+        {"e2ee/user_keys", [<<"GET">>], access},
+        {"e2ee/report_device_key", [<<"POST">>], access},
+        {"e2ee/devices", [<<"GET">>], access},
+        {"e2ee/olm/get_identity", [<<"GET">>], access},
+        {"e2ee/olm/prekey_count", [<<"GET">>], access},
+        {"e2ee/olm/identity", [<<"POST">>], access},
+        {"e2ee/olm/prekeys", [<<"POST">>], access},
+        {"e2ee/olm/fallback_key", [<<"POST">>], access},
+        {"e2ee/olm/claim", [<<"POST">>], access},
         %% 个人消息历史域 Web N1 面（MH-01 §10.1：两面同合同同权限谓词；
         %% opt-in/key-package 原生面为 PUT，Web 认证链只收 GET/POST 故挂 POST；
         %% key-package 读端点依 mh04 addendum 挂 GET——FL-04 客户端 GET 读取）

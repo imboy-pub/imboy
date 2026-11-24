@@ -1434,7 +1434,8 @@ bind_group_attachment_anchors(Conn, MsgId, FromId, Gid, Seq) ->
 authorized_c2g_recipients(Conn, Gid, FromId, RequiredRole) ->
     ProbeLimit = ?MAX_C2G_RECIPIENTS + 1,
     Sql = msg_c2g_recipient_sql:recipients(),
-    case elib_pg:query(Conn, Sql, [Gid, FromId, RequiredRole, ProbeLimit]) of
+    %% Q-03 v5 修复：命名 prepared 快路径（SQL 文本即缓存键，策略切换自新名）。
+    case elib_pg:query_named(Conn, Sql, [Gid, FromId, RequiredRole, ProbeLimit]) of
         {ok, []} ->
             throw({rollback, forbidden});
         {ok, Rows} when length(Rows) > ?MAX_C2G_RECIPIENTS ->
@@ -1455,7 +1456,8 @@ authorized_c2g_recipients(Conn, Gid, FromId, RequiredRole) ->
 authorized_c2g_action_recipients(Conn, Gid, FromId, RequiredRole, OriginalMsgId) ->
     ProbeLimit = ?MAX_C2G_RECIPIENTS + 1,
     Sql = action_recipient_sql(),
-    case elib_pg:query(Conn, Sql, [Gid, FromId, RequiredRole, OriginalMsgId, ProbeLimit]) of
+    %% Q-03 v5 修复：与 recipients/0 同一命名 prepared 通道。
+    case elib_pg:query_named(Conn, Sql, [Gid, FromId, RequiredRole, OriginalMsgId, ProbeLimit]) of
         {ok, []} ->
             throw({rollback, action_target_forbidden});
         {ok, Rows} when length(Rows) > ?MAX_C2G_RECIPIENTS ->

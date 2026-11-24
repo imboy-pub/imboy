@@ -10,6 +10,7 @@
 -include("log.hrl").
 
 -export([report_identity/6]).
+-export([report_web_identity/8, report_web_prekeys/5, report_web_fallback/6]).
 -export([report_identity/7]).
 -export([report_one_time_keys/4]).
 -export([report_fallback_key/4]).
@@ -18,6 +19,7 @@
 -export([list_devices/1]).
 -export([claim_keys/3]).
 -export([claim_keys/4]).
+-export([claim_web_key/7]).
 -export([batch_claim_keys/3]).
 -export([batch_claim_keys/4]).
 -export([count_one_time_keys/2]).
@@ -94,6 +96,36 @@ report_identity(UserId, DeviceId, Ed25519Key, Curve25519Key, Signature, DeviceTy
     ok | {error, binary()}.
 report_identity(
     UserId, DeviceId, Ed25519Key, Curve25519Key, Signature, TransitionSignature, DeviceType
+) ->
+    report_identity(
+        native,
+        UserId,
+        DeviceId,
+        Ed25519Key,
+        Curve25519Key,
+        Signature,
+        TransitionSignature,
+        DeviceType
+    ).
+
+report_web_identity(
+    UserId, DeviceId, RowId, Ed25519Key, Curve25519Key, Signature, TransitionSignature, DeviceType
+) ->
+    olm_identity_ds:with_web_device(UserId, DeviceId, RowId, fun(Conn) ->
+        report_identity(
+            Conn,
+            UserId,
+            DeviceId,
+            Ed25519Key,
+            Curve25519Key,
+            Signature,
+            TransitionSignature,
+            DeviceType
+        )
+    end).
+
+report_identity(
+    Context, UserId, DeviceId, Ed25519Key, Curve25519Key, Signature, TransitionSignature, DeviceType
 ) when
     is_integer(UserId), is_binary(DeviceId), is_binary(TransitionSignature)
 ->
@@ -103,14 +135,15 @@ report_identity(
             byte_size(Signature) > 0
     of
         true ->
-            case olm_identity_ds:find_identity(UserId, DeviceId) of
+            case db_find_identity(Context, UserId, DeviceId) of
                 {ok, not_found} ->
                     %% 首次注册：PoP（新钥自签）即授权
                     pop_then_upsert(
-                        UserId, DeviceId, Ed25519Key, Curve25519Key, Signature, DeviceType
+                        Context, UserId, DeviceId, Ed25519Key, Curve25519Key, Signature, DeviceType
                     );
                 {ok, #{<<"ed25519_key">> := OldEd, <<"curve25519_key">> := OldCurve}} ->
                     dispatch_existing_identity(
+                        Context,
                         UserId,
                         DeviceId,
                         Ed25519Key,
@@ -128,17 +161,19 @@ report_identity(
         false ->
             {error, <<"invalid_identity_keys">>}
     end;
-report_identity(_, _, _, _, _, _, _) ->
+report_identity(_, _, _, _, _, _, _, _) ->
     {error, <<"bad_request">>}.
 
 %% @private PoP（本次上传的 ed25519 验签）通过后直接 upsert——
 %% 覆盖「首次注册」与「幂等重报」两条无需版本事件的路径。
--spec pop_then_upsert(integer(), binary(), binary(), binary(), binary(), binary()) ->
+-spec pop_then_upsert(term(), integer(), binary(), binary(), binary(), binary(), binary()) ->
     ok | {error, binary()}.
-pop_then_upsert(UserId, DeviceId, Ed25519Key, Curve25519Key, Signature, DeviceType) ->
+pop_then_upsert(Context, UserId, DeviceId, Ed25519Key, Curve25519Key, Signature, DeviceType) ->
     case verify_ed25519(Ed25519Key, Curve25519Key, Signature) of
         true ->
-            do_upsert_identity(UserId, DeviceId, Ed25519Key, Curve25519Key, Signature, DeviceType);
+            do_upsert_identity(
+                Context, UserId, DeviceId, Ed25519Key, Curve25519Key, Signature, DeviceType
+            );
         false ->
             _ = elib_metric:increment(olm_identity_pop_rejected_total),
             {error, <<"invalid_signature">>}
@@ -146,10 +181,20 @@ pop_then_upsert(UserId, DeviceId, Ed25519Key, Curve25519Key, Signature, DeviceTy
 
 %% @private 按现存身份分流（见 report_identity/7 文档）。
 -spec dispatch_existing_identity(
-    integer(), binary(), binary(), binary(), binary(), binary(), binary(), binary(), binary()
+    term(),
+    integer(),
+    binary(),
+    binary(),
+    binary(),
+    binary(),
+    binary(),
+    binary(),
+    binary(),
+    binary()
 ) ->
     ok | {error, binary()}.
 dispatch_existing_identity(
+    Context,
     UserId,
     DeviceId,
     Ed25519Key,
@@ -169,11 +214,18 @@ dispatch_existing_identity(
                         true ->
                             %% 幂等重报：键完全一致，无版本事件
                             do_upsert_identity(
-                                UserId, DeviceId, Ed25519Key, Curve25519Key, Signature, DeviceType
+                                Context,
+                                UserId,
+                                DeviceId,
+                                Ed25519Key,
+                                Curve25519Key,
+                                Signature,
+                                DeviceType
                             );
                         false ->
                             %% 子键轮换（根不变）：事件 actor_signature = 根钥 PoP 签名
                             rotate_identity(
+                                Context,
                                 UserId,
                                 DeviceId,
                                 Ed25519Key,
@@ -191,6 +243,7 @@ dispatch_existing_identity(
             %% 换根：双签名（fix-round1，W1-review C01-M1）——
             %% 旧钥过渡签名（授权证据）+ 新钥自签（signature 列语义）
             rotation_with_double_proof(
+                Context,
                 UserId,
                 DeviceId,
                 Ed25519Key,
@@ -216,10 +269,11 @@ dispatch_existing_identity(
 %% 双验通过后 Signature（新自签）落 signature 列，TransitionSignature（旧钥
 %% 授权证据）进 trust_audit.actor_signature，不落列。
 -spec rotation_with_double_proof(
-    integer(), binary(), binary(), binary(), binary(), binary(), binary(), binary()
+    term(), integer(), binary(), binary(), binary(), binary(), binary(), binary(), binary()
 ) ->
     ok | {error, binary()}.
 rotation_with_double_proof(
+    Context,
     UserId,
     DeviceId,
     Ed25519Key,
@@ -239,6 +293,7 @@ rotation_with_double_proof(
             case verify_ed25519(Ed25519Key, Curve25519Key, Signature) of
                 true ->
                     rotate_identity(
+                        Context,
                         UserId,
                         DeviceId,
                         Ed25519Key,
@@ -271,13 +326,13 @@ rotation_canonical(UserId, DeviceId, Ed25519Key, Curve25519Key) ->
 %% WHERE status=1），成功后 upsert（Signature = signature 列语义的新自签），
 %% 最后以 EventActorSignature 作为授权证据追加 trust_audit 版本事件。
 -spec rotate_identity(
-    integer(), binary(), binary(), binary(), binary(), binary(), binary()
+    term(), integer(), binary(), binary(), binary(), binary(), binary(), binary()
 ) ->
     ok | {error, binary()}.
 rotate_identity(
-    UserId, DeviceId, Ed25519Key, Curve25519Key, Signature, DeviceType, EventActorSignature
+    Context, UserId, DeviceId, Ed25519Key, Curve25519Key, Signature, DeviceType, EventActorSignature
 ) ->
-    case user_device_ds:bump_identity_version(UserId, DeviceId) of
+    case bump_identity_version(Context, UserId, DeviceId) of
         {ok, 0} ->
             %% user_device 无活跃行：撤销/硬删设备（含 cleanup 失败残留 olm 行的
             %% 复活路径）——身份写入必须拒绝
@@ -285,12 +340,18 @@ rotate_identity(
         {ok, NewVer, DeviceGen} ->
             case
                 do_upsert_identity(
-                    UserId, DeviceId, Ed25519Key, Curve25519Key, Signature, DeviceType
+                    Context, UserId, DeviceId, Ed25519Key, Curve25519Key, Signature, DeviceType
                 )
             of
                 ok ->
-                    _ = emit_rotation_event(
-                        UserId, DeviceId, Ed25519Key, EventActorSignature, NewVer, DeviceGen
+                    _ = schedule_rotation_event(
+                        Context,
+                        UserId,
+                        DeviceId,
+                        Ed25519Key,
+                        EventActorSignature,
+                        NewVer,
+                        DeviceGen
                     ),
                     ok;
                 {error, _} = Err ->
@@ -301,12 +362,12 @@ rotate_identity(
             {error, <<"internal_error">>}
     end.
 
--spec do_upsert_identity(integer(), binary(), binary(), binary(), binary(), binary()) ->
+-spec do_upsert_identity(term(), integer(), binary(), binary(), binary(), binary(), binary()) ->
     ok | {error, binary()}.
-do_upsert_identity(UserId, DeviceId, Ed25519Key, Curve25519Key, Signature, DeviceType) ->
+do_upsert_identity(Context, UserId, DeviceId, Ed25519Key, Curve25519Key, Signature, DeviceType) ->
     case
-        olm_identity_ds:upsert_identity(
-            UserId, DeviceId, Ed25519Key, Curve25519Key, Signature, DeviceType
+        db_upsert_identity(
+            Context, UserId, DeviceId, Ed25519Key, Curve25519Key, Signature, DeviceType
         )
     of
         {ok, _} ->
@@ -315,6 +376,42 @@ do_upsert_identity(UserId, DeviceId, Ed25519Key, Curve25519Key, Signature, Devic
             _ = ?ERROR_LOG(olm_report_identity_error),
             {error, <<"internal_error">>}
     end.
+
+db_upsert_identity(native, UserId, DeviceId, Ed25519Key, Curve25519Key, Signature, DeviceType) ->
+    olm_identity_ds:upsert_identity(
+        UserId, DeviceId, Ed25519Key, Curve25519Key, Signature, DeviceType
+    );
+db_upsert_identity(Conn, UserId, DeviceId, Ed25519Key, Curve25519Key, Signature, DeviceType) ->
+    olm_identity_ds:upsert_identity(
+        Conn, UserId, DeviceId, Ed25519Key, Curve25519Key, Signature, DeviceType
+    ).
+
+db_find_identity(native, UserId, DeviceId) ->
+    olm_identity_ds:find_identity(UserId, DeviceId);
+db_find_identity(Conn, UserId, DeviceId) ->
+    olm_identity_ds:find_identity(Conn, UserId, DeviceId).
+
+db_upsert_one_time_keys(native, UserId, DeviceId, Keys, MaxKeys) ->
+    olm_identity_ds:upsert_one_time_keys(UserId, DeviceId, Keys, MaxKeys);
+db_upsert_one_time_keys(Conn, UserId, DeviceId, Keys, MaxKeys) ->
+    olm_identity_ds:upsert_one_time_keys(Conn, UserId, DeviceId, Keys, MaxKeys).
+
+db_upsert_fallback_key(native, UserId, DeviceId, KeyId, KeyB64) ->
+    olm_identity_ds:upsert_fallback_key(UserId, DeviceId, KeyId, KeyB64);
+db_upsert_fallback_key(Conn, UserId, DeviceId, KeyId, KeyB64) ->
+    olm_identity_ds:upsert_fallback_key(Conn, UserId, DeviceId, KeyId, KeyB64).
+
+bump_identity_version(native, UserId, DeviceId) ->
+    user_device_ds:bump_identity_version(UserId, DeviceId);
+bump_identity_version(Conn, UserId, DeviceId) ->
+    olm_identity_ds:bump_web_identity_version(Conn, UserId, DeviceId).
+
+schedule_rotation_event(native, UserId, DeviceId, Ed25519Key, Signature, Version, Generation) ->
+    emit_rotation_event(UserId, DeviceId, Ed25519Key, Signature, Version, Generation);
+schedule_rotation_event(Conn, UserId, DeviceId, Ed25519Key, Signature, Version, Generation) ->
+    elib_pg:after_commit(Conn, {olm_rotation, UserId, DeviceId}, fun() ->
+        emit_rotation_event(UserId, DeviceId, Ed25519Key, Signature, Version, Generation)
+    end).
 
 %% @private 追加换钥版本事件到 trust_audit（append-only）。
 %%
@@ -370,7 +467,15 @@ emit_rotation_event(UserId, DeviceId, Ed25519B64, SignatureB64, NewVer, DeviceGe
 %% Keys: [{KeyId, KeyBase64}, ...]，上限 100 条。
 -spec report_one_time_keys(integer(), binary(), [{binary(), binary()}], pos_integer()) ->
     {ok, non_neg_integer()} | {error, binary()}.
-report_one_time_keys(UserId, DeviceId, Keys, MaxKeys) when
+report_one_time_keys(UserId, DeviceId, Keys, MaxKeys) ->
+    report_one_time_keys(native, UserId, DeviceId, Keys, MaxKeys).
+
+report_web_prekeys(UserId, DeviceId, RowId, Keys, MaxKeys) ->
+    olm_identity_ds:with_web_device(UserId, DeviceId, RowId, fun(Conn) ->
+        report_one_time_keys(Conn, UserId, DeviceId, Keys, MaxKeys)
+    end).
+
+report_one_time_keys(Context, UserId, DeviceId, Keys, MaxKeys) when
     is_integer(UserId), is_binary(DeviceId), is_list(Keys)
 ->
     Len = length(Keys),
@@ -387,9 +492,7 @@ report_one_time_keys(UserId, DeviceId, Keys, MaxKeys) when
                 false ->
                     {error, <<"invalid_key_format">>};
                 true ->
-                    case
-                        olm_identity_ds:upsert_one_time_keys(UserId, DeviceId, Validated, MaxKeys)
-                    of
+                    case db_upsert_one_time_keys(Context, UserId, DeviceId, Validated, MaxKeys) of
                         {ok, N} ->
                             {ok, N};
                         {error, _Reason} ->
@@ -398,7 +501,7 @@ report_one_time_keys(UserId, DeviceId, Keys, MaxKeys) when
                     end
             end
     end;
-report_one_time_keys(_, _, _, _) ->
+report_one_time_keys(_, _, _, _, _) ->
     {error, <<"bad_request">>}.
 
 %% ===================================================================
@@ -410,12 +513,15 @@ report_one_time_keys(_, _, _, _) ->
 
 -spec report_fallback_key(integer(), binary(), binary(), binary()) ->
     ok | {error, binary()}.
-report_fallback_key(UserId, DeviceId, KeyId, KeyB64) when
+report_fallback_key(UserId, DeviceId, KeyId, KeyB64) ->
+    store_fallback_key(native, UserId, DeviceId, KeyId, KeyB64).
+
+store_fallback_key(Context, UserId, DeviceId, KeyId, KeyB64) when
     is_integer(UserId), is_binary(DeviceId), is_binary(KeyId), is_binary(KeyB64)
 ->
     case byte_size(KeyId) > 0 andalso byte_size(KeyB64) > 0 of
         true ->
-            case olm_identity_ds:upsert_fallback_key(UserId, DeviceId, KeyId, KeyB64) of
+            case db_upsert_fallback_key(Context, UserId, DeviceId, KeyId, KeyB64) of
                 {ok, _} ->
                     ok;
                 {error, _Reason} ->
@@ -425,7 +531,7 @@ report_fallback_key(UserId, DeviceId, KeyId, KeyB64) when
         false ->
             {error, <<"invalid_fallback_key">>}
     end;
-report_fallback_key(_, _, _, _) ->
+store_fallback_key(_, _, _, _, _) ->
     {error, <<"bad_request">>}.
 
 %% @doc E2EE-062：带签名的 fallback prekey 上报（playbook E2EE-025：
@@ -445,10 +551,18 @@ report_fallback_key(_, _, _, _) ->
 %%  空签名仍计数（olm_fallback_unsigned_total），让旧客户端兼容缺口在运维侧可见。
 -spec report_fallback_key(integer(), binary(), binary(), binary(), binary()) ->
     ok | {error, binary()}.
-report_fallback_key(_UserId, _DeviceId, _KeyId, _KeyB64, <<>>) ->
+report_fallback_key(UserId, DeviceId, KeyId, KeyB64, Signature) ->
+    report_fallback_key(native, UserId, DeviceId, KeyId, KeyB64, Signature).
+
+report_web_fallback(UserId, DeviceId, RowId, KeyId, KeyB64, Signature) ->
+    olm_identity_ds:with_web_device(UserId, DeviceId, RowId, fun(Conn) ->
+        report_fallback_key(Conn, UserId, DeviceId, KeyId, KeyB64, Signature)
+    end).
+
+report_fallback_key(_Context, _UserId, _DeviceId, _KeyId, _KeyB64, <<>>) ->
     _ = elib_metric:increment(olm_fallback_unsigned_total),
     {error, <<"fallback_signature_required">>};
-report_fallback_key(UserId, DeviceId, KeyId, KeyB64, Signature) when
+report_fallback_key(Context, UserId, DeviceId, KeyId, KeyB64, Signature) when
     is_integer(UserId),
     is_binary(DeviceId),
     is_binary(KeyId),
@@ -461,15 +575,15 @@ report_fallback_key(UserId, DeviceId, KeyId, KeyB64, Signature) when
             %% 同一串字节可对应多组字段拆分，等价于签名伪造。fail-closed 拒收。
             {error, <<"invalid_fallback_key">>};
         true ->
-            verify_then_report_fallback(UserId, DeviceId, KeyId, KeyB64, Signature)
+            verify_then_report_fallback(Context, UserId, DeviceId, KeyId, KeyB64, Signature)
     end;
-report_fallback_key(_, _, _, _, _) ->
+report_fallback_key(_, _, _, _, _, _) ->
     {error, <<"bad_request">>}.
 
--spec verify_then_report_fallback(integer(), binary(), binary(), binary(), binary()) ->
+-spec verify_then_report_fallback(term(), integer(), binary(), binary(), binary(), binary()) ->
     ok | {error, binary()}.
-verify_then_report_fallback(UserId, DeviceId, KeyId, KeyB64, Signature) ->
-    case olm_identity_ds:find_identity(UserId, DeviceId) of
+verify_then_report_fallback(Context, UserId, DeviceId, KeyId, KeyB64, Signature) ->
+    case db_find_identity(Context, UserId, DeviceId) of
         {ok, not_found} ->
             %% 无从验证即拒绝：若「验不了就放行」，攻击者只需先让 identity 查不到
             %% 即可绕开整道验签。
@@ -478,7 +592,7 @@ verify_then_report_fallback(UserId, DeviceId, KeyId, KeyB64, Signature) ->
             Canonical = fallback_canonical(UserId, DeviceId, KeyId, KeyB64),
             case verify_ed25519(Ed25519B64, Canonical, Signature) of
                 true ->
-                    report_fallback_key(UserId, DeviceId, KeyId, KeyB64);
+                    store_fallback_key(Context, UserId, DeviceId, KeyId, KeyB64);
                 false ->
                     {error, <<"invalid_signature">>}
             end;
@@ -625,6 +739,72 @@ claim_keys(CurrentUid, TargetUid, DeviceId, RequestId) when
 claim_keys(_, _, _, _) ->
     {error, <<"bad_request">>}.
 
+-spec claim_web_key(
+    integer(),
+    binary(),
+    pos_integer(),
+    integer(),
+    binary(),
+    binary(),
+    fun((integer()) -> boolean())
+) -> {ok, map()} | {error, binary()}.
+claim_web_key(UserId, ActorDid, RowId, TargetUid, TargetDid, RequestId, TargetLimited) when
+    is_integer(TargetUid), TargetUid > 0, is_binary(TargetDid), byte_size(TargetDid) > 0
+->
+    case ensure_claim_authorized(UserId, TargetUid) of
+        ok ->
+            olm_identity_ds:with_web_device(UserId, ActorDid, RowId, fun(Conn) ->
+                case olm_identity_ds:active_target(Conn, TargetUid, TargetDid) of
+                    true ->
+                        claim_web_key_on_device(
+                            Conn, UserId, TargetUid, TargetDid, RequestId, TargetLimited
+                        );
+                    false ->
+                        {error, <<"device_revoked">>}
+                end
+            end);
+        {error, _} = Error ->
+            Error
+    end;
+claim_web_key(_, _, _, _, _, _, _) ->
+    {error, <<"bad_request">>}.
+
+claim_web_key_on_device(Conn, UserId, TargetUid, TargetDid, RequestId, TargetLimited) ->
+    case olm_identity_ds:find_identity(Conn, TargetUid, TargetDid) of
+        {ok, not_found} ->
+            {error, <<"device_not_registered">>};
+        {ok, Identity} ->
+            case TargetLimited(TargetUid) of
+                true -> {error, <<"rate_limited">>};
+                false -> consume_web_key(Conn, UserId, TargetUid, TargetDid, RequestId, Identity)
+            end;
+        {error, _} ->
+            {error, <<"internal_error">>}
+    end.
+
+consume_web_key(Conn, UserId, TargetUid, TargetDid, RequestId, Identity) ->
+    case olm_identity_ds:claim_one_time_key(Conn, TargetUid, TargetDid, UserId, RequestId) of
+        {ok, Row} ->
+            {ok, claimed_key(<<"one_time">>, Row, Identity)};
+        {error, exhausted} ->
+            _ = elib_metric:increment(olm_otk_exhausted_total),
+            case olm_identity_ds:claim_fallback_key(Conn, TargetUid, TargetDid) of
+                {ok, Row} ->
+                    {ok, claimed_key(<<"fallback">>, Row, Identity)};
+                {error, exhausted} ->
+                    _ = elib_metric:increment(olm_prekey_unavailable_total),
+                    {error, <<"no_prekey_available">>}
+            end
+    end.
+
+claimed_key(Type, Row, Identity) ->
+    #{
+        <<"type">> => Type,
+        <<"key_id">> => maps:get(<<"key_id">>, Row),
+        <<"key_base64">> => maps:get(<<"key_base64">>, Row),
+        <<"identity">> => Identity
+    }.
+
 %% 撤销联合门说明（C01，run-20261003-094804）：目标设备的活跃性检查在
 %% olm_identity_ds 的 claim 入口（ensure_device_active），不在本层——claim 的
 %% ds 层是被 mock 的边界，门放 ds 层可被任何调用方（含 handler 直调场景）
@@ -638,12 +818,7 @@ claim_with_identity(CurrentUid, TargetUid, DeviceId, Identity) ->
     %% 既有测试按 arity 挂 meck 期望，换 arity 会让它们静默穿透（A2-a 实证过）
     case olm_identity_ds:claim_one_time_key(TargetUid, DeviceId, CurrentUid) of
         {ok, OtkRow} ->
-            {ok, #{
-                <<"type">> => <<"one_time">>,
-                <<"key_id">> => maps:get(<<"key_id">>, OtkRow),
-                <<"key_base64">> => maps:get(<<"key_base64">>, OtkRow),
-                <<"identity">> => Identity
-            }};
+            {ok, claimed_key(<<"one_time">>, OtkRow, Identity)};
         {error, device_revoked} ->
             %% 撤销设备：OTK 与 fallback 一并拒绝，转为 wire 契约的 binary 冒泡
             {error, <<"device_revoked">>};
@@ -654,12 +829,7 @@ claim_with_identity(CurrentUid, TargetUid, DeviceId, Identity) ->
             _ = elib_metric:increment(olm_otk_exhausted_total),
             case olm_identity_ds:claim_fallback_key(TargetUid, DeviceId) of
                 {ok, FbRow} ->
-                    {ok, #{
-                        <<"type">> => <<"fallback">>,
-                        <<"key_id">> => maps:get(<<"key_id">>, FbRow),
-                        <<"key_base64">> => maps:get(<<"key_base64">>, FbRow),
-                        <<"identity">> => Identity
-                    }};
+                    {ok, claimed_key(<<"fallback">>, FbRow, Identity)};
                 {error, device_revoked} ->
                     {error, <<"device_revoked">>};
                 {error, exhausted} ->
@@ -676,12 +846,7 @@ claim_with_identity(CurrentUid, TargetUid, DeviceId, Identity, <<>>) ->
 claim_with_identity(CurrentUid, TargetUid, DeviceId, Identity, RequestId) ->
     case olm_identity_ds:claim_one_time_key(TargetUid, DeviceId, CurrentUid, RequestId) of
         {ok, OtkRow} ->
-            {ok, #{
-                <<"type">> => <<"one_time">>,
-                <<"key_id">> => maps:get(<<"key_id">>, OtkRow),
-                <<"key_base64">> => maps:get(<<"key_base64">>, OtkRow),
-                <<"identity">> => Identity
-            }};
+            {ok, claimed_key(<<"one_time">>, OtkRow, Identity)};
         {error, device_revoked} ->
             %% 撤销设备：OTK 与 fallback 一并拒绝，转为 wire 契约的 binary 冒泡
             {error, <<"device_revoked">>};
@@ -692,12 +857,7 @@ claim_with_identity(CurrentUid, TargetUid, DeviceId, Identity, RequestId) ->
             _ = elib_metric:increment(olm_otk_exhausted_total),
             case olm_identity_ds:claim_fallback_key(TargetUid, DeviceId) of
                 {ok, FbRow} ->
-                    {ok, #{
-                        <<"type">> => <<"fallback">>,
-                        <<"key_id">> => maps:get(<<"key_id">>, FbRow),
-                        <<"key_base64">> => maps:get(<<"key_base64">>, FbRow),
-                        <<"identity">> => Identity
-                    }};
+                    {ok, claimed_key(<<"fallback">>, FbRow, Identity)};
                 {error, device_revoked} ->
                     {error, <<"device_revoked">>};
                 {error, exhausted} ->

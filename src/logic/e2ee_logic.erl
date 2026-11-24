@@ -7,6 +7,7 @@
 -export([group_member_keys/2]).
 -export([group_history_grant/3]).
 -export([report_device_key/6]).
+-export([report_web_device_key/5]).
 -export([pull_key_notifications/3]).
 -export([group_by_uid/1]).
 -export([get_active_compliance_key/0]).
@@ -134,14 +135,31 @@ report_device_key(Uid, DeviceId, DeviceType, DeviceName, PublicKey, KeyId) ->
         {error, _} = Error ->
             Error;
         ok ->
-            % 2. 统计该用户除本设备外、已有有效公钥的活跃设备数量
-            % 用于区分"换设备/重装"（>0）与"全新注册首次登录"（=0）
-            OtherDeviceCount = user_device_ds:count_other_device_keys(Uid, DeviceId),
-            % 3. 通知所有好友：该用户的设备密钥已变更
-            % 好友收到通知后应清除对该用户的公钥缓存
-            notify_friends_key_changed(Uid, DeviceId, DeviceType, KeyId),
-            {ok, OtherDeviceCount}
+            device_key_reported(Uid, DeviceId, DeviceType, KeyId)
     end.
+
+-spec report_web_device_key(integer(), binary(), pos_integer(), binary(), binary()) ->
+    {ok, non_neg_integer()} | {error, term()}.
+report_web_device_key(Uid, DeviceId, DeviceRowId, PublicKey, KeyId) ->
+    case
+        user_device_ds:update_web_public_key(
+            Uid, DeviceId, DeviceRowId, PublicKey, KeyId, elib_dt:now()
+        )
+    of
+        {ok, 1} ->
+            device_key_reported(Uid, DeviceId, <<"web">>, KeyId);
+        {ok, 0} ->
+            {error, device_revoked};
+        _ ->
+            _ = ?ERROR_LOG(e2ee_report_web_device_key_error),
+            {error, <<"internal_error">>}
+    end.
+
+-spec device_key_reported(integer(), binary(), binary(), binary()) -> {ok, non_neg_integer()}.
+device_key_reported(Uid, DeviceId, DeviceType, KeyId) ->
+    OtherDeviceCount = user_device_ds:count_other_device_keys(Uid, DeviceId),
+    notify_friends_key_changed(Uid, DeviceId, DeviceType, KeyId),
+    {ok, OtherDeviceCount}.
 
 %% @doc 通知好友密钥已变更
 %% 发送 S2C 消息给所有好友，告知他们该用户的设备密钥已变更

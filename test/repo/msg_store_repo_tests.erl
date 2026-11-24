@@ -562,6 +562,7 @@ c2g_stage_commits_authorized_snapshot_and_role_test_() ->
                     end}
                 ]},
                 {elib_pg, [
+                    {'query_named', 3, fun(C, Sql, P) -> elib_pg:query(C, Sql, P) end},
                     {'with_tx', 1, fun(Tx) -> Tx(fake_conn) end},
                     {'query', 3, fun
                         %% discussion 访问锁（791b8817）：无 discussion 绑定语义 → 放行
@@ -707,6 +708,7 @@ c2g_stage_sequence_failures_are_rolled_back_test_() ->
                     {'equery', 3, fun(_, _, _) -> get({?MODULE, sequence_result}) end}
                 ]},
                 {elib_pg, [
+                    {'query_named', 3, fun(C, Sql, P) -> elib_pg:query(C, Sql, P) end},
                     {'with_tx', 1, fun(Tx) ->
                         try Tx(fake_conn) of
                             Result -> Result
@@ -870,6 +872,7 @@ c2g_stage_attachment_bind_error_rolls_back_test_() ->
                     {'insert', 2, fun(_, _) -> {<<"INSERT staged">>, []} end}
                 ]},
                 {elib_pg, [
+                    {'query_named', 3, fun(C, Sql, P) -> elib_pg:query(C, Sql, P) end},
                     {'with_tx', 1, fun(Tx) ->
                         try Tx(fake_conn) of
                             Result -> Result
@@ -959,6 +962,7 @@ c2g_stage_duplicate_does_not_bind_attachment_test_() ->
                     {'insert', 2, fun(_, _) -> {<<"INSERT duplicate">>, []} end}
                 ]},
                 {elib_pg, [
+                    {'query_named', 3, fun(C, Sql, P) -> elib_pg:query(C, Sql, P) end},
                     {'with_tx', 1, fun(Tx) ->
                         try Tx(fake_conn) of
                             Result -> Result
@@ -1074,6 +1078,7 @@ c2g_stage_rejects_msg_id_owned_by_another_sender_test_() ->
                     {'insert', 2, fun(_, _) -> erlang:error(staging_insert_must_not_run) end}
                 ]},
                 {elib_pg, [
+                    {'query_named', 3, fun(C, Sql, P) -> elib_pg:query(C, Sql, P) end},
                     {'with_tx', 1, fun(Tx) ->
                         try Tx(fake_conn) of
                             Result -> Result
@@ -1167,6 +1172,7 @@ c2g_stage_5000_recipients_commits_test_() ->
                     end}
                 ]},
                 {elib_pg, [
+                    {'query_named', 3, fun(C, Sql, P) -> elib_pg:query(C, Sql, P) end},
                     {'with_tx', 1, fun(Tx) -> Tx(fake_conn) end},
                     {'query', 3, fun
                         %% discussion 访问锁（791b8817）：无 discussion 绑定语义 → 放行
@@ -1257,6 +1263,7 @@ c2g_stage_5001_recipients_rolls_back_test_() ->
                     {'equery', 3, fun(_, _, _) -> {ok, [], [], [{7}]} end}
                 ]},
                 {elib_pg, [
+                    {'query_named', 3, fun(C, Sql, P) -> elib_pg:query(C, Sql, P) end},
                     {'with_tx', 1, fun(Tx) ->
                         try Tx(fake_conn) of
                             Result -> Result
@@ -1327,6 +1334,7 @@ c2g_stage_snapshot_error_rolls_back_test_() ->
                     {'equery', 3, fun(_, _, _) -> {ok, [], [], [{7}]} end}
                 ]},
                 {elib_pg, [
+                    {'query_named', 3, fun(C, Sql, P) -> elib_pg:query(C, Sql, P) end},
                     {'with_tx', 1, fun(Tx) ->
                         try Tx(fake_conn) of
                             Result -> Result
@@ -1405,6 +1413,7 @@ c2g_action_stage_uses_original_snapshot_and_generation_test_() ->
                     end}
                 ]},
                 {elib_pg, [
+                    {'query_named', 3, fun(C, Sql, P) -> elib_pg:query(C, Sql, P) end},
                     {'with_tx', 1, fun(Tx) -> Tx(fake_conn) end},
                     {'execute', 3, fun
                         (
@@ -1524,6 +1533,7 @@ c2g_action_stage_snapshot_primary_key_is_durable_idempotency_test_() ->
                     {'insert', 2, fun(_, _) -> erlang:error(staging_insert_must_not_run) end}
                 ]},
                 {elib_pg, [
+                    {'query_named', 3, fun(C, Sql, P) -> elib_pg:query(C, Sql, P) end},
                     {'with_tx', 1, fun(Tx) ->
                         try Tx(fake_conn) of
                             Result -> Result
@@ -1636,6 +1646,7 @@ c2g_action_stage_rejects_invisible_original_test_() ->
                     {'equery', 3, fun(_, _, _) -> {ok, [], [], [{8}]} end}
                 ]},
                 {elib_pg, [
+                    {'query_named', 3, fun(C, Sql, P) -> elib_pg:query(C, Sql, P) end},
                     {'with_tx', 1, fun(Tx) ->
                         try Tx(fake_conn) of
                             Result -> Result
@@ -1767,6 +1778,7 @@ claim_pending_validates_transaction_logic_test_() ->
                 {'public_tablename', 1, fun(_) -> <<"msg_store_staging">> end}
             ]},
             {elib_pg, [
+                {'query_named', 3, fun(C, Sql, P) -> elib_pg:query(C, Sql, P) end},
                 {'with_tx', 1, fun(TxFun) ->
                     % 验证事务函数被调用
                     ?assert(is_function(TxFun, 1)),
@@ -1835,6 +1847,7 @@ claim_pending_empty_returns_empty_list_test_() ->
                 {'public_tablename', 1, fun(_) -> <<"msg_store_staging">> end}
             ]},
             {elib_pg, [
+                {'query_named', 3, fun(C, Sql, P) -> elib_pg:query(C, Sql, P) end},
                 {'with_tx', 1, fun(TxFun) -> TxFun(self()) end},
                 {'query', 3, fun(_Conn, _Sql, _Params) -> {ok, []} end}
             ]}
@@ -1853,6 +1866,7 @@ claim_pending_with_zero_limit_test_() ->
                 {'public_tablename', 1, fun(_) -> <<"msg_store_staging">> end}
             ]},
             {elib_pg, [
+                {'query_named', 3, fun(C, Sql, P) -> elib_pg:query(C, Sql, P) end},
                 {'with_tx', 1, fun(TxFun) -> TxFun(self()) end},
                 {'query', 3, fun(_Conn, _Sql, [Limit]) ->
                     ?assertEqual(0, Limit),

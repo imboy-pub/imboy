@@ -7,6 +7,10 @@
 
 -include("log.hrl").
 
+-export([with_web_device/4, bump_web_identity_version/3, active_target/3]).
+-export([claim_one_time_key/5, claim_fallback_key/3]).
+-export([upsert_identity/7, find_identity/3, upsert_one_time_keys/5, upsert_fallback_key/5]).
+
 -export([tablename_identity/0, tablename_one_time_key/0, tablename_fallback_key/0]).
 -export([upsert_identity/6]).
 -export([find_identity/2]).
@@ -38,6 +42,70 @@ tablename_one_time_key() ->
 tablename_fallback_key() ->
     elib_pg_sql:public_tablename(<<"olm_fallback_key">>).
 
+%% Keep the active actor row locked for the complete key mutation.
+with_web_device(UserId, DeviceId, RowId, Operation) ->
+    DeviceTable = user_device_repo:tablename(),
+    Sql =
+        <<"SELECT id FROM ", DeviceTable/binary,
+            " WHERE user_id = $1 AND device_id = $2 AND id = $3"
+            " AND status = 1 AND device_type = 'web' FOR UPDATE">>,
+    case
+        elib_pg:with_tx(
+            fun(Conn) ->
+                case elib_pg:query(Conn, Sql, [UserId, DeviceId, RowId]) of
+                    {ok, [_]} ->
+                        case Operation(Conn) of
+                            {error, Reason} -> throw({rollback, Reason});
+                            Result -> Result
+                        end;
+                    {ok, []} ->
+                        {error, <<"device_revoked">>};
+                    {error, _} ->
+                        {error, <<"internal_error">>}
+                end
+            end,
+            [{reraise, false}]
+        )
+    of
+        {rollback, {rollback, Reason}} when is_binary(Reason) -> {error, Reason};
+        {error, Reason} when is_binary(Reason) -> {error, Reason};
+        {error, _} -> {error, <<"internal_error">>};
+        {rollback, _} -> {error, <<"internal_error">>};
+        Result -> Result
+    end.
+
+bump_web_identity_version(Conn, UserId, DeviceId) ->
+    DeviceTable = user_device_repo:tablename(),
+    Sql =
+        <<"UPDATE ", DeviceTable/binary,
+            " SET identity_version = identity_version + 1"
+            " WHERE user_id = $1 AND device_id = $2 AND status = 1 AND device_type = 'web'"
+            " RETURNING identity_version, device_generation">>,
+    case elib_pg:query(Conn, Sql, [UserId, DeviceId]) of
+        {ok, [#{<<"identity_version">> := Version, <<"device_generation">> := Generation}]} ->
+            {ok, Version, Generation};
+        {ok, []} ->
+            {ok, 0};
+        {error, _} = Error ->
+            Error
+    end.
+
+active_target(Conn, UserId, DeviceId) ->
+    DeviceTable = user_device_repo:tablename(),
+    Sql =
+        <<"SELECT id FROM ", DeviceTable/binary,
+            " WHERE user_id = $1 AND device_id = $2 AND status = 1">>,
+    case elib_pg:query(Conn, Sql, [UserId, DeviceId]) of
+        {ok, [_]} -> true;
+        _ -> false
+    end.
+
+query(native, Sql, Params) -> elib_pg:query(Sql, Params);
+query(Conn, Sql, Params) -> elib_pg:query(Conn, Sql, Params).
+
+execute(native, Sql, Params) -> elib_pg:execute(Sql, Params);
+execute(Conn, Sql, Params) -> elib_pg:execute(Conn, Sql, Params).
+
 %% ===================================================================
 %% 身份键
 %% ===================================================================
@@ -49,7 +117,10 @@ tablename_fallback_key() ->
 %% 会触发 Gradualizer check_arg_exhaustiveness 的 pick_value(none()) 崩溃
 %% （崩溃家族配方 b'，与 attachment_repo bind_moment_scope_ref 同构，
 %% 2026-10-04）；非整数入参由 SQL 参数绑定报 {error, _}，语义等价。
-upsert_identity(UserId, DeviceId, Ed25519Key, Curve25519Key, Signature, _DeviceType) ->
+upsert_identity(UserId, DeviceId, Ed25519Key, Curve25519Key, Signature, DeviceType) ->
+    upsert_identity(native, UserId, DeviceId, Ed25519Key, Curve25519Key, Signature, DeviceType).
+
+upsert_identity(Conn, UserId, DeviceId, Ed25519Key, Curve25519Key, Signature, _DeviceType) ->
     Tb = tablename_identity(),
     Id = elib_tsid:generate(olm_identity),
     Sql = <<
@@ -63,16 +134,19 @@ upsert_identity(UserId, DeviceId, Ed25519Key, Curve25519Key, Signature, _DeviceT
         "     signature = EXCLUDED.signature,",
         "     updated_at = CURRENT_TIMESTAMP"
     >>,
-    elib_pg:query(Sql, [Id, UserId, DeviceId, Ed25519Key, Curve25519Key, Signature]).
+    query(Conn, Sql, [Id, UserId, DeviceId, Ed25519Key, Curve25519Key, Signature]).
 
 %% @doc 查询单设备身份键
 -spec find_identity(integer(), binary()) -> {ok, map() | not_found} | {error, term()}.
 find_identity(UserId, DeviceId) ->
+    find_identity(native, UserId, DeviceId).
+
+find_identity(Conn, UserId, DeviceId) ->
     Tb = tablename_identity(),
     Sql =
         <<"SELECT device_id, ed25519_key, curve25519_key, signature", " FROM ", Tb/binary,
             " WHERE user_id = $1 AND device_id = $2 LIMIT 1">>,
-    case elib_pg:query(Sql, [UserId, DeviceId]) of
+    case query(Conn, Sql, [UserId, DeviceId]) of
         {ok, [Row]} -> {ok, Row};
         {ok, []} -> {ok, not_found};
         {error, Reason} -> {error, Reason}
@@ -136,7 +210,10 @@ list_devices_with_identity(UserId) when is_integer(UserId) ->
 %% 不加 is_list(Keys) 守卫：同 upsert_identity，冗余守卫细化触发
 %% Gradualizer pick_value(none()) 崩溃（配方 b'）；非列表入参由
 %% 列表推导 badarg，语义等价（仅影响非法入参的错误类别）。
-upsert_one_time_keys(UserId, DeviceId, Keys, _MaxKeys) ->
+upsert_one_time_keys(UserId, DeviceId, Keys, MaxKeys) ->
+    upsert_one_time_keys(native, UserId, DeviceId, Keys, MaxKeys).
+
+upsert_one_time_keys(Conn, UserId, DeviceId, Keys, _MaxKeys) ->
     Tb = tablename_one_time_key(),
     %% 全量替换必须删净该设备全部旧行（含 claimed）：设备重装后客户端
     %% key_id 会从头编号，残留的 claimed 行与新 key_id 撞唯一约束
@@ -145,7 +222,7 @@ upsert_one_time_keys(UserId, DeviceId, Keys, _MaxKeys) ->
     %% claimed 行绑定旧身份键的会话已密码学失效，删除无损失。
     DeleteSql =
         <<"DELETE FROM ", Tb/binary, " WHERE user_id = $1 AND device_id = $2">>,
-    case elib_pg:execute(DeleteSql, [UserId, DeviceId]) of
+    case execute(Conn, DeleteSql, [UserId, DeviceId]) of
         {ok, _} ->
             Rows = [
                 {elib_tsid:generate(olm_one_time_key), UserId, DeviceId, KeyId, KeyB64}
@@ -156,7 +233,7 @@ upsert_one_time_keys(UserId, DeviceId, Keys, _MaxKeys) ->
                 Tb/binary,
                 " (id, user_id, device_id, key_id, key_base64) VALUES ($1, $2, $3, $4, $5)"
             >>,
-            InsertFun = fun(Row) -> elib_pg:execute(InsertSql, tuple_to_list(Row)) end,
+            InsertFun = fun(Row) -> execute(Conn, InsertSql, tuple_to_list(Row)) end,
             Results = [InsertFun(R) || R <- Rows],
             case [E || {error, E} <- Results] of
                 [] -> {ok, length(Rows)};
@@ -186,6 +263,9 @@ count_one_time_keys(UserId, DeviceId) ->
 -spec claim_one_time_key(integer(), binary(), integer()) ->
     {ok, map()} | {error, exhausted}.
 claim_one_time_key(UserId, DeviceId, ClaimedBy) ->
+    claim_unleased_key(native, UserId, DeviceId, ClaimedBy).
+
+claim_unleased_key(Conn, UserId, DeviceId, ClaimedBy) ->
     Tb = tablename_one_time_key(),
     %% 单条原子事务：选最早的一条可用 OTK，标记为 claimed（不删）并返回其 key。
     Sql = <<
@@ -206,7 +286,7 @@ claim_one_time_key(UserId, DeviceId, ClaimedBy) ->
         "SELECT p.key_id, p.key_base64 FROM picked p",
         " JOIN claimed c ON p.id = c.id"
     >>,
-    case elib_pg:query(Sql, [UserId, DeviceId, ClaimedBy]) of
+    case query(Conn, Sql, [UserId, DeviceId, ClaimedBy]) of
         {ok, [Row]} ->
             {ok, Row};
         {ok, []} ->
@@ -236,19 +316,22 @@ claim_one_time_key(UserId, DeviceId, ClaimedBy) ->
 %%  RequestId 为空（旧客户端）→ 退回 /3 的逐次消费语义，零破坏。
 -spec claim_one_time_key(integer(), binary(), integer(), binary()) ->
     {ok, map()} | {error, exhausted}.
-claim_one_time_key(UserId, DeviceId, ClaimedBy, RequestId) when
+claim_one_time_key(UserId, DeviceId, ClaimedBy, RequestId) ->
+    claim_one_time_key(native, UserId, DeviceId, ClaimedBy, RequestId).
+
+claim_one_time_key(Conn, UserId, DeviceId, ClaimedBy, RequestId) when
     is_binary(RequestId), RequestId =/= <<>>
 ->
-    case find_claim_by_request(UserId, DeviceId, ClaimedBy, RequestId) of
+    case find_claim_by_request(Conn, UserId, DeviceId, ClaimedBy, RequestId) of
         {ok, Row} ->
             {ok, Row};
         {error, not_found} ->
-            case claim_with_request_id(UserId, DeviceId, ClaimedBy, RequestId) of
+            case claim_with_request_id(Conn, UserId, DeviceId, ClaimedBy, RequestId) of
                 {ok, Row} ->
                     {ok, Row};
                 {error, request_conflict} ->
                     %% 并发同 RequestId：另一路已消费并写入租约，回查返回同一条
-                    case find_claim_by_request(UserId, DeviceId, ClaimedBy, RequestId) of
+                    case find_claim_by_request(Conn, UserId, DeviceId, ClaimedBy, RequestId) of
                         {ok, Row} -> {ok, Row};
                         {error, not_found} -> {error, exhausted}
                     end;
@@ -256,13 +339,13 @@ claim_one_time_key(UserId, DeviceId, ClaimedBy, RequestId) when
                     {error, exhausted}
             end
     end;
-claim_one_time_key(UserId, DeviceId, ClaimedBy, _RequestId) ->
-    claim_one_time_key(UserId, DeviceId, ClaimedBy).
+claim_one_time_key(Conn, UserId, DeviceId, ClaimedBy, _RequestId) ->
+    claim_unleased_key(Conn, UserId, DeviceId, ClaimedBy).
 
 %% @private 回查已发放的租约（严格按领取方 + 目标设备 + request_id 三元组）
--spec find_claim_by_request(integer(), binary(), integer(), binary()) ->
+-spec find_claim_by_request(term(), integer(), binary(), integer(), binary()) ->
     {ok, map()} | {error, not_found}.
-find_claim_by_request(UserId, DeviceId, ClaimedBy, RequestId) ->
+find_claim_by_request(Conn, UserId, DeviceId, ClaimedBy, RequestId) ->
     Tb = tablename_one_time_key(),
     Sql = <<
         "SELECT key_id, key_base64 FROM ",
@@ -270,7 +353,7 @@ find_claim_by_request(UserId, DeviceId, ClaimedBy, RequestId) ->
         " WHERE user_id = $1 AND device_id = $2 AND claimed_by = $3",
         "   AND claim_request_id = $4 AND status = 'claimed' LIMIT 1"
     >>,
-    case elib_pg:query(Sql, [UserId, DeviceId, ClaimedBy, RequestId]) of
+    case query(Conn, Sql, [UserId, DeviceId, ClaimedBy, RequestId]) of
         {ok, [Row | _]} ->
             {ok, Row};
         {ok, []} ->
@@ -282,9 +365,9 @@ find_claim_by_request(UserId, DeviceId, ClaimedBy, RequestId) ->
     end.
 
 %% @private 消费一条并登记租约；唯一索引冲突返回 request_conflict
--spec claim_with_request_id(integer(), binary(), integer(), binary()) ->
+-spec claim_with_request_id(term(), integer(), binary(), integer(), binary()) ->
     {ok, map()} | {error, exhausted | request_conflict}.
-claim_with_request_id(UserId, DeviceId, ClaimedBy, RequestId) ->
+claim_with_request_id(Conn, UserId, DeviceId, ClaimedBy, RequestId) ->
     Tb = tablename_one_time_key(),
     Sql = <<
         "WITH picked AS (",
@@ -305,7 +388,7 @@ claim_with_request_id(UserId, DeviceId, ClaimedBy, RequestId) ->
         "SELECT p.key_id, p.key_base64 FROM picked p",
         " JOIN claimed c ON p.id = c.id"
     >>,
-    case elib_pg:query(Sql, [UserId, DeviceId, ClaimedBy, RequestId]) of
+    case claim_write_query(Conn, Sql, [UserId, DeviceId, ClaimedBy, RequestId]) of
         {ok, [Row]} ->
             {ok, Row};
         {ok, []} ->
@@ -356,6 +439,9 @@ cleanup_consumed_one_time_keys(RetentionSeconds) when is_integer(RetentionSecond
 -spec upsert_fallback_key(integer(), binary(), binary(), binary()) ->
     {ok, term()} | {error, term()}.
 upsert_fallback_key(UserId, DeviceId, KeyId, KeyB64) ->
+    upsert_fallback_key(native, UserId, DeviceId, KeyId, KeyB64).
+
+upsert_fallback_key(Conn, UserId, DeviceId, KeyId, KeyB64) ->
     Tb = tablename_fallback_key(),
     Id = elib_tsid:generate(olm_fallback_key),
     Sql = <<
@@ -366,16 +452,39 @@ upsert_fallback_key(UserId, DeviceId, KeyId, KeyB64) ->
         " SET key_id = EXCLUDED.key_id, key_base64 = EXCLUDED.key_base64,",
         "     created_at = CURRENT_TIMESTAMP"
     >>,
-    elib_pg:query(Sql, [Id, UserId, DeviceId, KeyId, KeyB64]).
+    query(Conn, Sql, [Id, UserId, DeviceId, KeyId, KeyB64]).
+
+%% Preserve the outer actor lock when a concurrent native claim wins the lease.
+claim_write_query(native, Sql, Params) ->
+    elib_pg:query(Sql, Params);
+claim_write_query(Conn, Sql, Params) ->
+    {ok, [], []} = epgsql:squery(Conn, "SAVEPOINT olm_claim_write"),
+    Result = elib_pg:query(Conn, Sql, Params),
+    case Result of
+        {error, Reason} ->
+            case is_unique_violation(Reason) of
+                true ->
+                    {ok, [], []} = epgsql:squery(Conn, "ROLLBACK TO SAVEPOINT olm_claim_write"),
+                    {ok, [], []} = epgsql:squery(Conn, "RELEASE SAVEPOINT olm_claim_write");
+                false ->
+                    throw({rollback, <<"internal_error">>})
+            end;
+        _ ->
+            {ok, [], []} = epgsql:squery(Conn, "RELEASE SAVEPOINT olm_claim_write")
+    end,
+    Result.
 
 %% @doc 领取 fallback key（不删除，可重复领取——客户端生成新 fallback 后旧的自然失效）
 -spec claim_fallback_key(integer(), binary()) -> {ok, map()} | {error, exhausted}.
 claim_fallback_key(UserId, DeviceId) ->
+    claim_fallback_key(native, UserId, DeviceId).
+
+claim_fallback_key(Conn, UserId, DeviceId) ->
     Tb = tablename_fallback_key(),
     Sql =
         <<"SELECT key_id, key_base64 FROM ", Tb/binary,
             " WHERE user_id = $1 AND device_id = $2 LIMIT 1">>,
-    case elib_pg:query(Sql, [UserId, DeviceId]) of
+    case query(Conn, Sql, [UserId, DeviceId]) of
         {ok, [Row]} -> {ok, Row};
         {ok, []} -> {error, exhausted};
         {error, _Reason} -> {error, exhausted}
