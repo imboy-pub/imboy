@@ -31,6 +31,34 @@ for last_arg in "$@"; do :; done
 cmd="${last_arg:-}"
 
 case "$cmd" in
+  *": imboy-offline-state"*)
+    if [ -f "$MOCK_LOG.upgrade" ]; then cat "$MOCK_LOG.upgrade"; fi
+    exit 0
+    ;;
+  *"IMBOY_OFFLINE_CANDIDATE="*)
+    case "$cmd" in
+      *"IMBOY_OFFLINE_PHASE='probe'"*)
+        echo DB_PROBE >>"$MOCK_LOG"
+        [ "${MOCK_FAIL_AT:-}" != offline_probe ] ;;
+      *"IMBOY_OFFLINE_PHASE='migrate'"*)
+        echo DB_BACKUP >>"$MOCK_LOG"
+        [ "${MOCK_FAIL_AT:-}" != offline_backup ] || exit 1
+        key=${cmd#*"IMBOY_OFFLINE_KEY='"}; printf '%s\n' "${key%%\'*}" >"$MOCK_LOG.upgrade"
+        echo OFFLINE_MIGRATE >>"$MOCK_LOG"
+        [ "${MOCK_FAIL_AT:-}" != offline_migrate ] ;;
+      *"IMBOY_OFFLINE_PHASE='verify'"*) echo DB_VERIFY >>"$MOCK_LOG" ;;
+      *) exit 2 ;;
+    esac
+    exit
+    ;;
+  *"flock -n '/srv/imboy/.imboy-offline-upgrade.lock' test ! -e"*)
+    [ ! -e "$MOCK_LOG.upgrade" ]
+    exit
+    ;;
+  *"rm -- '/srv/imboy/.imboy-offline-upgrade'"*)
+    rm -- "$MOCK_LOG.upgrade"
+    exit
+    ;;
   *": imboy-deploy-lock"*)
     cmd="${cmd//\/srv\/imboy/$MOCK_PROJECT_DIR}"
     cmd="${cmd//\/www\/wwwroot\/imboy-api/$MOCK_PROJECT_DIR}"
@@ -166,7 +194,11 @@ case "$cmd" in
     exit 0
     ;;
   *"PID="*"lsof -ti:"*"/proc/"*)
-    printf '%s\n' "${MOCK_ACTIVE_RELEASE_DIR:-/usr/local/imboy-0.9.0-oldnode}"
+    if [[ "$cmd" == *'lsof -ti:9801 '* ]] && grep -qx DAEMON "$MOCK_LOG"; then
+      printf '/usr/local/imboy-%s-testnode\n' "$TEST_VSN"
+    else
+      printf '%s\n' "${MOCK_ACTIVE_RELEASE_DIR:-/usr/local/imboy-0.9.0-oldnode}"
+    fi
     exit 0
     ;;
   *"date +%s%3N"*)
@@ -457,6 +489,46 @@ assert_success_order() {
 }
 
 echo "== 蓝绿部署控制流（全离线 mock） =="
+
+if run_deploy '' blue --offline && [ ! -e "$MOCK_LOG.upgrade" ] \
+   && [ "$(grep -xE 'BUILD|DB_PROBE|STOP|DB_BACKUP|OFFLINE_MIGRATE|AUTO_FALSE|SWITCH|DB_VERIFY' "$MOCK_LOG" | paste -sd ' ' -)" \
+        = 'BUILD DB_PROBE STOP DB_BACKUP OFFLINE_MIGRATE AUTO_FALSE SWITCH DB_VERIFY' ]; then
+  ok "维护升级先构建、停写、备份、迁移，再启动并切流"
+else
+  bad "维护升级时序" "$(tr '\n' ',' <"$MOCK_LOG") $(cat "$TMP_ROOT/output.log")"
+fi
+for failure in offline_probe offline_backup offline_migrate health; do
+  if ! run_deploy "$failure" blue --offline; then
+    assert_absent "$failure 时不切流" SWITCH
+    case "$failure" in
+      offline_probe) assert_absent '预检失败保留原节点' STOP ;;
+      offline_backup) assert_absent '备份失败不执行迁移' OFFLINE_MIGRATE
+        if grep -qx RECOVER_OLD "$MOCK_LOG"; then ok '备份失败恢复原节点'; else bad '备份失败应当恢复原节点'; fi ;;
+      *) assert_absent "$failure 时不恢复旧版本" RECOVER_OLD
+        if [ -s "$MOCK_LOG.upgrade" ]; then ok "$failure 时保留维护标记"; else bad '缺少维护标记'; fi
+        if run_deploy '' blue; then bad '维护标记未阻止普通发布'; else assert_absent '维护期间普通发布不启动节点' DAEMON; fi
+        if MOCK_NGINX_COLOR=blue MOCK_TSID_STORED_IDENTITY='{1,1,3}' run_deploy '' none --offline; then
+          ok '同一候选从维护标记恢复'
+        else
+          bad '维护升级续跑失败' "$(cat "$TMP_ROOT/output.log")"
+        fi ;;
+    esac
+  else
+    bad "维护升级未检测到 $failure"
+  fi
+  rm -f -- "$MOCK_LOG.upgrade"
+done
+
+if ! run_deploy health blue --offline \
+   && MOCK_NGINX_COLOR=green MOCK_RELEASE_EXISTS=1 \
+      MOCK_ACTIVE_RELEASE_DIR="/usr/local/imboy-${TEST_VSN}-testnode" run_deploy '' green --offline \
+   && [ "$(grep -xE 'DB_VERIFY|SWITCH' "$MOCK_LOG" | paste -sd ' ' -)" = 'DB_VERIFY SWITCH' ] \
+   && ! grep -qx OFFLINE_MIGRATE "$MOCK_LOG" && [ ! -e "$MOCK_LOG.upgrade" ]; then
+  ok '切流中断后同一候选重跑补齐 Nginx 配置'
+else
+  bad '切流中断后无法继续' "$(cat "$TMP_ROOT/output.log")"
+fi
+rm -f -- "$MOCK_LOG.upgrade"
 
 # Execute only the identity helpers against a temporary sys.config. No SSH or
 # Erlang VM is involved; the full deployment script is never sourced here.
@@ -1061,6 +1133,7 @@ if (
     "$TMP_ROOT/prune/output/imboy/lib/imboy-fixture"
   awk '/^imboy-prune-excluded-beams:/{p=1} p{print} /^\.PHONY: imboy-prune-excluded-beams/{exit}' \
     Makefile >"$TMP_ROOT/prune/Makefile"
+  printf '\n.PHONY: app\napp:\n' >>"$TMP_ROOT/prune/Makefile"
   cd "$TMP_ROOT/prune" || exit 1
   touch ebin/disabled.beam _rel/imboy/lib/imboy-fixture/preserve \
     output/imboy/lib/imboy-fixture/stale

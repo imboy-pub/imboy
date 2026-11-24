@@ -5,6 +5,7 @@
 
 -export([migrate/0]).
 -export([migrate/1]).
+-export([migrate/2]).
 -export([migrate_to_msg_v2/0]).
 -export([set_max_id_seq/0]).
 -export([migrate_msg_payload_plaintext/0]).
@@ -85,26 +86,30 @@ migrate() ->
 -spec migrate(file:filename_all()) -> ok.
 migrate(Path) ->
     Conf = config_ds:env(super_account),
-    ?LOG_INFO("[imboy_migrate] running migrations from ~s", [Path]),
     {ok, Conn} = epgsql:connect(Conf),
+    try
+        migrate(Conn, Path)
+    after
+        epgsql:close(Conn)
+    end.
+
+-spec migrate(epgsql:connection(), file:filename_all()) -> ok.
+migrate(Conn, Path) ->
+    ?LOG_INFO("[imboy_migrate] running migrations from ~s", [Path]),
     %% strict: 顺序编号下检测乱序迁移（后合并的低编号文件会报
     %% {out_of_order, Versions} 而非被静默跳过），需 erlang_migrate >= 0.3.0
     Config = #{conn => Conn, dir => Path, strict => true, strict_bootstrap => fail},
-    try
-        case erlang_migrate:up(Config) of
-            ok ->
-                ok = verify_c2c_order_guards(Conn),
-                ?LOG_INFO("[imboy_migrate] all migrations applied"),
-                ok;
-            {error, {dirty_state, Hint}} ->
-                ?LOG_ERROR("[imboy_migrate] dirty state — run force/2 to recover: ~s", [Hint]),
-                erlang:error({migration_dirty, Hint});
-            {error, Reason} ->
-                ?LOG_ERROR("[imboy_migrate] migration failed: ~w", [Reason]),
-                erlang:error({migration_failed, Reason})
-        end
-    after
-        epgsql:close(Conn)
+    case erlang_migrate:up(Config) of
+        ok ->
+            ok = verify_c2c_order_guards(Conn),
+            ?LOG_INFO("[imboy_migrate] all migrations applied"),
+            ok;
+        {error, {dirty_state, Hint}} ->
+            ?LOG_ERROR("[imboy_migrate] dirty state — run force/2 to recover: ~s", [Hint]),
+            erlang:error({migration_dirty, Hint});
+        {error, Reason} ->
+            ?LOG_ERROR("[imboy_migrate] migration failed: ~w", [Reason]),
+            erlang:error({migration_failed, Reason})
     end.
 
 %% A restored ledger is not proof that its protective triggers were restored.

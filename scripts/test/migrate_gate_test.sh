@@ -22,6 +22,7 @@ cleanup() {
 trap cleanup EXIT
 
 cp scripts/imboy-deploy.sh "$TEST_DEPLOY"
+sed "s|/usr/local/imboy-\"|$TMP_ROOT/imboy-\"|" scripts/lib/offline_migrate.sh >"$TEST_SCRIPT_DIR/lib/offline_migrate.sh"
 # 1b2ca499 起 imboy-deploy.sh 对 api/cs/all 惰性 source 生产配置键预检库，
 # harness 需同步携带（baseline-drift 机械同步，不改任何 oracle 语义）。
 cp scripts/lib/check_prod_config.sh "$TEST_SCRIPT_DIR/lib/check_prod_config.sh"
@@ -65,6 +66,8 @@ write_env() {
   'DEPLOY_BRANCH=main' \
   'DEPLOY_BLUE_PORT=9800' \
   'DEPLOY_GREEN_PORT=9801' \
+  'DEPLOY_TSID_BLUE_NODE_ID=1' \
+  'DEPLOY_TSID_GREEN_NODE_ID=2' \
   'DEPLOY_COOKIE=testcookie' \
   'API_DOMAIN=api.example.invalid' \
   'ADMIN_DOMAIN=admin.example.invalid' \
@@ -89,6 +92,17 @@ cmd="${last_arg:-}"
 printf '%s\n' SSH_CALL >>"$MOCK_CALLS"
 
 case "$cmd" in
+  "bash -c "*)
+    if [[ "${MOCK_OFFLINE_FAIL:-}" == upload ]]; then
+      exec bash -c "$cmd" </dev/null
+    fi
+    if [[ "${MOCK_OFFLINE_FAIL:-}" == archive_metadata ]]; then
+      set -o pipefail
+      tee "$OFFLINE_RUNS.tar.gz" | bash -c "$cmd"
+      exit $?
+    fi
+    exec bash -c "$cmd"
+    ;;
   *"BLUE_STATE="*"ACTIVE_PID="*)
     [ "${MOCK_GATE_STATE:-ok}" = ok ] || exit 2
     printf '%s\n' "${MOCK_CTL_NODE:-08171234@127.0.0.1}"
@@ -112,7 +126,7 @@ case "$cmd" in
     # api 收尾 CS vhost 存在性探测：MOCK_CS_VHOST 控制「已上线/未上线」两态
     printf '%s\n' "${MOCK_CS_VHOST:-1}"
     ;;
-  *"make ctl ARGS='db migrate'"*)
+  *"make ctl ARGS="*"db migrate"*)
     printf '%s\n' "$cmd" >>"$MOCK_LOG"
     ;;
 esac
@@ -131,6 +145,11 @@ cat >"$MOCK_BIN/git" <<'MOCK'
 #!/usr/bin/env bash
 case " $* " in
   *" rev-parse HEAD "*) printf '%s\n' "$TEST_SOURCE_HEAD" ;;
+  *" show $TEST_SOURCE_HEAD:VERSION "*)
+    if [[ "${MOCK_OFFLINE_FAIL:-}" == version ]]; then echo 0.0.0; else echo 1.0.0; fi ;;
+  *" show $TEST_SOURCE_HEAD:include/deps.mk "*) cat "$OFFLINE_FIXTURE/include/deps.mk" ;;
+  *" archive $TEST_SOURCE_HEAD priv/migrations "*) tar -cf - -C "$OFFLINE_FIXTURE" priv/migrations ;;
+  *" archive refs/tags/"*) tar -cf - -C "$2" "${@:5}" ;;
   *" status --porcelain "*) [ "${MOCK_GIT_DIRTY:-0}" = 1 ] && printf ' M src/demo.erl\n' ;;
   *) exit 0 ;;
 esac
@@ -344,6 +363,214 @@ if run_migrate ok '08171234@127.0.0.1' \
 else
   bad "迁移 RPC 未使用活动节点名" "$(tr '\n' ',' <"$MOCK_LOG")"
 fi
+
+OFFLINE_RELEASE="$TMP_ROOT/imboy-1.0.0-test"
+OFFLINE_PROJECT="$TMP_ROOT/project"
+OFFLINE_ENV="$TMP_ROOT/prod.env"
+OFFLINE_RUNS="$TMP_ROOT/offline-runs.log"
+OFFLINE_FIXTURE="$TMP_ROOT/sql-fixture"
+OFFLINE_TMP="$TMP_ROOT/migrate-tmp"
+OFFLINE_STOPPED="$TMP_ROOT/offline-stopped"
+mkdir -p "$OFFLINE_PROJECT" "$OFFLINE_RELEASE/etc" "$OFFLINE_RELEASE/erts-test/bin" \
+  "$OFFLINE_RELEASE/releases/1.0.0" "$OFFLINE_RELEASE/lib/imboy-1.0.0/ebin" \
+  "$OFFLINE_RELEASE/lib/imboy-1.0.0/priv/migrations"
+printf '%s\n' "$TEST_SOURCE_HEAD" >"$OFFLINE_RELEASE/etc/source-head"
+touch "$OFFLINE_RELEASE/releases/1.0.0/"{sys.config,no_dot_erlang.boot} \
+  "$OFFLINE_RELEASE/lib/imboy-1.0.0/priv/migrations/00000002_test.up.sql"
+printf '%s\n' 'IMBOY_PG_PASSWORD=fixture' 'IMBOY_PG_PORT=15432' >"$OFFLINE_ENV"
+mkdir -p "$OFFLINE_TMP" "$OFFLINE_FIXTURE/priv/migrations" "$OFFLINE_FIXTURE/include" \
+  "$OFFLINE_PROJECT/_rel/imboy/bin" \
+  "$TMP_ROOT/src/lib" "$TMP_ROOT/include" "$TMP_ROOT/deps/epgsql/"{include,src} "$TMP_ROOT/deps/erlang_migrate/src"
+printf 'SELECT 2;\n' >"$OFFLINE_FIXTURE/priv/migrations/00000002_test.up.sql"
+printf '%s\n' 'dep_epgsql = git https://example.invalid/epgsql 4.8.0' \
+  'dep_erlang_migrate = git https://example.invalid/erlang_migrate v0.3.4' >"$OFFLINE_FIXTURE/include/deps.mk"
+touch "$TMP_ROOT/src/lib/imboy_migrate.erl" "$TMP_ROOT/include/log.hrl" \
+  "$TMP_ROOT/deps/epgsql/src/epgsql.app.src" "$TMP_ROOT/deps/erlang_migrate/src/erlang_migrate_driver.erl"
+cat >"$MOCK_BIN/flock" <<'MOCK'
+#!/usr/bin/env bash
+[[ -f .imboy-deploy.lock && "${MOCK_OFFLINE_FAIL:-}" != lock ]]
+MOCK
+cat >"$MOCK_BIN/ss" <<'MOCK'
+#!/usr/bin/env bash
+case "${MOCK_OFFLINE_FAIL:-}:$*" in
+  listener:*9802|missing:*9802|foreign_listener:*9802) echo listening ;;
+  stop:*9800|stop_fail:*9800|stop_restart:*9800|probe:*9800|foreign_listener:*9800)
+    if [[ ! -e "$OFFLINE_STOPPED" ]]; then echo listening; fi ;;
+esac
+MOCK
+cat >"$MOCK_BIN/pgrep" <<'MOCK'
+#!/usr/bin/env bash
+if [[ "${MOCK_OFFLINE_FAIL:-}" =~ ^(legacy_process|stop_legacy|stop_restart)$ && "$*" == '-x beam.smp' && ! -e "$OFFLINE_STOPPED" ]]; then
+  echo 4321
+  exit 0
+fi
+exit 1
+MOCK
+cat >"$MOCK_BIN/lsof" <<'MOCK'
+#!/usr/bin/env bash
+case "$*" in
+  *-iTCP:9800*) echo 4321 ;;
+  *-iTCP:9802*) echo 4322 ;;
+  *) exit 1 ;;
+esac
+MOCK
+cat >"$MOCK_BIN/readlink" <<'MOCK'
+#!/usr/bin/env bash
+case "$*" in
+  /proc/4321/exe) printf '%s/_rel/imboy/erts-test/bin/beam.smp\n' "$OFFLINE_PROJECT" ;;
+  /proc/4322/exe) echo /usr/sbin/other-service ;;
+  *) exec /usr/bin/readlink "$@" ;;
+esac
+MOCK
+cat >"$OFFLINE_PROJECT/_rel/imboy/bin/imboy" <<'MOCK'
+#!/usr/bin/env bash
+[[ "$*" == stop && "$IMBOYENV" == pro ]] || exit 2
+case "$MOCK_OFFLINE_FAIL" in
+  stop_fail) exit 1 ;;
+  stop_restart) exit 0 ;;
+esac
+touch "$OFFLINE_STOPPED"
+MOCK
+cat >"$MOCK_BIN/docker" <<'MOCK'
+#!/usr/bin/env bash
+case "${!#}" in
+  *pg_postmaster_start_time*) echo imboy:123:456 ;;
+  *schema_migrations*)
+    if [[ -s "$OFFLINE_RUNS" && "${MOCK_OFFLINE_FAIL:-}" != postcheck ]]; then
+      echo 2
+    elif [[ "${MOCK_OFFLINE_FAIL:-}" != dirty ]]; then
+      echo 1
+    fi
+    ;;
+  *) exit 2 ;;
+esac
+MOCK
+cat >"$OFFLINE_RELEASE/erts-test/bin/erl" <<'MOCK'
+#!/usr/bin/env bash
+[[ "$IMBOYENV" == pro && " $* " == *" -boot "*"/no_dot_erlang "* && " $* " == *" imboy:123:456 "* ]] || exit 2
+echo migrated >>"$OFFLINE_RUNS"
+[[ "${MOCK_OFFLINE_FAIL:-}" != runtime ]]
+MOCK
+cat >"$MOCK_BIN/erlc" <<'MOCK'
+#!/usr/bin/env bash
+[[ "${MOCK_OFFLINE_FAIL:-}" != compile ]]
+MOCK
+cat >"$MOCK_BIN/erl" <<'MOCK'
+#!/usr/bin/env bash
+[[ "$IMBOY_PG_PORT" == 15432 && " $* " == *" -pa "*"/ebin "* && " $* " == *" imboy:123:456 "* ]] || exit 2
+[[ "${@: -3:1}" == 1 && "${!#}" == 1 && $(cat "${@: -4:1}/00000002_test.up.sql") == 'SELECT 2;' ]] || exit 2
+if [[ "${@: -2:1}" == probe ]]; then
+  if [[ "$MOCK_OFFLINE_FAIL" == probe ]]; then echo '迁移连接与部署数据库不一致' >&2; exit 1; fi
+  exit 0
+fi
+case "$MOCK_OFFLINE_FAIL" in
+  stop|stop_legacy) [[ -e "$OFFLINE_STOPPED" ]] || exit 2 ;;
+esac
+echo migrated >>"$OFFLINE_RUNS"
+MOCK
+chmod +x "$MOCK_BIN/"{flock,ss,pgrep,lsof,readlink,docker,erl,erlc} \
+  "$OFFLINE_RELEASE/erts-test/bin/erl" "$OFFLINE_PROJECT/_rel/imboy/bin/imboy"
+sed -i.bak "s|^DEPLOY_PROJECT_DIR=.*|DEPLOY_PROJECT_DIR=$OFFLINE_PROJECT|" "$TEST_ENV"
+printf 'DEPLOY_LEGACY_PORT=9802\nIMBOY_DEPLOY_PROD_ENV_FILE=%q\n' "$OFFLINE_ENV" >>"$TEST_ENV"
+
+run_offline_migrate() {
+  local failure=$1
+  shift
+  : >"$OFFLINE_RUNS"
+  rm -f "$OFFLINE_STOPPED"
+  env PATH="$MOCK_BIN:$PATH" TMPDIR="$OFFLINE_TMP" MOCK_CALLS="$MOCK_CALLS" MOCK_LOG="$MOCK_LOG" \
+    MOCK_OFFLINE_FAIL="$failure" OFFLINE_RUNS="$OFFLINE_RUNS" OFFLINE_FIXTURE="$OFFLINE_FIXTURE" \
+    OFFLINE_PROJECT="$(cd "$OFFLINE_PROJECT" && pwd -P)" OFFLINE_STOPPED="$OFFLINE_STOPPED" \
+    bash "$TEST_DEPLOY" migrate --offline -v "$@" >"$TMP_ROOT/output.log" 2>&1
+}
+
+if run_offline_migrate '' && grep -qx migrated "$OFFLINE_RUNS" \
+   && grep -q '离线迁移完成，数据库版本 2' "$TMP_ROOT/output.log"; then
+  ok "离线迁移使用候选运行时并复核台账"
+else
+  bad "离线迁移失败" "$(<"$TMP_ROOT/output.log")"
+fi
+
+for blocked in lock listener legacy_process dirty candidate missing; do
+  case "$blocked" in
+    lock) expected='无法获取部署锁' ;;
+    listener) expected='端口 9802 仍监听' ;;
+    legacy_process) expected='4321 尚在运行' ;;
+    dirty) expected='迁移台账缺失' ;;
+    candidate)
+      cp -R "$OFFLINE_RELEASE" "$OFFLINE_RELEASE-duplicate"
+      expected='找到 2 个' ;;
+    missing)
+      mv "$OFFLINE_RELEASE/etc/source-head" "$OFFLINE_RELEASE/etc/source-head.saved"
+      mv "$OFFLINE_RELEASE-duplicate/etc/source-head" "$OFFLINE_RELEASE-duplicate/etc/source-head.saved"
+      expected='找到 0 个' ;;
+  esac
+  if ! run_offline_migrate "$blocked" && [[ ! -s "$OFFLINE_RUNS" ]] \
+     && grep -q "$expected" "$TMP_ROOT/output.log"; then
+    ok "离线迁移在 $blocked 时拒绝写库"
+  else
+    bad "离线迁移 $blocked 门禁失效" "$(<"$TMP_ROOT/output.log")"
+  fi
+done
+mv "$OFFLINE_RELEASE/etc/source-head.saved" "$OFFLINE_RELEASE/etc/source-head"
+rm -rf "$OFFLINE_RELEASE-duplicate"
+
+for failure in runtime postcheck; do
+  if ! run_offline_migrate "$failure" && grep -qx migrated "$OFFLINE_RUNS" \
+     && ! grep -q '离线迁移完成' "$TMP_ROOT/output.log"; then
+    ok "离线迁移正确报告 $failure 失败"
+  else
+    bad "离线迁移错误处理失效 $failure" "$(<"$TMP_ROOT/output.log")"
+  fi
+done
+
+mv "$OFFLINE_RELEASE/etc/source-head" "$OFFLINE_RELEASE/etc/source-head.saved"
+if run_offline_migrate '' -l && grep -qx migrated "$OFFLINE_RUNS" \
+   && grep -q '离线迁移完成，数据库版本 2' "$TMP_ROOT/output.log" \
+   && [[ -z "$(ls -A "$OFFLINE_TMP")" ]]; then
+  ok "本地离线迁移无候选包也可上传 SQL 并复核台账"
+else
+  bad "本地离线迁移失败或未清理临时包" "$(<"$TMP_ROOT/output.log")"
+fi
+
+if [[ "$OSTYPE" == darwin* ]]; then
+  if xattr -w com.imboy.test fixture "$TMP_ROOT/src/lib/imboy_migrate.erl" \
+     && run_offline_migrate archive_metadata -l \
+     && gzip -t "$OFFLINE_RUNS.tar.gz" \
+     && ! (gzip -dc "$OFFLINE_RUNS.tar.gz" | LC_ALL=C grep -aF 'xattr.com.imboy.test=' >/dev/null); then
+    ok "本地离线迁移包不携带 macOS 扩展属性"
+  else
+    bad "本地离线迁移包仍携带扩展属性或迁移失败" "$(<"$TMP_ROOT/output.log")"
+  fi
+fi
+
+for blocked in version upload compile foreign_listener dirty probe stop_fail stop_restart; do
+  case "$blocked" in
+    version) expected='VERSION 与 DEPLOY_VSN' ;;
+    upload) expected='上传或解包失败' ;;
+    foreign_listener) expected='不是本次部署可停止的 IMBoy 节点' ;;
+    dirty) expected='迁移台账缺失' ;;
+    probe) expected='迁移连接与部署数据库不一致' ;;
+    stop_fail) expected='节点停止失败' ;;
+    stop_restart) expected='端口 9800 仍监听' ;;
+    compile) expected='SSH 连接就绪' ;;
+  esac
+  if ! run_offline_migrate "$blocked" -l && [[ ! -s "$OFFLINE_RUNS" && ! -e "$OFFLINE_STOPPED" && -z "$(ls -A "$OFFLINE_TMP")" ]] \
+     && grep -q "$expected" "$TMP_ROOT/output.log" && ! grep -q '离线迁移完成' "$TMP_ROOT/output.log"; then
+    ok "本地离线迁移在 $blocked 时拒绝写库并清理临时包"
+  else
+    bad "本地离线迁移 $blocked 门禁失效" "$(<"$TMP_ROOT/output.log")"
+  fi
+done
+
+for writer in stop stop_legacy; do
+  if run_offline_migrate "$writer" -l && [[ -e "$OFFLINE_STOPPED" ]] && grep -qx migrated "$OFFLINE_RUNS" \
+     && grep -q '离线迁移完成，数据库版本 2' "$TMP_ROOT/output.log"; then
+    ok "本地离线迁移先停止 $writer 节点再升级数据库"
+  else
+    bad "自动停止 $writer 后迁移失败" "$(<"$TMP_ROOT/output.log")"
+  fi
+done
 
 NGINX_PWN="$TMP_ROOT/nginx_pwn"
 write_env "/tmp/x';touch $NGINX_PWN;#" /www/wwwroot/admin tester

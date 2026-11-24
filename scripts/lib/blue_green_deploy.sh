@@ -66,6 +66,7 @@ SILENT=1
 LOCAL_MODE=0
 SKIP_MIGRATE=0
 ROLLBACK=0
+OFFLINE_UPGRADE=0
 while [[ $# -gt 0 ]]; do
   case "$1" in
     -v|--verbose)    SILENT=0; shift ;;
@@ -73,6 +74,7 @@ while [[ $# -gt 0 ]]; do
     -l|--local)      LOCAL_MODE=1; shift ;;
     -M|--no-migrate) SKIP_MIGRATE=1; shift ;;
     --rollback)      ROLLBACK=1; shift ;;
+    --offline)       OFFLINE_UPGRADE=1; shift ;;
     --) shift; break ;;
     -*) echo "未知参数 / Unknown flag: $1" >&2; exit 1 ;;
     *)  break ;;
@@ -154,6 +156,10 @@ OLD_TSID_DC_BITS=""
 OLD_DIR=""
 TRAFFIC_SWITCHED=0
 FAIL_RECOVERY_ATTEMPTED=0
+UPGRADE_PENDING=0
+UPGRADE_FROM_PORT=""
+UPGRADE_STOPPED_ACTIVE=0
+LOCAL_SNAPSHOT=""
 CANDIDATE_STARTED=0
 BOUNDARY_BOOTSTRAP=0
 BOUNDARY_CUTOVER_PENDING=0
@@ -288,6 +294,12 @@ if [ "$SKIP_MIGRATE" -eq 1 ] && [ "$STOP_OLD" = "true" ]; then
 elif [ "$SKIP_MIGRATE" -eq 0 ] && [ "$STOP_OLD" != "true" ]; then
   fail "完整迁移前必须停止旧节点及其长连接；如需保留旧节点，请使用 --no-migrate"
 fi
+if [ "$OFFLINE_UPGRADE" -eq 1 ]; then
+  [ "$SKIP_MIGRATE" -eq 0 ] && [ "$ROLLBACK" -eq 0 ] \
+    || fail "维护升级不能跳过迁移或同时回滚"
+  [ -n "$DB_CONTAINER" ] && [ -n "$DB_NAME" ] && [ -n "$DB_USER" ] \
+    || fail "维护升级必须配置 PostgreSQL 容器、库名和用户"
+fi
 
 trap 'fail "脚本意外终止，使用 -v 查看详情 / Aborted — rerun with -v for details"' ERR
 
@@ -314,6 +326,7 @@ _cleanup() {
   local status=$?
   trap - ERR
   log "阶段耗时: $PHASE_NAME=$((SECONDS - PHASE_STARTED))s | 总耗时=$((SECONDS - DEPLOY_STARTED))s | exit=$status"
+  [[ -z "$LOCAL_SNAPSHOT" ]] || rm -rf -- "$LOCAL_SNAPSHOT"
   if [[ -n "$DEPLOY_LOCK_PID" ]]; then
     exec 9>&-
     kill "$DEPLOY_LOCK_PID" 2>/dev/null || true
@@ -734,6 +747,13 @@ recover_old_node_before_cutover() {
   [ "$TRAFFIC_SWITCHED" -eq 0 ] || return 0
   [ "$FAIL_RECOVERY_ATTEMPTED" -eq 0 ] || return 0
   [ -n "$OLD_PORT" ] && [ -n "$OLD_DIR" ] || return 0
+  if [ "$OFFLINE_UPGRADE" -eq 1 ]; then
+    [ "$UPGRADE_STOPPED_ACTIVE" -eq 1 ] || return 0
+    if ! ssh_exec "flock -n '$UPGRADE_MARKER.lock' test ! -e '$UPGRADE_MARKER'"; then
+      echo "无法证明旧版本可安全恢复，维护状态保存在 $UPGRADE_MARKER；请用同一候选继续" >&2
+      return 1
+    fi
+  fi
   FAIL_RECOVERY_ATTEMPTED=1
   validate_tsid_identity "$OLD_TSID_DC_ID" "$OLD_TSID_NODE_ID" "$OLD_TSID_DC_BITS" \
     || { echo "缺少可信旧 TSID 身份，拒绝自动恢复" >&2; return 1; }
@@ -959,6 +979,76 @@ run_expand_migrations() {
 phase "部署互斥"
 acquire_deploy_lock
 phase "状态检查与旧槽清理"
+UPGRADE_MARKER="$PROJECT_DIR/.imboy-offline-upgrade"
+UPGRADE_KEY="$RELEASE_DIR $SOURCE_HEAD $DB_CONTAINER $DB_NAME $DB_USER $PROD_ENV_FILE $BLUE_PORT $GREEN_PORT $NGINX_CONF"
+if ! upgrade_state="$(ssh_capture ": imboy-offline-state; exec 8>'$UPGRADE_MARKER.lock'; flock -n 8 || exit 1
+  if [ -e '$UPGRADE_MARKER' ]; then test -s '$UPGRADE_MARKER' && cat '$UPGRADE_MARKER'; fi")"; then
+  fail "无法读取维护升级状态"
+fi
+if [ -n "$upgrade_state" ]; then
+  [ "$OFFLINE_UPGRADE" -eq 1 ] && [[ "$upgrade_state" == "$UPGRADE_KEY "* ]] \
+    || fail "维护升级尚未完成；请恢复同一候选的 api --offline 发布"
+  UPGRADE_FROM_PORT="${upgrade_state#"$UPGRADE_KEY "}"
+  [[ "$UPGRADE_FROM_PORT" =~ ^[0-9]+$ ]] || fail "维护状态中的原活动端口无效"
+  UPGRADE_PENDING=1
+fi
+
+offline_upgrade_db() {
+  local remote
+  remote=$(cat "$SCRIPT_DIR/lib/offline_migrate.sh") || return 1
+  check_deploy_lock || return 1
+  ssh -n "${SSH_OPTS[@]}" "$SERVER_USER@$SERVER_HOST" \
+    "IMBOY_OFFLINE_CANDIDATE='$RELEASE_DIR' IMBOY_OFFLINE_PHASE='$1' IMBOY_OFFLINE_KEY='$UPGRADE_KEY $UPGRADE_FROM_PORT' \
+    bash -c '${remote//\'/\'\\\'\'}' -- '$PROJECT_DIR' '$VSN' '$SOURCE_HEAD' '$PROD_ENV_FILE' \
+    '$DB_CONTAINER' '$DB_NAME' '$DB_USER' 0 '$BLUE_PORT' '$GREEN_PORT' '$LEGACY_PORT'"
+}
+
+start_candidate() {
+  local port=$1 identity_env=$2
+  CANDIDATE_STARTED=1
+  ssh_exec "cd '$RELEASE_DIR' && $PROD_ENV_LOAD && IMBOYENV=pro IMBOY_AUTO_MIGRATE='$START_AUTO_MIGRATE' HTTP_PORT='$port' IMBOY_HTTP_PORT='$port' IMBOY_E2EE_MODE='$E2EE_MODE' IMBOY_PLUGIN_TRUSTED_PUBLIC_KEY_FILES='$PLUGIN_TRUSTED_PUBLIC_KEY_REMOTE' $identity_env ./bin/imboy daemon"
+}
+
+switch_nginx() {
+  local from_port=$1 to_port=$2
+  ssh_exec "
+    : imboy-nginx-cutover
+    set -eu
+    if [ '$OFFLINE_UPGRADE' -eq 1 ]; then
+      exec 8>'$UPGRADE_MARKER.lock'
+      flock -n 8
+      test \"\$(cat '$UPGRADE_MARKER')\" = '$UPGRADE_KEY $UPGRADE_FROM_PORT'
+    fi
+    HAD_ADMIN=0
+    HAD_CS=0
+    restore_configs() {
+      cp '$NGINX_CONF'.bak '$NGINX_CONF'
+      [ "\$HAD_ADMIN" -eq 0 ] || cp '$PRODADM_CONF'.bak '$PRODADM_CONF'
+      [ "\$HAD_CS" -eq 0 ] || cp '$CS_NGINX_CONF'.bak '$CS_NGINX_CONF'
+    }
+    cp '$NGINX_CONF' '$NGINX_CONF'.bak
+    if [ -f '$PRODADM_CONF' ]; then cp '$PRODADM_CONF' '$PRODADM_CONF'.bak; HAD_ADMIN=1; fi
+    if [ -n '$CS_NGINX_CONF' ] && [ -f '$CS_NGINX_CONF' ]; then cp '$CS_NGINX_CONF' '$CS_NGINX_CONF'.bak; HAD_CS=1; fi
+    sed -i 's|server 127.0.0.1:$from_port;|server 127.0.0.1:$to_port;|g' '$NGINX_CONF'
+    grep -q 'server 127.0.0.1:$to_port;' '$NGINX_CONF' \
+      && ! grep -q 'server 127.0.0.1:$from_port;' '$NGINX_CONF' \
+      || { restore_configs; echo 'Nginx upstream 替换失败，已回滚 / replacement failed, rolled back' >&2; exit 1; }
+    for CONF in '$PRODADM_CONF' '$CS_NGINX_CONF'; do
+      [ -n \"\$CONF\" ] && [ -f \"\$CONF\" ] || continue
+      grep -q 'http://127.0.0.1:$from_port;' \"\$CONF\" || continue
+      sed -i 's|http://127.0.0.1:$from_port;|http://127.0.0.1:$to_port;|g' \"\$CONF\"
+      grep -q 'http://127.0.0.1:$to_port;' \"\$CONF\" \
+        && ! grep -q 'http://127.0.0.1:$from_port;' \"\$CONF\" \
+        || { restore_configs; echo \"vhost upstream 替换失败: \$CONF\" >&2; exit 1; }
+    done
+    nginx -t || { restore_configs; exit 1; }
+    nginx -s reload || {
+      restore_configs
+      nginx -t && nginx -s reload || true
+      exit 1
+    }
+  "
+}
 
 if [ "$ROLLBACK" -eq 1 ]; then
   log "回滚模式 / Rollback mode"
@@ -1038,6 +1128,10 @@ case "$NGINX_PORT" in
     ;;
 esac
 
+if [ "$OFFLINE_UPGRADE" -eq 1 ] && [ "$UPGRADE_PENDING" -eq 0 ]; then
+  UPGRADE_FROM_PORT=$OLD_PORT
+fi
+
 # Legacy stop approval applies before any expand/boundary branch can stop a writer.
 if [ "$CURRENT_COLOR" = legacy ]; then
   [ "$LEGACY_STOP_ACK" = "I-CONFIRM-OLD-WRITER-STOPPED" ] \
@@ -1050,8 +1144,8 @@ if ! ssh_exec "ss -tlnH \"sport = :$OLD_PORT\" 2>/dev/null | grep -q ."; then
     read_stopped_tsid_identity "$OLD_DIR" \
       || fail "停机旧 release 无可信 TSID 身份标记，拒绝猜测恢复；须人工核对原运行身份"
     OLD_NODE_STOPPED=1
-    if [ "$CURRENT_COLOR" = legacy ]; then
-      log "检测到 legacy 已停机，保留 $OLD_DIR 作为恢复点并继续割接"
+    if [ "$OFFLINE_UPGRADE" -eq 1 ] || [ "$CURRENT_COLOR" = legacy ]; then
+      log "检测到活动槽已停机，保留 $OLD_DIR 作为恢复点"
     else
       log "检测到活动槽停机，先恢复 Nginx 当前指向的 $CURRENT_COLOR 节点"
       recover_old_node_before_cutover \
@@ -1059,6 +1153,7 @@ if ! ssh_exec "ss -tlnH \"sport = :$OLD_PORT\" 2>/dev/null | grep -q ."; then
       FAIL_RECOVERY_ATTEMPTED=0
     fi
   else
+    [ "$OFFLINE_UPGRADE" -eq 0 ] || fail "无法定位原活动 release，拒绝对既有数据库猜测切流目标"
     [ "$CURRENT_COLOR" != legacy ] \
       || fail "Nginx 指向的 legacy 端口 $OLD_PORT 未监听，且无法定位可信旧 release 恢复点"
     CURRENT_COLOR=none
@@ -1080,6 +1175,12 @@ if [ "$CURRENT_COLOR" != none ]; then
     capture_running_tsid_identity "$ACTIVE_DIR" \
       || fail "无法读取活动实例 TSID 身份，拒绝启动并行 writer"
   fi
+fi
+if [ "$UPGRADE_PENDING" -eq 1 ] && [ "$OLD_NODE_STOPPED" -eq 0 ] && [ "$ACTIVE_DIR" != "$RELEASE_DIR" ]; then
+  fail "维护期间原节点重新启动，请暂停自动拉起并停止该节点"
+fi
+if [ "$UPGRADE_PENDING" -eq 1 ] && [ "$OLD_PORT" != "$UPGRADE_FROM_PORT" ] && [ "$ACTIVE_DIR" != "$RELEASE_DIR" ]; then
+  fail "Nginx 活动槽已变更，无法恢复本次维护升级"
 fi
 
 if [ "$CURRENT_COLOR" = "none" ] && [ "$SKIP_MIGRATE" -eq 1 ]; then
@@ -1120,7 +1221,7 @@ if [ "${IMBOY_DEPLOY_START_AUTO_MIGRATE:-false}" = true ]; then
 fi
 
 ok "当前: $CURRENT_COLOR → 目标: $TARGET_COLOR (port=$APP_PORT) / Current: $CURRENT_COLOR → Target: $TARGET_COLOR"
-cleanup_inactive_target
+if [ "$OFFLINE_UPGRADE" -eq 0 ]; then cleanup_inactive_target; fi
 
 # =============================================================================
 # 2️⃣ 安全确认目标目录 / Confirm target dir is safe to overwrite
@@ -1129,6 +1230,23 @@ if ssh_exec "[ -d '$RELEASE_DIR' ]"; then
   if [ "$ACTIVE_DIR" = "$RELEASE_DIR" ]; then
     ssh_exec "test \"\$(cat '$RELEASE_DIR/etc/source-head' 2>/dev/null)\" = '$SOURCE_HEAD'" \
       || fail "同版本活动 release 的 source HEAD 与本次候选不一致，拒绝幂等误判"
+    if [ "$OFFLINE_UPGRADE" -eq 1 ]; then
+      offline_upgrade_db verify || fail "活动候选的数据库核验失败"
+      if [ "$UPGRADE_PENDING" -eq 1 ]; then
+        [ "$UPGRADE_FROM_PORT" != "$OLD_PORT" ] && wait_for_port_closed "$UPGRADE_FROM_PORT" \
+          || fail "无法证明原活动槽已停止，保留维护状态"
+        if [ "$OLD_NODE_STOPPED" -eq 1 ]; then
+          START_AUTO_MIGRATE=false
+          start_candidate "$OLD_PORT" "IMBOY_TSID_DC_ID='$OLD_TSID_DC_ID' IMBOY_TSID_NODE_ID='$OLD_TSID_NODE_ID' IMBOY_TSID_DC_BITS='$OLD_TSID_DC_BITS'"
+        fi
+        wait_for_health "$OLD_PORT" "$VSN" \
+          && [ "$(find_running_release_for_port "$OLD_PORT")" = "$RELEASE_DIR" ] \
+          || fail "已切流候选健康或进程归属核验失败"
+        switch_nginx "$UPGRADE_FROM_PORT" "$OLD_PORT" || fail "续跑时 Nginx 切流失败"
+        TRAFFIC_SWITCHED=1
+        ssh_exec "rm -- '$UPGRADE_MARKER'" || fail "维护升级状态未能清除"
+      fi
+    fi
     wait_for_health "$OLD_PORT" "$VSN" \
       || fail "同版本 release 正在活动端口运行但健康或版本不符，拒绝覆盖"
     ok "目标 release 已在活动端口健康运行，重复部署直接成功 (port=$OLD_PORT, vsn=$VSN)"
@@ -1147,6 +1265,16 @@ if ssh_exec "[ -d '$RELEASE_DIR' ]"; then
   ssh_exec "rm -rf -- '$RELEASE_DIR'"
   ok "失败残留已安全清理，可重复发布"
 fi
+if [ "$OFFLINE_UPGRADE" -eq 1 ]; then
+  ssh_exec "set -e; listeners=\$(ss -tlnH 'sport = :$APP_PORT'); test -z \"\$listeners\"; nginx -t" \
+    || fail "目标槽端口不可用或 Nginx 配置无效"
+  if [ "$LOCAL_MODE" -eq 1 ]; then
+    LOCAL_SNAPSHOT=$(mktemp -d)
+    git -C "$LOCAL_SRC_DIR" archive "$SOURCE_HEAD" | tar -xf - -C "$LOCAL_SNAPSHOT" \
+      || fail "无法导出本次升级的 Git 候选"
+    LOCAL_SRC_DIR=$LOCAL_SNAPSHOT
+  fi
+fi
 
 # =============================================================================
 # 3️⃣ 拉代码 + 编译 release
@@ -1156,11 +1284,15 @@ fi
 phase "源码与迁移同步"
 if [ "$LOCAL_MODE" -eq 1 ]; then
   log "[--local] 同步本地源码到远端 $PROJECT_DIR ... / Syncing local source to remote..."
+  local_sync_options=()
+  if [ "$OFFLINE_UPGRADE" -eq 1 ]; then local_sync_options+=(--exclude='/relxpro.config'); fi
   # 内容比较避免本地生成器 touch 造成重复上传；改变的源码使用远端当前时间，
   # 避免旧时间戳（恢复文件/切换分支）让 make 漏编。
   rsync -az --checksum --no-times --delete \
+    ${local_sync_options[@]+"${local_sync_options[@]}"} \
     --exclude='.git' \
     --exclude='/.imboy-deploy.lock' \
+    --exclude='/.imboy-offline-upgrade*' \
     --exclude='/ebin/' \
     --exclude='/test/' \
     --exclude='/.Codex/' \
@@ -1186,7 +1318,7 @@ if [ "$LOCAL_MODE" -eq 1 ]; then
   # 迁移走独立 staging 目录：DB 升级从 staging 读本地工作区的迁移文件（与源码
   # 同一快照），迁移成功后清理，失败保留供比对排查。目录放 $PROJECT_DIR 之外
   # （/tmp），避免下次部署 rsync --delete 同步源码时被误删、或被 make clean 碰到。
-  if [ "$SKIP_MIGRATE" -eq 0 ]; then
+  if [ "$SKIP_MIGRATE" -eq 0 ] && [ "$OFFLINE_UPGRADE" -eq 0 ]; then
     MIGRATE_STAGING="/tmp/imboy-migrate-staging-${NODE_NAME}"
     rsync -az --delete \
       -e "ssh -p $SERVER_PORT -o ControlPath=$SSH_CTRL -o StrictHostKeyChecking=accept-new" \
@@ -1240,7 +1372,10 @@ ssh_exec "
   # relx 只认 config 里的 release 版本行（RELX_REL_VSN 实测不生效，版本双源），
   # 构建前把版本行强制对齐到 .env.deploy 指定的 VSN，避免产物名与解包名漂移。
   # git reset --hard 每次会还原此改动，幂等重写无害。
-  sed -i 's/^{release, {imboy, \"[^\"]*\"}/{release, {imboy, \"$VSN\"}/' relx.config relxpro.config
+  sed -i 's/^{release, {imboy, \"[^\"]*\"}/{release, {imboy, \"$VSN\"}/' relx.config
+  if [ -f relxpro.config ]; then
+    sed -i 's/^{release, {imboy, \"[^\"]*\"}/{release, {imboy, \"$VSN\"}/' relxpro.config
+  fi
   # 只在缓存不完整、版本/编译模式变化时清理应用，保留依赖与正常增量编译。
   bash scripts/lib/prepare_release_build.sh '$VSN'
   IMBOYENV=pro \
@@ -1334,7 +1469,13 @@ ssh_exec "rm -rf -- '$BUILD_OUTPUT_DIR'" || log "警告：本次构建目录清�
 # 完整迁移仍由切流后的显式 db migrate 执行。
 # =============================================================================
 phase "迁移预检与新节点启动"
-if [ "$CURRENT_COLOR" = "none" ]; then
+if [ "$OFFLINE_UPGRADE" -eq 1 ]; then
+  START_AUTO_MIGRATE=false
+  offline_upgrade_db probe || fail "候选数据库预检未通过"
+  if [ "$OLD_NODE_STOPPED" -eq 0 ]; then UPGRADE_STOPPED_ACTIVE=1; fi
+  stop_old_node
+  offline_upgrade_db migrate || fail "离线迁移失败，未启动新节点"
+elif [ "$CURRENT_COLOR" = "none" ]; then
   log "首次安装由 application boot 执行完整迁移，跳过针对既有 schema 的 expand"
 else
   run_expand_migrations
@@ -1351,8 +1492,7 @@ if [ "$CURRENT_COLOR" = legacy ]; then
 fi
 
 log "启动新节点 (port=$APP_PORT)... / Starting new node..."
-CANDIDATE_STARTED=1
-ssh_exec "cd '$RELEASE_DIR' && $PROD_ENV_LOAD && IMBOYENV=pro IMBOY_AUTO_MIGRATE='$START_AUTO_MIGRATE' HTTP_PORT='$APP_PORT' IMBOY_HTTP_PORT='$APP_PORT' IMBOY_E2EE_MODE='$E2EE_MODE' IMBOY_PLUGIN_TRUSTED_PUBLIC_KEY_FILES='$PLUGIN_TRUSTED_PUBLIC_KEY_REMOTE' $TSID_NODE_ENV ./bin/imboy daemon"
+start_candidate "$APP_PORT" "$TSID_NODE_ENV"
 
 # 轮询取代原来的固定 sleep 5，在慢服务器上不会误报失败
 # Polling replaces fixed sleep 5; won't false-fail on slow servers
@@ -1367,6 +1507,10 @@ wait_for_health "$APP_PORT" "$VSN" || {
   完整日志：$RELEASE_DIR/log/"
 }
 ok "新节点已就绪且版本匹配 (port=$APP_PORT, vsn=$VSN) / New node ready, version verified"
+if [ "$OFFLINE_UPGRADE" -eq 1 ]; then
+  [ "$(find_running_release_for_port "$APP_PORT")" = "$RELEASE_DIR" ] \
+    || fail "候选端口监听进程与安装包不匹配"
+fi
 
 if [ "$BOUNDARY_SCHEMA_REQUIRED" -eq 1 ] && [ -n "$OLD_PORT" ]; then
   [ "$(probe_boundary_schema)" = 1 ] \
@@ -1380,38 +1524,7 @@ fi
 phase "切流与旧节点停止"
 if [ -n "$OLD_PORT" ]; then
   log "切换 Nginx: $OLD_PORT → $APP_PORT..."
-  ssh_exec "
-    : imboy-nginx-cutover
-    set -eu
-    HAD_ADMIN=0
-    HAD_CS=0
-    restore_configs() {
-      cp '$NGINX_CONF'.bak '$NGINX_CONF'
-      [ "\$HAD_ADMIN" -eq 0 ] || cp '$PRODADM_CONF'.bak '$PRODADM_CONF'
-      [ "\$HAD_CS" -eq 0 ] || cp '$CS_NGINX_CONF'.bak '$CS_NGINX_CONF'
-    }
-    cp '$NGINX_CONF' '$NGINX_CONF'.bak
-    if [ -f '$PRODADM_CONF' ]; then cp '$PRODADM_CONF' '$PRODADM_CONF'.bak; HAD_ADMIN=1; fi
-    if [ -n '$CS_NGINX_CONF' ] && [ -f '$CS_NGINX_CONF' ]; then cp '$CS_NGINX_CONF' '$CS_NGINX_CONF'.bak; HAD_CS=1; fi
-    sed -i 's|server 127.0.0.1:$OLD_PORT;|server 127.0.0.1:$APP_PORT;|g' '$NGINX_CONF'
-    grep -q 'server 127.0.0.1:$APP_PORT;' '$NGINX_CONF' \
-      && ! grep -q 'server 127.0.0.1:$OLD_PORT;' '$NGINX_CONF' \
-      || { restore_configs; echo 'Nginx upstream 替换失败，已回滚 / replacement failed, rolled back' >&2; exit 1; }
-    for CONF in '$PRODADM_CONF' '$CS_NGINX_CONF'; do
-      [ -n \"\$CONF\" ] && [ -f \"\$CONF\" ] || continue
-      grep -q 'http://127.0.0.1:$OLD_PORT;' \"\$CONF\" || continue
-      sed -i 's|http://127.0.0.1:$OLD_PORT;|http://127.0.0.1:$APP_PORT;|g' \"\$CONF\"
-      grep -q 'http://127.0.0.1:$APP_PORT;' \"\$CONF\" \
-        && ! grep -q 'http://127.0.0.1:$OLD_PORT;' \"\$CONF\" \
-        || { restore_configs; echo \"vhost upstream 替换失败: \$CONF\" >&2; exit 1; }
-    done
-    nginx -t || { restore_configs; exit 1; }
-    nginx -s reload || {
-      restore_configs
-      nginx -t && nginx -s reload || true
-      exit 1
-    }
-  "
+  switch_nginx "$OLD_PORT" "$APP_PORT" || fail "Nginx 切流失败"
   TRAFFIC_SWITCHED=1
   ok "Nginx 已切换至 $TARGET_COLOR / Nginx switched to $TARGET_COLOR"
 elif [ "$CURRENT_COLOR" = none ]; then
@@ -1448,7 +1561,10 @@ fi
 # 使本节的切流后时序沦为重复执行而非真实门禁。
 # =============================================================================
 phase "完整迁移与最终检查"
-if [ "$SKIP_MIGRATE" -eq 1 ]; then
+if [ "$OFFLINE_UPGRADE" -eq 1 ]; then
+  offline_upgrade_db verify || fail "切流后数据库台账核验失败"
+  ssh_exec "rm -- '$UPGRADE_MARKER'" || fail "维护升级状态未能清除"
+elif [ "$SKIP_MIGRATE" -eq 1 ]; then
   log "跳过数据库迁移（--no-migrate）/ Skipping DB migrations"
 elif [ "$CURRENT_COLOR" = "none" ]; then
   ok "首次安装已在健康检查前完成 bootstrap 迁移 / Bootstrap migrations completed during startup"

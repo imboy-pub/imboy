@@ -38,6 +38,8 @@ COMPONENT="${1:-all}"
 
 usage() {
   echo "用法: bash scripts/imboy-deploy.sh <all|api|admin|cs|web|migrate|rollback> [-v|--verbose] [-l|--local] [--env-file PATH]"
+  echo "      bash scripts/imboy-deploy.sh migrate --offline [-v] [-l] [--env-file PATH]"
+  echo "      bash scripts/imboy-deploy.sh api --offline [-v] [-l] [--env-file PATH]"
   echo "      bash scripts/imboy-deploy.sh cs --skip-backend          # 仅发布 CS 面（后端不动）"
 }
 
@@ -51,10 +53,19 @@ DEPLOY_ARGS=()
 LOCAL_MODE=0
 VERBOSE=0
 CS_SKIP_BACKEND=0
+OFFLINE_MIGRATE=0
+OFFLINE_UPGRADE=0
 while [[ $# -gt 0 ]]; do
   case "$1" in
     -v|--verbose) DEPLOY_ARGS+=(-v); VERBOSE=1; shift ;;
     -l|--local) DEPLOY_ARGS+=(-l); LOCAL_MODE=1; shift ;;
+    --offline)
+      case "$COMPONENT" in
+        migrate) OFFLINE_MIGRATE=1 ;;
+        api) OFFLINE_UPGRADE=1; DEPLOY_ARGS+=(--offline) ;;
+        *) echo "--offline 仅适用于 api 或 migrate" >&2; exit 1 ;;
+      esac
+      shift ;;
     --skip-backend)
       [[ "$COMPONENT" == cs ]] || { echo "--skip-backend 仅适用于 cs 组件" >&2; usage; exit 1; }
       CS_SKIP_BACKEND=1; shift ;;
@@ -276,6 +287,15 @@ if [[ -n "${DEPLOY_NODE_NAME:-}" && ! "$DEPLOY_NODE_NAME" =~ ^[a-zA-Z0-9_-]+$ ]]
   fail "DEPLOY_NODE_NAME 非法，拒绝建立 SSH"
 fi
 
+if [[ "$OFFLINE_MIGRATE" -eq 1 ]]; then
+  OFFLINE_PROD_ENV="${IMBOY_DEPLOY_PROD_ENV_FILE:-/usr/local/imboy-prod.env}"
+  [[ "$OFFLINE_PROD_ENV" =~ ^/[a-zA-Z0-9._/-]+$ && "$OFFLINE_PROD_ENV" != *..* ]] \
+    || fail "IMBOY_DEPLOY_PROD_ENV_FILE 必须是安全绝对路径"
+  [[ "$DB_CONTAINER" =~ ^[a-zA-Z0-9][a-zA-Z0-9_.-]*$ && "$DB_NAME" =~ ^[a-zA-Z0-9_]+$ \
+    && "$DB_USER" =~ ^[a-zA-Z0-9_]+$ ]] || fail "离线迁移数据库配置非法"
+  OFFLINE_SOURCE_HEAD="$(git_source_head "$SCRIPT_DIR/.." "Backend 源码")"
+fi
+
 # ---------- CS 组件专属配置校验（I6：全部在建立 SSH 之前） ----------
 if [[ "$COMPONENT" == cs || "$COMPONENT" == all ]]; then
   cs_validate_config
@@ -310,17 +330,17 @@ if [[ ("$COMPONENT" == api || "$COMPONENT" == all) && "${DEPLOY_SALES_RELEASE:-t
 fi
 
 # admin 恒为「本地构建 + rsync 上传」，-l 只是显式声明同一行为（幂等 no-op）
-if [[ "$LOCAL_MODE" -eq 1 && "$COMPONENT" != api && "$COMPONENT" != all && "$COMPONENT" != cs && "$COMPONENT" != admin ]]; then
-  fail "-l/--local 仅支持 api、all、cs 或 admin"
+if [[ "$LOCAL_MODE" -eq 1 && "$OFFLINE_MIGRATE" -eq 0 && "$COMPONENT" != api && "$COMPONENT" != all && "$COMPONENT" != cs && "$COMPONENT" != admin ]]; then
+  fail "-l/--local 仅支持 api、all、cs、admin 或 migrate --offline"
 fi
-if [[ "$LOCAL_MODE" -eq 1 ]] && ! command -v rsync >/dev/null 2>&1; then
+if [[ "$LOCAL_MODE" -eq 1 && "$OFFLINE_MIGRATE" -eq 0 ]] && ! command -v rsync >/dev/null 2>&1; then
   fail "本地源码上传需要 rsync"
 fi
-if [[ "$LOCAL_MODE" -eq 1 && ("$COMPONENT" == api || "$COMPONENT" == all) ]]; then
+if [[ "$LOCAL_MODE" -eq 1 && "$OFFLINE_UPGRADE" -eq 0 && ("$COMPONENT" == api || "$COMPONENT" == all) ]]; then
   sync_local_release_version
 fi
 
-if [[ "$COMPONENT" == all || "$COMPONENT" == admin || "$COMPONENT" == api ]]; then
+if [[ "$COMPONENT" == all || "$COMPONENT" == admin || ("$COMPONENT" == api && "$OFFLINE_UPGRADE" -eq 0) ]]; then
   ADMIN_BUILD_PATH="$(cd "$SCRIPT_DIR/$ADMIN_BUILD_DIR" 2>/dev/null && pwd -P)" \
     || fail "ADMIN_BUILD_DIR 不存在或不可访问"
   [[ "$ADMIN_BUILD_PATH" != "/" && -f "$ADMIN_BUILD_PATH/package.json" ]] \
@@ -336,7 +356,7 @@ fi
 if [[ "$COMPONENT" == api || "$COMPONENT" == all || "$COMPONENT" == cs ]]; then
   BACKEND_REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd -P)"
   BACKEND_SOURCE_HEAD="$(git_source_head "$BACKEND_REPO_ROOT" "Backend 源码")"
-  if [[ "$LOCAL_MODE" -eq 1 ]]; then
+  if [[ "$LOCAL_MODE" -eq 1 && "$OFFLINE_UPGRADE" -eq 0 ]]; then
     warn_dirty_source "$BACKEND_REPO_ROOT" "Backend 源码" worktree
   else
     warn_dirty_source "$BACKEND_REPO_ROOT" "Backend 源码" git
@@ -378,6 +398,9 @@ deploy_api() {
   # 私有实现负责完整的「expand → 启动 → 切流 → 停旧节点 → migrate」时序。
   # 不在本层拆开 migrate，否则两个入口可能在旧 WebSocket 尚存活时误跑完整迁移。
   NODE_ID="${DEPLOY_NODE_NAME:-$(date '+%m%d%H%M')}"
+  if [[ "$OFFLINE_UPGRADE" -eq 1 ]]; then
+    NODE_ID="${DEPLOY_NODE_NAME:-upgrade_${BACKEND_SOURCE_HEAD:0:12}}"
+  fi
 
   # 将客户配置映射为私有蓝绿实现的 IMBOY_DEPLOY_* 环境变量。
   # 蓝绿子进程失败必须显式 return 1：条件上下文调用（cs 组件）会抑制本函数
@@ -401,6 +424,7 @@ deploy_api() {
     "IMBOY_DEPLOY_DB_CONTAINER=$DB_CONTAINER"
     "IMBOY_DEPLOY_DB_NAME=$DB_NAME"
     "IMBOY_DEPLOY_DB_USER=$DB_USER"
+    "IMBOY_DEPLOY_PROD_ENV_FILE=${IMBOY_DEPLOY_PROD_ENV_FILE:-/usr/local/imboy-prod.env}"
     "IMBOY_DEPLOY_EXPAND_MIGRATIONS=${DEPLOY_EXPAND_MIGRATIONS:-}"
     "IMBOY_DEPLOY_START_AUTO_MIGRATE=${DEPLOY_START_AUTO_MIGRATE:-false}"
     "IMBOY_DEPLOY_SALES_RELEASE=${DEPLOY_SALES_RELEASE:-true}"
@@ -569,9 +593,50 @@ deploy_migrate() {
 
   # 必须使用 Gate 从实际监听进程发现的节点名；统一入口每次发布都会生成动态
   # NODE_ID，Makefile 默认的 imboy@127.0.0.1 无法代表当前蓝绿节点。
-  ssh_exec "cd '${DEPLOY_PROJECT_DIR}' && CTL_NODE='${ActiveCtlNode}' IMBOY_CTL_COOKIE='${DEPLOY_COOKIE}' make ctl ARGS='db migrate'"
+  ssh_exec "set -e
+    cd '${DEPLOY_PROJECT_DIR}'
+    exec 9>.imboy-deploy.lock
+    flock -n 9
+    test ! -e .imboy-offline-upgrade || { echo '维护升级尚未完成，请继续原 api --offline 发布' >&2; exit 1; }
+    CTL_NODE='${ActiveCtlNode}' IMBOY_CTL_COOKIE='${DEPLOY_COOKIE}' make ctl ARGS='db migrate'
+  "
   ok "▶ 数据库迁移完成"
 }
+
+deploy_migrate_offline() (
+  local remote bundle=/dev/null repo="$SCRIPT_DIR/.." dependency pins dep_url dep_ref checkout
+  local -a dep_paths
+  if [[ "$LOCAL_MODE" -eq 1 ]]; then
+    [[ "$(git -C "$repo" show "$OFFLINE_SOURCE_HEAD:VERSION")" == "$DEPLOY_VSN" ]] \
+      || fail "本地 Git HEAD 的 VERSION 与 DEPLOY_VSN=$DEPLOY_VSN 不一致"
+    bundle_dir=$(mktemp -d)
+    trap 'rm -rf -- "$bundle_dir"' EXIT
+    mkdir "$bundle_dir/input"
+    git -C "$repo" archive "$OFFLINE_SOURCE_HEAD" priv/migrations | tar -xf - -C "$bundle_dir/input"
+    cp "$repo/src/lib/imboy_migrate.erl" "$repo/include/log.hrl" "$bundle_dir/input/"
+    pins=$(git -C "$repo" show "$OFFLINE_SOURCE_HEAD:include/deps.mk")
+    for dependency in epgsql erlang_migrate; do
+      read -r dep_url dep_ref < <(awk -v name="dep_$dependency" '$1 == name && $3 == "git" {print $4, $5}' <<<"$pins") \
+        || fail "无法读取 $dependency 的固定版本"
+      [[ "$dep_url" == https://* && "$dep_ref" =~ ^v?[0-9]+\.[0-9]+\.[0-9]+$ ]] \
+        || fail "$dependency 必须固定到 HTTPS 仓库的版本标签"
+      checkout="$repo/deps/$dependency"
+      if ! git -C "$checkout" rev-parse --verify "refs/tags/$dep_ref^{commit}" >/dev/null 2>&1; then
+        checkout="$bundle_dir/$dependency"
+        git clone --quiet --depth 1 --branch "$dep_ref" -- "$dep_url" "$checkout"
+      fi
+      mkdir "$bundle_dir/input/$dependency"
+      dep_paths=(src)
+      [[ "$dependency" != epgsql ]] || dep_paths+=(include)
+      git -C "$checkout" archive "refs/tags/$dep_ref" "${dep_paths[@]}" | tar -xf - -C "$bundle_dir/input/$dependency"
+    done
+    bundle="$bundle_dir/migrations.tar.gz"
+    COPYFILE_DISABLE=1 tar -czf "$bundle" --no-xattrs -C "$bundle_dir/input" .
+  fi
+  remote=$(cat "$SCRIPT_DIR/lib/offline_migrate.sh")
+  ssh_exec "bash -c '${remote//\'/\'\\\'\'}' -- '$DEPLOY_PROJECT_DIR' '$DEPLOY_VSN' '$OFFLINE_SOURCE_HEAD' '$OFFLINE_PROD_ENV' \
+    '$DB_CONTAINER' '$DB_NAME' '$DB_USER' '$LOCAL_MODE' '$DEPLOY_BLUE_PORT' '$DEPLOY_GREEN_PORT' '${DEPLOY_LEGACY_PORT:-}'" <"$bundle"
+)
 
 # =============================================================================
 # deploy_readiness — 最终 api/all 收尾门：三 vhost 同槽 + 外部入口可验收
@@ -654,7 +719,12 @@ log "配置源: $ENV_FILE"
 log "目标: $SERVER_USER@$SERVER_HOST:$SERVER_PORT | branch=$DEPLOY_BRANCH | version=$DEPLOY_VSN | node=${DEPLOY_NODE_NAME:-auto}"
 log "运行: project=$DEPLOY_PROJECT_DIR | blue=$DEPLOY_BLUE_PORT | green=$DEPLOY_GREEN_PORT"
 log "数据库: container=$DB_CONTAINER | database=$DB_NAME | user=$DB_USER"
-log "策略: sales=${DEPLOY_SALES_RELEASE:-true} | e2ee=${DEPLOY_E2EE_MODE:-auto} | expand=${#CONFIGURED_EXPAND_MIGRATIONS[@]} | stop_old=${DEPLOY_STOP_OLD:-true} | source=$([[ "$LOCAL_MODE" -eq 1 ]] && echo local-rsync || echo remote-git) | verbose=$([[ "$VERBOSE" -eq 1 ]] && echo true || echo false)"
+SOURCE_MODE=remote-git
+if [[ "$LOCAL_MODE" -eq 1 ]]; then
+  SOURCE_MODE=local-rsync
+  [[ "$OFFLINE_MIGRATE" -eq 0 ]] || SOURCE_MODE=local-sql
+fi
+log "策略: sales=${DEPLOY_SALES_RELEASE:-true} | e2ee=${DEPLOY_E2EE_MODE:-auto} | expand=${#CONFIGURED_EXPAND_MIGRATIONS[@]} | stop_old=${DEPLOY_STOP_OLD:-true} | source=$SOURCE_MODE | verbose=$([[ "$VERBOSE" -eq 1 ]] && echo true || echo false)"
 if [[ "$COMPONENT" == cs || "$COMPONENT" == all ]]; then
   # I7: cookie 仅以脱敏占位出现；证书内容/私钥/secret 永不打印
   log "CS: domain=$CS_WIDGET_DOMAIN | root=$CS_REMOTE_ROOT | vhost=$CS_NGINX_CONF | build=$CS_BUILD_PATH | smoke_origin=$CS_SMOKE_SHOP_ORIGIN | mode=source-build | cookie=$(cs_redact "${DEPLOY_COOKIE:-}")"
@@ -681,6 +751,7 @@ case "$COMPONENT" in
     ;;
   api)
     deploy_api
+    [[ "$OFFLINE_UPGRADE" -eq 0 ]] || exit 0
     # 后端成功但 admin 前端落后于本地源码时，readiness 的 meta 比对必败；
     # 自动同步前端后再收尾，保证「重复执行 api 都能成功」。已同步则跳过构建。
     remote_admin_head="$(ssh_cap "curl -fsS --max-time 10 'https://$ADMIN_DOMAIN/deploy-meta.json' | sed -n 's/.*\"source_head\":\"\([0-9a-f]*\)\".*/\1/p'" 2>/dev/null || true)"
@@ -721,7 +792,11 @@ case "$COMPONENT" in
     fi
     ;;
   migrate)
-    deploy_migrate
+    if [[ "$OFFLINE_MIGRATE" -eq 1 ]]; then
+      deploy_migrate_offline
+    else
+      deploy_migrate
+    fi
     ;;
   rollback)
     rollback

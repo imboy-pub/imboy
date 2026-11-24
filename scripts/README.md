@@ -52,6 +52,36 @@ staging backlog，避免旧节点继续写入缺少 GID/`conv_seq`/snapshot 的�
 和显式迁移；`migrate` 模式仅用于独立补跑，不参与 `all` 的正常时序。独立补跑前
 会校验 Nginx 正指向目标版本、另一蓝绿端口已关闭；无法可靠证明时拒绝迁移。
 
+对已有数据库和 API，可在维护窗口内用同一条命令升级数据库和蓝绿发布 API。
+
+```bash
+bash scripts/imboy-deploy.sh api --offline -v -l
+```
+
+`-l` 从本地 Git `HEAD` 构建已提交的候选版本，候选须包含 `imboy_migrate:migrate/2`。服务器先构建并检查候选，随后停止原活动节点，
+确认生产槽关闭、目标数据库无其他客户端连接，并将完整备份写入 `/var/backups/imboy/`。
+严格迁移和台账核验通过后，脚本启动另一色节点并等待 `/healthz` 通过，再切换 Nginx。
+维护期间 API 会短暂停服，执行前请暂停外部自动拉起和其他数据库写入方。
+生产环境文件使用 Bash 赋值语法，即使本地使用 Fish。`IMBOY_PG_PORT` 必须与生产库实际端口一致。
+迁移开始后失败会保留 `.imboy-offline-upgrade`，也会阻止普通发布和脚本回滚。
+台账干净时可用同一候选重跑原命令。台账显示 dirty 时，先核对台账及失败的 SQL，再按备份恢复流程处理。
+
+仅需执行数据库迁移时，可从本地 Git `HEAD` 的 `priv/migrations/` 执行以下命令。
+
+```bash
+bash scripts/imboy-deploy.sh migrate --offline -v -l
+```
+
+先备份数据库，暂停外部自动拉起机制，断开目标库的其他客户端。`-l` 会先检查迁移运行时和
+数据库连接，再调用已确认归属的蓝绿及 legacy 发布包的 `bin/imboy stop`。端口和写入进程
+全部退出后才迁移。省略 `-l` 时需先手动停节点。
+`-l` 校验 `HEAD` 的 `VERSION` 与 `.env.deploy` 的 `DEPLOY_VSN` 一致，上传已提交的迁移 SQL
+和独立迁移运行时所需的源码。服务器需要 Erlang/OTP 28+ 的 `erl` 和 `erlc`，生产环境文件须提供
+`IMBOY_PG_PASSWORD` 及实际连接地址（非默认端口须配置 `IMBOY_PG_PORT`）。省略 `-l` 时使用版本和
+`HEAD` 均匹配的已安装候选。两种模式都持有部署锁，核对连接指向同一 PostgreSQL 库，执行严格迁移并核验台账。
+命令完成后仍处于维护窗口。先安排启动已迁移版本和验证恢复，避免直接运行 `api` 时
+脚本把 Nginx 当前指向的旧节点拉起。失败时核对台账和 schema 后再决定如何恢复。
+
 私有实现的 `--no-migrate` 只用于发布对当前 schema 完全兼容的代码：它会强制保留旧节点，
 不会授权紧接着执行完整迁移。若之后使用独立 `migrate` 补跑，必须先停止另一色旧节点，
 入口会重新核对监听状态。反之，正常完整迁移必须停止旧节点及既有长连接，因此不接受
