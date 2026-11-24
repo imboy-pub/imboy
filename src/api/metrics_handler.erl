@@ -124,16 +124,23 @@ collect_system_metrics() ->
                 logger:warning(#{event => metrics_syn_count_failed, error => Err2}),
                 0
         end,
-    %% 活跃 TCP/WebSocket 连接数（ranch listener 统计）
+    %% R0/D6 修复：曾用 ranch:info(imboy_listener).active_connections，但已
+    %% 建立的 WebSocket 在升级时被 cowboy 移出 ranch 计数
+    %% （ranch:remove_connection/1），该值结构性接近 0，面板"WS 在线连接"
+    %% 恒 0、ImBoyWSConnectionsDrop 告警不可能按设计触发。
+    %% 换源 = 真实在线注册数量 imboy_syn:count()（CHAT_SCOPE 每连接一行，
+    %% {Uid, Pid}；含 ai_agent_runtime 的 agent 成员，见该模块注释）。
     WsConnections =
-        try ranch:info(imboy_listener) of
-            Info when is_map(Info) ->
-                maps:get(active_connections, Info, 0)
+        try imboy_syn:count() of
+            SynCount when is_integer(SynCount), SynCount >= 0 -> SynCount
         catch
             _:_:Err3 ->
-                logger:warning(#{event => metrics_ranch_info_failed, error => Err3}),
+                logger:warning(#{event => metrics_syn_count_failed, error => Err3}),
                 0
         end,
+    %% R0/D6 新增：准入预算面（精确容量口径：已准入存活名额 / 单节点上限 /
+    %% 累计拒绝）。水位告警 ImBoyWSAdmissionHigh 按此对比 80%。
+    WsAdmissionMetrics = ws_admission_metrics(),
 
     %% License 指标（fail-safe，避免 metrics 因 License 异常不可用）
     LicenseMetrics = license_metrics(),
@@ -153,28 +160,53 @@ collect_system_metrics() ->
     maps:merge(
         maps:merge(
             maps:merge(
-                #{
-                    erlang_vm_process_count => ProcessCount,
-                    erlang_vm_port_count => erlang:system_info(port_count),
-                    %% kind 标签对应面板的 legendFormat "{{kind}}"
-                    {erlang_vm_memory_bytes_total, #{kind => total}} => MemTotal,
-                    {erlang_vm_memory_bytes_total, #{kind => processes}} => MemProc,
-                    {erlang_vm_memory_bytes_total, #{kind => ets}} => MemEts,
-                    process_uptime_seconds => uptime_seconds(),
-                    imboy_online_users => OnlineCount,
-                    imboy_ws_connections_total => WsConnections,
-                    %% 审计 A3/C-2（2026-10-10）：TSID 就绪闸指标（1=ready，
-                    %% 0=clock_unsafe/not_initialized/异常）。时钟闸无内置周期探针，
-                    %% 偏差暴露窗口 = 本指标的抓取间隔；告警 ImBoyTsidNotReady
-                    %% 与 deploy/prometheus/rules/imboy-alerts.yml 按名对账。
-                    imboy_tsid_readiness => tsid_readiness_value()
-                },
-                PoolStatus
+                maps:merge(
+                    #{
+                        erlang_vm_process_count => ProcessCount,
+                        erlang_vm_port_count => erlang:system_info(port_count),
+                        %% kind 标签对应面板的 legendFormat "{{kind}}"
+                        {erlang_vm_memory_bytes_total, #{kind => total}} => MemTotal,
+                        {erlang_vm_memory_bytes_total, #{kind => processes}} => MemProc,
+                        {erlang_vm_memory_bytes_total, #{kind => ets}} => MemEts,
+                        process_uptime_seconds => uptime_seconds(),
+                        imboy_online_users => OnlineCount,
+                        imboy_ws_connections_total => WsConnections,
+                        %% 审计 A3/C-2（2026-10-10）：TSID 就绪闸指标（1=ready，
+                        %% 0=clock_unsafe/not_initialized/异常）。时钟闸无内置周期探针，
+                        %% 偏差暴露窗口 = 本指标的抓取间隔；告警 ImBoyTsidNotReady
+                        %% 与 deploy/prometheus/rules/imboy-alerts.yml 按名对账。
+                        imboy_tsid_readiness => tsid_readiness_value()
+                    },
+                    PoolStatus
+                ),
+                LicenseMetrics
             ),
-            LicenseMetrics
+            CacheSyncMetrics
         ),
-        CacheSyncMetrics
+        WsAdmissionMetrics
     ).
+
+%% @doc R0/D6：WS 准入预算指标。fail-safe：ws_admission 表缺失（启动早期
+%% 抓取）时记 0，不拖垮整个 metrics 端点。名字与 deploy/prometheus/rules/
+%% imboy-alerts.yml 的 ImBoyWSAdmissionHigh 按名对账（B-26 同款纪律）。
+%% 注：rejected_total 走 metric_gauges 通道，Prometheus TYPE 行标 gauge
+%% （计数语义按"本 VM 启动以来累计"理解；increase()/rate 仍可用）。
+-spec ws_admission_metrics() -> map().
+ws_admission_metrics() ->
+    try
+        #{
+            imboy_ws_admission_current => max(ws_admission:count(), 0),
+            imboy_ws_admission_limit => max(ws_admission:limit(), 0),
+            imboy_ws_admission_rejected_total => max(ws_admission:rejected_total(), 0)
+        }
+    catch
+        _:_ ->
+            #{
+                imboy_ws_admission_current => 0,
+                imboy_ws_admission_limit => 0,
+                imboy_ws_admission_rejected_total => 0
+            }
+    end.
 
 %% @doc cache 同步状态指标（C11）：ready=2 / recovering=1 / degraded=0 /
 %% sync 进程不存在=-1；epoch、消息队列深度、syn 视图 peer 数、本地版本

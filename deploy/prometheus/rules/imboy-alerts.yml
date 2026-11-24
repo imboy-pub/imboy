@@ -305,6 +305,31 @@ groups:
             WebSocket connections are at {{ $value }}, a drop of more than 50% from 10 minutes ago — possible mass disconnect.
           runbook: "检查 nginx WS 代理和后端日志 / Check nginx WS proxy and backend logs"
 
+      # R0/D6：WS 准入容量水位——已准入名额达单节点上限 80% 持续 2min → WARNING。
+      # 数据源 imboy_ws_admission_current/limit（metrics_handler:ws_admission_metrics/0
+      # 按名对账）。上限经 IMBOY_MAX_WS_CONNECTIONS 注入调整时告警随比例自适应。
+      # WS admissions above 80% of the single-node budget → WARNING (capacity watermark)
+      - alert: ImBoyWSAdmissionHigh
+        expr: >
+          imboy_ws_admission_limit > 0
+          and
+          (
+            imboy_ws_admission_current
+            / imboy_ws_admission_limit
+          ) > 0.8
+        for: 2m
+        labels:
+          severity: warning
+          team: backend
+        annotations:
+          summary: "WebSocket 连接数超过容量水位 80% / WS connections above 80% of node budget"
+          description: >
+            WS 已准入名额为上限的 {{ $value | humanizePercentage }}，接近单节点预算；
+            超过上限后新连接将被 503 拒绝（Retry-After: 5）。
+            WS admissions are at {{ $value | humanizePercentage }} of the node budget; new
+            connections will be rejected with HTTP 503 once the cap is reached.
+          runbook: "评估是否上调 IMBOY_MAX_WS_CONNECTIONS（对照 +P/+Q 预算模型）或扩容 / Review the capacity model before raising the budget"
+
   # ============================================================
   # 9. 主机资源 / Host Resources (node_exporter 需部署)
   # node_exporter 部署：docker run -d --net="host" --pid="host" \
