@@ -22,9 +22,20 @@
 %% @end
 -spec init(cowboy_req:req(), map()) ->
     {ok, cowboy_req:req(), map()} | {cowboy_websocket, cowboy_req:req(), map(), map()}.
-init(Req0, #{surface := web_human} = State0) ->
-    init_web(Req0, State0);
 init(Req0, State0) ->
+    %% R0/D0+D5：WS 准入闸（升级前执行；两个 surface 共用单节点总预算，
+    %% 非 per-listener）。满载时 503 优先于 per-device 429——全局过载是
+    %% 更根本的信号。拒绝不升级、不建会话状态、不留下名额或孤儿进程。
+    case ws_admission:admit() of
+        {ok, _Admitted} ->
+            init_admitted(Req0, State0);
+        {rejected, _Current} ->
+            {ok, capacity_reject_reply(Req0), State0}
+    end.
+
+init_admitted(Req0, #{surface := web_human} = State0) ->
+    init_web(Req0, State0);
+init_admitted(Req0, State0) ->
     % Env = os:getenv("IMBOYENV"),
     % DID device id
     % AppVsn: 应用版本
@@ -70,18 +81,28 @@ init(Req0, State0) ->
         {limit_exceeded, _, _} ->
             ok = elib_log:warning("DeviceID ~p exceeded api limit", [ThrottleKey]),
             % 429 Too Many Requests
+            ws_admission:release(),
             Req = cowboy_req:reply(429, Req0),
             {ok, Req, State0};
         _ ->
             % ?DEBUG_LOG([SubPt]),
             case websocket_ds:check_subprotocols(SubPt, Req0) of
                 {ok, Req1} ->
+                    ws_admission:release(),
                     {ok, Req1, State1};
                 {cowboy_websocket, Req1, _, _} ->
                     {Protocol, Framing} = negotiate_protocol(SubPt),
                     State2 = State1#{protocol => Protocol, framing => Framing},
                     Auth2 = auth_ds:parse_authorization_header(Auth),
-                    websocket_ds:auth(Auth2, Req1, State2, Opt0)
+                    case websocket_ds:auth(Auth2, Req1, State2, Opt0) of
+                        %% 升级成功：名额随连接进程持有，terminate/3 释放
+                        {cowboy_websocket, _Req2, _State3, _Opt} = Upgraded ->
+                            Upgraded;
+                        %% 鉴权失败（401/412 等，auth 已 reply）：握手失败释放名额
+                        {ok, Req2, State3} ->
+                            ws_admission:release(),
+                            {ok, Req2, State3}
+                    end
             end
     end.
 
@@ -99,6 +120,7 @@ init_web(Req, State0) ->
                 {cowboy_websocket, Req1, State1, Opt} ->
                     case throttle:check(throttle_ws, maps:get(did, State1)) of
                         {limit_exceeded, _, _} ->
+                            ws_admission:release(),
                             {ok, cowboy_req:reply(429, Req1), State1};
                         _ ->
                             Req2 = cowboy_req:set_resp_header(
@@ -107,16 +129,22 @@ init_web(Req, State0) ->
                             {cowboy_websocket, Req2, State1, Opt}
                     end;
                 Rejected ->
+                    %% 鉴权失败（401 web_session_invalid，auth 已 reply）：释放名额
+                    ws_admission:release(),
                     Rejected
             end;
         _ ->
+            ws_admission:release(),
             {ok, cowboy_req:reply(400, Req), State0}
     end.
 
 websocket_options() ->
+    %% R0（T3 防回归）：此处曾放的 num_acceptors/max_connections => infinity
+    %% 是流级死配置——ranch 只从 TransportOpts 读取这两个键（ranch_listener_sup
+    %% erl:24），cowboy 源码不存在它们，从未生效。ranch 级 HTTP 阶段预算已在
+    %% imboy_app:listener_socket_opts/1 显式钉住（D4）；已建立的 WS 由
+    %% ws_admission 应用层准入管控（D0/D1）。
     #{
-        num_acceptors => infinity,
-        max_connections => infinity,
         % since Cowboy 2.11 set to true in order to use Websocket over HTTP/2 for the time being.
         enable_connect_protocol => true,
         % 2MB
@@ -125,6 +153,18 @@ websocket_options() ->
         % ./apps/imds/src/websocket_ds.erl 里面的 idle_timeout 方法会覆盖该值
         idle_timeout => 180000
     }.
+
+%% @doc R0/D5：满载拒绝响应。HTTP 503 + Retry-After（秒），升级前返回。
+%% 已核实：Flutter 客户端 _handleConnectionFailure（imboyapp
+%% lib/service/websocket.dart:587-602）对非 401 失败走指数退避重连
+%% （1s 起、上限 2min、抖动 0.3），503 不会触发登出或紧凑重连风暴。
+capacity_reject_reply(Req0) ->
+    cowboy_req:reply(
+        503,
+        #{<<"retry-after">> => <<"5">>},
+        <<"{\"code\":503,\"msg\":\"ws_capacity_full\"}">>,
+        Req0
+    ).
 
 %% @doc WebSocket连接初始化
 %% 连接建立后的初始化处理，用户上线
@@ -768,6 +808,9 @@ websocket_info_authorized(_Info, State) ->
 -spec terminate(term(), cowboy_req:req(), map()) -> ok.
 terminate(Reason, _Req, State) ->
     ok = ?DEBUG_LOG({terminate, Reason}),
+    %% R0/D0：释放 WS 准入名额（take 配对，幂等——未准入/已释放的连接
+    %% 为 no-op；brutal kill 等本回调不运行的路径由 ws_admission:sweep/0 兜底）。
+    ok = ws_admission:release(),
     %% BE-14：连接终止清理投递预算/轻通知槽（pid 键行不残留；聚合计数
     %% 保留——接受事实仍可解释）。drop 对表缺失/行缺失均幂等。
     ok = imboy_syn:drop_delivery_budget(self()),

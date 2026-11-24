@@ -71,18 +71,28 @@ listener_bind_test_() ->
         end,
         fun(_) ->
             [
-                {"default listener options remain unchanged", fun() ->
+                %% R0/D4：默认形态从裸 socket_opts list 升级为 map（ranch 级键
+                %% 必须在 map 顶层——normalize_opts 只把 list 当 socket_opts），
+                %% 并显式钉住 HTTP 阶段预算 1024×10
+                {"default listener options pin the approved HTTP-phase budget", fun() ->
                     application:unset_env(imboy, listen_ip),
-                    ?assertEqual({ok, [{port, 19841}]}, imboy_app:start_clear(#{}, 19841))
+                    ?assertEqual(
+                        {ok, #{
+                            socket_opts => [{port, 19841}],
+                            max_connections => 1024,
+                            num_conns_sups => 10
+                        }},
+                        imboy_app:start_clear(#{}, 19841)
+                    )
                 end},
                 {"HTTP and TLS both bind the configured loopback address", fun() ->
                     application:set_env(imboy, listen_ip, {127, 0, 0, 1}),
-                    {ok, Clear} = imboy_app:start_clear(#{}, 19841),
-                    {ok, Tls} = imboy_app:start_tls(#{}, 19842),
-                    ?assertEqual({127, 0, 0, 1}, proplists:get_value(ip, Clear)),
-                    ?assertEqual({127, 0, 0, 1}, proplists:get_value(ip, Tls)),
-                    ?assertEqual(19842, proplists:get_value(port, Tls)),
-                    ?assert(proplists:is_defined(certfile, Tls))
+                    {ok, #{socket_opts := ClearSock}} = imboy_app:start_clear(#{}, 19841),
+                    {ok, #{socket_opts := TlsSock}} = imboy_app:start_tls(#{}, 19842),
+                    ?assertEqual({127, 0, 0, 1}, proplists:get_value(ip, ClearSock)),
+                    ?assertEqual({127, 0, 0, 1}, proplists:get_value(ip, TlsSock)),
+                    ?assertEqual(19842, proplists:get_value(port, TlsSock)),
+                    ?assert(proplists:is_defined(certfile, TlsSock))
                 end},
                 {"invalid address fails before either listener is created", fun() ->
                     application:set_env(imboy, listen_ip, {127, 0, 0, 999}),

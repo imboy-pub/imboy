@@ -46,6 +46,9 @@ start(_Type, _Args) ->
     %% 预算进入运行态，会在下次停机时才爆炸（prep_stop 崩溃），故障被推迟
     %% 到最不适合排查的时刻。
     ok = validate_drain_config(),
+    %% R0（P1-1/D1）：WS 准入预算非法值拒启（不静默回退为无限制），
+    %% validate_drain_config 同款 fail-fast 语义
+    ok = ws_admission:validate_config(),
     ok = validate_probe_budgets(),
     ok = validate_attachment_registry(),
     %% OTP 28 原生 json 在启动期一次性校验术语映射；请求期从
@@ -83,6 +86,10 @@ start(_Type, _Args) ->
     %% 初始化 ACK 重试专用并发 ETS。必须由长驻 application master 建表，避免表由
     %% 短命 WebSocket 进程持有并在断线时连同所有 timer/ACK 标志一起销毁。
     ok = ack_retry_cache:init_table(),
+    %% R0（P1-1/D0+D5）：WS 准入表 + 清道夫定时器。必须由长驻 application
+    %% master 进程建表持有（同 ack_retry_cache 惯用法），否则表随首个短命
+    %% WS 连接进程销毁 → 名额计数清零，正在线的连接失去预算约束。
+    ok = ws_admission:init_table(),
     % 初始化 OIDC 一次性凭据（state/otc）ETS 表 + 过期清扫定时器。
     % 同上：必须由长驻的 application master 建表持有，否则表被首个惰性建表的
     % 短命 HTTP 请求进程随请求结束销毁 → 所有在途 state/otc 丢失 → 登录中断。
@@ -434,14 +441,19 @@ start_quic(_Dispatch) ->
 -spec start_tls(map(), integer()) -> {ok, pid()} | {error, any()}.
 start_tls(ProtoOpts, Port) ->
     PrivDir = priv_dir(),
-    cowboy:start_tls(
-        imboy_listener_tls,
-        listener_socket_opts(Port) ++
+    Base = listener_socket_opts(Port),
+    %% TLS 证书属 socket 层选项：必须进 socket_opts（ranch 只把该键的值
+    %% 传给 ssl:listen；map 顶层的未知键会被 validate_transport_opts 拒绝）
+    SocketOpts =
+        maps:get(socket_opts, Base) ++
             [
                 {cacertfile, PrivDir ++ config_ds:env(cacertfile)},
                 {certfile, PrivDir ++ config_ds:env(certfile)},
                 {keyfile, PrivDir ++ config_ds:env(keyfile)}
             ],
+    cowboy:start_tls(
+        imboy_listener_tls,
+        Base#{socket_opts := SocketOpts},
         ProtoOpts
     ).
 
@@ -453,8 +465,24 @@ start_clear(ProtoOpts, Port) ->
         ProtoOpts
     ).
 
--spec listener_socket_opts(integer()) -> list().
+-spec listener_socket_opts(integer()) -> map().
 listener_socket_opts(Port) ->
+    %% R0/D4（H-A）：显式钉住 ranch 2.3 的隐式缺省值（max_connections 缺省
+    %% 1024/conns_sup、num_conns_sups 缺省 = num_acceptors = 10，即 HTTP 阶段
+    %% 预算 10,240/listener）——行为不变，仅让预算可见、可测、可断言。
+    %% 注意：该预算只约束 HTTP 阶段（握手中的连接 + 普通 API 请求）；已升级
+    %% 的 WS 被 cowboy 从 ranch 计数移除（cowboy_websocket:takeover/7 调
+    %% ranch:remove_connection/1），由 ws_admission 应用层准入管控（D0/D1）。
+    %% 键必须放 map 顶层：ranch normalize_opts/1 只把 list 形态当作
+    %% socket_opts，ranch 级键混进 list 会被误传给 gen_tcp/ssl。
+    #{
+        socket_opts => base_socket_opts(Port),
+        max_connections => 1024,
+        num_conns_sups => 10
+    }.
+
+-spec base_socket_opts(integer()) -> list().
+base_socket_opts(Port) ->
     case config_ds:env(listen_ip, undefined) of
         undefined ->
             [{port, Port}];
