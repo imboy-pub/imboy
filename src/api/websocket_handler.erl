@@ -23,14 +23,18 @@
 -spec init(cowboy_req:req(), map()) ->
     {ok, cowboy_req:req(), map()} | {cowboy_websocket, cowboy_req:req(), map(), map()}.
 init(Req0, State0) ->
-    %% R0/D0+D5：WS 准入闸（升级前执行；两个 surface 共用单节点总预算，
+    %% R0/D0+D5：WS 准入软闸（升级前执行；两个 surface 共用单节点总预算，
     %% 非 per-listener）。满载时 503 优先于 per-device 429——全局过载是
     %% 更根本的信号。拒绝不升级、不建会话状态、不留下名额或孤儿进程。
-    case ws_admission:admit() of
-        {ok, _Admitted} ->
-            init_admitted(Req0, State0);
-        {rejected, _Current} ->
-            {ok, capacity_reject_reply(Req0), State0}
+    %% 注意：这里只做 shedding（读 count，不占名额）——cowboy 在 supervisor
+    %% 连接模式下升级接管会**替换进程**（init/2 进程在 101 后立即退出，
+    %% 实证见设计 §13.1 勘误），名额必须由幸存的 ws 进程在
+    %% websocket_init/1 原子认领，否则清道夫会漏排活连接的槽位。
+    case ws_admission:count() >= ws_admission:limit() of
+        true ->
+            {ok, capacity_reject_reply(Req0), State0};
+        false ->
+            init_admitted(Req0, State0)
     end.
 
 init_admitted(Req0, #{surface := web_human} = State0) ->
@@ -81,28 +85,18 @@ init_admitted(Req0, State0) ->
         {limit_exceeded, _, _} ->
             ok = elib_log:warning("DeviceID ~p exceeded api limit", [ThrottleKey]),
             % 429 Too Many Requests
-            ws_admission:release(),
             Req = cowboy_req:reply(429, Req0),
             {ok, Req, State0};
         _ ->
             % ?DEBUG_LOG([SubPt]),
             case websocket_ds:check_subprotocols(SubPt, Req0) of
                 {ok, Req1} ->
-                    ws_admission:release(),
                     {ok, Req1, State1};
                 {cowboy_websocket, Req1, _, _} ->
                     {Protocol, Framing} = negotiate_protocol(SubPt),
                     State2 = State1#{protocol => Protocol, framing => Framing},
                     Auth2 = auth_ds:parse_authorization_header(Auth),
-                    case websocket_ds:auth(Auth2, Req1, State2, Opt0) of
-                        %% 升级成功：名额随连接进程持有，terminate/3 释放
-                        {cowboy_websocket, _Req2, _State3, _Opt} = Upgraded ->
-                            Upgraded;
-                        %% 鉴权失败（401/412 等，auth 已 reply）：握手失败释放名额
-                        {ok, Req2, State3} ->
-                            ws_admission:release(),
-                            {ok, Req2, State3}
-                    end
+                    websocket_ds:auth(Auth2, Req1, State2, Opt0)
             end
     end.
 
@@ -120,7 +114,6 @@ init_web(Req, State0) ->
                 {cowboy_websocket, Req1, State1, Opt} ->
                     case throttle:check(throttle_ws, maps:get(did, State1)) of
                         {limit_exceeded, _, _} ->
-                            ws_admission:release(),
                             {ok, cowboy_req:reply(429, Req1), State1};
                         _ ->
                             Req2 = cowboy_req:set_resp_header(
@@ -129,12 +122,9 @@ init_web(Req, State0) ->
                             {cowboy_websocket, Req2, State1, Opt}
                     end;
                 Rejected ->
-                    %% 鉴权失败（401 web_session_invalid，auth 已 reply）：释放名额
-                    ws_admission:release(),
                     Rejected
             end;
         _ ->
-            ws_admission:release(),
             {ok, cowboy_req:reply(400, Req), State0}
     end.
 
@@ -193,15 +183,25 @@ initialize_socket(State) ->
             %% 避免无效连接占用连接位直到 idle_timeout（180s）才释放
             {reply, [{text, jsone:encode(Msg)}, close], State, hibernate};
         false ->
-            CurrentUid = auth_ds:current_uid(State),
-            % 用户上线
-            DID = maps:get(did, State, <<>>),
-            DType = maps:get(dtype, State, <<>>),
-            user_logic:online(CurrentUid, DType, self(), DID),
-            %% 版本保护：检查客户端版本是否过低，发送升级提醒
-            AppVsn = maps:get(vsn, State, undefined),
-            maybe_send_upgrade_notice(AppVsn, DType, DID),
-            {ok, State, hibernate}
+            %% R0/D0：原子认领准入名额（升级软闸放行后在此执行，进程 =
+            %% 幸存的 ws 循环进程；init/2 的瞬态进程已被 cowboy 替换）。
+            %% 本函数处于升级竞争窗口内的连接会在此被上限兜底拒绝：
+            %% 1013 Try Again Later（RFC 6455 保留码，客户端按既有失败
+            %% 路径指数退避）。已提交的名额永不超上限（原子 admit）。
+            case ws_admission:admit() of
+                {ok, _Admitted} ->
+                    CurrentUid = auth_ds:current_uid(State),
+                    % 用户上线
+                    DID = maps:get(did, State, <<>>),
+                    DType = maps:get(dtype, State, <<>>),
+                    user_logic:online(CurrentUid, DType, self(), DID),
+                    %% 版本保护：检查客户端版本是否过低，发送升级提醒
+                    AppVsn = maps:get(vsn, State, undefined),
+                    maybe_send_upgrade_notice(AppVsn, DType, DID),
+                    {ok, State, hibernate};
+                {rejected, _Current} ->
+                    {reply, {close, 1013, <<"ws_capacity_full">>}, State}
+            end
     end.
 
 %% @doc 处理WebSocket消息
