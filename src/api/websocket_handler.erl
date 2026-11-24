@@ -893,6 +893,12 @@ maybe_send_upgrade_notice(AppVsn, DType, DID) ->
 %% @doc 处理 protobuf 二进制帧消息（接受预解码的 map）
 -spec handle_protobuf_message_decoded(map(), map()) ->
     {ok, map(), hibernate} | {reply, {text, binary()} | {binary, binary()}, map(), hibernate}.
+handle_protobuf_message_decoded(#{<<"type">> := <<"S2C">>} = Envelope, State) ->
+    reply_unsupported_protobuf(Envelope, <<"s2c_binary_client_direction_not_supported">>, State);
+handle_protobuf_message_decoded(
+    #{<<"type">> := <<"C2S">>, <<"action">> := <<"sync">>} = Envelope, State
+) ->
+    reply_unsupported_protobuf(Envelope, <<"c2s_sync_requires_json">>, State);
 handle_protobuf_message_decoded(Data0, State) ->
     %% 安全审计 P2-1：protobuf 消息整帧含明文 payload，默认日志级别已改为 info 不输出。
     %% 如需临时排查，开发环境改 LOG_LEVEL = debug，严禁在生产泄露。
@@ -959,6 +965,11 @@ handle_protobuf_message_decoded(Data0, State) ->
             ErrorMsg2 = ws_validation_error(<<>>, <<"invalid_protobuf">>, <<"decode_error">>),
             {reply, reply_frame(ErrorMsg2, State), State, hibernate}
     end.
+
+reply_unsupported_protobuf(Envelope, Reason, State) ->
+    MsgId = maps:get(<<"id">>, Envelope, <<>>),
+    Error = ws_validation_error(MsgId, <<"unsupported_message_encoding">>, Reason),
+    {reply, reply_frame(Error, State), State, hibernate}.
 
 %% @doc W2-H（RUN chat-multi-20261111）：msg_type=chat_history_bundle 的
 %% payload 跳过 sender 设备注入，其余消息类型照常注入（零行为变化）。
