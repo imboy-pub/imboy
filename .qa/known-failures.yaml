@@ -935,7 +935,6 @@ gates:
       - src/lib/elib_uri.erl
       - src/lib/elib_wechat_msg.erl
       - src/lib/enterprise_cursor_v2.erl
-      - src/lib/eunit_runner.erl
       - src/lib/imboy_cache.erl
       - src/lib/imboy_cache_policy.erl
       - src/lib/imboy_cache_sync.erl
@@ -1205,6 +1204,16 @@ gates:
       - src/repo/payment_transaction_repo.erl
       - src/repo/personal_history_cursor_repo.erl
       - src/repo/personal_history_repo.erl
+      # 2026-11-24 回册 2 文件（REX-BE-QUAL-FIX-01 / W2 诊断 run 45356665982 分类
+      #   NEW=7）：personal_history / cross-domain deletion 批次带入。
+      #   personal_history_repo：残余 no_god_modules（37 导出 > 30）+ DRY（elib_pg:query
+      #   归并 case 同构 ×9）。处置：下一会话抽 query_row helper 消 DRY + 按
+      #   archive/cursor/key_package 域拆分后从本清单移除收紧。
+      #   user_deletion_job_repo：已抽 expect_running_row/1 消大块 case 重复；残余
+      #   DRY 为单表达式级（elib_pg:query 三参调用形态同构，同文件 9 处，无法局部
+      #   收敛）。两处均为债务承认非修复（先例见 quality.yml size 门重设注释）。
+      - src/repo/personal_history_repo.erl
+      - src/repo/user_deletion_job_repo.erl
       - src/repo/personal_message_order_repo.erl
       - src/repo/project_channel_agg_repo.erl
       - src/repo/project_milestone_repo.erl

@@ -128,9 +128,6 @@ group_discovery_handler.erl|The pattern {'error', Reason} can never match since 
 group_discovery_handler.erl|The pattern {'error', Reason} can never match since previous clauses completely covered the type {'error', <<_:240>>} | {'ok', #{<<_:32, _:_*8>> => [map()] | non_neg_integer()}}
 group_discovery_handler.erl|The pattern {'error', Reason} can never match since previous clauses completely covered the type {'error', <<_:240>>} | {'ok', #{<<_:32>> => [map()]}}
 group_discovery_handler.erl|The pattern {'error', Reason} can never match the type {'ok', #{<<_:32>> => [map()]}}
-group_ds.erl|The pattern {'error', Reason2} can never match the type {'ok', integer()}
-group_handler.erl|The pattern {'error', 'workspace_membership_required'} can never match the type {'error', binary()}
-group_logic.erl|The pattern {'error', Reason} can never match the type {'ok', integer()}
 imboy_license.erl|The variable _ can never match since previous clauses completely covered the type integer()
 imboy_syn.erl|Expression produces a value of type 'false' | 'ok' | non_neg_integer(), but this value is unmatched
 imboy_syn.erl|Expression produces a value of type ['ok' | reference()], but this value is unmatched
@@ -148,14 +145,10 @@ moment_logic_notify.erl|The variable _ can never match since previous clauses co
 moment_logic.erl|The pattern <_AuthorUid, _PostId, _AtUids, _Post> can never match since previous clauses completely covered the type <integer(), integer(), [pos_integer()], map()>
 msg_c2c_logic.erl|Function c2c_conv_key/2 will never be called
 msg_c2c_logic.erl|Function maybe_webhook_push/4 will never be called
-msg_c2g_logic.erl|Expression produces a value of type 'ok' | {'error', _}, but this value is unmatched
 msg_c2g_logic.erl|The call bot_webhook_logic:dispatch_group_mention (CurrentUid :: integer(), ToGID :: integer(), Data :: map(), Payload :: any(), MemberUids :: [integer()]) breaks the contract (integer(), integer(), binary(), map(), [integer()]) -> 'ok'
 msg_c2g_logic.erl|The pattern 'error' can never match the type {'error', atom()} | {'ok', 'duplicate'} | {'ok', 'new', pos_integer(), [integer()]}
 olm_handler.erl|The pattern {'error', 'not_found'} can never match the type {'error', <<_:64, _:_*8>>}
-olm_identity_logic.erl|The pattern 'true' can never match the type 'false'
-olm_identity_logic.erl|The pattern {'ok', _, _, Rows} can never match the type {'error', _} | {'ok', [map()]}
 ops_report_logic.erl|The pattern {'error', Reason} can never match the type {'ok', #{'active_users' := integer(), 'messages' := integer(), 'new_users' := integer(), 'reports' := integer(), 'since' := binary(), 'top_reasons' := [{_, _}], 'until' := binary()}}
-organization_join_orchestrator.erl|The pattern {'error', Reason} can never match the type {'ok', integer()}
 organization_member_logic.erl|Function member_not_active/0 has no local return
 passport_handler.erl|The pattern {{'error', 'conflict'}, ConflictInfo} can never match the type {'error', 'service_unavailable' | <<_:64, _:_*8>>}
 passport_logic.erl|The pattern {{'error', 'conflict'}, ConflictInfo} can never match the type {'error', 'service_unavailable' | <<_:64, _:_*8>>}
@@ -178,11 +171,9 @@ talk_record_processor_audio.erl|The pattern E = {error, _} can never match the t
 textguard_export.erl|The pattern {{'ok', _}, _} can never match the type {'error' | {'ok', binary(), binary()}, [#{'canonical_id' := binary(), 'id' := _, 'phrase' := _, 'scenes' := _, 'sha' := binary(), 'variant_ids' := _, 'views' := _}]}
 textguard_grpc_call.erl|Expression produces a value of type 'ok' | {'grpc_cleanup', pid(), pid()}, but this value is unmatched
 textguard_publisher.erl|Expression produces a value of type 'false' | non_neg_integer(), but this value is unmatched
-user_deletion_logic.erl|The pattern {'error', Reason} can never match the type 'ok'
 user_logic.erl|Expression produces a value of type 'ok' | {'error', 'review_enqueue_failed'}, but this value is unmatched
 user_logic.erl|The pattern <_Uid, _Field, _Val> can never match since previous clauses completely covered the type <_, binary(), binary()>
 user_tag_relation_logic.erl|The call user_tag_relation_ds:remove_user_tag_relation (Conn :: any(), Scene :: any(), Uid :: any(), TagId :: any(), I :: integer()) will never return since it differs in the 5th argument from the success typing arguments: (pid(), binary(), any(), integer(), binary())
 user_tag_relation_logic.erl|The call user_tag_relation_ds:remove_user_tag_relation (Conn :: any(), Scene2 :: integer(), Uid :: any(), TagId :: any(), ObjectId :: any()) will never return since the success typing is (pid(), binary(), any(), integer(), binary()) -> 'ok' and the contract is (pid(), binary(), binary() | integer(), integer(), binary() | integer()) -> 'ok'
 user_tag_relation_logic.erl|The created fun has no local return
 user_tag_relation_logic.erl|The pattern [I | _] can never match the type []
-workspace_ds.erl|The pattern {'error', Reason2} can never match the type {'ok', integer()}
