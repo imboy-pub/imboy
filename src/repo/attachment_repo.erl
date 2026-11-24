@@ -1,38 +1,23 @@
 -module(attachment_repo).
-%%%
-% attachment 相关操作都放到该模块，存储库模块
-% attachment related operations are put in this module, repository module
-%%%
+%%% attachment 存储库模块（repository）
 
 %% @doc 获取附件表名
-%% @returns binary() 表名
 -export([tablename/0]).
 
-%% @doc 保存附件信息
-%% 保存附件信息，如果 MD5 已存在则更新引用次数
-%% @param Conn 数据库连接
-%% @param CreatedAt 创建时间
-%% @param Uid 用户ID
-%% @param Attach 附件信息列表
-%% @returns ok
+%% @doc 保存附件信息（逐条 upsert，ON CONFLICT 递增引用次数），参数见 -spec。
 -export([save/4, confirmation_row_tx/2, confirm_if_absent_tx/4]).
 -export([bind_reference_lock_tx/2, refresh_gc_verified_tx/2]).
 
 %% @doc 查询附件统计信息（管理后台用）
 -export([stats/0]).
 
-%% @doc 分页查询附件列表（管理后台用）
-%% @param Page 页码（从1开始）
-%% @param Size 每页大小
-%% @param Opts 筛选选项 #{mime_type => binary(), keyword => binary()}
+%% @doc 分页查询附件列表（管理后台用；Opts #{mime_type, keyword}）
 -export([page/3]).
 
-%% @doc 更新附件状态（禁用/启用/软删除）
-%% Status: 1=正常 0=禁用 -1=软删除
+%% @doc 更新附件状态（禁用/启用/软删除）：1=正常 0=禁用 -1=软删除
 -export([update_status/2]).
 
-%% @doc 在发帖事务连接上绑定作者的正常、未绑定 moment 附件。
-%% 每个对象必须成功绑定；部分命中返回错误，调用方必须回滚事务。
+%% @doc 发帖事务上绑定作者未绑定 moment 附件；部分命中即报错（调用方回滚）。
 -export([bind_moment_scope_ref/4]).
 
 %% @doc 孤儿附件统计（预览用）
@@ -74,8 +59,7 @@
 -include_lib("kernel/include/logger.hrl").
 -include_lib("epgsql/include/epgsql.hrl").
 
-%% image mime 归一为标准子类型（eunit 验收；修复前 image/jpeg 被扩展名
-%% 重写成 image/jpg），定义见文件尾 normalize_image_mime/1
+%% image mime 归一已知别名（修复前 image/jpeg 被重写成 image/jpg）
 -ifdef(TEST).
 -export([normalize_image_mime/1]).
 %% T06：隔离库直连验证 orphan_predicate 行为（绕过 eunit 池；仅测试构建导出）
@@ -91,7 +75,7 @@
 tablename() ->
     elib_pg_sql:public_tablename(<<"attachment">>).
 
-%%% 保存附近信息，不存在就新增，存在就递增应用次数
+%%% 保存附件，不存在就新增，存在就递增引用次数
 -spec save(epgsql:connection() | pid(), binary(), integer() | binary(), [map()]) -> ok.
 save(_Conn, _CreatedAt, _Uid, []) ->
     ok;
@@ -116,21 +100,15 @@ save(Conn, CreatedAt, Uid, [Attach | Tail]) ->
     Ext2 = ec_cnv:to_binary(Ext),
     Size2 = ec_cnv:to_integer(Size),
     Path2 = ec_cnv:to_binary(Path),
-    % Path2 = ec_cnv:to_binary(Path),
     Attach2 = jsone:encode(Attach),
 
-    %% image/* mime 归一化（历史 MIME 归一化修复）：历史逻辑用 object_key
-    %% 扩展名重写 image 子类型（image/jpeg + .jpg → image/jpg），产生非法 MIME
-    %% 子类型——confirm HEAD 核实值本为 image/jpeg，落库却成 image/jpg，客户端
-    %% 按 image/jpeg 白名单判不过。改为仅归一化已知别名，标准值原样落库
-    %% （历史数据不动，只修新写入）。
+    %% image/* mime 归一化仅处理已知别名（jpg→jpeg 等）；历史逻辑用扩展名
+    %% 重写标准子类型会产生非法 MIME（image/jpg），标准值原样落库，历史数据不动。
     MimeType2 = normalize_image_mime(MimeType),
 
-    % 拼接 ON CONFLICT 子句。
-    % 去重键用 path(object_key)，非 md5：object_key 由 build_object_key 构造，
-    % 含毫秒时间戳 + 随机串，每次上传天然唯一，仅 confirm 重试/同附件收藏会命中
-    % → DO UPDATE 递增 referer（幂等）。md5 仅作文件 hash 完整性参考，不再做全局唯一去重
-    % （旧 md5 唯一约束在多 scope/多 owner 下会把 path/scope 锁死成首条，导致越权/孤儿，见迁移 000015）。
+    % ON CONFLICT 键用 path(object_key) 非 md5：object_key 每次上传天然唯一，
+    % 仅 confirm 重试/同附件收藏命中 → DO UPDATE 递增 referer（幂等）。md5 只作
+    % 完整性参考（旧 md5 唯一约束会把 path/scope 锁死成首条，见迁移 000015）。
     OnConflictUpdate = <<
         "ON CONFLICT (path) DO UPDATE SET "
         "last_referer_user_id = EXCLUDED.last_referer_user_id, "
@@ -150,9 +128,7 @@ save(Conn, CreatedAt, Uid, [Attach | Tail]) ->
         <<"info">> => Attach2,
         % 初始引用次数
         <<"referer_time">> => 1,
-        % 使用绑定变量
         <<"last_referer_user_id">> => Uid,
-        % 使用原生时间格式
         <<"last_referer_at">> => CreatedAt,
         <<"creator_user_id">> => Uid,
         <<"scope">> => Scope,
@@ -168,7 +144,6 @@ save(Conn, CreatedAt, Uid, [Attach | Tail]) ->
     % 预生成 TSID
     AttId = elib_tsid:generate(attachment),
     NewAttach2 = maps:merge(NewAttach#{<<"id">> => AttId}, storage_columns(Attach)),
-    % 构建带ON CONFLICT的INSERT SQL
     {Sql, Params} = elib_pg_sql:insert(tablename(), NewAttach2),
     FullSql = [Sql, <<" ">>, OnConflictUpdate],
     case elib_pg:execute(Conn, FullSql, Params) of
@@ -199,10 +174,8 @@ bind_reference_lock_tx(Conn, Path) ->
 refresh_gc_verified_tx(Conn, Path) ->
     attachment_reference_guard_repo:refresh_gc_verified_tx(Conn, Path).
 
-%% W2-02 confirm 幂等（04-tasks 实现边界）：metadata insert-if-absent 与真实
-%% 引用新增拆开——confirm 重放不再递增 referer（收藏/转发等真实引用仍走
-%% save/4 递增）。命中既有行时复用原 id 返回 First=false，由调用方对照
-%% confirmation_row_tx 的行做 scope/cipher 冲突复核。
+%% W2-02 confirm 幂等：insert-if-absent 不递增 referer；命中既有行复用原 id
+%% 返回 First=false，调用方对照 confirmation_row_tx 复核 scope/cipher 冲突。
 -spec confirm_if_absent_tx(any(), binary(), integer() | binary(), map()) ->
     {ok, Id :: integer() | binary(), First :: boolean()} | {error, term()}.
 confirm_if_absent_tx(Conn, CreatedAt, Uid, Attach) ->
@@ -256,8 +229,7 @@ build_confirm_row(CreatedAt, Uid, Attach, Md5) ->
         storage_columns(Attach)
     ).
 
-%% 仅复制调用方已冻结的位置；历史调用缺失时保留 NULL，绝不推断默认桶。
-%% direct-v1（迁移 00000200）追加 storage_physical_key：NULL = 物理键与 path 相同。
+%% 仅复制调用方已冻结的位置，缺失保留 NULL；direct-v1 追加 storage_physical_key。
 storage_columns(Attach) ->
     maps:from_list([
         {K, maps:get(K, Attach, null)}
@@ -270,12 +242,9 @@ storage_columns(Attach) ->
         ]
     ]).
 
-%% ===================================================================
-%% Admin Query Functions
-%% ===================================================================
+%% --- Admin Query Functions ---
 
-%% @doc 查询附件统计信息
-%% 返回总文件数、总大小、各类型计数、今日上传等聚合数据
+%% @doc 附件统计聚合：总数/总大小/各类型计数/今日上传。
 -spec stats() -> map().
 stats() ->
     Tb = tablename(),
@@ -300,12 +269,7 @@ stats() ->
         _ -> #{}
     end.
 
-%% @doc 分页查询附件列表
-%% @param Page 页码（从1开始）
-%% @param Size 每页大小
-%% @param Opts 筛选选项 #{mime_type => binary(), keyword => binary(),
-%%                         status => <<"all">> | <<"1">> | <<"0">> | <<"-1">>}
-%%   默认只查正常（status=1）；admin 传 status 筛选禁用/软删除行（否则禁用后无启用入口）
+%% @doc 分页查询附件列表（Page 从 1 起；Opts 含 status 筛选，默认只查 status=1）。
 -spec page(pos_integer(), pos_integer(), map()) -> {ok, map()} | {error, term()}.
 page(Page, Size, Opts) ->
     Tb = tablename(),
@@ -403,9 +367,7 @@ build_filter(MimeType, Keyword) when
 build_filter(_, _) ->
     {<<>>, []}.
 
-%% ===================================================================
-%% Admin Write Functions
-%% ===================================================================
+%% --- Admin Write Functions ---
 
 -spec update_status(integer() | binary(), integer()) -> ok | {error, term()}.
 update_status(Id, Status) when Status =:= -1; Status =:= 0; Status =:= 1 ->
@@ -434,9 +396,8 @@ bind_moment_scope_ref(Conn, Uid, ObjectKeys, MomentId) when is_integer(Uid), Uid
             ok;
         _ ->
             Tb = tablename(),
-            %% Client-supplied object paths do not prove ownership.
-            %% W3-01：首绑与 intent/GC 同对象锁（bind_reference_lock_tx）；
-            %% 墓碑（delete_intent/deleted）拒绝新增引用——绑定事务改变零业务行。
+            %% Client-supplied object paths do not prove ownership. W3-01：首绑与
+            %% intent/GC 同对象锁；墓碑（delete_intent/deleted）拒绝新增引用。
             Sql =
                 <<"UPDATE ", Tb/binary, " SET scope_ref = $1, updated_at = $2 ",
                     "WHERE scope = 'moment' AND status = 1 AND scope_ref IS NULL AND path = ANY($3) ",
@@ -475,14 +436,11 @@ orphan_list_for_delete(Opts) -> attachment_reference_guard_repo:orphan_list_for_
 delete_orphan_tx(Conn, Id, Opts) ->
     attachment_reference_guard_repo:delete_orphan_tx(Conn, Id, Opts).
 
-%% W4-01 入口收口（02 §4/§5）：metadata 域删除意图（迁移 179 fn）。
-%% 资格全部在 fn 内锁后复核：gc_verified=true + 无治理行/绑定/收藏/moment
-%% + 能力窗耗尽。23510=资格不满足（保守保留，调用方按 skipped 裁决）；
-%% 23505=tombstone（job 已在队列）；P0002=无 metadata 行。
+%% W4-01 入口收口（02 §4/§5）：metadata 域删除意图（迁移 179 fn）。资格全在
+%% fn 内锁后复核。23510=资格不满足；23505=tombstone；P0002=无 metadata 行。
 -spec intent_ordinary_delete_tx(pid() | any(), binary(), binary()) ->
     ok | {error, intent_conflict | tombstone | not_found | term()}.
 intent_ordinary_delete_tx(Conn, Path, Reason) ->
-    %% 调用方会跳过已知资格拒绝并继续同一事务；必须先恢复 SQL 错误态。
     %% Callers continue after known rejections; recover only this statement,
     %% retaining earlier writes and leaving unknown failures to abort the outer tx.
     case elib_pg:query(Conn, <<"SAVEPOINT attachment_ordinary_intent">>, []) of
@@ -560,59 +518,39 @@ hard_delete_by_ids(Ids) ->
         {error, R} -> {error, R}
     end.
 
-%% ===================================================================
-%% Ownership Verification
-%% ===================================================================
+%% --- Ownership Verification ---
 
-%% @doc 根据 object_key(path) 和上传者 uid 查找附件
-%% 用于归属校验：确认 ObjectKey 是否由 Uid 上传
-%% @param ObjectKey 对象存储路径（对应 path 列）
-%% @param Uid 用户 ID
-%% @returns {ok, map()} | {error, not_found} | {error, term()}
+%% @doc 按 object_key(path)+uid 查附件，归属校验用。
 -spec find_by_path_and_uid(binary(), integer()) -> {ok, map()} | {error, not_found | term()}.
 find_by_path_and_uid(ObjectKey, Uid) ->
     Tb = tablename(),
     Sql =
         <<"SELECT id, path, creator_user_id FROM ", Tb/binary,
             " WHERE path = $1 AND creator_user_id = $2 AND status >= 0 LIMIT 1">>,
-    case elib_pg:query(Sql, [ObjectKey, Uid]) of
-        {ok, [Row]} -> {ok, Row};
-        {ok, []} -> {error, not_found};
-        {error, R} -> {error, R}
-    end.
+    query_one(Sql, [ObjectKey, Uid]).
 
-%% @doc 根据 object_key(path) 查找附件元数据（scope/scope_ref/creator），供读鉴权
-%% authorize/2 使用。不带 uid 条件——读归属按 scope 区分，由 logic 层裁决。
+%% @doc 按 object_key(path) 查附件元数据（读鉴权用，不带 uid——scope 归属由
+%% logic 层裁决）。
 -spec find_by_path(binary()) -> {ok, map()} | {error, not_found | term()}.
 find_by_path(ObjectKey) ->
-    Tb = tablename(),
-    Sql =
-        <<
-            "SELECT id, path, url, creator_user_id, scope, scope_ref, status, mime_type,"
-            " lifecycle_state, size, file_hash256, storage_driver,"
-            " storage_namespace, storage_container, storage_locator_sha256, storage_physical_key FROM ",
-            Tb/binary,
-            " WHERE path = $1 AND status >= 0 LIMIT 1"
-        >>,
-    case elib_pg:query(Sql, [ObjectKey]) of
-        {ok, [Row]} -> {ok, Row};
-        {ok, []} -> {error, not_found};
-        {error, R} -> {error, R}
-    end.
+    Sql = [
+        <<"SELECT ">>,
+        metadata_columns(),
+        <<" FROM ">>,
+        tablename(),
+        <<" WHERE path = $1 AND status >= 0 LIMIT 1">>
+    ],
+    query_one(Sql, [ObjectKey]).
 
 %% Serialize public copying with lifecycle transitions on the attachment row.
 find_by_path_for_update_tx(Conn, ObjectKey) ->
-    Sql = <<
-        "SELECT id, path, url, creator_user_id, scope, scope_ref, status, mime_type,"
-        " lifecycle_state, size, file_hash256, storage_driver, storage_namespace,"
-        " storage_container, storage_locator_sha256, storage_physical_key"
-        " FROM public.attachment WHERE path=$1 AND status>=0 FOR UPDATE"
-    >>,
-    case elib_pg:query(Conn, Sql, [ObjectKey]) of
-        {ok, [Row]} -> {ok, Row};
-        {ok, []} -> {error, not_found};
-        {error, R} -> {error, R}
-    end.
+    Sql = [
+        <<"SELECT ">>,
+        metadata_columns(),
+        <<" FROM public.attachment">>,
+        <<" WHERE path=$1 AND status>=0 FOR UPDATE">>
+    ],
+    query_one(Conn, Sql, [ObjectKey]).
 
 %% Bind only a confirmed direct-v1 attachment whose winner matches the stored identity.
 -spec verify_direct_winner_tx(any(), binary()) -> ok | {error, term()}.
@@ -633,7 +571,6 @@ verify_direct_winner_tx(Conn, Key) ->
     >>,
     case elib_pg:query(Conn, Sql, [Key]) of
         {ok, [#{<<"verified">> := true}]} -> ok;
-        {ok, [#{<<"verified">> := false}]} -> {error, not_confirmed};
         {ok, _} -> {error, not_confirmed};
         {error, Reason} -> {error, Reason}
     end.
@@ -824,24 +761,36 @@ resource_scope_access_sql() ->
     ),
     <<"AND ", Scope/binary, " ">>.
 
-%% @doc 按 id 查询附件 path（ObjectKey），供 admin 下载端点签发 presign GET
-%% 仅返回未软删除（status >= 0）的记录
+%% @doc 按 id 查询附件 path（ObjectKey），供 admin presign 下载（仅 status >= 0）。
 -spec find_path_by_id(integer() | binary()) -> {ok, binary()} | {error, not_found | term()}.
 find_path_by_id(Id) ->
     Tb = tablename(),
     Sql = <<"SELECT path FROM ", Tb/binary, " WHERE id = $1 AND status >= 0 LIMIT 1">>,
-    case elib_pg:query(Sql, [Id]) of
-        {ok, [#{<<"path">> := Path}]} -> {ok, Path};
-        {ok, []} -> {error, not_found};
-        {error, R} -> {error, R}
+    case query_one(Sql, [Id]) of
+        {ok, #{<<"path">> := Path}} -> {ok, Path};
+        Other -> Other
     end.
 
-%% ===================================================================
-%% Internal Function Definitions
-%% ===================================================================
+%% --- Internal ---
 
-%% image mime 已知别名归一：jpg→jpeg、tif→tiff。其余（含全部标准子类型）
-%% 原样返回——不再用 object_key 扩展名重写子类型。
+%% 单行查询统一收口：{ok, Row} / {error, not_found} / 错误透传；仅 LIMIT 1 查询。
+query_one(Sql, Params) ->
+    query_row(elib_pg:query(Sql, Params)).
+query_one(Conn, Sql, Params) ->
+    query_row(elib_pg:query(Conn, Sql, Params)).
+query_row({ok, [Row]}) -> {ok, Row};
+query_row({ok, []}) -> {error, not_found};
+query_row({error, R}) -> {error, R}.
+
+%% find_by_path / find_by_path_for_update_tx 共用列集。
+metadata_columns() ->
+    <<
+        "id, path, url, creator_user_id, scope, scope_ref, status, mime_type, "
+        "lifecycle_state, size, file_hash256, storage_driver, storage_namespace, "
+        "storage_container, storage_locator_sha256, storage_physical_key"
+    >>.
+
+%% image mime 已知别名归一（jpg→jpeg、tif→tiff），其余原样返回，不重写子类型。
 -spec normalize_image_mime(binary()) -> binary().
 normalize_image_mime(<<"image/jpg">>) ->
     <<"image/jpeg">>;
@@ -849,9 +798,3 @@ normalize_image_mime(<<"image/tif">>) ->
     <<"image/tiff">>;
 normalize_image_mime(MimeType) ->
     MimeType.
-
-%
-
-%% ===================================================================
-%% EUnit tests.
-%% ===================================================================
