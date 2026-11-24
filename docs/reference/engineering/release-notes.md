@@ -4,7 +4,7 @@
 
 ## 现状
 
-**版本管理**:后端版本双源 `imboy/VERSION`(当前 `1.0.0-alpha.84`)+ `relx.config`(与 VERSION 同步,由 `scripts/check_release_consistency.sh` 校验);三端各自独立 `1.0.0-alpha.N` 序列(app `pubspec.yaml` 当前 `1.0.0-alpha.19`、admin `package.json` 当前 `1.0.0-alpha.18`)。有 `CHANGELOG.md`。commit 经 lefthook `commit-msg` 强制 Conventional Commits(type 白名单 feat/fix/refactor/docs/test/chore/perf/ci/style/build/revert)。
+**版本管理**。三端各自维护 `1.0.0-alpha.N` 序列。后端以 `VERSION` 为准，`relx.config` 与之同步，由 `scripts/check_release_consistency.sh` 校验。App 以 `pubspec.yaml` 为准，变更记录在 `docs/changelog.md`。管理后台以 `package.json` 为准，与后端各自在仓库根目录维护 `CHANGELOG.md`。提交经 lefthook `commit-msg` 校验 Conventional Commits。
 
 **构建**:后端 `make rel`(relx 组装,`dev_mode=false` 自包含 ERTS);Flutter `build_play_aab.sh`;Admin `vite build`。三仓 Dockerfile 多阶段。
 

@@ -96,7 +96,7 @@ V10 has five runtime overrides and no persistent cursor/fence directory. Unique 
 
 | 变量 | 默认值 | 说明 |
 |------|--------|------|
-| `IMBOY_VERSION` | `1.0.0-alpha.84` | 镜像版本。真源是仓根 `VERSION` 文件；此默认值抄自 `deploy/.env.example`，示例可能滞后，部署时以 `VERSION` 为准 |
+| `IMBOY_VERSION` | 见 `deploy/.env.example` | 镜像版本。模板值与仓库根目录 `VERSION` 保持一致。部署前核验对应镜像是否已经发布 |
 | `IMBOY_EDITION` | `community` | `community` \| `professional` \| `enterprise` |
 | `IMBOY_PRODUCT_PROFILE` | `community` | 销售版产品策略档位 |
 | `IMBOY_PRODUCT_EXPERIENCE` | `chat` | 产品体验开关：`chat` \| `workspace`（改后需受控重启） |
