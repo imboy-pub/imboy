@@ -86,8 +86,8 @@ cat > "$VM_ARGS_FILE" <<EOF
 -kernel inet_dist_use_interface ${DIST_INTERFACE}
 +K true
 +A 1024
-+P 20480
-+Q 20480
++P 65536
++Q 65536
 +S 2
 +MSe true
 EOF

@@ -65,7 +65,10 @@ services:
       IMBOY_API_AUTH_SWITCH: "on"
       IMBOY_EDITION: community
       IMBOY_PAYMENT_MODE: sandbox
-      ERL_MAX_PORTS: "262144"
+      # ── R0 容量参数（P1-1）─────────────────────────────────────────────
+      # 原 ERL_MAX_PORTS 是死配置（被 vm.args 的 +Q 覆盖，且该变量未文档化），
+      # 删除；VM 预算由镜像内 vm.args 派生值（+P/+Q 65536）承载。
+      IMBOY_MAX_WS_CONNECTIONS: "20000"
     ports:
       - "9800:9800"
     healthcheck:
