@@ -1,0 +1,10 @@
+目标 ws://127.0.0.1:9821/api/v1/ws | 并发 4000 | 保持 30s
+
+========== 结果 / Results ==========
+握手成功 / connected : 1888/4000
+保持成功 / held 30s: 1888/1888
+握手延迟 ms: min=1.0 p50=8.0 p95=33.7 p99=50.0 max=62.0 avg=12.0
+错误分布 / errors:
+  ConnectionResetError: 306
+  InvalidMessage: 1749
+  TimeoutError: 57
