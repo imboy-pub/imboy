@@ -357,12 +357,16 @@ send_next_loop(ToUid, MsgId, Msg, [Delay | Tail], DIDLi, IncludeDIDLi) ->
 budgeted_immediate(Pid, ToUid, Msg, Lane, FrameBytes) when node(Pid) =/= node() ->
     remote_delivery(
         node(Pid), budgeted_immediate, [Pid, ToUid, Msg, Lane, FrameBytes], fun() ->
-            imboy_syn:start_delivery_timer(0, Pid, Msg)
+            %% 投递 thunk 的返回值（ok | timer ref）刻意丢弃：fire-and-forget
+            %% （消费侧 deliver_with_budget/remote_delivery 亦不使用）。
+            _ = imboy_syn:start_delivery_timer(0, Pid, Msg),
+            ok
         end
     );
 budgeted_immediate(Pid, ToUid, Msg, Lane, FrameBytes) ->
     deliver_with_budget(Pid, ToUid, Lane, FrameBytes, fun() ->
-        imboy_syn:start_delivery_timer(0, Pid, Msg)
+        _ = imboy_syn:start_delivery_timer(0, Pid, Msg),
+        ok
     end).
 
 %% BE-14：重试跳的预算化续排：allow 续排 timer；defer 停链降级。

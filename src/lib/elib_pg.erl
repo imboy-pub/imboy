@@ -753,7 +753,10 @@ ensure_named_table() ->
     case ets:info(?NAMED_STMT_TABLE) of
         undefined ->
             try
-                ets:new(?NAMED_STMT_TABLE, [named_table, public, set, {read_concurrency, true}])
+                %% 建表句柄刻意丢弃：全模块按表名访问（named_table），
+                %% tid 不外传；显式丢弃消 dialyzer unmatched 告警。
+                _ = ets:new(?NAMED_STMT_TABLE, [named_table, public, set, {read_concurrency, true}]),
+                ok
             catch
                 _:badarg ->
                     %% 并发首用：另一进程已建表。

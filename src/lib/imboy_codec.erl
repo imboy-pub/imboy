@@ -282,9 +282,7 @@ direction_pb_lossless(Msg) ->
 ]).
 
 toplevel_pb_lossless(Msg) when is_map(Msg) ->
-    no_extra_keys(Msg, ?PB_TOPLEVEL_FIELDS);
-toplevel_pb_lossless(_) ->
-    true.
+    no_extra_keys(Msg, ?PB_TOPLEVEL_FIELDS).
 
 %% @doc protobuf 的 E2EEMeta 能否无损承载该消息的 e2ee 信封
 %%
@@ -301,9 +299,7 @@ e2ee_pb_lossless(Msg) when is_map(Msg) ->
                 keys_pb_lossless(maps:get(<<"keys">>, E2EE, []));
         _ ->
             true
-    end;
-e2ee_pb_lossless(_) ->
-    true.
+    end.
 
 %% @private
 keys_pb_lossless(Keys) when is_list(Keys) ->

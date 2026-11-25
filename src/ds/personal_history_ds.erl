@@ -76,7 +76,10 @@ domain() ->
         <<>> ->
             case config_ds:env(base_url, <<>>) of
                 <<>> ->
-                    atom_to_binary(imboy_env:current(), utf8);
+                    %% imboy_env:current/0 返回 binary()（曾为 atom 时遗留的
+                    %% atom_to_binary 会在运行期 badarg——dialyzer 与全量 EUnit
+                    %% personal_history_pg_tests 同点实证）。
+                    imboy_env:current();
                 BaseUrl ->
                     BaseUrl
             end;
