@@ -159,9 +159,12 @@ test_c2g_reply() ->
 
     % 3. 验证回复消息已落库
     {ok, ReplyMsg} = msg_c2g_repo:find_msg_by_id(ReplyMsgId),
-    PayloadMap = jsone:decode(maps:get(<<"payload">>, ReplyMsg), [{object_format, map}]),
     ?assertEqual(User1, maps:get(<<"from_id">>, ReplyMsg)),
-    ?assertEqual(<<"群聊回复内容"/utf8>>, maps:get(<<"payload">>, PayloadMap)).
+    %% C2G text 载荷的二进制契约：payload 列存 JSON 编码值——纯文本经
+    %% jsone:encode 落为 JSON string 标量（非对象）。解码边界：单次
+    %% jsone:decode 得回原文二进制；把它当 map 取键会 badmap。
+    PayloadJson = maps:get(<<"payload">>, ReplyMsg),
+    ?assertEqual(<<"群聊回复内容"/utf8>>, jsone:decode(PayloadJson, [{object_format, map}])).
 
 test_reply_snippet() ->
     Context = get_context(),

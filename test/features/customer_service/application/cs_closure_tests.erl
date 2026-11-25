@@ -197,6 +197,13 @@ otp_lib_whitelist() ->
         %% CSB-02R：cs_widget_env / cs_identity_assertion 的 env 事实读取
         %% （config_ds:env/1,2 只读装配面）。
         config_ds,
+        %% SSE 流面鉴权复核（7f190b38e 轮前复核 + 68bffa003 seat token 设备
+        %% 绑定）：cs_tenant_handler 的 stream_expiry/stream_token_valid 与
+        %% 平台 src/api 中间件同构，直调 auth_ds（header 解析/JWT 校验/
+        %% seat web session 复核）与 token_ds（验签解密）——认证事实面，
+        %% 非 DB 旁路。
+        auth_ds,
+        token_ds,
         %% BE-S01b：SSE 信封 occurred_at 的 Unix ms → RFC3339（core lib 时间面，
         %% cs_seat_event_app / cs_tenant_handler 使用）。
         elib_dt,

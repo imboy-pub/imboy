@@ -387,6 +387,20 @@ tables:
     mechanism: FK ON DELETE CASCADE 随 attachment 行删除
     review: self-evident
     retention: n/a
+  forward_request_batch:
+    action: delete
+    owner: messages
+    reason: 批量转发幂等绑定（request_token、source_ids 等转发元数据，无正文）
+    mechanism: delete rows by requester_uid
+    review: self-evident
+    retention: n/a
+  forward_request_identity:
+    action: delete
+    owner: messages
+    reason: 转发请求稳定身份与结算事实（request_id 幂等键与 content_sha256 摘要，无正文）
+    mechanism: delete rows by requester_uid
+    review: self-evident
+    retention: n/a
   fts_channel:
     action: delete
     owner: messages
@@ -735,6 +749,34 @@ tables:
     owner: e2ee
     reason: OLM 一次性密钥
     mechanism: delete rows by user ownership column
+    review: self-evident
+    retention: n/a
+  personal_history_archive:
+    action: delete
+    owner: messages
+    reason: 个人历史密文归档（E2EE ciphertext 与 nonce，服务端无明文，同消息删除口径）
+    mechanism: delete rows by account_id and domain
+    review: self-evident
+    retention: n/a
+  personal_history_authorization:
+    action: delete
+    owner: messages
+    reason: 个人历史账号×域 opt-in 授权行
+    mechanism: delete rows by account_id
+    review: self-evident
+    retention: n/a
+  personal_history_cursor:
+    action: delete
+    owner: messages
+    reason: 个人历史变更游标与 ack 水位（按账号/域/实例）
+    mechanism: delete rows by account_id
+    review: self-evident
+    retention: n/a
+  personal_history_key_package:
+    action: delete
+    owner: messages
+    reason: 个人历史按代次密钥包（仅版本化 wrapped 密文与 KDF 元数据，无明文密钥）
+    mechanism: delete rows by account_id and domain
     review: self-evident
     retention: n/a
   project:
@@ -1849,6 +1891,8 @@ exclusions:
     reason: 系统配置表
   customer_service_seat_limit:
     reason: 组织级客服席位配额配置（组织资产，无用户 PII）；席位占用关系行在 tables 的 customer_service_seat
+  forward_request_batch_acl_added:
+    reason: 迁移 285 的列授权变更台账（regclass 与权限名簿记，无用户数据）
   schema_migrations:
     reason: 迁移版本登记
   schema_migrations_history:
