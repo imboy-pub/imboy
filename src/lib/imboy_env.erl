@@ -75,6 +75,8 @@
 -export([override_attachment_storage_registry/0]).
 %% 单独导出便于 EUnit 直测 env registry 的 JSON 解析/结构校验。
 -export([parse_attachment_registry_json/1]).
+%% 单独导出便于 EUnit 直测整数 env 解析（R0 容量参数 IMBOY_MAX_WS_CONNECTIONS）。
+-export([parse_integer_env/2]).
 -export([current/0]).
 -export([edition/0]).
 
@@ -129,6 +131,10 @@ override_from_env() ->
 
     %% 蓝绿部署关闭启动期迁移，切流后由显式 db migrate 统一执行。
     ok = override_boolean_key("IMBOY_AUTO_MIGRATE", auto_migrate),
+
+    %% R0（P1-1/D1）：单节点 WS 准入上限（整数；解析非法即 {invalid_env,…}
+    %% fail-fast，范围校验见 ws_admission:validate_config/0）
+    ok = override_integer_key("IMBOY_MAX_WS_CONNECTIONS", max_ws_connections),
 
     %% 产品销售策略覆盖：容器镜像不携带被忽略的 sys.pro.config，生产入口
     %% 必须通过显式环境变量决定 E2EE、频道和付费频道是否开启。
@@ -337,6 +343,31 @@ parse_feature_boolean(EnvVar, Value) ->
         "false" -> false;
         "0" -> false;
         Other -> erlang:error({invalid_env, EnvVar, Other})
+    end.
+
+%% @doc 覆盖整数类型的 app env key（R0 容量参数）。空/未设置跳过；
+%% 非法值 fail-fast 抛 {invalid_env, EnvVar, Value} 拒启——不允许静默
+%% 回退默认值（属主约束："不允许非法值静默回退到无限制"）。
+-spec override_integer_key(string(), atom()) -> ok.
+override_integer_key(EnvVar, AppKey) ->
+    case os:getenv(EnvVar) of
+        false ->
+            ok;
+        Value when is_list(Value), length(Value) > 0 ->
+            application:set_env(imboy, AppKey, parse_integer_env(EnvVar, Value)),
+            ok;
+        _ ->
+            ok
+    end.
+
+-spec parse_integer_env(string(), string()) -> integer().
+parse_integer_env(EnvVar, Value) ->
+    Trimmed = string:trim(Value),
+    case string:to_integer(Trimmed) of
+        {N, []} when is_integer(N) ->
+            N;
+        _ ->
+            erlang:error({invalid_env, EnvVar, Trimmed})
     end.
 
 %% @doc 覆盖 binary 类型的简单 app env key

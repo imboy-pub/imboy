@@ -43,7 +43,10 @@
     connection_limit_enforced/1,
     %% 连接清理
     connection_cleanup_on_logout/1,
-    abrupt_close_marks_user_offline/1
+    abrupt_close_marks_user_offline/1,
+    %% R0/D0+D5：WS 准入（真实 handler 层）
+    admission_cap_full_rejects_with_503/1,
+    admission_slot_released_on_auth_failure/1
 ]).
 
 -define(WS_GUID, <<"258EAFA5-E914-47DA-95CA-C5AB0DC85B11">>).
@@ -60,7 +63,8 @@ all() ->
         {group, message_handling},
         {group, reconnection},
         {group, concurrent_connections},
-        {group, cleanup}
+        {group, cleanup},
+        {group, admission}
     ].
 
 groups() ->
@@ -70,7 +74,8 @@ groups() ->
         {message_handling, [], message_test_cases()},
         {reconnection, [], reconnection_test_cases()},
         {concurrent_connections, [], concurrent_test_cases()},
-        {cleanup, [], cleanup_test_cases()}
+        {cleanup, [], cleanup_test_cases()},
+        {admission, [], admission_test_cases()}
     ].
 
 init_per_suite(Config) ->
@@ -99,10 +104,25 @@ end_per_suite(Config) ->
     cleanup_all_test_data(Config),
     eunit_runner:ct_suite_cleanup(Config).
 
+%% R0/D1：admission 组把单节点准入上限临时压到 1，让真实 handler 走满载
+%% 与回滚路径；组结束恢复原值（不污染其他组/其他套件）。
+init_per_group(admission, Config) ->
+    cleanup_all_test_data(Config),
+    SavedCap = application:get_env(imboy, max_ws_connections),
+    ok = application:set_env(imboy, max_ws_connections, 1),
+    [{saved_max_ws_connections, SavedCap} | Config];
 init_per_group(_Group, Config) ->
     cleanup_all_test_data(Config),
     Config.
 
+end_per_group(admission, Config) ->
+    case proplists:get_value(saved_max_ws_connections, Config) of
+        undefined -> ok = application:unset_env(imboy, max_ws_connections);
+        {ok, V} -> ok = application:set_env(imboy, max_ws_connections, V)
+    end,
+    _ = ws_admission:sweep(),
+    meck:unload(),
+    ok;
 end_per_group(_Group, _Config) ->
     meck:unload(),
     ok.
@@ -150,6 +170,12 @@ cleanup_test_cases() ->
     [
         connection_cleanup_on_logout,
         abrupt_close_marks_user_offline
+    ].
+
+admission_test_cases() ->
+    [
+        admission_cap_full_rejects_with_503,
+        admission_slot_released_on_auth_failure
     ].
 
 %% ===================================================================
@@ -688,6 +714,65 @@ wait_online_count(Uid, Expected, N) ->
 
 %% @doc 发起 WebSocket 握手。子协议固定 imboy-json（除非传 no_subprotocol）。
 %% 成功返回 {ok, WS}（含帧缓冲），被 HTTP 层拒绝返回 {rejected, Status, Headers, Body}。
+%% ===================================================================
+%% R0/D0+D5：WS 准入（真实 handler 层；上限由 init_per_group 压到 1）
+%% ===================================================================
+
+%% 第一条连接升级成功后，第二条必须在升级前收到 HTTP 503 + Retry-After；
+%% 正常断开释放名额后可再次准入。
+admission_cap_full_rejects_with_503(Config) ->
+    ct:log("测试 WS 准入满载 503 与断开释放"),
+    Port = proplists:get_value(ws_port, Config),
+    UidA = create_test_user(Config),
+    UidB = create_test_user(Config),
+    DidA = unique_did(),
+    DidB = unique_did(),
+
+    {ok, WSA} = ws_connect(
+        Port, [{<<"token">>, token_ds:encrypt_token(UidA)}, {<<"did">>, DidA}], []
+    ),
+    true = wait_online(UidA, true),
+
+    %% 满载：第二条连接升级前被 503 拒绝（D5 语义）
+    {rejected, 503, Headers, Body} = ws_connect(
+        Port, [{<<"token">>, token_ds:encrypt_token(UidB)}, {<<"did">>, DidB}], []
+    ),
+    <<"5">> = proplists:get_value(<<"retry-after">>, Headers),
+    #{<<"code">> := 503, <<"msg">> := <<"ws_capacity_full">>} =
+        jsone:decode(Body, [{object_format, map}]),
+
+    %% 被拒连接未升级：不注册在线状态、不占名额
+    false = user_logic:is_online(UidB),
+
+    %% 正常断开 A → terminate 释放名额 → B 可重新准入
+    ws_close(WSA),
+    true = wait_online(UidA, false),
+    {ok, WSB} = ws_connect(
+        Port, [{<<"token">>, token_ds:encrypt_token(UidB)}, {<<"did">>, DidB}], []
+    ),
+    ws_close(WSB),
+    cleanup_user(UidA),
+    cleanup_user(UidB),
+    {comment, "满载 503 + Retry-After；断开释放后可重新准入"}.
+
+%% 鉴权失败的握手必须回滚已占用名额：401 之后同预算内立即可成功准入
+%%（cap=1 下任何名额泄漏都会表现为本用例的第二步被 503 误拒）。
+admission_slot_released_on_auth_failure(Config) ->
+    ct:log("测试鉴权失败回滚准入名额"),
+    Port = proplists:get_value(ws_port, Config),
+    Uid = create_test_user(Config),
+
+    {rejected, 401, _H401, _B401} = ws_connect(
+        Port, [{<<"token">>, <<"invalid_token_r0_admission">>}, {<<"did">>, unique_did()}], []
+    ),
+
+    {ok, WS} = ws_connect(
+        Port, [{<<"token">>, token_ds:encrypt_token(Uid)}, {<<"did">>, unique_did()}], []
+    ),
+    ws_close(WS),
+    cleanup_user(Uid),
+    {comment, "鉴权失败回滚准入名额"}.
+
 ws_connect(Port, QsPairs, no_subprotocol) ->
     %% 直接不带子协议头构造握手（不可经 <<>> 分支委托——那里会补 imboy-json）
     ws_connect_raw(Port, QsPairs, <<>>);

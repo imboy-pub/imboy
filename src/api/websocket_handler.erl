@@ -22,9 +22,24 @@
 %% @end
 -spec init(cowboy_req:req(), map()) ->
     {ok, cowboy_req:req(), map()} | {cowboy_websocket, cowboy_req:req(), map(), map()}.
-init(Req0, #{surface := web_human} = State0) ->
-    init_web(Req0, State0);
 init(Req0, State0) ->
+    %% R0/D0+D5：WS 准入软闸（升级前执行；两个 surface 共用单节点总预算，
+    %% 非 per-listener）。满载时 503 优先于 per-device 429——全局过载是
+    %% 更根本的信号。拒绝不升级、不建会话状态、不留下名额或孤儿进程。
+    %% 注意：这里只做 shedding（读 count，不占名额）——cowboy 在 supervisor
+    %% 连接模式下升级接管会**替换进程**（init/2 进程在 101 后立即退出，
+    %% 实证见设计 §13.1 勘误），名额必须由幸存的 ws 进程在
+    %% websocket_init/1 原子认领，否则清道夫会漏排活连接的槽位。
+    case ws_admission:count() >= ws_admission:limit() of
+        true ->
+            {ok, capacity_reject_reply(Req0), State0};
+        false ->
+            init_admitted(Req0, State0)
+    end.
+
+init_admitted(Req0, #{surface := web_human} = State0) ->
+    init_web(Req0, State0);
+init_admitted(Req0, State0) ->
     % Env = os:getenv("IMBOYENV"),
     % DID device id
     % AppVsn: 应用版本
@@ -114,9 +129,12 @@ init_web(Req, State0) ->
     end.
 
 websocket_options() ->
+    %% R0（T3 防回归）：此处曾放的 num_acceptors/max_connections => infinity
+    %% 是流级死配置——ranch 只从 TransportOpts 读取这两个键（ranch_listener_sup
+    %% erl:24），cowboy 源码不存在它们，从未生效。ranch 级 HTTP 阶段预算已在
+    %% imboy_app:listener_socket_opts/1 显式钉住（D4）；已建立的 WS 由
+    %% ws_admission 应用层准入管控（D0/D1）。
     #{
-        num_acceptors => infinity,
-        max_connections => infinity,
         % since Cowboy 2.11 set to true in order to use Websocket over HTTP/2 for the time being.
         enable_connect_protocol => true,
         % 2MB
@@ -125,6 +143,18 @@ websocket_options() ->
         % ./apps/imds/src/websocket_ds.erl 里面的 idle_timeout 方法会覆盖该值
         idle_timeout => 180000
     }.
+
+%% @doc R0/D5：满载拒绝响应。HTTP 503 + Retry-After（秒），升级前返回。
+%% 已核实：Flutter 客户端 _handleConnectionFailure（imboyapp
+%% lib/service/websocket.dart:587-602）对非 401 失败走指数退避重连
+%% （1s 起、上限 2min、抖动 0.3），503 不会触发登出或紧凑重连风暴。
+capacity_reject_reply(Req0) ->
+    cowboy_req:reply(
+        503,
+        #{<<"retry-after">> => <<"5">>},
+        <<"{\"code\":503,\"msg\":\"ws_capacity_full\"}">>,
+        Req0
+    ).
 
 %% @doc WebSocket连接初始化
 %% 连接建立后的初始化处理，用户上线
@@ -153,15 +183,25 @@ initialize_socket(State) ->
             %% 避免无效连接占用连接位直到 idle_timeout（180s）才释放
             {reply, [{text, jsone:encode(Msg)}, close], State, hibernate};
         false ->
-            CurrentUid = auth_ds:current_uid(State),
-            % 用户上线
-            DID = maps:get(did, State, <<>>),
-            DType = maps:get(dtype, State, <<>>),
-            user_logic:online(CurrentUid, DType, self(), DID),
-            %% 版本保护：检查客户端版本是否过低，发送升级提醒
-            AppVsn = maps:get(vsn, State, undefined),
-            maybe_send_upgrade_notice(AppVsn, DType, DID),
-            {ok, State, hibernate}
+            %% R0/D0：原子认领准入名额（升级软闸放行后在此执行，进程 =
+            %% 幸存的 ws 循环进程；init/2 的瞬态进程已被 cowboy 替换）。
+            %% 本函数处于升级竞争窗口内的连接会在此被上限兜底拒绝：
+            %% 1013 Try Again Later（RFC 6455 保留码，客户端按既有失败
+            %% 路径指数退避）。已提交的名额永不超上限（原子 admit）。
+            case ws_admission:admit() of
+                {ok, _Admitted} ->
+                    CurrentUid = auth_ds:current_uid(State),
+                    % 用户上线
+                    DID = maps:get(did, State, <<>>),
+                    DType = maps:get(dtype, State, <<>>),
+                    user_logic:online(CurrentUid, DType, self(), DID),
+                    %% 版本保护：检查客户端版本是否过低，发送升级提醒
+                    AppVsn = maps:get(vsn, State, undefined),
+                    maybe_send_upgrade_notice(AppVsn, DType, DID),
+                    {ok, State, hibernate};
+                {rejected, _Current} ->
+                    {reply, {close, 1013, <<"ws_capacity_full">>}, State}
+            end
     end.
 
 %% @doc 处理WebSocket消息
@@ -768,6 +808,9 @@ websocket_info_authorized(_Info, State) ->
 -spec terminate(term(), cowboy_req:req(), map()) -> ok.
 terminate(Reason, _Req, State) ->
     ok = ?DEBUG_LOG({terminate, Reason}),
+    %% R0/D0：释放 WS 准入名额（take 配对，幂等——未准入/已释放的连接
+    %% 为 no-op；brutal kill 等本回调不运行的路径由 ws_admission:sweep/0 兜底）。
+    ok = ws_admission:release(),
     %% BE-14：连接终止清理投递预算/轻通知槽（pid 键行不残留；聚合计数
     %% 保留——接受事实仍可解释）。drop 对表缺失/行缺失均幂等。
     ok = imboy_syn:drop_delivery_budget(self()),

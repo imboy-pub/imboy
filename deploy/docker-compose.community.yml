@@ -223,7 +223,12 @@ services:
       IMBOY_JPUSH_MASTER_SECRET: ${IMBOY_JPUSH_MASTER_SECRET:-}
       IMBOY_JSMS_TEMP_ID: ${IMBOY_JSMS_TEMP_ID:-}
       IMBOY_JSMS_SIGN_ID: ${IMBOY_JSMS_SIGN_ID:-}
-      ERL_MAX_PORTS: "1048576"
+      # ── R0 容量参数（P1-1；详见 docs/engineering/r0-capacity-remediation-design.md）──
+      # ERL_FLAGS 由 install.sh 从 IMBOY_MAX_PROCESSES/PORTS/SCHEDULERS 确定性重算；
+      # 缺省为空 → 使用镜像内 vm.args 的派生默认值（+P/+Q 65536，与运行值一致）。
+      ERL_FLAGS: ${IMBOY_ERL_FLAGS:-}
+      # 单节点 WS 准入上限（后端启动期再校验；非法值拒启，无"无限制"回退）
+      IMBOY_MAX_WS_CONNECTIONS: ${IMBOY_MAX_WS_CONNECTIONS:-20000}
       # ── 支付网关 / Payment gateway ───────────────────────────────────────────
       # 社区版硬编码关闭（不是剔除该变量）：镜像内 sys.pro.config 的默认值是
       # payment_gateway_enabled=true，若不显式覆盖，无商户凭据的社区部署会在

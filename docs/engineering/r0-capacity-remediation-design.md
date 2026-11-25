@@ -1,6 +1,6 @@
 # R0 容量治理设计（VM 上限 × WebSocket 连接上限）— 评审稿
 
-> 版本 0.9（评审门稿）| 2026-11-23 | 阶段 D：**未修改任何代码/配置**，等待属主批准参数方案
+> 版本 1.1（实施稿）| 2026-11-24 | 评审门已过：属主批准 D0–D8（附录 §13），阶段 E–G 实施中
 > 任务：P1-1 修复 / IMBoy Runtime Risk Remediation R0
 > 状态文件：`r0-capacity-status.json` · 续接入口：`RESUME-R0.md` · 检查点：`r0-capacity-checkpoint.md`
 > 分支/worktree：`fix/r0-capacity-limits-20261123` @ `_task_worktrees/R0_CAPACITY_20261123/imboy`（基于 main `a5c74219f`）
@@ -323,6 +323,10 @@ Q_need = B_q + W×1 + N_L×H×1          Q_limit ≥ next_pow2(1.25 × Q_need)
 | 性能专项：“`+Q` 默认 65,536 … 压缩 3.2 倍” | 缺省值随 fd 上限上调（本机为 1048576）；显式 `+Q 20480` 实际 32,768 | §1.1、§1.3 |
 | 性能专项建议“`websocket_options/0` 设 18000” | 该位置不生效；且任何值都约束不了已建立的 WS | §0、§5 |
 | 性能专项建议“`+S 4:2` 起步” | 无资源数据支撑，改为候选 + 验证计划 | §4.2 |
+| §0/§3.1 “连接进程原地接管（takeover/7）” | **不成立于本仓形态**：ranch `connection_type=supervisor` 下升级接管**替换进程**——init/2 进程在 101 后 ~1s 内退出，真实 ws 循环在另一个幸存进程（隔离节点实测 `is_process_alive=false` vs syn 成员存活）。准入执行点因此移到 `websocket_init/1`（幸存进程原子认领），init/2 保留软闸（实施提交 6825219c2） | 阶段 E6 实测 |
+| §9.2 R1–R3 大档位（10k/12k/超限）预期在本机可测 | **本机 rig 对真实 imboy 的服务端可持续稳态 ≈1.6–1.8k 并发**（recorder 三轮复现）；bench 的 held/connected 在 ≥3k 是半开幻觉。超限行为改由 cap=1/5/1500 直测证实；20,000 绝对值本机不可验证，不外推 | 阶段 F |
+| §6.1：install.sh 把 `IMBOY_ERL_FLAGS` 写入 `.env` 即可供 compose 使用 | **不完整**：`.env` 还会被 `nginx/init-letsencrypt.sh`、`scripts/sanity_check.sh` 以 `set -a; . ./.env` 读回，含空格的值必须带引号落盘。PR 首版未加引号，CI 一键安装套件 7 FAIL（`./.env: line 451: 65536: command not found`）——全新安装的首次 TLS 签发会中断（`init-letsencrypt.sh` 开了 `-e`；`sanity_check.sh` 无 `-e`，只多一行报错）；本车道自写的 T7 沙箱只做文本断言未覆盖。修复提交 `282c3c57c`（带引号写入 + 套件断言） | PR #78 CI；ubuntu-24.04 容器复刻 128/0，修复前 117/11 |
+| §9.1：清道夫定时器沿用 `msg_rate_logic` 惯用法（`is_reference` 守卫后取消旧定时器） | **该守卫恒假**：`timer:apply_interval/4` 返回的句柄是 `{interval, Ref}` 元组而非 reference，重复 init 从不取消前一定时器（会留下多个并行清道夫），且 dialyzer 对 `timer:cancel(reference())` 报 opaque/契约告警。改为带契约的 `sweep_timer/0` 直接取消（提交 `ff15a3eae`，回归用例在修复前失败）。`msg_rate_logic` 同款守卫为既有潜伏缺陷，不在本批范围 | OTP 29 实证；`ws_admission_tests` 18/18 |
 
 未发现第一轮“误报”之外的 P1 级问题；原审计文档全部保留，勘误以追加方式标注。
 
@@ -341,3 +345,43 @@ Q_need = B_q + W×1 + N_L×H×1          Q_limit ≥ next_pow2(1.25 × Q_need)
 | D8 | docker 路径 cookie 占位值（W6-A02）另立任务处理 | 另立，不并入 R0 |
 
 **批准前不进入阶段 E。**
+
+---
+
+## 13. 批准记录（2026-11-24）
+
+属主已正式批准 D0–D8 并授权进入阶段 E–G（批准原文要点摘录）：
+
+| 决策 | 批准内容（属主原文） |
+|---|---|
+| D0 | 批准新增应用层 WebSocket 准入控制 |
+| D1 | 单节点 WebSocket 准入上限 20,000 |
+| D2 | Docker/dev 路径 +P 65536、+Q 65536 |
+| D3 | +S 暂时保持 2，支持部署参数注入，不擅自改变默认值 |
+| D4 | 显式保持 HTTP 阶段 max_connections 1024 × 10 的现有行为 |
+| D5 | WebSocket 升级前通过 HTTP 503 拒绝，提供 Retry-After |
+| D6 | 修复 WS 连接数指标，使用真实在线注册数量，并增加 80% 水位告警 |
+| D7 | 删除 compose 中已被显式 +Q 覆盖的 ERL_MAX_PORTS 死配置 |
+| D8 | Docker Cookie 安全问题独立立项，不纳入 R0 |
+
+授权范围：修改 R0 worktree 业务代码/配置；WS 准入逻辑；VM 参数与 Docker 部署参数注入；WS 指标修复；相关测试与容量压测；部署/容量/回滚文档；完成后创建 PR 但不得合并。禁止：推送前未经批准合并、生产部署、越出 R0 的改动。
+
+### 13.1 属主强制约束对实施的映射（全部落实）
+
+| 属主约束 | 实施落点 |
+|---|---|
+| 20,000 是单节点总准入上限（非 per-listener） | `ws_admission` 全局命名 ETS 表，双 surface/双 listener 共享 |
+| 并发连接建立不会超额准入 | `admit/0` = `ets:update_counter` 原子自增 + 超限回滚（阈值式被 OTP 29.0.2 实证 badarg 弃用；2-op 形态 EUnit 并发竞态守恒） |
+| WS 握手失败释放名额 | 升级前的非升级返回（429 / 子协议 40x / 401 / 412）**不占名额**（软闸只读计数）；升级后鉴权失败、`web_human` 会话失效的连接在 `admit/0` 之前关闭（不认领）。已认领的连接由 `terminate/3` 释放、sweep 兜底。（实施勘误：提交 6825219c2 之前 `init/2` 认领名额并在各非升级路径显式 `release/0`；改为幸存进程认领后这些调用点已不存在） |
+| 正常关闭释放 | `terminate/3` `release/0`（take 行配对，幂等） |
+| 异常退出可靠清理 | `sweep/0` 每 5s `is_process_alive` 全表扫描 + take 配对递减 |
+| 重启后计数恢复 | VM 重启表随进程消亡重建为 0 = 真实在线状态；运行期损坏由 sweep 对账（静置复核后修复）修复，负计数夹取 |
+| 不允许计数泄漏导致永久拒绝 | 上述 sweep 对账 + guarded decrement |
+| 优先复用 syn | syn 仍是在线状态真源（metrics 换源 `imboy_syn:count()`）；准入计数是容量预算（与 syn 语义不同：syn 含 `ai_agent_runtime` 的 agent 成员，无法做原子条件加入——属主约束"并发不超额准入"必须用原子原语，设计 §5.1 的超调容忍条款被属主更严约束取代，已记录） |
+| （实施勘误）准入执行点 | 属主约束"升级前 503"保留为**软闸**（init/2 读精确 count 满载 shed）；原子认领移至 `websocket_init/1` 幸存进程（cowboy supervisor 模式替换 init 进程，实测见 §11 勘误）；竞争窗口兜底 = 升级后 1013 Try Again Later 关闭。已提交名额仍永不超上限 |
+| 503 在升级前 + Retry-After + 确认 Cowboy 语义 | `init/2` 闸口在 throttle 之前；`{ok, replied_Req, State}` 直接 reply 形态为既有生产路径（429 同款），503 body `{"code":503,"msg":"ws_capacity_full"}`，`Retry-After: 5` |
+| 确认 Flutter 重连行为 | 沿用阶段 B 结论：`_handleConnectionFailure` 指数退避（1s 起/2min 上限/抖动 0.3），仅 401 登出 |
+| 指标修复 + 80% 水位告警 | `imboy_ws_connections_current` ← `imboy_syn:count()`；新增 `imboy_ws_admission_current/limit/rejected_total`；告警 `ImBoyWSAdmissionHigh`（admission 比 > 0.8，对注入上限自适应） |
+| VM 参数 + 不允许 Release/运行参数不一致 | `config/vm.args`/`start_node.sh` = 65536（= 实际值，无取整偏差）；install.sh 经 `ERL_FLAGS` 注入时确定性重算单一真源；启动期 INFO 行输出 process_limit/port_limit/max_ws_connections 供一致性核验 |
+| 压测只在隔离环境 | 阶段 F 于本机隔离 worktree release 节点执行，禁止生产 |
+

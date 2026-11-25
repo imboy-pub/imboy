@@ -224,6 +224,56 @@ is_true() {
   esac
 }
 
+# 非负整数 + 区间校验（R0 容量参数用；空串/非数字/越界均假）
+is_uint_in_range() { # <value> <min> <max>
+  case "$1" in
+    ''|*[!0-9]*) return 1 ;;
+  esac
+  [ "$1" -ge "$2" ] && [ "$1" -le "$3" ]
+}
+
+# ── R0 容量参数（P1-1；设计 docs/engineering/r0-capacity-remediation-design.md §6.1）──
+# IMBOY_MAX_PROCESSES/PORTS/SCHEDULERS 三项确定性重算为 IMBOY_ERL_FLAGS，
+# compose 以 ERL_FLAGS: ${IMBOY_ERL_FLAGS:-} 透传后端容器（实测 ERL_FLAGS
+# 覆盖 args_file/vm.args，无需重建镜像即可调整）。
+# 语义约束（属主批准）：非法值 die、不落 .env、不静默回退为无限制；
+# IMBOY_ERL_FLAGS 每次运行由三个 MAX_* 重算（单一真源，手改会被下次
+# 安装覆盖；要临时回退旧默认值即设 IMBOY_MAX_PROCESSES=20480 等）。
+ensure_capacity_vars() {
+  ensure_value IMBOY_MAX_PROCESSES "65536"
+  ensure_value IMBOY_MAX_PORTS "65536"
+  ensure_value IMBOY_MAX_SCHEDULERS ""
+  ensure_value IMBOY_MAX_WS_CONNECTIONS "20000"
+
+  local procs ports scheds ws flags
+  procs="$(get_var IMBOY_MAX_PROCESSES)"
+  ports="$(get_var IMBOY_MAX_PORTS)"
+  scheds="$(get_var IMBOY_MAX_SCHEDULERS)"
+  ws="$(get_var IMBOY_MAX_WS_CONNECTIONS)"
+
+  # 合法域 = OTP 官方文档 +P/+Q 范围 [1024, 134217727]
+  is_uint_in_range "$procs" 1024 134217727 \
+    || die "IMBOY_MAX_PROCESSES=$procs 非法（需整数 ∈ [1024,134217727]，OTP +P 官方域）；修正 .env 后重跑"
+  is_uint_in_range "$ports" 1024 134217727 \
+    || die "IMBOY_MAX_PORTS=$ports 非法（需整数 ∈ [1024,134217727]，OTP +Q 官方域）；修正 .env 后重跑"
+  is_uint_in_range "$ws" 1 1000000 \
+    || die "IMBOY_MAX_WS_CONNECTIONS=$ws 非法（需整数 ∈ [1,1000000]）；后端启动期还会再做范围校验"
+  case "$scheds" in
+    "") ;;  # 空 = 沿用镜像 vm.args 的 +S（D3/S-B：不擅改默认调度器数）
+    *) is_uint_in_range "$scheds" 1 1024 \
+         || die "IMBOY_MAX_SCHEDULERS=$scheds 非法（留空或整数 ∈ [1,1024]）" ;;
+  esac
+
+  flags="+P $procs +Q $ports"
+  [ -n "$scheds" ] && flags="$flags +S $scheds"
+  # 值含空格，必须带引号落盘：init-letsencrypt.sh / sanity_check.sh 以
+  # `set -a; . ./.env` 读回，裸值会被 bash 当作"前缀赋值 + 命令 65536"
+  # （变量不生效；开了 -e 的 init-letsencrypt.sh 首签当场中断）；
+  # compose 解析 .env 时会剥掉这层引号。
+  set_var IMBOY_ERL_FLAGS "\"$flags\""
+  say "容量参数: ERL_FLAGS=\"$flags\" IMBOY_MAX_WS_CONNECTIONS=$ws"
+}
+
 ensure_rsa_keys() {
   local data_dir keys_dir private_generated=0
   data_dir="$(get_var DATA_DIR)"; data_dir="${data_dir:-./data}"
@@ -377,6 +427,7 @@ for v in $SECRET_VARS_16; do ensure_secret "$v" "$(openssl rand -hex 8)"; done
 for v in $SECRET_VARS_48; do ensure_secret "$v" "$(openssl rand -hex 24)"; done
 gen_garage_secrets
 ensure_rsa_keys
+ensure_capacity_vars
 
 UPTRACE_ENABLED_VALUE="$(get_var UPTRACE_ENABLED || true)"
 if is_true "$UPTRACE_ENABLED_VALUE"; then
