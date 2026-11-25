@@ -214,6 +214,12 @@ reject_before_start() {
     bad "$description 密钥脱敏" "输出包含配置值"
   fi
 }
+# init-letsencrypt.sh / sanity_check.sh 以 `set -a; . ./.env` 读回客户配置：
+# 生成的 .env 必须能被 bash 原样 source，且指定变量读回完整值。
+sourceable_env() {
+  (cd "$FIXTURE" && env -i PATH="$TEST_PATH" /bin/bash -c \
+    'set -eu; set -a; . ./.env; set +a; [ "$IMBOY_ERL_FLAGS" = "$1" ]' _ "$1")
+}
 
 echo "== 一键安装控制流（全离线 mock） =="
 # shellcheck disable=SC2016 # the child shell, not this test process, expands $bin
@@ -233,6 +239,15 @@ assert_match "占位内部密钥被自动补齐" '^POSTGRES_PASSWORD=[0-9a-f]{32
 assert_match "Uptrace 密钥被自动补齐" '^UPTRACE_SERVICE_SECRET=[0-9a-f]{48}$' "$FIXTURE/.env"
 assert_match "支付宝回调按 API_DOMAIN 派生" '^IMBOY_ALIPAY_NOTIFY_URL=https://api\.test\.invalid/api/v1/payment/callback/alipay$' "$FIXTURE/.env"
 assert_match "微信回调按 API_DOMAIN 派生" '^IMBOY_WECHAT_NOTIFY_URL=https://api\.test\.invalid/api/v1/payment/callback/wechat$' "$FIXTURE/.env"
+# R0 容量参数：默认值落 .env；ERL_FLAGS 含空格，必须带引号写入——裸值会被
+# bash 当作"前缀赋值 + 命令 65536"（变量不生效，首签脚本当场中断）。
+assert_match "容量默认值 WS 上限落 .env" '^IMBOY_MAX_WS_CONNECTIONS=20000$' "$FIXTURE/.env"
+assert_match "ERL_FLAGS 带引号写入 .env" '^IMBOY_ERL_FLAGS="\+P 65536 \+Q 65536"$' "$FIXTURE/.env"
+if sourceable_env "+P 65536 +Q 65536"; then
+  ok "生成的 .env 可被 bash source 且 ERL_FLAGS 值完整"
+else
+  bad "生成的 .env 可被 bash source 且 ERL_FLAGS 值完整" "$(grep -n '^IMBOY_ERL_FLAGS=' "$FIXTURE/.env")"
+fi
 assert_match "启动加载 Uptrace overlay" 'docker compose -f docker-compose\.community\.yml -f docker-compose\.uptrace\.yml up -d' "$MOCK_LOG"
 pull_line="$(grep -n ' pull --policy missing$' "$MOCK_LOG" | head -1 | cut -d: -f1)"
 up_line="$(grep -n ' up -d$' "$MOCK_LOG" | head -1 | cut -d: -f1)"
@@ -417,6 +432,38 @@ if run_install 'MOCK_JSON_FILTER=del(.services.imboy_grafana)'; then
 else
   bad "可选监控兼容语义" "有效配置被拒绝"
 fi
+
+# R0 容量参数：非法值 fail-closed（不启动服务、不改写 .env）；合法覆盖重算 ERL_FLAGS。
+cp "$FIXTURE/.env" "$TMP_ROOT/env.before-capacity"
+while IFS='=' read -r cap_key cap_val; do
+  set_env "$cap_key" "$cap_val"
+  cp "$FIXTURE/.env" "$TMP_ROOT/env.bad-capacity"
+  reject_before_start "容量参数 $cap_key=$cap_val 非法必须中止" "$cap_key=$cap_val 非法"
+  cmp -s "$FIXTURE/.env" "$TMP_ROOT/env.bad-capacity" \
+    || bad "容量参数 $cap_key=$cap_val 非法不得改写 .env" "非法输入下 .env 被修改"
+  cp "$TMP_ROOT/env.before-capacity" "$FIXTURE/.env"
+done <<'BAD_CAPACITY'
+IMBOY_MAX_PROCESSES=1023
+IMBOY_MAX_PROCESSES=abc
+IMBOY_MAX_PORTS=0
+IMBOY_MAX_SCHEDULERS=0
+IMBOY_MAX_WS_CONNECTIONS=1000001
+BAD_CAPACITY
+set_env IMBOY_MAX_PROCESSES 32768
+set_env IMBOY_MAX_PORTS 32768
+set_env IMBOY_MAX_SCHEDULERS 4
+if run_install; then
+  assert_match "容量覆盖重算 ERL_FLAGS（含 +S）" '^IMBOY_ERL_FLAGS="\+P 32768 \+Q 32768 \+S 4"$' "$FIXTURE/.env"
+  if sourceable_env "+P 32768 +Q 32768 +S 4"; then
+    ok "容量覆盖后的 .env 仍可被 bash source"
+  else bad "容量覆盖后的 .env 仍可被 bash source" "值不完整"; fi
+else
+  bad "容量覆盖重算 ERL_FLAGS（含 +S）" "合法覆盖配置失败"
+fi
+cp "$TMP_ROOT/env.before-capacity" "$FIXTURE/.env"
+if run_install && cmp -s "$FIXTURE/.env" "$TMP_ROOT/env.before-capacity"; then
+  ok "恢复默认容量参数后 .env 重跑保持原状"
+else bad "恢复默认容量参数后 .env 重跑保持原状" "重跑失败或 .env 不一致"; fi
 
 echo "== 镜像识别与 probe =="
 if run_install BACKEND_IMAGE=registry.test/z-backend:override MOCK_EDGE_IMAGE=registry.test/a-edge:override; then

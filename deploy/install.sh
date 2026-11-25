@@ -266,7 +266,11 @@ ensure_capacity_vars() {
 
   flags="+P $procs +Q $ports"
   [ -n "$scheds" ] && flags="$flags +S $scheds"
-  set_var IMBOY_ERL_FLAGS "$flags"
+  # 值含空格，必须带引号落盘：init-letsencrypt.sh / sanity_check.sh 以
+  # `set -a; . ./.env` 读回，裸值会被 bash 当作"前缀赋值 + 命令 65536"
+  # （变量不生效；开了 -e 的 init-letsencrypt.sh 首签当场中断）；
+  # compose 解析 .env 时会剥掉这层引号。
+  set_var IMBOY_ERL_FLAGS "\"$flags\""
   say "容量参数: ERL_FLAGS=\"$flags\" IMBOY_MAX_WS_CONNECTIONS=$ws"
 }
 
