@@ -372,13 +372,13 @@ web_region_value(#{<<"selection">> := Selection, <<"region">> := Region} = V) wh
 web_region_value(#{<<"selection">> := Selection} = V) when
     is_map(Selection), map_size(V) =:= 1
 ->
-    case geo_regions_ds:source_names(Selection, config_ds:env(geo_regions_pin, #{})) of
-        {ok, Names} ->
-            Region = iolist_to_binary(lists:join(<<" ">>, [string:trim(Name) || Name <- Names])),
+    %% Handler→Logic→DS 单向：展示名拼装经 user_logic（模块边界守护）。
+    case user_logic:web_region_display(Selection) of
+        {ok, Region} ->
             {ok, V#{<<"region">> => Region}};
-        {error, Error} when Error =:= unavailable; Error =:= invalid_artifact ->
+        unavailable ->
             unavailable;
-        {error, _} ->
+        error ->
             error
     end;
 web_region_value(_) ->

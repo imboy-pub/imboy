@@ -13,6 +13,7 @@
 %% 注意：优先使用 Erlang 原生类型，不新增自定义类型
 
 -export([profile_region_selection/2]).
+-export([web_region_display/1]).
 -export([online/4]).
 -export([offline/3]).
 -export([is_online/1, is_online/2]).
@@ -472,6 +473,21 @@ update_region_selection(Uid, Region, Selection) ->
             {error, {1, <<>>, <<"Unsupported region selection version">>}};
         {error, invalid_selection} ->
             {error, {1, <<>>, <<"Invalid region selection">>}}
+    end.
+%% @doc user_handler web 面的地区展示名拼装（web_region_value 专用口径：
+%% 不做 80 长度校验、不走 authoritative 更新流程——那是 update_region_
+%% selection 侧 authoritative_region/1 的职责）。Handler→Logic→DS 单向：
+%% handler 不得直接触 geo_regions_ds（模块边界守护）。
+-spec web_region_display(map()) -> {ok, binary()} | unavailable | error.
+web_region_display(Selection) ->
+    case geo_regions_ds:source_names(Selection, region_release_pin()) of
+        {ok, Names} ->
+            Region = iolist_to_binary(lists:join(<<" ">>, [string:trim(Name) || Name <- Names])),
+            {ok, Region};
+        {error, Error} when Error =:= unavailable; Error =:= invalid_artifact ->
+            unavailable;
+        {error, _} ->
+            error
     end.
 
 authoritative_region(Selection) ->
