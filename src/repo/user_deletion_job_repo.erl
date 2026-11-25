@@ -48,7 +48,8 @@ ensure_job_tx(Conn, Uid, Account) ->
             " VALUES ($1, $2, $3, 'pending')"
             " ON CONFLICT (user_id) DO NOTHING"
             " RETURNING id">>,
-    case elib_pg:query(Conn, Sql, [Id, Uid, Account]) of
+    QueryResult = elib_pg:query(Conn, Sql, [Id, Uid, Account]),
+    case QueryResult of
         {ok, [_]} -> {ok, created};
         {ok, []} -> {ok, exists};
         {error, Reason} -> {error, Reason}
@@ -141,11 +142,14 @@ lock_claim_tx(Conn, Uid, JobId, Attempts) ->
     Sql =
         <<"SELECT id FROM ", Tb/binary,
             " WHERE id = $1 AND user_id = $2 AND attempts = $3 AND status = 'running' FOR UPDATE">>,
-    case elib_pg:query(Conn, Sql, [JobId, Uid, Attempts]) of
-        {ok, [_]} -> ok;
-        {ok, []} -> {error, job_not_running};
-        {error, Reason} -> {error, Reason}
-    end.
+    QueryResult = elib_pg:query(Conn, Sql, [JobId, Uid, Attempts]),
+    expect_running_row(QueryResult).
+
+%% 单行写结果统一判读：命中一行 = ok；零行 = job_not_running（任务已被
+%% 并发迁走/终结）；抽取以消 elvis dont_repeat_yourself（144/177 同构）。
+expect_running_row({ok, [_]}) -> ok;
+expect_running_row({ok, []}) -> {error, job_not_running};
+expect_running_row({error, Reason}) -> {error, Reason}.
 
 -spec release_ineligible(integer(), pos_integer()) -> ok | {error, term()}.
 release_ineligible(JobId, Attempts) ->
@@ -161,6 +165,8 @@ release_ineligible(JobId, Attempts) ->
     end.
 
 %% @doc 在注销事务中将已认领任务标为完成。
+%% 影响行数判读（RETURNING 原本就无消费方）：1 = 完成；0 = 任务已不在
+%% running（与认领锁同口径的 job_not_running）。
 -spec mark_completed_tx(pid(), integer(), map()) -> ok | {error, term()}.
 mark_completed_tx(Conn, JobId, #{<<"status">> := RequestStatus, <<"approved_at">> := ApprovedAt}) ->
     Tb = tablename(),
@@ -172,11 +178,10 @@ mark_completed_tx(Conn, JobId, #{<<"status">> := RequestStatus, <<"approved_at">
             "     request_approved_at = $3::text::timestamptz,"
             "     finished_at = CURRENT_TIMESTAMP,"
             "     updated_at = CURRENT_TIMESTAMP"
-            " WHERE id = $1 AND status = 'running'"
-            " RETURNING id">>,
-    case elib_pg:query(Conn, Sql, [JobId, RequestStatus, ApprovedAt]) of
-        {ok, [_]} -> ok;
-        {ok, []} -> {error, job_not_running};
+            " WHERE id = $1 AND status = 'running'">>,
+    case elib_pg:execute_count(Conn, Sql, [JobId, RequestStatus, ApprovedAt]) of
+        {ok, 1} -> ok;
+        {ok, 0} -> {error, job_not_running};
         {error, Reason} -> {error, Reason}
     end.
 

@@ -575,7 +575,7 @@ get_key_package_authorized(AccountId, Domain, KeyVersion, Generation) ->
 
 read_key_package(AccountId, Domain, KeyVersion, Generation) ->
     case
-        personal_history_repo:find_key_package_for_generation(
+        personal_history_key_package_repo:find_key_package_for_generation(
             AccountId, Domain, KeyVersion, Generation
         )
     of

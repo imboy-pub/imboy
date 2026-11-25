@@ -1,6 +1,7 @@
 -module(geo_regions_ds).
 -moduledoc "Validate an account region selection against a server-pinned GeoRegions release.".
 -export([validate/2, source_names/2]).
+-export_type([validation_error/0]).
 
 -define(PROTOCOL, <<"1.0">>).
 
@@ -186,7 +187,8 @@ validate_structure(_, _, _, _, _) ->
 index_nodes([], Index) ->
     {ok, Index};
 index_nodes([#{<<"id">> := Id, <<"parentId">> := Parent} = Node | Tail], Index) when
-    is_binary(Id), byte_size(Id) > 0, is_binary(Parent) orelse Parent =:= null
+    is_binary(Id) andalso byte_size(Id) > 0 andalso
+        (is_binary(Parent) orelse Parent =:= null)
 ->
     case maps:is_key(Id, Index) of
         true -> {error, invalid_artifact};

@@ -126,11 +126,8 @@ ack_cursor(Req0, State) ->
             reply_cursor(Req0, State, Opts, fun personal_history_logic:ack_cursor/2)
     end.
 
-reply_cursor(Req0, State, #{client_instance := Instance} = Opts, Run) ->
-    case valid_client_instance(State, Instance) of
-        true -> reply(Req0, Run(auth_ds:current_uid(State), Opts));
-        false -> reply_error(Req0, <<"identity_rejected">>)
-    end.
+reply_cursor(Req0, State, Opts, Run) ->
+    reply_gated(Req0, State, Opts, Run, fun valid_client_instance/2).
 
 valid_client_instance(#{surface := web_human} = State, Instance) ->
     matched_snapshot_device(State, Instance);
@@ -141,9 +138,15 @@ matched_snapshot_device(State, Instance) ->
     is_binary(Instance) andalso byte_size(Instance) > 0 andalso
         Instance =:= auth_ds:current_did(State).
 
-reply_snapshot_cursor(Req0, State, #{client_instance := Instance} = Opts, Run) ->
+reply_snapshot_cursor(Req0, State, Opts, Run) ->
     Req = cowboy_req:set_resp_header(<<"cache-control">>, <<"no-store">>, Req0),
-    case matched_snapshot_device(State, Instance) of
+    reply_gated(Req, State, Opts, Run, fun matched_snapshot_device/2).
+
+%% 两个游标回包路径共享的门控回包：闸门（设备指纹/实例匹配）不过即
+%% identity_rejected；抽取以消 elvis dont_repeat_yourself（130/146 同构）。
+reply_gated(Req, State, Opts, Run, Gate) ->
+    #{client_instance := Instance} = Opts,
+    case Gate(State, Instance) of
         true -> reply(Req, Run(auth_ds:current_uid(State), Opts));
         false -> reply_error(Req, <<"identity_rejected">>)
     end.

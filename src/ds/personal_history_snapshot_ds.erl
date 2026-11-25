@@ -80,7 +80,7 @@ confirm_snapshot(AccountId, Domain, ClientInstance, Watermark, ExpectedGeneratio
     end).
 
 confirm_snapshot_tx(Conn, {AccountId, Domain, ClientInstance} = Scope, G, Watermark) ->
-    case personal_history_repo:find_cursor_tx(Conn, AccountId, Domain, G, ClientInstance) of
+    case personal_history_cursor_repo:find_cursor_tx(Conn, AccountId, Domain, G, ClientInstance) of
         {ok, #{<<"acked_cursor">> := Acked, <<"change_cursor">> := Issued}} when
             Acked >= Watermark
         ->
@@ -88,10 +88,10 @@ confirm_snapshot_tx(Conn, {AccountId, Domain, ClientInstance} = Scope, G, Waterm
         {ok, _} ->
             case snapshot_tail_available(Conn, Scope, G, Watermark) of
                 ok ->
-                    ok = personal_history_repo:ensure_cursor_tx(
+                    ok = personal_history_cursor_repo:ensure_cursor_tx(
                         Conn, AccountId, Domain, G, ClientInstance
                     ),
-                    ok = personal_history_repo:record_issued_tx(
+                    ok = personal_history_cursor_repo:record_issued_tx(
                         Conn, AccountId, Domain, G, ClientInstance, Watermark
                     ),
                     acknowledge_snapshot_tx(Conn, AccountId, Domain, G, ClientInstance, Watermark);
@@ -104,7 +104,9 @@ confirm_snapshot_tx(Conn, {AccountId, Domain, ClientInstance} = Scope, G, Waterm
 
 acknowledge_snapshot_tx(Conn, AccountId, Domain, G, ClientInstance, Watermark) ->
     case
-        personal_history_repo:ack_cursor_tx(Conn, AccountId, Domain, G, ClientInstance, Watermark)
+        personal_history_cursor_repo:ack_cursor_tx(
+            Conn, AccountId, Domain, G, ClientInstance, Watermark
+        )
     of
         {ok, #{<<"acked_cursor">> := Acked, <<"change_cursor">> := Issued}} ->
             {ok, G, true, Acked, Issued};

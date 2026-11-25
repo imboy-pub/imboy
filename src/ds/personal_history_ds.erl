@@ -221,8 +221,10 @@ purge_online(AccountId, Domain, Generation) ->
 
 purge_rows(Conn, AccountId, Domain, Generation) ->
     {ok, _} = personal_history_repo:delete_archive_by_account_tx(Conn, AccountId, Domain),
-    {ok, _} = personal_history_repo:delete_cursors_by_account_tx(Conn, AccountId, Domain),
-    {ok, _} = personal_history_repo:delete_key_packages_by_account_tx(Conn, AccountId, Domain),
+    {ok, _} = personal_history_cursor_repo:delete_cursors_by_account_tx(Conn, AccountId, Domain),
+    {ok, _} = personal_history_key_package_repo:delete_key_packages_by_account_tx(
+        Conn, AccountId, Domain
+    ),
     ok = personal_history_repo:mark_purged_tx(Conn, AccountId, Domain, Generation),
     {ok, #{
         <<"state">> => <<"OFF_PURGED">>,
@@ -278,7 +280,9 @@ guard_generation(G, Item, Conn, AccountId, Domain) ->
 %% §2.3 422：上传所用 key_version 的用途密钥包必须已就绪（fail-closed）。
 guard_key_package(Item, Conn, AccountId, Domain, G) ->
     KeyVersion = maps:get(key_version, Item),
-    case personal_history_repo:find_key_package_tx(Conn, AccountId, Domain, KeyVersion) of
+    case
+        personal_history_key_package_repo:find_key_package_tx(Conn, AccountId, Domain, KeyVersion)
+    of
         {ok, undefined} -> {error, key_package_missing};
         {ok, _} -> guard_message_fact(Item, Conn, AccountId, Domain, G);
         {error, Reason} -> {error, Reason}
@@ -452,8 +456,14 @@ issue_changes(AccountId, Domain, ClientInstance, Cursor, Limit) ->
 issue_changes_tx(Conn, AccountId, Domain, ClientInstance, Cursor, Limit) ->
     case personal_history_repo:lock_authorization_tx(Conn, AccountId, Domain) of
         {ok, #{<<"state">> := <<"ON">>, <<"generation">> := G}} ->
-            ok = personal_history_repo:ensure_cursor_tx(Conn, AccountId, Domain, G, ClientInstance),
-            case personal_history_repo:find_cursor_tx(Conn, AccountId, Domain, G, ClientInstance) of
+            ok = personal_history_cursor_repo:ensure_cursor_tx(
+                Conn, AccountId, Domain, G, ClientInstance
+            ),
+            case
+                personal_history_cursor_repo:find_cursor_tx(
+                    Conn, AccountId, Domain, G, ClientInstance
+                )
+            of
                 {ok, #{<<"change_cursor">> := Issued}} when Cursor =< Issued ->
                     issue_window(Conn, AccountId, Domain, G, ClientInstance, Cursor, Limit);
                 {ok, _} ->
@@ -486,11 +496,11 @@ issue_window(Conn, AccountId, Domain, G, ClientInstance, Cursor, Limit) ->
             issue_mark(Conn, AccountId, Domain, G, ClientInstance, Events)
     end.
 
-issue_mark(_Conn, _AccountId, _Domain, _G, _ClientInstance, []) ->
-    {ok, _G, [], undefined, false};
+issue_mark(_Conn, _AccountId, _Domain, G, _ClientInstance, []) ->
+    {ok, G, [], undefined, false};
 issue_mark(Conn, AccountId, Domain, G, ClientInstance, Events) ->
     NextCursor = maps:get(<<"event_seq">>, lists:last(Events)),
-    ok = personal_history_repo:record_issued_tx(
+    ok = personal_history_cursor_repo:record_issued_tx(
         Conn, AccountId, Domain, G, ClientInstance, NextCursor
     ),
     {ok, G, Events, NextCursor, false}.
@@ -533,8 +543,12 @@ ack_authorized_cursor(Conn, AccountId, Domain, ClientInstance, Cursor, ExpectedG
     end.
 
 ack_cursor_tx(Conn, AccountId, Domain, G, ClientInstance, Cursor) ->
-    ok = personal_history_repo:ensure_cursor_tx(Conn, AccountId, Domain, G, ClientInstance),
-    case personal_history_repo:ack_cursor_tx(Conn, AccountId, Domain, G, ClientInstance, Cursor) of
+    ok = personal_history_cursor_repo:ensure_cursor_tx(Conn, AccountId, Domain, G, ClientInstance),
+    case
+        personal_history_cursor_repo:ack_cursor_tx(
+            Conn, AccountId, Domain, G, ClientInstance, Cursor
+        )
+    of
         {ok, #{<<"acked_cursor">> := Acked, <<"change_cursor">> := Issued}} ->
             {ok, G, true, Acked, Issued};
         {ok, none} ->
@@ -544,7 +558,7 @@ ack_cursor_tx(Conn, AccountId, Domain, G, ClientInstance, Cursor) ->
     end.
 
 ack_reject(Conn, AccountId, Domain, G, ClientInstance, _Cursor) ->
-    {ok, Slot} = personal_history_repo:find_cursor_tx(
+    {ok, Slot} = personal_history_cursor_repo:find_cursor_tx(
         Conn, AccountId, Domain, G, ClientInstance
     ),
     case Slot of
@@ -724,7 +738,7 @@ put_key_package(AccountId, Domain, KeyVersion, Generation, Pkg) ->
     ).
 
 insert_key_package_tx(Conn, Row) ->
-    case personal_history_repo:insert_key_package(Conn, Row) of
+    case personal_history_key_package_repo:insert_key_package(Conn, Row) of
         {ok, Inserted} -> {ok, Inserted};
         {error, unique_violation} -> {error, version_conflict};
         {error, _Reason} -> {error, transient_failure}

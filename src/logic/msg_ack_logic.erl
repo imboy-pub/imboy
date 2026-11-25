@@ -67,9 +67,10 @@ emit_enterprise_delivered(_Type, _MsgId) ->
 
 %% ACK can remove the delivery row, so read the immutable acceptance time first.
 delivery_timing(Type, MsgId, Uid, DID) when
-    is_binary(MsgId),
-    (Type =:= <<"c2g">> orelse
-        ((Type =:= <<"c2c">> orelse Type =:= <<"s2c">>) andalso is_binary(DID) andalso DID =/= <<>>))
+    is_binary(MsgId) andalso
+        (Type =:= <<"c2g">> orelse
+            ((Type =:= <<"c2c">> orelse Type =:= <<"s2c">>) andalso is_binary(DID) andalso
+                DID =/= <<>>))
 ->
     try
         AckMs = elib_dt:millisecond(),
