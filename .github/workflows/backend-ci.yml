@@ -162,6 +162,11 @@ jobs:
       - name: Check Makefile dependency and release evaluation
         run: python3 -m unittest discover -s scripts/test -p test_makefile.py -v
 
+      - name: Check WebSocket benchmark token and metrics contracts
+        run: |
+          bash -n scripts/bench_websocket.sh
+          python3 -m unittest discover -s scripts/test -p test_bench_websocket.py -v
+
       - name: Check nightly QA summary
         run: python3 -m unittest discover -s scripts/test -p test_nightly_summary.py -v
 
