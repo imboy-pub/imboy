@@ -44,12 +44,7 @@
 find_web_user_setting(Uid) ->
     user_setting_ds:find_web_by_uid(Uid).
 
-%% @doc 设置用户密码
-%% 为未设置密码的用户设置登录密码。用户密码为空时才能设置。
-%% 操作会记录用户日志，包含应用版本、设备ID和IP信息。
-%% @param Uid 用户ID
-%% @param Req0 HTTP请求对象
-%% @returns 操作结果：成功返回{ok, <<"success">>}，失败返回错误信息
+%% @doc 为未设密码用户设置登录密码（空密码才可设；记用户日志）。
 -spec set_password(integer(), map()) ->
     {ok, binary()} | {error, binary() | string() | service_unavailable}.
 set_password(Uid, Req0) ->
@@ -79,15 +74,8 @@ set_password_user(Uid, Req0, PostVals, NewPwd, User) ->
             {error, <<"已设置过密码，请使用修改密码"/utf8>>}
     end.
 
-%% @doc 修改用户密码
-%% 验证用户当前密码后，更新为新密码。需要提供当前密码和新密码。
-%% 操作会记录用户日志，包含应用版本、设备ID和IP信息。
-%% 密码传输与 passport login 同契约：rsa_encrypt=0 明文（alpha.69 迁移后
-%% 客户端实际行为），=1 RSA 密文；此前无条件 rsa_decrypt 对明文抛
-%% {error,invalid_padding} 使改密接口恒 500（P0，2026-09-03 真机集成测试发现）。
-%% @param Uid 用户ID
-%% @param Req0 Cowboy请求对象，包含当前密码和新密码
-%% @returns 操作结果：成功返回{ok, <<"success">>}，失败返回错误信息
+%% @doc 验证当前密码后更新为新密码（记用户日志）。契约同 passport login：
+%% rsa_encrypt=0 明文，=1 RSA 密文（alpha.69；无条件 rsa_decrypt 曾致恒 500，P0）。
 -spec change_password(pos_integer(), map()) ->
     {ok, binary()} | {error, binary() | service_unavailable}.
 change_password(Uid, Req0) ->
@@ -255,14 +243,7 @@ expected_deletion_at(ReqAt, GraceDays) when is_tuple(ReqAt), tuple_size(ReqAt) =
     Seconds = calendar:datetime_to_gregorian_seconds(ReqAt),
     calendar:gregorian_seconds_to_datetime(Seconds + GraceDays * 86400).
 
-%% @doc 用户上线
-%% 将用户标记为在线状态，并加入到在线用户管理中。
-%% 会触发用户上线相关的处理，如检查离线消息等。
-%%
-%% @param Uid 用户ID
-%% @param DType 设备类型（web、ios、android、macos、windows等）
-%% @param Pid 进程PID
-%% @param DID 设备ID
+%% @doc 用户上线：加入在线管理并触发上线处理（检查离线消息等）。
 -spec online(pos_integer(), binary(), pid(), binary()) -> ok.
 online(Uid, DType, Pid, DID) ->
     _ = imboy_syn:join(Uid, DType, Pid, DID),
@@ -270,12 +251,7 @@ online(Uid, DType, Pid, DID) ->
     user_server:cast_online(Uid, Pid, DID, DType),
     ok.
 
-%% @doc 用户下线
-%% 将用户从在线状态中移除，处理用户下线相关的清理工作。
-%% 会触发用户下线相关的处理，如检查离线消息等。
-%% @param Uid 用户ID
-%% @param Pid 进程PID
-%% @param DID 设备ID
+%% @doc 用户下线：移出在线管理并触发下线清理。
 -spec offline(pos_integer(), pid(), binary()) -> ok.
 offline(Uid, Pid, DID) ->
     _ = imboy_syn:leave(Uid, Pid),
