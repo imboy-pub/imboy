@@ -594,7 +594,7 @@ do_write(c2c, Row) ->
     ExpireAt = maps:get(<<"expire_at">>, Row, null),
     case maps:get(<<"reply_to_msg_id">>, Row, null) of
         ReplyId when is_binary(ReplyId), ReplyId =/= <<>> ->
-            msg_c2c_ds:write_msg_with_reply(
+            msg_c2c_reply_ds:write_msg_with_reply(
                 CreatedAt,
                 MsgId,
                 PayloadBin,

@@ -13,6 +13,7 @@
 %% 注意：优先使用 Erlang 原生类型，不新增自定义类型
 
 -export([profile_region_selection/2]).
+-export([web_region_display/1]).
 -export([online/4]).
 -export([offline/3]).
 -export([is_online/1, is_online/2]).
@@ -456,7 +457,7 @@ update(Uid, Field, Val) ->
 %% ===================================================================
 
 update_region_selection(Uid, Region, Selection) ->
-    case authoritative_region(Selection) of
+    case user_region_logic:authoritative_region(Selection) of
         {ok, Region} ->
             case user_ds:update_region_selection(Uid, Region, Selection) of
                 {ok, 1} = Updated -> Updated;
@@ -473,48 +474,17 @@ update_region_selection(Uid, Region, Selection) ->
         {error, invalid_selection} ->
             {error, {1, <<>>, <<"Invalid region selection">>}}
     end.
-
-authoritative_region(Selection) ->
-    case geo_regions_ds:source_names(Selection, region_release_pin()) of
-        {ok, Names} ->
-            Trimmed = [string:trim(Name) || Name <- Names],
-            Region = iolist_to_binary(lists:join(<<" ">>, Trimmed)),
-            case lists:member(<<>>, Trimmed) orelse binary:match(Region, <<0>>) =/= nomatch of
-                true -> {error, invalid_artifact};
-                false -> check_region_length(Region)
-            end;
-        {error, _} = Error ->
-            Error
-    end.
-
-check_region_length(Region) ->
-    case length(unicode:characters_to_list(Region)) =< 80 of
-        true -> {ok, Region};
-        false -> {error, display_too_long}
-    end.
-
+%% 地区簇已拆至 user_region_logic（质量门 ≤800 行）；导出 API 保持：
+%% profile_region_selection 仍由本模块入口承接（内部委托）。
+-spec profile_region_selection(binary(), map() | binary() | null) -> map().
 profile_region_selection(Region, EncodedSelection) ->
-    Selection = decode_region_selection(EncodedSelection),
-    Check =
-        case Selection of
-            null -> absent;
-            _ -> validate_region_selection(Selection)
-        end,
-    #{
-        <<"regionSelection">> => Selection,
-        <<"regionSelectionStatus">> => user_agg:region_selection_status(Region, Check)
-    }.
+    user_region_logic:profile_region_selection(Region, EncodedSelection).
 
-decode_region_selection(Selection) when is_map(Selection); Selection =:= null ->
-    Selection;
-decode_region_selection(Selection) when is_binary(Selection) ->
-    jsone:decode(Selection).
-
-validate_region_selection(Selection) ->
-    geo_regions_ds:validate(Selection, region_release_pin()).
-
-region_release_pin() ->
-    config_ds:env(geo_regions_pin, #{}).
+%% web 展示名门面（user_handler 白名单只认 user_logic；实际拼装在
+%% user_region_logic:web_region_display/1）。
+-spec web_region_display(map()) -> {ok, binary()} | unavailable | error.
+web_region_display(Selection) ->
+    user_region_logic:web_region_display(Selection).
 
 %% ===================================================================
 %% R-03.1：profile 文本公开面审核门

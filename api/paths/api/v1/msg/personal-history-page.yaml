@@ -122,8 +122,7 @@ get:
                               type: integer
                               format: int64
                       page_token:
-                        type: string
-                        nullable: true
+                        type: [string, "null"]
                         description: 下一页令牌（has_more=false 时为 null）。 / Next-page token.
                       has_more:
                         type: boolean

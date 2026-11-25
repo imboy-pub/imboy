@@ -667,7 +667,7 @@ changes_issue_and_ack_watermark_test_() ->
             })
         ),
         {ok, #{<<"acked_cursor">> := 0, <<"change_cursor">> := Next2}} =
-            personal_history_repo:find_cursor(?A1, domain(), 1, <<"inst-1">>),
+            personal_history_cursor_repo:find_cursor(?A1, domain(), 1, <<"inst-1">>),
         %% ack：推进 ≤ 已发放最大值；重复 ack 幂等（W5 不影响历史）
         {ok, Ack1} = personal_history_logic:ack_cursor(?A1, #{
             cursor => Next2, client_instance => <<"inst-1">>, generation => 1
@@ -687,7 +687,7 @@ changes_issue_and_ack_watermark_test_() ->
         ?assertEqual(Next2, maps:get(<<"advanced_to">>, Ack3)),
         %% 水位落库：acked = change_cursor = Next2
         {ok, #{<<"acked_cursor">> := Next2, <<"change_cursor">> := Next2}} =
-            personal_history_repo:find_cursor(?A1, domain(), 1, <<"inst-1">>),
+            personal_history_cursor_repo:find_cursor(?A1, domain(), 1, <<"inst-1">>),
         cleanup_test_rows()
     end).
 

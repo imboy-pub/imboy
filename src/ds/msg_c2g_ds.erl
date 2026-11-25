@@ -375,7 +375,7 @@ write_msg_with_reply(
     ReplySnippet
 ) ->
     %% R03/D04：兼容旧入口，不带接受时间（accepted_at 列保持 NULL）。
-    msg_c2g_repo:write_msg_with_reply(
+    msg_c2g_reply_repo:write_msg_with_reply(
         CreatedAt,
         Id,
         Payload,
@@ -457,7 +457,7 @@ write_msg_with_reply(
     AcceptedAt,
     ExpireAt
 ) ->
-    msg_c2g_repo:write_msg_with_reply(
+    msg_c2g_reply_repo:write_msg_with_reply(
         CreatedAt,
         Id,
         Payload,

@@ -179,8 +179,8 @@ code_change(_OldVsn, State, _Extra) ->
 do_cleanup_internal(State) ->
     BatchSize = State#state.batch_size,
     Now = elib_dt:now(),
-    {C2CCount, C2CResult} = cleanup_channel(c2c, msg_c2c_ds, Now, BatchSize),
-    {C2GCount, C2GResult} = cleanup_channel(c2g, msg_c2g_ds, Now, BatchSize),
+    {C2CCount, C2CResult} = cleanup_channel(c2c, fun msg_c2c_ds:delete_expired/2, Now, BatchSize),
+    {C2GCount, C2GResult} = cleanup_channel(c2g, fun msg_c2g_ds:delete_expired/2, Now, BatchSize),
     Total = C2CCount + C2GCount,
     Attempt = erlang:timestamp(),
     Outcome =
@@ -206,8 +206,8 @@ do_cleanup_internal(State) ->
         _ -> {{error, Report}, NewState}
     end.
 
-cleanup_channel(Channel, Module, Now, BatchSize) ->
-    try Module:delete_expired(Now, BatchSize) of
+cleanup_channel(Channel, DeleteExpired, Now, BatchSize) ->
+    try DeleteExpired(Now, BatchSize) of
         Count when is_integer(Count), Count >= 0 ->
             {Count, #{status => ok, cleaned => Count}};
         {error, _Reason} ->

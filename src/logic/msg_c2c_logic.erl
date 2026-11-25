@@ -356,7 +356,7 @@ stage_and_send_c2c(
                                 MsgId, CurrentUid, ToId, MsgType, ReplyReference
                             ),
                             DeliveryPayload = delivery_reply_payload(Payload, Snapshot),
-                            ReplySource = msg_c2c_ds:public_reply_source(MsgType, Snapshot),
+                            ReplySource = msg_c2c_reply_ds:public_reply_source(MsgType, Snapshot),
                             Msg0 = message_ds:assemble_msg(
                                 <<"C2C">>, From, To, DeliveryPayload, MsgId, MsgType, Action, E2EE
                             ),
@@ -1208,7 +1208,7 @@ c2c_input(MsgId, CurrentUid, Data) ->
 c2c_delivery_snapshot(MsgId, From, To, MsgType, ReplyReference) when
     MsgType =:= <<"quote">>; ReplyReference =/= none
 ->
-    Snapshots = msg_c2c_ds:visible_reply_snippets([MsgId]),
+    Snapshots = msg_c2c_reply_ds:visible_reply_snippets([MsgId]),
     maps:get({MsgId, From, To}, Snapshots, null);
 c2c_delivery_snapshot(_MsgId, _From, _To, _MsgType, _ReplyReference) ->
     not_a_reply.
@@ -1216,7 +1216,7 @@ c2c_delivery_snapshot(_MsgId, _From, _To, _MsgType, _ReplyReference) ->
 delivery_reply_payload(Payload, not_a_reply) ->
     Payload;
 delivery_reply_payload(Payload, Snapshot) ->
-    msg_c2c_ds:redact_reply_payload(Payload, Snapshot).
+    msg_c2c_reply_ds:redact_reply_payload(Payload, Snapshot).
 
 reply_reference(Data, MsgType, Payload) ->
     case maps:get(<<"reply_to">>, Data, undefined) of

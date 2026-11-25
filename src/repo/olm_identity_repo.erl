@@ -460,18 +460,22 @@ claim_write_query(native, Sql, Params) ->
 claim_write_query(Conn, Sql, Params) ->
     {ok, [], []} = epgsql:squery(Conn, "SAVEPOINT olm_claim_write"),
     Result = elib_pg:query(Conn, Sql, Params),
-    case Result of
-        {error, Reason} ->
-            case is_unique_violation(Reason) of
-                true ->
-                    {ok, [], []} = epgsql:squery(Conn, "ROLLBACK TO SAVEPOINT olm_claim_write"),
-                    {ok, [], []} = epgsql:squery(Conn, "RELEASE SAVEPOINT olm_claim_write");
-                false ->
-                    throw({rollback, <<"internal_error">>})
-            end;
-        _ ->
-            {ok, [], []} = epgsql:squery(Conn, "RELEASE SAVEPOINT olm_claim_write")
-    end,
+    %% savepoint 管理语句的返回值刻意丢弃（case 各分支尾部是
+    %% `{ok,[],[]} = squery(...)`，case 本体的值被逗号序列丢弃——
+    %% 显式 `_ =` 消 dialyzer unmatched 告警）。
+    _ =
+        case Result of
+            {error, Reason} ->
+                case is_unique_violation(Reason) of
+                    true ->
+                        {ok, [], []} = epgsql:squery(Conn, "ROLLBACK TO SAVEPOINT olm_claim_write"),
+                        {ok, [], []} = epgsql:squery(Conn, "RELEASE SAVEPOINT olm_claim_write");
+                    false ->
+                        throw({rollback, <<"internal_error">>})
+                end;
+            _ ->
+                {ok, [], []} = epgsql:squery(Conn, "RELEASE SAVEPOINT olm_claim_write")
+        end,
     Result.
 
 %% @doc 领取 fallback key（不删除，可重复领取——客户端生成新 fallback 后旧的自然失效）

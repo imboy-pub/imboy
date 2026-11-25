@@ -102,9 +102,8 @@ get:
                               type: boolean
                               description: 墓碑投影（MSG-H15）。 / Tombstone projection.
                       next_cursor:
-                        type: integer
+                        type: [integer, "null"]
                         format: int64
-                        nullable: true
                       reset_hint:
                         type: boolean
                         description: true=游标已出窗口或超过已发放水位，须走 page?snapshot=account 重扫。 / Cursor outside window or beyond issued watermark; rescan via account snapshot.

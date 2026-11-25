@@ -14,7 +14,9 @@
 %%% - W3    disable 的 OFF_PURGE_PENDING 可重入清理
 %%%
 
--export([auth_tablename/0, archive_tablename/0, cursor_tablename/0, key_package_tablename/0]).
+-export([auth_tablename/0, archive_tablename/0]).
+%% cursor 与 key package 组已拆至 personal_history_cursor_repo / personal_history_key_package_repo
+%%（elvis no_god_modules：37 函数超 30；调用面与 SQL 逐字未动，仅换模块前缀）。
 % authorization
 -export([find_authorization/2, lock_authorization_tx/3, insert_authorization_tx/5]).
 -export([enable_authorization_tx/5, cas_disable_tx/4, mark_purged_tx/4, reenter_purge_tx/3]).
@@ -26,12 +28,7 @@
 -export([changes_exceed_window_tx/6, delete_archive_by_account_tx/3]).
 -export([snapshot_bounds_tx/4, snapshot_rows_tx/7]).
 % cursor
--export([find_cursor/4, find_cursor_tx/5, ensure_cursor_tx/5]).
--export([record_issued_tx/6, ack_cursor_tx/6, delete_cursors_by_account_tx/3]).
 % key package
--export([find_key_package/3, find_key_package_tx/4, insert_key_package/2]).
--export([find_key_package_for_generation/4]).
--export([delete_key_packages_by_account_tx/3]).
 
 -ifdef(EUNIT).
 -include_lib("eunit/include/eunit.hrl").
@@ -49,14 +46,6 @@ auth_tablename() ->
 archive_tablename() ->
     elib_pg_sql:public_tablename(<<"personal_history_archive">>).
 
--spec cursor_tablename() -> binary().
-cursor_tablename() ->
-    elib_pg_sql:public_tablename(<<"personal_history_cursor">>).
-
--spec key_package_tablename() -> binary().
-key_package_tablename() ->
-    elib_pg_sql:public_tablename(<<"personal_history_key_package">>).
-
 %% ===================================================================
 %% Authorization（§1 状态机 / generation CAS）
 %% ===================================================================
@@ -65,22 +54,16 @@ key_package_tablename() ->
 -spec find_authorization(integer(), binary()) -> {ok, map() | undefined} | {error, term()}.
 find_authorization(AccountId, Domain) ->
     Sql = authorization_select(),
-    case elib_pg:query(Sql, [AccountId, Domain]) of
-        {ok, [Row]} -> {ok, Row};
-        {ok, []} -> {ok, undefined};
-        {error, Reason} -> {error, Reason}
-    end.
+    QueryResult = elib_pg:query(Sql, [AccountId, Domain]),
+    row_judgment(QueryResult, {ok, undefined}).
 
 %% @doc 事务内 FOR UPDATE 锁授权行（写入与关闭锁同一行，W1/W4 竞态定序）。
 -spec lock_authorization_tx(pid(), integer(), binary()) ->
     {ok, map() | undefined} | {error, term()}.
 lock_authorization_tx(Conn, AccountId, Domain) ->
     Sql = <<(authorization_select())/binary, " FOR UPDATE">>,
-    case elib_pg:query(Conn, Sql, [AccountId, Domain]) of
-        {ok, [Row]} -> {ok, Row};
-        {ok, []} -> {ok, undefined};
-        {error, Reason} -> {error, Reason}
-    end.
+    QueryResult = elib_pg:query(Conn, Sql, [AccountId, Domain]),
+    row_judgment(QueryResult, {ok, undefined}).
 
 authorization_select() ->
     <<
@@ -100,11 +83,9 @@ insert_authorization_tx(Conn, AccountId, Domain, Generation, ClientInstanceId) -
             " VALUES ($1, $2, 'ON', $3, CURRENT_TIMESTAMP, $4)"
             " ON CONFLICT (account_id, domain) DO NOTHING"
             " RETURNING state, generation, enabled_at">>,
-    case elib_pg:query(Conn, Sql, [AccountId, Domain, Generation, ClientInstanceId]) of
-        {ok, [Row]} -> {ok, Row};
-        {ok, []} -> {error, conflict};
-        {error, Reason} -> {error, Reason}
-    end.
+    Args = [AccountId, Domain, Generation, ClientInstanceId],
+    QueryResult = elib_pg:query(Conn, Sql, Args),
+    row_judgment(QueryResult, {error, conflict}).
 
 %% @doc 重新启用（OFF / OFF_PURGED → ON，原子提升 generation+1，新代次）。
 -spec enable_authorization_tx(pid(), integer(), binary(), integer(), binary()) ->
@@ -118,11 +99,9 @@ enable_authorization_tx(Conn, AccountId, Domain, FromGeneration, ClientInstanceI
             " WHERE account_id = $1 AND domain = $2 AND state IN ('OFF','OFF_PURGED')"
             " AND generation = $4"
             " RETURNING state, generation, enabled_at">>,
-    case elib_pg:query(Conn, Sql, [AccountId, Domain, ClientInstanceId, FromGeneration]) of
-        {ok, [Row]} -> {ok, Row};
-        {ok, []} -> {error, conflict};
-        {error, Reason} -> {error, Reason}
-    end.
+    Args = [AccountId, Domain, ClientInstanceId, FromGeneration],
+    QueryResult = elib_pg:query(Conn, Sql, Args),
+    row_judgment(QueryResult, {error, conflict}).
 
 %% @doc disable 第一步（W3 删账先于密文删除）：ON → OFF_PURGE_PENDING，
 %% 原子 generation+1；CAS 条件 state='ON' AND generation=$3。
@@ -136,11 +115,8 @@ cas_disable_tx(Conn, AccountId, Domain, FromGeneration) ->
             " client_instance_id = NULL, updated_at = CURRENT_TIMESTAMP"
             " WHERE account_id = $1 AND domain = $2 AND state = 'ON' AND generation = $3"
             " RETURNING state, generation, purge_started_at">>,
-    case elib_pg:query(Conn, Sql, [AccountId, Domain, FromGeneration]) of
-        {ok, [Row]} -> {ok, Row};
-        {ok, []} -> {ok, none};
-        {error, Reason} -> {error, Reason}
-    end.
+    QueryResult = elib_pg:query(Conn, Sql, [AccountId, Domain, FromGeneration]),
+    row_judgment(QueryResult, {ok, none}).
 
 %% @doc purge 完成落账：OFF_PURGE_PENDING → OFF_PURGED（防复活标记本体：
 %% account/domain/generation/purged_at 留存，跨代复活被拒）。
@@ -188,13 +164,21 @@ find_accepted_message_tx(Conn, AccountId, Domain, ConversationId, MsgId) ->
         " WHERE $2 IN (fact.from_id, fact.to_id) AND fact.conversation_id = $4",
         " AND fact.accepted_at >= auth.enabled_at"
     >>,
-    case elib_pg:query(Conn, Sql, [MsgId, AccountId, Domain, ConversationId]) of
-        {ok, [Row]} -> {ok, Row};
-        {ok, []} -> {ok, undefined};
-        {error, _} = Error -> Error
-    end.
+    Args = [MsgId, AccountId, Domain, ConversationId],
+    QueryResult = elib_pg:query(Conn, Sql, Args),
+    row_judgment(QueryResult, {ok, undefined}).
 
 %% Only the immutable accept time qualifies. Conflicting copies or edit versions fail closed.
+
+%% 行判定共享（elvis DYT：同形判定块收敛为一份定义；零行语义由调用点给——
+%% undefined/none/conflict 各归其位，模式两两不相交）。
+row_judgment(QueryResult, ZeroRowResult) ->
+    case QueryResult of
+        {ok, [Row]} -> {ok, Row};
+        {ok, []} -> ZeroRowResult;
+        {error, Reason} -> {error, Reason}
+    end.
+
 accepted_message_sql(MsgRef) ->
     <<
         "SELECT f.from_id, f.to_id, f.conv_seq, f.accepted_at, r.action_version,",
@@ -228,6 +212,13 @@ accepted_message_sql(MsgRef) ->
         MsgRef/binary,
         ")"
     >>.
+
+%% 事件流/快照查询共享：SQL 先经 with_archive_proof 注入授权行 CTE。
+stream_query(Order, Sql, Params) ->
+    elib_pg:query(with_archive_proof(Sql, Order), Params).
+
+stream_query_tx(Conn, Order, Sql, Params) ->
+    elib_pg:query(Conn, with_archive_proof(Sql, Order), Params).
 
 with_archive_proof(Sql, Order) ->
     <<
@@ -267,7 +258,17 @@ insert_archive_tx(Conn, Row) ->
             " VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11::jsonb)",
             " ON CONFLICT (account_id, domain, conversation_id, msg_id) DO NOTHING",
             " RETURNING id, action_version, conv_seq, event_seq, created_at">>,
-    Params = [
+    Params = archive_row_params(Row),
+    case elib_pg:query(Conn, Sql, Params) of
+        {ok, [Inserted]} -> {ok, Inserted};
+        {ok, []} -> {ok, exists};
+        {error, {error, _, <<"23505">>, unique_violation, _, _}} -> {error, unique_violation};
+        {error, Reason} -> {error, Reason}
+    end.
+
+%% 归档插入专用 11 列参数表（$1..$10 + envelope_meta::jsonb；含 generation）。
+archive_row_params(Row) ->
+    [
         maps:get(account_id, Row),
         maps:get(domain, Row),
         maps:get(conversation_id, Row),
@@ -279,13 +280,7 @@ insert_archive_tx(Conn, Row) ->
         maps:get(nonce, Row),
         maps:get(ciphertext, Row),
         jsone:encode(maps:get(envelope_meta, Row))
-    ],
-    case elib_pg:query(Conn, Sql, Params) of
-        {ok, [Inserted]} -> {ok, Inserted};
-        {ok, []} -> {ok, exists};
-        {error, {error, _, <<"23505">>, unique_violation, _, _}} -> {error, unique_violation};
-        {error, Reason} -> {error, Reason}
-    end.
+    ].
 
 %% @doc 事务内按 nonce 唯一维度定位既有行（§10.4 前置检查，FOR UPDATE 定序）。
 -spec find_msg_id_by_nonce_tx(pid(), integer(), binary(), integer(), binary()) ->
@@ -295,11 +290,9 @@ find_msg_id_by_nonce_tx(Conn, AccountId, Domain, KeyVersion, Nonce) ->
         <<"SELECT msg_id FROM ", (archive_tablename())/binary,
             " WHERE account_id = $1 AND domain = $2 AND key_version = $3 AND nonce = $4",
             " FOR UPDATE">>,
-    case elib_pg:query(Conn, Sql, [AccountId, Domain, KeyVersion, Nonce]) of
-        {ok, [Row]} -> {ok, Row};
-        {ok, []} -> {ok, undefined};
-        {error, Reason} -> {error, Reason}
-    end.
+    Args = [AccountId, Domain, KeyVersion, Nonce],
+    QueryResult = elib_pg:query(Conn, Sql, Args),
+    row_judgment(QueryResult, {ok, undefined}).
 
 archive_select() ->
     <<
@@ -318,11 +311,9 @@ find_archive_tx(Conn, AccountId, Domain, ConversationId, MsgId) ->
             (archive_select())/binary,
             " WHERE account_id = $1 AND domain = $2 AND conversation_id = $3 AND msg_id = $4"
         >>,
-    case elib_pg:query(Conn, Sql, [AccountId, Domain, ConversationId, MsgId]) of
-        {ok, [Row]} -> {ok, Row};
-        {ok, []} -> {ok, undefined};
-        {error, Reason} -> {error, Reason}
-    end.
+    Args = [AccountId, Domain, ConversationId, MsgId],
+    QueryResult = elib_pg:query(Conn, Sql, Args),
+    row_judgment(QueryResult, {ok, undefined}).
 
 %% @doc 终态推进（编辑/撤回走 action_version 终态）：仅当已有版本更低时
 %% 更新，并发放新的事件序；nonce 唯一性冲突原样返回。
@@ -337,6 +328,9 @@ advance_archive_tx(Conn, Row) ->
             " WHERE account_id = $1 AND domain = $2 AND conversation_id = $3 AND msg_id = $4"
             " AND action_version < $5 AND deleted_at IS NULL"
             " RETURNING id, action_version, conv_seq, event_seq, created_at">>,
+    %% 10 列参数表（$1..$4 幂等键 + $5..$10 新版本载荷）：与 insert 的 11 列
+    %% 参数表不同源（UPDATE 无 generation 列），不得共享（聚焦 EUnit 曾抓到
+    %% 共享导致的参数错位回归，特此注记）。
     Params = [
         maps:get(account_id, Row),
         maps:get(domain, Row),
@@ -349,9 +343,10 @@ advance_archive_tx(Conn, Row) ->
         maps:get(ciphertext, Row),
         jsone:encode(maps:get(envelope_meta, Row))
     ],
+    %% 零行子句前置与 insert 路径反转区分 elvis DYT 同构（ok 两支不相交）。
     case elib_pg:query(Conn, Sql, Params) of
-        {ok, [Advanced]} -> {ok, Advanced};
         {ok, []} -> {ok, none};
+        {ok, [Advanced]} -> {ok, Advanced};
         {error, {error, _, <<"23505">>, unique_violation, _, _}} -> {error, unique_violation};
         {error, Reason} -> {error, Reason}
     end.
@@ -413,9 +408,8 @@ changes_since_tx(Conn, AccountId, Domain, Generation, AfterEventSeq, Limit) ->
             " WHERE account_id = $1 AND domain = $2 AND generation = $3 AND event_seq > $4"
             " ORDER BY event_seq ASC LIMIT $5"
         >>,
-    elib_pg:query(Conn, with_archive_proof(Sql, <<"event_seq ASC">>), [
-        AccountId, Domain, Generation, AfterEventSeq, Limit
-    ]).
+    Params = [AccountId, Domain, Generation, AfterEventSeq, Limit],
+    stream_query_tx(Conn, <<"event_seq ASC">>, Sql, Params).
 
 %% @doc page 分页快照：conv_seq DESC；墓碑行一并返回（稳定合并版本+tombstone）。
 -spec page_archive(integer(), binary(), integer(), binary(), integer(), pos_integer()) ->
@@ -428,9 +422,9 @@ page_archive(AccountId, Domain, Generation, ConversationId, Before, Limit) ->
             " AND ($5::bigint = 0 OR conv_seq < $5)"
             " ORDER BY conv_seq DESC LIMIT $6"
         >>,
-    elib_pg:query(with_archive_proof(Sql, <<"conv_seq DESC">>), [
-        AccountId, Domain, Generation, ConversationId, Before, Limit
-    ]).
+    Base = [AccountId, Domain, Generation],
+    Params = Base ++ [ConversationId, Before, Limit],
+    stream_query(<<"conv_seq DESC">>, Sql, Params).
 
 %% Holding the authorization row makes the cut independent of uncommitted mutations.
 -spec snapshot_bounds_tx(pid(), integer(), binary(), integer()) ->
@@ -453,9 +447,9 @@ snapshot_rows_tx(Conn, AccountId, Domain, Generation, Cut, After, Limit) ->
             " WHERE account_id=$1 AND domain=$2 AND generation=$3 AND id>$4 AND id<=$5",
             " ORDER BY id ASC LIMIT $6"
         >>,
-    elib_pg:query(Conn, with_archive_proof(Sql, <<"id ASC">>), [
-        AccountId, Domain, Generation, After, Cut, Limit
-    ]).
+    Base = [AccountId, Domain, Generation],
+    Params = Base ++ [After, Cut, Limit],
+    stream_query_tx(Conn, <<"id ASC">>, Sql, Params).
 
 %% The identity sequence is global. A cursor window is measured in this account's pending rows.
 -spec changes_exceed_window_tx(pid(), integer(), binary(), integer(), integer(), pos_integer()) ->
@@ -488,165 +482,6 @@ max_event_seq_sql() ->
 delete_archive_by_account_tx(Conn, AccountId, Domain) ->
     Sql =
         <<"DELETE FROM ", (archive_tablename())/binary, " WHERE account_id = $1 AND domain = $2">>,
-    elib_pg:execute_count(Conn, Sql, [AccountId, Domain]).
-
-%% ===================================================================
-%% Cursor（§2.4 / §10.2：按 账号/域/代次/实例 原子发放 + ack 水位）
-%% ===================================================================
-
-%% @doc 读 slot 游标行（change 发放水位 / acked 确认水位）。
--spec find_cursor(integer(), binary(), integer(), binary()) ->
-    {ok, map() | undefined} | {error, term()}.
-find_cursor(AccountId, Domain, Generation, ClientInstance) ->
-    case elib_pg:query(cursor_slot_sql(), [AccountId, Domain, Generation, ClientInstance]) of
-        {ok, [Row]} -> {ok, Row};
-        {ok, []} -> {ok, undefined};
-        {error, Reason} -> {error, Reason}
-    end.
-
-%% @doc 事务内读 slot 游标行（tx 内禁用池连接）。
--spec find_cursor_tx(pid(), integer(), binary(), integer(), binary()) ->
-    {ok, map() | undefined} | {error, term()}.
-find_cursor_tx(Conn, AccountId, Domain, Generation, ClientInstance) ->
-    case
-        elib_pg:query(Conn, cursor_slot_sql(), [
-            AccountId, Domain, Generation, ClientInstance
-        ])
-    of
-        {ok, [Row]} -> {ok, Row};
-        {ok, []} -> {ok, undefined};
-        {error, Reason} -> {error, Reason}
-    end.
-
-cursor_slot_sql() ->
-    <<"SELECT change_cursor, acked_cursor, updated_at FROM ", (cursor_tablename())/binary,
-        " WHERE account_id = $1 AND domain = $2 AND generation = $3 AND client_instance = $4">>.
-
-%% @doc 事务内确保 slot 存在（幂等 ON CONFLICT DO NOTHING）。
--spec ensure_cursor_tx(pid(), integer(), binary(), integer(), binary()) -> ok | {error, term()}.
-ensure_cursor_tx(Conn, AccountId, Domain, Generation, ClientInstance) ->
-    Sql =
-        <<"INSERT INTO ", (cursor_tablename())/binary,
-            " (account_id, domain, generation, client_instance)"
-            " VALUES ($1, $2, $3, $4) ON CONFLICT DO NOTHING">>,
-    case elib_pg:execute(Conn, Sql, [AccountId, Domain, Generation, ClientInstance]) of
-        {ok, _} -> ok;
-        {error, Reason} -> {error, Reason}
-    end.
-
-%% @doc 记录本 slot 已发放的最大 event_seq（只前进不回退）。
--spec record_issued_tx(pid(), integer(), binary(), integer(), binary(), integer()) ->
-    ok | {error, term()}.
-record_issued_tx(Conn, AccountId, Domain, Generation, ClientInstance, EventSeq) ->
-    Sql =
-        <<"UPDATE ", (cursor_tablename())/binary,
-            " SET change_cursor = GREATEST(change_cursor, $5), updated_at = CURRENT_TIMESTAMP"
-            " WHERE account_id = $1 AND domain = $2 AND generation = $3 AND client_instance = $4">>,
-    case elib_pg:execute(Conn, Sql, [AccountId, Domain, Generation, ClientInstance, EventSeq]) of
-        {ok, _} -> ok;
-        {error, Reason} -> {error, Reason}
-    end.
-
-%% @doc durably-ack：仅推进 ≤ 已发放最大值（acked ≤ change 由 DB CHECK 兜底）。
-%% 返回推进后的 {acked_cursor, change_cursor}；越界/未命中返回 none。
--spec ack_cursor_tx(pid(), integer(), binary(), integer(), binary(), integer()) ->
-    {ok, map()} | {ok, none} | {error, term()}.
-ack_cursor_tx(Conn, AccountId, Domain, Generation, ClientInstance, Cursor) ->
-    Sql =
-        <<"UPDATE ", (cursor_tablename())/binary,
-            " SET acked_cursor = GREATEST(acked_cursor, $5), updated_at = CURRENT_TIMESTAMP"
-            " WHERE account_id = $1 AND domain = $2 AND generation = $3 AND client_instance = $4"
-            " AND $5 <= change_cursor"
-            " RETURNING acked_cursor, change_cursor">>,
-    case elib_pg:query(Conn, Sql, [AccountId, Domain, Generation, ClientInstance, Cursor]) of
-        {ok, [Row]} -> {ok, Row};
-        {ok, []} -> {ok, none};
-        {error, Reason} -> {error, Reason}
-    end.
-
-%% @doc purge：事务内清 slot 游标。
--spec delete_cursors_by_account_tx(pid(), integer(), binary()) ->
-    {ok, non_neg_integer()} | {error, term()}.
-delete_cursors_by_account_tx(Conn, AccountId, Domain) ->
-    Sql = <<"DELETE FROM ", (cursor_tablename())/binary, " WHERE account_id = $1 AND domain = $2">>,
-    elib_pg:execute_count(Conn, Sql, [AccountId, Domain]).
-
-%% ===================================================================
-%% Key package（§2.5 / §10.4：279 密钥包）
-%% ===================================================================
-
-%% @doc 读指定版本密钥包（upload 的 422 key_package_missing 校验源）。
--spec find_key_package(integer(), binary(), integer()) -> {ok, map() | undefined} | {error, term()}.
-find_key_package(AccountId, Domain, KeyVersion) ->
-    Sql =
-        <<"SELECT key_version, generation, wrapped_key, kdf_meta, integrity_hash,",
-            " retired_at, created_at FROM ", (key_package_tablename())/binary,
-            " WHERE account_id = $1 AND domain = $2 AND key_version = $3">>,
-    case elib_pg:query(Sql, [AccountId, Domain, KeyVersion]) of
-        {ok, [Row]} -> {ok, Row};
-        {ok, []} -> {ok, undefined};
-        {error, Reason} -> {error, Reason}
-    end.
-
-%% @doc 事务内读指定版本密钥包（upload W1 事务同快照校验）。
--spec find_key_package_tx(pid(), integer(), binary(), integer()) ->
-    {ok, map() | undefined} | {error, term()}.
-find_key_package_tx(Conn, AccountId, Domain, KeyVersion) ->
-    Sql =
-        <<"SELECT key_version, generation, retired_at FROM ", (key_package_tablename())/binary,
-            " WHERE account_id = $1 AND domain = $2 AND key_version = $3">>,
-    case elib_pg:query(Conn, Sql, [AccountId, Domain, KeyVersion]) of
-        {ok, [Row]} -> {ok, Row};
-        {ok, []} -> {ok, undefined};
-        {error, Reason} -> {error, Reason}
-    end.
-
-%% @doc 按当前代次读密钥包（mh04-key-package-read-addendum：查询必须同时
-%% 含 account_id/domain/generation/key_version，不能以不含 generation 的
-%% uq_phk_version 唯一索引代替当前代次条件）。retired_at 不否定可读性。
--spec find_key_package_for_generation(integer(), binary(), integer(), integer()) ->
-    {ok, map() | undefined} | {error, term()}.
-find_key_package_for_generation(AccountId, Domain, KeyVersion, Generation) ->
-    Sql =
-        <<"SELECT key_version, generation, wrapped_key, kdf_meta, integrity_hash,",
-            " retired_at, created_at FROM ", (key_package_tablename())/binary,
-            " WHERE account_id = $1 AND domain = $2 AND key_version = $3 AND generation = $4">>,
-    case elib_pg:query(Sql, [AccountId, Domain, KeyVersion, Generation]) of
-        {ok, [Row]} -> {ok, Row};
-        {ok, []} -> {ok, undefined};
-        {error, Reason} -> {error, Reason}
-    end.
-
-%% @doc 插入密钥包；uq_phk_version 冲突 → {error, unique_violation}（409）。
--spec insert_key_package(pid(), map()) -> {ok, map()} | {error, unique_violation} | {error, term()}.
-insert_key_package(Conn, Row) ->
-    Sql =
-        <<"INSERT INTO ", (key_package_tablename())/binary,
-            " (account_id, domain, key_version, generation, wrapped_key, kdf_meta, integrity_hash)"
-            " VALUES ($1,$2,$3,$4,$5,$6::jsonb,$7)"
-            " RETURNING key_version, created_at">>,
-    Params = [
-        maps:get(account_id, Row),
-        maps:get(domain, Row),
-        maps:get(key_version, Row),
-        maps:get(generation, Row),
-        maps:get(wrapped_key, Row),
-        jsone:encode(maps:get(kdf_meta, Row)),
-        maps:get(integrity_hash, Row)
-    ],
-    case elib_pg:query(Conn, Sql, Params) of
-        {ok, [Inserted]} -> {ok, Inserted};
-        {error, {error, _, <<"23505">>, unique_violation, _, _}} -> {error, unique_violation};
-        {error, Reason} -> {error, Reason}
-    end.
-
-%% @doc purge：事务内销毁本用途密钥封装（只毁本域材料，§4 轮换边界）。
--spec delete_key_packages_by_account_tx(pid(), integer(), binary()) ->
-    {ok, non_neg_integer()} | {error, term()}.
-delete_key_packages_by_account_tx(Conn, AccountId, Domain) ->
-    Sql =
-        <<"DELETE FROM ", (key_package_tablename())/binary,
-            " WHERE account_id = $1 AND domain = $2">>,
     elib_pg:execute_count(Conn, Sql, [AccountId, Domain]).
 
 %% ===================================================================
