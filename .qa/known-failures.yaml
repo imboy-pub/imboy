@@ -36,6 +36,9 @@
 # =============================================================================
 schema_version: 1
 updated: "2026-11-25"
+# 2026-11-25 追加 2 文件（greenup-5 拆分）：msg_c2c_reply_ds / msg_c2g_reply_repo
+#   为 ≤800 行质量门自 msg_c2c_ds / msg_c2g_repo 拆出的新模块，继承源模块既有
+#   KNOWN 形状（write_msg_with_reply 超 arity——源模块本就在清单）；行为逐字未动。
 # 2026-11-25 回册 3 文件（基线绿修车道 greenup-3：personal_history 三仓 elvis 残余
 #   dont_repeat_yourself 收编——本车道已真修 5 文件全清（handler/geo_regions_ds/
 #   personal_history_ds/msg_ack_logic/msg_burn_logic）并把 personal_history_repo
@@ -777,6 +780,7 @@ gates:
       - src/ds/micro_community_binding_ds.erl
       - src/ds/moment_ds.erl
       - src/ds/msg_c2c_ds.erl
+      - src/ds/msg_c2c_reply_ds.erl
       - src/ds/msg_c2g_ds.erl
       - src/ds/msg_operation_ds.erl
       - src/ds/msg_s2c_ds.erl
@@ -1189,6 +1193,7 @@ gates:
       - src/repo/msg_archive_repo.erl
       - src/repo/msg_c2c_repo.erl
       - src/repo/msg_c2g_repo.erl
+      - src/repo/msg_c2g_reply_repo.erl
       - src/repo/msg_c2g_timeline_repo.erl
       - src/repo/msg_forward_repo.erl
       - src/repo/msg_reaction_repo.erl

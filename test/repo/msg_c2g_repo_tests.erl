@@ -91,14 +91,18 @@ write_msg_insert_failure_stops_timeline_test_() ->
                     <<"text">>,
                     <<>>
                 ],
-                {Function, Extra} =
+                {Module, Function, Extra} =
                     case WithReply of
-                        false -> {write_msg, []};
-                        true -> {write_msg_with_reply, [<<"original">>, 2, <<"reply">>]}
+                        false ->
+                            {msg_c2g_repo, write_msg, []};
+                        true ->
+                            {msg_c2g_reply_repo, write_msg_with_reply, [
+                                <<"original">>, 2, <<"reply">>
+                            ]}
                     end,
                 ?assertError(
                     {badmatch, {error, storage_failed}},
-                    apply(msg_c2g_repo, Function, Arguments ++ Extra)
+                    apply(Module, Function, Arguments ++ Extra)
                 ),
                 ?assertEqual(1, meck:num_calls(elib_pg, execute, 3))
             end
@@ -474,7 +478,7 @@ write_msg_with_reply_info_test_() ->
             ReplyToFromId = 2,
             ReplySnippet = <<"原始群消息内容摘要"/utf8>>,
 
-            Result = msg_c2g_repo:write_msg_with_reply(
+            Result = msg_c2g_reply_repo:write_msg_with_reply(
                 CreatedAt,
                 MsgId,
                 Payload,
@@ -525,6 +529,6 @@ find_msg_with_reply_info_test_() ->
 find_msgs_by_reply_to_msg_id_test_() ->
     ?WITH_MECKS([?MOCK_ENV], fun() ->
         OriginalMsgId = <<"original_msg_c2g_789">>,
-        Result = msg_c2g_repo:find_by_reply_to_msg_id(OriginalMsgId),
+        Result = msg_c2g_reply_repo:find_by_reply_to_msg_id(OriginalMsgId),
         ?assertEqual({ok, []}, Result)
     end).

@@ -95,13 +95,13 @@ refresh_quote(
             _ ->
                 try
                     Key = {Id, ec_cnv:to_integer(From), ec_cnv:to_integer(To)},
-                    maps:get(Key, msg_c2c_ds:visible_reply_snippets([Id]), null)
+                    maps:get(Key, msg_c2c_reply_ds:visible_reply_snippets([Id]), null)
                 catch
                     _:_ -> null
                 end
         end,
-    Source = msg_c2c_ds:public_reply_source(<<"quote">>, Snapshot),
-    FreshPayload = msg_c2c_ds:redact_reply_payload(Payload, Snapshot),
+    Source = msg_c2c_reply_ds:public_reply_source(<<"quote">>, Snapshot),
+    FreshPayload = msg_c2c_reply_ds:redact_reply_payload(Payload, Snapshot),
     maps:merge(Message#{<<"payload">> := FreshPayload}, Source);
 refresh_quote(Message) ->
     Message.

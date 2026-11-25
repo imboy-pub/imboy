@@ -229,7 +229,7 @@ r05_2_write_ordering_and_no_extension_test_() ->
         end),
         ?assertEqual(?EXPECT_EXPIRE_MS, to_ms(fetch_c2c_expire(MsgA))),
         %% reply 直写（同 accepted/expire 值）撞唯一键 → 补洞只回填 reply 列
-        ok = msg_c2c_ds:write_msg_with_reply(
+        ok = msg_c2c_reply_ds:write_msg_with_reply(
             ClientCreated,
             MsgA,
             <<"{\"t\":\"a\"}">>,
@@ -263,7 +263,7 @@ r05_2_write_ordering_and_no_extension_test_() ->
             AcceptedAt,
             ExpireAt
         ),
-        ok = msg_c2c_ds:write_msg_with_reply(
+        ok = msg_c2c_reply_ds:write_msg_with_reply(
             ClientCreated,
             MsgB,
             <<"{\"t\":\"b\"}">>,

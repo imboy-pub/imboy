@@ -435,7 +435,7 @@ run_history_scope(CurrentUid, ChatType, PeerIdEnc, Fun) ->
 %% P1：两路径共同的下发行编码（路径2 DID 信封过滤 + 历史消息编码）。
 history_deliver_msgs(Rows, DID, CurrentUid) ->
     RowsDeliver = filter_c2c_history_for_device(Rows, DID, CurrentUid),
-    Snippets = msg_c2c_ds:visible_reply_snippets([
+    Snippets = msg_c2c_reply_ds:visible_reply_snippets([
         Id
      || #{<<"chat_type">> := <<"c2c">>, <<"msg_id">> := Id} <- RowsDeliver
     ]),
@@ -465,9 +465,9 @@ redact_c2c_quote(#{<<"payload">> := Payload} = Row, Snippet) ->
     PublicRow = maps:without(
         [<<"reply_to_from_id">>, <<"reply_to_msg_id">>, <<"reply_snippet">>], Row
     ),
-    Source = msg_c2c_ds:public_reply_source(maps:get(<<"msg_type">>, Row, <<>>), Snippet),
+    Source = msg_c2c_reply_ds:public_reply_source(maps:get(<<"msg_type">>, Row, <<>>), Snippet),
     maps:merge(
-        PublicRow#{<<"payload">> := msg_c2c_ds:redact_reply_payload(Payload, Snippet)}, Source
+        PublicRow#{<<"payload">> := msg_c2c_reply_ds:redact_reply_payload(Payload, Snippet)}, Source
     );
 redact_c2c_quote(Row, _Snippet) ->
     Row.
