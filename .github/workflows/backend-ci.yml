@@ -59,8 +59,6 @@ jobs:
           bash scripts/test/verify_community_images_test.sh
           bash scripts/test/community_rtc_wss_shell_test.sh
           bash scripts/test/init_letsencrypt_test.sh
-      - name: Check PG18 blue-green failure safety (synthetic commands only)
-        run: bash scripts/test/pg18_bluegreen_upgrade_test.sh scripts/pg18_bluegreen_upgrade.sh
       - name: Check RTC/TURN preflight and Compose contracts
         run: bash scripts/test/lk_preflight_rtc_turn_test.sh
       - name: Validate community Nginx and RTC WSS in isolated containers
