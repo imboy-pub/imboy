@@ -92,7 +92,7 @@ OS env 配置不随 release 的 `sys.config` 分发，统一放在服务器
 
 ## 测试与冒烟
 
-`smoke/`（c2c/ws/ctl 冒烟）、`smoke_extended.sh`、`run_feature_flag_smoke.sh`、`rtc_e2e_test.sh`、`sso_oidc_e2e.sh`、`bench_websocket.sh`（WS 压测）、`payment_credit_in_tx_it.sh`（支付集成测试）、`paid_channel_fixture.sh`（付费频道闭环 fixture）、`verify_device_api_sql.sh`。
+`smoke/`（c2c/ws/ctl 冒烟）、`smoke_extended.sh`、`run_feature_flag_smoke.sh`、`rtc_e2e_test.sh`、`sso_oidc_e2e.sh`、`bench_websocket.sh`（R0 后 WS 容量压测；入口委托 bench_websocket.py，以 Ping/Pong 检测存活并与 /metrics 的 imboy_ws_admission_current 严格对账）、`payment_credit_in_tx_it.sh`（支付集成测试）、`paid_channel_fixture.sh`（付费频道闭环 fixture）、`verify_device_api_sql.sh`。
 
 ## 校验与诊断
 
