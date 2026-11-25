@@ -13,9 +13,11 @@
 %%% - 并发握手不超额准入：admit 用 `ets:update_counter` 原子自增 + 超限
 %%%   回滚（OTP 29.0.2 实证：阈值式 `{Pos,Incr,Threshold,SetValue,Reset}`
 %%%   在本仓场景恒 badarg，不可用；2-op 形态 50 轮 × 8 进程竞态零违例）。
-%%% - 名额生命周期 = 连接进程生命周期：`websocket_handler:init/2` 准入，
-%%%   `terminate/3` 释放；硬杀/异常退出由 sweep 清道夫按 `is_process_alive`
-%%%   兜底（take 配对递减，幂等，无双重释放）。
+%%% - 名额生命周期 = ws 循环进程生命周期：`websocket_handler:init/2` 只做
+%%%   满载软闸（503，不占名额——cowboy supervisor 模式下升级会替换该进程），
+%%%   名额由幸存进程在 `websocket_init/1` 原子认领，`terminate/3` 释放；
+%%%   硬杀/异常退出由 sweep 清道夫按 `is_process_alive` 兜底
+%%%   （take 配对递减，幂等，无双重释放）。
 %%% - 计数自愈：每次 sweep 末尾做 count↔rows 对账，漂移先静置复核再修复，
 %%%   不允许计数泄漏导致永久拒绝。
 %%% - 在线状态真源仍是 syn（?CHAT_SCOPE，含 AI agent 成员）；本表是容量
@@ -57,6 +59,7 @@
 -define(SWEEP_TIMER_KEY, ws_admission_sweep_timer).
 
 -type admit_result() :: {ok, non_neg_integer()} | {rejected, non_neg_integer()}.
+-export_type([admit_result/0]).
 
 %% ===================================================================
 %% API
@@ -99,18 +102,19 @@ init_table() ->
     ),
     ok.
 
-%% @doc 准入一个 WebSocket 连接名额（由连接进程在升级前自调用）。
+%% @doc 原子认领一个 WebSocket 连接名额（由幸存的 ws 循环进程在
+%% websocket_init/1、注册在线之前自调用）。
 %% 原子性：`ets:update_counter` 单格自增是原子的；观察到值 ≤ 上限才准入，
 %% 超限立即回滚自增——并发握手不可能同时观察到 ≤ 上限的重复票号，
 %% 故已提交的准入数永不超上限（EUnit 并发竞态用例守恒）。
 -spec admit() -> admit_result().
 admit() ->
     ok = ensure_table(),
-    N = ets:update_counter(?TAB, ?COUNT_KEY, 1, {?COUNT_KEY, 0}),
+    N = bump(?COUNT_KEY, 1),
     case N > limit() of
         true ->
-            ok = decrement_guarded(),
-            _ = ets:update_counter(?TAB, ?REJECTED_KEY, 1, {?REJECTED_KEY, 0}),
+            ok = add_count(-1),
+            _ = bump(?REJECTED_KEY, 1),
             maybe_log_rejected(),
             {rejected, max(N - 1, 0)};
         false ->
@@ -133,7 +137,7 @@ release() ->
                 [] ->
                     ok;
                 [_Taken] ->
-                    ok = decrement_guarded(),
+                    ok = add_count(-1),
                     ok
             end
     end.
@@ -178,34 +182,34 @@ sweep() ->
         undefined ->
             ok;
         _Tab ->
-            Pids = ets:select(?TAB, [{{{conn, '$1'}, '_'}, [], ['$1']}]),
-            Swept =
-                lists:foldl(
-                    fun(Pid, Acc) ->
-                        case erlang:is_process_alive(Pid) of
-                            true ->
-                                Acc;
-                            false ->
-                                %% take 配对递减：其他进程抢先清理时为 no-op
-                                case ets:take(?TAB, {conn, Pid}) of
-                                    [] -> Acc;
-                                    [_] -> Acc + 1
-                                end
-                        end
-                    end,
-                    0,
-                    Pids
-                ),
-            case Swept > 0 of
-                true ->
-                    _ = [decrement_guarded() || _ <- lists:seq(1, Swept)],
-                    ok = ?WARN_LOG({ws_admission_swept_dead_slots, Swept, count()}),
-                    ok;
-                false ->
-                    ok
-            end,
-            repair_drift(),
+            ok = sweep_dead_slots(),
+            ok = repair_drift(),
             ok
+    end.
+
+%% 行在、进程亡 → take 配对递减。先集中 take 再统一递减：取走与递减之间的
+%% 瞬时窗口方向为 count>rows（偏保守），且不会与并发的 release 双重递减。
+sweep_dead_slots() ->
+    Pids = ets:select(?TAB, [{{{conn, '$1'}, '_'}, [], ['$1']}]),
+    Swept = lists:foldl(fun take_dead_slot/2, 0, Pids),
+    case Swept of
+        0 ->
+            ok;
+        _ ->
+            ok = add_count(-Swept),
+            ok = ?WARN_LOG({ws_admission_swept_dead_slots, Swept, count()})
+    end.
+
+%% take 到行才计 1：其他进程（release / 并发 sweep）抢先清理时为 no-op。
+take_dead_slot(Pid, Acc) ->
+    case erlang:is_process_alive(Pid) of
+        true ->
+            Acc;
+        false ->
+            case ets:take(?TAB, {conn, Pid}) of
+                [] -> Acc;
+                [_] -> Acc + 1
+            end
     end.
 
 %% ===================================================================
@@ -225,7 +229,10 @@ ensure_table() ->
                     {read_concurrency, true},
                     {write_concurrency, true}
                 ]),
-                ets:insert(?TAB, [{?COUNT_KEY, 0}, {?REJECTED_KEY, 0}]),
+                %% 增量 0 的 update_counter = "缺则补 0、有不覆盖"：并发惰性建表
+                %% 时后来者的初始化不会覆写先到者已自增的计数（insert 会）
+                _ = ets:update_counter(?TAB, ?COUNT_KEY, 0, {?COUNT_KEY, 0}),
+                _ = ets:update_counter(?TAB, ?REJECTED_KEY, 0, {?REJECTED_KEY, 0}),
                 ok
             catch
                 %% 并发建表竞态（首个 WS 进程惰性 ensure 撞上 app 启动）：
@@ -236,16 +243,19 @@ ensure_table() ->
             ok
     end.
 
-%% 带下限夹取的递减：计数按构造不可为负，负值意味着外部损坏（表被清/
-%% 行被删），夹回 0 自愈，避免"负计数→永久拒绝"。
-decrement_guarded() ->
-    N = ets:update_counter(?TAB, ?COUNT_KEY, -1, {?COUNT_KEY, 0}),
-    case N < 0 of
-        true ->
-            _ = ets:update_counter(?TAB, ?COUNT_KEY, -N, {?COUNT_KEY, 0}),
+%% 计数格原子增减；缺格按 0 补（表被外部清空后的自愈起点）。
+bump(Key, Delta) ->
+    ets:update_counter(?TAB, Key, Delta, {Key, 0}).
+
+%% 带下限夹取的准入计数增减：计数按构造不可为负，负值意味着外部损坏
+%% （表被清/行被删），夹回 0 自愈，避免"负计数→永久拒绝"。
+add_count(Delta) ->
+    case bump(?COUNT_KEY, Delta) of
+        N when N < 0 ->
+            _ = bump(?COUNT_KEY, -N),
             ok = ?WARN_LOG({ws_admission_counter_clamped, N}),
             ok;
-        false ->
+        _ ->
             ok
     end.
 
@@ -261,7 +271,7 @@ repair_drift() ->
             timer:sleep(?REPAIR_SETTLE_MS),
             case count() - conn_rows() of
                 Drift when Drift =/= 0 ->
-                    _ = ets:update_counter(?TAB, ?COUNT_KEY, -Drift, {?COUNT_KEY, 0}),
+                    _ = bump(?COUNT_KEY, -Drift),
                     ok = ?WARN_LOG({ws_admission_drift_repaired, Drift, count()}),
                     ok;
                 _ ->
@@ -270,7 +280,7 @@ repair_drift() ->
     end.
 
 conn_rows() ->
-    %% 固定键恒为两行（COUNT_KEY + REJECTED_KEY，ensure_table 显式插入）
+    %% 固定键恒为两行（COUNT_KEY + REJECTED_KEY，ensure_table 初始化）
     case ets:info(?TAB, size) of
         undefined -> 0;
         Size -> max(Size - 2, 0)
@@ -290,16 +300,22 @@ maybe_log_rejected() ->
     end.
 
 %% msg_rate_logic:init_table 同款定时器惯用法：先取消旧引用再武装，
-%% 防多次 init 产生多个并行清道夫。
+%% 防多次 init 产生多个并行清道夫。旧引用的读取单列为带契约的函数——
+%% persistent_term 对 dialyzer 是 term()，而 timer:cancel 只收 opaque 的
+%% timer:tref()（该键只由本函数写入 TRef，不靠 nowarn_function 消音）。
 arm_sweep_timer() ->
-    case persistent_term:get(?SWEEP_TIMER_KEY, undefined) of
-        OldRef when is_reference(OldRef) ->
-            _ = timer:cancel(OldRef),
+    case sweep_timer() of
+        undefined ->
             ok;
-        _ ->
+        OldTRef ->
+            _ = timer:cancel(OldTRef),
             ok
     end,
     {ok, TRef} =
         timer:apply_interval(?SWEEP_INTERVAL_MS, ?MODULE, sweep, []),
     persistent_term:put(?SWEEP_TIMER_KEY, TRef),
     ok.
+
+-spec sweep_timer() -> timer:tref() | undefined.
+sweep_timer() ->
+    persistent_term:get(?SWEEP_TIMER_KEY, undefined).

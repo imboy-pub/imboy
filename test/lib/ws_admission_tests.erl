@@ -277,8 +277,57 @@ table_rebuild_on_restart_starts_from_truth_test() ->
     ok.
 
 %% ------------------------------------------------------------------
-%% 指标面
+%% 重复初始化不叠加清道夫
 %% ------------------------------------------------------------------
+
+%% 回归背景：timer:apply_interval/4 的句柄是 {interval, Ref} 元组而非
+%% reference（OTP 29 实证）。早先用 is_reference 作守卫的写法恒假，重复
+%% init 从不取消前一定时器，会留下多个并行清道夫。这里断言"再次 init 时
+%% 确实以旧句柄调用了 timer:cancel/1"（cancel 对已取消句柄也返回
+%% {ok, cancel}，故不能靠返回值判定）。
+reinit_cancels_previous_sweep_timer_test() ->
+    ok = reset_with_cap(5),
+    T1 = persistent_term:get(ws_admission_sweep_timer, undefined),
+    ?assertNotEqual(undefined, T1),
+    %% 调用跟踪的匹配规格属于 tracer 进程，且进程收不到对自己的调用跟踪
+    %% 消息——由独立 tracer 跟踪本进程对 timer:cancel/1 的实调用。
+    Tracer = start_cancel_tracer(),
+    ok = ws_admission:init_table(),
+    T2 = persistent_term:get(ws_admission_sweep_timer, undefined),
+    ?assertNotEqual(T1, T2),
+    %% 同一发送方（本进程）到 tracer 的信号有序：取消的跟踪消息必先于 stop
+    Tracer ! {stop, self()},
+    ?assertEqual(
+        [T1],
+        receive
+            {cancelled_refs, Refs} -> Refs
+        after 1000 -> no_tracer_reply
+        end
+    ),
+    ok.
+
+start_cancel_tracer() ->
+    TestPid = self(),
+    Tracer =
+        spawn(fun() ->
+            _ = erlang:trace_pattern({timer, cancel, 1}, true, []),
+            _ = erlang:trace(TestPid, true, [{tracer, self()}, call]),
+            TestPid ! tracer_ready,
+            cancel_tracer_loop([])
+        end),
+    receive
+        tracer_ready -> Tracer
+    after 1000 -> erlang:error(tracer_not_ready)
+    end.
+
+cancel_tracer_loop(Seen) ->
+    receive
+        {trace, _Pid, call, {timer, cancel, [TRef]}} ->
+            cancel_tracer_loop([TRef | Seen]);
+        {stop, From} ->
+            _ = erlang:trace_pattern({timer, cancel, 1}, false, []),
+            From ! {cancelled_refs, lists:reverse(Seen)}
+    end.
 
 admission_metrics_reflect_lifecycle_test() ->
     ok = reset_with_cap(4),
