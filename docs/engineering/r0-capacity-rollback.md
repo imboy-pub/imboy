@@ -19,6 +19,8 @@
 | E3 指标修复 + 水位告警 | `metrics_handler.erl`（换源 + 准入 gauge）、`deploy/prometheus/rules/imboy-alerts.yml` | `git revert <commit>`；注意换源后 `imboy_ws_connections_current` 语义从 ~0 跳变为真实连接数，`ImBoyWSConnectionsDrop`（较 10min 前跌 >50% 且 >10）随之恢复有效——面板阈值如曾按失真值调过需同步复核 | 告警可在 Prometheus 侧临时 silence，不必回滚代码 |
 | E4 VM 参数默认值 | `config/vm.args`、`scripts/start_node.sh`（+P/+Q 20480→65536） | `git revert` + 重建镜像 | **运行期临时回退**：`.env` 设 `IMBOY_MAX_PROCESSES=20480 IMBOY_MAX_PORTS=20480` 后重跑 `deploy/install.sh`（经 `ERL_FLAGS` 生效，实测 ERL_FLAGS 覆盖 args_file，无需重建镜像） |
 | E5 compose 注入 + install.sh | `docker-compose.community.yml`、`docker-compose.demo.yml`（删死 `ERL_MAX_PORTS` + 注入）、`deploy/.env.example`、`deploy/install.sh`（`ensure_capacity_vars`） | `git revert`；已写入 `.env` 的 `IMBOY_ERL_FLAGS` 需手工删除该行（或置空） | compose 不经 install.sh 直接 up 时 `ERL_FLAGS: ${IMBOY_ERL_FLAGS:-}` 为空 → 使用镜像内置 vm.args 派生默认值（同为 65536），两条路径一致 |
+| E5b review 修正：`.env` 可 source | `deploy/install.sh`（带引号写 `IMBOY_ERL_FLAGS`）、`deploy/.env.example` 注释、`scripts/test/install_one_click_test.sh` 新增断言（提交 `282c3c57c`） | **不要单独 revert**：回退会恢复"全新安装首次 TLS 签发中断"的回归（提交 45778a1a4 的首版行为）。若要撤掉整条注入链，按 E5 整体回退 | 无需（行为修正） |
+| E2b review 修正：`ws_admission` | `src/lib/ws_admission.erl`、`test/lib/ws_admission_tests.erl`（提交 `ff15a3eae`） | `git revert ff15a3eae`：准入语义不变，仅回到"重复 init 不取消旧定时器"的首版（生产只 init 一次，无运行期差异），并重新引入 elvis 3 条 / dialyzer 2 条 | — |
 | 测试扩展 | `websocket_connection_flow_SUITE.erl` admission 组、`test/lib/imboy_capacity_config_tests.erl` | `git revert`（无生产影响） | — |
 | 文档 | 设计/状态/回滚/测试报告/RESUME | `git revert` | — |
 
@@ -38,6 +40,7 @@
 2. `/metrics`（内网）含 `imboy_ws_admission_current/limit`；
 3. 一条真实 WS 可建立、可关闭，`imboy_ws_admission_current` 回落；
 4. REST API（登录）正常。
+5. 安装器写入的 `IMBOY_ERL_FLAGS` 能被脚本原样读回：`bash -c 'set -eu; set -a; . ./.env; echo "$IMBOY_ERL_FLAGS"'` 输出完整的 `+P … +Q …`（值在 `.env` 里带一对双引号；不带引号时 `nginx/init-letsencrypt.sh` 首签会中断）。
 
 ## 4. 与其他部署路径的关系（本批不改，记录口径）
 

@@ -1,13 +1,15 @@
 {
   "task": "IMBoy Runtime Risk Remediation R0 — P1-1 VM capacity & WebSocket connection limits",
-  "doc_version": "1.0-phase-g-complete",
-  "updated_at": "2026-11-24",
-  "phase": "PHASE_G_COMPLETE_AWAITING_OWNER_REVIEW",
-  "approval": "D0-D8 APPROVED by owner 2026-11-24 (design doc §13 verbatim record); Phases E/F/G executed under that authorization",
+  "doc_version": "1.1-review-fixed",
+  "updated_at": "2026-11-25",
+  "phase": "REVIEW_FIXES_PUSHED",
+  "phase_note": "PR #78 was created 2026-11-24 for owner review. On 2026-11-25 the owner instructed: review, fix problems, commit, merge to main, then clean up the lane worktree and branch. Review fixes are pushed; the merge state is recorded by GitHub PR #78, not by this file.",
+  "approval": "D0-D8 APPROVED by owner 2026-11-24 (design doc §13 verbatim record); Phases E/F/G executed under that authorization. 2026-11-25: owner authorized review-fix-commit-merge-cleanup in one instruction.",
   "git": {
     "repo": "imboy",
     "base_commit": "a5c74219f",
     "branch": "fix/r0-capacity-limits-20261123",
+    "pull_request": "https://github.com/imboy-pub/imboy/pull/78",
     "worktree": "/Users/leeyi/project/imboy.pub/_task_worktrees/R0_CAPACITY_20261123/imboy",
     "commits": [
       "c910ea2cc docs(engineering): add round-1 Erlang runtime audit deliverables (preserved)",
@@ -17,32 +19,41 @@
       "45778a1a4 chore(deploy): derived VM capacity defaults and ERL_FLAGS injection (R0/D2/D3/D7)",
       "8aef49918 test(ws): real-handler admission group and capacity config consistency (R0/T1-T7)",
       "4ccd4da4a docs(engineering): R0 approval record and rollback plan",
-      "6825219c2 fix(ws): hold admission slots on the survivor websocket process"
+      "6825219c2 fix(ws): hold admission slots on the survivor websocket process",
+      "b1bff70cd docs(engineering): R0 phase F/G results, final report and continuity set",
+      "76aefaed5 docs(engineering): preserve R0 ladder/recorder run evidence as .txt",
+      "282c3c57c fix(deploy): keep the generated .env sourceable when injecting ERL_FLAGS (review)",
+      "ff15a3eae fix(ws): rearm the sweep timer correctly and lint-clean ws_admission (review)",
+      "(this commit) docs(engineering): R0 review corrections, CI triage and final ledger"
     ],
-    "pushed": "see PR field",
-    "main_checkout": "prodready_e2e node restored after accidental kill (see test-results §4.1); imboy_v1@4323 untouched"
+    "pushed": "github (HTTPS); see pull_request",
+    "main_checkout": "prodready_e2e node (PID 51686, :9800) untouched during review; imboy_v1@4323 untouched"
   },
   "deliverables": [
-    "r0-capacity-remediation-design.md (v1.1: approval record §13 + errata)",
-    "r0-capacity-remediation-report.md (final report, six-state ledger)",
-    "r0-capacity-test-results.md (mechanism matrix V1-V13 + ladder + incidents)",
-    "r0-capacity-rollback.md (per-unit revert + runtime rollback matrix)",
+    "r0-capacity-remediation-design.md (v1.1: approval record §13 + errata incl. review rows)",
+    "r0-capacity-remediation-report.md (final report, six-state ledger, review findings §2.1)",
+    "r0-capacity-test-results.md (mechanism matrix V1-V17 + ladder + incidents + PR review §5)",
+    "r0-capacity-rollback.md (per-unit revert + runtime rollback matrix incl. review commits)",
     "r0-capacity-status.json (this file)",
     "r0-capacity-checkpoint.md",
     "RESUME-R0.md",
     "r0-probe-evidence/ (runs/: ladder logs, recorder trajectories)"
   ],
   "verification_highlights": {
-    "mechanism": "V1-V10,V12,V13 PASS (test-results §1): atomic admit race-proof, 503+Retry-After at cap, 1013 burst backstop no-overshoot, clean/abnormal release, drift self-heal, restart recovery, multi-listener budget, metrics lifecycle",
-    "eunit_full": "14973 passed / 31 failed on isolated throwaway DB; 2 were branch-introduced (fixed+green), 8 proven pre-existing via stash A/B, 21 full-run pool pollution (gone focused)",
-    "ct": "websocket_connection_flow 19/19 incl. 2 new admission cases",
-    "t7_install_sh": "6/6 sandbox",
+    "mechanism": "V1-V10,V12-V15,V17 PASS (test-results §1, §5): atomic admit race-proof, 503+Retry-After at cap, 1013 burst backstop no-overshoot, clean/abnormal release, drift self-heal, restart recovery, multi-listener budget, metrics lifecycle, generated .env sourceable, sweep timer re-arm idempotent",
+    "eunit_focused_after_review": "ws_admission_tests 18/18, imboy_capacity_config_tests 11/11, imboy_app_tests 9/9 (38 total)",
+    "eunit_full": "before review: 14973 passed / 31 failed on isolated throwaway DB (2 branch-introduced fixed+green, 8 proven pre-existing via stash A/B, 21 full-run pool pollution). After review: full rerun on a fresh isolated DB — result recorded in test-results §5.3",
+    "ct": "websocket_connection_flow 19/19 incl. 2 admission cases (rerun after review on a fresh DB)",
+    "one_click_install_suite": "after review on ubuntu-24.04 (CI toolchain): PASS=128 FAIL=0; pre-fix installer reproduces the CI failure (117/11)",
+    "lint_type_gates": "elvis and dialyzer: 0 findings in files touched by this branch (both with negative controls); oversized-file set identical to main (68, none added)",
+    "release_node_smoke_after_review": "isolated node cap=5: real WebSocket 9/9 (5 upgrades, 6th shed with 503 + Retry-After: 5 before upgrade, release and re-admit, metrics reconcile) + timer-driven janitor 7/7",
     "ladder": "client-side 2k/5k/10k/12k all connected+held; SERVER-side sustainable plateau ~1.6-1.8k (in-node recorder, 3 reproductions); over-cap verified by direct gate tests at cap=1/5/1500 (503/1013/no-overshoot)",
     "not_verified": [
       "20,000 absolute concurrent connections (rig ceiling ~1.7k) — budget parameter, NOT measured capacity",
       "Prometheus end-to-end alert firing (no stack)",
       "Production nodes (PRODUCTION_NOT_VERIFIED maintained)",
-      ">3k steady-state server-side (rig limit)"
+      ">3k steady-state server-side (rig limit)",
+      "All-green CI on main: the baseline itself carries red gates unrelated to this branch (personal-history contract export drift, redocly 2 errors, user_handler->geo_regions_ds boundary, elvis/dialyzer findings in untouched files) — reported, not fixed here"
     ]
   },
   "key_discoveries_added_in_E_F": [
@@ -53,10 +64,14 @@
     "make eunit defaults to shared dev DB imboy_v1@4323 via sys.runtime.config — migration guard refused (out_of_order[275]) with zero writes; isolated throwaway DB used instead",
     "adjacent pre-existing: /metrics JSON branch crashes on histogram float bucket keys (text/plain OK); imboy_online_users uses syn:registry_count (registry) not group count"
   ],
-  "incidents": "prodready_e2e killed twice by over-broad pkill during node cleanup; restored both times from main-checkout release with original NAME/COOKIE/heart; final ping=pong healthz=200; dev DB content untouched. worktree had been externally cleaned between 11-23/11-24; restored byte-identical from object store (same SHAs).",
+  "key_discoveries_added_in_review": [
+    "an installer-generated .env is also read back by bash (`set -a; . ./.env` in nginx/init-letsencrypt.sh and scripts/sanity_check.sh): a value with spaces must be written quoted, otherwise bash runs '<digits>' as a command (exit 127 under set -e) and first-time TLS issuance aborts — caught by PR CI, missed by the lane's own text-only sandbox (fixed in 282c3c57c)",
+    "timer:apply_interval/4 returns {interval, Ref}, not a reference: the `is_reference` guard copied from msg_rate_logic never matched, so a repeated init never cancelled the previous janitor timer and dialyzer flagged timer:cancel on a plain reference() (fixed in ff15a3eae; msg_rate_logic still carries the latent guard behind a nowarn_function)"
+  ],
+  "incidents": "prodready_e2e killed twice by over-broad pkill during node cleanup (phase E); restored both times; dev DB content untouched. worktree had been externally cleaned between 11-23/11-24; restored byte-identical from object store (same SHAs). Review (11-25): first isolated-node start ran ~1 minute under the default node name because NAME= is ignored in foreground mode; stopped cleanly and restarted under r0cap@127.0.0.1 via VMARGS_PATH; no pattern-based process kills used; prodready_e2e healthy throughout.",
   "next_actions": [
-    "Owner reviews PR (DO NOT merge without explicit approval)",
+    "Merge state and any review follow-ups: see GitHub PR #78",
     "Owner optionally runs design §2 read-only production commands to upgrade PRODUCTION_NOT_VERIFIED",
-    "Follow-ups (separate tasks): syn stale-member observation, /metrics JSON histogram crash, bench_websocket.sh auth-contract refresh, imboy_online_users semantics decision, docker image vm.args inspection after next image build"
+    "Follow-ups (separate tasks): syn stale-member observation, /metrics JSON histogram crash, bench_websocket.sh auth-contract refresh, imboy_online_users semantics decision, docker image vm.args inspection after next image build, msg_rate_logic sweep-timer guard alignment, main baseline CI red gates owned by other lanes"
   ]
 }
