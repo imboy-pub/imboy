@@ -48,12 +48,8 @@ ensure_job_tx(Conn, Uid, Account) ->
             " VALUES ($1, $2, $3, 'pending')"
             " ON CONFLICT (user_id) DO NOTHING"
             " RETURNING id">>,
-    QueryResult = elib_pg:query(Conn, Sql, [Id, Uid, Account]),
-    case QueryResult of
-        {ok, [_]} -> {ok, created};
-        {ok, []} -> {ok, exists};
-        {error, Reason} -> {error, Reason}
-    end.
+    Params = [Id, Uid, Account],
+    job_query(Conn, Sql, Params, {ok, created}, {ok, exists}).
 
 %% @doc 原子认领一个"宽限期已满的 pending 任务"
 %% FOR UPDATE SKIP LOCKED：并发 worker 各得其一，互不重复执行。
@@ -91,11 +87,7 @@ claim_pending_expired(GraceDays, ClaimedBy) ->
             " updated_at = CURRENT_TIMESTAMP FROM candidate c WHERE j.id = c.id"
             " RETURNING j.id, j.user_id, j.attempts, c.request_version::text AS request_version"
         >>,
-    case elib_pg:query(Sql, [ClaimedBy, GraceDays]) of
-        {ok, [Row]} -> {ok, Row};
-        {ok, []} -> {ok, none};
-        {error, Reason} -> {error, Reason}
-    end.
+    elib_pg:query_judged(Sql, [ClaimedBy, GraceDays], {ok, none}).
 
 %% 审批与撤销也先锁 user，再访问 request 和 job。
 -spec lock_execution_tx(pid(), integer(), integer(), map(), pos_integer()) ->
@@ -142,14 +134,14 @@ lock_claim_tx(Conn, Uid, JobId, Attempts) ->
     Sql =
         <<"SELECT id FROM ", Tb/binary,
             " WHERE id = $1 AND user_id = $2 AND attempts = $3 AND status = 'running' FOR UPDATE">>,
-    QueryResult = elib_pg:query(Conn, Sql, [JobId, Uid, Attempts]),
-    expect_running_row(QueryResult).
+    Params = [JobId, Uid, Attempts],
+    job_query(Conn, Sql, Params, ok, {error, job_not_running}).
 
-%% 单行写结果统一判读：命中一行 = ok；零行 = job_not_running（任务已被
-%% 并发迁走/终结）；抽取以消 elvis dont_repeat_yourself（144/177 同构）。
-expect_running_row({ok, [_]}) -> ok;
-expect_running_row({ok, []}) -> {error, job_not_running};
-expect_running_row({error, Reason}) -> {error, Reason}.
+job_query(Conn, Sql, Params, OnMatch, OnEmpty) ->
+    case elib_pg:query_judged(Conn, Sql, Params, OnEmpty) of
+        {ok, Row} when is_map(Row) -> OnMatch;
+        Result -> Result
+    end.
 
 -spec release_ineligible(integer(), pos_integer()) -> ok | {error, term()}.
 release_ineligible(JobId, Attempts) ->

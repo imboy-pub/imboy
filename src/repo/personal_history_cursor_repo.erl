@@ -27,32 +27,21 @@ cursor_tablename() ->
 -spec find_cursor(integer(), binary(), integer(), binary()) ->
     {ok, map() | undefined} | {error, term()}.
 find_cursor(AccountId, Domain, Generation, ClientInstance) ->
-    single_or_undefined(cursor_slot_sql(), [AccountId, Domain, Generation, ClientInstance]).
+    Params = slot_params(AccountId, Domain, Generation, ClientInstance),
+    elib_pg:query_judged(cursor_slot_sql(), Params, {ok, undefined}).
 
 %% @doc 事务内读 slot 游标行（tx 内禁用池连接）。
 -spec find_cursor_tx(pid(), integer(), binary(), integer(), binary()) ->
     {ok, map() | undefined} | {error, term()}.
 find_cursor_tx(Conn, AccountId, Domain, Generation, ClientInstance) ->
-    single_or_undefined_tx(Conn, cursor_slot_sql(), [
-        AccountId, Domain, Generation, ClientInstance
-    ]).
+    Params = slot_params(AccountId, Domain, Generation, ClientInstance),
+    elib_pg:query_judged(Conn, cursor_slot_sql(), Params, {ok, undefined}).
 
-%% 单行判定共享：0 行 = undefined（无行合法），错误透传。
-%% （tx 版子句序反转：三支模式两两不相交、序不影响语义；elvis DYT 以
-%% 变量名归一比较整棵表达式，两份同构 case 会互标，故仅以序区分。）
-single_or_undefined(Sql, Params) ->
-    case elib_pg:query(Sql, Params) of
-        {ok, [Row]} -> {ok, Row};
-        {ok, []} -> {ok, undefined};
-        {error, Reason} -> {error, Reason}
-    end.
+slot_params(AccountId, Domain, Generation, ClientInstance) ->
+    [AccountId, Domain, Generation, ClientInstance].
 
-single_or_undefined_tx(Conn, Sql, Params) ->
-    case elib_pg:query(Conn, Sql, Params) of
-        {error, Reason} -> {error, Reason};
-        {ok, []} -> {ok, undefined};
-        {ok, [Row]} -> {ok, Row}
-    end.
+slot_params(AccountId, Domain, Generation, ClientInstance, Cursor) ->
+    [AccountId, Domain, Generation, ClientInstance, Cursor].
 
 cursor_slot_sql() ->
     <<"SELECT change_cursor, acked_cursor, updated_at FROM ", (cursor_tablename())/binary,
@@ -65,8 +54,8 @@ ensure_cursor_tx(Conn, AccountId, Domain, Generation, ClientInstance) ->
         <<"INSERT INTO ", (cursor_tablename())/binary,
             " (account_id, domain, generation, client_instance)"
             " VALUES ($1, $2, $3, $4) ON CONFLICT DO NOTHING">>,
-    Args = [AccountId, Domain, Generation, ClientInstance],
-    exec_ok(Conn, Sql, Args).
+    Params = slot_params(AccountId, Domain, Generation, ClientInstance),
+    elib_pg:execute_ok(Conn, Sql, Params).
 
 %% @doc 记录本 slot 已发放的最大 event_seq（只前进不回退）。
 -spec record_issued_tx(pid(), integer(), binary(), integer(), binary(), integer()) ->
@@ -76,15 +65,8 @@ record_issued_tx(Conn, AccountId, Domain, Generation, ClientInstance, EventSeq) 
         <<"UPDATE ", (cursor_tablename())/binary,
             " SET change_cursor = GREATEST(change_cursor, $5), updated_at = CURRENT_TIMESTAMP"
             " WHERE account_id = $1 AND domain = $2 AND generation = $3 AND client_instance = $4">>,
-    Args = [AccountId, Domain, Generation, ClientInstance, EventSeq],
-    exec_ok(Conn, Sql, Args).
-
-%% execute 判定共享：成功 = ok，错误透传。（子句序反转区分同构，两支不相交。）
-exec_ok(Conn, Sql, Params) ->
-    case elib_pg:execute(Conn, Sql, Params) of
-        {error, Reason} -> {error, Reason};
-        {ok, _} -> ok
-    end.
+    Params = slot_params(AccountId, Domain, Generation, ClientInstance, EventSeq),
+    elib_pg:execute_ok(Conn, Sql, Params).
 
 %% @doc durably-ack：仅推进 ≤ 已发放最大值（acked ≤ change 由 DB CHECK 兜底）。
 %% 返回推进后的 {acked_cursor, change_cursor}；越界/未命中返回 none。
@@ -97,17 +79,8 @@ ack_cursor_tx(Conn, AccountId, Domain, Generation, ClientInstance, Cursor) ->
             " WHERE account_id = $1 AND domain = $2 AND generation = $3 AND client_instance = $4"
             " AND $5 <= change_cursor"
             " RETURNING acked_cursor, change_cursor">>,
-    Args = [AccountId, Domain, Generation, ClientInstance, Cursor],
-    QueryResult = elib_pg:query(Conn, Sql, Args),
-    row_judgment(QueryResult, {ok, none}).
-
-%% 行判定共享（同 personal_history_repo：同形判定块收敛为一份定义）。
-row_judgment(QueryResult, ZeroRowResult) ->
-    case QueryResult of
-        {ok, [Row]} -> {ok, Row};
-        {ok, []} -> ZeroRowResult;
-        {error, Reason} -> {error, Reason}
-    end.
+    Params = slot_params(AccountId, Domain, Generation, ClientInstance, Cursor),
+    elib_pg:query_judged(Conn, Sql, Params, {ok, none}).
 
 %% @doc purge：事务内清 slot 游标。
 -spec delete_cursors_by_account_tx(pid(), integer(), binary()) ->

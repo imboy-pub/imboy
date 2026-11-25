@@ -54,16 +54,14 @@ archive_tablename() ->
 -spec find_authorization(integer(), binary()) -> {ok, map() | undefined} | {error, term()}.
 find_authorization(AccountId, Domain) ->
     Sql = authorization_select(),
-    QueryResult = elib_pg:query(Sql, [AccountId, Domain]),
-    row_judgment(QueryResult, {ok, undefined}).
+    elib_pg:query_judged(Sql, [AccountId, Domain], {ok, undefined}).
 
 %% @doc 事务内 FOR UPDATE 锁授权行（写入与关闭锁同一行，W1/W4 竞态定序）。
 -spec lock_authorization_tx(pid(), integer(), binary()) ->
     {ok, map() | undefined} | {error, term()}.
 lock_authorization_tx(Conn, AccountId, Domain) ->
     Sql = <<(authorization_select())/binary, " FOR UPDATE">>,
-    QueryResult = elib_pg:query(Conn, Sql, [AccountId, Domain]),
-    row_judgment(QueryResult, {ok, undefined}).
+    elib_pg:query_judged(Conn, Sql, [AccountId, Domain], {ok, undefined}).
 
 authorization_select() ->
     <<
@@ -83,9 +81,8 @@ insert_authorization_tx(Conn, AccountId, Domain, Generation, ClientInstanceId) -
             " VALUES ($1, $2, 'ON', $3, CURRENT_TIMESTAMP, $4)"
             " ON CONFLICT (account_id, domain) DO NOTHING"
             " RETURNING state, generation, enabled_at">>,
-    Args = [AccountId, Domain, Generation, ClientInstanceId],
-    QueryResult = elib_pg:query(Conn, Sql, Args),
-    row_judgment(QueryResult, {error, conflict}).
+    Params = account_params(AccountId, Domain, Generation, ClientInstanceId),
+    elib_pg:query_judged(Conn, Sql, Params, {error, conflict}).
 
 %% @doc 重新启用（OFF / OFF_PURGED → ON，原子提升 generation+1，新代次）。
 -spec enable_authorization_tx(pid(), integer(), binary(), integer(), binary()) ->
@@ -99,9 +96,8 @@ enable_authorization_tx(Conn, AccountId, Domain, FromGeneration, ClientInstanceI
             " WHERE account_id = $1 AND domain = $2 AND state IN ('OFF','OFF_PURGED')"
             " AND generation = $4"
             " RETURNING state, generation, enabled_at">>,
-    Args = [AccountId, Domain, ClientInstanceId, FromGeneration],
-    QueryResult = elib_pg:query(Conn, Sql, Args),
-    row_judgment(QueryResult, {error, conflict}).
+    Params = account_params(AccountId, Domain, ClientInstanceId, FromGeneration),
+    elib_pg:query_judged(Conn, Sql, Params, {error, conflict}).
 
 %% @doc disable 第一步（W3 删账先于密文删除）：ON → OFF_PURGE_PENDING，
 %% 原子 generation+1；CAS 条件 state='ON' AND generation=$3。
@@ -115,8 +111,8 @@ cas_disable_tx(Conn, AccountId, Domain, FromGeneration) ->
             " client_instance_id = NULL, updated_at = CURRENT_TIMESTAMP"
             " WHERE account_id = $1 AND domain = $2 AND state = 'ON' AND generation = $3"
             " RETURNING state, generation, purge_started_at">>,
-    QueryResult = elib_pg:query(Conn, Sql, [AccountId, Domain, FromGeneration]),
-    row_judgment(QueryResult, {ok, none}).
+    Params = [AccountId, Domain, FromGeneration],
+    elib_pg:query_judged(Conn, Sql, Params, {ok, none}).
 
 %% @doc purge 完成落账：OFF_PURGE_PENDING → OFF_PURGED（防复活标记本体：
 %% account/domain/generation/purged_at 留存，跨代复活被拒）。
@@ -128,10 +124,7 @@ mark_purged_tx(Conn, AccountId, Domain, Generation) ->
             " updated_at = CURRENT_TIMESTAMP"
             " WHERE account_id = $1 AND domain = $2 AND state = 'OFF_PURGE_PENDING'"
             " AND generation = $3">>,
-    case elib_pg:execute(Conn, Sql, [AccountId, Domain, Generation]) of
-        {ok, _} -> ok;
-        {error, Reason} -> {error, Reason}
-    end.
+    elib_pg:execute_ok(Conn, Sql, [AccountId, Domain, Generation]).
 
 %% @doc W3 可重入：崩在 purge 中途时再次进入同一代次的清理（不动 generation）。
 -spec reenter_purge_tx(pid(), integer(), binary()) ->
@@ -164,20 +157,10 @@ find_accepted_message_tx(Conn, AccountId, Domain, ConversationId, MsgId) ->
         " WHERE $2 IN (fact.from_id, fact.to_id) AND fact.conversation_id = $4",
         " AND fact.accepted_at >= auth.enabled_at"
     >>,
-    Args = [MsgId, AccountId, Domain, ConversationId],
-    QueryResult = elib_pg:query(Conn, Sql, Args),
-    row_judgment(QueryResult, {ok, undefined}).
+    Params = [MsgId, AccountId, Domain, ConversationId],
+    elib_pg:query_judged(Conn, Sql, Params, {ok, undefined}).
 
 %% Only the immutable accept time qualifies. Conflicting copies or edit versions fail closed.
-
-%% 行判定共享（elvis DYT：同形判定块收敛为一份定义；零行语义由调用点给——
-%% undefined/none/conflict 各归其位，模式两两不相交）。
-row_judgment(QueryResult, ZeroRowResult) ->
-    case QueryResult of
-        {ok, [Row]} -> {ok, Row};
-        {ok, []} -> ZeroRowResult;
-        {error, Reason} -> {error, Reason}
-    end.
 
 accepted_message_sql(MsgRef) ->
     <<
@@ -259,12 +242,7 @@ insert_archive_tx(Conn, Row) ->
             " ON CONFLICT (account_id, domain, conversation_id, msg_id) DO NOTHING",
             " RETURNING id, action_version, conv_seq, event_seq, created_at">>,
     Params = archive_row_params(Row),
-    case elib_pg:query(Conn, Sql, Params) of
-        {ok, [Inserted]} -> {ok, Inserted};
-        {ok, []} -> {ok, exists};
-        {error, {error, _, <<"23505">>, unique_violation, _, _}} -> {error, unique_violation};
-        {error, Reason} -> {error, Reason}
-    end.
+    archive_write_result(elib_pg:query_judged(Conn, Sql, Params, {ok, exists})).
 
 %% 归档插入专用 11 列参数表（$1..$10 + envelope_meta::jsonb；含 generation）。
 archive_row_params(Row) ->
@@ -275,7 +253,12 @@ archive_row_params(Row) ->
         maps:get(msg_id, Row),
         maps:get(action_version, Row),
         maps:get(conv_seq, Row),
-        maps:get(generation, Row),
+        maps:get(generation, Row)
+        | archive_envelope_params(Row)
+    ].
+
+archive_envelope_params(Row) ->
+    [
         maps:get(key_version, Row),
         maps:get(nonce, Row),
         maps:get(ciphertext, Row),
@@ -290,9 +273,8 @@ find_msg_id_by_nonce_tx(Conn, AccountId, Domain, KeyVersion, Nonce) ->
         <<"SELECT msg_id FROM ", (archive_tablename())/binary,
             " WHERE account_id = $1 AND domain = $2 AND key_version = $3 AND nonce = $4",
             " FOR UPDATE">>,
-    Args = [AccountId, Domain, KeyVersion, Nonce],
-    QueryResult = elib_pg:query(Conn, Sql, Args),
-    row_judgment(QueryResult, {ok, undefined}).
+    Params = account_params(AccountId, Domain, KeyVersion, Nonce),
+    elib_pg:query_judged(Conn, Sql, Params, {ok, undefined}).
 
 archive_select() ->
     <<
@@ -311,9 +293,8 @@ find_archive_tx(Conn, AccountId, Domain, ConversationId, MsgId) ->
             (archive_select())/binary,
             " WHERE account_id = $1 AND domain = $2 AND conversation_id = $3 AND msg_id = $4"
         >>,
-    Args = [AccountId, Domain, ConversationId, MsgId],
-    QueryResult = elib_pg:query(Conn, Sql, Args),
-    row_judgment(QueryResult, {ok, undefined}).
+    Params = account_params(AccountId, Domain, ConversationId, MsgId),
+    elib_pg:query_judged(Conn, Sql, Params, {ok, undefined}).
 
 %% @doc 终态推进（编辑/撤回走 action_version 终态）：仅当已有版本更低时
 %% 更新，并发放新的事件序；nonce 唯一性冲突原样返回。
@@ -337,19 +318,15 @@ advance_archive_tx(Conn, Row) ->
         maps:get(conversation_id, Row),
         maps:get(msg_id, Row),
         maps:get(action_version, Row),
-        maps:get(conv_seq, Row),
-        maps:get(key_version, Row),
-        maps:get(nonce, Row),
-        maps:get(ciphertext, Row),
-        jsone:encode(maps:get(envelope_meta, Row))
+        maps:get(conv_seq, Row)
+        | archive_envelope_params(Row)
     ],
-    %% 零行子句前置与 insert 路径反转区分 elvis DYT 同构（ok 两支不相交）。
-    case elib_pg:query(Conn, Sql, Params) of
-        {ok, []} -> {ok, none};
-        {ok, [Advanced]} -> {ok, Advanced};
-        {error, {error, _, <<"23505">>, unique_violation, _, _}} -> {error, unique_violation};
-        {error, Reason} -> {error, Reason}
-    end.
+    archive_write_result(elib_pg:query_judged(Conn, Sql, Params, {ok, none})).
+
+archive_write_result({error, {error, _, <<"23505">>, unique_violation, _, _}}) ->
+    {error, unique_violation};
+archive_write_result(Result) ->
+    Result.
 
 %% @doc 墓碑（MSG-H15）：按幂等键置 deleted_at（撤回终态在归档侧的投影）。
 -spec mark_deleted_tx(pid(), integer(), binary(), binary(), binary()) ->
@@ -360,7 +337,8 @@ mark_deleted_tx(Conn, AccountId, Domain, ConversationId, MsgId) ->
             " SET deleted_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP, event_seq = DEFAULT"
             " WHERE account_id = $1 AND domain = $2 AND conversation_id = $3 AND msg_id = $4"
             " AND deleted_at IS NULL">>,
-    elib_pg:execute_count(Conn, Sql, [AccountId, Domain, ConversationId, MsgId]).
+    Params = account_params(AccountId, Domain, ConversationId, MsgId),
+    elib_pg:execute_count(Conn, Sql, Params).
 
 %% Caller holds the C2C original lock; account locks preserve commit order for each cursor.
 -spec mark_revoked_tx(pid(), integer(), integer(), binary()) -> ok | {error, term()}.
@@ -408,7 +386,7 @@ changes_since_tx(Conn, AccountId, Domain, Generation, AfterEventSeq, Limit) ->
             " WHERE account_id = $1 AND domain = $2 AND generation = $3 AND event_seq > $4"
             " ORDER BY event_seq ASC LIMIT $5"
         >>,
-    Params = [AccountId, Domain, Generation, AfterEventSeq, Limit],
+    Params = event_window_params(AccountId, Domain, Generation, AfterEventSeq, Limit),
     stream_query_tx(Conn, <<"event_seq ASC">>, Sql, Params).
 
 %% @doc page 分页快照：conv_seq DESC；墓碑行一并返回（稳定合并版本+tombstone）。
@@ -422,8 +400,7 @@ page_archive(AccountId, Domain, Generation, ConversationId, Before, Limit) ->
             " AND ($5::bigint = 0 OR conv_seq < $5)"
             " ORDER BY conv_seq DESC LIMIT $6"
         >>,
-    Base = [AccountId, Domain, Generation],
-    Params = Base ++ [ConversationId, Before, Limit],
+    Params = archive_page_params(AccountId, Domain, Generation, ConversationId, Before, Limit),
     stream_query(<<"conv_seq DESC">>, Sql, Params).
 
 %% Holding the authorization row makes the cut independent of uncommitted mutations.
@@ -433,7 +410,8 @@ snapshot_bounds_tx(Conn, AccountId, Domain, Generation) ->
     Sql =
         <<"SELECT COALESCE(MAX(id), 0) AS cut, COALESCE(MAX(event_seq), 0) AS watermark FROM ",
             (archive_tablename())/binary, " WHERE account_id=$1 AND domain=$2 AND generation=$3">>,
-    case elib_pg:query(Conn, Sql, [AccountId, Domain, Generation]) of
+    Params = [AccountId, Domain, Generation],
+    case elib_pg:query(Conn, Sql, Params) of
         {ok, [#{<<"cut">> := Cut, <<"watermark">> := Watermark}]} -> {ok, Cut, Watermark};
         {error, _} = Error -> Error
     end.
@@ -447,8 +425,7 @@ snapshot_rows_tx(Conn, AccountId, Domain, Generation, Cut, After, Limit) ->
             " WHERE account_id=$1 AND domain=$2 AND generation=$3 AND id>$4 AND id<=$5",
             " ORDER BY id ASC LIMIT $6"
         >>,
-    Base = [AccountId, Domain, Generation],
-    Params = Base ++ [After, Cut, Limit],
+    Params = archive_page_params(AccountId, Domain, Generation, After, Cut, Limit),
     stream_query_tx(Conn, <<"id ASC">>, Sql, Params).
 
 %% The identity sequence is global. A cursor window is measured in this account's pending rows.
@@ -459,7 +436,8 @@ changes_exceed_window_tx(Conn, AccountId, Domain, Generation, Cursor, Window) ->
         <<"SELECT EXISTS (SELECT 1 FROM ", (archive_tablename())/binary,
             " WHERE account_id = $1 AND domain = $2 AND generation = $3 AND event_seq > $4",
             " ORDER BY event_seq OFFSET $5 LIMIT 1) AS outside_window">>,
-    case elib_pg:query(Conn, Sql, [AccountId, Domain, Generation, Cursor, Window]) of
+    Params = event_window_params(AccountId, Domain, Generation, Cursor, Window),
+    case elib_pg:query(Conn, Sql, Params) of
         {ok, [#{<<"outside_window">> := Outside}]} -> {ok, Outside};
         {error, Reason} -> {error, Reason}
     end.
@@ -483,6 +461,15 @@ delete_archive_by_account_tx(Conn, AccountId, Domain) ->
     Sql =
         <<"DELETE FROM ", (archive_tablename())/binary, " WHERE account_id = $1 AND domain = $2">>,
     elib_pg:execute_count(Conn, Sql, [AccountId, Domain]).
+
+account_params(AccountId, Domain, Third, Fourth) ->
+    [AccountId, Domain, Third, Fourth].
+
+event_window_params(AccountId, Domain, Generation, Cursor, Limit) ->
+    [AccountId, Domain, Generation, Cursor, Limit].
+
+archive_page_params(AccountId, Domain, Generation, FirstKey, SecondKey, Limit) ->
+    [AccountId, Domain, Generation, FirstKey, SecondKey, Limit].
 
 %% ===================================================================
 %% EUnit tests.

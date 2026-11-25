@@ -24,6 +24,14 @@
 
 ## 3. 强制要求
 
+`query_judged(Sql, Params, EmptyResult)` 使用连接池。事务内使用
+`query_judged(Conn, Sql, Params, EmptyResult)`，沿用传入的连接。恰好一行返回
+`{ok, Row}`，空集返回 `EmptyResult`，数据库错误原样透传。多行触发
+`case_clause`。`one/2,3` 则允许多行并取首行。
+
+事务内执行无 `RETURNING` 语句且无需计数时，可用 `execute_ok(Conn, Sql, Params)`。
+二元成功结果统一为 `ok`，数据库错误原样透传。需要受影响行数时使用 `execute_count/3`。
+
 ### 所有数据库操作必须使用 `elib_pg` 模块
 
 

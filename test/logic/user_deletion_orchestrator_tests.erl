@@ -394,11 +394,21 @@ cancel_after_claim_preserves_user_test_() ->
             ok = create_user(Uid),
             ok = seed_expired_request(Uid),
             {ok, #{requested_at := PreviousRequestAt}} = user_logic:deletion_status(Uid),
-            {ok, _} = elib_pg:with_tx(fun(Conn) ->
-                user_deletion_job_repo:ensure_job_tx(Conn, Uid, <<"fixture">>)
+            ok = elib_pg:with_tx(fun(Conn) ->
+                {ok, created} = user_deletion_job_repo:ensure_job_tx(Conn, Uid, <<"fixture">>),
+                {ok, exists} = user_deletion_job_repo:ensure_job_tx(Conn, Uid, <<"duplicate">>),
+                ok
             end),
-            {ok, #{<<"user_id">> := Uid} = Job} =
+            {ok, #{<<"account">> := <<"fixture">>}} = user_deletion_job_repo:find_by_user(Uid),
+            {ok, #{<<"user_id">> := Uid, <<"id">> := JobId, <<"attempts">> := Attempts} = Job} =
                 user_deletion_job_repo:claim_pending_expired(?GRACE, <<"cancel-race">>),
+            {ok, _} = elib_pg:with_tx(fun(Conn) ->
+                user_deletion_job_repo:lock_execution_tx(Conn, Uid, JobId, Job, ?GRACE)
+            end),
+            Stale = Job#{<<"attempts">> => Attempts + 1},
+            {error, job_not_running} = elib_pg:with_tx(fun(Conn) ->
+                user_deletion_job_repo:lock_execution_tx(Conn, Uid, JobId, Stale, ?GRACE)
+            end),
             Parent = self(),
             Ref = make_ref(),
             Worker = spawn(fun() ->

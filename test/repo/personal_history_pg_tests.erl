@@ -622,6 +622,29 @@ key_package_conflict_and_malformed_test_() ->
 %%% §2.4/W2 changes 单调发放 + ack-cursor 水位推进
 %%%-------------------------------------------------------------------
 
+cursor_repo_single_row_and_rollback_test_() ->
+    ?TEST_WITH_DB(fun() ->
+        Domain = domain(),
+        Slot = <<"issue84-rollback">>,
+        Repo = personal_history_cursor_repo,
+        ?assertEqual({ok, undefined}, Repo:find_cursor(?A1, Domain, 1, Slot)),
+        ?assertEqual(
+            {error, cursor_rollback},
+            elib_pg:with_tx(fun(Conn) ->
+                {ok, undefined} = Repo:find_cursor_tx(Conn, ?A1, Domain, 1, Slot),
+                {ok, none} = Repo:ack_cursor_tx(Conn, ?A1, Domain, 1, Slot, 1),
+                ok = Repo:ensure_cursor_tx(Conn, ?A1, Domain, 1, Slot),
+                ok = Repo:record_issued_tx(Conn, ?A1, Domain, 1, Slot, 5),
+                ok = Repo:ensure_cursor_tx(Conn, ?A1, Domain, 1, Slot),
+                {ok, none} = Repo:ack_cursor_tx(Conn, ?A1, Domain, 1, Slot, 6),
+                {ok, #{<<"acked_cursor">> := 5, <<"change_cursor">> := 5}} =
+                    Repo:ack_cursor_tx(Conn, ?A1, Domain, 1, Slot, 5),
+                elib_pg:abort({abort_tx, cursor_rollback})
+            end)
+        ),
+        ?assertEqual({ok, undefined}, Repo:find_cursor(?A1, Domain, 1, Slot))
+    end).
+
 changes_issue_and_ack_watermark_test_() ->
     ?TEST_WITH_DB_TIMEOUT(60, fun() ->
         cleanup_test_rows(),

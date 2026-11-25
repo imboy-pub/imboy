@@ -39,12 +39,8 @@ updated: "2026-11-25"
 # 2026-11-25 追加 2 文件（greenup-5 拆分）：msg_c2c_reply_ds / msg_c2g_reply_repo
 #   为 ≤800 行质量门自 msg_c2c_ds / msg_c2g_repo 拆出的新模块，继承源模块既有
 #   KNOWN 形状（write_msg_with_reply 超 arity——源模块本就在清单）；行为逐字未动。
-# 2026-11-25 回册 3 文件（基线绿修车道 greenup-3：personal_history 三仓 elvis 残余
-#   dont_repeat_yourself 收编——本车道已真修 5 文件全清（handler/geo_regions_ds/
-#   personal_history_ds/msg_ack_logic/msg_burn_logic）并把 personal_history_repo
-#   按 no_god_modules（37>30）真拆三仓（cursor/key_package 独立仓），残余为仓库层
-#   统一管道同构（与既有 src/repo 收编同类，风格/结构类，无缺陷指示）；跟进
-#   issue #84（模板化消除方案已附）。
+# 2026-11-25 Issue #84：统一查询结果判定后，Elvis 5.0.3 确认个人历史、
+#   游标和注销任务三个 Repo 的 dont_repeat_yourself 清零，移除对应登记。
 # 2026-11-06 回册 12 文件（CI imboy Quality Gate elvis 分类 NEW=12：ai-agent avatar/
 #   direct-upload 相关 ds/repo、attachment edge proxy/worker、talk_record_playback_stream、
 #   msg_forward/forward_attachment、eb_asset_download_ticket 等近期批次带入；规则为
@@ -1240,7 +1236,6 @@ gates:
       - src/repo/talk_record_summary_repo.erl
       - src/repo/transfer_repo.erl
       - src/repo/user_collect_repo.erl
-      - src/repo/user_deletion_job_repo.erl
       - src/repo/user_deletion_request_repo.erl
       - src/repo/user_repo.erl
       - src/repo/user_setting_repo.erl

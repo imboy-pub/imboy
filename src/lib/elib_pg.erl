@@ -35,11 +35,14 @@
 
     execute/2,
     execute/3,
+    execute_ok/3,
     execute_count/2,
     execute_count/3,
 
     query/2,
     query/3,
+    query_judged/3,
+    query_judged/4,
 
     %% 命名 prepared 快路径（Q-03 v5 修复：省每次匿名 Parse+Describe 往返，
     %% 并让 PG 复用通用计划；结果与 query/3 同形）
@@ -555,6 +558,14 @@ execute(Conn, Sql, Params) ->
 % 没有 RETURNING 子句：返回 {ok, 1} （二元组）
 % 有 RETURNING 子句：返回 {ok, 1, Result} （三元组），其中 Result 可能是 {Id} 或 [{Id}]
 
+%% @doc 执行无 RETURNING 语句，仅保留成功或错误。
+-spec execute_ok(epgsql:connection(), iodata(), [term()]) -> ok | {error, term()}.
+execute_ok(Conn, Sql, Params) ->
+    case execute(Conn, Sql, Params) of
+        {ok, _} -> ok;
+        {error, _} = Error -> Error
+    end.
+
 %%--------------------------------------------------------------------
 %% @doc execute 的计数契约形态：UPDATE / DELETE 等无 RETURNING 语句专用。
 %% 宽结果形态按影响行数契约收敛（行集/三元组对本契约不可达，防御性归零/取计数），
@@ -625,6 +636,24 @@ query(C, Sql, Params) ->
                 Error
         end,
     retry_deadlock_result(C, Result).
+
+%% @doc 严格单行查询。空集返回调用方指定的结果，多行触发 case_clause。
+-spec query_judged(iodata(), [term()], Empty) -> {ok, map()} | {error, term()} | Empty.
+query_judged(Sql, Params, Empty) ->
+    judge_query_rows(query(Sql, Params), Empty).
+
+%% @doc 沿用调用方的连接，不向连接池另取连接。
+-spec query_judged(epgsql:connection(), iodata(), [term()], Empty) ->
+    {ok, map()} | {error, term()} | Empty.
+query_judged(Conn, Sql, Params, Empty) ->
+    judge_query_rows(query(Conn, Sql, Params), Empty).
+
+judge_query_rows(Result, Empty) ->
+    case Result of
+        {ok, [Row]} -> {ok, Row};
+        {ok, []} -> Empty;
+        {error, _} = Error -> Error
+    end.
 
 %%--------------------------------------------------------------------
 %% @doc

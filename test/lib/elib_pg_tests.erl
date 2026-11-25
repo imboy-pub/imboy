@@ -58,6 +58,63 @@ stop_fake_conn(_) ->
 %% query/2 测试
 %% ===================================================================
 
+query_judged_test_() ->
+    {setup,
+        fun() ->
+            PoolConn = setup_pooler_mock(),
+            TxConn = spawn_fake_conn(),
+            meck:new(epgsql, [no_link, passthrough]),
+            {PoolConn, TxConn}
+        end,
+        fun({PoolConn, TxConn}) ->
+            meck:unload(epgsql),
+            teardown_pooler_mock(PoolConn),
+            stop_fake_conn(PoolConn),
+            stop_fake_conn(TxConn)
+        end,
+        fun({PoolConn, TxConn}) ->
+            ?_test(begin
+                Sql = <<"SELECT $1 AS value">>,
+                Col = #column{name = <<"value">>},
+                Row = #{<<"value">> => 7},
+                DbError = {error, db_error},
+                meck:expect(epgsql, equery, fun
+                    (Conn, Query, [pool]) when Conn =:= PoolConn, Query =:= Sql ->
+                        {ok, [Col], [{7}]};
+                    (Conn, Query, [empty]) when Conn =:= TxConn, Query =:= Sql ->
+                        {ok, [Col], []};
+                    (Conn, Query, [many]) when Conn =:= TxConn, Query =:= Sql ->
+                        {ok, [Col], [{7}, {7}]};
+                    (Conn, Query, [error]) when Conn =:= TxConn, Query =:= Sql ->
+                        DbError
+                end),
+                ?assertEqual({ok, Row}, elib_pg:query_judged(Sql, [pool], absent)),
+                ?assertEqual(
+                    {ok, absent}, elib_pg:query_judged(TxConn, Sql, [empty], {ok, absent})
+                ),
+                ?assertEqual(DbError, elib_pg:query_judged(TxConn, Sql, [error], absent)),
+                ?assertError(
+                    {case_clause, {ok, [Row, Row]}},
+                    elib_pg:query_judged(TxConn, Sql, [many], absent)
+                ),
+                Update = <<"UPDATE test_table SET value = $1">>,
+                meck:expect(epgsql, parse, fun(Conn, Query) when
+                    Conn =:= TxConn, Query =:= Update
+                ->
+                    {ok, stmt}
+                end),
+                meck:expect(epgsql, execute_batch, fun
+                    (Conn, [{stmt, [0]}]) when Conn =:= TxConn -> [{ok, 0}];
+                    (Conn, [{stmt, [1]}]) when Conn =:= TxConn -> [{ok, 1}];
+                    (Conn, [{stmt, [error]}]) when Conn =:= TxConn -> [DbError]
+                end),
+                ?assertEqual(ok, elib_pg:execute_ok(TxConn, Update, [0])),
+                ?assertEqual(ok, elib_pg:execute_ok(TxConn, Update, [1])),
+                ?assertEqual(DbError, elib_pg:execute_ok(TxConn, Update, [error])),
+                ?assertEqual(1, meck:num_calls(pooler, take_member, '_'))
+            end)
+        end}.
+
 query_select_all_test_() ->
     Col = #column{
         name = <<"col">>,

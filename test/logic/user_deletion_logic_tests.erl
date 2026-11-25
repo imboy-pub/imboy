@@ -85,10 +85,11 @@ export_user_data_empty_user_test() ->
 %% ===================================================================
 
 cleanup_now_no_expired_test() ->
-    Mods = [elib_pg, elib_log, user_repo, user_ds],
+    Mods = [elib_pg, elib_log, user_repo, user_ds, user_deletion_job_repo],
     ?WITH_MECKS(Mods, fun() ->
         meck:expect(user_repo, tablename, fun() -> <<"public.user">> end),
         meck:expect(elib_pg, query, fun(_, _) -> {ok, []} end),
+        meck:expect(user_deletion_job_repo, claim_pending_expired, fun(_, _) -> {ok, none} end),
         meck:expect(elib_log, internal_log, fun(_, _, _, _) -> ok end),
         meck:expect(elib_log, internal_log, fun(_, _, _, _, _) -> ok end),
 
