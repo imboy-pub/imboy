@@ -347,7 +347,7 @@ if [ ! -f "$COMPOSE_FILE" ]; then
 
   索取方式：leeyisoft@qq.com
   仅评估/试用可先用最小演示环境（无需该文件）：
-      docker compose -f docker-compose.demo.yml up -d
+      docker compose -f ../docker-compose.yml up -d
   或改用随仓分发的社区版：bash install.sh --edition community"
   else
     die "缺少 $COMPOSE_FILE —— 社区版 compose 随仓分发，本目录没有说明仓库不完整，

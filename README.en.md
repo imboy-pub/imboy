@@ -4,6 +4,18 @@
 
 # IMBoy Backend
 
+## Local Development: 5-Minute Startup
+
+The root \`docker-compose.yml\` starts the local stack: PostgreSQL 18.7, Garage, Erlang/OTP 29 API, React Admin, Widget/Seat Console, LiveKit and Nginx.
+
+\`\`\`bash
+cp .env.example .env
+./scripts/dev_setup.sh
+\`\`\`
+
+See the [local development guide](docs/local-development.md) for URLs, service profiles, native API/Admin mode and troubleshooting. Uptrace and Prometheus are intentionally excluded from the local stack.
+
+
 [简体中文](./README.md)
 
 IMBoy is a self-hostable instant messaging platform. This repository contains the Erlang/OTP backend, database migrations, production deployment files, and product documentation. The Flutter client and React admin console live in separate repositories.
@@ -204,7 +216,7 @@ Full manual: the [deployment guide](./deploy/README.md).
 
 ```bash
 cd deploy
-docker compose -f docker-compose.demo.yml up -d
+docker compose -f docker-compose.yml up -d
 # after ~30s open http://127.0.0.1:9800/api/v1/init
 ```
 

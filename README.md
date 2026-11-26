@@ -4,6 +4,18 @@
 
 # IMBoy 后端
 
+## 本地开发：5 分钟启动
+
+完整本地环境由仓库根目录的单一 \`docker-compose.yml\` 管理，包含 PostgreSQL 18.7、Garage、Erlang/OTP 29 API、React Admin、Widget/客服坐席、LiveKit 和 Nginx。
+
+\`\`\`bash
+cp .env.example .env
+./scripts/dev_setup.sh
+\`\`\`
+
+默认启动 Community 全套服务。首次启动、服务地址、按需启动、Enterprise profile 和宿主机原生运行方式，见 [本地开发指南](docs/local-development.md)。Uptrace / Prometheus 不属于本地启动前置条件。
+
+
 [English](./README.en.md)
 
 IMBoy 是可私有部署的即时通讯平台。本仓库包含 Erlang/OTP 后端、数据库迁移、生产部署配置和产品文档；Flutter 客户端与 React 管理后台在独立仓库中。
@@ -191,7 +203,7 @@ IMBOY_IMAGE_DIGEST=sha256:...
 
 ```bash
 cd deploy
-docker compose -f docker-compose.demo.yml up -d
+docker compose -f docker-compose.yml up -d
 # 30 秒后访问 http://127.0.0.1:9800/api/v1/init
 ```
 

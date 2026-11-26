@@ -16,7 +16,7 @@ deploy/
 ├── docker-compose.community.yml # 社区版编排（随仓分发）：pg18/garage/backend/admin/nginx/certbot/livekit
 │                                #   + 监控 profile（--profile monitoring）：prometheus/alertmanager/loki/promtail/grafana
 ├── docker-compose.prod.yml      # 商务版编排（不随仓分发，leeyisoft@qq.com 渠道获取后放入本目录）
-├── docker-compose.demo.yml      # 最小两服务零配置评估栈
+├── ../docker-compose.yml      # 最小两服务零配置评估栈
 ├── docker-compose.healthcheck.yml / observability.yml / alert-dingtalk.yml / uptrace.yml / sales-policy.yml
 │                                # 商务版 overlay：按序 -f 叠加（就绪检查/观测组件/钉钉告警/Uptrace/无密钥策略）
 ├── .env.example / ops.env.example
