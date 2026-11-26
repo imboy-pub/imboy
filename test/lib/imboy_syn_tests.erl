@@ -12,10 +12,14 @@
 %%%===================================================================
 
 start_delivery_timer_local_test() ->
-    Ref = imboy_syn:start_delivery_timer(0, self(), local_delivery),
-    ?assert(is_reference(Ref)),
+    %% BE-14：0ms 帧同步直达邮箱，返回 ok（无 timer ref 可取消，hop0 从不在
+    %% ack_retry_cache 登记）。投递消息保持 start_timer 形状
+    %% {timeout, Ref, Msg}，Ref 为真实 reference，消费侧通用子句照常匹配。
+    ok = imboy_syn:start_delivery_timer(0, self(), local_delivery),
     receive
-        {timeout, Ref, local_delivery} -> ok
+        {timeout, Ref, local_delivery} ->
+            ?assert(is_reference(Ref)),
+            ok
     after 100 ->
         ?assert(false)
     end.

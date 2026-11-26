@@ -38,9 +38,16 @@ self_profile_projection_test_() ->
         end,
         fun(_) ->
             ?_test(begin
+                %% user_logic 被 no_link mock（非 passthrough）：投影重构新增的
+                %% profile_region_selection/2 必须显式登记，委托真实现
+                %% （user_region_logic），否则 web_me 在 meck undef 上 503。
+                meck:expect(user_logic, profile_region_selection, fun(Region, Raw) ->
+                    user_region_logic:profile_region_selection(Region, Raw)
+                end),
                 meck:expect(user_logic, find_by_id, fun(123, Columns) ->
                     ?assertEqual(
-                        <<"id,account,email,nickname,avatar,gender,region,sign">>, Columns
+                        <<"id,account,email,nickname,avatar,gender,region,sign,region_selection">>,
+                        Columns
                     ),
                     #{
                         <<"id">> => 123,
@@ -51,6 +58,10 @@ self_profile_projection_test_() ->
                         <<"gender">> => 3,
                         <<"region">> => <<"region">>,
                         <<"sign">> => <<"sign">>,
+                        %% region_selection 列随 profile 投影为
+                        %% regionSelection/regionSelectionStatus；null=未选择，
+                        %% 非空 region 下的 absent 语义是 unresolved。
+                        <<"region_selection">> => null,
                         <<"password">> => <<"must-never-return">>,
                         <<"mobile">> => <<"must-never-return">>
                     }
@@ -62,7 +73,9 @@ self_profile_projection_test_() ->
                 ?assertEqual(<<"123">>, maps:get(<<"uid">>, Profile)),
                 ?assertNot(maps:is_key(<<"password">>, Profile)),
                 ?assertNot(maps:is_key(<<"mobile">>, Profile)),
-                ?assertEqual(9, map_size(Profile)),
+                ?assertEqual(11, map_size(Profile)),
+                ?assertEqual(null, maps:get(<<"regionSelection">>, Profile)),
+                ?assertEqual(<<"unresolved">>, maps:get(<<"regionSelectionStatus">>, Profile)),
                 Settings = maps:get(<<"setting">>, Profile),
                 ?assertEqual(5, map_size(Settings)),
                 ?assertEqual(false, maps:get(<<"allow_search">>, Settings)),

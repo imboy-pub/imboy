@@ -816,7 +816,6 @@ interface_sources_have_no_db_or_dynamic_dispatch_test() ->
                 <<"cs_pg_">>,
                 <<"eb_pg_">>,
                 <<"_repo:">>,
-                <<"_ds:">>,
                 <<"apply(">>,
                 <<"list_to_atom">>,
                 <<"binary_to_atom">>,
@@ -831,10 +830,27 @@ interface_sources_have_no_db_or_dynamic_dispatch_test() ->
                 end,
                 Forbidden
             ),
+            %% `_ds:` 仍整域禁用；唯二豁免是 SSE 流面鉴权复核的 auth_ds: /
+            %% token_ds:（7f190b38e 轮前复核 + 68bffa003 seat token 设备绑定，
+            %% 与平台 src/api 中间件同构的认证事实面）。其余任何 _ds: 引用
+            %% 照旧判红。
+            ?assertEqual(
+                {File, <<"non_auth_ds:">>, []},
+                {File, <<"non_auth_ds:">>, ds_references_outside_auth_surface(Src)}
+            ),
             ?assertEqual([], asset_operation_references(read_source(File)), {asset_call, File})
         end,
         Files
     ).
+
+ds_references_outside_auth_surface(Src) ->
+    case re:run(Src, <<"\\b[a-z][a-z0-9_]*_ds:">>, [global, {capture, all, binary}]) of
+        {match, Matches} ->
+            %% global + binary capture 每个匹配是单元素列表，先展开
+            lists:usort([B || [B] <- Matches]) -- [<<"auth_ds:">>, <<"token_ds:">>];
+        nomatch ->
+            []
+    end.
 
 asset_operation_references_test() ->
     ?assertEqual(

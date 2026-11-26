@@ -30,6 +30,13 @@ revoke_offline_atomic_update_error_rolls_back_test_() ->
             {personal_message_order_repo, [
                 {'execute_formal_tx', 6, fun(conn, 1, 2, <<"request">>, _, _) -> {ok, 1} end}
             ]},
+            %% BE-04：accept_tx 头部的 per-original advisory lock 与撤回终态
+            %% 守卫查询也走 elib_pg:query/3，替身必须覆盖，否则 passthrough
+            %% 落到真 epgsql 连接（noproc）在进入正式 UPDATE 前就崩。
+            {personal_history_repo, [
+                %% action=revoke 的 finish_accept 撤回墓碑标记（mark_revoked_tx/4）
+                {'mark_revoked_tx', 4, fun(_Conn, 1, 2, <<"original">>) -> ok end}
+            ]},
             {elib_pg, [
                 {'with_tx', 1, fun(Fun) ->
                     try
@@ -37,6 +44,32 @@ revoke_offline_atomic_update_error_rolls_back_test_() ->
                     catch
                         throw:{rollback, Reason} -> {rollback, Reason}
                     end
+                end},
+                {'query', 3, fun
+                    (
+                        conn,
+                        <<"SELECT pg_advisory_xact_lock", _/binary>>,
+                        [
+                            <<"c2c_forward_revoke:original">>
+                        ]
+                    ) ->
+                        {ok, [{true}]};
+                    (
+                        conn,
+                        <<"SELECT 1 FROM public.c2c_action_receipt", _/binary>>,
+                        [
+                            <<"original">>
+                        ]
+                    ) ->
+                        %% consumed_revoke_exists：无已消费撤回
+                        {ok, []}
+                end},
+                {'execute_count', 3, fun(
+                    conn, <<"INSERT INTO public.c2c_action_receipt", _/binary>>, Params
+                ) when
+                    Params =:= [<<"request">>, <<"original">>, 1, 2, <<"revoke">>, null]
+                ->
+                    {ok, 1}
                 end},
                 {'execute', 3, fun(conn, Sql, [<<"{}">>, <<"original">>, 1, 2]) ->
                     Query = iolist_to_binary(Sql),
