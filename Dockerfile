@@ -4,7 +4,7 @@
 #
 # 构建 / Build（在 imboy 仓根执行）:
 #   docker build -t imboy/imboy-backend:$(cat VERSION) .
-# 运行 / Run（生产经 docker-compose.prod.yml 注入 IMBOY_* 环境变量）:
+# 运行 / Run（生产经统一编排 docker-compose.yml 注入 IMBOY_* 环境变量）:
 #   docker run -p 9800:9800 -e IMBOYENV=pro -e IMBOY_PG_HOST=... imboy/imboy-backend:<ver>
 
 # ─────────────────────────────────────────────────────────────

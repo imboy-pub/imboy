@@ -6,7 +6,7 @@
 #   2. IMBoy 后端已在 /metrics 暴露指标（Erlang vm + cowboy + 业务计数器）
 #   3. 若 PG / 节点导出器未部署，相应 job 可注释掉
 #
-# 与 deploy/docker-compose.prod.yml 集成：参见 README 的 "可观测性" 章节
+# 与统一编排 docker-compose.yml（--profile prod / monitoring）集成：参见 README 的 "可观测性" 章节
 
 global:
   scrape_interval: 15s
