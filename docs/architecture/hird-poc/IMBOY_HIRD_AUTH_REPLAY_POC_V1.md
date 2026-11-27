@@ -77,7 +77,7 @@
 - GAP：套件依赖旧 worktree 旧 BEAM；PATH 无 hird；编译器二进制与源码的来源
   对应未证明；runtime 导出接口无实锚记录；产物加载路径无记录。
 - CHANGE：
-  1. worktree 内新增任务运行脚本 `scripts/hird_poc_v1/`（编译器指纹+套件重跑）；
+  1. worktree 内新增任务运行脚本 `scripts/hird_poc_v1/`（2026-11-27 已归档至 `scripts/archive/hird-poc-v1/`，编译器指纹+套件重跑）；
   2. 修 `agent_hird_mini_spike_tests.erl` 的 `?OUT_ROOT` 硬编码 →
      `os:getenv("IMBOY_HIRD_OUT_ROOT", "_build/hird_poc_v1/spike")`；
   3. 三套件 `ensure_built` 增加 `IMBOY_HIRD_FORCE_REBUILD=1` 强制重建路径
@@ -376,7 +376,7 @@ fail-closed，统一 `{hird_exn,{tool_denied,_}}` 域错误——与授权 deny 
 `imboy_hird_poc_registry.erl`（凭证三元组资源绑定）；`imboy_hird_p1_auth_tool_tests.erl`
 （凭证三元组、显式 pg_conf、purge、Provider 覆盖、+3 用例）；
 `imboy_hird_p2_replay_tests.erl`（编排护栏化、断言通用化）；
-新增 `imboy_hird_replay_offline_tests.erl`；`scripts/hird_poc_v1/`（compile.sh
+新增 `imboy_hird_replay_offline_tests.erl`；`scripts/hird_poc_v1/`（现 `scripts/archive/hird-poc-v1/`，compile.sh
 `-I src/lib` 修复与离线套件入列、run_pg_suite.sh 显式连接、run_suites.sh 空数组
 修复）。候选完整指纹：`_build/hird_poc_v1/closeout_fingerprints.json`
 （base dba3ab89；5 tracked + 14 untracked 文件 SHA-256；编译器 `66628dd2…` 与 P0
@@ -433,7 +433,7 @@ fail-closed，统一 `{hird_exn,{tool_denied,_}}` 域错误——与授权 deny 
 
 | 启动项 | 需要的授权/输入 | 首个动作 |
 |---|---|---|
-| PG 端到端循环验证 | 获准的测试连接参数（host/port/user/password），或授权临时读取 sys.local.config | `scripts/hird_poc_v1/run_pg_suite.sh imboy_hird_p1_auth_tool_tests …`（P1 含 t_same_org_other_ws / t_effect_resource_binding / t_provider_variant 三个待执行用例）|
+| PG 端到端循环验证 | 获准的测试连接参数（host/port/user/password），或授权临时读取 sys.local.config | `scripts/archive/hird-poc-v1/run_pg_suite.sh imboy_hird_p1_auth_tool_tests …`（P1 含 t_same_org_other_ws / t_effect_resource_binding / t_provider_variant 三个待执行用例）|
 | 有限真实模型验证 | 独立授权 + 预算 + provider 配置（`llm_providers` app env，api_key 经 `{env, VAR}` 注入）| 把 `imboy_hird_poc_model_bridge:make_decide_handler/2` 的 `{mod, imboy_hird_poc_fake_llm, …}` 换为 `{name, <<ProviderName>>}`——唯一替换点 |
 | hook 崩溃根治 | 系统工具链授权 | `brew install bash` 后 `lefthook install --force` |
 | 多轮循环生产化 | 下一轮任务书 | run_steps 上限参数化 + 与 agent_run 生命周期接线 |

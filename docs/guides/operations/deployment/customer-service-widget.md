@@ -86,7 +86,7 @@ https://cs.example.com/api/v1/cs/widget/*            -> imboy_backend:9800（同
 cd /path/to/imboy/deploy
 cp .env.example .env
 $EDITOR .env        # 填写 API_DOMAIN / ADMIN_DOMAIN / CS_WIDGET_DOMAIN / RTC_DOMAIN / TURN_DOMAIN / CERTBOT_EMAIL
-bash install.sh --edition community
+bash install.sh
 ```
 
 其他现场字段（API origin、独立清理数据库账号及授权、选配服务凭据）见
@@ -102,7 +102,7 @@ bash install.sh --edition community
 
 ```bash
 cd /path/to/imboy/deploy
-bash preflight.sh --docker --edition community
+bash preflight.sh --docker
 docker compose --env-file .env --profile prod -f ../docker-compose.yml config -q
 ```
 
@@ -115,7 +115,7 @@ docker compose --env-file .env --profile prod -f ../docker-compose.yml config -q
 
 使用商务私有 `docker-compose.prod.yml` 且基线尚未内置 Widget 时，在 `deploy/.env`
 设置 `IMBOY_BUSINESS_WIDGET_ENABLED=true`。确认五域、客服迁移和镜像版本配对后，
-在维护窗口从仓根执行 `bash deploy/install.sh --edition business`。安装器会从根 Compose
+在维护窗口从仓根执行 `bash deploy/install.sh --site-compose`（站点自有 `docker-compose.prod.yml` 需经商务渠道获取放入 `deploy/`）。安装器会从根 Compose
 渲染政策和 Widget 增量，用同一配置组合完成预检、启动和证书检查。
 
 If the private business baseline does not include Widget, set

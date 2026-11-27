@@ -2,6 +2,7 @@
 
 > **版本 / Version**: 2026-08 v1.0 | **配套**：[PoC 范围表](./poc-single-node-scope-2026-08.md) ｜ [客户签字记录模板](./poc-customer-signoff-template-2026-08.md)
 > **适用环境**：客户授权的单节点 Docker Compose 部署（社区版随仓 compose，或商务版 prod.yml + sales-policy overlay）。
+> ⚠️ **2026-11-27 历史注记**：本模板形成于 2026-08；文中 `install.sh --edition` 参数与 `docker-compose.community.yml` 编排已随统一安装器移除——现行命令为 `bash install.sh`（默认仓根编排；商务版 `--site-compose`），以 `deploy/README.md` 为准。矩阵正文保留原始记录。
 > **执行纪律**：
 > 1. 每项记录 PASS / FAIL / BLOCKED 三态之一，附证据（命令输出、截图、日志路径）；BLOCKED 必须注明是否属于客户侧外部依赖（`blocked_external_dependency`）。
 > 2. 所有操作在**客户环境目标真机/服务器**上执行；不得以我方本地演示输出充当验收证据。

@@ -10,6 +10,21 @@ New community installations use the package root Compose file. Run `bash install
 
 包内复用所选提交的现有安装器，文件来源见 `review/SOURCE_FILES.tsv`，完整依赖见 [DEPENDENCIES.md](DEPENDENCIES.md)。**离线检查与真实服务器验收分开记录；Docker、TLS、数据库和客户端业务验收须在现场执行。**
 
+## 包内文档地图 / Package document map
+
+| 文档 | 何时读 |
+|---|---|
+| [DEPENDENCIES.md](DEPENDENCIES.md) | 制包/宿主机依赖与工具链边界 |
+| [SITE_INPUTS.md](SITE_INPUTS.md) | 安装前必须收集的现场输入清单（五域/证书邮箱/清理 LOGIN 等） |
+| [DB_CLEANUP_ACCOUNT.md](DB_CLEANUP_ACCOUNT.md) | 独立清理数据库账号的开通与初始化 |
+| [OPTIONAL_COMPONENTS.md](OPTIONAL_COMPONENTS.md) | Uptrace / 监控 / TURN 等可选组件的启用方式 |
+| [TROUBLESHOOTING.md](TROUBLESHOOTING.md) | 安装与启动故障排查 |
+| [UPGRADE_AND_RECOVERY.md](UPGRADE_AND_RECOVERY.md) | 升级、重复安装与恢复 |
+| [VALIDATION_RESULTS.md](VALIDATION_RESULTS.md) | 离线检查与现场验收的记录口径 |
+| [ACCEPTANCE_COMMANDS.md](ACCEPTANCE_COMMANDS.md) | 验收命令清单 |
+| [ACCEPTANCE_TEMPLATE.md](ACCEPTANCE_TEMPLATE.md) | 验收记录模板 |
+| [STRANGER_HANDOFF.md](STRANGER_HANDOFF.md) | 陌生环境交接（交付方→现场运维）的最小上下文 |
+
 ## 1. 本包的适用范围
 
 | 项目 | 本包约定 |
@@ -17,7 +32,7 @@ New community installations use the package root Compose file. Run `bash install
 | 部署形态 | 一台 Linux x86_64 服务器；Debian 13 为上游文档基准 |
 | 编排 | Docker 24+、Docker Compose v2.23.1+ |
 | 资源 | 上游最低要求 4 GB 内存、10 GB 可用磁盘；建议至少 8 GB / 20 GB，并另计业务数据、备份和日志增长 |
-| 安装入口 | 包根目录 `bash install.sh`；全新实例显式加 `--init-cleanup-db` 创建缺失清理 LOGIN，透传给 `deploy/install.sh --edition community` |
+| 安装入口 | 包根目录 `bash install.sh`；全新实例显式加 `--init-cleanup-db` 创建缺失清理 LOGIN，透传给 `deploy/install.sh` |
 | 数据路径 | 保持 `DATA_DIR=./data`；实际位置为安装目录内的 `deploy/data/` |
 | 后端宿主端口 | 保持 `BACKEND_PORT=9800`，绑定 `127.0.0.1` |
 | 默认关闭 | Uptrace、enterprise-direct、embedded TURN；监控 profile 默认关闭 |

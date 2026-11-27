@@ -70,7 +70,7 @@ cd imboyapp
 flutter pub get
 
 # E2EE 客户端安全验证套件（一键，脚本自述"可审计"）
-bash scripts/run_e2ee_suite.sh
+bash imboyapp/scripts/run_e2ee_suite.sh
 
 # 仅 e2ee 目录（60 个测试文件）
 flutter test test/service/e2ee/

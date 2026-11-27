@@ -32,7 +32,7 @@ mock 网络(Dio)、推送、presign 远端;**真 sqflite**(sqlcipher setDbForTes
 `test/helpers/` 共享构造器;ProviderScope override 注入测试依赖;真 sqflite 内存库。maestro 用 `_already_logged_in.yaml` 等前置状态。
 
 ## 数据准备
-`scripts/setup_test_data.sh` + `test.env`;真机需 TEST_PHONE;integration 需真后端。
+`imboyapp/scripts/setup_test_data.sh` + `test.env`;真机需 TEST_PHONE;integration 需真后端。
 
 ## CI 执行方式
 analyze + 模块边界 + new code guard + 单元/widget(排除 integration/smoke)Stage 1;integration 独立 job(修复坏死 yml,TEST-05);maestro nightly/真机;custom_lint 门(ENG-01)。

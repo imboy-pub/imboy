@@ -73,7 +73,7 @@ docker compose -p imboy-test --env-file .env.test --profile test --profile test-
 
 ## 原生 Shell 固定版本交付包 / Pinned native Shell kit
 
-[原生 Shell 安装材料](native-shell/README.md) 提供单机 systemd 的安装、升级、
+[原生 Shell 安装材料](native-shell/) 提供单机 systemd 的安装、升级、
 备份恢复、配置模板与陌生人验收步骤，安装工具不依赖 Python 或 Docker。
 该工具包固定于 `cb95fa72f9bc617d0f30ddd6b98da51f39cfd2af` /
 `1.0.0-alpha.83` / 迁移头 `243`，初始材料版为 `PAYLOAD_READY=no`。
@@ -404,7 +404,6 @@ for script in deploy/install.sh deploy/init-cleanup-db.sh deploy/preflight.sh de
   bash -n "$script" || exit 1
 done
 bash scripts/test/install_one_click_test.sh
-bash scripts/test/community_delivery_config_test.sh
 bash scripts/test/init_letsencrypt_test.sh
 bash deploy/preflight.sh --self-test
 ```
@@ -424,7 +423,7 @@ preflight/Compose 和真实 WSS 各有独立步骤，便于区分配置失败与
 | 套件 | 验证范围 | 执行环境与边界 |
 | --- | --- | --- |
 | `lk_preflight_rtc_turn_test.sh` | 五域配置中的 RTC/TURN 正负例、DNS 失败关闭、TURN 开关/证书/端口门；真实 Compose 渲染的唯一固定 LiveKit、禁用组件、同域 live/archive 只读挂载、TURN 参数与端口；模板占位符 | DNS/端口用桩；Compose 只渲染，不启动容器，不证明 TURN relay 或媒体可用 |
-| `community_delivery_config_test.sh` | 静态部署配置、Nginx 模板、TURN live/archive 相对链接、续期文件与外部平铺证书兼容 | 文件系统模拟，不替代真实 Compose 渲染或容器挂载 |
+| ~~`community_delivery_config_test.sh`~~（已退役） | 原静态部署配置/Nginx 模板/续期文件兼容检查已并入 `install_one_click_test.sh`（安装器离线控制流，含 Nginx/证书 fixture）与 `lk_preflight_rtc_turn_test.sh`（Compose 渲染与模板占位符） | 文件系统模拟，不替代真实 Compose 渲染或容器挂载 |
 | `init_letsencrypt_test.sh` | 首签前 HTTP-01 就绪、临时证书、失败恢复、`nginx -t` 与 reload 顺序 | Docker/OpenSSL 桩，不向公共 CA 申请证书 |
 | `community_rtc_wss_shell_test.sh` | WSS 测试运行器的 CID、Compose 转义、失败诊断与清理 | Docker 桩，不计为真实 TLS/WSS 通过 |
 | `community_rtc_wss_test.sh --docker` | 真实 Nginx/LiveKit 的启动、五域 HTTP-01 路由、严格 TLS、认证 WSS 握手和既有代理路由 | 需要 Docker daemon 与固定镜像；不启用 TURN overlay，不替代双端媒体验收 |

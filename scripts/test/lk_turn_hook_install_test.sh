@@ -196,6 +196,13 @@ pid $NGX_TMP/wrapper.pid;
 events { worker_connections 16; }
 http {
   access_log off;
+  # nginx.org 包的编译默认临时目录在 /var/cache/nginx（root 属主）；
+  # 离线测试以 runner 用户跑 nginx -t，全部重定向到测试临时目录。
+  client_body_temp_path $NGX_TMP/client_temp;
+  proxy_temp_path $NGX_TMP/proxy_temp;
+  fastcgi_temp_path $NGX_TMP/fastcgi_temp;
+  uwsgi_temp_path $NGX_TMP/uwsgi_temp;
+  scgi_temp_path $NGX_TMP/scgi_temp;
   map \$http_upgrade \$connection_upgrade { default upgrade; '' close; }
   include $NGX_CONF/*.conf;
 }
@@ -203,7 +210,9 @@ WRAP
 
 NGINX_BIN="$(command -v nginx || true)"
 if [ -n "$NGINX_BIN" ]; then
-  if "$NGINX_BIN" -t -c "$NGX_TMP/wrapper.conf" -p "$NGX_TMP/" 2>"$TMP_ROOT/nginx-t.log"; then
+  # -e 覆盖编译默认 error log（nginx.org 包指向 /var/log/nginx，runner 不可写）；
+  # nginx -t 会真实 bind vhost 的 listen 80（CI 侧已 setcap 特权端口能力）。
+  if "$NGINX_BIN" -e "$NGX_LOGS/nginx-t-error.log" -t -c "$NGX_TMP/wrapper.conf" -p "$NGX_TMP/" 2>"$TMP_ROOT/nginx-t.log"; then
     ok "rtc + turn 两域 vhost 通过 nginx -t"
   else
     bad "rtc + turn 两域 vhost 通过 nginx -t" "$(tail -8 "$TMP_ROOT/nginx-t.log")"

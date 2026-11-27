@@ -150,7 +150,7 @@ cd /opt/imboy-stack/deploy
 
 ```bash
 # [机器: 部署机] [目录: /opt/imboy-stack/deploy] 首次生成 600 权限的 .env 模板
-bash install.sh --edition community
+bash install.sh
 # 预期输出: 宿主机依赖满足且 .env 不存在时，只复制模板并退出。
 #           此时尚未生成内部密钥/RSA；填写客户字段后再次执行才会继续初始化与部署。
 ```
@@ -177,7 +177,7 @@ ${EDITOR:-vi} .env
 
 ```bash
 # [机器: 部署机] [目录: /opt/imboy-stack/deploy] 填写完成后重新运行安装器
-bash install.sh --edition community
+bash install.sh
 # 内部密钥/RSA 初始化 → 社区版 preflight → 镜像/服务 → 五域 TLS → 健康与 sanity。
 # 该命令会继续部署，不是仅检查；任何 ERROR 均须修复后再重跑。
 ```
@@ -332,7 +332,7 @@ ${EDITOR:-vi} .env
 
 ```bash
 # [机器: 部署机] [目录: deploy/] 第三步：重跑安装器（幂等收敛，自动叠加 overlay 并展开证书目录）
-bash install.sh --edition community
+bash install.sh
 # 预期输出: 安装摘要中 LiveKit TURN 显示 turn(s):<TURN_DOMAIN>:3478|5349
 # 失败停止点: preflight 阶段任何 err（端口被占 / 证书缺失 / 开关值非法）都会拒绝继续，按提示修复。
 ```
@@ -397,7 +397,7 @@ TURN 部署用统一安装器在根 Compose 的 `prod` 上选择 `prod-turn` 或
 # [机器: 生产机] [目录: deploy/] 第一步：关掉 LiveKit TURN（先让路，避免 3478/5349 争抢）
 # 编辑 .env: LIVEKIT_TURN_ENABLED=false，然后重跑安装器收敛
 ${EDITOR:-vi} .env
-bash install.sh --edition community
+bash install.sh
 # 预期输出: 安装摘要中 LiveKit TURN 显示「未启用」；3478/5349 不再被 docker-proxy 监听。
 sudo ss -lntup | grep -E ':(3478|5349)\b' || echo "3478/5349 已空闲"
 ```

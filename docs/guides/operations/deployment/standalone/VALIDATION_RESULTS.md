@@ -22,11 +22,10 @@
 | 包完整性、权限、Shell 语法 | `bash scripts/check_delivery.sh` | 清单文件存在、字节/权限匹配、Bash 语法可解析 |
 | 原安装控制流回归 | `bash scripts/test/install_one_click_test.sh` | 临时目录中模拟 Docker/网络等外部行为，检查初始化、顺序、失败传播与文件保留 |
 | preflight 规则自测 | `bash deploy/preflight.sh --self-test` | 规则函数的正反用例；不读取客户现场配置 |
-| 入口保护回归 | `bash scripts/test/delivery_guard_test.sh` | 模拟安装器下的配置范围、已有数据/凭据保护、并发锁和退出码传播 |
 
 统一入口依次运行上述检查。PASS 数以本次日志为准；文档语法、mock 和静态路径检查不能证明真实容器、数据库或客户端业务已运行。客户安装链无需宿主机 Python；宿主机是否恰好安装 Python，与脚本是否依赖它是两回事。
 
-维护者另在源码仓库运行 `bash scripts/test/package_community_test.sh`，验证制包清单、归档内容、解压权限、路径、凭据排除和重复输出保护。它不属于客户安装依赖，也不要求客户获取源码或 Git。
+维护者另在源码仓库运行 `bash scripts/test/delivery_pack_whitelist_test.sh`（制包清单/凭据排除/重复输出保护）与 `bash scripts/test/verify_community_images_test.sh`（社区镜像匿名核验）；原 `package_community_test.sh`、`delivery_guard_test.sh`、`community_delivery_config_test.sh` 已退役，安装器侧检查并入 `install_one_click_test.sh`。它们不属于客户安装依赖，也不要求客户获取源码或 Git。
 
 ## 2. 现场检查必须另记
 

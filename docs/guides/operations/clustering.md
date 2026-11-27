@@ -423,8 +423,8 @@ Add the following script to cron or a Prometheus custom collector:
 
 ```bash
 #!/usr/bin/env bash
-# scripts/cluster_health_check.sh
-# 用法: bash scripts/cluster_health_check.sh [node1_addr] [node2_addr] ...
+# cluster_health_check.sh（内嵌示例脚本，非仓内文件）
+# 用法: bash cluster_health_check.sh [node1_addr] [node2_addr] ...
 
 NODES=("${@:-imboy@node1.imboy.internal imboy@node2.imboy.internal}")
 PASS=0
@@ -583,8 +583,7 @@ For multi-node deployments, start nodes in this order to avoid race conditions:
 4. 依次启动节点 2、3（它们连接到已稳定的节点 1，`syn` 自动同步）
 
 ```bash
-# 集群启动脚本示例
-# scripts/cluster_start.sh
+# 集群启动脚本示例 cluster_start.sh（内嵌示例，非仓内文件）
 
 NODES=("imboy@node1.imboy.internal" "imboy@node2.imboy.internal" "imboy@node3.imboy.internal")
 

@@ -377,7 +377,7 @@ No custom cryptographic primitives are implemented. All cryptography delegates t
 ## 14. Test Coverage Summary
 
 As of 2026-07-27, the E2EE verification suite comprised 244 client-side tests and 265 backend tests.
-**2026-09-07 re-baseline (imboy `15f5fd73` / imboyapp `924347d0`)**: backend `make e2ee-verify` = **409/409 ALL PASSED**; client `scripts/run_e2ee_suite.sh` = **623 E2EE + 12 protocol tests, all passed**, analyze zero warnings.
+**2026-09-07 re-baseline (imboy `15f5fd73` / imboyapp `924347d0`)**: backend `make e2ee-verify` = **409/409 ALL PASSED**; client `imboyapp/scripts/run_e2ee_suite.sh` = **623 E2EE + 12 protocol tests, all passed**, analyze zero warnings.
 
 ### 14.1 Client-Side (imboyapp)
 
@@ -396,7 +396,7 @@ As of 2026-07-27, the E2EE verification suite comprised 244 client-side tests an
 | Megolm group session | 15+ | flutter test + vodozemac FFI |
 | Protocol codec (protobuf roundtrip) | 12 | flutter test |
 
-One-command: `bash scripts/run_e2ee_suite.sh` (dart analyze → e2ee tests → protocol tests).
+One-command: `bash imboyapp/scripts/run_e2ee_suite.sh` (dart analyze → e2ee tests → protocol tests).
 
 ### 14.2 Backend (imboy)
 

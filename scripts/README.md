@@ -111,10 +111,11 @@ OS env 配置不随 release 的 `sys.config` 分发，统一放在服务器
 |------|------|
 | `backup_pg.sh` / `restore_pg.sh` | PostgreSQL 备份/恢复（内置 timescaledb pre/post_restore 包裹） |
 | `backup_garage.sh` | Garage S3 附件备份 |
-| `backup_imboy_db.sh` | 业务库备份 |
 | `restore_smoke.sh` | 备份恢复冒烟（验证可恢复性） |
 
 > 恢复操作见 [备份与恢复指南](../docs/guides/operations/deployment/backup-restore.md)。每次演练记录保存在仓库外，绑定环境、备份哈希、恢复后校验和实测 RTO。
+> 旧主机备份工具 `backup_imboy_db.sh` 已归档（`archive/legacy-backup/`，硬编码旧容器布局；
+> 合规登记见 `docs/compliance/retention-policy.yml` 的 `backups_imboy_db` 条目）。
 
 ## Garage S3
 
@@ -146,6 +147,30 @@ admin/flutter 枚举镜像与 EntityId/TSID 规则。用法：`make contract-exp
 
 ## 其他
 
-`channel_daily_digest.sh`（频道日报）、`plugin_install.sh`（插件安装）、`gen_license.escript`（License 生成）、`sso/`（SSO 相关）、`fdfs_reference_census.sql` + `migrate_fdfs_avatars.erl`（FastDFS 历史迁移残留，一次性用途）。
+`channel_daily_digest.sh`（频道日报）、`plugin_install.sh`（插件安装）、`sso/`（SSO 相关）。
 
-发布门禁与审计：`evidence_manifest.sh`（发布证据清单，审计就绪包附录 B）、`license_inventory.sh`（第三方依赖许可证清单，D3 门）、`validate_sales_release_config.escript`（销售版功能策略门禁，不读取密钥）、`recrypt_user_collect.escript`（A-06 主密钥轮换，`user_collect.info` 清洗）。`test/` 为脚本自测目录（alertmanager 渲染、异地备份、恢复守卫等）。
+发布门禁与审计：`evidence_manifest.sh`（发布证据清单，审计就绪包附录 B）、`license_inventory.sh`（第三方依赖许可证清单，D3 门）、`validate_sales_release_config.escript`（销售版功能策略门禁，不读取密钥）、`recrypt_user_collect.escript`（A-06 主密钥轮换，`user_collect.info` 清洗）。
+
+## 目录说明 / Layout
+
+| 位置 | 内容 |
+|------|------|
+| `scripts/`（根） | Core 运维/部署/校验入口 + Acceptance 专项验收工具 |
+| `scripts/ci/` | CI 专用步骤（native-eunit、lee5、xref 门） |
+| `scripts/lib/` | 部署链内部实现（blue_green、metrics_push 等），不接受人工直接调用 |
+| `scripts/smoke/` | 冒烟链 |
+| `scripts/deliver/` | 社区交付包制包 |
+| `scripts/sso/` | SSO 测试配置 |
+| `scripts/test/` | **测试 `scripts/` 自身的门禁与回归**（CI 逐个点名 + v5 冻结家族 + fixtures） |
+| `scripts/archive/` | 历史工具归档（溯源见 [archive/README.md](archive/README.md)） |
+
+> 顶层 `test/scripts/`（非本目录）测试的是**仓库级 Python 工具**（repository_hygiene、
+> gitleaks、api 聚合等）；两个目录按“被测对象所在仓内位置”划分，CI 两者都用
+> （quality.yml / backend-ci.yml），不可混用 `unittest` 包形式导入。
+
+## 资产登记簿 / Inventory
+
+[INVENTORY.yml](INVENTORY.yml) 是全部 446 个脚本资产的机器可读登记簿
+（category: core/optional/acceptance/archived × disposition: keep/move/merge/archive/delete，
+逐文件用途 + 调用证据）。新增根目录脚本必须登记（护栏 `check_scripts_registry.sh` 校验）；
+归档工具不得被 Makefile/CI/安装链默认流程引用。

@@ -30,6 +30,20 @@ jobs:
       - run: python3 -m unittest discover -s test/scripts -p test_repository_hygiene.py
 
   # ----------------------------------------------------------------
+  # 1b) Scripts 登记簿护栏 — S2-07：登记完整性 / 归档隔离 / 文档引用存在性
+  # ----------------------------------------------------------------
+  scripts-registry:
+    name: Scripts registry guardrail
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.x'
+      - run: python3 scripts/check_scripts_registry.py
+      - run: python3 -m unittest discover -s scripts/test -p test_scripts_registry.py -v
+
+  # ----------------------------------------------------------------
   # 1) Erlang lint — elvis 5.0.3 风格检查（不跑 dialyze/xref，那是业务 CI）
   # ----------------------------------------------------------------
   erlang-lint:
