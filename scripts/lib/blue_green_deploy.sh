@@ -1228,6 +1228,10 @@ if [ "$OFFLINE_UPGRADE" -eq 0 ]; then cleanup_inactive_target; fi
 # =============================================================================
 if ssh_exec "[ -d '$RELEASE_DIR' ]"; then
   if [ "$ACTIVE_DIR" = "$RELEASE_DIR" ]; then
+    if [ "$LOCAL_MODE" -eq 1 ] && [ "$OFFLINE_UPGRADE" -eq 0 ]; then
+      # -l 发布工作树；HEAD 相同不代表源码相同，更不能据此复用活动产物。
+      fail "本地发布节点名与活动 release 冲突：请清空 DEPLOY_NODE_NAME 或设为新值，不复用活动产物"
+    fi
     ssh_exec "test \"\$(cat '$RELEASE_DIR/etc/source-head' 2>/dev/null)\" = '$SOURCE_HEAD'" \
       || fail "同版本活动 release 的 source HEAD 与本次候选不一致，拒绝幂等误判"
     if [ "$OFFLINE_UPGRADE" -eq 1 ]; then

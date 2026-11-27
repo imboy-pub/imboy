@@ -39,6 +39,7 @@ cat >"$TEST_SCRIPT_DIR/lib/blue_green_deploy.sh" <<'MOCK'
 #!/usr/bin/env bash
 printf '%s\n' "$*" >"$BLUE_GREEN_LOG"
 printf 'internal=%s\n' "${IMBOY_DEPLOY_INTERNAL:-}" >>"$BLUE_GREEN_LOG"
+exit "${MOCK_BLUE_GREEN_STATUS:-0}"
 MOCK
 # api 组件收尾自动同步 CS 面（baseline-drift 机械同步，同 check_prod_config.sh
 # 模式）：deploy_api 换桩验证主分派序列，deploy_cs 事务内部由
@@ -226,10 +227,40 @@ if env PATH="$MOCK_BIN:$PATH" MOCK_CALLS="$MOCK_CALLS" MOCK_LOG="$MOCK_LOG" \
    && grep -Fq '{release, {imboy, "1.0.0"}, [' "$TMP_ROOT/relx.config" \
    && grep -Fq '{release, {imboy, "1.0.0"}, [' "$TMP_ROOT/relxpro.config" \
    && grep -q 'source=local-rsync' "$TMP_ROOT/output.log" \
+   && grep -q 'API 阶段耗时: 后端蓝绿发布=' "$TMP_ROOT/output.log" \
+   && grep -q 'API 阶段耗时: 统一 readiness 与收尾=' "$TMP_ROOT/output.log" \
+   && grep -Eq 'API 整条命令耗时: [0-9]+s [|] exit=0' "$TMP_ROOT/output.log" \
    && [ ! -s "$CS_FAKE_LOG" ]; then
   ok "api -v -l 自动同步版本并透传本地模式与显式节点名"
 else
   bad "api -v -l 未正确透传" "$(tr '\n' ',' <"$TMP_ROOT/output.log")"
+fi
+
+AUTO_ENV="$TMP_ROOT/auto.env"
+sed '/^DEPLOY_NODE_NAME=/d' "$CUSTOM_ENV" >"$AUTO_ENV"
+run_auto_api() {
+  env PATH="$MOCK_BIN:$PATH" MOCK_CALLS="$MOCK_CALLS" MOCK_LOG="$MOCK_LOG" \
+    TEST_SOURCE_HEAD="$TEST_SOURCE_HEAD" BLUE_GREEN_LOG="$BLUE_GREEN_LOG" \
+    bash "$TEST_DEPLOY" api -l -v --env-file "$AUTO_ENV" >"$TMP_ROOT/output.log" 2>&1
+}
+if run_auto_api && first="$(awk 'NR == 1 {print $NF}' "$BLUE_GREEN_LOG")" \
+   && run_auto_api && second="$(awk 'NR == 1 {print $NF}' "$BLUE_GREEN_LOG")" \
+   && [[ "$first" =~ ^[0-9]{10}_[0-9]+_[0-9]+_[0-9]+$ && "$second" != "$first" ]]; then
+  ok "相同版本和 HEAD 连续 api -l -v 生成不同节点名"
+else
+  bad "连续 api -l -v 节点名未正确生成" "$(<"$TMP_ROOT/output.log")"
+fi
+
+if env PATH="$MOCK_BIN:$PATH" MOCK_CALLS="$MOCK_CALLS" MOCK_LOG="$MOCK_LOG" \
+   TEST_SOURCE_HEAD="$TEST_SOURCE_HEAD" BLUE_GREEN_LOG="$BLUE_GREEN_LOG" \
+   MOCK_BLUE_GREEN_STATUS=17 bash "$TEST_DEPLOY" api -l -v --env-file "$CUSTOM_ENV" \
+   >"$TMP_ROOT/output.log" 2>&1; then
+  bad "蓝绿失败不可报告成功" ""
+elif grep -Eq 'API 整条命令耗时: [0-9]+s [|] exit=1' "$TMP_ROOT/output.log" \
+     && ! grep -q '统一 readiness 通过' "$TMP_ROOT/output.log"; then
+  ok "api -l -v 蓝绿失败有整条命令耗时且不执行成功收尾"
+else
+  bad "蓝绿失败未正确记录" "$(<"$TMP_ROOT/output.log")"
 fi
 
 : >"$MOCK_CALLS"

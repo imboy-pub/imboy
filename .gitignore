@@ -274,3 +274,5 @@ erl_crash.dump.*
 
 # Local development artifacts
 .local/
+
+.plans

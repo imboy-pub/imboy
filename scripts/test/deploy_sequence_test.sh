@@ -725,6 +725,17 @@ else
   bad "source HEAD 幂等门禁错误文案异常" "$(<"$TMP_ROOT/output.log")"
 fi
 
+if MOCK_RELEASE_EXISTS=1 \
+   MOCK_ACTIVE_RELEASE_DIR="/usr/local/imboy-${TEST_VSN}-testnode" \
+   run_deploy "" blue -l; then
+  bad "本地发布不能仅凭相同 HEAD 复用活动产物" ""
+elif grep -q '本地发布节点名与活动 release 冲突' "$TMP_ROOT/output.log" \
+     && ! grep -qE '^(BUILD|DAEMON|SWITCH|STOP|MIGRATE)$' "$MOCK_LOG"; then
+  ok "本地发布遇活动同名候选拒绝假成功，且不切流"
+else
+  bad "本地发布未正确拒绝活动同名候选" "$(<"$TMP_ROOT/output.log")"
+fi
+
 if MOCK_REMOTE_SOURCE_HEAD=ffffffffffffffffffffffffffffffffffffffff run_deploy "" blue; then
   bad "远端 Git HEAD 与本地候选不一致时不得部署" ""
 elif grep -q '与本地候选.*不一致' "$TMP_ROOT/output.log" \

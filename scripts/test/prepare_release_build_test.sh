@@ -25,19 +25,19 @@ check() {
   [[ "$(cat events)" == "$1" ]]
 }
 reset_fixture
-check 'beam-presence-guard'
+check ''
 reset_fixture
 touch .erlang.mk/imboy.test
-check $'clean-app\nbeam-presence-guard'
+check 'clean-app'
 reset_fixture
 printf '{vsn, "0.9.0"}\n' > ebin/imboy.app
-check $'clean-app\nbeam-presence-guard'
+check 'clean-app'
 reset_fixture
 touch ebin/deleted.beam
-check $'clean-app\nbeam-presence-guard'
+check 'clean-app'
 reset_fixture
 rm ebin/imboy.app
-check $'clean-app\nbeam-presence-guard'
+check 'clean-app'
 echo 'PASS: 增量缓存、测试模式、版本变化、删除模块、首次构建'
 
 # 实测 rsync 参数：同内容不同 mtime 不传输；旧时间戳的内容变更仍更新。

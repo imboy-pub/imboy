@@ -25,5 +25,5 @@ done
 if [[ "$rebuild" -eq 1 ]]; then
   make clean-app
 fi
-# 复用现有缺 beam 自愈与 feature 排除规则。
-make beam-presence-guard
+# 随后的 make rel → relx-rel → app 已执行 beam-presence-guard，
+# 不另起一次 make 或重复遍历整个应用的 BEAM。

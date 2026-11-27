@@ -102,7 +102,8 @@ beam-presence-guard:
 	@if [ -f ebin/$(PROJECT).app ]; then \
 	  for f in $$(find src -name '*.erl'); do \
 	    case " $(ERLC_EXCLUDE_PATHS) " in *" $$f "*) continue ;; esac; \
-	    if [ ! -f "ebin/$$(basename "$$f" .erl).beam" ]; then \
+	    module=$${f##*/}; \
+	    if [ ! -f "ebin/$${module%.erl}.beam" ]; then \
 	      echo "== WH-02: ebin beam missing for $$f, force full recompile =="; \
 	      rm -f ebin/$(PROJECT).app; break; \
 	    fi; \

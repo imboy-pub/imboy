@@ -35,6 +35,9 @@ set -Eeuo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ENV_FILE="$SCRIPT_DIR/.env.deploy"
 COMPONENT="${1:-all}"
+COMMAND_STARTED=$SECONDS
+API_PHASE_STARTED=$SECONDS
+API_PHASE_NAME="本地配置预检"
 
 usage() {
   echo "用法: bash scripts/imboy-deploy.sh <all|api|admin|cs|web|migrate|rollback> [-v|--verbose] [-l|--local] [--env-file PATH]"
@@ -132,6 +135,20 @@ log()  { echo -e "\033[36m[$(date '+%H:%M:%S')] $*\033[0m"; }
 ok()   { echo -e "\033[32m✓ $*\033[0m"; }
 warn() { echo -e "\033[33m⚠ $*\033[0m"; }
 fail() { echo -e "\033[31m✗ $*\033[0m" >&2; exit 1; }
+
+api_phase() {
+  [[ "$COMPONENT" == api ]] || return 0
+  log "API 阶段耗时: $API_PHASE_NAME=$((SECONDS - API_PHASE_STARTED))s"
+  API_PHASE_NAME="$1"
+  API_PHASE_STARTED=$SECONDS
+}
+
+api_finish() {
+  [[ "$COMPONENT" == api ]] || return 0
+  api_phase "完成"
+  log "API 整条命令耗时: $((SECONDS - COMMAND_STARTED))s | exit=$1"
+}
+trap 'api_finish "$?"' EXIT
 
 git_source_head() {
   local repo="$1" label="$2" head
@@ -376,7 +393,12 @@ fi
 SSH_CTRL="/tmp/imboy-deploy-$$"
 SSH_OPTS=(-p "$SERVER_PORT" -o ControlPath="$SSH_CTRL" -o StrictHostKeyChecking=accept-new -o ConnectTimeout=10)
 
-cleanup() { ssh "${SSH_OPTS[@]}" -O exit "$SERVER_USER@$SERVER_HOST" 2>/dev/null || true; rm -f "$SSH_CTRL"; }
+cleanup() {
+  local status=$?
+  ssh "${SSH_OPTS[@]}" -O exit "$SERVER_USER@$SERVER_HOST" 2>/dev/null || true
+  rm -f "$SSH_CTRL" || true
+  api_finish "$status"
+}
 trap cleanup EXIT
 
 _ssh_connect() {
@@ -397,9 +419,13 @@ deploy_api() {
 
   # 私有实现负责完整的「expand → 启动 → 切流 → 停旧节点 → migrate」时序。
   # 不在本层拆开 migrate，否则两个入口可能在旧 WebSocket 尚存活时误跑完整迁移。
-  NODE_ID="${DEPLOY_NODE_NAME:-$(date '+%m%d%H%M')}"
   if [[ "$OFFLINE_UPGRADE" -eq 1 ]]; then
     NODE_ID="${DEPLOY_NODE_NAME:-upgrade_${BACKEND_SOURCE_HEAD:0:12}}"
+  elif [[ "$LOCAL_MODE" -eq 1 ]]; then
+    # 普通本地发布必须同步当前源码；同一分钟可能有多次发布。
+    NODE_ID="${DEPLOY_NODE_NAME:-$(date '+%m%d%H%M%S')_$$_${RANDOM}_${RANDOM}}"
+  else
+    NODE_ID="${DEPLOY_NODE_NAME:-$(date '+%m%d%H%M')}"
   fi
 
   # 将客户配置映射为私有蓝绿实现的 IMBOY_DEPLOY_* 环境变量。
@@ -729,6 +755,7 @@ if [[ "$COMPONENT" == cs || "$COMPONENT" == all ]]; then
   # I7: cookie 仅以脱敏占位出现；证书内容/私钥/secret 永不打印
   log "CS: domain=$CS_WIDGET_DOMAIN | root=$CS_REMOTE_ROOT | vhost=$CS_NGINX_CONF | build=$CS_BUILD_PATH | smoke_origin=$CS_SMOKE_SHOP_ORIGIN | mode=source-build | cookie=$(cs_redact "${DEPLOY_COOKIE:-}")"
 fi
+api_phase "SSH 与远端配置预检"
 _ssh_connect
 
 # 生产配置键预检：backend 相关组件部署前，远端配置真源必须含全部必需键
@@ -750,15 +777,18 @@ case "$COMPONENT" in
     ok "════ 全量部署完成 / Full deploy complete ════"
     ;;
   api)
+    api_phase "后端蓝绿发布"
     deploy_api
     [[ "$OFFLINE_UPGRADE" -eq 0 ]] || exit 0
     # 后端成功但 admin 前端落后于本地源码时，readiness 的 meta 比对必败；
     # 自动同步前端后再收尾，保证「重复执行 api 都能成功」。已同步则跳过构建。
+    api_phase "Admin 静态产物同步"
     remote_admin_head="$(ssh_cap "curl -fsS --max-time 10 'https://$ADMIN_DOMAIN/deploy-meta.json' | sed -n 's/.*\"source_head\":\"\([0-9a-f]*\)\".*/\1/p'" 2>/dev/null || true)"
     if [[ "$remote_admin_head" != "$ADMIN_SOURCE_HEAD" ]]; then
       log "Admin 前端落后于本地源码（${remote_admin_head:-missing} → $ADMIN_SOURCE_HEAD），自动同步 ..."
       deploy_admin
     fi
+    api_phase "CS 静态产物同步"
     # CS 面构建源同为 Admin 仓，readiness 要求线上 CS manifest 的 source_head
     # == ADMIN_SOURCE_HEAD（否则 exit 55 恒败）。对称 admin 逻辑：该环境已
     # 上线过 CS（CS_NGINX_CONF 已配置且远端存在，与 deploy_readiness 的 CS
@@ -776,6 +806,7 @@ case "$COMPONENT" in
         fi
       fi
     fi
+    api_phase "统一 readiness 与收尾"
     deploy_readiness
     ;;
   admin)
