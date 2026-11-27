@@ -17,6 +17,9 @@ export TEST_ROOT="$scratch" TEST_ADMIN_PASSWORD=ADMIN_TEST_ONLY_PASSWORD_0000000
 export TEST_PASSWORD="TEST_ONLY_password_0123456789_'\"\\\$ literal=tail"
 export TEST_JQ_BIN="$(command -v jq)"
 export TEST_BACKEND_ID=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+# 2026-11-27：init-cleanup-db.sh 锚定 deploy/ 后 `../docker-compose.yml`（仓根统一编排，
+# 一期 c1a31bc01）恒存在，恒走 prod 分支并期望 prod_imboy_backend/prod_imboy_pg18 服务名。
+# mock 供给保持原名（各 MOCK_FILTER 场景点名原名）；docker mock 在 prod 请求时动态改名输出。
 jq -n --arg password "$TEST_PASSWORD" --arg admin "$TEST_ADMIN_PASSWORD" '
   {services:{imboy_backend:{environment:{IMBOY_PG_HOST:"imboy_pg18", IMBOY_PG_PORT:"5432",
     IMBOY_PG_USER:"app_user", IMBOY_PG_DB:"app_db", IMBOY_PG_PASSWORD:$admin,
@@ -32,17 +35,24 @@ case " $* " in
   ' compose '*' config --format json '*)
     case ${MOCK_JSON:-valid} in
       empty) : ;; malformed) printf '{' ;;
-      *) jq "${MOCK_FILTER:-.}" "$TEST_ROOT/config.json"
+      *)
+        if [[ " $* " == *' --profile prod '* ]]; then
+          jq "${MOCK_FILTER:-.} | .services.prod_imboy_backend = .services.imboy_backend
+              | .services.prod_imboy_pg18 = .services.imboy_pg18
+              | del(.services.imboy_backend, .services.imboy_pg18)" "$TEST_ROOT/config.json"
+        else
+          jq "${MOCK_FILTER:-.}" "$TEST_ROOT/config.json"
+        fi
          [[ ${MOCK_JSON:-valid} != multiple ]] || printf '{}\n' ;;
     esac
     exit "${MOCK_CONFIG_RC:-0}" ;;
-  ' compose '*' ps -q imboy_pg18 '*)
+  ' compose '*' ps -q prod_imboy_pg18 '*|' compose '*' ps -q imboy_pg18 '*)
     case ${MOCK_IDS:-valid} in
       empty) : ;; invalid) printf 'invalid-id\n' ;;
       multiple) printf '%s\n' "$TEST_BACKEND_ID" "$TEST_BACKEND_ID" ;;
       *) printf 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\n' ;;
     esac; exit 0 ;;
-  ' compose '*' ps -q imboy_backend '*) printf '%s\n' "$TEST_BACKEND_ID"; exit 0 ;;
+  ' compose '*' ps -q prod_imboy_backend '*|' compose '*' ps -q imboy_backend '*) printf '%s\n' "$TEST_BACKEND_ID"; exit 0 ;;
   ' inspect --format '*)
     case ${3:-} in
       '{{.Image}}') printf '%s\n' "${MOCK_IMAGE:-sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc}" ;;
