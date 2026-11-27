@@ -27,7 +27,7 @@
 -include("log.hrl").
 
 %% @doc enforce 开关。默认按产品 profile（PDT-01/MCP-01）：
-%%   agent_hub / enterprise profile 默认强制；community 默认放行（兼容行为，
+%%   agent_hub / audited profile 默认强制；standard 默认放行（兼容行为，
 %%   须以 app env mcp_governance_enforce=true 显式开启，不静默）。
 -spec enforce() -> boolean().
 enforce() ->
@@ -37,13 +37,14 @@ enforce() ->
     end.
 
 default_enforce() ->
-    case application:get_env(imboy, product_profile, community) of
+    case application:get_env(imboy, product_profile, standard) of
         {ok, Profile} -> default_enforce(Profile);
         Profile when is_atom(Profile) -> default_enforce(Profile);
         _ -> false
     end.
 
 default_enforce(agent_hub) -> true;
+default_enforce(audited) -> true;
 default_enforce(enterprise) -> true;
 default_enforce(_) -> false.
 

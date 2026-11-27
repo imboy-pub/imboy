@@ -13,7 +13,6 @@
 %
 % 安全边界：
 %   - 所有失败路径对外统一返回 <<"SSO 登录失败"/utf8>>，细节只进服务端日志
-%     （License 配额拒绝除外，402 语义对外可见）。
 %   - token_url 必须 https（127.0.0.1/localhost 白名单供本地 E2E）。
 %   - id_token 强制 JWKS 验签（SEC-01，auth_oidc_jwks）：算法白名单
 %     RS256/ES256 + kid 选 key + discovery/JWKS 缓存轮换，fail-closed；
@@ -154,9 +153,6 @@ callback_with_config(Code, StData, Cfg, Ip) ->
                             case map_or_provision(Sub, Email, Name, Verified) of
                                 {ok, Uid} ->
                                     finish_login(Uid, maps:get(client, StData, <<"app">>), Ip);
-                                {error, {quota, Msg, ErrCode}} ->
-                                    %% License 满额：402 语义对外可见（非敏感信息）
-                                    {error, Msg, ErrCode};
                                 {error, service_unavailable} ->
                                     {error, service_unavailable};
                                 {error, Reason} ->
@@ -463,7 +459,7 @@ id_token_payload(_) ->
     {error, bad_id_token}.
 
 %% ===================================================================
-%% Internal: 账号映射 / 自动建号（License quota gate）
+%% Internal: 账号映射 / 自动建号
 %% ===================================================================
 
 map_or_provision(Sub, Email, Name, Verified) ->
@@ -494,44 +490,38 @@ link_or_provision(Sub, Email, Name, Verified) ->
     end.
 
 provision(Sub, Email, Name, Verified) ->
-    %% License 规模 gate：复用 passport_logic:quota_guard/0（勿绕过）
-    case passport_logic:quota_guard() of
-        {error, Msg, ErrCode} ->
-            {error, {quota, Msg, ErrCode}};
-        ok ->
-            %% SSO 用户不走密码登录：置随机密码
-            RandPwd = b64url(crypto:strong_rand_bytes(32)),
-            Base0 = #{<<"password">> => elib_password:generate(RandPwd)},
-            Base =
-                case Email of
-                    <<>> -> Base0;
-                    _ -> Base0#{<<"email">> => Email}
+    %% SSO 用户不走密码登录：置随机密码
+    RandPwd = b64url(crypto:strong_rand_bytes(32)),
+    Base0 = #{<<"password">> => elib_password:generate(RandPwd)},
+    Base =
+        case Email of
+            <<>> -> Base0;
+            _ -> Base0#{<<"email">> => Email}
+        end,
+    Data = passport_logic:pick_data_for_insert(Base, #{
+        <<"source">> => <<"oidc">>,
+        <<"nickname">> => nickname(Name, Sub)
+    }),
+    case user_ds:insert_and_get_id(Data) of
+        {ok, Uid} ->
+            bind_identity(Sub, Uid, Email);
+        {error, {error, error, <<"23505">>, unique_violation, _Msg, _Details}} ->
+            %% 唯一键冲突不提升邮箱可信度；回读仍须满足初次关联的验证条件。
+            Existing =
+                case Verified andalso Email =/= <<>> of
+                    true -> verified_email_id(Email);
+                    false -> {ok, 0}
                 end,
-            Data = passport_logic:pick_data_for_insert(Base, #{
-                <<"source">> => <<"oidc">>,
-                <<"nickname">> => nickname(Name, Sub)
-            }),
-            case user_ds:insert_and_get_id(Data) of
-                {ok, Uid} ->
-                    bind_identity(Sub, Uid, Email);
-                {error, {error, error, <<"23505">>, unique_violation, _Msg, _Details}} ->
-                    %% 唯一键冲突不提升邮箱可信度；回读仍须满足初次关联的验证条件。
-                    Existing =
-                        case Verified andalso Email =/= <<>> of
-                            true -> verified_email_id(Email);
-                            false -> {ok, 0}
-                        end,
-                    case Existing of
-                        {error, _} ->
-                            {error, service_unavailable};
-                        {ok, Id2} when is_integer(Id2), Id2 > 0 ->
-                            bind_identity(Sub, Id2, Email);
-                        _ ->
-                            {error, provision_conflict}
-                    end;
-                {error, Reason} ->
-                    {error, Reason}
-            end
+            case Existing of
+                {error, _} ->
+                    {error, service_unavailable};
+                {ok, Id2} when is_integer(Id2), Id2 > 0 ->
+                    bind_identity(Sub, Id2, Email);
+                _ ->
+                    {error, provision_conflict}
+            end;
+        {error, Reason} ->
+            {error, Reason}
     end.
 
 verified_email_id(Email) ->

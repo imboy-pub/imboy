@@ -244,10 +244,22 @@ grep -Fq 'docker compose -f docker-compose.prod.yml ' "$LOG" \
   || fail 'Existing business Compose default was changed'
 pass 'Standalone bootstrap retains the existing business Compose default when present'
 
+new_case without_rtc
+run_bootstrap IMBOY_DEPLOY_CHECK_RTC=0 IMBOY_DEPLOY_CHECK_TURN=0 \
+  || fail 'Bootstrap without RTC did not complete'
+for domain in api.test.invalid admin.test.invalid widget.test.invalid trace.test.invalid; do
+  [[ -s "$CONF/live/$domain/fullchain.pem" ]] || fail "Missing certificate for $domain"
+done
+for domain in rtc.test.invalid turn.test.invalid; do
+  [[ ! -e "$CONF/live/$domain" ]] || fail "Issued unnecessary certificate for $domain"
+done
+pass 'Disabled RTC and TURN do not create certificates'
+
 new_case fresh_turn
 : > "$FIXTURE/../docker-compose.yml"
 run_bootstrap COMPOSE_FILES=../docker-compose.yml IMBOY_DEPLOY_PROFILE=prod-turn IMBOY_BOOTSTRAP_TURN_CERT=1 \
   || fail 'Standalone ACME bootstrap failed'
+grep -Eq -- '--profile prod .*--profile prod-turn ' "$LOG" || fail 'Standalone ACME did not retain prod and TURN profiles'
 grep -Fq -- 'run --rm --no-deps -p 80:80 --entrypoint certbot prod_imboy_certbot certonly --standalone' "$LOG" \
   || fail 'Standalone ACME did not claim the intended HTTP port'
 ! grep -Fq ' up -d ' "$LOG" || fail 'Standalone ACME started the application before certificates existed'
@@ -264,6 +276,7 @@ fi
 [ ! -e "$CONF/live/rtc.test.invalid/fullchain.pem" ] || fail 'Failed certificate marked ready'
 ! grep -Fq ' up -d ' "$LOG" || fail 'A failed standalone issuance started the application'
 run_bootstrap "${turn_args[@]}" || fail 'Standalone ACME retry did not recover'
+grep -Eq -- '--profile prod .*--profile prod-sni ' "$LOG" || fail 'Standalone ACME retry did not retain prod and SNI profiles'
 ! grep -Fxq 'certbot api.test.invalid' "$LOG" || fail 'Retry reissued a completed certificate'
 [ -s "$CONF/live/rtc.test.invalid/fullchain.pem" ] || fail 'Retry did not issue the missing certificate'
 pass 'Standalone TURN/SNI retry preserves issued certificates and resumes missing domains'

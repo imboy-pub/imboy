@@ -48,18 +48,6 @@ make_fixture() {
     "$d/priv/migrations/"
 
   echo "MulanPSL-2.0" >"$d/LICENSE"
-  echo "#!/usr/bin/env escript" >"$d/scripts/gen_license.escript"
-  cat >"$d/src/lib/imboy_license.erl" <<'ERL'
--module(imboy_license).
-public_info() ->
-    S = state(),
-    #{
-        edition => maps:get(edition, S, <<"community">>),
-        valid => maps:get(valid, S, false),
-        max_users => maps:get(max_users, S, 0)
-    }.
-ERL
-
   local f
   mkdir -p "$d/scripts/lib"
   for f in backup_pg.sh restore_pg.sh restore_smoke.sh imboy-deploy.sh lib/blue_green_deploy.sh backup_garage.sh; do
@@ -125,24 +113,20 @@ echo "-- down" >"$D/priv/migrations/00000001_dup.down.sql"
 run check_migrations "$D"
 expect_fail "迁移序号重复时必须失败" $?
 
-echo "== License 资产与脱敏 =="
+echo "== 法律许可与运行时授权退役 =="
 D="$(make_fixture lic_ok)"
 run check_license "$D"
-expect_ok "License 资产齐备且白名单干净时通过" $?
+expect_ok "仓库许可存在且运行时授权已退役时通过" $?
 
-D="$(make_fixture lic_leak)"
-# public_info/0 里混入授权原文 —— 正是要挡住的泄漏
-python3 - "$D" <<'PY'
-# -*- coding: utf-8 -*-
-import io, sys
-p = sys.argv[1] + '/src/lib/imboy_license.erl'
-s = io.open(p, encoding='utf-8').read()
-s = s.replace("        max_users => maps:get(max_users, S, 0)",
-              "        max_users => maps:get(max_users, S, 0),\n        license_text => maps:get(license_text, S, <<>>)")
-io.open(p, 'w', encoding='utf-8').write(s)
-PY
+D="$(make_fixture lic_module)"
+touch "$D/src/lib/imboy_license.erl"
 run check_license "$D"
-expect_fail "public_info/0 泄漏 license_text 时必须失败" $?
+expect_fail "残留运行时授权模块时必须失败" $?
+
+D="$(make_fixture lic_route)"
+printf '%s\n' '/api/adm/stats/license:' >>"$D/api/openapi.yaml"
+run check_license "$D"
+expect_fail "残留授权 API 时必须失败" $?
 
 D="$(make_fixture lic_missing)"
 rm -f "$D/LICENSE"

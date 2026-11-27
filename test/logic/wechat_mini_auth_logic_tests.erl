@@ -147,7 +147,6 @@ first_login_provisions_and_issues_test_() ->
                 {sso_identity_ds, [
                     {'find_uid', 2, fun(<<"wechat_mini">>, ?OPENID) -> not_found end}
                 ]},
-                {passport_logic, [{'quota_guard', 0, fun() -> ok end}]},
                 {wechat_mini_identity_ds, [
                     {'provision_and_bind', 3, fun(<<"wechat_mini">>, ?OPENID, _Opts) ->
                         {ok, ?UID}
@@ -217,7 +216,6 @@ known_user_skips_provision_test_() ->
                 {sso_identity_ds, [
                     {'find_uid', 2, fun(<<"wechat_mini">>, ?OPENID) -> {ok, ?UID} end}
                 ]},
-                {passport_logic, [{'quota_guard', 0, fun() -> ok end}]},
                 {wechat_mini_identity_ds, [
                     {'provision_and_bind', 3, fun(_, _, _) -> {error, unreachable} end}
                 ]},
@@ -229,9 +227,7 @@ known_user_skips_provision_test_() ->
         ],
         fun() ->
             {ok, _} = wechat_mini_auth_logic:wechat_mini_login(#{code => <<"good_code_123">>}),
-            ?assertEqual(0, meck:num_calls(wechat_mini_identity_ds, provision_and_bind, 3)),
-            %% 命中既有映射时连配额检查都不该走（不做建号动作）
-            ?assertEqual(0, meck:num_calls(passport_logic, quota_guard, 0))
+            ?assertEqual(0, meck:num_calls(wechat_mini_identity_ds, provision_and_bind, 3))
         end
     ).
 
@@ -248,7 +244,6 @@ provision_receives_request_context_test_() ->
                 {sso_identity_ds, [
                     {'find_uid', 2, fun(<<"wechat_mini">>, ?OPENID) -> not_found end}
                 ]},
-                {passport_logic, [{'quota_guard', 0, fun() -> ok end}]},
                 {wechat_mini_identity_ds, [
                     {'provision_and_bind', 3, fun(_, _, Opts) ->
                         put(provision_opts, Opts),
@@ -283,7 +278,6 @@ provision_failure_folds_to_login_failed_test_() ->
                 {sso_identity_ds, [
                     {'find_uid', 2, fun(<<"wechat_mini">>, ?OPENID) -> not_found end}
                 ]},
-                {passport_logic, [{'quota_guard', 0, fun() -> ok end}]},
                 {wechat_mini_identity_ds, [
                     {'provision_and_bind', 3, fun(_, _, _) -> {error, db_error} end}
                 ]}
@@ -294,37 +288,6 @@ provision_failure_folds_to_login_failed_test_() ->
                 {error, login_failed},
                 wechat_mini_auth_logic:wechat_mini_login(#{code => <<"good_code_123">>})
             )
-        end
-    ).
-
-%% License 用户数上限：**永久**条件，必须单独成码（402）而不是并进 5401 ——
-%% 否则用户看到的是可重试的文案 + 一个永远不会成功的重试按钮（5404 同款坑）
-provision_quota_exceeded_test_() ->
-    ?WITH_MECKS(
-        [
-            base_mocks()
-            | [
-                {wechat_mini_client, [
-                    {'jscode2session', 3, fun(_, _, _) -> {ok, ?OPENID} end}
-                ]},
-                {sso_identity_ds, [
-                    {'find_uid', 2, fun(<<"wechat_mini">>, ?OPENID) -> not_found end}
-                ]},
-                {passport_logic, [
-                    {'quota_guard', 0, fun() -> {error, <<"license detail">>, 402} end}
-                ]},
-                {wechat_mini_identity_ds, [
-                    {'provision_and_bind', 3, fun(_, _, _) -> {ok, ?UID} end}
-                ]}
-            ]
-        ],
-        fun() ->
-            ?assertEqual(
-                {error, account_quota_exceeded},
-                wechat_mini_auth_logic:wechat_mini_login(#{code => <<"good_code_123">>})
-            ),
-            %% 配额耗尽时不得再尝试建号（免绕过 License gate）
-            ?assertEqual(0, meck:num_calls(wechat_mini_identity_ds, provision_and_bind, 3))
         end
     ).
 

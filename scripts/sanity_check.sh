@@ -93,7 +93,11 @@ if [ "${COMPOSE_FILES_LIST[0]:-}" = ../docker-compose.yml ]; then
         fi
     fi
     case "$IMBOY_DEPLOY_PROFILE" in
-        prod) ;;
+        prod)
+            case "${LIVEKIT_ENABLED:-false}" in
+                true|1|TRUE) rtc_profile=rtc ;;
+            esac
+            ;;
         prod-turn) nginx_suffix=_turn ;;
         prod-sni) nginx_suffix=_sni ;;
         *) echo "[ERROR] 无效的生产 profile / Invalid production profile" >&2; exit 2 ;;
@@ -102,11 +106,17 @@ if [ "${COMPOSE_FILES_LIST[0]:-}" = ../docker-compose.yml ]; then
         IMBOY_PROD_DATA_DIR="${DATA_DIR:-./data}"
         case "$IMBOY_PROD_DATA_DIR" in
             /*) ;;
-            *) IMBOY_PROD_DATA_DIR="$PWD/$IMBOY_PROD_DATA_DIR" ;;
+            *) IMBOY_PROD_DATA_DIR="$(pwd -P)/${IMBOY_PROD_DATA_DIR#./}" ;;
         esac
         export IMBOY_PROD_DATA_DIR
     fi
-    COMPOSE_ARGS=(--project-name imboy --profile "$IMBOY_DEPLOY_PROFILE" --env-file .env)
+    COMPOSE_ARGS=(--project-name "${IMBOY_DEPLOY_PROJECT:-imboy}" --profile prod --env-file .env)
+    export IMBOY_PROD_DEFAULT_GATEWAY_PROFILE=prod
+    if [ "$IMBOY_DEPLOY_PROFILE" != prod ]; then
+        export IMBOY_PROD_DEFAULT_GATEWAY_PROFILE=prod-default-gateway
+        COMPOSE_ARGS+=(--profile "$IMBOY_DEPLOY_PROFILE")
+    fi
+    if [ "${rtc_profile:-}" = rtc ]; then COMPOSE_ARGS+=(--profile rtc); fi
 fi
 uptrace_enabled=0
 if [ "$service_prefix" = prod_ ]; then
@@ -139,7 +149,19 @@ echo "==== IMBoy 部署后自检（compose=${COMPOSE_LABEL} skip_tls=${SKIP_TLS}
 
 # 1. 编排内核心容器全部 running（init job 除外）
 RUNNING_SERVICES="$(compose ps --status running --services 2>/dev/null)"
-EXPECTED_SERVICES="imboy_pg18 garage imboy_backend imboy_admin imboy_nginx imboy_certbot imboy_livekit"
+EXPECTED_SERVICES="imboy_pg18 garage imboy_backend imboy_admin imboy_nginx imboy_certbot"
+if [ "$service_prefix" = prod_ ]; then
+    EXPECTED_SERVICES="$EXPECTED_SERVICES imboy_edge imboy_widget"
+    CONFIGURED_SERVICES="$(compose config --services)" || {
+        echo "[ERROR] 无法解析所选 Compose 服务 / Cannot resolve selected Compose services" >&2
+        exit 1
+    }
+    if printf '%s\n' "$CONFIGURED_SERVICES" | grep -qx "prod_imboy_livekit$nginx_suffix"; then
+        EXPECTED_SERVICES="$EXPECTED_SERVICES imboy_livekit"
+    fi
+else
+    EXPECTED_SERVICES="$EXPECTED_SERVICES imboy_livekit"
+fi
 HTTPS_PROBE_HOST=localhost
 if [ "$nginx_suffix" = _sni ]; then
     EXPECTED_SERVICES="$EXPECTED_SERVICES imboy_haproxy"

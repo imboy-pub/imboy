@@ -1,12 +1,20 @@
 # 在仓库根目录执行 / Run from the repository root.
 # 写法 / Convention: 第一个 --profile 写环境，后续写可选服务组。
 # Put the environment first, then optional service groups. Compose combines them in any order.
+# 每次只选一种环境。测试的可选服务使用 test- 前缀。
+# Select one environment per command. Test-only service groups use the test- prefix.
 #
-# 本地开发依赖 / Local development dependencies (PostgreSQL, Garage, Nginx)
+# 本地开发依赖 / Local development dependencies (PostgreSQL, Garage)
 # docker compose --profile dev up -d
 #
-# 基础生产栈 / Base production stack (includes LiveKit)
+# 开发加反向代理 / Development with reverse proxy
+# docker compose --profile dev --profile gateway up -d
+#
+# 基础生产栈 / Base production stack
 # docker compose --env-file deploy/.env --profile prod up -d
+#
+# 生产加音视频 / Production with LiveKit
+# docker compose --env-file deploy/.env --profile prod --profile rtc up -d
 #
 # 生产加监控 / Production with Prometheus and Grafana
 # docker compose --env-file deploy/.env --profile prod --profile monitoring up -d
@@ -18,45 +26,55 @@
 # docker compose --env-file deploy/.env --profile prod --profile monitoring --profile uptrace config --services
 #
 # 生产命令需要先填写 deploy/.env / Prepare deploy/.env before running production commands.
-# TURN 用 prod-turn 或 prod-sni 替换 prod / For TURN, replace prod with prod-turn or prod-sni.
-# test profile 待实现 / The test profile is not yet available.
+# TURN 和共享 443 是 prod 的可选、互斥网关组合，均包含 LiveKit。
+# TURN and shared 443 replace the default gateway; do not combine these options.
+# IMBOY_PROD_DEFAULT_GATEWAY_PROFILE=prod-default-gateway docker compose --env-file deploy/.env --profile prod --profile prod-turn up -d
+# IMBOY_PROD_DEFAULT_GATEWAY_PROFILE=prod-default-gateway docker compose --env-file deploy/.env --profile prod --profile prod-sni up -d
+# 隔离测试 / Isolated test stack (prepare .env.test from .env.example with test credentials)
+# docker compose -p imboy-test --env-file .env.test --profile test up -d
+# docker compose -p imboy-test --env-file .env.test --profile test --profile test-rtc up -d
+# docker compose -p imboy-test --env-file .env.test --profile test --profile test-monitoring up -d
+# docker compose -p imboy-test --env-file .env.test --profile test --profile test-uptrace up -d
 
 x-logging: &logging
   driver: json-file
   options: {max-size: "10m", max-file: "10"}
 
+x-dev-pg: &dev_pg
+  image: ${PG_IMAGE:-imboy/pg18:3.7.0-1}
+  hostname: pg.docker.imboy.pub
+  restart: unless-stopped
+  environment:
+    TZ: Asia/Shanghai
+    LANG: en_US.UTF-8
+    POSTGRES_USER: ${IMBOY_PG_USERNAME:-imboy_user}
+    POSTGRES_PASSWORD: ${IMBOY_PG_PASSWORD:-}
+    POSTGRES_DB: ${IMBOY_PG_DATABASE:-imboy_v1}
+  volumes:
+    # Preserve the existing named volume; do not move PG onto a macOS bind mount.
+    - imboy_pg18_data:/var/lib/postgresql
+  ports: ["${IMBOY_BIND_ADDR:-127.0.0.1}:${IMBOY_PG_HOST_PORT:-4323}:5432"]
+  healthcheck:
+    test: [CMD-SHELL, 'pg_isready -h 127.0.0.1 -U "$$POSTGRES_USER" -d "$$POSTGRES_DB"']
+    interval: 5s
+    timeout: 3s
+    retries: 30
+    start_period: 15s
+  deploy:
+    resources:
+      limits: {memory: 4096M}
+      reservations: {memory: 4096M}
+  mem_limit: 4096M
+  memswap_limit: 4g
+  logging: *logging
+
 services:
   imboy_pg18:
+    <<: *dev_pg
     profiles: [dev]
-    image: ${PG_IMAGE:-imboy/pg18:3.7.0-1}
     container_name: imboy_pg18
-    hostname: pg.docker.imboy.pub
-    restart: unless-stopped
-    environment:
-      TZ: Asia/Shanghai
-      LANG: en_US.UTF-8
-      POSTGRES_USER: ${IMBOY_PG_USERNAME:-imboy_user}
-      POSTGRES_PASSWORD: ${IMBOY_PG_PASSWORD:-}
-      POSTGRES_DB: ${IMBOY_PG_DATABASE:-imboy_v1}
-    volumes:
-      # Preserve the existing named volume; do not move PG onto a macOS bind mount.
-      - imboy_pg18_data:/var/lib/postgresql
-    ports: ["${IMBOY_BIND_ADDR:-127.0.0.1}:${IMBOY_PG_HOST_PORT:-4323}:5432"]
-    healthcheck:
-      test: [CMD-SHELL, 'pg_isready -h 127.0.0.1 -U "$$POSTGRES_USER" -d "$$POSTGRES_DB"']
-      interval: 5s
-      timeout: 3s
-      retries: 30
-      start_period: 15s
-    deploy:
-      resources:
-        limits: {memory: 4096M}
-        reservations: {memory: 4096M}
-    mem_limit: 4096M
-    memswap_limit: 4g
-    logging: *logging
 
-  garage:
+  garage: &dev_garage
     profiles: [dev]
     image: dxflrs/garage:v2.4.1@sha256:9c96caa2612d3411acc5b0e6701fb238dbfba33e533a6d7d3d811a4b12d0d020
     restart: unless-stopped
@@ -80,7 +98,7 @@ services:
       start_period: 10s
     logging: *logging
 
-  imboy_backend:
+  imboy_backend: &dev_backend
     profiles: [api]
     image: ${BACKEND_IMAGE:-imboy-backend:local}
     build: {context: ., dockerfile: Dockerfile}
@@ -88,7 +106,7 @@ services:
     depends_on:
       imboy_pg18: {condition: service_healthy}
       garage: {condition: service_healthy}
-    environment:
+    environment: &dev_backend_env
       IMBOYENV: local
       # Local single-node boot must not wait for the template's example peers.
       IMBOY_CLUSTER_NODES: "[]"
@@ -130,11 +148,8 @@ services:
       IMBOY_LIVEKIT_WS_URL: ws://${RTC_DOMAIN:-rtc.localhost}:${NGINX_HTTP_PORT:-8080}
       IMBOY_LIVEKIT_API_KEY: ${LIVEKIT_API_KEY:-devkey}
       IMBOY_LIVEKIT_API_SECRET: ${LIVEKIT_API_SECRET:-}
-      IMBOY_EDITION: ${IMBOY_EDITION:-community}
       IMBOY_PRODUCT_EXPERIENCE: ${IMBOY_PRODUCT_EXPERIENCE:-chat}
       IMBOY_PAYMENT_GATEWAY_ENABLED: "false"
-      IMBOY_LICENSE_FILE: ${IMBOY_LICENSE_FILE:-}
-      IMBOY_LICENSE_PUBKEY: ${IMBOY_LICENSE_PUBKEY:-}
       IMBOY_EB_ENTERPRISE_KEYRING_FILE: ${IMBOY_EB_ENTERPRISE_KEYRING_FILE:-}
       IMBOY_TRIAL_FILE: /opt/imboy/priv_runtime/trial_start.epoch
       IMBOY_MAX_WS_CONNECTIONS: ${IMBOY_MAX_WS_CONNECTIONS:-20000}
@@ -153,7 +168,7 @@ services:
       start_period: 60s
     logging: *logging
 
-  imboy_edge:
+  imboy_edge: &dev_edge
     profiles: [api]
     image: ${BACKEND_IMAGE:-imboy-backend:local}
     pull_policy: never
@@ -167,7 +182,7 @@ services:
     configs:
       - source: edge_health_vm_args
         target: /run/edge-health.vm.args
-    healthcheck:
+    healthcheck: &edge_healthcheck
       # The edge is a separate, unnamed VM: probe its HTTP handler from a clean
       # short-lived VM. POST must return 405, without invoking ticket authorization.
       test:
@@ -254,7 +269,7 @@ services:
     logging: *logging
 
   imboy_nginx:
-    profiles: [dev]
+    profiles: [gateway]
     image: nginx:1.27-alpine@sha256:65645c7bb6a0661892a8b03b89d0743208a18dd2f3f17a54ef4b76fb8e2f2a10
     restart: unless-stopped
     environment:
@@ -293,6 +308,94 @@ services:
       - ./api/openapi.yaml:/openapi.yaml:ro
     environment:
       SWAGGER_JSON: /openapi.yaml
+
+  # Test resources are scoped to the Compose project and use separate loopback ports.
+  test_pg18:
+    <<: *dev_pg
+    profiles: [test]
+    networks:
+      test:
+        aliases: [imboy_pg18]
+    volumes: [test_pg_data:/var/lib/postgresql]
+    ports: []
+
+  test_garage:
+    <<: *dev_garage
+    profiles: [test]
+    networks: [test]
+    volumes: [test_garage_data:/var/lib/garage]
+    ports: ["127.0.0.1:${IMBOY_TEST_S3_PORT:-13900}:3900"]
+
+  test_backend:
+    <<: *dev_backend
+    profiles: [test]
+    networks:
+      test:
+        aliases: [imboy_backend]
+    depends_on:
+      test_pg18: {condition: service_healthy}
+      test_garage: {condition: service_healthy}
+    environment:
+      <<: *dev_backend_env
+      IMBOYENV: test
+      IMBOY_UPTRACE_DSN: ${IMBOY_UPTRACE_DSN:-}
+      IMBOY_UPTRACE_OTLP_ENDPOINT: ${IMBOY_UPTRACE_OTLP_ENDPOINT:-}
+      IMBOY_PG_HOST: test_pg18
+      IMBOY_LIVEKIT_WS_URL: ws://127.0.0.1:${IMBOY_TEST_RTC_PORT:-17880}
+      IMBOY_GARAGE_ENDPOINT: http://test_garage:3900
+      IMBOY_GARAGE_PUBLIC_ENDPOINT: http://127.0.0.1:${IMBOY_TEST_S3_PORT:-13900}
+      IMBOY_GARAGE_PUBLIC_BASE_URL: http://127.0.0.1:${IMBOY_TEST_S3_PORT:-13900}
+      IMBOY_BASE_URL: http://127.0.0.1:${IMBOY_TEST_API_PORT:-19800}
+      IMBOY_AVATAR_EDGE_BASE_URL: http://127.0.0.1:${IMBOY_TEST_EDGE_PORT:-13991}
+      IMBOY_WS_URL: ws://127.0.0.1:${IMBOY_TEST_API_PORT:-19800}/api/v1/ws
+    volumes:
+      - test_backend_runtime:/opt/imboy/priv_runtime
+      - test_backend_logs:/opt/imboy/log
+    ports: ["127.0.0.1:${IMBOY_TEST_API_PORT:-19800}:9800"]
+
+  test_edge:
+    <<: *dev_edge
+    profiles: [test]
+    networks: [test]
+    depends_on:
+      test_backend: {condition: service_healthy}
+    environment:
+      EDGE_AUTHORIZE_URL: http://test_backend:9800/api/v1/attachment/edge/authorize
+      EDGE_INTERNAL_TOKEN: ${IMBOY_EDGE_INTERNAL_TOKEN:-}
+    ports: ["127.0.0.1:${IMBOY_TEST_EDGE_PORT:-13991}:13990"]
+
+  test_livekit:
+    profiles: [test-rtc]
+    networks: [test]
+    image: livekit/livekit-server:v1.13.7@sha256:6fd3b7088874c4d119160dd688798dfec852bc014786d392caad15f6f63912a3
+    environment:
+      LIVEKIT_CONFIG: |
+        port: 7880
+        rtc:
+          tcp_port: 17881
+          port_range_start: 51000
+          port_range_end: 51200
+          use_external_ip: false
+          node_ip: 127.0.0.1
+        keys:
+          ${LIVEKIT_API_KEY:-devkey}: ${LIVEKIT_API_SECRET:-}
+    ports:
+      - "127.0.0.1:${IMBOY_TEST_RTC_PORT:-17880}:7880"
+      - "127.0.0.1:17881:17881"
+      - "127.0.0.1:51000-51200:51000-51200/udp"
+    logging: *logging
+
+  test_prometheus:
+    profiles: [test-monitoring]
+    networks: [test]
+    image: prom/prometheus:v2.55.0@sha256:378f4e03703557d1c6419e6caccf922f96e6d88a530f7431d66a4c4f4b1000fe
+    command: [--config.file=/etc/prometheus/prometheus.yml, --storage.tsdb.retention.time=1d]
+    configs:
+      - source: test_prometheus_config
+        target: /etc/prometheus/prometheus.yml
+    volumes: [test_prometheus_data:/prometheus]
+    ports: ["127.0.0.1:${IMBOY_TEST_METRICS_PORT:-19090}:9090"]
+    logging: *logging
 
   # Production services share the existing production network and DNS aliases.
 
@@ -335,12 +438,12 @@ services:
         max-size: "100m"
         max-file: "30"
 
-  # ========== Garage S3 对象存储（社区版默认核心服务，非 profile）==========
+  # ========== 生产 Garage S3 对象存储==========
   # 附件存储的后端：imboy_backend 经 compose 网络以 http://garage:3900 访问 S3 API。
   #
   # 幂等 init job：无需独立 init 容器，直接使用 Garage v2.4.1 官方内置的
   # `server --single-node --default-bucket` 启动初始化（src/garage/server.rs 的
-  # initial_config），对社区版单节点部署的三条幂等保证（已对照源码验证）：
+  # initial_config），对单节点部署的三条幂等保证（已对照源码验证）：
   #   1) key 已存在不重建/不覆盖：同 access key 且 secret 不一致时启动直接报错，
   #      一致则原样复用；凭据由 .env 的 IMBOY_GARAGE_ACCESS_KEY/SECRET_KEY 提供
   #      （.env 是唯一真源，不存在"从集群导出再回填"的环节）；
@@ -348,7 +451,7 @@ services:
   #   3) 无破坏性重复操作：layout version 0 → 自动创建单节点布局，version 1 →
   #      跳过；read/write/owner 权限重复设置是幂等写。
   # 升级注意：若曾手工扩展过集群（layout version > 1），需移除 --single-node
-  # 参数并以完整 garage.toml 自行管理布局（超出社区版支持范围）。
+  # 参数并以完整 garage.toml 自行管理布局。
   prod_garage:
     networks:
       pro:
@@ -463,13 +566,12 @@ services:
       # LK-01 域名收敛：信令默认走独立 RTC 域 WSS（wss://<RTC_DOMAIN>，由 nginx
       # 反代 7880），不再经 ${API_DOMAIN:-}/livekit 子路径。显式设置
       # IMBOY_LIVEKIT_WS_URL 仍可覆盖（迁移过渡期用）。
-      IMBOY_LIVEKIT_WS_URL: ${IMBOY_LIVEKIT_WS_URL:-wss://${RTC_DOMAIN:-}}
+      IMBOY_LIVEKIT_WS_URL: ${IMBOY_LIVEKIT_WS_URL-${RTC_DOMAIN:+wss://${RTC_DOMAIN}}}
       IMBOY_LIVEKIT_API_KEY: ${LIVEKIT_API_KEY:-}
       IMBOY_LIVEKIT_API_SECRET: ${LIVEKIT_API_SECRET:-}
-      # 社区版固定标记（商务版才需要 professional/enterprise + License）
-      IMBOY_EDITION: community
       IMBOY_EB_DIRECT_ENABLED: ${IMBOY_EB_DIRECT_ENABLED:-false}
       # 双体验 T1：chat（默认，经典 IM）| workspace；非法值后端 fail-safe 降级 chat
+      IMBOY_PRODUCT_PROFILE: ${IMBOY_PRODUCT_PROFILE:-standard}
       IMBOY_PRODUCT_EXPERIENCE: ${IMBOY_PRODUCT_EXPERIENCE:-chat}
       SENTRY_DSN: ${SENTRY_DSN:-}
       # ── SMTP 邮件（可选）────────────────────────────────────────────────────
@@ -496,9 +598,8 @@ services:
       # 单节点 WS 准入上限（后端启动期再校验；非法值拒启，无"无限制"回退）
       IMBOY_MAX_WS_CONNECTIONS: ${IMBOY_MAX_WS_CONNECTIONS:-20000}
       # ── 支付网关 / Payment gateway ───────────────────────────────────────────
-      # 社区版硬编码关闭（不是剔除该变量）：镜像内 sys.pro.config 的默认值是
-      # payment_gateway_enabled=true，若不显式覆盖，无商户凭据的社区部署会在
-      # ensure_payment_gateway_config 处 fail-fast 起不来。false 时网关端点
+      # 当前编排不接入外部商户网关，显式覆盖镜像中支付网关的默认配置。
+      # false 时网关端点
       # （充值/回调/提现）一律返回「功能未启用」，站内钱包账务不受影响。
       # 支付网关凭据（微信/支付宝/Stripe）与支付模式变量已全部剔除。
       IMBOY_PAYMENT_GATEWAY_ENABLED: "false"
@@ -617,8 +718,10 @@ services:
       EDGE_INTERNAL_TOKEN: ${IMBOY_EDGE_INTERNAL_TOKEN:-}
     expose:
       - "13990"
-    healthcheck:
-      disable: true
+    configs:
+      - source: edge_health_vm_args
+        target: /run/edge-health.vm.args
+    healthcheck: *edge_healthcheck
 
   # Separate proof identity: credentials are never injected into the API container.
   prod_imboy_enterprise_proof:
@@ -660,7 +763,9 @@ services:
     networks:
       pro:
         aliases: [imboy_nginx]
-    profiles: [prod]
+    # Compose profiles are additive. The installer disarms this default
+    # binding before selecting the TURN or SNI replacement gateway.
+    profiles: ["${IMBOY_PROD_DEFAULT_GATEWAY_PROFILE:-prod}"]
     # digest pinned 2026-09-29（与本地 docker images --digests 记录一致）
     image: nginx:1.27-alpine@sha256:65645c7bb6a0661892a8b03b89d0743208a18dd2f3f17a54ef4b76fb8e2f2a10
     container_name: imboy_nginx
@@ -670,7 +775,6 @@ services:
       prod_imboy_edge: {condition: service_healthy}
       prod_imboy_admin: {condition: service_healthy}
       prod_imboy_widget: {condition: service_healthy}
-      prod_imboy_livekit: {condition: service_started}
     environment:
       UPTRACE_DOMAIN: ${UPTRACE_DOMAIN:-}
       UPTRACE_ENABLED: ${UPTRACE_ENABLED:-false}
@@ -680,7 +784,7 @@ services:
       RTC_DOMAIN: ${RTC_DOMAIN:-}
       # 客服 Widget 第三域（渲染 nginx/templates/cs-widget.conf.template）
       CS_WIDGET_DOMAIN: ${CS_WIDGET_DOMAIN:-}
-      # /s3/ 反代 upstream（附件公网直传/下载）：社区版 = compose 网络内 garage 服务
+      # /s3/ 反代 upstream（附件公网直传/下载）：默认使用 Compose 网络内的 garage 服务
       S3_UPSTREAM: ${S3_UPSTREAM:-garage:3900}
       # 仅替换部署域名/upstream，保留 nginx 内置 $$host/$$remote_addr 等
       NGINX_ENVSUBST_FILTER: "^(API_DOMAIN|ADMIN_DOMAIN|S3_UPSTREAM|CS_WIDGET_DOMAIN|RTC_DOMAIN|UPTRACE_DOMAIN)$$"
@@ -690,7 +794,7 @@ services:
       # Only HTTP templates for this stack; host stream templates stay outside conf.d.
       - ./deploy/nginx/templates/imboy.conf.template:/etc/nginx/templates/imboy.conf.template:ro
       - ./deploy/nginx/templates/cs-widget.conf.template:/etc/nginx/templates/cs-widget.conf.template:ro
-      - ./deploy/nginx/rtc.conf.template:/etc/nginx/templates/rtc.conf.template:ro
+      - ./deploy/nginx/rtc.conf.template:/etc/imboy/rtc.conf.template:ro
       - ${IMBOY_PROD_DATA_DIR:-./deploy/data}/certbot/conf:/etc/letsencrypt:ro
       - ${IMBOY_PROD_DATA_DIR:-./deploy/data}/certbot/www:/var/www/certbot:ro
       - ${IMBOY_PROD_DATA_DIR:-./deploy/data}/nginx_log:/var/log/nginx
@@ -761,7 +865,7 @@ services:
     networks:
       pro:
         aliases: [imboy_livekit]
-    profiles: [prod]
+    profiles: [rtc]
     # digest 已验证可解析（2026-09-29）：= v1.13.7 的 linux/amd64 子 manifest；
     # v1.13.7 多架构顶层 = sha256:6fd3b7088874c4d119160dd688798dfec852bc014786d392caad15f6f63912a3
     image: livekit/livekit-server@sha256:5d3dcc475d064536d9948ebe4eeab8e3b24d6f07a46f6d71a3415a2901bbdc52
@@ -1088,7 +1192,7 @@ services:
         max-size: "20m"
         max-file: "5"
 
-  uptrace_pg_init:
+  uptrace_pg_init: &uptrace_pg_init_service
     profiles: [uptrace]
     networks: [pro]
     # digest pinned 2026-09-29（registry manifest HEAD 取多架构顶层；tag 保留便于人读）
@@ -1113,7 +1217,7 @@ services:
         ALTER DATABASE uptrace OWNER TO uptrace;
         SQL
 
-  uptrace_clickhouse:
+  uptrace_clickhouse: &uptrace_clickhouse_service
     profiles: [uptrace]
     networks: [uptrace_private]
     # digest pinned 2026-09-29（registry manifest HEAD 取多架构顶层；tag 保留便于人读）
@@ -1139,7 +1243,7 @@ services:
         limits:
           memory: ${UPTRACE_CLICKHOUSE_MEM_LIMIT:-4096M}
 
-  uptrace_redis:
+  uptrace_redis: &uptrace_redis_service
     profiles: [uptrace]
     networks: [uptrace_private]
     # digest pinned 2026-09-29（registry manifest HEAD 取多架构顶层；tag 保留便于人读）
@@ -1157,7 +1261,7 @@ services:
       timeout: 3s
       retries: 20
 
-  uptrace:
+  uptrace: &uptrace_service
     profiles: [uptrace]
     networks: [uptrace_private, pro]
     # digest pinned 2026-09-29（registry manifest HEAD 取多架构顶层；tag 保留便于人读）
@@ -1171,8 +1275,8 @@ services:
         condition: service_healthy
       uptrace_redis:
         condition: service_healthy
-    environment:
-      UPTRACE_DOMAIN: ${UPTRACE_DOMAIN:-}
+    environment: &uptrace_environment
+      UPTRACE_SITE_URL: https://${UPTRACE_DOMAIN:-}
       UPTRACE_SERVICE_SECRET: ${UPTRACE_SERVICE_SECRET:-}
       UPTRACE_PG_PASSWORD: ${UPTRACE_PG_PASSWORD:-}
       UPTRACE_CLICKHOUSE_PASSWORD: ${UPTRACE_CLICKHOUSE_PASSWORD:-}
@@ -1190,7 +1294,7 @@ services:
         limits:
           memory: ${UPTRACE_MEM_LIMIT:-2048M}
 
-  uptrace_otelcol:
+  uptrace_otelcol: &uptrace_otelcol_service
     profiles: [uptrace]
     networks: [uptrace_private, pro]
     # digest pinned 2026-09-29（registry manifest HEAD 取多架构顶层；tag 保留便于人读）
@@ -1204,7 +1308,71 @@ services:
     volumes:
       - ./deploy/uptrace/otel-collector.yml:/etc/otelcol-contrib/config.yaml:ro
 
+  test_uptrace_pg_init:
+    <<: *uptrace_pg_init_service
+    profiles: [test-uptrace]
+    networks: [test]
+    depends_on:
+      test_pg18: {condition: service_healthy}
+    environment:
+      PGHOST: test_pg18
+      PGUSER: ${IMBOY_PG_USERNAME:-imboy_user}
+      PGPASSWORD: ${IMBOY_PG_PASSWORD:-}
+      PGDATABASE: ${IMBOY_PG_DATABASE:-imboy_v1}
+      UPTRACE_PG_PASSWORD: ${UPTRACE_PG_PASSWORD:-}
+
+  test_uptrace_clickhouse:
+    <<: *uptrace_clickhouse_service
+    profiles: [test-uptrace]
+    container_name: ${COMPOSE_PROJECT_NAME}-uptrace-clickhouse
+    networks:
+      test_uptrace_private:
+        aliases: [uptrace_clickhouse]
+    volumes: [test_uptrace_clickhouse_data:/var/lib/clickhouse]
+
+  test_uptrace_redis:
+    <<: *uptrace_redis_service
+    profiles: [test-uptrace]
+    container_name: ${COMPOSE_PROJECT_NAME}-uptrace-redis
+    networks:
+      test_uptrace_private:
+        aliases: [uptrace_redis]
+
+  test_uptrace:
+    <<: *uptrace_service
+    profiles: [test-uptrace]
+    container_name: ${COMPOSE_PROJECT_NAME}-uptrace
+    networks:
+      test_uptrace_private:
+        aliases: [uptrace]
+      test:
+        aliases: [uptrace]
+    depends_on:
+      test_uptrace_pg_init: {condition: service_completed_successfully}
+      test_uptrace_clickhouse: {condition: service_healthy}
+      test_uptrace_redis: {condition: service_healthy}
+    environment:
+      <<: *uptrace_environment
+      UPTRACE_SITE_URL: http://127.0.0.1:${IMBOY_TEST_UPTRACE_PORT:-14318}
+    ports: ["127.0.0.1:${IMBOY_TEST_UPTRACE_PORT:-14318}:80"]
+
+  test_uptrace_otelcol:
+    <<: *uptrace_otelcol_service
+    profiles: [test-uptrace]
+    container_name: ${COMPOSE_PROJECT_NAME}-uptrace-otelcol
+    networks: [test_uptrace_private, test]
+    depends_on: [test_uptrace]
+
+
 configs:
+  test_prometheus_config:
+    content: |
+      global:
+        scrape_interval: 15s
+      scrape_configs:
+        - job_name: imboy-test
+          static_configs:
+            - targets: ["test_backend:9800"]
   edge_health_vm_args:
     # The probe boots only kernel/stdlib/inets, with no app or heart process.
     content: |
@@ -1276,6 +1444,9 @@ configs:
       real_ip_header proxy_protocol;
 
 networks:
+  test: {}
+  test_uptrace_private:
+    internal: true
   uptrace_private:
     internal: true
   api_docs: {}
@@ -1286,10 +1457,16 @@ networks:
   default:
     name: imboy-local
   pro:
-    name: imboy-network
+    name: ${IMBOY_DEPLOY_NETWORK:-imboy-network}
     external: true
 
 volumes:
+  test_uptrace_clickhouse_data: {}
+  test_prometheus_data: {}
+  test_pg_data: {}
+  test_garage_data: {}
+  test_backend_runtime: {}
+  test_backend_logs: {}
   # This exact existing volume name is part of the data compatibility contract.
   imboy_pg18_data:
     name: imboy_pg18_data
@@ -1310,7 +1487,7 @@ x-imboy-business-policy: |
   services:
     imboy_backend:
       environment:
-        IMBOY_PRODUCT_PROFILE: $${IMBOY_PRODUCT_PROFILE:-community}
+        IMBOY_PRODUCT_PROFILE: $${IMBOY_PRODUCT_PROFILE:-standard}
         # 双体验 T1：chat（默认）| workspace；非法值后端 fail-safe 降级 chat
         IMBOY_PRODUCT_EXPERIENCE: $${IMBOY_PRODUCT_EXPERIENCE:-chat}
         IMBOY_E2EE_MODE: $${IMBOY_E2EE_MODE:-required}

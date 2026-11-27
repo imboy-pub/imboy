@@ -6,7 +6,6 @@
 %%% 只做「HTTP 打不到但属于本地环境准备」的动作，全部走运行中节点的真实
 %%% 业务函数，不绕过任何校验：
 %%%   token <uid> [did]  经 token_ds:encrypt_token/2 签发登录 token
-%%%   license            输出 imboy_license:public_info/0（脱敏 7 字段）
 %%%   user_count         user_ds:count/0
 %%%   seed_plan <code>   经 billing_logic:create_plan/1 建套餐（已存在则复用）
 %%%
@@ -39,9 +38,6 @@ dispatch(Node, ["token", Uid, Did]) ->
         list_to_integer(Uid), list_to_binary(Did)
     ]),
     io:format("~s~n", [Token]);
-dispatch(Node, ["license"]) ->
-    Info = rpc(Node, imboy_license, public_info, []),
-    maps:foreach(fun(K, V) -> io:format("~s=~s~n", [K, fmt(V)]) end, Info);
 dispatch(Node, ["user_count"]) ->
     io:format("~p~n", [rpc(Node, user_ds, count, [])]);
 dispatch(Node, ["seed_plan", Code]) ->
@@ -78,14 +74,11 @@ dispatch(Node, ["refresh" | Mods0]) ->
         end,
     lists:foreach(fun(M) -> refresh_mod(Node, M) end, Mods);
 dispatch(Node, ["fresh_check"]) ->
-    %% 新鲜度探针：本分支引入的函数在节点上必须可调用
-    case rpc:call(Node, erlang, function_exported, [imboy_license, public_info, 0], 20000) of
-        true -> io:format("fresh~n");
-        _ -> die("stale: 节点上 imboy_license:public_info/0 不存在，先跑 refresh", [])
-    end;
+    lists:foreach(fun(Mod) -> fresh_module(Node, Mod) end, [passport_logic, imboy_router]),
+    io:format("fresh~n");
 dispatch(_Node, Args) ->
     die(
-        "用法: commercial_rpc.escript token <uid> [did] | license | user_count |"
+        "用法: commercial_rpc.escript token <uid> [did] | user_count |"
         " seed_plan <code> | refresh [模块...] | fresh_check~n实参: ~p",
         [Args]
     ).
@@ -98,7 +91,8 @@ default_refresh_mods() ->
         brand_handler,
         user_handler,
         imboy_cluster,
-        imboy_license,
+        passport_logic,
+        imboy_router,
         auth_ds,
         elib_response,
         auth_oidc_logic,
@@ -108,6 +102,17 @@ default_refresh_mods() ->
         user_export_logic,
         billing_subscription_repo
     ].
+
+fresh_module(Node, Mod) ->
+    File = filename:join("ebin", atom_to_list(Mod) ++ ".beam"),
+    case beam_lib:md5(File) of
+        {ok, {Mod, Digest}} ->
+            case rpc:call(Node, Mod, module_info, [md5], 20000) of
+                Digest -> ok;
+                _ -> die("stale: 节点 ~p 与本地 BEAM 不同，请重建并重启节点", [Mod])
+            end;
+        Other -> die("ERROR: 无法检查本地 BEAM ~s: ~p", [File, Other])
+    end.
 
 refresh_mod(Node, Mod) ->
     File = filename:join("ebin", atom_to_list(Mod) ++ ".beam"),

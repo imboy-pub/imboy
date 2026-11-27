@@ -106,8 +106,9 @@ run_preflight() {
   ( cd "$FIXTURE" && env -i PATH="${MOCK_BIN:+$MOCK_BIN:}$PATH" \
       MOCK_DISK_KB="${MOCK_DISK_KB:-}" \
       MOCK_DNS_OK="${MOCK_DNS_OK:-0}" MOCK_SS_3478="${MOCK_SS_3478:-0}" MOCK_TURN_OWNER="${MOCK_TURN_OWNER:-}" \
+      IMBOY_DEPLOY_CHECK_RTC="${IMBOY_DEPLOY_CHECK_RTC:-1}" IMBOY_DEPLOY_CHECK_TURN="${IMBOY_DEPLOY_CHECK_TURN:-1}" \
       IMBOY_DEPLOY_PROFILE="${IMBOY_DEPLOY_PROFILE:-}" IMBOY_BOOTSTRAP_TURN_CERT="${IMBOY_BOOTSTRAP_TURN_CERT:-}" \
-      ./preflight.sh --edition community "$@" ) \
+      ./preflight.sh --without-payment "$@" ) \
     >"$TMP_ROOT/out.log" 2>&1
   echo $?
 }
@@ -117,6 +118,18 @@ echo "== A01 preflight 五域配置中的 RTC/TURN 正负例 =="
 RC="$(run_preflight)"
 assert_rc 0 "$RC" "正向：五域齐全 + TURN 关闭 → 通过（exit 0）"
 
+set_env_line IMBOY_PLUGIN_LIFECYCLE_ENABLED true
+for preset in audited enterprise; do
+  set_env_line IMBOY_PRODUCT_PROFILE "$preset"
+  RC="$(run_preflight)"
+  assert_rc 1 "$RC" "$preset 预设开启动态插件且缺可信签名公钥 → 拒绝"
+  assert_grep "$preset 预设提示配置公钥" '审计预设启用动态插件生命周期时，须设置 IMBOY_PLUGIN_TRUSTED_PUBLIC_KEY_FILES' "$TMP_ROOT/out.log"
+done
+set_env_line IMBOY_PRODUCT_PROFILE standard
+RC="$(run_preflight)"
+assert_rc 0 "$RC" "标准预设保持动态插件预检兼容"
+set_env_line IMBOY_PLUGIN_LIFECYCLE_ENABLED false
+
 RC="$(MOCK_DISK_KB=9437184 run_preflight)"
 assert_rc 1 "$RC" "负向：可用磁盘低于最低要求 → 拒绝"
 assert_grep "低磁盘空间有明确报错" '可用磁盘 9GB < 10GB' "$TMP_ROOT/out.log"
@@ -125,6 +138,14 @@ del_env_line RTC_DOMAIN
 RC="$(run_preflight)"
 assert_rc 1 "$RC" "负向：缺 RTC_DOMAIN → 拒绝（exit 1）"
 assert_grep "缺 RTC_DOMAIN 有明确报错" 'RTC_DOMAIN 未设置' "$TMP_ROOT/out.log"
+
+del_env_line TURN_DOMAIN
+del_env_line LIVEKIT_API_KEY
+del_env_line LIVEKIT_API_SECRET
+RC="$(IMBOY_DEPLOY_CHECK_RTC=0 IMBOY_DEPLOY_CHECK_TURN=0 run_preflight)"
+assert_rc 0 "$RC" "基础生产无需 RTC/TURN 域名或密钥"
+set_env_line LIVEKIT_API_KEY "rtc_test_key"
+set_env_line LIVEKIT_API_SECRET "$(printf '%032d' 1)"
 
 set_env_line RTC_DOMAIN "rtc.test.invalid"
 set_env_line TURN_DOMAIN "turn.test.invalid"

@@ -106,16 +106,16 @@ await SentryFlutter.init(
 
 **Erlang 后端（`imboy/`）目前尚未集成 Sentry SDK。**
 
-`docker-compose.prod.yml` 中已预留 `SENTRY_DSN` 环境变量占位符：
+`docker-compose.yml` 中已预留 `SENTRY_DSN` 环境变量占位符：
 
 ```yaml
-# deploy/docker-compose.prod.yml
+# 仓库根目录 / Repository root
 environment:
   SENTRY_DSN: ${SENTRY_DSN:-}
 ```
 
 **The Erlang backend (`imboy/`) does not currently integrate a Sentry SDK.**
-The `SENTRY_DSN` env var placeholder exists in `docker-compose.prod.yml` for future use.
+The `SENTRY_DSN` env var placeholder exists in `docker-compose.yml` for future use.
 
 ### 2.2 推荐后端错误监控方案 / Recommended Backend Error Monitoring
 
@@ -149,15 +149,15 @@ report_to_sentry(Exception, Stacktrace) ->
     end.
 ```
 
-**方案 C：暂不集成，使用 Grafana/Loki 替代**
+**方案 C：使用容器日志与指标 / Container logs and metrics**
 
-项目已部署 Loki + Grafana 日志聚合（`docker-compose.prod.yml`），可在 Grafana 中设置 ERROR 级别日志告警，覆盖后端错误监控需求，**无需强依赖 Sentry**。
+从仓库根目录使用 `docker compose --env-file deploy/.env --profile prod logs prod_imboy_backend` 查看后端日志。启用 `monitoring` 可用 Prometheus 和 Grafana 查看指标。
 
-The project already deploys Loki + Grafana log aggregation. ERROR-level log alerts in Grafana can cover backend error monitoring **without requiring Sentry**.
+From the repository root, use the command above to inspect backend logs. Enable `monitoring` for Prometheus and Grafana metrics.
 
 ### 2.3 生产环境变量配置 / Production Env Var Configuration
 
-在 `deploy/.env`（对应 `deploy/docker-compose.prod.yml`）中设置：
+在 `deploy/.env`（对应 `deploy/docker-compose.yml`）中设置：
 
 ```dotenv
 # deploy/.env

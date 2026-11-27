@@ -63,15 +63,13 @@ start(_Type, _Args) ->
     ok = imboy_secret_policy:ensure_dev_defaults(),
     ok = ensure_rsa_keys(),
     ok = ensure_alipay_keys(),
-    %% 加载并校验 License（规模/配额授权）：无 license=社区版，无效=降级社区版
-    ok = imboy_license:load_and_validate(),
     ok = maybe_migrate(),
     %% OpenTelemetry 遥测（Uptrace 对接）：未配 IMBOY_UPTRACE_DSN 则完全跳过，
     %% 内部异常自吞，不阻断主启动链
     ok = imboy_telemetry:init(),
     _ = imboy_syn:init(),
     %% TSID 在 imboy_sup 初始化；核心监督树完成后才开放监听器。
-    % 初始化集群管理（join_cluster 内部已含 License 节点数告警）
+    % 初始化集群管理
     _ = imboy_cluster:init(),
     % 初始化验证码 ETS 表
     _ = simple_captcha_ets:init(),

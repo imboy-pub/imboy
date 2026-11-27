@@ -104,7 +104,7 @@ preview_config(_) ->
 
 -spec load_profile_config() -> term().
 load_profile_config() ->
-    load_config_value(?PRODUCT_PROFILE_CONFIG_KEY, config_ds:env(product_profile, community)).
+    load_config_value(?PRODUCT_PROFILE_CONFIG_KEY, config_ds:env(product_profile, standard)).
 
 -spec load_capability_config() -> term().
 load_capability_config() ->
@@ -132,7 +132,7 @@ load_saved_config_value(Key) ->
     load_config_value(Key, #{}).
 
 -spec saved_profile_override() ->
-    community | enterprise | overseas_baseline | undefined.
+    standard | audited | overseas_baseline | phase1_delivery | undefined.
 saved_profile_override() ->
     case normalize_profile_input(load_config_value(?PRODUCT_PROFILE_CONFIG_KEY, undefined)) of
         {ok, Profile} ->
@@ -295,6 +295,11 @@ persist_config_sections(Sections) ->
 -spec merge_persisted_section(binary(), term()) -> term().
 merge_persisted_section(?PRODUCT_PROFILE_CONFIG_KEY, ?DELETE_VALUE) ->
     null;
+%% Preserve the database values understood by the previous backend during rollback.
+merge_persisted_section(?PRODUCT_PROFILE_CONFIG_KEY, <<"standard">>) ->
+    <<"community">>;
+merge_persisted_section(?PRODUCT_PROFILE_CONFIG_KEY, <<"audited">>) ->
+    <<"enterprise">>;
 merge_persisted_section(?PRODUCT_PROFILE_CONFIG_KEY, Value) ->
     Value;
 merge_persisted_section(Key, Value) ->

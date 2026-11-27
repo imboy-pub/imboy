@@ -13,13 +13,13 @@ get:
     ## 中文
     IdP 授权码回调：state 一次性消费 → 换 token（PKCE verifier）→ 校验
     id_token claims（iss/aud/exp/nonce）→ userinfo → 账号映射/自动建号
-    （过 License 配额闸门）→ 签发 imboy JWT。client=test 直接返回登录
+    → 签发 imboy JWT。client=test 直接返回登录
     payload；client=app 302 到 `imboy://oidc/callback?otc=` 深链。
-    所有失败路径统一返回"SSO 登录失败"（License 满额 402 除外）。
+    所有失败路径统一返回"SSO 登录失败"。
     ## English
     IdP authorization-code callback: one-time state consumption, PKCE token
     exchange, id_token claims validation, userinfo fetch, account mapping or
-    auto-provisioning (license quota gated), then imboy JWT issuance.
+    auto-provisioning, then imboy JWT issuance.
   operationId: oidcCallback
   parameters:
     - name: code
@@ -42,7 +42,7 @@ get:
     '302':
       description: client=app 时 302 到 imboy://oidc/callback?otc=<一次性码>
     '4XX':
-      description: state 无效/重放、claims 不符、IdP 交互失败（统一错误消息）；License 满额 402
+      description: state 无效/重放、claims 不符、IdP 交互失败（统一错误消息）
       content:
         application/json:
           schema:

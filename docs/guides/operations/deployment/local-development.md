@@ -57,12 +57,10 @@ bash scripts/dev_setup.sh
 bash scripts/dev_setup.sh --with-livekit
 bash scripts/dev_setup.sh --with-widget
 bash scripts/dev_setup.sh --with-livekit --with-widget
-bash scripts/dev_setup.sh --edition enterprise
 bash scripts/dev_setup.sh --help
 ```
 
-`--edition` 接受 `community`、`professional`、`enterprise`，选择同一后端的运行标记；
-具体能力仍受许可证、编译清单及运行时 features 限制。此选项不会生成或解除许可证。
+部署能力由编译清单、运行时功能策略和启用的服务决定，不按商业版次区分。
 旧参数 `--with-garage` 仍接受，Garage 已默认启用，无需另加。
 
 | Profile | 用途 |
@@ -75,7 +73,7 @@ bash scripts/dev_setup.sh --help
 | `pro` | 保留原有独立 PostgreSQL 服务及其数据挂载 |
 
 直接用 Compose 时要启用依赖所需 profiles。例如默认栈使用
-`docker compose --profile dev --profile api --profile admin`。
+`docker compose --profile dev --profile gateway --profile api --profile admin`。
 单独启用 `pro` 不会替默认 API 切换数据库。`bash scripts/dev_setup.sh --profile pro`
 会在默认服务之外启动 pro PG，并在缺失时创建其原有外部网络 `imboy-network`。
 直接 Compose 启动 pro 时须先准备该网络；两库可以同时运行，容器名、端口和数据挂载独立。
@@ -138,18 +136,17 @@ docker compose --profile dev --profile api exec --user 0 imboy_backend \
   sh -c 'chown 10001:10001 /opt/imboy/priv_runtime/enterprise_keyring.json && chmod 600 /opt/imboy/priv_runtime/enterprise_keyring.json'
 ```
 
-再按 `.env.example` 设置 `IMBOY_LICENSE_FILE`、`IMBOY_LICENSE_PUBKEY`、
-`IMBOY_EB_ENTERPRISE_KEYRING_FILE` 中实际需要的变量，并重跑所选 `--edition`。
+如启用了企业托管加密，请按 `.env.example` 设置 `IMBOY_EB_ENTERPRISE_KEYRING_FILE`，再重跑启动命令。
 密钥环格式以 [eb_keyring_file.erl](../../../../src/features/enterprise_business/infrastructure/eb_keyring_file.erl)
 为准；缺失、权限或内容无效会拒绝启动，运行标记本身不代表企业能力验收完成。
 
 ## 查看状态与停止
 
 ```bash
-docker compose --profile dev --profile api --profile admin ps
-docker compose --profile dev --profile api --profile admin logs --tail=100 imboy_backend
+docker compose --profile dev --profile gateway --profile api --profile admin ps
+docker compose --profile dev --profile gateway --profile api --profile admin logs --tail=100 imboy_backend
 # 暂停服务，保留容器与持久化数据；按需加 livekit/widget profile。
-docker compose --profile dev --profile api --profile admin stop
+docker compose --profile dev --profile gateway --profile api --profile admin stop
 ```
 
 开发库继续使用命名卷 `imboy_pg18_data`。 `pro` 和生产 profiles 共用 `prod_imboy_pg18`，数据默认放在 `deploy/data/pg18`。接回旧库前，在 `.env` 显式设置 `IMBOY_PROD_PG_DATA_DIR=/data/docker/pro_imboy_pg18`、`PG_PORT=5181`，并核对 `PG_IMAGE` 和数据库账号。已有旧容器必须停止后才能让新容器挂载同一目录。

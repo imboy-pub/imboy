@@ -181,16 +181,6 @@ init([]) ->
         modules => [user_deletion_logic]
     },
 
-    % License 到期提醒定时 worker（默认禁用 + 收件人空 = 不发，需 sys.config 显式启用）
-    LicenseNoticeWorker = #{
-        id => license_notice_worker,
-        start => {license_notice_worker, start_link, []},
-        restart => permanent,
-        shutdown => 5000,
-        type => worker,
-        modules => [license_notice_worker]
-    },
-
     % SaaS 账单生成定时 worker（默认禁用，需 sys.config 显式启用；只生成账单不扣款）
     BillingInvoiceWorker = #{
         id => billing_invoice_worker,
@@ -366,7 +356,6 @@ init([]) ->
             ModerationSweepWorker,
             ModerationShadowWorker,
             UserDeletionWorker,
-            LicenseNoticeWorker,
             BillingInvoiceWorker,
             OlmOtkCleanupWorker,
             QrLoginCleanupWorker,

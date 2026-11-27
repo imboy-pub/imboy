@@ -132,9 +132,9 @@ verify_file(FilePath, SigPath) ->
 %%
 %% 档位口径与 deploy/preflight.sh 的 IMBOY_PRODUCT_PROFILE 一致
 %% （imboy_env:override_product_profile/0 映射为 {imboy, product_profile}）：
-%%   - community：按 {imboy, plugin_signature_required}（默认 false），
+%%   - standard：按 {imboy, plugin_signature_required}（默认 false），
 %%     维持现状（宽松 + lifecycle 默认关闭）。
-%%   - enterprise（商务版）：**强制 true**，plugin_signature_required=false
+%%   - audited：**强制 true**，plugin_signature_required=false
 %%     无法降级 —— 商务版 install 必须可信签名，缺 key / 缺 SIGNATURE /
 %%     验签失败一律拒绝，不降级放行。
 %%   - 其他任何值（拼错的档位）：fail-closed 按强制处理。拼错意味着策略
@@ -142,8 +142,8 @@ verify_file(FilePath, SigPath) ->
 %%     非法值 fail-fast 拒启的语义一致）。
 -spec signature_required() -> boolean().
 signature_required() ->
-    case config_ds:env(product_profile, community) of
-        community ->
+    case config_ds:env(product_profile, standard) of
+        Preset when Preset =:= standard; Preset =:= community ->
             application:get_env(imboy, plugin_signature_required, false) =:= true;
         _ ->
             true

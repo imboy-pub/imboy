@@ -20,13 +20,13 @@ trap cleanup EXIT
 mkdir -p "$FIXTURE/nginx" "$FIXTURE/cleanup-db" "$TMP_ROOT/scripts" "$MOCK_BIN" "$TOOLS_BIN"
 # 仅开放这些工具；宿主机即使有 Python，子进程 PATH 也找不到它。
 for bin in awk cat chmod cmp cp cut date dirname env grep head jq mkdir mktemp mv \
-    openssl rm sed seq sh stat tail touch tr wc; do
+    openssl ln rm sed seq sh stat tail touch tr wc; do
   tool_path="$(command -v "$bin")" || { echo "缺少测试依赖: $bin" >&2; exit 1; }
   ln -s "$tool_path" "$TOOLS_BIN/$bin"
 done
 TEST_PATH="$MOCK_BIN:$TOOLS_BIN"
 cp deploy/install.sh deploy/init-cleanup-db.sh deploy/prepare-backend-runtime.sh deploy/.env.example "$FIXTURE/"
-cp scripts/test/fixtures/legacy-compose/community.fixture "$FIXTURE/docker-compose.community.yml"
+cp scripts/gen_login_rsa_keys.sh "$TMP_ROOT/scripts/"
 cp docker-compose.yml "$TMP_ROOT/docker-compose.yml"
 cp deploy/cleanup-db/bootstrap.sql deploy/cleanup-db/verify.sql "$FIXTURE/cleanup-db/"
 cp deploy/nginx/init-letsencrypt.sh "$FIXTURE/nginx/"
@@ -59,6 +59,7 @@ cat >"$MOCK_BIN/docker" <<'MOCK'
 set -euo pipefail
 printf 'docker %s\n' "$*" >>"$MOCK_LOG"
 printf '%s\n' "${COMPOSE_PROFILES:-}" >>"$MOCK_LOG.profiles"
+printf '%s\n' "${IMBOY_PROD_DEFAULT_GATEWAY_PROFILE:-}" >>"$MOCK_LOG.gateway"
 # Fixtures contain simple assignments only; read them as data, not source/eval.
 resolved_env() {
   jq -Rn '[inputs | select(test("^[A-Za-z_][A-Za-z0-9_]*=")) |
@@ -87,6 +88,7 @@ config_json() {
         IMBOY_PASSWORD_SALT: $e.IMBOY_PASSWORD_SALT,
         IMBOY_LIVEKIT_API_KEY: $e.LIVEKIT_API_KEY,
         IMBOY_LIVEKIT_API_SECRET: $e.LIVEKIT_API_SECRET,
+        IMBOY_PAYMENT_GATEWAY_ENABLED: "false",
         IMBOY_DIRECT_CLEANUP_PG_USER: $e.IMBOY_DIRECT_CLEANUP_PG_USER,
         IMBOY_DIRECT_CLEANUP_PG_PASSWORD: $e.IMBOY_DIRECT_CLEANUP_PG_PASSWORD}},
       imboy_edge: {image: ($e.MOCK_EDGE_IMAGE // $image),
@@ -100,10 +102,12 @@ config_json() {
       if (env.IMBOY_DEPLOY_PROFILE // "") == "" then . else
         .services |= with_entries(
           .value.container_name = .key |
-          .value.image //= "registry.test/service:z" |
+          (if .key == "imboy_backend" or .key == "imboy_edge" then . else
+             .value.image //= "registry.test/service:z" end) |
           .key = ("prod_" + .key +
-                  if env.IMBOY_DEPLOY_PROFILE == "prod-turn" and .key == "imboy_nginx"
-                  then "_turn" else "" end)
+                  if .key != "imboy_nginx" then ""
+                  elif env.IMBOY_DEPLOY_PROFILE == "prod-turn" then "_turn"
+                  elif env.IMBOY_DEPLOY_PROFILE == "prod-sni" then "_sni" else "" end)
         )
       end'
 }
@@ -119,14 +123,17 @@ case " $* " in
     count=0; [ ! -f "$MOCK_LOG.count" ] || read -r count < "$MOCK_LOG.count"
     count=$((count + 1)); printf '%s\n' "$count" > "$MOCK_LOG.count"
     mode="${MOCK_JSON_MODE:-valid}"
-    [ "$count" -le 1 ] || mode="${MOCK_IMAGE_JSON_MODE:-$mode}"
+    if [ "$count" -ge 5 ]; then
+      mode="${MOCK_IMAGE_JSON_MODE:-$mode}"
+      export MOCK_JSON_FILTER="${MOCK_IMAGE_JSON_FILTER:-${MOCK_JSON_FILTER:-.}}"
+    fi
     case "$mode" in
       empty) : ;;
       malformed) printf '{"services":' ;;
       multiple) config_json; printf '\n{}\n' ;;
       *) config_json ;;
     esac
-    if [ "$count" -gt 1 ]; then exit "${MOCK_IMAGE_JSON_RC:-0}"; fi
+    if [ "$count" -ge 5 ]; then exit "${MOCK_IMAGE_JSON_RC:-0}"; fi
     exit "${MOCK_JSON_RC:-0}" ;;
   *" compose "*" pull --policy missing "*) [ "${MOCK_PULL_FAIL:-0}" != 1 ]; exit ;;
   *" create --network none --entrypoint /bin/sh "*)
@@ -193,6 +200,7 @@ case "${1:-}" in
   *init-letsencrypt.sh) [ "${MOCK_TLS_FAIL:-0}" != 1 ] ;;
   *init-cleanup-db.sh) [ "${MOCK_CLEANUP_FAIL:-0}" != 1 ] ;;
   *prepare-backend-runtime.sh) [ "${MOCK_RUNTIME_FAIL:-0}" != 1 ] ;;
+  *gen_login_rsa_keys.sh) exec /bin/bash "$@" ;;
   *sanity_check.sh) [ "${MOCK_SANITY_FAIL:-0}" != 1 ] ;;
   *) exit 0 ;;
 esac
@@ -209,13 +217,13 @@ assert_match() {
 }
 INSTALL_EXTRA_ARGS=()
 INSTALL_BASH_ARGS=()
-INSTALL_COMPOSE_ARGS=(--legacy-compose)
+INSTALL_COMPOSE_ARGS=()
 run_install() {
   : >"$MOCK_LOG"; : >"$MOCK_LOG.probes"
   rm -f "$MOCK_LOG.count" "$MOCK_LOG.domains" "$MOCK_LOG.ctl-node"
   env -i PATH="$TEST_PATH" MOCK_LOG="$MOCK_LOG" \
     IMBOY_PASSWORD_SALT=TEST_SECRET_MUST_NOT_LEAK_000000000000 "$@" \
-    /bin/bash "${INSTALL_BASH_ARGS[@]}" "$FIXTURE/install.sh" --edition community --yes "${INSTALL_COMPOSE_ARGS[@]}" "${INSTALL_EXTRA_ARGS[@]}" >"$OUTPUT" 2>&1
+    /bin/bash "${INSTALL_BASH_ARGS[@]}" "$FIXTURE/install.sh" --yes "${INSTALL_COMPOSE_ARGS[@]}" "${INSTALL_EXTRA_ARGS[@]}" >"$OUTPUT" 2>&1
 }
 reject_before_start() {
   local description="$1" reason="$2"; shift 2
@@ -265,7 +273,7 @@ if sourceable_env "+P 65536 +Q 65536"; then
 else
   bad "生成的 .env 可被 bash source 且 ERL_FLAGS 值完整" "$(grep -n '^IMBOY_ERL_FLAGS=' "$FIXTURE/.env")"
 fi
-assert_match "旧兼容入口只加载基础编排" 'docker compose -f docker-compose\.community\.yml up -d' "$MOCK_LOG"
+assert_match "默认入口只加载根生产编排" 'docker compose --project-name imboy --profile prod --env-file \.env -f \.\./docker-compose\.yml up -d' "$MOCK_LOG"
 pull_line="$(grep -n ' pull --policy missing$' "$MOCK_LOG" | head -1 | cut -d: -f1)"
 up_line="$(grep -n ' up -d$' "$MOCK_LOG" | head -1 | cut -d: -f1)"
 if [ -n "$pull_line" ] && [ -n "$up_line" ] && [ "$pull_line" -lt "$up_line" ]; then
@@ -279,10 +287,10 @@ if [ -n "$runtime_line" ] && [ "$pull_line" -lt "$runtime_line" ] && [ "$runtime
 else
   bad "后端目录权限准备顺序" "未满足 pull → permissions → up"
 fi
-assert_match "权限准备沿用同一 Compose 文件集合" 'args=prepare-backend-runtime.sh -f docker-compose\.community\.yml$' "$MOCK_LOG"
-assert_match "TLS 使用同一 Compose 文件集合" 'bash COMPOSE_FILES=docker-compose\.community\.yml args=nginx/init-letsencrypt\.sh' "$MOCK_LOG"
-assert_match "sanity 使用同一 Compose 文件集合" 'args=\.\./scripts/sanity_check\.sh --compose-file docker-compose\.community\.yml$' "$MOCK_LOG"
-assert_match "默认只验证清理账号，沿用完整 Compose 文件集合" 'bash COMPOSE_FILES=docker-compose\.community\.yml args=init-cleanup-db\.sh$' "$MOCK_LOG"
+assert_match "权限准备沿用同一 Compose 文件集合" 'args=prepare-backend-runtime.sh .* -f \.\./docker-compose\.yml$' "$MOCK_LOG"
+assert_match "TLS 使用同一 Compose 文件集合" 'bash COMPOSE_FILES=\.\./docker-compose\.yml args=nginx/init-letsencrypt\.sh' "$MOCK_LOG"
+assert_match "sanity 使用同一 Compose 文件集合" 'args=\.\./scripts/sanity_check\.sh --compose-file \.\./docker-compose\.yml$' "$MOCK_LOG"
+assert_match "默认只验证清理账号，沿用完整 Compose 文件集合" 'bash COMPOSE_FILES=\.\./docker-compose\.yml args=init-cleanup-db\.sh$' "$MOCK_LOG"
 health_line="$(grep -n '^curl healthz$' "$MOCK_LOG" | head -1 | cut -d: -f1)"
 cleanup_line="$(grep -n 'args=init-cleanup-db\.sh$' "$MOCK_LOG" | head -1 | cut -d: -f1)"
 sanity_line="$(grep -n 'args=\.\./scripts/sanity_check\.sh ' "$MOCK_LOG" | head -1 | cut -d: -f1)"
@@ -327,18 +335,21 @@ else
   fi
 fi
 
-rm "$FIXTURE/data/backend_priv/keys/login_rsa_priv.pem"
+RSA_DIR="$FIXTURE/data/backend_priv/keys"
+mv "$RSA_DIR/login_rsa_priv.pem" "$TMP_ROOT/original-rsa.pem"
+reject_before_start "仅有公钥时拒绝自动换钥" '恢复原私钥'
+mv "$TMP_ROOT/original-rsa.pem" "$RSA_DIR/login_rsa_priv.pem"
+cp "$RSA_DIR/login_rsa_pub.pem" "$TMP_ROOT/original-public.pem"
+rm "$RSA_DIR/login_rsa_pub.pem"
 if run_install MOCK_SANITY_FAIL=1; then
   bad "sanity 失败必须向上传播" "安装器错误返回成功"
 else
   assert_match "sanity 失败必须向上传播" 'sanity_check 未通过' "$OUTPUT"
 fi
-openssl rsa -in "$FIXTURE/data/backend_priv/keys/login_rsa_priv.pem" -pubout \
-  -out "$TMP_ROOT/derived_public.pem" 2>/dev/null
-if cmp -s "$TMP_ROOT/derived_public.pem" "$FIXTURE/data/backend_priv/keys/login_rsa_pub.pem"; then
-  ok "私钥重建时同步更新公钥"
+if cmp -s "$TMP_ROOT/original-public.pem" "$RSA_DIR/login_rsa_pub.pem"; then
+  ok "公钥缺失时从原私钥恢复"
 else
-  bad "私钥重建时同步更新公钥" "RSA 密钥对不匹配"
+  bad "公钥恢复" "未恢复原公钥"
 fi
 
 # 重跑不得更换已有密钥、RSA 或业务数据。
@@ -366,7 +377,7 @@ fi
 # The helper itself is mocked here; real LOGIN/password/role checks need PostgreSQL.
 INSTALL_EXTRA_ARGS=(--init-cleanup-db)
 if run_install; then
-  assert_match "显式初始化传入 --create 并沿用 Compose 文件集合" 'bash COMPOSE_FILES=docker-compose\.community\.yml args=init-cleanup-db\.sh --create$' "$MOCK_LOG"
+  assert_match "显式初始化传入 --create 并沿用 Compose 文件集合" 'bash COMPOSE_FILES=\.\./docker-compose\.yml args=init-cleanup-db\.sh --create$' "$MOCK_LOG"
 else
   bad "显式清理账号初始化控制流" "安装器未成功调用 helper"
 fi
@@ -378,8 +389,8 @@ fi
 INSTALL_EXTRA_ARGS=()
 
 echo "== 解析与失败关闭（无服务启动） =="
-INSTALL_EXTRA_ARGS=(--edition business --init-cleanup-db)
-reject_before_start "商务版拒绝隐式使用社区库管理流程" '--init-cleanup-db'
+INSTALL_EXTRA_ARGS=(--site-compose --init-cleanup-db)
+reject_before_start "商务版拒绝隐式使用社区库管理流程" 'DBA 预先开通清理账号'
 # shellcheck disable=SC2015 # ok always returns zero; this is an assertion
 [ ! -s "$MOCK_LOG" ] && ok "商务版初始化参数拒绝发生在 Docker 操作前" \
   || bad "商务版初始化参数拒绝过晚" "拒绝前已访问 Docker"
@@ -441,10 +452,16 @@ API domain null 不得拼接为空串|.services.imboy_nginx.environment.API_DOMA
 Widget domain null 不得拼接为空串|.services.imboy_nginx.environment.CS_WIDGET_DOMAIN = null | .services.imboy_backend.environment.IMBOY_WIDGET_BASE_URL = "https://" | .services.imboy_backend.environment.IMBOY_WIDGET_DOMAIN = null
 CASES
 for key in IMBOY_PG_USER IMBOY_PG_PASSWORD IMBOY_SOLIDIFIED_KEY IMBOY_SOLIDIFIED_KEY_IV \
-    IMBOY_PASSWORD_SALT IMBOY_LIVEKIT_API_KEY IMBOY_LIVEKIT_API_SECRET; do
+    IMBOY_PASSWORD_SALT; do
   reject_before_start "必需字段 $key 缺失" 'Compose 密钥校验失败' \
     "MOCK_JSON_FILTER=del(.services.imboy_backend.environment.$key)"
 done
+set_env LIVEKIT_ENABLED true
+for key in IMBOY_LIVEKIT_API_KEY IMBOY_LIVEKIT_API_SECRET; do
+  reject_before_start "启用 RTC 时必需字段 $key 缺失" 'Compose 密钥校验失败' \
+    "MOCK_JSON_FILTER=del(.services.imboy_backend.environment.$key)"
+done
+set_env LIVEKIT_ENABLED false
 
 # 监控仍为可选；清理凭据不得同时缺失后绕过安装器校验。
 reject_before_start "清理用户与密码同时缺失必须中止" 'Compose 密钥校验失败' \
@@ -500,7 +517,7 @@ else bad "镜像稳定去重" "probe 次数异常"; fi
 for filter in 'del(.services.imboy_backend.image)' \
     '.services.imboy_backend.image = null' '.services.imboy_edge.image = 123' \
     '.services.imboy_edge.image = ""' '.services.imboy_edge.image = "first\nsecond"'; do
-  reject_before_start "无效镜像: $filter" 'Compose 镜像解析失败' "MOCK_JSON_FILTER=$filter"
+  reject_before_start "无效镜像: $filter" 'Compose 镜像解析失败' "MOCK_IMAGE_JSON_FILTER=$filter"
 done
 for mode in empty malformed multiple; do
   reject_before_start "镜像阶段 JSON $mode 必须中止" 'Compose 镜像解析失败' "MOCK_IMAGE_JSON_MODE=$mode"
@@ -515,8 +532,8 @@ echo "== Compose 环境覆盖与字面值解析 =="
 printf 'services: {}\n' > "$FIXTURE/runtime-test.yml"
 printf 'services: {}\n' > "$FIXTURE/second-test.yml"
 INSTALL_EXTRA_ARGS=(--compose-file runtime-test.yml "--compose-file=$FIXTURE/second-test.yml")
-expected_files="docker-compose.community.yml $FIXTURE/runtime-test.yml $FIXTURE/second-test.yml"
-expected_compose="docker compose -f docker-compose.community.yml -f $FIXTURE/runtime-test.yml -f $FIXTURE/second-test.yml"
+expected_files="../docker-compose.yml $FIXTURE/runtime-test.yml $FIXTURE/second-test.yml"
+expected_compose="docker compose --project-name imboy --profile prod --env-file .env -f ../docker-compose.yml -f $FIXTURE/runtime-test.yml -f $FIXTURE/second-test.yml"
 if run_install; then
   overlay_ok=1
   for command in 'config --environment' 'config --format json' 'pull --policy missing' 'up -d'; do
@@ -524,7 +541,7 @@ if run_install; then
   done
   grep -Fxq "bash COMPOSE_FILES=$expected_files args=nginx/init-letsencrypt.sh" "$MOCK_LOG" || overlay_ok=0
   grep -Fxq "bash COMPOSE_FILES=$expected_files args=init-cleanup-db.sh" "$MOCK_LOG" || overlay_ok=0
-  grep -Fq "args=../scripts/sanity_check.sh --compose-file docker-compose.community.yml --compose-file $FIXTURE/runtime-test.yml --compose-file $FIXTURE/second-test.yml" "$MOCK_LOG" || overlay_ok=0
+  grep -Fq "args=../scripts/sanity_check.sh --compose-file ../docker-compose.yml --compose-file $FIXTURE/runtime-test.yml --compose-file $FIXTURE/second-test.yml" "$MOCK_LOG" || overlay_ok=0
   if [ "$overlay_ok" = 1 ]; then ok "两个附加 overlay 保留基准/强制集合并贯穿配置、拉取、启动、TLS、清理和自检";
   else bad "附加 overlay 一致性" "至少一个阶段丢失原有或附加文件"; fi
 else bad "附加 overlay" "有效 overlay 被拒绝"; fi
@@ -536,12 +553,12 @@ for path in '' missing-overlay.yml 'path with spaces.yml'; do
     bad "无效 overlay 路径在副作用前失败" "路径=${path:-空}";
   else ok "无效 overlay 路径在 Docker/配置变更前失败（${path:-空}）"; fi
 done
-INSTALL_EXTRA_ARGS=(--edition business --compose-file runtime-test.yml)
+INSTALL_EXTRA_ARGS=(--site-compose --compose-file runtime-test.yml)
 if run_install || [ -s "$MOCK_LOG" ] \
     || ! cmp -s "$FIXTURE/.env" "$TMP_ROOT/env.before-overlay-errors"; then
   bad "商务版拒绝社区 overlay 入口" "发生副作用或错误放行";
 else
-  assert_match "商务版 overlay 在配置/Docker 副作用前明确拒绝" '--compose-file 仅支持 community' "$OUTPUT"
+  assert_match "商务版 overlay 在配置/Docker 副作用前明确拒绝" '--compose-file 仅用于根 Compose' "$OUTPUT"
 fi
 INSTALL_EXTRA_ARGS=()
 if run_install API_DOMAIN=override.test.invalid; then
@@ -652,7 +669,7 @@ INSTALL_COMPOSE_ARGS=()
 INSTALL_EXTRA_ARGS=()
 set_env UPTRACE_ENABLED false
 if run_install; then
-  assert_match "根 Compose 在启动前检查 DNS" 'args=preflight.sh --docker --edition community --dns' "$MOCK_LOG"
+  assert_match "根 Compose 在启动前检查 DNS" 'args=preflight.sh --docker --dns --without-payment' "$MOCK_LOG"
   assert_match "根 Compose 使用固定生产项目和 profile" 'compose --project-name imboy --profile prod --env-file .env -f ../docker-compose.yml up -d$' "$MOCK_LOG"
   assert_match "根 Compose 传递至证书初始化" 'COMPOSE_FILES=../docker-compose.yml args=nginx/init-letsencrypt.sh' "$MOCK_LOG"
   assert_match "根 Compose 传递至部署自检" 'args=../scripts/sanity_check.sh --compose-file ../docker-compose.yml' "$MOCK_LOG"
@@ -667,6 +684,28 @@ if run_install; then
 else
   bad "根 Compose 控制流" "$(cat "$OUTPUT")"
 fi
+if run_install IMBOY_DEPLOY_PROJECT=imboy-isolated IMBOY_DEPLOY_NETWORK=imboy-isolated-net; then
+  assert_match "隔离安装使用独立项目名" 'compose --project-name imboy-isolated .* up -d$' "$MOCK_LOG"
+  assert_match "隔离安装仅检查自己的网络" 'docker network inspect imboy-isolated-net' "$MOCK_LOG"
+else
+  bad "隔离安装入口" "$(tail -15 "$OUTPUT")"
+fi
+# Each replacement retains the environment axis and suppresses the default
+# 80/443 binding; the standalone Compose tests check the underlying model.
+for gateway in turn sni; do
+  set_env LIVEKIT_TURN_ENABLED true
+  if [ "$gateway" = sni ]; then set_env LIVEKIT_SNI_ENABLED true; fi
+  : > "$MOCK_LOG.gateway"
+  if run_install COMPOSE_PROFILES=monitoring,enterprise-direct; then
+    assert_match "生产 $gateway 保留环境 profile 并叠加替换网关"       "compose --project-name imboy --profile prod --profile prod-$gateway --env-file .env -f ../docker-compose.yml up -d$" "$MOCK_LOG"
+    assert_match "生产 $gateway 停用默认网关 profile" '^prod-default-gateway$' "$MOCK_LOG.gateway"
+    assert_match "生产 $gateway 输出命令可复用网关和可选组"       "IMBOY_PROD_DEFAULT_GATEWAY_PROFILE=prod-default-gateway .*--profile prod --profile prod-$gateway .*--profile monitoring --profile enterprise-direct ps$" "$OUTPUT"
+  else
+    bad "生产 $gateway 双轴入口" "$(tail -15 "$OUTPUT")"
+  fi
+done
+set_env LIVEKIT_TURN_ENABLED false
+set_env LIVEKIT_SNI_ENABLED false
 set_env UPTRACE_ENABLED true
 : > "$MOCK_LOG.profiles"
 if run_install; then

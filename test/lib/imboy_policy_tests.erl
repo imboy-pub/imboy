@@ -6,6 +6,21 @@
 default_config_get(_Key, Default) ->
     Default.
 
+profile_storage_remains_rollback_compatible_test() ->
+    Key = <<"product_profile">>,
+    lists:foreach(
+        fun({Preset, Stored}) ->
+            #{Key := Normalized} = imboy_policy_persistence:normalize_config_sections(#{
+                profile => Preset
+            }),
+            ?assertEqual(atom_to_binary(Preset), Normalized),
+            ?assertEqual(Stored, imboy_policy_persistence:merge_persisted_section(Key, Normalized)),
+            ?assertEqual({ok, Preset}, imboy_policy_normalize:normalize_profile_input(Stored))
+        end,
+        [{standard, <<"community">>}, {audited, <<"enterprise">>}]
+    ),
+    ?assertEqual(error, imboy_policy_normalize:normalize_profile_input([<<"standard">>])).
+
 plaintext_text_size_in_policy_test_() ->
     {setup, fun setup_text_policy_mock/0, fun(_) -> meck:unload(config_ds) end, fun(_) ->
         [
@@ -218,16 +233,16 @@ plugin_registry_capability_fixture() ->
         }
     }.
 
-current_profile_defaults_to_community_when_missing_test_() ->
+current_profile_defaults_to_standard_when_missing_test_() ->
     ?WITH_MECKS(
         [
             {config_ds, [
                 {'get', 2, fun default_config_get/2},
-                {'env', 2, fun(product_profile, community) -> community end}
+                {'env', 2, fun(product_profile, standard) -> community end}
             ]}
         ],
         fun() ->
-            ?assertEqual(community, imboy_policy:current_profile())
+            ?assertEqual(standard, imboy_policy:current_profile())
         end
     ).
 
@@ -236,11 +251,11 @@ current_profile_reads_explicit_enterprise_test_() ->
         [
             {config_ds, [
                 {'get', 2, fun default_config_get/2},
-                {'env', 2, fun(product_profile, community) -> enterprise end}
+                {'env', 2, fun(product_profile, standard) -> enterprise end}
             ]}
         ],
         fun() ->
-            ?assertEqual(enterprise, imboy_policy:current_profile())
+            ?assertEqual(audited, imboy_policy:current_profile())
         end
     ).
 
@@ -249,11 +264,11 @@ current_profile_prefers_runtime_config_over_sys_config_test_() ->
         [
             {config_ds, [
                 {'get', 2, fun(<<"product_profile">>, _Default) -> <<"enterprise">> end},
-                {'env', 2, fun(product_profile, community) -> community end}
+                {'env', 2, fun(product_profile, standard) -> community end}
             ]}
         ],
         fun() ->
-            ?assertEqual(enterprise, imboy_policy:current_profile())
+            ?assertEqual(audited, imboy_policy:current_profile())
         end
     ).
 
@@ -263,7 +278,7 @@ effective_capabilities_merge_profile_defaults_and_overrides_test_() ->
             {config_ds, [
                 {'get', 2, fun default_config_get/2},
                 {'env', 2, fun
-                    (product_profile, community) ->
+                    (product_profile, standard) ->
                         enterprise;
                     (capabilities, #{}) ->
                         #{
@@ -297,7 +312,7 @@ effective_features_use_profile_defaults_when_features_block_missing_test_() ->
             {config_ds, [
                 {'get', 2, fun default_config_get/2},
                 {'env', 2, fun
-                    (product_profile, community) -> community;
+                    (product_profile, standard) -> community;
                     (capabilities, #{}) -> #{};
                     (features, undefined) -> undefined
                 end}
@@ -319,7 +334,7 @@ effective_features_explicit_overrides_beat_profile_defaults_test_() ->
             {config_ds, [
                 {'get', 2, fun default_config_get/2},
                 {'env', 2, fun
-                    (product_profile, community) ->
+                    (product_profile, standard) ->
                         enterprise;
                     (capabilities, #{}) ->
                         #{};
@@ -348,7 +363,7 @@ effective_policy_returns_profile_capabilities_features_and_plugins_test_() ->
             {config_ds, [
                 {'get', 2, fun default_config_get/2},
                 {'env', 2, fun
-                    (product_profile, community) ->
+                    (product_profile, standard) ->
                         enterprise;
                     (capabilities, #{}) ->
                         #{audit_mode => full};
@@ -363,7 +378,7 @@ effective_policy_returns_profile_capabilities_features_and_plugins_test_() ->
             Policy = imboy_policy:effective(),
             Plugins = maps:get(plugins, Policy),
 
-            ?assertEqual(enterprise, maps:get(profile, Policy)),
+            ?assertEqual(audited, maps:get(profile, Policy)),
             ?assertMatch(#{audit_mode := full}, maps:get(capabilities, Policy)),
             ?assertMatch(#{channel := true}, maps:get(features, Policy)),
             ?assertMatch(#{channel_invitation := true}, maps:get(features, Policy)),
@@ -378,7 +393,7 @@ secure_e2ee_forces_search_export_off_and_downgrades_audit_test_() ->
             {config_ds, [
                 {'get', 2, fun default_config_get/2},
                 {'env', 2, fun
-                    (product_profile, community) ->
+                    (product_profile, standard) ->
                         enterprise;
                     (capabilities, #{}) ->
                         #{
@@ -411,7 +426,7 @@ required_e2ee_disables_body_visibility_test_() ->
             {config_ds, [
                 {'get', 2, fun default_config_get/2},
                 {'env', 2, fun
-                    (product_profile, community) ->
+                    (product_profile, standard) ->
                         community;
                     (capabilities, #{}) ->
                         #{
@@ -439,7 +454,7 @@ e2ee_enabled_returns_true_when_optional_test_() ->
             {config_ds, [
                 {'get', 2, fun default_config_get/2},
                 {'env', 2, fun
-                    (product_profile, community) -> community;
+                    (product_profile, standard) -> community;
                     (capabilities, #{}) -> #{e2ee_mode => optional}
                 end}
             ]}
@@ -455,7 +470,7 @@ e2ee_enabled_returns_true_when_required_test_() ->
             {config_ds, [
                 {'get', 2, fun default_config_get/2},
                 {'env', 2, fun
-                    (product_profile, community) -> community;
+                    (product_profile, standard) -> community;
                     (capabilities, #{}) -> #{e2ee_mode => required}
                 end}
             ]}
@@ -474,7 +489,7 @@ required_accepts_encrypted_body_by_e2ee_field_test_() ->
             {config_ds, [
                 {'get', 2, fun default_config_get/2},
                 {'env', 2, fun
-                    (product_profile, community) -> community;
+                    (product_profile, standard) -> community;
                     (capabilities, #{}) -> #{e2ee_mode => required}
                 end}
             ]}
@@ -515,7 +530,7 @@ e2ee_enabled_returns_false_when_disabled_test_() ->
             {config_ds, [
                 {'get', 2, fun default_config_get/2},
                 {'env', 2, fun
-                    (product_profile, community) -> community;
+                    (product_profile, standard) -> community;
                     (capabilities, #{}) -> #{e2ee_mode => disabled}
                 end}
             ]}
@@ -535,7 +550,7 @@ e2ee_enabled_when_storage_mode_requires_encryption_test_() ->
             {config_ds, [
                 {'get', 2, fun default_config_get/2},
                 {'env', 2, fun
-                    (product_profile, community) ->
+                    (product_profile, standard) ->
                         community;
                     (capabilities, #{}) ->
                         #{
@@ -557,7 +572,7 @@ e2ee_enabled_defaults_to_profile_capability_when_missing_test_() ->
             {config_ds, [
                 {'get', 2, fun default_config_get/2},
                 {'env', 2, fun
-                    (product_profile, community) -> community;
+                    (product_profile, standard) -> community;
                     (capabilities, #{}) -> #{}
                 end}
             ]}
@@ -573,7 +588,7 @@ effective_view_returns_json_friendly_policy_payload_test_() ->
             {config_ds, [
                 {'get', 2, fun default_config_get/2},
                 {'env', 2, fun
-                    (product_profile, community) ->
+                    (product_profile, standard) ->
                         enterprise;
                     (capabilities, #{}) ->
                         #{
@@ -603,7 +618,7 @@ effective_view_returns_json_friendly_policy_payload_test_() ->
             Plugins = maps:get(<<"plugins">>, PolicyView),
             ChannelPlugin = maps:get(<<"channel">>, Plugins),
 
-            ?assertEqual(<<"enterprise">>, maps:get(<<"profile">>, PolicyView)),
+            ?assertEqual(<<"audited">>, maps:get(<<"profile">>, PolicyView)),
             ?assertEqual(<<"archived">>, maps:get(<<"storage_mode">>, Capabilities)),
             ?assertEqual(<<"full">>, maps:get(<<"audit_mode">>, Capabilities)),
             ?assertEqual(365, maps:get(<<"days">>, maps:get(<<"retention_policy">>, Capabilities))),
@@ -654,7 +669,7 @@ admin_config_view_returns_meta_saved_effective_and_adjustments_sections_test_() 
                         Default
                 end},
                 {'env', 2, fun
-                    (product_profile, community) -> community;
+                    (product_profile, standard) -> community;
                     (capabilities, #{}) -> #{};
                     (features, undefined) -> undefined
                 end}
@@ -668,7 +683,7 @@ admin_config_view_returns_meta_saved_effective_and_adjustments_sections_test_() 
             ?assert(maps:is_key(<<"adjustments">>, View)),
             ?assert(maps:is_key(<<"origins">>, View)),
             ?assertEqual(
-                [<<"community">>, <<"enterprise">>, <<"overseas_baseline">>, <<"phase1_delivery">>],
+                [<<"standard">>, <<"audited">>, <<"overseas_baseline">>, <<"phase1_delivery">>],
                 maps:get(<<"supported">>, maps:get(<<"profiles">>, maps:get(<<"meta">>, View)))
             ),
             ?assertEqual(
@@ -678,7 +693,7 @@ admin_config_view_returns_meta_saved_effective_and_adjustments_sections_test_() 
                 )
             ),
             ?assertEqual(
-                <<"enterprise">>,
+                <<"audited">>,
                 maps:get(<<"profile">>, maps:get(<<"effective">>, View))
             ),
             ?assertEqual(
@@ -752,8 +767,8 @@ meta_view_returns_profiles_defaults_and_edit_options_test_() ->
         Meta = imboy_policy:meta_view(),
         Profiles = maps:get(<<"profiles">>, Meta),
         ProfileDefaults = maps:get(<<"defaults">>, Profiles),
-        CommunityDefaults = maps:get(<<"community">>, ProfileDefaults),
-        EnterpriseDefaults = maps:get(<<"enterprise">>, ProfileDefaults),
+        CommunityDefaults = maps:get(<<"standard">>, ProfileDefaults),
+        EnterpriseDefaults = maps:get(<<"audited">>, ProfileDefaults),
         Capabilities = maps:get(<<"capabilities">>, Meta),
         Features = maps:get(<<"features">>, Meta),
         Origins = maps:get(<<"origins">>, Meta),
@@ -768,7 +783,7 @@ meta_view_returns_profiles_defaults_and_edit_options_test_() ->
         RequestShape = maps:get(<<"request_shape">>, WriteContract),
 
         ?assertEqual(
-            [<<"community">>, <<"enterprise">>, <<"overseas_baseline">>, <<"phase1_delivery">>],
+            [<<"standard">>, <<"audited">>, <<"overseas_baseline">>, <<"phase1_delivery">>],
             maps:get(<<"supported">>, Profiles)
         ),
         ?assertEqual(<<"canonical_saved_snapshot">>, maps:get(<<"semantics">>, Origins)),
@@ -853,7 +868,7 @@ meta_view_returns_profiles_defaults_and_edit_options_test_() ->
             maps:get(<<"sections">>, EditorOrder)
         ),
         ?assertEqual(
-            [<<"community">>, <<"enterprise">>, <<"overseas_baseline">>, <<"phase1_delivery">>],
+            [<<"standard">>, <<"audited">>, <<"overseas_baseline">>, <<"phase1_delivery">>],
             maps:get(<<"profiles">>, EditorOrder)
         ),
         ?assertEqual(
@@ -1000,7 +1015,7 @@ saved_view_returns_saved_overrides_and_compacts_complete_plugin_blocks_test_() -
         ],
         fun() ->
             SavedView = imboy_policy:saved_view(),
-            ?assertEqual(<<"enterprise">>, maps:get(<<"profile">>, SavedView)),
+            ?assertEqual(<<"audited">>, maps:get(<<"profile">>, SavedView)),
             ?assertEqual(
                 #{<<"message_export">> => false, <<"audit_mode">> => <<"metadata">>},
                 maps:get(<<"capabilities">>, SavedView)
@@ -1071,7 +1086,7 @@ preview_config_returns_saved_and_effective_views_without_persisting_test_() ->
                     erlang:error(should_not_be_called)
                 end},
                 {'env', 2, fun
-                    (product_profile, community) ->
+                    (product_profile, standard) ->
                         community;
                     (capabilities, #{}) ->
                         #{message_export => true};
@@ -1159,7 +1174,7 @@ preview_config_reports_constraint_and_dependency_adjustments_test_() ->
                     erlang:error(should_not_be_called)
                 end},
                 {'env', 2, fun
-                    (product_profile, community) -> community;
+                    (product_profile, standard) -> community;
                     (capabilities, #{}) -> #{};
                     (features, undefined) -> undefined
                 end}
@@ -1259,7 +1274,7 @@ preview_config_returns_plugin_adjustments_when_manifest_dependency_blocks_plugin
                     erlang:error(should_not_be_called)
                 end},
                 {'env', 2, fun
-                    (product_profile, community) -> community;
+                    (product_profile, standard) -> community;
                     (capabilities, #{}) -> #{};
                     (features, undefined) -> undefined
                 end}
@@ -1339,7 +1354,7 @@ preview_config_allows_clearing_overrides_with_null_without_persisting_test_() ->
                     erlang:error(should_not_be_called)
                 end},
                 {'env', 2, fun
-                    (product_profile, community) -> enterprise;
+                    (product_profile, standard) -> enterprise;
                     (capabilities, #{}) -> #{message_export => true};
                     (features, undefined) -> undefined
                 end}
@@ -1370,7 +1385,7 @@ preview_config_allows_clearing_overrides_with_null_without_persisting_test_() ->
 
             ?assertEqual(0, meck:num_calls(config_ds, set, 2)),
             ?assertEqual(#{}, Saved),
-            ?assertEqual(<<"enterprise">>, maps:get(<<"profile">>, Effective)),
+            ?assertEqual(<<"audited">>, maps:get(<<"profile">>, Effective)),
             ?assertEqual(
                 true, maps:get(<<"message_export">>, maps:get(<<"capabilities">>, Effective))
             ),
@@ -1411,7 +1426,7 @@ effective_policy_prefers_runtime_config_over_sys_config_test_() ->
                         }
                 end},
                 {'env', 2, fun
-                    (product_profile, community) ->
+                    (product_profile, standard) ->
                         community;
                     (capabilities, #{}) ->
                         #{message_export => true, audit_mode => metadata};
@@ -1426,7 +1441,7 @@ effective_policy_prefers_runtime_config_over_sys_config_test_() ->
         ],
         fun() ->
             Policy = imboy_policy:effective(),
-            ?assertEqual(enterprise, maps:get(profile, Policy)),
+            ?assertEqual(audited, maps:get(profile, Policy)),
             ?assertEqual(false, maps:get(message_export, maps:get(capabilities, Policy))),
             ?assertEqual(full, maps:get(audit_mode, maps:get(capabilities, Policy))),
             ?assertEqual(false, maps:get(channel, maps:get(features, Policy))),
@@ -1454,7 +1469,7 @@ save_config_persists_profile_capabilities_and_plugin_translated_features_test_()
                     ok
                 end},
                 {'env', 2, fun
-                    (product_profile, community) -> community;
+                    (product_profile, standard) -> community;
                     (capabilities, #{}) -> #{};
                     (features, undefined) -> undefined
                 end}
@@ -1465,7 +1480,7 @@ save_config_persists_profile_capabilities_and_plugin_translated_features_test_()
             persistent_term:erase({policy_config, <<"capabilities">>}),
             persistent_term:erase({policy_config, <<"features">>}),
             {ok, PolicyView} = save_policy_config(#{
-                <<"profile">> => <<"enterprise">>,
+                <<"profile">> => <<"audited">>,
                 <<"capabilities">> => #{
                     <<"message_export">> => false,
                     <<"audit_mode">> => <<"metadata">>
@@ -1482,7 +1497,8 @@ save_config_persists_profile_capabilities_and_plugin_translated_features_test_()
             Adjustments = maps:get(<<"adjustments">>, PolicyView),
             Origins = maps:get(<<"origins">>, PolicyView),
             ?assertEqual(3, meck:num_calls(config_ds, set, 2)),
-            ?assertEqual(<<"enterprise">>, maps:get(<<"profile">>, PolicyView)),
+            ?assert(meck:called(config_ds, set, [<<"product_profile">>, <<"enterprise">>])),
+            ?assertEqual(<<"audited">>, maps:get(<<"profile">>, PolicyView)),
             ?assertEqual(
                 <<"metadata">>, maps:get(<<"audit_mode">>, maps:get(<<"capabilities">>, PolicyView))
             ),
@@ -1490,7 +1506,7 @@ save_config_persists_profile_capabilities_and_plugin_translated_features_test_()
             ?assertEqual(false, maps:get(<<"group_vote">>, maps:get(<<"features">>, PolicyView))),
             ?assertEqual(
                 #{
-                    <<"profile">> => <<"enterprise">>,
+                    <<"profile">> => <<"audited">>,
                     <<"capabilities">> => #{
                         <<"message_export">> => false,
                         <<"audit_mode">> => <<"metadata">>
@@ -1595,7 +1611,7 @@ save_config_explicit_feature_override_beats_plugin_translation_test_() ->
                     ok
                 end},
                 {'env', 2, fun
-                    (product_profile, community) -> community;
+                    (product_profile, standard) -> community;
                     (capabilities, #{}) -> #{};
                     (features, undefined) -> undefined
                 end}
@@ -1669,7 +1685,7 @@ save_config_merges_partial_updates_with_existing_runtime_overrides_test_() ->
                     ok
                 end},
                 {'env', 2, fun
-                    (product_profile, community) -> community;
+                    (product_profile, standard) -> community;
                     (capabilities, #{}) -> #{};
                     (features, undefined) -> undefined
                 end}
@@ -1761,7 +1777,7 @@ save_config_allows_clearing_profile_override_with_null_test_() ->
                     ok
                 end},
                 {'env', 2, fun
-                    (product_profile, community) -> enterprise;
+                    (product_profile, standard) -> enterprise;
                     (capabilities, #{}) -> #{};
                     (features, undefined) -> undefined
                 end}
@@ -1775,7 +1791,7 @@ save_config_allows_clearing_profile_override_with_null_test_() ->
 
             ?assertEqual(1, meck:num_calls(config_ds, set, 2)),
             ?assertEqual(null, persistent_term:get({policy_config, <<"product_profile">>})),
-            ?assertEqual(<<"enterprise">>, maps:get(<<"profile">>, PolicyView)),
+            ?assertEqual(<<"audited">>, maps:get(<<"profile">>, PolicyView)),
             ?assertEqual(#{}, maps:get(<<"saved">>, PolicyView)),
             ?assertEqual(#{}, maps:get(<<"adjustments">>, PolicyView)),
             ?assertEqual(
@@ -1802,7 +1818,7 @@ save_config_returns_capability_adjustments_when_constraints_apply_test_() ->
                     ok
                 end},
                 {'env', 2, fun
-                    (product_profile, community) -> community;
+                    (product_profile, standard) -> community;
                     (capabilities, #{}) -> #{};
                     (features, undefined) -> undefined
                 end}
@@ -1865,7 +1881,7 @@ save_config_returns_feature_dependency_adjustments_when_saved_override_is_incomp
                     ok
                 end},
                 {'env', 2, fun
-                    (product_profile, community) -> community;
+                    (product_profile, standard) -> community;
                     (capabilities, #{}) -> #{};
                     (features, undefined) -> undefined
                 end}
@@ -1915,7 +1931,7 @@ save_config_returns_feature_capability_adjustments_when_manifest_requirement_blo
                     ok
                 end},
                 {'env', 2, fun
-                    (product_profile, community) -> community;
+                    (product_profile, standard) -> community;
                     (capabilities, #{}) -> #{};
                     (features, undefined) -> undefined
                 end}
@@ -1979,7 +1995,7 @@ save_config_allows_clearing_capability_override_with_null_test_() ->
                     ok
                 end},
                 {'env', 2, fun
-                    (product_profile, community) -> enterprise;
+                    (product_profile, standard) -> enterprise;
                     (capabilities, #{}) -> #{};
                     (features, undefined) -> undefined
                 end}
@@ -2031,7 +2047,7 @@ save_config_allows_clearing_plugin_override_with_null_test_() ->
                     ok
                 end},
                 {'env', 2, fun
-                    (product_profile, community) -> community;
+                    (product_profile, standard) -> community;
                     (capabilities, #{}) -> #{};
                     (features, undefined) -> undefined
                 end}
@@ -2093,7 +2109,7 @@ save_config_clearing_plugin_null_preserves_mixed_feature_overrides_test_() ->
                     ok
                 end},
                 {'env', 2, fun
-                    (product_profile, community) -> community;
+                    (product_profile, standard) -> community;
                     (capabilities, #{}) -> #{};
                     (features, undefined) -> undefined
                 end}
@@ -2221,7 +2237,7 @@ message_encryption_required_when_storage_mode_secure_e2ee_test_() ->
             {config_ds, [
                 {'get', 2, fun default_config_get/2},
                 {'env', 2, fun
-                    (product_profile, community) -> community;
+                    (product_profile, standard) -> community;
                     (capabilities, #{}) -> #{storage_mode => secure_e2ee}
                 end}
             ]}
@@ -2237,7 +2253,7 @@ message_encryption_required_when_e2ee_mode_required_test_() ->
             {config_ds, [
                 {'get', 2, fun default_config_get/2},
                 {'env', 2, fun
-                    (product_profile, community) -> community;
+                    (product_profile, standard) -> community;
                     (capabilities, #{}) -> #{e2ee_mode => required}
                 end}
             ]}
@@ -2253,7 +2269,7 @@ message_encryption_not_required_for_default_archived_mode_test_() ->
             {config_ds, [
                 {'get', 2, fun default_config_get/2},
                 {'env', 2, fun
-                    (product_profile, community) -> community;
+                    (product_profile, standard) -> community;
                     (capabilities, #{}) -> #{}
                 end}
             ]}
@@ -2269,7 +2285,7 @@ validate_message_write_allows_encrypted_c2c_content_test_() ->
             {config_ds, [
                 {'get', 2, fun default_config_get/2},
                 {'env', 2, fun
-                    (product_profile, community) -> community;
+                    (product_profile, standard) -> community;
                     (capabilities, #{}) -> #{storage_mode => secure_e2ee}
                 end}
             ]}
@@ -2294,7 +2310,7 @@ validate_message_write_rejects_plaintext_c2c_content_when_encryption_required_te
             {config_ds, [
                 {'get', 2, fun default_config_get/2},
                 {'env', 2, fun
-                    (product_profile, community) -> community;
+                    (product_profile, standard) -> community;
                     (capabilities, #{}) -> #{storage_mode => secure_e2ee}
                 end}
             ]}
@@ -2319,7 +2335,7 @@ validate_message_write_allows_metadata_only_actions_when_encryption_required_tes
             {config_ds, [
                 {'get', 2, fun default_config_get/2},
                 {'env', 2, fun
-                    (product_profile, community) -> community;
+                    (product_profile, standard) -> community;
                     (capabilities, #{}) -> #{storage_mode => secure_e2ee}
                 end}
             ]}
@@ -2413,7 +2429,7 @@ hard_off_storage_mode_dominates_e2ee_mode_test_() ->
             {config_ds, [
                 {'get', 2, fun default_config_get/2},
                 {'env', 2, fun
-                    (product_profile, community) -> community;
+                    (product_profile, standard) -> community;
                     (capabilities, #{}) -> #{storage_mode => disabled, e2ee_mode => required};
                     (_Key, Default) -> Default
                 end}
@@ -2433,7 +2449,7 @@ hard_off_absent_keeps_encrypt_required_test_() ->
             {config_ds, [
                 {'get', 2, fun default_config_get/2},
                 {'env', 2, fun
-                    (product_profile, community) ->
+                    (product_profile, standard) ->
                         community;
                     (capabilities, #{}) ->
                         #{storage_mode => compliance_e2ee, e2ee_mode => required};
@@ -2458,7 +2474,7 @@ hard_off_forces_e2ee_feature_off_in_view_test_() ->
             {config_ds, [
                 {'get', 2, fun default_config_get/2},
                 {'env', 2, fun
-                    (product_profile, community) -> community;
+                    (product_profile, standard) -> community;
                     (capabilities, #{}) -> #{storage_mode => disabled, e2ee_mode => disabled};
                     (_Key, Default) -> Default
                 end}
@@ -2479,7 +2495,7 @@ hard_off_absent_keeps_e2ee_feature_on_test_() ->
             {config_ds, [
                 {'get', 2, fun default_config_get/2},
                 {'env', 2, fun
-                    (product_profile, community) -> community;
+                    (product_profile, standard) -> community;
                     (capabilities, #{}) -> #{storage_mode => archived, e2ee_mode => disabled};
                     (_Key, Default) -> Default
                 end}

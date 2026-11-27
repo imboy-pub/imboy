@@ -12,7 +12,6 @@ Usage: bash scripts/dev_setup.sh [options]
   --with-widget      Build and start the hosted Widget/Seat static service
   --with-garage      Compatibility alias (Garage is always included)
   --profile NAME     Add dev|pro|api|admin|livekit|widget
-  --edition VALUE    community|professional|enterprise (license still required)
   --no-build         Use prepared/cached images; do not build application images
   -h, --help         Show this help
 
@@ -36,10 +35,7 @@ while (($#)); do
       [[ $# -ge 2 ]] || die '--profile needs a value'
       case "$2" in dev|pro|api|admin|livekit|widget) EXTRA_PROFILES+=("$2");; *) die "Unknown profile: $2";; esac
       shift 2 ;;
-    --edition)
-      [[ $# -ge 2 ]] || die '--edition needs a value'
-      case "$2" in community|professional|enterprise) export IMBOY_EDITION="$2";; *) die "Unknown edition: $2";; esac
-      shift 2 ;;
+
     -h|--help) usage; exit 0 ;;
     *) die "Unknown option: $1 (see --help)" ;;
   esac
@@ -97,7 +93,7 @@ ensure_secret LIVEKIT_API_SECRET
 
 # Never let an ambient COMPOSE_PROFILES silently start the separate pro database.
 export COMPOSE_PROFILES=
-PROFILES=(dev)
+PROFILES=(dev gateway)
 if ((INFRA_ONLY)); then
   export API_UPSTREAM="${API_UPSTREAM:-host.docker.internal:9800}"
 else

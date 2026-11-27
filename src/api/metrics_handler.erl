@@ -142,8 +142,6 @@ collect_system_metrics() ->
     %% 累计拒绝）。水位告警 ImBoyWSAdmissionHigh 按此对比 80%。
     WsAdmissionMetrics = ws_admission_metrics(),
 
-    %% License 指标（fail-safe，避免 metrics 因 License 异常不可用）
-    LicenseMetrics = license_metrics(),
     %% cache sync 状态指标（cache-v2.2.1 C11/19.8）：status/epoch/队列/peer 数
     %% 与各 peer 报告的版本水位（peer-lag 数据源）。名字对齐
     %% deploy/grafana/dashboards/imboy-cache-sync.json 与 imboy-alerts.yml
@@ -160,26 +158,23 @@ collect_system_metrics() ->
     maps:merge(
         maps:merge(
             maps:merge(
-                maps:merge(
-                    #{
-                        erlang_vm_process_count => ProcessCount,
-                        erlang_vm_port_count => erlang:system_info(port_count),
-                        %% kind 标签对应面板的 legendFormat "{{kind}}"
-                        {erlang_vm_memory_bytes_total, #{kind => total}} => MemTotal,
-                        {erlang_vm_memory_bytes_total, #{kind => processes}} => MemProc,
-                        {erlang_vm_memory_bytes_total, #{kind => ets}} => MemEts,
-                        process_uptime_seconds => uptime_seconds(),
-                        imboy_online_users => OnlineCount,
-                        imboy_ws_connections_total => WsConnections,
-                        %% 审计 A3/C-2（2026-10-10）：TSID 就绪闸指标（1=ready，
-                        %% 0=clock_unsafe/not_initialized/异常）。时钟闸无内置周期探针，
-                        %% 偏差暴露窗口 = 本指标的抓取间隔；告警 ImBoyTsidNotReady
-                        %% 与 deploy/prometheus/rules/imboy-alerts.yml 按名对账。
-                        imboy_tsid_readiness => tsid_readiness_value()
-                    },
-                    PoolStatus
-                ),
-                LicenseMetrics
+                #{
+                    erlang_vm_process_count => ProcessCount,
+                    erlang_vm_port_count => erlang:system_info(port_count),
+                    %% kind 标签对应面板的 legendFormat "{{kind}}"
+                    {erlang_vm_memory_bytes_total, #{kind => total}} => MemTotal,
+                    {erlang_vm_memory_bytes_total, #{kind => processes}} => MemProc,
+                    {erlang_vm_memory_bytes_total, #{kind => ets}} => MemEts,
+                    process_uptime_seconds => uptime_seconds(),
+                    imboy_online_users => OnlineCount,
+                    imboy_ws_connections_total => WsConnections,
+                    %% 审计 A3/C-2（2026-10-10）：TSID 就绪闸指标（1=ready，
+                    %% 0=clock_unsafe/not_initialized/异常）。时钟闸无内置周期探针，
+                    %% 偏差暴露窗口 = 本指标的抓取间隔；告警 ImBoyTsidNotReady
+                    %% 与 deploy/prometheus/rules/imboy-alerts.yml 按名对账。
+                    imboy_tsid_readiness => tsid_readiness_value()
+                },
+                PoolStatus
             ),
             CacheSyncMetrics
         ),
@@ -370,33 +365,6 @@ tsid_readiness_value() ->
         _Other -> 0
     catch
         _:_ -> 0
-    end.
-
--spec license_metrics() -> map().
-license_metrics() ->
-    try imboy_license:info() of
-        Info ->
-            Valid =
-                case maps:get(valid, Info, false) of
-                    true -> 1;
-                    false -> 0
-                end,
-            CurUsers =
-                try
-                    user_ds:count()
-                catch
-                    _:_ -> 0
-                end,
-            #{
-                imboy_license_valid => Valid,
-                imboy_license_users_current => CurUsers,
-                imboy_license_users_max => maps:get(max_users, Info, 0),
-                imboy_license_nodes_current => length(nodes()) + 1,
-                imboy_license_nodes_max => maps:get(max_nodes, Info, 0),
-                imboy_license_expires_at => maps:get(expires_at, Info, 0)
-            }
-    catch
-        _:_ -> #{}
     end.
 
 %% @doc 将指标格式化为 Prometheus text exposition format

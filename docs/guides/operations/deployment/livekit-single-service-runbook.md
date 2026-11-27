@@ -381,7 +381,7 @@ docker logs imboy_livekit --tail 20   # 确认无 panic/配置错误
 ```
 
 > ⚠️ **升级即重启 = 全部通话中断**（单节点、房间状态在内存）。客户端会自动重连，但请选低峰窗口。
-TURN 部署使用根 Compose 的 `prod-turn` 或 `prod-sni`，变更前核对实际 profile 和证书挂载。
+TURN 部署用统一安装器在根 Compose 的 `prod` 上选择 `prod-turn` 或 `prod-sni`。变更前核对实际 profile 和证书挂载；手工预览见 [Compose 服务组合](compose-operations.md#根-compose-服务组合--root-compose-profiles)。
 
 版本回滚（回到 v1.13.7）：把 image tag 改回 `livekit/livekit-server:v1.13.7` 再 `up -d imboy_livekit` 即可，无需额外操作。
 

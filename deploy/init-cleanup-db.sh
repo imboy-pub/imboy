@@ -36,7 +36,15 @@ pg_service=imboy_pg18
 case "${files[0]:-}" in
   docker-compose.community.yml) ;;
   ../docker-compose.yml)
-    compose_args=(--project-name imboy --profile "${IMBOY_DEPLOY_PROFILE:-prod}" --env-file .env)
+    compose_args=(--project-name "${IMBOY_DEPLOY_PROJECT:-imboy}" --profile prod --env-file .env)
+    case "${IMBOY_DEPLOY_PROFILE:-prod}" in
+      prod) export IMBOY_PROD_DEFAULT_GATEWAY_PROFILE=prod ;;
+      prod-turn|prod-sni)
+        export IMBOY_PROD_DEFAULT_GATEWAY_PROFILE=prod-default-gateway
+        compose_args+=(--profile "$IMBOY_DEPLOY_PROFILE")
+        ;;
+      *) echo "Invalid production gateway mode" >&2; exit 2 ;;
+    esac
     backend_service=prod_imboy_backend
     pg_service=prod_imboy_pg18
     ;;

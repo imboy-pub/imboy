@@ -87,14 +87,5 @@ login_error(Req, code_invalid) ->
     elib_response:error(Req, <<"微信登录凭证无效或已使用"/utf8>>, ?ERR_WECHAT_CODE_INVALID);
 login_error(Req, provider_unconfigured) ->
     elib_response:error(Req, <<"登录服务未配置"/utf8>>, ?ERR_WECHAT_PROVIDER_UNCONFIGURED);
-login_error(Req, account_quota_exceeded) ->
-    %% 首次开户撞上 License 用户数上限：**永久**条件，重试不会成功 ⇒
-    %% 文案必须指向「找管理员」，且客户端侧按 402 关掉重试按钮。
-    %% 不透 quota_guard 的原始 msg（含 License 细节）。
-    elib_response:error(
-        Req,
-        <<"用户数已达授权上限，请联系机构管理员"/utf8>>,
-        ?ERR_PAYMENT_REQUIRED
-    );
 login_error(Req, _Other) ->
     elib_response:error(Req, <<"微信登录失败"/utf8>>, ?ERR_WECHAT_LOGIN_FAILED).

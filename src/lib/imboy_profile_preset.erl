@@ -5,10 +5,10 @@
 
 -define(PRODUCT_PROFILE_CONFIG_KEY, <<"product_profile">>).
 
--spec current() -> community | enterprise.
+-spec current() -> standard | audited | overseas_baseline | phase1_delivery.
 current() ->
     normalize_profile(
-        config_ds:get(?PRODUCT_PROFILE_CONFIG_KEY, config_ds:env(product_profile, community))
+        config_ds:get(?PRODUCT_PROFILE_CONFIG_KEY, config_ds:env(product_profile, standard))
     ).
 
 -spec defaults() -> map().
@@ -20,9 +20,9 @@ defaults(Profile) ->
     profile_defaults(normalize_profile(Profile)).
 
 -spec supported_profiles() ->
-    [community | enterprise | overseas_baseline | phase1_delivery].
+    [standard | audited | overseas_baseline | phase1_delivery].
 supported_profiles() ->
-    [community, enterprise, overseas_baseline, phase1_delivery].
+    [standard, audited, overseas_baseline, phase1_delivery].
 
 %% @doc 交付锁：一期交付 profile 下运行时（DB saved / 远端配置）不得重新
 %% 开启的特性键。合并链最后强制压 false（与 e2ee storage_mode 硬闸同一
@@ -65,7 +65,7 @@ default_features() ->
     maps:from_list([{K, true} || K <- imboy_feature:feature_names()]).
 
 -spec profile_defaults(
-    community | enterprise | overseas_baseline | phase1_delivery
+    standard | audited | overseas_baseline | phase1_delivery
 ) -> map().
 profile_defaults(overseas_baseline) ->
     %% L-01 海外基线预设：敏感功能默认 OFF（显式枚举；含尚未实现的
@@ -97,7 +97,7 @@ profile_defaults(overseas_baseline) ->
         },
         features => Features
     };
-profile_defaults(community) ->
+profile_defaults(standard) ->
     #{
         capabilities => #{
             storage_mode => archived,
@@ -112,7 +112,7 @@ profile_defaults(community) ->
         },
         features => default_features()
     };
-profile_defaults(enterprise) ->
+profile_defaults(audited) ->
     #{
         capabilities => #{
             storage_mode => archived,
@@ -168,31 +168,9 @@ profile_defaults(phase1_delivery) ->
         features => Features
     }.
 
--spec normalize_profile(term()) ->
-    community | enterprise | overseas_baseline | phase1_delivery.
-normalize_profile(community) ->
-    community;
-normalize_profile(enterprise) ->
-    enterprise;
-normalize_profile(overseas_baseline) ->
-    overseas_baseline;
-normalize_profile(phase1_delivery) ->
-    phase1_delivery;
-normalize_profile(<<"community">>) ->
-    community;
-normalize_profile(<<"enterprise">>) ->
-    enterprise;
-normalize_profile(<<"overseas_baseline">>) ->
-    overseas_baseline;
-normalize_profile(<<"phase1_delivery">>) ->
-    phase1_delivery;
-normalize_profile("community") ->
-    community;
-normalize_profile("enterprise") ->
-    enterprise;
-normalize_profile("overseas_baseline") ->
-    overseas_baseline;
-normalize_profile("phase1_delivery") ->
-    phase1_delivery;
-normalize_profile(_) ->
-    community.
+-spec normalize_profile(term()) -> standard | audited | overseas_baseline | phase1_delivery.
+normalize_profile(Value) ->
+    case imboy_policy_normalize:normalize_profile_input(Value) of
+        {ok, Preset} -> Preset;
+        error -> standard
+    end.

@@ -10,21 +10,53 @@ One-command deployment of IMBoy to a Linux server.
 
 ## 根 Compose 服务组合 / Root Compose profiles
 
-安装器按 `deploy/.env` 选择下列一个生产组合。可在 `COMPOSE_PROFILES` 增加可选服务。独立包沿用同一入口。`pro` 只启动与生产 profiles 共用的 `prod_imboy_pg18`。
+首个 profile 选环境：`dev`、`prod` 或 `test`。安装器始终使用 `--profile prod`，再按 `deploy/.env` 叠加服务。`COMPOSE_PROFILES` 可附加 `monitoring` 和 `enterprise-direct`；RTC、TURN、SNI 与 Uptrace 由专属开关选择。`pro` 是仅启动 `prod_imboy_pg18` 的兼容入口，不是生产整栈入口。
 
-The installer selects one production profile from `deploy/.env`. Add optional services with `COMPOSE_PROFILES`. The standalone package uses the same entry point. The `pro` profile starts only the shared production PostgreSQL service, `prod_imboy_pg18`.
+Choose the environment first: `dev`, `prod`, or `test`. The installer always invokes `--profile prod` and adds services selected in `deploy/.env`. Use `COMPOSE_PROFILES` for `monitoring` and `enterprise-direct`; use the dedicated flags for RTC, TURN, SNI and Uptrace. The legacy `pro` profile starts only `prod_imboy_pg18`, not the full production stack.
 
 | Profile | 启用条件 / Selection | 对外 HTTPS 和 TURN / Published HTTPS and TURN |
 |---|---|---|
 | `prod` | 默认 / Default | Nginx TCP 443 |
-| `prod-turn` | `LIVEKIT_TURN_ENABLED=true` | Nginx TCP 443, LiveKit UDP 3478 and TLS TCP 5349 |
-| `prod-sni` | TURN 已启用且 `LIVEKIT_SNI_ENABLED=true` / TURN enabled with shared TLS | HAProxy TCP 443 for HTTPS and TURN TLS, LiveKit UDP 3478 |
+| `rtc` | 配合 `prod` 启用 LiveKit / Add to `prod` for LiveKit | TCP 7881 and UDP 50000–50200 |
+| `prod + prod-turn` | `LIVEKIT_TURN_ENABLED=true` | Nginx TCP 443, LiveKit UDP 3478 and TLS TCP 5349 |
+| `prod + prod-sni` | TURN 已启用且 `LIVEKIT_SNI_ENABLED=true` / TURN enabled with shared TLS | HAProxy TCP 443 for HTTPS and TURN TLS, LiveKit UDP 3478 |
 | `monitoring` | 可选 / Optional | Prometheus、Grafana 和三类采集器 / Prometheus, Grafana, and three collectors |
 | `enterprise-direct` | 可选 / Optional | 保留独立企业验证身份和配置 / Separate enterprise verification identity and configuration |
+
+直接预览带共享 443 的服务时，须停用默认网关，且不可同时加 `rtc` 或 `prod-turn`；它们与 `prod-sni` 重复绑定端口。安装器会自动处理，正式安装仍从统一入口运行。单独使用旧 `prod-turn` 或 `prod-sni` 的历史命令仍兼容。
+
+For direct preview of a shared-443 stack, suppress the default gateway and do not add `rtc` or `prod-turn` to `prod-sni`; they would bind overlapping ports. The installer sets this automatically. Use the unified installer for deployment. Standalone historical `prod-turn` and `prod-sni` commands remain compatible.
+
+```bash
+IMBOY_PROD_DEFAULT_GATEWAY_PROFILE=prod-default-gateway docker compose \
+  --env-file deploy/.env --profile prod --profile prod-sni \
+  --profile monitoring --profile enterprise-direct config --services
+```
 
 安装后从仓根运行 `bash scripts/sanity_check.sh`。旧社区部署按原文件组合显式传入 `--compose-file`。
 
 After installation, run `bash scripts/sanity_check.sh` from the checkout root. For legacy deployments, pass the original file list with `--compose-file`.
+
+## 隔离测试 / Isolated test stack
+
+从仓库根目录将 `.env.example` 复制为 `.env.test`，填写独立测试凭据和所需镜像。测试项目使用自己的网络和数据卷。API、S3 和附件 Edge 默认只监听回环地址的 19800、13900 和 13991 端口。
+
+From the repository root, copy `.env.example` to `.env.test` and set dedicated test credentials and image references. The test project uses its own network and volumes. The API, S3 and attachment Edge bind to loopback ports 19800, 13900 and 13991 by default.
+
+```bash
+docker compose -p imboy-test --env-file .env.test --profile test up -d
+docker compose -p imboy-test --env-file .env.test --profile test --profile test-rtc --profile test-monitoring up -d
+docker compose -p imboy-test --env-file .env.test --profile test --profile test-uptrace up -d
+```
+
+`test-rtc` 启用本机 LiveKit，`test-monitoring` 启用抓取测试 API 的 Prometheus。生产环境对应的可选组合为 `prod + rtc` 和 `prod + monitoring`。
+
+`test-rtc` enables loopback LiveKit. `test-monitoring` enables Prometheus for the test API. The corresponding production combinations are `prod + rtc` and `prod + monitoring`.
+
+`test-uptrace` 只连测试数据库，ClickHouse 持久化到测试项目的卷，Redis 仅在追踪的内部网络使用。将部署模板中的 Uptrace 凭据项填入 `.env.test`，使用独立测试值。控制台默认监听 `http://127.0.0.1:14318`。若要验证应用主动上报，在同一文件设置 `IMBOY_UPTRACE_DSN`（示例格式 `http://<测试项目令牌>@uptrace/1`）和 `IMBOY_UPTRACE_OTLP_ENDPOINT=http://uptrace:80`。
+
+`test-uptrace` connects to the test database, keeps ClickHouse data in a project volume, and confines Redis to the tracing network. Set dedicated test values for the Uptrace credentials from the deployment template in `.env.test`. The dashboard defaults to `http://127.0.0.1:14318`. To verify application traces, set the project DSN and `IMBOY_UPTRACE_OTLP_ENDPOINT=http://uptrace:80` in the same file.
+
 
 <a id="operations-lifecycle"></a>
 
@@ -145,18 +177,21 @@ LOGIN，已有账号不改密、不补权。商务版、外部数据库或管理
 安装器在已有 `.env` 后自动补齐空值或 `CHANGE_ME` 内部密钥，保留已有非占位值：
 数据库密码、JWT/AES、管理 Cookie、edge token、密码盐、握手密钥/IV、Grafana、
 LiveKit、Garage，以及启用 Uptrace 时的六项内部密钥；登录 RSA 文件生成到
-`${DATA_DIR}/backend_priv/keys/`，已有私钥保留。DNS、第三方账号/凭据、License 和
+`${DATA_DIR}/backend_priv/keys/`，已有私钥保留。DNS、第三方账号/凭据和
 数据库管理权限须由客户或交付方准备；脚本不会自动提权。正式 TLS 由 ACME 在网络条件满足后签发。
 
-| 安装路径 / Install path | 配置差异 / Configuration differences |
+| 安装命令 / Install command | 配置 / Configuration |
 |---|---|
-| `--edition community`（默认） | 使用随仓 `../docker-compose.yml`；容器固定 `IMBOY_EDITION=community`、外部支付网关关闭，无需支付商户凭据，修改 `.env` 不能打开该网关 |
-| `--edition business` | 需另行取得 `docker-compose.prod.yml`，由安装器从根 Compose 渲染销售策略；默认 `IMBOY_SALES_RELEASE=true` 时要求网关开启、`IMBOY_PAYMENT_MODE=live`，至少一个网关的完整凭据 |
+| `bash deploy/install.sh` | 使用根 Compose / Use root Compose |
+| `bash deploy/install.sh --site-compose` | 使用本机 `deploy/docker-compose.prod.yml` / Use the site-specific Compose file |
 
-`--edition business` 是部署文件选择；授权级别 `IMBOY_EDITION=professional|enterprise`
-及对应 `IMBOY_LICENSE_FILE` 另按商务交付配置。两版本启用短信/SMTP 后均须补齐相应
-凭据；启用 Uptrace 另填 `UPTRACE_DOMAIN`、`UPTRACE_ADMIN_EMAIL` 并准备其 DNS/证书。
-支付开启时，安装器只为留空的微信/支付宝回调地址派生 API 域 HTTPS URL，不生成商户凭据。
+根 Compose 默认只签发 API、Admin 和 Widget 证书。设置 `LIVEKIT_ENABLED=true` 加启信令域，设置 `LIVEKIT_TURN_ENABLED=true` 同时启用 TURN 域。启用 Uptrace 时还需配置其域名和管理员资料。
+
+功能策略使用 `IMBOY_PRODUCT_PROFILE=standard` 或 `audited`。`audited` 预设包含归档消息检索、导出与完整审计。已有现场配置的旧值继续按原策略解释。
+
+Use `IMBOY_PRODUCT_PROFILE=standard` or `audited`. The audited preset includes archived-message search, export and full audit. Existing installations keep the behavior of their previous values.
+
+Root Compose requests API, Admin and Widget certificates by default. Set `LIVEKIT_ENABLED=true` for the signaling domain and `LIVEKIT_TURN_ENABLED=true` to also enable the TURN domain. Uptrace uses its own domain and administrator settings.
 
 ### 清理数据库身份 / Cleanup database identity
 
@@ -231,7 +266,7 @@ Uptrace 默认关闭。启用时在 `.env` 设置 `UPTRACE_ENABLED=true`，填�
 - `--admin-phone` / `--admin-password`：装完后在 backend 容器内经
   `imboy_ctl adm create` 创建超管，无需浏览器走 `/setup` 向导（无浏览器纯脚本部署）
 - `--yes, -y`：跳过所有确认（含 Docker 缺失时的安装确认，适合自动化）
-- `--edition business`：改用商务版 `docker-compose.prod.yml` + sales-policy
+- `--site-compose`：改用现场 `docker-compose.prod.yml` + sales-policy
   overlay（缺文件时提示商务索取方式）
 
 ### API 与客服上传地址
@@ -245,14 +280,14 @@ Uptrace 默认关闭。启用时在 `.env` 设置 `UPTRACE_ENABLED=true`，填�
 
 以下命令不启动服务、不申请证书。完整 preflight 需要已有内部密钥/RSA 的 `.env`；
 刚复制模板时出现密钥占位符或 RSA 缺失错误是预期，首次安装按上面的安装器流程执行。
-`preflight.sh` 单独运行默认是 **business**，必须显式选择版本：
+预检使用现场配置。根 Compose 禁用支付时使用 `--without-payment`：
 
 社区版：
 
 ```bash
 cd /path/to/imboy/deploy
 # 社区版：配置、宿主机/Docker 与 RTC/TURN DNS 探测
-bash preflight.sh --edition community --docker --dns &&
+bash preflight.sh --without-payment --docker --dns &&
   docker compose --env-file .env --profile prod -f ../docker-compose.yml config -q
 ```
 
@@ -260,7 +295,7 @@ bash preflight.sh --edition community --docker --dns &&
 
 ```bash
 cd /path/to/imboy/deploy
-bash preflight.sh --edition business --docker --dns &&
+bash preflight.sh --docker --dns &&
   docker compose --env-file .env -f docker-compose.prod.yml \
     -f "$business_policy" config -q
 ```
@@ -290,7 +325,7 @@ bash preflight.sh --edition business --docker --dns &&
 
 ### Shell 交付依赖与验收边界 / Shell delivery dependencies and acceptance
 
-正式客户入口仍为 `bash deploy/install.sh --edition community`（商务版改为 `--edition business`）。宿主机编排只用
+正式部署入口为 `bash deploy/install.sh`，现场 Compose 使用 `--site-compose`。宿主机编排只用
 Bash、Docker Compose 和 Unix 工具；Compose 环境按域名白名单读取，JSON 校验由 `jq`
 执行，不执行 Compose 输出，不把展开后的密钥 JSON 写入文件或输出到日志。
 
@@ -442,7 +477,7 @@ The Shell regression uses a Docker stub for CID/cleanup control flow only; it do
 
 ## 手工五步排查（仅已有完整配置的商务版）
 
-> 首次安装使用 `install.sh --edition community|business`。本节仅供已完成内部密钥/RSA
+> 首次安装使用 `install.sh` 或 `install.sh --site-compose`。本节仅供已完成内部密钥/RSA
 > 初始化的**商务版**（`docker-compose.prod.yml` + sales-policy overlay）逐步排查；
 > 不能把刚复制的模板直接用于此流程，也不能以这些命令替代安装器的全部门禁和 sanity。
 
@@ -475,7 +510,7 @@ LOGIN/匹配密码及商务条件字段。内部密钥应已消除占位符，RS
 ### 2. 前置检查
 
 ```bash
-bash preflight.sh --edition business --docker --dns
+bash preflight.sh --docker --dns
 docker compose --env-file .env -f docker-compose.prod.yml \
   -f "$business_policy" config -q
 ```
@@ -608,7 +643,7 @@ root 日志无需改成全员可读写。安装器重复执行 `chmod 600` 后�
 The backend image runs as UID/GID `10001:10001`. ERTS, launch scripts under `bin`,
 and BEAM directories remain root-owned. Home, logs, relx-generated configuration
 and the app `priv` directory are writable, including `priv/workers/*.escript`.
-The `priv` ownership supports development-key, license and trial-state writes;
+The `priv` ownership supports development-key writes;
 production keys are read from the read-only `/opt/imboy/priv_runtime` mount.
 The installer prepares the two
 resolved bind mounts with narrowly scoped POSIX ACLs before starting services.

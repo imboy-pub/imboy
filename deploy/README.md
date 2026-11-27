@@ -19,7 +19,7 @@ For a single Linux host, prepare Docker 24+, Compose 2.23.1+, Bash, jq, curl, Op
 Place the delivered `docker-compose.prod.yml` in this directory, prepare site settings from `.env.example`, and run from the repository root:
 
 ```bash
-bash deploy/install.sh --edition business
+bash deploy/install.sh --site-compose
 ```
 
 ## 展开目录时看哪里 / What each directory does

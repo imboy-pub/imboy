@@ -228,8 +228,8 @@ echo "== A04 安装器故障注入（证书失败/LiveKit start 失败/TURN 装�
 FIXTURE="$TMP_ROOT/install"; MOCK_BIN2="$TMP_ROOT/bin2"
 mkdir -p "$FIXTURE/nginx" "$FIXTURE/cleanup-db" "$MOCK_BIN2" "$TMP_ROOT/scripts"
 cp deploy/install.sh deploy/init-cleanup-db.sh deploy/prepare-backend-runtime.sh deploy/.env.example "$FIXTURE/"
-cp scripts/test/fixtures/legacy-compose/community.fixture "$FIXTURE/docker-compose.community.yml"
-cp scripts/test/fixtures/legacy-compose/livekit-turn.fixture "$FIXTURE/docker-compose.livekit-turn.yml"
+cp docker-compose.yml "$TMP_ROOT/docker-compose.yml"
+cp scripts/gen_login_rsa_keys.sh "$TMP_ROOT/scripts/"
 cp deploy/cleanup-db/bootstrap.sql deploy/cleanup-db/verify.sql "$FIXTURE/cleanup-db/"
 cp deploy/nginx/init-letsencrypt.sh "$FIXTURE/nginx/"
 touch "$TMP_ROOT/scripts/sanity_check.sh"
@@ -247,7 +247,12 @@ resolved_env() {
 }
 config_json() {
   resolved_env | jq '. as $e | {services: {
+    garage: {environment: {GARAGE_DEFAULT_ACCESS_KEY: $e.IMBOY_GARAGE_ACCESS_KEY,
+      GARAGE_DEFAULT_SECRET_KEY: $e.IMBOY_GARAGE_SECRET_KEY}},
     imboy_backend: {image: "registry.test/backend:fixture", environment: {
+      IMBOY_PAYMENT_GATEWAY_ENABLED: "false",
+      IMBOY_GARAGE_ACCESS_KEY: $e.IMBOY_GARAGE_ACCESS_KEY,
+      IMBOY_GARAGE_SECRET_KEY: $e.IMBOY_GARAGE_SECRET_KEY,
       IMBOY_BASE_URL: ("https://" + $e.API_DOMAIN),
       IMBOY_WIDGET_BASE_URL: ("https://" + $e.CS_WIDGET_DOMAIN),
       IMBOY_WIDGET_DOMAIN: $e.CS_WIDGET_DOMAIN,
@@ -267,9 +272,14 @@ config_json() {
     imboy_nginx: {environment: {API_DOMAIN: $e.API_DOMAIN,
       CS_WIDGET_DOMAIN: $e.CS_WIDGET_DOMAIN, RTC_DOMAIN: $e.RTC_DOMAIN}},
     imboy_pg18: {environment: {POSTGRES_USER: $e.POSTGRES_USER,
-      POSTGRES_PASSWORD: $e.POSTGRES_PASSWORD}}}}'
+      POSTGRES_PASSWORD: $e.POSTGRES_PASSWORD}}}} |
+    .services |= with_entries(.value.container_name = .key |
+      .value.image //= "registry.test/service:fixture" |
+      .key = ("prod_" + .key +
+        if .key == "imboy_nginx" and env.IMBOY_DEPLOY_PROFILE == "prod-turn" then "_turn" else "" end))'
 }
 case " $* " in
+  *" ps -a --format "*) exit 0 ;;
   *" compose version "*) exit 0 ;;
   *" compose "*" config --environment "*)
     resolved_env | jq -r 'to_entries[] | select(.key | test("^(API|ADMIN|CS_WIDGET|RTC|TURN)_DOMAIN$")) | "\(.key)=\(.value)"'
@@ -280,9 +290,9 @@ case " $* " in
   *" network create "*) exit 0 ;;
   *" compose "*" pull --policy missing "*)
     [ "${MOCK_PULL_FAIL:-0}" != 1 ]; exit ;;
-  *" compose "*" up -d"*)
+  *" compose "*" up -d ")
     [ "${MOCK_UP_FAIL:-0}" != 1 ]; exit ;;
-  *" compose "*" exec -T imboy_nginx wget "*)
+  *" compose "*" exec -T prod_imboy_nginx wget "*|*" compose "*" exec -T prod_imboy_nginx_turn wget "*)
     url=""
     for arg in "$@"; do
       case "$arg" in http://127.0.0.1/.well-known/acme-challenge/*) url="$arg" ;; esac
@@ -290,7 +300,7 @@ case " $* " in
     [ -n "$url" ] || exit 2
     cat "${DATA_DIR:-./data}/certbot/www/${url#http://127.0.0.1/}"
     exit ;;
-  *" compose "*" run "*" imboy_certbot "*)
+  *" compose "*" run "*" prod_imboy_certbot "*)
     [ "${MOCK_CERT_FAIL:-0}" = 1 ] && exit 1
     previous=""; domain=""
     for arg in "$@"; do
@@ -303,7 +313,7 @@ case " $* " in
     printf 'issued fullchain\n' >"$cert_dir/fullchain.pem"
     printf 'issued private key\n' >"$cert_dir/privkey.pem"
     exit 0 ;;
-  *" compose "*" images -q imboy_backend "*) echo test-backend-image-id; exit 0 ;;
+  *" compose "*" images -q prod_imboy_backend "*) echo test-backend-image-id; exit 0 ;;
   *" inspect --format "*) echo 'ghcr.io/imboy-pub/imboy-backend@sha256:aaaa'; exit 0 ;;
 esac
 exit 0
@@ -315,7 +325,7 @@ cat > "$MOCK_BIN2/bash" <<'MOCK'
 set -u
 printf 'bash COMPOSE_FILES=%s args=%s\n' "${COMPOSE_FILES:-}" "$*" >>"${MOCK_LOG2:-/dev/null}"
 case "${1:-}" in
-  *install.sh|*init-letsencrypt.sh) exec /bin/bash "$@" ;;
+  *install.sh|*init-letsencrypt.sh|*gen_login_rsa_keys.sh) exec /bin/bash "$@" ;;
   *) exit 0 ;;
 esac
 MOCK
@@ -337,26 +347,27 @@ reset_env() {
     "CS_WIDGET_DOMAIN=cs.test.invalid" "RTC_DOMAIN=rtc.test.invalid" \
     "TURN_DOMAIN=turn.test.invalid" "CERTBOT_EMAIL=certbot@test.invalid" \
     "IMBOY_DIRECT_CLEANUP_PG_USER=imboy_cleanup" \
-    "IMBOY_PAYMENT_GATEWAY_ENABLED=false"; do
+    "IMBOY_PAYMENT_GATEWAY_ENABLED=false" "LIVEKIT_ENABLED=true"; do
     set_env2 "${kv%%=*}" "${kv#*=}"
   done
 }
 run_install() {
   (cd "$FIXTURE" && env PATH="$MOCK_BIN2:$PATH" MOCK_LOG2="$MOCK_LOG2" \
     MOCK_UP_FAIL="${MOCK_UP_FAIL:-0}" MOCK_CERT_FAIL="${MOCK_CERT_FAIL:-0}" \
-    bash ./install.sh --edition community --yes "$@" >"$TMP_ROOT/install.log" 2>&1)
+    bash ./install.sh --yes "$@" >"$TMP_ROOT/install.log" 2>&1)
   echo $?
 }
 
-# C1) LiveKit start 失败（compose up 失败）：安装中止，绝不进入 TLS/完成阶段
+# C1) TLS 完成后，完整生产栈启动失败时安装必须中止。
 reset_env; : >"$MOCK_LOG2"
 RC="$(MOCK_UP_FAIL=1 run_install)"
 [ "$RC" != 0 ] && ok "compose up 失败 → 安装非零退出" || bad "compose up 失败 → 安装非零退出" "exit=0"
 assert_grep "启动故障确实到达 compose up" 'docker compose.* up -d$' "$MOCK_LOG2"
-assert_not_grep "启动失败不进入 TLS 阶段" 'init-letsencrypt' "$MOCK_LOG2"
+assert_grep "完整生产栈启动前已进入 TLS 阶段" 'init-letsencrypt' "$MOCK_LOG2"
 assert_not_grep "启动失败不打印部署完成" '部署完成' "$TMP_ROOT/install.log"
 
 # C2) 证书签发失败（certbot 失败）：中止并可恢复（重跑成功）
+mv "$FIXTURE/data/certbot" "$TMP_ROOT/start-failure-certbot"
 reset_env; : >"$MOCK_LOG2"
 RC="$(MOCK_CERT_FAIL=1 run_install)"
 [ "$RC" != 0 ] && ok "certbot 失败 → 安装非零退出" || bad "certbot 失败 → 安装非零退出" "exit=0"
@@ -372,12 +383,10 @@ fi
 : >"$MOCK_LOG2"
 RC="$(run_install)"
 assert_rc 0 "$RC" "故障恢复：重跑一次安装成功（幂等）" "$TMP_ROOT/install.log"
-assert_file_present "恢复后 TURN 域证书已签发" "$FIXTURE/data/certbot/conf/live/turn.test.invalid/fullchain.pem"
 assert_file_present "恢复后 RTC 域证书已签发" "$FIXTURE/data/certbot/conf/live/rtc.test.invalid/fullchain.pem"
-assert_grep "TURN 域参与证书签发" 'docker compose.*run.*certbot.* -d turn\.test\.invalid' "$MOCK_LOG2"
-# 恢复质量：turn 证书必须是 certbot 正式产物（而非残留的 1 天期临时自签证书）
-assert_grep "恢复后 TURN 域为正式证书（非临时自签）" '^issued fullchain$' \
-  "$FIXTURE/data/certbot/conf/live/turn.test.invalid/fullchain.pem"
+assert_grep "RTC 域参与证书签发" 'docker compose.*run.*certbot.* -d rtc\.test\.invalid' "$MOCK_LOG2"
+assert_grep "恢复后 RTC 域为正式证书" '^issued fullchain$' \
+  "$FIXTURE/data/certbot/conf/live/rtc.test.invalid/fullchain.pem"
 if find "$FIXTURE/data/certbot/conf/live" -name '.imboy-selfsigned' | grep -q .; then
   bad "恢复后无临时自签标记残留" "$(find "$FIXTURE/data/certbot/conf/live" -name '.imboy-selfsigned')"
 else
@@ -390,8 +399,8 @@ reset_env; set_env2 LIVEKIT_TURN_ENABLED true
 : >"$MOCK_LOG2"
 RC="$(run_install)"
 assert_rc 0 "$RC" "TURN 开启时安装成功（证书桩已就绪）" "$TMP_ROOT/install.log"
-assert_grep "up -d 装配 TURN overlay" 'compose -f docker-compose\.community\.yml -f docker-compose\.livekit-turn\.yml up -d' "$MOCK_LOG2"
-assert_grep "证书目录默认值展开写入 .env" '^LIVEKIT_TURN_CERT_DIR=\./data/certbot/conf/live/turn\.test\.invalid$' "$FIXTURE/.env"
+assert_grep "up -d 选择根 Compose TURN profile" 'compose .*--profile prod --profile prod-turn.*-f ../docker-compose\.yml up -d' "$MOCK_LOG2"
+assert_file_present "TURN 证书签发到预期数据目录" "$FIXTURE/data/certbot/conf/live/turn.test.invalid/fullchain.pem"
 assert_grep "完成态打印 TURN 端点" 'turn\(s\):turn\.test\.invalid:3478\|5349' "$TMP_ROOT/install.log"
 
 echo "== 结果：PASS=${PASS} FAIL=${FAIL} =="

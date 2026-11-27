@@ -216,27 +216,3 @@ post:
                 type: integer
                 format: int64
               payload: {}
-    '402':
-      description: 响应
-      content:
-        application/json:
-          schema:
-            type: object
-            required:
-            - code
-            - msg
-            - sv_ts
-            - payload
-            properties:
-              code:
-                type: integer
-                enum:
-                - 402
-              msg:
-                type: string
-                enum:
-                - account_quota_exceeded
-              sv_ts:
-                type: integer
-                format: int64
-              payload: {}

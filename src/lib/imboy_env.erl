@@ -53,7 +53,7 @@
 %   IMBOY_AUTO_MIGRATE     -> {imboy, auto_migrate}  (true | false)
 %   IMBOY_CLUSTER_NODES    -> {imboy, cluster_nodes} (JSON node@host 字符串数组；[] 显式单节点)
 %   IMBOY_PRODUCT_PROFILE   -> {imboy, product_profile}
-%                              (community | enterprise | overseas_baseline | phase1_delivery)
+%                              (standard | audited | overseas_baseline | phase1_delivery)
 %   IMBOY_PRODUCT_EXPERIENCE -> {imboy, product_experience} (chat | workspace)
 %                              (体验开关；缺失/非法值 fail-safe 为 chat，只告警不拒启)
 %   IMBOY_PLUGIN_ROOT       -> {imboy, plugin_root}  (install Path 受控插件根，SEC-02)
@@ -80,7 +80,6 @@
 %% 单独导出便于 EUnit 直测整数 env 解析（R0 容量参数 IMBOY_MAX_WS_CONNECTIONS）。
 -export([parse_integer_env/2]).
 -export([current/0]).
--export([edition/0]).
 
 -include_lib("kernel/include/logger.hrl").
 
@@ -217,12 +216,9 @@ override_from_env() ->
     %% A-28：动态插件生命周期写操作总开关（默认关）
     ok = override_plugin_lifecycle_enabled(),
 
-    %% SEC-02：install Path 受控插件根 + 可信签名公钥文件（business 强制）
+    %% SEC-02：受控插件根和可信签名公钥，审计预设强制验签。
     ok = override_plugin_root(),
     ok = override_plugin_trusted_key_files(),
-
-    %% 版次标记（community|professional|enterprise）：仅标识 + 启动日志
-    ok = override_edition(),
 
     %% BE-W01 A01：CS widget 接入装配的环境变量覆盖（对照
     %% config/sys.config.example 的 cs_widget_* 键名）。secret 类键支持
@@ -262,17 +258,10 @@ override_product_profile() ->
         false ->
             ok;
         Value when is_list(Value), length(Value) > 0 ->
-            case string:trim(string:lowercase(Value)) of
-                "community" ->
-                    application:set_env(imboy, product_profile, community);
-                "enterprise" ->
-                    application:set_env(imboy, product_profile, enterprise);
-                "overseas_baseline" ->
-                    application:set_env(imboy, product_profile, overseas_baseline);
-                "phase1_delivery" ->
-                    application:set_env(imboy, product_profile, phase1_delivery);
-                Other ->
-                    erlang:error({invalid_env, "IMBOY_PRODUCT_PROFILE", Other})
+            Profile = string:trim(string:lowercase(Value)),
+            case imboy_policy_normalize:normalize_profile_input(Profile) of
+                {ok, Preset} -> application:set_env(imboy, product_profile, Preset);
+                error -> erlang:error({invalid_env, "IMBOY_PRODUCT_PROFILE", Profile})
             end,
             ok;
         _ ->
@@ -348,11 +337,17 @@ override_cluster_nodes() ->
                 try
                     Names = json:decode(unicode:characters_to_binary(Raw)),
                     true = is_list(Names),
-                    true = lists:all(fun(Name) ->
-                        is_binary(Name) andalso byte_size(Name) =< 255 andalso
-                            re:run(Name, <<"^[^@[:space:][:cntrl:]]+@[^@[:space:][:cntrl:]]+$">>,
-                                [{capture, none}]) =:= match
-                    end, Names),
+                    true = lists:all(
+                        fun(Name) ->
+                            is_binary(Name) andalso byte_size(Name) =< 255 andalso
+                                re:run(
+                                    Name,
+                                    <<"^[^@[:space:][:cntrl:]]+@[^@[:space:][:cntrl:]]+$">>,
+                                    [{capture, none}]
+                                ) =:= match
+                        end,
+                        Names
+                    ),
                     [binary_to_atom(Name, utf8) || Name <- Names]
                 catch
                     _:_ -> erlang:error({invalid_env, "IMBOY_CLUSTER_NODES", Raw})
@@ -991,33 +986,10 @@ maybe_override_map_fallback(Map, Key, EnvVar1, EnvVar2, Transform) ->
             maybe_override_map(Map, Key, EnvVar2, Transform)
     end.
 
-%% @doc 读取 IMBOY_EDITION 版次标记，缺省 community；非法值回退 community 并告警。
-%% 仅写入 application env 作版次标识 + 打印启动日志；不在此做任何按版次的功能
-%% 开关——专业版/企业版功能属独立闭源模块，社区版不得被植入残缺收费逻辑。
--spec override_edition() -> ok.
-override_edition() ->
-    Edition =
-        case os:getenv("IMBOY_EDITION") of
-            E when is_list(E), length(E) > 0 ->
-                Bin = unicode:characters_to_binary(string:lowercase(E)),
-                case lists:member(Bin, [<<"community">>, <<"professional">>, <<"enterprise">>]) of
-                    true ->
-                        Bin;
-                    false ->
-                        ?LOG_WARNING("invalid IMBOY_EDITION '~ts', fallback to community", [Bin]),
-                        <<"community">>
-                end;
-            _ ->
-                <<"community">>
-        end,
-    application:set_env(imboy, edition, Edition),
-    ?LOG_NOTICE("IMBoy edition: ~ts", [Edition]),
-    ok.
-
 %% @doc 覆盖产品体验开关（chat | workspace，安装级，双体验 §4.1 / Decision Brief R4.4）。
 %%
 %% 与 override_product_profile/0 的 fail-closed（非法值 erlang:error 拒启）语义
-%% **刻意不同**：product_profile 是销售档位，拼错意味着策略放行面错误，必须吵闹；
+%% product_profile 配置能力策略，非法值会拒绝启动。
 %% product_experience 只决定客户端呈现 chat / workspace 哪种形态，错误值的后果
 %% 是"形态不对"而非安全问题，缺失/非法值一律降级 chat 并记 warning，不拒启。
 %% 读取/校验 API 见 product_experience.erl；/api/v1/init 下发
@@ -1042,11 +1014,3 @@ override_product_experience() ->
         end,
     application:set_env(imboy, product_experience, Experience),
     ok.
-
-%% @doc 返回当前版次（binary），缺省 community。
--spec edition() -> binary().
-edition() ->
-    case application:get_env(imboy, edition) of
-        {ok, E} when is_binary(E) -> E;
-        _ -> <<"community">>
-    end.

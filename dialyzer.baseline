@@ -128,7 +128,6 @@ group_discovery_handler.erl|The pattern {'error', Reason} can never match since 
 group_discovery_handler.erl|The pattern {'error', Reason} can never match since previous clauses completely covered the type {'error', <<_:240>>} | {'ok', #{<<_:32, _:_*8>> => [map()] | non_neg_integer()}}
 group_discovery_handler.erl|The pattern {'error', Reason} can never match since previous clauses completely covered the type {'error', <<_:240>>} | {'ok', #{<<_:32>> => [map()]}}
 group_discovery_handler.erl|The pattern {'error', Reason} can never match the type {'ok', #{<<_:32>> => [map()]}}
-imboy_license.erl|The variable _ can never match since previous clauses completely covered the type integer()
 imboy_syn.erl|Expression produces a value of type 'false' | 'ok' | non_neg_integer(), but this value is unmatched
 imboy_syn.erl|Expression produces a value of type ['ok' | reference()], but this value is unmatched
 mcp_authz_gate.erl|The pattern 'allow' can never match the type {'deny', 'rate_limited'}

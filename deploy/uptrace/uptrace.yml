@@ -3,8 +3,8 @@ service:
   secret: ${UPTRACE_SERVICE_SECRET}
 
 site:
-  url: https://${UPTRACE_DOMAIN}
-  ingest_url: https://${UPTRACE_DOMAIN}
+  url: ${UPTRACE_SITE_URL}
+  ingest_url: ${UPTRACE_SITE_URL}
 
 listen:
   http:

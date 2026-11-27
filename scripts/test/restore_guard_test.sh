@@ -17,14 +17,33 @@ RED='\033[0;31m'; GREEN='\033[0;32m'; NC='\033[0m'
 ok()   { echo -e "${GREEN}  PASS${NC} $1"; PASS=$((PASS+1)); }
 bad()  { echo -e "${RED}  FAIL${NC} $1"; echo "    输出: ${2:-<空>}"; FAIL=$((FAIL+1)); }
 
-# 断言脚本以非零退出且输出含指定文本
-assert_rejects() {
+# A regression in a guard must never turn this test into a live deploy/restore.
+# Clear inherited deployment settings and record all attempted transport calls,
+# even when the script redirects their output or ignores their return codes.
+GUARD_TMP="$(mktemp -d "${TMPDIR:-/tmp}/imboy-restore-guard.XXXXXX")" || exit 1
+trap 'rm -rf -- "$GUARD_TMP"' EXIT
+mkdir "$GUARD_TMP/bin" || exit 1
+cat > "$GUARD_TMP/bin/deny-transport" <<'EOF'
+#!/bin/sh
+printf '%s\n' "${0##*/}" >> "$IMBOY_GUARD_TRANSPORT_LOG"
+exit 112
+EOF
+chmod +x "$GUARD_TMP/bin/deny-transport" || exit 1
+for transport in ssh scp rsync docker psql pg_restore; do
+  ln -s deny-transport "$GUARD_TMP/bin/$transport" || exit 1
+done
+
+assert_local_rejects() {
   local desc="$1" needle="$2"; shift 2
-  local out rc
-  out="$("$@" 2>&1 </dev/null)"; rc=$?
-  if [ "$rc" -eq 0 ]; then
+  local out rc transport_log="$GUARD_TMP/transport.log"
+  : > "$transport_log" || exit 1
+  out="$(env -i PATH="$GUARD_TMP/bin:$PATH" HOME="$GUARD_TMP" TMPDIR="$GUARD_TMP" \
+    IMBOY_GUARD_TRANSPORT_LOG="$transport_log" "$@" 2>&1 </dev/null)"; rc=$?
+  if [ -s "$transport_log" ]; then
+    bad "${desc}（参数守卫前触达传输或数据库工具）" "$(cat "$transport_log")"
+  elif [ "$rc" -eq 0 ]; then
     bad "${desc}（期望拒绝，实际退出码 0）" "$out"
-  elif ! printf '%s' "$out" | grep -q "$needle"; then
+  elif ! printf '%s' "$out" | grep -Fq -- "$needle"; then
     bad "${desc}（退出码正确但未命中 '${needle}'）" "$out"
   else
     ok "$desc"
@@ -35,28 +54,24 @@ echo "== B-28 生产库守卫 =="
 
 # 用一个不存在的备份文件即可：守卫必须**早于**文件存在性检查触发，
 # 否则"目标是生产库"这件事会被"文件不存在"掩盖掉。
-NOFILE=/tmp/definitely_missing_$$.dump
+NOFILE="$GUARD_TMP/nonexistent.dump"
 
 # 1) 不带 --target 时缺省就是生产库 —— 这正是最容易手滑的那条路
-assert_rejects "缺省 target(=生产库) 被拒绝" "拒绝执行" \
-  env POSTGRES_DB=imboy_pro bash "$SCRIPT" "$NOFILE"
+assert_local_rejects "缺省 target(=生产库) 被拒绝" "拒绝执行" \
+  POSTGRES_DB=imboy_pro bash "$SCRIPT" "$NOFILE"
 
 # 2) 显式把 target 写成生产库，同样拒绝
-assert_rejects "显式 --target 生产库被拒绝" "拒绝执行" \
-  env POSTGRES_DB=imboy_pro bash "$SCRIPT" "$NOFILE" --target imboy_pro
+assert_local_rejects "显式 --target 生产库被拒绝" "拒绝执行" \
+  POSTGRES_DB=imboy_pro bash "$SCRIPT" "$NOFILE" --target imboy_pro
 
 # 3) 放行开关 + FORCE=1 同时使用被拒 —— 不允许一次绕过两道闸
-assert_rejects "ALLOW_PRODUCTION_TARGET=1 与 FORCE=1 同时使用被拒绝" "不允许同时使用 FORCE=1" \
-  env POSTGRES_DB=imboy_pro ALLOW_PRODUCTION_TARGET=1 FORCE=1 bash "$SCRIPT" "$NOFILE" --target imboy_pro
+assert_local_rejects "ALLOW_PRODUCTION_TARGET=1 与 FORCE=1 同时使用被拒绝" "不允许同时使用 FORCE=1" \
+  POSTGRES_DB=imboy_pro ALLOW_PRODUCTION_TARGET=1 FORCE=1 bash "$SCRIPT" "$NOFILE" --target imboy_pro
 
 # 4) 非生产目标：守卫放行，应当往下走到"备份文件不存在"才失败。
 #    这条同时证明守卫**没有误杀**正常演练路径。
-OUT="$(env POSTGRES_DB=imboy_pro bash "$SCRIPT" "$NOFILE" --target imboy_restore_test 2>&1 </dev/null)"
-if printf '%s' "$OUT" | grep -q "备份文件不存在"; then
-  ok "非生产 target 通过守卫（止于文件不存在）"
-else
-  bad "非生产 target 应通过守卫" "$OUT"
-fi
+assert_local_rejects "非生产 target 通过守卫（止于文件不存在）" "备份文件不存在" \
+  POSTGRES_DB=imboy_pro bash "$SCRIPT" "$NOFILE" --target imboy_restore_test
 
 echo
 echo "== B-21 演练与真实恢复同路径 =="
@@ -151,9 +166,9 @@ DEPLOY="scripts/lib/blue_green_deploy.sh"
 UNIFIED_DEPLOY="scripts/imboy-deploy.sh"
 TEST_VSN="$(tr -d '[:space:]' < VERSION)"
 
-assert_rejects "私有蓝绿实现拒绝直接调用" "内部实现" \
+assert_local_rejects "私有蓝绿实现拒绝直接调用" "内部实现" \
   bash "$DEPLOY" example.invalid "$TEST_VSN" testnode
-assert_rejects "统一部署入口拒绝未知选项" "用法:" \
+assert_local_rejects "统一部署入口拒绝未知选项" "用法:" \
   bash "$UNIFIED_DEPLOY" api --unknown
 
 if [ ! -e scripts/deploy.sh ]; then
@@ -168,15 +183,19 @@ else
   bad "本地源码同步可能泄漏客户部署配置" ""
 fi
 
-# 所有用例必须在建立 SSH 前被参数 allowlist 拒绝，不触达第三方。
-assert_rejects "E2EE mode 单引号注入被拒绝" "IMBOY_DEPLOY_E2EE_MODE 非法" \
-  env IMBOY_DEPLOY_INTERNAL=1 "IMBOY_DEPLOY_E2EE_MODE=disabled';touch /tmp/pwn" \
+# Only the parameter under test is invalid. The current entry point requires
+# a valid, distinct blue/green TSID identity before checking path and mode.
+DEPLOY_GUARD_ENV=(IMBOY_DEPLOY_INTERNAL=1 IMBOY_DEPLOY_TSID_DC_ID=1
+  IMBOY_DEPLOY_TSID_DC_BITS=3 IMBOY_DEPLOY_TSID_BLUE_NODE_ID=1
+  IMBOY_DEPLOY_TSID_GREEN_NODE_ID=2 "IMBOY_DEPLOY_SOURCE_HEAD=$(git rev-parse HEAD)")
+assert_local_rejects "E2EE mode 含非法单引号被拒绝" "IMBOY_DEPLOY_E2EE_MODE 非法" \
+  "${DEPLOY_GUARD_ENV[@]}" "IMBOY_DEPLOY_E2EE_MODE=required'" \
   bash "$DEPLOY" example.invalid "$TEST_VSN" testnode
-assert_rejects "蓝端口命令注入被拒绝" "无效 BLUE_PORT" \
-  env IMBOY_DEPLOY_INTERNAL=1 "IMBOY_DEPLOY_BLUE_PORT=9800;touch /tmp/pwn" \
+assert_local_rejects "蓝端口含非法分号被拒绝" "无效 BLUE_PORT" \
+  "${DEPLOY_GUARD_ENV[@]}" "IMBOY_DEPLOY_BLUE_PORT=9800;" \
   bash "$DEPLOY" example.invalid "$TEST_VSN" testnode
-assert_rejects "远端项目路径命令注入被拒绝" "unsafe PROJECT_DIR" \
-  env IMBOY_DEPLOY_INTERNAL=1 "IMBOY_DEPLOY_PROJECT_DIR=/tmp/x';touch /tmp/pwn;'" \
+assert_local_rejects "远端项目路径含非法引号被拒绝" "unsafe PROJECT_DIR" \
+  "${DEPLOY_GUARD_ENV[@]}" "IMBOY_DEPLOY_PROJECT_DIR=/tmp/guard-fixture'" \
   bash "$DEPLOY" example.invalid "$TEST_VSN" testnode
 
 # C-51：就绪判断必须探 /healthz 并校验版本，不能只看端口
@@ -241,11 +260,20 @@ else
   bad "切流前失败可能遗留 Nginx 指向已停止节点" "$RECOVERY_BODY"
 fi
 
-if grep -q 'NGINX_PORT="$(probe_nginx_port)"' "$DEPLOY" \
-   && grep -q 'find_stopped_release_for_port "$OLD_PORT"' "$DEPLOY" \
-   && grep -q '检测到活动槽停机，先恢复' "$DEPLOY" \
-   && grep -q '检测到 legacy 已停机' "$DEPLOY" \
-   && grep -q 'FAIL_RECOVERY_ATTEMPTED=0' "$DEPLOY"; then
+STOPPED_UPSTREAM="$(sed -n '/^if ! ssh_exec "ss -tlnH .*OLD_PORT/,/^ACTIVE_DIR=/p' "$DEPLOY")"
+LEGACY_CHECK="$(printf '%s\n' "$STOPPED_UPSTREAM" | grep -nF '[ "$CURRENT_COLOR" != legacy ]' | cut -d: -f1)"
+LEGACY_REJECT="$(printf '%s\n' "$STOPPED_UPSTREAM" | grep -nF '|| fail "Nginx 指向的 legacy 端口' | cut -d: -f1)"
+FIRST_INSTALL="$(printf '%s\n' "$STOPPED_UPSTREAM" | grep -nE '^[[:space:]]*CURRENT_COLOR=none$' | cut -d: -f1)"
+if grep -Fq 'NGINX_PORT="$(probe_nginx_port)"' "$DEPLOY" \
+   && printf '%s' "$STOPPED_UPSTREAM" | grep -Fq 'if OLD_DIR="$(find_stopped_release_for_port "$OLD_PORT")"; then' \
+   && printf '%s' "$STOPPED_UPSTREAM" | grep -Fq 'safe_release_dir "$OLD_DIR" || fail' \
+   && printf '%s' "$STOPPED_UPSTREAM" | grep -Fq 'read_stopped_tsid_identity "$OLD_DIR"' \
+   && printf '%s' "$STOPPED_UPSTREAM" | grep -qE '^[[:space:]]*OLD_NODE_STOPPED=1$' \
+   && printf '%s' "$STOPPED_UPSTREAM" | grep -qE '^[[:space:]]*recover_old_node_before_cutover' \
+   && printf '%s' "$STOPPED_UPSTREAM" | grep -qE '^[[:space:]]*FAIL_RECOVERY_ATTEMPTED=0$' \
+   && [ -n "$LEGACY_CHECK" ] && [ -n "$LEGACY_REJECT" ] && [ -n "$FIRST_INSTALL" ] \
+   && [ "$((LEGACY_CHECK + 1))" -eq "$LEGACY_REJECT" ] \
+   && [ "$LEGACY_REJECT" -lt "$FIRST_INSTALL" ]; then
   ok "停机 upstream 使用可信 release 恢复点，不误判为首次安装"
 else
   bad "重复部署仍可能把既有停机状态误判为首次安装" ""
@@ -253,17 +281,22 @@ fi
 
 # 本轮 E2EE 归档改动：00000064 是新代码切流前必需的 additive schema。
 # 它必须在切流前执行，但完整 migrate 仍保留在切流之后。
-EXPAND_DEF_LINE="$(grep -n '^run_expand_migrations()' "$DEPLOY" | head -1 | cut -d: -f1)"
-EXPAND_CALL_LINE="$(grep -nE '^[[:space:]]*run_expand_migrations$' "$DEPLOY" | tail -1 | cut -d: -f1)"
-START_LINE="$(grep -nE "^[[:space:]]*ssh_exec .*IMBOY_AUTO_MIGRATE='\\\$START_AUTO_MIGRATE'.*bin/imboy daemon" "$DEPLOY" | head -1 | cut -d: -f1)"
+EXPAND_DEF_LINE="$(grep -n '^run_expand_migrations()' "$DEPLOY" | cut -d: -f1)"
+EXPAND_CALL_LINE="$(grep -nE '^[[:space:]]*run_expand_migrations$' "$DEPLOY" | cut -d: -f1)"
+START_LINE="$(grep -nE '^start_candidate "\$APP_PORT" "\$TSID_NODE_ENV"$' "$DEPLOY" | cut -d: -f1)"
+START_BODY="$(sed -n '/^start_candidate() {$/,/^}$/p' "$DEPLOY")"
+START_DAEMON_LINE="$(printf '%s\n' "$START_BODY" | grep -E '^[[:space:]]*ssh_exec .*bin/imboy daemon' || true)"
 if [ -n "$EXPAND_DEF_LINE" ] && [ -n "$EXPAND_CALL_LINE" ] \
-   && [ -n "$START_LINE" ] && [ "$EXPAND_CALL_LINE" -lt "$START_LINE" ]; then
+   && [ -n "$START_LINE" ] && [ "$EXPAND_DEF_LINE" -lt "$EXPAND_CALL_LINE" ] \
+   && [ "$EXPAND_CALL_LINE" -lt "$START_LINE" ] \
+   && printf '%s' "$START_DAEMON_LINE" | grep -Fq "\$identity_env ./bin/imboy daemon"; then
   ok "新节点启动前执行显式 expand 迁移（行 ${EXPAND_CALL_LINE} < ${START_LINE}）"
 else
   bad "expand 迁移未排在新节点启动前" "expand=${EXPAND_CALL_LINE} start=${START_LINE}"
 fi
 
 if [ -n "$START_LINE" ] \
+   && printf '%s' "$START_DAEMON_LINE" | grep -Fq "IMBOY_AUTO_MIGRATE='\$START_AUTO_MIGRATE'" \
    && grep -q 'START_AUTO_MIGRATE=false' "$DEPLOY" \
    && grep -q 'START_AUTO_MIGRATE=true' "$DEPLOY"; then
   ok "蓝绿禁用启动迁移，首次空库安装保留 bootstrap 迁移"

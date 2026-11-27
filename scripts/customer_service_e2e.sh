@@ -43,8 +43,7 @@
 #
 #   CS04_E2E_MODE=remote（默认）
 #     打 $CS04_BASE_URL（A0 提供的 wi_e2e daemon，9810），全部造数经 HTTP。
-#     注册受 License 用户配额闸门（见下 BLOCKED_DATA）；scratch 库配额占满时
-#     exit 2 报 BLOCKED_DATA，铺底后可原样复跑。
+#     使用 scratch 库与合成账号验证真实注册。
 #
 #   CS04_E2E_MODE=local
 #     自含模式（与既有 enterprise_business_e2e.sh 的 EB-11 门同款）：
@@ -53,16 +52,7 @@
 #     cs04local-，可归因；eb_e2e_fixture:insert_users/1 同一语句）并以生产同款
 #     签发函数 `token_ds:encrypt_token/1` 签发真 JWT。**业务数据 100% 经 HTTP**
 #     造数（org/workspace/member/身份/assignment/contact/conversation/message/
-#     asset/session/claim/... 全部 API 调用）。种子仅覆盖「注册 API 被配额闸门
-#     挡住」这一环境限制，不种任何企业/客服业务行。
-#
-# ## BLOCKED_DATA（remote 模式环境铺底缺失时）
-#
-#   注册经 POST /api/v1/passport/signup 受 License 用户配额闸门
-#   （passport_logic:quota_guard/0 → imboy_license:check_user_quota/1）。
-#   scratch 库历史 eunit 夹具用户把配额占满时（402），本脚本以 **exit 2** 报
-#   BLOCKED_DATA，并在 evidence 目录写 blocked-data.txt（含 A0 最小铺底两种方案）。
-#   铺底就绪后本脚本可原样复跑（exit 0/1 才是链路结论）。
+#     asset/session/claim/... 全部 API 调用）。种子不包含企业/客服业务行。
 #
 # 用法：
 #   bash scripts/customer_service_e2e.sh                                   # remote：打 9810
@@ -480,7 +470,7 @@ ERLEOF
     say ""
 fi
 
-# ----------------------------------------------- 配额闸门探针（仅 remote）--
+# ----------------------------------------------- 注册探针（仅 remote）--
 TS="$(date +%s)"
 
 if [ "$MODE" = "remote" ]; then
@@ -488,37 +478,9 @@ if [ "$MODE" = "remote" ]; then
   PROBE_CODE="$(signup "$PROBE_ACCT" "Cs04-Probe-$TS" cs04probe)"
   PROBE_BIZ="$(jsonget "$(cat "$BODY")" '.code // empty')"
   if [ "$PROBE_CODE" = "200" ] && [ "$PROBE_BIZ" = "0" ]; then
-      say "[OK]   配额探针：注册闸门可用（probe 注册成功）"
-  elif [ "$PROBE_BIZ" = "402" ]; then
-      {
-        say "BLOCKED_DATA: HTTP 用户造数被 License 配额闸门阻断"
-        say ""
-        say "证据：POST /api/v1/passport/signup -> HTTP $PROBE_CODE body=$(head -c 200 "$BODY")"
-        say "根因：passport_logic:quota_guard/0 用 user_ds:count()（全表）与"
-        say "      imboy_license:check_user_quota/1 比对；当前 scratch 库 user 表"
-        say "      行数 $(db_ro 'SELECT count(*) FROM "user";') 已达试用配额上限"
-        say "      （imboy_license DEFAULT_TRIAL_MAX_USERS=500；无 sys.config 覆盖键）。"
-        say "      库内既有行为：绝大部分是历史 eunit 夹具行（password='x'，"
-        say "      account LIKE 'cs01-account-%' 等），无任何可用登录凭证。"
-        say ""
-        say "A0 最小铺底（a/b 二选一 + c 必做）："
-        say "  a) 清理 imboy_eb_w21.\"user\" 中历史夹具残留行（password='x' 的行），腾出配额；"
-        say "  b) 在 wi_e2e daemon 的 /tmp/sys.local.e2e.config imboy 段加"
-        say "     {trial_max_users, 5000} 后重启 wi_e2e 节点（9810）；"
-        say "  c) 同一 config 段注入企业托管加密密钥环（缺它则 contact/asset 全线 500）："
-        say "     {eb_enterprise_keyring, #{active_version => 1,"
-        say "        keys => #{1 => <<\"<64 位 hex 合成密钥>\">>}}}。"
-        say "     注：这是合成密钥，仅用于本地合成 E2E，不构成生产密钥管理。"
-        say ""
-        say "铺底后本脚本可原样复跑：bash scripts/customer_service_e2e.sh"
-        say "边界：本 worker 纪律禁止 psql 直改业务表，故不自行清理。"
-    } | tee "$EVID/blocked-data.txt"
-      say "E2E: ASSERT_PASS=$PASS ASSERT_FAIL=$FAIL BLOCKED_DATA=1"
-      say "[BLOCKED] CS-04-A01..A06 无法取得 HTTP 造数凭证 —— 报 BLOCKED_DATA 由 A0 处理"
-      say "提示：也可用 CS04_E2E_MODE=local 以自含隔离节点复跑（同 enterprise_business_e2e.sh 门模式）"
-      exit 2
+      say "[OK]   注册探针成功"
   else
-      say "[FAIL] 配额探针异常：HTTP=$PROBE_CODE biz=$PROBE_BIZ body=$(head -c 200 "$BODY")"
+      say "[FAIL] 注册探针失败：HTTP=$PROBE_CODE biz=$PROBE_BIZ body=$(head -c 200 "$BODY")"
       say "E2E: ASSERT_PASS=$PASS ASSERT_FAIL=$((FAIL + 1))"
       exit 1
   fi

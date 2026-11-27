@@ -4,7 +4,10 @@
 -author("imboy").
 
 -export([init/0, join_cluster/1, get_cluster_nodes/0, ping_nodes/0, handle_node_info/1]).
--export([join_allowed/0]).
+
+-ifdef(TEST).
+-export([get_cluster_nodes_from_config/0]).
+-endif.
 
 %% ===================================================================
 %% API 函数
@@ -59,16 +62,7 @@ join_cluster(ClusterNodes) ->
                 CurrentNode ->
                     {CurrentNode, skip};
                 _ ->
-                    case join_allowed() of
-                        {error, node_quota_exceeded, Would, Max} ->
-                            ok = elib_log:error(
-                                <<"License 授权节点上限 ~p，加入节点 ~p 后将达 ~p，拒绝加入"/utf8>>,
-                                [Max, TargetNode, Would]
-                            ),
-                            {TargetNode, license_denied};
-                        ok ->
-                            connect(TargetNode)
-                    end
+                    connect(TargetNode)
             end
         end,
         ClusterNodes
@@ -78,26 +72,13 @@ join_cluster(ClusterNodes) ->
     ConnectedNodes = [Node || {Node, connected} <- Results],
     case ConnectedNodes of
         [] ->
-            case [N || {N, license_denied} <- Results] of
-                [] -> {error, no_nodes_connected};
-                _ -> {error, node_quota_exceeded}
-            end;
+            {error, no_nodes_connected};
         _ ->
             ok = elib_log:info(<<"成功连接到 ~p 个集群节点"/utf8>>, [length(ConnectedNodes)]),
             % 向集群广播当前节点信息
             broadcast_node_info(ConnectedNodes),
-            ok = warn_if_node_quota_exceeded(),
             ok
     end.
-
-%% @doc 加入前瞻硬 gate：本节点 + 已连接节点 + 待加入的 1 个节点是否超授权。
-%% max_nodes=0 表示不限量。
-%% ponytail: 只拦截本节点主动发起的加入；对端主动连入仍只在事后告警
-%% （见 warn_if_node_quota_exceeded/0）。真正双向强制需 net_kernel 监听器，
-%% 有真实多租户集群客户后再做。
--spec join_allowed() -> ok | {error, node_quota_exceeded, integer(), integer()}.
-join_allowed() ->
-    imboy_license:check_node_quota(length(nodes()) + 2).
 
 -spec connect(node()) -> {node(), connected | failed}.
 connect(TargetNode) ->
@@ -111,20 +92,6 @@ connect(TargetNode) ->
         false ->
             ok = elib_log:warning(<<"无法连接到节点: ~p"/utf8>>, [TargetNode]),
             {TargetNode, failed}
-    end.
-
-%% @doc 事后 gate：本节点未主动发起、由对端连入导致的超限，仅告警不强制断开
-%% （避免误伤已在跑的生产集群）。主动加入路径由 join_allowed/0 硬拦截。
--spec warn_if_node_quota_exceeded() -> ok.
-warn_if_node_quota_exceeded() ->
-    case imboy_license:check_node_quota() of
-        ok ->
-            ok;
-        {error, node_quota_exceeded, Current, Max} ->
-            elib_log:warning(
-                <<"集群节点数 ~p 超过 License 授权上限 ~p，请升级 License 后扩容"/utf8>>,
-                [Current, Max]
-            )
     end.
 
 %% @doc 获取当前集群中的所有节点

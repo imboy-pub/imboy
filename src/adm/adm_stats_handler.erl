@@ -29,7 +29,6 @@ init(Req0, State0) ->
             message -> message(Method, Req0, State);
             group -> group(Method, Req0, State);
             ranking -> ranking(Method, Req0, State);
-            license -> license(Method, Req0, State);
             finance_summary -> finance_summary(Method, Req0, State);
             finance_report -> finance_report(Method, Req0, State);
             ux_events -> ux_events(Method, Req0, State);
@@ -40,60 +39,6 @@ init(Req0, State0) ->
 %% ===================================================================
 %% Internal Function Definitions
 %% ===================================================================
-
-%% @doc License 授权状态（规模/配额）查询
--spec license(binary(), cowboy_req:req(), map()) -> cowboy_req:req().
-license(<<"GET">>, Req0, _State) ->
-    %% 只经 public_info/0 输出脱敏白名单字段，禁止透传 info/0 内部态
-    Result = maps:merge(imboy_license:public_info(), #{
-        current_users => user_ds:count(),
-        current_nodes => length(nodes()) + 1
-    }),
-    elib_response:success(Req0, Result);
-license(<<"POST">>, Req0, State) ->
-    case adm_acl:ensure_permission(State, <<"license:write">>, Req0) of
-        {error, RespReq} ->
-            RespReq;
-        ok ->
-            {ok, Body, Req1} = cowboy_req:read_body(Req0),
-            Params = jsone:decode(Body, [{keys, binary}, {object_format, map}]),
-            LicenseText = maps:get(<<"license_text">>, Params, <<>>),
-            case byte_size(LicenseText) of
-                0 ->
-                    elib_response:error(Req1, <<"license_text 不能为空"/utf8>>, 400);
-                _ ->
-                    case license_write_and_reload(LicenseText) of
-                        ok ->
-                            %% 不回显 license_text，只返回脱敏后的授权状态
-                            elib_response:success(Req1, imboy_license:public_info());
-                        {error, Msg} ->
-                            elib_response:error(Req1, Msg, 400)
-                    end
-            end
-    end;
-license(_, Req0, _State) ->
-    cowboy_req:reply(405, #{}, <<"Method Not Allowed">>, Req0).
-
-%% @doc 将 license 文本写入文件并热加载（无需重启）
--spec license_write_and_reload(binary()) -> ok | {error, binary()}.
-license_write_and_reload(Text) ->
-    Path =
-        case os:getenv("IMBOY_LICENSE_FILE") of
-            P when is_list(P), P =/= "" ->
-                P;
-            _ ->
-                filename:join(code:priv_dir(imboy), "license.key")
-        end,
-    case file:write_file(Path, Text) of
-        ok ->
-            ok = imboy_license:load_and_validate(),
-            ok;
-        {error, Reason} ->
-            Msg = unicode:characters_to_binary(
-                io_lib:format("写入 license 文件失败: ~p", [Reason])
-            ),
-            {error, Msg}
-    end.
 
 %% @doc 总览统计
 -spec overview(binary(), cowboy_req:req(), map()) -> cowboy_req:req().

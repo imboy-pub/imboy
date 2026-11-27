@@ -22,11 +22,6 @@ set -a; . ./.env; set +a
 : "${ADMIN_DOMAIN:?在 .env 中设置 ADMIN_DOMAIN}"
 # CSD-DEP-01：客服 Widget 第三域同为必填（fail-closed），证书与 API/Admin 各自独立签发
 : "${CS_WIDGET_DOMAIN:?在 .env 中设置 CS_WIDGET_DOMAIN（客服 Widget 域名）}"
-# LK-DEP-01：LiveKit 两域必签 —— RTC 域供 nginx 443 WSS 反代使用；TURN 域供
-# embedded TURN TLS 5349（overlay 只读挂载该 live 目录）。两域均经 webroot 签发
-#（未匹配 server_name 的 ACME 请求由默认 80 server 的 webroot location 兜底应答）。
-: "${RTC_DOMAIN:?在 .env 中设置 RTC_DOMAIN（LiveKit 信令域）}"
-: "${TURN_DOMAIN:?在 .env 中设置 TURN_DOMAIN（LiveKit TURN 域）}"
 : "${CERTBOT_EMAIL:?在 .env 中设置 CERTBOT_EMAIL（证书到期通知邮箱）}"
 DATA_DIR="${DATA_DIR:-./data}"
 # install.sh 传入空格分隔的完整 Compose 文件集合；单独运行仍兼容 COMPOSE_FILE。
@@ -46,7 +41,15 @@ service_prefix=
 nginx_suffix=
 case "$COMPOSE_FILES" in
   ../docker-compose.yml|../docker-compose.yml\ *)
-    COMPOSE_ARGS=(--project-name imboy --profile "${IMBOY_DEPLOY_PROFILE:-prod}" --env-file .env)
+    COMPOSE_ARGS=(--project-name "${IMBOY_DEPLOY_PROJECT:-imboy}" --profile prod --env-file .env)
+    case "${IMBOY_DEPLOY_PROFILE:-prod}" in
+      prod) export IMBOY_PROD_DEFAULT_GATEWAY_PROFILE=prod ;;
+      prod-turn|prod-sni)
+        export IMBOY_PROD_DEFAULT_GATEWAY_PROFILE=prod-default-gateway
+        COMPOSE_ARGS+=(--profile "$IMBOY_DEPLOY_PROFILE")
+        ;;
+      *) echo "Invalid production gateway mode" >&2; exit 2 ;;
+    esac
     service_prefix=prod_
     case "${IMBOY_DEPLOY_PROFILE:-prod}" in prod-turn) nginx_suffix=_turn ;; prod-sni) nginx_suffix=_sni ;; esac
     ;;
@@ -57,7 +60,17 @@ for compose_file in $COMPOSE_FILES; do
 done
 compose() { docker compose "${COMPOSE_ARGS[@]}" "$@"; }
 
-DOMAINS=("$API_DOMAIN" "$ADMIN_DOMAIN" "$CS_WIDGET_DOMAIN" "$RTC_DOMAIN" "$TURN_DOMAIN")
+DOMAINS=("$API_DOMAIN" "$ADMIN_DOMAIN" "$CS_WIDGET_DOMAIN")
+if [ "${IMBOY_DEPLOY_CHECK_RTC:-1}" = 1 ]; then
+    : "${RTC_DOMAIN:?在 .env 中设置 RTC_DOMAIN}"
+    DOMAINS+=("$RTC_DOMAIN")
+else
+    export RTC_DOMAIN=""
+fi
+if [ "${IMBOY_DEPLOY_CHECK_TURN:-1}" = 1 ]; then
+    : "${TURN_DOMAIN:?在 .env 中设置 TURN_DOMAIN}"
+    DOMAINS+=("$TURN_DOMAIN")
+fi
 case "$(printf '%s' "${UPTRACE_ENABLED:-false}" | tr '[:upper:]' '[:lower:]')" in
   true|1)
     : "${UPTRACE_DOMAIN:?UPTRACE_ENABLED=true 时必须设置 UPTRACE_DOMAIN}"

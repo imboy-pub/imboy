@@ -1,10 +1,10 @@
 # LiveKit TURN/TLS 443 一键切换手册
 
-新社区部署使用根 Compose 的 `prod-sni`。在 `deploy/.env` 设置
+新的统一部署使用根 Compose 的 `prod + prod-sni`。在 `deploy/.env` 设置
 `LIVEKIT_TURN_ENABLED=true` 与 `LIVEKIT_SNI_ENABLED=true`，然后按[安装指南](../../../../deploy/README.md)
 执行。下文的宿主机 HAProxy/Nginx 操作适用于已使用该拓扑的旧实例，其兼容模板也由根 Compose 提供。
 
-New community deployments use the root `prod-sni` profile. The host
+New unified deployments use the root `prod + prod-sni` profiles. The host
 HAProxy/Nginx procedure below remains available for existing installations.
 
 

@@ -5,7 +5,7 @@
 %
 % 安装级 IMBOY_PRODUCT_EXPERIENCE 决定客户端呈现 chat（经典 IM）还是
 % workspace（协作工作台）形态。命名与 product_profile 严格隔离：
-%   product_profile（community|enterprise）= 销售/版本档位，非法值 fail-closed 拒启；
+%   product_profile = 能力策略预设，非法值拒绝启动；
 %   product_experience（chat|workspace）   = 体验开关，缺失/非法值 fail-safe 为 chat。
 % 两者并存、互不覆盖。
 %

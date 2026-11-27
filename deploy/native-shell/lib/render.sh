@@ -240,7 +240,7 @@ render_backend_config() (
 
     {
         printf '%s\n' '# Generated locally. Contains secrets. Mode 0600; never attach to support tickets.'
-        printf '%s\n' 'IMBOYENV=pro' 'IMBOY_EDITION=community' 'IMBOY_PRODUCT_PROFILE=phase1_delivery'
+        printf '%s\n' 'IMBOYENV=pro' 'IMBOY_PRODUCT_PROFILE=phase1_delivery'
         printf 'HTTP_PORT=%s\n' "$http_port"
         printf 'TZ=%s\n' "$app_timezone"
         printf '%s\n' 'ERL_EPMD_ADDRESS=127.0.0.1'

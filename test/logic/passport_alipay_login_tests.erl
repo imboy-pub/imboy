@@ -13,10 +13,9 @@
 %%%
 %%% 覆盖：老用户按 (alipay, user_id) 映射直登 / 新用户自动建号（昵称头像
 %%%       回填、性别 m/f→1/2 映射、source=alipay、sso_identity 绑定）/
-%%%       昵称兜底 / 建号 23505 并发冲突回读 / License 配额 402 /
+%%%       昵称兜底 / 建号 23505 并发冲突回读 /
 %%%       账号禁用拒绝 / 授权码无效 / userinfo 失败 / 未配置凭据。
-%%% 说明：alipay_openapi / sso_identity_ds / user_ds / token_ds /
-%%%       imboy_license 全部 meck（不触网不触库）。
+%%% 说明：alipay_openapi / sso_identity_ds / user_ds / token_ds 均以 meck 隔离（不触网不触库）。
 %%%===================================================================
 
 -define(ALIPAY_UID, <<"2088302622035892">>).
@@ -163,8 +162,7 @@ new_user_provision_test_() ->
                         {ok, 789}
                     end},
                     {'find_by_id', 2, fun(789, _Cols) -> user_map(789, 1) end}
-                ]},
-                {imboy_license, [{'check_user_quota', 1, fun(100) -> ok end}]}
+                ]}
             ],
             fun() ->
                 {ok, Data} = passport_logic:alipay_login(<<"authcode123">>, #{<<"did">> => <<"d1">>}),
@@ -217,8 +215,7 @@ nickname_fallback_test_() ->
                         {ok, 790}
                     end},
                     {'find_by_id', 2, fun(790, _Cols) -> user_map(790, 1) end}
-                ]},
-                {imboy_license, [{'check_user_quota', 1, fun(_) -> ok end}]}
+                ]}
             ],
             fun() ->
                 {ok, _} = passport_logic:alipay_login(<<"authcode123">>, #{}),
@@ -261,8 +258,7 @@ gender_map_female_test_() ->
                         {ok, 791}
                     end},
                     {'find_by_id', 2, fun(791, _Cols) -> user_map(791, 1) end}
-                ]},
-                {imboy_license, [{'check_user_quota', 1, fun(_) -> ok end}]}
+                ]}
             ],
             fun() ->
                 {ok, _} = passport_logic:alipay_login(<<"authcode123">>, #{}),
@@ -369,29 +365,6 @@ disabled_user_rejected_test_() ->
         )
     end}.
 
-quota_exceeded_test_() ->
-    {setup, fun env_setup/0, fun env_cleanup/1, fun(_) ->
-        ?WITH_IDENTITY_MECKS(
-            [
-                oauth_ok_mock(),
-                user_setting_mock(),
-                {sso_identity_ds, [
-                    {'find_uid', 2, fun(_, _) -> not_found end}
-                ]},
-                {user_ds, [{'count', 0, fun() -> 99999 end}]},
-                {imboy_license, [
-                    {'check_user_quota', 1, fun(99999) -> {error, quota_exceeded} end}
-                ]}
-            ],
-            fun() ->
-                {error, Msg, Code} = passport_logic:alipay_login(<<"authcode123">>, #{}),
-                ?assertEqual(?ERR_PAYMENT_REQUIRED, Code),
-                Prefix = <<"用户数已达授权上限"/utf8>>,
-                ?assertEqual(Prefix, binary:part(Msg, 0, byte_size(Prefix)))
-            end
-        )
-    end}.
-
 %%%===================================================================
 %%% 建号并发冲突（23505）回读映射
 %%%===================================================================
@@ -427,8 +400,7 @@ provision_conflict_rebind_test_() ->
                         {error, {error, error, <<"23505">>, unique_violation, <<"dup">>, []}}
                     end},
                     {'find_by_id', 2, fun(999, _Cols) -> user_map(999, 1) end}
-                ]},
-                {imboy_license, [{'check_user_quota', 1, fun(_) -> ok end}]}
+                ]}
             ],
             fun() ->
                 {ok, Data} = passport_logic:alipay_login(<<"authcode123">>, #{}),

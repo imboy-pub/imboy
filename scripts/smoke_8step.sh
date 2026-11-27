@@ -163,10 +163,6 @@ CODE="$(http POST "$BASE_URL/api/v1/passport/signup" \
 BIZ="$(json_code)"
 if [ "$CODE" = "200" ] && [ "$BIZ" = "0" ]; then
     step_end 0 "HTTP $CODE code=0 account=$SMOKE_EMAIL"
-elif [ "$BIZ" = "402" ]; then
-    step_end 1 "HTTP $CODE code=402 license 用户配额已满 body=$(body_snippet)"
-    die "注册被 License 配额闸门拒绝（imboy_license:check_user_quota，非链路故障）。
-清理测试用户、升级 License，或在配额未满的环境（cleanroom）运行。"
 else
     step_end 1 "HTTP $CODE code=${BIZ:-none} body=$(body_snippet)"
     die "注册失败。检查: (1) 目标环境 env ∈ local/dev/test 才有万能验证码

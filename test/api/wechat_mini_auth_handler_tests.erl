@@ -3,7 +3,7 @@
 %%
 %%   - 参数解析：body 缺 code/device_id → 注入空串；ip 取 elib_req:get_client_ip/1
 %%   - 成功：logic {ok, Payload} → elib_response:success_rfc3339/3（payload 原样透传）
-%%   - 失败：每个 logic reason → envelope code（5401/5402/5403/5404/402/422）
+%%   - 失败：每个 logic reason → envelope code（5401/5402/5403/5404/422）
 %%   - 未知 reason → 兜底 5401（不得把内部细节透成新码）
 %%
 %% 为什么必须有这一层：logic 层测试覆盖不到「reason → 错误码」的映射表，
@@ -203,8 +203,7 @@ error_mapping_test_() ->
         {invalid_code, ?ERR_PARAM_INVALID},
         {code_invalid, ?ERR_WECHAT_CODE_INVALID},
         {provider_unconfigured, ?ERR_WECHAT_PROVIDER_UNCONFIGURED},
-        {login_failed, ?ERR_WECHAT_LOGIN_FAILED},
-        {account_quota_exceeded, ?ERR_PAYMENT_REQUIRED}
+        {login_failed, ?ERR_WECHAT_LOGIN_FAILED}
     ],
     [
         {
@@ -231,18 +230,6 @@ unknown_reason_falls_back_test_() ->
                 #{resp => error, code => ?ERR_WECHAT_LOGIN_FAILED},
                 call(#{req => ok})
             )
-        end
-    ).
-
-%% 授权上限是**永久**条件：必须走 402（全局授权码），客户端据此关掉重试按钮。
-%% 若被折叠成 5401，用户会看到可重试文案并无限重试 —— 与 5404 同款坑。
-quota_is_not_login_failed_test_() ->
-    handler_test(
-        handler_mocks(#{<<"code">> => <<"good_code_123">>}, {error, account_quota_exceeded}),
-        fun() ->
-            Code = maps:get(code, call(#{req => ok})),
-            ?assertEqual(?ERR_PAYMENT_REQUIRED, Code),
-            ?assertNotEqual(?ERR_WECHAT_LOGIN_FAILED, Code)
         end
     ).
 

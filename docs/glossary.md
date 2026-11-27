@@ -77,7 +77,7 @@
 | 业务身份 | Business Identity | 表 `organization_business_identity`（迁移 114） | 组织的稳定经办主体：不可登录、不发 JWT、handover 不换 ID；`function_key` = `sales`/`customer_service`。 | — |
 | 坐席 | Seat | 表 `customer_service_seat`，主键 = `business_identity_id` | 客服接待能力的运营属性（并发上限、启停），挂靠业务身份而非具体用户，换人后原地可用。 | — |
 | 客服会话 | Customer Service Session | 表 `customer_service_session` | 访客与坐席的会话状态机（queued/active/closed）：不存消息副本，消息经企业会话真源；claim/transfer/close 全 CAS。 | — |
-| 访客 | Visitor | 表 `customer_service_visit_token`、event `actor_kind='visitor'` | 外部咨询者：凭门店密钥签发的访问令牌接入，**不是 user 表账号、不占 License 配额**。 | — |
+| 访客 | Visitor | 表 `customer_service_visit_token`、event `actor_kind='visitor'` | 外部咨询者：凭门店密钥签发的访问令牌接入，**不是 user 表账号、不计作注册账号**。 | — |
 | 门店密钥 | Shop Key | 表 `customer_service_shop_key` | 商户侧接入密钥，只存 sha256 摘要，明文仅返回一次。 | — |
 | 客服挂件 | Customer Service Widget | 表 `customer_service_widget_installation(_identity_key/_nonce)`（迁移 132） | 可嵌入第三方站点的聊天挂件：签名钥摘要化 + jti 防重放，路由 `/api/v1/cs/widget/*`。 | — |
 
@@ -112,7 +112,6 @@
 
 | 中文 | English | 代码形态 | 定义 | 别名 / 弃用 |
 |---|---|---|---|---|
-| 商业授权 | License | `src/lib/imboy_license`（无独立数据表） | 规模/能力授权（无 License 即社区版形态）。**与 Grant（技术授权）严格区分，文档中「授权」默认指 Grant，商业语境写「License」。** | — |
 | 计费 | Billing | 表 `billing_plan/_subscription/_invoice/_usage` | 订阅计划/配额/账单/用量。 | — |
 | 错误码 | Error Code | `include/error_code.hrl`（整数：0 成功、1 通用、4xx/5xx/9xx 区间） | 统一响应信封 `{code: integer, msg, payload}` 的 code。**整数是唯一现行形态。** | 字符串码（如 `"USER_NOT_FOUND"`）为弃用设计，从未在现行代码落地 |
 | 管理面 | Admin API | 路由 `/api/adm/*`，`adm_*_handler` | 平台管理员专用 API 面。 | — |
@@ -125,7 +124,7 @@
 
 | 前缀 | 含义 | 例 |
 |---|---|---|
-| `imboy_` | 平台基础设施/核心设施模块 | `imboy_syn`、`imboy_license` |
+| `imboy_` | 平台基础设施/核心设施模块 | `imboy_syn` |
 | `elib_` | 通用工具库 | `elib_tsid`、`elib_response` |
 | `adm_` | 管理后台 API 面 | `adm_acl` |
 | `cs_` | 客服域模块（表名用 `customer_service_` 前缀） | `cs_seat_app` |

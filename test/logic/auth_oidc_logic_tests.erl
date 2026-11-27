@@ -11,7 +11,7 @@
 %%%
 %%% 覆盖：state 一次性消费（重放拒绝）/ nonce 不匹配拒绝 /
 %%%       PKCE verifier 与 challenge 对应 / 身份映射命中 / email 关联 /
-%%%       自动建号（含 quota 拒绝）/ OTC 一次性换取（含并发单赢家）/
+%%%       自动建号/ OTC 一次性换取（含并发单赢家）/
 %%%       统一错误消息不泄漏 / id_token JWKS 验签接线（正负向）。
 %%% 说明：httpc 用进程字典驱动的 meck 模拟（mock fun 在测试进程内执行），
 %%%       不触网不触库；state/otc 走 auth_oidc_logic 自有 ETS 表（不 mock，
@@ -280,8 +280,7 @@ callback_identity_database_failure_test_() ->
                     {insert_and_get_id, 1, fun(_) -> error(must_not_provision) end}
                 ]},
                 {passport_logic, [
-                    {login_resp, 2, fun(_, _) -> error(must_not_issue_credentials) end},
-                    {quota_guard, 0, fun() -> error(must_not_provision) end}
+                    {login_resp, 2, fun(_, _) -> error(must_not_issue_credentials) end}
                 ]}
             ],
             fun() ->
@@ -468,7 +467,6 @@ callback_unverified_email_no_link_test_() ->
                 {'insert_and_get_id', 1, fun(_) -> {ok, 999} end}
             ]},
             {passport_logic, [
-                {'quota_guard', 0, fun() -> ok end},
                 {'pick_data_for_insert', 2, fun(Base, Extra) -> maps:merge(Base, Extra) end},
                 {'login_resp', 2, fun(U, _) ->
                     #{<<"uid">> => maps:get(<<"id">>, U), <<"token">> => <<"jwt">>}
@@ -514,7 +512,6 @@ email_conflict_case(Verified) ->
                 {'find_by_id', 2, fun(77, _) -> #{<<"id">> => 77, <<"status">> => 1} end}
             ]},
             {passport_logic, [
-                {'quota_guard', 0, fun() -> ok end},
                 {'pick_data_for_insert', 2, fun(Base, Extra) -> maps:merge(Base, Extra) end},
                 {'login_resp', 2, fun(_, _) -> #{<<"uid">> => 77} end}
             ]}
@@ -541,7 +538,7 @@ email_conflict_case(Verified) ->
         end
     ).
 
-%% @doc 全新用户（userinfo 无 email）-> 过 quota gate 自动建号 + 建映射，不 crash
+%% @doc 全新用户（userinfo 无 email）-> 自动建号 + 建映射，不 crash
 callback_provision_test_() ->
     with_oidc_mocks(
         [
@@ -563,7 +560,6 @@ callback_provision_test_() ->
                 {'find_by_id', 2, fun(88, _) -> #{<<"id">> => 88, <<"status">> => 1} end}
             ]},
             {passport_logic, [
-                {'quota_guard', 0, fun() -> ok end},
                 {'pick_data_for_insert', 2, fun(Base, PostVals) ->
                     maps:merge(PostVals, Base)
                 end},
@@ -579,31 +575,6 @@ callback_provision_test_() ->
                 #{<<"code">> => <<"c">>, <<"state">> => State}, <<"1.2.3.4">>
             ),
             ?assertEqual(88, maps:get(<<"uid">>, Payload))
-        end
-    ).
-
-%% @doc License 满额 -> 402 语义拒绝（quota_guard 复用，不绕过）
-callback_quota_rejected_test_() ->
-    QuotaMsg = <<"用户数已达授权上限"/utf8>>,
-    with_oidc_mocks(
-        [
-            sso_config_mock(),
-            rate_limit_mock(),
-            dyn_httpc_mock(),
-            {sso_identity_ds, [{'find_uid', 2, fun(_, _) -> not_found end}]},
-            {user_ds, [{'find_id_by_email', 1, fun(_) -> 0 end}]},
-            {passport_logic, [
-                {'quota_guard', 0, fun() -> {error, QuotaMsg, 402} end}
-            ]}
-        ],
-        fun() ->
-            {State, _Nonce, _} = prime_flow(
-                <<"test">>, #{<<"sub">> => <<"sub-001">>, <<"email">> => <<"new@x.com">>}
-            ),
-            Res = auth_oidc_logic:callback(
-                #{<<"code">> => <<"c">>, <<"state">> => State}, <<"1.2.3.4">>
-            ),
-            ?assertEqual({error, QuotaMsg, 402}, Res)
         end
     ).
 

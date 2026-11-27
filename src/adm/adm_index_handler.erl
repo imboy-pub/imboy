@@ -269,7 +269,6 @@ role_acl(1) ->
         <<"announcements:update">>,
         <<"announcements:delete">>,
         <<"announcements:publish">>,
-        <<"license:write">>,
         <<"storage:view">>,
         <<"storage:disable">>,
         <<"storage:enable">>,

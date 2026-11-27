@@ -78,7 +78,6 @@ invalid_registration_never_allocates_test() ->
             fun(_, _, _) -> {error, invalid_ticket} end
         ),
         meck:expect(account_ds, allocate, fun() -> error(unexpected_allocation) end),
-        meck:expect(passport_logic, quota_guard, fun() -> error(unexpected_quota) end),
         P = #{
             <<"confirm_create">> => true,
             <<"pending_token">> => binary:copy(<<"a">>, 43),
@@ -91,8 +90,7 @@ invalid_registration_never_allocates_test() ->
             {error, invalid_request},
             enterprise_oa_login_logic:register(P#{<<"pending_token">> => <<>>})
         ),
-        ?assertEqual(0, meck:num_calls(account_ds, allocate, [])),
-        ?assertEqual(0, meck:num_calls(passport_logic, quota_guard, []))
+        ?assertEqual(0, meck:num_calls(account_ds, allocate, []))
     after
         lists:foreach(fun meck:unload/1, Mods)
     end.

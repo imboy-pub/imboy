@@ -1,9 +1,12 @@
 #!/bin/sh
 # Prepare enabled templates before the official Nginx entrypoint renders them.
 set -eu
-export NGINX_ENVSUBST_TEMPLATE_DIR=/tmp/imboy-nginx-templates
-mkdir -p "$NGINX_ENVSUBST_TEMPLATE_DIR"
+NGINX_ENVSUBST_TEMPLATE_DIR="$(mktemp -d /tmp/imboy-nginx-templates.XXXXXX)"
+export NGINX_ENVSUBST_TEMPLATE_DIR
 cp /etc/nginx/templates/*.template "$NGINX_ENVSUBST_TEMPLATE_DIR/"
+if [ -n "${RTC_DOMAIN:-}" ]; then
+  cp /etc/imboy/rtc.conf.template "$NGINX_ENVSUBST_TEMPLATE_DIR/"
+fi
 case "${UPTRACE_ENABLED:-false}" in
   true|1) cp /etc/imboy/uptrace.conf.template "$NGINX_ENVSUBST_TEMPLATE_DIR/" ;;
 esac

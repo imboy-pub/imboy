@@ -1432,7 +1432,6 @@ get_routes() ->
                 {"/api/adm/stats/message", adm_stats_handler, #{action => message}},
                 {"/api/adm/stats/group", adm_stats_handler, #{action => group}},
                 {"/api/adm/stats/ranking", adm_stats_handler, #{action => ranking}},
-                {"/api/adm/stats/license", adm_stats_handler, #{action => license}},
                 {"/api/adm/stats/finance", adm_stats_handler, #{action => finance_summary}},
                 {"/api/adm/stats/finance/report", adm_stats_handler, #{action => finance_report}},
                 {"/static/admin/[...]", cowboy_static,

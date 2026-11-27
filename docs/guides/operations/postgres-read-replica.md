@@ -540,10 +540,9 @@ pooler:status().
 
 ### 6.4 Docker Compose 健康检查 / Docker Compose Health Check
 
-`deploy/docker-compose.prod.yml` 中副本服务建议配置（参考现有主库 healthcheck 风格）：
+以下为扩展副本服务的参考配置，沿用仓库根目录 `docker-compose.yml` 中生产主库的 healthcheck 风格。
 
-For the replica service in `deploy/docker-compose.prod.yml` (mirroring the
-existing primary healthcheck style):
+This example follows the primary database health check in the root `docker-compose.yml`.
 
 ```yaml
 imboy_pg18_replica:

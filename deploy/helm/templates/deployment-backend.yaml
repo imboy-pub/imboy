@@ -244,11 +244,6 @@ spec:
                 secretKeyRef:
                   name: {{ include "imboy.secretName" . }}
                   key: IMBOY_STRIPE_WEBHOOK_SECRET
-            - name: IMBOY_LICENSE_FILE
-              valueFrom:
-                secretKeyRef:
-                  name: {{ include "imboy.secretName" . }}
-                  key: IMBOY_LICENSE_FILE
 
           # ---------- 资源 ----------
           resources:

@@ -28,9 +28,8 @@
 -export([consume_code/2]).
 -export([refresh_session_epoch_valid/3]).
 -export([verify_web_refresh_token/1]).
-%% P0-C: OIDC 登录流复用（auth_oidc_logic）——签发收口 + License 配额闸门 + 建号数据组装
+%% P0-C: OIDC 登录流复用（auth_oidc_logic）——签发收口 + 建号数据组装
 -export([login_resp/2]).
--export([quota_guard/0]).
 -export([pick_data_for_insert/2]).
 
 -include("log.hrl").
@@ -83,30 +82,24 @@ quick_mobile_login(Mobile, Did, PostVals) ->
     end.
 
 quick_provision_mobile(Mobile, Did, PostVals) ->
-    %% 配额只挡首次建号，已有用户继续登录。
-    case quota_guard() of
-        {error, _, _} = Error ->
-            Error;
-        ok ->
-            Data = pick_data_for_insert(
-                #{
-                    <<"source">> => <<"jverify">>, <<"mobile">> => Mobile, <<"password">> => <<>>
-                },
-                PostVals
-            ),
-            case user_ds:insert_and_get_id(Data) of
-                {ok, Uid} ->
-                    case user_ds:lookup(id, Uid, ?LOGIN_COLUMN) of
-                        {error, _} ->
-                            {error, service_unavailable};
-                        {ok, User} when map_size(User) =:= 0 ->
-                            {error, <<"注册异常，请稍后重试"/utf8>>};
-                        {ok, User} ->
-                            {ok, login_resp(User, Did, #{<<"action">> => <<"need_set_password">>})}
-                    end;
-                {error, _} = Error ->
-                    Error
-            end
+    Data = pick_data_for_insert(
+        #{
+            <<"source">> => <<"jverify">>, <<"mobile">> => Mobile, <<"password">> => <<>>
+        },
+        PostVals
+    ),
+    case user_ds:insert_and_get_id(Data) of
+        {ok, Uid} ->
+            case user_ds:lookup(id, Uid, ?LOGIN_COLUMN) of
+                {error, _} ->
+                    {error, service_unavailable};
+                {ok, User} when map_size(User) =:= 0 ->
+                    {error, <<"注册异常，请稍后重试"/utf8>>};
+                {ok, User} ->
+                    {ok, login_resp(User, Did, #{<<"action">> => <<"need_set_password">>})}
+            end;
+        {error, _} = Error ->
+            Error
     end.
 
 %%%===================================================================
@@ -119,9 +112,9 @@ quick_provision_mobile(Mobile, Did, PostVals) ->
 -define(ALIPAY_PROVIDER, <<"alipay">>).
 
 %% @doc 支付宝登录。AuthCode 为客户端 SDK 授权码；PostVals 带 did/ip/cosv。
-%% 返回 {ok, 登录态 map} | {error, Msg} | {error, Msg, Code}（402=配额满）。
+%% 返回 {ok, 登录态 map} | {error, Msg}。
 -spec alipay_login(binary(), map()) ->
-    {ok, map()} | {error, binary() | service_unavailable} | {error, binary(), integer()}.
+    {ok, map()} | {error, binary() | service_unavailable}.
 alipay_login(AuthCode, PostVals) ->
     Did = maps:get(<<"did">>, PostVals, <<>>),
     case alipay_cfg() of
@@ -186,7 +179,7 @@ alipay_cfg() ->
 
 %% service_unavailable：find_uid 命中后走 alipay_finish（user_ds:lookup 依赖故障）。
 -spec alipay_map_or_provision(binary(), map(), binary(), map()) ->
-    {ok, map()} | {error, binary() | service_unavailable} | {error, binary(), integer()}.
+    {ok, map()} | {error, binary() | service_unavailable}.
 alipay_map_or_provision(AlipayUid, Info, Did, PostVals) ->
     case sso_identity_ds:find_uid(?ALIPAY_PROVIDER, AlipayUid) of
         {ok, Uid} ->
@@ -200,42 +193,37 @@ alipay_map_or_provision(AlipayUid, Info, Did, PostVals) ->
 
 %% service_unavailable：注册后收口走 alipay_finish（user_ds:lookup 依赖故障）。
 -spec alipay_provision(binary(), map(), binary(), map()) ->
-    {ok, map()} | {error, binary() | service_unavailable} | {error, binary(), integer()}.
+    {ok, map()} | {error, binary() | service_unavailable}.
 alipay_provision(AlipayUid, Info, Did, PostVals) ->
-    case quota_guard() of
-        {error, _, _} = QErr ->
-            QErr;
-        ok ->
-            %% SSO 用户不走密码登录：随机密码占位（与 OIDC provision 同款）
-            RandPwd = base64:encode(crypto:strong_rand_bytes(32)),
-            Data = pick_data_for_insert(
-                #{
-                    <<"password">> => elib_password:generate(RandPwd),
-                    <<"gender">> => alipay_gender(maps:get(<<"gender">>, Info, <<>>))
-                },
-                PostVals#{
-                    <<"source">> => ?ALIPAY_PROVIDER,
-                    <<"nickname">> => alipay_nickname(
-                        maps:get(<<"nick_name">>, Info, <<>>), AlipayUid
-                    ),
-                    <<"avatar">> => maps:get(<<"avatar">>, Info, <<>>)
-                }
+    %% SSO 用户不走密码登录：随机密码占位（与 OIDC provision 同款）
+    RandPwd = base64:encode(crypto:strong_rand_bytes(32)),
+    Data = pick_data_for_insert(
+        #{
+            <<"password">> => elib_password:generate(RandPwd),
+            <<"gender">> => alipay_gender(maps:get(<<"gender">>, Info, <<>>))
+        },
+        PostVals#{
+            <<"source">> => ?ALIPAY_PROVIDER,
+            <<"nickname">> => alipay_nickname(
+                maps:get(<<"nick_name">>, Info, <<>>), AlipayUid
             ),
-            case user_ds:insert_and_get_id(Data) of
-                {ok, Uid2} ->
-                    ok = sso_identity_ds:bind(?ALIPAY_PROVIDER, AlipayUid, Uid2, <<>>),
-                    alipay_finish_and_bind_setting(Uid2, Did, Info, AlipayUid);
-                {error, {error, error, <<"23505">>, unique_violation, _Msg, _Details}} ->
-                    %% 并发建号竞态：回读映射，命中即直登（与 OIDC 同款兜底）
-                    case sso_identity_ds:find_uid(?ALIPAY_PROVIDER, AlipayUid) of
-                        {ok, Uid3} ->
-                            alipay_finish(Uid3, Did);
-                        _ ->
-                            {error, <<"支付宝登录失败，请稍后再试"/utf8>>}
-                    end;
-                {error, Reason} ->
-                    {error, Reason}
-            end
+            <<"avatar">> => maps:get(<<"avatar">>, Info, <<>>)
+        }
+    ),
+    case user_ds:insert_and_get_id(Data) of
+        {ok, Uid2} ->
+            ok = sso_identity_ds:bind(?ALIPAY_PROVIDER, AlipayUid, Uid2, <<>>),
+            alipay_finish_and_bind_setting(Uid2, Did, Info, AlipayUid);
+        {error, {error, error, <<"23505">>, unique_violation, _Msg, _Details}} ->
+            %% 并发建号竞态：回读映射，命中即直登（与 OIDC 同款兜底）
+            case sso_identity_ds:find_uid(?ALIPAY_PROVIDER, AlipayUid) of
+                {ok, Uid3} ->
+                    alipay_finish(Uid3, Did);
+                _ ->
+                    {error, <<"支付宝登录失败，请稍后再试"/utf8>>}
+            end;
+        {error, Reason} ->
+            {error, Reason}
     end.
 
 alipay_finish_and_bind_setting(Uid, Did, Info, AlipayUid) ->
@@ -334,18 +322,13 @@ signup(Mobile, Pwd, Email, PostVals) when
                         {error, _, _} = Error ->
                             Error;
                         {ok, Email2, EmailCleanup} ->
-                            case quota_guard() of
-                                ok ->
-                                    lists:foreach(
-                                        fun(Id) ->
-                                            ok = user_ds:delete_all_related_data(Id)
-                                        end,
-                                        lists:usort(MobileCleanup ++ EmailCleanup)
-                                    ),
-                                    compat_signup_insert(Mobile, Pwd, Email2, PostVals);
-                                {error, _, _} = Error ->
-                                    Error
-                            end
+                            lists:foreach(
+                                fun(Id) ->
+                                    ok = user_ds:delete_all_related_data(Id)
+                                end,
+                                lists:usort(MobileCleanup ++ EmailCleanup)
+                            ),
+                            compat_signup_insert(Mobile, Pwd, Email2, PostVals)
                     end;
                 {error, _, _} = Error ->
                     Error
@@ -1007,39 +990,32 @@ do_signup_by_email(Email, Pwd, PostVals, Id) ->
         0 ->
             {error, <<"昵称不能为空"/utf8>>};
         _ ->
-            %% License 规模 gate：用户数达授权上限时拒绝新注册（402）
-            case quota_guard() of
-                {error, _, _} = QErr ->
-                    QErr;
-                ok ->
-                    case Id of
-                        0 ->
-                            Data = pick_data_for_insert(
-                                #{
-                                    <<"password">> => elib_password:generate(Pwd),
-                                    <<"email">> => Email
-                                },
-                                PostVals
-                            ),
-                            case user_ds:insert_and_get_id(Data) of
-                                {ok, NewUid} ->
-                                    %% 新手引导（AI 冷启动）：fire-and-forget，
-                                    %% onboarding 任何失败不阻断注册
-                                    elib_async:async(fun() ->
-                                        user_onboarding_logic:after_signup(NewUid, Nickname)
-                                    end),
-                                    % 注册成功
-                                    {ok, #{}};
-                                {error,
-                                    {error, error, <<"23505">>, unique_violation, _Msg, _Details}} ->
-                                    % 唯一约束冲突，返回友好的错误信息
-                                    {error, <<"账号已被占用"/utf8>>};
-                                {error, Reason} ->
-                                    {error, Reason}
-                            end;
-                        _ ->
-                            {error, <<"Email已经被占用了"/utf8>>}
-                    end
+            case Id of
+                0 ->
+                    Data = pick_data_for_insert(
+                        #{
+                            <<"password">> => elib_password:generate(Pwd),
+                            <<"email">> => Email
+                        },
+                        PostVals
+                    ),
+                    case user_ds:insert_and_get_id(Data) of
+                        {ok, NewUid} ->
+                            %% 新手引导（AI 冷启动）：fire-and-forget，
+                            %% onboarding 任何失败不阻断注册
+                            elib_async:async(fun() ->
+                                user_onboarding_logic:after_signup(NewUid, Nickname)
+                            end),
+                            % 注册成功
+                            {ok, #{}};
+                        {error, {error, error, <<"23505">>, unique_violation, _Msg, _Details}} ->
+                            % 唯一约束冲突，返回友好的错误信息
+                            {error, <<"账号已被占用"/utf8>>};
+                        {error, Reason} ->
+                            {error, Reason}
+                    end;
+                _ ->
+                    {error, <<"Email已经被占用了"/utf8>>}
             end
     end.
 
@@ -1052,53 +1028,30 @@ do_signup_by_mobile(Mobile, Pwd, PostVals, Id) ->
         0 ->
             {error, <<"昵称不能为空"/utf8>>};
         _ ->
-            %% License 规模 gate：用户数达授权上限时拒绝新注册（402）
-            case quota_guard() of
-                {error, _, _} = QErr ->
-                    QErr;
-                ok ->
-                    case Id of
-                        0 ->
-                            Data = pick_data_for_insert(
-                                #{
-                                    <<"password">> => elib_password:generate(Pwd),
-                                    <<"mobile">> => Mobile
-                                },
-                                PostVals
-                            ),
-                            case user_ds:insert_and_get_id(Data) of
-                                {ok, NewUid} ->
-                                    %% 新手引导（AI 冷启动）：fire-and-forget，
-                                    %% onboarding 任何失败不阻断注册
-                                    elib_async:async(fun() ->
-                                        user_onboarding_logic:after_signup(NewUid, Nickname)
-                                    end),
-                                    % 注册成功
-                                    {ok, #{}};
-                                {error, Reason} ->
-                                    {error, Reason}
-                            end;
-                        _ ->
-                            {error, <<"手机号已经被占用了"/utf8>>}
-                    end
+            case Id of
+                0 ->
+                    Data = pick_data_for_insert(
+                        #{
+                            <<"password">> => elib_password:generate(Pwd),
+                            <<"mobile">> => Mobile
+                        },
+                        PostVals
+                    ),
+                    case user_ds:insert_and_get_id(Data) of
+                        {ok, NewUid} ->
+                            %% 新手引导（AI 冷启动）：fire-and-forget，
+                            %% onboarding 任何失败不阻断注册
+                            elib_async:async(fun() ->
+                                user_onboarding_logic:after_signup(NewUid, Nickname)
+                            end),
+                            % 注册成功
+                            {ok, #{}};
+                        {error, Reason} ->
+                            {error, Reason}
+                    end;
+                _ ->
+                    {error, <<"手机号已经被占用了"/utf8>>}
             end
-    end.
-
-%% @doc License 规模 gate：当前用户数达到授权 max_users 时拒绝新注册。
-%% 容错：计数异常一律放行（fail-open），避免 License 计数 bug 阻断全站注册，
-%% 与 imboy_license 的"无效降级不阻断"理念一致。
--spec quota_guard() -> ok | {error, binary(), integer()}.
-quota_guard() ->
-    try user_ds:count() of
-        Count ->
-            case imboy_license:check_user_quota(Count) of
-                ok ->
-                    ok;
-                {error, quota_exceeded} ->
-                    {error, <<"用户数已达授权上限，请联系管理员升级 License 后再注册"/utf8>>, ?ERR_PAYMENT_REQUIRED}
-            end
-    catch
-        _:_ -> ok
     end.
 
 pick_data_for_insert(Data, PostVals) ->

@@ -199,7 +199,6 @@ verify_mock(Module) ->
     imboy_cache_sync,
     imboy_mcp_tools,
     imboy_plugin_loader,
-    license_notice_worker,
     msg_burn_logic,
     moderation_sweep_logic,
     olm_otk_cleanup_worker,

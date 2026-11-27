@@ -78,7 +78,7 @@ COMPOSE_ENV+=("API_DOMAIN=api.test.invalid" "ADMIN_DOMAIN=admin.test.invalid"
   "IMBOY_DIRECT_CLEANUP_PG_USER=rtc_test_cleanup" "IMBOY_DIRECT_CLEANUP_PG_PASSWORD=rtc_test_unused"
   "S3_UPSTREAM=garage:3900" "COMPOSE_DISABLE_ENV_FILE=1")
 "${COMPOSE_ENV[@]}" docker "--host=unix://$docker_socket" compose \
-  --env-file "$ROOT/deploy/.env.example" -f "$BASE" --profile prod config --format json \
+  --env-file "$ROOT/deploy/.env.example" -f "$BASE" --profile prod --profile rtc config --format json \
   | jq '.services |= {imboy_nginx: .prod_imboy_nginx, imboy_livekit: .prod_imboy_livekit}' > "$TMP/compose.json"
 # Compose escapes every $ as $$ so config output can be loaded by Compose again.
 # docker run needs runtime values: undo that serialization exactly once, without

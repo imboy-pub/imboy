@@ -214,23 +214,3 @@ init_ranking_permission_denied_test_() ->
             ?assertEqual(403, maps:get(response_status, RespReq))
         end
     ).
-
-%% 安全回归：无 license:write 权限的管理员不能覆写生产 License（曾经零权限校验）
-init_license_write_permission_denied_test_() ->
-    ?WITH_MECKS(
-        [
-            {cowboy_req, [
-                {'method', 1, fun(_Req) -> <<"POST">> end}
-            ]},
-            {adm_acl, [
-                {'ensure_permission', 3, fun(_State, <<"license:write">>, Req) ->
-                    {error, Req#{response_status => 403}}
-                end}
-            ]}
-        ],
-        fun() ->
-            Req = #{},
-            {ok, RespReq, _State} = adm_stats_handler:init(Req, #{action => license}),
-            ?assertEqual(403, maps:get(response_status, RespReq))
-        end
-    ).

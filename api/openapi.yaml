@@ -1597,8 +1597,6 @@ paths:
     $ref: './paths/adm/v1/plugin/logs.yaml'
   /api/adm/ai_agent/onboarding_config:
     $ref: './paths/adm/v1/ai-agent/onboarding-config.yaml'
-  /api/adm/stats/license:
-    $ref: './paths/adm/v1/stats/license.yaml'
   /api/adm/sso/config:
     $ref: './paths/adm/v1/sso/config.yaml'
   /api/adm/sso/test:

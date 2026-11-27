@@ -4,10 +4,7 @@
 # Usage:
 #   bash deploy/preflight.sh                                  # 检查 .env 和系统资源
 #   bash deploy/preflight.sh --docker                         # 同上，附加检查 Docker 环境
-#   bash deploy/preflight.sh --edition community [--docker]   # 社区版口径：garage 凭据
-#                                                              # 为硬校验（内置核心服务），
-#                                                              # 跳过销售发布支付强校验
-#   bash deploy/preflight.sh --edition business [--docker]    # 商务版口径（默认，同旧版行为）
+#   bash deploy/preflight.sh --without-payment              # 所选服务未启用外部支付
 #   bash deploy/preflight.sh --self-test                      # LT-06 secret 规则自测（不读 .env）
 #
 # Exit codes:
@@ -22,38 +19,23 @@ ERRORS=0
 WARNINGS=0
 
 # ── 参数解析 ──────────────────────────────────────────────────────────────────
-# EDITION 默认 business：preflight 单独运行时维持既有检查口径不变（garage WARN、
-# 销售发布支付强校验）。install.sh 会按部署版本显式传入 --edition。
 DOCKER_CHECK=0
 SELF_TEST=0
 DNS_CHECK_FLAG=0
-EDITION="business"
+WITHOUT_PAYMENT=0
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --docker) DOCKER_CHECK=1 ;;
         --dns) DNS_CHECK_FLAG=1 ;;
         --self-test) SELF_TEST=1 ;;
-        --edition)
-            [[ $# -ge 2 ]] || { echo "错误：--edition 需要值 community|business" >&2; exit 1; }
-            shift
-            EDITION="$1"
-            ;;
-        --edition=*) EDITION="${1#*=}" ;;
+        --without-payment) WITHOUT_PAYMENT=1 ;;
         *)
-            echo "未知参数：$1（支持 --docker、--dns 与 --edition community|business）" >&2
+            echo "未知参数：$1（支持 --docker、--dns 与 --without-payment）" >&2
             exit 1
             ;;
     esac
     shift
 done
-case "$EDITION" in
-    community|business) ;;
-    *)
-        echo "错误：--edition 仅支持 community|business（当前: ${EDITION}）" >&2
-        exit 1
-        ;;
-esac
-
 RED='\033[0;31m'
 YELLOW='\033[1;33m'
 GREEN='\033[0;32m'
@@ -301,12 +283,10 @@ check_var "ADMIN_DOMAIN"
 # 客服 Widget 第三域：标准部署三域必填（fail-closed）。证书签发、Nginx vhost 与
 # compose 接线均依赖该值；占位符（cs.example.com）与留空都按未填处理。
 check_var "CS_WIDGET_DOMAIN"
-# LiveKit 两域（LK-DEP-01）：RTC_DOMAIN 是后端下发 wss:// 的信令域（nginx 443
-# 反代 7880）；TURN_DOMAIN 是 embedded TURN 域（TLS 5349 + UDP 3478，证书经
-# 80 端口 ACME webroot 签发/续期）。两域与证书签发（init-letsencrypt.sh）都
-# 强依赖，fail-closed。
-check_var "RTC_DOMAIN"
-check_var "TURN_DOMAIN"
+RTC_DOMAINS=()
+if [[ "${IMBOY_DEPLOY_CHECK_RTC:-1}" = 1 ]]; then RTC_DOMAINS+=(RTC_DOMAIN); fi
+if [[ "${IMBOY_DEPLOY_CHECK_TURN:-1}" = 1 ]]; then RTC_DOMAINS+=(TURN_DOMAIN); fi
+for domain in "${RTC_DOMAINS[@]}"; do check_var "$domain"; done
 check_var "POSTGRES_USER"
 check_var "POSTGRES_PASSWORD"
 check_var "POSTGRES_DB"
@@ -326,10 +306,10 @@ check_var "IMBOY_SOLIDIFIED_KEY_IV"
 # {missing_required_config, password_salt} 启动失败，且报错只在容器日志里。
 check_var "IMBOY_PASSWORD_SALT"
 check_var "GRAFANA_ADMIN_PASSWORD"
-# LiveKit：compose 中该服务无条件启动。此前用 ${LIVEKIT_API_KEY:-devkey} 兜底，
-# 忘配即以公开已知密钥上线 —— 任何人可签发 token 加入或录制任意通话。
-check_var "LIVEKIT_API_KEY"
-check_var "LIVEKIT_API_SECRET"
+if [[ "${IMBOY_DEPLOY_CHECK_RTC:-1}" = 1 ]]; then
+    check_var "LIVEKIT_API_KEY"
+    check_var "LIVEKIT_API_SECRET"
+fi
 
 # LT-06：三类核心 secret 强度（>=32）与两两互异（规则与 imboy_secret_policy 对齐）
 check_secret_strength "JWT_KEY" "${JWT_KEY:-}"
@@ -354,21 +334,19 @@ is_email() { [[ "$1" =~ ^[^[:space:]@]+@[^[:space:]@]+\.[^[:space:]@]+$ ]]; }
 if ! is_domain "${API_DOMAIN:-}"; then err "API_DOMAIN 不是有效的纯域名（不要带 https:// 或路径）"; fi
 if ! is_domain "${ADMIN_DOMAIN:-}"; then err "ADMIN_DOMAIN 不是有效的纯域名（不要带 https:// 或路径）"; fi
 if ! is_domain "${CS_WIDGET_DOMAIN:-}"; then err "CS_WIDGET_DOMAIN 不是有效的纯域名（不要带 https:// 或路径）"; fi
-if ! is_domain "${RTC_DOMAIN:-}"; then err "RTC_DOMAIN 不是有效的纯域名（不要带 https:// 或路径）"; fi
-if ! is_domain "${TURN_DOMAIN:-}"; then err "TURN_DOMAIN 不是有效的纯域名（不要带 https:// 或路径）"; fi
 # 三域两两不同（CSD-DEP-01；重复会使 Nginx server_name 冲突、证书签发对象错乱）
 check_domains_distinct "API_DOMAIN" "${API_DOMAIN:-}" "ADMIN_DOMAIN" "${ADMIN_DOMAIN:-}"
 check_domains_distinct "API_DOMAIN" "${API_DOMAIN:-}" "CS_WIDGET_DOMAIN" "${CS_WIDGET_DOMAIN:-}"
 check_domains_distinct "ADMIN_DOMAIN" "${ADMIN_DOMAIN:-}" "CS_WIDGET_DOMAIN" "${CS_WIDGET_DOMAIN:-}"
-# LiveKit 两域并入唯一性阵营（LK-DEP-01）：rtc/turn 互不相同，且不与既有三域
-# 撞名 —— RTC 域是独立 443 vhost，TURN 证书按域名分发，撞名即配置错乱。
-check_domains_distinct "RTC_DOMAIN" "${RTC_DOMAIN:-}" "TURN_DOMAIN" "${TURN_DOMAIN:-}"
-check_domains_distinct "RTC_DOMAIN" "${RTC_DOMAIN:-}" "API_DOMAIN" "${API_DOMAIN:-}"
-check_domains_distinct "RTC_DOMAIN" "${RTC_DOMAIN:-}" "ADMIN_DOMAIN" "${ADMIN_DOMAIN:-}"
-check_domains_distinct "RTC_DOMAIN" "${RTC_DOMAIN:-}" "CS_WIDGET_DOMAIN" "${CS_WIDGET_DOMAIN:-}"
-check_domains_distinct "TURN_DOMAIN" "${TURN_DOMAIN:-}" "API_DOMAIN" "${API_DOMAIN:-}"
-check_domains_distinct "TURN_DOMAIN" "${TURN_DOMAIN:-}" "ADMIN_DOMAIN" "${ADMIN_DOMAIN:-}"
-check_domains_distinct "TURN_DOMAIN" "${TURN_DOMAIN:-}" "CS_WIDGET_DOMAIN" "${CS_WIDGET_DOMAIN:-}"
+for domain in "${RTC_DOMAINS[@]}"; do
+    if ! is_domain "${!domain:-}"; then err "$domain 不是有效的纯域名（不要带 https:// 或路径）"; fi
+    for app_domain in API_DOMAIN ADMIN_DOMAIN CS_WIDGET_DOMAIN; do
+        check_domains_distinct "$domain" "${!domain:-}" "$app_domain" "${!app_domain:-}"
+    done
+done
+if [[ "${#RTC_DOMAINS[@]}" = 2 ]]; then
+    check_domains_distinct "RTC_DOMAIN" "${RTC_DOMAIN:-}" "TURN_DOMAIN" "${TURN_DOMAIN:-}"
+fi
 # API base 与 API 网关保持一致；旧 Widget/Seat 地址由独立配置派生。
 check_var "IMBOY_BASE_URL"
 check_base_url_matches_domain "IMBOY_BASE_URL" "${IMBOY_BASE_URL:-}" "API_DOMAIN" "${API_DOMAIN:-}"
@@ -399,7 +377,7 @@ if [[ "$DNS_CHECK" -eq 1 ]]; then
             return 2
         fi
     }
-    for DNS_VAR_NAME in RTC_DOMAIN TURN_DOMAIN; do
+    for DNS_VAR_NAME in "${RTC_DOMAINS[@]}"; do
         DNS_VAL="${!DNS_VAR_NAME:-}"
         [[ -z "$DNS_VAL" ]] && continue
         DNS_RC=0
@@ -433,7 +411,7 @@ case "$TURN_ENABLED" in
             template='{{if .State.Running}}{{index .Config.Labels "com.docker.compose.project"}}/{{index .Config.Labels "com.docker.compose.service"}}{{range index .NetworkSettings.Ports "'"$port/$proto"'"}} {{.HostPort}}{{end}}{{end}}'
             binding="$(docker inspect --type container --format "$template" imboy_livekit 2>/dev/null)" || return 1
             read -r owner published <<< "$binding"
-            [ "$owner" = "imboy/$expected_turn_service" ] || return 1
+            [ "$owner" = "${IMBOY_DEPLOY_PROJECT:-imboy}/$expected_turn_service" ] || return 1
             case " $published " in
                 *" $port "*) return 0 ;;
                 *) return 1 ;;
@@ -588,14 +566,15 @@ else
     ok "IMBOY_API_AUTH_SWITCH=on"
 fi
 
-# 销售版核心策略：不得把 E2EE、频道或付费频道入口以默认关闭状态发布。
-PRODUCT_PROFILE="$(echo "${IMBOY_PRODUCT_PROFILE:-community}" | tr '[:upper:]' '[:lower:]' | tr -d '[:space:]')"
+# 部署能力预设。旧值仅用于读取已有配置。
+PRODUCT_PROFILE="$(printf '%s' "${IMBOY_PRODUCT_PROFILE:-standard}" | tr '[:upper:]' '[:lower:]' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')"
+case "$PRODUCT_PROFILE" in
+    community) PRODUCT_PROFILE=standard ;;
+    enterprise) PRODUCT_PROFILE=audited ;;
+    standard|audited) ;;
+    *) err "IMBOY_PRODUCT_PROFILE 不是受支持的功能策略 / Unsupported capability preset" ;;
+esac
 E2EE_MODE="$(echo "${IMBOY_E2EE_MODE:-required}" | tr '[:upper:]' '[:lower:]' | tr -d '[:space:]')"
-if [[ "$PRODUCT_PROFILE" != "community" && "$PRODUCT_PROFILE" != "enterprise" ]]; then
-    err "IMBOY_PRODUCT_PROFILE 必须为 community 或 enterprise"
-else
-    ok "IMBOY_PRODUCT_PROFILE=${PRODUCT_PROFILE}"
-fi
 if [[ "$E2EE_MODE" != "required" && "$E2EE_MODE" != "compliance" ]]; then
     err "IMBOY_E2EE_MODE 必须为 required 或 compliance（销售版严格 E2EE）"
 else
@@ -642,13 +621,10 @@ if [[ "$PLUGIN_LIFECYCLE" != "true" && "$PLUGIN_LIFECYCLE" != "1" ]]; then
 else
     info "IMBOY_PLUGIN_LIFECYCLE_ENABLED=true（动态插件写操作已放行）"
     info "  SEC-02 收口生效：install path 必须位于受控插件根（IMBOY_PLUGIN_ROOT，默认 priv/plugins）内"
-    # SEC-02（审计 #44）：商务档（IMBOY_PRODUCT_PROFILE=enterprise）强制插件可信签名。
-    # Erlang 侧 imboy_plugin_signature:signature_required/0 对 enterprise 恒为 true，
-    # 缺有效可信公钥时生产启动 fail-fast（imboy_app:ensure_plugin_signature_config/0）
-    # 且 install 全部拒绝 —— 此处在部署前就把死配置拦下，避免带病上线。
-    if [[ "$PRODUCT_PROFILE" == "enterprise" ]]; then
+    # SEC-02：审计预设强制校验插件签名，与后端启动检查一致。
+    if [[ "$PRODUCT_PROFILE" == "audited" ]]; then
         if [[ -z "${IMBOY_PLUGIN_TRUSTED_PUBLIC_KEY_FILES:-}" ]]; then
-            err "商务档（IMBOY_PRODUCT_PROFILE=enterprise）启用动态插件生命周期必须配置可信签名公钥：IMBOY_PLUGIN_TRUSTED_PUBLIC_KEY_FILES（逗号分隔 32 字节 Ed25519 公钥文件路径），否则后端启动 fail-fast、install 全部拒绝"
+            err "审计预设启用动态插件生命周期时，须设置 IMBOY_PLUGIN_TRUSTED_PUBLIC_KEY_FILES（逗号分隔的 32 字节 Ed25519 公钥文件路径） / The audited preset requires trusted plugin signing keys"
         else
             MISSING=0
             IFS=',' read -ra KEY_FILES <<< "$IMBOY_PLUGIN_TRUSTED_PUBLIC_KEY_FILES"
@@ -661,7 +637,7 @@ else
                 fi
             done
             if [[ $MISSING -eq 0 ]]; then
-                ok "商务档插件签名可信公钥文件已配置"
+                ok "审计预设的插件签名公钥文件已配置"
             fi
         fi
     fi
@@ -671,13 +647,8 @@ fi
 echo ""
 echo "▶ 2b. 检查支付配置 / Checking payment configuration"
 
-# 社区版：支付网关由生产 Compose 硬编码关闭（false），.env 中的
-# 支付变量不进容器 —— 销售发布强校验（IMBOY_SALES_RELEASE / live 凭据）在社区
-# 版部署下既不适用也无法满足（无商户凭据），跳过以避免把社区安装堵死在死锁上。
-# 商务版：维持原有全部检查（行为不变）。
-if [[ "$EDITION" == "community" ]]; then
-    info "社区版：支付网关由生产 Compose 固定关闭（IMBOY_PAYMENT_GATEWAY_ENABLED=false），跳过销售发布支付强校验"
-    info "  充值 / 网关回调 / 提现端点将返回「功能未启用」；站内钱包账务（余额/流水/红包/转账）不受影响"
+if [[ "$WITHOUT_PAYMENT" = 1 ]]; then
+    info "所选 Compose 服务未启用外部支付网关 / Payment gateway disabled for the selected services"
 else
 PAYMENT_MODE="${IMBOY_PAYMENT_MODE:-sandbox}"
 GATEWAY_ENABLED="$(echo "${IMBOY_PAYMENT_GATEWAY_ENABLED:-false}" | tr '[:upper:]' '[:lower:]' | tr -d '[:space:]')"
@@ -758,27 +729,7 @@ else
         warn "IMBOY_PAYMENT_MODE=${PAYMENT_MODE}（沙箱模式，回调不验签）— 上线前须改为 live"
     fi
 fi
-fi  # end edition != community（商务版支付强校验）
-
-# License 检查
-LICENSE_FILE="${IMBOY_LICENSE_FILE:-}"
-EDITION="${IMBOY_EDITION:-community}"
-if [[ "$EDITION" != "community" ]]; then
-    if [[ -z "$LICENSE_FILE" ]]; then
-        err "IMBOY_EDITION=${EDITION} 但 IMBOY_LICENSE_FILE 未设置"
-    elif [[ ! -f "$LICENSE_FILE" ]]; then
-        err "IMBOY_LICENSE_FILE=$LICENSE_FILE 文件不存在"
-    else
-        ok "License 文件存在：$LICENSE_FILE"
-    fi
-else
-    if [[ -n "$LICENSE_FILE" ]]; then
-        ok "IMBOY_LICENSE_FILE 已设置（将升级授权）"
-    else
-        info "社区版运行中，无需 License 文件"
-    fi
 fi
-
 
 # ── 2d. TSID V10 generator 配置 ───────────────────────────────────────────────
 echo "▶ 2d. 检查 TSID 配置 / TSID config"

@@ -8,12 +8,12 @@
 #   cd imboy/deploy && bash install.sh
 #
 # 选项 / Options（--help 查看完整说明）：
-#   --edition community|business  部署版本，默认 community
+#   --site-compose                使用现场 Compose 配置 / Use site Compose
 #   --admin-phone / --admin-password  装完后在容器内经 imboy_ctl 创建超管
 #   --yes, -y                      跳过所有确认（含 Docker 安装确认）
 #
 # 全参数一行示例（无浏览器纯脚本部署）：
-#   bash install.sh --edition community --admin-phone 13800138000 \
+#   bash install.sh --admin-phone 13800138000 \
 #          --admin-password 'S3curePass2026' --yes
 #
 # 设计：客户先从 .env.example 准备 .env；本脚本补齐内部密钥、RSA、回调 URL，
@@ -43,20 +43,20 @@ usage() {
 IMBoy 一键部署 / Usage: bash install.sh [选项]
 
 选项:
-  --edition business             商务部署（默认）
+  --site-compose                 使用 deploy/docker-compose.prod.yml
+  --init-cleanup-db              初始化所缺的清理账号（根 Compose）
   --admin-phone <手机号>         创建超管，与 --admin-password 成对使用
   --admin-password <密码>        8-64 位且须含字母和数字
   --yes, -y                     跳过确认
   --help, -h                    显示帮助
 
-先放置商务交付的 docker-compose.prod.yml，再准备 .env 并运行 bash install.sh。
-Place the delivered docker-compose.prod.yml here, prepare .env, then run bash install.sh.
+准备 .env 后运行 bash install.sh，默认使用仓根 Compose。
+Prepare .env and run bash install.sh to use the root Compose file.
 EOF
 }
 
 # ── 参数解析 ─────────────────────────────────────────────────────────────────
-EDITION="business"
-UNIFIED_COMPOSE=auto
+UNIFIED_COMPOSE=1
 service_prefix=
 ASSUME_YES=0
 ADMIN_PHONE=""
@@ -68,13 +68,8 @@ while [ $# -gt 0 ]; do
   case "$1" in
     --unified-compose)
       UNIFIED_COMPOSE=1; shift ;;
-    --legacy-compose)
+    --site-compose)
       UNIFIED_COMPOSE=0; shift ;;
-    --edition)
-      [ $# -ge 2 ] || die "--edition 需要值：community|business"
-      EDITION="$2"; shift 2 ;;
-    --edition=*)
-      EDITION="${1#*=}"; shift ;;
     -y|--yes)
       ASSUME_YES=1; shift ;;
     --init-cleanup-db)
@@ -101,27 +96,14 @@ while [ $# -gt 0 ]; do
   esac
 done
 
-[ "$EDITION" = business ] || die "仅支持商务部署 / Business deployment only"
-COMPOSE_FILE=docker-compose.prod.yml
 POLICY_DIR=""
-
-if [ "$UNIFIED_COMPOSE" = auto ]; then
-  UNIFIED_COMPOSE=0
-  if [ "$EDITION" = community ] && [ -f ../docker-compose.yml ]; then
-    UNIFIED_COMPOSE=1
-  fi
-fi
 if [ "$UNIFIED_COMPOSE" = 1 ]; then
-  [ "$EDITION" = community ] || die "--unified-compose 仅支持社区版"
   COMPOSE_FILE=../docker-compose.yml
   service_prefix=prod_
-fi
-
-if [ "$INIT_CLEANUP_DB" = 1 ] && [ "$EDITION" != community ]; then
-  die "--init-cleanup-db 仅支持 community；商务/外部数据库须由 DBA 按手册开通"
-fi
-if [ "${#COMPOSE_EXTRA_FILES[@]}" -gt 0 ] && [ "$EDITION" != community ]; then
-  die "--compose-file 仅支持 community；商务版必须沿用受控交付的 Compose 与策略组合"
+else
+  COMPOSE_FILE=docker-compose.prod.yml
+  [ "$INIT_CLEANUP_DB" = 0 ] || die "现场数据库须由 DBA 预先开通清理账号"
+  [ "${#COMPOSE_EXTRA_FILES[@]}" = 0 ] || die "--compose-file 仅用于根 Compose"
 fi
 
 # 超管参数成对 + 本地前置校验（规则与 imboy_ctl adm create 一致，尽早失败
@@ -161,7 +143,7 @@ command -v jq >/dev/null 2>&1 || die "需要 jq 校验 Compose 配置，请先�
   || die "缺少登录 RSA 密钥管理脚本 / Missing login RSA key initializer"
 [ -f prepare-backend-runtime.sh ] && [ -r prepare-backend-runtime.sh ] \
   || die "缺少 prepare-backend-runtime.sh；交付包不完整，服务尚未启动"
-if [ "$EDITION" = community ]; then
+if [ "$UNIFIED_COMPOSE" = 1 ]; then
   for cleanup_file in init-cleanup-db.sh cleanup-db/bootstrap.sql cleanup-db/verify.sql; do
     [ -f "$cleanup_file" ] && [ -r "$cleanup_file" ] \
       || die "缺少或无法读取 ${cleanup_file}；交付包不完整，服务尚未启动"
@@ -183,7 +165,7 @@ UPTRACE_SECRET_VARS="UPTRACE_SERVICE_SECRET UPTRACE_PG_PASSWORD UPTRACE_CLICKHOU
 # fail-closed —— 证书签发、Nginx vhost、preflight 都依赖它。
 # RTC_DOMAIN/TURN_DOMAIN 是 LiveKit 两域（LK-DEP-01）：信令 WSS 与 embedded
 # TURN，证书签发（init-letsencrypt.sh）与 preflight 同样强依赖。
-MANUAL_VARS="API_DOMAIN ADMIN_DOMAIN CS_WIDGET_DOMAIN RTC_DOMAIN TURN_DOMAIN CERTBOT_EMAIL"
+MANUAL_VARS="API_DOMAIN ADMIN_DOMAIN CS_WIDGET_DOMAIN CERTBOT_EMAIL"
 
 # 替换 .env 中 KEY=... 行（按字段名精确匹配，值含特殊字符也安全；BSD/GNU 通用）。
 set_var() {
@@ -273,7 +255,7 @@ ensure_rsa_keys() {
     || die "登录 RSA 密钥检查失败，服务尚未启动 / Login RSA key setup failed"
 }
 
-# Garage 对象存储凭据（社区版 compose 内置 garage 核心服务）：.env 是唯一真源，
+# Garage 对象存储凭据（根 Compose 内置 Garage 服务）：.env 是唯一真源，
 # 凭据经 GARAGE_DEFAULT_ACCESS_KEY/SECRET_KEY env 注入 garage 容器，由其
 # --single-node --default-bucket 启动参数完成幂等 init（key/bucket 已存在则复用）。
 # access key 用 Garage 生态惯例 GK 前缀；RPC secret 一旦产生数据不可更换。
@@ -332,9 +314,9 @@ ensure_docker() {
 }
 ensure_docker
 
-# ── 0a) compose 文件存在性（按 edition）────────────────────────────────────
+# ── 0a) compose 文件存在性（按 Compose 文件）────────────────────────────────────
 if [ ! -f "$COMPOSE_FILE" ]; then
-  if [ "$EDITION" = "business" ]; then
+  if [ "$UNIFIED_COMPOSE" = 0 ]; then
     # 商务版 compose 按商务决策走单独交付渠道，不随开源仓分发（.gitignore 精确排除）。
     # 不检查的话，第一次用到它是在 `$COMPOSE up -d`，docker 只会吐一句
     # "no configuration file provided"，非开发者完全无从判断发生了什么。
@@ -348,12 +330,12 @@ if [ ! -f "$COMPOSE_FILE" ]; then
       bash scripts/dev_setup.sh
 "
   else
-    die "缺少 $COMPOSE_FILE —— 社区版 compose 随仓分发，本目录没有说明仓库不完整，
+    die "缺少 $COMPOSE_FILE —— 根 Compose 随仓分发，本地副本可能不完整，
   请重新 git clone 本仓库后重试"
   fi
 fi
 
-if [ "$EDITION" = "business" ]; then
+if [ "$UNIFIED_COMPOSE" = 0 ]; then
   # ── 0b) 交付来的 compose 是否是当前版本 ───────────────────────────────────
   # 这个文件是唯一不受版本控制的部署组件（走单独交付渠道），因此仓库里没有任何
   # 东西能发现"渠道发了旧版本"。而它恰恰承载着三处**装不上或不安全**的改动：
@@ -396,14 +378,37 @@ if [ ! -f .env ]; then
   [ -f .env.example ] || die "缺少 .env.example，仓库不完整"
   cp .env.example .env
   chmod 600 .env
-  if [ "$EDITION" != community ] || [ "$ASSUME_YES" = 1 ] || [ ! -t 0 ]; then
+  if [ "$UNIFIED_COMPOSE" = 0 ] || [ "$ASSUME_YES" = 1 ] || [ ! -t 0 ]; then
     printf '\n已生成 %s/.env。填写现场配置后重试 / Complete the generated .env and retry.\n' "$(pwd)"
     if [ "$UNIFIED_COMPOSE" = 1 ]; then exit 2; fi
     exit 0
   fi
 fi
 
-if [ "$EDITION" = community ] && [ "$ASSUME_YES" = 0 ] && [ -t 0 ]; then
+# The site Compose keeps its existing certificate contract.
+export IMBOY_DEPLOY_CHECK_RTC=1 IMBOY_DEPLOY_CHECK_TURN=1
+if [ "$UNIFIED_COMPOSE" = 1 ]; then
+  IMBOY_DEPLOY_CHECK_RTC=0
+  IMBOY_DEPLOY_CHECK_TURN=0
+  if is_true "$(get_var LIVEKIT_ENABLED || true)"; then
+    IMBOY_DEPLOY_CHECK_RTC=1
+  fi
+  if is_true "$(get_var LIVEKIT_TURN_ENABLED || true)"; then
+    IMBOY_DEPLOY_CHECK_RTC=1
+    IMBOY_DEPLOY_CHECK_TURN=1
+  fi
+fi
+[ "$IMBOY_DEPLOY_CHECK_RTC" = 0 ] || MANUAL_VARS="$MANUAL_VARS RTC_DOMAIN"
+[ "$IMBOY_DEPLOY_CHECK_TURN" = 0 ] || MANUAL_VARS="$MANUAL_VARS TURN_DOMAIN"
+# Override inactive domain placeholders during Compose interpolation.
+if [ "$IMBOY_DEPLOY_CHECK_RTC" = 0 ]; then
+  export RTC_DOMAIN="" IMBOY_LIVEKIT_WS_URL=""
+fi
+if [ "$IMBOY_DEPLOY_CHECK_TURN" = 0 ]; then
+  export TURN_DOMAIN=""
+fi
+
+if [ "$UNIFIED_COMPOSE" = 1 ] && [ "$ASSUME_YES" = 0 ] && [ -t 0 ]; then
   for key in $MANUAL_VARS; do
     current="$(get_var "$key" || true)"
     case "$current" in
@@ -429,7 +434,7 @@ if [ "$EDITION" = community ] && [ "$ASSUME_YES" = 0 ] && [ -t 0 ]; then
     ensure_value IMBOY_DIRECT_CLEANUP_PG_USER imboy_cleanup
   elif [ -z "$(get_var IMBOY_DIRECT_CLEANUP_PG_USER || true)" ] \
       || [ -z "$(get_var IMBOY_DIRECT_CLEANUP_PG_PASSWORD || true)" ]; then
-    die "新社区数据库可使用 --init-cleanup-db；已有清理账号请在 .env 填写其用户名和密码 / Use --init-cleanup-db for a new community database, or configure the existing cleanup role in .env"
+    die "新数据库可使用 --init-cleanup-db；已有清理账号请在 .env 填写其用户名和密码 / Use --init-cleanup-db for a new database, or configure the existing cleanup role in .env"
   fi
 fi
 
@@ -489,7 +494,7 @@ if [ "$UNIFIED_COMPOSE" = 1 ]; then
   production_data="${production_data:-./data}"
   case "$production_data" in
     /*) ;;
-    *) production_data="$PWD/$production_data" ;;
+    *) production_data="$(pwd -P)/${production_data#./}" ;;
   esac
   export IMBOY_PROD_DATA_DIR="$production_data"
   IMBOY_DEPLOY_PROFILE=prod
@@ -519,6 +524,9 @@ if [ "$UNIFIED_COMPOSE" = 1 ]; then
     ""|monitoring|enterprise-direct|monitoring,enterprise-direct|enterprise-direct,monitoring) ;;
     *) die "根 Compose 可额外启用 monitoring 和 enterprise-direct / Invalid additional production profiles" ;;
   esac
+  if [ "$IMBOY_DEPLOY_PROFILE" = prod ] && is_true "$(get_var LIVEKIT_ENABLED || true)"; then
+    profile_list="${profile_list:+$profile_list,}rtc"
+  fi
   if is_true "$UPTRACE_ENABLED_VALUE"; then
     profile_list="${profile_list:+$profile_list,}uptrace"
     export UPTRACE_ENABLED=true
@@ -528,9 +536,15 @@ if [ "$UNIFIED_COMPOSE" = 1 ]; then
     unset trace_token
   fi
   export COMPOSE_PROFILES="$profile_list"
-  COMPOSE_ARGS=(--project-name imboy --profile "$IMBOY_DEPLOY_PROFILE" --env-file .env "${COMPOSE_ARGS[@]}")
+  gateway_args=()
+  export IMBOY_PROD_DEFAULT_GATEWAY_PROFILE=prod
+  if [ "$IMBOY_DEPLOY_PROFILE" != prod ]; then
+    export IMBOY_PROD_DEFAULT_GATEWAY_PROFILE=prod-default-gateway
+    gateway_args=(--profile "$IMBOY_DEPLOY_PROFILE")
+  fi
+  COMPOSE_ARGS=(--project-name "${IMBOY_DEPLOY_PROJECT:-imboy}" --profile prod "${gateway_args[@]}" --env-file .env "${COMPOSE_ARGS[@]}")
 fi
-if [ "$EDITION" = business ]; then
+if [ "$UNIFIED_COMPOSE" = 0 ]; then
   POLICY_DIR="$(mktemp -d)"
   POLICY_FILE="$POLICY_DIR/business-policy.yml"
   bash render-compose-extension.sh imboy-business-policy > "$POLICY_FILE" || die "无法读取根 Compose 商务策略"
@@ -561,16 +575,26 @@ for compose_file in ${COMPOSE_EXTRA_FILES[@]+"${COMPOSE_EXTRA_FILES[@]}"}; do
   COMPOSE_FILES="$COMPOSE_FILES $compose_file"
 done
 compose() { docker compose "${COMPOSE_ARGS[@]}" "$@"; }
-COMPOSE_DISPLAY="docker compose ${COMPOSE_ARGS[*]}"
+printf -v COMPOSE_DISPLAY '%q ' docker compose "${COMPOSE_ARGS[@]}"
+COMPOSE_DISPLAY="${COMPOSE_DISPLAY% }"
+if [ "$UNIFIED_COMPOSE" = 1 ]; then
+  COMPOSE_DISPLAY="IMBOY_PROD_DEFAULT_GATEWAY_PROFILE=$IMBOY_PROD_DEFAULT_GATEWAY_PROFILE $COMPOSE_DISPLAY"
+  IFS=, read -r -a display_profiles <<< "$COMPOSE_PROFILES"
+  for profile in "${display_profiles[@]}"; do
+    [ -n "$profile" ] && COMPOSE_DISPLAY="$COMPOSE_DISPLAY --profile $profile"
+  done
+fi
 
 # ── 2) 前置检查 ──────────────────────────────────────────────────────────────
 install_next_stage preflight
-say "前置检查 (preflight, edition=$EDITION)"
-if [ "$EDITION" = community ]; then
+say "前置检查 / Preflight"
+if [ "$UNIFIED_COMPOSE" = 1 ]; then
   # 先确认 Compose 成功，再按白名单读取字面赋值；不执行其输出。
   # Capture status before parsing; never source/eval Compose output.
   resolved_environment="$(compose config --environment)" \
     || die "Compose 环境解析失败；服务尚未启动"
+  resolved_gateway="$(compose config --format json | jq -ers 'select(length == 1) | .[0].services.prod_imboy_backend.environment.IMBOY_PAYMENT_GATEWAY_ENABLED | strings' 2>/dev/null)" \
+    || die "Compose 密钥校验失败：无法读取所选部署的支付配置 / Cannot inspect payment gateway configuration"
   (
     while IFS= read -r line; do
       case "$line" in
@@ -578,24 +602,31 @@ if [ "$EDITION" = community ]; then
           export "${line?}" || die "Compose 域名赋值失败" ;;
       esac
     done <<< "$resolved_environment"
-    for domain in API_DOMAIN ADMIN_DOMAIN CS_WIDGET_DOMAIN RTC_DOMAIN TURN_DOMAIN; do
+    domains=(API_DOMAIN ADMIN_DOMAIN CS_WIDGET_DOMAIN)
+    [ "$IMBOY_DEPLOY_CHECK_RTC" = 0 ] || domains+=(RTC_DOMAIN)
+    [ "$IMBOY_DEPLOY_CHECK_TURN" = 0 ] || domains+=(TURN_DOMAIN)
+    for domain in "${domains[@]}"; do
       [ -n "${!domain:-}" ] || die "Compose 域名配置不完整"
     done
-    preflight_args=(--docker --edition community)
-    if [ "$UNIFIED_COMPOSE" = 1 ]; then preflight_args+=(--dns); fi
+    preflight_args=(--docker --dns)
+    case "$resolved_gateway" in
+      false|0) preflight_args+=(--without-payment) ;;
+      true|1) export IMBOY_PAYMENT_GATEWAY_ENABLED=true ;;
+      *) die "无效的支付开关 / Invalid payment gateway flag" ;;
+    esac
     IMBOY_BASE_URL="https://$API_DOMAIN" IMBOY_PREFLIGHT_RESOLVED_DOMAINS=1 \
       bash preflight.sh "${preflight_args[@]}"
   ) || die "preflight 未通过，修复 ERROR 后重跑"
   unset resolved_environment
 else
-  bash preflight.sh --docker --edition "$EDITION" || die "preflight 未通过，修复 ERROR 后重跑"
+  bash preflight.sh --docker || die "preflight 未通过，修复 ERROR 后重跑"
 fi
 
 # Compose 环境覆盖 .env；仅检查实际传入服务的值，不输出密钥。
-if [ "$EDITION" = community ]; then
+if [ "$UNIFIED_COMPOSE" = 1 ]; then
   # -s 要求恰好一个 JSON 文档；-e 与 pipefail 同时传播解析/生产者失败。
   # Suppress jq diagnostics because invalid values may contain secrets.
-  compose config --format json | jq -es --arg prefix "$service_prefix" --arg nginx_suffix "$nginx_suffix" '
+  compose config --format json | jq -es --arg prefix "$service_prefix" --arg nginx_suffix "$nginx_suffix" --arg rtc "$IMBOY_DEPLOY_CHECK_RTC" '
     def valid($minimum):
       if type == "string" then
         length >= $minimum and (contains("CHANGE_ME") | not)
@@ -620,9 +651,11 @@ if [ "$EDITION" = community ]; then
       and all($core[]; valid(32)) and ($core | unique | length == 4)
       and ($edge.EDGE_INTERNAL_TOKEN == $backend.IMBOY_EDGE_INTERNAL_TOKEN)
       and all(["IMBOY_PG_USER", "IMBOY_PG_PASSWORD", "IMBOY_SOLIDIFIED_KEY",
-               "IMBOY_SOLIDIFIED_KEY_IV", "IMBOY_PASSWORD_SALT",
-               "IMBOY_LIVEKIT_API_KEY", "IMBOY_LIVEKIT_API_SECRET"][];
+               "IMBOY_SOLIDIFIED_KEY_IV", "IMBOY_PASSWORD_SALT"][];
               . as $key | $backend[$key] | valid(1))
+      and (if $rtc == "1" then
+             ($backend.IMBOY_LIVEKIT_API_KEY | valid(1)) and ($backend.IMBOY_LIVEKIT_API_SECRET | valid(32))
+           else true end)
       and ($pg.POSTGRES_USER == $backend.IMBOY_PG_USER)
       and ($pg.POSTGRES_PASSWORD == $backend.IMBOY_PG_PASSWORD)
       and (if $services | has($prefix + "imboy_grafana") then
@@ -664,7 +697,7 @@ if [ "$UNIFIED_COMPOSE" = 1 ]; then
   while IFS=$'\t' read -r container service; do
     binding="$(awk -F '\t' -v name="$container" '$1 == name { print $2 "/" $3 }' <<< "$existing_containers")"
     case "$binding" in
-      ""|imboy/"$service") ;;
+      ""|"${IMBOY_DEPLOY_PROJECT:-imboy}/$service") ;;
       *) die "容器 $container 已属于另一套部署或 TURN 模式。请先完成迁移 / Container $container belongs to another deployment or TURN mode. Migration is required." ;;
     esac
   done <<< "$planned_containers"
@@ -716,11 +749,17 @@ bash prepare-backend-runtime.sh "${COMPOSE_ARGS[@]}" \
 
 install_next_stage deployment_network
 say "准备部署网络"
-if ! docker network inspect imboy-network >/dev/null 2>&1; then
-  docker network create imboy-network >/dev/null 2>&1 \
-    || docker network inspect imboy-network >/dev/null 2>&1 \
-    || die "无法创建或打开 imboy-network / Cannot create or access imboy-network"
+deployment_network=imboy-network
+if [ "$UNIFIED_COMPOSE" = 1 ]; then
+  deployment_network="${IMBOY_DEPLOY_NETWORK:-imboy-network}"
+  export IMBOY_DEPLOY_NETWORK="$deployment_network"
 fi
+if ! docker network inspect "$deployment_network" >/dev/null 2>&1; then
+  docker network create "$deployment_network" >/dev/null 2>&1 \
+    || docker network inspect "$deployment_network" >/dev/null 2>&1 \
+    || die "无法访问部署网络 / Cannot access deployment network: $deployment_network"
+fi
+
 if [ "$UNIFIED_COMPOSE" = 0 ]; then
   install_next_stage service_start
   say "创建网络并启动服务"
@@ -762,10 +801,10 @@ for _ in $(seq 1 60); do
       | grep -q '"status":"ok"'; then ok=1; break; fi
   sleep 2
 done
-[ "$ok" = 1 ] || die "后端 120s 内未通过 /healthz，查日志：$COMPOSE_DISPLAY logs imboy_backend"
+[ "$ok" = 1 ] || die "后端 120s 内未通过 /healthz，查日志：$COMPOSE_DISPLAY logs ${service_prefix}imboy_backend"
 
 # The helper compares the live release ledger; health alone is insufficient.
-if [ "$EDITION" = community ]; then
+if [ "$UNIFIED_COMPOSE" = 1 ]; then
   say "验证独立清理数据库账号（迁移后；已有账号不修改）"
   CLEANUP_ARGS=()
   [ "$INIT_CLEANUP_DB" = 0 ] || CLEANUP_ARGS+=(--create)
@@ -844,8 +883,8 @@ if [ -n "$digest_note" ]; then digest_line="$digest_line  $digest_note"; fi
 
 adm="$(get_var ADMIN_DOMAIN)"
 cs="$(get_var CS_WIDGET_DOMAIN)"
-rtc="$(get_var RTC_DOMAIN)"
-turn="$(get_var TURN_DOMAIN)"
+rtc="$(get_var RTC_DOMAIN || true)"
+turn="$(get_var TURN_DOMAIN || true)"
 if [ -n "$ADMIN_PHONE" ]; then
   admin_hint="（超管已创建，ADMIN_ID=${admin_id:-见上方输出}，可直接登录）"
 else
@@ -854,7 +893,7 @@ fi
 
 cat <<EOF
 
-✅ 部署完成 / Deployment done（edition: ${EDITION}）
+✅ 部署完成 / Deployment done
 
    ── Release Identity（核验装的正是被验证过的那一个）──
    IMBOY_VERSION=${imboy_version}
@@ -864,7 +903,7 @@ cat <<EOF
    管理后台 / Admin : https://${adm}   ${admin_hint}
    API / WebSocket  : https://${api}
    客服 Widget      : https://${cs}  (snippet: /v1/loader.js + data-widget-id)
-   LiveKit 信令     : wss://${rtc}  (媒体端口 TCP 7881 / UDP 50000-50200)
+   LiveKit 信令     : $(if [ "$IMBOY_DEPLOY_CHECK_RTC" = 1 ]; then printf "wss://%s" "$rtc"; else printf "未启用 / Disabled"; fi)
    LiveKit TURN     : $(is_true "$TURN_ENABLED_VALUE" && printf 'turn(s):%s:3478|%s  (UDP 3478 / TLS / relay 50201-50500)' "$turn" "$(is_true "$SNI_ENABLED_VALUE" && printf 443 || printf 5349)" || printf '未启用（LIVEKIT_TURN_ENABLED=true 开启，前置条件见 .env.example）')
    Garage S3        : https://${api}/s3  (3900 不暴露公网)
 EOF
@@ -878,7 +917,7 @@ else
    Uptrace          : 未启用（在 .env 设置 UPTRACE_ENABLED=true 后重跑）
 EOF
 fi
-if [ "$EDITION" = "business" ]; then
+if [ "$UNIFIED_COMPOSE" = 0 ]; then
   cat <<EOF
    Grafana          : http://127.0.0.1:3000  (admin / 口令见 .env 的 GRAFANA_ADMIN_PASSWORD)
                       默认仅监听本机；远程访问请走 nginx 反代或 SSH 隧道
@@ -895,5 +934,5 @@ cat <<EOF
                       蓝绿升级用 bash scripts/imboy-deploy.sh api
 
    服务状态 : $COMPOSE_DISPLAY ps
-   后端日志 : $COMPOSE_DISPLAY logs -f imboy_backend
+   后端日志 : $COMPOSE_DISPLAY logs -f ${service_prefix}imboy_backend
 EOF

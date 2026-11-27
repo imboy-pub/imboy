@@ -134,25 +134,48 @@ class LocalComposeTests(unittest.TestCase):
     def test_profile_selection(self):
         cases = {
             (): set(),
-            ("dev",): {"imboy_pg18", "garage", "imboy_nginx"},
+            ("dev",): {"imboy_pg18", "garage"},
             ("pro",): {"prod_imboy_pg18"},
-            ("dev", "pro"): {"imboy_pg18", "garage", "imboy_nginx", "prod_imboy_pg18"},
-            ("dev", "api", "admin"): {"imboy_pg18", "garage", "imboy_nginx", "imboy_backend", "imboy_edge", "imboy_admin"},
+            ("dev", "pro"): {"imboy_pg18", "garage", "prod_imboy_pg18"},
+            ("dev", "gateway", "api", "admin"): {"imboy_pg18", "garage", "imboy_nginx", "imboy_backend", "imboy_edge", "imboy_admin"},
         }
         for profiles, expected in cases.items():
             with self.subTest(profiles=profiles):
                 self.assertEqual(set(self.model(*profiles).get("services", {})), expected)
-        all_services = self.model("dev", "api", "admin", "livekit", "widget")["services"]
-        self.assertEqual(set(all_services), cases[("dev", "api", "admin")] | {"imboy_livekit", "imboy_widget"})
+        all_services = self.model("dev", "gateway", "api", "admin", "livekit", "widget")["services"]
+        self.assertEqual(set(all_services), cases[("dev", "gateway", "api", "admin")] | {"imboy_livekit", "imboy_widget"})
         # Both services inherit the backend image's healthcheck; disabling it on
         # edge leaves Compose --wait without a usable probe after image merging.
         for name in ("imboy_backend", "imboy_edge"):
             health = all_services[name]["healthcheck"]
             self.assertFalse(health.get("disable", False))
             self.assertIn(health["test"][0], ("CMD", "CMD-SHELL"))
-        enterprise = self.model("dev", "api", "admin", IMBOY_EDITION="enterprise")["services"]
-        self.assertEqual(set(enterprise), cases[("dev", "api", "admin")])
-        self.assertEqual(enterprise["imboy_backend"]["environment"]["IMBOY_EDITION"], "enterprise")
+
+    def test_test_profile_is_project_scoped(self):
+        model = self.model("test")
+        services = model["services"]
+        self.assertEqual(set(services), {"test_pg18", "test_garage", "test_backend", "test_edge"})
+        for service in services.values():
+            self.assertNotIn("container_name", service)
+            self.assertEqual(set(service["networks"]), {"test"})
+            for port in service.get("ports", []):
+                self.assertEqual(port["host_ip"], "127.0.0.1")
+            for mount in service.get("volumes", []):
+                self.assertTrue(mount["source"].startswith("test_"))
+        self.assertEqual(services["test_backend"]["environment"]["IMBOYENV"], "test")
+        self.assertEqual(set(self.model("test", "test-rtc")["services"]),
+                         set(services) | {"test_livekit"})
+        self.assertEqual(set(self.model("test", "test-monitoring")["services"]),
+                         set(services) | {"test_prometheus"})
+        traced = self.model("test", "test-uptrace")
+        self.assertEqual(set(traced["services"]), set(services) | {
+            "test_uptrace_pg_init", "test_uptrace_clickhouse", "test_uptrace_redis",
+            "test_uptrace", "test_uptrace_otelcol",
+        })
+        self.assertTrue(traced["networks"]["test_uptrace_private"]["internal"])
+        self.assertNotIn("pro", traced["networks"])
+        self.assertEqual(traced["services"]["test_uptrace_pg_init"]["environment"]["PGHOST"], "test_pg18")
+
 
     def test_production_profiles_keep_existing_data_and_dns(self):
         model = self.model("prod", "monitoring", "enterprise-direct", DATA_DIR="./data")
@@ -162,7 +185,7 @@ class LocalComposeTests(unittest.TestCase):
             {"prod_garage"} | {
                 "prod_imboy_" + name for name in (
                     "pg18", "backend", "edge", "admin", "widget", "nginx", "certbot",
-                    "livekit", "enterprise_proof", "prometheus", "grafana", "pushgateway",
+                    "enterprise_proof", "prometheus", "grafana", "pushgateway",
                     "node_exporter", "postgres_exporter",
                 )
             },
@@ -192,11 +215,29 @@ class LocalComposeTests(unittest.TestCase):
                                  "separate-production-password")
                 self.assertNotIn("imboy_pg18", model["services"])
 
+    def test_production_gateways_wait_for_a_working_edge_healthcheck(self):
+        dev_edge = self.model("dev", "api")["services"]["imboy_edge"]
+        for profile, gateway in (("prod", "prod_imboy_nginx"),
+                                 ("prod-turn", "prod_imboy_nginx_turn"),
+                                 ("prod-sni", "prod_imboy_nginx_sni")):
+            with self.subTest(profile=profile):
+                services = self.model(profile)["services"]
+                self.assertEqual(services[gateway]["depends_on"]["prod_imboy_edge"]["condition"],
+                                 "service_healthy")
+                edge = services["prod_imboy_edge"]
+                self.assertEqual(edge["healthcheck"], dev_edge["healthcheck"])
+                self.assertIn({"source": "edge_health_vm_args", "target": "/run/edge-health.vm.args"},
+                              edge["configs"])
+
     def test_turn_profile_selects_one_livekit_and_nginx(self):
-        standard = self.model("prod")["services"]
+        self.assertNotIn("prod_imboy_livekit", self.model("prod")["services"])
+        standard = self.model("prod", "rtc")["services"]
         self.assertNotIn("prod_imboy_livekit_turn", standard)
         self.assertNotIn("5349", {port["published"] for port in standard["prod_imboy_livekit"]["ports"]})
-        services = self.model("prod-turn", TURN_DOMAIN="turn.test.invalid")["services"]
+        services = self.model("prod", "prod-turn", TURN_DOMAIN="turn.test.invalid",
+                              IMBOY_PROD_DEFAULT_GATEWAY_PROFILE="prod-default-gateway")["services"]
+        legacy = self.model("prod-turn", TURN_DOMAIN="turn.test.invalid")["services"]
+        self.assertEqual(set(services), set(legacy))
         self.assertNotIn("prod_imboy_livekit", services)
         self.assertNotIn("prod_imboy_nginx", services)
         self.assertIn("prod_imboy_livekit_turn", services["prod_imboy_nginx_turn"]["depends_on"])
@@ -252,13 +293,17 @@ class LocalComposeTests(unittest.TestCase):
         self.assertIn("prod_imboy_pg18", services["uptrace_pg_init"]["depends_on"])
 
     def test_sni_profile_owns_https_and_trusts_only_its_proxy(self):
-        model = self.model("prod-sni", TURN_DOMAIN="turn.test.invalid")
+        model = self.model("prod", "prod-sni", TURN_DOMAIN="turn.test.invalid",
+                           IMBOY_PROD_DEFAULT_GATEWAY_PROFILE="prod-default-gateway")
         services = model["services"]
         nginx = services["prod_imboy_nginx_sni"]
         proxy = services["prod_imboy_haproxy"]
         self.assertEqual([port["published"] for port in proxy["ports"]], ["443"])
         self.assertEqual([port["published"] for port in nginx["ports"]], ["80"])
         self.assertNotIn("prod_imboy_nginx_turn", services)
+        self.assertNotIn("prod_imboy_nginx", services)
+        self.assertNotIn("prod_imboy_livekit", services)
+        self.assertNotIn("prod_imboy_livekit_turn", services)
         self.assertEqual(nginx["command"][-1], "proxy-protocol")
         self.assertIn("listen 443 ssl proxy_protocol;",
                       (ROOT / "deploy/nginx/start-production.sh").read_text())
@@ -275,6 +320,24 @@ class LocalComposeTests(unittest.TestCase):
         self.assertIn("tls_port: 443", config)
         self.assertIn(f"{proxy_ip}/32", config)
         self.assertIn(f"server livekit {livekit_ip}:443 send-proxy-v2", haproxy)
+
+    def test_production_full_profiles_exclude_uptrace(self):
+        extras = ("monitoring", "enterprise-direct")
+        for mode, count in (("prod", 14), ("prod-turn", 15), ("prod-sni", 16)):
+            with self.subTest(mode=mode):
+                profiles = ("prod", *extras) if mode == "prod" else ("prod", mode, *extras)
+                disabled = "prod" if mode == "prod" else "prod-default-gateway"
+                services = self.model(*profiles, TURN_DOMAIN="turn.test.invalid",
+                                      IMBOY_PROD_DEFAULT_GATEWAY_PROFILE=disabled)["services"]
+                self.assertEqual(len(services), count)
+                self.assertFalse(any("uptrace" in name for name in services))
+                self.assertFalse(any(name.startswith("test_") for name in services))
+                self.assertEqual(sum(name.startswith("prod_imboy_nginx") for name in services), 1)
+                owners = [name for name, service in services.items()
+                          if any(port["published"] == "443" and port["protocol"] == "tcp"
+                                 for port in service.get("ports", []))]
+                expected = {"prod": "nginx", "prod-turn": "nginx_turn", "prod-sni": "haproxy"}[mode]
+                self.assertEqual(owners, ["prod_imboy_" + expected])
 
     def test_existing_database_mounts_and_runtime_keys(self):
         model = self.model("dev", "pro", "api", IMBOY_PROD_PG_DATA_DIR="/data/docker/pro_imboy_pg18")
@@ -299,7 +362,7 @@ class LocalComposeTests(unittest.TestCase):
                          FIXTURE_VALUES["IMBOY_PG_PRO_PASSWORD"])
 
     def test_host_upstream_hook_resolves_hosts_and_preserves_service_dns(self):
-        nginx = self.model("dev")["services"]["imboy_nginx"]
+        nginx = self.model("dev", "gateway")["services"]["imboy_nginx"]
         mount = next(v for v in nginx["volumes"]
                      if v["target"] == "/docker-entrypoint.d/19-local-host-upstream.envsh")
         hook = Path(mount["source"])
@@ -461,7 +524,7 @@ def runtime_smoke(image):
                       COMPOSE_PROJECT_NAME="imboy-local-ci-" + os.environ["GITHUB_RUN_ID"])
     command = ["docker", "compose", "--env-file", str(ROOT / ".env"),
                "-f", str(ROOT / "docker-compose.yml")]
-    for profile in ("dev", "api", "admin", "widget", "livekit"):
+    for profile in ("dev", "gateway", "api", "admin", "widget", "livekit"):
         command += ["--profile", profile]
 
     def execute(args, timeout=1200, capture=False, check=True):

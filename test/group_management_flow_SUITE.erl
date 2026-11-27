@@ -501,8 +501,7 @@ unique_mobile(Prefix) ->
     list_to_binary(io_lib:format("~s~6..0B", [Prefix, Suffix])).
 
 %% 清理用户
-%% 注意：user_repo:delete 是软删除（status=-1），软删行仍计入 License
-%% 用户配额（quota_guard 402），累积会令后续 signup 失败，故此处硬删除。
+%% 测试夹具硬删除，避免历史软删除记录积累。
 cleanup_users(Uids) ->
     lists:foreach(
         fun(Uid) ->

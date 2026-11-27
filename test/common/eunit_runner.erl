@@ -142,10 +142,6 @@ eunit_setup() ->
     %% TSID V10：无 guard/无持久化/无 seam 配置——sup init 纯内存建
     %% runtime（fixed offset + atomics 游标 + 静态 namespace 清单），
     %% 测试轨道无需任何 TSID 注入；VM 隔离语义天然成立（游标不跨 VM）。
-    %% 测试环境社区版用户配额拉高：注册/好友全链流程测试会真注册用户，
-    %% 本地库测试数据积累极易越过社区版默认 max_users=100 触发 402
-    application:set_env(imboy, community_max_users, 1000000),
-
     % 启动核心依赖应用
     CoreApps = [crypto, asn1, public_key, ssl, inets, jsone, lager, depcache],
     lists:foreach(
@@ -609,7 +605,6 @@ cleanup_start_orphans() ->
             imboy_plugin_sup,
             imboy_router_registry,
             imboy_ws_action_registry,
-            license_notice_worker,
             login_attempt_ds,
             msg_burn_logic,
             msg_store_ds,

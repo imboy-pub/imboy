@@ -6,7 +6,7 @@
 #   1. 版本    VERSION 与 relx.config 的 release 版本必须一致
 #              （历史事故：两处双源，只 bump 一处导致发布出错版本）
 #   2. 迁移    每个 *.up.sql 必须有同号 *.down.sql；序号不得重复
-#   3. License LICENSE + gen_license.escript 存在；public_info/0 白名单
+#   3. 法律许可 LICENSE 保留，旧运行时授权模块和 API 不得重现
 #              不得泄漏 license 原文 / 签名材料 / 内部失败原因
 #   4. 运维    备份 / 恢复 / 恢复演练 / 部署脚本存在且语法可解析
 #   5. 契约    商业路由（billing / adm finance billing / license / sso /
@@ -124,44 +124,27 @@ check_migrations() {
 }
 
 # ------------------------------------------------------------
-# 3. License：文件在位 + 状态 API 不泄漏授权材料
+# 3. Legal license and retirement of the former commercial quota API.
 # ------------------------------------------------------------
 check_license() {
   local root="${1:-$IMBOY_ROOT}"
   local rc=0
   local f
-
-  for f in "LICENSE" "scripts/gen_license.escript" "src/lib/imboy_license.erl"; do
-    if [ -f "${root}/${f}" ]; then
-      crc_ok "License 资产存在：${f}"
-    else
-      crc_bad "License 资产缺失：${f}"
+  if [ -f "${root}/LICENSE" ]; then
+    crc_ok "仓库法律许可 LICENSE 存在"
+  else
+    crc_bad "仓库法律许可 LICENSE 缺失"
+    rc=1
+  fi
+  for f in scripts/gen_license.escript src/lib/imboy_license.erl src/lib/license_notice_worker.erl; do
+    if [ -e "${root}/${f}" ]; then
+      crc_bad "已退役的运行时授权资产仍存在：${f}"
       rc=1
     fi
   done
-
-  local src="${root}/src/lib/imboy_license.erl"
-  if [ -f "$src" ]; then
-    # public_info/0 是对外白名单，出现下列任何键都意味着授权材料外泄
-    local body leak=""
-    body="$(sed -n '/^public_info() ->/,/^    }\./p' "$src")"
-    if [ -z "$body" ]; then
-      crc_bad "imboy_license:public_info/0 未找到（脱敏白名单无法校验）"
-      rc=1
-    else
-      local k
-      for k in license_text signature signed_by private_key reason raw; do
-        if echo "$body" | grep -q "\b${k}\b"; then
-          leak="${leak} ${k}"
-        fi
-      done
-      if [ -n "$leak" ]; then
-        crc_bad "public_info/0 泄漏授权材料字段：${leak}"
-        rc=1
-      else
-        crc_ok "public_info/0 白名单未泄漏授权材料"
-      fi
-    fi
+  if grep -qF '/api/adm/stats/license' "${root}/src/imboy_router.erl" "${root}/api/openapi.yaml"; then
+    crc_bad "已退役的授权 API 仍在路由或契约"
+    rc=1
   fi
   return $rc
 }
@@ -209,7 +192,6 @@ COMMERCIAL_PATHS=(
   "/api/adm/finance/billing/plan/update"
   "/api/adm/finance/billing/subscriptions"
   "/api/adm/finance/billing/invoices"
-  "/api/adm/stats/license"
   "/api/adm/sso/config"
   "/api/adm/sso/test"
   "/api/v1/user/export_data"
@@ -322,7 +304,7 @@ crc_main() {
   check_version "$IMBOY_ROOT"
   echo "== 2. 迁移 up/down =="
   check_migrations "$IMBOY_ROOT"
-  echo "== 3. License 资产与脱敏 =="
+  echo "== 3. 法律许可与运行时授权退役 =="
   check_license "$IMBOY_ROOT"
   echo "== 4. 备份 / 恢复 / 部署脚本 =="
   check_ops_scripts "$IMBOY_ROOT"

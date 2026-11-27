@@ -53,7 +53,7 @@ preview_saved_view(SaveSections) ->
 preview_effective_view(SaveSections) ->
     ProfileConfig =
         case maps:find(?PRODUCT_PROFILE_CONFIG_KEY, SaveSections) of
-            {ok, ?DELETE_VALUE} -> config_ds:env(product_profile, community);
+            {ok, ?DELETE_VALUE} -> config_ds:env(product_profile, standard);
             {ok, ProfileValue} -> ProfileValue;
             error -> load_profile_config()
         end,

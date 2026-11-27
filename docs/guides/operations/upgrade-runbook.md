@@ -216,7 +216,7 @@ grep -i "\[imboy_migrate\]\|migration" _rel/imboy/log/debug.log | tail -20
 |------|---------|---------|
 | **冷重启（推荐）** | 单节点、首次升级、存在代码结构变更 | ≤ 5 分钟 |
 | **热升级（relup）** | 多节点滚动、无 API 变更 | ≤ 30 秒/节点 |
-| **Docker 镜像替换** | 容器化部署（`docker-compose.prod.yml`） | ≤ 2 分钟 |
+| **Docker 镜像替换** | 容器化部署（仓根 `docker-compose.yml`） | ≤ 2 分钟 |
 
 ### 3.2 冷重启升级（推荐）/ Cold Restart (Recommended)
 
@@ -277,16 +277,20 @@ _rel/imboy/bin/imboy remote_console
 
 ### 3.4 Docker 容器镜像替换 / Docker Image Replacement
 
+从仓库根目录执行。以下命令使用默认项目 `imboy` 和 `prod`。如果安装时选择了其他项目名或 TURN/SNI 组合，升级和回滚均复用统一安装器输出的项目名、网关选择和附加 profile，不要仅运行下方默认组合。
+
+Run from the repository root. These commands use the default project `imboy` and profile `prod`. Use the project name and profile selected at installation for both upgrades and rollbacks.
+
 ```bash
 # ---- 步骤 1：更新 .env 中的版本号 ----
 # ---- Step 1: Update version in .env ----
-cd /opt/imboy/deploy
-sed -i 's/IMBOY_VERSION=1.0.0-rc.1/IMBOY_VERSION=1.0.0/' .env
+cd /opt/imboy
+# Edit IMBOY_VERSION in deploy/.env and update BACKEND_IMAGE if explicitly set.
 
 # ---- 步骤 2：拉取新镜像并重建容器 ----
 # ---- Step 2: Pull new image and recreate container ----
-docker compose -f docker-compose.prod.yml pull imboy_backend
-docker compose -f docker-compose.prod.yml up -d --no-deps imboy_backend
+docker compose -p imboy --env-file deploy/.env --profile prod pull prod_imboy_backend
+docker compose -p imboy --env-file deploy/.env --profile prod up -d --no-deps prod_imboy_backend
 
 # ---- 步骤 3：等待健康检查通过 ----
 # ---- Step 3: Wait for health check ----
@@ -463,14 +467,14 @@ PITR_TARGET="2026-05-27 10:30:00"  # 替换为实际备份时间
 
 # ---- 步骤 2：停止应用 ----
 _rel/imboy/bin/imboy stop
-docker compose -f deploy/docker-compose.prod.yml stop imboy_backend
+docker compose -p imboy --env-file deploy/.env --profile prod stop prod_imboy_backend
 
 # ---- 步骤 3：PITR 恢复 ----
 # 参考 docs/guides/operations/deployment/backup-restore.md 中的 PITR 章节
 # 以下为快速参考：
 
 # 停止 PostgreSQL
-docker compose -f deploy/docker-compose.prod.yml stop imboy_pg18
+docker compose -p imboy --env-file deploy/.env --profile prod stop prod_imboy_pg18
 
 # 替换数据目录为 PITR 快照（从 WAL 归档恢复）
 # 注意：此操作会丢失 PITR_TARGET 之后的所有数据
@@ -483,7 +487,7 @@ pg_restore -d imboy_v1 "/backups/${BACKUP_FILE}"
 # recovery_target_action = 'promote'
 
 # ---- 步骤 4：重启数据库 ----
-docker compose -f deploy/docker-compose.prod.yml start imboy_pg18
+docker compose -p imboy --env-file deploy/.env --profile prod start prod_imboy_pg18
 
 # ---- 步骤 5：验证数据库 ----
 make ctl ARGS="db ping"
@@ -507,9 +511,9 @@ _rel/imboy/bin/imboy downgrade 1.0.0-rc.1
 
 # 方式 C：Docker 镜像回滚
 # Option C: Docker rollback
-cd deploy
-sed -i 's/IMBOY_VERSION=1.0.0/IMBOY_VERSION=1.0.0-rc.1/' .env
-docker compose -f docker-compose.prod.yml up -d --no-deps imboy_backend
+cd /opt/imboy
+# Restore the previous IMBOY_VERSION and any explicit BACKEND_IMAGE in deploy/.env.
+docker compose -p imboy --env-file deploy/.env --profile prod up -d --no-deps prod_imboy_backend
 ```
 
 ### 6.4 回滚后验证 / Post-rollback Verification

@@ -60,14 +60,15 @@ logger:set_primary_config(level, debug).
 }
 ```
 
-Docker 部署由 `docker-compose.prod.yml` 限制单文件大小：
+仓库根目录 `docker-compose.yml` 为生产后端设置日志轮转。
+The root `docker-compose.yml` configures log rotation for the production backend:
 
 ```yaml
 logging:
   driver: "json-file"
   options:
     max-size: "100m"
-    max-file: "5"
+    max-file: "30"
 ```
 
 ---
@@ -85,14 +86,15 @@ nginx / 负载均衡探针应使用此端点，超时 3s、间隔 10s。
 
 ### 3.2 数据库
 
-`docker-compose.prod.yml` 内置 PG healthcheck：
+仓库根目录 `docker-compose.yml` 中的 `prod_imboy_pg18` 自带健康检查。
+The `prod_imboy_pg18` service in the root Compose file includes a health check:
 
 ```yaml
 healthcheck:
-  test: ["CMD-SHELL", "pg_isready -U imboy"]
+  test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
   interval: 10s
   timeout: 5s
-  retries: 5
+  retries: 10
 ```
 
 `imboy_backend` 通过 `depends_on: { imboy_pg18: { condition: service_healthy } }` 确保数据库就绪后才启动。
@@ -133,8 +135,7 @@ SENTRY_RELEASE=imboy@1.0.0-rc.1
 **3. 重启后端**
 
 ```bash
-cd deploy
-docker compose -f docker-compose.prod.yml up -d imboy_backend
+docker compose -p imboy --env-file deploy/.env --profile prod up -d --no-deps prod_imboy_backend
 ```
 
 **4. 验证事件投递**

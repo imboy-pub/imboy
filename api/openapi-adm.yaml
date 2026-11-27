@@ -250,9 +250,8 @@ paths:
   /api/adm/plugin/logs: {$ref: './paths/adm/v1/plugin/logs.yaml'}
   /api/adm/ai_agent/onboarding_config: {$ref: './paths/adm/v1/ai-agent/onboarding-config.yaml'}
   # --------------------------------------------------------------------------
-  # 商业化管理端（C0-CONTRACT-01）：License 状态、SSO 配置、finance/billing 运营
+  # 商业化管理端（C0-CONTRACT-01）：SSO 配置、finance/billing 运营
   # --------------------------------------------------------------------------
-  /api/adm/stats/license: {$ref: './paths/adm/v1/stats/license.yaml'}
   /api/adm/sso/config: {$ref: './paths/adm/v1/sso/config.yaml'}
   /api/adm/sso/test: {$ref: './paths/adm/v1/sso/test.yaml'}
   /api/adm/finance/billing/plans: {$ref: './paths/adm/v1/finance/billing-plans.yaml'}

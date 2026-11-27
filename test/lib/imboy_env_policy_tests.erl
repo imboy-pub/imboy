@@ -15,7 +15,10 @@ delivery_profile_env_override_test() ->
             [
                 {"phase1_delivery", phase1_delivery},
                 {" PHASE1_DELIVERY ", phase1_delivery},
-                {"overseas_baseline", overseas_baseline}
+                {"overseas_baseline", overseas_baseline},
+                {"standard", standard},
+                {"audited", audited},
+                {"enterprise", audited}
             ]
         ),
         os:putenv("IMBOY_PRODUCT_PROFILE", "phase1_typo"),
@@ -48,7 +51,7 @@ sales_policy_env_override_test() ->
         os:putenv("IMBOY_FEATURE_CHANNEL", "1"),
         os:putenv("IMBOY_FEATURE_CHANNEL_ORDER", "true"),
         ok = imboy_env:override_from_env(),
-        ?assertEqual({ok, community}, application:get_env(imboy, product_profile)),
+        ?assertEqual({ok, standard}, application:get_env(imboy, product_profile)),
         ?assertEqual(
             required,
             maps:get(e2ee_mode, application:get_env(imboy, capabilities, #{}))
@@ -101,16 +104,33 @@ cluster_nodes_env_override_test() ->
         ?assertEqual({ok, []}, application:get_env(imboy, cluster_nodes)),
         os:putenv("IMBOY_CLUSTER_NODES", "[\"node1@127.0.0.1\",\"node2@cluster.example\"]"),
         ok = imboy_env:override_from_env(),
-        ?assertEqual({ok, ['node1@127.0.0.1', 'node2@cluster.example']},
-            application:get_env(imboy, cluster_nodes)),
+        ?assertEqual(
+            {ok, ['node1@127.0.0.1', 'node2@cluster.example']},
+            application:get_env(imboy, cluster_nodes)
+        ),
         application:set_env(imboy, cluster_nodes, Configured),
-        lists:foreach(fun(Raw) ->
-            os:putenv("IMBOY_CLUSTER_NODES", Raw),
-            ?assertError({invalid_env, "IMBOY_CLUSTER_NODES", Raw},
-                imboy_env:override_from_env()),
-            ?assertEqual({ok, Configured}, application:get_env(imboy, cluster_nodes))
-        end, ["not-json", "{}", "null", "[1]", "[\"\"]", "[\"node\"]",
-            "[\"@host\"]", "[\"node@\"]", "[\"node@host@other\"]", "[\"node @host\"]"])
+        lists:foreach(
+            fun(Raw) ->
+                os:putenv("IMBOY_CLUSTER_NODES", Raw),
+                ?assertError(
+                    {invalid_env, "IMBOY_CLUSTER_NODES", Raw},
+                    imboy_env:override_from_env()
+                ),
+                ?assertEqual({ok, Configured}, application:get_env(imboy, cluster_nodes))
+            end,
+            [
+                "not-json",
+                "{}",
+                "null",
+                "[1]",
+                "[\"\"]",
+                "[\"node\"]",
+                "[\"@host\"]",
+                "[\"node@\"]",
+                "[\"node@host@other\"]",
+                "[\"node @host\"]"
+            ]
+        )
     after
         restore_app_env(SavedApp),
         restore_os_env(SavedEnv)

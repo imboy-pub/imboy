@@ -52,8 +52,23 @@ log_dir="$(source_for /opt/imboy/log)" \
   || fail 'Expected a backend log bind mount; review custom mounts before upgrading.'
 [[ "$private_dir" != "$log_dir" && ! -L "$private_dir" && ! -L "$log_dir" ]] \
   || fail 'Runtime bind roots must be distinct real directories.'
-[[ "$(realpath -m -- "$private_dir")" == "$private_dir" \
-   && "$(realpath -m -- "$log_dir")" == "$log_dir" ]] \
+# Check every existing directory component without GNU-specific realpath flags.
+canonical_bind_root() {
+  local path="$1" component parent=""
+  case "$path/" in *'//'*|*'/./'*|*'/../'*) return 1 ;; esac
+  while [[ "$path" != / ]]; do
+    component="${path##*/}"
+    parent="/$component$parent"
+    path="${path%/*}"
+    if [[ -e "${path:-/}" || -L "${path:-/}" ]]; then
+      path="${path:-/}"
+      [[ -d "$path" && "$(cd -P -- "$path" && pwd -P)" == "$path" ]] || return 1
+      [[ ! -e "${path%/}$parent" || -d "${path%/}$parent" ]]
+      return
+    fi
+  done
+}
+canonical_bind_root "$private_dir" && canonical_bind_root "$log_dir" \
   || fail 'Runtime bind roots must be canonical paths without symlink parents.'
 case "$private_dir/" in "$log_dir/"*) fail 'Runtime bind directories must not overlap.' ;; esac
 case "$log_dir/" in "$private_dir/"*) fail 'Runtime bind directories must not overlap.' ;; esac

@@ -46,12 +46,15 @@ jobs:
           sudo apt-get install -y jq curl openssl python3 zip unzip gettext-base
       - name: Check packaging and configuration contracts
         run: |
+          bash scripts/test/install_one_click_test.sh
           bash scripts/test/cleanup_db_shell_test.sh
           bash scripts/test/release_contract_test.sh
           bash scripts/release_version.sh "v$(cat VERSION)"
           bash scripts/test/init_letsencrypt_test.sh
       - name: Check RTC/TURN preflight and Compose contracts
-        run: bash scripts/test/lk_preflight_rtc_turn_test.sh
+        run: |
+          bash scripts/test/lk_preflight_rtc_turn_test.sh
+          bash scripts/test/lk_turn_hook_install_test.sh
       - name: Check local Compose profiles and setup failure paths
         run: bash scripts/test/dev_compose_test.sh
       - name: Validate Compose models without starting services

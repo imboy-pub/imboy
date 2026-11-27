@@ -92,13 +92,12 @@ V10 has five runtime overrides and no persistent cursor/fence directory. Unique 
 | `IMBOY_SOLIDIFIED_KEY` / `IMBOY_SOLIDIFIED_KEY_IV` | 客户端 init 握手密钥（32B / 16B） |
 | `RSA 登录密钥对` | install.sh 生成至 `data/backend_priv/keys/login_rsa_{pub,priv}.pem` |
 
-### 业务开关与版次
+### 业务开关与部署预设
 
 | 变量 | 默认值 | 说明 |
 |------|--------|------|
 | `IMBOY_VERSION` | 见 `deploy/.env.example` | 镜像版本。模板值与仓库根目录 `VERSION` 保持一致。部署前核验对应镜像是否已经发布 |
-| `IMBOY_EDITION` | `community` | `community` \| `professional` \| `enterprise` |
-| `IMBOY_PRODUCT_PROFILE` | `community` | 销售版产品策略档位 |
+| `IMBOY_PRODUCT_PROFILE` | `standard` | 部署预设：`standard`、`audited`、`overseas_baseline` 或 `phase1_delivery`；不控制商业配额 |
 | `IMBOY_PRODUCT_EXPERIENCE` | `chat` | 产品体验开关：`chat` \| `workspace`（改后需受控重启） |
 | `IMBOY_E2EE_MODE` | `required` | E2EE 模式 |
 | `IMBOY_FEATURE_E2EE` / `IMBOY_FEATURE_CHANNEL` / `IMBOY_FEATURE_CHANNEL_ORDER` | `true` | 内置功能开关 |
@@ -139,7 +138,6 @@ V10 has five runtime overrides and no persistent cursor/fence directory. Unique 
 | `UPTRACE_ENABLED` | `false` | Uptrace overlay 总开关 |
 | `UPTRACE_DOMAIN` / `UPTRACE_ADMIN_EMAIL` | - | Uptrace 域名与管理员邮箱（ENABLED=true 时必填） |
 | `UPTRACE_IMAGE` 等 12 项 `UPTRACE_*` | 模板值 | Uptrace overlay 镜像与凭据（安装器生成密钥） |
-| `IMBOY_LICENSE_FILE` | 空 | License 文件路径（professional/enterprise 必配） |
 | `PG_EXPORTER_USER` / `PG_EXPORTER_PASSWORD` | 回落 POSTGRES_* | postgres_exporter 只读账号 |
 | `IMBOY_TSID_DC_ID` / `IMBOY_TSID_NODE_ID` / `IMBOY_TSID_DC_BITS` | `1` / `1` / `3` | 全体实例的DC+Node组合须唯一；dc_bits全集群一致，部署范围1..10 |
 | `IMBOY_TSID_CAPACITY_WAIT_TIMEOUT_MS` | `100` | 正整数；有界容量等待/竞争预算（ms），不主动借未来毫秒 |

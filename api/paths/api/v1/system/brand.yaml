@@ -1,7 +1,7 @@
 # ----------------------------------------------------------------------------
 # GET /brand — 运行时白标品牌配置（公开端点，免鉴权）
 # Router: imboy_router.erl 行 23（brand_handler#info），并列入 open/0 白名单
-# Schema 来源：brand_handler:defaults/0 + normalize/1 + imboy_license:edition/0
+# Schema 来源：brand_handler:defaults/0 + normalize/1
 # ----------------------------------------------------------------------------
 get:
   tags: [system]
@@ -44,7 +44,6 @@ get:
                         company,
                         support_url,
                         privacy_url,
-                        edition,
                       ]
                     properties:
                       site_name:
@@ -78,9 +77,6 @@ get:
                       privacy_url:
                         type: string
                         description: 隐私政策绝对 URL；默认空串，须部署方人工填写
-                      edition:
-                        type: string
-                        description: 授权版本（`imboy_license:edition/0`，如 community / professional）
     '4XX':
       description: 方法不允许（非 GET）
       content:

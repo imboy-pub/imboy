@@ -28,9 +28,6 @@
 
 | 能力 | 状态 | 说明 |
 |---|---|---|
-| License 规模/配额 gate | 支持 | `imboy_license`，RSA-SHA256 验签；状态查询只暴露 7 个脱敏白名单字段 |
-| 社区版 | 支持 | 无 license 文件时的默认档，用户数上限可由 `community_max_users` 覆盖 |
-| 专业版试用 | 支持 | 无 license 时自动签发的试用期（默认 30 天） |
 | 到期宽限 | 支持 | 过期后 7 天内仍按授权运行，仅告警 |
 | SaaS 订阅/账单 | 支持 | `/api/v1/billing/*` + `/api/adm/finance/billing/*` |
 | 真实支付渠道（支付宝/微信/Stripe） | **未开通** | 需商户凭证，属外部阻塞项，本地仅 mock 验证 |

@@ -4,5 +4,6 @@ set -euo pipefail
 ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
 bash scripts/check_delivery.sh
+bash scripts/test/install_one_click_test.sh
 bash deploy/preflight.sh --self-test
 printf '\n[PASS] 离线测试结束；真实服务器验收仍须另行执行。\n'

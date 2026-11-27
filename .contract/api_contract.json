@@ -1695,12 +1695,6 @@
         "static": false
       },
       {
-        "action": "license",
-        "handler": "adm_stats_handler",
-        "path": "/api/adm/stats/license",
-        "static": false
-      },
-      {
         "action": "message",
         "handler": "adm_stats_handler",
         "path": "/api/adm/stats/message",

@@ -50,8 +50,7 @@ info(Req0) ->
         fun(Field, Default) -> config_ds:get(config_key(Field), Default) end,
         defaults()
     ),
-    Brand = maps:put(<<"edition">>, imboy_license:edition(), normalize(Raw)),
-    elib_response:success(Req0, Brand).
+    elib_response:success(Req0, normalize(Raw)).
 
 %% @doc 品牌字段默认值（缺省 = 开源 imboy 品牌）
 -spec defaults() -> map().

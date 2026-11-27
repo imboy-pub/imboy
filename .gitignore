@@ -96,6 +96,7 @@ temp_exports.txt
 
 # Environment secrets (never commit)
 .env
+.env.test
 # 本地开发变量（scripts/start_node.sh 启动前加载；放 BIGMODEL_API_KEY 等密钥，绝不入库）
 .env.local
 scripts/.env.deploy

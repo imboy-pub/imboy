@@ -83,10 +83,7 @@ register(P) ->
                 end)
             of
                 {ok, ready} ->
-                    case passport_logic:quota_guard() of
-                        ok -> register_account(P, account_ds:allocate());
-                        _ -> {error, account_quota_exceeded}
-                    end;
+                    register_account(P, account_ds:allocate());
                 Error ->
                     Error
             end;

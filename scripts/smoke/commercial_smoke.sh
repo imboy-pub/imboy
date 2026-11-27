@@ -79,7 +79,7 @@ if [ "$HTTP_BRAND" != "200" ]; then
 fi
 
 FRESH="$("$RPC" fresh_check 2>&1 | tail -1)"
-assert_eq "节点跑的是本分支代码（imboy_license:public_info/0 可调用）" "$FRESH" "fresh"
+assert_eq "节点运行当前 passport_logic 和路由 BEAM" "$FRESH" "fresh"
 if [ "$FRESH" != "fresh" ]; then
   echo "节点代码陈旧 —— 先跑 '${RPC} refresh'（或用本分支代码重启节点），否则冒烟结果是假绿" >&2
   exit 1
@@ -89,7 +89,7 @@ MIG_COL="$(psql_q "select column_name from information_schema.columns where tabl
 assert_eq "迁移 00000050 已落库（billing_subscription.owner_uid 存在）" "$MIG_COL" "owner_uid"
 
 # ------------------------------------------------------------
-# 1. 注册 + 2. License quota（同一条链路上的两级断言）
+# 1. 注册
 # ------------------------------------------------------------
 echo "== 1. 注册链路（真实验证码，无旁路） =="
 EMAIL="smoke_$(date +%s)_$$@imboy.local"
@@ -106,29 +106,7 @@ SIGNUP="$(curl -s --max-time 20 -X POST "${BASE_URL}/api/v1/passport/signup" \
   -d "{\"type\":\"email\",\"account\":\"${EMAIL}\",\"pwd\":\"Test1234\",\"code\":\"${CODE}\",\"nickname\":\"smoke\",\"rsa_encrypt\":\"0\"}")"
 SIGNUP_CODE="$(env_code "$SIGNUP")"
 
-echo "== 2. License quota 闸门 =="
-LIC="$("$RPC" license 2>&1)"
-MAX_USERS="$(printf '%s\n' "$LIC" | sed -n 's/^max_users=//p')"
-USER_COUNT="$("$RPC" user_count 2>&1 | tail -1)"
-echo "  · license max_users=${MAX_USERS:-?} current_users=${USER_COUNT:-?}"
-
-for k in edition valid status max_users max_nodes licensee expires_at; do
-  assert_contains "public_info 含白名单字段 ${k}" "$LIC" "${k}="
-done
-for k in license_text signature private_key reason; do
-  assert_not_contains "public_info 不泄漏 ${k}" "$LIC" "${k}="
-done
-
-if [ -n "${MAX_USERS:-}" ] && [ "${MAX_USERS}" != "0" ] && [ "${USER_COUNT:-0}" -ge "${MAX_USERS}" ]; then
-  # 超额：注册必须被 License 闸门挡住（402）
-  assert_eq "超授权上限时注册被 License 闸门拒绝（code=402）" "$SIGNUP_CODE" "402"
-  assert_contains "拒绝文案指向 License" "$(env_msg "$SIGNUP")" "License"
-else
-  assert_eq "配额内注册成功（code=0）" "$SIGNUP_CODE" "0"
-fi
-
-ADM_LIC_HTTP="$(curl -s -o /dev/null -w '%{http_code}' --max-time 10 "${BASE_URL}/api/adm/stats/license")"
-assert_eq "未鉴权访问 /api/adm/stats/license 被拒" "$ADM_LIC_HTTP" "401"
+assert_eq "注册成功（code=0）" "$SIGNUP_CODE" "0"
 
 # ------------------------------------------------------------
 # 3. OIDC
