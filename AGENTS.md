@@ -86,15 +86,15 @@ User → Conversation → Group → Channel → Bot/Service → 可选公域
 
 调用链：`Handler → Logic → DS → Repo → PostgreSQL`，横向 `Lib` 层提供基础设施。
 
-> 数量随开发漂移，以 `find src/<dir> -maxdepth 1 -name '*.erl' | wc -l` 为准（下表截至 2026-06）。
+> 数量随开发漂移，以 `find src/<dir> -maxdepth 1 -name '*.erl' | wc -l` 为准（下表 2026-11-28 实测刷新）。
 
 | 层级 | 目录 | 数量 | 职责 | 文档 |
 |------|------|------|------|------|
-| Handler (API+ADM) | `src/api/` + `src/adm/` | 54+27=81 个 | HTTP/WS 入口、参数验证 | [api](./src/api/CLAUDE.md) / [adm](./src/adm/CLAUDE.md) |
-| Logic | `src/logic/` | 76 个 | 业务逻辑 | [logic](./src/logic/CLAUDE.md) |
-| DS | `src/ds/` | 77 个 | 数据服务、缓存封装 | [ds](./src/ds/CLAUDE.md) |
-| Repo | `src/repo/` | 72 个 | SQL/PostgreSQL 访问 | [repo](./src/repo/CLAUDE.md) |
-| Lib | `src/lib/` | 61 个 | 基础库 (elib_pg, elib_async, elib_retry…) | [lib](./src/lib/CLAUDE.md) |
+| Handler (API+ADM) | `src/api/` + `src/adm/` | 135+45=180 个 | HTTP/WS 入口、参数验证 | [api](./src/api/CLAUDE.md) / [adm](./src/adm/CLAUDE.md) |
+| Logic | `src/logic/` | 230 个 | 业务逻辑 | [logic](./src/logic/CLAUDE.md) |
+| DS | `src/ds/` | 154 个 | 数据服务、缓存封装 | [ds](./src/ds/CLAUDE.md) |
+| Repo | `src/repo/` | 189 个 | SQL/PostgreSQL 访问 | [repo](./src/repo/CLAUDE.md) |
+| Lib | `src/lib/` | 117 个 | 基础库 (elib_pg, elib_async, elib_retry…) | [lib](./src/lib/CLAUDE.md) |
 
 ---
 
@@ -103,7 +103,7 @@ User → Conversation → Group → Channel → Bot/Service → 可选公域
 | 功能 | Handler | Logic | DS | Repo |
 |------|---------|-------|-----|------|
 | 用户管理 | `user_handler` | `user_logic` | `user_ds` | `user_repo` |
-| 认证授权 | `passport_handler` | `passport_logic` | `auth_ds` | `token_repo` |
+| 认证授权 | `passport_handler` | `passport_logic` | `auth_ds` | `token_ds` |
 | 好友管理 | `friend_handler` | `friend_logic` | `friend_ds` | `friend_repo` |
 | 群组管理 | `group_handler` | `group_logic` | `group_ds` | `group_repo` |
 | 消息处理 | `msg_handler` | `msg_c2c_logic` | `message_ds` | `msg_c2c_repo` |

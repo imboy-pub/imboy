@@ -62,9 +62,13 @@
 
 ### 全量备份
 
+> **容器名**：脚本默认 `PG_CONTAINER=imboy_pg18`（开发/测试编排名）。
+> 统一编排的生产容器名为 `prod_imboy_pg18`——生产环境执行备份/恢复必须显式
+> `PG_CONTAINER=prod_imboy_pg18`，否则脚本按容器名探测会落空或打到非生产库。
+
 ```bash
-# 手动执行
-bash scripts/backup_pg.sh --full
+# 手动执行（生产：显式指定容器名）
+PG_CONTAINER=prod_imboy_pg18 bash scripts/backup_pg.sh --full
 
 # Cron 定时（每日 03:00）
 0 3 * * * cd /opt/imboy && bash scripts/backup_pg.sh --full >> /var/log/imboy-backup.log 2>&1
@@ -96,7 +100,9 @@ dropdb imboy_test_restore
 
 > ⚠️ **timescaledb 关键警告**：imboy 核心消息表（`msg_c2c`/`msg_c2g`/`msg_store` 等）是 timescaledb hypertable。
 > 直接 `pg_restore -j 4` 会丢失**全部 hypertable 数据**（报 `chunk ... has no dimension slices`，消息全丢）。
-> **请用 `scripts/restore_pg.sh`**——它已内置 timescaledb `pre_restore()`/`post_restore()` 包裹、危险二次确认与恢复后行数校验。每次演练应在仓库外记录实际提交、源与目标环境、备份文件哈希、消息 ID 集合、附件字节哈希及实测 RTO；历史演练结果不能替代当前环境验证。
+> **请用 `scripts/restore_pg.sh`**——它已内置 timescaledb `pre_restore()`/`post_restore()` 包裹、危险二次确认与恢复后行数校验。
+> 同 backup_pg.sh：默认 `PG_CONTAINER=imboy_pg18`，生产容器名须显式
+> `PG_CONTAINER=prod_imboy_pg18`。每次演练应在仓库外记录实际提交、源与目标环境、备份文件哈希、消息 ID 集合、附件字节哈希及实测 RTO；历史演练结果不能替代当前环境验证。
 >
 > ```bash
 > # 先恢复到测试库验证（不影响生产）
