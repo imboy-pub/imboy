@@ -14,6 +14,7 @@
 | 备份、恢复、升级 | [备份恢复](./guides/operations/deployment/backup-restore.md) · [升级手册](./guides/operations/upgrade-runbook.md) |
 | 对接 REST / WebSocket | [API 格式](./reference/api-format.md) → [REST API 目录](./reference/rest-api-v1-catalog.md) → [WebSocket 协议](./reference/ws-protocol-contract.md) |
 | 理解后端架构 | [架构总览](./architecture/overview.md) → [模块地图](./architecture/module-map.md) → [分层速查](./architecture/module-layer-cheatsheet.md) |
+| 使用 ECC 工程提示词 | [四仓 ECC Prompt Library](./prompts/README.md) · [后端案例](./prompts/ECC_USE_CASES.zh-CN.md) |
 | 对接附件上传/下载 | [direct-v1 直传协议](./architecture/attachment-direct-transfer-v1-protocol.md)（协议族，与旧 V5 并存）· [附件生命周期 V5 合同](./architecture/attachment-lifecycle-v5/02-main-plan.md) · S3 直传改造计划族（V2.x，`docs/architecture/`，实施状态以各计划自标为准） |
 | 审核 E2EE / 合规（E2EE 为二期域，一期 `phase1_delivery` 默认关闭） | [E2EE 概念](./concepts/e2ee.md) → [E2EE 协议](./reference/e2ee-protocol-specification.md) · [E2EE 政策](./compliance/e2ee-policy.md) · [管理端消息访问](./security/admin-message-access.md) · [等保清单](./compliance/mlps2-checklist.md) |
 | 当前正在做什么 | [路线图](https://github.com/imboy-pub/imboy/blob/main/ROADMAP.md) · [CHANGELOG](https://github.com/imboy-pub/imboy/blob/main/CHANGELOG.md) |
@@ -38,7 +39,7 @@
 
 - 操作手册主阵地是 `guides/operations/`；`docs/runbooks/` 收运行手册；`docs/ops/support-matrix.md` 为支持矩阵（被 `scripts/check_release_consistency.sh` 引用，位置固定）。
 - `adr/` 收编号 ADR；E2EE v2 体系（`guides/e2ee/v2/`）内部的编号 ADR 属于该体系，不并入。
-- 稳定架构和接口合同使用 `architecture/`、`api-contracts/`、`reference/`；自动化测试源码及必要合成 fixture 与代码一起维护。
+- 稳定架构和接口合同使用 `architecture/`、`api-contracts/`、`reference/`；可复用的 AI/ECC 提示词模板放在 `prompts/`，一次性任务计划、审查报告、测试报告和运行证据仍放仓外；自动化测试源码及必要合成 fixture 与代码一起维护。
 - 执行计划和 run 证据放在仓外目录；验收工具显式接收计划与 run 路径，禁止依赖开发者机器上的固定路径。
 
 ## 内容状态标注（四态）
