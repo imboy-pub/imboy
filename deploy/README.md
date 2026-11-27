@@ -51,6 +51,8 @@ Use `preflight.sh` for prerequisite checks and `ops.env.example` for scheduled j
 
 - [配置、可选服务、排障和旧部署兼容 / Configuration, optional services, troubleshooting, and legacy installs](../docs/guides/operations/deployment/compose-operations.md)
 - [备份和恢复 / Backup and restore](../docs/guides/operations/deployment/backup-restore.md)
+- [金丝雀/灰度发布 / Canary release](../docs/guides/operations/deployment/canary-release-runbook.md)
+- [PG18 镜像目录换壳升级 / PG18 image directory-swap upgrade](../docs/guides/operations/pg18-image-directory-swap-upgrade.md)
 - [本地开发 / Local development](../docs/guides/operations/deployment/local-development.md)
 
 <a id="rtc-turn-regression"></a>

@@ -16,7 +16,7 @@
 | 理解后端架构 | [架构总览](./architecture/overview.md) → [模块地图](./architecture/module-map.md) → [分层速查](./architecture/module-layer-cheatsheet.md) |
 | 使用 ECC 工程提示词 | [四仓 ECC Prompt Library](https://github.com/imboy-pub/imboy/blob/main/docs/prompts/README.md) · [后端案例](https://github.com/imboy-pub/imboy/blob/main/docs/prompts/ECC_USE_CASES.zh-CN.md) |
 | 对接附件上传/下载 | [direct-v1 直传协议](./architecture/attachment-direct-transfer-v1-protocol.md)（协议族，与旧 V5 并存）· [附件生命周期 V5 合同](./architecture/attachment-lifecycle-v5/02-main-plan.md) · S3 直传改造计划族（V2.x，`docs/architecture/`，实施状态以各计划自标为准） |
-| 审核 E2EE / 合规（E2EE 为二期域，一期 `phase1_delivery` 默认关闭） | [E2EE 概念](./concepts/e2ee.md) → [E2EE 协议](./reference/e2ee-protocol-specification.md) · [E2EE 政策](./compliance/e2ee-policy.md) · [管理端消息访问](./security/admin-message-access.md) · [等保清单](./compliance/mlps2-checklist.md) |
+| 审核 E2EE / 合规（E2EE 为二期域，一期 `phase1_delivery` 默认关闭） | [E2EE 概念](./concepts/e2ee.md) → [E2EE 协议](./reference/e2ee-protocol-specification.md) · [E2EE 政策](./compliance/e2ee-policy.md) · [管理端消息访问](./security/admin-message-access.md) · [已知泄露密钥处置](./security/KNOWN_LEAKED_KEYS.md) · [等保清单](./compliance/mlps2-checklist.md) |
 | 当前正在做什么 | [路线图](https://github.com/imboy-pub/imboy/blob/main/ROADMAP.md) · [CHANGELOG](https://github.com/imboy-pub/imboy/blob/main/CHANGELOG.md) |
 | 查看历史结论 | [已归档](https://github.com/imboy-pub/imboy/blob/main/docs/archive/README.md) |
 
