@@ -25,8 +25,9 @@ for bin in awk cat chmod cmp cp cut date dirname env grep head jq mkdir mktemp m
   ln -s "$tool_path" "$TOOLS_BIN/$bin"
 done
 TEST_PATH="$MOCK_BIN:$TOOLS_BIN"
-cp deploy/install.sh deploy/init-cleanup-db.sh deploy/prepare-backend-runtime.sh deploy/.env.example deploy/docker-compose.community.yml \
-  deploy/docker-compose.uptrace.yml "$FIXTURE/"
+cp deploy/install.sh deploy/init-cleanup-db.sh deploy/prepare-backend-runtime.sh deploy/.env.example "$FIXTURE/"
+cp scripts/test/fixtures/legacy-compose/community.fixture "$FIXTURE/docker-compose.community.yml"
+cp docker-compose.yml "$TMP_ROOT/docker-compose.yml"
 cp deploy/cleanup-db/bootstrap.sql deploy/cleanup-db/verify.sql "$FIXTURE/cleanup-db/"
 cp deploy/nginx/init-letsencrypt.sh "$FIXTURE/nginx/"
 touch "$TMP_ROOT/scripts/sanity_check.sh"
@@ -46,7 +47,7 @@ set_env CS_WIDGET_DOMAIN cs.test.invalid
 set_env RTC_DOMAIN rtc.test.invalid
 set_env TURN_DOMAIN turn.test.invalid
 set_env CERTBOT_EMAIL certbot@test.invalid
-set_env UPTRACE_ENABLED true
+set_env UPTRACE_ENABLED false
 set_env UPTRACE_DOMAIN uptrace.test.invalid
 set_env UPTRACE_ADMIN_EMAIL admin@test.invalid
 set_env IMBOY_PAYMENT_GATEWAY_ENABLED true
@@ -57,6 +58,7 @@ cat >"$MOCK_BIN/docker" <<'MOCK'
 #!/bin/bash
 set -euo pipefail
 printf 'docker %s\n' "$*" >>"$MOCK_LOG"
+printf '%s\n' "${COMPOSE_PROFILES:-}" >>"$MOCK_LOG.profiles"
 # Fixtures contain simple assignments only; read them as data, not source/eval.
 resolved_env() {
   jq -Rn '[inputs | select(test("^[A-Za-z_][A-Za-z0-9_]*=")) |
@@ -66,7 +68,12 @@ config_json() {
   resolved_env | jq '
     . as $e | ($e.BACKEND_IMAGE // "registry.test/backend:z") as $image |
     {services: {
+      garage: {image: "registry.test/garage:z", environment: {
+        GARAGE_DEFAULT_ACCESS_KEY: $e.IMBOY_GARAGE_ACCESS_KEY,
+        GARAGE_DEFAULT_SECRET_KEY: $e.IMBOY_GARAGE_SECRET_KEY}},
       imboy_backend: {image: $image, environment: {
+        IMBOY_GARAGE_ACCESS_KEY: $e.IMBOY_GARAGE_ACCESS_KEY,
+        IMBOY_GARAGE_SECRET_KEY: $e.IMBOY_GARAGE_SECRET_KEY,
         IMBOY_BASE_URL: ("https://" + $e.API_DOMAIN),
         IMBOY_WIDGET_BASE_URL: ("https://" + $e.CS_WIDGET_DOMAIN),
         IMBOY_WIDGET_DOMAIN: $e.CS_WIDGET_DOMAIN,
@@ -89,9 +96,19 @@ config_json() {
       imboy_pg18: {environment: {POSTGRES_USER: $e.POSTGRES_USER,
         POSTGRES_PASSWORD: $e.POSTGRES_PASSWORD, POSTGRES_DB: $e.POSTGRES_DB}},
       imboy_grafana: {environment: {GF_SECURITY_ADMIN_PASSWORD: $e.GRAFANA_ADMIN_PASSWORD}}
-    }}' | jq "${MOCK_JSON_FILTER:-.}"
+    }}' | jq "${MOCK_JSON_FILTER:-.}" | jq '
+      if (env.IMBOY_DEPLOY_PROFILE // "") == "" then . else
+        .services |= with_entries(
+          .value.container_name = .key |
+          .value.image //= "registry.test/service:z" |
+          .key = ("prod_" + .key +
+                  if env.IMBOY_DEPLOY_PROFILE == "prod-turn" and .key == "imboy_nginx"
+                  then "_turn" else "" end)
+        )
+      end'
 }
 case " $* " in
+  *" ps -a --format "*) printf '%s' "${MOCK_EXISTING_CONTAINERS:-}"; exit 0 ;;
   *" compose version "*) exit 0 ;;
   *" compose "*" config --environment "*)
     if [ -n "${MOCK_ENV_FILE:-}" ]; then cat "$MOCK_ENV_FILE"; else
@@ -117,13 +134,13 @@ case " $* " in
     [ "${MOCK_CREATE_FAIL:-0}" != 1 ] || exit 1
     echo test-edge-probe; exit 0 ;;
   *" start -a test-edge-probe "*) [ "${MOCK_PROBE_FAIL:-0}" != 1 ]; exit ;;
-  *" compose "*" images -q imboy_backend "*) echo test-backend-image-id; exit 0 ;;
+  *" compose "*" images -q imboy_backend "*|*" images -q prod_imboy_backend "*) echo test-backend-image-id; exit 0 ;;
   *" inspect --format "*) echo 'ghcr.io/imboy-pub/imboy-backend@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'; exit 0 ;;
   *" compose "*" exec "*"imboy_ctl adm create "*)
     printf '%s\n' "$IMBOY_CTL_NODE" > "$MOCK_LOG.ctl-node"
     [ "${MOCK_ADMIN_FAIL:-0}" != 1 ] || { echo 'mock admin setup failed'; exit 1; }
     printf 'ADMIN_ID=1000000001\nCREATED=true\n'; exit 0 ;;
-  *" compose "*" exec -T imboy_nginx wget "*)
+  *" compose "*" exec -T imboy_nginx wget "*|*" compose "*" exec -T prod_imboy_nginx wget "*)
     # Return only the challenge file requested by the bootstrap readiness probe.
     url=""
     for arg in "$@"; do
@@ -132,7 +149,7 @@ case " $* " in
     [ -n "$url" ] || exit 2
     cat "${DATA_DIR:-./data}/certbot/www/${url#http://127.0.0.1/}"
     exit 0 ;;
-  *" compose "*" run "*" imboy_certbot "*)
+  *" compose "*" run "*" imboy_certbot "*|*" compose "*" run "*" prod_imboy_certbot "*)
     previous=""
     domain=""
     for arg in "$@"; do
@@ -192,12 +209,13 @@ assert_match() {
 }
 INSTALL_EXTRA_ARGS=()
 INSTALL_BASH_ARGS=()
+INSTALL_COMPOSE_ARGS=(--legacy-compose)
 run_install() {
   : >"$MOCK_LOG"; : >"$MOCK_LOG.probes"
   rm -f "$MOCK_LOG.count" "$MOCK_LOG.domains" "$MOCK_LOG.ctl-node"
   env -i PATH="$TEST_PATH" MOCK_LOG="$MOCK_LOG" \
     IMBOY_PASSWORD_SALT=TEST_SECRET_MUST_NOT_LEAK_000000000000 "$@" \
-    /bin/bash "${INSTALL_BASH_ARGS[@]}" "$FIXTURE/install.sh" --edition community --yes "${INSTALL_EXTRA_ARGS[@]}" >"$OUTPUT" 2>&1
+    /bin/bash "${INSTALL_BASH_ARGS[@]}" "$FIXTURE/install.sh" --edition community --yes "${INSTALL_COMPOSE_ARGS[@]}" "${INSTALL_EXTRA_ARGS[@]}" >"$OUTPUT" 2>&1
 }
 reject_before_start() {
   local description="$1" reason="$2"; shift 2
@@ -236,7 +254,6 @@ fi
 
 assert_match "已有内部密钥不被覆盖" '^JWT_KEY=keep_existing_jwt_key_1234567890123456$' "$FIXTURE/.env"
 assert_match "占位内部密钥被自动补齐" '^POSTGRES_PASSWORD=[0-9a-f]{32}$' "$FIXTURE/.env"
-assert_match "Uptrace 密钥被自动补齐" '^UPTRACE_SERVICE_SECRET=[0-9a-f]{48}$' "$FIXTURE/.env"
 assert_match "支付宝回调按 API_DOMAIN 派生" '^IMBOY_ALIPAY_NOTIFY_URL=https://api\.test\.invalid/api/v1/payment/callback/alipay$' "$FIXTURE/.env"
 assert_match "微信回调按 API_DOMAIN 派生" '^IMBOY_WECHAT_NOTIFY_URL=https://api\.test\.invalid/api/v1/payment/callback/wechat$' "$FIXTURE/.env"
 # R0 容量参数：默认值落 .env；ERL_FLAGS 含空格，必须带引号写入——裸值会被
@@ -248,7 +265,7 @@ if sourceable_env "+P 65536 +Q 65536"; then
 else
   bad "生成的 .env 可被 bash source 且 ERL_FLAGS 值完整" "$(grep -n '^IMBOY_ERL_FLAGS=' "$FIXTURE/.env")"
 fi
-assert_match "启动加载 Uptrace overlay" 'docker compose -f docker-compose\.community\.yml -f docker-compose\.uptrace\.yml up -d' "$MOCK_LOG"
+assert_match "旧兼容入口只加载基础编排" 'docker compose -f docker-compose\.community\.yml up -d' "$MOCK_LOG"
 pull_line="$(grep -n ' pull --policy missing$' "$MOCK_LOG" | head -1 | cut -d: -f1)"
 up_line="$(grep -n ' up -d$' "$MOCK_LOG" | head -1 | cut -d: -f1)"
 if [ -n "$pull_line" ] && [ -n "$up_line" ] && [ "$pull_line" -lt "$up_line" ]; then
@@ -262,10 +279,10 @@ if [ -n "$runtime_line" ] && [ "$pull_line" -lt "$runtime_line" ] && [ "$runtime
 else
   bad "后端目录权限准备顺序" "未满足 pull → permissions → up"
 fi
-assert_match "权限准备沿用同一 Compose 文件集合" 'args=prepare-backend-runtime.sh -f docker-compose\.community\.yml -f docker-compose\.uptrace\.yml$' "$MOCK_LOG"
-assert_match "TLS 使用同一 Compose 文件集合" 'bash COMPOSE_FILES=docker-compose\.community\.yml docker-compose\.uptrace\.yml args=nginx/init-letsencrypt\.sh' "$MOCK_LOG"
-assert_match "sanity 使用同一 Compose 文件集合" 'args=\.\./scripts/sanity_check\.sh --compose-file docker-compose\.community\.yml --compose-file docker-compose\.uptrace\.yml' "$MOCK_LOG"
-assert_match "默认只验证清理账号，沿用完整 Compose 文件集合" 'bash COMPOSE_FILES=docker-compose\.community\.yml docker-compose\.uptrace\.yml args=init-cleanup-db\.sh$' "$MOCK_LOG"
+assert_match "权限准备沿用同一 Compose 文件集合" 'args=prepare-backend-runtime.sh -f docker-compose\.community\.yml$' "$MOCK_LOG"
+assert_match "TLS 使用同一 Compose 文件集合" 'bash COMPOSE_FILES=docker-compose\.community\.yml args=nginx/init-letsencrypt\.sh' "$MOCK_LOG"
+assert_match "sanity 使用同一 Compose 文件集合" 'args=\.\./scripts/sanity_check\.sh --compose-file docker-compose\.community\.yml$' "$MOCK_LOG"
+assert_match "默认只验证清理账号，沿用完整 Compose 文件集合" 'bash COMPOSE_FILES=docker-compose\.community\.yml args=init-cleanup-db\.sh$' "$MOCK_LOG"
 health_line="$(grep -n '^curl healthz$' "$MOCK_LOG" | head -1 | cut -d: -f1)"
 cleanup_line="$(grep -n 'args=init-cleanup-db\.sh$' "$MOCK_LOG" | head -1 | cut -d: -f1)"
 sanity_line="$(grep -n 'args=\.\./scripts/sanity_check\.sh ' "$MOCK_LOG" | head -1 | cut -d: -f1)"
@@ -276,9 +293,10 @@ else
   bad "清理账号门禁顺序" "未满足 healthz → cleanup → sanity"
 fi
 
+set_env UPTRACE_ENABLED true
 : >"$MOCK_LOG"
 if env -i PATH="$TEST_PATH" MOCK_LOG="$MOCK_LOG" \
-    COMPOSE_FILES="docker-compose.community.yml docker-compose.uptrace.yml" \
+    COMPOSE_FILES="../docker-compose.yml" \
     /bin/bash "$FIXTURE/nginx/init-letsencrypt.sh" >"$TMP_ROOT/tls.log" 2>&1; then
   ok "五个必选域名和 Uptrace 可完成首次 TLS 签发控制流"
 else
@@ -290,6 +308,7 @@ for domain in cs rtc turn; do
   assert_match "$domain 域名证书存在" '^issued fullchain$' "$FIXTURE/data/certbot/conf/live/$domain.test.invalid/fullchain.pem"
 done
 assert_match "Uptrace 域名证书存在" '^issued fullchain$' "$FIXTURE/data/certbot/conf/live/uptrace.test.invalid/fullchain.pem"
+set_env UPTRACE_ENABLED false
 if grep -q 'docker .*openssl req' "$MOCK_LOG"; then
   bad "OpenSSL 不应被误当成 Certbot 子命令" "$(grep 'docker .*openssl req' "$MOCK_LOG")"
 else
@@ -333,8 +352,11 @@ if run_install && cmp -s "$FIXTURE/.env" "$TMP_ROOT/env.before" \
 else
   bad "重复安装数据保护" "重跑失败或既有内容变化"
 fi
-if [ "$(stat -c '%a' "$FIXTURE/.env")" = 600 ] \
-    && [ "$(stat -c '%a' "$FIXTURE/data/backend_priv/keys/login_rsa_priv.pem")" = 600 ]; then
+file_mode() {
+  stat -c '%a' "$1" 2>/dev/null || stat -f '%Lp' "$1"
+}
+if [ "$(file_mode "$FIXTURE/.env")" = 600 ] \
+    && [ "$(file_mode "$FIXTURE/data/backend_priv/keys/login_rsa_priv.pem")" = 600 ]; then
   ok ".env 和 RSA 私钥保持 0600"
 else
   bad "敏感文件权限" "不是 0600"
@@ -344,7 +366,7 @@ fi
 # The helper itself is mocked here; real LOGIN/password/role checks need PostgreSQL.
 INSTALL_EXTRA_ARGS=(--init-cleanup-db)
 if run_install; then
-  assert_match "显式初始化传入 --create 并沿用 Compose 文件集合" 'bash COMPOSE_FILES=docker-compose\.community\.yml docker-compose\.uptrace\.yml args=init-cleanup-db\.sh --create$' "$MOCK_LOG"
+  assert_match "显式初始化传入 --create 并沿用 Compose 文件集合" 'bash COMPOSE_FILES=docker-compose\.community\.yml args=init-cleanup-db\.sh --create$' "$MOCK_LOG"
 else
   bad "显式清理账号初始化控制流" "安装器未成功调用 helper"
 fi
@@ -493,8 +515,8 @@ echo "== Compose 环境覆盖与字面值解析 =="
 printf 'services: {}\n' > "$FIXTURE/runtime-test.yml"
 printf 'services: {}\n' > "$FIXTURE/second-test.yml"
 INSTALL_EXTRA_ARGS=(--compose-file runtime-test.yml "--compose-file=$FIXTURE/second-test.yml")
-expected_files="docker-compose.community.yml docker-compose.uptrace.yml $FIXTURE/runtime-test.yml $FIXTURE/second-test.yml"
-expected_compose="docker compose -f docker-compose.community.yml -f docker-compose.uptrace.yml -f $FIXTURE/runtime-test.yml -f $FIXTURE/second-test.yml"
+expected_files="docker-compose.community.yml $FIXTURE/runtime-test.yml $FIXTURE/second-test.yml"
+expected_compose="docker compose -f docker-compose.community.yml -f $FIXTURE/runtime-test.yml -f $FIXTURE/second-test.yml"
 if run_install; then
   overlay_ok=1
   for command in 'config --environment' 'config --format json' 'pull --policy missing' 'up -d'; do
@@ -502,7 +524,7 @@ if run_install; then
   done
   grep -Fxq "bash COMPOSE_FILES=$expected_files args=nginx/init-letsencrypt.sh" "$MOCK_LOG" || overlay_ok=0
   grep -Fxq "bash COMPOSE_FILES=$expected_files args=init-cleanup-db.sh" "$MOCK_LOG" || overlay_ok=0
-  grep -Fq "args=../scripts/sanity_check.sh --compose-file docker-compose.community.yml --compose-file docker-compose.uptrace.yml --compose-file $FIXTURE/runtime-test.yml --compose-file $FIXTURE/second-test.yml" "$MOCK_LOG" || overlay_ok=0
+  grep -Fq "args=../scripts/sanity_check.sh --compose-file docker-compose.community.yml --compose-file $FIXTURE/runtime-test.yml --compose-file $FIXTURE/second-test.yml" "$MOCK_LOG" || overlay_ok=0
   if [ "$overlay_ok" = 1 ]; then ok "两个附加 overlay 保留基准/强制集合并贯穿配置、拉取、启动、TLS、清理和自检";
   else bad "附加 overlay 一致性" "至少一个阶段丢失原有或附加文件"; fi
 else bad "附加 overlay" "有效 overlay 被拒绝"; fi
@@ -624,6 +646,65 @@ for stage in TLS HEALTH; do
     ok "$stage 失败时不执行清理账号步骤或 sanity"
   fi
 done
+
+echo "== 根 Compose 安装入口 =="
+INSTALL_COMPOSE_ARGS=()
+INSTALL_EXTRA_ARGS=()
+set_env UPTRACE_ENABLED false
+if run_install; then
+  assert_match "根 Compose 在启动前检查 DNS" 'args=preflight.sh --docker --edition community --dns' "$MOCK_LOG"
+  assert_match "根 Compose 使用固定生产项目和 profile" 'compose --project-name imboy --profile prod --env-file .env -f ../docker-compose.yml up -d$' "$MOCK_LOG"
+  assert_match "根 Compose 传递至证书初始化" 'COMPOSE_FILES=../docker-compose.yml args=nginx/init-letsencrypt.sh' "$MOCK_LOG"
+  assert_match "根 Compose 传递至部署自检" 'args=../scripts/sanity_check.sh --compose-file ../docker-compose.yml' "$MOCK_LOG"
+  tls_line="$(grep -n 'args=nginx/init-letsencrypt.sh' "$MOCK_LOG" | head -1 | cut -d: -f1)"
+  startup_line="$(grep -n ' up -d$' "$MOCK_LOG" | head -1 | cut -d: -f1)"
+  if [ -n "$tls_line" ] && [ -n "$startup_line" ] && [ "$tls_line" -lt "$startup_line" ]; then
+    ok "根 Compose 在启动完整服务组合前初始化 TLS"
+  else
+    bad "根 Compose 启动顺序" "TLS 未先于完整服务组合"
+  fi
+  assert_match "安装成功记录阶段耗时" '^\[install-timing\] stage=release_identity elapsed_s=[0-9]+ total_s=[0-9]+ status=0$' "$OUTPUT"
+else
+  bad "根 Compose 控制流" "$(cat "$OUTPUT")"
+fi
+set_env UPTRACE_ENABLED true
+: > "$MOCK_LOG.profiles"
+if run_install; then
+  assert_match "Uptrace 用根 profile 启用" '^uptrace$' "$MOCK_LOG.profiles"
+  assert_match "Uptrace 密钥被自动补齐" '^UPTRACE_SERVICE_SECRET=[0-9a-f]{48}$' "$FIXTURE/.env"
+else
+  bad "根 Uptrace profile 安装" "$(tail -15 "$OUTPUT")"
+fi
+set_env UPTRACE_ENABLED false
+root_overlay="$FIXTURE/golden-runtime.yml"
+printf 'services: {}\n' > "$root_overlay"
+INSTALL_COMPOSE_ARGS=(--unified-compose --compose-file "$root_overlay")
+if run_install; then
+  assert_match "Golden overlay 叠加仓根生产 profile" "compose --project-name imboy --profile prod --env-file .env -f ../docker-compose.yml -f .*golden-runtime.yml up -d$" "$MOCK_LOG"
+  assert_match "Golden overlay 同步传递至 TLS" "COMPOSE_FILES=../docker-compose.yml .*golden-runtime.yml args=nginx/init-letsencrypt.sh" "$MOCK_LOG"
+  assert_match "Golden overlay 同步传递至部署自检" "args=../scripts/sanity_check.sh --compose-file ../docker-compose.yml --compose-file .*golden-runtime.yml" "$MOCK_LOG"
+else
+  bad "根 Compose 与 Golden overlay 控制流" "$(cat "$OUTPUT")"
+fi
+INSTALL_COMPOSE_ARGS=()
+reject_before_start "同名旧容器在启动前被识别" "容器 imboy_backend 已属于" \
+  MOCK_EXISTING_CONTAINERS=$'imboy_backend\timboy\timboy_backend'
+reject_before_start "根 Compose 禁止后端和 Garage 凭据不一致" "Missing production image version or Garage credentials" \
+  'MOCK_JSON_FILTER=.services.garage.environment.GARAGE_DEFAULT_SECRET_KEY = "mismatch"'
+reject_before_start "禁止同时启用两套生产入口" "Invalid additional production profiles" \
+  COMPOSE_PROFILES=prod-turn
+assert_match "安装失败记录退出码与阶段" '^\[install-timing\] stage=configuration elapsed_s=[0-9]+ total_s=[0-9]+ status=1$' "$OUTPUT"
+
+mv "$FIXTURE/.env" "$TMP_ROOT/configured.env"
+run_install
+setup_status=$?
+if [ "$setup_status" -eq 2 ] && [ -f "$FIXTURE/.env" ] \
+    && ! grep -Eq ' compose .* (pull|up) ' "$MOCK_LOG"; then
+  ok "无配置的非交互根 Compose 生成模板并返回未安装状态"
+else
+  bad "无配置的非交互根 Compose" "exit=$setup_status"
+fi
+mv "$TMP_ROOT/configured.env" "$FIXTURE/.env"
 
 echo "== 结果：PASS=${PASS} FAIL=${FAIL} =="
 [ "$FAIL" -eq 0 ]

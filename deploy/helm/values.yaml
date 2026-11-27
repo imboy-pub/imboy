@@ -16,7 +16,7 @@ backend:
   enabled: true
   # ⚠️ 固定为 1。后端是有状态的 Erlang 分布式节点，跨 Pod 的 syn 进程注册与消息
   # 路由从未在生产集群验证过，多副本下会话可能落在不同 Pod 而消息投递不确定。
-  # 集群水平扩展是路线图项，验证通过前不要调大（见 deploy/helm/README.md 顶部警示）。
+  # 集群水平扩展是路线图项，验证通过前不要调大（见 docs/guides/operations/deployment/helm.md 顶部警示）。
   # TSID 附注（V10）：多副本且共享 nodeId 意味着同 CombinedNode 双写
   # generator——V10 无跨实例互斥锁，不会拒绝第二个实例，会直接产生 ID
   # 碰撞。副本数恒为 1，绝不以此"试锁"。

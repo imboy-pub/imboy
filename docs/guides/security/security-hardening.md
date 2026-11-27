@@ -264,21 +264,10 @@ ssl_session_tickets off;
 ]}
 ```
 
-### 5.2 Loki 日志保留配置
+### 5.2 日志保留 / Log retention
 
-在 `deploy/loki/loki-config.yml` 中设置：
-
-```yaml
-limits_config:
-  retention_period: 180d   # 6 个月，等保要求
-
-compactor:
-  working_directory: /loki/compactor
-  shared_store: filesystem
-  retention_enabled: true
-  retention_delete_delay: 2h
-  retention_delete_worker_count: 150
-```
+部署方按审计要求配置日志留存，并定期验证最旧可检索审计事件的时间。
+Configure log retention for your audit requirements and periodically verify the age of the oldest retrievable audit event.
 
 ### 5.3 关键审计事件清单
 

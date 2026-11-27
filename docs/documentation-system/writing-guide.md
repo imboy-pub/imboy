@@ -1,6 +1,6 @@
 # IMBoy 文档写作规范
 
-> **类型**：参考 · **读者**：所有文档作者 · **版本**：v1.0 · **最后更新**：2026-07-24
+> **类型**：参考 · **读者**：所有文档作者 · **版本**：v1.1 · **最后更新**：2026-11-27
 
 写文档前花 3 分钟读完本规范。Review 时按此验收。
 
@@ -13,6 +13,17 @@
 3. **不假设读者有上下文**。每篇文档要么自足，要么在开头明确链接前置阅读。
 4. **文档随代码同版本**。PR 改行为，同 PR 改文档。过期文档标注归档，不删除。
 5. **先写结构再写正文**。先列大纲（标题树），确认流向正确后再填内容。
+
+### 部署目录分工 / Deployment directory responsibilities
+
+| 目录 / Directory | 内容 / Contents |
+|---|---|
+| `docs/` | 回答如何部署、配置和运维。安装步骤、配置说明、升级恢复和故障排查归入这里。 / Explains how to deploy, configure, and operate IMBoy. Keep installation, configuration, upgrade, recovery, and troubleshooting guides here. |
+| `deploy/` | 存放实际参与部署的脚本、配置模板、Docker 资源和自动化资产。 / Holds scripts, configuration templates, Docker resources, and automation assets used during deployment. |
+
+`deploy/README.md` 可保留简短的启动入口和链接，详细步骤以 `docs/` 中的运维指南为准。交付包需要离线说明时，从对应指南随包导出。
+
+`deploy/README.md` may provide a short entry point and links. Maintain detailed instructions in the operations guides under `docs/`. Export the relevant guides with packages that need offline instructions.
 
 ## 2. 语言与语气
 

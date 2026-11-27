@@ -33,8 +33,15 @@ assert_not_grep() {
 
 # ── fixture：把 preflight.sh 复制进临时目录（它从自己所在目录读 .env）─────────
 FIXTURE="$TMP_ROOT/deploy"
-mkdir -p "$FIXTURE"
+MOCK_BIN="$TMP_ROOT/bin"
+mkdir -p "$FIXTURE" "$MOCK_BIN"
 cp deploy/preflight.sh "$FIXTURE/preflight.sh"
+cat > "$MOCK_BIN/df" <<'MOCK'
+#!/bin/sh
+printf 'Filesystem 1024-blocks Used Available Capacity Mounted on\n'
+printf 'fixture 33554432 1024 %s 1%% /\n' "${MOCK_DISK_KB:-25165824}"
+MOCK
+chmod +x "$MOCK_BIN/df"
 
 # preflight 正向基线 .env（五个域名齐全；.test.invalid 是 RFC 保留域，永不触网）
 cat > "$FIXTURE/.env" <<'ENV'
@@ -97,7 +104,9 @@ run_preflight() {
   # 真实调用形态：在 deploy 目录内执行（DATA_DIR 的相对路径以此为基准）
   # 只读 fixture；宿主导出的密钥不能填回负例删除的值，也不能开启真实 DNS。
   ( cd "$FIXTURE" && env -i PATH="${MOCK_BIN:+$MOCK_BIN:}$PATH" \
-      MOCK_DNS_OK="${MOCK_DNS_OK:-0}" MOCK_SS_3478="${MOCK_SS_3478:-0}" \
+      MOCK_DISK_KB="${MOCK_DISK_KB:-}" \
+      MOCK_DNS_OK="${MOCK_DNS_OK:-0}" MOCK_SS_3478="${MOCK_SS_3478:-0}" MOCK_TURN_OWNER="${MOCK_TURN_OWNER:-}" \
+      IMBOY_DEPLOY_PROFILE="${IMBOY_DEPLOY_PROFILE:-}" IMBOY_BOOTSTRAP_TURN_CERT="${IMBOY_BOOTSTRAP_TURN_CERT:-}" \
       ./preflight.sh --edition community "$@" ) \
     >"$TMP_ROOT/out.log" 2>&1
   echo $?
@@ -107,6 +116,10 @@ echo "== A01 preflight 五域配置中的 RTC/TURN 正负例 =="
 
 RC="$(run_preflight)"
 assert_rc 0 "$RC" "正向：五域齐全 + TURN 关闭 → 通过（exit 0）"
+
+RC="$(MOCK_DISK_KB=9437184 run_preflight)"
+assert_rc 1 "$RC" "负向：可用磁盘低于最低要求 → 拒绝"
+assert_grep "低磁盘空间有明确报错" '可用磁盘 9GB < 10GB' "$TMP_ROOT/out.log"
 
 del_env_line RTC_DOMAIN
 RC="$(run_preflight)"
@@ -139,8 +152,6 @@ assert_grep "RTC 占位域有明确报错" 'RTC_DOMAIN 仍为占位符值' "$TMP
 set_env_line RTC_DOMAIN "rtc.test.invalid"
 
 # ── DNS 开关：mock 解析器（不触网）────────────────────────────────────────────
-MOCK_BIN="$TMP_ROOT/bin"
-mkdir -p "$MOCK_BIN"
 cat > "$MOCK_BIN/getent" <<'MOCK'
 #!/bin/sh
 # MOCK_DNS_OK=1 时一切解析成功；否则解析失败（模拟无 A 记录）
@@ -153,7 +164,12 @@ cat > "$MOCK_BIN/ss" <<'MOCK'
 [ "${MOCK_SS_3478:-0}" = 1 ] && printf 'udp   UNCONN 0 0 0.0.0.0:3478 0.0.0.0:*\n'
 exit 0
 MOCK
-chmod +x "$MOCK_BIN/getent" "$MOCK_BIN/ss"
+cat > "$MOCK_BIN/docker" <<'MOCK'
+#!/bin/sh
+[ "$1" = inspect ] && [ -n "${MOCK_TURN_OWNER:-}" ] || exit 1
+case "$*" in *3478/udp*) printf '%s 3478\n' "$MOCK_TURN_OWNER";; *) exit 1;; esac
+MOCK
+chmod +x "$MOCK_BIN/getent" "$MOCK_BIN/ss" "$MOCK_BIN/docker"
 
 RC="$(run_preflight --dns)"
 assert_rc 1 "$RC" "DNS 开关开启 + 无 A 记录 → 拒绝（fail-closed）"
@@ -177,6 +193,13 @@ RC="$(run_preflight)"
 assert_rc 1 "$RC" "负向：TURN 开启但证书未就绪 → 拒绝（两段式首装提示）"
 assert_grep "证书未就绪有指引" 'TURN TLS 证书未就绪' "$TMP_ROOT/out.log"
 
+RC="$(IMBOY_DEPLOY_PROFILE=prod-turn IMBOY_BOOTSTRAP_TURN_CERT=1 run_preflight)"
+assert_rc 0 "$RC" "全新根 Compose 可在启动前签发内置 TURN 证书"
+set_env_line LIVEKIT_TURN_CERT_DIR "./missing-external-cert"
+RC="$(IMBOY_DEPLOY_PROFILE=prod-turn IMBOY_BOOTSTRAP_TURN_CERT=1 run_preflight)"
+assert_rc 1 "$RC" "缺失的外部 TURN 证书必须拒绝启动"
+del_env_line LIVEKIT_TURN_CERT_DIR
+
 TURN_CERT_DIR="$FIXTURE/data/certbot/conf/live/turn.test.invalid"
 mkdir -p "$TURN_CERT_DIR"
 printf 'cert\n' > "$TURN_CERT_DIR/fullchain.pem"
@@ -184,6 +207,11 @@ printf 'key\n'  > "$TURN_CERT_DIR/privkey.pem"
 RC="$(MOCK_SS_3478=1 run_preflight)"
 assert_rc 1 "$RC" "负向：TURN 开启 + 3478 被旧 TURN 占用 → 拒绝（不得双活）"
 assert_grep "双活有明确报错" '端口 3478.*已被占用' "$TMP_ROOT/out.log"
+
+RC="$(MOCK_SS_3478=1 MOCK_TURN_OWNER=imboy/imboy_livekit run_preflight)"
+assert_rc 0 "$RC" "重跑：当前 Compose LiveKit 持有 3478，允许继续"
+RC="$(MOCK_SS_3478=1 MOCK_TURN_OWNER=other/imboy_livekit run_preflight)"
+assert_rc 1 "$RC" "其他 Compose 项目持有 3478，仍拒绝启动"
 
 RC="$(run_preflight)"
 assert_rc 0 "$RC" "正向：TURN 开启 + 证书就绪 + 端口空闲 → 通过"
@@ -261,8 +289,10 @@ LIVEKIT_TURN_CERT_DIR=/tmp/imboy-fake-turn-certs
 ENV
 printf 'IMBOY_VERSION=%s\n' "$(cat VERSION)" >> "$ENV_FILE"
 
-BASE_YML="deploy/docker-compose.community.yml"
-TURN_YML="deploy/docker-compose.livekit-turn.yml"
+BASE_YML="$FIXTURE/docker-compose.community.yml"
+TURN_YML="$FIXTURE/docker-compose.livekit-turn.yml"
+cp scripts/test/fixtures/legacy-compose/community.fixture "$BASE_YML"
+cp scripts/test/fixtures/legacy-compose/livekit-turn.fixture "$TURN_YML"
 RENDER="$TMP_ROOT/render-full.yml"
 
 if "${COMPOSE_ENV[@]}" docker compose --env-file "$ENV_FILE" \

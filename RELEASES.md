@@ -5,14 +5,10 @@ IMBoy 版本历史与升级说明。**升级前必读**：先在下表找到目�
 
 - 镜像版本策略：compose 镜像引用 pin 与 git tag 强一致的 semver tag（`IMBOY_VERSION`），禁止 `latest`。
 - 每个正式版本的 GitHub Release 说明会附 Release Identity 三元组（见下节），用于核验「装的正是被验证过的那一个」。
-- 每版发布流程受发布工程计划（Golden Gates）的门禁约束：Golden Install（全新安装门禁）与 Golden Upgrade（升级门禁）双绿才允许打正式 tag 与发布。
 
 ## 当前状态
 
-**IMBoy 当前尚无正式 semver 发布。** 首个正式版本将在 Golden Install + Golden Upgrade
-双门禁全绿后发布；届时本文件会补齐该版本行与对应的升级说明小节。在此之前的
-`1.0.0-alpha.*` / `1.0.0-rc.*` 等版本号均为开发过程中的内部版本，不构成正式发布，
-不建议直接用于生产。
+社区版交付和公开发布已下线。商务部署使用单独交付的配置。
 
 ## Release Identity（三元组）
 
@@ -60,10 +56,10 @@ cd deploy
 # 1) 升级前备份（见第 4 节）
 # 2) 修改 .env 的 IMBOY_VERSION 为目标版本（单一版本来源，镜像 tag 由它插值）
 # 3) 拉新镜像并滚动更新（社区版示例；商务版按 deploy/README.md 叠加 sales-policy overlay）
-docker compose -f docker-compose.community.yml pull
-docker compose -f docker-compose.community.yml up -d
+docker compose --env-file .env --profile prod -f ../docker-compose.yml pull
+docker compose --env-file .env --profile prod -f ../docker-compose.yml up -d
 # 4) 观察迁移与启动
-docker compose -f docker-compose.community.yml logs -f imboy_backend
+docker compose --env-file .env --profile prod -f ../docker-compose.yml logs -f prod_imboy_backend
 ```
 
 日志出现 `started on port 9800` 即就绪；首次启动需等待 PG 健康检查与迁移，约 30-60 秒。

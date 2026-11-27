@@ -60,14 +60,14 @@ classes:
 
   # ─── 可观测性日志/指标（有实证配置） ─────────────────────────
   - id: logs_observability
-    description: 服务日志（Loki）
-    storage: loki
+    description: 服务运行日志
+    storage: Docker json-file 和后端持久化日志目录
     duration: 180d
-    trigger: ingested_at
+    trigger: recorded_at
     action: delete
-    evidence: deploy/loki/loki.yml retention_period=4320h；等保2.0三级审计日志≥6个月
-    status: evidence-backed
+    status: pending-owner
     owner: ops
+    notes: 180d 为待落实的策略目标。容器轮转按大小和份数配置，部署方须另行确认实际保留时长。
 
   - id: metrics_prometheus
     description: 指标（Prometheus TSDB）
@@ -75,7 +75,7 @@ classes:
     duration: 180d
     trigger: sample_time
     action: delete
-    evidence: deploy/docker-compose.community.yml --storage.tsdb.retention.time=180d
+    evidence: docker-compose.yml --storage.tsdb.retention.time=180d
     status: evidence-backed
     owner: ops
 

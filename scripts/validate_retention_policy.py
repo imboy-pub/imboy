@@ -7,7 +7,7 @@
 3. 红线：禁止 per-country 分支（不得出现 country 字段）；
    legal_hold 必须显式 unsupported（未经 counsel 设计不得开启）；
 4. 实证一致性：注册表里 evidence-backed 条目的 duration 必须与
-   deploy/loki/loki.yml、Prometheus 启动参数、backup_pg.sh 的实际配置一致。
+   旧版本使用的 Loki 配置、Prometheus 启动参数、backup_pg.sh 的实际配置一致。
 
 用法:
     python3 scripts/validate_retention_policy.py [--root PATH]
@@ -27,8 +27,7 @@ except ImportError:  # pragma: no cover
 ROOT = Path(__file__).resolve().parents[1]
 POLICY = ROOT / "docs/compliance/retention-policy.yml"
 
-LOKI_YML = ROOT / "deploy/loki/loki.yml"
-PROMETHEUS_COMPOSE = ROOT / "deploy/docker-compose.community.yml"
+PROMETHEUS_COMPOSE = ROOT / "docker-compose.yml"
 BACKUP_PG_SH = ROOT / "scripts/backup_pg.sh"
 
 REQUIRED_CLASSES = {
@@ -105,27 +104,30 @@ def validate_consistency(policy: dict, root: Path = ROOT) -> list:
     errors = []
     by_id = {c.get("id"): c for c in policy.get("classes", [])}
 
-    loki_text = _read(root / "deploy/loki/loki.yml")
-    m = re.search(r"retention_period:\s*(\d+)h", loki_text)
-    if not m:
-        errors.append("deploy/loki/loki.yml 未找到 retention_period（实证缺失）")
-    else:
-        expect = duration_days(by_id, "logs_observability")
-        actual = int(m.group(1)) // 24
-        if expect is not None and expect != actual:
-            errors.append(f"logs_observability 注册 {expect}d 与 Loki 实配 {actual}d 不一致")
-        if re.search(r"30\s*天|30\s*days", loki_text):
-            errors.append("deploy/loki/loki.yml 注释仍含与 180d 冲突的“30 天”表述（T-01 已修，防回归）")
+    if by_id.get("logs_observability", {}).get("status") == "evidence-backed":
+        loki_text = _read(root / "deploy/loki/loki.yml")
+        m = re.search(r"retention_period:\s*(\d+)h", loki_text)
+        if not m:
+            errors.append("deploy/loki/loki.yml 未找到 retention_period（实证缺失）")
+        else:
+            expect = duration_days(by_id, "logs_observability")
+            actual = int(m.group(1)) // 24
+            if expect is not None and expect != actual:
+                errors.append(f"logs_observability 注册 {expect}d 与 Loki 实配 {actual}d 不一致")
+            if re.search(r"30\s*天|30\s*days", loki_text):
+                errors.append("deploy/loki/loki.yml 注释仍含与 180d 冲突的“30 天”表述（T-01 已修，防回归）")
 
-    prom_text = _read(root / "deploy/docker-compose.community.yml")
-    m = re.search(r"--storage\.tsdb\.retention\.time=(\d+)d", prom_text)
-    if not m:
-        errors.append("docker-compose.community.yml 未找到 prometheus retention（实证缺失）")
-    else:
-        expect = duration_days(by_id, "metrics_prometheus")
-        actual = int(m.group(1))
-        if expect is not None and expect != actual:
-            errors.append(f"metrics_prometheus 注册 {expect}d 与 Prometheus 实配 {actual}d 不一致")
+    compose_paths = [Path("docker-compose.yml")]
+    expect = duration_days(by_id, "metrics_prometheus")
+    for compose_path in compose_paths:
+        prom_text = _read(root / compose_path)
+        match = re.search(r"--storage\.tsdb\.retention\.time=(\d+)d", prom_text)
+        if not match:
+            errors.append(f"{compose_path} 未找到 prometheus retention（实证缺失）")
+        elif expect is not None and expect != int(match.group(1)):
+            errors.append(
+                f"metrics_prometheus 注册 {expect}d 与 {compose_path} 实配 {match.group(1)}d 不一致"
+            )
 
     backup_text = _read(root / "scripts/backup_pg.sh")
     m = re.search(r"RETENTION_DAYS:?\s*-?\s*(\d+)", backup_text)

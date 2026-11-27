@@ -152,8 +152,11 @@ docker compose --profile dev --profile api --profile admin logs --tail=100 imboy
 docker compose --profile dev --profile api --profile admin stop
 ```
 
-开发库继续使用现有 named volume **`imboy_pg18_data`**；`pro_imboy_pg18` 保留
-**`/data/docker/pro_imboy_pg18`** 挂载和外部网络 `imboy-network`。开发服务使用隔离网络
+开发库继续使用命名卷 `imboy_pg18_data`。 `pro` 和生产 profiles 共用 `prod_imboy_pg18`，数据默认放在 `deploy/data/pg18`。接回旧库前，在 `.env` 显式设置 `IMBOY_PROD_PG_DATA_DIR=/data/docker/pro_imboy_pg18`、`PG_PORT=5181`，并核对 `PG_IMAGE` 和数据库账号。已有旧容器必须停止后才能让新容器挂载同一目录。
+
+The `pro` and production profiles share `prod_imboy_pg18` and default to `deploy/data/pg18`. To reuse the old database, set `IMBOY_PROD_PG_DATA_DIR=/data/docker/pro_imboy_pg18` and `PG_PORT=5181` explicitly, verify the image and credentials, and stop the old container before mounting the same directory.
+
+开发服务使用隔离网络
 `imboy-local`，已有开发 PG 容器可能重建，但继续挂载原卷。不要为了重新启动而改卷名、
 删除卷或使用 `docker compose down -v`。
 

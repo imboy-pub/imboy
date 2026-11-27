@@ -68,13 +68,13 @@ User → Conversation → Group → Channel → Bot/Service → 可选公域
 | 语言 | Erlang/OTP 28+ |
 | Web 框架 | Cowboy 2.10 (HTTP/WS) |
 | 数据库 | PostgreSQL 18+ (pg_jieba, postgis, timescaledb, pgcrypto) |
-| 缓存 | depcache (Erlang 内存缓存) — **禁止引入 Redis** |
+| 缓存 | depcache (Erlang 内存缓存) — **IMBoy 核心禁止引入 Redis** |
 | 连接池 | epgsql + pooler |
 | 日志 | lager |
 
 ### ⛔ 项目级约束：全栈不引入 Redis
 
-**任何模块、任何部署形态都不得依赖 Redis。** 缓存用进程内 depcache，跨节点共享状态用 PostgreSQL（`DELETE ... RETURNING` 天然原子），进程发现用 `syn`。已按此清除（2026-08-02）：`imboy_redis` / `imboy_rtc_redis` 容器、LiveKit 的 `redis:` 配置段、`imboy_egress` 录制服务、`redis_options` 配置键与 `imboy_env:override_redis/0`。
+**IMBoy 核心、LiveKit 和其他业务服务不得依赖 Redis。仅可选 Uptrace 自托管允许使用其专用 Redis，必须限制在追踪内部网络。** 缓存用进程内 depcache，跨节点共享状态用 PostgreSQL（`DELETE ... RETURNING` 天然原子），进程发现用 `syn`。已按此清除（2026-08-02）：`imboy_redis` / `imboy_rtc_redis` 容器、LiveKit 的 `redis:` 配置段、`imboy_egress` 录制服务、`redis_options` 配置键与 `imboy_env:override_redis/0`。
 
 引申影响，提新方案前先看：
 - **LiveKit 只能单节点**（`redis:` 段仅多节点分布式路由需要）。横向扩展须**应用层按房间分片**：`/api/v1/rtc/room/join` 按 `consistent_hash(room_name)` 返回独立 LiveKit 节点的 `ws_url`，同房间参与者必落同一节点 → 节点间无需通信。
@@ -210,7 +210,7 @@ make new t=imboy.ds n=demo_ds
 
 ## 工程交付边界 / Engineering delivery boundaries
 
-部署配置以 [deploy/README.md](./deploy/README.md) 和[本地开发指南](./docs/guides/operations/deployment/local-development.md) 为准。Compose 服务名是脚本与配置的引用合同，不随意改名；Helm 后端单副本限制及适用边界以 [Helm 手册](./deploy/helm/README.md) 为准。
+部署配置以 [deploy/README.md](./deploy/README.md) 和[本地开发指南](./docs/guides/operations/deployment/local-development.md) 为准。Compose 服务名是脚本与配置的引用合同，不随意改名；Helm 后端单副本限制及适用边界以 [Helm 手册](./docs/guides/operations/deployment/helm.md) 为准。
 
 代码优先复用，保持简洁，避免无需求抽象、重复实现、调试残留和假通过。优先更新权威文档，完成总结放对话，不为每次测试或讨论生成报告。临时日志、截图、覆盖率、缓存、数据和调试脚本默认不提交；必要的脱敏 fixtures、回归测试、生成物、验收证据按项目要求保留。禁止提交秘密或真实用户数据。
 

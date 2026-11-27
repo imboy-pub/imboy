@@ -5,11 +5,13 @@ on:
     branches: [main, dev]
     paths:
       - 'deploy/native-shell/**'
+      - 'docs/guides/operations/deployment/native-shell/**'
       - '.github/workflows/native-shell-delivery.yml'
   push:
     branches: [main, dev]
     paths:
       - 'deploy/native-shell/**'
+      - 'docs/guides/operations/deployment/native-shell/**'
       - '.github/workflows/native-shell-delivery.yml'
   workflow_dispatch:
 

@@ -1,5 +1,14 @@
 # IMBoy 监控指南
 
+新社区实例在 `deploy/.env` 设置 `COMPOSE_PROFILES=monitoring` 后运行安装器。启用后，在 Prometheus 的 Targets 和 Alerts 页面核对采集与规则状态，并在 Grafana 查看仪表盘。运维任务如需报送备份或证书指标，使用同一组合的 Pushgateway。
+
+For a new community installation, set `COMPOSE_PROFILES=monitoring` in `deploy/.env` and run the installer. Verify scraping and rule evaluation in Prometheus Targets and Alerts and open the Grafana dashboards. Backup and certificate jobs can report to the Pushgateway in the same profile.
+
+
+根 Compose 将 Prometheus 绑定在部署主机的 `127.0.0.1:9090`，Grafana 使用 `127.0.0.1:3000/grafana/`。从工作站访问时，为对应端口建立 SSH 隧道。
+
+Root Compose binds Prometheus to `127.0.0.1:9090` and Grafana to `127.0.0.1:3000/grafana/` on the deployment host. Use an SSH tunnel for workstation access.
+
 ---
 
 ## 告警处置卡片（owner / 止损 / 回滚）· W3-A04
@@ -14,13 +23,7 @@
 
 ### 止损（触发条件 + 止血动作）
 
-- **告警风暴**（>10 条/分钟，常见于后端宕机引发 up/延迟/5xx 连锁）：
-  用 amtool 按 alertname/instance 聚合静默非根因告警，保住 critical 通道信噪比：
-  ```bash
-  amtool silence add alertname=~"ImBoy.*" severity="warning" -d 30m \
-    --comment "根因处置中，静默衍生告警"
-  ```
-- **监控栈自身故障**（Prometheus/Alertmanager 容器退出或 up 缺失）：
+- **监控栈自身故障**（Prometheus/Grafana 容器退出或 up 缺失）：
   立即重启对应容器恢复采集；**盲飞期间冻结一切生产变更**（部署/扩容/迁移），
   恢复后再解除。
 - **误报确认**：单条规则连续误报 ≥2 次——先静默该 alertname（带注释与期限），
@@ -29,19 +32,16 @@
 ### 回滚（监控配置变更失败）
 
 改 rules/告警路由后 Prometheus 起不来或 `promtool check rules` 失败时
-（`imboy_prometheus`/`imboy_alertmanager` 在 `docker-compose.community.yml`
+（`imboy_prometheus` 在 `../docker-compose.yml`
 的 `monitoring` profile 下）：
 
 ```bash
 cd deploy
 git checkout -- prometheus/rules/imboy-alerts.yml   # 还原规则文件
-docker compose -f docker-compose.community.yml --profile monitoring \
+docker compose --env-file .env --profile prod -f ../docker-compose.yml --profile monitoring \
   restart imboy_prometheus
 promtool check rules prometheus/rules/imboy-alerts.yml   # 确认回绿再离场
 ```
-
-Alertmanager 侧同理：还原 `alertmanager/alertmanager.yml`（或重跑
-`render.sh` 用上次 env 渲染）后重启 `imboy_alertmanager`。
 
 ---
 

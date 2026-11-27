@@ -4,6 +4,9 @@ set -Eeuo pipefail
 umask 077
 TOOLS_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)
 PACKAGE_ROOT=$(cd "$TOOLS_DIR/.." && pwd -P)
+DOCS_ROOT="$PACKAGE_ROOT/../../docs/guides/operations/deployment/native-shell"
+# A previously assembled publisher kit carries the same manuals at package-relative paths.
+[[ -f $DOCS_ROOT/README.md ]] || DOCS_ROOT="$PACKAGE_ROOT"
 # shellcheck source=lib-payload.sh
 . "$TOOLS_DIR/lib-payload.sh"
 # shellcheck source=lib-host-packages.sh
@@ -60,8 +63,16 @@ for path in "$repo" "$release_dir" "$pg_prefix" "$garage_bin" "$out"; do payload
 for src in "$PACKAGE_ROOT" "$repo" "$release_dir" "$pg_prefix"; do
   [[ $out != "$src" && $out != "$src"/* ]] || payload_die '输出不得嵌套在工具包或输入目录中'
 done
-for required in install.sh verify.sh backup.sh restore.sh upgrade.sh admin-init.sh lib/common.sh lib/render.sh lib/services.sh templates/site.env.example README.md; do
+for required in install.sh verify.sh backup.sh restore.sh upgrade.sh admin-init.sh lib/common.sh lib/render.sh lib/services.sh templates/site.env.example; do
   [[ -f $PACKAGE_ROOT/$required ]] || payload_die "交付工具包缺少必需文件: $required"
+done
+doc_files=(README.md MANUAL.zh-CN.md tools/README_PUBLISHER.md payload/README.md
+    docs/00_DELIVERY_STATUS.md docs/01_INSTALL.md docs/02_NETWORK_TLS.md
+    docs/03_CONFIGURATION.md docs/04_OPERATIONS.md docs/05_ACCEPTANCE.md
+    docs/06_TROUBLESHOOTING.md docs/07_RELEASE_ASSEMBLY.md docs/08_DEPLOYMENT_EXAMPLES.md
+    docs/09_SOURCE_EVIDENCE.md docs/10_VALIDATION.md)
+for manual in "${doc_files[@]}"; do
+  [[ -f $DOCS_ROOT/$manual && ! -L $DOCS_ROOT/$manual ]] || payload_die "缺少交付手册: $manual"
 done
 [[ $(git -C "$repo" rev-parse --verify "$sha^{commit}") == "$sha" ]] || payload_die '源仓没有固定 commit'
 receipt=$release_dir/delivery-build/build.env
@@ -146,9 +157,12 @@ host_load_lock "$host_manifest_tmp"
 # Explicit allow-list: no site.env, runtime state, execution logs or old payload.
 mkdir -p "$out/payload/backend" "$out/payload/postgresql" "$out/payload/garage" "$out/metadata"
 trap 'rc=$?; rm -f -- "${host_manifest_tmp:-}"; if ((rc)); then printf "封包失败（退出码 %s）；不完整输出保留在 %s，禁止交付。\n" "$rc" "$out" >&2; fi' EXIT
-for item in README.md MANUAL.zh-CN.md install.sh verify.sh backup.sh restore.sh upgrade.sh rollback.sh status.sh admin-init.sh diagnose.sh renew-tls.sh preflight.sh init.sh tools lib templates docs examples tests; do
+for item in install.sh verify.sh backup.sh restore.sh upgrade.sh rollback.sh status.sh admin-init.sh diagnose.sh renew-tls.sh preflight.sh init.sh tools lib templates examples tests; do
   [[ -e $PACKAGE_ROOT/$item ]] || continue
   cp -a -- "$PACKAGE_ROOT/$item" "$out/"
+done
+for manual in "${doc_files[@]}"; do
+  install -D -m 644 -- "$DOCS_ROOT/$manual" "$out/$manual"
 done
 cp -a "$release_dir/." "$out/payload/backend/"
 # Internal symlinks were checked above; expand them for complete byte hashing.

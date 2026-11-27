@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # 8 步应用层冒烟链 / 8-step application smoke chain
 #
-# Golden Gates 计划 §4.3（P3-C4）：Golden Install 与 CI smoke 共用的应用层冒烟链，
+# 应用层冒烟链，
 # 顺序钉死，不可调整：
 #
 #   Health → Register → Login → Admin Login → C2C → WebSocket

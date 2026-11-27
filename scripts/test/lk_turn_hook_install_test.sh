@@ -227,8 +227,9 @@ echo "== A04 安装器故障注入（证书失败/LiveKit start 失败/TURN 装�
 
 FIXTURE="$TMP_ROOT/install"; MOCK_BIN2="$TMP_ROOT/bin2"
 mkdir -p "$FIXTURE/nginx" "$FIXTURE/cleanup-db" "$MOCK_BIN2" "$TMP_ROOT/scripts"
-cp deploy/install.sh deploy/init-cleanup-db.sh deploy/prepare-backend-runtime.sh deploy/.env.example deploy/docker-compose.community.yml \
-   deploy/docker-compose.livekit-turn.yml "$FIXTURE/"
+cp deploy/install.sh deploy/init-cleanup-db.sh deploy/prepare-backend-runtime.sh deploy/.env.example "$FIXTURE/"
+cp scripts/test/fixtures/legacy-compose/community.fixture "$FIXTURE/docker-compose.community.yml"
+cp scripts/test/fixtures/legacy-compose/livekit-turn.fixture "$FIXTURE/docker-compose.livekit-turn.yml"
 cp deploy/cleanup-db/bootstrap.sql deploy/cleanup-db/verify.sql "$FIXTURE/cleanup-db/"
 cp deploy/nginx/init-letsencrypt.sh "$FIXTURE/nginx/"
 touch "$TMP_ROOT/scripts/sanity_check.sh"

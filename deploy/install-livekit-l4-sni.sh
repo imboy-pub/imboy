@@ -546,7 +546,9 @@ script_dir = pathlib.Path(script_dir)
 stage = pathlib.Path(stage)
 stream = (script_dir / "nginx/templates/livekit-l4-sni-stream.conf.template").read_text()
 (stage / "stream.conf").write_text(stream.replace("__TURN_DOMAIN__", domain))
-compose = (script_dir / "docker-compose.livekit-turn-l4-sni.yml.template").read_text()
+root = (script_dir.parent / "docker-compose.yml").read_text()
+block = root.split("\nx-imboy-legacy-sni: |\n", 1)[1]
+compose = "\n".join(line[2:].replace("$$", "$") for line in block.splitlines() if not line or line.startswith("  ")) + "\n"
 replacements = {
     "__TURN_DOMAIN__": domain,
     "__LIVEKIT_SERVICE__": service,

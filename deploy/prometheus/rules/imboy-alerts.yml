@@ -21,9 +21,8 @@
 #  18. TSID 就绪闸 / TSID readiness gate (Audit A3/C-2)
 #  19. 缓存同步（V2 协议）异常 / Cache sync (V2 protocol) anomalies (AC-028)
 #
-# 接入告警渠道 / Alert routing:
-#   在 Prometheus alertmanager.yml 中配置 receiver（钉钉 / Slack / PagerDuty 等）
-#   Configure receiver in Prometheus alertmanager.yml (DingTalk / Slack / PagerDuty, etc.)
+# 查看规则评估结果 / Inspect rule evaluation:
+#   使用 Prometheus 的 Alerts 页面 / Use the Prometheus Alerts page.
 
 groups:
 

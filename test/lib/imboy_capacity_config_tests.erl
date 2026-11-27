@@ -102,14 +102,11 @@ env_wiring_for_max_ws_connections_test() ->
 %% ------------------------------------------------------------------
 
 compose_files_use_injection_not_dead_erl_max_ports_test() ->
-    Community = code_bin("deploy/docker-compose.community.yml"),
     Local = code_bin("docker-compose.yml"),
     %% D7：死配置 ERL_MAX_PORTS 已删除
-    ?assertEqual(nomatch, binary:match(Community, <<"ERL_MAX_PORTS">>)),
     ?assertEqual(nomatch, binary:match(Local, <<"ERL_MAX_PORTS">>)),
     %% 注入面：ERL_FLAGS 经 install.sh 重算透传；WS 上限直传
-    ?assertNotEqual(nomatch, binary:match(Community, <<"ERL_FLAGS: ${IMBOY_ERL_FLAGS:-}">>)),
-    ?assertNotEqual(nomatch, binary:match(Community, <<"IMBOY_MAX_WS_CONNECTIONS">>)),
+    ?assertNotEqual(nomatch, binary:match(Local, <<"ERL_FLAGS: ${IMBOY_ERL_FLAGS:-}">>)),
     ?assertNotEqual(nomatch, binary:match(Local, <<"IMBOY_MAX_WS_CONNECTIONS">>)),
     ok.
 
@@ -170,10 +167,12 @@ repo_root() ->
     repo_root(Cwd).
 
 repo_root(Dir) ->
-    case filelib:is_file(filename:join(Dir, "config/vm.args")) andalso
-        filelib:is_file(filename:join(Dir, "src/imboy_app.erl"))
+    case
+        filelib:is_file(filename:join(Dir, "config/vm.args")) andalso
+            filelib:is_file(filename:join(Dir, "src/imboy_app.erl"))
     of
-        true -> Dir;
+        true ->
+            Dir;
         false ->
             case filename:dirname(Dir) of
                 Dir -> erlang:error({repo_root_not_found, Dir});

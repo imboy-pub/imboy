@@ -57,7 +57,7 @@ make docs-stop
 |------|------|
 | `index.html` | Redoc 静态只读文档（CDN） |
 | `swagger-ui.html` | Swagger UI 交互文档，支持 Try it out（CDN） |
-| `docker-compose.yml` | Docker 一键启动文档服务 |
+| 仓根 `docker-compose.yml` | `docs` profile 提供 Swagger UI |
 
 ---
 

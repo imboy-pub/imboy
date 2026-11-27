@@ -310,7 +310,7 @@ py() { python3 -c "$PY_HELPERS" "$@"; }
 # 自含模式基础设施：LiveKit 容器 + imboy 隔离节点
 # ══════════════════════════════════════════════════════════════════════════════
 
-# LiveKit 配置：与 deploy/docker-compose.livekit-turn.yml 的 W5 端口合同同构
+# LiveKit 配置：与 仓根 Docker Compose prod-turn 的端口合同同构
 # （3478/udp + relay 段独立于媒体段），仅端口换成 A0 租约段；TLS 自签证书
 # 走完整形态（生产 TLS 侧验证归 W4，本地不发布 5349）。
 write_livekit_config() { # $1=config path $2=certdir $3=advertise_ip

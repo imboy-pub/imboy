@@ -122,19 +122,19 @@ sudo chown -R imboy:imboy /etc/imboy/keys
 
 ## 5. 启动 PostgreSQL / Start PostgreSQL
 
-中文：在仓库根目录按 profile 显式选择 PG 服务，避免启动其他本地服务；后端 release 仍单独启动。`pro` 使用现有独立数据目录和外部网络，不会切换 dev API 的数据库。
+中文：在仓库根目录按 profile 显式选择 PG 服务，避免启动其他本地服务；后端 release 仍单独启动。`pro` 与生产 profiles 共用同一个 PostgreSQL 服务。复用原 5181 数据库前，按[本地开发指南](local-development.md)显式指定原目录和端口。
 
-English: Explicitly select the PostgreSQL service and profile in the repository-root `docker-compose.yml`. Start the backend release separately in the next section.
+English: Explicitly select the PostgreSQL service and profile in the repository-root `docker-compose.yml`. The `pro` and production profiles share one PostgreSQL service. Before reusing the former database on port 5181, configure its path and port as described in the [local development guide](local-development.md). Start the backend release separately.
 
 ```bash
 # 开发 / Development (port 4323)
 docker compose --profile dev up -d imboy_pg18
 
-# 独立 pro 数据库 / Separate pro database (port 5181; existing imboy-network)
-docker compose --profile pro up -d pro_imboy_pg18
+# 仅启动生产 PostgreSQL / Start production PostgreSQL only
+docker compose --profile prod up -d prod_imboy_pg18
 
 # 同时多实例 / Combined
-docker compose --profile dev --profile pro up -d imboy_pg18 pro_imboy_pg18
+docker compose --profile dev --profile prod up -d imboy_pg18 prod_imboy_pg18
 ```
 
 > 中文：原 `--profile turn`（coturn）已删除 —— TURN 由 LiveKit embedded TURN 承载，

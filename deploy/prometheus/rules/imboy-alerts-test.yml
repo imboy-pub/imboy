@@ -97,11 +97,11 @@ tests:
       - series: 'snapshot_abort_total{job="imboy_backend",instance="n6"}'
         values: "5+0x8 8 8 8"
     promql_expr_test:
-      - expr: increase(snapshot_abort_total{job="imboy_backend"}[10m]) > 2
+      - expr: increase(snapshot_abort_total{job="imboy_backend"}[10m]) > bool 2
         eval_time: 11m
         exp_samples:
           - labels: '{job="imboy_backend",instance="n6"}'
-            value: 3.3333333333333335
+            value: 1
 
   # 5) 拒绝 / 未知消息：10 分钟窗口内出现增长即命中（for:0m）
   - interval: 1m
@@ -109,21 +109,21 @@ tests:
       - series: 'reject_total{job="imboy_backend",instance="n7"}'
         values: "10+0x8 11 11 11"
     promql_expr_test:
-      - expr: increase(reject_total{job="imboy_backend"}[10m]) > 0
+      - expr: increase(reject_total{job="imboy_backend"}[10m]) > bool 0
         eval_time: 11m
         exp_samples:
           - labels: '{job="imboy_backend",instance="n7"}'
-            value: 1.1111111111111112
+            value: 1
   - interval: 1m
     input_series:
       - series: 'unknown_total{job="imboy_backend",instance="n8"}'
         values: "1+0x8 2 2 2"
     promql_expr_test:
-      - expr: increase(unknown_total{job="imboy_backend"}[10m]) > 0
+      - expr: increase(unknown_total{job="imboy_backend"}[10m]) > bool 0
         eval_time: 11m
         exp_samples:
           - labels: '{job="imboy_backend",instance="n8"}'
-            value: 1.1111111111111112
+            value: 1
 
   # 6) 仅总恢复期限耗尽触发告警，普通 round_timeout 不触发该告警
   - interval: 1m

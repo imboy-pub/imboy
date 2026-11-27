@@ -16,9 +16,11 @@ set -euo pipefail
 
 KEYS_DIR="imboy_keys"
 EMIT_SQL=0
+ENSURE_ONLY=0
 for arg in "$@"; do
   case "$arg" in
     --sql) EMIT_SQL=1 ;;
+    --ensure-only) ENSURE_ONLY=1 ;;
     *) KEYS_DIR="$arg" ;;
   esac
 done
@@ -26,40 +28,49 @@ done
 PUB="$KEYS_DIR/login_rsa_pub.pem"
 PRIV="$KEYS_DIR/login_rsa_priv.pem"
 
-mkdir -p "$KEYS_DIR"
-chmod 700 "$KEYS_DIR"
+fail() { printf '%s\n' "$*" >&2; exit 1; }
 
-if [ -s "$PRIV" ]; then
-  echo "==> 私钥已存在，跳过生成: $PRIV"
-else
-  echo "==> 生成 RSA-2048 私钥..."
-  openssl genrsa -out "$PRIV" 2048 2>/dev/null
+umask 077
+[ ! -L "$KEYS_DIR" ] || fail "密钥目录不能是符号链接 / Key directory is a symlink"
+mkdir -p "$KEYS_DIR"
+for key in "$PRIV" "$PUB"; do
+  [ ! -L "$key" ] && { [ ! -e "$key" ] || [ -f "$key" ]; } \
+    || fail "密钥路径必须为普通文件 / Invalid key path: $key"
+done
+
+scratch=$(mktemp -d "$KEYS_DIR/.login-rsa.XXXXXX")
+trap 'rm -rf -- "$scratch"' EXIT
+if [ ! -e "$PRIV" ]; then
+  [ ! -e "$PUB" ] || fail "仅有公钥，请恢复原私钥 / Restore the missing private key"
+  openssl genrsa -out "$scratch/private.pem" 2048 2>/dev/null \
+    || fail "生成 RSA 私钥失败 / RSA generation failed"
+  ln "$scratch/private.pem" "$PRIV" || fail "无法写入私钥，请检查并重试 / Could not install private key"
 fi
 
-if [ -s "$PUB" ]; then
-  echo "==> 公钥已存在，跳过导出: $PUB"
+openssl rsa -in "$PRIV" -passin pass: -check -noout >/dev/null 2>&1 \
+  || fail "RSA 私钥无效，请恢复原文件 / Invalid RSA private key"
+openssl rsa -in "$PRIV" -passin pass: -pubout -out "$scratch/public.pem" 2>/dev/null \
+  || fail "导出 RSA 公钥失败 / Public key export failed"
+openssl rsa -pubin -in "$scratch/public.pem" -text -noout > "$scratch/key-info" 2>/dev/null \
+  || fail "无法检查 RSA 位数 / Could not inspect RSA key"
+grep -Eq '^Public-Key: \(2048 bit\)' "$scratch/key-info" \
+  || fail "RSA 私钥必须为 2048 位 / RSA private key must be 2048 bits"
+
+if [ -e "$PUB" ]; then
+  grep -qx -- '-----BEGIN PUBLIC KEY-----' "$PUB" \
+    && openssl rsa -pubin -in "$PUB" -pubout -out "$scratch/existing-public.pem" 2>/dev/null \
+    && cmp -s "$scratch/public.pem" "$scratch/existing-public.pem" \
+    || fail "现有公钥无效或与私钥不匹配 / Invalid or mismatched public key"
 else
-  echo "==> 导出 SPKI 公钥（BEGIN PUBLIC KEY，WebCrypto 兼容）..."
-  openssl rsa -in "$PRIV" -pubout -out "$PUB" 2>/dev/null
+  chmod 644 "$scratch/public.pem"
+  ln "$scratch/public.pem" "$PUB" || fail "无法写入公钥，请检查并重试 / Could not install public key"
 fi
 
 chmod 600 "$PRIV"
 chmod 644 "$PUB"
-
-# --- 自检 ---------------------------------------------------------------
-grep -q "BEGIN PUBLIC KEY" "$PUB" || { echo "!! 公钥不是 SPKI 格式（缺少 BEGIN PUBLIC KEY 头）"; exit 1; }
-if grep -q "BEGIN RSA PUBLIC KEY" "$PUB"; then
-  echo "!! 公钥是 PKCS#1 格式，前端 WebCrypto 不接受"
-  exit 1
+if [ "$ENSURE_ONLY" = 1 ]; then
+  exit 0
 fi
-
-PUB_BITS=$(openssl rsa -pubin -in "$PUB" -text -noout 2>/dev/null | head -1 | grep -o '[0-9]\+' | head -1)
-[ "$PUB_BITS" = "2048" ] || { echo "!! 公钥位数异常: $PUB_BITS（期望 2048）"; exit 1; }
-
-PRIV_MOD=$(openssl rsa  -in "$PRIV" -noout -modulus 2>/dev/null | cut -d= -f2)
-PUB_MOD=$(openssl rsa -pubin -in "$PUB" -noout -modulus 2>/dev/null | cut -d= -f2)
-[ "$PRIV_MOD" = "$PUB_MOD" ] || { echo "!! 公私钥不匹配（modulus 不一致）"; exit 1; }
-
 echo "==> 自检通过：RSA-2048 / SPKI 公钥 / 公私钥配对"
 echo "    公钥指纹: $(openssl rsa -pubin -in "$PUB" -outform DER 2>/dev/null | openssl sha256 | awk '{print $NF}')"
 

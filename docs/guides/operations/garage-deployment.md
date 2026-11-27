@@ -105,9 +105,9 @@ bash install.sh --edition community
 ### 4. 验证 Garage
 
 ```bash
-docker compose -f docker-compose.community.yml ps garage
-docker compose -f docker-compose.community.yml exec garage /garage --version
-docker compose -f docker-compose.community.yml exec garage /garage status
+docker compose --env-file .env --profile prod -f ../docker-compose.yml ps prod_garage
+docker compose --env-file .env --profile prod -f ../docker-compose.yml exec prod_garage /garage --version
+docker compose --env-file .env --profile prod -f ../docker-compose.yml exec prod_garage /garage status
 curl -sS -o /dev/null -w '%{http_code}\n' http://127.0.0.1/healthz
 ```
 

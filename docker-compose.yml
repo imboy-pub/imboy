@@ -1,11 +1,25 @@
-# 本地开发统一入口 / One local development stack (Compose 2.23.1+).
-# bash scripts/dev_setup.sh                         # dev + api + admin
-# bash scripts/dev_setup.sh --with-livekit --with-widget
-# docker compose --profile dev up -d               # PG + Garage + gateway
-# docker compose --profile pro up -d               # existing separate pro PG
-# docker compose --profile dev --profile pro up -d # both databases
-# Production installation remains documented in deploy/README.md.
-# No profile means no services. Never use down -v on existing development data.
+# 在仓库根目录执行 / Run from the repository root.
+# 写法 / Convention: 第一个 --profile 写环境，后续写可选服务组。
+# Put the environment first, then optional service groups. Compose combines them in any order.
+#
+# 本地开发依赖 / Local development dependencies (PostgreSQL, Garage, Nginx)
+# docker compose --profile dev up -d
+#
+# 基础生产栈 / Base production stack (includes LiveKit)
+# docker compose --env-file deploy/.env --profile prod up -d
+#
+# 生产加监控 / Production with Prometheus and Grafana
+# docker compose --env-file deploy/.env --profile prod --profile monitoring up -d
+#
+# 生产加监控和追踪 / Production with monitoring and Uptrace
+# docker compose --env-file deploy/.env --profile prod --profile monitoring --profile uptrace up -d
+#
+# 预览服务清单 / Preview the selected services
+# docker compose --env-file deploy/.env --profile prod --profile monitoring --profile uptrace config --services
+#
+# 生产命令需要先填写 deploy/.env / Prepare deploy/.env before running production commands.
+# TURN 用 prod-turn 或 prod-sni 替换 prod / For TURN, replace prod with prod-turn or prod-sni.
+# test profile 待实现 / The test profile is not yet available.
 
 x-logging: &logging
   driver: json-file
@@ -22,7 +36,7 @@ services:
       TZ: Asia/Shanghai
       LANG: en_US.UTF-8
       POSTGRES_USER: ${IMBOY_PG_USERNAME:-imboy_user}
-      POSTGRES_PASSWORD: ${IMBOY_PG_PASSWORD:?Fill IMBOY_PG_PASSWORD in .env}
+      POSTGRES_PASSWORD: ${IMBOY_PG_PASSWORD:-}
       POSTGRES_DB: ${IMBOY_PG_DATABASE:-imboy_v1}
     volumes:
       # Preserve the existing named volume; do not move PG onto a macOS bind mount.
@@ -34,36 +48,6 @@ services:
       timeout: 3s
       retries: 30
       start_period: 15s
-    deploy:
-      resources:
-        limits: {memory: 4096M}
-        reservations: {memory: 4096M}
-    mem_limit: 4096M
-    memswap_limit: 4g
-    logging: *logging
-
-  pro_imboy_pg18:
-    profiles: [pro]
-    image: ${PG_IMAGE:-imboy/pg18:3.7.0-1}
-    container_name: pro_imboy_pg18
-    hostname: pg18pro.docker.imboy.pub
-    restart: unless-stopped
-    environment:
-      TZ: Asia/Shanghai
-      LANG: en_US.UTF-8
-      POSTGRES_USER: ${IMBOY_PG_PRO_USERNAME:-imboy_user}
-      POSTGRES_PASSWORD: ${IMBOY_PG_PRO_PASSWORD:?Fill IMBOY_PG_PRO_PASSWORD in .env}
-      POSTGRES_DB: ${IMBOY_PG_PRO_DATABASE:-imboy_pro}
-    volumes:
-      # Existing production data and network are deliberately unchanged.
-      - /data/docker/pro_imboy_pg18:/var/lib/postgresql
-    ports: ["${IMBOY_PG_PRO_HOST_PORT:-5181}:5432"]
-    networks: [pro]
-    healthcheck:
-      test: [CMD-SHELL, 'pg_isready -h 127.0.0.1 -U "$$POSTGRES_USER" -d "$$POSTGRES_DB"']
-      interval: 5s
-      timeout: 3s
-      retries: 30
     deploy:
       resources:
         limits: {memory: 4096M}
@@ -112,7 +96,7 @@ services:
       IMBOY_PG_HOST: imboy_pg18
       IMBOY_PG_PORT: "5432"
       IMBOY_PG_USERNAME: ${IMBOY_PG_USERNAME:-imboy_user}
-      IMBOY_PG_PASSWORD: ${IMBOY_PG_PASSWORD}
+      IMBOY_PG_PASSWORD: ${IMBOY_PG_PASSWORD:-}
       IMBOY_PG_DATABASE: ${IMBOY_PG_DATABASE:-imboy_v1}
       IMBOY_BASE_URL: ${IMBOY_BASE_URL:-http://${API_DOMAIN:-api.localhost}:${NGINX_HTTP_PORT:-8080}}
       IMBOY_WS_URL: ${IMBOY_WS_URL:-ws://${API_DOMAIN:-api.localhost}:${NGINX_HTTP_PORT:-8080}/api/v1/ws}
@@ -299,6 +283,927 @@ services:
       retries: 20
     logging: *logging
 
+  api_docs:
+    profiles: [docs]
+    image: swaggerapi/swagger-ui@sha256:a6c9dae9b7bf7aa691ad8cf76574d0a9c3c8ce6e0d3946d6bb55acc36f24c4e5
+    networks: [api_docs]
+    ports:
+      - "127.0.0.1:8080:8080"
+    volumes:
+      - ./api/openapi.yaml:/openapi.yaml:ro
+    environment:
+      SWAGGER_JSON: /openapi.yaml
+
+  # Production services share the existing production network and DNS aliases.
+
+  # ========== PostgreSQL 18 + 扩展 ==========
+  prod_imboy_pg18:
+    networks:
+      pro:
+        aliases: [imboy_pg18]
+    profiles: [pro, prod, prod-turn, prod-sni]
+    image: ${PG_IMAGE:-ghcr.io/imboy-pub/imboy-pg18:${IMBOY_VERSION:-unset}}
+    container_name: prod_imboy_pg18
+    hostname: pg.docker.imboy.pub
+    restart: unless-stopped
+    environment:
+      TZ: ${TZ:-Asia/Shanghai}
+      LANG: en_US.UTF-8
+      POSTGRES_USER: ${POSTGRES_USER:-${IMBOY_PG_PRO_USERNAME:-}}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-${IMBOY_PG_PRO_PASSWORD:-}}
+      POSTGRES_DB: ${POSTGRES_DB:-${IMBOY_PG_PRO_DATABASE:-}}
+    volumes:
+      - ${IMBOY_PROD_PG_DATA_DIR:-${IMBOY_PROD_DATA_DIR:-./deploy/data}/pg18}:/var/lib/postgresql
+    expose:
+      - "5432"
+    ports:
+      # 绑定地址安全默认 127.0.0.1：把 PostgreSQL 直接发布到公网是高危配置。
+      # 需要从宿主机外直连的场景显式设 PG_BIND_ADDR=0.0.0.0（并先收紧防火墙）。
+      - "${PG_BIND_ADDR:-127.0.0.1}:${PG_PORT:-5432}:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    deploy:
+      resources:
+        limits:
+          memory: ${PG_MEM_LIMIT:-4096M}
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "100m"
+        max-file: "30"
+
+  # ========== Garage S3 对象存储（社区版默认核心服务，非 profile）==========
+  # 附件存储的后端：imboy_backend 经 compose 网络以 http://garage:3900 访问 S3 API。
+  #
+  # 幂等 init job：无需独立 init 容器，直接使用 Garage v2.4.1 官方内置的
+  # `server --single-node --default-bucket` 启动初始化（src/garage/server.rs 的
+  # initial_config），对社区版单节点部署的三条幂等保证（已对照源码验证）：
+  #   1) key 已存在不重建/不覆盖：同 access key 且 secret 不一致时启动直接报错，
+  #      一致则原样复用；凭据由 .env 的 IMBOY_GARAGE_ACCESS_KEY/SECRET_KEY 提供
+  #      （.env 是唯一真源，不存在"从集群导出再回填"的环节）；
+  #   2) bucket 幂等创建：已存在（按全局别名解析）则复用，不删除不重建；
+  #   3) 无破坏性重复操作：layout version 0 → 自动创建单节点布局，version 1 →
+  #      跳过；read/write/owner 权限重复设置是幂等写。
+  # 升级注意：若曾手工扩展过集群（layout version > 1），需移除 --single-node
+  # 参数并以完整 garage.toml 自行管理布局（超出社区版支持范围）。
+  prod_garage:
+    networks:
+      pro:
+        aliases: [garage]
+    profiles: [prod, prod-turn, prod-sni]
+    # digest pinned 2026-09-29（registry manifest HEAD 取多架构顶层；tag 保留便于人读）
+    image: dxflrs/garage:v2.4.1@sha256:9c96caa2612d3411acc5b0e6701fb238dbfba33e533a6d7d3d811a4b12d0d020
+    container_name: imboy_garage
+    hostname: garage.docker.imboy.pub
+    restart: unless-stopped
+    command: ["/garage", "server", "--single-node", "--default-bucket"]
+    environment:
+      TZ: ${TZ:-Asia/Shanghai}
+      # 与后端共用 .env 同一组凭据（单一真源）。access key 生态惯例为 GK 前缀，
+      # 生成示例：echo "GK$(openssl rand -hex 16)"；secret：openssl rand -hex 32
+      GARAGE_DEFAULT_ACCESS_KEY: ${IMBOY_GARAGE_ACCESS_KEY:-}
+      GARAGE_DEFAULT_SECRET_KEY: ${IMBOY_GARAGE_SECRET_KEY:-}
+      GARAGE_DEFAULT_BUCKET: ${IMBOY_GARAGE_BUCKET:-imboy}
+    configs:
+      - source: prod_garage_config
+        target: /etc/garage.toml
+    volumes:
+      # meta + data 都持久化在 DATA_DIR/garage 下，重启/重建容器数据不丢
+      - ${IMBOY_PROD_DATA_DIR:-./deploy/data}/garage:/var/lib/garage
+    expose:
+      # S3 API 供 imboy_backend 经 compose 网络访问；不发布到宿主机公网
+      - "3900"
+      # Admin API 供容器网络内诊断（未配置 admin token 时默认拒绝管理请求）
+      - "3903"
+    healthcheck:
+      # 镜像 FROM scratch（无 shell），直接执行二进制。
+      # garage CLI 会读本容器挂载的 /etc/garage.toml + metadata 目录连本节点 RPC。
+      test: ["CMD", "/garage", "status"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 15s
+    deploy:
+      resources:
+        limits:
+          memory: ${GARAGE_MEM_LIMIT:-1024M}
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "50m"
+        max-file: "30"
+
+  # ========== imboy 后端（Erlang/OTP + Cowboy）==========
+  prod_imboy_backend:
+    networks:
+      pro:
+        aliases: [imboy_backend]
+    profiles: [prod, prod-turn, prod-sni]
+    image: ${BACKEND_IMAGE:-ghcr.io/imboy-pub/imboy-backend:${IMBOY_VERSION:-unset}}
+    container_name: imboy_backend
+    hostname: backend.docker.imboy.pub
+    restart: unless-stopped
+    depends_on:
+      prod_imboy_pg18:
+        condition: service_healthy
+      prod_garage:
+        condition: service_healthy
+    environment:
+      IMBOY_UPTRACE_DSN: ${IMBOY_UPTRACE_DSN:-}
+      IMBOY_UPTRACE_OTLP_ENDPOINT: ${IMBOY_UPTRACE_OTLP_ENDPOINT:-}
+      TZ: ${TZ:-Asia/Shanghai}
+      IMBOYENV: pro
+      IMBOY_HTTP_PORT: "9800"
+      IMBOY_PG_HOST: imboy_pg18
+      IMBOY_PG_PORT: "5432"
+      IMBOY_PG_USER: ${POSTGRES_USER:-}
+      IMBOY_PG_PASSWORD: ${POSTGRES_PASSWORD:-}
+      IMBOY_PG_DB: ${POSTGRES_DB:-}
+      IMBOY_DIRECT_CLEANUP_PG_USER: ${IMBOY_DIRECT_CLEANUP_PG_USER:-}
+      IMBOY_DIRECT_CLEANUP_PG_PASSWORD: ${IMBOY_DIRECT_CLEANUP_PG_PASSWORD:-}
+      IMBOY_BASE_URL: https://${API_DOMAIN:-}
+      IMBOY_WIDGET_BASE_URL: https://${CS_WIDGET_DOMAIN:-}
+      IMBOY_WIDGET_DOMAIN: ${CS_WIDGET_DOMAIN:-}
+      IMBOY_AVATAR_EDGE_BASE_URL: https://${API_DOMAIN:-}
+      IMBOY_WS_URL: wss://${API_DOMAIN:-}/api/v1/ws
+      IMBOY_JWT_KEY: ${JWT_KEY:-}
+      IMBOY_POSTGRE_AES_KEY: ${POSTGRE_AES_KEY:-}
+      IMBOY_ADM_COOKIE_SECRET: ${ADM_COOKIE_SECRET:-}
+      IMBOY_EDGE_INTERNAL_TOKEN: ${IMBOY_EDGE_INTERNAL_TOKEN:-}
+      IMBOY_SOLIDIFIED_KEY: ${IMBOY_SOLIDIFIED_KEY:-}
+      IMBOY_SOLIDIFIED_KEY_IV: ${IMBOY_SOLIDIFIED_KEY_IV:-}
+      # 生产强制项：imboy_app 的 ensure_required_secret(password_salt) 为空即
+      # erlang:error({missing_required_config, password_salt})，节点起不来。
+      IMBOY_PASSWORD_SALT: ${IMBOY_PASSWORD_SALT:-}
+      IMBOY_API_AUTH_SWITCH: ${IMBOY_API_AUTH_SWITCH:-on}
+      IMBOY_LOGIN_RSA_PUB_KEY_FILE: ${IMBOY_LOGIN_RSA_PUB_KEY_FILE:-/opt/imboy/priv_runtime/keys/login_rsa_pub.pem}
+      IMBOY_LOGIN_RSA_PRIV_KEY_FILE: ${IMBOY_LOGIN_RSA_PRIV_KEY_FILE:-/opt/imboy/priv_runtime/keys/login_rsa_priv.pem}
+      # 极光认证未配置独立密钥时复用登录 RSA 私钥；必须与上方相同挂载路径。
+      IMBOY_JVERIFICATION_RSA_PRIV_KEY_FILE: ${IMBOY_JVERIFICATION_RSA_PRIV_KEY_FILE:-/opt/imboy/priv_runtime/keys/login_rsa_priv.pem}
+      # ── Garage S3 附件存储（默认指向本 compose 内置的 garage 服务）──────────
+      # endpoint：服务端自身 S3 调用（confirm HEAD 核实/删除/服务端上传），
+      #   仅需 compose 网络内可达，勿填公网地址（绕 TLS 出网且可能不可解析）。
+      IMBOY_GARAGE_ENDPOINT: ${IMBOY_GARAGE_ENDPOINT:-http://garage:3900}
+      # public_endpoint：presign 直传/下载 URL 的公网基址（客户端可达）。
+      #   默认经 nginx 的 /s3/ 反代（见 nginx/templates/imboy.conf.template），
+      #   客户端 PUT/GET https://<API_DOMAIN>/s3/<bucket>/<key>，由 nginx 剥前缀
+      #   转发到 garage:3900，无需把 3900 发布公网。
+      IMBOY_GARAGE_PUBLIC_ENDPOINT: ${IMBOY_GARAGE_PUBLIC_ENDPOINT:-https://${API_DOMAIN:-}/s3}
+      IMBOY_GARAGE_BUCKET: ${IMBOY_GARAGE_BUCKET:-imboy}
+      IMBOY_GARAGE_PUBLIC_BUCKET: ${IMBOY_GARAGE_PUBLIC_BUCKET:-imboy-public}
+      IMBOY_GARAGE_ACCESS_KEY: ${IMBOY_GARAGE_ACCESS_KEY:-}
+      IMBOY_GARAGE_SECRET_KEY: ${IMBOY_GARAGE_SECRET_KEY:-}
+      # 附件存储注册表：镜像内 sys.config 的 roots 为空（fail-closed），按运行时
+      #   IMBOY_GARAGE_* 登记 garage-primary-private/public 两个根，否则 presign 503。
+      IMBOY_ATTACHMENT_REGISTRY_FROM_GARAGE: ${IMBOY_ATTACHMENT_REGISTRY_FROM_GARAGE:-true}
+      # ── LiveKit SFU（群通话/屏幕共享）/ LiveKit SFU ─────────────────────────
+      # LK-01 域名收敛：信令默认走独立 RTC 域 WSS（wss://<RTC_DOMAIN>，由 nginx
+      # 反代 7880），不再经 ${API_DOMAIN:-}/livekit 子路径。显式设置
+      # IMBOY_LIVEKIT_WS_URL 仍可覆盖（迁移过渡期用）。
+      IMBOY_LIVEKIT_WS_URL: ${IMBOY_LIVEKIT_WS_URL:-wss://${RTC_DOMAIN:-}}
+      IMBOY_LIVEKIT_API_KEY: ${LIVEKIT_API_KEY:-}
+      IMBOY_LIVEKIT_API_SECRET: ${LIVEKIT_API_SECRET:-}
+      # 社区版固定标记（商务版才需要 professional/enterprise + License）
+      IMBOY_EDITION: community
+      IMBOY_EB_DIRECT_ENABLED: ${IMBOY_EB_DIRECT_ENABLED:-false}
+      # 双体验 T1：chat（默认，经典 IM）| workspace；非法值后端 fail-safe 降级 chat
+      IMBOY_PRODUCT_EXPERIENCE: ${IMBOY_PRODUCT_EXPERIENCE:-chat}
+      SENTRY_DSN: ${SENTRY_DSN:-}
+      # ── SMTP 邮件（可选）────────────────────────────────────────────────────
+      IMBOY_SMTP_RELAY: ${IMBOY_SMTP_RELAY:-}
+      IMBOY_SMTP_PORT: ${IMBOY_SMTP_PORT:-}
+      IMBOY_SMTP_SSL: ${IMBOY_SMTP_SSL:-}
+      IMBOY_SMTP_USERNAME: ${IMBOY_SMTP_USERNAME:-}
+      IMBOY_SMTP_PASSWORD: ${IMBOY_SMTP_PASSWORD:-}
+      IMBOY_SMTP_FROM: ${IMBOY_SMTP_FROM:-}
+      # ── 短信验证码（可选；yjsms | jsms）────────────────────────────────────
+      IMBOY_SMS_SWITCH: ${IMBOY_SMS_SWITCH:-off}
+      IMBOY_SMS_PLATFORM: ${IMBOY_SMS_PLATFORM:-yjsms}
+      IMBOY_YJSMS_ACCOUNT: ${IMBOY_YJSMS_ACCOUNT:-}
+      IMBOY_YJSMS_SECRET: ${IMBOY_YJSMS_SECRET:-}
+      IMBOY_YJSMS_URL: ${IMBOY_YJSMS_URL:-}
+      IMBOY_JPUSH_APP_KEY: ${IMBOY_JPUSH_APP_KEY:-}
+      IMBOY_JPUSH_MASTER_SECRET: ${IMBOY_JPUSH_MASTER_SECRET:-}
+      IMBOY_JSMS_TEMP_ID: ${IMBOY_JSMS_TEMP_ID:-}
+      IMBOY_JSMS_SIGN_ID: ${IMBOY_JSMS_SIGN_ID:-}
+      # ── R0 容量参数（P1-1；详见 docs/engineering/r0-capacity-remediation-design.md）──
+      # ERL_FLAGS 由 install.sh 从 IMBOY_MAX_PROCESSES/PORTS/SCHEDULERS 确定性重算；
+      # 缺省为空 → 使用镜像内 vm.args 的派生默认值（+P/+Q 65536，与运行值一致）。
+      ERL_FLAGS: ${IMBOY_ERL_FLAGS:-}
+      # 单节点 WS 准入上限（后端启动期再校验；非法值拒启，无"无限制"回退）
+      IMBOY_MAX_WS_CONNECTIONS: ${IMBOY_MAX_WS_CONNECTIONS:-20000}
+      # ── 支付网关 / Payment gateway ───────────────────────────────────────────
+      # 社区版硬编码关闭（不是剔除该变量）：镜像内 sys.pro.config 的默认值是
+      # payment_gateway_enabled=true，若不显式覆盖，无商户凭据的社区部署会在
+      # ensure_payment_gateway_config 处 fail-fast 起不来。false 时网关端点
+      # （充值/回调/提现）一律返回「功能未启用」，站内钱包账务不受影响。
+      # 支付网关凭据（微信/支付宝/Stripe）与支付模式变量已全部剔除。
+      IMBOY_PAYMENT_GATEWAY_ENABLED: "false"
+      # ── 插件生命周期 / Plugin lifecycle (A-28) ───────────────────────────────
+      # 动态插件写操作总开关（默认 false）。关闭时 /api/adm/plugin/* 的 7 个写端点
+      # 返回「功能未启用」；内置功能开关（channel/moment/...）是纯 manifest，不受影响。
+      IMBOY_PLUGIN_LIFECYCLE_ENABLED: ${IMBOY_PLUGIN_LIFECYCLE_ENABLED:-false}
+      # ── TSID V10 generator（全非敏感；无持久化状态卷）─────────────────────
+      # 全集群 (DC_ID, NODE_ID) 必须唯一：V10 无跨实例互斥锁，重复配置 =
+      # 同 CombinedNode 双写 = ID 碰撞，部署层负责保证。
+      IMBOY_TSID_DC_ID: ${IMBOY_TSID_DC_ID:-1}
+      IMBOY_TSID_NODE_ID: ${IMBOY_TSID_NODE_ID:-1}
+      IMBOY_TSID_DC_BITS: ${IMBOY_TSID_DC_BITS:-3}
+      IMBOY_TSID_CAPACITY_WAIT_TIMEOUT_MS: ${IMBOY_TSID_CAPACITY_WAIT_TIMEOUT_MS:-100}
+      #IMBOY_TSID_MAX_CLOCK_DRIFT_MS: 5000
+    # 使用安装器在宿主机生成的 RSA；私有配置只读，日志单独持久化。
+    # Mount installer-generated RSA keys read-only and persist application logs.
+    volumes:
+      - ${IMBOY_PROD_DATA_DIR:-./deploy/data}/backend_priv:/opt/imboy/priv_runtime:ro
+      - ${IMBOY_PROD_DATA_DIR:-./deploy/data}/backend_log:/opt/imboy/log
+    expose:
+      - "9800"
+    ports:
+      # 绑定地址安全默认 127.0.0.1：直接发布后端到公网等于绕过 nginx 的全部防护
+      # （TLS 终结、passport 登录限流 10r/m、API 限流 60r/m、/metrics 403 拦截）。
+      - "${BACKEND_BIND_ADDR:-127.0.0.1}:${BACKEND_PORT:-9800}:9800"
+    ulimits:
+      nofile:
+        soft: 1048576
+        hard: 1048576
+    deploy:
+      resources:
+        limits:
+          memory: ${BACKEND_MEM_LIMIT:-8192M}
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "100m"
+        max-file: "30"
+
+  # ========== imboy-admin-frontend（React + Vite，静态）==========
+  prod_imboy_admin:
+    networks:
+      pro:
+        aliases: [imboy_admin]
+    profiles: [prod, prod-turn, prod-sni]
+    image: ${ADMIN_IMAGE:-ghcr.io/imboy-pub/imboy-admin:${IMBOY_VERSION:-unset}}
+    container_name: imboy_admin
+    hostname: admin.docker.imboy.pub
+    restart: unless-stopped
+    environment:
+      TZ: ${TZ:-Asia/Shanghai}
+      # 运行时注入后端 API 地址：entrypoint sed 替换构建产物里的占位符
+      # __IMBOY_API_HOST__ → https://${API_DOMAIN:-}（Vite 构建时静态替换，
+      # 运行时 env 无效，必须替换文件）。未设置时回落同源 /api/adm。
+      IMBOY_API_HOST: https://${API_DOMAIN:-}
+    expose:
+      - "80"
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "50m"
+        max-file: "30"
+
+  # ========== 客服托管 Widget 静态运行时（CSD-DEP-01）==========
+  # 只承载 imboyadmin 仓 build:widget 的静态产物（loader.js / assets / frame HTML 壳，
+  # 见 imboyadmin Dockerfile.widget + docker/widget/nginx.conf，监听 8080）：
+  # 零业务配置、零 DB、零队列、零 secret —— 纯静态产物容器（CSD-IMG-01）。
+  # 仅 compose 内网可达（只 expose 8080，不发布任何公网端口）；公网唯一入口是
+  # nginx 的 CS_WIDGET_DOMAIN vhost（nginx/templates/cs-widget.conf.template）。
+  # 运行时合同（CSD-IMG-01）：只读根文件系统 + tmpfs /tmp（pid/temp/日志全落 /tmp）。
+  prod_imboy_widget:
+    networks:
+      pro:
+        aliases: [imboy_widget]
+    profiles: [prod, prod-turn, prod-sni]
+    image: ${IMBOY_WIDGET_IMAGE:-ghcr.io/imboy-pub/imboy-widget:${IMBOY_VERSION:-unset}}
+    container_name: imboy_widget
+    hostname: widget.docker.imboy.pub
+    restart: unless-stopped
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=16m
+    expose:
+      - "8080"
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1:8080/health.txt"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+      start_period: 5s
+    deploy:
+      resources:
+        limits:
+          memory: 128M
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "50m"
+        max-file: "30"
+
+  prod_imboy_edge:
+    networks:
+      pro:
+        aliases: [imboy_edge]
+    profiles: [prod, prod-turn, prod-sni]
+    image: ${BACKEND_IMAGE:-ghcr.io/imboy-pub/imboy-backend:${IMBOY_VERSION:-unset}}
+    restart: unless-stopped
+    command: ["/bin/sh", "/opt/imboy/bin/start_download_edge.sh"]
+    environment:
+      EDGE_AUTHORIZE_URL: http://imboy_backend:9800/api/v1/attachment/edge/authorize
+      EDGE_INTERNAL_TOKEN: ${IMBOY_EDGE_INTERNAL_TOKEN:-}
+    expose:
+      - "13990"
+    healthcheck:
+      disable: true
+
+  # Separate proof identity: credentials are never injected into the API container.
+  prod_imboy_enterprise_proof:
+    networks:
+      pro:
+        aliases: [imboy_enterprise_proof]
+    profiles: [enterprise-direct]
+    image: ${BACKEND_IMAGE:-ghcr.io/imboy-pub/imboy-backend:${IMBOY_VERSION:-unset}}
+    restart: unless-stopped
+    command: ["/bin/sh", "/opt/imboy/bin/start_enterprise_direct_proof.sh"]
+    depends_on:
+      prod_imboy_pg18:
+        condition: service_healthy
+      prod_garage:
+        condition: service_healthy
+    user: "65532:65532"
+    environment:
+      EB_PROOF_PG_HOST: ${EB_PROOF_PG_HOST:-imboy_pg18}
+      EB_PROOF_PG_PORT: ${EB_PROOF_PG_PORT:-5432}
+      EB_PROOF_PG_DB: ${EB_PROOF_PG_DB:-}
+      EB_PROOF_PG_USER: ${EB_PROOF_PG_USER:-}
+      EB_PROOF_PG_PASSWORD: ${EB_PROOF_PG_PASSWORD:-}
+      EB_PROOF_PG_SSL: ${EB_PROOF_PG_SSL:-}
+      EB_PROOF_STORAGE_NAMESPACE: ${EB_PROOF_STORAGE_NAMESPACE:-}
+      EB_PROOF_STORAGE_ENDPOINT: ${EB_PROOF_STORAGE_ENDPOINT:-}
+      EB_PROOF_STORAGE_CONTAINER: ${EB_PROOF_STORAGE_CONTAINER:-}
+      EB_PROOF_HEALTH_KEY: ${EB_PROOF_HEALTH_KEY:-}
+      EB_PROOF_STORAGE_ACCESS_KEY: ${EB_PROOF_STORAGE_ACCESS_KEY:-}
+      EB_PROOF_STORAGE_SECRET_KEY: ${EB_PROOF_STORAGE_SECRET_KEY:-}
+    read_only: true
+    tmpfs:
+      - /tmp:rw,nosuid,size=256m
+    healthcheck:
+      disable: true
+
+  # ========== nginx 反向代理 + certbot 自动 TLS ==========
+  # 首次部署后执行一次 `bash nginx/init-letsencrypt.sh` 签发证书；之后自动续期。
+  prod_imboy_nginx: &production_nginx
+    networks:
+      pro:
+        aliases: [imboy_nginx]
+    profiles: [prod]
+    # digest pinned 2026-09-29（与本地 docker images --digests 记录一致）
+    image: nginx:1.27-alpine@sha256:65645c7bb6a0661892a8b03b89d0743208a18dd2f3f17a54ef4b76fb8e2f2a10
+    container_name: imboy_nginx
+    restart: unless-stopped
+    depends_on:
+      prod_imboy_backend: {condition: service_healthy}
+      prod_imboy_edge: {condition: service_healthy}
+      prod_imboy_admin: {condition: service_healthy}
+      prod_imboy_widget: {condition: service_healthy}
+      prod_imboy_livekit: {condition: service_started}
+    environment:
+      UPTRACE_DOMAIN: ${UPTRACE_DOMAIN:-}
+      UPTRACE_ENABLED: ${UPTRACE_ENABLED:-false}
+      TZ: ${TZ:-Asia/Shanghai}
+      API_DOMAIN: ${API_DOMAIN:-}
+      ADMIN_DOMAIN: ${ADMIN_DOMAIN:-}
+      RTC_DOMAIN: ${RTC_DOMAIN:-}
+      # 客服 Widget 第三域（渲染 nginx/templates/cs-widget.conf.template）
+      CS_WIDGET_DOMAIN: ${CS_WIDGET_DOMAIN:-}
+      # /s3/ 反代 upstream（附件公网直传/下载）：社区版 = compose 网络内 garage 服务
+      S3_UPSTREAM: ${S3_UPSTREAM:-garage:3900}
+      # 仅替换部署域名/upstream，保留 nginx 内置 $$host/$$remote_addr 等
+      NGINX_ENVSUBST_FILTER: "^(API_DOMAIN|ADMIN_DOMAIN|S3_UPSTREAM|CS_WIDGET_DOMAIN|RTC_DOMAIN|UPTRACE_DOMAIN)$$"
+    volumes:
+      - ./deploy/uptrace/nginx.conf.template:/etc/imboy/uptrace.conf.template:ro
+      - ./deploy/nginx/start-production.sh:/etc/imboy/start-production.sh:ro
+      # Only HTTP templates for this stack; host stream templates stay outside conf.d.
+      - ./deploy/nginx/templates/imboy.conf.template:/etc/nginx/templates/imboy.conf.template:ro
+      - ./deploy/nginx/templates/cs-widget.conf.template:/etc/nginx/templates/cs-widget.conf.template:ro
+      - ./deploy/nginx/rtc.conf.template:/etc/nginx/templates/rtc.conf.template:ro
+      - ${IMBOY_PROD_DATA_DIR:-./deploy/data}/certbot/conf:/etc/letsencrypt:ro
+      - ${IMBOY_PROD_DATA_DIR:-./deploy/data}/certbot/www:/var/www/certbot:ro
+      - ${IMBOY_PROD_DATA_DIR:-./deploy/data}/nginx_log:/var/log/nginx
+    ports:
+      - "80:80"
+      - "443:443"
+    # 官方 entrypoint 遇到 /bin/sh 会跳过模板处理；显式以 nginx 重新进入，
+    # 先渲染 HTTP 模板再启动 master。保留每 6h reload 加载续期证书。
+    command: ["/bin/sh", "/etc/imboy/start-production.sh"]
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "100m"
+        max-file: "30"
+
+  prod_imboy_nginx_turn: &production_nginx_turn
+    <<: *production_nginx
+    profiles: [prod-turn]
+    depends_on:
+      prod_imboy_backend: {condition: service_healthy}
+      prod_imboy_edge: {condition: service_healthy}
+      prod_imboy_admin: {condition: service_healthy}
+      prod_imboy_widget: {condition: service_healthy}
+      prod_imboy_livekit_turn: {condition: service_started}
+
+  # ========== certbot 自动签发 / 续期 TLS 证书 ==========
+  prod_imboy_certbot:
+    networks:
+      pro:
+        aliases: [imboy_certbot]
+    profiles: [prod, prod-turn, prod-sni]
+    # P0: 去 latest。v5.8.0 = 取证时最新稳定（2026-09-01 发布，与 latest 同指）
+    image: certbot/certbot:v5.8.0@sha256:f70ad0adbb7e117f0fe42a63c553f28ea451edabc0148757b6efcd9735acaa20
+    container_name: imboy_certbot
+    restart: unless-stopped
+    volumes:
+      - ${IMBOY_PROD_DATA_DIR:-./deploy/data}/certbot/conf:/etc/letsencrypt
+      - ${IMBOY_PROD_DATA_DIR:-./deploy/data}/certbot/www:/var/www/certbot
+    # 每 12h 尝试续期（首次签发用 nginx/init-letsencrypt.sh）
+    entrypoint: ["/bin/sh", "-c", "trap exit TERM; while :; do certbot renew --quiet; sleep 12h & wait $${!}; done"]
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "50m"
+        max-file: "30"
+
+  # ========== LiveKit SFU（群通话/屏幕共享媒体面）==========
+  # LK-01 版本合同：image@digest 双重锁定 v1.13.7（amd64/linux per-arch manifest
+  # digest sha256:5d3dcc475d064536d9948ebe4eeab8e3b24d6f07a46f6d71a3415a2901bbdc52，
+  # 2026-09-23 registry API 复验；index digest 为 sha256:6fd3b708…，二者并存为真，
+  # 锁定以 per-arch 为准——生产为 x86_64。回滚 digest 见
+  # .Codex/runs/.../A1/LK-01/version-lock-contract.md §1.3）。
+  #
+  # 信令：7880 仅绑 127.0.0.1，TLS 由反代终结（wss://<RTC_DOMAIN> → 7880）。
+  # 媒体：UDP 50000-50200（rtc.port_range，共存期维持）+ TCP 7881（ICE/TCP 兜底）
+  # 直连宿主，需在防火墙/云安全组放行。
+  #
+  # embedded TURN（turn.imboy.pub，TLS 5349 / UDP 3478，TURN_443=BLOCKED）：
+  # 由独立 overlay docker-compose.livekit-turn.yml 提供 —— ports 无法按变量
+  # 条件渲染，且共存期（W4）3478/5349 归 eturnal，提前发布会 bind 冲突崩溃。
+  # 安装器按 .env 的 LIVEKIT_TURN_ENABLED=true 装配该 overlay（W5 终态）。
+  #
+  # ⚠️ 无 redis 段 = standalone 单节点模式（项目级约束：全栈不引入 Redis）。
+  # redis 只在多节点分布式路由下必需。要横向扩展改用「应用层按房间分片」：
+  # imboy 在 /api/v1/rtc/room/join 里 consistent_hash(room_name) 决定发哪个
+  # 节点的 ws_url，同房间参与者必落同一节点 → 节点间无需通信。
+  prod_imboy_livekit: &production_livekit
+    networks:
+      pro:
+        aliases: [imboy_livekit]
+    profiles: [prod]
+    # digest 已验证可解析（2026-09-29）：= v1.13.7 的 linux/amd64 子 manifest；
+    # v1.13.7 多架构顶层 = sha256:6fd3b7088874c4d119160dd688798dfec852bc014786d392caad15f6f63912a3
+    image: livekit/livekit-server@sha256:5d3dcc475d064536d9948ebe4eeab8e3b24d6f07a46f6d71a3415a2901bbdc52
+    container_name: imboy_livekit
+    restart: unless-stopped
+    environment:
+      TZ: ${TZ:-Asia/Shanghai}
+      LIVEKIT_CONFIG: |
+        port: 7880
+        rtc:
+          tcp_port: 7881
+          port_range_start: 50000
+          port_range_end: 50200
+          use_external_ip: true
+        keys:
+          ${LIVEKIT_API_KEY:-}: ${LIVEKIT_API_SECRET:-}
+        logging:
+          level: info
+    expose:
+      - "7880"
+    ports:
+      # 兼容宿主机 Nginx 反代（非 compose Nginx 部署）：仅绑定 loopback，
+      # 不把 LiveKit 信令端口直接暴露到公网。
+      - "127.0.0.1:7880:7880"
+      - "7881:7881"
+      - "50000-50200:50000-50200/udp"
+    deploy:
+      resources:
+        limits:
+          # LK-01 §5.3 容量合同：单节点无 Redis 形态 768m 上限（512m-768m 可调）
+          memory: ${LIVEKIT_MEM_LIMIT:-768M}
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "50m"
+        max-file: "30"
+
+  prod_imboy_livekit_turn: &production_livekit_turn
+    <<: *production_livekit
+    profiles: [prod-turn]
+    environment:
+      TZ: ${TZ:-Asia/Shanghai}
+      LIVEKIT_CONFIG: |
+        port: 7880
+        rtc:
+          tcp_port: 7881
+          port_range_start: 50000
+          port_range_end: 50200
+          use_external_ip: true
+        turn:
+          enabled: true
+          domain: ${TURN_DOMAIN:-turn.invalid}
+          cert_file: /etc/letsencrypt/live/${TURN_DOMAIN:-turn.invalid}/fullchain.pem
+          key_file: /etc/letsencrypt/live/${TURN_DOMAIN:-turn.invalid}/privkey.pem
+          tls_port: 5349
+          udp_port: 3478
+          relay_range_start: 50201
+          relay_range_end: 50500
+        keys:
+          ${LIVEKIT_API_KEY:-}: ${LIVEKIT_API_SECRET:-}
+        logging:
+          level: info
+    volumes:
+      - ${IMBOY_PROD_TURN_CERT_DIR:-./deploy/data/certbot/conf/live/turn.invalid}:/etc/letsencrypt/live/${TURN_DOMAIN:-turn.invalid}:ro
+      - ${IMBOY_PROD_DATA_DIR:-./deploy/data}/certbot/conf/archive/${TURN_DOMAIN:-turn.invalid}:/etc/letsencrypt/archive/${TURN_DOMAIN:-turn.invalid}:ro
+    ports:
+      # 兼容宿主机 Nginx 反代（非 compose Nginx 部署）：仅绑定 loopback，
+      # 不把 LiveKit 信令端口直接暴露到公网。
+      - "127.0.0.1:7880:7880"
+      - "7881:7881"
+      - "50000-50200:50000-50200/udp"
+      - "3478:3478/udp"
+      - "5349:5349"
+      - "50201-50500:50201-50500/udp"
+
+  # HAProxy owns public TCP 443 when TURN and HTTPS share a listener.
+  prod_imboy_nginx_sni:
+    <<: *production_nginx_turn
+    profiles: [prod-sni]
+    networks:
+      pro:
+        aliases: [imboy_nginx]
+      sni_proxy:
+        ipv4_address: 172.31.91.3
+    configs:
+      - source: prod_sni_nginx_realip
+        target: /etc/nginx/conf.d/00-proxy-realip.conf
+    command: ["/bin/sh", "/etc/imboy/start-production.sh", "proxy-protocol"]
+    depends_on:
+      prod_imboy_backend: {condition: service_healthy}
+      prod_imboy_edge: {condition: service_healthy}
+      prod_imboy_admin: {condition: service_healthy}
+      prod_imboy_widget: {condition: service_healthy}
+      prod_imboy_livekit_sni: {condition: service_started}
+    ports:
+      - "80:80"
+
+  prod_imboy_livekit_sni:
+    <<: *production_livekit_turn
+    profiles: [prod-sni]
+    networks:
+      pro:
+        aliases: [imboy_livekit]
+      sni_proxy:
+        ipv4_address: 172.31.91.4
+    environment:
+      TZ: ${TZ:-Asia/Shanghai}
+      LIVEKIT_CONFIG: |
+        port: 7880
+        rtc:
+          tcp_port: 7881
+          port_range_start: 50000
+          port_range_end: 50200
+          use_external_ip: true
+        turn:
+          enabled: true
+          domain: ${TURN_DOMAIN:-turn.invalid}
+          cert_file: /etc/letsencrypt/live/${TURN_DOMAIN:-turn.invalid}/fullchain.pem
+          key_file: /etc/letsencrypt/live/${TURN_DOMAIN:-turn.invalid}/privkey.pem
+          tls_port: 443
+          proxy_protocol: true
+          proxy_protocol_trusted_cidrs:
+            - 172.31.91.2/32
+          udp_port: 3478
+          relay_range_start: 50201
+          relay_range_end: 50500
+        keys:
+          ${LIVEKIT_API_KEY:-}: ${LIVEKIT_API_SECRET:-}
+        logging:
+          level: info
+    ports:
+      - "127.0.0.1:7880:7880"
+      - "7881:7881"
+      - "50000-50200:50000-50200/udp"
+      - "3478:3478/udp"
+      - "50201-50500:50201-50500/udp"
+
+  prod_imboy_haproxy:
+    profiles: [prod-sni]
+    image: haproxy:3.2.27-alpine@sha256:7816a9801a6846b912bc37e48529808e2fa87c3c47992441940f68e393ebcfeb
+    restart: unless-stopped
+    networks:
+      pro: {}
+      sni_proxy:
+        ipv4_address: 172.31.91.2
+    depends_on:
+      - prod_imboy_nginx_sni
+      - prod_imboy_livekit_sni
+    configs:
+      - source: prod_haproxy_config
+        target: /usr/local/etc/haproxy/haproxy.cfg
+    ports:
+      - "443:443"
+
+  # ═══════════════════════════════════════════════════════════════════
+  # 以下为监控栈（默认不启动）：加 --profile monitoring 启用，例如
+  #   docker compose -f docker-compose.community.yml --profile monitoring up -d
+  # 更完整的 exporter 组合（pushgateway / node_exporter / postgres_exporter）
+  # ═══════════════════════════════════════════════════════════════════
+
+  # ========== Prometheus 指标采集 / Metrics scraping ==========
+  prod_imboy_prometheus:
+    networks:
+      pro:
+        aliases: [imboy_prometheus]
+    profiles: [monitoring]
+    # digest pinned 2026-09-29（registry manifest HEAD 取多架构顶层；tag 保留便于人读）
+    image: prom/prometheus:v2.55.0@sha256:378f4e03703557d1c6419e6caccf922f96e6d88a530f7431d66a4c4f4b1000fe
+    container_name: imboy_prometheus
+    restart: unless-stopped
+    volumes:
+      - ./deploy/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./deploy/prometheus/rules:/etc/prometheus/rules:ro
+      - prometheus_data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.retention.time=180d'
+      - '--web.enable-lifecycle'
+    ports:
+      - "127.0.0.1:${PROMETHEUS_PORT:-9090}:9090"
+    deploy:
+      resources:
+        limits:
+          memory: 1024M
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "50m"
+        max-file: "30"
+
+  # ========== Grafana 可视化仪表盘 / Visualization dashboard ==========
+  prod_imboy_grafana:
+    networks:
+      pro:
+        aliases: [imboy_grafana]
+    profiles: [monitoring]
+    # digest pinned 2026-09-29（registry manifest HEAD 取多架构顶层；tag 保留便于人读）
+    image: grafana/grafana:11.3.0@sha256:a0f881232a6fb71a0554a47d0fe2203b6888fe77f4cefb7ea62bed7eb54e13c3
+    container_name: imboy_grafana
+    restart: unless-stopped
+    depends_on:
+      - prod_imboy_prometheus
+    environment:
+      TZ: ${TZ:-Asia/Shanghai}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-}
+      GF_SECURITY_ADMIN_USER: admin
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_SERVER_ROOT_URL: "%(protocol)s://%(domain)s/grafana/"
+      GF_SERVER_SERVE_FROM_SUB_PATH: "true"
+    volumes:
+      - ./deploy/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./deploy/grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - grafana_data:/var/lib/grafana
+    expose:
+      - "3000"
+    ports:
+      # 绑定地址安全默认 127.0.0.1。Grafana 无 TLS，公网暴露等于明文传管理口令。
+      # 远程访问请走 nginx 反代或 SSH 隧道。
+      - "${GRAFANA_BIND_ADDR:-127.0.0.1}:${GRAFANA_PORT:-3000}:3000"
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "50m"
+        max-file: "30"
+
+  # ---------- Pushgateway：短命 cron 作业的指标出口（B-23）----------
+  # 备份/TLS 检查没有常驻端点供抓取，只能由作业自己推。
+  # 产出方已就绪：scripts/lib/metrics_push.sh 的 push_backup_result / push_tls_expiry。
+  prod_imboy_pushgateway:
+    networks:
+      pro:
+        aliases: [imboy_pushgateway]
+    profiles: [monitoring]
+    # digest pinned 2026-09-29（registry manifest HEAD 取多架构顶层；tag 保留便于人读）
+    image: prom/pushgateway:v1.9.0@sha256:98a458415f8f5afcfd45622d289a0aa67063563bec0f90d598ebc76783571936
+    container_name: imboy_pushgateway
+    restart: unless-stopped
+    command:
+      # 持久化：默认只存内存，重启后 last_success_timestamp 归零，
+      # 会让"备份没跑"在每次运维重启后误报一轮。
+      - '--persistence.file=/data/pushgateway.store'
+      - '--persistence.interval=5m'
+    volumes:
+      - pushgateway_data:/data
+    ports:
+      # ⚠️ 绑 127.0.0.1 而不是只 expose：备份/TLS 作业跑在**宿主机**上
+      # （见 deploy/cron/imboy-ops.cron），解析不到 compose 网络里的服务名。
+      # 只绑 loopback 不上公网 —— 任何能访问 pushgateway 的人都能伪造指标。
+      - "127.0.0.1:9091:9091"
+    deploy:
+      resources:
+        limits:
+          memory: 128M
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "20m"
+        max-file: "5"
+
+  # ---------- node_exporter：宿主机资源（B-24）----------
+  # 面板 node_filesystem_avail_bytes / node_filesystem_size_bytes 依赖它。
+  prod_imboy_node_exporter:
+    networks:
+      pro:
+        aliases: [node_exporter]
+    profiles: [monitoring]
+    # digest pinned 2026-09-29（registry manifest HEAD 取多架构顶层；tag 保留便于人读）
+    image: prom/node-exporter:v1.8.2@sha256:4032c6d5bfd752342c3e631c2f1de93ba6b86c41db6b167b9a35372c139e7706
+    container_name: node_exporter
+    restart: unless-stopped
+    # ⚠️ 必须 host pid + 挂载宿主机根：否则采到的是**容器自己**的文件系统，
+    # 磁盘使用率面板会显示一个与真实宿主机无关的数字（比没数据更危险）。
+    pid: host
+    volumes:
+      - /:/host:ro,rslave
+    command:
+      - '--path.rootfs=/host'
+      # 排除容器/临时文件系统，否则每个容器层都会变成一条 mountpoint 序列，
+      # 面板被噪声淹没且序列数暴涨。
+      - '--collector.filesystem.mount-points-exclude=^/(host/)?(sys|proc|dev|run|var/lib/docker/.+)($$|/)'
+    expose:
+      - "9100"
+    deploy:
+      resources:
+        limits:
+          memory: 128M
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "20m"
+        max-file: "5"
+
+  # ---------- postgres_exporter：PG 指标（B-24）----------
+  # 面板/告警 pg_stat_database_numbackends、pg_settings_max_connections、
+  # pg_stat_database_xact_commit/rollback 依赖它。
+  prod_imboy_postgres_exporter:
+    networks:
+      pro:
+        aliases: [postgres_exporter]
+    profiles: [monitoring]
+    # digest pinned 2026-09-29（registry manifest HEAD 取多架构顶层；tag 保留便于人读）
+    image: prometheuscommunity/postgres-exporter:v0.15.0@sha256:386b12d19eab2a37d7cd8ca8b4c7491cc7a830d9581f49af6c98a393da9605e6
+    container_name: postgres_exporter
+    restart: unless-stopped
+    environment:
+      # 从主 compose 的同一套 .env 取值，不另起一份凭据。
+      # ⚠️ 建议为它单建一个只读账号（pg_monitor 角色）而不是复用超级用户 ——
+      # exporter 只需要读统计视图。
+      # 主机名是 imboy_pg18（容器名），不是 imboy_pg —— 已对着 prod compose 核过。
+      DATA_SOURCE_NAME: "postgresql://${PG_EXPORTER_USER:-${POSTGRES_USER:-}}:${PG_EXPORTER_PASSWORD:-${POSTGRES_PASSWORD:-}}@imboy_pg18:5432/${POSTGRES_DB:-}?sslmode=disable"
+    expose:
+      - "9187"
+    deploy:
+      resources:
+        limits:
+          memory: 128M
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "20m"
+        max-file: "5"
+
+  uptrace_pg_init:
+    profiles: [uptrace]
+    networks: [pro]
+    # digest pinned 2026-09-29（registry manifest HEAD 取多架构顶层；tag 保留便于人读）
+    image: postgres:18-alpine@sha256:77f585114c32fbca283dc835b0596f4e52b51b4c6662d7810b2f4084f60a1873
+    restart: "no"
+    depends_on:
+      prod_imboy_pg18:
+        condition: service_healthy
+    environment:
+      PGHOST: imboy_pg18
+      PGUSER: ${POSTGRES_USER:-}
+      PGPASSWORD: ${POSTGRES_PASSWORD:-}
+      PGDATABASE: ${POSTGRES_DB:-}
+      UPTRACE_PG_PASSWORD: ${UPTRACE_PG_PASSWORD:-}
+    entrypoint: ["/bin/sh", "-ec"]
+    command:
+      - |
+        psql --set=ON_ERROR_STOP=1 --set=uptrace_password="$$UPTRACE_PG_PASSWORD" <<'SQL'
+        SELECT 'CREATE ROLE uptrace LOGIN' WHERE NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'uptrace') \gexec
+        ALTER ROLE uptrace WITH LOGIN PASSWORD :'uptrace_password';
+        SELECT 'CREATE DATABASE uptrace OWNER uptrace' WHERE NOT EXISTS (SELECT 1 FROM pg_database WHERE datname = 'uptrace') \gexec
+        ALTER DATABASE uptrace OWNER TO uptrace;
+        SQL
+
+  uptrace_clickhouse:
+    profiles: [uptrace]
+    networks: [uptrace_private]
+    # digest pinned 2026-09-29（registry manifest HEAD 取多架构顶层；tag 保留便于人读）
+    image: ${UPTRACE_CLICKHOUSE_IMAGE:-clickhouse/clickhouse-server:26.3@sha256:3ec149f28d2f3727877198ff5cdbad89b7a4c5d4ec47ac2a983347d35924c6f9}
+    container_name: imboy_uptrace_clickhouse
+    restart: unless-stopped
+    environment:
+      CLICKHOUSE_USER: uptrace
+      CLICKHOUSE_PASSWORD: ${UPTRACE_CLICKHOUSE_PASSWORD:-}
+      CLICKHOUSE_DB: uptrace
+    volumes:
+      - ${IMBOY_PROD_DATA_DIR:-./deploy/data}/uptrace/clickhouse:/var/lib/clickhouse
+    expose:
+      - "8123"
+      - "9000"
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "localhost:8123/ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    deploy:
+      resources:
+        limits:
+          memory: ${UPTRACE_CLICKHOUSE_MEM_LIMIT:-4096M}
+
+  uptrace_redis:
+    profiles: [uptrace]
+    networks: [uptrace_private]
+    # digest pinned 2026-09-29（registry manifest HEAD 取多架构顶层；tag 保留便于人读）
+    image: ${UPTRACE_REDIS_IMAGE:-redis:7.4.2-alpine@sha256:02419de7eddf55aa5bcf49efb74e88fa8d931b4d77c07eff8a6b2144472b6952}
+    container_name: imboy_uptrace_redis
+    restart: unless-stopped
+    environment:
+      UPTRACE_REDIS_PASSWORD: ${UPTRACE_REDIS_PASSWORD:-}
+    command: ["redis-server", "--save", "", "--appendonly", "no", "--requirepass", "${UPTRACE_REDIS_PASSWORD:-}"]
+    expose:
+      - "6379"
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli -a \"$$UPTRACE_REDIS_PASSWORD\" ping | grep -q PONG"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  uptrace:
+    profiles: [uptrace]
+    networks: [uptrace_private, pro]
+    # digest pinned 2026-09-29（registry manifest HEAD 取多架构顶层；tag 保留便于人读）
+    image: ${UPTRACE_IMAGE:-uptrace/uptrace:2.0.3@sha256:5e42ea5f3bb95b6e3840155cd9b0c75e642ffaabf729fbca3ecadd3d4e3d1fb5}
+    container_name: imboy_uptrace
+    restart: unless-stopped
+    depends_on:
+      uptrace_pg_init:
+        condition: service_completed_successfully
+      uptrace_clickhouse:
+        condition: service_healthy
+      uptrace_redis:
+        condition: service_healthy
+    environment:
+      UPTRACE_DOMAIN: ${UPTRACE_DOMAIN:-}
+      UPTRACE_SERVICE_SECRET: ${UPTRACE_SERVICE_SECRET:-}
+      UPTRACE_PG_PASSWORD: ${UPTRACE_PG_PASSWORD:-}
+      UPTRACE_CLICKHOUSE_PASSWORD: ${UPTRACE_CLICKHOUSE_PASSWORD:-}
+      UPTRACE_REDIS_PASSWORD: ${UPTRACE_REDIS_PASSWORD:-}
+      UPTRACE_ADMIN_EMAIL: ${UPTRACE_ADMIN_EMAIL:-}
+      UPTRACE_ADMIN_PASSWORD: ${UPTRACE_ADMIN_PASSWORD:-}
+      UPTRACE_PROJECT_TOKEN: ${UPTRACE_PROJECT_TOKEN:-}
+    volumes:
+      - ./deploy/uptrace/uptrace.yml:/etc/uptrace/config.yml:ro
+    expose:
+      - "80"
+      - "4317"
+    deploy:
+      resources:
+        limits:
+          memory: ${UPTRACE_MEM_LIMIT:-2048M}
+
+  uptrace_otelcol:
+    profiles: [uptrace]
+    networks: [uptrace_private, pro]
+    # digest pinned 2026-09-29（registry manifest HEAD 取多架构顶层；tag 保留便于人读）
+    image: ${UPTRACE_OTELCOL_IMAGE:-otel/opentelemetry-collector-contrib:0.145.0@sha256:a7343f01869071ea3f4c5e1e97df1bb1b3c4d5c77247db80e053a80b9df530c4}
+    container_name: imboy_uptrace_otelcol
+    restart: unless-stopped
+    depends_on:
+      - uptrace
+    environment:
+      UPTRACE_DSN: http://${UPTRACE_PROJECT_TOKEN:-}@uptrace:80?grpc=4317
+    volumes:
+      - ./deploy/uptrace/otel-collector.yml:/etc/otelcol-contrib/config.yaml:ro
+
 configs:
   edge_health_vm_args:
     # The probe boots only kernel/stdlib/inets, with no app or heart process.
@@ -326,7 +1231,58 @@ configs:
       [admin]
       api_bind_addr = "[::]:3903"
 
+  # Garage 最小化配置（单节点）。rpc_secret 从 .env 注入（compose 会对该内容做
+  # 变量插值，要求 Compose v2.23.1+）。凭据不走本文件：见 garage 服务的
+  # GARAGE_DEFAULT_* 环境变量与 --default-bucket 启动参数。
+  prod_garage_config:
+    content: |
+      metadata_dir = "/var/lib/garage/meta"
+      data_dir = "/var/lib/garage/data"
+      db_engine = "lmdb"
+      replication_factor = 1
+      rpc_bind_addr = "[::]:3901"
+      rpc_secret = "${GARAGE_RPC_SECRET:-}"
+      [s3_api]
+      s3_region = "garage"
+      api_bind_addr = "[::]:3900"
+      [admin]
+      api_bind_addr = "[::]:3903"
+
+  prod_haproxy_config:
+    content: |
+      defaults
+        mode tcp
+        timeout connect 5s
+        timeout client 1h
+        timeout server 1h
+
+      frontend https_and_turn
+        bind :443
+        tcp-request inspect-delay 5s
+        tcp-request content accept if { req.ssl_hello_type 1 }
+        use_backend livekit_turn if { req.ssl_sni -i ${TURN_DOMAIN:-turn.invalid} }
+        default_backend nginx_https
+
+      backend livekit_turn
+        server livekit 172.31.91.4:443 send-proxy-v2
+
+      backend nginx_https
+        server nginx 172.31.91.3:443 send-proxy-v2
+
+
+  prod_sni_nginx_realip:
+    content: |
+      set_real_ip_from 172.31.91.2;
+      real_ip_header proxy_protocol;
+
 networks:
+  uptrace_private:
+    internal: true
+  api_docs: {}
+  sni_proxy:
+    ipam:
+      config:
+        - subnet: 172.31.91.0/29
   default:
     name: imboy-local
   pro:
@@ -340,3 +1296,100 @@ volumes:
   garage_data:
   backend_runtime:
   backend_logs:
+  prometheus_data:
+    name: imboy_prometheus_data
+    driver: local
+  grafana_data:
+    name: imboy_grafana_data
+    driver: local
+  pushgateway_data:
+    name: imboy_pushgateway_data
+    driver: local
+
+x-imboy-business-policy: |
+  services:
+    imboy_backend:
+      environment:
+        IMBOY_PRODUCT_PROFILE: $${IMBOY_PRODUCT_PROFILE:-community}
+        # 双体验 T1：chat（默认）| workspace；非法值后端 fail-safe 降级 chat
+        IMBOY_PRODUCT_EXPERIENCE: $${IMBOY_PRODUCT_EXPERIENCE:-chat}
+        IMBOY_E2EE_MODE: $${IMBOY_E2EE_MODE:-required}
+        IMBOY_FEATURE_E2EE: $${IMBOY_FEATURE_E2EE:-true}
+        IMBOY_FEATURE_CHANNEL: $${IMBOY_FEATURE_CHANNEL:-true}
+        IMBOY_FEATURE_CHANNEL_ORDER: $${IMBOY_FEATURE_CHANNEL_ORDER:-true}
+
+x-imboy-business-widget: |
+  services:
+
+    # ========== 客服托管 Widget 静态运行时（与 community 版同构）==========
+    imboy_widget:
+      image: $${IMBOY_WIDGET_IMAGE:-ghcr.io/imboy-pub/imboy-widget:$${IMBOY_VERSION:-1.0.0-alpha.82}}
+      container_name: imboy_widget
+      hostname: widget.docker.imboy.pub
+      restart: unless-stopped
+      read_only: true
+      tmpfs:
+        - /tmp:rw,noexec,nosuid,size=16m
+      expose:
+        - "8080"
+      healthcheck:
+        test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1:8080/health.txt"]
+        interval: 30s
+        timeout: 3s
+        retries: 3
+        start_period: 5s
+      deploy:
+        resources:
+          limits:
+            memory: 128M
+      logging:
+        driver: "json-file"
+        options:
+          max-size: "50m"
+          max-file: "30"
+
+    # ========== nginx 增量：第三域 vhost 渲染 + upstream 依赖 ==========
+    imboy_nginx:
+      environment:
+        # 客服 Widget 第三域（渲染 nginx/templates/cs-widget.conf.template）
+        CS_WIDGET_DOMAIN: $${CS_WIDGET_DOMAIN}
+        # 覆盖基线 filter：追加 CS_WIDGET_DOMAIN（$$$$ 为 compose 转义的字面 $$）
+        NGINX_ENVSUBST_FILTER: "^(API_DOMAIN|ADMIN_DOMAIN|S3_UPSTREAM|CS_WIDGET_DOMAIN)$$$$"
+      depends_on:
+        - imboy_widget
+
+x-imboy-legacy-sni: |
+  # Generated by install-livekit-l4-sni.sh. Do not put secrets in this file.
+  services:
+    __LIVEKIT_SERVICE__:
+      environment:
+        TZ: $${TZ:-Asia/Shanghai}
+        LIVEKIT_CONFIG: |
+          port: 7880
+          rtc:
+            tcp_port: 7881
+            port_range_start: 50000
+            port_range_end: 50200
+            use_external_ip: true
+          turn:
+            enabled: true
+            domain: __TURN_DOMAIN__
+            cert_file: /etc/livekit/certs/fullchain.pem
+            key_file: /etc/livekit/certs/privkey.pem
+            tls_port: 443
+            udp_port: 3478
+            relay_range_start: 50201
+            relay_range_end: 50500
+            proxy_protocol: true
+            proxy_protocol_trusted_cidrs:
+              - __DOCKER_GATEWAY_CIDR__
+          keys:
+            $${LIVEKIT_API_KEY:?LIVEKIT_API_KEY is required}: $${LIVEKIT_API_SECRET:?LIVEKIT_API_SECRET is required}
+          logging:
+            level: info
+      volumes:
+        - __LIVEKIT_TURN_CERT_DIR__:/etc/livekit/certs:ro
+      ports:
+        - "127.0.0.1:15443:443"
+        - "3478:3478/udp"
+        - "50201-50500:50201-50500/udp"

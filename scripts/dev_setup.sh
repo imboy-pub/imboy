@@ -111,7 +111,7 @@ for profile in "${PROFILES[@]}"; do COMPOSE+=(--profile "$profile"); done
 # config --environment, so inspect only empty fields in its rendered YAML.
 # Include api for this read-only validation even when starting infrastructure only.
 missing_keys="$("${COMPOSE[@]}" --profile api config | awk '
-  $1 ~ /^(GARAGE_DEFAULT_ACCESS_KEY|GARAGE_DEFAULT_SECRET_KEY|IMBOY_EDGE_INTERNAL_TOKEN|IMBOY_LIVEKIT_API_SECRET):$/ &&
+  $1 ~ /^(POSTGRES_PASSWORD|GARAGE_DEFAULT_ACCESS_KEY|GARAGE_DEFAULT_SECRET_KEY|IMBOY_EDGE_INTERNAL_TOKEN|IMBOY_LIVEKIT_API_SECRET):$/ &&
       (NF == 1 || $2 == "\"\"" || $2 == "\047\047") { sub(/:$/, "", $1); print $1 }
   $1 == "rpc_secret" && $2 == "=" && $3 == "\"\"" { print "GARAGE_RPC_SECRET" }
 ')"

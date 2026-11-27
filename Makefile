@@ -283,11 +283,11 @@ feature-smoke:
 		for item in $$IMBOY_FEATURE_EXPECTS; do set -- "$$@" --expect "$$item"; done; \
 		bash ./scripts/run_feature_flag_smoke.sh "$$@"
 
-# 冒烟与安装/升级门：make smoke、smoke-8step、golden-install、golden-upgrade。
+# 冒烟：make smoke、smoke-8step。
 SMOKE_FROM ?= 1000000051
 SMOKE_TO   ?= 1000000056
 
-.PHONY: smoke smoke-c2c smoke-ws smoke-ctl smoke-8step golden-install golden-upgrade
+.PHONY: smoke smoke-c2c smoke-ws smoke-ctl smoke-8step
 smoke-c2c:
 	@./scripts/smoke/c2c_smoke.sh $(SMOKE_FROM) $(SMOKE_TO)
 smoke-ws:
@@ -298,10 +298,6 @@ smoke: smoke-c2c smoke-ws smoke-ctl
 	@echo "=== all Tier-0 smoke PASS ==="
 smoke-8step:
 	@SMOKE_C2C_FROM=$(SMOKE_FROM) SMOKE_C2C_TO=$(SMOKE_TO) bash ./scripts/smoke_8step.sh
-golden-install:
-	@bash ./scripts/golden_install.sh $(GOLDEN_ARGS)
-golden-upgrade:
-	@bash ./scripts/golden_upgrade.sh $(GOLDEN_ARGS)
 
 CTL_NODE ?= imboy@127.0.0.1
 .PHONY: ctl
@@ -401,11 +397,11 @@ e2ee-verify: security-gate
 
 .PHONY: docs-serve docs-stop
 docs-serve:
-	docker compose -f docs/api-sandbox/docker-compose.yml up -d
+	docker compose -f docker-compose.yml --profile docs up -d api_docs
 	@echo "API Docs: http://localhost:8080"
 
 docs-stop:
-	docker compose -f docs/api-sandbox/docker-compose.yml down
+	docker compose -f docker-compose.yml --profile docs stop api_docs
 
 # 依赖审计/升级：mod-check；mod-up MOD="cowboy cowlib=2.17.0" 或 MOD=all。
 .PHONY: mod-check mod-up

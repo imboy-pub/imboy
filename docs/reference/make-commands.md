@@ -102,8 +102,6 @@ Bare make retains the existing test-build default. Test compilation requires GNU
 | `make smoke-c2c` / `make smoke-ws` / `make smoke-ctl` | 单项冒烟 |
 | `make smoke-8step` | 8 步应用层冒烟链（Golden Gates §4.3） |
 | `make feature-smoke FEATURE_SMOKE_BASE_URL=...` | 特性开关冒烟（必填 `FEATURE_SMOKE_BASE_URL`；`FEATURE_SMOKE_EXPECTS='core=true moment=false'` 等） |
-| `make golden-install GOLDEN_ARGS="..."` | Golden Install 金安装门禁（cleanroom 全流程 + 计时 + restart 幂等） |
-| `make golden-upgrade GOLDEN_ARGS="..."` | Golden Upgrade 升级门禁（vN → vN+1 + 数据保留断言） |
 
 ## 静态类型检查
 

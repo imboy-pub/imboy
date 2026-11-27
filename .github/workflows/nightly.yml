@@ -19,7 +19,6 @@ name: Backend Nightly
 # elvis 同时也在 quality.yml（PR/push 数字 ratchet）跑——nightly 侧负责 known 清单
 # 五分类与 FIXED 棘轮报告，两层职责不同（P4-Q1 elvis 归位决策：quality.yml 不动）。
 #
-# cron 20:00 UTC（北京 04:00）：与 release.yml golden-install-nightly（19:00 UTC）
 # 错开一小时，避免同时抢 runner 配额、日志时段分离便于排查。
 #
 # 首跑 SOP（dialyze/full-eunit 的 known 清单当前留空）：

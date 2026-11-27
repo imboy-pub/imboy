@@ -15,13 +15,7 @@ global:
     cluster: imboy-prod
 
 rule_files:
-  - /etc/prometheus/rules/*.yml
-
-alerting:
-  alertmanagers:
-    - static_configs:
-        - targets:
-            - imboy_alertmanager:9093
+  - /etc/prometheus/rules/imboy-alerts.yml
 
 scrape_configs:
   # IMBoy Erlang 后端

@@ -8,7 +8,7 @@
 #
 # 之后续期全自动：imboy_certbot 容器每 12h 跑 certbot renew，imboy_nginx 每 6h reload。
 #
-# 用法：cd deploy && COMPOSE_FILE=docker-compose.community.yml bash nginx/init-letsencrypt.sh
+# 用法：cd deploy && bash nginx/init-letsencrypt.sh
 # 前提：.env 已填域名 / CERTBOT_EMAIL，且域名 A/AAAA 记录已指向本机。
 
 set -euo pipefail
@@ -33,13 +33,24 @@ DATA_DIR="${DATA_DIR:-./data}"
 COMPOSE_FILES="${COMPOSE_FILES:-${COMPOSE_FILE:-}}"
 if [ -z "$COMPOSE_FILES" ]; then
   # 保持现有商务版默认；仓库只提供社区文件时可独立执行首签。
-  if [ -f docker-compose.prod.yml ]; then
+  if [ -f ../docker-compose.yml ]; then
+    COMPOSE_FILES=../docker-compose.yml
+  elif [ -f docker-compose.prod.yml ]; then
     COMPOSE_FILES=docker-compose.prod.yml
   else
     COMPOSE_FILES=docker-compose.community.yml
   fi
 fi
 COMPOSE_ARGS=()
+service_prefix=
+nginx_suffix=
+case "$COMPOSE_FILES" in
+  ../docker-compose.yml|../docker-compose.yml\ *)
+    COMPOSE_ARGS=(--project-name imboy --profile "${IMBOY_DEPLOY_PROFILE:-prod}" --env-file .env)
+    service_prefix=prod_
+    case "${IMBOY_DEPLOY_PROFILE:-prod}" in prod-turn) nginx_suffix=_turn ;; prod-sni) nginx_suffix=_sni ;; esac
+    ;;
+esac
 for compose_file in $COMPOSE_FILES; do
   [ -f "$compose_file" ] || { echo "缺少 compose 文件：$compose_file" >&2; exit 1; }
   COMPOSE_ARGS+=(-f "$compose_file")
@@ -82,8 +93,27 @@ for d in "${DOMAINS[@]}"; do
   fi
 done
 
+# On a new unified TURN installation LiveKit requires a certificate at startup.
+# Issue missing certificates on port 80 before the proxy or media stack starts.
+if [ "${IMBOY_BOOTSTRAP_TURN_CERT:-0}" = 1 ]; then
+  case "$nginx_suffix" in _turn|_sni) ;; *) echo "Invalid TURN bootstrap profile" >&2; exit 1 ;; esac
+  for d in ${MISSING_DOMAINS[@]+"${MISSING_DOMAINS[@]}"}; do
+    live="$CONF/live/$d"
+    if [ -e "$live/$SELF_SIGNED_MARK" ]; then
+      rm -f -- "$live/fullchain.pem" "$live/privkey.pem" "$live/$SELF_SIGNED_MARK"
+      rmdir -- "$live"
+    fi
+    compose run --rm --no-deps -p 80:80 --entrypoint certbot "${service_prefix}imboy_certbot" \
+      certonly --standalone -d "$d" --email "$CERTBOT_EMAIL" \
+      --agree-tos --no-eff-email --non-interactive
+    is_real_cert "$live" || { echo "Certbot did not write the certificate for $d" >&2; exit 1; }
+  done
+  echo "✅ TLS 证书签发完成：${DOMAINS[*]}"
+  exit 0
+fi
+
 # ① 为缺证书的域名下发临时自签证书，使 nginx HTTPS server 能启动
-for d in "${MISSING_DOMAINS[@]}"; do
+for d in ${MISSING_DOMAINS[@]+"${MISSING_DOMAINS[@]}"}; do
   live="$CONF/live/$d"
   mkdir -p "$live"
   echo "==> 临时自签证书 $d"
@@ -99,7 +129,7 @@ done
 
 # ② 启动 nginx（已能加载临时证书并响应 ACME challenge）
 echo "==> 启动 nginx"
-compose up -d imboy_nginx
+compose up -d "${service_prefix}imboy_nginx${nginx_suffix}"
 
 # up -d 不表示 master 已加载证书；此时删临时证书会与 entrypoint/启动竞争。
 # 经容器 loopback 逐域探测，避免依赖公网回环/DNS；这里仅验证 HTTP-01。
@@ -109,16 +139,16 @@ chmod 644 "$probe_path"
 for d in "${DOMAINS[@]}"; do
   ready=0
   for ((attempt=0; attempt<30; attempt++)); do
-    if response="$(compose exec -T imboy_nginx wget -q -T 2 -O - \
+    if response="$(compose exec -T "${service_prefix}imboy_nginx${nginx_suffix}" wget -q -T 2 -O - \
         --header="Host: $d" "http://127.0.0.1/.well-known/acme-challenge/$probe_name" 2>/dev/null)" \
         && [ "$response" = "$probe_name" ]; then
       ready=1; break
     fi
     sleep 2
   done
-  [ "$ready" = 1 ] || { echo "Nginx HTTP-01 尚未就绪：$d；临时证书保留，未开始签发" >&2; exit 1; }
+  [ "$ready" = 1 ] || { echo "Nginx HTTP-01 尚未就绪：${d}；临时证书保留，未开始签发" >&2; exit 1; }
 done
-compose exec -T imboy_nginx nginx -t
+compose exec -T "${service_prefix}imboy_nginx${nginx_suffix}" nginx -t
 
 # Certbot 失败可能没有建立 lineage。仅恢复本次临时证书；已存在的正式证书
 # 或 archive/renewal 状态不覆盖，交由操作者修复，避免破坏部分成功的签发。
@@ -133,15 +163,15 @@ restore_temporary_cert() {
 }
 
 # ③ 删除临时证书并经 webroot 申请正式证书（每个域名独立 live 目录）
-for d in "${MISSING_DOMAINS[@]}"; do
+for d in ${MISSING_DOMAINS[@]+"${MISSING_DOMAINS[@]}"}; do
   echo "==> 申请正式证书 $d"
   rm -rf -- "$CONF/live/$d"
-  if ! compose run --rm --entrypoint certbot imboy_certbot \
+  if ! compose run --rm --entrypoint certbot "${service_prefix}imboy_certbot" \
       certonly --webroot -w /var/www/certbot \
       -d "$d" --email "$CERTBOT_EMAIL" \
       --agree-tos --no-eff-email --non-interactive; then
     restore_temporary_cert "$d"
-    echo "certbot 签发失败：$d；未 reload，修复原因后重跑；若有 archive/renewal 残留请先人工修复" >&2
+    echo "certbot 签发失败：${d}；未 reload，修复原因后重跑；若有 archive/renewal 残留请先人工修复" >&2
     exit 1
   fi
   if [ ! -s "$CONF/live/$d/fullchain.pem" ] || [ ! -s "$CONF/live/$d/privkey.pem" ]; then
@@ -152,8 +182,8 @@ for d in "${MISSING_DOMAINS[@]}"; do
 done
 
 # ④ reload nginx 加载正式证书
-compose exec -T imboy_nginx nginx -t
+compose exec -T "${service_prefix}imboy_nginx${nginx_suffix}" nginx -t
 echo "==> reload nginx"
-compose exec -T imboy_nginx nginx -s reload
-compose up -d imboy_certbot
+compose exec -T "${service_prefix}imboy_nginx${nginx_suffix}" nginx -s reload
+compose up -d "${service_prefix}imboy_certbot"
 echo "✅ TLS 证书签发完成：${DOMAINS[*]}"

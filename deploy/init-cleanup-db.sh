@@ -27,20 +27,31 @@ done
 for sql in cleanup-db/bootstrap.sql cleanup-db/verify.sql; do
   [[ -r "$sql" ]] || fail "交付文件缺失: $sql"
 done
-read -r -a files <<< "${COMPOSE_FILES:-docker-compose.community.yml}"
-[[ ${files[0]:-} == docker-compose.community.yml ]] \
-  || fail '自动步骤仅支持社区版；外部/商务数据库由 DBA 按手册初始化'
+default_compose=docker-compose.community.yml
+[ ! -f ../docker-compose.yml ] || default_compose=../docker-compose.yml
+read -r -a files <<< "${COMPOSE_FILES:-$default_compose}"
 compose_args=()
+backend_service=imboy_backend
+pg_service=imboy_pg18
+case "${files[0]:-}" in
+  docker-compose.community.yml) ;;
+  ../docker-compose.yml)
+    compose_args=(--project-name imboy --profile "${IMBOY_DEPLOY_PROFILE:-prod}" --env-file .env)
+    backend_service=prod_imboy_backend
+    pg_service=prod_imboy_pg18
+    ;;
+  *) fail '自动步骤仅支持社区版；外部/商务数据库由 DBA 按手册初始化' ;;
+esac
 for file in "${files[@]}"; do compose_args+=(-f "$file"); done
 compose() { docker compose "${compose_args[@]}" "$@"; }
 
 # Use Compose effective values, including overrides; never source/eval .env.
 resolved=$(compose config --format json 2>/dev/null) || fail 'Compose 配置解析失败'
-if ! jq -es '
+if ! jq -es --arg backend_service "$backend_service" --arg pg_service "$pg_service" '
   def text: type == "string" and length > 0 and (test("[\u0000\r\n]") | not);
   if length != 1 then false else
-    .[0].services.imboy_backend.environment as $b |
-    .[0].services.imboy_pg18.environment as $p |
+    .[0].services[$backend_service].environment as $b |
+    .[0].services[$pg_service].environment as $p |
     ($b.IMBOY_PG_HOST == "imboy_pg18") and ($b.IMBOY_PG_PORT == "5432")
     and all([$b.IMBOY_PG_USER, $b.IMBOY_PG_DB, $b.IMBOY_PG_PASSWORD,
              $b.IMBOY_DIRECT_CLEANUP_PG_USER, $b.IMBOY_DIRECT_CLEANUP_PG_PASSWORD][]; text)
@@ -58,7 +69,7 @@ if ! jq -es '
 ' >/dev/null 2>&1 <<< "$resolved"; then
   fail '配置不符合内置社区 PG 拓扑或独立清理账号规则；未执行 SQL'
 fi
-value() { jq -er ".services.imboy_backend.environment.$1" <<< "$resolved"; }
+value() { jq -er --arg service "$backend_service" --arg key "$1" ' .services[$service].environment[$key] ' <<< "$resolved"; }
 PGUSER=$(value IMBOY_PG_USER)
 PGPASSWORD=$(value IMBOY_PG_PASSWORD)
 PGDATABASE=$(value IMBOY_PG_DB)
@@ -70,22 +81,22 @@ export PGUSER PGPASSWORD PGDATABASE CLEANUP_LOGIN CLEANUP_PASSWORD CLEANUP_CREAT
 # accidentally verify a different HBA rule; custom TLS configurations use DBA flow.
 export PGHOST=imboy_pg18 PGPORT=5432 PGSSLMODE=disable PGGSSENCMODE=disable PGCONNECT_TIMEOUT=10 LC_ALL=C
 
-pg_id=$(compose ps -q imboy_pg18 2>/dev/null) || fail '无法读取 PG 容器'
-backend_id=$(compose ps -q imboy_backend 2>/dev/null) || fail '无法读取后端容器'
+pg_id=$(compose ps -q "$pg_service" 2>/dev/null) || fail '无法读取 PG 容器'
+backend_id=$(compose ps -q "$backend_service" 2>/dev/null) || fail '无法读取后端容器'
 [[ "$pg_id" =~ ^[a-f0-9]{12,64}$ && "$backend_id" =~ ^[a-f0-9]{12,64}$ ]] \
   || fail 'PG 与后端必须各有一个正在运行的容器；先完成后端迁移'
 running_env=$(docker inspect --format '{{json .Config.Env}}' "$backend_id" 2>/dev/null) \
   || fail '无法读取运行中后端配置；未执行 SQL'
 # Compare via stdin, never jq --arg/argv: credentials must match the running worker,
 # including higher-priority aliases and the worker password-file exclusion rule.
-if ! printf '%s\n%s\n' "$resolved" "$running_env" | jq -es '
+if ! printf '%s\n%s\n' "$resolved" "$running_env" | jq -es --arg backend_service "$backend_service" --arg pg_service "$pg_service" '
   def compatible:
     (has("IMBOY_DIRECT_CLEANUP_PG_PASSWORD_FILE") | not)
     and all([[.IMBOY_PG_USERNAME, .IMBOY_PG_USER],
              [.IMBOY_PG_DATABASE, .IMBOY_PG_DB]][];
             .[0] == null or .[0] == "" or .[0] == .[1]);
   if length != 2 or (.[1] | type) != "array" then false else
-    .[0].services.imboy_backend.environment as $b |
+    .[0].services[$backend_service].environment as $b |
     (.[1] | map(index("=") as $n |
       if $n == null or $n == 0 then error("invalid environment")
       else {key: .[0:$n], value: .[($n+1):]} end)) as $pairs |

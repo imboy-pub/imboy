@@ -45,24 +45,36 @@ if [ -e "$GUARD_ENV" ] || [ -L "$GUARD_ENV" ]; then
     guard_key="${BASH_REMATCH[1]}"
     guard_value="${BASH_REMATCH[2]}"
     [ "${guard_config[$guard_key]+present}" != present ] || guard_fail ".env 重复配置键：$guard_key"
-    case "$guard_value" in
-      *[[:space:]]*|*\'*|*\"*|*\`*|*'$'*|*'\'*|*';'*|*'&'*|*'|'*|*'<'*|*'>'*|*'('*|*')'*|*'{'*|*'}'*|*'~'*)
-        guard_fail ".env 的 $guard_key 须为无引号字面值，不含空白或 Shell 插值/控制符" ;;
-    esac
+    if [ "$guard_key" = IMBOY_ERL_FLAGS ]; then
+      # This exact quoted format is produced by deploy/install.sh.
+      guard_erl_flags='^"\+P [0-9]+ \+Q [0-9]+( \+S [0-9]+)?"$'
+      [[ "$guard_value" =~ $guard_erl_flags ]] \
+        || guard_fail '.env 的 IMBOY_ERL_FLAGS 不符合安装器生成格式'
+    else
+      case "$guard_value" in
+        *[[:space:]]*|*\'*|*\"*|*\`*|*'$'*|*'\'*|*';'*|*'&'*|*'|'*|*'<'*|*'>'*|*'('*|*')'*|*'{'*|*'}'*|*'~'*)
+          guard_fail ".env 的 $guard_key 须为无引号字面值，不含空白或 Shell 插值/控制符" ;;
+      esac
+    fi
     guard_config["$guard_key"]="$guard_value"
   done < "$GUARD_ENV"
 fi
 
-# The same controls must not re-enter through .env; monitoring is explicit CLI use.
-for guard_key in COMPOSE_FILE COMPOSE_FILES COMPOSE_PROFILES COMPOSE_PROJECT_NAME; do
+# The package may opt into bundled monitoring through its own .env.
+for guard_key in COMPOSE_FILE COMPOSE_FILES COMPOSE_PROJECT_NAME; do
   [ "${guard_config[$guard_key]+present}" != present ] \
-    || guard_fail ".env 内禁止配置 $guard_key；monitoring 请按手册显式运行 Compose"
+    || guard_fail ".env 内禁止配置 $guard_key"
 done
+
+case "${guard_config[COMPOSE_PROFILES]:-}" in
+  ""|monitoring) ;;
+  *) guard_fail '.env 内禁止配置 COMPOSE_PROFILES 为 monitoring 之外的 profile' ;;
+esac
 
 if [ ! -f "$GUARD_ENV" ]; then
   [ "$guard_has_state" -eq 0 ] \
     || guard_fail '已有数据但 deploy/.env 缺失；请恢复原配置，禁止重新生成密钥'
-  printf '%s\n' '[INFO] 尚无 deploy/.env；首次安装在 Docker 前置检查后只生成模板并退出。' \
+  printf '%s\n' '[INFO] 尚无 deploy/.env；首次交互式安装会收集现场配置；无人值守安装请先预填配置。' \
     '[OK] 离线安装保护通过；客户配置尚未完成，未执行部署。'
   exit 0
 fi

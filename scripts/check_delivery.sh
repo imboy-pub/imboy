@@ -9,7 +9,7 @@ for tool in sha256sum stat bash; do
 done
 for path in MANIFEST.sha256 FILE_MODES.tsv SOURCE_COMMIT install.sh \
     deploy/install.sh deploy/prepare-backend-runtime.sh deploy/preflight.sh deploy/.env.example \
-    deploy/docker-compose.community.yml deploy/nginx/init-letsencrypt.sh \
+    docker-compose.yml deploy/nginx/start-production.sh deploy/nginx/init-letsencrypt.sh \
     deploy/nginx/templates/imboy.conf.template \
     deploy/nginx/templates/cs-widget.conf.template \
     deploy/nginx/rtc.conf.template scripts/sanity_check.sh \

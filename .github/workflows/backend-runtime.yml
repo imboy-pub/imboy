@@ -17,7 +17,6 @@ on:
       - .github/workflows/backend-runtime.yml
       - deploy/prepare-backend-runtime.sh
       - deploy/install.sh
-      - scripts/golden_upgrade.sh
       - scripts/test/backend_runtime_test.sh
   workflow_dispatch:
 

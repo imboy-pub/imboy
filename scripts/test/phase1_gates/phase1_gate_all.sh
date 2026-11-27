@@ -38,7 +38,7 @@ IMBOY_ROOT="${IMBOY_ROOT:-$(cd "$GATES_DIR/../../.." && pwd)}"
 # ---------------------------------------------------------------------------
 # 门注册表（顺序 = 设计 §4 串行图；字段: id|脚本|描述|仓|预计|锁）
 # ---------------------------------------------------------------------------
-GATE_IDS=(G01 G02 G03 G04 G05 G06 G07 G08 G09 G10 G11 G12 G13 G14 G15 G16 G17 G18 G19 G20)
+GATE_IDS=(G01 G02 G03 G04 G05 G06 G07 G08 G09 G10 G11 G12 G13 G14 G15 G16 G17 G19)
 GATE_SCRIPTS=(
   g01_backend_compile.sh
   g02_static_cross_repo.sh
@@ -57,9 +57,7 @@ GATE_SCRIPTS=(
   g15_admin_deadcode.sh
   g16_app_flutter_analyze.sh
   g17_app_flutter_test.sh
-  g18_drill_golden_install.sh
   g19_drill_backup_restore_oracle.sh
-  g20_drill_golden_upgrade.sh
 )
 GATE_DESCS=(
   "B1 后端全量编译 make compile"
@@ -79,9 +77,7 @@ GATE_DESCS=(
   "A8 Admin 死代码 knip"
   "P1 App 静态分析 flutter analyze"
   "P2 App 全量单测 flutter test"
-  "F1 演练·golden-install(TOTAL<=900s)"
   "F3 演练·PG/Garage 备份恢复 oracle"
-  "F2 演练·golden-upgrade(alpha.70→候选)"
 )
 GATE_REPOS=(
   imboy imboy imboy imboy imboy imboy imboy

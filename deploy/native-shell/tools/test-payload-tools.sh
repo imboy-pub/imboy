@@ -93,15 +93,21 @@ export PATH="$scratch/mock-bin:$PATH"
 # Build a tiny immutable fixture repository and already-built artifact contracts.
 # These are stubs; success here is never reported as a native install/ERTS test.
 payload_os
-kit=$scratch/kit
+kit=$scratch/publisher/deploy/native-shell
 repo=$scratch/repo
 backend=$scratch/backend
 pg=$scratch/pg
 mkdir -p "$kit/tools" "$kit/lib" "$kit/templates" "$repo/config" "$repo/scripts/ci" "$repo/priv/migrations" "$repo/docker"
 cp "$TOOLS_DIR"/*.sh "$kit/tools/"
-for item in install.sh verify.sh backup.sh restore.sh upgrade.sh admin-init.sh README.md lib/common.sh lib/render.sh lib/services.sh templates/site.env.example; do
+for item in install.sh verify.sh backup.sh restore.sh upgrade.sh admin-init.sh lib/common.sh lib/render.sh lib/services.sh templates/site.env.example; do
   printf 'fixture\n' > "$kit/$item"
 done
+manual_source="$TOOLS_DIR/../../../docs/guides/operations/deployment/native-shell"
+[[ -f $manual_source/README.md ]] || manual_source="$TOOLS_DIR/.."
+manual_source=$(cd "$manual_source" && pwd -P)
+manual_root="$scratch/publisher/docs/guides/operations/deployment/native-shell"
+mkdir -p "$manual_root"
+cp -a "$manual_source/." "$manual_root/"
 printf '1.0.0-alpha.83\n' > "$repo/VERSION"
 printf '[{imboy,[]}].\n' > "$repo/config/sys.config.example"
 fixture_config_hash=$(sha256sum "$repo/config/sys.config.example" | cut -d ' ' -f1)
@@ -167,6 +173,11 @@ args=(--repo "$repo" --sha "$source_sha" --release-dir "$backend" --pg-prefix "$
 bash "$kit/tools/prepare-payload.sh" "${args[@]}" --out "$scratch/customer" > "$scratch/prepare.txt"
 [[ $(payload_value "$scratch/customer/metadata/release.env" PAYLOAD_READY) == yes ]]
 payload_verify_hashes "$scratch/customer" CHECKSUMS.sha256
+while IFS= read -r -d '' document; do
+  relative=${document#"$manual_source/"}
+  cmp -s "$document" "$scratch/customer/$relative"
+  grep -Fq "  ./$relative" "$scratch/customer/CHECKSUMS.sha256"
+done < <(find "$manual_source" -maxdepth 2 -type f -name '*.md' -print0)
 pass 'prepare-synthetic-happy-path'
 [[ -s $scratch/customer/metadata/host-runtime-packages.tsv ]]
 payload_check_permissions "$scratch/customer/payload"

@@ -1,12 +1,12 @@
 # Positive backend source-delivery categories. Update the product manifest too.
 ^(src|include|priv|proto|api|docker|test|scripts)/
-^(erlang\.mk|Makefile|relx\.config|elvis\.config|erlang_ls\.config|rebar\.lock|dialyzer\.baseline|Dockerfile)$
+^(erlang\.mk|Makefile|relx\.config|elvis\.config|erlang_ls\.config|rebar\.lock|dialyzer\.baseline|Dockerfile|docker-compose\.yml)$
 ^(README(\.en)?|RELEASES|CHANGELOG|SECURITY|SUPPORT|CONTRIBUTING|CODE_OF_CONDUCT|ROADMAP)\.md$
 ^(LICENSE|VERSION|\.env\.example|\.env\.local\.example)$
 ^config/(sys\.config\.example|vm\.args|cron\.config|nginx-imboy\.conf|product-feature-manifest\.json)$
 ^config/product-feature-manifests/
-^deploy/(\.env\.example|ops\.env\.example|README\.md|install\.sh|preflight\.sh|docker-compose\.(community|demo|observability|widget|healthcheck|uptrace)\.yml|docker-compose\.secrets\.example\.yml)$
-^deploy/(nginx|prometheus|loki|grafana|alertmanager|promtail|uptrace|cron|widget)/
+^deploy/(\.env\.example|ops\.env\.example|README\.md|install\.sh|preflight\.sh|init-cleanup-db\.sh|prepare-backend-runtime\.sh|render-compose-extension\.sh)$
+^deploy/(nginx|prometheus|grafana|uptrace|cron|widget|cleanup-db)/
 ^docs/(reference|concepts|api-contracts|legal|adr|tutorials|explanation|architecture|compliance|product|ops|deliver)/
 ^docs/guides/(operations|release|security|migrations)/
 ^docs/(glossary|README|CONVENTIONS)\.md$

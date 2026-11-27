@@ -155,7 +155,7 @@ class RetentionPolicyConsistencyTest(unittest.TestCase):
             (root / "deploy/loki/loki.yml").write_text(
                 "limits_config:\n  retention_period: 720h\n", encoding="utf-8"
             )
-            (root / "deploy/docker-compose.community.yml").write_text(
+            (root / "docker-compose.yml").write_text(
                 "      - '--storage.tsdb.retention.time=180d'\n", encoding="utf-8"
             )
             (root / "scripts/backup_pg.sh").write_text(
@@ -178,7 +178,7 @@ class RetentionPolicyConsistencyTest(unittest.TestCase):
                 "# 保留 30 天日志\nlimits_config:\n  retention_period: 4320h\n",
                 encoding="utf-8",
             )
-            (root / "deploy/docker-compose.community.yml").write_text(
+            (root / "docker-compose.yml").write_text(
                 "      - '--storage.tsdb.retention.time=180d'\n", encoding="utf-8"
             )
             (root / "scripts/backup_pg.sh").write_text(

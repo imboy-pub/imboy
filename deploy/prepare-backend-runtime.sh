@@ -9,7 +9,7 @@ fail() { printf '[FAIL] %s\n' "$*" >&2; exit 1; }
 # config JSON may contain secrets: retain only non-secret mount/image metadata.
 metadata="$(docker compose "$@" config --format json | jq -ces '
   if length != 1 then error("invalid Compose document") else
-    .[0].services.imboy_backend |
+    (.[0].services | .prod_imboy_backend // .imboy_backend) |
     if (.image | type) != "string" or (.image | length) == 0 then
       error("missing backend image")
     else {image, user, volumes} end

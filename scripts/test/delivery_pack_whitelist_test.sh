@@ -48,7 +48,8 @@ printf 'public template\n' > "$FIXTURE/deploy/nginx/templates/example.conf"
 printf 'debug configuration\n' > "$FIXTURE/config/debug.config"
 printf 'brand media\n' > "$FIXTURE/docs/brand/example.svg"
 printf 'entry logo\n' > "$FIXTURE/docs/brand/logo/imboy_logo_2474E5_0512.png"
-printf 'optional uptrace compose\n' > "$FIXTURE/deploy/docker-compose.uptrace.yml"
+printf 'root compose\n' > "$FIXTURE/docker-compose.yml"
+printf 'legacy compose\n' > "$FIXTURE/deploy/docker-compose.community.yml"
 printf 'execution plan\n' > "$FIXTURE/docs/design/example.md"
 printf 'production snapshot\n' > "$FIXTURE/deploy/nginx/prod-vhosts/example.conf"
 printf 'unknown content\n' > "$FIXTURE/unknown-new-directory/example.txt"
@@ -66,11 +67,12 @@ printf 'untracked file\n' > "$FIXTURE/src/untracked.erl"
 run_pack phase1
 for path in src/example.erl docs/product/example.md deploy/README.md \
     deploy/nginx/templates/example.conf scripts/deliver/backend_allowlist.regex \
-    docs/brand/logo/imboy_logo_2474E5_0512.png deploy/docker-compose.uptrace.yml; do
+    docs/brand/logo/imboy_logo_2474E5_0512.png docker-compose.yml; do
     expect_member phase1 "$path"
 done
 for path in config/debug.config docs/brand/example.svg docs/design/example.md \
-    deploy/nginx/prod-vhosts/example.conf unknown-new-directory/example.txt src/untracked.erl; do
+    deploy/nginx/prod-vhosts/example.conf deploy/docker-compose.community.yml \
+    unknown-new-directory/example.txt src/untracked.erl; do
     expect_absent phase1 "$path"
 done
 grep -qx 'committed source' "$TASK_DIR/phase1/.work/source/src/example.erl"

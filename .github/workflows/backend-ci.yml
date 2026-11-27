@@ -21,7 +21,6 @@ name: Backend CI
 # Smoke（8 步链子集）不在此：CI 后端起链硬依赖 PG 扩展（timescaledb
 # create_hypertable ×8 / pg_jieba jiebacfg FTS 触发器 / postgis geometry 列，
 # 见 priv/migrations/00000001_foundation.up.sql 等），vanilla postgres:18 官方
-# 镜像均不含；自定义 imboy/pg18 镜像未发布公共 registry。Golden Install
 # （release.yml，8 步全链含 Garage）已覆盖该门 → CI 冒烟子集为计划遗留
 # （Golden Gates §7 Smoke 行），详见 P4-Q3 执行报告。
 
@@ -33,8 +32,8 @@ on:
   workflow_dispatch:
 
 jobs:
-  community-delivery:
-    name: Standalone Community Delivery
+  deployment-config:
+    name: Deployment Configuration
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     permissions:
@@ -48,34 +47,13 @@ jobs:
       - name: Check packaging and configuration contracts
         run: |
           bash scripts/test/cleanup_db_shell_test.sh
-          bash scripts/test/package_community_test.sh
-          bash scripts/test/community_delivery_config_test.sh
           bash scripts/test/release_contract_test.sh
           bash scripts/release_version.sh "v$(cat VERSION)"
-          bash scripts/test/golden_image_contract_test.sh
-          bash scripts/test/golden_prepare_test.sh
-          bash scripts/test/golden_smoke_test.sh
-          bash scripts/test/golden_migration_test.sh
-          bash scripts/test/verify_community_images_test.sh
-          bash scripts/test/community_rtc_wss_shell_test.sh
           bash scripts/test/init_letsencrypt_test.sh
       - name: Check RTC/TURN preflight and Compose contracts
         run: bash scripts/test/lk_preflight_rtc_turn_test.sh
       - name: Check local Compose profiles and setup failure paths
         run: bash scripts/test/dev_compose_test.sh
-      - name: Validate community Nginx and RTC WSS in isolated containers
-        run: bash scripts/test/community_rtc_wss_test.sh --docker
-      - name: Build and test the extracted installation kit
-        shell: bash
-        run: |
-          set -euo pipefail
-          bash scripts/package_community.sh --output "$RUNNER_TEMP/imboy-community.zip"
-          unzip -q "$RUNNER_TEMP/imboy-community.zip" -d "$RUNNER_TEMP/imboy-community"
-          packages=("$RUNNER_TEMP"/imboy-community/IMBoy_Community_Standalone_*)
-          test "${#packages[@]}" -eq 1
-          cd "${packages[0]}"
-          bash install.sh --check
-          bash scripts/run_offline_checks.sh
       - name: Validate Compose models without starting services
         shell: bash
         env:
@@ -84,15 +62,12 @@ jobs:
           IMBOY_DIRECT_CLEANUP_PG_PASSWORD: CI_ONLY_NOT_A_REAL_PASSWORD_0000000000
         run: |
           set -euo pipefail
-          docker compose --env-file deploy/.env.example \
-            -f deploy/docker-compose.community.yml config --quiet
-          LIVEKIT_TURN_CERT_DIR=./data/certbot/conf/live/turn.example.com \
+          for profile in prod prod-turn prod-sni; do
             docker compose --env-file deploy/.env.example \
-            -f deploy/docker-compose.community.yml \
-            -f deploy/docker-compose.livekit-turn.yml config --quiet
-          docker compose --env-file deploy/.env.example \
-            -f deploy/docker-compose.community.yml \
-            -f deploy/docker-compose.uptrace.yml config --quiet
+              --profile "$profile" --profile monitoring --profile enterprise-direct config --quiet
+          done
+          docker compose --env-file deploy/.env.example --profile prod-sni \
+            --profile uptrace config --quiet
 
   cleanup-db-postgres:
     name: Cleanup Database Bootstrap (PG18)

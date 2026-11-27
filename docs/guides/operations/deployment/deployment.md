@@ -65,7 +65,7 @@ CREATE EXTENSION IF NOT EXISTS pg_trgm;
 
 ### LiveKit 通话（RTC）
 
-通话（1:1 与群通话）统一走 LiveKit Room，后端经 `/api/v1/rtc/room/join` 签发接入 token。Docker Compose 部署（`deploy/docker-compose.community.yml`）已内置 LiveKit 服务（`livekit/livekit-server:v1.13.7`，单节点、SFU + embedded STUN/TURN，无 Redis、无 Egress）：
+通话（1:1 与群通话）统一走 LiveKit Room，后端经 `/api/v1/rtc/room/join` 签发接入 token。Docker Compose 部署（`docker-compose.yml`）已内置 LiveKit 服务（`livekit/livekit-server:v1.13.7`，单节点、SFU + embedded STUN/TURN，无 Redis、无 Egress）：
 
 | 变量 | 说明 | 示例 / 默认 |
 |------|------|------|

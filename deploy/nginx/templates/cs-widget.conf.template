@@ -5,7 +5,7 @@
 # /etc/nginx/conf.d/cs-widget.conf；NGINX_ENVSUBST_FILTER 须包含 CS_WIDGET_DOMAIN
 # ——社区版在 docker-compose.community.yml 的 imboy_nginx 直接内置；商务版基线
 # docker-compose.prod.yml（不随仓分发）的 filter 不含该变量，经 overlay
-# docker-compose.prod-cs.yml 注入 CS_WIDGET_DOMAIN 并扩展 filter（见
+# 根 Compose 的商务 Widget 扩展注入 CS_WIDGET_DOMAIN 并扩展 filter（见
 # docs/guides/operations/deployment/customer-service-widget.md）。
 #
 # 拓扑（冻结合同 hosted-widget-contract-v1 §S2/S4/S5/S6、计划卡 CSD-DEP-01）：

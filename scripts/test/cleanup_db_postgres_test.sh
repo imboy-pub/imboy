@@ -40,7 +40,11 @@ secrets="$work/passwords"
 printf '%s\n' "$admin_password" "$worker_password" > "$secrets"
 output="$work/helper.log"
 compose_file="$fixture/docker-compose.community.yml"
-compose() { docker compose -f "$compose_file" "$@"; }
+compose() {
+    local -a files=(-f "$compose_file")
+    if [[ -f "$work/postgres-command.yml" ]]; then files+=(-f "$work/postgres-command.yml"); fi
+    docker compose "${files[@]}" "$@"
+}
 cleanup() {
     status=$?
     trap - EXIT
@@ -61,7 +65,6 @@ services:
       POSTGRES_PASSWORD: ${CLEANUP_TEST_ADMIN_PASSWORD}
       POSTGRES_DB: cleanup_fixture
       POSTGRES_INITDB_ARGS: --auth-host=scram-sha-256 --auth-local=trust
-    command: [postgres, -c, log_statement=all, -c, logging_collector=off]
     volumes:
       - pgdata:/var/lib/postgresql
     healthcheck:
@@ -98,6 +101,13 @@ YAML
 # Pull only the requested test image; production helper must reuse its local ID.
 docker image inspect "$CLEANUP_TEST_IMAGE" >/dev/null 2>&1 \
     || docker pull "$CLEANUP_TEST_IMAGE" >/dev/null
+# Keep the selected image startup flags, including extension preloads.
+pg_command=$(docker image inspect --format '{{json .Config.Cmd}}' "$CLEANUP_TEST_IMAGE" | jq -ce '
+  if type == "array" and .[0] == "postgres" then
+    . + ["-c", "log_statement=all", "-c", "logging_collector=off"]
+  else error("expected a PostgreSQL image command") end
+')
+printf 'services:\n  imboy_pg18:\n    command: %s\n' "$pg_command" > "$work/postgres-command.yml"
 wait_backend_oracle() {
     local attempt
     for attempt in $(seq 1 30); do

@@ -5,7 +5,7 @@ set -euo pipefail
 usage() {
   cat <<'USAGE'
 Usage: bash scripts/test/community_rtc_wss_test.sh --docker
-Requires local Linux Docker/Compose v2, jq, curl and OpenSSL.
+Requires a local Docker daemon, Compose v2, Bash 4+, jq, curl and OpenSSL.
 Uses disposable containers/network, loopback ports and synthetic TLS/JWTs.
 Exit 0 = passed; 1 = failed; 77 = required test environment unavailable.
 No public DNS, ACME issuance, production credentials or two-device media tests.
@@ -23,12 +23,16 @@ for tool in docker jq curl openssl mktemp awk sed tr grep cp chmod; do
   command -v "$tool" >/dev/null 2>&1 || skip "Missing test tool: $tool"
 done
 # Bind local fixtures only; never silently use an inherited remote Docker daemon.
+docker_socket=/var/run/docker.sock
+if [[ ! -S "$docker_socket" && "$(uname -s)" = Darwin ]]; then
+  docker_socket="$HOME/.docker/run/docker.sock"
+fi
 DOCKER=(env -u DOCKER_HOST -u DOCKER_CONTEXT -u DOCKER_TLS -u DOCKER_TLS_VERIFY -u DOCKER_CERT_PATH
-  docker --host=unix:///var/run/docker.sock)
+  docker "--host=unix://$docker_socket")
 "${DOCKER[@]}" info >/dev/null 2>&1 || skip 'Local Docker daemon is unavailable'
 "${DOCKER[@]}" compose version >/dev/null 2>&1 || skip 'Docker Compose v2 is unavailable'
 ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd)"
-BASE="$ROOT/deploy/docker-compose.community.yml"
+BASE="$ROOT/docker-compose.yml"
 umask 077
 TMP="$(mktemp -d "${TMPDIR:-/tmp}/imboy-rtc-wss.XXXXXXXX")"
 NETWORK="imboy-rtc-wss-${TMP##*.}"
@@ -70,11 +74,12 @@ for name in HOME DOCKER_CONFIG HTTP_PROXY HTTPS_PROXY NO_PROXY http_proxy https_
 done
 COMPOSE_ENV+=("API_DOMAIN=api.test.invalid" "ADMIN_DOMAIN=admin.test.invalid"
   "CS_WIDGET_DOMAIN=cs.test.invalid" "RTC_DOMAIN=rtc.test.invalid" "TURN_DOMAIN=turn.test.invalid"
-  "DATA_DIR=$TMP/data" "LIVEKIT_API_KEY=rtc_test_key" "LIVEKIT_API_SECRET=$secret"
+  "IMBOY_PROD_DATA_DIR=$TMP/data" "LIVEKIT_API_KEY=rtc_test_key" "LIVEKIT_API_SECRET=$secret"
   "IMBOY_DIRECT_CLEANUP_PG_USER=rtc_test_cleanup" "IMBOY_DIRECT_CLEANUP_PG_PASSWORD=rtc_test_unused"
   "S3_UPSTREAM=garage:3900" "COMPOSE_DISABLE_ENV_FILE=1")
-"${COMPOSE_ENV[@]}" docker --host=unix:///var/run/docker.sock compose \
-  --env-file "$ROOT/deploy/.env.example" -f "$BASE" config --format json > "$TMP/compose.json"
+"${COMPOSE_ENV[@]}" docker "--host=unix://$docker_socket" compose \
+  --env-file "$ROOT/deploy/.env.example" -f "$BASE" --profile prod config --format json \
+  | jq '.services |= {imboy_nginx: .prod_imboy_nginx, imboy_livekit: .prod_imboy_livekit}' > "$TMP/compose.json"
 # Compose escapes every $ as $$ so config output can be loaded by Compose again.
 # docker run needs runtime values: undo that serialization exactly once, without
 # evaluating variables or commands (including command, env and LiveKit config).
@@ -109,7 +114,7 @@ chmod 644 "$TMP/www/.well-known/acme-challenge/rtc-check"
 nginx_mounts=()
 while IFS=$'\t' read -r source target read_only; do
   case "$target" in
-    /etc/nginx/templates|/etc/nginx/templates/*|/docker-entrypoint.d/*)
+    /etc/nginx/templates|/etc/nginx/templates/*|/docker-entrypoint.d/*|/etc/imboy/*)
       [[ "$source" == "$ROOT/deploy/"* && -e "$source" && "$read_only" == true ]] \
         || fail "Unexpected Nginx template/hook bind: $target"
       nginx_mounts+=(-v "$source:$target:ro") ;;

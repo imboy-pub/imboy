@@ -143,7 +143,7 @@ getent hosts rtc.example.com turn.example.com
 # [机器: 部署机] [目录: /opt] 克隆仓库（或从发布包解压）
 cd /opt && git clone https://github.com/imboy-pub/imboy.git imboy-stack
 cd /opt/imboy-stack/deploy
-# 预期输出: 目录内可见 install.sh / preflight.sh / docker-compose.community.yml / .env.example / nginx/
+# 预期输出: 目录内可见 install.sh / preflight.sh / ../docker-compose.yml / .env.example / nginx/
 ```
 
 ### 2.2 生成并填写 .env
@@ -196,7 +196,7 @@ docker ps --format 'table {{.Names}}\t{{.Image}}\t{{.Status}}' | grep livekit
 
 ```bash
 # [机器: 部署机] [目录: /opt/imboy-stack/deploy] 一次性签发全部域名（含 RTC_DOMAIN 与 TURN_DOMAIN）
-COMPOSE_FILES=docker-compose.community.yml bash nginx/init-letsencrypt.sh
+COMPOSE_FILES=../docker-compose.yml bash nginx/init-letsencrypt.sh
 # 预期输出: 逐域签发，最后输出 "TLS 证书签发完成: ..."，其中包含 rtc 与 turn 两域。
 # 失败停止点: 常见原因是 DNS 未生效或 80 端口被占 —— 回到 §1 检查后再重跑（脚本幂等）。
 ```
@@ -372,16 +372,16 @@ ls -l /etc/letsencrypt/renewal-hooks/deploy/livekit-turn-cert.sh   # 确认 hook
 ## 7. 升级 LiveKit 版本
 
 ```bash
-# [机器: 部署机] [目录: deploy/] 修改 docker-compose.community.yml 中 imboy_livekit 的 image tag
+# [机器: 部署机] [目录: deploy/] 修改 ../docker-compose.yml 中 imboy_livekit 的 image tag
 #   （从 v1.13.7 改为目标版本；只允许精确 tag，禁止 latest/v1.13 浮动写法）
-${EDITOR:-vi} docker-compose.community.yml
-docker compose -f docker-compose.community.yml up -d imboy_livekit
+${EDITOR:-vi} ../docker-compose.yml
+docker compose --env-file .env --profile prod -f ../docker-compose.yml up -d prod_imboy_livekit
 # 预期输出: 容器以新镜像重建并 running。
 docker logs imboy_livekit --tail 20   # 确认无 panic/配置错误
 ```
 
 > ⚠️ **升级即重启 = 全部通话中断**（单节点、房间状态在内存）。客户端会自动重连，但请选低峰窗口。
-> 开启了 TURN overlay 的部署，注意 `docker-compose.livekit-turn.yml` 的 `LIVEKIT_CONFIG` 与基础文件是**整体覆盖**关系：改基础配置必须同步改 overlay（overlay 文件头有同样警示）。
+TURN 部署使用根 Compose 的 `prod-turn` 或 `prod-sni`，变更前核对实际 profile 和证书挂载。
 
 版本回滚（回到 v1.13.7）：把 image tag 改回 `livekit/livekit-server:v1.13.7` 再 `up -d imboy_livekit` 即可，无需额外操作。
 
@@ -425,12 +425,12 @@ sudo systemctl status eturnal --no-pager | head -5
 
 ```bash
 # [机器: 部署机] [目录: deploy/] 停止（通话立即中断）
-docker compose -f docker-compose.community.yml stop imboy_livekit
+docker compose --env-file .env --profile prod -f ../docker-compose.yml stop prod_imboy_livekit
 # 开启了 TURN overlay 时:
-# docker compose -f docker-compose.community.yml -f docker-compose.livekit-turn.yml stop imboy_livekit
+# docker compose --env-file .env --profile prod-turn -f ../docker-compose.yml stop prod_imboy_livekit_turn
 
 # 彻底移除（含 overlay 与 hook）
-docker compose -f docker-compose.community.yml rm -f imboy_livekit
+docker compose --env-file .env --profile prod -f ../docker-compose.yml rm -f prod_imboy_livekit
 sudo rm -f /etc/letsencrypt/renewal-hooks/deploy/livekit-turn-cert.sh   # 形态 B 的 hook
 sudo rm -rf /etc/imboy/livekit-certs                                    # TURN 证书分发目录
 ```

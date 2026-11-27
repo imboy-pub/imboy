@@ -252,7 +252,7 @@ providers:
     retention: 不落盘（实时转发，无 Egress/录制）
     deletion_api: not-applicable
     build_flavors: backend, imboyapp-android, imboyapp-ios
-    evidence: imboy deploy/docker-compose.community.yml livekit-server v1.13.7 与 config/sys.config.example livekit ws_url rtc.imboy.pub
+    evidence: imboy 根 docker-compose.yml livekit-server v1.13.7 与 config/sys.config.example livekit ws_url rtc.imboy.pub
   livekit_turn:
     provider: LiveKit embedded TURN/STUN（自托管，同一容器）
     category: turn
@@ -268,7 +268,7 @@ providers:
     retention: 不落盘
     deletion_api: not-applicable
     build_flavors: backend, imboyapp-android, imboyapp-ios
-    evidence: imboy deploy/livekit-l4-sni.env.example TURN_DOMAIN 与 deploy/docker-compose.livekit-turn.yml
+    evidence: imboy deploy/.env.example TURN_DOMAIN 与根 docker-compose.yml 的 prod-turn/prod-sni
   alipay_sandbox:
     provider: 支付宝自定义沙箱网关
     category: payment

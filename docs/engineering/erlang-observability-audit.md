@@ -14,7 +14,7 @@
 | 追踪 | OpenTelemetry 栈 + Uptrace（可选 DSN，内部异常自吞不阻断启动） | imboy_app.erl:66-68 |
 | 日志 | lager（sys.config 段）+ kernel logger_level=info 统一控级；sasl error_logger 落盘（log/sasl，104MB×255 滚动）；elib_log:safe_log 级别门控先于格式化（Ch.9 §4.1 合规） | config/sys.config.example:786-796、src/lib/elib_log.erl:110-120 |
 | 交互诊断 | recon / redbug / observer_cli 在 DEPS——供远程 shell 事故诊断（正确用法，非代码内轮询） | Makefile:59 |
-| 编排 | deploy/observability 栈（Prometheus/Grafana/Loki + alertmanager + 钉钉告警 compose） | deploy/docker-compose.observability.yml、docker-compose.alert-dingtalk.yml |
+| 编排 | 社区监控（Prometheus、Grafana 和指标采集器） | 仓根 `docker-compose.yml` 的 `monitoring` profile |
 | 探针 | /readyz（readiness 分级 starting/degraded/ready + 依赖 whereis + limiter + cache_sync 状态）、/healthz | imboy_app.erl:205-245 |
 
 **结论：外围观测栈完整度高；缺口集中在 BEAM 内部维度。**

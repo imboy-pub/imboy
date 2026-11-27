@@ -21,7 +21,7 @@
 
 - 源码/构建：`src/`、`include/`、`priv/`（迁移 + 静态）、`proto/`、`api/`（openapi/asyncapi；**`api/internal/v1/` 整目录**——集成方交付物，自含 README/endpoints/manifest/openapi）、`erlang.mk`、`Makefile`、`relx.config`、`elvis.config`、`erlang_ls.config`、`rebar.lock`、`dialyzer.baseline`、`Dockerfile`、`docker/`
 - 配置模板：`config/sys.config.example`、`config/vm.args`、`config/cron.config`、`config/nginx-imboy.conf`、`config/product-feature-manifest.json`、`config/product-feature-manifests/`（含 `phase1_delivery.json`）、`deploy/.env.example`、仓根 `.env.example` / `.env.local.example`
-- deploy：`install.sh`、`preflight.sh`、`docker-compose.community.yml` / `.demo.yml` / `.observability.yml` / `.widget.yml` / `.healthcheck.yml` / `docker-compose.secrets.example.yml`、`nginx/`（模板 + init-letsencrypt，**prod-vhosts 除外**，见排除）、`prometheus/` `loki/` `grafana/` `alertmanager/` `promtail/` `uptrace/`、`cron/`、`widget/`、`ops.env.example`；`docker-compose.prod.yml` 与 sales-policy 不在开源仓（商务渠道，保持）
+- 部署：仓根 `docker-compose.yml`、`deploy/install.sh`、`preflight.sh`、Nginx 与 TLS、Prometheus、Grafana、Uptrace、Cron 及 Widget 运行资产。
 - scripts/：源码维护、构建、运维与自动化回归脚本及配套 fixture；运行日志和生成材料不包含。`agent_hub_*` 为二期域，保留源码不代表一期允许执行。
 - docs 白名单：仓根 `README(.en)` / `RELEASES` / `CHANGELOG` / `SECURITY` / `SUPPORT` / `CONTRIBUTING` / `CODE_OF_CONDUCT` / `ROADMAP` / `LICENSE` / `VERSION`；docs 内 `reference/`、`concepts/`、`guides/operations|release|security|migrations`、`api-contracts/`（一期域）、`legal/`（含 third-party-licenses*.md）、`glossary.md`、`README.md`、`CONVENTIONS.md`、`adr/`、`tutorials/`、`explanation/`、`architecture/`（现行篇）、`compliance/`（产品必需清单）、`product/`、`ops/`、`deliver/`、`runbooks/bot-webhook-aead-key.md`（一期保留；agent-hub 两篇排除）。`deploy/README.md` 随部署入口交付。
 - 测试：`test/`（自动化回归源码；不包含执行报告、运行日志和生成材料）
@@ -58,7 +58,7 @@
 
 ## 6. 交付检查
 
-- 后端 README 的单个品牌标识 `docs/brand/logo/imboy_logo_2474E5_0512.png` 随入口交付，其余品牌媒体不纳入此例外。可选 Uptrace 的 `deploy/docker-compose.uptrace.yml` 与 `deploy/uptrace/` 一起交付，保持安装脚本引用完整；不因此纳入 RTC 编排。
+- 后端 README 的单个品牌标识 `docs/brand/logo/imboy_logo_2474E5_0512.png` 随入口交付，其余品牌媒体不纳入此例外。可选 Uptrace 使用仓根 Compose，运行配置从 `deploy/uptrace/` 随包交付。
 - 后端正向类别选择由 `scripts/deliver/backend_allowlist.regex` 实现；新增 tracked 类别默认不交付，不能用排除列表代替白名单。
 - 后端源包默认要求已提交 `phase1_delivery` manifest；显式指定其它 profile 仅生成对应源包，不取得一期资格。后端单仓包不能代替三仓装配与供应链验收。
 - 三仓冻结提交、一期 profile、配置模板及产物哈希有明确对应关系。

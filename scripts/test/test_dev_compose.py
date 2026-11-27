@@ -135,8 +135,8 @@ class LocalComposeTests(unittest.TestCase):
         cases = {
             (): set(),
             ("dev",): {"imboy_pg18", "garage", "imboy_nginx"},
-            ("pro",): {"pro_imboy_pg18"},
-            ("dev", "pro"): {"imboy_pg18", "garage", "imboy_nginx", "pro_imboy_pg18"},
+            ("pro",): {"prod_imboy_pg18"},
+            ("dev", "pro"): {"imboy_pg18", "garage", "imboy_nginx", "prod_imboy_pg18"},
             ("dev", "api", "admin"): {"imboy_pg18", "garage", "imboy_nginx", "imboy_backend", "imboy_edge", "imboy_admin"},
         }
         for profiles, expected in cases.items():
@@ -154,12 +154,134 @@ class LocalComposeTests(unittest.TestCase):
         self.assertEqual(set(enterprise), cases[("dev", "api", "admin")])
         self.assertEqual(enterprise["imboy_backend"]["environment"]["IMBOY_EDITION"], "enterprise")
 
+    def test_production_profiles_keep_existing_data_and_dns(self):
+        model = self.model("prod", "monitoring", "enterprise-direct", DATA_DIR="./data")
+        services = model["services"]
+        self.assertEqual(
+            set(services),
+            {"prod_garage"} | {
+                "prod_imboy_" + name for name in (
+                    "pg18", "backend", "edge", "admin", "widget", "nginx", "certbot",
+                    "livekit", "enterprise_proof", "prometheus", "grafana", "pushgateway",
+                    "node_exporter", "postgres_exporter",
+                )
+            },
+        )
+        pg = services["prod_imboy_pg18"]
+        self.assertIn("imboy_pg18", pg["networks"]["pro"]["aliases"])
+        self.assertEqual(next(v["source"] for v in pg["volumes"]
+                              if v["target"] == "/var/lib/postgresql"),
+                         str(self.root / "deploy/data/pg18"))
+        self.assertEqual(model["networks"]["pro"]["name"], "imboy-network")
+        self.assertEqual(model["volumes"]["grafana_data"]["name"], "imboy_grafana_data")
+        prometheus_port = services["prod_imboy_prometheus"]["ports"][0]
+        self.assertEqual((prometheus_port["host_ip"], prometheus_port["published"]),
+                         ("127.0.0.1", "9090"))
+        custom = self.model("prod", IMBOY_PROD_DATA_DIR="/data/imboy-production")
+        pg = custom["services"]["prod_imboy_pg18"]
+        self.assertEqual(next(v["source"] for v in pg["volumes"]
+                              if v["target"] == "/var/lib/postgresql"),
+                         "/data/imboy-production/pg18")
+
+    def test_production_profiles_parse_without_development_passwords(self):
+        for profile in ("prod", "prod-turn", "prod-sni"):
+            with self.subTest(profile=profile):
+                model = self.model(profile, IMBOY_PG_PASSWORD="", IMBOY_PG_PRO_PASSWORD="",
+                                   POSTGRES_PASSWORD="separate-production-password")
+                self.assertEqual(model["services"]["prod_imboy_pg18"]["environment"]["POSTGRES_PASSWORD"],
+                                 "separate-production-password")
+                self.assertNotIn("imboy_pg18", model["services"])
+
+    def test_turn_profile_selects_one_livekit_and_nginx(self):
+        standard = self.model("prod")["services"]
+        self.assertNotIn("prod_imboy_livekit_turn", standard)
+        self.assertNotIn("5349", {port["published"] for port in standard["prod_imboy_livekit"]["ports"]})
+        services = self.model("prod-turn", TURN_DOMAIN="turn.test.invalid")["services"]
+        self.assertNotIn("prod_imboy_livekit", services)
+        self.assertNotIn("prod_imboy_nginx", services)
+        self.assertIn("prod_imboy_livekit_turn", services["prod_imboy_nginx_turn"]["depends_on"])
+        turn = services["prod_imboy_livekit_turn"]
+        self.assertIn("5349", {port["published"] for port in turn["ports"]})
+        self.assertIn("/etc/letsencrypt/live/turn.test.invalid/fullchain.pem",
+                      turn["environment"]["LIVEKIT_CONFIG"])
+        self.assertTrue(all(volume["read_only"] for volume in turn["volumes"]))
+
+    def test_business_extensions_merge_with_private_baseline(self):
+        with tempfile.TemporaryDirectory(prefix="imboy-business-compose-") as path:
+            directory = Path(path)
+            baseline = directory / "private.yml"
+            baseline.write_text(
+                "services:\n  imboy_backend:\n    image: fixture/backend:test\n"
+                "  imboy_nginx:\n    image: fixture/nginx:test\n"
+            )
+            files = ["-f", str(baseline)]
+            for extension in ("policy", "widget"):
+                output = subprocess.check_output(
+                    ["bash", str(ROOT / "deploy/render-compose-extension.sh"),
+                     "imboy-business-" + extension],
+                    text=True,
+                )
+                rendered = directory / (extension + ".yml")
+                rendered.write_text(output)
+                files += ["-f", str(rendered)]
+            model = json.loads(subprocess.check_output(
+                [*COMPOSE, "--env-file", str(ROOT / "deploy/.env.example"),
+                 *files, "config", "--format", "json"],
+                text=True,
+            ))
+            services = model["services"]
+            self.assertEqual(services["imboy_backend"]["image"], "fixture/backend:test")
+            self.assertEqual(
+                services["imboy_backend"]["environment"]["IMBOY_E2EE_MODE"], "required"
+            )
+            self.assertIn("imboy_widget", services["imboy_nginx"]["depends_on"])
+            self.assertIn("CS_WIDGET_DOMAIN", services["imboy_nginx"]["environment"])
+
+    def test_uptrace_redis_is_optional_and_private(self):
+        ordinary = self.model("prod")
+        self.assertFalse(any(name.startswith("uptrace") for name in ordinary["services"]))
+        trace = self.model("prod-sni", "uptrace", UPTRACE_ENABLED="true")
+        services = trace["services"]
+        self.assertTrue(trace["networks"]["uptrace_private"]["internal"])
+        self.assertEqual(set(services["uptrace_redis"]["networks"]), {"uptrace_private"})
+        self.assertFalse(services["uptrace_redis"].get("ports"))
+        self.assertNotIn("uptrace_private", services["prod_imboy_backend"]["networks"])
+        self.assertEqual(
+            services["prod_imboy_nginx_sni"]["environment"]["UPTRACE_ENABLED"], "true"
+        )
+        self.assertIn("prod_imboy_pg18", services["uptrace_pg_init"]["depends_on"])
+
+    def test_sni_profile_owns_https_and_trusts_only_its_proxy(self):
+        model = self.model("prod-sni", TURN_DOMAIN="turn.test.invalid")
+        services = model["services"]
+        nginx = services["prod_imboy_nginx_sni"]
+        proxy = services["prod_imboy_haproxy"]
+        self.assertEqual([port["published"] for port in proxy["ports"]], ["443"])
+        self.assertEqual([port["published"] for port in nginx["ports"]], ["80"])
+        self.assertNotIn("prod_imboy_nginx_turn", services)
+        self.assertEqual(nginx["command"][-1], "proxy-protocol")
+        self.assertIn("listen 443 ssl proxy_protocol;",
+                      (ROOT / "deploy/nginx/start-production.sh").read_text())
+        proxy_ip = proxy["networks"]["sni_proxy"]["ipv4_address"]
+        nginx_ip = nginx["networks"]["sni_proxy"]["ipv4_address"]
+        realip = model["configs"]["prod_sni_nginx_realip"]["content"]
+        haproxy = model["configs"]["prod_haproxy_config"]["content"]
+        self.assertIn(f"set_real_ip_from {proxy_ip};", realip)
+        self.assertIn(f"server nginx {nginx_ip}:443 send-proxy-v2", haproxy)
+        self.assertIn("req.ssl_sni -i turn.test.invalid", haproxy)
+        livekit = services["prod_imboy_livekit_sni"]
+        livekit_ip = livekit["networks"]["sni_proxy"]["ipv4_address"]
+        config = livekit["environment"]["LIVEKIT_CONFIG"]
+        self.assertIn("tls_port: 443", config)
+        self.assertIn(f"{proxy_ip}/32", config)
+        self.assertIn(f"server livekit {livekit_ip}:443 send-proxy-v2", haproxy)
+
     def test_existing_database_mounts_and_runtime_keys(self):
-        model = self.model("dev", "pro", "api")
+        model = self.model("dev", "pro", "api", IMBOY_PROD_PG_DATA_DIR="/data/docker/pro_imboy_pg18")
         services = model["services"]
         dev = next(v for v in services["imboy_pg18"]["volumes"] if v["target"] == "/var/lib/postgresql")
         self.assertEqual((dev["type"], model["volumes"][dev["source"]]["name"]), ("volume", "imboy_pg18_data"))
-        pro = next(v for v in services["pro_imboy_pg18"]["volumes"] if v["target"] == "/var/lib/postgresql")
+        pro = next(v for v in services["prod_imboy_pg18"]["volumes"] if v["target"] == "/var/lib/postgresql")
         self.assertEqual((pro["type"], pro["source"]), ("bind", "/data/docker/pro_imboy_pg18"))
         self.assertEqual(model["networks"]["pro"]["name"], "imboy-network")
         self.assertTrue(model["networks"]["pro"]["external"])
@@ -172,8 +294,8 @@ class LocalComposeTests(unittest.TestCase):
         (self.root / ".env").write_text("\n".join(
             f"{key}={FIXTURE_VALUES[key]}" for key in ("IMBOY_PG_PASSWORD", "IMBOY_PG_PRO_PASSWORD")) + "\n")
         model = self.model("pro")
-        self.assertEqual(set(model["services"]), {"pro_imboy_pg18"})
-        self.assertEqual(model["services"]["pro_imboy_pg18"]["environment"]["POSTGRES_PASSWORD"],
+        self.assertEqual(set(model["services"]), {"prod_imboy_pg18"})
+        self.assertEqual(model["services"]["prod_imboy_pg18"]["environment"]["POSTGRES_PASSWORD"],
                          FIXTURE_VALUES["IMBOY_PG_PRO_PASSWORD"])
 
     def test_host_upstream_hook_resolves_hosts_and_preserves_service_dns(self):

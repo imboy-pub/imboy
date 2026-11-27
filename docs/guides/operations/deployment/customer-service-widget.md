@@ -2,7 +2,7 @@
 
 > 本地联调：在仓库根目录执行 `bash scripts/dev_setup.sh --with-widget`，配置与访问地址见[本地开发指南](./local-development.md)。
 >
-> 适用范围：标准部署（Docker Compose + Nginx，社区版 `docker-compose.community.yml` /
+> 适用范围：标准部署（Docker Compose + Nginx，社区版 `../docker-compose.yml` /
 > 商务版 `docker-compose.prod.yml`）。本组件由任务卡 CSD-DEP-01 引入，接入合同见
 > run 冻结合同 hosted-widget-contract-v1（S1-S6）。
 >
@@ -103,7 +103,7 @@ bash install.sh --edition community
 ```bash
 cd /path/to/imboy/deploy
 bash preflight.sh --docker --edition community
-docker compose --env-file .env -f docker-compose.community.yml config -q
+docker compose --env-file .env --profile prod -f ../docker-compose.yml config -q
 ```
 
 验证嵌入：在允许的第三方页面（origin 需在该 installation 的 `allowed_origins`
@@ -113,17 +113,15 @@ docker compose --env-file .env -f docker-compose.community.yml config -q
 
 ### 商务版增量 / Business overlay
 
-仅在仍使用商务专有 `docker-compose.prod.yml` 基线且尚未内置 Widget 的现场使用 [docker-compose.prod-cs.yml](../../../../deploy/docker-compose.prod-cs.yml)；社区版无需叠加。先确认五域、清理身份、客服迁移（`make cs-migration-gate`，使用实际数据库连接参数）及版本配对已通过。
+使用商务私有 `docker-compose.prod.yml` 且基线尚未内置 Widget 时，在 `deploy/.env`
+设置 `IMBOY_BUSINESS_WIDGET_ENABLED=true`。确认五域、客服迁移和镜像版本配对后，
+在维护窗口从仓根执行 `bash deploy/install.sh --edition business`。安装器会从根 Compose
+渲染政策和 Widget 增量，用同一配置组合完成预检、启动和证书检查。
 
-在 `deploy/` 下保留基线、销售策略及现场既有 overlay 的顺序，叠加客服增量。例如已有基线和销售策略的现场：
+If the private business baseline does not include Widget, set
+`IMBOY_BUSINESS_WIDGET_ENABLED=true` and use the business installer after
+verifying hostnames, migrations and image compatibility.
 
-```bash
-docker compose --env-file .env -f docker-compose.prod.yml -f docker-compose-sales-policy.yml -f docker-compose.prod-cs.yml config -q
-docker compose --env-file .env -f docker-compose.prod.yml -f docker-compose-sales-policy.yml -f docker-compose.prod-cs.yml pull imboy_widget
-docker compose --env-file .env -f docker-compose.prod.yml -f docker-compose-sales-policy.yml -f docker-compose.prod-cs.yml up -d imboy_widget imboy_nginx
-```
-
-证书签发使用同一完整文件集合的 `COMPOSE_FILES`，详见[生产部署手册](../../../../deploy/README.md)。升级/回滚按下文版本回退、健康检查和实际安装形态执行；不要删除其他 overlay 或对共享生产栈盲目执行 `--remove-orphans`。停用时先确认变更窗口、停用 Widget 服务并按现场网关配置撤销客服入口，保留数据库与其他服务。历史等价记录不替代当前私有基线的配置验证。
 
 ## 5. 一键事务部署 `cs` / One-command Transactional Deploy
 
@@ -162,10 +160,10 @@ Widget 静态容器跟随 `IMBOY_VERSION` 单一版本来源升级：
 cd /path/to/imboy/deploy
 # 1) .env 中把 IMBOY_VERSION 改为目标版本（widget 镜像默认同版本联动）
 # 2) 拉新镜像并只滚动 Widget 静态容器（PG/backend/admin/nginx 均不动）
-docker compose -f docker-compose.community.yml pull imboy_widget
-docker compose -f docker-compose.community.yml up -d imboy_widget
+docker compose --env-file .env --profile prod -f ../docker-compose.yml pull prod_imboy_widget
+docker compose --env-file .env --profile prod -f ../docker-compose.yml up -d prod_imboy_widget
 # 3) 确认健康
-docker compose -f docker-compose.community.yml ps imboy_widget
+docker compose --env-file .env --profile prod -f ../docker-compose.yml ps prod_imboy_widget
 curl -fsS https://cs.example.com/health.txt
 ```
 
@@ -177,10 +175,10 @@ curl -fsS https://cs.example.com/health.txt
 ```bash
 # 方式 1：镜像 tag 回退（推荐）—— 显式指回上一个已知良好版本
 #   .env: IMBOY_WIDGET_IMAGE=ghcr.io/imboy-pub/imboy-widget:<上一版本>
-docker compose -f docker-compose.community.yml up -d imboy_widget
+docker compose --env-file .env --profile prod -f ../docker-compose.yml up -d prod_imboy_widget
 
 # 方式 2：仅停止 Widget（vhost 保留，第三方嵌入表现为 loader 可达、frame 不可用）
-docker compose -f docker-compose.community.yml stop imboy_widget
+docker compose --env-file .env --profile prod -f ../docker-compose.yml stop prod_imboy_widget
 ```
 
 回滚只影响 `imboy_widget` 容器与 Widget 产物；API/Admin/backend 数据、证书与
@@ -195,7 +193,7 @@ vhost 不受影响。`cs` 形态的回滚由脚本自动完成（恢复先前 sy
 
 ```bash
 # 1) 静态容器健康（compose 内网）
-docker compose -f docker-compose.community.yml ps imboy_widget   # STATUS 含 (healthy)
+docker compose --env-file .env --profile prod -f ../docker-compose.yml ps prod_imboy_widget   # STATUS 含 (healthy)
 
 # 2) 网关静态面：loader 稳定入口（期望 200 + Cache-Control: no-cache）
 curl -fsSI https://cs.example.com/v1/loader.js | grep -iE 'HTTP/|cache-control'
@@ -225,7 +223,7 @@ CS 域证书与 API/Admin 走同一 certbot 机制（`imboy_certbot` 每 12h `ce
 ls data/certbot/conf/renewal/            # 应看到 cs.example.com.conf（连同 api/admin 域）
 
 # 到期时间
-docker compose -f docker-compose.community.yml exec imboy_certbot \
+docker compose --env-file .env --profile prod -f ../docker-compose.yml exec prod_imboy_certbot \
   certbot certificates | grep -A3 'cs.example.com'
 
 # 续期监控：prometheus 规则 IMBoyTLSCertExpiringSoon / IMBoyTLSCertExpired 覆盖全部证书
@@ -234,7 +232,7 @@ docker compose -f docker-compose.community.yml exec imboy_certbot \
 人工续期演练（非破坏，`--dry-run` 使用测试环境）：
 
 ```bash
-docker compose -f docker-compose.community.yml run --rm --entrypoint certbot imboy_certbot \
+docker compose --env-file .env --profile prod -f ../docker-compose.yml run --rm --entrypoint certbot prod_imboy_certbot \
   renew --dry-run --cert-name cs.example.com
 ```
 
@@ -261,10 +259,10 @@ docker compose -f docker-compose.community.yml run --rm --entrypoint certbot imb
 ```bash
 cd /path/to/imboy/deploy
 # 1) 停止并移除静态容器（不动 backend/admin/pg/nginx/certbot）
-docker compose -f docker-compose.community.yml rm -sf imboy_widget
+docker compose --env-file .env --profile prod -f ../docker-compose.yml rm -sf prod_imboy_widget
 # 2) 移除 CS vhost 模板并 reload nginx（移除后 nginx 不再监听该域）
 mv nginx/templates/cs-widget.conf.template /tmp/cs-widget.conf.template.removed
-docker compose -f docker-compose.community.yml exec imboy_nginx nginx -s reload
+docker compose --env-file .env --profile prod -f ../docker-compose.yml exec prod_imboy_nginx nginx -s reload
 # 3) 移除该域证书目录（可选；只删 CS 域，勿动 api/admin 域目录）
 rm -rf data/certbot/conf/live/cs.example.com data/certbot/conf/archive/cs.example.com \
        data/certbot/conf/renewal/cs.example.com.conf

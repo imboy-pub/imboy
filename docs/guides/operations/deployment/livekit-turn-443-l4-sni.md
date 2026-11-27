@@ -1,5 +1,13 @@
 # LiveKit TURN/TLS 443 一键切换手册
 
+新社区部署使用根 Compose 的 `prod-sni`。在 `deploy/.env` 设置
+`LIVEKIT_TURN_ENABLED=true` 与 `LIVEKIT_SNI_ENABLED=true`，然后按[安装指南](../../../../deploy/README.md)
+执行。下文的宿主机 HAProxy/Nginx 操作适用于已使用该拓扑的旧实例，其兼容模板也由根 Compose 提供。
+
+New community deployments use the root `prod-sni` profile. The host
+HAProxy/Nginx procedure below remains available for existing installations.
+
+
 本手册用于一台公网 IP 上已经由宿主机 Nginx/OpenResty 占用 `443/TCP` 的部署。目标是
 在不购买新 EIP 的前提下，让普通 HTTPS 与 `turn.<域名>:443` 共用入口：Nginx stream
 按 TLS SNI 分流，HAProxy 只在回环地址把 PROXY v1 转成 LiveKit 支持的 PROXY v2。
@@ -319,8 +327,8 @@ main 相同。cron 与日志轮转已有历史上线记录；preflight fixture �
 用户指定 Android MRD AL00 + macOS App。macOS 正式入口缺参负例已实际
 运行并以 exit 1 拒绝；这不构成 TLS relay 或媒体 PASS。真实连接与媒体
 仍待合成账号、资源租约、测试地址和网络条件确认。
-监控按用户决定仅完成默认关闭的配置开关与步骤，不启动、不对接；
-入口见 [监控 runbook](l4-sni-monitoring-deployment-runbook.md)。
+该阶段的独立 SNI 监控栈已退役。共用指标查看 [IMBoy 监控指南](monitoring.md)。
+The standalone SNI monitoring stack has been retired. See the [IMBoy monitoring guide](monitoring.md) for shared metrics.
 原 CL-TEST/CL-DEVICE 状态不变，RELEASE=NO_GO。
 
 ### 2026-11-08 测试维护说明 / Regression maintenance

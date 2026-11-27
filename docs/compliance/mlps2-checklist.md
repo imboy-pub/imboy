@@ -102,7 +102,7 @@
 | 3.3.1 重要用户行为审计 | 登录/注销/敏感操作记录 | ✅ 已实现 | lager 记录所有 API 请求（`src/api/imboy_handler.erl`）；账号注销申请写入审计表（`user_repo.erl apply_logout`）；管理后台操作记录在 `adm_audit_log` |
 | 3.3.2 审计记录内容完整 | 时间、用户、操作、结果 | ✅ 已实现 | 日志格式含时间戳、uid、IP、action、result_code |
 | 3.3.3 审计记录不可被普通用户删除 | 日志保护 | ⚠️ 部分实现 | lager 日志写本地文件，需 OS 层面配置 append-only 或写入 Loki（`docs/guides/operations/deployment/monitoring.md`）；Loki 日志不可删是架构设计但未强制配置 |
-| 3.3.4 审计记录保存不少于 6 个月 | 日志保留期 | ⚠️ 部分实现 | Loki 保留期取决于磁盘配置；生产部署须在 `deploy/loki/loki-config.yml` 中设置 `retention_period: 180d`（当前未明确设置） |
+| 3.3.4 审计记录保存不少于 6 个月 | 日志保留期 | ⚠️ 部分实现 | 由部署方配置审计日志留存，并验证可检索至少六个月的审计记录。 |
 | 3.3.5 [三级] 集中审计管理平台 | 日志统一收集、告警 | ⚠️ 部分实现 | Prometheus + Grafana + Loki 栈已就绪（`docs/guides/operations/deployment/monitoring.md`）；告警规则需客户按场景补充 |
 
 ### 3.4 入侵防范（计算环境）

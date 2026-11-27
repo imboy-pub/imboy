@@ -504,7 +504,7 @@ deploy_admin() {
   (cd "$BUILD_DIR" && bun install --frozen-lockfile)
 
   # __IMBOY_API_HOST__ 是 docker 镜像 entrypoint 的运行时 sed 占位符
-  # （见 imboy/deploy/docker-compose.community.yml）。本脚本是同源反代部署，
+  # （见 仓根 docker-compose.yml）。本脚本是同源反代部署，
   # 必须在构建期就注入同源值（.env.production.local 优先级高于 .env.production），
   # 让产物 hash 基于真实内容——构建后 sed 会造成"同名不同内容"的缓存毒化
   # （assets/ 为 1y immutable）。收尾仅对 no-cache 的 index.html 替换 CSP 残留。

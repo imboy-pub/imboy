@@ -69,7 +69,7 @@ case " $* " in
     [[ "${MOCK_NGINX_TEST_FAIL_AT:-0}" != "$count" ]]
     ;;
   *' exec -T imboy_nginx nginx -s reload '*) printf 'reload\n' >> "$MOCK_LOG" ;;
-  *' run '*" imboy_certbot "*)
+  *' run '*" imboy_certbot "*|*' run '*" prod_imboy_certbot "*)
     domain= previous=
     for arg in "$@"; do
       [[ "$previous" != -d ]] || domain="$arg"
@@ -107,7 +107,7 @@ new_case() {
   mkdir -p "$FIXTURE/nginx" "$FIXTURE/data"
   cp "$ROOT/deploy/nginx/init-letsencrypt.sh" "$FIXTURE/nginx/"
   : > "$FIXTURE/docker-compose.community.yml"
-  : > "$FIXTURE/docker-compose.uptrace.yml"
+  : > "$FIXTURE/site-overlay.yml"
   : > "$LOG"
   printf 'existing customer data\n' > "$FIXTURE/data/keep-data"
   cat > "$FIXTURE/.env" <<'ENV'
@@ -231,9 +231,9 @@ no_event reload || fail 'Failed final nginx -t was followed by reload'
 pass 'Final configuration validation failure prevents reload and success'
 
 new_case explicit_files
-run_bootstrap COMPOSE_FILES='docker-compose.community.yml docker-compose.uptrace.yml' \
+run_bootstrap COMPOSE_FILES='docker-compose.community.yml site-overlay.yml' \
   || fail 'Explicit Compose file set was rejected'
-grep -Fq 'docker compose -f docker-compose.community.yml -f docker-compose.uptrace.yml ' "$LOG" \
+grep -Fq 'docker compose -f docker-compose.community.yml -f site-overlay.yml ' "$LOG" \
   || fail 'Explicit overlay was omitted'
 pass 'Explicit Compose file collection remains intact through bootstrap'
 
@@ -243,5 +243,29 @@ run_bootstrap || fail 'Existing business Compose default was rejected'
 grep -Fq 'docker compose -f docker-compose.prod.yml ' "$LOG" \
   || fail 'Existing business Compose default was changed'
 pass 'Standalone bootstrap retains the existing business Compose default when present'
+
+new_case fresh_turn
+: > "$FIXTURE/../docker-compose.yml"
+run_bootstrap COMPOSE_FILES=../docker-compose.yml IMBOY_DEPLOY_PROFILE=prod-turn IMBOY_BOOTSTRAP_TURN_CERT=1 \
+  || fail 'Standalone ACME bootstrap failed'
+grep -Fq -- 'run --rm --no-deps -p 80:80 --entrypoint certbot prod_imboy_certbot certonly --standalone' "$LOG" \
+  || fail 'Standalone ACME did not claim the intended HTTP port'
+! grep -Fq ' up -d ' "$LOG" || fail 'Standalone ACME started the application before certificates existed'
+[ -s "$CONF/live/turn.test.invalid/fullchain.pem" ] || fail 'TURN certificate was not issued'
+pass 'Unified TURN requests certificates before starting the application'
+
+new_case fresh_turn_retry
+: > "$FIXTURE/../docker-compose.yml"
+turn_args=(COMPOSE_FILES=../docker-compose.yml IMBOY_DEPLOY_PROFILE=prod-sni IMBOY_BOOTSTRAP_TURN_CERT=1)
+if run_bootstrap "${turn_args[@]}" MOCK_CERTBOT_FAIL=rtc.test.invalid; then
+  fail 'Standalone ACME accepted a failed issuance'
+fi
+[ -s "$CONF/live/api.test.invalid/fullchain.pem" ] || fail 'A completed certificate was lost'
+[ ! -e "$CONF/live/rtc.test.invalid/fullchain.pem" ] || fail 'Failed certificate marked ready'
+! grep -Fq ' up -d ' "$LOG" || fail 'A failed standalone issuance started the application'
+run_bootstrap "${turn_args[@]}" || fail 'Standalone ACME retry did not recover'
+! grep -Fxq 'certbot api.test.invalid' "$LOG" || fail 'Retry reissued a completed certificate'
+[ -s "$CONF/live/rtc.test.invalid/fullchain.pem" ] || fail 'Retry did not issue the missing certificate'
+pass 'Standalone TURN/SNI retry preserves issued certificates and resumes missing domains'
 
 printf '\nTLS bootstrap regression: %s PASS; scope: offline control flow only.\n' "$passed"

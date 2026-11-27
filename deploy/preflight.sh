@@ -422,9 +422,30 @@ TURN_ENABLED="$(echo "${LIVEKIT_TURN_ENABLED:-false}" | tr '[:upper:]' '[:lower:
 case "$TURN_ENABLED" in
     true|1)
         ok "LIVEKIT_TURN_ENABLED=true（embedded TURN：UDP 3478 + TLS 5349 + relay 50201-50500）"
+        expected_turn_service=imboy_livekit
+        case "${IMBOY_DEPLOY_PROFILE:-}" in
+            prod-turn) expected_turn_service=prod_imboy_livekit_turn ;;
+            prod-sni) expected_turn_service=prod_imboy_livekit_sni ;;
+        esac
+        owns_turn_port() {
+            local port="$1" proto="$2" binding template owner published
+            command -v docker >/dev/null 2>&1 || return 1
+            template='{{if .State.Running}}{{index .Config.Labels "com.docker.compose.project"}}/{{index .Config.Labels "com.docker.compose.service"}}{{range index .NetworkSettings.Ports "'"$port/$proto"'"}} {{.HostPort}}{{end}}{{end}}'
+            binding="$(docker inspect --type container --format "$template" imboy_livekit 2>/dev/null)" || return 1
+            read -r owner published <<< "$binding"
+            [ "$owner" = "imboy/$expected_turn_service" ] || return 1
+            case " $published " in
+                *" $port "*) return 0 ;;
+                *) return 1 ;;
+            esac
+        }
         # 端口冲突 fail-closed（同 W5 端口合同；check_port 的 warn 语义不够）
         check_port_conflict() {
             local port="$1" proto="$2"
+            if owns_turn_port "$port" "$proto"; then
+                ok "端口 ${port}/${proto} 由当前 LiveKit 持有"
+                return 0
+            fi
             if command -v ss &>/dev/null; then
                 ss -lnup 2>/dev/null | grep -q ":${port} " \
                     || ss -lntp 2>/dev/null | grep -q ":${port} " || return 0
@@ -438,12 +459,19 @@ case "$TURN_ENABLED" in
             fi
         }
         check_port_conflict 3478 udp
-        check_port_conflict 5349 tcp
+        if [[ "${IMBOY_DEPLOY_PROFILE:-prod}" != prod-sni ]]; then
+            check_port_conflict 5349 tcp
+        fi
         # 证书目录必须已含 fullchain/privkey（install.sh 的证书签发发生在启动之后，
         # 首装两段式：先 false 完成签发，再 true 重跑收敛）
-        TURN_CERT_DIR="${LIVEKIT_TURN_CERT_DIR:-${DATA_DIR:-./data}/certbot/conf/live/${TURN_DOMAIN:-}}"
+        TURN_DEFAULT_CERT_DIR="${DATA_DIR:-./data}/certbot/conf/live/${TURN_DOMAIN:-}"
+        TURN_CERT_DIR="${LIVEKIT_TURN_CERT_DIR:-$TURN_DEFAULT_CERT_DIR}"
         if [[ -s "$TURN_CERT_DIR/fullchain.pem" && -s "$TURN_CERT_DIR/privkey.pem" ]]; then
             ok "TURN TLS 证书就绪（${TURN_CERT_DIR}，容器内只读挂载）"
+        elif [[ "${IMBOY_BOOTSTRAP_TURN_CERT:-0}" = 1 \
+            && "${IMBOY_DEPLOY_PROFILE:-}" =~ ^prod-(turn|sni)$ \
+            && "$TURN_CERT_DIR" = "$TURN_DEFAULT_CERT_DIR" ]]; then
+            info "将在启动 LiveKit 前通过独立 HTTP-01 签发 TURN 证书"
         else
             err "TURN TLS 证书未就绪：${TURN_CERT_DIR} 缺 fullchain.pem/privkey.pem。首次安装请先保持 LIVEKIT_TURN_ENABLED=false 完成证书签发（init-letsencrypt.sh 会签发 TURN_DOMAIN），再置 true 重跑 install.sh"
         fi
@@ -643,12 +671,12 @@ fi
 echo ""
 echo "▶ 2b. 检查支付配置 / Checking payment configuration"
 
-# 社区版：支付网关由 docker-compose.community.yml 硬编码关闭（false），.env 中的
+# 社区版：支付网关由生产 Compose 硬编码关闭（false），.env 中的
 # 支付变量不进容器 —— 销售发布强校验（IMBOY_SALES_RELEASE / live 凭据）在社区
 # 版部署下既不适用也无法满足（无商户凭据），跳过以避免把社区安装堵死在死锁上。
 # 商务版：维持原有全部检查（行为不变）。
 if [[ "$EDITION" == "community" ]]; then
-    info "社区版：支付网关由 docker-compose.community.yml 固定关闭（IMBOY_PAYMENT_GATEWAY_ENABLED=false），跳过销售发布支付强校验"
+    info "社区版：支付网关由生产 Compose 固定关闭（IMBOY_PAYMENT_GATEWAY_ENABLED=false），跳过销售发布支付强校验"
     info "  充值 / 网关回调 / 提现端点将返回「功能未启用」；站内钱包账务（余额/流水/红包/转账）不受影响"
 else
 PAYMENT_MODE="${IMBOY_PAYMENT_MODE:-sandbox}"
