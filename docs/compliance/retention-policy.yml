@@ -126,13 +126,13 @@ classes:
     notes: 备份为时点快照，含备份点之前未删除的数据；恢复开放访问前须重放删除编排/墓碑并核对撤权不复活（L-03）；对合成 QA 数据的恢复演练不构成生产恢复验收
 
   - id: backups_imboy_db
-    description: 全库逻辑备份（pg_dump 排除敏感表，轮换）
+    description: 全库逻辑备份（pg_dump 排除敏感表，轮换；历史主机口径）
     storage: backup host disk
     duration: 10-copies
     trigger: backup_created
     action: delete
-    evidence: scripts/backup_imboy_db.sh 保留最新 10 个
-    status: evidence-backed
+    evidence: scripts/archive/legacy-backup/backup_imboy_db.sh（2026-11-27 归档；旧主机 /usr/local/bin 安装件轮换保留 10 份）
+    status: pending-owner
     owner: ops
     notes: 账号删除后的备份内残留 → 备份重建窗口（D-02 已登记）；恢复演练须含删除重放（T-02）
 

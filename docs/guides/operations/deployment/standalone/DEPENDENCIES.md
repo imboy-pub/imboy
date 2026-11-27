@@ -22,7 +22,7 @@
 
 客户服务器需要 Bash 4+、Docker 24+、Compose v2.23.1+、jq 1.6+、OpenSSL、curl、系统 CA、coreutils、awk/grep/sed、util-linux/flock、ss 与 DNS 查询工具。ZIP 校验和解压使用 sha256sum、stat、unzip；备份使用 tar。普通客户安装不依赖宿主机 Python、pip、Erlang、Node 或数据库客户端。
 
-制包维护者另需 Git、ZIP 与 GNU 文件工具，在源码仓库运行 `scripts/package_community.sh`。这些不是客户服务器安装条件。额外 YAML/模板静态分析不能替代真实 `docker compose config` 或 `nginx -t`。
+制包维护者另需 Git、ZIP 与 GNU 文件工具，在源码仓库运行 `scripts/deliver/make_delivery_pack.sh`。这些不是客户服务器安装条件。额外 YAML/模板静态分析不能替代真实 `docker compose config` 或 `nginx -t`。
 
 ## 仍需现场确认 / Site requirements
 

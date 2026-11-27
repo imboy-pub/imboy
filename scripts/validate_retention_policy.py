@@ -139,11 +139,6 @@ def validate_consistency(policy: dict, root: Path = ROOT) -> list:
         if expect is not None and expect != actual:
             errors.append(f"backups_pg 注册 {expect}d 与 backup_pg.sh 默认 {actual}d 不一致")
 
-    copies_text = _read(root / "scripts/backup_imboy_db.sh")
-    if by_id.get("backups_imboy_db", {}).get("duration") == "10-copies":
-        if not re.search(r"10", copies_text):
-            errors.append("backups_imboy_db 注册 10 份轮换，但 backup_imboy_db.sh 未体现")
-
     return errors
 
 

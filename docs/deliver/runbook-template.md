@@ -43,13 +43,15 @@ IMBOYENV=pro make rel            # 生产 release 打包（产物不含 sync 等
 
 - 静态门：`make compile && make dialyze`
 - 单测（targeted）：`make eunit-local t=<模块>`
-- 全量回归与终验门：`scripts/test/phase1_gate_all.sh --list`（二十门总控；执行细则见
-  `scripts/test/phase1_gates/`，需绑定隔离库与端口表后运行）
+- 全量回归与终验门：`IMBOYENV=local make eunit`（现行口径；定向入口见
+  `scripts/README.md`。旧 phase1 二十门总控已归档：`scripts/archive/phase1-gates/`，
+  仅作历史证据复现，不作为现行终验入口）
 - 接口冒烟：REST/WS 契约见 `docs/reference/`（rest-api-v1-catalog、websocket-api-2）。
 
 ## 恢复入口（Recover）
 
-- 备份：`scripts/backup_pg` / `scripts/backup_imboy_db` / `scripts/backup_garage`
+- 备份：`scripts/backup_pg` / `scripts/backup_garage`
+  （旧主机备份工具 backup_imboy_db 已归档：`scripts/archive/legacy-backup/`）
 - 恢复：`scripts/restore_pg`（演练记录见 `docs/guides/operations/deployment/backup-restore.md`）
 - 升级/回退：`docs/guides/operations/upgrade-runbook.md`（迁移不可逆时走备份恢复路线，
   不假称 down 脚本即回滚）

@@ -33,7 +33,7 @@ cd /Users/leeyi/project/imboy.pub/imboyapp
 git rev-parse HEAD
 flutter --version
 flutter pub get
-python3 scripts/check_sdk_compatibility.py
+python3 imboyapp/scripts/check_sdk_compatibility.py
 python3 ../imboy/scripts/generate_product_features.py --check --require-profile full-selected
 
 BUILD_NAME='1.0.0-alpha.19'       # 发布负责人确认
@@ -46,7 +46,7 @@ flutter build appbundle --release --flavor standard \
   --dart-define=ALIPAY_APP_ID="${ALIPAY_APP_ID:-2021004142626807}"
 ```
 
-将额外业务 `--dart-define` 与实际发布配置一起核对；不可把密钥打入客户端。Dart 混淆是本清单建议的发布选项，须在相同选项的包上真机回归。本地 Flutter 仓库已更新 `scripts/build_play_aab.sh <build_number> [build_name]`：校验版本码、指定 standard、启用 Dart 混淆并输出符号；可通过 `PLAY_SYMBOL_DIR` 指定符号目录。预检脚本使用 standardRelease 路径；AAB 缺失仍为 WARN，其成功退出不能代替签名或发布验收。上述直接命令可用于自行控制构建参数，使用脚本时按 Flutter 仓库文档核对。
+将额外业务 `--dart-define` 与实际发布配置一起核对；不可把密钥打入客户端。Dart 混淆是本清单建议的发布选项，须在相同选项的包上真机回归。本地 Flutter 仓库已更新 `imboyapp/scripts/build_play_aab.sh <build_number> [build_name]`：校验版本码、指定 standard、启用 Dart 混淆并输出符号；可通过 `PLAY_SYMBOL_DIR` 指定符号目录。预检脚本使用 standardRelease 路径；AAB 缺失仍为 WARN，其成功退出不能代替签名或发布验收。上述直接命令可用于自行控制构建参数，使用脚本时按 Flutter 仓库文档核对。
 
 构建前清理旧产物或隔离输出后，以 Flutter 最终输出为准；常见路径为 `build/app/outputs/bundle/standardRelease/app-standard-release.aab`。若不一致，查找并核对时间、SHA 和 variant，避免误用旧包：
 
@@ -66,7 +66,7 @@ java -jar "$BUNDLETOOL_JAR" dump manifest --bundle="$AAB" --module=base > /tmp/i
 rg 'package=|versionCode=|versionName=|minSdkVersion=|targetSdkVersion=' /tmp/imboy-play-manifest.xml
 ```
 
-核对 `pub.imboy.app`、版本名、分配的 versionCode、minSdk、targetSdk ≥ 36；检查最终 merged manifest 权限、导出组件和 SDK 配置，并用 bundletool 或 zip 检查 arm64-v8a 等 ABI。`scripts/check_play_release.sh` 可辅助检查禁用权限和链接，但 AAB 不存在只产生 WARN，且不验证签名，成功退出不等于通过发布验收。
+核对 `pub.imboy.app`、版本名、分配的 versionCode、minSdk、targetSdk ≥ 36；检查最终 merged manifest 权限、导出组件和 SDK 配置，并用 bundletool 或 zip 检查 arm64-v8a 等 ABI。`imboyapp/scripts/check_play_release.sh` 可辅助检查禁用权限和链接，但 AAB 不存在只产生 WARN，且不验证签名，成功退出不等于通过发布验收。
 
 - [ ] 使用 JDK 工具验证 AAB 的 JAR 签名完整性和证书指纹；不得用 `apksigner` 验 AAB：
 

@@ -21,7 +21,7 @@
 | 能力 | imboy | imboyapp | imboyadmin |
 |---|---|---|---|
 | 单元测试 | 1259 个 `_tests.erl`（test/ 下）+ 19 个 CT 套件 | 3013 个测试文件（1459 `.dart`） | 263 个 `*.test.{ts,tsx}` |
-| 质量编排 | `tools/imboy_quality/` 32 模块（+test_fixtures/）经 `include/quality.mk` 接管 `make eunit`（local 默认走 quality_full 路由） | `scripts/auto_test.py` + `test/auto_test/execution_contract.json` 机器合同；`run_test_suite.sh --profile pr\|full` | `bun run test`（--isolate 防跨文件泄漏） |
+| 质量编排 | `tools/imboy_quality/` 32 模块（+test_fixtures/）经 `include/quality.mk` 接管 `make eunit`（local 默认走 quality_full 路由） | `imboyapp/scripts/auto_test.py` + `test/auto_test/execution_contract.json` 机器合同；`run_test_suite.sh --profile pr\|full` | `bun run test`（--isolate 防跨文件泄漏） |
 | 静态门 | dialyzer 递减基线（184 条指纹 ratchet，文件 188 行含头注释，`check_dialyzer_baseline.sh`）、xref-strict、elvis 5.0.3 | flutter_lints ^6.0 + strict 三开关；analyze ratchet 830/703；gitleaks 22 | eslint --max-warnings=0；ratchet lint 37/typecheck 31/knip 35/gitleaks 40 |
 | CI workflows | 15 个（backend-ci 快门 <10min 全阻塞、nightly 慢门零 continue-on-error、quality、contract-gate、release、security、sbom、mirror、dependabot-auto-merge） | 8 个（ci、contract、quality、integration_test 手动 8 profiles、uiux-full-offline、security、mirror、dependabot-auto-merge） | 7 个（ci、quality、admin-e2e、security、mirror、dependabot-auto-merge、widget-pairing） |
 | 本地钩子 | lefthook（erlfmt/gitleaks/conventional） | lefthook 三级（pre-commit fmt/analyze/gitleaks/error-code-sync；pre-push ratchet+契约，`IMBOY_SKIP_PRE_PUSH=1` 逃生门） | lefthook（pre-commit eslint+gitleaks；pre-push lint+test） |

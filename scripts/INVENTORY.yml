@@ -1,0 +1,2260 @@
+# IMBoy scripts 资产登记簿 / Scripts Inventory (S2-01)
+#
+# 生成于 2026-11-27，基线 6cbb4c2c9 + IMBOY_SCRIPTS_DOCS_GOVERNANCE_V1。
+# 字段：path / category(core|optional|acceptance|archived|unknown) /
+#       disposition(keep|move|merge|archive|delete) / purpose / evidence / notes
+# 护栏：scripts/check_scripts_registry.py 以本文件为源校验根目录脚本登记、
+#       归档工具不被默认流程引用、文档脚本引用存在。
+# 统计：total=446 acceptance=255 archived=49 core=108 optional=34 | disposition archive=49 keep=397
+
+- path: scripts/.env.deploy.example
+  category: core
+  disposition: keep
+  purpose: "imboy-deploy 配置模板（蓝绿/迁移时序变量）"
+  evidence: "imboy-deploy.sh; docs deploy-script.md"
+- path: scripts/README.md
+  category: core
+  disposition: keep
+  purpose: "scripts 目录索引与入口文档"
+  evidence: "AGENTS/CHANGELOG/docs 89 处引用"
+- path: scripts/agent_hub_bot_webhook_fixture.py
+  category: acceptance
+  disposition: keep
+  purpose: "Agent Hub Golden Flow Bot webhook 环回 fixture"
+  evidence: "agent_hub_golden_flow.sh; test/scripts"
+- path: scripts/agent_hub_channel_webhook_smoke.py
+  category: acceptance
+  disposition: keep
+  purpose: "频道入站 webhook 真实 HTTP smoke"
+  evidence: "agent_hub_golden_flow.sh"
+- path: scripts/agent_hub_delivery_replay_smoke.py
+  category: acceptance
+  disposition: keep
+  purpose: "admin replay 端点 smoke"
+  evidence: "agent_hub_golden_flow.sh"
+- path: scripts/agent_hub_ext01_mcp_client_smoke.py
+  category: acceptance
+  disposition: keep
+  purpose: "EXT-01 MCP 客户端全链 smoke"
+  evidence: "docs runbook ext01; golden flow"
+- path: scripts/agent_hub_golden_flow.sh
+  category: acceptance
+  disposition: keep
+  purpose: "E2E-01 本地 Golden Flow harness"
+  evidence: "docs/runbooks/agent-hub-local-golden-flow.md"
+- path: scripts/agent_hub_http_status_fixture.py
+  category: acceptance
+  disposition: keep
+  purpose: "环回固定状态码 HTTP fixture"
+  evidence: "agent_hub_golden_flow.sh"
+- path: scripts/archive/demo/dual_exp_demo_b.sh
+  category: archived
+  disposition: archive
+  purpose: "双体验方案 B 本地演示编排"
+  evidence: "scripts/archive/README.md"
+- path: scripts/archive/demo/dual_exp_demo_b_w2.sh
+  category: archived
+  disposition: archive
+  purpose: "双体验方案 B 演练第二轮变体（零引用）"
+  evidence: "scripts/archive/README.md"
+- path: scripts/archive/fastdfs-migration/fdfs_reference_census.sql
+  category: archived
+  disposition: archive
+  purpose: "go-fastdfs 引用普查 SQL（一次性，只读）"
+  evidence: "scripts/archive/README.md"
+- path: scripts/archive/fastdfs-migration/migrate_fdfs_avatars.erl
+  category: archived
+  disposition: archive
+  purpose: "fastdfs→Garage 头像一次性迁移 escript"
+  evidence: "scripts/archive/README.md"
+- path: scripts/archive/group-file-migration/group_file_legacy_migration.sql
+  category: archived
+  disposition: archive
+  purpose: "历史工具归档（见 scripts/archive/README.md）"
+  evidence: "scripts/archive/README.md"
+- path: scripts/archive/group-file-migration/run_group_attachment_acl_pg.sh
+  category: archived
+  disposition: archive
+  purpose: "历史工具归档（见 scripts/archive/README.md）"
+  evidence: "scripts/archive/README.md"
+- path: scripts/archive/group-file-migration/run_group_file_legacy_migration.sh
+  category: archived
+  disposition: archive
+  purpose: "历史工具归档（见 scripts/archive/README.md）"
+  evidence: "scripts/archive/README.md"
+- path: scripts/archive/hird-poc-v1/compile.sh
+  category: archived
+  disposition: archive
+  purpose: "历史工具归档（见 scripts/archive/README.md）"
+  evidence: "scripts/archive/README.md"
+- path: scripts/archive/hird-poc-v1/emit_pg_env.py
+  category: archived
+  disposition: archive
+  purpose: "历史工具归档（见 scripts/archive/README.md）"
+  evidence: "scripts/archive/README.md"
+- path: scripts/archive/hird-poc-v1/run_pg_suite.sh
+  category: archived
+  disposition: archive
+  purpose: "历史工具归档（见 scripts/archive/README.md）"
+  evidence: "scripts/archive/README.md"
+- path: scripts/archive/hird-poc-v1/run_suites.sh
+  category: archived
+  disposition: archive
+  purpose: "历史工具归档（见 scripts/archive/README.md）"
+  evidence: "scripts/archive/README.md"
+- path: scripts/archive/legacy-attachment-gates/attachment_direct_v1_locations_gate.sh
+  category: archived
+  disposition: archive
+  purpose: "历史工具归档（见 scripts/archive/README.md）"
+  evidence: "scripts/archive/README.md"
+- path: scripts/archive/legacy-attachment-gates/attachment_edge_gate.sh
+  category: archived
+  disposition: archive
+  purpose: "历史工具归档（见 scripts/archive/README.md）"
+  evidence: "scripts/archive/README.md"
+- path: scripts/archive/legacy-attachment-gates/avatar_publish_gate.sh
+  category: archived
+  disposition: archive
+  purpose: "历史工具归档（见 scripts/archive/README.md）"
+  evidence: "scripts/archive/README.md"
+- path: scripts/archive/legacy-attachment-gates/eb_asset_edge_gate.sh
+  category: archived
+  disposition: archive
+  purpose: "历史工具归档（见 scripts/archive/README.md）"
+  evidence: "scripts/archive/README.md"
+- path: scripts/archive/legacy-backup/backup_imboy_db.sh
+  category: archived
+  disposition: archive
+  purpose: "旧主机 PG 备份 cron 脚本（硬编码容器/密码文件，set -x 泄密码面）"
+  evidence: "scripts/archive/README.md"
+- path: scripts/archive/obsolete-config/dev_verify_oss_config.escript
+  category: archived
+  disposition: archive
+  purpose: "garage dev_use_public_bucket 配置校验（目标脚本已消失）"
+  evidence: "scripts/archive/README.md"
+- path: scripts/archive/one-off-acceptance/cs_ai_v4_acceptance.sh
+  category: archived
+  disposition: archive
+  purpose: "历史工具归档（见 scripts/archive/README.md）"
+  evidence: "scripts/archive/README.md"
+- path: scripts/archive/one-off-acceptance/csww_e2e_seed.sh
+  category: archived
+  disposition: archive
+  purpose: "历史工具归档（见 scripts/archive/README.md）"
+  evidence: "scripts/archive/README.md"
+- path: scripts/archive/one-off-acceptance/enterprise_internal_curl_evidence.sh
+  category: archived
+  disposition: archive
+  purpose: "历史工具归档（见 scripts/archive/README.md）"
+  evidence: "scripts/archive/README.md"
+- path: scripts/archive/one-off-sql/billing_cancel_snapshot.sql
+  category: archived
+  disposition: archive
+  purpose: "billing 取消链路现场快照取证 SQL（一次性）"
+  evidence: "scripts/archive/README.md"
+- path: scripts/archive/one-off-sql/organization_directory_fixture_oracle.sql
+  category: archived
+  disposition: archive
+  purpose: "组织目录 fixture oracle SQL（一次性验收比对）"
+  evidence: "scripts/archive/README.md"
+- path: scripts/archive/orphan-fixtures/e2ee_alert_rules_test.yml
+  category: archived
+  disposition: archive
+  purpose: "历史工具归档（见 scripts/archive/README.md）"
+  evidence: "scripts/archive/README.md"
+- path: scripts/archive/orphan-fixtures/pg18_bluegreen_mock_command.sh
+  category: archived
+  disposition: archive
+  purpose: "历史工具归档（见 scripts/archive/README.md）"
+  evidence: "scripts/archive/README.md"
+- path: scripts/archive/phase1-gates/g01_backend_compile.sh
+  category: archived
+  disposition: archive
+  purpose: "历史工具归档（见 scripts/archive/README.md）"
+  evidence: "scripts/archive/README.md"
+- path: scripts/archive/phase1-gates/g02_static_cross_repo.sh
+  category: archived
+  disposition: archive
+  purpose: "历史工具归档（见 scripts/archive/README.md）"
+  evidence: "scripts/archive/README.md"
+- path: scripts/archive/phase1-gates/g03_static_generator_check.sh
+  category: archived
+  disposition: archive
+  purpose: "历史工具归档（见 scripts/archive/README.md）"
+  evidence: "scripts/archive/README.md"
+- path: scripts/archive/phase1-gates/g04_static_flatten_internal.sh
+  category: archived
+  disposition: archive
+  purpose: "历史工具归档（见 scripts/archive/README.md）"
+  evidence: "scripts/archive/README.md"
+- path: scripts/archive/phase1-gates/g05_static_migrations_check.sh
+  category: archived
+  disposition: archive
+  purpose: "历史工具归档（见 scripts/archive/README.md）"
+  evidence: "scripts/archive/README.md"
+- path: scripts/archive/phase1-gates/g06_eunit_full_run1.sh
+  category: archived
+  disposition: archive
+  purpose: "历史工具归档（见 scripts/archive/README.md）"
+  evidence: "scripts/archive/README.md"
+- path: scripts/archive/phase1-gates/g07_eunit_full_run2.sh
+  category: archived
+  disposition: archive
+  purpose: "历史工具归档（见 scripts/archive/README.md）"
+  evidence: "scripts/archive/README.md"
+- path: scripts/archive/phase1-gates/g08_admin_unit_test.sh
+  category: archived
+  disposition: archive
+  purpose: "历史工具归档（见 scripts/archive/README.md）"
+  evidence: "scripts/archive/README.md"
+- path: scripts/archive/phase1-gates/g09_admin_lint.sh
+  category: archived
+  disposition: archive
+  purpose: "历史工具归档（见 scripts/archive/README.md）"
+  evidence: "scripts/archive/README.md"
+- path: scripts/archive/phase1-gates/g10_admin_typecheck.sh
+  category: archived
+  disposition: archive
+  purpose: "历史工具归档（见 scripts/archive/README.md）"
+  evidence: "scripts/archive/README.md"
+- path: scripts/archive/phase1-gates/g11_admin_build.sh
+  category: archived
+  disposition: archive
+  purpose: "历史工具归档（见 scripts/archive/README.md）"
+  evidence: "scripts/archive/README.md"
+- path: scripts/archive/phase1-gates/g12_admin_widget_build.sh
+  category: archived
+  disposition: archive
+  purpose: "历史工具归档（见 scripts/archive/README.md）"
+  evidence: "scripts/archive/README.md"
+- path: scripts/archive/phase1-gates/g13_admin_widget_verify.sh
+  category: archived
+  disposition: archive
+  purpose: "历史工具归档（见 scripts/archive/README.md）"
+  evidence: "scripts/archive/README.md"
+- path: scripts/archive/phase1-gates/g14_admin_widget_pairing.sh
+  category: archived
+  disposition: archive
+  purpose: "历史工具归档（见 scripts/archive/README.md）"
+  evidence: "scripts/archive/README.md"
+- path: scripts/archive/phase1-gates/g15_admin_deadcode.sh
+  category: archived
+  disposition: archive
+  purpose: "历史工具归档（见 scripts/archive/README.md）"
+  evidence: "scripts/archive/README.md"
+- path: scripts/archive/phase1-gates/g16_app_flutter_analyze.sh
+  category: archived
+  disposition: archive
+  purpose: "历史工具归档（见 scripts/archive/README.md）"
+  evidence: "scripts/archive/README.md"
+- path: scripts/archive/phase1-gates/g17_app_flutter_test.sh
+  category: archived
+  disposition: archive
+  purpose: "历史工具归档（见 scripts/archive/README.md）"
+  evidence: "scripts/archive/README.md"
+- path: scripts/archive/phase1-gates/g19_backup_object_layout_test.sh
+  category: archived
+  disposition: archive
+  purpose: "历史工具归档（见 scripts/archive/README.md）"
+  evidence: "scripts/archive/README.md"
+- path: scripts/archive/phase1-gates/g19_drill_backup_restore_oracle.sh
+  category: archived
+  disposition: archive
+  purpose: "历史工具归档（见 scripts/archive/README.md）"
+  evidence: "scripts/archive/README.md"
+- path: scripts/archive/phase1-gates/phase1_gate_all.sh
+  category: archived
+  disposition: archive
+  purpose: "历史工具归档（见 scripts/archive/README.md）"
+  evidence: "scripts/archive/README.md"
+- path: scripts/archive/phase1-w14/oa_stub/gen_self_signed_cert.sh
+  category: archived
+  disposition: archive
+  purpose: "历史工具归档（见 scripts/archive/README.md）"
+  evidence: "scripts/archive/README.md"
+- path: scripts/archive/phase1-w14/oa_stub/oa_stub.html
+  category: archived
+  disposition: archive
+  purpose: "历史工具归档（见 scripts/archive/README.md）"
+  evidence: "scripts/archive/README.md"
+- path: scripts/archive/phase1-w14/oa_stub/oa_stub_server.py
+  category: archived
+  disposition: archive
+  purpose: "历史工具归档（见 scripts/archive/README.md）"
+  evidence: "scripts/archive/README.md"
+- path: scripts/archive/phase1-w14/phase1_w14_delivery_check.sh
+  category: archived
+  disposition: archive
+  purpose: "历史工具归档（见 scripts/archive/README.md）"
+  evidence: "scripts/archive/README.md"
+- path: scripts/archive/phase1-w14/webhook_receiver_stub.py
+  category: archived
+  disposition: archive
+  purpose: "历史工具归档（见 scripts/archive/README.md）"
+  evidence: "scripts/archive/README.md"
+- path: scripts/attachment_lifecycle_v5_case_store.py
+  category: acceptance
+  disposition: keep
+  purpose: "v5 case 回执原子发布库"
+  evidence: "runner.py 动态 import（静态扫描假阴性）"
+- path: scripts/attachment_lifecycle_v5_producer.py
+  category: acceptance
+  disposition: keep
+  purpose: "v5 closeout 实测证据生产器"
+  evidence: "test/attachment_lifecycle_v5_gate.sh 等"
+- path: scripts/attachment_lifecycle_v5_readmission.py
+  category: acceptance
+  disposition: keep
+  purpose: "W6-01 readmission fail-closed 校验库"
+  evidence: "runner.py 动态 import（假阴性）"
+- path: scripts/attachment_lifecycle_v5_runner.py
+  category: acceptance
+  disposition: keep
+  purpose: "v5 单写者 runner（admit/next/resume/verify）"
+  evidence: "execution-contract.json; docs 04-tasks"
+- path: scripts/backup_garage.sh
+  category: core
+  disposition: keep
+  purpose: "Garage S3 附件 rclone 备份"
+  evidence: "deploy/cron/imboy-ops.cron; RELEASES.md; metrics_push"
+- path: scripts/backup_pg.sh
+  category: core
+  disposition: keep
+  purpose: "PG 全量备份（pg_dump -Fc，env 可配，--full/--schema-only）"
+  evidence: "deploy/cron/imboy-ops.cron; backup-restore.md; release gate"
+- path: scripts/bench_websocket.py
+  category: optional
+  disposition: keep
+  purpose: "WS 容量压测实现"
+  evidence: "bench_websocket.sh; test/test_bench_websocket.py; docs websocket-testing"
+- path: scripts/bench_websocket.sh
+  category: optional
+  disposition: keep
+  purpose: "WS 压测入口 wrapper（任意 cwd 路径正确）"
+  evidence: "backend-ci.yml; docs websocket-testing"
+- path: scripts/cache_digest_bench.erl
+  category: acceptance
+  disposition: keep
+  purpose: "指纹 CPU 微基准"
+  evidence: "docs cache-shared-validation.md"
+- path: scripts/cache_digest_upgrade_check.erl
+  category: acceptance
+  disposition: keep
+  purpose: "热升级 digest 失效回归"
+  evidence: "docs cache-shared-validation.md"
+- path: scripts/cache_shared_dcheck.erl
+  category: acceptance
+  disposition: keep
+  purpose: "三节点环回 shared_cache API 检查"
+  evidence: "docs cache-shared-validation.md"
+- path: scripts/cache_stress_bench.erl
+  category: acceptance
+  disposition: keep
+  purpose: "无 DB 隔离缓存压测"
+  evidence: "docs cache-shared-validation.md"
+- path: scripts/cache_v21_dcheck.erl
+  category: acceptance
+  disposition: keep
+  purpose: "W3/W4 三节点分布式缓存验证"
+  evidence: "closeout c10/c12; ownership.json"
+- path: scripts/cache_v21_mixed_dcheck.erl
+  category: acceptance
+  disposition: keep
+  purpose: "W5-05 新旧版本混合组网演练"
+  evidence: "closeout c10/c12; ledger r2"
+- path: scripts/cache_v221_qr_entry_dcheck.erl
+  category: acceptance
+  disposition: keep
+  purpose: "C08 QR 登录入口竞争 dcheck"
+  evidence: "docs LEE-5; scripts/ci/lee5-acceptance.sh"
+- path: scripts/cache_v2_bench.erl
+  category: acceptance
+  disposition: keep
+  purpose: "C12 V2 缓存基准"
+  evidence: "closeout-report-v1; c12-window-plan"
+- path: scripts/cache_w0_bench.erl
+  category: acceptance
+  disposition: keep
+  purpose: "W0 缓存基准 driver"
+  evidence: "w0/report.md; run_cache_w0.py"
+- path: scripts/cache_w0_timeout_probe.erl
+  category: acceptance
+  disposition: keep
+  purpose: "depcache 30s 写锁超时探针"
+  evidence: "w0 report/decision.json"
+- path: scripts/channel_daily_digest.sh
+  category: optional
+  disposition: keep
+  purpose: "官方频道每日话题推送"
+  evidence: "scripts/README.md（服务器侧手动 crontab 用）"
+- path: scripts/check_cache_closeout_v1.py
+  category: acceptance
+  disposition: keep
+  purpose: "C14 缓存 closeout 证据机械复核"
+  evidence: "closeout c12/ownership 文档"
+- path: scripts/check_cache_w0_docs.py
+  category: acceptance
+  disposition: keep
+  purpose: "W0 文档/证据 ledger 一致性校验"
+  evidence: "w0 README/report"
+- path: scripts/check_cron_config.sh
+  category: core
+  disposition: keep
+  purpose: "ecron 配置一致性门禁"
+  evidence: "Makefile:362; backend-ci.yml; sys.config.example"
+- path: scripts/check_dco.sh
+  category: optional
+  disposition: keep
+  purpose: "本地 DCO 检查（origin/main..HEAD trailer）"
+  evidence: "scripts/README.md（CI 用 check_pr_dco.sh）"
+- path: scripts/check_delivery.sh
+  category: optional
+  disposition: keep
+  purpose: "离线交付包完整性检查"
+  evidence: "standalone INSTALL/DEPENDENCIES; run_offline_checks.sh"
+- path: scripts/check_dialyzer_baseline.sh
+  category: core
+  disposition: keep
+  purpose: "Dialyzer 递减基线门"
+  evidence: "include/quality.mk:270; backend-ci/nightly"
+- path: scripts/check_duplicate_modules.sh
+  category: core
+  disposition: keep
+  purpose: "同名 -module 检查"
+  evidence: "backend-ci.yml"
+- path: scripts/check_eb_port_closure.sh
+  category: acceptance
+  disposition: keep
+  purpose: "EB Port 调用方契约闭包门"
+  evidence: "eb_asset_it/db_it; src eb_*.erl 注释"
+- path: scripts/check_enterprise_release_manifest.py
+  category: acceptance
+  disposition: keep
+  purpose: "FULL-07 §8 企业发布候选机械断言"
+  evidence: "api/README.md; enterprise_api_metadata_test"
+- path: scripts/check_feature_architecture.sh
+  category: core
+  disposition: keep
+  purpose: "Feature Slice 架构铁律门禁"
+  evidence: "Makefile:330/334/337; backend-ci.yml"
+- path: scripts/check_feature_prune_calls.py
+  category: core
+  disposition: keep
+  purpose: "特性裁剪调用门"
+  evidence: "check_feature_architecture.sh; baseline tsv"
+- path: scripts/check_l4_sni_listen.sh
+  category: core
+  disposition: keep
+  purpose: "L4 SNI vhost listen 漂移检测"
+  evidence: "deploy/cron/imboy-ops.cron; prometheus rules"
+- path: scripts/check_migrations.sh
+  category: core
+  disposition: keep
+  purpose: "迁移文件命名/成对门禁"
+  evidence: "Makefile:340; quality.yml:425"
+- path: scripts/check_module_boundaries.sh
+  category: core
+  disposition: keep
+  purpose: "模块边界检查"
+  evidence: "Makefile:328; backend-ci.yml"
+- path: scripts/check_org_invite_landing.sh
+  category: acceptance
+  disposition: keep
+  purpose: "邀请落地页渲染回归"
+  evidence: "deploy/nginx/prod-vhosts/README.md"
+- path: scripts/check_pr_dco.sh
+  category: core
+  disposition: keep
+  purpose: "PR DCO CI 检查（含 Dependabot 验签）"
+  evidence: "backend-ci.yml:794; 自身测试"
+- path: scripts/check_product_feature_cross_repo.py
+  category: core
+  disposition: keep
+  purpose: "跨仓特性产物一致性门"
+  evidence: "Makefile:357; quality.yml:472"
+- path: scripts/check_release_consistency.sh
+  category: core
+  disposition: keep
+  purpose: "发布一致性门（版本/迁移/合同/运维脚本存在性/license 退役守护）"
+  evidence: "backend-ci.yml:135; 自身测试"
+- path: scripts/check_repository_hygiene.py
+  category: core
+  disposition: keep
+  purpose: "跟踪产物仓库卫生检查"
+  evidence: "quality.yml:29; test/scripts"
+- path: scripts/check_rest_contract_coverage.sh
+  category: core
+  disposition: keep
+  purpose: "REST contract coverage 门"
+  evidence: "Makefile:253"
+- path: scripts/check_server_zero_crypto.sh
+  category: core
+  disposition: keep
+  purpose: "服务端零密码学守护"
+  evidence: "Makefile:326; AGENTS.md; CI"
+- path: scripts/check_tls_expiry.sh
+  category: core
+  disposition: keep
+  purpose: "TLS 证书到期推 Pushgateway"
+  evidence: "deploy/cron/imboy-ops.cron; alerts; metrics_push"
+- path: scripts/check_wechat_login_config.sh
+  category: optional
+  disposition: keep
+  purpose: "微信小程序登录配置体检（手动 preflight）"
+  evidence: "zero-ref；自述用途明确"
+- path: scripts/check_widget_asset_pairing.sh
+  category: core
+  disposition: keep
+  purpose: "跨仓 Widget 资产配对门"
+  evidence: "Makefile:347; release.yml"
+- path: scripts/ci/core-eunit.sh
+  category: core
+  disposition: keep
+  purpose: "core-eunit CI 步"
+  evidence: ".github/workflows native-eunit/lee5/xref 链"
+- path: scripts/ci/lee5-acceptance.sh
+  category: core
+  disposition: keep
+  purpose: "LEE-5 验收编排"
+  evidence: ".github/workflows native-eunit/lee5/xref 链"
+- path: scripts/ci/native-eunit-bootstrap.sh
+  category: core
+  disposition: keep
+  purpose: "native eunit 引导"
+  evidence: ".github/workflows native-eunit/lee5/xref 链"
+- path: scripts/ci/native-eunit-capture.py
+  category: core
+  disposition: keep
+  purpose: "native eunit 采集"
+  evidence: ".github/workflows native-eunit/lee5/xref 链"
+- path: scripts/ci/native-eunit-fetch.py
+  category: core
+  disposition: keep
+  purpose: "native eunit 取回"
+  evidence: ".github/workflows native-eunit/lee5/xref 链"
+- path: scripts/ci/native-eunit-pins.json
+  category: core
+  disposition: keep
+  purpose: "native eunit 版本钉"
+  evidence: ".github/workflows native-eunit/lee5/xref 链"
+- path: scripts/ci/native-eunit-run.sh
+  category: core
+  disposition: keep
+  purpose: "native eunit 运行编排"
+  evidence: ".github/workflows native-eunit/lee5/xref 链"
+- path: scripts/ci/native-eunit-uid-proof.py
+  category: core
+  disposition: keep
+  purpose: "uid 证明"
+  evidence: ".github/workflows native-eunit/lee5/xref 链"
+- path: scripts/ci/native-eunit-validate.py
+  category: core
+  disposition: keep
+  purpose: "native eunit 校验"
+  evidence: ".github/workflows native-eunit/lee5/xref 链"
+- path: scripts/ci/native-v5-fixture.py
+  category: core
+  disposition: keep
+  purpose: "v5 fixture"
+  evidence: ".github/workflows native-eunit/lee5/xref 链"
+- path: scripts/ci/native_eunit_uid_preflight.erl
+  category: core
+  disposition: keep
+  purpose: "uid 预检 escript"
+  evidence: ".github/workflows native-eunit/lee5/xref 链"
+- path: scripts/ci/test_native_ci_plan.py
+  category: core
+  disposition: keep
+  purpose: "CI 计划自测"
+  evidence: ".github/workflows native-eunit/lee5/xref 链"
+- path: scripts/ci/test_native_eunit_validate.py
+  category: core
+  disposition: keep
+  purpose: "validate 自测"
+  evidence: ".github/workflows native-eunit/lee5/xref 链"
+- path: scripts/ci/test_native_uid_reporter.py
+  category: core
+  disposition: keep
+  purpose: "reporter 自测"
+  evidence: ".github/workflows native-eunit/lee5/xref 链"
+- path: scripts/ci/verify_lee5_evidence.py
+  category: core
+  disposition: keep
+  purpose: "LEE-5 证据校验"
+  evidence: ".github/workflows native-eunit/lee5/xref 链"
+- path: scripts/ci/with-owned-pg-env.sh
+  category: core
+  disposition: keep
+  purpose: "独占 PG env 包装"
+  evidence: ".github/workflows native-eunit/lee5/xref 链"
+- path: scripts/ci/xref-gate.sh
+  category: core
+  disposition: keep
+  purpose: "Xref 门"
+  evidence: ".github/workflows native-eunit/lee5/xref 链"
+- path: scripts/cleanup_test_data.sh
+  category: optional
+  disposition: keep
+  purpose: "本地 imboy_v1 测试数据清理"
+  evidence: "zero-ref；setup 对应清理工具"
+- path: scripts/contract_gate.py
+  category: core
+  disposition: keep
+  purpose: "API contract 导出+双端校验门"
+  evidence: "Makefile:366/369; contract-gate.yml; CONTRIBUTING"
+- path: scripts/contract_route_sources.py
+  category: core
+  disposition: keep
+  purpose: "contract gate 路由源提取 helper"
+  evidence: "check_rest_contract_coverage.sh; 自身测试"
+- path: scripts/customer_service_e2e.sh
+  category: acceptance
+  disposition: keep
+  purpose: "CS-04 客服全链 HTTP E2E 门"
+  evidence: "docs design plan-v1 (CS-04)"
+- path: scripts/customer_service_feature_matrix.sh
+  category: acceptance
+  disposition: keep
+  purpose: "CS-02 feature 三档矩阵"
+  evidence: "verify_product_feature_artifacts.py 出链；EB 孪生有测试"
+- path: scripts/customer_service_migration_gate.sh
+  category: core
+  disposition: keep
+  purpose: "客服域迁移落库门"
+  evidence: "Makefile:343; ACCEPTANCE_COMMANDS"
+- path: scripts/deliver/backend_allowlist.regex
+  category: core
+  disposition: keep
+  purpose: "社区包 backend 白名单"
+  evidence: "make_delivery_pack.sh; delivery_pack_whitelist_test.sh"
+- path: scripts/deliver/make_delivery_pack.sh
+  category: core
+  disposition: keep
+  purpose: "社区交付包制包"
+  evidence: "package_community; CI; 测试"
+- path: scripts/dev_setup.sh
+  category: core
+  disposition: keep
+  purpose: "本地 Compose 开发环境入口"
+  evidence: "README/CONTRIBUTING; backend-runtime.yml:12; install.sh"
+- path: scripts/drill_migrate.escript
+  category: core
+  disposition: keep
+  purpose: "演练库迁移 driver（up/down/version，strict 口径）"
+  evidence: "backend-ci.yml:641; nightly.yml:620"
+- path: scripts/enterprise_business_asset_it.sh
+  category: acceptance
+  disposition: keep
+  purpose: "EB-07 附件闭环集成门"
+  evidence: "test/.../eb_asset_it_runner.erl（erlang 测试按路径执行）"
+- path: scripts/enterprise_business_db_it.sh
+  category: acceptance
+  disposition: keep
+  purpose: "EB-01 PG 契约/迁移往返验证"
+  evidence: "eb_pg_*.erl 注释; migration 121"
+- path: scripts/enterprise_business_e2e.sh
+  category: acceptance
+  disposition: keep
+  purpose: "EB-11 独立 E2E 门"
+  evidence: "eb_e2e_runner.erl"
+- path: scripts/enterprise_business_feature_matrix.sh
+  category: acceptance
+  disposition: keep
+  purpose: "EB-10 feature 三档矩阵"
+  evidence: "test_enterprise_business_feature_matrix.sh"
+- path: scripts/enterprise_direct_proof_worker.sh
+  category: optional
+  disposition: keep
+  purpose: "企业直证 worker 启动包装"
+  evidence: "docs proof-worker-operations.md"
+- path: scripts/erl_crashdump_analyzer.sh
+  category: optional
+  disposition: keep
+  purpose: "crash dump 分析辅助"
+  evidence: "config/debug.config（AGENTS.md 误写 .escript）"
+- path: scripts/evidence_manifest.sh
+  category: acceptance
+  disposition: keep
+  purpose: "发布证据清单生成（P5-8）"
+  evidence: "e2ee audit docs; license_inventory 链"
+- path: scripts/export_agent_hub_correlation_trace.sql
+  category: acceptance
+  disposition: keep
+  purpose: "TRACE-00 审计导出 SQL"
+  evidence: "agent_hub_golden_flow.sh; verify 脚本"
+- path: scripts/feature-prune-baseline.tsv
+  category: core
+  disposition: keep
+  purpose: "特性裁剪调用门 baseline"
+  evidence: "check_feature_prune_calls.py --baseline"
+- path: scripts/full07_runbook_drill.escript
+  category: acceptance
+  disposition: keep
+  purpose: "FULL-07 §8 发布 Runbook 真实演练"
+  evidence: "plan S2-04 明确保留；断言与 check_enterprise_release_manifest 互补"
+  notes: "zero-ref，S2-04 名单保留"
+- path: scripts/garage-install.sh
+  category: core
+  disposition: keep
+  purpose: "Garage Linux 二进制安装"
+  evidence: "native-shell MANUAL docs; dev_setup --infra-only"
+- path: scripts/garage_e2e_test.sh
+  category: acceptance
+  disposition: keep
+  purpose: "Garage 附件直传 E2E"
+  evidence: "poc acceptance matrix; smoke_extended"
+- path: scripts/gen_login_rsa_keys.sh
+  category: core
+  disposition: keep
+  purpose: "登录 RSA 密钥初始化（新版文件+env）"
+  evidence: "deploy/install.sh; install 测试"
+- path: scripts/generate_product_features.py
+  category: core
+  disposition: keep
+  purpose: "manifest 校验+生成三份特性产物"
+  evidence: "include/generated/*.mk; 多个质量门"
+- path: scripts/grant_enterprise_direct_purge.sql
+  category: optional
+  disposition: keep
+  purpose: "DBA 授权 purge worker 角色"
+  evidence: "compose-operations doc"
+- path: scripts/h3_rehearsal.sh
+  category: optional
+  disposition: keep
+  purpose: "H3 迁移/回滚演练编排（快照→迁移→冒烟→回滚→复核）"
+  evidence: "CHANGELOG.md; release_gate_check.sh; sanitized_snapshot"
+- path: scripts/imboy-deploy.sh
+  category: core
+  disposition: keep
+  purpose: "统一部署入口（all/api/admin/migrate/rollback/web）"
+  evidence: "RELEASES.md; 部署文档 9+处; lib/blue_green_deploy"
+- path: scripts/imboy_ctl
+  category: core
+  disposition: keep
+  purpose: "统一 CLI 管理工具（escript）"
+  evidence: "Makefile:305; Dockerfile; deploy tools; 17+ 脚本"
+- path: scripts/install_guard.sh
+  category: optional
+  disposition: keep
+  purpose: "只读交付 guard"
+  evidence: "check_delivery.sh; DEPENDENCIES doc"
+- path: scripts/lib/backup_offsite.sh
+  category: core
+  disposition: keep
+  purpose: "B-29 备份异地加密副本（backup_pg 调用）"
+  evidence: "imboy-deploy.sh / backup_pg.sh / cron 链"
+- path: scripts/lib/blue_green_deploy.sh
+  category: core
+  disposition: keep
+  purpose: "蓝绿内部实现（imboy-deploy 专用）"
+  evidence: "imboy-deploy.sh / backup_pg.sh / cron 链"
+- path: scripts/lib/check_prod_config.sh
+  category: core
+  disposition: keep
+  purpose: "生产配置校验（imboy-deploy）"
+  evidence: "imboy-deploy.sh / backup_pg.sh / cron 链"
+- path: scripts/lib/cs_deploy.sh
+  category: core
+  disposition: keep
+  purpose: "客服 Widget 部署实现"
+  evidence: "imboy-deploy.sh / backup_pg.sh / cron 链"
+- path: scripts/lib/metrics_push.sh
+  category: core
+  disposition: keep
+  purpose: "Pushgateway 指标推送"
+  evidence: "imboy-deploy.sh / backup_pg.sh / cron 链"
+- path: scripts/lib/offline_migrate.sh
+  category: core
+  disposition: keep
+  purpose: "离线迁移编排"
+  evidence: "imboy-deploy.sh / backup_pg.sh / cron 链"
+- path: scripts/lib/prepare_release_build.sh
+  category: core
+  disposition: keep
+  purpose: "发布构建准备"
+  evidence: "imboy-deploy.sh / backup_pg.sh / cron 链"
+- path: scripts/lib/web_deploy.sh
+  category: core
+  disposition: keep
+  purpose: "web 发布实现（imboy-deploy web）"
+  evidence: "imboy-deploy.sh / backup_pg.sh / cron 链"
+- path: scripts/license_inventory.sh
+  category: acceptance
+  disposition: keep
+  purpose: "第三方许可证清单生成（D3 门）"
+  evidence: "e2ee audit docs; docs/legal/third-party-licenses.md; evidence_manifest"
+- path: scripts/limiter_v1_acceptance.escript
+  category: acceptance
+  disposition: keep
+  purpose: "Limiter V1 验收入口"
+  evidence: "docs/plans limiter-v1; run_rest_api_tests.sh"
+- path: scripts/migrate_legacy_attachments.erl
+  category: optional
+  disposition: keep
+  purpose: "存量明文附件 AES-GCM 加密迁移"
+  evidence: "enterprise-file-migration-recovery.md; migration 00000075"
+- path: scripts/mock_llm_server.py
+  category: optional
+  disposition: keep
+  purpose: "本地 mock LLM（OpenAI 兼容）"
+  evidence: "migration 00000180 注释"
+- path: scripts/mod_check.sh
+  category: core
+  disposition: keep
+  purpose: "deps.mk 依赖审计/定点升级"
+  evidence: "Makefile:409/413; test_makefile.py"
+- path: scripts/onboarding_setup.sh
+  category: optional
+  disposition: keep
+  purpose: "新手引导配置初始化（RPC）"
+  evidence: "README; seed_ai_personas.sh; verify_onboarding.sh"
+- path: scripts/paid_channel_fixture.sh
+  category: optional
+  disposition: keep
+  purpose: "付费频道本地闭环 fixture"
+  evidence: "scripts/README.md（供 dart integration）"
+- path: scripts/payment_credit_in_tx_it.sh
+  category: acceptance
+  disposition: keep
+  purpose: "credit_in_tx DB 层集成测试"
+  evidence: "scripts/README.md"
+- path: scripts/pg18_directory_swap_upgrade.sh
+  category: optional
+  disposition: keep
+  purpose: "PG18 镜像目录换壳升级（2026-11-25 prod 实证）"
+  evidence: "docs pg18-image-directory-swap-upgrade"
+- path: scripts/plugin_install.sh
+  category: optional
+  disposition: keep
+  purpose: "从 Git 仓安装插件"
+  evidence: "scripts/README.md"
+- path: scripts/quality.escript
+  category: core
+  disposition: keep
+  purpose: "质量单一 CLI 入口（eunit/full/backend-acceptance）"
+  evidence: "include/quality.mk:108-151"
+- path: scripts/quality_timed.sh
+  category: core
+  disposition: keep
+  purpose: "质量阶段计时包装"
+  evidence: "include/quality.mk:142-145"
+- path: scripts/recrypt_user_collect.escript
+  category: optional
+  disposition: keep
+  purpose: "A-06 主密钥轮换数据清洗"
+  evidence: "AES key rotation runbook; migration 00000053"
+- path: scripts/release_gate_check.sh
+  category: optional
+  disposition: keep
+  purpose: "发布日前置清单机检（CHANGELOG/备份工具/H3 快照人工项）"
+  evidence: "CHANGELOG.md; sanitized_snapshot/h3_rehearsal 出链"
+  notes: "H3 步骤属历史演练遗留，下次发布复核"
+- path: scripts/release_promote.sh
+  category: core
+  disposition: keep
+  purpose: "四 digest promote（默认只读）"
+  evidence: "scripts/test/release_contract_test.sh"
+- path: scripts/release_version.sh
+  category: core
+  disposition: keep
+  purpose: "tag→image 版本解析校验"
+  evidence: "backend-ci.yml:52; release.yml:43"
+- path: scripts/restore_pg.sh
+  category: core
+  disposition: keep
+  purpose: "PG 备份恢复（pg_restore，唯一恢复实现）"
+  evidence: "backup-restore.md; RELEASES.md; restore_smoke 委托"
+- path: scripts/restore_smoke.sh
+  category: core
+  disposition: keep
+  purpose: "备份恢复冒烟（临时库演练编排，FORCE=1 委托 restore_pg）"
+  evidence: "deploy/cron/imboy-ops.cron:32; alerts"
+- path: scripts/rtc_e2e_test.sh
+  category: acceptance
+  disposition: keep
+  purpose: "LiveKit RTC E2E（LK-TEST-01）"
+  evidence: "livekit-single-service-runbook"
+- path: scripts/run_cache_comparison.sh
+  category: acceptance
+  disposition: keep
+  purpose: "baseline/candidate 缓存对比驱动"
+  evidence: "docs cache-shared-validation.md"
+- path: scripts/run_cache_w0.py
+  category: acceptance
+  disposition: keep
+  purpose: "W0 缓存基准编排"
+  evidence: "w0 README/plan/decision"
+- path: scripts/run_feature_flag_smoke.sh
+  category: core
+  disposition: keep
+  purpose: "特性开关冒烟"
+  evidence: "Makefile:284; smoke_extended"
+- path: scripts/run_offline_checks.sh
+  category: optional
+  disposition: keep
+  purpose: "离线检查复用上游回归"
+  evidence: "standalone INSTALL/VALIDATION docs"
+- path: scripts/run_pg_behavior_harnesses.sh
+  category: core
+  disposition: keep
+  purpose: "真 PG 行为 harness 门"
+  evidence: "Makefile:354; nightly.yml"
+- path: scripts/run_product_feature_matrix.sh
+  category: acceptance
+  disposition: keep
+  purpose: "特性矩阵运行器"
+  evidence: "packaging-contract.md; verify_product_feature_artifacts"
+- path: scripts/run_rest_api_tests.sh
+  category: core
+  disposition: keep
+  purpose: "REST API 黑盒测试 runner"
+  evidence: "Makefile:250"
+- path: scripts/sanitized_snapshot.sh
+  category: optional
+  disposition: keep
+  purpose: "H3 演练脱敏快照生成（维护窗口生产工具）"
+  evidence: "drill_migrate 手册注记; h3_rehearsal/release_gate_check"
+- path: scripts/sanity_check.sh
+  category: core
+  disposition: keep
+  purpose: "部署后健康自检"
+  evidence: "deploy/install.sh; deploy/.env.example; standalone INSTALL"
+- path: scripts/sbom.py
+  category: core
+  disposition: keep
+  purpose: "SBOM 校验/生成"
+  evidence: "sbom-diff.yml:65/92"
+- path: scripts/seed_ai_personas.json
+  category: optional
+  disposition: keep
+  purpose: "AI 人设包数据"
+  evidence: "seed_ai_personas.sh"
+- path: scripts/seed_ai_personas.sh
+  category: optional
+  disposition: keep
+  purpose: "AI 透明助手批量上架"
+  evidence: "onboarding_setup.sh; README"
+- path: scripts/seed_default_oa_application.escript
+  category: core
+  disposition: keep
+  purpose: "默认 OA 应用幂等 seed"
+  evidence: "compose-operations.md; ADR 2026-10-12"
+- path: scripts/seed_demo.sh
+  category: optional
+  disposition: keep
+  purpose: "演示数据填充（合成用户+消息，幂等）"
+  evidence: "ci-testing.md:40; testing-strategy.md:74"
+- path: scripts/smoke/bigmodel_probe.sh
+  category: optional
+  disposition: keep
+  purpose: "bigmodel 上游探针（手动）"
+  evidence: "手动冒烟（scripts/README 登记）"
+- path: scripts/smoke/c2c_smoke.sh
+  category: core
+  disposition: keep
+  purpose: "C2C 冒烟（make smoke）"
+  evidence: "Makefile:292-300; smoke_8step.sh"
+- path: scripts/smoke/c2c_ws_smoke.py
+  category: core
+  disposition: keep
+  purpose: "WS 客户端实现（冒烟链底层）"
+  evidence: "Makefile:292-300; smoke_8step.sh"
+- path: scripts/smoke/c2c_ws_smoke.sh
+  category: core
+  disposition: keep
+  purpose: "WS 冒烟入口（token 铸造→调 .py）"
+  evidence: "Makefile:292-300; smoke_8step.sh"
+- path: scripts/smoke/commercial_rpc.escript
+  category: optional
+  disposition: keep
+  purpose: "商务 RPC 探针"
+  evidence: "手动冒烟（scripts/README 登记）"
+- path: scripts/smoke/commercial_smoke.sh
+  category: optional
+  disposition: keep
+  purpose: "商务链冒烟（手动）"
+  evidence: "手动冒烟（scripts/README 登记）"
+- path: scripts/smoke/ctl_smoke.sh
+  category: core
+  disposition: keep
+  purpose: "imboy_ctl 冒烟（make smoke）"
+  evidence: "Makefile:292-300; smoke_8step.sh"
+- path: scripts/smoke/multipart_upload_smoke.sh
+  category: optional
+  disposition: keep
+  purpose: "multipart 上传冒烟（手动）"
+  evidence: "手动冒烟（scripts/README 登记）"
+- path: scripts/smoke/post_release_attachment_smoke.sh
+  category: optional
+  disposition: keep
+  purpose: "发布后附件冒烟（手动）"
+  evidence: "手动冒烟（scripts/README 登记）"
+- path: scripts/smoke/ws_c2g_send.py
+  category: optional
+  disposition: keep
+  purpose: "C2G WS 发送 helper"
+  evidence: "手动冒烟（scripts/README 登记）"
+- path: scripts/smoke_8step.sh
+  category: core
+  disposition: keep
+  purpose: "8 步应用层冒烟链（Health→Register→…→下载）"
+  evidence: "Makefile:300; compose-operations.md:364"
+- path: scripts/smoke_extended.sh
+  category: acceptance
+  disposition: keep
+  purpose: "扩展冒烟编排（smoke+flag+garage 聚合器）"
+  evidence: "scripts/README.md; c12-window-plan"
+  notes: "与 smoke_8step 正交：横向聚合 vs 纵向深度"
+- path: scripts/sso/dex-config.yaml
+  category: acceptance
+  disposition: keep
+  purpose: "dex OIDC 测试配置"
+  evidence: "sso_oidc_e2e.sh"
+- path: scripts/sso_oidc_e2e.sh
+  category: acceptance
+  disposition: keep
+  purpose: "SSO OIDC dex 登录 E2E"
+  evidence: "scripts/README.md; sso/dex-config.yaml"
+- path: scripts/start_download_edge.sh
+  category: core
+  disposition: keep
+  purpose: "边缘下载节点容器启动入口"
+  evidence: "Dockerfile; docker-compose.yml; helm; install.sh"
+- path: scripts/start_enterprise_direct_proof.sh
+  category: core
+  disposition: keep
+  purpose: "企业直证容器启动入口"
+  evidence: "Dockerfile; helm deployment-enterprise-proof"
+- path: scripts/start_node.sh
+  category: core
+  disposition: keep
+  purpose: "BEAM 节点启动（release 侧）"
+  evidence: "include/cli.mk:7; relx.config; dev_setup"
+- path: scripts/stop_node.sh
+  category: core
+  disposition: keep
+  purpose: "BEAM 节点停止"
+  evidence: "include/cli.mk:12"
+- path: scripts/test/attachment_lifecycle_v5_adapter_w0_01_baseline.py
+  category: acceptance
+  disposition: keep
+  purpose: "attachment_lifecycle_v5 冻结合同家族（runner/gate 动态派发）"
+  evidence: "attachment_lifecycle_v5_runner.py + gate.sh produce_measured 动态拼名"
+- path: scripts/test/attachment_lifecycle_v5_adapter_w0_02_history_unknown.py
+  category: acceptance
+  disposition: keep
+  purpose: "attachment_lifecycle_v5 冻结合同家族（runner/gate 动态派发）"
+  evidence: "attachment_lifecycle_v5_runner.py + gate.sh produce_measured 动态拼名"
+- path: scripts/test/attachment_lifecycle_v5_adapter_w0_02_schema.py
+  category: acceptance
+  disposition: keep
+  purpose: "attachment_lifecycle_v5 冻结合同家族（runner/gate 动态派发）"
+  evidence: "attachment_lifecycle_v5_runner.py + gate.sh produce_measured 动态拼名"
+- path: scripts/test/attachment_lifecycle_v5_adapter_w0_03_runner_selftest.py
+  category: acceptance
+  disposition: keep
+  purpose: "attachment_lifecycle_v5 冻结合同家族（runner/gate 动态派发）"
+  evidence: "attachment_lifecycle_v5_runner.py + gate.sh produce_measured 动态拼名"
+- path: scripts/test/attachment_lifecycle_v5_adapter_w0_03_strict_ledger_bootstrap.py
+  category: acceptance
+  disposition: keep
+  purpose: "attachment_lifecycle_v5 冻结合同家族（runner/gate 动态派发）"
+  evidence: "attachment_lifecycle_v5_runner.py + gate.sh produce_measured 动态拼名"
+- path: scripts/test/attachment_lifecycle_v5_adapter_w1_01_contract.py
+  category: acceptance
+  disposition: keep
+  purpose: "attachment_lifecycle_v5 冻结合同家族（runner/gate 动态派发）"
+  evidence: "attachment_lifecycle_v5_runner.py + gate.sh produce_measured 动态拼名"
+- path: scripts/test/attachment_lifecycle_v5_adapter_w1_02_audit_actor_anonymization.py
+  category: acceptance
+  disposition: keep
+  purpose: "attachment_lifecycle_v5 冻结合同家族（runner/gate 动态派发）"
+  evidence: "attachment_lifecycle_v5_runner.py + gate.sh produce_measured 动态拼名"
+- path: scripts/test/attachment_lifecycle_v5_adapter_w1_02_down_block.py
+  category: acceptance
+  disposition: keep
+  purpose: "attachment_lifecycle_v5 冻结合同家族（runner/gate 动态派发）"
+  evidence: "attachment_lifecycle_v5_runner.py + gate.sh produce_measured 动态拼名"
+- path: scripts/test/attachment_lifecycle_v5_adapter_w1_02_immutable.py
+  category: acceptance
+  disposition: keep
+  purpose: "attachment_lifecycle_v5 冻结合同家族（runner/gate 动态派发）"
+  evidence: "attachment_lifecycle_v5_runner.py + gate.sh produce_measured 动态拼名"
+- path: scripts/test/attachment_lifecycle_v5_adapter_w1_02_intent_authority.py
+  category: acceptance
+  disposition: keep
+  purpose: "attachment_lifecycle_v5 冻结合同家族（runner/gate 动态派发）"
+  evidence: "attachment_lifecycle_v5_runner.py + gate.sh produce_measured 动态拼名"
+- path: scripts/test/attachment_lifecycle_v5_adapter_w1_02_migration.py
+  category: acceptance
+  disposition: keep
+  purpose: "attachment_lifecycle_v5 冻结合同家族（runner/gate 动态派发）"
+  evidence: "attachment_lifecycle_v5_runner.py + gate.sh produce_measured 动态拼名"
+- path: scripts/test/attachment_lifecycle_v5_adapter_w1_02_recovery_tombstone_integrity.py
+  category: acceptance
+  disposition: keep
+  purpose: "attachment_lifecycle_v5 冻结合同家族（runner/gate 动态派发）"
+  evidence: "attachment_lifecycle_v5_runner.py + gate.sh produce_measured 动态拼名"
+- path: scripts/test/attachment_lifecycle_v5_adapter_w1_02_registration_integrity.py
+  category: acceptance
+  disposition: keep
+  purpose: "attachment_lifecycle_v5 冻结合同家族（runner/gate 动态派发）"
+  evidence: "attachment_lifecycle_v5_runner.py + gate.sh produce_measured 动态拼名"
+- path: scripts/test/attachment_lifecycle_v5_adapter_w1_02_session_link_integrity.py
+  category: acceptance
+  disposition: keep
+  purpose: "attachment_lifecycle_v5 冻结合同家族（runner/gate 动态派发）"
+  evidence: "attachment_lifecycle_v5_runner.py + gate.sh produce_measured 动态拼名"
+- path: scripts/test/attachment_lifecycle_v5_adapter_w1_support.py
+  category: acceptance
+  disposition: keep
+  purpose: "attachment_lifecycle_v5 冻结合同家族（runner/gate 动态派发）"
+  evidence: "attachment_lifecycle_v5_runner.py + gate.sh produce_measured 动态拼名"
+- path: scripts/test/attachment_lifecycle_v5_adapter_w2_01_pending_failclosed.py
+  category: acceptance
+  disposition: keep
+  purpose: "attachment_lifecycle_v5 冻结合同家族（runner/gate 动态派发）"
+  evidence: "attachment_lifecycle_v5_runner.py + gate.sh produce_measured 动态拼名"
+- path: scripts/test/attachment_lifecycle_v5_adapter_w2_01_pending_multipart.py
+  category: acceptance
+  disposition: keep
+  purpose: "attachment_lifecycle_v5 冻结合同家族（runner/gate 动态派发）"
+  evidence: "attachment_lifecycle_v5_runner.py + gate.sh produce_measured 动态拼名"
+- path: scripts/test/attachment_lifecycle_v5_adapter_w2_01_session_recovery_api.py
+  category: acceptance
+  disposition: keep
+  purpose: "attachment_lifecycle_v5 冻结合同家族（runner/gate 动态派发）"
+  evidence: "attachment_lifecycle_v5_runner.py + gate.sh produce_measured 动态拼名"
+- path: scripts/test/attachment_lifecycle_v5_adapter_w2_01_upload_content_pin.py
+  category: acceptance
+  disposition: keep
+  purpose: "attachment_lifecycle_v5 冻结合同家族（runner/gate 动态派发）"
+  evidence: "attachment_lifecycle_v5_runner.py + gate.sh produce_measured 动态拼名"
+- path: scripts/test/attachment_lifecycle_v5_adapter_w2_02_confirm_idempotent.py
+  category: acceptance
+  disposition: keep
+  purpose: "attachment_lifecycle_v5 冻结合同家族（runner/gate 动态派发）"
+  evidence: "attachment_lifecycle_v5_runner.py + gate.sh produce_measured 动态拼名"
+- path: scripts/test/attachment_lifecycle_v5_adapter_w2_02_confirm_old_client.py
+  category: acceptance
+  disposition: keep
+  purpose: "attachment_lifecycle_v5 冻结合同家族（runner/gate 动态派发）"
+  evidence: "attachment_lifecycle_v5_runner.py + gate.sh produce_measured 动态拼名"
+- path: scripts/test/attachment_lifecycle_v5_adapter_w2_02_confirmed_content_immutable.py
+  category: acceptance
+  disposition: keep
+  purpose: "attachment_lifecycle_v5 冻结合同家族（runner/gate 动态派发）"
+  evidence: "attachment_lifecycle_v5_runner.py + gate.sh produce_measured 动态拼名"
+- path: scripts/test/attachment_lifecycle_v5_adapter_w2_03_confirm_gc_race.py
+  category: acceptance
+  disposition: keep
+  purpose: "attachment_lifecycle_v5 冻结合同家族（runner/gate 动态派发）"
+  evidence: "attachment_lifecycle_v5_runner.py + gate.sh produce_measured 动态拼名"
+- path: scripts/test/attachment_lifecycle_v5_adapter_w2_support.py
+  category: acceptance
+  disposition: keep
+  purpose: "attachment_lifecycle_v5 冻结合同家族（runner/gate 动态派发）"
+  evidence: "attachment_lifecycle_v5_runner.py + gate.sh produce_measured 动态拼名"
+- path: scripts/test/attachment_lifecycle_v5_adapter_w3_01_history_unknown.py
+  category: acceptance
+  disposition: keep
+  purpose: "attachment_lifecycle_v5 冻结合同家族（runner/gate 动态派发）"
+  evidence: "attachment_lifecycle_v5_runner.py + gate.sh produce_measured 动态拼名"
+- path: scripts/test/attachment_lifecycle_v5_adapter_w3_01_reference_gc_race.py
+  category: acceptance
+  disposition: keep
+  purpose: "attachment_lifecycle_v5 冻结合同家族（runner/gate 动态派发）"
+  evidence: "attachment_lifecycle_v5_runner.py + gate.sh produce_measured 动态拼名"
+- path: scripts/test/attachment_lifecycle_v5_adapter_w3_01_shared_owner.py
+  category: acceptance
+  disposition: keep
+  purpose: "attachment_lifecycle_v5 冻结合同家族（runner/gate 动态派发）"
+  evidence: "attachment_lifecycle_v5_runner.py + gate.sh produce_measured 动态拼名"
+- path: scripts/test/attachment_lifecycle_v5_adapter_w3_02_hold_all_entrypoints.py
+  category: acceptance
+  disposition: keep
+  purpose: "attachment_lifecycle_v5 冻结合同家族（runner/gate 动态派发）"
+  evidence: "attachment_lifecycle_v5_runner.py + gate.sh produce_measured 动态拼名"
+- path: scripts/test/attachment_lifecycle_v5_adapter_w3_02_hold_gc_race.py
+  category: acceptance
+  disposition: keep
+  purpose: "attachment_lifecycle_v5 冻结合同家族（runner/gate 动态派发）"
+  evidence: "attachment_lifecycle_v5_runner.py + gate.sh produce_measured 动态拼名"
+- path: scripts/test/attachment_lifecycle_v5_adapter_w3_03_cs_bind.py
+  category: acceptance
+  disposition: keep
+  purpose: "attachment_lifecycle_v5 冻结合同家族（runner/gate 动态派发）"
+  evidence: "attachment_lifecycle_v5_runner.py + gate.sh produce_measured 动态拼名"
+- path: scripts/test/attachment_lifecycle_v5_adapter_w3_03_enterprise_bind.py
+  category: acceptance
+  disposition: keep
+  purpose: "attachment_lifecycle_v5 冻结合同家族（runner/gate 动态派发）"
+  evidence: "attachment_lifecycle_v5_runner.py + gate.sh produce_measured 动态拼名"
+- path: scripts/test/attachment_lifecycle_v5_adapter_w3_support.py
+  category: acceptance
+  disposition: keep
+  purpose: "attachment_lifecycle_v5 冻结合同家族（runner/gate 动态派发）"
+  evidence: "attachment_lifecycle_v5_runner.py + gate.sh produce_measured 动态拼名"
+- path: scripts/test/attachment_lifecycle_v5_adapter_w4_01_confirm_gc_race.py
+  category: acceptance
+  disposition: keep
+  purpose: "attachment_lifecycle_v5 冻结合同家族（runner/gate 动态派发）"
+  evidence: "attachment_lifecycle_v5_runner.py + gate.sh produce_measured 动态拼名"
+- path: scripts/test/attachment_lifecycle_v5_adapter_w4_01_delete_entrypoints.py
+  category: acceptance
+  disposition: keep
+  purpose: "attachment_lifecycle_v5 冻结合同家族（runner/gate 动态派发）"
+  evidence: "attachment_lifecycle_v5_runner.py + gate.sh produce_measured 动态拼名"
+- path: scripts/test/attachment_lifecycle_v5_adapter_w4_01_hold_entrypoints.py
+  category: acceptance
+  disposition: keep
+  purpose: "attachment_lifecycle_v5 冻结合同家族（runner/gate 动态派发）"
+  evidence: "attachment_lifecycle_v5_runner.py + gate.sh produce_measured 动态拼名"
+- path: scripts/test/attachment_lifecycle_v5_adapter_w4_01_hold_gc_race.py
+  category: acceptance
+  disposition: keep
+  purpose: "attachment_lifecycle_v5 冻结合同家族（runner/gate 动态派发）"
+  evidence: "attachment_lifecycle_v5_runner.py + gate.sh produce_measured 动态拼名"
+- path: scripts/test/attachment_lifecycle_v5_adapter_w4_01_intent_rollback.py
+  category: acceptance
+  disposition: keep
+  purpose: "attachment_lifecycle_v5 冻结合同家族（runner/gate 动态派发）"
+  evidence: "attachment_lifecycle_v5_runner.py + gate.sh produce_measured 动态拼名"
+- path: scripts/test/attachment_lifecycle_v5_adapter_w4_01_reference_gc_race.py
+  category: acceptance
+  disposition: keep
+  purpose: "attachment_lifecycle_v5 冻结合同家族（runner/gate 动态派发）"
+  evidence: "attachment_lifecycle_v5_runner.py + gate.sh produce_measured 动态拼名"
+- path: scripts/test/attachment_lifecycle_v5_adapter_w4_02_claim_capacity_and_liveness.py
+  category: acceptance
+  disposition: keep
+  purpose: "attachment_lifecycle_v5 冻结合同家族（runner/gate 动态派发）"
+  evidence: "attachment_lifecycle_v5_runner.py + gate.sh produce_measured 动态拼名"
+- path: scripts/test/attachment_lifecycle_v5_adapter_w4_02_cross_queue_identity.py
+  category: acceptance
+  disposition: keep
+  purpose: "attachment_lifecycle_v5 冻结合同家族（runner/gate 动态派发）"
+  evidence: "attachment_lifecycle_v5_runner.py + gate.sh produce_measured 动态拼名"
+- path: scripts/test/attachment_lifecycle_v5_adapter_w4_02_last_attempt_crash.py
+  category: acceptance
+  disposition: keep
+  purpose: "attachment_lifecycle_v5 冻结合同家族（runner/gate 动态派发）"
+  evidence: "attachment_lifecycle_v5_runner.py + gate.sh produce_measured 动态拼名"
+- path: scripts/test/attachment_lifecycle_v5_adapter_w4_02_old_attempts_preserved.py
+  category: acceptance
+  disposition: keep
+  purpose: "attachment_lifecycle_v5 冻结合同家族（runner/gate 动态派发）"
+  evidence: "attachment_lifecycle_v5_runner.py + gate.sh produce_measured 动态拼名"
+- path: scripts/test/attachment_lifecycle_v5_adapter_w4_02_ordinary_queue_recovery.py
+  category: acceptance
+  disposition: keep
+  purpose: "attachment_lifecycle_v5 冻结合同家族（runner/gate 动态派发）"
+  evidence: "attachment_lifecycle_v5_runner.py + gate.sh produce_measured 动态拼名"
+- path: scripts/test/attachment_lifecycle_v5_adapter_w4_02_purged_session_recovery.py
+  category: acceptance
+  disposition: keep
+  purpose: "attachment_lifecycle_v5 冻结合同家族（runner/gate 动态派发）"
+  evidence: "attachment_lifecycle_v5_runner.py + gate.sh produce_measured 动态拼名"
+- path: scripts/test/attachment_lifecycle_v5_adapter_w4_02_queue_adoption.py
+  category: acceptance
+  disposition: keep
+  purpose: "attachment_lifecycle_v5 冻结合同家族（runner/gate 动态派发）"
+  evidence: "attachment_lifecycle_v5_runner.py + gate.sh produce_measured 动态拼名"
+- path: scripts/test/attachment_lifecycle_v5_adapter_w4_02_worker_crash.py
+  category: acceptance
+  disposition: keep
+  purpose: "attachment_lifecycle_v5 冻结合同家族（runner/gate 动态派发）"
+  evidence: "attachment_lifecycle_v5_runner.py + gate.sh produce_measured 动态拼名"
+- path: scripts/test/attachment_lifecycle_v5_adapter_w4_02_worker_db_fault.py
+  category: acceptance
+  disposition: keep
+  purpose: "attachment_lifecycle_v5 冻结合同家族（runner/gate 动态派发）"
+  evidence: "attachment_lifecycle_v5_runner.py + gate.sh produce_measured 动态拼名"
+- path: scripts/test/attachment_lifecycle_v5_adapter_w4_02_worker_lease.py
+  category: acceptance
+  disposition: keep
+  purpose: "attachment_lifecycle_v5 冻结合同家族（runner/gate 动态派发）"
+  evidence: "attachment_lifecycle_v5_runner.py + gate.sh produce_measured 动态拼名"
+- path: scripts/test/attachment_lifecycle_v5_adapter_w4_03_disk_predecessor_protocols.py
+  category: acceptance
+  disposition: keep
+  purpose: "attachment_lifecycle_v5 冻结合同家族（runner/gate 动态派发）"
+  evidence: "attachment_lifecycle_v5_runner.py + gate.sh produce_measured 动态拼名"
+- path: scripts/test/attachment_lifecycle_v5_adapter_w4_03_driver_content_immutable.py
+  category: acceptance
+  disposition: keep
+  purpose: "attachment_lifecycle_v5 冻结合同家族（runner/gate 动态派发）"
+  evidence: "attachment_lifecycle_v5_runner.py + gate.sh produce_measured 动态拼名"
+- path: scripts/test/attachment_lifecycle_v5_adapter_w4_03_late_put.py
+  category: acceptance
+  disposition: keep
+  purpose: "attachment_lifecycle_v5 冻结合同家族（runner/gate 动态派发）"
+  evidence: "attachment_lifecycle_v5_runner.py + gate.sh produce_measured 动态拼名"
+- path: scripts/test/attachment_lifecycle_v5_adapter_w4_03_namespace_alias_integrity.py
+  category: acceptance
+  disposition: keep
+  purpose: "attachment_lifecycle_v5 冻结合同家族（runner/gate 动态派发）"
+  evidence: "attachment_lifecycle_v5_runner.py + gate.sh produce_measured 动态拼名"
+- path: scripts/test/attachment_lifecycle_v5_adapter_w4_03_storage_disk.py
+  category: acceptance
+  disposition: keep
+  purpose: "attachment_lifecycle_v5 冻结合同家族（runner/gate 动态派发）"
+  evidence: "attachment_lifecycle_v5_runner.py + gate.sh produce_measured 动态拼名"
+- path: scripts/test/attachment_lifecycle_v5_adapter_w4_03_storage_garage.py
+  category: acceptance
+  disposition: keep
+  purpose: "attachment_lifecycle_v5 冻结合同家族（runner/gate 动态派发）"
+  evidence: "attachment_lifecycle_v5_runner.py + gate.sh produce_measured 动态拼名"
+- path: scripts/test/attachment_lifecycle_v5_adapter_w4_03_storage_switch.py
+  category: acceptance
+  disposition: keep
+  purpose: "attachment_lifecycle_v5 冻结合同家族（runner/gate 动态派发）"
+  evidence: "attachment_lifecycle_v5_runner.py + gate.sh produce_measured 动态拼名"
+- path: scripts/test/attachment_lifecycle_v5_adapter_w4_03_support.py
+  category: acceptance
+  disposition: keep
+  purpose: "attachment_lifecycle_v5 冻结合同家族（runner/gate 动态派发）"
+  evidence: "attachment_lifecycle_v5_runner.py + gate.sh produce_measured 动态拼名"
+- path: scripts/test/attachment_lifecycle_v5_adapter_w4_04_activation_commit_unknown.py
+  category: acceptance
+  disposition: keep
+  purpose: "attachment_lifecycle_v5 冻结合同家族（runner/gate 动态派发）"
+  evidence: "attachment_lifecycle_v5_runner.py + gate.sh produce_measured 动态拼名"
+- path: scripts/test/attachment_lifecycle_v5_adapter_w4_04_all_writer_compat.py
+  category: acceptance
+  disposition: keep
+  purpose: "attachment_lifecycle_v5 冻结合同家族（runner/gate 动态派发）"
+  evidence: "attachment_lifecycle_v5_runner.py + gate.sh produce_measured 动态拼名"
+- path: scripts/test/attachment_lifecycle_v5_adapter_w4_04_guards_activation.py
+  category: acceptance
+  disposition: keep
+  purpose: "attachment_lifecycle_v5 冻结合同家族（runner/gate 动态派发）"
+  evidence: "attachment_lifecycle_v5_runner.py + gate.sh produce_measured 动态拼名"
+- path: scripts/test/attachment_lifecycle_v5_adapter_w4_04_no_infinite_loop.py
+  category: acceptance
+  disposition: keep
+  purpose: "attachment_lifecycle_v5 冻结合同家族（runner/gate 动态派发）"
+  evidence: "attachment_lifecycle_v5_runner.py + gate.sh produce_measured 动态拼名"
+- path: scripts/test/attachment_lifecycle_v5_adapter_w4_04_reconcile.py
+  category: acceptance
+  disposition: keep
+  purpose: "attachment_lifecycle_v5 冻结合同家族（runner/gate 动态派发）"
+  evidence: "attachment_lifecycle_v5_runner.py + gate.sh produce_measured 动态拼名"
+- path: scripts/test/attachment_lifecycle_v5_adapter_w4_04_support.py
+  category: acceptance
+  disposition: keep
+  purpose: "attachment_lifecycle_v5 冻结合同家族（runner/gate 动态派发）"
+  evidence: "attachment_lifecycle_v5_runner.py + gate.sh produce_measured 动态拼名"
+- path: scripts/test/attachment_lifecycle_v5_adapter_w4_models.py
+  category: acceptance
+  disposition: keep
+  purpose: "attachment_lifecycle_v5 冻结合同家族（runner/gate 动态派发）"
+  evidence: "attachment_lifecycle_v5_runner.py + gate.sh produce_measured 动态拼名"
+- path: scripts/test/attachment_lifecycle_v5_adapter_w4_models_common.py
+  category: acceptance
+  disposition: keep
+  purpose: "attachment_lifecycle_v5 冻结合同家族（runner/gate 动态派发）"
+  evidence: "attachment_lifecycle_v5_runner.py + gate.sh produce_measured 动态拼名"
+- path: scripts/test/attachment_lifecycle_v5_adapter_w4_models_w401.py
+  category: acceptance
+  disposition: keep
+  purpose: "attachment_lifecycle_v5 冻结合同家族（runner/gate 动态派发）"
+  evidence: "attachment_lifecycle_v5_runner.py + gate.sh produce_measured 动态拼名"
+- path: scripts/test/attachment_lifecycle_v5_adapter_w4_models_w402.py
+  category: acceptance
+  disposition: keep
+  purpose: "attachment_lifecycle_v5 冻结合同家族（runner/gate 动态派发）"
+  evidence: "attachment_lifecycle_v5_runner.py + gate.sh produce_measured 动态拼名"
+- path: scripts/test/attachment_lifecycle_v5_adapter_w4_models_w403.py
+  category: acceptance
+  disposition: keep
+  purpose: "attachment_lifecycle_v5 冻结合同家族（runner/gate 动态派发）"
+  evidence: "attachment_lifecycle_v5_runner.py + gate.sh produce_measured 动态拼名"
+- path: scripts/test/attachment_lifecycle_v5_adapter_w4_models_w404.py
+  category: acceptance
+  disposition: keep
+  purpose: "attachment_lifecycle_v5 冻结合同家族（runner/gate 动态派发）"
+  evidence: "attachment_lifecycle_v5_runner.py + gate.sh produce_measured 动态拼名"
+- path: scripts/test/attachment_lifecycle_v5_adapter_w4_support.py
+  category: acceptance
+  disposition: keep
+  purpose: "attachment_lifecycle_v5 冻结合同家族（runner/gate 动态派发）"
+  evidence: "attachment_lifecycle_v5_runner.py + gate.sh produce_measured 动态拼名"
+- path: scripts/test/attachment_lifecycle_v5_adapter_w5_01_flutter_old_client.py
+  category: acceptance
+  disposition: keep
+  purpose: "attachment_lifecycle_v5 冻结合同家族（runner/gate 动态派发）"
+  evidence: "attachment_lifecycle_v5_runner.py + gate.sh produce_measured 动态拼名"
+- path: scripts/test/attachment_lifecycle_v5_adapter_w5_01_flutter_resume.py
+  category: acceptance
+  disposition: keep
+  purpose: "attachment_lifecycle_v5 冻结合同家族（runner/gate 动态派发）"
+  evidence: "attachment_lifecycle_v5_runner.py + gate.sh produce_measured 动态拼名"
+- path: scripts/test/attachment_lifecycle_v5_adapter_w5_02_admin_governance.py
+  category: acceptance
+  disposition: keep
+  purpose: "attachment_lifecycle_v5 冻结合同家族（runner/gate 动态派发）"
+  evidence: "attachment_lifecycle_v5_runner.py + gate.sh produce_measured 动态拼名"
+- path: scripts/test/attachment_lifecycle_v5_adapter_w5_02_status_sync.py
+  category: acceptance
+  disposition: keep
+  purpose: "attachment_lifecycle_v5 冻结合同家族（runner/gate 动态派发）"
+  evidence: "attachment_lifecycle_v5_runner.py + gate.sh produce_measured 动态拼名"
+- path: scripts/test/attachment_lifecycle_v5_adapter_w5_support.py
+  category: acceptance
+  disposition: keep
+  purpose: "attachment_lifecycle_v5 冻结合同家族（runner/gate 动态派发）"
+  evidence: "attachment_lifecycle_v5_runner.py + gate.sh produce_measured 动态拼名"
+- path: scripts/test/attachment_lifecycle_v5_adapter_w6_01_all_ac01_ac07.py
+  category: acceptance
+  disposition: keep
+  purpose: "attachment_lifecycle_v5 冻结合同家族（runner/gate 动态派发）"
+  evidence: "attachment_lifecycle_v5_runner.py + gate.sh produce_measured 动态拼名"
+- path: scripts/test/attachment_lifecycle_v5_adapter_w6_01_real_pg_garage_disk.py
+  category: acceptance
+  disposition: keep
+  purpose: "attachment_lifecycle_v5 冻结合同家族（runner/gate 动态派发）"
+  evidence: "attachment_lifecycle_v5_runner.py + gate.sh produce_measured 动态拼名"
+- path: scripts/test/attachment_lifecycle_v5_adapter_w6_02_ac08.py
+  category: acceptance
+  disposition: keep
+  purpose: "attachment_lifecycle_v5 冻结合同家族（runner/gate 动态派发）"
+  evidence: "attachment_lifecycle_v5_runner.py + gate.sh produce_measured 动态拼名"
+- path: scripts/test/attachment_lifecycle_v5_adapter_w6_02_admin_recovery_real.py
+  category: acceptance
+  disposition: keep
+  purpose: "attachment_lifecycle_v5 冻结合同家族（runner/gate 动态派发）"
+  evidence: "attachment_lifecycle_v5_runner.py + gate.sh produce_measured 动态拼名"
+- path: scripts/test/attachment_lifecycle_v5_adapter_w6_02_e2e_compat.py
+  category: acceptance
+  disposition: keep
+  purpose: "attachment_lifecycle_v5 冻结合同家族（runner/gate 动态派发）"
+  evidence: "attachment_lifecycle_v5_runner.py + gate.sh produce_measured 动态拼名"
+- path: scripts/test/attachment_lifecycle_v5_adapter_w6_02_flutter_recovery_real.py
+  category: acceptance
+  disposition: keep
+  purpose: "attachment_lifecycle_v5 冻结合同家族（runner/gate 动态派发）"
+  evidence: "attachment_lifecycle_v5_runner.py + gate.sh produce_measured 动态拼名"
+- path: scripts/test/attachment_lifecycle_v5_adapter_w6_02_support.py
+  category: acceptance
+  disposition: keep
+  purpose: "attachment_lifecycle_v5 冻结合同家族（runner/gate 动态派发）"
+  evidence: "attachment_lifecycle_v5_runner.py + gate.sh produce_measured 动态拼名"
+- path: scripts/test/attachment_lifecycle_v5_adapter_w6_03_final_regression.py
+  category: acceptance
+  disposition: keep
+  purpose: "attachment_lifecycle_v5 冻结合同家族（runner/gate 动态派发）"
+  evidence: "attachment_lifecycle_v5_runner.py + gate.sh produce_measured 动态拼名"
+- path: scripts/test/attachment_lifecycle_v5_adapter_w6_03_ledger_verify.py
+  category: acceptance
+  disposition: keep
+  purpose: "attachment_lifecycle_v5 冻结合同家族（runner/gate 动态派发）"
+  evidence: "attachment_lifecycle_v5_runner.py + gate.sh produce_measured 动态拼名"
+- path: scripts/test/attachment_lifecycle_v5_adapter_w6_support.py
+  category: acceptance
+  disposition: keep
+  purpose: "attachment_lifecycle_v5 冻结合同家族（runner/gate 动态派发）"
+  evidence: "attachment_lifecycle_v5_runner.py + gate.sh produce_measured 动态拼名"
+- path: scripts/test/attachment_lifecycle_v5_flutter_command.sh
+  category: acceptance
+  disposition: keep
+  purpose: "attachment_lifecycle_v5 冻结合同家族（runner/gate 动态派发）"
+  evidence: "attachment_lifecycle_v5_runner.py + gate.sh produce_measured 动态拼名"
+- path: scripts/test/attachment_lifecycle_v5_gate.sh
+  category: acceptance
+  disposition: keep
+  purpose: "attachment_lifecycle_v5 冻结合同家族（runner/gate 动态派发）"
+  evidence: "attachment_lifecycle_v5_runner.py + gate.sh produce_measured 动态拼名"
+- path: scripts/test/attachment_lifecycle_v5_launch_controller.py
+  category: acceptance
+  disposition: keep
+  purpose: "attachment_lifecycle_v5 冻结合同家族（runner/gate 动态派发）"
+  evidence: "attachment_lifecycle_v5_runner.py + gate.sh produce_measured 动态拼名"
+- path: scripts/test/attachment_lifecycle_v5_pg_config.escript
+  category: acceptance
+  disposition: keep
+  purpose: "attachment_lifecycle_v5 冻结合同家族（runner/gate 动态派发）"
+  evidence: "attachment_lifecycle_v5_runner.py + gate.sh produce_measured 动态拼名"
+- path: scripts/test/attachment_lifecycle_v5_pg_guard.py
+  category: acceptance
+  disposition: keep
+  purpose: "attachment_lifecycle_v5 冻结合同家族（runner/gate 动态派发）"
+  evidence: "attachment_lifecycle_v5_runner.py + gate.sh produce_measured 动态拼名"
+- path: scripts/test/attachment_lifecycle_v5_pg_provision.py
+  category: acceptance
+  disposition: keep
+  purpose: "attachment_lifecycle_v5 冻结合同家族（runner/gate 动态派发）"
+  evidence: "attachment_lifecycle_v5_runner.py + gate.sh produce_measured 动态拼名"
+- path: scripts/test/attachment_lifecycle_v5_seal.sh
+  category: acceptance
+  disposition: keep
+  purpose: "attachment_lifecycle_v5 冻结合同家族（runner/gate 动态派发）"
+  evidence: "attachment_lifecycle_v5_runner.py + gate.sh produce_measured 动态拼名"
+- path: scripts/test/attachment_lifecycle_v5_slot_supervisor.py
+  category: acceptance
+  disposition: keep
+  purpose: "attachment_lifecycle_v5 冻结合同家族（runner/gate 动态派发）"
+  evidence: "attachment_lifecycle_v5_runner.py + gate.sh produce_measured 动态拼名"
+- path: scripts/test/attachment_lifecycle_v5_strict_ledger.escript
+  category: acceptance
+  disposition: keep
+  purpose: "attachment_lifecycle_v5 冻结合同家族（runner/gate 动态派发）"
+  evidence: "attachment_lifecycle_v5_runner.py + gate.sh produce_measured 动态拼名"
+- path: scripts/test/attachment_lifecycle_v5_w102_probe.sh
+  category: acceptance
+  disposition: keep
+  purpose: "attachment_lifecycle_v5 冻结合同家族（runner/gate 动态派发）"
+  evidence: "attachment_lifecycle_v5_runner.py + gate.sh produce_measured 动态拼名"
+- path: scripts/test/attachment_lifecycle_v5_w201_probe.sh
+  category: acceptance
+  disposition: keep
+  purpose: "attachment_lifecycle_v5 冻结合同家族（runner/gate 动态派发）"
+  evidence: "attachment_lifecycle_v5_runner.py + gate.sh produce_measured 动态拼名"
+- path: scripts/test/attachment_lifecycle_v5_w202_seal.sh
+  category: acceptance
+  disposition: keep
+  purpose: "attachment_lifecycle_v5 冻结合同家族（runner/gate 动态派发）"
+  evidence: "attachment_lifecycle_v5_runner.py + gate.sh produce_measured 动态拼名"
+- path: scripts/test/attachment_lifecycle_v5_w203_seal.sh
+  category: acceptance
+  disposition: keep
+  purpose: "attachment_lifecycle_v5 冻结合同家族（runner/gate 动态派发）"
+  evidence: "attachment_lifecycle_v5_runner.py + gate.sh produce_measured 动态拼名"
+- path: scripts/test/attachment_lifecycle_v5_w301_seal.sh
+  category: acceptance
+  disposition: keep
+  purpose: "attachment_lifecycle_v5 冻结合同家族（runner/gate 动态派发）"
+  evidence: "attachment_lifecycle_v5_runner.py + gate.sh produce_measured 动态拼名"
+- path: scripts/test/attachment_lifecycle_v5_w302_seal.sh
+  category: acceptance
+  disposition: keep
+  purpose: "attachment_lifecycle_v5 冻结合同家族（runner/gate 动态派发）"
+  evidence: "attachment_lifecycle_v5_runner.py + gate.sh produce_measured 动态拼名"
+- path: scripts/test/attachment_lifecycle_v5_w303_seal.sh
+  category: acceptance
+  disposition: keep
+  purpose: "attachment_lifecycle_v5 冻结合同家族（runner/gate 动态派发）"
+  evidence: "attachment_lifecycle_v5_runner.py + gate.sh produce_measured 动态拼名"
+- path: scripts/test/attachment_lifecycle_v5_w401_seal.sh
+  category: acceptance
+  disposition: keep
+  purpose: "attachment_lifecycle_v5 冻结合同家族（runner/gate 动态派发）"
+  evidence: "attachment_lifecycle_v5_runner.py + gate.sh produce_measured 动态拼名"
+- path: scripts/test/attachment_lifecycle_v5_w402_seal.sh
+  category: acceptance
+  disposition: keep
+  purpose: "attachment_lifecycle_v5 冻结合同家族（runner/gate 动态派发）"
+  evidence: "attachment_lifecycle_v5_runner.py + gate.sh produce_measured 动态拼名"
+- path: scripts/test/attachment_lifecycle_v5_w403_seal.sh
+  category: acceptance
+  disposition: keep
+  purpose: "attachment_lifecycle_v5 冻结合同家族（runner/gate 动态派发）"
+  evidence: "attachment_lifecycle_v5_runner.py + gate.sh produce_measured 动态拼名"
+- path: scripts/test/attachment_lifecycle_v5_w404_seal.sh
+  category: acceptance
+  disposition: keep
+  purpose: "attachment_lifecycle_v5 冻结合同家族（runner/gate 动态派发）"
+  evidence: "attachment_lifecycle_v5_runner.py + gate.sh produce_measured 动态拼名"
+- path: scripts/test/attachment_worker_port_gate.sh
+  category: acceptance
+  disposition: keep
+  purpose: "脚本/文档/.qa 锚定门禁"
+  evidence: "test/lib/eb_asset_direct_tests.erl:503"
+- path: scripts/test/backend_runtime_test.sh
+  category: core
+  disposition: keep
+  purpose: "CI 点名的脚本自测/门禁"
+  evidence: "backend-runtime.yml:15,50"
+- path: scripts/test/backup_offsite_test.sh
+  category: acceptance
+  disposition: keep
+  purpose: "现行脚本/Makefile 配方的离线回归测试（未接 CI，建议接线）"
+  evidence: "zero-ref；目标脚本在仓且现役"
+  notes: "unwired-regression"
+- path: scripts/test/check_identity_http_contract.py
+  category: acceptance
+  disposition: keep
+  purpose: "脚本/文档/.qa 锚定门禁"
+  evidence: "customer_service_internal_http_gate.sh"
+- path: scripts/test/check_l4_sni_listen_test.sh
+  category: acceptance
+  disposition: keep
+  purpose: "现行脚本/Makefile 配方的离线回归测试（未接 CI，建议接线）"
+  evidence: "zero-ref；目标脚本在仓且现役"
+  notes: "unwired-regression"
+- path: scripts/test/check_pr_dco_test.sh
+  category: core
+  disposition: keep
+  purpose: "CI 点名的脚本自测/门禁"
+  evidence: "backend-ci.yml:785"
+- path: scripts/test/check_release_consistency_test.sh
+  category: core
+  disposition: keep
+  purpose: "CI 点名的脚本自测/门禁"
+  evidence: "backend-ci.yml:136"
+- path: scripts/test/cleanup_db_postgres_test.sh
+  category: core
+  disposition: keep
+  purpose: "CI 点名的脚本自测/门禁"
+  evidence: "backend-ci.yml:89"
+- path: scripts/test/cleanup_db_shell_test.sh
+  category: core
+  disposition: keep
+  purpose: "CI 点名的脚本自测/门禁"
+  evidence: "backend-ci.yml:50"
+- path: scripts/test/community_rtc_wss_shell_test.sh
+  category: acceptance
+  disposition: keep
+  purpose: "脚本/文档/.qa 锚定门禁"
+  evidence: "compose-operations.md"
+- path: scripts/test/community_rtc_wss_test.sh
+  category: acceptance
+  disposition: keep
+  purpose: "脚本/文档/.qa 锚定门禁"
+  evidence: "community_rtc_wss_shell_test.sh; compose-operations.md"
+- path: scripts/test/cs_deploy_unit_test.sh
+  category: acceptance
+  disposition: keep
+  purpose: "脚本/文档/.qa 锚定门禁"
+  evidence: "customer_service_deploy_test.sh"
+- path: scripts/test/cs_quick_reply_pg_gate.sh
+  category: core
+  disposition: keep
+  purpose: "CI 点名的脚本自测/门禁"
+  evidence: "backend-ci.yml:417"
+- path: scripts/test/customer_service_deploy_test.sh
+  category: acceptance
+  disposition: keep
+  purpose: "脚本/文档/.qa 锚定门禁"
+  evidence: "fixtures/cs_deploy/README.md 人工回归"
+- path: scripts/test/customer_service_internal_http_gate.sh
+  category: acceptance
+  disposition: keep
+  purpose: "脚本/文档/.qa 锚定门禁"
+  evidence: "enterprise_asset_garage_gate.sh（nightly）"
+- path: scripts/test/customer_service_migration_gate_test.sh
+  category: acceptance
+  disposition: keep
+  purpose: "脚本/文档/.qa 锚定门禁"
+  evidence: "customer_service_migration_gate.sh:32"
+- path: scripts/test/delivery_pack_whitelist_test.sh
+  category: acceptance
+  disposition: keep
+  purpose: "现行脚本/Makefile 配方的离线回归测试（未接 CI，建议接线）"
+  evidence: "zero-ref；目标脚本在仓且现役"
+  notes: "unwired-regression"
+- path: scripts/test/deploy_sequence_test.sh
+  category: acceptance
+  disposition: keep
+  purpose: "脚本/文档/.qa 锚定门禁"
+  evidence: "customer_service_deploy_test.sh"
+- path: scripts/test/dev_compose_test.sh
+  category: core
+  disposition: keep
+  purpose: "CI 点名的脚本自测/门禁"
+  evidence: "backend-ci.yml:59; backend-runtime.yml:54"
+- path: scripts/test/dialyzer_nightly_test.sh
+  category: core
+  disposition: keep
+  purpose: "CI 点名的脚本自测/门禁"
+  evidence: "nightly.yml:266"
+- path: scripts/test/e2ee_verify_compile_gate_test.sh
+  category: acceptance
+  disposition: keep
+  purpose: "现行脚本/Makefile 配方的离线回归测试（未接 CI，建议接线）"
+  evidence: "zero-ref；目标脚本在仓且现役"
+  notes: "unwired-regression"
+- path: scripts/test/e2ee_version_gate_test.sh
+  category: acceptance
+  disposition: keep
+  purpose: "脚本/文档/.qa 锚定门禁"
+  evidence: "src/api/auth_middleware_api_v1.erl:8"
+- path: scripts/test/enterprise_asset_garage_gate.sh
+  category: core
+  disposition: keep
+  purpose: "CI 点名的脚本自测/门禁"
+  evidence: "nightly.yml:200"
+- path: scripts/test/fixtures/cs_deploy/README.md
+  category: acceptance
+  disposition: keep
+  purpose: "测试 fixture（被命名测试脚本按路径消费）"
+  evidence: "l4_sni/cs_deploy/legacy-compose 各消费方"
+- path: scripts/test/fixtures/cs_deploy/build-src/package.json
+  category: acceptance
+  disposition: keep
+  purpose: "测试 fixture（被命名测试脚本按路径消费）"
+  evidence: "l4_sni/cs_deploy/legacy-compose 各消费方"
+- path: scripts/test/fixtures/cs_deploy/fake-remote-upgrade-overlay/etc/nginx/confs/imboy.cs.conf
+  category: acceptance
+  disposition: keep
+  purpose: "测试 fixture（被命名测试脚本按路径消费）"
+  evidence: "l4_sni/cs_deploy/legacy-compose 各消费方"
+- path: scripts/test/fixtures/cs_deploy/fake-remote-upgrade-overlay/www/wwwroot/cs.test.local/releases/20260101000000-old/loader.js
+  category: acceptance
+  disposition: keep
+  purpose: "测试 fixture（被命名测试脚本按路径消费）"
+  evidence: "l4_sni/cs_deploy/legacy-compose 各消费方"
+- path: scripts/test/fixtures/cs_deploy/fake-remote-upgrade-overlay/www/wwwroot/cs.test.local/releases/20260101000000-old/manifest.json
+  category: acceptance
+  disposition: keep
+  purpose: "测试 fixture（被命名测试脚本按路径消费）"
+  evidence: "l4_sni/cs_deploy/legacy-compose 各消费方"
+- path: scripts/test/fixtures/cs_deploy/fake-remote/etc/nginx/confs/imboy.api.conf
+  category: acceptance
+  disposition: keep
+  purpose: "测试 fixture（被命名测试脚本按路径消费）"
+  evidence: "l4_sni/cs_deploy/legacy-compose 各消费方"
+- path: scripts/test/fixtures/cs_deploy/fake-remote/www/wwwroot/cs.test.local/.imboy-cs-root
+  category: acceptance
+  disposition: keep
+  purpose: "测试 fixture（被命名测试脚本按路径消费）"
+  evidence: "l4_sni/cs_deploy/legacy-compose 各消费方"
+- path: scripts/test/fixtures/cs_deploy/fake-remote/www/wwwroot/cs.test.local/releases/20991231000000-foreign-unknown/FOREIGN_SENTINEL.txt
+  category: acceptance
+  disposition: keep
+  purpose: "测试 fixture（被命名测试脚本按路径消费）"
+  evidence: "l4_sni/cs_deploy/legacy-compose 各消费方"
+- path: scripts/test/fixtures/l4_sni_installer_sandbox/README.md
+  category: acceptance
+  disposition: keep
+  purpose: "测试 fixture（被命名测试脚本按路径消费）"
+  evidence: "l4_sni/cs_deploy/legacy-compose 各消费方"
+- path: scripts/test/fixtures/l4_sni_installer_sandbox/bin/check-stub
+  category: acceptance
+  disposition: keep
+  purpose: "测试 fixture（被命名测试脚本按路径消费）"
+  evidence: "l4_sni/cs_deploy/legacy-compose 各消费方"
+- path: scripts/test/fixtures/l4_sni_installer_sandbox/bin/curl
+  category: acceptance
+  disposition: keep
+  purpose: "测试 fixture（被命名测试脚本按路径消费）"
+  evidence: "l4_sni/cs_deploy/legacy-compose 各消费方"
+- path: scripts/test/fixtures/l4_sni_installer_sandbox/bin/docker
+  category: acceptance
+  disposition: keep
+  purpose: "测试 fixture（被命名测试脚本按路径消费）"
+  evidence: "l4_sni/cs_deploy/legacy-compose 各消费方"
+- path: scripts/test/fixtures/l4_sni_installer_sandbox/bin/find
+  category: acceptance
+  disposition: keep
+  purpose: "测试 fixture（被命名测试脚本按路径消费）"
+  evidence: "l4_sni/cs_deploy/legacy-compose 各消费方"
+- path: scripts/test/fixtures/l4_sni_installer_sandbox/bin/haproxy
+  category: acceptance
+  disposition: keep
+  purpose: "测试 fixture（被命名测试脚本按路径消费）"
+  evidence: "l4_sni/cs_deploy/legacy-compose 各消费方"
+- path: scripts/test/fixtures/l4_sni_installer_sandbox/bin/id
+  category: acceptance
+  disposition: keep
+  purpose: "测试 fixture（被命名测试脚本按路径消费）"
+  evidence: "l4_sni/cs_deploy/legacy-compose 各消费方"
+- path: scripts/test/fixtures/l4_sni_installer_sandbox/bin/install
+  category: acceptance
+  disposition: keep
+  purpose: "测试 fixture（被命名测试脚本按路径消费）"
+  evidence: "l4_sni/cs_deploy/legacy-compose 各消费方"
+- path: scripts/test/fixtures/l4_sni_installer_sandbox/bin/nginx-core
+  category: acceptance
+  disposition: keep
+  purpose: "测试 fixture（被命名测试脚本按路径消费）"
+  evidence: "l4_sni/cs_deploy/legacy-compose 各消费方"
+- path: scripts/test/fixtures/l4_sni_installer_sandbox/bin/openssl
+  category: acceptance
+  disposition: keep
+  purpose: "测试 fixture（被命名测试脚本按路径消费）"
+  evidence: "l4_sni/cs_deploy/legacy-compose 各消费方"
+- path: scripts/test/fixtures/l4_sni_installer_sandbox/bin/ps
+  category: acceptance
+  disposition: keep
+  purpose: "测试 fixture（被命名测试脚本按路径消费）"
+  evidence: "l4_sni/cs_deploy/legacy-compose 各消费方"
+- path: scripts/test/fixtures/l4_sni_installer_sandbox/bin/sha256sum
+  category: acceptance
+  disposition: keep
+  purpose: "测试 fixture（被命名测试脚本按路径消费）"
+  evidence: "l4_sni/cs_deploy/legacy-compose 各消费方"
+- path: scripts/test/fixtures/l4_sni_installer_sandbox/bin/ss
+  category: acceptance
+  disposition: keep
+  purpose: "测试 fixture（被命名测试脚本按路径消费）"
+  evidence: "l4_sni/cs_deploy/legacy-compose 各消费方"
+- path: scripts/test/fixtures/l4_sni_installer_sandbox/bin/stat
+  category: acceptance
+  disposition: keep
+  purpose: "测试 fixture（被命名测试脚本按路径消费）"
+  evidence: "l4_sni/cs_deploy/legacy-compose 各消费方"
+- path: scripts/test/fixtures/l4_sni_installer_sandbox/bin/systemctl
+  category: acceptance
+  disposition: keep
+  purpose: "测试 fixture（被命名测试脚本按路径消费）"
+  evidence: "l4_sni/cs_deploy/legacy-compose 各消费方"
+- path: scripts/test/fixtures/l4_sni_installer_sandbox/nginx-bt/conf/nginx.conf.template
+  category: acceptance
+  disposition: keep
+  purpose: "测试 fixture（被命名测试脚本按路径消费）"
+  evidence: "l4_sni/cs_deploy/legacy-compose 各消费方"
+- path: scripts/test/fixtures/l4_sni_installer_sandbox/nginx-bt/conf/tcp/.gitkeep
+  category: acceptance
+  disposition: keep
+  purpose: "测试 fixture（被命名测试脚本按路径消费）"
+  evidence: "l4_sni/cs_deploy/legacy-compose 各消费方"
+- path: scripts/test/fixtures/l4_sni_installer_sandbox/nginx-bt/conf/vhosts/api.conf
+  category: acceptance
+  disposition: keep
+  purpose: "测试 fixture（被命名测试脚本按路径消费）"
+  evidence: "l4_sni/cs_deploy/legacy-compose 各消费方"
+- path: scripts/test/fixtures/l4_sni_installer_sandbox/nginx-bt/conf/vhosts/dual.conf
+  category: acceptance
+  disposition: keep
+  purpose: "测试 fixture（被命名测试脚本按路径消费）"
+  evidence: "l4_sni/cs_deploy/legacy-compose 各消费方"
+- path: scripts/test/fixtures/l4_sni_installer_sandbox/nginx-bt/sbin/nginx
+  category: acceptance
+  disposition: keep
+  purpose: "测试 fixture（被命名测试脚本按路径消费）"
+  evidence: "l4_sni/cs_deploy/legacy-compose 各消费方"
+- path: scripts/test/fixtures/l4_sni_installer_sandbox/nginx-distro/conf/nginx.conf.template
+  category: acceptance
+  disposition: keep
+  purpose: "测试 fixture（被命名测试脚本按路径消费）"
+  evidence: "l4_sni/cs_deploy/legacy-compose 各消费方"
+- path: scripts/test/fixtures/l4_sni_installer_sandbox/nginx-distro/sbin/nginx
+  category: acceptance
+  disposition: keep
+  purpose: "测试 fixture（被命名测试脚本按路径消费）"
+  evidence: "l4_sni/cs_deploy/legacy-compose 各消费方"
+- path: scripts/test/fixtures/l4_sni_rules/imboy_alerts_l4_sni_test.yml
+  category: acceptance
+  disposition: keep
+  purpose: "测试 fixture（被命名测试脚本按路径消费）"
+  evidence: "l4_sni/cs_deploy/legacy-compose 各消费方"
+- path: scripts/test/fixtures/legacy-compose/README.md
+  category: acceptance
+  disposition: keep
+  purpose: "测试 fixture（被命名测试脚本按路径消费）"
+  evidence: "l4_sni/cs_deploy/legacy-compose 各消费方"
+- path: scripts/test/fixtures/legacy-compose/community.fixture
+  category: acceptance
+  disposition: keep
+  purpose: "测试 fixture（被命名测试脚本按路径消费）"
+  evidence: "l4_sni/cs_deploy/legacy-compose 各消费方"
+- path: scripts/test/fixtures/legacy-compose/livekit-turn.fixture
+  category: acceptance
+  disposition: keep
+  purpose: "测试 fixture（被命名测试脚本按路径消费）"
+  evidence: "l4_sni/cs_deploy/legacy-compose 各消费方"
+- path: scripts/test/group_schedule_remind_pg_gate.sh
+  category: core
+  disposition: keep
+  purpose: "CI 点名的脚本自测/门禁"
+  evidence: "backend-ci.yml:661"
+- path: scripts/test/init_letsencrypt_test.sh
+  category: core
+  disposition: keep
+  purpose: "CI 点名的脚本自测/门禁"
+  evidence: "backend-ci.yml:53"
+- path: scripts/test/install_one_click_test.sh
+  category: core
+  disposition: keep
+  purpose: "CI 点名的脚本自测/门禁"
+  evidence: "backend-ci.yml:49"
+- path: scripts/test/l4_sni_alert_rules_test.sh
+  category: acceptance
+  disposition: keep
+  purpose: "脚本/文档/.qa 锚定门禁"
+  evidence: "fixtures/l4_sni_rules glob"
+- path: scripts/test/livekit_l4_sni_installer_test.sh
+  category: acceptance
+  disposition: keep
+  purpose: "脚本/文档/.qa 锚定门禁"
+  evidence: "fixtures/l4_sni_installer_sandbox 整树"
+- path: scripts/test/lk_preflight_rtc_turn_test.sh
+  category: core
+  disposition: keep
+  purpose: "CI 点名的脚本自测/门禁"
+  evidence: "backend-ci.yml:56"
+- path: scripts/test/lk_turn_hook_install_test.sh
+  category: core
+  disposition: keep
+  purpose: "CI 点名的脚本自测/门禁"
+  evidence: "backend-ci.yml:57"
+- path: scripts/test/metrics_push_l4_test.sh
+  category: acceptance
+  disposition: keep
+  purpose: "现行脚本/Makefile 配方的离线回归测试（未接 CI，建议接线）"
+  evidence: "zero-ref；目标脚本在仓且现役"
+  notes: "unwired-regression"
+- path: scripts/test/metrics_push_test.sh
+  category: acceptance
+  disposition: keep
+  purpose: "现行脚本/Makefile 配方的离线回归测试（未接 CI，建议接线）"
+  evidence: "zero-ref；目标脚本在仓且现役"
+  notes: "unwired-regression"
+- path: scripts/test/migrate_gate_test.sh
+  category: acceptance
+  disposition: keep
+  purpose: "脚本/文档/.qa 锚定门禁"
+  evidence: "customer_service_deploy_test.sh"
+- path: scripts/test/pg18_init_gate.sh
+  category: core
+  disposition: keep
+  purpose: "CI 点名的脚本自测/门禁"
+  evidence: "backend-ci.yml:623; nightly.yml:170"
+- path: scripts/test/pinned_pg_eunit_gate.sh
+  category: acceptance
+  disposition: keep
+  purpose: "脚本/文档/.qa 锚定门禁"
+  evidence: ".qa/yield-registry 人工通道"
+- path: scripts/test/prepare_release_build_test.sh
+  category: acceptance
+  disposition: keep
+  purpose: "现行脚本/Makefile 配方的离线回归测试（未接 CI，建议接线）"
+  evidence: "zero-ref；目标脚本在仓且现役"
+  notes: "unwired-regression"
+- path: scripts/test/release_contract_test.sh
+  category: core
+  disposition: keep
+  purpose: "CI 点名的脚本自测/门禁"
+  evidence: "backend-ci.yml:51"
+- path: scripts/test/restore_failure_test.sh
+  category: acceptance
+  disposition: keep
+  purpose: "现行脚本/Makefile 配方的离线回归测试（未接 CI，建议接线）"
+  evidence: "zero-ref；目标脚本在仓且现役"
+  notes: "unwired-regression"
+- path: scripts/test/restore_guard_test.sh
+  category: acceptance
+  disposition: keep
+  purpose: "脚本/文档/.qa 锚定门禁"
+  evidence: "customer_service_deploy_test.sh"
+- path: scripts/test/retire_moya_migration_test.py
+  category: acceptance
+  disposition: keep
+  purpose: "目标模块/迁移/脚本的 unittest（无 CI 入口，建议接线 quality.yml）"
+  evidence: "zero-ref；目标在仓"
+  notes: "unwired-unittest"
+- path: scripts/test/run_talk_record_retry_shadow_checks.py
+  category: acceptance
+  disposition: keep
+  purpose: "脚本/文档/.qa 锚定门禁"
+  evidence: "test_talk_record_retry_shadow_scripts.py + SQL 注释"
+- path: scripts/test/start_node_release_freshness_test.sh
+  category: acceptance
+  disposition: keep
+  purpose: "现行脚本/Makefile 配方的离线回归测试（未接 CI，建议接线）"
+  evidence: "zero-ref；目标脚本在仓且现役"
+  notes: "unwired-regression"
+- path: scripts/test/talk_record_g18_gate.sh
+  category: acceptance
+  disposition: keep
+  purpose: "脚本/文档/.qa 锚定门禁"
+  evidence: ".qa/yield-registry:36（phase1 g18 现役后继）"
+- path: scripts/test/test_attachment_lifecycle_v5_adapter_w3_evidence.py
+  category: acceptance
+  disposition: keep
+  purpose: "attachment_lifecycle_v5 冻结合同家族（runner/gate 动态派发）"
+  evidence: "attachment_lifecycle_v5_runner.py + gate.sh produce_measured 动态拼名"
+- path: scripts/test/test_attachment_lifecycle_v5_admit.py
+  category: acceptance
+  disposition: keep
+  purpose: "attachment_lifecycle_v5 冻结合同家族（runner/gate 动态派发）"
+  evidence: "attachment_lifecycle_v5_runner.py + gate.sh produce_measured 动态拼名"
+- path: scripts/test/test_attachment_lifecycle_v5_case_store.py
+  category: acceptance
+  disposition: keep
+  purpose: "attachment_lifecycle_v5 冻结合同家族（runner/gate 动态派发）"
+  evidence: "attachment_lifecycle_v5_runner.py + gate.sh produce_measured 动态拼名"
+- path: scripts/test/test_attachment_lifecycle_v5_disk_root.py
+  category: acceptance
+  disposition: keep
+  purpose: "attachment_lifecycle_v5 冻结合同家族（runner/gate 动态派发）"
+  evidence: "attachment_lifecycle_v5_runner.py + gate.sh produce_measured 动态拼名"
+- path: scripts/test/test_attachment_lifecycle_v5_gate_db_guard.py
+  category: acceptance
+  disposition: keep
+  purpose: "attachment_lifecycle_v5 冻结合同家族（runner/gate 动态派发）"
+  evidence: "attachment_lifecycle_v5_runner.py + gate.sh produce_measured 动态拼名"
+- path: scripts/test/test_attachment_lifecycle_v5_ledger_actor.py
+  category: acceptance
+  disposition: keep
+  purpose: "attachment_lifecycle_v5 冻结合同家族（runner/gate 动态派发）"
+  evidence: "attachment_lifecycle_v5_runner.py + gate.sh produce_measured 动态拼名"
+- path: scripts/test/test_attachment_lifecycle_v5_pg_guard.py
+  category: acceptance
+  disposition: keep
+  purpose: "attachment_lifecycle_v5 冻结合同家族（runner/gate 动态派发）"
+  evidence: "attachment_lifecycle_v5_runner.py + gate.sh produce_measured 动态拼名"
+- path: scripts/test/test_attachment_lifecycle_v5_pg_provision.py
+  category: acceptance
+  disposition: keep
+  purpose: "attachment_lifecycle_v5 冻结合同家族（runner/gate 动态派发）"
+  evidence: "attachment_lifecycle_v5_runner.py + gate.sh produce_measured 动态拼名"
+- path: scripts/test/test_attachment_lifecycle_v5_raw_artifact.py
+  category: acceptance
+  disposition: keep
+  purpose: "attachment_lifecycle_v5 冻结合同家族（runner/gate 动态派发）"
+  evidence: "attachment_lifecycle_v5_runner.py + gate.sh produce_measured 动态拼名"
+- path: scripts/test/test_attachment_lifecycle_v5_slot_supervisor.py
+  category: acceptance
+  disposition: keep
+  purpose: "attachment_lifecycle_v5 冻结合同家族（runner/gate 动态派发）"
+  evidence: "attachment_lifecycle_v5_runner.py + gate.sh produce_measured 动态拼名"
+- path: scripts/test/test_attachment_lifecycle_v5_w0_container_identity.py
+  category: acceptance
+  disposition: keep
+  purpose: "attachment_lifecycle_v5 冻结合同家族（runner/gate 动态派发）"
+  evidence: "attachment_lifecycle_v5_runner.py + gate.sh produce_measured 动态拼名"
+- path: scripts/test/test_attachment_lifecycle_v5_w102_probe.py
+  category: acceptance
+  disposition: keep
+  purpose: "attachment_lifecycle_v5 冻结合同家族（runner/gate 动态派发）"
+  evidence: "attachment_lifecycle_v5_runner.py + gate.sh produce_measured 动态拼名"
+- path: scripts/test/test_attachment_lifecycle_v5_w201_adapter_provenance.py
+  category: acceptance
+  disposition: keep
+  purpose: "attachment_lifecycle_v5 冻结合同家族（runner/gate 动态派发）"
+  evidence: "attachment_lifecycle_v5_runner.py + gate.sh produce_measured 动态拼名"
+- path: scripts/test/test_attachment_lifecycle_v5_w201_probe.py
+  category: acceptance
+  disposition: keep
+  purpose: "attachment_lifecycle_v5 冻结合同家族（runner/gate 动态派发）"
+  evidence: "attachment_lifecycle_v5_runner.py + gate.sh produce_measured 动态拼名"
+- path: scripts/test/test_attachment_lifecycle_v5_w601_obs_binding.py
+  category: acceptance
+  disposition: keep
+  purpose: "attachment_lifecycle_v5 冻结合同家族（runner/gate 动态派发）"
+  evidence: "attachment_lifecycle_v5_runner.py + gate.sh produce_measured 动态拼名"
+- path: scripts/test/test_attachment_lifecycle_v5_w602_provenance.py
+  category: acceptance
+  disposition: keep
+  purpose: "attachment_lifecycle_v5 冻结合同家族（runner/gate 动态派发）"
+  evidence: "attachment_lifecycle_v5_runner.py + gate.sh produce_measured 动态拼名"
+- path: scripts/test/test_attachment_lifecycle_v5_w602_two_phase.py
+  category: acceptance
+  disposition: keep
+  purpose: "attachment_lifecycle_v5 冻结合同家族（runner/gate 动态派发）"
+  evidence: "attachment_lifecycle_v5_runner.py + gate.sh produce_measured 动态拼名"
+- path: scripts/test/test_bench_websocket.py
+  category: core
+  disposition: keep
+  purpose: "CI 点名的脚本自测/门禁"
+  evidence: "backend-ci.yml:146"
+- path: scripts/test/test_contract_route_sources.py
+  category: acceptance
+  disposition: keep
+  purpose: "目标模块/迁移/脚本的 unittest（无 CI 入口，建议接线 quality.yml）"
+  evidence: "zero-ref；目标在仓"
+  notes: "unwired-unittest"
+- path: scripts/test/test_dev_compose.py
+  category: core
+  disposition: keep
+  purpose: "CI 点名的脚本自测/门禁"
+  evidence: "backend-runtime.yml:16"
+- path: scripts/test/test_gitleaks_gate.py
+  category: core
+  disposition: keep
+  purpose: "CI 点名的脚本自测/门禁"
+  evidence: "quality.yml:254"
+- path: scripts/test/test_lee5_ci_evidence.py
+  category: core
+  disposition: keep
+  purpose: "CI 点名的脚本自测/门禁"
+  evidence: "backend-ci.yml:155"
+- path: scripts/test/test_makefile.py
+  category: core
+  disposition: keep
+  purpose: "CI 点名的脚本自测/门禁"
+  evidence: "backend-ci.yml:141"
+- path: scripts/test/test_nightly_summary.py
+  category: core
+  disposition: keep
+  purpose: "CI 点名的脚本自测/门禁"
+  evidence: "backend-ci.yml:149"
+- path: scripts/test/test_pg_relay_supervisor.py
+  category: acceptance
+  disposition: keep
+  purpose: "目标模块/迁移/脚本的 unittest（无 CI 入口，建议接线 quality.yml）"
+  evidence: "zero-ref；目标在仓"
+  notes: "unwired-unittest"
+- path: scripts/test/test_sbom_workflow.py
+  category: core
+  disposition: keep
+  purpose: "CI 点名的脚本自测/门禁"
+  evidence: "backend-ci.yml:158; sbom-diff.yml:55"
+- path: scripts/test/test_talk_record_cleanup_retry_contract.py
+  category: acceptance
+  disposition: keep
+  purpose: "目标模块/迁移/脚本的 unittest（无 CI 入口，建议接线 quality.yml）"
+  evidence: "zero-ref；目标在仓"
+  notes: "unwired-unittest"
+- path: scripts/test/test_talk_record_machine_contract.py
+  category: acceptance
+  disposition: keep
+  purpose: "脚本/文档/.qa 锚定门禁"
+  evidence: "guangzhou plan-v3.1"
+- path: scripts/test/test_talk_record_retry_shadow_scripts.py
+  category: acceptance
+  disposition: keep
+  purpose: "目标模块/迁移/脚本的 unittest（无 CI 入口，建议接线 quality.yml）"
+  evidence: "zero-ref；目标在仓"
+  notes: "unwired-unittest"
+- path: scripts/test/test_templates.py
+  category: acceptance
+  disposition: keep
+  purpose: "目标模块/迁移/脚本的 unittest（无 CI 入口，建议接线 quality.yml）"
+  evidence: "zero-ref；目标在仓"
+  notes: "unwired-unittest"
+- path: scripts/test/validate_acceptance_pg_inputs_test.py
+  category: acceptance
+  disposition: keep
+  purpose: "目标模块/迁移/脚本的 unittest（无 CI 入口，建议接线 quality.yml）"
+  evidence: "zero-ref；目标在仓"
+  notes: "unwired-unittest"
+- path: scripts/test/verify_community_images_test.sh
+  category: acceptance
+  disposition: keep
+  purpose: "现行脚本/Makefile 配方的离线回归测试（未接 CI，建议接线）"
+  evidence: "zero-ref；目标脚本在仓且现役"
+  notes: "unwired-regression"
+- path: scripts/test/verify_l4_sni_acceptance_test.py
+  category: acceptance
+  disposition: keep
+  purpose: "目标模块/迁移/脚本的 unittest（无 CI 入口，建议接线 quality.yml）"
+  evidence: "zero-ref；目标在仓"
+  notes: "unwired-unittest"
+- path: scripts/test/wallet_constraint_clone_guard_test.sh
+  category: acceptance
+  disposition: keep
+  purpose: "脚本/文档/.qa 锚定门禁"
+  evidence: "check_release_consistency 链"
+- path: scripts/test/ws_e2e/run_ws_e2e.sh
+  category: acceptance
+  disposition: keep
+  purpose: "脚本/文档/.qa 锚定门禁"
+  evidence: "ws_e2e_test.py wrapper"
+- path: scripts/test/ws_e2e/ws_e2e_test.py
+  category: acceptance
+  disposition: keep
+  purpose: "脚本/文档/.qa 锚定门禁"
+  evidence: "test/ds/c2g_delivery_read_separation_tests.erl"
+- path: scripts/test/xref_gate_test.sh
+  category: core
+  disposition: keep
+  purpose: "CI 点名的脚本自测/门禁"
+  evidence: "backend-ci.yml:541"
+- path: scripts/validate_acceptance_pg_inputs.py
+  category: acceptance
+  disposition: keep
+  purpose: "隔离 PG 输入形状离线校验"
+  evidence: "scripts/test 专测"
+- path: scripts/validate_p5_manifest.sh
+  category: core
+  disposition: keep
+  purpose: "插件清单 P5 校验"
+  evidence: "backend-ci.yml:505"
+- path: scripts/validate_retention_policy.py
+  category: core
+  disposition: keep
+  purpose: "保留策略注册表校验"
+  evidence: "retention-policy.yml; quality 链"
+- path: scripts/validate_sales_release_config.escript
+  category: optional
+  disposition: keep
+  purpose: "销售发布配置校验"
+  evidence: "lib/blue_green_deploy.sh"
+- path: scripts/validate_third_party_inventory.py
+  category: core
+  disposition: keep
+  purpose: "第三方数据清单校验"
+  evidence: "quality.yml:406"
+- path: scripts/verify_agent_hub_correlation_trace.py
+  category: acceptance
+  disposition: keep
+  purpose: "correlation 审计链 verifier"
+  evidence: "correlation contract doc; golden flow"
+- path: scripts/verify_agent_hub_task_evidence.py
+  category: acceptance
+  disposition: keep
+  purpose: "任务证据 verifier（EVID-00）"
+  evidence: "agent-hub-evidence.schema.json"
+- path: scripts/verify_agent_hub_task_state_machine.py
+  category: acceptance
+  disposition: keep
+  purpose: "任务状态机矩阵 verifier（FSM-00）"
+  evidence: "冻结 contract json"
+- path: scripts/verify_community_images.sh
+  category: optional
+  disposition: keep
+  purpose: "社区镜像匿名核验"
+  evidence: "scripts/test/verify_community_images_test.sh"
+- path: scripts/verify_device_api_sql.sh
+  category: acceptance
+  disposition: keep
+  purpose: "Device API SQL 真 PG 集成验证"
+  evidence: "scripts/README.md（ADR 03 §8）"
+- path: scripts/verify_l4_sni_acceptance.py
+  category: acceptance
+  disposition: keep
+  purpose: "L4 SNI 证据只读核验"
+  evidence: "scripts/test 专测"
+- path: scripts/verify_micro_community_acceptance.py
+  category: acceptance
+  disposition: keep
+  purpose: "微社区验收 verifier"
+  evidence: "micro-community plan; guangzhou baseline"
+- path: scripts/verify_non_oa_acceptance.py
+  category: acceptance
+  disposition: keep
+  purpose: "非 OA ledger 校验"
+  evidence: "scripts/test 专测"
+- path: scripts/verify_onboarding.sh
+  category: acceptance
+  disposition: keep
+  purpose: "新手引导三件套集成验收"
+  evidence: "scripts/README.md"
+- path: scripts/verify_product_feature_artifacts.py
+  category: core
+  disposition: keep
+  purpose: "特性产物一致性校验"
+  evidence: "3 个 matrix 脚本; packaging-contract"
+- path: scripts/verify_textguard_business.py
+  category: acceptance
+  disposition: keep
+  purpose: "T20 textguard business 启动器"
+  evidence: "scripts/ci/native-eunit-run.sh; .qa/yield-registry"
+- path: scripts/verify_textguard_dual.py
+  category: acceptance
+  disposition: keep
+  purpose: "T19 textguard PG/OTP/Rust 集成"
+  evidence: "test_textguard_privacy 等"
+- path: scripts/verify_textguard_shadow.py
+  category: acceptance
+  disposition: keep
+  purpose: "textguard 影子套件 runner"
+  evidence: ".qa/yield-registry"
+- path: scripts/verify_unified_delivery_acceptance.py
+  category: acceptance
+  disposition: keep
+  purpose: "统一交付验收证据检查"
+  evidence: "scripts/test 专测"
+- path: scripts/verify_wallet_constraint_clone.sh
+  category: acceptance
+  disposition: keep
+  purpose: "钱包约束生产规模克隆验收"
+  evidence: "wallet acceptance doc; check_release_consistency"
+- path: scripts/verify_wallet_constraint_sql.sh
+  category: acceptance
+  disposition: keep
+  purpose: "钱包约束真 PG 验证"
+  evidence: "scripts/README.md"
+- path: scripts/websocket_diagnose.sh
+  category: optional
+  disposition: keep
+  purpose: "WS 连接分层诊断"
+  evidence: "docs websocket-testing"
+- path: scripts/write_agent_hub_e2e_evidence.py
+  category: acceptance
+  disposition: keep
+  purpose: "Golden Flow 证据写入"
+  evidence: "agent_hub_golden_flow.sh"

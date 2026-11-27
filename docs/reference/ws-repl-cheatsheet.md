@@ -2,6 +2,8 @@
 
 > **定位**：开发者本地联调笔记，不面向运营/部署。
 > **生产环境请使用** `/setup` 首启向导（P0-5）创建管理员；普通用户通过 App 注册。
+> ⚠️ 本文提及的 `ws-repl.mjs` 工具已从仓库移除，命令不可直接执行；联调可用
+> `scripts/smoke/c2c_ws_smoke.py` 或 `docs/reference/websocket-api-2.md` 的握手说明替代。速记正文保留作历史参考。
 
 ---
 
