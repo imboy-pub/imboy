@@ -150,8 +150,8 @@ groups:
 
   # ============================================================
   # 4. Erlang VM 内存 / Erlang VM Memory
-  # 参考：docker-compose.prod.yml 中 BACKEND_MEM_LIMIT=8192M
-  # Reference: BACKEND_MEM_LIMIT=8192M in docker-compose.prod.yml
+  # 参考：统一编排 docker-compose.yml 中 BACKEND_MEM_LIMIT=8192M
+  # Reference: BACKEND_MEM_LIMIT=8192M in docker-compose.yml (unified compose)
   # ============================================================
   - name: imboy.erlang_vm
     interval: 30s
@@ -440,8 +440,8 @@ groups:
             imboy_backend 节点（{{ $labels.instance }}）已 5 分钟无 Prometheus 心跳，判定节点宕机。
             imboy_backend node ({{ $labels.instance }}) has had no Prometheus heartbeat for 5 minutes; node is considered down.
           runbook: >
-            1. docker compose -f docker-compose.prod.yml logs imboy_backend
-            2. docker compose -f docker-compose.prod.yml restart imboy_backend
+            1. docker compose --env-file deploy/.env --profile prod logs prod_imboy_backend
+            2. docker compose --env-file deploy/.env --profile prod restart prod_imboy_backend
             3. 确认 BEAM 崩溃原因后再重启 / Investigate BEAM crash before restarting
 
   # ============================================================

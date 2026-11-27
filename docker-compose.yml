@@ -1,8 +1,13 @@
+# IMBoy 统一编排 / Unified Compose —— 开发、测试、生产单一 Compose 入口
+#
 # 在仓库根目录执行 / Run from the repository root.
 # 写法 / Convention: 第一个 --profile 写环境，后续写可选服务组。
 # Put the environment first, then optional service groups. Compose combines them in any order.
 # 每次只选一种环境。测试的可选服务使用 test- 前缀。
 # Select one environment per command. Test-only service groups use the test- prefix.
+#
+# 生产一键安装 / One-command production install（默认即本编排，prod_* 服务前缀）：
+#   cd deploy && bash install.sh
 #
 # 本地开发依赖 / Local development dependencies (PostgreSQL, Garage)
 # docker compose --profile dev up -d
@@ -35,7 +40,34 @@
 # docker compose -p imboy-test --env-file .env.test --profile test --profile test-rtc up -d
 # docker compose -p imboy-test --env-file .env.test --profile test --profile test-monitoring up -d
 # docker compose -p imboy-test --env-file .env.test --profile test --profile test-uptrace up -d
+#
+# ─── 依赖镜像 / Image dependencies ────────────────────────────────────────────
+# 产品镜像 ghcr.io/imboy-pub/{imboy-backend,imboy-admin,imboy-widget}:${IMBOY_VERSION}，
+# 版本由 deploy/.env 的 IMBOY_VERSION 单一真源决定；第三方镜像全部 tag+digest 双钉，
+# 升级换 digest 前先核对 RELEASES.md 的 Release Identity 三元组。
+#
+# ─── 日志留存合规说明 / Log Retention Compliance Note ─────────────────────────
+# 等保2.0（GB/T 22239-2019）第三级要求：安全审计日志留存 ≥ 6 个月（约 180 天）。
+# MLPS 2.0 (GB/T 22239-2019) Level-3 requirement: security audit logs retained ≥ 6 months (≈180 days).
+#
+# 实现方案：
+#   prod 核心服务（backend / pg18 / nginx）：max-size=100m × max-file=30 ≈ 3GB，
+#   按平均日志量 ~500MB/天估算可覆盖 180 天（低峰期可超 360 天）。
+#   prod 辅助服务（garage / admin / widget / certbot / livekit / monitoring 等）：
+#   max-size=50m × max-file=30（监控三件套 20m×5），日志量小不影响合规。
+#   dev/test 环境（下方 x-logging 锚点 10m×10）不承载审计日志，不适用本口径。
+#
+# Implementation:
+#   Core prod services (backend / pg18 / nginx): max-size=100m × max-file=30 ≈ 3GB,
+#   covering ~180 days at avg ~500MB/day (may exceed 360 days during low traffic).
+#   Auxiliary prod services: max-size=50m × max-file=30 (monitoring trio 20m×5).
+#   dev/test (x-logging anchor 10m×10) carry no audit logs; not in scope.
+#
+# 注意：上述估算基于容器 stdout/stderr；业务详细日志另挂载 DATA_DIR/backend_log 目录持久化。
+# Note: estimates are based on container stdout/stderr; business logs are also persisted in DATA_DIR/backend_log.
+# ──────────────────────────────────────────────────────────────────────────────
 
+# ─── 共享锚点 / Shared anchors（dev/test 日志口径、开发 PG 模板）──────────────
 x-logging: &logging
   driver: json-file
   options: {max-size: "10m", max-file: "10"}
@@ -51,6 +83,7 @@ x-dev-pg: &dev_pg
     POSTGRES_PASSWORD: ${IMBOY_PG_PASSWORD:-}
     POSTGRES_DB: ${IMBOY_PG_DATABASE:-imboy_v1}
   volumes:
+    # 保留既有命名卷（数据兼容合同）；PG 不迁移到 macOS bind mount。
     # Preserve the existing named volume; do not move PG onto a macOS bind mount.
     - imboy_pg18_data:/var/lib/postgresql
   ports: ["${IMBOY_BIND_ADDR:-127.0.0.1}:${IMBOY_PG_HOST_PORT:-4323}:5432"]
@@ -69,17 +102,20 @@ x-dev-pg: &dev_pg
   logging: *logging
 
 services:
+  # ========== PostgreSQL 18 + 扩展（开发/测试共用 PG 锚点）==========
   imboy_pg18:
     <<: *dev_pg
     profiles: [dev]
     container_name: imboy_pg18
 
+  # ========== Garage S3 对象存储（单机内置，开发）==========
   garage: &dev_garage
     profiles: [dev]
     image: dxflrs/garage:v2.4.1@sha256:9c96caa2612d3411acc5b0e6701fb238dbfba33e533a6d7d3d811a4b12d0d020
     restart: unless-stopped
     command: [/garage, server, --single-node, --default-bucket]
     environment:
+      # key 校验由 --default-bucket 启动参数完成；未启用的 dev 服务不得阻塞 pro 专用 PG 的解析。
       # Setup validates local keys; inactive dev services must not block pro-only PG.
       GARAGE_DEFAULT_ACCESS_KEY: ${IMBOY_GARAGE_ACCESS_KEY:-}
       GARAGE_DEFAULT_SECRET_KEY: ${IMBOY_GARAGE_SECRET_KEY:-}
@@ -98,6 +134,7 @@ services:
       start_period: 10s
     logging: *logging
 
+  # ========== imboy 后端（Erlang/OTP + Cowboy，开发）==========
   imboy_backend: &dev_backend
     profiles: [api]
     image: ${BACKEND_IMAGE:-imboy-backend:local}
@@ -108,6 +145,7 @@ services:
       garage: {condition: service_healthy}
     environment: &dev_backend_env
       IMBOYENV: local
+      # 本地单节点启动不等模板里的示例节点。
       # Local single-node boot must not wait for the template's example peers.
       IMBOY_CLUSTER_NODES: "[]"
       HTTP_PORT: "9800"
@@ -130,6 +168,7 @@ services:
       IMBOY_SOLIDIFIED_KEY: ${IMBOY_SOLIDIFIED_KEY:-}
       IMBOY_SOLIDIFIED_KEY_IV: ${IMBOY_SOLIDIFIED_KEY_IV:-}
       IMBOY_API_AUTH_SWITCH: ${IMBOY_API_AUTH_SWITCH:-on}
+      # 空路径 = 使用镜像内 app priv 的持久化 dev_keys 符号链接。
       # Empty paths use the app's persistent dev_keys symlink in the built image.
       IMBOY_LOGIN_RSA_PUB_KEY_FILE: ""
       IMBOY_LOGIN_RSA_PRIV_KEY_FILE: ""
@@ -160,6 +199,7 @@ services:
       - backend_logs:/opt/imboy/log
     ports: ["${IMBOY_BIND_ADDR:-127.0.0.1}:${IMBOY_API_HOST_PORT:-9800}:9800"]
     healthcheck:
+      # relx eval 对表达式异常也可能退 0；必须比较实际输出而不是只看退出码。
       # relx eval may exit zero on an expression error; compare its actual output.
       test: [CMD-SHELL, 'test "$$(/opt/imboy/bin/imboy eval "healthz_handler:probe_db() andalso elib_tsid:readiness() =:= ready andalso imboy_app:readiness() =:= ready." 2>/dev/null)" = true']
       interval: 10s
@@ -168,6 +208,7 @@ services:
       start_period: 60s
     logging: *logging
 
+  # ========== imboy edge（附件下载边车 / download edge，开发）==========
   imboy_edge: &dev_edge
     profiles: [api]
     image: ${BACKEND_IMAGE:-imboy-backend:local}
@@ -183,6 +224,8 @@ services:
       - source: edge_health_vm_args
         target: /run/edge-health.vm.args
     healthcheck: &edge_healthcheck
+      # edge 是独立无名 VM：用一次性干净短命 VM 探测其 HTTP handler。
+      # POST 必须返回 405（路由存在、方法不允许），不触发票据授权。
       # The edge is a separate, unnamed VM: probe its HTTP handler from a clean
       # short-lived VM. POST must return 405, without invoking ticket authorization.
       test:
@@ -199,6 +242,7 @@ services:
       start_period: 5s
     logging: *logging
 
+  # ========== imboy-admin-frontend（React + Vite，静态，开发）==========
   imboy_admin:
     profiles: [admin]
     image: ${ADMIN_IMAGE:-imboy-admin:local}
@@ -206,6 +250,7 @@ services:
       context: ${IMBOY_FRONTEND_CONTEXT:-https://github.com/imboy-pub/imboy-admin-frontend.git#a22d9f1835d2c613d002b17b6aae9877b33077ac}
       dockerfile: Dockerfile
     restart: unless-stopped
+    # /api/adm 同源经网关反代；登录 Cookie 不跨站。
     # Same-origin /api/adm is proxied by the gateway; no cross-site login cookies.
     environment: {IMBOY_API_HOST: ""}
     healthcheck:
@@ -215,13 +260,16 @@ services:
       retries: 20
     logging: *logging
 
+  # ========== 客服托管 Widget 静态运行时（开发构建）==========
   imboy_widget:
     profiles: [widget]
     image: ${WIDGET_IMAGE:-imboy-widget:local}
     build:
       context: ${IMBOY_FRONTEND_CONTEXT:-https://github.com/imboy-pub/imboy-admin-frontend.git#a22d9f1835d2c613d002b17b6aae9877b33077ac}
+      # Widget 验证要求真实源码 HEAD（含本地检出）。
       # Widget verification requires the actual source HEAD, including local checkouts.
       args: {BUILDKIT_CONTEXT_KEEP_GIT_DIR: "1"}
+      # 前端运行时 Dockerfile 期望 dist-widget 产物；先构建生成。
       # The frontend's runtime Dockerfile expects dist-widget; generate it first.
       dockerfile_inline: |
         FROM oven/bun:1.3.14 AS builder
@@ -245,6 +293,7 @@ services:
       retries: 20
     logging: *logging
 
+  # ========== LiveKit SFU（群通话/屏幕共享媒体面，开发）==========
   imboy_livekit:
     profiles: [livekit]
     image: livekit/livekit-server:v1.13.7@sha256:6fd3b7088874c4d119160dd688798dfec852bc014786d392caad15f6f63912a3
@@ -268,6 +317,7 @@ services:
       - "${IMBOY_BIND_ADDR:-127.0.0.1}:50000-50200:50000-50200/udp"
     logging: *logging
 
+  # ========== nginx 反向代理（开发网关）==========
   imboy_nginx:
     profiles: [gateway]
     image: nginx:1.27-alpine@sha256:65645c7bb6a0661892a8b03b89d0743208a18dd2f3f17a54ef4b76fb8e2f2a10
@@ -298,6 +348,7 @@ services:
       retries: 20
     logging: *logging
 
+  # ========== API 文档（Swagger UI）==========
   api_docs:
     profiles: [docs]
     image: swaggerapi/swagger-ui@sha256:a6c9dae9b7bf7aa691ad8cf76574d0a9c3c8ce6e0d3946d6bb55acc36f24c4e5
@@ -309,6 +360,7 @@ services:
     environment:
       SWAGGER_JSON: /openapi.yaml
 
+  # 测试资源限定在独立 Compose project 内，走独立 loopback 端口。
   # Test resources are scoped to the Compose project and use separate loopback ports.
   test_pg18:
     <<: *dev_pg
@@ -397,6 +449,7 @@ services:
     ports: ["127.0.0.1:${IMBOY_TEST_METRICS_PORT:-19090}:9090"]
     logging: *logging
 
+  # 生产服务复用既有生产网络与 DNS 别名（服务别名即容器网络名）。
   # Production services share the existing production network and DNS aliases.
 
   # ========== PostgreSQL 18 + 扩展 ==========
@@ -421,7 +474,9 @@ services:
       - "5432"
     ports:
       # 绑定地址安全默认 127.0.0.1：把 PostgreSQL 直接发布到公网是高危配置。
+      # Bind address defaults to 127.0.0.1; exposing PostgreSQL publicly is high risk.
       # 需要从宿主机外直连的场景显式设 PG_BIND_ADDR=0.0.0.0（并先收紧防火墙）。
+      # For host-external access set PG_BIND_ADDR=0.0.0.0 explicitly (and tighten firewall first).
       - "${PG_BIND_ADDR:-127.0.0.1}:${PG_PORT:-5432}:5432"
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
@@ -432,13 +487,15 @@ services:
       resources:
         limits:
           memory: ${PG_MEM_LIMIT:-4096M}
+    # 等保2.0：核心数据库日志保留 180 天（100m×30≈3GB）
+    # MLPS 2.0: core DB logs retained ~180 days (100m×30≈3GB)
     logging:
       driver: "json-file"
       options:
         max-size: "100m"
         max-file: "30"
 
-  # ========== 生产 Garage S3 对象存储==========
+  # ========== Garage S3 对象存储（单机内置，生产）==========
   # 附件存储的后端：imboy_backend 经 compose 网络以 http://garage:3900 访问 S3 API。
   #
   # 幂等 init job：无需独立 init 容器，直接使用 Garage v2.4.1 官方内置的
@@ -574,14 +631,14 @@ services:
       IMBOY_PRODUCT_PROFILE: ${IMBOY_PRODUCT_PROFILE:-standard}
       IMBOY_PRODUCT_EXPERIENCE: ${IMBOY_PRODUCT_EXPERIENCE:-chat}
       SENTRY_DSN: ${SENTRY_DSN:-}
-      # ── SMTP 邮件（可选）────────────────────────────────────────────────────
+      # ── SMTP 邮件（可选）/ Optional SMTP ────────────────────────────────────
       IMBOY_SMTP_RELAY: ${IMBOY_SMTP_RELAY:-}
       IMBOY_SMTP_PORT: ${IMBOY_SMTP_PORT:-}
       IMBOY_SMTP_SSL: ${IMBOY_SMTP_SSL:-}
       IMBOY_SMTP_USERNAME: ${IMBOY_SMTP_USERNAME:-}
       IMBOY_SMTP_PASSWORD: ${IMBOY_SMTP_PASSWORD:-}
       IMBOY_SMTP_FROM: ${IMBOY_SMTP_FROM:-}
-      # ── 短信验证码（可选；yjsms | jsms）────────────────────────────────────
+      # ── 短信验证码（可选；yjsms | jsms）/ Optional SMS ──────────────────────
       IMBOY_SMS_SWITCH: ${IMBOY_SMS_SWITCH:-off}
       IMBOY_SMS_PLATFORM: ${IMBOY_SMS_PLATFORM:-yjsms}
       IMBOY_YJSMS_ACCOUNT: ${IMBOY_YJSMS_ACCOUNT:-}
@@ -599,8 +656,7 @@ services:
       IMBOY_MAX_WS_CONNECTIONS: ${IMBOY_MAX_WS_CONNECTIONS:-20000}
       # ── 支付网关 / Payment gateway ───────────────────────────────────────────
       # 当前编排不接入外部商户网关，显式覆盖镜像中支付网关的默认配置。
-      # false 时网关端点
-      # （充值/回调/提现）一律返回「功能未启用」，站内钱包账务不受影响。
+      # false 时网关端点（充值/回调/提现）一律返回「功能未启用」，站内钱包账务不受影响。
       # 支付网关凭据（微信/支付宝/Stripe）与支付模式变量已全部剔除。
       IMBOY_PAYMENT_GATEWAY_ENABLED: "false"
       # ── 插件生命周期 / Plugin lifecycle (A-28) ───────────────────────────────
@@ -625,6 +681,8 @@ services:
     ports:
       # 绑定地址安全默认 127.0.0.1：直接发布后端到公网等于绕过 nginx 的全部防护
       # （TLS 终结、passport 登录限流 10r/m、API 限流 60r/m、/metrics 403 拦截）。
+      # Bind address defaults to 127.0.0.1; publishing the backend bypasses all nginx
+      # protections (TLS, passport rate limit 10r/m, API 60r/m, /metrics 403 block).
       - "${BACKEND_BIND_ADDR:-127.0.0.1}:${BACKEND_PORT:-9800}:9800"
     ulimits:
       nofile:
@@ -634,6 +692,8 @@ services:
       resources:
         limits:
           memory: ${BACKEND_MEM_LIMIT:-8192M}
+    # 等保2.0：核心后端日志保留 180 天（100m×30≈3GB）
+    # MLPS 2.0: core backend logs retained ~180 days (100m×30≈3GB)
     logging:
       driver: "json-file"
       options:
@@ -662,6 +722,8 @@ services:
       resources:
         limits:
           memory: 256M
+    # 等保2.0：辅助服务日志保留（50m×30≈1.5GB）
+    # MLPS 2.0: auxiliary service log retention (50m×30≈1.5GB)
     logging:
       driver: "json-file"
       options:
@@ -705,6 +767,7 @@ services:
         max-size: "50m"
         max-file: "30"
 
+  # ========== imboy edge（附件下载边车 / download edge，生产）==========
   prod_imboy_edge:
     networks:
       pro:
@@ -723,6 +786,8 @@ services:
         target: /run/edge-health.vm.args
     healthcheck: *edge_healthcheck
 
+  # ========== 企业 direct proof（独立身份）==========
+  # 独立 proof 身份：凭据永不注入 API 容器。
   # Separate proof identity: credentials are never injected into the API container.
   prod_imboy_enterprise_proof:
     networks:
@@ -804,6 +869,8 @@ services:
     # 官方 entrypoint 遇到 /bin/sh 会跳过模板处理；显式以 nginx 重新进入，
     # 先渲染 HTTP 模板再启动 master。保留每 6h reload 加载续期证书。
     command: ["/bin/sh", "/etc/imboy/start-production.sh"]
+    # 等保2.0：nginx 访问日志保留 180 天（100m×30≈3GB）
+    # MLPS 2.0: nginx access logs retained ~180 days (100m×30≈3GB)
     logging:
       driver: "json-file"
       options:
@@ -941,6 +1008,8 @@ services:
       - "5349:5349"
       - "50201-50500:50201-50500/udp"
 
+  # ========== nginx SNI 网关（prod-sni）==========
+  # TURN 与 HTTPS 共享公网 TCP 443 时由 HAProxy 按 SNI 分流，nginx 只持 80。
   # HAProxy owns public TCP 443 when TURN and HTTPS share a listener.
   prod_imboy_nginx_sni:
     <<: *production_nginx_turn
@@ -1003,6 +1072,7 @@ services:
       - "3478:3478/udp"
       - "50201-50500:50201-50500/udp"
 
+  # ========== HAProxy：prod-sni TCP 443 SNI 分流器 ==========
   prod_imboy_haproxy:
     profiles: [prod-sni]
     image: haproxy:3.2.27-alpine@sha256:7816a9801a6846b912bc37e48529808e2fa87c3c47992441940f68e393ebcfeb
@@ -1021,9 +1091,11 @@ services:
       - "443:443"
 
   # ═══════════════════════════════════════════════════════════════════
-  # 以下为监控栈（默认不启动）：加 --profile monitoring 启用，例如
-  #   docker compose -f docker-compose.community.yml --profile monitoring up -d
+  # 以下为监控栈（默认不启动）/ Monitoring stack (not started by default)：
+  # 加 --profile monitoring 启用，例如：
+  #   docker compose --env-file deploy/.env --profile prod --profile monitoring up -d
   # 更完整的 exporter 组合（pushgateway / node_exporter / postgres_exporter）
+  # 随本 profile 一并启用。
   # ═══════════════════════════════════════════════════════════════════
 
   # ========== Prometheus 指标采集 / Metrics scraping ==========
@@ -1095,7 +1167,7 @@ services:
         max-size: "50m"
         max-file: "30"
 
-  # ---------- Pushgateway：短命 cron 作业的指标出口（B-23）----------
+  # ========== Pushgateway：短命 cron 作业的指标出口（B-23）==========
   # 备份/TLS 检查没有常驻端点供抓取，只能由作业自己推。
   # 产出方已就绪：scripts/lib/metrics_push.sh 的 push_backup_result / push_tls_expiry。
   prod_imboy_pushgateway:
@@ -1129,7 +1201,7 @@ services:
         max-size: "20m"
         max-file: "5"
 
-  # ---------- node_exporter：宿主机资源（B-24）----------
+  # ========== node_exporter：宿主机资源（B-24）==========
   # 面板 node_filesystem_avail_bytes / node_filesystem_size_bytes 依赖它。
   prod_imboy_node_exporter:
     networks:
@@ -1162,7 +1234,7 @@ services:
         max-size: "20m"
         max-file: "5"
 
-  # ---------- postgres_exporter：PG 指标（B-24）----------
+  # ========== postgres_exporter：PG 指标（B-24）==========
   # 面板/告警 pg_stat_database_numbackends、pg_settings_max_connections、
   # pg_stat_database_xact_commit/rollback 依赖它。
   prod_imboy_postgres_exporter:
@@ -1178,7 +1250,7 @@ services:
       # 从主 compose 的同一套 .env 取值，不另起一份凭据。
       # ⚠️ 建议为它单建一个只读账号（pg_monitor 角色）而不是复用超级用户 ——
       # exporter 只需要读统计视图。
-      # 主机名是 imboy_pg18（容器名），不是 imboy_pg —— 已对着 prod compose 核过。
+      # 主机名是 imboy_pg18（容器名），不是 imboy_pg —— 已对统一编排核过。
       DATA_SOURCE_NAME: "postgresql://${PG_EXPORTER_USER:-${POSTGRES_USER:-}}:${PG_EXPORTER_PASSWORD:-${POSTGRES_PASSWORD:-}}@imboy_pg18:5432/${POSTGRES_DB:-}?sslmode=disable"
     expose:
       - "9187"
@@ -1192,6 +1264,7 @@ services:
         max-size: "20m"
         max-file: "5"
 
+  # ========== Uptrace 追踪栈（可选 profile；全栈唯一 Redis 例外）==========
   uptrace_pg_init: &uptrace_pg_init_service
     profiles: [uptrace]
     networks: [pro]
@@ -1246,6 +1319,9 @@ services:
   uptrace_redis: &uptrace_redis_service
     profiles: [uptrace]
     networks: [uptrace_private]
+    # 项目级约束「全栈不引入 Redis」的唯一例外：仅 Uptrace 追踪链路使用，
+    # 独立内网（uptrace_private, internal: true）+ digest 钉死 + 密码必填（安装器补齐）。
+    # 业务栈（含 LiveKit）零 Redis：LiveKit standalone + 应用层按房间分片。
     # digest pinned 2026-09-29（registry manifest HEAD 取多架构顶层；tag 保留便于人读）
     image: ${UPTRACE_REDIS_IMAGE:-redis:7.4.2-alpine@sha256:02419de7eddf55aa5bcf49efb74e88fa8d931b4d77c07eff8a6b2144472b6952}
     container_name: imboy_uptrace_redis
@@ -1374,6 +1450,7 @@ configs:
           static_configs:
             - targets: ["test_backend:9800"]
   edge_health_vm_args:
+    # 探针 VM 只起 kernel/stdlib/inets，不带应用与 heart 进程。
     # The probe boots only kernel/stdlib/inets, with no app or heart process.
     content: |
       -name edge_health@127.0.0.1
@@ -1467,6 +1544,7 @@ volumes:
   test_garage_data: {}
   test_backend_runtime: {}
   test_backend_logs: {}
+  # 该精确卷名是数据兼容合同的一部分（改名 = 丢库）。
   # This exact existing volume name is part of the data compatibility contract.
   imboy_pg18_data:
     name: imboy_pg18_data

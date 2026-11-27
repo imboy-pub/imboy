@@ -61,8 +61,8 @@ Please read [`SECURITY.md`](SECURITY.md) for the responsible disclosure process.
 2. **操作系统 / 部署环境**：Ubuntu 22.04 / macOS 等 / OS and deployment environment
 3. **Docker 版本**：`docker --version && docker compose version`
 4. **问题复现步骤** / Steps to reproduce
-5. **相关日志**：`docker compose -f deploy/docker-compose.prod.yml logs <service>` 输出
-   Relevant logs from `docker compose -f deploy/docker-compose.prod.yml logs <service>`
+5. **相关日志**：`docker compose --env-file deploy/.env --profile prod logs <service>` 输出
+   Relevant logs from `docker compose --env-file deploy/.env --profile prod logs <service>`
 
 ---
 

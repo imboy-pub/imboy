@@ -183,7 +183,7 @@ LiveKit、Garage，以及启用 Uptrace 时的六项内部密钥；登录 RSA �
 | 安装命令 / Install command | 配置 / Configuration |
 |---|---|
 | `bash deploy/install.sh` | 使用根 Compose / Use root Compose |
-| `bash deploy/install.sh --site-compose` | 使用本机 `deploy/docker-compose.prod.yml` / Use the site-specific Compose file |
+| `bash deploy/install.sh --site-compose` | 使用商务渠道交付的 `deploy/docker-compose.prod.yml`（不在开源仓）/ Use the commercially delivered site Compose file |
 
 根 Compose 默认只签发 API、Admin 和 Widget 证书。设置 `LIVEKIT_ENABLED=true` 加启信令域，设置 `LIVEKIT_TURN_ENABLED=true` 同时启用 TURN 域。启用 Uptrace 时还需配置其域名和管理员资料。
 
