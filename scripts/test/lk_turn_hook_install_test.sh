@@ -196,6 +196,13 @@ pid $NGX_TMP/wrapper.pid;
 events { worker_connections 16; }
 http {
   access_log off;
+  # nginx.org 包的编译默认临时目录在 /var/cache/nginx（root 属主）；
+  # 离线测试以 runner 用户跑 nginx -t，全部重定向到测试临时目录。
+  client_body_temp_path $NGX_TMP/client_temp;
+  proxy_temp_path $NGX_TMP/proxy_temp;
+  fastcgi_temp_path $NGX_TMP/fastcgi_temp;
+  uwsgi_temp_path $NGX_TMP/uwsgi_temp;
+  scgi_temp_path $NGX_TMP/scgi_temp;
   map \$http_upgrade \$connection_upgrade { default upgrade; '' close; }
   include $NGX_CONF/*.conf;
 }
