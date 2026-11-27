@@ -13,7 +13,7 @@
 | [AGENT_OPERATING_MODEL.md](./AGENT_OPERATING_MODEL.md) | 六角色、并发与资源规则、权限边界、闲时执行协议、属主决策队列 | 所有人 |
 | [AUTO_MERGE_POLICY.md](./AUTO_MERGE_POLICY.md) | 风险分级、自动合并必要条件、扩展路径（当前仅 dependabot 白名单运行） | 属主 |
 | [ENGINEERING_MAP.md](./ENGINEERING_MAP.md) | 九张知识地图（指针式）+ 仓库外瞬态结构锚定 | 所有人 |
-| [四仓 ECC Prompt Library](../../../../prompts/README.md) | 72 个可复制 ECC 使用案例的统一索引与跨仓分配 | 开发者 / Agent |
+| [四仓 ECC Prompt Library](../../../prompts/README.md) | 72 个可复制 ECC 使用案例的统一索引与跨仓分配 | 开发者 / Agent |
 
 ## 与现有文档的关系
 
