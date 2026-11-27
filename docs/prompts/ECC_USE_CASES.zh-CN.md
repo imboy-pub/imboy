@@ -474,7 +474,7 @@ $agent-eval $benchmark-optimization-loop
 > 本组面向客户业务场景复刻。每个场景提供三条独立提示词：A 新增功能；B 优化现有功能（重点适用于新模型复审旧 AI 代码）；C 测试现有功能。将提示词中的“客户”替换为具体客户、行业、角色和目标流程。
 
 
-### ECC-073 · 客户私聊与多设备消息
+#### ECC-073 · 客户私聊与多设备消息
 
 **场景：** 个人即时通讯
 
@@ -541,7 +541,7 @@ $test-collaboration $ai-regression-testing $verification-loop
 ```
 
 
-### ECC-074 · 客户群聊、社群运营与群治理
+#### ECC-074 · 客户群聊、社群运营与群治理
 
 **场景：** 群组与社群协作
 
@@ -608,7 +608,7 @@ $test-collaboration $ai-regression-testing $verification-loop
 ```
 
 
-### ECC-075 · 客户内容频道、知识订阅与付费内容
+#### ECC-075 · 客户内容频道、知识订阅与付费内容
 
 **场景：** 频道与订阅内容
 
@@ -675,7 +675,7 @@ $test-collaboration $ai-regression-testing $verification-loop
 ```
 
 
-### ECC-076 · 客户动态、朋友圈与内容互动
+#### ECC-076 · 客户动态、朋友圈与内容互动
 
 **场景：** 朋友圈与轻社交
 
@@ -742,7 +742,7 @@ $test-collaboration $ai-regression-testing $verification-loop
 ```
 
 
-### ECC-077 · 客户企业组织、团队空间和成员管理
+#### ECC-077 · 客户企业组织、团队空间和成员管理
 
 **场景：** 组织与工作区
 
@@ -809,7 +809,7 @@ $test-collaboration $ai-regression-testing $verification-loop
 ```
 
 
-### ECC-078 · 客户项目、任务、里程碑和活动流
+#### ECC-078 · 客户项目、任务、里程碑和活动流
 
 **场景：** 项目协作
 
@@ -876,7 +876,7 @@ $test-collaboration $ai-regression-testing $verification-loop
 ```
 
 
-### ECC-079 · 客户网站在线客服、排队和坐席工作台
+#### ECC-079 · 客户网站在线客服、排队和坐席工作台
 
 **场景：** 客服中心与访客挂件
 
@@ -943,7 +943,7 @@ $test-collaboration $ai-regression-testing $verification-loop
 ```
 
 
-### ECC-080 · 客户联系人、企业会话、资产和离岗交接
+#### ECC-080 · 客户联系人、企业会话、资产和离岗交接
 
 **场景：** 企业客户经营 CRM
 
@@ -1010,7 +1010,7 @@ $test-collaboration $ai-regression-testing $verification-loop
 ```
 
 
-### ECC-081 · 客户知识助手、群内助手和受控自动化
+#### ECC-081 · 客户知识助手、群内助手和受控自动化
 
 **场景：** AI 助手与 Agent
 
@@ -1077,7 +1077,7 @@ $test-collaboration $ai-regression-testing $verification-loop
 ```
 
 
-### ECC-082 · 客户第三方系统机器人和事件集成
+#### ECC-082 · 客户第三方系统机器人和事件集成
 
 **场景：** 开发者 Bot 与 Webhook
 
@@ -1144,7 +1144,7 @@ $test-collaboration $ai-regression-testing $verification-loop
 ```
 
 
-### ECC-083 · 客户私密聊天、群组加密与密钥恢复
+#### ECC-083 · 客户私密聊天、群组加密与密钥恢复
 
 **场景：** 端到端加密通信
 
@@ -1211,7 +1211,7 @@ $test-collaboration $ai-regression-testing $verification-loop
 ```
 
 
-### ECC-084 · 客户文件共享、图片视频和安全下载
+#### ECC-084 · 客户文件共享、图片视频和安全下载
 
 **场景：** 附件与文件中心
 
@@ -1278,7 +1278,7 @@ $test-collaboration $ai-regression-testing $verification-loop
 ```
 
 
-### ECC-085 · 客户一对一通话、群通话和直播互动
+#### ECC-085 · 客户一对一通话、群通话和直播互动
 
 **场景：** 音视频通话与直播
 
@@ -1345,7 +1345,7 @@ $test-collaboration $ai-regression-testing $verification-loop
 ```
 
 
-### ECC-086 · 客户实名/注册、联系人和关系管理
+#### ECC-086 · 客户实名/注册、联系人和关系管理
 
 **场景：** 账号、好友与社交关系
 
@@ -1412,7 +1412,7 @@ $test-collaboration $ai-regression-testing $verification-loop
 ```
 
 
-### ECC-087 · 客户充值、支付、账单和付费权益
+#### ECC-087 · 客户充值、支付、账单和付费权益
 
 **场景：** 钱包、支付与订阅
 
@@ -1479,7 +1479,7 @@ $test-collaboration $ai-regression-testing $verification-loop
 ```
 
 
-### ECC-088 · 客户用户、群组、频道和内容发现
+#### ECC-088 · 客户用户、群组、频道和内容发现
 
 **场景：** 搜索与发现
 
@@ -1546,7 +1546,7 @@ $test-collaboration $ai-regression-testing $verification-loop
 ```
 
 
-### ECC-089 · 客户白标入口、功能开关和版本升级
+#### ECC-089 · 客户白标入口、功能开关和版本升级
 
 **场景：** 应用配置与版本运营
 
@@ -1613,11 +1613,11 @@ $test-collaboration $ai-regression-testing $verification-loop
 ```
 
 
-### ECC-110 · 新一代 AI 模型复审与改进旧 AI 生成代码
+#### ECC-110 · 新一代 AI 模型复审与改进旧 AI 生成代码
 
 **场景：** 当更强的新 AI 模型发布时，选择一个由旧 AI 模型实现的 IMBoy 功能切片，让新模型独立重建事实、识别盲点、补测试并证明改进价值。
 
-**A · 新功能 · `product-capability` + `orch-add-feature` + `tdd-workflow`**
+**A · 新增功能 · `product-capability` + `orch-add-feature` + `tdd-workflow`**
 
 ```text
 $product-capability $orch-add-feature $tdd-workflow
@@ -1660,7 +1660,7 @@ $test-collaboration $ai-regression-testing $verification-loop
 ```
 
 
-### ECC-111 · 设备、推送与通知中心
+#### ECC-111 · 设备、推送与通知中心
 
 **场景：** 多设备在线、推送送达和通知偏好
 
@@ -1713,7 +1713,7 @@ $test-collaboration $ai-regression-testing $verification-loop
 ```
 
 
-### ECC-112 · 用户关系扩展与位置服务
+#### ECC-112 · 用户关系扩展与位置服务
 
 **场景：** 收藏、标签、黑名单、好友分类和附近的人
 
@@ -1766,7 +1766,7 @@ $test-collaboration $ai-regression-testing $verification-loop
 ```
 
 
-### ECC-113 · 举报、内容审核与申诉
+#### ECC-113 · 举报、内容审核与申诉
 
 **场景：** 社区内容审核、用户举报和申诉工作流
 
@@ -1819,7 +1819,7 @@ $test-collaboration $ai-regression-testing $verification-loop
 ```
 
 
-### ECC-114 · 直播间、通话记录与录制治理
+#### ECC-114 · 直播间、通话记录与录制治理
 
 **场景：** 直播、RTC 房间、通话记录和录制回放
 
@@ -1872,7 +1872,7 @@ $test-collaboration $ai-regression-testing $verification-loop
 ```
 
 
-### ECC-115 · 插件、企业应用与单点登录
+#### ECC-115 · 插件、企业应用与单点登录
 
 **场景：** 客户插件扩展、OA 集成和 OIDC/SSO
 
@@ -1925,7 +1925,7 @@ $test-collaboration $ai-regression-testing $verification-loop
 ```
 
 
-### ECC-116 · 运营通知、反馈与可观测性
+#### ECC-116 · 运营通知、反馈与可观测性
 
 **场景：** 公告、用户反馈、平台统计和运营审计
 
