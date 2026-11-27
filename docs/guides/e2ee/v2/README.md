@@ -1,6 +1,6 @@
 # E2EE v2 架构体系入口 / E2EE v2 Architecture Index
 
-> 本目录是 E2EE v2 架构的编号 ADR 体系（docs/README 目录口径备注：`guides/e2ee/v2/` 内部编号 ADR 属于该体系，不并入 `docs/adr/`）。本页只做**导航索引**，不新增权威内容；协议规范真源见 [E2EE Protocol Specification](../../../reference/e2ee-protocol-specification.md)，体系定位与标准驱动流程见 [standard/README](../standard/README.md)。
+> 本目录是 E2EE v2 架构的编号 ADR 体系（docs/README 目录口径备注：`guides/e2ee/v2/` 内部编号 ADR 属于该体系，不并入 `docs/adr/`）。本页只做**导航索引**，不新增权威内容；协议规范真源见 [E2EE Protocol Specification](../../../reference/e2ee-protocol-specification.md)，体系定位与标准驱动流程见 [standard/README](https://github.com/imboy-pub/imboy/blob/main/docs/guides/e2ee/standard/README.md)。
 
 ## 阅读顺序 / Reading order
 

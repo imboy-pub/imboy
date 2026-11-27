@@ -73,7 +73,7 @@ docker compose -p imboy-test --env-file .env.test --profile test --profile test-
 
 ## 原生 Shell 固定版本交付包 / Pinned native Shell kit
 
-[原生 Shell 安装材料](native-shell/README.md) 提供单机 systemd 的安装、升级、
+[原生 Shell 安装材料](native-shell/) 提供单机 systemd 的安装、升级、
 备份恢复、配置模板与陌生人验收步骤，安装工具不依赖 Python 或 Docker。
 该工具包固定于 `cb95fa72f9bc617d0f30ddd6b98da51f39cfd2af` /
 `1.0.0-alpha.83` / 迁移头 `243`，初始材料版为 `PAYLOAD_READY=no`。
