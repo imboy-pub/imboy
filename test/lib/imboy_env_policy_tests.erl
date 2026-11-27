@@ -84,6 +84,38 @@ auto_migrate_env_override_test() ->
         restore_os_env(SavedEnv)
     end.
 
+cluster_nodes_env_override_test() ->
+    SavedApp = [{cluster_nodes, application:get_env(imboy, cluster_nodes)}],
+    SavedEnv = [{"IMBOY_CLUSTER_NODES", os:getenv("IMBOY_CLUSTER_NODES")}],
+    Configured = ['existing1@cluster.example', 'existing2@cluster.example'],
+    try
+        application:set_env(imboy, cluster_nodes, Configured),
+        os:unsetenv("IMBOY_CLUSTER_NODES"),
+        ok = imboy_env:override_from_env(),
+        ?assertEqual({ok, Configured}, application:get_env(imboy, cluster_nodes)),
+        os:putenv("IMBOY_CLUSTER_NODES", ""),
+        ok = imboy_env:override_from_env(),
+        ?assertEqual({ok, Configured}, application:get_env(imboy, cluster_nodes)),
+        os:putenv("IMBOY_CLUSTER_NODES", " [] "),
+        ok = imboy_env:override_from_env(),
+        ?assertEqual({ok, []}, application:get_env(imboy, cluster_nodes)),
+        os:putenv("IMBOY_CLUSTER_NODES", "[\"node1@127.0.0.1\",\"node2@cluster.example\"]"),
+        ok = imboy_env:override_from_env(),
+        ?assertEqual({ok, ['node1@127.0.0.1', 'node2@cluster.example']},
+            application:get_env(imboy, cluster_nodes)),
+        application:set_env(imboy, cluster_nodes, Configured),
+        lists:foreach(fun(Raw) ->
+            os:putenv("IMBOY_CLUSTER_NODES", Raw),
+            ?assertError({invalid_env, "IMBOY_CLUSTER_NODES", Raw},
+                imboy_env:override_from_env()),
+            ?assertEqual({ok, Configured}, application:get_env(imboy, cluster_nodes))
+        end, ["not-json", "{}", "null", "[1]", "[\"\"]", "[\"node\"]",
+            "[\"@host\"]", "[\"node@\"]", "[\"node@host@other\"]", "[\"node @host\"]"])
+    after
+        restore_app_env(SavedApp),
+        restore_os_env(SavedEnv)
+    end.
+
 smtp_and_sms_env_override_test() ->
     AppKeys = [smtp_option, sms, yjsms_url, jsms_temp_id, jsms_sign_id],
     EnvKeys = [
@@ -123,6 +155,52 @@ smtp_and_sms_env_override_test() ->
         ?assertEqual({ok, <<"https://sms.example.com">>}, application:get_env(imboy, yjsms_url)),
         ?assertEqual({ok, <<"template-1">>}, application:get_env(imboy, jsms_temp_id)),
         ?assertEqual({ok, <<"sign-1">>}, application:get_env(imboy, jsms_sign_id))
+    after
+        restore_app_env(SavedApp),
+        restore_os_env(SavedEnv)
+    end.
+
+%% 公开资源 URL 必须使用本实例地址；S3 签名地址与存储桶保持独立。
+%% Public resource URLs use this instance's origin, independently of S3 signing.
+garage_public_base_url_env_override_test() ->
+    EnvKeys = [
+        "IMBOY_GARAGE_ENDPOINT",
+        "IMBOY_GARAGE_PUBLIC_ENDPOINT",
+        "IMBOY_GARAGE_PUBLIC_BASE_URL",
+        "IMBOY_GARAGE_BUCKET",
+        "IMBOY_GARAGE_PUBLIC_BUCKET",
+        "IMBOY_GARAGE_ACCESS_KEY",
+        "IMBOY_GARAGE_SECRET_KEY"
+    ],
+    SavedApp = [{garage, application:get_env(imboy, garage)}],
+    SavedEnv = [{Key, os:getenv(Key)} || Key <- EnvKeys],
+    Garage = #{
+        endpoint => <<"http://garage:3900">>,
+        public_endpoint => <<"http://api.localhost:8080/s3">>,
+        public_base_url => <<"https://s3.example.com">>,
+        bucket => <<"imboy">>,
+        public_bucket => <<"imboy-public">>
+    },
+    try
+        lists:foreach(fun os:unsetenv/1, EnvKeys),
+        application:set_env(imboy, garage, Garage),
+        ok = imboy_env:override_from_env(),
+        ?assertEqual({ok, Garage}, application:get_env(imboy, garage)),
+        os:putenv("IMBOY_GARAGE_PUBLIC_BASE_URL", "http://s3.localhost:8080"),
+        ok = imboy_env:override_from_env(),
+        ?assertEqual(
+            {ok, Garage#{public_base_url := <<"http://s3.localhost:8080">>}},
+            application:get_env(imboy, garage)
+        ),
+        ?assertEqual(
+            <<"http://s3.localhost:8080/public/avatar.png">>,
+            elib_oss:public_url_for_key(<<"public/avatar.png">>)
+        ),
+        %% Empty optional env values must preserve sys.config, as for other Garage keys.
+        os:putenv("IMBOY_GARAGE_PUBLIC_BASE_URL", ""),
+        application:set_env(imboy, garage, Garage),
+        ok = imboy_env:override_from_env(),
+        ?assertEqual({ok, Garage}, application:get_env(imboy, garage))
     after
         restore_app_env(SavedApp),
         restore_os_env(SavedEnv)

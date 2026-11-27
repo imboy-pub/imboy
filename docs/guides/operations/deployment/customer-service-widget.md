@@ -1,5 +1,7 @@
 # 客服托管 Widget 部署与运维 / Hosted Customer Service Widget Deployment
 
+> 本地联调：在仓库根目录执行 `bash scripts/dev_setup.sh --with-widget`，配置与访问地址见[本地开发指南](./local-development.md)。
+>
 > 适用范围：标准部署（Docker Compose + Nginx，社区版 `docker-compose.community.yml` /
 > 商务版 `docker-compose.prod.yml`）。本组件由任务卡 CSD-DEP-01 引入，接入合同见
 > run 冻结合同 hosted-widget-contract-v1（S1-S6）。

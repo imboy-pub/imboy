@@ -49,34 +49,30 @@ flowchart TB
 
 ## Run locally
 
-### 1. Requirements
-
-- Erlang/OTP 28+
-- GNU Make
-- Docker
-
-### 2. Initialize
+Prepare Docker 24+, Compose v2.23.1+, Bash and OpenSSL, then run from the repository root:
 
 ```bash
+test -f .env || cp .env.example .env  # Preserve existing configuration
+${EDITOR:-vi} .env    # Set both dev and pro database passwords
 bash scripts/dev_setup.sh
 ```
 
-The script starts PostgreSQL 18 and creates `.env` and `config/sys.local.config`. Follow its prompt to make sure the database passwords match. Both local configuration files stay out of Git.
-
-### 3. Build and start
+The default stack starts PostgreSQL, Garage, API, Admin and Nginx, including the
+attachment download edge. Open the [API](http://api.localhost:8080/api/v1/init) or
+[Admin](http://admin.localhost:8080). On a fresh database, visit
+[/setup](http://admin.localhost:8080/setup) to create the first superadmin; existing
+instances keep their current accounts. LiveKit and Widget are opt-in; the local stack
+does not start monitoring services. The first build and image downloads depend on your
+network and machine; prepared images make subsequent starts faster.
 
 ```bash
-make compile
-IMBOYENV=local make run
+bash scripts/dev_setup.sh --with-livekit --with-widget
 ```
 
-After startup, open:
-
-```text
-http://127.0.0.1:9800/api/v1/init
-```
-
-To connect a phone to the local backend, replace `127.0.0.1` in the configuration with your computer's LAN IP address.
+For backend source development, use `bash scripts/dev_setup.sh --infra-only`, then
+build and start the host node as described in the
+[local development guide](./docs/guides/operations/deployment/local-development.md)
+for configuration, profiles, data preservation and mobile testing.
 
 ## Common commands
 
@@ -200,26 +196,12 @@ notes, and rollback guidance live in [RELEASES.md](./RELEASES.md).
 
 Full manual: the [deployment guide](./deploy/README.md).
 
-## Quick demo (one command)
-
-```bash
-cd deploy
-docker compose -f docker-compose.demo.yml up -d
-# after ~30s open http://127.0.0.1:9800/api/v1/init
-```
-
-This example is for local product evaluation. Check configuration templates, ports
-and health checks in the [deployment guide](./deploy/README.md) before starting.
-Actual capabilities depend on the build manifest and effective runtime profile/features.
-`phase1_delivery` allows one-to-one app-friend RTC by default and accepts
-`features.rtc=false`; group calls, E2EE and AI remain disabled. A running demo does
-not establish LiveKit/TURN readiness or real two-device media acceptance.
-
 ## More documentation
 
 - [Documentation index](./docs/README.md)
 - [Core concepts](./docs/concepts/README.md) (accounts / hierarchy / messaging / E2EE / agent / customer service / enterprise)
 - [Glossary](./docs/glossary.md)
+- [Local development guide](./docs/guides/operations/deployment/local-development.md)
 - [Backend architecture](./docs/architecture/overview.md)
 - [REST API catalog](./docs/reference/rest-api-v1-catalog.md)
 - [WebSocket protocol](./docs/reference/ws-protocol-contract.md)

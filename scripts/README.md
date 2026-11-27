@@ -7,7 +7,7 @@
 
 | 脚本 | 用途 |
 |------|------|
-| `dev_setup.sh` | 本地开发环境初始化 |
+| `dev_setup.sh` | 根目录 Compose 启动入口；默认 API/Admin，`--infra-only` 供宿主机源码调试 |
 | `seed_demo.sh` / `seed_ai_personas.sh` | 灌入演示数据 / AI 角色数据 |
 | `start_node.sh` / `stop_node.sh` | 本地节点启停 |
 | `onboarding_setup.sh` / `verify_onboarding.sh` | 新部署初始化与自检 |
@@ -118,7 +118,8 @@ OS env 配置不随 release 的 `sys.config` 分发，统一放在服务器
 
 ## Garage S3
 
-`garage-install.sh`（安装）、`garage-local-setup.sh`（本地桶/密钥初始化）、`garage_e2e_test.sh`（端到端验证）。
+`garage-install.sh`（Linux 独立安装）、`dev_setup.sh`（本地 Compose 与桶初始化）、`garage_e2e_test.sh`（端到端验证）。
+本地步骤统一见[本地开发指南](../docs/guides/operations/deployment/local-development.md)。
 
 ## 测试与冒烟
 

@@ -90,6 +90,9 @@ timeout 120 docker run --rm --name "$probe_name" --network none "${mounts[@]}" \
     io:format("RUNTIME_PROBE_OK~n"), halt(0).
   ' | tee "$work/release.log"
 grep -Fxq RUNTIME_PROBE_OK "$work/release.log" || fail 'The real release probe did not finish.'
+if grep -Fq 'Failed open sctp dynamic library' "$work/release.log"; then
+  fail 'The runtime is missing the SCTP library required for clean relx CLI output.'
+fi
 
 jq '.services.imboy_backend.user="0:0"' "$work/compose.json" > "$work/root.json"
 if bash "$ROOT/deploy/prepare-backend-runtime.sh" -f "$work/root.json"; then

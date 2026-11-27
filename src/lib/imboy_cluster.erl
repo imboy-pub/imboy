@@ -155,8 +155,11 @@ ping_nodes() ->
 %% @doc 从配置中获取集群节点列表
 -spec get_cluster_nodes_from_config() -> [node()].
 get_cluster_nodes_from_config() ->
-    case application:get_env(imboy, cluster_nodes, []) of
-        [] ->
+    case {application:get_env(imboy, cluster_nodes, []), os:getenv("IMBOY_CLUSTER_NODES")} of
+        {[], Explicit} when is_list(Explicit), length(Explicit) > 0 ->
+            %% imboy_env 已校验并应用显式 JSON []；旧变量不得重新加入对等节点。
+            [];
+        {[], _} ->
             % 如果没有配置，尝试从环境变量获取
             case os:getenv("CLUSTER_NODES") of
                 false ->
@@ -164,7 +167,7 @@ get_cluster_nodes_from_config() ->
                 NodesStr ->
                     parse_cluster_nodes_string(NodesStr)
             end;
-        Nodes ->
+        {Nodes, _} ->
             Nodes
     end.
 

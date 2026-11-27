@@ -103,14 +103,14 @@ env_wiring_for_max_ws_connections_test() ->
 
 compose_files_use_injection_not_dead_erl_max_ports_test() ->
     Community = code_bin("deploy/docker-compose.community.yml"),
-    Demo = code_bin("deploy/docker-compose.demo.yml"),
+    Local = code_bin("docker-compose.yml"),
     %% D7：死配置 ERL_MAX_PORTS 已删除
     ?assertEqual(nomatch, binary:match(Community, <<"ERL_MAX_PORTS">>)),
-    ?assertEqual(nomatch, binary:match(Demo, <<"ERL_MAX_PORTS">>)),
+    ?assertEqual(nomatch, binary:match(Local, <<"ERL_MAX_PORTS">>)),
     %% 注入面：ERL_FLAGS 经 install.sh 重算透传；WS 上限直传
     ?assertNotEqual(nomatch, binary:match(Community, <<"ERL_FLAGS: ${IMBOY_ERL_FLAGS:-}">>)),
     ?assertNotEqual(nomatch, binary:match(Community, <<"IMBOY_MAX_WS_CONNECTIONS">>)),
-    ?assertNotEqual(nomatch, binary:match(Demo, <<"IMBOY_MAX_WS_CONNECTIONS">>)),
+    ?assertNotEqual(nomatch, binary:match(Local, <<"IMBOY_MAX_WS_CONNECTIONS">>)),
     ok.
 
 install_sh_capacity_block_present_test() ->
@@ -164,14 +164,20 @@ trim_leading_ws(<<"\t", Rest/binary>>) -> trim_leading_ws(Rest);
 trim_leading_ws(Other) -> Other.
 
 repo_root() ->
-    case os:cmd("git rev-parse --show-toplevel 2>/dev/null") of
-        [] ->
-            erlang:error({repo_root_not_found, cwd_missing_git});
-        Line0 ->
-            Line = string:trim(Line0),
-            case filelib:is_file(filename:join(Line, "config/vm.args")) of
-                true -> Line;
-                false -> erlang:error({repo_root_not_found, Line})
+    %% Source contracts also run in exported/container workspaces without Git.
+    %% Locate the source tree itself, independently of Git's ownership/config.
+    {ok, Cwd} = file:get_cwd(),
+    repo_root(Cwd).
+
+repo_root(Dir) ->
+    case filelib:is_file(filename:join(Dir, "config/vm.args")) andalso
+        filelib:is_file(filename:join(Dir, "src/imboy_app.erl"))
+    of
+        true -> Dir;
+        false ->
+            case filename:dirname(Dir) of
+                Dir -> erlang:error({repo_root_not_found, Dir});
+                Parent -> repo_root(Parent)
             end
     end.
 

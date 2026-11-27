@@ -271,3 +271,6 @@ config/sys.quality.*.config
 *~
 # erl_crash.dump 轮转变体（erl_crash.dump.1 等）
 erl_crash.dump.*
+
+# Local development artifacts
+.local/

@@ -17,7 +17,7 @@
 |---|---|---|
 | 新装整套 IMBoy，Linux 已装 Docker | 方式 A，推荐 | `deploy/install.sh --edition community` |
 | 只给现有 Linux IMBoy 增加 Garage | 方式 B | `scripts/garage-install.sh` |
-| macOS 本地开发 | Docker 本地脚本 | `scripts/garage-local-setup.sh` |
+| macOS / Linux 本地开发 | 根目录 Compose | `bash scripts/dev_setup.sh --infra-only` |
 | 已有 Garage，需要升级 | 先备份再升级 | [安全升级](#安全升级已有-garage) |
 
 不要同时运行方式 A 和方式 B，否则两套 Garage 会争用 `3900`、`3901`、`3903`
@@ -165,7 +165,7 @@ index = "index.html"
 经过下文带 TLS 的 Nginx 文件域名。
 
 > Garage v2.4.1 官方发布页只提供 Linux 二进制。macOS 请运行
-> `bash scripts/garage-local-setup.sh`，不要使用来源不明的二进制。
+> `bash scripts/dev_setup.sh --infra-only`，步骤见[本地开发指南](./deployment/local-development.md)。
 
 ### 2. 检查服务
 
@@ -284,18 +284,22 @@ curl -sS \
 `https://files.example.com/` 开头，无 Authorization 访问返回 `200`，内容 SHA-256
 与原文件一致。若公开流程失败，Garage 安装只能记为 `PARTIAL`，不能记为通过。
 
-## macOS 本地开发
+## 本地开发
 
-macOS 使用 Docker，数据写入 `/tmp/garage`，只适合开发测试：
+macOS 与 Linux 共用仓库根目录的 Compose。Garage 随默认开发栈启动；只需要
+开发基础设施时使用：
 
 ```bash
-cd /path/to/imboy
-bash scripts/garage-local-setup.sh
-docker exec garage-local /garage --version
-docker exec garage-local /garage status
+# 仓库根目录；首次运行先按 .env.example 配置 .env。
+bash scripts/dev_setup.sh --infra-only
+docker compose --profile dev exec garage /garage --version
+docker compose --profile dev exec garage /garage status
 ```
 
-脚本会固定使用 `dxflrs/garage:v2.4.1`。`/tmp/garage` 可能被系统清理，不可当生产数据盘。
+桶初始化、持久化与公开文件入口统一见[本地开发指南](./deployment/local-development.md)。
+本入口不会导入旧 `garage-local` 容器或 `/tmp/garage` 数据。若旧开发容器占用 `3900`，
+确认身份后 `docker stop garage-local`，保留容器与目录。已有附件须保留原数据并单独
+备份、迁移凭据与数据、验收，不要把空的新桶误认为旧数据已迁移。
 
 ## 安全升级已有 Garage
 

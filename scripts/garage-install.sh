@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
 # Garage Linux 二进制安装脚本（非 docker）/ Garage Linux binary installer
-# macOS 没有 v2.4.1 官方二进制，请改用 scripts/garage-local-setup.sh。
+# macOS 没有 v2.4.1 官方二进制，请改用 scripts/dev_setup.sh --infra-only。
 #
 # 用法 / Usage:
 #   bash scripts/garage-install.sh
 #
 # 说明 / Notes:
-#   - 与 docker 版 scripts/garage-local-setup.sh 共存，本脚本走二进制安装。
+#   - 与 docker 版 scripts/dev_setup.sh --infra-only 共存，本脚本走二进制安装。
 #   - 幂等：重复运行不会重置已有密钥与数据。
 #   - 安全：私有桶不开放匿名读；只有 imboy-public 通过 Website API 公开。
 set -euo pipefail
@@ -28,7 +28,7 @@ OS="$(uname -s)"
 ARCH="$(uname -m)"
 case "${OS}-${ARCH}" in
   Darwin-*)
-    echo "✗ Garage ${GARAGE_VERSION} 官方未提供 macOS 二进制；请运行 scripts/garage-local-setup.sh" >&2
+    echo "✗ Garage ${GARAGE_VERSION} 官方未提供 macOS 二进制；请运行 scripts/dev_setup.sh --infra-only" >&2
     exit 1
     ;;
   Linux-x86_64)   PLATFORM="x86_64-unknown-linux-musl" ;;

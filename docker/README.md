@@ -1,11 +1,13 @@
 # Docker 说明
 
 本目录存放 IMBoy 后端与 PostgreSQL 相关的 Docker 构建文件和初始化脚本。
+本地启动统一使用根目录 `docker-compose.yml` 与 `bash scripts/dev_setup.sh`，步骤见
+[本地开发指南](../docs/guides/operations/deployment/local-development.md)。
 
 ## 文件说明
 
 - `imboy_Dockerfile_dev`
-  Erlang/OTP 开发镜像，用于拉起后端开发环境或构建带源码的调试容器。
+  Erlang/OTP 29 开发工具镜像；从当前检出挂载源码，不在构建时克隆远端分支。
 - `pg18_Dockerfile`
   PostgreSQL 18 运行镜像，集成 PostGIS、pgvector、timescaledb、pg_jieba、pgRouting 等扩展。
 - `pg-initdb-imboy.sh`
@@ -133,33 +135,16 @@ manifest list 且含双平台。
 - 与 release CI（tag 触发构建 `ghcr.io/imboy-pub/imboy-pg18`，仅 amd64）
   是两条独立通道；Hub 为多架构人工发布通道
 
-## 常用运行示例
-
-### 1. 创建本地网络
+## 使用开发工具镜像
 
 ```bash
-docker network create imboy-network
+# 当前源码由 bind mount 提供；首次使用需拉取并编译依赖。
+docker run --rm -it -v "$PWD:/workspace/imboy" imboy/imboy-api:dev
 ```
 
-### 2. 启动 PostgreSQL 容器
-
-```bash
-docker run -d \
-  --name imboy_postgis \
-  --network imboy-network \
-  -e POSTGRES_USER=imboy_user \
-  -e POSTGRES_PASSWORD=change-me \
-  -e POSTGRES_DB=imboy_v1 \
-  -p 4321:5432 \
-  imboy/pg18:dev
-```
-
-### 3. 进入容器排查
-
-```bash
-docker exec -it imboy_postgis bash
-docker exec -it imboy_api bash
-```
+在容器内构建源码前核对挂载目录与数据库地址。容器中的 `127.0.0.1` 指向容器自身，
+不能直接照搬宿主机 PostgreSQL 配置。日常容器化启动和宿主机源码调试按
+[本地开发指南](../docs/guides/operations/deployment/local-development.md) 选择入口。
 
 ## 维护约束
 

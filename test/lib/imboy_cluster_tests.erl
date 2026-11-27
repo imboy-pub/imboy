@@ -2,6 +2,53 @@
 -include_lib("eunit/include/eunit.hrl").
 -include("eunit_setup.hrl").
 
+%% No application/DB boot: deny observed joins before any network connection.
+cluster_config_env_precedence_test_() ->
+    {timeout, 20, ?_test(pure_mock_fixture:run(fun cluster_config_env_precedence/0))}.
+
+cluster_config_env_precedence() ->
+    SavedApp = application:get_env(imboy, cluster_nodes),
+    SavedEnv = [{Key, os:getenv(Key)} || Key <- ["IMBOY_CLUSTER_NODES", "CLUSTER_NODES"]],
+    try
+        os:putenv("CLUSTER_NODES", "legacy1@cluster.example,legacy2@cluster.example"),
+        run_with_mocks([
+            {elib_log, [
+                {info, 1, fun(_) -> ok end},
+                {info, 2, fun(_, _) -> ok end},
+                {error, 2, fun(_, _) -> ok end}
+            ]},
+            {imboy_license, [
+                {check_node_quota, 1, fun(_) -> {error, node_quota_exceeded, 2, 1} end}
+            ]}
+        ], fun() ->
+            lists:foreach(fun({Raw, Configured, ExpectedJoins}) ->
+                case Raw of
+                    false -> os:unsetenv("IMBOY_CLUSTER_NODES");
+                    _ -> os:putenv("IMBOY_CLUSTER_NODES", Raw)
+                end,
+                application:set_env(imboy, cluster_nodes, Configured),
+                Before = meck:num_calls(imboy_license, check_node_quota, 1),
+                ?assertEqual(ok, imboy_cluster:init()),
+                ?assertEqual(ExpectedJoins,
+                    meck:num_calls(imboy_license, check_node_quota, 1) - Before)
+            end, [
+                {"[]", [], 0},
+                {false, [], 2},
+                {"", [], 2},
+                {false, ['configured@cluster.example'], 1}
+            ])
+        end)
+    after
+        case SavedApp of
+            undefined -> application:unset_env(imboy, cluster_nodes);
+            {ok, AppValue} -> application:set_env(imboy, cluster_nodes, AppValue)
+        end,
+        lists:foreach(fun
+            ({Key, false}) -> os:unsetenv(Key);
+            ({Key, EnvValue}) -> os:putenv(Key, EnvValue)
+        end, SavedEnv)
+    end.
+
 init_without_cluster_nodes_returns_ok_test_() ->
     ?TEST_WITH_APP(fun() ->
         application:set_env(imboy, cluster_nodes, []),

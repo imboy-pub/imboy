@@ -11,7 +11,7 @@
 |---|---|---|
 | Erlang/OTP | 28+ | OTP 28 把裸 `catch` 视为编译错误，源码统一 `try...catch` |
 | PostgreSQL | 18+ | 扩展需求：`pg_jieba`、`postgis`、`timescaledb`、`pgcrypto` |
-| Docker / Docker Compose | 24+ / Compose v2 | 演示与评估环境（`deploy/docker-compose.demo.yml`） |
+| Docker / Docker Compose | 24+ / Compose v2.23.1+ | 本地开发使用根目录 `docker-compose.yml`；生产使用 `deploy/` 安装入口 |
 | Kubernetes (可选) | 1.27+ | Helm chart 见 `deploy/helm/` |
 | 对象存储 | Garage S3 兼容 | 附件直传（presigned PUT/GET） |
 
