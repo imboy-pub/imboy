@@ -15,7 +15,7 @@
 | 子目录 | 内容 | 规模 |
 |--------|------|------|
 | [operations/](../../deploy/README.md#operations-lifecycle) | 部署运维：备份恢复、升级、监控、集群、Garage、benchmark | 按需查阅 |
-| [testing/](./testing/testing-strategy.md) | 测试指南：单元/集成/E2E/性能/混沌测试 | 16 篇 |
+| [testing/](./testing/) | 测试指南：单元/集成/E2E/性能/混沌测试 | 15 篇 |
 | [e2ee/](./e2ee/key-lifecycle.md) | E2EE 配置与协议专题（含 v2/ 子目录，待 owner 细分） | 37 篇 |
 | [release/](./release/RELEASE.md) | 发版流程与应用商店上架清单 | 4 篇 |
 | [payment/](./payment/payment-wallet-integration.md) | 支付集成（S4 支付宝/微信、钱包联调） | 2 篇 |
