@@ -1,6 +1,6 @@
 # IMBoy ECC 使用案例 / Backend
 
-> 本文是可直接复制到 Codex 会话的 ECC 使用案例库。每个案例均可独立复制，以 `$skill-name` 开头。原 72 个工程案例各提供一个提示词；新增功能场景提供 A 新增功能、B 优化现有功能、C 测试现有功能三个独立提示词。
+ > 本文是可直接复制到 Codex 会话的 ECC 使用案例库。每个案例均可独立复制，以 `$skill-name` 开头。原 72 个工程案例各提供一个提示词；新增功能场景提供 A 新增功能、B 优化现有功能、C 测试现有功能三个独立提示词。
 >
 > **使用约定**
 > - 在已安装 ECC 的 Codex 会话中，复制单个案例的完整代码块执行。
@@ -16,11 +16,15 @@
 ## 本仓库范围
 
 本文件包含后端与跨仓工程案例 44 个，以及 IMBoy 公共功能场景/新模型复审案例 24 个；合计 68 个（ECC-001、005–022、043–045、051–089、110–116）。
+
+> **时间估算说明**：时间为单个案例的一次 A/B/C 模式执行预算，包含仓库阅读、代码分析、必要实施及相关验证；不是保证完成时间。A/B/C 只能选择一种执行。30 分钟及以上建议安排 ZCODE 闲时任务。遇到缺少设备、数据库、凭据、外部服务或需求决策时，应报告 BLOCKED/NOT RUN，不能为了符合预算而跳过验证。复杂度按当前仓库结构与案例提示词范围估算，实际会随工作树状态、测试环境和缺陷数量变化。
 ## 案例清单
 
 ### 项目理解与架构分析
 
 #### ECC-001 · 后端完整架构梳理
+
+**预计执行时间：45 分钟**（单次执行；包含代码阅读、定向实施/分析与相关验证）
 
 **Skills：** `codebase-onboarding`
 
@@ -32,6 +36,8 @@ $codebase-onboarding
 
 #### ECC-005 · 单聊消息完整调用链
 
+**预计执行时间：30 分钟**（单次执行；包含代码阅读、定向实施/分析与相关验证）
+
 **Skills：** `change-impact`
 
 ```text
@@ -41,6 +47,8 @@ $change-impact
 ```
 
 #### ECC-006 · WebSocket Action 注册和扩展
+
+**预计执行时间：45 分钟**（单次执行；包含代码阅读、定向实施/分析与相关验证）
 
 **Skills：** `change-impact` · `contract-first`
 
@@ -52,6 +60,8 @@ $change-impact $contract-first
 
 #### ECC-007 · 三仓依赖关系分析
 
+**预计执行时间：30 分钟**（单次执行；包含代码阅读、定向实施/分析与相关验证）
+
 **Skills：** `contract-first`
 
 ```text
@@ -61,6 +71,8 @@ $contract-first
 ```
 
 #### ECC-008 · 文档与代码一致性审计
+
+**预计执行时间：45 分钟**（单次执行；包含代码阅读、定向实施/分析与相关验证）
 
 **Skills：** `docs-governance` · `living-docs-governance`
 
@@ -74,6 +86,8 @@ $docs-governance $living-docs-governance
 
 #### ECC-009 · 新增 REST API
 
+**预计执行时间：60 分钟**（单次执行；包含代码阅读、定向实施/分析与相关验证）
+
 **Skills：** `api-design` · `contract-first` · `tdd-workflow`
 
 ```text
@@ -83,6 +97,8 @@ $api-design $contract-first $tdd-workflow
 ```
 
 #### ECC-010 · API 错误码和分页治理
+
+**预计执行时间：60 分钟**（单次执行；包含代码阅读、定向实施/分析与相关验证）
 
 **Skills：** `api-design` · `contract-first`
 
@@ -94,6 +110,8 @@ $api-design $contract-first
 
 #### ECC-011 · 新增 WebSocket Action
 
+**预计执行时间：60 分钟**（单次执行；包含代码阅读、定向实施/分析与相关验证）
+
 **Skills：** `contract-first` · `tdd-workflow`
 
 ```text
@@ -103,6 +121,8 @@ $contract-first $tdd-workflow
 ```
 
 #### ECC-012 · 单聊 ACK 和可靠投递
+
+**预计执行时间：90 分钟**（单次执行；包含代码阅读、定向实施/分析与相关验证）
 
 **Skills：** `change-impact` · `tdd-workflow` · `test-collaboration`
 
@@ -114,6 +134,8 @@ $change-impact $tdd-workflow $test-collaboration
 
 #### ECC-013 · 群聊消息时序治理
 
+**预计执行时间：90 分钟**（单次执行；包含代码阅读、定向实施/分析与相关验证）
+
 **Skills：** `change-impact` · `module-regression`
 
 ```text
@@ -123,6 +145,8 @@ $change-impact $module-regression
 ```
 
 #### ECC-014 · 消息撤回和编辑时间窗
+
+**预计执行时间：60 分钟**（单次执行；包含代码阅读、定向实施/分析与相关验证）
 
 **Skills：** `ai-regression-testing` · `tdd-workflow`
 
@@ -134,6 +158,8 @@ $ai-regression-testing $tdd-workflow
 
 #### ECC-015 · 消息投递性能和背压
 
+**预计执行时间：90 分钟**（单次执行；包含代码阅读、定向实施/分析与相关验证）
+
 **Skills：** `latency-critical-systems` · `benchmark-optimization-loop`
 
 ```text
@@ -143,6 +169,8 @@ $latency-critical-systems $benchmark-optimization-loop
 ```
 
 #### ECC-016 · OTP Supervisor 容错分析
+
+**预计执行时间：45 分钟**（单次执行；包含代码阅读、定向实施/分析与相关验证）
 
 **Skills：** `change-impact` · `architecture-decision-records`
 
@@ -154,6 +182,8 @@ $change-impact $architecture-decision-records
 
 #### ECC-017 · 四层架构越层调用检查
 
+**预计执行时间：45 分钟**（单次执行；包含代码阅读、定向实施/分析与相关验证）
+
 **Skills：** `module-governance` · `module-regression`
 
 ```text
@@ -163,6 +193,8 @@ $module-governance $module-regression
 ```
 
 #### ECC-018 · PostgreSQL 慢查询优化
+
+**预计执行时间：60 分钟**（单次执行；包含代码阅读、定向实施/分析与相关验证）
 
 **Skills：** `benchmark` · `latency-critical-systems`
 
@@ -174,6 +206,8 @@ $benchmark $latency-critical-systems
 
 #### ECC-019 · 数据库迁移安全审查
 
+**预计执行时间：60 分钟**（单次执行；包含代码阅读、定向实施/分析与相关验证）
+
 **Skills：** `database-migrations` · `change-impact`
 
 ```text
@@ -183,6 +217,8 @@ $database-migrations $change-impact
 ```
 
 #### ECC-020 · E2EE 服务端零密码学约束
+
+**预计执行时间：45 分钟**（单次执行；包含代码阅读、定向实施/分析与相关验证）
 
 **Skills：** `security-review` · `ai-regression-testing`
 
@@ -194,6 +230,8 @@ $security-review $ai-regression-testing
 
 #### ECC-021 · API 鉴权、权限和限流
 
+**预计执行时间：60 分钟**（单次执行；包含代码阅读、定向实施/分析与相关验证）
+
 **Skills：** `security-review` · `tdd-workflow`
 
 ```text
@@ -203,6 +241,8 @@ $security-review $tdd-workflow
 ```
 
 #### ECC-022 · 附件上传与下载安全
+
+**预计执行时间：60 分钟**（单次执行；包含代码阅读、定向实施/分析与相关验证）
 
 **Skills：** `security-review` · `change-impact`
 
@@ -216,6 +256,8 @@ $security-review $change-impact
 
 #### ECC-043 · OpenAPI 契约漂移检查
 
+**预计执行时间：30 分钟**（单次执行；包含代码阅读、定向实施/分析与相关验证）
+
 **Skills：** `contract-first` · `api-design`
 
 ```text
@@ -226,6 +268,8 @@ $contract-first $api-design
 
 #### ECC-044 · 三端 EntityId/TSID 一致性
 
+**预计执行时间：45 分钟**（单次执行；包含代码阅读、定向实施/分析与相关验证）
+
 **Skills：** `contract-first` · `test-collaboration`
 
 ```text
@@ -235,6 +279,8 @@ $contract-first $test-collaboration
 ```
 
 #### ECC-045 · 错误码和枚举一致性
+
+**预计执行时间：45 分钟**（单次执行；包含代码阅读、定向实施/分析与相关验证）
 
 **Skills：** `contract-first` · `tdd-workflow`
 
@@ -248,6 +294,8 @@ $contract-first $tdd-workflow
 
 #### ECC-051 · 建立后端测试资产地图
 
+**预计执行时间：45 分钟**（单次执行；包含代码阅读、定向实施/分析与相关验证）
+
 **Skills：** `test-collaboration`
 
 ```text
@@ -257,6 +305,8 @@ $test-collaboration
 ```
 
 #### ECC-052 · 历史缺陷自动回归
+
+**预计执行时间：45 分钟**（单次执行；包含代码阅读、定向实施/分析与相关验证）
 
 **Skills：** `ai-regression-testing` · `tdd-workflow`
 
@@ -268,6 +318,8 @@ $ai-regression-testing $tdd-workflow
 
 #### ECC-053 · 下游模块回归分析
 
+**预计执行时间：30 分钟**（单次执行；包含代码阅读、定向实施/分析与相关验证）
+
 **Skills：** `module-regression` · `change-impact`
 
 ```text
@@ -277,6 +329,8 @@ $module-regression $change-impact
 ```
 
 #### ECC-054 · CI 假绿和跳过测试审计
+
+**预计执行时间：60 分钟**（单次执行；包含代码阅读、定向实施/分析与相关验证）
 
 **Skills：** `test-collaboration` · `verification-loop`
 
@@ -288,6 +342,8 @@ $test-collaboration $verification-loop
 
 #### ECC-055 · 文档完整性审计
 
+**预计执行时间：45 分钟**（单次执行；包含代码阅读、定向实施/分析与相关验证）
+
 **Skills：** `docs-governance`
 
 ```text
@@ -297,6 +353,8 @@ $docs-governance
 ```
 
 #### ECC-056 · 记录架构决策 ADR
+
+**预计执行时间：30 分钟**（单次执行；包含代码阅读、定向实施/分析与相关验证）
 
 **Skills：** `architecture-decision-records`
 
@@ -308,6 +366,8 @@ $architecture-decision-records
 
 #### ECC-057 · 长期项目文档治理
 
+**预计执行时间：60 分钟**（单次执行；包含代码阅读、定向实施/分析与相关验证）
+
 **Skills：** `living-docs-governance`
 
 ```text
@@ -317,6 +377,8 @@ $living-docs-governance
 ```
 
 #### ECC-058 · 全项目安全审查
+
+**预计执行时间：90 分钟**（单次执行；包含代码阅读、定向实施/分析与相关验证）
 
 **Skills：** `security-review`
 
@@ -328,6 +390,8 @@ $security-review
 
 #### ECC-059 · AI Agent 安全治理
 
+**预计执行时间：60 分钟**（单次执行；包含代码阅读、定向实施/分析与相关验证）
+
 **Skills：** `agent-security-hardening` · `agent-architecture-audit`
 
 ```text
@@ -337,6 +401,8 @@ $agent-security-hardening $agent-architecture-audit
 ```
 
 #### ECC-060 · MCP 依赖供应链审计
+
+**预计执行时间：45 分钟**（单次执行；包含代码阅读、定向实施/分析与相关验证）
 
 **Skills：** `mcp-dependency-review`
 
@@ -348,6 +414,8 @@ $mcp-dependency-review
 
 #### ECC-061 · 合并后的生产风险审计
 
+**预计执行时间：60 分钟**（单次执行；包含代码阅读、定向实施/分析与相关验证）
+
 **Skills：** `production-audit`
 
 ```text
@@ -357,6 +425,8 @@ $production-audit
 ```
 
 #### ECC-062 · 蓝绿部署和数据库迁移审查
+
+**预计执行时间：90 分钟**（单次执行；包含代码阅读、定向实施/分析与相关验证）
 
 **Skills：** `deployment-patterns` · `change-impact`
 
@@ -368,6 +438,8 @@ $deployment-patterns $change-impact
 
 #### ECC-063 · Docker 和安装脚本治理
 
+**预计执行时间：60 分钟**（单次执行；包含代码阅读、定向实施/分析与相关验证）
+
 **Skills：** `docker-patterns` · `production-audit`
 
 ```text
@@ -377,6 +449,8 @@ $docker-patterns $production-audit
 ```
 
 #### ECC-064 · PostgreSQL 备份恢复演练方案
+
+**预计执行时间：45 分钟**（单次执行；包含代码阅读、定向实施/分析与相关验证）
 
 **Skills：** `production-audit` · `database-migrations`
 
@@ -388,6 +462,8 @@ $production-audit $database-migrations
 
 #### ECC-065 · GitHub PR 和 CI 管理
 
+**预计执行时间：30 分钟**（单次执行；包含代码阅读、定向实施/分析与相关验证）
+
 **Skills：** `github-ops`
 
 ```text
@@ -397,6 +473,8 @@ $github-ops
 ```
 
 #### ECC-066 · Git Worktree 和分支清理
+
+**预计执行时间：30 分钟**（单次执行；包含代码阅读、定向实施/分析与相关验证）
 
 **Skills：** `git-workflow`
 
@@ -410,6 +488,8 @@ $git-workflow
 
 #### ECC-067 · WebSocket 性能基线
 
+**预计执行时间：60 分钟**（单次执行；包含代码阅读、定向实施/分析与相关验证）
+
 **Skills：** `benchmark` · `latency-critical-systems`
 
 ```text
@@ -419,6 +499,8 @@ $benchmark $latency-critical-systems
 ```
 
 #### ECC-068 · 性能持续优化
+
+**预计执行时间：90 分钟**（单次执行；包含代码阅读、定向实施/分析与相关验证）
 
 **Skills：** `benchmark-optimization-loop` · `latency-critical-systems`
 
@@ -430,6 +512,8 @@ $benchmark-optimization-loop $latency-critical-systems
 
 #### ECC-069 · CI 和部署耗时优化
 
+**预计执行时间：60 分钟**（单次执行；包含代码阅读、定向实施/分析与相关验证）
+
 **Skills：** `benchmark-optimization-loop` · `parallel-execution-optimizer`
 
 ```text
@@ -439,6 +523,8 @@ $benchmark-optimization-loop $parallel-execution-optimizer
 ```
 
 #### ECC-070 · 最多 5 个 Agent 并行开发
+
+**预计执行时间：90 分钟**（单次执行；包含代码阅读、定向实施/分析与相关验证）
 
 **Skills：** `team-agent-orchestration` · `parallel-execution-optimizer`
 
@@ -450,6 +536,8 @@ $team-agent-orchestration $parallel-execution-optimizer
 
 #### ECC-071 · IMBoy AI Agent Runtime 架构审计
 
+**预计执行时间：60 分钟**（单次执行；包含代码阅读、定向实施/分析与相关验证）
+
 **Skills：** `agent-architecture-audit` · `agent-security-hardening`
 
 ```text
@@ -459,6 +547,8 @@ $agent-architecture-audit $agent-security-hardening
 ```
 
 #### ECC-072 · AI 编码 Agent 能力对比
+
+**预计执行时间：45 分钟**（单次执行；包含代码阅读、定向实施/分析与相关验证）
 
 **Skills：** `agent-eval` · `benchmark-optimization-loop`
 
@@ -476,6 +566,8 @@ $agent-eval $benchmark-optimization-loop
 
 
 #### ECC-073 · 客户私聊与多设备消息
+
+**预计执行时间（单选一种模式）：A 新增功能 120 分钟 · B 优化现有功能 90 分钟 · C 测试现有功能 60 分钟**
 
 **场景：** 个人即时通讯
 
@@ -537,6 +629,8 @@ $test-collaboration $ai-regression-testing $verification-loop
 
 #### ECC-074 · 客户群聊、社群运营与群治理
 
+**预计执行时间（单选一种模式）：A 新增功能 120 分钟 · B 优化现有功能 90 分钟 · C 测试现有功能 60 分钟**
+
 **场景：** 群组与社群协作
 
 **A · 新增功能 · `product-capability` + `orch-add-feature` + `tdd-workflow`**
@@ -596,6 +690,8 @@ $test-collaboration $ai-regression-testing $verification-loop
 ```
 
 #### ECC-075 · 客户内容频道、知识订阅与付费内容
+
+**预计执行时间（单选一种模式）：A 新增功能 180 分钟 · B 优化现有功能 120 分钟 · C 测试现有功能 90 分钟**
 
 **场景：** 频道与订阅内容
 
@@ -657,6 +753,8 @@ $test-collaboration $ai-regression-testing $verification-loop
 
 #### ECC-076 · 客户动态、朋友圈与内容互动
 
+**预计执行时间（单选一种模式）：A 新增功能 120 分钟 · B 优化现有功能 90 分钟 · C 测试现有功能 60 分钟**
+
 **场景：** 朋友圈与轻社交
 
 **A · 新增功能 · `product-capability` + `orch-add-feature` + `tdd-workflow`**
@@ -716,6 +814,8 @@ $test-collaboration $ai-regression-testing $verification-loop
 ```
 
 #### ECC-077 · 客户企业组织、团队空间和成员管理
+
+**预计执行时间（单选一种模式）：A 新增功能 180 分钟 · B 优化现有功能 120 分钟 · C 测试现有功能 90 分钟**
 
 **场景：** 组织与工作区
 
@@ -777,6 +877,8 @@ $test-collaboration $ai-regression-testing $verification-loop
 
 #### ECC-078 · 客户项目、任务、里程碑和活动流
 
+**预计执行时间（单选一种模式）：A 新增功能 180 分钟 · B 优化现有功能 120 分钟 · C 测试现有功能 90 分钟**
+
 **场景：** 项目协作
 
 **A · 新增功能 · `product-capability` + `orch-add-feature` + `tdd-workflow`**
@@ -836,6 +938,8 @@ $test-collaboration $ai-regression-testing $verification-loop
 ```
 
 #### ECC-079 · 客户网站在线客服、排队和坐席工作台
+
+**预计执行时间（单选一种模式）：A 新增功能 180 分钟 · B 优化现有功能 120 分钟 · C 测试现有功能 90 分钟**
 
 **场景：** 客服中心与访客挂件
 
@@ -897,6 +1001,8 @@ $test-collaboration $ai-regression-testing $verification-loop
 
 #### ECC-080 · 客户联系人、企业会话、资产和离岗交接
 
+**预计执行时间（单选一种模式）：A 新增功能 120 分钟 · B 优化现有功能 90 分钟 · C 测试现有功能 60 分钟**
+
 **场景：** 企业客户经营 CRM
 
 **A · 新增功能 · `product-capability` + `orch-add-feature` + `tdd-workflow`**
@@ -956,6 +1062,8 @@ $test-collaboration $ai-regression-testing $verification-loop
 ```
 
 #### ECC-081 · 客户知识助手、群内助手和受控自动化
+
+**预计执行时间（单选一种模式）：A 新增功能 180 分钟 · B 优化现有功能 120 分钟 · C 测试现有功能 90 分钟**
 
 **场景：** AI 助手与 Agent
 
@@ -1017,6 +1125,8 @@ $test-collaboration $ai-regression-testing $verification-loop
 
 #### ECC-082 · 客户第三方系统机器人和事件集成
 
+**预计执行时间（单选一种模式）：A 新增功能 120 分钟 · B 优化现有功能 90 分钟 · C 测试现有功能 60 分钟**
+
 **场景：** 开发者 Bot 与 Webhook
 
 **A · 新增功能 · `product-capability` + `orch-add-feature` + `tdd-workflow`**
@@ -1076,6 +1186,8 @@ $test-collaboration $ai-regression-testing $verification-loop
 ```
 
 #### ECC-083 · 客户私密聊天、群组加密与密钥恢复
+
+**预计执行时间（单选一种模式）：A 新增功能 180 分钟 · B 优化现有功能 120 分钟 · C 测试现有功能 90 分钟**
 
 **场景：** 端到端加密通信
 
@@ -1137,6 +1249,8 @@ $test-collaboration $ai-regression-testing $verification-loop
 
 #### ECC-084 · 客户文件共享、图片视频和安全下载
 
+**预计执行时间（单选一种模式）：A 新增功能 120 分钟 · B 优化现有功能 90 分钟 · C 测试现有功能 60 分钟**
+
 **场景：** 附件与文件中心
 
 **A · 新增功能 · `product-capability` + `orch-add-feature` + `tdd-workflow`**
@@ -1196,6 +1310,8 @@ $test-collaboration $ai-regression-testing $verification-loop
 ```
 
 #### ECC-085 · 客户一对一通话、群通话和直播互动
+
+**预计执行时间（单选一种模式）：A 新增功能 180 分钟 · B 优化现有功能 120 分钟 · C 测试现有功能 90 分钟**
 
 **场景：** 音视频通话与直播
 
@@ -1257,6 +1373,8 @@ $test-collaboration $ai-regression-testing $verification-loop
 
 #### ECC-086 · 客户实名/注册、联系人和关系管理
 
+**预计执行时间（单选一种模式）：A 新增功能 120 分钟 · B 优化现有功能 90 分钟 · C 测试现有功能 60 分钟**
+
 **场景：** 账号、好友与社交关系
 
 **A · 新增功能 · `product-capability` + `orch-add-feature` + `tdd-workflow`**
@@ -1316,6 +1434,8 @@ $test-collaboration $ai-regression-testing $verification-loop
 ```
 
 #### ECC-087 · 客户充值、支付、账单和付费权益
+
+**预计执行时间（单选一种模式）：A 新增功能 180 分钟 · B 优化现有功能 120 分钟 · C 测试现有功能 90 分钟**
 
 **场景：** 钱包、支付与订阅
 
@@ -1377,6 +1497,8 @@ $test-collaboration $ai-regression-testing $verification-loop
 
 #### ECC-088 · 客户用户、群组、频道和内容发现
 
+**预计执行时间（单选一种模式）：A 新增功能 120 分钟 · B 优化现有功能 90 分钟 · C 测试现有功能 60 分钟**
+
 **场景：** 搜索与发现
 
 **A · 新增功能 · `product-capability` + `orch-add-feature` + `tdd-workflow`**
@@ -1436,6 +1558,8 @@ $test-collaboration $ai-regression-testing $verification-loop
 ```
 
 #### ECC-089 · 客户白标入口、功能开关和版本升级
+
+**预计执行时间（单选一种模式）：A 新增功能 120 分钟 · B 优化现有功能 90 分钟 · C 测试现有功能 60 分钟**
 
 **场景：** 应用配置与版本运营
 
@@ -1497,6 +1621,8 @@ $test-collaboration $ai-regression-testing $verification-loop
 
 #### ECC-110 · 新一代 AI 模型复审与改进旧 AI 生成代码
 
+**预计执行时间（单选一种模式）：A 新增功能 120 分钟 · B 优化现有功能 90 分钟 · C 测试现有功能 60 分钟**
+
 **场景：** 当更强的新 AI 模型发布时，选择一个由旧 AI 模型实现的 IMBoy 功能切片，让新模型独立重建事实、识别盲点、补测试并证明改进价值。
 
 **A · 新增功能 · `product-capability` + `orch-add-feature` + `tdd-workflow`**
@@ -1545,6 +1671,8 @@ $test-collaboration $ai-regression-testing $verification-loop
 
 
 #### ECC-111 · 设备、推送与通知中心
+
+**预计执行时间（单选一种模式）：A 新增功能 120 分钟 · B 优化现有功能 90 分钟 · C 测试现有功能 60 分钟**
 
 **场景：** 多设备在线、推送送达和通知偏好
 
@@ -1606,6 +1734,8 @@ $test-collaboration $ai-regression-testing $verification-loop
 
 #### ECC-112 · 用户关系扩展与位置服务
 
+**预计执行时间（单选一种模式）：A 新增功能 120 分钟 · B 优化现有功能 90 分钟 · C 测试现有功能 60 分钟**
+
 **场景：** 收藏、标签、黑名单、好友分类和附近的人
 
 **A · 新增功能 · `product-capability` + `orch-add-feature` + `tdd-workflow`**
@@ -1665,6 +1795,8 @@ $test-collaboration $ai-regression-testing $verification-loop
 ```
 
 #### ECC-113 · 举报、内容审核与申诉
+
+**预计执行时间（单选一种模式）：A 新增功能 120 分钟 · B 优化现有功能 90 分钟 · C 测试现有功能 60 分钟**
 
 **场景：** 社区内容审核、用户举报和申诉工作流
 
@@ -1726,6 +1858,8 @@ $test-collaboration $ai-regression-testing $verification-loop
 
 #### ECC-114 · 直播间、通话记录与录制治理
 
+**预计执行时间（单选一种模式）：A 新增功能 180 分钟 · B 优化现有功能 120 分钟 · C 测试现有功能 90 分钟**
+
 **场景：** 直播、RTC 房间、通话记录和录制回放
 
 **A · 新增功能 · `product-capability` + `orch-add-feature` + `tdd-workflow`**
@@ -1786,6 +1920,8 @@ $test-collaboration $ai-regression-testing $verification-loop
 
 #### ECC-115 · 插件、企业应用与单点登录
 
+**预计执行时间（单选一种模式）：A 新增功能 180 分钟 · B 优化现有功能 120 分钟 · C 测试现有功能 90 分钟**
+
 **场景：** 客户插件扩展、OA 集成和 OIDC/SSO
 
 **A · 新增功能 · `product-capability` + `orch-add-feature` + `tdd-workflow`**
@@ -1845,6 +1981,8 @@ $test-collaboration $ai-regression-testing $verification-loop
 ```
 
 #### ECC-116 · 运营通知、反馈与可观测性
+
+**预计执行时间（单选一种模式）：A 新增功能 120 分钟 · B 优化现有功能 90 分钟 · C 测试现有功能 60 分钟**
 
 **场景：** 公告、用户反馈、平台统计和运营审计
 
