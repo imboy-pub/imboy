@@ -223,11 +223,29 @@ jobs:
           printf '%s\n\n' 'Trivy reads supported lockfiles, including docs-site/bun.lock with dev dependencies. The erlang.mk Git dependency graph is not covered as an Erlang lockfile.' >> "$GITHUB_STEP_SUMMARY"
           mkdir -p .security-reports
 
+      - name: Install pinned Trivy binary
+        shell: bash
+        env:
+          TRIVY_VERSION: ${{ env.TRIVY_VERSION }}
+        run: |
+          set -euo pipefail
+          version="${TRIVY_VERSION#v}"
+          archive="trivy_${version}_Linux-64bit.tar.gz"
+          url="https://github.com/aquasecurity/trivy/releases/download/${TRIVY_VERSION}/${archive}"
+          curl --fail --show-error --silent --location --retry 3 "$url" --output "$RUNNER_TEMP/$archive"
+          # SHA256 from the official aquasecurity/trivy v0.76.2 GitHub release asset metadata.
+          echo "bc0fc726e017b8927a62b2d3531d7a84ee01769daf5c99ed866dced54089fdbf  $RUNNER_TEMP/$archive" | sha256sum --check --status
+          mkdir -p "$RUNNER_TEMP/trivy-bin"
+          tar -xzf "$RUNNER_TEMP/$archive" -C "$RUNNER_TEMP/trivy-bin" trivy
+          echo "$RUNNER_TEMP/trivy-bin" >> "$GITHUB_PATH"
+          "$RUNNER_TEMP/trivy-bin/trivy" --version
+
       - name: Run Trivy filesystem scan
         id: trivy_scan
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
           version: ${{ env.TRIVY_VERSION }}
+          skip-setup-trivy: "true"
           scan-type: fs
           scan-ref: .
           scanners: vuln,misconfig,secret

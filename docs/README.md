@@ -8,7 +8,7 @@
 |---|---|
 | 理解项目全貌（三端怎么组成） | [核心业务概念](./concepts/) · [三端 API 对齐](https://github.com/imboy-pub/imboy/blob/main/docs/api-contracts/three-platform-alignment.md) |
 | 查一个术语的准确含义 | [术语表](./glossary.md) |
-| 本地跑通后端 | [后端快速上手](./tutorials/quickstart-backend.md) |
+| 本地跑通后端 | [本地开发指南](./guides/operations/deployment/local-development.md) |
 | 生产部署 | [部署 README](https://github.com/imboy-pub/imboy/blob/main/deploy/README.md) → [Day-1 部署](./guides/operations/deployment/day1-quickstart.md) |
 | 通话（LiveKit RTC/TURN）部署运维（一期 App 好友一对一 `rtc` 默认允许、可显式关闭；群通话仍锁定，部署与真实双端验收另行核对） | [LiveKit 单服务运行手册](./guides/operations/deployment/livekit-single-service-runbook.md) · [产品边界](./product/packaging-contract.md#95-app-一对一-rtc-与群通话边界) |
 | 备份、恢复、升级 | [备份恢复](./guides/operations/deployment/backup-restore.md) · [升级手册](./guides/operations/upgrade-runbook.md) |

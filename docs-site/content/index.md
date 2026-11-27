@@ -8,7 +8,7 @@ hero:
   actions:
     - theme: brand
       text: 快速上手
-      link: /tutorials/quickstart-backend
+      link: /guides/operations/deployment/local-development
     - theme: alt
       text: E2EE 协议规范
       link: /reference/e2ee-protocol-specification

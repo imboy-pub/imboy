@@ -8,6 +8,19 @@ One-command deployment of IMBoy to a Linux server.
 >
 > 文档分工：本页是 **Docker Compose 客户安装入口**，使用 `deploy/.env.example`；[day1-quickstart.md](../docs/guides/operations/deployment/day1-quickstart.md) 与 [deployment.md](../docs/guides/operations/deployment/deployment.md) 是裸机/release 或定制运行时参考，不能混用其配置模板和启动步骤。备份恢复见 [backup-restore.md](../docs/guides/operations/deployment/backup-restore.md)。
 
+<a id="operations-lifecycle"></a>
+
+## 运维操作入口 / Operations lifecycle
+
+| 环节 | 权威入口 |
+|---|---|
+| 安装与健康检查 | 本页[客户配置](#customer-input)、`install.sh`；记录 Release Identity，验证业务接口 |
+| 备份与恢复 | [备份恢复](../docs/guides/operations/deployment/backup-restore.md)（PG、Garage、恢复后的数据及业务验证） |
+| 升级与回滚 | [RELEASES.md](../RELEASES.md) 与本页运维章节；裸机/定制 release 见[部署脚本](../docs/guides/operations/deployment/deploy-script.md)；[正式版迁移草案](../docs/guides/operations/upgrade-runbook.md)仅在适用版本生效 |
+| 监控 | [监控指南](../docs/guides/operations/deployment/monitoring.md)，按需启用 |
+
+升级前验证备份可恢复；记录版本、镜像摘要、演练耗时及真实消息/附件验收。社区首次安装可显式使用 `--init-cleanup-db` 创建缺失清理账号，商务/外部数据库由 DBA 开通。宿主机与 Compose 配置不可混用。
+
 ## 原生 Shell 固定版本交付包 / Pinned native Shell kit
 
 [原生 Shell 安装材料](native-shell/README.md) 提供单机 systemd 的安装、升级、

@@ -12,7 +12,7 @@ function render(source: string, relativePath = 'reference/env-vars.md') {
 
 test.each([
   ['reference/env-vars.md', '../../deploy/README.md#customer-input', 'deploy/README.md#customer-input'],
-  ['guides/operations/single-node-ops-chain-index-2026-08.md', '../../../deploy/README.md#customer-input', 'deploy/README.md#customer-input'],
+  ['guides/operations/garage-deployment.md', '../../../deploy/README.md#customer-input', 'deploy/README.md#customer-input'],
   ['guides/operations/deployment/day1-quickstart.md', '../../../../deploy/README.md#customer-input', 'deploy/README.md#customer-input'],
   ['guides/operations/deployment/livekit-single-service-runbook.md', '../../../../deploy/README.md#rtc-turn-regression', 'deploy/README.md#rtc-turn-regression'],
   ['guides/index.md', '../../deploy/README.md', 'deploy/README.md'],
