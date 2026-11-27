@@ -367,7 +367,10 @@ transfer_in(OrgId, WorkspaceId, Params) ->
     ToIdentityId = maps:get(to_identity_id, Params, undefined),
     ExpectedVersion = maps:get(expected_version, Params, undefined),
     At = maps:get(at, Params, undefined),
-    case pos_int(SessionId) andalso pos_int(ToIdentityId) andalso pos_int(At) of
+    case
+        pos_int(SessionId) andalso pos_int(ToIdentityId) andalso pos_int(ExpectedVersion) andalso
+            pos_int(At)
+    of
         false ->
             {error, {invalid_argument, transfer}};
         true ->
@@ -379,43 +382,99 @@ do_transfer(OrgId, WorkspaceId, SessionId, ToIdentityId, ExpectedVersion, At, Pa
         {error, _} = Err ->
             Err;
         {ok, Session} ->
-            case cs_session:transfer(Session, ToIdentityId, At) of
-                {error, _} = Err ->
-                    Err;
-                {ok, Transferred} ->
-                    Event = #{
-                        session_id => SessionId,
-                        business_identity_id => ToIdentityId,
-                        actor_user_id => maps:get(actor_user_id, Params, undefined),
-                        actor_kind => <<"seat">>,
-                        action => <<"session.transferred">>,
-                        detail => #{<<"from">> => maps:get(business_identity_id, Session)},
-                        workspace_id => WorkspaceId
-                    },
-                    %% v4 P0-4（02-C.3 E2）：transfer 至 human seat 同为接管，
-                    %% 闩锁置位语义与 claim 相同（吞错，不改变 transfer 结果）。
-                    _ = cs_ai_delivery_app:on_human_takeover(
-                        OrgId, WorkspaceId, SessionId, <<"human_transfer">>, Params
-                    ),
-                    cas_write(
-                        Params,
+            %% G-02（2026-11-28 复核对齐 claim 合同）：提交即过期的
+            %% expected_version 在触达 store 前给 cas_mismatch（409 +
+            %% expected/actual detail）；并发竞争丢方仍由 store CAS 的
+            %% conflict 承担。状态语义（not_transferable 等）由 domain
+            %% transfer 在预检通过后照常裁决。
+            case cs_session:assert_version_expectation(Session, ExpectedVersion) of
+                {error, CasErr} ->
+                    {error, CasErr};
+                ok ->
+                    transfer_prechecked(
                         OrgId,
                         WorkspaceId,
-                        fun(Store) ->
-                            Store:transfer_session(
-                                OrgId,
-                                WorkspaceId,
-                                SessionId,
-                                ToIdentityId,
-                                ExpectedVersion,
-                                At,
-                                Event
-                            )
-                        end,
-                        Session,
-                        Transferred
+                        SessionId,
+                        ToIdentityId,
+                        ExpectedVersion,
+                        At,
+                        Params,
+                        Session
                     )
             end
+    end.
+
+transfer_prechecked(
+    OrgId, WorkspaceId, SessionId, ToIdentityId, ExpectedVersion, At, Params, Session
+) ->
+    case cs_session:transfer(Session, ToIdentityId, At) of
+        {error, _} = Err ->
+            Err;
+        {ok, Transferred} ->
+            Event = #{
+                session_id => SessionId,
+                business_identity_id => ToIdentityId,
+                actor_user_id => maps:get(actor_user_id, Params, undefined),
+                actor_kind => <<"seat">>,
+                action => <<"session.transferred">>,
+                detail => #{<<"from">> => maps:get(business_identity_id, Session)},
+                workspace_id => WorkspaceId
+            },
+            transfer_write_and_latch(
+                Params,
+                OrgId,
+                WorkspaceId,
+                SessionId,
+                ToIdentityId,
+                ExpectedVersion,
+                At,
+                Event,
+                Session,
+                Transferred
+            )
+    end.
+
+%% store CAS 写 + 成功后置 AI 接管闩锁（独立 helper：重置嵌套层级过 elvis
+%% no_deep_nesting，语义与 do_claim 的「store 成功后置位」同序）。
+%% v4 P0-4（02-C.3 E2）：transfer 至 human seat 同为接管，闩锁置位语义与
+%% claim 相同（吞错，不改变 transfer 结果）。置位点在 store **成功后**——
+%% 被拒的 transfer（CAS conflict / seat_disabled / seat_at_capacity 等）
+%% 不是接管：闩锁粘性且无解除 API（cs_pg_ai:latch_handoff 粘性 upsert），
+%% 写前误置位会静默压制该活跃会话的 AI 自动回复（2026-11-28 复核修正；
+%% cs_application_tests A04b 用例冻结该时序）。
+transfer_write_and_latch(
+    Params,
+    OrgId,
+    WorkspaceId,
+    SessionId,
+    ToIdentityId,
+    ExpectedVersion,
+    At,
+    Event,
+    Session,
+    Transferred
+) ->
+    case
+        cas_write(
+            Params,
+            OrgId,
+            WorkspaceId,
+            fun(Store) ->
+                Store:transfer_session(
+                    OrgId, WorkspaceId, SessionId, ToIdentityId, ExpectedVersion, At, Event
+                )
+            end,
+            Session,
+            Transferred
+        )
+    of
+        {ok, _} = Ok ->
+            cs_ai_delivery_app:on_human_takeover(
+                OrgId, WorkspaceId, SessionId, <<"human_transfer">>, Params
+            ),
+            Ok;
+        {error, _TransferErr} = Err ->
+            Err
     end.
 
 %% ===================================================================
@@ -439,7 +498,7 @@ close_in(OrgId, WorkspaceId, Params) ->
     SessionId = maps:get(session_id, Params, undefined),
     ExpectedVersion = maps:get(expected_version, Params, undefined),
     At = maps:get(at, Params, undefined),
-    case pos_int(SessionId) andalso pos_int(At) of
+    case pos_int(SessionId) andalso pos_int(ExpectedVersion) andalso pos_int(At) of
         false ->
             {error, {invalid_argument, close}};
         true ->
@@ -452,38 +511,51 @@ do_close(OrgId, WorkspaceId, SessionId, ExpectedVersion, At, Params) ->
         {error, _} = Err ->
             Err;
         {ok, Session} ->
-            case cs_session:transition(Session, closed, #{at => At, reason => Reason}) of
-                {error, _} = Err ->
-                    Err;
-                {ok, Closed} ->
-                    Event = #{
-                        session_id => SessionId,
-                        business_identity_id => maps:get(business_identity_id, Session),
-                        actor_user_id => maps:get(actor_user_id, Params, undefined),
-                        actor_kind => actor_kind(Params),
-                        action => <<"session.closed">>,
-                        detail => #{<<"reason">> => Reason},
-                        workspace_id => WorkspaceId
-                    },
-                    cas_write(
-                        Params,
+            %% G-02：版本单轴预检与 claim/transfer 同合同（close 允许
+            %% queued|active 两种源状态，状态语义仍由 domain transition 裁决）。
+            case cs_session:assert_version_expectation(Session, ExpectedVersion) of
+                {error, CasErr} ->
+                    {error, CasErr};
+                ok ->
+                    close_prechecked(
                         OrgId,
                         WorkspaceId,
-                        fun(Store) ->
-                            Store:close_session(
-                                OrgId,
-                                WorkspaceId,
-                                SessionId,
-                                Reason,
-                                ExpectedVersion,
-                                At,
-                                Event
-                            )
-                        end,
-                        Session,
-                        Closed
+                        SessionId,
+                        Reason,
+                        ExpectedVersion,
+                        At,
+                        Params,
+                        Session
                     )
             end
+    end.
+
+close_prechecked(OrgId, WorkspaceId, SessionId, Reason, ExpectedVersion, At, Params, Session) ->
+    case cs_session:transition(Session, closed, #{at => At, reason => Reason}) of
+        {error, _} = Err ->
+            Err;
+        {ok, Closed} ->
+            Event = #{
+                session_id => SessionId,
+                business_identity_id => maps:get(business_identity_id, Session),
+                actor_user_id => maps:get(actor_user_id, Params, undefined),
+                actor_kind => actor_kind(Params),
+                action => <<"session.closed">>,
+                detail => #{<<"reason">> => Reason},
+                workspace_id => WorkspaceId
+            },
+            cas_write(
+                Params,
+                OrgId,
+                WorkspaceId,
+                fun(Store) ->
+                    Store:close_session(
+                        OrgId, WorkspaceId, SessionId, Reason, ExpectedVersion, At, Event
+                    )
+                end,
+                Session,
+                Closed
+            )
     end.
 
 %% ===================================================================
@@ -508,7 +580,7 @@ rate_in(OrgId, WorkspaceId, Params) ->
     Rating = maps:get(rating, Params, undefined),
     ExpectedVersion = maps:get(expected_version, Params, undefined),
     At = maps:get(at, Params, undefined),
-    case pos_int(SessionId) andalso pos_int(At) of
+    case pos_int(SessionId) andalso pos_int(ExpectedVersion) andalso pos_int(At) of
         false ->
             {error, {invalid_argument, rate}};
         true ->
@@ -520,38 +592,45 @@ do_rate(OrgId, WorkspaceId, SessionId, Rating, ExpectedVersion, At, Params) ->
         {error, _} = Err ->
             Err;
         {ok, Session} ->
-            case cs_session:rate(Session, Rating, At) of
-                {error, _} = Err ->
-                    Err;
-                {ok, Rated} ->
-                    Event = #{
-                        session_id => SessionId,
-                        business_identity_id => maps:get(business_identity_id, Session),
-                        actor_user_id => maps:get(actor_user_id, Params, undefined),
-                        actor_kind => actor_kind(Params),
-                        action => <<"session.rated">>,
-                        detail => #{<<"rating">> => Rating},
-                        workspace_id => WorkspaceId
-                    },
-                    cas_write(
-                        Params,
-                        OrgId,
-                        WorkspaceId,
-                        fun(Store) ->
-                            Store:rate_session(
-                                OrgId,
-                                WorkspaceId,
-                                SessionId,
-                                Rating,
-                                ExpectedVersion,
-                                At,
-                                Event
-                            )
-                        end,
-                        Session,
-                        Rated
+            %% G-02：版本单轴预检与 claim/transfer/close 同合同（评分只写
+            %% closed 行，rating_requires_closed / already_rated 语义由
+            %% domain rate 在预检通过后照常裁决）。
+            case cs_session:assert_version_expectation(Session, ExpectedVersion) of
+                {error, CasErr} ->
+                    {error, CasErr};
+                ok ->
+                    rate_prechecked(
+                        OrgId, WorkspaceId, SessionId, Rating, ExpectedVersion, At, Params, Session
                     )
             end
+    end.
+
+rate_prechecked(OrgId, WorkspaceId, SessionId, Rating, ExpectedVersion, At, Params, Session) ->
+    case cs_session:rate(Session, Rating, At) of
+        {error, _} = Err ->
+            Err;
+        {ok, Rated} ->
+            Event = #{
+                session_id => SessionId,
+                business_identity_id => maps:get(business_identity_id, Session),
+                actor_user_id => maps:get(actor_user_id, Params, undefined),
+                actor_kind => actor_kind(Params),
+                action => <<"session.rated">>,
+                detail => #{<<"rating">> => Rating},
+                workspace_id => WorkspaceId
+            },
+            cas_write(
+                Params,
+                OrgId,
+                WorkspaceId,
+                fun(Store) ->
+                    Store:rate_session(
+                        OrgId, WorkspaceId, SessionId, Rating, ExpectedVersion, At, Event
+                    )
+                end,
+                Session,
+                Rated
+            )
     end.
 
 %% ===================================================================

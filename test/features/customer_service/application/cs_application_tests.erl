@@ -56,6 +56,8 @@ cases(_State) ->
         {timeout, 30, fun a03_message_goes_only_through_eb_facade/0},
         {timeout, 30, fun a03_seat_mismatch_and_contact_mismatch_rejected/0},
         {timeout, 30, fun a04_rebind_keeps_session_and_history_continuous/0},
+        {timeout, 30, fun a04b_failed_transfer_does_not_latch_ai/0},
+        {timeout, 30, fun lifecycle_stale_version_returns_cas_mismatch/0},
         {timeout, 30, fun a05_visit_token_scope_and_revocation/0},
         {timeout, 30, fun close_then_rate_then_double_actions_rejected/0},
         {timeout, 30, fun facade_delegates_and_validates_shape/0},
@@ -489,6 +491,200 @@ a04_rebind_keeps_session_and_history_continuous() ->
             )
         end,
         [error, exception]
+    ).
+
+%% ===================================================================
+%% A04b：transfer 失败不得置 AI 接管闩锁（2026-11-28 复核发现）
+%% ===================================================================
+
+%% e02905125 引入两处闩锁时序不一致：claim 在 store 成功后置位、transfer
+%% 在 cas_write **前**置位——失败 transfer 也会置闩锁。闩锁粘性且无解除
+%% API（cs_pg_ai:latch_handoff 粘性 upsert；E3 清除仅在 closed 后新
+%% ai_session 行），误置位会静默压制该活跃会话的 AI 自动回复。
+%% 合同口径（同提交 commit message「E2 触发」）：被拒的 transfer 不是
+%% 「人工接管」。双失败路径断言（G-02 预检落地后闩锁仍只认 store 成功）：
+%%   路径一：陈旧 expected_version → domain 预检 cas_mismatch（触达 store 前）；
+%%   路径二：形状合法但 store 拒（目标非 seat → conflict，生产并发丢方等价）。
+%% 两路径闩锁都必须零推进（generation_epoch 不动）；成功 transfer 照常推进
+%% （对照组防恒真）。
+a04b_failed_transfer_does_not_latch_ai() ->
+    reset_all(),
+    Ctx = claimed_session(?SEAT_A),
+    SessionId = maps:get(session_id, Ctx),
+    Version = maps:get(version, Ctx),
+    %% 基线：claim 成功 ⇒ 闩锁已置位（既有语义，epoch = 2）
+    {ok, #{handoff := true, generation_epoch := EpochAfterClaim}} =
+        ?FAKE:handoff_state(?ORG, ?WS, SessionId),
+    ?assertEqual(2, EpochAfterClaim),
+    NoLatch =
+        {ok, #{
+            handoff => true,
+            handoff_reason => <<"human_claim">>,
+            generation_epoch => EpochAfterClaim
+        }},
+    %% 路径一：陈旧 expected_version → cas_mismatch（claim 同款 409 detail）
+    ?assertMatch(
+        {error, {cas_mismatch, _}},
+        cs_session_app:transfer(
+            ?ORG,
+            params(#{
+                session_id => SessionId,
+                to_identity_id => ?SEAT_B,
+                expected_version => Version + 999,
+                at => ?T0 + 30
+            })
+        )
+    ),
+    ?assertEqual(NoLatch, ?FAKE:handoff_state(?ORG, ?WS, SessionId)),
+    %% 路径二：store 拒（目标非 seat → conflict；并发竞争丢方的等价形状）
+    ?assertEqual(
+        {error, conflict},
+        cs_session_app:transfer(
+            ?ORG,
+            params(#{
+                session_id => SessionId,
+                to_identity_id => ?SEAT_B,
+                expected_version => Version,
+                at => ?T0 + 31
+            })
+        )
+    ),
+    ?assertEqual(NoLatch, ?FAKE:handoff_state(?ORG, ?WS, SessionId)),
+    %% 对照组（断言非恒真）：开通目标后成功 transfer 推进 epoch（既有语义不回退）
+    ok = ensure_seat(?SEAT_B, 1),
+    {ok, _} = cs_session_app:transfer(
+        ?ORG,
+        params(#{
+            session_id => SessionId,
+            to_identity_id => ?SEAT_B,
+            expected_version => Version,
+            at => ?T0 + 32
+        })
+    ),
+    {ok, #{handoff := true, generation_epoch := EpochAfterSuccess}} =
+        ?FAKE:handoff_state(?ORG, ?WS, SessionId),
+    ?assertEqual(EpochAfterClaim + 1, EpochAfterSuccess).
+
+%% ===================================================================
+%% G-02：transfer/close/rate 版本单轴 CAS 预检与 claim 合同对齐
+%% ===================================================================
+
+%% claim 既有合同：提交时已过期（expected_version ≠ fetch 行 version）⇒
+%% {error, {cas_mismatch, _}}（409 + expected/actual detail）；并发竞争丢方
+%% 仍由 store CAS conflict 承担。transfer/close/rate 原本直接落 store 的无
+%% detail conflict——2026-11-28 复核对齐（未发布，可改契约）。语义错误
+%% （not_transferable / rating_requires_closed）用**当前版本**触达，保持
+%% 不变；形状门（expected_version 非正整数 → invalid_argument）与 claim
+%% 同款，杜绝垃圾版本直落 store bind 错。
+lifecycle_stale_version_returns_cas_mismatch() ->
+    reset_all(),
+    Ctx = claimed_session(?SEAT_A),
+    SessionId = maps:get(session_id, Ctx),
+    Version = maps:get(version, Ctx),
+    ok = ensure_seat(?SEAT_B, 1),
+    %% transfer：过期版本 → cas_mismatch（detail 可区分「提交即过期」）
+    {error, {cas_mismatch, TransferDetail}} = cs_session_app:transfer(
+        ?ORG,
+        params(#{
+            session_id => SessionId,
+            to_identity_id => ?SEAT_B,
+            expected_version => Version + 1,
+            at => ?T0 + 40
+        })
+    ),
+    ?assertEqual(
+        #{
+            expected_status => active,
+            expected_version => Version + 1,
+            actual_status => active,
+            actual_version => Version
+        },
+        TransferDetail
+    ),
+    %% close：过期版本 → cas_mismatch
+    ?assertMatch(
+        {error, {cas_mismatch, _}},
+        cs_session_app:close(
+            ?ORG,
+            params(#{
+                session_id => SessionId,
+                expected_version => Version + 1,
+                at => ?T0 + 41
+            })
+        )
+    ),
+    %% rate：过期版本 → cas_mismatch（先于 rating_requires_closed）
+    ?assertMatch(
+        {error, {cas_mismatch, _}},
+        cs_session_app:rate(
+            ?ORG,
+            params(#{
+                session_id => SessionId,
+                rating => 5,
+                expected_version => Version + 1,
+                at => ?T0 + 42
+            })
+        )
+    ),
+    %% 语义错误不被动迁移吃掉：queued 会话用当前版本 transfer/rate
+    S = open_session(),
+    QueuedId = maps:get(id, S),
+    QueuedVersion = maps:get(version, S),
+    ?assertMatch(
+        {error, {not_transferable, queued}},
+        cs_session_app:transfer(
+            ?ORG,
+            params(#{
+                session_id => QueuedId,
+                to_identity_id => ?SEAT_A,
+                expected_version => QueuedVersion,
+                at => ?T0 + 43
+            })
+        )
+    ),
+    ?assertMatch(
+        {error, {rating_requires_closed, queued}},
+        cs_session_app:rate(
+            ?ORG,
+            params(#{
+                session_id => QueuedId,
+                rating => 5,
+                expected_version => QueuedVersion,
+                at => ?T0 + 44
+            })
+        )
+    ),
+    %% 形状门：expected_version 非正整数 → invalid_argument（claim 同款）
+    ?assertEqual(
+        {error, {invalid_argument, transfer}},
+        cs_session_app:transfer(
+            ?ORG,
+            params(#{
+                session_id => QueuedId,
+                to_identity_id => ?SEAT_A,
+                expected_version => undefined,
+                at => ?T0 + 45
+            })
+        )
+    ),
+    ?assertEqual(
+        {error, {invalid_argument, close}},
+        cs_session_app:close(
+            ?ORG,
+            params(#{session_id => QueuedId, expected_version => 0, at => ?T0 + 46})
+        )
+    ),
+    ?assertEqual(
+        {error, {invalid_argument, rate}},
+        cs_session_app:rate(
+            ?ORG,
+            params(#{
+                session_id => QueuedId,
+                rating => 3,
+                expected_version => <<"x">>,
+                at => ?T0 + 47
+            })
+        )
     ).
 
 %% ===================================================================

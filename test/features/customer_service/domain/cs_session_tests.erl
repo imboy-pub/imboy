@@ -95,6 +95,29 @@ cas_expectation_matches_only_current_shape_test() ->
         cs_session:assert_cas_expectation(S, queued, maps:get(version, S) + 7)
     ).
 
+%% 版本单轴预检（close/rate/transfer 共用）：期望状态取自行自身，仅裁决
+%% version——与全形状预检同真源、同 detail 形状；非 map 入参 invalid_argument。
+version_expectation_checks_only_version_axis_test() ->
+    S = new_session(),
+    CurrentVersion = maps:get(version, S),
+    ok = cs_session:assert_version_expectation(S, CurrentVersion),
+    {error, {cas_mismatch, Detail}} = cs_session:assert_version_expectation(
+        S, CurrentVersion + 1
+    ),
+    ?assertEqual(
+        #{
+            expected_status => queued,
+            expected_version => CurrentVersion + 1,
+            actual_status => queued,
+            actual_version => CurrentVersion
+        },
+        Detail
+    ),
+    ?assertEqual(
+        {error, {invalid_argument, assert_version_expectation}},
+        cs_session:assert_version_expectation(not_a_map, 1)
+    ).
+
 %% ===================================================================
 %% rating
 %% ===================================================================

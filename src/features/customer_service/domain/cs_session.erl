@@ -24,6 +24,7 @@
     valid_transition/2,
     transition/3,
     assert_cas_expectation/3,
+    assert_version_expectation/2,
     rate/3,
     transfer/3,
     assert_rebind_continuity/2,
@@ -150,6 +151,19 @@ assert_cas_expectation(Session, ExpectedStatus, ExpectedVersion) ->
                     actual_version => ActualVersion
                 }}}
     end.
+
+%% @doc 版本单轴 CAS 预检：期望状态取自 fetch 行自身。适用 close/rate/
+%% transfer 这类「不改写状态归属」的写路径——状态语义（not_transferable /
+%% session_already_closed / rating_requires_closed 等）仍由各自 domain 函数
+%% 裁决，本函数只回答 expected_version 是否在提交时已过期（与 claim 全形状
+%% 预检 `assert_cas_expectation/3` 同判定真源、同 cas_mismatch detail 形状；
+%% 过期路径在触达 store 前给出可区分 409，并发竞争丢方仍由 store CAS 的
+%% conflict 承担）。
+-spec assert_version_expectation(session(), integer()) -> ok | {error, term()}.
+assert_version_expectation(Session, ExpectedVersion) when is_map(Session) ->
+    assert_cas_expectation(Session, maps:get(status, Session, undefined), ExpectedVersion);
+assert_version_expectation(_Session, _ExpectedVersion) ->
+    {error, {invalid_argument, assert_version_expectation}}.
 
 %% ===================================================================
 %% rating
