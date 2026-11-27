@@ -34,7 +34,7 @@ bash install.sh --init-cleanup-db
 从源码仓库的 `deploy/` 执行时，入口为：
 
 ```bash
-bash install.sh --edition community --init-cleanup-db
+bash install.sh --init-cleanup-db
 ```
 
 安装器依次启动服务、完成 TLS、等待后端健康，再运行清理身份门禁，最后才进入 sanity 和完成输出。不传 `--init-cleanup-db` 时仍强制验证；缺少 LOGIN 会停止，不会把生成密码或配置预检通过当成数据库身份已就绪。

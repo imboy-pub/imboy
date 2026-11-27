@@ -15,7 +15,7 @@
 
 | 你的情况 | 选择 | 入口 |
 |---|---|---|
-| 新装整套 IMBoy，Linux 已装 Docker | 方式 A，推荐 | `deploy/install.sh --edition community` |
+| 新装整套 IMBoy，Linux 已装 Docker | 方式 A，推荐 | `deploy/install.sh`（默认仓根编排） |
 | 只给现有 Linux IMBoy 增加 Garage | 方式 B | `scripts/garage-install.sh` |
 | macOS / Linux 本地开发 | 根目录 Compose | `bash scripts/dev_setup.sh --infra-only` |
 | 已有 Garage，需要升级 | 先备份再升级 | [安全升级](#安全升级已有-garage) |
@@ -89,7 +89,7 @@ GARAGE_RPC_SECRET=CHANGE_ME_GARAGE_RPC_SECRET_64_HEX_CHARS_
 ### 2. 运行安装前检查
 
 ```bash
-bash preflight.sh --edition community --docker
+bash preflight.sh --docker
 ```
 
 出现 `ERROR` 时先按提示修复。只有检查通过才继续。
@@ -97,7 +97,7 @@ bash preflight.sh --edition community --docker
 ### 3. 启动整套服务
 
 ```bash
-bash install.sh --edition community
+bash install.sh
 ```
 
 第一次运行若只生成 `.env` 模板后退出，这是正常行为：填完配置后再次执行同一命令。

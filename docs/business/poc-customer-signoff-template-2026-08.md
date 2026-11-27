@@ -23,7 +23,7 @@
 | `IMBOY_VERSION` | `<安装完成时打印>` | 与 Release 说明三元组一致 ☐ |
 | `IMBOY_GIT_SHA` | `<安装完成时打印>` | 与 Release 说明三元组一致 ☐ |
 | `IMBOY_IMAGE_DIGEST` | `sha256:<安装完成时打印>` | 与 Release 说明三元组一致 ☐ |
-| 部署形态 | ☐ 社区版（docker-compose.community.yml） ☐ 商务版（prod.yml + sales-policy overlay） | |
+| 部署形态 | ☐ 社区版（docker-compose.community.yml——历史编排名，2026-11 起统一为仓根 docker-compose.yml） ☐ 商务版（prod.yml + sales-policy overlay） | |
 | E2EE 模式（验收时） | ☐ `required` ☐ `compliance`（已向客户披露第二收件人机制） | |
 
 > 若 PoC 执行时首个正式 semver 版本尚未发布（见 `RELEASES.md` 当前状态），此处如实填写 alpha 内部版本号，并在 §5 限制说明中注明"A9 升级路径按内部版本演练"。

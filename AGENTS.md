@@ -56,8 +56,8 @@ User → Conversation → Group → Channel → Bot/Service → 可选公域
 ## 构建系统规则 / Build System Rules
 
 - **禁止修改 `erlang.mk`**（vendored / Do NOT modify）。自定义逻辑只能在 `Makefile` 中实现。
-- `IMBOYENV=local make run` 自动加载 `config/sys.local.config` → 复制为 `config/sys.runtime.config`
-- 非 local 环境使用 `config/sys.config`；`IMBOY_*` 环境变量运行时优先级最高。
+- `IMBOYENV=local make run` 按 Makefile 回落链解析配置源：`config/sys.<IMBOYENV>.config` → `config/sys.config` → `config/sys.config.example`（仓内跟踪的模板只有 example；前两者为运行时生成/可选覆盖，不入 Git），再复制为 `config/sys.runtime.config`。
+- release 以 `config/sys.runtime.config` 为 sys_config（relx.config 钉定）；`IMBOY_*` 环境变量运行时优先级最高。
 
 ---
 

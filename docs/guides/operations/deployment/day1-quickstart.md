@@ -4,7 +4,7 @@
 >
 > **要用 Docker Compose 部署（绝大多数人）→ 不要看本文**，直接：
 > ```bash
-> cd deploy && bash install.sh --edition community
+> cd deploy && bash install.sh
 > ```
 > 先按 [`deploy/README.md` 客户配置表](../../../../deploy/README.md#customer-input)准备五个互不相同的纯域名：
 > `API_DOMAIN`、`ADMIN_DOMAIN`、`CS_WIDGET_DOMAIN`、`RTC_DOMAIN`、`TURN_DOMAIN`，以及 `CERTBOT_EMAIL`。

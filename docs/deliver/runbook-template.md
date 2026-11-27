@@ -55,7 +55,7 @@ IMBOYENV=pro make rel            # 生产 release 打包（产物不含 sync 等
 - 恢复：`scripts/restore_pg`（演练记录见 `docs/guides/operations/deployment/backup-restore.md`）
 - 升级/回退：`docs/guides/operations/upgrade-runbook.md`（迁移不可逆时走备份恢复路线，
   不假称 down 脚本即回滚）
-- 故障排查：`scripts/websocket_diagnose`、`scripts/erl_crashdump_analyzer`
+- 故障排查：`scripts/websocket_diagnose.sh`、`scripts/erl_crashdump_analyzer.sh`
 
 ## 四入口之外的纪律
 

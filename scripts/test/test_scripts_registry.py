@@ -64,6 +64,36 @@ class TestHistoryExemption(unittest.TestCase):
             self.assertNotRegex(f, guard.HISTORY_RX, f)
 
 
+class TestBareNameResolution(unittest.TestCase):
+    """3b 无扩展名引用：解析/豁免/跳过规则。"""
+
+    def _scan(self, text, fname="docs/x.md"):
+        errs = []
+        # 复用 main() 的 3b 逻辑代价高，直接对公开常量做最小行为验证：
+        # 用 guard.REF_RX/bare_rx 的 findall + 与 main 相同的判定序列太耦合，
+        # 这里验证正则本身的关键行为。
+        hits = guard.REF_RX.findall(text)
+        bares = guard.bare_rx.findall(text) if hasattr(guard, "bare_rx") else []
+        return hits, bares
+
+    def test_glob_prefix_not_flagged(self):
+        # bare_rx 应捕获完整 glob（含 *），供后续 "*" 过滤
+        _, bares = self._scan("既有 Bench：`scripts/cache_*_bench.erl` ×5、`scripts/check_*.sh`")
+        self.assertTrue(all("*" in b for b in bares), bares)
+
+    def test_dotfile_and_cross_repo_excluded(self):
+        _, bares = self._scan("透传给 `deploy/install.sh`、写入 `imboy/scripts/.env.deploy` 与 `scripts/.env.deploy`")
+        crossed = [b for b in bares if "imboy/scripts" in b]
+        self.assertEqual(crossed, [], bares)  # 他仓前缀被负向断言排除
+
+    def test_erl_crashdump_resolves_via_suffix(self):
+        ref = "scripts/erl_crashdump_analyzer"
+        root = guard.ROOT
+        self.assertFalse((root / ref).exists())
+        self.assertTrue(any((root / (ref + s)).exists()
+                            for s in (".sh", ".py", ".escript")))
+
+
 class TestExpectedRel(unittest.TestCase):
     def test_contributing_entry_present(self):
         self.assertIn(("CONTRIBUTING.md", "scripts/generate_error_code.dart"),

@@ -93,7 +93,7 @@ status==1 持续 5 分钟：恢复轮耗尽路径（`RECOVER_ROUND_MS=5000` × `
 
 status<=0。0=降级，-1=进程不在。处置：先查进程是否因 `dsync_enabled` 被关或启动
 崩溃（`imboy_ctl` / 日志）；未有人为变更且 -1 持续 = 同步进程崩溃，拉 crash dump
-（参照 `scripts/erl_crashdump_analyzer`）并按事件流程上报。
+（参照 `scripts/erl_crashdump_analyzer.sh`）并按事件流程上报。
 
 ### 3.4 ImBoyCacheSyncRejected / ImBoyCacheSyncUnknownEvents
 

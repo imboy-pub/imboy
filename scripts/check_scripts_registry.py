@@ -37,6 +37,9 @@ EXPECTED_REL = {
     # CONTRIBUTING 的命令在 imboyapp 仓内执行（并排双仓工作目录上下文）
     ("CONTRIBUTING.md", "scripts/generate_error_code.dart"):
         "imboyapp 仓内命令，文档上下文为并排双仓工作目录",
+    # hird POC 报告的历史步骤记录：旧目录名是有意保留的叙述，同句已附归档路径
+    ("docs/architecture/hird-poc/IMBOY_HIRD_AUTH_REPLAY_POC_V1.md", "scripts/hird_poc_v1"):
+        "历史步骤记录保留旧目录名，同句已注明 2026-11-27 归档至 scripts/archive/hird-poc-v1/",
 }
 
 
@@ -103,8 +106,8 @@ def main() -> int:
     for f in tracked("scripts/"):
         if f.startswith("scripts/archive/") or f == "scripts/INVENTORY.yml":
             continue
-        if f == "scripts/check_scripts_registry.py":
-            continue  # 本文件的说明文本可提及 archive 路径
+        if f in ("scripts/check_scripts_registry.py", "scripts/test/test_scripts_registry.py"):
+            continue  # 本文件与自测的说明/断言文本可提及 archive 路径
         p = ROOT / f
         if p.suffix in (".sh", ".py", ".escript", ".erl") or f.endswith("imboy_ctl"):
             try:
@@ -118,6 +121,8 @@ def main() -> int:
     scan_files = set(tracked("docs/")) | set(tracked("deploy/"))
     scan_files.update(glob_tracked("*.md"))
     scan_files.update(glob_tracked("scripts/*.md"))
+    bare_rx = re.compile(r"(?<![A-Za-z0-9_.-]/)scripts/[A-Za-z0-9_*./-]+")
+    script_suffixes = (".sh", ".py", ".escript", ".erl", ".sql", ".mjs", ".dart", ".bash")
     for f in sorted(scan_files):
         if HISTORY_RX.search(f):
             continue  # 历史档案不重写，引用保持归档时点原貌
@@ -132,6 +137,23 @@ def main() -> int:
                 continue
             if not (ROOT / ref).exists():
                 errors.append(f"失效脚本引用：{f} → {ref}")
+        # 3b) 无扩展名形态 scripts/xxx：须能解析为存在路径或已知后缀脚本
+        for raw in bare_rx.findall(text):
+            ref = raw.rstrip(".,;:）)]、）/")
+            if not ref or "*" in ref or ref.endswith(("_", "-")):
+                continue  # glob 前缀（scripts/cache_*）与散文列举不判
+            if ref.count("/") > 1:
+                continue  # 顶层单名以外（连写目录列举/子目录树）不判，带扩展名由 3a 管
+            if ref.rsplit("/", 1)[-1].startswith("."):
+                continue  # dotfile（如 scripts/.env.deploy 运行时实例）非脚本，不判
+            if (f, ref) in EXPECTED_REL:
+                continue
+            cand = ROOT / ref
+            if cand.exists():
+                continue
+            if any((ROOT / (ref + suf)).exists() for suf in script_suffixes):
+                continue  # 解析到已知后缀脚本（如 erl_crashdump_analyzer → .sh）
+            errors.append(f"无法解析的无扩展名脚本引用：{f} → {ref}")
 
     # 汇总
     for w in warnings:

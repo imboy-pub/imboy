@@ -15,6 +15,11 @@
 - 频道详细契约：[channel-api-contract-v1.md](./contracts/channel-api-contract-v1.md)
 - 朋友圈详细契约：[moment-api-contract-v1.md](./contracts/moment-api-contract-v1.md)
 - E2EE 社交恢复分片：[e2ee-server-persisted-shard-contract-v1.md](./contracts/e2ee-server-persisted-shard-contract-v1.md)
+- 好友详细契约：[../api-contracts/friend_api_contract.md](../api-contracts/friend_api_contract.md)
+- 群组详细契约：[../api-contracts/group_api_contract.md](../api-contracts/group_api_contract.md)
+- 钱包充值详细契约：[../api-contracts/wallet_recharge_api_contract.md](../api-contracts/wallet_recharge_api_contract.md)
+- AI Agent 角色能力契约：[../api-contracts/ai_agent_role_capability_api_contract.md](../api-contracts/ai_agent_role_capability_api_contract.md)
+- 客服坐席正文长度合同：[../api-contracts/customer-service-seat-body.md](../api-contracts/customer-service-seat-body.md)
 - WebSocket 协议：[websocket-api-2.md](./websocket-api-2.md)
 
 > **分期口径**：本文汇总仓库支持的端点，各产品组合的可用范围以目标 manifest 与现场运行时 profile/features 为准。一期交付（`phase1_delivery` profile）开放核心 IM、频道底座、企业组织/企业业务、人工客服、OA 对接、朋友圈、附近的人与群投票/日程/作业相关端点，并将 App 好友一对一 RTC（`rtc`）纳入交付；其运行时预设默认允许，显式 `features.rtc=false` 仍可关闭。RTC 群房间另需 `rtc_group`，一期未选入且受交付锁关闭；访客/Web 坐席及 C2S 音视频不在本次开放范围。直播间（`live_room`）、钱包、频道发现/邀请/付费等域仍被交付锁关闭。接口目录或配置检查通过不代表真实双端音视频已验收，见[打包契约](../product/packaging-contract.md) §9.5。

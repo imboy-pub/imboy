@@ -64,7 +64,7 @@
 ### 可运维性 / Operability
 
 - [x] **Helm chart**：`deploy/helm/`（实验性：副本数固定 1、后端 HPA 默认关、不在交付支持范围——见 docs/guides/operations/deployment/helm.md）
-- [x] **Loki 日志聚合**：社区版 `docker-compose.community.yml` 监控 profile 已含 `imboy_loki`(3.3.2) + promtail，Grafana 统一日志 + 指标
+- [x] **Loki 日志聚合**：社区版 `docker-compose.community.yml` 监控 profile 已含 `imboy_loki`(3.3.2) + promtail，Grafana 统一日志 + 指标（2026-11-27 注：Loki/Promtail 监控栈已按部署收敛决策退役，社区编排统一为仓根 `docker-compose.yml`，现行监控范围见 `deploy/README.md`）
 - [x] **多节点部署文档**：`docs/guides/operations/clustering.md`
 - [x] **PG 只读副本**：`docs/guides/operations/postgres-read-replica.md`
 

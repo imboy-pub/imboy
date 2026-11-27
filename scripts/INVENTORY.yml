@@ -5,13 +5,18 @@
 #       disposition(keep|move|merge|archive|delete) / purpose / evidence / notes
 # 护栏：scripts/check_scripts_registry.py 以本文件为源校验根目录脚本登记、
 #       归档工具不被默认流程引用、文档脚本引用存在。
-# 统计：total=446 acceptance=255 archived=49 core=108 optional=34 | disposition archive=49 keep=397
+# 统计：total=450 acceptance=255 archived=50 core=111 optional=34 | disposition archive=50 keep=400
 
 - path: scripts/.env.deploy.example
   category: core
   disposition: keep
   purpose: "imboy-deploy 配置模板（蓝绿/迁移时序变量）"
   evidence: "imboy-deploy.sh; docs deploy-script.md"
+- path: scripts/INVENTORY.yml
+  category: core
+  disposition: keep
+  purpose: "S2-01 机器可读脚本登记簿（护栏数据源）"
+  evidence: "scripts/check_scripts_registry.py"
 - path: scripts/README.md
   category: core
   disposition: keep
@@ -47,6 +52,11 @@
   disposition: keep
   purpose: "环回固定状态码 HTTP fixture"
   evidence: "agent_hub_golden_flow.sh"
+- path: scripts/archive/README.md
+  category: archived
+  disposition: archive
+  purpose: "归档索引：原用途/适用版本/执行条件/风险/恢复限制/关联文档"
+  evidence: "scripts/archive/README.md"
 - path: scripts/archive/demo/dual_exp_demo_b.sh
   category: archived
   disposition: archive
@@ -487,6 +497,11 @@
   disposition: keep
   purpose: "REST contract coverage 门"
   evidence: "Makefile:253"
+- path: scripts/check_scripts_registry.py
+  category: core
+  disposition: keep
+  purpose: "S2-07 护栏：登记完整性/归档隔离/文档引用存在性（含无扩展名引用解析）"
+  evidence: "quality.yml scripts-registry job; scripts/test/test_scripts_registry.py"
 - path: scripts/check_server_zero_crypto.sh
   category: core
   disposition: keep
@@ -2082,6 +2097,11 @@
   disposition: keep
   purpose: "CI 点名的脚本自测/门禁"
   evidence: "backend-ci.yml:158; sbom-diff.yml:55"
+- path: scripts/test/test_scripts_registry.py
+  category: core
+  disposition: keep
+  purpose: "护栏自测（INVENTORY 解析/正则/豁免表/归档隔离）"
+  evidence: "quality.yml scripts-registry job discover -p test_scripts_registry.py"
 - path: scripts/test/test_talk_record_cleanup_retry_contract.py
   category: acceptance
   disposition: keep
