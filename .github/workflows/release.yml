@@ -46,6 +46,21 @@ jobs:
           }
           echo "FRONTEND_SHA=$FRONTEND_SHA" >> "$GITHUB_OUTPUT"
 
+      - name: Verify approved frontend SHA sits on admin main lineage
+        env:
+          FRONTEND_SHA: ${{ steps.contract.outputs.FRONTEND_SHA }}
+        run: |
+          set -euo pipefail
+          # 血统校验：批准的前端 SHA 必须可达自 admin 仓 main，防止发布消费
+          # 未合并/已漂移的前端提交（格式校验只保证 40-hex，不保证已授权落地）。
+          git fetch --no-tags https://github.com/imboy-pub/imboy-admin-frontend.git main
+          if git merge-base --is-ancestor "$FRONTEND_SHA" FETCH_HEAD; then
+            echo "FRONTEND_SHA ${FRONTEND_SHA:0:12} 已包含于 imboy-admin-frontend main"
+          else
+            echo "::error::ADMIN_REPO_REF ${FRONTEND_SHA} 不在 imboy-admin-frontend main 历史上——请先在 admin 仓合并/推进该提交后再打 tag"
+            exit 1
+          fi
+
   # ----------------------------------------------------------------
   # Build Candidate — 仓根 Dockerfile 构建 + 推 GHCR candidate
   #   * checkout 固定在 tag ref（构建源 = 打 tag 的那个 commit，不漂移）
@@ -385,13 +400,50 @@ jobs:
           done
 
   # ----------------------------------------------------------------
+  # Runtime Smoke — 候选 backend+PG18 digest 真实拉起门禁
+  #
+  # 6e93ea281 下线社区版交付并删除 golden_* 交付脚本后，candidate 镜像在
+  # 晋升前没有任何运行时验证。本门不复活 golden 交付脚本，只复用
+  # scripts/test/dev_compose_test.sh 的 --docker 真栈冒烟（与
+  # backend-runtime.yml 同一 harness）：候选 backend + 候选 PG18 双 digest
+  # 组网拉起 → 迁移与健康检查全绿 → 网关/S3/RSA 持久化断言。
+  # 覆盖面说明：Widget candidate 已在 build job 内做容器级运行时冒烟
+  # （health.txt+配对资产）；admin candidate 为纯静态产物（构建期
+  # bun run verify:widget 覆盖），本门不重复。
+  # ----------------------------------------------------------------
+  smoke-candidate:
+    name: Runtime smoke (backend + PG18 candidates on dev compose)
+    if: github.event_name == 'push'
+    needs: [build-candidate, build-pg-candidate]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - name: Checkout (harness + compose at tag)
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ github.sha }}
+      - name: Login to GHCR (compose pull candidate digests)
+        uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Smoke the exact candidate digests on the real compose stack
+        env:
+          BACKEND_REF: ${{ needs.build-candidate.outputs.IMAGE_DIGEST_REF }}
+          PG_REF: ${{ needs.build-pg-candidate.outputs.PG_IMAGE_DIGEST_REF }}
+        run: |
+          set -euo pipefail
+          python3 scripts/test/test_dev_compose.py --docker "$BACKEND_REF" "$PG_REF"
+
+  # ----------------------------------------------------------------
   # Release Identity — 三元组的 workflow 级出口（单一聚合点）
   # ----------------------------------------------------------------
   release-identity:
     name: Release Identity (triple)
     runs-on: ubuntu-24.04
     timeout-minutes: 5
-    needs: [build-candidate]
+    needs: [build-candidate, smoke-candidate]
     outputs:
       IMBOY_VERSION: ${{ needs.build-candidate.outputs.IMBOY_VERSION }}
       IMBOY_GIT_SHA: ${{ needs.build-candidate.outputs.IMBOY_GIT_SHA }}
