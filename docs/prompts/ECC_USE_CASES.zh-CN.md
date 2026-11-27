@@ -1660,6 +1660,324 @@ $test-collaboration $ai-regression-testing $verification-loop
 优先新增能区分正确与错误实现的测试；不要复制重复用例、降低阈值、扩大 skip 或修改断言使测试变绿。使用项目已有测试命令和执行合同。逐项报告 PASS/FAIL/BLOCKED/NOT RUN，提供真实命令、退出码、测试数量和证据位置。发现缺陷时给出最小复现和修复建议；未经授权不修改业务代码。不得将未执行或环境缺失标记为 PASS。
 ```
 
+
+### ECC-111 · 设备、推送与通知中心
+
+**场景：** 多设备在线、推送送达和通知偏好
+
+**A · 新增功能 · `product-capability` + `orch-add-feature` + `tdd-workflow`**
+
+```text
+$product-capability $orch-add-feature $tdd-workflow
+
+目标客户/用户角色/业务目标：[填写]。客户业务规则和验收指标：[填写]。本次目标端/模块：[填写]。
+
+先读取仓库规则、当前 HEAD、工作区状态、对应概念文档/接口契约/代码/测试。区分 CURRENT、TARGET、LOCKED、UNKNOWN、NOT_VERIFIED；不能把设计或 API 存在说成端到端交付。
+
+任务类型：新增功能。
+
+盘点 user_device、设备注册/吊销、APNs/FCM/JPush 适配、在线状态、S2C 通知、消息推送、免打扰和设备级 ACK。核对平台差异、凭据边界、失效 token 清理与消息/推送职责分离。输出当前已实现和各 provider 未验证状态。
+
+判断现有功能能否通过配置或组合满足需求，只有真实缺口才新增。输出能力合同（角色、流程、状态机、权限、数据归属、接口、失败恢复、观测、兼容和验收）。输入不完整时列出阻塞问题并停在方案阶段。输入明确时按 TDD 先写失败测试再实现，使用现有架构和测试命令。先过计划门禁；不 commit/push/合并/部署。
+```
+
+**B · 优化现有功能 / 新模型复审旧 AI 代码 · `brownfield-retrospective` + `tdd-workflow` + `verification-loop`**
+
+```text
+$brownfield-retrospective $tdd-workflow $verification-loop
+
+目标客户/用户角色/业务目标：[填写]。客户业务规则和验收指标：[填写]。本次目标端/模块：[填写]。
+
+先读取仓库规则、当前 HEAD、工作区状态、对应概念文档/接口契约/代码/测试。区分 CURRENT、TARGET、LOCKED、UNKNOWN、NOT_VERIFIED；不能把设计或 API 存在说成端到端交付。
+
+任务类型：优化现有功能，重点复审旧 AI 模型生成的实现。
+
+盘点 user_device、设备注册/吊销、APNs/FCM/JPush 适配、在线状态、S2C 通知、消息推送、免打扰和设备级 ACK。核对平台差异、凭据边界、失效 token 清理与消息/推送职责分离。输出当前已实现和各 provider 未验证状态。
+
+按 brownfield-retrospective 的 slice-first 方法限制在约 15 个文件或 2000 行以内。不要信任旧模型自评、注释或现有测试的完整性；独立重建行为，建立基线，审查正确性、权限、安全、竞态、失败处理、数据兼容、性能、资源生命周期和可维护性。每个发现给出文件/行号、证据、影响和最小修复建议。优先行为保持型优化，先补测试证明问题再修改；涉及协议、数据结构或用户可见行为变化时先请求确认。不要创建 docs/retro 或重复报告，先在会话中输出。遵循后端四层架构、权限不变量和 API/WS 契约。不 commit/push/合并/部署。
+```
+
+**C · 测试现有功能 · `test-collaboration` + `ai-regression-testing` + `verification-loop`**
+
+```text
+$test-collaboration $ai-regression-testing $verification-loop
+
+目标客户/用户角色/业务目标：[填写]。客户业务规则和验收指标：[填写]。本次目标端/模块：[填写]。
+
+先读取仓库规则、当前 HEAD、工作区状态、对应概念文档/接口契约/代码/测试。区分 CURRENT、TARGET、LOCKED、UNKNOWN、NOT_VERIFIED；不能把设计或 API 存在说成端到端交付。
+
+任务类型：测试现有功能。
+
+盘点 user_device、设备注册/吊销、APNs/FCM/JPush 适配、在线状态、S2C 通知、消息推送、免打扰和设备级 ACK。核对平台差异、凭据边界、失效 token 清理与消息/推送职责分离。输出当前已实现和各 provider 未验证状态。
+
+先不改业务实现。盘点现有单元/集成/契约/E2E/平台测试，建立需求/不变量→测试资产→命令→证据矩阵。覆盖正常、权限拒绝、边界值、重复、并发、超时、故障恢复、旧数据兼容和跨端行为。针对旧 AI 代码特别检查 mock 与真实路径不一致、遗漏持久化/序列化字段、happy-path-only、异常吞掉、重试副作用和测试迎合实现。只新增高价值测试，不降低阈值、不扩大 skip。使用现有 EUnit/CT/契约/集成测试入口。报告 PASS/FAIL/BLOCKED/NOT RUN、命令、退出码、数量和证据。发现缺陷先给复现和修复建议，未经授权不改业务代码。
+```
+
+
+### ECC-112 · 用户关系扩展与位置服务
+
+**场景：** 收藏、标签、黑名单、好友分类和附近的人
+
+**A · 新增功能 · `product-capability` + `orch-add-feature` + `tdd-workflow`**
+
+```text
+$product-capability $orch-add-feature $tdd-workflow
+
+目标客户/用户角色/业务目标：[填写]。客户业务规则和验收指标：[填写]。本次目标端/模块：[填写]。
+
+先读取仓库规则、当前 HEAD、工作区状态、对应概念文档/接口契约/代码/测试。区分 CURRENT、TARGET、LOCKED、UNKNOWN、NOT_VERIFIED；不能把设计或 API 存在说成端到端交付。
+
+任务类型：新增功能。
+
+盘点用户资料、收藏、用户标签/关系、好友分组、denylist、位置上报/附近的人及隐私设置。核对位置精度、授权、数据保留、黑名单优先、好友关系状态和可见性。输出 API、客户端入口和后台治理边界。
+
+判断现有功能能否通过配置或组合满足需求，只有真实缺口才新增。输出能力合同（角色、流程、状态机、权限、数据归属、接口、失败恢复、观测、兼容和验收）。输入不完整时列出阻塞问题并停在方案阶段。输入明确时按 TDD 先写失败测试再实现，使用现有架构和测试命令。先过计划门禁；不 commit/push/合并/部署。
+```
+
+**B · 优化现有功能 / 新模型复审旧 AI 代码 · `brownfield-retrospective` + `tdd-workflow` + `verification-loop`**
+
+```text
+$brownfield-retrospective $tdd-workflow $verification-loop
+
+目标客户/用户角色/业务目标：[填写]。客户业务规则和验收指标：[填写]。本次目标端/模块：[填写]。
+
+先读取仓库规则、当前 HEAD、工作区状态、对应概念文档/接口契约/代码/测试。区分 CURRENT、TARGET、LOCKED、UNKNOWN、NOT_VERIFIED；不能把设计或 API 存在说成端到端交付。
+
+任务类型：优化现有功能，重点复审旧 AI 模型生成的实现。
+
+盘点用户资料、收藏、用户标签/关系、好友分组、denylist、位置上报/附近的人及隐私设置。核对位置精度、授权、数据保留、黑名单优先、好友关系状态和可见性。输出 API、客户端入口和后台治理边界。
+
+按 brownfield-retrospective 的 slice-first 方法限制在约 15 个文件或 2000 行以内。不要信任旧模型自评、注释或现有测试的完整性；独立重建行为，建立基线，审查正确性、权限、安全、竞态、失败处理、数据兼容、性能、资源生命周期和可维护性。每个发现给出文件/行号、证据、影响和最小修复建议。优先行为保持型优化，先补测试证明问题再修改；涉及协议、数据结构或用户可见行为变化时先请求确认。不要创建 docs/retro 或重复报告，先在会话中输出。遵循后端四层架构、权限不变量和 API/WS 契约。不 commit/push/合并/部署。
+```
+
+**C · 测试现有功能 · `test-collaboration` + `ai-regression-testing` + `verification-loop`**
+
+```text
+$test-collaboration $ai-regression-testing $verification-loop
+
+目标客户/用户角色/业务目标：[填写]。客户业务规则和验收指标：[填写]。本次目标端/模块：[填写]。
+
+先读取仓库规则、当前 HEAD、工作区状态、对应概念文档/接口契约/代码/测试。区分 CURRENT、TARGET、LOCKED、UNKNOWN、NOT_VERIFIED；不能把设计或 API 存在说成端到端交付。
+
+任务类型：测试现有功能。
+
+盘点用户资料、收藏、用户标签/关系、好友分组、denylist、位置上报/附近的人及隐私设置。核对位置精度、授权、数据保留、黑名单优先、好友关系状态和可见性。输出 API、客户端入口和后台治理边界。
+
+先不改业务实现。盘点现有单元/集成/契约/E2E/平台测试，建立需求/不变量→测试资产→命令→证据矩阵。覆盖正常、权限拒绝、边界值、重复、并发、超时、故障恢复、旧数据兼容和跨端行为。针对旧 AI 代码特别检查 mock 与真实路径不一致、遗漏持久化/序列化字段、happy-path-only、异常吞掉、重试副作用和测试迎合实现。只新增高价值测试，不降低阈值、不扩大 skip。使用现有 EUnit/CT/契约/集成测试入口。报告 PASS/FAIL/BLOCKED/NOT RUN、命令、退出码、数量和证据。发现缺陷先给复现和修复建议，未经授权不改业务代码。
+```
+
+
+### ECC-113 · 举报、内容审核与申诉
+
+**场景：** 社区内容审核、用户举报和申诉工作流
+
+**A · 新增功能 · `product-capability` + `orch-add-feature` + `tdd-workflow`**
+
+```text
+$product-capability $orch-add-feature $tdd-workflow
+
+目标客户/用户角色/业务目标：[填写]。客户业务规则和验收指标：[填写]。本次目标端/模块：[填写]。
+
+先读取仓库规则、当前 HEAD、工作区状态、对应概念文档/接口契约/代码/测试。区分 CURRENT、TARGET、LOCKED、UNKNOWN、NOT_VERIFIED；不能把设计或 API 存在说成端到端交付。
+
+任务类型：新增功能。
+
+盘点 report、moderation、appeal、敏感词、审核队列、管理员动作、申诉状态、证据保留和操作审计。区分用户端举报入口、平台后台审核面和业务资源真实状态；检查重复举报、幂等、误伤恢复和审计记录。
+
+判断现有功能能否通过配置或组合满足需求，只有真实缺口才新增。输出能力合同（角色、流程、状态机、权限、数据归属、接口、失败恢复、观测、兼容和验收）。输入不完整时列出阻塞问题并停在方案阶段。输入明确时按 TDD 先写失败测试再实现，使用现有架构和测试命令。先过计划门禁；不 commit/push/合并/部署。
+```
+
+**B · 优化现有功能 / 新模型复审旧 AI 代码 · `brownfield-retrospective` + `tdd-workflow` + `verification-loop`**
+
+```text
+$brownfield-retrospective $tdd-workflow $verification-loop
+
+目标客户/用户角色/业务目标：[填写]。客户业务规则和验收指标：[填写]。本次目标端/模块：[填写]。
+
+先读取仓库规则、当前 HEAD、工作区状态、对应概念文档/接口契约/代码/测试。区分 CURRENT、TARGET、LOCKED、UNKNOWN、NOT_VERIFIED；不能把设计或 API 存在说成端到端交付。
+
+任务类型：优化现有功能，重点复审旧 AI 模型生成的实现。
+
+盘点 report、moderation、appeal、敏感词、审核队列、管理员动作、申诉状态、证据保留和操作审计。区分用户端举报入口、平台后台审核面和业务资源真实状态；检查重复举报、幂等、误伤恢复和审计记录。
+
+按 brownfield-retrospective 的 slice-first 方法限制在约 15 个文件或 2000 行以内。不要信任旧模型自评、注释或现有测试的完整性；独立重建行为，建立基线，审查正确性、权限、安全、竞态、失败处理、数据兼容、性能、资源生命周期和可维护性。每个发现给出文件/行号、证据、影响和最小修复建议。优先行为保持型优化，先补测试证明问题再修改；涉及协议、数据结构或用户可见行为变化时先请求确认。不要创建 docs/retro 或重复报告，先在会话中输出。遵循后端四层架构、权限不变量和 API/WS 契约。不 commit/push/合并/部署。
+```
+
+**C · 测试现有功能 · `test-collaboration` + `ai-regression-testing` + `verification-loop`**
+
+```text
+$test-collaboration $ai-regression-testing $verification-loop
+
+目标客户/用户角色/业务目标：[填写]。客户业务规则和验收指标：[填写]。本次目标端/模块：[填写]。
+
+先读取仓库规则、当前 HEAD、工作区状态、对应概念文档/接口契约/代码/测试。区分 CURRENT、TARGET、LOCKED、UNKNOWN、NOT_VERIFIED；不能把设计或 API 存在说成端到端交付。
+
+任务类型：测试现有功能。
+
+盘点 report、moderation、appeal、敏感词、审核队列、管理员动作、申诉状态、证据保留和操作审计。区分用户端举报入口、平台后台审核面和业务资源真实状态；检查重复举报、幂等、误伤恢复和审计记录。
+
+先不改业务实现。盘点现有单元/集成/契约/E2E/平台测试，建立需求/不变量→测试资产→命令→证据矩阵。覆盖正常、权限拒绝、边界值、重复、并发、超时、故障恢复、旧数据兼容和跨端行为。针对旧 AI 代码特别检查 mock 与真实路径不一致、遗漏持久化/序列化字段、happy-path-only、异常吞掉、重试副作用和测试迎合实现。只新增高价值测试，不降低阈值、不扩大 skip。使用现有 EUnit/CT/契约/集成测试入口。报告 PASS/FAIL/BLOCKED/NOT RUN、命令、退出码、数量和证据。发现缺陷先给复现和修复建议，未经授权不改业务代码。
+```
+
+
+### ECC-114 · 直播间、通话记录与录制治理
+
+**场景：** 直播、RTC 房间、通话记录和录制回放
+
+**A · 新增功能 · `product-capability` + `orch-add-feature` + `tdd-workflow`**
+
+```text
+$product-capability $orch-add-feature $tdd-workflow
+
+目标客户/用户角色/业务目标：[填写]。客户业务规则和验收指标：[填写]。本次目标端/模块：[填写]。
+
+先读取仓库规则、当前 HEAD、工作区状态、对应概念文档/接口契约/代码/测试。区分 CURRENT、TARGET、LOCKED、UNKNOWN、NOT_VERIFIED；不能把设计或 API 存在说成端到端交付。
+
+任务类型：新增功能。
+
+盘点 live_room、rtc room join、LiveKit、talk_record、参与者、客户端音频、provider、播放/分段、恢复与清理治理。区分媒体服务、IM 信令、录制 provider 和管理端合规治理；标明群通话、录制和多节点能力的交付锁/实测状态。
+
+判断现有功能能否通过配置或组合满足需求，只有真实缺口才新增。输出能力合同（角色、流程、状态机、权限、数据归属、接口、失败恢复、观测、兼容和验收）。输入不完整时列出阻塞问题并停在方案阶段。输入明确时按 TDD 先写失败测试再实现，使用现有架构和测试命令。先过计划门禁；不 commit/push/合并/部署。
+```
+
+**B · 优化现有功能 / 新模型复审旧 AI 代码 · `brownfield-retrospective` + `tdd-workflow` + `verification-loop`**
+
+```text
+$brownfield-retrospective $tdd-workflow $verification-loop
+
+目标客户/用户角色/业务目标：[填写]。客户业务规则和验收指标：[填写]。本次目标端/模块：[填写]。
+
+先读取仓库规则、当前 HEAD、工作区状态、对应概念文档/接口契约/代码/测试。区分 CURRENT、TARGET、LOCKED、UNKNOWN、NOT_VERIFIED；不能把设计或 API 存在说成端到端交付。
+
+任务类型：优化现有功能，重点复审旧 AI 模型生成的实现。
+
+盘点 live_room、rtc room join、LiveKit、talk_record、参与者、客户端音频、provider、播放/分段、恢复与清理治理。区分媒体服务、IM 信令、录制 provider 和管理端合规治理；标明群通话、录制和多节点能力的交付锁/实测状态。
+
+按 brownfield-retrospective 的 slice-first 方法限制在约 15 个文件或 2000 行以内。不要信任旧模型自评、注释或现有测试的完整性；独立重建行为，建立基线，审查正确性、权限、安全、竞态、失败处理、数据兼容、性能、资源生命周期和可维护性。每个发现给出文件/行号、证据、影响和最小修复建议。优先行为保持型优化，先补测试证明问题再修改；涉及协议、数据结构或用户可见行为变化时先请求确认。不要创建 docs/retro 或重复报告，先在会话中输出。遵循后端四层架构、权限不变量和 API/WS 契约。不 commit/push/合并/部署。
+```
+
+**C · 测试现有功能 · `test-collaboration` + `ai-regression-testing` + `verification-loop`**
+
+```text
+$test-collaboration $ai-regression-testing $verification-loop
+
+目标客户/用户角色/业务目标：[填写]。客户业务规则和验收指标：[填写]。本次目标端/模块：[填写]。
+
+先读取仓库规则、当前 HEAD、工作区状态、对应概念文档/接口契约/代码/测试。区分 CURRENT、TARGET、LOCKED、UNKNOWN、NOT_VERIFIED；不能把设计或 API 存在说成端到端交付。
+
+任务类型：测试现有功能。
+
+盘点 live_room、rtc room join、LiveKit、talk_record、参与者、客户端音频、provider、播放/分段、恢复与清理治理。区分媒体服务、IM 信令、录制 provider 和管理端合规治理；标明群通话、录制和多节点能力的交付锁/实测状态。
+
+先不改业务实现。盘点现有单元/集成/契约/E2E/平台测试，建立需求/不变量→测试资产→命令→证据矩阵。覆盖正常、权限拒绝、边界值、重复、并发、超时、故障恢复、旧数据兼容和跨端行为。针对旧 AI 代码特别检查 mock 与真实路径不一致、遗漏持久化/序列化字段、happy-path-only、异常吞掉、重试副作用和测试迎合实现。只新增高价值测试，不降低阈值、不扩大 skip。使用现有 EUnit/CT/契约/集成测试入口。报告 PASS/FAIL/BLOCKED/NOT RUN、命令、退出码、数量和证据。发现缺陷先给复现和修复建议，未经授权不改业务代码。
+```
+
+
+### ECC-115 · 插件、企业应用与单点登录
+
+**场景：** 客户插件扩展、OA 集成和 OIDC/SSO
+
+**A · 新增功能 · `product-capability` + `orch-add-feature` + `tdd-workflow`**
+
+```text
+$product-capability $orch-add-feature $tdd-workflow
+
+目标客户/用户角色/业务目标：[填写]。客户业务规则和验收指标：[填写]。本次目标端/模块：[填写]。
+
+先读取仓库规则、当前 HEAD、工作区状态、对应概念文档/接口契约/代码/测试。区分 CURRENT、TARGET、LOCKED、UNKNOWN、NOT_VERIFIED；不能把设计或 API 存在说成端到端交付。
+
+任务类型：新增功能。
+
+盘点 Plugin 管理、插件契约/生命周期、企业应用登记、Credential、OA SSO code/state/exchange、OIDC 登录、Webhook 回调和授权范围。明确平台内插件、外部 OA 应用和 MCP 工具三者边界；检查密钥签发、回调域名、重放防护与撤销机制。
+
+判断现有功能能否通过配置或组合满足需求，只有真实缺口才新增。输出能力合同（角色、流程、状态机、权限、数据归属、接口、失败恢复、观测、兼容和验收）。输入不完整时列出阻塞问题并停在方案阶段。输入明确时按 TDD 先写失败测试再实现，使用现有架构和测试命令。先过计划门禁；不 commit/push/合并/部署。
+```
+
+**B · 优化现有功能 / 新模型复审旧 AI 代码 · `brownfield-retrospective` + `tdd-workflow` + `verification-loop`**
+
+```text
+$brownfield-retrospective $tdd-workflow $verification-loop
+
+目标客户/用户角色/业务目标：[填写]。客户业务规则和验收指标：[填写]。本次目标端/模块：[填写]。
+
+先读取仓库规则、当前 HEAD、工作区状态、对应概念文档/接口契约/代码/测试。区分 CURRENT、TARGET、LOCKED、UNKNOWN、NOT_VERIFIED；不能把设计或 API 存在说成端到端交付。
+
+任务类型：优化现有功能，重点复审旧 AI 模型生成的实现。
+
+盘点 Plugin 管理、插件契约/生命周期、企业应用登记、Credential、OA SSO code/state/exchange、OIDC 登录、Webhook 回调和授权范围。明确平台内插件、外部 OA 应用和 MCP 工具三者边界；检查密钥签发、回调域名、重放防护与撤销机制。
+
+按 brownfield-retrospective 的 slice-first 方法限制在约 15 个文件或 2000 行以内。不要信任旧模型自评、注释或现有测试的完整性；独立重建行为，建立基线，审查正确性、权限、安全、竞态、失败处理、数据兼容、性能、资源生命周期和可维护性。每个发现给出文件/行号、证据、影响和最小修复建议。优先行为保持型优化，先补测试证明问题再修改；涉及协议、数据结构或用户可见行为变化时先请求确认。不要创建 docs/retro 或重复报告，先在会话中输出。遵循后端四层架构、权限不变量和 API/WS 契约。不 commit/push/合并/部署。
+```
+
+**C · 测试现有功能 · `test-collaboration` + `ai-regression-testing` + `verification-loop`**
+
+```text
+$test-collaboration $ai-regression-testing $verification-loop
+
+目标客户/用户角色/业务目标：[填写]。客户业务规则和验收指标：[填写]。本次目标端/模块：[填写]。
+
+先读取仓库规则、当前 HEAD、工作区状态、对应概念文档/接口契约/代码/测试。区分 CURRENT、TARGET、LOCKED、UNKNOWN、NOT_VERIFIED；不能把设计或 API 存在说成端到端交付。
+
+任务类型：测试现有功能。
+
+盘点 Plugin 管理、插件契约/生命周期、企业应用登记、Credential、OA SSO code/state/exchange、OIDC 登录、Webhook 回调和授权范围。明确平台内插件、外部 OA 应用和 MCP 工具三者边界；检查密钥签发、回调域名、重放防护与撤销机制。
+
+先不改业务实现。盘点现有单元/集成/契约/E2E/平台测试，建立需求/不变量→测试资产→命令→证据矩阵。覆盖正常、权限拒绝、边界值、重复、并发、超时、故障恢复、旧数据兼容和跨端行为。针对旧 AI 代码特别检查 mock 与真实路径不一致、遗漏持久化/序列化字段、happy-path-only、异常吞掉、重试副作用和测试迎合实现。只新增高价值测试，不降低阈值、不扩大 skip。使用现有 EUnit/CT/契约/集成测试入口。报告 PASS/FAIL/BLOCKED/NOT RUN、命令、退出码、数量和证据。发现缺陷先给复现和修复建议，未经授权不改业务代码。
+```
+
+
+### ECC-116 · 运营通知、反馈与可观测性
+
+**场景：** 公告、用户反馈、平台统计和运营审计
+
+**A · 新增功能 · `product-capability` + `orch-add-feature` + `tdd-workflow`**
+
+```text
+$product-capability $orch-add-feature $tdd-workflow
+
+目标客户/用户角色/业务目标：[填写]。客户业务规则和验收指标：[填写]。本次目标端/模块：[填写]。
+
+先读取仓库规则、当前 HEAD、工作区状态、对应概念文档/接口契约/代码/测试。区分 CURRENT、TARGET、LOCKED、UNKNOWN、NOT_VERIFIED；不能把设计或 API 存在说成端到端交付。
+
+任务类型：新增功能。
+
+盘点公告发布/版本、反馈提交与处理、平台操作日志、统计指标、健康检查、metrics 和审计事件。识别运营面权限、数据脱敏、指标口径、保留期和高基数标签风险。输出管理员工作流及观测缺口。
+
+判断现有功能能否通过配置或组合满足需求，只有真实缺口才新增。输出能力合同（角色、流程、状态机、权限、数据归属、接口、失败恢复、观测、兼容和验收）。输入不完整时列出阻塞问题并停在方案阶段。输入明确时按 TDD 先写失败测试再实现，使用现有架构和测试命令。先过计划门禁；不 commit/push/合并/部署。
+```
+
+**B · 优化现有功能 / 新模型复审旧 AI 代码 · `brownfield-retrospective` + `tdd-workflow` + `verification-loop`**
+
+```text
+$brownfield-retrospective $tdd-workflow $verification-loop
+
+目标客户/用户角色/业务目标：[填写]。客户业务规则和验收指标：[填写]。本次目标端/模块：[填写]。
+
+先读取仓库规则、当前 HEAD、工作区状态、对应概念文档/接口契约/代码/测试。区分 CURRENT、TARGET、LOCKED、UNKNOWN、NOT_VERIFIED；不能把设计或 API 存在说成端到端交付。
+
+任务类型：优化现有功能，重点复审旧 AI 模型生成的实现。
+
+盘点公告发布/版本、反馈提交与处理、平台操作日志、统计指标、健康检查、metrics 和审计事件。识别运营面权限、数据脱敏、指标口径、保留期和高基数标签风险。输出管理员工作流及观测缺口。
+
+按 brownfield-retrospective 的 slice-first 方法限制在约 15 个文件或 2000 行以内。不要信任旧模型自评、注释或现有测试的完整性；独立重建行为，建立基线，审查正确性、权限、安全、竞态、失败处理、数据兼容、性能、资源生命周期和可维护性。每个发现给出文件/行号、证据、影响和最小修复建议。优先行为保持型优化，先补测试证明问题再修改；涉及协议、数据结构或用户可见行为变化时先请求确认。不要创建 docs/retro 或重复报告，先在会话中输出。遵循后端四层架构、权限不变量和 API/WS 契约。不 commit/push/合并/部署。
+```
+
+**C · 测试现有功能 · `test-collaboration` + `ai-regression-testing` + `verification-loop`**
+
+```text
+$test-collaboration $ai-regression-testing $verification-loop
+
+目标客户/用户角色/业务目标：[填写]。客户业务规则和验收指标：[填写]。本次目标端/模块：[填写]。
+
+先读取仓库规则、当前 HEAD、工作区状态、对应概念文档/接口契约/代码/测试。区分 CURRENT、TARGET、LOCKED、UNKNOWN、NOT_VERIFIED；不能把设计或 API 存在说成端到端交付。
+
+任务类型：测试现有功能。
+
+盘点公告发布/版本、反馈提交与处理、平台操作日志、统计指标、健康检查、metrics 和审计事件。识别运营面权限、数据脱敏、指标口径、保留期和高基数标签风险。输出管理员工作流及观测缺口。
+
+先不改业务实现。盘点现有单元/集成/契约/E2E/平台测试，建立需求/不变量→测试资产→命令→证据矩阵。覆盖正常、权限拒绝、边界值、重复、并发、超时、故障恢复、旧数据兼容和跨端行为。针对旧 AI 代码特别检查 mock 与真实路径不一致、遗漏持久化/序列化字段、happy-path-only、异常吞掉、重试副作用和测试迎合实现。只新增高价值测试，不降低阈值、不扩大 skip。使用现有 EUnit/CT/契约/集成测试入口。报告 PASS/FAIL/BLOCKED/NOT RUN、命令、退出码、数量和证据。发现缺陷先给复现和修复建议，未经授权不改业务代码。
+```
+
 ## 维护说明
 
 - 本文只维护本仓库职责范围内的提示词；跨仓案例的统一索引位于 [imboy 后端主仓 docs/prompts/README.md](https://github.com/imboy-pub/imboy/blob/main/docs/prompts/README.md)。
