@@ -158,14 +158,23 @@ git_source_head() {
   printf '%s\n' "$head"
 }
 
-warn_dirty_source() {
+# 发布源码脏树门（fail-closed）：发布内容必须与 source_head 对应的提交一致。
+# 确要带脏工作树发布时，export IMBOY_DEPLOY_ALLOW_DIRTY=1 显式放行（降级为 warn）。
+require_clean_source() {
   local repo="$1" label="$2" mode="$3"
   [[ -z "$(git -C "$repo" status --porcelain --untracked-files=normal)" ]] && return 0
-  if [[ "$mode" == worktree ]]; then
-    warn "$label 存在未提交或未跟踪改动；按当前工作树继续发布（source_head 仅记录 Git HEAD 基线）" >&2
-  else
-    warn "$label 存在未提交或未跟踪改动；本次远端 Git 发布不会包含这些本地改动" >&2
+  if [[ "${IMBOY_DEPLOY_ALLOW_DIRTY:-0}" == "1" ]]; then
+    if [[ "$mode" == worktree ]]; then
+      warn "$label 存在未提交或未跟踪改动；IMBOY_DEPLOY_ALLOW_DIRTY=1 显式放行，按当前工作树发布（source_head 仅记录 Git HEAD 基线）" >&2
+    else
+      warn "$label 存在未提交或未跟踪改动；IMBOY_DEPLOY_ALLOW_DIRTY=1 显式放行，本次远端 Git 发布不会包含这些本地改动" >&2
+    fi
+    return 0
   fi
+  if [[ "$mode" == worktree ]]; then
+    fail "$label 存在未提交或未跟踪改动；发布内容与 source_head 将不一致——先 commit（或 stash）再发布，或 export IMBOY_DEPLOY_ALLOW_DIRTY=1 显式放行"
+  fi
+  fail "$label 存在未提交或未跟踪改动；本次远端 Git 发布不会包含这些本地改动——先 commit 再发布，或 export IMBOY_DEPLOY_ALLOW_DIRTY=1 显式放行"
 }
 
 valid_fqdn() {
@@ -364,9 +373,9 @@ if [[ "$COMPONENT" == all || "$COMPONENT" == admin || ("$COMPONENT" == api && "$
     || fail "ADMIN_BUILD_DIR 必须指向含 package.json 的具体项目目录"
   ADMIN_SOURCE_HEAD="$(git_source_head "$ADMIN_BUILD_PATH" "Admin 源码")"
   if [[ "$COMPONENT" == admin || "$COMPONENT" == all ]]; then
-    warn_dirty_source "$ADMIN_BUILD_PATH" "Admin 源码" worktree
+    require_clean_source "$ADMIN_BUILD_PATH" "Admin 源码" worktree
   else
-    warn_dirty_source "$ADMIN_BUILD_PATH" "Admin 源码" git
+    require_clean_source "$ADMIN_BUILD_PATH" "Admin 源码" git
   fi
 fi
 
@@ -374,9 +383,9 @@ if [[ "$COMPONENT" == api || "$COMPONENT" == all || "$COMPONENT" == cs ]]; then
   BACKEND_REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd -P)"
   BACKEND_SOURCE_HEAD="$(git_source_head "$BACKEND_REPO_ROOT" "Backend 源码")"
   if [[ "$LOCAL_MODE" -eq 1 && "$OFFLINE_UPGRADE" -eq 0 ]]; then
-    warn_dirty_source "$BACKEND_REPO_ROOT" "Backend 源码" worktree
+    require_clean_source "$BACKEND_REPO_ROOT" "Backend 源码" worktree
   else
-    warn_dirty_source "$BACKEND_REPO_ROOT" "Backend 源码" git
+    require_clean_source "$BACKEND_REPO_ROOT" "Backend 源码" git
   fi
 fi
 

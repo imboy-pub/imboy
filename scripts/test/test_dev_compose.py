@@ -510,8 +510,9 @@ class LocalComposeTests(unittest.TestCase):
                 self.assertEqual(env_file.read_bytes(), before)
 
 
-def runtime_smoke(image):
-    """Use the workflow's already-built backend; never publish or touch existing data."""
+def runtime_smoke(image, pg_image=None):
+    """Use the workflow's already-built backend (and optionally candidate PG18);
+    never publish or touch existing data."""
     if os.environ.get("GITHUB_ACTIONS") != "true":
         raise RuntimeError("--docker requires an isolated GitHub Actions runner")
     if (ROOT / ".env").exists():
@@ -520,8 +521,13 @@ def runtime_smoke(image):
                        ("network", "imboy-local")):
         if run(["docker", kind, "inspect", name]).returncode == 0:
             raise RuntimeError(f"Refusing to use existing {kind} {name}")
-    env = environment(BACKEND_IMAGE=image,
-                      COMPOSE_PROJECT_NAME="imboy-local-ci-" + os.environ["GITHUB_RUN_ID"])
+    overrides = {"BACKEND_IMAGE": image,
+                 "COMPOSE_PROJECT_NAME": "imboy-local-ci-" + os.environ["GITHUB_RUN_ID"]}
+    if pg_image:
+        # Release smoke passes the candidate PG18 digest; without it the stock
+        # imboy/pg18 default keeps backend-runtime behavior unchanged.
+        overrides["PG_IMAGE"] = pg_image
+    env = environment(**overrides)
     command = ["docker", "compose", "--env-file", str(ROOT / ".env"),
                "-f", str(ROOT / "docker-compose.yml")]
     for profile in ("dev", "gateway", "api", "admin", "widget", "livekit"):
@@ -736,7 +742,7 @@ def gateway_object_roundtrip(command, execute):
 
 
 if __name__ == "__main__":
-    if len(sys.argv) == 3 and sys.argv[1] == "--docker":
-        runtime_smoke(sys.argv[2])
+    if len(sys.argv) in (3, 4) and sys.argv[1] == "--docker":
+        runtime_smoke(sys.argv[2], *(sys.argv[3:4] or [None]))
     else:
         unittest.main(verbosity=2)
