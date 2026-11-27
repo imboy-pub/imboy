@@ -44,6 +44,20 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y jq curl openssl python3 zip unzip gettext-base
+      # lk_turn_hook_install_test.sh 对 rtc.conf.template 做 nginx -t；模板用
+      # `http2 on;`（nginx >= 1.25.1，生产同款）。ubuntu-24.04 自带 nginx 1.24
+      # 不认识该指令（2026-11-28 run3 实证），这里从 nginx.org 官方源装新版
+      # 对齐生产，避免部署资产为旧 CI 降级写法。
+      - name: Install nginx >= 1.25 from nginx.org (http2 on; directive)
+        run: |
+          set -euo pipefail
+          curl -fsSL https://nginx.org/keys/nginx_signing.key \
+            | sudo gpg --dearmor --yes -o /usr/share/keyrings/nginx-archive-keyring.gpg
+          echo "deb [signed-by=/usr/share/keyrings/nginx-archive-keyring.gpg] http://nginx.org/packages/ubuntu noble nginx" \
+            | sudo tee /etc/apt/sources.list.d/nginx.list >/dev/null
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq nginx
+          nginx -v 2>&1 | tee "$GITHUB_STEP_SUMMARY"
       - name: Check packaging and configuration contracts
         run: |
           bash scripts/test/install_one_click_test.sh
