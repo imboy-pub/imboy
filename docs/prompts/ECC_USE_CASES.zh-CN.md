@@ -474,345 +474,1145 @@ $agent-eval $benchmark-optimization-loop
 
 > 本组面向客户业务场景复刻。每个场景提供两条独立提示词：A 用于需求/能力映射；B 用于在批准后实施客户差异。将提示词中的“客户”替换为具体客户、行业、角色和目标流程。
 
+
 ### ECC-073 · 客户私聊与多设备消息
 
 **场景：** 个人即时通讯
 
-**A · `product-lens` + `product-capability` · 客户场景映射**
+**A · 新增功能 · `product-capability` + `orch-add-feature` + `tdd-workflow`**
 
 ```text
-$product-lens $product-capability
+$product-capability $orch-add-feature $tdd-workflow
+
+当前功能场景：客户私聊与多设备消息（个人即时通讯）。目标客户/目标业务流程：[请填写客户行业、用户角色、业务目标、关键流程、特殊规则和优先级]。目标范围：[请填写本次要覆盖的端/模块/子功能]。
+
+先读取当前仓库规则和权威文档，再核对实际代码与测试。不得把设计、文档或 API 存在等同于功能已交付；明确标注 CURRENT、TARGET、LOCKED、UNKNOWN 和 NOT_VERIFIED。
+
+任务类型：新增功能。
 
 面向客户“个人即时通讯”场景，评估 IMBoy 的账号、好友、C2C 会话、消息可靠投递、离线同步、已读/输入状态、消息撤回编辑、转发引用和多设备能力。先读 messaging-model、message_api_contract、WS 协议及真实代码。按客户角色、关键旅程、现有能力 CURRENT、受交付锁能力、缺口、非目标和验收指标输出复刻方案。不得把未开放/未验收能力写成现成功能。
-```
-
-**B · `contract-first` + `orch-change-feature` + `tdd-workflow` · 客户差异实施**
-
-```text
-$contract-first $orch-change-feature $tdd-workflow
 
 基于已确认的个人即时通讯客户方案，在 IMBoy 后端实施明确批准的差异项。先核对路由、契约、四层架构、conv_seq、设备 ACK、离线补投和三端消费。先补契约与失败测试，再最小实现。不得改变消息顺序、幂等、投递和兼容语义。运行定向 EUnit/CT、契约和架构门禁；提交前停止，不 commit/push。
+
+请先判断需求能否由现有能力配置/组合完成；只有确认存在真实能力缺口才新增代码。输出 capability contract：参与角色、用户旅程、状态机、权限/数据边界、API/WS/客户端界面、迁移兼容、观测和验收标准。客户输入不完整或涉及产品决策时，列出阻塞问题并停在方案阶段。输入充分且任务明确时，按 TDD 先写失败测试再实现，遵循项目已有架构和测试命令。遵守 Gate：计划/契约先审阅，实施后完整验证；不 commit、不 push、不合并、不部署。
 ```
+
+**B · 优化现有功能 / 新模型复审旧 AI 代码 · `brownfield-retrospective` + `tdd-workflow` + `verification-loop`**
+
+```text
+$brownfield-retrospective $tdd-workflow $verification-loop
+
+当前功能场景：客户私聊与多设备消息（个人即时通讯）。目标客户/目标业务流程：[请填写客户行业、用户角色、业务目标、关键流程、特殊规则和优先级]。目标范围：[请填写本次要覆盖的端/模块/子功能]。
+
+先读取当前仓库规则和权威文档，再核对实际代码与测试。不得把设计、文档或 API 存在等同于功能已交付；明确标注 CURRENT、TARGET、LOCKED、UNKNOWN 和 NOT_VERIFIED。
+
+任务类型：优化现有功能，特别用于新一代 AI 模型复审和改进旧 AI 模型生成的代码。
+
+面向客户“个人即时通讯”场景，评估 IMBoy 的账号、好友、C2C 会话、消息可靠投递、离线同步、已读/输入状态、消息撤回编辑、转发引用和多设备能力。先读 messaging-model、message_api_contract、WS 协议及真实代码。按客户角色、关键旅程、现有能力 CURRENT、受交付锁能力、缺口、非目标和验收指标输出复刻方案。不得把未开放/未验收能力写成现成功能。
+
+基于已确认的个人即时通讯客户方案，在 IMBoy 后端实施明确批准的差异项。先核对路由、契约、四层架构、conv_seq、设备 ACK、离线补投和三端消费。先补契约与失败测试，再最小实现。不得改变消息顺序、幂等、投递和兼容语义。运行定向 EUnit/CT、契约和架构门禁；提交前停止，不 commit/push。
+
+请把当前实现视为待验证证据，不信任注释、旧模型自评或“看起来合理”的抽象。按 brownfield-retrospective 的 slice-first 方法，先限定约 15 个文件或 2000 行以内的功能切片，重建实际行为和不变量，建立现有测试/性能/错误行为基线，再检查：逻辑正确性、并发与竞态、失败处理、边界条件、权限与安全、资源生命周期、性能热点、重复/过度抽象、可维护性和跨端一致性。
+
+优先做行为保持型优化；不得为了体现新模型能力而重写整个模块、改变公共契约或引入新依赖。每项发现提供文件/行号、复现或证据、影响、建议和风险。先新增/修正测试证明原行为与目标行为，再实施最小改动。若需要改变用户可见行为、数据结构或协议，先停下请求确认。以 Handler → Logic → DS → Repo、Erlang/OTP、Cowboy、PostgreSQL 和现有 API/WS 契约为准。
+
+不要自动创建 docs/retro、重复计划或审计文档；先在会话中输出基线、差距登记和改进方案。经用户明确授权后才落盘必要的长期文档。完成后运行相关测试、静态检查和 diff review；不 commit、不 push、不合并、不部署。
+```
+
+**C · 测试现有功能 · `test-collaboration` + `ai-regression-testing` + `verification-loop`**
+
+```text
+$test-collaboration $ai-regression-testing $verification-loop
+
+当前功能场景：客户私聊与多设备消息（个人即时通讯）。目标客户/目标业务流程：[请填写客户行业、用户角色、业务目标、关键流程、特殊规则和优先级]。目标范围：[请填写本次要覆盖的端/模块/子功能]。
+
+先读取当前仓库规则和权威文档，再核对实际代码与测试。不得把设计、文档或 API 存在等同于功能已交付；明确标注 CURRENT、TARGET、LOCKED、UNKNOWN 和 NOT_VERIFIED。
+
+任务类型：测试现有功能。
+
+面向客户“个人即时通讯”场景，评估 IMBoy 的账号、好友、C2C 会话、消息可靠投递、离线同步、已读/输入状态、消息撤回编辑、转发引用和多设备能力。先读 messaging-model、message_api_contract、WS 协议及真实代码。按客户角色、关键旅程、现有能力 CURRENT、受交付锁能力、缺口、非目标和验收指标输出复刻方案。不得把未开放/未验收能力写成现成功能。
+
+基于已确认的个人即时通讯客户方案，在 IMBoy 后端实施明确批准的差异项。先核对路由、契约、四层架构、conv_seq、设备 ACK、离线补投和三端消费。先补契约与失败测试，再最小实现。不得改变消息顺序、幂等、投递和兼容语义。运行定向 EUnit/CT、契约和架构门禁；提交前停止，不 commit/push。
+
+请不要先修改业务实现。先盘点该场景已有单元、组件/Widget、契约、集成、E2E、平台/设备测试和 CI 门禁，建立“需求/业务规则 → TEST-ID 或现有测试资产 → 执行命令 → 证据”矩阵。重点设计正常路径、权限拒绝、非法输入、边界值、重复请求、并发、超时、断线恢复、旧数据兼容和跨端一致性用例。针对旧 AI 生成代码，额外检查 mock/sandbox 与真实路径不一致、遗漏 SELECT/序列化字段、只测 happy path、异常被吞、测试与实现共享同一错误假设等盲点。
+
+只新增真正有区分力的测试，不复制重复用例、不降低阈值、不扩大 skip。使用现有 EUnit、Common Test、契约门禁和 scripts 中的权威测试入口。
+
+执行后逐项报告通过/失败/阻塞/未执行，给出实际命令、退出码、测试数量和证据位置。发现产品代码缺陷时先提交复现证据和最小修复建议；没有明确授权不修改业务代码。不得把未运行、环境缺失或模拟测试写成 PASS。
+```
+
 
 ### ECC-074 · 客户群聊、社群运营与群治理
 
 **场景：** 群组与社群协作
 
-**A · `product-lens` + `product-capability` · 客户场景映射**
+**A · 新增功能 · `product-capability` + `orch-add-feature` + `tdd-workflow`**
 
 ```text
-$product-lens $product-capability
+$product-capability $orch-add-feature $tdd-workflow
+
+当前功能场景：客户群聊、社群运营与群治理（群组与社群协作）。目标客户/目标业务流程：[请填写客户行业、用户角色、业务目标、关键流程、特殊规则和优先级]。目标范围：[请填写本次要覆盖的端/模块/子功能]。
+
+先读取当前仓库规则和权威文档，再核对实际代码与测试。不得把设计、文档或 API 存在等同于功能已交付；明确标注 CURRENT、TARGET、LOCKED、UNKNOWN 和 NOT_VERIFIED。
+
+任务类型：新增功能。
 
 为客户复刻群聊/社群场景，分析 IMBoy 群组创建、成员邀请与角色、群公告、标签/分类、@提及、相册、文件、日程、任务、投票、群发现、群管理日志和群消息。读取 group_api_contract、协作层级概念及对应 API/Flutter/Admin 代码。输出客户场景映射、角色权限矩阵、生命周期、CURRENT/TARGET/交付锁边界和缺口。
-```
-
-**B · `contract-first` + `orch-add-feature` + `tdd-workflow` · 客户差异实施**
-
-```text
-$contract-first $orch-add-feature $tdd-workflow
 
 针对已批准的群组/社群差异实施后端增量。先确认现有 Group API、角色 0–5、workspace/personal scope 和子功能能否组合满足需求。仅对真实缺口新增能力；定义契约、权限不变量、迁移兼容和失败测试。完成定向验证，提交前停止。
+
+请先判断需求能否由现有能力配置/组合完成；只有确认存在真实能力缺口才新增代码。输出 capability contract：参与角色、用户旅程、状态机、权限/数据边界、API/WS/客户端界面、迁移兼容、观测和验收标准。客户输入不完整或涉及产品决策时，列出阻塞问题并停在方案阶段。输入充分且任务明确时，按 TDD 先写失败测试再实现，遵循项目已有架构和测试命令。遵守 Gate：计划/契约先审阅，实施后完整验证；不 commit、不 push、不合并、不部署。
 ```
+
+**B · 优化现有功能 / 新模型复审旧 AI 代码 · `brownfield-retrospective` + `tdd-workflow` + `verification-loop`**
+
+```text
+$brownfield-retrospective $tdd-workflow $verification-loop
+
+当前功能场景：客户群聊、社群运营与群治理（群组与社群协作）。目标客户/目标业务流程：[请填写客户行业、用户角色、业务目标、关键流程、特殊规则和优先级]。目标范围：[请填写本次要覆盖的端/模块/子功能]。
+
+先读取当前仓库规则和权威文档，再核对实际代码与测试。不得把设计、文档或 API 存在等同于功能已交付；明确标注 CURRENT、TARGET、LOCKED、UNKNOWN 和 NOT_VERIFIED。
+
+任务类型：优化现有功能，特别用于新一代 AI 模型复审和改进旧 AI 模型生成的代码。
+
+为客户复刻群聊/社群场景，分析 IMBoy 群组创建、成员邀请与角色、群公告、标签/分类、@提及、相册、文件、日程、任务、投票、群发现、群管理日志和群消息。读取 group_api_contract、协作层级概念及对应 API/Flutter/Admin 代码。输出客户场景映射、角色权限矩阵、生命周期、CURRENT/TARGET/交付锁边界和缺口。
+
+针对已批准的群组/社群差异实施后端增量。先确认现有 Group API、角色 0–5、workspace/personal scope 和子功能能否组合满足需求。仅对真实缺口新增能力；定义契约、权限不变量、迁移兼容和失败测试。完成定向验证，提交前停止。
+
+请把当前实现视为待验证证据，不信任注释、旧模型自评或“看起来合理”的抽象。按 brownfield-retrospective 的 slice-first 方法，先限定约 15 个文件或 2000 行以内的功能切片，重建实际行为和不变量，建立现有测试/性能/错误行为基线，再检查：逻辑正确性、并发与竞态、失败处理、边界条件、权限与安全、资源生命周期、性能热点、重复/过度抽象、可维护性和跨端一致性。
+
+优先做行为保持型优化；不得为了体现新模型能力而重写整个模块、改变公共契约或引入新依赖。每项发现提供文件/行号、复现或证据、影响、建议和风险。先新增/修正测试证明原行为与目标行为，再实施最小改动。若需要改变用户可见行为、数据结构或协议，先停下请求确认。以 Handler → Logic → DS → Repo、Erlang/OTP、Cowboy、PostgreSQL 和现有 API/WS 契约为准。
+
+不要自动创建 docs/retro、重复计划或审计文档；先在会话中输出基线、差距登记和改进方案。经用户明确授权后才落盘必要的长期文档。完成后运行相关测试、静态检查和 diff review；不 commit、不 push、不合并、不部署。
+```
+
+**C · 测试现有功能 · `test-collaboration` + `ai-regression-testing` + `verification-loop`**
+
+```text
+$test-collaboration $ai-regression-testing $verification-loop
+
+当前功能场景：客户群聊、社群运营与群治理（群组与社群协作）。目标客户/目标业务流程：[请填写客户行业、用户角色、业务目标、关键流程、特殊规则和优先级]。目标范围：[请填写本次要覆盖的端/模块/子功能]。
+
+先读取当前仓库规则和权威文档，再核对实际代码与测试。不得把设计、文档或 API 存在等同于功能已交付；明确标注 CURRENT、TARGET、LOCKED、UNKNOWN 和 NOT_VERIFIED。
+
+任务类型：测试现有功能。
+
+为客户复刻群聊/社群场景，分析 IMBoy 群组创建、成员邀请与角色、群公告、标签/分类、@提及、相册、文件、日程、任务、投票、群发现、群管理日志和群消息。读取 group_api_contract、协作层级概念及对应 API/Flutter/Admin 代码。输出客户场景映射、角色权限矩阵、生命周期、CURRENT/TARGET/交付锁边界和缺口。
+
+针对已批准的群组/社群差异实施后端增量。先确认现有 Group API、角色 0–5、workspace/personal scope 和子功能能否组合满足需求。仅对真实缺口新增能力；定义契约、权限不变量、迁移兼容和失败测试。完成定向验证，提交前停止。
+
+请不要先修改业务实现。先盘点该场景已有单元、组件/Widget、契约、集成、E2E、平台/设备测试和 CI 门禁，建立“需求/业务规则 → TEST-ID 或现有测试资产 → 执行命令 → 证据”矩阵。重点设计正常路径、权限拒绝、非法输入、边界值、重复请求、并发、超时、断线恢复、旧数据兼容和跨端一致性用例。针对旧 AI 生成代码，额外检查 mock/sandbox 与真实路径不一致、遗漏 SELECT/序列化字段、只测 happy path、异常被吞、测试与实现共享同一错误假设等盲点。
+
+只新增真正有区分力的测试，不复制重复用例、不降低阈值、不扩大 skip。使用现有 EUnit、Common Test、契约门禁和 scripts 中的权威测试入口。
+
+执行后逐项报告通过/失败/阻塞/未执行，给出实际命令、退出码、测试数量和证据位置。发现产品代码缺陷时先提交复现证据和最小修复建议；没有明确授权不修改业务代码。不得把未运行、环境缺失或模拟测试写成 PASS。
+```
+
 
 ### ECC-075 · 客户内容频道、知识订阅与付费内容
 
 **场景：** 频道与订阅内容
 
-**A · `product-lens` + `product-capability` · 客户场景映射**
+**A · 新增功能 · `product-capability` + `orch-add-feature` + `tdd-workflow`**
 
 ```text
-$product-lens $product-capability
+$product-capability $orch-add-feature $tdd-workflow
+
+当前功能场景：客户内容频道、知识订阅与付费内容（频道与订阅内容）。目标客户/目标业务流程：[请填写客户行业、用户角色、业务目标、关键流程、特殊规则和优先级]。目标范围：[请填写本次要覆盖的端/模块/子功能]。
+
+先读取当前仓库规则和权威文档，再核对实际代码与测试。不得把设计、文档或 API 存在等同于功能已交付；明确标注 CURRENT、TARGET、LOCKED、UNKNOWN 和 NOT_VERIFIED。
+
+任务类型：新增功能。
 
 为客户复刻内容频道/知识订阅场景。盘点 IMBoy Channel 的 personal/workspace scope、发现、公开/私有、免费/付费、订阅/购买、帖子、评论、讨论群绑定、精华/置顶、标签、Webhook 和内容访问控制。以 channel-api-contract-v1、微社群契约及真实代码为准，输出能力映射、付费与权限边界、缺口和验收旅程。
-```
-
-**B · `contract-first` + `orch-add-feature` + `tdd-workflow` · 客户差异实施**
-
-```text
-$contract-first $orch-add-feature $tdd-workflow
 
 实施已批准的频道客户化差异。复用 Channel 访问元组 visibility/access_type/join_policy、订阅/购买状态、讨论群和内容接口。先补契约与访问控制正反例，再实施最小变更；未授权用户必须 fail-closed。核对 App/Admin 消费和支付兼容，不擅自改变收费语义。
+
+请先判断需求能否由现有能力配置/组合完成；只有确认存在真实能力缺口才新增代码。输出 capability contract：参与角色、用户旅程、状态机、权限/数据边界、API/WS/客户端界面、迁移兼容、观测和验收标准。客户输入不完整或涉及产品决策时，列出阻塞问题并停在方案阶段。输入充分且任务明确时，按 TDD 先写失败测试再实现，遵循项目已有架构和测试命令。遵守 Gate：计划/契约先审阅，实施后完整验证；不 commit、不 push、不合并、不部署。
 ```
+
+**B · 优化现有功能 / 新模型复审旧 AI 代码 · `brownfield-retrospective` + `tdd-workflow` + `verification-loop`**
+
+```text
+$brownfield-retrospective $tdd-workflow $verification-loop
+
+当前功能场景：客户内容频道、知识订阅与付费内容（频道与订阅内容）。目标客户/目标业务流程：[请填写客户行业、用户角色、业务目标、关键流程、特殊规则和优先级]。目标范围：[请填写本次要覆盖的端/模块/子功能]。
+
+先读取当前仓库规则和权威文档，再核对实际代码与测试。不得把设计、文档或 API 存在等同于功能已交付；明确标注 CURRENT、TARGET、LOCKED、UNKNOWN 和 NOT_VERIFIED。
+
+任务类型：优化现有功能，特别用于新一代 AI 模型复审和改进旧 AI 模型生成的代码。
+
+为客户复刻内容频道/知识订阅场景。盘点 IMBoy Channel 的 personal/workspace scope、发现、公开/私有、免费/付费、订阅/购买、帖子、评论、讨论群绑定、精华/置顶、标签、Webhook 和内容访问控制。以 channel-api-contract-v1、微社群契约及真实代码为准，输出能力映射、付费与权限边界、缺口和验收旅程。
+
+实施已批准的频道客户化差异。复用 Channel 访问元组 visibility/access_type/join_policy、订阅/购买状态、讨论群和内容接口。先补契约与访问控制正反例，再实施最小变更；未授权用户必须 fail-closed。核对 App/Admin 消费和支付兼容，不擅自改变收费语义。
+
+请把当前实现视为待验证证据，不信任注释、旧模型自评或“看起来合理”的抽象。按 brownfield-retrospective 的 slice-first 方法，先限定约 15 个文件或 2000 行以内的功能切片，重建实际行为和不变量，建立现有测试/性能/错误行为基线，再检查：逻辑正确性、并发与竞态、失败处理、边界条件、权限与安全、资源生命周期、性能热点、重复/过度抽象、可维护性和跨端一致性。
+
+优先做行为保持型优化；不得为了体现新模型能力而重写整个模块、改变公共契约或引入新依赖。每项发现提供文件/行号、复现或证据、影响、建议和风险。先新增/修正测试证明原行为与目标行为，再实施最小改动。若需要改变用户可见行为、数据结构或协议，先停下请求确认。以 Handler → Logic → DS → Repo、Erlang/OTP、Cowboy、PostgreSQL 和现有 API/WS 契约为准。
+
+不要自动创建 docs/retro、重复计划或审计文档；先在会话中输出基线、差距登记和改进方案。经用户明确授权后才落盘必要的长期文档。完成后运行相关测试、静态检查和 diff review；不 commit、不 push、不合并、不部署。
+```
+
+**C · 测试现有功能 · `test-collaboration` + `ai-regression-testing` + `verification-loop`**
+
+```text
+$test-collaboration $ai-regression-testing $verification-loop
+
+当前功能场景：客户内容频道、知识订阅与付费内容（频道与订阅内容）。目标客户/目标业务流程：[请填写客户行业、用户角色、业务目标、关键流程、特殊规则和优先级]。目标范围：[请填写本次要覆盖的端/模块/子功能]。
+
+先读取当前仓库规则和权威文档，再核对实际代码与测试。不得把设计、文档或 API 存在等同于功能已交付；明确标注 CURRENT、TARGET、LOCKED、UNKNOWN 和 NOT_VERIFIED。
+
+任务类型：测试现有功能。
+
+为客户复刻内容频道/知识订阅场景。盘点 IMBoy Channel 的 personal/workspace scope、发现、公开/私有、免费/付费、订阅/购买、帖子、评论、讨论群绑定、精华/置顶、标签、Webhook 和内容访问控制。以 channel-api-contract-v1、微社群契约及真实代码为准，输出能力映射、付费与权限边界、缺口和验收旅程。
+
+实施已批准的频道客户化差异。复用 Channel 访问元组 visibility/access_type/join_policy、订阅/购买状态、讨论群和内容接口。先补契约与访问控制正反例，再实施最小变更；未授权用户必须 fail-closed。核对 App/Admin 消费和支付兼容，不擅自改变收费语义。
+
+请不要先修改业务实现。先盘点该场景已有单元、组件/Widget、契约、集成、E2E、平台/设备测试和 CI 门禁，建立“需求/业务规则 → TEST-ID 或现有测试资产 → 执行命令 → 证据”矩阵。重点设计正常路径、权限拒绝、非法输入、边界值、重复请求、并发、超时、断线恢复、旧数据兼容和跨端一致性用例。针对旧 AI 生成代码，额外检查 mock/sandbox 与真实路径不一致、遗漏 SELECT/序列化字段、只测 happy path、异常被吞、测试与实现共享同一错误假设等盲点。
+
+只新增真正有区分力的测试，不复制重复用例、不降低阈值、不扩大 skip。使用现有 EUnit、Common Test、契约门禁和 scripts 中的权威测试入口。
+
+执行后逐项报告通过/失败/阻塞/未执行，给出实际命令、退出码、测试数量和证据位置。发现产品代码缺陷时先提交复现证据和最小修复建议；没有明确授权不修改业务代码。不得把未运行、环境缺失或模拟测试写成 PASS。
+```
+
 
 ### ECC-076 · 客户动态、朋友圈与内容互动
 
 **场景：** 朋友圈与轻社交
 
-**A · `product-lens` + `product-capability` · 客户场景映射**
+**A · 新增功能 · `product-capability` + `orch-add-feature` + `tdd-workflow`**
 
 ```text
-$product-lens $product-capability
+$product-capability $orch-add-feature $tdd-workflow
+
+当前功能场景：客户动态、朋友圈与内容互动（朋友圈与轻社交）。目标客户/目标业务流程：[请填写客户行业、用户角色、业务目标、关键流程、特殊规则和优先级]。目标范围：[请填写本次要覆盖的端/模块/子功能]。
+
+先读取当前仓库规则和权威文档，再核对实际代码与测试。不得把设计、文档或 API 存在等同于功能已交付；明确标注 CURRENT、TARGET、LOCKED、UNKNOWN 和 NOT_VERIFIED。
+
+任务类型：新增功能。
 
 为客户复刻动态/朋友圈场景。分析 Moment 发布、媒体附件、可见性（公开/好友/私密/包含名单/排除名单）、互动、评论、收藏、举报和后台审核。以 moment-api-contract-v1、好友/黑名单规则和现有客户端/管理端实现为依据，输出用户旅程、隐私矩阵、审核流程、现有能力与差异。
-```
-
-**B · `contract-first` + `orch-change-feature` + `tdd-workflow` · 客户差异实施**
-
-```text
-$contract-first $orch-change-feature $tdd-workflow
 
 针对已批准的 Moment 客户差异实施后端变更。验证作者权限、可见性 ACL、denylist 优先、删除/禁用内容不可读、管理员访问隔离、分页和附件授权。先更新契约和回归测试，再改实现；不扩大普通用户可见范围。
+
+请先判断需求能否由现有能力配置/组合完成；只有确认存在真实能力缺口才新增代码。输出 capability contract：参与角色、用户旅程、状态机、权限/数据边界、API/WS/客户端界面、迁移兼容、观测和验收标准。客户输入不完整或涉及产品决策时，列出阻塞问题并停在方案阶段。输入充分且任务明确时，按 TDD 先写失败测试再实现，遵循项目已有架构和测试命令。遵守 Gate：计划/契约先审阅，实施后完整验证；不 commit、不 push、不合并、不部署。
 ```
+
+**B · 优化现有功能 / 新模型复审旧 AI 代码 · `brownfield-retrospective` + `tdd-workflow` + `verification-loop`**
+
+```text
+$brownfield-retrospective $tdd-workflow $verification-loop
+
+当前功能场景：客户动态、朋友圈与内容互动（朋友圈与轻社交）。目标客户/目标业务流程：[请填写客户行业、用户角色、业务目标、关键流程、特殊规则和优先级]。目标范围：[请填写本次要覆盖的端/模块/子功能]。
+
+先读取当前仓库规则和权威文档，再核对实际代码与测试。不得把设计、文档或 API 存在等同于功能已交付；明确标注 CURRENT、TARGET、LOCKED、UNKNOWN 和 NOT_VERIFIED。
+
+任务类型：优化现有功能，特别用于新一代 AI 模型复审和改进旧 AI 模型生成的代码。
+
+为客户复刻动态/朋友圈场景。分析 Moment 发布、媒体附件、可见性（公开/好友/私密/包含名单/排除名单）、互动、评论、收藏、举报和后台审核。以 moment-api-contract-v1、好友/黑名单规则和现有客户端/管理端实现为依据，输出用户旅程、隐私矩阵、审核流程、现有能力与差异。
+
+针对已批准的 Moment 客户差异实施后端变更。验证作者权限、可见性 ACL、denylist 优先、删除/禁用内容不可读、管理员访问隔离、分页和附件授权。先更新契约和回归测试，再改实现；不扩大普通用户可见范围。
+
+请把当前实现视为待验证证据，不信任注释、旧模型自评或“看起来合理”的抽象。按 brownfield-retrospective 的 slice-first 方法，先限定约 15 个文件或 2000 行以内的功能切片，重建实际行为和不变量，建立现有测试/性能/错误行为基线，再检查：逻辑正确性、并发与竞态、失败处理、边界条件、权限与安全、资源生命周期、性能热点、重复/过度抽象、可维护性和跨端一致性。
+
+优先做行为保持型优化；不得为了体现新模型能力而重写整个模块、改变公共契约或引入新依赖。每项发现提供文件/行号、复现或证据、影响、建议和风险。先新增/修正测试证明原行为与目标行为，再实施最小改动。若需要改变用户可见行为、数据结构或协议，先停下请求确认。以 Handler → Logic → DS → Repo、Erlang/OTP、Cowboy、PostgreSQL 和现有 API/WS 契约为准。
+
+不要自动创建 docs/retro、重复计划或审计文档；先在会话中输出基线、差距登记和改进方案。经用户明确授权后才落盘必要的长期文档。完成后运行相关测试、静态检查和 diff review；不 commit、不 push、不合并、不部署。
+```
+
+**C · 测试现有功能 · `test-collaboration` + `ai-regression-testing` + `verification-loop`**
+
+```text
+$test-collaboration $ai-regression-testing $verification-loop
+
+当前功能场景：客户动态、朋友圈与内容互动（朋友圈与轻社交）。目标客户/目标业务流程：[请填写客户行业、用户角色、业务目标、关键流程、特殊规则和优先级]。目标范围：[请填写本次要覆盖的端/模块/子功能]。
+
+先读取当前仓库规则和权威文档，再核对实际代码与测试。不得把设计、文档或 API 存在等同于功能已交付；明确标注 CURRENT、TARGET、LOCKED、UNKNOWN 和 NOT_VERIFIED。
+
+任务类型：测试现有功能。
+
+为客户复刻动态/朋友圈场景。分析 Moment 发布、媒体附件、可见性（公开/好友/私密/包含名单/排除名单）、互动、评论、收藏、举报和后台审核。以 moment-api-contract-v1、好友/黑名单规则和现有客户端/管理端实现为依据，输出用户旅程、隐私矩阵、审核流程、现有能力与差异。
+
+针对已批准的 Moment 客户差异实施后端变更。验证作者权限、可见性 ACL、denylist 优先、删除/禁用内容不可读、管理员访问隔离、分页和附件授权。先更新契约和回归测试，再改实现；不扩大普通用户可见范围。
+
+请不要先修改业务实现。先盘点该场景已有单元、组件/Widget、契约、集成、E2E、平台/设备测试和 CI 门禁，建立“需求/业务规则 → TEST-ID 或现有测试资产 → 执行命令 → 证据”矩阵。重点设计正常路径、权限拒绝、非法输入、边界值、重复请求、并发、超时、断线恢复、旧数据兼容和跨端一致性用例。针对旧 AI 生成代码，额外检查 mock/sandbox 与真实路径不一致、遗漏 SELECT/序列化字段、只测 happy path、异常被吞、测试与实现共享同一错误假设等盲点。
+
+只新增真正有区分力的测试，不复制重复用例、不降低阈值、不扩大 skip。使用现有 EUnit、Common Test、契约门禁和 scripts 中的权威测试入口。
+
+执行后逐项报告通过/失败/阻塞/未执行，给出实际命令、退出码、测试数量和证据位置。发现产品代码缺陷时先提交复现证据和最小修复建议；没有明确授权不修改业务代码。不得把未运行、环境缺失或模拟测试写成 PASS。
+```
+
 
 ### ECC-077 · 客户企业组织、团队空间和成员管理
 
 **场景：** 组织与工作区
 
-**A · `product-lens` + `product-capability` · 客户场景映射**
+**A · 新增功能 · `product-capability` + `orch-add-feature` + `tdd-workflow`**
 
 ```text
-$product-lens $product-capability
+$product-capability $orch-add-feature $tdd-workflow
+
+当前功能场景：客户企业组织、团队空间和成员管理（组织与工作区）。目标客户/目标业务流程：[请填写客户行业、用户角色、业务目标、关键流程、特殊规则和优先级]。目标范围：[请填写本次要覆盖的端/模块/子功能]。
+
+先读取当前仓库规则和权威文档，再核对实际代码与测试。不得把设计、文档或 API 存在等同于功能已交付；明确标注 CURRENT、TARGET、LOCKED、UNKNOWN 和 NOT_VERIFIED。
+
+任务类型：新增功能。
 
 为客户复刻企业组织/团队空间场景。分析 Organization、部门树、owner/admin/member、邀请、成员暂停/恢复/离岗、owner 转移、Workspace、团队码加入、成员角色、品牌、归档恢复和默认工作区。以 collaboration-hierarchy、组织冻结契约和现有 API 为准。特别区分 organization 是业务对象而非租户，授权边界是部署实例。输出权限矩阵、生命周期和缺口。
-```
-
-**B · `contract-first` + `orch-change-feature` + `tdd-workflow` · 客户差异实施**
-
-```text
-$contract-first $orch-change-feature $tdd-workflow
 
 实施已批准的组织/工作区差异。遵守 active 真人 owner 唯一性、owner 不可直接移除、部门防环、workspace 成员状态、request_id 幂等和 scope 约束。先补迁移/契约/失败测试，评估旧数据兼容及回滚；禁止绕过数据库触发器或把 organization 改成租户隔离边界。
+
+请先判断需求能否由现有能力配置/组合完成；只有确认存在真实能力缺口才新增代码。输出 capability contract：参与角色、用户旅程、状态机、权限/数据边界、API/WS/客户端界面、迁移兼容、观测和验收标准。客户输入不完整或涉及产品决策时，列出阻塞问题并停在方案阶段。输入充分且任务明确时，按 TDD 先写失败测试再实现，遵循项目已有架构和测试命令。遵守 Gate：计划/契约先审阅，实施后完整验证；不 commit、不 push、不合并、不部署。
 ```
+
+**B · 优化现有功能 / 新模型复审旧 AI 代码 · `brownfield-retrospective` + `tdd-workflow` + `verification-loop`**
+
+```text
+$brownfield-retrospective $tdd-workflow $verification-loop
+
+当前功能场景：客户企业组织、团队空间和成员管理（组织与工作区）。目标客户/目标业务流程：[请填写客户行业、用户角色、业务目标、关键流程、特殊规则和优先级]。目标范围：[请填写本次要覆盖的端/模块/子功能]。
+
+先读取当前仓库规则和权威文档，再核对实际代码与测试。不得把设计、文档或 API 存在等同于功能已交付；明确标注 CURRENT、TARGET、LOCKED、UNKNOWN 和 NOT_VERIFIED。
+
+任务类型：优化现有功能，特别用于新一代 AI 模型复审和改进旧 AI 模型生成的代码。
+
+为客户复刻企业组织/团队空间场景。分析 Organization、部门树、owner/admin/member、邀请、成员暂停/恢复/离岗、owner 转移、Workspace、团队码加入、成员角色、品牌、归档恢复和默认工作区。以 collaboration-hierarchy、组织冻结契约和现有 API 为准。特别区分 organization 是业务对象而非租户，授权边界是部署实例。输出权限矩阵、生命周期和缺口。
+
+实施已批准的组织/工作区差异。遵守 active 真人 owner 唯一性、owner 不可直接移除、部门防环、workspace 成员状态、request_id 幂等和 scope 约束。先补迁移/契约/失败测试，评估旧数据兼容及回滚；禁止绕过数据库触发器或把 organization 改成租户隔离边界。
+
+请把当前实现视为待验证证据，不信任注释、旧模型自评或“看起来合理”的抽象。按 brownfield-retrospective 的 slice-first 方法，先限定约 15 个文件或 2000 行以内的功能切片，重建实际行为和不变量，建立现有测试/性能/错误行为基线，再检查：逻辑正确性、并发与竞态、失败处理、边界条件、权限与安全、资源生命周期、性能热点、重复/过度抽象、可维护性和跨端一致性。
+
+优先做行为保持型优化；不得为了体现新模型能力而重写整个模块、改变公共契约或引入新依赖。每项发现提供文件/行号、复现或证据、影响、建议和风险。先新增/修正测试证明原行为与目标行为，再实施最小改动。若需要改变用户可见行为、数据结构或协议，先停下请求确认。以 Handler → Logic → DS → Repo、Erlang/OTP、Cowboy、PostgreSQL 和现有 API/WS 契约为准。
+
+不要自动创建 docs/retro、重复计划或审计文档；先在会话中输出基线、差距登记和改进方案。经用户明确授权后才落盘必要的长期文档。完成后运行相关测试、静态检查和 diff review；不 commit、不 push、不合并、不部署。
+```
+
+**C · 测试现有功能 · `test-collaboration` + `ai-regression-testing` + `verification-loop`**
+
+```text
+$test-collaboration $ai-regression-testing $verification-loop
+
+当前功能场景：客户企业组织、团队空间和成员管理（组织与工作区）。目标客户/目标业务流程：[请填写客户行业、用户角色、业务目标、关键流程、特殊规则和优先级]。目标范围：[请填写本次要覆盖的端/模块/子功能]。
+
+先读取当前仓库规则和权威文档，再核对实际代码与测试。不得把设计、文档或 API 存在等同于功能已交付；明确标注 CURRENT、TARGET、LOCKED、UNKNOWN 和 NOT_VERIFIED。
+
+任务类型：测试现有功能。
+
+为客户复刻企业组织/团队空间场景。分析 Organization、部门树、owner/admin/member、邀请、成员暂停/恢复/离岗、owner 转移、Workspace、团队码加入、成员角色、品牌、归档恢复和默认工作区。以 collaboration-hierarchy、组织冻结契约和现有 API 为准。特别区分 organization 是业务对象而非租户，授权边界是部署实例。输出权限矩阵、生命周期和缺口。
+
+实施已批准的组织/工作区差异。遵守 active 真人 owner 唯一性、owner 不可直接移除、部门防环、workspace 成员状态、request_id 幂等和 scope 约束。先补迁移/契约/失败测试，评估旧数据兼容及回滚；禁止绕过数据库触发器或把 organization 改成租户隔离边界。
+
+请不要先修改业务实现。先盘点该场景已有单元、组件/Widget、契约、集成、E2E、平台/设备测试和 CI 门禁，建立“需求/业务规则 → TEST-ID 或现有测试资产 → 执行命令 → 证据”矩阵。重点设计正常路径、权限拒绝、非法输入、边界值、重复请求、并发、超时、断线恢复、旧数据兼容和跨端一致性用例。针对旧 AI 生成代码，额外检查 mock/sandbox 与真实路径不一致、遗漏 SELECT/序列化字段、只测 happy path、异常被吞、测试与实现共享同一错误假设等盲点。
+
+只新增真正有区分力的测试，不复制重复用例、不降低阈值、不扩大 skip。使用现有 EUnit、Common Test、契约门禁和 scripts 中的权威测试入口。
+
+执行后逐项报告通过/失败/阻塞/未执行，给出实际命令、退出码、测试数量和证据位置。发现产品代码缺陷时先提交复现证据和最小修复建议；没有明确授权不修改业务代码。不得把未运行、环境缺失或模拟测试写成 PASS。
+```
+
 
 ### ECC-078 · 客户项目、任务、里程碑和活动流
 
 **场景：** 项目协作
 
-**A · `product-lens` + `product-capability` · 客户场景映射**
+**A · 新增功能 · `product-capability` + `orch-add-feature` + `tdd-workflow`**
 
 ```text
-$product-lens $product-capability
+$product-capability $orch-add-feature $tdd-workflow
+
+当前功能场景：客户项目、任务、里程碑和活动流（项目协作）。目标客户/目标业务流程：[请填写客户行业、用户角色、业务目标、关键流程、特殊规则和优先级]。目标范围：[请填写本次要覆盖的端/模块/子功能]。
+
+先读取当前仓库规则和权威文档，再核对实际代码与测试。不得把设计、文档或 API 存在等同于功能已交付；明确标注 CURRENT、TARGET、LOCKED、UNKNOWN 和 NOT_VERIFIED。
+
+任务类型：新增功能。
 
 为客户复刻轻量项目协作场景。分析 IMBoy Project 的 workspace 归属、成员约束、任务 todo/doing/review/done、里程碑、频道关联和项目活动事件流。明确项目不是通用 Jira 替代品；列出可复用能力、客户差异、角色操作矩阵和不做范围。
-```
-
-**B · `contract-first` + `orch-add-feature` + `tdd-workflow` · 客户差异实施**
-
-```text
-$contract-first $orch-add-feature $tdd-workflow
 
 基于批准的项目协作需求实施缺失能力。保持 Project ⊆ Workspace 成员不变量、同 Workspace 频道关联、里程碑状态与 reached_at 一致、业务写与 project_event 同事务。先定义契约和测试，再实施；不得绕开触发器和事务边界。
+
+请先判断需求能否由现有能力配置/组合完成；只有确认存在真实能力缺口才新增代码。输出 capability contract：参与角色、用户旅程、状态机、权限/数据边界、API/WS/客户端界面、迁移兼容、观测和验收标准。客户输入不完整或涉及产品决策时，列出阻塞问题并停在方案阶段。输入充分且任务明确时，按 TDD 先写失败测试再实现，遵循项目已有架构和测试命令。遵守 Gate：计划/契约先审阅，实施后完整验证；不 commit、不 push、不合并、不部署。
 ```
+
+**B · 优化现有功能 / 新模型复审旧 AI 代码 · `brownfield-retrospective` + `tdd-workflow` + `verification-loop`**
+
+```text
+$brownfield-retrospective $tdd-workflow $verification-loop
+
+当前功能场景：客户项目、任务、里程碑和活动流（项目协作）。目标客户/目标业务流程：[请填写客户行业、用户角色、业务目标、关键流程、特殊规则和优先级]。目标范围：[请填写本次要覆盖的端/模块/子功能]。
+
+先读取当前仓库规则和权威文档，再核对实际代码与测试。不得把设计、文档或 API 存在等同于功能已交付；明确标注 CURRENT、TARGET、LOCKED、UNKNOWN 和 NOT_VERIFIED。
+
+任务类型：优化现有功能，特别用于新一代 AI 模型复审和改进旧 AI 模型生成的代码。
+
+为客户复刻轻量项目协作场景。分析 IMBoy Project 的 workspace 归属、成员约束、任务 todo/doing/review/done、里程碑、频道关联和项目活动事件流。明确项目不是通用 Jira 替代品；列出可复用能力、客户差异、角色操作矩阵和不做范围。
+
+基于批准的项目协作需求实施缺失能力。保持 Project ⊆ Workspace 成员不变量、同 Workspace 频道关联、里程碑状态与 reached_at 一致、业务写与 project_event 同事务。先定义契约和测试，再实施；不得绕开触发器和事务边界。
+
+请把当前实现视为待验证证据，不信任注释、旧模型自评或“看起来合理”的抽象。按 brownfield-retrospective 的 slice-first 方法，先限定约 15 个文件或 2000 行以内的功能切片，重建实际行为和不变量，建立现有测试/性能/错误行为基线，再检查：逻辑正确性、并发与竞态、失败处理、边界条件、权限与安全、资源生命周期、性能热点、重复/过度抽象、可维护性和跨端一致性。
+
+优先做行为保持型优化；不得为了体现新模型能力而重写整个模块、改变公共契约或引入新依赖。每项发现提供文件/行号、复现或证据、影响、建议和风险。先新增/修正测试证明原行为与目标行为，再实施最小改动。若需要改变用户可见行为、数据结构或协议，先停下请求确认。以 Handler → Logic → DS → Repo、Erlang/OTP、Cowboy、PostgreSQL 和现有 API/WS 契约为准。
+
+不要自动创建 docs/retro、重复计划或审计文档；先在会话中输出基线、差距登记和改进方案。经用户明确授权后才落盘必要的长期文档。完成后运行相关测试、静态检查和 diff review；不 commit、不 push、不合并、不部署。
+```
+
+**C · 测试现有功能 · `test-collaboration` + `ai-regression-testing` + `verification-loop`**
+
+```text
+$test-collaboration $ai-regression-testing $verification-loop
+
+当前功能场景：客户项目、任务、里程碑和活动流（项目协作）。目标客户/目标业务流程：[请填写客户行业、用户角色、业务目标、关键流程、特殊规则和优先级]。目标范围：[请填写本次要覆盖的端/模块/子功能]。
+
+先读取当前仓库规则和权威文档，再核对实际代码与测试。不得把设计、文档或 API 存在等同于功能已交付；明确标注 CURRENT、TARGET、LOCKED、UNKNOWN 和 NOT_VERIFIED。
+
+任务类型：测试现有功能。
+
+为客户复刻轻量项目协作场景。分析 IMBoy Project 的 workspace 归属、成员约束、任务 todo/doing/review/done、里程碑、频道关联和项目活动事件流。明确项目不是通用 Jira 替代品；列出可复用能力、客户差异、角色操作矩阵和不做范围。
+
+基于批准的项目协作需求实施缺失能力。保持 Project ⊆ Workspace 成员不变量、同 Workspace 频道关联、里程碑状态与 reached_at 一致、业务写与 project_event 同事务。先定义契约和测试，再实施；不得绕开触发器和事务边界。
+
+请不要先修改业务实现。先盘点该场景已有单元、组件/Widget、契约、集成、E2E、平台/设备测试和 CI 门禁，建立“需求/业务规则 → TEST-ID 或现有测试资产 → 执行命令 → 证据”矩阵。重点设计正常路径、权限拒绝、非法输入、边界值、重复请求、并发、超时、断线恢复、旧数据兼容和跨端一致性用例。针对旧 AI 生成代码，额外检查 mock/sandbox 与真实路径不一致、遗漏 SELECT/序列化字段、只测 happy path、异常被吞、测试与实现共享同一错误假设等盲点。
+
+只新增真正有区分力的测试，不复制重复用例、不降低阈值、不扩大 skip。使用现有 EUnit、Common Test、契约门禁和 scripts 中的权威测试入口。
+
+执行后逐项报告通过/失败/阻塞/未执行，给出实际命令、退出码、测试数量和证据位置。发现产品代码缺陷时先提交复现证据和最小修复建议；没有明确授权不修改业务代码。不得把未运行、环境缺失或模拟测试写成 PASS。
+```
+
 
 ### ECC-079 · 客户网站在线客服、排队和坐席工作台
 
 **场景：** 客服中心与访客挂件
 
-**A · `product-lens` + `product-capability` · 客户场景映射**
+**A · 新增功能 · `product-capability` + `orch-add-feature` + `tdd-workflow`**
 
 ```text
-$product-lens $product-capability
+$product-capability $orch-add-feature $tdd-workflow
+
+当前功能场景：客户网站在线客服、排队和坐席工作台（客服中心与访客挂件）。目标客户/目标业务流程：[请填写客户行业、用户角色、业务目标、关键流程、特殊规则和优先级]。目标范围：[请填写本次要覆盖的端/模块/子功能]。
+
+先读取当前仓库规则和权威文档，再核对实际代码与测试。不得把设计、文档或 API 存在等同于功能已交付；明确标注 CURRENT、TARGET、LOCKED、UNKNOWN 和 NOT_VERIFIED。
+
+任务类型：新增功能。
 
 为客户复刻网站在线客服场景。盘点 Visitor token、Shop Key、Widget 安装、来源白名单、访客会话 queued/active/closed、队列、认领、转接、关闭、评分、坐席并发、App 坐席工作台、Admin 运营面和独立 dist-widget。读取 customer-service 概念和 Widget 契约。明确访客不是 user、消息真源在 enterprise_message、交付/真实验收状态。
-```
-
-**B · `contract-first` + `orch-add-feature` + `security-review` · 客户差异实施**
-
-```text
-$contract-first $orch-add-feature $security-review
 
 实施已批准的客服挂件/坐席差异。遵守 x-cs-visit-token 头传递、URL 禁止凭证、jti 防重放、来源校验、workspace_id 必填、会话 CAS expected_version、同企业单活会话和消息不复制原则。先补安全负例与契约测试；不将访客创建为普通用户。
+
+请先判断需求能否由现有能力配置/组合完成；只有确认存在真实能力缺口才新增代码。输出 capability contract：参与角色、用户旅程、状态机、权限/数据边界、API/WS/客户端界面、迁移兼容、观测和验收标准。客户输入不完整或涉及产品决策时，列出阻塞问题并停在方案阶段。输入充分且任务明确时，按 TDD 先写失败测试再实现，遵循项目已有架构和测试命令。遵守 Gate：计划/契约先审阅，实施后完整验证；不 commit、不 push、不合并、不部署。
 ```
+
+**B · 优化现有功能 / 新模型复审旧 AI 代码 · `brownfield-retrospective` + `tdd-workflow` + `verification-loop`**
+
+```text
+$brownfield-retrospective $tdd-workflow $verification-loop
+
+当前功能场景：客户网站在线客服、排队和坐席工作台（客服中心与访客挂件）。目标客户/目标业务流程：[请填写客户行业、用户角色、业务目标、关键流程、特殊规则和优先级]。目标范围：[请填写本次要覆盖的端/模块/子功能]。
+
+先读取当前仓库规则和权威文档，再核对实际代码与测试。不得把设计、文档或 API 存在等同于功能已交付；明确标注 CURRENT、TARGET、LOCKED、UNKNOWN 和 NOT_VERIFIED。
+
+任务类型：优化现有功能，特别用于新一代 AI 模型复审和改进旧 AI 模型生成的代码。
+
+为客户复刻网站在线客服场景。盘点 Visitor token、Shop Key、Widget 安装、来源白名单、访客会话 queued/active/closed、队列、认领、转接、关闭、评分、坐席并发、App 坐席工作台、Admin 运营面和独立 dist-widget。读取 customer-service 概念和 Widget 契约。明确访客不是 user、消息真源在 enterprise_message、交付/真实验收状态。
+
+实施已批准的客服挂件/坐席差异。遵守 x-cs-visit-token 头传递、URL 禁止凭证、jti 防重放、来源校验、workspace_id 必填、会话 CAS expected_version、同企业单活会话和消息不复制原则。先补安全负例与契约测试；不将访客创建为普通用户。
+
+请把当前实现视为待验证证据，不信任注释、旧模型自评或“看起来合理”的抽象。按 brownfield-retrospective 的 slice-first 方法，先限定约 15 个文件或 2000 行以内的功能切片，重建实际行为和不变量，建立现有测试/性能/错误行为基线，再检查：逻辑正确性、并发与竞态、失败处理、边界条件、权限与安全、资源生命周期、性能热点、重复/过度抽象、可维护性和跨端一致性。
+
+优先做行为保持型优化；不得为了体现新模型能力而重写整个模块、改变公共契约或引入新依赖。每项发现提供文件/行号、复现或证据、影响、建议和风险。先新增/修正测试证明原行为与目标行为，再实施最小改动。若需要改变用户可见行为、数据结构或协议，先停下请求确认。以 Handler → Logic → DS → Repo、Erlang/OTP、Cowboy、PostgreSQL 和现有 API/WS 契约为准。
+
+不要自动创建 docs/retro、重复计划或审计文档；先在会话中输出基线、差距登记和改进方案。经用户明确授权后才落盘必要的长期文档。完成后运行相关测试、静态检查和 diff review；不 commit、不 push、不合并、不部署。
+```
+
+**C · 测试现有功能 · `test-collaboration` + `ai-regression-testing` + `verification-loop`**
+
+```text
+$test-collaboration $ai-regression-testing $verification-loop
+
+当前功能场景：客户网站在线客服、排队和坐席工作台（客服中心与访客挂件）。目标客户/目标业务流程：[请填写客户行业、用户角色、业务目标、关键流程、特殊规则和优先级]。目标范围：[请填写本次要覆盖的端/模块/子功能]。
+
+先读取当前仓库规则和权威文档，再核对实际代码与测试。不得把设计、文档或 API 存在等同于功能已交付；明确标注 CURRENT、TARGET、LOCKED、UNKNOWN 和 NOT_VERIFIED。
+
+任务类型：测试现有功能。
+
+为客户复刻网站在线客服场景。盘点 Visitor token、Shop Key、Widget 安装、来源白名单、访客会话 queued/active/closed、队列、认领、转接、关闭、评分、坐席并发、App 坐席工作台、Admin 运营面和独立 dist-widget。读取 customer-service 概念和 Widget 契约。明确访客不是 user、消息真源在 enterprise_message、交付/真实验收状态。
+
+实施已批准的客服挂件/坐席差异。遵守 x-cs-visit-token 头传递、URL 禁止凭证、jti 防重放、来源校验、workspace_id 必填、会话 CAS expected_version、同企业单活会话和消息不复制原则。先补安全负例与契约测试；不将访客创建为普通用户。
+
+请不要先修改业务实现。先盘点该场景已有单元、组件/Widget、契约、集成、E2E、平台/设备测试和 CI 门禁，建立“需求/业务规则 → TEST-ID 或现有测试资产 → 执行命令 → 证据”矩阵。重点设计正常路径、权限拒绝、非法输入、边界值、重复请求、并发、超时、断线恢复、旧数据兼容和跨端一致性用例。针对旧 AI 生成代码，额外检查 mock/sandbox 与真实路径不一致、遗漏 SELECT/序列化字段、只测 happy path、异常被吞、测试与实现共享同一错误假设等盲点。
+
+只新增真正有区分力的测试，不复制重复用例、不降低阈值、不扩大 skip。使用现有 EUnit、Common Test、契约门禁和 scripts 中的权威测试入口。
+
+执行后逐项报告通过/失败/阻塞/未执行，给出实际命令、退出码、测试数量和证据位置。发现产品代码缺陷时先提交复现证据和最小修复建议；没有明确授权不修改业务代码。不得把未运行、环境缺失或模拟测试写成 PASS。
+```
+
 
 ### ECC-080 · 客户联系人、企业会话、资产和离岗交接
 
 **场景：** 企业客户经营 CRM
 
-**A · `product-lens` + `product-capability` · 客户场景映射**
+**A · 新增功能 · `product-capability` + `orch-add-feature` + `tdd-workflow`**
 
 ```text
-$product-lens $product-capability
+$product-capability $orch-add-feature $tdd-workflow
+
+当前功能场景：客户联系人、企业会话、资产和离岗交接（企业客户经营 CRM）。目标客户/目标业务流程：[请填写客户行业、用户角色、业务目标、关键流程、特殊规则和优先级]。目标范围：[请填写本次要覆盖的端/模块/子功能]。
+
+先读取当前仓库规则和权威文档，再核对实际代码与测试。不得把设计、文档或 API 存在等同于功能已交付；明确标注 CURRENT、TARGET、LOCKED、UNKNOWN 和 NOT_VERIFIED。
+
+任务类型：新增功能。
 
 为客户复刻轻量 CRM/客户经营场景。分析 Business Identity、Enterprise Contact、经办人分配、客户会话、消息、附件资产、同意书、留持策略/hold、审计和 Offboarding Case。区分企业联系人与个人好友，企业消息 owner 是组织。输出客户流程、数据归属、隐私/合规边界、现有功能和差异。
-```
-
-**B · `contract-first` + `orch-change-feature` + `tdd-workflow` + `security-review` · 客户差异实施**
-
-```text
-$contract-first $orch-change-feature $tdd-workflow $security-review
 
 实施已批准的企业客户经营差异。遵守渠道标识 HMAC+掩码不存明文、未同意不得持久化消息、企业消息与个人 C2C 分离、retain_until 只能后移、hold 阻断 purge、离岗交接先于成员移除。先补测试和契约，再最小实施。
+
+请先判断需求能否由现有能力配置/组合完成；只有确认存在真实能力缺口才新增代码。输出 capability contract：参与角色、用户旅程、状态机、权限/数据边界、API/WS/客户端界面、迁移兼容、观测和验收标准。客户输入不完整或涉及产品决策时，列出阻塞问题并停在方案阶段。输入充分且任务明确时，按 TDD 先写失败测试再实现，遵循项目已有架构和测试命令。遵守 Gate：计划/契约先审阅，实施后完整验证；不 commit、不 push、不合并、不部署。
 ```
+
+**B · 优化现有功能 / 新模型复审旧 AI 代码 · `brownfield-retrospective` + `tdd-workflow` + `verification-loop`**
+
+```text
+$brownfield-retrospective $tdd-workflow $verification-loop
+
+当前功能场景：客户联系人、企业会话、资产和离岗交接（企业客户经营 CRM）。目标客户/目标业务流程：[请填写客户行业、用户角色、业务目标、关键流程、特殊规则和优先级]。目标范围：[请填写本次要覆盖的端/模块/子功能]。
+
+先读取当前仓库规则和权威文档，再核对实际代码与测试。不得把设计、文档或 API 存在等同于功能已交付；明确标注 CURRENT、TARGET、LOCKED、UNKNOWN 和 NOT_VERIFIED。
+
+任务类型：优化现有功能，特别用于新一代 AI 模型复审和改进旧 AI 模型生成的代码。
+
+为客户复刻轻量 CRM/客户经营场景。分析 Business Identity、Enterprise Contact、经办人分配、客户会话、消息、附件资产、同意书、留持策略/hold、审计和 Offboarding Case。区分企业联系人与个人好友，企业消息 owner 是组织。输出客户流程、数据归属、隐私/合规边界、现有功能和差异。
+
+实施已批准的企业客户经营差异。遵守渠道标识 HMAC+掩码不存明文、未同意不得持久化消息、企业消息与个人 C2C 分离、retain_until 只能后移、hold 阻断 purge、离岗交接先于成员移除。先补测试和契约，再最小实施。
+
+请把当前实现视为待验证证据，不信任注释、旧模型自评或“看起来合理”的抽象。按 brownfield-retrospective 的 slice-first 方法，先限定约 15 个文件或 2000 行以内的功能切片，重建实际行为和不变量，建立现有测试/性能/错误行为基线，再检查：逻辑正确性、并发与竞态、失败处理、边界条件、权限与安全、资源生命周期、性能热点、重复/过度抽象、可维护性和跨端一致性。
+
+优先做行为保持型优化；不得为了体现新模型能力而重写整个模块、改变公共契约或引入新依赖。每项发现提供文件/行号、复现或证据、影响、建议和风险。先新增/修正测试证明原行为与目标行为，再实施最小改动。若需要改变用户可见行为、数据结构或协议，先停下请求确认。以 Handler → Logic → DS → Repo、Erlang/OTP、Cowboy、PostgreSQL 和现有 API/WS 契约为准。
+
+不要自动创建 docs/retro、重复计划或审计文档；先在会话中输出基线、差距登记和改进方案。经用户明确授权后才落盘必要的长期文档。完成后运行相关测试、静态检查和 diff review；不 commit、不 push、不合并、不部署。
+```
+
+**C · 测试现有功能 · `test-collaboration` + `ai-regression-testing` + `verification-loop`**
+
+```text
+$test-collaboration $ai-regression-testing $verification-loop
+
+当前功能场景：客户联系人、企业会话、资产和离岗交接（企业客户经营 CRM）。目标客户/目标业务流程：[请填写客户行业、用户角色、业务目标、关键流程、特殊规则和优先级]。目标范围：[请填写本次要覆盖的端/模块/子功能]。
+
+先读取当前仓库规则和权威文档，再核对实际代码与测试。不得把设计、文档或 API 存在等同于功能已交付；明确标注 CURRENT、TARGET、LOCKED、UNKNOWN 和 NOT_VERIFIED。
+
+任务类型：测试现有功能。
+
+为客户复刻轻量 CRM/客户经营场景。分析 Business Identity、Enterprise Contact、经办人分配、客户会话、消息、附件资产、同意书、留持策略/hold、审计和 Offboarding Case。区分企业联系人与个人好友，企业消息 owner 是组织。输出客户流程、数据归属、隐私/合规边界、现有功能和差异。
+
+实施已批准的企业客户经营差异。遵守渠道标识 HMAC+掩码不存明文、未同意不得持久化消息、企业消息与个人 C2C 分离、retain_until 只能后移、hold 阻断 purge、离岗交接先于成员移除。先补测试和契约，再最小实施。
+
+请不要先修改业务实现。先盘点该场景已有单元、组件/Widget、契约、集成、E2E、平台/设备测试和 CI 门禁，建立“需求/业务规则 → TEST-ID 或现有测试资产 → 执行命令 → 证据”矩阵。重点设计正常路径、权限拒绝、非法输入、边界值、重复请求、并发、超时、断线恢复、旧数据兼容和跨端一致性用例。针对旧 AI 生成代码，额外检查 mock/sandbox 与真实路径不一致、遗漏 SELECT/序列化字段、只测 happy path、异常被吞、测试与实现共享同一错误假设等盲点。
+
+只新增真正有区分力的测试，不复制重复用例、不降低阈值、不扩大 skip。使用现有 EUnit、Common Test、契约门禁和 scripts 中的权威测试入口。
+
+执行后逐项报告通过/失败/阻塞/未执行，给出实际命令、退出码、测试数量和证据位置。发现产品代码缺陷时先提交复现证据和最小修复建议；没有明确授权不修改业务代码。不得把未运行、环境缺失或模拟测试写成 PASS。
+```
+
 
 ### ECC-081 · 客户知识助手、群内助手和受控自动化
 
 **场景：** AI 助手与 Agent
 
-**A · `product-lens` + `product-capability` · 客户场景映射**
+**A · 新增功能 · `product-capability` + `orch-add-feature` + `tdd-workflow`**
 
 ```text
-$product-lens $product-capability
+$product-capability $orch-add-feature $tdd-workflow
+
+当前功能场景：客户知识助手、群内助手和受控自动化（AI 助手与 Agent）。目标客户/目标业务流程：[请填写客户行业、用户角色、业务目标、关键流程、特殊规则和优先级]。目标范围：[请填写本次要覆盖的端/模块/子功能]。
+
+先读取当前仓库规则和权威文档，再核对实际代码与测试。不得把设计、文档或 API 存在等同于功能已交付；明确标注 CURRENT、TARGET、LOCKED、UNKNOWN 和 NOT_VERIFIED。
+
+任务类型：新增功能。
 
 为客户复刻 AI 助手场景。区分 account_type=1 Agent、account_type=3 Developer Bot、account_type=2 Channel System Bot。盘点助手发现、角色模板、群内 @触发、agent_task 审批、Grant→Run→Effect、HITL、MCP tool 授权与审计。标明 phase1_delivery 交付锁和 App/Admin 消费缺口，不能把 mock Hirð runtime 说成生产 runtime。
-```
-
-**B · `contract-first` + `orch-add-feature` + `security-review` · 客户差异实施**
-
-```text
-$contract-first $orch-add-feature $security-review
 
 实施已批准的 Agent 能力差异。遵守 Grant DEFAULT=DENY、能力只能收窄、真人 delegator、Run/Effect/Grant event append-only、dispatching 先持久化再调用 adapter、HITL 审批和 MCP 按 tool 授权。不得让 E2EE 群消息触发服务端 LLM；先补安全与状态机测试。
+
+请先判断需求能否由现有能力配置/组合完成；只有确认存在真实能力缺口才新增代码。输出 capability contract：参与角色、用户旅程、状态机、权限/数据边界、API/WS/客户端界面、迁移兼容、观测和验收标准。客户输入不完整或涉及产品决策时，列出阻塞问题并停在方案阶段。输入充分且任务明确时，按 TDD 先写失败测试再实现，遵循项目已有架构和测试命令。遵守 Gate：计划/契约先审阅，实施后完整验证；不 commit、不 push、不合并、不部署。
 ```
+
+**B · 优化现有功能 / 新模型复审旧 AI 代码 · `brownfield-retrospective` + `tdd-workflow` + `verification-loop`**
+
+```text
+$brownfield-retrospective $tdd-workflow $verification-loop
+
+当前功能场景：客户知识助手、群内助手和受控自动化（AI 助手与 Agent）。目标客户/目标业务流程：[请填写客户行业、用户角色、业务目标、关键流程、特殊规则和优先级]。目标范围：[请填写本次要覆盖的端/模块/子功能]。
+
+先读取当前仓库规则和权威文档，再核对实际代码与测试。不得把设计、文档或 API 存在等同于功能已交付；明确标注 CURRENT、TARGET、LOCKED、UNKNOWN 和 NOT_VERIFIED。
+
+任务类型：优化现有功能，特别用于新一代 AI 模型复审和改进旧 AI 模型生成的代码。
+
+为客户复刻 AI 助手场景。区分 account_type=1 Agent、account_type=3 Developer Bot、account_type=2 Channel System Bot。盘点助手发现、角色模板、群内 @触发、agent_task 审批、Grant→Run→Effect、HITL、MCP tool 授权与审计。标明 phase1_delivery 交付锁和 App/Admin 消费缺口，不能把 mock Hirð runtime 说成生产 runtime。
+
+实施已批准的 Agent 能力差异。遵守 Grant DEFAULT=DENY、能力只能收窄、真人 delegator、Run/Effect/Grant event append-only、dispatching 先持久化再调用 adapter、HITL 审批和 MCP 按 tool 授权。不得让 E2EE 群消息触发服务端 LLM；先补安全与状态机测试。
+
+请把当前实现视为待验证证据，不信任注释、旧模型自评或“看起来合理”的抽象。按 brownfield-retrospective 的 slice-first 方法，先限定约 15 个文件或 2000 行以内的功能切片，重建实际行为和不变量，建立现有测试/性能/错误行为基线，再检查：逻辑正确性、并发与竞态、失败处理、边界条件、权限与安全、资源生命周期、性能热点、重复/过度抽象、可维护性和跨端一致性。
+
+优先做行为保持型优化；不得为了体现新模型能力而重写整个模块、改变公共契约或引入新依赖。每项发现提供文件/行号、复现或证据、影响、建议和风险。先新增/修正测试证明原行为与目标行为，再实施最小改动。若需要改变用户可见行为、数据结构或协议，先停下请求确认。以 Handler → Logic → DS → Repo、Erlang/OTP、Cowboy、PostgreSQL 和现有 API/WS 契约为准。
+
+不要自动创建 docs/retro、重复计划或审计文档；先在会话中输出基线、差距登记和改进方案。经用户明确授权后才落盘必要的长期文档。完成后运行相关测试、静态检查和 diff review；不 commit、不 push、不合并、不部署。
+```
+
+**C · 测试现有功能 · `test-collaboration` + `ai-regression-testing` + `verification-loop`**
+
+```text
+$test-collaboration $ai-regression-testing $verification-loop
+
+当前功能场景：客户知识助手、群内助手和受控自动化（AI 助手与 Agent）。目标客户/目标业务流程：[请填写客户行业、用户角色、业务目标、关键流程、特殊规则和优先级]。目标范围：[请填写本次要覆盖的端/模块/子功能]。
+
+先读取当前仓库规则和权威文档，再核对实际代码与测试。不得把设计、文档或 API 存在等同于功能已交付；明确标注 CURRENT、TARGET、LOCKED、UNKNOWN 和 NOT_VERIFIED。
+
+任务类型：测试现有功能。
+
+为客户复刻 AI 助手场景。区分 account_type=1 Agent、account_type=3 Developer Bot、account_type=2 Channel System Bot。盘点助手发现、角色模板、群内 @触发、agent_task 审批、Grant→Run→Effect、HITL、MCP tool 授权与审计。标明 phase1_delivery 交付锁和 App/Admin 消费缺口，不能把 mock Hirð runtime 说成生产 runtime。
+
+实施已批准的 Agent 能力差异。遵守 Grant DEFAULT=DENY、能力只能收窄、真人 delegator、Run/Effect/Grant event append-only、dispatching 先持久化再调用 adapter、HITL 审批和 MCP 按 tool 授权。不得让 E2EE 群消息触发服务端 LLM；先补安全与状态机测试。
+
+请不要先修改业务实现。先盘点该场景已有单元、组件/Widget、契约、集成、E2E、平台/设备测试和 CI 门禁，建立“需求/业务规则 → TEST-ID 或现有测试资产 → 执行命令 → 证据”矩阵。重点设计正常路径、权限拒绝、非法输入、边界值、重复请求、并发、超时、断线恢复、旧数据兼容和跨端一致性用例。针对旧 AI 生成代码，额外检查 mock/sandbox 与真实路径不一致、遗漏 SELECT/序列化字段、只测 happy path、异常被吞、测试与实现共享同一错误假设等盲点。
+
+只新增真正有区分力的测试，不复制重复用例、不降低阈值、不扩大 skip。使用现有 EUnit、Common Test、契约门禁和 scripts 中的权威测试入口。
+
+执行后逐项报告通过/失败/阻塞/未执行，给出实际命令、退出码、测试数量和证据位置。发现产品代码缺陷时先提交复现证据和最小修复建议；没有明确授权不修改业务代码。不得把未运行、环境缺失或模拟测试写成 PASS。
+```
+
 
 ### ECC-082 · 客户第三方系统机器人和事件集成
 
 **场景：** 开发者 Bot 与 Webhook
 
-**A · `product-lens` + `product-capability` · 客户场景映射**
+**A · 新增功能 · `product-capability` + `orch-add-feature` + `tdd-workflow`**
 
 ```text
-$product-lens $product-capability
+$product-capability $orch-add-feature $tdd-workflow
+
+当前功能场景：客户第三方系统机器人和事件集成（开发者 Bot 与 Webhook）。目标客户/目标业务流程：[请填写客户行业、用户角色、业务目标、关键流程、特殊规则和优先级]。目标范围：[请填写本次要覆盖的端/模块/子功能]。
+
+先读取当前仓库规则和权威文档，再核对实际代码与测试。不得把设计、文档或 API 存在等同于功能已交付；明确标注 CURRENT、TARGET、LOCKED、UNKNOWN 和 NOT_VERIFIED。
+
+任务类型：新增功能。
 
 为客户复刻第三方 Bot/Webhook 集成场景。分析 Bot 注册、account_type=3、username/@调用、API Token 与 verify token 分离、事件订阅、Webhook outbox 重试、投递状态、命令和 API 权限。明确 Bot 与 Agent、频道 system bot 的区别，输出外部系统集成合同和安全威胁。
-```
-
-**B · `contract-first` + `orch-add-feature` + `security-review` · 客户差异实施**
-
-```text
-$contract-first $orch-add-feature $security-review
 
 实施已批准的 Bot/Webhook 差异。保持 api_token 与 verify_token 分离、密钥仅安全展示、Webhook 验签、防重放、超时/重试/死信可观测和 Bot 身份判定。先写签名篡改、重复投递、超时和越权测试；不得在日志输出 token。
+
+请先判断需求能否由现有能力配置/组合完成；只有确认存在真实能力缺口才新增代码。输出 capability contract：参与角色、用户旅程、状态机、权限/数据边界、API/WS/客户端界面、迁移兼容、观测和验收标准。客户输入不完整或涉及产品决策时，列出阻塞问题并停在方案阶段。输入充分且任务明确时，按 TDD 先写失败测试再实现，遵循项目已有架构和测试命令。遵守 Gate：计划/契约先审阅，实施后完整验证；不 commit、不 push、不合并、不部署。
 ```
+
+**B · 优化现有功能 / 新模型复审旧 AI 代码 · `brownfield-retrospective` + `tdd-workflow` + `verification-loop`**
+
+```text
+$brownfield-retrospective $tdd-workflow $verification-loop
+
+当前功能场景：客户第三方系统机器人和事件集成（开发者 Bot 与 Webhook）。目标客户/目标业务流程：[请填写客户行业、用户角色、业务目标、关键流程、特殊规则和优先级]。目标范围：[请填写本次要覆盖的端/模块/子功能]。
+
+先读取当前仓库规则和权威文档，再核对实际代码与测试。不得把设计、文档或 API 存在等同于功能已交付；明确标注 CURRENT、TARGET、LOCKED、UNKNOWN 和 NOT_VERIFIED。
+
+任务类型：优化现有功能，特别用于新一代 AI 模型复审和改进旧 AI 模型生成的代码。
+
+为客户复刻第三方 Bot/Webhook 集成场景。分析 Bot 注册、account_type=3、username/@调用、API Token 与 verify token 分离、事件订阅、Webhook outbox 重试、投递状态、命令和 API 权限。明确 Bot 与 Agent、频道 system bot 的区别，输出外部系统集成合同和安全威胁。
+
+实施已批准的 Bot/Webhook 差异。保持 api_token 与 verify_token 分离、密钥仅安全展示、Webhook 验签、防重放、超时/重试/死信可观测和 Bot 身份判定。先写签名篡改、重复投递、超时和越权测试；不得在日志输出 token。
+
+请把当前实现视为待验证证据，不信任注释、旧模型自评或“看起来合理”的抽象。按 brownfield-retrospective 的 slice-first 方法，先限定约 15 个文件或 2000 行以内的功能切片，重建实际行为和不变量，建立现有测试/性能/错误行为基线，再检查：逻辑正确性、并发与竞态、失败处理、边界条件、权限与安全、资源生命周期、性能热点、重复/过度抽象、可维护性和跨端一致性。
+
+优先做行为保持型优化；不得为了体现新模型能力而重写整个模块、改变公共契约或引入新依赖。每项发现提供文件/行号、复现或证据、影响、建议和风险。先新增/修正测试证明原行为与目标行为，再实施最小改动。若需要改变用户可见行为、数据结构或协议，先停下请求确认。以 Handler → Logic → DS → Repo、Erlang/OTP、Cowboy、PostgreSQL 和现有 API/WS 契约为准。
+
+不要自动创建 docs/retro、重复计划或审计文档；先在会话中输出基线、差距登记和改进方案。经用户明确授权后才落盘必要的长期文档。完成后运行相关测试、静态检查和 diff review；不 commit、不 push、不合并、不部署。
+```
+
+**C · 测试现有功能 · `test-collaboration` + `ai-regression-testing` + `verification-loop`**
+
+```text
+$test-collaboration $ai-regression-testing $verification-loop
+
+当前功能场景：客户第三方系统机器人和事件集成（开发者 Bot 与 Webhook）。目标客户/目标业务流程：[请填写客户行业、用户角色、业务目标、关键流程、特殊规则和优先级]。目标范围：[请填写本次要覆盖的端/模块/子功能]。
+
+先读取当前仓库规则和权威文档，再核对实际代码与测试。不得把设计、文档或 API 存在等同于功能已交付；明确标注 CURRENT、TARGET、LOCKED、UNKNOWN 和 NOT_VERIFIED。
+
+任务类型：测试现有功能。
+
+为客户复刻第三方 Bot/Webhook 集成场景。分析 Bot 注册、account_type=3、username/@调用、API Token 与 verify token 分离、事件订阅、Webhook outbox 重试、投递状态、命令和 API 权限。明确 Bot 与 Agent、频道 system bot 的区别，输出外部系统集成合同和安全威胁。
+
+实施已批准的 Bot/Webhook 差异。保持 api_token 与 verify_token 分离、密钥仅安全展示、Webhook 验签、防重放、超时/重试/死信可观测和 Bot 身份判定。先写签名篡改、重复投递、超时和越权测试；不得在日志输出 token。
+
+请不要先修改业务实现。先盘点该场景已有单元、组件/Widget、契约、集成、E2E、平台/设备测试和 CI 门禁，建立“需求/业务规则 → TEST-ID 或现有测试资产 → 执行命令 → 证据”矩阵。重点设计正常路径、权限拒绝、非法输入、边界值、重复请求、并发、超时、断线恢复、旧数据兼容和跨端一致性用例。针对旧 AI 生成代码，额外检查 mock/sandbox 与真实路径不一致、遗漏 SELECT/序列化字段、只测 happy path、异常被吞、测试与实现共享同一错误假设等盲点。
+
+只新增真正有区分力的测试，不复制重复用例、不降低阈值、不扩大 skip。使用现有 EUnit、Common Test、契约门禁和 scripts 中的权威测试入口。
+
+执行后逐项报告通过/失败/阻塞/未执行，给出实际命令、退出码、测试数量和证据位置。发现产品代码缺陷时先提交复现证据和最小修复建议；没有明确授权不修改业务代码。不得把未运行、环境缺失或模拟测试写成 PASS。
+```
+
 
 ### ECC-083 · 客户私密聊天、群组加密与密钥恢复
 
 **场景：** 端到端加密通信
 
-**A · `product-lens` + `product-capability` · 客户场景映射**
+**A · 新增功能 · `product-capability` + `orch-add-feature` + `tdd-workflow`**
 
 ```text
-$product-lens $product-capability
+$product-capability $orch-add-feature $tdd-workflow
+
+当前功能场景：客户私密聊天、群组加密与密钥恢复（端到端加密通信）。目标客户/目标业务流程：[请填写客户行业、用户角色、业务目标、关键流程、特殊规则和优先级]。目标范围：[请填写本次要覆盖的端/模块/子功能]。
+
+先读取当前仓库规则和权威文档，再核对实际代码与测试。不得把设计、文档或 API 存在等同于功能已交付；明确标注 CURRENT、TARGET、LOCKED、UNKNOWN 和 NOT_VERIFIED。
+
+任务类型：新增功能。
 
 为客户复刻隐私通信场景。分析 C2C Olm、C2G Megolm、设备信任、安全码/二维码核验、密钥轮换、4S 密文备份、社交恢复、加密附件和 E2EE 档位。以 e2ee 概念、协议规范和交付 profile 为准，明确服务端永不持有的密钥/明文及一期交付锁。
-```
-
-**B · `contract-first` + `orch-change-feature` + `security-review` · 客户差异实施**
-
-```text
-$contract-first $orch-change-feature $security-review
 
 实施已批准的 E2EE 差异。遵守服务端零密码学边界、设备 capability 协商、群成员世代隔离、房间密钥不透明中转、备份仅密文、恢复分片门限和兼容性矩阵。先写客户端/服务端契约与安全回归，不将服务器解密作为方案。
+
+请先判断需求能否由现有能力配置/组合完成；只有确认存在真实能力缺口才新增代码。输出 capability contract：参与角色、用户旅程、状态机、权限/数据边界、API/WS/客户端界面、迁移兼容、观测和验收标准。客户输入不完整或涉及产品决策时，列出阻塞问题并停在方案阶段。输入充分且任务明确时，按 TDD 先写失败测试再实现，遵循项目已有架构和测试命令。遵守 Gate：计划/契约先审阅，实施后完整验证；不 commit、不 push、不合并、不部署。
 ```
+
+**B · 优化现有功能 / 新模型复审旧 AI 代码 · `brownfield-retrospective` + `tdd-workflow` + `verification-loop`**
+
+```text
+$brownfield-retrospective $tdd-workflow $verification-loop
+
+当前功能场景：客户私密聊天、群组加密与密钥恢复（端到端加密通信）。目标客户/目标业务流程：[请填写客户行业、用户角色、业务目标、关键流程、特殊规则和优先级]。目标范围：[请填写本次要覆盖的端/模块/子功能]。
+
+先读取当前仓库规则和权威文档，再核对实际代码与测试。不得把设计、文档或 API 存在等同于功能已交付；明确标注 CURRENT、TARGET、LOCKED、UNKNOWN 和 NOT_VERIFIED。
+
+任务类型：优化现有功能，特别用于新一代 AI 模型复审和改进旧 AI 模型生成的代码。
+
+为客户复刻隐私通信场景。分析 C2C Olm、C2G Megolm、设备信任、安全码/二维码核验、密钥轮换、4S 密文备份、社交恢复、加密附件和 E2EE 档位。以 e2ee 概念、协议规范和交付 profile 为准，明确服务端永不持有的密钥/明文及一期交付锁。
+
+实施已批准的 E2EE 差异。遵守服务端零密码学边界、设备 capability 协商、群成员世代隔离、房间密钥不透明中转、备份仅密文、恢复分片门限和兼容性矩阵。先写客户端/服务端契约与安全回归，不将服务器解密作为方案。
+
+请把当前实现视为待验证证据，不信任注释、旧模型自评或“看起来合理”的抽象。按 brownfield-retrospective 的 slice-first 方法，先限定约 15 个文件或 2000 行以内的功能切片，重建实际行为和不变量，建立现有测试/性能/错误行为基线，再检查：逻辑正确性、并发与竞态、失败处理、边界条件、权限与安全、资源生命周期、性能热点、重复/过度抽象、可维护性和跨端一致性。
+
+优先做行为保持型优化；不得为了体现新模型能力而重写整个模块、改变公共契约或引入新依赖。每项发现提供文件/行号、复现或证据、影响、建议和风险。先新增/修正测试证明原行为与目标行为，再实施最小改动。若需要改变用户可见行为、数据结构或协议，先停下请求确认。以 Handler → Logic → DS → Repo、Erlang/OTP、Cowboy、PostgreSQL 和现有 API/WS 契约为准。
+
+不要自动创建 docs/retro、重复计划或审计文档；先在会话中输出基线、差距登记和改进方案。经用户明确授权后才落盘必要的长期文档。完成后运行相关测试、静态检查和 diff review；不 commit、不 push、不合并、不部署。
+```
+
+**C · 测试现有功能 · `test-collaboration` + `ai-regression-testing` + `verification-loop`**
+
+```text
+$test-collaboration $ai-regression-testing $verification-loop
+
+当前功能场景：客户私密聊天、群组加密与密钥恢复（端到端加密通信）。目标客户/目标业务流程：[请填写客户行业、用户角色、业务目标、关键流程、特殊规则和优先级]。目标范围：[请填写本次要覆盖的端/模块/子功能]。
+
+先读取当前仓库规则和权威文档，再核对实际代码与测试。不得把设计、文档或 API 存在等同于功能已交付；明确标注 CURRENT、TARGET、LOCKED、UNKNOWN 和 NOT_VERIFIED。
+
+任务类型：测试现有功能。
+
+为客户复刻隐私通信场景。分析 C2C Olm、C2G Megolm、设备信任、安全码/二维码核验、密钥轮换、4S 密文备份、社交恢复、加密附件和 E2EE 档位。以 e2ee 概念、协议规范和交付 profile 为准，明确服务端永不持有的密钥/明文及一期交付锁。
+
+实施已批准的 E2EE 差异。遵守服务端零密码学边界、设备 capability 协商、群成员世代隔离、房间密钥不透明中转、备份仅密文、恢复分片门限和兼容性矩阵。先写客户端/服务端契约与安全回归，不将服务器解密作为方案。
+
+请不要先修改业务实现。先盘点该场景已有单元、组件/Widget、契约、集成、E2E、平台/设备测试和 CI 门禁，建立“需求/业务规则 → TEST-ID 或现有测试资产 → 执行命令 → 证据”矩阵。重点设计正常路径、权限拒绝、非法输入、边界值、重复请求、并发、超时、断线恢复、旧数据兼容和跨端一致性用例。针对旧 AI 生成代码，额外检查 mock/sandbox 与真实路径不一致、遗漏 SELECT/序列化字段、只测 happy path、异常被吞、测试与实现共享同一错误假设等盲点。
+
+只新增真正有区分力的测试，不复制重复用例、不降低阈值、不扩大 skip。使用现有 EUnit、Common Test、契约门禁和 scripts 中的权威测试入口。
+
+执行后逐项报告通过/失败/阻塞/未执行，给出实际命令、退出码、测试数量和证据位置。发现产品代码缺陷时先提交复现证据和最小修复建议；没有明确授权不修改业务代码。不得把未运行、环境缺失或模拟测试写成 PASS。
+```
+
 
 ### ECC-084 · 客户文件共享、图片视频和安全下载
 
 **场景：** 附件与文件中心
 
-**A · `product-lens` + `product-capability` · 客户场景映射**
+**A · 新增功能 · `product-capability` + `orch-add-feature` + `tdd-workflow`**
 
 ```text
-$product-lens $product-capability
+$product-capability $orch-add-feature $tdd-workflow
+
+当前功能场景：客户文件共享、图片视频和安全下载（附件与文件中心）。目标客户/目标业务流程：[请填写客户行业、用户角色、业务目标、关键流程、特殊规则和优先级]。目标范围：[请填写本次要覆盖的端/模块/子功能]。
+
+先读取当前仓库规则和权威文档，再核对实际代码与测试。不得把设计、文档或 API 存在等同于功能已交付；明确标注 CURRENT、TARGET、LOCKED、UNKNOWN 和 NOT_VERIFIED。
+
+任务类型：新增功能。
 
 为客户复刻文件共享/媒体中心场景。盘点附件上传 presign/confirm、Garage/S3、分块上传、E2EE 附件、附件引用、群文件/相册、企业资产、授权下载、短期 URL 和生命周期清理。区分个人附件、群文件和企业资产的数据归属。输出容量、权限、留存和恢复要求。
-```
-
-**B · `contract-first` + `orch-add-feature` + `security-review` · 客户差异实施**
-
-```text
-$contract-first $orch-add-feature $security-review
 
 实施已批准的附件差异。复用现有 presign/confirm、attachment registry、内容授权代理和生命周期状态机。验证 MIME/大小、跨用户访问、过期 URL、重复 confirm、部分上传、账号切换和对象孤儿。附件 URL 不得绕过授权直接暴露。
+
+请先判断需求能否由现有能力配置/组合完成；只有确认存在真实能力缺口才新增代码。输出 capability contract：参与角色、用户旅程、状态机、权限/数据边界、API/WS/客户端界面、迁移兼容、观测和验收标准。客户输入不完整或涉及产品决策时，列出阻塞问题并停在方案阶段。输入充分且任务明确时，按 TDD 先写失败测试再实现，遵循项目已有架构和测试命令。遵守 Gate：计划/契约先审阅，实施后完整验证；不 commit、不 push、不合并、不部署。
 ```
+
+**B · 优化现有功能 / 新模型复审旧 AI 代码 · `brownfield-retrospective` + `tdd-workflow` + `verification-loop`**
+
+```text
+$brownfield-retrospective $tdd-workflow $verification-loop
+
+当前功能场景：客户文件共享、图片视频和安全下载（附件与文件中心）。目标客户/目标业务流程：[请填写客户行业、用户角色、业务目标、关键流程、特殊规则和优先级]。目标范围：[请填写本次要覆盖的端/模块/子功能]。
+
+先读取当前仓库规则和权威文档，再核对实际代码与测试。不得把设计、文档或 API 存在等同于功能已交付；明确标注 CURRENT、TARGET、LOCKED、UNKNOWN 和 NOT_VERIFIED。
+
+任务类型：优化现有功能，特别用于新一代 AI 模型复审和改进旧 AI 模型生成的代码。
+
+为客户复刻文件共享/媒体中心场景。盘点附件上传 presign/confirm、Garage/S3、分块上传、E2EE 附件、附件引用、群文件/相册、企业资产、授权下载、短期 URL 和生命周期清理。区分个人附件、群文件和企业资产的数据归属。输出容量、权限、留存和恢复要求。
+
+实施已批准的附件差异。复用现有 presign/confirm、attachment registry、内容授权代理和生命周期状态机。验证 MIME/大小、跨用户访问、过期 URL、重复 confirm、部分上传、账号切换和对象孤儿。附件 URL 不得绕过授权直接暴露。
+
+请把当前实现视为待验证证据，不信任注释、旧模型自评或“看起来合理”的抽象。按 brownfield-retrospective 的 slice-first 方法，先限定约 15 个文件或 2000 行以内的功能切片，重建实际行为和不变量，建立现有测试/性能/错误行为基线，再检查：逻辑正确性、并发与竞态、失败处理、边界条件、权限与安全、资源生命周期、性能热点、重复/过度抽象、可维护性和跨端一致性。
+
+优先做行为保持型优化；不得为了体现新模型能力而重写整个模块、改变公共契约或引入新依赖。每项发现提供文件/行号、复现或证据、影响、建议和风险。先新增/修正测试证明原行为与目标行为，再实施最小改动。若需要改变用户可见行为、数据结构或协议，先停下请求确认。以 Handler → Logic → DS → Repo、Erlang/OTP、Cowboy、PostgreSQL 和现有 API/WS 契约为准。
+
+不要自动创建 docs/retro、重复计划或审计文档；先在会话中输出基线、差距登记和改进方案。经用户明确授权后才落盘必要的长期文档。完成后运行相关测试、静态检查和 diff review；不 commit、不 push、不合并、不部署。
+```
+
+**C · 测试现有功能 · `test-collaboration` + `ai-regression-testing` + `verification-loop`**
+
+```text
+$test-collaboration $ai-regression-testing $verification-loop
+
+当前功能场景：客户文件共享、图片视频和安全下载（附件与文件中心）。目标客户/目标业务流程：[请填写客户行业、用户角色、业务目标、关键流程、特殊规则和优先级]。目标范围：[请填写本次要覆盖的端/模块/子功能]。
+
+先读取当前仓库规则和权威文档，再核对实际代码与测试。不得把设计、文档或 API 存在等同于功能已交付；明确标注 CURRENT、TARGET、LOCKED、UNKNOWN 和 NOT_VERIFIED。
+
+任务类型：测试现有功能。
+
+为客户复刻文件共享/媒体中心场景。盘点附件上传 presign/confirm、Garage/S3、分块上传、E2EE 附件、附件引用、群文件/相册、企业资产、授权下载、短期 URL 和生命周期清理。区分个人附件、群文件和企业资产的数据归属。输出容量、权限、留存和恢复要求。
+
+实施已批准的附件差异。复用现有 presign/confirm、attachment registry、内容授权代理和生命周期状态机。验证 MIME/大小、跨用户访问、过期 URL、重复 confirm、部分上传、账号切换和对象孤儿。附件 URL 不得绕过授权直接暴露。
+
+请不要先修改业务实现。先盘点该场景已有单元、组件/Widget、契约、集成、E2E、平台/设备测试和 CI 门禁，建立“需求/业务规则 → TEST-ID 或现有测试资产 → 执行命令 → 证据”矩阵。重点设计正常路径、权限拒绝、非法输入、边界值、重复请求、并发、超时、断线恢复、旧数据兼容和跨端一致性用例。针对旧 AI 生成代码，额外检查 mock/sandbox 与真实路径不一致、遗漏 SELECT/序列化字段、只测 happy path、异常被吞、测试与实现共享同一错误假设等盲点。
+
+只新增真正有区分力的测试，不复制重复用例、不降低阈值、不扩大 skip。使用现有 EUnit、Common Test、契约门禁和 scripts 中的权威测试入口。
+
+执行后逐项报告通过/失败/阻塞/未执行，给出实际命令、退出码、测试数量和证据位置。发现产品代码缺陷时先提交复现证据和最小修复建议；没有明确授权不修改业务代码。不得把未运行、环境缺失或模拟测试写成 PASS。
+```
+
 
 ### ECC-085 · 客户一对一通话、群通话和直播互动
 
 **场景：** 音视频通话与直播
 
-**A · `product-lens` + `product-capability` · 客户场景映射**
+**A · 新增功能 · `product-capability` + `orch-add-feature` + `tdd-workflow`**
 
 ```text
-$product-lens $product-capability
+$product-capability $orch-add-feature $tdd-workflow
+
+当前功能场景：客户一对一通话、群通话和直播互动（音视频通话与直播）。目标客户/目标业务流程：[请填写客户行业、用户角色、业务目标、关键流程、特殊规则和优先级]。目标范围：[请填写本次要覆盖的端/模块/子功能]。
+
+先读取当前仓库规则和权威文档，再核对实际代码与测试。不得把设计、文档或 API 存在等同于功能已交付；明确标注 CURRENT、TARGET、LOCKED、UNKNOWN 和 NOT_VERIFIED。
+
+任务类型：新增功能。
 
 为客户复刻音视频沟通场景。分别评估一对一 RTC、群通话、LiveKit 房间、TURN、直播房间和录制能力。核对现有呼叫信令状态机、flutter_webrtc 采集/渲染、LiveKit 媒体路径及产品交付锁。区分已实现、仅计划、仅单节点和未做真实双端验收的能力。
-```
-
-**B · `contract-first` + `orch-add-feature` + `tdd-workflow` · 客户差异实施**
-
-```text
-$contract-first $orch-add-feature $tdd-workflow
 
 实施已批准的 RTC/直播差异。保留 IM 信令管理呼叫状态、媒体传输职责分离。核对房间路由、TURN、权限、设备切换、网络中断和多端生命周期。不得假设 Redis 多节点能力或群通话已经开放；真实双端验收需独立安排。
+
+请先判断需求能否由现有能力配置/组合完成；只有确认存在真实能力缺口才新增代码。输出 capability contract：参与角色、用户旅程、状态机、权限/数据边界、API/WS/客户端界面、迁移兼容、观测和验收标准。客户输入不完整或涉及产品决策时，列出阻塞问题并停在方案阶段。输入充分且任务明确时，按 TDD 先写失败测试再实现，遵循项目已有架构和测试命令。遵守 Gate：计划/契约先审阅，实施后完整验证；不 commit、不 push、不合并、不部署。
 ```
+
+**B · 优化现有功能 / 新模型复审旧 AI 代码 · `brownfield-retrospective` + `tdd-workflow` + `verification-loop`**
+
+```text
+$brownfield-retrospective $tdd-workflow $verification-loop
+
+当前功能场景：客户一对一通话、群通话和直播互动（音视频通话与直播）。目标客户/目标业务流程：[请填写客户行业、用户角色、业务目标、关键流程、特殊规则和优先级]。目标范围：[请填写本次要覆盖的端/模块/子功能]。
+
+先读取当前仓库规则和权威文档，再核对实际代码与测试。不得把设计、文档或 API 存在等同于功能已交付；明确标注 CURRENT、TARGET、LOCKED、UNKNOWN 和 NOT_VERIFIED。
+
+任务类型：优化现有功能，特别用于新一代 AI 模型复审和改进旧 AI 模型生成的代码。
+
+为客户复刻音视频沟通场景。分别评估一对一 RTC、群通话、LiveKit 房间、TURN、直播房间和录制能力。核对现有呼叫信令状态机、flutter_webrtc 采集/渲染、LiveKit 媒体路径及产品交付锁。区分已实现、仅计划、仅单节点和未做真实双端验收的能力。
+
+实施已批准的 RTC/直播差异。保留 IM 信令管理呼叫状态、媒体传输职责分离。核对房间路由、TURN、权限、设备切换、网络中断和多端生命周期。不得假设 Redis 多节点能力或群通话已经开放；真实双端验收需独立安排。
+
+请把当前实现视为待验证证据，不信任注释、旧模型自评或“看起来合理”的抽象。按 brownfield-retrospective 的 slice-first 方法，先限定约 15 个文件或 2000 行以内的功能切片，重建实际行为和不变量，建立现有测试/性能/错误行为基线，再检查：逻辑正确性、并发与竞态、失败处理、边界条件、权限与安全、资源生命周期、性能热点、重复/过度抽象、可维护性和跨端一致性。
+
+优先做行为保持型优化；不得为了体现新模型能力而重写整个模块、改变公共契约或引入新依赖。每项发现提供文件/行号、复现或证据、影响、建议和风险。先新增/修正测试证明原行为与目标行为，再实施最小改动。若需要改变用户可见行为、数据结构或协议，先停下请求确认。以 Handler → Logic → DS → Repo、Erlang/OTP、Cowboy、PostgreSQL 和现有 API/WS 契约为准。
+
+不要自动创建 docs/retro、重复计划或审计文档；先在会话中输出基线、差距登记和改进方案。经用户明确授权后才落盘必要的长期文档。完成后运行相关测试、静态检查和 diff review；不 commit、不 push、不合并、不部署。
+```
+
+**C · 测试现有功能 · `test-collaboration` + `ai-regression-testing` + `verification-loop`**
+
+```text
+$test-collaboration $ai-regression-testing $verification-loop
+
+当前功能场景：客户一对一通话、群通话和直播互动（音视频通话与直播）。目标客户/目标业务流程：[请填写客户行业、用户角色、业务目标、关键流程、特殊规则和优先级]。目标范围：[请填写本次要覆盖的端/模块/子功能]。
+
+先读取当前仓库规则和权威文档，再核对实际代码与测试。不得把设计、文档或 API 存在等同于功能已交付；明确标注 CURRENT、TARGET、LOCKED、UNKNOWN 和 NOT_VERIFIED。
+
+任务类型：测试现有功能。
+
+为客户复刻音视频沟通场景。分别评估一对一 RTC、群通话、LiveKit 房间、TURN、直播房间和录制能力。核对现有呼叫信令状态机、flutter_webrtc 采集/渲染、LiveKit 媒体路径及产品交付锁。区分已实现、仅计划、仅单节点和未做真实双端验收的能力。
+
+实施已批准的 RTC/直播差异。保留 IM 信令管理呼叫状态、媒体传输职责分离。核对房间路由、TURN、权限、设备切换、网络中断和多端生命周期。不得假设 Redis 多节点能力或群通话已经开放；真实双端验收需独立安排。
+
+请不要先修改业务实现。先盘点该场景已有单元、组件/Widget、契约、集成、E2E、平台/设备测试和 CI 门禁，建立“需求/业务规则 → TEST-ID 或现有测试资产 → 执行命令 → 证据”矩阵。重点设计正常路径、权限拒绝、非法输入、边界值、重复请求、并发、超时、断线恢复、旧数据兼容和跨端一致性用例。针对旧 AI 生成代码，额外检查 mock/sandbox 与真实路径不一致、遗漏 SELECT/序列化字段、只测 happy path、异常被吞、测试与实现共享同一错误假设等盲点。
+
+只新增真正有区分力的测试，不复制重复用例、不降低阈值、不扩大 skip。使用现有 EUnit、Common Test、契约门禁和 scripts 中的权威测试入口。
+
+执行后逐项报告通过/失败/阻塞/未执行，给出实际命令、退出码、测试数量和证据位置。发现产品代码缺陷时先提交复现证据和最小修复建议；没有明确授权不修改业务代码。不得把未运行、环境缺失或模拟测试写成 PASS。
+```
+
 
 ### ECC-086 · 客户实名/注册、联系人和关系管理
 
 **场景：** 账号、好友与社交关系
 
-**A · `product-lens` + `product-capability` · 客户场景映射**
+**A · 新增功能 · `product-capability` + `orch-add-feature` + `tdd-workflow`**
 
 ```text
-$product-lens $product-capability
+$product-capability $orch-add-feature $tdd-workflow
+
+当前功能场景：客户实名/注册、联系人和关系管理（账号、好友与社交关系）。目标客户/目标业务流程：[请填写客户行业、用户角色、业务目标、关键流程、特殊规则和优先级]。目标范围：[请填写本次要覆盖的端/模块/子功能]。
+
+先读取当前仓库规则和权威文档，再核对实际代码与测试。不得把设计、文档或 API 存在等同于功能已交付；明确标注 CURRENT、TARGET、LOCKED、UNKNOWN 和 NOT_VERIFIED。
+
+任务类型：新增功能。
 
 为客户复刻账号和社交关系场景。分析注册、邮箱/手机/账号登录、验证码、找回密码、二维码登录、OIDC、设备管理、个人资料、好友申请、备注/分组/标签、黑名单和在线状态。区分 Human/Agent/Bot/System Bot 和 Platform Admin。输出身份生命周期、风控与数据迁移需求。
-```
-
-**B · `contract-first` + `orch-change-feature` + `security-review` · 客户差异实施**
-
-```text
-$contract-first $orch-change-feature $security-review
 
 实施已批准的身份/好友差异。遵守 account_type 权威枚举、TSID 精度、设备身份、Token 刷新、QR 登录一次性领取、好友关系双向语义、denylist 优先和 Admin 独立认证。先补认证与越权负例测试，不降低验证码、限流或设备安全要求。
+
+请先判断需求能否由现有能力配置/组合完成；只有确认存在真实能力缺口才新增代码。输出 capability contract：参与角色、用户旅程、状态机、权限/数据边界、API/WS/客户端界面、迁移兼容、观测和验收标准。客户输入不完整或涉及产品决策时，列出阻塞问题并停在方案阶段。输入充分且任务明确时，按 TDD 先写失败测试再实现，遵循项目已有架构和测试命令。遵守 Gate：计划/契约先审阅，实施后完整验证；不 commit、不 push、不合并、不部署。
 ```
+
+**B · 优化现有功能 / 新模型复审旧 AI 代码 · `brownfield-retrospective` + `tdd-workflow` + `verification-loop`**
+
+```text
+$brownfield-retrospective $tdd-workflow $verification-loop
+
+当前功能场景：客户实名/注册、联系人和关系管理（账号、好友与社交关系）。目标客户/目标业务流程：[请填写客户行业、用户角色、业务目标、关键流程、特殊规则和优先级]。目标范围：[请填写本次要覆盖的端/模块/子功能]。
+
+先读取当前仓库规则和权威文档，再核对实际代码与测试。不得把设计、文档或 API 存在等同于功能已交付；明确标注 CURRENT、TARGET、LOCKED、UNKNOWN 和 NOT_VERIFIED。
+
+任务类型：优化现有功能，特别用于新一代 AI 模型复审和改进旧 AI 模型生成的代码。
+
+为客户复刻账号和社交关系场景。分析注册、邮箱/手机/账号登录、验证码、找回密码、二维码登录、OIDC、设备管理、个人资料、好友申请、备注/分组/标签、黑名单和在线状态。区分 Human/Agent/Bot/System Bot 和 Platform Admin。输出身份生命周期、风控与数据迁移需求。
+
+实施已批准的身份/好友差异。遵守 account_type 权威枚举、TSID 精度、设备身份、Token 刷新、QR 登录一次性领取、好友关系双向语义、denylist 优先和 Admin 独立认证。先补认证与越权负例测试，不降低验证码、限流或设备安全要求。
+
+请把当前实现视为待验证证据，不信任注释、旧模型自评或“看起来合理”的抽象。按 brownfield-retrospective 的 slice-first 方法，先限定约 15 个文件或 2000 行以内的功能切片，重建实际行为和不变量，建立现有测试/性能/错误行为基线，再检查：逻辑正确性、并发与竞态、失败处理、边界条件、权限与安全、资源生命周期、性能热点、重复/过度抽象、可维护性和跨端一致性。
+
+优先做行为保持型优化；不得为了体现新模型能力而重写整个模块、改变公共契约或引入新依赖。每项发现提供文件/行号、复现或证据、影响、建议和风险。先新增/修正测试证明原行为与目标行为，再实施最小改动。若需要改变用户可见行为、数据结构或协议，先停下请求确认。以 Handler → Logic → DS → Repo、Erlang/OTP、Cowboy、PostgreSQL 和现有 API/WS 契约为准。
+
+不要自动创建 docs/retro、重复计划或审计文档；先在会话中输出基线、差距登记和改进方案。经用户明确授权后才落盘必要的长期文档。完成后运行相关测试、静态检查和 diff review；不 commit、不 push、不合并、不部署。
+```
+
+**C · 测试现有功能 · `test-collaboration` + `ai-regression-testing` + `verification-loop`**
+
+```text
+$test-collaboration $ai-regression-testing $verification-loop
+
+当前功能场景：客户实名/注册、联系人和关系管理（账号、好友与社交关系）。目标客户/目标业务流程：[请填写客户行业、用户角色、业务目标、关键流程、特殊规则和优先级]。目标范围：[请填写本次要覆盖的端/模块/子功能]。
+
+先读取当前仓库规则和权威文档，再核对实际代码与测试。不得把设计、文档或 API 存在等同于功能已交付；明确标注 CURRENT、TARGET、LOCKED、UNKNOWN 和 NOT_VERIFIED。
+
+任务类型：测试现有功能。
+
+为客户复刻账号和社交关系场景。分析注册、邮箱/手机/账号登录、验证码、找回密码、二维码登录、OIDC、设备管理、个人资料、好友申请、备注/分组/标签、黑名单和在线状态。区分 Human/Agent/Bot/System Bot 和 Platform Admin。输出身份生命周期、风控与数据迁移需求。
+
+实施已批准的身份/好友差异。遵守 account_type 权威枚举、TSID 精度、设备身份、Token 刷新、QR 登录一次性领取、好友关系双向语义、denylist 优先和 Admin 独立认证。先补认证与越权负例测试，不降低验证码、限流或设备安全要求。
+
+请不要先修改业务实现。先盘点该场景已有单元、组件/Widget、契约、集成、E2E、平台/设备测试和 CI 门禁，建立“需求/业务规则 → TEST-ID 或现有测试资产 → 执行命令 → 证据”矩阵。重点设计正常路径、权限拒绝、非法输入、边界值、重复请求、并发、超时、断线恢复、旧数据兼容和跨端一致性用例。针对旧 AI 生成代码，额外检查 mock/sandbox 与真实路径不一致、遗漏 SELECT/序列化字段、只测 happy path、异常被吞、测试与实现共享同一错误假设等盲点。
+
+只新增真正有区分力的测试，不复制重复用例、不降低阈值、不扩大 skip。使用现有 EUnit、Common Test、契约门禁和 scripts 中的权威测试入口。
+
+执行后逐项报告通过/失败/阻塞/未执行，给出实际命令、退出码、测试数量和证据位置。发现产品代码缺陷时先提交复现证据和最小修复建议；没有明确授权不修改业务代码。不得把未运行、环境缺失或模拟测试写成 PASS。
+```
+
 
 ### ECC-087 · 客户充值、支付、账单和付费权益
 
 **场景：** 钱包、支付与订阅
 
-**A · `product-lens` + `product-capability` · 客户场景映射**
+**A · 新增功能 · `product-capability` + `orch-add-feature` + `tdd-workflow`**
 
 ```text
-$product-lens $product-capability
+$product-capability $orch-add-feature $tdd-workflow
+
+当前功能场景：客户充值、支付、账单和付费权益（钱包、支付与订阅）。目标客户/目标业务流程：[请填写客户行业、用户角色、业务目标、关键流程、特殊规则和优先级]。目标范围：[请填写本次要覆盖的端/模块/子功能]。
+
+先读取当前仓库规则和权威文档，再核对实际代码与测试。不得把设计、文档或 API 存在等同于功能已交付；明确标注 CURRENT、TARGET、LOCKED、UNKNOWN 和 NOT_VERIFIED。
+
+任务类型：新增功能。
 
 为客户复刻钱包/支付/订阅场景。盘点钱包余额、充值订单、支付宝/微信回调、交易流水、账单、频道购买/订阅、billing subscription/invoice 和 Agent payment mandate。明确支付状态机、幂等、退款/补偿、对账与合规边界；区分已实现 API 与真实支付渠道验收状态。
-```
-
-**B · `contract-first` + `orch-add-feature` + `security-review` · 客户差异实施**
-
-```text
-$contract-first $orch-add-feature $security-review
 
 实施已批准的支付差异。先定义订单、回调、幂等键、状态迁移、补偿和对账契约，验证签名、金额币种、重复/乱序回调、超时和并发扣款。不得在测试中使用真实支付账号或资金；遵守 Payment Mandate 约束。
+
+请先判断需求能否由现有能力配置/组合完成；只有确认存在真实能力缺口才新增代码。输出 capability contract：参与角色、用户旅程、状态机、权限/数据边界、API/WS/客户端界面、迁移兼容、观测和验收标准。客户输入不完整或涉及产品决策时，列出阻塞问题并停在方案阶段。输入充分且任务明确时，按 TDD 先写失败测试再实现，遵循项目已有架构和测试命令。遵守 Gate：计划/契约先审阅，实施后完整验证；不 commit、不 push、不合并、不部署。
 ```
+
+**B · 优化现有功能 / 新模型复审旧 AI 代码 · `brownfield-retrospective` + `tdd-workflow` + `verification-loop`**
+
+```text
+$brownfield-retrospective $tdd-workflow $verification-loop
+
+当前功能场景：客户充值、支付、账单和付费权益（钱包、支付与订阅）。目标客户/目标业务流程：[请填写客户行业、用户角色、业务目标、关键流程、特殊规则和优先级]。目标范围：[请填写本次要覆盖的端/模块/子功能]。
+
+先读取当前仓库规则和权威文档，再核对实际代码与测试。不得把设计、文档或 API 存在等同于功能已交付；明确标注 CURRENT、TARGET、LOCKED、UNKNOWN 和 NOT_VERIFIED。
+
+任务类型：优化现有功能，特别用于新一代 AI 模型复审和改进旧 AI 模型生成的代码。
+
+为客户复刻钱包/支付/订阅场景。盘点钱包余额、充值订单、支付宝/微信回调、交易流水、账单、频道购买/订阅、billing subscription/invoice 和 Agent payment mandate。明确支付状态机、幂等、退款/补偿、对账与合规边界；区分已实现 API 与真实支付渠道验收状态。
+
+实施已批准的支付差异。先定义订单、回调、幂等键、状态迁移、补偿和对账契约，验证签名、金额币种、重复/乱序回调、超时和并发扣款。不得在测试中使用真实支付账号或资金；遵守 Payment Mandate 约束。
+
+请把当前实现视为待验证证据，不信任注释、旧模型自评或“看起来合理”的抽象。按 brownfield-retrospective 的 slice-first 方法，先限定约 15 个文件或 2000 行以内的功能切片，重建实际行为和不变量，建立现有测试/性能/错误行为基线，再检查：逻辑正确性、并发与竞态、失败处理、边界条件、权限与安全、资源生命周期、性能热点、重复/过度抽象、可维护性和跨端一致性。
+
+优先做行为保持型优化；不得为了体现新模型能力而重写整个模块、改变公共契约或引入新依赖。每项发现提供文件/行号、复现或证据、影响、建议和风险。先新增/修正测试证明原行为与目标行为，再实施最小改动。若需要改变用户可见行为、数据结构或协议，先停下请求确认。以 Handler → Logic → DS → Repo、Erlang/OTP、Cowboy、PostgreSQL 和现有 API/WS 契约为准。
+
+不要自动创建 docs/retro、重复计划或审计文档；先在会话中输出基线、差距登记和改进方案。经用户明确授权后才落盘必要的长期文档。完成后运行相关测试、静态检查和 diff review；不 commit、不 push、不合并、不部署。
+```
+
+**C · 测试现有功能 · `test-collaboration` + `ai-regression-testing` + `verification-loop`**
+
+```text
+$test-collaboration $ai-regression-testing $verification-loop
+
+当前功能场景：客户充值、支付、账单和付费权益（钱包、支付与订阅）。目标客户/目标业务流程：[请填写客户行业、用户角色、业务目标、关键流程、特殊规则和优先级]。目标范围：[请填写本次要覆盖的端/模块/子功能]。
+
+先读取当前仓库规则和权威文档，再核对实际代码与测试。不得把设计、文档或 API 存在等同于功能已交付；明确标注 CURRENT、TARGET、LOCKED、UNKNOWN 和 NOT_VERIFIED。
+
+任务类型：测试现有功能。
+
+为客户复刻钱包/支付/订阅场景。盘点钱包余额、充值订单、支付宝/微信回调、交易流水、账单、频道购买/订阅、billing subscription/invoice 和 Agent payment mandate。明确支付状态机、幂等、退款/补偿、对账与合规边界；区分已实现 API 与真实支付渠道验收状态。
+
+实施已批准的支付差异。先定义订单、回调、幂等键、状态迁移、补偿和对账契约，验证签名、金额币种、重复/乱序回调、超时和并发扣款。不得在测试中使用真实支付账号或资金；遵守 Payment Mandate 约束。
+
+请不要先修改业务实现。先盘点该场景已有单元、组件/Widget、契约、集成、E2E、平台/设备测试和 CI 门禁，建立“需求/业务规则 → TEST-ID 或现有测试资产 → 执行命令 → 证据”矩阵。重点设计正常路径、权限拒绝、非法输入、边界值、重复请求、并发、超时、断线恢复、旧数据兼容和跨端一致性用例。针对旧 AI 生成代码，额外检查 mock/sandbox 与真实路径不一致、遗漏 SELECT/序列化字段、只测 happy path、异常被吞、测试与实现共享同一错误假设等盲点。
+
+只新增真正有区分力的测试，不复制重复用例、不降低阈值、不扩大 skip。使用现有 EUnit、Common Test、契约门禁和 scripts 中的权威测试入口。
+
+执行后逐项报告通过/失败/阻塞/未执行，给出实际命令、退出码、测试数量和证据位置。发现产品代码缺陷时先提交复现证据和最小修复建议；没有明确授权不修改业务代码。不得把未运行、环境缺失或模拟测试写成 PASS。
+```
+
 
 ### ECC-088 · 客户用户、群组、频道和内容发现
 
 **场景：** 搜索与发现
 
-**A · `product-lens` + `product-capability` · 客户场景映射**
+**A · 新增功能 · `product-capability` + `orch-add-feature` + `tdd-workflow`**
 
 ```text
-$product-lens $product-capability
+$product-capability $orch-add-feature $tdd-workflow
+
+当前功能场景：客户用户、群组、频道和内容发现（搜索与发现）。目标客户/目标业务流程：[请填写客户行业、用户角色、业务目标、关键流程、特殊规则和优先级]。目标范围：[请填写本次要覆盖的端/模块/子功能]。
+
+先读取当前仓库规则和权威文档，再核对实际代码与测试。不得把设计、文档或 API 存在等同于功能已交付；明确标注 CURRENT、TARGET、LOCKED、UNKNOWN 和 NOT_VERIFIED。
+
+任务类型：新增功能。
 
 为客户复刻统一搜索/发现体验。盘点用户搜索、好友/群组/频道/Agent 发现、全文检索、消息历史、标签筛选和内容可见性。核对 FTS 对 E2EE 密文的排除规则、分页方式和权限过滤。输出搜索对象、排序、权限、索引和隐私边界。
-```
-
-**B · `contract-first` + `orch-change-feature` + `tdd-workflow` · 客户差异实施**
-
-```text
-$contract-first $orch-change-feature $tdd-workflow
 
 实施已批准的搜索差异。遵守 FTS 不索引 E2EE 密文、好友/群/频道可见性授权、denylist 规则和分页合同。先定义查询/过滤契约与安全测试，再优化索引；不得通过扩大索引内容泄露私密消息。
+
+请先判断需求能否由现有能力配置/组合完成；只有确认存在真实能力缺口才新增代码。输出 capability contract：参与角色、用户旅程、状态机、权限/数据边界、API/WS/客户端界面、迁移兼容、观测和验收标准。客户输入不完整或涉及产品决策时，列出阻塞问题并停在方案阶段。输入充分且任务明确时，按 TDD 先写失败测试再实现，遵循项目已有架构和测试命令。遵守 Gate：计划/契约先审阅，实施后完整验证；不 commit、不 push、不合并、不部署。
 ```
+
+**B · 优化现有功能 / 新模型复审旧 AI 代码 · `brownfield-retrospective` + `tdd-workflow` + `verification-loop`**
+
+```text
+$brownfield-retrospective $tdd-workflow $verification-loop
+
+当前功能场景：客户用户、群组、频道和内容发现（搜索与发现）。目标客户/目标业务流程：[请填写客户行业、用户角色、业务目标、关键流程、特殊规则和优先级]。目标范围：[请填写本次要覆盖的端/模块/子功能]。
+
+先读取当前仓库规则和权威文档，再核对实际代码与测试。不得把设计、文档或 API 存在等同于功能已交付；明确标注 CURRENT、TARGET、LOCKED、UNKNOWN 和 NOT_VERIFIED。
+
+任务类型：优化现有功能，特别用于新一代 AI 模型复审和改进旧 AI 模型生成的代码。
+
+为客户复刻统一搜索/发现体验。盘点用户搜索、好友/群组/频道/Agent 发现、全文检索、消息历史、标签筛选和内容可见性。核对 FTS 对 E2EE 密文的排除规则、分页方式和权限过滤。输出搜索对象、排序、权限、索引和隐私边界。
+
+实施已批准的搜索差异。遵守 FTS 不索引 E2EE 密文、好友/群/频道可见性授权、denylist 规则和分页合同。先定义查询/过滤契约与安全测试，再优化索引；不得通过扩大索引内容泄露私密消息。
+
+请把当前实现视为待验证证据，不信任注释、旧模型自评或“看起来合理”的抽象。按 brownfield-retrospective 的 slice-first 方法，先限定约 15 个文件或 2000 行以内的功能切片，重建实际行为和不变量，建立现有测试/性能/错误行为基线，再检查：逻辑正确性、并发与竞态、失败处理、边界条件、权限与安全、资源生命周期、性能热点、重复/过度抽象、可维护性和跨端一致性。
+
+优先做行为保持型优化；不得为了体现新模型能力而重写整个模块、改变公共契约或引入新依赖。每项发现提供文件/行号、复现或证据、影响、建议和风险。先新增/修正测试证明原行为与目标行为，再实施最小改动。若需要改变用户可见行为、数据结构或协议，先停下请求确认。以 Handler → Logic → DS → Repo、Erlang/OTP、Cowboy、PostgreSQL 和现有 API/WS 契约为准。
+
+不要自动创建 docs/retro、重复计划或审计文档；先在会话中输出基线、差距登记和改进方案。经用户明确授权后才落盘必要的长期文档。完成后运行相关测试、静态检查和 diff review；不 commit、不 push、不合并、不部署。
+```
+
+**C · 测试现有功能 · `test-collaboration` + `ai-regression-testing` + `verification-loop`**
+
+```text
+$test-collaboration $ai-regression-testing $verification-loop
+
+当前功能场景：客户用户、群组、频道和内容发现（搜索与发现）。目标客户/目标业务流程：[请填写客户行业、用户角色、业务目标、关键流程、特殊规则和优先级]。目标范围：[请填写本次要覆盖的端/模块/子功能]。
+
+先读取当前仓库规则和权威文档，再核对实际代码与测试。不得把设计、文档或 API 存在等同于功能已交付；明确标注 CURRENT、TARGET、LOCKED、UNKNOWN 和 NOT_VERIFIED。
+
+任务类型：测试现有功能。
+
+为客户复刻统一搜索/发现体验。盘点用户搜索、好友/群组/频道/Agent 发现、全文检索、消息历史、标签筛选和内容可见性。核对 FTS 对 E2EE 密文的排除规则、分页方式和权限过滤。输出搜索对象、排序、权限、索引和隐私边界。
+
+实施已批准的搜索差异。遵守 FTS 不索引 E2EE 密文、好友/群/频道可见性授权、denylist 规则和分页合同。先定义查询/过滤契约与安全测试，再优化索引；不得通过扩大索引内容泄露私密消息。
+
+请不要先修改业务实现。先盘点该场景已有单元、组件/Widget、契约、集成、E2E、平台/设备测试和 CI 门禁，建立“需求/业务规则 → TEST-ID 或现有测试资产 → 执行命令 → 证据”矩阵。重点设计正常路径、权限拒绝、非法输入、边界值、重复请求、并发、超时、断线恢复、旧数据兼容和跨端一致性用例。针对旧 AI 生成代码，额外检查 mock/sandbox 与真实路径不一致、遗漏 SELECT/序列化字段、只测 happy path、异常被吞、测试与实现共享同一错误假设等盲点。
+
+只新增真正有区分力的测试，不复制重复用例、不降低阈值、不扩大 skip。使用现有 EUnit、Common Test、契约门禁和 scripts 中的权威测试入口。
+
+执行后逐项报告通过/失败/阻塞/未执行，给出实际命令、退出码、测试数量和证据位置。发现产品代码缺陷时先提交复现证据和最小修复建议；没有明确授权不修改业务代码。不得把未运行、环境缺失或模拟测试写成 PASS。
+```
+
 
 ### ECC-089 · 客户白标入口、功能开关和版本升级
 
 **场景：** 应用配置与版本运营
 
-**A · `product-lens` + `product-capability` · 客户场景映射**
+**A · 新增功能 · `product-capability` + `orch-add-feature` + `tdd-workflow`**
 
 ```text
-$product-lens $product-capability
+$product-capability $orch-add-feature $tdd-workflow
+
+当前功能场景：客户白标入口、功能开关和版本升级（应用配置与版本运营）。目标客户/目标业务流程：[请填写客户行业、用户角色、业务目标、关键流程、特殊规则和优先级]。目标范围：[请填写本次要覆盖的端/模块/子功能]。
+
+先读取当前仓库规则和权威文档，再核对实际代码与测试。不得把设计、文档或 API 存在等同于功能已交付；明确标注 CURRENT、TARGET、LOCKED、UNKNOWN 和 NOT_VERIFIED。
+
+任务类型：新增功能。
 
 为客户复刻多品牌/白标客户端运营场景。分析 init、app/features、app/manifest、policy、app_entries/admin_entries、插件、品牌、版本检查、强制/推荐升级和升级事件上报。核对 build flavor、产品 profile、交付锁和部署配置。输出客户品牌差异、远程配置边界和升级回滚方案。
-```
-
-**B · `contract-first` + `orch-change-feature` + `tdd-workflow` · 客户差异实施**
-
-```text
-$contract-first $orch-change-feature $tdd-workflow
 
 实施已批准的白标/版本运营差异。以 app manifest/policy 和仓库配置真源为准，验证 ETag、默认值、未知 feature fail-closed、客户端兼容、版本策略和升级上报。不得把 UI 隐藏当安全边界，也不得绕过 phase profile 交付锁。
+
+请先判断需求能否由现有能力配置/组合完成；只有确认存在真实能力缺口才新增代码。输出 capability contract：参与角色、用户旅程、状态机、权限/数据边界、API/WS/客户端界面、迁移兼容、观测和验收标准。客户输入不完整或涉及产品决策时，列出阻塞问题并停在方案阶段。输入充分且任务明确时，按 TDD 先写失败测试再实现，遵循项目已有架构和测试命令。遵守 Gate：计划/契约先审阅，实施后完整验证；不 commit、不 push、不合并、不部署。
 ```
+
+**B · 优化现有功能 / 新模型复审旧 AI 代码 · `brownfield-retrospective` + `tdd-workflow` + `verification-loop`**
+
+```text
+$brownfield-retrospective $tdd-workflow $verification-loop
+
+当前功能场景：客户白标入口、功能开关和版本升级（应用配置与版本运营）。目标客户/目标业务流程：[请填写客户行业、用户角色、业务目标、关键流程、特殊规则和优先级]。目标范围：[请填写本次要覆盖的端/模块/子功能]。
+
+先读取当前仓库规则和权威文档，再核对实际代码与测试。不得把设计、文档或 API 存在等同于功能已交付；明确标注 CURRENT、TARGET、LOCKED、UNKNOWN 和 NOT_VERIFIED。
+
+任务类型：优化现有功能，特别用于新一代 AI 模型复审和改进旧 AI 模型生成的代码。
+
+为客户复刻多品牌/白标客户端运营场景。分析 init、app/features、app/manifest、policy、app_entries/admin_entries、插件、品牌、版本检查、强制/推荐升级和升级事件上报。核对 build flavor、产品 profile、交付锁和部署配置。输出客户品牌差异、远程配置边界和升级回滚方案。
+
+实施已批准的白标/版本运营差异。以 app manifest/policy 和仓库配置真源为准，验证 ETag、默认值、未知 feature fail-closed、客户端兼容、版本策略和升级上报。不得把 UI 隐藏当安全边界，也不得绕过 phase profile 交付锁。
+
+请把当前实现视为待验证证据，不信任注释、旧模型自评或“看起来合理”的抽象。按 brownfield-retrospective 的 slice-first 方法，先限定约 15 个文件或 2000 行以内的功能切片，重建实际行为和不变量，建立现有测试/性能/错误行为基线，再检查：逻辑正确性、并发与竞态、失败处理、边界条件、权限与安全、资源生命周期、性能热点、重复/过度抽象、可维护性和跨端一致性。
+
+优先做行为保持型优化；不得为了体现新模型能力而重写整个模块、改变公共契约或引入新依赖。每项发现提供文件/行号、复现或证据、影响、建议和风险。先新增/修正测试证明原行为与目标行为，再实施最小改动。若需要改变用户可见行为、数据结构或协议，先停下请求确认。以 Handler → Logic → DS → Repo、Erlang/OTP、Cowboy、PostgreSQL 和现有 API/WS 契约为准。
+
+不要自动创建 docs/retro、重复计划或审计文档；先在会话中输出基线、差距登记和改进方案。经用户明确授权后才落盘必要的长期文档。完成后运行相关测试、静态检查和 diff review；不 commit、不 push、不合并、不部署。
+```
+
+**C · 测试现有功能 · `test-collaboration` + `ai-regression-testing` + `verification-loop`**
+
+```text
+$test-collaboration $ai-regression-testing $verification-loop
+
+当前功能场景：客户白标入口、功能开关和版本升级（应用配置与版本运营）。目标客户/目标业务流程：[请填写客户行业、用户角色、业务目标、关键流程、特殊规则和优先级]。目标范围：[请填写本次要覆盖的端/模块/子功能]。
+
+先读取当前仓库规则和权威文档，再核对实际代码与测试。不得把设计、文档或 API 存在等同于功能已交付；明确标注 CURRENT、TARGET、LOCKED、UNKNOWN 和 NOT_VERIFIED。
+
+任务类型：测试现有功能。
+
+为客户复刻多品牌/白标客户端运营场景。分析 init、app/features、app/manifest、policy、app_entries/admin_entries、插件、品牌、版本检查、强制/推荐升级和升级事件上报。核对 build flavor、产品 profile、交付锁和部署配置。输出客户品牌差异、远程配置边界和升级回滚方案。
+
+实施已批准的白标/版本运营差异。以 app manifest/policy 和仓库配置真源为准，验证 ETag、默认值、未知 feature fail-closed、客户端兼容、版本策略和升级上报。不得把 UI 隐藏当安全边界，也不得绕过 phase profile 交付锁。
+
+请不要先修改业务实现。先盘点该场景已有单元、组件/Widget、契约、集成、E2E、平台/设备测试和 CI 门禁，建立“需求/业务规则 → TEST-ID 或现有测试资产 → 执行命令 → 证据”矩阵。重点设计正常路径、权限拒绝、非法输入、边界值、重复请求、并发、超时、断线恢复、旧数据兼容和跨端一致性用例。针对旧 AI 生成代码，额外检查 mock/sandbox 与真实路径不一致、遗漏 SELECT/序列化字段、只测 happy path、异常被吞、测试与实现共享同一错误假设等盲点。
+
+只新增真正有区分力的测试，不复制重复用例、不降低阈值、不扩大 skip。使用现有 EUnit、Common Test、契约门禁和 scripts 中的权威测试入口。
+
+执行后逐项报告通过/失败/阻塞/未执行，给出实际命令、退出码、测试数量和证据位置。发现产品代码缺陷时先提交复现证据和最小修复建议；没有明确授权不修改业务代码。不得把未运行、环境缺失或模拟测试写成 PASS。
+```
+
 
 ## 维护说明
 
