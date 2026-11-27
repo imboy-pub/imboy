@@ -80,7 +80,7 @@ jobs:
           make rest-contract-check
 
       # Real-REST regression (Common Test + Gun + real scratch PostgreSQL with
-      # TimescaleDB/PostGIS/pg_jieba) intentionally has NO hosted job yet:
-      # vanilla postgres images lack the project extensions. Status is
-      # BLOCKED_CI_DATABASE_IMAGE until an extension-compatible runner image
-      # exists. No allow-failure/skip wrapper is permitted (plan RTF-05-3).
+      # TimescaleDB/PostGIS/pg_jieba) is hosted on nightly.yml's `rest-ct` job:
+      # the extension-compatible image is built there from docker/pg18_Dockerfile
+      # (vanilla postgres images lack the project extensions, hence no PR-path
+      # job). No allow-failure/skip wrapper is permitted (plan RTF-05-3).

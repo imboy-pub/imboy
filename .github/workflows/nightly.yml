@@ -224,6 +224,116 @@ jobs:
           if-no-files-found: ignore
 
   # ----------------------------------------------------------------
+  # REST CT — nightly 真实结果（无 continue-on-error、无 retry 包装）
+  # contract-gate.yml 曾注记 REST CT「BLOCKED_CI_DATABASE_IMAGE 直到扩展
+  # 兼容 runner 镜像存在」——该镜像早已存在：本 workflow 自建的
+  # imboy-pg18:ci（docker/pg18_Dockerfile，gha 缓存 scope=pg18 与
+  # full-eunit 共享）。本 job 把 run_rest_api_tests.sh（RTF-01/03/05 全套
+  # 合同：隔离 scratch 库、扩展清单单源自 inttest_marker_db.erl、证据交叉
+  # 校验、JWT/凭据泄漏门、残留断言）接上 nightly：8 套件
+  # api_v1_{login,auth,user,friend,group,conversation,msg,channel}。
+  # 凭据走 env（RTF-00-A3：脚本零默认密码）；4323/imboy_user/abc54321 与
+  # config/sys.config.example pg_conf 逐字一致，与 full-eunit scratch 同
+  # 配方（独立容器名 imboy_pg_rest，job 间无共享）。红即红：exit 3（用例/
+  # 合同/证据）与 exit 2（环境）都阻塞；exit 75（BLOCKED_SHARED_CT）在
+  # 独占 runner 上不应出现，出现即红——不掩盖调度问题。PR 路径仍只跑
+  # 静态 rest-contract-check（快门 <10min 合同不变）。
+  # ----------------------------------------------------------------
+  rest-ct:
+    name: REST CT (nightly, extension PG)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Setup Erlang/OTP toolchain
+        uses: erlef/setup-beam@v1
+        id: beam
+        with:
+          otp-version: "28"
+          rebar3-version: '3.27'
+
+      - name: Cache dependencies and build artifacts
+        uses: actions/cache@v6
+        with:
+          path: |
+            deps
+            _build
+            .erlang.mk
+            .imboy.plt
+            ~/.cache/rebar3
+          key: ubuntu-24.04-${{ runner.arch }}-otp${{ steps.beam.outputs.otp-version }}-beam-${{ hashFiles('Makefile', 'erlang.mk', 'include/*.mk') }}
+
+      - name: Materialize config/sys.config from example
+        run: cp config/sys.config.example config/sys.config
+
+      - name: Build PG image from docker/pg18_Dockerfile (no registry push)
+        run: |
+          docker buildx build \
+            --file docker/pg18_Dockerfile \
+            --tag imboy-pg18:ci \
+            --load \
+            --cache-from type=gha,scope=pg18 \
+            --cache-to type=gha,scope=pg18,mode=max \
+            .
+
+      - name: Start scratch PG on 127.0.0.1:4323
+        run: |
+          set -euo pipefail
+          docker run -d --name imboy_pg_rest \
+            -e POSTGRES_USER=imboy_user \
+            -e POSTGRES_PASSWORD=abc54321 \
+            -e POSTGRES_DB=imboy_v1 \
+            -p 4323:5432 imboy-pg18:ci
+          for i in $(seq 1 60); do
+            if docker exec imboy_pg_rest pg_isready -h 127.0.0.1 -U imboy_user -d imboy_v1 >/dev/null 2>&1; then
+              echo "PG ready after ${i}s"; exit 0
+            fi
+            sleep 1
+          done
+          echo "::error::PG 未在 60s 内就绪"; docker logs imboy_pg_rest; exit 1
+
+      - name: Build (deps + src + test beams, same as compile job)
+        run: IMBOYENV=local make test-build
+
+      - name: Run REST CT (8 suites, scratch DB, evidence cross-check)
+        id: gate
+        env:
+          REST_PG_PORT: "4323"
+          REST_PG_USER: "imboy_user"
+          REST_PG_PASSWORD: "abc54321"
+          REST_CT_CONFIG: ${{ github.workspace }}/config/sys.config
+          REST_RUN_ID: "nightly-${{ github.run_id }}"
+        run: bash scripts/run_rest_api_tests.sh
+
+      - name: Dump PG logs on failure
+        if: failure()
+        run: docker logs imboy_pg_rest || true
+
+      - name: Summarize REST CT result
+        if: always()
+        run: |
+          echo "## REST CT (nightly)" >> "$GITHUB_STEP_SUMMARY"
+          LATEST=$(ls -td .reports/rest/*/ 2>/dev/null | head -1)
+          if [ -n "$LATEST" ] && [ -f "$LATEST/result.json" ]; then
+            jq -r '"result=\(.result) case_pass=\(.case_pass)/\(.case_total) exit=\(.exit_code)"' "$LATEST/result.json" >> "$GITHUB_STEP_SUMMARY" || true
+          fi
+
+      - name: Upload REST CT reports
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: rest-ct-reports
+          path: |
+            .reports/rest/**/result.json
+            .reports/rest/**/runner.log
+            .reports/rest/**/evidence/
+            .reports/rest/**/ct/
+          retention-days: 14
+          if-no-files-found: ignore
+
+  # ----------------------------------------------------------------
   # Dialyzer — nightly 真实结果（无 continue-on-error）
   # CI-00：命令换成 `make dialyze-check` = 全量 dialyzer 分析 + 递减基线门
   # （dialyzer.baseline 指纹比对，基线外新增 1 条即红；存量减少提示可收紧）。
