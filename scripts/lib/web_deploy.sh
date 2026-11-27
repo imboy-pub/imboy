@@ -108,6 +108,17 @@ web_deploy() (
   WEB_RELEASE="web_$(date -u +%Y%m%dT%H%M%SZ)_${work##*.}"
   head=$(git -C "$WEB_SOURCE" rev-parse HEAD)
   [[ "$head" =~ ^[0-9a-f]{40}$ ]] || exit 1
+  # 发布内容 = 当前工作树的 Flutter 构建产物，而 source_head 只记录 Git HEAD；
+  # 脏树发布会让 release 元数据指向与实际内容不符的提交（fail-closed，
+  # IMBOY_DEPLOY_ALLOW_DIRTY=1 显式放行）。
+  if [[ -n "$(git -C "$WEB_SOURCE" status --porcelain --untracked-files=normal)" ]]; then
+    if [[ "${IMBOY_DEPLOY_ALLOW_DIRTY:-0}" == "1" ]]; then
+      printf 'Web: ⚠ 源码存在未提交或未跟踪改动；IMBOY_DEPLOY_ALLOW_DIRTY=1 放行，source_head 仅记录 Git HEAD\n' >&2
+    else
+      web_error 'Web 源码存在未提交或未跟踪改动；先 commit（或 stash）再发布，或 export IMBOY_DEPLOY_ALLOW_DIRTY=1 显式放行'
+      exit 1
+    fi
+  fi
   printf 'Web: source=%s head=%s origin=https://%s release=%s\n' "$WEB_SOURCE" "$head" "$WEB_DOMAIN" "$WEB_RELEASE"
   (cd "$WEB_SOURCE" && env -u DART_DEFINES -u DART_DEFINES_FROM_FILE \
     flutter build web --release --no-pub --output "$work/dist" \
