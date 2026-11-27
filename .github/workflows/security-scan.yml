@@ -19,7 +19,7 @@ env:
   # 1：发现问题时失败；0：仅报告问题。扫描器执行错误始终失败。
   FINDINGS_EXIT_CODE: "1"
   SEMGREP_VERSION: "1.184.0"
-  TRIVY_VERSION: "v0.76.2"
+  TRIVY_VERSION: "0.76.2"
 
 jobs:
   semgrep:
