@@ -3,11 +3,17 @@
 -module(imboy_cluster).
 -author("imboy").
 
--export([init/0, join_cluster/1, get_cluster_nodes/0, ping_nodes/0, handle_node_info/1]).
-
--ifdef(TEST).
--export([get_cluster_nodes_from_config/0]).
--endif.
+%% get_cluster_nodes_from_config/0 曾在 ifdef(TEST) 内；2026-11-28 移出：
+%% core-eunit 选段（scripts/ci/core-eunit.sh）以 src 轨道 beam（无 -DTEST）直调，
+%% ifdef 导出在该轨道恒 undef。函数为纯配置解析（app env + env var），无副作用。
+-export([
+    init/0,
+    join_cluster/1,
+    get_cluster_nodes/0,
+    ping_nodes/0,
+    handle_node_info/1,
+    get_cluster_nodes_from_config/0
+]).
 
 %% ===================================================================
 %% API 函数
