@@ -238,7 +238,7 @@ jobs:
           mkdir -p "$RUNNER_TEMP/trivy-bin"
           tar -xzf "$RUNNER_TEMP/$archive" -C "$RUNNER_TEMP/trivy-bin" trivy
           echo "$RUNNER_TEMP/trivy-bin" >> "$GITHUB_PATH"
-          trivy --version
+          "$RUNNER_TEMP/trivy-bin/trivy" --version
 
       - name: Run Trivy filesystem scan
         id: trivy_scan
