@@ -120,6 +120,10 @@ jobs:
             org.opencontainers.image.version=${{ needs.release-contract.outputs.IMBOY_VERSION }}
           push: true
           tags: ${{ steps.identity.outputs.IMAGE_REF }}
+          # gha 层缓存：同 tag 重跑（attempt>1）受益最大，跨 tag 冷构建仍按源码
+          # 变化失效（Dockerfile COPY . . 为全量层）；scope 按镜像隔离。
+          cache-from: type=gha,scope=release-backend
+          cache-to: type=gha,scope=release-backend,mode=max
         # Dockerfile embeds VERSION; preflight checks it equals the source
         # Git tag without v. Do not confuse an OCI tag with the embedded version.
 
@@ -207,6 +211,8 @@ jobs:
             org.opencontainers.image.version=${{ needs.release-contract.outputs.IMBOY_VERSION }}
           push: true
           tags: ${{ steps.identity.outputs.ADMIN_IMAGE_REF }}
+          cache-from: type=gha,scope=release-admin
+          cache-to: type=gha,scope=release-admin,mode=max
         # admin 镜像构建时 Vite 把 .env.production 里的占位符
         # __IMBOY_API_HOST__ bake 进静态产物，entrypoint 启动时 sed 替换为
         # IMBOY_API_HOST 环境变量（compose 传 https://${API_DOMAIN}）。
@@ -283,6 +289,8 @@ jobs:
             org.opencontainers.image.version=${{ needs.release-contract.outputs.IMBOY_VERSION }}
           push: true
           tags: ${{ steps.identity.outputs.PG_IMAGE_REF }}
+          cache-from: type=gha,scope=release-pg18
+          cache-to: type=gha,scope=release-pg18,mode=max
 
       - name: Resolve digest ref (immutable image reference)
         id: digest_ref
@@ -354,6 +362,8 @@ jobs:
           platforms: linux/amd64
           push: true
           tags: ${{ steps.identity.outputs.WIDGET_IMAGE_REF }}
+          cache-from: type=gha,scope=release-widget
+          cache-to: type=gha,scope=release-widget,mode=max
           labels: |
             org.opencontainers.image.source=https://github.com/imboy-pub/imboy-admin-frontend
             org.opencontainers.image.revision=${{ needs.release-contract.outputs.FRONTEND_SHA }}

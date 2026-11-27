@@ -31,6 +31,12 @@ on:
     branches: [main, dev]
   workflow_dispatch:
 
+# 同一 PR 的后续 push 取消在跑旧 run（对齐 security-scan.yml 与 imboyapp ci.yml
+# 约定）；push main/dev 不取消，保持串行排队。
+concurrency:
+  group: backend-ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   deployment-config:
     name: Deployment Configuration
