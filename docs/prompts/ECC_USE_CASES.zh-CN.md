@@ -36,7 +36,7 @@ $codebase-onboarding
 
 #### ECC-005 · 单聊消息完整调用链
 
-**预计执行时间：30 分钟**（单次执行；包含代码阅读、定向实施/分析与相关验证）
+**预计执行时间：20 分钟**（单次执行；包含代码阅读、定向实施/分析与相关验证）
 
 **Skills：** `change-impact`
 
@@ -60,7 +60,7 @@ $change-impact $contract-first
 
 #### ECC-007 · 三仓依赖关系分析
 
-**预计执行时间：30 分钟**（单次执行；包含代码阅读、定向实施/分析与相关验证）
+**预计执行时间：20 分钟**（单次执行；包含代码阅读、定向实施/分析与相关验证）
 
 **Skills：** `contract-first`
 
@@ -170,7 +170,7 @@ $latency-critical-systems $benchmark-optimization-loop
 
 #### ECC-016 · OTP Supervisor 容错分析
 
-**预计执行时间：45 分钟**（单次执行；包含代码阅读、定向实施/分析与相关验证）
+**预计执行时间：25 分钟**（单次执行；包含代码阅读、定向实施/分析与相关验证）
 
 **Skills：** `change-impact` · `architecture-decision-records`
 
@@ -182,7 +182,7 @@ $change-impact $architecture-decision-records
 
 #### ECC-017 · 四层架构越层调用检查
 
-**预计执行时间：45 分钟**（单次执行；包含代码阅读、定向实施/分析与相关验证）
+**预计执行时间：25 分钟**（单次执行；包含代码阅读、定向实施/分析与相关验证）
 
 **Skills：** `module-governance` · `module-regression`
 
@@ -256,7 +256,7 @@ $security-review $change-impact
 
 #### ECC-043 · OpenAPI 契约漂移检查
 
-**预计执行时间：30 分钟**（单次执行；包含代码阅读、定向实施/分析与相关验证）
+**预计执行时间：20 分钟**（单次执行；包含代码阅读、定向实施/分析与相关验证）
 
 **Skills：** `contract-first` · `api-design`
 
@@ -318,7 +318,7 @@ $ai-regression-testing $tdd-workflow
 
 #### ECC-053 · 下游模块回归分析
 
-**预计执行时间：30 分钟**（单次执行；包含代码阅读、定向实施/分析与相关验证）
+**预计执行时间：20 分钟**（单次执行；包含代码阅读、定向实施/分析与相关验证）
 
 **Skills：** `module-regression` · `change-impact`
 
@@ -354,7 +354,7 @@ $docs-governance
 
 #### ECC-056 · 记录架构决策 ADR
 
-**预计执行时间：30 分钟**（单次执行；包含代码阅读、定向实施/分析与相关验证）
+**预计执行时间：20 分钟**（单次执行；包含代码阅读、定向实施/分析与相关验证）
 
 **Skills：** `architecture-decision-records`
 
@@ -462,7 +462,7 @@ $production-audit $database-migrations
 
 #### ECC-065 · GitHub PR 和 CI 管理
 
-**预计执行时间：30 分钟**（单次执行；包含代码阅读、定向实施/分析与相关验证）
+**预计执行时间：20 分钟**（单次执行；包含代码阅读、定向实施/分析与相关验证）
 
 **Skills：** `github-ops`
 
@@ -474,7 +474,7 @@ $github-ops
 
 #### ECC-066 · Git Worktree 和分支清理
 
-**预计执行时间：30 分钟**（单次执行；包含代码阅读、定向实施/分析与相关验证）
+**预计执行时间：20 分钟**（单次执行；包含代码阅读、定向实施/分析与相关验证）
 
 **Skills：** `git-workflow`
 
@@ -548,7 +548,7 @@ $agent-architecture-audit $agent-security-hardening
 
 #### ECC-072 · AI 编码 Agent 能力对比
 
-**预计执行时间：45 分钟**（单次执行；包含代码阅读、定向实施/分析与相关验证）
+**预计执行时间：25 分钟**（单次执行；包含代码阅读、定向实施/分析与相关验证）
 
 **Skills：** `agent-eval` · `benchmark-optimization-loop`
 
