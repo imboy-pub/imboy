@@ -48,6 +48,12 @@ https://cs.example.com/api/v1/cs/widget/*            -> imboy_backend:9800（同
 
 ---
 
+### Seat 控制台 / Seat console
+
+`/seat/:public_seat_console_id` 动态 frame、坐席 SSE 与扫码登录由 Backend 提供；`/seat-assets/cs-seat.v1.{js,css}` 由 Widget 静态运行时提供。生产路由以 [Nginx 模板](../../../../deploy/nginx/templates/cs-widget.conf.template) 为准：只代理实际坐席 API，禁止扩大为整个 `/api/v1/` 或客服/企业组织 API 前缀。SSE 关闭缓冲；frame 的 CSP、XFO 和 no-store 由 Backend 下发，静态别名由 Widget 运行时下发 no-cache，网关不覆写。蓝绿宿主部署使用 `scripts/lib/cs_deploy.sh` 渲染同等路由族，监听和静态文件形态按部署方式区分。
+
+旧同源上传需要 `IMBOY_WIDGET_BASE_URL=https://<CS_WIDGET_DOMAIN>`，缺失或无效不下发旧上传 URL；`IMBOY_BASE_URL` 仍是 API origin。direct-v1 使用独立存储授权；Helm 的 `widgetHost` / `widgetBaseUrl` 需对应实际 Widget 网关。
+
 ## 2. DNS 前置 / DNS Prerequisites
 
 - `cs.example.com` 的 A/AAAA 记录必须指向本机（与 API/Admin 同一公网入口）。
@@ -84,7 +90,7 @@ bash install.sh --edition community
 ```
 
 其他现场字段（API origin、独立清理数据库账号及授权、选配服务凭据）见
-[客户填写与自动生成](../../../../deploy/README.md#customer-input)。安装器不创建清理数据库 LOGIN。
+[客户填写与自动生成](../../../../deploy/README.md#customer-input)。社区全新实例如需创建缺失的清理 LOGIN，显式使用 `--init-cleanup-db`；默认只验证，商务/外部数据库由 DBA 开通。
 
 `install.sh` 会依次执行：内部密钥生成 → preflight（含五域必填/两两不同校验，
 任一失败非零退出）→ 镜像拉取 → 启动（含 `imboy_widget`）→ **五域证书签发**
@@ -104,6 +110,20 @@ docker compose --env-file .env -f docker-compose.community.yml config -q
 内）粘贴第 1 节 snippet，刷新后右下角应出现客服入口。
 
 ---
+
+### 商务版增量 / Business overlay
+
+仅在仍使用商务专有 `docker-compose.prod.yml` 基线且尚未内置 Widget 的现场使用 [docker-compose.prod-cs.yml](../../../../deploy/docker-compose.prod-cs.yml)；社区版无需叠加。先确认五域、清理身份、客服迁移（`make cs-migration-gate`，使用实际数据库连接参数）及版本配对已通过。
+
+在 `deploy/` 下保留基线、销售策略及现场既有 overlay 的顺序，叠加客服增量。例如已有基线和销售策略的现场：
+
+```bash
+docker compose --env-file .env -f docker-compose.prod.yml -f docker-compose-sales-policy.yml -f docker-compose.prod-cs.yml config -q
+docker compose --env-file .env -f docker-compose.prod.yml -f docker-compose-sales-policy.yml -f docker-compose.prod-cs.yml pull imboy_widget
+docker compose --env-file .env -f docker-compose.prod.yml -f docker-compose-sales-policy.yml -f docker-compose.prod-cs.yml up -d imboy_widget imboy_nginx
+```
+
+证书签发使用同一完整文件集合的 `COMPOSE_FILES`，详见[生产部署手册](../../../../deploy/README.md)。升级/回滚按下文版本回退、健康检查和实际安装形态执行；不要删除其他 overlay 或对共享生产栈盲目执行 `--remove-orphans`。停用时先确认变更窗口、停用 Widget 服务并按现场网关配置撤销客服入口，保留数据库与其他服务。历史等价记录不替代当前私有基线的配置验证。
 
 ## 5. 一键事务部署 `cs` / One-command Transactional Deploy
 

@@ -210,6 +210,8 @@ make new t=imboy.ds n=demo_ds
 
 ## 工程交付边界 / Engineering delivery boundaries
 
+部署配置以 [deploy/README.md](./deploy/README.md) 和[本地开发指南](./docs/guides/operations/deployment/local-development.md) 为准。Compose 服务名是脚本与配置的引用合同，不随意改名；Helm 后端单副本限制及适用边界以 [Helm 手册](./deploy/helm/README.md) 为准。
+
 代码优先复用，保持简洁，避免无需求抽象、重复实现、调试残留和假通过。优先更新权威文档，完成总结放对话，不为每次测试或讨论生成报告。临时日志、截图、覆盖率、缓存、数据和调试脚本默认不提交；必要的脱敏 fixtures、回归测试、生成物、验收证据按项目要求保留。禁止提交秘密或真实用户数据。
 
 开发阶段定向验证，最终集成候选统一执行适用全量检查；不跳过强制门禁，证据失效必须重验。测试/文档可选不代表免验证。仅在任务授权 commit 时提交，push/合并/部署另按授权；一次提交是完整可评审可回滚的功能或 fix，捆绑必要测试/迁移/文档，独立 docs/test/refactor 可单独提交。不按每步或每个小测试提交。审查 diff、明确路径/块暂存、审查最终暂存区，禁止盲目 git add . 或 -A。保护既有 WIP，多 agent 由主集成者控制共享分支提交，不绕过 hooks/CI。

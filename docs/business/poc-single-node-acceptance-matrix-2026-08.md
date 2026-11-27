@@ -128,7 +128,7 @@ docker exec imboy_pg18 psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" \
 
 ## A8 备份与恢复
 
-**前置**：A1–A5 已产生测试数据；客户已确认演练窗口；手册：[backup-restore.md](../guides/operations/deployment/backup-restore.md)，操作链见[运维操作链索引](../guides/operations/single-node-ops-chain-index-2026-08.md)。
+**前置**：A1–A5 已产生测试数据；客户已确认演练窗口；手册：[backup-restore.md](../guides/operations/deployment/backup-restore.md)，操作链见[运维操作链索引](../../deploy/README.md#operations-lifecycle)。
 
 **步骤**：
 1. 全量备份：`bash scripts/backup_pg.sh --full`（pg_dump 自定义格式）；

@@ -62,7 +62,7 @@ export default defineConfig({
     ],
     sidebar: {
       '/tutorials/': [{ text: '快速上手', items: [
-        { text: '本地跑通后端', link: '/tutorials/quickstart-backend' },
+        { text: '本地跑通后端', link: '/guides/operations/deployment/local-development' },
         { text: '私有化部署', link: '/tutorials/quickstart-deploy' },
         { text: 'SDK 发出第一条消息', link: '/tutorials/first-message-with-sdk' },
       ]}],

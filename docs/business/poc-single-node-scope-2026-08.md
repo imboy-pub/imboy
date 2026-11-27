@@ -1,7 +1,7 @@
 # 单节点 PoC 范围表（10 工作日） / Single-Node PoC Scope
 
 > **版本 / Version**: 2026-08 v1.0 | **状态**：交付定义（未含任何真实客户信息）
-> **配套文档**：[验收矩阵](./poc-single-node-acceptance-matrix-2026-08.md) ｜ [客户签字记录模板](./poc-customer-signoff-template-2026-08.md) ｜ [单节点运维操作链索引](../guides/operations/single-node-ops-chain-index-2026-08.md)
+> **配套文档**：[验收矩阵](./poc-single-node-acceptance-matrix-2026-08.md) ｜ [客户签字记录模板](./poc-customer-signoff-template-2026-08.md) ｜ [单节点运维操作链索引](../../deploy/README.md#operations-lifecycle)
 > **口径来源**：[edition-boundary.md](./edition-boundary.md)（版次边界真相源）｜ [安全边界](../reference/e2ee-security-boundary.md)（按实际部署与消息域说明）｜ [部署手册](../guides/operations/deployment/deployment.md)（操作入口）
 > 商业化验证材料（客户场景化 Runbook、报价假设台账）另存于商业资料仓 `imboy-commercial-hub`，本文只固化**产品交付与验收事实**，两处口径保持一致、冲突时以本文对交付边界的描述为准。
 
@@ -48,7 +48,7 @@ PoC 只接同时满足以下信号的组织；任一"排除信号"命中即先�
 | D4 | 流程配置（公告/资料/任务） | 配置公告、资料分发、任务/日程流程 | 提供 5–10 个样例流程或脱敏材料 | 场景配置记录（续） |
 | D5 | 管理后台与治理配置 | Admin 登录、用户管理、E2EE 模式设定并**向客户披露两种模式差异** | 确认治理规则（谁能管谁、审计要求） | 治理配置记录 |
 | D6 | 消息与附件验证 | 双账号 C2C/C2G、附件上传/下载全链路 | 提供两台目标真机（iOS/Android） | 测试记录 |
-| D7 | 运维验证日 | 备份 → 恢复演练 → 升级/回滚演练（详见[运维操作链索引](../guides/operations/single-node-ops-chain-index-2026-08.md)） | 确认演练窗口（可造成短暂停机） | 运维验证记录（含耗时） |
+| D7 | 运维验证日 | 备份 → 恢复演练 → 升级/回滚演练（详见[运维操作链索引](../../deploy/README.md#operations-lifecycle)） | 确认演练窗口（可造成短暂停机） | 运维验证记录（含耗时） |
 | D8 | E2EE 专项验证 | required 模式真机收发 + 数据库密文取证 + compliance 模式披露确认 | 在目标真机操作；确认模式选择 | 设备与测试记录 |
 | D9 | 种子用户试用与修复 | 至少 1 名真实种子用户试用；修复 PoC 范围内缺陷 | 组织试用、回收反馈 | 反馈表 + 缺陷清单 |
 | D10 | 复测与评审 | 按验收矩阵逐项复核；输出结论 | 参加复测与 Go / Rework / No-Go 评审 | 验收矩阵执行记录 + [签字记录](./poc-customer-signoff-template-2026-08.md) |

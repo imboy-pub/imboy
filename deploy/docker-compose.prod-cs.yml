@@ -7,7 +7,7 @@
 #   docker compose -f docker-compose.prod.yml -f docker-compose.prod-cs.yml config   # 预演
 #   docker compose -f docker-compose.prod.yml -f docker-compose.prod-cs.yml up -d
 #
-# 与社区版 CS 结构机械等价（对照表见 deploy/cs-widget-overlay.md §4）：
+# 客服增量结构（见 docs/guides/operations/deployment/customer-service-widget.md）：
 #   * imboy_widget：纯静态产物容器（imboyadmin 仓 Dockerfile.widget 构建，
 #     零业务配置 / 零 DB / 零队列 / 零 secret，只读根文件系统 + tmpfs /tmp）；
 #   * imboy_nginx 增量：注入 CS_WIDGET_DOMAIN 并把 NGINX_ENVSUBST_FILTER 扩为
@@ -17,7 +17,7 @@
 #
 # 前置：.env 里 CS_WIDGET_DOMAIN 必填（与 API_DOMAIN / ADMIN_DOMAIN 两两不同，
 # 见 deploy/.env.example），证书签发/续期沿用基线 certbot（CS 域加入
-# nginx/init-letsencrypt.sh 的域名清单即可，见 cs-widget-overlay.md §1）。
+# nginx/init-letsencrypt.sh 的域名清单即可，见客服部署手册）。
 services:
 
   # ========== 客服托管 Widget 静态运行时（与 community 版同构）==========

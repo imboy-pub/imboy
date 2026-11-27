@@ -39,7 +39,7 @@
    - `IMBOY_*` 环境变量 — 部署期密钥与连接信息（Section C）
    - `IMBOYENV` 环境变量 — 运行环境标识（local / dev / prod）
 2. **生产 fail-fast** — 缺密钥就拒绝启动，不存在「上线后才发现没设」。
-3. **辅助 PostgreSQL 容器** — 仓库根目录 `docker-compose.yml` + profile（dev / pro）只为本路径提供数据库，不是 `deploy/` 的整栈一键安装；TURN 部署见 [livekit-single-service-runbook.md](./livekit-single-service-runbook.md)。
+3. **辅助 PostgreSQL 容器** — 仓库根目录 `docker-compose.yml` 按服务显式启动所需 PG（dev / pro）；默认开发栈含 Garage、Nginx 等，不是 `deploy/` 的生产整栈安装；TURN 部署见 [livekit-single-service-runbook.md](./livekit-single-service-runbook.md)。
 
 English:
 
@@ -48,19 +48,20 @@ English:
    - `IMBOY_*` env vars — deploy-time secrets and connection info (Section C)
    - `IMBOYENV` env var — runtime tag (local / dev / prod)
 2. **Fail-fast in prod** — missing secrets refuse to boot; never discover after go-live.
-3. **Supporting PostgreSQL containers** — the repository-root `docker-compose.yml` and its dev/pro profiles supply the database for this path, separate from the full-stack installer under `deploy/`. For TURN, see the [LiveKit runbook](./livekit-single-service-runbook.md).
+3. **Supporting PostgreSQL containers** — explicitly select the dev/pro PostgreSQL service in the repository-root `docker-compose.yml`; the local stack also provides Garage and Nginx and is separate from the production installer under `deploy/`. For TURN, see the [LiveKit runbook](./livekit-single-service-runbook.md).
 
 ---
 
 ## 1. 准备 .env / Prepare .env
 
-中文：在仓库根目录复制根级 `.env.example` 为 `.env`，填入真实值；此模板与 Compose 一键安装的 `deploy/.env.example` 不通用。
+中文：根级 `.env.example` 已定位为本地开发，不是裸机生产配置模板。裸机 release 应独立准备下文所需的真实运行时变量和密钥（已有 `.env` 不得覆盖），并按所用 release 或原生交付手册核对；不要直接复用本地 URL、密钥或 `IMBOYENV=local`。Compose 一键安装使用独立的 `deploy/.env.example`。
 
-English: At the repository root, copy the root `.env.example` to `.env` and fill in real values. This is a different template from the Compose installer's `deploy/.env.example`.
+English: The root `.env.example` is local-development only. Prepare native release runtime variables and keys independently according to the deployed release and its native instructions; do not reuse local URLs, keys or `IMBOYENV=local`. The Compose installer uses `deploy/.env.example`.
 
 ```bash
-cp .env.example .env
-$EDITOR .env
+umask 077
+# 编辑已有或专门准备的裸机运行时配置；不要覆盖既有 .env
+${EDITOR:-vi} .env
 ```
 
 ---
@@ -121,19 +122,19 @@ sudo chown -R imboy:imboy /etc/imboy/keys
 
 ## 5. 启动 PostgreSQL / Start PostgreSQL
 
-中文：在仓库根目录使用辅助数据库 `docker-compose.yml`，按 profile 选择 dev 或 pro 实例；后端 release 仍按下一节单独启动。
+中文：在仓库根目录按 profile 显式选择 PG 服务，避免启动其他本地服务；后端 release 仍单独启动。`pro` 使用现有独立数据目录和外部网络，不会切换 dev API 的数据库。
 
-English: Use the repository-root database `docker-compose.yml` and pick the `dev` or `pro` profile. Start the backend release separately in the next section.
+English: Explicitly select the PostgreSQL service and profile in the repository-root `docker-compose.yml`. Start the backend release separately in the next section.
 
 ```bash
 # 开发 / Development (port 4323)
-docker compose --profile dev up -d
+docker compose --profile dev up -d imboy_pg18
 
-# 生产 / Production (port 5181)
-docker compose --profile pro up -d
+# 独立 pro 数据库 / Separate pro database (port 5181; existing imboy-network)
+docker compose --profile pro up -d pro_imboy_pg18
 
 # 同时多实例 / Combined
-docker compose --profile dev --profile pro up -d
+docker compose --profile dev --profile pro up -d imboy_pg18 pro_imboy_pg18
 ```
 
 > 中文：原 `--profile turn`（coturn）已删除 —— TURN 由 LiveKit embedded TURN 承载，

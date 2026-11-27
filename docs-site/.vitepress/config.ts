@@ -102,7 +102,7 @@ export default defineConfig({
         {
           text: '快速上手',
           items: [
-            { text: '本地跑通后端', link: '/tutorials/quickstart-backend' },
+            { text: '本地跑通后端', link: '/guides/operations/deployment/local-development' },
           ],
         },
       ],
@@ -124,6 +124,7 @@ export default defineConfig({
         {
           text: '运维部署',
           items: [
+            { text: '本地开发', link: '/guides/operations/deployment/local-development' },
             { text: 'Day1 快速部署', link: '/guides/operations/deployment/day1-quickstart' },
             { text: '生产架构', link: '/guides/operations/deployment/production-architecture' },
             { text: '监控', link: '/guides/operations/deployment/monitoring' },
