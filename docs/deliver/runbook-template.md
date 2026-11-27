@@ -26,7 +26,7 @@
 ```
 
 2. 数据库初始化：`make migrate`（erlang_migrate 驱动；回滚策略见「恢复入口」）。
-3. 附件存储：参照 `deploy/` 与 `scripts/garage-local-setup.sh`（生产拓扑见 deploy/README.md）。
+3. 附件存储：本地使用 `bash scripts/dev_setup.sh --infra-only`；生产按 `deploy/README.md` 或 [Garage 安装指南](../guides/operations/garage-deployment.md)。
 
 ## 启动入口（Start）
 

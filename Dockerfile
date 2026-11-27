@@ -8,16 +8,11 @@
 #   docker run -p 9800:9800 -e IMBOYENV=pro -e IMBOY_PG_HOST=... imboy/imboy-backend:<ver>
 
 # ─────────────────────────────────────────────────────────────
-# Stage 1: Builder（完整 erlang:29，含 wx 供 relx 组装 observer）
-# 不设 IMBOYENV：Makefile 用 relx.config + 完整 config/sys.config，
-# 并在 make 时自动生成 config/sys.runtime.config（Makefile:22）
-#
-# 基础镜像必须 OTP 29（与生产打包环境 scripts/deploy.sh 一致，本机 29.0.2 实测
-# make rel 通过）：relx 4.10 的 app 兜底发现走 code:lib_dir/1，OTP 28 对本项目
-# 扁平 ebin/ 布局返回 bad_name（app_not_found, imboy, undefined），OTP 29 可
-# 从 -pa 的 code path 正确解析。AGENTS.md 基线为 OTP 28+，29 满足。
+# Stage 1: Builder（固定 OTP 29.1.3 多架构官方镜像，与 runtime 同为 trixie）
+# Pin the official multi-platform image; dependencies use include/deps.mk.
+# 不设 IMBOYENV：Makefile 从模板生成 config/sys.runtime.config。
 # ─────────────────────────────────────────────────────────────
-FROM erlang:29 AS builder
+FROM erlang:29.1.3@sha256:a78e8a76fcd0618410c9b7590616c386d404278aa61d50b255f463912f2b80a5 AS builder
 
 # WORKDIR 必须叫 /imboy（== app 名）：relx 4.10 发现主 app 走 code:lib_dir/1，
 # 其实现按 code path 目录（-pa ebin/）的父目录名匹配 app 名。本机仓目录名
@@ -28,27 +23,9 @@ WORKDIR /imboy
 # 全量复制源码（.dockerignore 已排除 _build/deps/_rel/.git/ebin 等，强制干净构建）
 COPY . .
 
-# erlang_pay 目前只在 Gitee 公开发布。发布构建不能依赖该站点的 Git
-# smart-HTTP（GitHub runner 会被重定向至登录页），因此拉取固定提交的公开
-# 归档并校验 SHA-256。预置到 deps/ 后 erlang.mk 不会再次克隆该依赖。
-ARG ERLANG_PAY_COMMIT=e06909e67fb996ec0b954b388b19e95177cb33c6
-ARG ERLANG_PAY_ARCHIVE_SHA256=ae5a379bddabd0c85f2bd641fb0645a217d938c8142d8c3907923ba9cd8b79f4
-RUN set -eux; \
-    apt-get update; \
-    apt-get install -y --no-install-recommends ca-certificates curl; \
-    rm -rf /var/lib/apt/lists/*; \
-    mkdir -p deps; \
-    curl --fail --location --retry 3 --retry-delay 2 \
-      "https://gitee.com/imboy-pub/erlang_pay/repository/archive/${ERLANG_PAY_COMMIT}.tar.gz" \
-      -o /tmp/erlang_pay.tar.gz; \
-    echo "${ERLANG_PAY_ARCHIVE_SHA256}  /tmp/erlang_pay.tar.gz" | sha256sum -c -; \
-    tar -xzf /tmp/erlang_pay.tar.gz -C /tmp; \
-    mv "/tmp/erlang_pay-${ERLANG_PAY_COMMIT}" deps/erlang_pay; \
-    { printf '%s\n' '.PHONY: all' 'all:'; \
-      printf '\t%s\n' '../../.erlang.mk/rebar3/rebar3 compile' 'mkdir -p ebin' \
-        'cp _build/default/lib/erlang_pay/ebin/* ebin/'; \
-    } > deps/erlang_pay/Makefile; \
-    test -f deps/erlang_pay/rebar.config
+# erlang_pay 已在 include/deps.mk 固定为 GitHub v0.3.2；复用 erlang.mk
+# 的 rebar 自动适配，与本地/CI 构建一致，不再预置另一版本的 Gitee 归档。
+# Use the same pinned dependency and rebar compatibility path as local/CI builds.
 
 # 补齐默认 sys 配置源：Makefile 默认分支（不设 IMBOYENV）要求 config/sys.config
 # 存在（cp 为 sys.runtime.config 供 relx 组装）。sys.config 本体在 alpha.42
@@ -56,14 +33,10 @@ RUN set -eux; \
 # 覆盖"设计（见其头部注释），容器构建用它作为默认源语义正确。
 RUN cp config/sys.config.example config/sys.config
 
-# 出自包含 release（与 scripts/deploy.sh 生产打包路径一致的 RELX_* 变量）：
-#   RELX_REL_VSN=$(cat VERSION)：版本单一真源=VERSION 文件，覆盖 relx.config 的
-#     硬编码版本——两者曾漂移（alpha.45 vs rc.1）导致 relx 按 release 声明的
-#     vsn 找 ebin/imboy.app 找不到（app_not_found, imboy, undefined）
-#   relx.config 中的 dev_mode=false / include_erts=true：不产生指向源码树的
-#     符号链接，并 bundle ERTS，runtime 无需装 Erlang。
-# make rel 会自动拉依赖 + 编译 + relx 组装；输出 _rel/imboy
-RUN make rel RELX_REL_VSN="$(cat VERSION)"
+# relx.config 的版本与 VERSION 保持一致；dev_mode=false/include_erts=true
+# 生成自包含 release。make rel 拉依赖、编译并输出 _rel/imboy。
+# Build the self-contained release, including ERTS, from the shared Makefile.
+RUN make rel
 
 # 暂存 ERTS 运行所需系统库到固定目录。不能手工维护有限的库清单：OTP 29
 # 的 beam/erlexec 还依赖 libstdc++、libgcc_s 等，缺任一个都会令启动脚本以
@@ -87,14 +60,16 @@ RUN set -eu; \
 # 勿用 alpine：ERTS 针对 glibc 编译，musl 会崩
 #
 # release 启动脚本在输出第一条日志前就用 awk 解析 vm.args；debian:slim 不保证
-# 提供它，缺失会静默以 127 退出。构建期安装 mawk 和安装权限准备所需的 acl。私有化
-# 用户只拉取已构建镜像，不依赖其现场网络。其余 ERTS 库与 CA 从 builder 拷贝：
+# 提供它，缺失会静默以 127 退出。acl 用于安装权限准备；OTP 29 通过 dlopen
+# 加载 libsctp1，ldd 无法发现它，缺失时 stdout 警告会破坏 relx eval 健康检查。
+# Install libsctp1 explicitly: this dlopen dependency is absent from ldd output.
+# 私有化部署用户只拉取已构建镜像，不依赖其现场网络。其余 ERTS 库与 CA 从 builder 拷贝：
 # ① builder/runtime 同为 trixie/glibc 基线；② glibc 自带 C.UTF-8，无需 locales。
 # ─────────────────────────────────────────────────────────────
 FROM debian:trixie-slim AS runtime
 
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends mawk acl \
+    && apt-get install -y --no-install-recommends mawk acl libsctp1 \
     && rm -rf /var/lib/apt/lists/* \
     && groupadd --gid 10001 imboy \
     && useradd --uid 10001 --gid 10001 --create-home --home-dir /home/imboy \
@@ -124,12 +99,21 @@ COPY scripts/imboy_ctl /opt/imboy/bin/imboy_ctl
 COPY scripts/start_download_edge.sh /opt/imboy/bin/start_download_edge.sh
 COPY scripts/start_enterprise_direct_proof.sh /opt/imboy/bin/start_enterprise_direct_proof.sh
 
-# 仅日志、relx 生成配置和应用 priv（开发密钥/许可证）可写；BEAM/ERTS 保持 root 所有。
-# Limit writable release paths to logs, relx output and app-private runtime data.
+# 开发密钥放入独立运行目录，挂载 named volume 后重建容器仍保留登录密钥。
+# Persist local RSA keys across container recreation through the runtime volume.
+# 生产显式 IMBOY_LOGIN_RSA_*_FILE 路径不变；BEAM/ERTS 保持 root 所有。
 # Bind mounts are prepared by deploy/prepare-backend-runtime.sh before startup.
-RUN mkdir -p /opt/imboy/log /opt/imboy/var \
-    && chown 10001:10001 /opt/imboy/log /opt/imboy/var \
-    && chown -R 10001:10001 /opt/imboy/lib/imboy-*/priv
+RUN set -eu; \
+    mkdir -p /opt/imboy/log /opt/imboy/var /opt/imboy/priv_runtime/dev_keys; \
+    chown 10001:10001 /opt/imboy/log /opt/imboy/var /opt/imboy/priv_runtime \
+      /opt/imboy/priv_runtime/dev_keys; \
+    chmod 0700 /opt/imboy/priv_runtime/dev_keys; \
+    for app_priv in /opt/imboy/lib/imboy-*/priv; do \
+      test -d "$app_priv"; \
+      rm -rf "$app_priv/dev_keys"; \
+      ln -s /opt/imboy/priv_runtime/dev_keys "$app_priv/dev_keys"; \
+      chown -R 10001:10001 "$app_priv"; \
+    done
 USER 10001:10001
 
 # 使用真实运行身份验证打包的 ERTS；不启动应用或连接 PostgreSQL。

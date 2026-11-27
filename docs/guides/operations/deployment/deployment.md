@@ -1,5 +1,6 @@
 # IMBoy 生产部署指南
 
+> - **本地开发与评估**：[local-development.md](./local-development.md) — 根目录单一 Compose 与 profiles
 > - **Docker Compose 一键安装**：[deploy/README.md](../../../../deploy/README.md) — 客户交付入口 `deploy/install.sh`；五域、证书邮箱及其他人工字段见[配置要求](../../../../deploy/README.md#customer-input)
 > - **宿主机 / SSH release 发布**：[deploy-script.md](./deploy-script.md) — 使用 `scripts/.env.deploy` 完成全量或增量发布
 > - **裸机 / release 包快速上手**：[day1-quickstart.md](./day1-quickstart.md) — 配置后端运行时与外部依赖

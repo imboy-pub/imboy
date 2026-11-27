@@ -1,0 +1,24 @@
+#!/bin/sh
+# Local host debugging: Nginx's runtime DNS resolver does not read /etc/hosts.
+# Source before 20-envsubst; leave optional Compose service names on Docker DNS.
+imboy_host_upstream() {
+    case "$1" in
+        host.docker.internal:*)
+            imboy_host_ip="$(awk '
+                { for (i=2; i<=NF && $i !~ /^#/; i++)
+                    if ($i == "host.docker.internal") { print $1; exit }
+                }' /etc/hosts)"
+            if [ -z "$imboy_host_ip" ]; then
+                printf '%s\n' 'Missing host.docker.internal mapping; keep the Compose extra_hosts entry.' >&2
+                return 1
+            fi
+            case "$imboy_host_ip" in *:*) imboy_host_ip="[$imboy_host_ip]" ;; esac
+            printf '%s:%s\n' "$imboy_host_ip" "${1#host.docker.internal:}"
+            ;;
+        *) printf '%s\n' "$1" ;;
+    esac
+}
+API_UPSTREAM="$(imboy_host_upstream "${API_UPSTREAM:-}")" || return 1
+EDGE_UPSTREAM="$(imboy_host_upstream "${EDGE_UPSTREAM:-}")" || return 1
+export API_UPSTREAM EDGE_UPSTREAM
+unset -f imboy_host_upstream

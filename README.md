@@ -49,34 +49,26 @@ flowchart TB
 
 ## 本地启动
 
-### 1. 准备环境
-
-- Erlang/OTP 28+
-- GNU Make
-- Docker
-
-### 2. 初始化
+准备 Docker 24+、Compose v2.23.1+、Bash 与 OpenSSL，在仓库根目录执行：
 
 ```bash
+test -f .env || cp .env.example .env  # 保留已有配置
+${EDITOR:-vi} .env    # 填写 dev / pro 两个数据库密码
 bash scripts/dev_setup.sh
 ```
 
-脚本会启动 PostgreSQL 18，并创建 `.env` 和 `config/sys.local.config`。按脚本提示核对数据库密码；这两个本地配置都不会提交到 Git。
-
-### 3. 编译并启动
+默认启动 PostgreSQL、Garage、API、Admin 和 Nginx（含附件下载边缘服务）。访问
+[API](http://api.localhost:8080/api/v1/init) 与[管理后台](http://admin.localhost:8080)。
+新数据库先打开 [/setup](http://admin.localhost:8080/setup) 创建首个超级管理员；已有实例使用原账号登录。
+LiveKit 与 Widget 按需启用；本地栈不启动监控组件。首次构建与拉取镜像的耗时取决于网络和机器性能；镜像准备好后可重复快速启动。
 
 ```bash
-make compile
-IMBOYENV=local make run
+bash scripts/dev_setup.sh --with-livekit --with-widget
 ```
 
-启动成功后访问：
-
-```text
-http://127.0.0.1:9800/api/v1/init
-```
-
-如果手机需要连接本机后端，请把配置中的 `127.0.0.1` 改为电脑的局域网 IP。
+后端源码调试使用 `bash scripts/dev_setup.sh --infra-only`，再按指南构建并启动宿主节点。
+配置、profiles、数据保留与手机联调见
+[本地开发指南](./docs/guides/operations/deployment/local-development.md)。
 
 ## 常用命令
 
@@ -187,22 +179,13 @@ IMBOY_IMAGE_DIGEST=sha256:...
 
 完整部署手册见 [部署指南](./deploy/README.md)。
 
-## 快速演示（一条命令评估）
-
-```bash
-cd deploy
-docker compose -f docker-compose.demo.yml up -d
-# 30 秒后访问 http://127.0.0.1:9800/api/v1/init
-```
-
-该示例用于本地产品评估。启动前核对配置模板、端口和健康检查，详见[部署指南](./deploy/README.md)。实际能力以构建清单和现场运行时 profile/features 为准；`phase1_delivery` 默认允许 App 好友一对一 RTC，`features.rtc=false` 可关闭，群通话、E2EE 与 AI 仍关闭。演示服务启动不代表 LiveKit/TURN 已就绪或真实双端音视频已验收。
-
 ## 继续阅读
 
 - [**在线文档站**](https://imboy-pub.github.io/imboy/)（教程 / 指南 / 参考 / 合规）
 - [核心业务概念](./docs/concepts/README.md)（账号 / 组织与工作区 / 消息 / E2EE / 智能体 / 客服 / 企业业务）
 - [术语表](./docs/glossary.md)（三端统一的正式名称与易混裁定）
 - [E2EE 协议规范](./docs/reference/e2ee-protocol-specification.md)
+- [本地开发指南](./docs/guides/operations/deployment/local-development.md)
 - [后端架构](./docs/architecture/overview.md)
 - [REST API 目录](./docs/reference/rest-api-v1-catalog.md)
 - [WebSocket 协议](./docs/reference/ws-protocol-contract.md)

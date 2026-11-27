@@ -38,6 +38,7 @@
 %   IMBOY_GARAGE_PUBLIC_ENDPOINT -> garage.public_endpoint
 %                              (presign/客户端直传公网地址, e.g. https://api.example.com/s3;
 %                               未设置时 elib_oss:public_endpoint/0 回落 endpoint)
+%   IMBOY_GARAGE_PUBLIC_BASE_URL -> garage.public_base_url (匿名公开资源的 Website 地址)
 %   IMBOY_GARAGE_BUCKET    -> garage.bucket
 %   IMBOY_GARAGE_ACCESS_KEY -> garage.access_key
 %   IMBOY_GARAGE_SECRET_KEY -> garage.secret_key
@@ -50,6 +51,7 @@
 %   IMBOY_STRIPE_SECRET_KEY / IMBOY_STRIPE_WEBHOOK_SECRET
 %   IMBOY_PAYMENT_MODE     -> {imboy, payment_mode}  (sandbox | live)
 %   IMBOY_AUTO_MIGRATE     -> {imboy, auto_migrate}  (true | false)
+%   IMBOY_CLUSTER_NODES    -> {imboy, cluster_nodes} (JSON node@host 字符串数组；[] 显式单节点)
 %   IMBOY_PRODUCT_PROFILE   -> {imboy, product_profile}
 %                              (community | enterprise | overseas_baseline | phase1_delivery)
 %   IMBOY_PRODUCT_EXPERIENCE -> {imboy, product_experience} (chat | workspace)
@@ -131,6 +133,7 @@ override_from_env() ->
 
     %% 蓝绿部署关闭启动期迁移，切流后由显式 db migrate 统一执行。
     ok = override_boolean_key("IMBOY_AUTO_MIGRATE", auto_migrate),
+    ok = override_cluster_nodes(),
 
     %% R0（P1-1/D1）：单节点 WS 准入上限（整数；解析非法即 {invalid_env,…}
     %% fail-fast，范围校验见 ws_admission:validate_config/0）
@@ -331,6 +334,30 @@ override_boolean_key(EnvVar, AppKey) ->
         Value when is_list(Value), length(Value) > 0 ->
             application:set_env(imboy, AppKey, parse_feature_boolean(EnvVar, Value)),
             ok;
+        _ ->
+            ok
+    end.
+
+%% 缺失/空值保留部署配置；只有显式 JSON [] 才清除配置中的对等节点。
+%% Preserve configured clusters unless the deployment explicitly overrides them.
+-spec override_cluster_nodes() -> ok.
+override_cluster_nodes() ->
+    case os:getenv("IMBOY_CLUSTER_NODES") of
+        Raw when is_list(Raw), length(Raw) > 0 ->
+            Nodes =
+                try
+                    Names = json:decode(unicode:characters_to_binary(Raw)),
+                    true = is_list(Names),
+                    true = lists:all(fun(Name) ->
+                        is_binary(Name) andalso byte_size(Name) =< 255 andalso
+                            re:run(Name, <<"^[^@[:space:][:cntrl:]]+@[^@[:space:][:cntrl:]]+$">>,
+                                [{capture, none}]) =:= match
+                    end, Names),
+                    [binary_to_atom(Name, utf8) || Name <- Names]
+                catch
+                    _:_ -> erlang:error({invalid_env, "IMBOY_CLUSTER_NODES", Raw})
+                end,
+            application:set_env(imboy, cluster_nodes, Nodes);
         _ ->
             ok
     end.
@@ -552,7 +579,10 @@ override_garage() ->
             Cfg6 = maybe_override_map(Cfg5, secret_key, "IMBOY_GARAGE_SECRET_KEY", fun(V) ->
                 unicode:characters_to_binary(V)
             end),
-            application:set_env(imboy, garage, Cfg6),
+            Cfg7 = maybe_override_map(Cfg6, public_base_url, "IMBOY_GARAGE_PUBLIC_BASE_URL", fun(V) ->
+                unicode:characters_to_binary(V)
+            end),
+            application:set_env(imboy, garage, Cfg7),
             ok;
         _ ->
             ok

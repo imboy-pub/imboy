@@ -1,0 +1,211 @@
+# Local HTTP gateway / 本地 HTTP 入口；生产继续使用 templates/ 中的 TLS 配置。
+# Restrict envsubst to the Compose variables; keep all Nginx variables intact.
+resolver 127.0.0.11 valid=10s ipv6=off;
+resolver_timeout 5s;
+
+map $http_upgrade $connection_upgrade {
+    default upgrade;
+    '' close;
+}
+
+# Validate the raw Host, including its port, before preserving it for SigV4.
+# An absolute request URI must not substitute its authority for this validation.
+map $http_host $local_host_allowed {
+    default 0;
+    "${API_DOMAIN}" 1;
+    "${API_DOMAIN}:${NGINX_HTTP_PORT}" 1;
+    "${ADMIN_DOMAIN}" 1;
+    "${ADMIN_DOMAIN}:${NGINX_HTTP_PORT}" 1;
+    "${CS_WIDGET_DOMAIN}" 1;
+    "${CS_WIDGET_DOMAIN}:${NGINX_HTTP_PORT}" 1;
+    "${RTC_DOMAIN}" 1;
+    "${RTC_DOMAIN}:${NGINX_HTTP_PORT}" 1;
+    "${FILES_DOMAIN}" 1;
+    "${FILES_DOMAIN}:${NGINX_HTTP_PORT}" 1;
+}
+
+# SigV4 signs /bucket/key, while the client URL includes /s3. Preserve raw escapes
+# and the complete query string: rewriting normalized $uri can invalidate a signature.
+map $request_uri $garage_request_uri {
+    ~^/s3(?<garage_raw_path>/.*)$ $garage_raw_path;
+    default $request_uri;
+}
+
+# Storage grants use bare browser requests without cookies or business credentials.
+# Browsers omit :80 from Origin when the published HTTP port is 80.
+map "${NGINX_HTTP_PORT}:$http_origin" $local_storage_origin {
+    default '';
+    "${NGINX_HTTP_PORT}:http://${API_DOMAIN}:${NGINX_HTTP_PORT}" $http_origin;
+    "${NGINX_HTTP_PORT}:http://${ADMIN_DOMAIN}:${NGINX_HTTP_PORT}" $http_origin;
+    "${NGINX_HTTP_PORT}:http://${CS_WIDGET_DOMAIN}:${NGINX_HTTP_PORT}" $http_origin;
+    "80:http://${API_DOMAIN}" $http_origin;
+    "80:http://${ADMIN_DOMAIN}" $http_origin;
+    "80:http://${CS_WIDGET_DOMAIN}" $http_origin;
+}
+map "$request_method:$local_storage_origin" $storage_cors_denied {
+    default 0;
+    'OPTIONS:' 1;
+}
+
+proxy_http_version 1.1;
+# Every proxied server below requires local_host_allowed; signatures need the
+# exact original Host, including case and port, after that allowlist check.
+proxy_set_header Host $http_host;
+proxy_set_header X-Real-IP $remote_addr;
+proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+proxy_set_header X-Forwarded-Proto $scheme;
+proxy_set_header Upgrade $http_upgrade;
+proxy_set_header Connection $connection_upgrade;
+proxy_read_timeout 3600s;
+proxy_send_timeout 3600s;
+client_max_body_size 100m;
+
+server {
+    listen 80 default_server;
+    server_name _;
+    # Container liveness needs no virtual host; unknown hosts never reach an app.
+    location = /_gateway_health { return 200 "ok\n"; }
+    location / { return 421; }
+}
+
+server {
+    listen 80;
+    server_name ${API_DOMAIN};
+    if ($local_host_allowed = 0) { return 421; }
+    set $api_upstream ${API_UPSTREAM};
+    set $edge_upstream ${EDGE_UPSTREAM};
+    set $garage_upstream garage:3900;
+
+    # Variable upstreams resolve per request; optional profiles may be absent.
+    location = /_gateway_health { return 200 "ok\n"; }
+    location ~ ^/(api/)?(v1/)?metrics/?$ { return 403; }
+
+    # API WS and all SSE (MCP, QR login, Widget and Seat) stay unbuffered.
+    proxy_buffering off;
+    proxy_cache off;
+
+    location = /edge {
+        access_log off;
+        error_log /dev/null crit;
+        proxy_pass http://$edge_upstream;
+    }
+    location ^~ /_avatar/ {
+        access_log off;
+        error_log /dev/null crit;
+        proxy_pass http://$edge_upstream;
+    }
+    location = /api/v1/talk-records/client-audio-source {
+        access_log off;
+        error_log /dev/null crit;
+        proxy_pass http://$edge_upstream;
+    }
+    location ^~ /s3/ {
+        proxy_hide_header Access-Control-Allow-Origin;
+        proxy_hide_header Access-Control-Allow-Credentials;
+        proxy_hide_header Access-Control-Allow-Methods;
+        proxy_hide_header Access-Control-Allow-Headers;
+        proxy_hide_header Access-Control-Expose-Headers;
+        add_header Access-Control-Allow-Origin $local_storage_origin always;
+        add_header Access-Control-Allow-Methods 'GET, HEAD, PUT, OPTIONS' always;
+        add_header Access-Control-Allow-Headers 'Content-Type, x-amz-checksum-sha256' always;
+        add_header Access-Control-Expose-Headers 'ETag, x-amz-checksum-sha256' always;
+        add_header Vary Origin always;
+        if ($storage_cors_denied) { return 403; }
+        if ($request_method = OPTIONS) { return 204; }
+        proxy_pass http://$garage_upstream$garage_request_uri;
+    }
+    location / {
+        proxy_pass http://$api_upstream;
+    }
+}
+
+server {
+    listen 80;
+    server_name ${ADMIN_DOMAIN};
+    if ($local_host_allowed = 0) { return 421; }
+    set $api_upstream ${API_UPSTREAM};
+    set $admin_upstream ${ADMIN_UPSTREAM};
+
+    # IMBOY_API_HOST is empty in the Admin container: cookies stay same-origin.
+    location = /api/adm {
+        proxy_pass http://$api_upstream;
+        proxy_buffering off;
+    }
+    location ^~ /api/adm/ {
+        proxy_pass http://$api_upstream;
+        proxy_buffering off;
+    }
+    location / {
+        proxy_pass http://$admin_upstream;
+    }
+}
+
+server {
+    listen 80;
+    server_name ${CS_WIDGET_DOMAIN};
+    if ($local_host_allowed = 0) { return 421; }
+    set $api_upstream ${API_UPSTREAM};
+    set $widget_upstream ${WIDGET_UPSTREAM};
+    proxy_buffering off;
+    proxy_cache off;
+
+    # Preserve the production Widget/Seat allowlist and upstream frame/cache headers.
+    # Do not proxy the entire /api/v1/ family or inject CSP/X-Frame-Options here.
+    location ^~ /w/ { proxy_pass http://$api_upstream; }
+    location ^~ /seat/ { proxy_pass http://$api_upstream; }
+    location /api/v1/cs/widget/ { proxy_pass http://$api_upstream; }
+    location ~ ^/api/v1/cs/widget/sessions/[0-9A-Za-z_-]+/events$ {
+        proxy_pass http://$api_upstream;
+    }
+    location ~ ^/api/v1/(seat/)?cs/organizations/[0-9A-Za-z_-]+/seats/me/events$ {
+        proxy_pass http://$api_upstream;
+    }
+    location ~ ^/api/v1/(seat/)?cs/(me/seat-contexts|organizations/[0-9A-Za-z_-]+/(transfer-targets|sessions/(queue|[0-9A-Za-z_-]+(/(claim|transfer|close|read-cursor|context))?)|seats/(sessions|me/(heartbeat|presence))))$ {
+        proxy_pass http://$api_upstream;
+    }
+    location /api/v1/passport/qr_login/ { proxy_pass http://$api_upstream; }
+    location ^~ /api/v1/enterprise/conversations/ { proxy_pass http://$api_upstream; }
+    location ^~ /api/v1/seat/enterprise/conversations/ { proxy_pass http://$api_upstream; }
+    location ~ ^/api/v1/(seat/)?enterprise/organizations/[0-9A-Za-z_-]+/(assets/(presign|confirm|[0-9A-Za-z_-]+/content)|conversations/[0-9A-Za-z_-]+/messages)$ {
+        proxy_pass http://$api_upstream;
+    }
+
+    # loader.js, /assets/, /widget-assets/, /seat-assets/, health and unknown paths
+    # all use the static runtime's cache/404 contract.
+    location / { proxy_pass http://$widget_upstream; }
+}
+
+server {
+    listen 80;
+    server_name ${RTC_DOMAIN};
+    if ($local_host_allowed = 0) { return 421; }
+    set $livekit_upstream ${LIVEKIT_UPSTREAM};
+    proxy_buffering off;
+    proxy_cache off;
+
+    location ~ ^/(api/)?(v1/)?metrics/?$ { return 403; }
+    location / { proxy_pass http://$livekit_upstream; }
+}
+
+server {
+    listen 80;
+    server_name ${FILES_DOMAIN};
+    if ($local_host_allowed = 0) { return 421; }
+    set $garage_web_upstream garage:3902;
+    # Garage Website selects the public bucket by Host; private S3 stays on /s3/.
+    proxy_set_header Host ${GARAGE_PUBLIC_BUCKET}.garage.localhost;
+    location / {
+        proxy_hide_header Access-Control-Allow-Origin;
+        proxy_hide_header Access-Control-Allow-Credentials;
+        proxy_hide_header Access-Control-Allow-Methods;
+        proxy_hide_header Access-Control-Allow-Headers;
+        proxy_hide_header Access-Control-Expose-Headers;
+        add_header Access-Control-Allow-Origin $local_storage_origin always;
+        add_header Access-Control-Allow-Methods 'GET, HEAD, OPTIONS' always;
+        add_header Access-Control-Expose-Headers 'ETag, x-amz-checksum-sha256' always;
+        add_header Vary Origin always;
+        if ($storage_cors_denied) { return 403; }
+        if ($request_method = OPTIONS) { return 204; }
+        proxy_pass http://$garage_web_upstream;
+    }
+}

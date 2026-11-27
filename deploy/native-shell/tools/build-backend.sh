@@ -73,25 +73,8 @@ EOF
   chmod 755 "$out/no-interpreters/$forbidden"
 done
 
-# Gitee smart-HTTP may redirect to a sign-in page. Reuse the exact public
-# source archive pin recorded by this fixed source's Dockerfile, without Docker.
-pay_commit=$(sed -n 's/^ARG ERLANG_PAY_COMMIT=//p' "$build_dir/Dockerfile")
-pay_hash=$(sed -n 's/^ARG ERLANG_PAY_ARCHIVE_SHA256=//p' "$build_dir/Dockerfile")
-[[ $pay_commit =~ ^[0-9a-f]{40}$ && $pay_hash =~ ^[0-9a-f]{64}$ ]] || payload_die '源码未提供可核对的 erlang_pay 归档 pin'
-mkdir -p "$build_dir/deps" "$out/downloads"
-curl --fail --location --proto '=https' --tlsv1.2 --retry 2 \
-  "https://gitee.com/imboy-pub/erlang_pay/repository/archive/$pay_commit.tar.gz" \
-  -o "$out/downloads/erlang_pay.tar.gz"
-printf '%s  %s\n' "$pay_hash" "$out/downloads/erlang_pay.tar.gz" | sha256sum --quiet -c -
-tar -tzf "$out/downloads/erlang_pay.tar.gz" | awk -v root="erlang_pay-$pay_commit/" '
-  index($0,root)!=1 || /(^|\/)\.\.(\/|$)/ { bad=1 } END { exit bad ? 1 : 0 }
-' || payload_die 'erlang_pay 归档路径不合法'
-tar -xzf "$out/downloads/erlang_pay.tar.gz" -C "$out/downloads" --no-same-owner
-mv "$out/downloads/erlang_pay-$pay_commit" "$build_dir/deps/erlang_pay"
-{
-  printf '%s\n' '.PHONY: all' 'all:'
-  printf '\t%s\n' '../../.erlang.mk/rebar3/rebar3 compile' 'mkdir -p ebin' 'cp _build/default/lib/erlang_pay/ebin/* ebin/'
-} > "$build_dir/deps/erlang_pay/Makefile"
+# Use include/deps.mk and erlang.mk's rebar compatibility path, as Docker/CI do.
+# erlang_pay is now pinned to its canonical GitHub release; no Gitee bootstrap.
 
 printf '构建固定 commit %s，版本 %s；日志保存在新输出目录。\n' "$sha" "$version"
 (
@@ -122,8 +105,6 @@ for dep in "$build_dir"/deps/*; do
   [[ -d $dep ]] || continue
   if [[ -d $dep/.git || -f $dep/.git ]]; then
     printf '%s\t%s\n' "${dep##*/}" "$(git -C "$dep" rev-parse HEAD)"
-  elif [[ ${dep##*/} == erlang_pay ]]; then
-    printf 'erlang_pay\t%s\tarchive_sha256=%s\n' "$pay_commit" "$pay_hash"
   else
     printf '%s\thex-or-transitive-content-pinned-by-BUILD_FILES\n' "${dep##*/}"
   fi

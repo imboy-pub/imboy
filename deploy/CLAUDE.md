@@ -3,6 +3,7 @@
 # deploy — AI 上下文文档 / AI Context Document
 
 > **最后更新 / Last updated**: 2026-11-08（安装配置要求与 `install.sh` / `preflight.sh` 对齐）
+> 本地开发使用仓库根目录 `docker-compose.yml` 与 `scripts/dev_setup.sh`，见[本地开发指南](../docs/guides/operations/deployment/local-development.md)。
 > 部署事实以 [deploy/README.md](./README.md) 为唯一权威；本文是 AI/新成员速览。
 
 ## 目录结构 / Structure
@@ -16,7 +17,6 @@ deploy/
 ├── docker-compose.community.yml # 社区版编排（随仓分发）：pg18/garage/backend/admin/nginx/certbot/livekit
 │                                #   + 监控 profile（--profile monitoring）：prometheus/alertmanager/loki/promtail/grafana
 ├── docker-compose.prod.yml      # 商务版编排（不随仓分发，leeyisoft@qq.com 渠道获取后放入本目录）
-├── docker-compose.demo.yml      # 最小两服务零配置评估栈
 ├── docker-compose.healthcheck.yml / observability.yml / alert-dingtalk.yml / uptrace.yml / sales-policy.yml
 │                                # 商务版 overlay：按序 -f 叠加（就绪检查/观测组件/钉钉告警/Uptrace/无密钥策略）
 ├── .env.example / ops.env.example

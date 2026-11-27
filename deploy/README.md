@@ -3,6 +3,9 @@
 一键将 IMBoy 部署到一台 Linux 服务器。
 One-command deployment of IMBoy to a Linux server.
 
+> 本地开发与评估统一从仓库根目录运行 `bash scripts/dev_setup.sh`，见
+> [本地开发指南](../docs/guides/operations/deployment/local-development.md)。本页保留生产安装、证书、升级与恢复流程。
+>
 > 文档分工：本页是 **Docker Compose 客户安装入口**，使用 `deploy/.env.example`；[day1-quickstart.md](../docs/guides/operations/deployment/day1-quickstart.md) 与 [deployment.md](../docs/guides/operations/deployment/deployment.md) 是裸机/release 或定制运行时参考，不能混用其配置模板和启动步骤。备份恢复见 [backup-restore.md](../docs/guides/operations/deployment/backup-restore.md)。
 
 ## 原生 Shell 固定版本交付包 / Pinned native Shell kit
@@ -169,7 +172,7 @@ digests, verify all final tags again, then complete the approved release.
 > - **商务版 `docker-compose.prod.yml` 不随开源仓分发**，需通过商务交付渠道获取
 >   （leeyisoft@qq.com）后放入本目录。`install.sh --edition business` 会在缺失时
 >   明确提示并给出索取方式。
-> - 仅作评估可用 `docker-compose.demo.yml`（最小两服务，零配置，无需任何密钥）。
+> - 本地开发与评估使用根目录 `docker-compose.yml` 的 profiles，入口为 `bash scripts/dev_setup.sh`。
 
 ```
 deploy/
@@ -181,7 +184,6 @@ deploy/
 │                                # + edge + nginx + certbot + livekit；监控 5 服务走 --profile monitoring
 ├── docker-compose.uptrace.yml   # 可选 Uptrace overlay（默认关闭）
 ├── uptrace/                     # Uptrace / OTel Collector / nginx 配置
-├── docker-compose.demo.yml      # 最小两服务演示栈（零配置评估）/ Minimal 2-service demo stack
 ├── docker-compose.prod.yml      # ⚠️ 商务版走单独交付渠道，不在开源仓内 / Business edition, NOT in the open-source repo
 │                                # 7 服务编排：pg18 + backend + admin + nginx + certbot + prometheus + grafana
 ├── docker-compose-sales-policy.yml # 销售版策略覆盖（无密钥）/ sales policy overlay
@@ -206,39 +208,33 @@ deploy/
 │   ├── Dockerfile               # nginx:1.27-alpine 非 root 承载 build:widget 产物
 │   ├── nginx.conf               # 缓存策略 + SSE 直通（见下「CS Widget」节）
 │   └── dryrun.sh                # install/restart/rollback 合成环境演练（DEP-01 A06）
-├── docker-compose.widget.yml    # widget 服务 overlay（默认宿主端口 18900）
 ├── docker-compose.secrets.example.yml # 后端 secret 以 _FILE 加 0600 文件注入示例
 ├── secrets/                     # 部署机本机 secret 文件（git 忽略，仅路径入 compose）
 └── README.md                    # 本文件 / This file
 ```
 
-## CS Widget 静态服务（DEP-01）
+## CS Widget 静态服务
 
-客服 Widget（宿主 loader + iframe 聊天应用）以**独立镜像**交付，不混入 Admin
-SPA 镜像。产物由 admin 仓 `bun run build:widget` 生成（`dist-widget/`，含
-`loader.js` / `widget/index.html` / `assets/`），构建时拷入本目录 `widget/dist/`
-（git 忽略，dist 本体永不入仓）：
+标准社区部署已包含独立 `imboy_widget` 服务，使用
+`ghcr.io/imboy-pub/imboy-widget:${IMBOY_VERSION}`；源码与发布镜像定义在
+imboyadmin 仓的 `Dockerfile.widget`。Widget 的域名、缓存、SSE、安装白名单及
+升级回滚统一见[Widget 运行手册](../docs/guides/operations/deployment/customer-service-widget.md)。
+本地联调使用仓库根目录 `bash scripts/dev_setup.sh --with-widget`。
+
+`deploy/widget/` 保留独立镜像及合成升级演练，不再提供另一套 Compose 入口：
 
 ```bash
-# 1. 生成产物（admin 仓）
-cd /path/to/imboyadmin && bun run build:widget
-# 2. 构建镜像（tag 固定、禁 latest：升级=推新 tag，回滚=切回旧 tag）
-cp -R dist-widget/. /path/to/imboy/deploy/widget/dist/
-docker build -t imboy-widget:v1 /path/to/imboy/deploy/widget/
-# 3. 起服务（overlay 可并入社区栈；独立演练见 widget/dryrun.sh）
-docker compose -f docker-compose.widget.yml up -d   # 宿主端口 18900
+bash deploy/widget/dryrun.sh --dist /path/to/imboyadmin/dist-widget --skip-sse
 ```
 
-缓存策略（`widget/nginx.conf`）：宿主 HTML 与 `widget/` 应用 HTML `no-cache`，
-`/loader.js` 与 `/assets/` 短缓存（300s）+ `must-revalidate` + ETag——产物文件名
-当前不带内容 hash，**不得**加 `immutable`（升级后旧资产会按同名永生）；产物改带
-hash 后方可升级为长缓存。Widget 访客事件流（SSE）经 nginx 时禁缓冲/禁缓存、
-1h 读超时（本镜像与主反代模板均已内置对应 location）。
+从仓库根目录执行。演练只创建自己的 `csww-widget-nginx` 容器，绑定回环端口
+`18900`，完成安装、重启、静态资源一致性与回滚检查后移除本次容器；同名容器已存在时拒绝运行。
+需要 SSE 验证时按脚本 `--help` 提供参数。这个旧式镜像采用 `loader.js` / `assets/`
+短缓存与 `must-revalidate`；标准发布镜像的缓存合同以 Widget 运行手册为准。
 
-后端 secret（widget subject key 与企业消息 keyring）经 `docker-compose.secrets.example.yml`
-以 `_FILE` + 0600 只读挂载注入：明文只存在于部署机 `secrets/` 目录文件里，
-不出现在 compose、`.env` 或日志中；任一文件缺失或权限过宽，后端启动即拒绝
-（fail-closed，读方 `src/lib/imboy_env_overrides.erl`）。
+后端 secret（widget subject key 与企业消息 keyring）可经
+`docker-compose.secrets.example.yml` 以 `_FILE` 加只读文件挂载注入。
+秘密文件仅保存在部署机 `secrets/` 中；缺失或权限不符合约束时后端拒绝启动。
 
 ## 前置条件
 

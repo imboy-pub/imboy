@@ -1,4 +1,29 @@
 # Docker 构建上下文忽略 / Docker build context ignore
+# 本地凭据和运行数据不进入任何构建层 / Exclude local secrets and runtime data.
+.env
+.env.*
+**/.env
+**/.env.*
+.local/
+priv/dev_keys/
+priv_runtime/
+# Legacy bind-mount data may remain after migration to named PG volumes.
+docker/imboy_pg15/
+docker/imboy_pg16/
+docker/imboy_pg17/
+docker/imboy_pg18/
+docker/pgsql15data/
+docker/img_fastdfs_data/
+**/__pycache__/
+**/*.key
+**/*_priv.pem
+**/*private*.pem
+**/*.p12
+**/*.pfx
+config/sys.config
+config/sys.*.config
+config/vm.*.args
+
 # 强制 builder 阶段从干净树重新拉依赖、编译、出 release（正常网络/CI 下的标准做法）
 # 注：在无外网的受限环境，可临时移除下面的 deps/ 一行以复用本地已拉取的 deps/ 源码
 _build/

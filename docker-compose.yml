@@ -1,32 +1,20 @@
-# =====================================================
-# Imboy 单一 docker-compose（profiles 切换 dev / pro）
-#
-# 历史：
-#   * docker-compose.yml          (dev 数据库)
-#   * docker-compose-pg18-pro.yml (生产数据库)
-#   * docker-compose-turn.yml     (TURN 服务，coturn)
-# 三份文件硬编码密码、容器名、端口分散在不同文件里，
-# 现在统一到本文件，通过 docker compose --profile 切换。
-#
-# 用法：
-#   1. 第一次：cp .env.example .env 并填写 IMBOY_PG_PASSWORD / IMBOY_PG_PRO_PASSWORD
-#   2. dev 数据库：    docker compose --profile dev up -d
-#   3. 生产数据库：    docker compose --profile pro up -d
-#   4. 多 profile 同启：docker compose --profile dev --profile pro up -d
-#
-# 注意：
-#   * pro 与 dev 容器名 / volume 路径 / 端口完全独立，可同机共存。
-#   * 不带 --profile 时 `docker compose up -d` 不启动任何服务（避免误操作）。
-#
-# TURN 服务（原 --profile turn / coturn + config/turnserver.conf）已删除
-# （LK-DEP-01）：TURN 由 LiveKit embedded TURN 承载（deploy/ 的
-# docker-compose.livekit-turn.yml overlay，TLS 5349 + UDP 3478）。
-# =====================================================
+# 本地开发统一入口 / One local development stack (Compose 2.23.1+).
+# bash scripts/dev_setup.sh                         # dev + api + admin
+# bash scripts/dev_setup.sh --with-livekit --with-widget
+# docker compose --profile dev up -d               # PG + Garage + gateway
+# docker compose --profile pro up -d               # existing separate pro PG
+# docker compose --profile dev --profile pro up -d # both databases
+# Production installation remains documented in deploy/README.md.
+# No profile means no services. Never use down -v on existing development data.
+
+x-logging: &logging
+  driver: json-file
+  options: {max-size: "10m", max-file: "10"}
 
 services:
   imboy_pg18:
-    profiles: ["dev"]
-    image: imboy/pg18:3.7.0-1
+    profiles: [dev]
+    image: ${PG_IMAGE:-imboy/pg18:3.7.0-1}
     container_name: imboy_pg18
     hostname: pg.docker.imboy.pub
     restart: unless-stopped
@@ -34,36 +22,29 @@ services:
       TZ: Asia/Shanghai
       LANG: en_US.UTF-8
       POSTGRES_USER: ${IMBOY_PG_USERNAME:-imboy_user}
-      POSTGRES_PASSWORD: ${IMBOY_PG_PASSWORD:?IMBOY_PG_PASSWORD required (see .env.example)}
+      POSTGRES_PASSWORD: ${IMBOY_PG_PASSWORD:?Fill IMBOY_PG_PASSWORD in .env}
       POSTGRES_DB: ${IMBOY_PG_DATABASE:-imboy_v1}
     volumes:
-      # PG 数据必须放 Docker named volume，不能用 macOS bind mount：
-      # Docker Desktop 的 Virtualization 服务会为 bind mount 下每个被打开的
-      # PG 数据文件泄露一个 fd（全量 eunit 约 1.2 万用例的 DDL/迁移打开数万
-      # 文件 → macOS 系统级 fd 耗尽（kern.maxfiles 65536）→ 服务崩溃 → PG
-      # 非干净关闭 → 恢复 fsync 全目录重开文件再泄露 → 死循环）。
-      # volume 在 linuxkit ext4 内，不经 virtiofs，无此泄露。
-      # 2026-10 从 ./docker/imboy_pg18 迁移（原目录保留，可手工回退）。
-      - "imboy_pg18_data:/var/lib/postgresql"
-    ports:
-      - "${IMBOY_PG_HOST_PORT:-4323}:5432"
+      # Preserve the existing named volume; do not move PG onto a macOS bind mount.
+      - imboy_pg18_data:/var/lib/postgresql
+    ports: ["${IMBOY_BIND_ADDR:-127.0.0.1}:${IMBOY_PG_HOST_PORT:-4323}:5432"]
+    healthcheck:
+      test: [CMD-SHELL, 'pg_isready -h 127.0.0.1 -U "$$POSTGRES_USER" -d "$$POSTGRES_DB"']
+      interval: 5s
+      timeout: 3s
+      retries: 30
+      start_period: 15s
     deploy:
       resources:
-        limits:
-          memory: 4096M
-        reservations:
-          memory: 4096M
+        limits: {memory: 4096M}
+        reservations: {memory: 4096M}
     mem_limit: 4096M
     memswap_limit: 4g
-    logging:
-      driver: "json-file"
-      options:
-        max-size: "10m"
-        max-file: "10"
+    logging: *logging
 
   pro_imboy_pg18:
-    profiles: ["pro"]
-    image: imboy/pg18:3.7.0-1
+    profiles: [pro]
+    image: ${PG_IMAGE:-imboy/pg18:3.7.0-1}
     container_name: pro_imboy_pg18
     hostname: pg18pro.docker.imboy.pub
     restart: unless-stopped
@@ -71,34 +52,291 @@ services:
       TZ: Asia/Shanghai
       LANG: en_US.UTF-8
       POSTGRES_USER: ${IMBOY_PG_PRO_USERNAME:-imboy_user}
-      POSTGRES_PASSWORD: ${IMBOY_PG_PRO_PASSWORD:?IMBOY_PG_PRO_PASSWORD required (see .env.example)}
+      POSTGRES_PASSWORD: ${IMBOY_PG_PRO_PASSWORD:?Fill IMBOY_PG_PRO_PASSWORD in .env}
       POSTGRES_DB: ${IMBOY_PG_PRO_DATABASE:-imboy_pro}
     volumes:
-      - "/data/docker/pro_imboy_pg18:/var/lib/postgresql"
-    ports:
-      - "${IMBOY_PG_PRO_HOST_PORT:-5181}:5432"
+      # Existing production data and network are deliberately unchanged.
+      - /data/docker/pro_imboy_pg18:/var/lib/postgresql
+    ports: ["${IMBOY_PG_PRO_HOST_PORT:-5181}:5432"]
+    networks: [pro]
+    healthcheck:
+      test: [CMD-SHELL, 'pg_isready -h 127.0.0.1 -U "$$POSTGRES_USER" -d "$$POSTGRES_DB"']
+      interval: 5s
+      timeout: 3s
+      retries: 30
     deploy:
       resources:
-        limits:
-          memory: 4096M
-        reservations:
-          memory: 4096M
+        limits: {memory: 4096M}
+        reservations: {memory: 4096M}
     mem_limit: 4096M
     memswap_limit: 4g
-    logging:
-      driver: "json-file"
-      options:
-        max-size: "10m"
-        max-file: "10"
+    logging: *logging
+
+  garage:
+    profiles: [dev]
+    image: dxflrs/garage:v2.4.1@sha256:9c96caa2612d3411acc5b0e6701fb238dbfba33e533a6d7d3d811a4b12d0d020
+    restart: unless-stopped
+    command: [/garage, server, --single-node, --default-bucket]
+    environment:
+      # Setup validates local keys; inactive dev services must not block pro-only PG.
+      GARAGE_DEFAULT_ACCESS_KEY: ${IMBOY_GARAGE_ACCESS_KEY:-}
+      GARAGE_DEFAULT_SECRET_KEY: ${IMBOY_GARAGE_SECRET_KEY:-}
+      GARAGE_DEFAULT_BUCKET: ${IMBOY_GARAGE_BUCKET:-imboy}
+      GARAGE_PUBLIC_BUCKET: ${IMBOY_GARAGE_PUBLIC_BUCKET:-imboy-public}
+    configs:
+      - source: garage_config
+        target: /etc/garage.toml
+    volumes: [garage_data:/var/lib/garage]
+    ports: ["${IMBOY_BIND_ADDR:-127.0.0.1}:${GARAGE_S3_PORT:-3900}:3900"]
+    healthcheck:
+      test: [CMD, /garage, status]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 10s
+    logging: *logging
+
+  imboy_backend:
+    profiles: [api]
+    image: ${BACKEND_IMAGE:-imboy-backend:local}
+    build: {context: ., dockerfile: Dockerfile}
+    restart: unless-stopped
+    depends_on:
+      imboy_pg18: {condition: service_healthy}
+      garage: {condition: service_healthy}
+    environment:
+      IMBOYENV: local
+      # Local single-node boot must not wait for the template's example peers.
+      IMBOY_CLUSTER_NODES: "[]"
+      HTTP_PORT: "9800"
+      IMBOY_PG_HOST: imboy_pg18
+      IMBOY_PG_PORT: "5432"
+      IMBOY_PG_USERNAME: ${IMBOY_PG_USERNAME:-imboy_user}
+      IMBOY_PG_PASSWORD: ${IMBOY_PG_PASSWORD}
+      IMBOY_PG_DATABASE: ${IMBOY_PG_DATABASE:-imboy_v1}
+      IMBOY_BASE_URL: ${IMBOY_BASE_URL:-http://${API_DOMAIN:-api.localhost}:${NGINX_HTTP_PORT:-8080}}
+      IMBOY_WS_URL: ${IMBOY_WS_URL:-ws://${API_DOMAIN:-api.localhost}:${NGINX_HTTP_PORT:-8080}/api/v1/ws}
+      IMBOY_AVATAR_EDGE_BASE_URL: ${IMBOY_BASE_URL:-http://${API_DOMAIN:-api.localhost}:${NGINX_HTTP_PORT:-8080}}
+      IMBOY_WIDGET_BASE_URL: http://${CS_WIDGET_DOMAIN:-cs.localhost}:${NGINX_HTTP_PORT:-8080}
+      IMBOY_WIDGET_DOMAIN: ${CS_WIDGET_DOMAIN:-cs.localhost}
+      IMBOY_CORS_ADMIN_ORIGINS: http://${ADMIN_DOMAIN:-admin.localhost}:${NGINX_HTTP_PORT:-8080}
+      IMBOY_CORS_WIDGET_ORIGINS: http://${CS_WIDGET_DOMAIN:-cs.localhost}:${NGINX_HTTP_PORT:-8080}
+      IMBOY_JWT_KEY: ${IMBOY_JWT_KEY:-}
+      IMBOY_POSTGRE_AES_KEY: ${IMBOY_POSTGRE_AES_KEY:-}
+      IMBOY_ADM_COOKIE_SECRET: ${IMBOY_ADM_COOKIE_SECRET:-}
+      IMBOY_PASSWORD_SALT: ${IMBOY_PASSWORD_SALT:-}
+      IMBOY_SOLIDIFIED_KEY: ${IMBOY_SOLIDIFIED_KEY:-}
+      IMBOY_SOLIDIFIED_KEY_IV: ${IMBOY_SOLIDIFIED_KEY_IV:-}
+      IMBOY_API_AUTH_SWITCH: ${IMBOY_API_AUTH_SWITCH:-on}
+      # Empty paths use the app's persistent dev_keys symlink in the built image.
+      IMBOY_LOGIN_RSA_PUB_KEY_FILE: ""
+      IMBOY_LOGIN_RSA_PRIV_KEY_FILE: ""
+      IMBOY_JVERIFICATION_RSA_PRIV_KEY_FILE: ""
+      IMBOY_GARAGE_ENDPOINT: http://garage:3900
+      IMBOY_GARAGE_PUBLIC_ENDPOINT: ${IMBOY_GARAGE_PUBLIC_ENDPOINT:-http://${API_DOMAIN:-api.localhost}:${NGINX_HTTP_PORT:-8080}/s3}
+      IMBOY_GARAGE_PUBLIC_BASE_URL: ${IMBOY_GARAGE_PUBLIC_BASE_URL:-http://${FILES_DOMAIN:-files.localhost}:${NGINX_HTTP_PORT:-8080}}
+      IMBOY_GARAGE_BUCKET: ${IMBOY_GARAGE_BUCKET:-imboy}
+      IMBOY_GARAGE_PUBLIC_BUCKET: ${IMBOY_GARAGE_PUBLIC_BUCKET:-imboy-public}
+      IMBOY_GARAGE_ACCESS_KEY: ${IMBOY_GARAGE_ACCESS_KEY:-}
+      IMBOY_GARAGE_SECRET_KEY: ${IMBOY_GARAGE_SECRET_KEY:-}
+      IMBOY_ATTACHMENT_REGISTRY_FROM_GARAGE: "true"
+      IMBOY_EDGE_INTERNAL_TOKEN: ${IMBOY_EDGE_INTERNAL_TOKEN:-}
+      IMBOY_DIRECT_CLEANUP_PG_USER: ${IMBOY_DIRECT_CLEANUP_PG_USER:-}
+      IMBOY_DIRECT_CLEANUP_PG_PASSWORD: ${IMBOY_DIRECT_CLEANUP_PG_PASSWORD:-}
+      IMBOY_LIVEKIT_WS_URL: ws://${RTC_DOMAIN:-rtc.localhost}:${NGINX_HTTP_PORT:-8080}
+      IMBOY_LIVEKIT_API_KEY: ${LIVEKIT_API_KEY:-devkey}
+      IMBOY_LIVEKIT_API_SECRET: ${LIVEKIT_API_SECRET:-}
+      IMBOY_EDITION: ${IMBOY_EDITION:-community}
+      IMBOY_PRODUCT_EXPERIENCE: ${IMBOY_PRODUCT_EXPERIENCE:-chat}
+      IMBOY_PAYMENT_GATEWAY_ENABLED: "false"
+      IMBOY_LICENSE_FILE: ${IMBOY_LICENSE_FILE:-}
+      IMBOY_LICENSE_PUBKEY: ${IMBOY_LICENSE_PUBKEY:-}
+      IMBOY_EB_ENTERPRISE_KEYRING_FILE: ${IMBOY_EB_ENTERPRISE_KEYRING_FILE:-}
+      IMBOY_TRIAL_FILE: /opt/imboy/priv_runtime/trial_start.epoch
+      IMBOY_MAX_WS_CONNECTIONS: ${IMBOY_MAX_WS_CONNECTIONS:-20000}
+      ERL_FLAGS: ${IMBOY_ERL_FLAGS:-}
+      BIGMODEL_API_KEY: ${BIGMODEL_API_KEY:-}
+    volumes:
+      - backend_runtime:/opt/imboy/priv_runtime
+      - backend_logs:/opt/imboy/log
+    ports: ["${IMBOY_BIND_ADDR:-127.0.0.1}:${IMBOY_API_HOST_PORT:-9800}:9800"]
+    healthcheck:
+      # relx eval may exit zero on an expression error; compare its actual output.
+      test: [CMD-SHELL, 'test "$$(/opt/imboy/bin/imboy eval "healthz_handler:probe_db() andalso elib_tsid:readiness() =:= ready andalso imboy_app:readiness() =:= ready." 2>/dev/null)" = true']
+      interval: 10s
+      timeout: 10s
+      retries: 30
+      start_period: 60s
+    logging: *logging
+
+  imboy_edge:
+    profiles: [api]
+    image: ${BACKEND_IMAGE:-imboy-backend:local}
+    pull_policy: never
+    restart: unless-stopped
+    depends_on:
+      imboy_backend: {condition: service_healthy}
+    command: [/bin/sh, /opt/imboy/bin/start_download_edge.sh]
+    environment:
+      EDGE_AUTHORIZE_URL: http://imboy_backend:9800/api/v1/attachment/edge/authorize
+      EDGE_INTERNAL_TOKEN: ${IMBOY_EDGE_INTERNAL_TOKEN:-}
+    configs:
+      - source: edge_health_vm_args
+        target: /run/edge-health.vm.args
+    healthcheck:
+      # The edge is a separate, unnamed VM: probe its HTTP handler from a clean
+      # short-lived VM. POST must return 405, without invoking ticket authorization.
+      test:
+        - CMD-SHELL
+        - >-
+          VMARGS_PATH=/run/edge-health.vm.args /opt/imboy/bin/imboy console_clean -noshell
+          -eval '{ok, _} = application:ensure_all_started(inets),
+          case httpc:request(post, {"http://127.0.0.1:13990/edge", [], "text/plain", ""},
+          [{connect_timeout, 1000}, {timeout, 2000}, {autoredirect, false}], []) of
+          {ok, {{_, 405, _}, _, _}} -> halt(0); _ -> halt(1) end.'
+      interval: 10s
+      timeout: 8s
+      retries: 20
+      start_period: 5s
+    logging: *logging
+
+  imboy_admin:
+    profiles: [admin]
+    image: ${ADMIN_IMAGE:-imboy-admin:local}
+    build:
+      context: ${IMBOY_FRONTEND_CONTEXT:-https://github.com/imboy-pub/imboy-admin-frontend.git#a22d9f1835d2c613d002b17b6aae9877b33077ac}
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    # Same-origin /api/adm is proxied by the gateway; no cross-site login cookies.
+    environment: {IMBOY_API_HOST: ""}
+    healthcheck:
+      test: [CMD, wget, -q, -O, /dev/null, http://127.0.0.1/health]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    logging: *logging
+
+  imboy_widget:
+    profiles: [widget]
+    image: ${WIDGET_IMAGE:-imboy-widget:local}
+    build:
+      context: ${IMBOY_FRONTEND_CONTEXT:-https://github.com/imboy-pub/imboy-admin-frontend.git#a22d9f1835d2c613d002b17b6aae9877b33077ac}
+      # Widget verification requires the actual source HEAD, including local checkouts.
+      args: {BUILDKIT_CONTEXT_KEEP_GIT_DIR: "1"}
+      # The frontend's runtime Dockerfile expects dist-widget; generate it first.
+      dockerfile_inline: |
+        FROM oven/bun:1.3.14 AS builder
+        RUN apt-get update && apt-get install -y --no-install-recommends git ca-certificates && rm -rf /var/lib/apt/lists/*
+        WORKDIR /app
+        COPY . .
+        RUN bun install --frozen-lockfile && bun run build:widget && bun run verify:widget
+        FROM nginx:1.27-alpine@sha256:65645c7bb6a0661892a8b03b89d0743208a18dd2f3f17a54ef4b76fb8e2f2a10
+        COPY --from=builder /app/docker/widget/nginx.conf /etc/nginx/nginx.conf
+        COPY --from=builder --chown=101:101 /app/dist-widget/ /usr/share/nginx/html/
+        USER 101
+        EXPOSE 8080
+        ENTRYPOINT ["nginx", "-g", "daemon off;"]
+    restart: unless-stopped
+    read_only: true
+    tmpfs: ["/tmp:rw,nosuid,size=16m"]
+    healthcheck:
+      test: [CMD, wget, -q, -O, /dev/null, http://127.0.0.1:8080/health.txt]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    logging: *logging
+
+  imboy_livekit:
+    profiles: [livekit]
+    image: livekit/livekit-server:v1.13.7@sha256:6fd3b7088874c4d119160dd688798dfec852bc014786d392caad15f6f63912a3
+    restart: unless-stopped
+    environment:
+      LIVEKIT_CONFIG: |
+        port: 7880
+        bind_addresses: ["0.0.0.0"]
+        rtc:
+          tcp_port: 7881
+          port_range_start: 50000
+          port_range_end: 50200
+          use_external_ip: false
+          node_ip: ${LIVEKIT_NODE_IP:-127.0.0.1}
+        keys:
+          ${LIVEKIT_API_KEY:-devkey}: ${LIVEKIT_API_SECRET:-}
+        logging:
+          level: info
+    ports:
+      - "${IMBOY_BIND_ADDR:-127.0.0.1}:7881:7881/tcp"
+      - "${IMBOY_BIND_ADDR:-127.0.0.1}:50000-50200:50000-50200/udp"
+    logging: *logging
+
+  imboy_nginx:
+    profiles: [dev]
+    image: nginx:1.27-alpine@sha256:65645c7bb6a0661892a8b03b89d0743208a18dd2f3f17a54ef4b76fb8e2f2a10
+    restart: unless-stopped
+    environment:
+      NGINX_HTTP_PORT: ${NGINX_HTTP_PORT:-8080}
+      API_DOMAIN: ${API_DOMAIN:-api.localhost}
+      ADMIN_DOMAIN: ${ADMIN_DOMAIN:-admin.localhost}
+      CS_WIDGET_DOMAIN: ${CS_WIDGET_DOMAIN:-cs.localhost}
+      RTC_DOMAIN: ${RTC_DOMAIN:-rtc.localhost}
+      FILES_DOMAIN: ${FILES_DOMAIN:-files.localhost}
+      API_UPSTREAM: ${API_UPSTREAM:-imboy_backend:9800}
+      EDGE_UPSTREAM: ${EDGE_UPSTREAM:-imboy_edge:13990}
+      ADMIN_UPSTREAM: imboy_admin:80
+      WIDGET_UPSTREAM: imboy_widget:8080
+      LIVEKIT_UPSTREAM: imboy_livekit:7880
+      GARAGE_PUBLIC_BUCKET: ${IMBOY_GARAGE_PUBLIC_BUCKET:-imboy-public}
+      NGINX_ENVSUBST_FILTER: "^(NGINX_HTTP_PORT|API_DOMAIN|ADMIN_DOMAIN|CS_WIDGET_DOMAIN|RTC_DOMAIN|FILES_DOMAIN|API_UPSTREAM|EDGE_UPSTREAM|ADMIN_UPSTREAM|WIDGET_UPSTREAM|LIVEKIT_UPSTREAM|GARAGE_PUBLIC_BUCKET)$$"
+    extra_hosts: ["host.docker.internal:host-gateway"]
+    volumes:
+      - ./deploy/nginx/dev.conf.template:/etc/nginx/templates/default.conf.template:ro
+      - ./deploy/nginx/19-local-host-upstream.envsh:/docker-entrypoint.d/19-local-host-upstream.envsh:ro
+    ports: ["${IMBOY_BIND_ADDR:-127.0.0.1}:${NGINX_HTTP_PORT:-8080}:80"]
+    healthcheck:
+      test: [CMD, wget, -q, -O, /dev/null, http://127.0.0.1/_gateway_health]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    logging: *logging
+
+configs:
+  edge_health_vm_args:
+    # The probe boots only kernel/stdlib/inets, with no app or heart process.
+    content: |
+      -name edge_health@127.0.0.1
+      -setcookie local_edge_health
+      -kernel inet_dist_use_interface {127,0,0,1}
+      -dist_listen false
+      +S 1
+      +A 1
+  garage_config:
+    content: |
+      metadata_dir = "/var/lib/garage/meta"
+      data_dir = "/var/lib/garage/data"
+      db_engine = "lmdb"
+      replication_factor = 1
+      rpc_bind_addr = "[::]:3901"
+      rpc_secret = "${GARAGE_RPC_SECRET:-}"
+      [s3_api]
+      s3_region = "garage"
+      api_bind_addr = "[::]:3900"
+      [s3_web]
+      bind_addr = "[::]:3902"
+      root_domain = ".garage.localhost"
+      [admin]
+      api_bind_addr = "[::]:3903"
 
 networks:
   default:
-    external: true
+    name: imboy-local
+  pro:
     name: imboy-network
+    external: true
 
 volumes:
-  # name: 钉死实际卷名（不带 compose 项目前缀 imboy_）：
-  # 2026-10 迁移时手工建的活数据卷就是裸名 imboy_pg18_data（26G），
-  # 不钉名 compose 会解析成 imboy_imboy_pg18_data 并在空卷上 initdb 新库。
+  # This exact existing volume name is part of the data compatibility contract.
   imboy_pg18_data:
     name: imboy_pg18_data
+  garage_data:
+  backend_runtime:
+  backend_logs:

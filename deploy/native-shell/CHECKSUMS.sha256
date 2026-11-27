@@ -37,7 +37,7 @@ a438770ffa1b6deb4236babc3950c40b6e06ebd8874180c8d70a4e3b5042ca60  ./templates/sy
 0f1bac322ac76ab47bcdbf429f8951280083fff571b331cefc3e367edc1e58d5  ./templates/systemd/imboy-postgresql.service
 c2cc9d7e3a18822607f568030cade1c60a466064f5dc85a7afb608bd40161210  ./tests/run.sh
 db9fdfb84a4ea318cf36041b284991f56db963b01b0cba953b39bdce6247a030  ./tools/README_PUBLISHER.md
-56d8e05398d37874a9e4189dff350bbfe21a00d70bb8e4ac7c310444719536b5  ./tools/build-backend.sh
+9c69bd781c806800efa6f68e2fc35e1191ed97dfeab085f8d79e36256135afd8  ./tools/build-backend.sh
 08d65195385dc8335139b2ad01076a234210b7e847a6267466d18663047dc59c  ./tools/build-native-dependencies.sh
 9471264975f9e91790ebce6e507daffcf1de4c5278aabdff73f7b050e7b7e84c  ./tools/lib-host-packages.sh
 1bc6934f27ddb91c12b5ddc46534dc277845d1dd0bee266ad6f727714a6b29f3  ./tools/lib-payload.sh

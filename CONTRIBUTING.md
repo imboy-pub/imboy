@@ -80,7 +80,9 @@ This confirms: you have the right to submit this code, and you agree to license 
 
 ### 前置依赖
 
-本地依赖检查由 `bash scripts/dev_setup.sh` 首步承担（docker / erlang / make）。
+容器化开发由 `bash scripts/dev_setup.sh` 检查 Docker / Compose 并启动。
+需要调试后端源码时使用 `--infra-only`，另行准备下列 Erlang / Make 依赖；
+详细配置见[本地开发指南](./docs/guides/operations/deployment/local-development.md)。
 
 - Erlang/OTP **28+**
 - PostgreSQL **18+**（含扩展 `pg_jieba`、`postgis`、`timescaledb`、`pgcrypto`、`pg_trgm`）

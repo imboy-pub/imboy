@@ -346,8 +346,8 @@ if [ ! -f "$COMPOSE_FILE" ]; then
   拿到后放到本目录（$(pwd)/${COMPOSE_FILE}）再重跑本脚本。
 
   索取方式：leeyisoft@qq.com
-  仅评估/试用可先用最小演示环境（无需该文件）：
-      docker compose -f docker-compose.demo.yml up -d
+  源码开发环境使用根目录统一入口（独立安装包不包含）：
+      bash scripts/dev_setup.sh
   或改用随仓分发的社区版：bash install.sh --edition community"
   else
     die "缺少 $COMPOSE_FILE —— 社区版 compose 随仓分发，本目录没有说明仓库不完整，

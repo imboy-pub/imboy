@@ -1,5 +1,7 @@
 # LiveKit 单服务运行手册（rtc WSS + SFU + embedded TURN）
 
+> 本地联调：在仓库根目录执行 `bash scripts/dev_setup.sh --with-livekit`，配置与媒体端口见[本地开发指南](./local-development.md)。本文继续描述生产 WSS、TURN 与运维验收。
+>
 > 面向读者：**不熟悉 LiveKit 的运维**。本手册逐行给出命令、所在机器/目录、预期输出与失败停止点，照抄即可完成部署、验证、升级、续期与回滚。
 >
 > 适用版本：imboy 集成分支（LiveKit `livekit/livekit-server:v1.13.7`，精确 tag 锁定，禁止 `latest`/浮动 tag）。
