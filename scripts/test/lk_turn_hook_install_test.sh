@@ -210,7 +210,9 @@ WRAP
 
 NGINX_BIN="$(command -v nginx || true)"
 if [ -n "$NGINX_BIN" ]; then
-  if "$NGINX_BIN" -t -c "$NGX_TMP/wrapper.conf" -p "$NGX_TMP/" 2>"$TMP_ROOT/nginx-t.log"; then
+  # -e 覆盖编译默认 error log（nginx.org 包指向 /var/log/nginx，runner 不可写）；
+  # nginx -t 会真实 bind vhost 的 listen 80（CI 侧已 setcap 特权端口能力）。
+  if "$NGINX_BIN" -e "$NGX_LOGS/nginx-t-error.log" -t -c "$NGX_TMP/wrapper.conf" -p "$NGX_TMP/" 2>"$TMP_ROOT/nginx-t.log"; then
     ok "rtc + turn 两域 vhost 通过 nginx -t"
   else
     bad "rtc + turn 两域 vhost 通过 nginx -t" "$(tail -8 "$TMP_ROOT/nginx-t.log")"

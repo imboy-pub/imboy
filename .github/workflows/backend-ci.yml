@@ -57,6 +57,9 @@ jobs:
             | sudo tee /etc/apt/sources.list.d/nginx.list >/dev/null
           sudo apt-get update -qq
           sudo apt-get install -y -qq nginx
+          # lk_turn_hook 的 nginx -t 会真实 bind vhost 的 listen 80（ACME HTTP-01
+          # 路径）；runner 非 root，给二进制补特权端口能力（与生产一致的行为）。
+          sudo setcap cap_net_bind_service=+ep "$(command -v nginx)"
           nginx -v 2>&1 | tee "$GITHUB_STEP_SUMMARY"
       - name: Check packaging and configuration contracts
         run: |
