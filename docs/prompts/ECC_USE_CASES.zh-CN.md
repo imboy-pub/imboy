@@ -1614,6 +1614,52 @@ $test-collaboration $ai-regression-testing $verification-loop
 ```
 
 
+### ECC-110 · 新一代 AI 模型复审与改进旧 AI 生成代码
+
+**场景：** 当更强的新 AI 模型发布时，选择一个由旧 AI 模型实现的 IMBoy 功能切片，让新模型独立重建事实、识别盲点、补测试并证明改进价值。
+
+**A · 新功能 · `product-capability` + `orch-add-feature` + `tdd-workflow`**
+
+```text
+$product-capability $orch-add-feature $tdd-workflow
+
+你正在接手 IMBoy 现有代码库。目标不是重写整个项目，而是为以下客户/产品需求增加一个明确的新能力：[填写需求、目标用户、成功标准]。
+
+先核对当前仓库 HEAD、工作区状态、AGENTS.md/CLAUDE.md、架构地图、相关 API/WS 契约、数据库迁移和测试合同。识别现有能力与真正缺口，禁止把已有功能重复实现。输出 capability contract：角色、流程、状态机、权限、数据归属、接口、兼容性、失败恢复、观测和验收标准。若需求不完整，列出阻塞问题并停在方案阶段。
+
+需求明确后按 orch-add-feature 流程执行：先提出最小任务计划并等待计划门禁批准；先写失败测试，再实现；遵循当前仓库架构与测试入口。不得引入不必要依赖，不修改无关模块，不 commit/push/合并/部署。
+```
+
+**B · 优化现有功能 / 新模型复审旧 AI 代码 · `brownfield-retrospective` + `tdd-workflow` + `verification-loop`**
+
+```text
+$brownfield-retrospective $tdd-workflow $verification-loop
+
+你是新一代 AI 模型，负责独立复审 IMBoy 中可能由旧 AI 模型编写或修改的代码。目标功能/目录：[填写功能、模块、文件或用户旅程]。本次目标是让已有功能更正确、更稳定、更安全、更高效、更容易维护，而不是为了展示新模型能力而重写代码。
+
+按 slice-first 工作方式，将范围控制在约 15 个文件或 2000 行以内；先核对当前 HEAD、未提交改动和项目规则，保护其他会话的工作。把现有代码、注释、旧模型的自评和已有测试都视为待验证证据。独立重建真实行为，追踪调用链、数据流、权限边界、错误路径、并发/竞态、资源生命周期和跨端契约；建立改动前测试/性能基线。
+
+重点查找 AI 常见盲点：只改响应未改查询/持久化、只修主路径漏掉 sandbox/production 或其他分支、字段类型/可空性漂移、异常吞掉、重试不幂等、权限只在 UI 检查、测试与实现共享同一假设、mock 通过但真实路径失败、过度抽象和无证据的性能优化。
+
+每个发现必须提供文件/行号、可复现证据、影响等级、行为是否变化和最小修复方案。优先行为保持型优化；先补能证明问题的测试，再做最小改动。涉及公共 API、WS、数据库结构、E2EE、权限语义或产品行为变化时先停止并请求确认。遵循本仓测试/静态检查命令，不套用 ECC 默认 npm 命令。
+
+不要自动创建 docs/retro、重复计划或审计报告；先在会话中输出基线、差距登记和改进方案。完成批准范围内的修改后运行定向测试、完整相关门禁和 diff review，报告改动前后证据、未验证项和剩余风险。不 commit、不 push、不合并、不部署。
+```
+
+**C · 测试现有功能 / 独立验证旧 AI 实现 · `test-collaboration` + `ai-regression-testing` + `verification-loop`**
+
+```text
+$test-collaboration $ai-regression-testing $verification-loop
+
+对 IMBoy 的以下现有功能进行独立测试审计：[填写功能、模块、用户旅程或文件范围]。本任务默认不修改业务实现。
+
+先盘点现有单元、集成、契约、E2E、真机/平台测试和 CI 门禁，建立“需求/不变量 → 测试资产/TEST-ID → 命令 → 证据”矩阵。不要以测试文件存在、测试数量或 CI 绿灯替代行为验证。
+
+重点设计正常路径、权限拒绝、非法输入、边界值、空值、重复请求、并发、超时、断线恢复、旧数据升级/降级、跨账号隔离、跨端一致性和真实依赖失败场景。针对 AI 生成代码，特别检查：mock/sandbox 与真实路径不一致、数据库 SELECT/写入字段遗漏、序列化字段遗漏、仅覆盖 happy path、异常被吞、重试重复副作用、测试 fixture 过度迎合实现等问题。
+
+优先新增能区分正确与错误实现的测试；不要复制重复用例、降低阈值、扩大 skip 或修改断言使测试变绿。使用项目已有测试命令和执行合同。逐项报告 PASS/FAIL/BLOCKED/NOT RUN，提供真实命令、退出码、测试数量和证据位置。发现缺陷时给出最小复现和修复建议；未经授权不修改业务代码。不得将未执行或环境缺失标记为 PASS。
+```
+
 ## 维护说明
 
 - 本文只维护本仓库职责范围内的提示词；跨仓案例的统一索引位于 [imboy 后端主仓 docs/prompts/README.md](https://github.com/imboy-pub/imboy/blob/main/docs/prompts/README.md)。
