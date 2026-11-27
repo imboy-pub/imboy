@@ -469,6 +469,351 @@ $agent-eval $benchmark-optimization-loop
 设计 IMBoy 专用 Coding Agent 评测集，比较 Codex、Claude Code 等 Agent 在 Erlang、Flutter、React、跨仓契约、Bug 修复、测试治理和复杂重构方面表现。固定仓库提交、任务输入、验收命令和环境，记录成功率、耗时、成本、回归缺陷及重复运行一致性。先制定评测方案，不编造测试成绩。
 ```
 
+
+## IMBoy 公共业务场景复刻（Backend / 跨端业务真源）
+
+> 本组面向客户业务场景复刻。每个场景提供两条独立提示词：A 用于需求/能力映射；B 用于在批准后实施客户差异。将提示词中的“客户”替换为具体客户、行业、角色和目标流程。
+
+### ECC-073 · 客户私聊与多设备消息
+
+**场景：** 个人即时通讯
+
+**A · `product-lens` + `product-capability` · 客户场景映射**
+
+```text
+$product-lens $product-capability
+
+面向客户“个人即时通讯”场景，评估 IMBoy 的账号、好友、C2C 会话、消息可靠投递、离线同步、已读/输入状态、消息撤回编辑、转发引用和多设备能力。先读 messaging-model、message_api_contract、WS 协议及真实代码。按客户角色、关键旅程、现有能力 CURRENT、受交付锁能力、缺口、非目标和验收指标输出复刻方案。不得把未开放/未验收能力写成现成功能。
+```
+
+**B ·  · 客户差异实施**
+
+```text
+
+
+undefined
+```
+
+### ECC-075 · 客户群聊、社群运营与群治理
+
+**场景：** 群组与社群协作
+
+**A · `product-lens` + `product-capability` · 客户场景映射**
+
+```text
+$product-lens $product-capability
+
+为客户复刻群聊/社群场景，分析 IMBoy 群组创建、成员邀请与角色、群公告、标签/分类、@提及、相册、文件、日程、任务、投票、群发现、群管理日志和群消息。读取 group_api_contract、协作层级概念及对应 API/Flutter/Admin 代码。输出客户场景映射、角色权限矩阵、生命周期、CURRENT/TARGET/交付锁边界和缺口。
+```
+
+**B ·  · 客户差异实施**
+
+```text
+
+
+undefined
+```
+
+### ECC-077 · 客户内容频道、知识订阅与付费内容
+
+**场景：** 频道与订阅内容
+
+**A · `product-lens` + `product-capability` · 客户场景映射**
+
+```text
+$product-lens $product-capability
+
+为客户复刻内容频道/知识订阅场景。盘点 IMBoy Channel 的 personal/workspace scope、发现、公开/私有、免费/付费、订阅/购买、帖子、评论、讨论群绑定、精华/置顶、标签、Webhook 和内容访问控制。以 channel-api-contract-v1、微社群契约及真实代码为准，输出能力映射、付费与权限边界、缺口和验收旅程。
+```
+
+**B ·  · 客户差异实施**
+
+```text
+
+
+undefined
+```
+
+### ECC-079 · 客户动态、朋友圈与内容互动
+
+**场景：** 朋友圈与轻社交
+
+**A · `product-lens` + `product-capability` · 客户场景映射**
+
+```text
+$product-lens $product-capability
+
+为客户复刻动态/朋友圈场景。分析 Moment 发布、媒体附件、可见性（公开/好友/私密/包含名单/排除名单）、互动、评论、收藏、举报和后台审核。以 moment-api-contract-v1、好友/黑名单规则和现有客户端/管理端实现为依据，输出用户旅程、隐私矩阵、审核流程、现有能力与差异。
+```
+
+**B ·  · 客户差异实施**
+
+```text
+
+
+undefined
+```
+
+### ECC-081 · 客户企业组织、团队空间和成员管理
+
+**场景：** 组织与工作区
+
+**A · `product-lens` + `product-capability` · 客户场景映射**
+
+```text
+$product-lens $product-capability
+
+为客户复刻企业组织/团队空间场景。分析 Organization、部门树、owner/admin/member、邀请、成员暂停/恢复/离岗、owner 转移、Workspace、团队码加入、成员角色、品牌、归档恢复和默认工作区。以 collaboration-hierarchy、组织冻结契约和现有 API 为准。特别区分 organization 是业务对象而非租户，授权边界是部署实例。输出权限矩阵、生命周期和缺口。
+```
+
+**B ·  · 客户差异实施**
+
+```text
+
+
+undefined
+```
+
+### ECC-083 · 客户项目、任务、里程碑和活动流
+
+**场景：** 项目协作
+
+**A · `product-lens` + `product-capability` · 客户场景映射**
+
+```text
+$product-lens $product-capability
+
+为客户复刻轻量项目协作场景。分析 IMBoy Project 的 workspace 归属、成员约束、任务 todo/doing/review/done、里程碑、频道关联和项目活动事件流。明确项目不是通用 Jira 替代品；列出可复用能力、客户差异、角色操作矩阵和不做范围。
+```
+
+**B ·  · 客户差异实施**
+
+```text
+
+
+undefined
+```
+
+### ECC-085 · 客户网站在线客服、排队和坐席工作台
+
+**场景：** 客服中心与访客挂件
+
+**A · `product-lens` + `product-capability` · 客户场景映射**
+
+```text
+$product-lens $product-capability
+
+为客户复刻网站在线客服场景。盘点 Visitor token、Shop Key、Widget 安装、来源白名单、访客会话 queued/active/closed、队列、认领、转接、关闭、评分、坐席并发、App 坐席工作台、Admin 运营面和独立 dist-widget。读取 customer-service 概念和 Widget 契约。明确访客不是 user、消息真源在 enterprise_message、交付/真实验收状态。
+```
+
+**B ·  · 客户差异实施**
+
+```text
+
+
+undefined
+```
+
+### ECC-087 · 客户联系人、企业会话、资产和离岗交接
+
+**场景：** 企业客户经营 CRM
+
+**A · `product-lens` + `product-capability` · 客户场景映射**
+
+```text
+$product-lens $product-capability
+
+为客户复刻轻量 CRM/客户经营场景。分析 Business Identity、Enterprise Contact、经办人分配、客户会话、消息、附件资产、同意书、留持策略/hold、审计和 Offboarding Case。区分企业联系人与个人好友，企业消息 owner 是组织。输出客户流程、数据归属、隐私/合规边界、现有功能和差异。
+```
+
+**B ·  · 客户差异实施**
+
+```text
+
+
+undefined
+```
+
+### ECC-089 · 客户知识助手、群内助手和受控自动化
+
+**场景：** AI 助手与 Agent
+
+**A · `product-lens` + `product-capability` · 客户场景映射**
+
+```text
+$product-lens $product-capability
+
+为客户复刻 AI 助手场景。区分 account_type=1 Agent、account_type=3 Developer Bot、account_type=2 Channel System Bot。盘点助手发现、角色模板、群内 @触发、agent_task 审批、Grant→Run→Effect、HITL、MCP tool 授权与审计。标明 phase1_delivery 交付锁和 App/Admin 消费缺口，不能把 mock Hirð runtime 说成生产 runtime。
+```
+
+**B ·  · 客户差异实施**
+
+```text
+
+
+undefined
+```
+
+### ECC-091 · 客户第三方系统机器人和事件集成
+
+**场景：** 开发者 Bot 与 Webhook
+
+**A · `product-lens` + `product-capability` · 客户场景映射**
+
+```text
+$product-lens $product-capability
+
+为客户复刻第三方 Bot/Webhook 集成场景。分析 Bot 注册、account_type=3、username/@调用、API Token 与 verify token 分离、事件订阅、Webhook outbox 重试、投递状态、命令和 API 权限。明确 Bot 与 Agent、频道 system bot 的区别，输出外部系统集成合同和安全威胁。
+```
+
+**B ·  · 客户差异实施**
+
+```text
+
+
+undefined
+```
+
+### ECC-093 · 客户私密聊天、群组加密与密钥恢复
+
+**场景：** 端到端加密通信
+
+**A · `product-lens` + `product-capability` · 客户场景映射**
+
+```text
+$product-lens $product-capability
+
+为客户复刻隐私通信场景。分析 C2C Olm、C2G Megolm、设备信任、安全码/二维码核验、密钥轮换、4S 密文备份、社交恢复、加密附件和 E2EE 档位。以 e2ee 概念、协议规范和交付 profile 为准，明确服务端永不持有的密钥/明文及一期交付锁。
+```
+
+**B ·  · 客户差异实施**
+
+```text
+
+
+undefined
+```
+
+### ECC-095 · 客户文件共享、图片视频和安全下载
+
+**场景：** 附件与文件中心
+
+**A · `product-lens` + `product-capability` · 客户场景映射**
+
+```text
+$product-lens $product-capability
+
+为客户复刻文件共享/媒体中心场景。盘点附件上传 presign/confirm、Garage/S3、分块上传、E2EE 附件、附件引用、群文件/相册、企业资产、授权下载、短期 URL 和生命周期清理。区分个人附件、群文件和企业资产的数据归属。输出容量、权限、留存和恢复要求。
+```
+
+**B ·  · 客户差异实施**
+
+```text
+
+
+undefined
+```
+
+### ECC-097 · 客户一对一通话、群通话和直播互动
+
+**场景：** 音视频通话与直播
+
+**A · `product-lens` + `product-capability` · 客户场景映射**
+
+```text
+$product-lens $product-capability
+
+为客户复刻音视频沟通场景。分别评估一对一 RTC、群通话、LiveKit 房间、TURN、直播房间和录制能力。核对现有呼叫信令状态机、flutter_webrtc 采集/渲染、LiveKit 媒体路径及产品交付锁。区分已实现、仅计划、仅单节点和未做真实双端验收的能力。
+```
+
+**B ·  · 客户差异实施**
+
+```text
+
+
+undefined
+```
+
+### ECC-099 · 客户实名/注册、联系人和关系管理
+
+**场景：** 账号、好友与社交关系
+
+**A · `product-lens` + `product-capability` · 客户场景映射**
+
+```text
+$product-lens $product-capability
+
+为客户复刻账号和社交关系场景。分析注册、邮箱/手机/账号登录、验证码、找回密码、二维码登录、OIDC、设备管理、个人资料、好友申请、备注/分组/标签、黑名单和在线状态。区分 Human/Agent/Bot/System Bot 和 Platform Admin。输出身份生命周期、风控与数据迁移需求。
+```
+
+**B ·  · 客户差异实施**
+
+```text
+
+
+undefined
+```
+
+### ECC-101 · 客户充值、支付、账单和付费权益
+
+**场景：** 钱包、支付与订阅
+
+**A · `product-lens` + `product-capability` · 客户场景映射**
+
+```text
+$product-lens $product-capability
+
+为客户复刻钱包/支付/订阅场景。盘点钱包余额、充值订单、支付宝/微信回调、交易流水、账单、频道购买/订阅、billing subscription/invoice 和 Agent payment mandate。明确支付状态机、幂等、退款/补偿、对账与合规边界；区分已实现 API 与真实支付渠道验收状态。
+```
+
+**B ·  · 客户差异实施**
+
+```text
+
+
+undefined
+```
+
+### ECC-103 · 客户用户、群组、频道和内容发现
+
+**场景：** 搜索与发现
+
+**A · `product-lens` + `product-capability` · 客户场景映射**
+
+```text
+$product-lens $product-capability
+
+为客户复刻统一搜索/发现体验。盘点用户搜索、好友/群组/频道/Agent 发现、全文检索、消息历史、标签筛选和内容可见性。核对 FTS 对 E2EE 密文的排除规则、分页方式和权限过滤。输出搜索对象、排序、权限、索引和隐私边界。
+```
+
+**B ·  · 客户差异实施**
+
+```text
+
+
+undefined
+```
+
+### ECC-105 · 客户白标入口、功能开关和版本升级
+
+**场景：** 应用配置与版本运营
+
+**A · `product-lens` + `product-capability` · 客户场景映射**
+
+```text
+$product-lens $product-capability
+
+为客户复刻多品牌/白标客户端运营场景。分析 init、app/features、app/manifest、policy、app_entries/admin_entries、插件、品牌、版本检查、强制/推荐升级和升级事件上报。核对 build flavor、产品 profile、交付锁和部署配置。输出客户品牌差异、远程配置边界和升级回滚方案。
+```
+
+**B ·  · 客户差异实施**
+
+```text
+
+
+undefined
+```
+
 ## 维护说明
 
 - 本文只维护本仓库职责范围内的提示词；跨仓案例的统一索引位于 [imboy 后端主仓 docs/prompts/README.md](https://github.com/imboy-pub/imboy/blob/main/docs/prompts/README.md)。
