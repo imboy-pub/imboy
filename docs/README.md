@@ -30,7 +30,8 @@
 | 参考 | 参数、接口、协议和错误码是什么？ | [reference](./reference/) · [术语表](./glossary.md) |
 | 契约 | 某个域的 API 契约与三端对齐？ | [api-contracts](https://github.com/imboy-pub/imboy/tree/main/docs/api-contracts) |
 | 解释 | 为什么采用这种架构或安全设计？ | [explanation](./explanation/) · [architecture](./architecture/overview.md) |
-| 业务与合规 | 产品边界、商业、安全披露是什么？ | [business](./business/service-offering.md) · [compliance](./compliance/e2ee-policy.md) · [legal](https://github.com/imboy-pub/imboy/tree/main/docs/legal) |
+| 业务与合规 | 产品边界、商业、安全披露是什么？ | [business](./business/service-offering.md) · [商业策略分析（2026-06 时点）](./business/ai-era-monetization-strategy-2026-06.md) · [竞品能力路线图（2026-06 时点）](./business/im-competitor-capability-roadmap-2026-06.md) · [compliance](./compliance/e2ee-policy.md) · [legal](https://github.com/imboy-pub/imboy/tree/main/docs/legal) · [隐私政策模板](./legal/privacy-policy-template.md) · [软著申请指南](./legal/software-copyright-application-guide.md) |
+| 私有化交付材料 | 交付包怎么打、现场运行手册怎么写、供应链口径是什么？ | [交付包](https://github.com/imboy-pub/imboy/blob/main/docs/deliver/deliver-pack.md) · [运行手册模板](https://github.com/imboy-pub/imboy/blob/main/docs/deliver/runbook-template.md) · [供应链](https://github.com/imboy-pub/imboy/blob/main/docs/deliver/supply-chain.md)（deliver/ 不在 docs-site 同步白名单，走 GitHub 源） |
 | 决策与过程 | 方案、审计和阶段性结论是什么？ | [adr](https://github.com/imboy-pub/imboy/blob/main/docs/adr/README.md) · [archive](https://github.com/imboy-pub/imboy/blob/main/docs/archive/README.md) |
 
 判断规则：教技能是「教程」，办事情是「指南」，查事实是「参考」，讲原理是「解释」。AI 执行计划、审查报告、测试报告和一次性测试材料保存在仓外，不进入 Git 或交付包。

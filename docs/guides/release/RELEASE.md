@@ -81,3 +81,9 @@ bash scripts/sanity_check.sh --skip-tls # 本地无域名/TLS 时
 - [ ] `bash scripts/sanity_check.sh` 全绿
 - [ ] `/setup` 向导可建管理员并登录
 - [ ] 打 tag `v$(cat VERSION)` 并更新 CHANGELOG
+
+## 7. 相关清单 / Related Checklists
+
+- [Google Play 首发与内测轨清单](./android-googleplay-checklist.md)
+- [iOS App Store 上架准备清单](./ios-appstore-checklist.md)
+- [APP 平滑升级降级方案](./app-upgrade-downgrade.md)
