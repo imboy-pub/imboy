@@ -14,11 +14,12 @@
     all/0,
     init_per_suite/1,
     end_per_suite/1,
-    empty_db_migrate_idempotent/1
+    empty_db_migrate_idempotent/1,
+    exception_cleanup/1
 ]).
 
 all() ->
-    [empty_db_migrate_idempotent].
+    [empty_db_migrate_idempotent, exception_cleanup].
 
 init_per_suite(Config) ->
     eunit_runner:ct_suite_setup(Config).
@@ -27,104 +28,238 @@ end_per_suite(Config) ->
     eunit_runner:ct_suite_cleanup(Config).
 
 empty_db_migrate_idempotent(_Config) ->
+    {Base, Admin, Owner, NewDb} = test_context("migration"),
+    with_test_database(Admin, NewDb, Owner, fun() ->
+        SrcDb = maps:get(database, Base),
+        Extensions = source_extensions(Admin, SrcDb),
+        %% CI 源库合同包含 uuid-ossp；名称中的连字符要求按 PG identifier 引用。
+        true = lists:member(<<"uuid-ossp">>, Extensions),
+        ok = install_extensions(Admin, NewDb, Extensions),
+
+        %% 切换迁移超管到空库并执行真实迁移。
+        %% migrate/0 经 config_ds:env(super_account) 读取 application env；
+        %% config_ds:set 写 DB 配置表，不影响本 VM 的 sys.config 值。
+        with_super_account(Base#{database => NewDb}, fun() ->
+            ok = imboy_migrate:migrate(),
+            verify_migration(Base#{database => NewDb})
+        end)
+    end),
+    {comment, "空库全量迁移 + 关键表合同 + 幂等重启 + c2c 写守卫留存"}.
+
+%% 显式验证异常路径：迁移超管必须恢复，已创建的临时数据库必须删除。
+exception_cleanup(_Config) ->
+    {Base, Admin, Owner, NewDb} = test_context("cleanup"),
+    Original = application:get_env(imboy, super_account),
+    ?assertEqual("\"uuid-ossp\"", quote_pg_identifier(<<"uuid-ossp">>)),
+    ?assertEqual("\"odd\"\"name\"", quote_pg_identifier("odd\"name")),
+    ExtensionFailure =
+        try
+            with_test_database(Admin, NewDb, Owner, fun() ->
+                with_connection(Admin#{database => NewDb}, fun(Conn) ->
+                    create_extension_if_missing(Conn, <<"ct03-missing-extension">>)
+                end)
+            end),
+            no_exception
+        catch
+            error:{extension_initialization_failed, <<"ct03-missing-extension">>, _} ->
+                extension_init_failed
+        end,
+    ?assertEqual(extension_init_failed, ExtensionFailure),
+    ?assertEqual(false, database_exists(Admin, NewDb)),
+    ?assertError(
+        ct03_injected_failure,
+        with_test_database(Admin, NewDb, Owner, fun() ->
+            with_super_account(Base#{database => NewDb}, fun() ->
+                error(ct03_injected_failure)
+            end)
+        end)
+    ),
+    ?assertEqual(Original, application:get_env(imboy, super_account)),
+    ?assertEqual(false, database_exists(Admin, NewDb)),
+    {comment, "扩展初始化异常及迁移异常后均清理临时数据库并恢复 super_account"}.
+
+test_context(Tag) ->
     Base = config_ds:env(super_account),
     true = is_map(Base),
     #{database := SrcDb} = Base,
     true = (SrcDb =/= <<>>) andalso (SrcDb =/= []),
-    %% config 值为 string 形态（sys.config 文本），统一按 list 处理
-    Pid = os:getpid(),
-    NewDb = "imboy_quality_ct03_" ++ Pid,
-    Owner = maps:get(username, Base, "postgres"),
     Admin = Base#{database => "postgres"},
+    Owner = maps:get(username, Base, "postgres"),
+    NewDb =
+        "imboy_quality_ct03_" ++ Tag ++ "_" ++ os:getpid() ++ "_" ++
+            integer_to_list(erlang:unique_integer([positive, monotonic])),
+    true = length(NewDb) =< 63,
+    {Base, Admin, Owner, NewDb}.
 
-    %% 预清理 + 建空库（非模板；表/数据须从零迁移应用）。
-    %% 扩展是集群前置（EUNIT_120S §6 readiness 合同）：与源库同清单安装，
-    %% 不属于迁移义务本身。
-    {ok, A1} = epgsql:connect(Admin),
-    try
-        {ok, _, _} = epgsql:squery(A1, "DROP DATABASE IF EXISTS " ++ NewDb),
-        {ok, _, _} = epgsql:squery(A1, "CREATE DATABASE " ++ NewDb ++ " OWNER " ++ Owner)
-    after
-        epgsql:close(A1)
-    end,
-    {ok, A0} = epgsql:connect(Admin),
-    Extensions =
-        try
-            %% 扩展是 database 级（pg_extension 各库独立）：必须连源库读取
-            SrcDb2 = maps:get(database, Base),
-            {ok, ASrc} = epgsql:connect(Admin#{database => SrcDb2}),
-            ExRows =
-                try
-                    {ok, _, R} = epgsql:squery(
-                        ASrc, "SELECT extname FROM pg_extension WHERE extname <> 'plpgsql'"
-                    ),
-                    R
-                after
-                    epgsql:close(ASrc)
-                end,
-            [binary_to_list(N) || {N} <- ExRows]
-        after
-            epgsql:close(A0)
+with_test_database(Admin, Db, Owner, Fun) ->
+    %% Cleanup 包住预清理、CREATE DATABASE、扩展初始化和迁移全过程；
+    %% 任意一步抛错都尝试回收本用例唯一命名的数据库。
+    with_cleanup(
+        fun() ->
+            prepare_empty_database(Admin, Db, Owner),
+            Fun()
         end,
-    {ok, A2} = epgsql:connect(Admin#{database => NewDb}),
-    try
+        fun() -> drop_test_database(Admin, Db) end
+    ).
+
+prepare_empty_database(Admin, Db, Owner) ->
+    with_connection(Admin, fun(Conn) ->
+        ok = drop_database(Conn, Db),
+        Sql =
+            "CREATE DATABASE " ++ quote_pg_identifier(Db) ++
+                " OWNER " ++ quote_pg_identifier(Owner),
+        {ok, _, _} = epgsql:squery(Conn, Sql),
+        ok
+    end).
+
+drop_test_database(Admin, Db) ->
+    with_connection(Admin, fun(Conn) -> drop_database(Conn, Db) end).
+
+drop_database(Conn, Db) ->
+    %% 只操作本套件生成的临时库；FORCE 清理异常中断遗留的库内会话。
+    Sql = "DROP DATABASE IF EXISTS " ++ quote_pg_identifier(Db) ++ " WITH (FORCE)",
+    {ok, _, _} = epgsql:squery(Conn, Sql),
+    ok.
+
+source_extensions(Admin, SrcDb) ->
+    with_connection(Admin#{database => SrcDb}, fun(Conn) ->
+        {ok, _, Rows} = epgsql:squery(
+            Conn,
+            "SELECT extname FROM pg_extension WHERE extname <> 'plpgsql' ORDER BY extname"
+        ),
+        [Name || {Name} <- Rows]
+    end).
+
+install_extensions(Admin, Db, Extensions) ->
+    with_connection(Admin#{database => Db}, fun(Conn) ->
         lists:foreach(
             fun(Ext) ->
-                {ok, _, _} = epgsql:squery(A2, "CREATE EXTENSION IF NOT EXISTS " ++ Ext)
+                ok = create_extension_if_missing(Conn, Ext)
             end,
             Extensions
-        )
-    after
-        epgsql:close(A2)
-    end,
+        ),
+        {ok, _, Rows} = epgsql:squery(
+            Conn,
+            "SELECT extname FROM pg_extension WHERE extname <> 'plpgsql' ORDER BY extname"
+        ),
+        Installed = [Name || {Name} <- Rows],
+        Missing = [Ext || Ext <- Extensions, not lists:member(Ext, Installed)],
+        [] = Missing,
+        true = lists:member(<<"uuid-ossp">>, Installed),
+        ok
+    end).
 
-    %% 切换迁移超管到空库并执行真实迁移。
-    %% migrate/0 经 config_ds:env(super_account) 读 application env
-    %% （config_ds:set 写 DB 配置表，不影响本 VM 的 sys.config 值）。
-    Old = application:get_env(imboy, super_account),
-    ok = application:set_env(imboy, super_account, Base#{database => NewDb}),
-    try
-        %% 空库全量迁移（内含 verify_c2c_order_guards，守卫缺失即失败）
+create_extension_if_missing(Conn, Ext) ->
+    %% extname 是标识符，不是 SQL 关键字；uuid-ossp 等名称必须双引号包裹。
+    Sql = "CREATE EXTENSION IF NOT EXISTS " ++ quote_pg_identifier(Ext),
+    case epgsql:squery(Conn, Sql) of
+        {ok, _, _} -> ok;
+        Error -> error({extension_initialization_failed, Ext, Error})
+    end.
+
+verify_migration(DbConfig) ->
+    with_connection(DbConfig, fun(Conn) ->
+        %% 核心 DDL 合同：关键表真实存在
+        {ok, _, [{Cnt}]} = epgsql:squery(
+            Conn,
+            "SELECT count(*) FROM information_schema.tables WHERE table_schema='public'"
+            " AND table_name IN ('msg_c2c','channel','workspace_member','msg_store')"
+        ),
+        ?assertEqual(<<"4">>, Cnt),
+
+        %% 迁移版本表已记录（版本表存在）
+        {ok, _, [{VCnt}]} = epgsql:squery(
+            Conn,
+            "SELECT count(*) FROM information_schema.tables"
+            " WHERE table_schema='public' AND table_name LIKE '%migration%'"
+        ),
+        true = binary_to_integer(VCnt) >= 1,
+
+        %% 幂等：同 schema 再次迁移（重启场景）= ok 且不破坏守卫
         ok = imboy_migrate:migrate(),
+        {ok, _, [{GCnt}]} = epgsql:squery(
+            Conn, "SELECT count(*) FROM pg_trigger WHERE tgname LIKE '%c2c_order%'"
+        ),
+        true = binary_to_integer(GCnt) >= 1,
+        ok
+    end).
 
-        {ok, C} = epgsql:connect(Base#{database => NewDb}),
-        try
-            %% 核心 DDL/数据合同：关键表真实存在
-            {ok, _, [{Cnt}]} = epgsql:squery(
-                C,
-                "SELECT count(*) FROM information_schema.tables WHERE table_schema='public'"
-                " AND table_name IN ('msg_c2c','channel','workspace_member','msg_store')"
-            ),
-            ?assertEqual(<<"4">>, Cnt),
+with_super_account(Config, Fun) ->
+    Old = application:get_env(imboy, super_account),
+    with_cleanup(
+        fun() ->
+            ok = application:set_env(imboy, super_account, Config),
+            Fun()
+        end,
+        fun() -> restore_super_account(Old) end
+    ).
 
-            %% 迁移版本表已记录（版本表存在）
-            {ok, _, [{VCnt}]} = epgsql:squery(
-                C,
-                "SELECT count(*) FROM information_schema.tables"
-                " WHERE table_schema='public' AND table_name LIKE '%migration%'"
-            ),
-            true = binary_to_integer(VCnt) >= 1,
-
-            %% 幂等：同 schema 再次迁移（重启场景）= ok 且不破坏守卫
-            ok = imboy_migrate:migrate(),
-            {ok, _, [{GCnt}]} = epgsql:squery(
-                C, "SELECT count(*) FROM pg_trigger WHERE tgname LIKE '%c2c_order%'"
-            ),
-            true = binary_to_integer(GCnt) >= 1
-        after
-            epgsql:close(C)
-        end
+with_connection(Args, Fun) ->
+    {ok, Conn} = epgsql:connect(Args),
+    try
+        Fun(Conn)
     after
-        %% 恢复原连接并删除空库
-        restore_super_account(Old),
-        {ok, A3} = epgsql:connect(Admin),
+        %% 连接可能已因 SQL/网络异常断开；关闭失败不能阻止外层数据库清理。
         try
-            {ok, _, _} = epgsql:squery(A3, "DROP DATABASE IF EXISTS " ++ NewDb)
-        after
-            epgsql:close(A3)
+            epgsql:close(Conn)
+        catch
+            _:_ -> ok
         end
-    end,
-    {comment, "空库全量迁移 + 关键表合同 + 幂等重启 + c2c 写守卫留存"}.
+    end.
+
+with_cleanup(Fun, Cleanup) ->
+    Outcome =
+        try
+            {ok, Fun()}
+        catch
+            Class:Reason:Stack -> {raised, Class, Reason, Stack}
+        end,
+    CleanupOutcome =
+        try
+            case Cleanup() of
+                ok -> ok;
+                Other -> {error, {unexpected_cleanup_result, Other}}
+            end
+        catch
+            CleanupClass:CleanupReason:CleanupStack ->
+                {error, {CleanupClass, CleanupReason, CleanupStack}}
+        end,
+    case {Outcome, CleanupOutcome} of
+        {{ok, Value}, ok} ->
+            Value;
+        {{ok, _Value}, {error, CleanupError}} ->
+            error({cleanup_failed, CleanupError});
+        {{raised, RaisedClass, RaisedReason, RaisedStack}, ok} ->
+            erlang:raise(RaisedClass, RaisedReason, RaisedStack);
+        {{raised, RaisedClass, RaisedReason, RaisedStack}, {error, CleanupError}} ->
+            erlang:raise(
+                RaisedClass,
+                {RaisedReason, {cleanup_failed, CleanupError}},
+                RaisedStack
+            )
+    end.
+
+database_exists(Admin, Db) ->
+    with_connection(Admin, fun(Conn) ->
+        %% Db 仅由 test_context/1 生成（固定前缀、标签、PID 和整数）。
+        Sql = "SELECT 1 FROM pg_database WHERE datname = '" ++ Db ++ "'",
+        {ok, _, Rows} = epgsql:squery(Conn, Sql),
+        Rows =/= []
+    end).
+
+quote_pg_identifier(Value) when is_binary(Value) ->
+    quote_pg_identifier(binary_to_list(Value));
+quote_pg_identifier(Value) when is_atom(Value) ->
+    quote_pg_identifier(atom_to_list(Value));
+quote_pg_identifier(Value) when is_list(Value) ->
+    [$" |
+        lists:flatmap(
+            fun
+                ($") -> [$", $"];
+                (Char) -> [Char]
+            end,
+            Value
+        )] ++ [$"].
 
 restore_super_account(undefined) ->
     application:unset_env(imboy, super_account);
