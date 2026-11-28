@@ -566,14 +566,6 @@ services:
     container_name: imboy_backend
     hostname: backend.docker.imboy.pub
     restart: unless-stopped
-    # Immutable application filesystem. Only explicit runtime mounts/tmpfs are writable.
-    read_only: true
-    tmpfs:
-      - /tmp:rw,nosuid,nodev,size=64m
-      - /home/imboy:rw,noexec,nosuid,nodev,size=16m,uid=10001,gid=10001,mode=0700
-      - /opt/imboy/var:rw,noexec,nosuid,nodev,size=64m,uid=10001,gid=10001,mode=0750
-    cap_drop: [ALL]
-    security_opt: [no-new-privileges:true]
     depends_on:
       prod_imboy_pg18:
         condition: service_healthy
@@ -783,14 +775,6 @@ services:
     profiles: [prod, prod-turn, prod-sni]
     image: ${BACKEND_IMAGE:-ghcr.io/imboy-pub/imboy-backend:${IMBOY_VERSION:-unset}}
     restart: unless-stopped
-    read_only: true
-    tmpfs:
-      - /tmp:rw,nosuid,nodev,size=64m
-      - /home/imboy:rw,noexec,nosuid,nodev,size=16m,uid=10001,gid=10001,mode=0700
-      - /opt/imboy/var:rw,noexec,nosuid,nodev,size=64m,uid=10001,gid=10001,mode=0750
-      - /opt/imboy/log:rw,nosuid,nodev,size=32m,uid=10001,gid=10001,mode=0750
-    cap_drop: [ALL]
-    security_opt: [no-new-privileges:true]
     command: ["/bin/sh", "/opt/imboy/bin/start_download_edge.sh"]
     environment:
       EDGE_AUTHORIZE_URL: http://imboy_backend:9800/api/v1/attachment/edge/authorize
@@ -834,11 +818,7 @@ services:
       EB_PROOF_STORAGE_SECRET_KEY: ${EB_PROOF_STORAGE_SECRET_KEY:-}
     read_only: true
     tmpfs:
-      - /tmp:rw,nosuid,nodev,size=256m
-      - /home/imboy:rw,noexec,nosuid,nodev,size=16m,uid=65532,gid=65532,mode=0700
-      - /opt/imboy/var:rw,noexec,nosuid,nodev,size=32m,uid=65532,gid=65532,mode=0750
-    cap_drop: [ALL]
-    security_opt: [no-new-privileges:true]
+      - /tmp:rw,nosuid,size=256m
     healthcheck:
       disable: true
 

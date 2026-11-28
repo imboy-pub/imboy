@@ -138,11 +138,13 @@ sessions(Req0, State) ->
 %% @doc 检查登录冲突
 %% POST /v1/user_device/check_login
 %% Body: {"device_type": "ios"}
+%% 请求体经 elib_param:post 解析（1MiB 上限 + 坏 JSON/非对象 JSON 兜底 #{}），
+%% 与同文件其余 action 同一 seam；坏输入由 validate_device_type 判 false → 400，
+%% 不再裸 jsone:decode crash 500（G-01）。
 -spec check_login(cowboy_req:req(), map()) -> cowboy_req:req().
 check_login(Req0, State) ->
     Uid = auth_ds:current_uid(State),
-    {ok, Body, _} = cowboy_req:read_body(Req0),
-    Data = jsone:decode(Body),
+    Data = elib_param:post(Req0),
     DType = maps:get(<<"device_type">>, Data, <<>>),
 
     case user_device_logic:validate_device_type(DType) of
@@ -172,8 +174,7 @@ check_login(Req0, State) ->
 -spec kick(cowboy_req:req(), map()) -> cowboy_req:req().
 kick(Req0, State) ->
     Uid = auth_ds:current_uid(State),
-    {ok, Body, _} = cowboy_req:read_body(Req0),
-    Data = jsone:decode(Body),
+    Data = elib_param:post(Req0),
     DType = maps:get(<<"device_type">>, Data, <<>>),
     DID = maps:get(<<"device_id">>, Data, <<>>),
 
@@ -197,8 +198,7 @@ kick(Req0, State) ->
 -spec kick_others(cowboy_req:req(), map()) -> cowboy_req:req().
 kick_others(Req0, State) ->
     Uid = auth_ds:current_uid(State),
-    {ok, Body, _} = cowboy_req:read_body(Req0),
-    Data = jsone:decode(Body),
+    Data = elib_param:post(Req0),
     DType = maps:get(<<"device_type">>, Data, <<>>),
     DID = maps:get(<<"device_id">>, Data, <<>>),
 

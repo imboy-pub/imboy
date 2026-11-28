@@ -13,20 +13,6 @@ RUN apt-get update \
       libncurses-dev libssl-dev unixodbc-dev libsctp-dev \
     && rm -rf /var/lib/apt/lists/*
 
-# Non-root by default; match the host IDs when compiling a bind-mounted checkout.
-# macOS 常用 GID 20 在 Debian 中可能已存在，因此复用已有数字组。
-ARG DEV_UID=10001
-ARG DEV_GID=10001
-RUN set -eu; \
-    test "$DEV_UID" -gt 0; \
-    test "$DEV_GID" -gt 0; \
-    if ! getent group "$DEV_GID" >/dev/null; then groupadd --gid "$DEV_GID" imboy; fi; \
-    useradd --uid "$DEV_UID" --gid "$DEV_GID" --create-home --home-dir /home/imboy \
-      --shell /bin/bash imboy; \
-    install -d -o imboy -g "$DEV_GID" /workspace/imboy
-
-ENV HOME=/home/imboy
 WORKDIR /workspace/imboy
-USER imboy
 EXPOSE 9800 9806
 CMD ["bash"]

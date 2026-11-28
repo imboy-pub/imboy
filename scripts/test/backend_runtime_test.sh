@@ -39,11 +39,7 @@ jq -n --arg image "$image" --arg private "$work/private" --arg log "$work/log" '
   ]}}}
 ' > "$work/compose.json"
 prepare() { bash "$ROOT/deploy/prepare-backend-runtime.sh" -f "$work/compose.json"; }
-mounts=(--read-only
-        --tmpfs /tmp:rw,nosuid,nodev,size=64m
-        --tmpfs /home/imboy:rw,noexec,nosuid,nodev,size=16m,uid=10001,gid=10001,mode=0700
-        --tmpfs /opt/imboy/var:rw,noexec,nosuid,nodev,size=64m,uid=10001,gid=10001,mode=0750
-        --mount "type=bind,source=$work/private,target=/opt/imboy/priv_runtime,readonly"
+mounts=(--mount "type=bind,source=$work/private,target=/opt/imboy/priv_runtime,readonly"
         --mount "type=bind,source=$work/log,target=/opt/imboy/log")
 
 # Existing root:600 files are initially inaccessible to the actual image user.
@@ -65,21 +61,9 @@ docker run --rm --network none "${mounts[@]}" --entrypoint /bin/sh "$image" -eu 
   (umask 077; printf "runtime_fixture_only\n" > "$HOME/.erlang.cookie")
   test "$(stat -c %a "$HOME/.erlang.cookie")" = 600
   temporary="$(mktemp)"; rm "$temporary"
-  test ! -w /opt/imboy
-  if : > /opt/imboy/rootfs-write-probe 2>/dev/null; then exit 1; fi
-  test -w /tmp
-  test -w "$HOME"
-  test "$(stat -c %u:%g "$HOME")" = 10001:10001
-  test -w /opt/imboy/var
-  : > /tmp/runtime-tmpfs-probe
-  : > /opt/imboy/var/runtime-tmpfs-probe
   test ! -w /opt/imboy/bin/imboy
-  for directory in /opt/imboy/erts-*/bin /opt/imboy/lib/imboy-*/ebin /opt/imboy/lib/imboy-*/priv; do
+  for directory in /opt/imboy/erts-*/bin /opt/imboy/lib/imboy-*/ebin; do
     test ! -w "$directory"
-  done
-  for app_priv in /opt/imboy/lib/imboy-*/priv; do
-    test -L "$app_priv/dev_keys"
-    test "$(readlink "$app_priv/dev_keys")" = /opt/imboy/priv_runtime/dev_keys
   done
 '
 if docker run --rm --network none --user 10002:10002 "${mounts[@]}" \

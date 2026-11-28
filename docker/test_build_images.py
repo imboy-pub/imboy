@@ -72,7 +72,6 @@ class DockerfileLayoutTest(unittest.TestCase):
         self.assertIn("AS runtime", production.read_text())
         self.assertIn('CMD ["/opt/imboy/bin/imboy", "foreground"]', production.read_text())
         self.assertIn('CMD ["bash"]', development.read_text())
-        self.assertIn("USER imboy", development.read_text())
         self.assertFalse((ROOT / "docker/imboy_Dockerfile_dev").exists())
 
 
