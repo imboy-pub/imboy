@@ -248,7 +248,7 @@ services:
     image: ${ADMIN_IMAGE:-imboy-admin:local}
     build:
       context: ${IMBOY_FRONTEND_CONTEXT:-https://github.com/imboy-pub/imboy-admin-frontend.git#a22d9f1835d2c613d002b17b6aae9877b33077ac}
-      dockerfile: Dockerfile
+      dockerfile: docker/backend_Dockerfile
     restart: unless-stopped
     # /api/adm 同源经网关反代；登录 Cookie 不跨站。
     # Same-origin /api/adm is proxied by the gateway; no cross-site login cookies.
