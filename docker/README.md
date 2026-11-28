@@ -153,9 +153,19 @@ manifest list 且含双平台。
 原 `imboy_Dockerfile_dev` 改名为 `backend_dev_Dockerfile`，是独立的交互开发工具，
 不是生产运行镜像。
 
-镜像达到可投产运行的质量要求，不代表生产环境必须使用 Docker。
-长期生产可选择云 ECS 上的原生 Erlang/OTP release、PostgreSQL、Nginx 等服务，继续使用现有 `scripts/imboy-deploy.sh` 原生部署与升级路径。
-Docker 镜像主要服务可重复构建、隔离测试、快速交付及按需容器化部署；本次不改变原生部署默认路径。Admin 和 Widget 的两个配方镜像于本目录
+### 交付定位 / Delivery positioning
+
+Docker 优先服务快速体验、低门槛交付，以及有容器运维能力、部署规模和可用性要求适合单机编排的团队。四个镜像仍按可投产标准设计，不提供另一套降低安全或数据可靠性要求的演示镜像。选择 Docker 不等于必须选择原生部署，也不代表容器模式已经通过所有生产验收。
+
+对于长期运行、需要更精细资源控制和运维的生产环境，优先推荐云 ECS 上的原生部署（Erlang/OTP 自包含 release、PostgreSQL、Nginx 等），使用现有 `scripts/imboy-deploy.sh` 部署与升级路径和[原生 systemd 交付指南](../docs/guides/operations/deployment/native-shell/README.md)。两种部署形态共享产品版本和业务契约；本工具不改变原生部署路径。
+
+Docker 正式交付须完成对应平台的四镜像候选验收、按 digest 部署、持久化数据和密钥、配置与 HTTPS 检查、备份恢复、升级/回滚演练和基本监控。未通过的验收不得宣称已具备生产验证证据；单机容器部署也不等于高可用部署。
+
+Docker images prioritize fast evaluation and low-friction delivery, including production use by teams whose operational capacity and availability requirements fit the supported deployment topology. They are not demo-only artifacts. Native ECS deployment remains the recommended option for long-running production with more granular resource and operations control. Both modes retain the same product and business contracts. Production readiness requires evidence for the actual candidate and target platform, including persistent state, security, backup/restore, and upgrade/rollback; single-host deployment is not an HA guarantee.
+
+### 构建配方 / Build recipes
+
+Admin 和 Widget 的两个配方镜像于本目录
 （`admin_Dockerfile`、`widget_Dockerfile`），由已批准的前端提交
 `imboy-admin-frontend` 的 `Dockerfile`、`Dockerfile.widget` 提供真源。
 脚本逐字节核对配方，发生漂移时拒绝构建；升级前端配方时同步这两份镜像。
