@@ -24,6 +24,7 @@
 -export([update_friends_last_seen_at/2]).
 -export([delete_all_related_data/1, delete_all_related_data/2]).
 -export([insert_and_get_id/1]).
+-export([insert_and_get_id_tx/2]).
 -export([bind_email/2]).
 -export([get_status/1]).
 -export([find_id_by_email/1]).
@@ -307,6 +308,22 @@ insert_and_get_id(Data) ->
     Id = elib_tsid:generate(user),
     Data2 = Data#{<<"id">> => Id},
     case elib_pg:insert(Tb, Data2, <<"RETURNING id">>) of
+        {ok, _, [{Id}]} when is_integer(Id) ->
+            {ok, Id};
+        {error, Reason} ->
+            {error, Reason}
+    end.
+
+%% @doc 事务内插入用户并返回ID（Conn 由 elib_pg:with_tx 提供）。
+%% 与 insert_and_get_id/1 的唯一差异是连接来源（池 -> 事务），SQL/ID 生成/
+%% 返回值形态一致 —— 供「建 user 行 + 绑身份映射」原子化路径使用
+%%（同 sso_identity_repo upsert/upsert_tx 单份 SQL 双连接的先例）。
+-spec insert_and_get_id_tx(any(), map()) -> {ok, integer()} | {error, any()}.
+insert_and_get_id_tx(Conn, Data) ->
+    Tb = user_repo:tablename(),
+    Id = elib_tsid:generate(user),
+    Data2 = Data#{<<"id">> => Id},
+    case elib_pg:insert(Conn, Tb, Data2, <<"RETURNING id">>) of
         {ok, _, [{Id}]} when is_integer(Id) ->
             {ok, Id};
         {error, Reason} ->

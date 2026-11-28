@@ -31,6 +31,8 @@
 -export([init_table/0, sweep_expired/0]).
 %% 多节点一次性状态自检（供测试与 preflight 同口径判断）
 -export([state_sharing_status/2, warn_if_state_not_shared/0]).
+%% 出站 IdP URL 策略（sso_logic:test_connection 复用同口径，防两处漂移）
+-export([allowed_url/1]).
 
 -include_lib("kernel/include/logger.hrl").
 -include("log.hrl").
@@ -497,30 +499,81 @@ provision(Sub, Email, Name, Verified) ->
             <<>> -> Base0;
             _ -> Base0#{<<"email">> => Email}
         end,
+    %% account 号段在事务外消耗：pick_data_for_insert 内 account_ds:allocate
+    %% 自带池连接，事务体内再借连接会在池饿死时自锁（wechat_mini_identity_ds 同款教训）。
     Data = passport_logic:pick_data_for_insert(Base, #{
         <<"source">> => <<"oidc">>,
         <<"nickname">> => nickname(Name, Sub)
     }),
-    case user_ds:insert_and_get_id(Data) of
+    Tx = fun(Conn) -> provision_tx(Conn, Sub, Email, Data) end,
+    case elib_pg:with_tx(Tx) of
         {ok, Uid} ->
-            bind_identity(Sub, Uid, Email);
-        {error, {error, error, <<"23505">>, unique_violation, _Msg, _Details}} ->
-            %% 唯一键冲突不提升邮箱可信度；回读仍须满足初次关联的验证条件。
-            Existing =
-                case Verified andalso Email =/= <<>> of
-                    true -> verified_email_id(Email);
-                    false -> {ok, 0}
-                end,
-            case Existing of
-                {error, _} ->
-                    {error, service_unavailable};
-                {ok, Id2} when is_integer(Id2), Id2 > 0 ->
-                    bind_identity(Sub, Id2, Email);
-                _ ->
-                    {error, provision_conflict}
-            end;
+            {ok, Uid};
+        {rollback, {error, error, <<"23505">>, unique_violation, _Msg, _Details}} ->
+            %% email 唯一键冲突（并发同邮箱异 sub 竞速）：事务已中止，回读走池连接；
+            %% 唯一键冲突不提升邮箱可信度，回读仍须满足初次关联的验证条件。
+            provision_conflict(Sub, Email, Verified);
+        {rollback, Reason} ->
+            {error, Reason};
         {error, Reason} ->
             {error, Reason}
+    end.
+
+%% G-02：建 user 行 + 绑身份映射必须同事务。先 advisory 锁串行化同 sub 首登，
+%% 锁内复查映射（并发赢家已提交则直接复用，不重复建号）；bind 失败整体回滚
+%% ——绝不留有 user 无映射的孤儿账号，也不给无 email 的 sub 攒出并发双账号。
+%% 同 wechat_mini_identity_ds 先例。
+provision_tx(Conn, Sub, Email, Data) ->
+    ok = advisory_lock_subject(Conn, Sub),
+    case sso_identity_ds:find_uid_tx(Conn, ?PROVIDER, Sub) of
+        {ok, Uid} ->
+            {ok, Uid};
+        not_found ->
+            provision_insert_and_bind(Conn, Sub, Email, Data);
+        {error, Reason} ->
+            throw({rollback, Reason})
+    end.
+
+provision_insert_and_bind(Conn, Sub, Email, Data) ->
+    case user_ds:insert_and_get_id_tx(Conn, Data) of
+        {ok, Uid} ->
+            case sso_identity_ds:bind_tx(Conn, ?PROVIDER, Sub, Uid, Email) of
+                ok ->
+                    {ok, Uid};
+                {error, Reason} ->
+                    throw({rollback, Reason})
+            end;
+        {error, Reason} ->
+            throw({rollback, Reason})
+    end.
+
+%% email 唯一键冲突收尾：已中止事务内不得再查（PG abort + in_pg_tx_scope
+%% 守卫），回读走池连接；验证条件与初次关联完全一致（未验证邮箱绝不借此
+%% 完成绑定提升）。
+provision_conflict(Sub, Email, Verified) ->
+    Existing =
+        case Verified andalso Email =/= <<>> of
+            true -> verified_email_id(Email);
+            false -> {ok, 0}
+        end,
+    case Existing of
+        {error, _} ->
+            {error, service_unavailable};
+        {ok, Id2} when is_integer(Id2), Id2 > 0 ->
+            bind_identity(Sub, Id2, Email);
+        _ ->
+            {error, provision_conflict}
+    end.
+
+%% @doc 事务级 advisory 锁：同 (provider, subject) 的并发首登串行化。
+%% key 只用于锁、不入表不落日志（subject 属 IdP 身份标识）。
+advisory_lock_subject(Conn, Sub) ->
+    LockKey = <<?PROVIDER/binary, ":", Sub/binary>>,
+    case elib_pg:query(Conn, <<"SELECT pg_advisory_xact_lock(hashtext($1))">>, [LockKey]) of
+        {ok, _} ->
+            ok;
+        {error, Reason} ->
+            throw({rollback, Reason})
     end.
 
 verified_email_id(Email) ->
@@ -610,6 +663,11 @@ check_token_url(Cfg) ->
         false -> {error, insecure_token_url}
     end.
 
+%% @doc 出站 IdP URL 策略：https 必行；http 仅 127.0.0.1/localhost（本地联调）。
+%% G-03：sso_logic:test_connection 的 oauth2 探测复用本函数——token_url 携带
+%% client_secret 且登录侧会硬拒非 https 非本机配置，测试连接若放行会造成
+%% 「测试可达、登录恒败」的管理端口径漂移。单一实现，防两处清单漂移。
+-spec allowed_url(binary()) -> boolean().
 allowed_url(<<"https://", _/binary>>) ->
     true;
 allowed_url(<<"http://", _/binary>> = Url) ->

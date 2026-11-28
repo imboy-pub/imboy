@@ -450,9 +450,11 @@ callback_unverified_email_no_link_test_() ->
             sso_config_mock(),
             rate_limit_mock(),
             dyn_httpc_mock(),
+            fake_tx_mocks(),
             {sso_identity_ds, [
                 {'find_uid', 2, fun(_, _) -> not_found end},
-                {'bind', 4, fun(<<"oauth2">>, <<"sub-001">>, Uid, _) ->
+                {'find_uid_tx', 3, fun(_Conn, <<"oauth2">>, <<"sub-001">>) -> not_found end},
+                {'bind_tx', 5, fun(_Conn, <<"oauth2">>, <<"sub-001">>, Uid, _) ->
                     %% 关键断言：绝不绑定到 email 命中的既有账号 77
                     ?assertNotEqual(77, Uid),
                     ok
@@ -464,7 +466,7 @@ callback_unverified_email_no_link_test_() ->
                     erlang:error(should_not_lookup_email_when_unverified)
                 end},
                 {'find_by_id', 2, fun(Id, _) -> #{<<"id">> => Id, <<"status">> => 1} end},
-                {'insert_and_get_id', 1, fun(_) -> {ok, 999} end}
+                {'insert_and_get_id_tx', 2, fun(_Conn, _Data) -> {ok, 999} end}
             ]},
             {passport_logic, [
                 {'pick_data_for_insert', 2, fun(Base, Extra) -> maps:merge(Base, Extra) end},
@@ -495,8 +497,11 @@ email_conflict_case(Verified) ->
             sso_config_mock(),
             rate_limit_mock(),
             dyn_httpc_mock(),
+            fake_tx_mocks(),
             {sso_identity_ds, [
                 {'find_uid', 2, fun(_, _) -> not_found end},
+                {'find_uid_tx', 3, fun(_Conn, <<"oauth2">>, <<"sub-001">>) -> not_found end},
+                %% 冲突收尾走池连接绑定（事务已中止，目标 user 行由并发赢家提交）
                 {'bind', 4, fun(_, _, 77, _) -> ok end}
             ]},
             {user_ds, [
@@ -506,7 +511,7 @@ email_conflict_case(Verified) ->
                         false -> 77
                     end
                 end},
-                {'insert_and_get_id', 1, fun(_) ->
+                {'insert_and_get_id_tx', 2, fun(_Conn, _Data) ->
                     {error, {error, error, <<"23505">>, unique_violation, <<>>, []}}
                 end},
                 {'find_by_id', 2, fun(77, _) -> #{<<"id">> => 77, <<"status">> => 1} end}
@@ -539,19 +544,22 @@ email_conflict_case(Verified) ->
     ).
 
 %% @doc 全新用户（userinfo 无 email）-> 自动建号 + 建映射，不 crash
+%%（G-02 后建号与绑映射在同一事务 Conn 上完成）
 callback_provision_test_() ->
     with_oidc_mocks(
         [
             sso_config_mock(),
             rate_limit_mock(),
             dyn_httpc_mock(),
+            fake_tx_mocks(),
             {sso_identity_ds, [
                 {'find_uid', 2, fun(_, _) -> not_found end},
-                {'bind', 4, fun(<<"oauth2">>, <<"sub-001">>, 88, _) -> ok end}
+                {'find_uid_tx', 3, fun(_Conn, <<"oauth2">>, <<"sub-001">>) -> not_found end},
+                {'bind_tx', 5, fun(_Conn, <<"oauth2">>, <<"sub-001">>, 88, _) -> ok end}
             ]},
             {user_ds, [
                 {'find_id_by_email', 1, fun(_) -> 0 end},
-                {'insert_and_get_id', 1, fun(Data) ->
+                {'insert_and_get_id_tx', 2, fun(_Conn, Data) ->
                     %% 建号数据必须含随机密码与 oidc 来源
                     ?assertMatch(<<_/binary>>, maps:get(<<"password">>, Data)),
                     ?assertEqual(<<"oidc">>, maps:get(<<"source">>, Data)),
@@ -575,6 +583,150 @@ callback_provision_test_() ->
                 #{<<"code">> => <<"c">>, <<"state">> => State}, <<"1.2.3.4">>
             ),
             ?assertEqual(88, maps:get(<<"uid">>, Payload))
+        end
+    ).
+
+%% ===================================================================
+%% G-02：首登建号事务合同 —— 建 user 行 + 绑身份映射必须同事务
+%% （advisory 锁串行化同 sub 首登 + 锁内复查复用并发赢家 + bind 失败整体回滚，
+%% 杜绝孤儿 user 行与并发双账号。同 wechat_mini_identity_ds 先例合同。）
+%% ===================================================================
+
+%% @doc 事件按序记录进**调用进程**的字典 oidc_tx_events（同一用例内自清；
+%% 外来进程如后台 worker 撞进 mock 窗口时事件落其自身字典，不污染断言）
+tx_event(Event) ->
+    Prior =
+        case erlang:get(oidc_tx_events) of
+            undefined -> [];
+            L when is_list(L) -> L
+        end,
+    erlang:put(oidc_tx_events, Prior ++ [Event]).
+
+%% @doc fake 事务执行器 + advisory 锁观测：透传 fake Conn（各 mock 以同一
+%% Conn 断言事务身份），throw {rollback,R} 折叠为返回值并记录 —— 与
+%% elib_pg:connection_result 对 throw:{rollback,_} 的折叠同语义。
+fake_tx_mocks() ->
+    {elib_pg, [
+        {'with_tx', 1, fun(Fun) ->
+            Conn = {fake_tx_conn, erlang:unique_integer()},
+            tx_event({tx_started, Conn}),
+            Result =
+                try
+                    Fun(Conn)
+                catch
+                    throw:{rollback, R} -> {rollback, R}
+                end,
+            tx_event({tx_result, Result}),
+            Result
+        end},
+        {'query', 3, fun(Conn, Sql, _Params) ->
+            case
+                is_binary(Sql) andalso
+                    binary:match(Sql, <<"pg_advisory_xact_lock">>) =/= nomatch
+            of
+                true -> tx_event({advisory_lock, Conn});
+                false -> ok
+            end,
+            {ok, []}
+        end}
+    ]}.
+
+%% @doc bind 失败 -> 整体回滚：同一事务 Conn 上「锁 -> 建 user -> 绑映射」，
+%% rollback 折叠后走统一失败出口，绝不发凭据、绝不留池连接 insert/bind 残留
+%% （池路径哨兵直接 error，孤儿账号缺陷一出现即爆）。
+provision_bind_failure_rolls_back_test_() ->
+    with_oidc_mocks(
+        [
+            sso_config_mock(),
+            rate_limit_mock(),
+            dyn_httpc_mock(),
+            fake_tx_mocks(),
+            {sso_identity_ds, [
+                {'find_uid', 2, fun(_, _) -> not_found end},
+                {'find_uid_tx', 3, fun(_Conn, <<"oauth2">>, <<"sub-001">>) -> not_found end},
+                {'bind_tx', 5, fun(Conn, <<"oauth2">>, <<"sub-001">>, 88, <<>>) ->
+                    tx_event({bind_tx, Conn}),
+                    {error, synthetic_bind_failure}
+                end},
+                {'bind', 4, fun(_, _, _, _) ->
+                    erlang:error(pool_bind_after_tx_forbidden)
+                end}
+            ]},
+            {user_ds, [
+                {'insert_and_get_id_tx', 2, fun(Conn, Data) ->
+                    tx_event({insert_tx, Conn}),
+                    ?assertMatch(<<_/binary>>, maps:get(<<"password">>, Data)),
+                    {ok, 88}
+                end},
+                {'insert_and_get_id', 1, fun(_) ->
+                    erlang:error(pool_insert_outside_tx_forbidden)
+                end}
+            ]},
+            {passport_logic, [
+                {'pick_data_for_insert', 2, fun(Base, Extra) -> maps:merge(Base, Extra) end},
+                {'login_resp', 2, fun(_, _) -> erlang:error(must_not_issue_credentials) end}
+            ]}
+        ],
+        fun() ->
+            {State, _, _} = prime_flow(<<"test">>, #{<<"sub">> => <<"sub-001">>}),
+            Result = auth_oidc_logic:callback(
+                #{<<"code">> => <<"c">>, <<"state">> => State}, <<"1.2.3.4">>
+            ),
+            ?assertEqual({error, ?FAIL_MSG}, Result),
+            ?assertEqual(0, meck:num_calls(passport_logic, login_resp, '_')),
+            %% 事件序：同一 Conn 上 advisory 锁 -> 建号 -> 绑定 -> rollback 折叠
+            %% （模式变量 Conn 多位绑定 = 同一事务连接身份）
+            ?assertMatch(
+                [
+                    {tx_started, Conn},
+                    {advisory_lock, Conn},
+                    {insert_tx, Conn},
+                    {bind_tx, Conn},
+                    {tx_result, {rollback, synthetic_bind_failure}}
+                ],
+                erlang:get(oidc_tx_events)
+            )
+        end
+    ).
+
+%% @doc advisory 锁内复查命中并发赢家（同 sub 首登的另一请求已提交映射）->
+%% 直接复用既有 uid：不重复建号、不重复绑定（防双账号），凭据签给赢家 uid。
+provision_tx_concurrent_winner_reuse_test_() ->
+    with_oidc_mocks(
+        [
+            sso_config_mock(),
+            rate_limit_mock(),
+            dyn_httpc_mock(),
+            fake_tx_mocks(),
+            {sso_identity_ds, [
+                {'find_uid', 2, fun(_, _) -> not_found end},
+                {'find_uid_tx', 3, fun(_Conn, <<"oauth2">>, <<"sub-001">>) -> {ok, 55} end},
+                {'bind_tx', 5, fun(_, _, _, _, _) -> erlang:error(must_not_rebind_winner) end},
+                {'bind', 4, fun(_, _, _, _) -> erlang:error(must_not_bind_pool) end}
+            ]},
+            {user_ds, [
+                {'insert_and_get_id_tx', 2, fun(_, _) -> erlang:error(must_not_reinsert_winner) end},
+                {'insert_and_get_id', 1, fun(_) -> erlang:error(must_not_insert_pool) end},
+                {'find_by_id', 2, fun(55, _) -> #{<<"id">> => 55, <<"status">> => 1} end}
+            ]},
+            {passport_logic, [
+                {'pick_data_for_insert', 2, fun(Base, Extra) -> maps:merge(Base, Extra) end},
+                {'login_resp', 2, fun(U, _) ->
+                    #{<<"uid">> => maps:get(<<"id">>, U), <<"token">> => <<"jwt-55">>}
+                end}
+            ]}
+        ],
+        fun() ->
+            {State, _, _} = prime_flow(<<"test">>, #{<<"sub">> => <<"sub-001">>}),
+            {ok, Payload} = auth_oidc_logic:callback(
+                #{<<"code">> => <<"c">>, <<"state">> => State}, <<"1.2.3.4">>
+            ),
+            ?assertEqual(55, maps:get(<<"uid">>, Payload)),
+            %% 锁 + 复查后直接复用：无 insert/bind 事件，事务体返回赢家 uid
+            ?assertMatch(
+                [{tx_started, _}, {advisory_lock, _}, {tx_result, {ok, 55}}],
+                erlang:get(oidc_tx_events)
+            )
         end
     ).
 
