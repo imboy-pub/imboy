@@ -1,16 +1,23 @@
 # IMBoy ECC Prompt Library
 
-IMBoy 的 ECC 可复制提示词统一索引。每个仓库维护自己的案例文件，所有案例编号全局唯一。ECC-001–072 是基础工程案例；ECC-073–121 是产品功能场景案例，每个场景提供 A 新增功能、B 优化现有功能（含新模型复审旧 AI 代码）、C 测试现有功能三个独立提示词。执行时复制单个代码块即可。当前共 121 个案例、219 个可复制提示词代码块，其中 49 个功能场景各提供 A/B/C 三种工作模式。
+IMBoy 的 ECC 可复制提示词统一索引。每个仓库维护自己的案例文件，所有案例编号全局唯一。ECC-001–072 是基础工程案例；ECC-073–125 是产品功能场景案例，每个场景提供 A 新增功能、B 优化现有功能（含新模型复审旧 AI 代码）、C 测试现有功能三个独立提示词。执行时复制单个代码块即可。当前共 125 个案例、231 个可复制提示词代码块，其中 53 个功能场景各提供 A/B/C 三种工作模式。
 
 ## 四仓案例
 
 | 仓库 | 案例编号 | 数量 | 文件 |
 |---|---|---:|---|
 | Backend | ECC-001、ECC-005–022、ECC-043–045、ECC-051–089、ECC-110–116 | 68 | [ECC_USE_CASES.zh-CN.md](./ECC_USE_CASES.zh-CN.md) |
-| Flutter | ECC-002、ECC-023–034、ECC-090–101、ECC-117–118 | 27 | [Flutter 案例库](https://github.com/imboy-pub/imboy-flutter/blob/main/docs/prompts/ECC_USE_CASES.zh-CN.md) |
-| Admin | ECC-003、ECC-035–042、ECC-102–107、ECC-119–121 | 18 | [Admin 案例库](https://github.com/imboy-pub/imboy-admin-frontend/blob/main/docs/prompts/ECC_USE_CASES.zh-CN.md) |
-| geo_regions | ECC-004、ECC-046–050、ECC-108–109 | 8 | [geo_regions 案例库](https://github.com/imboy-pub/geo_regions/blob/main/docs/prompts/ECC_USE_CASES.zh-CN.md) |
-| **合计** | **ECC-001–ECC-121** | **121** | |
+| Flutter | ECC-002、ECC-023–034、ECC-090–101、ECC-117–118、ECC-124 | 28 | [Flutter 案例库](https://github.com/imboy-pub/imboy-flutter/blob/main/docs/prompts/ECC_USE_CASES.zh-CN.md) |
+| Admin | ECC-003、ECC-035–042、ECC-102–107、ECC-119–123 | 20 | [Admin 案例库](https://github.com/imboy-pub/imboy-admin-frontend/blob/main/docs/prompts/ECC_USE_CASES.zh-CN.md) |
+| geo_regions | ECC-004、ECC-046–050、ECC-108–109、ECC-125 | 9 | [geo_regions 案例库](https://github.com/imboy-pub/geo_regions/blob/main/docs/prompts/ECC_USE_CASES.zh-CN.md) |
+| **合计** | **ECC-001–ECC-125** | **125** | |
+
+## 四仓契约边界
+
+- Backend 是 REST/WS 提供方，Flutter App 与 Admin 分别是消费端；API/WS 契约以 Backend 当前真源及各消费端实现为准。
+- geo_regions 是独立 Dart/Flutter 地区数据 SDK，当前由 Flutter 消费；地区协议以 geo_regions 的 `docs/PROTOCOL.md`、`docs/CONSUMER_CONTRACT.md` 为准，不把它当作 REST/WS 服务。
+- TSID/EntityId 一致性只覆盖 Backend、Flutter、Admin 三端；geo_regions 的 country/region ID 与 pathIds 是独立稳定标识。
+- 四仓提示词中的代码路径和测试文件是当前定位锚点，不是封闭清单；每次执行都必须重新核对目标仓 HEAD、工作树和实际代码。
 
 ## 如何使用
 
@@ -29,6 +36,7 @@ IMBoy 的 ECC 可复制提示词统一索引。每个仓库维护自己的案例
 - Skill 名称以 ECC 官方仓库 skills/<name>/SKILL.md 的目录名为准。
 - 项目自己的 AGENTS.md、CLAUDE.md、架构约束、测试合同和安全规则优先于 ECC 通用建议。
 - 提示词不是质量证明；真实代码、测试和 CI 证据才是验收依据。
+- 跨仓提示词必须区分 REST/WS 契约与 geo_regions SDK 数据契约；不得因四仓共用索引而假定四仓两两直接依赖。
 - 不将一次性任务状态、会话恢复材料、运行日志、真实凭据或用户数据写入本案例库。
 - 后端主仓负责编号登记和跨仓索引；各仓只维护本仓案例正文，避免重复副本。
 
