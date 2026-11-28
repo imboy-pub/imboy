@@ -208,12 +208,14 @@ validate_lifecycle(_) ->
     {error, invalid_status}.
 
 %% 32 字节 CSPRNG → base64url（无 padding，43 字符，熵 ≥ 256 bit）。
+%% C1：只剥 '=' padding（32B → 44 字符含 1 个 '='；错误剥 2 会丢最后一个
+%% 数据字符，secret 变 42 字符 = 252 bit 熵）。与 sso_logic:generate_code/0 /
+%% enterprise_oa_login_logic:b64/1 同款剥全 padding 惯例。
 -spec generate_secret() -> binary().
 generate_secret() ->
     Raw = crypto:strong_rand_bytes(32),
     B64 = base64:encode(Raw),
-    NoPad = binary:part(B64, 0, byte_size(B64) - 2),
-    <<<<(urlsafe(C))/binary>> || <<C>> <= NoPad>>.
+    <<<<(urlsafe(C))/binary>> || <<C>> <= B64, C =/= $=>>.
 
 urlsafe($+) -> <<"-">>;
 urlsafe($/) -> <<"_">>;
