@@ -21,6 +21,10 @@
 -include("common.hrl").
 -include("error_code.hrl").
 
+%% G-01：exchange 端点请求体上限。OTC 是 43 字符 token，64KB 约为合法请求的
+%% 千倍余量；显式上限防未认证端点用超大请求体打崩 read_body 匹配。
+-define(OTC_BODY_LIMIT, 65536).
+
 %% ===================================================================
 %% Cowboy Callbacks
 %% ===================================================================
@@ -136,14 +140,21 @@ handle_callback(Req) ->
     end.
 
 %% @doc POST /api/v1/auth/oidc/exchange  Body: {"otc": "xxx"}
+%% G-01：cowboy read_body 超过 length 上限时返回 {more, 已读块, Req}——
+%% 只匹配 {ok,...} 会让超大请求体以 badmatch 崩溃收场（连接被杀、无干净响应）。
+%% 超限回 413（同 attachment_edge_authorize 既有惯例），合法请求行为零变化。
 handle_exchange(Req) ->
-    {ok, Body, Req1} = cowboy_req:read_body(Req),
-    Otc = decode_otc(Body),
-    case auth_oidc_logic:exchange(Otc) of
-        {ok, Payload} ->
-            elib_response:success(Req1, Payload);
-        {error, Msg} ->
-            elib_response:error(Req1, Msg, ?ERR_BAD_REQUEST)
+    case cowboy_req:read_body(Req, #{length => ?OTC_BODY_LIMIT, period => 5000}) of
+        {ok, Body, Req1} ->
+            Otc = decode_otc(Body),
+            case auth_oidc_logic:exchange(Otc) of
+                {ok, Payload} ->
+                    elib_response:success(Req1, Payload);
+                {error, Msg} ->
+                    elib_response:error(Req1, Msg, ?ERR_BAD_REQUEST)
+            end;
+        {more, _, Req1} ->
+            elib_response:error_with_status(Req1, 413, <<"请求体过大"/utf8>>, ?ERR_BAD_REQUEST)
     end.
 
 %% ===================================================================

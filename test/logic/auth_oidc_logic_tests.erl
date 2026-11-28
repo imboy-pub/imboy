@@ -914,6 +914,8 @@ oidc_cowboy_mock() ->
         {'header', 3, fun(_H, _R, Default) -> Default end},
         {'parse_qs', 1, fun(_R) -> [{<<"state">>, <<"forged-state">>}] end},
         {'read_body', 1, fun(R) -> {ok, <<"{\"otc\":\"nope\"}">>, R} end},
+        %% G-01 后 handle_exchange 走带限长 opts 的 read_body/2（同语义体）
+        {'read_body', 2, fun(_Opts, R) -> {ok, <<"{\"otc\":\"nope\"}">>, R} end},
         {'reply', 4, fun(_Status, _H, _B, R) -> R end}
     ]}.
 
@@ -981,6 +983,43 @@ limiter_exchange_no_admit_test_() ->
             ?assertEqual(Before, oidc_request_count()),
             ?assertEqual({error, ?FAIL_MSG}, auth_oidc_logic:exchange(<<"nope">>)),
             assert_no_oidc_failure_row()
+        end
+    ).
+
+%% G-01：exchange 是 open 白名单未认证端点。cowboy_req:read_body 的请求体超过
+%% length 上限时返回 {more, 已读块, Req}——handler 若只匹配 {ok,...}，
+%% 超大请求体会以 function_clause/badmatch 崩溃收场（连接被杀、无干净响应）。
+%% 合同：{more} 形态必须收敛为带状态码的 JSON 错误响应（413），
+%% 合法 OTC 请求体（几十字节）行为零变化。
+exchange_oversized_body_clean_reject_test_() ->
+    Chunk = binary:copy(<<"x">>, 1024),
+    OversizedBody = <<"{\"otc\":\"", Chunk/binary, "\"}">>,
+    with_oidc_mocks(
+        [
+            {cowboy_req, [
+                {'method', 1, fun(_R) -> <<"POST">> end},
+                {'path', 1, fun(_R) -> <<"/api/v1/auth/oidc/exchange">> end},
+                {'peer', 1, fun(_R) -> {{127, 0, 0, 1}, 54321} end},
+                {'header', 3, fun(_H, _R, Default) -> Default end},
+                {'parse_qs', 1, fun(_R) -> [] end},
+                %% 请求体超过 length 上限的真实 cowboy 形态：{more, FirstChunk, Req}
+                %% （/1 与 /2 都 mock：修复前走 /1，修复后走 /2）
+                {'read_body', 1, fun(R) -> {more, OversizedBody, R} end},
+                {'read_body', 2, fun(_Opts, R) -> {more, OversizedBody, R} end},
+                {'reply', 4, fun(Status, _H, _B, R) ->
+                    erlang:put(oidc_reply_status, Status),
+                    R
+                end}
+            ]}
+        ],
+        fun() ->
+            try
+                {stop, _Req, _State} =
+                    auth_oidc_handler:handle_request(fake_req, #{action => exchange}),
+                ?assertMatch(413, erlang:get(oidc_reply_status))
+            after
+                erlang:erase(oidc_reply_status)
+            end
         end
     ).
 
