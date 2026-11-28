@@ -1537,7 +1537,7 @@ $product-capability $orch-add-feature $tdd-workflow
 
 先核对当前仓库 HEAD、工作区状态、AGENTS.md/CLAUDE.md、架构/产品文档、API/WS/数据契约、真实代码和测试。以代码与可执行证据为准，标记 CURRENT、TARGET、LOCKED、UNKNOWN、NOT_VERIFIED；不能把文档/API 存在等同于功能已经端到端交付。
 
-当前代码/测试定位锚点：src/api/wallet_handler.erl、billing_handler.erl、payment_callback_handler.erl、src/ds/billing_plan_ds.erl、billing_subscription_ds.erl、payment_transaction_ds.erl、wallet_ds.erl；test/api/billing_route_tests.erl、test/ds/wallet_ds_tests.erl、docs/api-contracts/wallet_recharge_api_contract.md。支付回调、账单与钱包余额必须以事务、签名、幂等和对账证据为准。
+当前代码/测试定位锚点：src/api/wallet_handler.erl、billing_handler.erl、payment_callback_handler.erl、src/ds/billing_plan_ds.erl、billing_subscription_ds.erl、payment_transaction_ds.erl、wallet_ds.erl；test/api/billing_route_tests.erl、test/api/payment_callback_ip_allowlist_tests.erl、docs/api-contracts/wallet_recharge_api_contract.md。支付回调、账单与钱包余额必须以事务、签名、幂等和对账证据为准。
 
 读取该场景对应的领域概念、路由/接口、数据模型、Flutter/Admin 消费入口和现有测试，先做能力盘点：哪些可直接复用、哪些可通过配置组合、哪些确实缺失。不得重复造轮子或把未开放能力当作已交付。
 
