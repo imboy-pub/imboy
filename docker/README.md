@@ -133,7 +133,70 @@ manifest list 且含双平台。
 - **禁止推 `latest` 等浮动 tag**（镜像审计红线：不可复现、无法钉 digest）
 - prod 部署侧可用 digest 钉扎：`imboy/pg18:3.7.0-1@sha256:<digest>`
 - 与 release CI（tag 触发构建 `ghcr.io/imboy-pub/imboy-pg18`，仅 amd64）
-  是两条独立通道；Hub 为多架构人工发布通道
+  是既有独立通道；历史 PG18 专用标签继续保留，四镜像组合分发见下一节
+
+
+## 四镜像统一构建与 Docker Hub 分发 / Four-image builds and Docker Hub distribution
+
+生产 Backend 仍使用仓根 `Dockerfile`；`imboy_Dockerfile_dev` 是独立交互开发工具，
+不是生产运行镜像。Admin 和 Widget 的两个配方镜像于本目录
+（`admin_Dockerfile`、`widget_Dockerfile`），由已批准的前端提交
+`imboy-admin-frontend` 的 `Dockerfile`、`Dockerfile.widget` 提供真源。
+脚本逐字节核对配方，发生漂移时拒绝构建；升级前端配方时同步这两份镜像。
+
+| 组件 | GHCR | Docker Hub |
+|---|---|---|
+| Backend | ghcr.io/imboy-pub/imboy-backend | imboy/backend |
+| PG18 | ghcr.io/imboy-pub/imboy-pg18 | imboy/pg18 |
+| Admin | ghcr.io/imboy-pub/imboy-admin | imboy/admin |
+| Widget | ghcr.io/imboy-pub/imboy-widget | imboy/widget |
+
+Backend 运行时和 PG18 采用 Debian 13（trixie）；Admin/Widget 保留前端仓的
+Bun/Nginx Alpine 配方。不要用 `latest` 替代明确版本或已核验的摘要。
+
+需要 Docker Buildx、Git、Python 3、Bun 1.3.14；双架构需要支持多平台的
+builder（如 docker-container driver）及相应架构执行能力。
+在干净的后端检出中设置与 Release CI 相同、经批准的完整 `ADMIN_REPO_REF`，
+禁止使用 main、latest 或短 SHA。脚本使用提交快照，不把本机未跟踪/忽略文件打包。
+
+```bash
+# 本地候选构建，不向注册表写入；Apple Silicon 可选 linux/arm64
+export ADMIN_REPO_REF='<approved-full-40-character-sha>'
+bash docker/build_images.sh build --platform linux/arm64
+
+# 一次构建、两个 registry 候选标签；不发布正式版本
+docker login ghcr.io
+docker login docker.io
+bash docker/build_images.sh build --platform linux/amd64,linux/arm64 --push
+```
+
+`--push` 验证两个 registry 上的摘要均等于 Buildx 输出的摘要。
+候选标签包含版本、后端提交与构建标识；输出的 digest 不是验收通过收据。
+默认 `build` 仅本地加载单平台镜像，默认平台为 linux/amd64。
+构建失败可能留下不完整候选，不得作为正式版本发布。
+
+正式版本需先通过完整四镜像候选验收，并按现行发布授权将同一组摘要晋升到 GHCR
+正式版本标签。随后使用如下命令（参数从已验收候选清单/收据取得，按 backend、
+pg18、admin、widget 顺序）：
+
+```bash
+# 默认只检查四个 GHCR 来源和四个 Docker Hub 目标，不写入
+bash docker/build_images.sh publish "$(cat VERSION)" "$BACKEND_REF" "$PG_REF" "$ADMIN_REF" "$WIDGET_REF"
+
+# 需要 skopeo（macOS: brew install skopeo）；登录后显式执行
+skopeo login ghcr.io
+skopeo login docker.io
+bash docker/build_images.sh publish --apply "$(cat VERSION)" "$BACKEND_REF" "$PG_REF" "$ADMIN_REF" "$WIDGET_REF"
+```
+
+`publish` 要求 GHCR 正式版本标签已与传入摘要一致；不会自行判定业务验收通过，
+不得绕过完整验收门。使用 skopeo --all --preserve-digests 跨仓复制所有平台及
+manifest，不重新编译。目标已存在且摘要不同则拒绝写入。所有发布写者需串行；
+跨 registry 不能原子提交，失败后仅用同一组摘要重试，四个目标全部核验后才宣布发布完成。
+现有 `imboy/pg18:3.7.0-1` 标签与其独立发布流程保持不变；
+四镜像组合使用 IMBoy 的 VERSION 标签，不覆盖数据库历史标签。
+
+离线回归：`python3 docker/test_build_images.py`。不需要真实 registry 或 Docker。
 
 ## 使用开发工具镜像
 

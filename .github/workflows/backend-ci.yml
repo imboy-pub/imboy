@@ -75,6 +75,7 @@ jobs:
           bash scripts/test/install_one_click_test.sh
           bash scripts/test/cleanup_db_shell_test.sh
           bash scripts/test/release_contract_test.sh
+          python3 docker/test_build_images.py
           bash scripts/release_version.sh "v$(cat VERSION)"
           bash scripts/test/init_letsencrypt_test.sh
       - name: Check RTC/TURN preflight and Compose contracts

@@ -1,0 +1,40 @@
+# CSD-IMG-01：客服 Widget 静态 runtime image（不可变发布物容器化）。
+#
+# 设计约束（冻结合同 v1 S6 + 计划卡 CSD-IMG-01）：
+# - 只承载 dist-widget/ 静态产物：零业务配置、零数据库访问、零 secret 注入面；
+# - 非 root 运行（uid 101 = nginx:alpine 的 nginx 用户）；
+# - 只读根文件系统友好：pid / 日志 / temp 全部落 tmpfs /tmp（见 docker/widget/nginx.conf）；
+# - 固定监听 8080（非特权端口，非 root 可 bind）；
+# - HEALTHCHECK 打 /health.txt（S6：health no-store）。
+#
+# 构建（宿主先产出产物）：
+#   bun run build:widget && bun run verify:widget
+#   docker build -f Dockerfile.widget -t cs-hosted-widget-img:<run-id> .
+#
+# 运行（只读根文件系统 + tmpfs /tmp）：
+#   docker run -d --name cs-hosted-widget-rt-<run-id> -p 18081:8080 \
+#     --read-only --tmpfs /tmp:rw,size=16m cs-hosted-widget-img:<run-id>
+FROM nginx:1.27-alpine
+
+LABEL org.opencontainers.image.title="imboy-cs-hosted-widget"
+LABEL org.opencontainers.image.description="ImBoy hosted customer service widget static runtime (CSD-IMG-01)"
+
+# nginx 配置整体替换：非 root / 只读 FS / S6 缓存策略
+COPY docker/widget/nginx.conf /etc/nginx/nginx.conf
+
+# 静态产物（loader.js / assets/* / widget/index.html / manifest / health）
+# 归属 nginx:nginx（uid/gid 101），镜像内零写入口（rootfs 只读运行）。
+COPY --chown=101:101 dist-widget/ /usr/share/nginx/html/
+
+EXPOSE 8080
+
+# 非 root：nginx master/worker 均以 uid 101 运行（镜像内无 user 指令时
+# master 继承当前 uid；conf 中已不写 user 指令）。
+USER 101
+
+# 绕过官方 entrypoint（其 entrypoint.d 脚本会尝试写 /etc/nginx 下的模板目录，
+# 与只读根文件系统冲突；静态站点无需 envsubst 模板渲染）。
+ENTRYPOINT ["nginx", "-g", "daemon off;"]
+
+HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
+  CMD wget -q --spider http://127.0.0.1:8080/health.txt || exit 1
