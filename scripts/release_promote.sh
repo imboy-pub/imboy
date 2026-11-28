@@ -14,7 +14,10 @@ components=(backend admin widget pg18)
 targets=()
 missing=()
 approved_owner="${IMBOY_RELEASE_OWNER:-imboy-pub}"
-approved_owner="${approved_owner,,}"
+# macOS 自带 /bin/bash 3.2 不支持 bash 4 的双下括号小写展开（bad substitution
+# 直接退出），本脚本要求在带 Docker 的操作机上可跑（含 macOS Docker Desktop），
+# 用 POSIX tr 做小写归一，bash 3.2 与 bash 5 行为一致（GHCR 路径必须全小写）。
+approved_owner="$(printf '%s' "$approved_owner" | tr '[:upper:]' '[:lower:]')"
 
 target_state() {
   local target="$1" expected="$2" actual
