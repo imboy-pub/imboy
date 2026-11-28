@@ -633,6 +633,8 @@ conflict_envelope_vector(Kind) ->
     meck:new(cowboy_req, [no_link]),
     try
         meck:expect(cowboy_req, read_body, fun(Req) -> {ok, Body, Req} end),
+        %% G-10 后 handle 走带限长 opts 的 read_body/2（同语义体）
+        meck:expect(cowboy_req, read_body, 2, fun(_Opts, R) -> {ok, Body, R} end),
         meck:expect(cowboy_req, reply, fun(Status, Headers, Wire, _Req) ->
             #{status => Status, headers => Headers, body => Wire}
         end),

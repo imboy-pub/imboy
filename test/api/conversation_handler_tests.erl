@@ -121,6 +121,9 @@ delete_conversation_success_test_() ->
             {cowboy_req, [
                 {'read_body', 1, fun(_Req) ->
                     {ok, <<"{\"conversation_id\":\"c1\",\"type\":\"c2c\"}">>, req_after_body}
+                end},
+                {'read_body', 2, fun(_Opts, R) ->
+                    {ok, <<"{\"conversation_id\":\"c1\",\"type\":\"c2c\"}">>, R}
                 end}
             ]},
             {auth_ds, [
@@ -147,6 +150,9 @@ delete_conversation_error_maps_operation_failed_code_test_() ->
             {cowboy_req, [
                 {'read_body', 1, fun(_Req) ->
                     {ok, <<"{\"conversation_id\":\"c1\",\"type\":\"c2c\"}">>, req_after_body}
+                end},
+                {'read_body', 2, fun(_Opts, R) ->
+                    {ok, <<"{\"conversation_id\":\"c1\",\"type\":\"c2c\"}">>, R}
                 end}
             ]},
             {auth_ds, [
@@ -183,6 +189,9 @@ pin_and_restore_actions_success_test_() ->
             {cowboy_req, [
                 {'read_body', 1, fun(_Req) ->
                     {ok, <<"{\"conversation_id\":\"c1\",\"type\":\"c2c\"}">>, req_after_body}
+                end},
+                {'read_body', 2, fun(_Opts, R) ->
+                    {ok, <<"{\"conversation_id\":\"c1\",\"type\":\"c2c\"}">>, R}
                 end}
             ]},
             {auth_ds, [
@@ -220,6 +229,9 @@ tsid_string_conversation_id_converted_to_integer_test_() ->
                 {'read_body', 1, fun(_Req) ->
                     {ok, <<"{\"conversation_id\":\"8601234567890123\",\"type\":\"c2c\"}">>,
                         req_after_body}
+                end},
+                {'read_body', 2, fun(_Opts, R) ->
+                    {ok, <<"{\"conversation_id\":\"8601234567890123\",\"type\":\"c2c\"}">>, R}
                 end}
             ]},
             {auth_ds, [
@@ -292,3 +304,37 @@ unpin_restore_reject_invalid_conversation_id_test_() ->
             )
         end
     ).
+
+%% @doc G-10：read_body 超过 length 上限返回 {more, 已读块, Req}——只匹配
+%% {ok,...} 会让超大请求体以 badmatch 崩溃收场（连接被杀、无干净响应）。
+%% 合同：5 个 body-consuming action 的 {more} 形态收敛为 413 JSON 错误
+%%（同 auth_oidc_handler G-01 修复口径）。read_body /1 与 /2 都 mock：
+%% 修复前走 /1，修复后走 /2。
+oversized_body_rejected_test_() ->
+    [
+        {atom_to_binary(A, utf8), fun() ->
+            meck:new(cowboy_req, [passthrough]),
+            Chunk = binary:copy(<<"x">>, 1024),
+            meck:expect(cowboy_req, read_body, 1, fun(R) -> {more, Chunk, R} end),
+            meck:expect(cowboy_req, read_body, 2, fun(_Opts, R) -> {more, Chunk, R} end),
+            meck:expect(cowboy_req, reply, fun(Status, _H, _B, R) ->
+                erlang:put(g10_reply_status, Status),
+                R
+            end),
+            try
+                conversation_handler:init(req_mock(), #{action => A, current_uid => 100}),
+                ?assertEqual(413, erlang:get(g10_reply_status))
+            after
+                erlang:erase(g10_reply_status),
+                catch meck:unload(cowboy_req)
+            end
+        end}
+     || A <-
+            [
+                pin_conversation,
+                unpin_conversation,
+                set_manual_pending,
+                delete_conversation,
+                restore_conversation
+            ]
+    ].

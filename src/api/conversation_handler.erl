@@ -54,6 +54,36 @@ init(Req0, State0) ->
 %% Internal Function Definitions
 %% ===================================================================
 
+%% G-10：读体统一 seam——cowboy read_body 默认 8MB 上限，超过返回
+%% {more, 已读块, Req}；只匹配 {ok,...} 会让超大请求体以 badmatch 崩溃
+%% （连接被杀、无干净响应）。64KB 约为合法请求（conversation_id/type）
+%% 千倍余量；超限由调用点回 413（同 auth_oidc_handler G-01 修复口径）。
+%% 空 body 容忍与坏 JSON 兜底 #{} 保持既有口径（裸 decode 不再 500 crash）。
+-define(CONV_BODY_LIMIT, 65536).
+
+-spec read_json_payload(cowboy_req:req()) -> {ok, map()} | {oversized, cowboy_req:req()}.
+read_json_payload(Req0) ->
+    case cowboy_req:read_body(Req0, #{length => ?CONV_BODY_LIMIT, period => 5000}) of
+        {ok, Body, _Req1} ->
+            {ok, decode_payload(Body)};
+        {more, _, Req1} ->
+            {oversized, Req1}
+    end.
+
+-spec decode_payload(binary()) -> map().
+decode_payload(<<>>) ->
+    #{};
+decode_payload(Body) ->
+    try jsone:decode(Body, [{object_format, map}]) of
+        Map when is_map(Map) -> Map;
+        _ -> #{}
+    catch
+        _:_ -> #{}
+    end.
+
+oversized_reply(Req1) ->
+    elib_response:error_with_status(Req1, 413, <<"请求体过大"/utf8>>, ?ERR_BAD_REQUEST).
+
 %% @doc 获取在线用户信息
 %% 返回当前在线用户数量和列表
 %%
@@ -131,27 +161,26 @@ mine(Req0, State) ->
 %% @end
 -spec pin_conversation(cowboy_req:req(), map()) -> cowboy_req:req().
 pin_conversation(Req0, State) ->
-    {ok, Body, _Req1} = cowboy_req:read_body(Req0),
-    Payload =
-        case Body of
-            <<>> -> #{};
-            _ -> jsone:decode(Body, [{object_format, map}])
-        end,
-
-    CurrentUid = auth_ds:current_uid(State),
-    ConversationId0 = maps:get(<<"conversation_id">>, Payload, <<>>),
-    % conversation_id 客户端按 TSID 契约以 string 传输（防 JS 精度丢失），
-    % 系统边界统一转回 integer 供 logic/ds/repo 使用；非数字原样返回交给 logic 守卫拒绝
-    ConversationId = normalize_conversation_id(ConversationId0),
-    Type = maps:get(<<"type">>, Payload, <<"c2c">>),
-
-    case conversation_pin_logic:pin(CurrentUid, ConversationId, Type) of
-        ok ->
-            elib_response:success(Req0, #{});
-        {error, Msg} when is_binary(Msg) ->
-            elib_response:error(Req0, Msg, ?ERR_OPERATION_FAILED);
-        _ ->
-            elib_response:error(Req0, error_msg(?ERR_OPERATION_FAILED), ?ERR_OPERATION_FAILED)
+    case read_json_payload(Req0) of
+        {ok, Payload} ->
+            CurrentUid = auth_ds:current_uid(State),
+            ConversationId0 = maps:get(<<"conversation_id">>, Payload, <<>>),
+            % conversation_id 客户端按 TSID 契约以 string 传输（防 JS 精度丢失），
+            % 系统边界统一转回 integer 供 logic/ds/repo 使用；非数字原样返回交给 logic 守卫拒绝
+            ConversationId = normalize_conversation_id(ConversationId0),
+            Type = maps:get(<<"type">>, Payload, <<"c2c">>),
+            case conversation_pin_logic:pin(CurrentUid, ConversationId, Type) of
+                ok ->
+                    elib_response:success(Req0, #{});
+                {error, Msg} when is_binary(Msg) ->
+                    elib_response:error(Req0, Msg, ?ERR_OPERATION_FAILED);
+                _ ->
+                    elib_response:error(
+                        Req0, error_msg(?ERR_OPERATION_FAILED), ?ERR_OPERATION_FAILED
+                    )
+            end;
+        {oversized, Req1} ->
+            oversized_reply(Req1)
     end.
 
 %% @doc 取消置顶会话
@@ -163,72 +192,68 @@ pin_conversation(Req0, State) ->
 %% @end
 -spec unpin_conversation(cowboy_req:req(), map()) -> cowboy_req:req().
 unpin_conversation(Req0, State) ->
-    {ok, Body, _Req1} = cowboy_req:read_body(Req0),
-    Payload =
-        case Body of
-            <<>> -> #{};
-            _ -> jsone:decode(Body, [{object_format, map}])
-        end,
-
-    CurrentUid = auth_ds:current_uid(State),
-    ConversationId0 = maps:get(<<"conversation_id">>, Payload, <<>>),
-    % conversation_id 客户端按 TSID 契约以 string 传输（防 JS 精度丢失），
-    % 系统边界统一转回 integer 供 logic/ds/repo 使用；非数字原样返回交给 logic 守卫拒绝
-    ConversationId = normalize_conversation_id(ConversationId0),
-    Type = maps:get(<<"type">>, Payload, <<"c2c">>),
-
-    case conversation_pin_logic:unpin(CurrentUid, ConversationId, Type) of
-        ok ->
-            elib_response:success(Req0, #{<<"updated">> => true});
-        {error, Msg} when is_binary(Msg) ->
-            elib_response:error(Req0, Msg, ?ERR_OPERATION_FAILED)
+    case read_json_payload(Req0) of
+        {ok, Payload} ->
+            CurrentUid = auth_ds:current_uid(State),
+            ConversationId0 = maps:get(<<"conversation_id">>, Payload, <<>>),
+            % conversation_id 客户端按 TSID 契约以 string 传输（防 JS 精度丢失），
+            % 系统边界统一转回 integer 供 logic/ds/repo 使用；非数字原样返回交给 logic 守卫拒绝
+            ConversationId = normalize_conversation_id(ConversationId0),
+            Type = maps:get(<<"type">>, Payload, <<"c2c">>),
+            case conversation_pin_logic:unpin(CurrentUid, ConversationId, Type) of
+                ok ->
+                    elib_response:success(Req0, #{<<"updated">> => true});
+                {error, Msg} when is_binary(Msg) ->
+                    elib_response:error(Req0, Msg, ?ERR_OPERATION_FAILED)
+            end;
+        {oversized, Req1} ->
+            oversized_reply(Req1)
     end.
 
 %% @doc W09.a（§6.7/J17.c）：显式目标 true/false 设置某会话人工待处理。
 %% 真实未读水位不依赖本元数据；无变化同目标重试返回当前状态不重复副作用。
 -spec set_manual_pending(cowboy_req:req(), map()) -> cowboy_req:req().
 set_manual_pending(Req0, State) ->
-    {ok, Body, _Req1} = cowboy_req:read_body(Req0),
-    Payload =
-        case Body of
-            <<>> -> #{};
-            _ -> jsone:decode(Body, [{object_format, map}])
-        end,
-    CurrentUid = auth_ds:current_uid(State),
-    Uk3 = maps:get(<<"uk3">>, Payload, <<>>),
-    Value = maps:get(<<"value">>, Payload, undefined),
-    %% W09.c（J17.d）：可选 expected_version CAS；冲突返回当前状态供回读
-    %% （保留 desired_value 由客户端决定重试，不自动取反）。
-    Expected = normalize_expected_version(
-        maps:get(<<"expected_version">>, Payload, undefined)
-    ),
-    case {is_binary(Uk3), Uk3 =/= <<>>, is_boolean(Value)} of
-        {true, true, true} ->
-            case user_setting_ds:set_manual_pending(CurrentUid, Uk3, Value, Expected) of
-                {ok, Entry} ->
-                    elib_response:success(Req0, #{
-                        <<"uk3">> => Uk3,
-                        <<"value">> => Value,
-                        <<"version">> => maps:get(<<"version">>, Entry, 0)
-                    });
-                {conflict, Current} ->
-                    elib_response:error(Req0, <<"版本冲突"/utf8>>, ?ERR_OPERATION_FAILED, #{
-                        <<"conflict">> => true,
-                        <<"current">> => #{
-                            <<"uk3">> => Uk3,
-                            <<"value">> => maps:get(<<"value">>, Current, false),
-                            <<"version">> => maps:get(<<"version">>, Current, 0)
-                        }
-                    });
-                {error, Msg} when is_binary(Msg) ->
-                    elib_response:error(Req0, Msg, ?ERR_OPERATION_FAILED);
+    case read_json_payload(Req0) of
+        {ok, Payload} ->
+            CurrentUid = auth_ds:current_uid(State),
+            Uk3 = maps:get(<<"uk3">>, Payload, <<>>),
+            Value = maps:get(<<"value">>, Payload, undefined),
+            %% W09.c（J17.d）：可选 expected_version CAS；冲突返回当前状态供回读
+            %% （保留 desired_value 由客户端决定重试，不自动取反）。
+            Expected = normalize_expected_version(
+                maps:get(<<"expected_version">>, Payload, undefined)
+            ),
+            case {is_binary(Uk3), Uk3 =/= <<>>, is_boolean(Value)} of
+                {true, true, true} ->
+                    case user_setting_ds:set_manual_pending(CurrentUid, Uk3, Value, Expected) of
+                        {ok, Entry} ->
+                            elib_response:success(Req0, #{
+                                <<"uk3">> => Uk3,
+                                <<"value">> => Value,
+                                <<"version">> => maps:get(<<"version">>, Entry, 0)
+                            });
+                        {conflict, Current} ->
+                            elib_response:error(Req0, <<"版本冲突"/utf8>>, ?ERR_OPERATION_FAILED, #{
+                                <<"conflict">> => true,
+                                <<"current">> => #{
+                                    <<"uk3">> => Uk3,
+                                    <<"value">> => maps:get(<<"value">>, Current, false),
+                                    <<"version">> => maps:get(<<"version">>, Current, 0)
+                                }
+                            });
+                        {error, Msg} when is_binary(Msg) ->
+                            elib_response:error(Req0, Msg, ?ERR_OPERATION_FAILED);
+                        _ ->
+                            elib_response:error(
+                                Req0, error_msg(?ERR_OPERATION_FAILED), ?ERR_OPERATION_FAILED
+                            )
+                    end;
                 _ ->
-                    elib_response:error(
-                        Req0, error_msg(?ERR_OPERATION_FAILED), ?ERR_OPERATION_FAILED
-                    )
+                    elib_response:error(Req0, <<"人工待处理参数无效"/utf8>>, ?ERR_OPERATION_FAILED)
             end;
-        _ ->
-            elib_response:error(Req0, <<"人工待处理参数无效"/utf8>>, ?ERR_OPERATION_FAILED)
+        {oversized, Req1} ->
+            oversized_reply(Req1)
     end.
 
 %% expected_version 缺省/非整数 → undefined（旧端语义，直接应用推进版本）。
@@ -279,27 +304,26 @@ pinned_list(Req0, State) ->
 %% @end
 -spec delete_conversation(cowboy_req:req(), map()) -> cowboy_req:req().
 delete_conversation(Req0, State) ->
-    {ok, Body, _Req1} = cowboy_req:read_body(Req0),
-    Payload =
-        case Body of
-            <<>> -> #{};
-            _ -> jsone:decode(Body, [{object_format, map}])
-        end,
-
-    CurrentUid = auth_ds:current_uid(State),
-    ConversationId0 = maps:get(<<"conversation_id">>, Payload, <<>>),
-    % conversation_id 客户端按 TSID 契约以 string 传输（防 JS 精度丢失），
-    % 系统边界统一转回 integer 供 logic/ds/repo 使用；非数字原样返回交给 logic 守卫拒绝
-    ConversationId = normalize_conversation_id(ConversationId0),
-    Type = maps:get(<<"type">>, Payload, <<"c2c">>),
-
-    case conversation_logic:delete(CurrentUid, ConversationId, Type) of
-        ok ->
-            elib_response:success(Req0, #{});
-        {error, Msg} when is_binary(Msg) ->
-            elib_response:error(Req0, Msg, ?ERR_OPERATION_FAILED);
-        _ ->
-            elib_response:error(Req0, error_msg(?ERR_OPERATION_FAILED), ?ERR_OPERATION_FAILED)
+    case read_json_payload(Req0) of
+        {ok, Payload} ->
+            CurrentUid = auth_ds:current_uid(State),
+            ConversationId0 = maps:get(<<"conversation_id">>, Payload, <<>>),
+            % conversation_id 客户端按 TSID 契约以 string 传输（防 JS 精度丢失），
+            % 系统边界统一转回 integer 供 logic/ds/repo 使用；非数字原样返回交给 logic 守卫拒绝
+            ConversationId = normalize_conversation_id(ConversationId0),
+            Type = maps:get(<<"type">>, Payload, <<"c2c">>),
+            case conversation_logic:delete(CurrentUid, ConversationId, Type) of
+                ok ->
+                    elib_response:success(Req0, #{});
+                {error, Msg} when is_binary(Msg) ->
+                    elib_response:error(Req0, Msg, ?ERR_OPERATION_FAILED);
+                _ ->
+                    elib_response:error(
+                        Req0, error_msg(?ERR_OPERATION_FAILED), ?ERR_OPERATION_FAILED
+                    )
+            end;
+        {oversized, Req1} ->
+            oversized_reply(Req1)
     end.
 
 %% @doc 恢复已删除的会话
@@ -311,25 +335,22 @@ delete_conversation(Req0, State) ->
 %% @end
 -spec restore_conversation(cowboy_req:req(), map()) -> cowboy_req:req().
 restore_conversation(Req0, State) ->
-    {ok, Body, _Req1} = cowboy_req:read_body(Req0),
-    Payload =
-        case Body of
-            <<>> -> #{};
-            _ -> jsone:decode(Body, [{object_format, map}])
-        end,
-
-    CurrentUid = auth_ds:current_uid(State),
-    ConversationId0 = maps:get(<<"conversation_id">>, Payload, <<>>),
-    % conversation_id 客户端按 TSID 契约以 string 传输（防 JS 精度丢失），
-    % 系统边界统一转回 integer 供 logic/ds/repo 使用；非数字原样返回交给 logic 守卫拒绝
-    ConversationId = normalize_conversation_id(ConversationId0),
-    Type = maps:get(<<"type">>, Payload, <<"c2c">>),
-
-    case conversation_logic:restore(CurrentUid, ConversationId, Type) of
-        ok ->
-            elib_response:success(Req0, #{<<"restored">> => true});
-        {error, Msg} when is_binary(Msg) ->
-            elib_response:error(Req0, Msg, ?ERR_OPERATION_FAILED)
+    case read_json_payload(Req0) of
+        {ok, Payload} ->
+            CurrentUid = auth_ds:current_uid(State),
+            ConversationId0 = maps:get(<<"conversation_id">>, Payload, <<>>),
+            % conversation_id 客户端按 TSID 契约以 string 传输（防 JS 精度丢失），
+            % 系统边界统一转回 integer 供 logic/ds/repo 使用；非数字原样返回交给 logic 守卫拒绝
+            ConversationId = normalize_conversation_id(ConversationId0),
+            Type = maps:get(<<"type">>, Payload, <<"c2c">>),
+            case conversation_logic:restore(CurrentUid, ConversationId, Type) of
+                ok ->
+                    elib_response:success(Req0, #{<<"restored">> => true});
+                {error, Msg} when is_binary(Msg) ->
+                    elib_response:error(Req0, Msg, ?ERR_OPERATION_FAILED)
+            end;
+        {oversized, Req1} ->
+            oversized_reply(Req1)
     end.
 
 %% @doc 归一化 conversation_id 参数
