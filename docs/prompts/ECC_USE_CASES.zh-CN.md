@@ -585,6 +585,8 @@ $product-capability $orch-add-feature $tdd-workflow
 
 先核对当前仓库 HEAD、工作区状态、AGENTS.md/CLAUDE.md、架构/产品文档、API/WS/数据契约、真实代码和测试。以代码与可执行证据为准，标记 CURRENT、TARGET、LOCKED、UNKNOWN、NOT_VERIFIED；不能把文档/API 存在等同于功能已经端到端交付。
 
+当前代码/测试定位锚点：src/api/msg_handler.erl、src/api/websocket_handler.erl、src/ds/message_ds.erl、msg_c2c_ds.erl、msg_c2g_ds.erl；test/ds/message_ds_tests.erl、message_ds_ack_retry_tests.erl、test/domain/message_policy_tests.erl。按当前 HEAD 继续追踪 Logic/Repo、ACK、离线同步和多端一致性，不把该列表视为完整清单。
+
 读取该场景对应的领域概念、路由/接口、数据模型、Flutter/Admin 消费入口和现有测试，先做能力盘点：哪些可直接复用、哪些可通过配置组合、哪些确实缺失。不得重复造轮子或把未开放能力当作已交付。
 
 为真正缺失的能力形成 capability contract：角色与权限、用户旅程、状态机、输入输出、数据归属、API/WS、迁移兼容、失败恢复、观测和验收标准。客户输入不完整时列出阻塞问题并停在方案阶段；需求明确时按 orch-add-feature 的计划门禁执行，先写失败测试再实现最小差异。Erlang/OTP、Cowboy、PostgreSQL、Handler → Logic → DS → Repo、API/WS 契约、数据库迁移和跨端兼容。
@@ -602,6 +604,8 @@ $brownfield-retrospective $tdd-workflow $verification-loop
 任务：优化现有功能，重点用于新一代 AI 模型复审和改进旧 AI 模型生成的代码。
 
 先核对当前仓库 HEAD、工作区状态、AGENTS.md/CLAUDE.md、架构/产品文档、API/WS/数据契约、真实代码和测试。以代码与可执行证据为准，标记 CURRENT、TARGET、LOCKED、UNKNOWN、NOT_VERIFIED；不能把文档/API 存在等同于功能已经端到端交付。
+
+当前代码/测试定位锚点：src/api/msg_handler.erl、src/api/websocket_handler.erl、src/ds/message_ds.erl、msg_c2c_ds.erl、msg_c2g_ds.erl；test/ds/message_ds_tests.erl、message_ds_ack_retry_tests.erl、test/domain/message_policy_tests.erl。按当前 HEAD 继续追踪 Logic/Repo、ACK、离线同步和多端一致性，不把该列表视为完整清单。
 
 按 brownfield-retrospective 的 slice-first 方法，把范围限制在约 15 个文件或 2000 行以内。不要信任旧模型自评、注释或现有测试完整性；独立重建真实行为、调用链、数据流、权限边界、失败路径、并发/竞态、资源生命周期和跨端契约，建立改动前测试/性能/错误行为基线。
 
@@ -622,6 +626,8 @@ $test-collaboration $ai-regression-testing $verification-loop
 任务：测试现有功能，独立验证旧 AI 模型生成的实现。
 
 先核对当前仓库 HEAD、工作区状态、AGENTS.md/CLAUDE.md、架构/产品文档、API/WS/数据契约、真实代码和测试。以代码与可执行证据为准，标记 CURRENT、TARGET、LOCKED、UNKNOWN、NOT_VERIFIED；不能把文档/API 存在等同于功能已经端到端交付。
+
+当前代码/测试定位锚点：src/api/msg_handler.erl、src/api/websocket_handler.erl、src/ds/message_ds.erl、msg_c2c_ds.erl、msg_c2g_ds.erl；test/ds/message_ds_tests.erl、message_ds_ack_retry_tests.erl、test/domain/message_policy_tests.erl。按当前 HEAD 继续追踪 Logic/Repo、ACK、离线同步和多端一致性，不把该列表视为完整清单。
 
 先不要修改业务实现。盘点该场景已有单元、集成、契约、E2E、平台/设备测试和 CI 门禁，建立“需求/不变量 → 测试资产或 TEST-ID → 命令 → 证据”矩阵。覆盖正常路径、权限拒绝、非法输入、边界值、重复请求、并发、超时、故障恢复、旧数据兼容和跨端行为。
 
@@ -647,6 +653,8 @@ $product-capability $orch-add-feature $tdd-workflow
 
 先核对当前仓库 HEAD、工作区状态、AGENTS.md/CLAUDE.md、架构/产品文档、API/WS/数据契约、真实代码和测试。以代码与可执行证据为准，标记 CURRENT、TARGET、LOCKED、UNKNOWN、NOT_VERIFIED；不能把文档/API 存在等同于功能已经端到端交付。
 
+当前代码/测试定位锚点：src/api/group_handler.erl、group_member_handler.erl、group_notice_handler.erl、group_schedule_handler.erl、group_task_handler.erl、group_vote_handler.erl；test/api/group_handler_tests.erl、group_member_handler_tests.erl、group_schedule_handler_tests.erl、group_task_handler_tests.erl、group_vote_handler_tests.erl。执行时按当前 HEAD 核对实际状态机和 feature gate。
+
 读取该场景对应的领域概念、路由/接口、数据模型、Flutter/Admin 消费入口和现有测试，先做能力盘点：哪些可直接复用、哪些可通过配置组合、哪些确实缺失。不得重复造轮子或把未开放能力当作已交付。
 
 为真正缺失的能力形成 capability contract：角色与权限、用户旅程、状态机、输入输出、数据归属、API/WS、迁移兼容、失败恢复、观测和验收标准。客户输入不完整时列出阻塞问题并停在方案阶段；需求明确时按 orch-add-feature 的计划门禁执行，先写失败测试再实现最小差异。Erlang/OTP、Cowboy、PostgreSQL、Handler → Logic → DS → Repo、API/WS 契约、数据库迁移和跨端兼容。
@@ -664,6 +672,8 @@ $brownfield-retrospective $tdd-workflow $verification-loop
 任务：优化现有功能，重点用于新一代 AI 模型复审和改进旧 AI 模型生成的代码。
 
 先核对当前仓库 HEAD、工作区状态、AGENTS.md/CLAUDE.md、架构/产品文档、API/WS/数据契约、真实代码和测试。以代码与可执行证据为准，标记 CURRENT、TARGET、LOCKED、UNKNOWN、NOT_VERIFIED；不能把文档/API 存在等同于功能已经端到端交付。
+
+当前代码/测试定位锚点：src/api/group_handler.erl、group_member_handler.erl、group_notice_handler.erl、group_schedule_handler.erl、group_task_handler.erl、group_vote_handler.erl；test/api/group_handler_tests.erl、group_member_handler_tests.erl、group_schedule_handler_tests.erl、group_task_handler_tests.erl、group_vote_handler_tests.erl。执行时按当前 HEAD 核对实际状态机和 feature gate。
 
 按 brownfield-retrospective 的 slice-first 方法，把范围限制在约 15 个文件或 2000 行以内。不要信任旧模型自评、注释或现有测试完整性；独立重建真实行为、调用链、数据流、权限边界、失败路径、并发/竞态、资源生命周期和跨端契约，建立改动前测试/性能/错误行为基线。
 
@@ -684,6 +694,8 @@ $test-collaboration $ai-regression-testing $verification-loop
 任务：测试现有功能，独立验证旧 AI 模型生成的实现。
 
 先核对当前仓库 HEAD、工作区状态、AGENTS.md/CLAUDE.md、架构/产品文档、API/WS/数据契约、真实代码和测试。以代码与可执行证据为准，标记 CURRENT、TARGET、LOCKED、UNKNOWN、NOT_VERIFIED；不能把文档/API 存在等同于功能已经端到端交付。
+
+当前代码/测试定位锚点：src/api/group_handler.erl、group_member_handler.erl、group_notice_handler.erl、group_schedule_handler.erl、group_task_handler.erl、group_vote_handler.erl；test/api/group_handler_tests.erl、group_member_handler_tests.erl、group_schedule_handler_tests.erl、group_task_handler_tests.erl、group_vote_handler_tests.erl。执行时按当前 HEAD 核对实际状态机和 feature gate。
 
 先不要修改业务实现。盘点该场景已有单元、集成、契约、E2E、平台/设备测试和 CI 门禁，建立“需求/不变量 → 测试资产或 TEST-ID → 命令 → 证据”矩阵。覆盖正常路径、权限拒绝、非法输入、边界值、重复请求、并发、超时、故障恢复、旧数据兼容和跨端行为。
 
@@ -709,6 +721,8 @@ $product-capability $orch-add-feature $tdd-workflow
 
 先核对当前仓库 HEAD、工作区状态、AGENTS.md/CLAUDE.md、架构/产品文档、API/WS/数据契约、真实代码和测试。以代码与可执行证据为准，标记 CURRENT、TARGET、LOCKED、UNKNOWN、NOT_VERIFIED；不能把文档/API 存在等同于功能已经端到端交付。
 
+当前代码/测试定位锚点：src/api/channel_handler.erl、channel_handler_comment.erl、channel_handler_message.erl、channel_handler_order.erl、channel_webhook_handler.erl；test/api/channel_handler_tests.erl、channel_discovery_handler_tests.erl、channel_webhook_handler_tests.erl。另核对订阅/订单/支付的真实服务端授权，不以页面入口代替业务状态。
+
 读取该场景对应的领域概念、路由/接口、数据模型、Flutter/Admin 消费入口和现有测试，先做能力盘点：哪些可直接复用、哪些可通过配置组合、哪些确实缺失。不得重复造轮子或把未开放能力当作已交付。
 
 为真正缺失的能力形成 capability contract：角色与权限、用户旅程、状态机、输入输出、数据归属、API/WS、迁移兼容、失败恢复、观测和验收标准。客户输入不完整时列出阻塞问题并停在方案阶段；需求明确时按 orch-add-feature 的计划门禁执行，先写失败测试再实现最小差异。Erlang/OTP、Cowboy、PostgreSQL、Handler → Logic → DS → Repo、API/WS 契约、数据库迁移和跨端兼容。
@@ -726,6 +740,8 @@ $brownfield-retrospective $tdd-workflow $verification-loop
 任务：优化现有功能，重点用于新一代 AI 模型复审和改进旧 AI 模型生成的代码。
 
 先核对当前仓库 HEAD、工作区状态、AGENTS.md/CLAUDE.md、架构/产品文档、API/WS/数据契约、真实代码和测试。以代码与可执行证据为准，标记 CURRENT、TARGET、LOCKED、UNKNOWN、NOT_VERIFIED；不能把文档/API 存在等同于功能已经端到端交付。
+
+当前代码/测试定位锚点：src/api/channel_handler.erl、channel_handler_comment.erl、channel_handler_message.erl、channel_handler_order.erl、channel_webhook_handler.erl；test/api/channel_handler_tests.erl、channel_discovery_handler_tests.erl、channel_webhook_handler_tests.erl。另核对订阅/订单/支付的真实服务端授权，不以页面入口代替业务状态。
 
 按 brownfield-retrospective 的 slice-first 方法，把范围限制在约 15 个文件或 2000 行以内。不要信任旧模型自评、注释或现有测试完整性；独立重建真实行为、调用链、数据流、权限边界、失败路径、并发/竞态、资源生命周期和跨端契约，建立改动前测试/性能/错误行为基线。
 
@@ -746,6 +762,8 @@ $test-collaboration $ai-regression-testing $verification-loop
 任务：测试现有功能，独立验证旧 AI 模型生成的实现。
 
 先核对当前仓库 HEAD、工作区状态、AGENTS.md/CLAUDE.md、架构/产品文档、API/WS/数据契约、真实代码和测试。以代码与可执行证据为准，标记 CURRENT、TARGET、LOCKED、UNKNOWN、NOT_VERIFIED；不能把文档/API 存在等同于功能已经端到端交付。
+
+当前代码/测试定位锚点：src/api/channel_handler.erl、channel_handler_comment.erl、channel_handler_message.erl、channel_handler_order.erl、channel_webhook_handler.erl；test/api/channel_handler_tests.erl、channel_discovery_handler_tests.erl、channel_webhook_handler_tests.erl。另核对订阅/订单/支付的真实服务端授权，不以页面入口代替业务状态。
 
 先不要修改业务实现。盘点该场景已有单元、集成、契约、E2E、平台/设备测试和 CI 门禁，建立“需求/不变量 → 测试资产或 TEST-ID → 命令 → 证据”矩阵。覆盖正常路径、权限拒绝、非法输入、边界值、重复请求、并发、超时、故障恢复、旧数据兼容和跨端行为。
 
@@ -771,6 +789,8 @@ $product-capability $orch-add-feature $tdd-workflow
 
 先核对当前仓库 HEAD、工作区状态、AGENTS.md/CLAUDE.md、架构/产品文档、API/WS/数据契约、真实代码和测试。以代码与可执行证据为准，标记 CURRENT、TARGET、LOCKED、UNKNOWN、NOT_VERIFIED；不能把文档/API 存在等同于功能已经端到端交付。
 
+当前代码/测试定位锚点：src/api/moment_handler.erl、micro_community_handler.erl、micro_community_content_handler.erl、micro_community_join_handler.erl；test/api/moment_handler_tests.erl、micro_community_websocket_tests.erl、test/ds/moment_atomic_binding_tests.erl、moment_delete_atomic_pg_tests.erl。区分朋友圈与微社区两个领域的绑定和可见性规则。
+
 读取该场景对应的领域概念、路由/接口、数据模型、Flutter/Admin 消费入口和现有测试，先做能力盘点：哪些可直接复用、哪些可通过配置组合、哪些确实缺失。不得重复造轮子或把未开放能力当作已交付。
 
 为真正缺失的能力形成 capability contract：角色与权限、用户旅程、状态机、输入输出、数据归属、API/WS、迁移兼容、失败恢复、观测和验收标准。客户输入不完整时列出阻塞问题并停在方案阶段；需求明确时按 orch-add-feature 的计划门禁执行，先写失败测试再实现最小差异。Erlang/OTP、Cowboy、PostgreSQL、Handler → Logic → DS → Repo、API/WS 契约、数据库迁移和跨端兼容。
@@ -788,6 +808,8 @@ $brownfield-retrospective $tdd-workflow $verification-loop
 任务：优化现有功能，重点用于新一代 AI 模型复审和改进旧 AI 模型生成的代码。
 
 先核对当前仓库 HEAD、工作区状态、AGENTS.md/CLAUDE.md、架构/产品文档、API/WS/数据契约、真实代码和测试。以代码与可执行证据为准，标记 CURRENT、TARGET、LOCKED、UNKNOWN、NOT_VERIFIED；不能把文档/API 存在等同于功能已经端到端交付。
+
+当前代码/测试定位锚点：src/api/moment_handler.erl、micro_community_handler.erl、micro_community_content_handler.erl、micro_community_join_handler.erl；test/api/moment_handler_tests.erl、micro_community_websocket_tests.erl、test/ds/moment_atomic_binding_tests.erl、moment_delete_atomic_pg_tests.erl。区分朋友圈与微社区两个领域的绑定和可见性规则。
 
 按 brownfield-retrospective 的 slice-first 方法，把范围限制在约 15 个文件或 2000 行以内。不要信任旧模型自评、注释或现有测试完整性；独立重建真实行为、调用链、数据流、权限边界、失败路径、并发/竞态、资源生命周期和跨端契约，建立改动前测试/性能/错误行为基线。
 
@@ -808,6 +830,8 @@ $test-collaboration $ai-regression-testing $verification-loop
 任务：测试现有功能，独立验证旧 AI 模型生成的实现。
 
 先核对当前仓库 HEAD、工作区状态、AGENTS.md/CLAUDE.md、架构/产品文档、API/WS/数据契约、真实代码和测试。以代码与可执行证据为准，标记 CURRENT、TARGET、LOCKED、UNKNOWN、NOT_VERIFIED；不能把文档/API 存在等同于功能已经端到端交付。
+
+当前代码/测试定位锚点：src/api/moment_handler.erl、micro_community_handler.erl、micro_community_content_handler.erl、micro_community_join_handler.erl；test/api/moment_handler_tests.erl、micro_community_websocket_tests.erl、test/ds/moment_atomic_binding_tests.erl、moment_delete_atomic_pg_tests.erl。区分朋友圈与微社区两个领域的绑定和可见性规则。
 
 先不要修改业务实现。盘点该场景已有单元、集成、契约、E2E、平台/设备测试和 CI 门禁，建立“需求/不变量 → 测试资产或 TEST-ID → 命令 → 证据”矩阵。覆盖正常路径、权限拒绝、非法输入、边界值、重复请求、并发、超时、故障恢复、旧数据兼容和跨端行为。
 
@@ -833,6 +857,8 @@ $product-capability $orch-add-feature $tdd-workflow
 
 先核对当前仓库 HEAD、工作区状态、AGENTS.md/CLAUDE.md、架构/产品文档、API/WS/数据契约、真实代码和测试。以代码与可执行证据为准，标记 CURRENT、TARGET、LOCKED、UNKNOWN、NOT_VERIFIED；不能把文档/API 存在等同于功能已经端到端交付。
 
+当前代码/测试定位锚点：src/api/organization_handler.erl、organization_member_handler.erl、enterprise_directory_handler.erl、enterprise_directory_member_handler.erl、enterprise_workspace_handler.erl、workspace_handler.erl；test/api/enterprise_mobile_bootstrap_http_tests.erl、enterprise_directory_member_access_http_checks.erl、enterprise_oa_workbench_http_tests.erl。核对组织、目录、工作空间与成员关系的真实权限边界。
+
 读取该场景对应的领域概念、路由/接口、数据模型、Flutter/Admin 消费入口和现有测试，先做能力盘点：哪些可直接复用、哪些可通过配置组合、哪些确实缺失。不得重复造轮子或把未开放能力当作已交付。
 
 为真正缺失的能力形成 capability contract：角色与权限、用户旅程、状态机、输入输出、数据归属、API/WS、迁移兼容、失败恢复、观测和验收标准。客户输入不完整时列出阻塞问题并停在方案阶段；需求明确时按 orch-add-feature 的计划门禁执行，先写失败测试再实现最小差异。Erlang/OTP、Cowboy、PostgreSQL、Handler → Logic → DS → Repo、API/WS 契约、数据库迁移和跨端兼容。
@@ -850,6 +876,8 @@ $brownfield-retrospective $tdd-workflow $verification-loop
 任务：优化现有功能，重点用于新一代 AI 模型复审和改进旧 AI 模型生成的代码。
 
 先核对当前仓库 HEAD、工作区状态、AGENTS.md/CLAUDE.md、架构/产品文档、API/WS/数据契约、真实代码和测试。以代码与可执行证据为准，标记 CURRENT、TARGET、LOCKED、UNKNOWN、NOT_VERIFIED；不能把文档/API 存在等同于功能已经端到端交付。
+
+当前代码/测试定位锚点：src/api/organization_handler.erl、organization_member_handler.erl、enterprise_directory_handler.erl、enterprise_directory_member_handler.erl、enterprise_workspace_handler.erl、workspace_handler.erl；test/api/enterprise_mobile_bootstrap_http_tests.erl、enterprise_directory_member_access_http_checks.erl、enterprise_oa_workbench_http_tests.erl。核对组织、目录、工作空间与成员关系的真实权限边界。
 
 按 brownfield-retrospective 的 slice-first 方法，把范围限制在约 15 个文件或 2000 行以内。不要信任旧模型自评、注释或现有测试完整性；独立重建真实行为、调用链、数据流、权限边界、失败路径、并发/竞态、资源生命周期和跨端契约，建立改动前测试/性能/错误行为基线。
 
@@ -870,6 +898,8 @@ $test-collaboration $ai-regression-testing $verification-loop
 任务：测试现有功能，独立验证旧 AI 模型生成的实现。
 
 先核对当前仓库 HEAD、工作区状态、AGENTS.md/CLAUDE.md、架构/产品文档、API/WS/数据契约、真实代码和测试。以代码与可执行证据为准，标记 CURRENT、TARGET、LOCKED、UNKNOWN、NOT_VERIFIED；不能把文档/API 存在等同于功能已经端到端交付。
+
+当前代码/测试定位锚点：src/api/organization_handler.erl、organization_member_handler.erl、enterprise_directory_handler.erl、enterprise_directory_member_handler.erl、enterprise_workspace_handler.erl、workspace_handler.erl；test/api/enterprise_mobile_bootstrap_http_tests.erl、enterprise_directory_member_access_http_checks.erl、enterprise_oa_workbench_http_tests.erl。核对组织、目录、工作空间与成员关系的真实权限边界。
 
 先不要修改业务实现。盘点该场景已有单元、集成、契约、E2E、平台/设备测试和 CI 门禁，建立“需求/不变量 → 测试资产或 TEST-ID → 命令 → 证据”矩阵。覆盖正常路径、权限拒绝、非法输入、边界值、重复请求、并发、超时、故障恢复、旧数据兼容和跨端行为。
 
@@ -895,6 +925,8 @@ $product-capability $orch-add-feature $tdd-workflow
 
 先核对当前仓库 HEAD、工作区状态、AGENTS.md/CLAUDE.md、架构/产品文档、API/WS/数据契约、真实代码和测试。以代码与可执行证据为准，标记 CURRENT、TARGET、LOCKED、UNKNOWN、NOT_VERIFIED；不能把文档/API 存在等同于功能已经端到端交付。
 
+当前代码/测试定位锚点：src/api/project_handler.erl、project_channel_handler.erl、project_member_handler.erl、project_milestone_handler.erl、project_task_handler.erl；test/api/project_member_handler_tests.erl、project_milestone_handler_tests.erl、test/ds/project_member_ds_tests.erl、project_milestone_ds_tests.erl。按实际代码区分 Project、Workspace、Organization，不自行发明层级。
+
 读取该场景对应的领域概念、路由/接口、数据模型、Flutter/Admin 消费入口和现有测试，先做能力盘点：哪些可直接复用、哪些可通过配置组合、哪些确实缺失。不得重复造轮子或把未开放能力当作已交付。
 
 为真正缺失的能力形成 capability contract：角色与权限、用户旅程、状态机、输入输出、数据归属、API/WS、迁移兼容、失败恢复、观测和验收标准。客户输入不完整时列出阻塞问题并停在方案阶段；需求明确时按 orch-add-feature 的计划门禁执行，先写失败测试再实现最小差异。Erlang/OTP、Cowboy、PostgreSQL、Handler → Logic → DS → Repo、API/WS 契约、数据库迁移和跨端兼容。
@@ -912,6 +944,8 @@ $brownfield-retrospective $tdd-workflow $verification-loop
 任务：优化现有功能，重点用于新一代 AI 模型复审和改进旧 AI 模型生成的代码。
 
 先核对当前仓库 HEAD、工作区状态、AGENTS.md/CLAUDE.md、架构/产品文档、API/WS/数据契约、真实代码和测试。以代码与可执行证据为准，标记 CURRENT、TARGET、LOCKED、UNKNOWN、NOT_VERIFIED；不能把文档/API 存在等同于功能已经端到端交付。
+
+当前代码/测试定位锚点：src/api/project_handler.erl、project_channel_handler.erl、project_member_handler.erl、project_milestone_handler.erl、project_task_handler.erl；test/api/project_member_handler_tests.erl、project_milestone_handler_tests.erl、test/ds/project_member_ds_tests.erl、project_milestone_ds_tests.erl。按实际代码区分 Project、Workspace、Organization，不自行发明层级。
 
 按 brownfield-retrospective 的 slice-first 方法，把范围限制在约 15 个文件或 2000 行以内。不要信任旧模型自评、注释或现有测试完整性；独立重建真实行为、调用链、数据流、权限边界、失败路径、并发/竞态、资源生命周期和跨端契约，建立改动前测试/性能/错误行为基线。
 
@@ -932,6 +966,8 @@ $test-collaboration $ai-regression-testing $verification-loop
 任务：测试现有功能，独立验证旧 AI 模型生成的实现。
 
 先核对当前仓库 HEAD、工作区状态、AGENTS.md/CLAUDE.md、架构/产品文档、API/WS/数据契约、真实代码和测试。以代码与可执行证据为准，标记 CURRENT、TARGET、LOCKED、UNKNOWN、NOT_VERIFIED；不能把文档/API 存在等同于功能已经端到端交付。
+
+当前代码/测试定位锚点：src/api/project_handler.erl、project_channel_handler.erl、project_member_handler.erl、project_milestone_handler.erl、project_task_handler.erl；test/api/project_member_handler_tests.erl、project_milestone_handler_tests.erl、test/ds/project_member_ds_tests.erl、project_milestone_ds_tests.erl。按实际代码区分 Project、Workspace、Organization，不自行发明层级。
 
 先不要修改业务实现。盘点该场景已有单元、集成、契约、E2E、平台/设备测试和 CI 门禁，建立“需求/不变量 → 测试资产或 TEST-ID → 命令 → 证据”矩阵。覆盖正常路径、权限拒绝、非法输入、边界值、重复请求、并发、超时、故障恢复、旧数据兼容和跨端行为。
 
@@ -957,6 +993,8 @@ $product-capability $orch-add-feature $tdd-workflow
 
 先核对当前仓库 HEAD、工作区状态、AGENTS.md/CLAUDE.md、架构/产品文档、API/WS/数据契约、真实代码和测试。以代码与可执行证据为准，标记 CURRENT、TARGET、LOCKED、UNKNOWN、NOT_VERIFIED；不能把文档/API 存在等同于功能已经端到端交付。
 
+当前代码/测试定位锚点：src/features/customer_service/、src/api/enterprise_cs_seat_handler.erl、src/logic/enterprise_cs_seat_logic.erl；test/features/customer_service/application/cs_application_tests.erl、cs_closure_tests.erl、cs_inbox_contract_tests.erl、test/api/customer_service_seat_http_checks.erl、customer_service_seat_sse_checks.erl。重点核验坐席授权域、会话关闭和 SSE 生命周期。
+
 读取该场景对应的领域概念、路由/接口、数据模型、Flutter/Admin 消费入口和现有测试，先做能力盘点：哪些可直接复用、哪些可通过配置组合、哪些确实缺失。不得重复造轮子或把未开放能力当作已交付。
 
 为真正缺失的能力形成 capability contract：角色与权限、用户旅程、状态机、输入输出、数据归属、API/WS、迁移兼容、失败恢复、观测和验收标准。客户输入不完整时列出阻塞问题并停在方案阶段；需求明确时按 orch-add-feature 的计划门禁执行，先写失败测试再实现最小差异。Erlang/OTP、Cowboy、PostgreSQL、Handler → Logic → DS → Repo、API/WS 契约、数据库迁移和跨端兼容。
@@ -974,6 +1012,8 @@ $brownfield-retrospective $tdd-workflow $verification-loop
 任务：优化现有功能，重点用于新一代 AI 模型复审和改进旧 AI 模型生成的代码。
 
 先核对当前仓库 HEAD、工作区状态、AGENTS.md/CLAUDE.md、架构/产品文档、API/WS/数据契约、真实代码和测试。以代码与可执行证据为准，标记 CURRENT、TARGET、LOCKED、UNKNOWN、NOT_VERIFIED；不能把文档/API 存在等同于功能已经端到端交付。
+
+当前代码/测试定位锚点：src/features/customer_service/、src/api/enterprise_cs_seat_handler.erl、src/logic/enterprise_cs_seat_logic.erl；test/features/customer_service/application/cs_application_tests.erl、cs_closure_tests.erl、cs_inbox_contract_tests.erl、test/api/customer_service_seat_http_checks.erl、customer_service_seat_sse_checks.erl。重点核验坐席授权域、会话关闭和 SSE 生命周期。
 
 按 brownfield-retrospective 的 slice-first 方法，把范围限制在约 15 个文件或 2000 行以内。不要信任旧模型自评、注释或现有测试完整性；独立重建真实行为、调用链、数据流、权限边界、失败路径、并发/竞态、资源生命周期和跨端契约，建立改动前测试/性能/错误行为基线。
 
@@ -994,6 +1034,8 @@ $test-collaboration $ai-regression-testing $verification-loop
 任务：测试现有功能，独立验证旧 AI 模型生成的实现。
 
 先核对当前仓库 HEAD、工作区状态、AGENTS.md/CLAUDE.md、架构/产品文档、API/WS/数据契约、真实代码和测试。以代码与可执行证据为准，标记 CURRENT、TARGET、LOCKED、UNKNOWN、NOT_VERIFIED；不能把文档/API 存在等同于功能已经端到端交付。
+
+当前代码/测试定位锚点：src/features/customer_service/、src/api/enterprise_cs_seat_handler.erl、src/logic/enterprise_cs_seat_logic.erl；test/features/customer_service/application/cs_application_tests.erl、cs_closure_tests.erl、cs_inbox_contract_tests.erl、test/api/customer_service_seat_http_checks.erl、customer_service_seat_sse_checks.erl。重点核验坐席授权域、会话关闭和 SSE 生命周期。
 
 先不要修改业务实现。盘点该场景已有单元、集成、契约、E2E、平台/设备测试和 CI 门禁，建立“需求/不变量 → 测试资产或 TEST-ID → 命令 → 证据”矩阵。覆盖正常路径、权限拒绝、非法输入、边界值、重复请求、并发、超时、故障恢复、旧数据兼容和跨端行为。
 
@@ -1019,6 +1061,8 @@ $product-capability $orch-add-feature $tdd-workflow
 
 先核对当前仓库 HEAD、工作区状态、AGENTS.md/CLAUDE.md、架构/产品文档、API/WS/数据契约、真实代码和测试。以代码与可执行证据为准，标记 CURRENT、TARGET、LOCKED、UNKNOWN、NOT_VERIFIED；不能把文档/API 存在等同于功能已经端到端交付。
 
+当前代码/测试定位锚点：src/api/enterprise_directory_handler.erl、enterprise_directory_member_handler.erl、enterprise_asset_handler.erl、enterprise_message_handler.erl、enterprise_group_handler.erl、enterprise_internal_routes.erl；test/api/enterprise_directory_member_access_http_checks.erl、enterprise_asset_presign_boundary_tests.erl、enterprise_message_authorization_http_checks.erl、enterprise_internal_authorization_http_checks.erl。跨组织数据访问必须以服务端权限检查为准。
+
 读取该场景对应的领域概念、路由/接口、数据模型、Flutter/Admin 消费入口和现有测试，先做能力盘点：哪些可直接复用、哪些可通过配置组合、哪些确实缺失。不得重复造轮子或把未开放能力当作已交付。
 
 为真正缺失的能力形成 capability contract：角色与权限、用户旅程、状态机、输入输出、数据归属、API/WS、迁移兼容、失败恢复、观测和验收标准。客户输入不完整时列出阻塞问题并停在方案阶段；需求明确时按 orch-add-feature 的计划门禁执行，先写失败测试再实现最小差异。Erlang/OTP、Cowboy、PostgreSQL、Handler → Logic → DS → Repo、API/WS 契约、数据库迁移和跨端兼容。
@@ -1036,6 +1080,8 @@ $brownfield-retrospective $tdd-workflow $verification-loop
 任务：优化现有功能，重点用于新一代 AI 模型复审和改进旧 AI 模型生成的代码。
 
 先核对当前仓库 HEAD、工作区状态、AGENTS.md/CLAUDE.md、架构/产品文档、API/WS/数据契约、真实代码和测试。以代码与可执行证据为准，标记 CURRENT、TARGET、LOCKED、UNKNOWN、NOT_VERIFIED；不能把文档/API 存在等同于功能已经端到端交付。
+
+当前代码/测试定位锚点：src/api/enterprise_directory_handler.erl、enterprise_directory_member_handler.erl、enterprise_asset_handler.erl、enterprise_message_handler.erl、enterprise_group_handler.erl、enterprise_internal_routes.erl；test/api/enterprise_directory_member_access_http_checks.erl、enterprise_asset_presign_boundary_tests.erl、enterprise_message_authorization_http_checks.erl、enterprise_internal_authorization_http_checks.erl。跨组织数据访问必须以服务端权限检查为准。
 
 按 brownfield-retrospective 的 slice-first 方法，把范围限制在约 15 个文件或 2000 行以内。不要信任旧模型自评、注释或现有测试完整性；独立重建真实行为、调用链、数据流、权限边界、失败路径、并发/竞态、资源生命周期和跨端契约，建立改动前测试/性能/错误行为基线。
 
@@ -1056,6 +1102,8 @@ $test-collaboration $ai-regression-testing $verification-loop
 任务：测试现有功能，独立验证旧 AI 模型生成的实现。
 
 先核对当前仓库 HEAD、工作区状态、AGENTS.md/CLAUDE.md、架构/产品文档、API/WS/数据契约、真实代码和测试。以代码与可执行证据为准，标记 CURRENT、TARGET、LOCKED、UNKNOWN、NOT_VERIFIED；不能把文档/API 存在等同于功能已经端到端交付。
+
+当前代码/测试定位锚点：src/api/enterprise_directory_handler.erl、enterprise_directory_member_handler.erl、enterprise_asset_handler.erl、enterprise_message_handler.erl、enterprise_group_handler.erl、enterprise_internal_routes.erl；test/api/enterprise_directory_member_access_http_checks.erl、enterprise_asset_presign_boundary_tests.erl、enterprise_message_authorization_http_checks.erl、enterprise_internal_authorization_http_checks.erl。跨组织数据访问必须以服务端权限检查为准。
 
 先不要修改业务实现。盘点该场景已有单元、集成、契约、E2E、平台/设备测试和 CI 门禁，建立“需求/不变量 → 测试资产或 TEST-ID → 命令 → 证据”矩阵。覆盖正常路径、权限拒绝、非法输入、边界值、重复请求、并发、超时、故障恢复、旧数据兼容和跨端行为。
 
@@ -1081,6 +1129,8 @@ $product-capability $orch-add-feature $tdd-workflow
 
 先核对当前仓库 HEAD、工作区状态、AGENTS.md/CLAUDE.md、架构/产品文档、API/WS/数据契约、真实代码和测试。以代码与可执行证据为准，标记 CURRENT、TARGET、LOCKED、UNKNOWN、NOT_VERIFIED；不能把文档/API 存在等同于功能已经端到端交付。
 
+当前代码/测试定位锚点：src/api/ai_agent_handler.erl、agent_task_handler.erl、agent_card_handler.erl、agent_mandate_handler.erl、mcp_handler.erl、src/features/agent/；test/features/agent/agent_run_acceptance_tests.erl、agent_tool_authorizer_acceptance_tests.erl、agent_mcp_adapter_acceptance_tests.erl、agent_grant_api_contract_tests.erl。按当前领域定义区分 Agent、Bot 与普通用户，核验 grant/mandate/tool authorization 和恢复语义。
+
 读取该场景对应的领域概念、路由/接口、数据模型、Flutter/Admin 消费入口和现有测试，先做能力盘点：哪些可直接复用、哪些可通过配置组合、哪些确实缺失。不得重复造轮子或把未开放能力当作已交付。
 
 为真正缺失的能力形成 capability contract：角色与权限、用户旅程、状态机、输入输出、数据归属、API/WS、迁移兼容、失败恢复、观测和验收标准。客户输入不完整时列出阻塞问题并停在方案阶段；需求明确时按 orch-add-feature 的计划门禁执行，先写失败测试再实现最小差异。Erlang/OTP、Cowboy、PostgreSQL、Handler → Logic → DS → Repo、API/WS 契约、数据库迁移和跨端兼容。
@@ -1098,6 +1148,8 @@ $brownfield-retrospective $tdd-workflow $verification-loop
 任务：优化现有功能，重点用于新一代 AI 模型复审和改进旧 AI 模型生成的代码。
 
 先核对当前仓库 HEAD、工作区状态、AGENTS.md/CLAUDE.md、架构/产品文档、API/WS/数据契约、真实代码和测试。以代码与可执行证据为准，标记 CURRENT、TARGET、LOCKED、UNKNOWN、NOT_VERIFIED；不能把文档/API 存在等同于功能已经端到端交付。
+
+当前代码/测试定位锚点：src/api/ai_agent_handler.erl、agent_task_handler.erl、agent_card_handler.erl、agent_mandate_handler.erl、mcp_handler.erl、src/features/agent/；test/features/agent/agent_run_acceptance_tests.erl、agent_tool_authorizer_acceptance_tests.erl、agent_mcp_adapter_acceptance_tests.erl、agent_grant_api_contract_tests.erl。按当前领域定义区分 Agent、Bot 与普通用户，核验 grant/mandate/tool authorization 和恢复语义。
 
 按 brownfield-retrospective 的 slice-first 方法，把范围限制在约 15 个文件或 2000 行以内。不要信任旧模型自评、注释或现有测试完整性；独立重建真实行为、调用链、数据流、权限边界、失败路径、并发/竞态、资源生命周期和跨端契约，建立改动前测试/性能/错误行为基线。
 
@@ -1118,6 +1170,8 @@ $test-collaboration $ai-regression-testing $verification-loop
 任务：测试现有功能，独立验证旧 AI 模型生成的实现。
 
 先核对当前仓库 HEAD、工作区状态、AGENTS.md/CLAUDE.md、架构/产品文档、API/WS/数据契约、真实代码和测试。以代码与可执行证据为准，标记 CURRENT、TARGET、LOCKED、UNKNOWN、NOT_VERIFIED；不能把文档/API 存在等同于功能已经端到端交付。
+
+当前代码/测试定位锚点：src/api/ai_agent_handler.erl、agent_task_handler.erl、agent_card_handler.erl、agent_mandate_handler.erl、mcp_handler.erl、src/features/agent/；test/features/agent/agent_run_acceptance_tests.erl、agent_tool_authorizer_acceptance_tests.erl、agent_mcp_adapter_acceptance_tests.erl、agent_grant_api_contract_tests.erl。按当前领域定义区分 Agent、Bot 与普通用户，核验 grant/mandate/tool authorization 和恢复语义。
 
 先不要修改业务实现。盘点该场景已有单元、集成、契约、E2E、平台/设备测试和 CI 门禁，建立“需求/不变量 → 测试资产或 TEST-ID → 命令 → 证据”矩阵。覆盖正常路径、权限拒绝、非法输入、边界值、重复请求、并发、超时、故障恢复、旧数据兼容和跨端行为。
 
@@ -1143,6 +1197,8 @@ $product-capability $orch-add-feature $tdd-workflow
 
 先核对当前仓库 HEAD、工作区状态、AGENTS.md/CLAUDE.md、架构/产品文档、API/WS/数据契约、真实代码和测试。以代码与可执行证据为准，标记 CURRENT、TARGET、LOCKED、UNKNOWN、NOT_VERIFIED；不能把文档/API 存在等同于功能已经端到端交付。
 
+当前代码/测试定位锚点：src/api/bot_handler.erl、channel_webhook_handler.erl、enterprise_webhook_handler.erl、src/logic/bot_webhook_delivery_logic.erl；test/api/bot_handler_tests.erl、channel_webhook_handler_tests.erl、enterprise_webhook_handler_tests.erl、test/ds/bot_ds_tests.erl。检查签名、重放、幂等、投递重试和 webhook secret 脱敏。
+
 读取该场景对应的领域概念、路由/接口、数据模型、Flutter/Admin 消费入口和现有测试，先做能力盘点：哪些可直接复用、哪些可通过配置组合、哪些确实缺失。不得重复造轮子或把未开放能力当作已交付。
 
 为真正缺失的能力形成 capability contract：角色与权限、用户旅程、状态机、输入输出、数据归属、API/WS、迁移兼容、失败恢复、观测和验收标准。客户输入不完整时列出阻塞问题并停在方案阶段；需求明确时按 orch-add-feature 的计划门禁执行，先写失败测试再实现最小差异。Erlang/OTP、Cowboy、PostgreSQL、Handler → Logic → DS → Repo、API/WS 契约、数据库迁移和跨端兼容。
@@ -1160,6 +1216,8 @@ $brownfield-retrospective $tdd-workflow $verification-loop
 任务：优化现有功能，重点用于新一代 AI 模型复审和改进旧 AI 模型生成的代码。
 
 先核对当前仓库 HEAD、工作区状态、AGENTS.md/CLAUDE.md、架构/产品文档、API/WS/数据契约、真实代码和测试。以代码与可执行证据为准，标记 CURRENT、TARGET、LOCKED、UNKNOWN、NOT_VERIFIED；不能把文档/API 存在等同于功能已经端到端交付。
+
+当前代码/测试定位锚点：src/api/bot_handler.erl、channel_webhook_handler.erl、enterprise_webhook_handler.erl、src/logic/bot_webhook_delivery_logic.erl；test/api/bot_handler_tests.erl、channel_webhook_handler_tests.erl、enterprise_webhook_handler_tests.erl、test/ds/bot_ds_tests.erl。检查签名、重放、幂等、投递重试和 webhook secret 脱敏。
 
 按 brownfield-retrospective 的 slice-first 方法，把范围限制在约 15 个文件或 2000 行以内。不要信任旧模型自评、注释或现有测试完整性；独立重建真实行为、调用链、数据流、权限边界、失败路径、并发/竞态、资源生命周期和跨端契约，建立改动前测试/性能/错误行为基线。
 
@@ -1180,6 +1238,8 @@ $test-collaboration $ai-regression-testing $verification-loop
 任务：测试现有功能，独立验证旧 AI 模型生成的实现。
 
 先核对当前仓库 HEAD、工作区状态、AGENTS.md/CLAUDE.md、架构/产品文档、API/WS/数据契约、真实代码和测试。以代码与可执行证据为准，标记 CURRENT、TARGET、LOCKED、UNKNOWN、NOT_VERIFIED；不能把文档/API 存在等同于功能已经端到端交付。
+
+当前代码/测试定位锚点：src/api/bot_handler.erl、channel_webhook_handler.erl、enterprise_webhook_handler.erl、src/logic/bot_webhook_delivery_logic.erl；test/api/bot_handler_tests.erl、channel_webhook_handler_tests.erl、enterprise_webhook_handler_tests.erl、test/ds/bot_ds_tests.erl。检查签名、重放、幂等、投递重试和 webhook secret 脱敏。
 
 先不要修改业务实现。盘点该场景已有单元、集成、契约、E2E、平台/设备测试和 CI 门禁，建立“需求/不变量 → 测试资产或 TEST-ID → 命令 → 证据”矩阵。覆盖正常路径、权限拒绝、非法输入、边界值、重复请求、并发、超时、故障恢复、旧数据兼容和跨端行为。
 
@@ -1205,6 +1265,8 @@ $product-capability $orch-add-feature $tdd-workflow
 
 先核对当前仓库 HEAD、工作区状态、AGENTS.md/CLAUDE.md、架构/产品文档、API/WS/数据契约、真实代码和测试。以代码与可执行证据为准，标记 CURRENT、TARGET、LOCKED、UNKNOWN、NOT_VERIFIED；不能把文档/API 存在等同于功能已经端到端交付。
 
+当前代码/测试定位锚点：src/api/e2ee_handler.erl、e2ee_backup_handler.erl、e2ee_trust_handler.erl、olm_handler.erl；test/api/e2ee_handler_tests.erl、e2ee_handler_device_binding_tests.erl、test/e2ee_safety_contract_tests.erl、test/ds/e2ee_c2g_passthrough_contract_tests.erl。服务端只按既定协议处理密文/密钥材料，不得增加解密、明文日志或绕过设备信任的路径。
+
 读取该场景对应的领域概念、路由/接口、数据模型、Flutter/Admin 消费入口和现有测试，先做能力盘点：哪些可直接复用、哪些可通过配置组合、哪些确实缺失。不得重复造轮子或把未开放能力当作已交付。
 
 为真正缺失的能力形成 capability contract：角色与权限、用户旅程、状态机、输入输出、数据归属、API/WS、迁移兼容、失败恢复、观测和验收标准。客户输入不完整时列出阻塞问题并停在方案阶段；需求明确时按 orch-add-feature 的计划门禁执行，先写失败测试再实现最小差异。Erlang/OTP、Cowboy、PostgreSQL、Handler → Logic → DS → Repo、API/WS 契约、数据库迁移和跨端兼容。
@@ -1222,6 +1284,8 @@ $brownfield-retrospective $tdd-workflow $verification-loop
 任务：优化现有功能，重点用于新一代 AI 模型复审和改进旧 AI 模型生成的代码。
 
 先核对当前仓库 HEAD、工作区状态、AGENTS.md/CLAUDE.md、架构/产品文档、API/WS/数据契约、真实代码和测试。以代码与可执行证据为准，标记 CURRENT、TARGET、LOCKED、UNKNOWN、NOT_VERIFIED；不能把文档/API 存在等同于功能已经端到端交付。
+
+当前代码/测试定位锚点：src/api/e2ee_handler.erl、e2ee_backup_handler.erl、e2ee_trust_handler.erl、olm_handler.erl；test/api/e2ee_handler_tests.erl、e2ee_handler_device_binding_tests.erl、test/e2ee_safety_contract_tests.erl、test/ds/e2ee_c2g_passthrough_contract_tests.erl。服务端只按既定协议处理密文/密钥材料，不得增加解密、明文日志或绕过设备信任的路径。
 
 按 brownfield-retrospective 的 slice-first 方法，把范围限制在约 15 个文件或 2000 行以内。不要信任旧模型自评、注释或现有测试完整性；独立重建真实行为、调用链、数据流、权限边界、失败路径、并发/竞态、资源生命周期和跨端契约，建立改动前测试/性能/错误行为基线。
 
@@ -1242,6 +1306,8 @@ $test-collaboration $ai-regression-testing $verification-loop
 任务：测试现有功能，独立验证旧 AI 模型生成的实现。
 
 先核对当前仓库 HEAD、工作区状态、AGENTS.md/CLAUDE.md、架构/产品文档、API/WS/数据契约、真实代码和测试。以代码与可执行证据为准，标记 CURRENT、TARGET、LOCKED、UNKNOWN、NOT_VERIFIED；不能把文档/API 存在等同于功能已经端到端交付。
+
+当前代码/测试定位锚点：src/api/e2ee_handler.erl、e2ee_backup_handler.erl、e2ee_trust_handler.erl、olm_handler.erl；test/api/e2ee_handler_tests.erl、e2ee_handler_device_binding_tests.erl、test/e2ee_safety_contract_tests.erl、test/ds/e2ee_c2g_passthrough_contract_tests.erl。服务端只按既定协议处理密文/密钥材料，不得增加解密、明文日志或绕过设备信任的路径。
 
 先不要修改业务实现。盘点该场景已有单元、集成、契约、E2E、平台/设备测试和 CI 门禁，建立“需求/不变量 → 测试资产或 TEST-ID → 命令 → 证据”矩阵。覆盖正常路径、权限拒绝、非法输入、边界值、重复请求、并发、超时、故障恢复、旧数据兼容和跨端行为。
 
@@ -1267,6 +1333,8 @@ $product-capability $orch-add-feature $tdd-workflow
 
 先核对当前仓库 HEAD、工作区状态、AGENTS.md/CLAUDE.md、架构/产品文档、API/WS/数据契约、真实代码和测试。以代码与可执行证据为准，标记 CURRENT、TARGET、LOCKED、UNKNOWN、NOT_VERIFIED；不能把文档/API 存在等同于功能已经端到端交付。
 
+当前代码/测试定位锚点：src/api/attach_handler.erl、attach_direct_handler.erl、attachment_download_handler.erl、attachment_edge_authorize_handler.erl、workspace_attachment_handler.erl；test/api/attach_direct_handler_tests.erl、attach_handler_upload_error_tests.erl、web_attachment_edge_authorize_tests.erl、web_attachment_logic_tests.erl。核验对象授权、上传/下载边界、清理和生命周期。
+
 读取该场景对应的领域概念、路由/接口、数据模型、Flutter/Admin 消费入口和现有测试，先做能力盘点：哪些可直接复用、哪些可通过配置组合、哪些确实缺失。不得重复造轮子或把未开放能力当作已交付。
 
 为真正缺失的能力形成 capability contract：角色与权限、用户旅程、状态机、输入输出、数据归属、API/WS、迁移兼容、失败恢复、观测和验收标准。客户输入不完整时列出阻塞问题并停在方案阶段；需求明确时按 orch-add-feature 的计划门禁执行，先写失败测试再实现最小差异。Erlang/OTP、Cowboy、PostgreSQL、Handler → Logic → DS → Repo、API/WS 契约、数据库迁移和跨端兼容。
@@ -1284,6 +1352,8 @@ $brownfield-retrospective $tdd-workflow $verification-loop
 任务：优化现有功能，重点用于新一代 AI 模型复审和改进旧 AI 模型生成的代码。
 
 先核对当前仓库 HEAD、工作区状态、AGENTS.md/CLAUDE.md、架构/产品文档、API/WS/数据契约、真实代码和测试。以代码与可执行证据为准，标记 CURRENT、TARGET、LOCKED、UNKNOWN、NOT_VERIFIED；不能把文档/API 存在等同于功能已经端到端交付。
+
+当前代码/测试定位锚点：src/api/attach_handler.erl、attach_direct_handler.erl、attachment_download_handler.erl、attachment_edge_authorize_handler.erl、workspace_attachment_handler.erl；test/api/attach_direct_handler_tests.erl、attach_handler_upload_error_tests.erl、web_attachment_edge_authorize_tests.erl、web_attachment_logic_tests.erl。核验对象授权、上传/下载边界、清理和生命周期。
 
 按 brownfield-retrospective 的 slice-first 方法，把范围限制在约 15 个文件或 2000 行以内。不要信任旧模型自评、注释或现有测试完整性；独立重建真实行为、调用链、数据流、权限边界、失败路径、并发/竞态、资源生命周期和跨端契约，建立改动前测试/性能/错误行为基线。
 
@@ -1304,6 +1374,8 @@ $test-collaboration $ai-regression-testing $verification-loop
 任务：测试现有功能，独立验证旧 AI 模型生成的实现。
 
 先核对当前仓库 HEAD、工作区状态、AGENTS.md/CLAUDE.md、架构/产品文档、API/WS/数据契约、真实代码和测试。以代码与可执行证据为准，标记 CURRENT、TARGET、LOCKED、UNKNOWN、NOT_VERIFIED；不能把文档/API 存在等同于功能已经端到端交付。
+
+当前代码/测试定位锚点：src/api/attach_handler.erl、attach_direct_handler.erl、attachment_download_handler.erl、attachment_edge_authorize_handler.erl、workspace_attachment_handler.erl；test/api/attach_direct_handler_tests.erl、attach_handler_upload_error_tests.erl、web_attachment_edge_authorize_tests.erl、web_attachment_logic_tests.erl。核验对象授权、上传/下载边界、清理和生命周期。
 
 先不要修改业务实现。盘点该场景已有单元、集成、契约、E2E、平台/设备测试和 CI 门禁，建立“需求/不变量 → 测试资产或 TEST-ID → 命令 → 证据”矩阵。覆盖正常路径、权限拒绝、非法输入、边界值、重复请求、并发、超时、故障恢复、旧数据兼容和跨端行为。
 
@@ -1465,6 +1537,8 @@ $product-capability $orch-add-feature $tdd-workflow
 
 先核对当前仓库 HEAD、工作区状态、AGENTS.md/CLAUDE.md、架构/产品文档、API/WS/数据契约、真实代码和测试。以代码与可执行证据为准，标记 CURRENT、TARGET、LOCKED、UNKNOWN、NOT_VERIFIED；不能把文档/API 存在等同于功能已经端到端交付。
 
+当前代码/测试定位锚点：src/api/wallet_handler.erl、billing_handler.erl、payment_callback_handler.erl、src/ds/billing_plan_ds.erl、billing_subscription_ds.erl、payment_transaction_ds.erl、wallet_ds.erl；test/api/billing_route_tests.erl、test/ds/wallet_ds_tests.erl、docs/api-contracts/wallet_recharge_api_contract.md。支付回调、账单与钱包余额必须以事务、签名、幂等和对账证据为准。
+
 读取该场景对应的领域概念、路由/接口、数据模型、Flutter/Admin 消费入口和现有测试，先做能力盘点：哪些可直接复用、哪些可通过配置组合、哪些确实缺失。不得重复造轮子或把未开放能力当作已交付。
 
 为真正缺失的能力形成 capability contract：角色与权限、用户旅程、状态机、输入输出、数据归属、API/WS、迁移兼容、失败恢复、观测和验收标准。客户输入不完整时列出阻塞问题并停在方案阶段；需求明确时按 orch-add-feature 的计划门禁执行，先写失败测试再实现最小差异。Erlang/OTP、Cowboy、PostgreSQL、Handler → Logic → DS → Repo、API/WS 契约、数据库迁移和跨端兼容。
@@ -1482,6 +1556,8 @@ $brownfield-retrospective $tdd-workflow $verification-loop
 任务：优化现有功能，重点用于新一代 AI 模型复审和改进旧 AI 模型生成的代码。
 
 先核对当前仓库 HEAD、工作区状态、AGENTS.md/CLAUDE.md、架构/产品文档、API/WS/数据契约、真实代码和测试。以代码与可执行证据为准，标记 CURRENT、TARGET、LOCKED、UNKNOWN、NOT_VERIFIED；不能把文档/API 存在等同于功能已经端到端交付。
+
+当前代码/测试定位锚点：src/api/wallet_handler.erl、billing_handler.erl、payment_callback_handler.erl、src/ds/billing_plan_ds.erl、billing_subscription_ds.erl、payment_transaction_ds.erl、wallet_ds.erl；test/api/billing_route_tests.erl、test/ds/wallet_ds_tests.erl、docs/api-contracts/wallet_recharge_api_contract.md。支付回调、账单与钱包余额必须以事务、签名、幂等和对账证据为准。
 
 按 brownfield-retrospective 的 slice-first 方法，把范围限制在约 15 个文件或 2000 行以内。不要信任旧模型自评、注释或现有测试完整性；独立重建真实行为、调用链、数据流、权限边界、失败路径、并发/竞态、资源生命周期和跨端契约，建立改动前测试/性能/错误行为基线。
 
@@ -1502,6 +1578,8 @@ $test-collaboration $ai-regression-testing $verification-loop
 任务：测试现有功能，独立验证旧 AI 模型生成的实现。
 
 先核对当前仓库 HEAD、工作区状态、AGENTS.md/CLAUDE.md、架构/产品文档、API/WS/数据契约、真实代码和测试。以代码与可执行证据为准，标记 CURRENT、TARGET、LOCKED、UNKNOWN、NOT_VERIFIED；不能把文档/API 存在等同于功能已经端到端交付。
+
+当前代码/测试定位锚点：src/api/wallet_handler.erl、billing_handler.erl、payment_callback_handler.erl、src/ds/billing_plan_ds.erl、billing_subscription_ds.erl、payment_transaction_ds.erl、wallet_ds.erl；test/api/billing_route_tests.erl、test/ds/wallet_ds_tests.erl、docs/api-contracts/wallet_recharge_api_contract.md。支付回调、账单与钱包余额必须以事务、签名、幂等和对账证据为准。
 
 先不要修改业务实现。盘点该场景已有单元、集成、契约、E2E、平台/设备测试和 CI 门禁，建立“需求/不变量 → 测试资产或 TEST-ID → 命令 → 证据”矩阵。覆盖正常路径、权限拒绝、非法输入、边界值、重复请求、并发、超时、故障恢复、旧数据兼容和跨端行为。
 
@@ -1527,6 +1605,8 @@ $product-capability $orch-add-feature $tdd-workflow
 
 先核对当前仓库 HEAD、工作区状态、AGENTS.md/CLAUDE.md、架构/产品文档、API/WS/数据契约、真实代码和测试。以代码与可执行证据为准，标记 CURRENT、TARGET、LOCKED、UNKNOWN、NOT_VERIFIED；不能把文档/API 存在等同于功能已经端到端交付。
 
+当前代码/测试定位锚点：src/api/fts_handler.erl、channel_discovery_handler.erl、group_discovery_handler.erl、src/logic/fts_logic.erl；test/api/fts_handler_tests.erl、channel_discovery_handler_tests.erl、group_discovery_handler_tests.erl、test/ds/fts_user_ds_tests.erl。核验权限过滤、索引更新、分页和数据库真实执行计划。
+
 读取该场景对应的领域概念、路由/接口、数据模型、Flutter/Admin 消费入口和现有测试，先做能力盘点：哪些可直接复用、哪些可通过配置组合、哪些确实缺失。不得重复造轮子或把未开放能力当作已交付。
 
 为真正缺失的能力形成 capability contract：角色与权限、用户旅程、状态机、输入输出、数据归属、API/WS、迁移兼容、失败恢复、观测和验收标准。客户输入不完整时列出阻塞问题并停在方案阶段；需求明确时按 orch-add-feature 的计划门禁执行，先写失败测试再实现最小差异。Erlang/OTP、Cowboy、PostgreSQL、Handler → Logic → DS → Repo、API/WS 契约、数据库迁移和跨端兼容。
@@ -1544,6 +1624,8 @@ $brownfield-retrospective $tdd-workflow $verification-loop
 任务：优化现有功能，重点用于新一代 AI 模型复审和改进旧 AI 模型生成的代码。
 
 先核对当前仓库 HEAD、工作区状态、AGENTS.md/CLAUDE.md、架构/产品文档、API/WS/数据契约、真实代码和测试。以代码与可执行证据为准，标记 CURRENT、TARGET、LOCKED、UNKNOWN、NOT_VERIFIED；不能把文档/API 存在等同于功能已经端到端交付。
+
+当前代码/测试定位锚点：src/api/fts_handler.erl、channel_discovery_handler.erl、group_discovery_handler.erl、src/logic/fts_logic.erl；test/api/fts_handler_tests.erl、channel_discovery_handler_tests.erl、group_discovery_handler_tests.erl、test/ds/fts_user_ds_tests.erl。核验权限过滤、索引更新、分页和数据库真实执行计划。
 
 按 brownfield-retrospective 的 slice-first 方法，把范围限制在约 15 个文件或 2000 行以内。不要信任旧模型自评、注释或现有测试完整性；独立重建真实行为、调用链、数据流、权限边界、失败路径、并发/竞态、资源生命周期和跨端契约，建立改动前测试/性能/错误行为基线。
 
@@ -1564,6 +1646,8 @@ $test-collaboration $ai-regression-testing $verification-loop
 任务：测试现有功能，独立验证旧 AI 模型生成的实现。
 
 先核对当前仓库 HEAD、工作区状态、AGENTS.md/CLAUDE.md、架构/产品文档、API/WS/数据契约、真实代码和测试。以代码与可执行证据为准，标记 CURRENT、TARGET、LOCKED、UNKNOWN、NOT_VERIFIED；不能把文档/API 存在等同于功能已经端到端交付。
+
+当前代码/测试定位锚点：src/api/fts_handler.erl、channel_discovery_handler.erl、group_discovery_handler.erl、src/logic/fts_logic.erl；test/api/fts_handler_tests.erl、channel_discovery_handler_tests.erl、group_discovery_handler_tests.erl、test/ds/fts_user_ds_tests.erl。核验权限过滤、索引更新、分页和数据库真实执行计划。
 
 先不要修改业务实现。盘点该场景已有单元、集成、契约、E2E、平台/设备测试和 CI 门禁，建立“需求/不变量 → 测试资产或 TEST-ID → 命令 → 证据”矩阵。覆盖正常路径、权限拒绝、非法输入、边界值、重复请求、并发、超时、故障恢复、旧数据兼容和跨端行为。
 
@@ -1589,6 +1673,8 @@ $product-capability $orch-add-feature $tdd-workflow
 
 先核对当前仓库 HEAD、工作区状态、AGENTS.md/CLAUDE.md、架构/产品文档、API/WS/数据契约、真实代码和测试。以代码与可执行证据为准，标记 CURRENT、TARGET、LOCKED、UNKNOWN、NOT_VERIFIED；不能把文档/API 存在等同于功能已经端到端交付。
 
+当前代码/测试定位锚点：src/api/app_feature_handler.erl、app_manifest_handler.erl、app_version_handler.erl、app_upgrade_log_handler.erl；test/api/app_feature_handler_tests.erl、app_manifest_handler_tests.erl、app_version_handler_tests.erl、app_upgrade_log_handler_tests.erl、test/ds/app_version_ds_tests.erl。区分编译 profile、服务端运行时开关、版本策略与客户端实际验收。
+
 读取该场景对应的领域概念、路由/接口、数据模型、Flutter/Admin 消费入口和现有测试，先做能力盘点：哪些可直接复用、哪些可通过配置组合、哪些确实缺失。不得重复造轮子或把未开放能力当作已交付。
 
 为真正缺失的能力形成 capability contract：角色与权限、用户旅程、状态机、输入输出、数据归属、API/WS、迁移兼容、失败恢复、观测和验收标准。客户输入不完整时列出阻塞问题并停在方案阶段；需求明确时按 orch-add-feature 的计划门禁执行，先写失败测试再实现最小差异。Erlang/OTP、Cowboy、PostgreSQL、Handler → Logic → DS → Repo、API/WS 契约、数据库迁移和跨端兼容。
@@ -1606,6 +1692,8 @@ $brownfield-retrospective $tdd-workflow $verification-loop
 任务：优化现有功能，重点用于新一代 AI 模型复审和改进旧 AI 模型生成的代码。
 
 先核对当前仓库 HEAD、工作区状态、AGENTS.md/CLAUDE.md、架构/产品文档、API/WS/数据契约、真实代码和测试。以代码与可执行证据为准，标记 CURRENT、TARGET、LOCKED、UNKNOWN、NOT_VERIFIED；不能把文档/API 存在等同于功能已经端到端交付。
+
+当前代码/测试定位锚点：src/api/app_feature_handler.erl、app_manifest_handler.erl、app_version_handler.erl、app_upgrade_log_handler.erl；test/api/app_feature_handler_tests.erl、app_manifest_handler_tests.erl、app_version_handler_tests.erl、app_upgrade_log_handler_tests.erl、test/ds/app_version_ds_tests.erl。区分编译 profile、服务端运行时开关、版本策略与客户端实际验收。
 
 按 brownfield-retrospective 的 slice-first 方法，把范围限制在约 15 个文件或 2000 行以内。不要信任旧模型自评、注释或现有测试完整性；独立重建真实行为、调用链、数据流、权限边界、失败路径、并发/竞态、资源生命周期和跨端契约，建立改动前测试/性能/错误行为基线。
 
@@ -1626,6 +1714,8 @@ $test-collaboration $ai-regression-testing $verification-loop
 任务：测试现有功能，独立验证旧 AI 模型生成的实现。
 
 先核对当前仓库 HEAD、工作区状态、AGENTS.md/CLAUDE.md、架构/产品文档、API/WS/数据契约、真实代码和测试。以代码与可执行证据为准，标记 CURRENT、TARGET、LOCKED、UNKNOWN、NOT_VERIFIED；不能把文档/API 存在等同于功能已经端到端交付。
+
+当前代码/测试定位锚点：src/api/app_feature_handler.erl、app_manifest_handler.erl、app_version_handler.erl、app_upgrade_log_handler.erl；test/api/app_feature_handler_tests.erl、app_manifest_handler_tests.erl、app_version_handler_tests.erl、app_upgrade_log_handler_tests.erl、test/ds/app_version_ds_tests.erl。区分编译 profile、服务端运行时开关、版本策略与客户端实际验收。
 
 先不要修改业务实现。盘点该场景已有单元、集成、契约、E2E、平台/设备测试和 CI 门禁，建立“需求/不变量 → 测试资产或 TEST-ID → 命令 → 证据”矩阵。覆盖正常路径、权限拒绝、非法输入、边界值、重复请求、并发、超时、故障恢复、旧数据兼容和跨端行为。
 
@@ -1702,6 +1792,8 @@ $product-capability $orch-add-feature $tdd-workflow
 
 先核对当前仓库 HEAD、工作区状态、AGENTS.md/CLAUDE.md、架构/产品文档、API/WS/数据契约、真实代码和测试。以代码与可执行证据为准，标记 CURRENT、TARGET、LOCKED、UNKNOWN、NOT_VERIFIED；不能把文档/API 存在等同于功能已经端到端交付。
 
+当前代码/测试定位锚点：src/api/user_device_handler.erl、src/logic/user_device_logic.erl、push_notification_logic.erl、src/ds/user_device_ds.erl、push_notification_ds.erl；test/api/user_device_handler_tests.erl、test/ds/user_device_ds_tests.erl、push_notification_ds_tests.erl。检查设备撤销、推送 token 生命周期、DND 和多设备竞争。
+
 读取该场景对应的领域概念、路由/接口、数据模型、Flutter/Admin 消费入口和现有测试，先做能力盘点：哪些可直接复用、哪些可通过配置组合、哪些确实缺失。不得重复造轮子或把未开放能力当作已交付。
 
 为真正缺失的能力形成 capability contract：角色与权限、用户旅程、状态机、输入输出、数据归属、API/WS、迁移兼容、失败恢复、观测和验收标准。客户输入不完整时列出阻塞问题并停在方案阶段；需求明确时按 orch-add-feature 的计划门禁执行，先写失败测试再实现最小差异。Erlang/OTP、Cowboy、PostgreSQL、Handler → Logic → DS → Repo、API/WS 契约、数据库迁移和跨端兼容。
@@ -1719,6 +1811,8 @@ $brownfield-retrospective $tdd-workflow $verification-loop
 任务：优化现有功能，重点用于新一代 AI 模型复审和改进旧 AI 模型生成的代码。
 
 先核对当前仓库 HEAD、工作区状态、AGENTS.md/CLAUDE.md、架构/产品文档、API/WS/数据契约、真实代码和测试。以代码与可执行证据为准，标记 CURRENT、TARGET、LOCKED、UNKNOWN、NOT_VERIFIED；不能把文档/API 存在等同于功能已经端到端交付。
+
+当前代码/测试定位锚点：src/api/user_device_handler.erl、src/logic/user_device_logic.erl、push_notification_logic.erl、src/ds/user_device_ds.erl、push_notification_ds.erl；test/api/user_device_handler_tests.erl、test/ds/user_device_ds_tests.erl、push_notification_ds_tests.erl。检查设备撤销、推送 token 生命周期、DND 和多设备竞争。
 
 按 brownfield-retrospective 的 slice-first 方法，把范围限制在约 15 个文件或 2000 行以内。不要信任旧模型自评、注释或现有测试完整性；独立重建真实行为、调用链、数据流、权限边界、失败路径、并发/竞态、资源生命周期和跨端契约，建立改动前测试/性能/错误行为基线。
 
@@ -1739,6 +1833,8 @@ $test-collaboration $ai-regression-testing $verification-loop
 任务：测试现有功能，独立验证旧 AI 模型生成的实现。
 
 先核对当前仓库 HEAD、工作区状态、AGENTS.md/CLAUDE.md、架构/产品文档、API/WS/数据契约、真实代码和测试。以代码与可执行证据为准，标记 CURRENT、TARGET、LOCKED、UNKNOWN、NOT_VERIFIED；不能把文档/API 存在等同于功能已经端到端交付。
+
+当前代码/测试定位锚点：src/api/user_device_handler.erl、src/logic/user_device_logic.erl、push_notification_logic.erl、src/ds/user_device_ds.erl、push_notification_ds.erl；test/api/user_device_handler_tests.erl、test/ds/user_device_ds_tests.erl、push_notification_ds_tests.erl。检查设备撤销、推送 token 生命周期、DND 和多设备竞争。
 
 先不要修改业务实现。盘点该场景已有单元、集成、契约、E2E、平台/设备测试和 CI 门禁，建立“需求/不变量 → 测试资产或 TEST-ID → 命令 → 证据”矩阵。覆盖正常路径、权限拒绝、非法输入、边界值、重复请求、并发、超时、故障恢复、旧数据兼容和跨端行为。
 
@@ -1764,6 +1860,8 @@ $product-capability $orch-add-feature $tdd-workflow
 
 先核对当前仓库 HEAD、工作区状态、AGENTS.md/CLAUDE.md、架构/产品文档、API/WS/数据契约、真实代码和测试。以代码与可执行证据为准，标记 CURRENT、TARGET、LOCKED、UNKNOWN、NOT_VERIFIED；不能把文档/API 存在等同于功能已经端到端交付。
 
+当前代码/测试定位锚点：src/api/user_collect_handler.erl、user_denylist_handler.erl、user_tag_handler.erl、friend_category_handler.erl、location_handler.erl；test/api/user_collect_handler_tests.erl、user_denylist_handler_tests.erl、user_tag_handler_tests.erl、friend_category_handler_tests.erl、location_handler_tests.erl。位置数据必须核验授权、保留和最小化原则。
+
 读取该场景对应的领域概念、路由/接口、数据模型、Flutter/Admin 消费入口和现有测试，先做能力盘点：哪些可直接复用、哪些可通过配置组合、哪些确实缺失。不得重复造轮子或把未开放能力当作已交付。
 
 为真正缺失的能力形成 capability contract：角色与权限、用户旅程、状态机、输入输出、数据归属、API/WS、迁移兼容、失败恢复、观测和验收标准。客户输入不完整时列出阻塞问题并停在方案阶段；需求明确时按 orch-add-feature 的计划门禁执行，先写失败测试再实现最小差异。Erlang/OTP、Cowboy、PostgreSQL、Handler → Logic → DS → Repo、API/WS 契约、数据库迁移和跨端兼容。
@@ -1781,6 +1879,8 @@ $brownfield-retrospective $tdd-workflow $verification-loop
 任务：优化现有功能，重点用于新一代 AI 模型复审和改进旧 AI 模型生成的代码。
 
 先核对当前仓库 HEAD、工作区状态、AGENTS.md/CLAUDE.md、架构/产品文档、API/WS/数据契约、真实代码和测试。以代码与可执行证据为准，标记 CURRENT、TARGET、LOCKED、UNKNOWN、NOT_VERIFIED；不能把文档/API 存在等同于功能已经端到端交付。
+
+当前代码/测试定位锚点：src/api/user_collect_handler.erl、user_denylist_handler.erl、user_tag_handler.erl、friend_category_handler.erl、location_handler.erl；test/api/user_collect_handler_tests.erl、user_denylist_handler_tests.erl、user_tag_handler_tests.erl、friend_category_handler_tests.erl、location_handler_tests.erl。位置数据必须核验授权、保留和最小化原则。
 
 按 brownfield-retrospective 的 slice-first 方法，把范围限制在约 15 个文件或 2000 行以内。不要信任旧模型自评、注释或现有测试完整性；独立重建真实行为、调用链、数据流、权限边界、失败路径、并发/竞态、资源生命周期和跨端契约，建立改动前测试/性能/错误行为基线。
 
@@ -1801,6 +1901,8 @@ $test-collaboration $ai-regression-testing $verification-loop
 任务：测试现有功能，独立验证旧 AI 模型生成的实现。
 
 先核对当前仓库 HEAD、工作区状态、AGENTS.md/CLAUDE.md、架构/产品文档、API/WS/数据契约、真实代码和测试。以代码与可执行证据为准，标记 CURRENT、TARGET、LOCKED、UNKNOWN、NOT_VERIFIED；不能把文档/API 存在等同于功能已经端到端交付。
+
+当前代码/测试定位锚点：src/api/user_collect_handler.erl、user_denylist_handler.erl、user_tag_handler.erl、friend_category_handler.erl、location_handler.erl；test/api/user_collect_handler_tests.erl、user_denylist_handler_tests.erl、user_tag_handler_tests.erl、friend_category_handler_tests.erl、location_handler_tests.erl。位置数据必须核验授权、保留和最小化原则。
 
 先不要修改业务实现。盘点该场景已有单元、集成、契约、E2E、平台/设备测试和 CI 门禁，建立“需求/不变量 → 测试资产或 TEST-ID → 命令 → 证据”矩阵。覆盖正常路径、权限拒绝、非法输入、边界值、重复请求、并发、超时、故障恢复、旧数据兼容和跨端行为。
 
@@ -1826,6 +1928,8 @@ $product-capability $orch-add-feature $tdd-workflow
 
 先核对当前仓库 HEAD、工作区状态、AGENTS.md/CLAUDE.md、架构/产品文档、API/WS/数据契约、真实代码和测试。以代码与可执行证据为准，标记 CURRENT、TARGET、LOCKED、UNKNOWN、NOT_VERIFIED；不能把文档/API 存在等同于功能已经端到端交付。
 
+当前代码/测试定位锚点：src/api/report_handler.erl、appeal_handler.erl、src/adm/adm_report_handler.erl、adm_report_action_handler.erl、adm_moderation_handler.erl；test/api/report_handler_tests.erl、test/adm/adm_report_handler_tests.erl、test/ds/moderation_ds_tests.erl。检查举报/审核/申诉状态转换、操作者权限和不可抵赖审计。
+
 读取该场景对应的领域概念、路由/接口、数据模型、Flutter/Admin 消费入口和现有测试，先做能力盘点：哪些可直接复用、哪些可通过配置组合、哪些确实缺失。不得重复造轮子或把未开放能力当作已交付。
 
 为真正缺失的能力形成 capability contract：角色与权限、用户旅程、状态机、输入输出、数据归属、API/WS、迁移兼容、失败恢复、观测和验收标准。客户输入不完整时列出阻塞问题并停在方案阶段；需求明确时按 orch-add-feature 的计划门禁执行，先写失败测试再实现最小差异。Erlang/OTP、Cowboy、PostgreSQL、Handler → Logic → DS → Repo、API/WS 契约、数据库迁移和跨端兼容。
@@ -1843,6 +1947,8 @@ $brownfield-retrospective $tdd-workflow $verification-loop
 任务：优化现有功能，重点用于新一代 AI 模型复审和改进旧 AI 模型生成的代码。
 
 先核对当前仓库 HEAD、工作区状态、AGENTS.md/CLAUDE.md、架构/产品文档、API/WS/数据契约、真实代码和测试。以代码与可执行证据为准，标记 CURRENT、TARGET、LOCKED、UNKNOWN、NOT_VERIFIED；不能把文档/API 存在等同于功能已经端到端交付。
+
+当前代码/测试定位锚点：src/api/report_handler.erl、appeal_handler.erl、src/adm/adm_report_handler.erl、adm_report_action_handler.erl、adm_moderation_handler.erl；test/api/report_handler_tests.erl、test/adm/adm_report_handler_tests.erl、test/ds/moderation_ds_tests.erl。检查举报/审核/申诉状态转换、操作者权限和不可抵赖审计。
 
 按 brownfield-retrospective 的 slice-first 方法，把范围限制在约 15 个文件或 2000 行以内。不要信任旧模型自评、注释或现有测试完整性；独立重建真实行为、调用链、数据流、权限边界、失败路径、并发/竞态、资源生命周期和跨端契约，建立改动前测试/性能/错误行为基线。
 
@@ -1863,6 +1969,8 @@ $test-collaboration $ai-regression-testing $verification-loop
 任务：测试现有功能，独立验证旧 AI 模型生成的实现。
 
 先核对当前仓库 HEAD、工作区状态、AGENTS.md/CLAUDE.md、架构/产品文档、API/WS/数据契约、真实代码和测试。以代码与可执行证据为准，标记 CURRENT、TARGET、LOCKED、UNKNOWN、NOT_VERIFIED；不能把文档/API 存在等同于功能已经端到端交付。
+
+当前代码/测试定位锚点：src/api/report_handler.erl、appeal_handler.erl、src/adm/adm_report_handler.erl、adm_report_action_handler.erl、adm_moderation_handler.erl；test/api/report_handler_tests.erl、test/adm/adm_report_handler_tests.erl、test/ds/moderation_ds_tests.erl。检查举报/审核/申诉状态转换、操作者权限和不可抵赖审计。
 
 先不要修改业务实现。盘点该场景已有单元、集成、契约、E2E、平台/设备测试和 CI 门禁，建立“需求/不变量 → 测试资产或 TEST-ID → 命令 → 证据”矩阵。覆盖正常路径、权限拒绝、非法输入、边界值、重复请求、并发、超时、故障恢复、旧数据兼容和跨端行为。
 
@@ -1888,6 +1996,8 @@ $product-capability $orch-add-feature $tdd-workflow
 
 先核对当前仓库 HEAD、工作区状态、AGENTS.md/CLAUDE.md、架构/产品文档、API/WS/数据契约、真实代码和测试。以代码与可执行证据为准，标记 CURRENT、TARGET、LOCKED、UNKNOWN、NOT_VERIFIED；不能把文档/API 存在等同于功能已经端到端交付。
 
+当前代码/测试定位锚点：src/api/talk_record_handler.erl、talk_record_routes.erl、talk_record_playback_handler.erl、talk_record_governance_handler.erl、talk_record_recovery_handler.erl、src/ds/talk_record_capture_ds.erl；test/common/talk_record_owned_eunit_fixture_tests.erl、test/features/customer_service/。区分客户端录制采集、处理、回放、分享、清理与恢复状态。
+
 读取该场景对应的领域概念、路由/接口、数据模型、Flutter/Admin 消费入口和现有测试，先做能力盘点：哪些可直接复用、哪些可通过配置组合、哪些确实缺失。不得重复造轮子或把未开放能力当作已交付。
 
 为真正缺失的能力形成 capability contract：角色与权限、用户旅程、状态机、输入输出、数据归属、API/WS、迁移兼容、失败恢复、观测和验收标准。客户输入不完整时列出阻塞问题并停在方案阶段；需求明确时按 orch-add-feature 的计划门禁执行，先写失败测试再实现最小差异。Erlang/OTP、Cowboy、PostgreSQL、Handler → Logic → DS → Repo、API/WS 契约、数据库迁移和跨端兼容。
@@ -1905,6 +2015,8 @@ $brownfield-retrospective $tdd-workflow $verification-loop
 任务：优化现有功能，重点用于新一代 AI 模型复审和改进旧 AI 模型生成的代码。
 
 先核对当前仓库 HEAD、工作区状态、AGENTS.md/CLAUDE.md、架构/产品文档、API/WS/数据契约、真实代码和测试。以代码与可执行证据为准，标记 CURRENT、TARGET、LOCKED、UNKNOWN、NOT_VERIFIED；不能把文档/API 存在等同于功能已经端到端交付。
+
+当前代码/测试定位锚点：src/api/talk_record_handler.erl、talk_record_routes.erl、talk_record_playback_handler.erl、talk_record_governance_handler.erl、talk_record_recovery_handler.erl、src/ds/talk_record_capture_ds.erl；test/common/talk_record_owned_eunit_fixture_tests.erl、test/features/customer_service/。区分客户端录制采集、处理、回放、分享、清理与恢复状态。
 
 按 brownfield-retrospective 的 slice-first 方法，把范围限制在约 15 个文件或 2000 行以内。不要信任旧模型自评、注释或现有测试完整性；独立重建真实行为、调用链、数据流、权限边界、失败路径、并发/竞态、资源生命周期和跨端契约，建立改动前测试/性能/错误行为基线。
 
@@ -1925,6 +2037,8 @@ $test-collaboration $ai-regression-testing $verification-loop
 任务：测试现有功能，独立验证旧 AI 模型生成的实现。
 
 先核对当前仓库 HEAD、工作区状态、AGENTS.md/CLAUDE.md、架构/产品文档、API/WS/数据契约、真实代码和测试。以代码与可执行证据为准，标记 CURRENT、TARGET、LOCKED、UNKNOWN、NOT_VERIFIED；不能把文档/API 存在等同于功能已经端到端交付。
+
+当前代码/测试定位锚点：src/api/talk_record_handler.erl、talk_record_routes.erl、talk_record_playback_handler.erl、talk_record_governance_handler.erl、talk_record_recovery_handler.erl、src/ds/talk_record_capture_ds.erl；test/common/talk_record_owned_eunit_fixture_tests.erl、test/features/customer_service/。区分客户端录制采集、处理、回放、分享、清理与恢复状态。
 
 先不要修改业务实现。盘点该场景已有单元、集成、契约、E2E、平台/设备测试和 CI 门禁，建立“需求/不变量 → 测试资产或 TEST-ID → 命令 → 证据”矩阵。覆盖正常路径、权限拒绝、非法输入、边界值、重复请求、并发、超时、故障恢复、旧数据兼容和跨端行为。
 
@@ -1950,6 +2064,8 @@ $product-capability $orch-add-feature $tdd-workflow
 
 先核对当前仓库 HEAD、工作区状态、AGENTS.md/CLAUDE.md、架构/产品文档、API/WS/数据契约、真实代码和测试。以代码与可执行证据为准，标记 CURRENT、TARGET、LOCKED、UNKNOWN、NOT_VERIFIED；不能把文档/API 存在等同于功能已经端到端交付。
 
+当前代码/测试定位锚点：src/api/enterprise_application_handler.erl、enterprise_oa_login_handler.erl、enterprise_oa_sso_handler.erl、enterprise_oa_sso_exchange_handler.erl、enterprise_webhook_handler.erl、mcp_handler.erl；test/api/enterprise_oa_login_http_tests.erl、enterprise_oa_sso_compat_http_tests.erl、test/enterprise_oa_sso_tests.erl、enterprise_app_credential_lifecycle_http_pg_tests.erl。核验密钥一次性展示、凭据轮换、SSO state/nonce 和回调来源。
+
 读取该场景对应的领域概念、路由/接口、数据模型、Flutter/Admin 消费入口和现有测试，先做能力盘点：哪些可直接复用、哪些可通过配置组合、哪些确实缺失。不得重复造轮子或把未开放能力当作已交付。
 
 为真正缺失的能力形成 capability contract：角色与权限、用户旅程、状态机、输入输出、数据归属、API/WS、迁移兼容、失败恢复、观测和验收标准。客户输入不完整时列出阻塞问题并停在方案阶段；需求明确时按 orch-add-feature 的计划门禁执行，先写失败测试再实现最小差异。Erlang/OTP、Cowboy、PostgreSQL、Handler → Logic → DS → Repo、API/WS 契约、数据库迁移和跨端兼容。
@@ -1967,6 +2083,8 @@ $brownfield-retrospective $tdd-workflow $verification-loop
 任务：优化现有功能，重点用于新一代 AI 模型复审和改进旧 AI 模型生成的代码。
 
 先核对当前仓库 HEAD、工作区状态、AGENTS.md/CLAUDE.md、架构/产品文档、API/WS/数据契约、真实代码和测试。以代码与可执行证据为准，标记 CURRENT、TARGET、LOCKED、UNKNOWN、NOT_VERIFIED；不能把文档/API 存在等同于功能已经端到端交付。
+
+当前代码/测试定位锚点：src/api/enterprise_application_handler.erl、enterprise_oa_login_handler.erl、enterprise_oa_sso_handler.erl、enterprise_oa_sso_exchange_handler.erl、enterprise_webhook_handler.erl、mcp_handler.erl；test/api/enterprise_oa_login_http_tests.erl、enterprise_oa_sso_compat_http_tests.erl、test/enterprise_oa_sso_tests.erl、enterprise_app_credential_lifecycle_http_pg_tests.erl。核验密钥一次性展示、凭据轮换、SSO state/nonce 和回调来源。
 
 按 brownfield-retrospective 的 slice-first 方法，把范围限制在约 15 个文件或 2000 行以内。不要信任旧模型自评、注释或现有测试完整性；独立重建真实行为、调用链、数据流、权限边界、失败路径、并发/竞态、资源生命周期和跨端契约，建立改动前测试/性能/错误行为基线。
 
@@ -1987,6 +2105,8 @@ $test-collaboration $ai-regression-testing $verification-loop
 任务：测试现有功能，独立验证旧 AI 模型生成的实现。
 
 先核对当前仓库 HEAD、工作区状态、AGENTS.md/CLAUDE.md、架构/产品文档、API/WS/数据契约、真实代码和测试。以代码与可执行证据为准，标记 CURRENT、TARGET、LOCKED、UNKNOWN、NOT_VERIFIED；不能把文档/API 存在等同于功能已经端到端交付。
+
+当前代码/测试定位锚点：src/api/enterprise_application_handler.erl、enterprise_oa_login_handler.erl、enterprise_oa_sso_handler.erl、enterprise_oa_sso_exchange_handler.erl、enterprise_webhook_handler.erl、mcp_handler.erl；test/api/enterprise_oa_login_http_tests.erl、enterprise_oa_sso_compat_http_tests.erl、test/enterprise_oa_sso_tests.erl、enterprise_app_credential_lifecycle_http_pg_tests.erl。核验密钥一次性展示、凭据轮换、SSO state/nonce 和回调来源。
 
 先不要修改业务实现。盘点该场景已有单元、集成、契约、E2E、平台/设备测试和 CI 门禁，建立“需求/不变量 → 测试资产或 TEST-ID → 命令 → 证据”矩阵。覆盖正常路径、权限拒绝、非法输入、边界值、重复请求、并发、超时、故障恢复、旧数据兼容和跨端行为。
 
@@ -2012,6 +2132,8 @@ $product-capability $orch-add-feature $tdd-workflow
 
 先核对当前仓库 HEAD、工作区状态、AGENTS.md/CLAUDE.md、架构/产品文档、API/WS/数据契约、真实代码和测试。以代码与可执行证据为准，标记 CURRENT、TARGET、LOCKED、UNKNOWN、NOT_VERIFIED；不能把文档/API 存在等同于功能已经端到端交付。
 
+当前代码/测试定位锚点：src/adm/adm_announcement_handler.erl、adm_feedback_handler.erl、adm_stats_handler.erl、src/api/feedback_handler.erl、metrics_handler.erl、src/ds/announcement_ds.erl、feedback_ds.erl；test/adm/adm_feedback_handler_tests.erl、adm_stats_handler_tests.erl、test/api/feedback_handler_tests.erl、metrics_handler_tests.erl。区分用户反馈、公告发布、聚合指标和操作审计，避免把指标接口当成完整可观测平台。
+
 读取该场景对应的领域概念、路由/接口、数据模型、Flutter/Admin 消费入口和现有测试，先做能力盘点：哪些可直接复用、哪些可通过配置组合、哪些确实缺失。不得重复造轮子或把未开放能力当作已交付。
 
 为真正缺失的能力形成 capability contract：角色与权限、用户旅程、状态机、输入输出、数据归属、API/WS、迁移兼容、失败恢复、观测和验收标准。客户输入不完整时列出阻塞问题并停在方案阶段；需求明确时按 orch-add-feature 的计划门禁执行，先写失败测试再实现最小差异。Erlang/OTP、Cowboy、PostgreSQL、Handler → Logic → DS → Repo、API/WS 契约、数据库迁移和跨端兼容。
@@ -2029,6 +2151,8 @@ $brownfield-retrospective $tdd-workflow $verification-loop
 任务：优化现有功能，重点用于新一代 AI 模型复审和改进旧 AI 模型生成的代码。
 
 先核对当前仓库 HEAD、工作区状态、AGENTS.md/CLAUDE.md、架构/产品文档、API/WS/数据契约、真实代码和测试。以代码与可执行证据为准，标记 CURRENT、TARGET、LOCKED、UNKNOWN、NOT_VERIFIED；不能把文档/API 存在等同于功能已经端到端交付。
+
+当前代码/测试定位锚点：src/adm/adm_announcement_handler.erl、adm_feedback_handler.erl、adm_stats_handler.erl、src/api/feedback_handler.erl、metrics_handler.erl、src/ds/announcement_ds.erl、feedback_ds.erl；test/adm/adm_feedback_handler_tests.erl、adm_stats_handler_tests.erl、test/api/feedback_handler_tests.erl、metrics_handler_tests.erl。区分用户反馈、公告发布、聚合指标和操作审计，避免把指标接口当成完整可观测平台。
 
 按 brownfield-retrospective 的 slice-first 方法，把范围限制在约 15 个文件或 2000 行以内。不要信任旧模型自评、注释或现有测试完整性；独立重建真实行为、调用链、数据流、权限边界、失败路径、并发/竞态、资源生命周期和跨端契约，建立改动前测试/性能/错误行为基线。
 
@@ -2049,6 +2173,8 @@ $test-collaboration $ai-regression-testing $verification-loop
 任务：测试现有功能，独立验证旧 AI 模型生成的实现。
 
 先核对当前仓库 HEAD、工作区状态、AGENTS.md/CLAUDE.md、架构/产品文档、API/WS/数据契约、真实代码和测试。以代码与可执行证据为准，标记 CURRENT、TARGET、LOCKED、UNKNOWN、NOT_VERIFIED；不能把文档/API 存在等同于功能已经端到端交付。
+
+当前代码/测试定位锚点：src/adm/adm_announcement_handler.erl、adm_feedback_handler.erl、adm_stats_handler.erl、src/api/feedback_handler.erl、metrics_handler.erl、src/ds/announcement_ds.erl、feedback_ds.erl；test/adm/adm_feedback_handler_tests.erl、adm_stats_handler_tests.erl、test/api/feedback_handler_tests.erl、metrics_handler_tests.erl。区分用户反馈、公告发布、聚合指标和操作审计，避免把指标接口当成完整可观测平台。
 
 先不要修改业务实现。盘点该场景已有单元、集成、契约、E2E、平台/设备测试和 CI 门禁，建立“需求/不变量 → 测试资产或 TEST-ID → 命令 → 证据”矩阵。覆盖正常路径、权限拒绝、非法输入、边界值、重复请求、并发、超时、故障恢复、旧数据兼容和跨端行为。
 
