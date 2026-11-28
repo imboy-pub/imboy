@@ -215,7 +215,7 @@ class LocalComposeTests(unittest.TestCase):
                                  "separate-production-password")
                 self.assertNotIn("imboy_pg18", model["services"])
 
-    def test_production_backend_and_edge_use_read_only_rootfs(self):
+    def test_production_backend_capabilities_and_edge_read_only_rootfs(self):
         for profile in ("prod", "prod-turn", "prod-sni"):
             with self.subTest(profile=profile):
                 services = self.model(profile)["services"]
@@ -241,7 +241,7 @@ class LocalComposeTests(unittest.TestCase):
                 log_mount = next(v for v in backend["volumes"]
                                  if v["target"] == "/opt/imboy/log")
                 self.assertTrue(private_mount["read_only"])
-                self.assertFalse(log_mount["read_only"])
+                self.assertFalse(log_mount.get("read_only", False))
 
         proof = self.model("prod", "enterprise-direct")["services"]["prod_imboy_enterprise_proof"]
         self.assertTrue(proof["read_only"])
