@@ -162,7 +162,15 @@ test_oauth2(Config) ->
         {_, false} ->
             {false, <<"OAuth2 token_url 无效（需 http:// 或 https:// 开头）"/utf8>>};
         {true, true} ->
-            probe_http(AuthUrl)
+            %% G-03：与登录侧 check_token_url 同口径——token_url 携带
+            %% client_secret，非 https 非本机配置登录恒败，不得报「可达」。
+            case auth_oidc_logic:allowed_url(TokenUrl) of
+                true ->
+                    probe_http(AuthUrl);
+                false ->
+                    {false,
+                        <<"OAuth2 token_url 必须为 https（仅 127.0.0.1/localhost 允许 http，供本地联调）"/utf8>>}
+            end
     end.
 
 %% ===================================================================

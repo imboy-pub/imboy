@@ -150,6 +150,33 @@ test_oauth2_missing_token_url_test() ->
     Cfg = #{<<"auth_url">> => <<"https://idp/authorize">>},
     ?assertMatch({false, _}, sso_logic:test_connection(<<"oauth2">>, Cfg)).
 
+%% @doc G-03：token_url 非 https 且非本机 -> 校验失败且明说 https 要求，
+%% 不发起探测。登录侧 check_token_url 会硬拒这类配置——测试连接若放行，
+%% 管理员会存下 http:// 配置并看到「可达」，实际登录恒败（口径漂移）。
+%% 口径与 auth_oidc_logic:allowed_url/1 同源（复用同一实现，防两处漂移）。
+test_oauth2_insecure_token_url_test() ->
+    {ok, _} = application:ensure_all_started(inets),
+    %% auth_url 用本机 refused 端口：若误走到探测分支，也会快速失败而非外呼
+    Cfg = #{
+        <<"auth_url">> => <<"https://127.0.0.1:1/auth">>,
+        <<"token_url">> => <<"http://idp.example.com/token">>
+    },
+    {false, Msg} = sso_logic:test_connection(<<"oauth2">>, Cfg),
+    ?assertNotEqual(nomatch, binary:match(Msg, <<"token_url">>)),
+    ?assertNotEqual(nomatch, binary:match(Msg, <<"https">>)).
+
+%% @doc token_url 本机 http（127.0.0.1/localhost）仍放行——本地联调口径
+%% 与登录侧白名单一致。
+test_oauth2_localhost_http_token_url_allowed_test() ->
+    {ok, _} = application:ensure_all_started(inets),
+    Cfg = #{
+        <<"auth_url">> => <<"https://127.0.0.1:1/auth">>,
+        <<"token_url">> => <<"http://127.0.0.1:5556/dex/token">>
+    },
+    %% 放行后走到 auth_url 探测（本机 refused 端口，快速失败），不报 https 错
+    {false, Msg} = sso_logic:test_connection(<<"oauth2">>, Cfg),
+    ?assertEqual(nomatch, binary:match(Msg, <<"token_url">>)).
+
 %% @doc 未知 provider -> 校验失败
 test_unknown_provider_test() ->
     ?assertMatch({false, _}, sso_logic:test_connection(<<"bogus">>, #{})).
