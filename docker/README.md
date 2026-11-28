@@ -50,7 +50,10 @@ PostGIS 3.7.0 破坏性变更：`postgis_tiger_geocoder`（NEWS #6052）与
 ### 1. 构建 Erlang 开发镜像
 
 ```bash
-docker build -f docker/backend_dev_Dockerfile -t imboy/imboy-api:dev .
+# Align the non-root development user with the checkout owner.
+docker build -f docker/backend_dev_Dockerfile \
+  --build-arg DEV_UID="$(id -u)" --build-arg DEV_GID="$(id -g)" \
+  -t imboy/imboy-api:dev .
 ```
 
 ### 2. 构建生产 Backend 镜像
@@ -230,6 +233,10 @@ manifest，不重新编译。目标已存在且摘要不同则拒绝写入。所
 # 当前源码由 bind mount 提供；首次使用需拉取并编译依赖。
 docker run --rm -it -v "$PWD:/workspace/imboy" imboy/imboy-api:dev
 ```
+
+开发镜像默认以非 root 用户运行（UID/GID 10001）；挂载本机源码并编译时，按上面的构建命令匹配宿主用户 UID/GID，避免生成 root 所有的文件。UID/GID 不允许为 0；不要使用 root 或全局放宽目录权限解决挂载问题。
+
+The development image runs as a non-root user by default (UID/GID 10001). Match the host checkout owner's numeric IDs at build time for writable bind mounts; neither ID may be zero.
 
 在容器内构建源码前核对挂载目录与数据库地址。容器中的 `127.0.0.1` 指向容器自身，
 不能直接照搬宿主机 PostgreSQL 配置。日常容器化启动和宿主机源码调试按
