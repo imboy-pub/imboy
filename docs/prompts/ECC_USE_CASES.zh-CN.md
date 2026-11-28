@@ -61,7 +61,7 @@ $change-impact $contract-first
 分析 WebSocket Action 的注册、路由、分派和处理机制，重点检查 imboy_ws_action_registry、message_router_logic 及相关 Logic 模块。评估新增 Action 的最小改动范围、协议兼容性、认证授权、输入校验和测试要求。只读输出，不修改代码。
 ```
 
-#### ECC-007 · 三仓依赖关系分析
+#### ECC-007 · 四仓依赖关系分析
 
 **预计执行时间：20 分钟**（单次执行；包含代码阅读、定向实施/分析与相关验证）
 
