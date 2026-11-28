@@ -10,8 +10,11 @@
 > - 默认不得 commit、push、合并、部署、执行生产写入或接触真实用户数据；需要时另行授权。
 > - 不得通过删除/弱化测试、扩大 skip、关闭门禁或伪造证据制造 PASS。
 > - 报告实际执行的命令、退出码、结果、未执行项和证据位置；未执行不得声称通过。
+> - 跨仓任务按真实依赖建图：Backend 向 Flutter/Admin 提供 REST/WS；geo_regions 是独立地区数据 SDK，当前由 Flutter 消费，不是后端 API 服务。
+> - 三端 EntityId/TSID 只比较 Backend、Flutter、Admin；geo_regions 的 country/region ID 与 pathIds 是独立稳定标识，不得强行当作 TSID。
+> - 功能状态必须结合编译 profile、服务端 feature gate、权限与真实验收判断；Handler、页面、测试或配置存在不等于功能已对用户开放。
 >
-> **案例编号全局唯一**：ECC-001 至 ECC-121。四个仓库按职责分配，后端主仓提供统一索引。
+> **案例编号全局唯一**：ECC-001 至 ECC-125。四个仓库按职责分配，后端主仓提供统一索引。
 
 ## 本仓库范围
 
@@ -67,7 +70,7 @@ $change-impact $contract-first
 ```text
 $contract-first
 
-分析 imboy、imboy-flutter、imboy-admin-frontend 三仓依赖关系。以实际代码、OpenAPI、API 契约、错误码、TSID/EntityId 和 WebSocket 消息格式为依据，建立提供方、消费方和契约真源矩阵。指出字段/枚举/可空性/错误语义漂移及尚未机器验证的接口。核对各仓实际 HEAD。
+分析 imboy、imboy-flutter、imboy-admin-frontend 与 geo_regions 四仓的真实依赖关系。分别建立 Backend REST/WS → Flutter、Backend REST/WS → Admin、geo_regions SDK → Flutter 的提供方、消费方和契约真源矩阵；不要假设四仓两两直接依赖。核对 OpenAPI、API/WS 字段、错误码、枚举、可空性、TSID/EntityId、WebSocket 消息格式，以及 geo_regions 的 PROTOCOL.md、CONSUMER_CONTRACT.md、stable region ID/pathIds、locale/revision/hash/quality 状态。geo_regions 是独立地区数据 SDK，不是 REST/WS 服务，也不纳入 TSID 对齐。逐仓核对实际 HEAD、工作树、依赖版本和尚未机器验证的契约。
 ```
 
 #### ECC-008 · 文档与代码一致性审计
@@ -254,7 +257,7 @@ $security-review $change-impact
 
 ### 三仓契约与 geo_regions
 
-#### ECC-043 · OpenAPI 契约漂移检查
+#### ECC-043 · 跨仓 API 与 SDK 契约漂移检查
 
 **预计执行时间：20 分钟**（单次执行；包含代码阅读、定向实施/分析与相关验证）
 
@@ -263,7 +266,7 @@ $security-review $change-impact
 ```text
 $contract-first $api-design
 
-检查后端 OpenAPI 真源、生成产物和 Flutter/Admin 消费端。验证请求响应字段、可空性、错误码、枚举、认证和版本兼容。运行仓库已有 contract gate，输出真实漂移位置、消费方和修复顺序；核对三仓实际 SHA。
+检查后端 OpenAPI 真源、生成产物和 Flutter/Admin REST/WS 消费端；另行检查 geo_regions 的 PROTOCOL.md、CONSUMER_CONTRACT.md 与 Flutter host adapter，把它作为独立 SDK/数据契约，不要混成 OpenAPI。验证请求响应字段、可空性、错误码、枚举、认证、版本兼容，以及地区 stable ID/pathIds、locale、revision、manifest/hash 和质量状态。运行各仓已有 contract gate，输出真实漂移位置、消费方、当前 SHA 和修复顺序。
 ```
 
 #### ECC-044 · 三端 EntityId/TSID 一致性
@@ -275,7 +278,7 @@ $contract-first $api-design
 ```text
 $contract-first $test-collaboration
 
-审计后端、Flutter 和 Admin 的 TSID/EntityId 定义、序列化、解析和比较。检查 64 位精度、JSON 整数、字符串映射、数据库字段和 API 传输。找出类型不一致并建立可执行契约测试；不得用 JavaScript Number 或 parseInt 处理 TSID。
+审计 Backend、Flutter 和 Admin 三端的 TSID/EntityId 定义、序列化、解析和比较。检查 64 位精度、JSON 整数、字符串映射、数据库字段和 API 传输。找出类型不一致并建立可执行契约测试；不得用 JavaScript Number 或 parseInt 处理 TSID。geo_regions 不使用 IMBoy TSID：单独核验 countryCode、稳定 region ID、pathIds 与 revision 的身份语义，禁止把地区 ID 与用户/群组实体 ID 混用。
 ```
 
 #### ECC-045 · 错误码和枚举一致性
@@ -1309,7 +1312,7 @@ $test-collaboration $ai-regression-testing $verification-loop
 逐项报告 PASS/FAIL/BLOCKED/NOT RUN、真实命令、退出码、测试数量和证据位置。发现缺陷先提供复现和最小修复建议；未经授权不修改业务代码。不得把未执行或环境缺失标记为 PASS。
 ```
 
-#### ECC-085 · 客户一对一通话、群通话和直播互动
+#### ECC-085 · 客户一对一通话、群通话边界与直播互动
 
 **预计执行时间（单选一种模式）：A 新增功能 180 分钟 · B 优化现有功能 120 分钟 · C 测试现有功能 90 分钟**
 
@@ -1320,11 +1323,13 @@ $test-collaboration $ai-regression-testing $verification-loop
 ```text
 $product-capability $orch-add-feature $tdd-workflow
 
-业务场景：客户一对一通话、群通话和直播互动（音视频通话与直播）。客户信息：[填写客户行业、用户角色、业务目标、关键流程、特殊业务规则、数据规模和验收指标]。本次范围：[填写具体端、模块、功能切片]。
+业务场景：客户一对一通话、群通话边界与直播互动（音视频通话与直播）。客户信息：[填写客户行业、用户角色、业务目标、关键流程、特殊业务规则、数据规模和验收指标]。本次范围：[填写具体端、模块、功能切片]。
 
 任务：为该场景新增功能。
 
 先核对当前仓库 HEAD、工作区状态、AGENTS.md/CLAUDE.md、架构/产品文档、API/WS/数据契约、真实代码和测试。以代码与可执行证据为准，标记 CURRENT、TARGET、LOCKED、UNKNOWN、NOT_VERIFIED；不能把文档/API 存在等同于功能已经端到端交付。
+
+先核对 Flutter docs/reference/feature-status.md 与后端当前编译 profile、运行时 feature gate：当前一期组合只开放已登录 App 用户的一对一 rtc；群通话必须同时选入并启用 rtc_group 与父功能 rtc，而当前组合未选入 rtc_group；访客和 Web 坐席音视频也不随一对一开放。不得把 LiveKit/RTC handler、群通话代码或测试存在等同于群通话已开放。分别核验编译选择、运行开关、好友/黑名单授权、房间类型、呼叫状态机、媒体转发和真实设备验收；未执行真实双端媒体验收不得标 PASS。
 
 读取该场景对应的领域概念、路由/接口、数据模型、Flutter/Admin 消费入口和现有测试，先做能力盘点：哪些可直接复用、哪些可通过配置组合、哪些确实缺失。不得重复造轮子或把未开放能力当作已交付。
 
@@ -1338,11 +1343,13 @@ $product-capability $orch-add-feature $tdd-workflow
 ```text
 $brownfield-retrospective $tdd-workflow $verification-loop
 
-业务场景：客户一对一通话、群通话和直播互动（音视频通话与直播）。客户信息：[填写客户行业、用户角色、业务目标、关键流程、特殊业务规则、数据规模和验收指标]。本次范围：[填写具体端、模块、功能切片]。
+业务场景：客户一对一通话、群通话边界与直播互动（音视频通话与直播）。客户信息：[填写客户行业、用户角色、业务目标、关键流程、特殊业务规则、数据规模和验收指标]。本次范围：[填写具体端、模块、功能切片]。
 
 任务：优化现有功能，重点用于新一代 AI 模型复审和改进旧 AI 模型生成的代码。
 
 先核对当前仓库 HEAD、工作区状态、AGENTS.md/CLAUDE.md、架构/产品文档、API/WS/数据契约、真实代码和测试。以代码与可执行证据为准，标记 CURRENT、TARGET、LOCKED、UNKNOWN、NOT_VERIFIED；不能把文档/API 存在等同于功能已经端到端交付。
+
+先核对 Flutter docs/reference/feature-status.md 与后端当前编译 profile、运行时 feature gate：当前一期组合只开放已登录 App 用户的一对一 rtc；群通话必须同时选入并启用 rtc_group 与父功能 rtc，而当前组合未选入 rtc_group；访客和 Web 坐席音视频也不随一对一开放。不得把 LiveKit/RTC handler、群通话代码或测试存在等同于群通话已开放。分别核验编译选择、运行开关、好友/黑名单授权、房间类型、呼叫状态机、媒体转发和真实设备验收；未执行真实双端媒体验收不得标 PASS。
 
 按 brownfield-retrospective 的 slice-first 方法，把范围限制在约 15 个文件或 2000 行以内。不要信任旧模型自评、注释或现有测试完整性；独立重建真实行为、调用链、数据流、权限边界、失败路径、并发/竞态、资源生命周期和跨端契约，建立改动前测试/性能/错误行为基线。
 
@@ -1358,11 +1365,13 @@ $brownfield-retrospective $tdd-workflow $verification-loop
 ```text
 $test-collaboration $ai-regression-testing $verification-loop
 
-业务场景：客户一对一通话、群通话和直播互动（音视频通话与直播）。客户信息：[填写客户行业、用户角色、业务目标、关键流程、特殊业务规则、数据规模和验收指标]。本次范围：[填写具体端、模块、功能切片]。
+业务场景：客户一对一通话、群通话边界与直播互动（音视频通话与直播）。客户信息：[填写客户行业、用户角色、业务目标、关键流程、特殊业务规则、数据规模和验收指标]。本次范围：[填写具体端、模块、功能切片]。
 
 任务：测试现有功能，独立验证旧 AI 模型生成的实现。
 
 先核对当前仓库 HEAD、工作区状态、AGENTS.md/CLAUDE.md、架构/产品文档、API/WS/数据契约、真实代码和测试。以代码与可执行证据为准，标记 CURRENT、TARGET、LOCKED、UNKNOWN、NOT_VERIFIED；不能把文档/API 存在等同于功能已经端到端交付。
+
+先核对 Flutter docs/reference/feature-status.md 与后端当前编译 profile、运行时 feature gate：当前一期组合只开放已登录 App 用户的一对一 rtc；群通话必须同时选入并启用 rtc_group 与父功能 rtc，而当前组合未选入 rtc_group；访客和 Web 坐席音视频也不随一对一开放。不得把 LiveKit/RTC handler、群通话代码或测试存在等同于群通话已开放。分别核验编译选择、运行开关、好友/黑名单授权、房间类型、呼叫状态机、媒体转发和真实设备验收；未执行真实双端媒体验收不得标 PASS。
 
 先不要修改业务实现。盘点该场景已有单元、集成、契约、E2E、平台/设备测试和 CI 门禁，建立“需求/不变量 → 测试资产或 TEST-ID → 命令 → 证据”矩阵。覆盖正常路径、权限拒绝、非法输入、边界值、重复请求、并发、超时、故障恢复、旧数据兼容和跨端行为。
 
@@ -1371,22 +1380,24 @@ $test-collaboration $ai-regression-testing $verification-loop
 逐项报告 PASS/FAIL/BLOCKED/NOT RUN、真实命令、退出码、测试数量和证据位置。发现缺陷先提供复现和最小修复建议；未经授权不修改业务代码。不得把未执行或环境缺失标记为 PASS。
 ```
 
-#### ECC-086 · 客户实名/注册、联系人和关系管理
+#### ECC-086 · 账号注册、登录与联系人关系
 
 **预计执行时间（单选一种模式）：A 新增功能 120 分钟 · B 优化现有功能 90 分钟 · C 测试现有功能 60 分钟**
 
-**场景：** 账号、好友与社交关系
+**场景：** 账号认证、设备会话与社交关系
 
 **A · 新增功能 · `product-capability` + `orch-add-feature` + `tdd-workflow`**
 
 ```text
 $product-capability $orch-add-feature $tdd-workflow
 
-业务场景：客户实名/注册、联系人和关系管理（账号、好友与社交关系）。客户信息：[填写客户行业、用户角色、业务目标、关键流程、特殊业务规则、数据规模和验收指标]。本次范围：[填写具体端、模块、功能切片]。
+业务场景：客户账号注册、登录与联系人关系（账号、好友与社交关系）。客户信息：[填写客户行业、用户角色、业务目标、关键流程、特殊业务规则、数据规模和验收指标]。本次范围：[填写具体端、模块、功能切片]。
 
 任务：为该场景新增功能。
 
 先核对当前仓库 HEAD、工作区状态、AGENTS.md/CLAUDE.md、架构/产品文档、API/WS/数据契约、真实代码和测试。以代码与可执行证据为准，标记 CURRENT、TARGET、LOCKED、UNKNOWN、NOT_VERIFIED；不能把文档/API 存在等同于功能已经端到端交付。
+
+认证链路入口与测试锚点：src/api/passport_handler.erl、auth_oidc_handler.erl、qr_login_handler.erl、qr_login_sse_handler.erl、wechat_mini_auth_handler.erl、user_device_handler.erl；src/logic/passport_logic.erl、auth_oidc_logic.erl、qr_login_logic.erl、wechat_mini_auth_logic.erl、user_device_logic.erl、login_security_logic.erl；test/api/passport_handler_tests.erl、qr_login_handler_tests.erl、qr_login_sse_handler_tests.erl、wechat_mini_auth_handler_tests.erl、user_device_handler_tests.erl、test/ds/auth_session_ds_tests.erl。以上仅为当前代码入口，执行时重新核对 HEAD。不要把注册/登录误写成实名核验；区分密码登录、OIDC、扫码登录、微信小程序认证、设备会话和联系人关系的真实状态。
 
 读取该场景对应的领域概念、路由/接口、数据模型、Flutter/Admin 消费入口和现有测试，先做能力盘点：哪些可直接复用、哪些可通过配置组合、哪些确实缺失。不得重复造轮子或把未开放能力当作已交付。
 
@@ -1400,11 +1411,13 @@ $product-capability $orch-add-feature $tdd-workflow
 ```text
 $brownfield-retrospective $tdd-workflow $verification-loop
 
-业务场景：客户实名/注册、联系人和关系管理（账号、好友与社交关系）。客户信息：[填写客户行业、用户角色、业务目标、关键流程、特殊业务规则、数据规模和验收指标]。本次范围：[填写具体端、模块、功能切片]。
+业务场景：客户账号注册、登录与联系人关系（账号、好友与社交关系）。客户信息：[填写客户行业、用户角色、业务目标、关键流程、特殊业务规则、数据规模和验收指标]。本次范围：[填写具体端、模块、功能切片]。
 
 任务：优化现有功能，重点用于新一代 AI 模型复审和改进旧 AI 模型生成的代码。
 
 先核对当前仓库 HEAD、工作区状态、AGENTS.md/CLAUDE.md、架构/产品文档、API/WS/数据契约、真实代码和测试。以代码与可执行证据为准，标记 CURRENT、TARGET、LOCKED、UNKNOWN、NOT_VERIFIED；不能把文档/API 存在等同于功能已经端到端交付。
+
+认证链路入口与测试锚点：src/api/passport_handler.erl、auth_oidc_handler.erl、qr_login_handler.erl、qr_login_sse_handler.erl、wechat_mini_auth_handler.erl、user_device_handler.erl；src/logic/passport_logic.erl、auth_oidc_logic.erl、qr_login_logic.erl、wechat_mini_auth_logic.erl、user_device_logic.erl、login_security_logic.erl；test/api/passport_handler_tests.erl、qr_login_handler_tests.erl、qr_login_sse_handler_tests.erl、wechat_mini_auth_handler_tests.erl、user_device_handler_tests.erl、test/ds/auth_session_ds_tests.erl。以上仅为当前代码入口，执行时重新核对 HEAD。不要把注册/登录误写成实名核验；区分密码登录、OIDC、扫码登录、微信小程序认证、设备会话和联系人关系的真实状态。
 
 按 brownfield-retrospective 的 slice-first 方法，把范围限制在约 15 个文件或 2000 行以内。不要信任旧模型自评、注释或现有测试完整性；独立重建真实行为、调用链、数据流、权限边界、失败路径、并发/竞态、资源生命周期和跨端契约，建立改动前测试/性能/错误行为基线。
 
@@ -1420,11 +1433,13 @@ $brownfield-retrospective $tdd-workflow $verification-loop
 ```text
 $test-collaboration $ai-regression-testing $verification-loop
 
-业务场景：客户实名/注册、联系人和关系管理（账号、好友与社交关系）。客户信息：[填写客户行业、用户角色、业务目标、关键流程、特殊业务规则、数据规模和验收指标]。本次范围：[填写具体端、模块、功能切片]。
+业务场景：客户账号注册、登录与联系人关系（账号、好友与社交关系）。客户信息：[填写客户行业、用户角色、业务目标、关键流程、特殊业务规则、数据规模和验收指标]。本次范围：[填写具体端、模块、功能切片]。
 
 任务：测试现有功能，独立验证旧 AI 模型生成的实现。
 
 先核对当前仓库 HEAD、工作区状态、AGENTS.md/CLAUDE.md、架构/产品文档、API/WS/数据契约、真实代码和测试。以代码与可执行证据为准，标记 CURRENT、TARGET、LOCKED、UNKNOWN、NOT_VERIFIED；不能把文档/API 存在等同于功能已经端到端交付。
+
+认证链路入口与测试锚点：src/api/passport_handler.erl、auth_oidc_handler.erl、qr_login_handler.erl、qr_login_sse_handler.erl、wechat_mini_auth_handler.erl、user_device_handler.erl；src/logic/passport_logic.erl、auth_oidc_logic.erl、qr_login_logic.erl、wechat_mini_auth_logic.erl、user_device_logic.erl、login_security_logic.erl；test/api/passport_handler_tests.erl、qr_login_handler_tests.erl、qr_login_sse_handler_tests.erl、wechat_mini_auth_handler_tests.erl、user_device_handler_tests.erl、test/ds/auth_session_ds_tests.erl。以上仅为当前代码入口，执行时重新核对 HEAD。不要把注册/登录误写成实名核验；区分密码登录、OIDC、扫码登录、微信小程序认证、设备会话和联系人关系的真实状态。
 
 先不要修改业务实现。盘点该场景已有单元、集成、契约、E2E、平台/设备测试和 CI 门禁，建立“需求/不变量 → 测试资产或 TEST-ID → 命令 → 证据”矩阵。覆盖正常路径、权限拒绝、非法输入、边界值、重复请求、并发、超时、故障恢复、旧数据兼容和跨端行为。
 
