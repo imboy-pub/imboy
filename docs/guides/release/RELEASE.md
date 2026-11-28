@@ -19,11 +19,11 @@
 ## 2. 镜像构建 / Image Build
 
 ### 后端 imboy-backend（本仓）
-多阶段 Dockerfile（OTP 28 编译 + relx 自包含 release + debian-slim 运行）：
+多阶段 `docker/backend_Dockerfile`（OTP 29 编译 + relx 自包含 release + Debian 13 slim 运行）：
 
 ```bash
 cd imboy
-docker build -t imboy/imboy-backend:$(cat VERSION) .
+docker build -f docker/backend_Dockerfile -t imboy/backend:$(cat VERSION) .
 ```
 
 要点：

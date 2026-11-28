@@ -138,7 +138,7 @@ services:
   imboy_backend: &dev_backend
     profiles: [api]
     image: ${BACKEND_IMAGE:-imboy-backend:local}
-    build: {context: ., dockerfile: Dockerfile}
+    build: {context: ., dockerfile: docker/backend_Dockerfile}
     restart: unless-stopped
     depends_on:
       imboy_pg18: {condition: service_healthy}

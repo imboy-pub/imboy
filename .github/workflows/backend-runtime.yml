@@ -8,7 +8,8 @@ on:
       - .dockerignore
       - docker-compose.yml
       - .env.example
-      - docker/imboy_Dockerfile_dev
+      - docker/backend_Dockerfile
+      - docker/backend_dev_Dockerfile
       - scripts/dev_setup.sh
       - deploy/nginx/dev.conf.template
       - deploy/nginx/19-local-host-upstream.envsh
@@ -39,7 +40,7 @@ jobs:
         uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7
         with:
           context: .
-          file: ./Dockerfile
+          file: ./docker/backend_Dockerfile
           platforms: linux/amd64
           load: true
           push: false

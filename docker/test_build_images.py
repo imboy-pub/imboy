@@ -60,6 +60,21 @@ sys.exit(1)
 """
 
 
+class DockerfileLayoutTest(unittest.TestCase):
+    def test_backend_production_and_dev_recipes_have_distinct_roles(self):
+        production = ROOT / "docker/backend_Dockerfile"
+        development = ROOT / "docker/backend_dev_Dockerfile"
+        legacy = ROOT / "Dockerfile"
+        self.assertTrue(production.is_file())
+        self.assertTrue(development.is_file())
+        self.assertTrue(legacy.is_symlink())
+        self.assertEqual(legacy.resolve(), production.resolve())
+        self.assertIn("AS runtime", production.read_text())
+        self.assertIn('CMD ["/opt/imboy/bin/imboy", "foreground"]', production.read_text())
+        self.assertIn('CMD ["bash"]', development.read_text())
+        self.assertFalse((ROOT / "docker/imboy_Dockerfile_dev").exists())
+
+
 class BuildImagesTest(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()

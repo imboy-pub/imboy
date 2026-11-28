@@ -102,7 +102,7 @@ PY
     revision="$backend_sha"
     source=https://github.com/imboy-pub/imboy
     case "$component" in
-      backend) context="$tmp/backend"; recipe="$context/Dockerfile" ;;
+      backend) context="$tmp/backend"; recipe="$context/docker/backend_Dockerfile" ;;
       pg18) context="$tmp/backend"; recipe="$context/docker/pg18_Dockerfile" ;;
       admin|widget)
         context="$tmp/$component"

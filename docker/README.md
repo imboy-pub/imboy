@@ -1,12 +1,16 @@
 # Docker 说明
 
-本目录存放 IMBoy 后端与 PostgreSQL 相关的 Docker 构建文件和初始化脚本。
+本目录统一存放 IMBoy 四个可投产运行镜像的配方、构建工具和 PostgreSQL 初始化脚本。
 本地启动统一使用根目录 `docker-compose.yml` 与 `bash scripts/dev_setup.sh`，步骤见
 [本地开发指南](../docs/guides/operations/deployment/local-development.md)。
 
 ## 文件说明
 
-- `imboy_Dockerfile_dev`
+- `backend_Dockerfile`
+  Backend 多阶段生产运行镜像，Erlang/OTP 编译、自包含 release、Debian 13 slim 运行；仓根 `Dockerfile` 是兼容软链接。
+- `admin_Dockerfile` / `widget_Dockerfile`
+  管理后台及客服 Widget 生产静态服务镜像；配方与批准的前端源码逐字节核对。
+- `backend_dev_Dockerfile`
   Erlang/OTP 29 开发工具镜像；从当前检出挂载源码，不在构建时克隆远端分支。
 - `pg18_Dockerfile`
   PostgreSQL 18 运行镜像，集成 PostGIS、pgvector、timescaledb、pg_jieba、pgRouting 等扩展。
@@ -46,10 +50,16 @@ PostGIS 3.7.0 破坏性变更：`postgis_tiger_geocoder`（NEWS #6052）与
 ### 1. 构建 Erlang 开发镜像
 
 ```bash
-docker build -f docker/imboy_Dockerfile_dev -t imboy/imboy-api:dev .
+docker build -f docker/backend_dev_Dockerfile -t imboy/imboy-api:dev .
 ```
 
-### 2. 构建 PostgreSQL 18 镜像
+### 2. 构建生产 Backend 镜像
+
+```bash
+docker build -f docker/backend_Dockerfile -t imboy/backend:$(cat VERSION) .
+```
+
+### 3. 构建 PostgreSQL 18 镜像
 
 ```bash
 docker build -f docker/pg18_Dockerfile -t imboy/pg18:dev .
@@ -138,8 +148,14 @@ manifest list 且含双平台。
 
 ## 四镜像统一构建与 Docker Hub 分发 / Four-image builds and Docker Hub distribution
 
-生产 Backend 仍使用仓根 `Dockerfile`；`imboy_Dockerfile_dev` 是独立交互开发工具，
-不是生产运行镜像。Admin 和 Widget 的两个配方镜像于本目录
+生产 Backend 唯一配方为 `docker/backend_Dockerfile`，构建上下文仍为仓根。
+仓根 `Dockerfile` 仅为兼容旧命令的软链接；新脚本、CI 与 Compose 显式使用新路径。
+原 `imboy_Dockerfile_dev` 改名为 `backend_dev_Dockerfile`，是独立的交互开发工具，
+不是生产运行镜像。
+
+镜像达到可投产运行的质量要求，不代表生产环境必须使用 Docker。
+长期生产可选择云 ECS 上的原生 Erlang/OTP release、PostgreSQL、Nginx 等服务，继续使用现有 `scripts/imboy-deploy.sh` 原生部署与升级路径。
+Docker 镜像主要服务可重复构建、隔离测试、快速交付及按需容器化部署；本次不改变原生部署默认路径。Admin 和 Widget 的两个配方镜像于本目录
 （`admin_Dockerfile`、`widget_Dockerfile`），由已批准的前端提交
 `imboy-admin-frontend` 的 `Dockerfile`、`Dockerfile.widget` 提供真源。
 脚本逐字节核对配方，发生漂移时拒绝构建；升级前端配方时同步这两份镜像。

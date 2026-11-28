@@ -62,7 +62,7 @@ jobs:
           fi
 
   # ----------------------------------------------------------------
-  # Build Candidate — 仓根 Dockerfile 构建 + 推 GHCR candidate
+  # Build Candidate — docker/backend_Dockerfile 构建 + 推 GHCR candidate
   #   * checkout 固定在 tag ref（构建源 = 打 tag 的那个 commit，不漂移）
   #   * 候选标签含 VERSION、源码 SHA、run、attempt；最终标签保持完整 VERSION
   #   * digest（sha256:...）作为 job output —— 后续 Golden 门禁与
@@ -127,7 +127,7 @@ jobs:
         uses: docker/build-push-action@v7
         with:
           context: .
-          file: ./Dockerfile
+          file: ./docker/backend_Dockerfile
           platforms: linux/amd64
           labels: |
             org.opencontainers.image.source=https://github.com/${{ github.repository }}

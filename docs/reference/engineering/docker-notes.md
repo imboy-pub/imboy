@@ -4,7 +4,7 @@
 
 ## 现状
 
-**后端 Dockerfile**(`imboy/Dockerfile`):多阶段——Stage 1 `erlang:28` builder(含 wx 供 relx 组装 observer),`sed` 关闭 `dev_mode`(避免符号链接断链),`make rel` 拉依赖+编译+relx 组装 ERTS 自包含;Stage 2 debian-slim runtime,仅拷 release + ERTS 所需系统库(架构自适应 amd64/arm64)。`.dockerignore` 排除 `_build/deps/_rel/.git`。
+**后端 Dockerfile**(`imboy/docker/backend_Dockerfile`):多阶段——Stage 1 `erlang:28` builder(含 wx 供 relx 组装 observer),`sed` 关闭 `dev_mode`(避免符号链接断链),`make rel` 拉依赖+编译+relx 组装 ERTS 自包含;Stage 2 debian-slim runtime,仅拷 release + ERTS 所需系统库(架构自适应 amd64/arm64)。`.dockerignore` 排除 `_build/deps/_rel/.git`。
 
 **Admin Dockerfile**:`oven/bun:1-slim` builder → nginx serve;构建参数(`VITE_API_BASE_URL` 等)build 时注入。
 
@@ -29,7 +29,7 @@
 
 ## 相关模块
 
-`imboy/Dockerfile`、`imboy/.dockerignore`、`imboyadmin/Dockerfile`、`imboy/deploy/helm/`、`imboy/deploy/nginx/`、`imboy/.gitignore:43`
+`imboy/docker/backend_Dockerfile`、`imboy/.dockerignore`、`imboyadmin/Dockerfile`、`imboy/deploy/helm/`、`imboy/deploy/nginx/`、`imboy/.gitignore:43`
 
 ## 优先级
 
