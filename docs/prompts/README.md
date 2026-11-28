@@ -7,9 +7,9 @@ IMBoy 的 ECC 可复制提示词统一索引。每个仓库维护自己的案例
 | 仓库 | 案例编号 | 数量 | 文件 |
 |---|---|---:|---|
 | Backend | ECC-001、ECC-005–022、ECC-043–045、ECC-051–089、ECC-110–116 | 68 | [ECC_USE_CASES.zh-CN.md](./ECC_USE_CASES.zh-CN.md) |
-| Flutter | ECC-002、ECC-023–034、ECC-090–101、ECC-117–118 | 27 | [Flutter 案例库](https://github.com/imboy-pub/imboy-flutter/blob/main/docs/prompts/ECC_USE_CASES.zh-CN.md) |
-| Admin | ECC-003、ECC-035–042、ECC-102–107、ECC-119–121 | 18 | [Admin 案例库](https://github.com/imboy-pub/imboy-admin-frontend/blob/main/docs/prompts/ECC_USE_CASES.zh-CN.md) |
-| geo_regions | ECC-004、ECC-046–050、ECC-108–109 | 8 | [geo_regions 案例库](https://github.com/imboy-pub/geo_regions/blob/main/docs/prompts/ECC_USE_CASES.zh-CN.md) |
+| Flutter | ECC-002、ECC-023–034、ECC-090–101、ECC-117–118、ECC-124 | 28 | [Flutter 案例库](https://github.com/imboy-pub/imboy-flutter/blob/main/docs/prompts/ECC_USE_CASES.zh-CN.md) |
+| Admin | ECC-003、ECC-035–042、ECC-102–107、ECC-119–123 | 20 | [Admin 案例库](https://github.com/imboy-pub/imboy-admin-frontend/blob/main/docs/prompts/ECC_USE_CASES.zh-CN.md) |
+| geo_regions | ECC-004、ECC-046–050、ECC-108–109、ECC-125 | 9 | [geo_regions 案例库](https://github.com/imboy-pub/geo_regions/blob/main/docs/prompts/ECC_USE_CASES.zh-CN.md) |
 | **合计** | **ECC-001–ECC-125** | **125** | |
 
 ## 四仓契约边界
