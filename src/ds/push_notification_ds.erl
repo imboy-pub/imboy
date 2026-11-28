@@ -91,7 +91,10 @@ send_to_group_users(Gid, Uids, Title, Body) ->
                 Rows
             ),
             ok;
-        _ ->
+        {error, Reason} ->
+            %% G-02：与 send_to_user_with_data / send_to_users 同口径留痕——
+            %% 群推送取 token 失败曾静默吞掉，群通知链故障完全不可见。
+            ?ERROR_LOG(["push_notification_ds: list_by_uids failed", Uids, Reason]),
             ok
     end.
 
@@ -291,6 +294,9 @@ send_platform_push(Platform, Token, Title, Body, Data) ->
                 {error, not_configured} -> ok;
                 % token 无效，不重试
                 {error, {apns_error, 410}} -> ok;
+                %% G-03：404（BadDeviceToken）与 FCM 404 同口径——
+                %% maybe_deactivate_token 已下线该 token，重试纯浪费
+                {error, {apns_error, 404}} -> ok;
                 {error, Reason} -> error({push_failed, Reason})
             end;
         <<"jpush">> ->

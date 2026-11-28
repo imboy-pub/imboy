@@ -187,3 +187,75 @@ send_fcm_refresh_config_error_not_retried_test() ->
         ),
         ?assertEqual(0, meck:num_calls(gun, open, '_'))
     end).
+
+%% ===================================================================
+%% G-02 · send_to_group_users 对 list_by_uids 失败必须留痕（与
+%% send_to_user_with_data:48-50 / send_to_users:69-71 同口径）
+%% 返回值合同不变（仍 ok，推送链永不 crash 调用方）。
+%% ===================================================================
+
+send_to_group_users_list_error_logged_test() ->
+    ?WITH_MECKS([push_token_repo, elib_log], fun() ->
+        meck:expect(push_token_repo, list_by_uids, fun([1]) -> {error, db_down} end),
+        meck:expect(elib_log, internal_log, 4, fun(Level, _Msg, _Mod, _Line) ->
+            case Level of
+                error -> erlang:put(group_push_error_logged, true);
+                _ -> ok
+            end,
+            ok
+        end),
+        erlang:put(group_push_error_logged, false),
+        ?assertEqual(
+            ok,
+            push_notification_ds:send_to_group_users(<<"g1-placeholder">>, [1], <<"t">>, <<"b">>)
+        ),
+        ?assert(erlang:get(group_push_error_logged))
+    end).
+
+%% ===================================================================
+%% G-03 · APNs 404（BadDeviceToken）与 FCM 404 同口径：token 已被
+%% maybe_deactivate_token 下线，重试纯浪费——必须不重试（不 throw）。
+%% RED 证据（修复前实测）：{error, {apns_error, 404}} 落入
+%% error({push_failed, Reason})，经内联 async_retry 直接炸 send_to_user。
+%% ===================================================================
+
+stub_gun_status(Status) ->
+    meck:expect(gun, open, fun(_Host, _Port, _Opts) -> {ok, self()} end),
+    meck:expect(gun, await_up, fun(_Pid, _Timeout) -> {ok, http2} end),
+    meck:expect(gun, post, fun(_Pid, _Path, _Headers, _Body) -> stream_ref end),
+    meck:expect(gun, await, fun(_Pid, _Ref, _Timeout) ->
+        {response, fin, Status, []}
+    end),
+    meck:expect(gun, close, fun(_Pid) -> ok end).
+
+send_apns_404_not_retried_test() ->
+    ?WITH_MECKS([push_token_repo, elib_async, imboy_cache, gun], fun() ->
+        application:set_env(imboy, push, [
+            {apns_key_id, <<"key-id-placeholder">>},
+            {apns_team_id, <<"team-id-placeholder">>},
+            {apns_bundle_id, <<"bundle-id-placeholder">>},
+            {apns_env, production}
+        ]),
+        Rows = [#{<<"platform">> => <<"apns">>, <<"token">> => <<"tok-placeholder">>}],
+        meck:expect(push_token_repo, list_by_uid, fun(1) -> {ok, Rows} end),
+        meck:expect(push_token_repo, deactivate_by_token, fun(<<"tok-placeholder">>) ->
+            {ok, 1}
+        end),
+        %% JWT 缓存命中，绕开 P8 私钥与签名
+        meck:expect(imboy_cache, get, fun({apns_jwt, <<"key-id-placeholder">>}) ->
+            {ok, <<"jwt-placeholder">>}
+        end),
+        %% async_retry 真执行 fun（重试语义不进本测试，只看单次分类结果）
+        meck:expect(elib_async, async_retry, fun(F, _Retry, _Delay) ->
+            F(),
+            self()
+        end),
+        stub_gun_status(404),
+        try
+            ?assertEqual(ok, push_notification_ds:send_to_user(1, <<"t">>, <<"b">>))
+        after
+            application:unset_env(imboy, push)
+        end,
+        %% 404 仍触发 token 下线（行为保持）
+        ?assert(meck:called(push_token_repo, deactivate_by_token, [<<"tok-placeholder">>]))
+    end).
