@@ -1557,7 +1557,7 @@ $brownfield-retrospective $tdd-workflow $verification-loop
 
 先核对当前仓库 HEAD、工作区状态、AGENTS.md/CLAUDE.md、架构/产品文档、API/WS/数据契约、真实代码和测试。以代码与可执行证据为准，标记 CURRENT、TARGET、LOCKED、UNKNOWN、NOT_VERIFIED；不能把文档/API 存在等同于功能已经端到端交付。
 
-当前代码/测试定位锚点：src/api/wallet_handler.erl、billing_handler.erl、payment_callback_handler.erl、src/ds/billing_plan_ds.erl、billing_subscription_ds.erl、payment_transaction_ds.erl、wallet_ds.erl；test/api/billing_route_tests.erl、test/ds/wallet_ds_tests.erl、docs/api-contracts/wallet_recharge_api_contract.md。支付回调、账单与钱包余额必须以事务、签名、幂等和对账证据为准。
+当前代码/测试定位锚点：src/api/wallet_handler.erl、billing_handler.erl、payment_callback_handler.erl、src/ds/billing_plan_ds.erl、billing_subscription_ds.erl、payment_transaction_ds.erl、wallet_ds.erl；test/api/billing_route_tests.erl、test/api/payment_callback_ip_allowlist_tests.erl、docs/api-contracts/wallet_recharge_api_contract.md。支付回调、账单与钱包余额必须以事务、签名、幂等和对账证据为准。
 
 按 brownfield-retrospective 的 slice-first 方法，把范围限制在约 15 个文件或 2000 行以内。不要信任旧模型自评、注释或现有测试完整性；独立重建真实行为、调用链、数据流、权限边界、失败路径、并发/竞态、资源生命周期和跨端契约，建立改动前测试/性能/错误行为基线。
 
@@ -1579,7 +1579,7 @@ $test-collaboration $ai-regression-testing $verification-loop
 
 先核对当前仓库 HEAD、工作区状态、AGENTS.md/CLAUDE.md、架构/产品文档、API/WS/数据契约、真实代码和测试。以代码与可执行证据为准，标记 CURRENT、TARGET、LOCKED、UNKNOWN、NOT_VERIFIED；不能把文档/API 存在等同于功能已经端到端交付。
 
-当前代码/测试定位锚点：src/api/wallet_handler.erl、billing_handler.erl、payment_callback_handler.erl、src/ds/billing_plan_ds.erl、billing_subscription_ds.erl、payment_transaction_ds.erl、wallet_ds.erl；test/api/billing_route_tests.erl、test/ds/wallet_ds_tests.erl、docs/api-contracts/wallet_recharge_api_contract.md。支付回调、账单与钱包余额必须以事务、签名、幂等和对账证据为准。
+当前代码/测试定位锚点：src/api/wallet_handler.erl、billing_handler.erl、payment_callback_handler.erl、src/ds/billing_plan_ds.erl、billing_subscription_ds.erl、payment_transaction_ds.erl、wallet_ds.erl；test/api/billing_route_tests.erl、test/api/payment_callback_ip_allowlist_tests.erl、docs/api-contracts/wallet_recharge_api_contract.md。支付回调、账单与钱包余额必须以事务、签名、幂等和对账证据为准。
 
 先不要修改业务实现。盘点该场景已有单元、集成、契约、E2E、平台/设备测试和 CI 门禁，建立“需求/不变量 → 测试资产或 TEST-ID → 命令 → 证据”矩阵。覆盖正常路径、权限拒绝、非法输入、边界值、重复请求、并发、超时、故障恢复、旧数据兼容和跨端行为。
 
