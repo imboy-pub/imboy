@@ -2,7 +2,7 @@
 
 > 聚焦工程能力(非业务功能)· 描述现状 + 增量改进 · 日期 2026-07-22
 > 本目录提供工程主题索引；实施计划与执行证据在仓库外维护。
-> 本文是索引与跨主题小结;各主题详见同目录专项。
+> 本文是索引与跨主题小结;各主题详见同目录专项;文档自身变更记录见 [engineering-changelog](./engineering-changelog.md)。
 
 ---
 
@@ -28,14 +28,14 @@
 | 主题 | 现状评级 | 一句话 | 专项 |
 |---|---|---|---|
 | 项目结构 | 良好 | 后端四层清晰(仅 1 破窗);Flutter 三套运行时并存是主要杂音 | 见 `docs/archive/review/code-quality-review.md` + 本目录 technical-debt |
-| 依赖管理 | 中等偏上 | 显式 pin + SBOM;生产 profile 混入调试工具、Flutter 多个同类库 | dependency-notes |
-| 配置布局 | 良好 | 三层配置 + IMBOY_* 优先 + 生产 fail-fast;少量默认值与文档漂移 | configuration-notes |
-| 日志一致性 | **偏弱** | `elib_log` 封装存在但全后端仅 ~18 文件调用,覆盖稀疏 | logging-notes |
+| 依赖管理 | 中等偏上 | 显式 pin + SBOM;生产 profile 混入调试工具、Flutter 多个同类库 | [dependency-notes](./dependency-notes.md) |
+| 配置布局 | 良好 | 三层配置 + IMBOY_* 优先 + 生产 fail-fast;少量默认值与文档漂移 | [configuration-notes](./configuration-notes.md) |
+| 日志一致性 | **偏弱** | `elib_log` 封装存在但全后端仅 ~18 文件调用,覆盖稀疏 | [logging-notes](./logging-notes.md) |
 | 错误处理 | 中等 | 分层错误码规范;Flutter 20 处静默吞错、epgsql 吞错返空 | technical-debt（引用 review）|
-| 可观测性 | 中等 | Prometheus/Grafana/Loki/Alertmanager 齐;埋点与追踪偏薄 | observability-notes |
-| CI 流程 | 中等偏上 | ratchet 框架好;多数门 continue-on-error 软门 | ci-notes |
-| 发布流程 | 良好 | 蓝绿 + preflight + 冒烟;版本双源需同步 | release-notes |
-| Docker 布局 | 良好 | 多阶段自包含,Dockerfile 文档详尽 | docker-notes |
+| 可观测性 | 中等 | Prometheus/Grafana/Loki/Alertmanager 齐;埋点与追踪偏薄 | [observability-notes](./observability-notes.md) |
+| CI 流程 | 中等偏上 | ratchet 框架好;多数门 continue-on-error 软门 | [ci-notes](./ci-notes.md) |
+| 发布流程 | 良好 | 蓝绿 + preflight + 冒烟;版本双源需同步 | [release-notes](./release-notes.md) |
+| Docker 布局 | 良好 | 多阶段自包含,Dockerfile 文档详尽 | [docker-notes](./docker-notes.md) |
 | 可维护性 | 中等 | 巨型文件(chat_page 2234/imboy_pb 6018)是热点 | technical-debt |
 
 > 评级为工程视角相对判断,非严格度量。
@@ -54,13 +54,13 @@
 
 | 优先级 | 建议 | 主题 |
 |---|---|---|
-| 高 | 生产 profile 剥离调试依赖(sync/observer_cli/recon/redbug) | dependency-notes |
-| 高 | 关键路径补结构化日志 + request id | logging-notes |
-| 高 | 软门收紧为 ratchet 硬门 | ci-notes |
-| 中 | 补业务指标埋点 + 最小追踪 | observability-notes |
-| 中 | 配置默认值/文档漂移修正 | configuration-notes |
-| 中 | 版本双源同步机制 | release-notes |
-| 低 | Docker 镜像瘦身与扫描 | docker-notes |
+| 高 | 生产 profile 剥离调试依赖(sync/observer_cli/recon/redbug) | [dependency-notes](./dependency-notes.md) |
+| 高 | 关键路径补结构化日志 + request id | [logging-notes](./logging-notes.md) |
+| 高 | 软门收紧为 ratchet 硬门 | [ci-notes](./ci-notes.md) |
+| 中 | 补业务指标埋点 + 最小追踪 | [observability-notes](./observability-notes.md) |
+| 中 | 配置默认值/文档漂移修正 | [configuration-notes](./configuration-notes.md) |
+| 中 | 版本双源同步机制 | [release-notes](./release-notes.md) |
+| 低 | Docker 镜像瘦身与扫描 | [docker-notes](./docker-notes.md) |
 
 ---
 

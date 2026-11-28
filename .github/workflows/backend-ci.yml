@@ -18,11 +18,14 @@ name: Backend CI
 # full-eunit 同步换成 `make eunit-local EUNIT_CONFIG=config/sys`（与本地完全
 # 同口径：OTP 布局 symlink + -config 注入，见 Makefile eunit-local）。
 #
-# Smoke（8 步链子集）不在此：CI 后端起链硬依赖 PG 扩展（timescaledb
+# Smoke（8 步全链）不在此：CI 后端起链硬依赖 PG 扩展（timescaledb
 # create_hypertable ×8 / pg_jieba jiebacfg FTS 触发器 / postgis geometry 列，
 # 见 priv/migrations/00000001_foundation.up.sql 等），vanilla postgres:18 官方
-# （release.yml，8 步全链含 Garage）已覆盖该门 → CI 冒烟子集为计划遗留
-# （Golden Gates §7 Smoke 行），详见 P4-Q3 执行报告。
+# 镜像无法承载该门。现行承载（2026-11-28 逐 job 实测）：全链冒烟与 Garage
+# 真对象存储门由 nightly.yml 承载（唯一 CI 真对象存储跑道）；release.yml 只
+# 承载候选镜像构建与合同校验（候选冒烟门由 fix/release-freshness-p0p2 落地，
+# 不含 Garage）；PR 路径冒烟子集仍为计划遗留（Golden Gates §7 Smoke 行），
+# 详见 P4-Q3 执行报告。
 
 on:
   push:

@@ -176,4 +176,3 @@ user_tag_relation_logic.erl|The call user_tag_relation_ds:remove_user_tag_relati
 user_tag_relation_logic.erl|The call user_tag_relation_ds:remove_user_tag_relation (Conn :: any(), Scene2 :: integer(), Uid :: any(), TagId :: any(), ObjectId :: any()) will never return since the success typing is (pid(), binary(), any(), integer(), binary()) -> 'ok' and the contract is (pid(), binary(), binary() | integer(), integer(), binary() | integer()) -> 'ok'
 user_tag_relation_logic.erl|The created fun has no local return
 user_tag_relation_logic.erl|The pattern [I | _] can never match the type []
-auth_oidc_handler.erl|The pattern {'error', Msg, Code} can never match the type {'error', <<_:128>>}

@@ -121,8 +121,6 @@ handle_callback(Req) ->
                     elib_response:error_with_status(
                         Req, 503, <<"服务暂不可用，请稍后重试"/utf8>>, 503
                     );
-                {error, Msg, Code} ->
-                    elib_response:error(Req, Msg, Code);
                 {error, Msg} ->
                     elib_response:error(Req, Msg, ?ERR_BAD_REQUEST)
             end;

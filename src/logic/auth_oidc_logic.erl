@@ -102,8 +102,7 @@ authorize(Client) ->
 -spec callback(map(), binary()) ->
     {ok, map()}
     | {redirect, binary()}
-    | {error, binary() | service_unavailable}
-    | {error, binary(), integer()}.
+    | {error, binary() | service_unavailable}.
 callback(Params, Ip) ->
     do_callback(Params, Ip).
 

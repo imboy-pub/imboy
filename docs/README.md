@@ -13,10 +13,10 @@
 | 通话（LiveKit RTC/TURN）部署运维（一期 App 好友一对一 `rtc` 默认允许、可显式关闭；群通话仍锁定，部署与真实双端验收另行核对） | [LiveKit 单服务运行手册](./guides/operations/deployment/livekit-single-service-runbook.md) · [产品边界](./product/packaging-contract.md#95-app-一对一-rtc-与群通话边界) |
 | 备份、恢复、升级 | [备份恢复](./guides/operations/deployment/backup-restore.md) · [升级手册](./guides/operations/upgrade-runbook.md) |
 | 对接 REST / WebSocket | [API 格式](./reference/api-format.md) → [REST API 目录](./reference/rest-api-v1-catalog.md) → [WebSocket 协议](./reference/ws-protocol-contract.md) |
-| 理解后端架构 | [架构总览](./architecture/overview.md) → [模块地图](./architecture/module-map.md) → [分层速查](./architecture/module-layer-cheatsheet.md) |
+| 理解后端架构 | [架构总览](./architecture/overview.md) → [模块地图](./architecture/module-map.md) → [分层速查](./architecture/module-layer-cheatsheet.md) · [跨车道工程纪律](https://github.com/imboy-pub/imboy/blob/main/docs/engineering/engineering-guardrails.md)（engineering/ 不在 docs-site 同步白名单，走 GitHub 源） |
 | 使用 ECC 工程提示词 | [四仓 ECC Prompt Library](https://github.com/imboy-pub/imboy/blob/main/docs/prompts/README.md) · [后端案例](https://github.com/imboy-pub/imboy/blob/main/docs/prompts/ECC_USE_CASES.zh-CN.md) |
 | 对接附件上传/下载 | [direct-v1 直传协议](./architecture/attachment-direct-transfer-v1-protocol.md)（协议族，与旧 V5 并存）· [附件生命周期 V5 合同](./architecture/attachment-lifecycle-v5/02-main-plan.md) · S3 直传改造计划族（V2.x，`docs/architecture/`，实施状态以各计划自标为准） |
-| 审核 E2EE / 合规（E2EE 为二期域，一期 `phase1_delivery` 默认关闭） | [E2EE 概念](./concepts/e2ee.md) → [E2EE 协议](./reference/e2ee-protocol-specification.md) · [E2EE 政策](./compliance/e2ee-policy.md) · [管理端消息访问](./security/admin-message-access.md) · [等保清单](./compliance/mlps2-checklist.md) |
+| 审核 E2EE / 合规（E2EE 为二期域，一期 `phase1_delivery` 默认关闭） | [E2EE 概念](./concepts/e2ee.md) → [E2EE 协议](./reference/e2ee-protocol-specification.md) · [E2EE 政策](./compliance/e2ee-policy.md) · [E2EE 可见性矩阵](./compliance/e2ee-visibility-matrix.md) · [管理端消息访问](./security/admin-message-access.md) · [已知泄露密钥处置](./security/KNOWN_LEAKED_KEYS.md) · [PostgreSQL AES 密钥轮换](./guides/security/postgre-aes-key-rotation-runbook.md) · [等保清单](./compliance/mlps2-checklist.md) |
 | 当前正在做什么 | [路线图](https://github.com/imboy-pub/imboy/blob/main/ROADMAP.md) · [CHANGELOG](https://github.com/imboy-pub/imboy/blob/main/CHANGELOG.md) |
 | 查看历史结论 | [已归档](https://github.com/imboy-pub/imboy/blob/main/docs/archive/README.md) |
 
@@ -27,10 +27,11 @@
 | 概念 | 核心业务实体是什么、边界在哪？ | [concepts](./concepts/) |
 | 教程 | 我怎样从零做出一个可运行结果？ | [tutorials](./tutorials/) |
 | 操作指南 | 我怎样完成部署、备份、测试或发布？ | [guides](./guides/) |
-| 参考 | 参数、接口、协议和错误码是什么？ | [reference](./reference/) · [术语表](./glossary.md) |
+| 参考 | 参数、接口、协议和错误码是什么？ | [reference](./reference/) · [术语表](./glossary.md) · [micro-community 合同](./reference/contracts/micro-community-api-contract-v1.md) · [JPush 供应商合同](./reference/jpush-provider-contract.md) |
 | 契约 | 某个域的 API 契约与三端对齐？ | [api-contracts](https://github.com/imboy-pub/imboy/tree/main/docs/api-contracts) |
 | 解释 | 为什么采用这种架构或安全设计？ | [explanation](./explanation/) · [architecture](./architecture/overview.md) |
-| 业务与合规 | 产品边界、商业、安全披露是什么？ | [business](./business/service-offering.md) · [compliance](./compliance/e2ee-policy.md) · [legal](https://github.com/imboy-pub/imboy/tree/main/docs/legal) |
+| 业务与合规 | 产品边界、商业、安全披露是什么？ | [business](./business/service-offering.md) · [商业策略分析（2026-06 时点）](./business/ai-era-monetization-strategy-2026-06.md) · [竞品能力路线图（2026-06 时点）](./business/im-competitor-capability-roadmap-2026-06.md) · [compliance](./compliance/e2ee-policy.md) · [legal](https://github.com/imboy-pub/imboy/tree/main/docs/legal) · [隐私政策模板](./legal/privacy-policy-template.md) · [软著申请指南](./legal/software-copyright-application-guide.md) · [支付宝/微信集成（S4）](./guides/payment/s4-alipay-wechat-integration.md) |
+| 私有化交付材料 | 交付包怎么打、现场运行手册怎么写、供应链口径是什么？ | [交付包](https://github.com/imboy-pub/imboy/blob/main/docs/deliver/deliver-pack.md) · [运行手册模板](https://github.com/imboy-pub/imboy/blob/main/docs/deliver/runbook-template.md) · [供应链](https://github.com/imboy-pub/imboy/blob/main/docs/deliver/supply-chain.md)（deliver/ 不在 docs-site 同步白名单，走 GitHub 源） |
 | 决策与过程 | 方案、审计和阶段性结论是什么？ | [adr](https://github.com/imboy-pub/imboy/blob/main/docs/adr/README.md) · [archive](https://github.com/imboy-pub/imboy/blob/main/docs/archive/README.md) |
 
 判断规则：教技能是「教程」，办事情是「指南」，查事实是「参考」，讲原理是「解释」。AI 执行计划、审查报告、测试报告和一次性测试材料保存在仓外，不进入 Git 或交付包。

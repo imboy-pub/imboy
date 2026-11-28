@@ -321,6 +321,12 @@
       "purpose": "Limiter acceptance and failure attribution evidence; no PASS inheritance"
     },
     {
+      "path": "docs/qa/limiter-v1/README.md",
+      "sha256": "eedb607e666f988da42cd091c7277e22480f3a33a7832f2b95a9608fdcd89bba",
+      "source_contract": "docs/plans/2026-10-13-limiter-v1-local-evidence-and-plan.md",
+      "purpose": "Limiter-v1 evidence caliber index (B-3): current single caliber reconciling plan appendix E out-of-repo staging with versioned evidence; not a run artifact"
+    },
+    {
       "path": "docs/qa/limiter-v1/fcc9013a/final-eunit/ATTRIBUTION.md",
       "sha256": "254bbab26a3fb738c3f718bae3142b65a1a74a4a17961d371a3386e9e1ffdf3f",
       "source_contract": "docs/plans/2026-10-13-limiter-v1-local-evidence-and-plan.md",

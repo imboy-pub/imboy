@@ -99,6 +99,15 @@ def _read(path: Path) -> str:
     return path.read_text(encoding="utf-8", errors="replace") if path.exists() else ""
 
 
+def _service_block(text: str, service: str):
+    """取 Compose 顶层服务块：`  <service>:` 起至下一个两空格缩进键。"""
+    m = re.search(rf"(?m)^  {re.escape(service)}:\s*$", text)
+    if not m:
+        return None
+    nxt = re.compile(r"(?m)^  \S[^:]*:$").search(text, m.end())
+    return text[m.start(): nxt.start() if nxt else len(text)]
+
+
 def validate_consistency(policy: dict, root: Path = ROOT) -> list:
     """evidence-backed 条目与 deploy/脚本实际配置比对（天数；10-copies 单独比）。"""
     errors = []
@@ -121,12 +130,21 @@ def validate_consistency(policy: dict, root: Path = ROOT) -> list:
     expect = duration_days(by_id, "metrics_prometheus")
     for compose_path in compose_paths:
         prom_text = _read(root / compose_path)
-        match = re.search(r"--storage\.tsdb\.retention\.time=(\d+)d", prom_text)
+        # 本类注册的是生产服务 prod_imboy_prometheus（180d）；compose 里还有
+        # test-monitoring profile 的 test_prometheus（1d 短时栈）。全文首个
+        # --storage.tsdb.retention.time 命中是 test 服务——必须锚定生产服务块
+        # 比对，否则拿 test 实配打生产合同（第三期 P3-5）。
+        prod_block = _service_block(prom_text, "prod_imboy_prometheus")
+        if prod_block is None:
+            errors.append(f"{compose_path} 未找到 prod_imboy_prometheus 服务块（实证缺失）")
+            continue
+        match = re.search(r"--storage\.tsdb\.retention\.time=(\d+)d", prod_block)
         if not match:
-            errors.append(f"{compose_path} 未找到 prometheus retention（实证缺失）")
+            errors.append(f"{compose_path} prod_imboy_prometheus 未找到 retention（实证缺失）")
         elif expect is not None and expect != int(match.group(1)):
             errors.append(
-                f"metrics_prometheus 注册 {expect}d 与 {compose_path} 实配 {match.group(1)}d 不一致"
+                f"metrics_prometheus 注册 {expect}d 与 {compose_path} "
+                f"prod_imboy_prometheus 实配 {match.group(1)}d 不一致"
             )
 
     backup_text = _read(root / "scripts/backup_pg.sh")
