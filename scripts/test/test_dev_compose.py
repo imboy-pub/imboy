@@ -224,7 +224,12 @@ class LocalComposeTests(unittest.TestCase):
                     ("prod_imboy_edge", {"/tmp", "/home/imboy", "/opt/imboy/var", "/opt/imboy/log"}),
                 ):
                     service = services[name]
-                    self.assertTrue(service["read_only"], name)
+                    if name == "prod_imboy_backend":
+                        # The API retains the established writable app priv contract for
+                        # development-key, license and trial-state workflows.
+                        self.assertFalse(service.get("read_only", False), name)
+                    else:
+                        self.assertTrue(service["read_only"], name)
                     self.assertEqual(service["cap_drop"], ["ALL"], name)
                     self.assertIn("no-new-privileges:true", service["security_opt"], name)
                     tmpfs = service["tmpfs"]

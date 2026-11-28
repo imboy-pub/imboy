@@ -566,8 +566,7 @@ services:
     container_name: imboy_backend
     hostname: backend.docker.imboy.pub
     restart: unless-stopped
-    # Immutable application filesystem. Only explicit runtime mounts/tmpfs are writable.
-    read_only: true
+    # Keep the established writable app priv contract; the process remains non-root.
     tmpfs:
       - /tmp:rw,nosuid,nodev,size=64m
       - /home/imboy:rw,noexec,nosuid,nodev,size=16m,uid=10001,gid=10001,mode=0700
