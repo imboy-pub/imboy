@@ -53,6 +53,8 @@ Use `preflight.sh` for prerequisite checks and `ops.env.example` for scheduled j
 - [备份和恢复 / Backup and restore](../docs/guides/operations/deployment/backup-restore.md)
 - [金丝雀/灰度发布 / Canary release](../docs/guides/operations/deployment/canary-release-runbook.md)
 - [PG18 镜像目录换壳升级 / PG18 image directory-swap upgrade](../docs/guides/operations/pg18-image-directory-swap-upgrade.md)
+- [可重建共享缓存验证 / Shared cache validation](../docs/guides/operations/cache-shared-validation.md)
+- [企业历史文件迁移与恢复 / Enterprise legacy file migration recovery](../docs/guides/operations/deployment/enterprise-file-migration-recovery.md)
 - [本地开发 / Local development](../docs/guides/operations/deployment/local-development.md)
 
 <a id="rtc-turn-regression"></a>
