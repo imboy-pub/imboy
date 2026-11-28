@@ -104,13 +104,8 @@ init_delete_success_test_() ->
 init_check_login_no_conflict_test_() ->
     ?WITH_MECKS(
         [
-            {cowboy_req, [
-                {'read_body', 1, fun(_Req) ->
-                    {ok, <<"{\"device_type\":\"ios\"}">>, #{}}
-                end}
-            ]},
-            {jsone, [
-                {'decode', 1, fun(<<"{\"device_type\":\"ios\"}">>) ->
+            {elib_param, [
+                {'post', 1, fun(_Req) ->
                     #{<<"device_type">> => <<"ios">>}
                 end}
             ]},
@@ -138,6 +133,39 @@ init_check_login_no_conflict_test_() ->
             ?assertEqual(false, maps:get(<<"conflict">>, Payload))
         end
     ).
+
+%% G-01 合同测试：三个原裸解码 action（check_login/kick/kick_others）在请求体
+%% 解析失败（elib_param:post 对坏 JSON/非对象 JSON 的兜底形状 #{}）时必须返回
+%% 400，不得 crash。
+%% RED 证据（修复前实测）：真实 jsone:decode 在 src/api/user_device_handler.erl:145
+%% 对 <<"this is { not json">> 抛 function_clause（jsone_decode:number_integer_part）
+%% → cowboy 进程 500。修复后 handler 走 elib_param:post seam，坏输入经
+%% validate_device_type 判 false → 400。
+%% 有效请求的解析行为由 elib_param 自己的契约保证（同文件其余 5 个 action
+%% 已走同一 seam）；探针为纯 mock 边界测试，不启 app（对齐 web_delete_probe）。
+malformed_body_returns_400_test_() ->
+    [?_test(malformed_body_probe(Action)) || Action <- [check_login, kick, kick_others]].
+
+malformed_body_probe(Action) ->
+    Modules = [auth_ds, elib_param, elib_response],
+    lists:foreach(fun(M) -> meck:new(M, [non_strict, no_link]) end, Modules),
+    try
+        meck:expect(auth_ds, current_uid, fun(S) -> maps:get(current_uid, S) end),
+        meck:expect(elib_param, post, fun(_) ->
+            %% elib_param:post 对坏 JSON/非对象 JSON 的兜底返回
+            #{}
+        end),
+        meck:expect(elib_response, error, fun(R, _Msg, Code) ->
+            R#{result => {error, Code}}
+        end),
+        meck:expect(elib_response, success, fun(R, _Payload) ->
+            R#{result => success}
+        end),
+        Result = user_device_handler:handle_action(Action, #{}, #{current_uid => 12345}),
+        ?assertEqual({error, 400}, maps:get(result, Result))
+    after
+        lists:foreach(fun meck:unload/1, lists:reverse(Modules))
+    end.
 
 %% Pure boundary tests: deliberately avoid WITH_MECKS, which boots the app.
 web_delete_bound_device_test_() ->
