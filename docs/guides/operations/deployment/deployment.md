@@ -162,7 +162,7 @@ _rel/imboy/bin/imboy remote_console
 ```
 
 > - `/healthz` 公网匿名可达：外网请求 `version` 恒报 `"hidden"`，仅内网（如部署探活走 127.0.0.1）报真实 vsn，避免替匿名者做 CVE 版本匹配。
-> - 容器 healthcheck 真源在后端 `Dockerfile`（约 135 行）：`bin/imboy ping` + `bin/imboy eval` 调 `healthz_handler:probe_db()`（运行镜像 debian-slim 无 curl/wget，不走 HTTP 探测）。
+> - 容器 healthcheck 真源在后端 `docker/backend_Dockerfile`：`bin/imboy ping` + `bin/imboy eval` 调 `healthz_handler:probe_db()`（运行镜像 debian-slim 无 curl/wget，不走 HTTP 探测）。
 
 ---
 

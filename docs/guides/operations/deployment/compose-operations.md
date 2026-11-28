@@ -620,10 +620,12 @@ docker compose -f docker-compose.prod.yml -f "$business_policy" logs -f imboy_ba
 
 ### 后端容器运行身份 / Backend container identity
 
-后端镜像默认以 `10001:10001` 运行。ERTS、`bin` 下的启动脚本和 BEAM 目录
+后端 API 镜像默认以 `10001:10001` 运行。ERTS、`bin` 下的启动脚本和 BEAM 目录
 保持 root 所有；`HOME=/home/imboy`、日志、relx 生成配置目录和应用 `priv` 目录可写。
-当前 `priv` 的可写范围也包含 `priv/workers/*.escript`。该目录写权限支持既有
-开发密钥、许可证与试用状态流程；生产密钥仍从只读 `/opt/imboy/priv_runtime` 挂载读取。
+当前 `priv` 的可写范围也包含 `priv/workers/*.escript`，用于保留开发密钥、许可证与试用状态流程；
+生产密钥仍从只读 `/opt/imboy/priv_runtime` 挂载读取。API 进程丢弃全部 Linux capabilities
+并启用 `no-new-privileges`；临时目录、HOME 和 relx 生成目录使用受限 tmpfs。
+不需要写入应用目录的 edge 与 enterprise proof 服务采用只读根文件系统。
 
 安装器与 Golden 升级在拉取镜像之后、启动服务之前调用
 `prepare-backend-runtime.sh`。它读取实际 Compose 的镜像和两个 bind 目录，
@@ -639,11 +641,13 @@ root 日志无需改成全员可读写。安装器重复执行 `chmod 600` 后�
 两个标准 bind 之外的文件必须另外保证 UID 10001 可读，不能把预检成功当成
 所有外部挂载已验收。安装包与新镜像须一起升级。
 
-The backend image runs as UID/GID `10001:10001`. ERTS, launch scripts under `bin`,
+The backend API image runs as UID/GID `10001:10001`. ERTS, launch scripts under `bin`,
 and BEAM directories remain root-owned. Home, logs, relx-generated configuration
-and the app `priv` directory are writable, including `priv/workers/*.escript`.
-The `priv` ownership supports development-key writes;
-production keys are read from the read-only `/opt/imboy/priv_runtime` mount.
+and the app `priv` directory are writable, including `priv/workers/*.escript`, preserving
+the existing development-key, license and trial-state workflows. Production keys are read
+from the read-only `/opt/imboy/priv_runtime` mount. The API drops all Linux capabilities,
+enables `no-new-privileges`, and uses bounded tmpfs for temporary paths. The edge and
+enterprise-proof services, which do not need writable application assets, use read-only root filesystems.
 The installer prepares the two
 resolved bind mounts with narrowly scoped POSIX ACLs before starting services.
 This preserves host ownership, private-key contents and the read-only secret mount.

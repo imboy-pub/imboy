@@ -8,7 +8,8 @@ on:
       - .dockerignore
       - docker-compose.yml
       - .env.example
-      - docker/imboy_Dockerfile_dev
+      - docker/backend_Dockerfile
+      - docker/backend_dev_Dockerfile
       - scripts/dev_setup.sh
       - deploy/nginx/dev.conf.template
       - deploy/nginx/19-local-host-upstream.envsh
@@ -35,11 +36,29 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4
+      - name: Verify the non-root development image with a writable source mount
+        run: |
+          set -euo pipefail
+          docker build -f docker/backend_dev_Dockerfile \
+            --build-arg DEV_UID="$(id -u)" --build-arg DEV_GID="$(id -g)" \
+            -t imboy-backend-dev:runtime-test .
+          scratch="$(mktemp -d)"
+          trap 'rm -rf -- "$scratch"' EXIT
+          docker run --rm --mount "type=bind,source=$scratch,target=/workspace/imboy" \
+            imboy-backend-dev:runtime-test bash -ec '
+              test "$(id -u)" -ne 0
+              test "$(id -g)" -ne 0
+              test -w "$HOME"
+              touch dev-write-probe
+              git init -q
+              git status --porcelain >/dev/null
+            '
+          test "$(stat -c %u "$scratch/dev-write-probe")" = "$(id -u)"
       - name: Build the real backend release image without publishing
         uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7
         with:
           context: .
-          file: ./Dockerfile
+          file: ./docker/backend_Dockerfile
           platforms: linux/amd64
           load: true
           push: false

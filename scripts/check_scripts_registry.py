@@ -94,7 +94,7 @@ def main() -> int:
     for pat in ("Makefile", "include/*.mk", ".github/workflows/*.yml",
                 ".github/workflows/*.yaml", "deploy/install.sh", "deploy/preflight.sh",
                 "deploy/cron/*", "deploy/helm/templates/*.yaml",
-                "Dockerfile*", "docker-compose*.yml"):
+                "Dockerfile*", "docker/*_Dockerfile", "docker-compose*.yml"):
         flow_files.update(glob_tracked(pat))
     for f in sorted(flow_files):
         try:

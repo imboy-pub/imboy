@@ -215,6 +215,41 @@ class LocalComposeTests(unittest.TestCase):
                                  "separate-production-password")
                 self.assertNotIn("imboy_pg18", model["services"])
 
+    def test_production_backend_capabilities_and_edge_read_only_rootfs(self):
+        for profile in ("prod", "prod-turn", "prod-sni"):
+            with self.subTest(profile=profile):
+                services = self.model(profile)["services"]
+                for name, required_tmpfs in (
+                    ("prod_imboy_backend", {"/tmp", "/home/imboy", "/opt/imboy/var"}),
+                    ("prod_imboy_edge", {"/tmp", "/home/imboy", "/opt/imboy/var", "/opt/imboy/log"}),
+                ):
+                    service = services[name]
+                    if name == "prod_imboy_backend":
+                        # The API retains the established writable app priv contract for
+                        # development-key, license and trial-state workflows.
+                        self.assertFalse(service.get("read_only", False), name)
+                    else:
+                        self.assertTrue(service["read_only"], name)
+                    self.assertEqual(service["cap_drop"], ["ALL"], name)
+                    self.assertIn("no-new-privileges:true", service["security_opt"], name)
+                    tmpfs = service["tmpfs"]
+                    self.assertTrue(required_tmpfs.issubset({item.split(":", 1)[0] for item in tmpfs}),
+                                    (name, tmpfs))
+                backend = services["prod_imboy_backend"]
+                private_mount = next(v for v in backend["volumes"]
+                                     if v["target"] == "/opt/imboy/priv_runtime")
+                log_mount = next(v for v in backend["volumes"]
+                                 if v["target"] == "/opt/imboy/log")
+                self.assertTrue(private_mount["read_only"])
+                self.assertFalse(log_mount.get("read_only", False))
+
+        proof = self.model("prod", "enterprise-direct")["services"]["prod_imboy_enterprise_proof"]
+        self.assertTrue(proof["read_only"])
+        self.assertEqual(proof["cap_drop"], ["ALL"])
+        self.assertIn("no-new-privileges:true", proof["security_opt"])
+        proof_tmpfs = {item.split(":", 1)[0] for item in proof["tmpfs"]}
+        self.assertTrue({"/tmp", "/home/imboy", "/opt/imboy/var"}.issubset(proof_tmpfs))
+
     def test_production_gateways_wait_for_a_working_edge_healthcheck(self):
         dev_edge = self.model("dev", "api")["services"]["imboy_edge"]
         for profile, gateway in (("prod", "prod_imboy_nginx"),

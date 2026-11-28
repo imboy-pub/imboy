@@ -93,7 +93,7 @@ Widget 还需要在后台配置 installation 与允许嵌入的来源。loader �
 ## 宿主机源码调试
 
 宿主机准备 Erlang/OTP 28+ 与 GNU Make；开发工具镜像固定的 OTP 版本见
-[`docker/imboy_Dockerfile_dev`](../../../../docker/imboy_Dockerfile_dev)。准备基础设施后，停止可能仍在运行的容器后端，避免占用 `9800`：
+[`docker/backend_dev_Dockerfile`](../../../../docker/backend_dev_Dockerfile)。准备基础设施后，停止可能仍在运行的容器后端，避免占用 `9800`：
 
 ```bash
 bash scripts/dev_setup.sh --infra-only
