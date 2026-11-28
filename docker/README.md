@@ -50,7 +50,10 @@ PostGIS 3.7.0 破坏性变更：`postgis_tiger_geocoder`（NEWS #6052）与
 ### 1. 构建 Erlang 开发镜像
 
 ```bash
-docker build -f docker/backend_dev_Dockerfile -t imboy/imboy-api:dev .
+# Align the non-root development user with the checkout owner.
+docker build -f docker/backend_dev_Dockerfile \
+  --build-arg DEV_UID="$(id -u)" --build-arg DEV_GID="$(id -g)" \
+  -t imboy/imboy-api:dev .
 ```
 
 ### 2. 构建生产 Backend 镜像
@@ -153,9 +156,19 @@ manifest list 且含双平台。
 原 `imboy_Dockerfile_dev` 改名为 `backend_dev_Dockerfile`，是独立的交互开发工具，
 不是生产运行镜像。
 
-镜像达到可投产运行的质量要求，不代表生产环境必须使用 Docker。
-长期生产可选择云 ECS 上的原生 Erlang/OTP release、PostgreSQL、Nginx 等服务，继续使用现有 `scripts/imboy-deploy.sh` 原生部署与升级路径。
-Docker 镜像主要服务可重复构建、隔离测试、快速交付及按需容器化部署；本次不改变原生部署默认路径。Admin 和 Widget 的两个配方镜像于本目录
+### 交付定位 / Delivery positioning
+
+Docker 优先服务快速体验、低门槛交付，以及有容器运维能力、部署规模和可用性要求适合单机编排的团队。四个镜像仍按可投产标准设计，不提供另一套降低安全或数据可靠性要求的演示镜像。选择 Docker 不等于必须选择原生部署，也不代表容器模式已经通过所有生产验收。
+
+对于长期运行、需要更精细资源控制和运维的生产环境，优先推荐云 ECS 上的原生部署（Erlang/OTP 自包含 release、PostgreSQL、Nginx 等），使用现有 `scripts/imboy-deploy.sh` 部署与升级路径和[原生 systemd 交付指南](../docs/guides/operations/deployment/native-shell/README.md)。两种部署形态共享产品版本和业务契约；本工具不改变原生部署路径。
+
+Docker 正式交付须完成对应平台的四镜像候选验收、按 digest 部署、持久化数据和密钥、配置与 HTTPS 检查、备份恢复、升级/回滚演练和基本监控。 Backend 生产服务使用只读根文件系统，`/tmp`、`/home/imboy`、`/opt/imboy/var` 仅以受限 tmpfs 提供临时写入；持久化私钥卷只读，日志卷单独可写；API、edge 与 proof 容器丢弃全部 Linux capabilities 并启用 `no-new-privileges`。未通过的验收不得宣称已具备生产验证证据；单机容器部署也不等于高可用部署。
+
+Docker images prioritize fast evaluation and low-friction delivery, including production use by teams whose operational capacity and availability requirements fit the supported deployment topology. They are not demo-only artifacts. Native ECS deployment remains the recommended option for long-running production with more granular resource and operations control. Both modes retain the same product and business contracts. Production readiness requires evidence for the actual candidate and target platform, including persistent state, security, backup/restore, and upgrade/rollback; single-host deployment is not an HA guarantee.
+
+### 构建配方 / Build recipes
+
+Admin 和 Widget 的两个配方镜像于本目录
 （`admin_Dockerfile`、`widget_Dockerfile`），由已批准的前端提交
 `imboy-admin-frontend` 的 `Dockerfile`、`Dockerfile.widget` 提供真源。
 脚本逐字节核对配方，发生漂移时拒绝构建；升级前端配方时同步这两份镜像。
@@ -220,6 +233,10 @@ manifest，不重新编译。目标已存在且摘要不同则拒绝写入。所
 # 当前源码由 bind mount 提供；首次使用需拉取并编译依赖。
 docker run --rm -it -v "$PWD:/workspace/imboy" imboy/imboy-api:dev
 ```
+
+开发镜像默认以非 root 用户运行（UID/GID 10001）；挂载本机源码并编译时，按上面的构建命令匹配宿主用户 UID/GID，避免生成 root 所有的文件。UID/GID 不允许为 0；不要使用 root 或全局放宽目录权限解决挂载问题。
+
+The development image runs as a non-root user by default (UID/GID 10001). Match the host checkout owner's numeric IDs at build time for writable bind mounts; neither ID may be zero.
 
 在容器内构建源码前核对挂载目录与数据库地址。容器中的 `127.0.0.1` 指向容器自身，
 不能直接照搬宿主机 PostgreSQL 配置。日常容器化启动和宿主机源码调试按
