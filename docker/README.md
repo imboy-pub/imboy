@@ -162,7 +162,7 @@ Docker 优先服务快速体验、低门槛交付，以及有容器运维能力�
 
 对于长期运行、需要更精细资源控制和运维的生产环境，优先推荐云 ECS 上的原生部署（Erlang/OTP 自包含 release、PostgreSQL、Nginx 等），使用现有 `scripts/imboy-deploy.sh` 部署与升级路径和[原生 systemd 交付指南](../docs/guides/operations/deployment/native-shell/README.md)。两种部署形态共享产品版本和业务契约；本工具不改变原生部署路径。
 
-Docker 正式交付须完成对应平台的四镜像候选验收、按 digest 部署、持久化数据和密钥、配置与 HTTPS 检查、备份恢复、升级/回滚演练和基本监控。未通过的验收不得宣称已具备生产验证证据；单机容器部署也不等于高可用部署。
+Docker 正式交付须完成对应平台的四镜像候选验收、按 digest 部署、持久化数据和密钥、配置与 HTTPS 检查、备份恢复、升级/回滚演练和基本监控。 Backend 生产服务使用只读根文件系统，`/tmp`、`/home/imboy`、`/opt/imboy/var` 仅以受限 tmpfs 提供临时写入；持久化私钥卷只读，日志卷单独可写；API、edge 与 proof 容器丢弃全部 Linux capabilities 并启用 `no-new-privileges`。未通过的验收不得宣称已具备生产验证证据；单机容器部署也不等于高可用部署。
 
 Docker images prioritize fast evaluation and low-friction delivery, including production use by teams whose operational capacity and availability requirements fit the supported deployment topology. They are not demo-only artifacts. Native ECS deployment remains the recommended option for long-running production with more granular resource and operations control. Both modes retain the same product and business contracts. Production readiness requires evidence for the actual candidate and target platform, including persistent state, security, backup/restore, and upgrade/rollback; single-host deployment is not an HA guarantee.
 

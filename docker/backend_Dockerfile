@@ -101,7 +101,7 @@ COPY scripts/start_enterprise_direct_proof.sh /opt/imboy/bin/start_enterprise_di
 
 # 开发密钥放入独立运行目录，挂载 named volume 后重建容器仍保留登录密钥。
 # Persist local RSA keys across container recreation through the runtime volume.
-# 生产显式 IMBOY_LOGIN_RSA_*_FILE 路径不变；BEAM/ERTS 保持 root 所有。
+# 生产显式 IMBOY_LOGIN_RSA_*_FILE 路径不变；BEAM/ERTS 与 app priv 静态资源保持 root 所有，只有运行数据卷归 UID 10001。
 # Bind mounts are prepared by deploy/prepare-backend-runtime.sh before startup.
 RUN set -eu; \
     mkdir -p /opt/imboy/log /opt/imboy/var /opt/imboy/priv_runtime/dev_keys; \
@@ -112,7 +112,6 @@ RUN set -eu; \
       test -d "$app_priv"; \
       rm -rf "$app_priv/dev_keys"; \
       ln -s /opt/imboy/priv_runtime/dev_keys "$app_priv/dev_keys"; \
-      chown -R 10001:10001 "$app_priv"; \
     done
 USER 10001:10001
 
