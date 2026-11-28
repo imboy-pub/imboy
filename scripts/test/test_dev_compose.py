@@ -238,6 +238,13 @@ class LocalComposeTests(unittest.TestCase):
                 self.assertTrue(private_mount["read_only"])
                 self.assertFalse(log_mount["read_only"])
 
+        proof = self.model("prod", "enterprise-direct")["services"]["prod_imboy_enterprise_proof"]
+        self.assertTrue(proof["read_only"])
+        self.assertEqual(proof["cap_drop"], ["ALL"])
+        self.assertIn("no-new-privileges:true", proof["security_opt"])
+        proof_tmpfs = {item.split(":", 1)[0] for item in proof["tmpfs"]}
+        self.assertTrue({"/tmp", "/home/imboy", "/opt/imboy/var"}.issubset(proof_tmpfs))
+
     def test_production_gateways_wait_for_a_working_edge_healthcheck(self):
         dev_edge = self.model("dev", "api")["services"]["imboy_edge"]
         for profile, gateway in (("prod", "prod_imboy_nginx"),
